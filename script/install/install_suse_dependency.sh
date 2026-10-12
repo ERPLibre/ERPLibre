@@ -101,19 +101,15 @@ zyp_soft() {
 #--------------------------------------------------
 # Miroir des dépôts
 #--------------------------------------------------
-# Le redirecteur officiel d'openSUSE n'est PAS géographique : mesuré depuis
-# Montréal sur les métadonnées oss s390x (15 Mo), download.opensuse.org met
-# 23,8 s — il sert depuis l'Europe — contre 2,7 s pour mirrors.rit.edu.
+# Le redirecteur officiel d'openSUSE n'est PAS géographique : il sert
+# depuis l'Europe, et les métadonnées d'un dépôt y arrivent un ordre de
+# grandeur plus lentement que d'un miroir proche.
 #
-# Chaque miroir est SONDÉ sur le chemin de l'architecture courante : tous ne
-# répliquent pas les architectures secondaires, et rit.edu sert justement
-# zsystems mais pas x86_64. Aucun sondage concluant : on garde les dépôts de
-# l'image, donc le comportement d'avant.
-# Plusieurs miroirs, sondés dans l'ordre sur le chemin exact du produit et
-# de l'architecture : aucun ne réplique tout. Relevé le 2026-08-12 —
-# csclub sert Leap mais pas Tumbleweed, leaseweb sert Tumbleweed x86_64
-# mais pas les ports zsystems, et rit.edu — seule entrée jusqu'ici — était
-# injoignable ce jour-là, ce qui renvoyait tout le monde en Europe.
+# Plusieurs miroirs, SONDÉS dans l'ordre sur le chemin exact du produit et
+# de l'architecture courante : aucun ne réplique tout — tel miroir sert Leap
+# sans Tumbleweed, tel autre x86_64 sans les ports zsystems —, d'où
+# plusieurs entrées plutôt qu'une. Aucun sondage concluant : on garde les
+# dépôts de l'image.
 ZYP_MIRRORS="https://mirror.csclub.uwaterloo.ca/opensuse https://mirrors.rit.edu/opensuse https://mirror.us.leaseweb.net/opensuse"
 # Leap et Tumbleweed sont deux PRODUITS, pas deux versions du même : arbres de
 # dépôts différents, et surtout une mise à jour de nature différente (plus bas).
@@ -149,10 +145,11 @@ sudo zypper --non-interactive refresh || true
 
 # Mise à jour COMPLÈTE, obligatoire pour la même raison qu'Arch : une rolling
 # release ne supporte PAS les mises à jour partielles. L'image cloud est un
-# instantané figé dont les dépôts ont avancé — vécu sur s390x, git 2.54
-# réclamait un perl-Git bâti contre un perl-base plus ancien que celui de
-# l'image. zypper proposait alors trois solutions et ATTENDAIT un choix ;
-# « --non-interactive » prend le défaut, « c » = annuler, et tout s'arrêtait.
+# instantané figé dont les dépôts ont avancé : un paquet récent (git)
+# réclame une dépendance (perl-Git) bâtie contre un perl-base plus ancien
+# que celui de l'image. zypper propose alors des solutions et ATTEND un
+# choix ; « --non-interactive » prend le défaut, « c » = annuler, et tout
+# s'arrête.
 if [ "${SUSE_ROLLING}" = 1 ]; then
   echo -e "\n---- Mise a jour complete (dup) ----"
   ${ZYP} dup ${ZYP_LIC} --allow-vendor-change || true
@@ -171,10 +168,10 @@ fi
 echo -e "\n---- Outils de developpement ----"
 # Les compilateurs sont installés EXPLICITEMENT, jamais par le seul motif :
 # un « pattern » absent ou incomplet laisserait le système sans g++, et
-# l'échec n'apparaîtrait qu'à la compilation de numpy — la leçon d'EL, où le
-# groupe « development-tools » n'existe pas et où le repli ne partait jamais.
-# Les noms non versionnés existent bien dans Tumbleweed (relevé dans le
-# primary.xml du dépôt oss) : « gcc » y est un méta-paquet qui tire gcc15.
+# l'échec n'apparaîtrait qu'à la compilation de numpy — comme sur EL, où le
+# groupe « development-tools » n'existe pas.
+# Les noms non versionnés existent bien dans Tumbleweed (le primary.xml du
+# dépôt oss les liste) : « gcc » y est un méta-paquet qui tire gcc15.
 zyp_in gcc gcc-c++ make automake patch
 retVal=$?
 if [[ ${retVal} -ne 0 ]]; then
@@ -186,8 +183,9 @@ ${ZYP_IN} -t pattern devel_basis > /dev/null 2>&1 || true
 
 # Python appelle son compilateur par le nom gravé dans sysconfig, souvent
 # « cc ». Sur openSUSE ce lien n'est garanti par aucune déclaration de
-# paquet — vécu sur amd64 : « cc -pthread … error: [Errno 2] No such file or
-# directory » à la compilation de python-ldap, alors que gcc était installé.
+# paquet : sans lui, la compilation de python-ldap s'arrête sur
+# « cc -pthread … error: [Errno 2] No such file or directory » alors que
+# gcc est installé.
 if ! command -v cc > /dev/null 2>&1 && command -v gcc > /dev/null 2>&1; then
   sudo ln -sf "$(command -v gcc)" /usr/local/bin/cc
   echo "cc -> $(command -v gcc)"
@@ -245,9 +243,9 @@ if [ "$(uname -m)" = "s390x" ]; then
   fi
   # Sans roue s390x, TOUT se compile contre les en-têtes de la distribution.
   # Cette liste reprend donc celles d'apt et de dnf, aux noms d'openSUSE près
-  # — relevés dans l'index oss de zsystems, jamais devinés. La tenir alignée
-  # ici plutôt que d'attendre : trois fois de suite, le même manque a été
-  # découvert d'abord par Debian, puis retrouvé une distribution à la fois.
+  # — pris dans l'index oss de zsystems, jamais devinés. Elle se tient
+  # alignée sur les autres distributions : un en-tête qui manque ici ne se
+  # découvre qu'à la compilation.
   #   tbb-devel   manifold3d refuse de configurer sans lui, et le dit dans un
   #               message de CMake, pas de compilateur : « Parallel mode
   #               enabled, but tbb was not found ».
@@ -300,6 +298,17 @@ if [[ ${retVal} -ne 0 ]]; then
   echo "zypper suse tool installation error."
   exit 1
 fi
+
+# gettext : outil de DÉVELOPPEMENT des catalogues de traduction, posé par
+# « zyp_soft », qui ne bloque pas. Odoo lit ses « .po » avec son propre
+# analyseur : aucun binaire gettext n'est nécessaire pour FAIRE TOURNER
+# ERPLibre. « msgfmt --check » refuse un catalogue dont une traduction a
+# perdu un « %s » de sa source — une faute qui ne se voit autrement qu'à
+# l'exécution, sur la page traduite ; « msgmerge » reporte les traductions
+# existantes sur un « .pot » régénéré, au lieu de les réécrire à la main. Le
+# paquet s'appelle « gettext-tools » ici : « gettext-runtime » ne porte que
+# « gettext » et « ngettext », pas « msgfmt ».
+zyp_soft gettext-tools
 
 # Dépendances de build pour pyenv (compilation de CPython) — CRITIQUE.
 # Python de la DISTRIBUTION d'abord : Tumbleweed livre python312 en 3.12.13,

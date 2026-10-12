@@ -35,6 +35,11 @@ brew link wget
 
 echo "\n--- Installing extra --"
 brew install shfmt
+# gettext : outil de DÉVELOPPEMENT des catalogues de traduction (« msgfmt
+# --check », « msgmerge ») ; Odoo n'en a pas besoin pour tourner. La formule
+# Homebrew n'est pas « keg-only » : « brew install » lie déjà ses binaires
+# dans le PATH, sans « link --force ».
+brew install gettext
 brew install parallel
 brew install swig
 brew install portaudio

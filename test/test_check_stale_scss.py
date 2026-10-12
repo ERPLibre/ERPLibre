@@ -6,15 +6,15 @@
 
 Personnaliser un site écrit du SCSS dans `ir_attachment`. Cette copie est
 figée le jour où elle est écrite et continue d'employer les variables de
-CETTE version. Un module peut les renommer d'un palier à l'autre : mesuré,
-`website/.../primary_variables.scss` déclarait `$o-theme-font-number` en 12.0
-et a remplacé tout le mécanisme en 13.0. Une personnalisation de 2020
-demandait encore l'ancien nom, et le bundle s'arrêtait dessus.
+CETTE version. Un module peut les renommer d'un palier à l'autre :
+`website/.../primary_variables.scss` déclare `$o-theme-font-number` en 12.0
+et remplace tout le mécanisme en 13.0. Une personnalisation écrite en 12.0
+demande encore l'ancien nom, et la compilation du bundle s'arrête dessus.
 
 Ce qui rend un tel détecteur utilisable n'est pas de trouver — c'est de ne
-pas crier à tort. Sur le seul fichier mesuré, la première version rapportait
-dix noms dont six n'étaient pas des manques : paramètres de mixin, variables
-de boucle, arguments nommés d'`@include`. Ces tests portent surtout là-dessus.
+pas crier à tort. Les faux positifs viennent des noms que le fichier lie
+lui-même : paramètres de mixin, variables de boucle, arguments nommés
+d'`@include`. Ces tests portent surtout là-dessus.
 """
 
 import os
@@ -35,8 +35,8 @@ class TestWhatCountsAsAUse(unittest.TestCase):
         self.assertNotIn("color", scss.used_names("$color: red;"))
 
     def test_a_named_include_argument_is_not_a_use(self):
-        # LE faux positif mesuré : « @include o-position-absolute(
-        # $right: 50%) » se lisait comme l'usage d'un $right inexistant.
+        # « @include o-position-absolute($right: 50%) » ne se lit pas comme
+        # l'usage d'un $right inexistant.
         source = "@include o-position-absolute($right: 50%, $left: 50%);"
         self.assertEqual(scss.used_names(source), set())
 
@@ -44,8 +44,8 @@ class TestWhatCountsAsAUse(unittest.TestCase):
         self.assertNotIn("size", scss.used_names("$size: 3 !default;"))
 
     def test_the_name_is_not_truncated_to_dodge_the_colon(self):
-        # Une négation en tête de motif fait rétrograder le nom : le premier
-        # essai rapportait « $botto » au lieu d'écarter « $bottom ».
+        # Une négation en tête de motif fait rétrograder le nom : le motif
+        # rapporterait « $botto » au lieu d'écarter « $bottom ».
         names = scss.used_names("a { b: $bottom-margin; }")
         self.assertEqual(names, {"bottom-margin"})
 
@@ -235,9 +235,11 @@ class TestThePrompt(unittest.TestCase):
         import os
         import tempfile
 
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
         previous = os.getcwd()
         self.addCleanup(os.chdir, previous)
-        os.chdir(tempfile.mkdtemp())
+        os.chdir(tmp.name)
         seen = {}
         original = scss.apply_reset
         scss.apply_reset = lambda lst, db, cfg="./config.conf": (
@@ -259,9 +261,11 @@ class TestThePrompt(unittest.TestCase):
         import os
         import tempfile
 
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
         previous = os.getcwd()
         self.addCleanup(os.chdir, previous)
-        os.chdir(tempfile.mkdtemp())
+        os.chdir(tmp.name)
         original = scss.apply_reset
         scss.apply_reset = lambda lst, db, cfg="./config.conf": (1, "boom")
         self.addCleanup(setattr, scss, "apply_reset", original)
@@ -322,11 +326,10 @@ class TestTheMigrationRunsIt(unittest.TestCase):
 class TestTheFixCannotRunTooEarly(unittest.TestCase):
     """Corriger exige la version d'ARRIVÉE, pas celle de départ.
 
-    Mesuré sur une vraie migration : la question a été posée avant le palier,
-    alors que le checkout était encore sur odoo12.0. Répondre « a » a lancé
-    reset_asset dans un shell Odoo 12, qui ne connaît pas `web_editor.assets`
-    — KeyError, rien de modifié, et la migration a continué jusqu'à casser au
-    palier suivant.
+    Avant le palier, le checkout est encore sur la version de départ :
+    reset_asset lancé dans un shell Odoo 12, qui ne connaît pas
+    `web_editor.assets`, échoue en KeyError sans rien modifier, et la
+    migration continue jusqu'à casser au palier suivant.
 
     Prédire tôt reste juste. C'est corriger tôt qui ne l'est pas.
     """
@@ -343,7 +346,9 @@ class TestTheFixCannotRunTooEarly(unittest.TestCase):
         import os
         import tempfile
 
-        root = tempfile.mkdtemp()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = tmp.name
         old = os.path.join(root, "odoo12.0", "addons", "web_editor", "models")
         os.makedirs(old)
         with open(os.path.join(old, "assets.py"), "w") as handle:
@@ -354,7 +359,9 @@ class TestTheFixCannotRunTooEarly(unittest.TestCase):
         import os
         import tempfile
 
-        root = tempfile.mkdtemp()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = tmp.name
         new = os.path.join(root, "odoo13.0", "addons", "web_editor", "models")
         os.makedirs(new)
         with open(os.path.join(new, "assets.py"), "w") as handle:

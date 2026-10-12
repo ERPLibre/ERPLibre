@@ -127,6 +127,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - OAuth pour les fournisseurs qui ont fermé le mot de passe : un tel compte s'ajoute avec un jeton de rafraîchissement, et le client nomme ceux qui n'acceptent que cela au lieu de laisser la connexion échouer sur un message qui accuse le mot de passe. Aucun identifiant client n'est livré — il serait public dès le premier clone, et chaque fournisseur offre un chemin où la personne obtient le sien
 - Des statistiques sur le seul cache, sans rien demander au serveur : volume par jour, semaine ou mois, correspondants les plus présents, part encore non lue, poids sur le disque. Presque tout se compte en SQL sur les colonnes restées en clair, donc un compte scellé n'est pas un compte aveugle ; les correspondants sont l'exception, descellés ligne par ligne en mémoire et annonçant leur progression
 - Chercher dans le cache du dossier ouvert, du compte ou de tous les comptes, et poser la même question au serveur quand le cache ne sait pas y répondre. Un cache scellé ne porte pas d'index plein texte — c'est le scellement qui l'interdit — et la recherche compare alors les champs qu'elle peut encore lire
+- Les installeurs posent gettext (gettext-tools sur SUSE) sur chaque système supporté, sans jamais bloquer : `msgfmt --check` attrape une traduction qui a perdu un `%s` avant qu'elle n'apparaisse sur une page, et `msgmerge` reporte les traductions sur un `.pot` régénéré
+- `coverage` est dans le venv d'Odoo 18 : `ODOO_MODE_COVERAGE=true` fait tourner Odoo sous coverage au lieu d'échouer sur « command not found »
 
 ## Modifié
 
@@ -168,6 +170,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le proxy SOCKS de `TODO › Deploy` propose le premier port local libre dès 1080, et un port occupé choisi à la main passe au suivant libre, annoncé ; le mode d'emploi du navigateur nomme le port réellement ouvert
 - TODO ne charge `openai`, `urwid` et `pykeepass` que lorsque l'assistant, le navigateur de fichiers ou le coffre s'en servent : l'import de TODO prend environ six fois moins de temps, à chaque lancement
 - La suite unitaire prend moins de temps : les tests de progression du déploiement attendent une condition plutôt qu'une durée fixe, les tests Textual tournent sans le mode debug d'asyncio, et les tests KeePass remplacent Argon2 par une dérivation rapide, un test gardant la vraie
+- La synchronisation des dépôts affiche sa progression par défaut : dépôts terminés, dépôts en cours, temps écoulé. Silencieuse, elle laissait un gros dépôt se télécharger pendant des dizaines de minutes sans un caractère à l'écran, ce qui passait pour un blocage. `EL_VERBOSE=1` ajoute toujours les logs détaillés
+- `odoo/documentation-user` est cloné à la profondeur 1 pour Odoo 12 à 18 : tout l'historique de la documentation d'Odoo, images comprises, ne domine plus la synchronisation
+- Le lock d'Odoo 18 est rafraîchi (27 paquets, dont factur-x 7 et plaid-python 45) ; `python-dotenv` quitte le venv d'Odoo, seul un fichier d'exemple sous `doc/examples` le demandant
+- Le lanceur des tests unitaires donne à chaque fichier son propre `TMPDIR`, retire ce qu'il y laisse et le nomme au bilan : les temporaires oubliés ne s'accumulent plus dans `/tmp` jusqu'à épuiser les inodes d'un tmpfs
 
 ## Corrigé
 
@@ -247,6 +253,11 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `make doc_markdown` s'arrête au bord de ce dépôt. Il régénérait aussi la documentation de `mobile/`, un dépôt distinct doté de sa propre génération, et effaçait ainsi une section écrite directement dans l'un de ses fichiers générés
 - La suite unitaire passe sur un poste sans adb, sans les addons de Google Repo ni l'état d'une démonstration SMS, sur un poste qui est lui-même invité de libvirt et sur un poste sans cloud-init : les tests SMS et modem bâtissent un checkout jetable et fournissent des réponses `ip` fixées au lieu de lire la machine, et n'écrivent plus de compte de softphone dans `private/`. Les tests d'appairage USB n'envoient plus de vraies commandes `pm grant` et `am broadcast` à un téléphone branché, le test du compte courriel clique sur le bouton OAuth une fois son défilement arrêté, et non en pleine animation, et le test de la console du modem ne perd plus un clic rapide sur ⟳ dans l'effet d'appui du bouton — tous deux échouaient ou passaient selon la charge du poste
 - La fin du journal d'un fichier en échec, telle que l'affiche le lanceur de tests unitaires, finit sur le verdict d'unittest : les impressions du test, vidées à la sortie, enterraient l'erreur sous elles
+- Restaurer une image d'`image_db/` mesure la place qu'elle demande, décompressée et quota compris, et extrait dans le cache utilisateur quand `/tmp` n'y suffit pas, au lieu de s'arrêter sur « Disk quota exceeded »
+- Une restauration qui laisse une base vide — psql rend zéro même quand toutes les instructions ont échoué — est refusée, et un cache ou une source vides le sont avant la suppression de la cible, au lieu d'être recopiés sans un mot par le clone
+- Créer un prospect CRM avec un courriel, depuis le formulaire du site par exemple, ne lève plus ModuleNotFoundError sur Odoo 18 : `dnsq`, que flanker importe pour vérifier le MX, est installé
+- Le venv d'Odoo 18 n'imprime plus une AttributeError d'extendable-pydantic à chaque démarrage de Python : pydantic reste sous 2.14, qui retire la fonction interne qu'il lit
+- `poetry_update.py` évalue les marqueurs `python_version` des dépendances de manifest et lit les plages comme `>=1.7.1,<2.9.0` : l'épingle d'un manifest n'écrase plus celle d'ERPLibre, et une plage n'arrête plus le script. `oauthlib<4` et `pylint<4.1` gardent la résolution d'Odoo 18 possible
 
 ## Retiré
 

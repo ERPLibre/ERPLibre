@@ -4,18 +4,19 @@
 
 """Désinstaller un thème n'est pas désinstaller son module.
 
-`--install-theme` appelle `button_choose_theme()`, qui fait deux choses :
-copier les vues et ressources du thème dans chaque site, et écrire dans
-`user_values.scss` une personnalisation qui DÉFINIT `$o-theme-font-number`
-et ses trois voisines. Le chemin de retrait d'Odoo, `_theme_remove()`, défait
-les deux — et son premier geste est `_reset_default_config()`, celui qui écrit
-ces définitions.
+Choisir un thème — `button_choose_theme()`, dont `--install-theme` refait
+lui-même le travail après avoir installé le module par `-i` — fait deux
+choses : copier les vues et ressources du thème dans chaque site, et écrire
+dans `user_values.scss` une personnalisation qui DÉFINIT
+`$o-theme-font-number` et ses trois voisines. Le chemin de retrait d'Odoo,
+`_theme_remove()`, défait les deux — et son premier geste est
+`_reset_default_config()`, celui qui écrit ces définitions.
 
-Un `--uninstall` nu saute tout cela. Mesuré sur une migration réelle 12 → 13 :
-le bundle `web.assets_frontend` s'arrête sur « Undefined variable:
-$o-theme-font-number ». La variable venait des fichiers `option_font_body_*`
-d'Odoo 12, supprimés en 13.0 ; seul le thème la redéfinissait encore, et le
-retirer a mis à nu un SCSS personnalisé figé depuis 2020.
+Un `--uninstall` nu saute tout cela. Après une migration 12 → 13, le bundle
+`web.assets_frontend` s'arrête alors sur « Undefined variable:
+$o-theme-font-number ». La variable vient des fichiers `option_font_body_*`
+d'Odoo 12, supprimés en 13.0 ; seul le thème la redéfinit encore, et le
+retirer laisse à nu tout SCSS personnalisé qui s'en sert.
 
 Ces tests portent sur ce que le script fait, pas sur son texte.
 """
@@ -95,9 +96,9 @@ class TestTheLeftoverReport(unittest.TestCase):
         self.assertIn("✅", text)
 
     def test_attachments_are_listed_with_their_date(self):
-        rows = ["4457|/theme_x/static/a.scss|2021-03-04"]
+        rows = ["1201|/theme_x/static/a.scss|2021-03-04"]
         text = theme_leftover.render("theme_x", rows, [])
-        self.assertIn("4457", text)
+        self.assertIn("1201", text)
         self.assertIn("2021-03-04", text)
 
     def test_a_long_list_says_how_many_it_hid(self):
@@ -255,7 +256,7 @@ class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
             setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
         )
         todo_i18n._current_lang = "en"
-        self.rows = ["4457|/theme_x/static/a.scss|2021-03-04"]
+        self.rows = ["1201|/theme_x/static/a.scss|2021-03-04"]
         self.saved = []
         self.deleted = []
         self.original_backup = theme_leftover.backup_attachments
@@ -332,7 +333,7 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
     Le script se termine par theme_leftover.py, qui pose une question. Lancé
     par l'exécuteur qui CAPTURE la sortie, son stdout est un tube : Python
     bufferise par blocs et l'invite reste invisible pendant que le processus
-    attend. Vécu — on croit à un blocage, on tape Entrée plusieurs fois, la
+    attend. On croit à un blocage, on tape Entrée plusieurs fois : la
     première frappe répond à l'aveugle et les suivantes vont à la question
     d'après.
 
@@ -372,7 +373,7 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
         self.addCleanup(setattr, sys, "stdout", real_out)
         for stdin_tty, stdout_tty, expected in (
             (True, True, True),
-            (True, False, False),  # le cas mesuré
+            (True, False, False),  # stdout capturé dans un tube
             (False, True, False),
             (False, False, False),
         ):
@@ -403,11 +404,10 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
 class TestTheIdentifiersSentToOdoo(unittest.TestCase):
     """browse() veut des ENTIERS ; psql rend des chaînes.
 
-    Mesuré sur une vraie base : browse(['4457']) fait échouer Odoo sur
-    « la recherche en base n'a pas les identifiants (('4457',)) et a des
-    identifiants supplémentaires ((4457,)) ». Il compare des chaînes à des
-    entiers, ne retrouve rien, et refuse. L'effacement n'a rien retiré —
-    heureusement, la sauvegarde était déjà faite.
+    browse(['1201']) fait échouer Odoo sur « la recherche en base n'a pas les
+    identifiants (('1201',)) et a des identifiants supplémentaires
+    ((1201,)) ». Il compare des chaînes à des entiers, ne retrouve rien, et
+    refuse : l'effacement ne retire rien.
     """
 
     def test_the_script_browses_integers(self):
@@ -427,10 +427,10 @@ class TestTheIdentifiersSentToOdoo(unittest.TestCase):
         )
         self.addCleanup(setattr, theme_leftover.subprocess, "run", original)
         theme_leftover.delete_attachments(
-            "db", ["4457|/theme_x/a.scss|2021-03-04", "4768|/b.css|d"]
+            "db", ["1201|/theme_x/a.scss|2021-03-04", "1202|/b.css|d"]
         )
-        self.assertIn("browse([4457, 4768])", pushed["script"])
-        self.assertNotIn("'4457'", pushed["script"])
+        self.assertIn("browse([1201, 1202])", pushed["script"])
+        self.assertNotIn("'1201'", pushed["script"])
 
     def test_a_non_numeric_row_is_not_sent_silently(self):
         # Mieux vaut échouer ici que pousser un script qu'Odoo refusera.

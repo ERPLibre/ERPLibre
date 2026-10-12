@@ -1068,8 +1068,9 @@ class TestTheRestoreWiring(unittest.TestCase):
         src = self.source("script/database/db_restore.py")
         self.assertEqual(src.count("verify_filestore("), 3)
         self.assertIn(
-            "if config.ignore_cache:\n        verify_filestore("
-            "config.database",
+            "if config.ignore_cache:\n"
+            "        verify_loaded(config.database, arg_base)\n"
+            "        verify_filestore(config.database",
             src,
             "le contrôle d'après-restauration directe n'est plus gardé"
             " par ignore_cache",

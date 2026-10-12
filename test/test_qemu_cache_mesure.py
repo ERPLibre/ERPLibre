@@ -20,6 +20,7 @@ import argparse
 import importlib.util
 import json
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -311,6 +312,7 @@ class TestCeQuIlFautDefaire(unittest.TestCase):
         from unittest import mock
 
         d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
         for i, c in enumerate(contenus):
             nom = f"qemu_cache-2026090{i + 1}-000000.json"
             (Path(d) / nom).write_text(_json.dumps(c), encoding="utf-8")

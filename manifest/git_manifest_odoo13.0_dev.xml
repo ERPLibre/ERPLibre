@@ -16,6 +16,7 @@
         path="odoo13.0/odoo_documentation-user"
         revision="13.0"
         remote="odoo"
+        clone-depth="1"
         groups="odoo,odoo13.0"
     />
 </manifest>

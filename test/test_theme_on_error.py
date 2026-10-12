@@ -10,13 +10,14 @@ doit figurer dans ce que la commande vient d'écrire. Offrir la
 désinstallation à chaque échec reviendrait à proposer de casser le
 design du site pour une panne qui n'a rien à voir.
 
-La question était déjà posée à l'étape 1, une fois, et un drapeau
-l'empêchait de revenir. Or un thème devient incompatible à un PALIER
-précis, des heures plus tard : la poser au départ ne pouvait pas suffire.
+La question se pose à chaque échec, et non une seule fois à l'étape 1 :
+un thème devient incompatible à un PALIER précis, des heures plus tard,
+et une question posée au départ ne le voit pas venir.
 """
 
 import io
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -33,6 +34,7 @@ class TestTheDetection(unittest.TestCase):
     def setUp(self):
         self.obj = TodoUpgrade.__new__(TodoUpgrade)
         self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
         self.obj.log_dir = lambda: self.dossier
         self.obj.current_step = "4.5.J - Migrate database"
         self.obj.step_slug = staticmethod(lambda msg: "etape")
@@ -93,6 +95,7 @@ class TestReadingTheTail(unittest.TestCase):
     def setUp(self):
         self.obj = TodoUpgrade.__new__(TodoUpgrade)
         self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
         self.obj.log_dir = lambda: self.dossier
         self.obj.current_step = "etape"
         self.obj.step_slug = staticmethod(lambda msg: "etape")

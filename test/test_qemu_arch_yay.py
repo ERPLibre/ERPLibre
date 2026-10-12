@@ -17,6 +17,7 @@ Ce que ces tests gardent :
 """
 
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,7 @@ class ArchGuestBootstrap(unittest.TestCase):
         ) as fh:
             fh.write(script)
             chemin = fh.name
+        self.addCleanup(os.unlink, chemin)
         res = subprocess.run(
             ["bash", chemin], capture_output=True, text=True, timeout=60
         )

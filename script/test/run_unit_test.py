@@ -39,6 +39,10 @@ HERMÉTIQUE. Un test unitaire ne touche pas l'hôte :
    par une commande qui refuse en le disant : un appel non bouchonné échoue
    de la même façon sur tous les postes, au lieu d'interroger les VM du
    poste ou le téléphone qui y est branché ;
+ - chaque fichier a son propre TMPDIR, sous le répertoire de travail du
+   lanceur : ce qu'un test oublie d'y supprimer est compté, nommé au bilan
+   pour un fichier qui a fini de lui-même, puis supprimé dans tous les cas.
+   La suite n'échoue pas pour autant ;
  - `--timeout` secondes par fichier : au-delà, le groupe entier du fichier
    est tué et le fichier marqué DÉLAI.
 
@@ -134,6 +138,13 @@ class Fichier:
         self.skipped = ""
         self.log = ""
         self.proc = None
+        # Le rang du fichier dans le lanceur, qui nomme ses fichiers de
+        # travail : deux fichiers de même nom — dans deux répertoires, ou le
+        # même donné deux fois — ne partagent ni journal ni TMPDIR.
+        self.rang = 0
+        # Entrées que le fichier a laissées dans son TMPDIR : le lanceur les
+        # supprime et les signale au bilan.
+        self.restes = 0
 
     def ecoule(self):
         """Secondes écoulées : figées une fois fini, courantes sinon."""
@@ -186,20 +197,54 @@ def ordonner(fichiers, durees):
     )
 
 
-def poser_doublures(dossier):
+# Les doublures vivent à un chemin FIXE, hors du dépôt, et non dans le
+# répertoire temporaire de chaque passage : le PATH des tests est alors le
+# même d'un passage à l'autre. Un outil qui met ses résultats en cache selon
+# l'environnement — « go test », qui retient le PATH d'un test qui lance des
+# commandes — retrouve ainsi son cache au lieu de tout refaire.
+DOUBLURES = os.path.join(os.path.dirname(DURATIONS), "run_unit_test.bin")
+
+
+def poser_doublures(dossier=DOUBLURES):
     """Écrit les commandes refusées dans `dossier`, qui ira en tête du
-    PATH. Chacune écrit pourquoi sur la sortie d'erreur du test."""
+    PATH. Chacune écrit pourquoi sur la sortie d'erreur du test.
+
+    Un fichier déjà identique n'est pas réécrit : sa date reste la même, et
+    un cache qui la compare n'est pas invalidé. L'écriture passe par un
+    fichier provisoire renommé, pour que deux lanceurs simultanés ne se
+    voient jamais une doublure à moitié écrite."""
     os.makedirs(dossier, exist_ok=True)
     for cmd, code in REFUSEES.items():
         chemin = os.path.join(dossier, cmd)
-        with open(chemin, "w", encoding="utf-8") as fh:
-            fh.write(
-                "#!/bin/sh\n"
-                f'echo "run_unit_test : « {cmd} $* » refusé, un test'
-                " unitaire ne touche pas l'hôte\" >&2\n"
-                f"exit {code}\n"
-            )
-        os.chmod(chemin, 0o755)
+        contenu = (
+            "#!/bin/sh\n"
+            f'echo "run_unit_test : « {cmd} $* » refusé, un test'
+            " unitaire ne touche pas l'hôte\" >&2\n"
+            f"exit {code}\n"
+        )
+        try:
+            with open(chemin, encoding="utf-8") as fh:
+                if fh.read() == contenu and os.access(chemin, os.X_OK):
+                    continue
+        except OSError:
+            pass
+        provisoire = f"{chemin}.{os.getpid()}.tmp"
+        with open(provisoire, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        os.chmod(provisoire, 0o755)
+        os.replace(provisoire, chemin)
+    return dossier
+
+
+def doublures(travail):
+    """Le répertoire des doublures : DOUBLURES, ou `travail`/bin si
+    DOUBLURES ne peut être créé ni écrit — un cache en lecture seule ne
+    doit pas empêcher la suite de tourner, seulement le cache de « go
+    test » de servir."""
+    try:
+        return poser_doublures(DOUBLURES)
+    except OSError:
+        return poser_doublures(os.path.join(travail, "bin"))
 
 
 class Lanceur:
@@ -220,6 +265,8 @@ class Lanceur:
             ],
             durees,
         )
+        for rang, f in enumerate(self.fichiers):
+            f.rang = rang
         self.detaille = detaille
         self.py = py
         self.jobs = max(1, jobs)
@@ -228,10 +275,9 @@ class Lanceur:
         self.debut = 0.0
         self.fin = 0.0
         self.travail = tempfile.mkdtemp(prefix="run_unit_test.")
-        poser_doublures(os.path.join(self.travail, "bin"))
         self.env = dict(
             os.environ,
-            PATH=os.path.join(self.travail, "bin")
+            PATH=doublures(self.travail)
             + os.pathsep
             + os.environ.get("PATH", ""),
             PYTHONPATH=".",
@@ -241,7 +287,7 @@ class Lanceur:
         if self.arret.is_set():
             f.etat = ARRETE
             return
-        base = os.path.join(self.travail, f"{f.fichier}.{f.passage}")
+        base = os.path.join(self.travail, f"{f.rang}.{f.fichier}")
         f.log = base + ".log"
         # « -u » : le journal reçoit la sortie standard ET la sortie
         # d'erreur. Sans terminal, la première ne se vide qu'à la fin du
@@ -253,6 +299,11 @@ class Lanceur:
         cmd = [self.py, "-u", f.chemin]
         if self.detaille:
             cmd = [self.py, "-u", UNIT_FILE, f.chemin, base + ".json"]
+        # Un TMPDIR par fichier, sous le répertoire de travail : ce qu'un
+        # test oublie de supprimer y reste, est compté puis supprimé, au lieu
+        # de s'accumuler dans /tmp jusqu'à en épuiser les inodes.
+        tmp = base + ".tmp"
+        os.makedirs(tmp, exist_ok=True)
         f.debut = time.monotonic()
         f.etat = EN_COURS
         with open(f.log, "wb") as sortie:
@@ -261,7 +312,7 @@ class Lanceur:
                 stdin=subprocess.DEVNULL,
                 stdout=sortie,
                 stderr=subprocess.STDOUT,
-                env=self.env,
+                env=dict(self.env, TMPDIR=tmp),
                 start_new_session=True,
             )
             try:
@@ -271,6 +322,11 @@ class Lanceur:
                 f.proc.wait()
                 rc = None
         f.duree = time.monotonic() - f.debut
+        try:
+            restes = len(os.listdir(tmp))
+        except OSError:
+            restes = 0
+        shutil.rmtree(tmp, ignore_errors=True)
         if self.detaille:
             try:
                 with open(base + ".json", encoding="utf-8") as fh:
@@ -290,6 +346,10 @@ class Lanceur:
             f.etat = OK
         else:
             f.etat = ECHEC
+        # Un fichier tué — délai ou Ctrl+C — n'a pas eu le temps de nettoyer
+        # derrière lui : ses restes ne disent rien du test.
+        if f.etat in (OK, ECHEC):
+            f.restes = restes
 
     def lancer(self, fini=None):
         """Exécute tout ; `fini(f)` est appelé à la fin de chaque fichier."""
@@ -360,6 +420,23 @@ def ligne(f, delai):
     )
 
 
+def restes_temporaires(lanceur):
+    """Lignes d'avertissement : les fichiers qui ont laissé des entrées dans
+    leur TMPDIR. Le lanceur les a supprimées ; le test reste à corriger, car
+    lancé hors du lanceur il les laisse dans /tmp. N'échoue pas la suite."""
+    fautifs = sorted(
+        (f for f in lanceur.fichiers if getattr(f, "restes", 0)),
+        key=lambda f: f.nom,
+    )
+    if not fautifs:
+        return []
+    lignes = [
+        f"  {JAUNE}Temporaires laissés (supprimés par le lanceur) :{FIN}"
+    ]
+    lignes += [f"    {f.nom}  ({f.restes})" for f in fautifs]
+    return lignes
+
+
 def bilan(lanceur):
     """Les sorties des échecs, dans l'ordre des noms, puis le total.
 
@@ -373,6 +450,8 @@ def bilan(lanceur):
         print(_lire(f.log, fin=12))
     total = sum(int(f.ran) for f in lanceur.fichiers if f.ran.isdigit())
     duree = f"{lanceur.fin - lanceur.debut:.0f} s, {lanceur.jobs} en parallèle"
+    for ligne in restes_temporaires(lanceur):
+        print(ligne)
     print("  ─────")
     arretes = [f for f in lanceur.fichiers if f.etat == ARRETE]
     if arretes:

@@ -6,7 +6,8 @@
 Deux garanties, jugées sur de vrais processus, le seul endroit où elles
 existent :
  - une commande qui toucherait l'hôte, adb compris, est remplacée par une
-   doublure qui refuse en le disant ;
+   doublure qui refuse en le disant, même quand le cache où elle vit
+   d'ordinaire ne peut être écrit ;
  - le journal d'un fichier en échec finit sur le verdict d'unittest, même
    quand le test imprime : ce sont ces dernières lignes que le bilan montre.
 """
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RACINE, "script", "test"))
@@ -58,6 +60,30 @@ class TestLesCommandesRefusees(unittest.TestCase):
                     )
                     self.assertEqual(res.returncode, code)
                     self.assertIn(f"{commande} devices", res.stderr)
+
+    def test_an_unwritable_cache_falls_back_to_the_work_dir(self):
+        """Un cache qui ne peut être créé — XDG_CACHE_HOME en lecture
+        seule, ou un fichier à sa place — ne doit pas empêcher la suite de
+        tourner : les doublures vont alors sous le répertoire de travail."""
+        with tempfile.TemporaryDirectory() as dossier:
+            bouchon = os.path.join(dossier, "fichier")
+            open(bouchon, "w").close()
+            with mock.patch.object(
+                r, "DOUBLURES", os.path.join(bouchon, "bin")
+            ):
+                lanceur = r.Lanceur([], sys.executable, 1, 60, {})
+            self.addCleanup(lanceur.nettoyer)
+            premier = lanceur.env["PATH"].split(os.pathsep)[0]
+            self.assertEqual(premier, os.path.join(lanceur.travail, "bin"))
+            res = subprocess.run(
+                ["sudo", "-n", "true"],
+                env=lanceur.env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            self.assertEqual(res.returncode, 1)
+            self.assertIn("refusé", res.stderr)
 
 
 class TestLeBilanMontreLeVerdict(unittest.TestCase):

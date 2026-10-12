@@ -35,8 +35,8 @@ class TestUpdateAllStatus(StatusCase):
         return TodoUpgrade.step_status(dct, 2)
 
     def test_an_old_log_knows_only_the_early_flag(self):
-        # Le cas signalé : un journal écrit avant le correctif. L'étape a bien
-        # eu lieu, il ne faut pas la dire « non démarrée ».
+        # Un journal qui ne porte que le drapeau précoce : l'étape a bien eu
+        # lieu, il ne faut pas la dire « non démarrée ».
         icon, detail = self.status({"state_1_update_all": True})
         self.assertEqual(icon, "✅")
         self.assertIn("early", detail)
@@ -134,8 +134,9 @@ class TestRewindReallyReplays(StatusCase):
             return TodoUpgrade.rewind_progression(self.journal(), step)
 
     def test_going_back_to_step_2_runs_the_update_again(self):
-        # LE défaut signalé : « il continue en ignorant l'étape que j'ai
-        # choisie ». Trois heures de mise à jour silencieusement sautées.
+        # Rembobiner à une étape la rejoue : sans cela, la migration continue
+        # en ignorant l'étape choisie et saute en silence une mise à jour de
+        # plusieurs heures.
         self.assertTrue(
             TodoUpgrade.needs_update_all(self.rewind(2)),
             "rembobiner à l'étape 2 doit rejouer la mise à jour",
@@ -284,7 +285,9 @@ class TestRewindDropsTheAnswersToo(StatusCase):
             return TodoUpgrade.rewind_progression(self.journal(), step)
 
     def test_the_step_4_answers_go_when_step_4_is_replayed(self):
-        # LE défaut signalé : l'étape rejouée marchait, les suivantes non.
+        # Rembobiner oublie aussi les réponses des étapes suivantes : sinon
+        # l'étape rejouée repart, mais les suivantes reprennent d'anciens
+        # choix.
         kept = self.rewind(2)
         for key in (
             "config_state_4_install_module",
@@ -364,10 +367,15 @@ class TestBackGate(unittest.TestCase):
 
     def setUp(self):
         import os
+        import shutil
         import tempfile
 
+        # Enregistré avant le retour au répertoire d'origine : les nettoyages
+        # s'exécutent à rebours, on quitte le répertoire avant de l'effacer.
+        workdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, workdir, ignore_errors=True)
         self.addCleanup(os.chdir, os.getcwd())
-        os.chdir(tempfile.mkdtemp())
+        os.chdir(workdir)
         os.makedirs(".venv.erplibre", exist_ok=True)
         self.addCleanup(
             setattr, todo_i18n, "_current_lang", todo_i18n._current_lang

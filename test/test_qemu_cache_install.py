@@ -16,6 +16,7 @@ script/qemu_cache/rules_test.go. Ce test contrôle qu'il n'en existe pas de
 seconde copie ici.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -26,6 +27,32 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 SCRIPT = RACINE / "script" / "install" / "install_qemu_cache.sh"
 SOURCES = RACINE / "script" / "qemu_cache"
+
+# Le TMPDIR que voit « go test », à un chemin FIXE par compte. Go garde en
+# cache le résultat d'un paquet tant que les variables que ses tests lisent
+# ne changent pas, et t.TempDir() lit TMPDIR : le TMPDIR propre à chaque
+# passage que pose le lanceur unitaire rendrait ce cache inutile, et la
+# dizaine de secondes de « go test » serait payée à chaque passage.
+# t.TempDir() supprime ce qu'il crée, et le répertoire de travail de « go »
+# part avec lui : rien ne s'accumule ici.
+TMP_GO = (
+    Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    / "erplibre"
+    / "go_test.tmp"
+)
+
+
+def env_go_test():
+    """L'environnement de « go test » : TMPDIR à TMP_GO si ce répertoire
+    peut être créé et écrit, l'environnement inchangé sinon. Sans TMP_GO,
+    les tests tournent quand même, sans profiter du cache."""
+    try:
+        TMP_GO.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    if not os.access(TMP_GO, os.W_OK | os.X_OK):
+        return None
+    return dict(os.environ, TMPDIR=str(TMP_GO))
 
 
 class TestScriptDInstallation(unittest.TestCase):
@@ -306,6 +333,7 @@ class TestSourcesGo(unittest.TestCase):
             cwd=str(SOURCES),
             capture_output=True,
             text=True,
+            env=env_go_test(),
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 

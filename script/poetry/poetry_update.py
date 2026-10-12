@@ -160,6 +160,65 @@ def get_file_from_glob(
     return lst_v
 
 
+def resolve_marker(line, python_version):
+    """Evaluate the environment marker of one requirement line.
+
+    The generated artefact, pyproject.odooXX_pythonYY, fixes the version of
+    Odoo and of Python, NOT the architecture. A « python_version » marker is
+    therefore evaluated here against the target Python, never the one running
+    this script. A « platform_machine » marker is KEPT and handed to Poetry,
+    which resolves both branches in one lock: evaluating it would engrave the
+    architecture of the generating machine, and a lock produced on x86 would
+    be wrong on s390x.
+
+    :param line: requirement line, comment already removed
+    :param python_version: target Python, ex. « 3.12.10 »
+    :return: None when the marker excludes the target; otherwise
+        (line, name, kept_marker). A line with a marker is rewritten as
+        name + specifier, followed by « ; kept_marker » when one is kept;
+        name is None and kept_marker empty for a line without marker.
+    """
+    if ";" not in line:
+        return line, None, ""
+    environment = default_environment()
+    environment["python_version"] = ".".join(python_version.split(".")[:2])
+    environment["python_full_version"] = python_version
+    environment["implementation_version"] = python_version
+    req = Requirement(line)
+    keep_marker = ""
+    if "platform_machine" in str(req.marker):
+        keep_marker = str(req.marker)
+    elif not req.marker.evaluate(environment):
+        return None
+    resolved = req.name + str(req.specifier)
+    if keep_marker:
+        resolved += f" ; {keep_marker}"
+    return resolved, req.name, keep_marker
+
+
+def version_clauses(requirement):
+    """Version clauses of one requirement, without its marker.
+
+    :param requirement: « name », « name>=1.2 » or « name>=1.7.1,<2.9.0 »;
+        « .* » and quotes are dropped from the versions
+    :return: [(sign, Version), ...] in written order, [] without a version.
+        Every clause is kept: « >=1.7.1,<2.9.0 » is two bounds, and reading
+        it as one version would fail on « 1.7.1,<2.9.0 ».
+    """
+    match = re.search(r"[=<>~!]{1,2}.*", requirement)
+    if not match:
+        return []
+    clauses = []
+    for clause in match.group(0).split(","):
+        clause_match = re.match(r"\s*([=<>~!]{1,2})\s*(.+)", clause)
+        if not clause_match:
+            continue
+        version = clause_match.group(2).strip()
+        version = version.replace(".*", "").replace("'", "").replace('"', "")
+        clauses.append((clause_match.group(1), Version(version)))
+    return clauses
+
+
 def combine_requirements(config):
     """
     Search all module and version in all requirements.txt file in this project.
@@ -207,46 +266,10 @@ def combine_requirements(config):
                     # remove comments at the end of module
                     b = b[: b.index("#")].strip()
                 comment_depend = ""
-                # Défini pour TOUTE ligne : il est relu plus bas, y compris
-                # pour les lignes sans marqueur.
-                keep_marker = ""
-                if except_sign in b:
-                    # current_python_version = platform.python_version()
-                    # current_platform = sys.platform
-                    current_platform_2 = default_environment()
-                    current_platform_2["python_version"] = ".".join(
-                        config.set_version_python.split(".")[:2]
-                    )
-                    current_platform_2["python_full_version"] = (
-                        config.set_version_python
-                    )
-                    current_platform_2["implementation_version"] = (
-                        config.set_version_python
-                    )
-                    req = Requirement(b)
-                    # Le nom de l'artefact généré — pyproject.odooXX_pythonYY —
-                    # fige la version d'Odoo et celle de Python, PAS
-                    # l'architecture. Évaluer « python_version » ici est donc
-                    # juste ; évaluer « platform_machine » y graverait
-                    # silencieusement l'architecture de la machine qui génère,
-                    # et le lock produit sur x86 devient faux sur s390x.
-                    # Un tel marqueur est donc CONSERVÉ et transmis à Poetry,
-                    # qui sait résoudre les deux branches dans un seul lock.
-                    if "platform_machine" in str(req.marker):
-                        keep_marker = str(req.marker)
-                    else:
-                        is_compatible = req.marker.evaluate(current_platform_2)
-                        if not is_compatible:
-                            continue
-                    # this support python_version into comment_depend, check odoo/requirements.txt
-                    # b, comment_depend = b.split(except_sign)
-                    # b = b.strip()
-                    # comment_depend = comment_depend.strip()
-                    # print(comment_depend)
-                    # Rewrite dependancy : module==version
-                    b = req.name + str(req.specifier)
-                    if keep_marker:
-                        b += f" ; {keep_marker}"
+                resolved = resolve_marker(b, config.set_version_python)
+                if resolved is None:
+                    continue
+                b, req_name, keep_marker = resolved
 
                 # Deux lignes du même module portant des marqueurs DIFFÉRENTS
                 # ne sont pas un conflit : elles s'excluent mutuellement. La
@@ -259,7 +282,7 @@ def combine_requirements(config):
                 # « factur-x>=4.2 » comme nom de module — que la liste des
                 # ignorés ne retrouverait plus.
                 if keep_marker:
-                    module_name = f"{req.name} ; {keep_marker}"
+                    module_name = f"{req_name} ; {keep_marker}"
                     dct_requirements[module_name].add(b)
                     dct_requirements_module_filename[b].append(
                         str(requirements_filename)
@@ -367,24 +390,11 @@ def combine_requirements(config):
                     requirement = requirement.replace("~=", "==")
                     lst_replace_special_sign[requirement] = old_requirement
 
-                requirement_begin = requirement.split(except_sign)[0]
-                match = re.search(r"[=<>~!]{1,2}(.*)", requirement_begin)
-                if not match:
-                    # Ignore empty version
-                    continue
-                match_version = match.group(1).strip()
-                if ".*" in match_version:
-                    match_version = match_version.replace(".*", "")
-                match_sign = match.group(0).strip()[: -len(match_version)]
-                match_app_name = requirement[
-                    : -(len(match_sign) + len(match_version))
-                ]
-                match_version_format = match_version.replace("'", "").replace(
-                    '"', ""
+                result_number = version_clauses(
+                    requirement.split(except_sign)[0]
                 )
-                result_number = [(match_sign, Version(match_version_format))]
-                # result_number = iscompatible.parse_requirements(requirement)
                 if not result_number:
+                    # Ignore empty version
                     continue
                 lst_version_requirement.append((requirement, result_number))
             # Check compatibility with all possibility
@@ -571,6 +581,19 @@ def get_manifest_external_dependencies(config, dct_requirements, lst_sign):
             if not python:
                 continue
             for depend in python:
+                # Un manifest porte des marqueurs comme un requirements.txt,
+                # par exemple les épingles d'Odoo, une par python_version.
+                # Non évaluée, la ligne brute deviendrait une clé à part :
+                # elle échapperait à l'arbitrage des versions et parviendrait
+                # telle quelle à « poetry add », qui garde la DERNIÈRE
+                # contrainte d'un même nom.
+                resolved = resolve_marker(depend, config.set_version_python)
+                if resolved is None:
+                    continue
+                depend, req_name, keep_marker = resolved
+                if keep_marker:
+                    dct_requirements[f"{req_name} ; {keep_marker}"].add(depend)
+                    continue
                 # TODO duplicate code, check combine_requirements()
                 module_name = depend
                 for sign in lst_sign:

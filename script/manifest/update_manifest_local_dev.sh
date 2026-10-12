@@ -2,12 +2,14 @@
 
 . ./env_var.sh
 
-# Verbosité de l'installation (git-repo). Silencieuse par défaut ;
-# EL_VERBOSE=1 rétablit les logs détaillés (repo sync, git daemon).
+# Verbosité de git-repo. Par défaut, repo sync affiche sa barre de
+# progression : dépôts terminés, dépôts en cours, temps écoulé. « -q » la
+# coupe, et un gros dépôt qui se télécharge en silence passe pour un blocage.
+# EL_VERBOSE=1 ajoute les logs détaillés (repo sync -v, git daemon --verbose).
 if [ "${EL_VERBOSE:-0}" = "1" ]; then
   REPO_VERBOSE="-v"; DAEMON_VERBOSE="--verbose"
 else
-  REPO_VERBOSE="-q"; DAEMON_VERBOSE=""
+  REPO_VERBOSE=""; DAEMON_VERBOSE=""
 fi
 #EL_MANIFEST_PROD="./default.xml"
 #EL_MANIFEST_DEV="./manifest/default.dev.xml"
@@ -49,10 +51,10 @@ fi
 # « repo init -b <sha> » échoue sur un espace de travail NEUF : repo doit y
 # cloner .repo/manifests et ne sait pas résoudre un commit en révision de
 # manifeste. Il abandonne sur « unparseable HEAD », puis repo sync sur
-# « manifest not found ». Mesuré : -b main réussit, -b <sha> échoue.
+# « manifest not found » ; -b <branche> réussit au même endroit.
 # Le piège est qu'un .repo DÉJÀ initialisé accepte le SHA — le défaut reste
 # donc invisible sur toute machine ayant réussi un init une fois, et ne frappe
-# que les installations neuves : les 4 VM du 2026-08-07 ont toutes échoué là.
+# que les installations neuves.
 MANIFEST_REV=$(git symbolic-ref --quiet --short HEAD || true)
 if [ -z "${MANIFEST_REV}" ]; then
   # HEAD détaché : prendre une branche qui contient ce commit plutôt que de
