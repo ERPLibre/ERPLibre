@@ -164,6 +164,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The SOCKS proxy of `TODO › Deploy` offers the first free local port from 1080, and a busy port chosen by hand moves to the next free one, announced; the browser help names the port actually opened
 - TODO loads `openai`, `urwid` and `pykeepass` only when the assistant, the file browser or the vault uses them: importing TODO takes about a sixth of the time, at every launch
 - The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, the Textual tests run without asyncio's debug mode, and the KeePass tests replace Argon2 with a fast derivation, one test keeping the real one
+- Repository sync shows its progress by default: projects done, projects in flight, time elapsed. Quiet, it let a large repository download for tens of minutes without a character on screen, which read as a hang. `EL_VERBOSE=1` still adds the detailed logs
 
 ## Fixed
 

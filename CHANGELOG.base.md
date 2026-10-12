@@ -307,6 +307,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The SOCKS proxy of `TODO › Deploy` offers the first free local port from 1080, and a busy port chosen by hand moves to the next free one, announced; the browser help names the port actually opened
 - TODO loads `openai`, `urwid` and `pykeepass` only when the assistant, the file browser or the vault uses them: importing TODO takes about a sixth of the time, at every launch
 - The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, the Textual tests run without asyncio's debug mode, and the KeePass tests replace Argon2 with a fast derivation, one test keeping the real one
+- Repository sync shows its progress by default: projects done, projects in flight, time elapsed. Quiet, it let a large repository download for tens of minutes without a character on screen, which read as a hang. `EL_VERBOSE=1` still adds the detailed logs
 
 <!-- [fr] -->
 
@@ -348,6 +349,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le proxy SOCKS de `TODO › Deploy` propose le premier port local libre dès 1080, et un port occupé choisi à la main passe au suivant libre, annoncé ; le mode d'emploi du navigateur nomme le port réellement ouvert
 - TODO ne charge `openai`, `urwid` et `pykeepass` que lorsque l'assistant, le navigateur de fichiers ou le coffre s'en servent : l'import de TODO prend environ six fois moins de temps, à chaque lancement
 - La suite unitaire prend moins de temps : les tests de progression du déploiement attendent une condition plutôt qu'une durée fixe, les tests Textual tournent sans le mode debug d'asyncio, et les tests KeePass remplacent Argon2 par une dérivation rapide, un test gardant la vraie
+- La synchronisation des dépôts affiche sa progression par défaut : dépôts terminés, dépôts en cours, temps écoulé. Silencieuse, elle laissait un gros dépôt se télécharger pendant des dizaines de minutes sans un caractère à l'écran, ce qui passait pour un blocage. `EL_VERBOSE=1` ajoute toujours les logs détaillés
 
 <!-- [en] -->
 ## Fixed
