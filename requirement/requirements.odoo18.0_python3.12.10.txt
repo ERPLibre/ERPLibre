@@ -34,6 +34,9 @@ img2pdf
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
 pre-commit
+# odoo_bin.sh runs Odoo under « coverage run » when ODOO_MODE_COVERAGE=true:
+# coverage must sit in the interpreter that runs Odoo, this venv.
+coverage==7.16.2
 
 # Fix vonage package depend on vonage-verify-v2 1.1.3, but not exist into pip
 #vonage-verify-v2==1.1.4
@@ -50,6 +53,12 @@ pydevd-odoo
 
 # Mail check
 flanker
+# The « validator » extra of flanker, which a « name[extra] @ git+ » line cannot
+# carry here: Odoo's mail_validate asks flanker for the MX of each address,
+# and flanker then imports dnsq. Without it, creating a CRM lead with an
+# e-mail raises ModuleNotFoundError. redis, the other half of the extra, is
+# already pulled by other packages.
+dnsq==1.1.6
 
 # For optimal json
 orjson
@@ -111,3 +120,21 @@ pymupdf>=1.28.2 ; platform_machine != 's390x'
 # 0.4.4 n'imposent aucune borne sur lxml — vérifié sur PyPI, release par
 # release. À lever le jour où lxml montera.
 lxml-html-clean<0.4.5
+
+# extendable-pydantic (OCA_rest-framework), jusqu'à 1.4.1 au moins, lit
+# pydantic._internal._generate_schema.get_type_ref, que pydantic 2.14.0 retire.
+# Son .pth l'importe au démarrage de CHAQUE interpréteur du venv : au-delà de
+# 2.13, tout lancement de Python, Odoo compris, imprime une AttributeError et
+# extendable-pydantic n'est plus chargé. À lever quand extendable-pydantic suivra.
+pydantic<2.14
+
+# tweepy (recruitment_twitter), jusqu'à 4.17.0 au moins, exige oauthlib<4, que
+# OCA_web-api demande sans borne. Pour un nom nu, « poetry add » retient la
+# dernière version de CHAQUE paquet isolément : oauthlib 4 et tweepy 4.17
+# s'excluent alors et la résolution échoue. À lever quand tweepy suivra.
+oauthlib<4
+
+# pylint-odoo, jusqu'à 10.0.12 au moins, exige pylint==4.0.*, que
+# odoo_health_report demande sans borne : « poetry add » prendrait la
+# dernière pylint, et la résolution échouerait. À lever avec pylint-odoo.
+pylint<4.1
