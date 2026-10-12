@@ -106,6 +106,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
         "Docker / Podman": "prompt_execute_container",
+        "Games": "prompt_execute_streamdeck_games",
     }
 
     def _entry_key(self, label):

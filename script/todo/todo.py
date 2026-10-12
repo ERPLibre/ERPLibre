@@ -348,6 +348,9 @@ class TODO(
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
 [16] {t("Docker / Podman - Container engines")}
+
+── {t("Stream Deck")} ──
+[17] {t("Games - Stream Deck games")}
 [0] {t("Back")}
 """
         while True:
@@ -417,6 +420,10 @@ class TODO(
                     return
             elif status == "16":
                 status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "17":
+                status = self.prompt_execute_streamdeck_games()
                 if status is not False:
                     return
             else:
@@ -715,6 +722,7 @@ class TODO(
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
+        "prompt_execute_streamdeck_games": "Stream Deck games",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_configuration": "Configuration",
@@ -1818,6 +1826,96 @@ class TODO(
                 input(f"  {t('Discard everything and start over? (y/N): ')}")
             ):
                 return False
+
+    def prompt_execute_streamdeck_games(self):
+        print(f"🎮 {t('Stream Deck games! Choose a game to play.')}")
+        games = self._scan_streamdeck_games()
+        if not games:
+            print(t("No Stream Deck games found."))
+            return False
+
+        choices = [
+            {"prompt_description": g["description"]}
+            for g in games
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            try:
+                idx = int(status) - 1
+                if 0 <= idx < len(games):
+                    game = games[idx]
+                    print(
+                        f"{t('Launching game:')} {game['name']}"
+                    )
+                    try:
+                        self.execute.exec_command_live(
+                            game["path"],
+                            source_erplibre=False,
+                        )
+                    except KeyboardInterrupt:
+                        print()
+                else:
+                    print(t("Command not found !"))
+            except ValueError:
+                print(t("Command not found !"))
+
+    def _scan_streamdeck_games(self):
+        """Scan game_*.py files and extract descriptions."""
+        import glob
+
+        game_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "stream_deck",
+        )
+        pattern = os.path.join(game_dir, "game_*.py")
+        games = []
+
+        for filepath in sorted(glob.glob(pattern)):
+            name = (
+                os.path.basename(filepath)
+                .replace("game_", "")
+                .replace(".py", "")
+                .replace("_", " ")
+                .title()
+            )
+            # Try i18n key first, fallback to docstring
+            game_key = os.path.basename(filepath).replace(".py", "")
+            i18n_desc = t(game_key)
+            if i18n_desc != game_key:
+                description = i18n_desc
+            else:
+                description = ""
+                try:
+                    with open(filepath) as f:
+                        in_doc = False
+                        for line in f:
+                            if not in_doc and line.startswith('"""'):
+                                in_doc = True
+                                continue
+                            if in_doc:
+                                stripped = line.strip()
+                                if stripped.startswith('"""'):
+                                    break
+                                if stripped and not description:
+                                    description = stripped
+                                    break
+                except Exception:
+                    pass
+            if not description:
+                description = name
+            games.append(
+                {
+                    "name": name,
+                    "description": f"{name} — {description}",
+                    "path": filepath,
+                }
+            )
+        return games
 
     # ---------------------------------------------------------------- #
     # Déploiement : catalogue (pur) -> collecte (CLI ou TUI) -> exécution
