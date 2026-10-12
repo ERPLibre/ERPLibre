@@ -123,6 +123,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - OAuth for the providers that closed password login: such an account is added with a refresh token, and the client names which providers accept nothing else instead of letting the connection fail on a message that blames the password. No client identifier is shipped — it would be public from the first clone, and each provider offers a path where the person obtains their own
 - Statistics over the cache alone, asking the server nothing: volume per day, week or month, the busiest correspondents, the share still unread, the weight on disk. Nearly all of it is counted in SQL over the columns kept clear, so a sealed account is not a blind one; the correspondents are the exception, unsealed row by row in memory and reporting their progress
 - Search the cache of the open folder, of the account or of every account, and put the same question to the server when the cache cannot answer it. A sealed cache carries no full-text index — the sealing is what forbids one — and the search then compares the fields it can still read
+- The installers set up gettext (gettext-tools on SUSE) on every supported system, without ever blocking: `msgfmt --check` catches a translation that lost a `%s` before it shows on a page, and `msgmerge` carries translations over to a regenerated `.pot`
+- `coverage` is in the Odoo 18 venv: `ODOO_MODE_COVERAGE=true` runs Odoo under coverage instead of failing on « command not found »
 
 ## Changed
 
@@ -165,6 +167,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - TODO loads `openai`, `urwid` and `pykeepass` only when the assistant, the file browser or the vault uses them: importing TODO takes about a sixth of the time, at every launch
 - The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, the Textual tests run without asyncio's debug mode, and the KeePass tests replace Argon2 with a fast derivation, one test keeping the real one
 - Repository sync shows its progress by default: projects done, projects in flight, time elapsed. Quiet, it let a large repository download for tens of minutes without a character on screen, which read as a hang. `EL_VERBOSE=1` still adds the detailed logs
+- `odoo/documentation-user` is cloned at depth 1 for Odoo 12 to 18: the whole history of Odoo's documentation, images included, no longer dominates a repository sync
+- The Odoo 18 lock is refreshed (27 packages up, factur-x 7 and plaid-python 45 among them); `python-dotenv` leaves the Odoo venv, since only an example file under `doc/examples` asked for it
+- The unit test runner gives each test file its own `TMPDIR`, removes what it leaves there and names it in the summary: forgotten temporaries no longer pile up in `/tmp` until a tmpfs runs out of inodes
 
 ## Fixed
 
@@ -244,6 +249,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `make doc_markdown` stops at the edge of this repository. It also regenerated the documentation of `mobile/`, a separate repository with its own generation, and so wiped a section written directly into one of its generated files
 - The unit suite passes on a host without adb, without the Google Repo addons or the state of an SMS demonstration, on a host that is itself a libvirt guest and on one without cloud-init: the SMS and modem tests build a throwaway checkout and feed canned `ip` answers instead of reading the machine, and no longer write a softphone account into `private/`. The USB pairing tests no longer send real `pm grant` and `am broadcast` commands to a plugged-in phone, the mail account test clicks the OAuth button once its scroll has stopped, not mid-animation, and the modem console test no longer loses a quick click on ⟳ to the button's press effect — both failed or passed with the host's load
 - A failing file's tail, as the unit test runner displays it, ends on unittest's verdict: the test's own prints, flushed at exit, used to bury the error under them
+- Restoring an image from `image_db/` measures the room it needs, uncompressed and quota included, and extracts into the user cache when `/tmp` falls short, instead of stopping on « Disk quota exceeded »
+- A restore that leaves an empty database — psql returns zero even when every statement failed — is refused, and an empty cache or source is refused before the target is dropped, instead of being copied silently by the clone
+- Creating a CRM lead with an e-mail, from the website form for instance, no longer raises ModuleNotFoundError on Odoo 18: `dnsq`, which flanker imports to check the MX, is installed
+- The Odoo 18 venv no longer prints an AttributeError from extendable-pydantic at every Python start: pydantic stays below 2.14, which removes the internal function it reads
+- `poetry_update.py` evaluates the `python_version` markers of manifest dependencies and reads ranges such as `>=1.7.1,<2.9.0`: a manifest's pin no longer overrides the ERPLibre one, and a range no longer stops the script. `oauthlib<4` and `pylint<4.1` keep the Odoo 18 resolution solvable
 
 ## Removed
 
