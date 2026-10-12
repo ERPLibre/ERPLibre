@@ -28,6 +28,9 @@ img2pdf
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
 pre-commit
+# odoo_bin.sh runs Odoo under « coverage run » when ODOO_MODE_COVERAGE=true:
+# coverage must sit in the interpreter that runs Odoo, this venv.
+coverage==7.16.2
 
 # For python 3.10 from odoo/requirements.txt, poetry_update.py cannot support python_version
 cryptography==3.4.8
@@ -78,3 +81,10 @@ python-dateutil>=2.8.2
 
 # Extra module
 meteostat
+
+# Même borne qu'Odoo 16 et 18 : extendable-pydantic, jusqu'à 1.4.1 au moins,
+# lit pydantic._internal._generate_schema.get_type_ref, que pydantic 2.14.0
+# retire, et son .pth s'importe au démarrage de chaque interpréteur du venv.
+# Aucun dépôt d'Odoo 17 ne l'amène aujourd'hui : la borne évite qu'un addon
+# qui l'ajoute casse le venv. À lever quand extendable-pydantic suivra.
+pydantic<2.14
