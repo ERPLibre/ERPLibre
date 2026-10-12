@@ -100,6 +100,10 @@ streamdeck_colormixer:
 streamdeck_djscratch:
 	./script/stream_deck/game_djscratch.py
 
+.PHONY: streamdeck_tiler
+streamdeck_tiler:
+	./script/stream_deck/game_tiler.py
+
 STREAMDECK_TILER_EXT_UUID       := streamdeck-tiler@technolibre.ca
 STREAMDECK_TILER_EXT_SRC        := script/stream_deck/gnome-extension
 STREAMDECK_TILER_EXT_BASE_DIR   := $(HOME)/.local/share/gnome-shell/extensions
@@ -177,6 +181,11 @@ streamdeck_translator_test:
 streamdeck_translator_unittest:
 	@python3 -m unittest \
 		discover -s ./script/stream_deck -p "test_translator.py" -v
+
+.PHONY: streamdeck_tiler_unittest
+streamdeck_tiler_unittest:
+	@python3 -m unittest \
+		discover -s ./script/stream_deck -p "test_game_tiler*.py" -v
 
 .PHONY: streamdeck_translator_stream
 streamdeck_translator_stream:
