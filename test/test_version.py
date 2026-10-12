@@ -4,6 +4,7 @@
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -195,6 +196,7 @@ class TestUpdateDetectVersion(unittest.TestCase):
             }
         }
         tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         py_file = os.path.join(tmpdir, "python_ver")
         odoo_file = os.path.join(tmpdir, "odoo_ver")
         poetry_file = os.path.join(tmpdir, "poetry_ver")

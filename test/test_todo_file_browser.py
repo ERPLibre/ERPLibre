@@ -4,17 +4,18 @@
 
 """Le sélecteur de fichier : choisir doit fermer l'écran, annuler doit exister.
 
-Le défaut que ces tests verrouillent : `select_file` appelait bien le callback
-mais ne quittait pas la boucle urwid. Le choix était donc enregistré et
-l'écran restait ouvert, sans aucune touche pour le fermer — le sélecteur
-paraissait figé au moment précis où il venait de faire son travail. Seul
-Ctrl+C en sortait, ce qui abandonnait l'opération.
+Le défaut que ces tests verrouillent : un `select_file` qui appelle le
+callback sans quitter la boucle urwid enregistre le choix et laisse l'écran
+ouvert, sans aucune touche pour le fermer — le sélecteur paraît figé au
+moment précis où il vient de faire son travail. Seul Ctrl+C en sort, ce qui
+abandonne l'opération.
 
 `ExitMainLoop` est ce qui termine une boucle urwid : la lever EST la
 fermeture. Ces tests l'attendent donc comme un succès, pas comme une erreur.
 """
 
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -26,6 +27,7 @@ from script.todo.todo_file_browser import FileBrowser
 class BrowserCase(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory)
         open(os.path.join(self.directory, "sauvegarde.zip"), "w").close()
         os.mkdir(os.path.join(self.directory, "sous_dossier"))
         self.chosen = []

@@ -243,9 +243,9 @@ class TestToolRemoteCommand(unittest.TestCase):
 
 
 class TestToolDiscoverability(unittest.TestCase):
-    """Ce qui est installé doit pouvoir être TROUVÉ. Vécu : Android Studio
-    posé dans /opt, lanceur nommé « studio », et l'utilisateur conclut à un
-    échec parce que « android-studio » ne répond pas."""
+    """Ce qui est installé doit pouvoir être TROUVÉ. Android Studio posé dans
+    /opt a un lanceur nommé « studio » : sans alias, « android-studio » ne
+    répond pas et l'installation passe pour un échec."""
 
     def setUp(self):
         self.todo = TODO.__new__(TODO)
@@ -383,18 +383,18 @@ class TestMobileBuild(unittest.TestCase):
 
     def test_a_failed_step_stops_the_ones_after_it(self):
         """La chaîne est en « && » d'un bout à l'autre. Un « ; » glissé au
-        milieu — celui qui écrivait le manifeste vide — laissait la compilation
-        web démarrer alors que « npm ci » venait d'échouer."""
+        milieu laisse la compilation web démarrer alors que « npm ci » vient
+        d'échouer."""
         res = self._run_steps(fail_on="npm")
         self.assertNotEqual(0, res.returncode)
         self.assertNotIn("vite build", res.stdout)
         self.assertNotIn("gradle", res.stdout)
 
     def test_the_manifest_repos_are_bundled_again(self):
-        """Le contournement a vécu : les dépôts entrent maintenant en PACKS, et
-        rien ne neutralise plus le manifeste. Mesuré sur la VM : 139 dépôts,
-        116 156 fichiers en 391 tranches, 3 002 entrées dans l'APK — là où un
-        fichier par source en demandait 123 678 pour une limite de 65 535."""
+        """Les dépôts entrent en PACKS, et rien ne neutralise le manifeste.
+        Un fichier par source dépasse la limite de 65 535 entrées d'un APK ;
+        regroupés en tranches, une centaine de milliers de fichiers tiennent
+        en quelques milliers d'entrées."""
         steps = self.todo._qemu_mobile_build_steps("/tmp/el")
         self.assertNotIn("ERPLIBRE_MANIFEST_PATH", steps)
         self.assertNotIn("empty-manifest", steps)
@@ -421,7 +421,7 @@ class TestMobileBuild(unittest.TestCase):
 
     def test_a_failed_transfer_fails_the_vm(self):
         """Une application qui ne porte pas le code qu'elle doit montrer n'est
-        pas l'application demandée. Mesuré au code de sortie, et non à la
+        pas l'application demandée. Le test lit le code de sortie, et non la
         présence d'un « && » dans le texte."""
         res = self._run_steps(apk=True, transfer_ok=False)
         self.assertNotEqual(0, res.returncode, res.stdout[-300:])
@@ -491,8 +491,8 @@ class TestMobileBuild(unittest.TestCase):
 
     def test_both_apk_locations_are_searched(self):
         """Avec une ABI injectée, AGP écrit dans intermediates et non dans
-        outputs : mesuré, une compilation RÉUSSIE était rapportée « aucun APK
-        produit » parce qu'un seul des deux chemins était regardé."""
+        outputs : ne regarder qu'un des deux chemins rapporte « aucun APK
+        produit » pour une compilation RÉUSSIE."""
         cmd = self.todo._qemu_mobile_remote_cmd()
         self.assertIn("intermediates/apk/debug/*.apk", cmd)
 
@@ -540,18 +540,18 @@ class TestAndroidEmulator(unittest.TestCase):
     def test_the_screen_is_set_at_launch_not_in_the_config(self):
         """Écrire hw.lcd.* dans config.ini ne SERT À RIEN : l'émulateur réécrit
         ce fichier depuis le profil du téléphone au premier démarrage, et l'AVD
-        repartait en 1080x2400 densité 420 — constaté sur la VM. La taille se
-        règle donc au lancement, et la commande affichée la porte."""
+        repart en 1080x2400 densité 420. La taille se règle donc au lancement,
+        et la commande affichée la porte."""
         self.assertNotIn("hw.lcd.width", self.cmd)
         self.assertIn("-skin 540x1140", self.cmd)
         # Ces deux clés-là survivent : elles ne viennent pas du profil.
         self.assertIn("hw.gpu.mode=swangle", self.cmd)
 
     def test_the_density_travels_with_the_resolution(self):
-        """Contre-intuitif, et mesuré : 540x1140 en densité 420 est PIRE que le
-        plein écran — 81 ms de médiane contre 40, et 57 % d'images en retard
-        contre 37, tout étant rendu énorme. Avec la densité 240 : 38 ms, 32 %,
-        et le 99e centile tombe de 950 ms à 250."""
+        """Contre-intuitif : 540x1140 en densité 420 est PIRE que le plein
+        écran — environ deux fois plus lent par image, tout étant rendu énorme.
+        La densité 240 ramène le rendu au niveau du plein écran, et coupe la
+        queue des images en retard."""
         self.assertIn("qemu.sf.lcd_density=240", self.cmd)
 
     def test_a_killed_emulator_does_not_block_the_next_start(self):
@@ -626,9 +626,9 @@ class TestAndroidEmulator(unittest.TestCase):
 
     def test_the_emulator_cannot_mask_a_build_failure(self):
         """ÉPROUVÉ, pas relu. Sans accolades autour de chaque groupe, « && » ne
-        lie que la première commande du suivant : mesuré sur une VM, un APK
-        manquant laissait tourner l'émulateur puis rendait 0 — la VM repassait
-        au vert alors que rien n'avait compilé."""
+        lie que la première commande du suivant : un APK manquant laisse
+        tourner l'émulateur puis rend 0 — la VM passe au vert alors que rien
+        n'a compilé."""
         both = self.todo._qemu_after_remote_cmd(("mobile", "avd"))
         # On neutralise les étapes : seul le CHAÎNAGE est en cause ici.
         #
@@ -678,8 +678,8 @@ class TestPycharmCommunity(unittest.TestCase):
         self.cmd = self.todo._qemu_pycharm_remote_cmd()
 
     def test_the_community_line_is_what_is_looked_up(self):
-        """Mesuré dans une VM : le build unifié s'arrête sur
-        « NoValidIdeLicense » et n'ouvre jamais le projet."""
+        """Le build unifié s'arrête sur « NoValidIdeLicense » et n'ouvre jamais
+        le projet."""
         self.assertIn("pycharm-community-", self.cmd)
         self.assertIn("data.services.jetbrains.com", self.cmd)
 
@@ -703,12 +703,11 @@ class TestPycharmCommunity(unittest.TestCase):
 class TestTheDesktopActuallyStarts(unittest.TestCase):
     """Installer un bureau ne suffit pas : il faut le DÉMARRER.
 
-    Vécu sur erplibre-ubuntu-2604-gnome, et le diagnostic ne sautait pas aux
-    yeux : GNOME installé, gdm3 installé, graphical.target par défaut, lien
-    display-manager.service en place — et la console de la VM restait en mode
-    texte. Deux causes superposées :
+    Le diagnostic ne saute pas aux yeux : GNOME installé, gdm3 installé,
+    graphical.target par défaut, lien display-manager.service en place — et la
+    console de la VM reste en mode texte. Deux causes superposées :
 
-      - graphical.target était DÉJÀ atteinte quand le paquet est arrivé, et une
+      - graphical.target est DÉJÀ atteinte quand le paquet arrive, et une
         cible active ne rattrape pas un service ajouté après coup ;
       - « systemctl enable gdm » rend 0 sans rien faire sur Debian et Ubuntu :
         l'unité n'a pas de « WantedBy », seulement un alias que le paquet pose.
@@ -796,12 +795,12 @@ class TestTheDesktopActuallyStarts(unittest.TestCase):
 class TestPycharmFirstOpen(unittest.TestCase):
     """Ouverture sans écran, pour que le .idea existe avant l'installation.
 
-    Deux défauts vécus sur erplibre-ubuntu-2604-gnome, tous deux silencieux :
-    l'IDE restait vivant 45 minutes après l'étape avec 1,9 Go — « $! » est le
-    PID de xvfb-run, un script, et le tuer n'atteint ni PyCharm ni Xvfb — puis
-    la compilation de l'APK qui suivait s'est fait tuer par le noyau. Et le
-    .idea n'était jamais écrit : 123 000 fichiers d'assets épuisent les watches
-    inotify, dont la limite valait 65 536.
+    Ces tests empêchent deux défauts silencieux. Sans kill du groupe entier,
+    l'IDE reste vivant après l'étape avec près de 2 Go — « $! » est le PID de
+    xvfb-run, un script, et le tuer n'atteint ni PyCharm ni Xvfb — et la
+    compilation de l'APK qui suit se fait tuer par le noyau. Sans hausse de
+    la limite inotify, le .idea n'est jamais écrit : plus de 100 000 fichiers
+    d'assets épuisent les watches, dont la limite par défaut vaut 65 536.
     """
 
     def setUp(self):
@@ -809,10 +808,9 @@ class TestPycharmFirstOpen(unittest.TestCase):
         self.cmd = self.todo._qemu_pycharm_project_cmd()
 
     def test_it_runs_after_the_install_not_before(self):
-        """Mesuré : sur un dépôt cloné mais pas installé, PyCharm n'écrit AUCUN
-        .idea — son configurateur d'interpréteur échoue faute de venv, et il
-        renonce (« ⚠ pas de .idea », deux fois sur une VM réelle). Le même appel
-        sur un dépôt installé l'écrit en cinq minutes."""
+        """Sur un dépôt cloné mais pas installé, PyCharm n'écrit AUCUN .idea —
+        son configurateur d'interpréteur échoue faute de venv, et il renonce
+        (« ⚠ pas de .idea »). Le même appel sur un dépôt installé l'écrit."""
         script = self.todo._qemu_erplibre_remote_cmd(
             "develop", None, False, "gnome", "", "deb", ("pycharm",)
         )
@@ -823,8 +821,7 @@ class TestPycharmFirstOpen(unittest.TestCase):
 
     def test_the_configuration_uses_the_repo_venv(self):
         """Le script importe xmltodict, qui vit dans .venv.erplibre. Appelé par
-        le python système — ce que faisait « make pycharm_configure » — il
-        s'arrête sur « No module named 'xmltodict' », mesuré sur la VM.
+        le python système, il s'arrête sur « No module named 'xmltodict' ».
         update_env_version.pycharm_update() l'appelle déjà avec le venv."""
         script = self.todo._qemu_erplibre_remote_cmd(
             "develop", None, False, "gnome", "", "deb", ("pycharm",)
@@ -840,9 +837,9 @@ class TestPycharmFirstOpen(unittest.TestCase):
         self.assertNotIn("; make pycharm_configure", script)
 
     def test_the_open_gets_a_second_chance(self):
-        """Mesuré sur deux VM : la première ouverture d'un dépôt neuf peut
-        n'écrire AUCUN .idea — son configurateur d'interpréteur plante
-        (« homeDir is null ») — là où la suivante l'écrit en 25 s."""
+        """La première ouverture d'un dépôt neuf peut n'écrire AUCUN .idea —
+        son configurateur d'interpréteur plante (« homeDir is null ») — là où
+        la suivante l'écrit."""
         self.assertIn("for attempt in 1 2", self.cmd)
         self.assertIn('[ "$ok" = 1 ] && break', self.cmd)
 
@@ -854,7 +851,7 @@ class TestPycharmFirstOpen(unittest.TestCase):
 
     def test_the_configuration_is_asked_for_after_the_open(self):
         """L'installation est déjà passée quand le .idea naît : pycharm_update()
-        n'avait rien à configurer, donc on le demande explicitement."""
+        n'a alors rien à configurer, donc on le demande explicitement."""
         script = self.todo._qemu_erplibre_remote_cmd(
             "develop", None, False, "gnome", "", "deb", ("pycharm",)
         )
@@ -885,8 +882,9 @@ class TestPycharmFirstOpen(unittest.TestCase):
     def test_the_first_run_dialogs_are_answered_in_advance(self):
         """Sans réponse, la session attend un clic que personne ne donnera.
 
-        Celle de la CONFIANCE est la plus coûteuse à rater : mesuré, le journal
-        s'arrête 1,3 s après le démarrage et le projet ne s'ouvre jamais."""
+        Celle de la CONFIANCE est la plus coûteuse à rater : le journal
+        s'arrête dans les secondes qui suivent le démarrage et le projet ne
+        s'ouvre jamais."""
         self.assertIn("idea.trust.all.projects=true", self.cmd)
         self.assertIn("jb.consents.confirmation.enabled=false", self.cmd)
         self.assertIn("consentOptions", self.cmd)
@@ -1017,9 +1015,9 @@ class TestIdeInstallIsReplayable(unittest.TestCase):
     """Rejouer une installation ne doit pas retélécharger 2 Go.
 
     C'est le cas NORMAL : une installation morte qu'on relance, un outil ajouté
-    après coup. Mesuré sur la VM, les deux étapes passent de ~5 min chacune à
-    0,094 s au total quand /opt porte déjà l'IDE — le reste (lanceur, alias,
-    raccourci) rejoue quand même, il est idempotent et bon marché.
+    après coup. Quand /opt porte déjà l'IDE, les deux étapes passent de
+    plusieurs minutes chacune à une fraction de seconde — le reste (lanceur,
+    alias, raccourci) rejoue quand même, il est idempotent et bon marché.
     """
 
     def setUp(self):
@@ -1166,10 +1164,9 @@ class TestPycharmNetIsNarrow(unittest.TestCase):
 class TestMobileSwap(unittest.TestCase):
     """Le swap posé avant de compiler, et son refus de bloquer.
 
-    Mesuré : le démon Gradle a atteint 6,8 Go de RSS hors tas — son -Xmx1536m
-    ne le borne pas — sur une VM de 12 Go SANS swap, et le noyau l'a tué deux
-    fois. « --max-workers=2 » n'a rien changé : le pic est passé de 10,3 à
-    11,2 Go. C'est de la marge qu'il faut."""
+    Le démon Gradle dépasse largement son tas en RSS — son -Xmx ne le borne
+    pas — et, sur une VM SANS swap, le noyau le tue. « --max-workers » ne
+    baisse pas le pic : c'est de la marge qu'il faut."""
 
     def setUp(self):
         self.todo = TODO.__new__(TODO)
@@ -1655,6 +1652,7 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
         ) as fh:
             fh.write(cmd)
             chemin = fh.name
+        self.addCleanup(pathlib.Path(chemin).unlink)
         res = subprocess.run(
             ["bash", "-n", chemin], capture_output=True, text=True
         )

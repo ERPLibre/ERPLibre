@@ -16,6 +16,7 @@ partielle, qui ne perd rien, ni sur un journal qui n'a rien à dire.
 import glob
 import json
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -41,9 +42,11 @@ class ArchiveCase(unittest.TestCase):
     def setUp(self):
         # Chaque test dans un arbre neuf : l'archive s'écrit sous un chemin
         # relatif, donc le répertoire courant EST le contexte.
+        tree = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tree)
         self.previous = os.getcwd()
         self.addCleanup(os.chdir, self.previous)
-        os.chdir(tempfile.mkdtemp())
+        os.chdir(tree)
 
     def archives(self):
         return sorted(

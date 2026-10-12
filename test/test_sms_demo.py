@@ -13,10 +13,12 @@ Le partage a été fait pour cela. `spec` et `steps` ne savent rien exécuter,
 QEMU — n'est sollicité ici que pour la construction de sa spécification.
 """
 import os
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -33,9 +35,15 @@ class SmsDemoBase(unittest.TestCase):
     """
 
     def setUp(self):
-        self._ancien = os.environ.get("ERPLIBRE_SMS_DEMO_DIR")
         self._tmp = tempfile.mkdtemp()
-        os.environ["ERPLIBRE_SMS_DEMO_DIR"] = self._tmp
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
+        # patch.dict rend à l'environnement son état d'avant, variable
+        # absente comprise, même quand un test la retire en chemin.
+        garde = mock.patch.dict(
+            os.environ, {"ERPLIBRE_SMS_DEMO_DIR": self._tmp}
+        )
+        garde.start()
+        self.addCleanup(garde.stop)
         import importlib
 
         from script.todo.sms import spec as spec_mod
@@ -44,12 +52,6 @@ class SmsDemoBase(unittest.TestCase):
         from script.todo.sms import steps as steps_mod
 
         self.steps = importlib.reload(steps_mod)
-
-    def tearDown(self):
-        if self._ancien is None:
-            os.environ.pop("ERPLIBRE_SMS_DEMO_DIR", None)
-        else:
-            os.environ["ERPLIBRE_SMS_DEMO_DIR"] = self._ancien
 
 
 class TestEtat(SmsDemoBase):

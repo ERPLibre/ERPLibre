@@ -1215,6 +1215,7 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
             self.assertFalse(reglage_taille_valide(v), v)
 
     def ecrire(self, contenu, cle, valeur):
+        import os
         import shlex
         import subprocess
         import tempfile
@@ -1226,6 +1227,7 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
         ) as fh:
             fh.write(contenu)
             chemin = fh.name
+        self.addCleanup(os.unlink, chemin)
         cmd = commande_ecrire_reglage(cle, valeur, chemin)
         self.assertTrue(cmd.startswith("sudo sh -c "))
         script = shlex.split(cmd[len("sudo ") :])[2]

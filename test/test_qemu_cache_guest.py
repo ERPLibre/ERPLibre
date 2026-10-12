@@ -21,6 +21,7 @@ rend sûre en comparant les deux.
 """
 
 import argparse
+import os
 import re
 import sys
 import unittest
@@ -503,6 +504,7 @@ class TestAucunSystemeNestOublie(unittest.TestCase):
             fh.write("-----BEGIN CERTIFICATE-----\nZXNzYWk=\n")
             fh.write("-----END CERTIFICATE-----\n")
             ca = fh.name
+        self.addCleanup(os.unlink, ca)
         muettes = []
         for distro in DISTROS:
             if not cache_family(distro):
@@ -595,10 +597,10 @@ class NixApprendLAutoriteSansReconstruire(unittest.TestCase):
     arriverait après le premier téléchargement — la première reconstruction
     EST ce téléchargement.
 
-    Mesuré sur une VM interceptée : une LECTURE passe par le client nix et se
-    contente d'une variable de session, mais RÉALISER une dérivation passe
-    par nix-daemon, qui ne la voit pas. Un fragment systemd l'atteint, et
-    /run/systemd/system est un tmpfs — inscriptible quand /etc ne l'est pas.
+    Une LECTURE passe par le client nix et se contente d'une variable de
+    session, mais RÉALISER une dérivation passe par nix-daemon, qui ne la voit
+    pas. Un fragment systemd l'atteint, et /run/systemd/system est un tmpfs —
+    inscriptible quand /etc ne l'est pas.
     """
 
     def _args(self, distro="nixos"):
@@ -609,6 +611,7 @@ class NixApprendLAutoriteSansReconstruire(unittest.TestCase):
         ) as fh:
             fh.write("-----BEGIN CERTIFICATE-----\nZXNzYWk=\n")
             fh.write("-----END CERTIFICATE-----\n")
+        self.addCleanup(os.unlink, fh.name)
         return build_parser().parse_args(
             ["--distro", distro, "--hostname", "x", "--cache-ca", fh.name]
         )
@@ -718,12 +721,12 @@ class LesGestesSurvivententAuTransport(unittest.TestCase):
 class LeSudoersAtteintVisudoLaOuIlEst(unittest.TestCase):
     """Un système déclaratif ne met pas sudo dans le PATH de cloud-init.
 
-    Mesuré sur une VM : le « runcmd » hérite du PATH du service de
-    cloud-init, vingt-six chemins du magasin dont AUCUN ne porte sudo, et
-    /usr/bin/visudo n'existe pas non plus. La vérification échouait donc,
-    le garde-fou effaçait le fichier au lieu de le poser, et sudo continuait
-    de vider l'environnement — l'installation ne rendait plus qu'une
-    répétition de refus de certificat.
+    Le « runcmd » hérite du PATH du service de cloud-init, des chemins du
+    magasin dont AUCUN ne porte sudo, et /usr/bin/visudo n'existe pas non
+    plus. Sans le profil du système, la vérification échoue, le garde-fou
+    efface le fichier au lieu de le poser, et sudo continue de vider
+    l'environnement : chaque téléchargement se heurte à un refus de
+    certificat.
 
     Le profil du système est le chemin que ces distributions garantissent ;
     les quatre familles impératives ne l'ont pas, et l'ajout n'y change rien.
