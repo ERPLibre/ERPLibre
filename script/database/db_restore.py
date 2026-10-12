@@ -8,15 +8,19 @@ import getpass
 import logging
 import os
 import shutil
+import struct
 import subprocess
 import sys
+import tempfile
 import uuid
+import zipfile
 from subprocess import check_output
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
+from script.analyse import lib_analyse
 from script.execute.execute import redact_secrets
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
@@ -119,18 +123,16 @@ def probe_name():
 def probe_master_password(arg_base, mot):
     """(accepté, sortie) — éprouver le mot de passe pour de vrai.
 
-    `--list` ne lit JAMAIS le mot de passe : mesuré,
-    `MASTER_PWD="ceci_est_faux" odoo-bin db --list` sort en 0. La sonde
-    d'avant acceptait donc le premier mot saisi, juste ou faux, et la
-    boucle des dix essais ne servait à rien — le refus n'arrivait qu'au
-    `--restore`, une fois la base déjà supprimée.
+    `--list` ne lit JAMAIS le mot de passe : `odoo-bin db --list` sort
+    en 0 avec un mot de passe faux. Une sonde par `--list` accepterait
+    donc n'importe quel mot, et le refus n'arriverait qu'au `--restore`,
+    une fois la base déjà supprimée.
 
     Seule l'action `drop` consulte le mot de passe, et elle le fait
     AVANT de regarder la base : `check_super` d'abord, `db_exists`
     ensuite. Sur un nom qui n'existe pas, elle ne touche donc rien et
-    répond quand même. Mesuré sur la machine d'essai : mauvais mot de
-    passe → code 1 et `AccessDenied` dans la trace ; bon mot de passe →
-    code 0, silence, et les huit bases toujours là.
+    répond quand même : mauvais mot de passe → code 1 et `AccessDenied`
+    dans la trace ; bon mot de passe → code 0, sans rien supprimer.
 
     Le secret passe par l'environnement, jamais par argv :
     /proc/<pid>/cmdline est lisible par tout utilisateur de la machine.
@@ -152,9 +154,9 @@ def ask_master_password(arg_base, essais=MAX_ESSAIS_MOT_DE_PASSE):
     None si l'on renonce — invite vide, essais épuisés, ou panne qui
     n'a rien à voir avec le mot de passe.
 
-    Une faute de frappe arrêtait la migration net, sur une trace
-    `CalledProcessError` que rien n'attrapait. Après une heure de
-    paliers, c'est cher payé pour une lettre.
+    Sans cette boucle, une faute de frappe arrête la migration net, sur
+    une trace `CalledProcessError` que rien n'attrape, parfois après une
+    heure de paliers.
     """
     for tour in range(1, essais + 1):
         mot = get_master_password()
@@ -183,6 +185,97 @@ def get_list_db_cache(arg_base):
     lst_db = out.strip().split("\n")
     lst_db_cache = [a for a in lst_db if a.startswith("_cache_")]
     return lst_db, lst_db_cache
+
+
+def drop_database(arg_base, database):
+    """Supprimer une base par « odoo_bin.sh db --drop », sortie filtrée."""
+    arg = f"{arg_base} --drop --database {database}"
+    print(redact_secrets(check_output(arg.split(" ")).decode()))
+
+
+# « to_regclass » consulte le catalogue « pg_class », qui ne filtre rien :
+# « information_schema.tables » ne liste que les tables sur lesquelles le
+# rôle a un droit, et dirait « vide » d'une base pleine qu'un autre rôle
+# possède.
+SQL_TABLE_NOYAU = "select to_regclass('public.ir_module_module') is not null"
+
+
+def has_tables(database):
+    """True si la base porte une table du noyau d'Odoo, False si elle est
+    vide, None si PostgreSQL n'a pas pu répondre.
+
+    La connexion est celle de la restauration : « lib_analyse.run_psql »
+    lit db_host, db_port, db_user et db_password dans la configuration,
+    lance « psql -X -w » (aucune invite de mot de passe) en lecture
+    seule. Un échec de « psql » lui-même — serveur injoignable, mot de
+    passe absent — ne dit rien du contenu de la base : il rend None, et
+    l'appelant avertit sans conclure.
+    """
+    try:
+        sortie = lib_analyse.run_psql(database, SQL_TABLE_NOYAU)
+    except lib_analyse.AnalyseError as erreur:
+        _logger.warning(
+            f"{database} : contenu non vérifié, psql ne répond pas"
+            f" ({redact_secrets(str(erreur))})"
+        )
+        return None
+    return sortie.strip() == "t"
+
+
+def verify_loaded(database, arg_base):
+    """Une base que CE lancement vient de restaurer porte-t-elle ses tables ?
+
+    LE SILENCE QUE CE CONTRÔLE ROMPT. Odoo restaure en lançant « psql »
+    avec sa sortie JETÉE (« stdout=DEVNULL, stderr=STDOUT »), et « psql »
+    rend ZÉRO même quand chaque instruction a échoué — sans
+    « ON_ERROR_STOP », une erreur SQL n'est pas un code de retour. Une
+    restauration peut donc s'annoncer réussie et laisser une base VIDE.
+
+    Le coût de ce silence n'est pas la base vide, c'est ce qui vient
+    après : le clone recopie le vide sans rien dire, puis la première
+    commande qui ouvre la copie échoue sur « Database not initialized » —
+    un message qui accuse la copie, à trois étapes de la cause.
+
+    Odoo crée d'ailleurs la base AVANT d'extraire : une extraction qui
+    échoue laisse elle aussi une base vide derrière elle. Une base vide
+    est donc SUPPRIMÉE avant l'arrêt, sinon le lancement suivant
+    trouverait un « _cache_ » à son nom et le clonerait comme valide.
+    Seule la base passée ici est supprimée : l'appelant ne la passe que
+    si ce lancement vient de la restaurer.
+
+    Le contrôle est délibérément grossier — l'existence d'une table du
+    noyau d'Odoo. Compter les modules ou comparer des chiffres demanderait
+    de savoir à quoi ressemble CETTE base ; « elle a des tables » suffit à
+    séparer une restauration d'un silence.
+    """
+    resultat = has_tables(database)
+    if resultat is None:
+        return
+    if not resultat:
+        _logger.error(f"## {database} est VIDE : suppression ##")
+        drop_database(arg_base, database)
+        raise SystemExit(
+            f"❌ {database} a été restaurée VIDE puis supprimée : « psql » a"
+            " rendu zéro sans charger le dump. Regardez la place disponible"
+            " ET le quota du dossier d'extraction, puis relancez."
+        )
+    _logger.info(f"## {database} porte bien ses tables ##")
+
+
+def check_cache_source(cache_database):
+    """Refuser de cloner un « _cache_ » qui existe déjà mais est vide.
+
+    Appelé AVANT de supprimer la base cible : un refus ici ne détruit
+    rien. Le cache n'est pas supprimé, ce lancement ne l'a pas créé ;
+    le message nomme « --clean_cache », qui le supprime et force une
+    nouvelle restauration. Un « psql » muet laisse passer le clone.
+    """
+    if has_tables(cache_database) is False:
+        raise SystemExit(
+            f"❌ {cache_database} existe mais elle est VIDE : refus de la"
+            " cloner. Relancez avec « --clean_cache » pour la supprimer et"
+            " restaurer l'image à nouveau."
+        )
 
 
 def verify_filestore(database, image):
@@ -216,9 +309,9 @@ def offer_tidy(check_filestore, rapport):
     """Proposer de ranger TOUT DE SUITE, là où le défaut naît.
 
     C'est le seul endroit qui vaille. Le nichage se produit une fois, à
-    la restauration, puis le clone le recopie tel quel : mesuré, les six
-    bases de la chaîne portaient les mêmes 1168 fichiers. Ranger ici,
-    c'est ranger une fois ; ranger plus tard, c'est six fois.
+    la restauration, puis le clone le recopie tel quel dans chaque base
+    qui en descend. Ranger ici, c'est ranger une fois ; ranger plus
+    tard, c'est le faire dans chaque copie.
 
     Rien ne se fait sans réponse humaine, et rien du tout hors d'un
     terminal : ce script tourne aussi sans personne devant, et une
@@ -245,6 +338,123 @@ def offer_tidy(check_filestore, rapport):
     print(f"✅ {len(remonter)} remontés, {len(doublons)} doublons supprimés.")
 
 
+def espace_utilisable(chemin):
+    """La place qu'on peut VRAIMENT écrire là, quota compris.
+
+    « shutil.disk_usage » rend la place du SYSTÈME DE FICHIERS. Un quota
+    par utilisateur est plus bas et ne s'y voit pas : une écriture échoue
+    alors sur « Disk quota exceeded » là où « df » annonçait des
+    gigaoctets libres. C'est le cas exact d'un « /tmp » en tmpfs monté
+    avec « usrquota ».
+
+    LE QUOTA SE LIT PAR « quotactl_fd » ET PAR LUI SEUL sur un système de
+    fichiers sans périphérique bloc : l'ancien « quotactl » exige un
+    « /dev/... » et rend « Block device required » sur un tmpfs. Les
+    outils « quota » ne sont pas toujours installés, et leur absence ne
+    dit rien sur la présence d'un quota actif.
+
+    Sans quota, ou si l'appel n'est pas disponible, la place du système de
+    fichiers est rendue telle quelle : le pire cas est alors celui d'avant,
+    pas un refus de fonctionner.
+    """
+    libre = shutil.disk_usage(chemin).free
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        buf = ctypes.create_string_buffer(120)
+        fd = os.open(chemin, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            # 443 = quotactl_fd ; 0x800007 = Q_GETQUOTA ; 0 = USRQUOTA
+            code = libc.syscall(443, fd, (0x800007 << 8) | 0, os.getuid(), buf)
+        finally:
+            os.close(fd)
+        if code != 0:
+            return libre
+        # « struct if_dqblk » du noyau : trois u64 en tête, dans l'ordre
+        # d'octets de la machine.
+        dur, _doux, utilise = struct.unpack("=3Q", buf.raw[:24])
+        if not dur:
+            return libre
+        # La limite est en blocs de 1 Kio, l'usage courant en octets.
+        reste = dur * 1024 - utilise
+        return max(0, min(libre, reste))
+    except Exception:
+        return libre
+
+
+def restore_env(image):
+    """L'environnement d'une restauration, dont un temporaire qui TIENT.
+
+    ODOO EXTRAIT DANS UN DOSSIER TEMPORAIRE, pas dans la base : il y écrit
+    « dump.sql » ET le filestore entier avant de charger quoi que ce soit.
+    Sur une machine où « /tmp » est un tmpfs — quelques gigaoctets de RAM,
+    souvent avec un quota par utilisateur —, une image de production n'y
+    tient pas, et l'extraction s'arrête sur « Disk quota exceeded » ou sur
+    « No space left ». Le message ne nomme ni le tmpfs ni la taille
+    manquante : il dit seulement que l'écriture a échoué.
+
+    La place NÉCESSAIRE est lue dans l'archive, décompressée, plutôt
+    qu'estimée depuis la taille du zip : un taux de compression varie du
+    simple au décuple selon qu'une base porte surtout du texte ou surtout
+    des pièces jointes déjà compressées.
+
+    Quand le dossier temporaire par défaut suffit, il est laissé tel quel —
+    il est plus rapide, étant en mémoire. Sinon « TMPDIR » désigne
+    « erplibre_restore » dans le cache de l'utilisateur
+    (« $XDG_CACHE_HOME », « ~/.cache » à défaut), sur disque. Si ce repli
+    ne suffit pas non plus, un avertissement le dit et l'extraction va
+    là où il reste le plus de place.
+    """
+    chemin = os.path.join("image_db", f"{image}.zip")
+    if not os.path.exists(chemin):
+        return None
+    with zipfile.ZipFile(chemin) as archive:
+        besoin = sum(
+            info.file_size
+            for info in archive.infolist()
+            if info.filename == "dump.sql"
+            or info.filename.startswith("filestore/")
+        )
+    defaut = tempfile.gettempdir()
+    libre = espace_utilisable(defaut)
+    # Une marge d'un dixième : l'extraction n'est pas seule à écrire là.
+    exige = besoin * 1.1
+    if libre > exige:
+        return None
+    cache = os.environ.get("XDG_CACHE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".cache"
+    )
+    repli = os.path.join(cache, "erplibre_restore")
+    os.makedirs(repli, exist_ok=True)
+    libre_repli = espace_utilisable(repli)
+    if libre_repli <= exige:
+        _logger.warning(
+            "## %s demande %.1f Go décompressés : ni %s (%.1f) ni %s (%.1f)"
+            " ne suffisent, quota compris. L'extraction risque d'échouer ##",
+            image,
+            besoin / 1073741824,
+            defaut,
+            libre / 1073741824,
+            repli,
+            libre_repli / 1073741824,
+        )
+        if libre_repli <= libre:
+            return None
+    _logger.info(
+        "## %s demande %.1f Go décompressés, %s n'en laisse écrire que"
+        " %.1f (quota compris) : extraction dans %s ##",
+        image,
+        besoin / 1073741824,
+        defaut,
+        libre / 1073741824,
+        repli,
+    )
+    env = dict(os.environ)
+    env["TMPDIR"] = repli
+    return env
+
+
 def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
     """Restaurer depuis l'image, ou cloner le cache déjà restauré.
 
@@ -260,7 +470,14 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --restore"
             f" --restore_image {config.image} --database {cache_database}"
         )
-        print(redact_secrets(check_output(arg.split(" ")).decode()))
+        print(
+            redact_secrets(
+                check_output(
+                    arg.split(" "), env=restore_env(config.image)
+                ).decode()
+            )
+        )
+        verify_loaded(cache_database, arg_base)
         verify_filestore(cache_database, config.image)
 
     if config.ignore_cache:
@@ -271,6 +488,10 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --restore --restore_image"
             f" {config.image} --database {config.database}"
         )
+        # Ce chemin EXTRAIT, donc il a le même besoin que le cache. Le
+        # clone, lui, ne décompresse rien : lui passer cet environnement
+        # ferait journaliser une extraction qui n'a pas lieu.
+        env = restore_env(config.image)
     else:
         _logger.info(
             f"## Clone cache {cache_database} to database {config.database} ##"
@@ -279,14 +500,16 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --clone --from_database"
             f" {cache_database} --database {config.database}"
         )
+        env = None
     if config.neutralize:
         arg += " --neutralize"
     # Le secret ne traverse plus argv (il est dans MASTER_PWD), mais la
     # commande peut porter d'autres options sensibles : on filtre quand
     # même, le coût est nul et la garantie ne dépend alors d'aucun appelant.
     print(redact_secrets(arg))
-    print(redact_secrets(check_output(arg.split(" ")).decode()))
+    print(redact_secrets(check_output(arg.split(" "), env=env).decode()))
     if config.ignore_cache:
+        verify_loaded(config.database, arg_base)
         verify_filestore(config.database, config.image)
 
 
@@ -330,19 +553,21 @@ def main():
     if config.clean_cache:
         for db in lst_db_cache:
             _logger.info(f"## Delete {db} ##")
-            arg = f"{arg_base} --drop --database {db}"
-            out = redact_secrets(check_output(arg.split(" ")).decode())
-            print(out)
+            drop_database(arg_base, db)
         lst_db, lst_db_cache = get_list_db_cache(arg_base)
 
     if config.database:
         cache_database = f"_cache_{config.image}"
+        if (
+            not config.only_drop
+            and not config.ignore_cache
+            and cache_database in lst_db_cache
+        ):
+            check_cache_source(cache_database)
         # Drop db
         if config.database in lst_db:
             _logger.info(f"## Drop {config.database} ##")
-            arg = f"{arg_base} --drop --database {config.database}"
-            out = redact_secrets(check_output(arg.split(" ")).decode())
-            print(out)
+            drop_database(arg_base, config.database)
         if config.only_drop:
             return
         restore_or_clone(config, arg_base, cache_database, lst_db_cache)
