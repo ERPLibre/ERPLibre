@@ -2,3 +2,8 @@ streamdeck
 pyudev
 Pillow>=9.0.0
 opencv-python
+# mozLz4 decompression for the Firefox tab importer
+# (gnome-extension/scripts/firefox_youtube_tabs.py).
+lz4
+# i18n compile helper for streamdeck-tiler-compile-locale.
+polib

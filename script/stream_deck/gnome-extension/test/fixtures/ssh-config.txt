@@ -1,0 +1,15 @@
+# top-level comment
+Host gateway
+    HostName 192.168.1.1
+    User admin
+
+Host dev-*
+    User dev
+
+Host dev-1
+    HostName 10.0.0.10
+    Port 2222
+    IdentityFile ~/.ssh/id_dev1
+
+Host *
+    ServerAliveInterval 60

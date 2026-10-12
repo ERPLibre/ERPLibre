@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="streamdeck-tiler">
+  <schema id="org.gnome.shell.extensions.streamdeck-tiler"
+          path="/org/gnome/shell/extensions/streamdeck-tiler/">
+
+    <!-- Per-indicator toggles -->
+    <key name="enable-controller" type="b"><default>true</default><summary>Enable controller indicator</summary></key>
+    <key name="enable-pencil"     type="b"><default>true</default><summary>Enable pencil indicator</summary></key>
+    <key name="enable-film"       type="b"><default>true</default><summary>DEPRECATED — use enable-media. Kept so the v1→v2 schema migration can still read it on first launch and to avoid losing data on a downgrade.</summary></key>
+    <key name="enable-media"      type="b"><default>true</default><summary>Enable media indicator (replaces enable-film since schema v2)</summary></key>
+    <key name="enable-erplibre"   type="b"><default>true</default><summary>Enable ERPLibre indicator</summary></key>
+    <key name="enable-network"    type="b"><default>true</default><summary>Enable network indicator</summary></key>
+    <key name="enable-device"     type="b"><default>true</default><summary>Enable device indicator</summary></key>
+    <key name="enable-summary"    type="b"><default>false</default><summary>Enable text-only summary indicator (compact "3↑ 1●" line in the top bar)</summary></key>
+
+    <!-- Top-bar ordering -->
+    <key name="button-order" type="as">
+      <default>['summary','device','network','erplibre','media','pencil','controller']</default>
+      <summary>Order of indicators left to right in the top bar</summary>
+    </key>
+    <key name="panel-box" type="s">
+      <default>"left"</default>
+      <summary>Top-bar box to mount indicators in: left, center, or right (indicators are appended, so left = right edge of the left box, just before the centre clock)</summary>
+    </key>
+
+    <!-- Catalogues (JSON serialised) -->
+    <key name="paths"        type="s"><default>"[]"</default><summary>Paths catalogue (JSON array)</summary></key>
+    <key name="films"        type="s"><default>"[]"</default><summary>DEPRECATED — use `media`. Kept so the v1→v2 migration can copy entries forward and so a downgrade does not lose data.</summary></key>
+    <key name="media"        type="s"><default>"[]"</default><summary>Media catalogue (JSON array of video / audio entries with `kind` field)</summary></key>
+    <key name="media-active-tab" type="s">
+      <choices>
+        <choice value="all"/>
+        <choice value="video"/>
+        <choice value="audio"/>
+      </choices>
+      <default>"all"</default>
+      <summary>Active tab in the media applet dropdown</summary>
+    </key>
+    <key name="media-sort-mode" type="s">
+      <choices>
+        <choice value="last_played"/>
+        <choice value="alpha"/>
+        <choice value="play_count"/>
+        <choice value="rating"/>
+        <choice value="added"/>
+      </choices>
+      <default>"last_played"</default>
+      <summary>Sort order in the media library dialog</summary>
+    </key>
+    <key name="media-group-by" type="s">
+      <choices>
+        <choice value="none"/>
+        <choice value="artist"/>
+        <choice value="album"/>
+        <choice value="genre"/>
+        <choice value="year"/>
+      </choices>
+      <default>"none"</default>
+      <summary>Grouping mode in the media library dialog</summary>
+    </key>
+    <key name="instances"    type="s"><default>"[]"</default><summary>ERPLibre instances catalogue (JSON array)</summary></key>
+    <key name="recent-paths" type="s"><default>"[]"</default><summary>Recently opened paths (JSON array, capped at 10)</summary></key>
+
+    <!-- Pencil -->
+    <key name="terminal-claude-cmd" type="s">
+      <default>"claude --resume"</default>
+      <summary>Default command run inside gnome-terminal for pencil entries</summary>
+    </key>
+
+    <!-- ERPLibre -->
+    <key name="erplibre-auto-detect"   type="b"><default>true</default><summary>Auto-detect local ERPLibre instances</summary></key>
+    <key name="erplibre-local-pattern" type="s"><default>"~/erplibre*"</default><summary>Glob pattern for local ERPLibre dirs</summary></key>
+
+    <!-- Network -->
+    <key name="network-cidrs"            type="as"><default>[]</default><summary>CIDR ranges to scan; empty = auto-detect</summary></key>
+    <key name="network-ssh-user"         type="s"><default>""</default><summary>SSH user; empty = $USER</summary></key>
+    <key name="network-use-nmap"         type="b"><default>true</default><summary>Use nmap when available, else nc fallback</summary></key>
+    <key name="network-read-ssh-config"  type="b"><default>true</default><summary>Show ~/.ssh/config hosts in network indicator</summary></key>
+    <key name="network-auto-refresh-sec" type="i"><default>0</default><summary>Auto-refresh interval seconds; 0 disables</summary></key>
+
+    <!-- Device -->
+    <key name="device-auto-refresh-sec"  type="i"><default>0</default><summary>Auto-refresh interval seconds; 0 disables</summary></key>
+
+    <!-- Theming -->
+    <key name="icon-overrides" type="s"><default>"{}"</default><summary>Per-indicator icon overrides (JSON object)</summary></key>
+
+    <!-- Sync -->
+    <key name="enable-git-sync" type="b"><default>false</default><summary>Enable settings sync via git</summary></key>
+    <key name="git-sync-path"   type="s"><default>""</default><summary>Path to a git repo holding the sync JSON</summary></key>
+
+    <!-- Badges -->
+    <key name="enable-icon-badges" type="b">
+      <default>true</default>
+      <summary>Show count badges on top-bar indicator icons</summary>
+    </key>
+    <key name="badge-orientation" type="s">
+      <choices>
+        <choice value="vertical"/>
+        <choice value="horizontal"/>
+      </choices>
+      <default>"vertical"</default>
+      <summary>Stack count badges vertically beside the icon (default) or horizontally above it</summary>
+    </key>
+    <key name="enable-claude-state-watch" type="b">
+      <default>true</default>
+      <summary>Watch ~/.local/state/streamdeck-tiler/claude/ for Claude session state files (used by the pencil badge)</summary>
+    </key>
+    <key name="enable-claude-desktop-notify" type="b">
+      <default>true</default>
+      <summary>Show a desktop notification when a Claude session goes red (Notification hook fired)</summary>
+    </key>
+
+    <!-- Migration -->
+    <key name="schema-version"  type="i"><default>1</default><summary>Schema version, bumped per migration</summary></key>
+    <key name="migration-done"  type="b"><default>false</default><summary>True after legacy JSON has been migrated</summary></key>
+  </schema>
+</schemalist>

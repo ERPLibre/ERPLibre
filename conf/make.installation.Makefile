@@ -238,3 +238,12 @@ odoo_version_remove_odoo_12:
 .PHONY: odoo_version_remove_all
 odoo_version_remove_all:
 	./.venv.erplibre/bin/python ./script/version/odoo_version_remove.py --all $(if $(filter 1,$(DRY)),--dry-run,)
+
+extension_i18n_compile:
+	@for lang in en fr; do \
+		mkdir -p script/stream_deck/gnome-extension/locale/$$lang/LC_MESSAGES; \
+		msgfmt -o script/stream_deck/gnome-extension/locale/$$lang/LC_MESSAGES/streamdeck-tiler.mo \
+		       script/stream_deck/gnome-extension/po/$$lang.po; \
+	done
+
+.PHONY: extension_i18n_compile
