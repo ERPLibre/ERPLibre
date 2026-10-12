@@ -158,6 +158,96 @@ streamdeck_tiler_dev_nested:
 streamdeck_tiler_e2e_nested:
 	@$(STREAMDECK_TILER_EXT_SRC)/test/e2e_nested.sh
 
+# ---------- Translator stack (STT + LLM) ----------
+
+WHISPER_CPP_DIR   := $(HOME)/.local/share/whisper.cpp
+WHISPER_CPP_REPO  := https://github.com/ggerganov/whisper.cpp
+# Override at the command line: WHISPER_MODEL=base make ...
+WHISPER_MODEL     ?= tiny
+
+.PHONY: streamdeck_translator_doctor
+streamdeck_translator_doctor:
+	@./script/stream_deck/translator_doctor.py
+
+.PHONY: streamdeck_translator_test
+streamdeck_translator_test:
+	@./script/stream_deck/translator_test.py
+
+.PHONY: streamdeck_translator_unittest
+streamdeck_translator_unittest:
+	@python3 -m unittest \
+		discover -s ./script/stream_deck -p "test_translator.py" -v
+
+.PHONY: streamdeck_translator_stream
+streamdeck_translator_stream:
+	@./script/stream_deck/translator_stream.py
+
+.PHONY: streamdeck_translator_install_whisper
+streamdeck_translator_install_whisper:
+	@if [ ! -d "$(WHISPER_CPP_DIR)" ]; then \
+		echo "Cloning whisper.cpp into $(WHISPER_CPP_DIR)..."; \
+		git clone --depth 1 "$(WHISPER_CPP_REPO)" "$(WHISPER_CPP_DIR)"; \
+	else \
+		echo "whisper.cpp already at $(WHISPER_CPP_DIR), pulling..."; \
+		git -C "$(WHISPER_CPP_DIR)" pull --ff-only || true; \
+	fi
+	@echo "Building whisper.cpp (this takes a few minutes)..."
+	@$(MAKE) -C "$(WHISPER_CPP_DIR)" 2>&1 | tail -20
+	@echo "Building whisper-stream binary..."
+	@$(MAKE) -C "$(WHISPER_CPP_DIR)" stream 2>&1 | tail -10 || \
+		echo "Note: stream target failed; live streaming will be unavailable."
+	@echo "Downloading $(WHISPER_MODEL) model (~75 MB)..."
+	@bash "$(WHISPER_CPP_DIR)/models/download-ggml-model.sh" \
+		"$(WHISPER_MODEL)"
+	@echo ""
+	@echo "Done. Verify: make streamdeck_translator_doctor"
+
+.PHONY: streamdeck_translator_install_ollama
+streamdeck_translator_install_ollama:
+	@if command -v ollama >/dev/null 2>&1; then \
+		echo "ollama already installed at $$(command -v ollama)"; \
+	else \
+		echo "About to run: curl -fsSL https://ollama.com/install.sh | sh"; \
+		echo "This installs ollama as a systemd user service."; \
+		printf "Continue? [y/N] "; read ans; \
+		case "$$ans" in [yY]) ;; *) echo "Cancelled."; exit 1;; esac; \
+		curl -fsSL https://ollama.com/install.sh | sh; \
+	fi
+	@model=$$(./script/stream_deck/translator_doctor.py --recommend); \
+	echo ""; \
+	echo "Pulling hardware-recommended model: $$model"; \
+	ollama pull "$$model"
+	@echo ""
+	@echo "Done. Verify: make streamdeck_translator_doctor"
+
+VOSK_CACHE_DIR    := $(HOME)/.cache/streamdeck-tiler
+VOSK_FR_URL       := https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip
+
+.PHONY: streamdeck_translator_install_vosk_fr
+streamdeck_translator_install_vosk_fr:
+	@echo "Installing Vosk Python package + French model..."
+	@pip install --user vosk
+	@mkdir -p "$(VOSK_CACHE_DIR)"
+	@curl -L "$(VOSK_FR_URL)" -o /tmp/vosk-fr.zip
+	@unzip -oq /tmp/vosk-fr.zip -d "$(VOSK_CACHE_DIR)"
+	@rm -rf "$(VOSK_CACHE_DIR)/vosk-model"
+	@mv "$(VOSK_CACHE_DIR)"/vosk-model-small-fr-* \
+		"$(VOSK_CACHE_DIR)/vosk-model"
+	@rm -f /tmp/vosk-fr.zip
+	@echo "Done. Verify: make streamdeck_translator_doctor"
+
+.PHONY: streamdeck_translator_install_typing
+streamdeck_translator_install_typing:
+	@echo "Installing wl-clipboard + ydotool for Wayland output..."
+	sudo apt install -y wl-clipboard ydotool
+	@echo "Enabling ydotoold service..."
+	sudo systemctl enable --now ydotoold
+	@echo "Adding user to input group (re-login required)..."
+	sudo usermod -aG input "$$USER"
+	@echo ""
+	@echo "Done. Re-login for the input group to take effect."
+	@echo "Verify: make streamdeck_translator_doctor"
+
 STREAMDECK_TILER_DBUS_DEST    := org.gnome.Shell
 STREAMDECK_TILER_DBUS_PATH    := /org/gnome/Shell/Extensions/StreamDeckTiler
 STREAMDECK_TILER_DBUS_IFACE   := org.gnome.Shell.Extensions.StreamDeckTiler
