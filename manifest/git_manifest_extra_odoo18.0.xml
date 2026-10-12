@@ -7,6 +7,7 @@
     <project
         name="OpenHRMS.git"
         revision="18.0"
+        freeze-revision="4568e527741de89cac97386c661b61569d94fe12"
         path="odoo18.0/addons/CybroOdoo_OpenHRMS"
         remote="CybroOdoo"
         groups="extra,odoo18.0"
@@ -19,6 +20,7 @@
         fork-upstream="18.0"
         clone-depth="1"
         revision="18.0_dev"
+        freeze-revision="0ad5ee9a83b6c5f807dec47e5a540932f610c24d"
         groups="extra,odoo18.0"
     />
     <project
@@ -28,12 +30,14 @@
         fork-upstream-remote="odoo"
         fork-upstream="18.0"
         revision="18.0"
+        freeze-revision="f3bab6297417e8979ad7a2fc5c61c6c90954ca19"
         groups="addons,odoo18.0"
     />
     <project
         name="documentation-user.git"
         path="odoo18.0/odoo_documentation-user"
         revision="18.0"
+        freeze-revision="6d2c7ca4284a3e1a299eeea44386328f6b3dbb35"
         remote="odoo"
         clone-depth="1"
         groups="odoo,odoo18.0"
