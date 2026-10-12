@@ -311,6 +311,48 @@ class _Checkout(unittest.TestCase):
         return {lg["path"]: lg for lg in rapport["rows"]}
 
 
+class TestTotaux(unittest.TestCase):
+    """La ligne des totaux du sommaire, sur des lignes inventées."""
+
+    @staticmethod
+    def ligne(missing=(), ahead=None, behind=None, files=()):
+        return {
+            "stats": {
+                "missing": list(missing),
+                "ahead": ahead,
+                "behind": behind,
+                "files": list(files),
+            }
+        }
+
+    def test_somme_des_commits_fichiers_et_lignes(self):
+        lignes = [
+            self.ligne(ahead=3, behind=1, files=[(10, 2, "a"), (0, 4, "b")]),
+            self.ligne(ahead=2, behind=0, files=[(5, 0, "c")]),
+        ]
+        self.assertEqual(
+            fd._summary_totals(lignes),
+            ["Total of the 2 changed: +5 -1 commits, 3 files, +15 -6 lines"],
+        )
+
+    def test_commit_manquant_et_clone_superficiel_mis_de_cote(self):
+        lignes = [
+            self.ligne(ahead=1, behind=0, files=[(1, 1, "a")]),
+            self.ligne(missing=["old"]),
+            self.ligne(files=[(7, 3, "b")]),
+        ]
+        total, note = fd._summary_totals(lignes)
+        self.assertEqual(
+            total,
+            "Total of the 3 changed: +1 -0 commits, 2 files, +8 -4 lines",
+        )
+        self.assertIn("1 with a missing commit, in no total", note)
+        self.assertIn("1 without a commit count (shallow)", note)
+
+    def test_rien_de_change(self):
+        self.assertEqual(fd._summary_totals([]), [])
+
+
 class TestDefinitionsDesClones(unittest.TestCase):
     SHA = "2" * 40
 
@@ -465,6 +507,10 @@ class TestRapport(_Checkout):
         self.assertEqual((stats["ahead"], stats["behind"]), (0, 1))
         sommaire = "\n".join(fd.render_summary(rapport))
         self.assertIn("+0 -1 rollback", sommaire)
+        self.assertIn(
+            "Total of the 2 changed: +0 -2 commits, 4 files, +2 -8 lines",
+            sommaire,
+        )
 
     def test_le_sommaire_signale_clones_modifies_et_gel_non_committe(self):
         self.fichier(os.path.join(self.chemin("c/beta"), "f.txt"), "sale")

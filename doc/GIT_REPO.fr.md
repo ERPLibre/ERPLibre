@@ -247,7 +247,9 @@ make repo_freeze_diff FROM=v1.8.0 TO=HEAD ARGS="--log --group-by module"
 ```
 
 Un tableau compact liste chaque projet changé : ancien et nouveau commit, commits gagnés et perdus (`rollback` quand
-le nouveau commit ne fait que reculer), fichiers et lignes changés. En dessous, le diffstat de chaque projet s'affiche
+le nouveau commit ne fait que reculer), fichiers et lignes changés. Une ligne au-dessus donne les totaux de tous les
+projets changés : commits gagnés et perdus, fichiers, lignes ajoutées et retirées, et combien de projets un commit
+absent ou un clone superficiel laisse de côté. En dessous, le diffstat de chaque projet s'affiche
 en entier quand le total est court, et se borne à 10 fichiers au-delà de 60 fichiers changés ; `--stat-count N`
 tranche, 0 montre tout. Les lignes changées sont ensuite regroupées par type de fichier, module Odoo ou dossier
 (`--group-by`), par projet et pour l'ensemble. `--log` ajoute le `git log --oneline` de chaque projet, `--tig N` ouvre

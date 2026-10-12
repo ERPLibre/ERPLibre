@@ -244,7 +244,9 @@ make repo_freeze_diff FROM=v1.8.0 TO=HEAD ARGS="--log --group-by module"
 ```
 
 A compact table lists each changed project: old and new commit, commits gained and lost (`rollback` when the new
-commit only goes back), files and lines changed. Below it, each project's diffstat is shown whole when the total is
+commit only goes back), files and lines changed. A line above it gives the totals of all changed projects: commits
+gained and lost, files, lines added and removed, and how many projects a missing commit or a shallow clone leaves
+out. Below it, each project's diffstat is shown whole when the total is
 short, and limited to 10 files beyond 60 changed files; `--stat-count N` decides, 0 shows everything. The changed lines
 are then grouped by file type, Odoo module or folder (`--group-by`), per project and for all of them. `--log` adds the
 `git log --oneline` of each project, `--tig N` opens the history of project N in tig, or of each in turn without N.

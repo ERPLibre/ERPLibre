@@ -1062,6 +1062,46 @@ def _summary_counts(lignes):
     ]
 
 
+def _summary_totals(changees):
+    """La ligne des totaux des projets changés : commits gagnés et perdus,
+    fichiers, lignes ajoutées et retirées.
+
+    Un projet dont un commit manque n'entre dans aucun total ; un clone
+    superficiel, ou un compte de commits illisible, donne ses lignes mais
+    pas ses commits. Une seconde ligne dit combien de projets restent de
+    côté, et pourquoi.
+    """
+    if not changees:
+        return []
+    gagnes = perdus = fichiers = plus = moins = 0
+    manquants = sans_compte = 0
+    for lg in changees:
+        st = lg.get("stats") or {"missing": ["?"], "files": []}
+        if st["missing"]:
+            manquants += 1
+            continue
+        n, p, m = _totaux(st["files"])
+        fichiers, plus, moins = fichiers + n, plus + p, moins + m
+        if st.get("ahead") is None:
+            sans_compte += 1
+        else:
+            gagnes, perdus = gagnes + st["ahead"], perdus + st["behind"]
+    out = [
+        f"Total of the {len(changees)} changed: +{gagnes} -{perdus} commits,"
+        f" {fichiers} files, +{plus} -{moins} lines"
+    ]
+    exclus = []
+    if manquants:
+        exclus.append(f"{manquants} with a missing commit, in no total")
+    if sans_compte:
+        exclus.append(
+            f"{sans_compte} without a commit count (shallow), lines only"
+        )
+    if exclus:
+        out.append(f"  not counted: {'; '.join(exclus)}")
+    return out
+
+
 def _summary_table(changees):
     """Le tableau compact des projets changés, numérotés à partir de 1."""
     if not changees:
@@ -1209,6 +1249,7 @@ def render_summary(rapport, show_all=False, menu=False):
     return (
         _summary_context(rapport, aide)
         + _summary_counts(rapport["rows"])
+        + _summary_totals(changees)
         + _summary_table(changees)
         + _summary_lists(rapport, aide, show_all)
         + _summary_warnings(rapport, aide, changees)
