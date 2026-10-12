@@ -362,6 +362,20 @@ class TestPlanFreeze(unittest.TestCase):
         self.assertEqual(sales, [CLE_BETA])
         self.assertIn(CLE_BETA, par_fichier["m/deux.xml"])
 
+    def test_hors_des_fichiers_ecrits_un_projet_est_ignore(self):
+        par_fichier, refus, _ = gel.plan_freeze(
+            self.definitions(),
+            inspect=lambda path: self.ETATS[path],
+            workers=2,
+            ecrits=["m/deux.xml"],
+        )
+        self.assertEqual(par_fichier, {"m/deux.xml": {CLE_BETA: SHA_B}})
+        # Le double, défini aussi dans m/un.xml, reste refusé ; les projets
+        # de m/un.xml seul ne sont ni gelés ni listés.
+        self.assertEqual(
+            [c for c, _ in refus], ["double.git+odooX/addons/R_double"]
+        )
+
 
 class TestReadWriteSources(unittest.TestCase):
     def setUp(self):
@@ -491,6 +505,145 @@ class TestDefaultInputPaths(unittest.TestCase):
             chemins.index("manifest/git_manifest_extra_odooX.0.xml"),
             chemins.index("manifest/git_manifest_odooX.0_dev.xml") + 1,
         )
+
+    def test_freeze_sources_la_version_active_seule(self):
+        open(
+            os.path.join("manifest", "git_manifest_extra_odooX.0.xml"), "w"
+        ).close()
+        open(os.path.join("manifest", "git_manifest_odooY.0.xml"), "w").close()
+        self.assertEqual(
+            gel.freeze_sources(),
+            [
+                "manifest/git_manifest_odooX.0.xml",
+                "manifest/git_manifest_odooX.0_dev.xml",
+                "manifest/git_manifest_extra_odooX.0.xml",
+            ],
+        )
+        self.assertEqual(
+            gel.freeze_sources("Y.0"), ["manifest/git_manifest_odooY.0.xml"]
+        )
+
+    def test_freeze_sources_sans_version_active(self):
+        os.remove(".odoo-version")
+        self.assertEqual(gel.freeze_sources(), [])
+
+    PROJET = (
+        '  <project name="{n}.git" path="odooX.0/addons/{n}"'
+        ' revision="X.0"{gel}/>\n'
+    )
+
+    def ecrire(self, fichier, *projets):
+        """Écrit `manifest/<fichier>` ; `projets` : (nom, sha ou None)."""
+        lignes = "".join(
+            self.PROJET.format(
+                n=nom, gel=f' {mf.FREEZE_ATTR}="{sha}"' if sha else ""
+            )
+            for nom, sha in projets
+        )
+        with open(os.path.join("manifest", fichier), "w") as fh:
+            fh.write(f"<manifest>\n{lignes}</manifest>\n")
+
+    def lire(self, fichier):
+        with open(os.path.join("manifest", fichier)) as fh:
+            return fh.read()
+
+    def geler(self, *argv):
+        """Lance le gel dans le checkout factice. Rend (code, sortie)."""
+        plan = gel.plan_freeze
+
+        def plan_factice(definitions, **kw):
+            # `inspect` est lié à la définition de plan_freeze : patcher
+            # inspect_clone ne l'atteint pas.
+            return plan(
+                definitions, inspect=lambda path: (SHA_A, None, False), **kw
+            )
+
+        with patch.object(gel, "new_path", self.dossier), patch.object(
+            gel, "plan_freeze", side_effect=plan_factice
+        ), patch("builtins.print") as imprime:
+            code = gel.main(list(argv))
+        return code, "\n".join(
+            " ".join(map(str, a.args)) for a in imprime.mock_calls
+        )
+
+    def test_le_gel_n_ecrit_que_la_version_active(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        self.ecrire("commun.xml", ("deux", None))
+        code, _ = self.geler()
+        self.assertEqual(code, 0)
+        self.assertIn(
+            f'{mf.FREEZE_ATTR}="{SHA_A}"',
+            self.lire("git_manifest_odooX.0.xml"),
+        )
+        self.assertNotIn(mf.FREEZE_ATTR, self.lire("commun.xml"))
+
+    def test_un_doublon_dans_un_autre_fichier_fusionne_est_refuse(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        self.ecrire("commun.xml", ("un", None))
+        for argv in ((), ("--source", "manifest/git_manifest_odooX.0.xml")):
+            code, sortie = self.geler(*argv)
+            self.assertEqual(code, 1, argv)
+            self.assertIn("defined in several sources", sortie)
+            self.assertNotIn(
+                mf.FREEZE_ATTR, self.lire("git_manifest_odooX.0.xml")
+            )
+
+    def test_source_hors_de_la_version_active_refusee(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        self.ecrire("commun.xml", ("deux", None))
+        code, sortie = self.geler("--source", "manifest/commun.xml")
+        self.assertEqual(code, 2)
+        self.assertIn("not a manifest of the active Odoo version", sortie)
+        self.assertNotIn(mf.FREEZE_ATTR, self.lire("commun.xml"))
+
+    def test_avertissement_de_la_fusion_seuls_les_fichiers_geles(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        cle_un = mf.project_key("un.git", "odooX.0/addons/un")
+        cle_deux = mf.project_key("deux.git", "odooX.0/addons/deux")
+        with patch("builtins.print") as imprime:
+            fusion.print_missing_freeze([cle_un, cle_deux])
+        lignes = [" ".join(map(str, a.args)) for a in imprime.mock_calls]
+        self.assertEqual(
+            lignes,
+            [
+                f"WARNING: 1 projects have no {mf.FREEZE_ATTR} and follow"
+                " their branch:",
+                f"  - {cle_un}",
+                "1 projects outside the frozen files follow their branch.",
+            ],
+        )
+
+    def test_la_fusion_ignore_un_gel_hors_de_la_version_active(self):
+        self.ecrire("commun.xml", ("deux", SHA_B))
+        self.ecrire("git_manifest_odooX.0.xml", ("un", SHA_A))
+        sortie = os.path.join(self.dossier, "local.xml")
+        argv = [
+            "git_merge_repo_manifest.py",
+            "--input",
+            "manifest/commun.xml;manifest/git_manifest_odooX.0.xml",
+            "--output",
+            sortie,
+            "--freeze",
+        ]
+        with patch("sys.argv", argv), patch("builtins.print") as imprime:
+            fusion.main()
+        texte = " ".join(
+            " ".join(map(str, a.args)) for a in imprime.mock_calls
+        )
+        with open(sortie) as fh:
+            local = fh.read()
+        self.assertIn(f'revision="{SHA_A}"', local)
+        self.assertNotIn(SHA_B, local)
+        self.assertIn("are ignored", texte)
+        self.assertIn(mf.project_key("deux.git", "odooX.0/addons/deux"), texte)
+
+    def test_strip_freeze(self):
+        projets = {
+            "a": {"@revision": "X", f"@{mf.FREEZE_ATTR}": SHA_A},
+            "b": {"@revision": "X"},
+        }
+        self.assertEqual(fusion.strip_freeze(projets), ["a"])
+        self.assertNotIn(f"@{mf.FREEZE_ATTR}", projets["a"])
 
     def test_default_sources_ne_garde_que_le_xml(self):
         open(os.path.join("private", "notes.txt"), "w").close()

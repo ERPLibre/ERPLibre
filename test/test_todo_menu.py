@@ -657,6 +657,33 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
             self.menu.t("follows the branches"),
         )
 
+    def test_header_counts_the_active_version_files_only(self):
+        import os
+        import tempfile
+
+        gel = 'freeze-revision="' + self.SHA + '"'
+        with tempfile.TemporaryDirectory() as dossier:
+            os.mkdir(os.path.join(dossier, "manifest"))
+            with open(os.path.join(dossier, ".odoo-version"), "w") as fh:
+                fh.write("X.0\n")
+            for fichier, projets in (
+                (
+                    "git_manifest_odooX.0.xml",
+                    f'<project name="a" path="x/a"'
+                    f' revision="X.0" {gel}/><project name="b" path="x/b"'
+                    ' revision="X.0"/>',
+                ),
+                (
+                    "git_manifest_erplibre_odoo.xml",
+                    f'<project name="c"' f' path="x/c" revision="X.0" {gel}/>',
+                ),
+            ):
+                with open(
+                    os.path.join(dossier, "manifest", fichier), "w"
+                ) as fh:
+                    fh.write(f"<manifest>{projets}</manifest>\n")
+            self.assertEqual(self.menu.gel_des_sources(dossier), (1, 2))
+
     def _geler(self, confirme, **kw):
         with self.mock.patch.object(
             self.menu.click, "confirm", return_value=confirme

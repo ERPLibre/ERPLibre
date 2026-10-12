@@ -14,6 +14,10 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.git.git_freeze_manifest import (
+    freeze_sources,
+    read_sources,
+)
 from script.git.git_tool import GitTool
 from script.git.manifest_freeze import FREEZE_ATTR, apply_freeze
 from script.version.erplibre_state import get_version_extra
@@ -89,7 +93,8 @@ def get_config(argv=None):
         action="store_true",
         help=(
             f"Pin every project to the commit of its @{FREEZE_ATTR},"
-            " keeping its branch in @upstream and @dest-branch. A project"
+            " keeping its branch in @upstream and @dest-branch. Only the"
+            " manifests of the active Odoo version are frozen; a project"
             " without one follows its branch, with a warning."
         ),
     )
@@ -119,6 +124,8 @@ def main():
     # L'ordre reste celui de la liste : le dernier fichier qui définit un
     # projet l'emporte, et un ensemble rendrait ce gagnant aléatoire.
     input_paths = list(dict.fromkeys(input_paths))
+    fichiers_geles = freeze_sources()
+    hors_portee = []
 
     for index, input_path in enumerate(input_paths):
         (
@@ -133,6 +140,8 @@ def main():
         for key, value in projects_copy.items():
             new_key = f"{key}+{value.get('@path')}"
             projects[new_key] = value
+        if input_path not in fichiers_geles:
+            hors_portee += strip_freeze(projects)
 
         if len(input_paths) == 1:
             # Only 1 input, same output
@@ -171,12 +180,14 @@ def main():
     geles, manquants = apply_freeze(projects_total, config.freeze)
     if config.freeze:
         print(f"Freeze: {len(geles)} projects pinned to their commit.")
-        if manquants:
+        print_missing_freeze(manquants, fichiers_geles)
+        if hors_portee:
             print(
-                f"WARNING: {len(manquants)} projects have no"
-                f" {FREEZE_ATTR} and follow their branch:"
+                f"WARNING: {len(hors_portee)} {FREEZE_ATTR} outside the"
+                " manifests of the active Odoo version are ignored; remove"
+                " them with make repo_unfreeze:"
             )
-            for cle in sorted(manquants):
+            for cle in sorted(hors_portee):
                 print(f"  - {cle}")
 
     git_tool.generate_repo_manifest(
@@ -275,6 +286,48 @@ def default_input_paths(
     append_file_path_manifest(input_paths, DEFAULT_PATH_MANIFEST_PRIVATE_CONF)
 
     return list(dict.fromkeys(input_paths))
+
+
+def strip_freeze(projects):
+    """Retire « freeze-revision » des projets d'un fichier. Rend les clés
+    qui en portaient un.
+
+    La fusion n'applique que le gel des fichiers de la version d'Odoo
+    active, ceux que `git_freeze_manifest` écrit ; celui d'un autre fichier
+    est retiré avant la fusion, et son projet suit sa branche.
+    """
+    retires = []
+    for cle, valeur in projects.items():
+        if valeur.pop(f"@{FREEZE_ATTR}", None):
+            retires.append(cle)
+    return retires
+
+
+def print_missing_freeze(manquants, fichiers=None):
+    """Liste les projets restés sur leur branche en mode --freeze.
+
+    Seuls ceux des `fichiers` que le gel écrit (par défaut, ceux de la
+    version d'Odoo active) sont un avertissement, nommés un par un ; ceux
+    des autres fichiers ne sont jamais gelés et ne font l'objet que d'un
+    compte.
+    """
+    if fichiers is None:
+        fichiers = freeze_sources()
+    try:
+        portee = set(read_sources(fichiers))
+    except OSError:
+        portee = set(manquants)
+    oublies = sorted(c for c in manquants if c in portee)
+    hors = len(manquants) - len(oublies)
+    if oublies:
+        print(
+            f"WARNING: {len(oublies)} projects have no"
+            f" {FREEZE_ATTR} and follow their branch:"
+        )
+        for cle in oublies:
+            print(f"  - {cle}")
+    if hors:
+        print(f"{hors} projects outside the frozen files follow their branch.")
 
 
 def append_file_path_manifest(input_paths, path_manifest):

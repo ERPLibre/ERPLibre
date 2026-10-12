@@ -65,8 +65,8 @@ Pour ne fusionner que des fichiers choisis, `--input` prend une liste séparée 
 
 ## Créer une nouvelle version de prod
 
-Cela fige tous les dépôts, du dev vers la prod : chaque projet reçoit le commit de son clone dans son fichier source,
-à côté de sa branche. [Geler les versions](#geler-les-versions) dit ce qui est écrit et ce qui est écarté.
+Cela fige les dépôts de la version d'Odoo active, du dev vers la prod : chaque projet reçoit le commit de son clone
+dans son fichier source, à côté de sa branche. [Geler les versions](#geler-les-versions) dit ce qui est écrit et ce qui est écarté.
 
 ```bash
 make repo_freeze
@@ -174,9 +174,12 @@ reconfiguré.
 
 #### Écrire le gel
 
-Le gel écrit dans les fichiers sources que la reconfiguration fusionne, ceux de `manifest/` et un fichier privé listé
-dans `private/default_git_manifest.csv`, et ne touche aucun clone. `--dry-run` montre ce qui changerait, `--source` le
-limite à un fichier et se répète :
+Le gel écrit dans les trois fichiers de la version d'Odoo active (`.odoo-version`), pour 18.0
+`manifest/git_manifest_odoo18.0.xml`, `manifest/git_manifest_odoo18.0_dev.xml` et
+`manifest/git_manifest_extra_odoo18.0.xml`, et ne touche aucun clone. Les autres fichiers fusionnés, les fragments
+communs `git_manifest_erplibre*.xml`, les autres versions installées et les manifestes privés, sont lus mais jamais
+écrits : leurs projets suivent leur branche. `--dry-run` montre ce qui changerait, `--source` n'écrit qu'une partie
+des trois fichiers et se répète ; un fichier hors d'eux est refusé, puisque la reconfiguration ignorerait son gel :
 
 ```bash
 .venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
@@ -188,7 +191,8 @@ git commit -m "[UPD] manifest: freeze the versions of v#.#.#"
 Ne sont pas gelés, et sont listés :
 
 - un projet qui n'est pas cloné, laissé tel quel ;
-- un projet défini par plusieurs fichiers sources, puisqu'écrire dans l'un d'eux serait arbitraire ;
+- un projet qu'un autre fichier fusionné définit aussi : la fusion garde l'une des définitions selon l'ordre des
+  fichiers, et le gel n'en écrit qu'une ;
 - un clone dont aucune branche distante ne contient le commit, puisqu'une installation neuve ne pourrait pas aller le
   chercher : le pousser d'abord.
 
@@ -207,7 +211,8 @@ make repo_configure_all FREEZE=1
 `dest-branch` : `repo sync -c` va chercher le commit, et une branche ouverte par `repo start` suit la branche plutôt
 que le commit. `freeze-revision` n'atteint jamais ce fichier, git-repo ne le connaît pas. Un projet sans
 `freeze-revision`, ajouté après le gel ou écarté par lui, suit sa branche, et la reconfiguration le liste sous un
-WARNING.
+WARNING ; les projets des fichiers que le gel n'écrit pas sont seulement comptés. Un `freeze-revision` trouvé dans
+l'un de ces fichiers est ignoré et listé sous un WARNING : `make repo_unfreeze` le retire.
 
 #### Suivre de nouveau les branches
 

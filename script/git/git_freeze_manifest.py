@@ -4,19 +4,24 @@
 
 """Geler les dépôts clonés : écrire leur commit dans LEUR fichier source.
 
-Chaque projet du manifeste local vient d'un fichier de `manifest/`. Le gel
-y pose le commit courant du clone dans « freeze-revision », à côté de la
-branche que « revision » garde. Le dégel retire l'attribut.
+Le gel porte sur les fichiers de la version d'Odoo active :
+`git_manifest_odoo<V>.xml`, `git_manifest_odoo<V>_dev.xml` et
+`git_manifest_extra_odoo<V>.xml`. Il pose le commit courant de chacun de
+leurs clones dans « freeze-revision », à côté de la branche que « revision »
+garde. Les autres fichiers de la fusion sont lus sans être écrits, et la
+fusion n'applique que le gel de ces trois fichiers : les projets des autres
+suivent leur branche. Le dégel retire l'attribut de tous les fichiers.
 
 Le gel n'agit sur aucun clone : il écrit des fichiers à committer. Il prend
 effet à la reconfiguration suivante, lancée avec `--freeze`
 (`make repo_configure_all FREEZE=1`) ; sans cet argument, la reconfiguration
 suit les branches.
 
-Ne sont pas gelés, et sont listés : un projet non cloné, un projet défini
-par plusieurs fichiers sources (lequel écrire serait arbitraire), et un
-clone dont le commit n'est contenu dans aucune branche distante, car une
-installation neuve ne pourrait pas aller le chercher.
+Ne sont pas gelés, et sont listés : un projet non cloné, un projet qu'un
+autre fichier fusionné définit aussi (la fusion garde l'une des définitions
+selon l'ordre des fichiers, et le gel n'en écrit qu'une), et un clone dont
+le commit n'est contenu dans aucune branche distante, car une installation
+neuve ne pourrait pas aller le chercher.
 """
 
 import argparse
@@ -57,8 +62,12 @@ def get_config(argv=None):
         "--source",
         action="append",
         help=(
-            "Source manifest file to handle, repeatable. Default: the files"
-            " the local manifest is merged from."
+            "Source manifest file to write, repeatable. Default: the"
+            " manifests of the active Odoo version, git_manifest_odoo<V>.xml,"
+            " git_manifest_odoo<V>_dev.xml and git_manifest_extra_odoo<V>.xml;"
+            " a freeze accepts only those, and still reads every merged file"
+            " to find duplicates. With --unfreeze: any file, by default every"
+            " manifest/*.xml and the merged files."
         ),
     )
     return parser.parse_args(argv)
@@ -136,6 +145,32 @@ def default_sources():
     return [p for p in default_input_paths() if p.endswith(".xml")]
 
 
+def freeze_sources(odoo_version=None):
+    """Les fichiers que le gel écrit : ceux de la version d'Odoo active.
+
+    `git_manifest_odoo<V>.xml`, `git_manifest_odoo<V>_dev.xml` et
+    `git_manifest_extra_odoo<V>.xml`, dans l'ordre de la fusion, ceux qui
+    existent. `odoo_version` (« 18.0 ») vient par défaut de `.odoo-version` ;
+    sans version, la liste est vide. Les fragments communs, les autres
+    versions installées et les manifestes privés n'en font pas partie.
+    """
+    if odoo_version is None:
+        try:
+            with open(".odoo-version") as fh:
+                odoo_version = fh.readline().strip()
+        except OSError:
+            odoo_version = ""
+    if not odoo_version:
+        return []
+    noms = (
+        f"git_manifest_odoo{odoo_version}.xml",
+        f"git_manifest_odoo{odoo_version}_dev.xml",
+        f"git_manifest_extra_odoo{odoo_version}.xml",
+    )
+    chemins = [os.path.join("manifest", nom) for nom in noms]
+    return [c for c in chemins if os.path.isfile(c)]
+
+
 def unfreeze_sources():
     """Tous les fichiers où un gel a pu être écrit.
 
@@ -147,16 +182,21 @@ def unfreeze_sources():
     )
 
 
-def plan_freeze(definitions, inspect=inspect_clone, workers=8):
+def plan_freeze(definitions, inspect=inspect_clone, workers=8, ecrits=None):
     """Calcule le gel. Rend ({fichier: {clé: sha}}, refus, sales).
 
     `refus` est une liste de (clé, motif), `sales` une liste de clés.
+    `ecrits`, quand il est donné, borne les fichiers à écrire : un projet
+    qu'aucun d'eux ne définit est ignoré sans être listé, et un projet
+    qu'ils définissent et qu'un autre fichier redéfinit est refusé.
     """
     par_fichier = {}
     refus = []
     sales = []
     candidats = {}
     for cle, defs in definitions.items():
+        if ecrits is not None and not any(f in ecrits for f, _ in defs):
+            continue
         if len(defs) > 1:
             fichiers = ", ".join(f for f, _ in defs)
             refus.append((cle, f"defined in several sources: {fichiers}"))
@@ -226,8 +266,28 @@ def main(argv=None):
         print(f"Unfreeze: {total} projects follow their branch again.")
         return 0
 
-    definitions = read_sources(config.source or default_sources())
-    par_fichier, refus, sales = plan_freeze(definitions)
+    portee = freeze_sources()
+    if not portee:
+        print(
+            "ERROR: no manifest of the active Odoo version; check"
+            " .odoo-version and manifest/git_manifest_odoo<V>.xml"
+        )
+        return 1
+    ecrits = config.source or portee
+    dehors = [f for f in ecrits if f not in portee]
+    if dehors:
+        # La fusion n'appliquerait pas un gel écrit ailleurs.
+        print(
+            f"ERROR: not a manifest of the active Odoo version:"
+            f" {', '.join(dehors)}; accepted: {', '.join(portee)}"
+        )
+        return 2
+    # Les autres fichiers de la fusion sont lus sans être écrits : ils
+    # révèlent un projet que la fusion définit aussi ailleurs.
+    lus = list(dict.fromkeys(default_sources() + portee))
+    print(f"Freeze sources: {', '.join(ecrits)}")
+    definitions = read_sources(lus)
+    par_fichier, refus, sales = plan_freeze(definitions, ecrits=ecrits)
     changes = write_sources(par_fichier, dry_run=config.dry_run)
 
     geles = sum(len(c) for c in par_fichier.values())

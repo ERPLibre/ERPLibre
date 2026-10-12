@@ -286,7 +286,8 @@ endif
 repo_configure_all:
 	./script/manifest/update_manifest_local_dev.sh $(if $(filter 1,$(FREEZE)),--freeze,)
 
-# write the SHA of every cloned repo into manifest/ as freeze-revision
+# write the SHA of every cloned repo of the active Odoo version into its
+# manifest/ file (git_manifest_odoo<V>.xml, _dev, extra) as freeze-revision
 .PHONY: repo_freeze
 repo_freeze:
 	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py

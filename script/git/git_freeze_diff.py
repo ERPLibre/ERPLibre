@@ -238,18 +238,46 @@ def read_clones(racine, definitions, jobs=None):
     return clones
 
 
+def freeze_sources(racine):
+    """Les fichiers que le gel écrit (version d'Odoo active), relatifs à la
+    racine. Le répertoire courant y passe le temps de la lecture."""
+    from script.git import git_freeze_manifest
+
+    depart = os.getcwd()
+    try:
+        os.chdir(racine)
+        return git_freeze_manifest.freeze_sources()
+    finally:
+        os.chdir(depart)
+
+
 def default_definitions(racine):
-    """Les projets des fichiers sources que la fusion lit aujourd'hui."""
+    """Les projets des fichiers que le gel écrit, dans l'ordre de la fusion.
+
+    Les projets des autres fichiers ne sont jamais gelés : leurs clones
+    n'ont rien à comparer.
+    """
     textes = []
-    for fichier in active_sources(racine):
+    for fichier in merge_order(racine, freeze_sources(racine)):
         with open(os.path.join(racine, fichier)) as fh:
             textes.append((fichier, fh.read()))
     return _entries_from_texts(textes)
 
 
+def _clone_definitions(racine, tables):
+    """Les projets dont le côté « clones » lit le HEAD : ceux des fichiers
+    que le gel écrit, plus ceux qu'une des `tables` gèle."""
+    definitions = default_definitions(racine)
+    for table in tables:
+        for cle, entree in (table or {}).items():
+            if entree.get("sha"):
+                definitions.setdefault(cle, entree)
+    return definitions
+
+
 def read_side(racine, spec, definitions=None, jobs=None):
     """Lit un côté. `definitions` sert au côté « clones » : les projets à
-    inspecter ; par défaut, ceux des fichiers sources actifs."""
+    inspecter ; par défaut, ceux des fichiers que le gel écrit."""
     if spec == WORKTREE:
         return read_worktree(racine)
     if spec == CLONES:
@@ -831,13 +859,10 @@ def build(racine, gauche, droite, jobs=None):
     cote_g = None if gauche == CLONES else read_side(racine, gauche, jobs=jobs)
     cote_d = None if droite == CLONES else read_side(racine, droite, jobs=jobs)
     if CLONES in (gauche, droite):
-        # Les clones à inspecter : ceux des fichiers actifs, plus tout projet
-        # que l'autre côté nomme, pour qu'un chemin gelé puis disparu se
-        # voie comme « non cloné » et non comme un dégel.
-        definitions = default_definitions(racine)
-        for autre in (cote_g, cote_d):
-            for cle, entree in (autre or {}).items():
-                definitions.setdefault(cle, entree)
+        # Les clones à inspecter : ceux des fichiers gelables, plus tout
+        # projet que l'autre côté gèle, pour qu'un chemin gelé puis disparu
+        # se voie comme « non cloné » et non comme un dégel.
+        definitions = _clone_definitions(racine, (cote_g, cote_d))
         clones = read_clones(racine, definitions, jobs=jobs)
         cote_g = clones if cote_g is None else cote_g
         cote_d = clones if cote_d is None else cote_d
@@ -1374,10 +1399,7 @@ def matrix(racine, specs, jobs=None):
         None if s == CLONES else read_side(racine, s, jobs=jobs) for s in specs
     ]
     if CLONES in specs:
-        definitions = default_definitions(racine)
-        for table in tables:
-            for cle, entree in (table or {}).items():
-                definitions.setdefault(cle, entree)
+        definitions = _clone_definitions(racine, tables)
         clones = read_clones(racine, definitions, jobs=jobs)
         tables = [clones if tb is None else tb for tb in tables]
     cles = set().union(*tables) if tables else set()

@@ -311,6 +311,42 @@ class _Checkout(unittest.TestCase):
         return {lg["path"]: lg for lg in rapport["rows"]}
 
 
+class TestDefinitionsDesClones(unittest.TestCase):
+    SHA = "2" * 40
+
+    def test_seuls_les_fichiers_de_la_version_active(self):
+        racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, racine, True)
+        os.mkdir(os.path.join(racine, "manifest"))
+        with open(os.path.join(racine, ".odoo-version"), "w") as fh:
+            fh.write("X.0\n")
+        for fichier, nom in (
+            ("git_manifest_odooX.0.xml", "un"),
+            ("git_manifest_odooX.0_dev.xml", "deux"),
+            ("git_manifest_erplibre_odoo.xml", "commun"),
+            ("git_manifest_odooY.0.xml", "autre"),
+        ):
+            with open(os.path.join(racine, "manifest", fichier), "w") as fh:
+                fh.write(_manifeste([(nom, f"c/{nom}", None)]))
+        depart = os.getcwd()
+        self.assertEqual(
+            sorted(fd.default_definitions(racine)), ["deux+c/deux", "un+c/un"]
+        )
+        self.assertEqual(os.getcwd(), depart)
+
+    def test_l_autre_cote_n_ajoute_que_ses_projets_geles(self):
+        propres = {"a+x/a": {"path": "x/a", "sha": None}}
+        autre = {
+            "a+x/a": {"path": "x/a", "sha": self.SHA},
+            "b+x/b": {"path": "x/b", "sha": self.SHA},
+            "c+x/c": {"path": "x/c", "sha": None},
+        }
+        with patch.object(fd, "default_definitions", return_value=propres):
+            definitions = fd._clone_definitions("/r", [autre, None])
+        self.assertEqual(sorted(definitions), ["a+x/a", "b+x/b"])
+        self.assertIsNone(definitions["a+x/a"]["sha"])
+
+
 class TestLectureDesCotes(_Checkout):
     def test_une_revision_lit_ses_fichiers_committes(self):
         avant = fd.read_ref(self.racine, "HEAD~2")

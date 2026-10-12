@@ -64,8 +64,8 @@ To merge chosen files only, `--input` takes a list separated by `;`, in merge or
 
 ## Make a new version of prod
 
-It freezes all repos, from dev to prod: every project receives the commit of its clone in its source file, next to
-its branch. [Freeze the versions](#freeze-the-versions) says what is written and what is skipped.
+It freezes the repos of the active Odoo version, from dev to prod: every project receives the commit of its clone
+in its source file, next to its branch. [Freeze the versions](#freeze-the-versions) says what is written and what is skipped.
 
 ```bash
 make repo_freeze
@@ -173,9 +173,12 @@ reconfigured.
 
 #### Write the freeze
 
-The freeze writes into the source files the reconfiguration merges, those of `manifest/` and a private one listed in
-`private/default_git_manifest.csv`, and touches no clone. `--dry-run` shows what would change, `--source` limits it
-to one file and may be repeated:
+The freeze writes into the three files of the active Odoo version (`.odoo-version`), for 18.0
+`manifest/git_manifest_odoo18.0.xml`, `manifest/git_manifest_odoo18.0_dev.xml` and
+`manifest/git_manifest_extra_odoo18.0.xml`, and touches no clone. The other merged files, the common
+`git_manifest_erplibre*.xml` fragments, the other installed versions and the private manifests, are read but never
+written: their projects follow their branch. `--dry-run` shows what would change, `--source` writes only some of the
+three files and may be repeated; a file outside them is refused, since the reconfiguration would ignore its freeze:
 
 ```bash
 .venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
@@ -187,7 +190,8 @@ git commit -m "[UPD] manifest: freeze the versions of v#.#.#"
 Not frozen, and listed:
 
 - a project that is not cloned, left as it is;
-- a project defined by several source files, since writing into one of them would be arbitrary;
+- a project that another merged file also defines: the merge keeps one of the definitions depending on the order of
+  the files, and the freeze writes only one;
 - a clone whose commit no remote branch contains, since a new installation could not fetch it: push it first.
 
 A clone with uncommitted changes is frozen on its commit, with a warning: its changes are not part of the freeze. The
@@ -204,7 +208,9 @@ make repo_configure_all FREEZE=1
 `.repo/local_manifests/erplibre_manifest.xml` then carries the commit in `revision`, and the branch in `upstream` and
 `dest-branch`: `repo sync -c` fetches the commit, and a branch opened by `repo start` follows the branch rather than
 the commit. `freeze-revision` never reaches that file, git-repo does not know it. A project without `freeze-revision`,
-added after the freeze or skipped by it, follows its branch, and the reconfiguration lists it under a WARNING.
+added after the freeze or skipped by it, follows its branch, and the reconfiguration lists it under a WARNING; the
+projects of the files the freeze does not write are only counted. A `freeze-revision` found in one of those files is
+ignored and listed under a WARNING: `make repo_unfreeze` removes it.
 
 #### Follow the branches again
 

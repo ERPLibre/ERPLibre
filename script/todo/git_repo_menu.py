@@ -21,8 +21,9 @@ et prédit la fusion en mémoire, sans déplacer de référence ni toucher l'arb
 de travail. Le constat coûte quelques secondes sur l'ensemble des forks, et
 se rejoue autant de fois qu'on veut.
 
-Le GEL écrit le commit de chaque clone à côté de sa branche, dans les
-fichiers de `manifest/`. Suivre les branches ou les commits gelés est un
+Le GEL écrit le commit de chaque clone de la version d'Odoo active à côté
+de sa branche, dans ses fichiers de `manifest/` (`git_manifest_odoo<V>.xml`,
+`_dev`, `git_manifest_extra_odoo<V>.xml`). Suivre les branches ou les commits gelés est un
 argument de la reconfiguration, jamais un état enregistré : le mode que
 l'en-tête affiche se lit dans le manifeste local que git-repo utilise.
 
@@ -106,7 +107,8 @@ def libelle_mode(etat):
 
 
 def gel_des_sources(racine=RACINE):
-    """(gelés, total) des projets des fichiers sources, ou None illisible.
+    """(gelés, total) des projets des fichiers que le gel écrit — ceux de la
+    version d'Odoo active —, ou None illisible.
 
     Un projet est gelé quand l'un de ses fichiers lui donne
     « freeze-revision ». Les chemins des sources sont relatifs à la racine
@@ -117,7 +119,7 @@ def gel_des_sources(racine=RACINE):
     try:
         os.chdir(racine)
         definitions = git_freeze_manifest.read_sources(
-            git_freeze_manifest.default_sources()
+            git_freeze_manifest.freeze_sources()
         )
     except OSError:
         return None
@@ -512,7 +514,8 @@ class GitRepoMenuMixin:
         return len(lst)
 
     def _git_repo_geler(self, unfreeze=False):
-        """Écrit le commit de chaque clone dans son fichier source, ou l'ôte.
+        """Écrit le commit de chaque clone de la version d'Odoo active dans
+        son fichier de `manifest/`, ou l'ôte de tous les fichiers.
 
         Le geste écrit des fichiers de `manifest/` à committer et ne déplace
         aucun clone. La passe à sec tourne d'abord et montre chaque fichier
@@ -733,9 +736,7 @@ class GitRepoMenuMixin:
                 groupe = groupes[(groupes.index(groupe) + 1) % len(groupes)]
                 print(f"  {t('Grouping:')} {groupe}")
             elif choix == "f":
-                print(
-                    f"  📥 {t('Refreshing the clones, in parallel.')}"
-                )
+                print(f"  📥 {t('Refreshing the clones, in parallel.')}")
                 restes = git_freeze_diff.fetch_missing(RACINE, rapport["rows"])
                 for chemin, shas in sorted(restes.items()):
                     print(
