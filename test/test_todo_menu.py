@@ -683,6 +683,12 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
                 ) as fh:
                     fh.write(f"<manifest>{projets}</manifest>\n")
             self.assertEqual(self.menu.gel_des_sources(dossier), (1, 2))
+            self.assertEqual(
+                self.menu.gel_des_sources(dossier, odoo_version="X.0"), (1, 2)
+            )
+            self.assertEqual(
+                self.menu.gel_des_sources(dossier, odoo_version="Y.0"), (0, 0)
+            )
 
     def _geler(self, confirme, **kw):
         with self.mock.patch.object(

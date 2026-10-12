@@ -626,6 +626,34 @@ TRANSLATIONS = {
         "fr": "Type d'installation :",
         "en": "Install type:",
     },
+    "Environment:": {
+        "fr": "Environnement :",
+        "en": "Environment:",
+    },
+    "Development: follows the branches (revision)": {
+        "fr": "Développement : suit les branches (revision)",
+        "en": "Development: follows the branches (revision)",
+    },
+    "Production: frozen commits (freeze-revision)": {
+        "fr": "Production : commits gelés (freeze-revision)",
+        "en": "Production: frozen commits (freeze-revision)",
+    },
+    "projects frozen": {
+        "fr": "projets gelés",
+        "en": "projects frozen",
+    },
+    "no freeze, falls back to development": {
+        "fr": "aucun gel, repli sur le développement",
+        "en": "no freeze, falls back to development",
+    },
+    "Production: each repository on its frozen commit.": {
+        "fr": "Production : chaque dépôt sur son commit gelé.",
+        "en": "Production: each repository on its frozen commit.",
+    },
+    "No frozen commit for this Odoo version: installing the development, on the branches.": {
+        "fr": "Aucun commit gelé pour cette version d'Odoo : installation du développement, sur les branches.",
+        "en": "No frozen commit for this Odoo version: installing the development, on the branches.",
+    },
     "Standard install (without extra modules)": {
         "fr": "Installation standard (sans modules extra)",
         "en": "Standard install (without extra modules)",

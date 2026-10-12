@@ -394,6 +394,10 @@ added after the freeze or skipped by it, follows its branch, and the reconfigura
 projects of the files the freeze does not write are only counted. A `freeze-revision` found in one of those files is
 ignored and listed under a WARNING: `make repo_unfreeze` removes it.
 
+In TODO, `Installation` asks for the environment once an Odoo version is chosen, before the extra modules:
+`Development` follows the branches, `Production` installs on the frozen commits of that version. It shows how many
+projects are frozen, and falls back to development, saying so, when no manifest of that version carries a freeze.
+
 #### Follow the branches again
 
 A reconfiguration without the argument follows the branches, whether the files carry a freeze or not: the freeze
@@ -406,6 +410,11 @@ que le commit. `freeze-revision` n'atteint jamais ce fichier, git-repo ne le con
 `freeze-revision`, ajouté après le gel ou écarté par lui, suit sa branche, et la reconfiguration le liste sous un
 WARNING ; les projets des fichiers que le gel n'écrit pas sont seulement comptés. Un `freeze-revision` trouvé dans
 l'un de ces fichiers est ignoré et listé sous un WARNING : `make repo_unfreeze` le retire.
+
+Dans TODO, `Installation` demande l'environnement une fois la version d'Odoo choisie, avant les modules extra :
+`Développement` suit les branches, `Production` installe sur les commits gelés de cette version. Il affiche combien de
+projets sont gelés, et se rabat sur le développement, en le disant, quand aucun manifeste de cette version ne porte de
+gel.
 
 #### Suivre de nouveau les branches
 
