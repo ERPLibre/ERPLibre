@@ -2,18 +2,18 @@
 # Désinstaller un thème comme Odoo le fait lui-même.
 #
 # « ./run.sh --uninstall theme_x » retire le MODULE, pas le THÈME. Choisir un
-# thème (button_choose_theme, ce que pose --install-theme) fait DEUX choses :
-# copier ses vues et ressources dans chaque site, et écrire dans
+# thème (button_choose_theme, dont --install-theme refait le travail) fait DEUX
+# choses : copier ses vues et ressources dans chaque site, et écrire dans
 # user_values.scss une personnalisation qui DÉFINIT $o-theme-font-number et
 # ses trois voisines. Le chemin de retrait d'Odoo, _theme_remove(), défait les
 # deux.
 #
 # Le désinstaller sans lui laisse donc les copies, et surtout n'écrit jamais
-# ces définitions. Mesuré sur une migration réelle 12 -> 13 : le bundle
-# web.assets_frontend s'arrête sur « Undefined variable: $o-theme-font-number
-# ». La variable venait des fichiers option_font_body_* d'Odoo 12, supprimés
-# en 13.0 ; seul le thème la redéfinissait encore, et le retirer a mis à nu
-# une personnalisation figée depuis des années.
+# ces définitions. Après une migration 12 -> 13, le bundle web.assets_frontend
+# s'arrête alors sur « Undefined variable: $o-theme-font-number » : la
+# variable vient des fichiers option_font_body_* d'Odoo 12, supprimés en
+# 13.0, et seul le thème la redéfinit encore. Le retirer laisse à nu toute
+# personnalisation SCSS qui s'en sert.
 #
 # Usage : ./script/addons/uninstall_addons_theme.sh <base> <theme> [config]
 
