@@ -82,3 +82,10 @@ python-dateutil>=2.8.2
 
 # Extra module
 meteostat
+
+# extendable-pydantic (OCA_rest-framework), jusqu'à 1.4.1 au moins, lit
+# pydantic._internal._generate_schema.get_type_ref, que pydantic 2.14.0 retire.
+# Son .pth l'importe au démarrage de CHAQUE interpréteur du venv : au-delà de
+# 2.13, tout lancement de Python, Odoo compris, imprime une AttributeError et
+# extendable-pydantic n'est plus chargé. À lever quand extendable-pydantic suivra.
+pydantic<2.14
