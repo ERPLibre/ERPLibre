@@ -129,6 +129,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Chercher dans le cache du dossier ouvert, du compte ou de tous les comptes, et poser la même question au serveur quand le cache ne sait pas y répondre. Un cache scellé ne porte pas d'index plein texte — c'est le scellement qui l'interdit — et la recherche compare alors les champs qu'elle peut encore lire
 - Les installeurs posent gettext (gettext-tools sur SUSE) sur chaque système supporté, sans jamais bloquer : `msgfmt --check` attrape une traduction qui a perdu un `%s` avant qu'elle n'apparaisse sur une page, et `msgmerge` reporte les traductions sur un `.pot` régénéré
 - `coverage` est dans le venv d'Odoo 18 : `ODOO_MODE_COVERAGE=true` fait tourner Odoo sous coverage au lieu d'échouer sur « command not found »
+- stream_deck : extension GNOME multi-indicateurs (registry, six boutons : controller, pencil, film, ERPLibre, network, device) ; schéma GSettings ; auto-login KeepassXC + Selenium / xdotool ; découverte SSH ; sync Git des préférences ; sauvegarde/restauration ; i18n FR/EN.
 
 ## Modifié
 

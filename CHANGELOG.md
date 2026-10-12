@@ -125,6 +125,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Search the cache of the open folder, of the account or of every account, and put the same question to the server when the cache cannot answer it. A sealed cache carries no full-text index — the sealing is what forbids one — and the search then compares the fields it can still read
 - The installers set up gettext (gettext-tools on SUSE) on every supported system, without ever blocking: `msgfmt --check` catches a translation that lost a `%s` before it shows on a page, and `msgmerge` carries translations over to a regenerated `.pot`
 - `coverage` is in the Odoo 18 venv: `ODOO_MODE_COVERAGE=true` runs Odoo under coverage instead of failing on « command not found »
+- stream_deck: multi-indicator GNOME extension (registry-based, six panel buttons: controller, pencil, film, ERPLibre, network, device); GSettings schema; KeepassXC + Selenium / xdotool auto-login; SSH discovery; git settings sync; backup/restore; FR/EN i18n.
 
 ## Changed
 

@@ -50,6 +50,11 @@ make streamdeck
 
 Script d'automatisation clavier. Utilise `wmctrl` pour cibler une fenêtre terminal, puis envoie une séquence de touches automatisée via la librairie `keyboard`.
 
+### Extension GNOME Shell
+
+Le répertoire `gnome-extension/` fournit un panneau à six indicateurs (controller,
+pencil, film, ERPLibre, network, device) ainsi que l'interface D-Bus de tuilage
+utilisée par les helpers Python. Voir [`gnome-extension/README.fr.md`](gnome-extension/README.fr.md).
 
 ## Jeux
 
@@ -594,6 +599,7 @@ script/stream_deck/
 ├── plan.md                    # StreamController integration plan / Plan d'intégration
 ├── requirements.txt           # Python dependencies / Dépendances Python
 ├── Assets/                    # Controller images and fonts / Images et polices
+├── gnome-extension/           # GNOME Shell extension / Extension GNOME Shell
 ├── erplibre_controller.py     # Main ERPLibre controller / Contrôleur principal
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
 └── game_*.py                  # 42 games / 42 jeux
