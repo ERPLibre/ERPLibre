@@ -62,3 +62,6 @@ private/todo/todo_override_private.json
 # Binaire compile du service SIP : il se rebatit par l'installateur, et
 # pese douze megaoctets.
 /script/erplibre_sip_go/erplibre_sip_go
+
+# Sauvegardes locales des jeux Stream Deck.
+script/stream_deck/save/
