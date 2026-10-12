@@ -6360,11 +6360,19 @@ class TODO(
         )
 
         default_debug = False
+        default_skip_repos = False
+        default_skip_whisper = False
+        default_all_abis = False
+        default_livereload = False
         project_name = default_project_name
         project_url_name = default_project_url_name
         project_principal_subject = default_project_note_subject
         package_name = default_package_name
         do_debug = default_debug
+        do_skip_repos = default_skip_repos
+        do_skip_whisper = default_skip_whisper
+        do_all_abis = default_all_abis
+        do_livereload = default_livereload
         do_change_picture_menu = False
 
         do_personalize = input(
@@ -6397,6 +6405,36 @@ class TODO(
             )
             do_debug = self._is_yes(
                 input("Compilation with debug information, default No (Y) : ")
+            )
+            do_skip_repos = self._is_yes(
+                input(
+                    "Skip manifest repos bundling — saves ~15s build + ~180MB"
+                    " APK, the Code tool fail-softs on missing repos,"
+                    " default No (Y) : "
+                )
+            )
+            do_skip_whisper = self._is_yes(
+                input(
+                    "Skip whisper.cpp native build — disables transcription,"
+                    " saves ~5min first build + ~3.5MB APK,"
+                    " default No (Y) : "
+                )
+            )
+            do_all_abis = self._is_yes(
+                input(
+                    "Package all ABIs (arm64 + arm + x86 + x86_64) — needed"
+                    " for emulator, ~50% bigger native libs,"
+                    " default No (Y) : "
+                )
+            )
+            do_livereload = self._is_yes(
+                input(
+                    "Use Capacitor livereload — phone WebView fetches src/"
+                    " from a Vite dev server on this machine, hot-reload on"
+                    " every TS/SCSS save. Phone + machine must share WiFi."
+                    " Native (Java/Gradle/migrations) changes still need a"
+                    " regular rebuild. default No (Y) : "
+                )
             )
             do_change_picture_menu = self._is_yes(
                 input(
@@ -6451,20 +6489,33 @@ class TODO(
             cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/imgs/logo.png"
             self.execute.exec_command_live(cmd_client, source_erplibre=False)
 
-        # Pose AVANT la compilation, et hors de la personnalisation : c'est
-        # un choix de construction, pas d'habillage. Sans lui, la politique
-        # reseau d'Android refuse le HTTP en clair vers une adresse du
-        # reseau local — la passerelle en Wi-Fi ne joint alors rien, et
-        # chaque reconstruction ordinaire remplace l'APK qui le tolerait.
-        print(t("mobile_lan_cleartext_warning"))
-        do_lan_cleartext = self._is_yes(
-            input(t("mobile_lan_cleartext_ask"))
-        )
-        commande = "./mobile/compile_and_run.sh"
-        if do_lan_cleartext:
-            commande += " --lan-cleartext"
+        env_prefix = ""
+        if do_skip_repos:
+            env_prefix += "BUNDLE_SKIP_REPOS=1 "
+        if do_skip_whisper:
+            env_prefix += "BUNDLE_SKIP_WHISPER=1 "
+        if do_all_abis:
+            env_prefix += "ALL_ABIS=1 "
+        if do_livereload:
+            # Le WebView charge src/ depuis le serveur Vite : le script de
+            # livereload ne connait pas --lan-cleartext.
+            commande = "./mobile/compile_and_run_livereload.sh"
+        else:
+            # Pose AVANT la compilation, et hors de la personnalisation :
+            # c'est un choix de construction, pas d'habillage. Sans lui, la
+            # politique reseau d'Android refuse le HTTP en clair vers une
+            # adresse du reseau local — la passerelle en Wi-Fi ne joint alors
+            # rien, et chaque reconstruction ordinaire remplace l'APK qui le
+            # tolerait.
+            print(t("mobile_lan_cleartext_warning"))
+            do_lan_cleartext = self._is_yes(
+                input(t("mobile_lan_cleartext_ask"))
+            )
+            commande = "./mobile/compile_and_run.sh"
+            if do_lan_cleartext:
+                commande += " --lan-cleartext"
         status = self.execute.exec_command_live(
-            commande, source_erplibre=False
+            f"{env_prefix}{commande}", source_erplibre=False
         )
 
 
