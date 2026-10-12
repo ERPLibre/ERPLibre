@@ -582,13 +582,16 @@ class GitRepoMenuMixin:
 
     def _git_repo_choisir_comparaison(self):
         """(gauche, droite) que l'on compare, ou None pour revenir."""
-        print(f"  [1] {t('Committed freeze → clones (real state)')}")
-        print(f"  [2] {t('Written freeze (manifest/) → clones')}")
-        print(f"  [3] {t('Committed freeze → written freeze, not committed')}")
-        print(f"  [4] {t('Previous freeze → last freeze')}")
-        print(f"  [5] {t('Two revisions of your choice')}")
+        print(f"  [1] 💻 {t('Committed freeze → clones (real state)')}")
+        print(f"  [2] 📝 {t('Written freeze (manifest/) → clones')}")
         print(
-            f"  [6] {t('Matrix: the ERPLibre branches and tags side by side')}"
+            f"  [3] 🚧 {t('Committed freeze → written freeze, not committed')}"
+        )
+        print(f"  [4] ⏪ {t('Previous freeze → last freeze')}")
+        print(f"  [5] 🎯 {t('Two revisions of your choice')}")
+        print(
+            "  [6] 🧮"
+            f" {t('Matrix: the ERPLibre branches and tags side by side')}"
         )
         print(f"  [0] {t('Back')}")
         choix = input("  : ").strip()
