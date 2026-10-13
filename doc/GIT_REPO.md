@@ -160,6 +160,12 @@ When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revisio
 [Freeze the upstream base](#freeze-the-upstream-base)), the dry run also counts the upstream commits since the freeze,
 or flags in red an upstream rewritten since then: the frozen base is no longer in its history.
 
+`Fork and upstream status` (TODO › Execute › Git › Repo) then lists, numbered from 1, the forks that carry both a
+frozen commit and a frozen upstream base: `<base>..<frozen>` and `+N ours`, the commits of the fork between the two,
+read in the clone without network. A fork that is not cloned, whose clone lacks one of the two commits, or whose
+shallow history no longer links the base to the frozen commit, shows its reason instead; nothing is fetched. `N` opens that range in tig — `git log --oneline --graph` without tig — and `a`
+opens each one in turn, stopping at a tig that does not exit with `q`.
+
 ### Apply the upgrade
 
 `Apply the upgrade` (TODO › Execute › Git › Repo) asks to type the Odoo version to confirm, then handles each fork

@@ -1675,8 +1675,18 @@ def open_history(racine, ligne):
     l'appelant continue d'attendre sa fin plutôt que de s'interrompre.
     Rend son code de sortie, négatif s'il a été tué par un signal.
     """
-    chemin = os.path.join(racine, ligne["path"])
-    plage = history_range(ligne)
+    return open_range(
+        os.path.join(racine, ligne["path"]), history_range(ligne)
+    )
+
+
+def open_range(chemin, plage):
+    """Ouvre la plage git `plage` du clone `chemin` : tig, ou
+    git log --oneline --graph à défaut.
+
+    Le programme hérite du terminal, comme dans `open_history`, et rend son
+    code de sortie, négatif s'il a été tué par un signal.
+    """
     if shutil.which("tig"):
         commande = ["tig", plage]
     else:

@@ -19041,6 +19041,46 @@ TRANSLATIONS = {
         "fr": "tig sur chaque projet, l'un après l'autre",
         "en": "tig on each project, one after another",
     },
+    "Our frozen commits since the frozen upstream base:": {
+        "fr": "Nos commits gelés depuis la base amont gelée :",
+        "en": "Our frozen commits since the frozen upstream base:",
+    },
+    "ours": {
+        "fr": "à nous",
+        "en": "ours",
+    },
+    "not cloned": {
+        "fr": "non cloné",
+        "en": "not cloned",
+    },
+    "base absent from the clone: run the freeze with the upstream base": {
+        "fr": "base absente du clone : lancer le gel avec la base amont",
+        "en": "base absent from the clone: run the freeze with the upstream base",
+    },
+    "history cut between the base and the frozen commit (shallow clone)": {
+        "fr": "historique coupé entre la base et le commit gelé (clone superficiel)",
+        "en": "history cut between the base and the frozen commit (shallow clone)",
+    },
+    "the base is not an ancestor of the frozen commit": {
+        "fr": "la base n'est pas un ancêtre du commit gelé",
+        "en": "the base is not an ancestor of the frozen commit",
+    },
+    "frozen commit absent from the clone: synchronize the repositories": {
+        "fr": "commit gelé absent du clone : synchroniser les dépôts",
+        "en": "frozen commit absent from the clone: synchronize the repositories",
+    },
+    "git could not count the commits": {
+        "fr": "git n'a pas pu compter les commits",
+        "en": "git could not count the commits",
+    },
+    "tig on fork N: its commits since the base": {
+        "fr": "tig sur le fork N : ses commits depuis la base",
+        "en": "tig on fork N: its commits since the base",
+    },
+    "tig on each fork, one after another": {
+        "fr": "tig sur chaque fork, l'un après l'autre",
+        "en": "tig on each fork, one after another",
+    },
     "Diffstat and groups": {
         "fr": "Diffstat et regroupements",
         "en": "Diffstat and groups",

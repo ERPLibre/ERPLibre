@@ -403,6 +403,94 @@ def depuis_le_gel(chemin, base):
     return int(out), False
 
 
+def est_clone(chemin):
+    """Vrai si `chemin` est la RACINE d'un dépôt git.
+
+    Un dossier non cloné sous le checkout ERPLibre, lui-même un dépôt git,
+    ferait sinon répondre git pour ERPLibre.
+    """
+    if not os.path.isdir(chemin):
+        return False
+    out, _err, code = git(["rev-parse", "--show-toplevel"], chemin)
+    return code == 0 and os.path.realpath(out.strip()) == os.path.realpath(
+        chemin
+    )
+
+
+def nos_commits_geles(forks, racine=REPO_ROOT):
+    """[dict] — les commits que chaque fork porte entre sa base amont gelée
+    et son commit gelé, lus dans son clone, sans réseau.
+
+    Seuls entrent les constats d'`etat_forks` qui portent à la fois « gel »
+    et « base_gelee », dans leur ordre. Chaque ligne donne « chemin »
+    (relatif à `racine`), « dossier » (absolu), « base », « gel », « nos »,
+    le compte de « base..gel » ou None, et « motif », None quand la plage
+    s'ouvre, sinon ce qui l'en empêche : un clone absent, un commit gelé ou
+    une base absent du magasin d'objets, une base qui n'est plus ancêtre du
+    commit gelé dans l'historique du clone, un compte que git refuse. Un
+    objet absent n'est jamais récupéré.
+    """
+    lignes = []
+    for constat in forks:
+        base, gel = constat.get("base_gelee"), constat.get("gel")
+        if not base or not gel:
+            continue
+        dossier = os.path.join(racine, constat.get("chemin") or "")
+        ligne = {
+            "chemin": constat.get("chemin"),
+            "dossier": dossier,
+            "base": base,
+            "gel": gel,
+            "nos": None,
+            "motif": None,
+        }
+        lignes.append(ligne)
+        if not est_clone(dossier):
+            ligne["motif"] = t("not cloned")
+            continue
+        # Le commit gelé d'abord : la base en est un ancêtre, donc un clone
+        # en retard sur le gel manque des deux, et c'est la synchronisation
+        # qui les ramène.
+        _out, _err, code = git(
+            ["cat-file", "-e", f"{gel}^{{commit}}"], dossier
+        )
+        if code:
+            ligne["motif"] = t(
+                "frozen commit absent from the clone: synchronize the repositories"
+            )
+            continue
+        _out, _err, code = git(
+            ["cat-file", "-e", f"{base}^{{commit}}"], dossier
+        )
+        if code:
+            ligne["motif"] = t(
+                "base absent from the clone: run the freeze with the upstream base"
+            )
+            continue
+        # Un objet présent ne suffit pas : une frontière superficielle posée
+        # entre les deux coupe l'historique, et « base..gel » compterait alors
+        # une plage tronquée sans erreur.
+        _out, _err, code = git(
+            ["merge-base", "--is-ancestor", base, gel], dossier
+        )
+        if code:
+            ligne["motif"] = t(
+                "history cut between the base and the frozen commit"
+                " (shallow clone)"
+                if est_superficiel(dossier)
+                else "the base is not an ancestor of the frozen commit"
+            )
+            continue
+        out, _err, code = git(
+            ["rev-list", "--count", f"{base}..{gel}"], dossier
+        )
+        if code or not out.strip().isdigit():
+            ligne["motif"] = t("git could not count the commits")
+            continue
+        ligne["nos"] = int(out)
+    return lignes
+
+
 def predire_conflits(chemin):
     """Les chemins qui entrent en conflit, sans toucher à rien.
 

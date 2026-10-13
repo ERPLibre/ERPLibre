@@ -744,6 +744,20 @@ class TestRapport(_Checkout):
             fd.open_history(self.racine, ligne)
         self.assertEqual(popen.call_args[0][0][:2], ["git", "log"])
 
+    def test_une_plage_s_ouvre_dans_tig_ou_git_log(self):
+        with patch.object(
+            fd.shutil, "which", return_value="/bin/tig"
+        ), patch.object(fd, "_attendre", return_value=3) as lance:
+            self.assertEqual(fd.open_range("/x/clone", "b..g"), 3)
+        lance.assert_called_once_with(["tig", "b..g"], "/x/clone")
+        with patch.object(fd.shutil, "which", return_value=None), patch.object(
+            fd, "_attendre", return_value=0
+        ) as lance:
+            fd.open_range("/x/clone", "b..g")
+        lance.assert_called_once_with(
+            ["git", "log", "--oneline", "--graph", "b..g"], "/x/clone"
+        )
+
     def test_un_ctrl_c_pendant_tig_ne_sort_pas_du_menu(self):
         rapport = self.build("HEAD", fd.CLONES)
         ligne = fd.select_rows(rapport, "1")[0]

@@ -1186,6 +1186,113 @@ class TestGitRepoCompareFreezes(unittest.TestCase):
             self.assertEqual(self.obj._git_repo_comparer(), 2)
 
 
+class TestGitRepoForkCommits(unittest.TestCase):
+    """Les gestes qui suivent l'état des forks : tig sur « base..gel ».
+
+    La table vient de `repo_upgrade.nos_commits_geles`, et l'ouverture de
+    `git_freeze_diff.open_range`, remplacées ici : aucun terminal ni clone.
+    """
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            execute = None
+
+        self.obj = Menu()
+
+    def ligne(self, chemin, motif=None):
+        return {
+            "chemin": chemin,
+            "dossier": f"/racine/{chemin}",
+            "base": "b" * 40,
+            "gel": "9" * 40,
+            "nos": None if motif else 2,
+            "motif": motif,
+        }
+
+    def parcourir(self, lignes, *saisies, code=0):
+        with self.mock.patch.object(
+            self.menu.repo_upgrade, "nos_commits_geles", return_value=lignes
+        ), self.mock.patch(
+            "builtins.input", side_effect=list(saisies) + [""]
+        ) as saisie, self.mock.patch.object(
+            self.menu.git_freeze_diff, "open_range", return_value=code
+        ) as tig, self.mock.patch(
+            "builtins.print"
+        ) as sortie:
+            self.obj._git_repo_parcourir_forks([])
+        texte = " ".join(str(a) for c in sortie.call_args_list for a in c.args)
+        return tig, saisie, texte
+
+    def lignes(self):
+        return [
+            self.ligne("x/a"),
+            self.ligne("x/b", motif="not cloned"),
+            self.ligne("x/c"),
+        ]
+
+    def test_un_numero_ouvre_sa_plage(self):
+        tig, _, texte = self.parcourir(self.lignes(), "3")
+        tig.assert_called_once_with("/racine/x/c", f"{'b' * 40}..{'9' * 40}")
+        self.assertIn(f"{'b' * 12}..{'9' * 12}", texte)
+        self.assertIn(f"+2 {self.menu.t('ours')}", texte)
+        self.assertIn("not cloned", texte)
+
+    def test_a_ouvre_chacune_et_s_arrete_sur_une_erreur(self):
+        tig, _, _ = self.parcourir(self.lignes(), "a")
+        self.assertEqual(
+            [c.args[0] for c in tig.call_args_list],
+            ["/racine/x/a", "/racine/x/c"],
+        )
+        tig, _, _ = self.parcourir(self.lignes(), "a", code=-2)
+        self.assertEqual(tig.call_count, 1)
+
+    def test_une_ligne_sans_plage_dit_sa_raison(self):
+        tig, _, texte = self.parcourir(self.lignes(), "2")
+        tig.assert_not_called()
+        self.assertIn("x/b — not cloned", texte)
+
+    def test_saisies_refusees(self):
+        tig, saisie, texte = self.parcourir(
+            self.lignes(), "-1", "4", "x", "all", "1,", "0"
+        )
+        tig.assert_not_called()
+        self.assertEqual(texte.count(self.menu.t("Command not found !")), 5)
+        # « 0 » revient : la saisie vide ajoutée derrière n'est pas lue.
+        self.assertEqual(saisie.call_count, 6)
+
+    def test_rien_a_offrir(self):
+        tig, saisie, _ = self.parcourir([])
+        saisie.assert_not_called()
+        tig, saisie, texte = self.parcourir(
+            [self.ligne("x/b", motif="not cloned")]
+        )
+        saisie.assert_not_called()
+        self.assertIn("not cloned", texte)
+
+    def test_l_etat_des_forks_mene_aux_gestes(self):
+        with self.mock.patch.object(
+            self.menu.repo_upgrade, "version_active", return_value="X"
+        ), self.mock.patch.object(
+            self.menu.repo_upgrade, "etat_forks", return_value=[]
+        ) as etat, self.mock.patch.object(
+            self.menu.repo_upgrade, "render", return_value=""
+        ), self.mock.patch.object(
+            self.obj, "_git_repo_parcourir_forks"
+        ) as gestes, self.mock.patch(
+            "builtins.print"
+        ):
+            self.assertEqual(self.obj._git_repo_etat_forks(), 0)
+        etat.assert_called_once_with("X", verifier=True)
+        gestes.assert_called_once_with([])
+
+
 class TestUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Update, dont le repli générique soustrayait deux fois.
 

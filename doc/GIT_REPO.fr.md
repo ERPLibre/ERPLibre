@@ -161,6 +161,13 @@ Quand le gel a écrit la base amont d'un fork (`fork-upstream-freeze-revision`, 
 [Geler la base amont](#geler-la-base-amont)), la passe à sec compte aussi les commits amont depuis le gel, ou signale
 en rouge un amont réécrit depuis : la base gelée n'est plus dans son historique.
 
+`État des forks et de leurs amonts` (TODO › Execute › Git › Repo) liste ensuite, numérotés à partir de 1, les forks
+qui portent à la fois un commit gelé et une base amont gelée : `<base>..<gel>` et `+N à nous`, les commits du fork
+entre les deux, lus dans le clone sans réseau. Un fork non cloné, dont le clone n'a pas l'un des deux commits, ou
+dont l'historique superficiel ne relie plus la base au commit gelé, affiche son motif à la place ; rien n'est
+récupéré. `N` ouvre cette plage dans tig — `git log --oneline --graph` sans
+tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne sort pas par `q`.
+
 ### Appliquer la mise à niveau
 
 `Appliquer la mise à niveau` (TODO › Execute › Git › Repo) demande de taper la version d'Odoo pour confirmer, puis

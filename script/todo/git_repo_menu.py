@@ -344,16 +344,71 @@ class GitRepoMenuMixin:
         """D'où descend chaque fork, et l'amont répond-il encore.
 
         Interroge le réseau : c'est le seul moyen de distinguer une branche
-        amont déclarée d'une branche amont qui existe.
+        amont déclarée d'une branche amont qui existe. Les commits gelés de
+        chaque fork depuis sa base amont gelée se parcourent ensuite, eux
+        sans réseau.
         """
         version = repo_upgrade.version_active(RACINE) or "?"
         print(f"🔗 {t('Fork and upstream status')} — Odoo {version}")
         lst = repo_upgrade.etat_forks(version, verifier=True)
         print()
         print(repo_upgrade.render(lst, True, colour=True))
+        self._git_repo_parcourir_forks(lst)
         return len(
             [x for x in lst if x["etat"] in repo_upgrade.ETATS_A_CORRIGER]
         )
+
+    def _git_repo_parcourir_forks(self, forks):
+        """La table des forks qui portent un commit gelé ET une base amont
+        gelée, puis les gestes qui ouvrent « base..gel » dans tig.
+
+        La table se lit dans les clones, sans réseau. « N » ouvre la plage
+        du fork N (plusieurs numéros séparés par des virgules aussi), « a »
+        chacune de celles qui s'ouvrent ; un tig quitté autrement que par
+        « q » arrête la suite. Sans ligne ouvrable, rien n'est demandé.
+        """
+        lignes = repo_upgrade.nos_commits_geles(forks, RACINE)
+        if not lignes:
+            return
+        print()
+        print(f"  {t('Our frozen commits since the frozen upstream base:')}")
+        largeur = max(len(lg["chemin"] or "") for lg in lignes)
+        for numero, lg in enumerate(lignes, 1):
+            plage = f"{lg['base'][:12]}..{lg['gel'][:12]}"
+            if lg["motif"]:
+                fin = f"⚠ {lg['motif']}"
+            else:
+                fin = f"+{lg['nos']} {t('ours')}"
+            print(
+                f"  {numero:>3}  {lg['chemin'] or '':<{largeur}}"
+                f"  {plage}  {fin}"
+            )
+        if all(lg["motif"] for lg in lignes):
+            return
+        while True:
+            print()
+            print(f"  N   🐯 {t('tig on fork N: its commits since the base')}")
+            print(f"  a   🐯 {t('tig on each fork, one after another')}")
+            print(f"  ⏎   {t('Back')}")
+            choix = input("  : ").strip().lower()
+            if choix in ("", "0"):
+                return
+            if choix == "a":
+                choisis = [lg for lg in lignes if not lg["motif"]]
+            elif choix == "all":
+                choisis = None
+            else:
+                choisis = choix_numeros(choix, lignes)
+            if choisis is None:
+                print(t("Command not found !"))
+                continue
+            for lg in choisis:
+                if lg["motif"]:
+                    print(f"⚠  {lg['chemin']} — {lg['motif']}")
+                    continue
+                plage = f"{lg['base']}..{lg['gel']}"
+                if git_freeze_diff.open_range(lg["dossier"], plage):
+                    break
 
     def _git_repo_appliquer(self):
         """Constate, montre, fait retaper la version, puis applique.

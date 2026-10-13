@@ -302,6 +302,12 @@ When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revisio
 [Freeze the upstream base](#freeze-the-upstream-base)), the dry run also counts the upstream commits since the freeze,
 or flags in red an upstream rewritten since then: the frozen base is no longer in its history.
 
+`Fork and upstream status` (TODO › Execute › Git › Repo) then lists, numbered from 1, the forks that carry both a
+frozen commit and a frozen upstream base: `<base>..<frozen>` and `+N ours`, the commits of the fork between the two,
+read in the clone without network. A fork that is not cloned, whose clone lacks one of the two commits, or whose
+shallow history no longer links the base to the frozen commit, shows its reason instead; nothing is fetched. `N` opens that range in tig — `git log --oneline --graph` without tig — and `a`
+opens each one in turn, stopping at a tig that does not exit with `q`.
+
 ### Apply the upgrade
 
 `Apply the upgrade` (TODO › Execute › Git › Repo) asks to type the Odoo version to confirm, then handles each fork
@@ -358,6 +364,13 @@ The manifest still holds the old frozen commits: the menu offers to freeze again
 Quand le gel a écrit la base amont d'un fork (`fork-upstream-freeze-revision`, voir
 [Geler la base amont](#geler-la-base-amont)), la passe à sec compte aussi les commits amont depuis le gel, ou signale
 en rouge un amont réécrit depuis : la base gelée n'est plus dans son historique.
+
+`État des forks et de leurs amonts` (TODO › Execute › Git › Repo) liste ensuite, numérotés à partir de 1, les forks
+qui portent à la fois un commit gelé et une base amont gelée : `<base>..<gel>` et `+N à nous`, les commits du fork
+entre les deux, lus dans le clone sans réseau. Un fork non cloné, dont le clone n'a pas l'un des deux commits, ou
+dont l'historique superficiel ne relie plus la base au commit gelé, affiche son motif à la place ; rien n'est
+récupéré. `N` ouvre cette plage dans tig — `git log --oneline --graph` sans
+tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne sort pas par `q`.
 
 ### Appliquer la mise à niveau
 

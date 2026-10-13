@@ -392,5 +392,113 @@ class TestGelAmont(DepotsTemporaires):
         self.assertNotIn(BASE, self.lire())
 
 
+class TestNosCommitsGeles(DepotsTemporaires):
+    """La plage « base..gel » de chaque fork, lue dans son clone sans
+    réseau : le compte quand les deux commits y sont, la raison sinon."""
+
+    def setUp(self):
+        super().setUp()
+        self.base, self.pointe = self.forker(nos=2, amont_apres=1)
+        self.clone = self.cloner()
+
+    def constat(self, chemin="clone", base=None, gel=None):
+        return {
+            "chemin": chemin,
+            "base_gelee": self.base if base is None else base,
+            "gel": self.pointe if gel is None else gel,
+        }
+
+    def test_le_compte_de_nos_commits(self):
+        (ligne,) = repo_upgrade.nos_commits_geles(
+            [self.constat()], self.dossier
+        )
+        self.assertEqual(ligne["nos"], 2)
+        self.assertIsNone(ligne["motif"])
+        self.assertEqual(ligne["dossier"], self.clone)
+        self.assertEqual(
+            (ligne["base"], ligne["gel"]), (self.base, self.pointe)
+        )
+
+    def test_seuls_les_forks_aux_deux_commits_entrent(self):
+        sans_base = dict(self.constat(), base_gelee=None)
+        sans_gel = dict(self.constat(), gel=None)
+        lignes = repo_upgrade.nos_commits_geles(
+            [sans_base, self.constat(), sans_gel], self.dossier
+        )
+        self.assertEqual([lg["nos"] for lg in lignes], [2])
+
+    def test_un_clone_absent_ou_un_simple_dossier(self):
+        os.makedirs(os.path.join(self.clone, "sous"))
+        lignes = repo_upgrade.nos_commits_geles(
+            [self.constat("absent"), self.constat("clone/sous")],
+            self.dossier,
+        )
+        self.assertEqual(
+            [lg["motif"] for lg in lignes], [repo_upgrade.t("not cloned")] * 2
+        )
+        self.assertEqual([lg["nos"] for lg in lignes], [None, None])
+
+    def test_un_commit_absent_du_clone_n_est_pas_recupere(self):
+        inconnu = "3" * 40
+        with patch.object(
+            repo_upgrade, "git", wraps=repo_upgrade.git
+        ) as espion:
+            base, gel = repo_upgrade.nos_commits_geles(
+                [self.constat(base=inconnu), self.constat(gel=inconnu)],
+                self.dossier,
+            )
+        self.assertEqual(
+            base["motif"],
+            repo_upgrade.t(
+                "base absent from the clone: run the freeze with the"
+                " upstream base"
+            ),
+        )
+        self.assertEqual(
+            gel["motif"],
+            repo_upgrade.t(
+                "frozen commit absent from the clone: synchronize the"
+                " repositories"
+            ),
+        )
+        self.assertIsNone(base["nos"])
+        sous_commandes = {appel.args[0][0] for appel in espion.call_args_list}
+        self.assertNotIn("fetch", sous_commandes)
+
+    def test_un_clone_en_retard_sur_le_gel_se_synchronise(self):
+        """Ni le commit gelé ni sa base dans le clone : le conseil est de
+        synchroniser, pas de regeler un HEAD en retard."""
+        (ligne,) = repo_upgrade.nos_commits_geles(
+            [self.constat(base="3" * 40, gel="4" * 40)], self.dossier
+        )
+        self.assertEqual(
+            ligne["motif"],
+            repo_upgrade.t(
+                "frozen commit absent from the clone: synchronize the"
+                " repositories"
+            ),
+        )
+
+    def test_un_historique_recoupe_ne_compte_pas_une_plage_tronquee(self):
+        """Un fetch superficiel pose la frontière entre la base et le
+        commit gelé : la base reste dans le magasin d'objets, mais
+        « base..gel » ne compterait qu'une partie de nos commits."""
+        _git(self.clone, "fetch", "-q", "--depth=1", REMOTE_FORK, "principale")
+        self.assertEqual(
+            _git(self.clone, "rev-parse", "--is-shallow-repository"), "true"
+        )
+        (ligne,) = repo_upgrade.nos_commits_geles(
+            [self.constat()], self.dossier
+        )
+        self.assertIsNone(ligne["nos"])
+        self.assertEqual(
+            ligne["motif"],
+            repo_upgrade.t(
+                "history cut between the base and the frozen commit"
+                " (shallow clone)"
+            ),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
