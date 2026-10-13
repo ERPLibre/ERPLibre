@@ -232,12 +232,18 @@ The installer:
 6. **Enable** (skipped with `--no-enable`).
    - Add the UUID to `org.gnome.shell enabled-extensions`, without duplicating
      it.
+   - Remove the UUID from `org.gnome.shell disabled-extensions`, which wins
+     over `enabled-extensions` when an extension was once turned off in the
+     Extensions app.
    - Set `org.gnome.shell disable-user-extensions` to `false`.
-   - Write with `gsettings`, under `dbus-run-session --` when
-     `DBUS_SESSION_BUS_ADDRESS` is unset (an ssh session, a fresh VM). This is
-     the bus guard of the `gnome_ext` tool's `gx()` wrapper. That wrapper runs
-     `gnome-extensions` and ignores failures; the installer instead reads both
-     keys back and fails if they did not take.
+   - Write with `gsettings` on the session bus: `DBUS_SESSION_BUS_ADDRESS`
+     when set; else `/run/user/<uid>/bus` when that socket exists (an ssh
+     session beside an open GNOME session, whose dconf service would
+     otherwise overwrite the write); else under `dbus-run-session --` (a fresh
+     VM, no session). The last case is the bus guard of the `gnome_ext`
+     tool's `gx()` wrapper. That wrapper runs `gnome-extensions` and ignores
+     failures; the installer instead reads the keys back and fails if they
+     did not take.
    - Also run `gnome-extensions enable` when a session bus with
      `org.gnome.Shell` is reachable. It does nothing otherwise.
    - Every step checks before it writes: an existing correct symlink, rule or
