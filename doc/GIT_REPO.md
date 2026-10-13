@@ -160,6 +160,64 @@ When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revisio
 [Freeze the upstream base](#freeze-the-upstream-base)), the dry run also counts the upstream commits since the freeze,
 or flags in red an upstream rewritten since then: the frozen base is no longer in its history.
 
+### Apply the upgrade
+
+`Apply the upgrade` (TODO › Execute › Git › Repo) asks to type the Odoo version to confirm, then handles each fork
+the dry run marks to rebase, conflicting, absorbed upstream or behind upstream. Nothing is pushed. Each fork receives
+a dated branch `<branch>_maj_<YYYYMMDD>`, created on HEAD, where:
+
+- a fork with commits of its own replays them on the upstream: `rebase FETCH_HEAD`, where git drops by itself our
+  commits the upstream already took. Only when the upstream was rewritten since the freeze — the frozen base is no
+  longer in its history — the frozen commit is in HEAD's history and the base under the frozen commit, are only the
+  commits laid since the base replayed: `rebase --onto FETCH_HEAD <base>`, so that the old upstream is not replayed
+  as ours. A base the fork outgrew would replay as ours the upstream commits between it and HEAD: it falls back to the
+  plain rebase. The chosen mode and its reason are recorded in the pass;
+- a fork without commits of its own, behind upstream, fast-forwards: `merge --ff-only FETCH_HEAD`.
+
+Two refusals come before anything is written: a work tree whose tracked files are modified, on which git would refuse
+the rebase, and a fork branch whose tip known to the clone is not an ancestor of HEAD — the remote carries commits HEAD
+lacks, and publishing the result would lose them. A rebase git refuses to start is reported as such, not as a
+conflict. Each pass is recorded under `tasks/git_repo_upgrade/`, which is not versioned.
+
+#### Conflict queue
+
+A rebase stopped on a conflict is left in place: that is where it gets resolved. The conflict queue lists the
+repositories with a rebase in progress, read from the clones themselves, so a rebase finished by hand leaves the
+queue. On each one: open a shell, show the conflicting diff, keep ours, take upstream, continue the rebase, skip the
+commit, abort the rebase, or return to the state managed by repo. "Keep ours" keeps the fork's version, although git
+calls it `theirs` during a rebase. A gesture that ends the rebase writes its outcome into the pass, which the
+publication reads. A rebase finished outside the menu is picked up when entering the queue, the report or the
+publication: a repository whose dated branch contains the upstream of the pass counts as rebased, wherever HEAD is,
+since that branch is what the publication pushes; one detached on its starting commit as back to repo; any other is
+listed and left as is.
+
+#### Publish the updated forks
+
+`Publish the updated forks` pushes the dated branches of the last pass, rebased or fast-forwarded, onto the branch of
+their fork. A choice of numbers, or `all`, picks them; each repository shows its remote, the dated branch and the fork
+branch, the old and the new tip, and whether the push is forced, and nothing leaves without a confirmation.
+
+Every push carries `--force-with-lease` on the remote tip recorded in the pass, empty when the branch did not exist on
+the remote: a fast-forward is not forced, a rewritten history is. A remote that moved since the pass refuses the
+publication: a tracking tip that left the recorded one stops it before anything is sent, so does, before a forced
+push, the tip the remote announces through `git ls-remote`, and git refuses the push if the remote itself moved; the
+pass is to be run again. Before a forced push, the old remote tip, and the frozen commit when
+it is part of it, must stay reachable through a tag or another branch that the fork remote carries, read with
+`git ls-remote` at publish time: a local ref or a stale tracking ref does not say what the remote keeps. Otherwise the
+menu asks for a tag or a branch, with an editable proposed name — `ERPLibre/v<version>_odoo<Odoo version>`, suffixed
+with `_<YYYYMMDD>` when taken, or `<branch>_avant_maj_<YYYYMMDD>` — and pushes it BEFORE the forced push. A branch is
+only created, never moved over an existing one. Once the push is accepted, the clone is detached on the pushed commit,
+as git-repo expects, and the dated branch stays.
+
+The manifest still holds the old frozen commits: the menu offers to freeze again right away. Then commit
+`manifest/`:
+
+```bash
+make repo_freeze UPSTREAM=1
+git add manifest/
+git commit -m "[UPD] manifest: freeze the forks rebased on upstream"
+```
+
 ### Freeze the versions
 
 Each `<project>` of a source file keeps its BRANCH in `revision`. The freeze writes the commit of its clone next to
@@ -334,7 +392,7 @@ make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
 make repo_freeze_diff ARGS="--graph 1"
 ```
 
-In TODO › Git repo, entry 12 offers the usual comparisons, a choice of two revisions among the freeze commits and the
+In TODO › Git repo, entry 13 offers the usual comparisons, a choice of two revisions among the freeze commits and the
 ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
 `b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
 `w` the command that opens an old commit in a git worktree beside the clone, without moving it.

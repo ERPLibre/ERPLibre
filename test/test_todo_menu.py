@@ -586,6 +586,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "🔍 Upgrade — dry run": "_git_repo_a_sec",
         "⬆️ Apply the upgrade": "_git_repo_appliquer",
         "🧩 Conflict queue": "_git_repo_file_conflits",
+        "📤 Publish the updated forks": "_git_repo_publier",
         "📊 Report of the last pass": "_git_repo_rapport",
         "🖥️ Browse the upgrade on screen": "_git_repo_ecran",
         "🔗 Fork and upstream status": "_git_repo_etat_forks",
@@ -777,6 +778,237 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
             code = self.obj._git_repo_reconfigurer(freeze=True)
         self.assertEqual(code, 1)
         self.assertEqual(self.cmds, [])
+
+
+class TestGitRepoPublish(unittest.TestCase):
+    """La publication des forks et la file des conflits, côté menu.
+
+    `repo_apply` est remplacé : ces tests vérifient qu'aucun push ne part
+    sans confirmation, et que la passe enregistre l'issue de chaque geste.
+    """
+
+    SHA_A = "a" * 40
+    SHA_B = "b" * 40
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.ra = git_repo_menu.repo_apply
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            execute = None
+
+        self.obj = Menu()
+        self.res = {
+            "chemin": "x/a",
+            "etat": "rebase",
+            "branche": "X.0_maj_20990101",
+            "remote": "fork_origin_amont",
+            "revision": "X.0",
+        }
+        self.passe = {
+            "horodatage": "20990101T0800",
+            "version": "X.0",
+            "resultats": [self.res],
+        }
+
+    def _plan(self, force=False, a_retenir=()):
+        return {
+            "remote": "fork_origin_amont",
+            "revision": "X.0",
+            "branche": "X.0_maj_20990101",
+            "ancien": self.SHA_A,
+            "nouveau": self.SHA_B,
+            "gel": None,
+            "force": force,
+            "a_retenir": list(a_retenir),
+        }
+
+    def _publier(self, plan, confirms, prompts=(), saisie="1", **remplaces):
+        """Lance la publication, `repo_apply` et les questions remplacés.
+
+        `saisie` répond au choix des numéros ; `remplaces` remplace d'autres
+        fonctions de `repo_apply` (nom=mock). Rend (code, publier, retenir,
+        mettre_a_jour_passe, geler)."""
+        from contextlib import ExitStack
+
+        mock = self.mock
+        with ExitStack() as pile:
+
+            def remplacer(nom, **kw):
+                return pile.enter_context(
+                    mock.patch.object(self.ra, nom, **kw)
+                )
+
+            remplacer("lire_passe", return_value=self.passe)
+            remplacer("plan_publication", return_value=plan)
+            publier = remplacer("publier", return_value=("", "", 0))
+            retenir = remplacer("retenir", return_value=("", "", 0))
+            remplacer("a_retenir", return_value=[])
+            maj = remplacer("mettre_a_jour_passe")
+            remplacer("version_erplibre", return_value="9.9.9")
+            remplacer("tags", return_value=set())
+            for nom, faux in remplaces.items():
+                pile.enter_context(mock.patch.object(self.ra, nom, faux))
+            pile.enter_context(
+                mock.patch("builtins.input", return_value=saisie)
+            )
+            pile.enter_context(
+                mock.patch.object(
+                    self.menu.click, "confirm", side_effect=list(confirms)
+                )
+            )
+            pile.enter_context(
+                mock.patch.object(
+                    self.menu.click, "prompt", side_effect=list(prompts)
+                )
+            )
+            geler = pile.enter_context(
+                mock.patch.object(type(self.obj), "_git_repo_geler")
+            )
+            code = self.obj._git_repo_publier()
+        return code, publier, retenir, maj, geler
+
+    def test_no_push_without_confirmation(self):
+        code, publier, _r, maj, _g = self._publier(self._plan(), [False])
+        self.assertEqual(code, 0)
+        publier.assert_not_called()
+        maj.assert_not_called()
+
+    def test_confirmed_push_is_recorded_then_refreeze_offered(self):
+        code, publier, _r, maj, geler = self._publier(
+            self._plan(), [True, True]
+        )
+        self.assertEqual(code, 1)
+        publier.assert_called_once()
+        champs = maj.call_args[0][2]
+        self.assertEqual(champs, {"etat": "publie", "publie": self.SHA_B})
+        geler.assert_called_once_with()
+
+    def test_retention_ref_needs_its_own_confirmation(self):
+        plan = self._plan(force=True, a_retenir=[self.SHA_A])
+        code, publier, retenir, _m, _g = self._publier(
+            plan, [False], prompts=["tag", "ERPLibre/v9.9.9_odooX.0"]
+        )
+        self.assertEqual(code, 0)
+        retenir.assert_not_called()
+        publier.assert_not_called()
+
+    def test_retention_ref_pushed_before_the_forced_push(self):
+        plan = self._plan(force=True, a_retenir=[self.SHA_A])
+        _c, publier, retenir, _m, _g = self._publier(
+            plan, [True, True, False], prompts=["branch", "X.0_avant"]
+        )
+        retenir.assert_called_once_with(
+            self.mock.ANY,
+            self.SHA_A,
+            "fork_origin_amont",
+            "branche",
+            "X.0_avant",
+        )
+        publier.assert_called_once()
+
+    def test_selection_out_of_range_is_refused(self):
+        """« 0 » et les négatifs indexeraient la liste par la fin."""
+        for saisie in ("0", "-1", "2", "1,0", "x"):
+            with self.subTest(saisie=saisie), self.mock.patch(
+                "builtins.print"
+            ) as affiche:
+                code, publier, _r, _m, _g = self._publier(
+                    self._plan(), [], saisie=saisie
+                )
+                self.assertEqual(code, 0)
+                publier.assert_not_called()
+                affiche.assert_any_call(self.menu.t("Command not found !"))
+
+    def test_numbers_pick_their_repositories(self):
+        lst = [{"n": 1}, {"n": 2}, {"n": 3}]
+        self.assertEqual(
+            self.menu.choix_numeros("3,1", lst), [{"n": 3}, {"n": 1}]
+        )
+        self.assertEqual(self.menu.choix_numeros("all", lst), lst)
+        self.assertIsNone(self.menu.choix_numeros("4", lst))
+
+    def test_a_refused_plan_pushes_nothing_and_asks_nothing(self):
+        plan = dict(self._plan(), refus="remote moved")
+        code, publier, retenir, maj, _g = self._publier(plan, [])
+        self.assertEqual(code, 0)
+        publier.assert_not_called()
+        retenir.assert_not_called()
+        maj.assert_not_called()
+
+    def test_a_rebase_finished_outside_the_menu_becomes_publishable(self):
+        self.res["etat"] = "conflit"
+
+        def reconcilier(passe, racine=None):
+            self.res["etat"] = "rebase"
+            return [(self.res, "conflit", "rebase")]
+
+        faux = self.mock.Mock(side_effect=reconcilier)
+        code, publier, _r, _m, _g = self._publier(
+            self._plan(), [True, False], reconcilier_passe=faux
+        )
+        faux.assert_called_once()
+        self.assertEqual(code, 1)
+        publier.assert_called_once()
+
+    def test_a_single_repository_reads_in_the_singular(self):
+        from script.todo import todo_i18n
+
+        for etat, cle in (
+            ("publie", "published (one)"),
+            ("avance", "fast-forwarded (one)"),
+            ("rebase", "rebased (one)"),
+        ):
+            self.assertEqual(self.menu.ETATS[etat], cle)
+            self.assertIn(cle, todo_i18n.TRANSLATIONS)
+        self.assertEqual(
+            todo_i18n.TRANSLATIONS["published (one)"]["fr"], "publié"
+        )
+        with self.mock.patch.object(self.menu, "t", side_effect=lambda c: c):
+            self.assertEqual(
+                self.menu.decompte(1, "publie"), "1 published (one)"
+            )
+            self.assertEqual(self.menu.decompte(2, "publie"), "2 published")
+
+    def test_the_report_and_the_queue_reconcile_first(self):
+        passe = dict(self.passe, resultats=[])
+        for methode in ("_git_repo_rapport", "_git_repo_file_conflits"):
+            with self.subTest(methode=methode), self.mock.patch.object(
+                self.ra, "lire_passe", return_value=passe
+            ), self.mock.patch.object(
+                self.ra, "reconcilier_passe", return_value=[]
+            ) as faux:
+                getattr(self.obj, methode)()
+                faux.assert_called_once_with(passe, racine=self.menu.RACINE)
+
+    def test_abort_in_the_conflict_queue_is_recorded(self):
+        patch = self.mock.patch.object
+        with patch(self.ra, "fichiers_en_conflit", return_value=[]), patch(
+            self.ra, "abandonner_rebase"
+        ), patch(self.ra, "noter_resolution") as noter, self.mock.patch(
+            "builtins.input", return_value="7"
+        ):
+            self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        self.assertEqual(
+            noter.call_args[0][:3], ("20990101T0800", self.res, "abandonne")
+        )
+
+    def test_continue_that_finishes_records_the_rebase(self):
+        patch = self.mock.patch.object
+        with patch(self.ra, "fichiers_en_conflit", return_value=[]), patch(
+            self.ra, "continuer_rebase", return_value=("", "", 0)
+        ), patch(self.ra, "rebase_en_cours", return_value=False), patch(
+            self.ra, "noter_resolution"
+        ) as noter, self.mock.patch(
+            "builtins.input", return_value="5"
+        ):
+            self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        self.assertEqual(noter.call_args[0][2], "rebase")
 
 
 class TestGitRepoCompareFreezes(unittest.TestCase):

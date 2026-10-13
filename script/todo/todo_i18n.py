@@ -18733,6 +18733,138 @@ TRANSLATIONS = {
         "fr": "Retour à l'état géré par repo.",
         "en": "Back to the state managed by repo.",
     },
+    "📤 Publish the updated forks": {
+        "fr": "📤 Publier les forks mis à niveau",
+        "en": "📤 Publish the updated forks",
+    },
+    "Publish the updated forks": {
+        "fr": "Publier les forks mis à niveau",
+        "en": "Publish the updated forks",
+    },
+    "Nothing to publish in the last pass.": {
+        "fr": "Rien à publier dans la dernière passe.",
+        "en": "Nothing to publish in the last pass.",
+    },
+    "Numbers to publish, separated by commas (all, empty to cancel): ": {
+        "fr": "Numéros à publier, séparés par des virgules (all, vide pour annuler) : ",
+        "en": "Numbers to publish, separated by commas (all, empty to cancel): ",
+    },
+    "Cancelled: nothing was pushed.": {
+        "fr": "Annulé : rien n'a été poussé.",
+        "en": "Cancelled: nothing was pushed.",
+    },
+    "Cancelled: the fork branch was not pushed.": {
+        "fr": "Annulé : la branche du fork n'a pas été poussée.",
+        "en": "Cancelled: the fork branch was not pushed.",
+    },
+    "The dated branch is missing: nothing to push.": {
+        "fr": "La branche datée est introuvable : rien à pousser.",
+        "en": "The dated branch is missing: nothing to push.",
+    },
+    "Remote:": {
+        "fr": "Remote :",
+        "en": "Remote:",
+    },
+    "Branch:": {
+        "fr": "Branche :",
+        "en": "Branch:",
+    },
+    "forced (lease)": {
+        "fr": "forcé (bail)",
+        "en": "forced (lease)",
+    },
+    "fast-forward": {
+        "fr": "fast-forward",
+        "en": "fast-forward",
+    },
+    "Push to the fork?": {
+        "fr": "Pousser sur le fork ?",
+        "en": "Push to the fork?",
+    },
+    "published": {
+        "fr": "publiés",
+        "en": "published",
+    },
+    "published (one)": {
+        "fr": "publié",
+        "en": "published",
+    },
+    "fast-forwarded (one)": {
+        "fr": "avancé en fast-forward",
+        "en": "fast-forwarded",
+    },
+    "rebased (one)": {
+        "fr": "rebasé",
+        "en": "rebased",
+    },
+    "fork remote unreachable": {
+        "fr": "remote du fork injoignable",
+        "en": "fork remote unreachable",
+    },
+    "remote moved since the pass: run the pass again": {
+        "fr": "le distant a bougé depuis la passe : refaites la passe",
+        "en": "remote moved since the pass: run the pass again",
+    },
+    "no rebase in progress and no known outcome, record left as is": {
+        "fr": "aucun rebase en cours ni issue reconnue, enregistrement laissé tel quel",
+        "en": "no rebase in progress and no known outcome, record left as is",
+    },
+    "The manifest still holds the old frozen commits.": {
+        "fr": "Le manifeste porte encore les anciens commits gelés.",
+        "en": "The manifest still holds the old frozen commits.",
+    },
+    "Freeze the versions again now?": {
+        "fr": "Geler à nouveau les versions maintenant ?",
+        "en": "Freeze the versions again now?",
+    },
+    "Freeze the versions, then commit manifest/.": {
+        "fr": "Gelez les versions, puis committez manifest/.",
+        "en": "Freeze the versions, then commit manifest/.",
+    },
+    "is retained by no tag or branch: the forced push would lose it.": {
+        "fr": "n'est retenu par aucun tag ni aucune branche : le push forcé le perdrait.",
+        "en": "is retained by no tag or branch: the forced push would lose it.",
+    },
+    "Keep it with a tag or a branch?": {
+        "fr": "Le garder par un tag ou par une branche ?",
+        "en": "Keep it with a tag or a branch?",
+    },
+    "Push": {
+        "fr": "Pousser",
+        "en": "Push",
+    },
+    "commits retained by no tag or branch": {
+        "fr": "commits retenus par aucun tag ni aucune branche",
+        "en": "commits retained by no tag or branch",
+    },
+    "fast-forwarded": {
+        "fr": "avancés en fast-forward",
+        "en": "fast-forwarded",
+    },
+    "the fast-forward was refused": {
+        "fr": "le fast-forward a été refusé",
+        "en": "the fast-forward was refused",
+    },
+    "git refused to start the rebase": {
+        "fr": "git a refusé de commencer le rebase",
+        "en": "git refused to start the rebase",
+    },
+    "the work tree has uncommitted changes": {
+        "fr": "l'arbre de travail porte des modifications non committées",
+        "en": "the work tree has uncommitted changes",
+    },
+    "the fork branch has commits HEAD lacks": {
+        "fr": "la branche du fork porte des commits absents de HEAD",
+        "en": "the fork branch has commits HEAD lacks",
+    },
+    "rebase aborted": {
+        "fr": "rebase abandonné",
+        "en": "rebase aborted",
+    },
+    "back to the state managed by repo": {
+        "fr": "revenu à l'état géré par repo",
+        "en": "back to the state managed by repo",
+    },
     "🖥️ Browse the upgrade on screen": {
         "fr": "🖥️ Parcourir la mise à niveau à l'écran",
         "en": "🖥️ Browse the upgrade on screen",
