@@ -180,6 +180,7 @@
         remote="ERPLibre_origin_bemade"
         fork-upstream-remote="bemade"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="278540fbafd0244f93a127649b49f4f8d55e8057"
         groups="addons,odoo18.0"
     />
     <project name="brand.git" revision="18.0" freeze-revision="7494e1227c7c88a0240ecdf7532648fa51fce9b0" path="odoo18.0/addons/OCA_brand" remote="OCA" groups="addons,odoo18.0" />
@@ -382,6 +383,7 @@
         remote="ERPLibre_origin_OCA"
         fork-upstream-remote="OCA"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="d4a2885b89502c3e2abe0911a4909975be9469d2"
         groups="addons,odoo18.0"
     />
     <project name="hr.git" revision="18.0" freeze-revision="613514a083778febd0657ec887e6dd13c56a126b" path="odoo18.0/addons/OCA_hr" remote="OCA" groups="addons,odoo18.0" />
@@ -523,6 +525,7 @@
         fork-upstream-remote="muk-it"
         fork-upstream-name="odoo-modules.git"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="d096146a349a724f3776403f945030da26f1778e"
         revision="18.0"
         freeze-revision="9e72e72c04a06af22f11635ef5f6f4d1dc808d73"
         groups="addons,odoo18.0,code_generator"
@@ -568,6 +571,7 @@
         remote="ERPLibre_origin_novacode-nl"
         fork-upstream-remote="novacode-nl"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="c6e56724c9778cb972108ecabe4f93de75f83217"
         groups="addons,odoo18.0"
     />
     <project
@@ -582,8 +586,10 @@
         name="odoo.git"
         path="odoo18.0/odoo"
         remote="ERPLibre_origin_odoo"
-        fork-upstream-remote="odoo"
+        fork-upstream-remote="OCA"
+        fork-upstream-name="OCB.git"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="adeedf682dfb84485c817710c68ae13342b7b491"
         clone-depth="10"
         revision="ERPLibre/18.0"
         freeze-revision="df8828327f2277e1c3ec27ba731c41ce84549f53"
@@ -613,6 +619,7 @@
         remote="ERPLibre_origin_ONLYOFFICE"
         fork-upstream-remote="ONLYOFFICE"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="5a33247ca3346f20b2359959e2c9d034a0b6b981"
         groups="addons,odoo18.0"
     />
     <project
@@ -704,6 +711,7 @@
         remote="ERPLibre_origin_OCA"
         fork-upstream-remote="OCA"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="48101aa63a05aad3d84fc6d7fb5db54257dea9e2"
         groups="addons,odoo18.0"
     />
     <project
@@ -849,6 +857,7 @@
         remote="ERPLibre_origin_OCA"
         fork-upstream-remote="OCA"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="90ed1f3de606eeffc6926c85b4717120ddf31dbb"
         groups="addons,odoo18.0"
     />
     <project
@@ -859,6 +868,7 @@
         remote="ERPLibre_origin_OCA"
         fork-upstream-remote="OCA"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="5b0ada0782688d59dfa4ee622182188f214a5799"
         groups="addons,odoo18.0,code_generator"
     />
     <project
@@ -974,6 +984,7 @@
         remote="ERPLibre_origin_OCA"
         fork-upstream-remote="OCA"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="9d1498e3a5b3ed062f1d4df3951691f99b77163a"
         groups="addons,odoo18.0,code_generator"
     />
     <project
