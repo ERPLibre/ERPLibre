@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Install the Stream Deck (deck code, games, GNOME extension enabled) with one shell installer on every supported amd64 GNOME 45–50 system, and prove it with a long test that reports the extension ACTIVE in a real session.
+**Goal:** Install the Stream Deck (deck code, games, GNOME extension enabled) with one shell installer on every supported amd64 GNOME 45–51 system, and prove it with a long test that reports the extension ACTIVE in a real session.
 
 **Architecture:** `script/install/install_streamdeck.sh` is the only place that knows how to install. It builds `.venv.streamdeck` (no Odoo), writes a `uaccess` udev rule, symlinks and enables the extension. Make, TODO, a QEMU tool and a QEMU profile call it. `long_test/install_streamdeck.py` creates one VM per system from a `git bundle` of HEAD, logs in through GDM autologin, and reads `GetExtensionInfo` over the session bus.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Scope: amd64 only; GNOME `shell-version` 45–50 read from `script/stream_deck/gnome-extension/metadata.json`, never hardcoded.
+- Scope: amd64 only; GNOME `shell-version` 45–51 read from `script/stream_deck/gnome-extension/metadata.json`, never hardcoded.
 - Extension UUID: `streamdeck-tiler@technolibre.ca`; installed as a symlink at `~/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca`.
 - Deck venv: `.venv.streamdeck`, created with the system `python3 -m venv`, no pyenv; ERPLibre tooling (`todo.py`, selenium, instance make targets) keeps `.venv.erplibre`.
 - Installer exit codes: `0` installed, `2` unsupported (one stderr line `UNSUPPORTED: <reason>`), `1` anything else. Runs as the user, `sudo` only for packages and the udev rule.
@@ -97,12 +97,14 @@ Expected: both keys appear uncommented under `[daemon]`.
 ssh $VM 'ls -l /run/user/$(id -u)/bus'
 ssh $VM 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus gdbus call --session --dest org.gnome.Shell.Extensions --object-path /org/gnome/Shell/Extensions --method org.gnome.Shell.Extensions.GetExtensionInfo streamdeck-tiler@technolibre.ca'
 ssh $VM 'journalctl --user -b | grep SDT-PATH'
+ssh $VM "journalctl --user -b -o cat | grep -E '\[StreamDeckTiler\] (mount|enabled)'"
 ```
 
 Expected:
 1. the bus socket exists (autologin reached a session under `--gpu off`);
 2. the reply contains `'state': <1.0>` and `'error': <''>`;
-3. `SDT-PATH /home/<user>/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca` — the unresolved symlink path.
+3. `SDT-PATH /home/<user>/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca` — the unresolved symlink path;
+4. the `[StreamDeckTiler] enabled` line, and no `[StreamDeckTiler] mount <id> failed` line: `enable()` ran to its end and every top-bar indicator mounted. The extension catches an indicator constructor's exception and keeps running, so expectation 2 holds even when no indicator mounted.
 
 Also record `gnome-shell --version`, and the exact `gdbus` reply text, into `tasks/streamdeck-spike.md`: Task 8 parses that format.
 
@@ -112,7 +114,7 @@ Also record `gnome-shell --version`, and the exact `gdbus` reply text, into `tas
 sudo virsh destroy sd-spike; sudo virsh undefine sd-spike --remove-all-storage
 ```
 
-Go / no-go: all three expectations hold → continue with Task 1. Any one fails → stop, write what failed in `tasks/streamdeck-spike.md`, and return to the spec.
+Go / no-go: all four expectations hold → continue with Task 1. Any one fails → stop, write what failed in `tasks/streamdeck-spike.md`, and return to the spec.
 
 ---
 
@@ -1283,7 +1285,7 @@ Expected: `commit-msg` exits 0 with no output. This exact message was checked ag
 
 **Interfaces:**
 - Consumes:
-  - `script/stream_deck/gnome-extension/metadata.json`: the `shell-version` list, which is `["45" … "50"]` today. The script reads it with `python3 -c 'import json…'`.
+  - `script/stream_deck/gnome-extension/metadata.json`: the `shell-version` list, which is `["45" … "51"]` today. The script reads it with `python3 -c 'import json…'`.
   - `script/stream_deck/gnome-extension/po/*.po`: one `.mo` file per language. `--dry-run` lists these.
   - The detection logic of `script/install/install_vpn.sh:45-68` (`detect_os`/`family`). It is copied, with the family set in a global variable instead of echoed.
 - Produces (Task 4 fills in the bodies that are still stubs; every name below stays the same):
@@ -1689,7 +1691,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-The out-of-range GNOME versions come from `metadata.json`: today they are `44.0` and `51.0`. Deriving them keeps this test green when a later change adds a version. `48.1` is the in-range baseline for every other test.
+The out-of-range GNOME versions come from `metadata.json`: today they are `44.0` and `52.0`. Deriving them keeps this test green when a later change adds a version. `48.1` is the in-range baseline for every other test.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -3165,7 +3167,7 @@ Run each command from the checkout root:
 - `.venv.erplibre/bin/ruff check --select I --fix test/test_install_streamdeck.py && .venv.erplibre/bin/ruff format test/test_install_streamdeck.py && .venv.erplibre/bin/ruff check --select E,F,W,B test/test_install_streamdeck.py test/test_streamdeck_entry_points.py`. Expected: `All checks passed!`, and a second `ruff format` reports `1 file left unchanged`.
 - `python3 script/analyse/check_comment_hygiene.py script/install/install_streamdeck.sh test/test_install_streamdeck.py`. Expected: no 🔴 finding.
 - `make -n streamdeck_install streamdeck_uninstall streamdeck_tiler_install_extension | head -4`. Expected: `./script/install/install_streamdeck.sh`, `./script/install/install_streamdeck.sh --uninstall` and `./script/install/install_streamdeck.sh --extension-only` appear.
-- `./script/install/install_streamdeck.sh --dry-run; echo "rc=$?"`. Expected on a GNOME 45–50 workstation: the `family=`, `gnome=`, `packages: sudo …`, `write: …`, `venv: …` and `gsettings: …` lines and `rc=0`. On a system without GNOME: one `UNSUPPORTED:` line and `rc=2`.
+- `./script/install/install_streamdeck.sh --dry-run; echo "rc=$?"`. Expected on a GNOME 45–51 workstation: the `family=`, `gnome=`, `packages: sudo …`, `write: …`, `venv: …` and `gsettings: …` lines and `rc=0`. On a system without GNOME: one `UNSUPPORTED:` line and `rc=2`.
 - `make test_gnome_extension`. Expected: it passes, since the schemas did not change.
 
 - [ ] **Step 7: Commit the installer and the Makefile**
@@ -3212,7 +3214,7 @@ In `script/stream_deck/INSTALL.base.md`, keep lines 1-5 (the mmg header) and rep
 # Guide to install
 
 One command sets up the Stream Deck on Debian, Ubuntu, Fedora, AlmaLinux,
-Rocky Linux, openSUSE and Arch Linux, with GNOME Shell 45 to 50. It runs as
+Rocky Linux, openSUSE and Arch Linux, with GNOME Shell 45 to 51. It runs as
 your user, without Odoo, and calls `sudo` only for the system packages and
 the udev rule.
 
@@ -3220,7 +3222,7 @@ the udev rule.
 # Guide d'installation
 
 Une commande installe le Stream Deck sur Debian, Ubuntu, Fedora, AlmaLinux,
-Rocky Linux, openSUSE et Arch Linux, avec GNOME Shell 45 à 50. Elle tourne
+Rocky Linux, openSUSE et Arch Linux, avec GNOME Shell 45 à 51. Elle tourne
 sous ton compte, sans Odoo, et n'appelle `sudo` que pour les paquets système
 et la règle udev.
 
@@ -3508,12 +3510,12 @@ class TestInstallationLocale(unittest.TestCase):
     def test_le_code_2_montre_la_raison_seule(self):
         lignes = [
             "family=arch",
-            "UNSUPPORTED: GNOME 51 not in shell-version",
+            "UNSUPPORTED: GNOME 52 not in shell-version",
         ]
         _, sortie, rendu = self.lancer(2, lignes)
         self.assertIn(
             "Stream Deck not supported on this system:"
-            " GNOME 51 not in shell-version",
+            " GNOME 52 not in shell-version",
             sortie,
         )
         self.assertNotIn("UNSUPPORTED:", sortie)
@@ -4229,7 +4231,7 @@ After:
         # Odoo », l'entrée locale de TODO et le test long.
         #
         # « desktops » le borne à GNOME : l'extension déclare GNOME Shell 45 à
-        # 50, et l'installateur rend 2 là où gnome-shell manque. « arches » le
+        # 51, et l'installateur rend 2 là où gnome-shell manque. « arches » le
         # borne à amd64, seule architecture que la matrice de validation
         # couvre. « families » : les quatre gestionnaires dont l'installateur
         # porte la table de paquets.
@@ -4879,10 +4881,10 @@ git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit 
 - Test: `test/test_longtest_install_streamdeck.py`
 
 **Interfaces:**
-- Consumes: `long_test/descente.py::module_qemu()` (only in the tests, to check that the matrix keys exist in `deploy_qemu.DISTROS`). It also reads `script/stream_deck/gnome-extension/metadata.json` (`uuid`, `shell-version`) and `extension.js` (`IFACE_XML` interface `org.gnome.Shell.Extensions.StreamDeckTiler`, object `/org/gnome/Shell/Extensions/StreamDeckTiler`, methods `ListPaths` / `ListDevices`).
+- Consumes: `long_test/descente.py::module_qemu()` (only in the tests, to check that the matrix keys exist in `deploy_qemu.DISTROS`). It also reads `script/stream_deck/gnome-extension/metadata.json` (`uuid`, `shell-version`) and `extension.js` (`IFACE_XML` interface `org.gnome.Shell.Extensions.StreamDeckTiler`, object `/org/gnome/Shell/Extensions/StreamDeckTiler`, methods `ListPaths` / `ListDevices`, the `[StreamDeckTiler] mount ${id} failed` line that `_mount` logs when an indicator's constructor throws, and the `[StreamDeckTiler] enabled` line that ends `enable()`).
 - Produces (the names fixed by the shared interfaces): `MATRICE`, `NON_SUPPORTES`, `FAMILLE`, `plan(only)`, `analyser_extension_info(sortie)`, `est_active(info)`, `autologin(famille, user)`, `verdict_systeme(entree, code_install, info, gnome_mesure, *, echec=None, raison="", duree_s=0, journal=None)`, `code_sortie(systemes)`, `arbre_propre(racine)`.
   - `verdict_systeme` takes 4 extra keyword arguments, all with defaults, so the shared signature still holds. Task 9 uses them.
-  - The task also adds these helpers for Task 9: `OUTIL="install_streamdeck"`, `NOM_BASE="long-sd"`, `UUID_EXTENSION`, `UTILISATEUR="erplibre"`, `SYSTEME_EXTRAS="ubuntu:24.04"`, `VCPUS=2`, `MEMOIRE_MO=4096`, `DISQUE_GO=26`, `ARCHITECTURES_HORS_CHAMP`, `COMMANDE_GIT`, `FICHIER_AUTOLOGIN`, `CMD_SESSION`, `CMD_INFO`, `OBJET_EXTENSION`, `INTERFACE_EXTENSION`, `cmd_methode(m)`, `CMD_VENV`, `REGLE_UDEV`, `CMD_UDEV`, `CMD_MTIMES`, `CMD_JOURNAL`, `CMD_EXT_INFO`, `cle(entree)`, `version_gnome(s)`, `majeur(v)`, `raison_non_supportee(s)`, `nom_vm(entree, horodatage)`, `argv_creation(entree, nom, cle_pub="", drapeaux=())`, `ligne_non_supportee(entree)`, `resume(systemes)`.
+  - The task also adds these helpers for Task 9: `OUTIL="install_streamdeck"`, `NOM_BASE="long-sd"`, `UUID_EXTENSION`, `UTILISATEUR="erplibre"`, `SYSTEME_EXTRAS="ubuntu:24.04"`, `VCPUS=2`, `MEMOIRE_MO=4096`, `DISQUE_GO=26`, `ARCHITECTURES_HORS_CHAMP`, `COMMANDE_GIT`, `FICHIER_AUTOLOGIN`, `CMD_SESSION`, `CMD_INFO`, `OBJET_EXTENSION`, `INTERFACE_EXTENSION`, `cmd_methode(m)`, `CMD_VENV`, `REGLE_UDEV`, `CMD_UDEV`, `CMD_MTIMES`, `CMD_JOURNAL`, `CMD_EXT_INFO`, `CMD_MONTAGES`, `indicateurs_en_echec(sortie)`, `journal_lu(sortie)`, `cle(entree)`, `version_gnome(s)`, `majeur(v)`, `raison_non_supportee(s)`, `nom_vm(entree, horodatage)`, `argv_creation(entree, nom, cle_pub="", drapeaux=())`, `ligne_non_supportee(entree)`, `resume(systemes)`.
   - `arbre_propre` uses `git status --porcelain --untracked-files=no`. This is a deliberate change from the literal `--porcelain` in the spec. An untracked file is in neither HEAD nor the bundle, and `private/` is not git-ignored, so counting untracked files would block every run.
 
 - [ ] **Step 1: Write the failing test**
@@ -4901,6 +4903,8 @@ fonctions pures en quelques millisecondes :
 - la matrice : ses clés existent au catalogue QEMU, et chaque GNOME attendu
   est dans le « shell-version » de l'extension ;
 - la lecture de « GetExtensionInfo » : ACTIVE, ERROR, OUT_OF_DATE, absente ;
+- la lecture du journal de session : les indicateurs que l'extension n'a
+  pas montés ;
 - l'autologin de chaque famille, rejoué sur un vrai fichier ;
 - le verdict d'un système et le code de sortie de la course ;
 - le refus d'un arbre de travail modifié.
@@ -5131,11 +5135,65 @@ class LesCommandesVisentLExtension(unittest.TestCase):
         self.assertEqual(sd.majeur("46.0"), "46")
 
     def test_the_unsupported_reason_is_the_installer_line(self):
-        sortie = "family=arch\nUNSUPPORTED: GNOME 51 not in shell-version\n"
+        sortie = "family=arch\nUNSUPPORTED: GNOME 52 not in shell-version\n"
         self.assertEqual(
-            sd.raison_non_supportee(sortie), "GNOME 51 not in shell-version"
+            sd.raison_non_supportee(sortie), "GNOME 52 not in shell-version"
         )
         self.assertEqual(sd.raison_non_supportee("ok\n"), "")
+
+
+class LesIndicateursNonMontes(unittest.TestCase):
+    """L'extension attrape l'exception du constructeur d'un indicateur et
+    reste ACTIVE : seul le journal de session nomme ce qui manque."""
+
+    def test_failed_mounts_are_listed_by_id(self):
+        sortie = (
+            "[StreamDeckTiler] mount pencil failed:"
+            " No property vertical on StBoxLayout\n"
+            "[StreamDeckTiler] mount device failed:"
+            " No property vertical on StBoxLayout\n"
+        )
+        self.assertEqual(sd.indicateurs_en_echec(sortie), ["device", "pencil"])
+
+    def test_other_journal_lines_are_ignored(self):
+        sortie = (
+            "[StreamDeckTiler] enabled\n"
+            "[StreamDeckTiler] sync failed: timeout\n"
+            "gnome-shell[4242]: mount point busy, failed\n"
+        )
+        self.assertEqual(sd.indicateurs_en_echec(sortie), [])
+
+    def test_no_output_is_no_failure(self):
+        self.assertEqual(sd.indicateurs_en_echec(None), [])
+        self.assertEqual(sd.indicateurs_en_echec(""), [])
+
+    def test_the_journal_is_read_when_enable_logged_its_end(self):
+        sortie = (
+            "[StreamDeckTiler] mount device failed:"
+            " No property vertical on StBoxLayout\n"
+            "[StreamDeckTiler] enabled\n"
+        )
+        self.assertTrue(sd.journal_lu(sortie))
+
+    def test_no_enabled_line_is_an_unread_journal(self):
+        """Sans la ligne de fin d'enable(), l'absence d'échec ne prouve
+        rien : ssh a pu tomber ou le journal être vide."""
+        self.assertFalse(sd.journal_lu(None))
+        self.assertFalse(sd.journal_lu(""))
+        self.assertFalse(
+            sd.journal_lu(
+                "[StreamDeckTiler] mount pencil failed: boom\n"
+                "[StreamDeckTiler] disabled\n"
+            )
+        )
+
+    def test_the_command_reads_the_lines_extension_js_writes(self):
+        src = (EXTENSION / "extension.js").read_text(encoding="utf-8")
+        self.assertIn("[StreamDeckTiler] mount ${id} failed", src)
+        self.assertIn("'[StreamDeckTiler] enabled'", src)
+        self.assertIn("journalctl --user -b", sd.CMD_MONTAGES)
+        self.assertIn("mount", sd.CMD_MONTAGES)
+        self.assertIn("enabled", sd.CMD_MONTAGES)
 
 
 class LAutologin(unittest.TestCase):
@@ -5294,11 +5352,11 @@ class LeVerdict(unittest.TestCase):
 
     def test_exit_2_is_unsupported_with_the_reason(self):
         ligne = sd.verdict_systeme(
-            self.ARCH, 2, None, "", raison="GNOME 51 not in shell-version"
+            self.ARCH, 2, None, "", raison="GNOME 52 not in shell-version"
         )
         self.assertEqual(
             (ligne["verdict"], ligne["etape"]),
-            ("UNSUPPORTED", "GNOME 51 not in shell-version"),
+            ("UNSUPPORTED", "GNOME 52 not in shell-version"),
         )
 
     def test_exit_1_is_an_install_failure(self):
@@ -5554,7 +5612,7 @@ MATRICE = [
     _entree("almalinux", "10", "47"),
     _entree("rocky", "10", "47"),
     _entree("opensuse", "16.0", "48"),
-    _entree("arch", "latest", "50", roulante=True),
+    _entree("arch", "latest", "51", roulante=True),
     _entree("opensuse", "tumbleweed", "50", roulante=True),
 ]
 
@@ -5644,6 +5702,17 @@ CMD_JOURNAL = (
     " | grep -i -e streamdeck -e gnome-shell | tail -200"
 )
 CMD_EXT_INFO = BUS + f"gnome-extensions info {UUID_EXTENSION} 2>&1"
+# Deux sortes de lignes d'extension.js : « mount <id> failed », écrite par
+# _mount() quand le constructeur d'un indicateur lève, et « enabled », écrite
+# à la fin d'enable(), après les montages. L'extension attrape l'exception et
+# continue : elle reste ACTIVE, et ListDevices rend « [] » sans l'indicateur
+# des appareils comme sans appareil. « || true » garde le code 0 quand grep
+# ne trouve rien ; une sortie sans « enabled » veut alors dire que le journal
+# n'a pas été lu (ssh tombé, journal vide), jamais que tout est monté.
+CMD_MONTAGES = (
+    "journalctl --user -b -o cat --no-pager 2>&1"
+    r" | grep -E '\[StreamDeckTiler\] (mount [^ ]+ failed|enabled)' || true"
+)
 
 
 def cmd_methode(methode):
@@ -5723,6 +5792,32 @@ def analyser_extension_info(sortie):
 def est_active(info):
     """ACTIVE : état 1 et erreur vide. Toute autre forme est un échec."""
     return bool(info) and info.get("state") == 1 and info.get("error") == ""
+
+
+_MONTAGE_ECHOUE = re.compile(r"\[StreamDeckTiler\] mount (\S+) failed")
+
+
+def indicateurs_en_echec(sortie):
+    """Les ids des indicateurs non montés, triés et sans doublon.
+
+    Lus dans les lignes « [StreamDeckTiler] mount <id> failed: <message> »
+    de la sortie de CMD_MONTAGES ; un indicateur réactivé qui échoue de
+    nouveau n'apparaît qu'une fois. Une sortie vide ou None rend [].
+    """
+    return sorted(set(_MONTAGE_ECHOUE.findall(sortie or "")))
+
+
+def journal_lu(sortie):
+    """Vrai quand la sortie de CMD_MONTAGES porte la ligne
+    « [StreamDeckTiler] enabled » qui clôt enable().
+
+    C'est la preuve que le journal de la session a été lu : sans elle, une
+    sortie sans « mount <id> failed » ne dit rien des indicateurs.
+    """
+    return any(
+        ligne.strip().endswith("[StreamDeckTiler] enabled")
+        for ligne in (sortie or "").splitlines()
+    )
 
 
 _NOM_UTILISATEUR = re.compile(r"^[a-z_][a-z0-9_-]*$")
@@ -5966,7 +6061,7 @@ python3 script/analyse/check_comment_hygiene.py long_test/install_streamdeck.py 
 Expected:
 - ruff reports `All checks passed!` and leaves both files unchanged.
 - The hygiene check prints no 🔴 line.
-- `Ran 53 tests … OK`.
+- `Ran 59 tests … OK`.
 - Both existing suites stay `OK`.
 
 - [ ] **Step 5: Commit**
@@ -5977,11 +6072,12 @@ cat > /tmp/sd-task8.msg <<'EOF'
 [ADD] long_test: Stream Deck matrix, GNOME verdict and autologin helpers
 
 The Stream Deck long test needs pure parts that run without a VM: the
-support matrix with its expected GNOME versions, the parser of the gdbus
-GetExtensionInfo reply, the per-family GDM autologin command, the verdict
-of one system and the exit code of a run. ACTIVE requires state 1 and an
-empty error; an extension that throws stays listed but is not ACTIVE. A
-rolling distribution may report UNSUPPORTED without failing the run.
+support matrix with its expected GNOME versions, the parsers of the gdbus
+GetExtensionInfo reply and of failed indicator mounts in the session
+journal, the per-family GDM autologin command, the verdict of one system
+and the exit code of a run. ACTIVE requires state 1 and an empty error; an
+extension that throws stays listed but is not ACTIVE. A rolling
+distribution may report UNSUPPORTED without failing the run.
 Checked: test_longtest_install_streamdeck, autologin replayed on real files.
 
 --- FR ---
@@ -5989,13 +6085,13 @@ Checked: test_longtest_install_streamdeck, autologin replayed on real files.
 [ADD] long_test : matrice Stream Deck, verdict GNOME et autologin
 
 Le test long du Stream Deck a besoin de parties pures qui tournent sans VM :
-la matrice de support et ses versions de GNOME attendues, la lecture de la
-réponse gdbus de GetExtensionInfo, la commande d'autologin GDM par famille,
-le verdict d'un système et le code de sortie d'une course. ACTIVE exige
-l'état 1 et une erreur vide ; une extension qui lève reste listée sans être
-ACTIVE. Une distribution roulante peut rendre UNSUPPORTED sans faire
-échouer la course. Vérifié : test_longtest_install_streamdeck, autologin
-rejoué sur de vrais fichiers.
+la matrice de support et ses GNOME attendus, la lecture de la réponse gdbus
+de GetExtensionInfo et des indicateurs non montés du journal de session,
+l'autologin GDM par famille, le verdict d'un système et le code de sortie
+d'une course. ACTIVE exige l'état 1 et une erreur vide ; une extension qui
+lève reste listée sans être ACTIVE. Une distribution roulante peut rendre
+UNSUPPORTED sans faire échouer la course. Vérifié :
+test_longtest_install_streamdeck, autologin rejoué sur de vrais fichiers.
 
 Assisted-by: Claude Opus 5.5
 EOF
@@ -6017,7 +6113,7 @@ git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit 
 
 **Interfaces:**
 - Consumes:
-  - Task 8 helpers.
+  - Task 8 helpers, among them `CMD_MONTAGES`, `indicateurs_en_echec(sortie)` and `journal_lu(sortie)` for the `extension-indicators` check.
   - From `descente`: `Descente.uuid_libvirt`, `Famille`, `capacite_hote`, `cle_publique()` (returns the path of `~/.ssh/id_ed25519.pub` or `id_rsa.pub`, or `""`), `detruire` (the Task 7 version, which undoes every `niveau == 1` entry), `detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True)`, `dire`, `drapeaux_cache`, `retirer_alias(rapport, journal, nom_base)`.
   - From `TODO.__new__(TODO)`: `_qemu_erplibre_remote_cmd(None, desktop="gnome")`, `_qemu_vm_ip(name, timeout)`, `_write_ssh_config_entry([name], user, ip, identity_file=)`.
   - `script/install/install_streamdeck.sh` (Task 3): `--with-extras`, `--uninstall`, exit 0/1/2, and a stderr line starting with `UNSUPPORTED:`.
@@ -6459,6 +6555,82 @@ class DeuxCoursesDeSuite(unittest.TestCase):
         self.assertEqual(len(inscrites), 2)
         self.assertNotIn(gardee, [e["nom"] for e in inscrites])
         self.assertEqual(detruites, [(e["nom"], e["uuid"]) for e in inscrites])
+
+
+class LesIndicateursDuPanneau(unittest.TestCase):
+    """controler() lit le journal de session après les méthodes D-Bus, et de
+    nouveau après la réinstallation : ACTIVE et « [] » ne prouvent pas qu'un
+    indicateur est monté."""
+
+    ENTIER = "[StreamDeckTiler] enabled\n"
+    ECHEC = (
+        "[StreamDeckTiler] mount device failed:"
+        " No property vertical on StBoxLayout\n"
+        "[StreamDeckTiler] enabled\n"
+    )
+
+    def setUp(self):
+        dossier = tempfile.mkdtemp(prefix="sd-indicateurs-")
+        self.addCleanup(shutil.rmtree, dossier, ignore_errors=True)
+        self.log = os.path.join(dossier, "systeme.log")
+        self.lectures = 0
+
+    def _controler(self, *montages):
+        """controler() sur une VM simulée. `montages` : les réponses
+        successives à CMD_MONTAGES ; une lecture de trop lève IndexError."""
+        from unittest import mock
+
+        reponses = list(montages)
+
+        def sonder(cible, commande, delai=180):
+            if commande == sd.CMD_MONTAGES:
+                self.lectures += 1
+                return reponses.pop(0)
+            if commande == "gnome-shell --version":
+                return "GNOME Shell 46.0"
+            if commande in (sd.CMD_VENV, sd.CMD_UDEV):
+                return "ok"
+            if commande == sd.CMD_MTIMES:
+                return "regle 1"
+            return "('[]',)"
+
+        with mock.patch.multiple(
+            sd,
+            sonder=sonder,
+            session_ouverte=lambda cible: True,
+            attendre_extension=lambda cible, log: {"state": 1.0, "error": ""},
+            installer=lambda cible, log, extras=False, option="": (0, ""),
+            redemarrer=lambda cible, log: True,
+        ):
+            return sd.controler("vm", sd.MATRICE[0], self.log)
+
+    def test_a_whole_panel_passes_both_reads(self):
+        echec, info, gnome = self._controler(self.ENTIER, self.ENTIER)
+        self.assertIsNone(echec)
+        self.assertEqual(gnome, "46.0")
+        self.assertEqual(self.lectures, 2)
+
+    def test_a_failed_mount_stops_after_the_dbus_check(self):
+        echec, info, _gnome = self._controler(self.ECHEC)
+        self.assertEqual(echec, "extension-indicators")
+        self.assertTrue(sd.est_active(info))
+        self.assertEqual(self.lectures, 1)
+        with open(self.log, encoding="utf-8") as fh:
+            self.assertIn("indicateurs non montés : device", fh.read())
+
+    def test_a_failed_mount_after_the_reinstall_fails_it(self):
+        echec, _info, _gnome = self._controler(self.ENTIER, self.ECHEC)
+        self.assertEqual(echec, "reinstall")
+        self.assertEqual(self.lectures, 2)
+
+    def test_an_unread_journal_is_not_a_whole_panel(self):
+        """Une lecture vide — ssh tombé, journal vide — ne passe pas pour
+        « aucun échec »."""
+        echec, _info, _gnome = self._controler("")
+        self.assertEqual(echec, "extension-indicators")
+        self.assertEqual(self.lectures, 1)
+        with open(self.log, encoding="utf-8") as fh:
+            self.assertIn("journal de session sans", fh.read())
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -6470,6 +6642,7 @@ Expected: FAIL with:
 - `AssertionError: 'install_streamdeck.py' not found in (...)` (lock and menu)
 - the dry-run subprocess returns 0 but prints no plan
 - `DeuxCoursesDeSuite`: `AttributeError: module 'install_streamdeck' has no attribute 'Course'` for the three tests that build a run; `test_two_run_stamps_never_share_a_vm_name` already passes on Task 8's `nom_vm`
+- `LesIndicateursDuPanneau`: `AttributeError: <module 'install_streamdeck' …> does not have the attribute 'sonder'` for its four tests
 
 - [ ] **Step 3: Implement the runner**
 
@@ -6533,6 +6706,7 @@ DELAIS_CONTROLE = {
     "session": 300,
     "extension-active": 120,
     "extension-dbus": 30,
+    "extension-indicators": 30,
     "venv": 60,
 }
 
@@ -6872,6 +7046,32 @@ def attendre_extension(cible, log):
     return info
 
 
+def indicateurs_non_montes(cible, log):
+    """Les ids des indicateurs que le journal de session dit non montés.
+
+    L'extension attrape l'exception du constructeur d'un indicateur et
+    continue : ACTIVE et les réponses D-Bus tiennent même quand aucun
+    indicateur n'est monté. Le journal se lit une fois ; sans la ligne
+    « [StreamDeckTiler] enabled », il n'est pas tenu pour lu et la fonction
+    rend ["(journal non lu)"] plutôt qu'une liste vide qui passerait pour un
+    succès. Ce qui manque va au journal du système.
+    """
+    sortie = sonder(
+        cible, CMD_MONTAGES, DELAIS_CONTROLE["extension-indicators"]
+    )
+    if not journal_lu(sortie):
+        _ajouter(
+            log,
+            "✗ journal de session sans « [StreamDeckTiler] enabled » : "
+            f"{sortie or '(rien)'}",
+        )
+        return ["(journal non lu)"]
+    echecs = indicateurs_en_echec(sortie)
+    if echecs:
+        _ajouter(log, f"✗ indicateurs non montés : {', '.join(echecs)}")
+    return echecs
+
+
 def session_ouverte(cible):
     """Le bus de l'utilisateur existe et GNOME Shell y a pris son nom."""
     return attendre(
@@ -6902,9 +7102,11 @@ def controler(cible, entree, log, extras=False):
     info = attendre_extension(cible, log)
     if not est_active(info):
         return "extension-active", info, gnome
-    # ListPaths lit les réglages, ListDevices l'indicateur des appareils :
-    # l'objet D-Bus est exporté avant les deux, et répondre à une méthode qui
-    # ne touche ni l'un ni l'autre ne prouverait rien.
+    # L'objet D-Bus est exporté avant les réglages : une méthode qui ne les
+    # touche pas répondrait même si enable() avait levé ensuite. ListPaths
+    # les lit. ListDevices rend « [] » sans appareil branché comme sans
+    # indicateur des appareils monté : sa réponse ne prouve pas l'indicateur,
+    # d'où la lecture du journal qui suit.
     for methode in ("ListPaths", "ListDevices"):
         reponse = sonder(
             cible, cmd_methode(methode), DELAIS_CONTROLE["extension-dbus"]
@@ -6912,6 +7114,8 @@ def controler(cible, entree, log, extras=False):
         if not reponse.startswith("('"):
             _ajouter(log, f"✗ {methode} : {reponse or '(aucune réponse)'}")
             return "extension-dbus", info, gnome
+    if indicateurs_non_montes(cible, log):
+        return "extension-indicators", info, gnome
     if sonder(cible, CMD_VENV, DELAIS_CONTROLE["venv"]) != "ok":
         return "venv", info, gnome
     if sonder(cible, CMD_UDEV) != "ok":
@@ -6931,7 +7135,7 @@ def controler(cible, entree, log, extras=False):
     if not session_ouverte(cible):
         return "reinstall", info, gnome
     info = attendre_extension(cible, log)
-    if not est_active(info):
+    if not est_active(info) or indicateurs_non_montes(cible, log):
         return "reinstall", info, gnome
     return None, info, gnome
 
@@ -7458,7 +7662,7 @@ In `long_test/README.base.md`, insert just before line 246, `## Starting from a 
 One VM per distribution version, one at a time: Ubuntu 24.04, 25.10 and
 26.04, Debian 13, Fedora 41 to 44, AlmaLinux 10, Rocky Linux 10, openSUSE
 Leap 16.0, and the two rolling ones, Arch Linux and openSUSE Tumbleweed. The
-systems GNOME 45 to 50 does not reach — Debian 12, the EL9 rebuilds — and
+systems GNOME 45 to 51 does not reach — Debian 12, the EL9 rebuilds — and
 those without a GNOME desktop path — NixOS, Proxmox — are listed
 `UNSUPPORTED` and get no VM.
 
@@ -7472,8 +7676,14 @@ The verdict is what GNOME Shell answers, not a return code: `GetExtensionInfo`
 must report state `1` and an empty `error`. Being listed in
 `enabled-extensions` is not enough — an extension that throws in `enable()`
 stays listed, in ERROR. The extension's own `ListPaths` and `ListDevices`
-must answer too, then the venv imports, the udev rule, a second install that
-changes nothing, and an uninstall-reinstall that comes back ACTIVE.
+must answer too. ACTIVE does not prove the top bar either: the extension
+catches an indicator constructor's exception and keeps running, so the
+`extension-indicators` check reads the user journal: it requires the
+`[StreamDeckTiler] enabled` line that ends `enable()`, so an unread journal
+fails too, and it fails on any `[StreamDeckTiler] mount <id> failed` line.
+Then come the venv imports, the
+udev rule, a second install that changes nothing, and an uninstall-reinstall
+that comes back ACTIVE with every indicator mounted.
 
 ```
 ./long_test/install_streamdeck.py                 # the whole matrix
@@ -7486,7 +7696,7 @@ changes nothing, and an uninstall-reinstall that comes back ACTIVE.
 
 The report lists one line per system, with the GNOME version expected and
 the one measured: the matrix in the script is corrected from those lines. On
-Arch and Tumbleweed, `UNSUPPORTED` means GNOME moved past 50, and it is the
+Arch and Tumbleweed, `UNSUPPORTED` means GNOME moved past 51, and it is the
 expected signal to update `metadata.json`. Each system's log — installer
 output, user journal, `gnome-extensions info` — is a `.log` in the run's
 sub-directory.
@@ -7501,7 +7711,7 @@ And just before line 524 (shifted by the insertion above), `## Partir d'un hôte
 Une VM par version de distribution, l'une après l'autre : Ubuntu 24.04, 25.10
 et 26.04, Debian 13, Fedora 41 à 44, AlmaLinux 10, Rocky Linux 10, openSUSE
 Leap 16.0, et les deux roulantes, Arch Linux et openSUSE Tumbleweed. Les
-systèmes que GNOME 45 à 50 n'atteint pas — Debian 12, les reconstructions
+systèmes que GNOME 45 à 51 n'atteint pas — Debian 12, les reconstructions
 EL9 — et ceux sans chemin de bureau GNOME — NixOS, Proxmox — sont listés
 `UNSUPPORTED` et n'ont pas de VM.
 
@@ -7515,9 +7725,15 @@ Le verdict est ce que GNOME Shell répond, pas un code de retour :
 `GetExtensionInfo` doit rendre l'état `1` et une `error` vide. Figurer dans
 `enabled-extensions` ne suffit pas — une extension qui lève dans `enable()` y
 reste listée, en ERREUR. Les `ListPaths` et `ListDevices` de l'extension
-doivent répondre aussi, puis les imports du venv, la règle udev, une seconde
-installation qui ne change rien, et une désinstallation-réinstallation qui
-revient ACTIVE.
+doivent répondre aussi. ACTIVE ne prouve pas non plus la barre du haut :
+l'extension attrape l'exception du constructeur d'un indicateur et continue,
+alors le contrôle `extension-indicators` lit le journal utilisateur : il
+exige la ligne `[StreamDeckTiler] enabled` qui clôt `enable()`, si bien qu'un
+journal non lu échoue aussi, et il échoue sur toute ligne
+`[StreamDeckTiler] mount <id> failed`. Viennent ensuite les
+imports du venv, la règle udev, une seconde installation qui ne change rien,
+et une désinstallation-réinstallation qui revient ACTIVE avec chaque
+indicateur monté.
 
 ```
 ./long_test/install_streamdeck.py                 # toute la matrice
@@ -7531,7 +7747,7 @@ revient ACTIVE.
 Le rapport porte une ligne par système, avec la version de GNOME attendue et
 celle mesurée : c'est d'après ces lignes que la matrice du script se
 corrige. Sur Arch et Tumbleweed, `UNSUPPORTED` veut dire que GNOME a dépassé
-50, et c'est le signal attendu pour mettre `metadata.json` à jour. Le
+51, et c'est le signal attendu pour mettre `metadata.json` à jour. Le
 journal de chaque système — sortie de l'installateur, journal utilisateur,
 `gnome-extensions info` — est un `.log` dans le sous-dossier de la course.
 

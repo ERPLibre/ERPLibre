@@ -35,14 +35,14 @@ This spec delivers:
   reaches a game.
 - Configuring autologin on the user's machine. Only the long test sets it up,
   and only inside its own VMs.
-- Supporting GNOME 51 or later. `metadata.json` declares 45–50. Adding a
+- Supporting GNOME 52 or later. `metadata.json` declares 45–51. Adding a
   version is a separate change, and the long test reports when one is needed.
 - arm64, s390x, ppc64le. Only amd64 is in scope.
 
 ## 2. Support matrix
 
-The extension declares `shell-version` 45 to 50. A distribution version is in
-scope when it is amd64, ships GNOME 45–50, and offers a GNOME desktop path in
+The extension declares `shell-version` 45 to 51. A distribution version is in
+scope when it is amd64, ships GNOME 45–51, and offers a GNOME desktop path in
 `_qemu_erplibre_remote_cmd(desktop="gnome")`.
 
 | Distribution | Keys (`--distro:--version`) | Expected GNOME | Expected verdict |
@@ -53,7 +53,7 @@ scope when it is amd64, ships GNOME 45–50, and offers a GNOME desktop path in
 | AlmaLinux | `almalinux:10` | 47 | ACTIVE |
 | Rocky Linux | `rocky:10` | 47 | ACTIVE |
 | openSUSE Leap | `opensuse:16.0` | 48 | ACTIVE |
-| Arch Linux (rolling) | `arch:latest` | ≥ 50 | ACTIVE while GNOME ≤ 50, else UNSUPPORTED (shell version) |
+| Arch Linux (rolling) | `arch:latest` | 51 | ACTIVE while GNOME ≤ 51, else UNSUPPORTED (shell version) |
 | openSUSE Tumbleweed (rolling) | `opensuse:tumbleweed` | ≥ 50 | same as Arch |
 
 The keys are the values `deploy_qemu.py` accepts, and the ones `--only` takes.
@@ -445,7 +445,7 @@ VMs run one at a time. Each VM is destroyed before the next is created, unless
 5. **Install.** Run `./script/install/install_streamdeck.sh` and record its exit
    code and its output.
    - Exit 2 gives the verdict `UNSUPPORTED(<reason>)`. On Arch and Tumbleweed
-     this means GNOME moved past 50, and it is the expected signal to update
+     this means GNOME moved past 51, and it is the expected signal to update
      `metadata.json`.
    - Exit 1 gives `FAILED(install)`.
 6. **Autologin**, test-only. Write the display manager's autologin for the VM
@@ -466,11 +466,12 @@ VMs run one at a time. Each VM is destroyed before the next is created, unless
    | `session` | `/run/user/$UID/bus` exists and `org.gnome.Shell` is on it (`gdbus call … org.freedesktop.DBus.NameHasOwner`) | 300 s |
    | `gnome-version` | `gnome-shell --version`, recorded and compared with the matrix | — |
    | `extension-active` | `GetExtensionInfo streamdeck-tiler@technolibre.ca`: `state` is `1` and `error` is empty. **Main verdict.** | 120 s |
-   | `extension-dbus` | the extension's own `ListPaths` and `ListDevices` answer. The object is exported before `getSettings()`, and stays exported when `enable()` throws later, so a method that touches neither settings nor indicators (`GetMonitorGeometry`) proves nothing. `ListPaths` reads the settings; `ListDevices` reads the device indicator. | 30 s |
+   | `extension-dbus` | the extension's own `ListPaths` and `ListDevices` answer. The object is exported before `getSettings()`, and stays exported when `enable()` throws later, so a method that touches neither settings nor indicators (`GetMonitorGeometry`) proves nothing. `ListPaths` reads the settings. `ListDevices` answers `[]` both when no deck is plugged in and when the device indicator never mounted, so its answer does not prove the indicator; `extension-indicators` checks that. | 30 s |
+   | `extension-indicators` | the session journal (`journalctl --user -b -o cat`) holds the `[StreamDeckTiler] enabled` line that ends `enable()`, and no `[StreamDeckTiler] mount <id> failed` line. A journal without the enabled line fails the check: an ssh failure or an empty journal must not read as "no failed mount". The extension keeps running when an indicator's constructor throws, so ACTIVE and the D-Bus answers do not prove the panel is whole: under a Shell API break every indicator can fail while `GetExtensionInfo` still reports ACTIVE. | 30 s |
    | `venv` | `.venv.streamdeck/bin/python -c 'import StreamDeck, pyudev, PIL, cv2, requests'` | 60 s |
    | `udev` | `/etc/udev/rules.d/70-streamdeck.rules` contains `uaccess` and `0fd9` | — |
    | `idempotent` | a second `install_streamdeck.sh` exits 0, and leaves the rule, venv and symlink with unchanged mtimes | install timeout |
-   | `reinstall` | `--uninstall`, then install, reboot, `extension-active` again | install timeout |
+   | `reinstall` | `--uninstall`, then install, reboot, `extension-active` and `extension-indicators` again | install timeout |
 
    The session-bus commands run with
    `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus`.
@@ -524,6 +525,7 @@ under a `systemes` key:
 | Dirty working tree | long test refuses to start |
 | VM creation or ssh timeout | `FAILED(vm)` / `FAILED(ssh)`, next system |
 | Extension enabled but in ERROR | `FAILED(extension-active)`, with the `error` text and the journal |
+| An indicator failed to mount | `FAILED(extension-indicators)`, with the journal lines |
 | `enabled-extensions` not written | installer exit 1 (the key is read back) |
 
 ## 8. Testing
@@ -541,6 +543,10 @@ under a `systemes` key:
   - the dry-run plan (systems, unsupported lines, VM sizing);
   - parsing of recorded `gdbus` outputs for ACTIVE, ERROR, OUT_OF_DATE and an
     absent extension;
+  - parsing of the session journal: the `[StreamDeckTiler] enabled` line
+    must be present, or the journal counts as unread and the check fails;
+    `[StreamDeckTiler] mount <id> failed` lines give the ids of the
+    indicators that did not mount;
   - the autologin file and keys per family;
   - the report contract read by `descente.py`;
   - the dirty-tree refusal.
@@ -563,13 +569,16 @@ any change to the installer or to `metadata.json`.
 ## 9. Delivery order
 
 1. **Spike**, on one Ubuntu 24.04 VM, by hand, with throwaway commands. It must
-   show three things:
+   show five things:
    - GDM autologin reaches a GNOME session with `--gpu off`;
    - an ssh session reads the user's session bus at `/run/user/$UID/bus`;
    - `GetExtensionInfo` is readable from it and reports state `1` for a
      symlinked extension;
    - `extension.path`, logged by the extension, is the unresolved symlink path
-     (the premise of 3.2).
+     (the premise of 3.2);
+   - `journalctl --user -b -o cat | grep -E '\[StreamDeckTiler\] (mount|enabled)'`
+     shows the `enabled` line and no `failed` line: `enable()` ran to its
+     end and every indicator mounted.
 
    If any fails, the design returns to brainstorming before code is written.
 2. Prerequisite fixes (4.5, 3.1, 3.2), with their unit tests.
@@ -588,5 +597,5 @@ any change to the installer or to `metadata.json`.
 - **Leap 16.0 and the EL10 rebuilds** may lack `wmctrl` or `hidapi` in their
   default repositories. The package table is corrected from the long test, not
   guessed in advance.
-- **Rolling distributions** move past GNOME 50 without notice. Their
+- **Rolling distributions** move past GNOME 51 without notice. Their
   UNSUPPORTED verdict is the intended early warning.
