@@ -288,9 +288,11 @@ repo_configure_all:
 
 # write the SHA of every cloned repo of the active Odoo version into its
 # manifest/ file (git_manifest_odoo<V>.xml, _dev, extra) as freeze-revision
+# (UPSTREAM=1: also fork-upstream-freeze-revision, the upstream commit each
+# frozen fork is based on; fetches every declared upstream over the network)
 .PHONY: repo_freeze
 repo_freeze:
-	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py
+	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py $(if $(filter 1,$(UPSTREAM)),--upstream,)
 
 # remove freeze-revision from manifest/, repos follow their branch again
 .PHONY: repo_unfreeze

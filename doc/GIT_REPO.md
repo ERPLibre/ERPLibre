@@ -156,6 +156,10 @@ PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --diagnostic
 PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
 ```
 
+When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revision`, see
+[Freeze the upstream base](#freeze-the-upstream-base)), the dry run also counts the upstream commits since the freeze,
+or flags in red an upstream rewritten since then: the frozen base is no longer in its history.
+
 ### Freeze the versions
 
 Each `<project>` of a source file keeps its BRANCH in `revision`. The freeze writes the commit of its clone next to
@@ -197,6 +201,54 @@ Not frozen, and listed:
 A clone with uncommitted changes is frozen on its commit, with a warning: its changes are not part of the freeze. The
 command exits with 1 when nothing was frozen.
 
+#### Freeze the upstream base
+
+The frozen commit of a fork does not say which upstream commit it rests on. `--upstream`, or
+`make repo_freeze UPSTREAM=1`, also writes it beside the fork attributes, in `fork-upstream-freeze-revision`: the merge
+base of the frozen commit and the upstream branch.
+
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         freeze-revision="0123456789abcdef0123456789abcdef01234567"
+         fork-upstream-remote="OCA" fork-upstream="18.0"
+         fork-upstream-freeze-revision="fedcba9876543210fedcba9876543210fedcba98" />
+```
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
+```
+
+It is the only part of the freeze that uses the network, so it is asked for: in TODO, the freeze first asks whether to
+freeze the upstream base too, No by default, and the answer holds for the dry run and for the write. Only a fork whose
+upstream is DECLARED is queried, `fork-upstream-remote` naming a `<remote>` of the merged files and `fork-upstream` its
+branch: a URL guessed from the name of the remote could point to another repository. The upstream branch is fetched
+into `FETCH_HEAD`, four forks at a time, and the base is computed right after. That fetch stores objects in the clone;
+it moves no branch or ref and does not touch the work tree.
+
+A shallow clone is deepened until a base appears: the fork side along its branch, from the URL of its remote, then
+the upstream at the same depth, doubling from 50 to 1600 commits. Only history is added. A base is accepted only when
+no shallow boundary is reachable from the frozen commit or the upstream without going through it: behind a boundary
+may lie a better base, while an older common commit stays reachable through the second parent of a merge.
+
+For each fork the report gives the frozen commit, its base, the commits of the fork since that base and how far it
+lags behind upstream; that delay is shown, never written. A fork without a base is listed with its reason, and its
+commit is frozen all the same:
+
+- `upstream not declared`;
+- `no upstream branch`: the upstream carries nothing for this Odoo version;
+- `upstream unreachable`, or `fork unreachable` when a shallow clone needs the fork's remote to deepen;
+- `shallow: no base within 1600`: no safe base within 1600 commits;
+- `no merge base`: the histories share no commit;
+- `ambiguous merge base`: several merge bases, and none to pick.
+
+The base only holds for the frozen commit beside it: a freeze that changes `freeze-revision` without computing a base
+removes it, and a freeze without `--upstream` keeps it only while the commit does not change. `make repo_unfreeze`
+removes both attributes. Like `freeze-revision`, it never reaches git-repo: the merge consumes it, and drops it from
+the files the freeze does not write. The header of TODO › Execute › Git › Repo counts the forks with an upstream
+base, read from the files without network.
+
 #### Install or reconfigure on the commits
 
 ```bash
@@ -233,7 +285,8 @@ make repo_unfreeze
 A side of the comparison is an ERPLibre revision (`HEAD`, a tag, a commit), `worktree` for the files of `manifest/` on
 disk, or `clones` for the commit each clone is on. Without argument, the committed freeze is compared to the clones:
 what moved since the last freeze. The report also says which commit ERPLibre is on, whether `manifest/` holds a freeze
-not committed yet, and which clones carry uncommitted changes.
+not committed yet — a `freeze-revision` or a `fork-upstream-freeze-revision` that differs from HEAD, the base alone
+being enough —, and which clones carry uncommitted changes.
 
 ```bash
 make repo_freeze_diff                                # HEAD -> clones
@@ -264,6 +317,12 @@ tags, git-repo's `m/`), the ERPLibre branches and tags whose `manifest/` freezes
 clone's last fetch: remote branches are as fresh as that fetch, and a clone not fetched for over 7 days is listed.
 `--fetch` refreshes the branches and tags of every changed clone and fetches the commits it lacks, in parallel.
 `--graph N` opens the decorated graph of both commits and the tip of their branch, from their common ancestor.
+
+Between two freezes, a fork whose `fork-upstream-freeze-revision` changed carries `upstream <old> -> <new> +N -M` in
+its notes: the upstream commits of the new base missing from the old one, then the reverse, `-` standing for a side
+without a base. The counts are left out when a base is missing from the clone, or when a shallow clone does not know
+their common ancestor. The base can change under a frozen commit that does not: such projects are listed under
+`Upstream base changed, same frozen commit`. The `clones` side has no base, and shows no such line.
 
 A side may be any ERPLibre branch or tag: `--list-refs` lists those holding a freeze. `--matrix` shows, project by
 project, the frozen commit in several sides at once, by default those branches and tags, `worktree` and `clones`;

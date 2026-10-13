@@ -94,7 +94,8 @@ def _entries_from_texts(textes):
     """{clé: entrée} des projets de plusieurs fichiers sources.
 
     `textes` est une suite de (fichier, texte). Une entrée porte « name »,
-    « path », « sha » (le freeze-revision, ou None), « branch » et « file ».
+    « path », « sha » (le freeze-revision, ou None), « upstream_base » (le
+    fork-upstream-freeze-revision, ou None), « branch » et « file ».
     Un projet défini dans plusieurs fichiers garde sa DERNIÈRE définition,
     commit compris, même absent : c'est la règle de la fusion qui produit le
     manifeste local, et `textes` vient donc dans son ordre (`merge_order`).
@@ -110,6 +111,10 @@ def _entries_from_texts(textes):
                 "name": attrs.get("name"),
                 "path": attrs.get("path") or attrs.get("name"),
                 "sha": attrs.get(manifest_freeze.FREEZE_ATTR) or None,
+                "upstream_base": attrs.get(
+                    manifest_freeze.FORK_UPSTREAM_FREEZE_ATTR
+                )
+                or None,
                 "branch": attrs.get("revision"),
                 "remote": attrs.get("remote"),
                 "file": fichier,
@@ -218,7 +223,9 @@ def read_clones(racine, definitions, jobs=None):
 
     `definitions` est une table {clé: entrée} au format de
     `_entries_from_texts` ; le « sha » de chaque entrée rendue est celui du
-    clone, ou None quand le chemin n'est pas cloné.
+    clone, ou None quand le chemin n'est pas cloné. Un clone n'a pas de
+    base amont : l'entrée rendue ne porte pas « upstream_base », ce qui
+    distingue ce côté d'un gel sans base.
     """
     cles = list(definitions)
     with _pool(jobs or default_jobs()) as pool:
@@ -235,6 +242,7 @@ def read_clones(racine, definitions, jobs=None):
     clones = {}
     for cle, etat in zip(cles, etats):
         clones[cle] = dict(definitions[cle], **etat)
+        clones[cle].pop("upstream_base", None)
     return clones
 
 
@@ -434,9 +442,56 @@ def project_stats(chemin, ancien, neuf):
     }
 
 
+def upstream_change(chemin, ligne):
+    """Le changement de base amont d'une ligne entre deux gels, ou None.
+
+    None quand un côté est l'état des clones (son entrée ne porte pas
+    « upstream_base ») ou quand la base n'a pas changé. Sinon {old, new,
+    ahead, behind} : les deux bases, l'une pouvant valoir None, et les
+    commits de la nouvelle absents de l'ancienne, puis l'inverse. Les
+    compteurs restent None quand une base manque au clone, ou dans un clone
+    superficiel qui ne connaît pas leur ancêtre commun. La base amont d'un
+    fork est un ancêtre de son commit gelé : un clone qui a les deux commits
+    gelés a donc les deux bases, et `--fetch` les amène avec eux.
+    """
+    g, d = ligne["left"], ligne["right"]
+    if "upstream_base" not in g or "upstream_base" not in d:
+        return None
+    ancienne, neuve = g["upstream_base"], d["upstream_base"]
+    if ancienne == neuve:
+        return None
+    change = {"old": ancienne, "new": neuve, "ahead": None, "behind": None}
+    if not (
+        ancienne
+        and neuve
+        and is_clone(chemin)
+        and has_commit(chemin, ancienne)
+        and has_commit(chemin, neuve)
+    ):
+        return change
+    sans_base, _ = _git(chemin, "merge-base", ancienne, neuve)
+    if sans_base:
+        _, superficiel = _git(chemin, "rev-parse", "--is-shallow-repository")
+        if superficiel == "true":
+            return change
+    code, compte = _git(
+        chemin, "rev-list", "--left-right", "--count", f"{ancienne}...{neuve}"
+    )
+    if not code and len(compte.split()) == 2:
+        change["behind"], change["ahead"] = (int(x) for x in compte.split())
+    return change
+
+
 def fill_stats(racine, lignes, jobs=None):
     """Pose « stats » et « branches » sur chaque ligne changée, en
-    parallèle."""
+    parallèle, puis « upstream » (`upstream_change`) sur chaque ligne
+    changée ou identique : la base amont peut changer sous un commit gelé
+    qui ne change pas."""
+    for lg in lignes:
+        if lg["status"] in (STATUS_CHANGED, STATUS_SAME):
+            lg["upstream"] = upstream_change(
+                os.path.join(racine, lg["path"]), lg
+            )
     changees = [lg for lg in lignes if lg["status"] == STATUS_CHANGED]
 
     def calcul(lg):
@@ -753,16 +808,25 @@ def head_info(racine):
 
 
 def uncommitted_freeze(racine):
-    """Clés dont le freeze-revision de `manifest/` diffère de HEAD."""
+    """Clés dont le gel de `manifest/` diffère de HEAD.
+
+    Le gel compte ses deux attributs : « freeze-revision » et la base amont
+    « fork-upstream-freeze-revision », qu'un gel peut réécrire seule sous
+    un commit gelé inchangé.
+    """
     try:
         engage = read_ref(racine, "HEAD")
     except ValueError:
         return []
     ecrit = read_worktree(racine)
+
+    def gel(entree):
+        return (entree or {}).get("sha"), (entree or {}).get("upstream_base")
+
     return sorted(
         c
         for c in set(engage) | set(ecrit)
-        if (engage.get(c) or {}).get("sha") != (ecrit.get(c) or {}).get("sha")
+        if gel(engage.get(c)) != gel(ecrit.get(c))
     )
 
 
@@ -958,6 +1022,20 @@ def _totaux(fichiers):
     )
 
 
+def _note_amont(change):
+    """« upstream a -> b +N -M » d'un `upstream_change` ; « - » pour une
+    base absente, compteurs omis quand ils manquent."""
+    texte = (
+        f"upstream {(change['old'] or '-')[:12]}"
+        f" -> {(change['new'] or '-')[:12]}"
+    )
+    if change["ahead"] is not None:
+        texte += f" +{change['ahead']}"
+        if change["behind"]:
+            texte += f" -{change['behind']}"
+    return texte
+
+
 def _notes(ligne):
     notes = []
     g, d = ligne["left"], ligne["right"]
@@ -969,6 +1047,8 @@ def _notes(ligne):
     branche = d.get("head_branch") or g.get("head_branch")
     if branche:
         notes.append(f"on {branche}")
+    if ligne.get("upstream"):
+        notes.append(_note_amont(ligne["upstream"]))
     return ", ".join(notes)
 
 
@@ -1024,7 +1104,7 @@ def _summary_context(rapport, aide):
     if rapport["uncommitted"]:
         out.append(
             f"WARNING: manifest/ holds {len(rapport['uncommitted'])}"
-            " freeze-revision changes not committed"
+            " freeze changes not committed"
             f" ({aide['uncommitted']})."
         )
     if rapport["dirty"]:
@@ -1174,6 +1254,17 @@ def _summary_lists(rapport, aide, show_all):
             out.append(
                 f"  ... {len(liste) - len(montres)} more ({aide['all']})"
             )
+    bases = [
+        lg
+        for lg in rapport["rows"]
+        if lg["status"] == STATUS_SAME and lg.get("upstream")
+    ]
+    if bases:
+        out.append("")
+        out.append(f"Upstream base changed, same frozen commit: {len(bases)}")
+        out.extend(
+            f"  - {lg['path']}: {_note_amont(lg['upstream'])}" for lg in bases
+        )
     return out
 
 

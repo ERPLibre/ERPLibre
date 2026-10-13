@@ -157,6 +157,10 @@ PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --diagnostic
 PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
 ```
 
+Quand le gel a écrit la base amont d'un fork (`fork-upstream-freeze-revision`, voir
+[Geler la base amont](#geler-la-base-amont)), la passe à sec compte aussi les commits amont depuis le gel, ou signale
+en rouge un amont réécrit depuis : la base gelée n'est plus dans son historique.
+
 ### Geler les versions
 
 Chaque `<project>` d'un fichier source garde sa BRANCHE dans `revision`. Le gel écrit le commit de son clone à côté,
@@ -199,6 +203,56 @@ Ne sont pas gelés, et sont listés :
 Un clone aux modifications non commitées est gelé sur son commit, avec un avertissement : ses modifications ne font pas
 partie du gel. La commande sort avec 1 quand rien n'a été gelé.
 
+#### Geler la base amont
+
+Le commit gelé d'un fork ne dit pas sur quel commit amont il repose. `--upstream`, ou `make repo_freeze UPSTREAM=1`,
+l'écrit aussi à côté des attributs du fork, dans `fork-upstream-freeze-revision` : la base de fusion du commit gelé et
+de la branche amont.
+
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         freeze-revision="0123456789abcdef0123456789abcdef01234567"
+         fork-upstream-remote="OCA" fork-upstream="18.0"
+         fork-upstream-freeze-revision="fedcba9876543210fedcba9876543210fedcba98" />
+```
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
+```
+
+C'est la seule partie du gel qui passe par le réseau, elle se demande donc : dans TODO, le gel demande d'abord s'il
+gèle aussi la base amont, Non par défaut, et la réponse vaut pour la passe à sec comme pour l'écriture. Seul un fork
+dont l'amont est DÉCLARÉ est interrogé, `fork-upstream-remote` nommant un `<remote>` des fichiers fusionnés et
+`fork-upstream` sa branche : une URL devinée à partir du nom du remote pourrait viser un autre dépôt. La branche amont
+est récupérée dans `FETCH_HEAD`, quatre forks à la fois, et la base se calcule aussitôt. Ce fetch range des objets
+dans le clone ; il ne déplace ni branche ni référence et ne touche pas l'arbre de travail.
+
+Un clone superficiel s'approfondit jusqu'à ce qu'une base apparaisse : le côté fork le long de sa branche, depuis l'URL
+de son remote, puis l'amont à la même profondeur, en doublant de 50 à 1600 commits. Seul de l'historique s'ajoute. Une
+base n'est retenue que si aucune frontière du clone superficiel n'est joignable depuis le commit gelé ou l'amont sans
+passer par elle : derrière une frontière peut se trouver une meilleure base, alors qu'un commit commun plus ancien reste
+joignable par le second parent d'une fusion.
+
+Pour chaque fork, le rapport donne le commit gelé, sa base, les commits du fork depuis cette base et son retard sur
+l'amont ; ce retard s'affiche, il ne s'écrit jamais. Un fork sans base est listé avec son motif, et son commit est
+gelé quand même :
+
+- `upstream not declared` : l'amont n'est pas déclaré ;
+- `no upstream branch` : l'amont ne porte rien pour cette version d'Odoo ;
+- `upstream unreachable`, ou `fork unreachable` quand un clone superficiel a besoin du remote du fork pour
+  s'approfondir ;
+- `shallow: no base within 1600` : aucune base sûre dans les 1600 commits ;
+- `no merge base` : les historiques n'ont aucun commit en commun ;
+- `ambiguous merge base` : plusieurs bases de fusion, et aucune à choisir.
+
+La base ne vaut que pour le commit gelé à côté d'elle : un gel qui change `freeze-revision` sans calculer de base la
+retire, et un gel sans `--upstream` ne la garde que tant que le commit ne change pas. `make repo_unfreeze` retire les
+deux attributs. Comme `freeze-revision`, elle n'atteint jamais git-repo : la fusion la consomme, et la retire des
+fichiers que le gel n'écrit pas. L'en-tête de TODO › Execute › Git › Repo compte les forks qui ont une base amont, lue
+dans les fichiers sans réseau.
+
 #### Installer ou reconfigurer sur les commits
 
 ```bash
@@ -236,7 +290,8 @@ make repo_unfreeze
 Un côté de la comparaison est une révision d'ERPLibre (`HEAD`, un tag, un commit), `worktree` pour les fichiers de
 `manifest/` sur le disque, ou `clones` pour le commit où se trouve chaque clone. Sans argument, le gel committé est
 comparé aux clones : ce qui a bougé depuis le dernier gel. Le rapport dit aussi sur quel commit se trouve ERPLibre, si
-`manifest/` porte un gel pas encore committé, et quels clones ont des modifications non commitées.
+`manifest/` porte un gel pas encore committé — un `freeze-revision` ou un `fork-upstream-freeze-revision` qui diffère de
+HEAD, la base seule suffisant —, et quels clones ont des modifications non commitées.
 
 ```bash
 make repo_freeze_diff                                # HEAD -> clones
@@ -270,6 +325,12 @@ commit ou le contiennent (branches, branches distantes, tags, `m/` de git-repo),
 ce fetch, et un clone sans fetch depuis plus de 7 jours est listé. `--fetch` rafraîchit les branches et les tags de
 chaque clone changé et va chercher les commits qui lui manquent, en parallèle. `--graph N` ouvre le graphe décoré des
 deux commits et de la pointe de leur branche, depuis leur ancêtre commun.
+
+Entre deux gels, un fork dont `fork-upstream-freeze-revision` a changé porte `upstream <ancienne> -> <nouvelle> +N -M`
+dans ses notes : les commits amont de la nouvelle base absents de l'ancienne, puis l'inverse, `-` tenant lieu d'un
+côté sans base. Les compteurs sont omis quand une base manque au clone, ou quand un clone superficiel ne connaît pas
+leur ancêtre commun. La base peut changer sous un commit gelé qui ne change pas : ces projets sont listés sous
+`Upstream base changed, same frozen commit`. Le côté `clones` n'a pas de base, et ne montre aucune ligne de ce genre.
 
 Un côté peut être n'importe quelle branche ou tag d'ERPLibre : `--list-refs` liste ceux qui portent un gel. `--matrix`
 montre, projet par projet, le commit gelé dans plusieurs côtés à la fois, par défaut ces branches et tags, `worktree`

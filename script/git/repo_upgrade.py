@@ -54,7 +54,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
-from script.git import repo_stats
+from script.git import manifest_freeze, repo_stats  # noqa: E402
 
 try:
     from script.todo.todo_i18n import t
@@ -108,8 +108,8 @@ def fichiers_manifeste(version, dossier=DOSSIER):
     """
     gabarits = (
         f"git_manifest_odoo{version}.xml",
-        f"git_manifest_extra_odoo{version}.xml",
         f"git_manifest_odoo{version}_dev.xml",
+        f"git_manifest_extra_odoo{version}.xml",
     )
     return [
         os.path.join(dossier, g)
@@ -234,6 +234,12 @@ def etat_forks(
 ):
     """[dict] — un constat par fork, trié par chemin.
 
+    « base_gelee » est la base amont que le gel a écrite dans
+    « fork-upstream-freeze-revision », ou None, et « gel » le commit gelé
+    de « freeze-revision ». Les deux se lisent sur la définition qui
+    l'emporte dans la fusion, comme « revision » et « remote », le remote
+    du fork, sous le nom que git-repo donne aussi au remote du clone.
+
     « etat » vaut :
       declare        l'amont et sa branche sont inscrits
       sans_branche   l'amont est inscrit, il ne porte rien pour la version
@@ -262,6 +268,11 @@ def etat_forks(
                 "chemin": projet.get("path"),
                 "nom": projet.get("name"),
                 "revision": projet.get("revision"),
+                "remote": projet.get("remote"),
+                "gel": projet.get(manifest_freeze.FREEZE_ATTR),
+                "base_gelee": projet.get(
+                    manifest_freeze.FORK_UPSTREAM_FREEZE_ATTR
+                ),
                 "amont": amont,
                 "etat": etat,
                 "branches_amont": None,
@@ -324,14 +335,21 @@ def est_superficiel(chemin):
     return code == 0 and out.strip() == "true"
 
 
-def recuperer_amont(chemin, url, branche, delai=DELAI_GIT):
+def recuperer_amont(chemin, url, branche, delai=DELAI_GIT, profondeur=None):
     """Amène la branche amont dans FETCH_HEAD. True si elle y est.
 
     FETCH_HEAD et non un remote ajouté : un second remote survivrait mal à
     « repo sync --force-sync », qui réécrit le répertoire git, et le poser
     ferait sortir la passe du domaine de la lecture.
+
+    `profondeur` borne l'historique amont rapatrié (« --depth »). Elle ne
+    sert qu'à un clone déjà superficiel : sur un clone complet, « --depth »
+    le rendrait superficiel.
     """
-    _out, _err, code = git(["fetch", "--quiet", url, branche], chemin, delai)
+    args = ["fetch", "--quiet"]
+    if profondeur:
+        args.append(f"--depth={profondeur}")
+    _out, _err, code = git(args + [url, branche], chemin, delai)
     return code == 0
 
 
@@ -353,6 +371,36 @@ def base_fusion(chemin):
     aucun — un fork reconstruit de zéro n'est pas rebasable."""
     out, _err, code = git(["merge-base", "HEAD", "FETCH_HEAD"], chemin)
     return out.strip() if code == 0 else None
+
+
+def depuis_le_gel(chemin, base):
+    """(commits amont depuis `base`, amont réécrit) face à FETCH_HEAD.
+
+    `base` est la base amont gelée. Elle est ancêtre de FETCH_HEAD tant que
+    l'amont n'a fait qu'avancer : le compte est alors celui de
+    « base..FETCH_HEAD ». Une base qui n'en est plus ancêtre dit un amont
+    réécrit (force-push), et aucun compte n'a de sens. Le clone est
+    complet (un clone superficiel s'arrête avant) et le fetch a amené tout
+    l'historique de FETCH_HEAD : une base absente du clone n'en fait donc
+    pas partie, et compte aussi comme un amont réécrit. (None, None) quand
+    git échoue.
+    """
+    _out, _err, code = git(["cat-file", "-e", f"{base}^{{commit}}"], chemin)
+    if code:
+        return None, True
+    _out, _err, code = git(
+        ["merge-base", "--is-ancestor", base, "FETCH_HEAD"], chemin
+    )
+    if code == 1:
+        return None, True
+    if code:
+        return None, None
+    out, _err, code = git(
+        ["rev-list", "--count", f"{base}..FETCH_HEAD"], chemin
+    )
+    if code or not out.strip().isdigit():
+        return None, False
+    return int(out), False
 
 
 def predire_conflits(chemin):
@@ -514,6 +562,8 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
             "modules_amont_code": [],
             "modules": [],
             "modules_repris": [],
+            "amont_depuis_gel": None,
+            "amont_reecrit": None,
         }
     )
 
@@ -529,6 +579,10 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
     if not recuperer_amont(chemin, amont["url"], amont["branche"], delai):
         constat["motif"] = t("upstream unreachable")
         return constat
+    if constat.get("base_gelee"):
+        constat["amont_depuis_gel"], constat["amont_reecrit"] = depuis_le_gel(
+            chemin, constat["base_gelee"]
+        )
 
     ecart = divergence(chemin)
     if ecart is None:
@@ -648,6 +702,8 @@ def render(lst, verifie, colour=True):
             cible = amont["url"] or f"?{amont['remote']}"
             if amont["branche"]:
                 cible = f"{cible} @ {amont['branche']}"
+            if x.get("base_gelee"):
+                cible += f" · {t('frozen base')} {x['base_gelee'][:12]}"
             out.append(f"    {x['chemin']}")
             out.append(paint(f"        → {cible}", "dim", colour))
         out.append("")
@@ -704,6 +760,29 @@ def cumuler(lst):
     }
 
 
+def ligne_gel(constat):
+    """(texte, genre) de l'écart à la base amont gelée, ou None sans base.
+
+    Un amont réécrit se signale en rouge : la base gelée n'est plus dans
+    son historique, et un rebase depuis elle ne vaut plus rien.
+    """
+    base = constat.get("base_gelee")
+    if not base:
+        return None
+    if constat.get("amont_reecrit"):
+        return (
+            f"{t('upstream rewritten since the freeze')} ({base[:12]})",
+            "broken",
+        )
+    if constat.get("amont_depuis_gel") is None:
+        return None
+    return (
+        f"{constat['amont_depuis_gel']}"
+        f" {t('upstream commits since the freeze')} ({base[:12]})",
+        "dim",
+    )
+
+
 def render_diagnostic(lst, version, colour=True):
     """Le rapport d'une passe à sec, groupé par verdict.
 
@@ -744,6 +823,9 @@ def render_diagnostic(lst, version, colour=True):
                         colour,
                     )
                 )
+            gel = ligne_gel(x)
+            if gel:
+                out.append(paint(f"        ↳ {gel[0]}", gel[1], colour))
     total = cumuler(lst)
     out.append("─" * 62)
     out.append(

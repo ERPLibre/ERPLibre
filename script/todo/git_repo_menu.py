@@ -134,6 +134,25 @@ def gel_des_sources(racine=RACINE, odoo_version=None):
     return len(geles), len(definitions)
 
 
+def ligne_du_gel(sources, forks):
+    """La ligne d'en-tête du gel des fichiers de `manifest/`, ou None.
+
+    `sources` vient de `gel_des_sources`, `forks` d'`etat_forks`. La ligne
+    compte les projets gelés, puis les forks dont le gel a écrit la base
+    amont dans « fork-upstream-freeze-revision » : la lire ne coûte aucun
+    réseau. Sans `sources`, pas de ligne.
+    """
+    if not sources:
+        return None
+    ligne = (
+        f"   {t('Frozen in the manifest files:')} {sources[0]}/{sources[1]}"
+    )
+    if forks:
+        avec = len([f for f in forks if f.get("base_gelee")])
+        ligne += f" · {avec}/{len(forks)} {t('forks with upstream base')}"
+    return ligne
+
+
 class GitRepoMenuMixin:
     def prompt_execute_git_repo(self):
         version = repo_upgrade.version_active(RACINE) or "?"
@@ -143,12 +162,9 @@ class GitRepoMenuMixin:
             f"   Odoo {version} · {len(forks)} {t('forks')}"
             f" · {libelle_mode(etat_manifeste_local())}"
         )
-        sources = gel_des_sources()
-        if sources:
-            print(
-                f"   {t('Frozen in the manifest files:')}"
-                f" {sources[0]}/{sources[1]}"
-            )
+        ligne = ligne_du_gel(gel_des_sources(), forks)
+        if ligne:
+            print(ligne)
         choices = [
             {"section": t("Update")},
             {"prompt_description": t("🔄 Synchronize the repositories")},
@@ -524,6 +540,14 @@ class GitRepoMenuMixin:
         reconfiguration sur les commits gelés ; le dégel, à la
         reconfiguration qui suit les branches.
 
+        Le gel demande d'abord s'il écrit aussi la base amont de chaque fork
+        (« --upstream »), non par défaut : elle passe par le réseau. La
+        réponse vaut pour la passe à sec ET pour l'écriture : la passe à sec
+        montre donc les bases que l'écriture posera. Chaque passe interroge
+        l'amont, la passe à sec ne laissant rien que l'écriture puisse
+        relire ; le second fetch ne rapatrie que ce qui a bougé depuis le
+        premier.
+
         Rend le code de sortie du script : 1 quand aucun clone n'est gelable.
         """
         script = f"{PYTHON_ERPLIBRE} {FREEZE_SCRIPT}"
@@ -532,6 +556,15 @@ class GitRepoMenuMixin:
             print(f"🫗 {t('Unfreeze the versions')}")
         else:
             print(f"🧊 {t('Freeze the versions')}")
+            if click.confirm(
+                t("Also freeze the upstream base of each fork (network)?"),
+                default=False,
+            ):
+                script += " --upstream"
+                attente = t(
+                    "Querying each upstream, this takes a few seconds."
+                )
+                print(f"   {attente}")
         cmd = f"{script} --dry-run"
         print(f"  {t('Will execute:')} {cmd}")
         status = self.execute.exec_command_live(

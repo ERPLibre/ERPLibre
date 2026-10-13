@@ -298,6 +298,16 @@ PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
 ```
 
 <!-- [en] -->
+When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revision`, see
+[Freeze the upstream base](#freeze-the-upstream-base)), the dry run also counts the upstream commits since the freeze,
+or flags in red an upstream rewritten since then: the frozen base is no longer in its history.
+
+<!-- [fr] -->
+Quand le gel a écrit la base amont d'un fork (`fork-upstream-freeze-revision`, voir
+[Geler la base amont](#geler-la-base-amont)), la passe à sec compte aussi les commits amont depuis le gel, ou signale
+en rouge un amont réécrit depuis : la base gelée n'est plus dans son historique.
+
+<!-- [en] -->
 ### Freeze the versions
 
 Each `<project>` of a source file keeps its BRANCH in `revision`. The freeze writes the commit of its clone next to
@@ -363,7 +373,11 @@ Not frozen, and listed:
 A clone with uncommitted changes is frozen on its commit, with a warning: its changes are not part of the freeze. The
 command exits with 1 when nothing was frozen.
 
-#### Install or reconfigure on the commits
+#### Freeze the upstream base
+
+The frozen commit of a fork does not say which upstream commit it rests on. `--upstream`, or
+`make repo_freeze UPSTREAM=1`, also writes it beside the fork attributes, in `fork-upstream-freeze-revision`: the merge
+base of the frozen commit and the upstream branch.
 
 <!-- [fr] -->
 Ne sont pas gelés, et sont listés :
@@ -376,6 +390,90 @@ Ne sont pas gelés, et sont listés :
 
 Un clone aux modifications non commitées est gelé sur son commit, avec un avertissement : ses modifications ne font pas
 partie du gel. La commande sort avec 1 quand rien n'a été gelé.
+
+#### Geler la base amont
+
+Le commit gelé d'un fork ne dit pas sur quel commit amont il repose. `--upstream`, ou `make repo_freeze UPSTREAM=1`,
+l'écrit aussi à côté des attributs du fork, dans `fork-upstream-freeze-revision` : la base de fusion du commit gelé et
+de la branche amont.
+
+<!-- [common] -->
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         freeze-revision="0123456789abcdef0123456789abcdef01234567"
+         fork-upstream-remote="OCA" fork-upstream="18.0"
+         fork-upstream-freeze-revision="fedcba9876543210fedcba9876543210fedcba98" />
+```
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
+```
+
+<!-- [en] -->
+It is the only part of the freeze that uses the network, so it is asked for: in TODO, the freeze first asks whether to
+freeze the upstream base too, No by default, and the answer holds for the dry run and for the write. Only a fork whose
+upstream is DECLARED is queried, `fork-upstream-remote` naming a `<remote>` of the merged files and `fork-upstream` its
+branch: a URL guessed from the name of the remote could point to another repository. The upstream branch is fetched
+into `FETCH_HEAD`, four forks at a time, and the base is computed right after. That fetch stores objects in the clone;
+it moves no branch or ref and does not touch the work tree.
+
+A shallow clone is deepened until a base appears: the fork side along its branch, from the URL of its remote, then
+the upstream at the same depth, doubling from 50 to 1600 commits. Only history is added. A base is accepted only when
+no shallow boundary is reachable from the frozen commit or the upstream without going through it: behind a boundary
+may lie a better base, while an older common commit stays reachable through the second parent of a merge.
+
+For each fork the report gives the frozen commit, its base, the commits of the fork since that base and how far it
+lags behind upstream; that delay is shown, never written. A fork without a base is listed with its reason, and its
+commit is frozen all the same:
+
+- `upstream not declared`;
+- `no upstream branch`: the upstream carries nothing for this Odoo version;
+- `upstream unreachable`, or `fork unreachable` when a shallow clone needs the fork's remote to deepen;
+- `shallow: no base within 1600`: no safe base within 1600 commits;
+- `no merge base`: the histories share no commit;
+- `ambiguous merge base`: several merge bases, and none to pick.
+
+The base only holds for the frozen commit beside it: a freeze that changes `freeze-revision` without computing a base
+removes it, and a freeze without `--upstream` keeps it only while the commit does not change. `make repo_unfreeze`
+removes both attributes. Like `freeze-revision`, it never reaches git-repo: the merge consumes it, and drops it from
+the files the freeze does not write. The header of TODO › Execute › Git › Repo counts the forks with an upstream
+base, read from the files without network.
+
+#### Install or reconfigure on the commits
+
+<!-- [fr] -->
+C'est la seule partie du gel qui passe par le réseau, elle se demande donc : dans TODO, le gel demande d'abord s'il
+gèle aussi la base amont, Non par défaut, et la réponse vaut pour la passe à sec comme pour l'écriture. Seul un fork
+dont l'amont est DÉCLARÉ est interrogé, `fork-upstream-remote` nommant un `<remote>` des fichiers fusionnés et
+`fork-upstream` sa branche : une URL devinée à partir du nom du remote pourrait viser un autre dépôt. La branche amont
+est récupérée dans `FETCH_HEAD`, quatre forks à la fois, et la base se calcule aussitôt. Ce fetch range des objets
+dans le clone ; il ne déplace ni branche ni référence et ne touche pas l'arbre de travail.
+
+Un clone superficiel s'approfondit jusqu'à ce qu'une base apparaisse : le côté fork le long de sa branche, depuis l'URL
+de son remote, puis l'amont à la même profondeur, en doublant de 50 à 1600 commits. Seul de l'historique s'ajoute. Une
+base n'est retenue que si aucune frontière du clone superficiel n'est joignable depuis le commit gelé ou l'amont sans
+passer par elle : derrière une frontière peut se trouver une meilleure base, alors qu'un commit commun plus ancien reste
+joignable par le second parent d'une fusion.
+
+Pour chaque fork, le rapport donne le commit gelé, sa base, les commits du fork depuis cette base et son retard sur
+l'amont ; ce retard s'affiche, il ne s'écrit jamais. Un fork sans base est listé avec son motif, et son commit est
+gelé quand même :
+
+- `upstream not declared` : l'amont n'est pas déclaré ;
+- `no upstream branch` : l'amont ne porte rien pour cette version d'Odoo ;
+- `upstream unreachable`, ou `fork unreachable` quand un clone superficiel a besoin du remote du fork pour
+  s'approfondir ;
+- `shallow: no base within 1600` : aucune base sûre dans les 1600 commits ;
+- `no merge base` : les historiques n'ont aucun commit en commun ;
+- `ambiguous merge base` : plusieurs bases de fusion, et aucune à choisir.
+
+La base ne vaut que pour le commit gelé à côté d'elle : un gel qui change `freeze-revision` sans calculer de base la
+retire, et un gel sans `--upstream` ne la garde que tant que le commit ne change pas. `make repo_unfreeze` retire les
+deux attributs. Comme `freeze-revision`, elle n'atteint jamais git-repo : la fusion la consomme, et la retire des
+fichiers que le gel n'écrit pas. L'en-tête de TODO › Execute › Git › Repo compte les forks qui ont une base amont, lue
+dans les fichiers sans réseau.
 
 #### Installer ou reconfigurer sur les commits
 
@@ -435,7 +533,8 @@ make repo_unfreeze
 A side of the comparison is an ERPLibre revision (`HEAD`, a tag, a commit), `worktree` for the files of `manifest/` on
 disk, or `clones` for the commit each clone is on. Without argument, the committed freeze is compared to the clones:
 what moved since the last freeze. The report also says which commit ERPLibre is on, whether `manifest/` holds a freeze
-not committed yet, and which clones carry uncommitted changes.
+not committed yet — a `freeze-revision` or a `fork-upstream-freeze-revision` that differs from HEAD, the base alone
+being enough —, and which clones carry uncommitted changes.
 
 <!-- [fr] -->
 #### Comparer deux gels
@@ -443,7 +542,8 @@ not committed yet, and which clones carry uncommitted changes.
 Un côté de la comparaison est une révision d'ERPLibre (`HEAD`, un tag, un commit), `worktree` pour les fichiers de
 `manifest/` sur le disque, ou `clones` pour le commit où se trouve chaque clone. Sans argument, le gel committé est
 comparé aux clones : ce qui a bougé depuis le dernier gel. Le rapport dit aussi sur quel commit se trouve ERPLibre, si
-`manifest/` porte un gel pas encore committé, et quels clones ont des modifications non commitées.
+`manifest/` porte un gel pas encore committé — un `freeze-revision` ou un `fork-upstream-freeze-revision` qui diffère de
+HEAD, la base seule suffisant —, et quels clones ont des modifications non commitées.
 
 <!-- [common] -->
 ```bash
@@ -477,6 +577,12 @@ clone's last fetch: remote branches are as fresh as that fetch, and a clone not 
 `--fetch` refreshes the branches and tags of every changed clone and fetches the commits it lacks, in parallel.
 `--graph N` opens the decorated graph of both commits and the tip of their branch, from their common ancestor.
 
+Between two freezes, a fork whose `fork-upstream-freeze-revision` changed carries `upstream <old> -> <new> +N -M` in
+its notes: the upstream commits of the new base missing from the old one, then the reverse, `-` standing for a side
+without a base. The counts are left out when a base is missing from the clone, or when a shallow clone does not know
+their common ancestor. The base can change under a frozen commit that does not: such projects are listed under
+`Upstream base changed, same frozen commit`. The `clones` side has no base, and shows no such line.
+
 A side may be any ERPLibre branch or tag: `--list-refs` lists those holding a freeze. `--matrix` shows, project by
 project, the frozen commit in several sides at once, by default those branches and tags, `worktree` and `clones`;
 only the projects where they differ, `=` standing for the commit of the column to its left:
@@ -506,6 +612,12 @@ commit ou le contiennent (branches, branches distantes, tags, `m/` de git-repo),
 ce fetch, et un clone sans fetch depuis plus de 7 jours est listé. `--fetch` rafraîchit les branches et les tags de
 chaque clone changé et va chercher les commits qui lui manquent, en parallèle. `--graph N` ouvre le graphe décoré des
 deux commits et de la pointe de leur branche, depuis leur ancêtre commun.
+
+Entre deux gels, un fork dont `fork-upstream-freeze-revision` a changé porte `upstream <ancienne> -> <nouvelle> +N -M`
+dans ses notes : les commits amont de la nouvelle base absents de l'ancienne, puis l'inverse, `-` tenant lieu d'un
+côté sans base. Les compteurs sont omis quand une base manque au clone, ou quand un clone superficiel ne connaît pas
+leur ancêtre commun. La base peut changer sous un commit gelé qui ne change pas : ces projets sont listés sous
+`Upstream base changed, same frozen commit`. Le côté `clones` n'a pas de base, et ne montre aucune ligne de ce genre.
 
 Un côté peut être n'importe quelle branche ou tag d'ERPLibre : `--list-refs` liste ceux qui portent un gel. `--matrix`
 montre, projet par projet, le commit gelé dans plusieurs côtés à la fois, par défaut ces branches et tags, `worktree`

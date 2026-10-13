@@ -690,9 +690,12 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
                 self.menu.gel_des_sources(dossier, odoo_version="Y.0"), (0, 0)
             )
 
-    def _geler(self, confirme, **kw):
+    def _geler(self, confirme, amont=False, **kw):
+        """Lance le gel. `amont` répond à la question de la base amont,
+        posée avant la passe à sec ; `confirme`, à celle de l'écriture."""
+        reponses = [confirme] if kw.get("unfreeze") else [amont, confirme]
         with self.mock.patch.object(
-            self.menu.click, "confirm", return_value=confirme
+            self.menu.click, "confirm", side_effect=reponses
         ) as confirm:
             code = self.obj._git_repo_geler(**kw)
         return code, confirm
@@ -702,7 +705,7 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(len(self.cmds), 1)
         self.assertIn("git_freeze_manifest.py --dry-run", self.cmds[0])
-        confirm.assert_called_once()
+        self.assertEqual(confirm.call_count, 2)
 
     def test_freeze_writes_after_consent(self):
         code, _ = self._geler(True)
@@ -710,16 +713,48 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         self.assertEqual(len(self.cmds), 2)
         self.assertTrue(self.cmds[1].endswith("git_freeze_manifest.py"))
 
+    def test_upstream_base_is_off_by_default(self):
+        _code, confirm = self._geler(True)
+        self.assertIs(confirm.call_args_list[0].kwargs["default"], False)
+        self.assertNotIn("--upstream", " ".join(self.cmds))
+
+    def test_upstream_base_passes_its_flag_to_both_runs(self):
+        self._geler(True, amont=True)
+        self.assertIn("--upstream --dry-run", self.cmds[0])
+        self.assertTrue(self.cmds[1].endswith("--upstream"))
+
+    def test_unfreeze_asks_nothing_about_the_upstream_base(self):
+        _code, confirm = self._geler(True, unfreeze=True)
+        confirm.assert_called_once()
+        self.assertNotIn("--upstream", " ".join(self.cmds))
+
+    def test_header_counts_the_forks_with_an_upstream_base(self):
+        forks = [{"base_gelee": "1" * 40}, {"base_gelee": None}, {}]
+        ligne = self.menu.ligne_du_gel((4, 9), forks)
+        self.assertIn("4/9", ligne)
+        self.assertIn(f"1/3 {self.menu.t('forks with upstream base')}", ligne)
+        self.assertNotIn(
+            self.menu.t("forks with upstream base"),
+            self.menu.ligne_du_gel((4, 9), []),
+        )
+        self.assertIsNone(self.menu.ligne_du_gel(None, forks))
+
     def test_unfreeze_passes_its_flag_to_both_runs(self):
         self._geler(True, unfreeze=True)
         self.assertIn("--unfreeze --dry-run", self.cmds[0])
         self.assertTrue(self.cmds[1].endswith("--unfreeze"))
 
     def test_a_failed_dry_run_asks_nothing(self):
+        """Seule la question de la base amont, qui précède la passe à sec,
+        a été posée : l'écriture n'est pas proposée."""
         self.status = [1]
         code, confirm = self._geler(True)
         self.assertEqual(code, 1)
         self.assertEqual(len(self.cmds), 1)
+        confirm.assert_called_once()
+        self.status = [1]
+        code, confirm = self._geler(True, unfreeze=True)
+        self.assertEqual(code, 1)
         confirm.assert_not_called()
 
     def test_reconfigure_follows_branches_without_the_argument(self):

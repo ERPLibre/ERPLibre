@@ -9,6 +9,9 @@ réponses. Les verdicts sont une décision, et une décision se vérifie sur des
 entrées choisies plutôt que sur l'état courant d'un amont public.
 """
 
+import os
+import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -168,11 +171,17 @@ class GitSimule:
             return self.reponses.get("superficiel", "false"), "", 0
         if nom == "fetch":
             return "", "", self.reponses.get("fetch_code", 0)
+        if nom == "cat-file":
+            return "", "", self.reponses.get("base_presente_code", 0)
+        if nom == "rev-list" and "--left-right" not in args:
+            return f"{self.reponses.get('depuis_gel', 7)}\n", "", 0
         if nom == "rev-list":
             ecart = self.reponses.get("divergence", (1, 545))
             if ecart is None:
                 return "", "", 1
             return f"{ecart[0]}\t{ecart[1]}\n", "", 0
+        if nom == "merge-base" and "--is-ancestor" in args:
+            return "", "", self.reponses.get("ancetre_code", 0)
         if nom == "merge-base":
             base = self.reponses.get("base", "abc1234")
             return (base or "") + "\n", "", 0 if base else 1
@@ -314,6 +323,137 @@ class TestDiagnostiquer(unittest.TestCase):
         }
         for args in simule.vues:
             self.assertNotIn(args[0], interdits, f"commande écrivante {args}")
+
+
+BASE_GELEE = "e" * 40
+
+
+def constat_gele():
+    return dict(constat_type(), base_gelee=BASE_GELEE)
+
+
+class TestDepuisLeGel(unittest.TestCase):
+    """L'écart à la base amont gelée, lu contre FETCH_HEAD."""
+
+    def test_amont_qui_avance(self):
+        simule = GitSimule(divergence=(0, 12), depuis_gel=9)
+        res = diagnostiquer_simule(constat_gele(), simule)
+        self.assertEqual(res["amont_depuis_gel"], 9)
+        self.assertFalse(res["amont_reecrit"])
+        self.assertIn(
+            ["rev-list", "--count", f"{BASE_GELEE}..FETCH_HEAD"], simule.vues
+        )
+        self.assertIn(
+            ["merge-base", "--is-ancestor", BASE_GELEE, "FETCH_HEAD"],
+            simule.vues,
+        )
+
+    def test_base_qui_n_est_plus_ancetre_dit_un_amont_reecrit(self):
+        res = diagnostiquer_simule(constat_gele(), GitSimule(ancetre_code=1))
+        self.assertTrue(res["amont_reecrit"])
+        self.assertIsNone(res["amont_depuis_gel"])
+
+    def test_base_absente_du_clone_dit_un_amont_reecrit(self):
+        res = diagnostiquer_simule(
+            constat_gele(), GitSimule(base_presente_code=1)
+        )
+        self.assertTrue(res["amont_reecrit"])
+
+    def test_erreur_de_git_ne_tranche_pas(self):
+        res = diagnostiquer_simule(constat_gele(), GitSimule(ancetre_code=128))
+        self.assertIsNone(res["amont_reecrit"])
+        self.assertIsNone(res["amont_depuis_gel"])
+
+    def test_sans_base_gelee_aucune_question(self):
+        simule = GitSimule()
+        res = diagnostiquer_simule(constat_type(), simule)
+        self.assertIsNone(res["amont_depuis_gel"])
+        self.assertNotIn("cat-file", [a[0] for a in simule.vues])
+
+    def test_amont_injoignable_aucune_question(self):
+        simule = GitSimule(fetch_code=128)
+        res = diagnostiquer_simule(constat_gele(), simule)
+        self.assertIsNone(res["amont_reecrit"])
+        self.assertNotIn("cat-file", [a[0] for a in simule.vues])
+
+    def test_le_rendu(self):
+        base = {
+            "chemin": "d1",
+            "verdict": "en_retard",
+            "nos": 0,
+            "amont_avance": 9,
+            "conflits": [],
+            "motif": None,
+            "modules_repris": [],
+            "base_gelee": BASE_GELEE,
+            "amont_depuis_gel": 9,
+            "amont_reecrit": False,
+        }
+        texte = repo_upgrade.render_diagnostic([base], "X", colour=False)
+        self.assertIn(
+            f"9 {repo_upgrade.t('upstream commits since the freeze')}"
+            f" ({BASE_GELEE[:12]})",
+            texte,
+        )
+        reecrit = dict(base, amont_depuis_gel=None, amont_reecrit=True)
+        texte = repo_upgrade.render_diagnostic([reecrit], "X", colour=False)
+        self.assertIn(
+            repo_upgrade.t("upstream rewritten since the freeze"), texte
+        )
+        sans = dict(base, base_gelee=None)
+        self.assertIsNone(repo_upgrade.ligne_gel(sans))
+
+
+class TestBaseGeleeDesManifestes(unittest.TestCase):
+    """La base gelée se lit dans les manifestes, sur la définition qui
+    l'emporte dans la fusion : principal, puis dev, puis extra."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, True)
+
+    def ecrire(self, fichier, base):
+        attr = f' fork-upstream-freeze-revision="{base}"' if base else ""
+        with open(os.path.join(self.dossier, fichier), "w") as fh:
+            fh.write(
+                "<manifest>\n"
+                '  <remote name="Amont" fetch="https://example.org/amont/"/>'
+                "\n"
+                '  <project name="d.git" path="odooX/addons/Amont_d"'
+                ' remote="Prop_origin_Amont" fork-upstream-remote="Amont"'
+                f' fork-upstream="X" revision="X_dev"{attr}/>\n'
+                "</manifest>\n"
+            )
+
+    def test_ordre_de_la_fusion(self):
+        for fichier in (
+            "git_manifest_extra_odooX.xml",
+            "git_manifest_odooX_dev.xml",
+            "git_manifest_odooX.xml",
+        ):
+            self.ecrire(fichier, None)
+        self.assertEqual(
+            [
+                os.path.basename(f)
+                for f in repo_upgrade.fichiers_manifeste("X", self.dossier)
+            ],
+            [
+                "git_manifest_odooX.xml",
+                "git_manifest_odooX_dev.xml",
+                "git_manifest_extra_odooX.xml",
+            ],
+        )
+
+    def test_la_derniere_definition_porte_la_base(self):
+        self.ecrire("git_manifest_odooX.xml", "1" * 40)
+        self.ecrire("git_manifest_odooX_dev.xml", None)
+        (fork,) = repo_upgrade.etat_forks("X", self.dossier)
+        self.assertIsNone(fork["base_gelee"])
+        self.ecrire("git_manifest_extra_odooX.xml", "2" * 40)
+        (fork,) = repo_upgrade.etat_forks("X", self.dossier)
+        self.assertEqual(fork["base_gelee"], "2" * 40)
+        texte = repo_upgrade.render([fork], False, colour=False)
+        self.assertIn(f"{repo_upgrade.t('frozen base')} {'2' * 12}", texte)
 
 
 class TestPrefixesModule(unittest.TestCase):

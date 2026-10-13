@@ -389,6 +389,142 @@ class TestDefinitionsDesClones(unittest.TestCase):
         self.assertIsNone(definitions["a+x/a"]["sha"])
 
 
+def _manifeste_base(projets):
+    """Un fichier source dont les forks portent une base amont : `projets`
+    est une suite de (nom, chemin, sha, base)."""
+    lignes = ['<?xml version="1.0" encoding="UTF-8" ?>', "<manifest>"]
+    for nom, chemin, sha, base in projets:
+        base = f' fork-upstream-freeze-revision="{base}"' if base else ""
+        lignes.append(
+            f'  <project name="{nom}" path="{chemin}" revision="18.0"'
+            f' freeze-revision="{sha}"{base}/>'
+        )
+    lignes.append("</manifest>")
+    return "\n".join(lignes) + "\n"
+
+
+class TestBaseAmont(_Checkout):
+    """La base amont gelée d'un fork, d'un gel à l'autre.
+
+    Les bases sont des commits d'alpha antérieurs à son commit gelé, comme
+    la base de fusion d'un fork l'est toujours.
+    """
+
+    MANIFESTE = os.path.join("manifest", "git_manifest_t.xml")
+
+    def ecrire(self, projets, message=None):
+        """Écrit le fichier source ; le committe si `message` est donné."""
+        self.fichier(self.chemin(self.MANIFESTE), _manifeste_base(projets))
+        if message:
+            _git(self.racine, "add", "manifest")
+            _git(self.racine, "commit", "-q", "-m", message)
+
+    def test_la_lecture_rend_la_base(self):
+        texte = _manifeste_base([("a", "x/a", "1" * 40, "2" * 40)])
+        (entree,) = fd._entries_from_texts([("m.xml", texte)]).values()
+        self.assertEqual(entree["upstream_base"], "2" * 40)
+        (entree,) = fd._entries_from_texts(
+            [("m.xml", _manifeste([("a", "x/a", "1" * 40)]))]
+        ).values()
+        self.assertIsNone(entree["upstream_base"])
+
+    def test_base_changee_sous_un_commit_gele_identique(self):
+        self.ecrire(
+            [("alpha", "c/alpha", self.alpha[2], self.alpha[0])], "gel"
+        )
+        self.ecrire([("alpha", "c/alpha", self.alpha[2], self.alpha[1])])
+        rapport = self.build("HEAD", fd.WORKTREE)
+        ligne = self.par_chemin(rapport)["c/alpha"]
+        self.assertEqual(ligne["status"], fd.STATUS_SAME)
+        self.assertEqual(
+            ligne["upstream"],
+            {
+                "old": self.alpha[0],
+                "new": self.alpha[1],
+                "ahead": 1,
+                "behind": 0,
+            },
+        )
+        sommaire = "\n".join(fd.render_summary(rapport))
+        self.assertIn("Upstream base changed, same frozen commit: 1", sommaire)
+        self.assertIn(
+            f"c/alpha: upstream {self.alpha[0][:12]}"
+            f" -> {self.alpha[1][:12]} +1",
+            sommaire,
+        )
+
+    def test_base_changee_avec_le_commit_gele_dans_les_notes(self):
+        self.ecrire(
+            [("alpha", "c/alpha", self.alpha[1], self.alpha[0])], "gel 1"
+        )
+        self.ecrire(
+            [("alpha", "c/alpha", self.alpha[3], self.alpha[2])], "gel 2"
+        )
+        rapport = self.build("HEAD~1", "HEAD")
+        ligne = self.par_chemin(rapport)["c/alpha"]
+        self.assertEqual(ligne["status"], fd.STATUS_CHANGED)
+        self.assertIn(
+            f"upstream {self.alpha[0][:12]} -> {self.alpha[2][:12]} +2",
+            fd._notes(ligne),
+        )
+
+    def test_base_absente_du_clone_sans_compte(self):
+        inventee = "8" * 40
+        self.ecrire(
+            [("alpha", "c/alpha", self.alpha[2], self.alpha[0])], "gel"
+        )
+        self.ecrire([("alpha", "c/alpha", self.alpha[2], inventee)])
+        rapport = self.build("HEAD", fd.WORKTREE)
+        change = self.par_chemin(rapport)["c/alpha"]["upstream"]
+        self.assertIsNone(change["ahead"])
+        self.assertEqual(
+            fd._note_amont(change),
+            f"upstream {self.alpha[0][:12]} -> {inventee[:12]}",
+        )
+
+    def test_base_apparue_et_inchangee(self):
+        self.ecrire([("alpha", "c/alpha", self.alpha[2], None)], "gel")
+        self.ecrire([("alpha", "c/alpha", self.alpha[2], self.alpha[0])])
+        rapport = self.build("HEAD", fd.WORKTREE)
+        change = self.par_chemin(rapport)["c/alpha"]["upstream"]
+        self.assertEqual(
+            fd._note_amont(change), f"upstream - -> {self.alpha[0][:12]}"
+        )
+        _git(self.racine, "commit", "-q", "-am", "gel avec base")
+        rapport = self.build("HEAD", fd.WORKTREE)
+        self.assertIsNone(self.par_chemin(rapport)["c/alpha"]["upstream"])
+
+    def test_une_base_seule_non_committee_est_un_gel_non_committe(self):
+        """Le commit gelé ne change pas, seule la base amont du disque
+        diffère de HEAD : l'avertissement du gel non committé vaut."""
+        self.ecrire(
+            [("alpha", "c/alpha", self.alpha[2], self.alpha[0])], "gel"
+        )
+        self.assertEqual(fd.uncommitted_freeze(self.racine), [])
+        self.ecrire([("alpha", "c/alpha", self.alpha[2], self.alpha[1])])
+        self.assertEqual(fd.uncommitted_freeze(self.racine), ["alpha+c/alpha"])
+        rapport = self.build("HEAD", fd.CLONES)
+        self.assertEqual(rapport["uncommitted"], ["alpha+c/alpha"])
+        self.assertIn(
+            "WARNING: manifest/ holds 1",
+            "\n".join(fd.render_summary(rapport)),
+        )
+
+    def test_le_cote_des_clones_n_a_pas_de_base(self):
+        self.ecrire(
+            [("alpha", "c/alpha", self.alpha[2], self.alpha[0])], "gel"
+        )
+        for gauche, droite in (
+            ("HEAD", fd.CLONES),
+            (fd.CLONES, "HEAD"),
+            (fd.WORKTREE, fd.CLONES),
+        ):
+            rapport = self.build(gauche, droite)
+            for ligne in rapport["rows"]:
+                self.assertIsNone(ligne.get("upstream"), ligne["path"])
+            self.assertNotIn("upstream", "\n".join(fd.render_summary(rapport)))
+
+
 class TestLectureDesCotes(_Checkout):
     def test_une_revision_lit_ses_fichiers_committes(self):
         avant = fd.read_ref(self.racine, "HEAD~2")
@@ -522,7 +658,7 @@ class TestRapport(_Checkout):
         sommaire = "\n".join(fd.render_summary(rapport))
         self.assertIn("1 clones have uncommitted changes", sommaire)
         self.assertIn("  - c/beta", sommaire)
-        self.assertIn("2 freeze-revision changes not committed", sommaire)
+        self.assertIn("2 freeze changes not committed", sommaire)
         self.assertIn("ERPLibre HEAD:", sommaire)
         self.assertIn("dirty", sommaire)
 

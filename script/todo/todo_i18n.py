@@ -18445,6 +18445,18 @@ TRANSLATIONS = {
         "fr": "l'amont porte désormais",
         "en": "upstream now carries",
     },
+    "upstream commits since the freeze": {
+        "fr": "commits amont depuis le gel",
+        "en": "upstream commits since the freeze",
+    },
+    "upstream rewritten since the freeze": {
+        "fr": "amont réécrit depuis le gel",
+        "en": "upstream rewritten since the freeze",
+    },
+    "frozen base": {
+        "fr": "base gelée",
+        "en": "frozen base",
+    },
     "Modules touched": {
         "fr": "Modules touchés",
         "en": "Modules touched",
@@ -18812,6 +18824,14 @@ TRANSLATIONS = {
     "Write these changes to the manifest files?": {
         "fr": "Écrire ces changements dans les fichiers de manifeste ?",
         "en": "Write these changes to the manifest files?",
+    },
+    "Also freeze the upstream base of each fork (network)?": {
+        "fr": "Geler aussi la base amont de chaque fork (réseau) ?",
+        "en": "Also freeze the upstream base of each fork (network)?",
+    },
+    "forks with upstream base": {
+        "fr": "forks avec base amont",
+        "en": "forks with upstream base",
     },
     "The manifest files were not written.": {
         "fr": "Les fichiers de manifeste n'ont pas été écrits.",

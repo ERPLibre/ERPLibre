@@ -19,7 +19,11 @@ from script.git.git_freeze_manifest import (
     read_sources,
 )
 from script.git.git_tool import GitTool
-from script.git.manifest_freeze import FREEZE_ATTR, apply_freeze
+from script.git.manifest_freeze import (
+    FORK_UPSTREAM_FREEZE_ATTR,
+    FREEZE_ATTR,
+    apply_freeze,
+)
 from script.version.erplibre_state import get_version_extra
 
 _logger = logging.getLogger(__name__)
@@ -155,17 +159,20 @@ def main():
             continue
         for key, value in projects.items():
             if key in projects_total:
-                # Le commit gelé suit la définition qui l'emporte : celui
-                # d'un fichier antérieur ne survit pas à une redéfinition
-                # qui n'en porte pas, et qui peut changer de branche.
-                projects_total[key].pop(f"@{FREEZE_ATTR}", None)
+                # Le commit gelé et sa base amont suivent la définition qui
+                # l'emporte : ceux d'un fichier antérieur ne survivent pas à
+                # une redéfinition qui n'en porte pas, et qui peut changer
+                # de branche.
+                for attr in (FREEZE_ATTR, FORK_UPSTREAM_FREEZE_ATTR):
+                    projects_total[key].pop(f"@{attr}", None)
                 if config.att_revision_only:
                     revision = value.get("@revision")
                     if revision:
                         projects_total[key]["@revision"] = revision
-                    sha = value.get(f"@{FREEZE_ATTR}")
-                    if sha:
-                        projects_total[key][f"@{FREEZE_ATTR}"] = sha
+                    for attr in (FREEZE_ATTR, FORK_UPSTREAM_FREEZE_ATTR):
+                        sha = value.get(f"@{attr}")
+                        if sha:
+                            projects_total[key][f"@{attr}"] = sha
                 else:
                     projects_total[key].update(value)
             else:
@@ -289,8 +296,8 @@ def default_input_paths(
 
 
 def strip_freeze(projects):
-    """Retire « freeze-revision » des projets d'un fichier. Rend les clés
-    qui en portaient un.
+    """Retire « freeze-revision » et « fork-upstream-freeze-revision » des
+    projets d'un fichier. Rend les clés qui portaient l'un ou l'autre.
 
     La fusion n'applique que le gel des fichiers de la version d'Odoo
     active, ceux que `git_freeze_manifest` écrit ; celui d'un autre fichier
@@ -298,7 +305,9 @@ def strip_freeze(projects):
     """
     retires = []
     for cle, valeur in projects.items():
-        if valeur.pop(f"@{FREEZE_ATTR}", None):
+        sha = valeur.pop(f"@{FREEZE_ATTR}", None)
+        base = valeur.pop(f"@{FORK_UPSTREAM_FREEZE_ATTR}", None)
+        if sha or base:
             retires.append(cle)
     return retires
 

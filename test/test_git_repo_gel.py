@@ -215,6 +215,156 @@ class TestRewrite(unittest.TestCase):
         self.assertNotIn(mf.FREEZE_ATTR, attrs[1])
 
 
+BASE = mf.FORK_UPSTREAM_FREEZE_ATTR
+
+# Un fork : ses attributs d'amont, dans l'ordre des fichiers de manifest/.
+FORK = """<manifest>
+  <project
+    name="alpha.git"
+    revision="X_dev"
+    path="odooX/addons/R_alpha"
+    remote="R_origin_U"
+    fork-upstream-remote="U"
+    fork-upstream="X"
+    groups="g"
+  />
+  <project name="beta.git" path="odooX/addons/R_beta" revision="X"\
+ remote="R_origin_U" fork-upstream-remote="U" fork-upstream-name="b.git"/>
+</manifest>
+"""
+
+
+class TestRewriteBaseAmont(unittest.TestCase):
+    """« fork-upstream-freeze-revision » : la base amont du commit gelé."""
+
+    def test_pose_apres_fork_upstream(self):
+        neuf, cles = mf.rewrite(
+            FORK, freeze={CLE_ALPHA: SHA_A}, upstream={CLE_ALPHA: SHA_B}
+        )
+        self.assertEqual(cles, [CLE_ALPHA])
+        attendu = FORK.replace(
+            '    revision="X_dev"\n',
+            f'    revision="X_dev"\n    freeze-revision="{SHA_A}"\n',
+        ).replace(
+            '    fork-upstream="X"\n',
+            f'    fork-upstream="X"\n    {BASE}="{SHA_B}"\n',
+        )
+        self.assertEqual(neuf, attendu)
+
+    def test_ancres_successives(self):
+        """Sans « fork-upstream », la base suit « fork-upstream-name »,
+        puis « fork-upstream-remote », puis « freeze-revision »."""
+        cas = (
+            (
+                'fork-upstream-remote="U" fork-upstream-name="b.git"',
+                f'fork-upstream-name="b.git" {BASE}="{SHA_B}"',
+            ),
+            (
+                'fork-upstream-remote="U"',
+                f'fork-upstream-remote="U" {BASE}="{SHA_B}"',
+            ),
+            (
+                "",
+                f'revision="X" freeze-revision="{SHA_A}" {BASE}="{SHA_B}"',
+            ),
+        )
+        for attrs, attendu in cas:
+            with self.subTest(attrs=attrs):
+                texte = (
+                    '<project name="beta.git" path="odooX/addons/R_beta"'
+                    f' revision="X" {attrs}/>'
+                )
+                neuf, _ = mf.rewrite(
+                    texte,
+                    freeze={CLE_BETA: SHA_A},
+                    upstream={CLE_BETA: SHA_B},
+                )
+                self.assertIn(attendu, neuf)
+                self.assertEqual(neuf.count(BASE), 1)
+
+    def gele(self):
+        texte, _ = mf.rewrite(
+            FORK,
+            freeze={CLE_ALPHA: SHA_A, CLE_BETA: SHA_A},
+            upstream={CLE_ALPHA: SHA_B, CLE_BETA: SHA_B},
+        )
+        return texte
+
+    def test_mise_a_jour_en_place(self):
+        une = self.gele()
+        deux, cles = mf.rewrite(
+            une, freeze={CLE_ALPHA: SHA_A}, upstream={CLE_ALPHA: SHA_C}
+        )
+        self.assertEqual(cles, [CLE_ALPHA])
+        self.assertEqual(
+            deux,
+            une.replace(f'    {BASE}="{SHA_B}"', f'    {BASE}="{SHA_C}"'),
+        )
+
+    def test_meme_commit_sans_base_demandee_garde_la_base(self):
+        une = self.gele()
+        deux, cles = mf.rewrite(une, freeze={CLE_ALPHA: SHA_A})
+        self.assertEqual((deux, cles), (une, []))
+
+    def test_commit_change_sans_base_retire_l_ancienne(self):
+        """La base d'un ancien commit ne survit pas à un nouveau gel."""
+        une = self.gele()
+        deux, cles = mf.rewrite(une, freeze={CLE_ALPHA: SHA_C})
+        self.assertEqual(cles, [CLE_ALPHA])
+        self.assertEqual(
+            deux,
+            une.replace(
+                f'    freeze-revision="{SHA_A}"',
+                f'    freeze-revision="{SHA_C}"',
+            ).replace(f'\n    {BASE}="{SHA_B}"', ""),
+        )
+
+    def test_none_retire_la_base(self):
+        une = self.gele()
+        deux, cles = mf.rewrite(
+            une, freeze={CLE_ALPHA: SHA_A}, upstream={CLE_ALPHA: None}
+        )
+        self.assertEqual(cles, [CLE_ALPHA])
+        self.assertEqual(deux, une.replace(f'\n    {BASE}="{SHA_B}"', ""))
+
+    def test_degel_retire_les_deux_attributs_a_l_octet_pres(self):
+        degele, cles = mf.rewrite(self.gele(), unfreeze=True)
+        self.assertEqual(degele, FORK)
+        self.assertEqual(sorted(cles), sorted([CLE_ALPHA, CLE_BETA]))
+
+    def test_le_nom_de_l_un_n_est_pas_pris_pour_l_autre(self):
+        """« freeze-revision » est un suffixe de
+        « fork-upstream-freeze-revision » : poser ou retirer l'un ne
+        touche jamais l'autre."""
+        seule_base = (
+            '<project name="beta.git" path="odooX/addons/R_beta"'
+            f' revision="X" {BASE}="{SHA_B}"/>'
+        )
+        # Poser le gel l'insère après « revision » sans réécrire la base.
+        self.assertEqual(
+            mf._set_attr(seule_base, mf.FREEZE_ATTR, SHA_C),
+            seule_base.replace(
+                'revision="X" ', f'revision="X" freeze-revision="{SHA_C}" '
+            ),
+        )
+        self.assertEqual(mf._drop_attr(seule_base, mf.FREEZE_ATTR), seule_base)
+        # La base ne passe pas pour un ancien gel au même commit : un gel
+        # neuf la retire.
+        neuf, _ = mf.rewrite(seule_base, freeze={CLE_BETA: SHA_B})
+        self.assertEqual(
+            neuf,
+            '<project name="beta.git" path="odooX/addons/R_beta"'
+            f' revision="X" freeze-revision="{SHA_B}"/>',
+        )
+        gele = self.gele()
+        sans_gel = mf._drop_attr(gele, mf.FREEZE_ATTR)
+        self.assertNotIn(" freeze-revision", sans_gel)
+        self.assertEqual(sans_gel.count(BASE), 2)
+        sans_base = mf._drop_attr(gele, BASE)
+        self.assertNotIn(BASE, sans_base)
+        self.assertEqual(sans_base.count(mf.FREEZE_ATTR), 2)
+
+
 class TestApplyFreeze(unittest.TestCase):
     def projets(self):
         return {
@@ -288,6 +438,16 @@ class TestApplyFreeze(unittest.TestCase):
                 mf.apply_freeze(projets, freeze)
                 for valeur in projets.values():
                     self.assertNotIn(f"@{mf.FREEZE_ATTR}", valeur)
+
+    def test_la_base_amont_est_toujours_retiree(self):
+        """La source de vérité de la base reste manifest/ : le manifeste
+        local ne la porte jamais."""
+        for freeze in (True, False):
+            with self.subTest(freeze=freeze):
+                projets = self.projets()
+                projets[CLE_ALPHA][f"@{BASE}"] = SHA_C
+                mf.apply_freeze(projets, freeze)
+                self.assertNotIn(f"@{BASE}", projets[CLE_ALPHA])
 
 
 class TestPlanFreeze(unittest.TestCase):
@@ -644,6 +804,57 @@ class TestDefaultInputPaths(unittest.TestCase):
         }
         self.assertEqual(fusion.strip_freeze(projets), ["a"])
         self.assertNotIn(f"@{mf.FREEZE_ATTR}", projets["a"])
+
+    def test_strip_freeze_retire_la_base_amont(self):
+        projets = {
+            "a": {
+                "@revision": "X",
+                f"@{mf.FREEZE_ATTR}": SHA_A,
+                f"@{BASE}": SHA_B,
+            },
+            "b": {"@revision": "X", f"@{BASE}": SHA_B},
+        }
+        self.assertEqual(fusion.strip_freeze(projets), ["a", "b"])
+        for valeur in projets.values():
+            self.assertEqual(valeur, {"@revision": "X"})
+
+    def fusionner(self, *options):
+        """Fusionne commun.xml puis la version active. Rend le local."""
+        sortie = os.path.join(self.dossier, "local.xml")
+        argv = [
+            "git_merge_repo_manifest.py",
+            "--input",
+            "manifest/commun.xml;manifest/git_manifest_odooX.0.xml",
+            "--output",
+            sortie,
+            *options,
+        ]
+        with patch("sys.argv", argv), patch("builtins.print"):
+            fusion.main()
+        with open(sortie) as fh:
+            return fh.read()
+
+    def test_la_fusion_n_ecrit_jamais_la_base_amont(self):
+        """Une redéfinition reprend le gel et la base du fichier qui
+        l'emporte ; ni l'une ni l'autre n'atteint le manifeste local."""
+        self.ecrire("commun.xml", ("un", SHA_B))
+        self.ecrire("git_manifest_odooX.0.xml", ("un", SHA_A))
+        for nom in ("commun.xml", "git_manifest_odooX.0.xml"):
+            texte = self.lire(nom).replace("/>", f' {BASE}="{SHA_C}"/>')
+            with open(os.path.join("manifest", nom), "w") as fh:
+                fh.write(texte)
+        for options in (
+            (),
+            ("--freeze",),
+            ("--freeze", "--att_revision_only"),
+        ):
+            with self.subTest(options=options):
+                local = self.fusionner(*options)
+                self.assertNotIn(BASE, local)
+                self.assertNotIn(SHA_C, local)
+                self.assertNotIn(SHA_B, local)
+                if options:
+                    self.assertIn(f'revision="{SHA_A}"', local)
 
     def test_default_sources_ne_garde_que_le_xml(self):
         open(os.path.join("private", "notes.txt"), "w").close()
