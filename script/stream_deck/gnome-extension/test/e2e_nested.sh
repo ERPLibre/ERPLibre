@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
-# End-to-end smoke test that launches a nested gnome-shell with the
-# extension enabled and verifies it answers a D-Bus method, proving
-# the extension loaded and registered its interface.
+# End-to-end smoke test: start a headless gnome-shell on a private
+# session bus with the extension enabled, then check that the Shell
+# reports it ACTIVE, that it answers a D-Bus method, and that every
+# indicator mounted.
 #
-# Requires a running Wayland session (Mutter or compatible) on the
-# host — nested gnome-shell needs a parent wayland compositor and
-# cannot run on a headless CI without an Xvfb/wayland surrogate.
+# Headless mode needs no parent compositor, so the test runs from a
+# desktop terminal, over ssh, or on a host with no session at all.
+# Nothing touches the user's session: data, config, cache and the
+# runtime directory all live in a throwaway sandbox.
 #
 # Exit codes:
-#   0  - extension answered DebugClaudeIndex within the timeout
+#   0  - ACTIVE, D-Bus answered, every indicator mounted
 #   1  - precondition missing (gnome-shell / dbus-launch / gdbus)
-#   2  - nested shell never exposed the extension's D-Bus method
+#   2  - the shell exited, the extension never reached ACTIVE, or an
+#        indicator failed to mount
 #
 # This is opt-in. Tests that must run on every host (unit + lint)
 # stay in test/unit/ and Makefile targets that don't depend on a
-# graphical session.
+# gnome-shell binary.
 
 set -euo pipefail
 
 UUID="streamdeck-tiler@technolibre.ca"
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TIMEOUT_SEC="${TIMEOUT_SEC:-30}"
+TIMEOUT_SEC="${TIMEOUT_SEC:-40}"
 
 for bin in gnome-shell dbus-launch gdbus glib-compile-schemas; do
     if ! command -v "$bin" >/dev/null 2>&1; then
@@ -29,62 +32,86 @@ for bin in gnome-shell dbus-launch gdbus glib-compile-schemas; do
     fi
 done
 
-if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
-    echo "skip: WAYLAND_DISPLAY not set — nested shell needs a Wayland host" >&2
-    exit 1
-fi
-
-SANDBOX="${XDG_RUNTIME_DIR:-/tmp}/streamdeck-tiler-e2e"
-rm -rf "$SANDBOX"
+# Mutter puts its Wayland socket in XDG_RUNTIME_DIR, and a Unix socket
+# path is capped at 108 bytes: the sandbox stays under a short /tmp path.
+SANDBOX="$(mktemp -d /tmp/sdt-e2e.XXXXXX)"
+chmod 700 "$SANDBOX"
 mkdir -p \
     "$SANDBOX/data/gnome-shell/extensions" \
     "$SANDBOX/config" \
-    "$SANDBOX/cache"
+    "$SANDBOX/cache" \
+    "$SANDBOX/run"
+chmod 700 "$SANDBOX/run"
 
-DEST="$SANDBOX/data/gnome-shell/extensions/$UUID"
-ln -sfn "$SRC_DIR" "$DEST"
+ln -sfn "$SRC_DIR" "$SANDBOX/data/gnome-shell/extensions/$UUID"
 glib-compile-schemas "$SRC_DIR/schemas/" 2>/dev/null || true
 
-export MUTTER_DEBUG_DUMMY_MONITOR_SPECS="${MUTTER_DEBUG_DUMMY_MONITOR_SPECS:-1280x800}"
+unset WAYLAND_DISPLAY DISPLAY
+export XDG_RUNTIME_DIR="$SANDBOX/run"
 export XDG_DATA_HOME="$SANDBOX/data"
 export XDG_CONFIG_HOME="$SANDBOX/config"
 export XDG_CACHE_HOME="$SANDBOX/cache"
-export GSETTINGS_SCHEMA_DIR="$SRC_DIR/schemas"
+export GSETTINGS_BACKEND=keyfile
 
-# Start an isolated session bus so gdbus and the nested shell agree.
-eval "$(dbus-launch --sh-syntax)"
-trap '
-    [[ -n "${SHELL_PID:-}" ]] && kill -TERM "$SHELL_PID" 2>/dev/null || true
+cleanup() {
+    [[ -n "${SHELL_PID:-}" ]] && kill -TERM "$SHELL_PID" 2>/dev/null
+    [[ -n "${SHELL_PID:-}" ]] && wait "$SHELL_PID" 2>/dev/null
     [[ -n "${DBUS_SESSION_BUS_PID:-}" ]] && \
-        kill -TERM "$DBUS_SESSION_BUS_PID" 2>/dev/null || true
-' EXIT
+        kill -TERM "$DBUS_SESSION_BUS_PID" 2>/dev/null
+    [[ -n "${KEEP_SANDBOX:-}" ]] && return 0
+    # The document portal the shell activates mounts a FUSE file system
+    # on $XDG_RUNTIME_DIR/doc, which rm cannot cross while it is mounted.
+    if mountpoint -q "$SANDBOX/run/doc" 2>/dev/null; then
+        fusermount3 -uz "$SANDBOX/run/doc" 2>/dev/null \
+            || fusermount -uz "$SANDBOX/run/doc" 2>/dev/null
+    fi
+    rm -rf "$SANDBOX" 2>/dev/null \
+        || echo "warning: could not remove $SANDBOX" >&2
+    return 0
+}
 
-gsettings set org.gnome.shell disable-user-extensions false || true
-gsettings set org.gnome.shell enabled-extensions "['$UUID']" || true
+eval "$(dbus-launch --sh-syntax)"
+trap cleanup EXIT
 
-gnome-shell --nested --wayland >"$SANDBOX/shell.log" 2>&1 &
+gsettings set org.gnome.shell disable-user-extensions false
+gsettings set org.gnome.shell enabled-extensions "['$UUID']"
+
+LOG="$SANDBOX/shell.log"
+gnome-shell --headless --virtual-monitor 1280x800 --no-x11 \
+    --wayland-display sdt-e2e >"$LOG" 2>&1 &
 SHELL_PID=$!
 
-ok=false
+fail() {
+    echo "fail: $1" >&2
+    grep -E 'StreamDeckTiler|JS ERROR' "$LOG" >&2 || true
+    exit 2
+}
+
+info=""
 for ((i = 0; i < TIMEOUT_SEC; i++)); do
-    if ! kill -0 "$SHELL_PID" 2>/dev/null; then
-        echo "fail: nested gnome-shell exited early — see $SANDBOX/shell.log" >&2
-        exit 2
-    fi
-    if gdbus call --session \
+    kill -0 "$SHELL_PID" 2>/dev/null || fail "gnome-shell exited early"
+    info="$(gdbus call --session \
+            --dest org.gnome.Shell.Extensions \
+            --object-path /org/gnome/Shell/Extensions \
+            --method org.gnome.Shell.Extensions.GetExtensionInfo \
+            "$UUID" 2>/dev/null || true)"
+    if [[ "$info" == *"'state': <1.0>"* ]] && gdbus call --session \
             --dest org.gnome.Shell \
             --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
             --method org.gnome.Shell.Extensions.StreamDeckTiler.DebugClaudeIndex \
             >/dev/null 2>&1; then
-        ok=true
         break
     fi
+    info=""
     sleep 1
 done
 
-if ! $ok; then
-    echo "fail: DebugClaudeIndex never answered — see $SANDBOX/shell.log" >&2
-    exit 2
+[[ -n "$info" ]] || fail "extension never reached ACTIVE with D-Bus up"
+# extension.js logs "mount <name> failed" for an indicator whose
+# constructor threw, and keeps the others running: ACTIVE alone does
+# not prove the panel is whole.
+if grep -E '\[StreamDeckTiler\] mount .* failed' "$LOG" >&2; then
+    fail "an indicator failed to mount"
 fi
 
-echo "ok: extension exposed D-Bus interface in nested shell"
+echo "ok: $(gnome-shell --version): ACTIVE, D-Bus up, every indicator mounted"

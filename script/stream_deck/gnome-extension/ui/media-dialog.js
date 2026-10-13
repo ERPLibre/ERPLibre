@@ -8,6 +8,7 @@ import {validatePositionInput, guessKind, normaliseKind,
     extractMediaInfo}
     from '../lib/media-helpers.js';
 import {_} from '../lib/i18n.js';
+import {verticalBoxProps} from '../lib/shell-compat.js';
 
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
@@ -20,7 +21,7 @@ class MediaDialog extends ModalDialog {
         this._onConfirm = onConfirm;
         this._onDelete = onDelete;
 
-        const box = new St.BoxLayout({vertical: true,
+        const box = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             style: 'spacing: 8px;'});
         this.contentLayout.add_child(box);
 
@@ -36,7 +37,7 @@ class MediaDialog extends ModalDialog {
         // URL row with an Auto-fill button on the right that parses
         // the URL and populates Name + Episode from known platforms
         // (tou.tv, noovo, vrai, vimeo, soundcloud, …).
-        const urlRow = new St.BoxLayout({vertical: false,
+        const urlRow = new St.BoxLayout({
             style: 'spacing: 4px;'});
         this._urlEntry = new St.Entry({hint_text: _('URL (required)'),
             text: entry?.url ?? '', x_expand: true});
@@ -78,7 +79,7 @@ class MediaDialog extends ModalDialog {
         this._kind = entry?.kind
             ? normaliseKind(entry.kind)
             : guessKind(entry?.url ?? '');
-        const kindRow = new St.BoxLayout({vertical: false,
+        const kindRow = new St.BoxLayout({
             style: 'spacing: 8px;'});
         kindRow.add_child(new St.Label({text: _('Kind:')}));
         this._kindVideoBtn = new St.Button({label: _('Video'),
@@ -111,7 +112,7 @@ class MediaDialog extends ModalDialog {
             text: entry?.album ?? '',
         });
         box.add_child(this._albumEntry);
-        const ygRow = new St.BoxLayout({vertical: false,
+        const ygRow = new St.BoxLayout({
             style: 'spacing: 4px;'});
         this._yearEntry = new St.Entry({
             hint_text: _('Year'),

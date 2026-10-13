@@ -4,6 +4,8 @@
  * already-loaded gi modules so the file itself stays Node-importable.
  */
 
+import {verticalBoxProps, setBoxVertical} from './shell-compat.js';
+
 export const BADGE_DEFAULT = 'default';
 export const BADGE_OK = 'ok';
 export const BADGE_INFO = 'info';
@@ -98,7 +100,6 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName,
     // horizontal) on the right. Keeps the icon graphic untouched.
     const root = new St.BoxLayout({
         style_class: 'system-status-icon',
-        vertical: false,
         x_expand: false,
         y_expand: false,
         style: 'spacing: 2px;',
@@ -109,7 +110,8 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName,
 
     let currentOrientation = normaliseOrientation(orientation);
     const badgeBox = new St.BoxLayout({
-        vertical: currentOrientation === ORIENT_VERTICAL,
+        ...(currentOrientation === ORIENT_VERTICAL
+            ? verticalBoxProps(St, Clutter) : {}),
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
         x_expand: false,
@@ -173,7 +175,7 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName,
         const next = normaliseOrientation(value);
         if (next === currentOrientation) return;
         currentOrientation = next;
-        badgeBox.vertical = next === ORIENT_VERTICAL;
+        setBoxVertical(St, Clutter, badgeBox, next === ORIENT_VERTICAL);
         _render();
     }
 

@@ -22,6 +22,7 @@ export function defaultPathEntry({label = '', path = '', default_cmd} = {}) {
 
 import {parseList, serializeList, pushRecent} from '../lib/settings.js';
 import {findTerminal, buildTerminalArgv, spawnDetached} from '../lib/spawn.js';
+import {verticalBoxProps} from '../lib/shell-compat.js';
 
 // `gi://` and `resource://` modules are only resolvable inside GJS. We
 // therefore load them via dynamic import behind a try/catch so this file
@@ -359,7 +360,6 @@ try {
                     const item = new PopupMenu.PopupBaseMenuItem(
                         {reactive: false, can_focus: false});
                     const box = new St.BoxLayout({
-                        vertical: false,
                         style: 'spacing: 8px;',
                         x_expand: true,
                     });
@@ -381,17 +381,15 @@ try {
             _makeRow(entry) {
                 const item = new PopupMenu.PopupBaseMenuItem({reactive: false});
                 const box = new St.BoxLayout({
-                    vertical: false,
                     style: 'spacing: 6px;',
                     x_expand: true,
                 });
 
                 const labelBox = new St.BoxLayout({
-                    vertical: true,
+                    ...verticalBoxProps(St, Clutter),
                     x_expand: true,
                 });
                 const titleRow = new St.BoxLayout({
-                    vertical: false,
                     style: 'spacing: 6px;',
                 });
                 titleRow.add_child(new St.Label({text: resolveLabel(entry)}));
@@ -523,7 +521,6 @@ try {
                     }
                 });
                 const box = new St.BoxLayout({
-                    vertical: false,
                     style: 'spacing: 8px; padding-left: 16px;',
                     x_expand: true,
                 });
@@ -549,7 +546,7 @@ try {
                 box.add_child(dot);
 
                 const labelBox = new St.BoxLayout({
-                    vertical: true,
+                    ...verticalBoxProps(St, Clutter),
                     x_expand: true,
                 });
                 const desc = session.description ||

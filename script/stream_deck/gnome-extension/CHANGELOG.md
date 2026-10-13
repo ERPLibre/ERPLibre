@@ -37,6 +37,18 @@ migrations that are not auto-applied.
   `film` toggle that did nothing post-migration.
 
 ### Fixed
+- GNOME Shell 51: `shell-version` declares it, and `lib/shell-compat.js`
+  covers the APIs it drops. Every indicator mounts again (`St.BoxLayout`
+  `vertical` is gone), `ListWindows` and `ApplyLayout` see the windows
+  (`Meta.Window.get_maximized()` is gone), and the synthesised Enter key
+  reaches the seat through the stage context (`Clutter.get_default_backend()`
+  is gone). GNOME 45 to 50 keep their own calls.
+- `test/e2e_nested.sh` runs a headless gnome-shell, so it needs no parent
+  session and works over ssh; it fails when an indicator does not mount,
+  which an ACTIVE state alone does not show. `dev_nested.sh` uses
+  `--devkit` where gnome-shell no longer offers `--nested`.
+- The prefs "Backup & restore" group title is escaped as Pango markup
+  and shows again.
 - French accents and other non-ASCII glyphs render correctly on the
   deck buttons (DejaVu / Noto / Liberation TrueType fallback).
 - HotReload UUID-rename clones the source folder instead of mutating

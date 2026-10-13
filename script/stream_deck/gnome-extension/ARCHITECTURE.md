@@ -111,5 +111,8 @@ process-wide type table.
 ## Tests
 
 - `test/unit/*.test.js` — Node tests covering pure helpers.
-- `test/e2e_nested.sh` — opt-in nested gnome-shell smoke test.
+- `test/e2e_nested.sh` — opt-in headless gnome-shell smoke test:
+  ACTIVE, D-Bus up, and every indicator mounted.
+- `lib/shell-compat.js` — one helper per Shell/Mutter API that changed
+  between the declared GNOME versions.
 - `test/manual.md` — checklist for shell-only behaviours.
