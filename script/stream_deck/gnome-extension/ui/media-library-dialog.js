@@ -8,6 +8,7 @@ import {buildMediaLabel, normaliseKind, formatLastPlayed,
     sortEntries, filterEntries, groupBy, formatProgress, isSpotifyUrl}
     from '../lib/media-helpers.js';
 import {_} from '../lib/i18n.js';
+import {verticalBoxProps} from '../lib/shell-compat.js';
 
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
@@ -59,7 +60,7 @@ class MediaLibraryDialog extends ModalDialog {
         // a tree traversal. Rebuilt by _renderList.
         this._visibleIds = [];
 
-        const root = new St.BoxLayout({vertical: false,
+        const root = new St.BoxLayout({
             style: 'spacing: 12px; min-width: 900px; min-height: 540px;'});
         this.contentLayout.add_child(root);
 
@@ -155,7 +156,7 @@ class MediaLibraryDialog extends ModalDialog {
     // ---------------------------------------------------------------
 
     _buildSidebar() {
-        const side = new St.BoxLayout({vertical: true,
+        const side = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             style: 'spacing: 10px; min-width: 200px;'});
 
         side.add_child(new St.Label({text: _('Tab'),
@@ -201,7 +202,7 @@ class MediaLibraryDialog extends ModalDialog {
     }
 
     _buildSegmentedRow(items, getter, setter) {
-        const row = new St.BoxLayout({vertical: false,
+        const row = new St.BoxLayout({
             style: 'spacing: 4px;'});
         const refresh = () => {
             for (const child of row.get_children()) {
@@ -240,7 +241,7 @@ class MediaLibraryDialog extends ModalDialog {
     }
 
     _buildSegmentedColumn(items, getter, setter) {
-        const col = new St.BoxLayout({vertical: true,
+        const col = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             style: 'spacing: 2px;'});
         const refresh = () => {
             for (const child of col.get_children()) {
@@ -300,7 +301,7 @@ class MediaLibraryDialog extends ModalDialog {
     // ---------------------------------------------------------------
 
     _buildList() {
-        const wrap = new St.BoxLayout({vertical: true,
+        const wrap = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             x_expand: true,
             style: 'spacing: 4px; min-width: 380px;'});
         this._listSummary = new St.Label({text: '',
@@ -311,7 +312,7 @@ class MediaLibraryDialog extends ModalDialog {
             style: 'min-height: 480px;'
                 + ' background: rgba(0,0,0,0.10); border-radius: 6px;',
         });
-        this._listBox = new St.BoxLayout({vertical: true,
+        this._listBox = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             x_expand: true, style: 'padding: 6px; spacing: 2px;'});
         // GNOME 46+: ScrollView.add_child; older API used set_child or
         // add_actor. Try both so the dialog works on either.
@@ -330,7 +331,7 @@ class MediaLibraryDialog extends ModalDialog {
     // ---------------------------------------------------------------
 
     _buildDetail() {
-        this._detail = new St.BoxLayout({vertical: true,
+        this._detail = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             style: 'spacing: 6px; min-width: 260px;'});
         this._detail.add_child(new St.Label({
             text: _('Detail'),
@@ -339,7 +340,7 @@ class MediaLibraryDialog extends ModalDialog {
             text: _('Pick a media on the left.'),
             style: 'opacity: 0.7;'});
         this._detail.add_child(this._detailEmpty);
-        this._detailBody = new St.BoxLayout({vertical: true,
+        this._detailBody = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             style: 'spacing: 4px;'});
         this._detail.add_child(this._detailBody);
         return this._detail;
@@ -424,7 +425,7 @@ class MediaLibraryDialog extends ModalDialog {
                     + ' padding: 4px 8px; border-radius: 4px;'
                 : 'padding: 4px 8px; border-radius: 4px;',
         });
-        const inner = new St.BoxLayout({vertical: true,
+        const inner = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             style: 'spacing: 1px;'});
         const head = buildMediaLabel(entry);
         const head2 = [];
@@ -479,7 +480,7 @@ class MediaLibraryDialog extends ModalDialog {
 
         const addLine = (label, value) => {
             if (!value) return;
-            const row = new St.BoxLayout({vertical: false,
+            const row = new St.BoxLayout({
                 style: 'spacing: 6px;'});
             row.add_child(new St.Label({text: `${label}:`,
                 style: 'opacity: 0.7; min-width: 80px;'}));
@@ -509,7 +510,7 @@ class MediaLibraryDialog extends ModalDialog {
         if (Number(entry.rating) > 0)
             addLine(_('Rating'), '★'.repeat(entry.rating));
 
-        const actions = new St.BoxLayout({vertical: false,
+        const actions = new St.BoxLayout({
             style: 'spacing: 4px; padding-top: 6px;'});
         const mkBtn = (label, fn) => {
             const b = new St.Button({label, reactive: true,
@@ -530,7 +531,7 @@ class MediaLibraryDialog extends ModalDialog {
                 () => this._onLaunch?.(entry, 'spotify')));
         this._detailBody.add_child(actions);
 
-        const admin = new St.BoxLayout({vertical: false,
+        const admin = new St.BoxLayout({
             style: 'spacing: 4px; padding-top: 4px;'});
         admin.add_child(mkBtn(_('Edit'),
             () => this._onEdit?.(entry)));

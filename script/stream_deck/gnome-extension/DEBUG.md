@@ -67,9 +67,10 @@ gdbus call --session \
 
 ### `Could not send Enter — see script/stream_deck/INSTALL.md`
 - Wayland blocks the `wtype` virtual keyboard. The extension uses a
-  Clutter virtual device internally; if it still fails, GNOME 49+
-  may have tightened the API — open an issue with the journalctl
-  excerpt around the failure.
+  Clutter virtual device internally, reached through
+  `defaultSeat()` in `lib/shell-compat.js`; if it still fails, the
+  Shell may have changed that API again — open an issue with the
+  journalctl excerpt around the failure.
 
 ### VLC / mpv won't open a YouTube URL
 - `mpv` needs `yt-dlp` on PATH with

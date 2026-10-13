@@ -5,6 +5,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import {_} from '../lib/i18n.js';
+import {verticalBoxProps} from '../lib/shell-compat.js';
 
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
@@ -17,7 +18,7 @@ class PathDialog extends ModalDialog {
         super._init({styleClass: 'streamdeck-tiler-dialog'});
         this._onConfirm = onConfirm;
 
-        const box = new St.BoxLayout({vertical: true, style: 'spacing: 8px;'});
+        const box = new St.BoxLayout({...verticalBoxProps(St, Clutter), style: 'spacing: 8px;'});
         this.contentLayout.add_child(box);
 
         box.add_child(new St.Label({text: title,

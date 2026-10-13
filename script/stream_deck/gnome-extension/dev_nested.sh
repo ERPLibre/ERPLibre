@@ -7,6 +7,8 @@
 # Requirements:
 #   - gnome-shell 45+ (the parent session must be Mutter Wayland)
 #   - dbus-run-session (libdbus, packaged on Debian / Ubuntu)
+#   - from the GNOME version that drops --nested on: --devkit, which
+#     needs Mutter's development kit (mutter-devkit on most systems)
 #
 # The nested shell still shares the user's session bus for some
 # services (notifications, etc.) — that's normal. Extension state,
@@ -52,8 +54,17 @@ export XDG_CONFIG_HOME="$SANDBOX/config"
 export XDG_CACHE_HOME="$SANDBOX/cache"
 export GSETTINGS_SCHEMA_DIR="$SRC_DIR/schemas"
 
+# gnome-shell lists --nested for as long as it supports it; the
+# versions without it open the nested window through --devkit instead.
+if gnome-shell --help 2>&1 | grep -q -- '--nested'; then
+    SHELL_ARGS="--nested --wayland"
+else
+    SHELL_ARGS="--devkit"
+fi
+export SHELL_ARGS
+
 dbus-run-session -- bash -c '
     gsettings set org.gnome.shell disable-user-extensions false || true
     gsettings set org.gnome.shell enabled-extensions "['"'"'streamdeck-tiler@technolibre.ca'"'"']" || true
-    exec gnome-shell --nested --wayland
+    exec gnome-shell $SHELL_ARGS
 '

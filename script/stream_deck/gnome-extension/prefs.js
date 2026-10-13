@@ -1,6 +1,7 @@
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import {ExtensionPreferences}
@@ -274,7 +275,10 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         const page = new Adw.PreferencesPage({
             title: _('Advanced'), icon_name: 'document-properties-symbolic',
         });
-        const grp = new Adw.PreferencesGroup({title: _('Backup & restore')});
+        // A group title is Pango markup: a bare '&' makes it invalid and
+        // the title renders empty.
+        const grp = new Adw.PreferencesGroup({
+            title: GLib.markup_escape_text(_('Backup & restore'), -1)});
         page.add(grp);
 
         const exp = new Adw.ActionRow({title: _('Export settings…')});

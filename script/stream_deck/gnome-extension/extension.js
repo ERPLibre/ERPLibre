@@ -22,6 +22,8 @@ import {setGettext} from './lib/i18n.js';
 import {ClaudeStateWatcher} from './lib/claude-state.js';
 import {listMpvEntriesSync, sendMpvCommand} from './lib/mpv-state.js';
 import {runSchemaMigrations} from './lib/migrations.js';
+import {windowMaximizeFlags, unmaximizeWindow, maximizeWindow, defaultSeat}
+    from './lib/shell-compat.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
 import {indicatorDescriptor as pencilDescriptor}
@@ -418,7 +420,7 @@ export default class StreamDeckTilerExtension extends Extension {
         const y = workArea.y + Math.round(row1 * cellH);
         const w = Math.round((col2 - col1 + 1) * cellW);
         const h = Math.round((row2 - row1 + 1) * cellH);
-        win.unmaximize(Meta.MaximizeFlags.BOTH);
+        unmaximizeWindow(win, Meta);
         win.move_resize_frame(true, x, y, w, h);
         return true;
     }
@@ -840,7 +842,7 @@ export default class StreamDeckTilerExtension extends Extension {
     }
 
     _sendKeyval(keyval) {
-        const seat = Clutter.get_default_backend().get_default_seat();
+        const seat = defaultSeat(Clutter, global.stage);
         if (!this._virtualKeyboard) {
             this._virtualKeyboard = seat.create_virtual_device(
                 Clutter.InputDeviceType.KEYBOARD_DEVICE);
@@ -1012,7 +1014,7 @@ export default class StreamDeckTilerExtension extends Extension {
                     x: rect.x, y: rect.y, w: rect.width, h: rect.height,
                     workspace: w.get_workspace()?.index() ?? 0,
                     monitor: w.get_monitor(),
-                    maximized: w.get_maximized(),
+                    maximized: windowMaximizeFlags(w),
                     stacking: stackMap.get(w) ?? 0,
                 };
             });
@@ -1050,10 +1052,10 @@ export default class StreamDeckTilerExtension extends Extension {
                 if (wsIdx >= 0 && wsIdx < wsMgr.n_workspaces) {
                     best.change_workspace_by_index(wsIdx, false);
                 }
-                best.unmaximize(Meta.MaximizeFlags.BOTH);
+                unmaximizeWindow(best, Meta);
                 best.move_resize_frame(true,
                     entry.x | 0, entry.y | 0, entry.w | 0, entry.h | 0);
-                if (entry.maximized) best.maximize(entry.maximized);
+                maximizeWindow(best, Meta, entry.maximized | 0);
             } catch (_e) {}
         }
         matchedPairs.sort((a, b) => a.stacking - b.stacking);

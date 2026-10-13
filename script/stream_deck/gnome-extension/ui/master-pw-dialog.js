@@ -3,6 +3,7 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import {_} from '../lib/i18n.js';
+import {verticalBoxProps} from '../lib/shell-compat.js';
 
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
@@ -15,7 +16,7 @@ class MasterPwDialog extends ModalDialog {
         this._onConfirm = onConfirm;
         this._onCancel = onCancel;
 
-        const box = new St.BoxLayout({vertical: true,
+        const box = new St.BoxLayout({...verticalBoxProps(St, Clutter),
             style: 'spacing: 8px;'});
         this.contentLayout.add_child(box);
         box.add_child(new St.Label({
