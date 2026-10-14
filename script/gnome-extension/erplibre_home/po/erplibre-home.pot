@@ -806,7 +806,7 @@ msgstr ""
 msgid "Invalid position format"
 msgstr ""
 
-msgid "Python venv not found at .venv.erplibre"
+msgid "ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install"
 msgstr ""
 
 msgid "Scan failed: {err}"

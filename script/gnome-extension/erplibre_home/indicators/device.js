@@ -11,6 +11,8 @@ import {detectStreamDecksGjs} from '../lib/usb.js';
 import {spawnDetached} from '../lib/spawn.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
+import {projectRootFrom, makeGioReadLink, streamDeckPython}
+    from '../lib/project-root.js';
 import {_} from '../lib/i18n.js';
 
 function _notify(title, body) {
@@ -147,20 +149,25 @@ class DeviceIndicator extends PanelMenu.Button {
     }
 
     _projectRoot() {
-        return this._extension.path.replace(
-            /\/script\/gnome-extension\/erplibre_home\/?$/, '');
+        // extension.path is the link under gnome-shell/extensions; the
+        // checkout root is derived from the link target.
+        return projectRootFrom(this._extension.path, makeGioReadLink(Gio));
     }
 
     _launchController() {
         const root = this._projectRoot();
-        const py = `${root}/.venv.erplibre/bin/python`;
-        const script = `${root}/${CONTROLLER_REL}`;
-        if (!GLib.file_test(py, GLib.FileTest.IS_EXECUTABLE)) {
+        // .venv.streamdeck exists only once the Stream Deck level is
+        // installed. It is looked up at the click, not in enable(), so a
+        // level added after the session started is found.
+        const py = streamDeckPython(root,
+            (p) => GLib.file_test(p, GLib.FileTest.IS_EXECUTABLE));
+        if (py === null) {
             _notify('Stream Deck',
-                _('Python venv not found at .venv.erplibre'));
+                _('ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install'));
             return;
         }
-        spawnDetached([py, script], {notify: _notify, title: 'Stream Deck'});
+        spawnDetached([py, `${root}/${CONTROLLER_REL}`],
+            {notify: _notify, title: 'Stream Deck'});
     }
 
     _restart() {

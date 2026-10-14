@@ -65,6 +65,12 @@ migrations that are not auto-applied.
   deck buttons (DejaVu / Noto / Liberation TrueType fallback).
 - HotReload UUID-rename clones the source folder instead of mutating
   metadata.json in place — fewer accidental git diffs.
+- Device indicator finds the checkout through the extension symlink
+  (installed link and hot-reload copy alike) and launches the
+  controller with `.venv.streamdeck`; the gallery launcher runs
+  `make streamdeck_gallery`. Without that venv, both say that
+  ERPLibre Home Stream Deck is not installed and name
+  `make erplibre_home_streamdeck_install`, instead of failing.
 
 ## [0.x] — pre-1.0
 
