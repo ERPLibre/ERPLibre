@@ -33,6 +33,7 @@ except ImportError as e:
     )
     raise e
 
+import deck_lock
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
 DEFAULT_BRIGHTNESS = 30
@@ -1239,6 +1240,7 @@ class StreamDeckController(object):
 
 
 if __name__ == "__main__":
+    deck_lock.acquire_or_exit("controller")
     _write_pidfile()
     atexit.register(_remove_pidfile)
     sdc = StreamDeckController()
