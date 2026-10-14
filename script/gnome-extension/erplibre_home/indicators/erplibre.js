@@ -12,6 +12,7 @@ import {parseList, serializeList, uuid4} from '../lib/settings.js';
 import {buildBrowserArgv, buildTerminalArgv, findTerminal,
     spawnDetached, runProcess} from '../lib/spawn.js';
 import {detectLocalInstancesGjs} from '../lib/erplibre-detect.js';
+import {projectRootFrom, makeGioReadLink} from '../lib/project-root.js';
 import {callKeepassCli, masterPasswordCache, cacheKey}
     from '../lib/keepass.js';
 import {InstanceDialog} from '../ui/instance-dialog.js';
@@ -450,12 +451,11 @@ class ErpLibreIndicator extends PanelMenu.Button {
     }
 
     _autoLoginSelenium(inst, user, pass) {
-        // Resolve project root: assume extension lives in
-        //   script/gnome-extension/erplibre_home; root is three dirs up.
+        // Project root: the git-sync-path setting, else the checkout the
+        // extension link points to (lib/project-root.js).
         const home = GLib.get_home_dir();
         const root = this._settings.get_string('git-sync-path').trim()
-            || this._extension.path.replace(
-                /\/script\/gnome-extension\/erplibre_home\/?$/, '');
+            || projectRootFrom(this._extension.path, makeGioReadLink(Gio));
         const venv = `${root}/.venv.erplibre/bin/python`;
         const script = `${root}/script/selenium/web_login.py`;
         const argv = [venv, script,

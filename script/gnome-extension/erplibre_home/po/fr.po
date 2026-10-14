@@ -845,8 +845,8 @@ msgstr "Position (hh:mm:ss ou secondes)"
 msgid "Invalid position format"
 msgstr "Format de position invalide"
 
-msgid "Python venv not found at .venv.erplibre"
-msgstr "Venv Python introuvable dans .venv.erplibre"
+msgid "ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install"
+msgstr "ERPLibre Home Stream Deck n'est pas installé : make erplibre_home_streamdeck_install"
 
 msgid "Scan failed: {err}"
 msgstr "Échec du scan : {err}"
