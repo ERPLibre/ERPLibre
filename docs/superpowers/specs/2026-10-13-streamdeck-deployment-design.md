@@ -41,8 +41,8 @@ This spec delivers:
 4. **A long test**, `long_test/install_erplibre_home.py`, that creates a real VM
    per distribution version, installs ERPLibre Home from the local checkout,
    logs a user into GNOME and checks that the extension is ACTIVE. On the same
-   VM it then adds the Stream Deck level, removes it, and uninstalls
-   everything, checking each stage.
+   VM it then adds the Stream Deck level, removes it, uninstalls everything
+   and installs the base again, checking each stage.
 
 ### Non-goals
 
@@ -655,9 +655,18 @@ VMs run one at a time. Each VM is destroyed before the next is created, unless
    |---|---|---|
    | `uninstall-gone` | the extension symlink, the UUID in `enabled-extensions`, the udev rule and `.venv.streamdeck` are all absent | — |
 
-   The four stages replace the former `reinstall` check. No stage installs
-   the base again after `--uninstall`, so an install on a workstation that
-   was uninstalled earlier is not covered by the long test.
+   **Stage 5, reinstall.** Command `reinstall`: `install_erplibre_home.sh`
+   (the base), then reboot the VM and wait for ssh, as in step 6, so GNOME
+   Shell loads the extension fresh instead of re-enabling the copy it still
+   holds from stage 1. It proves an install on a workstation that was
+   uninstalled earlier: anything the uninstall leaves behind, or removes too
+   much of, shows here.
+
+   | Check | Command / condition | Timeout |
+   |---|---|---|
+   | `reinstall-active` | `extension-active` again, after the reboot | 300 s |
+   | `reinstall-indicators` | `extension-indicators` again, on the journal of this boot | 30 s |
+   | `reinstall-no-udev` | the udev rule and `.venv.streamdeck` are still absent: a base install after a full uninstall brings back neither | — |
 
    The session-bus commands run with
    `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus`.
@@ -679,7 +688,7 @@ under a `systemes` key:
 ```
 
 - `verdict` is one of `ACTIVE`, `FAILED`, `UNSUPPORTED`. `ACTIVE` means the
-  four stages of 6.2 passed.
+  five stages of 6.2 passed.
 - `etape` names the failed check or command, or the reason.
 - The unsupported systems of section 2 appear with `UNSUPPORTED` and no VM.
 - Between systems, the VM is destroyed in-process with
@@ -716,12 +725,12 @@ under a `systemes` key:
 | TODO games entry without `.venv.streamdeck` | prints the same message and launches nothing |
 | Dirty working tree | long test refuses to start |
 | VM creation or ssh timeout | `FAILED(vm)` / `FAILED(ssh)`, next system |
-| Extension enabled but in ERROR | `FAILED(extension-active)` in stage 1, `FAILED(stream-deck-active)` in stage 2, `FAILED(partial-uninstall-kept)` in stage 3, with the `error` text and the journal |
+| Extension enabled but in ERROR | `FAILED(extension-active)` in stage 1, `FAILED(stream-deck-active)` in stage 2, `FAILED(partial-uninstall-kept)` in stage 3, `FAILED(reinstall-active)` in stage 5, with the `error` text and the journal |
 | An indicator failed to mount | `FAILED(extension-indicators)`, with the journal lines |
 | The base install of the long test (6.2 step 5) exits 1 | `FAILED(install)`, everything after it skipped |
 | A stage command of the long test exits non-zero | `FAILED(<command name>)`, later stages skipped |
 | The base installed what belongs to the Stream Deck level | `FAILED(base-no-udev)` or `FAILED(base-no-venv)` |
-| A level left behind what it should have removed, or removed what it should have kept | `FAILED(<check>)` of that stage (`partial-uninstall-*`, `uninstall-gone`) |
+| A level left behind what it should have removed, or removed what it should have kept | `FAILED(<check>)` of that stage (`partial-uninstall-*`, `uninstall-gone`, `reinstall-no-udev`) |
 | `enabled-extensions` not written | installer exit 1 (the key is read back) |
 
 ## 8. Testing
@@ -746,7 +755,7 @@ under a `systemes` key:
   - refusal as root;
   - `bash -n`.
 - `test_longtest_install_erplibre_home.py`:
-  - the dry-run plan (systems, unsupported lines, VM sizing, the four stages
+  - the dry-run plan (systems, unsupported lines, VM sizing, the five stages
     and their commands);
   - parsing of recorded `gdbus` outputs for ACTIVE, ERROR, OUT_OF_DATE and an
     absent extension;
