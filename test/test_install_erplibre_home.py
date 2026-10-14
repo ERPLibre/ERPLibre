@@ -145,6 +145,9 @@ class Installateur(unittest.TestCase):
         self.bin.mkdir()
         self.trace_sudo = self.tmp / "sudo_appele"
         self._commande("sudo", 'echo "$@" >> "%s"\nexit 1\n' % self.trace_sudo)
+        # Un systemctl qui échoue : une étape du service lancée hors --dry-run
+        # ne joint jamais le gestionnaire utilisateur du compte des tests.
+        self._commande("systemctl", "exit 1\n")
         self.lien = str(
             self.home / ".local/share/gnome-shell/extensions" / UUID
         )
@@ -1239,7 +1242,7 @@ class TestUniteDuService(unittest.TestCase):
         ExecStart et ExecCondition désignent un exécutable : le chemin
         cité et échappé est bien celui du dépôt."""
         with tempfile.TemporaryDirectory() as dossier:
-            depot = Path(dossier, "copie du depot 100%")
+            depot = Path(dossier, "copie du depot $exemple 100%")
             (depot / "script/install").mkdir(parents=True)
             for nom in (
                 "install_erplibre_home.sh",
@@ -1429,9 +1432,75 @@ class TestServiceInstalle(unittest.TestCase):
                 avant, (unite.stat().st_mtime_ns, conf.stat().st_mtime_ns)
             )
             self.assertEqual(
-                [f"systemctl --user is-enabled --quiet {UNITE}"], appels
+                [
+                    "systemctl --user daemon-reload",
+                    f"systemctl --user is-enabled --quiet {UNITE}",
+                ],
+                appels,
             )
             self.assertIn("nothing to change", fait.stdout)
+
+    def test_a_failed_reload_is_named_and_retried(self):
+        """daemon-reload passe à chaque installation : celui qu'un premier
+        passage sans gestionnaire n'a pas pu faire est refait par le
+        suivant, même si l'unité n'a pas changé."""
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _appels, _unite, _conf = self.jouer(
+                dossier, env={"ECHEC": "1"}
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertIn(
+                "after the next login, run: systemctl --user daemon-reload",
+                fait.stdout,
+            )
+            Path(dossier, "appels").write_text("")
+            fait, appels, _unite, _conf = self.jouer(dossier)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(["systemctl --user daemon-reload"], appels)
+            self.assertNotIn("after the next login", fait.stdout)
+
+    @unittest.skipIf(os.geteuid() == 0, "root écrit dans un répertoire 0555")
+    def test_an_unwritable_directory_fails_the_install(self):
+        """Un répertoire de configuration en lecture seule arrête
+        l'installation en 1, sur une ligne ERREUR qui le nomme ; rien n'est
+        annoncé comme fait et systemctl n'est pas appelé pour l'unité."""
+        for sous_dossier in ("systemd", "erplibre-home"):
+            with self.subTest(sous_dossier=sous_dossier):
+                with tempfile.TemporaryDirectory() as dossier:
+                    bloque = Path(dossier, "config", sous_dossier)
+                    bloque.mkdir(parents=True)
+                    bloque.chmod(0o555)
+                    try:
+                        fait, appels, unite, _conf = self.jouer(dossier)
+                    finally:
+                        bloque.chmod(0o755)
+                    self.assertEqual(fait.returncode, 1, fait.stdout)
+                    erreurs = [
+                        ligne
+                        for ligne in fait.stderr.splitlines()
+                        if "ERREUR" in ligne
+                    ]
+                    self.assertEqual(1, len(erreurs), fait.stderr)
+                    self.assertIn(str(bloque), erreurs[0])
+                    self.assertNotIn("unit: ", fait.stdout)
+                    self.assertNotIn("settings: ", fait.stdout)
+                    self.assertEqual([], appels)
+                    self.assertFalse(unite.exists())
+                    self.assertEqual([], list(bloque.parent.rglob("*.conf.*")))
+
+    def test_the_settings_keep_their_mode_and_new_files_get_0644(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _appels, unite, conf = self.jouer(dossier)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(0o644, conf.stat().st_mode & 0o777)
+            self.assertEqual(0o644, unite.stat().st_mode & 0o777)
+            conf.chmod(0o640)
+            fait, _appels, _unite, conf = self.jouer(
+                dossier, env={"T_PROGRAMME": "none"}
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertIn("DECK_PROGRAM=none", conf.read_text())
+            self.assertEqual(0o640, conf.stat().st_mode & 0o777)
 
     def test_without_a_user_manager_the_summary_says_what_to_run(self):
         """Une installation par ssh sans session : l'unité est écrite, le
@@ -1447,6 +1516,65 @@ class TestServiceInstalle(unittest.TestCase):
                 "after the next login, run: systemctl --user enable " + UNITE,
                 fait.stdout,
             )
+
+
+class TestServiceSurLeBus(unittest.TestCase):
+    """Le vrai on_session_bus reste en place : chaque systemctl --user du
+    service passe par le bus de session qu'il choisit, jamais en direct.
+    systemctl, id et dbus-run-session sont des fonctions simulées ; le
+    journal porte, devant chaque appel, le bus que systemctl a reçu."""
+
+    FRAGMENT = (
+        'UNIT_FILE="$(deck_unit_file)"\n'
+        'SETTINGS_FILE="$(deck_settings_file)"\n'
+        "AUTOSTART=1\n"
+        "systemctl() {\n"
+        '    echo "${DBUS_SESSION_BUS_ADDRESS:-aucun} systemctl $*"'
+        ' >>"$JOURNAL"\n'
+        '    [ "$2" != is-enabled ]\n'
+        "}\n"
+        "id() { echo 999999; }\n"
+        "dbus-run-session() {\n"
+        "    shift\n"
+        '    DBUS_SESSION_BUS_ADDRESS=dbus-run-session "$@"\n'
+        "}\n"
+        "install_service\nuninstall_service\n"
+    )
+
+    def appels(self, env):
+        with tempfile.TemporaryDirectory() as dossier:
+            journal = Path(dossier, "appels")
+            journal.touch()
+            environ = {
+                "XDG_CONFIG_HOME": str(Path(dossier, "config")),
+                "JOURNAL": str(journal),
+            }
+            environ.update(env)
+            fait = sourcer(self.FRAGMENT, environ)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            return journal.read_text().splitlines()
+
+    def verifier(self, bus, appels):
+        self.assertEqual(
+            [
+                "daemon-reload",
+                f"is-enabled --quiet {UNITE}",
+                f"enable {UNITE}",
+                f"stop {UNITE}",
+                f"disable {UNITE}",
+                "daemon-reload",
+            ],
+            [a.split(" systemctl --user ", 1)[1] for a in appels],
+        )
+        for appel in appels:
+            self.assertTrue(appel.startswith(bus + " systemctl"), appel)
+
+    def test_the_session_bus_of_the_environment(self):
+        bus = "unix:path=/exemple/bus"
+        self.verifier(bus, self.appels({"DBUS_SESSION_BUS_ADDRESS": bus}))
+
+    def test_a_private_bus_without_a_session(self):
+        self.verifier("dbus-run-session", self.appels({}))
 
 
 class TestServiceRetire(unittest.TestCase):
