@@ -62,8 +62,11 @@ cleanup() {
     # The document portal the shell activates mounts a FUSE file system
     # on $XDG_RUNTIME_DIR/doc, which rm cannot cross while it is mounted.
     if mountpoint -q "$SANDBOX/run/doc" 2>/dev/null; then
+        # Either helper may be absent or refuse; the `|| true` keeps the
+        # unmount from ending the function under `set -e`, so rm still runs.
         fusermount3 -uz "$SANDBOX/run/doc" 2>/dev/null \
-            || fusermount -uz "$SANDBOX/run/doc" 2>/dev/null
+            || fusermount -uz "$SANDBOX/run/doc" 2>/dev/null \
+            || true
     fi
     rm -rf "$SANDBOX" 2>/dev/null \
         || echo "warning: could not remove $SANDBOX" >&2
