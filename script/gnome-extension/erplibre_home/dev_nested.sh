@@ -33,7 +33,8 @@ SANDBOX="${XDG_RUNTIME_DIR:-/tmp}/erplibre-home-nested"
 mkdir -p \
     "$SANDBOX/data/gnome-shell/extensions" \
     "$SANDBOX/config" \
-    "$SANDBOX/cache"
+    "$SANDBOX/cache" \
+    "$SANDBOX/state"
 
 DEST="$SANDBOX/data/gnome-shell/extensions/$UUID"
 rm -rf "$DEST"
@@ -52,6 +53,7 @@ export MUTTER_DEBUG_DUMMY_MONITOR_SPECS="${MUTTER_DEBUG_DUMMY_MONITOR_SPECS:-128
 export XDG_DATA_HOME="$SANDBOX/data"
 export XDG_CONFIG_HOME="$SANDBOX/config"
 export XDG_CACHE_HOME="$SANDBOX/cache"
+export XDG_STATE_HOME="$SANDBOX/state"
 export GSETTINGS_SCHEMA_DIR="$SRC_DIR/schemas"
 
 # gnome-shell lists --nested for as long as it supports it; the

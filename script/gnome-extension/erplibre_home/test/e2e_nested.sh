@@ -40,6 +40,7 @@ mkdir -p \
     "$SANDBOX/data/gnome-shell/extensions" \
     "$SANDBOX/config" \
     "$SANDBOX/cache" \
+    "$SANDBOX/state" \
     "$SANDBOX/run"
 chmod 700 "$SANDBOX/run"
 
@@ -51,6 +52,7 @@ export XDG_RUNTIME_DIR="$SANDBOX/run"
 export XDG_DATA_HOME="$SANDBOX/data"
 export XDG_CONFIG_HOME="$SANDBOX/config"
 export XDG_CACHE_HOME="$SANDBOX/cache"
+export XDG_STATE_HOME="$SANDBOX/state"
 export GSETTINGS_BACKEND=keyfile
 
 cleanup() {
