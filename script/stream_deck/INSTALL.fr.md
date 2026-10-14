@@ -1,87 +1,102 @@
 
 # Guide d'installation
 
-https://github.com/jamesridgway/devdeck/wiki/Installation#pre-requisite-libusb-hidapi-backend
+ERPLibre Home s'installe en deux niveaux, sur Debian, Ubuntu, Fedora,
+AlmaLinux, Rocky Linux, openSUSE et Arch Linux, avec GNOME Shell 45 à 51,
+sans Odoo. La base est l'extension GNOME, ses schémas et ses traductions,
+activée : elle ne demande ni accès au périphérique ni venv. Le niveau Stream
+Deck ajoute ce dont les programmes du deck ont besoin, et installe aussi la
+base quand elle manque. Les deux tournent sous ton compte et n'appellent
+`sudo` que pour les paquets système et la règle udev.
 
 ```
-# For Ubuntu
-
-sudo apt install -y libudev-dev libusb-1.0-0-dev libhidapi-libusb0
-
-# Add your user to plugdev group
-sudo usermod -a -G plugdev `whoami`
-
-# udev rule to allow all users non-root access to Elgato StreamDeck devices:
-sudo tee /etc/udev/rules.d/10-streamdeck.rules << EOF
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0060", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0063", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="006c", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="006d", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0080", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0084", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="008f", MODE:="660", GROUP="plugdev"
-EOF
-
-# Reload udev rules to ensure the new permissions take effect
-sudo udevadm control --reload-rules
+make erplibre_home_install
+make erplibre_home_streamdeck_install
 ```
 
-Pour diagnostiquer ou ajouter du nouveau matériel, vérifier avec
+La première commande installe la base : les paquets système de la base,
+puis elle lie l'extension GNOME dans `~/.local/share/gnome-shell/extensions/`,
+compile ses schémas et ses traductions (avec `msgfmt`), et l'active. La
+seconde, pour un poste qui a un Stream Deck, ajoute les paquets du Stream
+Deck, écrit la règle udev et crée `.venv.streamdeck` depuis
+`script/stream_deck/requirements.txt`. Ferme ensuite ta session et
+rouvre-la : sous Wayland, GNOME Shell ne charge une nouvelle extension qu'à
+l'ouverture de session. Une seconde exécution ne change rien. Sans le niveau
+Stream Deck, les indicateurs `device` et `controller` de l'extension disent
+qu'ERPLibre Home Stream Deck n'est pas installé et nomment
+`make erplibre_home_streamdeck_install`.
 
-```sudo udevadm monitor```
+Les deux cibles lancent `script/install/install_erplibre_home.sh`, qui
+accepte ces options :
+
+| Option | Effet |
+|---|---|
+| `--stream-deck` | ajoute le niveau Stream Deck : paquets USB, règle udev, `.venv.streamdeck` ; la base s'installe aussi quand elle manque |
+| `--no-enable` | installe sans activer l'extension ; un poste où l'ancienne extension était active garde cet état sous le nouveau nom |
+| `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
+| `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau ; un paquet absent est sauté avec un avertissement |
+| `--uninstall` | retire tout : désactive l'extension, retire son lien, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, seulement la règle udev et `.venv.streamdeck`, et l'extension reste active ; les paquets système restent toujours |
+| `--dry-run` | affiche ce qui serait fait, ne change rien |
+
+Le code de sortie `0` veut dire fait, `2` un système non supporté (une
+ligne sur stderr qui commence par `UNSUPPORTED:`), `1` tout autre échec.
+`make erplibre_home_uninstall` lance `--uninstall`, et
+`make erplibre_home_streamdeck_uninstall` lance `--uninstall --stream-deck`.
+
+### Paquets système, pour référence
+
+L'installateur prend la colonne de ta famille de distribution : les lignes
+de la base toujours, celles du Stream Deck avec `--stream-deck`. Sur
+AlmaLinux et Rocky Linux, `--stream-deck` active d'abord EPEL
+(`dnf install -y epel-release`), d'où vient `wmctrl` ; la base ne touche
+pas à EPEL.
+
+| Level | Role | apt | dnf | zypper | pacman |
+|---|---|---|---|---|---|
+| base | schemas | `libglib2.0-bin` | `glib2` | `glib2-tools` | `glib2` |
+| base | gettext (`msgfmt`) | `gettext` | `gettext` | `gettext-tools` | `gettext` |
+| base | system python | `python3` | `python3` | `python3` | `python` |
+| Stream Deck | hidapi + libusb | `libhidapi-libusb0 libusb-1.0-0` | `hidapi libusb1` | `libhidapi-libusb0 libusb-1_0-0` | `hidapi libusb` |
+| Stream Deck | venv | `python3-venv` | `python3` | `python3` | `python` |
+| Stream Deck | window control | `wmctrl` | `wmctrl` | `wmctrl` | `wmctrl` |
+
+### Accès au périphérique : la règle udev
+
+Avec `--stream-deck`, l'installateur écrit
+`/etc/udev/rules.d/70-streamdeck.rules` :
 
 ```
-# For Ubuntu to manage windows
-
-sudo apt install -y wmctrl
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
 ```
 
-<!-- [en] -->
-## mpv film launcher — yt-dlp backend
-<!-- [fr] -->
+`0fd9` est l'identifiant de fabricant USB d'Elgato : la règle couvre tous les
+modèles de Stream Deck. `uaccess` donne l'accès au périphérique à
+l'utilisateur assis devant le poste, sur toutes les familles de distribution ;
+aucun groupe n'est requis, contrairement au groupe `plugdev`, qui n'existe que
+sur Debian et Ubuntu. Le préfixe `70-` place la règle avant
+`73-seat-late.rules`, qui applique `uaccess`. Pour diagnostiquer un
+périphérique qui n'est pas vu, ou ajouter du nouveau matériel, observer les
+événements en le branchant :
+
+```
+sudo udevadm monitor
+```
+
 ## Lecteur film mpv — backend yt-dlp
-<!-- [end] -->
-
-<!-- [en] -->
-The film indicator's `mpv` launcher passes URLs to mpv, which
-delegates stream extraction to a `youtube-dl` backend. Legacy
-`youtube-dl` is unmaintained on Debian 13 / Ubuntu 24.04+; install
-`yt-dlp` and the extension's
-`--script-opts=ytdl_hook-ytdl_path=yt-dlp` arg picks it up
-automatically — no per-user `mpv.conf` needed.
-<!-- [fr] -->
 Le lanceur `mpv` de l'indicateur film passe les URL à mpv, qui
 délègue l'extraction du flux à un backend `youtube-dl`. Le
 `youtube-dl` historique n'est plus maintenu sur Debian 13 /
 Ubuntu 24.04+ ; installe `yt-dlp` et l'extension transmet
 `--script-opts=ytdl_hook-ytdl_path=yt-dlp` automatiquement — pas
 besoin de `mpv.conf` per-user.
-<!-- [end] -->
-
-<!-- [common] -->
 ```
 sudo apt install -y mpv yt-dlp
 # Verify:
 yt-dlp --version
 ```
-<!-- [end] -->
-
-<!-- [en] -->
-Errors like "youtube-dl failed: not found" surface in the prefs
-Log page when yt-dlp is missing.
-<!-- [fr] -->
 Les erreurs du type « youtube-dl failed: not found » apparaissent
 dans l'onglet Log des préférences quand yt-dlp manque.
-<!-- [end] -->
-
-<!-- [en] -->
-### Import YouTube tabs from Firefox
-
-The prefs Film page has an "Import" button that scans every running
-Firefox profile's open tabs and adds any YouTube URL as a new film
-entry. The helper reads `recovery.jsonlz4` from each profile so it
-needs Mozilla's lz4 codec:
-<!-- [fr] -->
 ### Importer les onglets YouTube depuis Firefox
 
 L'onglet Film des préférences expose un bouton « Import » qui scanne
@@ -89,21 +104,10 @@ les onglets ouverts de chaque profil Firefox et ajoute toute URL
 YouTube comme nouvelle entrée film. Le helper lit
 `recovery.jsonlz4` de chaque profil et nécessite le codec lz4 de
 Mozilla :
-<!-- [end] -->
-
-<!-- [common] -->
 ```
 sudo apt install -y python3-lz4
 ```
-<!-- [end] -->
-
-<!-- [en] -->
-### mpv keyboard shortcuts (default bindings)
-<!-- [fr] -->
 ### Raccourcis clavier mpv (bindings par défaut)
-<!-- [end] -->
-
-<!-- [common] -->
 | Key            | Action                                       |
 |----------------|----------------------------------------------|
 | `Space` / `p`  | Pause / play toggle                          |
@@ -115,85 +119,30 @@ sudo apt install -y python3-lz4
 | `m`            | Mute toggle                                  |
 | `f`            | Fullscreen toggle                            |
 | `XF86AudioPlay`| Play / pause (multimedia keyboard)           |
-<!-- [end] -->
-
-<!-- [en] -->
-The film launcher passes `--save-position-on-quit=yes`, so quitting
-mpv (any of the keys above, or closing the window) writes
-`start=<seconds>` to `~/.config/mpv/watch_later/<MD5_OF_URL>`. The
-extension reads that file when mpv exits and updates the entry's
-`position` field — the next launch (mpv, browser or VLC) honours
-that timestamp.
-<!-- [fr] -->
 Le lanceur film passe `--save-position-on-quit=yes` ; quitter mpv
 (une des touches ci-dessus, ou fermer la fenêtre) écrit
 `start=<secondes>` dans `~/.config/mpv/watch_later/<MD5_DE_URL>`.
 L'extension relit ce fichier à la sortie de mpv et met à jour le
 champ `position` de l'entrée — le prochain lancement (mpv, browser
 ou VLC) honore ce timestamp.
-<!-- [end] -->
-
-<!-- [en] -->
-## Auto-accept Claude prompts (Wayland)
-<!-- [fr] -->
 ## Auto-accepter les invites Claude (Wayland)
-<!-- [end] -->
-
-<!-- [en] -->
-The pencil indicator's "Accept response" action and the deck's red
-session button synthesise an Enter keystroke into the focused Claude
-terminal so a `Notification` permission prompt can be cleared without
-leaving the launcher. The keystroke is generated **inside the GNOME
-extension** through Clutter's virtual input device — no external
-helper is needed and no group/permission change is required.
-<!-- [fr] -->
 L'action « Accept response » de l'indicateur crayon et le bouton
 rouge sur le deck synthétisent une frappe Entrée dans le terminal
 Claude focalisé pour acquitter un `Notification` sans quitter le
 lanceur. La frappe est générée **directement par l'extension GNOME**
 via le périphérique d'entrée virtuel de Clutter — aucun outil
 externe n'est requis et aucun changement de groupe n'est nécessaire.
-<!-- [end] -->
-
-<!-- [en] -->
-External tools like `wtype` (which requires `zwp_virtual_keyboard_v1`,
-not exposed to arbitrary clients by Mutter) or `ydotool` (which is
-not packaged on Debian 13) are therefore **not** prerequisites.
-<!-- [fr] -->
 Les outils externes comme `wtype` (qui requiert
 `zwp_virtual_keyboard_v1`, non exposé aux clients arbitraires par
 Mutter) ou `ydotool` (non packagé sur Debian 13) ne sont **pas**
 des prérequis.
-<!-- [end] -->
-
-<!-- [en] -->
-## ERPLibre Home GNOME extension hooks
-<!-- [fr] -->
 ## Hooks de l'extension GNOME ERPLibre Home
-<!-- [end] -->
-
-<!-- [en] -->
-The pencil badge needs Claude Code to write a small JSON state file
-on every session event. Wire the hook (idempotent, safe to re-run):
-<!-- [fr] -->
 La pastille du crayon a besoin que Claude Code écrive un petit
 fichier JSON d'état à chaque événement de session. Branche le hook
 (idempotent, peut être relancé) :
-<!-- [end] -->
-
-<!-- [common] -->
 ```
 make claude_install_hooks
 ```
-<!-- [end] -->
-
-<!-- [en] -->
-Run `make claude_uninstall_hooks` to remove. Existing Claude
-sessions reload `~/.claude/settings.json` only at SessionStart, so
-restart any open `claude` after the install for the badge to start
-tracking them.
-<!-- [fr] -->
 `make claude_uninstall_hooks` pour retirer. Les sessions Claude en
 cours ne relisent `~/.claude/settings.json` qu'au SessionStart ;
 relance les `claude` ouverts pour que la pastille les suive.
-<!-- [end] -->
