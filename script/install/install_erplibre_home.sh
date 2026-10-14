@@ -5,11 +5,15 @@
 # Installe ERPLibre Home sans Odoo, à deux niveaux. La base : l'extension
 # GNOME liée au dépôt, ses schémas et ses traductions, puis activée ; ni
 # accès au périphérique ni venv. --stream-deck ajoute le niveau Stream Deck
-# par-dessus la base : paquets USB, règle udev, venv dédié .venv.streamdeck.
-# Le niveau Stream Deck inclut toujours la base ; la base s'installe seule.
+# par-dessus la base : paquets USB, règle udev, venv dédié .venv.streamdeck,
+# et le service systemd --user erplibre-home-streamdeck.service avec ses
+# réglages. Le niveau Stream Deck inclut toujours la base ; la base
+# s'installe seule.
 #
 #   ./script/install/install_erplibre_home.sh [--stream-deck] [--no-enable]
 #       [--extension-only] [--with-extras] [--uninstall] [--dry-run] [--help]
+#       [--deck-program=tiler|controller|none] [--autostart]
+#       [--restart-after-game | --no-restart-after-game]
 #
 # Codes de sortie : 0 fait (installé ou désinstallé) ; 2 système non
 # supporté, avec UNE ligne « UNSUPPORTED: <raison> » sur la sortie
@@ -29,6 +33,8 @@ set -euo pipefail
 
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${RACINE}"
+# shellcheck source=script/install/erplibre_home_settings.sh
+. "${RACINE}/script/install/erplibre_home_settings.sh"
 
 UUID="erplibre-home@technolibre.ca"
 EXT_SRC="${RACINE}/script/gnome-extension/erplibre_home"
@@ -36,6 +42,8 @@ EXT_LINK="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 METADATA="${EXT_SRC}/metadata.json"
 UDEV_RULE="/etc/udev/rules.d/70-streamdeck.rules"
 VENV="${RACINE}/.venv.streamdeck"
+UNIT_FILE="$(deck_unit_file)"
+SETTINGS_FILE="$(deck_settings_file)"
 OS_RELEASE="${ERPLIBRE_HOME_OS_RELEASE:-/etc/os-release}"
 
 STREAM_DECK=0
@@ -44,6 +52,14 @@ EXTENSION_ONLY=0
 WITH_EXTRAS=0
 UNINSTALL=0
 DRY_RUN=0
+# Les options du service, au niveau Stream Deck seulement. DECK_PROGRAM et
+# RESTART_AFTER_GAME restent vides quand l'option manque : la valeur déjà
+# dans les réglages est alors gardée (voir service_setting). SERVICE_OPTIONS
+# compte les options données, pour refuser leur emploi ailleurs.
+DECK_PROGRAM=""
+AUTOSTART=0
+RESTART_AFTER_GAME=""
+SERVICE_OPTIONS=0
 
 OS=""
 OS_LIKE=""
@@ -83,9 +99,21 @@ schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
   --with-extras     ajoute mpv, yt-dlp, nmap, keepassxc, xdotool et le
                     module Python lz4 du système ; un paquet absent est
                     signalé, jamais fatal
-  --uninstall       retire tout : extension, règle udev, .venv.streamdeck ;
-                    avec --stream-deck, la règle et le venv seulement, et
-                    l'extension reste active ; les paquets système restent
+  --deck-program=tiler|controller|none
+                    avec --stream-deck : le programme que lance le service
+                    erplibre-home-streamdeck.service (défaut : tiler)
+  --autostart       avec --stream-deck : active le service à l'ouverture de
+                    session (défaut : non activé)
+  --restart-after-game, --no-restart-after-game
+                    avec --stream-deck : le service revient, ou non, après
+                    un jeu (défaut : il revient)
+                    Une option du service absente garde la valeur déjà
+                    dans les réglages ; le défaut ne vaut que pour une clé
+                    qui n'y est pas.
+  --uninstall       retire tout : extension, règle udev, .venv.streamdeck,
+                    service et réglages ; avec --stream-deck, tout sauf
+                    l'extension, qui reste active ; les paquets système
+                    restent
   --dry-run         affiche ce qui serait fait, sans rien changer ni
                     appeler sudo
   -h, --help        cette aide
@@ -104,6 +132,21 @@ parse_args() {
             --with-extras) WITH_EXTRAS=1 ;;
             --uninstall) UNINSTALL=1 ;;
             --dry-run) DRY_RUN=1 ;;
+            --deck-program=*)
+                DECK_PROGRAM="${1#*=}"
+                deck_program_path "${DECK_PROGRAM}" >/dev/null \
+                    || die "--deck-program=${DECK_PROGRAM} : tiler," \
+                        "controller ou none"
+                SERVICE_OPTIONS=$((SERVICE_OPTIONS + 1))
+                ;;
+            --autostart)
+                AUTOSTART=1
+                SERVICE_OPTIONS=$((SERVICE_OPTIONS + 1))
+                ;;
+            --restart-after-game | --no-restart-after-game)
+                set_restart_after_game "$1"
+                SERVICE_OPTIONS=$((SERVICE_OPTIONS + 1))
+                ;;
             -h | --help)
                 usage
                 exit 0
@@ -124,9 +167,25 @@ parse_args() {
             "--uninstall"
     fi
     if [ "${UNINSTALL}" = 1 ] \
-        && [ $((NO_ENABLE + WITH_EXTRAS)) -gt 0 ]; then
+        && [ $((NO_ENABLE + WITH_EXTRAS + SERVICE_OPTIONS)) -gt 0 ]; then
         die "--uninstall ne se combine qu'avec --stream-deck et --dry-run"
     fi
+    if [ "${SERVICE_OPTIONS}" -gt 0 ] && [ "${STREAM_DECK}" = 0 ]; then
+        die "--deck-program, --autostart et --[no-]restart-after-game" \
+            "demandent --stream-deck"
+    fi
+}
+
+# --restart-after-game pose RESTART_AFTER_GAME=yes, --no-restart-after-game
+# =no ; les deux ensemble se contredisent et sont une erreur d'usage.
+set_restart_after_game() {
+    local value=yes
+    [ "$1" = --restart-after-game ] || value=no
+    if [ -n "${RESTART_AFTER_GAME}" ] \
+        && [ "${RESTART_AFTER_GAME}" != "${value}" ]; then
+        die "--restart-after-game et --no-restart-after-game s'excluent"
+    fi
+    RESTART_AFTER_GAME="${value}"
 }
 
 check_not_root() {
@@ -411,6 +470,196 @@ make_venv() {
         -r "${REQUIREMENTS}"
 }
 
+# ---------- Service du deck ----------
+
+# Ce que le bilan demande de lancer après la prochaine connexion : les
+# commandes systemctl --user qui n'ont pas pu passer faute de gestionnaire
+# de l'utilisateur joignable (une installation par ssh sans session).
+SERVICE_HINTS=()
+
+# systemd refuse un chemin d'exécutable qui porte une apostrophe, un
+# guillemet, une barre oblique inverse ou un caractère de contrôle, même
+# cité : l'unité ne se chargerait pas. Le niveau Stream Deck s'arrête donc
+# avant de rien installer, en nommant le chemin. Une espace et « % » passent.
+check_checkout_path() {
+    case "${RACINE}" in
+        *\'* | *\"* | *\\*)
+            die "${RACINE} : systemd refuse ' \" et \\ dans le chemin du" \
+                "service ; déplacer le dépôt"
+            ;;
+    esac
+    if [[ "${RACINE}" == *[[:cntrl:]]* ]]; then
+        die "${RACINE} : caractère de contrôle refusé par systemd"
+    fi
+}
+
+# Le texte de l'unité, pour le dépôt RACINE. Les chemins s'écrivent entiers :
+# entre guillemets dans les lignes Exec*, où une espace séparerait sinon les
+# arguments, et « % » doublé partout, sans quoi systemd le lit comme un
+# spécificateur. RestartPreventExitStatus=2 : le programme sort en 2 quand
+# un autre tient le verrou du deck, et le service ne doit pas alors boucler.
+unit_content() {
+    local dir entry
+    dir="${RACINE//%/%%}"
+    entry="\"${dir}/script/install/erplibre_home_deck.sh\""
+    printf '%s\n' \
+        "[Unit]" \
+        "Description=ERPLibre Home Stream Deck program" \
+        "PartOf=graphical-session.target" \
+        "After=graphical-session.target" \
+        "" \
+        "[Service]" \
+        "Type=simple" \
+        "WorkingDirectory=${dir}" \
+        "ExecCondition=${entry} --check" \
+        "ExecStart=${entry}" \
+        "Restart=on-failure" \
+        "RestartSec=3" \
+        "RestartPreventExitStatus=2" \
+        "" \
+        "[Install]" \
+        "WantedBy=graphical-session.target"
+}
+
+# settings_content FICHIER CLÉ=valeur… rend les lignes de FICHIER (rien
+# s'il manque), chaque ligne « CLÉ=… » d'une clé donnée remplacée sur place,
+# puis les clés données qui n'y étaient pas. Les autres lignes restent
+# telles quelles, dans leur ordre.
+settings_content() {
+    local file="$1" line pair seen=" "
+    shift
+    if [ -f "${file}" ]; then
+        while IFS= read -r line || [ -n "${line}" ]; do
+            for pair in "$@"; do
+                case "${line}" in
+                    "${pair%%=*}="*)
+                        line="${pair}"
+                        seen="${seen}${pair%%=*} "
+                        ;;
+                esac
+            done
+            printf '%s\n' "${line}"
+        done <"${file}"
+    fi
+    for pair in "$@"; do
+        case "${seen}" in
+            *" ${pair%%=*} "*) ;;
+            *) printf '%s\n' "${pair}" ;;
+        esac
+    done
+}
+
+# systemctl --user, sur le bus que choisit on_session_bus.
+user_systemctl() {
+    on_session_bus systemctl --user "$@"
+}
+
+# service_setting CLÉ DONNÉE DÉFAUT rend la valeur qu'une installation écrit
+# pour CLÉ : DONNÉE quand l'option a été donnée (non vide), sinon la valeur
+# déjà dans les réglages, sinon DÉFAUT quand le fichier ou la clé manque, ou
+# que sa valeur est vide. Une option absente ne défait donc pas un choix
+# antérieur, fait par une installation ou par le menu Stream Deck de TODO.
+service_setting() {
+    local key="$1" given="$2" default="$3" current
+    if [ -n "${given}" ]; then
+        echo "${given}"
+        return 0
+    fi
+    current="$(deck_setting "${key}" "")"
+    echo "${current:-${default}}"
+}
+
+# Les deux lignes « CLÉ=valeur » que l'installation pose, selon
+# service_setting.
+service_pairs() {
+    local program restart
+    program="$(service_setting DECK_PROGRAM "${DECK_PROGRAM}" tiler)"
+    restart="$(service_setting RESTART_AFTER_GAME "${RESTART_AFTER_GAME}" yes)"
+    printf '%s\n' "DECK_PROGRAM=${program}" "RESTART_AFTER_GAME=${restart}"
+}
+
+# Écrit les réglages par un fichier temporaire renommé, seulement quand le
+# contenu change : une seconde exécution identique ne touche pas au
+# fichier.
+write_settings() {
+    local tmp pairs
+    mapfile -t pairs < <(service_pairs)
+    mkdir -p "$(dirname "${SETTINGS_FILE}")"
+    tmp="$(mktemp "${SETTINGS_FILE}.XXXXXX")"
+    settings_content "${SETTINGS_FILE}" "${pairs[@]}" >"${tmp}"
+    if cmp -s "${tmp}" "${SETTINGS_FILE}"; then
+        rm -f "${tmp}"
+        log "settings already in place: ${SETTINGS_FILE}"
+        return 0
+    fi
+    mv "${tmp}" "${SETTINGS_FILE}"
+    DONE+=("settings: ${SETTINGS_FILE}")
+}
+
+# Écrit l'unité seulement quand elle diffère ; vrai quand elle a été écrite.
+write_unit() {
+    mkdir -p "$(dirname "${UNIT_FILE}")"
+    if cmp -s <(unit_content) "${UNIT_FILE}"; then
+        log "unit already in place: ${UNIT_FILE}"
+        return 1
+    fi
+    unit_content >"${UNIT_FILE}"
+    DONE+=("unit: ${UNIT_FILE}")
+}
+
+# Les réglages, l'unité, daemon-reload quand l'unité a changé, et enable
+# avec --autostart seulement. Jamais start : le programme demande
+# l'extension chargée, ce qu'une installation neuve n'a qu'à la prochaine
+# connexion. Un systemctl qui échoue n'arrête rien : daemon-reload est
+# alors fait par la prochaine connexion, enable va au bilan.
+install_service() {
+    write_settings
+    if write_unit; then
+        if user_systemctl daemon-reload; then
+            DONE+=("systemctl --user daemon-reload")
+        else
+            log "WARNING: systemctl --user daemon-reload failed; the next" \
+                "login reads the unit"
+        fi
+    fi
+    [ "${AUTOSTART}" = 1 ] || return 0
+    if user_systemctl is-enabled --quiet "${DECK_UNIT_NAME}" 2>/dev/null; then
+        log "unit already enabled: ${DECK_UNIT_NAME}"
+    elif user_systemctl enable "${DECK_UNIT_NAME}"; then
+        DONE+=("systemctl --user enable ${DECK_UNIT_NAME}")
+    else
+        SERVICE_HINTS+=("systemctl --user enable ${DECK_UNIT_NAME}")
+    fi
+}
+
+# Arrête, désactive et retire l'unité, recharge systemd, puis retire les
+# réglages. Le lien de graphical-session.target.wants part aussi quand
+# disable n'a pas pu le retirer. Ce qui manque est sauté : une seconde
+# exécution n'appelle pas systemctl. Un systemctl qui échoue n'arrête rien.
+uninstall_service() {
+    local wants
+    wants="$(dirname "${UNIT_FILE}")/graphical-session.target.wants"
+    wants="${wants}/${DECK_UNIT_NAME}"
+    if [ -e "${UNIT_FILE}" ]; then
+        user_systemctl stop "${DECK_UNIT_NAME}" \
+            || log "WARNING: systemctl --user stop ${DECK_UNIT_NAME} failed"
+        user_systemctl disable "${DECK_UNIT_NAME}" \
+            || log "WARNING: systemctl --user disable ${DECK_UNIT_NAME} failed"
+        rm -f "${UNIT_FILE}"
+        DONE+=("removed ${UNIT_FILE}")
+        user_systemctl daemon-reload \
+            || log "WARNING: systemctl --user daemon-reload failed"
+    fi
+    if [ -L "${wants}" ]; then
+        rm -f "${wants}"
+        DONE+=("removed ${wants}")
+    fi
+    if [ -e "${SETTINGS_FILE}" ]; then
+        rm -f "${SETTINGS_FILE}"
+        DONE+=("removed ${SETTINGS_FILE}")
+    fi
+}
+
 # ---------- Extension GNOME ----------
 
 # Pose le lien vers le checkout, sauf s'il pointe déjà au bon endroit. Un
@@ -579,10 +828,12 @@ enable_extension() {
 
 # ---------- Désinstallation ----------
 
-# Retire le niveau Stream Deck : la règle udev, puis la relecture des règles,
-# et le venv. Ce qui manque déjà est sauté, si bien qu'une seconde
-# exécution n'appelle ni sudo ni udevadm.
+# Retire le niveau Stream Deck : le service et ses réglages d'abord, pour que
+# le programme ne tourne plus quand son venv part, puis la règle udev, la
+# relecture des règles, et le venv. Ce qui manque déjà est sauté, si bien
+# qu'une seconde exécution n'appelle ni sudo, ni udevadm, ni systemctl.
 uninstall_streamdeck() {
+    uninstall_service
     if [ -e "${UDEV_RULE}" ]; then
         sudo rm -f "${UDEV_RULE}"
         sudo udevadm control --reload-rules
@@ -599,12 +850,12 @@ uninstall_streamdeck() {
 UNINSTALL_ERROR=""
 
 # Défait tout ce que l'installation pose : l'UUID d'enabled-extensions, le
-# lien, puis le niveau Stream Deck. Jamais de paquet système : d'autres
-# logiciels peuvent s'en servir. Un répertoire ordinaire à la place du lien
-# n'a pas été posé par ce script et reste en place. Une liste
-# enabled-extensions qui ne se lit ou ne s'écrit pas (gsettings absent, bus
-# en panne) n'arrête pas le reste, mais pose UNINSTALL_ERROR : l'UUID peut
-# y rester, et la désinstallation n'est pas complète.
+# lien, puis le niveau Stream Deck, service compris. Jamais de paquet
+# système : d'autres logiciels peuvent s'en servir. Un répertoire ordinaire
+# à la place du lien n'a pas été posé par ce script et reste en place. Une
+# liste enabled-extensions qui ne se lit ou ne s'écrit pas (gsettings
+# absent, bus en panne) n'arrête pas le reste, mais pose UNINSTALL_ERROR :
+# l'UUID peut y rester, et la désinstallation n'est pas complète.
 uninstall() {
     local current wanted
     if current="$(gsettings_bus get org.gnome.shell enabled-extensions 2>/dev/null)" \
@@ -639,6 +890,9 @@ summary() {
             log "${line}"
         done
     fi
+    for line in "${SERVICE_HINTS[@]}"; do
+        log "after the next login, run: ${line}"
+    done
     if [ "${UNINSTALL}" = 0 ]; then
         log "log out and back in: GNOME Shell loads a new extension only at session start under Wayland"
     fi
@@ -680,6 +934,20 @@ step_venv() {
     make_venv
 }
 
+step_service() {
+    if [ "${DRY_RUN}" = 1 ]; then
+        echo "write: ${UNIT_FILE}"
+        echo "write: ${SETTINGS_FILE}"
+        service_pairs | sed 's/^/setting: /'
+        echo "systemctl: --user daemon-reload"
+        if [ "${AUTOSTART}" = 1 ]; then
+            echo "systemctl: --user enable ${DECK_UNIT_NAME}"
+        fi
+        return 0
+    fi
+    install_service
+}
+
 step_extension() {
     local lang
     if [ "${DRY_RUN}" = 1 ]; then
@@ -711,7 +979,8 @@ step_summary() {
 }
 
 # --uninstall retire tout ; --uninstall --stream-deck ne retire que le
-# niveau Stream Deck, la règle et le venv, et laisse l'extension active.
+# niveau Stream Deck, le service, la règle et le venv, et laisse
+# l'extension active.
 # Le bilan dit ce qui est parti ; UNINSTALL_ERROR, posé par uninstall, fait
 # ensuite sortir en 1.
 step_uninstall() {
@@ -720,6 +989,11 @@ step_uninstall() {
             echo "gsettings: org.gnome.shell enabled-extensions -${UUID}"
             echo "remove: ${EXT_LINK}"
         fi
+        echo "systemctl: --user stop ${DECK_UNIT_NAME}"
+        echo "systemctl: --user disable ${DECK_UNIT_NAME}"
+        echo "remove: ${UNIT_FILE}"
+        echo "systemctl: --user daemon-reload"
+        echo "remove: ${SETTINGS_FILE}"
         echo "remove: ${UDEV_RULE}"
         echo "remove: ${VENV}"
         return 0
@@ -736,10 +1010,14 @@ step_uninstall() {
 # --uninstall et --extension-only ne lisent ni os-release ni la version de
 # GNOME : ni l'un ni l'autre n'installe de paquet, et une désinstallation
 # doit marcher sur un GNOME sorti de shell-version. La base passe toujours ;
-# la règle udev et le venv n'arrivent qu'avec --stream-deck.
+# la règle udev, le venv et le service n'arrivent qu'avec --stream-deck, dont
+# le chemin du dépôt se vérifie avant tout le reste.
 main() {
     parse_args "$@"
     check_not_root
+    if [ "${STREAM_DECK}" = 1 ] && [ "${UNINSTALL}" = 0 ]; then
+        check_checkout_path
+    fi
     if [ "${UNINSTALL}" = 1 ]; then
         step_uninstall
         return 0
@@ -758,6 +1036,7 @@ main() {
         if [ "${STREAM_DECK}" = 1 ]; then
             step_udev
             step_venv
+            step_service
         fi
     fi
     step_extension
