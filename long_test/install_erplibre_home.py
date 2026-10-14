@@ -12,9 +12,10 @@ répond à `GetExtensionInfo` : état 1 et erreur vide. Figurer dans
 y reste listée, en ERREUR.
 
 Sur la même VM passent ensuite cinq étapes (ETAPES) : la base, l'ajout du
-niveau Stream Deck, son retrait seul, le retrait de tout, puis la base de
-nouveau. Chacune lance une commande de l'installateur et ses contrôles ; le
-premier échec arrête la VM et nomme la commande ou le contrôle.
+niveau Stream Deck avec son service, son retrait seul, le retrait de tout,
+puis la base de nouveau. Chacune lance une commande de l'installateur et
+ses contrôles ; le premier échec arrête la VM et nomme la commande ou le
+contrôle.
 
 Il vit dans long_test/ et non dans test/ : il crée de vraies machines et
 prend des heures.
@@ -212,10 +213,36 @@ CMD_LIEN = f"test -L {LIEN_EXTENSION} && echo ok"
 CMD_SANS_LIEN = (
     f"test ! -e {LIEN_EXTENSION} && test ! -L {LIEN_EXTENSION} && echo ok"
 )
+# Le service du deck que pose le niveau Stream Deck, et ses réglages.
+UNITE_DECK = "erplibre-home-streamdeck.service"
+FICHIER_UNITE = f"~/.config/systemd/user/{UNITE_DECK}"
+REGLAGES_DECK = "~/.config/erplibre-home/streamdeck.conf"
+# systemctl --user par ssh : le gestionnaire de l'utilisateur se joint par
+# XDG_RUNTIME_DIR, qu'une session ssh ne pose pas toujours, ou par le bus.
+SYSTEMD_USER = BUS + "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
+# L'unité existe et lance le point d'entrée du checkout de la VM, chemin
+# entier entre guillemets.
+CMD_UNITE = (
+    'grep -Fqx "ExecStart=\\"$HOME/git/erplibre/script/install/'
+    f'erplibre_home_deck.sh\\"" {FICHIER_UNITE} && echo ok'
+)
+CMD_AUTOSTART = SYSTEMD_USER + f"systemctl --user is-enabled {UNITE_DECK}"
+# Une VM n'a pas de deck : ExecCondition échoue, systemd saute le démarrage
+# et l'unité reste inactive avec le résultat « exec-condition ».
+CMD_CONDITION = SYSTEMD_USER + (
+    f"systemctl --user start {UNITE_DECK};"
+    f" systemctl --user show -p ActiveState -p Result {UNITE_DECK}"
+)
+CMD_SANS_SERVICE = (
+    f"test ! -e {FICHIER_UNITE} && test ! -e {REGLAGES_DECK} && echo ok"
+)
 # « stat » sans « -L » lit le lien lui-même : c'est la date du LIEN que
 # l'installateur ne doit pas réécrire, pas celle du dossier qu'il désigne.
 CMD_MTIME_LIEN = f"stat -c '%n %Y' {LIEN_EXTENSION}"
-CMD_MTIMES = f"stat -c '%n %Y' {REGLE_UDEV} {VENV_DECK} {LIEN_EXTENSION}"
+CMD_MTIMES = (
+    f"stat -c '%n %Y' {REGLE_UDEV} {VENV_DECK} {LIEN_EXTENSION}"
+    f" {FICHIER_UNITE} {REGLAGES_DECK}"
+)
 CMD_JOURNAL = (
     "journalctl --user -b --no-pager 2>&1"
     " | grep -i -e erplibrehome -e erplibre-home -e gnome-shell"
@@ -271,16 +298,33 @@ ETAPES = (
     _etape(
         "stream-deck",
         "install-stream-deck",
-        "--stream-deck",
-        ("udev", "venv", "stream-deck-active", "stream-deck-idempotent"),
+        "--stream-deck --deck-program=tiler --autostart",
+        (
+            "udev",
+            "venv",
+            "service-unit",
+            "service-enabled",
+            "service-condition",
+            "stream-deck-active",
+            "stream-deck-idempotent",
+        ),
     ),
     _etape(
         "partial-uninstall",
         "uninstall-stream-deck",
         "--uninstall --stream-deck",
-        ("partial-uninstall-gone", "partial-uninstall-kept"),
+        (
+            "partial-uninstall-gone",
+            "partial-uninstall-service-gone",
+            "partial-uninstall-kept",
+        ),
     ),
-    _etape("uninstall", "uninstall", "--uninstall", ("uninstall-gone",)),
+    _etape(
+        "uninstall",
+        "uninstall",
+        "--uninstall",
+        ("uninstall-gone", "uninstall-service-gone"),
+    ),
     _etape(
         "reinstall",
         "reinstall",
@@ -421,6 +465,26 @@ def indicateurs_en_echec(sortie):
     nouveau n'apparaît qu'une fois. Une sortie vide ou None rend [].
     """
     return sorted(set(_MONTAGE_ECHOUE.findall(sortie or "")))
+
+
+def etat_systemd(sortie):
+    """{propriété: valeur} des lignes « Clé=valeur » de systemctl show,
+    quel que soit leur ordre ; {} pour une sortie vide ou None."""
+    etat = {}
+    for ligne in (sortie or "").splitlines():
+        cle_, egal, valeur = ligne.strip().partition("=")
+        if egal:
+            etat[cle_] = valeur
+    return etat
+
+
+def condition_sautee(etat):
+    """Vrai quand systemd a sauté le démarrage sur ExecCondition : unité
+    inactive, résultat « exec-condition »."""
+    return (
+        etat.get("ActiveState") == "inactive"
+        and etat.get("Result") == "exec-condition"
+    )
 
 
 def journal_lu(sortie):
@@ -1207,7 +1271,8 @@ def _etape_base(cible, entree, log, base):
 
 def _etape_stream_deck(cible, log):
     """Étape 2 : le niveau Stream Deck par-dessus la base, sans
-    redémarrage, l'extension étant déjà chargée. Rend (echec, info)."""
+    redémarrage, l'extension étant déjà chargée ; le service du deck est
+    posé avec le tiler et activé à la connexion. Rend (echec, info)."""
     option = OPTION["install-stream-deck"]
     if not commande_reussie(cible, log, "install-stream-deck", option):
         return "install-stream-deck", None
@@ -1215,6 +1280,15 @@ def _etape_stream_deck(cible, log):
         return "udev", None
     if not constat(cible, log, "venv", CMD_VENV, DELAIS_CONTROLE["venv"]):
         return "venv", None
+    if not constat(cible, log, "service-unit", CMD_UNITE):
+        return "service-unit", None
+    controle = Controle(cible, log, "service-enabled")
+    if not controle.clore(controle.sonder(CMD_AUTOSTART) == "enabled"):
+        return "service-enabled", None
+    controle = Controle(cible, log, "service-condition")
+    etat = etat_systemd(controle.sonder(CMD_CONDITION))
+    if not controle.clore(condition_sautee(etat)):
+        return "service-condition", None
     controle = Controle(cible, log, "stream-deck-active")
     info = extension_active(controle, DELAIS_CONTROLE["stream-deck-active"])
     if not controle.clore(est_active(info)):
@@ -1234,6 +1308,10 @@ def _etape_retrait_partiel(cible, log):
     controle = Controle(cible, log, "partial-uninstall-gone")
     if not controle.clore(_absents(controle)):
         return "partial-uninstall-gone", None
+    if not constat(
+        cible, log, "partial-uninstall-service-gone", CMD_SANS_SERVICE
+    ):
+        return "partial-uninstall-service-gone", None
     controle = Controle(cible, log, "partial-uninstall-kept")
     garde = controle.sonder(CMD_LIEN) == "ok" and UUID_EXTENSION in (
         liste_extensions(controle.sonder(CMD_ENABLED)) or []
@@ -1262,6 +1340,8 @@ def _etape_retrait(cible, log):
     )
     if not controle.clore(parti):
         return "uninstall-gone"
+    if not constat(cible, log, "uninstall-service-gone", CMD_SANS_SERVICE):
+        return "uninstall-service-gone"
     return None
 
 

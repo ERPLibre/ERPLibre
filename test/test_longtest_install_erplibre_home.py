@@ -332,7 +332,11 @@ class LesEtapes(unittest.TestCase):
             [(e["nom"], e["commande"], e["option"]) for e in sd.ETAPES],
             [
                 ("base", None, None),
-                ("stream-deck", "install-stream-deck", "--stream-deck"),
+                (
+                    "stream-deck",
+                    "install-stream-deck",
+                    "--stream-deck --deck-program=tiler --autostart",
+                ),
                 (
                     "partial-uninstall",
                     "uninstall-stream-deck",
@@ -360,11 +364,18 @@ class LesEtapes(unittest.TestCase):
                 [
                     "udev",
                     "venv",
+                    "service-unit",
+                    "service-enabled",
+                    "service-condition",
                     "stream-deck-active",
                     "stream-deck-idempotent",
                 ],
-                ["partial-uninstall-gone", "partial-uninstall-kept"],
-                ["uninstall-gone"],
+                [
+                    "partial-uninstall-gone",
+                    "partial-uninstall-service-gone",
+                    "partial-uninstall-kept",
+                ],
+                ["uninstall-gone", "uninstall-service-gone"],
                 [
                     "reinstall-active",
                     "reinstall-indicators",
@@ -421,6 +432,43 @@ class LesEtapes(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertTrue(commande.endswith("&& echo ok"))
         self.assertIn("/run/user/$(id -u)/bus", sd.CMD_ENABLED)
+
+    def test_the_service_checks_name_the_unit_and_the_checkout(self):
+        self.assertIn(sd.FICHIER_UNITE, sd.CMD_UNITE)
+        self.assertIn(
+            '"ExecStart=\\"$HOME/git/erplibre/script/install/'
+            'erplibre_home_deck.sh\\""',
+            sd.CMD_UNITE,
+        )
+        for commande in (sd.CMD_AUTOSTART, sd.CMD_CONDITION):
+            with self.subTest(commande=commande):
+                self.assertIn("XDG_RUNTIME_DIR=/run/user/$(id -u)", commande)
+                self.assertIn("/run/user/$(id -u)/bus", commande)
+                self.assertIn(sd.UNITE_DECK, commande)
+        self.assertIn(sd.FICHIER_UNITE, sd.CMD_SANS_SERVICE)
+        self.assertIn(sd.REGLAGES_DECK, sd.CMD_SANS_SERVICE)
+        self.assertTrue(sd.CMD_SANS_SERVICE.endswith("&& echo ok"))
+        # La seconde installation de l'étape 2 ne touche ni à l'unité ni
+        # aux réglages.
+        self.assertIn(sd.FICHIER_UNITE, sd.CMD_MTIMES)
+        self.assertIn(sd.REGLAGES_DECK, sd.CMD_MTIMES)
+
+    def test_the_systemctl_show_lines_are_read_in_any_order(self):
+        for sortie in (
+            "ActiveState=inactive\nResult=exec-condition\n",
+            "Result=exec-condition\nActiveState=inactive",
+        ):
+            with self.subTest(sortie=sortie):
+                self.assertTrue(sd.condition_sautee(sd.etat_systemd(sortie)))
+        for sortie in (
+            "ActiveState=active\nResult=success\n",
+            "ActiveState=failed\nResult=exit-code\n",
+            "ActiveState=inactive\nResult=success\n",
+            "",
+            None,
+        ):
+            with self.subTest(sortie=sortie):
+                self.assertFalse(sd.condition_sautee(sd.etat_systemd(sortie)))
 
     def test_the_enabled_list_is_read(self):
         self.assertEqual(sd.liste_extensions("@as []"), [])
@@ -1446,8 +1494,10 @@ class VMSimulee:
     """
 
     def __init__(self, journaux, echoue=(), apres=None, **etat):
-        self.regle = self.venv = False
+        self.regle = self.venv = self.service = self.autostart = False
         self.lien = self.uuid = self.actif = True
+        # Sans deck, systemd saute le démarrage du service.
+        self.condition = True
         self.__dict__.update(etat)
         self.journaux = list(journaux)
         self.echoue = set(echoue)
@@ -1461,13 +1511,15 @@ class VMSimulee:
         if options in self.echoue:
             return 1, ""
         if options == "--uninstall --stream-deck":
-            self.regle = self.venv = False
+            self.regle = self.venv = self.service = self.autostart = False
         elif options == "--uninstall":
             self.regle = self.venv = self.lien = self.uuid = False
+            self.service = self.autostart = False
         else:
             self.lien = self.uuid = True
             if "--stream-deck" in options:
-                self.regle = self.venv = True
+                self.regle = self.venv = self.service = True
+                self.autostart = "--autostart" in options
         self.__dict__.update(self.apres.get(options, {}))
         return 0, ""
 
@@ -1488,6 +1540,14 @@ class VMSimulee:
             ),
             sd.CMD_MTIMES: "dates du deck",
             sd.CMD_MTIME_LIEN: "date du lien",
+            sd.CMD_UNITE: "ok" if self.service else "",
+            sd.CMD_AUTOSTART: "enabled" if self.autostart else "disabled",
+            sd.CMD_CONDITION: (
+                "ActiveState=inactive\nResult=exec-condition"
+                if self.condition
+                else "ActiveState=failed\nResult=exit-code"
+            ),
+            sd.CMD_SANS_SERVICE: "" if self.service else "ok",
         }
         # Le reste : ListPaths et ListDevices.
         return reponses.get(commande, "('[]',)")
@@ -1501,6 +1561,10 @@ class VMSimulee:
         self.redemarrages += 1
         self.__dict__.update(self.apres.get("redemarrage", {}))
         return True
+
+
+# L'option de l'installateur à l'étape 2.
+DECK = sd.OPTION["install-stream-deck"]
 
 
 class LesCinqEtapes(unittest.TestCase):
@@ -1544,14 +1608,7 @@ class LesCinqEtapes(unittest.TestCase):
         self.assertEqual(gnome, "46.0")
         self.assertEqual(
             vm.options,
-            [
-                "",
-                "--stream-deck",
-                "--stream-deck",
-                "--uninstall --stream-deck",
-                "--uninstall",
-                "",
-            ],
+            ["", DECK, DECK, "--uninstall --stream-deck", "--uninstall", ""],
         )
         self.assertEqual((vm.lectures, vm.redemarrages), (2, 1))
 
@@ -1589,7 +1646,7 @@ class LesCinqEtapes(unittest.TestCase):
     def test_a_failed_command_names_its_stage(self):
         for option, attendu in (
             ("", "base-idempotent"),
-            ("--stream-deck", "install-stream-deck"),
+            (DECK, "install-stream-deck"),
             ("--uninstall --stream-deck", "uninstall-stream-deck"),
             ("--uninstall", "uninstall"),
         ):
@@ -1598,20 +1655,24 @@ class LesCinqEtapes(unittest.TestCase):
                 self.assertEqual(self._controler(vm)[0], attendu)
                 self.assertEqual(vm.options[-1], option)
 
-    def test_the_stream_deck_stage_checks_rule_venv_and_extension(self):
+    def test_the_stream_deck_stage_checks_rule_venv_service_extension(self):
         for apres, attendu in (
             ({"regle": False}, "udev"),
             ({"venv": False}, "venv"),
+            ({"service": False}, "service-unit"),
+            ({"autostart": False}, "service-enabled"),
+            ({"condition": False}, "service-condition"),
             ({"actif": False}, "stream-deck-active"),
         ):
             with self.subTest(attendu=attendu):
-                vm = VMSimulee([self.ENTIER], apres={"--stream-deck": apres})
+                vm = VMSimulee([self.ENTIER], apres={DECK: apres})
                 self.assertEqual(self._controler(vm)[0], attendu)
 
     def test_the_partial_uninstall_keeps_the_extension(self):
         for apres, attendu in (
             ({"venv": True}, "partial-uninstall-gone"),
             ({"regle": True}, "partial-uninstall-gone"),
+            ({"service": True}, "partial-uninstall-service-gone"),
             ({"lien": False}, "partial-uninstall-kept"),
             ({"uuid": False}, "partial-uninstall-kept"),
             ({"actif": False}, "partial-uninstall-kept"),
@@ -1628,6 +1689,8 @@ class LesCinqEtapes(unittest.TestCase):
             with self.subTest(apres=apres):
                 vm = VMSimulee([self.ENTIER], apres={"--uninstall": apres})
                 self.assertEqual(self._controler(vm)[0], "uninstall-gone")
+        vm = VMSimulee([self.ENTIER], apres={"--uninstall": {"service": True}})
+        self.assertEqual(self._controler(vm)[0], "uninstall-service-gone")
 
     def test_the_reinstall_comes_back_whole_and_without_the_deck(self):
         cas = (
@@ -1676,7 +1739,7 @@ class LesCinqEtapes(unittest.TestCase):
         for bloc in journal.split("── contrôle ")[1:]:
             self.assertIn("\n   $ ", bloc, bloc)
         self.assertIn(f"   $ {sd.CMD_SANS_REGLE}\n", journal)
-        self.assertIn("   $ install_erplibre_home.sh --stream-deck\n", journal)
+        self.assertIn(f"   $ install_erplibre_home.sh {DECK}\n", journal)
         self.assertNotIn("   → ", journal)
 
     def test_a_failed_check_leaves_its_raw_reply(self):
@@ -1689,10 +1752,16 @@ class LesCinqEtapes(unittest.TestCase):
                 f"   $ {sd.CMD_ENABLED}\n   → @as []\n",
             ),
             (
-                {"echoue": {"--stream-deck"}},
+                {"echoue": {DECK}},
                 "install-stream-deck",
-                "   $ install_erplibre_home.sh --stream-deck\n"
+                f"   $ install_erplibre_home.sh {DECK}\n"
                 "   → code de sortie 1\n",
+            ),
+            (
+                {"apres": {DECK: {"condition": False}}},
+                "service-condition",
+                f"   $ {sd.CMD_CONDITION}\n"
+                "   → ActiveState=failed\nResult=exit-code\n",
             ),
             (
                 {"regle": True},
