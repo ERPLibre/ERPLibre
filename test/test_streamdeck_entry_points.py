@@ -11,10 +11,10 @@ nomme donc l'interpréteur du venv dédié.
 Ce que ces tests gardent :
 
 - toute recette du fragment make qui appelle python passe par
-  $(STREAMDECK_PY), hors la migration de l'extension, son aide
-  d'activation et le compilateur des locales, qui ne sont pas du code du
-  deck et gardent le python du système ; toute cible qui s'en sert l'a en
-  prérequis : sans venv, elle s'arrête sur la commande qui le bâtit,
+  $(STREAMDECK_PY), hors l'aide d'activation de l'extension et le
+  compilateur des locales, qui ne sont pas du code du deck et gardent le
+  python du système ; toute cible qui s'en sert l'a en prérequis : sans
+  venv, elle s'arrête sur la commande qui le bâtit,
   make erplibre_home_streamdeck_install ;
 - requirements.txt porte ce que le code importe, et plus lz4, que le venv
   ne sert pas ;
@@ -57,14 +57,12 @@ MESSAGE_SANS_VENV = (
 # Un appel à python sous toutes ses formes : l'interpréteur nommé, pip, ou un
 # fichier .py exécuté par son shebang.
 APPEL_PYTHON = re.compile(r"\bpython3?\s|\bpip3?\s+install|\S+\.py\b")
-# Trois appels restent hors du venv. La migration de l'ancienne identité de
-# l'extension et son aide d'activation passent par leur shebang : elles
-# n'importent que la bibliothèque standard et tournent avant que le venv
-# existe. Le compilateur des locales n'est pas un point d'entrée du deck :
-# il garde le python3 du système.
+# Deux appels restent hors du venv. L'aide d'activation de l'extension passe
+# par son shebang : elle n'importe que la bibliothèque standard et tourne
+# avant que le venv existe. Le compilateur des locales n'est pas un point
+# d'entrée du deck : il garde le python3 du système.
 HORS_VENV = re.compile(
-    r"/tools/(migrate_legacy|enable_next_login)\.py\b"
-    r"|/po/compile_locales\.py\b"
+    r"/tools/enable_next_login\.py\b|/po/compile_locales\.py\b"
 )
 SHEBANG_DECK = re.compile(r"\./script/stream_deck/\w+\.py")
 REGLE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(?!=)(.*)$")
