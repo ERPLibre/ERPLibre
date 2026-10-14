@@ -1586,9 +1586,12 @@ class LeDryRun(Installateur):
             [e for e in ecrits if "locale/erplibre-home/" in e], ecrits
         )
         # La migration de l'ancienne identité précède le lien.
-        self.assertEqual(
-            [str(EXTENSION / "tools/migrate_legacy.py")],
-            self.lignes(fini, "run: "),
+        migration = str(EXTENSION / "tools/migrate_legacy.py")
+        self.assertEqual([migration], self.lignes(fini, "run: "))
+        sortie = fini.stdout.splitlines()
+        lien = str(self.home / ".local/share/gnome-shell/extensions" / UUID)
+        self.assertLess(
+            sortie.index("run: " + migration), sortie.index("write: " + lien)
         )
         # Lancé hors du dépôt, il se place quand même à sa racine.
         self.assertEqual(
@@ -1791,9 +1794,12 @@ Usage : ./script/install/install_erplibre_home.sh [options]
 Installe ERPLibre Home sans Odoo : paquets système, règle udev du
 Stream Deck, .venv.streamdeck, extension GNOME erplibre-home activée.
 
-  --no-enable       n'active pas l'extension : gsettings reste inchangé
-  --extension-only  lien, schémas et traductions de l'extension seulement,
-                    sans sudo ni vérification du système
+  --no-enable       n'active pas l'extension ; un poste où l'ancienne
+                    extension était active garde cet état sous le
+                    nouveau nom (migration)
+  --extension-only  migration de l'ancienne identité, lien, schémas et
+                    traductions de l'extension seulement, sans sudo ni
+                    vérification du système
   --with-extras     ajoute mpv, yt-dlp, nmap, keepassxc, xdotool et le
                     module Python lz4 du système ; un paquet absent est
                     signalé, jamais fatal
@@ -3218,7 +3224,20 @@ The recipe no longer calls `compile_locales.py` itself, so Task 1's test stops e
 
   ```
 - in `test_every_target_using_the_venv_requires_it`, delete the two lines `if cible in SANS_GARDE:` and `continue`;
-- the recipe no longer calls the migration: delete the `HORS_VENV` constant with its three comment lines, and in `test_every_python_call_goes_through_the_venv` the two lines `if HORS_VENV.search(commande):` and `continue`.
+- the recipe no longer calls the migration: delete the `HORS_VENV` constant with its three comment lines, and in `test_every_python_call_goes_through_the_venv` the two lines `if HORS_VENV.search(commande):` and `continue`;
+- in the module docstring, the exemption goes with it. Replace
+  ```
+  - toute recette du fragment make qui appelle python passe par
+    $(STREAMDECK_PY), hors la migration de l'extension, qui se contente du
+    python du système ; toute cible qui s'en sert l'a en prérequis : sans
+    venv, elle s'arrête sur la commande qui le bâtit ;
+  ```
+  with
+  ```
+  - toute recette du fragment make qui appelle python passe par
+    $(STREAMDECK_PY), et toute cible qui s'en sert l'a en prérequis : sans
+    venv, elle s'arrête sur la commande qui le bâtit ;
+  ```
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
@@ -3229,7 +3248,7 @@ Run each command from the checkout root:
 - `.venv.erplibre/bin/ruff check --select I --fix test/test_install_erplibre_home.py && .venv.erplibre/bin/ruff format test/test_install_erplibre_home.py && .venv.erplibre/bin/ruff check --select E,F,W,B test/test_install_erplibre_home.py test/test_streamdeck_entry_points.py`. Expected: `All checks passed!`, and a second `ruff format` reports `1 file left unchanged`.
 - `python3 script/analyse/check_comment_hygiene.py script/install/install_erplibre_home.sh test/test_install_erplibre_home.py`. Expected: no 🔴 finding.
 - `make -n erplibre_home_install erplibre_home_uninstall erplibre_home_install_extension | head -4`. Expected: `./script/install/install_erplibre_home.sh`, `./script/install/install_erplibre_home.sh --uninstall` and `./script/install/install_erplibre_home.sh --extension-only` appear.
-- `./script/install/install_erplibre_home.sh --dry-run; echo "rc=$?"`. Expected on a GNOME 45–51 workstation: the `family=`, `gnome=`, `packages: sudo …`, `write: …`, `venv: …` and `gsettings: …` lines and `rc=0`. On a system without GNOME: one `UNSUPPORTED:` line and `rc=2`.
+- `./script/install/install_erplibre_home.sh --dry-run; echo "rc=$?"`. Expected on a GNOME 45–51 workstation: the `family=`, `gnome=`, `packages: sudo …`, `run: …/tools/migrate_legacy.py`, `write: …`, `venv: …` and `gsettings: …` lines and `rc=0`. On a system without GNOME: one `UNSUPPORTED:` line and `rc=2`.
 - `make test_gnome_extension`. Expected: it passes, since the schemas did not change.
 
 - [ ] **Step 7: Commit the installer and the Makefile**
@@ -3242,27 +3261,24 @@ cat > $SCRATCH/msg_task4a.txt <<'EOF'
 
 The installer only checked the system. It now installs the family's
 packages (a missing extra only warns), writes the uaccess udev rule,
-builds .venv.streamdeck, links and enables the extension, dropping its
-UUID from disabled-extensions; gsettings uses an open session's bus. A
-rerun changes nothing; a write that does not take or a directory in
-place of the link exits 1, and only UNSUPPORTED exits 2. The legacy
-migration runs before the link; make erplibre_home_install_extension
-calls --extension-only, erplibre_home_uninstall calls --uninstall.
+builds .venv.streamdeck, runs the legacy migration, then links and
+enables the extension (UUID dropped from disabled-extensions) over an
+open session's bus. A rerun changes nothing; a failed write or a
+directory in place of the link exits 1, only UNSUPPORTED exits 2; make
+calls --extension-only and --uninstall.
 Checked: test_install_erplibre_home, test_streamdeck_entry_points.
 
 --- FR ---
 
 [IMP] install_erplibre_home : paquets, udev, venv, activation, retrait
 
-L'installateur ne faisait que vérifier le système. Il installe désormais
-les paquets de la famille (un extra absent avertit), écrit la règle udev
-uaccess, bâtit .venv.streamdeck, lie et active l'extension en retirant son
-UUID de disabled-extensions ; gsettings passe par le bus d'une session
-ouverte. Une reprise ne change rien ; une écriture qui ne prend pas ou un
-répertoire à la place du lien sort en 1, et seul UNSUPPORTED sort en 2.
-La migration de l'ancienne identité passe avant le lien ; make
-erplibre_home_install_extension appelle --extension-only, et
-erplibre_home_uninstall --uninstall.
+L'installateur ne faisait que vérifier le système. Il installe les
+paquets de la famille (un extra absent avertit), écrit la règle udev
+uaccess, bâtit .venv.streamdeck, lance la migration de l'ancienne
+identité, puis lie et active l'extension (UUID retiré de
+disabled-extensions) par le bus d'une session ouverte. Une reprise ne
+change rien ; une écriture ratée ou un répertoire à la place du lien sort
+en 1, seul UNSUPPORTED en 2 ; make appelle --extension-only et --uninstall.
 Vérifié : test_install_erplibre_home, test_streamdeck_entry_points.
 
 Assisted-by: Claude Opus 5.5
@@ -3311,8 +3327,8 @@ takes these options:
 
 | Option | Effect |
 |---|---|
-| `--no-enable` | install everything, leave the extension disabled |
-| `--extension-only` | link the extension and compile its schemas and translations only; no `sudo`, no system check |
+| `--no-enable` | install everything without enabling the extension; a workstation where the former extension was enabled keeps that state under the new name |
+| `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check |
 | `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module; a missing one is skipped with a warning |
 | `--uninstall` | remove the extension link, the udev rule and `.venv.streamdeck`, and disable the extension; system packages stay |
 | `--dry-run` | print what would be done, change nothing |
@@ -3334,8 +3350,8 @@ accepte ces options :
 
 | Option | Effet |
 |---|---|
-| `--no-enable` | installe tout, laisse l'extension désactivée |
-| `--extension-only` | lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système |
+| `--no-enable` | installe tout sans activer l'extension ; un poste où l'ancienne extension était active garde cet état sous le nouveau nom |
+| `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système |
 | `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4` ; un paquet absent est sauté avec un avertissement |
 | `--uninstall` | retire le lien de l'extension, la règle udev et `.venv.streamdeck`, et désactive l'extension ; les paquets système restent |
 | `--dry-run` | affiche ce qui serait fait, ne change rien |

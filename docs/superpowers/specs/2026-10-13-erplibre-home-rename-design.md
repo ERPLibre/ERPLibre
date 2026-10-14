@@ -151,8 +151,9 @@ The script prints one line per action taken and nothing for a step with
 nothing to do. A failing command prints a warning on stderr and the
 script goes on with the next step and exits 0: a migration that cannot
 finish must not block the installation it precedes. `make erplibre_home_install_extension` runs it before
-creating the new symlink; the deployment plan's installer runs the same
-target. The script and its tests are the only places in the tree that
+creating the new symlink. The deployment plan's installer runs it in its
+extension step, before the link, and that target then calls the
+installer instead of migrating itself. The script and its tests are the only places in the tree that
 still name the legacy identifiers, together with the extension
 `CHANGELOG.md` entry and the sync-file fallback of `lib/git-sync.js`. It is removed in a later release, once no
 development workstation runs the old extension.

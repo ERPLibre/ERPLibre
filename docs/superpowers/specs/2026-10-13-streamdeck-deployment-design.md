@@ -79,11 +79,11 @@ A single shell installer is the only place that knows how to install
 ERPLibre Home. Everything else calls it:
 
 ```
-TODO › Stream Deck › Install (local) ─────┐
-make erplibre_home_install ───────────────┤
-QEMU tool "erplibre_home" (in the VM) ────┼──► script/install/install_erplibre_home.sh
-QEMU profile "ERPLibre Home (no Odoo)" ───┤
-long_test/install_erplibre_home.py (VM) ──┘
+TODO › Execute › Stream Deck › Install ERPLibre Home (local) ──┐
+make erplibre_home_install ────────────────────────────────────┤
+QEMU tool "erplibre_home" (in the VM) ─────────────────────────┼──► script/install/install_erplibre_home.sh
+QEMU profile "ERPLibre Home (no Odoo)" ────────────────────────┤
+long_test/install_erplibre_home.py (VM) ───────────────────────┘
 ```
 
 Two alternatives were rejected:
@@ -237,7 +237,8 @@ The installer:
      install.
    - Run `po/compile_locales.py` with the venv's python. A failure fails the
      install too, since `polib` is now guaranteed by the venv.
-6. **Enable** (skipped with `--no-enable`).
+6. **Enable** (skipped with `--no-enable`; the migration of step 5 still
+   carries an existing enabled state over to the new UUID).
    - Add the UUID to `org.gnome.shell enabled-extensions`, without duplicating
      it.
    - Remove the UUID from `org.gnome.shell disabled-extensions`, which wins
