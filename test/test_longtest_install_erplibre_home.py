@@ -1345,6 +1345,63 @@ class LaVMSuivanteAttend(UneVMQuiSurvit, unittest.TestCase):
         self.assertEqual(len(rapport["etages"]), 3)
 
 
+class LeBureauInstalleParLaCourse(unittest.TestCase):
+    """Le menu a rendu 0 : sans GNOME Shell dans la VM, c'est l'étape du
+    bureau qui a échoué, non un système que l'installateur ne supporte pas."""
+
+    def _mener(self, gnome_present):
+        from unittest import mock
+
+        dossier = tempfile.mkdtemp(prefix="sd-bureau-")
+        self.addCleanup(shutil.rmtree, dossier, ignore_errors=True)
+        course = sd.Course(
+            mock.Mock(dry_run=False, extras=False),
+            dossier + ".log",
+            dossier,
+        )
+        self.appels = []
+        sondes = []
+
+        def sonder(cible, commande, delai=180):
+            sondes.append(commande)
+            return "/usr/bin/gnome-shell" if gnome_present else ""
+
+        def installer(cible, log, options=""):
+            self.appels.append("installer")
+            return 2, "no GNOME Shell"
+
+        with (
+            mock.patch.multiple(
+                sd,
+                creer_vm=lambda *a, **k: ("vm", "u-vm", True),
+                adresse_de=lambda *a, **k: "192.0.2.1",
+                attendre_ssh=lambda *a, **k: True,
+                lancer=lambda *a, **k: 0,
+                sonder=sonder,
+                deposer_code=lambda *a, **k: True,
+                installer=installer,
+                joindre_diagnostic=lambda *a, **k: None,
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            ligne = sd.mener_un(course, sd.MATRICE[0])
+        self.sondes = sondes
+        return ligne
+
+    def test_a_desktop_step_without_gnome_shell_fails_at_desktop(self):
+        ligne = self._mener(False)
+        self.assertEqual(
+            (ligne["verdict"], ligne["etape"]), ("FAILED", "desktop")
+        )
+        self.assertEqual(self.appels, [])
+        self.assertTrue(any("gnome-shell" in c for c in self.sondes))
+
+    def test_a_desktop_step_with_gnome_shell_goes_on_to_the_installer(self):
+        ligne = self._mener(True)
+        self.assertEqual(self.appels, ["installer"])
+        self.assertEqual(ligne["verdict"], "UNSUPPORTED")
+
+
 class LeRenouvellementDeSudo(unittest.TestCase):
     """Interactif devant un terminal, jamais sans : une course sans
     terminal n'attend pas un mot de passe que personne ne tape."""
