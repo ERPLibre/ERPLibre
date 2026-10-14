@@ -112,6 +112,7 @@ ERPLIBRE_HOME_EXT_TMP_PREFIX := erplibre-home-reload-
 
 .PHONY: erplibre_home_install_extension
 erplibre_home_install_extension:
+	@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"
 	@if [ -L "$(ERPLIBRE_HOME_EXT_DST)" ] || [ -d "$(ERPLIBRE_HOME_EXT_DST)" ]; then \
 		rm -rf "$(ERPLIBRE_HOME_EXT_DST)"; \
 	fi
