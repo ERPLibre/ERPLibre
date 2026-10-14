@@ -58,9 +58,17 @@ def main(argv: list[str]) -> int:
             gsettings(
                 "set", SCHEMA, "enabled-extensions", format_strv(new_enabled)
             )
-    except (OSError, subprocess.CalledProcessError, ValueError, SyntaxError) as e:
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        ValueError,
+        SyntaxError,
+    ) as e:
         detail = getattr(e, "stderr", None) or e
-        print(f"gsettings failed, extension not enabled: {detail}", file=sys.stderr)
+        print(
+            f"gsettings failed, extension not enabled: {detail}",
+            file=sys.stderr,
+        )
         return 1
     print(f"{uuid} enabled for the next login (log out / log in to load it)")
     return 0

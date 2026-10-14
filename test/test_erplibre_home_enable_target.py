@@ -51,15 +51,22 @@ class EnableTargetTest(unittest.TestCase):
             FAKE_DIR=str(self.dir),
         )
         for tool in ("gnome-extensions", "gsettings"):
-            self.assertEqual(shutil.which(tool, path=self.env["PATH"]), str(self.dir / tool))
+            self.assertEqual(
+                shutil.which(tool, path=self.env["PATH"]), str(self.dir / tool)
+            )
 
-    def run_target(self, enable_rc, enabled="@as []", disabled="@as []", **extra):
+    def run_target(
+        self, enable_rc, enabled="@as []", disabled="@as []", **extra
+    ):
         (self.dir / "enabled-extensions").write_text(enabled + "\n")
         (self.dir / "disabled-extensions").write_text(disabled + "\n")
         env = dict(self.env, FAKE_ENABLE_RC=str(enable_rc), **extra)
         return subprocess.run(
             ["make", "-s", "erplibre_home_enable_extension"],
-            cwd=ROOT, env=env, capture_output=True, text=True,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
         )
 
     def value(self, key):
@@ -74,7 +81,9 @@ class EnableTargetTest(unittest.TestCase):
     def test_fallback_appends_keeping_order(self):
         r = self.run_target(2, enabled="['a@x', 'b@x']")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.value("enabled-extensions"), f"['a@x', 'b@x', '{UUID}']")
+        self.assertEqual(
+            self.value("enabled-extensions"), f"['a@x', 'b@x', '{UUID}']"
+        )
         self.assertIn("next login", r.stdout)
 
     def test_fallback_from_empty_list(self):
@@ -89,10 +98,14 @@ class EnableTargetTest(unittest.TestCase):
         self.assertIn("next login", r.stdout)
 
     def test_fallback_cleans_disabled(self):
-        r = self.run_target(2, enabled="['a@x']", disabled=f"['z@x', '{UUID}']")
+        r = self.run_target(
+            2, enabled="['a@x']", disabled=f"['z@x', '{UUID}']"
+        )
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.value("disabled-extensions"), "['z@x']")
-        self.assertEqual(self.value("enabled-extensions"), f"['a@x', '{UUID}']")
+        self.assertEqual(
+            self.value("enabled-extensions"), f"['a@x', '{UUID}']"
+        )
 
     def test_enable_error_first_line_is_shown(self):
         r = self.run_target(2)
@@ -113,7 +126,18 @@ class EnableTargetTest(unittest.TestCase):
         (self.dir / "gnome-extensions").unlink()
         tools = self.dir / "bin"
         tools.mkdir()
-        for name in ("make", "sh", "python3", "env", "head", "printf", "dirname", "cat", "uname", "bash"):
+        for name in (
+            "make",
+            "sh",
+            "python3",
+            "env",
+            "head",
+            "printf",
+            "dirname",
+            "cat",
+            "uname",
+            "bash",
+        ):
             found = shutil.which(name)
             if found:
                 (tools / name).symlink_to(found)
@@ -123,7 +147,10 @@ class EnableTargetTest(unittest.TestCase):
         (self.dir / "disabled-extensions").write_text("@as []\n")
         r = subprocess.run(
             ["make", "-s", "erplibre_home_enable_extension"],
-            cwd=ROOT, env=env, capture_output=True, text=True,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
         )
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("next login", r.stdout)
