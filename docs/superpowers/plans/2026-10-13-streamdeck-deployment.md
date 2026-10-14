@@ -1311,7 +1311,7 @@ Expected: `commit-msg` exits 0 with no output. This exact message was checked ag
   - Dry-run lines, each on its own line:
     - `family=<f>`, `gnome=<v>`;
     - `packages: <cmd>`: EPEL first when needed, then the base packages, then the extras with `--with-extras`;
-    - `write: <path>`, `venv: <path>`, `gsettings: org.gnome.shell enabled-extensions +<uuid>`, `gsettings: org.gnome.shell disable-user-extensions false`;
+    - `run: <path>` (the legacy migration, before the link's `write:`), `write: <path>`, `venv: <path>`, `gsettings: org.gnome.shell enabled-extensions +<uuid>`, `gsettings: org.gnome.shell disable-user-extensions false`;
     - with `--uninstall`: `gsettings: org.gnome.shell enabled-extensions -<uuid>` and `remove: <path>`.
   - Flags and exit codes are as fixed in the shared interfaces. `--extension-only` and `--uninstall` skip the OS and GNOME checks. `--help` exits 0, even when run as root.
 
@@ -1585,6 +1585,11 @@ class LeDryRun(Installateur):
         self.assertFalse(
             [e for e in ecrits if "locale/erplibre-home/" in e], ecrits
         )
+        # La migration de l'ancienne identité précède le lien.
+        self.assertEqual(
+            [str(EXTENSION / "tools/migrate_legacy.py")],
+            self.lignes(fini, "run: "),
+        )
         # Lancé hors du dépôt, il se place quand même à sa racine.
         self.assertEqual(
             [str(RACINE / ".venv.streamdeck")], self.lignes(fini, "venv: ")
@@ -1621,6 +1626,10 @@ class LeDryRun(Installateur):
         self.assertIn(
             str(self.home / ".local/share/gnome-shell/extensions" / UUID),
             ecrits,
+        )
+        self.assertEqual(
+            [str(EXTENSION / "tools/migrate_legacy.py")],
+            self.lignes(fini, "run: "),
         )
         self.assertEqual([], self.lignes(fini, "gsettings: "))
 
@@ -2015,6 +2024,7 @@ step_venv() {
 
 step_extension() {
     if [ "${DRY_RUN}" = 1 ]; then
+        echo "run: ${EXT_SRC}/tools/migrate_legacy.py"
         echo "write: ${EXT_LINK}"
         echo "write: ${EXT_SRC}/schemas/gschemas.compiled"
         locale_files | sed 's/^/write: /'
@@ -2123,7 +2133,7 @@ Manual check (it changes nothing):
 ```bash
 ERPLIBRE_HOME_OS_RELEASE=/etc/os-release ERPLIBRE_HOME_GNOME_VERSION=48.1 ./script/install/install_erplibre_home.sh --dry-run --with-extras
 ```
-Expected: the `family=`, `gnome=48.1`, `packages: …`, `write: …`, `venv: …` and `gsettings: …` lines, then exit 0.
+Expected: the `family=`, `gnome=48.1`, `packages: …`, `run: …`, `write: …`, `venv: …` and `gsettings: …` lines, then exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -2181,7 +2191,7 @@ Copies in the scratchpad:
   - the 3-line `not_implemented` function is replaced by the block of installation functions;
   - each `not_implemented …` line in the `step_*` functions, and the body of `step_summary`, calls those functions;
   - the final `main "$@"` line becomes a guard with an `EXIT` trap.
-- Modify: `conf/make.streamdeck.Makefile`: insert the new targets before `ERPLIBRE_HOME_EXT_UUID       := …` (line 107 at HEAD `5ecaf9ab`), replace the `erplibre_home_install_extension` recipe (lines 114-127 at that HEAD; its first line, the legacy migration, stays) and delete the `erplibre_home_uninstall` alias (lines 148-150). Task 1 shifts these lines, so find each edit by its anchor text.
+- Modify: `conf/make.streamdeck.Makefile`: insert the new targets before `ERPLIBRE_HOME_EXT_UUID       := …` (line 107 at HEAD `5ecaf9ab`), replace the `erplibre_home_install_extension` recipe (lines 114-127 at that HEAD; its first line, the legacy migration, moves into the installer's extension step) and delete the `erplibre_home_uninstall` alias (lines 148-150). Task 1 shifts these lines, so find each edit by its anchor text.
 - Modify: `test/test_streamdeck_entry_points.py` (created by Task 1): `erplibre_home_install_extension` no longer calls `compile_locales.py` itself.
 - Modify: `script/stream_deck/INSTALL.base.md:6-53`, then regenerate `script/stream_deck/INSTALL.md` and `script/stream_deck/INSTALL.fr.md`.
 - Test: `test/test_install_erplibre_home.py` (created by Task 3, extended here).
@@ -2195,10 +2205,10 @@ Copies in the scratchpad:
   - `REQUIREMENTS`, `DONE` and the functions `install_packages`, `udev_rule_content`, `write_udev_rule`, `make_venv`, `link_extension`, `compile_schemas`, `compile_locales`, `gsettings_bus`, `uuid_list_edit <add|remove> <gvariant-list> <uuid>`, `shell_bus_address`, `enable_extension`, `uninstall`, `summary`.
   - `gsettings_bus` writes on the bus of an open session (`DBUS_SESSION_BUS_ADDRESS`, else `/run/user/<uid>/bus`) and uses `dbus-run-session` only when neither exists. This refines spec 4.1 step 6, which names only the variable: over ssh into a machine whose GNOME session runs, as in Task 9's idempotence and reinstall checks, the variable is unset while the session's dconf-service is live.
   - `enable_extension` adds the UUID to `enabled-extensions`, removes it from `disabled-extensions`, sets `disable-user-extensions` to `false`, and reads the three keys back.
-  - `link_extension` stops with exit 1 and a message naming `EXT_LINK` when a real directory or file sits there; it never deletes it.
+  - `link_extension` first runs `"${EXT_SRC}/tools/migrate_legacy.py"`, on every run and whatever the entry point (make, TODO, QEMU, long test), so the migration runs once per install; a migration that cannot start is logged and never stops the install. It then stops with exit 1 and a message naming `EXT_LINK` when a real directory or file sits there; it never deletes it.
   - The source guard: sourced with `ERPLIBRE_HOME_SOURCE_ONLY=1`, the script defines its functions and does not run `main`. Run normally, an `EXIT` trap turns a stray exit 2 from a called command into 1, so only `unsupported` exits 2.
-  - Make targets `erplibre_home_install` and `erplibre_home_uninstall`; the new `erplibre_home_uninstall` replaces the alias of `erplibre_home_uninstall_extension` that carried the name. `erplibre_home_install_extension` runs the legacy migration, then delegates to `./script/install/install_erplibre_home.sh --extension-only`.
-- The `--dry-run` output is unchanged from Task 3: `family=`, `gnome=`, `packages: sudo …` (EPEL line first on Alma/Rocky, a separate extras line with `--with-extras`), `write:` (udev, link, `gschemas.compiled`, one `.mo` per language), `venv:`, the two `gsettings:` lines, and `remove:` with `--uninstall`. There is no `enable:` line.
+  - Make targets `erplibre_home_install` and `erplibre_home_uninstall`; the new `erplibre_home_uninstall` replaces the alias of `erplibre_home_uninstall_extension` that carried the name. `erplibre_home_install_extension` delegates to `./script/install/install_erplibre_home.sh --extension-only`.
+- The `--dry-run` output is unchanged from Task 3: `family=`, `gnome=`, `packages: sudo …` (EPEL line first on Alma/Rocky, a separate extras line with `--with-extras`), `run:` (the legacy migration), `write:` (udev, link, `gschemas.compiled`, one `.mo` per language), `venv:`, the two `gsettings:` lines, and `remove:` with `--uninstall`. There is no `enable:` line.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2572,7 +2582,8 @@ class TestExtensionSeule(unittest.TestCase):
     nom contient une espace : chaque chemin que le script bâtit doit être
     cité. Son venv est un faux python qui note ses arguments, si bien que le
     test ne demande ni polib ni réseau, et n'écrit rien dans le vrai
-    checkout.
+    checkout. Une fausse migration remplace la vraie dans la copie : la
+    vraie lirait le bus de session de l'utilisateur et sa base dconf.
     """
 
     def setUp(self):
@@ -2610,6 +2621,15 @@ class TestExtensionSeule(unittest.TestCase):
         self.path = "%s:%s" % (faux_bin, os.environ.get("PATH", ""))
         self.lien = self.home / ".local/share/gnome-shell/extensions" / UUID
         self.source = self.depot / "script/gnome-extension/erplibre_home"
+        # La fausse migration note si le lien existait à son appel.
+        self.migrations = racine / "migrations"
+        migration = self.source / "tools/migrate_legacy.py"
+        migration.write_text(
+            "#!/bin/sh\n"
+            'if [ -L "%s" ]; then echo apres; else echo avant; fi >>"%s"\n'
+            % (self.lien, self.migrations)
+        )
+        migration.chmod(0o755)
 
     def tearDown(self):
         self._dossier.cleanup()
@@ -2645,6 +2665,8 @@ class TestExtensionSeule(unittest.TestCase):
         fait = self.lancer()
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertEqual(os.readlink(self.lien), str(self.source))
+        # Une migration, avant que le lien existe.
+        self.assertEqual("avant\n", self.migrations.read_text())
         self.assertTrue((self.source / "schemas/gschemas.compiled").exists())
         self.assertIn(
             str(self.source / "po/compile_locales.py"),
@@ -2745,19 +2767,23 @@ def recette(cible):
 class TestMakefile(unittest.TestCase):
     def test_l_extension_passe_par_l_installateur(self):
         lignes = recette("erplibre_home_install_extension")
-        # La migration de l'ancienne identité passe d'abord, sous le python
-        # du système, avant que l'installateur pose le nouveau lien.
         self.assertEqual(
-            lignes[0], '@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"'
-        )
-        self.assertEqual(
-            lignes[1],
+            lignes[0],
             "@./script/install/install_erplibre_home.sh --extension-only",
         )
         self.assertFalse(
             any("glib-compile-schemas" in ligne for ligne in lignes)
         )
         self.assertFalse(any("ln -s" in ligne for ligne in lignes))
+        # La migration de l'ancienne identité a quitté la recette pour le
+        # lien de l'installateur, qui la lance avant « ln -sfn » : elle
+        # tourne une fois par installation, quel que soit le chemin d'entrée.
+        self.assertFalse(any("migrate_legacy" in ligne for ligne in lignes))
+        texte = INSTALLEUR.read_text(encoding="utf-8")
+        self.assertLess(
+            texte.index('"${EXT_SRC}/tools/migrate_legacy.py"'),
+            texte.index('ln -sfn "${EXT_SRC}" "${EXT_LINK}"'),
+        )
         # Les indications pour recharger restent.
         self.assertTrue(
             any(
@@ -2799,7 +2825,7 @@ Run: `.venv.erplibre/bin/python -m unittest test.test_install_erplibre_home -v`
 
 Expected: FAIL, `Ran 56 tests`, `FAILED (failures=32)`:
 - every test that sources the script (`TestListeEnabledExtensions`, `TestRegleUdev`, `TestPaquets`, `TestActivation`, `TestBusDeSession`, `TestDesinstallation`) fails with `AssertionError: install_erplibre_home.sh has no ERPLIBRE_HOME_SOURCE_ONLY guard: sourcing it would run main`; `test_epel_precede_les_paquets_sur_rocky_et_alma` counts twice, once per subtest;
-- the three `TestMakefile` tests fail with `'|| true' unexpectedly found in …`, `'.PHONY: erplibre_home_install\n' not found in …` and the old recipe line that follows the migration, `@if [ -L …`;
+- the three `TestMakefile` tests fail with `'|| true' unexpectedly found in …`, `'.PHONY: erplibre_home_install\n' not found in …` and the old first recipe line, the migration call `@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"`;
 - in `TestExtensionSeule`, the three tests that expect a link (`test_lien_schemas_et_locales`, `test_un_checkout_dont_le_chemin_porte_une_espace`, `test_une_seconde_execution_laisse_le_lien`) and the two that expect a message (`test_sans_venv_le_message_nomme_make_erplibre_home_install`, `test_un_repertoire_ordinaire_arrete_l_installation_et_reste`) fail: Task 3's stub dies with `étape pas encore implémentée : extension`. The three other non-dry tests expect exit 1 and pass by accident against that stub; `test_dry_run_n_ecrit_rien` already passes;
 - Task 3's 21 tests still pass.
 
@@ -2910,7 +2936,15 @@ make_venv() {
 # main, une extension installée depuis une archive) n'est jamais écrasé :
 # l'installation s'arrête en le nommant. « ln -sfn » sur un répertoire
 # créerait d'ailleurs le lien DEDANS.
+#
+# La migration de l'ancienne identité passe d'abord, à chaque exécution :
+# elle libère l'ancien UUID, ses réglages et ses données, et reprend au
+# passage suivant ce qu'une session absente a laissé. Elle rend toujours
+# 0 ; le « || » couvre un bit d'exécution perdu ou un python3 absent, que
+# « set -e » changerait sinon en arrêt de l'installation.
 link_extension() {
+    "${EXT_SRC}/tools/migrate_legacy.py" ||
+        log "legacy migration did not run; the install goes on"
     mkdir -p "$(dirname "${EXT_LINK}")"
     if [ "$(readlink "${EXT_LINK}" 2>/dev/null || true)" = "${EXT_SRC}" ]; then
         log "extension link already in place: ${EXT_LINK}"
@@ -3156,14 +3190,13 @@ erplibre_home_install_extension:
 with:
 ```make
 erplibre_home_install_extension:
-	@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"
 	@./script/install/install_erplibre_home.sh --extension-only
 	@echo "Symlinked $(ERPLIBRE_HOME_EXT_DST) -> $(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)"
 	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
 	@echo "X11:     press Alt+F2, type r, Enter."
 	@echo "Then:    make erplibre_home_enable_extension"
 ```
-The migration line stays first: `tools/migrate_legacy.py` moves a workstation's settings and data off the extension's former identity, runs under the system python, and always exits 0, so it never stops the install.
+The migration line leaves the recipe: `--extension-only` runs `link_extension`, which calls `tools/migrate_legacy.py` before the link. The migration then runs once per install, whether it starts from make, TODO, the QEMU tool or the long test.
 
 Delete the convenience alias that carries the name of the new target, with its comment:
 ```make
@@ -3184,7 +3217,8 @@ The recipe no longer calls `compile_locales.py` itself, so Task 1's test stops e
   SANS_GARDE = {"erplibre_home_install_extension"}
 
   ```
-- in `test_every_target_using_the_venv_requires_it`, delete the two lines `if cible in SANS_GARDE:` and `continue`.
+- in `test_every_target_using_the_venv_requires_it`, delete the two lines `if cible in SANS_GARDE:` and `continue`;
+- the recipe no longer calls the migration: delete the `HORS_VENV` constant with its three comment lines, and in `test_every_python_call_goes_through_the_venv` the two lines `if HORS_VENV.search(commande):` and `continue`.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
@@ -3211,9 +3245,9 @@ packages (a missing extra only warns), writes the uaccess udev rule,
 builds .venv.streamdeck, links and enables the extension, dropping its
 UUID from disabled-extensions; gsettings uses an open session's bus. A
 rerun changes nothing; a write that does not take or a directory in
-place of the link exits 1, and only UNSUPPORTED exits 2. make
-erplibre_home_install_extension migrates, then calls --extension-only;
-erplibre_home_uninstall now runs --uninstall.
+place of the link exits 1, and only UNSUPPORTED exits 2. The legacy
+migration runs before the link; make erplibre_home_install_extension
+calls --extension-only, erplibre_home_uninstall calls --uninstall.
 Checked: test_install_erplibre_home, test_streamdeck_entry_points.
 
 --- FR ---
@@ -3226,8 +3260,9 @@ uaccess, bâtit .venv.streamdeck, lie et active l'extension en retirant son
 UUID de disabled-extensions ; gsettings passe par le bus d'une session
 ouverte. Une reprise ne change rien ; une écriture qui ne prend pas ou un
 répertoire à la place du lien sort en 1, et seul UNSUPPORTED sort en 2.
-make erplibre_home_install_extension migre, puis appelle
---extension-only ; erplibre_home_uninstall lance désormais --uninstall.
+La migration de l'ancienne identité passe avant le lien ; make
+erplibre_home_install_extension appelle --extension-only, et
+erplibre_home_uninstall --uninstall.
 Vérifié : test_install_erplibre_home, test_streamdeck_entry_points.
 
 Assisted-by: Claude Opus 5.5
@@ -5188,6 +5223,10 @@ class LesCommandesVisentLExtension(unittest.TestCase):
             sd.raison_non_supportee(sortie), "GNOME 52 not in shell-version"
         )
         self.assertEqual(sd.raison_non_supportee("ok\n"), "")
+        # Les lignes de la migration ne sont pas une raison.
+        self.assertEqual(
+            sd.raison_non_supportee("migrate: no session bus\nok\n"), ""
+        )
 
 
 class LesIndicateursNonMontes(unittest.TestCase):
