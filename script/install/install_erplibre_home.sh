@@ -578,49 +578,69 @@ service_pairs() {
     printf '%s\n' "DECK_PROGRAM=${program}" "RESTART_AFTER_GAME=${restart}"
 }
 
-# Écrit les réglages par un fichier temporaire renommé, seulement quand le
-# contenu change : une seconde exécution identique ne touche pas au
-# fichier.
-write_settings() {
-    local tmp pairs
-    mapfile -t pairs < <(service_pairs)
-    mkdir -p "$(dirname "${SETTINGS_FILE}")"
-    tmp="$(mktemp "${SETTINGS_FILE}.XXXXXX")"
-    settings_content "${SETTINGS_FILE}" "${pairs[@]}" >"${tmp}"
-    if cmp -s "${tmp}" "${SETTINGS_FILE}"; then
+# install_file FICHIER remplace FICHIER par l'entrée standard, par un
+# fichier temporaire renommé, seulement quand le contenu diffère : une
+# seconde exécution identique n'y touche pas. Rend 1 quand le contenu était
+# déjà en place. FICHIER garde son mode, 0644 quand il est neuf. Un
+# répertoire ou une écriture qui échoue arrête l'installation en nommant le
+# chemin, sans laisser le fichier temporaire : l'appelant teste le code de
+# retour, et bash suspend alors set -e dans toute la fonction.
+install_file() {
+    local file="$1" dir tmp mode=0644
+    dir="$(dirname "${file}")"
+    mkdir -p "${dir}" || die "${dir} : répertoire non créé"
+    tmp="$(mktemp "${file}.XXXXXX")" || die "${dir} : écriture refusée"
+    if ! cat >"${tmp}"; then
         rm -f "${tmp}"
-        log "settings already in place: ${SETTINGS_FILE}"
-        return 0
+        die "${file} : écriture interrompue"
     fi
-    mv "${tmp}" "${SETTINGS_FILE}"
-    DONE+=("settings: ${SETTINGS_FILE}")
+    if cmp -s "${tmp}" "${file}"; then
+        rm -f "${tmp}"
+        return 1
+    fi
+    [ ! -e "${file}" ] || mode="$(stat -c %a "${file}")"
+    if ! chmod "${mode}" "${tmp}" || ! mv -f "${tmp}" "${file}"; then
+        rm -f "${tmp}"
+        die "${file} : non remplacé"
+    fi
+}
+
+# Écrit les réglages que résout service_pairs, quand ils changent.
+write_settings() {
+    local pairs
+    mapfile -t pairs < <(service_pairs)
+    if install_file "${SETTINGS_FILE}" \
+        < <(settings_content "${SETTINGS_FILE}" "${pairs[@]}"); then
+        DONE+=("settings: ${SETTINGS_FILE}")
+    else
+        log "settings already in place: ${SETTINGS_FILE}"
+    fi
 }
 
 # Écrit l'unité seulement quand elle diffère ; vrai quand elle a été écrite.
 write_unit() {
-    mkdir -p "$(dirname "${UNIT_FILE}")"
-    if cmp -s <(unit_content) "${UNIT_FILE}"; then
+    if install_file "${UNIT_FILE}" < <(unit_content); then
+        DONE+=("unit: ${UNIT_FILE}")
+    else
         log "unit already in place: ${UNIT_FILE}"
         return 1
     fi
-    unit_content >"${UNIT_FILE}"
-    DONE+=("unit: ${UNIT_FILE}")
 }
 
-# Les réglages, l'unité, daemon-reload quand l'unité a changé, et enable
-# avec --autostart seulement. Jamais start : le programme demande
-# l'extension chargée, ce qu'une installation neuve n'a qu'à la prochaine
-# connexion. Un systemctl qui échoue n'arrête rien : daemon-reload est
-# alors fait par la prochaine connexion, enable va au bilan.
+# Les réglages, l'unité, daemon-reload, et enable avec --autostart
+# seulement. Jamais start : le programme demande l'extension chargée, ce
+# qu'une installation neuve n'a qu'à la prochaine connexion. daemon-reload
+# passe même quand l'unité n'a pas changé : celui qu'une installation
+# précédente n'a pas pu faire est ainsi refait. Un systemctl qui échoue
+# n'arrête rien, et sa commande va au bilan.
 install_service() {
+    local changed=1
     write_settings
-    if write_unit; then
-        if user_systemctl daemon-reload; then
-            DONE+=("systemctl --user daemon-reload")
-        else
-            log "WARNING: systemctl --user daemon-reload failed; the next" \
-                "login reads the unit"
-        fi
+    write_unit || changed=0
+    if user_systemctl daemon-reload; then
+        [ "${changed}" = 0 ] || DONE+=("systemctl --user daemon-reload")
+    else
+        SERVICE_HINTS+=("systemctl --user daemon-reload")
     fi
     [ "${AUTOSTART}" = 1 ] || return 0
     if user_systemctl is-enabled --quiet "${DECK_UNIT_NAME}" 2>/dev/null; then
