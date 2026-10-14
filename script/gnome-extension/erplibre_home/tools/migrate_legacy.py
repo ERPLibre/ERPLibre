@@ -26,7 +26,6 @@ state directory, which must not exist before the old one is renamed to it.
 
 from __future__ import annotations
 
-import ast
 import importlib.util
 import json
 import os
@@ -34,6 +33,9 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gsettings_strv import format_strv, parse_strv  # noqa: E402
 
 LEGACY_UUID = "streamdeck-tiler@technolibre.ca"
 NEW_UUID = "erplibre-home@technolibre.ca"
@@ -47,28 +49,6 @@ LEGACY_HOOK_SUFFIX = "/streamdeck-tiler-hook.py"
 
 EXT_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_INSTALLER = EXT_ROOT / "hooks" / "install_claude_hooks.py"
-
-
-def parse_strv(text: str) -> list[str]:
-    """Parse the string array ``gsettings get`` prints.
-
-    ``@as []`` is the empty array; any other value is a list literal of
-    single-quoted strings, which Python reads as is.
-    """
-    text = text.strip()
-    if text.startswith("@as"):
-        text = text[3:].strip()
-    if not text:
-        return []
-    value = ast.literal_eval(text)
-    if not isinstance(value, (list, tuple)):
-        raise ValueError(f"not a list: {text}")
-    return [str(item) for item in value]
-
-
-def format_strv(items: list[str]) -> str:
-    """The inverse of parse_strv, as ``gsettings set`` accepts it."""
-    return "[" + ", ".join(repr(item) for item in items) + "]"
 
 
 def plan_enabled(current: list[str]) -> list[str] | None:

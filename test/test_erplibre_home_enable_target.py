@@ -94,6 +94,41 @@ class EnableTargetTest(unittest.TestCase):
         self.assertEqual(self.value("disabled-extensions"), "['z@x']")
         self.assertEqual(self.value("enabled-extensions"), f"['a@x', '{UUID}']")
 
+    def test_enable_error_first_line_is_shown(self):
+        r = self.run_target(2)
+        self.assertIn("n’existe pas", r.stderr)
+
+    def test_disabled_written_before_enabled(self):
+        self.run_target(2, enabled="['a@x']", disabled=f"['{UUID}']")
+        calls = (self.dir / "calls").read_text().splitlines()
+        self.assertIn("disabled-extensions", calls[0])
+        self.assertIn("enabled-extensions", calls[1])
+
+    def test_unparsable_setting_exits_nonzero(self):
+        r = self.run_target(2, enabled="not a list (")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("gsettings failed", r.stderr)
+
+    def test_gnome_extensions_absent_uses_fallback(self):
+        (self.dir / "gnome-extensions").unlink()
+        tools = self.dir / "bin"
+        tools.mkdir()
+        for name in ("make", "sh", "python3", "env", "head", "printf", "dirname", "cat", "uname", "bash"):
+            found = shutil.which(name)
+            if found:
+                (tools / name).symlink_to(found)
+        env = dict(self.env, PATH=f"{self.dir}{os.pathsep}{tools}")
+        self.assertIsNone(shutil.which("gnome-extensions", path=env["PATH"]))
+        (self.dir / "enabled-extensions").write_text("@as []\n")
+        (self.dir / "disabled-extensions").write_text("@as []\n")
+        r = subprocess.run(
+            ["make", "-s", "erplibre_home_enable_extension"],
+            cwd=ROOT, env=env, capture_output=True, text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("next login", r.stdout)
+        self.assertEqual(self.value("enabled-extensions"), f"['{UUID}']")
+
     def test_gsettings_failure_exits_nonzero(self):
         r = self.run_target(2, FAKE_GSETTINGS_FAIL="1")
         self.assertNotEqual(r.returncode, 0)
