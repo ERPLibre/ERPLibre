@@ -1,10 +1,10 @@
-# Stream Deck Deployment Implementation Plan
+# ERPLibre Home Deployment Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Install the Stream Deck (deck code, games, GNOME extension enabled) with one shell installer on every supported amd64 GNOME 45–51 system, and prove it with a long test that reports the extension ACTIVE in a real session.
+**Goal:** Install ERPLibre Home, its GNOME extension enabled, and the Stream Deck programs (deck code, games) with one shell installer on every supported amd64 GNOME 45–51 system, and prove it with a long test that reports the extension ACTIVE in a real session.
 
-**Architecture:** `script/install/install_streamdeck.sh` is the only place that knows how to install. It builds `.venv.streamdeck` (no Odoo), writes a `uaccess` udev rule, symlinks and enables the extension. Make, TODO, a QEMU tool and a QEMU profile call it. `long_test/install_streamdeck.py` creates one VM per system from a `git bundle` of HEAD, logs in through GDM autologin, and reads `GetExtensionInfo` over the session bus.
+**Architecture:** `script/install/install_erplibre_home.sh` is the only place that knows how to install. It builds `.venv.streamdeck` (no Odoo), writes a `uaccess` udev rule, symlinks and enables the extension. Make, TODO, a QEMU tool and a QEMU profile call it. `long_test/install_erplibre_home.py` creates one VM per system from a `git bundle` of HEAD, logs in through GDM autologin, and reads `GetExtensionInfo` over the session bus.
 
 **Tech Stack:** bash, Python 3 (unittest), GJS ES modules (node --test for pure modules), GNU make, libvirt/QEMU via `script/qemu/deploy_qemu.py`, gdbus/gsettings.
 
@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- Scope: amd64 only; GNOME `shell-version` 45–51 read from `script/stream_deck/gnome-extension/metadata.json`, never hardcoded.
-- Extension UUID: `streamdeck-tiler@technolibre.ca`; installed as a symlink at `~/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca`.
+- Scope: amd64 only; GNOME `shell-version` 45–51 read from `script/gnome-extension/erplibre_home/metadata.json`, never hardcoded.
+- Extension UUID: `erplibre-home@technolibre.ca`; installed as a symlink at `~/.local/share/gnome-shell/extensions/erplibre-home@technolibre.ca`.
 - Deck venv: `.venv.streamdeck`, created with the system `python3 -m venv`, no pyenv; ERPLibre tooling (`todo.py`, selenium, instance make targets) keeps `.venv.erplibre`.
 - Installer exit codes: `0` installed, `2` unsupported (one stderr line `UNSUPPORTED: <reason>`), `1` anything else. Runs as the user, `sudo` only for packages and the udev rule.
 - udev rule: `/etc/udev/rules.d/70-streamdeck.rules`, `TAG+="uaccess"`, vendor `0fd9`, subsystems usb and hidraw.
@@ -36,7 +36,7 @@
 
 ### Task 0: Spike — the three premises on one VM (manual gate)
 
-Nothing in this task is committed. Commands are throwaway; notes go to `tasks/streamdeck-spike.md` (unversioned).
+Nothing in this task is committed. Commands are throwaway; notes go to `tasks/erplibre-home-spike.md` (unversioned).
 
 **Files:** none in the repository.
 
@@ -77,8 +77,8 @@ Expected: exit 0, GNOME packages installed.
 git bundle create /tmp/sd.bundle HEAD
 scp /tmp/sd.bundle $VM:
 ssh $VM 'sudo apt-get install -y git && git clone ~/sd.bundle ~/git/erplibre'
-ssh $VM 'cd ~/git/erplibre && make streamdeck_tiler_install_extension'
-ssh $VM 'dbus-run-session -- gsettings set org.gnome.shell enabled-extensions "[\"streamdeck-tiler@technolibre.ca\"]"'
+ssh $VM 'cd ~/git/erplibre && make erplibre_home_install_extension'
+ssh $VM 'dbus-run-session -- gsettings set org.gnome.shell enabled-extensions "[\"erplibre-home@technolibre.ca\"]"'
 ```
 
 Add one throwaway line in the VM's copy of `extension.js` `enable()`: `console.log("SDT-PATH " + this.path);`.
@@ -95,18 +95,18 @@ Expected: both keys appear uncommented under `[daemon]`.
 
 ```bash
 ssh $VM 'ls -l /run/user/$(id -u)/bus'
-ssh $VM 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus gdbus call --session --dest org.gnome.Shell.Extensions --object-path /org/gnome/Shell/Extensions --method org.gnome.Shell.Extensions.GetExtensionInfo streamdeck-tiler@technolibre.ca'
+ssh $VM 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus gdbus call --session --dest org.gnome.Shell.Extensions --object-path /org/gnome/Shell/Extensions --method org.gnome.Shell.Extensions.GetExtensionInfo erplibre-home@technolibre.ca'
 ssh $VM 'journalctl --user -b | grep SDT-PATH'
-ssh $VM "journalctl --user -b -o cat | grep -E '\[StreamDeckTiler\] (mount|enabled)'"
+ssh $VM "journalctl --user -b -o cat | grep -E '\[ERPLibreHome\] (mount|enabled)'"
 ```
 
 Expected:
 1. the bus socket exists (autologin reached a session under `--gpu off`);
 2. the reply contains `'state': <1.0>` and `'error': <''>`;
-3. `SDT-PATH /home/<user>/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca` — the unresolved symlink path;
-4. the `[StreamDeckTiler] enabled` line, and no `[StreamDeckTiler] mount <id> failed` line: `enable()` ran to its end and every top-bar indicator mounted. The extension catches an indicator constructor's exception and keeps running, so expectation 2 holds even when no indicator mounted.
+3. `SDT-PATH /home/<user>/.local/share/gnome-shell/extensions/erplibre-home@technolibre.ca` — the unresolved symlink path;
+4. the `[ERPLibreHome] enabled` line, and no `[ERPLibreHome] mount <id> failed` line: `enable()` ran to its end and every top-bar indicator mounted. The extension catches an indicator constructor's exception and keeps running, so expectation 2 holds even when no indicator mounted.
 
-Also record `gnome-shell --version`, and the exact `gdbus` reply text, into `tasks/streamdeck-spike.md`: Task 8 parses that format.
+Also record `gnome-shell --version`, and the exact `gdbus` reply text, into `tasks/erplibre-home-spike.md`: Task 8 parses that format.
 
 - [ ] **Step 6: Destroy the VM**
 
@@ -114,7 +114,7 @@ Also record `gnome-shell --version`, and the exact `gdbus` reply text, into `tas
 sudo virsh destroy sd-spike; sudo virsh undefine sd-spike --remove-all-storage
 ```
 
-Go / no-go: all four expectations hold → continue with Task 1. Any one fails → stop, write what failed in `tasks/streamdeck-spike.md`, and return to the spec.
+Go / no-go: all four expectations hold → continue with Task 1. Any one fails → stop, write what failed in `tasks/erplibre-home-spike.md`, and return to the spec.
 
 ---
 
@@ -122,7 +122,7 @@ Go / no-go: all four expectations hold → continue with Task 1. Any one fails �
 
 **Files:**
 - Create: `test/test_streamdeck_entry_points.py`
-- Modify: `conf/make.streamdeck.Makefile:1-420` (header guard inserted after line 3; every python recipe rewritten mechanically)
+- Modify: `conf/make.streamdeck.Makefile:1-421` (header guard inserted after line 3; every python recipe rewritten mechanically)
 - Modify: `script/stream_deck/requirements.txt:1-8` (whole file)
 - Modify: `script/stream_deck/gallery_server.py:18-19` (import), `:97` (new function before `class GameHandler`), `:253-265` (launcher body)
 - Modify: `script/todo/todo.py:58` (constant), `:1857` (call), `:1867` (new method before `_scan_streamdeck_games`)
@@ -130,11 +130,11 @@ Go / no-go: all four expectations hold → continue with Task 1. Any one fails �
 - Test: `test/test_streamdeck_entry_points.py`, `test/test_todo_menu.py` (must stay green)
 
 **Interfaces:**
-- Consumes: nothing from other tasks. The guard message names `make streamdeck_install`, which a later task defines.
+- Consumes: nothing from other tasks. The guard message names `make erplibre_home_install`, which a later task defines.
 - Produces:
   - Makefile variable `STREAMDECK_PY := .venv.streamdeck/bin/python`, defined at the top of `conf/make.streamdeck.Makefile`.
-  - A file rule `$(STREAMDECK_PY):` that fails with exit 1 and the message `Build it with: make streamdeck_install` on stderr.
-  - Every deck python target lists `$(STREAMDECK_PY)` as a prerequisite. The exception is `streamdeck_tiler_install_extension`: there the locale compile is optional, so it degrades instead of stopping.
+  - A file rule `$(STREAMDECK_PY):` that fails with exit 1 and the message `Build it with: make erplibre_home_install` on stderr.
+  - Every deck python target lists `$(STREAMDECK_PY)` as a prerequisite. The exception is `erplibre_home_install_extension`: there the locale compile is optional, so it degrades instead of stopping.
   - `gallery_server._game_bash_cmd(game_file) -> str`
   - `todo.VENV_STREAMDECK_PYTHON`
   - `TODO._streamdeck_game_command(self, path) -> str`
@@ -158,7 +158,8 @@ nomme donc l'interpréteur du venv dédié.
 Ce que ces tests gardent :
 
 - toute recette du fragment make qui appelle python passe par
-  $(STREAMDECK_PY), et toute cible qui s'en sert l'a en prérequis : sans
+  $(STREAMDECK_PY), hors la migration de l'extension, qui se contente du
+  python du système ; toute cible qui s'en sert l'a en prérequis : sans
   venv, elle s'arrête sur la commande qui le bâtit ;
 - requirements.txt porte ce que le code importe, et plus lz4, que le venv
   ne sert pas ;
@@ -191,11 +192,15 @@ VENV_REF = "$(STREAMDECK_PY)"
 
 # La compilation des locales y est facultative : sans venv, l'extension
 # s'installe sans traductions au lieu de s'arrêter.
-SANS_GARDE = {"streamdeck_tiler_install_extension"}
+SANS_GARDE = {"erplibre_home_install_extension"}
 
 # Un appel à python sous toutes ses formes : l'interpréteur nommé, pip, ou un
 # fichier .py exécuté par son shebang.
 APPEL_PYTHON = re.compile(r"\bpython3?\s|\bpip3?\s+install|\S+\.py\b")
+# La migration de l'ancienne identité de l'extension passe par son shebang,
+# sous le python du système : elle n'importe que la bibliothèque standard
+# et tourne avant que le venv existe.
+HORS_VENV = re.compile(r"/tools/migrate_legacy\.py\b")
 SHEBANG_DECK = re.compile(r"\./script/stream_deck/\w+\.py")
 REGLE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(?!=)(.*)$")
 
@@ -261,6 +266,8 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
     def test_every_python_call_goes_through_the_venv(self):
         for cible, (_, commandes) in self.regles.items():
             for commande in commandes:
+                if HORS_VENV.search(commande):
+                    continue
                 if APPEL_PYTHON.search(commande):
                     self.assertIn(VENV_REF, commande, cible)
 
@@ -292,8 +299,8 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
             "streamdeck_translator_unittest": "-m unittest",
             "streamdeck_tiler_unittest": "-m unittest",
             "streamdeck_translator_install_vosk_fr": "-m pip install vosk",
-            "streamdeck_tiler_compile_locale": "compile_locales.py",
-            "streamdeck_tiler_install_extension": "compile_locales.py",
+            "erplibre_home_compile_locale": "compile_locales.py",
+            "erplibre_home_install_extension": "compile_locales.py",
         }
         for cible, fragment in attendus.items():
             commandes = " ".join(self.regles[cible][1])
@@ -323,7 +330,7 @@ class TestMakefileGuard(unittest.TestCase):
             absent = os.path.join(tmp, "absent", "python")
             res = self.make(f"STREAMDECK_PY={absent}", "streamdeck_snake")
         self.assertNotEqual(res.returncode, 0)
-        self.assertIn("make streamdeck_install", res.stderr)
+        self.assertIn("make erplibre_home_install", res.stderr)
 
     def test_a_present_venv_runs_the_game_under_it(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -459,7 +466,7 @@ From the checkout root, run this rewrite once. It does four things:
 1. Inserts `STREAMDECK_PY` and the guard rule after the header.
 2. Rewrites every `./script/stream_deck/<x>.py` and every `python3 ` in recipe lines to `$(STREAMDECK_PY) …`. This covers the 45 games, the tiler, the controller, the gallery, translator_{doctor,test,stream}, the `--recommend` call inside `$$(…)`, both `-m unittest` targets and both `compile_locales.py` calls.
 3. Turns `pip install --user vosk` into `$(STREAMDECK_PY) -m pip install vosk`.
-4. Adds `$(STREAMDECK_PY)` as a prerequisite to every target whose recipe now uses it, except `streamdeck_tiler_install_extension`.
+4. Adds `$(STREAMDECK_PY)` as a prerequisite to every target whose recipe now uses it, except `erplibre_home_install_extension`.
 
 ```bash
 python3 - <<'EOF'
@@ -482,7 +489,7 @@ guard = (
     "# that builds it.\n"
     "$(STREAMDECK_PY):\n"
     '\t@echo "Stream Deck venv missing: $(STREAMDECK_PY)" >&2\n'
-    '\t@echo "Build it with: make streamdeck_install" >&2\n'
+    '\t@echo "Build it with: make erplibre_home_install" >&2\n'
     "\t@exit 1\n"
     "\n"
 )
@@ -491,7 +498,7 @@ text = header + guard + text[len(header):]
 
 text = text.replace(
     "install python3-polib for translations",
-    "run make streamdeck_install for translations",
+    "run make erplibre_home_install for translations",
 )
 text = text.replace(
     "pip install --user vosk", "$(STREAMDECK_PY) -m pip install vosk"
@@ -515,7 +522,7 @@ for block in blocks:
     m = re.match(r"([A-Za-z_][A-Za-z0-9_]*):[ \t]*\n", block)
     if (
         m
-        and m.group(1) != "streamdeck_tiler_install_extension"
+        and m.group(1) != "erplibre_home_install_extension"
         and "$(STREAMDECK_PY)" in block[m.end():].split("\n\n")[0]
     ):
         block = f"{m.group(1)}: $(STREAMDECK_PY)\n" + block[m.end():]
@@ -524,7 +531,7 @@ mk.write_text("".join(fixed), encoding="utf-8")
 EOF
 ```
 
-The rewrite produces 56 guarded targets: 46 `game_*` (45 games plus the tiler), plus `streamdeck`, `streamdeck_gallery`, `streamdeck_translator_{doctor,test,stream,unittest,install_ollama,install_vosk_fr}`, `streamdeck_tiler_unittest` and `streamdeck_tiler_compile_locale`. Typical results:
+The rewrite produces 56 guarded targets: 46 `game_*` (45 games plus the tiler), plus `streamdeck`, `streamdeck_gallery`, `streamdeck_translator_{doctor,test,stream,unittest,install_ollama,install_vosk_fr}`, `streamdeck_tiler_unittest` and `erplibre_home_compile_locale`. The line that opens `erplibre_home_install_extension`, `@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"`, calls the migration by its path: neither rewrite touches it, and it keeps running under the system python, before any venv exists. Typical results:
 
 ```make
 .PHONY: streamdeck_snake
@@ -537,8 +544,8 @@ streamdeck_snake: $(STREAMDECK_PY)
 ```
 
 ```make
-	@$(STREAMDECK_PY) "$(STREAMDECK_TILER_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
-		|| echo "(locale compile skipped — run make streamdeck_install for translations)"
+	@$(STREAMDECK_PY) "$(ERPLIBRE_HOME_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
+		|| echo "(locale compile skipped — run make erplibre_home_install for translations)"
 ```
 
 Check that nothing is left. These commands must print nothing and end with `rc=1`, then print `56`:
@@ -548,7 +555,7 @@ grep -nE '\./script/stream_deck/[A-Za-z0-9_]+\.py|python3|pip install --user' co
 grep -c '^[a-z_0-9]*: \$(STREAMDECK_PY)$' conf/make.streamdeck.Makefile
 ```
 
-Check the guard by hand. The first command prints the two `Stream Deck venv missing` / `Build it with: make streamdeck_install` lines and exits 2. The second prints `script/stream_deck/game_snake.py`:
+Check the guard by hand. The first command prints the two `Stream Deck venv missing` / `Build it with: make erplibre_home_install` lines and exits 2. The second prints `script/stream_deck/game_snake.py`:
 
 ```bash
 make -s streamdeck_snake STREAMDECK_PY=/nonexistent/python; echo "rc=$?"
@@ -568,7 +575,7 @@ opencv-python
 requests
 # Key events of keyboard_talk.py.
 keyboard
-# i18n compile helper for streamdeck-tiler-compile-locale.
+# i18n compile helper for erplibre_home_compile_locale.
 polib
 ```
 
@@ -708,7 +715,7 @@ cat > $SCRATCH/task1_msg.txt <<'EOF'
 
 Deck scripts started by their shebang take the system python, which lacks
 StreamDeck, cv2, requests and keyboard, so they fail at import. Every make
-target now runs $(STREAMDECK_PY) and stops, naming make streamdeck_install,
+target now runs $(STREAMDECK_PY) and stops, naming make erplibre_home_install,
 when the venv is missing; the gallery runs a game under its own interpreter
 and TODO under .venv.streamdeck/bin/python. requirements.txt gains requests
 and keyboard and drops lz4, which serves the system python. The unused
@@ -721,7 +728,7 @@ launch_game.sh goes. test_streamdeck_entry_points guards all of it.
 Lancés par leur shebang, les scripts du deck prennent le python du système,
 privé de StreamDeck, cv2, requests et keyboard : ils tombent à l'import.
 Chaque cible make passe par $(STREAMDECK_PY) et s'arrête sur make
-streamdeck_install quand le venv manque ; la galerie lance un jeu sous son
+erplibre_home_install quand le venv manque ; la galerie lance un jeu sous son
 propre interpréteur, TODO sous .venv.streamdeck/bin/python.
 requirements.txt gagne requests et keyboard et perd lz4, qui sert le python
 du système. launch_game.sh, inutilisé, part. test_streamdeck_entry_points
@@ -743,28 +750,28 @@ The deletion of `launch_game.sh` is already staged by Step 7's `git rm`; naming 
 ### Task 2: Extension project root resolves the symlink, deck venv
 
 **Files:**
-- Create: `script/stream_deck/gnome-extension/lib/project-root.js`
-- Create: `script/stream_deck/gnome-extension/test/unit/project-root.test.js`
-- Modify: `script/stream_deck/gnome-extension/indicators/device.js:13-14` (import), `:149-164` (`_projectRoot`, `_launchController`)
-- Modify: `script/stream_deck/gnome-extension/indicators/erplibre.js:14` (import), `:452-458` (`_autoLoginSelenium` fallback)
-- Modify: `script/stream_deck/gnome-extension/po/streamdeck-tiler.pot:809`, `po/en.po:845-846`, `po/fr.po:848-849`
-- Modify: `script/stream_deck/gnome-extension/indicators/controller.js:206-212` (`_launchGalleryAt`)
-- Modify: `script/stream_deck/gnome-extension/CHANGELOG.md:43` (one `### Fixed` bullet)
-- Test: `script/stream_deck/gnome-extension/test/unit/project-root.test.js` (run by `make test_gnome_extension`)
+- Create: `script/gnome-extension/erplibre_home/lib/project-root.js`
+- Create: `script/gnome-extension/erplibre_home/test/unit/project-root.test.js`
+- Modify: `script/gnome-extension/erplibre_home/indicators/device.js:13-14` (import), `:149-164` (`_projectRoot`, `_launchController`)
+- Modify: `script/gnome-extension/erplibre_home/indicators/erplibre.js:14` (import), `:452-458` (`_autoLoginSelenium` fallback)
+- Modify: `script/gnome-extension/erplibre_home/po/erplibre-home.pot:809`, `po/en.po:845-846`, `po/fr.po:848-849`
+- Modify: `script/gnome-extension/erplibre_home/indicators/controller.js:206-212` (`_launchGalleryAt`)
+- Modify: `script/gnome-extension/erplibre_home/CHANGELOG.md:66` (one `### Fixed` bullet)
+- Test: `script/gnome-extension/erplibre_home/test/unit/project-root.test.js` (run by `make test_gnome_extension`)
 
 **Interfaces:**
 - Consumes: Gio, which `indicators/device.js` and `indicators/erplibre.js` already import statically (line 2 in both). It is passed in, and the new module never imports `gi://`.
 - Produces: `lib/project-root.js` exports `projectRootFrom(path, readLink) -> string` and `makeGioReadLink(Gio) -> (p) => string|null`. It also exports the helpers `normalizePath(path)` and `resolveLinkTarget(linkPath, target)`. `device.js` now launches the controller with `<root>/.venv.streamdeck/bin/python`. Its msgid is now `Python venv not found at .venv.streamdeck` (fr: `Venv Python introuvable dans .venv.streamdeck`). `erplibre.js` keeps `.venv.erplibre`.
 
 Notes checked against the real code:
-- `HotReload()` (`extension.js:1126`) runs `cp -r "<extensions>/streamdeck-tiler@technolibre.ca" "<extensions>/streamdeck-tiler-reload-<ms>@technolibre.ca"`. GNU `cp -r` copies a symlink operand as a symlink (checked), so the reload directory is also a link to the checkout.
-- The `.mo` files are gitignored (`script/stream_deck/gnome-extension/.gitignore`: `locale/`), so nothing compiled gets committed.
-- `polib` is not installed in the system `python3` or in `.venv.erplibre` at the moment, so `make streamdeck_tiler_compile_locale` fails with `polib missing`. The `.po`/`.pot` files are checked with `msgfmt --check-format` instead (`/usr/bin/msgfmt` is present). They are compiled with `.venv.streamdeck` when that venv exists.
-- Today's baseline: `make test_gnome_extension` gives `tests 198, pass 198`.
+- `HotReload()` (`extension.js:1130`) runs `cp -r "<extensions>/erplibre-home@technolibre.ca" "<extensions>/erplibre-home-reload-<ms>@technolibre.ca"`. GNU `cp -r` copies a symlink operand as a symlink (checked), so the reload directory is also a link to the checkout.
+- The `.mo` files are gitignored (`script/gnome-extension/erplibre_home/.gitignore`: `locale/`), so nothing compiled gets committed.
+- `polib` is not installed in the system `python3` or in `.venv.erplibre` at the moment, so `make erplibre_home_compile_locale` fails with `polib missing`. The `.po`/`.pot` files are checked with `msgfmt --check-format` instead (`/usr/bin/msgfmt` is present). They are compiled with `.venv.streamdeck` when that venv exists.
+- Today's baseline: `make test_gnome_extension` gives `tests 216, pass 216`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `script/stream_deck/gnome-extension/test/unit/project-root.test.js`:
+Create `script/gnome-extension/erplibre_home/test/unit/project-root.test.js`:
 
 ```js
 import {test} from 'node:test';
@@ -773,9 +780,9 @@ import {projectRootFrom, makeGioReadLink, normalizePath, resolveLinkTarget}
     from '../../lib/project-root.js';
 
 const CHECKOUT = '/opt/depot';
-const EXT_SRC = `${CHECKOUT}/script/stream_deck/gnome-extension`;
+const EXT_SRC = `${CHECKOUT}/script/gnome-extension/erplibre_home`;
 const EXT_DIR = '/opt/maison/.local/share/gnome-shell/extensions';
-const LINK = `${EXT_DIR}/streamdeck-tiler@technolibre.ca`;
+const LINK = `${EXT_DIR}/erplibre-home@technolibre.ca`;
 
 // readLink stub: a table of link path -> target, null for anything else.
 function linksTo(table) {
@@ -830,13 +837,13 @@ test('absolute symlink with a trailing slash on both sides', () => {
 });
 
 test('relative symlink: resolved against the link parent', () => {
-    const target = '../../../../../depot/script/stream_deck/gnome-extension';
+    const target = '../../../../../depot/script/gnome-extension/erplibre_home';
     assert.equal(projectRootFrom(LINK, linksTo({[LINK]: target})), CHECKOUT);
 });
 
 test('hot-reload uuid dir: a copy of the link, same root', () => {
     const reload =
-        `${EXT_DIR}/streamdeck-tiler-reload-1700000000000@technolibre.ca`;
+        `${EXT_DIR}/erplibre-home-reload-1700000000000@technolibre.ca`;
     assert.equal(projectRootFrom(reload, linksTo({[reload]: EXT_SRC})),
         CHECKOUT);
 });
@@ -848,7 +855,7 @@ test('chained symlinks are followed', () => {
 });
 
 test('a symlink cycle stops after a bounded number of hops', () => {
-    const readLink = linksTo({[LINK]: 'streamdeck-tiler@technolibre.ca'});
+    const readLink = linksTo({[LINK]: 'erplibre-home@technolibre.ca'});
     assert.equal(projectRootFrom(LINK, readLink), LINK);
     assert.equal(readLink.calls.length, 8);
 });
@@ -904,12 +911,12 @@ test('makeGioReadLink plugs into projectRootFrom', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test script/stream_deck/gnome-extension/test/unit/project-root.test.js`
-Expected: FAIL with `Error [ERR_MODULE_NOT_FOUND]: Cannot find module '.../script/stream_deck/gnome-extension/lib/project-root.js' imported from .../test/unit/project-root.test.js`
+Run: `node --test script/gnome-extension/erplibre_home/test/unit/project-root.test.js`
+Expected: FAIL with `Error [ERR_MODULE_NOT_FOUND]: Cannot find module '.../script/gnome-extension/erplibre_home/lib/project-root.js' imported from .../test/unit/project-root.test.js`
 
 - [ ] **Step 3: Implement `lib/project-root.js`**
 
-Create `script/stream_deck/gnome-extension/lib/project-root.js`:
+Create `script/gnome-extension/erplibre_home/lib/project-root.js`:
 
 ```js
 /**
@@ -917,7 +924,7 @@ Create `script/stream_deck/gnome-extension/lib/project-root.js`:
  *
  * GNOME Shell reports `extension.path` as the directory under
  * ~/.local/share/gnome-shell/extensions, and that directory is a symlink
- * to <checkout>/script/stream_deck/gnome-extension (the hot-reload copy
+ * to <checkout>/script/gnome-extension/erplibre_home (the hot-reload copy
  * too: `cp -r` copies the link, not the tree). The root is read on the
  * link target, not on the link path.
  *
@@ -925,7 +932,7 @@ Create `script/stream_deck/gnome-extension/lib/project-root.js`:
  * so node --test loads this module without any gi:// import.
  */
 
-const EXTENSION_SUFFIX_RE = /\/script\/stream_deck\/gnome-extension\/?$/;
+const EXTENSION_SUFFIX_RE = /\/script\/gnome-extension\/erplibre_home\/?$/;
 
 // Bound on chained links; a link cycle stops here instead of looping.
 const MAX_LINK_HOPS = 8;
@@ -977,7 +984,7 @@ function _readLinkOrNull(readLink, path) {
  *
  * `readLink(p)` returns the symlink target of `p` (absolute or relative),
  * or null when `p` is not a symlink. Links are followed up to
- * MAX_LINK_HOPS, then the /script/stream_deck/gnome-extension suffix is
+ * MAX_LINK_HOPS, then the /script/gnome-extension/erplibre_home suffix is
  * stripped (trailing slash tolerated). A path that is not a symlink
  * gives exactly `path` minus that suffix; a path without the suffix
  * comes back resolved but otherwise unchanged.
@@ -1016,12 +1023,12 @@ export function makeGioReadLink(Gio) {
 
 - [ ] **Step 4: Run the new test to verify it passes**
 
-Run: `node --test script/stream_deck/gnome-extension/test/unit/project-root.test.js`
+Run: `node --test script/gnome-extension/erplibre_home/test/unit/project-root.test.js`
 Expected: `ℹ tests 17`, `ℹ pass 17`, `ℹ fail 0`.
 
 - [ ] **Step 5: Wire `device.js` (root through the link, deck venv)**
 
-In `script/stream_deck/gnome-extension/indicators/device.js`, lines 12-14, before:
+In `script/gnome-extension/erplibre_home/indicators/device.js`, lines 12-14, before:
 
 ```js
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
@@ -1043,7 +1050,7 @@ Lines 149-164, before:
 ```js
     _projectRoot() {
         return this._extension.path.replace(
-            /\/script\/stream_deck\/gnome-extension\/?$/, '');
+            /\/script\/gnome-extension\/erplibre_home\/?$/, '');
     }
 
     _launchController() {
@@ -1083,7 +1090,7 @@ after:
 
 - [ ] **Step 6: Wire the `erplibre.js` selenium fallback (it keeps `.venv.erplibre`)**
 
-In `script/stream_deck/gnome-extension/indicators/erplibre.js`, line 14, before:
+In `script/gnome-extension/erplibre_home/indicators/erplibre.js`, line 14, before:
 
 ```js
 import {detectLocalInstancesGjs} from '../lib/erplibre-detect.js';
@@ -1101,11 +1108,11 @@ Lines 452-458, before:
 ```js
     _autoLoginSelenium(inst, user, pass) {
         // Resolve project root: assume extension lives in
-        //   script/stream_deck/gnome-extension; root is three dirs up.
+        //   script/gnome-extension/erplibre_home; root is three dirs up.
         const home = GLib.get_home_dir();
         const root = this._settings.get_string('git-sync-path').trim()
             || this._extension.path.replace(
-                /\/script\/stream_deck\/gnome-extension\/?$/, '');
+                /\/script\/gnome-extension\/erplibre_home\/?$/, '');
 ```
 
 after:
@@ -1123,7 +1130,7 @@ after:
 
 - [ ] **Step 6b: The gallery launcher lets make pick the venv**
 
-`script/stream_deck/gnome-extension/indicators/controller.js`, lines 206-212, before:
+`script/gnome-extension/erplibre_home/indicators/controller.js`, lines 206-212, before:
 ```js
         const argv = buildTerminalArgv({
             cwd,
@@ -1146,7 +1153,7 @@ after:
 
 - [ ] **Step 7: Update the catalogs**
 
-`script/stream_deck/gnome-extension/po/streamdeck-tiler.pot`, lines 809-810, before:
+`script/gnome-extension/erplibre_home/po/erplibre-home.pot`, lines 809-810, before:
 
 ```
 msgid "Python venv not found at .venv.erplibre"
@@ -1160,7 +1167,7 @@ msgid "Python venv not found at .venv.streamdeck"
 msgstr ""
 ```
 
-`script/stream_deck/gnome-extension/po/en.po`, lines 845-846, before:
+`script/gnome-extension/erplibre_home/po/en.po`, lines 845-846, before:
 
 ```
 msgid "Python venv not found at .venv.erplibre"
@@ -1174,7 +1181,7 @@ msgid "Python venv not found at .venv.streamdeck"
 msgstr "Python venv not found at .venv.streamdeck"
 ```
 
-`script/stream_deck/gnome-extension/po/fr.po`, lines 848-849, before:
+`script/gnome-extension/erplibre_home/po/fr.po`, lines 848-849, before:
 
 ```
 msgid "Python venv not found at .venv.erplibre"
@@ -1188,7 +1195,7 @@ msgid "Python venv not found at .venv.streamdeck"
 msgstr "Venv Python introuvable dans .venv.streamdeck"
 ```
 
-`script/stream_deck/gnome-extension/CHANGELOG.md`: after line 43 (`  metadata.json in place — fewer accidental git diffs.`), at the end of `### Fixed` under `[Unreleased]`, add:
+`script/gnome-extension/erplibre_home/CHANGELOG.md`: after line 66 (`  metadata.json in place — fewer accidental git diffs.`), at the end of `### Fixed` under `[Unreleased]`, add:
 
 ```markdown
 - Device indicator finds the checkout through the extension symlink
@@ -1201,13 +1208,13 @@ msgstr "Venv Python introuvable dans .venv.streamdeck"
 
 Run:
 ```bash
-cd script/stream_deck/gnome-extension
-for f in po/fr.po po/en.po po/streamdeck-tiler.pot; do msgfmt --check-format -o /dev/null "$f" && echo "$f ok"; done
-grep -c 'Python venv not found at .venv.streamdeck' po/fr.po po/en.po po/streamdeck-tiler.pot
-grep -c 'Python venv not found at .venv.erplibre' po/fr.po po/en.po po/streamdeck-tiler.pot
+cd script/gnome-extension/erplibre_home
+for f in po/fr.po po/en.po po/erplibre-home.pot; do msgfmt --check-format -o /dev/null "$f" && echo "$f ok"; done
+grep -c 'Python venv not found at .venv.streamdeck' po/fr.po po/en.po po/erplibre-home.pot
+grep -c 'Python venv not found at .venv.erplibre' po/fr.po po/en.po po/erplibre-home.pot
 cd "$(git rev-parse --show-toplevel)"
-if [ -x .venv.streamdeck/bin/python ]; then .venv.streamdeck/bin/python script/stream_deck/gnome-extension/po/compile_locales.py; else echo "skip: no .venv.streamdeck yet (locale/ is gitignored, the installer compiles it)"; fi
-git check-ignore -q script/stream_deck/gnome-extension/locale/fr/LC_MESSAGES/streamdeck-tiler.mo && echo "mo ignored"
+if [ -x .venv.streamdeck/bin/python ]; then .venv.streamdeck/bin/python script/gnome-extension/erplibre_home/po/compile_locales.py; else echo "skip: no .venv.streamdeck yet (locale/ is gitignored, the installer compiles it)"; fi
+git check-ignore -q script/gnome-extension/erplibre_home/locale/fr/LC_MESSAGES/erplibre-home.mo && echo "mo ignored"
 ```
 Expected: three `ok` lines. The first grep prints `:1` per file and the second prints `:0` per file. Then either `compiled en: ... entries` and `compiled fr: ... entries`, or the `skip:` line. Last line: `mo ignored`.
 
@@ -1216,17 +1223,17 @@ Expected: three `ok` lines. The first grep prints `:1` per file and the second p
 Run:
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-node --check script/stream_deck/gnome-extension/indicators/device.js
-node --check script/stream_deck/gnome-extension/indicators/erplibre.js
-node --check script/stream_deck/gnome-extension/lib/project-root.js
-node --check script/stream_deck/gnome-extension/indicators/controller.js
-grep -c 'venv.erplibre' script/stream_deck/gnome-extension/indicators/controller.js
-grep -n 'gnome-extension\\/?' script/stream_deck/gnome-extension/indicators/*.js || echo "no leftover suffix regex"
-grep -n 'venv' script/stream_deck/gnome-extension/indicators/device.js
+node --check script/gnome-extension/erplibre_home/indicators/device.js
+node --check script/gnome-extension/erplibre_home/indicators/erplibre.js
+node --check script/gnome-extension/erplibre_home/lib/project-root.js
+node --check script/gnome-extension/erplibre_home/indicators/controller.js
+grep -c 'venv.erplibre' script/gnome-extension/erplibre_home/indicators/controller.js
+grep -n 'erplibre_home\\/?' script/gnome-extension/erplibre_home/indicators/*.js || echo "no leftover suffix regex"
+grep -n 'venv' script/gnome-extension/erplibre_home/indicators/device.js
 make test_gnome_extension
-python3 script/analyse/check_comment_hygiene.py script/stream_deck/gnome-extension/lib/project-root.js script/stream_deck/gnome-extension/test/unit/project-root.test.js
+python3 script/analyse/check_comment_hygiene.py script/gnome-extension/erplibre_home/lib/project-root.js script/gnome-extension/erplibre_home/test/unit/project-root.test.js
 ```
-Expected: the four `node --check` produce no output (exit 0), and the `controller.js` grep prints `0`. Then `no leftover suffix regex`. The `device.js` grep shows only `.venv.streamdeck` (lines 158 and 162). `make test_gnome_extension` ends with `ℹ tests 215`, `ℹ pass 215`, `ℹ fail 0`, which is the 198 baseline plus 17. The hygiene check reports nothing and exits 0.
+Expected: the four `node --check` produce no output (exit 0), and the `controller.js` grep prints `0`. Then `no leftover suffix regex`. The `device.js` grep shows only `.venv.streamdeck` (lines 158 and 162). `make test_gnome_extension` ends with `ℹ tests 233`, `ℹ pass 233`, `ℹ fail 0`, which is the 216 baseline plus 17. The hygiene check reports nothing and exits 0.
 
 - [ ] **Step 10: Commit**
 
@@ -1236,11 +1243,11 @@ Write the message to the scratchpad, validate it, then commit:
 cd "$(git rev-parse --show-toplevel)"
 MSG=$SCRATCH/msg_task2.txt
 cat > "$MSG" <<'EOF'
-[FIX] stream_deck: extension root follows symlink, deck venv
+[FIX] gnome extension: extension root follows symlink, deck venv
 
 GNOME Shell reports extension.path as the link under
 ~/.local/share/gnome-shell/extensions, so stripping the
-script/stream_deck/gnome-extension suffix from it never matched and
+script/gnome-extension/erplibre_home suffix from it never matched and
 the controller launcher looked for its venv in the wrong place.
 lib/project-root.js resolves the link (absolute, relative, hot-reload
 copy) before stripping. The device indicator launches the controller
@@ -1248,11 +1255,11 @@ with .venv.streamdeck; the selenium login keeps .venv.erplibre.
 The gallery launcher runs make streamdeck_gallery, which picks the venv.
 
 --- FR ---
-[FIX] stream_deck: racine de l'extension via le lien, venv du deck
+[FIX] extension gnome : racine de l'extension via le lien, venv du deck
 
 GNOME Shell rapporte extension.path comme le lien situé sous
 ~/.local/share/gnome-shell/extensions : en retirer le suffixe
-script/stream_deck/gnome-extension n'aboutissait jamais, et le lanceur
+script/gnome-extension/erplibre_home n'aboutissait jamais, et le lanceur
 du contrôleur cherchait son venv au mauvais endroit. lib/project-root.js
 résout le lien (absolu, relatif, copie de rechargement) avant de retirer
 le suffixe. L'indicateur Device lance le contrôleur avec .venv.streamdeck
@@ -1262,34 +1269,34 @@ lance make streamdeck_gallery, qui choisit le venv.
 Assisted-by: Claude Opus 5.5
 EOF
 script/git/hooks/commit-msg "$MSG"
-git add script/stream_deck/gnome-extension/lib/project-root.js \
-        script/stream_deck/gnome-extension/test/unit/project-root.test.js \
-        script/stream_deck/gnome-extension/indicators/device.js \
-        script/stream_deck/gnome-extension/indicators/erplibre.js \
-        script/stream_deck/gnome-extension/indicators/controller.js \
-        script/stream_deck/gnome-extension/po/streamdeck-tiler.pot \
-        script/stream_deck/gnome-extension/po/en.po \
-        script/stream_deck/gnome-extension/po/fr.po \
-        script/stream_deck/gnome-extension/CHANGELOG.md
+git add script/gnome-extension/erplibre_home/lib/project-root.js \
+        script/gnome-extension/erplibre_home/test/unit/project-root.test.js \
+        script/gnome-extension/erplibre_home/indicators/device.js \
+        script/gnome-extension/erplibre_home/indicators/erplibre.js \
+        script/gnome-extension/erplibre_home/indicators/controller.js \
+        script/gnome-extension/erplibre_home/po/erplibre-home.pot \
+        script/gnome-extension/erplibre_home/po/en.po \
+        script/gnome-extension/erplibre_home/po/fr.po \
+        script/gnome-extension/erplibre_home/CHANGELOG.md
 git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit -F "$MSG"
 ```
 Expected: `commit-msg` exits 0 with no output. This exact message was checked against the hook, and its subject is 60 characters. The commit then contains the 9 files listed.
 
 ---
 
-### Task 3: install_streamdeck.sh: pre-checks and dry run
+### Task 3: install_erplibre_home.sh: pre-checks and dry run
 
 **Files:**
-- Create: `script/install/install_streamdeck.sh` (mode 755)
-- Test: `test/test_install_streamdeck.py`
+- Create: `script/install/install_erplibre_home.sh` (mode 755)
+- Test: `test/test_install_erplibre_home.py`
 
 **Interfaces:**
 - Consumes:
-  - `script/stream_deck/gnome-extension/metadata.json`: the `shell-version` list, which is `["45" … "51"]` today. The script reads it with `python3 -c 'import json…'`.
-  - `script/stream_deck/gnome-extension/po/*.po`: one `.mo` file per language. `--dry-run` lists these.
+  - `script/gnome-extension/erplibre_home/metadata.json`: the `shell-version` list, which is `["45" … "51"]` today. The script reads it with `python3 -c 'import json…'`.
+  - `script/gnome-extension/erplibre_home/po/*.po`: one `.mo` file per language. `--dry-run` lists these.
   - The detection logic of `script/install/install_vpn.sh:45-68` (`detect_os`/`family`). It is copied, with the family set in a global variable instead of echoed.
 - Produces (Task 4 fills in the bodies that are still stubs; every name below stays the same):
-  - Script globals: `RACINE`, `UUID`, `EXT_SRC`, `EXT_LINK` (`$HOME/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca`), `METADATA`, `UDEV_RULE` (`/etc/udev/rules.d/70-streamdeck.rules`), `VENV` (`$RACINE/.venv.streamdeck`), `NO_ENABLE`, `EXTENSION_ONLY`, `WITH_EXTRAS`, `UNINSTALL`, `DRY_RUN`, `OS`, `OS_LIKE`, `FAMILY` (`debian|rhel|suse|arch`), `GNOME_VERSION`.
+  - Script globals: `RACINE`, `UUID`, `EXT_SRC`, `EXT_LINK` (`$HOME/.local/share/gnome-shell/extensions/erplibre-home@technolibre.ca`), `METADATA`, `UDEV_RULE` (`/etc/udev/rules.d/70-streamdeck.rules`), `VENV` (`$RACINE/.venv.streamdeck`), `NO_ENABLE`, `EXTENSION_ONLY`, `WITH_EXTRAS`, `UNINSTALL`, `DRY_RUN`, `OS`, `OS_LIKE`, `FAMILY` (`debian|rhel|suse|arch`), `GNOME_VERSION`.
   - Pure helpers:
     - `packages_for FAMILY` returns the base package names.
     - `extras_for FAMILY` returns the extra package names.
@@ -1310,19 +1317,19 @@ Expected: `commit-msg` exits 0 with no output. This exact message was checked ag
 
 - [ ] **Step 1: Write the failing test**
 
-Create `test/test_install_streamdeck.py`:
+Create `test/test_install_erplibre_home.py`:
 
 ```python
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""L'installateur du Stream Deck : vérifications préalables et --dry-run.
+"""L'installateur d'ERPLibre Home : vérifications préalables et --dry-run.
 
 Le script installe pour de vrai, sous le compte de l'utilisateur, avec sudo
 pour les paquets. Ces tests n'exercent que ce qui ne touche rien : la
 lecture de os-release et de la version de GNOME, que les variables
-STREAMDECK_* remplacent, et la sortie de --dry-run, qui est la surface
-convenue du script.
+ERPLIBRE_HOME_* remplacent, et la sortie de --dry-run, qui est la
+surface convenue du script.
 
 Ce que ces tests gardent :
 
@@ -1343,9 +1350,9 @@ import unittest
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[1]
-SCRIPT = RACINE / "script/install/install_streamdeck.sh"
-EXTENSION = RACINE / "script/stream_deck/gnome-extension"
-UUID = "streamdeck-tiler@technolibre.ca"
+SCRIPT = RACINE / "script/install/install_erplibre_home.sh"
+EXTENSION = RACINE / "script/gnome-extension/erplibre_home"
+UUID = "erplibre-home@technolibre.ca"
 
 # Des os-release réduits à ce que le script lit : ID et ID_LIKE.
 OS_RELEASE = {
@@ -1430,11 +1437,11 @@ class Installateur(unittest.TestCase):
         if systeme is not None:
             fichier = self.tmp / "os-release"
             fichier.write_text(OS_RELEASE[systeme], encoding="utf-8")
-            env["STREAMDECK_OS_RELEASE"] = str(fichier)
+            env["ERPLIBRE_HOME_OS_RELEASE"] = str(fichier)
         if gnome is not None:
-            env["STREAMDECK_GNOME_VERSION"] = gnome
+            env["ERPLIBRE_HOME_GNOME_VERSION"] = gnome
         if uid is not None:
-            env["STREAMDECK_UID"] = uid
+            env["ERPLIBRE_HOME_UID"] = uid
         return subprocess.run(
             [str(SCRIPT), *options],
             capture_output=True,
@@ -1571,12 +1578,12 @@ class LeDryRun(Installateur):
         )
         self.assertIn(str(EXTENSION / "schemas/gschemas.compiled"), ecrits)
         self.assertIn(
-            str(EXTENSION / "locale/fr/LC_MESSAGES/streamdeck-tiler.mo"),
+            str(EXTENSION / "locale/fr/LC_MESSAGES/erplibre-home.mo"),
             ecrits,
         )
         # Le gabarit .pot n'est pas une langue.
         self.assertFalse(
-            [e for e in ecrits if "locale/streamdeck-tiler/" in e], ecrits
+            [e for e in ecrits if "locale/erplibre-home/" in e], ecrits
         )
         # Lancé hors du dépôt, il se place quand même à sa racine.
         self.assertEqual(
@@ -1695,26 +1702,27 @@ The out-of-range GNOME versions come from `metadata.json`: today they are `44.0`
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv.erplibre/bin/python test/test_install_streamdeck.py`
+Run: `.venv.erplibre/bin/python test/test_install_erplibre_home.py`
 
 Expected: `FAILED (failures=2, errors=33)`, which breaks down as:
-- every `lancer` call errors with `FileNotFoundError: [Errno 2] No such file or directory: '…/script/install/install_streamdeck.sh'`;
+- every `lancer` call errors with `FileNotFoundError: [Errno 2] No such file or directory: '…/script/install/install_erplibre_home.sh'`;
 - `test_it_is_valid_shell` fails with `0 != 127`;
 - `test_it_is_executable` fails with `False is not true`.
 
 - [ ] **Step 3: Implement**
 
-Create `script/install/install_streamdeck.sh`:
+Create `script/install/install_erplibre_home.sh`:
 
 ```bash
 #!/usr/bin/env bash
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
-# Installe le Stream Deck seul, sans Odoo : paquets système, règle udev,
-# venv dédié .venv.streamdeck, extension GNOME liée au dépôt puis activée.
+# Installe ERPLibre Home seul, sans Odoo : paquets système, règle udev du
+# Stream Deck, venv dédié .venv.streamdeck, extension GNOME liée au dépôt
+# puis activée.
 #
-#   ./script/install/install_streamdeck.sh [--no-enable] [--extension-only]
+#   ./script/install/install_erplibre_home.sh [--no-enable] [--extension-only]
 #       [--with-extras] [--uninstall] [--dry-run] [--help]
 #
 # Codes de sortie : 0 installé ; 2 système non supporté, avec UNE ligne
@@ -1726,22 +1734,22 @@ Create `script/install/install_streamdeck.sh`:
 # se place à la racine du dépôt qui le contient.
 #
 # Trois variables remplacent une lecture du système, pour les tests :
-#   STREAMDECK_OS_RELEASE     fichier lu à la place de /etc/os-release
-#   STREAMDECK_GNOME_VERSION  version lue à la place de « gnome-shell
-#                             --version » ; « none » : pas de GNOME Shell
-#   STREAMDECK_UID            remplace « id -u »
+#   ERPLIBRE_HOME_OS_RELEASE     fichier lu à la place de /etc/os-release
+#   ERPLIBRE_HOME_GNOME_VERSION  version lue à la place de « gnome-shell
+#                                --version » ; « none » : pas de GNOME Shell
+#   ERPLIBRE_HOME_UID            remplace « id -u »
 set -euo pipefail
 
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${RACINE}"
 
-UUID="streamdeck-tiler@technolibre.ca"
-EXT_SRC="${RACINE}/script/stream_deck/gnome-extension"
+UUID="erplibre-home@technolibre.ca"
+EXT_SRC="${RACINE}/script/gnome-extension/erplibre_home"
 EXT_LINK="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 METADATA="${EXT_SRC}/metadata.json"
 UDEV_RULE="/etc/udev/rules.d/70-streamdeck.rules"
 VENV="${RACINE}/.venv.streamdeck"
-OS_RELEASE="${STREAMDECK_OS_RELEASE:-/etc/os-release}"
+OS_RELEASE="${ERPLIBRE_HOME_OS_RELEASE:-/etc/os-release}"
 
 NO_ENABLE=0
 EXTENSION_ONLY=0
@@ -1754,9 +1762,9 @@ OS_LIKE=""
 FAMILY=""
 GNOME_VERSION=""
 
-log() { echo "[Stream Deck] $*"; }
+log() { echo "[ERPLibre Home] $*"; }
 die() {
-    echo "[Stream Deck] ERREUR : $*" >&2
+    echo "[ERPLibre Home] ERREUR : $*" >&2
     exit 1
 }
 # Le code 2 et la ligne « UNSUPPORTED: » sont lus par TODO et par le test
@@ -1769,10 +1777,10 @@ unsupported() {
 
 usage() {
     cat <<'USAGE'
-Usage : ./script/install/install_streamdeck.sh [options]
+Usage : ./script/install/install_erplibre_home.sh [options]
 
-Installe le Stream Deck sans Odoo : paquets système, règle udev,
-.venv.streamdeck, extension GNOME streamdeck-tiler activée.
+Installe ERPLibre Home sans Odoo : paquets système, règle udev du
+Stream Deck, .venv.streamdeck, extension GNOME erplibre-home activée.
 
   --no-enable       n'active pas l'extension : gsettings reste inchangé
   --extension-only  lien, schémas et traductions de l'extension seulement,
@@ -1817,7 +1825,7 @@ parse_args() {
 }
 
 check_not_root() {
-    local uid="${STREAMDECK_UID:-$(id -u)}"
+    local uid="${ERPLIBRE_HOME_UID:-$(id -u)}"
     if [ "${uid}" = 0 ]; then
         die "à lancer sous votre compte, pas en root : le venv, l'extension" \
             "et gsettings appartiennent à l'utilisateur, et le script appelle" \
@@ -1888,8 +1896,8 @@ needs_epel() {
 # empêche les deux listes de diverger.
 check_gnome() {
     local accepted major
-    if [ -n "${STREAMDECK_GNOME_VERSION:-}" ]; then
-        GNOME_VERSION="${STREAMDECK_GNOME_VERSION}"
+    if [ -n "${ERPLIBRE_HOME_GNOME_VERSION:-}" ]; then
+        GNOME_VERSION="${ERPLIBRE_HOME_GNOME_VERSION}"
     elif command -v gnome-shell >/dev/null 2>&1; then
         GNOME_VERSION="$(gnome-shell --version 2>/dev/null \
             | sed -n 's/^GNOME Shell //p')"
@@ -1956,14 +1964,14 @@ package_cmd() {
 }
 
 # Les .mo que compile_locales.py écrit : un par po/<langue>.po, le gabarit
-# streamdeck-tiler mis à part.
+# erplibre-home mis à part.
 locale_files() {
     local po lang
     for po in "${EXT_SRC}"/po/*.po; do
         [ -e "${po}" ] || continue
         lang="$(basename "${po}" .po)"
-        [ "${lang}" != streamdeck-tiler ] || continue
-        echo "${EXT_SRC}/locale/${lang}/LC_MESSAGES/streamdeck-tiler.mo"
+        [ "${lang}" != erplibre-home ] || continue
+        echo "${EXT_SRC}/locale/${lang}/LC_MESSAGES/erplibre-home.mo"
     done
 }
 
@@ -2077,7 +2085,7 @@ main "$@"
 Then make the script executable. git records mode 755.
 
 ```bash
-chmod +x script/install/install_streamdeck.sh
+chmod +x script/install/install_erplibre_home.sh
 ```
 
 Notes for Task 4:
@@ -2089,20 +2097,20 @@ Notes for Task 4:
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-.venv.erplibre/bin/python test/test_install_streamdeck.py -v
+.venv.erplibre/bin/python test/test_install_erplibre_home.py -v
 ```
 Expected: `Ran 21 tests` … `OK`.
 
 ```bash
-./script/test/run_unit_test.sh test/test_install_streamdeck.py
+./script/test/run_unit_test.sh test/test_install_erplibre_home.py
 ```
-Expected: one line `OK` for `test/test_install_streamdeck.py`. The runner stubs `sudo`; the test puts its own `sudo` witness first in PATH.
+Expected: one line `OK` for `test/test_install_erplibre_home.py`. The runner stubs `sudo`; the test puts its own `sudo` witness first in PATH.
 
 ```bash
-bash -n script/install/install_streamdeck.sh && echo syntax-ok
-.venv.erplibre/bin/ruff format --check test/test_install_streamdeck.py
-.venv.erplibre/bin/ruff check --select I test/test_install_streamdeck.py
-python3 script/analyse/check_comment_hygiene.py script/install/install_streamdeck.sh test/test_install_streamdeck.py
+bash -n script/install/install_erplibre_home.sh && echo syntax-ok
+.venv.erplibre/bin/ruff format --check test/test_install_erplibre_home.py
+.venv.erplibre/bin/ruff check --select I test/test_install_erplibre_home.py
+python3 script/analyse/check_comment_hygiene.py script/install/install_erplibre_home.sh test/test_install_erplibre_home.py
 ```
 Expected:
 - `syntax-ok`;
@@ -2113,7 +2121,7 @@ Expected:
 Manual check (it changes nothing):
 
 ```bash
-STREAMDECK_OS_RELEASE=/etc/os-release STREAMDECK_GNOME_VERSION=48.1 ./script/install/install_streamdeck.sh --dry-run --with-extras
+ERPLIBRE_HOME_OS_RELEASE=/etc/os-release ERPLIBRE_HOME_GNOME_VERSION=48.1 ./script/install/install_erplibre_home.sh --dry-run --with-extras
 ```
 Expected: the `family=`, `gnome=48.1`, `packages: …`, `write: …`, `venv: …` and `gsettings: …` lines, then exit 0.
 
@@ -2121,11 +2129,11 @@ Expected: the `family=`, `gnome=48.1`, `packages: …`, `write: …`, `venv: …
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add script/install/install_streamdeck.sh test/test_install_streamdeck.py
-cat > /tmp/streamdeck_task3.msg <<'EOF'
-[ADD] install: Stream Deck installer pre-checks and dry run
+git add script/install/install_erplibre_home.sh test/test_install_erplibre_home.py
+cat > /tmp/erplibre_home_task3.msg <<'EOF'
+[ADD] install: ERPLibre Home installer pre-checks and dry run
 
-install_streamdeck.sh maps os-release to a family (debian, rhel, suse,
+install_erplibre_home.sh maps os-release to a family (debian, rhel, suse,
 arch), refuses root, and accepts only a GNOME major listed in the
 extension's shell-version. NixOS, macOS, an unknown distribution, no
 gnome-shell or a version outside the list exit 2 with one UNSUPPORTED
@@ -2135,9 +2143,9 @@ keys, without sudo. Side-effecting steps stop with exit 1 for now.
 
 --- FR ---
 
-[ADD] install : installateur Stream Deck, vérifications et essai à blanc
+[ADD] install : installateur ERPLibre Home, contrôles et essai à blanc
 
-install_streamdeck.sh rattache os-release à une famille (debian, rhel,
+install_erplibre_home.sh rattache os-release à une famille (debian, rhel,
 suse, arch), refuse root et n'accepte qu'un majeur de GNOME listé dans
 shell-version. NixOS, macOS, une distribution inconnue, l'absence de
 gnome-shell ou une version hors liste sortent en 2 avec une ligne
@@ -2148,8 +2156,8 @@ l'instant.
 
 Assisted-by: Claude Opus 5.5
 EOF
-script/git/hooks/commit-msg /tmp/streamdeck_task3.msg
-git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit -F /tmp/streamdeck_task3.msg
+script/git/hooks/commit-msg /tmp/erplibre_home_task3.msg
+git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit -F /tmp/erplibre_home_task3.msg
 ```
 
 I built and ran the script and the test in a scratch copy of the needed repository files; no repository file was changed:
@@ -2160,23 +2168,23 @@ I built and ran the script and the test in a scratch copy of the needed reposito
 - The `commit-msg` hook accepts the message (`rc=0`).
 
 Copies in the scratchpad:
-- `$SCRATCH/repo/script/install/install_streamdeck.sh`
-- `$SCRATCH/repo/test/test_install_streamdeck.py`
+- `$SCRATCH/repo/script/install/install_erplibre_home.sh`
+- `$SCRATCH/repo/test/test_install_erplibre_home.py`
 
 ---
 
-### Task 4: install_streamdeck.sh: install, enable, uninstall; make targets; INSTALL doc
+### Task 4: install_erplibre_home.sh: install, enable, uninstall; make targets; INSTALL doc
 
 **Files:**
-- Modify: `script/install/install_streamdeck.sh` (created by Task 3). Four edits, each anchored on Task 3's text:
+- Modify: `script/install/install_erplibre_home.sh` (created by Task 3). Four edits, each anchored on Task 3's text:
   - `unsupported` records that it is the one exiting 2;
   - the 3-line `not_implemented` function is replaced by the block of installation functions;
   - each `not_implemented …` line in the `step_*` functions, and the body of `step_summary`, calls those functions;
   - the final `main "$@"` line becomes a guard with an `EXIT` trap.
-- Modify: `conf/make.streamdeck.Makefile`: insert the new targets before `STREAMDECK_TILER_EXT_UUID       := …` (line 107 at HEAD `ae7c9de8`) and replace the `streamdeck_tiler_install_extension` recipe (lines 114-126 at HEAD). Task 1 shifts these lines, so find each edit by its anchor text.
-- Modify: `test/test_streamdeck_entry_points.py` (created by Task 1): `streamdeck_tiler_install_extension` no longer calls `compile_locales.py` itself.
+- Modify: `conf/make.streamdeck.Makefile`: insert the new targets before `ERPLIBRE_HOME_EXT_UUID       := …` (line 107 at HEAD `5ecaf9ab`), replace the `erplibre_home_install_extension` recipe (lines 114-127 at that HEAD; its first line, the legacy migration, stays) and delete the `erplibre_home_uninstall` alias (lines 148-150). Task 1 shifts these lines, so find each edit by its anchor text.
+- Modify: `test/test_streamdeck_entry_points.py` (created by Task 1): `erplibre_home_install_extension` no longer calls `compile_locales.py` itself.
 - Modify: `script/stream_deck/INSTALL.base.md:6-53`, then regenerate `script/stream_deck/INSTALL.md` and `script/stream_deck/INSTALL.fr.md`.
-- Test: `test/test_install_streamdeck.py` (created by Task 3, extended here).
+- Test: `test/test_install_erplibre_home.py` (created by Task 3, extended here).
 
 **Interfaces:**
 - Consumes Task 3's script as it stands:
@@ -2188,13 +2196,13 @@ Copies in the scratchpad:
   - `gsettings_bus` writes on the bus of an open session (`DBUS_SESSION_BUS_ADDRESS`, else `/run/user/<uid>/bus`) and uses `dbus-run-session` only when neither exists. This refines spec 4.1 step 6, which names only the variable: over ssh into a machine whose GNOME session runs, as in Task 9's idempotence and reinstall checks, the variable is unset while the session's dconf-service is live.
   - `enable_extension` adds the UUID to `enabled-extensions`, removes it from `disabled-extensions`, sets `disable-user-extensions` to `false`, and reads the three keys back.
   - `link_extension` stops with exit 1 and a message naming `EXT_LINK` when a real directory or file sits there; it never deletes it.
-  - The source guard: sourced with `STREAMDECK_SOURCE_ONLY=1`, the script defines its functions and does not run `main`. Run normally, an `EXIT` trap turns a stray exit 2 from a called command into 1, so only `unsupported` exits 2.
-  - Make targets `streamdeck_install` and `streamdeck_uninstall`. `streamdeck_tiler_install_extension` delegates to `./script/install/install_streamdeck.sh --extension-only`.
+  - The source guard: sourced with `ERPLIBRE_HOME_SOURCE_ONLY=1`, the script defines its functions and does not run `main`. Run normally, an `EXIT` trap turns a stray exit 2 from a called command into 1, so only `unsupported` exits 2.
+  - Make targets `erplibre_home_install` and `erplibre_home_uninstall`; the new `erplibre_home_uninstall` replaces the alias of `erplibre_home_uninstall_extension` that carried the name. `erplibre_home_install_extension` runs the legacy migration, then delegates to `./script/install/install_erplibre_home.sh --extension-only`.
 - The `--dry-run` output is unchanged from Task 3: `family=`, `gnome=`, `packages: sudo …` (EPEL line first on Alma/Rocky, a separate extras line with `--with-extras`), `write:` (udev, link, `gschemas.compiled`, one `.mo` per language), `venv:`, the two `gsettings:` lines, and `remove:` with `--uninstall`. There is no `enable:` line.
 
 - [ ] **Step 1: Write the failing tests**
 
-In the import block of `test/test_install_streamdeck.py`, add `import shutil` between `import os` and `import subprocess`.
+In the import block of `test/test_install_erplibre_home.py`, add `import shutil` between `import os` and `import subprocess`.
 
 Append the following after Task 3's test classes and before the closing `if __name__ == "__main__":` block. The closing block must stay last. `RACINE`, `SCRIPT`, `EXTENSION` and `UUID` come from Task 3's constants.
 ```python
@@ -2205,17 +2213,19 @@ MAKEFILE_STREAMDECK = RACINE / "conf/make.streamdeck.Makefile"
 def sourcer(fragment, env=None):
     """Source l'installateur sans lancer main, puis joue `fragment`.
 
-    STREAMDECK_SOURCE_ONLY=1 définit les fonctions et s'arrête ; le
+    ERPLIBRE_HOME_SOURCE_ONLY=1 définit les fonctions et s'arrête ; le
     fragment les redéfinit au besoin (sudo, gsettings_bus…) avant de les
     appeler. DBUS_SESSION_BUS_ADDRESS est retiré de l'environnement, sauf
     si `env` le pose. Rend le CompletedProcess.
     """
-    if "STREAMDECK_SOURCE_ONLY" not in INSTALLEUR.read_text(encoding="utf-8"):
+    if "ERPLIBRE_HOME_SOURCE_ONLY" not in INSTALLEUR.read_text(
+        encoding="utf-8"
+    ):
         raise AssertionError(
-            "install_streamdeck.sh has no STREAMDECK_SOURCE_ONLY guard: "
+            "install_erplibre_home.sh has no ERPLIBRE_HOME_SOURCE_ONLY guard: "
             "sourcing it would run main"
         )
-    code = 'STREAMDECK_SOURCE_ONLY=1 source "$INSTALLEUR"\n' + fragment
+    code = 'ERPLIBRE_HOME_SOURCE_ONLY=1 source "$INSTALLEUR"\n' + fragment
     environ = dict(os.environ)
     environ.pop("DBUS_SESSION_BUS_ADDRESS", None)
     environ["INSTALLEUR"] = str(INSTALLEUR)
@@ -2575,7 +2585,7 @@ class TestExtensionSeule(unittest.TestCase):
         shutil.copy2(INSTALLEUR, self.depot / "script/install")
         shutil.copytree(
             EXTENSION,
-            self.depot / "script/stream_deck/gnome-extension",
+            self.depot / "script/gnome-extension/erplibre_home",
             symlinks=True,
             ignore=shutil.ignore_patterns("locale", "gschemas.compiled"),
         )
@@ -2599,7 +2609,7 @@ class TestExtensionSeule(unittest.TestCase):
         sudo.chmod(0o755)
         self.path = "%s:%s" % (faux_bin, os.environ.get("PATH", ""))
         self.lien = self.home / ".local/share/gnome-shell/extensions" / UUID
-        self.source = self.depot / "script/stream_deck/gnome-extension"
+        self.source = self.depot / "script/gnome-extension/erplibre_home"
 
     def tearDown(self):
         self._dossier.cleanup()
@@ -2609,7 +2619,7 @@ class TestExtensionSeule(unittest.TestCase):
         environ.update(
             {
                 "HOME": str(self.home),
-                "STREAMDECK_UID": "1000",
+                "ERPLIBRE_HOME_UID": "1000",
                 "PATH": self.path,
             }
         )
@@ -2617,7 +2627,7 @@ class TestExtensionSeule(unittest.TestCase):
         return subprocess.run(
             [
                 "bash",
-                str(self.depot / "script/install/install_streamdeck.sh"),
+                str(self.depot / "script/install/install_erplibre_home.sh"),
                 "--extension-only",
                 *options,
             ],
@@ -2701,11 +2711,11 @@ class TestExtensionSeule(unittest.TestCase):
     @unittest.skipUnless(
         shutil.which("glib-compile-schemas"), "glib-compile-schemas absent"
     )
-    def test_sans_venv_le_message_nomme_make_streamdeck_install(self):
+    def test_sans_venv_le_message_nomme_make_erplibre_home_install(self):
         shutil.rmtree(self.depot / ".venv.streamdeck")
         fait = self.lancer()
         self.assertEqual(fait.returncode, 1)
-        self.assertIn("make streamdeck_install", fait.stderr)
+        self.assertIn("make erplibre_home_install", fait.stderr)
 
     def test_un_repertoire_ordinaire_arrete_l_installation_et_reste(self):
         """Une copie posée à la main par une ancienne installation : le
@@ -2734,10 +2744,15 @@ def recette(cible):
 
 class TestMakefile(unittest.TestCase):
     def test_l_extension_passe_par_l_installateur(self):
-        lignes = recette("streamdeck_tiler_install_extension")
+        lignes = recette("erplibre_home_install_extension")
+        # La migration de l'ancienne identité passe d'abord, sous le python
+        # du système, avant que l'installateur pose le nouveau lien.
         self.assertEqual(
-            lignes[0],
-            "@./script/install/install_streamdeck.sh --extension-only",
+            lignes[0], '@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"'
+        )
+        self.assertEqual(
+            lignes[1],
+            "@./script/install/install_erplibre_home.sh --extension-only",
         )
         self.assertFalse(
             any("glib-compile-schemas" in ligne for ligne in lignes)
@@ -2746,7 +2761,7 @@ class TestMakefile(unittest.TestCase):
         # Les indications pour recharger restent.
         self.assertTrue(
             any(
-                "make streamdeck_tiler_enable_extension" in ligne
+                "make erplibre_home_enable_extension" in ligne
                 for ligne in lignes
             )
         )
@@ -2759,15 +2774,15 @@ class TestMakefile(unittest.TestCase):
 
     def test_installer_et_desinstaller(self):
         texte = MAKEFILE_STREAMDECK.read_text()
-        self.assertIn(".PHONY: streamdeck_install\n", texte)
-        self.assertIn(".PHONY: streamdeck_uninstall\n", texte)
+        self.assertIn(".PHONY: erplibre_home_install\n", texte)
+        self.assertIn(".PHONY: erplibre_home_uninstall\n", texte)
         self.assertEqual(
-            recette("streamdeck_install"),
-            ["./script/install/install_streamdeck.sh"],
+            recette("erplibre_home_install"),
+            ["./script/install/install_erplibre_home.sh"],
         )
         self.assertEqual(
-            recette("streamdeck_uninstall"),
-            ["./script/install/install_streamdeck.sh --uninstall"],
+            recette("erplibre_home_uninstall"),
+            ["./script/install/install_erplibre_home.sh --uninstall"],
         )
 ```
 `sourcer()` refuses to source a script that has no guard. Without the guard, sourcing would run Task 3's `main`. `TestExtensionSeule` puts a fake `sudo` at the front of `PATH`, so nothing runs as root, even during the red phase.
@@ -2780,17 +2795,17 @@ The Review Focus lines map to these tests:
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `.venv.erplibre/bin/python -m unittest test.test_install_streamdeck -v`
+Run: `.venv.erplibre/bin/python -m unittest test.test_install_erplibre_home -v`
 
 Expected: FAIL, `Ran 56 tests`, `FAILED (failures=32)`:
-- every test that sources the script (`TestListeEnabledExtensions`, `TestRegleUdev`, `TestPaquets`, `TestActivation`, `TestBusDeSession`, `TestDesinstallation`) fails with `AssertionError: install_streamdeck.sh has no STREAMDECK_SOURCE_ONLY guard: sourcing it would run main`; `test_epel_precede_les_paquets_sur_rocky_et_alma` counts twice, once per subtest;
-- the three `TestMakefile` tests fail with `'|| true' unexpectedly found in …`, `'.PHONY: streamdeck_install\n' not found in …` and the old first recipe line `@if [ -L …`;
-- in `TestExtensionSeule`, the three tests that expect a link (`test_lien_schemas_et_locales`, `test_un_checkout_dont_le_chemin_porte_une_espace`, `test_une_seconde_execution_laisse_le_lien`) and the two that expect a message (`test_sans_venv_le_message_nomme_make_streamdeck_install`, `test_un_repertoire_ordinaire_arrete_l_installation_et_reste`) fail: Task 3's stub dies with `étape pas encore implémentée : extension`. The three other non-dry tests expect exit 1 and pass by accident against that stub; `test_dry_run_n_ecrit_rien` already passes;
+- every test that sources the script (`TestListeEnabledExtensions`, `TestRegleUdev`, `TestPaquets`, `TestActivation`, `TestBusDeSession`, `TestDesinstallation`) fails with `AssertionError: install_erplibre_home.sh has no ERPLIBRE_HOME_SOURCE_ONLY guard: sourcing it would run main`; `test_epel_precede_les_paquets_sur_rocky_et_alma` counts twice, once per subtest;
+- the three `TestMakefile` tests fail with `'|| true' unexpectedly found in …`, `'.PHONY: erplibre_home_install\n' not found in …` and the old recipe line that follows the migration, `@if [ -L …`;
+- in `TestExtensionSeule`, the three tests that expect a link (`test_lien_schemas_et_locales`, `test_un_checkout_dont_le_chemin_porte_une_espace`, `test_une_seconde_execution_laisse_le_lien`) and the two that expect a message (`test_sans_venv_le_message_nomme_make_erplibre_home_install`, `test_un_repertoire_ordinaire_arrete_l_installation_et_reste`) fail: Task 3's stub dies with `étape pas encore implémentée : extension`. The three other non-dry tests expect exit 1 and pass by accident against that stub; `test_dry_run_n_ecrit_rien` already passes;
 - Task 3's 21 tests still pass.
 
 - [ ] **Step 3: Implement the installer steps**
 
-Every edit below is in `script/install/install_streamdeck.sh`, as Task 3 left it. Task 3's `main`, `parse_args`, `check_not_root` and dry-run branches stay as they are.
+Every edit below is in `script/install/install_erplibre_home.sh`, as Task 3 left it. Task 3's `main`, `parse_args`, `check_not_root` and dry-run branches stay as they are.
 
 **3a.** Replace
 ```bash
@@ -2917,7 +2932,7 @@ compile_schemas() {
 # polib vient du venv : sans venv, l'étape ne peut pas réussir et le dit.
 compile_locales() {
     if [ ! -x "${VENV}/bin/python" ]; then
-        die "${VENV} is missing; run make streamdeck_install first"
+        die "${VENV} is missing; run make erplibre_home_install first"
     fi
     "${VENV}/bin/python" "${EXT_SRC}/po/compile_locales.py"
 }
@@ -3080,18 +3095,18 @@ summary() {
 - in `step_summary`, `not_implemented "résumé"` with `summary`;
 - in `step_uninstall`, `not_implemented "désinstallation"` with the two lines `uninstall` and `summary`.
 
-Afterwards `grep -c not_implemented script/install/install_streamdeck.sh` prints `0`.
+Afterwards `grep -c not_implemented script/install/install_erplibre_home.sh` prints `0`.
 
 **3d.** Replace the final line `main "$@"` with:
 ```bash
-# Sourcé avec STREAMDECK_SOURCE_ONLY=1, le script définit ses fonctions et
+# Sourcé avec ERPLIBRE_HOME_SOURCE_ONLY=1, le script définit ses fonctions et
 # s'arrête là : les tests unitaires les appellent une à une, sans sudo.
 #
 # Le code 2 est réservé à unsupported. Une commande appelée qui rend 2 (pip,
 # un gestionnaire de paquets, compile_locales.py) et arrête le script sous
 # set -e sortirait sinon en 2, et TODO comme le test long y liraient un
 # système non supporté : le piège EXIT la ramène à 1.
-if [ "${STREAMDECK_SOURCE_ONLY:-0}" != "1" ]; then
+if [ "${ERPLIBRE_HOME_SOURCE_ONLY:-0}" != "1" ]; then
     trap 'rc=$?; if [ "${rc}" = 2 ] && [ "${UNSUPPORTED_EXIT:-0}" != 1 ]; then exit 1; fi' EXIT
     main "$@"
 fi
@@ -3099,61 +3114,74 @@ fi
 
 - [ ] **Step 4: Run the script tests (the Makefile tests still fail)**
 
-Run: `bash -n script/install/install_streamdeck.sh && .venv.erplibre/bin/python -m unittest test.test_install_streamdeck -v`
+Run: `bash -n script/install/install_erplibre_home.sh && .venv.erplibre/bin/python -m unittest test.test_install_erplibre_home -v`
 
 Expected: `Ran 56 tests`, `FAILED (failures=3)`: only the three `TestMakefile` tests fail (`'|| true' unexpectedly found …`). Task 3's 21 tests pass unchanged, so the `--dry-run` surface did not move.
 
 - [ ] **Step 5: Makefile targets**
 
-In `conf/make.streamdeck.Makefile`, insert this before the line `STREAMDECK_TILER_EXT_UUID       := streamdeck-tiler@technolibre.ca`:
+In `conf/make.streamdeck.Makefile`, insert this before the line `ERPLIBRE_HOME_EXT_UUID       := erplibre-home@technolibre.ca`:
 ```make
-# Full Stream Deck setup: system packages, udev rule, .venv.streamdeck,
-# GNOME extension linked and enabled. The installer holds every step; these
-# targets only call it, so make and the installer cannot disagree.
-.PHONY: streamdeck_install
-streamdeck_install:
-	./script/install/install_streamdeck.sh
+# Full ERPLibre Home setup: system packages, Stream Deck udev rule,
+# .venv.streamdeck, GNOME extension linked and enabled. The installer holds
+# every step; these targets only call it, so make and the installer cannot
+# disagree.
+.PHONY: erplibre_home_install
+erplibre_home_install:
+	./script/install/install_erplibre_home.sh
 
-# Removes what streamdeck_install set up, except the system packages.
-.PHONY: streamdeck_uninstall
-streamdeck_uninstall:
-	./script/install/install_streamdeck.sh --uninstall
+# Removes what erplibre_home_install set up, except the system packages.
+.PHONY: erplibre_home_uninstall
+erplibre_home_uninstall:
+	./script/install/install_erplibre_home.sh --uninstall
 
 ```
-Replace the `streamdeck_tiler_install_extension` recipe, as Task 1 left it:
+Replace the `erplibre_home_install_extension` recipe, as Task 1 left it:
 ```make
-streamdeck_tiler_install_extension:
-	@if [ -L "$(STREAMDECK_TILER_EXT_DST)" ] || [ -d "$(STREAMDECK_TILER_EXT_DST)" ]; then \
-		rm -rf "$(STREAMDECK_TILER_EXT_DST)"; \
+erplibre_home_install_extension:
+	@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"
+	@if [ -L "$(ERPLIBRE_HOME_EXT_DST)" ] || [ -d "$(ERPLIBRE_HOME_EXT_DST)" ]; then \
+		rm -rf "$(ERPLIBRE_HOME_EXT_DST)"; \
 	fi
-	@mkdir -p "$(STREAMDECK_TILER_EXT_BASE_DIR)"
-	@ln -sfn "$(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)" "$(STREAMDECK_TILER_EXT_DST)"
-	@glib-compile-schemas "$(STREAMDECK_TILER_EXT_SRC)/schemas/" 2>/dev/null || true
-	@$(STREAMDECK_PY) "$(STREAMDECK_TILER_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
-		|| echo "(locale compile skipped — run make streamdeck_install for translations)"
-	@echo "Symlinked $(STREAMDECK_TILER_EXT_DST) -> $(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)"
+	@mkdir -p "$(ERPLIBRE_HOME_EXT_BASE_DIR)"
+	@ln -sfn "$(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)" "$(ERPLIBRE_HOME_EXT_DST)"
+	@glib-compile-schemas "$(ERPLIBRE_HOME_EXT_SRC)/schemas/" 2>/dev/null || true
+	@$(STREAMDECK_PY) "$(ERPLIBRE_HOME_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
+		|| echo "(locale compile skipped — run make erplibre_home_install for translations)"
+	@echo "Symlinked $(ERPLIBRE_HOME_EXT_DST) -> $(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)"
 	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
 	@echo "X11:     press Alt+F2, type r, Enter."
-	@echo "Then:    make streamdeck_tiler_enable_extension"
+	@echo "Then:    make erplibre_home_enable_extension"
 ```
 with:
 ```make
-streamdeck_tiler_install_extension:
-	@./script/install/install_streamdeck.sh --extension-only
-	@echo "Symlinked $(STREAMDECK_TILER_EXT_DST) -> $(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)"
+erplibre_home_install_extension:
+	@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py"
+	@./script/install/install_erplibre_home.sh --extension-only
+	@echo "Symlinked $(ERPLIBRE_HOME_EXT_DST) -> $(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)"
 	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
 	@echo "X11:     press Alt+F2, type r, Enter."
-	@echo "Then:    make streamdeck_tiler_enable_extension"
+	@echo "Then:    make erplibre_home_enable_extension"
 ```
-Leave `.PHONY: streamdeck_tiler_install_extension` and the `STREAMDECK_TILER_EXT_*` variables unchanged. `streamdeck_tiler_uninstall_extension`, `streamdeck_tiler_reload_clean` and `dev_nested.sh` still use them. The old recipe deleted whatever sat at the link path, a copied directory included (`rm -rf`); the installer stops on it instead.
+The migration line stays first: `tools/migrate_legacy.py` moves a workstation's settings and data off the extension's former identity, runs under the system python, and always exits 0, so it never stops the install.
+
+Delete the convenience alias that carries the name of the new target, with its comment:
+```make
+# Convenience aliases for the common short names users actually type.
+.PHONY: erplibre_home_uninstall
+erplibre_home_uninstall: erplibre_home_uninstall_extension
+```
+Left in place, it would make `erplibre_home_uninstall_extension` a prerequisite of the new `erplibre_home_uninstall`. The installer's `--uninstall` removes the link as the alias did, and `erplibre_home_uninstall_extension` stays for the link alone.
+
+Leave `.PHONY: erplibre_home_install_extension` and the `ERPLIBRE_HOME_EXT_*` variables unchanged. `erplibre_home_uninstall_extension`, `erplibre_home_reload_clean` and `dev_nested.sh` still use them. The old recipe deleted whatever sat at the link path, a copied directory included (`rm -rf`); the installer stops on it instead.
 
 The recipe no longer calls `compile_locales.py` itself, so Task 1's test stops expecting it. In `test/test_streamdeck_entry_points.py`:
-- in the `attendus` dict of `test_the_spec_entry_points_use_the_venv`, delete the line `"streamdeck_tiler_install_extension": "compile_locales.py",`;
+- in the `attendus` dict of `test_the_spec_entry_points_use_the_venv`, delete the line `"erplibre_home_install_extension": "compile_locales.py",`;
 - delete these four lines:
   ```python
   # La compilation des locales y est facultative : sans venv, l'extension
   # s'installe sans traductions au lieu de s'arrêter.
-  SANS_GARDE = {"streamdeck_tiler_install_extension"}
+  SANS_GARDE = {"erplibre_home_install_extension"}
 
   ```
 - in `test_every_target_using_the_venv_requires_it`, delete the two lines `if cible in SANS_GARDE:` and `continue`.
@@ -3161,22 +3189,22 @@ The recipe no longer calls `compile_locales.py` itself, so Task 1's test stops e
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run each command from the checkout root:
-- `bash -n script/install/install_streamdeck.sh`
-- `.venv.erplibre/bin/python -m unittest test.test_install_streamdeck -v`. Expected: `Ran 56 tests` … `OK`, Task 3's 21 tests and this task's 35. The `TestExtensionSeule` tests that need glib are skipped only when `glib-compile-schemas` is missing.
-- `./script/test/run_unit_test.sh test/test_install_streamdeck.py test/test_streamdeck_entry_points.py`. Expected: green under the isolated runner, which puts stub `sudo` and `ssh` first in `PATH`.
-- `.venv.erplibre/bin/ruff check --select I --fix test/test_install_streamdeck.py && .venv.erplibre/bin/ruff format test/test_install_streamdeck.py && .venv.erplibre/bin/ruff check --select E,F,W,B test/test_install_streamdeck.py test/test_streamdeck_entry_points.py`. Expected: `All checks passed!`, and a second `ruff format` reports `1 file left unchanged`.
-- `python3 script/analyse/check_comment_hygiene.py script/install/install_streamdeck.sh test/test_install_streamdeck.py`. Expected: no 🔴 finding.
-- `make -n streamdeck_install streamdeck_uninstall streamdeck_tiler_install_extension | head -4`. Expected: `./script/install/install_streamdeck.sh`, `./script/install/install_streamdeck.sh --uninstall` and `./script/install/install_streamdeck.sh --extension-only` appear.
-- `./script/install/install_streamdeck.sh --dry-run; echo "rc=$?"`. Expected on a GNOME 45–51 workstation: the `family=`, `gnome=`, `packages: sudo …`, `write: …`, `venv: …` and `gsettings: …` lines and `rc=0`. On a system without GNOME: one `UNSUPPORTED:` line and `rc=2`.
+- `bash -n script/install/install_erplibre_home.sh`
+- `.venv.erplibre/bin/python -m unittest test.test_install_erplibre_home -v`. Expected: `Ran 56 tests` … `OK`, Task 3's 21 tests and this task's 35. The `TestExtensionSeule` tests that need glib are skipped only when `glib-compile-schemas` is missing.
+- `./script/test/run_unit_test.sh test/test_install_erplibre_home.py test/test_streamdeck_entry_points.py`. Expected: green under the isolated runner, which puts stub `sudo` and `ssh` first in `PATH`.
+- `.venv.erplibre/bin/ruff check --select I --fix test/test_install_erplibre_home.py && .venv.erplibre/bin/ruff format test/test_install_erplibre_home.py && .venv.erplibre/bin/ruff check --select E,F,W,B test/test_install_erplibre_home.py test/test_streamdeck_entry_points.py`. Expected: `All checks passed!`, and a second `ruff format` reports `1 file left unchanged`.
+- `python3 script/analyse/check_comment_hygiene.py script/install/install_erplibre_home.sh test/test_install_erplibre_home.py`. Expected: no 🔴 finding.
+- `make -n erplibre_home_install erplibre_home_uninstall erplibre_home_install_extension | head -4`. Expected: `./script/install/install_erplibre_home.sh`, `./script/install/install_erplibre_home.sh --uninstall` and `./script/install/install_erplibre_home.sh --extension-only` appear.
+- `./script/install/install_erplibre_home.sh --dry-run; echo "rc=$?"`. Expected on a GNOME 45–51 workstation: the `family=`, `gnome=`, `packages: sudo …`, `write: …`, `venv: …` and `gsettings: …` lines and `rc=0`. On a system without GNOME: one `UNSUPPORTED:` line and `rc=2`.
 - `make test_gnome_extension`. Expected: it passes, since the schemas did not change.
 
 - [ ] **Step 7: Commit the installer and the Makefile**
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add script/install/install_streamdeck.sh conf/make.streamdeck.Makefile test/test_install_streamdeck.py test/test_streamdeck_entry_points.py
+git add script/install/install_erplibre_home.sh conf/make.streamdeck.Makefile test/test_install_erplibre_home.py test/test_streamdeck_entry_points.py
 cat > $SCRATCH/msg_task4a.txt <<'EOF'
-[IMP] install_streamdeck: packages, udev, venv, enable, uninstall
+[IMP] install_erplibre_home: packages, udev, venv, enable, uninstall
 
 The installer only checked the system. It now installs the family's
 packages (a missing extra only warns), writes the uaccess udev rule,
@@ -3184,12 +3212,13 @@ builds .venv.streamdeck, links and enables the extension, dropping its
 UUID from disabled-extensions; gsettings uses an open session's bus. A
 rerun changes nothing; a write that does not take or a directory in
 place of the link exits 1, and only UNSUPPORTED exits 2. make
-streamdeck_tiler_install_extension delegates to --extension-only.
-Checked: test_install_streamdeck, test_streamdeck_entry_points.
+erplibre_home_install_extension migrates, then calls --extension-only;
+erplibre_home_uninstall now runs --uninstall.
+Checked: test_install_erplibre_home, test_streamdeck_entry_points.
 
 --- FR ---
 
-[IMP] install_streamdeck : paquets, udev, venv, activation, retrait
+[IMP] install_erplibre_home : paquets, udev, venv, activation, retrait
 
 L'installateur ne faisait que vérifier le système. Il installe désormais
 les paquets de la famille (un extra absent avertit), écrit la règle udev
@@ -3197,8 +3226,9 @@ uaccess, bâtit .venv.streamdeck, lie et active l'extension en retirant son
 UUID de disabled-extensions ; gsettings passe par le bus d'une session
 ouverte. Une reprise ne change rien ; une écriture qui ne prend pas ou un
 répertoire à la place du lien sort en 1, et seul UNSUPPORTED sort en 2.
-make streamdeck_tiler_install_extension délègue à --extension-only.
-Vérifié : test_install_streamdeck, test_streamdeck_entry_points.
+make erplibre_home_install_extension migre, puis appelle
+--extension-only ; erplibre_home_uninstall lance désormais --uninstall.
+Vérifié : test_install_erplibre_home, test_streamdeck_entry_points.
 
 Assisted-by: Claude Opus 5.5
 EOF
@@ -3213,23 +3243,23 @@ In `script/stream_deck/INSTALL.base.md`, keep lines 1-5 (the mmg header) and rep
 <!-- [en] -->
 # Guide to install
 
-One command sets up the Stream Deck on Debian, Ubuntu, Fedora, AlmaLinux,
-Rocky Linux, openSUSE and Arch Linux, with GNOME Shell 45 to 51. It runs as
-your user, without Odoo, and calls `sudo` only for the system packages and
-the udev rule.
+One command sets up the Stream Deck and the ERPLibre Home GNOME extension
+on Debian, Ubuntu, Fedora, AlmaLinux, Rocky Linux, openSUSE and Arch
+Linux, with GNOME Shell 45 to 51. It runs as your user, without Odoo, and
+calls `sudo` only for the system packages and the udev rule.
 
 <!-- [fr] -->
 # Guide d'installation
 
-Une commande installe le Stream Deck sur Debian, Ubuntu, Fedora, AlmaLinux,
-Rocky Linux, openSUSE et Arch Linux, avec GNOME Shell 45 à 51. Elle tourne
-sous ton compte, sans Odoo, et n'appelle `sudo` que pour les paquets système
-et la règle udev.
+Une commande installe le Stream Deck et l'extension GNOME ERPLibre Home
+sur Debian, Ubuntu, Fedora, AlmaLinux, Rocky Linux, openSUSE et Arch
+Linux, avec GNOME Shell 45 à 51. Elle tourne sous ton compte, sans Odoo,
+et n'appelle `sudo` que pour les paquets système et la règle udev.
 
 <!-- [end] -->
 <!-- [common] -->
 ```
-make streamdeck_install
+make erplibre_home_install
 ```
 
 <!-- [end] -->
@@ -3241,7 +3271,7 @@ schemas and translations, and enables it. Then log out and back in: under
 Wayland, GNOME Shell loads a new extension only at session start. A second
 run changes nothing.
 
-`make streamdeck_install` runs `script/install/install_streamdeck.sh`, which
+`make erplibre_home_install` runs `script/install/install_erplibre_home.sh`, which
 takes these options:
 
 | Option | Effect |
@@ -3254,7 +3284,7 @@ takes these options:
 
 Exit code `0` means installed, `2` an unsupported system (one line on stderr
 starting with `UNSUPPORTED:`), `1` any other failure.
-`make streamdeck_uninstall` runs `--uninstall`.
+`make erplibre_home_uninstall` runs `--uninstall`.
 
 <!-- [fr] -->
 Elle installe les paquets système, écrit la règle udev, crée
@@ -3264,7 +3294,7 @@ schémas et ses traductions, puis l'active. Ferme ensuite ta session et
 rouvre-la : sous Wayland, GNOME Shell ne charge une nouvelle extension qu'à
 l'ouverture de session. Une seconde exécution ne change rien.
 
-`make streamdeck_install` lance `script/install/install_streamdeck.sh`, qui
+`make erplibre_home_install` lance `script/install/install_erplibre_home.sh`, qui
 accepte ces options :
 
 | Option | Effet |
@@ -3277,7 +3307,7 @@ accepte ces options :
 
 Le code de sortie `0` veut dire installé, `2` un système non supporté (une
 ligne sur stderr qui commence par `UNSUPPORTED:`), `1` tout autre échec.
-`make streamdeck_uninstall` lance `--uninstall`.
+`make erplibre_home_uninstall` lance `--uninstall`.
 
 <!-- [end] -->
 <!-- [en] -->
@@ -3353,13 +3383,13 @@ sudo udevadm monitor
 
 - [ ] **Step 9: Regenerate and check the docs**
 
-Run: `cd script/stream_deck && source ../../.venv.erplibre/bin/activate && mmg --yes INSTALL.base.md && cd ../.. && grep -c "<!--" script/stream_deck/INSTALL.md script/stream_deck/INSTALL.fr.md; head -12 script/stream_deck/INSTALL.fr.md; grep -n "make streamdeck_install\|70-streamdeck.rules\|plugdev" script/stream_deck/INSTALL.md`
+Run: `cd script/stream_deck && source ../../.venv.erplibre/bin/activate && mmg --yes INSTALL.base.md && cd ../.. && grep -c "<!--" script/stream_deck/INSTALL.md script/stream_deck/INSTALL.fr.md; head -12 script/stream_deck/INSTALL.fr.md; grep -n "make erplibre_home_install\|70-streamdeck.rules\|plugdev" script/stream_deck/INSTALL.md`
 
 Expected:
 - mmg prints `en: INSTALL.md`, `fr: INSTALL.fr.md` and `1 base file has been converted`.
 - Both `grep -c` counts are `0`. Regenerating also removes the stray `<!-- [en] -->` markers that the committed `INSTALL.fr.md` carried in its later sections.
-- `INSTALL.fr.md` opens on `# Guide d'installation`, followed by the `make streamdeck_install` fence.
-- `INSTALL.md` names `make streamdeck_install` and `70-streamdeck.rules`. `plugdev` appears only in the uaccess explanation.
+- `INSTALL.fr.md` opens on `# Guide d'installation`, followed by the `make erplibre_home_install` fence.
+- `INSTALL.md` names `make erplibre_home_install` and `70-streamdeck.rules`. `plugdev` appears only in the uaccess explanation.
 
 - [ ] **Step 10: Commit the docs**
 
@@ -3367,21 +3397,21 @@ Expected:
 cd "$(git rev-parse --show-toplevel)"
 git add script/stream_deck/INSTALL.base.md script/stream_deck/INSTALL.md script/stream_deck/INSTALL.fr.md
 cat > $SCRATCH/msg_task4b.txt <<'EOF'
-[UPD] stream_deck: INSTALL guide uses make streamdeck_install
+[UPD] stream_deck: INSTALL guide uses make erplibre_home_install
 
 The guide described an Ubuntu-only manual setup with a plugdev group that
 exists on Debian and Ubuntu alone. It now points to make
-streamdeck_install, lists the installer's options and exit codes, keeps
+erplibre_home_install, lists the installer's options and exit codes, keeps
 the per-family package table for reference, and explains the uaccess
 udev rule. INSTALL.md and INSTALL.fr.md are regenerated with mmg.
 
 --- FR ---
 
-[UPD] stream_deck : le guide INSTALL passe par make streamdeck_install
+[UPD] stream_deck : guide INSTALL via make erplibre_home_install
 
 Le guide décrivait une installation manuelle pour Ubuntu seul, avec un
 groupe plugdev qui n'existe que sur Debian et Ubuntu. Il renvoie
-désormais à make streamdeck_install, liste les options et les codes de
+désormais à make erplibre_home_install, liste les options et les codes de
 sortie de l'installateur, garde la table des paquets par famille pour
 référence et explique la règle udev uaccess. INSTALL.md et INSTALL.fr.md
 sont régénérés par mmg.
@@ -3397,23 +3427,23 @@ script/git/hooks/commit-msg $SCRATCH/msg_task4b.txt \
 ### Task 5: TODO local install entry
 
 **Files:**
-- Create: `test/test_todo_streamdeck_install.py`
+- Create: `test/test_todo_erplibre_home_install.py`
 - Modify: `script/todo/todo.py:352-354` (menu text in `prompt_execute`), `script/todo/todo.py:425-429` (dispatch chain), `script/todo/todo.py:1911-1918` (new method after `_scan_streamdeck_games`'s `return games`)
 - Modify: `script/todo/todo_i18n.py:120-123` (new keys after `"Launching game:"`)
 - Modify: `test/test_todo_menu.py:109-110` (`TestExecuteMenuNumbering.EXPECTED`)
-- Test: `test/test_todo_streamdeck_install.py`, `test/test_todo_menu.py`
+- Test: `test/test_todo_erplibre_home_install.py`, `test/test_todo_menu.py`
 
 The line numbers refer to HEAD `ae7c9de8`. Task 1 rewrites the body of `prompt_execute_streamdeck_games` (at about line 1855) to use `.venv.streamdeck/bin/python`, which can shift the line numbers. For that reason every edit below is anchored on an exact text snippet and not on a line number.
 
 **Interfaces:**
 - Consumes:
-  - `script/install/install_streamdeck.sh` (Task 3). It must exist and be executable. Exit 0 means installed. Exit 2 means unsupported, with one stderr line starting `UNSUPPORTED: <reason>`. Exit 1 means any other failure.
+  - `script/install/install_erplibre_home.sh` (Task 3). It must exist and be executable. Exit 0 means installed. Exit 2 means unsupported, with one stderr line starting `UNSUPPORTED: <reason>`. Exit 1 means any other failure.
   - `Execute.exec_command_live(command, source_erplibre=False, return_status_and_output=True)` in `script/execute/execute.py:119`. It returns `(exit_code: int, lines: list[str])`, with stdout and stderr merged, streamed live and kept without their trailing newline.
 - Produces:
-  - Menu entry `[18] {t("Install the Stream Deck (local)")}` in `TODO › Execute › Stream Deck`. It is appended after `[17] Games`, so no existing entry is renumbered.
-  - `TODO._streamdeck_install_local(self) -> False`, which always returns False so the Execute menu stays open.
-  - Class constants `TODO._STREAMDECK_INSTALLER = "./script/install/install_streamdeck.sh"` and `TODO._STREAMDECK_UNSUPPORTED = 2`.
-  - Five i18n keys: `"Install the Stream Deck (local)"`, `"Stream Deck not supported on this system:"`, `"no reason reported by the installer"`, `"Stream Deck installation failed, see the output above."`, `"Stream Deck installed. Log out and back in to load the extension."`.
+  - Menu entry `[18] {t("Install ERPLibre Home (local)")}` in `TODO › Execute › Stream Deck`. It is appended after `[17] Games`, so no existing entry is renumbered.
+  - `TODO._erplibre_home_install_local(self) -> False`, which always returns False so the Execute menu stays open.
+  - Class constants `TODO._ERPLIBRE_HOME_INSTALLER = "./script/install/install_erplibre_home.sh"` and `TODO._ERPLIBRE_HOME_UNSUPPORTED = 2`.
+  - Five i18n keys: `"Install ERPLibre Home (local)"`, `"ERPLibre Home not supported on this system:"`, `"no reason reported by the installer"`, `"ERPLibre Home installation failed, see the output above."`, `"ERPLibre Home installed. Log out and back in to load the extension."`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3429,17 +3459,17 @@ After:
 ```python
         "Docker / Podman": "prompt_execute_container",
         "Games": "prompt_execute_streamdeck_games",
-        "Install the Stream Deck (local)": "_streamdeck_install_local",
+        "Install ERPLibre Home (local)": "_erplibre_home_install_local",
     }
 ```
 
-Create `test/test_todo_streamdeck_install.py`:
+Create `test/test_todo_erplibre_home_install.py`:
 ```python
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""L'entrée « Installer le Stream Deck (local) » du menu Exécution.
+"""L'entrée « Installer ERPLibre Home (local) » du menu Exécution.
 
 L'installateur rend trois issues, et le menu les annonce chacune par une
 seule ligne : 0 installé, 2 système hors périmètre — avec la raison que
@@ -3462,7 +3492,7 @@ sys.path.insert(0, str(RACINE))
 from script.todo import todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
-INSTALLATEUR = "./script/install/install_streamdeck.sh"
+INSTALLATEUR = "./script/install/install_erplibre_home.sh"
 
 
 class ExecuteFactice:
@@ -3490,7 +3520,7 @@ class TestInstallationLocale(unittest.TestCase):
         todo.execute = ExecuteFactice(code, lignes)
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
-            rendu = todo._streamdeck_install_local()
+            rendu = todo._erplibre_home_install_local()
         return todo.execute.appels, sortie.getvalue(), rendu
 
     def test_lance_l_installateur_hors_du_venv_erplibre(self):
@@ -3514,7 +3544,7 @@ class TestInstallationLocale(unittest.TestCase):
         ]
         _, sortie, rendu = self.lancer(2, lignes)
         self.assertIn(
-            "Stream Deck not supported on this system:"
+            "ERPLibre Home not supported on this system:"
             " GNOME 52 not in shell-version",
             sortie,
         )
@@ -3525,7 +3555,7 @@ class TestInstallationLocale(unittest.TestCase):
     def test_le_code_2_sans_raison_le_dit(self):
         _, sortie, _ = self.lancer(2, ["family=arch"])
         self.assertIn(
-            "Stream Deck not supported on this system:"
+            "ERPLibre Home not supported on this system:"
             " no reason reported by the installer",
             sortie,
         )
@@ -3551,12 +3581,12 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `.venv.erplibre/bin/python -m unittest test.test_todo_streamdeck_install test.test_todo_menu 2>&1 | grep -E "^(FAIL|ERROR|AttributeError|Ran|FAILED)"`
+Run: `.venv.erplibre/bin/python -m unittest test.test_todo_erplibre_home_install test.test_todo_menu 2>&1 | grep -E "^(FAIL|ERROR|AttributeError|Ran|FAILED)"`
 
 Expected: FAIL. The output should show:
-- 5 errors with `AttributeError: 'TODO' object has no attribute '_streamdeck_install_local'`.
-- `FAIL: test_expected_table_has_no_stale_entry (test.test_todo_menu.TestExecuteMenuNumbering...)`, because `Install the Stream Deck (local)` is in EXPECTED but not shown in the menu.
-- `test_l_installateur_appele_existe_et_s_execute` already passes when Task 3 is merged. Otherwise it also fails with `./script/install/install_streamdeck.sh absent`.
+- 5 errors with `AttributeError: 'TODO' object has no attribute '_erplibre_home_install_local'`.
+- `FAIL: test_expected_table_has_no_stale_entry (test.test_todo_menu.TestExecuteMenuNumbering...)`, because `Install ERPLibre Home (local)` is in EXPECTED but not shown in the menu.
+- `test_l_installateur_appele_existe_et_s_execute` already passes when Task 3 is merged. Otherwise it also fails with `./script/install/install_erplibre_home.sh absent`.
 
 - [ ] **Step 3: Implement**
 
@@ -3573,7 +3603,7 @@ After:
 ```python
 ── {t("Stream Deck")} ──
 [17] {t("Games - Stream Deck games")}
-[18] {t("Install the Stream Deck (local)")}
+[18] {t("Install ERPLibre Home (local)")}
 [0] {t("Back")}
 """
 ```
@@ -3596,7 +3626,7 @@ After:
                 if status is not False:
                     return
             elif status == "18":
-                status = self._streamdeck_install_local()
+                status = self._erplibre_home_install_local()
                 if status is not False:
                     return
             else:
@@ -3627,14 +3657,14 @@ After:
             )
         return games
 
-    # install_streamdeck.sh sort en 2 pour un système hors périmètre
+    # install_erplibre_home.sh sort en 2 pour un système hors périmètre
     # (distribution, version de GNOME) et en écrit la raison sur une ligne
     # « UNSUPPORTED: <raison> » ; tout autre code non nul est un échec.
-    _STREAMDECK_INSTALLER = "./script/install/install_streamdeck.sh"
-    _STREAMDECK_UNSUPPORTED = 2
+    _ERPLIBRE_HOME_INSTALLER = "./script/install/install_erplibre_home.sh"
+    _ERPLIBRE_HOME_UNSUPPORTED = 2
 
-    def _streamdeck_install_local(self):
-        """Installer le Stream Deck sur ce poste, sans Odoo.
+    def _erplibre_home_install_local(self):
+        """Installer ERPLibre Home sur ce poste, sans Odoo.
 
         L'installateur tourne en direct et hors du venv ERPLibre : il crée le
         sien, .venv.streamdeck. exec_command_live fusionne stdout et stderr
@@ -3643,11 +3673,11 @@ After:
         d'erreur nu. Rend False : le menu Exécution reste ouvert.
         """
         status, lignes = self.execute.exec_command_live(
-            self._STREAMDECK_INSTALLER,
+            self._ERPLIBRE_HOME_INSTALLER,
             source_erplibre=False,
             return_status_and_output=True,
         )
-        if status == self._STREAMDECK_UNSUPPORTED:
+        if status == self._ERPLIBRE_HOME_UNSUPPORTED:
             prefixe = "UNSUPPORTED:"
             raison = next(
                 (
@@ -3660,18 +3690,18 @@ After:
             if not raison:
                 raison = t("no reason reported by the installer")
             print(
-                f"⛔ {t('Stream Deck not supported on this system:')} {raison}"
+                f"⛔ {t('ERPLibre Home not supported on this system:')} {raison}"
             )
         elif status:
             print(
                 "❌ "
-                + t("Stream Deck installation failed, see the output above.")
+                + t("ERPLibre Home installation failed, see the output above.")
             )
         else:
             print(
                 "✅ "
                 + t(
-                    "Stream Deck installed. Log out and back in to load"
+                    "ERPLibre Home installed. Log out and back in to load"
                     " the extension."
                 )
             )
@@ -3694,31 +3724,33 @@ After:
         "fr": "Lancement du jeu :",
         "en": "Launching game:",
     },
-    "Install the Stream Deck (local)": {
-        "fr": "📦 Installer le Stream Deck (local)",
-        "en": "📦 Install the Stream Deck (local)",
+    "Install ERPLibre Home (local)": {
+        "fr": "📦 Installer ERPLibre Home (local)",
+        "en": "📦 Install ERPLibre Home (local)",
     },
-    "Stream Deck not supported on this system:": {
-        "fr": "Stream Deck non pris en charge sur ce système :",
-        "en": "Stream Deck not supported on this system:",
+    "ERPLibre Home not supported on this system:": {
+        "fr": "ERPLibre Home non pris en charge sur ce système :",
+        "en": "ERPLibre Home not supported on this system:",
     },
     "no reason reported by the installer": {
         "fr": "aucune raison donnée par l'installateur",
         "en": "no reason reported by the installer",
     },
-    "Stream Deck installation failed, see the output above.": {
+    "ERPLibre Home installation failed, see the output above.": {
         "fr": (
-            "L'installation du Stream Deck a échoué, voir la sortie ci-dessus."
+            "L'installation d'ERPLibre Home a échoué, voir la sortie"
+            " ci-dessus."
         ),
-        "en": "Stream Deck installation failed, see the output above.",
+        "en": "ERPLibre Home installation failed, see the output above.",
     },
-    "Stream Deck installed. Log out and back in to load the extension.": {
+    "ERPLibre Home installed. Log out and back in to load the extension.": {
         "fr": (
-            "Stream Deck installé. Fermer la session puis la rouvrir pour"
-            " charger l'extension."
+            "ERPLibre Home installé. Fermer la session puis la rouvrir"
+            " pour charger l'extension."
         ),
         "en": (
-            "Stream Deck installed. Log out and back in to load the extension."
+            "ERPLibre Home installed. Log out and back in to load"
+            " the extension."
         ),
     },
     # Stream Deck game descriptions (42 games)
@@ -3726,20 +3758,20 @@ After:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./script/test/run_unit_test.sh test/test_todo_streamdeck_install.py test/test_todo_menu.py test/test_todo_i18n.py test/test_i18n_duplicates.py test/test_todo.py`
+Run: `./script/test/run_unit_test.sh test/test_todo_erplibre_home_install.py test/test_todo_menu.py test/test_todo_i18n.py test/test_i18n_duplicates.py test/test_todo.py`
 
-Expected: `164 tests, tout vert`. The counts are test_todo_streamdeck_install 6, test_todo_menu 54, test_todo_i18n 24, test_i18n_duplicates 3, test_todo 77.
+Expected: `164 tests, tout vert`. The counts are test_todo_erplibre_home_install 6, test_todo_menu 54, test_todo_i18n 24, test_i18n_duplicates 3, test_todo 77.
 
-Equivalent direct run: `.venv.erplibre/bin/python -m unittest test.test_todo_streamdeck_install test.test_todo_menu test.test_todo_i18n test.test_i18n_duplicates test.test_todo`
+Equivalent direct run: `.venv.erplibre/bin/python -m unittest test.test_todo_erplibre_home_install test.test_todo_menu test.test_todo_i18n test.test_i18n_duplicates test.test_todo`
 Expected: `OK`.
 
 Formatting. There is no `pyproject.toml` at the root: tooling code is formatted by ruff through `.ruff.toml` (line-length 79), which `script/maintenance/format_python.sh` applies. Do not reformat the whole of `todo.py` or `todo_i18n.py`: both already have many unrelated ruff diffs. Check only the new file, and check that the added hunks are clean:
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-.venv.erplibre/bin/ruff format --check test/test_todo_streamdeck_install.py
-.venv.erplibre/bin/ruff check --select I test/test_todo_streamdeck_install.py
-.venv.erplibre/bin/ruff format --diff script/todo/todo.py script/todo/todo_i18n.py 2>&1 | grep -c -e _streamdeck_install_local -e _STREAMDECK -e "Stream Deck not supported" -e "Install the Stream Deck" -e "Stream Deck install" -e "no reason reported"
-python3 script/analyse/check_comment_hygiene.py test/test_todo_streamdeck_install.py
+.venv.erplibre/bin/ruff format --check test/test_todo_erplibre_home_install.py
+.venv.erplibre/bin/ruff check --select I test/test_todo_erplibre_home_install.py
+.venv.erplibre/bin/ruff format --diff script/todo/todo.py script/todo/todo_i18n.py 2>&1 | grep -c -e _erplibre_home_install_local -e _ERPLIBRE_HOME -e "ERPLibre Home not supported" -e "Install ERPLibre Home" -e "ERPLibre Home install" -e "no reason reported"
+python3 script/analyse/check_comment_hygiene.py test/test_todo_erplibre_home_install.py
 ```
 Expected:
 - The first command prints `1 file already formatted`.
@@ -3751,12 +3783,12 @@ Expected:
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add script/todo/todo.py script/todo/todo_i18n.py test/test_todo_menu.py test/test_todo_streamdeck_install.py
+git add script/todo/todo.py script/todo/todo_i18n.py test/test_todo_menu.py test/test_todo_erplibre_home_install.py
 MSG=$(mktemp)
 cat > "$MSG" <<'EOF'
-[ADD] todo: Stream Deck local install entry in Execute
+[ADD] todo: ERPLibre Home local install entry in Execute
 
-Execute > Stream Deck gets [18], which runs install_streamdeck.sh live,
+Execute > Stream Deck gets [18], which runs install_erplibre_home.sh live,
 outside the ERPLibre venv: the installer builds .venv.streamdeck.
 Exit 2 ends on the installer's UNSUPPORTED reason alone, so an
 unsupported distribution or GNOME version reads as one line, not as a
@@ -3765,9 +3797,9 @@ test_todo_menu declares where [18] leads; a new test covers the
 command, the exit-2 reason and the failure message.
 
 --- FR ---
-[ADD] todo: entrée d'installation locale du Stream Deck dans Exécution
+[ADD] todo: entrée d'installation locale d'ERPLibre Home dans Exécution
 
-Exécution > Stream Deck gagne [18], qui lance install_streamdeck.sh en
+Exécution > Stream Deck gagne [18], qui lance install_erplibre_home.sh en
 direct, hors du venv ERPLibre : l'installateur crée .venv.streamdeck.
 Un code 2 se conclut sur la seule raison UNSUPPORTED de l'installateur :
 une distribution ou une version de GNOME hors périmètre se lit en une
@@ -3781,60 +3813,60 @@ EOF
 ```
 Expected: the hook prints nothing and exits 0, and the commit is created with the 4 named files.
 
-Verification note: this task was run end to end in a throwaway copy of HEAD at `$SCRATCH/task5_wt`. That copy had a stub executable `install_streamdeck.sh` standing in for Task 3. Step 2 failed as described. After Step 3, Step 4 gave 164 tests green, the ruff checks were clean on the added code, and the commit message passed `script/git/hooks/commit-msg` (exit 0).
+Verification note: this task was run end to end in a throwaway copy of HEAD at `$SCRATCH/task5_wt`. That copy had a stub executable `install_erplibre_home.sh` standing in for Task 3. Step 2 failed as described. After Step 3, Step 4 gave 164 tests green, the ruff checks were clean on the added code, and the commit message passed `script/git/hooks/commit-msg` (exit 0).
 
 ---
 
-### Task 6: QEMU streamdeck tool and Stream Deck profile
+### Task 6: QEMU erplibre_home tool and ERPLibre Home profile
 
 **Files:**
-- Create: `test/test_qemu_streamdeck.py`
+- Create: `test/test_qemu_erplibre_home.py`
 - Modify: `script/todo/qemu_install.py:62-65` (profile list, insert after the "ERPLibre mobile (home)" tuple)
 - Modify: `script/todo/qemu_install.py:909-925` (`_QEMU_VM_TOOLS`, insert after the `gnome_ext` entry)
-- Modify: `script/todo/qemu_install.py:2253` (new method `_qemu_streamdeck_remote_cmd` goes just before `_qemu_after_remote_cmd`)
+- Modify: `script/todo/qemu_install.py:2253` (new method `_qemu_erplibre_home_remote_cmd` goes just before `_qemu_after_remote_cmd`)
 - Modify: `script/todo/qemu_install.py:2265` (after-phase `picked` tuple) and `:2279-2280` (dispatch, after the forgejo block)
 - Modify: `script/todo/todo_i18n.py:7259-7262` (profile label, after "ERPLibre mobile (home)") and `:7431-7434` (tool hint and help lines, after "nixos-anywhere missing, see the log above")
-- Modify: `test/test_qemu_desktop_tools.py:83-99` (`TestToolDisk.test_disk_follows_the_filtering`: arm64 also loses the amd64-only `streamdeck`)
-- Test: `test/test_qemu_streamdeck.py`
+- Modify: `test/test_qemu_desktop_tools.py:83-99` (`TestToolDisk.test_disk_follows_the_filtering`: arm64 also loses the amd64-only `erplibre_home`)
+- Test: `test/test_qemu_erplibre_home.py`
 
 **Interfaces:**
-- Consumes: `script/install/install_streamdeck.sh` (Task 3). It is called by its relative path from the checkout root and exits 0, 2 or 1. These unit tests replace it with a test double and do not need it to exist. Also consumes the existing `_qemu_install_dir(prod)`, `_qemu_after_remote_cmd`, `_qemu_tools_for`, `_qemu_installs_erplibre`, `_qemu_make_target` and `_qemu_deploy_parts_for`.
+- Consumes: `script/install/install_erplibre_home.sh` (Task 3). It is called by its relative path from the checkout root and exits 0, 2 or 1. These unit tests replace it with a test double and do not need it to exist. Also consumes the existing `_qemu_install_dir(prod)`, `_qemu_after_remote_cmd`, `_qemu_tools_for`, `_qemu_installs_erplibre`, `_qemu_make_target` and `_qemu_deploy_parts_for`.
 - Produces:
-  - `_QEMU_VM_TOOLS["streamdeck"]`, which is exactly the spec 5.2 dict.
-  - `TODO._qemu_streamdeck_remote_cmd(self, prod=False) -> str`. The fragment is `echo "== <t("Stream Deck")> =="; (cd "<install dir>" && ./script/install/install_streamdeck.sh)` and has no trailing `;`.
-  - `"streamdeck"` in the after-phase order `("aidev", "forgejo", "streamdeck", "mobile", "avd")`.
-  - The profile `(t("Stream Deck (no Odoo)"), "./script/install/install_streamdeck.sh")`, placed right after "ERPLibre mobile (home)".
-  - New i18n keys: "Stream Deck (no Odoo)", "deck controller, games, GNOME extension", "script/install/install_streamdeck.sh in the VM's checkout", "system packages, udev rule, .venv.streamdeck, extension enabled", "log out and back in to load the extension". Other tasks must not declare these keys again, because `test_todo_i18n.TestAucuneCleRepetee` forbids duplicate keys.
-  - The label key `"Stream Deck"` already exists at `todo_i18n.py:104` (fr/en "🎛️ Stream Deck"). It is reused and **must not be added again**.
+  - `_QEMU_VM_TOOLS["erplibre_home"]`, which is exactly the spec 5.2 dict.
+  - `TODO._qemu_erplibre_home_remote_cmd(self, prod=False) -> str`. The fragment is `echo "== <t("ERPLibre Home")> =="; (cd "<install dir>" && ./script/install/install_erplibre_home.sh)` and has no trailing `;`.
+  - `"erplibre_home"` in the after-phase order `("aidev", "forgejo", "erplibre_home", "mobile", "avd")`.
+  - The profile `(t("ERPLibre Home (no Odoo)"), "./script/install/install_erplibre_home.sh")`, placed right after "ERPLibre mobile (home)".
+  - New i18n keys: "ERPLibre Home", "ERPLibre Home (no Odoo)", "deck controller, games, GNOME extension", "script/install/install_erplibre_home.sh in the VM's checkout", "system packages, udev rule, .venv.streamdeck, extension enabled", "log out and back in to load the extension". Other tasks must not declare these keys again, because `test_todo_i18n.TestAucuneCleRepetee` forbids duplicate keys.
+  - The label key `"ERPLibre Home"` does not exist yet: 3e adds it. The existing `"Stream Deck"` key (`todo_i18n.py:104`, fr/en "🎛️ Stream Deck") stays the label of the Stream Deck menu section and is not touched.
 - Expected behaviour of the profile, which needs **no change** in `qemu_deploy.py`. Tests in this task lock it in:
   - The command contains no `install_odoo`, so `_qemu_erplibre_remote_cmd` adds no `erplibre.service` (`qemu_deploy.py:107`) and `_qemu_make_target` returns `""`. As a result, there is no `--erplibre-make` and the login guide stops at `git pull`.
   - The checkout **is** cloned, because the installer lives in it. So `_qemu_installs_erplibre("develop", cmd)` stays True: `--erplibre-dir` is passed and the `ERPLIBRE_EXTRA_DISK_GB` (+5) margin stays.
   - `QEMU_DESKTOP_EXTRA_DISK_GB` (+6) is still added for a desktop VM (`qemu_deploy.py:1262-1265`).
-  - The desktop block runs before `cd ~/git/erplibre && ./script/install/install_streamdeck.sh`.
+  - The desktop block runs before `cd ~/git/erplibre && ./script/install/install_erplibre_home.sh`.
   - On a VM without GNOME, the installer exits 2 (`UNSUPPORTED: no GNOME Shell`) and the VM is marked failed. The tool itself is filtered out of non-GNOME VMs by `desktops`/`needs_desktop`.
   - Ticking the tool with this profile runs the installer twice. The second run is a no-op.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `test/test_qemu_streamdeck.py`:
+Create `test/test_qemu_erplibre_home.py`:
 
 ```python
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le Stream Deck dans une VM : la case « streamdeck » et le profil sans Odoo.
+"""ERPLibre Home en VM : la case « erplibre_home » et le profil sans Odoo.
 
-Une seule autorité installe le Stream Deck :
-script/install/install_streamdeck.sh. La case l'appelle APRÈS
+Une seule autorité installe ERPLibre Home :
+script/install/install_erplibre_home.sh. La case l'appelle APRÈS
 l'installation, dans le checkout de la VM, quel que soit le profil ; le
-profil « Stream Deck (no Odoo) » l'appelle SEUL, sans « make install_os ».
+profil « ERPLibre Home (no Odoo) » l'appelle SEUL, sans « make install_os ».
 
 Ce que ces tests gardent :
 
 - la case est au catalogue, bornée à GNOME, à amd64 et aux quatre familles
   impératives, et chaque chaîne affichée existe dans les deux langues ;
-- son bloc appelle l'installateur DANS le checkout, lié par « && » : un
-  Stream Deck qui ne s'installe pas fait échouer la VM ;
+- son bloc appelle l'installateur DANS le checkout, lié par « && » :
+  ERPLibre Home qui ne s'installe pas fait échouer la VM ;
 - le profil est offert juste après « ERPLibre mobile (home) » et lance
   l'installateur seul, après le bureau ;
 - ce profil ne pose aucun service Odoo et n'annonce aucune cible make, mais
@@ -3852,9 +3884,9 @@ sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import TRANSLATIONS, t  # noqa: E402
 
-SPEC = TODO._QEMU_VM_TOOLS["streamdeck"]
-INSTALLEUR = "./script/install/install_streamdeck.sh"
-PROFIL = "Stream Deck (no Odoo)"
+SPEC = TODO._QEMU_VM_TOOLS["erplibre_home"]
+INSTALLEUR = "./script/install/install_erplibre_home.sh"
+PROFIL = "ERPLibre Home (no Odoo)"
 
 
 def bash_n(script):
@@ -3875,9 +3907,9 @@ class LaCase(unittest.TestCase):
         """Le formulaire suit l'ordre du catalogue : les deux cases qui
         touchent aux extensions GNOME se lisent ensemble."""
         keys = [k for k, _l, _h in TODO._qemu_vm_tool_choices()]
-        self.assertIn("streamdeck", keys)
+        self.assertIn("erplibre_home", keys)
         rang = keys.index("gnome_ext")
-        self.assertEqual(rang + 1, keys.index("streamdeck"))
+        self.assertEqual(rang + 1, keys.index("erplibre_home"))
 
     def test_it_runs_after_the_clone(self):
         """L'installateur vit dans le dépôt : il n'existe qu'après le clone."""
@@ -3888,9 +3920,9 @@ class LaCase(unittest.TestCase):
         self.assertTrue(SPEC["needs_desktop"])
         self.assertEqual(("gnome",), SPEC["desktops"])
         self.assertEqual(
-            ["streamdeck"],
+            ["erplibre_home"],
             self.todo._qemu_tools_for(
-                ("streamdeck",), "amd64", "gnome", "ubuntu"
+                ("erplibre_home",), "amd64", "gnome", "ubuntu"
             ),
         )
         for bureau in ("", "cinnamon"):
@@ -3898,7 +3930,7 @@ class LaCase(unittest.TestCase):
                 self.assertEqual(
                     [],
                     self.todo._qemu_tools_for(
-                        ("streamdeck",), "amd64", bureau, "ubuntu"
+                        ("erplibre_home",), "amd64", bureau, "ubuntu"
                     ),
                 )
 
@@ -3907,7 +3939,7 @@ class LaCase(unittest.TestCase):
         self.assertEqual(
             [],
             self.todo._qemu_tools_for(
-                ("streamdeck",), "arm64", "gnome", "ubuntu"
+                ("erplibre_home",), "arm64", "gnome", "ubuntu"
             ),
         )
 
@@ -3926,15 +3958,15 @@ class LaCase(unittest.TestCase):
         ):
             with self.subTest(distro=distro):
                 self.assertEqual(
-                    ["streamdeck"],
+                    ["erplibre_home"],
                     self.todo._qemu_tools_for(
-                        ("streamdeck",), "amd64", "gnome", distro
+                        ("erplibre_home",), "amd64", "gnome", distro
                     ),
                 )
         self.assertEqual(
             [],
             self.todo._qemu_tools_for(
-                ("streamdeck",), "amd64", "gnome", "nixos"
+                ("erplibre_home",), "amd64", "gnome", "nixos"
             ),
         )
 
@@ -3942,7 +3974,7 @@ class LaCase(unittest.TestCase):
         self.assertEqual(2, SPEC["disk_gb"])
         sans = self.todo._qemu_tools_disk_gb((), "amd64", "gnome", "ubuntu")
         avec = self.todo._qemu_tools_disk_gb(
-            ("streamdeck",), "amd64", "gnome", "ubuntu"
+            ("erplibre_home",), "amd64", "gnome", "ubuntu"
         )
         self.assertEqual(sans + 2, avec)
 
@@ -3960,13 +3992,13 @@ class LeBloc(unittest.TestCase):
             (True, "/opt/erplibre"),
         ):
             with self.subTest(prod=prod):
-                bloc = self.todo._qemu_streamdeck_remote_cmd(prod)
+                bloc = self.todo._qemu_erplibre_home_remote_cmd(prod)
                 self.assertIn(f'cd "{racine}" && {INSTALLEUR}', bloc)
 
     def test_the_after_phase_reaches_it(self):
         """Déclarer l'outil sans le brancher le laisserait cochable et sans
         effet. Seul, il n'entraîne pas le SDK Android."""
-        cmd = self.todo._qemu_after_remote_cmd(("streamdeck",), False)
+        cmd = self.todo._qemu_after_remote_cmd(("erplibre_home",), False)
         self.assertIn(INSTALLEUR, cmd)
         self.assertNotIn("sdkmanager", cmd)
         self.assertNotIn(INSTALLEUR, self.todo._qemu_after_remote_cmd(()))
@@ -3974,22 +4006,27 @@ class LeBloc(unittest.TestCase):
     def test_it_is_not_posed_before_the_clone(self):
         self.assertEqual(
             "",
-            self.todo._qemu_tools_remote_cmd(("streamdeck",), False, "before"),
+            self.todo._qemu_tools_remote_cmd(
+                ("erplibre_home",), False, "before"
+            ),
         )
 
     def test_it_comes_after_forgejo_and_before_the_android_sdk(self):
         """Quelques minutes de paquets et de venv : après la minute de
         Forgejo, avant l'heure du SDK. Un échec rapide se voit tôt."""
         cmd = self.todo._qemu_after_remote_cmd(
-            ("forgejo", "streamdeck", "mobile"), False
+            ("forgejo", "erplibre_home", "mobile"), False
         )
         self.assertLess(cmd.index("install_forgejo.sh"), cmd.index(INSTALLEUR))
         self.assertLess(cmd.index(INSTALLEUR), cmd.index("gradlew"))
 
     def test_a_failure_still_fails_the_vm(self):
         """Lié par « && », jamais par « ; » ni gardé par « || true » : une VM
-        dont le Stream Deck demandé n'est pas posé n'est pas la VM demandée."""
-        cmd = self.todo._qemu_after_remote_cmd(("streamdeck", "mobile"), False)
+        qui devait recevoir ERPLibre Home et ne l'a pas reçu n'est pas la VM
+        demandée."""
+        cmd = self.todo._qemu_after_remote_cmd(
+            ("erplibre_home", "mobile"), False
+        )
         entre = cmd[cmd.index(INSTALLEUR) : cmd.index("ERPLibre mobile")]
         self.assertIn("&&", entre)
         self.assertNotIn("|| true", entre)
@@ -3997,10 +4034,10 @@ class LeBloc(unittest.TestCase):
     def _joue(self, code):
         """Joue la phase « after » comme la chaîne d'installation la lie, avec
         un installateur doublure qui note son répertoire et rend `code`."""
-        cmd = self.todo._qemu_after_remote_cmd(("streamdeck",), False)
+        cmd = self.todo._qemu_after_remote_cmd(("erplibre_home",), False)
         with tempfile.TemporaryDirectory() as maison:
             depot = Path(maison) / "git" / "erplibre"
-            script = depot / "script" / "install" / "install_streamdeck.sh"
+            script = depot / "script" / "install" / "install_erplibre_home.sh"
             script.parent.mkdir(parents=True)
             script.write_text(f'#!/bin/bash\npwd > "$HOME/vu"\nexit {code}\n')
             script.chmod(0o755)
@@ -4027,9 +4064,9 @@ class LeBloc(unittest.TestCase):
 
     def test_valid_shell_in_every_combination(self):
         for tools in (
-            ("streamdeck",),
-            ("streamdeck", "forgejo"),
-            ("aidev", "forgejo", "streamdeck", "mobile", "avd"),
+            ("erplibre_home",),
+            ("erplibre_home", "forgejo"),
+            ("aidev", "forgejo", "erplibre_home", "mobile", "avd"),
         ):
             with self.subTest(tools=tools):
                 res = bash_n(self.todo._qemu_after_remote_cmd(tools, True))
@@ -4039,15 +4076,15 @@ class LeBloc(unittest.TestCase):
         """Sans clone, l'installateur n'existe pas : la case cochée est
         NOMMÉE plutôt qu'écartée en silence."""
         cmd = self.todo._qemu_erplibre_remote_cmd(
-            None, None, False, "gnome", "", "deb", ("streamdeck",)
+            None, None, False, "gnome", "", "deb", ("erplibre_home",)
         )
         self.assertIn(t("needs the ERPLibre install, skipped:"), cmd)
-        self.assertIn("streamdeck", cmd)
+        self.assertIn("erplibre_home", cmd)
         self.assertNotIn(INSTALLEUR, cmd)
 
     def test_with_an_odoo_profile_it_comes_after_the_make(self):
         cmd = self.todo._qemu_erplibre_remote_cmd(
-            "develop", None, False, "gnome", "", "deb", ("streamdeck",)
+            "develop", None, False, "gnome", "", "deb", ("erplibre_home",)
         )
         self.assertLess(cmd.index("make install_os"), cmd.index(INSTALLEUR))
         self.assertEqual(0, bash_n(cmd).returncode)
@@ -4097,7 +4134,13 @@ class LeProfil(unittest.TestCase):
         Le bloc de la case n'est pas retiré pour autant — il porterait sinon
         une exception par profil."""
         cmd = self.todo._qemu_erplibre_remote_cmd(
-            "develop", INSTALLEUR, False, "gnome", "", "deb", ("streamdeck",)
+            "develop",
+            INSTALLEUR,
+            False,
+            "gnome",
+            "",
+            "deb",
+            ("erplibre_home",),
         )
         self.assertEqual(2, cmd.count(INSTALLEUR))
 
@@ -4170,7 +4213,7 @@ class LesLibelles(unittest.TestCase):
         """GNOME Shell ne charge une extension neuve qu'au début d'une session
         sous Wayland : le « ? » le dit avant qu'on cherche une panne."""
         aide = " ".join(SPEC["help"])
-        self.assertIn("install_streamdeck.sh", aide)
+        self.assertIn("install_erplibre_home.sh", aide)
         self.assertIn("log out", aide)
 
 
@@ -4179,8 +4222,8 @@ if __name__ == "__main__":
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
-Run: `.venv.erplibre/bin/python -m unittest test.test_qemu_streamdeck`
-Expected: ERROR at import with "KeyError: 'streamdeck'" (from `SPEC = TODO._QEMU_VM_TOOLS["streamdeck"]`).
+Run: `.venv.erplibre/bin/python -m unittest test.test_qemu_erplibre_home`
+Expected: ERROR at import with "KeyError: 'erplibre_home'" (from `SPEC = TODO._QEMU_VM_TOOLS["erplibre_home"]`).
 
 - [ ] **Step 3: Implement**
 
@@ -4203,8 +4246,8 @@ After:
             # paquets, et la VM est prête en quelques minutes. Le bureau est
             # posé avant cette commande, d'où gnome-shell qu'il exige.
             (
-                t("Stream Deck (no Odoo)"),
-                "./script/install/install_streamdeck.sh",
+                t("ERPLibre Home (no Odoo)"),
+                "./script/install/install_erplibre_home.sh",
             ),
 ```
 
@@ -4225,10 +4268,11 @@ After:
             "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
         },
-        # Le Stream Deck : contrôleur, jeux et extension GNOME, posés par
-        # script/install/install_streamdeck.sh, seule autorité de cette
-        # installation — la même commande sert la case, le profil « sans
-        # Odoo », l'entrée locale de TODO et le test long.
+        # ERPLibre Home : l'extension GNOME, avec le contrôleur et les jeux
+        # du Stream Deck, posés par script/install/install_erplibre_home.sh,
+        # seule autorité de cette installation — la même commande sert la
+        # case, le profil « sans Odoo », l'entrée locale de TODO et le test
+        # long.
         #
         # « desktops » le borne à GNOME : l'extension déclare GNOME Shell 45 à
         # 51, et l'installateur rend 2 là où gnome-shell manque. « arches » le
@@ -4238,10 +4282,10 @@ After:
         #
         # Disque : le venv dédié (opencv-python en roue manylinux, Pillow) et
         # les paquets système, hidapi, libusb, gettext, wmctrl.
-        "streamdeck": {
-            "label": "Stream Deck",
+        "erplibre_home": {
+            "label": "ERPLibre Home",
             "help": (
-                "script/install/install_streamdeck.sh in the VM's checkout",
+                "script/install/install_erplibre_home.sh in the VM's checkout",
                 "system packages, udev rule, .venv.streamdeck, extension enabled",
                 "log out and back in to load the extension",
             ),
@@ -4252,8 +4296,8 @@ After:
             "needs_desktop": True,
             "families": ("apt", "dnf", "pacman", "zypper"),
             # APRÈS l'installation : l'installateur vit dans le dépôt. Non
-            # gardé, lié par « && » : une VM dont le Stream Deck demandé n'est
-            # pas posé est rouge.
+            # gardé, lié par « && » : une VM qui devait recevoir ERPLibre Home
+            # et ne l'a pas reçu est rouge.
             "phase": "after",
         },
 ```
@@ -4261,8 +4305,8 @@ After:
 3c. `script/todo/qemu_install.py`: add the method just before `def _qemu_after_remote_cmd(self, tools, prod=False):` (line 2253):
 
 ```python
-    def _qemu_streamdeck_remote_cmd(self, prod=False):
-        """Pose le Stream Deck dans le checkout de la VM, par son installateur.
+    def _qemu_erplibre_home_remote_cmd(self, prod=False):
+        """Pose ERPLibre Home dans le checkout de la VM, par son installateur.
 
         Rend un fragment shell sans « ; » final : le dernier maillon est
         l'installateur, dont le code de sortie devient celui du fragment — 2
@@ -4276,8 +4320,8 @@ After:
         """
         el_dir = self._qemu_install_dir(prod)
         return (
-            f'echo "== {t("Stream Deck")} =="; '
-            f'(cd "{el_dir}" && ./script/install/install_streamdeck.sh)'
+            f'echo "== {t("ERPLibre Home")} =="; '
+            f'(cd "{el_dir}" && ./script/install/install_erplibre_home.sh)'
         )
 
 ```
@@ -4290,7 +4334,7 @@ Before (line 2265):
 ```
 After:
 ```python
-            for k in ("aidev", "forgejo", "streamdeck", "mobile", "avd")
+            for k in ("aidev", "forgejo", "erplibre_home", "mobile", "avd")
 ```
 
 Before (lines 2279-2280):
@@ -4302,13 +4346,13 @@ After:
 ```python
         if "forgejo" in picked:
             parts.append(f"{{ {self._qemu_forgejo_steps(el_dir)}; }}")
-        # Le Stream Deck après Forgejo : quelques minutes de paquets et de
+        # ERPLibre Home après Forgejo : quelques minutes de paquets et de
         # venv, toujours moins que l'heure du SDK Android.
-        if "streamdeck" in picked:
-            parts.append(f"{{ {self._qemu_streamdeck_remote_cmd(prod)}; }}")
+        if "erplibre_home" in picked:
+            parts.append(f"{{ {self._qemu_erplibre_home_remote_cmd(prod)}; }}")
 ```
 
-3e. `script/todo/todo_i18n.py`. Do not add `"Stream Deck"`: it already exists at line 104.
+3e. `script/todo/todo_i18n.py`. Add `"ERPLibre Home"`, the tool label: no key of that name exists yet. Leave `"Stream Deck"` (line 104), the label of the Stream Deck menu section, as it is.
 
 Before (lines 7259-7262):
 ```python
@@ -4323,9 +4367,9 @@ After:
         "fr": "ERPLibre mobile (home)",
         "en": "ERPLibre mobile (home)",
     },
-    "Stream Deck (no Odoo)": {
-        "fr": "Stream Deck (sans Odoo)",
-        "en": "Stream Deck (no Odoo)",
+    "ERPLibre Home (no Odoo)": {
+        "fr": "ERPLibre Home (sans Odoo)",
+        "en": "ERPLibre Home (no Odoo)",
     },
 ```
 
@@ -4342,15 +4386,19 @@ After:
         "fr": "nixos-anywhere absent, voir le journal ci-dessus",
         "en": "nixos-anywhere missing, see the log above",
     },
-    # Outil QEMU « streamdeck » : le libellé « Stream Deck » est la clé de la
-    # section Stream Deck du menu, déjà déclarée plus haut.
+    # Outil QEMU « erplibre_home » : son libellé, son indice et les lignes
+    # de son « ? ».
+    "ERPLibre Home": {
+        "fr": "ERPLibre Home",
+        "en": "ERPLibre Home",
+    },
     "deck controller, games, GNOME extension": {
         "fr": "contrôleur du deck, jeux, extension GNOME",
         "en": "deck controller, games, GNOME extension",
     },
-    "script/install/install_streamdeck.sh in the VM's checkout": {
-        "fr": "script/install/install_streamdeck.sh dans le checkout de la VM",
-        "en": "script/install/install_streamdeck.sh in the VM's checkout",
+    "script/install/install_erplibre_home.sh in the VM's checkout": {
+        "fr": "script/install/install_erplibre_home.sh dans le checkout de la VM",
+        "en": "script/install/install_erplibre_home.sh in the VM's checkout",
     },
     "system packages, udev rule, .venv.streamdeck, extension enabled": {
         "fr": "paquets système, règle udev, .venv.streamdeck, extension activée",
@@ -4363,8 +4411,8 @@ After:
 ```
 
 - [ ] **Step 4: Run the new test, then see the existing disk test fail**
-Run: `.venv.erplibre/bin/python -m unittest test.test_qemu_streamdeck test.test_qemu_desktop_tools.TestToolDisk`
-Expected: the 26 tests of `test_qemu_streamdeck` pass. `FAIL: test_disk_follows_the_filtering` fails with "AssertionError: 28 != 26", because the arm64 VM now also loses the amd64-only `streamdeck` (2 GB).
+Run: `.venv.erplibre/bin/python -m unittest test.test_qemu_erplibre_home test.test_qemu_desktop_tools.TestToolDisk`
+Expected: the 26 tests of `test_qemu_erplibre_home` pass. `FAIL: test_disk_follows_the_filtering` fails with "AssertionError: 28 != 26", because the arm64 VM now also loses the amd64-only `erplibre_home` (2 GB).
 
 - [ ] **Step 5: Update the existing disk test**
 
@@ -4396,7 +4444,7 @@ After:
         """Une VM qui ne recevra pas un outil ne doit pas se voir gonfler son
         disque de sa taille. En arm64 il en manque QUATRE : Android Studio,
         que Google ne publie qu'en x86_64, la compilation mobile et
-        l'émulateur, qui en dépendent, et le Stream Deck, borné à amd64."""
+        l'émulateur, qui en dépendent, et ERPLibre Home, borné à amd64."""
         full = self.todo._qemu_tools_disk_gb(
             self.all, "amd64", "gnome", "ubuntu"
         )
@@ -4408,7 +4456,7 @@ After:
             TODO._QEMU_VM_TOOLS["android"]["disk_gb"]
             + TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"]
             + TODO._QEMU_VM_TOOLS["avd"]["disk_gb"]
-            + TODO._QEMU_VM_TOOLS["streamdeck"]["disk_gb"],
+            + TODO._QEMU_VM_TOOLS["erplibre_home"]["disk_gb"],
         )
 ```
 
@@ -4416,52 +4464,52 @@ After:
 Run:
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-.venv.erplibre/bin/python -m unittest test.test_qemu_streamdeck test.test_qemu_forgejo test.test_qemu_nixanywhere test.test_qemu_install_profile test.test_qemu_desktop_tools test.test_deploy_form_help test.test_qemu_motd test.test_qemu_nixos test.test_qemu_proxmox test.test_qemu_ai_tools test.test_todo_deploy_form_parity test.test_todo_i18n test.test_i18n_duplicates
-./script/test/run_unit_test.sh test/test_qemu_streamdeck.py test/test_qemu_desktop_tools.py test/test_qemu_install_profile.py test/test_deploy_form_help.py test/test_todo_i18n.py test/test_i18n_duplicates.py
-.venv.erplibre/bin/ruff format --check script/todo/qemu_install.py test/test_qemu_streamdeck.py test/test_qemu_desktop_tools.py
-.venv.erplibre/bin/ruff check --select I script/todo/qemu_install.py test/test_qemu_streamdeck.py
-python3 script/analyse/check_comment_hygiene.py script/todo/qemu_install.py test/test_qemu_streamdeck.py test/test_qemu_desktop_tools.py
+.venv.erplibre/bin/python -m unittest test.test_qemu_erplibre_home test.test_qemu_forgejo test.test_qemu_nixanywhere test.test_qemu_install_profile test.test_qemu_desktop_tools test.test_deploy_form_help test.test_qemu_motd test.test_qemu_nixos test.test_qemu_proxmox test.test_qemu_ai_tools test.test_todo_deploy_form_parity test.test_todo_i18n test.test_i18n_duplicates
+./script/test/run_unit_test.sh test/test_qemu_erplibre_home.py test/test_qemu_desktop_tools.py test/test_qemu_install_profile.py test/test_deploy_form_help.py test/test_todo_i18n.py test/test_i18n_duplicates.py
+.venv.erplibre/bin/ruff format --check script/todo/qemu_install.py test/test_qemu_erplibre_home.py test/test_qemu_desktop_tools.py
+.venv.erplibre/bin/ruff check --select I script/todo/qemu_install.py test/test_qemu_erplibre_home.py
+python3 script/analyse/check_comment_hygiene.py script/todo/qemu_install.py test/test_qemu_erplibre_home.py test/test_qemu_desktop_tools.py
 ```
 Expected: `Ran 451 tests ... OK (skipped=2)`, where the 2 skips depend on Textual being present. `run_unit_test.sh` reports all files green. Ruff reports "already formatted" and "All checks passed!". The hygiene check adds no new 🔴 and no new 🟡 compared with HEAD (qemu_install.py keeps its existing 31 signals). Do not run `ruff format` on `todo_i18n.py`: that file is not ruff-clean at HEAD, and reformatting it would rewrite thousands of unrelated lines.
 
 - [ ] **Step 7: Commit**
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add script/todo/qemu_install.py script/todo/todo_i18n.py test/test_qemu_streamdeck.py test/test_qemu_desktop_tools.py
-cat > /tmp/streamdeck_task6_msg.txt <<'EOF'
-[ADD] qemu: Stream Deck VM tool and no-Odoo install profile
+git add script/todo/qemu_install.py script/todo/todo_i18n.py test/test_qemu_erplibre_home.py test/test_qemu_desktop_tools.py
+cat > /tmp/erplibre_home_task6_msg.txt <<'EOF'
+[ADD] qemu: ERPLibre Home VM tool and no-Odoo install profile
 
-The QEMU tools catalog gains "streamdeck", an after-phase tool bounded
+The QEMU tools catalog gains "erplibre_home", an after-phase tool bounded
 to GNOME, amd64 and the apt, dnf, pacman and zypper families. Its block
-runs script/install/install_streamdeck.sh in the VM's checkout, chained
+runs script/install/install_erplibre_home.sh in the VM's checkout, chained
 with &&: a failed or UNSUPPORTED install marks the VM failed.
-The "Stream Deck (no Odoo)" profile runs the installer alone, after the
+The "ERPLibre Home (no Odoo)" profile runs the installer alone, after the
 desktop: no make install_os, no Odoo service, no make target in the
 login guide; the desktop and checkout disk margins still apply.
 
 --- FR ---
-[ADD] qemu: outil de VM Stream Deck et profil d'installation sans Odoo
+[ADD] qemu: outil de VM ERPLibre Home et profil d'installation sans Odoo
 
-Le catalogue des outils QEMU gagne « streamdeck », un outil de phase
+Le catalogue des outils QEMU gagne « erplibre_home », un outil de phase
 « after » borné à GNOME, à amd64 et aux familles apt, dnf, pacman et
-zypper. Son bloc lance script/install/install_streamdeck.sh dans le
+zypper. Son bloc lance script/install/install_erplibre_home.sh dans le
 checkout de la VM, lié par && : une installation échouée ou UNSUPPORTED
-rend la VM rouge. Le profil « Stream Deck (sans Odoo) » lance
+rend la VM rouge. Le profil « ERPLibre Home (sans Odoo) » lance
 l'installateur seul, après le bureau : ni make install_os, ni service
 Odoo, ni cible make dans le guide ; les marges disque du bureau et du
 checkout restent.
 
 Assisted-by: Claude Opus 5.5
 EOF
-script/git/hooks/commit-msg /tmp/streamdeck_task6_msg.txt
-git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit -F /tmp/streamdeck_task6_msg.txt
+script/git/hooks/commit-msg /tmp/erplibre_home_task6_msg.txt
+git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit -F /tmp/erplibre_home_task6_msg.txt
 ```
 Expected: `commit-msg` exits 0. This message passes the hook unchanged.
 
 Notes for the plan assembler:
 - Everything above was run against a `git archive HEAD` copy at `$SCRATCH/wt`. The new test failed with KeyError before the change and passed after it (26 tests). The disk test failed with 28 != 26 until it was updated. The full list passed with 451 tests OK. The commit message passed `script/git/hooks/commit-msg`.
-- The tool label is `"Stream Deck"` as the spec says, which reuses the existing i18n key. The form therefore shows "🎛️ Stream Deck".
-- `deploy_qemu.py` `TOOL_GUIDE` (the login guide) gets no `streamdeck` entry. The spec does not ask for one, and `test_qemu_motd.test_every_key_exists_in_the_catalogue` only checks guide keys against the catalog, not the other way round.
+- The tool label is `"ERPLibre Home"` as the spec says. Its i18n key is new in 3e and carries no icon, so the form shows "ERPLibre Home".
+- `deploy_qemu.py` `TOOL_GUIDE` (the login guide) gets no `erplibre_home` entry. The spec does not ask for one, and `test_qemu_motd.test_every_key_exists_in_the_catalogue` only checks guide keys against the catalog, not the other way round.
 
 ---
 
@@ -4476,7 +4524,7 @@ Notes for the plan assembler:
 - Produces: `descente.racines_du_rapport(rapport, nom_base="") -> list[tuple[str, str|None, bool]]`. It returns `(nom, uuid, cree)` for each `niveau == 1` entry, in report order. When the report has no level-1 entry, it returns `[(nom_etage(1, nom_base), None, True)]`.
 - Changes `descente.detruire(famille, journal=None, dry_run=False)`. It now calls `detruire_etage1` once for each level-1 entry. It still asks for confirmation once. The total is `len(liste) + len(racines)`, and the exit code is 0 only when every root is undone. A report with one level-1 entry (the `deep_*` and `install_nixos` shape) produces the same calls as before and the same `"N VM imbriquée(s) + l'étage 1 :"` header. With 2 or more roots the header reads `"N VM imbriquée(s) + K VM d'étage 1 :"`. The warning when a root survives still contains `l'étage 1 est DEBOUT`, followed by the names of the roots that are still up.
 - Task 9 calls `detruire_etage1` and `retirer_alias` directly between systems. With `--detruire`, it relies on this function to undo every VM it kept.
-- This task does not add `install_streamdeck.py` to `SCRIPTS`; Task 9 does.
+- This task does not add `install_erplibre_home.py` to `SCRIPTS`; Task 9 does.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -4877,25 +4925,25 @@ git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit 
 ### Task 8: Long test pure helpers
 
 **Files:**
-- Create: `long_test/install_streamdeck.py`
-- Test: `test/test_longtest_install_streamdeck.py`
+- Create: `long_test/install_erplibre_home.py`
+- Test: `test/test_longtest_install_erplibre_home.py`
 
 **Interfaces:**
-- Consumes: `long_test/descente.py::module_qemu()` (only in the tests, to check that the matrix keys exist in `deploy_qemu.DISTROS`). It also reads `script/stream_deck/gnome-extension/metadata.json` (`uuid`, `shell-version`) and `extension.js` (`IFACE_XML` interface `org.gnome.Shell.Extensions.StreamDeckTiler`, object `/org/gnome/Shell/Extensions/StreamDeckTiler`, methods `ListPaths` / `ListDevices`, the `[StreamDeckTiler] mount ${id} failed` line that `_mount` logs when an indicator's constructor throws, and the `[StreamDeckTiler] enabled` line that ends `enable()`).
+- Consumes: `long_test/descente.py::module_qemu()` (only in the tests, to check that the matrix keys exist in `deploy_qemu.DISTROS`). It also reads `script/gnome-extension/erplibre_home/metadata.json` (`uuid`, `shell-version`) and `extension.js` (`IFACE_XML` interface `org.gnome.Shell.Extensions.ERPLibreHome`, object `/org/gnome/Shell/Extensions/ERPLibreHome`, methods `ListPaths` / `ListDevices`, the `[ERPLibreHome] mount ${id} failed` line that `_mount` logs when an indicator's constructor throws, and the `[ERPLibreHome] enabled` line that ends `enable()`).
 - Produces (the names fixed by the shared interfaces): `MATRICE`, `NON_SUPPORTES`, `FAMILLE`, `plan(only)`, `analyser_extension_info(sortie)`, `est_active(info)`, `autologin(famille, user)`, `verdict_systeme(entree, code_install, info, gnome_mesure, *, echec=None, raison="", duree_s=0, journal=None)`, `code_sortie(systemes)`, `arbre_propre(racine)`.
   - `verdict_systeme` takes 4 extra keyword arguments, all with defaults, so the shared signature still holds. Task 9 uses them.
-  - The task also adds these helpers for Task 9: `OUTIL="install_streamdeck"`, `NOM_BASE="long-sd"`, `UUID_EXTENSION`, `UTILISATEUR="erplibre"`, `SYSTEME_EXTRAS="ubuntu:24.04"`, `VCPUS=2`, `MEMOIRE_MO=4096`, `DISQUE_GO=26`, `ARCHITECTURES_HORS_CHAMP`, `COMMANDE_GIT`, `FICHIER_AUTOLOGIN`, `CMD_SESSION`, `CMD_INFO`, `OBJET_EXTENSION`, `INTERFACE_EXTENSION`, `cmd_methode(m)`, `CMD_VENV`, `REGLE_UDEV`, `CMD_UDEV`, `CMD_MTIMES`, `CMD_JOURNAL`, `CMD_EXT_INFO`, `CMD_MONTAGES`, `indicateurs_en_echec(sortie)`, `journal_lu(sortie)`, `cle(entree)`, `version_gnome(s)`, `majeur(v)`, `raison_non_supportee(s)`, `nom_vm(entree, horodatage)`, `argv_creation(entree, nom, cle_pub="", drapeaux=())`, `ligne_non_supportee(entree)`, `resume(systemes)`.
+  - The task also adds these helpers for Task 9: `OUTIL="install_erplibre_home"`, `NOM_BASE="long-sd"`, `UUID_EXTENSION`, `UTILISATEUR="erplibre"`, `SYSTEME_EXTRAS="ubuntu:24.04"`, `VCPUS=2`, `MEMOIRE_MO=4096`, `DISQUE_GO=26`, `ARCHITECTURES_HORS_CHAMP`, `COMMANDE_GIT`, `FICHIER_AUTOLOGIN`, `CMD_SESSION`, `CMD_INFO`, `OBJET_EXTENSION`, `INTERFACE_EXTENSION`, `cmd_methode(m)`, `CMD_VENV`, `REGLE_UDEV`, `CMD_UDEV`, `CMD_MTIMES`, `CMD_JOURNAL`, `CMD_EXT_INFO`, `CMD_MONTAGES`, `indicateurs_en_echec(sortie)`, `journal_lu(sortie)`, `cle(entree)`, `version_gnome(s)`, `majeur(v)`, `raison_non_supportee(s)`, `nom_vm(entree, horodatage)`, `argv_creation(entree, nom, cle_pub="", drapeaux=())`, `ligne_non_supportee(entree)`, `resume(systemes)`.
   - `arbre_propre` uses `git status --porcelain --untracked-files=no`. This is a deliberate change from the literal `--porcelain` in the spec. An untracked file is in neither HEAD nor the bundle, and `private/` is not git-ignored, so counting untracked files would block every run.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `test/test_longtest_install_streamdeck.py`:
+Create `test/test_longtest_install_erplibre_home.py`:
 
 ```python
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le test long qui installe le Stream Deck sur chaque distribution.
+"""Le test long qui installe ERPLibre Home sur chaque distribution.
 
 Lui crée une VM par système et prend des heures ; ceux-ci tiennent ses
 fonctions pures en quelques millisecondes :
@@ -4925,28 +4973,28 @@ sys.argv = ["todo.py"]
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE / "long_test"))
 
-import install_streamdeck as sd  # noqa: E402
+import install_erplibre_home as sd  # noqa: E402
 
-EXTENSION = RACINE / "script/stream_deck/gnome-extension"
+EXTENSION = RACINE / "script/gnome-extension/erplibre_home"
 
 # Sorties de « gdbus call … GetExtensionInfo », au format texte de GVariant.
 INFO_ACTIVE = (
-    "({'uuid': <'streamdeck-tiler@technolibre.ca'>, 'name': <'Stream Deck"
-    " Tiler'>, 'type': <2.0>, 'state': <1.0>, 'error': <''>,"
+    "({'uuid': <'erplibre-home@technolibre.ca'>, 'name': <'ERPLibre Home'>,"
+    " 'type': <2.0>, 'state': <1.0>, 'error': <''>,"
     " 'hasPrefs': <true>, 'enabled': <true>},)"
 )
 INFO_ERREUR = (
-    "({'uuid': <'streamdeck-tiler@technolibre.ca'>, 'type': <2.0>,"
+    "({'uuid': <'erplibre-home@technolibre.ca'>, 'type': <2.0>,"
     " 'state': <3.0>, 'error': <'TypeError: this.foo is not a function'>,"
     " 'enabled': <true>},)"
 )
 INFO_PERIMEE = (
-    "({'uuid': <'streamdeck-tiler@technolibre.ca'>, 'type': <2.0>,"
+    "({'uuid': <'erplibre-home@technolibre.ca'>, 'type': <2.0>,"
     " 'state': <4.0>, 'error': <''>, 'enabled': <true>},)"
 )
 INFO_ABSENTE = "(@a{sv} {},)"
 INFO_GUILLEMETS = (
-    "({'uuid': <'streamdeck-tiler@technolibre.ca'>, 'state': <3.0>,"
+    "({'uuid': <'erplibre-home@technolibre.ca'>, 'state': <3.0>,"
     ' \'error\': <"can\'t load \\"x\\"">},)'
 )
 
@@ -5148,17 +5196,17 @@ class LesIndicateursNonMontes(unittest.TestCase):
 
     def test_failed_mounts_are_listed_by_id(self):
         sortie = (
-            "[StreamDeckTiler] mount pencil failed:"
+            "[ERPLibreHome] mount pencil failed:"
             " No property vertical on StBoxLayout\n"
-            "[StreamDeckTiler] mount device failed:"
+            "[ERPLibreHome] mount device failed:"
             " No property vertical on StBoxLayout\n"
         )
         self.assertEqual(sd.indicateurs_en_echec(sortie), ["device", "pencil"])
 
     def test_other_journal_lines_are_ignored(self):
         sortie = (
-            "[StreamDeckTiler] enabled\n"
-            "[StreamDeckTiler] sync failed: timeout\n"
+            "[ERPLibreHome] enabled\n"
+            "[ERPLibreHome] sync failed: timeout\n"
             "gnome-shell[4242]: mount point busy, failed\n"
         )
         self.assertEqual(sd.indicateurs_en_echec(sortie), [])
@@ -5169,9 +5217,9 @@ class LesIndicateursNonMontes(unittest.TestCase):
 
     def test_the_journal_is_read_when_enable_logged_its_end(self):
         sortie = (
-            "[StreamDeckTiler] mount device failed:"
+            "[ERPLibreHome] mount device failed:"
             " No property vertical on StBoxLayout\n"
-            "[StreamDeckTiler] enabled\n"
+            "[ERPLibreHome] enabled\n"
         )
         self.assertTrue(sd.journal_lu(sortie))
 
@@ -5182,15 +5230,15 @@ class LesIndicateursNonMontes(unittest.TestCase):
         self.assertFalse(sd.journal_lu(""))
         self.assertFalse(
             sd.journal_lu(
-                "[StreamDeckTiler] mount pencil failed: boom\n"
-                "[StreamDeckTiler] disabled\n"
+                "[ERPLibreHome] mount pencil failed: boom\n"
+                "[ERPLibreHome] disabled\n"
             )
         )
 
     def test_the_command_reads_the_lines_extension_js_writes(self):
         src = (EXTENSION / "extension.js").read_text(encoding="utf-8")
-        self.assertIn("[StreamDeckTiler] mount ${id} failed", src)
-        self.assertIn("'[StreamDeckTiler] enabled'", src)
+        self.assertIn("[ERPLibreHome] mount ${id} failed", src)
+        self.assertIn("'[ERPLibreHome] enabled'", src)
         self.assertIn("journalctl --user -b", sd.CMD_MONTAGES)
         self.assertIn("mount", sd.CMD_MONTAGES)
         self.assertIn("enabled", sd.CMD_MONTAGES)
@@ -5519,22 +5567,22 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv.erplibre/bin/python -m unittest test.test_longtest_install_streamdeck`
-Expected: FAIL with `ModuleNotFoundError: No module named 'install_streamdeck'`
+Run: `.venv.erplibre/bin/python -m unittest test.test_longtest_install_erplibre_home`
+Expected: FAIL with `ModuleNotFoundError: No module named 'install_erplibre_home'`
 
 - [ ] **Step 3: Implement**
 
-Create `long_test/install_streamdeck.py`. Task 9 adds the executable bit, so do not chmod it here.
+Create `long_test/install_erplibre_home.py`. Task 9 adds the executable bit, so do not chmod it here.
 
 ```python
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le Stream Deck s'installe-t-il, extension ACTIVE, sur chaque distribution ?
+"""ERPLibre Home s'installe-t-il, extension ACTIVE, sur chaque distribution ?
 
 Une VM par version de distribution, l'une après l'autre. Chacune reçoit le
 bureau GNOME par la commande du menu, le code du checkout par un bundle git,
-puis `script/install/install_streamdeck.sh`. Une session GNOME s'ouvre par
+puis `script/install/install_erplibre_home.sh`. Une session GNOME s'ouvre par
 autologin, et le verdict est ce que GNOME Shell répond à `GetExtensionInfo` :
 état 1 et erreur vide. Figurer dans `enabled-extensions` ne suffit pas — une
 extension qui lève dans `enable()` y reste listée, en ERREUR.
@@ -5548,12 +5596,12 @@ Le code part du checkout par « git bundle create … HEAD », et la VM ne joint
 jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course :
 ce qui serait installé ne serait pas ce qui est commité.
 
-  ./long_test/install_streamdeck.py                 # toute la matrice
-  ./long_test/install_streamdeck.py --only ubuntu:24.04,fedora:43
-  ./long_test/install_streamdeck.py --extras        # + --with-extras
-  ./long_test/install_streamdeck.py --dry-run       # le plan, rien de créé
-  ./long_test/install_streamdeck.py --garder        # garder les VM
-  ./long_test/install_streamdeck.py --detruire      # défaire la course
+  ./long_test/install_erplibre_home.py                 # toute la matrice
+  ./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
+  ./long_test/install_erplibre_home.py --extras        # + --with-extras
+  ./long_test/install_erplibre_home.py --dry-run       # le plan, rien de créé
+  ./long_test/install_erplibre_home.py --garder        # garder les VM
+  ./long_test/install_erplibre_home.py --detruire      # défaire la course
 """
 
 import os
@@ -5563,9 +5611,9 @@ import subprocess
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-OUTIL = "install_streamdeck"
+OUTIL = "install_erplibre_home"
 NOM_BASE = "long-sd"
-UUID_EXTENSION = "streamdeck-tiler@technolibre.ca"
+UUID_EXTENSION = "erplibre-home@technolibre.ca"
 # L'utilisateur que deploy_qemu.py crée par défaut : celui de ssh, celui de
 # l'autologin, donc celui dont le bus de session est sondé.
 UTILISATEUR = "erplibre"
@@ -5681,8 +5729,8 @@ CMD_INFO = (
     " --method org.gnome.Shell.Extensions.GetExtensionInfo " + UUID_EXTENSION
 )
 # L'objet que l'extension exporte elle-même, sur la connexion de GNOME Shell.
-OBJET_EXTENSION = "/org/gnome/Shell/Extensions/StreamDeckTiler"
-INTERFACE_EXTENSION = "org.gnome.Shell.Extensions.StreamDeckTiler"
+OBJET_EXTENSION = "/org/gnome/Shell/Extensions/ERPLibreHome"
+INTERFACE_EXTENSION = "org.gnome.Shell.Extensions.ERPLibreHome"
 CMD_VENV = (
     "cd ~/git/erplibre && .venv.streamdeck/bin/python -c"
     " 'import StreamDeck, pyudev, PIL, cv2, requests; print(\"ok\")'"
@@ -5699,7 +5747,8 @@ CMD_MTIMES = (
 )
 CMD_JOURNAL = (
     "journalctl --user -b --no-pager 2>&1"
-    " | grep -i -e streamdeck -e gnome-shell | tail -200"
+    " | grep -i -e erplibrehome -e erplibre-home -e gnome-shell"
+    " | tail -200"
 )
 CMD_EXT_INFO = BUS + f"gnome-extensions info {UUID_EXTENSION} 2>&1"
 # Deux sortes de lignes d'extension.js : « mount <id> failed », écrite par
@@ -5711,7 +5760,7 @@ CMD_EXT_INFO = BUS + f"gnome-extensions info {UUID_EXTENSION} 2>&1"
 # n'a pas été lu (ssh tombé, journal vide), jamais que tout est monté.
 CMD_MONTAGES = (
     "journalctl --user -b -o cat --no-pager 2>&1"
-    r" | grep -E '\[StreamDeckTiler\] (mount [^ ]+ failed|enabled)' || true"
+    r" | grep -E '\[ERPLibreHome\] (mount [^ ]+ failed|enabled)' || true"
 )
 
 
@@ -5794,13 +5843,13 @@ def est_active(info):
     return bool(info) and info.get("state") == 1 and info.get("error") == ""
 
 
-_MONTAGE_ECHOUE = re.compile(r"\[StreamDeckTiler\] mount (\S+) failed")
+_MONTAGE_ECHOUE = re.compile(r"\[ERPLibreHome\] mount (\S+) failed")
 
 
 def indicateurs_en_echec(sortie):
     """Les ids des indicateurs non montés, triés et sans doublon.
 
-    Lus dans les lignes « [StreamDeckTiler] mount <id> failed: <message> »
+    Lus dans les lignes « [ERPLibreHome] mount <id> failed: <message> »
     de la sortie de CMD_MONTAGES ; un indicateur réactivé qui échoue de
     nouveau n'apparaît qu'une fois. Une sortie vide ou None rend [].
     """
@@ -5809,13 +5858,13 @@ def indicateurs_en_echec(sortie):
 
 def journal_lu(sortie):
     """Vrai quand la sortie de CMD_MONTAGES porte la ligne
-    « [StreamDeckTiler] enabled » qui clôt enable().
+    « [ERPLibreHome] enabled » qui clôt enable().
 
     C'est la preuve que le journal de la session a été lu : sans elle, une
     sortie sans « mount <id> failed » ne dit rien des indicateurs.
     """
     return any(
-        ligne.strip().endswith("[StreamDeckTiler] enabled")
+        ligne.strip().endswith("[ERPLibreHome] enabled")
         for ligne in (sortie or "").splitlines()
     )
 
@@ -6052,10 +6101,10 @@ def arbre_propre(racine):
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-.venv.erplibre/bin/ruff check --select I --fix long_test/install_streamdeck.py test/test_longtest_install_streamdeck.py
-.venv.erplibre/bin/ruff format long_test/install_streamdeck.py test/test_longtest_install_streamdeck.py
-python3 script/analyse/check_comment_hygiene.py long_test/install_streamdeck.py test/test_longtest_install_streamdeck.py
-.venv.erplibre/bin/python -m unittest test.test_longtest_install_streamdeck -v
+.venv.erplibre/bin/ruff check --select I --fix long_test/install_erplibre_home.py test/test_longtest_install_erplibre_home.py
+.venv.erplibre/bin/ruff format long_test/install_erplibre_home.py test/test_longtest_install_erplibre_home.py
+python3 script/analyse/check_comment_hygiene.py long_test/install_erplibre_home.py test/test_longtest_install_erplibre_home.py
+.venv.erplibre/bin/python -m unittest test.test_longtest_install_erplibre_home -v
 .venv.erplibre/bin/python -m unittest test.test_todo_longtest test.test_longtest_install_nixos
 ```
 Expected:
@@ -6067,31 +6116,31 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add long_test/install_streamdeck.py test/test_longtest_install_streamdeck.py
+git add long_test/install_erplibre_home.py test/test_longtest_install_erplibre_home.py
 cat > /tmp/sd-task8.msg <<'EOF'
-[ADD] long_test: Stream Deck matrix, GNOME verdict and autologin helpers
+[ADD] long_test: ERPLibre Home matrix, GNOME verdict, autologin helpers
 
-The Stream Deck long test needs pure parts that run without a VM: the
+The ERPLibre Home long test needs pure parts that run without a VM: the
 support matrix with its expected GNOME versions, the parsers of the gdbus
 GetExtensionInfo reply and of failed indicator mounts in the session
 journal, the per-family GDM autologin command, the verdict of one system
 and the exit code of a run. ACTIVE requires state 1 and an empty error; an
 extension that throws stays listed but is not ACTIVE. A rolling
 distribution may report UNSUPPORTED without failing the run.
-Checked: test_longtest_install_streamdeck, autologin replayed on real files.
+Checked: test_longtest_install_erplibre_home, autologin replayed on real files.
 
 --- FR ---
 
-[ADD] long_test : matrice Stream Deck, verdict GNOME et autologin
+[ADD] long_test : matrice ERPLibre Home, verdict GNOME et autologin
 
-Le test long du Stream Deck a besoin de parties pures qui tournent sans VM :
+Le test long d'ERPLibre Home a besoin de parties pures qui tournent sans VM :
 la matrice de support et ses GNOME attendus, la lecture de la réponse gdbus
 de GetExtensionInfo et des indicateurs non montés du journal de session,
 l'autologin GDM par famille, le verdict d'un système et le code de sortie
 d'une course. ACTIVE exige l'état 1 et une erreur vide ; une extension qui
 lève reste listée sans être ACTIVE. Une distribution roulante peut rendre
 UNSUPPORTED sans faire échouer la course. Vérifié :
-test_longtest_install_streamdeck, autologin rejoué sur de vrais fichiers.
+test_longtest_install_erplibre_home, autologin rejoué sur de vrais fichiers.
 
 Assisted-by: Claude Opus 5.5
 EOF
@@ -6104,29 +6153,29 @@ git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit 
 ### Task 9: Long test runner, menu and README
 
 **Files:**
-- Modify: `long_test/install_streamdeck.py` (the import block, lines 30-35 after Task 8; then append the runner after `arbre_propre`), and make it executable
+- Modify: `long_test/install_erplibre_home.py` (the import block, lines 30-35 after Task 8; then append the runner after `arbre_propre`), and make it executable
 - Modify: `long_test/descente.py:40-45` (`SCRIPTS`)
 - Modify: `script/todo/longtest_menu.py:29-34` (`SCRIPTS_DEFAISABLES`), `:129-130` (choices), `:139-140` (dispatch tables), `:158-160` (dispatch), `:177-178` (undo, renumbered)
 - Modify: `script/todo/todo_i18n.py:6075-6078` (insert after the `"Use a NixOS machine you already have"` entry)
 - Modify: `long_test/README.base.md:246` and `:524` (insert before `## Starting from a host you already have` and before `## Partir d'un hôte qu'on possède déjà`), then regenerate `long_test/README.md` and `long_test/README.fr.md`
-- Test: `test/test_longtest_install_streamdeck.py` (append)
+- Test: `test/test_longtest_install_erplibre_home.py` (append)
 
 **Interfaces:**
 - Consumes:
   - Task 8 helpers, among them `CMD_MONTAGES`, `indicateurs_en_echec(sortie)` and `journal_lu(sortie)` for the `extension-indicators` check.
   - From `descente`: `Descente.uuid_libvirt`, `Famille`, `capacite_hote`, `cle_publique()` (returns the path of `~/.ssh/id_ed25519.pub` or `id_rsa.pub`, or `""`), `detruire` (the Task 7 version, which undoes every `niveau == 1` entry), `detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True)`, `dire`, `drapeaux_cache`, `retirer_alias(rapport, journal, nom_base)`.
   - From `TODO.__new__(TODO)`: `_qemu_erplibre_remote_cmd(None, desktop="gnome")`, `_qemu_vm_ip(name, timeout)`, `_write_ssh_config_entry([name], user, ip, identity_file=)`.
-  - `script/install/install_streamdeck.sh` (Task 3): `--with-extras`, `--uninstall`, exit 0/1/2, and a stderr line starting with `UNSUPPORTED:`.
+  - `script/install/install_erplibre_home.sh` (Task 3): `--with-extras`, `--uninstall`, exit 0/1/2, and a stderr line starting with `UNSUPPORTED:`.
 - Produces:
   - Script flags: `--only --extras --dry-run --garder --detruire`, and `--detruire --dry-run`.
-  - Report `~/.erplibre/longtest/long-sd-<stamp>.json` with `{"outil": "install_streamdeck", "dry_run", "pid", "head", "etages": [niveau-1 entries], "systemes": [lines]}`.
+  - Report `~/.erplibre/longtest/long-sd-<stamp>.json` with `{"outil": "install_erplibre_home", "dry_run", "pid", "head", "etages": [niveau-1 entries], "systemes": [lines]}`.
   - Per-system logs and the bundle go in `~/.erplibre/longtest/long-sd-<stamp>/`.
   - VM names `long-sd-<distro>-<version>-<stamp>`, `<stamp>` being the run's own `%Y%m%d-%H%M%S` (`Course.horodatage`), so two runs never share a name. `creer_vm` refuses a name libvirt already defines: such a VM is never written to the report, so this run never destroys it.
   - Menu: choices 10 (plan) and 11 (run). Undo is renumbered to 12.
 
 - [ ] **Step 1: Write the failing tests**
 
-In `test/test_longtest_install_streamdeck.py`, change the import block from
+In `test/test_longtest_install_erplibre_home.py`, change the import block from
 
 ```python
 import configparser
@@ -6145,7 +6194,7 @@ import json
 Then insert the following just before the final `if __name__ == "__main__":` block. That block must stay last.
 
 ```python
-SCRIPT = RACINE / "long_test/install_streamdeck.py"
+SCRIPT = RACINE / "long_test/install_erplibre_home.py"
 SRC = SCRIPT.read_text(encoding="utf-8")
 PYTHON = str(RACINE / ".venv.erplibre/bin/python")
 
@@ -6260,7 +6309,7 @@ class LEssaiABlanc(unittest.TestCase):
         )
         with open(chemin, encoding="utf-8") as fh:
             rapport = json.load(fh)
-        self.assertEqual(rapport["outil"], "install_streamdeck")
+        self.assertEqual(rapport["outil"], "install_erplibre_home")
         self.assertTrue(rapport["dry_run"])
         self.assertEqual(rapport["etages"], [])
         self.assertEqual(
@@ -6337,7 +6386,7 @@ class LeDefaire(unittest.TestCase):
 
     def test_every_kept_vm_is_named(self):
         rapport = {
-            "outil": "install_streamdeck",
+            "outil": "install_erplibre_home",
             "dry_run": False,
             "pid": 1,
             "etages": [
@@ -6392,8 +6441,8 @@ class LeVerrouEtLeMenu(unittest.TestCase):
 
         from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
 
-        self.assertIn("install_streamdeck.py", descente.SCRIPTS)
-        self.assertIn("install_streamdeck.py", SCRIPTS_DEFAISABLES)
+        self.assertIn("install_erplibre_home.py", descente.SCRIPTS)
+        self.assertIn("install_erplibre_home.py", SCRIPTS_DEFAISABLES)
 
     def test_the_menu_dispatches_plan_run_and_undo(self):
         """10 : le plan, 11 : la course, 12 : le défaire. Aucun ne passe
@@ -6415,8 +6464,8 @@ class LeVerrouEtLeMenu(unittest.TestCase):
         self.assertEqual(
             vus,
             [
-                ("install_streamdeck.py", "--dry-run"),
-                ("install_streamdeck.py", ""),
+                ("install_erplibre_home.py", "--dry-run"),
+                ("install_erplibre_home.py", ""),
                 "défaire",
             ],
         )
@@ -6425,8 +6474,8 @@ class LeVerrouEtLeMenu(unittest.TestCase):
         from script.todo.todo_i18n import TRANSLATIONS
 
         for cle in (
-            "Stream Deck on every distribution: plan only (dry-run)",
-            "Stream Deck on every distribution: run it",
+            "ERPLibre Home on every distribution: plan only (dry-run)",
+            "ERPLibre Home on every distribution: run it",
         ):
             with self.subTest(cle=cle):
                 self.assertIn(cle, TRANSLATIONS)
@@ -6504,7 +6553,7 @@ class DeuxCoursesDeSuite(unittest.TestCase):
         ) as fh:
             json.dump(
                 {
-                    "outil": "install_streamdeck",
+                    "outil": "install_erplibre_home",
                     "dry_run": False,
                     "pid": 1,
                     "etages": [
@@ -6562,11 +6611,11 @@ class LesIndicateursDuPanneau(unittest.TestCase):
     nouveau après la réinstallation : ACTIVE et « [] » ne prouvent pas qu'un
     indicateur est monté."""
 
-    ENTIER = "[StreamDeckTiler] enabled\n"
+    ENTIER = "[ERPLibreHome] enabled\n"
     ECHEC = (
-        "[StreamDeckTiler] mount device failed:"
+        "[ERPLibreHome] mount device failed:"
         " No property vertical on StBoxLayout\n"
-        "[StreamDeckTiler] enabled\n"
+        "[ERPLibreHome] enabled\n"
     )
 
     def setUp(self):
@@ -6635,18 +6684,18 @@ class LesIndicateursDuPanneau(unittest.TestCase):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `.venv.erplibre/bin/python -m unittest test.test_longtest_install_streamdeck`
+Run: `.venv.erplibre/bin/python -m unittest test.test_longtest_install_erplibre_home`
 Expected: FAIL with:
-- `AttributeError: module 'install_streamdeck' has no attribute 'mener'`
+- `AttributeError: module 'install_erplibre_home' has no attribute 'mener'`
 - `AssertionError: False is not true` (not executable)
-- `AssertionError: 'install_streamdeck.py' not found in (...)` (lock and menu)
+- `AssertionError: 'install_erplibre_home.py' not found in (...)` (lock and menu)
 - the dry-run subprocess returns 0 but prints no plan
-- `DeuxCoursesDeSuite`: `AttributeError: module 'install_streamdeck' has no attribute 'Course'` for the three tests that build a run; `test_two_run_stamps_never_share_a_vm_name` already passes on Task 8's `nom_vm`
-- `LesIndicateursDuPanneau`: `AttributeError: <module 'install_streamdeck' …> does not have the attribute 'sonder'` for its four tests
+- `DeuxCoursesDeSuite`: `AttributeError: module 'install_erplibre_home' has no attribute 'Course'` for the three tests that build a run; `test_two_run_stamps_never_share_a_vm_name` already passes on Task 8's `nom_vm`
+- `LesIndicateursDuPanneau`: `AttributeError: <module 'install_erplibre_home' …> does not have the attribute 'sonder'` for its four tests
 
 - [ ] **Step 3: Implement the runner**
 
-In `long_test/install_streamdeck.py`, replace the import block
+In `long_test/install_erplibre_home.py`, replace the import block
 
 ```python
 import os
@@ -6942,14 +6991,14 @@ def deposer_code(cible, famille, bundle, head, log):
     code."""
     clone = (
         "test ! -e ~/git/erplibre && mkdir -p ~/git"
-        " && git -c advice.detachedHead=false clone -q ~/streamdeck.bundle"
+        " && git -c advice.detachedHead=false clone -q ~/erplibre_home.bundle"
         f" ~/git/erplibre && git -C ~/git/erplibre checkout -q {head}"
     )
     etapes = (
         ("git", ssh_base(cible) + [COMMANDE_GIT[famille]]),
         (
             "scp",
-            ["scp"] + OPTIONS_SSH + [bundle, f"{cible}:streamdeck.bundle"],
+            ["scp"] + OPTIONS_SSH + [bundle, f"{cible}:erplibre_home.bundle"],
         ),
         ("clone", ssh_base(cible) + [clone]),
     )
@@ -6967,7 +7016,7 @@ def installer(cible, log, extras=False, option=""):
     contrôle de réinstallation. Le code est None quand l'installation n'a
     pas rendu de code dans son délai.
     """
-    commande = "cd ~/git/erplibre && ./script/install/install_streamdeck.sh"
+    commande = "cd ~/git/erplibre && ./script/install/install_erplibre_home.sh"
     if option:
         commande += f" {option}"
     elif extras:
@@ -7052,7 +7101,7 @@ def indicateurs_non_montes(cible, log):
     L'extension attrape l'exception du constructeur d'un indicateur et
     continue : ACTIVE et les réponses D-Bus tiennent même quand aucun
     indicateur n'est monté. Le journal se lit une fois ; sans la ligne
-    « [StreamDeckTiler] enabled », il n'est pas tenu pour lu et la fonction
+    « [ERPLibreHome] enabled », il n'est pas tenu pour lu et la fonction
     rend ["(journal non lu)"] plutôt qu'une liste vide qui passerait pour un
     succès. Ce qui manque va au journal du système.
     """
@@ -7062,7 +7111,7 @@ def indicateurs_non_montes(cible, log):
     if not journal_lu(sortie):
         _ajouter(
             log,
-            "✗ journal de session sans « [StreamDeckTiler] enabled » : "
+            "✗ journal de session sans « [ERPLibreHome] enabled » : "
             f"{sortie or '(rien)'}",
         )
         return ["(journal non lu)"]
@@ -7246,7 +7295,7 @@ def plan_tient(journal):
 
 def creer_bundle(dossier, journal):
     """(sha de HEAD, chemin du bundle), ou ("", "") si git a échoué."""
-    chemin = os.path.join(dossier, "streamdeck.bundle")
+    chemin = os.path.join(dossier, "erplibre_home.bundle")
     try:
         head = subprocess.run(
             ["git", "-C", RACINE, "rev-parse", "HEAD"],
@@ -7431,7 +7480,7 @@ if __name__ == "__main__":
     sys.exit(mener(sys.argv[1:]))
 ```
 
-Then run: `chmod +x long_test/install_streamdeck.py`
+Then run: `chmod +x long_test/install_erplibre_home.py`
 
 - [ ] **Step 4: Lock, menu and i18n**
 
@@ -7453,7 +7502,7 @@ SCRIPTS = (
     "deep_proxmox.py",
     "deep_qemu.py",
     "install_nixos.py",
-    "install_streamdeck.py",
+    "install_erplibre_home.py",
     "qemu_cache.py",
 )
 ```
@@ -7477,7 +7526,7 @@ SCRIPTS_DEFAISABLES = (
     "deep_qemu.py",
     "qemu_cache.py",
     "install_nixos.py",
-    "install_streamdeck.py",
+    "install_erplibre_home.py",
 )
 ```
 
@@ -7495,12 +7544,12 @@ after:
             {"prompt_description": t("ERPLibre on NixOS: run it")},
             {
                 "prompt_description": t(
-                    "Stream Deck on every distribution: plan only (dry-run)"
+                    "ERPLibre Home on every distribution: plan only (dry-run)"
                 )
             },
             {
                 "prompt_description": t(
-                    "Stream Deck on every distribution: run it"
+                    "ERPLibre Home on every distribution: run it"
                 )
             },
             {"prompt_description": t("Undo what the descent created")},
@@ -7516,9 +7565,9 @@ after:
 after:
 
 ```python
-        # Le Stream Deck non plus : une VM par système, ni profondeur ni hôte
+        # ERPLibre Home non plus : une VM par système, ni profondeur ni hôte
         # de départ. Sa table est interrogée avant celle des piles.
-        streamdeck = {
+        erplibre_home = {
             "10": "--dry-run",
             "11": "",
         }
@@ -7539,8 +7588,10 @@ after:
             if status in cache:
                 self._longtest_run("qemu_cache.py", cache[status])
                 continue
-            if status in streamdeck:
-                self._longtest_run("install_streamdeck.py", streamdeck[status])
+            if status in erplibre_home:
+                self._longtest_run(
+                    "install_erplibre_home.py", erplibre_home[status]
+                )
                 continue
 ```
 
@@ -7561,15 +7612,15 @@ after:
 `script/todo/todo_i18n.py`: insert right after the entry at 6075-6078 (`"Use a NixOS machine you already have": {…},`):
 
 ```python
-    # Le Stream Deck installé sur chaque distribution, extension ACTIVE.
-    "Stream Deck on every distribution: plan only (dry-run)": {
-        "fr": "Stream Deck sur chaque distribution : le plan seulement"
+    # ERPLibre Home installé sur chaque distribution, extension ACTIVE.
+    "ERPLibre Home on every distribution: plan only (dry-run)": {
+        "fr": "ERPLibre Home sur chaque distribution : le plan seulement"
         " (à blanc)",
-        "en": "Stream Deck on every distribution: plan only (dry-run)",
+        "en": "ERPLibre Home on every distribution: plan only (dry-run)",
     },
-    "Stream Deck on every distribution: run it": {
-        "fr": "Stream Deck sur chaque distribution : le lancer",
-        "en": "Stream Deck on every distribution: run it",
+    "ERPLibre Home on every distribution: run it": {
+        "fr": "ERPLibre Home sur chaque distribution : le lancer",
+        "en": "ERPLibre Home on every distribution: run it",
     },
 ```
 
@@ -7578,12 +7629,12 @@ after:
 Do not run `ruff format` on `todo_i18n.py`: that file is not ruff-formatted, and ruff would rewrite thousands of lines.
 
 ```bash
-.venv.erplibre/bin/ruff check --select I --fix long_test/install_streamdeck.py test/test_longtest_install_streamdeck.py script/todo/longtest_menu.py
-.venv.erplibre/bin/ruff format long_test/install_streamdeck.py test/test_longtest_install_streamdeck.py script/todo/longtest_menu.py
-python3 script/analyse/check_comment_hygiene.py long_test/install_streamdeck.py test/test_longtest_install_streamdeck.py
-.venv.erplibre/bin/python -m unittest test.test_longtest_install_streamdeck test.test_todo_longtest test.test_longtest_install_nixos test.test_todo_i18n test.test_i18n_duplicates -v
-./script/test/run_unit_test.sh test/test_longtest_install_streamdeck.py test/test_todo_longtest.py test/test_longtest_install_nixos.py
-./long_test/install_streamdeck.py --dry-run
+.venv.erplibre/bin/ruff check --select I --fix long_test/install_erplibre_home.py test/test_longtest_install_erplibre_home.py script/todo/longtest_menu.py
+.venv.erplibre/bin/ruff format long_test/install_erplibre_home.py test/test_longtest_install_erplibre_home.py script/todo/longtest_menu.py
+python3 script/analyse/check_comment_hygiene.py long_test/install_erplibre_home.py test/test_longtest_install_erplibre_home.py
+.venv.erplibre/bin/python -m unittest test.test_longtest_install_erplibre_home test.test_todo_longtest test.test_longtest_install_nixos test.test_todo_i18n test.test_i18n_duplicates -v
+./script/test/run_unit_test.sh test/test_longtest_install_erplibre_home.py test/test_todo_longtest.py test/test_longtest_install_nixos.py
+./long_test/install_erplibre_home.py --dry-run
 ```
 
 Expected:
@@ -7597,11 +7648,11 @@ Expected:
 - [ ] **Step 6: Commit the runner**
 
 ```bash
-git add long_test/install_streamdeck.py long_test/descente.py script/todo/longtest_menu.py script/todo/todo_i18n.py test/test_longtest_install_streamdeck.py
+git add long_test/install_erplibre_home.py long_test/descente.py script/todo/longtest_menu.py script/todo/todo_i18n.py test/test_longtest_install_erplibre_home.py
 cat > /tmp/sd-task9a.msg <<'EOF'
-[ADD] long_test: Stream Deck install runner and its menu entries
+[ADD] long_test: ERPLibre Home install runner and its menu entries
 
-install_streamdeck.py creates one VM per supported system, installs the
+install_erplibre_home.py creates one VM per supported system, installs the
 GNOME desktop with the menu's command, sends HEAD as a git bundle, runs the
 installer, logs the user in through GDM and requires GetExtensionInfo to
 report the extension ACTIVE, then its D-Bus methods, venv, udev rule,
@@ -7612,9 +7663,9 @@ Checked: dry-run plan, dirty tree, menu, lock, undo, two runs in a row.
 
 --- FR ---
 
-[ADD] long_test : course d'installation Stream Deck et entrées de menu
+[ADD] long_test : course d'installation ERPLibre Home, entrées de menu
 
-install_streamdeck.py crée une VM par système supporté, pose le bureau GNOME
+install_erplibre_home.py crée une VM par système supporté, pose le bureau GNOME
 par la commande du menu, envoie HEAD en bundle git, lance l'installateur,
 ouvre la session par GDM et exige que GetExtensionInfo rende l'extension
 ACTIVE, puis ses méthodes D-Bus, le venv, la règle udev, l'idempotence et
@@ -7631,7 +7682,7 @@ git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit 
 
 - [ ] **Step 7: Write the failing README test**
 
-Insert this class in `test/test_longtest_install_streamdeck.py` just before the final `if __name__ == "__main__":` block:
+Insert this class in `test/test_longtest_install_erplibre_home.py` just before the final `if __name__ == "__main__":` block:
 
 ```python
 class LeReadme(unittest.TestCase):
@@ -7640,16 +7691,16 @@ class LeReadme(unittest.TestCase):
         base = (RACINE / "long_test/README.base.md").read_text(
             encoding="utf-8"
         )
-        self.assertEqual(base.count("## install_streamdeck.py"), 2)
+        self.assertEqual(base.count("## install_erplibre_home.py"), 2)
         for nom in ("README.md", "README.fr.md"):
             with self.subTest(nom=nom):
                 texte = (RACINE / "long_test" / nom).read_text(
                     encoding="utf-8"
                 )
-                self.assertIn("## install_streamdeck.py", texte)
+                self.assertIn("## install_erplibre_home.py", texte)
 ```
 
-Run: `.venv.erplibre/bin/python -m unittest test.test_longtest_install_streamdeck.LeReadme`
+Run: `.venv.erplibre/bin/python -m unittest test.test_longtest_install_erplibre_home.LeReadme`
 Expected: FAIL with `AssertionError: 0 != 2`
 
 - [ ] **Step 8: Write the README section and regenerate**
@@ -7657,7 +7708,7 @@ Expected: FAIL with `AssertionError: 0 != 2`
 In `long_test/README.base.md`, insert just before line 246, `## Starting from a host you already have`:
 
 ````markdown
-## install_streamdeck.py — does the Stream Deck run on every distribution?
+## install_erplibre_home.py — does ERPLibre Home run on every distribution?
 
 One VM per distribution version, one at a time: Ubuntu 24.04, 25.10 and
 26.04, Debian 13, Fedora 41 to 44, AlmaLinux 10, Rocky Linux 10, openSUSE
@@ -7669,7 +7720,7 @@ those without a GNOME desktop path — NixOS, Proxmox — are listed
 Each VM gets the GNOME desktop through the menu's own remote command, then
 the code of **this checkout**, sent as a `git bundle` of `HEAD`: the VM never
 reaches GitHub for it. A modified tracked file makes the run refuse to
-start, since it would not be in the VM. Then `install_streamdeck.sh` runs,
+start, since it would not be in the VM. Then `install_erplibre_home.sh` runs,
 GDM logs the user in automatically, and the VM reboots.
 
 The verdict is what GNOME Shell answers, not a return code: `GetExtensionInfo`
@@ -7679,19 +7730,19 @@ stays listed, in ERROR. The extension's own `ListPaths` and `ListDevices`
 must answer too. ACTIVE does not prove the top bar either: the extension
 catches an indicator constructor's exception and keeps running, so the
 `extension-indicators` check reads the user journal: it requires the
-`[StreamDeckTiler] enabled` line that ends `enable()`, so an unread journal
-fails too, and it fails on any `[StreamDeckTiler] mount <id> failed` line.
+`[ERPLibreHome] enabled` line that ends `enable()`, so an unread journal
+fails too, and it fails on any `[ERPLibreHome] mount <id> failed` line.
 Then come the venv imports, the
 udev rule, a second install that changes nothing, and an uninstall-reinstall
 that comes back ACTIVE with every indicator mounted.
 
 ```
-./long_test/install_streamdeck.py                 # the whole matrix
-./long_test/install_streamdeck.py --only ubuntu:24.04,fedora:43
-./long_test/install_streamdeck.py --extras        # --with-extras on 24.04
-./long_test/install_streamdeck.py --dry-run       # the plan, nothing created
-./long_test/install_streamdeck.py --garder        # keep the VMs
-./long_test/install_streamdeck.py --detruire      # undo the last run
+./long_test/install_erplibre_home.py                 # the whole matrix
+./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
+./long_test/install_erplibre_home.py --extras        # --with-extras on 24.04
+./long_test/install_erplibre_home.py --dry-run       # the plan, nothing created
+./long_test/install_erplibre_home.py --garder        # keep the VMs
+./long_test/install_erplibre_home.py --detruire      # undo the last run
 ```
 
 The report lists one line per system, with the GNOME version expected and
@@ -7706,7 +7757,7 @@ sub-directory.
 And just before line 524 (shifted by the insertion above), `## Partir d'un hôte qu'on possède déjà`:
 
 ````markdown
-## install_streamdeck.py — le Stream Deck tourne-t-il sur chaque distribution ?
+## install_erplibre_home.py — ERPLibre Home tourne-t-il sur chaque distribution ?
 
 Une VM par version de distribution, l'une après l'autre : Ubuntu 24.04, 25.10
 et 26.04, Debian 13, Fedora 41 à 44, AlmaLinux 10, Rocky Linux 10, openSUSE
@@ -7718,7 +7769,7 @@ EL9 — et ceux sans chemin de bureau GNOME — NixOS, Proxmox — sont listés
 Chaque VM reçoit le bureau GNOME par la commande distante du menu, puis le
 code de **ce checkout**, envoyé en `git bundle` de `HEAD` : la VM ne joint
 jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course,
-puisqu'il ne serait pas dans la VM. Puis `install_streamdeck.sh` s'exécute,
+puisqu'il ne serait pas dans la VM. Puis `install_erplibre_home.sh` s'exécute,
 GDM ouvre la session de l'utilisateur tout seul, et la VM redémarre.
 
 Le verdict est ce que GNOME Shell répond, pas un code de retour :
@@ -7728,20 +7779,20 @@ reste listée, en ERREUR. Les `ListPaths` et `ListDevices` de l'extension
 doivent répondre aussi. ACTIVE ne prouve pas non plus la barre du haut :
 l'extension attrape l'exception du constructeur d'un indicateur et continue,
 alors le contrôle `extension-indicators` lit le journal utilisateur : il
-exige la ligne `[StreamDeckTiler] enabled` qui clôt `enable()`, si bien qu'un
+exige la ligne `[ERPLibreHome] enabled` qui clôt `enable()`, si bien qu'un
 journal non lu échoue aussi, et il échoue sur toute ligne
-`[StreamDeckTiler] mount <id> failed`. Viennent ensuite les
+`[ERPLibreHome] mount <id> failed`. Viennent ensuite les
 imports du venv, la règle udev, une seconde installation qui ne change rien,
 et une désinstallation-réinstallation qui revient ACTIVE avec chaque
 indicateur monté.
 
 ```
-./long_test/install_streamdeck.py                 # toute la matrice
-./long_test/install_streamdeck.py --only ubuntu:24.04,fedora:43
-./long_test/install_streamdeck.py --extras        # --with-extras sur 24.04
-./long_test/install_streamdeck.py --dry-run       # le plan, rien de créé
-./long_test/install_streamdeck.py --garder        # garder les VM
-./long_test/install_streamdeck.py --detruire      # défaire la dernière course
+./long_test/install_erplibre_home.py                 # toute la matrice
+./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
+./long_test/install_erplibre_home.py --extras        # --with-extras sur 24.04
+./long_test/install_erplibre_home.py --dry-run       # le plan, rien de créé
+./long_test/install_erplibre_home.py --garder        # garder les VM
+./long_test/install_erplibre_home.py --detruire      # défaire la dernière course
 ```
 
 Le rapport porte une ligne par système, avec la version de GNOME attendue et
@@ -7764,8 +7815,8 @@ Expected: `=> 1 base file has been converted.` `long_test/README.md` and `long_t
 - [ ] **Step 9: Run tests to verify they pass**
 
 ```bash
-.venv.erplibre/bin/ruff format test/test_longtest_install_streamdeck.py
-.venv.erplibre/bin/python -m unittest test.test_longtest_install_streamdeck test.test_todo_longtest
+.venv.erplibre/bin/ruff format test/test_longtest_install_erplibre_home.py
+.venv.erplibre/bin/python -m unittest test.test_longtest_install_erplibre_home test.test_todo_longtest
 ```
 
 Expected: OK.
@@ -7773,24 +7824,24 @@ Expected: OK.
 - [ ] **Step 10: Commit the README**
 
 ```bash
-git add long_test/README.base.md long_test/README.md long_test/README.fr.md test/test_longtest_install_streamdeck.py
+git add long_test/README.base.md long_test/README.md long_test/README.fr.md test/test_longtest_install_erplibre_home.py
 cat > /tmp/sd-task9b.msg <<'EOF'
-[ADD] doc: long_test README section for the Stream Deck install test
+[ADD] doc: long_test README section for the ERPLibre Home install test
 
 The long test README describes each script: what it proves, how to run it
-and how to undo it. The new section gives the Stream Deck matrix, why the
+and how to undo it. The new section gives the ERPLibre Home matrix, why the
 verdict is GetExtensionInfo and not a return code, why the code comes from
 a bundle of HEAD, and where each system's log lands.
 
 --- FR ---
 
-[ADD] doc : section du README long_test pour le test Stream Deck
+[ADD] doc : section du README long_test pour le test ERPLibre Home
 
 Le README des tests longs décrit chaque script : ce qu'il prouve, comment le
-lancer et comment le défaire. La nouvelle section donne la matrice du Stream
-Deck, pourquoi le verdict est GetExtensionInfo et non un code de retour,
-pourquoi le code vient d'un bundle de HEAD, et où atterrit le journal de
-chaque système.
+lancer et comment le défaire. La nouvelle section donne la matrice
+d'ERPLibre Home, pourquoi le verdict est GetExtensionInfo et non un code
+de retour, pourquoi le code vient d'un bundle de HEAD, et où atterrit le
+journal de chaque système.
 
 Assisted-by: Claude Opus 5.5
 EOF
@@ -7802,7 +7853,7 @@ git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit 
 ### Task 10: Full matrix run (manual)
 
 **Files:**
-- Modify: `long_test/install_streamdeck.py` (the `gnome_attendu` values of `MATRICE`, only where measured differently)
+- Modify: `long_test/install_erplibre_home.py` (the `gnome_attendu` values of `MATRICE`, only where measured differently)
 
 **Interfaces:**
 - Consumes: everything above.
@@ -7810,27 +7861,27 @@ git -c user.name="Mathieu Benoit" -c user.email="mathben@technolibre.ca" commit 
 
 - [ ] **Step 1: Check the plan**
 
-Run: `./long_test/install_streamdeck.py --dry-run`
+Run: `./long_test/install_erplibre_home.py --dry-run`
 Expected: 13 in-scope systems in the order of `MATRICE`, the unsupported lines of `NON_SUPPORTES`, no VM created.
 
 - [ ] **Step 2: Run the matrix**
 
-Run: `./long_test/install_streamdeck.py` (several hours), then `./long_test/install_streamdeck.py --only ubuntu:24.04 --extras`.
+Run: `./long_test/install_erplibre_home.py` (several hours), then `./long_test/install_erplibre_home.py --only ubuntu:24.04 --extras`.
 Expected: exit 0; every non-rolling system `ACTIVE`; `arch:latest` and `opensuse:tumbleweed` `ACTIVE` or `UNSUPPORTED(GNOME <v> not in shell-version)`.
 
 A `FAILED(<check>)` line is a defect to fix in the task that owns that check, with the attached journal; rerun with `--only <key>` after the fix.
 
 - [ ] **Step 3: Correct the matrix from the measures**
 
-For every report line whose `gnome_mesure` major differs from `gnome_attendu`, set `gnome_attendu` in `MATRICE` to the measured major. Run `./script/test/run_unit_test.sh test/test_longtest_install_streamdeck.py`; expected PASS.
+For every report line whose `gnome_mesure` major differs from `gnome_attendu`, set `gnome_attendu` in `MATRICE` to the measured major. Run `./script/test/run_unit_test.sh test/test_longtest_install_erplibre_home.py`; expected PASS.
 
 - [ ] **Step 4: Commit (only if Step 3 changed something)**
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add long_test/install_streamdeck.py
+git add long_test/install_erplibre_home.py
 cat > /tmp/sd-task10.msg <<'EOF'
-[IMP] long_test: Stream Deck matrix GNOME versions from a full run
+[IMP] long_test: ERPLibre Home matrix GNOME versions from a full run
 
 The expected GNOME version of each system was a claim from release notes.
 A full run measured gnome-shell --version on every VM; the matrix now
@@ -7839,7 +7890,7 @@ moved.
 
 --- FR ---
 
-[IMP] long_test : versions GNOME de la matrice Stream Deck mesurées
+[IMP] long_test : versions GNOME de la matrice ERPLibre Home mesurées
 
 La version GNOME attendue de chaque système venait des notes de version.
 Une course complète a mesuré gnome-shell --version sur chaque VM ; la
