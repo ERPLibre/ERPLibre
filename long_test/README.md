@@ -277,10 +277,14 @@ That is the first of five stages, run in order on the same VM:
    extension stays ACTIVE, and a second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
-   the venv, the unit and its settings, and leaves the extension linked,
-   enabled and ACTIVE;
+   the venv, the unit, its `graphical-session.target.wants` link and its
+   settings, `systemctl --user is-enabled` says `not-found`, and the
+   extension stays linked, enabled and ACTIVE;
 4. **uninstall**: `--uninstall` leaves neither link, nor UUID in
-   `enabled-extensions`, nor rule, nor venv, nor unit, nor settings;
+   `enabled-extensions`, nor rule, nor venv, nor unit, nor settings. Stage
+   3 already removed the deck service, so this stage only checks that a
+   full uninstall leaves it gone; no stage runs `--uninstall` on a
+   system that still has the unit;
 5. **reinstall**: the base again, then a reboot: the extension comes back
    ACTIVE with every indicator mounted, without the rule or the venv.
 

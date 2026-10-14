@@ -241,8 +241,24 @@ CMD_RAISON_SAUT = SYSTEMD_USER + (
     f"journalctl --user -u {UNITE_DECK} -b -o cat --no-pager"
 )
 RAISON_SAUT = "[ERPLibre Home] no Stream Deck plugged in (USB vendor 0fd9)"
-CMD_SANS_SERVICE = (
-    f"test ! -e {FICHIER_UNITE} && test ! -e {REGLAGES_DECK} && echo ok"
+# Le lien que pose « enable » (WantedBy=graphical-session.target).
+LIEN_WANTS = (
+    f"~/.config/systemd/user/graphical-session.target.wants/{UNITE_DECK}"
+)
+# Ni unité, ni réglages, ni lien d'activation (« ! -L » : un lien qui ne
+# mène plus nulle part passe « ! -e »), et systemd ne connaît plus l'unité :
+# is-enabled dit « not-found », ou, sur un systemd plus ancien, que le
+# fichier manque. Une erreur de bus ne ressemble à aucune des deux et ne
+# passe pas.
+ABSENCE_UNITE = (
+    "^(not-found|Failed to get unit file state for [^:]+:"
+    " (No such file or directory|Unit file .* does not exist\\.?))$"
+)
+CMD_SANS_SERVICE = SYSTEMD_USER + (
+    f"test ! -e {FICHIER_UNITE} && test ! -e {REGLAGES_DECK}"
+    f" && test ! -e {LIEN_WANTS} && test ! -L {LIEN_WANTS}"
+    f" && LC_ALL=C systemctl --user is-enabled {UNITE_DECK} 2>&1"
+    f" | grep -Eq '{ABSENCE_UNITE}' && echo ok"
 )
 # « stat » sans « -L » lit le lien lui-même : c'est la date du LIEN que
 # l'installateur ne doit pas réécrire, pas celle du dossier qu'il désigne.

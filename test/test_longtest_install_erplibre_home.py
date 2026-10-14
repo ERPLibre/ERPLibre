@@ -504,6 +504,85 @@ class LesEtapes(unittest.TestCase):
                 self.assertIsNone(sd.liste_extensions(sortie))
 
 
+class LeServiceParti(unittest.TestCase):
+    """CMD_SANS_SERVICE joué par bash sous un HOME temporaire, un faux
+    systemctl en tête du PATH : il rend la ligne de REPONSE, ou échoue comme
+    sans bus quand REPONSE est vide. Le constat ne passe que si tout est
+    parti, systemd compris."""
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.home = Path(dossier.name, "home")
+        self.home.mkdir()
+        bin_ = Path(dossier.name, "bin")
+        bin_.mkdir()
+        (bin_ / "systemctl").write_text(
+            "#!/bin/sh\n"
+            '[ -n "$REPONSE" ] || { echo "Failed to connect to bus:'
+            ' No such file or directory" >&2; exit 1; }\n'
+            'echo "$REPONSE"; exit 4\n',
+            encoding="utf-8",
+        )
+        (bin_ / "systemctl").chmod(0o755)
+        self.path = "%s:%s" % (bin_, os.environ.get("PATH", ""))
+
+    def constat(self, reponse="not-found"):
+        environ = {
+            k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"
+        }
+        environ.update(
+            {"HOME": str(self.home), "PATH": self.path, "REPONSE": reponse}
+        )
+        return subprocess.run(
+            ["bash", "-c", sd.CMD_SANS_SERVICE],
+            capture_output=True,
+            text=True,
+            env=environ,
+            timeout=30,
+        ).stdout.strip()
+
+    def poser(self, relatif, lien=None):
+        chemin = self.home / relatif
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        if lien:
+            chemin.symlink_to(lien)
+        else:
+            chemin.write_text("x\n", encoding="utf-8")
+
+    def test_all_gone_and_unknown_to_systemd_is_ok(self):
+        for reponse in (
+            "not-found",
+            f"Failed to get unit file state for {sd.UNITE_DECK}:"
+            " No such file or directory",
+        ):
+            with self.subTest(reponse=reponse):
+                self.assertEqual("ok", self.constat(reponse))
+
+    def test_a_unit_still_known_to_systemd_fails(self):
+        for reponse in ("disabled", "enabled", "linked", ""):
+            with self.subTest(reponse=reponse):
+                self.assertEqual("", self.constat(reponse))
+
+    def test_a_dangling_wants_link_fails(self):
+        self.poser(
+            ".config/systemd/user/graphical-session.target.wants/"
+            + sd.UNITE_DECK,
+            lien="/exemple/absent",
+        )
+        self.assertEqual("", self.constat())
+
+    def test_a_unit_or_settings_left_fails(self):
+        for relatif in (
+            ".config/systemd/user/" + sd.UNITE_DECK,
+            ".config/erplibre-home/streamdeck.conf",
+        ):
+            with self.subTest(relatif=relatif):
+                self.poser(relatif)
+                self.assertEqual("", self.constat())
+                (self.home / relatif).unlink()
+
+
 class LAutologin(unittest.TestCase):
     """La commande est rejouée pour de vrai sur un fichier temporaire, avec
     un « sudo » qui ne fait qu'exécuter son argument."""
