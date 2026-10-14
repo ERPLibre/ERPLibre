@@ -458,12 +458,17 @@ class LesEtapes(unittest.TestCase):
         self.assertIn(sd.REGLAGES_DECK, sd.CMD_MTIMES)
 
     def test_the_systemctl_show_lines_are_read_in_any_order(self):
+        """Un saut sur ExecCondition rend Result=exec-condition sous la
+        plupart des systemd, Result=success sous d'autres : les deux
+        valent, avec les trois autres preuves."""
         raison = f"[autre]\n{sd.RAISON_SAUT}\n"
         for sortie in (
             "ActiveState=inactive\nResult=success\n"
             "ExecMainStartTimestampMonotonic=0\n",
             "ExecMainStartTimestampMonotonic=0\nResult=success\n"
             "ActiveState=inactive",
+            "ActiveState=inactive\nResult=exec-condition\n"
+            "ExecMainStartTimestampMonotonic=0\n",
         ):
             with self.subTest(sortie=sortie):
                 etat = sd.etat_systemd(sortie)
@@ -476,9 +481,19 @@ class LesEtapes(unittest.TestCase):
             "ExecMainStartTimestampMonotonic=0\n",
             "ActiveState=failed\nResult=exit-code\n"
             "ExecMainStartTimestampMonotonic=0\n",
-            "ActiveState=inactive\nResult=exec-condition\n"
+            "ActiveState=inactive\nResult=failed\n"
             "ExecMainStartTimestampMonotonic=0\n",
+            # ExecCondition sorti en 255 : un échec, même Result.
+            "ActiveState=failed\nResult=exec-condition\n"
+            "ExecMainStartTimestampMonotonic=0\n",
+            "ActiveState=inactive\nResult=exit-code\n"
+            "ExecMainStartTimestampMonotonic=0\n",
+            "ActiveState=inactive\nResult=start-limit-hit\n"
+            "ExecMainStartTimestampMonotonic=0\n",
+            "ActiveState=inactive\n" "ExecMainStartTimestampMonotonic=0\n",
             "ActiveState=inactive\nResult=success\n"
+            "ExecMainStartTimestampMonotonic=123456\n",
+            "ActiveState=inactive\nResult=exec-condition\n"
             "ExecMainStartTimestampMonotonic=123456\n",
             "ActiveState=inactive\nResult=success\n",
             "",
@@ -1594,8 +1609,11 @@ class VMSimulee:
         self.regle = self.venv = self.service = self.autostart = False
         self.lien = self.uuid = self.actif = True
         # Sans deck, systemd saute le démarrage du service et le point
-        # d'entrée en écrit la raison au journal de l'unité.
+        # d'entrée en écrit la raison au journal de l'unité. « resultat »
+        # est le Result= de ce saut, exec-condition sur les systemd des
+        # VM.
         self.condition = self.raison = True
+        self.resultat = "exec-condition"
         self.__dict__.update(etat)
         self.journaux = list(journaux)
         self.echoue = set(echoue)
@@ -1641,7 +1659,7 @@ class VMSimulee:
             sd.CMD_UNITE: "ok" if self.service else "",
             sd.CMD_AUTOSTART: "enabled" if self.autostart else "disabled",
             sd.CMD_CONDITION: (
-                "ActiveState=inactive\nResult=success\n"
+                f"ActiveState=inactive\nResult={self.resultat}\n"
                 "ExecMainStartTimestampMonotonic=0"
                 if self.condition
                 else "ActiveState=failed\nResult=exit-code\n"
@@ -1766,11 +1784,21 @@ class LesCinqEtapes(unittest.TestCase):
             ({"autostart": False}, "service-enabled"),
             ({"condition": False}, "service-condition"),
             ({"raison": False}, "service-condition"),
+            ({"resultat": "failed"}, "service-condition"),
+            ({"resultat": "exit-code"}, "service-condition"),
             ({"actif": False}, "stream-deck-active"),
         ):
             with self.subTest(attendu=attendu):
                 vm = VMSimulee([self.ENTIER], apres={DECK: apres})
                 self.assertEqual(self._controler(vm)[0], attendu)
+
+    def test_a_skip_passes_with_either_result_of_systemd(self):
+        for resultat in ("exec-condition", "success"):
+            with self.subTest(resultat=resultat):
+                vm = VMSimulee(
+                    [self.ENTIER] * 3, apres={DECK: {"resultat": resultat}}
+                )
+                self.assertIsNone(self._controler(vm)[0])
 
     def test_the_partial_uninstall_keeps_the_extension(self):
         for apres, attendu in (
