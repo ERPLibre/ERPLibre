@@ -122,14 +122,18 @@ erplibre_home_install_extension:
 	@python3 "$(ERPLIBRE_HOME_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
 		|| echo "(locale compile skipped — install python3-polib for translations)"
 	@echo "Symlinked $(ERPLIBRE_HOME_EXT_DST) -> $(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)"
-	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
-	@echo "X11:     press Alt+F2, type r, Enter."
-	@echo "Then:    make erplibre_home_enable_extension"
+	@echo "Then: make erplibre_home_enable_extension (Wayland: then log out / log in to load it; X11: Alt+F2, r)"
 
 .PHONY: erplibre_home_enable_extension
 erplibre_home_enable_extension:
-	@gnome-extensions enable "$(ERPLIBRE_HOME_EXT_UUID)"
-	@gnome-extensions info "$(ERPLIBRE_HOME_EXT_UUID)" | grep -iE 'Activ|Enabled'
+	@# Wayland scans the extensions directory only at login, so a fresh
+	@# symlink is unknown to the running Shell and `enable` fails; the
+	@# helper then writes the setting the Shell reads at login.
+	@if gnome-extensions enable "$(ERPLIBRE_HOME_EXT_UUID)" 2>/dev/null; then \
+		gnome-extensions info "$(ERPLIBRE_HOME_EXT_UUID)" | grep -iE 'Activ|Enabled'; \
+	else \
+		"$(ERPLIBRE_HOME_EXT_SRC)/tools/enable_next_login.py" "$(ERPLIBRE_HOME_EXT_UUID)"; \
+	fi
 
 .PHONY: erplibre_home_uninstall_extension
 erplibre_home_uninstall_extension:
