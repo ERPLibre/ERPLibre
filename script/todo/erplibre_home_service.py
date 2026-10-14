@@ -40,11 +40,12 @@ def unit_path(environ=None):
 def read_settings(path):
     """DEFAULTS, puis chaque ligne « CLÉ=valeur » de `path` ; la dernière
     ligne d'une clé l'emporte. Un fichier absent ou illisible rend
-    DEFAULTS. Une ligne sans « = » est ignorée."""
+    DEFAULTS. Une ligne sans « = » est ignorée. Les lignes se coupent sur
+    « \\n » seul, comme la lecture du shell."""
     settings = dict(DEFAULTS)
     try:
-        with open(path, encoding="utf-8") as fh:
-            lignes = fh.read().splitlines()
+        with open(path, encoding="utf-8", newline="") as fh:
+            lignes = fh.read().split("\n")
     except (OSError, UnicodeDecodeError):
         return settings
     for ligne in lignes:

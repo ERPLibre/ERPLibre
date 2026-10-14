@@ -22,6 +22,7 @@ sys.path.insert(0, str(RACINE))
 from script.todo import erplibre_home_service as service  # noqa: E402
 
 INSTALLEUR = RACINE / "script/install/install_erplibre_home.sh"
+BIBLIOTHEQUE = RACINE / "script/install/erplibre_home_settings.sh"
 
 
 class LesChemins(unittest.TestCase):
@@ -67,6 +68,49 @@ class LaLecture(unittest.TestCase):
             reglages = service.read_settings(str(chemin))
         self.assertEqual("controller", reglages["DECK_PROGRAM"])
         self.assertEqual("yes", reglages["RESTART_AFTER_GAME"])
+
+    def test_python_and_the_shell_library_read_the_same_value(self):
+        """read_settings et deck_setting de la bibliothèque shell rendent
+        la même valeur, y compris sur un « \\r » et sans retour final."""
+        contenus = (
+            "DECK_PROGRAM=none\n",
+            "DECK_PROGRAM=a\nDECK_PROGRAM=controller",
+            "# DECK_PROGRAM=none\nDECK_PROGRAM=\n",
+            "DECK_PROGRAM=none\rRESTART_AFTER_GAME=no\n",
+            "sans egal\nRESTART_AFTER_GAME=no\n",
+        )
+        for contenu in contenus:
+            with self.subTest(contenu=contenu):
+                with tempfile.TemporaryDirectory() as dossier:
+                    chemin = Path(
+                        dossier, ".config/erplibre-home/streamdeck.conf"
+                    )
+                    chemin.parent.mkdir(parents=True)
+                    chemin.write_bytes(contenu.encode("utf-8"))
+                    env = {
+                        k: v
+                        for k, v in os.environ.items()
+                        if k != "XDG_CONFIG_HOME"
+                    }
+                    env.update({"HOME": dossier, "BIB": str(BIBLIOTHEQUE)})
+                    lu = {}
+                    for cle, defaut in service.DEFAULTS.items():
+                        fini = subprocess.run(
+                            [
+                                "bash",
+                                "-c",
+                                '. "$BIB"; deck_setting %s %s' % (cle, defaut),
+                            ],
+                            capture_output=True,
+                            env=env,
+                            timeout=30,
+                        )
+                        self.assertEqual(0, fini.returncode, fini.stderr)
+                        lu[cle] = fini.stdout.decode().rstrip("\n")
+                    self.assertEqual(
+                        lu,
+                        service.read_settings(str(chemin)),
+                    )
 
 
 class LEcriture(unittest.TestCase):
