@@ -148,7 +148,7 @@ class DeviceIndicator extends PanelMenu.Button {
 
     _projectRoot() {
         return this._extension.path.replace(
-            /\/script\/stream_deck\/gnome-extension\/?$/, '');
+            /\/script\/gnome-extension\/erplibre_home\/?$/, '');
     }
 
     _launchController() {

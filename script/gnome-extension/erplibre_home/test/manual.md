@@ -170,4 +170,4 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] `make test_full_fast` includes the extension target and passes
 - [ ] All sections above ticked
 - [ ] CHANGELOG.base.md entry present and regenerated
-- [ ] README.base.md regenerated for both `script/stream_deck/` and `script/stream_deck/gnome-extension/`
+- [ ] README.base.md regenerated for both `script/stream_deck/` and `script/gnome-extension/erplibre_home/`

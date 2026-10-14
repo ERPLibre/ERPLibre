@@ -97,7 +97,7 @@ gdbus call --session \
 ### HotReload pollutes git with metadata.json edits
 - Each HotReload mutates the symlinked metadata.json to give the
   reload UUID a unique name. Reset before commit:
-  `git checkout -- script/stream_deck/gnome-extension/metadata.json`.
+  `git checkout -- script/gnome-extension/erplibre_home/metadata.json`.
 
 ### Stream Deck device not detected
 - `lsusb` should list the Elgato vendor (0fd9). If yes but the

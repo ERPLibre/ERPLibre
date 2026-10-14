@@ -2,8 +2,8 @@
 
 ## Captures d'écran
 
-`../screenshots/` contient les captures d'écran référencées par ce
-README. Lancer `../screenshots/capture.sh` quand l'extension est
+`../../stream_deck/screenshots/` contient les captures d'écran référencées par ce
+README. Lancer `../../stream_deck/screenshots/capture.sh` quand l'extension est
 chargée (et qu'un Stream Deck est branché pour les captures du
 boîtier) pour les regénérer. Le `README.md` du dossier liste chaque
 fichier attendu ainsi que les conventions de cadrage / nommage.
