@@ -78,6 +78,10 @@ def _load_game_tiler():
     # Stub the optional translator dependency next to game_tiler.py.
     sys.modules.setdefault("translator", types.ModuleType("translator"))
 
+    # deck_lock (stdlib only) is imported by name: the real module loads.
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+
     spec = importlib.util.spec_from_file_location(
         "game_tiler", str(here / "game_tiler.py"))
     module = importlib.util.module_from_spec(spec)
