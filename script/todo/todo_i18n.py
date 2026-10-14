@@ -298,9 +298,13 @@ TRANSLATIONS = {
         "fr": "Le service du deck ne tourne pas",
         "en": "The deck service is not running",
     },
-    "The deck service does not start at login": {
-        "fr": "Le service du deck ne démarre pas à l'ouverture de session",
-        "en": "The deck service does not start at login",
+    "The deck service state could not be read": {
+        "fr": "L'état du service du deck est illisible",
+        "en": "The deck service state could not be read",
+    },
+    "run it from the desktop session": {
+        "fr": "le lancer depuis la session du bureau",
+        "en": "run it from the desktop session",
     },
     # Stream Deck game descriptions (42 games)
     "game_2048": {

@@ -309,7 +309,10 @@ class LeDiagnostic(unittest.TestCase):
                 {"unit_active": "inactive", "lock": ("777", "controller")},
                 "close it, or: kill 777",
             ),
-            ({"unit_enabled": "disabled"}, f"systemctl --user enable {UNITE}"),
+            (
+                {"unit_enabled": "", "unit_active": ""},
+                "run it from the desktop session",
+            ),
         )
         for changes, attendu in cas:
             with self.subTest(changes=changes):
@@ -324,6 +327,25 @@ class LeDiagnostic(unittest.TestCase):
                 "The deck is held by controller (PID 777)",
                 "close it, or: kill 777",
             ),
+            problemes,
+        )
+
+    def test_a_disabled_unit_is_a_choice_not_a_problem(self):
+        self.assertEqual(
+            [], self.corrections(unit_enabled="disabled", lock=None)
+        )
+
+    def test_an_unreadable_state_is_not_called_wrong(self):
+        problemes = statut.diagnosis_lines(
+            faits(unit_enabled="", unit_active="", lock=None)
+        )
+        self.assertEqual(
+            [
+                (
+                    "The deck service state could not be read",
+                    "run it from the desktop session",
+                )
+            ],
             problemes,
         )
 

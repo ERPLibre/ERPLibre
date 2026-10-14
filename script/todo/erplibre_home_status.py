@@ -16,7 +16,7 @@ Les faits :
 - extension : {"state": float|None, "error": str} ;
 - journal : {"read": bool, "failed": [id d'indicateur]} ;
 - unit_enabled, unit_active : sortie de systemctl is-enabled / is-active,
-  "" quand l'unité n'est pas installée ;
+  "" quand l'unité n'est pas installée ou que systemctl n'a rien rendu ;
 - settings : les réglages du service, défauts compris ;
 - lock : (pid, programme) du détenteur du verrou du deck, ou None ;
 - decks : [{"product": str, "id_product": str}], vendeur 0fd9.
@@ -270,7 +270,11 @@ def status_lines(facts):
 
 def diagnosis_lines(facts):
     """[(problème, correction)] pour chaque sonde qui n'est pas comme
-    attendu, dans l'ordre où les corriger ; [] quand tout va. Sans
+    attendu, dans l'ordre où les corriger ; [] quand tout va. Une unité
+    installée mais désactivée n'est pas un problème : l'ouverture
+    automatique est un choix d'installation. Un état de l'unité que
+    systemctl n'a pas rendu (pas de bus utilisateur, par ssh ou sudo) est
+    dit illisible, non faux. Sans
     l'extension, ou sans le niveau Stream Deck, la liste s'arrête là : ce
     qui suit en dépend."""
     if not facts["extension_linked"]:
@@ -328,7 +332,11 @@ def diagnosis_lines(facts):
         problemes.append(
             (t("No Stream Deck plugged in"), t("plug a Stream Deck in"))
         )
-    elif programme != "none" and facts["unit_active"] != "active":
+    elif (
+        programme != "none"
+        and facts["unit_active"]
+        and facts["unit_active"] != "active"
+    ):
         if facts["lock"]:
             pid, detenteur = facts["lock"]
             problemes.append(
@@ -345,11 +353,11 @@ def diagnosis_lines(facts):
                     "systemctl --user start %s" % service.UNIT_NAME,
                 )
             )
-    if facts["unit_enabled"] != "enabled":
+    if not (facts["unit_enabled"] and facts["unit_active"]):
         problemes.append(
             (
-                t("The deck service does not start at login"),
-                "systemctl --user enable %s" % service.UNIT_NAME,
+                t("The deck service state could not be read"),
+                t("run it from the desktop session"),
             )
         )
     return problemes
