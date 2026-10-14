@@ -363,6 +363,14 @@ class TestSessionBus(unittest.TestCase):
         tmp = str(_tmp(self))
         self.assertIsNone(mig.session_bus_env({"XDG_RUNTIME_DIR": tmp}))
 
+    def test_unsearchable_runtime_dir_is_no_bus(self):
+        if os.geteuid() == 0:
+            self.skipTest("root searches any directory")
+        tmp = _tmp(self)
+        self.addCleanup(tmp.chmod, 0o755)
+        tmp.chmod(0)
+        self.assertIsNone(mig.session_bus_env({"XDG_RUNTIME_DIR": str(tmp)}))
+
     def test_socket_in_runtime_dir(self):
         tmp = str(_tmp(self))
         sock = socket.socket(socket.AF_UNIX)

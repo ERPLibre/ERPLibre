@@ -158,7 +158,11 @@ def session_bus_env(env: dict) -> dict | None:
         return dict(env)
     runtime = env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
     sock = Path(runtime) / "bus"
-    if sock.is_socket():
+    try:
+        found = sock.is_socket()
+    except OSError:  # a runtime directory that cannot be searched
+        return None
+    if found:
         return {**env, "DBUS_SESSION_BUS_ADDRESS": f"unix:path={sock}"}
     return None
 
