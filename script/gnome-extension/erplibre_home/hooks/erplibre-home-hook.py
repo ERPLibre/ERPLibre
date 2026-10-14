@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Stream Deck Tiler — Claude Code session-state hook.
+"""ERPLibre Home — Claude Code session-state hook.
 
 Maintains one JSON file per Claude session under
-`$XDG_STATE_HOME/streamdeck-tiler/claude/{session_id}.json` so the
+`$XDG_STATE_HOME/erplibre-home/claude/{session_id}.json` so the
 GNOME Shell extension can show how many sessions are running and
 which ones are awaiting user input.
 
@@ -60,7 +60,7 @@ EVENT_FIELD = {
 def state_dir() -> Path:
     base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser(
         "~/.local/state")
-    p = Path(base) / "streamdeck-tiler" / "claude"
+    p = Path(base) / "erplibre-home" / "claude"
     p.mkdir(parents=True, exist_ok=True, mode=0o700)
     return p
 
@@ -111,9 +111,9 @@ def capture_focused_window_id() -> int:
             "gdbus", "call", "--session",
             "--dest", "org.gnome.Shell",
             "--object-path",
-            "/org/gnome/Shell/Extensions/StreamDeckTiler",
+            "/org/gnome/Shell/Extensions/ERPLibreHome",
             "--method",
-            "org.gnome.Shell.Extensions.StreamDeckTiler"
+            "org.gnome.Shell.Extensions.ERPLibreHome"
             ".GetFocusedWindowId",
         ], capture_output=True, text=True, timeout=2)
         if out.returncode != 0:

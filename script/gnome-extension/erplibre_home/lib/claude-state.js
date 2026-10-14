@@ -2,8 +2,8 @@
  * Claude session state tracking.
  *
  * The hook scripts in hooks/ write one JSON file per Claude session in
- * the state directory (default `$XDG_STATE_HOME/streamdeck-tiler/claude/`,
- * fallback `~/.local/state/streamdeck-tiler/claude/`).
+ * the state directory (default `$XDG_STATE_HOME/erplibre-home/claude/`,
+ * fallback `~/.local/state/erplibre-home/claude/`).
  *
  * File contents:
  *   {
@@ -24,7 +24,7 @@ export const STATUS_AWAIT_STOP = 'awaiting_stop';
 export const STATUS_AWAIT_NOTIFY = 'awaiting_notification';
 
 export const STATE_DIR_REL =
-    'streamdeck-tiler/claude';
+    'erplibre-home/claude';
 
 /**
  * Parse one state file payload (already JSON-decoded). Returns the

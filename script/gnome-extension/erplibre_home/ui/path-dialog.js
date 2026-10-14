@@ -15,7 +15,7 @@ export const PathDialog = GObject.registerClass(
 class PathDialog extends ModalDialog {
     _init({title = _('Add path'), entry = null, recentPaths = [],
         onConfirm}) {
-        super._init({styleClass: 'streamdeck-tiler-dialog'});
+        super._init({styleClass: 'erplibre-home-dialog'});
         this._onConfirm = onConfirm;
 
         const box = new St.BoxLayout({...verticalBoxProps(St, Clutter), style: 'spacing: 8px;'});
@@ -72,7 +72,7 @@ class PathDialog extends ModalDialog {
                     `--title=${_('Select project path')}`],
                 Gio.SubprocessFlags.STDOUT_PIPE);
         } catch (e) {
-            console.log(`[StreamDeckTiler] zenity not available: ${e.message}`);
+            console.log(`[ERPLibreHome] zenity not available: ${e.message}`);
             return;
         }
         proc.communicate_utf8_async(null, null, (p, res) => {

@@ -105,7 +105,7 @@ export async function legacyJsonPath() {
     const {default: GLib} = await import('gi://GLib');
     return GLib.build_filenamev([
         GLib.get_user_config_dir(),
-        'streamdeck-tiler',
+        'erplibre-home',
         'extension-settings.json',
     ]);
 }
@@ -128,7 +128,7 @@ export async function runMigrationGjs(settings, log = console.log) {
             const [ok, contents] = GLib.file_get_contents(path);
             if (ok) legacy = JSON.parse(new TextDecoder().decode(contents));
         } catch (e) {
-            log(`[StreamDeckTiler] migration: bad legacy JSON: ${e.message}`);
+            log(`[ERPLibreHome] migration: bad legacy JSON: ${e.message}`);
             legacy = {};
         }
     }

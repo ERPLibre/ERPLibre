@@ -4,7 +4,7 @@ profile.
 
 Reads `sessionstore-backups/recovery.jsonlz4` under each profile and
 prints a JSON array of `{"url": str, "title": str}` to stdout. Used
-by the Stream Deck Tiler GNOME extension's prefs Film page to bulk
+by the ERPLibre Home GNOME extension's prefs Film page to bulk
 import the user's currently-open YouTube videos.
 
 Requires `python3-lz4` (Debian / Ubuntu) for the mozLz4 decompression.

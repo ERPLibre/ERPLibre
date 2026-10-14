@@ -17,7 +17,7 @@ function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
 }
 
-const PIDFILE = `${GLib.get_user_cache_dir()}/streamdeck-tiler/controller.pid`;
+const PIDFILE = `${GLib.get_user_cache_dir()}/erplibre-home/controller.pid`;
 const CONTROLLER_REL = 'script/stream_deck/erplibre_controller.py';
 
 // See indicators/controller.js for the rationale of the random suffix.

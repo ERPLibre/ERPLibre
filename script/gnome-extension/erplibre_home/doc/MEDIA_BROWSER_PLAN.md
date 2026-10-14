@@ -67,7 +67,7 @@ Backwards compatibility:
 - Reads tolerate missing fields (use `??` everywhere, never `||` against
   numeric `0`).
 - `serializeList` already round-trips arbitrary keys, no change needed.
-- No schema bump in `org.gnome.shell.extensions.streamdeck-tiler.gschema.xml`
+- No schema bump in `org.gnome.shell.extensions.erplibre-home.gschema.xml`
   — we keep the same `media` key.
 
 `extractMediaInfo()` extends to fill `artist` / `album` from URLs that
@@ -270,6 +270,6 @@ applet usable on its own.
   array). Re-render the whole list on filter change; no diffing
   needed at this size.
 - **i18n**: every new label goes through `_()` and gets added to
-  `po/streamdeck-tiler.pot` via the existing extraction step.
+  `po/erplibre-home.pot` via the existing extraction step.
 - **Scope creep**: thumbnails, queues and online metadata are
   explicitly out — don't sneak them in mid-PR.

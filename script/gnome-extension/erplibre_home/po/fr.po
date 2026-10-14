@@ -752,8 +752,8 @@ msgstr "Journal"
 msgid "Recent activity"
 msgstr "Activité récente"
 
-msgid "Last 200 entries from $XDG_STATE_HOME/streamdeck-tiler/log.jsonl"
-msgstr "Dernières 200 entrées de $XDG_STATE_HOME/streamdeck-tiler/log.jsonl"
+msgid "Last 200 entries from $XDG_STATE_HOME/erplibre-home/log.jsonl"
+msgstr "Dernières 200 entrées de $XDG_STATE_HOME/erplibre-home/log.jsonl"
 
 msgid "Activity log"
 msgstr "Journal d'activité"

@@ -7,6 +7,17 @@ migrations that are not auto-applied.
 
 ## [Unreleased]
 
+### Changed
+- The extension is now **ERPLibre Home** (`erplibre-home@technolibre.ca`),
+  in `script/gnome-extension/erplibre_home/`. Every identifier follows:
+  schema `org.gnome.shell.extensions.erplibre-home`, D-Bus interface
+  `org.gnome.Shell.Extensions.ERPLibreHome`, journal prefix
+  `[ERPLibreHome]`, data under `erplibre-home/` in the XDG config, state
+  and cache directories, make targets `erplibre_home_*`. It replaces
+  `streamdeck-tiler@technolibre.ca` ("Stream Deck Tiler");
+  `make erplibre_home_install_extension` carries an existing
+  installation over.
+
 ### Added
 - Help and About pages in the prefs window covering badge colours,
   Claude hooks, indicator interactions and project links.

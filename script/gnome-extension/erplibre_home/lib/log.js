@@ -1,6 +1,6 @@
 /**
  * Tiny append-only logger backed by a JSONL file under
- * `$XDG_STATE_HOME/streamdeck-tiler/log.jsonl`.
+ * `$XDG_STATE_HOME/erplibre-home/log.jsonl`.
  *
  * Indicators and helpers route notable events here so the prefs
  * window's "Log" page can surface what is going on inside the
@@ -26,7 +26,7 @@ async function _loadGjs() {
 export function _logFilePath(GLib) {
     const base = GLib.getenv('XDG_STATE_HOME')
         || `${GLib.get_home_dir()}/.local/state`;
-    return `${base}/streamdeck-tiler/log.jsonl`;
+    return `${base}/erplibre-home/log.jsonl`;
 }
 
 /** Format a single log line. Pure for unit testing. */
@@ -65,7 +65,7 @@ export async function appendLog(entry) {
     } catch (_e) {
         try {
             console.log(
-                `[StreamDeckTiler:${entry?.source ?? '?'}] ${entry?.message}`);
+                `[ERPLibreHome:${entry?.source ?? '?'}] ${entry?.message}`);
         } catch (_e2) {}
     }
 }

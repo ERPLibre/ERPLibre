@@ -15,12 +15,12 @@ bubble with three dots).
 |------|------|
 | `script/stream_deck/translator.py` | Audio recording, STT backends, LLM backends, hardware detection, output methods. |
 | `script/stream_deck/game_tiler.py` | UI: `MODE_TRANSLATOR` rendering, key handling, settings persistence. |
-| `~/.config/streamdeck-tiler/settings.json` | Persisted picks: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
+| `~/.config/erplibre-home/settings.json` | Persisted picks: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
 | `tasks/translator-roadmap.md` | Phase planning and security notes. |
 
 The Stream Deck process orchestrates everything. There is **no** GNOME
 extension dependency for the translator — the existing
-`streamdeck-tiler@technolibre.ca` extension is unrelated.
+`erplibre-home@technolibre.ca` extension is unrelated.
 
 ## TRANSLATOR mode layout
 
@@ -61,7 +61,7 @@ is unlinked after transcription.
 
 Whisper auto-detects the spoken language but is biased toward English.
 Force a specific language via its ISO 639-1 code in
-`~/.config/streamdeck-tiler/settings.json`:
+`~/.config/erplibre-home/settings.json`:
 
 ```json
 {
@@ -77,7 +77,7 @@ installed model.
 ### History
 
 After every successful transcription the deck appends an entry to a
-ring buffer kept in `~/.config/streamdeck-tiler/translator-history.json`
+ring buffer kept in `~/.config/erplibre-home/translator-history.json`
 (20 most recent kept). In `MODE_TRANSLATOR`, press the **HIST** button
 (8-col deck only) to enter history mode: each remaining key shows a
 truncated snippet of a saved entry; press to re-output it via the
@@ -135,7 +135,7 @@ layouts. Empty slots keep their `LOAD N EMPTY` label.
 
 Forgetting to press STOP leaves a recording running until the next
 press. Set `translator_recording_timeout` to a positive integer in
-`~/.config/streamdeck-tiler/settings.json`:
+`~/.config/erplibre-home/settings.json`:
 
 ```json
 {
@@ -195,9 +195,9 @@ and the model files exist.
 
 | Backend | Binary / package | Model paths checked |
 |---------|------------------|---------------------|
-| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, or `main` (also probes `~/.local/share/whisper.cpp/`) | `~/.cache/streamdeck-tiler/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
+| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, or `main` (also probes `~/.local/share/whisper.cpp/`) | `~/.cache/erplibre-home/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
 | `openai-whisper` | `whisper` | downloaded automatically by `openai-whisper` |
-| `vosk` | Python `vosk` | `~/.cache/streamdeck-tiler/vosk-model/` |
+| `vosk` | Python `vosk` | `~/.cache/erplibre-home/vosk-model/` |
 
 Audit and install via make targets:
 
@@ -236,12 +236,12 @@ pip install openai-whisper
 
 # vosk (smaller model, language-specific)
 pip install vosk
-mkdir -p ~/.cache/streamdeck-tiler
+mkdir -p ~/.cache/erplibre-home
 curl -L https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
   -o /tmp/vosk.zip
-unzip /tmp/vosk.zip -d ~/.cache/streamdeck-tiler/
-mv ~/.cache/streamdeck-tiler/vosk-model-small-* \
-   ~/.cache/streamdeck-tiler/vosk-model
+unzip /tmp/vosk.zip -d ~/.cache/erplibre-home/
+mv ~/.cache/erplibre-home/vosk-model-small-* \
+   ~/.cache/erplibre-home/vosk-model
 ```
 
 ### Output methods
@@ -343,7 +343,7 @@ The default templates are computed at call time so a `LANG=fr_*`
 session gets a "Translate to French" prompt without any settings
 edit. The supported locale targets are French, Spanish, German,
 Italian, Portuguese — anything else falls back to English. Override
-them per mode in `~/.config/streamdeck-tiler/settings.json`:
+them per mode in `~/.config/erplibre-home/settings.json`:
 
 ```json
 {
@@ -388,7 +388,7 @@ no audio capture is lost.
 
 ## Settings persistence
 
-`~/.config/streamdeck-tiler/settings.json` (created on first save):
+`~/.config/erplibre-home/settings.json` (created on first save):
 
 ```json
 {

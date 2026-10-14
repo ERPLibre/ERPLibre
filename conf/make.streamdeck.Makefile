@@ -104,38 +104,38 @@ streamdeck_djscratch:
 streamdeck_tiler:
 	./script/stream_deck/game_tiler.py
 
-STREAMDECK_TILER_EXT_UUID       := streamdeck-tiler@technolibre.ca
-STREAMDECK_TILER_EXT_SRC        := script/gnome-extension/erplibre_home
-STREAMDECK_TILER_EXT_BASE_DIR   := $(HOME)/.local/share/gnome-shell/extensions
-STREAMDECK_TILER_EXT_DST        := $(STREAMDECK_TILER_EXT_BASE_DIR)/$(STREAMDECK_TILER_EXT_UUID)
-STREAMDECK_TILER_EXT_TMP_PREFIX := streamdeck-tiler-reload-
+ERPLIBRE_HOME_EXT_UUID       := erplibre-home@technolibre.ca
+ERPLIBRE_HOME_EXT_SRC        := script/gnome-extension/erplibre_home
+ERPLIBRE_HOME_EXT_BASE_DIR   := $(HOME)/.local/share/gnome-shell/extensions
+ERPLIBRE_HOME_EXT_DST        := $(ERPLIBRE_HOME_EXT_BASE_DIR)/$(ERPLIBRE_HOME_EXT_UUID)
+ERPLIBRE_HOME_EXT_TMP_PREFIX := erplibre-home-reload-
 
-.PHONY: streamdeck_tiler_install_extension
-streamdeck_tiler_install_extension:
-	@if [ -L "$(STREAMDECK_TILER_EXT_DST)" ] || [ -d "$(STREAMDECK_TILER_EXT_DST)" ]; then \
-		rm -rf "$(STREAMDECK_TILER_EXT_DST)"; \
+.PHONY: erplibre_home_install_extension
+erplibre_home_install_extension:
+	@if [ -L "$(ERPLIBRE_HOME_EXT_DST)" ] || [ -d "$(ERPLIBRE_HOME_EXT_DST)" ]; then \
+		rm -rf "$(ERPLIBRE_HOME_EXT_DST)"; \
 	fi
-	@mkdir -p "$(STREAMDECK_TILER_EXT_BASE_DIR)"
-	@ln -sfn "$(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)" "$(STREAMDECK_TILER_EXT_DST)"
-	@glib-compile-schemas "$(STREAMDECK_TILER_EXT_SRC)/schemas/" 2>/dev/null || true
-	@python3 "$(STREAMDECK_TILER_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
+	@mkdir -p "$(ERPLIBRE_HOME_EXT_BASE_DIR)"
+	@ln -sfn "$(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)" "$(ERPLIBRE_HOME_EXT_DST)"
+	@glib-compile-schemas "$(ERPLIBRE_HOME_EXT_SRC)/schemas/" 2>/dev/null || true
+	@python3 "$(ERPLIBRE_HOME_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
 		|| echo "(locale compile skipped — install python3-polib for translations)"
-	@echo "Symlinked $(STREAMDECK_TILER_EXT_DST) -> $(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)"
+	@echo "Symlinked $(ERPLIBRE_HOME_EXT_DST) -> $(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)"
 	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
 	@echo "X11:     press Alt+F2, type r, Enter."
-	@echo "Then:    make streamdeck_tiler_enable_extension"
+	@echo "Then:    make erplibre_home_enable_extension"
 
-.PHONY: streamdeck_tiler_enable_extension
-streamdeck_tiler_enable_extension:
-	@gnome-extensions enable "$(STREAMDECK_TILER_EXT_UUID)"
-	@gnome-extensions info "$(STREAMDECK_TILER_EXT_UUID)" | grep -iE 'Activ|Enabled'
+.PHONY: erplibre_home_enable_extension
+erplibre_home_enable_extension:
+	@gnome-extensions enable "$(ERPLIBRE_HOME_EXT_UUID)"
+	@gnome-extensions info "$(ERPLIBRE_HOME_EXT_UUID)" | grep -iE 'Activ|Enabled'
 
-.PHONY: streamdeck_tiler_uninstall_extension
-streamdeck_tiler_uninstall_extension:
-	-@gnome-extensions disable "$(STREAMDECK_TILER_EXT_UUID)" 2>/dev/null || true
-	@rm -rf "$(STREAMDECK_TILER_EXT_DST)"
-	@echo "Removed $(STREAMDECK_TILER_EXT_DST)"
-	@for d in "$(STREAMDECK_TILER_EXT_BASE_DIR)"/$(STREAMDECK_TILER_EXT_TMP_PREFIX)*@technolibre.ca; do \
+.PHONY: erplibre_home_uninstall_extension
+erplibre_home_uninstall_extension:
+	-@gnome-extensions disable "$(ERPLIBRE_HOME_EXT_UUID)" 2>/dev/null || true
+	@rm -rf "$(ERPLIBRE_HOME_EXT_DST)"
+	@echo "Removed $(ERPLIBRE_HOME_EXT_DST)"
+	@for d in "$(ERPLIBRE_HOME_EXT_BASE_DIR)"/$(ERPLIBRE_HOME_EXT_TMP_PREFIX)*@technolibre.ca; do \
 		[ -d "$$d" ] || [ -L "$$d" ] || continue; \
 		uuid=$$(basename "$$d"); \
 		gnome-extensions disable "$$uuid" 2>/dev/null || true; \
@@ -145,22 +145,22 @@ streamdeck_tiler_uninstall_extension:
 	@echo "Log out / log in to fully unload from gnome-shell."
 
 # Convenience aliases for the common short names users actually type.
-.PHONY: streamdeck_tiler_uninstall
-streamdeck_tiler_uninstall: streamdeck_tiler_uninstall_extension
+.PHONY: erplibre_home_uninstall
+erplibre_home_uninstall: erplibre_home_uninstall_extension
 
 # Launch a nested gnome-shell with the extension loaded in an
 # isolated XDG sandbox. Lets the dev reload code freely without
 # touching the parent Wayland session — close the window to wipe.
-.PHONY: streamdeck_tiler_dev_nested
-streamdeck_tiler_dev_nested:
-	@$(STREAMDECK_TILER_EXT_SRC)/dev_nested.sh
+.PHONY: erplibre_home_dev_nested
+erplibre_home_dev_nested:
+	@$(ERPLIBRE_HOME_EXT_SRC)/dev_nested.sh
 
 # Headless-ish smoke test: launch a nested gnome-shell with the
 # extension enabled and verify the D-Bus interface answers. Needs a
 # Wayland host on the dev machine (skipped on bare CI).
-.PHONY: streamdeck_tiler_e2e_nested
-streamdeck_tiler_e2e_nested:
-	@$(STREAMDECK_TILER_EXT_SRC)/test/e2e_nested.sh
+.PHONY: erplibre_home_e2e_nested
+erplibre_home_e2e_nested:
+	@$(ERPLIBRE_HOME_EXT_SRC)/test/e2e_nested.sh
 
 # ---------- Translator stack (STT + LLM) ----------
 
@@ -229,7 +229,7 @@ streamdeck_translator_install_ollama:
 	@echo ""
 	@echo "Done. Verify: make streamdeck_translator_doctor"
 
-VOSK_CACHE_DIR    := $(HOME)/.cache/streamdeck-tiler
+VOSK_CACHE_DIR    := $(HOME)/.cache/erplibre-home
 VOSK_FR_URL       := https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip
 
 .PHONY: streamdeck_translator_install_vosk_fr
@@ -257,21 +257,21 @@ streamdeck_translator_install_typing:
 	@echo "Done. Re-login for the input group to take effect."
 	@echo "Verify: make streamdeck_translator_doctor"
 
-STREAMDECK_TILER_DBUS_DEST    := org.gnome.Shell
-STREAMDECK_TILER_DBUS_PATH    := /org/gnome/Shell/Extensions/StreamDeckTiler
-STREAMDECK_TILER_DBUS_IFACE   := org.gnome.Shell.Extensions.StreamDeckTiler
+ERPLIBRE_HOME_DBUS_DEST    := org.gnome.Shell
+ERPLIBRE_HOME_DBUS_PATH    := /org/gnome/Shell/Extensions/ERPLibreHome
+ERPLIBRE_HOME_DBUS_IFACE   := org.gnome.Shell.Extensions.ERPLibreHome
 
 # Hot-reload via the extension's own D-Bus HotReload method (UUID-rename
 # trick performed from inside the shell JS context, where
 # Main.extensionManager.createExtensionObject + loadExtension are
 # accessible). Requires the extension's updated code to already be running
 # — on first install, re-login once before using this target.
-.PHONY: streamdeck_tiler_reload
-streamdeck_tiler_reload: streamdeck_tiler_install_extension
+.PHONY: erplibre_home_reload
+erplibre_home_reload: erplibre_home_install_extension
 	@out=$$(gdbus call --session \
-		--dest "$(STREAMDECK_TILER_DBUS_DEST)" \
-		--object-path "$(STREAMDECK_TILER_DBUS_PATH)" \
-		--method "$(STREAMDECK_TILER_DBUS_IFACE).HotReload" 2>&1); \
+		--dest "$(ERPLIBRE_HOME_DBUS_DEST)" \
+		--object-path "$(ERPLIBRE_HOME_DBUS_PATH)" \
+		--method "$(ERPLIBRE_HOME_DBUS_IFACE).HotReload" 2>&1); \
 	echo "$$out"; \
 	case "$$out" in \
 		"('',)"|*UnknownMethod*|*error*|*Erreur*) \
@@ -280,27 +280,27 @@ streamdeck_tiler_reload: streamdeck_tiler_install_extension
 			echo "First install requires one re-login to register the method."; \
 			exit 1 ;; \
 	esac; \
-	echo "Hot-reloaded. Run streamdeck_tiler_reload_clean (optionally after"; \
+	echo "Hot-reloaded. Run erplibre_home_reload_clean (optionally after"; \
 	echo "re-login) to restore the main UUID."
 
-.PHONY: streamdeck_tiler_reload_clean
-streamdeck_tiler_reload_clean:
+.PHONY: erplibre_home_reload_clean
+erplibre_home_reload_clean:
 	@# Best-effort call to HotExit (works only if a temp instance is running)
 	-@gdbus call --session \
-		--dest "$(STREAMDECK_TILER_DBUS_DEST)" \
-		--object-path "$(STREAMDECK_TILER_DBUS_PATH)" \
-		--method "$(STREAMDECK_TILER_DBUS_IFACE).HotExit" 2>/dev/null || true
+		--dest "$(ERPLIBRE_HOME_DBUS_DEST)" \
+		--object-path "$(ERPLIBRE_HOME_DBUS_PATH)" \
+		--method "$(ERPLIBRE_HOME_DBUS_IFACE).HotExit" 2>/dev/null || true
 	@sleep 1
 	@# Fallback: purge any leftover temp dirs on disk + re-enable main UUID
-	@for d in "$(STREAMDECK_TILER_EXT_BASE_DIR)"/$(STREAMDECK_TILER_EXT_TMP_PREFIX)*@technolibre.ca; do \
+	@for d in "$(ERPLIBRE_HOME_EXT_BASE_DIR)"/$(ERPLIBRE_HOME_EXT_TMP_PREFIX)*@technolibre.ca; do \
 		[ -d "$$d" ] || continue; \
 		uuid=$$(basename "$$d"); \
 		gnome-extensions disable "$$uuid" 2>/dev/null || true; \
 		rm -rf "$$d"; \
 		echo "Removed $$uuid"; \
 	done
-	@gnome-extensions enable "$(STREAMDECK_TILER_EXT_UUID)" 2>/dev/null || true
-	@echo "Re-enabled $(STREAMDECK_TILER_EXT_UUID)."
+	@gnome-extensions enable "$(ERPLIBRE_HOME_EXT_UUID)" 2>/dev/null || true
+	@echo "Re-enabled $(ERPLIBRE_HOME_EXT_UUID)."
 	@echo "Before re-login: main UUID runs cached (old) code."
 	@echo "After re-login:  main UUID loads the latest installed source."
 
@@ -399,7 +399,7 @@ streamdeck_gallery:
 # ---------- Claude Code hooks ----------
 
 CLAUDE_HOOKS_INSTALLER := \
-	$(STREAMDECK_TILER_EXT_SRC)/hooks/install_claude_hooks.py
+	$(ERPLIBRE_HOME_EXT_SRC)/hooks/install_claude_hooks.py
 
 .PHONY: claude_install_hooks
 claude_install_hooks:
@@ -413,8 +413,8 @@ claude_install_hooks_dry_run:
 claude_uninstall_hooks:
 	@$(CLAUDE_HOOKS_INSTALLER) --remove
 
-# ---------- streamdeck-tiler i18n ----------
+# ---------- erplibre-home i18n ----------
 
-.PHONY: streamdeck_tiler_compile_locale
-streamdeck_tiler_compile_locale:
-	@python3 $(STREAMDECK_TILER_EXT_SRC)/po/compile_locales.py
+.PHONY: erplibre_home_compile_locale
+erplibre_home_compile_locale:
+	@python3 $(ERPLIBRE_HOME_EXT_SRC)/po/compile_locales.py

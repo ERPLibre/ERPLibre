@@ -2,7 +2,7 @@
  * Tracks running mpv instances launched by the film indicator.
  *
  * Each mpv process gets a state file at
- * `$XDG_STATE_HOME/streamdeck-tiler/mpv/{pid}.json` containing:
+ * `$XDG_STATE_HOME/erplibre-home/mpv/{pid}.json` containing:
  *   {
  *     pid:          number,
  *     ipc_socket:   "/run/user/.../sdt-mpv-<id>.sock",
@@ -17,7 +17,7 @@
  * `cycle pause`, `quit` etc. to the running process.
  */
 
-export const STATE_SUBDIR = 'streamdeck-tiler/mpv';
+export const STATE_SUBDIR = 'erplibre-home/mpv';
 
 let _gjs = null;
 async function _loadGjs() {

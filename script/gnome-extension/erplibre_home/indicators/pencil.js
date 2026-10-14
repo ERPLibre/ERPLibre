@@ -594,7 +594,7 @@ try {
             _mkBtn(label, onClick) {
                 const btn = new St.Button({
                     label,
-                    style_class: 'streamdeck-tiler-btn',
+                    style_class: 'erplibre-home-btn',
                     style: 'padding: 2px 6px;',
                 });
                 btn.connect('clicked', () => {

@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-UUID="streamdeck-tiler@technolibre.ca"
+UUID="erplibre-home@technolibre.ca"
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TIMEOUT_SEC="${TIMEOUT_SEC:-40}"
 
@@ -34,7 +34,7 @@ done
 
 # Mutter puts its Wayland socket in XDG_RUNTIME_DIR, and a Unix socket
 # path is capped at 108 bytes: the sandbox stays under a short /tmp path.
-SANDBOX="$(mktemp -d /tmp/sdt-e2e.XXXXXX)"
+SANDBOX="$(mktemp -d /tmp/erh-e2e.XXXXXX)"
 chmod 700 "$SANDBOX"
 mkdir -p \
     "$SANDBOX/data/gnome-shell/extensions" \
@@ -78,12 +78,12 @@ gsettings set org.gnome.shell enabled-extensions "['$UUID']"
 
 LOG="$SANDBOX/shell.log"
 gnome-shell --headless --virtual-monitor 1280x800 --no-x11 \
-    --wayland-display sdt-e2e >"$LOG" 2>&1 &
+    --wayland-display erh-e2e >"$LOG" 2>&1 &
 SHELL_PID=$!
 
 fail() {
     echo "fail: $1" >&2
-    grep -E 'StreamDeckTiler|JS ERROR' "$LOG" >&2 || true
+    grep -E 'ERPLibreHome|JS ERROR' "$LOG" >&2 || true
     exit 2
 }
 
@@ -97,8 +97,8 @@ for ((i = 0; i < TIMEOUT_SEC; i++)); do
             "$UUID" 2>/dev/null || true)"
     if [[ "$info" == *"'state': <1.0>"* ]] && gdbus call --session \
             --dest org.gnome.Shell \
-            --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-            --method org.gnome.Shell.Extensions.StreamDeckTiler.DebugClaudeIndex \
+            --object-path /org/gnome/Shell/Extensions/ERPLibreHome \
+            --method org.gnome.Shell.Extensions.ERPLibreHome.DebugClaudeIndex \
             >/dev/null 2>&1; then
         break
     fi
@@ -110,7 +110,7 @@ done
 # extension.js logs "mount <name> failed" for an indicator whose
 # constructor threw, and keeps the others running: ACTIVE alone does
 # not prove the panel is whole.
-if grep -E '\[StreamDeckTiler\] mount .* failed' "$LOG" >&2; then
+if grep -E '\[ERPLibreHome\] mount .* failed' "$LOG" >&2; then
     fail "an indicator failed to mount"
 fi
 

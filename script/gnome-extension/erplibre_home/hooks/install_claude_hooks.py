@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Idempotent installer for the streamdeck-tiler Claude Code hooks.
+"""Idempotent installer for the erplibre-home Claude Code hooks.
 
 Merges the absolute hook command into `~/.claude/settings.json` for the
 five events the GNOME extension reacts to. Re-running the script is a
@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 
-HOOK_PATH = Path(__file__).resolve().parent / "streamdeck-tiler-hook.py"
+HOOK_PATH = Path(__file__).resolve().parent / "erplibre-home-hook.py"
 SETTINGS = Path.home() / ".claude" / "settings.json"
 INSTALL_EVENTS = (
     "SessionStart",
@@ -38,7 +38,7 @@ INSTALL_EVENTS = (
 # tool boundaries and made interrupted Stops look like resumed work.
 REMOVE_EVENTS = INSTALL_EVENTS + ("PostToolUse", "SubagentStop",
                                   "PreCompact")
-TAG = "streamdeck-tiler"
+TAG = "erplibre-home"
 
 
 def load() -> dict:
@@ -127,7 +127,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="Show what would change, write nothing.")
     ap.add_argument("--remove", action="store_true",
-                    help="Remove the streamdeck-tiler hook entries.")
+                    help="Remove the erplibre-home hook entries.")
     args = ap.parse_args()
 
     if not HOOK_PATH.exists():

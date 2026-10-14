@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch a nested gnome-shell with the streamdeck-tiler extension
+# Launch a nested gnome-shell with the erplibre-home extension
 # enabled in an isolated XDG sandbox. Lets the developer reload
 # extension code freely (close the window to wipe everything) without
 # touching the parent Wayland session.
@@ -13,11 +13,11 @@
 # The nested shell still shares the user's session bus for some
 # services (notifications, etc.) — that's normal. Extension state,
 # dconf, and the extensions directory are isolated under
-# $XDG_RUNTIME_DIR/streamdeck-tiler-nested/.
+# $XDG_RUNTIME_DIR/erplibre-home-nested/.
 
 set -euo pipefail
 
-UUID="streamdeck-tiler@technolibre.ca"
+UUID="erplibre-home@technolibre.ca"
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if ! command -v gnome-shell >/dev/null 2>&1; then
@@ -29,7 +29,7 @@ if ! command -v dbus-run-session >/dev/null 2>&1; then
     exit 1
 fi
 
-SANDBOX="${XDG_RUNTIME_DIR:-/tmp}/streamdeck-tiler-nested"
+SANDBOX="${XDG_RUNTIME_DIR:-/tmp}/erplibre-home-nested"
 mkdir -p \
     "$SANDBOX/data/gnome-shell/extensions" \
     "$SANDBOX/config" \
@@ -65,6 +65,6 @@ export SHELL_ARGS
 
 dbus-run-session -- bash -c '
     gsettings set org.gnome.shell disable-user-extensions false || true
-    gsettings set org.gnome.shell enabled-extensions "['"'"'streamdeck-tiler@technolibre.ca'"'"']" || true
+    gsettings set org.gnome.shell enabled-extensions "['"'"'erplibre-home@technolibre.ca'"'"']" || true
     exec gnome-shell $SHELL_ARGS
 '

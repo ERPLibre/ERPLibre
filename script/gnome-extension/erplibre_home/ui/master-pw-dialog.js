@@ -12,7 +12,7 @@ export const MasterPwDialog = GObject.registerClass(
 {GTypeName: `SDT_MasterPwDialog_${_GTYPE_SUFFIX}`},
 class MasterPwDialog extends ModalDialog {
     _init({db, onConfirm, onCancel}) {
-        super._init({styleClass: 'streamdeck-tiler-dialog'});
+        super._init({styleClass: 'erplibre-home-dialog'});
         this._onConfirm = onConfirm;
         this._onCancel = onCancel;
 

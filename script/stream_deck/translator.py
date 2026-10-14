@@ -124,7 +124,7 @@ class WhisperCppBackend(STTBackend):
         local_models = os.path.expanduser(
             "~/.local/share/whisper.cpp/models"
         )
-        cache_models = os.path.expanduser("~/.cache/streamdeck-tiler")
+        cache_models = os.path.expanduser("~/.cache/erplibre-home")
         candidates = [
             os.path.join(local_models, f"ggml-{size}.bin"),
             os.path.join(cache_models, "whisper.bin"),
@@ -210,7 +210,7 @@ class VoskBackend(STTBackend):
         except ImportError:
             self.available = False
         self.model_path = os.path.expanduser(
-            "~/.cache/streamdeck-tiler/vosk-model"
+            "~/.cache/erplibre-home/vosk-model"
         )
         if not os.path.isdir(self.model_path):
             self.available = False
@@ -648,7 +648,7 @@ DEFAULT_PROMPTS = _default_prompts()
 def _load_settings():
     import json
     settings_path = os.path.expanduser(
-        "~/.config/streamdeck-tiler/settings.json"
+        "~/.config/erplibre-home/settings.json"
     )
     try:
         with open(settings_path, encoding="utf-8") as f:
@@ -685,7 +685,7 @@ def llm_model_preference():
 
 
 HISTORY_FILE = os.path.expanduser(
-    "~/.config/streamdeck-tiler/translator-history.json"
+    "~/.config/erplibre-home/translator-history.json"
 )
 HISTORY_MAX = 20
 
@@ -829,9 +829,9 @@ def focused_window_class():
                 "gdbus", "call", "--session",
                 "--dest", "org.gnome.Shell",
                 "--object-path",
-                "/org/gnome/Shell/Extensions/StreamDeckTiler",
+                "/org/gnome/Shell/Extensions/ERPLibreHome",
                 "--method",
-                "org.gnome.Shell.Extensions.StreamDeckTiler"
+                "org.gnome.Shell.Extensions.ERPLibreHome"
                 ".GetFocusedWindowClass",
             ],
             capture_output=True, text=True, timeout=2,

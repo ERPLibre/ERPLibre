@@ -8,10 +8,10 @@ probe that will surface the root cause.
 
 | Path | Source |
 | --- | --- |
-| `journalctl --user --user-unit gnome-shell-wayland.service -f` | Live stderr from the GJS code (every `console.log(...)` lands here). Filter with `grep StreamDeckTiler`. |
-| `~/.local/state/streamdeck-tiler/log.jsonl` | JSONL append-only log written by `lib/log.js` (subprocess errors, mpv launches, hook failures). The Activity log page in prefs reads the last 200 lines. |
-| `~/.local/state/streamdeck-tiler/claude/*.json` | One file per Claude session, written by `hooks/streamdeck-tiler-hook.py`. `cat` them to see the timestamps the indicator drives off. |
-| `~/.local/state/streamdeck-tiler/mpv/*.json` | One file per running mpv launched from the deck. Removed automatically when the player exits. |
+| `journalctl --user --user-unit gnome-shell-wayland.service -f` | Live stderr from the GJS code (every `console.log(...)` lands here). Filter with `grep ERPLibreHome`. |
+| `~/.local/state/erplibre-home/log.jsonl` | JSONL append-only log written by `lib/log.js` (subprocess errors, mpv launches, hook failures). The Activity log page in prefs reads the last 200 lines. |
+| `~/.local/state/erplibre-home/claude/*.json` | One file per Claude session, written by `hooks/erplibre-home-hook.py`. `cat` them to see the timestamps the indicator drives off. |
+| `~/.local/state/erplibre-home/mpv/*.json` | One file per running mpv launched from the deck. Removed automatically when the player exits. |
 | Stream Deck driver: stderr of `script/stream_deck/erplibre_controller.py` | Open the Activity Monitor page in prefs, or run the controller from a terminal to see button-press errors. |
 
 ## D-Bus introspection
@@ -19,7 +19,7 @@ probe that will surface the root cause.
 ```
 gdbus introspect --session \
     --dest org.gnome.Shell \
-    --object-path /org/gnome/Shell/Extensions/StreamDeckTiler
+    --object-path /org/gnome/Shell/Extensions/ERPLibreHome
 ```
 
 Read-only probes that never break state:
@@ -28,18 +28,18 @@ Read-only probes that never break state:
 # Dump the indexed Claude sessions.
 gdbus call --session \
     --dest org.gnome.Shell \
-    --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-    --method org.gnome.Shell.Extensions.StreamDeckTiler.DebugClaudeIndex
+    --object-path /org/gnome/Shell/Extensions/ERPLibreHome \
+    --method org.gnome.Shell.Extensions.ERPLibreHome.DebugClaudeIndex
 
 # List configured paths / instances / media / windows.
 gdbus call --session \
     --dest org.gnome.Shell \
-    --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-    --method org.gnome.Shell.Extensions.StreamDeckTiler.ListPaths
+    --object-path /org/gnome/Shell/Extensions/ERPLibreHome \
+    --method org.gnome.Shell.Extensions.ERPLibreHome.ListPaths
 gdbus call --session \
     --dest org.gnome.Shell \
-    --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-    --method org.gnome.Shell.Extensions.StreamDeckTiler.ListWindows
+    --object-path /org/gnome/Shell/Extensions/ERPLibreHome \
+    --method org.gnome.Shell.Extensions.ERPLibreHome.ListWindows
 ```
 
 Force a hot reload after editing source:
@@ -47,8 +47,8 @@ Force a hot reload after editing source:
 ```
 gdbus call --session \
     --dest org.gnome.Shell \
-    --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-    --method org.gnome.Shell.Extensions.StreamDeckTiler.HotReload
+    --object-path /org/gnome/Shell/Extensions/ERPLibreHome \
+    --method org.gnome.Shell.Extensions.ERPLibreHome.HotReload
 ```
 
 ## Common issues
@@ -56,7 +56,7 @@ gdbus call --session \
 ### Pencil badge stays grey, never goes green / yellow / red
 - **Hooks not installed**: run `make claude_install_hooks` then restart
   Claude. Verify with `cat ~/.claude/settings.json | jq .hooks`.
-- **State files never appear**: check `ls -la ~/.local/state/streamdeck-tiler/claude/` after a Claude turn. If empty, the hook is failing — run it manually with the env it gets from Claude.
+- **State files never appear**: check `ls -la ~/.local/state/erplibre-home/claude/` after a Claude turn. If empty, the hook is failing — run it manually with the env it gets from Claude.
 - **`enable-claude-state-watch` is off**: re-enable in prefs.
 
 ### Click on a session row focuses the wrong terminal
@@ -81,15 +81,15 @@ gdbus call --session \
 
 ### Top-bar indicator missing after install
 - `gnome-extensions list --enabled` should include
-  `streamdeck-tiler@technolibre.ca`. If not:
-  `make streamdeck_tiler_enable_extension`.
+  `erplibre-home@technolibre.ca`. If not:
+  `make erplibre_home_enable_extension`.
 - Wayland only loads new ES modules after a session log out / log in.
-  Use the nested dev shell (`make streamdeck_tiler_dev_nested`) for
+  Use the nested dev shell (`make erplibre_home_dev_nested`) for
   fast iteration.
 
 ### Top-bar indicator labels stuck in English
 - Locales aren't compiled. Run
-  `make streamdeck_tiler_compile_locale` (the install target chains
+  `make erplibre_home_compile_locale` (the install target chains
   it automatically since 2026-04).
 - `LANG` does not start with `fr` / your target language; verify with
   `echo $LANG`.
@@ -101,7 +101,7 @@ gdbus call --session \
 
 ### Stream Deck device not detected
 - `lsusb` should list the Elgato vendor (0fd9). If yes but the
-  controller fails, check `~/.local/state/streamdeck-tiler/log.jsonl`
+  controller fails, check `~/.local/state/erplibre-home/log.jsonl`
   for `usb` errors. udev permissions are the usual culprit; reinstall
   the udev rule from `script/stream_deck/INSTALL.md`.
 
@@ -113,26 +113,26 @@ gdbus call --session \
 
 ```
 # Clear Claude session state files.
-rm -rf ~/.local/state/streamdeck-tiler/claude/
+rm -rf ~/.local/state/erplibre-home/claude/
 
 # Clear the activity log.
-truncate -s 0 ~/.local/state/streamdeck-tiler/log.jsonl
+truncate -s 0 ~/.local/state/erplibre-home/log.jsonl
 
 # Reset GSettings to defaults (will lose the catalogues).
-dconf reset -f /org/gnome/shell/extensions/streamdeck-tiler/
+dconf reset -f /org/gnome/shell/extensions/erplibre-home/
 
 # Force a full reload.
-make streamdeck_tiler_uninstall_extension
-make streamdeck_tiler_install_extension
-make streamdeck_tiler_enable_extension
+make erplibre_home_uninstall_extension
+make erplibre_home_install_extension
+make erplibre_home_enable_extension
 ```
 
 ## When all else fails
 
 Open an issue with:
-- `journalctl --user --user-unit gnome-shell-wayland.service -n 200 | grep StreamDeckTiler`
+- `journalctl --user --user-unit gnome-shell-wayland.service -n 200 | grep ERPLibreHome`
 - `gdbus call --session --dest org.gnome.Shell ... DebugClaudeIndex`
 - The contents of one
-  `~/.local/state/streamdeck-tiler/claude/*.json` if Claude badges
+  `~/.local/state/erplibre-home/claude/*.json` if Claude badges
   misbehave.
-- `gnome-extensions info streamdeck-tiler@technolibre.ca`.
+- `gnome-extensions info erplibre-home@technolibre.ca`.

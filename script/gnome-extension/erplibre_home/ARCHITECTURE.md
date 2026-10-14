@@ -2,14 +2,14 @@
 
 How the GNOME extension, the Stream Deck driver and Claude Code hooks
 talk to each other. Everything is local: no daemons, no network, no
-persistent storage outside `$XDG_STATE_HOME/streamdeck-tiler/`.
+persistent storage outside `$XDG_STATE_HOME/erplibre-home/`.
 
 ## Process map
 
 ```
 +-------------------+    JSONL files     +---------------------+
 |  Claude Code      | -----------------> |  $XDG_STATE_HOME/   |
-|  (claude binary)  |                    |  streamdeck-tiler/  |
+|  (claude binary)  |                    |  erplibre-home/  |
 |                   |     fires hooks    |  claude/{sid}.json  |
 +--------+----------+                    +---------+-----------+
          |                                          |
@@ -32,12 +32,12 @@ persistent storage outside `$XDG_STATE_HOME/streamdeck-tiler/`.
 
 ## Data flow: Claude session → coloured badge
 
-1. **`claude` runs a hook**. `hooks/streamdeck-tiler-hook.py` wakes
+1. **`claude` runs a hook**. `hooks/erplibre-home-hook.py` wakes
    on every `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `Stop`,
    `Notification`, `SessionEnd` event.
 2. **Hook writes state**. The hook stamps the matching field
    (`ts_active`, `ts_tool`, `ts_stop`, `ts_notification`) in
-   `$XDG_STATE_HOME/streamdeck-tiler/claude/{session_id}.json`.
+   `$XDG_STATE_HOME/erplibre-home/claude/{session_id}.json`.
 3. **Hook captures the focused window id** (when SessionStart /
    UserPromptSubmit fires) by calling the extension's
    `GetFocusedWindowId` D-Bus method, so the row "Click to focus
@@ -60,11 +60,11 @@ persistent storage outside `$XDG_STATE_HOME/streamdeck-tiler/`.
 
 | Layer | Code | Notes |
 | --- | --- | --- |
-| Hooks | `hooks/streamdeck-tiler-hook.py` | One Python script, six events. Idempotent per `(session_id, event)`. |
-| State | `$XDG_STATE_HOME/streamdeck-tiler/claude/{sid}.json` | Plain JSON, atomic writes. |
+| Hooks | `hooks/erplibre-home-hook.py` | One Python script, six events. Idempotent per `(session_id, event)`. |
+| State | `$XDG_STATE_HOME/erplibre-home/claude/{sid}.json` | Plain JSON, atomic writes. |
 | Watcher | `lib/claude-state.js` | `parseStateEntry`, `indexSessions`. Pure helpers, unit-tested. |
 | Indicator | `indicators/pencil.js` | Lazy import so node tests can read `lib/`. |
-| D-Bus | `extension.js` | Interface `org.gnome.Shell.Extensions.StreamDeckTiler` exposes `FocusClaudeSession`, `GetFocusedWindowId`, `AcceptClaudeSession`, `SetClaudeSessionWindow`, `KillClaudeSession`, `RenameClaudeSession`, `DebugClaudeIndex`, `ListMpvSessions`, `MpvSendCommand`, `TileWindow`, `OpenPath`, `OpenMedia`, etc. |
+| D-Bus | `extension.js` | Interface `org.gnome.Shell.Extensions.ERPLibreHome` exposes `FocusClaudeSession`, `GetFocusedWindowId`, `AcceptClaudeSession`, `SetClaudeSessionWindow`, `KillClaudeSession`, `RenameClaudeSession`, `DebugClaudeIndex`, `ListMpvSessions`, `MpvSendCommand`, `TileWindow`, `OpenPath`, `OpenMedia`, etc. |
 | Driver | `script/stream_deck/game_tiler.py` | Python streamdeck library, reads the same state directories, calls back into the extension over D-Bus. |
 
 ## D-Bus interface
@@ -72,7 +72,7 @@ persistent storage outside `$XDG_STATE_HOME/streamdeck-tiler/`.
 ```
 gdbus introspect --session \
   --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler
+  --object-path /org/gnome/Shell/Extensions/ERPLibreHome
 ```
 
 Used by:
@@ -85,7 +85,7 @@ Used by:
 ## Hot reload
 
 `HotReload` clones the source folder under
-`streamdeck-tiler-reload-{ts}@technolibre.ca`, calls
+`erplibre-home-reload-{ts}@technolibre.ca`, calls
 `gnome-extensions enable` on the new UUID and disables the old one.
 Each indicator class registers a per-process random `GTypeName`
 suffix so the second load does not collide with GObject's
@@ -93,7 +93,7 @@ process-wide type table.
 
 ## Settings + migrations
 
-- `Gio.Settings(schema_id='org.gnome.shell.extensions.streamdeck-tiler')`.
+- `Gio.Settings(schema_id='org.gnome.shell.extensions.erplibre-home')`.
 - Schema in `schemas/*.gschema.xml`, compiled at install via
   `glib-compile-schemas`.
 - Migrations in `lib/migrations.js`, runner exits on first failed
@@ -104,7 +104,7 @@ process-wide type table.
 - Source strings in JS through `_()` (`lib/i18n.js` thin wrapper
   over the GNOME extension's `gettext`).
 - Catalogues under `po/{lang}.po`, compiled to
-  `locale/{lang}/LC_MESSAGES/streamdeck-tiler.mo` at install.
+  `locale/{lang}/LC_MESSAGES/erplibre-home.mo` at install.
 - Locale resolution comes from the system `LANG`; the
   `gettext-domain` field in `metadata.json` ties it together.
 

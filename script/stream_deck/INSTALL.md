@@ -167,9 +167,9 @@ des prérequis.
 <!-- [end] -->
 
 <!-- [en] -->
-## Stream Deck Tiler GNOME extension hooks
+## ERPLibre Home GNOME extension hooks
 <!-- [fr] -->
-## Hooks de l'extension GNOME Stream Deck Tiler
+## Hooks de l'extension GNOME ERPLibre Home
 <!-- [end] -->
 
 <!-- [en] -->

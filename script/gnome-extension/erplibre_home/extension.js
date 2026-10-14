@@ -1,5 +1,5 @@
 /**
- * Stream Deck Tiler — GNOME Shell Extension
+ * ERPLibre Home — GNOME Shell Extension
  *
  * Registry-based: each panel button is an indicator module under
  * indicators/. extension.js wires the D-Bus interface, instantiates
@@ -40,13 +40,13 @@ import {indicatorDescriptor as summaryDescriptor}
     from './indicators/summary.js';
 
 const TRACKER_UUID = 'tracker@aliakseiz.github.com';
-const MAIN_UUID = 'streamdeck-tiler@technolibre.ca';
-const RELOAD_UUID_PREFIX = 'streamdeck-tiler-reload-';
+const MAIN_UUID = 'erplibre-home@technolibre.ca';
+const RELOAD_UUID_PREFIX = 'erplibre-home-reload-';
 const EXTENSION_TYPE_PER_USER = 2;
 
 const IFACE_XML = `
 <node>
-  <interface name="org.gnome.Shell.Extensions.StreamDeckTiler">
+  <interface name="org.gnome.Shell.Extensions.ERPLibreHome">
     <method name="TileWindow">
       <arg type="i" direction="in" name="gridCols"/>
       <arg type="i" direction="in" name="gridRows"/>
@@ -167,7 +167,7 @@ const IFACE_XML = `
   </interface>
 </node>`;
 
-export default class StreamDeckTilerExtension extends Extension {
+export default class ERPLibreHomeExtension extends Extension {
     #dbus = null;
     #registrationId = 0;
     #indicators = new Map();
@@ -180,7 +180,7 @@ export default class StreamDeckTilerExtension extends Extension {
         this.#dbus = Gio.DBusExportedObject.wrapJSObject(IFACE_XML, this);
         this.#registrationId = this.#dbus.export(
             Gio.DBus.session,
-            '/org/gnome/Shell/Extensions/StreamDeckTiler');
+            '/org/gnome/Shell/Extensions/ERPLibreHome');
 
         this.#settings = this.getSettings();
         setGettext((s) => this.gettext ? this.gettext(s) : s);
@@ -189,9 +189,9 @@ export default class StreamDeckTilerExtension extends Extension {
         // have just populated). The async legacy-JSON migration
         // can stay fire-and-forget.
         runSchemaMigrations(this.#settings, m =>
-            console.log(`[StreamDeckTiler] schema: ${m}`));
+            console.log(`[ERPLibreHome] schema: ${m}`));
         runMigrationGjs(this.#settings).catch(e =>
-            console.log(`[StreamDeckTiler] migration failed: ${e.message}`));
+            console.log(`[ERPLibreHome] migration failed: ${e.message}`));
 
         this._syncDebounce = new Debouncer({delayMs: 5000,
             scheduler: (fn, ms) =>
@@ -216,7 +216,7 @@ export default class StreamDeckTilerExtension extends Extension {
         if (this.#settings.get_boolean('enable-claude-state-watch')) {
             this.#claudeState = new ClaudeStateWatcher();
             this.#claudeState.start().catch(e =>
-                console.log(`[StreamDeckTiler] claude-state: ${e.message}`));
+                console.log(`[ERPLibreHome] claude-state: ${e.message}`));
             this._notifySeen = new Map(); // sid -> last notif ts (ms)
             this.#claudeState.subscribe(idx =>
                 this._maybeNotifyAwaiting(idx));
@@ -247,7 +247,7 @@ export default class StreamDeckTilerExtension extends Extension {
             () => this._reorderIndicators());
         this.#signalIds.push(boxSig);
 
-        console.log('[StreamDeckTiler] enabled');
+        console.log('[ERPLibreHome] enabled');
     }
 
     /**
@@ -260,7 +260,7 @@ export default class StreamDeckTilerExtension extends Extension {
      */
     openPreferences() {
         try {
-            const title = this.metadata?.name || 'Stream Deck Tiler';
+            const title = this.metadata?.name || 'ERPLibre Home';
             const ts = global.get_current_time?.() || 0;
             const windows = global.display?.list_all_windows?.() || [];
             for (const w of windows) {
@@ -277,12 +277,12 @@ export default class StreamDeckTilerExtension extends Extension {
                     return;
                 } catch (e) {
                     console.log(
-                        `[StreamDeckTiler] focus prefs failed: ${e.message}`);
+                        `[ERPLibreHome] focus prefs failed: ${e.message}`);
                 }
             }
         } catch (e) {
             console.log(
-                `[StreamDeckTiler] prefs lookup failed: ${e.message}`);
+                `[ERPLibreHome] prefs lookup failed: ${e.message}`);
         }
         super.openPreferences();
     }
@@ -298,7 +298,7 @@ export default class StreamDeckTilerExtension extends Extension {
         this._syncDebounce = null;
         for (const ind of this.#indicators.values()) {
             try { ind.destroy(); } catch (e) {
-                console.log(`[StreamDeckTiler] destroy ${e.message}`);
+                console.log(`[ERPLibreHome] destroy ${e.message}`);
             }
         }
         this.#indicators.clear();
@@ -307,7 +307,7 @@ export default class StreamDeckTilerExtension extends Extension {
         this.#claudeState = null;
         this.#registry = null;
         this.#settings = null;
-        console.log('[StreamDeckTiler] disabled');
+        console.log('[ERPLibreHome] disabled');
     }
 
     _buildIndicators() {
@@ -355,7 +355,7 @@ export default class StreamDeckTilerExtension extends Extension {
             Main.panel.addToStatusArea(role, ind, -1, box);
             this.#indicators.set(id, ind);
         } catch (e) {
-            console.log(`[StreamDeckTiler] mount ${id} failed: ${e.message}`);
+            console.log(`[ERPLibreHome] mount ${id} failed: ${e.message}`);
         }
     }
 
@@ -381,20 +381,20 @@ export default class StreamDeckTilerExtension extends Extension {
         if (!repo) return;
         this._syncDebounce.bump(async () => {
             const obj = exportSettingsAsObj(this.#settings);
-            const file = Gio.File.new_for_path(`${repo}/streamdeck-tiler.json`);
+            const file = Gio.File.new_for_path(`${repo}/erplibre-home.json`);
             try {
                 file.replace_contents(
                     new TextEncoder().encode(JSON.stringify(obj, null, 2)),
                     null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
                 await gitCommitPush(repo, GLib.get_host_name());
             } catch (e) {
-                console.log(`[StreamDeckTiler] sync failed: ${e.message}`);
+                console.log(`[ERPLibreHome] sync failed: ${e.message}`);
             }
         });
     }
 
     async _syncImport(repo) {
-        const file = Gio.File.new_for_path(`${repo}/streamdeck-tiler.json`);
+        const file = Gio.File.new_for_path(`${repo}/erplibre-home.json`);
         if (!file.query_exists(null)) return;
         try {
             const [, contents] = file.load_contents(null);
@@ -403,7 +403,7 @@ export default class StreamDeckTilerExtension extends Extension {
                 await import('./lib/settings.js');
             await importSettingsFromObj(this.#settings, obj);
         } catch (e) {
-            console.log(`[StreamDeckTiler] sync import failed: ${e.message}`);
+            console.log(`[ERPLibreHome] sync import failed: ${e.message}`);
         }
     }
 
@@ -705,7 +705,7 @@ export default class StreamDeckTilerExtension extends Extension {
             // async, do a minimal sync read via Gio here.
             const base = GLib.getenv('XDG_STATE_HOME')
                 || `${GLib.get_home_dir()}/.local/state`;
-            const path = `${base}/streamdeck-tiler/mpv/${id}.json`;
+            const path = `${base}/erplibre-home/mpv/${id}.json`;
             if (!GLib.file_test(path, GLib.FileTest.EXISTS)) return false;
             const [ok, contents] = GLib.file_get_contents(path);
             if (!ok) return false;
@@ -859,7 +859,7 @@ export default class StreamDeckTilerExtension extends Extension {
         if (!sid) return false;
         const base = GLib.getenv('XDG_STATE_HOME')
             || `${GLib.get_home_dir()}/.local/state`;
-        const dir = `${base}/streamdeck-tiler/claude`;
+        const dir = `${base}/erplibre-home/claude`;
         const path = `${dir}/${sid}.json`;
         try {
             GLib.mkdir_with_parents(dir, 0o700);
@@ -913,7 +913,7 @@ export default class StreamDeckTilerExtension extends Extension {
         if (!sid) return null;
         const base = GLib.getenv('XDG_STATE_HOME')
             || `${GLib.get_home_dir()}/.local/state`;
-        const path = `${base}/streamdeck-tiler/claude/${sid}.json`;
+        const path = `${base}/erplibre-home/claude/${sid}.json`;
         if (!GLib.file_test(path, GLib.FileTest.EXISTS)) return null;
         try {
             const [ok, contents] = GLib.file_get_contents(path);
