@@ -282,10 +282,14 @@ That is the first of five stages, run in order on the same VM:
    extension stays ACTIVE, and a second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
-   the venv, the unit and its settings, and leaves the extension linked,
-   enabled and ACTIVE;
+   the venv, the unit, its `graphical-session.target.wants` link and its
+   settings, `systemctl --user is-enabled` says `not-found`, and the
+   extension stays linked, enabled and ACTIVE;
 4. **uninstall**: `--uninstall` leaves neither link, nor UUID in
-   `enabled-extensions`, nor rule, nor venv, nor unit, nor settings;
+   `enabled-extensions`, nor rule, nor venv, nor unit, nor settings. Stage
+   3 already removed the deck service, so this stage only checks that a
+   full uninstall leaves it gone; no stage runs `--uninstall` on a
+   system that still has the unit;
 5. **reinstall**: the base again, then a reboot: the extension comes back
    ACTIVE with every indicator mounted, without the rule or the venv.
 
@@ -638,10 +642,14 @@ C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
    journal de l'unité), l'extension reste ACTIVE, et une seconde exécution
    ne change rien, unité et réglages compris ;
 3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle,
-   le venv, l'unité et ses réglages, et laisse l'extension liée, activée et
-   ACTIVE ;
+   le venv, l'unité, son lien `graphical-session.target.wants` et ses
+   réglages, `systemctl --user is-enabled` répond `not-found`, et
+   l'extension reste liée, activée et ACTIVE ;
 4. **uninstall** : `--uninstall` ne laisse ni lien, ni UUID dans
-   `enabled-extensions`, ni règle, ni venv, ni unité, ni réglages ;
+   `enabled-extensions`, ni règle, ni venv, ni unité, ni réglages.
+   L'étape 3 a déjà retiré le service du deck : celle-ci vérifie seulement
+   qu'une désinstallation complète le laisse parti ; aucune étape ne lance
+   `--uninstall` sur un système qui porte encore l'unité ;
 5. **reinstall** : la base de nouveau, puis un redémarrage : l'extension
    revient ACTIVE avec chaque indicateur monté, sans la règle ni le venv.
 

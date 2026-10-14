@@ -291,10 +291,14 @@ C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
    journal de l'unité), l'extension reste ACTIVE, et une seconde exécution
    ne change rien, unité et réglages compris ;
 3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle,
-   le venv, l'unité et ses réglages, et laisse l'extension liée, activée et
-   ACTIVE ;
+   le venv, l'unité, son lien `graphical-session.target.wants` et ses
+   réglages, `systemctl --user is-enabled` répond `not-found`, et
+   l'extension reste liée, activée et ACTIVE ;
 4. **uninstall** : `--uninstall` ne laisse ni lien, ni UUID dans
-   `enabled-extensions`, ni règle, ni venv, ni unité, ni réglages ;
+   `enabled-extensions`, ni règle, ni venv, ni unité, ni réglages.
+   L'étape 3 a déjà retiré le service du deck : celle-ci vérifie seulement
+   qu'une désinstallation complète le laisse parti ; aucune étape ne lance
+   `--uninstall` sur un système qui porte encore l'unité ;
 5. **reinstall** : la base de nouveau, puis un redémarrage : l'extension
    revient ACTIVE avec chaque indicateur monté, sans la règle ni le venv.
 
