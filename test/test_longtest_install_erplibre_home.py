@@ -19,8 +19,11 @@ fonctions pures en quelques millisecondes :
 """
 
 import configparser
+import contextlib
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -753,6 +756,664 @@ class LArbreDeTravail(unittest.TestCase):
 
     def test_a_directory_that_is_not_a_repository_is_refused(self):
         self.assertFalse(sd.arbre_propre(self.depot))
+
+
+SCRIPT = RACINE / "long_test/install_erplibre_home.py"
+SRC = SCRIPT.read_text(encoding="utf-8")
+
+
+def _mener(*args, maison):
+    """Le script mené dans ce processus, sur un HOME qui ne contient rien.
+    Rend (code, sortie).
+
+    Pas de sous-processus : un install_erplibre_home.py vivant est, pour les
+    tests des autres descentes que le lanceur unitaire passe en parallèle,
+    une descente en cours, et leur « --detruire » refuse alors de
+    travailler. Le verrou entre descentes n'est pas le sujet de ces tests :
+    autre_descente n'y voit rien.
+    """
+    from unittest import mock
+
+    import descente
+
+    sortie = io.StringIO()
+    with (
+        mock.patch.dict(os.environ, {"HOME": maison}),
+        mock.patch.object(descente, "autre_descente", lambda: []),
+        contextlib.redirect_stdout(sortie),
+    ):
+        code = sd.mener(list(args))
+    return code, sortie.getvalue()
+
+
+class LeScript(unittest.TestCase):
+    def test_it_is_executable(self):
+        """Le menu et le README l'appellent directement."""
+        self.assertTrue(os.access(SCRIPT, os.X_OK))
+
+    def test_the_desktop_comes_from_the_menu(self):
+        """Deux copies d'une installation de bureau divergent, et c'est
+        celle du test qui reste verte."""
+        self.assertIn('_qemu_erplibre_remote_cmd(None, desktop="gnome")', SRC)
+
+    def test_the_cache_flags_reach_the_creation(self):
+        self.assertIn("drapeaux_cache()", SRC)
+
+    def test_the_report_carries_the_pid_of_its_run(self):
+        self.assertIn('"pid": os.getpid()', SRC)
+        self.assertIn('"outil": OUTIL', SRC)
+
+    def test_vms_are_destroyed_in_process_without_a_prompt(self):
+        """detruire() demande « OUI » : entre deux systèmes, la course
+        n'attend personne. Il ne sert qu'à --detruire."""
+        self.assertEqual(SRC.count("detruire(famille"), 1)
+        self.assertLess(
+            SRC.index("if args.detruire:"), SRC.index("detruire(famille")
+        )
+        corps = SRC.split("for entree in systemes:\n        try:")[1]
+        self.assertIn("detruire_etage1(", corps)
+        self.assertIn("retirer_alias(", corps)
+
+    def test_every_bounded_call_is_caught(self):
+        """Un test lancé pour des heures rend un VERDICT, pas une trace :
+        chaque subprocess.run borné vit dans un « try »."""
+        import ast
+
+        arbre = ast.parse(SRC)
+        bornes = [
+            n.lineno
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Call)
+            and ast.unparse(n.func) == "subprocess.run"
+            and any(m.arg == "timeout" for m in n.keywords)
+        ]
+        self.assertGreaterEqual(len(bornes), 8)
+        couvertes = set()
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.Try):
+                for corps in noeud.body:
+                    for interne in ast.walk(corps):
+                        if hasattr(interne, "lineno"):
+                            couvertes.add(interne.lineno)
+        for ligne in bornes:
+            with self.subTest(ligne=ligne):
+                self.assertIn(ligne, couvertes)
+
+
+class LEssaiABlanc(unittest.TestCase):
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="sd-blanc-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+
+    def _rapports(self):
+        dossier = os.path.join(self.maison, ".erplibre/longtest")
+        return sorted(f for f in os.listdir(dossier) if f.endswith(".json"))
+
+    def test_the_whole_plan_creates_nothing(self):
+        code, sortie = _mener("--dry-run", maison=self.maison)
+        self.assertEqual(0, code, sortie)
+        self.assertIn("--dry-run", sortie)
+        for entree in sd.MATRICE:
+            with self.subTest(cle=sd.cle(entree)):
+                self.assertIn(sd.cle(entree), sortie)
+                self.assertIn(
+                    f"--distro {entree['distro']} --version"
+                    f" {entree['version']}",
+                    sortie,
+                )
+        for entree in sd.NON_SUPPORTES:
+            with self.subTest(cle=sd.cle(entree)):
+                self.assertIn(f"UNSUPPORTED : {entree['raison']}", sortie)
+        for attendu in (
+            "--desktop --gpu off --vcpus 2 --memory 4096 --disk-size 26G",
+            "ppc64le",
+        ):
+            self.assertIn(attendu, sortie)
+        # Les cinq étapes de chaque VM, leurs commandes et leurs contrôles.
+        for ligne in sd.decrire_etapes():
+            self.assertIn(ligne, sortie)
+        for option in ("--stream-deck", "--uninstall --stream-deck"):
+            self.assertIn("install_erplibre_home.sh " + option, sortie)
+        # Un essai qui n'écrit rien n'a aucune raison de demander sudo.
+        self.assertNotIn("sudo", sortie)
+        # Un rapport d'essai, nommé à part : dernier_rapport l'écarte.
+        rapports = self._rapports()
+        self.assertEqual(len(rapports), 1)
+        self.assertTrue(rapports[0].endswith("-dryrun.json"))
+
+    def test_the_report_holds_the_unsupported_lines(self):
+        _mener("--dry-run", maison=self.maison)
+        chemin = os.path.join(
+            self.maison, ".erplibre/longtest", self._rapports()[0]
+        )
+        with open(chemin, encoding="utf-8") as fh:
+            rapport = json.load(fh)
+        self.assertEqual(rapport["outil"], "install_erplibre_home")
+        self.assertTrue(rapport["dry_run"])
+        self.assertEqual(rapport["etages"], [])
+        self.assertEqual(
+            [s["verdict"] for s in rapport["systemes"]],
+            ["UNSUPPORTED"] * len(sd.NON_SUPPORTES),
+        )
+
+    def test_only_restricts_the_plan(self):
+        code, sortie = _mener(
+            "--dry-run", "--only", "fedora:43", "--extras", maison=self.maison
+        )
+        self.assertEqual(0, code, sortie)
+        self.assertIn("--distro fedora --version 43", sortie)
+        self.assertNotIn("--distro ubuntu", sortie)
+        # Les hors-champ ne sont annoncés que pour la matrice entière.
+        self.assertNotIn("debian:12", sortie)
+        self.assertIn("--extras ne vaut que pour ubuntu:24.04", sortie)
+
+    def test_an_unsupported_key_is_refused_with_its_reason(self):
+        code, sortie = _mener(
+            "--dry-run", "--only", "debian:12", maison=self.maison
+        )
+        self.assertEqual(1, code)
+        self.assertIn("GNOME 43 < 45", sortie)
+
+
+class LArbreModifieEstRefuse(unittest.TestCase):
+    """La VM reçoit HEAD : un fichier suivi et modifié ne serait pas dans la
+    VM, et le verdict porterait sur autre chose que ce qu'on lit."""
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="sd-sale-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+        self.addCleanup(os.environ.__setitem__, "HOME", os.environ["HOME"])
+        os.environ["HOME"] = self.maison
+        for nom in ("arbre_propre", "plan_tient", "creer_bundle", "creer_vm"):
+            self.addCleanup(setattr, sd, nom, getattr(sd, nom))
+
+    def test_a_dirty_tree_stops_before_anything(self):
+        sd.arbre_propre = lambda racine: False
+        sd.plan_tient = lambda journal: self.fail("plan_tient appelé")
+        sd.creer_bundle = lambda *a: self.fail("bundle créé")
+        sd.creer_vm = lambda *a, **k: self.fail("VM créée")
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertEqual(1, sd.mener(["--only", "ubuntu:24.04"]))
+        self.assertIn("fichiers suivis sont modifiés", sortie.getvalue())
+
+    def test_the_dry_run_only_warns(self):
+        sd.arbre_propre = lambda racine: False
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertEqual(
+                0, sd.mener(["--dry-run", "--only", "ubuntu:24.04"])
+            )
+        self.assertIn("la course réelle refusera", sortie.getvalue())
+
+
+class LeDefaire(unittest.TestCase):
+    """La forme du rapport est le CONTRAT du défaire partagé : chaque VM
+    gardée par --garder, ou laissée par une course tuée, y est une entrée de
+    niveau 1, et --detruire les reprend toutes."""
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="sd-defaire-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+        self.dossier = os.path.join(self.maison, ".erplibre/longtest")
+        os.makedirs(self.dossier)
+
+    def _etage(self, nom):
+        return {
+            "niveau": 1,
+            "nom": nom,
+            "uuid": "",
+            "alias": nom,
+            "cree": True,
+        }
+
+    def test_every_kept_vm_is_named(self):
+        rapport = {
+            "outil": "install_erplibre_home",
+            "dry_run": False,
+            "pid": 1,
+            "etages": [
+                self._etage("long-sd-ubuntu-24-04-000000"),
+                self._etage("long-sd-fedora-43-000000"),
+            ],
+            "systemes": [],
+        }
+        with open(
+            os.path.join(self.dossier, "long-sd-19990101-000000.json"),
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            json.dump(rapport, fh)
+        # Les journaux par système vivent dans un sous-dossier : jamais pris
+        # pour un rapport.
+        os.makedirs(os.path.join(self.dossier, "long-sd-19990101-000000"))
+        code, sortie = _mener("--detruire", "--dry-run", maison=self.maison)
+        self.assertEqual(0, code, sortie)
+        self.assertIn("long-sd-ubuntu-24-04-000000", sortie)
+        self.assertIn("long-sd-fedora-43-000000", sortie)
+        self.assertIn("rien ne sera détruit", sortie)
+
+    def test_another_tools_report_is_left_alone(self):
+        with open(
+            os.path.join(self.dossier, "long-nixos-19990101-000000.json"),
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            json.dump(
+                {
+                    "outil": "install_nixos",
+                    "dry_run": False,
+                    "pid": 1,
+                    "etages": [self._etage("long-nixos-000000")],
+                },
+                fh,
+            )
+        _code, sortie = _mener("--detruire", "--dry-run", maison=self.maison)
+        self.assertIn("rien à défaire", sortie)
+        self.assertNotIn("long-nixos-000000", sortie)
+
+
+class LeVerrouEtLeMenu(unittest.TestCase):
+    def setUp(self):
+        from script.todo.todo import TODO
+
+        self.todo = TODO.__new__(TODO)
+
+    def test_it_shares_the_lock_and_the_undo(self):
+        import descente
+
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
+        self.assertIn("install_erplibre_home.py", descente.SCRIPTS)
+        self.assertIn("install_erplibre_home.py", SCRIPTS_DEFAISABLES)
+
+    def test_the_menu_dispatches_plan_run_and_undo(self):
+        """10 : le plan, 11 : la course, 12 : le défaire. Aucun ne passe
+        « --depth » : il n'y a pas d'étages ici."""
+        from unittest import mock
+
+        vus = []
+        self.todo.fill_help_info = lambda choix: ""
+        self.todo._longtest_run = lambda nom, args="", demander=None: (
+            vus.append((nom, args))
+        )
+        self.todo._longtest_defaire = lambda: vus.append("défaire")
+        with mock.patch(
+            "script.todo.longtest_menu.click.prompt",
+            side_effect=["10", "11", "12", "0"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.todo.prompt_execute_longtest()
+        self.assertEqual(
+            vus,
+            [
+                ("install_erplibre_home.py", "--dry-run"),
+                ("install_erplibre_home.py", ""),
+                "défaire",
+            ],
+        )
+
+    def test_every_label_is_translated(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for cle in (
+            "ERPLibre Home on every distribution: plan only (dry-run)",
+            "ERPLibre Home on every distribution: run it",
+        ):
+            with self.subTest(cle=cle):
+                self.assertIn(cle, TRANSLATIONS)
+                self.assertTrue(TRANSLATIONS[cle].get("fr"))
+                self.assertTrue(TRANSLATIONS[cle].get("en"))
+
+
+class DeuxCoursesDeSuite(unittest.TestCase):
+    """Une course gardée par --garder, puis une autre : leurs VM ne portent
+    jamais le même nom, et chaque course ne détruit que les VM que son
+    propre rapport nomme."""
+
+    PREMIERE = "long-sd-19990101-000000"
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="sd-suite-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+        self.addCleanup(os.environ.__setitem__, "HOME", os.environ["HOME"])
+        os.environ["HOME"] = self.maison
+        self.dossier = os.path.join(self.maison, ".erplibre/longtest")
+        os.makedirs(self.dossier)
+
+    def _course(self, nom):
+        from unittest import mock
+
+        dossier = os.path.join(self.dossier, nom)
+        return sd.Course(mock.Mock(dry_run=False), dossier + ".log", dossier)
+
+    def test_two_run_stamps_never_share_a_vm_name(self):
+        systemes = sd.plan()
+        premiere = {sd.nom_vm(e, "19990101-000000") for e in systemes}
+        seconde = {sd.nom_vm(e, "19990101-000001") for e in systemes}
+        self.assertEqual(len(premiere), len(systemes))
+        self.assertFalse(premiere & seconde)
+
+    def test_the_run_stamp_is_in_every_vm_name(self):
+        course = self._course(self.PREMIERE)
+        self.assertEqual(course.horodatage, "19990101-000000")
+        self.assertTrue(
+            sd.nom_vm(sd.MATRICE[0], course.horodatage).endswith(
+                "-19990101-000000"
+            )
+        )
+
+    def test_a_name_libvirt_already_defines_never_enters_the_report(self):
+        """La VM d'une autre course porte ce nom : rien n'est créé, rien
+        n'est inscrit, donc rien de ce qu'elle est ne sera détruit."""
+        from unittest import mock
+
+        course = self._course(self.PREMIERE)
+        with (
+            mock.patch.object(
+                sd.Descente, "uuid_libvirt", return_value="u-ancienne"
+            ),
+            mock.patch.object(
+                sd.subprocess,
+                "run",
+                side_effect=AssertionError("deploy_qemu.py lancé"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            ligne = sd.mener_un(course, sd.MATRICE[0])
+        self.assertEqual(course.rapport["etages"], [])
+        self.assertEqual((ligne["verdict"], ligne["etape"]), ("FAILED", "vm"))
+
+    def test_the_run_destroys_only_what_its_report_names(self):
+        from unittest import mock
+
+        # La VM qu'une course précédente a gardée, dans son propre rapport.
+        gardee = "long-sd-ubuntu-24-04-19990101-000000"
+        with open(
+            os.path.join(self.dossier, self.PREMIERE + ".json"),
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            json.dump(
+                {
+                    "outil": "install_erplibre_home",
+                    "dry_run": False,
+                    "pid": 1,
+                    "etages": [
+                        {
+                            "niveau": 1,
+                            "nom": gardee,
+                            "uuid": "u-gardee",
+                            "alias": gardee,
+                            "cree": True,
+                        }
+                    ],
+                    "systemes": [],
+                },
+                fh,
+            )
+        inscrites, detruites = [], []
+
+        def mener_un(course, entree):
+            nom = sd.nom_vm(entree, course.horodatage)
+            etage = {
+                "niveau": 1,
+                "nom": nom,
+                "uuid": "u-" + nom,
+                "alias": nom,
+                "cree": True,
+            }
+            course.inscrire(etage)
+            inscrites.append(etage)
+            return sd.verdict_systeme(entree, None, None, "", echec="session")
+
+        def detruire_etage1(journal, nom, dry_run=False, attendu=None, **k):
+            detruites.append((nom, attendu))
+            return True
+
+        with (
+            mock.patch.multiple(
+                sd,
+                arbre_propre=lambda racine: True,
+                plan_tient=lambda journal: True,
+                creer_bundle=lambda dossier, journal: ("0" * 40, "x.bundle"),
+                mener_un=mener_un,
+                detruire_etage1=detruire_etage1,
+                retirer_alias=lambda *a, **k: None,
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            sd.mener(["--only", "ubuntu:24.04,fedora:43"])
+        self.assertEqual(len(inscrites), 2)
+        self.assertNotIn(gardee, [e["nom"] for e in inscrites])
+        self.assertEqual(detruites, [(e["nom"], e["uuid"]) for e in inscrites])
+
+
+class VMSimulee:
+    """Une VM réduite à ce que les étapes lisent et changent : la règle
+    udev, le venv, le lien de l'extension, son UUID dans enabled-extensions,
+    son état ACTIVE, et les lectures successives du journal de session.
+
+    L'installateur simulé applique ce que chaque option doit faire, puis
+    `apres[option]`, qui simule une installation fautive ; `echoue` nomme les
+    options qui rendent 1. Elle part de l'état que laisse l'installation de
+    la base à l'étape 5 du flux.
+    """
+
+    def __init__(self, journaux, echoue=(), apres=None, **etat):
+        self.regle = self.venv = False
+        self.lien = self.uuid = self.actif = True
+        self.__dict__.update(etat)
+        self.journaux = list(journaux)
+        self.echoue = set(echoue)
+        self.apres = apres or {}
+        self.options = []
+        self.lectures = 0
+        self.redemarrages = 0
+
+    def installer(self, cible, log, options=""):
+        self.options.append(options)
+        if options in self.echoue:
+            return 1, ""
+        if options == "--uninstall --stream-deck":
+            self.regle = self.venv = False
+        elif options == "--uninstall":
+            self.regle = self.venv = self.lien = self.uuid = False
+        else:
+            self.lien = self.uuid = True
+            if "--stream-deck" in options:
+                self.regle = self.venv = True
+        self.__dict__.update(self.apres.get(options, {}))
+        return 0, ""
+
+    def sonder(self, cible, commande, delai=180):
+        if commande == sd.CMD_MONTAGES:
+            self.lectures += 1
+            return self.journaux.pop(0)
+        reponses = {
+            "gnome-shell --version": "GNOME Shell 46.0",
+            sd.CMD_SANS_REGLE: "" if self.regle else "ok",
+            sd.CMD_SANS_VENV: "" if self.venv else "ok",
+            sd.CMD_UDEV: "ok" if self.regle else "",
+            sd.CMD_VENV: "ok" if self.venv else "",
+            sd.CMD_LIEN: "ok" if self.lien else "",
+            sd.CMD_SANS_LIEN: "" if self.lien else "ok",
+            sd.CMD_ENABLED: (
+                f"['{sd.UUID_EXTENSION}']" if self.uuid else "@as []"
+            ),
+            sd.CMD_MTIMES: "dates du deck",
+            sd.CMD_MTIME_LIEN: "date du lien",
+        }
+        # Le reste : ListPaths et ListDevices.
+        return reponses.get(commande, "('[]',)")
+
+    def attendre_extension(self, cible, log, delai=0):
+        if self.actif:
+            return {"state": 1.0, "error": ""}
+        return {"state": 3.0, "error": "boom"}
+
+    def redemarrer(self, cible, log):
+        self.redemarrages += 1
+        self.__dict__.update(self.apres.get("redemarrage", {}))
+        return True
+
+
+class LesCinqEtapes(unittest.TestCase):
+    """controler() mène les cinq étapes sur une VM simulée : l'ordre des
+    commandes, et le nom que chaque faute laisse au rapport."""
+
+    ENTIER = "[ERPLibreHome] enabled\n"
+    ECHEC = (
+        "[ERPLibreHome] mount device failed:"
+        " No property vertical on StBoxLayout\n"
+        "[ERPLibreHome] enabled\n"
+    )
+
+    def setUp(self):
+        dossier = tempfile.mkdtemp(prefix="sd-etapes-")
+        self.addCleanup(shutil.rmtree, dossier, ignore_errors=True)
+        self.log = os.path.join(dossier, "systeme.log")
+
+    def _controler(self, vm, extras=False):
+        from unittest import mock
+
+        with mock.patch.multiple(
+            sd,
+            sonder=vm.sonder,
+            session_ouverte=lambda cible: True,
+            attendre_extension=vm.attendre_extension,
+            installer=vm.installer,
+            redemarrer=vm.redemarrer,
+        ):
+            return sd.controler("vm", sd.MATRICE[0], self.log, extras)
+
+    def _journal(self):
+        with open(self.log, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_a_sound_vm_passes_the_five_stages_in_order(self):
+        vm = VMSimulee([self.ENTIER, self.ENTIER])
+        echec, info, gnome = self._controler(vm)
+        self.assertIsNone(echec)
+        self.assertTrue(sd.est_active(info))
+        self.assertEqual(gnome, "46.0")
+        self.assertEqual(
+            vm.options,
+            [
+                "",
+                "--stream-deck",
+                "--stream-deck",
+                "--uninstall --stream-deck",
+                "--uninstall",
+                "",
+            ],
+        )
+        self.assertEqual((vm.lectures, vm.redemarrages), (2, 1))
+
+    def test_extras_go_with_every_base_install(self):
+        vm = VMSimulee([self.ENTIER, self.ENTIER])
+        echec, _info, _gnome = self._controler(vm, extras=True)
+        self.assertIsNone(echec)
+        self.assertEqual(vm.options[0], "--with-extras")
+        self.assertEqual(vm.options[-1], "--with-extras")
+
+    def test_a_failed_mount_stops_the_base_stage(self):
+        vm = VMSimulee([self.ECHEC])
+        echec, info, _gnome = self._controler(vm)
+        self.assertEqual(echec, "extension-indicators")
+        self.assertTrue(sd.est_active(info))
+        self.assertEqual(vm.options, [])
+        self.assertIn("indicateurs non montés : device", self._journal())
+
+    def test_an_unread_journal_is_not_a_whole_panel(self):
+        """Une lecture vide — ssh tombé, journal vide — ne passe pas pour
+        « aucun échec »."""
+        echec, _info, _gnome = self._controler(VMSimulee([""]))
+        self.assertEqual(echec, "extension-indicators")
+        self.assertIn("journal de session sans", self._journal())
+
+    def test_the_base_must_leave_no_rule_nor_venv(self):
+        for etat, attendu in (
+            ({"regle": True}, "base-no-udev"),
+            ({"venv": True}, "base-no-venv"),
+        ):
+            with self.subTest(attendu=attendu):
+                vm = VMSimulee([self.ENTIER], **etat)
+                self.assertEqual(self._controler(vm)[0], attendu)
+
+    def test_a_failed_command_names_its_stage(self):
+        for option, attendu in (
+            ("", "base-idempotent"),
+            ("--stream-deck", "install-stream-deck"),
+            ("--uninstall --stream-deck", "uninstall-stream-deck"),
+            ("--uninstall", "uninstall"),
+        ):
+            with self.subTest(attendu=attendu):
+                vm = VMSimulee([self.ENTIER], echoue={option})
+                self.assertEqual(self._controler(vm)[0], attendu)
+                self.assertEqual(vm.options[-1], option)
+
+    def test_the_stream_deck_stage_checks_rule_venv_and_extension(self):
+        for apres, attendu in (
+            ({"regle": False}, "udev"),
+            ({"venv": False}, "venv"),
+            ({"actif": False}, "stream-deck-active"),
+        ):
+            with self.subTest(attendu=attendu):
+                vm = VMSimulee([self.ENTIER], apres={"--stream-deck": apres})
+                self.assertEqual(self._controler(vm)[0], attendu)
+
+    def test_the_partial_uninstall_keeps_the_extension(self):
+        for apres, attendu in (
+            ({"venv": True}, "partial-uninstall-gone"),
+            ({"regle": True}, "partial-uninstall-gone"),
+            ({"lien": False}, "partial-uninstall-kept"),
+            ({"uuid": False}, "partial-uninstall-kept"),
+            ({"actif": False}, "partial-uninstall-kept"),
+        ):
+            with self.subTest(apres=apres):
+                vm = VMSimulee(
+                    [self.ENTIER],
+                    apres={"--uninstall --stream-deck": apres},
+                )
+                self.assertEqual(self._controler(vm)[0], attendu)
+
+    def test_the_uninstall_leaves_nothing(self):
+        for apres in ({"uuid": True}, {"lien": True}, {"venv": True}):
+            with self.subTest(apres=apres):
+                vm = VMSimulee([self.ENTIER], apres={"--uninstall": apres})
+                self.assertEqual(self._controler(vm)[0], "uninstall-gone")
+
+    def test_the_reinstall_comes_back_whole_and_without_the_deck(self):
+        cas = (
+            (VMSimulee([self.ENTIER, self.ECHEC]), "reinstall-indicators"),
+            (
+                VMSimulee(
+                    [self.ENTIER], apres={"redemarrage": {"actif": False}}
+                ),
+                "reinstall-active",
+            ),
+            (
+                VMSimulee(
+                    [self.ENTIER, self.ENTIER], apres={"": {"regle": True}}
+                ),
+                "reinstall-no-udev",
+            ),
+        )
+        for vm, attendu in cas:
+            with self.subTest(attendu=attendu):
+                self.assertEqual(self._controler(vm)[0], attendu)
+                self.assertEqual(vm.redemarrages, 1)
+
+    def test_every_name_it_returns_is_declared(self):
+        """Les noms que controler() rend sont ceux d'ETAPES : le rapport et
+        la spec parlent la même langue."""
+        declares = set()
+        for etape in sd.ETAPES:
+            declares.update(etape["controles"])
+            if etape["commande"]:
+                declares.add(etape["commande"])
+        source = SRC[SRC.index("def _absents(") : SRC.index("def controler(")]
+        rendus = set(re.findall(r'return "([a-z-]+)"', source))
+        self.assertEqual(rendus, declares)
 
 
 if __name__ == "__main__":

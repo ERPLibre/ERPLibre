@@ -41,6 +41,7 @@ SCRIPTS = (
     "deep_proxmox.py",
     "deep_qemu.py",
     "install_nixos.py",
+    "install_erplibre_home.py",
     "qemu_cache.py",
 )
 

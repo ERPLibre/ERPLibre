@@ -31,6 +31,7 @@ SCRIPTS_DEFAISABLES = (
     "deep_qemu.py",
     "qemu_cache.py",
     "install_nixos.py",
+    "install_erplibre_home.py",
 )
 
 # Le répertoire des tests longs, à la racine du dépôt.
@@ -127,6 +128,16 @@ class LongTestMenuMixin:
                 )
             },
             {"prompt_description": t("ERPLibre on NixOS: run it")},
+            {
+                "prompt_description": t(
+                    "ERPLibre Home on every distribution: plan only (dry-run)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "ERPLibre Home on every distribution: run it"
+                )
+            },
             {"prompt_description": t("Undo what the descent created")},
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
@@ -136,6 +147,12 @@ class LongTestMenuMixin:
             "5": "--dry-run",
             "6": "",
             "7": "--hors-ligne",
+        }
+        # ERPLibre Home non plus : une VM par système, ni profondeur ni hôte
+        # de départ. Sa table est interrogée avant celle des piles.
+        erplibre_home = {
+            "10": "--dry-run",
+            "11": "",
         }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
@@ -158,6 +175,11 @@ class LongTestMenuMixin:
             if status in cache:
                 self._longtest_run("qemu_cache.py", cache[status])
                 continue
+            if status in erplibre_home:
+                self._longtest_run(
+                    "install_erplibre_home.py", erplibre_home[status]
+                )
+                continue
             if status in scripts:
                 script, demander = scripts[status]
                 if script == "install_nixos.py":
@@ -174,7 +196,7 @@ class LongTestMenuMixin:
                 if status in ("1", "3", "8"):
                     args += " --dry-run"
                 self._longtest_run(script, args)
-            elif status == "10":
+            elif status == "12":
                 self._longtest_defaire()
             else:
                 print(t("Command not found !"))
