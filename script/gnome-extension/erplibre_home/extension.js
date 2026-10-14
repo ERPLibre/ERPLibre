@@ -17,7 +17,7 @@ import {IndicatorRegistry} from './lib/registry.js';
 import {runMigrationGjs} from './lib/settings.js';
 import {parseObject} from './lib/settings.js';
 import {exportSettingsAsObj} from './lib/settings.js';
-import {Debouncer, gitPull, gitCommitPush} from './lib/git-sync.js';
+import {Debouncer, gitPull, gitCommitPush, SYNC_FILE, syncImportPath} from './lib/git-sync.js';
 import {setGettext} from './lib/i18n.js';
 import {ClaudeStateWatcher} from './lib/claude-state.js';
 import {listMpvEntriesSync, sendMpvCommand} from './lib/mpv-state.js';
@@ -381,7 +381,7 @@ export default class ERPLibreHomeExtension extends Extension {
         if (!repo) return;
         this._syncDebounce.bump(async () => {
             const obj = exportSettingsAsObj(this.#settings);
-            const file = Gio.File.new_for_path(`${repo}/erplibre-home.json`);
+            const file = Gio.File.new_for_path(`${repo}/${SYNC_FILE}`);
             try {
                 file.replace_contents(
                     new TextEncoder().encode(JSON.stringify(obj, null, 2)),
@@ -394,8 +394,10 @@ export default class ERPLibreHomeExtension extends Extension {
     }
 
     async _syncImport(repo) {
-        const file = Gio.File.new_for_path(`${repo}/erplibre-home.json`);
-        if (!file.query_exists(null)) return;
+        const path = syncImportPath(repo,
+            p => Gio.File.new_for_path(p).query_exists(null));
+        if (!path) return;
+        const file = Gio.File.new_for_path(path);
         try {
             const [, contents] = file.load_contents(null);
             const obj = JSON.parse(new TextDecoder().decode(contents));

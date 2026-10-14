@@ -59,3 +59,25 @@ export async function gitCommitPush(repoPath, hostname) {
         } catch (_e) { resolve(false); }
     });
 }
+
+/** File the git sync writes in the user's sync repository. */
+export const SYNC_FILE = 'erplibre-home.json';
+
+/**
+ * File name the extension wrote before it became ERPLibre Home. A sync
+ * repository shared with a workstation that still runs the old extension
+ * holds only this one, so the import falls back to it.
+ */
+export const LEGACY_SYNC_FILE = 'streamdeck-tiler.json';
+
+/**
+ * Path the import reads: SYNC_FILE when it exists, else LEGACY_SYNC_FILE,
+ * else null. `exists(path)` is injected so Node tests run without Gio.
+ */
+export function syncImportPath(repo, exists) {
+    for (const name of [SYNC_FILE, LEGACY_SYNC_FILE]) {
+        const path = `${repo}/${name}`;
+        if (exists(path)) return path;
+    }
+    return null;
+}
