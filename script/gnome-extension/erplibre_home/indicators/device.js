@@ -8,12 +8,13 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {detectStreamDecksGjs} from '../lib/usb.js';
-import {spawnDetached} from '../lib/spawn.js';
+import {spawnDetached, runProcess} from '../lib/spawn.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
 import {projectRootFrom, makeGioReadLink, streamDeckPython}
     from '../lib/project-root.js';
-import {deckUnitPath, openDeckArgv, restartDeckArgv}
+import {deckUnitPath, openDeckArgv, restartDeckArgv, deckStateArgv,
+    deckRunning, deckCheckArgv, deckStartFailure}
     from '../lib/deck-service.js';
 import {_} from '../lib/i18n.js';
 
@@ -128,7 +129,7 @@ class DeviceIndicator extends PanelMenu.Button {
             `Serial: ${dev.serial}`));
         sub.menu.addMenuItem(status);
 
-        const open = new PopupMenu.PopupMenuItem(_('Open controller UI'));
+        const open = new PopupMenu.PopupMenuItem(_('Start deck program'));
         open.connect('activate', () => this._launchController());
         sub.menu.addMenuItem(open);
 
@@ -175,7 +176,27 @@ class DeviceIndicator extends PanelMenu.Button {
                 _('ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install'));
             return;
         }
-        spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
+        if (argv[0] === 'systemctl')
+            this._driveUnit(argv, root);
+        else
+            spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
+    }
+
+    // Runs systemctl start or restart on the unit, then reads its state:
+    // a start that ExecCondition skips exits 0 and leaves the unit
+    // inactive, so the click would otherwise do nothing visible. The
+    // entry point's --check then says why.
+    async _driveUnit(argv, root) {
+        const done = await runProcess(argv,
+            {notify: _notify, title: 'Stream Deck'});
+        if (!done.ok)
+            return;
+        const shown = await runProcess(deckStateArgv());
+        if (deckRunning(shown.stdout))
+            return;
+        const check = await runProcess(deckCheckArgv(root));
+        _notify('Stream Deck', `${_('The deck program did not start:')} ` +
+            deckStartFailure(shown.stdout, check.stderr));
     }
 
     _restart() {
@@ -183,7 +204,7 @@ class DeviceIndicator extends PanelMenu.Button {
         // one the settings name; the pidfile is the controller's own.
         const viaUnit = restartDeckArgv({unitExists: this._deckUnitExists()});
         if (viaUnit !== null) {
-            spawnDetached(viaUnit, {notify: _notify, title: 'Stream Deck'});
+            this._driveUnit(viaUnit, this._projectRoot());
             return;
         }
         if (GLib.file_test(PIDFILE, GLib.FileTest.EXISTS)) {

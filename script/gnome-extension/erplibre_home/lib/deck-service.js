@@ -8,14 +8,30 @@
  * two programs on one deck; without it (a manual setup) the indicator
  * starts the controller itself under the deck venv.
  *
- * Pure: the caller says whether the unit file exists and passes the venv
- * python, so node --test loads this module without any gi:// import.
+ * systemctl start (or restart) exits 0 even when the unit's ExecCondition
+ * skips the start (no deck plugged in, DECK_PROGRAM=none): the indicator
+ * then reads the unit's state and, when no program runs, shows the reason
+ * the entry point's --check gives.
+ *
+ * Pure: the caller says whether the unit file exists, passes the venv
+ * python and the command outputs, so node --test loads this module without
+ * any gi:// import.
  */
 
 export const DECK_UNIT = 'erplibre-home-streamdeck.service';
 
 // Controller script, relative to the checkout root.
 export const CONTROLLER_REL = 'script/stream_deck/erplibre_controller.py';
+
+// The service's entry point, relative to the checkout root.
+export const DECK_ENTRY_REL = 'script/install/erplibre_home_deck.sh';
+
+// ActiveState values in which the deck program runs or is about to.
+const RUNNING_STATES = ['active', 'activating', 'reloading'];
+
+function trimRoot(root) {
+    return root.length > 1 ? root.replace(/\/+$/, '') : root;
+}
 
 /**
  * Path of the unit file under `configDir`, the user configuration
@@ -36,8 +52,7 @@ export function openDeckArgv({unitExists, python, root}) {
         return ['systemctl', '--user', 'start', DECK_UNIT];
     if (python === null || python === undefined)
         return null;
-    const base = root.length > 1 ? root.replace(/\/+$/, '') : root;
-    return [python, `${base}/${CONTROLLER_REL}`];
+    return [python, `${trimRoot(root)}/${CONTROLLER_REL}`];
 }
 
 /**
@@ -47,4 +62,42 @@ export function openDeckArgv({unitExists, python, root}) {
  */
 export function restartDeckArgv({unitExists}) {
     return unitExists ? ['systemctl', '--user', 'restart', DECK_UNIT] : null;
+}
+
+/**
+ * argv that prints the unit's ActiveState alone, read after a start or a
+ * restart.
+ */
+export function deckStateArgv() {
+    return ['systemctl', '--user', 'show', '-p', 'ActiveState', '--value',
+        DECK_UNIT];
+}
+
+/**
+ * Whether `state`, the output of deckStateArgv(), says the deck program
+ * runs or is about to.
+ */
+export function deckRunning(state) {
+    return RUNNING_STATES.includes(String(state ?? '').trim());
+}
+
+/**
+ * argv of the entry point's own condition check in the checkout `root`:
+ * it exits 1 with its reason on one stderr line when no program can run.
+ */
+export function deckCheckArgv(root) {
+    return [`${trimRoot(root)}/${DECK_ENTRY_REL}`, '--check'];
+}
+
+/**
+ * Why a start through the unit left no program running: the last
+ * non-empty line of `checkStderr` (the check's reason), else the unit's
+ * `state` trimmed, else "?".
+ */
+export function deckStartFailure(state, checkStderr) {
+    const lines = String(checkStderr ?? '').split('\n')
+        .map(l => l.trim()).filter(l => l !== '');
+    if (lines.length)
+        return lines[lines.length - 1];
+    return String(state ?? '').trim() || '?';
 }

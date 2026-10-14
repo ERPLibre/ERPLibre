@@ -157,7 +157,10 @@ msgstr ""
 msgid "Status"
 msgstr ""
 
-msgid "Open controller UI"
+msgid "Start deck program"
+msgstr ""
+
+msgid "The deck program did not start:"
 msgstr ""
 
 msgid "Restart deck"

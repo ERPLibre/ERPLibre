@@ -91,9 +91,9 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] No deck plugged in: "(no Stream Deck found)"
 - [ ] Plug deck + click "Re-scan USB" → row appears with product + serial
 - [ ] Status item → notification with bus/device/vendor/serial
-- [ ] Open controller UI → erplibre_controller.py runs (verify `pgrep -af erplibre_controller`)
+- [ ] Start deck program → with the deck service unit, `systemctl --user start erplibre-home-streamdeck.service` runs the program the settings name, and a notification says why when its condition skips it (no deck, `DECK_PROGRAM=none`); without the unit, erplibre_controller.py runs (verify `pgrep -af erplibre_controller`)
 - [ ] Pidfile `~/.cache/erplibre-home/controller.pid` exists after launch
-- [ ] Restart deck → controller exits + relaunches (PID changes; note: SIGTERM may leave pidfile stale until next launch overwrites it)
+- [ ] Restart deck → controller exits + relaunches (PID changes; on SIGTERM the controller resets its decks and removes its pidfile before exiting)
 - [ ] Show details → notification with truncated `lsusb -v` output
 
 ## Cross-cutting (Plan G)
