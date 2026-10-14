@@ -6116,6 +6116,16 @@ TRANSLATIONS = {
         "fr": "Partir d'une machine NixOS qu'on possède déjà",
         "en": "Use a NixOS machine you already have",
     },
+    # ERPLibre Home installé sur chaque distribution, extension ACTIVE.
+    "ERPLibre Home on every distribution: plan only (dry-run)": {
+        "fr": "ERPLibre Home sur chaque distribution : le plan seulement"
+        " (à blanc)",
+        "en": "ERPLibre Home on every distribution: plan only (dry-run)",
+    },
+    "ERPLibre Home on every distribution: run it": {
+        "fr": "ERPLibre Home sur chaque distribution : le lancer",
+        "en": "ERPLibre Home on every distribution: run it",
+    },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",
         "en": "Nested QEMU depth: run it",

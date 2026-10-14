@@ -33,13 +33,31 @@ ce qui serait installé ne serait pas ce qui est commité.
   ./long_test/install_erplibre_home.py --detruire      # défaire la course
 """
 
+import argparse
+import json
 import os
 import re
 import shlex
 import subprocess
 import sys
+import time
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, RACINE)
+sys.path.insert(0, os.path.join(RACINE, "long_test"))
+
+from descente import (  # noqa: E402
+    Descente,
+    Famille,
+    capacite_hote,
+    cle_publique,
+    detruire,
+    detruire_etage1,
+    dire,
+    drapeaux_cache,
+    retirer_alias,
+)
+
 # Les listes que gsettings affiche se lisent par le lecteur que partagent
 # les outils de l'extension.
 sys.path.insert(
@@ -640,3 +658,855 @@ def arbre_propre(racine):
     except (OSError, subprocess.SubprocessError):
         return False
     return fini.returncode == 0 and not fini.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# La course : ce qui touche aux machines.
+# ---------------------------------------------------------------------------
+
+# Chaque attente est bornée : une étape bloquée rend un verdict FAILED et la
+# course passe au système suivant au lieu de s'arrêter.
+DELAI_CREATION = 1800
+DELAI_SSH = 600
+DELAI_BUREAU = 5400
+DELAI_CODE = 900
+DELAI_INSTALL = 1800
+DELAIS_CONTROLE = {
+    "session": 300,
+    "extension-active": 120,
+    "extension-dbus": 30,
+    "extension-indicators": 30,
+    "venv": 60,
+    "stream-deck-active": 120,
+    "partial-uninstall-kept": 120,
+    "reinstall-active": 300,
+    "reinstall-indicators": 30,
+}
+
+# Ce que la machine doit avoir de libre AVANT de créer une VM. Les VM se
+# suivent, une seule vit à la fois : la marge vaut pour une. Le disque se
+# compare à ce qu'une VM ÉCRIT — un qcow2 n'est pas préalloué — et non à sa
+# taille virtuelle. Estimation d'un bureau GNOME et du venv, à corriger
+# d'après les rapports.
+MARGE_RAM_MO = 1024
+DISQUE_ECRIT_GO = 12
+MARGE_DISQUE_GO = 8
+
+OPTIONS_SSH = [
+    "-o",
+    "StrictHostKeyChecking=no",
+    "-o",
+    "UserKnownHostsFile=/dev/null",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+]
+CMD_BOOT_ID = "cat /proc/sys/kernel/random/boot_id"
+
+
+def ssh_base(cible):
+    return ["ssh"] + OPTIONS_SSH + [cible]
+
+
+def chemins_de_course():
+    """(journal, dossier) de la course.
+
+    Le dossier porte le même nom que le journal, sans extension : il reçoit
+    le bundle et un « .log » par système. `dernier_rapport` ne lit que les
+    « .json » du premier niveau de ~/.erplibre/longtest, donc rien de ce qui
+    est rangé là n'est jamais pris pour un rapport.
+    """
+    base = os.path.expanduser(
+        f"~/.erplibre/longtest/{NOM_BASE}-{time.strftime('%Y%m%d-%H%M%S')}"
+    )
+    os.makedirs(os.path.dirname(base), exist_ok=True)
+    return base + ".log", base
+
+
+def _ajouter(log, texte):
+    """Ajoute `texte` au journal d'un système, terminé par un saut de
+    ligne."""
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(texte if texte.endswith("\n") else texte + "\n")
+
+
+class Course:
+    """Le rapport d'une course, réécrit à chaque changement.
+
+    Sa forme est le CONTRAT du défaire partagé (descente.py) : « outil »
+    filtre les rapports, « pid » empêche de détruire sous une course vivante,
+    et « etages » nomme une entrée de niveau 1 par VM encore en vie — c'est
+    tout ce que « --detruire » sait reprendre. « systemes » est à ce test
+    seul ; descente.py l'ignore.
+    """
+
+    def __init__(self, args, journal, dossier):
+        self.args = args
+        self.journal = journal
+        self.dossier = dossier
+        # « 20261013-142233 » pour « long-sd-20261013-142233 » : chaque VM
+        # de la course le porte dans son nom.
+        self.horodatage = os.path.basename(dossier)[len(NOM_BASE) + 1 :]
+        self.chemin = journal[:-4] + (
+            "-dryrun.json" if args.dry_run else ".json"
+        )
+        self.head = ""
+        self.bundle = ""
+        self.rapport = {
+            "outil": OUTIL,
+            "dry_run": args.dry_run,
+            "pid": os.getpid(),
+            "head": "",
+            "etages": [],
+            "systemes": [],
+        }
+
+    def ecrire(self):
+        with open(self.chemin, "w", encoding="utf-8") as fh:
+            json.dump(self.rapport, fh, indent=2)
+
+    def inscrire(self, etage):
+        """Écrit l'étage AVANT la suite : une course qui meurt en cours de
+        route laisse de quoi défaire sa VM."""
+        self.rapport["etages"].append(etage)
+        self.ecrire()
+
+    def retirer(self, etage):
+        self.rapport["etages"].remove(etage)
+        self.ecrire()
+
+    def noter(self, ligne):
+        self.rapport["systemes"].append(ligne)
+        self.ecrire()
+
+
+def commande_bureau():
+    """Le bloc « bureau seul » du menu, pris tel quel : attente de
+    cloud-init, coupure des mises à jour automatiques, GNOME et son accès
+    distant. Ni clone ni Odoo.
+
+    Importé plutôt que recopié : deux copies d'une installation de bureau
+    divergent, et c'est celle du test qui reste verte.
+    """
+    sys.argv = ["todo.py"]
+    from script.todo.todo import TODO
+
+    return TODO.__new__(TODO)._qemu_erplibre_remote_cmd(None, desktop="gnome")
+
+
+def creer_vm(nom, entree, journal, dry_run):
+    """La VM, par la CLI du dépôt, sous sudo hors essai à blanc.
+
+    Rend (nom, uuid, ok). Une création qui échoue après avoir défini le
+    domaine rend quand même son nom et son UUID, avec ok faux : la VM existe,
+    et c'est en l'inscrivant au rapport qu'elle reste défaisable.
+
+    Un nom que libvirt définit déjà n'est pas à cette course : la création
+    est refusée et rend (None, "", False), si bien que la VM d'une autre
+    course n'entre jamais au rapport et n'est jamais détruite par celle-ci.
+    """
+    if not dry_run and Descente.uuid_libvirt(nom):
+        dire(
+            f"      ✗ {nom} existe déjà, elle n'est pas à cette course",
+            journal,
+        )
+        return None, "", False
+    argv = ([] if dry_run else ["sudo"]) + argv_creation(
+        entree, nom, cle_publique(), drapeaux_cache()
+    )
+    if dry_run:
+        dire("      " + " ".join(shlex.quote(a) for a in argv), journal)
+        return nom, "", True
+    ok = False
+    try:
+        fini = subprocess.run(argv, timeout=DELAI_CREATION)
+        ok = fini.returncode == 0
+    except (OSError, subprocess.SubprocessError) as souci:
+        dire(f"      ✗ la création de {nom} s'est arrêtée : {souci}", journal)
+    if not ok:
+        dire(f"      ✗ la création de {nom} a échoué", journal)
+    uuid = Descente.uuid_libvirt(nom)
+    if not ok and not uuid:
+        return None, "", False
+    return nom, uuid, ok
+
+
+def adresse_de(nom, journal):
+    """L'adresse de la VM, et l'entrée ~/.ssh/config qui la nomme.
+
+    La CLI n'écrit pas cette entrée : sans elle, « ssh <nom> » ne résout
+    rien et chaque attente irait à son plein délai.
+    """
+    sys.argv = ["todo.py"]
+    from script.todo.todo import TODO
+
+    todo = TODO.__new__(TODO)
+    ip = todo._qemu_vm_ip(nom, timeout=DELAI_SSH)
+    if not ip:
+        dire(f"      ✗ {nom} créée mais sans adresse", journal)
+        return ""
+    pub = cle_publique()
+    prive = pub[:-4] if pub else None
+    todo._write_ssh_config_entry([nom], UTILISATEUR, ip, identity_file=prive)
+    dire(f"      {nom} : {ip}", journal)
+    return ip
+
+
+def sonder(cible, commande, delai=180):
+    """La sortie d'une commande distante, ou "" si elle échoue."""
+    try:
+        fini = subprocess.run(
+            ssh_base(cible) + [commande],
+            capture_output=True,
+            text=True,
+            timeout=delai,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return fini.stdout.strip() if fini.returncode == 0 else ""
+
+
+def attendre_ssh(cible, journal, delai=DELAI_SSH):
+    """Vrai dès que la machine répond en ssh. Le port s'ouvre avant que
+    cloud-init n'ait posé le compte : on attend une commande qui aboutit."""
+    fin = time.time() + delai
+    while time.time() < fin:
+        try:
+            fini = subprocess.run(
+                ssh_base(cible) + ["true"],
+                capture_output=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            # Un ssh pendu est un tour d'attente de plus, pas la fin de la
+            # course.
+            time.sleep(5)
+            continue
+        if fini.returncode == 0:
+            return True
+        time.sleep(5)
+    dire(f"      ✗ {cible} jamais joignable en {delai} s", journal)
+    return False
+
+
+def lancer(argv, log, delai, entree=None):
+    """Lance `argv`, sortie ajoutée au journal du système. Rend le code de
+    retour, ou None quand la commande n'a pas abouti dans son délai."""
+    try:
+        with open(log, "a", encoding="utf-8") as fh:
+            fini = subprocess.run(
+                argv,
+                input=entree,
+                text=True,
+                stdout=fh,
+                stderr=subprocess.STDOUT,
+                timeout=delai,
+            )
+    except (OSError, subprocess.SubprocessError) as souci:
+        _ajouter(log, f"✗ {argv[0]} interrompu : {souci}")
+        return None
+    return fini.returncode
+
+
+def deposer_code(cible, famille, bundle, head, log):
+    """git dans la VM, le bundle copié, cloné, HEAD extrait. Rend vrai si
+    les trois étapes ont abouti. La VM ne joint jamais GitHub pour le
+    code."""
+    clone = (
+        "test ! -e ~/git/erplibre && mkdir -p ~/git"
+        " && git -c advice.detachedHead=false clone -q ~/erplibre_home.bundle"
+        f" ~/git/erplibre && git -C ~/git/erplibre checkout -q {head}"
+    )
+    etapes = (
+        ("git", ssh_base(cible) + [COMMANDE_GIT[famille]]),
+        (
+            "scp",
+            ["scp"] + OPTIONS_SSH + [bundle, f"{cible}:erplibre_home.bundle"],
+        ),
+        ("clone", ssh_base(cible) + [clone]),
+    )
+    for nom, argv in etapes:
+        if lancer(argv, log, DELAI_CODE) != 0:
+            _ajouter(log, f"✗ code : {nom}")
+            return False
+    return True
+
+
+def installer(cible, log, options=""):
+    """L'installateur dans le checkout de la VM, avec `options` (« » pour la
+    base, « --stream-deck », « --uninstall »…). Rend (code, sortie).
+
+    La commande et toute sa sortie vont au journal du système : un échec y
+    trouve la sortie de chaque commande lancée jusque-là. Le code est None
+    quand l'installation n'a pas rendu de code dans son délai.
+    """
+    commande = "cd ~/git/erplibre && ./script/install/install_erplibre_home.sh"
+    if options:
+        commande += f" {options}"
+    _ajouter(log, f"── {commande}")
+    try:
+        fini = subprocess.run(
+            ssh_base(cible) + [commande],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=DELAI_INSTALL,
+        )
+    except (OSError, subprocess.SubprocessError) as souci:
+        _ajouter(log, f"✗ installation interrompue : {souci}")
+        return None, ""
+    sortie = fini.stdout or ""
+    _ajouter(log, sortie)
+    _ajouter(log, f"── code de sortie : {fini.returncode}")
+    return fini.returncode, sortie
+
+
+def redemarrer(cible, log):
+    """Redémarre la VM et attend qu'elle revienne. Vrai à son retour.
+
+    Le retour se juge à l'identifiant de démarrage du noyau, qui change à
+    chaque amorçage : un ssh qui répond encore AVANT l'arrêt ne passe pas
+    pour un retour.
+    """
+    avant = sonder(cible, CMD_BOOT_ID, 30)
+    if not avant:
+        _ajouter(log, "✗ redémarrage : identifiant de démarrage illisible")
+        return False
+    try:
+        subprocess.run(
+            ssh_base(cible) + ["sudo systemctl reboot"],
+            capture_output=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # La connexion tombe avec la machine : c'est le cas attendu.
+        pass
+    fin = time.time() + DELAI_SSH
+    while time.time() < fin:
+        apres = sonder(cible, CMD_BOOT_ID, 30)
+        if apres and apres != avant:
+            return True
+        time.sleep(5)
+    _ajouter(log, f"✗ pas de retour du redémarrage en {DELAI_SSH} s")
+    return False
+
+
+def attendre(cible, commande, condition, delai):
+    """Vrai dès que `condition(sortie)` tient, sondé toutes les 5 s."""
+    fin = time.time() + delai
+    while True:
+        if condition(sonder(cible, commande, 60)):
+            return True
+        if time.time() >= fin:
+            return False
+        time.sleep(5)
+
+
+def attendre_extension(cible, log, delai=DELAIS_CONTROLE["extension-active"]):
+    """L'info de l'extension, dès qu'elle est ACTIVE ou au bout de `delai`
+    secondes. La sortie brute de gdbus va au journal quand elle ne l'est
+    pas."""
+    fin = time.time() + delai
+    while True:
+        brut = sonder(cible, CMD_INFO, 60)
+        info = analyser_extension_info(brut)
+        if est_active(info) or time.time() >= fin:
+            break
+        time.sleep(5)
+    if not est_active(info):
+        _ajouter(log, f"GetExtensionInfo : {brut or '(aucune réponse)'}")
+    return info
+
+
+def indicateurs_non_montes(cible, log):
+    """Les ids des indicateurs que le journal de session dit non montés.
+
+    L'extension attrape l'exception du constructeur d'un indicateur et
+    continue : ACTIVE et les réponses D-Bus tiennent même quand aucun
+    indicateur n'est monté. Le journal se lit une fois ; sans la ligne
+    « [ERPLibreHome] enabled », il n'est pas tenu pour lu et la fonction
+    rend ["(journal non lu)"] plutôt qu'une liste vide qui passerait pour un
+    succès. Ce qui manque va au journal du système.
+    """
+    sortie = sonder(
+        cible, CMD_MONTAGES, DELAIS_CONTROLE["extension-indicators"]
+    )
+    if not journal_lu(sortie):
+        _ajouter(
+            log,
+            "✗ journal de session sans « [ERPLibreHome] enabled » : "
+            f"{sortie or '(rien)'}",
+        )
+        return ["(journal non lu)"]
+    echecs = indicateurs_en_echec(sortie)
+    if echecs:
+        _ajouter(log, f"✗ indicateurs non montés : {', '.join(echecs)}")
+    return echecs
+
+
+def session_ouverte(cible):
+    """Le bus de l'utilisateur existe et GNOME Shell y a pris son nom."""
+    return attendre(
+        cible,
+        CMD_SESSION,
+        lambda s: s == "(true,)",
+        DELAIS_CONTROLE["session"],
+    )
+
+
+def _absents(cible):
+    """Vrai quand ni la règle udev ni .venv.streamdeck n'existent."""
+    return sonder(cible, CMD_SANS_REGLE) == "ok" and (
+        sonder(cible, CMD_SANS_VENV) == "ok"
+    )
+
+
+def _idempotent(cible, log, options, commande_mtimes):
+    """Une seconde installation rend 0 et laisse les dates de
+    `commande_mtimes` telles quelles."""
+    avant = sonder(cible, commande_mtimes)
+    code, _sortie = installer(cible, log, options)
+    apres = sonder(cible, commande_mtimes)
+    if code != 0 or not avant or avant != apres:
+        _ajouter(log, f"✗ idempotence : {avant!r} puis {apres!r}")
+        return False
+    return True
+
+
+def _etape_base(cible, entree, log, base):
+    """Étape 1, sur la base que l'étape 5 du flux a installée. Rend
+    (echec, info, gnome)."""
+    info, gnome = None, ""
+    if not session_ouverte(cible):
+        return "session", info, gnome
+    gnome = version_gnome(sonder(cible, "gnome-shell --version"))
+    if not gnome:
+        return "gnome-version", info, gnome
+    attendu = entree["gnome_attendu"]
+    if majeur(gnome) != attendu:
+        _ajouter(log, f"⚠ GNOME mesuré {gnome}, la matrice dit {attendu}")
+    info = attendre_extension(cible, log)
+    if not est_active(info):
+        return "extension-active", info, gnome
+    # L'objet D-Bus est exporté avant les réglages : une méthode qui ne les
+    # touche pas répondrait même si enable() avait levé ensuite. ListPaths
+    # les lit. ListDevices rend « [] » sans appareil branché comme sans
+    # indicateur des appareils monté : sa réponse ne prouve pas l'indicateur,
+    # d'où la lecture du journal qui suit. Sans venv du deck, celle-ci
+    # prouve aussi que les indicateurs du deck se montent quand même.
+    for methode in ("ListPaths", "ListDevices"):
+        reponse = sonder(
+            cible, cmd_methode(methode), DELAIS_CONTROLE["extension-dbus"]
+        )
+        if not reponse.startswith("('"):
+            _ajouter(log, f"✗ {methode} : {reponse or '(aucune réponse)'}")
+            return "extension-dbus", info, gnome
+    if indicateurs_non_montes(cible, log):
+        return "extension-indicators", info, gnome
+    if sonder(cible, CMD_SANS_REGLE) != "ok":
+        return "base-no-udev", info, gnome
+    if sonder(cible, CMD_SANS_VENV) != "ok":
+        return "base-no-venv", info, gnome
+    if not _idempotent(cible, log, base, CMD_MTIME_LIEN):
+        return "base-idempotent", info, gnome
+    return None, info, gnome
+
+
+def _etape_stream_deck(cible, log):
+    """Étape 2 : le niveau Stream Deck par-dessus la base, sans
+    redémarrage, l'extension étant déjà chargée. Rend (echec, info)."""
+    option = OPTION["install-stream-deck"]
+    code, _sortie = installer(cible, log, option)
+    if code != 0:
+        return "install-stream-deck", None
+    if sonder(cible, CMD_UDEV) != "ok":
+        return "udev", None
+    if sonder(cible, CMD_VENV, DELAIS_CONTROLE["venv"]) != "ok":
+        return "venv", None
+    info = attendre_extension(
+        cible, log, DELAIS_CONTROLE["stream-deck-active"]
+    )
+    if not est_active(info):
+        return "stream-deck-active", info
+    if not _idempotent(cible, log, option, CMD_MTIMES):
+        return "stream-deck-idempotent", info
+    return None, info
+
+
+def _etape_retrait_partiel(cible, log):
+    """Étape 3 : le niveau Stream Deck retiré seul ; l'extension reste liée,
+    activée et ACTIVE. Rend (echec, info)."""
+    code, _sortie = installer(cible, log, OPTION["uninstall-stream-deck"])
+    if code != 0:
+        return "uninstall-stream-deck", None
+    if not _absents(cible):
+        return "partial-uninstall-gone", None
+    liste = liste_extensions(sonder(cible, CMD_ENABLED))
+    if sonder(cible, CMD_LIEN) != "ok" or UUID_EXTENSION not in (liste or []):
+        _ajouter(
+            log, f"✗ après le retrait partiel : enabled-extensions {liste}"
+        )
+        return "partial-uninstall-kept", None
+    info = attendre_extension(
+        cible, log, DELAIS_CONTROLE["partial-uninstall-kept"]
+    )
+    if not est_active(info):
+        return "partial-uninstall-kept", info
+    return None, info
+
+
+def _etape_retrait(cible, log):
+    """Étape 4 : tout retiré. Rend l'échec ou None."""
+    code, _sortie = installer(cible, log, OPTION["uninstall"])
+    if code != 0:
+        return "uninstall"
+    liste = liste_extensions(sonder(cible, CMD_ENABLED))
+    if (
+        sonder(cible, CMD_SANS_LIEN) != "ok"
+        or liste is None
+        or UUID_EXTENSION in liste
+        or not _absents(cible)
+    ):
+        _ajouter(log, f"✗ après le retrait : enabled-extensions {liste}")
+        return "uninstall-gone"
+    return None
+
+
+def _etape_reinstallation(cible, log, base):
+    """Étape 5 : la base de nouveau, puis un redémarrage, pour que GNOME
+    Shell charge l'extension à neuf plutôt que de réactiver la copie qu'il
+    tient de l'étape 1. Rend (echec, info)."""
+    code, _sortie = installer(cible, log, base)
+    if code != 0 or not redemarrer(cible, log):
+        return "reinstall", None
+    if not session_ouverte(cible):
+        return "reinstall-active", None
+    info = attendre_extension(cible, log, DELAIS_CONTROLE["reinstall-active"])
+    if not est_active(info):
+        return "reinstall-active", info
+    if indicateurs_non_montes(cible, log):
+        return "reinstall-indicators", info
+    if not _absents(cible):
+        return "reinstall-no-udev", info
+    return None, info
+
+
+def controler(cible, entree, log, extras=False):
+    """Les cinq étapes d'ETAPES, dans l'ordre ; le premier échec, commande
+    ou contrôle, arrête les suivantes.
+
+    `extras` : la base s'installe avec « --with-extras », comme à l'étape 5
+    du flux. Rend (echec, info, gnome) : le nom de l'étape tombée ou None,
+    la dernière réponse de GetExtensionInfo, la version de GNOME mesurée.
+    """
+    base = "--with-extras" if extras else ""
+    echec, info, gnome = _etape_base(cible, entree, log, base)
+    if echec:
+        return echec, info, gnome
+    for etape in (_etape_stream_deck, _etape_retrait_partiel):
+        echec, lue = etape(cible, log)
+        info = lue or info
+        if echec:
+            return echec, info, gnome
+    echec = _etape_retrait(cible, log)
+    if echec:
+        return echec, info, gnome
+    echec, lue = _etape_reinstallation(cible, log, base)
+    return echec, lue or info, gnome
+
+
+def joindre_diagnostic(cible, log):
+    """Ce qu'un échec joint au journal du système, après la sortie de
+    l'installateur qui y est déjà."""
+    for titre, commande in (
+        ("journalctl --user -b", CMD_JOURNAL),
+        (f"gnome-extensions info {UUID_EXTENSION}", CMD_EXT_INFO),
+    ):
+        _ajouter(log, f"── {titre}\n{sonder(cible, commande) or '(rien)'}")
+
+
+def mener_un(course, entree):
+    """Un système, de la création de sa VM à son verdict. Rend la ligne du
+    rapport ; la VM reste inscrite dans course.rapport["etages"]."""
+    debut = time.time()
+    log = os.path.join(
+        course.dossier, f"{entree['distro']}-{entree['version']}.log"
+    )
+    famille = FAMILLE[entree["distro"]]
+    etat = {"code": None, "info": None, "gnome": "", "echec": None}
+    raison = ""
+
+    def ligne():
+        return verdict_systeme(
+            entree,
+            etat["code"],
+            etat["info"],
+            etat["gnome"],
+            echec=etat["echec"],
+            raison=raison,
+            duree_s=time.time() - debut,
+            journal=os.path.basename(log),
+        )
+
+    dire(
+        f"  ── {cle(entree)} (GNOME attendu {entree['gnome_attendu']})",
+        course.journal,
+    )
+    nom, uuid, ok = creer_vm(
+        nom_vm(entree, course.horodatage), entree, course.journal, False
+    )
+    if nom:
+        course.inscrire(
+            {"niveau": 1, "nom": nom, "uuid": uuid, "alias": nom, "cree": True}
+        )
+    if not ok:
+        etat["echec"] = "vm"
+        return ligne()
+    if not adresse_de(nom, course.journal) or not attendre_ssh(
+        nom, course.journal
+    ):
+        etat["echec"] = "ssh"
+        return ligne()
+    bureau = commande_bureau()
+    if lancer(ssh_base(nom) + ["bash -s"], log, DELAI_BUREAU, bureau) != 0:
+        etat["echec"] = "desktop"
+        return ligne()
+    if not deposer_code(nom, famille, course.bundle, course.head, log):
+        etat["echec"] = "code"
+        return ligne()
+    extras = course.args.extras and cle(entree) == SYSTEME_EXTRAS
+    etat["code"], sortie = installer(
+        nom, log, "--with-extras" if extras else ""
+    )
+    if etat["code"] == 2:
+        raison = raison_non_supportee(sortie)
+    if etat["code"] != 0:
+        if etat["code"] != 2:
+            joindre_diagnostic(nom, log)
+        return ligne()
+    _chemin, commande = autologin(famille, UTILISATEUR)
+    if lancer(ssh_base(nom) + [commande], log, 120) != 0:
+        etat["echec"] = "autologin"
+        return ligne()
+    if not redemarrer(nom, log):
+        etat["echec"] = "ssh"
+        return ligne()
+    etat["echec"], etat["info"], etat["gnome"] = controler(
+        nom, entree, log, extras
+    )
+    if etat["echec"]:
+        joindre_diagnostic(nom, log)
+    return ligne()
+
+
+def plan_tient(journal):
+    """La machine peut-elle héberger une VM ? Le dire AVANT de la créer."""
+    coeurs, ram, disque = capacite_hote()
+    dire(
+        f"  machine locale : {coeurs} cœurs, {ram} Mo disponibles,"
+        f" {disque} Go de disque",
+        journal,
+    )
+    manque = []
+    if ram < MEMOIRE_MO + MARGE_RAM_MO:
+        manque.append(f"RAM (il en faut {MEMOIRE_MO + MARGE_RAM_MO} Mo)")
+    if disque < DISQUE_ECRIT_GO + MARGE_DISQUE_GO:
+        manque.append(
+            f"disque (il en faut {DISQUE_ECRIT_GO + MARGE_DISQUE_GO} Go"
+            f" libres ; le disque virtuel fait {DISQUE_GO} Go, creux)"
+        )
+    if manque:
+        dire(f"  ✗ pas assez de {' ni de '.join(manque)}", journal)
+        return False
+    return True
+
+
+def creer_bundle(dossier, journal):
+    """(sha de HEAD, chemin du bundle), ou ("", "") si git a échoué."""
+    chemin = os.path.join(dossier, "erplibre_home.bundle")
+    try:
+        head = subprocess.run(
+            ["git", "-C", RACINE, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        fini = subprocess.run(
+            ["git", "-C", RACINE, "bundle", "create", chemin, "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except (OSError, subprocess.SubprocessError) as souci:
+        dire(f"  ✗ git bundle : {souci}", journal)
+        return "", ""
+    if head.returncode or fini.returncode:
+        dire(f"  ✗ git bundle : {fini.stderr.strip()[:160]}", journal)
+        return "", ""
+    sha = head.stdout.strip()
+    dire(f"  code : HEAD {sha[:12]}, {chemin}", journal)
+    return sha, chemin
+
+
+def annoncer(systemes, args, journal):
+    """Le plan : chaque système, le gabarit des VM, ce qui est hors champ."""
+    dire(
+        f"  {len(systemes)} système(s), un à la fois ; chaque VM :"
+        f" {VCPUS} vCPU, {MEMOIRE_MO} Mo, {DISQUE_GO} Go, --desktop --gpu off",
+        journal,
+    )
+    for entree in systemes:
+        roulante = " (roulante)" if entree["roulante"] else ""
+        extras = (
+            " + --with-extras"
+            if args.extras and cle(entree) == SYSTEME_EXTRAS
+            else ""
+        )
+        dire(
+            f"    {cle(entree):<22} GNOME attendu"
+            f" {entree['gnome_attendu']}{roulante}{extras}",
+            journal,
+        )
+    if not args.only:
+        for entree in NON_SUPPORTES:
+            dire(
+                f"    {cle(entree):<22} UNSUPPORTED : {entree['raison']}"
+                " (aucune VM)",
+                journal,
+            )
+        dire(
+            f"    {', '.join(ARCHITECTURES_HORS_CHAMP)} : UNSUPPORTED,"
+            " amd64 seulement",
+            journal,
+        )
+    dire("  sur chaque VM, l'une après l'autre :", journal)
+    for ligne in decrire_etapes():
+        dire(ligne, journal)
+    if args.extras and all(cle(e) != SYSTEME_EXTRAS for e in systemes):
+        dire(f"  ⚠ --extras ne vaut que pour {SYSTEME_EXTRAS}", journal)
+
+
+def mener(argv):
+    parseur = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parseur.add_argument(
+        "--only",
+        default="",
+        help="clés distro:version séparées par des virgules"
+        " (défaut : toute la matrice)",
+    )
+    parseur.add_argument(
+        "--extras",
+        action="store_true",
+        help=f"installer avec --with-extras sur {SYSTEME_EXTRAS}",
+    )
+    parseur.add_argument("--dry-run", action="store_true")
+    parseur.add_argument(
+        "--garder",
+        action="store_true",
+        help="garder chaque VM après son verdict",
+    )
+    parseur.add_argument("--detruire", action="store_true")
+    args = parseur.parse_args(argv)
+
+    journal, dossier = chemins_de_course()
+
+    # `detruire_une` défait une VM IMBRIQUÉE chez son parent ; ce test n'en
+    # crée aucune, et le défaire partagé ne l'appelle donc jamais. Elle le
+    # dit plutôt que d'être None : le jour où elle serait appelée, le journal
+    # nommerait la raison au lieu de « NoneType is not callable ».
+    def pas_d_imbrique(parent_alias, identite, nom, log=None):
+        dire(f"      ✗ {nom} : ce test ne crée pas de VM imbriquée", log)
+        return False
+
+    if args.detruire:
+        famille = Famille(OUTIL, NOM_BASE, pas_d_imbrique)
+        return detruire(famille, journal, dry_run=args.dry_run)
+
+    try:
+        systemes = plan(args.only or None)
+    except ValueError as souci:
+        dire(f"  ✗ {souci}", journal)
+        return 1
+
+    dire(f"  journal : {journal}", journal)
+    annoncer(systemes, args, journal)
+    course = Course(args, journal, dossier)
+    if not args.only:
+        for entree in NON_SUPPORTES:
+            course.rapport["systemes"].append(ligne_non_supportee(entree))
+
+    if args.dry_run:
+        dire(
+            f"  bureau : {len(commande_bureau())} caractères de commande"
+            " distante, celle du menu",
+            journal,
+        )
+        for entree in systemes:
+            creer_vm(nom_vm(entree, course.horodatage), entree, journal, True)
+        if not arbre_propre(RACINE):
+            dire(
+                "  ⚠ des fichiers suivis sont modifiés : la course réelle"
+                " refusera de partir",
+                journal,
+            )
+        course.ecrire()
+        dire(f"  rapport : {course.chemin}", journal)
+        dire("  --dry-run : rien n'a été créé.", journal)
+        return 0
+
+    # La course installe HEAD : un fichier suivi et modifié ne serait pas
+    # dans la VM, et le verdict porterait sur autre chose que ce qu'on lit.
+    if not arbre_propre(RACINE):
+        dire(
+            "  ✗ des fichiers suivis sont modifiés ou indexés : commiter ou"
+            " remiser d'abord, la VM reçoit HEAD.",
+            journal,
+        )
+        return 1
+    if not plan_tient(journal):
+        return 1
+    os.makedirs(dossier, exist_ok=True)
+    course.head, course.bundle = creer_bundle(dossier, journal)
+    if not course.bundle:
+        return 1
+    course.rapport["head"] = course.head
+    course.ecrire()
+    dire(f"  rapport : {course.chemin}", journal)
+
+    for entree in systemes:
+        try:
+            ligne = mener_un(course, entree)
+        except Exception as souci:  # noqa: BLE001 - un système, pas la course
+            ligne = verdict_systeme(
+                entree, None, None, "", echec=f"exception ({souci})"
+            )
+        course.noter(ligne)
+        marque = {"ACTIVE": "✅", "UNSUPPORTED": "⚪"}.get(
+            ligne["verdict"], "❌"
+        )
+        etape = f" ({ligne['etape']})" if ligne["etape"] else ""
+        dire(f"  {marque} {cle(entree)} : {ligne['verdict']}{etape}", journal)
+        if args.garder:
+            continue
+        # En cours de course, jamais detruire() : il demande « OUI ».
+        for etage in list(course.rapport["etages"]):
+            if detruire_etage1(
+                journal, etage["nom"], attendu=etage["uuid"] or None
+            ):
+                retirer_alias({"etages": [etage]}, journal, NOM_BASE)
+                course.retirer(etage)
+
+    for ligne in resume(course.rapport["systemes"]):
+        dire(ligne, journal)
+    if course.rapport["etages"]:
+        dire(
+            f"  {len(course.rapport['etages'])} VM gardée(s) :"
+            " --detruire les défait",
+            journal,
+        )
+    return code_sortie(course.rapport["systemes"])
+
+
+if __name__ == "__main__":
+    sys.exit(mener(sys.argv[1:]))
