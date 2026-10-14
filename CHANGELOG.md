@@ -126,6 +126,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The installers set up gettext (gettext-tools on SUSE) on every supported system, without ever blocking: `msgfmt --check` catches a translation that lost a `%s` before it shows on a page, and `msgmerge` carries translations over to a regenerated `.pot`
 - `coverage` is in the Odoo 18 venv: `ODOO_MODE_COVERAGE=true` runs Odoo under coverage instead of failing on « command not found »
 - stream_deck: multi-indicator GNOME extension (registry-based, six panel buttons: controller, pencil, film, ERPLibre, network, device); GSettings schema; KeepassXC + Selenium / xdotool auto-login; SSH discovery; git settings sync; backup/restore; FR/EN i18n.
+- ERPLibre Home installs without Odoo, in two levels, through `script/install/install_erplibre_home.sh` on Debian, Ubuntu, Fedora, AlmaLinux, Rocky Linux, openSUSE and Arch Linux with GNOME Shell 45 to 51. The base links the GNOME extension, compiles its schemas and translations with `msgfmt --check` and enables it; `--stream-deck` adds the USB packages, a `uaccess` udev rule and `.venv.streamdeck`. `--uninstall` undoes either level, `--dry-run` prints the plan, and an unsupported system exits 2 with one `UNSUPPORTED:` line. `make erplibre_home_install` and `make erplibre_home_streamdeck_install` run the same commands
+- `TODO › Execute › Stream Deck` installs either level on the local workstation, and shows the installer's `UNSUPPORTED` reason as one line
+- Two QEMU VM tools, `erplibre_home` and `erplibre_home_streamdeck`, run the installer after the GNOME desktop; the "ERPLibre Home (no Odoo)" install profile installs the base alone, with no Odoo service
+- `long_test/install_erplibre_home.py`, also in the long-test menu, creates one desktop VM per supported system, installs HEAD from a git bundle, and requires GetExtensionInfo to report the extension ACTIVE; five stages then install, partly and fully uninstall, and reinstall on the same VM, and each system's log names every check and its outcome
 
 ## Changed
 

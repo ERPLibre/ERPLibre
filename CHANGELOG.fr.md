@@ -130,6 +130,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les installeurs posent gettext (gettext-tools sur SUSE) sur chaque système supporté, sans jamais bloquer : `msgfmt --check` attrape une traduction qui a perdu un `%s` avant qu'elle n'apparaisse sur une page, et `msgmerge` reporte les traductions sur un `.pot` régénéré
 - `coverage` est dans le venv d'Odoo 18 : `ODOO_MODE_COVERAGE=true` fait tourner Odoo sous coverage au lieu d'échouer sur « command not found »
 - stream_deck : extension GNOME multi-indicateurs (registry, six boutons : controller, pencil, film, ERPLibre, network, device) ; schéma GSettings ; auto-login KeepassXC + Selenium / xdotool ; découverte SSH ; sync Git des préférences ; sauvegarde/restauration ; i18n FR/EN.
+- ERPLibre Home s'installe sans Odoo, en deux niveaux, par `script/install/install_erplibre_home.sh` sur Debian, Ubuntu, Fedora, AlmaLinux, Rocky Linux, openSUSE et Arch Linux avec GNOME Shell 45 à 51. La base lie l'extension GNOME, compile ses schémas et ses traductions par `msgfmt --check` et l'active ; `--stream-deck` ajoute les paquets USB, une règle udev `uaccess` et `.venv.streamdeck`. `--uninstall` défait l'un ou l'autre niveau, `--dry-run` affiche le plan, et un système non supporté sort en 2 avec une ligne `UNSUPPORTED:`. `make erplibre_home_install` et `make erplibre_home_streamdeck_install` lancent les mêmes commandes
+- `TODO › Exécution › Stream Deck` installe l'un ou l'autre niveau sur le poste local, et montre la raison `UNSUPPORTED` de l'installateur en une ligne
+- Deux outils de VM QEMU, `erplibre_home` et `erplibre_home_streamdeck`, lancent l'installateur après le bureau GNOME ; le profil d'installation « ERPLibre Home (sans Odoo) » installe la base seule, sans service Odoo
+- `long_test/install_erplibre_home.py`, aussi dans le menu des tests longs, crée une VM de bureau par système supporté, y installe HEAD depuis un bundle git, et exige que GetExtensionInfo dise l'extension ACTIVE ; cinq étapes installent ensuite, désinstallent en partie puis en entier, et réinstallent sur la même VM, et le journal de chaque système nomme chaque contrôle et son issue
 
 ## Modifié
 
