@@ -24,6 +24,7 @@ import contextlib
 import io
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -61,6 +62,14 @@ class ExecuteFactice:
 class TestInstallationLocale(unittest.TestCase):
     def setUp(self):
         todo_i18n._current_lang = "en"
+        # Les questions de l'installation Stream Deck lisent les réglages :
+        # un HOME vide les rend absents, donc les défauts.
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        environ = mock.patch.dict(os.environ, {"HOME": dossier.name})
+        environ.start()
+        self.addCleanup(environ.stop)
+        os.environ.pop("XDG_CONFIG_HOME", None)
 
     def tearDown(self):
         todo_i18n._current_lang = None

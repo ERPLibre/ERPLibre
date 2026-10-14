@@ -217,6 +217,26 @@ TRANSLATIONS = {
         "fr": "Programme du deck :",
         "en": "Deck program:",
     },
+    "Tiler": {
+        "fr": "Tiler",
+        "en": "Tiler",
+    },
+    "Controller": {
+        "fr": "Contrôleur",
+        "en": "Controller",
+    },
+    "No program": {
+        "fr": "Aucun programme",
+        "en": "No program",
+    },
+    "Enable": {
+        "fr": "Activer",
+        "en": "Enable",
+    },
+    "Disable": {
+        "fr": "Désactiver",
+        "en": "Disable",
+    },
     "Unchanged.": {
         "fr": "Inchangé.",
         "en": "Unchanged.",
@@ -241,6 +261,13 @@ TRANSLATIONS = {
         "fr": "ERPLibre Home désinstallé.",
         "en": "ERPLibre Home uninstalled.",
     },
+    "ERPLibre Home uninstall failed, see the output above.": {
+        "fr": (
+            "La désinstallation d'ERPLibre Home a échoué, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "ERPLibre Home uninstall failed, see the output above.",
+    },
     "Extension action:": {
         "fr": "Action sur l'extension :",
         "en": "Extension action:",
@@ -261,6 +288,10 @@ TRANSLATIONS = {
     "Restart the deck program after a game? (Y/n): ": {
         "fr": "Relancer le programme du deck après un jeu ? (O/n) : ",
         "en": "Restart the deck program after a game? (Y/n): ",
+    },
+    "Restart the deck program after a game? (y/N): ": {
+        "fr": "Relancer le programme du deck après un jeu ? (o/N) : ",
+        "en": "Restart the deck program after a game? (y/N): ",
     },
     "Install the optional tools (--with-extras)? (y/N): ": {
         "fr": "Installer les outils facultatifs (--with-extras) ? (o/N) : ",

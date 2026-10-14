@@ -1985,10 +1985,11 @@ class TODO(
             "ERPLibre Home installed. Log out and back in to load the"
             " extension."
         ),
+        echec="ERPLibre Home installation failed, see the output above.",
     ):
         """Lance `commande`, l'installateur et ses options, et en résume
-        l'issue sur une ligne ; `succes` est la clé de traduction de la
-        ligne d'un code 0.
+        l'issue sur une ligne ; `succes` et `echec` sont les clés de
+        traduction de la ligne d'un code 0 et d'un code d'échec.
 
         L'installateur tourne en direct et hors du venv ERPLibre : la base
         n'a pas de venv, et le niveau Stream Deck crée le sien,
@@ -2018,10 +2019,7 @@ class TODO(
                 f"⛔ {t('ERPLibre Home not supported on this system:')} {raison}"
             )
         elif status:
-            print(
-                "❌ "
-                + t("ERPLibre Home installation failed, see the output above.")
-            )
+            print("❌ " + t(echec))
         else:
             print("✅ " + t(succes))
         return False

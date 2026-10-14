@@ -138,7 +138,8 @@ automatique, un état, un diagnostic qui nomme la commande corrigeant chaque
 problème, les deux désinstallations, et le rechargement et les préférences
 de l'extension. Son installation Stream Deck demande le programme, le
 démarrage automatique, la relance après un jeu et les outils facultatifs,
-puis affiche la commande de l'installateur avant de la lancer.
+le programme et la relance proposant par défaut les réglages en place, puis
+affiche la commande de l'installateur avant de la lancer.
 
 ## Lecteur film mpv — backend yt-dlp
 Le lanceur `mpv` de l'indicateur film passe les URL à mpv, qui

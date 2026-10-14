@@ -111,16 +111,45 @@ class StreamDeckMenuMixin:
         """Affiche `question` puis `options`, des couples (valeur,
         libellé), numérotés à partir de 1, le défaut marqué d'une étoile.
         Rend la valeur choisie, celle du défaut sur une réponse vide, None
-        sur 0 ou une réponse hors liste."""
+        sur 0. Une réponse hors liste le dit et repose la question."""
         print(question)
         for rang, (_valeur, libelle) in enumerate(options, 1):
             marque = " *" if str(rang) == defaut else ""
             print(f"  [{rang}] {libelle}{marque}")
         print(f"  [0] {t('Back')}")
-        reponse = input(t("Choice: ")).strip() or defaut
-        if reponse.isdigit() and 1 <= int(reponse) <= len(options):
-            return options[int(reponse) - 1][0]
-        return None
+        while True:
+            reponse = input(t("Choice: ")).strip() or defaut
+            if reponse == "0":
+                return None
+            if reponse.isdigit() and 1 <= int(reponse) <= len(options):
+                return options[int(reponse) - 1][0]
+            print(t("Invalid selection!"))
+
+    @staticmethod
+    def _streamdeck_programs():
+        """Les PROGRAMS en couples (valeur, libellé traduit) pour
+        _streamdeck_choice : la valeur va dans les réglages et les
+        options, le libellé seul s'affiche."""
+        libelles = {
+            "tiler": t("Tiler"),
+            "controller": t("Controller"),
+            "none": t("No program"),
+        }
+        return [(p, libelles.get(p, p)) for p in service.PROGRAMS]
+
+    @classmethod
+    def _streamdeck_program_label(cls, programme):
+        """Le libellé traduit de `programme`, ou la valeur brute quand elle
+        n'est pas dans PROGRAMS."""
+        return dict(cls._streamdeck_programs()).get(programme, programme)
+
+    @staticmethod
+    def _streamdeck_program_default(programme):
+        """Le rang, compté à partir de 1, de `programme` dans PROGRAMS ;
+        "1" quand il n'y est pas."""
+        if programme in service.PROGRAMS:
+            return str(service.PROGRAMS.index(programme) + 1)
+        return "1"
 
     def _streamdeck_unit_installed(self):
         """Vrai quand l'unité du service existe ; sinon le dit avec la
@@ -164,9 +193,9 @@ class StreamDeckMenuMixin:
         choix = self._streamdeck_choice(
             t("Service action:"),
             (
-                ("start", "start"),
-                ("stop", "stop"),
-                ("restart", "restart"),
+                ("start", t("Start")),
+                ("stop", t("Stop")),
+                ("restart", t("Restart")),
                 ("log", t("live log (Ctrl-C to leave)")),
             ),
         )
@@ -190,20 +219,17 @@ class StreamDeckMenuMixin:
             return
         chemin = service.settings_path()
         actuel = service.read_settings(chemin)["DECK_PROGRAM"]
-        defaut = "1"
-        if actuel in service.PROGRAMS:
-            defaut = str(service.PROGRAMS.index(actuel) + 1)
         choix = self._streamdeck_choice(
-            f"{t('Deck program:')} {actuel}",
-            [(p, p) for p in service.PROGRAMS],
-            defaut,
+            f"{t('Deck program:')} {self._streamdeck_program_label(actuel)}",
+            self._streamdeck_programs(),
+            self._streamdeck_program_default(actuel),
         )
         if choix is None:
             return
         if not service.write_settings(chemin, {"DECK_PROGRAM": choix}):
             print(t("Unchanged."))
             return
-        print(f"{t('Deck program:')} {choix}")
+        print(f"{t('Deck program:')} {self._streamdeck_program_label(choix)}")
         code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
         if code == 0:
             self._streamdeck_systemctl("restart", service.UNIT_NAME)
@@ -214,7 +240,7 @@ class StreamDeckMenuMixin:
         _code, sortie = self._streamdeck_probe(statut.cmd_unit("is-enabled"))
         choix = self._streamdeck_choice(
             f"{t('Autostart:')} {sortie.strip() or '?'}",
-            (("enable", "enable"), ("disable", "disable")),
+            (("enable", t("Enable")), ("disable", t("Disable"))),
         )
         if choix is not None:
             self._streamdeck_systemctl(choix, service.UNIT_NAME)
@@ -234,7 +260,9 @@ class StreamDeckMenuMixin:
         if not self._is_yes(input(t("Confirm? (y/N): "))):
             return
         self._erplibre_home_run_installer(
-            commande, succes="ERPLibre Home uninstalled."
+            commande,
+            succes="ERPLibre Home uninstalled.",
+            echec="ERPLibre Home uninstall failed, see the output above.",
         )
 
     def _streamdeck_extension(self):
@@ -257,26 +285,36 @@ class StreamDeckMenuMixin:
     def _erplibre_home_streamdeck_options(self):
         """Les quatre questions de l'installation Stream Deck, chacune
         devenue une option de l'installateur. Le programme et la relance
-        après un jeu passent toujours leur option, défaut compris : sans
-        elle, l'installateur garderait la valeur déjà dans les réglages.
-        Le démarrage automatique et les outils facultatifs n'ont pas
-        d'option négative : « non » n'ajoute rien. Rend la liste des options
-        dans l'ordre des questions, ou None quand la première est abandonnée
-        par 0."""
+        après un jeu passent toujours leur option, défaut compris : leurs
+        défauts sont les valeurs des réglages en place, si bien qu'Entrée
+        partout les réécrit telles quelles ; sans réglages, ce sont ceux de
+        DEFAULTS. Le démarrage automatique et les outils facultatifs n'ont
+        pas d'option négative : « non » n'ajoute rien. Rend la liste des
+        options dans l'ordre des questions, ou None quand la première est
+        abandonnée par 0."""
+        reglages = service.read_settings(service.settings_path())
         programme = self._streamdeck_choice(
-            t("Deck program:"), [(p, p) for p in service.PROGRAMS]
+            t("Deck program:"),
+            self._streamdeck_programs(),
+            self._streamdeck_program_default(reglages["DECK_PROGRAM"]),
         )
         if programme is None:
             return None
         options = [f"--deck-program={programme}"]
         if self._is_yes(input(t("Start the deck program at login? (y/N): "))):
             options.append("--autostart")
-        if self._is_no(
-            input(t("Restart the deck program after a game? (Y/n): "))
-        ):
-            options.append("--no-restart-after-game")
+        if reglages["RESTART_AFTER_GAME"] == "no":
+            relance = self._is_yes(
+                input(t("Restart the deck program after a game? (y/N): "))
+            )
         else:
+            relance = not self._is_no(
+                input(t("Restart the deck program after a game? (Y/n): "))
+            )
+        if relance:
             options.append("--restart-after-game")
+        else:
+            options.append("--no-restart-after-game")
         if self._is_yes(
             input(t("Install the optional tools (--with-extras)? (y/N): "))
         ):
