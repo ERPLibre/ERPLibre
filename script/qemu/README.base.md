@@ -471,7 +471,7 @@ family — and its disk cost is added to the plan before anything is created.
 
 Run `./script/qemu/deploy_qemu.py --help` for the full list.
 
-## Login guide (`/etc/motd`)
+## Login guide (`/etc/motd` or `profile.d`)
 
 Every VM greets you, at each interactive SSH login, with the commands of
 **its own** distribution — `apt`, `dnf`, `zypper` or `pacman` — plus the
@@ -484,13 +484,16 @@ there if that installation fails, which is exactly when you log in by hand.
 The guide is not shown to `ssh host 'command'`, so it never pollutes an
 installation log.
 
-A VM with a desktop (`--desktop`) does not get `/etc/motd`: `pam_motd` sits in
+A VM with a desktop (`--desktop`), except on NixOS, does not get `/etc/motd`: `pam_motd` sits in
 the generic login PAM stack, so GDM would show the guide as a PAM message and
 delay the start of the graphical session in proportion to its length (tens of
 seconds). The same text is written to `/etc/erplibre-login-guide`, and
-`/etc/profile.d/erplibre-login-guide.sh` prints it for interactive SSH login
-shells only: desktop terminals, `ssh host 'command'`, `scp` and `sftp` stay
-silent. A server VM keeps `/etc/motd`.
+`/etc/profile.d/erplibre-login-guide.sh` prints it in interactive login
+shells of an SSH session (a login shell started inside that session, such as
+`su -`, shows it again); desktop terminals, `ssh host 'command'`, `scp` and
+`sftp` stay silent. A server VM keeps `/etc/motd`, and so does a NixOS VM,
+desktop included: its sshd reads `/etc/motd`, it has no `pam_motd` and its
+`/etc/profile` does not source `profile.d`.
 
 The host's git identity travels with it, into the VM's `~/.gitconfig`: a
 commit made in the VM then carries your name instead of
@@ -685,7 +688,7 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 
 Lancez `./script/qemu/deploy_qemu.py --help` pour la liste complète.
 
-## Guide de connexion (`/etc/motd`)
+## Guide de connexion (`/etc/motd` ou `profile.d`)
 
 Chaque VM accueille celui qui s'y connecte en SSH avec les commandes de **sa**
 distribution — `apt`, `dnf`, `zypper` ou `pacman` — et celles d'ERPLibre :
@@ -698,14 +701,17 @@ encore là si elle échoue — le moment où l'on se connecte justement à la ma
 s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
 restent nets.
 
-Une VM à bureau (`--desktop`) ne reçoit PAS `/etc/motd` : `pam_motd` figure
+Une VM à bureau (`--desktop`), hors NixOS, ne reçoit PAS `/etc/motd` : `pam_motd` figure
 dans la pile PAM générique de connexion, donc GDM afficherait le guide comme
 message PAM et retarderait l'ouverture de la session graphique en proportion
 de sa longueur (des dizaines de secondes). Le même texte est écrit dans
 `/etc/erplibre-login-guide`, et `/etc/profile.d/erplibre-login-guide.sh`
-l'affiche aux seuls shells de connexion SSH interactifs : terminaux du
-bureau, `ssh hôte 'commande'`, `scp` et `sftp` restent silencieux. Une VM
-serveur garde `/etc/motd`.
+l'affiche dans les shells de connexion interactifs d'une session SSH (un
+shell de connexion lancé dans cette session, comme `su -`, l'affiche de
+nouveau) ; terminaux du bureau, `ssh hôte 'commande'`, `scp` et `sftp`
+restent silencieux. Une VM serveur garde `/etc/motd`, NixOS aussi, bureau
+compris : son sshd lit `/etc/motd`, il n'a pas de `pam_motd` et son
+`/etc/profile` ne source pas `profile.d`.
 
 L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
 un commit fait dans la VM porte alors votre nom plutôt que
