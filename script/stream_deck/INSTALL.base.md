@@ -230,10 +230,14 @@ summary names the command to run after the next login.
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,
 runs the game, and starts the service again when the game ends, unless
-`RESTART_AFTER_GAME=no`. Each deck program takes a lock,
-`$XDG_RUNTIME_DIR/erplibre-home/deck.lock`; a second one exits with code 2
-and names the program and PID that hold the deck. `systemctl --user`
-controls the service:
+`RESTART_AFTER_GAME=no`. The deck has a lock,
+`$XDG_RUNTIME_DIR/erplibre-home/deck.lock`: the window tiler and the
+controller take it, and the hand-over holds it as `game` for the game's
+whole run. A second holder exits with code 2 and names the program and PID
+that hold the deck, so the service, or **Start deck program** in the
+panel, stays down while a game runs. `kill <PID>` on that PID ends the
+game. A game started by `make streamdeck_<game>` skips the hand-over and
+takes no lock. `systemctl --user` controls the service:
 
 <!-- [fr] -->
 `DECK_PROGRAM` vaut `tiler` (`script/stream_deck/game_tiler.py`),
@@ -252,10 +256,15 @@ le bilan nomme la commande à lancer après la prochaine connexion.
 Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent
 chaque jeu par `script/install/erplibre_home_handover.sh`, qui arrête le
 service, lance le jeu, puis relance le service à la fin du jeu, sauf si
-`RESTART_AFTER_GAME=no`. Chaque programme du deck prend un verrou,
-`$XDG_RUNTIME_DIR/erplibre-home/deck.lock` ; un second sort avec le code 2
-et nomme le programme et le PID qui tiennent le deck. `systemctl --user`
-pilote le service :
+`RESTART_AFTER_GAME=no`. Le deck a un verrou,
+`$XDG_RUNTIME_DIR/erplibre-home/deck.lock` : le window tiler et le
+contrôleur le prennent, et la passation le tient au nom de `game` pendant
+toute la partie. Un second détenteur sort avec le code 2 et nomme le
+programme et le PID qui tiennent le deck : le service, ou **Démarrer le
+programme du deck** dans le panneau, reste arrêté pendant un jeu.
+`kill <PID>` sur ce PID termine le jeu. Un jeu lancé par
+`make streamdeck_<jeu>` contourne la passation et ne prend aucun verrou.
+`systemctl --user` pilote le service :
 
 <!-- [end] -->
 <!-- [common] -->
@@ -264,6 +273,24 @@ systemctl --user status erplibre-home-streamdeck.service
 systemctl --user enable erplibre-home-streamdeck.service
 journalctl --user -u erplibre-home-streamdeck.service -f
 ```
+
+<!-- [end] -->
+<!-- [en] -->
+The installer, TODO and the extension find the unit and the settings
+under `$XDG_CONFIG_HOME`; the user manager and the service read their own
+environment. Set `XDG_CONFIG_HOME` in `~/.config/environment.d/*.conf`,
+which both the session and the user manager read, not only in the shell's
+rc file: otherwise the unit is written where systemd does not look, and the
+service reads its default settings instead of the saved ones.
+
+<!-- [fr] -->
+L'installateur, TODO et l'extension trouvent l'unité et les réglages sous
+`$XDG_CONFIG_HOME` ; le gestionnaire de l'utilisateur et le service lisent
+leur propre environnement. Poser `XDG_CONFIG_HOME` dans
+`~/.config/environment.d/*.conf`, que lisent la session et le gestionnaire
+de l'utilisateur, et pas seulement dans le fichier rc du shell : sinon
+l'unité s'écrit là où systemd ne regarde pas, et le service lit ses
+réglages par défaut au lieu de ceux enregistrés.
 
 <!-- [end] -->
 <!-- [en] -->

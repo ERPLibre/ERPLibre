@@ -80,20 +80,28 @@ whichever checkout it is):
 Description=ERPLibre Home Stream Deck program
 PartOf=graphical-session.target
 After=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 WorkingDirectory=<checkout>
+Environment=PYTHONUNBUFFERED=1
 ExecCondition=<checkout>/script/install/erplibre_home_deck.sh --check
 ExecStart=<checkout>/script/install/erplibre_home_deck.sh
 Restart=on-failure
 RestartSec=3
+RestartPreventExitStatus=2 3
+SuccessExitStatus=143
 
 [Install]
 WantedBy=graphical-session.target
 ```
 
 - `<checkout>` is written with systemd's quoting so a path with spaces works.
+  `$` is written as is: systemd expands variables only in the arguments of
+  an `Exec*` line, and the checkout is only ever the executable's path or
+  `WorkingDirectory`.
 - `--check` exits 0 when a program is configured (`DECK_PROGRAM` is not
   `none`), `.venv.streamdeck/bin/python` exists and a deck is present (a USB
   device of vendor `0fd9` under `/sys/bus/usb/devices/*/idVendor`); otherwise
@@ -105,6 +113,12 @@ WantedBy=graphical-session.target
   attempt would then fail against its parent's descriptor.
 - `Restart=on-failure` brings the program back after a crash; an unplugged
   deck makes the restart fail its `ExecCondition`, and the unit rests.
+  Exit 2 (deck lock taken) and 3 (the tiler finds no visual deck, as with
+  another Elgato device of vendor `0fd9`) are not restarted. Any other
+  persistent failure ends in `failed` after five starts in 60 s; systemd's
+  default limit (5 in 10 s) is never reached with `RestartSec=3`.
+- On SIGTERM (`systemctl stop`) the tiler and the controller reset the
+  deck and exit 143, which `SuccessExitStatus` counts as a clean stop.
 
 ## Installer
 
@@ -142,13 +156,24 @@ makes that visible instead of silent.
 - `game_tiler.py` and `erplibre_controller.py` take
   `$XDG_RUNTIME_DIR/erplibre-home/deck.lock` with `fcntl.flock(…, LOCK_EX |
   LOCK_NB)` at start; when another process holds it, they print which
-  program holds it (its PID, read from the lock file) and exit 2. The
-  service's own start therefore fails cleanly if a game is running.
+  program holds it (its PID, read from the lock file) and exit 2.
 - `erplibre_home_handover.sh <command…>` runs a game:
-  1. if `erplibre-home-streamdeck.service` is active, stop it and remember;
-  2. run the command in the foreground, keeping its exit code;
-  3. if it was active and `RESTART_AFTER_GAME=yes`, start it again;
+  1. if `erplibre-home-streamdeck.service` is active, or `activating`
+     while it waits to restart, stop it and remember;
+  2. run the command in the foreground under the deck lock, held as `game`
+     for the command's whole run by `python3 deck_lock.py game <command…>`,
+     keeping its exit code;
+  3. if it was active and `RESTART_AFTER_GAME=yes`, reset its start counter
+     (`reset-failed`) and start it again;
   4. exit with the game's code.
+- While a game runs, the service's own start (from the panel, TODO's
+  Service menu or the command Diagnosis suggests) therefore fails cleanly
+  with exit 2, and Status names `game` as the holder. The lock's file
+  descriptor is not inherited by the game, so a child the game leaves
+  behind does not keep the deck. A deck program started as a game (the
+  tiler is in the games list) finds an ancestor holding the lock as `game`
+  and runs under it. `kill <PID>` on the holder's PID passes SIGTERM to the
+  game.
 - TODO's games menu and the gallery's launcher (`gallery_server.py`, the bash
   line built by `_game_bash_cmd`) run each game through the helper. The
   gallery's restart loop ("r" + Enter) stays inside one hand-over, so the
@@ -205,10 +230,13 @@ command is printed before it runs):
 
 ## Extension
 
-The `device` indicator's "open controller" action starts the unit with
+The `device` indicator's "Start deck program" action starts the unit with
 `systemctl --user start erplibre-home-streamdeck.service` when the unit file
-exists, and keeps its current direct launch otherwise. Its "stop" action
-stops the unit in the same case. The other indicators are unchanged.
+exists, and keeps its current direct launch otherwise. Its "Restart deck"
+action restarts the unit in the same case. Since a start that
+`ExecCondition` skips exits 0, both then read the unit's `ActiveState`
+and, when no program runs, show the line the entry point's `--check`
+prints. The other indicators are unchanged.
 
 ## Testing
 
@@ -241,3 +269,11 @@ stops the unit in the same case. The other indicators are unchanged.
 - A program started by hand outside the service (for example
   `make streamdeck_tiler`) takes the lock first; the service then fails to
   start until it ends. The status view names the holder.
+- A game started by `make streamdeck_<game>` skips the hand-over and takes
+  no lock: it fights an active service over the deck.
+- The installer, TODO and the extension honour the shell's
+  `XDG_CONFIG_HOME`; the user manager and the service read their own
+  environment. Set in the shell rc only, it makes the unit land where
+  systemd does not look and the service read its default settings.
+  `XDG_CONFIG_HOME` belongs in `~/.config/environment.d/`, which the
+  session and the user manager share (INSTALL says so).
