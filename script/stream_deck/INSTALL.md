@@ -129,6 +129,13 @@ systemctl --user enable erplibre-home-streamdeck.service
 journalctl --user -u erplibre-home-streamdeck.service -f
 ```
 
+TODO's **Execute › Stream Deck** menu gathers the games, both local
+installs, the service, the deck program, autostart, a status view, a
+diagnosis that names the command fixing each problem, both uninstalls, and
+the extension's reload and preferences. Its Stream Deck install asks for
+the program, autostart, the restart after a game and the optional tools,
+then prints the installer command before running it.
+
 ## mpv film launcher — yt-dlp backend
 The film indicator's `mpv` launcher passes URLs to mpv, which
 delegates stream extraction to a `youtube-dl` backend. Legacy

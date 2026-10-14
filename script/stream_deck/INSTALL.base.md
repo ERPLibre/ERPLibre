@@ -266,6 +266,24 @@ journalctl --user -u erplibre-home-streamdeck.service -f
 ```
 
 <!-- [end] -->
+<!-- [en] -->
+TODO's **Execute › Stream Deck** menu gathers the games, both local
+installs, the service, the deck program, autostart, a status view, a
+diagnosis that names the command fixing each problem, both uninstalls, and
+the extension's reload and preferences. Its Stream Deck install asks for
+the program, autostart, the restart after a game and the optional tools,
+then prints the installer command before running it.
+
+<!-- [fr] -->
+Le menu **Exécution › Stream Deck** de TODO réunit les jeux, les deux
+installations locales, le service, le programme du deck, le démarrage
+automatique, un état, un diagnostic qui nomme la commande corrigeant chaque
+problème, les deux désinstallations, et le rechargement et les préférences
+de l'extension. Son installation Stream Deck demande le programme, le
+démarrage automatique, la relance après un jeu et les outils facultatifs,
+puis affiche la commande de l'installateur avant de la lancer.
+
+<!-- [end] -->
 
 <!-- [en] -->
 ## mpv film launcher — yt-dlp backend
