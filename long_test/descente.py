@@ -1149,10 +1149,25 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
         ["sudo", "-n", "virsh", "dominfo", nom],
         capture_output=True,
         text=True,
+        env=dict(os.environ, LC_ALL="C"),
     )
     if existe.returncode:
-        dire(f"    — {nom} : aucun domaine libvirt", journal)
-        return True
+        message = (existe.stderr or "").strip()
+        # Seul un refus de virsh qui dit « domaine inconnu » vaut « déjà
+        # défait » ; sudo qui refuse ou libvirtd arrêté ne disent rien de la
+        # machine, qui peut tourner : la compter défaite la laisserait
+        # debout sans que personne le sache.
+        if "failed to get domain" in message.lower() or (
+            "domain not found" in message.lower()
+        ):
+            dire(f"    — {nom} : aucun domaine libvirt", journal)
+            return True
+        dire(
+            f"    ✗ virsh dominfo {nom} : {message[:160] or 'échec'}"
+            " — l'état de la machine est inconnu, rien touché",
+            journal,
+        )
+        return False
     if attendu:
         vu = Descente.uuid_libvirt(nom)
         if vu != attendu:
@@ -1300,7 +1315,27 @@ def detruire(famille, journal=None, dry_run=False):
             faits += 1
         else:
             debout.append(nom)
-    retirer_alias(rapport, journal, famille.nom_base)
+    # Les alias ssh des seules machines défaites : une racine encore debout
+    # (et ce qu'elle contient) garde les siens, ils servent à l'atteindre.
+    restant = {
+        id(e)
+        for e in rapport.get("etages") or []
+        if int(e.get("niveau", 0)) == 1
+        and (e.get("nom") or nom_etage(1, famille.nom_base)) in debout
+    }
+    retirer_alias(
+        dict(
+            rapport,
+            etages=[
+                e
+                for e in rapport.get("etages") or []
+                if id(e) not in restant
+                and not (debout and int(e.get("niveau", 0)) > 1)
+            ],
+        ),
+        journal,
+        famille.nom_base,
+    )
     if not debout:
         # Une racine est un DISQUE, et ses étages imbriqués vivent dedans.
         # « virsh undefine --remove-all-storage » l'a effacé : un étage

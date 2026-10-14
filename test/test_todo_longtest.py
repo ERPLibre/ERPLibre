@@ -756,13 +756,17 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         )
         self.lances = []
 
-    def _virsh(self, dominfo=0):
+    def _virsh(self, dominfo=0, erreur="error: failed to get domain 'x'"):
         import types
 
         def faux(argv, **kw):
             self.lances.append(" ".join(argv[2:]))
             code = dominfo if "dominfo" in argv else 0
-            return types.SimpleNamespace(returncode=code, stdout="", stderr="")
+            return types.SimpleNamespace(
+                returncode=code,
+                stdout="",
+                stderr=erreur if code else "",
+            )
 
         self.dp.subprocess.run = faux
 
@@ -813,6 +817,21 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             self.assertTrue(
                 self.dp.detruire_etage1(None, "deep-pve-1", attendu="X")
             )
+
+    def test_an_unreachable_libvirt_is_not_an_absent_domain(self):
+        """sudo qui refuse ou libvirtd arrêté : l'état est inconnu, la
+        machine est comptée debout et rien n'est détruit."""
+        for erreur in (
+            "sudo: a password is required",
+            "error: failed to connect to the hypervisor",
+        ):
+            self.lances = []
+            self._virsh(dominfo=1, erreur=erreur)
+            with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                res = self.dp.detruire_etage1(None, "deep-pve-1", attendu="X")
+            self.assertFalse(res)
+            self.assertIn(erreur, sortie.getvalue())
+            self.assertTrue(all("dominfo" in c for c in self.lances))
 
     def test_the_name_comes_from_the_report_not_from_the_level(self):
         """Le déduire du numéro d'étage supposait que nom_etage ne changera
@@ -1906,6 +1925,42 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
         self.assertEqual(effaces, ["essai-sd-alpha", "essai-sd-beta"])
         self.assertEqual(code, 0)
         self.assertIn("2 / 2 défait(s)", texte)
+
+    def test_a_failed_root_keeps_its_ssh_alias(self):
+        self._rapport(self.ALPHA, self.BETA)
+        self._espionner_etage1(debout=("essai-sd-alpha",))
+        retires = []
+        moteur.retirer_alias = lambda rapport, *a, **k: retires.append(
+            [e["alias"] for e in rapport["etages"]]
+        )
+        code, _texte = self._lancer()
+        self.assertEqual(code, 1)
+        self.assertEqual(retires, [["essai-sd-beta"]])
+
+    def test_a_root_already_gone_does_not_hide_a_live_one(self):
+        """Un domaine absent compte défait ; un libvirt muet pour l'autre
+        racine la laisse debout, exit 1."""
+        import types
+
+        def faux(argv, **kw):
+            if "dominfo" in argv:
+                if argv[-1] == "essai-sd-alpha":
+                    return types.SimpleNamespace(
+                        returncode=1,
+                        stdout="",
+                        stderr="error: failed to get domain 'x'",
+                    )
+                return types.SimpleNamespace(
+                    returncode=1, stdout="", stderr="sudo: a password"
+                )
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        moteur.subprocess.run = faux
+        self._rapport(self.ALPHA, self.BETA)
+        code, texte = self._lancer()
+        self.assertEqual(code, 1)
+        self.assertIn("1 / 2 défait(s)", texte)
+        self.assertIn("essai-sd-beta", texte.split("DEBOUT")[1])
 
     def test_a_single_root_report_is_undone_alone(self):
         """La forme d'un rapport deep_* : un étage imbriqué, une racine."""
