@@ -13,6 +13,8 @@ import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
 import {projectRootFrom, makeGioReadLink, streamDeckPython}
     from '../lib/project-root.js';
+import {deckUnitPath, openDeckArgv, restartDeckArgv}
+    from '../lib/deck-service.js';
 import {_} from '../lib/i18n.js';
 
 function _notify(title, body) {
@@ -20,7 +22,6 @@ function _notify(title, body) {
 }
 
 const PIDFILE = `${GLib.get_user_cache_dir()}/erplibre-home/controller.pid`;
-const CONTROLLER_REL = 'script/stream_deck/erplibre_controller.py';
 
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
@@ -154,6 +155,12 @@ class DeviceIndicator extends PanelMenu.Button {
         return projectRootFrom(this._extension.path, makeGioReadLink(Gio));
     }
 
+    // The deck service unit, looked up at the click like the venv below.
+    _deckUnitExists() {
+        return GLib.file_test(deckUnitPath(GLib.get_user_config_dir()),
+            GLib.FileTest.EXISTS);
+    }
+
     _launchController() {
         const root = this._projectRoot();
         // .venv.streamdeck exists only once the Stream Deck level is
@@ -161,16 +168,24 @@ class DeviceIndicator extends PanelMenu.Button {
         // level added after the session started is found.
         const py = streamDeckPython(root,
             (p) => GLib.file_test(p, GLib.FileTest.IS_EXECUTABLE));
-        if (py === null) {
+        const argv = openDeckArgv(
+            {unitExists: this._deckUnitExists(), python: py, root});
+        if (argv === null) {
             _notify('Stream Deck',
                 _('ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install'));
             return;
         }
-        spawnDetached([py, `${root}/${CONTROLLER_REL}`],
-            {notify: _notify, title: 'Stream Deck'});
+        spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
     }
 
     _restart() {
+        // With the unit, systemd stops the program it runs and starts the
+        // one the settings name; the pidfile is the controller's own.
+        const viaUnit = restartDeckArgv({unitExists: this._deckUnitExists()});
+        if (viaUnit !== null) {
+            spawnDetached(viaUnit, {notify: _notify, title: 'Stream Deck'});
+            return;
+        }
         if (GLib.file_test(PIDFILE, GLib.FileTest.EXISTS)) {
             try {
                 const [ok, contents] = GLib.file_get_contents(PIDFILE);
