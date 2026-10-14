@@ -1,31 +1,32 @@
-# Stream Deck — Deployment and Multi-Distribution Validation
+# ERPLibre Home — Deployment and Multi-Distribution Validation
 
 - **Status**: Draft
 - **Date**: 2026-10-13
 - **Author**: Mathieu Benoit (brainstormed with Claude)
-- **Target**: `script/install/`, `script/stream_deck/`, `conf/make.streamdeck.Makefile`, `script/todo/`, `long_test/`
+- **Target**: `script/install/`, `script/stream_deck/`, `script/gnome-extension/erplibre_home/`, `conf/make.streamdeck.Makefile`, `script/todo/`, `long_test/`
 - **Scope**: New installer, TODO entries, QEMU tool and profile, long test; small fixes to the existing Stream Deck code and to `long_test/descente.py`
 
 ## 1. Goals
 
-The Stream Deck code (deck controller, games, gallery, translator, tiler,
-GNOME extension) lives in the repository, but nothing installs it and nothing
-proves it runs. The setup steps are spread over `INSTALL.md` (Ubuntu only),
-Makefile targets that swallow errors, and an extension that expects the full
-ERPLibre venv.
+The Stream Deck code (deck controller, games, gallery, translator, tiler)
+and the ERPLibre Home GNOME extension live in the repository, but nothing
+installs them and nothing proves they run. The setup steps are spread over
+`INSTALL.md` (Ubuntu only), Makefile targets that swallow errors, and an
+extension that expects the full ERPLibre venv.
 
 This spec delivers:
 
-1. **One installer**, `script/install/install_streamdeck.sh`, that sets up the
-   Stream Deck on every supported distribution, in its own venv, without Odoo.
+1. **One installer**, `script/install/install_erplibre_home.sh`, that sets up
+   ERPLibre Home on every supported distribution, without Odoo, with the
+   Stream Deck programs in their own venv.
 2. **The GNOME extension enabled**. "Enabled" means *ACTIVE in a running
    session*: GNOME Shell's `GetExtensionInfo` reports state `1` and an empty
    `error`. Being listed in `enabled-extensions` is not enough.
-3. **TODO entries**: a local install in the Stream Deck section, a
-   `streamdeck` tool in the QEMU tools catalog, and a "Stream Deck (no Odoo)"
-   install profile for QEMU VMs.
-4. **A long test**, `long_test/install_streamdeck.py`, that creates a real VM
-   per distribution version, installs the Stream Deck from the local checkout,
+3. **TODO entries**: a local install in the Stream Deck section, an
+   `erplibre_home` tool in the QEMU tools catalog, and an "ERPLibre Home
+   (no Odoo)" install profile for QEMU VMs.
+4. **A long test**, `long_test/install_erplibre_home.py`, that creates a real VM
+   per distribution version, installs ERPLibre Home from the local checkout,
    logs a user into GNOME and checks that the extension is ACTIVE.
 
 ### Non-goals
@@ -74,15 +75,15 @@ Listed as unsupported, with no VM created:
 
 ## 3. Architecture
 
-A single shell installer is the only place that knows how to install the
-Stream Deck. Everything else calls it:
+A single shell installer is the only place that knows how to install
+ERPLibre Home. Everything else calls it:
 
 ```
-TODO › Stream Deck › Install (local) ──┐
-make streamdeck_install ───────────────┤
-QEMU tool "streamdeck" (in the VM) ────┼──► script/install/install_streamdeck.sh
-QEMU profile "Stream Deck (no Odoo)" ──┤
-long_test/install_streamdeck.py (VM) ──┘
+TODO › Stream Deck › Install (local) ─────┐
+make erplibre_home_install ───────────────┤
+QEMU tool "erplibre_home" (in the VM) ────┼──► script/install/install_erplibre_home.sh
+QEMU profile "ERPLibre Home (no Odoo)" ───┤
+long_test/install_erplibre_home.py (VM) ──┘
 ```
 
 Two alternatives were rejected:
@@ -124,7 +125,7 @@ checkout. The entry points are:
 
 `STREAMDECK_PY` is defined at the top of the Makefile fragment as
 `.venv.streamdeck/bin/python`. A target whose venv is missing stops with a
-message that names `make streamdeck_install`.
+message that names `make erplibre_home_install`.
 
 **These keep `.venv.erplibre` on purpose.** They run ERPLibre's own tools, not
 the deck's:
@@ -133,7 +134,7 @@ the deck's:
 - `indicators/erplibre.js`, which runs `make` targets of an instance and the
   selenium login.
 
-On a Stream Deck-only install they degrade as they do today, and this series
+On an ERPLibre Home install without Odoo they degrade as they do today, and this series
 does not change them: the selenium login notifies and falls back to `xdotool`;
 `game_tiler.py` runs `todo.py` with the system `python3`; the ERPLibre
 indicator's TODO terminal shows the shell's error.
@@ -143,23 +144,23 @@ to name `.venv.streamdeck`, and the catalogs are recompiled.
 
 ### 3.2 Extension path resolution
 
-`make streamdeck_tiler_install_extension` creates a symlink:
-`~/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca` →
-`<checkout>/script/stream_deck/gnome-extension`. GNOME Shell reports
+`make erplibre_home_install_extension` creates a symlink:
+`~/.local/share/gnome-shell/extensions/erplibre-home@technolibre.ca` →
+`<checkout>/script/gnome-extension/erplibre_home`. GNOME Shell reports
 `extension.path` as the symlink path. `device.js` `_projectRoot()` strips
-`/script/stream_deck/gnome-extension` from that path, which fails on the
+`/script/gnome-extension/erplibre_home` from that path, which fails on the
 symlink path, so the controller launcher looks for the venv in the wrong
 place.
 
 The symlink stays, because it keeps the edit-then-reload loop. The hot-reload
-copy (`streamdeck-tiler-reload-*`) is a symlink to the checkout too.
+copy (`erplibre-home-reload-*`) is a symlink to the checkout too.
 
 A new `lib/project-root.js` exports a pure
 `projectRootFrom(path, readLink)`:
 - `readLink(p)` returns the symlink target of `p`, or `null` when `p` is not a
   symlink;
 - a relative target is resolved against the link's parent;
-- the `/script/stream_deck/gnome-extension` suffix is stripped from the
+- the `/script/gnome-extension/erplibre_home` suffix is stripped from the
   resolved path; a path that is not a symlink gives the same result as today.
 
 The GJS caller passes a `readLink` built on
@@ -171,10 +172,10 @@ It serves `device.js` `_projectRoot()` and the fallback branch of
 `erplibre.js` `_autoLoginSelenium` (after the `git-sync-path` setting).
 `controller.js` is untouched: it runs in a path taken from its settings.
 
-## 4. The installer: `script/install/install_streamdeck.sh`
+## 4. The installer: `script/install/install_erplibre_home.sh`
 
 ```
-install_streamdeck.sh [--no-enable] [--extension-only] [--with-extras] [--uninstall] [--dry-run]
+install_erplibre_home.sh [--no-enable] [--extension-only] [--with-extras] [--uninstall] [--dry-run]
 ```
 
 The installer:
@@ -204,7 +205,7 @@ The installer:
    - Read the accepted versions from `metadata.json` `shell-version` with
      `python3 -c 'import json…'`, never from a list in the script. A major
      version outside that list exits 2 (`GNOME <v> not in shell-version`).
-   - `STREAMDECK_OS_RELEASE` and `STREAMDECK_GNOME_VERSION` override the two
+   - `ERPLIBRE_HOME_OS_RELEASE` and `ERPLIBRE_HOME_GNOME_VERSION` override the two
      reads, so the unit tests can run them without a VM.
 2. **System packages**, from the table in 4.2, with the family's package
    manager in non-interactive mode. Already installed packages are skipped by
@@ -301,38 +302,43 @@ These go in the same series, before the installer:
   `erplibre_controller.py` imports `requests` at the top level, so today the
   controller does not start on a fresh venv; `keyboard_talk.py` imports
   `keyboard`.
-- `make.streamdeck.Makefile`, in `streamdeck_tiler_install_extension`:
+- `make.streamdeck.Makefile`, in `erplibre_home_install_extension`:
   - drop the `2>/dev/null || true` after `glib-compile-schemas`;
   - delegate the symlink, schema and locale work to
-    `install_streamdeck.sh --extension-only`, which runs step 5 alone, with no
+    `install_erplibre_home.sh --extension-only`, which runs step 5 alone, with no
     `sudo` and no OS check;
+  - keep the recipe's first line, `tools/migrate_legacy.py`, which moves a
+    workstation off the extension's former identity: it runs under the
+    system `python3`, before any venv exists, and always exits 0;
   - one implementation, so `make` and the installer cannot disagree.
-- New targets `streamdeck_install` and `streamdeck_uninstall`.
+- New targets `erplibre_home_install` and `erplibre_home_uninstall`. The new
+  `erplibre_home_uninstall` replaces the alias of
+  `erplibre_home_uninstall_extension` that carried the name.
 - `INSTALL.base.md`: replace the Ubuntu-only block with
-  `make streamdeck_install`, keep the per-family table for reference, and
+  `make erplibre_home_install`, keep the per-family table for reference, and
   regenerate with mmg.
 
 ## 5. TODO integration
 
 ### 5.1 Local install
 
-The Stream Deck section of `Execute` gets an entry, "Install the Stream Deck
+The Stream Deck section of `Execute` gets an entry, "Install ERPLibre Home
 (local)", next to "[17] Games".
-- It runs `./script/install/install_streamdeck.sh` live, with
+- It runs `./script/install/install_erplibre_home.sh` live, with
   `exec_command_live`.
 - Exit 2 shows the `UNSUPPORTED:` reason, not a stack of errors.
 - i18n keys are in `todo_i18n.py`, in French and English.
 - `test/test_todo_menu.py` `EXPECTED` gets the new entry.
 
-### 5.2 QEMU tool `streamdeck`
+### 5.2 QEMU tool `erplibre_home`
 
 A new entry in `_QEMU_VM_TOOLS`, next to `gnome_ext`:
 
 ```python
-"streamdeck": {
-    "label": "Stream Deck",
+"erplibre_home": {
+    "label": "ERPLibre Home",
     "help": (
-        "script/install/install_streamdeck.sh in the VM's checkout",
+        "script/install/install_erplibre_home.sh in the VM's checkout",
         "system packages, udev rule, .venv.streamdeck, extension enabled",
         "log out and back in to load the extension",
     ),
@@ -349,28 +355,28 @@ A new entry in `_QEMU_VM_TOOLS`, next to `gnome_ext`:
 - `label`, `hint` and every `help` line get French and English keys in
   `todo_i18n.py`; `test_deploy_form_help` requires a non-empty `help`.
 - Its block is added to `_qemu_after_remote_cmd`'s dispatch. It runs
-  `install_streamdeck.sh` in the VM's checkout, chained with `&&`, so a failure
-  makes the VM red. This adds the Stream Deck on top of any install profile.
+  `install_erplibre_home.sh` in the VM's checkout, chained with `&&`, so a failure
+  makes the VM red. This adds ERPLibre Home on top of any install profile.
 
-### 5.3 Install profile "Stream Deck (no Odoo)"
+### 5.3 Install profile "ERPLibre Home (no Odoo)"
 
 The command run after the clone is the install profile the user picks, from
 `_qemu_install_profiles`. No tool changes it. A new profile, next to
-"ERPLibre mobile (home)", installs the Stream Deck alone:
+"ERPLibre mobile (home)", installs ERPLibre Home alone:
 
 ```python
-(t("Stream Deck (no Odoo)"), "./script/install/install_streamdeck.sh"),
+(t("ERPLibre Home (no Odoo)"), "./script/install/install_erplibre_home.sh"),
 ```
 
 - The desktop is installed before the profile command, so the installer finds
   `gnome-shell`.
 - The profile does not run `make install_os`: the installer brings its own
   packages, and the VM is ready in minutes.
-- Ticking the `streamdeck` tool with this profile runs the installer twice;
+- Ticking the `erplibre_home` tool with this profile runs the installer twice;
   the second run is a no-op.
 - The profile's French and English labels go in `todo_i18n.py`.
 
-## 6. Long test: `long_test/install_streamdeck.py`
+## 6. Long test: `long_test/install_erplibre_home.py`
 
 It follows the pattern of `long_test/install_nixos.py`: the constants
 `DELAI_SSH`, `DELAI_INSTALL`, `DELAI_HTTP`, and the helpers `adresse_de`,
@@ -380,13 +386,13 @@ NixOS. Unlike `install_nixos.py`, it passes `drapeaux_cache()` to
 `deploy_qemu.py`, so a host with the QEMU image cache uses it.
 
 **Report contract**, as `descente.dernier_rapport` and `detruire` read it:
-- `"outil": "install_streamdeck"`, `"dry_run"`, `"pid": os.getpid()`;
+- `"outil": "install_erplibre_home"`, `"dry_run"`, `"pid": os.getpid()`;
 - `"etages"`: one `{"niveau": 1, "nom", "uuid", "alias", "cree": true}` per
   VM still alive;
 - `systemes` is an extra key, ignored by `descente.py`.
 
 The live-run guard is `pid` plus the script's basename in `descente.SCRIPTS`.
-`install_streamdeck.py` is added to `descente.SCRIPTS` and to
+`install_erplibre_home.py` is added to `descente.SCRIPTS` and to
 `longtest_menu.SCRIPTS_DEFAISABLES`; a test keeps the two lists equal.
 
 `descente.detruire` undoes only the first `niveau == 1` entry today. It is
@@ -400,12 +406,12 @@ Per-system logs are `.log` files in a sub-directory of the run, so
 ### 6.1 Interface
 
 ```
-./long_test/install_streamdeck.py                 # the whole matrix
-./long_test/install_streamdeck.py --only ubuntu:24.04,fedora:43
-./long_test/install_streamdeck.py --extras        # also run --with-extras on Ubuntu 24.04
-./long_test/install_streamdeck.py --dry-run       # print the plan, create nothing
-./long_test/install_streamdeck.py --garder        # keep the VMs for inspection
-./long_test/install_streamdeck.py --detruire      # undo the last run
+./long_test/install_erplibre_home.py                 # the whole matrix
+./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
+./long_test/install_erplibre_home.py --extras        # also run --with-extras on Ubuntu 24.04
+./long_test/install_erplibre_home.py --dry-run       # print the plan, create nothing
+./long_test/install_erplibre_home.py --garder        # keep the VMs for inspection
+./long_test/install_erplibre_home.py --detruire      # undo the last run
 ```
 
 ### 6.2 Per-VM flow
@@ -416,7 +422,7 @@ VMs run one at a time. Each VM is destroyed before the next is created, unless
 1. **Source** (once per run).
    - Refuse to start when `git status --porcelain` is not empty: the test
      installs what HEAD holds, and a dirty tree would test something else.
-   - Otherwise write `git bundle create <run>/streamdeck.bundle HEAD`.
+   - Otherwise write `git bundle create <run>/erplibre_home.bundle HEAD`.
 2. **VM.** Run `deploy_qemu.py` under sudo with:
    - `--distro <d> --version <v> --name <n> --desktop --gpu off`;
    - `--vcpus 2 --memory 4096` (MiB) `--disk-size 26G`;
@@ -442,7 +448,7 @@ VMs run one at a time. Each VM is destroyed before the next is created, unless
    - `git -C ~/git/erplibre checkout <HEAD sha>`.
 
    The VM never reaches GitHub for the code.
-5. **Install.** Run `./script/install/install_streamdeck.sh` and record its exit
+5. **Install.** Run `./script/install/install_erplibre_home.sh` and record its exit
    code and its output.
    - Exit 2 gives the verdict `UNSUPPORTED(<reason>)`. On Arch and Tumbleweed
      this means GNOME moved past 51, and it is the expected signal to update
@@ -465,20 +471,20 @@ VMs run one at a time. Each VM is destroyed before the next is created, unless
    |---|---|---|
    | `session` | `/run/user/$UID/bus` exists and `org.gnome.Shell` is on it (`gdbus call … org.freedesktop.DBus.NameHasOwner`) | 300 s |
    | `gnome-version` | `gnome-shell --version`, recorded and compared with the matrix | — |
-   | `extension-active` | `GetExtensionInfo streamdeck-tiler@technolibre.ca`: `state` is `1` and `error` is empty. **Main verdict.** | 120 s |
+   | `extension-active` | `GetExtensionInfo erplibre-home@technolibre.ca`: `state` is `1` and `error` is empty. **Main verdict.** | 120 s |
    | `extension-dbus` | the extension's own `ListPaths` and `ListDevices` answer. The object is exported before `getSettings()`, and stays exported when `enable()` throws later, so a method that touches neither settings nor indicators (`GetMonitorGeometry`) proves nothing. `ListPaths` reads the settings. `ListDevices` answers `[]` both when no deck is plugged in and when the device indicator never mounted, so its answer does not prove the indicator; `extension-indicators` checks that. | 30 s |
-   | `extension-indicators` | the session journal (`journalctl --user -b -o cat`) holds the `[StreamDeckTiler] enabled` line that ends `enable()`, and no `[StreamDeckTiler] mount <id> failed` line. A journal without the enabled line fails the check: an ssh failure or an empty journal must not read as "no failed mount". The extension keeps running when an indicator's constructor throws, so ACTIVE and the D-Bus answers do not prove the panel is whole: under a Shell API break every indicator can fail while `GetExtensionInfo` still reports ACTIVE. | 30 s |
+   | `extension-indicators` | the session journal (`journalctl --user -b -o cat`) holds the `[ERPLibreHome] enabled` line that ends `enable()`, and no `[ERPLibreHome] mount <id> failed` line. A journal without the enabled line fails the check: an ssh failure or an empty journal must not read as "no failed mount". The extension keeps running when an indicator's constructor throws, so ACTIVE and the D-Bus answers do not prove the panel is whole: under a Shell API break every indicator can fail while `GetExtensionInfo` still reports ACTIVE. | 30 s |
    | `venv` | `.venv.streamdeck/bin/python -c 'import StreamDeck, pyudev, PIL, cv2, requests'` | 60 s |
    | `udev` | `/etc/udev/rules.d/70-streamdeck.rules` contains `uaccess` and `0fd9` | — |
-   | `idempotent` | a second `install_streamdeck.sh` exits 0, and leaves the rule, venv and symlink with unchanged mtimes | install timeout |
+   | `idempotent` | a second `install_erplibre_home.sh` exits 0, and leaves the rule, venv and symlink with unchanged mtimes | install timeout |
    | `reinstall` | `--uninstall`, then install, reboot, `extension-active` and `extension-indicators` again | install timeout |
 
    The session-bus commands run with
    `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus`.
 8. **On failure**, attach to the report:
-   - `journalctl --user -b | grep -i -e streamdeck -e gnome-shell` (last 200
+   - `journalctl --user -b | grep -i -e erplibrehome -e erplibre-home -e gnome-shell` (last 200
      lines);
-   - `gnome-extensions info streamdeck-tiler@technolibre.ca`;
+   - `gnome-extensions info erplibre-home@technolibre.ca`;
    - the installer's output.
 
 ### 6.3 Report
@@ -532,30 +538,30 @@ under a `systemes` key:
 
 **Unit tests** (`test/`, seconds, no VM):
 
-- `test_install_streamdeck.py`:
+- `test_install_erplibre_home.py`:
   - `--dry-run` with fake `os-release` files for Ubuntu, Debian, Fedora,
     AlmaLinux, openSUSE Leap, Arch and NixOS;
   - the family, the package command, and exit 2 for NixOS;
   - exit 2 for a GNOME version outside `shell-version`;
   - refusal as root;
   - `bash -n`.
-- `test_longtest_install_streamdeck.py`:
+- `test_longtest_install_erplibre_home.py`:
   - the dry-run plan (systems, unsupported lines, VM sizing);
   - parsing of recorded `gdbus` outputs for ACTIVE, ERROR, OUT_OF_DATE and an
     absent extension;
-  - parsing of the session journal: the `[StreamDeckTiler] enabled` line
+  - parsing of the session journal: the `[ERPLibreHome] enabled` line
     must be present, or the journal counts as unread and the check fails;
-    `[StreamDeckTiler] mount <id> failed` lines give the ids of the
+    `[ERPLibreHome] mount <id> failed` lines give the ids of the
     indicators that did not mount;
   - the autologin file and keys per family;
   - the report contract read by `descente.py`;
   - the dirty-tree refusal.
-- `test_todo_menu.py`: the new Stream Deck entry.
+- `test_todo_menu.py`: the new ERPLibre Home entry.
 - the `longtest_menu` test: the new long test entry.
 - The QEMU tool and profile:
-  - the `streamdeck` key is in the catalog, with its translations;
+  - the `erplibre_home` key is in the catalog, with its translations;
   - its after-phase block calls the installer, chained with `&&`;
-  - the "Stream Deck (no Odoo)" profile is listed and runs the installer.
+  - the "ERPLibre Home (no Odoo)" profile is listed and runs the installer.
 - GNOME extension (`make test_gnome_extension`, which runs `node --test`):
   `projectRootFrom` with a stub `readLink`, for a direct path, an absolute
   symlink, a relative symlink and a hot-reload symlink.
@@ -576,7 +582,7 @@ any change to the installer or to `metadata.json`.
      symlinked extension;
    - `extension.path`, logged by the extension, is the unresolved symlink path
      (the premise of 3.2);
-   - `journalctl --user -b -o cat | grep -E '\[StreamDeckTiler\] (mount|enabled)'`
+   - `journalctl --user -b -o cat | grep -E '\[ERPLibreHome\] (mount|enabled)'`
      shows the `enabled` line and no `failed` line: `enable()` ran to its
      end and every indicator mounted.
 
