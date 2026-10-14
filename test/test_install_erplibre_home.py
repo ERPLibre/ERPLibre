@@ -60,6 +60,8 @@ OS_RELEASE = {
     # ne rattache.
     "derive": 'ID=exemplelinux\nID_LIKE="ubuntu debian"\n',
     "inconnu": "ID=exempleos\n",
+    # Un fichier que le shell ne sait pas sourcer.
+    "casse": "ID=exemple\nif then fi (\n",
 }
 
 APT = (
@@ -483,6 +485,19 @@ class LesRefus(Installateur):
         fini = self.lancer("--dry-run", gnome=None)
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertEqual(["47.2"], self.lignes(fini, "gnome="))
+
+    def test_a_failing_gnome_shell_exits_one_without_unsupported(self):
+        """Le code de gnome-shell ne devient pas celui du script : 2 est
+        réservé à la ligne UNSUPPORTED."""
+        self._commande("gnome-shell", "exit 2\n")
+        fini = self.lancer("--dry-run", gnome=None)
+        self.assertEqual(1, fini.returncode, fini.stdout + fini.stderr)
+        self.assertNotIn("UNSUPPORTED", fini.stderr)
+
+    def test_a_broken_os_release_is_unsupported(self):
+        self.assertNonSupporte(
+            self.lancer("--dry-run", systeme="casse"), "unreadable"
+        )
 
     def test_root_is_refused(self):
         fini = self.lancer("--dry-run", uid="0")
