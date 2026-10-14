@@ -168,6 +168,12 @@ FICHIER_AUTOLOGIN = {
     "arch": "/etc/gdm/custom.conf",
     "suse": "/etc/sysconfig/displaymanager",
 }
+# Là où une distribution s'écarte de sa famille : le paquet gdm3 de Debian
+# livre daemon.conf et n'a pas de custom.conf, nom que n'a que le gdm3
+# patché d'Ubuntu. Une distribution absente d'ici suit sa famille.
+FICHIER_AUTOLOGIN_DISTRO = {
+    "debian": "/etc/gdm3/daemon.conf",
+}
 
 # Les commandes de session lisent le bus de l'utilisateur connecté à GNOME :
 # ssh n'en hérite pas, il faut le nommer.
@@ -450,7 +456,7 @@ _AWK_SUSE = (
 )
 
 
-def autologin(famille, user):
+def autologin(famille, user, distro=None):
     """(chemin, commande shell) qui ouvre la session de `user` au démarrage.
 
     awk et non sed ni crudini : awk est dans l'image de base des quatre
@@ -459,12 +465,15 @@ def autologin(famille, user):
     temporaire puis « sudo tee », qui réécrit le fichier EN PLACE et garde
     son inode, donc son contexte SELinux. La commande rend 0 si et seulement
     si l'écriture a abouti.
+
+    `distro` (clé de FAMILLE) affine le fichier quand la distribution
+    s'écarte de sa famille (FICHIER_AUTOLOGIN_DISTRO).
     """
     if famille not in FICHIER_AUTOLOGIN:
         raise ValueError(f"famille inconnue : {famille}")
     if not _NOM_UTILISATEUR.match(user or ""):
         raise ValueError(f"nom d'utilisateur refusé : {user!r}")
-    chemin = FICHIER_AUTOLOGIN[famille]
+    chemin = FICHIER_AUTOLOGIN_DISTRO.get(distro) or FICHIER_AUTOLOGIN[famille]
     programme = _AWK_SUSE if famille == "suse" else _AWK_GDM
     commande = (
         f"f={chemin}; t=$(mktemp) && "
@@ -1380,7 +1389,7 @@ def mener_un(course, entree):
         if etat["code"] != 2:
             joindre_diagnostic(nom, log)
         return ligne()
-    _chemin, commande = autologin(famille, UTILISATEUR)
+    _chemin, commande = autologin(famille, UTILISATEUR, entree["distro"])
     if lancer(ssh_base(nom) + [commande], log, 120) != 0:
         etat["echec"] = "autologin"
         return ligne()

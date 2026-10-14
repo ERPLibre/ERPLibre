@@ -61,8 +61,11 @@ INFO_GUILLEMETS = (
     ' \'error\': <"can\'t load \\"x\\"">},)'
 )
 
-# Le custom.conf que livre le paquet GDM d'une distribution Debian.
+# Le daemon.conf que livre le paquet gdm3 de Debian.
 GDM_LIVRE = """# GDM configuration storage
+#
+# See /usr/share/gdm/gdm.schemas for a list of available options.
+
 [daemon]
 # Uncomment the line below to force the login screen to use Xorg
 #WaylandEnable=false
@@ -71,9 +74,19 @@ GDM_LIVRE = """# GDM configuration storage
 #  AutomaticLoginEnable = true
 #  AutomaticLogin = user1
 
+# Enabling timed login
+#  TimedLoginEnable = true
+#  TimedLogin = user1
+#  TimedLoginDelay = 10
+
 [security]
 
+[xdmcp]
+
+[chooser]
+
 [debug]
+# Uncomment the line below to turn on debugging
 #Enable=true
 """
 
@@ -440,8 +453,8 @@ class LAutologin(unittest.TestCase):
         os.chmod(sudo, 0o755)
         self.env = dict(os.environ, PATH=f"{faux}:{os.environ['PATH']}")
 
-    def _jouer(self, famille, contenu=None, fois=1):
-        chemin, commande = sd.autologin(famille, "erplibre")
+    def _jouer(self, famille, contenu=None, fois=1, distro=None):
+        chemin, commande = sd.autologin(famille, "erplibre", distro)
         cible = os.path.join(self.dossier, "etc", os.path.basename(chemin))
         if contenu is not None:
             os.makedirs(os.path.dirname(cible), exist_ok=True)
@@ -482,8 +495,28 @@ class LAutologin(unittest.TestCase):
             "/etc/sysconfig/displaymanager",
         )
 
+    def test_debian_and_ubuntu_have_their_own_gdm_file(self):
+        self.assertEqual(
+            sd.autologin("debian", "erplibre", "debian")[0],
+            "/etc/gdm3/daemon.conf",
+        )
+        self.assertEqual(
+            sd.autologin("debian", "erplibre", "ubuntu")[0],
+            "/etc/gdm3/custom.conf",
+        )
+
+    def test_debian_daemon_conf_gets_the_keys_under_daemon(self):
+        texte = self._jouer("debian", GDM_LIVRE, distro="debian")
+        self.assertEqual(
+            self._daemon(texte),
+            {"AutomaticLoginEnable": "true", "AutomaticLogin": "erplibre"},
+        )
+        self.assertLess(
+            texte.index("AutomaticLogin=erplibre"), texte.index("[security]")
+        )
+
     def test_the_keys_go_under_daemon(self):
-        texte = self._jouer("debian", GDM_LIVRE)
+        texte = self._jouer("debian", GDM_LIVRE, distro="ubuntu")
         self.assertEqual(
             self._daemon(texte),
             {"AutomaticLoginEnable": "true", "AutomaticLogin": "erplibre"},

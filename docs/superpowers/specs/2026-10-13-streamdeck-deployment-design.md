@@ -617,7 +617,8 @@ VMs run one at a time. Each VM is destroyed before the next is created, unless
 
    | Family | File | Keys |
    |---|---|---|
-   | debian | `/etc/gdm3/custom.conf` | `[daemon] AutomaticLoginEnable=true`, `AutomaticLogin=<user>` |
+   | ubuntu | `/etc/gdm3/custom.conf` | `[daemon] AutomaticLoginEnable=true`, `AutomaticLogin=<user>` |
+   | debian | `/etc/gdm3/daemon.conf` | same |
    | rhel, arch | `/etc/gdm/custom.conf` | same |
    | suse | `/etc/sysconfig/displaymanager` | `DISPLAYMANAGER_AUTOLOGIN="<user>"` |
 
