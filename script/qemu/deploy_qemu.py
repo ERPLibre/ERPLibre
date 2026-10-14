@@ -2269,11 +2269,14 @@ def user_shell(distro: str) -> str:
 LOGIN_GUIDE_PATH = "/etc/erplibre-login-guide"
 LOGIN_GUIDE_SNIPPET_PATH = "/etc/profile.d/erplibre-login-guide.sh"
 # POSIX sh, sourcé par les shells de connexion : pas de « exit » (il fermerait
-# la session), et silencieux hors shell interactif ou hors SSH.
+# la session), silencieux hors shell interactif ou hors SSH, et de statut nul
+# quand il n'affiche rien : un « set -e » du profil ne doit pas s'y arrêter.
 LOGIN_GUIDE_SNIPPET = (
     "case $- in\n"
     "    *i*)\n"
-    '        [ -n "${SSH_CONNECTION:-}" ] && [ -r %s ] && cat %s\n'
+    '        if [ -n "${SSH_CONNECTION:-}" ] && [ -r %s ]; then\n'
+    "            cat %s\n"
+    "        fi\n"
     "        ;;\n"
     "esac\n"
 ) % (LOGIN_GUIDE_PATH, LOGIN_GUIDE_PATH)
