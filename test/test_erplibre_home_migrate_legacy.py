@@ -92,6 +92,22 @@ class TestPlanEnabled(unittest.TestCase):
         self.assertEqual(mig.plan_enabled([NEW, "a@x", OLD]), [NEW, "a@x"])
 
 
+    def test_reload_copy_alone_is_replaced(self):
+        reload = "streamdeck-tiler-reload-17@technolibre.ca"
+        self.assertEqual(mig.plan_enabled(["a@x", reload, "b@y"]),
+                         ["a@x", NEW, "b@y"])
+
+    def test_main_and_reload_give_one_new_at_first_position(self):
+        reload = "streamdeck-tiler-reload-17@technolibre.ca"
+        self.assertEqual(mig.plan_enabled([reload, "a@x", OLD]),
+                         [NEW, "a@x"])
+
+    def test_new_present_drops_reload_copy(self):
+        reload = "streamdeck-tiler-reload-17@technolibre.ca"
+        self.assertEqual(mig.plan_enabled([NEW, "a@x", reload]),
+                         [NEW, "a@x"])
+
+
 class TestLegacyExtensionEntries(unittest.TestCase):
     def test_picks_uuid_and_reload_copies_only(self):
         names = [OLD, NEW, "streamdeck-tiler-reload-123@technolibre.ca",
@@ -140,6 +156,7 @@ class TestDataDirs(unittest.TestCase):
     def test_conflict_leaves_both_and_warns(self):
         (self.bases[0] / "streamdeck-tiler").mkdir()
         (self.bases[0] / "erplibre-home").mkdir()
+        (self.bases[0] / "erplibre-home" / "f").write_text("y")
         rec = Recorder()
         mig.migrate_data_dirs(self.bases, rec.say, rec.warn)
         self.assertTrue((self.bases[0] / "streamdeck-tiler").is_dir())
@@ -147,6 +164,40 @@ class TestDataDirs(unittest.TestCase):
         self.assertEqual(len(rec.warned), 1)
         self.assertIn("streamdeck-tiler", rec.warned[0])
         self.assertIn("merge", rec.warned[0])
+
+    def test_empty_destination_tree_counts_as_absent(self):
+        (self.bases[1] / "streamdeck-tiler").mkdir()
+        (self.bases[1] / "streamdeck-tiler" / "log.jsonl").write_text("x")
+        (self.bases[1] / "erplibre-home" / "a" / "b").mkdir(parents=True)
+        (self.bases[1] / "erplibre-home" / "c").mkdir()
+        rec = Recorder()
+        mig.migrate_data_dirs(self.bases, rec.say, rec.warn)
+        self.assertFalse((self.bases[1] / "streamdeck-tiler").exists())
+        self.assertEqual(
+            (self.bases[1] / "erplibre-home" / "log.jsonl").read_text(), "x")
+        self.assertFalse((self.bases[1] / "erplibre-home" / "a").exists())
+        self.assertEqual((len(rec.said), rec.warned), (1, []))
+
+    def test_destination_with_a_file_is_a_conflict(self):
+        (self.bases[1] / "streamdeck-tiler").mkdir()
+        (self.bases[1] / "erplibre-home" / "a").mkdir(parents=True)
+        (self.bases[1] / "erplibre-home" / "a" / "f").write_text("y")
+        rec = Recorder()
+        mig.migrate_data_dirs(self.bases, rec.say, rec.warn)
+        self.assertTrue((self.bases[1] / "streamdeck-tiler").is_dir())
+        self.assertEqual(
+            (self.bases[1] / "erplibre-home" / "a" / "f").read_text(), "y")
+        self.assertEqual(len(rec.warned), 1)
+        self.assertIn("Stream Deck programs", rec.warned[0])
+
+    def test_destination_with_a_symlink_is_a_conflict(self):
+        (self.bases[1] / "streamdeck-tiler").mkdir()
+        (self.bases[1] / "erplibre-home").mkdir()
+        (self.bases[1] / "erplibre-home" / "l").symlink_to(self.tmp)
+        rec = Recorder()
+        mig.migrate_data_dirs(self.bases, rec.say, rec.warn)
+        self.assertTrue((self.bases[1] / "streamdeck-tiler").is_dir())
+        self.assertEqual(len(rec.warned), 1)
 
     def test_nothing_to_do_says_nothing(self):
         rec = Recorder()
@@ -295,15 +346,30 @@ class TestHooks(unittest.TestCase):
         return [h["command"] for ms in data.get("hooks", {}).values()
                 for m in ms for h in m["hooks"]]
 
-    def test_legacy_replaced_by_new(self):
+    def test_legacy_removed_without_installing_the_new_hook(self):
+        self._write({"hooks": {"Stop": [{"hooks": [
+            {"type": "command", "command": self.old_cmd}]}]}})
+        rec = Recorder()
+        self.assertTrue(
+            mig.migrate_hooks(self.installer, rec.say, rec.warn))
+        commands = self._commands(self._read())
+        self.assertNotIn(self.old_cmd, commands)
+        self.assertNotIn(self.new_cmd, commands)
+        self.assertEqual(len(rec.said), 1)
+        backups = list(self.installer.SETTINGS.parent.glob("settings.json.bak-*"))
+        self.assertEqual(len(backups), 1)
+
+    def test_install_step_adds_the_new_hook_without_second_backup(self):
         self._write({"hooks": {"Stop": [{"hooks": [
             {"type": "command", "command": self.old_cmd}]}]}})
         rec = Recorder()
         mig.migrate_hooks(self.installer, rec.say, rec.warn)
+        mig.install_new_hook(self.installer, rec.say, rec.warn)
         commands = self._commands(self._read())
         self.assertNotIn(self.old_cmd, commands)
         self.assertIn(self.new_cmd, commands)
-        self.assertEqual(len(rec.said), 1)
+        self.assertEqual(len(rec.said), 2)
+        self.assertEqual(rec.warned, [])
         backups = list(self.installer.SETTINGS.parent.glob("settings.json.bak-*"))
         self.assertEqual(len(backups), 1)
 
@@ -328,7 +394,8 @@ class TestHooks(unittest.TestCase):
         self.assertNotIn(self.old_cmd, self._commands(self._read()))
         self.assertEqual(len(rec.said), 1)
         rec2 = Recorder()
-        mig.migrate_hooks(self.installer, rec2.say, rec2.warn)
+        self.assertFalse(
+            mig.migrate_hooks(self.installer, rec2.say, rec2.warn))
         self.assertEqual((rec2.said, rec2.warned), ([], []))
         backups = list(self.installer.SETTINGS.parent.glob("settings.json.bak-*"))
         self.assertEqual(len(backups), 1)
@@ -389,13 +456,13 @@ class TestSteps(unittest.TestCase):
         env = {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/x/bus"}
         self.assertEqual(self.names(env), [
             "Claude hooks", "enabled-extensions", "dconf", "extensions",
-            "data directories"])
+            "data directories", "Claude hook install"])
 
     def test_order_without_bus(self):
         env = {"XDG_RUNTIME_DIR": str(_tmp(self))}
         self.assertEqual(self.names(env), [
             "Claude hooks", "session bus", "extensions",
-            "data directories"])
+            "data directories", "Claude hook install"])
 
 
 class TestMain(unittest.TestCase):

@@ -17,10 +17,11 @@ script always exits 0, so it never blocks the install that follows.
 Uses the standard library only: it runs before any venv exists.
 
 The order stops the old writer before touching what it writes. The old
-Claude hook goes first, then the old extension is disabled over the
+Claude hook entries go first, then the old extension is disabled over the
 session bus; only then are its files and data directories moved, because a
 shell that still has the old extension loaded recreates its directories on
-its next write.
+its next write. The new hook is installed last: it writes under the new
+state directory, which must not exist before the old one is renamed to it.
 """
 
 from __future__ import annotations
@@ -71,29 +72,34 @@ def format_strv(items: list[str]) -> str:
 
 
 def plan_enabled(current: list[str]) -> list[str] | None:
-    """The enabled-extensions list with the old UUID replaced in place.
+    """The enabled-extensions list with the old identity replaced in place.
 
-    Returns None when the old UUID is not listed. When the new UUID is
-    already listed, the old one is dropped; order is otherwise kept.
+    Every UUID of the old family counts: the main one and the hot-reload
+    copies, which the migration deletes from disk alike. The first one
+    listed is replaced by the new UUID, the others are dropped; when the
+    new UUID is already listed, all of them are dropped. Order is
+    otherwise kept. Returns None when no family entry is listed.
     """
-    if LEGACY_UUID not in current:
+    if not any(is_legacy_uuid(uuid) for uuid in current):
         return None
     out: list[str] = []
     for uuid in current:
-        if uuid == LEGACY_UUID:
+        if is_legacy_uuid(uuid):
             uuid = NEW_UUID
         if uuid not in out:
             out.append(uuid)
     return out
 
 
+def is_legacy_uuid(name: str) -> bool:
+    """The old UUID or one of its hot-reload copies."""
+    return name == LEGACY_UUID or (
+        name.startswith(LEGACY_RELOAD_PREFIX) and name.endswith(UUID_DOMAIN))
+
+
 def legacy_extension_entries(names: list[str]) -> list[str]:
     """Entries of the extensions directory that belong to the old UUID."""
-    return sorted(
-        name for name in names
-        if name == LEGACY_UUID
-        or (name.startswith(LEGACY_RELOAD_PREFIX)
-            and name.endswith(UUID_DOMAIN)))
+    return sorted(name for name in names if is_legacy_uuid(name))
 
 
 def plan_dconf(old_dump: str, new_dump: str) -> bool:
@@ -101,11 +107,27 @@ def plan_dconf(old_dump: str, new_dump: str) -> bool:
     return bool(old_dump.strip()) and not new_dump.strip()
 
 
+def holds_only_empty_dirs(path: Path) -> bool:
+    """True for a real directory whose whole tree has no file or symlink."""
+    if path.is_symlink() or not path.is_dir():
+        return False
+    return all(
+        entry.is_dir() and not entry.is_symlink()
+        for entry in path.rglob("*"))
+
+
 def plan_data_dir(src: Path, dst: Path) -> str | None:
-    """'move', 'conflict' when both exist, or None when src is absent."""
+    """'move', 'conflict' when both exist, or None when src is absent.
+
+    A destination that is only a tree of empty directories counts as
+    absent: readers that create their directory on first access leave
+    such a tree behind, and it carries no data. The caller removes it
+    before the move.
+    """
     if not (src.exists() or src.is_symlink()):
         return None
-    if dst.exists() or dst.is_symlink():
+    if (dst.exists() or dst.is_symlink()) \
+            and not holds_only_empty_dirs(dst):
         return "conflict"
     return "move"
 
@@ -224,6 +246,8 @@ def migrate_data_dirs(bases: list[Path], say, warn) -> None:
         action = plan_data_dir(src, dst)
         if action == "move":
             try:
+                if dst.exists():
+                    shutil.rmtree(dst)
                 os.rename(src, dst)
             except OSError as exc:
                 warn(f"{src} not moved: {exc}")
@@ -231,7 +255,8 @@ def migrate_data_dirs(bases: list[Path], say, warn) -> None:
             say(f"{src} moved to {dst}")
         elif action == "conflict":
             warn(f"{src} and {dst} both exist, both kept; once logged out "
-                 f"of the old extension, merge what is needed from {src} "
+                 f"of the old extension and the old Stream Deck programs "
+                 f"stopped, merge what is needed from {src} "
                  f"into {dst} and remove {src}")
 
 
@@ -260,48 +285,72 @@ def load_hooks_installer():
     return module
 
 
-def migrate_hooks(installer, say, warn) -> None:
-    """Replace hook entries that run the old script with the new hook.
+def migrate_hooks(installer, say, warn) -> bool:
+    """Remove the hook entries that run the old script.
 
-    ``installer`` is the hooks installer module; its SETTINGS, HOOK_PATH,
-    remove, install, backup and write do the work, so the file is backed
-    up and rewritten atomically the same way a manual install does.
+    ``installer`` is the hooks installer module; its SETTINGS, remove,
+    backup and write do the work, so the file is backed up and rewritten
+    atomically the same way a manual install does. This is the only step
+    that backs the file up: the install step that follows rewrites the
+    same file within the same run. Returns True when entries were removed
+    and written, which is the condition for installing the new hook.
     """
     settings = installer.SETTINGS
     if not settings.exists():
-        return
+        return False
     try:
         text = settings.read_text(encoding="utf-8")
         original = json.loads(text)
         data = json.loads(text)
     except (OSError, json.JSONDecodeError) as exc:
         warn(f"{settings} not read: {exc}")
-        return
+        return False
     legacy = legacy_hook_commands(data)
     if not legacy:
-        return
+        return False
     for command in legacy:
         installer.remove(data, command, events=tuple(data.get("hooks", {})))
-    installer.install(data, str(installer.HOOK_PATH))
     try:
         installer.backup(original)
         installer.write(data)
     except OSError as exc:
         warn(f"{settings} not written: {exc}")
-        return
-    say(f"Claude hooks: {len(legacy)} legacy command(s) replaced in "
+        return False
+    say(f"Claude hooks: {len(legacy)} legacy command(s) removed from "
         f"{settings}")
+    return True
+
+
+def install_new_hook(installer, say, warn) -> None:
+    """Add the new hook entries; the file was backed up by migrate_hooks."""
+    settings = installer.SETTINGS
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8"))
+        installer.install(data, str(installer.HOOK_PATH))
+        installer.write(data)
+    except (OSError, json.JSONDecodeError) as exc:
+        warn(f"{settings} not written: {exc}")
+        return
+    say(f"Claude hooks: {installer.HOOK_PATH} installed in {settings}")
 
 
 def steps(env: dict, home: Path, say, warn) -> list:
     """The migration steps as (name, callable) pairs, in the order to run.
 
     The old writers are stopped first (hook, then extension through the
-    session bus); the files they write are moved afterwards. Without a
+    session bus); the files they write are moved afterwards, and the new
+    hook is installed last, only when old entries were removed. Without a
     session bus the bus steps are replaced by one line saying so.
     """
+    removed = []
+
     def hooks() -> None:
-        migrate_hooks(load_hooks_installer(), say, warn)
+        if migrate_hooks(load_hooks_installer(), say, warn):
+            removed.append(True)
+
+    def new_hook() -> None:
+        if removed:
+            install_new_hook(load_hooks_installer(), say, warn)
 
     def no_bus() -> None:
         say("no session bus: enabled-extensions and dconf are left for "
@@ -323,6 +372,7 @@ def steps(env: dict, home: Path, say, warn) -> list:
             extensions_dir(env, home), say, warn)),
         ("data directories", lambda: migrate_data_dirs(
             xdg_bases(env, home), say, warn)),
+        ("Claude hook install", new_hook),
     ]
 
 
