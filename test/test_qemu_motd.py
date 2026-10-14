@@ -414,6 +414,29 @@ class TestGuideDelivery(unittest.TestCase):
         self.assertIn(self.GUIDE, snippet)
         self.assertNotRegex(snippet, r"\bexit\b")
 
+    def test_snippet_status_is_zero_when_it_prints_nothing(self):
+        import subprocess
+        import tempfile
+
+        snippet = self._files("gnome")[self.SNIPPET][2]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "snippet.sh")
+            with open(path, "w") as fh:
+                fh.write(snippet)
+            for flags, env in (
+                ("-c", {"PATH": os.environ["PATH"]}),
+                ("-ic", {"PATH": os.environ["PATH"]}),
+                ("-ic", {"PATH": os.environ["PATH"], "SSH_CONNECTION": "x"}),
+            ):
+                with self.subTest(flags=flags, ssh="SSH_CONNECTION" in env):
+                    out = subprocess.run(
+                        ["sh", flags, f". {path}; echo rc=$?"],
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                    ).stdout
+                    self.assertEqual("rc=0", out.strip().splitlines()[-1])
+
 
 class TestInstallerGuideNames(unittest.TestCase):
     def test_names_are_flat(self):
