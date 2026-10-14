@@ -42,9 +42,11 @@ Ce que ces tests gardent :
 - seul unsupported sort en 2 : le code 2 d'une commande appelée sort en 1.
 """
 
+import importlib.util
 import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -1211,15 +1213,19 @@ UNITE_ATTENDUE = """[Unit]
 Description=ERPLibre Home Stream Deck program
 PartOf=graphical-session.target
 After=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 WorkingDirectory=/srv/depot de test 100%%
+Environment=PYTHONUNBUFFERED=1
 ExecCondition="/srv/depot de test 100%%/script/install/erplibre_home_deck.sh" --check
 ExecStart="/srv/depot de test 100%%/script/install/erplibre_home_deck.sh"
 Restart=on-failure
 RestartSec=3
-RestartPreventExitStatus=2
+RestartPreventExitStatus=2 3
+SuccessExitStatus=143
 
 [Install]
 WantedBy=graphical-session.target
@@ -1232,6 +1238,41 @@ class TestUniteDuService(unittest.TestCase):
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertEqual(fait.stdout, UNITE_ATTENDUE)
 
+    def test_the_exit_codes_are_those_of_the_deck_programs(self):
+        """2 : le deck est pris ; 3 : le tiler ne trouve aucun deck à écran.
+        Ni l'un ni l'autre ne se corrige en relançant. 143 : la sortie
+        propre d'un programme du deck sur SIGTERM (deck_lock.exit_on_sigterm),
+        que systemd compterait sinon comme un échec à l'arrêt."""
+        spec = importlib.util.spec_from_file_location(
+            "deck_lock", RACINE / "script/stream_deck/deck_lock.py"
+        )
+        deck_lock = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(deck_lock)
+        lignes = UNITE_ATTENDUE.splitlines()
+        self.assertIn(
+            "RestartPreventExitStatus=%d %d"
+            % (deck_lock.BUSY_EXIT, deck_lock.NO_DECK_EXIT),
+            lignes,
+        )
+        self.assertIn("SuccessExitStatus=%d" % (128 + signal.SIGTERM), lignes)
+
+    def test_a_dollar_in_the_checkout_is_written_as_is(self):
+        """systemd ne développe les variables que dans les ARGUMENTS d'une
+        ligne Exec*, jamais dans le chemin de l'exécutable ni dans
+        WorkingDirectory : l'unité n'en porte pas d'autre, et un « $$ » y
+        resterait doublé (le test systemd-analyze ci-dessous le charge)."""
+        fait = sourcer(
+            'RACINE="$CHEMIN"\nunit_content\n',
+            {"CHEMIN": "/srv/depot ${exemple} $exemple"},
+        )
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn(
+            'ExecStart="/srv/depot ${exemple} $exemple/script/install/'
+            'erplibre_home_deck.sh"',
+            fait.stdout.splitlines(),
+        )
+        self.assertNotIn("$$", fait.stdout)
+
     @unittest.skipUnless(
         shutil.which("systemd-analyze"), "systemd-analyze absent"
     )
@@ -1240,9 +1281,11 @@ class TestUniteDuService(unittest.TestCase):
     ):
         """systemd-analyze verify lit l'unité hors ligne et vérifie que
         ExecStart et ExecCondition désignent un exécutable : le chemin
-        cité et échappé est bien celui du dépôt."""
+        cité et échappé, « $ » et « ${…} » compris, est bien celui du
+        dépôt. Une clé mal placée (StartLimit* hors de [Unit]) y serait
+        dite inconnue."""
         with tempfile.TemporaryDirectory() as dossier:
-            depot = Path(dossier, "copie du depot $exemple 100%")
+            depot = Path(dossier, "copie du depot $exemple ${exemple} 100%")
             (depot / "script/install").mkdir(parents=True)
             for nom in (
                 "install_erplibre_home.sh",
@@ -1273,6 +1316,7 @@ class TestUniteDuService(unittest.TestCase):
             verifie.returncode, 0, verifie.stdout + verifie.stderr
         )
         self.assertNotIn("not executable", verifie.stderr)
+        self.assertNotIn("Unknown key", verifie.stderr)
 
     def test_a_path_systemd_refuses_stops_the_install(self):
         for chemin in ("/srv/l'exemple", '/srv/le "depot"', "/srv/a\\b"):
