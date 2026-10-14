@@ -143,6 +143,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.streamdeck_menu import StreamDeckMenuMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -214,6 +215,7 @@ class TODO(
     VpnMenuMixin,
     AssistantMenuMixin,
     ContainerMenuMixin,
+    StreamDeckMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -360,9 +362,7 @@ class TODO(
 [16] {t("Docker / Podman - Container engines")}
 
 ── {t("Stream Deck")} ──
-[17] {t("Games - Stream Deck games")}
-[18] {t("Install ERPLibre Home (local)")}
-[19] {t("Install ERPLibre Home Stream Deck (local)")}
+[17] {t("Stream Deck - Games, service, status, install")}
 [0] {t("Back")}
 """
         while True:
@@ -435,15 +435,7 @@ class TODO(
                 if status is not False:
                     return
             elif status == "17":
-                status = self.prompt_execute_streamdeck_games()
-                if status is not False:
-                    return
-            elif status == "18":
-                status = self._erplibre_home_install_local()
-                if status is not False:
-                    return
-            elif status == "19":
-                status = self._erplibre_home_streamdeck_install_local()
+                status = self.prompt_execute_streamdeck()
                 if status is not False:
                     return
             else:
@@ -742,7 +734,8 @@ class TODO(
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
-        "prompt_execute_streamdeck_games": "Stream Deck games",
+        "prompt_execute_streamdeck": "Stream Deck",
+        "prompt_execute_streamdeck_games": "Games",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_configuration": "Configuration",
@@ -1967,20 +1960,35 @@ class TODO(
     def _erplibre_home_install_local(self):
         """Installer la base d'ERPLibre Home sur ce poste, sans Odoo :
         l'extension GNOME, ses schémas et ses traductions, activée. Rend
-        False : le menu Exécution reste ouvert."""
+        False : le menu reste ouvert."""
         return self._erplibre_home_run_installer(self._ERPLIBRE_HOME_INSTALLER)
 
     def _erplibre_home_streamdeck_install_local(self):
         """Installer le niveau Stream Deck d'ERPLibre Home : la base au
-        besoin, puis les paquets USB, la règle udev et .venv.streamdeck.
-        Rend False : le menu Exécution reste ouvert."""
-        return self._erplibre_home_run_installer(
-            f"{self._ERPLIBRE_HOME_INSTALLER} --stream-deck"
+        besoin, puis les paquets USB, la règle udev, .venv.streamdeck et le
+        service du deck. Les quatre questions du service deviennent des
+        options, et la commande s'affiche avant de partir. Rend False : le
+        menu reste ouvert."""
+        options = self._erplibre_home_streamdeck_options()
+        if options is None:
+            return False
+        commande = " ".join(
+            [self._ERPLIBRE_HOME_INSTALLER, "--stream-deck", *options]
         )
+        print(f"{t('Will execute:')} {commande}")
+        return self._erplibre_home_run_installer(commande)
 
-    def _erplibre_home_run_installer(self, commande):
+    def _erplibre_home_run_installer(
+        self,
+        commande,
+        succes=(
+            "ERPLibre Home installed. Log out and back in to load the"
+            " extension."
+        ),
+    ):
         """Lance `commande`, l'installateur et ses options, et en résume
-        l'issue sur une ligne.
+        l'issue sur une ligne ; `succes` est la clé de traduction de la
+        ligne d'un code 0.
 
         L'installateur tourne en direct et hors du venv ERPLibre : la base
         n'a pas de venv, et le niveau Stream Deck crée le sien,
@@ -2015,13 +2023,7 @@ class TODO(
                 + t("ERPLibre Home installation failed, see the output above.")
             )
         else:
-            print(
-                "✅ "
-                + t(
-                    "ERPLibre Home installed. Log out and back in to load"
-                    " the extension."
-                )
-            )
+            print("✅ " + t(succes))
         return False
 
     # ---------------------------------------------------------------- #

@@ -161,6 +161,111 @@ TRANSLATIONS = {
             " the extension."
         ),
     },
+    # Stream Deck submenu (script/todo/streamdeck_menu.py)
+    "Stream Deck - Games, service, status, install": {
+        "fr": "🎛️ Stream Deck - Jeux, service, état, installation",
+        "en": "🎛️ Stream Deck - Games, service, status, install",
+    },
+    "Status - What is installed and what runs": {
+        "fr": "📋 État - Ce qui est installé et ce qui tourne",
+        "en": "📋 Status - What is installed and what runs",
+    },
+    "Service - Start, stop, restart, live log": {
+        "fr": "⚙️ Service - Démarrer, arrêter, redémarrer, journal en direct",
+        "en": "⚙️ Service - Start, stop, restart, live log",
+    },
+    "Deck program - Tiler, controller or none": {
+        "fr": "🎛️ Programme du deck - Tiler, contrôleur ou aucun",
+        "en": "🎛️ Deck program - Tiler, controller or none",
+    },
+    "Autostart - Enable or disable": {
+        "fr": "🚀 Démarrage auto - Activer ou désactiver",
+        "en": "🚀 Autostart - Enable or disable",
+    },
+    "Diagnosis - What is wrong and how to fix it": {
+        "fr": "🩺 Diagnostic - Ce qui ne va pas et comment le corriger",
+        "en": "🩺 Diagnosis - What is wrong and how to fix it",
+    },
+    "Uninstall - Stream Deck level or everything": {
+        "fr": "🗑 Désinstaller - Niveau Stream Deck ou tout",
+        "en": "🗑 Uninstall - Stream Deck level or everything",
+    },
+    "Extension - Reload or preferences": {
+        "fr": "🧩 Extension - Recharger ou préférences",
+        "en": "🧩 Extension - Reload or preferences",
+    },
+    "The Stream Deck service is not installed:"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "Le service Stream Deck n'est pas installé :"
+        " make erplibre_home_streamdeck_install",
+        "en": "The Stream Deck service is not installed:"
+        " make erplibre_home_streamdeck_install",
+    },
+    "Nothing to fix.": {
+        "fr": "Rien à corriger.",
+        "en": "Nothing to fix.",
+    },
+    "Service action:": {
+        "fr": "Action sur le service :",
+        "en": "Service action:",
+    },
+    "live log (Ctrl-C to leave)": {
+        "fr": "journal en direct (Ctrl-C pour sortir)",
+        "en": "live log (Ctrl-C to leave)",
+    },
+    "Deck program:": {
+        "fr": "Programme du deck :",
+        "en": "Deck program:",
+    },
+    "Unchanged.": {
+        "fr": "Inchangé.",
+        "en": "Unchanged.",
+    },
+    "Autostart:": {
+        "fr": "Démarrage auto :",
+        "en": "Autostart:",
+    },
+    "Uninstall what?": {
+        "fr": "Désinstaller quoi ?",
+        "en": "Uninstall what?",
+    },
+    "The Stream Deck level": {
+        "fr": "Le niveau Stream Deck",
+        "en": "The Stream Deck level",
+    },
+    "Everything, the extension too": {
+        "fr": "Tout, l'extension aussi",
+        "en": "Everything, the extension too",
+    },
+    "ERPLibre Home uninstalled.": {
+        "fr": "ERPLibre Home désinstallé.",
+        "en": "ERPLibre Home uninstalled.",
+    },
+    "Extension action:": {
+        "fr": "Action sur l'extension :",
+        "en": "Extension action:",
+    },
+    "Reload the extension": {
+        "fr": "Recharger l'extension",
+        "en": "Reload the extension",
+    },
+    "Open its preferences": {
+        "fr": "Ouvrir ses préférences",
+        "en": "Open its preferences",
+    },
+    "Start the deck program at login? (y/N): ": {
+        "fr": "Démarrer le programme du deck à l'ouverture de session ?"
+        " (o/N) : ",
+        "en": "Start the deck program at login? (y/N): ",
+    },
+    "Restart the deck program after a game? (Y/n): ": {
+        "fr": "Relancer le programme du deck après un jeu ? (O/n) : ",
+        "en": "Restart the deck program after a game? (Y/n): ",
+    },
+    "Install the optional tools (--with-extras)? (y/N): ": {
+        "fr": "Installer les outils facultatifs (--with-extras) ? (o/N) : ",
+        "en": "Install the optional tools (--with-extras)? (y/N): ",
+    },
     # Stream Deck: status and diagnosis (script/todo/erplibre_home_status.py)
     "Level: not installed": {
         "fr": "Niveau : non installé",
