@@ -373,8 +373,8 @@ message PAM et retarderait l'ouverture de la session graphique en proportion
 de sa longueur (des dizaines de secondes). Le même texte est écrit dans
 `/etc/erplibre-login-guide`, et `/etc/profile.d/erplibre-login-guide.sh`
 l'affiche dans les shells de connexion interactifs d'une session SSH (un
-shell de connexion lancé dans cette session, comme `su -`, l'affiche de
-nouveau) ; terminaux du bureau, `ssh hôte 'commande'`, `scp` et `sftp`
+shell de connexion imbriqué qui garde `SSH_CONNECTION`, comme `bash -l`,
+l'affiche de nouveau) ; terminaux du bureau, `ssh hôte 'commande'`, `scp` et `sftp`
 restent silencieux. Une VM serveur garde `/etc/motd`, NixOS aussi, bureau
 compris : son sshd lit `/etc/motd`, il n'a pas de `pam_motd` et son
 `/etc/profile` ne source pas `profile.d`.

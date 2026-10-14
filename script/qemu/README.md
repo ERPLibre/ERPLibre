@@ -329,8 +329,8 @@ the generic login PAM stack, so GDM would show the guide as a PAM message and
 delay the start of the graphical session in proportion to its length (tens of
 seconds). The same text is written to `/etc/erplibre-login-guide`, and
 `/etc/profile.d/erplibre-login-guide.sh` prints it in interactive login
-shells of an SSH session (a login shell started inside that session, such as
-`su -`, shows it again); desktop terminals, `ssh host 'command'`, `scp` and
+shells of an SSH session (a nested login shell that keeps
+`SSH_CONNECTION`, such as `bash -l`, shows it again); desktop terminals, `ssh host 'command'`, `scp` and
 `sftp` stay silent. A server VM keeps `/etc/motd`, and so does a NixOS VM,
 desktop included: its sshd reads `/etc/motd`, it has no `pam_motd` and its
 `/etc/profile` does not source `profile.d`.
