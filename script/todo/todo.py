@@ -363,6 +363,8 @@ class TODO(
 
 ── {t("Stream Deck")} ──
 [19] {t("Games - Stream Deck games")}
+[20] {t("Install ERPLibre Home (local)")}
+[21] {t("Install ERPLibre Home Stream Deck (local)")}
 [0] {t("Back")}
 """
         while True:
@@ -444,6 +446,14 @@ class TODO(
                     return
             elif status == "19":
                 status = self.prompt_execute_streamdeck_games()
+                if status is not False:
+                    return
+            elif status == "20":
+                status = self._erplibre_home_install_local()
+                if status is not False:
+                    return
+            elif status == "21":
+                status = self._erplibre_home_streamdeck_install_local()
                 if status is not False:
                     return
             else:
@@ -2069,6 +2079,71 @@ class TODO(
             )
         return games
 
+    # install_erplibre_home.sh sort en 2 pour un système hors périmètre
+    # (distribution, version de GNOME) et en écrit la raison sur une ligne
+    # « UNSUPPORTED: <raison> » ; tout autre code non nul est un échec.
+    _ERPLIBRE_HOME_INSTALLER = "./script/install/install_erplibre_home.sh"
+    _ERPLIBRE_HOME_UNSUPPORTED = 2
+
+    def _erplibre_home_install_local(self):
+        """Installer la base d'ERPLibre Home sur ce poste, sans Odoo :
+        l'extension GNOME, ses schémas et ses traductions, activée. Rend
+        False : le menu Exécution reste ouvert."""
+        return self._erplibre_home_run_installer(self._ERPLIBRE_HOME_INSTALLER)
+
+    def _erplibre_home_streamdeck_install_local(self):
+        """Installer le niveau Stream Deck d'ERPLibre Home : la base au
+        besoin, puis les paquets USB, la règle udev et .venv.streamdeck.
+        Rend False : le menu Exécution reste ouvert."""
+        return self._erplibre_home_run_installer(
+            f"{self._ERPLIBRE_HOME_INSTALLER} --stream-deck"
+        )
+
+    def _erplibre_home_run_installer(self, commande):
+        """Lance `commande`, l'installateur et ses options, et en résume
+        l'issue sur une ligne.
+
+        L'installateur tourne en direct et hors du venv ERPLibre : la base
+        n'a pas de venv, et le niveau Stream Deck crée le sien,
+        .venv.streamdeck. exec_command_live fusionne stdout et stderr et en
+        retient les lignes ; la ligne « UNSUPPORTED: » y est cherchée, pour
+        qu'un code 2 se résume par sa raison et non par un code d'erreur nu.
+        Rend False.
+        """
+        status, lignes = self.execute.exec_command_live(
+            commande,
+            source_erplibre=False,
+            return_status_and_output=True,
+        )
+        if status == self._ERPLIBRE_HOME_UNSUPPORTED:
+            prefixe = "UNSUPPORTED:"
+            raison = next(
+                (
+                    ligne.strip()[len(prefixe) :].strip()
+                    for ligne in lignes
+                    if ligne.strip().startswith(prefixe)
+                ),
+                "",
+            )
+            if not raison:
+                raison = t("no reason reported by the installer")
+            print(
+                f"⛔ {t('ERPLibre Home not supported on this system:')} {raison}"
+            )
+        elif status:
+            print(
+                "❌ "
+                + t("ERPLibre Home installation failed, see the output above.")
+            )
+        else:
+            print(
+                "✅ "
+                + t(
+                    "ERPLibre Home installed. Log out and back in to load"
+                    " the extension."
+                )
+            )
+        return False
     # ---------------------------------------------------------------- #
     # Déploiement : catalogue (pur) -> collecte (CLI ou TUI) -> exécution
     # ---------------------------------------------------------------- #
