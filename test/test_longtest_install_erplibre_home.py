@@ -440,7 +440,11 @@ class LesEtapes(unittest.TestCase):
             'erplibre_home_deck.sh\\""',
             sd.CMD_UNITE,
         )
-        for commande in (sd.CMD_AUTOSTART, sd.CMD_CONDITION):
+        for commande in (
+            sd.CMD_AUTOSTART,
+            sd.CMD_CONDITION,
+            sd.CMD_RAISON_SAUT,
+        ):
             with self.subTest(commande=commande):
                 self.assertIn("XDG_RUNTIME_DIR=/run/user/$(id -u)", commande)
                 self.assertIn("/run/user/$(id -u)/bus", commande)
@@ -454,21 +458,35 @@ class LesEtapes(unittest.TestCase):
         self.assertIn(sd.REGLAGES_DECK, sd.CMD_MTIMES)
 
     def test_the_systemctl_show_lines_are_read_in_any_order(self):
+        raison = f"[autre]\n{sd.RAISON_SAUT}\n"
         for sortie in (
-            "ActiveState=inactive\nResult=exec-condition\n",
-            "Result=exec-condition\nActiveState=inactive",
+            "ActiveState=inactive\nResult=success\n"
+            "ExecMainStartTimestampMonotonic=0\n",
+            "ExecMainStartTimestampMonotonic=0\nResult=success\n"
+            "ActiveState=inactive",
         ):
             with self.subTest(sortie=sortie):
-                self.assertTrue(sd.condition_sautee(sd.etat_systemd(sortie)))
+                etat = sd.etat_systemd(sortie)
+                self.assertTrue(sd.condition_sautee(etat, raison))
+                # Sans la raison du point d'entrée, ce n'est pas prouvé.
+                self.assertFalse(sd.condition_sautee(etat, "autre"))
+                self.assertFalse(sd.condition_sautee(etat, None))
         for sortie in (
-            "ActiveState=active\nResult=success\n",
-            "ActiveState=failed\nResult=exit-code\n",
+            "ActiveState=active\nResult=success\n"
+            "ExecMainStartTimestampMonotonic=0\n",
+            "ActiveState=failed\nResult=exit-code\n"
+            "ExecMainStartTimestampMonotonic=0\n",
+            "ActiveState=inactive\nResult=exec-condition\n"
+            "ExecMainStartTimestampMonotonic=0\n",
+            "ActiveState=inactive\nResult=success\n"
+            "ExecMainStartTimestampMonotonic=123456\n",
             "ActiveState=inactive\nResult=success\n",
             "",
             None,
         ):
             with self.subTest(sortie=sortie):
-                self.assertFalse(sd.condition_sautee(sd.etat_systemd(sortie)))
+                etat = sd.etat_systemd(sortie)
+                self.assertFalse(sd.condition_sautee(etat, raison))
 
     def test_the_enabled_list_is_read(self):
         self.assertEqual(sd.liste_extensions("@as []"), [])
@@ -1496,8 +1514,9 @@ class VMSimulee:
     def __init__(self, journaux, echoue=(), apres=None, **etat):
         self.regle = self.venv = self.service = self.autostart = False
         self.lien = self.uuid = self.actif = True
-        # Sans deck, systemd saute le démarrage du service.
-        self.condition = True
+        # Sans deck, systemd saute le démarrage du service et le point
+        # d'entrée en écrit la raison au journal de l'unité.
+        self.condition = self.raison = True
         self.__dict__.update(etat)
         self.journaux = list(journaux)
         self.echoue = set(echoue)
@@ -1543,9 +1562,14 @@ class VMSimulee:
             sd.CMD_UNITE: "ok" if self.service else "",
             sd.CMD_AUTOSTART: "enabled" if self.autostart else "disabled",
             sd.CMD_CONDITION: (
-                "ActiveState=inactive\nResult=exec-condition"
+                "ActiveState=inactive\nResult=success\n"
+                "ExecMainStartTimestampMonotonic=0"
                 if self.condition
-                else "ActiveState=failed\nResult=exit-code"
+                else "ActiveState=failed\nResult=exit-code\n"
+                "ExecMainStartTimestampMonotonic=123456"
+            ),
+            sd.CMD_RAISON_SAUT: (
+                f"démarrage\n{sd.RAISON_SAUT}" if self.raison else "démarrage"
             ),
             sd.CMD_SANS_SERVICE: "" if self.service else "ok",
         }
@@ -1662,6 +1686,7 @@ class LesCinqEtapes(unittest.TestCase):
             ({"service": False}, "service-unit"),
             ({"autostart": False}, "service-enabled"),
             ({"condition": False}, "service-condition"),
+            ({"raison": False}, "service-condition"),
             ({"actif": False}, "stream-deck-active"),
         ):
             with self.subTest(attendu=attendu):
@@ -1761,7 +1786,13 @@ class LesCinqEtapes(unittest.TestCase):
                 {"apres": {DECK: {"condition": False}}},
                 "service-condition",
                 f"   $ {sd.CMD_CONDITION}\n"
-                "   → ActiveState=failed\nResult=exit-code\n",
+                "   → ActiveState=failed\nResult=exit-code\n"
+                "ExecMainStartTimestampMonotonic=123456\n",
+            ),
+            (
+                {"apres": {DECK: {"raison": False}}},
+                "service-condition",
+                f"   $ {sd.CMD_RAISON_SAUT}\n   → démarrage\n",
             ),
             (
                 {"regle": True},

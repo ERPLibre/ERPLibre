@@ -271,8 +271,10 @@ That is the first of five stages, run in order on the same VM:
 2. **stream-deck**: `--stream-deck --deck-program=tiler --autostart`
    writes the udev rule, the venv imports what the deck programs import,
    the deck service unit runs this checkout's entry point and is enabled,
-   `systemctl --user start` leaves it inactive since a VM has no deck
-   (`Result=exec-condition`), the extension stays ACTIVE, and a second run
+   `systemctl --user start` skips it since a VM has no deck (inactive,
+   `Result=success`, `ExecMainStartTimestampMonotonic=0`, and the entry
+   point's "no Stream Deck plugged in" line in the unit's journal), the
+   extension stays ACTIVE, and a second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
    the venv, the unit and its settings, and leaves the extension linked,
