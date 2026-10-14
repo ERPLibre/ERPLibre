@@ -256,7 +256,7 @@ def charger_galerie():
 FAUX_SYSTEMCTL = """#!/bin/sh
 echo "systemctl $*" >>"$JOURNAL"
 case "$2" in
-    is-active) [ "$(cat "$ETAT")" = active ] ;;
+    is-active) cat "$ETAT"; [ "$(cat "$ETAT")" = active ] ;;
     stop) echo inactive >"$ETAT" ;;
     start) echo active >"$ETAT" ;;
 esac
@@ -265,8 +265,9 @@ esac
 
 def environnement_isole(tmp, unite_active):
     """Un environnement où la passation ne voit que des faux : HOME sous
-    `tmp`, un fichier d'unité, le faux systemctl en tête du PATH. Rend
-    (env, journal)."""
+    `tmp`, un fichier d'unité, le faux systemctl en tête du PATH, et
+    XDG_RUNTIME_DIR sous `tmp`, où la passation prend le verrou du deck au
+    lieu de celui du compte qui lance les tests. Rend (env, journal)."""
     home = os.path.join(tmp, "home")
     unite = os.path.join(
         home, ".config/systemd/user/erplibre-home-streamdeck.service"
@@ -284,10 +285,13 @@ def environnement_isole(tmp, unite_active):
         f.write("active\n" if unite_active else "inactive\n")
     journal = os.path.join(tmp, "journal")
     open(journal, "w", encoding="utf-8").close()
+    run_dir = os.path.join(tmp, "run")
+    os.makedirs(run_dir, mode=0o700)
     env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
     env.update(
         {
             "HOME": home,
+            "XDG_RUNTIME_DIR": run_dir,
             "PATH": faux + os.pathsep + env.get("PATH", ""),
             "JOURNAL": journal,
             "ETAT": etat,
@@ -366,10 +370,11 @@ class TestGalleryLaunch(unittest.TestCase):
         self.assertEqual(
             appels,
             [
-                f"systemctl --user is-active --quiet {unite}",
+                f"systemctl --user is-active {unite}",
                 f"systemctl --user stop {unite}",
                 "partie",
                 "partie",
+                f"systemctl --user reset-failed {unite}",
                 f"systemctl --user start {unite}",
             ],
         )
