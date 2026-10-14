@@ -552,6 +552,9 @@ WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
 DBUS_DEST = "org.gnome.Shell"
 DBUS_PATH = "/org/gnome/Shell/Extensions/ERPLibreHome"
 DBUS_IFACE = "org.gnome.Shell.Extensions.ERPLibreHome"
+# Seconds between two looks for the extension's D-Bus interface while it
+# is missing (Tiler._recheck_dbus).
+DBUS_RECHECK_SEC = 5.0
 
 
 def _tile_via_dbus(grid_cols, grid_rows, c1, r1, c2, r2):
@@ -1546,6 +1549,7 @@ class Tiler:
         self.todo_terminals = _load_todo_terminals()
         self._tiling_last_touch = 0.0    # monotonic ts of last tiling input
         self.dbus_ok = _check_dbus_available()
+        self._dbus_checked_at = time.monotonic()
         # Timer state
         self.timers = []  # list of dicts from _list_tracker_timers
         # Map: key index -> timer id (for timer list mode)
@@ -3454,12 +3458,29 @@ class Tiler:
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
+    def _recheck_dbus(self, now):
+        """While the extension's D-Bus interface is missing, look for it
+        again every DBUS_RECHECK_SEC: the service can start before GNOME
+        Shell exports it. Returns True when it has just appeared, so the
+        caller redraws the "NO EXT" key. Once found it is never checked
+        again: one gdbus call per period while missing, none after."""
+        if self.dbus_ok or now - self._dbus_checked_at < DBUS_RECHECK_SEC:
+            return False
+        self._dbus_checked_at = now
+        self.dbus_ok = _check_dbus_available()
+        return self.dbus_ok
+
     def loop(self):
         """Refresh loop: clear result flash + periodic mode refresh."""
         last_timer_refresh = 0
         last_idle_refresh = 0
         while self.running and self.deck.is_open():
             now = time.monotonic()
+            # Outside the lock: gdbus may take up to its 3 s timeout, and
+            # key presses must not wait for it.
+            if self._recheck_dbus(now):
+                with self.lock:
+                    self.render()
             with self.lock:
                 if self.last_result:
                     elapsed = now - self.result_time
@@ -3542,12 +3563,13 @@ def _label_for_timer(timer):
 
 def main():
     deck_lock.acquire_or_exit("tiler")
+    deck_lock.exit_on_sigterm()
     _init_font_scale()
     streamdecks = DeviceManager().enumerate()
     deck = next((d for d in streamdecks if d.is_visual()), None)
     if not deck:
         print("No visual Stream Deck found.")
-        sys.exit(1)
+        sys.exit(deck_lock.NO_DECK_EXIT)
     deck.open()
     deck.reset()
     deck.set_brightness(80)
