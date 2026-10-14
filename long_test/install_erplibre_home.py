@@ -716,6 +716,9 @@ OPTIONS_SSH = [
 CMD_BOOT_ID = "cat /proc/sys/kernel/random/boot_id"
 
 
+DELAI_PRESENCE_GNOME = 30
+
+
 def ssh_base(cible):
     return ["ssh"] + OPTIONS_SSH + [cible]
 
@@ -1375,6 +1378,14 @@ def mener_un(course, entree):
     bureau = commande_bureau()
     if lancer(ssh_base(nom) + ["bash -s"], log, DELAI_BUREAU, bureau) != 0:
         etat["echec"] = "desktop"
+        return ligne()
+    # Le script du menu peut rendre 0 après un téléchargement manqué : sur
+    # une VM dont le bureau est installé par la course, l'absence de GNOME
+    # Shell est un bureau raté, non un système que l'installateur refuse.
+    if not sonder(nom, "command -v gnome-shell", DELAI_PRESENCE_GNOME):
+        _ajouter(log, "✗ GNOME Shell absent après l'étape du bureau")
+        etat["echec"] = "desktop"
+        joindre_diagnostic(nom, log)
         return ligne()
     if not deposer_code(nom, famille, course.bundle, course.head, log):
         etat["echec"] = "code"
