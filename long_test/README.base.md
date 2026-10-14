@@ -273,13 +273,17 @@ That is the first of five stages, run in order on the same VM:
 
 1. **base**: the checks above, then neither the udev rule nor
    `.venv.streamdeck` exists, and a second base install changes nothing;
-2. **stream-deck**: `--stream-deck` writes the udev rule, the venv
-   imports what the deck programs import, the extension stays ACTIVE, and a
-   second run changes nothing;
-3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule
-   and the venv, and leaves the extension linked, enabled and ACTIVE;
+2. **stream-deck**: `--stream-deck --deck-program=tiler --autostart`
+   writes the udev rule, the venv imports what the deck programs import,
+   the deck service unit runs this checkout's entry point and is enabled,
+   `systemctl --user start` leaves it inactive since a VM has no deck
+   (`Result=exec-condition`), the extension stays ACTIVE, and a second run
+   changes nothing, unit and settings included;
+3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
+   the venv, the unit and its settings, and leaves the extension linked,
+   enabled and ACTIVE;
 4. **uninstall**: `--uninstall` leaves neither link, nor UUID in
-   `enabled-extensions`, nor rule, nor venv;
+   `enabled-extensions`, nor rule, nor venv, nor unit, nor settings;
 5. **reinstall**: the base again, then a reboot: the extension comes back
    ACTIVE with every indicator mounted, without the rule or the venv.
 
@@ -623,13 +627,17 @@ C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
 1. **base** : les contrôles ci-dessus, puis ni la règle udev ni
    `.venv.streamdeck` n'existent, et une seconde installation de la base ne
    change rien ;
-2. **stream-deck** : `--stream-deck` écrit la règle udev, le venv
-   importe ce qu'importent les programmes du deck, l'extension reste ACTIVE,
-   et une seconde exécution ne change rien ;
-3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle
-   et le venv, et laisse l'extension liée, activée et ACTIVE ;
+2. **stream-deck** : `--stream-deck --deck-program=tiler --autostart`
+   écrit la règle udev, le venv importe ce qu'importent les programmes du
+   deck, l'unité du service du deck lance le point d'entrée de ce checkout
+   et est activée, `systemctl --user start` la laisse inactive faute de
+   deck dans une VM (`Result=exec-condition`), l'extension reste ACTIVE, et
+   une seconde exécution ne change rien, unité et réglages compris ;
+3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle,
+   le venv, l'unité et ses réglages, et laisse l'extension liée, activée et
+   ACTIVE ;
 4. **uninstall** : `--uninstall` ne laisse ni lien, ni UUID dans
-   `enabled-extensions`, ni règle, ni venv ;
+   `enabled-extensions`, ni règle, ni venv, ni unité, ni réglages ;
 5. **reinstall** : la base de nouveau, puis un redémarrage : l'extension
    revient ACTIVE avec chaque indicateur monté, sans la règle ni le venv.
 
