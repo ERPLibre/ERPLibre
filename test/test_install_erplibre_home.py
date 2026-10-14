@@ -19,8 +19,15 @@ Ce que ces tests gardent :
   deck ; --stream-deck ajoute les trois, et EPEL n'est activé qu'avec lui,
   sur les reconstructions d'EL, où wmctrl en dépend ;
 - les traductions se compilent par « msgfmt --check », aux deux niveaux ;
-- --uninstall retire tout, --uninstall --stream-deck la règle et le venv
-  seulement, et aucun des deux ne vérifie le système ;
+- --uninstall retire tout, --uninstall --stream-deck tout sauf
+  l'extension, et aucun des deux ne vérifie le système ;
+- le niveau Stream Deck écrit l'unité du service et ses réglages ; une
+  option absente garde la valeur déjà en place, le défaut ne vaut que pour
+  une clé absente ; il n'active l'unité qu'avec --autostart et ne la
+  démarre jamais ; les deux désinstallations l'arrêtent et la retirent ;
+- les options du service exigent --stream-deck, --restart-after-game et
+  --no-restart-after-game s'excluent, et un dépôt dont le chemin porte un
+  caractère que systemd refuse arrête l'installation ;
 - un système non supporté sort en 2 avec UNE ligne « UNSUPPORTED: » sur la
   sortie d'erreur, celle que TODO et le test long affichent ;
 - la liste des versions de GNOME acceptées est celle de metadata.json, lue
@@ -48,6 +55,7 @@ SCRIPT = RACINE / "script/install/install_erplibre_home.sh"
 EXTENSION = RACINE / "script/gnome-extension/erplibre_home"
 UUID = "erplibre-home@technolibre.ca"
 REGLE = "/etc/udev/rules.d/70-streamdeck.rules"
+UNITE = "erplibre-home-streamdeck.service"
 
 # Des os-release réduits à ce que le script lit : ID et ID_LIKE.
 OS_RELEASE = {
@@ -141,6 +149,10 @@ class Installateur(unittest.TestCase):
             self.home / ".local/share/gnome-shell/extensions" / UUID
         )
         self.venv = str(RACINE / ".venv.streamdeck")
+        self.unite = str(self.home / ".config/systemd/user" / UNITE)
+        self.reglages = str(
+            self.home / ".config/erplibre-home/streamdeck.conf"
+        )
 
     def _commande(self, nom, corps):
         """Pose une commande factice en tête du PATH du script."""
@@ -160,7 +172,7 @@ class Installateur(unittest.TestCase):
         env = {
             k: v
             for k, v in os.environ.items()
-            if not k.startswith("STREAMDECK_")
+            if not k.startswith("STREAMDECK_") and k != "XDG_CONFIG_HOME"
         }
         env["HOME"] = str(self.home)
         env["PATH"] = "%s:%s" % (self.bin, env.get("PATH", ""))
@@ -416,7 +428,8 @@ class LeDryRun(Installateur):
         )
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertEqual(
-            [self.lien, REGLE, self.venv], self.lignes(fini, "remove: ")
+            [self.lien, self.unite, self.reglages, REGLE, self.venv],
+            self.lignes(fini, "remove: "),
         )
         self.assertEqual(
             ["org.gnome.shell enabled-extensions -" + UUID],
@@ -424,12 +437,15 @@ class LeDryRun(Installateur):
         )
         self.assertEqual([], self.lignes(fini, "packages: "))
 
-    def test_uninstall_stream_deck_removes_the_rule_and_the_venv_only(self):
+    def test_uninstall_stream_deck_keeps_the_extension_only(self):
         """L'extension reste liée et active : ses indicateurs disent alors
         que le niveau Stream Deck n'est pas installé."""
         fini = self.lancer("--uninstall", "--stream-deck", "--dry-run")
         self.assertEqual(0, fini.returncode, fini.stderr)
-        self.assertEqual([REGLE, self.venv], self.lignes(fini, "remove: "))
+        self.assertEqual(
+            [self.unite, self.reglages, REGLE, self.venv],
+            self.lignes(fini, "remove: "),
+        )
         self.assertEqual([], self.lignes(fini, "gsettings: "))
         self.assertNotIn(self.lien, fini.stdout)
         self.assertNotIn("enabled-extensions", fini.stdout)
@@ -542,6 +558,7 @@ class LesRefus(Installateur):
 
 
 INSTALLEUR = SCRIPT
+BIBLIOTHEQUE = RACINE / "script/install/erplibre_home_settings.sh"
 MAKEFILE_STREAMDECK = RACINE / "conf/make.streamdeck.Makefile"
 
 
@@ -551,7 +568,10 @@ def sourcer(fragment, env=None):
     ERPLIBRE_HOME_SOURCE_ONLY=1 définit les fonctions et s'arrête ; le
     fragment les redéfinit au besoin (sudo, gsettings_bus…) avant de les
     appeler. DBUS_SESSION_BUS_ADDRESS est retiré de l'environnement, sauf
-    si `env` le pose. Rend le CompletedProcess.
+    si `env` le pose. HOME est un répertoire temporaire et XDG_CONFIG_HOME
+    est retiré : l'unité et les réglages du service que le script sourcé
+    désigne ne sont jamais ceux du compte qui lance les tests. Rend le
+    CompletedProcess.
     """
     if "ERPLIBRE_HOME_SOURCE_ONLY" not in INSTALLEUR.read_text(
         encoding="utf-8"
@@ -561,17 +581,20 @@ def sourcer(fragment, env=None):
             "sourcing it would run main"
         )
     code = 'ERPLIBRE_HOME_SOURCE_ONLY=1 source "$INSTALLEUR"\n' + fragment
-    environ = dict(os.environ)
-    environ.pop("DBUS_SESSION_BUS_ADDRESS", None)
-    environ["INSTALLEUR"] = str(INSTALLEUR)
-    environ.update(env or {})
-    return subprocess.run(
-        ["bash", "-c", code],
-        capture_output=True,
-        text=True,
-        env=environ,
-        timeout=60,
-    )
+    with tempfile.TemporaryDirectory() as maison:
+        environ = dict(os.environ)
+        environ.pop("DBUS_SESSION_BUS_ADDRESS", None)
+        environ.pop("XDG_CONFIG_HOME", None)
+        environ["HOME"] = maison
+        environ["INSTALLEUR"] = str(INSTALLEUR)
+        environ.update(env or {})
+        return subprocess.run(
+            ["bash", "-c", code],
+            capture_output=True,
+            text=True,
+            env=environ,
+            timeout=60,
+        )
 
 
 class TestListeEnabledExtensions(unittest.TestCase):
@@ -1048,6 +1071,480 @@ class TestDesinstallation(unittest.TestCase):
             self.assertTrue((cible / "metadata.json").exists())
 
 
+class LesOptionsDuService(Installateur):
+    """--deck-program, --autostart, --[no-]restart-after-game : au niveau
+    Stream Deck seulement, et ce que --dry-run en annonce."""
+
+    def test_help_lists_them(self):
+        fini = self.lancer("--help")
+        for option in (
+            "--deck-program=tiler|controller|none",
+            "--autostart",
+            "--restart-after-game",
+            "--no-restart-after-game",
+        ):
+            self.assertIn(option, fini.stdout)
+
+    def test_without_stream_deck_they_are_a_usage_error(self):
+        for option in (
+            "--deck-program=tiler",
+            "--autostart",
+            "--restart-after-game",
+            "--no-restart-after-game",
+        ):
+            with self.subTest(option=option):
+                fini = self.lancer(option, "--dry-run")
+                self.assertEqual(1, fini.returncode, fini.stdout)
+                self.assertIn("--stream-deck", fini.stderr)
+                self.assertNotIn("UNSUPPORTED", fini.stderr)
+                self.assertEqual([], self.lignes(fini, "family="))
+
+    def test_with_uninstall_they_are_a_usage_error(self):
+        fini = self.lancer(
+            "--uninstall", "--stream-deck", "--autostart", "--dry-run"
+        )
+        self.assertEqual(1, fini.returncode, fini.stdout)
+        self.assertEqual([], self.lignes(fini, "remove: "))
+
+    def test_an_unknown_program_is_a_usage_error(self):
+        fini = self.lancer(
+            "--stream-deck", "--deck-program=exemple", "--dry-run"
+        )
+        self.assertEqual(1, fini.returncode, fini.stdout)
+        self.assertIn("exemple", fini.stderr)
+        self.assertEqual([], self.lignes(fini, "family="))
+
+    def test_both_restart_options_are_a_usage_error(self):
+        for ordre in (
+            ("--restart-after-game", "--no-restart-after-game"),
+            ("--no-restart-after-game", "--restart-after-game"),
+        ):
+            with self.subTest(ordre=ordre):
+                fini = self.lancer("--stream-deck", *ordre, "--dry-run")
+                self.assertEqual(1, fini.returncode, fini.stdout)
+                self.assertIn("--no-restart-after-game", fini.stderr)
+                self.assertEqual([], self.lignes(fini, "family="))
+
+    def test_the_dry_run_shows_the_settings_kept_or_given(self):
+        """Une option absente garde la valeur des réglages en place ; une
+        option donnée la remplace."""
+        Path(self.reglages).parent.mkdir(parents=True)
+        Path(self.reglages).write_text(
+            "DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n",
+            encoding="utf-8",
+        )
+        for options, attendus in (
+            ((), ["DECK_PROGRAM=controller", "RESTART_AFTER_GAME=no"]),
+            (
+                ("--restart-after-game",),
+                ["DECK_PROGRAM=controller", "RESTART_AFTER_GAME=yes"],
+            ),
+            (
+                ("--deck-program=tiler",),
+                ["DECK_PROGRAM=tiler", "RESTART_AFTER_GAME=no"],
+            ),
+        ):
+            with self.subTest(options=options):
+                fini = self.lancer("--stream-deck", *options, "--dry-run")
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                self.assertEqual(attendus, self.lignes(fini, "setting: "))
+
+    def test_the_defaults_write_unit_and_settings_without_enabling(self):
+        fini = self.lancer("--stream-deck", "--dry-run")
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        ecrits = self.lignes(fini, "write: ")
+        self.assertIn(self.unite, ecrits)
+        self.assertIn(self.reglages, ecrits)
+        self.assertEqual(
+            ["DECK_PROGRAM=tiler", "RESTART_AFTER_GAME=yes"],
+            self.lignes(fini, "setting: "),
+        )
+        self.assertEqual(
+            ["--user daemon-reload"], self.lignes(fini, "systemctl: ")
+        )
+
+    def test_the_options_reach_the_settings_and_the_enable(self):
+        fini = self.lancer(
+            "--stream-deck",
+            "--deck-program=controller",
+            "--autostart",
+            "--no-restart-after-game",
+            "--dry-run",
+        )
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        self.assertEqual(
+            ["DECK_PROGRAM=controller", "RESTART_AFTER_GAME=no"],
+            self.lignes(fini, "setting: "),
+        )
+        self.assertEqual(
+            ["--user daemon-reload", "--user enable " + UNITE],
+            self.lignes(fini, "systemctl: "),
+        )
+
+    def test_the_base_has_no_service(self):
+        fini = self.lancer("--dry-run", "--with-extras")
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        self.assertNotIn(self.unite, fini.stdout)
+        self.assertEqual([], self.lignes(fini, "setting: "))
+        self.assertEqual([], self.lignes(fini, "systemctl: "))
+
+    def test_both_uninstalls_stop_and_disable_it(self):
+        for niveau in ((), ("--stream-deck",)):
+            with self.subTest(niveau=niveau):
+                fini = self.lancer("--uninstall", *niveau, "--dry-run")
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                self.assertEqual(
+                    [
+                        "--user stop " + UNITE,
+                        "--user disable " + UNITE,
+                        "--user daemon-reload",
+                    ],
+                    self.lignes(fini, "systemctl: "),
+                )
+
+
+# L'unité attendue pour un dépôt dont le chemin porte une espace et « % ».
+UNITE_ATTENDUE = """[Unit]
+Description=ERPLibre Home Stream Deck program
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/depot de test 100%%
+ExecCondition="/srv/depot de test 100%%/script/install/erplibre_home_deck.sh" --check
+ExecStart="/srv/depot de test 100%%/script/install/erplibre_home_deck.sh"
+Restart=on-failure
+RestartSec=3
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=graphical-session.target
+"""
+
+
+class TestUniteDuService(unittest.TestCase):
+    def test_the_unit_text_quotes_and_escapes_the_checkout(self):
+        fait = sourcer('RACINE="/srv/depot de test 100%"\nunit_content\n')
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(fait.stdout, UNITE_ATTENDUE)
+
+    @unittest.skipUnless(
+        shutil.which("systemd-analyze"), "systemd-analyze absent"
+    )
+    def test_systemd_loads_the_unit_of_a_checkout_with_space_and_percent(
+        self,
+    ):
+        """systemd-analyze verify lit l'unité hors ligne et vérifie que
+        ExecStart et ExecCondition désignent un exécutable : le chemin
+        cité et échappé est bien celui du dépôt."""
+        with tempfile.TemporaryDirectory() as dossier:
+            depot = Path(dossier, "copie du depot 100%")
+            (depot / "script/install").mkdir(parents=True)
+            for nom in (
+                "install_erplibre_home.sh",
+                "erplibre_home_settings.sh",
+                "erplibre_home_deck.sh",
+            ):
+                shutil.copy2(
+                    RACINE / "script/install" / nom, depot / "script/install"
+                )
+            unite = Path(dossier, UNITE)
+            fait = sourcer(
+                'unit_content >"$UNITE"\n',
+                {
+                    "INSTALLEUR": str(
+                        depot / "script/install/install_erplibre_home.sh"
+                    ),
+                    "UNITE": str(unite),
+                },
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            verifie = subprocess.run(
+                ["systemd-analyze", "verify", str(unite)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        self.assertEqual(
+            verifie.returncode, 0, verifie.stdout + verifie.stderr
+        )
+        self.assertNotIn("not executable", verifie.stderr)
+
+    def test_a_path_systemd_refuses_stops_the_install(self):
+        for chemin in ("/srv/l'exemple", '/srv/le "depot"', "/srv/a\\b"):
+            with self.subTest(chemin=chemin):
+                fait = sourcer(
+                    'RACINE="$CHEMIN"\ncheck_checkout_path\necho passe\n',
+                    {"CHEMIN": chemin},
+                )
+                self.assertEqual(fait.returncode, 1)
+                self.assertIn(chemin, fait.stderr)
+                self.assertNotIn("passe", fait.stdout)
+
+    def test_space_and_percent_pass(self):
+        fait = sourcer(
+            'RACINE="/srv/depot de test 100%"\ncheck_checkout_path\n'
+            "echo passe\n"
+        )
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual("passe\n", fait.stdout)
+
+
+# systemctl simulé : chaque appel au journal ; ENABLED fait réussir
+# is-enabled, ECHEC fait échouer tout appel (pas de gestionnaire joignable).
+SYSTEMCTL_FAUX = (
+    'on_session_bus() { "$@"; }\n'
+    "systemctl() {\n"
+    '    echo "systemctl $*" >>"$JOURNAL"\n'
+    '    [ -z "${ECHEC:-}" ] || return 1\n'
+    '    case "$2" in is-enabled) [ -n "${ENABLED:-}" ] ;; esac\n'
+    "}\n"
+)
+
+
+class TestServiceInstalle(unittest.TestCase):
+    """install_service sur un HOME temporaire et un systemctl simulé."""
+
+    def jouer(self, dossier, apres="", env=None, reglages=None):
+        """Lance install_service, puis `apres`. T_PROGRAMME, T_RELANCE et
+        T_AUTOSTART dans `env` tiennent lieu des options ; T_PROGRAMME ou
+        T_RELANCE absent, l'option n'a pas été donnée. Rend (fait, appels,
+        unité, réglages)."""
+        unite = Path(dossier, "config/systemd/user", UNITE)
+        conf = Path(dossier, "config/erplibre-home/streamdeck.conf")
+        if reglages is not None:
+            conf.parent.mkdir(parents=True, exist_ok=True)
+            conf.write_text(reglages, encoding="utf-8")
+        journal = Path(dossier, "appels")
+        journal.touch()
+        environ = {
+            "XDG_CONFIG_HOME": str(Path(dossier, "config")),
+            "JOURNAL": str(journal),
+        }
+        environ.update(env or {})
+        fait = sourcer(
+            'UNIT_FILE="$(deck_unit_file)"\n'
+            'SETTINGS_FILE="$(deck_settings_file)"\n'
+            'DECK_PROGRAM="${T_PROGRAMME:-}"\n'
+            'RESTART_AFTER_GAME="${T_RELANCE:-}"\n'
+            'AUTOSTART="${T_AUTOSTART:-0}"\n'
+            + SYSTEMCTL_FAUX
+            + "install_service\nsummary\n"
+            + apres,
+            environ,
+        )
+        return fait, journal.read_text().splitlines(), unite, conf
+
+    def test_it_writes_unit_and_settings_and_reloads(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, appels, unite, conf = self.jouer(dossier)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertIn("ExecStart=", unite.read_text())
+            self.assertEqual(
+                "DECK_PROGRAM=tiler\nRESTART_AFTER_GAME=yes\n",
+                conf.read_text(),
+            )
+            self.assertEqual(["systemctl --user daemon-reload"], appels)
+
+    def test_it_enables_only_with_autostart_and_never_starts(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, appels, _unite, _conf = self.jouer(
+                dossier, env={"T_AUTOSTART": "1"}
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(
+                [
+                    "systemctl --user daemon-reload",
+                    f"systemctl --user is-enabled --quiet {UNITE}",
+                    f"systemctl --user enable {UNITE}",
+                ],
+                appels,
+            )
+            self.assertFalse([a for a in appels if " start " in a + " "])
+
+    def test_the_options_land_in_the_settings_and_other_keys_stay(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _appels, _unite, conf = self.jouer(
+                dossier,
+                env={"T_PROGRAMME": "controller", "T_RELANCE": "no"},
+                reglages="# note\nEXEMPLE=1\nDECK_PROGRAM=none\n",
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(
+                "# note\nEXEMPLE=1\nDECK_PROGRAM=controller\n"
+                "RESTART_AFTER_GAME=no\n",
+                conf.read_text(),
+            )
+
+    def test_an_install_without_options_keeps_earlier_choices(self):
+        """Une option absente garde la valeur déjà dans les réglages : une
+        réinstallation ne défait pas un choix fait par une installation
+        antérieure ou par le menu Stream Deck de TODO."""
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _appels, _unite, conf = self.jouer(
+                dossier,
+                reglages="DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n",
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(
+                "DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n",
+                conf.read_text(),
+            )
+
+    def test_one_option_changes_its_key_only(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _appels, _unite, conf = self.jouer(
+                dossier,
+                env={"T_RELANCE": "yes"},
+                reglages="DECK_PROGRAM=none\nRESTART_AFTER_GAME=no\n",
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(
+                "DECK_PROGRAM=none\nRESTART_AFTER_GAME=yes\n",
+                conf.read_text(),
+            )
+
+    def test_a_missing_or_empty_key_gets_its_default(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _appels, _unite, conf = self.jouer(
+                dossier, reglages="# note\nDECK_PROGRAM=\n"
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(
+                "# note\nDECK_PROGRAM=tiler\nRESTART_AFTER_GAME=yes\n",
+                conf.read_text(),
+            )
+
+    def test_a_second_identical_run_touches_nothing(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            env = {"T_AUTOSTART": "1", "ENABLED": "1"}
+            fait, _appels, unite, conf = self.jouer(dossier, env=env)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            avant = (unite.stat().st_mtime_ns, conf.stat().st_mtime_ns)
+            Path(dossier, "appels").write_text("")
+            fait, appels, unite, conf = self.jouer(dossier, env=env)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(
+                avant, (unite.stat().st_mtime_ns, conf.stat().st_mtime_ns)
+            )
+            self.assertEqual(
+                [f"systemctl --user is-enabled --quiet {UNITE}"], appels
+            )
+            self.assertIn("nothing to change", fait.stdout)
+
+    def test_without_a_user_manager_the_summary_says_what_to_run(self):
+        """Une installation par ssh sans session : l'unité est écrite, le
+        script ne s'arrête pas, et le bilan nomme la commande d'après la
+        connexion."""
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _appels, unite, _conf = self.jouer(
+                dossier, env={"T_AUTOSTART": "1", "ECHEC": "1"}
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertTrue(unite.exists())
+            self.assertIn(
+                "after the next login, run: systemctl --user enable " + UNITE,
+                fait.stdout,
+            )
+
+
+class TestServiceRetire(unittest.TestCase):
+    """uninstall_service, et les deux désinstallations qui l'appellent."""
+
+    def preparer(self, dossier):
+        config = Path(dossier, "config")
+        unite = config / "systemd/user" / UNITE
+        unite.parent.mkdir(parents=True)
+        unite.write_text("[Unit]\n")
+        voulu = config / "systemd/user/graphical-session.target.wants" / UNITE
+        voulu.parent.mkdir()
+        voulu.symlink_to(unite)
+        conf = config / "erplibre-home/streamdeck.conf"
+        conf.parent.mkdir()
+        conf.write_text("DECK_PROGRAM=tiler\n")
+        return config, unite, voulu, conf
+
+    def test_stop_disable_remove_reload_then_settings(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            config, unite, voulu, conf = self.preparer(dossier)
+            journal = Path(dossier, "appels")
+            journal.touch()
+            fait = sourcer(
+                'UNIT_FILE="$(deck_unit_file)"\n'
+                'SETTINGS_FILE="$(deck_settings_file)"\n'
+                + SYSTEMCTL_FAUX
+                + "uninstall_service\n"
+                'echo "--- second ---" >>"$JOURNAL"\n'
+                "uninstall_service\n",
+                {"XDG_CONFIG_HOME": str(config), "JOURNAL": str(journal)},
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            premier, second = journal.read_text().split("--- second ---\n")
+            self.assertEqual(
+                [
+                    f"systemctl --user stop {UNITE}",
+                    f"systemctl --user disable {UNITE}",
+                    "systemctl --user daemon-reload",
+                ],
+                premier.splitlines(),
+            )
+            self.assertEqual("", second)
+            for chemin in (unite, conf):
+                self.assertFalse(chemin.exists(), chemin)
+            self.assertFalse(os.path.lexists(voulu))
+
+    def test_a_failing_systemctl_still_removes_the_files(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            config, unite, voulu, conf = self.preparer(dossier)
+            journal = Path(dossier, "appels")
+            journal.touch()
+            fait = sourcer(
+                'UNIT_FILE="$(deck_unit_file)"\n'
+                'SETTINGS_FILE="$(deck_settings_file)"\n'
+                + SYSTEMCTL_FAUX
+                + "uninstall_service\n",
+                {
+                    "XDG_CONFIG_HOME": str(config),
+                    "JOURNAL": str(journal),
+                    "ECHEC": "1",
+                },
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertIn("WARNING", fait.stdout)
+            self.assertFalse(unite.exists())
+            self.assertFalse(os.path.lexists(voulu))
+            self.assertFalse(conf.exists())
+
+    def test_both_uninstalls_remove_the_service(self):
+        for niveau in ("1", "0"):
+            with self.subTest(stream_deck=niveau):
+                with tempfile.TemporaryDirectory() as dossier:
+                    config, unite, _voulu, conf = self.preparer(dossier)
+                    journal = Path(dossier, "appels")
+                    journal.touch()
+                    fait = sourcer(
+                        'UNIT_FILE="$(deck_unit_file)"\n'
+                        'SETTINGS_FILE="$(deck_settings_file)"\n'
+                        'EXT_LINK="$DOSSIER/absent-link"\n'
+                        'UDEV_RULE="$DOSSIER/absente.rules"\n'
+                        'VENV="$DOSSIER/venv"\n'
+                        "gsettings_bus() { echo '@as []'; }\n"
+                        + SYSTEMCTL_FAUX
+                        + 'STREAM_DECK="$NIVEAU"\nstep_uninstall\n',
+                        {
+                            "XDG_CONFIG_HOME": str(config),
+                            "JOURNAL": str(journal),
+                            "DOSSIER": dossier,
+                            "NIVEAU": niveau,
+                        },
+                    )
+                    self.assertEqual(fait.returncode, 0, fait.stderr)
+                    self.assertFalse(unite.exists())
+                    self.assertFalse(conf.exists())
+                    self.assertIn(f"removed {unite}", fait.stdout)
+
+
 OUTILS_EXTENSION = shutil.which("glib-compile-schemas") and shutil.which(
     "msgfmt"
 )
@@ -1073,6 +1570,7 @@ class TestExtensionSeule(unittest.TestCase):
         self.home.mkdir()
         (self.depot / "script/install").mkdir(parents=True)
         shutil.copy2(INSTALLEUR, self.depot / "script/install")
+        shutil.copy2(BIBLIOTHEQUE, self.depot / "script/install")
         shutil.copytree(
             EXTENSION,
             self.depot / "script/gnome-extension/erplibre_home",
@@ -1107,6 +1605,7 @@ class TestExtensionSeule(unittest.TestCase):
 
     def lancer(self, *options, env=None):
         environ = dict(os.environ)
+        environ.pop("XDG_CONFIG_HOME", None)
         environ.update(
             {
                 "HOME": str(self.home),

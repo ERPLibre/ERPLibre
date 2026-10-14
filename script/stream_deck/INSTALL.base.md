@@ -77,7 +77,10 @@ script accepte ces options :
 | `--no-enable` | install without enabling the extension; a workstation where the former extension was enabled keeps that state under the new name |
 | `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
 | `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level, one package manager command each; a missing one is skipped with a warning |
-| `--uninstall` | remove everything: disable the extension, remove its link, the udev rule and `.venv.streamdeck`; with `--stream-deck`, only the udev rule and `.venv.streamdeck`, and the extension stays enabled; system packages always stay |
+| `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
+| `--autostart` | with `--stream-deck`: enable the deck service at login (default: not enabled) |
+| `--restart-after-game`, `--no-restart-after-game` | with `--stream-deck`: the deck service comes back after a game, or not (default: it does); the two exclude each other |
+| `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages always stay |
 | `--dry-run` | print what would be done, change nothing |
 
 Exit code `0` means done, `2` an unsupported system (one line on stderr
@@ -94,7 +97,10 @@ starting with `UNSUPPORTED:`), `1` any other failure, including an
 | `--no-enable` | installe sans activer l'extension ; un poste où l'ancienne extension était active garde cet état sous le nouveau nom |
 | `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
 | `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau, une commande du gestionnaire de paquets chacun ; un paquet absent est sauté avec un avertissement |
-| `--uninstall` | retire tout : désactive l'extension, retire son lien, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, seulement la règle udev et `.venv.streamdeck`, et l'extension reste active ; les paquets système restent toujours |
+| `--deck-program=tiler\|controller\|none` | avec `--stream-deck` : le programme que lance le service du deck (défaut `tiler`) |
+| `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session (défaut : non activé) |
+| `--restart-after-game`, `--no-restart-after-game` | avec `--stream-deck` : le service du deck revient après un jeu, ou non (défaut : il revient) ; les deux s'excluent |
+| `--uninstall` | retire tout : désactive l'extension, retire son lien, le service du deck et ses réglages, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, tout sauf l'extension, qui reste active ; les paquets système restent toujours |
 | `--dry-run` | affiche ce qui serait fait, ne change rien |
 
 Le code de sortie `0` veut dire fait, `2` un système non supporté (une
@@ -179,6 +185,84 @@ périphérique qui n'est pas vu, ou ajouter du nouveau matériel, observer les
 <!-- [common] -->
 ```
 sudo udevadm monitor
+```
+
+<!-- [end] -->
+<!-- [en] -->
+### The deck service
+
+A Stream Deck is driven by one program at a time. With `--stream-deck`, the
+installer writes the `systemd --user` unit
+`~/.config/systemd/user/erplibre-home-streamdeck.service`, which runs that
+program from this checkout, and its settings
+`~/.config/erplibre-home/streamdeck.conf` (`$XDG_CONFIG_HOME` honoured):
+
+<!-- [fr] -->
+### Le service du deck
+
+Un Stream Deck est piloté par un seul programme à la fois. Avec
+`--stream-deck`, l'installateur écrit l'unité `systemd --user`
+`~/.config/systemd/user/erplibre-home-streamdeck.service`, qui lance ce
+programme depuis ce dépôt, et ses réglages
+`~/.config/erplibre-home/streamdeck.conf` (`$XDG_CONFIG_HOME` respecté) :
+
+<!-- [end] -->
+<!-- [common] -->
+```
+DECK_PROGRAM=tiler
+RESTART_AFTER_GAME=yes
+```
+
+<!-- [end] -->
+<!-- [en] -->
+`DECK_PROGRAM` is `tiler` (`script/stream_deck/game_tiler.py`),
+`controller` (`script/stream_deck/erplibre_controller.py`) or `none`. An
+option given writes its key; an option left out keeps the value already in
+the file, and the default applies only to a missing key, so a reinstall
+keeps a program chosen in TODO. Any other line stays. The unit starts only
+when a program is chosen, `.venv.streamdeck` exists and a deck is plugged
+in; otherwise systemd skips it. The installer never starts
+it: the program needs the extension, which a fresh install loads at the
+next login. With `--autostart` the unit is enabled and starts at login.
+Without a reachable user manager (an install over ssh with no session), the
+summary names the command to run after the next login.
+
+Games take the deck over: TODO's games menu and the gallery run each game
+through `script/install/erplibre_home_handover.sh`, which stops the service,
+runs the game, and starts the service again when the game ends, unless
+`RESTART_AFTER_GAME=no`. Each deck program takes a lock,
+`$XDG_RUNTIME_DIR/erplibre-home/deck.lock`; a second one exits with code 2
+and names the program and PID that hold the deck. `systemctl --user`
+controls the service:
+
+<!-- [fr] -->
+`DECK_PROGRAM` vaut `tiler` (`script/stream_deck/game_tiler.py`),
+`controller` (`script/stream_deck/erplibre_controller.py`) ou `none`. Une
+option donnée écrit sa clé ; une option absente garde la valeur déjà dans
+le fichier, et le défaut ne vaut que pour une clé absente : une
+réinstallation garde un programme choisi dans TODO. Toute autre ligne
+reste. L'unité ne démarre que si un programme est choisi, que
+`.venv.streamdeck` existe et qu'un deck est branché ; sinon systemd la saute.
+L'installateur ne la démarre jamais : le programme a besoin de l'extension,
+qu'une installation neuve charge à la prochaine ouverture de session. Avec
+`--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans
+gestionnaire utilisateur joignable (une installation par ssh sans session),
+le bilan nomme la commande à lancer après la prochaine connexion.
+
+Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent
+chaque jeu par `script/install/erplibre_home_handover.sh`, qui arrête le
+service, lance le jeu, puis relance le service à la fin du jeu, sauf si
+`RESTART_AFTER_GAME=no`. Chaque programme du deck prend un verrou,
+`$XDG_RUNTIME_DIR/erplibre-home/deck.lock` ; un second sort avec le code 2
+et nomme le programme et le PID qui tiennent le deck. `systemctl --user`
+pilote le service :
+
+<!-- [end] -->
+<!-- [common] -->
+```
+systemctl --user status erplibre-home-streamdeck.service
+systemctl --user enable erplibre-home-streamdeck.service
+journalctl --user -u erplibre-home-streamdeck.service -f
 ```
 
 <!-- [end] -->
