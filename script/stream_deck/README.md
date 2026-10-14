@@ -52,9 +52,9 @@ Keyboard automation script. Uses `wmctrl` to target a terminal window, then send
 
 ### GNOME Shell extension
 
-The `gnome-extension/` directory ships a six-indicator panel button (controller,
+The `script/gnome-extension/erplibre_home/` directory ships a six-indicator panel button (controller,
 pencil, film, ERPLibre, network, device) plus the tiling D-Bus interface used by
-the Python helpers. See [`gnome-extension/README.md`](gnome-extension/README.md).
+the Python helpers. See [`../gnome-extension/erplibre_home/README.md`](../gnome-extension/erplibre_home/README.md).
 
 ## Games
 
@@ -599,11 +599,13 @@ script/stream_deck/
 ├── plan.md                    # StreamController integration plan / Plan d'intégration
 ├── requirements.txt           # Python dependencies / Dépendances Python
 ├── Assets/                    # Controller images and fonts / Images et polices
-├── gnome-extension/           # GNOME Shell extension / Extension GNOME Shell
 ├── erplibre_controller.py     # Main ERPLibre controller / Contrôleur principal
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
 └── game_*.py                  # 42 games / 42 jeux
 ```
+
+The GNOME Shell extension lives in `script/gnome-extension/erplibre_home/`. /
+L'extension GNOME Shell vit dans `script/gnome-extension/erplibre_home/`.
 
 
 ## License
