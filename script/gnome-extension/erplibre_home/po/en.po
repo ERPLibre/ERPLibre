@@ -159,8 +159,11 @@ msgstr "🔄 Re-scan USB"
 msgid "Status"
 msgstr "Status"
 
-msgid "Open controller UI"
-msgstr "Open controller UI"
+msgid "Start deck program"
+msgstr "Start deck program"
+
+msgid "The deck program did not start:"
+msgstr "The deck program did not start:"
 
 msgid "Restart deck"
 msgstr "Restart deck"
