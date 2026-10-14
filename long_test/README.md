@@ -304,7 +304,9 @@ the one measured: the matrix in the script is corrected from those lines. On
 Arch and Tumbleweed, `UNSUPPORTED` means GNOME moved past 51, and it is the
 expected signal to update `metadata.json`. Each system's log — installer
 output, user journal, `gnome-extensions info` — is a `.log` in the run's
-sub-directory.
+sub-directory. It proves every check: a `── contrôle <name> : réussi` or
+`ÉCHEC` line per command and check, followed by each command it ran, and on
+a failure by that command's raw reply.
 
 ## Starting from a host you already have
 

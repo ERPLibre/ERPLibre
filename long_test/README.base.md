@@ -309,7 +309,9 @@ the one measured: the matrix in the script is corrected from those lines. On
 Arch and Tumbleweed, `UNSUPPORTED` means GNOME moved past 51, and it is the
 expected signal to update `metadata.json`. Each system's log — installer
 output, user journal, `gnome-extensions info` — is a `.log` in the run's
-sub-directory.
+sub-directory. It proves every check: a `── contrôle <name> : réussi` or
+`ÉCHEC` line per command and check, followed by each command it ran, and on
+a failure by that command's raw reply.
 
 ## Starting from a host you already have
 
@@ -659,6 +661,9 @@ corrige. Sur Arch et Tumbleweed, `UNSUPPORTED` veut dire que GNOME a dépassé
 51, et c'est le signal attendu pour mettre `metadata.json` à jour. Le
 journal de chaque système — sortie de l'installateur, journal utilisateur,
 `gnome-extensions info` — est un `.log` dans le sous-dossier de la course.
+Il prouve chaque contrôle : une ligne `── contrôle <nom> : réussi` ou
+`ÉCHEC` par commande et par contrôle, suivie de chaque commande lancée, et,
+sur un échec, de la réponse brute de cette commande.
 
 ## Partir d'un hôte qu'on possède déjà
 

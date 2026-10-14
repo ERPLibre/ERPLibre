@@ -995,60 +995,109 @@ def redemarrer(cible, log):
 
 
 def attendre(cible, commande, condition, delai):
-    """Vrai dès que `condition(sortie)` tient, sondé toutes les 5 s."""
+    """(vrai, sortie) dès que `condition(sortie)` tient, sondé toutes les
+    5 s ; (faux, dernière sortie lue) au bout de `delai` secondes."""
     fin = time.time() + delai
     while True:
-        if condition(sonder(cible, commande, 60)):
-            return True
+        sortie = sonder(cible, commande, 60)
+        if condition(sortie):
+            return True, sortie
         if time.time() >= fin:
-            return False
+            return False, sortie
         time.sleep(5)
 
 
-def attendre_extension(cible, log, delai=DELAIS_CONTROLE["extension-active"]):
-    """L'info de l'extension, dès qu'elle est ACTIVE ou au bout de `delai`
-    secondes. La sortie brute de gdbus va au journal quand elle ne l'est
-    pas."""
+def attendre_extension(cible, delai=DELAIS_CONTROLE["extension-active"]):
+    """(info, sortie brute de gdbus) de l'extension, dès qu'elle est
+    ACTIVE ou au bout de `delai` secondes."""
     fin = time.time() + delai
     while True:
         brut = sonder(cible, CMD_INFO, 60)
         info = analyser_extension_info(brut)
         if est_active(info) or time.time() >= fin:
-            break
+            return info, brut
         time.sleep(5)
-    if not est_active(info):
-        _ajouter(log, f"GetExtensionInfo : {brut or '(aucune réponse)'}")
+
+
+class Controle:
+    """Un contrôle nommé d'une étape, et ce qu'il a lu pour trancher.
+
+    Chaque commande passe par `sonder`, ou par `noter` quand la réponse
+    vient d'ailleurs (une attente, l'installateur), et s'inscrit avec sa
+    réponse. `clore(ok)` écrit au journal du système une ligne
+    « ── contrôle <nom> : réussi|ÉCHEC », puis « $ <commande> » pour chaque
+    commande lancée ; sur un échec, la réponse brute de chacune suit sa
+    commande. Le journal d'une course nomme ainsi chaque contrôle passé, son
+    issue et ce qu'il a lancé.
+    """
+
+    def __init__(self, cible, log, nom):
+        self.cible = cible
+        self.log = log
+        self.nom = nom
+        self.lus = []
+
+    def noter(self, commande, reponse):
+        """Inscrit `commande` et sa réponse ; rend la réponse."""
+        self.lus.append((commande, reponse))
+        return reponse
+
+    def sonder(self, commande, delai=180):
+        """sonder() sur la cible, la commande et sa réponse inscrites."""
+        return self.noter(commande, sonder(self.cible, commande, delai))
+
+    def clore(self, ok):
+        """Écrit le contrôle au journal du système ; rend `ok`."""
+        _ajouter(
+            self.log,
+            f"── contrôle {self.nom} : {'réussi' if ok else 'ÉCHEC'}",
+        )
+        for commande, reponse in self.lus:
+            _ajouter(self.log, f"   $ {commande}")
+            if not ok:
+                _ajouter(self.log, f"   → {reponse or '(aucune réponse)'}")
+        return ok
+
+
+def extension_active(controle, delai=DELAIS_CONTROLE["extension-active"]):
+    """L'info de l'extension par attendre_extension, la commande
+    GetExtensionInfo et sa dernière sortie brute inscrites dans
+    `controle`."""
+    info, brut = attendre_extension(controle.cible, delai)
+    controle.noter(CMD_INFO, brut)
     return info
 
 
-def indicateurs_non_montes(cible, log):
+def indicateurs_non_montes(controle):
     """Les ids des indicateurs que le journal de session dit non montés.
 
     L'extension attrape l'exception du constructeur d'un indicateur et
     continue : ACTIVE et les réponses D-Bus tiennent même quand aucun
-    indicateur n'est monté. Le journal se lit une fois ; sans la ligne
-    « [ERPLibreHome] enabled », il n'est pas tenu pour lu et la fonction
-    rend ["(journal non lu)"] plutôt qu'une liste vide qui passerait pour un
-    succès. Ce qui manque va au journal du système.
+    indicateur n'est monté. Le journal se lit une fois, par `controle` ;
+    sans la ligne « [ERPLibreHome] enabled », il n'est pas tenu pour lu et
+    la fonction rend ["(journal non lu)"] plutôt qu'une liste vide qui
+    passerait pour un succès. Ce qui manque va au journal du système.
     """
-    sortie = sonder(
-        cible, CMD_MONTAGES, DELAIS_CONTROLE["extension-indicators"]
+    sortie = controle.sonder(
+        CMD_MONTAGES, DELAIS_CONTROLE["extension-indicators"]
     )
     if not journal_lu(sortie):
         _ajouter(
-            log,
-            "✗ journal de session sans « [ERPLibreHome] enabled » : "
-            f"{sortie or '(rien)'}",
+            controle.log,
+            "✗ journal de session sans « [ERPLibreHome] enabled »",
         )
         return ["(journal non lu)"]
     echecs = indicateurs_en_echec(sortie)
     if echecs:
-        _ajouter(log, f"✗ indicateurs non montés : {', '.join(echecs)}")
+        _ajouter(
+            controle.log, f"✗ indicateurs non montés : {', '.join(echecs)}"
+        )
     return echecs
 
 
 def session_ouverte(cible):
-    """Le bus de l'utilisateur existe et GNOME Shell y a pris son nom."""
+    """(vrai, sortie) quand le bus de l'utilisateur existe et que GNOME
+    Shell y a pris son nom ; (faux, dernière sortie) sinon."""
     return attendre(
         cible,
         CMD_SESSION,
@@ -1057,39 +1106,64 @@ def session_ouverte(cible):
     )
 
 
-def _absents(cible):
+def constat(cible, log, nom, commande, delai=180):
+    """Le contrôle `nom` : vrai quand `commande` rend « ok »."""
+    controle = Controle(cible, log, nom)
+    return controle.clore(controle.sonder(commande, delai) == "ok")
+
+
+def installation(controle, options):
+    """L'installateur avec `options`, la commande et son code inscrits dans
+    `controle`. Rend le code, None sans code dans le délai."""
+    code, _sortie = installer(controle.cible, controle.log, options)
+    controle.noter(
+        f"install_erplibre_home.sh {options}".rstrip(),
+        f"code de sortie {code}",
+    )
+    return code
+
+
+def commande_reussie(cible, log, nom, options):
+    """Le contrôle `nom` : l'installateur lancé avec `options` rend 0."""
+    controle = Controle(cible, log, nom)
+    return controle.clore(installation(controle, options) == 0)
+
+
+def _absents(controle):
     """Vrai quand ni la règle udev ni .venv.streamdeck n'existent."""
-    return sonder(cible, CMD_SANS_REGLE) == "ok" and (
-        sonder(cible, CMD_SANS_VENV) == "ok"
+    return controle.sonder(CMD_SANS_REGLE) == "ok" and (
+        controle.sonder(CMD_SANS_VENV) == "ok"
     )
 
 
-def _idempotent(cible, log, options, commande_mtimes):
+def _idempotent(controle, options, commande_mtimes):
     """Une seconde installation rend 0 et laisse les dates de
     `commande_mtimes` telles quelles."""
-    avant = sonder(cible, commande_mtimes)
-    code, _sortie = installer(cible, log, options)
-    apres = sonder(cible, commande_mtimes)
-    if code != 0 or not avant or avant != apres:
-        _ajouter(log, f"✗ idempotence : {avant!r} puis {apres!r}")
-        return False
-    return True
+    avant = controle.sonder(commande_mtimes)
+    code = installation(controle, options)
+    apres = controle.sonder(commande_mtimes)
+    return code == 0 and bool(avant) and avant == apres
 
 
 def _etape_base(cible, entree, log, base):
     """Étape 1, sur la base que l'étape 5 du flux a installée. Rend
     (echec, info, gnome)."""
     info, gnome = None, ""
-    if not session_ouverte(cible):
+    controle = Controle(cible, log, "session")
+    ouverte, sortie = session_ouverte(cible)
+    controle.noter(CMD_SESSION, sortie)
+    if not controle.clore(ouverte):
         return "session", info, gnome
-    gnome = version_gnome(sonder(cible, "gnome-shell --version"))
-    if not gnome:
+    controle = Controle(cible, log, "gnome-version")
+    gnome = version_gnome(controle.sonder("gnome-shell --version"))
+    if not controle.clore(bool(gnome)):
         return "gnome-version", info, gnome
     attendu = entree["gnome_attendu"]
     if majeur(gnome) != attendu:
         _ajouter(log, f"⚠ GNOME mesuré {gnome}, la matrice dit {attendu}")
-    info = attendre_extension(cible, log)
-    if not est_active(info):
+    controle = Controle(cible, log, "extension-active")
+    info = extension_active(controle)
+    if not controle.clore(est_active(info)):
         return "extension-active", info, gnome
     # L'objet D-Bus est exporté avant les réglages : une méthode qui ne les
     # touche pas répondrait même si enable() avait levé ensuite. ListPaths
@@ -1097,20 +1171,24 @@ def _etape_base(cible, entree, log, base):
     # indicateur des appareils monté : sa réponse ne prouve pas l'indicateur,
     # d'où la lecture du journal qui suit. Sans venv du deck, celle-ci
     # prouve aussi que les indicateurs du deck se montent quand même.
-    for methode in ("ListPaths", "ListDevices"):
-        reponse = sonder(
-            cible, cmd_methode(methode), DELAIS_CONTROLE["extension-dbus"]
-        )
-        if not reponse.startswith(("('", '("')):
-            _ajouter(log, f"✗ {methode} : {reponse or '(aucune réponse)'}")
-            return "extension-dbus", info, gnome
-    if indicateurs_non_montes(cible, log):
+    controle = Controle(cible, log, "extension-dbus")
+    repond = all(
+        controle.sonder(
+            cmd_methode(methode), DELAIS_CONTROLE["extension-dbus"]
+        ).startswith(("('", '("'))
+        for methode in ("ListPaths", "ListDevices")
+    )
+    if not controle.clore(repond):
+        return "extension-dbus", info, gnome
+    controle = Controle(cible, log, "extension-indicators")
+    if not controle.clore(not indicateurs_non_montes(controle)):
         return "extension-indicators", info, gnome
-    if sonder(cible, CMD_SANS_REGLE) != "ok":
+    if not constat(cible, log, "base-no-udev", CMD_SANS_REGLE):
         return "base-no-udev", info, gnome
-    if sonder(cible, CMD_SANS_VENV) != "ok":
+    if not constat(cible, log, "base-no-venv", CMD_SANS_VENV):
         return "base-no-venv", info, gnome
-    if not _idempotent(cible, log, base, CMD_MTIME_LIEN):
+    controle = Controle(cible, log, "base-idempotent")
+    if not controle.clore(_idempotent(controle, base, CMD_MTIME_LIEN)):
         return "base-idempotent", info, gnome
     return None, info, gnome
 
@@ -1119,19 +1197,18 @@ def _etape_stream_deck(cible, log):
     """Étape 2 : le niveau Stream Deck par-dessus la base, sans
     redémarrage, l'extension étant déjà chargée. Rend (echec, info)."""
     option = OPTION["install-stream-deck"]
-    code, _sortie = installer(cible, log, option)
-    if code != 0:
+    if not commande_reussie(cible, log, "install-stream-deck", option):
         return "install-stream-deck", None
-    if sonder(cible, CMD_UDEV) != "ok":
+    if not constat(cible, log, "udev", CMD_UDEV):
         return "udev", None
-    if sonder(cible, CMD_VENV, DELAIS_CONTROLE["venv"]) != "ok":
+    if not constat(cible, log, "venv", CMD_VENV, DELAIS_CONTROLE["venv"]):
         return "venv", None
-    info = attendre_extension(
-        cible, log, DELAIS_CONTROLE["stream-deck-active"]
-    )
-    if not est_active(info):
+    controle = Controle(cible, log, "stream-deck-active")
+    info = extension_active(controle, DELAIS_CONTROLE["stream-deck-active"])
+    if not controle.clore(est_active(info)):
         return "stream-deck-active", info
-    if not _idempotent(cible, log, option, CMD_MTIMES):
+    controle = Controle(cible, log, "stream-deck-idempotent")
+    if not controle.clore(_idempotent(controle, option, CMD_MTIMES)):
         return "stream-deck-idempotent", info
     return None, info
 
@@ -1139,38 +1216,39 @@ def _etape_stream_deck(cible, log):
 def _etape_retrait_partiel(cible, log):
     """Étape 3 : le niveau Stream Deck retiré seul ; l'extension reste liée,
     activée et ACTIVE. Rend (echec, info)."""
-    code, _sortie = installer(cible, log, OPTION["uninstall-stream-deck"])
-    if code != 0:
+    option = OPTION["uninstall-stream-deck"]
+    if not commande_reussie(cible, log, "uninstall-stream-deck", option):
         return "uninstall-stream-deck", None
-    if not _absents(cible):
+    controle = Controle(cible, log, "partial-uninstall-gone")
+    if not controle.clore(_absents(controle)):
         return "partial-uninstall-gone", None
-    liste = liste_extensions(sonder(cible, CMD_ENABLED))
-    if sonder(cible, CMD_LIEN) != "ok" or UUID_EXTENSION not in (liste or []):
-        _ajouter(
-            log, f"✗ après le retrait partiel : enabled-extensions {liste}"
-        )
-        return "partial-uninstall-kept", None
-    info = attendre_extension(
-        cible, log, DELAIS_CONTROLE["partial-uninstall-kept"]
+    controle = Controle(cible, log, "partial-uninstall-kept")
+    garde = controle.sonder(CMD_LIEN) == "ok" and UUID_EXTENSION in (
+        liste_extensions(controle.sonder(CMD_ENABLED)) or []
     )
-    if not est_active(info):
+    info = None
+    if garde:
+        info = extension_active(
+            controle, DELAIS_CONTROLE["partial-uninstall-kept"]
+        )
+    if not controle.clore(garde and est_active(info)):
         return "partial-uninstall-kept", info
     return None, info
 
 
 def _etape_retrait(cible, log):
     """Étape 4 : tout retiré. Rend l'échec ou None."""
-    code, _sortie = installer(cible, log, OPTION["uninstall"])
-    if code != 0:
+    if not commande_reussie(cible, log, "uninstall", OPTION["uninstall"]):
         return "uninstall"
-    liste = liste_extensions(sonder(cible, CMD_ENABLED))
-    if (
-        sonder(cible, CMD_SANS_LIEN) != "ok"
-        or liste is None
-        or UUID_EXTENSION in liste
-        or not _absents(cible)
-    ):
-        _ajouter(log, f"✗ après le retrait : enabled-extensions {liste}")
+    controle = Controle(cible, log, "uninstall-gone")
+    liste = liste_extensions(controle.sonder(CMD_ENABLED))
+    parti = (
+        controle.sonder(CMD_SANS_LIEN) == "ok"
+        and liste is not None
+        and UUID_EXTENSION not in liste
+        and _absents(controle)
+    )
+    if not controle.clore(parti):
         return "uninstall-gone"
     return None
 
@@ -1179,24 +1257,36 @@ def _etape_reinstallation(cible, log, base):
     """Étape 5 : la base de nouveau, puis un redémarrage, pour que GNOME
     Shell charge l'extension à neuf plutôt que de réactiver la copie qu'il
     tient de l'étape 1. Rend (echec, info)."""
-    code, _sortie = installer(cible, log, base)
-    if code != 0 or not redemarrer(cible, log):
+    controle = Controle(cible, log, "reinstall")
+    revenu = False
+    if installation(controle, base) == 0:
+        # redemarrer() écrit au journal la raison d'un retour manqué.
+        revenu = redemarrer(cible, log)
+        controle.noter("sudo systemctl reboot", "revenue" if revenu else "")
+    if not controle.clore(revenu):
         return "reinstall", None
-    if not session_ouverte(cible):
-        return "reinstall-active", None
-    info = attendre_extension(cible, log, DELAIS_CONTROLE["reinstall-active"])
-    if not est_active(info):
+    controle = Controle(cible, log, "reinstall-active")
+    ouverte, sortie = session_ouverte(cible)
+    controle.noter(CMD_SESSION, sortie)
+    info = None
+    if ouverte:
+        info = extension_active(controle, DELAIS_CONTROLE["reinstall-active"])
+    if not controle.clore(ouverte and est_active(info)):
         return "reinstall-active", info
-    if indicateurs_non_montes(cible, log):
+    controle = Controle(cible, log, "reinstall-indicators")
+    if not controle.clore(not indicateurs_non_montes(controle)):
         return "reinstall-indicators", info
-    if not _absents(cible):
+    controle = Controle(cible, log, "reinstall-no-udev")
+    if not controle.clore(_absents(controle)):
         return "reinstall-no-udev", info
     return None, info
 
 
 def controler(cible, entree, log, extras=False):
     """Les cinq étapes d'ETAPES, dans l'ordre ; le premier échec, commande
-    ou contrôle, arrête les suivantes.
+    ou contrôle, arrête les suivantes. Chaque commande et chaque contrôle
+    laisse au journal du système son nom, son issue et ce qu'il a lancé
+    (Controle).
 
     `extras` : la base s'installe avec « --with-extras », comme à l'étape 5
     du flux. Rend (echec, info, gnome) : le nom de l'étape tombée ou None,

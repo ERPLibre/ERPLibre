@@ -556,7 +556,10 @@ every VM kept by `--garder` or left by a crash. The `deep_*` tests write one
 such entry, and keep their behaviour.
 
 Per-system logs are `.log` files in a sub-directory of the run, so
-`dernier_rapport` never reads them as reports.
+`dernier_rapport` never reads them as reports. Each stage command and each
+check writes its name and outcome there (`── contrôle <name> : réussi` or
+`ÉCHEC`), then every command it ran; a failed one adds each command's raw
+reply. The log alone proves which checks passed.
 
 ### 6.1 Interface
 
