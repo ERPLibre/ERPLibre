@@ -437,6 +437,34 @@ class TestGuideDelivery(unittest.TestCase):
                     ).stdout
                     self.assertEqual("rc=0", out.strip().splitlines()[-1])
 
+    def test_nixos_desktop_keeps_etc_motd(self):
+        """Son sshd lit /etc/motd (PrintMotd), il n'a pas de pam_motd et son
+        /etc/profile ne source pas profile.d : le guide ne s'y verrait pas."""
+        args = self._args("gnome")
+        args.distro = "nixos"
+        files = {f[0] for f in dq.guide_files(args)}
+        self.assertIn("/etc/motd", files)
+        self.assertNotIn(self.GUIDE, files)
+        self.assertNotIn(self.SNIPPET, files)
+
+    def test_installer_maps_snippet_name_to_its_target_path(self):
+        name = dq.installer_guide_name(self.SNIPPET)
+        self.assertNotIn("/", name)
+        self.assertNotEqual(name, dq.installer_guide_name(self.GUIDE))
+        self.assertEqual(
+            "erplibre-etc-profile.d-erplibre-login-guide.sh", name
+        )
+
+    def test_late_command_copies_the_snippet_to_profile_d(self):
+        args = dq.build_parser().parse_args(
+            ["--distro", "debian", "--desktop", "gnome", "--hostname", "vm"]
+        )
+        pre = dq.build_preseed(args, "$6$x$y", [])
+        name = dq.installer_guide_name(self.SNIPPET)
+        self.assertIn(f"cp /{name} /target{self.SNIPPET}", pre)
+        self.assertIn(f"chmod 0644 /target{self.SNIPPET}", pre)
+        self.assertNotIn("/target/etc/motd", pre)
+
 
 class TestInstallerGuideNames(unittest.TestCase):
     def test_names_are_flat(self):

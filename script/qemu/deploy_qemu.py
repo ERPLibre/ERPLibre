@@ -595,9 +595,7 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(
-                index, timeout=30
-            ) as resp:  # noqa: S310
+            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -2233,14 +2231,14 @@ def user_shell(distro: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Guide de connexion (/etc/motd) et identité git de la VM
+# Guide de connexion (/etc/motd ou profile.d) et identité git de la VM
 # --------------------------------------------------------------------------- #
 # Le catalogue couvre quatre gestionnaires de paquets, et l'opérateur change de
 # distribution d'un déploiement à l'autre. Le guide met SOUS LES YEUX, à la
 # connexion, les commandes de la machine où l'on vient d'entrer : apt là où
 # c'est apt, zypper là où c'est zypper.
 #
-# Le mécanisme est /etc/motd, et il est le même partout. Vérifié dans les images
+# Le mécanisme est /etc/motd, sauf sur une VM à bureau (plus bas). Vérifié dans les images
 # cloud elles-mêmes, montées en lecture seule : sshd y est en « PrintMotd no »
 # et c'est pam_motd qui affiche le fichier. Trois conséquences tenues pour
 # acquises ici :
@@ -2259,7 +2257,9 @@ def user_shell(distro: str) -> str:
 # LOGIN_GUIDE_PATH et un fragment profile.d (LOGIN_GUIDE_SNIPPET) l'affiche
 # aux seuls shells de connexion interactifs d'une session SSH. Rien n'y est
 # affiché pour un terminal du bureau, une commande distante, scp ou sftp. Une
-# VM serveur n'a pas de gestionnaire graphique et garde /etc/motd.
+# VM serveur n'a pas de gestionnaire graphique et garde /etc/motd. NixOS aussi,
+# bureau compris : son sshd lit /etc/motd (PrintMotd), il n'a pas de pam_motd,
+# donc GDM n'est pas retardé, et son /etc/profile ne source pas profile.d.
 #
 # Ubuntu n'a PAS de /etc/motd (son postinst base-files ne le crée pas, à la
 # différence de Debian) : le fichier est donc créé, pas remplacé. Sur Debian il
@@ -3852,7 +3852,7 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
             if c.strip()
         ),
     )
-    if args.desktop:
+    if args.desktop and args.distro != "nixos":
         # Voir « Guide de connexion » : /etc/motd retarderait GDM.
         files = [
             (LOGIN_GUIDE_PATH, "0644", guide, ""),
