@@ -1187,6 +1187,132 @@ class DeuxCoursesDeSuite(unittest.TestCase):
         self.assertEqual(detruites, [(e["nom"], e["uuid"]) for e in inscrites])
 
 
+class UneVMQuiSurvit:
+    """Une VM que son défaire n'a pas pu détruire : sudo est renouvelé et le
+    défaire retenté ; si elle vit encore, aucune autre n'est créée."""
+
+    SYSTEMES = "ubuntu:24.04,fedora:43,debian:13"
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="sd-survit-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+        self.addCleanup(os.environ.__setitem__, "HOME", os.environ["HOME"])
+        os.environ["HOME"] = self.maison
+        self.creees, self.defaites, self.renouvellements = [], [], []
+
+    def _mener(self, reponses, *options):
+        """La course sur trois systèmes, `reponses` donnant le résultat de
+        chaque appel à detruire_etage1 ; vrai une fois épuisées. Rend
+        (code, rapport lu sur le disque)."""
+        from unittest import mock
+
+        reponses = list(reponses)
+
+        def mener_un(course, entree):
+            nom = sd.nom_vm(entree, course.horodatage)
+            course.inscrire(
+                {"niveau": 1, "nom": nom, "uuid": "", "alias": nom}
+            )
+            self.creees.append(nom)
+            return sd.verdict_systeme(
+                entree, 0, {"state": 1.0, "error": ""}, "46.0"
+            )
+
+        def detruire_etage1(journal, nom, dry_run=False, attendu=None, **k):
+            self.defaites.append(nom)
+            return reponses.pop(0) if reponses else True
+
+        with (
+            mock.patch.multiple(
+                sd,
+                arbre_propre=lambda racine: True,
+                plan_tient=lambda journal: True,
+                creer_bundle=lambda dossier, journal: ("0" * 40, "x.bundle"),
+                mener_un=mener_un,
+                detruire_etage1=detruire_etage1,
+                retirer_alias=lambda *a, **k: None,
+                rafraichir_sudo=lambda journal: self.renouvellements.append(
+                    journal
+                ),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            code = sd.mener(["--only", self.SYSTEMES, *options])
+        dossier = os.path.join(self.maison, ".erplibre/longtest")
+        (chemin,) = [f for f in os.listdir(dossier) if f.endswith(".json")]
+        with open(os.path.join(dossier, chemin), encoding="utf-8") as fh:
+            return code, json.load(fh)
+
+
+class LaVMSuivanteAttend(UneVMQuiSurvit, unittest.TestCase):
+    def test_a_destroy_that_succeeds_after_the_refresh_goes_on(self):
+        code, rapport = self._mener([False, True])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.creees), 3)
+        self.assertEqual(len(self.renouvellements), 1)
+        # Le premier défaire, sa reprise, puis un par VM suivante.
+        self.assertEqual(self.defaites, [self.creees[0]] * 2 + self.creees[1:])
+        self.assertEqual(rapport["etages"], [])
+
+    def test_a_vm_still_up_stops_the_run(self):
+        code, rapport = self._mener([False, False])
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self.creees), 1)
+        self.assertEqual(len(self.renouvellements), 1)
+        self.assertEqual([e["nom"] for e in rapport["etages"]], self.creees)
+        self.assertEqual(
+            [(s["verdict"], s["etape"]) for s in rapport["systemes"]],
+            [("ACTIVE", None)] + [("FAILED", "previous-vm-still-up")] * 2,
+        )
+
+    def test_the_last_vm_still_up_fails_the_run(self):
+        """Rien ne reste à créer, mais la course laisse une VM derrière
+        elle : le code de sortie le dit."""
+        code, rapport = self._mener([True, True, False, False])
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self.creees), 3)
+        self.assertEqual(len(rapport["etages"]), 1)
+
+    def test_kept_vms_are_never_destroyed_nor_refreshed(self):
+        code, rapport = self._mener([], "--garder")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.creees), 3)
+        self.assertEqual((self.defaites, self.renouvellements), ([], []))
+        self.assertEqual(len(rapport["etages"]), 3)
+
+
+class LeRenouvellementDeSudo(unittest.TestCase):
+    """Interactif devant un terminal, jamais sans : une course sans
+    terminal n'attend pas un mot de passe que personne ne tape."""
+
+    def _argv(self, terminal, code=0):
+        from unittest import mock
+
+        vus = []
+
+        def run(argv, **k):
+            vus.append(argv)
+            return subprocess.CompletedProcess(argv, code)
+
+        with (
+            mock.patch.object(sd.subprocess, "run", run),
+            mock.patch.object(
+                sd.sys, "stdin", mock.Mock(isatty=lambda: terminal)
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            rendu = sd.rafraichir_sudo(None)
+        return vus, rendu
+
+    def test_a_terminal_may_prompt(self):
+        self.assertEqual(self._argv(True), ([["sudo", "-v"]], True))
+
+    def test_without_a_terminal_it_never_prompts(self):
+        self.assertEqual(
+            self._argv(False, code=1), ([["sudo", "-n", "-v"]], False)
+        )
+
+
 class VMSimulee:
     """Une VM réduite à ce que les étapes lisent et changent : la règle
     udev, le venv, le lien de l'extension, son UUID dans enabled-extensions,
