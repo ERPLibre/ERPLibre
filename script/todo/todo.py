@@ -56,6 +56,12 @@ def _read_conf(name, fallback):
 VENV_ERPLIBRE = _read_conf("python-erplibre-venv", ".venv.erplibre")
 VENV_DIR = os.path.join(new_path, VENV_ERPLIBRE)
 VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python")
+# Interpréteur du venv dédié au Stream Deck. Les jeux tournent sous lui et
+# non par leur shebang : un shebang ne peut pas nommer un chemin relatif au
+# checkout, et le python du système n'a pas les modules du deck.
+VENV_STREAMDECK_PYTHON = os.path.join(
+    new_path, ".venv.streamdeck", "bin", "python"
+)
 
 
 def _in_venv():
@@ -1828,6 +1834,17 @@ class TODO(
                 return False
 
     def prompt_execute_streamdeck_games(self):
+        # Seul le niveau Stream Deck de l'installateur crée .venv.streamdeck :
+        # sans lui, aucun jeu ne démarre, et le menu dit quelle commande
+        # l'ajoute au lieu d'en lancer un.
+        if not os.access(VENV_STREAMDECK_PYTHON, os.X_OK):
+            print(
+                t(
+                    "ERPLibre Home Stream Deck is not installed:"
+                    " make erplibre_home_streamdeck_install"
+                )
+            )
+            return False
         print(f"🎮 {t('Stream Deck games! Choose a game to play.')}")
         games = self._scan_streamdeck_games()
         if not games:
@@ -1854,7 +1871,7 @@ class TODO(
                     )
                     try:
                         self.execute.exec_command_live(
-                            game["path"],
+                            self._streamdeck_game_command(game["path"]),
                             source_erplibre=False,
                         )
                     except KeyboardInterrupt:
@@ -1863,6 +1880,11 @@ class TODO(
                     print(t("Command not found !"))
             except ValueError:
                 print(t("Command not found !"))
+
+    def _streamdeck_game_command(self, path):
+        """Rend la commande shell qui lance le jeu `path` sous le python de
+        .venv.streamdeck ; les deux chemins sont cités pour bash."""
+        return f"{shlex.quote(VENV_STREAMDECK_PYTHON)} {shlex.quote(path)}"
 
     def _scan_streamdeck_games(self):
         """Scan game_*.py files and extract descriptions."""

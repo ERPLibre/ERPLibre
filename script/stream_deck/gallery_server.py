@@ -16,6 +16,7 @@ import glob
 import http.server
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -92,6 +93,28 @@ def _exec_self():
         os.execv(sys.executable, [sys.executable] + sys.argv)
     except Exception as e:
         print(f"execv failed: {e}", file=sys.stderr)
+
+
+def _game_bash_cmd(game_file):
+    """Return the bash command that runs game_file in a terminal.
+
+    The game runs under sys.executable, the interpreter of this server, so
+    it gets the server's venv instead of the python its shebang finds on
+    PATH. Every path is quoted for bash. The loop restarts the game when the
+    user types "r" + Enter at the end-of-game prompt, which avoids
+    re-picking it from the gallery; any other answer, or a closed stdin,
+    ends it.
+    """
+    return (
+        f"cd {shlex.quote(ERPLIBRE_DIR)} && while true; do "
+        f"{shlex.quote(sys.executable)} {shlex.quote(game_file)}; "
+        f'echo ""; '
+        f'echo "Game ended. Press [r]+enter to restart, '
+        f'or enter to close..."; '
+        f"read -r ans; "
+        f'if [ "$ans" != "r" ] && [ "$ans" != "R" ]; then break; fi; '
+        f"done"
+    )
 
 
 class GameHandler(http.server.SimpleHTTPRequestHandler):
@@ -251,18 +274,7 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
         _kill_current_game()
 
         print(f"Launching game: {game_id}")
-        # Loop so the user can restart the game by typing "r" + Enter at the
-        # end-of-game prompt — avoids re-picking it from the gallery.
-        bash_cmd = (
-            f"cd {ERPLIBRE_DIR} && while true; do "
-            f"python3 {game_file}; "
-            f'echo ""; '
-            f'echo "Game ended. Press [r]+enter to restart, '
-            f'or enter to close..."; '
-            f"read -r ans; "
-            f'if [ "$ans" != "r" ] && [ "$ans" != "R" ]; then break; fi; '
-            f"done"
-        )
+        bash_cmd = _game_bash_cmd(game_file)
         try:
             # --wait keeps gnome-terminal process alive until window closes
             _current_game_proc = subprocess.Popen(

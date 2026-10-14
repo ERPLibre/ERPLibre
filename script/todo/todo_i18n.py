@@ -117,6 +117,13 @@ TRANSLATIONS = {
         "fr": "Aucun jeu Stream Deck trouvé.",
         "en": "No Stream Deck games found.",
     },
+    "ERPLibre Home Stream Deck is not installed:"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "ERPLibre Home Stream Deck n'est pas installé :"
+        " make erplibre_home_streamdeck_install",
+        "en": "ERPLibre Home Stream Deck is not installed:"
+        " make erplibre_home_streamdeck_install",
+    },
     "Launching game:": {
         "fr": "Lancement du jeu :",
         "en": "Launching game:",
