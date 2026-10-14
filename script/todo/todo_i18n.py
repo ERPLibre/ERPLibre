@@ -7300,6 +7300,10 @@ TRANSLATIONS = {
         "fr": "ERPLibre mobile (home)",
         "en": "ERPLibre mobile (home)",
     },
+    "ERPLibre Home (no Odoo)": {
+        "fr": "ERPLibre Home (sans Odoo)",
+        "en": "ERPLibre Home (no Odoo)",
+    },
     "ERPLibre Deployment (+ QEMU + dev)": {
         "fr": "ERPLibre Déploiement (+ QEMU + dev)",
         "en": "ERPLibre Deployment (+ QEMU + dev)",
@@ -7471,6 +7475,47 @@ TRANSLATIONS = {
     "nixos-anywhere missing, see the log above": {
         "fr": "nixos-anywhere absent, voir le journal ci-dessus",
         "en": "nixos-anywhere missing, see the log above",
+    },
+    # Outils QEMU « erplibre_home » et « erplibre_home_streamdeck » : leurs
+    # libellés, leurs indices et les lignes de leur « ? ».
+    "ERPLibre Home": {
+        "fr": "ERPLibre Home",
+        "en": "ERPLibre Home",
+    },
+    "ERPLibre Home Stream Deck": {
+        "fr": "ERPLibre Home Stream Deck",
+        "en": "ERPLibre Home Stream Deck",
+    },
+    "GNOME extension, no Stream Deck": {
+        "fr": "extension GNOME, sans Stream Deck",
+        "en": "GNOME extension, no Stream Deck",
+    },
+    "deck controller, games, GNOME extension": {
+        "fr": "contrôleur du deck, jeux, extension GNOME",
+        "en": "deck controller, games, GNOME extension",
+    },
+    "script/install/install_erplibre_home.sh in the VM's checkout": {
+        "fr": "script/install/install_erplibre_home.sh dans le checkout de la VM",
+        "en": "script/install/install_erplibre_home.sh in the VM's checkout",
+    },
+    "extension, schemas and translations, extension enabled": {
+        "fr": "extension, schémas et traductions, extension activée",
+        "en": "extension, schemas and translations, extension enabled",
+    },
+    "script/install/install_erplibre_home.sh --stream-deck"
+    " in the VM's checkout": {
+        "fr": "script/install/install_erplibre_home.sh --stream-deck"
+        " dans le checkout de la VM",
+        "en": "script/install/install_erplibre_home.sh --stream-deck"
+        " in the VM's checkout",
+    },
+    "ERPLibre Home, plus USB packages, udev rule, .venv.streamdeck": {
+        "fr": "ERPLibre Home, plus paquets USB, règle udev, .venv.streamdeck",
+        "en": "ERPLibre Home, plus USB packages, udev rule, .venv.streamdeck",
+    },
+    "log out and back in to load the extension": {
+        "fr": "fermer puis rouvrir la session pour charger l'extension",
+        "en": "log out and back in to load the extension",
     },
     "Help": {
         "fr": "Aide",

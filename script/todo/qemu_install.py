@@ -63,6 +63,15 @@ class QemuInstallMixin:
                 t("ERPLibre mobile (home)"),
                 "make install_os && ./mobile/install_and_run.sh",
             ),
+            # La base d'ERPLibre Home, sans « make install_os » :
+            # l'installateur apporte ses propres paquets, et la VM est prête
+            # en quelques minutes. Le bureau est posé avant cette commande,
+            # d'où gnome-shell qu'il exige. La case « erplibre_home_streamdeck »
+            # y ajoute le niveau Stream Deck.
+            (
+                t("ERPLibre Home (no Odoo)"),
+                "./script/install/install_erplibre_home.sh",
+            ),
             (
                 t("ERPLibre Deployment (+ QEMU + dev)"),
                 "make install_os && make install_dev && "
@@ -922,6 +931,59 @@ class QemuInstallMixin:
             # gestionnaire d'extensions n'existe qu'à travers eux.
             "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
+        },
+        # ERPLibre Home, deux niveaux posés par
+        # script/install/install_erplibre_home.sh, seule autorité de cette
+        # installation — la même commande sert les cases, le profil « sans
+        # Odoo », les entrées locales de TODO et le test long.
+        # « erplibre_home » pose la base : l'extension GNOME, ses schémas et
+        # ses traductions, activée. « erplibre_home_streamdeck » lance
+        # --stream-deck : la base au besoin, puis les paquets USB, la règle
+        # udev et .venv.streamdeck.
+        #
+        # « desktops » les borne à GNOME : l'extension déclare GNOME Shell 45
+        # à 51, et l'installateur rend 2 là où gnome-shell manque. « arches »
+        # les borne à amd64, seule architecture que la matrice de validation
+        # couvre. « families » : les quatre gestionnaires dont l'installateur
+        # porte la table de paquets.
+        #
+        # Disque : la base ne pose que glib, gettext et les traductions ; le
+        # niveau Stream Deck y ajoute le venv (opencv-python en roue
+        # manylinux, Pillow), hidapi, libusb et wmctrl.
+        #
+        # APRÈS l'installation : l'installateur vit dans le dépôt. Non
+        # gardés, liés par « && » : une VM qui devait recevoir ERPLibre Home
+        # et ne l'a pas reçu est rouge.
+        "erplibre_home": {
+            "label": "ERPLibre Home",
+            "help": (
+                "script/install/install_erplibre_home.sh in the VM's checkout",
+                "extension, schemas and translations, extension enabled",
+                "log out and back in to load the extension",
+            ),
+            "hint": "GNOME extension, no Stream Deck",
+            "disk_gb": 1,
+            "arches": ("amd64",),
+            "desktops": ("gnome",),
+            "needs_desktop": True,
+            "families": ("apt", "dnf", "pacman", "zypper"),
+            "phase": "after",
+        },
+        "erplibre_home_streamdeck": {
+            "label": "ERPLibre Home Stream Deck",
+            "help": (
+                "script/install/install_erplibre_home.sh --stream-deck"
+                " in the VM's checkout",
+                "ERPLibre Home, plus USB packages, udev rule, .venv.streamdeck",
+                "log out and back in to load the extension",
+            ),
+            "hint": "deck controller, games, GNOME extension",
+            "disk_gb": 2,
+            "arches": ("amd64",),
+            "desktops": ("gnome",),
+            "needs_desktop": True,
+            "families": ("apt", "dnf", "pacman", "zypper"),
+            "phase": "after",
         },
         # Le seul outil qui ne demande PAS de bureau : il compile, il n'affiche
         # rien. Une VM serveur le prend, une VM graphique aussi — et sur
@@ -2250,6 +2312,29 @@ class QemuInstallMixin:
             f"{el_dir}/script/forgejo/install_forgejo.sh"
         )
 
+    def _qemu_erplibre_home_remote_cmd(self, prod=False, stream_deck=False):
+        """Pose ERPLibre Home dans le checkout de la VM, par son installateur :
+        la base, ou, avec `stream_deck`, le niveau Stream Deck, qui installe
+        aussi la base au besoin.
+
+        Rend un fragment shell sans « ; » final : le dernier maillon est
+        l'installateur, dont le code de sortie devient celui du fragment — 2
+        pour un système non pris en charge, 1 pour un autre échec. Aucune
+        garde : la VM porte ce verdict.
+
+        L'entrée dans le checkout se fait dans un sous-shell : les autres
+        blocs de la phase « after » ne voient pas leur répertoire changer. Le
+        chemin est entre guillemets doubles, qui laissent « $HOME » se
+        développer.
+        """
+        el_dir = self._qemu_install_dir(prod)
+        commande = "./script/install/install_erplibre_home.sh"
+        titre = t("ERPLibre Home")
+        if stream_deck:
+            commande += " --stream-deck"
+            titre = t("ERPLibre Home Stream Deck")
+        return f'echo "== {titre} =="; (cd "{el_dir}" && {commande})'
+
     def _qemu_after_remote_cmd(self, tools, prod=False):
         """Phase d'APRÈS l'installation : prologue commun, SDK commun, puis ce
         qui a été coché.
@@ -2262,7 +2347,14 @@ class QemuInstallMixin:
         émulateur créé avec succès effacerait le verdict de la compilation."""
         picked = [
             k
-            for k in ("aidev", "forgejo", "mobile", "avd")
+            for k in (
+                "aidev",
+                "forgejo",
+                "erplibre_home",
+                "erplibre_home_streamdeck",
+                "mobile",
+                "avd",
+            )
             if k in (tools or ()) and k in self._QEMU_VM_TOOLS
         ]
         if not picked:
@@ -2278,6 +2370,16 @@ class QemuInstallMixin:
         # Un échec rapide se voit tôt plutôt qu'après le long.
         if "forgejo" in picked:
             parts.append(f"{{ {self._qemu_forgejo_steps(el_dir)}; }}")
+        # ERPLibre Home après Forgejo : quelques minutes de paquets, et de
+        # venv pour le niveau Stream Deck, toujours moins que l'heure du SDK
+        # Android. Le niveau Stream Deck inclut la base : cochées ensemble,
+        # seule sa commande passe.
+        if "erplibre_home_streamdeck" in picked:
+            home = self._qemu_erplibre_home_remote_cmd(prod, stream_deck=True)
+            parts.append(f"{{ {home}; }}")
+        elif "erplibre_home" in picked:
+            home = self._qemu_erplibre_home_remote_cmd(prod)
+            parts.append(f"{{ {home}; }}")
         groups = []
         if "mobile" in picked:
             groups.append(self._qemu_mobile_build_steps(el_dir))
