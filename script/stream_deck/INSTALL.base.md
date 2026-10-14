@@ -6,51 +6,171 @@
 <!-- [en] -->
 # Guide to install
 
-https://github.com/jamesridgway/devdeck/wiki/Installation#pre-requisite-libusb-hidapi-backend
+ERPLibre Home installs in two levels, on Debian, Ubuntu, Fedora, AlmaLinux,
+Rocky Linux, openSUSE and Arch Linux, with GNOME Shell 45 to 51, without
+Odoo. The base is the GNOME extension, its schemas and its translations,
+enabled: it needs no device access and no venv. The Stream Deck level adds
+what the deck programs need, and installs the base too when it is missing.
+Both run as your user and call `sudo` only for the system packages and the
+udev rule.
 
 <!-- [fr] -->
 # Guide d'installation
 
-https://github.com/jamesridgway/devdeck/wiki/Installation#pre-requisite-libusb-hidapi-backend
+ERPLibre Home s'installe en deux niveaux, sur Debian, Ubuntu, Fedora,
+AlmaLinux, Rocky Linux, openSUSE et Arch Linux, avec GNOME Shell 45 à 51,
+sans Odoo. La base est l'extension GNOME, ses schémas et ses traductions,
+activée : elle ne demande ni accès au périphérique ni venv. Le niveau Stream
+Deck ajoute ce dont les programmes du deck ont besoin, et installe aussi la
+base quand elle manque. Les deux tournent sous ton compte et n'appellent
+`sudo` que pour les paquets système et la règle udev.
 
+<!-- [end] -->
 <!-- [common] -->
 ```
-# For Ubuntu
-
-sudo apt install -y libudev-dev libusb-1.0-0-dev libhidapi-libusb0
-
-# Add your user to plugdev group
-sudo usermod -a -G plugdev `whoami`
-
-# udev rule to allow all users non-root access to Elgato StreamDeck devices:
-sudo tee /etc/udev/rules.d/10-streamdeck.rules << EOF
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0060", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0063", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="006c", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="006d", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0080", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0084", MODE:="660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="008f", MODE:="660", GROUP="plugdev"
-EOF
-
-# Reload udev rules to ensure the new permissions take effect
-sudo udevadm control --reload-rules
+make erplibre_home_install
+make erplibre_home_streamdeck_install
 ```
 
+<!-- [end] -->
 <!-- [en] -->
-To diagnostic or add new material, check with
+The first command installs the base: the system packages of the base, then
+it links the GNOME extension into `~/.local/share/gnome-shell/extensions/`,
+compiles its schemas and its translations (with `msgfmt`), and enables it.
+The second one, for a workstation with a Stream Deck, adds the Stream Deck
+packages, writes the udev rule and creates `.venv.streamdeck` from
+`script/stream_deck/requirements.txt`. Then log out and back in: under
+Wayland, GNOME Shell loads a new extension only at session start. A second
+run changes nothing. Without the Stream Deck level, the extension's
+`device` and `controller` indicators say that ERPLibre Home Stream Deck is
+not installed and name `make erplibre_home_streamdeck_install`.
+
+Both targets run `script/install/install_erplibre_home.sh`, which takes
+these options:
 
 <!-- [fr] -->
-Pour diagnostiquer ou ajouter du nouveau matériel, vérifier avec
+La première commande installe la base : les paquets système de la base,
+puis elle lie l'extension GNOME dans `~/.local/share/gnome-shell/extensions/`,
+compile ses schémas et ses traductions (avec `msgfmt`), et l'active. La
+seconde, pour un poste qui a un Stream Deck, ajoute les paquets du Stream
+Deck, écrit la règle udev et crée `.venv.streamdeck` depuis
+`script/stream_deck/requirements.txt`. Ferme ensuite ta session et
+rouvre-la : sous Wayland, GNOME Shell ne charge une nouvelle extension qu'à
+l'ouverture de session. Une seconde exécution ne change rien. Sans le niveau
+Stream Deck, les indicateurs `device` et `controller` de l'extension disent
+qu'ERPLibre Home Stream Deck n'est pas installé et nomment
+`make erplibre_home_streamdeck_install`.
 
+Les deux cibles lancent `script/install/install_erplibre_home.sh`, qui
+accepte ces options :
+
+<!-- [end] -->
+<!-- [en] -->
+| Option | Effect |
+|---|---|
+| `--stream-deck` | add the Stream Deck level: USB packages, udev rule, `.venv.streamdeck`; the base installs too when missing |
+| `--no-enable` | install without enabling the extension; a workstation where the former extension was enabled keeps that state under the new name |
+| `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
+| `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level; a missing one is skipped with a warning |
+| `--uninstall` | remove everything: disable the extension, remove its link, the udev rule and `.venv.streamdeck`; with `--stream-deck`, only the udev rule and `.venv.streamdeck`, and the extension stays enabled; system packages always stay |
+| `--dry-run` | print what would be done, change nothing |
+
+Exit code `0` means done, `2` an unsupported system (one line on stderr
+starting with `UNSUPPORTED:`), `1` any other failure.
+`make erplibre_home_uninstall` runs `--uninstall`, and
+`make erplibre_home_streamdeck_uninstall` runs `--uninstall --stream-deck`.
+
+<!-- [fr] -->
+| Option | Effet |
+|---|---|
+| `--stream-deck` | ajoute le niveau Stream Deck : paquets USB, règle udev, `.venv.streamdeck` ; la base s'installe aussi quand elle manque |
+| `--no-enable` | installe sans activer l'extension ; un poste où l'ancienne extension était active garde cet état sous le nouveau nom |
+| `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
+| `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau ; un paquet absent est sauté avec un avertissement |
+| `--uninstall` | retire tout : désactive l'extension, retire son lien, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, seulement la règle udev et `.venv.streamdeck`, et l'extension reste active ; les paquets système restent toujours |
+| `--dry-run` | affiche ce qui serait fait, ne change rien |
+
+Le code de sortie `0` veut dire fait, `2` un système non supporté (une
+ligne sur stderr qui commence par `UNSUPPORTED:`), `1` tout autre échec.
+`make erplibre_home_uninstall` lance `--uninstall`, et
+`make erplibre_home_streamdeck_uninstall` lance `--uninstall --stream-deck`.
+
+<!-- [end] -->
+<!-- [en] -->
+### System packages, for reference
+
+The installer picks the column of your distribution family: the base rows
+always, the Stream Deck rows with `--stream-deck`. On AlmaLinux and Rocky
+Linux, `--stream-deck` first enables EPEL (`dnf install -y epel-release`),
+where `wmctrl` comes from; the base does not touch EPEL.
+
+<!-- [fr] -->
+### Paquets système, pour référence
+
+L'installateur prend la colonne de ta famille de distribution : les lignes
+de la base toujours, celles du Stream Deck avec `--stream-deck`. Sur
+AlmaLinux et Rocky Linux, `--stream-deck` active d'abord EPEL
+(`dnf install -y epel-release`), d'où vient `wmctrl` ; la base ne touche
+pas à EPEL.
+
+<!-- [end] -->
 <!-- [common] -->
-```sudo udevadm monitor```
+| Level | Role | apt | dnf | zypper | pacman |
+|---|---|---|---|---|---|
+| base | schemas | `libglib2.0-bin` | `glib2` | `glib2-tools` | `glib2` |
+| base | gettext (`msgfmt`) | `gettext` | `gettext` | `gettext-tools` | `gettext` |
+| base | system python | `python3` | `python3` | `python3` | `python` |
+| Stream Deck | hidapi + libusb | `libhidapi-libusb0 libusb-1.0-0` | `hidapi libusb1` | `libhidapi-libusb0 libusb-1_0-0` | `hidapi libusb` |
+| Stream Deck | venv | `python3-venv` | `python3` | `python3` | `python` |
+| Stream Deck | window control | `wmctrl` | `wmctrl` | `wmctrl` | `wmctrl` |
 
-```
-# For Ubuntu to manage windows
+<!-- [end] -->
+<!-- [en] -->
+### Device access: the udev rule
 
-sudo apt install -y wmctrl
+With `--stream-deck`, the installer writes
+`/etc/udev/rules.d/70-streamdeck.rules`:
+
+<!-- [fr] -->
+### Accès au périphérique : la règle udev
+
+Avec `--stream-deck`, l'installateur écrit
+`/etc/udev/rules.d/70-streamdeck.rules` :
+
+<!-- [end] -->
+<!-- [common] -->
 ```
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+```
+
+<!-- [end] -->
+<!-- [en] -->
+`0fd9` is Elgato's USB vendor id, so the rule covers every Stream Deck model.
+`uaccess` gives the user logged in at the seat access to the device, on every
+distribution family; no group membership is needed, unlike the `plugdev`
+group, which exists only on Debian and Ubuntu. The `70-` prefix orders the
+rule before `73-seat-late.rules`, where `uaccess` is applied. To diagnose a
+device that is not seen, or to add new hardware, watch the events while you
+plug it in:
+
+<!-- [fr] -->
+`0fd9` est l'identifiant de fabricant USB d'Elgato : la règle couvre tous les
+modèles de Stream Deck. `uaccess` donne l'accès au périphérique à
+l'utilisateur assis devant le poste, sur toutes les familles de distribution ;
+aucun groupe n'est requis, contrairement au groupe `plugdev`, qui n'existe que
+sur Debian et Ubuntu. Le préfixe `70-` place la règle avant
+`73-seat-late.rules`, qui applique `uaccess`. Pour diagnostiquer un
+périphérique qui n'est pas vu, ou ajouter du nouveau matériel, observer les
+événements en le branchant :
+
+<!-- [end] -->
+<!-- [common] -->
+```
+sudo udevadm monitor
+```
+
+<!-- [end] -->
 
 <!-- [en] -->
 ## mpv film launcher — yt-dlp backend
