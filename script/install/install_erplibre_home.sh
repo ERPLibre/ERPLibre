@@ -144,10 +144,14 @@ detect_os() {
         unsupported "macOS is not handled"
     fi
     [ -r "${OS_RELEASE}" ] || unsupported "unknown system (no ${OS_RELEASE})"
+    # Un fichier qui ne se source pas ferait sortir le script avec le code
+    # du sous-shell et un message de bash : il finit en « unsupported ».
     # shellcheck disable=SC1090
-    OS="$(. "${OS_RELEASE}" && echo "${ID:-}")"
+    OS="$(. "${OS_RELEASE}" 2>/dev/null && echo "${ID:-}")" \
+        || unsupported "unreadable ${OS_RELEASE}"
     # shellcheck disable=SC1090
-    OS_LIKE="$(. "${OS_RELEASE}" && echo "${ID_LIKE:-}")"
+    OS_LIKE="$(. "${OS_RELEASE}" 2>/dev/null && echo "${ID_LIKE:-}")" \
+        || unsupported "unreadable ${OS_RELEASE}"
 }
 
 # Pose FAMILY plutôt que de l'écrire sur la sortie : appelée dans « $(…) »,
@@ -216,8 +220,11 @@ check_gnome() {
     if [ -n "${ERPLIBRE_HOME_GNOME_VERSION:-}" ]; then
         GNOME_VERSION="${ERPLIBRE_HOME_GNOME_VERSION}"
     elif command -v gnome-shell >/dev/null 2>&1; then
+        # Un gnome-shell qui échoue laisse la version vide, et le « die »
+        # ci-dessous sort en 1 : son propre code ne doit pas devenir celui
+        # du script, que 2 réserve à « unsupported ».
         GNOME_VERSION="$(gnome-shell --version 2>/dev/null \
-            | sed -n 's/^GNOME Shell //p')"
+            | sed -n 's/^GNOME Shell //p')" || GNOME_VERSION=""
         [ -n "${GNOME_VERSION}" ] \
             || die "« gnome-shell --version » ne rend aucune version lisible"
     else
