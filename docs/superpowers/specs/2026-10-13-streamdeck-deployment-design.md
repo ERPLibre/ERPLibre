@@ -225,6 +225,13 @@ The installer:
 4. **venv.** `python3 -m venv .venv.streamdeck` if it is absent, then
    `.venv.streamdeck/bin/pip install -r script/stream_deck/requirements.txt`.
 5. **Extension.**
+   - Run `tools/migrate_legacy.py` first, on every run: it moves a
+     workstation off the extension's former identity (old UUID,
+     dconf path, data directories, Claude hooks) and takes up what a
+     missing session bus left for the next run. It runs under the
+     system `python3`, always exits 0, and a migration that cannot
+     start is logged, never fatal. Whatever the entry point, the
+     migration runs once per install.
    - Create the symlink as in 3.2.
    - Run `glib-compile-schemas --strict` on `schemas/`. A failure fails the
      install.
@@ -290,6 +297,7 @@ already degrade without them.
 - the family;
 - the GNOME version and its verdict;
 - the package command;
+- the migration it would run;
 - the files it would write.
 
 It changes nothing and calls no `sudo`. This is the unit-test surface.
@@ -307,9 +315,8 @@ These go in the same series, before the installer:
   - delegate the symlink, schema and locale work to
     `install_erplibre_home.sh --extension-only`, which runs step 5 alone, with no
     `sudo` and no OS check;
-  - keep the recipe's first line, `tools/migrate_legacy.py`, which moves a
-    workstation off the extension's former identity: it runs under the
-    system `python3`, before any venv exists, and always exits 0;
+  - drop the recipe's own `tools/migrate_legacy.py` line: step 5 runs the
+    migration, so it runs once whichever way the install starts;
   - one implementation, so `make` and the installer cannot disagree.
 - New targets `erplibre_home_install` and `erplibre_home_uninstall`. The new
   `erplibre_home_uninstall` replaces the alias of
