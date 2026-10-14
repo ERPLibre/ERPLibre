@@ -11,15 +11,20 @@ Aucune commande ne part.
 Ce que ces tests gardent :
 
 - les quatre questions de l'installation Stream Deck deviennent des
-  options, le programme et la relance toujours explicites, la commande
-  s'affiche avant de partir, et 0 n'installe rien ;
+  options, le programme et la relance toujours explicites, leurs défauts
+  pris dans les réglages en place, la commande s'affiche avant de partir,
+  et 0 n'installe rien ;
+- une réponse hors liste est signalée et la question reposée ;
 - service, autostart et programme disent quoi installer sans unité, et
   appellent systemctl --user sinon ; le programme change le réglage et ne
   redémarre l'unité que si elle tournait ;
-- la désinstallation demande confirmation ;
+- la désinstallation demande confirmation, et son échec se dit comme
+  tel ;
+- Ctrl-C quitte le journal en direct sans quitter le menu ;
 - l'extension se recharge par make, ses préférences par gnome-extensions ;
 - l'état et le diagnostic affichent ce que rend erplibre_home_status ;
-- chaque libellé a ses deux langues.
+- chaque libellé a ses deux langues, les valeurs passées aux commandes
+  restant celles de systemctl et des réglages.
 """
 
 import contextlib
@@ -45,17 +50,27 @@ INSTALLATEUR = "./script/install/install_erplibre_home.sh"
 
 
 class ExecuteFactice:
-    """Retient chaque commande ; rend (0, []) quand on lui demande code et
-    lignes, comme exec_command_live."""
+    """Retient chaque commande ; rend (code, []) quand on lui demande code
+    et lignes, comme exec_command_live, et `code` sinon."""
 
-    def __init__(self):
+    def __init__(self, code=0):
         self.commandes = []
+        self.code = code
 
     def exec_command_live(self, cmd, **kwargs):
         self.commandes.append(cmd)
         if kwargs.get("return_status_and_output"):
-            return 0, []
-        return 0
+            return self.code, []
+        return self.code
+
+
+class ExecuteInterrompu(ExecuteFactice):
+    """Retient la commande puis lève KeyboardInterrupt, comme un Ctrl-C
+    pendant une commande en direct."""
+
+    def exec_command_live(self, cmd, **kwargs):
+        self.commandes.append(cmd)
+        raise KeyboardInterrupt
 
 
 class Menu(unittest.TestCase):
@@ -78,11 +93,12 @@ class Menu(unittest.TestCase):
         fichier.parent.mkdir(parents=True)
         fichier.write_text("[Unit]\n")
 
-    def jouer(self, methode, reponses):
-        """Lance `methode` avec `reponses` au clavier. Rend (commandes
-        lancées, sortie, valeur rendue)."""
+    def jouer(self, methode, reponses, execute=None):
+        """Lance `methode` avec `reponses` au clavier et `execute` pour
+        lanceur, un ExecuteFactice par défaut. Rend (commandes lancées,
+        sortie, valeur rendue)."""
         todo = TODO.__new__(TODO)
-        todo.execute = ExecuteFactice()
+        todo.execute = execute or ExecuteFactice()
 
         def sonde(argv):
             self.sondes.append(tuple(argv))
@@ -126,12 +142,47 @@ class LInstallationStreamDeck(Menu):
                 self.assertIn(f"Will execute: {commande}", sortie)
                 self.assertIs(rendu, False)
 
+    def test_enter_keeps_the_settings_in_place(self):
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text(
+            "DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n"
+        )
+        cas = (
+            (
+                ("", "", "", ""),
+                " --deck-program=controller --no-restart-after-game",
+            ),
+            (
+                ("1", "", "y", ""),
+                " --deck-program=tiler --restart-after-game",
+            ),
+        )
+        for reponses, options in cas:
+            with self.subTest(reponses=reponses):
+                commandes, sortie, _ = self.jouer(
+                    "_erplibre_home_streamdeck_install_local", reponses
+                )
+                self.assertEqual(
+                    [f"{INSTALLATEUR} --stream-deck{options}"], commandes
+                )
+                self.assertIn("[2] Controller *", sortie)
+
     def test_zero_installs_nothing(self):
         commandes, _sortie, rendu = self.jouer(
             "_erplibre_home_streamdeck_install_local", ("0",)
         )
         self.assertEqual([], commandes)
         self.assertIs(rendu, False)
+
+
+class LeChoix(Menu):
+    def test_an_answer_out_of_the_list_is_asked_again(self):
+        self.unite()
+        commandes, sortie, _ = self.jouer(
+            "_streamdeck_service", ("9", "x", "1")
+        )
+        self.assertEqual([f"systemctl --user start {UNITE}"], commandes)
+        self.assertEqual(2, sortie.count("Invalid selection!"))
 
 
 class LeService(Menu):
@@ -158,6 +209,15 @@ class LeService(Menu):
             with self.subTest(reponse=reponse):
                 commandes, _, _ = self.jouer("_streamdeck_service", (reponse,))
                 self.assertEqual([commande], commandes)
+
+    def test_ctrl_c_leaves_the_live_log_only(self):
+        self.unite()
+        execute = ExecuteInterrompu()
+        commandes, _, rendu = self.jouer(
+            "_streamdeck_service", ("4",), execute
+        )
+        self.assertEqual([f"journalctl --user -u {UNITE} -f"], commandes)
+        self.assertIsNone(rendu)
 
     def test_autostart_enables_or_disables(self):
         self.unite()
@@ -220,6 +280,15 @@ class LaDesinstallation(Menu):
                 self.assertEqual([f"{INSTALLATEUR} {options}"], commandes)
                 self.assertIn("ERPLibre Home uninstalled.", sortie)
 
+    def test_a_failed_uninstall_says_uninstall(self):
+        _, sortie, _ = self.jouer(
+            "_streamdeck_uninstall", ("2", "y"), ExecuteFactice(code=1)
+        )
+        self.assertIn(
+            "❌ ERPLibre Home uninstall failed, see the output above.", sortie
+        )
+        self.assertNotIn("installation failed", sortie)
+
     def test_no_confirmation_no_uninstall(self):
         commandes, _, _ = self.jouer("_streamdeck_uninstall", ("2", ""))
         self.assertEqual([], commandes)
@@ -281,6 +350,25 @@ class LEtatEtLeDiagnostic(Menu):
         ):
             _, sortie, _ = self.jouer("_streamdeck_diagnosis", ())
         self.assertEqual("✅ Nothing to fix.\n", sortie)
+
+
+class LesLibelles(Menu):
+    def test_choices_show_translated_labels_and_pass_raw_values(self):
+        todo_i18n._current_lang = "fr"
+        self.unite()
+        commandes, sortie, _ = self.jouer("_streamdeck_service", ("2",))
+        self.assertEqual([f"systemctl --user stop {UNITE}"], commandes)
+        self.assertIn("[1] 🟢 Démarrer", sortie)
+        _, sortie, _ = self.jouer("_streamdeck_program", ("2",))
+        self.assertIn("Programme du deck : Tiler", sortie)
+        self.assertIn("[2] Contrôleur", sortie)
+        self.assertIn("[3] Aucun programme", sortie)
+        self.assertEqual(
+            "DECK_PROGRAM=controller\n", self.reglages.read_text()
+        )
+        commandes, sortie, _ = self.jouer("_streamdeck_autostart", ("1",))
+        self.assertEqual([f"systemctl --user enable {UNITE}"], commandes)
+        self.assertIn("[2] Désactiver", sortie)
 
 
 class LesTraductions(unittest.TestCase):

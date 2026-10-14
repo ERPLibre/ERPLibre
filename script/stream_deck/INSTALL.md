@@ -134,7 +134,8 @@ installs, the service, the deck program, autostart, a status view, a
 diagnosis that names the command fixing each problem, both uninstalls, and
 the extension's reload and preferences. Its Stream Deck install asks for
 the program, autostart, the restart after a game and the optional tools,
-then prints the installer command before running it.
+the program and the restart defaulting to the current settings, then
+prints the installer command before running it.
 
 ## mpv film launcher — yt-dlp backend
 The film indicator's `mpv` launcher passes URLs to mpv, which
