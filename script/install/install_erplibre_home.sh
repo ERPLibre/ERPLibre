@@ -496,8 +496,22 @@ check_checkout_path() {
 # Le texte de l'unité, pour le dépôt RACINE. Les chemins s'écrivent entiers :
 # entre guillemets dans les lignes Exec*, où une espace séparerait sinon les
 # arguments, et « % » doublé partout, sans quoi systemd le lit comme un
-# spécificateur. RestartPreventExitStatus=2 : le programme sort en 2 quand
-# un autre tient le verrou du deck, et le service ne doit pas alors boucler.
+# spécificateur. « $ » reste tel quel : systemd ne développe les variables
+# que dans les arguments d'une ligne Exec*, et le chemin n'y est jamais que
+# l'exécutable ou WorkingDirectory, où un « $$ » resterait doublé.
+#
+# Ce qui borne les redémarrages (Restart=on-failure) :
+# - RestartPreventExitStatus=2 3 : le programme sort en 2 quand un autre
+#   tient le verrou du deck, en 3 quand le tiler ne trouve aucun deck à
+#   écran ; relancer n'y change rien (deck_lock.BUSY_EXIT, NO_DECK_EXIT) ;
+# - StartLimitBurst=5 en 60 s : tout autre échec persistant finit en
+#   « failed », que la diagnostic signale, au lieu d'un processus toutes les
+#   RestartSec pour la session entière ; le défaut de systemd (5 en 10 s)
+#   n'est jamais atteint avec RestartSec=3.
+# SuccessExitStatus=143 : sur SIGTERM (systemctl stop), le programme remet
+# le deck à zéro et sort en 128 + 15 (deck_lock.exit_on_sigterm) ; sans
+# cette ligne, l'arrêt laisserait l'unité « failed ». PYTHONUNBUFFERED : la
+# sortie va au journal ligne par ligne, et non par blocs à la sortie.
 unit_content() {
     local dir entry
     dir="${RACINE//%/%%}"
@@ -507,15 +521,19 @@ unit_content() {
         "Description=ERPLibre Home Stream Deck program" \
         "PartOf=graphical-session.target" \
         "After=graphical-session.target" \
+        "StartLimitIntervalSec=60" \
+        "StartLimitBurst=5" \
         "" \
         "[Service]" \
         "Type=simple" \
         "WorkingDirectory=${dir}" \
+        "Environment=PYTHONUNBUFFERED=1" \
         "ExecCondition=${entry} --check" \
         "ExecStart=${entry}" \
         "Restart=on-failure" \
         "RestartSec=3" \
-        "RestartPreventExitStatus=2" \
+        "RestartPreventExitStatus=2 3" \
+        "SuccessExitStatus=143" \
         "" \
         "[Install]" \
         "WantedBy=graphical-session.target"
