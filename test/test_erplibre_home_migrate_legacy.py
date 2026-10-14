@@ -34,6 +34,13 @@ def _load(name, path):
 
 mig = _load("migrate_legacy", SCRIPT)
 
+
+def _tmp(case):
+    """A temporary directory removed when the test ends."""
+    tmp = tempfile.TemporaryDirectory()
+    case.addCleanup(tmp.cleanup)
+    return Path(tmp.name)
+
 OLD = "streamdeck-tiler@technolibre.ca"
 NEW = "erplibre-home@technolibre.ca"
 
@@ -110,7 +117,7 @@ class TestPlanDconf(unittest.TestCase):
 
 class TestDataDirs(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
+        self.tmp = _tmp(self)
         self.bases = [self.tmp / "config", self.tmp / "state",
                       self.tmp / "cache"]
         for base in self.bases:
@@ -139,6 +146,7 @@ class TestDataDirs(unittest.TestCase):
         self.assertTrue((self.bases[0] / "erplibre-home").is_dir())
         self.assertEqual(len(rec.warned), 1)
         self.assertIn("streamdeck-tiler", rec.warned[0])
+        self.assertIn("merge", rec.warned[0])
 
     def test_nothing_to_do_says_nothing(self):
         rec = Recorder()
@@ -148,7 +156,7 @@ class TestDataDirs(unittest.TestCase):
 
 class TestRemoveLegacyExtensions(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
+        self.tmp = _tmp(self)
         self.ext = self.tmp / "extensions"
         self.ext.mkdir()
         self.target = self.tmp / "checkout-ext"
@@ -188,7 +196,23 @@ class TestRemoveLegacyExtensions(unittest.TestCase):
 GET = ("gsettings", "get", "org.gnome.shell", "enabled-extensions")
 
 
+SET = ("gsettings", "set", "org.gnome.shell", "enabled-extensions",
+       f"['{NEW}']")
+
+
 class TestMigrateEnabled(unittest.TestCase):
+    def test_set_failure_warns_and_says_nothing(self):
+        rec = Recorder({GET: (0, f"['{OLD}']\n"), SET: (1, "denied")})
+        mig.migrate_enabled(rec.run, rec.say, rec.warn)
+        self.assertEqual(rec.said, [])
+        self.assertEqual(len(rec.warned), 1)
+
+    def test_non_list_value_warns(self):
+        rec = Recorder({GET: (0, "5\n")})
+        mig.migrate_enabled(rec.run, rec.say, rec.warn)
+        self.assertEqual([c[0] for c in rec.calls], [GET])
+        self.assertEqual(len(rec.warned), 1)
+
     def test_sets_the_replaced_list(self):
         rec = Recorder({GET: (0, f"['a@x', '{OLD}']\n")})
         mig.migrate_enabled(rec.run, rec.say, rec.warn)
@@ -229,6 +253,20 @@ class TestMigrateDconf(unittest.TestCase):
         mig.migrate_dconf(rec.run, rec.say, rec.warn)
         self.assertNotIn(LOAD_NEW, [c[0] for c in rec.calls])
 
+    def test_new_dump_failure_warns(self):
+        rec = Recorder({DUMP_OLD: (0, "[/]\na=1\n"), DUMP_NEW: (1, "error")})
+        mig.migrate_dconf(rec.run, rec.say, rec.warn)
+        self.assertNotIn(LOAD_NEW, [c[0] for c in rec.calls])
+        self.assertEqual(len(rec.warned), 1)
+
+    def test_load_failure_warns_and_says_nothing(self):
+        dump = "[/]\na=1\n"
+        rec = Recorder({DUMP_OLD: (0, dump), DUMP_NEW: (0, ""),
+                        LOAD_NEW: (1, "denied")})
+        mig.migrate_dconf(rec.run, rec.say, rec.warn)
+        self.assertEqual(rec.said, [])
+        self.assertEqual(len(rec.warned), 1)
+
     def test_dump_failure_warns(self):
         rec = Recorder({DUMP_OLD: (1, "error")})
         mig.migrate_dconf(rec.run, rec.say, rec.warn)
@@ -238,7 +276,7 @@ class TestMigrateDconf(unittest.TestCase):
 
 class TestHooks(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
+        self.tmp = _tmp(self)
         self.installer = _load(
             "install_claude_hooks", EXT / "hooks" / "install_claude_hooks.py")
         self.installer.SETTINGS = self.tmp / ".claude" / "settings.json"
@@ -274,10 +312,26 @@ class TestHooks(unittest.TestCase):
         self._write({"model": "x", "hooks": {"Stop": [
             {"hooks": [{"type": "command", "command": other}]},
             {"hooks": [{"type": "command", "command": self.old_cmd}]}]}})
-        mig.migrate_hooks(self.installer, Recorder().say, Recorder().warn)
+        rec = Recorder()
+        mig.migrate_hooks(self.installer, rec.say, rec.warn)
         data = self._read()
         self.assertEqual(data["model"], "x")
         self.assertIn(other, self._commands(data))
+        self.assertNotIn(self.old_cmd, self._commands(data))
+        self.assertEqual(rec.warned, [])
+
+    def test_legacy_under_other_event_removed_once(self):
+        self._write({"hooks": {"PostToolUse": [{"hooks": [
+            {"type": "command", "command": self.old_cmd}]}]}})
+        rec = Recorder()
+        mig.migrate_hooks(self.installer, rec.say, rec.warn)
+        self.assertNotIn(self.old_cmd, self._commands(self._read()))
+        self.assertEqual(len(rec.said), 1)
+        rec2 = Recorder()
+        mig.migrate_hooks(self.installer, rec2.say, rec2.warn)
+        self.assertEqual((rec2.said, rec2.warned), ([], []))
+        backups = list(self.installer.SETTINGS.parent.glob("settings.json.bak-*"))
+        self.assertEqual(len(backups), 1)
 
     def test_without_legacy_entry_file_untouched(self):
         self._write({"hooks": {}})
@@ -306,11 +360,11 @@ class TestSessionBus(unittest.TestCase):
         self.assertEqual(mig.session_bus_env(env), env)
 
     def test_no_address_no_socket(self):
-        tmp = tempfile.mkdtemp()
+        tmp = str(_tmp(self))
         self.assertIsNone(mig.session_bus_env({"XDG_RUNTIME_DIR": tmp}))
 
     def test_socket_in_runtime_dir(self):
-        tmp = tempfile.mkdtemp()
+        tmp = str(_tmp(self))
         sock = socket.socket(socket.AF_UNIX)
         sock.bind(os.path.join(tmp, "bus"))
         self.addCleanup(sock.close)
@@ -319,11 +373,43 @@ class TestSessionBus(unittest.TestCase):
                          f"unix:path={tmp}/bus")
 
 
+class TestSteps(unittest.TestCase):
+    def names(self, env):
+        return [n for n, _ in mig.steps(env, Path("/h"), print, print)]
+
+    def test_order_with_bus_stops_old_writers_first(self):
+        env = {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/x/bus"}
+        self.assertEqual(self.names(env), [
+            "Claude hooks", "enabled-extensions", "dconf", "extensions",
+            "data directories"])
+
+    def test_order_without_bus(self):
+        env = {"XDG_RUNTIME_DIR": str(_tmp(self))}
+        self.assertEqual(self.names(env), [
+            "Claude hooks", "session bus", "extensions",
+            "data directories"])
+
+
 class TestMain(unittest.TestCase):
+    def test_unreadable_extensions_dir_still_exits_zero(self):
+        if os.geteuid() == 0:
+            self.skipTest("root reads any directory")
+        home = _tmp(self)
+        ext = home / ".local" / "share" / "gnome-shell" / "extensions"
+        ext.mkdir(parents=True)
+        ext.chmod(0)
+        self.addCleanup(ext.chmod, 0o755)
+        env = {"HOME": str(home), "XDG_RUNTIME_DIR": str(_tmp(self)),
+               "PATH": os.environ.get("PATH", "")}
+        proc = subprocess.run([sys.executable, str(SCRIPT)], env=env,
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("migrate: warning:", proc.stderr)
+
     def test_main_without_bus_exits_zero_and_is_idempotent(self):
-        home = Path(tempfile.mkdtemp())
+        home = _tmp(self)
         (home / ".local" / "state" / "streamdeck-tiler").mkdir(parents=True)
-        runtime = tempfile.mkdtemp()
+        runtime = str(_tmp(self))
         env = {"HOME": str(home), "XDG_RUNTIME_DIR": runtime,
                "PATH": os.environ.get("PATH", "")}
         first = subprocess.run([sys.executable, str(SCRIPT)], env=env,

@@ -12,9 +12,15 @@ at the old hook script. Each step below moves one of them over.
 
 A pure function decides each step; the ``migrate_*`` functions apply the
 decision. Every step is idempotent: a second run prints nothing but the
-no-bus line. A failing command prints a warning and the next step runs;
-the script always exits 0, so it never blocks the install that follows.
+no-bus line. A failing step prints a warning and the next step runs; the
+script always exits 0, so it never blocks the install that follows.
 Uses the standard library only: it runs before any venv exists.
+
+The order stops the old writer before touching what it writes. The old
+Claude hook goes first, then the old extension is disabled over the
+session bus; only then are its files and data directories moved, because a
+shell that still has the old extension loaded recreates its directories on
+its next write.
 """
 
 from __future__ import annotations
@@ -51,7 +57,12 @@ def parse_strv(text: str) -> list[str]:
     text = text.strip()
     if text.startswith("@as"):
         text = text[3:].strip()
-    return [str(item) for item in ast.literal_eval(text)] if text else []
+    if not text:
+        return []
+    value = ast.literal_eval(text)
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"not a list: {text}")
+    return [str(item) for item in value]
 
 
 def format_strv(items: list[str]) -> str:
@@ -115,6 +126,7 @@ def legacy_hook_commands(settings: dict) -> list[str]:
                 command = hook.get("command") if isinstance(hook, dict) \
                     else None
                 if isinstance(command, str) \
+                        and hook.get("type") == "command" \
                         and command.endswith(LEGACY_HOOK_SUFFIX) \
                         and command not in found:
                     found.append(command)
@@ -173,7 +185,7 @@ def migrate_enabled(run, say, warn) -> None:
         return
     try:
         new = plan_enabled(parse_strv(out))
-    except (ValueError, SyntaxError) as exc:
+    except (ValueError, SyntaxError, TypeError) as exc:
         warn(f"enabled-extensions not understood: {exc}")
         return
     if new is None:
@@ -214,7 +226,9 @@ def migrate_data_dirs(bases: list[Path], say, warn) -> None:
                 continue
             say(f"{src} moved to {dst}")
         elif action == "conflict":
-            warn(f"{src} and {dst} both exist, both left as they are")
+            warn(f"{src} and {dst} both exist, both kept; once logged out "
+                 f"of the old extension, merge what is needed from {src} "
+                 f"into {dst} and remove {src}")
 
 
 def remove_legacy_extensions(ext_dir: Path, say, warn) -> None:
@@ -263,7 +277,7 @@ def migrate_hooks(installer, say, warn) -> None:
     if not legacy:
         return
     for command in legacy:
-        installer.remove(data, command)
+        installer.remove(data, command, events=tuple(data.get("hooks", {})))
     installer.install(data, str(installer.HOOK_PATH))
     try:
         installer.backup(original)
@@ -273,6 +287,39 @@ def migrate_hooks(installer, say, warn) -> None:
         return
     say(f"Claude hooks: {len(legacy)} legacy command(s) replaced in "
         f"{settings}")
+
+
+def steps(env: dict, home: Path, say, warn) -> list:
+    """The migration steps as (name, callable) pairs, in the order to run.
+
+    The old writers are stopped first (hook, then extension through the
+    session bus); the files they write are moved afterwards. Without a
+    session bus the bus steps are replaced by one line saying so.
+    """
+    def hooks() -> None:
+        migrate_hooks(load_hooks_installer(), say, warn)
+
+    def no_bus() -> None:
+        say("no session bus: enabled-extensions and dconf are left for "
+            "the next run")
+
+    bus_env = session_bus_env(env)
+    if bus_env is None:
+        bus_steps = [("session bus", no_bus)]
+    else:
+        run = make_runner(bus_env)
+        bus_steps = [
+            ("enabled-extensions", lambda: migrate_enabled(run, say, warn)),
+            ("dconf", lambda: migrate_dconf(run, say, warn)),
+        ]
+    return [
+        ("Claude hooks", hooks),
+        *bus_steps,
+        ("extensions", lambda: remove_legacy_extensions(
+            extensions_dir(env, home), say, warn)),
+        ("data directories", lambda: migrate_data_dirs(
+            xdg_bases(env, home), say, warn)),
+    ]
 
 
 def main() -> int:
@@ -285,20 +332,11 @@ def main() -> int:
     def warn(msg: str) -> None:
         print(f"migrate: warning: {msg}", file=sys.stderr)
 
-    remove_legacy_extensions(extensions_dir(env, home), say, warn)
-    migrate_data_dirs(xdg_bases(env, home), say, warn)
-    try:
-        migrate_hooks(load_hooks_installer(), say, warn)
-    except Exception as exc:  # the install must go on whatever happens here
-        warn(f"Claude hooks not migrated: {exc}")
-    bus_env = session_bus_env(env)
-    if bus_env is None:
-        say("no session bus: enabled-extensions and dconf are left for "
-            "the next run")
-        return 0
-    run = make_runner(bus_env)
-    migrate_enabled(run, say, warn)
-    migrate_dconf(run, say, warn)
+    for name, step in steps(env, home, say, warn):
+        try:
+            step()
+        except Exception as exc:  # the install must go on whatever happens
+            warn(f"{name} not migrated: {exc}")
     return 0
 
 
