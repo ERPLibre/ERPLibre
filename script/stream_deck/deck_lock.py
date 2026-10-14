@@ -127,7 +127,7 @@ def holder(path=None):
     n'a jamais été pris. Sonde par un flock non bloquant aussitôt rendu."""
     path = path or lock_path()
     try:
-        fh = open(path, encoding="utf-8")
+        fh = os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "r")
     except OSError:
         return None
     with fh:

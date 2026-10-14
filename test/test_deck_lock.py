@@ -21,6 +21,7 @@ Ce que ces tests gardent :
 """
 
 import ast
+import fcntl
 import importlib.util
 import os
 import subprocess
@@ -149,6 +150,18 @@ class Verrou(unittest.TestCase):
             self.deck_lock.acquire("tiler", self.chemin)
         with open(cible, encoding="utf-8") as fh:
             self.assertEqual("exemple\n", fh.read())
+
+    def test_holder_does_not_follow_a_symlink(self):
+        dossier = os.path.dirname(self.chemin)
+        os.makedirs(dossier, mode=0o700)
+        cible = os.path.join(os.path.dirname(dossier), "cible")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("1 exemple\n")
+        os.symlink(cible, self.chemin)
+        tenu = open(cible, encoding="utf-8")
+        self.addCleanup(tenu.close)
+        fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.assertIsNone(self.deck_lock.holder(self.chemin))
 
     def test_a_directory_open_to_others_is_refused(self):
         dossier = os.path.dirname(self.chemin)
