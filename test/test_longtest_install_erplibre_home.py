@@ -991,6 +991,37 @@ class LeDefaire(unittest.TestCase):
         self.assertIn("long-sd-fedora-43-000000", sortie)
         self.assertIn("rien ne sera détruit", sortie)
 
+    def test_an_empty_report_undoes_nothing_and_invents_no_root(self):
+        """Une course finie sans --garder laisse « etages » vide : rien à
+        défaire, ni racine « long-sd-1 » inventée, ni confirmation."""
+        from unittest import mock
+
+        with open(
+            os.path.join(self.dossier, "long-sd-19990101-000000.json"),
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            json.dump(
+                {
+                    "outil": "install_erplibre_home",
+                    "dry_run": False,
+                    "pid": 1,
+                    "etages": [],
+                    "systemes": [],
+                },
+                fh,
+            )
+        for options in (("--dry-run",), ()):
+            with self.subTest(options=options):
+                with mock.patch("builtins.input", side_effect=AssertionError):
+                    code, sortie = _mener(
+                        "--detruire", *options, maison=self.maison
+                    )
+                self.assertEqual(0, code, sortie)
+                self.assertIn("rien à défaire", sortie)
+                self.assertNotIn("long-sd-1", sortie)
+                self.assertNotIn("défait(s)", sortie)
+
     def test_another_tools_report_is_left_alone(self):
         with open(
             os.path.join(self.dossier, "long-nixos-19990101-000000.json"),
@@ -1371,10 +1402,10 @@ class VMSimulee:
         # Le reste : ListPaths et ListDevices.
         return reponses.get(commande, "('[]',)")
 
-    def attendre_extension(self, cible, log, delai=0):
+    def attendre_extension(self, cible, delai=0):
         if self.actif:
-            return {"state": 1.0, "error": ""}
-        return {"state": 3.0, "error": "boom"}
+            return {"state": 1.0, "error": ""}, "({'state': <1.0>},)"
+        return {"state": 3.0, "error": "boom"}, "({'state': <3.0>},)"
 
     def redemarrer(self, cible, log):
         self.redemarrages += 1
@@ -1404,7 +1435,7 @@ class LesCinqEtapes(unittest.TestCase):
         with mock.patch.multiple(
             sd,
             sonder=vm.sonder,
-            session_ouverte=lambda cible: True,
+            session_ouverte=lambda cible: (True, "(true,)"),
             attendre_extension=vm.attendre_extension,
             installer=vm.installer,
             redemarrer=vm.redemarrer,
@@ -1528,6 +1559,65 @@ class LesCinqEtapes(unittest.TestCase):
             with self.subTest(attendu=attendu):
                 self.assertEqual(self._controler(vm)[0], attendu)
                 self.assertEqual(vm.redemarrages, 1)
+
+    def _controles(self):
+        """(nom, issue) de chaque ligne « ── contrôle » du journal, dans
+        l'ordre."""
+        return re.findall(
+            r"^── contrôle (\S+) : (\S+)$", self._journal(), re.MULTILINE
+        )
+
+    def test_the_log_names_every_check_and_its_command(self):
+        """Le journal d'une VM saine prouve chaque contrôle et chaque
+        commande d'étape, dans l'ordre d'ETAPES : son nom, son issue, et la
+        commande qu'il a lancée. Une réussite n'y recopie pas les
+        réponses."""
+        vm = VMSimulee([self.ENTIER, self.ENTIER])
+        self.assertIsNone(self._controler(vm)[0])
+        attendus = []
+        for etape in sd.ETAPES:
+            if etape["commande"]:
+                attendus.append(etape["commande"])
+            attendus.extend(etape["controles"])
+        self.assertEqual(
+            self._controles(), [(nom, "réussi") for nom in attendus]
+        )
+        journal = self._journal()
+        for bloc in journal.split("── contrôle ")[1:]:
+            self.assertIn("\n   $ ", bloc, bloc)
+        self.assertIn(f"   $ {sd.CMD_SANS_REGLE}\n", journal)
+        self.assertIn("   $ install_erplibre_home.sh --stream-deck\n", journal)
+        self.assertNotIn("   → ", journal)
+
+    def test_a_failed_check_leaves_its_raw_reply(self):
+        """Le contrôle tombé est le dernier du journal, ÉCHEC, et chaque
+        commande qu'il a lancée y est suivie de sa réponse brute."""
+        cas = (
+            (
+                {"apres": {"--uninstall --stream-deck": {"uuid": False}}},
+                "partial-uninstall-kept",
+                f"   $ {sd.CMD_ENABLED}\n   → @as []\n",
+            ),
+            (
+                {"echoue": {"--stream-deck"}},
+                "install-stream-deck",
+                "   $ install_erplibre_home.sh --stream-deck\n"
+                "   → code de sortie 1\n",
+            ),
+            (
+                {"regle": True},
+                "base-no-udev",
+                f"   $ {sd.CMD_SANS_REGLE}\n   → (aucune réponse)\n",
+            ),
+        )
+        for options, nom, preuve in cas:
+            with self.subTest(nom=nom):
+                open(self.log, "w", encoding="utf-8").close()
+                vm = VMSimulee([self.ENTIER], **options)
+                self.assertEqual(self._controler(vm)[0], nom)
+                self.assertEqual(self._controles()[-1], (nom, "ÉCHEC"))
+                bloc = self._journal().split(f"── contrôle {nom} : ÉCHEC\n")
+                self.assertIn(preuve, bloc[1])
 
     def test_every_name_it_returns_is_declared(self):
         """Les noms que controler() rend sont ceux d'ETAPES : le rapport et

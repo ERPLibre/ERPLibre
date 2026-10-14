@@ -320,6 +320,9 @@ corrige. Sur Arch et Tumbleweed, `UNSUPPORTED` veut dire que GNOME a dépassé
 51, et c'est le signal attendu pour mettre `metadata.json` à jour. Le
 journal de chaque système — sortie de l'installateur, journal utilisateur,
 `gnome-extensions info` — est un `.log` dans le sous-dossier de la course.
+Il prouve chaque contrôle : une ligne `── contrôle <nom> : réussi` ou
+`ÉCHEC` par commande et par contrôle, suivie de chaque commande lancée, et,
+sur un échec, de la réponse brute de cette commande.
 
 ## Partir d'un hôte qu'on possède déjà
 
