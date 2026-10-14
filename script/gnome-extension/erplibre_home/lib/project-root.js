@@ -121,3 +121,22 @@ export function streamDeckPython(root, fileExists) {
         return null;
     }
 }
+
+// Gallery server, relative to the checkout root.
+export const GALLERY_SERVER_REL = 'script/stream_deck/gallery_server.py';
+
+// `s` as one POSIX shell word: single-quoted, each ' written as '\''.
+function shellWord(s) {
+    return `'${String(s).replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Shell command line that starts the gallery server of `root` under
+ * `python`, the interpreter streamDeckPython(root) returned. Both paths are
+ * quoted, so a checkout whose path holds a space or a quote still runs.
+ * The line needs neither make nor the checkout as working directory.
+ */
+export function galleryServerCommand(root, python) {
+    const base = root.length > 1 ? root.replace(/\/+$/, '') : root;
+    return `${shellWord(python)} ${shellWord(`${base}/${GALLERY_SERVER_REL}`)}`;
+}

@@ -88,9 +88,10 @@ gdbus call --session \
   fast iteration.
 
 ### Top-bar indicator labels stuck in English
-- Locales aren't compiled. Run
-  `make erplibre_home_compile_locale` (the install target chains
-  it automatically since 2026-04).
+- Locales aren't compiled. `make erplibre_home_install_extension`
+  recompiles them with `msgfmt --check`, as every install does;
+  `make erplibre_home_compile_locale` compiles them alone, under the
+  system `python3`.
 - `LANG` does not start with `fr` / your target language; verify with
   `echo $LANG`.
 

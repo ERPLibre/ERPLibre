@@ -232,6 +232,11 @@ class TestRequirements(unittest.TestCase):
     def test_lz4_left_the_venv(self):
         self.assertNotIn("lz4", self.noms())
 
+    def test_polib_left_the_venv(self):
+        """compile_locales.py tourne sous le python3 du système, et
+        l'installateur compile par msgfmt : rien du venv n'importe polib."""
+        self.assertNotIn("polib", self.noms())
+
 
 def charger_galerie():
     """Charge gallery_server.py par son chemin : script/stream_deck n'est

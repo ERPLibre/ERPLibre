@@ -15,7 +15,7 @@ import {_} from '../lib/i18n.js';
 import {parseList} from '../lib/settings.js';
 import {buildTerminalArgv, findTerminal, spawnDetached}
     from '../lib/spawn.js';
-import {streamDeckPython} from '../lib/project-root.js';
+import {streamDeckPython, galleryServerCommand} from '../lib/project-root.js';
 
 const GALLERY_PORT = 8042;
 const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
@@ -198,12 +198,13 @@ class ControllerIndicator extends PanelMenu.Button {
     }
 
     async _launchGalleryAt(cwd) {
-        // make streamdeck_gallery runs the gallery under .venv.streamdeck,
-        // which only the Stream Deck level creates. It is looked up under
-        // the configured path at the click, so a level added after the
-        // session started is found.
-        if (streamDeckPython(cwd,
-            (p) => GLib.file_test(p, GLib.FileTest.IS_EXECUTABLE)) === null) {
+        // The gallery runs under .venv.streamdeck/bin/python, which only
+        // the Stream Deck level creates, started directly rather than
+        // through make. The venv is looked up under the configured path at
+        // the click, so a level added after the session started is found.
+        const python = streamDeckPython(cwd,
+            (p) => GLib.file_test(p, GLib.FileTest.IS_EXECUTABLE));
+        if (python === null) {
             _notify(PROJECT_NAME,
                 _('ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install'));
             return;
@@ -216,7 +217,7 @@ class ControllerIndicator extends PanelMenu.Button {
         }
         const argv = buildTerminalArgv({
             cwd,
-            command: 'make streamdeck_gallery',
+            command: galleryServerCommand(cwd, python),
             terminal,
         });
         const ok = await spawnDetached(argv,
