@@ -106,9 +106,13 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
         "Docker / Podman": "prompt_execute_container",
+        "Docker / Podman": "prompt_execute_container",
         "Games": "prompt_execute_streamdeck_games",
+        "Install ERPLibre Home (local)": "_erplibre_home_install_local",
+        "Install ERPLibre Home Stream Deck (local)": (
+            "_erplibre_home_streamdeck_install_local"
+        ),
     }
-
     def _entry_key(self, label):
         """« Doc - Documentation search » -> « Doc »."""
         return label.split(" - ", 1)[0].strip()

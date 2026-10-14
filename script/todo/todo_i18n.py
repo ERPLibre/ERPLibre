@@ -128,6 +128,39 @@ TRANSLATIONS = {
         "fr": "Lancement du jeu :",
         "en": "Launching game:",
     },
+    "Install ERPLibre Home (local)": {
+        "fr": "📦 Installer ERPLibre Home (local)",
+        "en": "📦 Install ERPLibre Home (local)",
+    },
+    "Install ERPLibre Home Stream Deck (local)": {
+        "fr": "📦 Installer ERPLibre Home Stream Deck (local)",
+        "en": "📦 Install ERPLibre Home Stream Deck (local)",
+    },
+    "ERPLibre Home not supported on this system:": {
+        "fr": "ERPLibre Home non pris en charge sur ce système :",
+        "en": "ERPLibre Home not supported on this system:",
+    },
+    "no reason reported by the installer": {
+        "fr": "aucune raison donnée par l'installateur",
+        "en": "no reason reported by the installer",
+    },
+    "ERPLibre Home installation failed, see the output above.": {
+        "fr": (
+            "L'installation d'ERPLibre Home a échoué, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "ERPLibre Home installation failed, see the output above.",
+    },
+    "ERPLibre Home installed. Log out and back in to load the extension.": {
+        "fr": (
+            "ERPLibre Home installé. Fermer la session puis la rouvrir"
+            " pour charger l'extension."
+        ),
+        "en": (
+            "ERPLibre Home installed. Log out and back in to load"
+            " the extension."
+        ),
+    },
     # Stream Deck game descriptions (42 games)
     "game_2048": {
         "en": "Merge tiles to reach 2048! Corner buttons = directions.",
