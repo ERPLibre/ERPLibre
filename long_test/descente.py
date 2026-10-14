@@ -1204,13 +1204,38 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
     return True
 
 
+def racines_du_rapport(rapport, nom_base=""):
+    """[(nom, uuid, cree)] des machines de niveau 1, dans l'ordre du rapport.
+
+    Une descente en inscrit une ; un test long qui crée une VM par système en
+    inscrit une par machine encore debout. Sans aucune entrée de niveau 1, la
+    liste porte une seule racine, nommée `nom_etage(1, nom_base)` et sans
+    UUID : detruire_etage1 la cherche alors par son nom, et le dit.
+    """
+    racines = [
+        (
+            e.get("nom") or nom_etage(1, nom_base),
+            e.get("uuid"),
+            bool(e.get("cree", True)),
+        )
+        for e in (rapport.get("etages") or [])
+        if int(e.get("niveau", 0)) == 1
+    ]
+    return racines or [(nom_etage(1, nom_base), None, True)]
+
+
 def detruire(famille, journal=None, dry_run=False):
     """Défait ce que le DERNIER rapport dit avoir créé, du plus profond.
 
-    Rien d'autre. La version d'avant prenait toute entrée ~/.ssh/config dont
-    le nom contenait « deep-pve », puis sur son rebond détruisait toute VM
-    dont le nom contenait « deep-pve » — une machine de labo appelée
-    « deep-pve-lab » sur un hyperviseur de production tombait dedans.
+    Rien d'autre : chaque machine visée est nommée par le rapport, avec
+    l'identifiant noté à sa création, jamais choisie d'après un préfixe de
+    nom. Les étages imbriqués partent d'abord, chez leur parent, puis CHAQUE
+    machine de niveau 1 (racines_du_rapport). Une seule confirmation couvre
+    le tout.
+
+    Rend 0 quand toutes les racines sont défaites, 1 quand une descente
+    tourne, quand la confirmation est refusée ou quand une racine reste
+    debout.
     """
     # Avant tout : refuser tant qu'une descente tourne. Elle installe encore
     # sur les machines qu'on s'apprête à détruire, et son rapport peut être
@@ -1233,31 +1258,30 @@ def detruire(famille, journal=None, dry_run=False):
         )
         return 0
     liste = a_defaire(rapport, famille.nom_base)
+    racines = racines_du_rapport(rapport, famille.nom_base)
+    total = len(liste) + len(racines)
     dire(f"  rapport : {rapport.get('fichier')}", journal)
-    dire(f"  {len(liste)} VM imbriquée(s) + l'étage 1 :", journal)
+    dire(
+        f"  {len(liste)} VM imbriquée(s) + "
+        + (
+            "l'étage 1 :"
+            if len(racines) == 1
+            else f"{len(racines)} VM d'étage 1 :"
+        ),
+        journal,
+    )
     for niveau, parent_alias, identite, nom in liste:
         dire(
             f"    étage {niveau:2d}  {nom} ({identite}) sur {parent_alias}",
             journal,
         )
-    etage1_nom = next(
-        (
-            e.get("nom")
-            for e in (rapport.get("etages") or [])
-            if int(e.get("niveau", 0)) == 1
-        ),
-        None,
-    )
-    dire(
-        f"    étage  1  {etage1_nom or nom_etage(1, famille.nom_base)}"
-        " (libvirt)",
-        journal,
-    )
+    for nom, _uuid, _cree in racines:
+        dire(f"    étage  1  {nom} (libvirt)", journal)
     if dry_run:
         dire("\n  --dry-run : rien ne sera détruit.", journal)
         return 0
     # Une confirmation, parce que « --purge » emporte les disques et que le
-    # menu lançait cette option d'une seule touche.
+    # menu lance cette option d'une seule touche.
     reponse = input("\n  Détruire tout cela ? (tapez OUI) : ").strip()
     if reponse != "OUI":
         dire("  annulé.", journal)
@@ -1267,38 +1291,24 @@ def detruire(famille, journal=None, dry_run=False):
         for niveau, parent_alias, identite, nom in liste
         if famille.detruire_une(parent_alias, identite, nom, journal)
     )
-    # « if not … : faits -= 1 » : un succès de l'étage 1 n'ajoutait RIEN,
-    # alors que le total est len(liste) + 1. Le décompte était décalé de un
-    # dans TOUS les cas — une destruction complète annonçait « il reste des
-    # machines » et sortait 1, si bien que le seul avertissement censé
-    # prévenir qu'un disque de plusieurs dizaines de Go reste alloué
-    # s'affichait toujours, et qu'on apprenait à ne plus le lire.
-    etage1 = next(
-        (
-            e
-            for e in (rapport.get("etages") or [])
-            if int(e.get("niveau", 0)) == 1
-        ),
-        {},
-    )
-    racine = detruire_etage1(
-        journal,
-        attendu=etage1.get("uuid"),
-        nom=etage1.get("nom") or nom_etage(1, famille.nom_base),
-        cree=bool(etage1.get("cree", True)),
-    )
-    if racine:
-        faits += 1
+    # Chaque racine compte pour un dans le total, défaite ou non : le
+    # décompte final se lit contre len(liste) + len(racines). L'échec de
+    # l'une n'arrête pas les suivantes.
+    debout = []
+    for nom, uuid, cree in racines:
+        if detruire_etage1(journal, attendu=uuid, nom=nom, cree=cree):
+            faits += 1
+        else:
+            debout.append(nom)
     retirer_alias(rapport, journal, famille.nom_base)
-    if racine:
-        # L'étage 1 est un DISQUE, et tout le reste vit dedans. « virsh
-        # undefine --remove-all-storage » l'a effacé : les étages injoignables
-        # — leur parent était éteint — ont disparu avec, qu'on ait pu leur
-        # parler ou non. Annoncer « il reste des machines » dans ce cas était
-        # faux dans l'autre sens, et un avertissement faux ne se lit plus.
-        reste = len(liste) + 1 - faits
+    if not debout:
+        # Une racine est un DISQUE, et ses étages imbriqués vivent dedans.
+        # « virsh undefine --remove-all-storage » l'a effacé : un étage
+        # injoignable — son parent éteint — a disparu avec lui. Tout est
+        # donc défait, et l'écart dit seulement combien l'ont été ainsi.
+        reste = total - faits
         dire(
-            f"\n  {len(liste) + 1} / {len(liste) + 1} défait(s)."
+            f"\n  {total} / {total} défait(s)."
             + (
                 f"  ({reste} injoignable(s), emporté(s) avec le disque de"
                 " l'étage 1.)"
@@ -1309,8 +1319,9 @@ def detruire(famille, journal=None, dry_run=False):
         )
         return 0
     dire(
-        f"\n  {faits} / {len(liste) + 1} défait(s)."
-        "  ⚠ l'étage 1 est DEBOUT : ce qu'il contient vit encore.",
+        f"\n  {faits} / {total} défait(s)."
+        f"  ⚠ l'étage 1 est DEBOUT ({', '.join(debout)}) :"
+        " ce qu'il contient vit encore.",
         journal,
     )
     return 1
