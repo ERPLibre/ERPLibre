@@ -36,6 +36,7 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+import deck_lock
 import translator as _translator
 
 GAME_META = {
@@ -3540,6 +3541,7 @@ def _label_for_timer(timer):
 
 
 def main():
+    deck_lock.acquire_or_exit("tiler")
     _init_font_scale()
     streamdecks = DeviceManager().enumerate()
     deck = next((d for d in streamdecks if d.is_visual()), None)
