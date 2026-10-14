@@ -268,10 +268,10 @@ That is the first of five stages, run in order on the same VM:
 
 1. **base**: the checks above, then neither the udev rule nor
    `.venv.streamdeck` exists, and a second base install changes nothing;
-2. **install-stream-deck**: `--stream-deck` writes the udev rule, the venv
+2. **stream-deck**: `--stream-deck` writes the udev rule, the venv
    imports what the deck programs import, the extension stays ACTIVE, and a
    second run changes nothing;
-3. **uninstall-stream-deck**: `--uninstall --stream-deck` removes the rule
+3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule
    and the venv, and leaves the extension linked, enabled and ACTIVE;
 4. **uninstall**: `--uninstall` leaves neither link, nor UUID in
    `enabled-extensions`, nor rule, nor venv;
@@ -290,6 +290,14 @@ unique, so it tells which stage stopped.
 ./long_test/install_erplibre_home.py --garder        # keep the VMs
 ./long_test/install_erplibre_home.py --detruire      # undo the last run
 ```
+
+A real run needs `sudo` for its whole duration: each VM is created by
+`sudo deploy_qemu.py`, and destroyed through `sudo -n virsh`. Either allow
+`virsh` and `deploy_qemu.py` without a password, or keep a sudo session
+alive for the run. Only one VM lives at a time: when a VM survives its
+destroy, even after `sudo -v`, the run stops, marks the remaining systems
+`FAILED(previous-vm-still-up)` and exits 1; `--detruire` undoes it.
+`--garder` keeps every VM running, 4 GiB each: pair it with `--only`.
 
 The report lists one line per system, with the GNOME version expected and
 the one measured: the matrix in the script is corrected from those lines. On

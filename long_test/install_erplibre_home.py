@@ -671,6 +671,8 @@ DELAI_SSH = 600
 DELAI_BUREAU = 5400
 DELAI_CODE = 900
 DELAI_INSTALL = 1800
+# Le temps de taper un mot de passe quand sudo en demande un.
+DELAI_SUDO = 300
 DELAIS_CONTROLE = {
     "session": 300,
     "extension-active": 120,
@@ -1099,7 +1101,7 @@ def _etape_base(cible, entree, log, base):
         reponse = sonder(
             cible, cmd_methode(methode), DELAIS_CONTROLE["extension-dbus"]
         )
-        if not reponse.startswith("('"):
+        if not reponse.startswith(("('", '("')):
             _ajouter(log, f"✗ {methode} : {reponse or '(aucune réponse)'}")
             return "extension-dbus", info, gnome
     if indicateurs_non_montes(cible, log):
@@ -1226,13 +1228,16 @@ def joindre_diagnostic(cible, log):
         _ajouter(log, f"── {titre}\n{sonder(cible, commande) or '(rien)'}")
 
 
+def journal_systeme(entree):
+    """Le nom du journal d'un système dans le dossier de la course."""
+    return f"{entree['distro']}-{entree['version']}.log"
+
+
 def mener_un(course, entree):
     """Un système, de la création de sa VM à son verdict. Rend la ligne du
     rapport ; la VM reste inscrite dans course.rapport["etages"]."""
     debut = time.time()
-    log = os.path.join(
-        course.dossier, f"{entree['distro']}-{entree['version']}.log"
-    )
+    log = os.path.join(course.dossier, journal_systeme(entree))
     famille = FAMILLE[entree["distro"]]
     etat = {"code": None, "info": None, "gnome": "", "echec": None}
     raison = ""
@@ -1298,6 +1303,25 @@ def mener_un(course, entree):
     if etat["echec"]:
         joindre_diagnostic(nom, log)
     return ligne()
+
+
+def rafraichir_sudo(journal):
+    """Renouvelle le jeton de sudo. Rend vrai s'il est valide.
+
+    « sudo -v » devant un terminal, qui peut demander le mot de passe ;
+    « sudo -n -v » sinon, qui échoue au lieu d'attendre un mot de passe que
+    personne ne tapera.
+    """
+    terminal = sys.stdin is not None and sys.stdin.isatty()
+    argv = ["sudo", "-v"] if terminal else ["sudo", "-n", "-v"]
+    try:
+        fini = subprocess.run(argv, timeout=DELAI_SUDO)
+    except (OSError, subprocess.SubprocessError) as souci:
+        dire(f"  ✗ {' '.join(argv)} : {souci}", journal)
+        return False
+    if fini.returncode != 0:
+        dire(f"  ✗ {' '.join(argv)} a échoué", journal)
+    return fini.returncode == 0
 
 
 def plan_tient(journal):
@@ -1383,6 +1407,12 @@ def annoncer(systemes, args, journal):
     dire("  sur chaque VM, l'une après l'autre :", journal)
     for ligne in decrire_etapes():
         dire(ligne, journal)
+    if args.extras and any(cle(e) == SYSTEME_EXTRAS for e in systemes):
+        dire(
+            f"  sur {SYSTEME_EXTRAS}, la base des étapes 1 et 5 :"
+            " install_erplibre_home.sh --with-extras",
+            journal,
+        )
     if args.extras and all(cle(e) != SYSTEME_EXTRAS for e in systemes):
         dire(f"  ⚠ --extras ne vaut que pour {SYSTEME_EXTRAS}", journal)
 
@@ -1474,12 +1504,20 @@ def mener(argv):
     course.ecrire()
     dire(f"  rapport : {course.chemin}", journal)
 
+    survivante = False
     for entree in systemes:
         try:
+            debut = time.time()
             ligne = mener_un(course, entree)
         except Exception as souci:  # noqa: BLE001 - un système, pas la course
             ligne = verdict_systeme(
-                entree, None, None, "", echec=f"exception ({souci})"
+                entree,
+                None,
+                None,
+                "",
+                echec=f"exception ({souci})",
+                duree_s=time.time() - debut,
+                journal=journal_systeme(entree),
             )
         course.noter(ligne)
         marque = {"ACTIVE": "✅", "UNSUPPORTED": "⚪"}.get(
@@ -1489,13 +1527,38 @@ def mener(argv):
         dire(f"  {marque} {cle(entree)} : {ligne['verdict']}{etape}", journal)
         if args.garder:
             continue
-        # En cours de course, jamais detruire() : il demande « OUI ».
-        for etage in list(course.rapport["etages"]):
-            if detruire_etage1(
-                journal, etage["nom"], attendu=etage["uuid"] or None
-            ):
-                retirer_alias({"etages": [etage]}, journal, NOM_BASE)
-                course.retirer(etage)
+        # En cours de course, jamais detruire() : il demande « OUI ». Le
+        # défaire lit libvirt par « sudo -n » : un jeton expiré le fait
+        # échouer, d'où une seconde passe, jeton renouvelé.
+        for passe in range(2):
+            if passe:
+                if not course.rapport["etages"]:
+                    break
+                rafraichir_sudo(journal)
+            for etage in list(course.rapport["etages"]):
+                if detruire_etage1(
+                    journal, etage["nom"], attendu=etage["uuid"] or None
+                ):
+                    retirer_alias({"etages": [etage]}, journal, NOM_BASE)
+                    course.retirer(etage)
+        # Une VM encore en vie arrête la course : plan_tient ne vérifie la
+        # place que d'une seule VM, et les suivantes, empilées, tomberaient
+        # pour une raison de l'hôte, lue comme une panne de distribution.
+        if course.rapport["etages"]:
+            survivante = True
+            noms = ", ".join(e["nom"] for e in course.rapport["etages"])
+            dire(
+                f"  ✗ {noms} toujours en vie : la course s'arrête,"
+                " --detruire la défait",
+                journal,
+            )
+            for reste in systemes[systemes.index(entree) + 1 :]:
+                course.noter(
+                    verdict_systeme(
+                        reste, None, None, "", echec="previous-vm-still-up"
+                    )
+                )
+            break
 
     for ligne in resume(course.rapport["systemes"]):
         dire(ligne, journal)
@@ -1505,6 +1568,8 @@ def mener(argv):
             " --detruire les défait",
             journal,
         )
+    if survivante:
+        return 1
     return code_sortie(course.rapport["systemes"])
 
 
