@@ -5,7 +5,7 @@
 #
 # Requires:
 #   - grim + slurp (Wayland) OR gnome-screenshot (X11) on PATH.
-#   - The streamdeck-tiler@technolibre.ca extension enabled in
+#   - The erplibre-home@technolibre.ca extension enabled in
 #     gnome-shell so the indicators are mounted.
 #   - A Stream Deck plugged in for the deck-* shots (the script
 #     skips them gracefully if no device is detected).
@@ -75,9 +75,9 @@ shoot_deck() {
 }
 
 main() {
-    if ! gnome-extensions info streamdeck-tiler@technolibre.ca 2>/dev/null \
+    if ! gnome-extensions info erplibre-home@technolibre.ca 2>/dev/null \
             | grep -qi 'enabled'; then
-        echo "warning: streamdeck-tiler extension is not enabled" >&2
+        echo "warning: erplibre-home extension is not enabled" >&2
     fi
 
     shoot_top_bar
@@ -85,7 +85,7 @@ main() {
     shoot_dropdown pencil-filtered.png "pencil (after clicking awaiting badge)"
     shoot_dropdown media-dropdown.png media
 
-    gnome-extensions prefs streamdeck-tiler@technolibre.ca &
+    gnome-extensions prefs erplibre-home@technolibre.ca &
     sleep 2
     shoot_prefs Buttons prefs-buttons.png
     shoot_prefs Help    prefs-help.png

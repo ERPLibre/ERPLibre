@@ -39,7 +39,7 @@ export const MediaLibraryDialog = GObject.registerClass(
 {GTypeName: `SDT_MediaLibraryDialog_${_GTYPE_SUFFIX}`},
 class MediaLibraryDialog extends ModalDialog {
     _init({settings, onLaunch, onEdit, onDelete} = {}) {
-        super._init({styleClass: 'streamdeck-tiler-dialog'});
+        super._init({styleClass: 'erplibre-home-dialog'});
         this._settings = settings;
         this._onLaunch = onLaunch;
         this._onEdit = onEdit;

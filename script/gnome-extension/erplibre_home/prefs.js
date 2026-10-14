@@ -20,7 +20,7 @@ const INDICATOR_IDS = [
     'summary',
 ];
 
-export default class StreamDeckTilerPrefs extends ExtensionPreferences {
+export default class ERPLibreHomePrefs extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         setGettext((s) => this.gettext ? this.gettext(s) : s);
@@ -311,7 +311,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             accept_label: _('Save'), cancel_label: _('Cancel'),
             modal: true, transient_for: parent.get_root?.(),
         });
-        dlg.set_current_name('streamdeck-tiler-settings.json');
+        dlg.set_current_name('erplibre-home-settings.json');
         dlg.connect('response', (_d, response) => {
             if (response === Gtk.ResponseType.ACCEPT) {
                 const file = dlg.get_file();
@@ -715,7 +715,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             widget = widget.get_parent ? widget.get_parent() : null;
         }
         // Fallback: log to stderr; user can also see in Activity Log.
-        console.log(`[StreamDeckTiler:prefs] ${message}`);
+        console.log(`[ERPLibreHome:prefs] ${message}`);
     }
 
     _buildLogPage(settings) {
@@ -735,7 +735,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         const group = new Adw.PreferencesGroup({
             title: _('Recent activity'),
             description: _('Last 200 entries from '
-                + '$XDG_STATE_HOME/streamdeck-tiler/log.jsonl'),
+                + '$XDG_STATE_HOME/erplibre-home/log.jsonl'),
         });
 
         const buf = new Gtk.TextBuffer();

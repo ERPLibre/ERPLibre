@@ -287,7 +287,7 @@ class ErpLibreIndicator extends PanelMenu.Button {
         // file the deck side can tail to surface menu items.
         const stateBase = GLib.getenv('XDG_STATE_HOME')
             || `${GLib.get_home_dir()}/.local/state`;
-        const logDir = `${stateBase}/streamdeck-tiler/todo`;
+        const logDir = `${stateBase}/erplibre-home/todo`;
         try { GLib.mkdir_with_parents(logDir, 0o700); } catch (_e) {}
         const logPath = GLib.find_program_in_path('script')
             ? `${logDir}/todo-${Date.now()}.log` : '';
@@ -312,7 +312,7 @@ class ErpLibreIndicator extends PanelMenu.Button {
             try { this._registerTodoTerminal(logPath); }
             catch (e) {
                 console.log(
-                    `[StreamDeckTiler] register TODO failed: ${e.message}`);
+                    `[ERPLibreHome] register TODO failed: ${e.message}`);
             }
             return GLib.SOURCE_REMOVE;
         });
@@ -325,7 +325,7 @@ class ErpLibreIndicator extends PanelMenu.Button {
     _registerTodoTerminal(logPath) {
         const wid = this._extension?.GetFocusedWindowId?.();
         console.log(
-            `[StreamDeckTiler] TODO register: focused window id=${wid}`);
+            `[ERPLibreHome] TODO register: focused window id=${wid}`);
         if (!wid) {
             _notify('ERPLibre',
                 _('Could not capture TODO terminal — focus a different '
@@ -334,7 +334,7 @@ class ErpLibreIndicator extends PanelMenu.Button {
         }
         const stateBase = GLib.getenv('XDG_STATE_HOME')
             || `${GLib.get_home_dir()}/.local/state`;
-        const dir = `${stateBase}/streamdeck-tiler`;
+        const dir = `${stateBase}/erplibre-home`;
         const regPath = `${dir}/todo_terminals.json`;
         let entries = [];
         if (GLib.file_test(regPath, GLib.FileTest.EXISTS)) {
@@ -347,13 +347,13 @@ class ErpLibreIndicator extends PanelMenu.Button {
                 }
             } catch (e) {
                 console.log(
-                    `[StreamDeckTiler] read TODO registry: ${e.message}`);
+                    `[ERPLibreHome] read TODO registry: ${e.message}`);
                 entries = [];
             }
         }
         if (entries.some(e => String(e.window_id) === String(wid))) {
             console.log(
-                `[StreamDeckTiler] TODO registry already has wid=${wid}`);
+                `[ERPLibreHome] TODO registry already has wid=${wid}`);
             return;
         }
         entries.push({
@@ -374,10 +374,10 @@ class ErpLibreIndicator extends PanelMenu.Button {
                 null, false,
                 Gio.FileCreateFlags.REPLACE_DESTINATION, null);
             console.log(
-                `[StreamDeckTiler] TODO registered ${wid} → ${regPath}`);
+                `[ERPLibreHome] TODO registered ${wid} → ${regPath}`);
         } catch (e) {
             console.log(
-                `[StreamDeckTiler] write TODO registry: ${e.message}`);
+                `[ERPLibreHome] write TODO registry: ${e.message}`);
         }
     }
 

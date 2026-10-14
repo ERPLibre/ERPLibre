@@ -21,9 +21,9 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Open prefs item opens the preferences window
 - [ ] In prefs, "Buttons" page lists 6 indicators with toggles
 - [ ] Toggling `enable-controller` off removes the icon; toggling on re-adds it
-- [ ] D-Bus: `gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Extensions/StreamDeckTiler --method org.gnome.Shell.Extensions.StreamDeckTiler.GetMonitorGeometry` → 4 ints
+- [ ] D-Bus: `gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Extensions/ERPLibreHome --method org.gnome.Shell.Extensions.ERPLibreHome.GetMonitorGeometry` → 4 ints
 - [ ] HotReload via D-Bus does not crash the shell
-- [ ] If `~/.config/streamdeck-tiler/extension-settings.json` exists with `erplibre_path`, after first enable: `gsettings get org.gnome.shell.extensions.streamdeck-tiler paths` returns a JSON array containing that path; the legacy file is renamed to `.bak`
+- [ ] If `~/.config/erplibre-home/extension-settings.json` exists with `erplibre_path`, after first enable: `gsettings get org.gnome.shell.extensions.erplibre-home paths` returns a JSON array containing that path; the legacy file is renamed to `.bak`
 
 ## Pencil (Plan B)
 
@@ -92,14 +92,14 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Plug deck + click "Re-scan USB" → row appears with product + serial
 - [ ] Status item → notification with bus/device/vendor/serial
 - [ ] Open controller UI → erplibre_controller.py runs (verify `pgrep -af erplibre_controller`)
-- [ ] Pidfile `~/.cache/streamdeck-tiler/controller.pid` exists after launch
+- [ ] Pidfile `~/.cache/erplibre-home/controller.pid` exists after launch
 - [ ] Restart deck → controller exits + relaunches (PID changes; note: SIGTERM may leave pidfile stale until next launch overwrites it)
 - [ ] Show details → notification with truncated `lsusb -v` output
 
 ## Cross-cutting (Plan G)
 
 ### i18n
-- [ ] `LANG=fr_FR.UTF-8 gnome-extensions prefs streamdeck-tiler@technolibre.ca` shows French strings (e.g. "Ajouter un chemin…")
+- [ ] `LANG=fr_FR.UTF-8 gnome-extensions prefs erplibre-home@technolibre.ca` shows French strings (e.g. "Ajouter un chemin…")
 - [ ] `make extension_i18n_compile` succeeds; `.mo` files exist under `locale/`
 
 ### Theming

@@ -3,7 +3,7 @@ pyudev
 Pillow>=9.0.0
 opencv-python
 # mozLz4 decompression for the Firefox tab importer
-# (gnome-extension/scripts/firefox_youtube_tabs.py).
+# (script/gnome-extension/erplibre_home/scripts/firefox_youtube_tabs.py).
 lz4
-# i18n compile helper for streamdeck-tiler-compile-locale.
+# i18n compile helper for erplibre_home_compile_locale.
 polib

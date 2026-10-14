@@ -50,7 +50,7 @@ feature_resize = "linear_from_start"
 
 PIDFILE = Path(os.environ.get(
     "XDG_CACHE_HOME", str(Path.home() / ".cache")
-)) / "streamdeck-tiler" / "controller.pid"
+)) / "erplibre-home" / "controller.pid"
 
 
 def _write_pidfile():

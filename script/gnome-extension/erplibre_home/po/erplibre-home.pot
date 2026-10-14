@@ -1,7 +1,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: streamdeck-tiler 1.0\n"
+"Project-Id-Version: erplibre-home 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 
 msgid "Open prefs"
@@ -713,7 +713,7 @@ msgstr ""
 msgid "Recent activity"
 msgstr ""
 
-msgid "Last 200 entries from $XDG_STATE_HOME/streamdeck-tiler/log.jsonl"
+msgid "Last 200 entries from $XDG_STATE_HOME/erplibre-home/log.jsonl"
 msgstr ""
 
 msgid "Activity log"

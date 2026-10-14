@@ -6,7 +6,7 @@
 
 Press TILE to enter tiling mode. Grid appears on the deck.
 Press first corner, then second corner. The focused window is
-tiled to that region via D-Bus (streamdeck-tiler gnome extension).
+tiled to that region via D-Bus (erplibre-home gnome extension).
 
 Press TIMER to list timers from the tracker@aliakseiz.github.com
 extension and start/stop them.
@@ -90,7 +90,7 @@ COLOR_LLM_ON = (140, 60, 160)
 
 VOL_STEP_PCT = 5
 
-LAYOUT_DIR = os.path.expanduser("~/.config/streamdeck-tiler")
+LAYOUT_DIR = os.path.expanduser("~/.config/erplibre-home")
 LAYOUT_FILE = os.path.join(LAYOUT_DIR, "layouts.json")
 SETTINGS_FILE = os.path.join(LAYOUT_DIR, "settings.json")
 NUM_LAYOUT_SLOTS = 3
@@ -196,15 +196,15 @@ COLOR_CLAUDE_AWAIT_NOTIFY = (198, 40, 40)  # red
 
 CLAUDE_STATE_DIR = os.path.join(
     os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-    "streamdeck-tiler", "claude",
+    "erplibre-home", "claude",
 )
 MPV_STATE_DIR = os.path.join(
     os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-    "streamdeck-tiler", "mpv",
+    "erplibre-home", "mpv",
 )
 TODO_TERMINALS_PATH = os.path.join(
     os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-    "streamdeck-tiler", "todo_terminals.json",
+    "erplibre-home", "todo_terminals.json",
 )
 COLOR_MPV_ACTIVE = (40, 100, 180)  # blue
 COLOR_TODO_TERMINAL = (140, 90, 50)  # warm tan, distinct from claude/mpv
@@ -549,8 +549,8 @@ WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
 
 DBUS_DEST = "org.gnome.Shell"
-DBUS_PATH = "/org/gnome/Shell/Extensions/StreamDeckTiler"
-DBUS_IFACE = "org.gnome.Shell.Extensions.StreamDeckTiler"
+DBUS_PATH = "/org/gnome/Shell/Extensions/ERPLibreHome"
+DBUS_IFACE = "org.gnome.Shell.Extensions.ERPLibreHome"
 
 
 def _tile_via_dbus(grid_cols, grid_rows, c1, r1, c2, r2):
@@ -577,7 +577,7 @@ def _tile_via_dbus(grid_cols, grid_rows, c1, r1, c2, r2):
 
 
 def _check_dbus_available():
-    """Check if the streamdeck-tiler extension is available."""
+    """Check if the erplibre-home extension is available."""
     try:
         result = subprocess.run(
             [
@@ -1104,14 +1104,14 @@ def _hot_reload_extension():
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode != 0:
-            print(f"[streamdeck-tiler] HotReload dbus: "
+            print(f"[erplibre-home] HotReload dbus: "
                   f"{result.stderr.strip()}",
                   file=sys.stderr, flush=True)
             return False
         payload = _parse_gdbus_string_tuple(result.stdout)
         return bool(payload)
     except Exception as e:
-        print(f"[streamdeck-tiler] HotReload error: {e}",
+        print(f"[erplibre-home] HotReload error: {e}",
               file=sys.stderr, flush=True)
         return False
 
@@ -1670,7 +1670,7 @@ class Tiler:
             log_dir = os.path.join(
                 os.environ.get("XDG_STATE_HOME")
                 or os.path.expanduser("~/.local/state"),
-                "streamdeck-tiler", "todo")
+                "erplibre-home", "todo")
             os.makedirs(log_dir, exist_ok=True)
             log_path = os.path.join(
                 log_dir, f"todo-{int(time.time())}.log")
@@ -1765,7 +1765,7 @@ class Tiler:
         """Set the result-flash to 'err' AND surface `reason` in
         stderr so the terminal running game_tiler.py captures every
         button failure, not just the silent flash on the deck."""
-        print(f"[streamdeck-tiler] {reason}",
+        print(f"[erplibre-home] {reason}",
               file=sys.stderr, flush=True)
         self.last_result = "err"
         self.result_time = time.monotonic()
@@ -1796,24 +1796,24 @@ class Tiler:
                 "gdbus", "call", "--session",
                 "--dest", "org.gnome.Shell",
                 "--object-path",
-                "/org/gnome/Shell/Extensions/StreamDeckTiler",
+                "/org/gnome/Shell/Extensions/ERPLibreHome",
                 "--method",
-                f"org.gnome.Shell.Extensions.StreamDeckTiler.{method}",
+                f"org.gnome.Shell.Extensions.ERPLibreHome.{method}",
                 sid,
             ], stderr=subprocess.STDOUT, timeout=2).decode()
             ok = "true" in out.lower()
             if not ok:
-                print(f"[streamdeck-tiler] {method}({sid!r}) "
+                print(f"[erplibre-home] {method}({sid!r}) "
                       f"returned: {out.strip()}",
                       file=sys.stderr, flush=True)
             return ok
         except subprocess.CalledProcessError as e:
-            print(f"[streamdeck-tiler] {method}({sid!r}) failed: "
+            print(f"[erplibre-home] {method}({sid!r}) failed: "
                   f"{(e.output or b'').decode(errors='replace').strip()}",
                   file=sys.stderr, flush=True)
             return False
         except (subprocess.SubprocessError, FileNotFoundError) as e:
-            print(f"[streamdeck-tiler] {method}({sid!r}) failed: {e}",
+            print(f"[erplibre-home] {method}({sid!r}) failed: {e}",
                   file=sys.stderr, flush=True)
             return False
 
@@ -2057,26 +2057,26 @@ class Tiler:
                 "gdbus", "call", "--session",
                 "--dest", "org.gnome.Shell",
                 "--object-path",
-                "/org/gnome/Shell/Extensions/StreamDeckTiler",
+                "/org/gnome/Shell/Extensions/ERPLibreHome",
                 "--method",
-                "org.gnome.Shell.Extensions.StreamDeckTiler"
+                "org.gnome.Shell.Extensions.ERPLibreHome"
                 ".MpvSendCommand",
                 str(int(pid)), command,
             ], stderr=subprocess.STDOUT, timeout=2).decode()
             ok = "true" in out.lower()
             if not ok:
-                print(f"[streamdeck-tiler] MpvSendCommand({pid}, "
+                print(f"[erplibre-home] MpvSendCommand({pid}, "
                       f"{command!r}) returned: {out.strip()}",
                       file=sys.stderr, flush=True)
             return ok
         except subprocess.CalledProcessError as e:
-            print(f"[streamdeck-tiler] MpvSendCommand({pid}, {command!r}) "
+            print(f"[erplibre-home] MpvSendCommand({pid}, {command!r}) "
                   f"failed: "
                   f"{(e.output or b'').decode(errors='replace').strip()}",
                   file=sys.stderr, flush=True)
             return False
         except (subprocess.SubprocessError, FileNotFoundError) as e:
-            print(f"[streamdeck-tiler] MpvSendCommand({pid}, {command!r}) "
+            print(f"[erplibre-home] MpvSendCommand({pid}, {command!r}) "
                   f"failed: {e}",
                   file=sys.stderr, flush=True)
             return False
@@ -3557,7 +3557,7 @@ def main():
     if dbus_ok:
         print("D-Bus tiler extension detected!")
     else:
-        print("WARNING: streamdeck-tiler extension not found.", file=sys.stderr, flush=True)
+        print("WARNING: erplibre-home extension not found.", file=sys.stderr, flush=True)
         print("Install: re-login to GNOME to activate the extension.")
 
     print("Press TILE to enter tiling mode (first corner, second corner).")

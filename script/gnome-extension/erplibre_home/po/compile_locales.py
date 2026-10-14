@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile po/{lang}.po → locale/{lang}/LC_MESSAGES/streamdeck-tiler.mo.
+"""Compile po/{lang}.po → locale/{lang}/LC_MESSAGES/erplibre-home.mo.
 
 Uses polib (`apt install python3-polib`). System gettext's `msgfmt` is
 the alternative but not pre-installed on Debian 13's gettext-base.
@@ -25,9 +25,9 @@ def main() -> int:
     count = 0
     for po_path in sorted(po_dir.glob("*.po")):
         lang = po_path.stem
-        if lang == "streamdeck-tiler":
+        if lang == "erplibre-home":
             continue  # template
-        dst = locale_dir / lang / "LC_MESSAGES" / "streamdeck-tiler.mo"
+        dst = locale_dir / lang / "LC_MESSAGES" / "erplibre-home.mo"
         dst.parent.mkdir(parents=True, exist_ok=True)
         po = polib.pofile(str(po_path))
         po.save_as_mofile(str(dst))

@@ -17,7 +17,7 @@ export const MediaDialog = GObject.registerClass(
 {GTypeName: `SDT_MediaDialog_${_GTYPE_SUFFIX}`},
 class MediaDialog extends ModalDialog {
     _init({title = _('Add media'), entry = null, onConfirm, onDelete}) {
-        super._init({styleClass: 'streamdeck-tiler-dialog'});
+        super._init({styleClass: 'erplibre-home-dialog'});
         this._onConfirm = onConfirm;
         this._onDelete = onDelete;
 
@@ -83,9 +83,9 @@ class MediaDialog extends ModalDialog {
             style: 'spacing: 8px;'});
         kindRow.add_child(new St.Label({text: _('Kind:')}));
         this._kindVideoBtn = new St.Button({label: _('Video'),
-            style_class: 'streamdeck-tiler-btn'});
+            style_class: 'erplibre-home-btn'});
         this._kindAudioBtn = new St.Button({label: _('Audio'),
-            style_class: 'streamdeck-tiler-btn'});
+            style_class: 'erplibre-home-btn'});
         this._kindVideoBtn.connect('clicked',
             () => this._setKind('video'));
         this._kindAudioBtn.connect('clicked',

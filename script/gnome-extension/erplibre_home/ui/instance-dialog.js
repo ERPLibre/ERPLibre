@@ -12,7 +12,7 @@ export const InstanceDialog = GObject.registerClass(
 {GTypeName: `SDT_InstanceDialog_${_GTYPE_SUFFIX}`},
 class InstanceDialog extends ModalDialog {
     _init({title = _('Add instance'), entry = null, onConfirm, onDelete}) {
-        super._init({styleClass: 'streamdeck-tiler-dialog'});
+        super._init({styleClass: 'erplibre-home-dialog'});
         this._onConfirm = onConfirm;
         this._onDelete = onDelete;
 

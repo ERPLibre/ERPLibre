@@ -4,7 +4,7 @@
 <!---------------------------->
 
 <!-- [en] -->
-# Stream Deck Tiler — GNOME Shell Extension
+# ERPLibre Home — GNOME Shell Extension
 
 Six-indicator panel for the GNOME top bar plus a D-Bus interface used by the
 Stream Deck Python helpers.
@@ -46,13 +46,13 @@ fichier attendu ainsi que les conventions de cadrage / nommage.
 
 ## Preferences
 
-`gnome-extensions prefs streamdeck-tiler@technolibre.ca`
+`gnome-extensions prefs erplibre-home@technolibre.ca`
 
 Pages: Buttons, Pencil, Media, ERPLibre, Network, Device, Theming, Sync, Advanced, About.
 
 ## GSettings keys
 
-Schema id `org.gnome.shell.extensions.streamdeck-tiler`. Selected keys:
+Schema id `org.gnome.shell.extensions.erplibre-home`. Selected keys:
 
 - `enable-controller`, `enable-pencil`, `enable-media`, `enable-erplibre`, `enable-network`, `enable-device` (booleans)
 - `button-order` (`as`) — left-to-right ordering
@@ -86,12 +86,12 @@ The pencil dropdown also shows a per-row badge with the same colour for
 each path that has running Claude sessions.
 
 The Claude session badge requires the Python hook in
-`hooks/streamdeck-tiler-hook.py` to be wired into Claude Code; see
+`hooks/erplibre-home-hook.py` to be wired into Claude Code; see
 `hooks/README.md` for the `~/.claude/settings.json` snippet.
 
 ## D-Bus
 
-Object path `/org/gnome/Shell/Extensions/StreamDeckTiler`, interface `org.gnome.Shell.Extensions.StreamDeckTiler`. Methods include the existing tiling / hot-reload calls plus:
+Object path `/org/gnome/Shell/Extensions/ERPLibreHome`, interface `org.gnome.Shell.Extensions.ERPLibreHome`. Methods include the existing tiling / hot-reload calls plus:
 
 - `OpenPath(s) -> b`
 - `OpenMedia(s, s) -> b  (alias OpenFilm kept)` (player = `browser` | `mpv`)
@@ -120,7 +120,7 @@ Per ERPLibre instance: `keepass_db`, `keepass_keyfile` (optional), `keepass_yubi
 The existing UUID-rename trick is preserved. Call:
 
 <!-- [fr] -->
-# Stream Deck Tiler — Extension GNOME Shell
+# ERPLibre Home — Extension GNOME Shell
 
 Panneau à six indicateurs pour la barre du haut GNOME, plus une interface D-Bus utilisée par les helpers Python Stream Deck.
 
@@ -139,13 +139,13 @@ Chaque indicateur peut être activé/désactivé dans la fenêtre de préférenc
 
 ## Préférences
 
-`gnome-extensions prefs streamdeck-tiler@technolibre.ca`
+`gnome-extensions prefs erplibre-home@technolibre.ca`
 
 Pages : Buttons, Pencil, Media, ERPLibre, Network, Device, Theming, Sync, Advanced, About.
 
 ## Clés GSettings
 
-Schéma `org.gnome.shell.extensions.streamdeck-tiler`. Clés notables :
+Schéma `org.gnome.shell.extensions.erplibre-home`. Clés notables :
 
 - `enable-controller`, `enable-pencil`, `enable-media`, `enable-erplibre`, `enable-network`, `enable-device` (booléens)
 - `button-order` (`as`) — ordre gauche → droite
@@ -179,12 +179,12 @@ Le menu déroulant du crayon ajoute aussi une pastille par ligne pour
 les chemins qui ont des sessions Claude actives.
 
 Le badge des sessions Claude requiert le hook Python
-`hooks/streamdeck-tiler-hook.py` branché dans Claude Code ; voir
+`hooks/erplibre-home-hook.py` branché dans Claude Code ; voir
 `hooks/README.fr.md` pour l'extrait `~/.claude/settings.json`.
 
 ## D-Bus
 
-Object path `/org/gnome/Shell/Extensions/StreamDeckTiler`, interface `org.gnome.Shell.Extensions.StreamDeckTiler`. Méthodes existantes (tuilage / hot-reload) + extensions :
+Object path `/org/gnome/Shell/Extensions/ERPLibreHome`, interface `org.gnome.Shell.Extensions.ERPLibreHome`. Méthodes existantes (tuilage / hot-reload) + extensions :
 
 - `OpenPath(s) -> b`
 - `OpenMedia(s, s) -> b  (alias OpenFilm kept)` (player = `browser` | `mpv`)
@@ -216,8 +216,8 @@ La technique UUID-rename existante est préservée. Appeler :
 
 ```
 gdbus call --session --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-  --method org.gnome.Shell.Extensions.StreamDeckTiler.HotReload
+  --object-path /org/gnome/Shell/Extensions/ERPLibreHome \
+  --method org.gnome.Shell.Extensions.ERPLibreHome.HotReload
 ```
 
 <!-- [en] -->
@@ -252,17 +252,17 @@ shell auto-picks the right one based on the system `LANG` (e.g.
 
 ### Files
 
-- `po/streamdeck-tiler.pot` — extraction template; regenerate after
+- `po/erplibre-home.pot` — extraction template; regenerate after
   adding new `_()` strings.
 - `po/en.po`, `po/fr.po` — per-language catalogues.
-- `locale/<lang>/LC_MESSAGES/streamdeck-tiler.mo` — compiled binary
+- `locale/<lang>/LC_MESSAGES/erplibre-home.mo` — compiled binary
   catalogues read at runtime; gitignored, regenerated at install.
 
 ### Adding a new language
 
 1. Copy `po/en.po` to `po/<lang>.po` (e.g. `po/de.po`).
 2. Translate every `msgstr "…"`.
-3. Run `make streamdeck_tiler_compile_locale` to rebuild the `.mo`
+3. Run `make erplibre_home_compile_locale` to rebuild the `.mo`
    files.
 4. Reload the extension. GNOME will pick `<lang>` automatically when
    the system locale matches.
@@ -270,7 +270,7 @@ shell auto-picks the right one based on the system `LANG` (e.g.
 ### Updating existing translations
 
 Edit `msgstr` lines in `po/<lang>.po`, then re-run
-`make streamdeck_tiler_compile_locale`.
+`make erplibre_home_compile_locale`.
 
 <!-- [fr] -->
 
@@ -282,10 +282,10 @@ shell choisit automatiquement la bonne langue selon `LANG`
 
 ### Fichiers
 
-- `po/streamdeck-tiler.pot` — gabarit d'extraction ; à régénérer
+- `po/erplibre-home.pot` — gabarit d'extraction ; à régénérer
   après l'ajout de chaînes `_()`.
 - `po/en.po`, `po/fr.po` — catalogues par langue.
-- `locale/<lang>/LC_MESSAGES/streamdeck-tiler.mo` — catalogues
+- `locale/<lang>/LC_MESSAGES/erplibre-home.mo` — catalogues
   binaires lus à l'exécution ; gitignorés, regénérés à
   l'installation.
 
@@ -293,7 +293,7 @@ shell choisit automatiquement la bonne langue selon `LANG`
 
 1. Copier `po/en.po` vers `po/<lang>.po` (ex. `po/de.po`).
 2. Traduire chaque `msgstr "…"`.
-3. Exécuter `make streamdeck_tiler_compile_locale` pour reconstruire
+3. Exécuter `make erplibre_home_compile_locale` pour reconstruire
    les fichiers `.mo`.
 4. Recharger l'extension. GNOME choisit `<lang>` automatiquement
    quand la locale système correspond.
@@ -301,4 +301,4 @@ shell choisit automatiquement la bonne langue selon `LANG`
 ### Mettre à jour des traductions existantes
 
 Modifier les lignes `msgstr` dans `po/<lang>.po`, puis relancer
-`make streamdeck_tiler_compile_locale`.
+`make erplibre_home_compile_locale`.

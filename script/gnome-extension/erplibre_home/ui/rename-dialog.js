@@ -12,7 +12,7 @@ export const RenameDialog = GObject.registerClass(
 {GTypeName: `SDT_RenameDialog_${_GTYPE_SUFFIX}`},
 class RenameDialog extends ModalDialog {
     _init({title = _('Rename'), value = '', onConfirm} = {}) {
-        super._init({styleClass: 'streamdeck-tiler-dialog'});
+        super._init({styleClass: 'erplibre-home-dialog'});
         this._onConfirm = onConfirm;
 
         const box = new St.BoxLayout({...verticalBoxProps(St, Clutter),

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<schemalist gettext-domain="streamdeck-tiler">
-  <schema id="org.gnome.shell.extensions.streamdeck-tiler"
-          path="/org/gnome/shell/extensions/streamdeck-tiler/">
+<schemalist gettext-domain="erplibre-home">
+  <schema id="org.gnome.shell.extensions.erplibre-home"
+          path="/org/gnome/shell/extensions/erplibre-home/">
 
     <!-- Per-indicator toggles -->
     <key name="enable-controller" type="b"><default>true</default><summary>Enable controller indicator</summary></key>
@@ -103,7 +103,7 @@
     </key>
     <key name="enable-claude-state-watch" type="b">
       <default>true</default>
-      <summary>Watch ~/.local/state/streamdeck-tiler/claude/ for Claude session state files (used by the pencil badge)</summary>
+      <summary>Watch ~/.local/state/erplibre-home/claude/ for Claude session state files (used by the pencil badge)</summary>
     </key>
     <key name="enable-claude-desktop-notify" type="b">
       <default>true</default>

@@ -15,12 +15,12 @@ bulle de dialogue avec trois points).
 |---------|------|
 | `script/stream_deck/translator.py` | Enregistrement audio, backends STT, backends LLM, détection matériel, méthodes de sortie. |
 | `script/stream_deck/game_tiler.py` | UI: rendu `MODE_TRANSLATOR`, gestion des touches, persistance des réglages. |
-| `~/.config/streamdeck-tiler/settings.json` | Choix persistés: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
+| `~/.config/erplibre-home/settings.json` | Choix persistés: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
 | `tasks/translator-roadmap.md` | Plan des phases et notes de sécurité. |
 
 Le processus Stream Deck orchestre tout. Il n'y a **aucune** dépendance
 à l'extension GNOME pour le translator — l'extension existante
-`streamdeck-tiler@technolibre.ca` n'est pas concernée.
+`erplibre-home@technolibre.ca` n'est pas concernée.
 
 ## Disposition du mode TRANSLATOR
 
@@ -60,7 +60,7 @@ L'enregistrement produit un fichier WAV mono 16 kHz dans
 ### Langue STT
 
 Whisper auto-détecte la langue mais a un biais anglais. Forcer une
-langue par ISO 639-1 dans `~/.config/streamdeck-tiler/settings.json`:
+langue par ISO 639-1 dans `~/.config/erplibre-home/settings.json`:
 
 ```json
 {
@@ -76,7 +76,7 @@ ignore ce réglage car la langue dépend du modèle installé.
 
 Après chaque transcription réussie, le deck ajoute une entrée à un
 ring buffer dans
-`~/.config/streamdeck-tiler/translator-history.json` (20 dernières
+`~/.config/erplibre-home/translator-history.json` (20 dernières
 gardées). Dans `MODE_TRANSLATOR`, presse le bouton **HIST** (deck
 8-col seulement) pour entrer en mode historique: chaque touche
 montre un extrait tronqué; presse pour ré-émettre via la méthode OUT
@@ -138,7 +138,7 @@ Les slots vides gardent leur label `LOAD N EMPTY`.
 
 Oublier de presser STOP laisse l'enregistrement tourner jusqu'à la
 prochaine pression. Définir `translator_recording_timeout` à un
-entier positif dans `~/.config/streamdeck-tiler/settings.json`:
+entier positif dans `~/.config/erplibre-home/settings.json`:
 
 ```json
 {
@@ -200,9 +200,9 @@ binaire/paquet **et** les fichiers de modèle existent.
 
 | Backend | Binaire / paquet | Chemins de modèle vérifiés |
 |---------|------------------|----------------------------|
-| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, ou `main` (vérifie aussi `~/.local/share/whisper.cpp/`) | `~/.cache/streamdeck-tiler/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
+| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, ou `main` (vérifie aussi `~/.local/share/whisper.cpp/`) | `~/.cache/erplibre-home/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
 | `openai-whisper` | `whisper` | téléchargé automatiquement par `openai-whisper` |
-| `vosk` | Python `vosk` | `~/.cache/streamdeck-tiler/vosk-model/` |
+| `vosk` | Python `vosk` | `~/.cache/erplibre-home/vosk-model/` |
 
 Audit et install via cibles make:
 
@@ -243,12 +243,12 @@ pip install openai-whisper
 
 # vosk (smaller model, language-specific)
 pip install vosk
-mkdir -p ~/.cache/streamdeck-tiler
+mkdir -p ~/.cache/erplibre-home
 curl -L https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
   -o /tmp/vosk.zip
-unzip /tmp/vosk.zip -d ~/.cache/streamdeck-tiler/
-mv ~/.cache/streamdeck-tiler/vosk-model-small-* \
-   ~/.cache/streamdeck-tiler/vosk-model
+unzip /tmp/vosk.zip -d ~/.cache/erplibre-home/
+mv ~/.cache/erplibre-home/vosk-model-small-* \
+   ~/.cache/erplibre-home/vosk-model
 ```
 
 ### Méthodes de sortie
@@ -353,7 +353,7 @@ session avec `LANG=fr_*` reçoit automatiquement un prompt
 « Translate to French » sans modifier les réglages. Cibles de locale
 supportées: français, espagnol, allemand, italien, portugais — tout
 autre cas retombe sur l'anglais. Surcharger par mode dans
-`~/.config/streamdeck-tiler/settings.json`:
+`~/.config/erplibre-home/settings.json`:
 
 ```json
 {
@@ -398,7 +398,7 @@ fallback pour qu'aucune capture audio ne soit perdue.
 
 ## Persistance des réglages
 
-`~/.config/streamdeck-tiler/settings.json` (créé à la première
+`~/.config/erplibre-home/settings.json` (créé à la première
 sauvegarde):
 
 ```json

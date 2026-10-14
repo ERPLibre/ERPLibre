@@ -24,7 +24,7 @@ function _notify(title, body) {
     try {
         Main.notify(title, body);
     } catch (e) {
-        console.log(`[StreamDeckTiler:controller] notify failed: ${e.message}`);
+        console.log(`[ERPLibreHome:controller] notify failed: ${e.message}`);
     }
 }
 
