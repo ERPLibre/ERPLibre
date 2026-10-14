@@ -110,6 +110,7 @@ class StreamDeckController(object):
                 except TransportError:
                     print("Error Transport on deck opening")
             deck.reset()
+            self.lst_deck.append(deck)
 
             print(
                 "Opened '{}' device (serial number: '{}', fw: '{}')".format(
@@ -248,6 +249,19 @@ class StreamDeckController(object):
 
             # Register callback function for when a key state changes.
             deck.set_key_callback(self.key_change_callback)
+
+    def close_decks(self):
+        """Reset and close every deck init() opened. Their animation threads
+        loop while the deck is open and are not daemons: without this, the
+        process would wait for them forever after SystemExit. A deck
+        already gone raises, which is ignored."""
+        for deck in getattr(self, "lst_deck", []):
+            try:
+                with deck:
+                    deck.reset()
+                    deck.close()
+            except Exception:
+                pass
 
     def run(self):
         # Wait until all application threads have terminated (for this example,
@@ -1241,7 +1255,11 @@ class StreamDeckController(object):
 
 if __name__ == "__main__":
     deck_lock.acquire_or_exit("controller")
+    deck_lock.exit_on_sigterm()
     _write_pidfile()
     atexit.register(_remove_pidfile)
     sdc = StreamDeckController()
-    sdc.init_and_run()
+    try:
+        sdc.init_and_run()
+    finally:
+        sdc.close_decks()

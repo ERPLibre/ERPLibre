@@ -93,6 +93,46 @@ def _load_game_tiler():
 GT = _load_game_tiler()
 
 
+class RecheckDbusTest(unittest.TestCase):
+    """Tiler._recheck_dbus on a bare Tiler (no deck), with the gdbus probe
+    replaced by a counter."""
+
+    def setUp(self):
+        self.calls = 0
+        self.answer = False
+
+        def probe():
+            self.calls += 1
+            return self.answer
+
+        original = GT._check_dbus_available
+        GT._check_dbus_available = probe
+        self.addCleanup(setattr, GT, "_check_dbus_available", original)
+        self.tiler = GT.Tiler.__new__(GT.Tiler)
+        self.tiler.dbus_ok = False
+        self.tiler._dbus_checked_at = 100.0
+
+    def test_waits_for_the_period(self):
+        self.assertFalse(
+            self.tiler._recheck_dbus(100.0 + GT.DBUS_RECHECK_SEC - 0.1))
+        self.assertEqual(self.calls, 0)
+
+    def test_still_missing_checks_again_one_period_later(self):
+        later = 100.0 + GT.DBUS_RECHECK_SEC
+        self.assertFalse(self.tiler._recheck_dbus(later))
+        self.assertEqual(self.calls, 1)
+        self.assertFalse(self.tiler._recheck_dbus(later + 1.0))
+        self.assertEqual(self.calls, 1)
+
+    def test_appearing_returns_true_once_then_stops_checking(self):
+        self.answer = True
+        later = 100.0 + GT.DBUS_RECHECK_SEC
+        self.assertTrue(self.tiler._recheck_dbus(later))
+        self.assertTrue(self.tiler.dbus_ok)
+        self.assertFalse(self.tiler._recheck_dbus(later * 10))
+        self.assertEqual(self.calls, 1)
+
+
 class ChunkTextForCellsTest(unittest.TestCase):
     def test_empty_returns_empty(self):
         self.assertEqual(GT._chunk_text_for_cells("", 5), [])

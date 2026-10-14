@@ -23,7 +23,8 @@ Ce que ces tests gardent :
   un programme du deck qu'il lance, directement ou non, s'y range ;
 - SIGTERM devient SystemExit : les finally et atexit d'un programme du
   deck passent ;
-- le tiler et le contrôleur prennent le verrou avant d'ouvrir le deck.
+- le tiler et le contrôleur prennent le verrou avant d'ouvrir le deck,
+  remettent le deck à zéro sur SIGTERM, et le tiler sort en 3 sans deck.
 """
 
 import ast
@@ -464,50 +465,83 @@ def fonction(source, nom):
     )
 
 
-def appel_du_verrou(instruction):
-    """« deck_lock.acquire_or_exit('<programme>') » : rend le programme,
-    None pour toute autre instruction."""
+def appel_du_verrou(instruction, attr="acquire_or_exit"):
+    """« deck_lock.<attr>(…) » : rend le premier argument constant (None
+    sans argument), ou False pour toute autre instruction."""
     if not isinstance(instruction, ast.Expr):
-        return None
+        return False
     appel = instruction.value
     if (
         isinstance(appel, ast.Call)
         and isinstance(appel.func, ast.Attribute)
         and isinstance(appel.func.value, ast.Name)
         and appel.func.value.id == "deck_lock"
-        and appel.func.attr == "acquire_or_exit"
-        and len(appel.args) == 1
-        and isinstance(appel.args[0], ast.Constant)
+        and appel.func.attr == attr
     ):
-        return appel.args[0].value
-    return None
+        if not appel.args:
+            return None
+        if isinstance(appel.args[0], ast.Constant):
+            return appel.args[0].value
+    return False
+
+
+def principal(source):
+    """Le bloc « if __name__ == "__main__": » du module."""
+    return next(
+        n
+        for n in ast.parse(source).body
+        if isinstance(n, ast.If)
+        and isinstance(n.test, ast.Compare)
+        and isinstance(n.test.left, ast.Name)
+        and n.test.left.id == "__name__"
+    )
 
 
 class LesProgrammesLePrennent(unittest.TestCase):
     """Le verrou se prend AVANT d'ouvrir le deck : le second programme sort
-    sans avoir touché au périphérique du premier."""
+    sans avoir touché au périphérique du premier. SIGTERM se change ensuite
+    en SystemExit, pour que le deck soit remis à zéro."""
 
     def test_the_tiler_takes_it_first_thing_in_main(self):
         source = (DECK_DIR / "game_tiler.py").read_text(encoding="utf-8")
         main = fonction(source, "main")
         self.assertEqual("tiler", appel_du_verrou(main.body[0]))
+        self.assertIsNone(appel_du_verrou(main.body[1], "exit_on_sigterm"))
         self.assertIn("\nimport deck_lock\n", source)
+
+    def test_the_tiler_exits_three_without_a_visual_deck(self):
+        """L'unité ne relance pas un tiler qui ne trouve aucun deck à écran
+        (un autre périphérique Elgato a passé ExecCondition)."""
+        self.assertEqual(3, charger().NO_DECK_EXIT)
+        source = (DECK_DIR / "game_tiler.py").read_text(encoding="utf-8")
+        self.assertIn(
+            'print("No visual Stream Deck found.")\n'
+            "        sys.exit(deck_lock.NO_DECK_EXIT)",
+            source,
+        )
 
     def test_the_controller_takes_it_before_its_pidfile(self):
         source = (DECK_DIR / "erplibre_controller.py").read_text(
             encoding="utf-8"
         )
-        arbre = ast.parse(source)
-        principal = next(
-            n
-            for n in arbre.body
-            if isinstance(n, ast.If)
-            and isinstance(n.test, ast.Compare)
-            and isinstance(n.test.left, ast.Name)
-            and n.test.left.id == "__name__"
-        )
-        self.assertEqual("controller", appel_du_verrou(principal.body[0]))
+        bloc = principal(source)
+        self.assertEqual("controller", appel_du_verrou(bloc.body[0]))
+        self.assertIsNone(appel_du_verrou(bloc.body[1], "exit_on_sigterm"))
         self.assertIn("\nimport deck_lock\n", source)
+
+    def test_the_controller_closes_its_decks_on_the_way_out(self):
+        """Ses fils d'animation tournent tant que le deck est ouvert : sans
+        cette fermeture, SystemExit attendrait leur fin pour toujours."""
+        source = (DECK_DIR / "erplibre_controller.py").read_text(
+            encoding="utf-8"
+        )
+        essai = next(
+            n for n in principal(source).body if isinstance(n, ast.Try)
+        )
+        self.assertEqual(
+            "sdc.close_decks()", ast.unparse(essai.finalbody[0]).strip()
+        )
+        self.assertIn("self.lst_deck.append(deck)", source)
 
 
 if __name__ == "__main__":
