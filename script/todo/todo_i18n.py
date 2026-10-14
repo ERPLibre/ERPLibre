@@ -161,6 +161,147 @@ TRANSLATIONS = {
             " the extension."
         ),
     },
+    # Stream Deck: status and diagnosis (script/todo/erplibre_home_status.py)
+    "Level: not installed": {
+        "fr": "Niveau : non installé",
+        "en": "Level: not installed",
+    },
+    "Level: base": {
+        "fr": "Niveau : base",
+        "en": "Level: base",
+    },
+    "Level: Stream Deck": {
+        "fr": "Niveau : Stream Deck",
+        "en": "Level: Stream Deck",
+    },
+    "Extension: active": {
+        "fr": "Extension : active",
+        "en": "Extension: active",
+    },
+    "Extension: not loaded in this session": {
+        "fr": "Extension : non chargée dans cette session",
+        "en": "Extension: not loaded in this session",
+    },
+    "Extension: state": {
+        "fr": "Extension : état",
+        "en": "Extension: state",
+    },
+    "error:": {
+        "fr": "erreur :",
+        "en": "error:",
+    },
+    "Indicators: journal not read": {
+        "fr": "Indicateurs : journal non lu",
+        "en": "Indicators: journal not read",
+    },
+    "Indicators: failed to mount:": {
+        "fr": "Indicateurs : non montés :",
+        "en": "Indicators: failed to mount:",
+    },
+    "Indicators: all mounted": {
+        "fr": "Indicateurs : tous montés",
+        "en": "Indicators: all mounted",
+    },
+    "program": {
+        "fr": "programme",
+        "en": "program",
+    },
+    "Service: not installed": {
+        "fr": "Service : non installé",
+        "en": "Service: not installed",
+    },
+    "Deck lock: held by": {
+        "fr": "Verrou du deck : tenu par",
+        "en": "Deck lock: held by",
+    },
+    "Deck lock: free": {
+        "fr": "Verrou du deck : libre",
+        "en": "Deck lock: free",
+    },
+    "Decks plugged in:": {
+        "fr": "Decks branchés :",
+        "en": "Decks plugged in:",
+    },
+    "Decks plugged in: none": {
+        "fr": "Decks branchés : aucun",
+        "en": "Decks plugged in: none",
+    },
+    "udev rule: present": {
+        "fr": "Règle udev : présente",
+        "en": "udev rule: present",
+    },
+    "udev rule: missing": {
+        "fr": "Règle udev : absente",
+        "en": "udev rule: missing",
+    },
+    "Stream Deck venv: present": {
+        "fr": "Venv Stream Deck : présent",
+        "en": "Stream Deck venv: present",
+    },
+    "Stream Deck venv: missing": {
+        "fr": "Venv Stream Deck : absent",
+        "en": "Stream Deck venv: missing",
+    },
+    "ERPLibre Home is not installed": {
+        "fr": "ERPLibre Home n'est pas installé",
+        "en": "ERPLibre Home is not installed",
+    },
+    "The extension is not loaded in this session": {
+        "fr": "L'extension n'est pas chargée dans cette session",
+        "en": "The extension is not loaded in this session",
+    },
+    "log out and back in": {
+        "fr": "fermer la session puis la rouvrir",
+        "en": "log out and back in",
+    },
+    "The extension is in error:": {
+        "fr": "L'extension est en erreur :",
+        "en": "The extension is in error:",
+    },
+    "Indicators failed to mount:": {
+        "fr": "Indicateurs non montés :",
+        "en": "Indicators failed to mount:",
+    },
+    "The Stream Deck level is not installed": {
+        "fr": "Le niveau Stream Deck n'est pas installé",
+        "en": "The Stream Deck level is not installed",
+    },
+    "The deck service is not installed": {
+        "fr": "Le service du deck n'est pas installé",
+        "en": "The deck service is not installed",
+    },
+    "Unknown DECK_PROGRAM:": {
+        "fr": "DECK_PROGRAM inconnu :",
+        "en": "Unknown DECK_PROGRAM:",
+    },
+    "TODO › Stream Deck › Deck program": {
+        "fr": "TODO › Stream Deck › Programme du deck",
+        "en": "TODO › Stream Deck › Deck program",
+    },
+    "No Stream Deck plugged in": {
+        "fr": "Aucun Stream Deck branché",
+        "en": "No Stream Deck plugged in",
+    },
+    "plug a Stream Deck in": {
+        "fr": "brancher un Stream Deck",
+        "en": "plug a Stream Deck in",
+    },
+    "The deck is held by": {
+        "fr": "Le deck est tenu par",
+        "en": "The deck is held by",
+    },
+    "close it, or:": {
+        "fr": "le fermer, ou :",
+        "en": "close it, or:",
+    },
+    "The deck service is not running": {
+        "fr": "Le service du deck ne tourne pas",
+        "en": "The deck service is not running",
+    },
+    "The deck service does not start at login": {
+        "fr": "Le service du deck ne démarre pas à l'ouverture de session",
+        "en": "The deck service does not start at login",
+    },
     # Stream Deck game descriptions (42 games)
     "game_2048": {
         "en": "Merge tiles to reach 2048! Corner buttons = directions.",
