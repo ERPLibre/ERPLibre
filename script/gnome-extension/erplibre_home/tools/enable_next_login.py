@@ -17,23 +17,14 @@ Uses the standard library only: it runs without any venv.
 
 from __future__ import annotations
 
-import ast
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gsettings_strv import format_strv, parse_strv  # noqa: E402
 
 SCHEMA = "org.gnome.shell"
-
-
-def parse_list(text: str) -> list[str]:
-    """Parse ``gsettings get`` output; an empty list prints as ``@as []``."""
-    text = text.strip()
-    if text.startswith("@as"):
-        text = text[3:].strip()
-    return list(ast.literal_eval(text))
-
-
-def format_list(items: list[str]) -> str:
-    return "[" + ", ".join(repr(i) for i in items) + "]"
 
 
 def plan(enabled: list[str], disabled: list[str], uuid: str):
@@ -54,16 +45,18 @@ def main(argv: list[str]) -> int:
         return 2
     uuid = argv[1]
     try:
-        enabled = parse_list(gsettings("get", SCHEMA, "enabled-extensions"))
-        disabled = parse_list(gsettings("get", SCHEMA, "disabled-extensions"))
+        enabled = parse_strv(gsettings("get", SCHEMA, "enabled-extensions"))
+        disabled = parse_strv(gsettings("get", SCHEMA, "disabled-extensions"))
         new_enabled, new_disabled = plan(enabled, disabled, uuid)
-        if new_enabled != enabled:
-            gsettings(
-                "set", SCHEMA, "enabled-extensions", format_list(new_enabled)
-            )
+        # disabled first: a failure of the second write then leaves the
+        # uuid in neither list, never "disabled" while enabled was written.
         if new_disabled != disabled:
             gsettings(
-                "set", SCHEMA, "disabled-extensions", format_list(new_disabled)
+                "set", SCHEMA, "disabled-extensions", format_strv(new_disabled)
+            )
+        if new_enabled != enabled:
+            gsettings(
+                "set", SCHEMA, "enabled-extensions", format_strv(new_enabled)
             )
     except (OSError, subprocess.CalledProcessError, ValueError, SyntaxError) as e:
         detail = getattr(e, "stderr", None) or e

@@ -129,9 +129,10 @@ erplibre_home_enable_extension:
 	@# Wayland scans the extensions directory only at login, so a fresh
 	@# symlink is unknown to the running Shell and `enable` fails; the
 	@# helper then writes the setting the Shell reads at login.
-	@if gnome-extensions enable "$(ERPLIBRE_HOME_EXT_UUID)" 2>/dev/null; then \
+	@if err=$$(gnome-extensions enable "$(ERPLIBRE_HOME_EXT_UUID)" 2>&1); then \
 		gnome-extensions info "$(ERPLIBRE_HOME_EXT_UUID)" | grep -iE 'Activ|Enabled'; \
 	else \
+		printf '%s\n' "$$err" | head -n 1 >&2; \
 		"$(ERPLIBRE_HOME_EXT_SRC)/tools/enable_next_login.py" "$(ERPLIBRE_HOME_EXT_UUID)"; \
 	fi
 
