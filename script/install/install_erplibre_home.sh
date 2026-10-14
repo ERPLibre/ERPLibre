@@ -258,12 +258,13 @@ packages_for() {
 
 # Paquets du niveau Stream Deck, par famille : hidapi et libusb pour parler
 # au deck, le module venv, et wmctrl pour keyboard_talk.py. opencv-python
-# arrive en roue manylinux par pip et ne demande rien ici.
+# arrive en roue manylinux par pip ; elle lie libgthread, que openSUSE
+# empaquette à part de glib2 (les autres familles l'ont avec glib2).
 streamdeck_packages_for() {
     case "$1" in
         debian) echo "libhidapi-libusb0 libusb-1.0-0 python3-venv wmctrl" ;;
         rhel) echo "hidapi libusb1 python3 wmctrl" ;;
-        suse) echo "libhidapi-libusb0 libusb-1_0-0 python3 wmctrl" ;;
+        suse) echo "libhidapi-libusb0 libusb-1_0-0 libgthread-2_0-0 python3 wmctrl" ;;
         arch) echo "hidapi libusb python wmctrl" ;;
         *) die "famille inconnue : $1" ;;
     esac

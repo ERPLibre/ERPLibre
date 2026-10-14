@@ -97,7 +97,8 @@ DECK = {
     "debian": BASE["debian"]
     + " libhidapi-libusb0 libusb-1.0-0 python3-venv wmctrl",
     "rhel": BASE["rhel"] + " hidapi libusb1 wmctrl",
-    "suse": BASE["suse"] + " libhidapi-libusb0 libusb-1_0-0 wmctrl",
+    "suse": BASE["suse"]
+    + " libhidapi-libusb0 libusb-1_0-0 libgthread-2_0-0 wmctrl",
     "arch": BASE["arch"] + " hidapi libusb wmctrl",
 }
 FAMILLES = {

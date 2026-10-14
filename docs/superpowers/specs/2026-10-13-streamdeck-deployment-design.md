@@ -350,6 +350,7 @@ or key is left untouched, which is what makes a second run a no-op.
 | base | `make` (the `erplibre_home_*` targets and the missing-venv message) | `make` | `make` | `make` | `make` |
 | Stream Deck | hidapi + libusb | `libhidapi-libusb0 libusb-1.0-0` | `hidapi libusb1` | `libhidapi-libusb0 libusb-1_0-0` | `hidapi libusb` |
 | Stream Deck | venv | `python3-venv` | `python3` | `python3` | `python` |
+| Stream Deck | opencv runtime (`import cv2`) | - | - | `libgthread-2_0-0` | - |
 | Stream Deck | window control (`keyboard_talk.py`) | `wmctrl` | `wmctrl` | `wmctrl` | `wmctrl` |
 
 - On AlmaLinux and Rocky Linux, `wmctrl` comes from EPEL. With
