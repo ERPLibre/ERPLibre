@@ -227,12 +227,20 @@ CMD_UNITE = (
     f'erplibre_home_deck.sh\\"" {FICHIER_UNITE} && echo ok'
 )
 CMD_AUTOSTART = SYSTEMD_USER + f"systemctl --user is-enabled {UNITE_DECK}"
-# Une VM n'a pas de deck : ExecCondition échoue, systemd saute le démarrage
-# et l'unité reste inactive avec le résultat « exec-condition ».
+# Une VM n'a pas de deck : ExecCondition sort en 1, systemd saute le
+# démarrage sans marquer l'unité en échec (inactive, Result=success) et
+# ExecStart ne tourne jamais (horodatage de démarrage nul).
 CMD_CONDITION = SYSTEMD_USER + (
     f"systemctl --user start {UNITE_DECK};"
-    f" systemctl --user show -p ActiveState -p Result {UNITE_DECK}"
+    " systemctl --user show -p ActiveState -p Result"
+    f" -p ExecMainStartTimestampMonotonic {UNITE_DECK}"
 )
+# La raison que le point d'entrée écrit sur stderr avec --check : elle
+# distingue un saut sur condition d'une unité jamais chargée.
+CMD_RAISON_SAUT = SYSTEMD_USER + (
+    f"journalctl --user -u {UNITE_DECK} -b -o cat --no-pager"
+)
+RAISON_SAUT = "[ERPLibre Home] no Stream Deck plugged in (USB vendor 0fd9)"
 CMD_SANS_SERVICE = (
     f"test ! -e {FICHIER_UNITE} && test ! -e {REGLAGES_DECK} && echo ok"
 )
@@ -478,12 +486,16 @@ def etat_systemd(sortie):
     return etat
 
 
-def condition_sautee(etat):
+def condition_sautee(etat, journal):
     """Vrai quand systemd a sauté le démarrage sur ExecCondition : unité
-    inactive, résultat « exec-condition »."""
+    inactive, Result=success (un saut n'est pas un échec), ExecStart jamais
+    lancé (horodatage nul), et la raison du point d'entrée dans le journal
+    de l'unité. `etat` vient d'etat_systemd ; `journal` peut être None."""
     return (
         etat.get("ActiveState") == "inactive"
-        and etat.get("Result") == "exec-condition"
+        and etat.get("Result") == "success"
+        and etat.get("ExecMainStartTimestampMonotonic") == "0"
+        and RAISON_SAUT in (journal or "")
     )
 
 
@@ -1287,7 +1299,8 @@ def _etape_stream_deck(cible, log):
         return "service-enabled", None
     controle = Controle(cible, log, "service-condition")
     etat = etat_systemd(controle.sonder(CMD_CONDITION))
-    if not controle.clore(condition_sautee(etat)):
+    journal = controle.sonder(CMD_RAISON_SAUT)
+    if not controle.clore(condition_sautee(etat, journal)):
         return "service-condition", None
     controle = Controle(cible, log, "stream-deck-active")
     info = extension_active(controle, DELAIS_CONTROLE["stream-deck-active"])

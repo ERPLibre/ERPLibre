@@ -276,8 +276,10 @@ That is the first of five stages, run in order on the same VM:
 2. **stream-deck**: `--stream-deck --deck-program=tiler --autostart`
    writes the udev rule, the venv imports what the deck programs import,
    the deck service unit runs this checkout's entry point and is enabled,
-   `systemctl --user start` leaves it inactive since a VM has no deck
-   (`Result=exec-condition`), the extension stays ACTIVE, and a second run
+   `systemctl --user start` skips it since a VM has no deck (inactive,
+   `Result=success`, `ExecMainStartTimestampMonotonic=0`, and the entry
+   point's "no Stream Deck plugged in" line in the unit's journal), the
+   extension stays ACTIVE, and a second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
    the venv, the unit and its settings, and leaves the extension linked,
@@ -630,9 +632,11 @@ C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
 2. **stream-deck** : `--stream-deck --deck-program=tiler --autostart`
    écrit la règle udev, le venv importe ce qu'importent les programmes du
    deck, l'unité du service du deck lance le point d'entrée de ce checkout
-   et est activée, `systemctl --user start` la laisse inactive faute de
-   deck dans une VM (`Result=exec-condition`), l'extension reste ACTIVE, et
-   une seconde exécution ne change rien, unité et réglages compris ;
+   et est activée, `systemctl --user start` la saute faute de deck dans
+   une VM (inactive, `Result=success`, `ExecMainStartTimestampMonotonic=0`,
+   et la ligne « no Stream Deck plugged in » du point d'entrée dans le
+   journal de l'unité), l'extension reste ACTIVE, et une seconde exécution
+   ne change rien, unité et réglages compris ;
 3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle,
    le venv, l'unité et ses réglages, et laisse l'extension liée, activée et
    ACTIVE ;
