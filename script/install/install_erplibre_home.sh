@@ -242,14 +242,16 @@ check_gnome() {
 }
 
 # Paquets de la base, par famille : de quoi compiler les schémas (glib) et
-# les traductions (msgfmt, de gettext), et le python3 du système, qui lance
-# la migration de l'ancienne identité de l'extension.
+# les traductions (msgfmt, de gettext), le python3 du système, qui lance la
+# migration de l'ancienne identité de l'extension, et make. Un bureau neuf
+# n'a pas toujours make, alors que les cibles erplibre_home_* et le message
+# des indicateurs du deck sans venv le nomment.
 packages_for() {
     case "$1" in
-        debian) echo "libglib2.0-bin gettext python3" ;;
-        rhel) echo "glib2 gettext python3" ;;
-        suse) echo "glib2-tools gettext-tools python3" ;;
-        arch) echo "glib2 gettext python" ;;
+        debian) echo "libglib2.0-bin gettext python3 make" ;;
+        rhel) echo "glib2 gettext python3 make" ;;
+        suse) echo "glib2-tools gettext-tools python3 make" ;;
+        arch) echo "glib2 gettext python make" ;;
         *) die "famille inconnue : $1" ;;
     esac
 }
@@ -299,14 +301,18 @@ extras_for() {
 # interactive qui installe ces paquets avec le gestionnaire de la famille.
 # Fonction pure : --dry-run affiche cette ligne, l'installation exécute la
 # même, et les deux ne peuvent pas diverger. Un paquet déjà présent est
-# sauté par le gestionnaire lui-même.
+# sauté par le gestionnaire lui-même. « -o DPkg::Lock::Timeout=600 » fait
+# attendre apt-get jusqu'à dix minutes le verrou de dpkg, qu'une mise à
+# jour automatique tient souvent dans les premières minutes d'une session
+# neuve, au lieu d'échouer aussitôt.
 package_cmd() {
     local fam="$1"
     shift
     case "${fam}" in
         debian)
-            echo "sudo apt-get update -qq && sudo env" \
-                "DEBIAN_FRONTEND=noninteractive apt-get install -y" \
+            echo "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq &&" \
+                "sudo env DEBIAN_FRONTEND=noninteractive apt-get" \
+                "-o DPkg::Lock::Timeout=600 install -y" \
                 "--no-install-recommends $*"
             ;;
         rhel) echo "sudo dnf install -y $*" ;;
@@ -587,19 +593,30 @@ uninstall_streamdeck() {
     fi
 }
 
+# Ce qui reste debout après une désinstallation qui a fait tout le reste ;
+# step_uninstall le donne pour raison d'un échec, après le bilan.
+UNINSTALL_ERROR=""
+
 # Défait tout ce que l'installation pose : l'UUID d'enabled-extensions, le
 # lien, puis le niveau Stream Deck. Jamais de paquet système : d'autres
 # logiciels peuvent s'en servir. Un répertoire ordinaire à la place du lien
-# n'a pas été posé par ce script et reste en place.
+# n'a pas été posé par ce script et reste en place. Une liste
+# enabled-extensions qui ne se lit ou ne s'écrit pas (gsettings absent, bus
+# en panne) n'arrête pas le reste, mais pose UNINSTALL_ERROR : l'UUID peut
+# y rester, et la désinstallation n'est pas complète.
 uninstall() {
     local current wanted
-    current="$(gsettings_bus get org.gnome.shell enabled-extensions 2>/dev/null || true)"
-    if [ -n "${current}" ]; then
-        wanted="$(uuid_list_edit remove "${current}" "${UUID}")"
+    if current="$(gsettings_bus get org.gnome.shell enabled-extensions 2>/dev/null)" \
+        && wanted="$(uuid_list_edit remove "${current}" "${UUID}" 2>/dev/null)"; then
         if [ "${wanted}" != "${current}" ]; then
-            gsettings_bus set org.gnome.shell enabled-extensions "${wanted}"
-            DONE+=("enabled-extensions -= ${UUID}")
+            if gsettings_bus set org.gnome.shell enabled-extensions "${wanted}"; then
+                DONE+=("enabled-extensions -= ${UUID}")
+            else
+                UNINSTALL_ERROR="enabled-extensions not written; ${UUID} may still be listed"
+            fi
         fi
+    else
+        UNINSTALL_ERROR="enabled-extensions unreadable; ${UUID} may still be listed"
     fi
     if [ -L "${EXT_LINK}" ]; then
         rm -f "${EXT_LINK}"
@@ -629,6 +646,7 @@ summary() {
 # Chaque étape affiche, sous --dry-run, une ligne par effet qu'elle aurait,
 # puis rend la main ; elle agit sinon.
 step_packages() {
+    local pkg
     if [ "${DRY_RUN}" = 1 ]; then
         if [ "${STREAM_DECK}" = 1 ] && needs_epel; then
             echo "packages: $(package_cmd "${FAMILY}" epel-release)"
@@ -636,8 +654,9 @@ step_packages() {
         # shellcheck disable=SC2046
         echo "packages: $(package_cmd "${FAMILY}" $(level_packages "${FAMILY}"))"
         if [ "${WITH_EXTRAS}" = 1 ]; then
-            # shellcheck disable=SC2046
-            echo "packages: $(package_cmd "${FAMILY}" $(extras_for "${FAMILY}"))"
+            for pkg in $(extras_for "${FAMILY}"); do
+                echo "packages: $(package_cmd "${FAMILY}" "${pkg}")"
+            done
         fi
         return 0
     fi
@@ -692,6 +711,8 @@ step_summary() {
 
 # --uninstall retire tout ; --uninstall --stream-deck ne retire que le
 # niveau Stream Deck, la règle et le venv, et laisse l'extension active.
+# Le bilan dit ce qui est parti ; UNINSTALL_ERROR, posé par uninstall, fait
+# ensuite sortir en 1.
 step_uninstall() {
     if [ "${DRY_RUN}" = 1 ]; then
         if [ "${STREAM_DECK}" = 0 ]; then
@@ -708,6 +729,7 @@ step_uninstall() {
         uninstall
     fi
     summary
+    [ -z "${UNINSTALL_ERROR}" ] || die "${UNINSTALL_ERROR}"
 }
 
 # --uninstall et --extension-only ne lisent ni os-release ni la version de
@@ -749,11 +771,13 @@ main() {
 # Sourcé avec ERPLIBRE_HOME_SOURCE_ONLY=1, le script définit ses fonctions et
 # s'arrête là : les tests unitaires les appellent une à une, sans sudo.
 #
-# Le code 2 est réservé à unsupported. Une commande appelée qui rend 2 (pip,
-# un gestionnaire de paquets, msgfmt) et arrête le script sous set -e
-# sortirait sinon en 2, et TODO comme le test long y liraient un système
-# non supporté : le piège EXIT la ramène à 1.
+# Les codes de sortie sont 0, 2 et 1, rien d'autre. Une commande appelée
+# qui arrête le script sous set -e lui laisserait son propre code : 100
+# pour apt-get, 104 pour zypper, 127 pour une commande absente, et 2 pour
+# pip, msgfmt ou un gestionnaire de paquets, où TODO comme le test long
+# liraient un système non supporté. Le piège EXIT ramène à 1 tout code non
+# nul que unsupported n'a pas posé.
 if [ "${ERPLIBRE_HOME_SOURCE_ONLY:-0}" != "1" ]; then
-    trap 'rc=$?; if [ "${rc}" = 2 ] && [ "${UNSUPPORTED_EXIT:-0}" != 1 ]; then exit 1; fi' EXIT
+    trap 'rc=$?; if [ "${rc}" != 0 ] && [ "${UNSUPPORTED_EXIT:-0}" != 1 ]; then exit 1; fi' EXIT
     main "$@"
 fi

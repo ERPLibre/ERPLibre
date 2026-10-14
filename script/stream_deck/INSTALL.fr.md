@@ -10,36 +10,40 @@ base quand elle manque. Les deux tournent sous ton compte et n'appellent
 `sudo` que pour les paquets système et la règle udev.
 
 ```
-make erplibre_home_install
-make erplibre_home_streamdeck_install
+./script/install/install_erplibre_home.sh
+./script/install/install_erplibre_home.sh --stream-deck
 ```
 
-La première commande installe la base : les paquets système de la base,
-puis elle lie l'extension GNOME dans `~/.local/share/gnome-shell/extensions/`,
-compile ses schémas et ses traductions (avec `msgfmt`), et l'active. La
-seconde, pour un poste qui a un Stream Deck, ajoute les paquets du Stream
-Deck, écrit la règle udev et crée `.venv.streamdeck` depuis
-`script/stream_deck/requirements.txt`. Ferme ensuite ta session et
-rouvre-la : sous Wayland, GNOME Shell ne charge une nouvelle extension qu'à
-l'ouverture de session. Une seconde exécution ne change rien. Sans le niveau
-Stream Deck, les indicateurs `device` et `controller` de l'extension disent
-qu'ERPLibre Home Stream Deck n'est pas installé et nomment
-`make erplibre_home_streamdeck_install`.
+Lance-les depuis le dépôt. La première commande installe la base : les
+paquets système de la base, `make` compris, puis elle lie l'extension GNOME
+dans `~/.local/share/gnome-shell/extensions/`, compile ses schémas et ses
+traductions (avec `msgfmt`), et l'active. La seconde, pour un poste qui a un
+Stream Deck, ajoute les paquets du Stream Deck, écrit la règle udev et crée
+`.venv.streamdeck` depuis `script/stream_deck/requirements.txt`. Ferme
+ensuite ta session et rouvre-la : sous Wayland, GNOME Shell ne charge une
+nouvelle extension qu'à l'ouverture de session. Une seconde exécution ne
+change rien. Sans le niveau Stream Deck, les indicateurs `device` et
+`controller` de l'extension disent qu'ERPLibre Home Stream Deck n'est pas
+installé et nomment `make erplibre_home_streamdeck_install`.
 
-Les deux cibles lancent `script/install/install_erplibre_home.sh`, qui
-accepte ces options :
+Un bureau neuf n'a pas toujours `make`, d'où le script en premier. Une fois
+la base installée, `make erplibre_home_install` et
+`make erplibre_home_streamdeck_install` lancent les deux mêmes commandes. Le
+script accepte ces options :
 
 | Option | Effet |
 |---|---|
 | `--stream-deck` | ajoute le niveau Stream Deck : paquets USB, règle udev, `.venv.streamdeck` ; la base s'installe aussi quand elle manque |
 | `--no-enable` | installe sans activer l'extension ; un poste où l'ancienne extension était active garde cet état sous le nouveau nom |
 | `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
-| `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau ; un paquet absent est sauté avec un avertissement |
+| `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau, une commande du gestionnaire de paquets chacun ; un paquet absent est sauté avec un avertissement |
 | `--uninstall` | retire tout : désactive l'extension, retire son lien, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, seulement la règle udev et `.venv.streamdeck`, et l'extension reste active ; les paquets système restent toujours |
 | `--dry-run` | affiche ce qui serait fait, ne change rien |
 
 Le code de sortie `0` veut dire fait, `2` un système non supporté (une
-ligne sur stderr qui commence par `UNSUPPORTED:`), `1` tout autre échec.
+ligne sur stderr qui commence par `UNSUPPORTED:`), `1` tout autre échec, y
+compris un `--uninstall` qui a retiré le reste mais n'a pu ni lire ni écrire
+`enabled-extensions`.
 `make erplibre_home_uninstall` lance `--uninstall`, et
 `make erplibre_home_streamdeck_uninstall` lance `--uninstall --stream-deck`.
 
@@ -56,6 +60,7 @@ pas à EPEL.
 | base | schemas | `libglib2.0-bin` | `glib2` | `glib2-tools` | `glib2` |
 | base | gettext (`msgfmt`) | `gettext` | `gettext` | `gettext-tools` | `gettext` |
 | base | system python | `python3` | `python3` | `python3` | `python` |
+| base | `make` targets | `make` | `make` | `make` | `make` |
 | Stream Deck | hidapi + libusb | `libhidapi-libusb0 libusb-1.0-0` | `hidapi libusb1` | `libhidapi-libusb0 libusb-1_0-0` | `hidapi libusb` |
 | Stream Deck | venv | `python3-venv` | `python3` | `python3` | `python` |
 | Stream Deck | window control | `wmctrl` | `wmctrl` | `wmctrl` | `wmctrl` |

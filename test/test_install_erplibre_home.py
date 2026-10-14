@@ -74,16 +74,23 @@ OS_RELEASE = {
 }
 
 APT = (
-    "sudo apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive "
-    "apt-get install -y --no-install-recommends "
+    "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq && sudo env"
+    " DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600"
+    " install -y --no-install-recommends "
 )
-# La base : schémas, gettext, python3 du système.
+# La commande de chaque famille, avant ses paquets.
+INSTALLE = {
+    "debian": APT,
+    "rhel": "sudo dnf install -y ",
+    "suse": "sudo zypper --non-interactive install ",
+    "arch": "sudo pacman -S --needed --noconfirm ",
+}
+# La base : schémas, gettext, python3 du système, make.
 BASE = {
-    "debian": APT + "libglib2.0-bin gettext python3",
-    "rhel": "sudo dnf install -y glib2 gettext python3",
-    "suse": "sudo zypper --non-interactive install glib2-tools gettext-tools"
-    " python3",
-    "arch": "sudo pacman -S --needed --noconfirm glib2 gettext python",
+    "debian": INSTALLE["debian"] + "libglib2.0-bin gettext python3 make",
+    "rhel": INSTALLE["rhel"] + "glib2 gettext python3 make",
+    "suse": INSTALLE["suse"] + "glib2-tools gettext-tools python3 make",
+    "arch": INSTALLE["arch"] + "glib2 gettext python make",
 }
 # --stream-deck : la base, puis les paquets du deck qu'elle ne porte pas.
 DECK = {
@@ -279,7 +286,9 @@ class LaFamille(Installateur):
         )
         self.assertEqual([DECK["rhel"]], paquets)
 
-    def test_with_extras_adds_one_more_command_at_both_levels(self):
+    def test_with_extras_adds_one_command_per_extra_at_both_levels(self):
+        """Une commande par extra, celle même que l'installation lance : un
+        extra absent du dépôt ne fait échouer que la sienne."""
         lz4 = {
             "ubuntu:24.04": "python3-lz4",
             "fedora:43": "python3-lz4",
@@ -289,6 +298,13 @@ class LaFamille(Installateur):
         for niveau in ((), ("--stream-deck",)):
             for systeme, module in lz4.items():
                 with self.subTest(niveau=niveau, systeme=systeme):
+                    prefixe = INSTALLE[FAMILLES[systeme]]
+                    extras = ["mpv", "yt-dlp", "nmap", "keepassxc"]
+                    extras += ["xdotool", module]
+                    seul = self.lignes(
+                        self.lancer("--dry-run", *niveau, systeme=systeme),
+                        "packages: ",
+                    )
                     paquets = self.lignes(
                         self.lancer(
                             "--dry-run",
@@ -298,13 +314,9 @@ class LaFamille(Installateur):
                         ),
                         "packages: ",
                     )
-                    self.assertTrue(
-                        paquets[-1].endswith(
-                            "mpv yt-dlp nmap keepassxc xdotool " + module
-                        ),
-                        paquets[-1],
+                    self.assertEqual(
+                        seul + [prefixe + extra for extra in extras], paquets
                     )
-                    self.assertNotIn("lz4", paquets[-2])
 
     def test_without_extras_no_extra_package(self):
         fini = self.lancer("--dry-run", "--stream-deck")
@@ -500,6 +512,18 @@ class LesRefus(Installateur):
         réservé à la ligne UNSUPPORTED."""
         self._commande("gnome-shell", "exit 2\n")
         fini = self.lancer("--dry-run", gnome=None)
+        self.assertEqual(1, fini.returncode, fini.stdout + fini.stderr)
+        self.assertNotIn("UNSUPPORTED", fini.stderr)
+
+    def test_a_package_manager_failure_exits_one(self):
+        """Le code d'un gestionnaire de paquets (100 pour apt-get) ne
+        devient pas celui du script : tout échec autre qu'UNSUPPORTED sort
+        en 1. Le faux sudo ne lance que le faux apt-get."""
+        self._commande(
+            "sudo", 'case "$1" in apt-get) exec "$@" ;; esac\nexit 1\n'
+        )
+        self._commande("apt-get", "exit 100\n")
+        fini = self.lancer()
         self.assertEqual(1, fini.returncode, fini.stdout + fini.stderr)
         self.assertNotIn("UNSUPPORTED", fini.stderr)
 
@@ -966,6 +990,45 @@ class TestDesinstallation(unittest.TestCase):
             self.assertIn("sudo udevadm control --reload-rules", premier)
             self.assertNotIn("gsettings", premier + second)
             self.assertEqual(second, "")
+
+    # gsettings simulé : « get » lit le fichier de la clé, « set »
+    # l'écrit ; ECHEC_GET ou ECHEC_SET font échouer l'opération.
+    GSETTINGS_FAUX = (
+        "gsettings_bus() {\n"
+        '    case "$1" in\n'
+        '        get) [ -z "${ECHEC_GET:-}" ] && cat "$DOSSIER/$3" ;;\n'
+        '        set) [ -z "${ECHEC_SET:-}" ]'
+        ' && printf "%s\\n" "$4" >"$DOSSIER/$3" ;;\n'
+        "    esac\n"
+        "}\n"
+    )
+
+    def jouer_desinstallation(self, dossier, echec):
+        base = Path(dossier, "extensions")
+        base.mkdir()
+        (base / UUID).symlink_to(EXTENSION)
+        Path(dossier, "venv/bin").mkdir(parents=True)
+        Path(dossier, "enabled-extensions").write_text("['%s']\n" % UUID)
+        fragment = (
+            'EXT_LINK="$DOSSIER/extensions/$UUID"\n'
+            'UDEV_RULE="$DOSSIER/absente.rules"\n'
+            'VENV="$DOSSIER/venv"\n' + self.GSETTINGS_FAUX + "step_uninstall\n"
+        )
+        env = {"DOSSIER": dossier, "UUID": UUID, echec: "1"}
+        return sourcer(fragment, env), base / UUID
+
+    def test_une_liste_illisible_ne_passe_pas_pour_un_succes(self):
+        """gsettings absent ou bus en panne : le reste part quand même, puis
+        le script sort en 1 en nommant l'UUID qui peut rester activé."""
+        for echec in ("ECHEC_GET", "ECHEC_SET"):
+            with self.subTest(echec=echec):
+                with tempfile.TemporaryDirectory() as dossier:
+                    fait, lien = self.jouer_desinstallation(dossier, echec)
+                    self.assertEqual(fait.returncode, 1, fait.stdout)
+                    self.assertIn("enabled-extensions", fait.stderr)
+                    self.assertIn(UUID, fait.stderr)
+                    self.assertFalse(os.path.lexists(lien))
+                    self.assertFalse(Path(dossier, "venv").exists())
 
     def test_un_repertoire_ordinaire_reste_en_place(self):
         with tempfile.TemporaryDirectory() as dossier:
