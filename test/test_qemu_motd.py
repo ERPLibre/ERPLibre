@@ -351,6 +351,70 @@ class TestWriteFilesBlock(unittest.TestCase):
             )
 
 
+class TestGuideDelivery(unittest.TestCase):
+    """Une VM à bureau ne reçoit PAS /etc/motd : GDM affiche le texte de
+    pam_motd comme message PAM et retarde l'ouverture de session en proportion
+    de sa longueur. Le guide passe alors par profile.d, pour ssh seulement."""
+
+    GUIDE = "/etc/erplibre-login-guide"
+    SNIPPET = "/etc/profile.d/erplibre-login-guide.sh"
+
+    def _args(self, desktop):
+        import argparse
+
+        return argparse.Namespace(
+            distro="arch",
+            version="latest",
+            arch="amd64",
+            lang="en",
+            erplibre_dir="~/git/erplibre",
+            erplibre_make=False,
+            desktop=desktop,
+            no_git_identity=True,
+            vm_tools="",
+        )
+
+    def _files(self, desktop):
+        return {f[0]: f for f in dq.guide_files(self._args(desktop))}
+
+    def test_server_keeps_etc_motd_only(self):
+        files = self._files("")
+        self.assertIn("/etc/motd", files)
+        self.assertNotIn(self.GUIDE, files)
+        self.assertNotIn(self.SNIPPET, files)
+
+    def test_desktop_has_no_etc_motd(self):
+        self.assertNotIn("/etc/motd", self._files("gnome"))
+
+    def test_desktop_delivers_guide_and_snippet(self):
+        files = self._files("gnome")
+        self.assertEqual("0644", files[self.GUIDE][1])
+        self.assertEqual("0644", files[self.SNIPPET][1])
+        self.assertEqual("", files[self.GUIDE][3])
+        self.assertEqual("", files[self.SNIPPET][3])
+
+    def test_guide_text_is_what_etc_motd_would_hold(self):
+        expected = dq.build_motd(
+            "arch",
+            "latest",
+            "amd64",
+            "en",
+            "~/git/erplibre",
+            False,
+            "",
+            True,
+            (),
+        )
+        self.assertEqual(expected, self._files("gnome")[self.GUIDE][2])
+
+    def test_snippet_gates_on_interactive_ssh(self):
+        snippet = self._files("gnome")[self.SNIPPET][2]
+        self.assertIn("*i*", snippet)
+        self.assertIn("SSH_CONNECTION", snippet)
+        self.assertIn(self.GUIDE, snippet)
+        self.assertNotRegex(snippet, r"\bexit\b")
+
+
 class TestInstallerGuideNames(unittest.TestCase):
     def test_names_are_flat(self):
         """Le cpio est déplié séquentiellement et ne crée pas les répertoires

@@ -595,7 +595,9 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
+            with urllib.request.urlopen(
+                index, timeout=30
+            ) as resp:  # noqa: S310
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -2250,10 +2252,31 @@ def user_shell(distro: str) -> str:
 #   - openSUSE ajoute son « Have a lot of fun... » APRÈS le guide : il vient de
 #     /usr/lib/motd.d/welcome, que pam_motd lit après le fichier. On le laisse.
 #
+# Une VM à BUREAU n'a pas /etc/motd : pam_motd figure dans la pile PAM
+# générique de connexion, donc GDM reçoit le guide comme message PAM et le
+# laisse à l'écran un temps proportionnel à sa longueur (de l'ordre de 50 ms
+# par caractère) AVANT d'ouvrir la session. Le guide est alors écrit dans
+# LOGIN_GUIDE_PATH et un fragment profile.d (LOGIN_GUIDE_SNIPPET) l'affiche
+# aux seuls shells de connexion interactifs d'une session SSH. Rien n'y est
+# affiché pour un terminal du bureau, une commande distante, scp ou sftp. Une
+# VM serveur n'a pas de gestionnaire graphique et garde /etc/motd.
+#
 # Ubuntu n'a PAS de /etc/motd (son postinst base-files ne le crée pas, à la
 # différence de Debian) : le fichier est donc créé, pas remplacé. Sur Debian il
 # écrase les cinq lignes de base-files, ce qui ne fâche pas dpkg — /etc/motd n'y
 # est ni un conffile ni même un fichier du paquet.
+
+LOGIN_GUIDE_PATH = "/etc/erplibre-login-guide"
+LOGIN_GUIDE_SNIPPET_PATH = "/etc/profile.d/erplibre-login-guide.sh"
+# POSIX sh, sourcé par les shells de connexion : pas de « exit » (il fermerait
+# la session), et silencieux hors shell interactif ou hors SSH.
+LOGIN_GUIDE_SNIPPET = (
+    "case $- in\n"
+    "    *i*)\n"
+    '        [ -n "${SSH_CONNECTION:-}" ] && [ -r %s ] && cat %s\n'
+    "        ;;\n"
+    "esac\n"
+) % (LOGIN_GUIDE_PATH, LOGIN_GUIDE_PATH)
 
 # Étiquette lisible d'une distribution. openSUSE livre DEUX produits sous un
 # seul nom de distro (Leap, numéroté ; Tumbleweed, rolling) : la version tranche.
@@ -3801,36 +3824,39 @@ def attente_cloud_final(bornes: int = 150) -> str:
 def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     """Fichiers d'accueil de la VM : le guide de connexion, l'identité git.
 
+    Le guide va dans /etc/motd sur un serveur ; sur une VM à bureau, dans
+    /etc/erplibre-login-guide que profile.d n'affiche qu'en SSH interactif.
     Une seule source pour les deux voies de déploiement — cloud-init l'écrit
     par write_files, l'installateur Debian par son late_command.
     """
     home = invoking_home()
     editor = "" if args.no_git_identity else vm_editor(home)[1]
-    files = [
-        (
-            "/etc/motd",
-            "0644",
-            build_motd(
-                args.distro,
-                args.version,
-                args.arch,
-                args.lang,
-                args.erplibre_dir,
-                args.erplibre_make,
-                editor,
-                bool(args.desktop),
-                # « getattr » et non « args.vm_tools » : la voie Proxmox
-                # bâtit ses arguments à la main, et un champ qui lui manque
-                # ferait avaler le guide par son « except Exception ».
-                tuple(
-                    c.strip()
-                    for c in getattr(args, "vm_tools", "").split(",")
-                    if c.strip()
-                ),
-            ),
-            "",
-        )
-    ]
+    guide = build_motd(
+        args.distro,
+        args.version,
+        args.arch,
+        args.lang,
+        args.erplibre_dir,
+        args.erplibre_make,
+        editor,
+        bool(args.desktop),
+        # « getattr » et non « args.vm_tools » : la voie Proxmox
+        # bâtit ses arguments à la main, et un champ qui lui manque
+        # ferait avaler le guide par son « except Exception ».
+        tuple(
+            c.strip()
+            for c in getattr(args, "vm_tools", "").split(",")
+            if c.strip()
+        ),
+    )
+    if args.desktop:
+        # Voir « Guide de connexion » : /etc/motd retarderait GDM.
+        files = [
+            (LOGIN_GUIDE_PATH, "0644", guide, ""),
+            (LOGIN_GUIDE_SNIPPET_PATH, "0644", LOGIN_GUIDE_SNIPPET, ""),
+        ]
+    else:
+        files = [("/etc/motd", "0644", guide, "")]
     if args.no_git_identity:
         return files
     # Ce que le formulaire a saisi PRIME sur l'identité de l'hôte, champ par

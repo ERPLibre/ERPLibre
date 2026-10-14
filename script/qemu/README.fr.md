@@ -367,6 +367,15 @@ encore là si elle échoue — le moment où l'on se connecte justement à la ma
 s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
 restent nets.
 
+Une VM à bureau (`--desktop`) ne reçoit PAS `/etc/motd` : `pam_motd` figure
+dans la pile PAM générique de connexion, donc GDM afficherait le guide comme
+message PAM et retarderait l'ouverture de la session graphique en proportion
+de sa longueur (des dizaines de secondes). Le même texte est écrit dans
+`/etc/erplibre-login-guide`, et `/etc/profile.d/erplibre-login-guide.sh`
+l'affiche aux seuls shells de connexion SSH interactifs : terminaux du
+bureau, `ssh hôte 'commande'`, `scp` et `sftp` restent silencieux. Une VM
+serveur garde `/etc/motd`.
+
 L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
 un commit fait dans la VM porte alors votre nom plutôt que
 `erplibre@<nom-de-vm>`. L'éditeur suit le même chemin — `core.editor`, la
