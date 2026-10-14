@@ -145,7 +145,7 @@ checkout. The entry points are:
 | `gallery_server.py` game launcher | `python3 {game_file}` in a terminal | `{shlex.quote(sys.executable)} {game_file}` (the server already runs under the venv) |
 | `todo.py` `prompt_execute_streamdeck_games` | `<game>.py` by shebang | `.venv.streamdeck/bin/python <game>.py` |
 | `indicators/device.js` `_launchController` | `.venv.erplibre/bin/python` | `.venv.streamdeck/bin/python` |
-| `indicators/controller.js` gallery launcher | `source .venv.erplibre/bin/activate && make streamdeck_gallery` | `make streamdeck_gallery` (the target picks the venv) |
+| `indicators/controller.js` gallery launcher | `source .venv.erplibre/bin/activate && make streamdeck_gallery` | the interpreter `streamDeckPython()` returned, then `script/stream_deck/gallery_server.py` (no `make` at run time) |
 
 `script/stream_deck/launch_game.sh` is referenced by nothing; it is removed.
 
@@ -249,7 +249,9 @@ The installer:
 - `0`: done (installed, or uninstalled).
 - `2`: unsupported system. The reason goes on stderr on one line that starts
   with `UNSUPPORTED:`.
-- `1`: any other failure.
+- `1`: any other failure. A failing command never passes its own code
+  through (100 for apt-get, 127 for a missing command): the `EXIT` trap maps
+  every non-zero code that `unsupported` did not set to `1`.
 
 ### 4.1 Steps
 
@@ -345,6 +347,7 @@ or key is left untouched, which is what makes a second run a no-op.
 | base | schemas | `libglib2.0-bin` | `glib2` | `glib2-tools` | `glib2` |
 | base | gettext (`msgfmt`) | `gettext` | `gettext` | `gettext-tools` | `gettext` |
 | base | system python (migration) | `python3` | `python3` | `python3` | `python` |
+| base | `make` (the `erplibre_home_*` targets and the missing-venv message) | `make` | `make` | `make` | `make` |
 | Stream Deck | hidapi + libusb | `libhidapi-libusb0 libusb-1.0-0` | `hidapi libusb1` | `libhidapi-libusb0 libusb-1_0-0` | `hidapi libusb` |
 | Stream Deck | venv | `python3-venv` | `python3` | `python3` | `python` |
 | Stream Deck | window control (`keyboard_talk.py`) | `wmctrl` | `wmctrl` | `wmctrl` | `wmctrl` |
@@ -379,7 +382,10 @@ already degrade without them.
 and enabled, so the indicators fall back to the message of 3.1.
 
 Neither removes system packages, because other software may use them. Both
-are idempotent: what is already absent is skipped, and the run exits 0.
+are idempotent: what is already absent is skipped, and the run exits 0. When
+`--uninstall` cannot read or write `enabled-extensions` (no `gsettings`, a
+failing bus), it still removes the rest, prints its summary, then exits 1
+naming the UUID that may still be listed.
 
 An uninstall keeps only the root refusal of step 1. It skips the family and
 GNOME version checks: it installs nothing, and it must still work on a
@@ -390,7 +396,8 @@ system whose GNOME has moved past the versions `metadata.json` declares.
 `--dry-run` prints, one per line, what the steps would do:
 - the family;
 - the GNOME version and its verdict;
-- the package command, with the rows of the chosen level;
+- the package command, with the rows of the chosen level, then, with
+  `--with-extras`, one command per extra, as the install runs them;
 - the migration it would run;
 - the files it would write.
 
@@ -435,9 +442,11 @@ These go in the same series, before the installer:
 - The TODO games entry checks the venv first, with the same message in
   `todo_i18n.py` (3.1).
 - `INSTALL.base.md`: replace the Ubuntu-only block with
-  `make erplibre_home_install`, then `make erplibre_home_streamdeck_install`
-  for a deck, keep the per-family table for reference, and regenerate with
-  mmg.
+  `./script/install/install_erplibre_home.sh`, then the same with
+  `--stream-deck` for a deck, since a fresh desktop may lack `make`; name
+  `make erplibre_home_install` and `make erplibre_home_streamdeck_install` as
+  their equivalents once the base is in; keep the per-family table for
+  reference, and regenerate with mmg.
 
 ## 5. TODO integration
 

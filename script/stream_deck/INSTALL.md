@@ -10,35 +10,40 @@ Both run as your user and call `sudo` only for the system packages and the
 udev rule.
 
 ```
-make erplibre_home_install
-make erplibre_home_streamdeck_install
+./script/install/install_erplibre_home.sh
+./script/install/install_erplibre_home.sh --stream-deck
 ```
 
-The first command installs the base: the system packages of the base, then
-it links the GNOME extension into `~/.local/share/gnome-shell/extensions/`,
-compiles its schemas and its translations (with `msgfmt`), and enables it.
-The second one, for a workstation with a Stream Deck, adds the Stream Deck
-packages, writes the udev rule and creates `.venv.streamdeck` from
+Run them from the checkout. The first command installs the base: the system
+packages of the base, `make` among them, then it links the GNOME extension
+into `~/.local/share/gnome-shell/extensions/`, compiles its schemas and its
+translations (with `msgfmt`), and enables it. The second one, for a
+workstation with a Stream Deck, adds the Stream Deck packages, writes the
+udev rule and creates `.venv.streamdeck` from
 `script/stream_deck/requirements.txt`. Then log out and back in: under
 Wayland, GNOME Shell loads a new extension only at session start. A second
 run changes nothing. Without the Stream Deck level, the extension's
 `device` and `controller` indicators say that ERPLibre Home Stream Deck is
 not installed and name `make erplibre_home_streamdeck_install`.
 
-Both targets run `script/install/install_erplibre_home.sh`, which takes
-these options:
+A fresh desktop does not always have `make`, so the script comes first. Once
+the base is installed, `make erplibre_home_install` and
+`make erplibre_home_streamdeck_install` run the same two commands. The
+script takes these options:
 
 | Option | Effect |
 |---|---|
 | `--stream-deck` | add the Stream Deck level: USB packages, udev rule, `.venv.streamdeck`; the base installs too when missing |
 | `--no-enable` | install without enabling the extension; a workstation where the former extension was enabled keeps that state under the new name |
 | `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
-| `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level; a missing one is skipped with a warning |
+| `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level, one package manager command each; a missing one is skipped with a warning |
 | `--uninstall` | remove everything: disable the extension, remove its link, the udev rule and `.venv.streamdeck`; with `--stream-deck`, only the udev rule and `.venv.streamdeck`, and the extension stays enabled; system packages always stay |
 | `--dry-run` | print what would be done, change nothing |
 
 Exit code `0` means done, `2` an unsupported system (one line on stderr
-starting with `UNSUPPORTED:`), `1` any other failure.
+starting with `UNSUPPORTED:`), `1` any other failure, including an
+`--uninstall` that removed the rest but could not read or write
+`enabled-extensions`.
 `make erplibre_home_uninstall` runs `--uninstall`, and
 `make erplibre_home_streamdeck_uninstall` runs `--uninstall --stream-deck`.
 
@@ -54,6 +59,7 @@ where `wmctrl` comes from; the base does not touch EPEL.
 | base | schemas | `libglib2.0-bin` | `glib2` | `glib2-tools` | `glib2` |
 | base | gettext (`msgfmt`) | `gettext` | `gettext` | `gettext-tools` | `gettext` |
 | base | system python | `python3` | `python3` | `python3` | `python` |
+| base | `make` targets | `make` | `make` | `make` | `make` |
 | Stream Deck | hidapi + libusb | `libhidapi-libusb0 libusb-1.0-0` | `hidapi libusb1` | `libhidapi-libusb0 libusb-1_0-0` | `hidapi libusb` |
 | Stream Deck | venv | `python3-venv` | `python3` | `python3` | `python` |
 | Stream Deck | window control | `wmctrl` | `wmctrl` | `wmctrl` | `wmctrl` |
