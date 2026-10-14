@@ -110,4 +110,4 @@ migrations that are not auto-applied.
   shell.
 - Nested gnome-shell E2E smoke test (`test/e2e_nested.sh`).
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/tree/master/script/stream_deck/gnome-extension
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/tree/master/script/gnome-extension/erplibre_home

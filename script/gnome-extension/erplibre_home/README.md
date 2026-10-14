@@ -20,8 +20,8 @@ Each indicator can be toggled in the preferences window.
 
 ## Screenshots
 
-`../screenshots/` holds the canonical screenshots referenced from
-this README. Run `../screenshots/capture.sh` while the extension is
+`../../stream_deck/screenshots/` holds the canonical screenshots referenced from
+this README. Run `../../stream_deck/screenshots/capture.sh` while the extension is
 loaded (and a Stream Deck is plugged in for the deck shots) to
 regenerate them. The folder's own `README.md` lists every expected
 file and the conventions for cropping / naming.

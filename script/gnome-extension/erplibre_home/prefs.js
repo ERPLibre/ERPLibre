@@ -123,9 +123,9 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         });
         page.add(plugin);
         plugin.add(this._linkRow(_('Source folder'),
-            'script/stream_deck/gnome-extension/',
+            'script/gnome-extension/erplibre_home/',
             'https://github.com/ERPLibre/ERPLibre/tree/master/'
-                + 'script/stream_deck/gnome-extension'));
+                + 'script/gnome-extension/erplibre_home'));
         plugin.add(this._linkRow(_('License'), 'AGPL-3.0+',
             'https://www.gnu.org/licenses/agpl-3.0.html'));
 

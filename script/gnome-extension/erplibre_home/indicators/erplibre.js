@@ -451,11 +451,11 @@ class ErpLibreIndicator extends PanelMenu.Button {
 
     _autoLoginSelenium(inst, user, pass) {
         // Resolve project root: assume extension lives in
-        //   script/stream_deck/gnome-extension; root is three dirs up.
+        //   script/gnome-extension/erplibre_home; root is three dirs up.
         const home = GLib.get_home_dir();
         const root = this._settings.get_string('git-sync-path').trim()
             || this._extension.path.replace(
-                /\/script\/stream_deck\/gnome-extension\/?$/, '');
+                /\/script\/gnome-extension\/erplibre_home\/?$/, '');
         const venv = `${root}/.venv.erplibre/bin/python`;
         const script = `${root}/script/selenium/web_login.py`;
         const argv = [venv, script,

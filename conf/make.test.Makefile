@@ -166,8 +166,8 @@ test_addons_project_sale_link_specific_file:
 test_gnome_extension:
 	@echo "→ schema strict dry-run"
 	glib-compile-schemas --strict --dry-run \
-	    script/stream_deck/gnome-extension/schemas/
+	    script/gnome-extension/erplibre_home/schemas/
 	@echo "→ node --test for pure logic"
-	node --test script/stream_deck/gnome-extension/test/unit/*.test.js
+	node --test script/gnome-extension/erplibre_home/test/unit/*.test.js
 
 .PHONY: test_gnome_extension

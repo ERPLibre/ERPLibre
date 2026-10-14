@@ -6,7 +6,7 @@ qui attendent l'utilisateur (jaune = `Stop`, rouge = `Notification`).
 Le badge lit des fichiers JSON écrits par un petit hook Claude Code.
 ## Installation
 1. Le script du hook est dans
-   `script/stream_deck/gnome-extension/hooks/streamdeck-tiler-hook.py`.
+   `script/gnome-extension/erplibre_home/hooks/streamdeck-tiler-hook.py`.
    Il est déjà exécutable et ne dépend que de Python 3.
 2. Branche-le dans Claude Code en ajoutant les matchers ci-dessous à
    `~/.claude/settings.json` (fusionne avec ton bloc `hooks` existant).

@@ -105,7 +105,7 @@ streamdeck_tiler:
 	./script/stream_deck/game_tiler.py
 
 STREAMDECK_TILER_EXT_UUID       := streamdeck-tiler@technolibre.ca
-STREAMDECK_TILER_EXT_SRC        := script/stream_deck/gnome-extension
+STREAMDECK_TILER_EXT_SRC        := script/gnome-extension/erplibre_home
 STREAMDECK_TILER_EXT_BASE_DIR   := $(HOME)/.local/share/gnome-shell/extensions
 STREAMDECK_TILER_EXT_DST        := $(STREAMDECK_TILER_EXT_BASE_DIR)/$(STREAMDECK_TILER_EXT_UUID)
 STREAMDECK_TILER_EXT_TMP_PREFIX := streamdeck-tiler-reload-

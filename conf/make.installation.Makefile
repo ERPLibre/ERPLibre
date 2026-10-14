@@ -190,9 +190,9 @@ install_docker_ubuntu:
 
 extension_i18n_compile:
 	@for lang in en fr; do \
-		mkdir -p script/stream_deck/gnome-extension/locale/$$lang/LC_MESSAGES; \
-		msgfmt -o script/stream_deck/gnome-extension/locale/$$lang/LC_MESSAGES/streamdeck-tiler.mo \
-		       script/stream_deck/gnome-extension/po/$$lang.po; \
+		mkdir -p script/gnome-extension/erplibre_home/locale/$$lang/LC_MESSAGES; \
+		msgfmt -o script/gnome-extension/erplibre_home/locale/$$lang/LC_MESSAGES/streamdeck-tiler.mo \
+		       script/gnome-extension/erplibre_home/po/$$lang.po; \
 	done
 
 .PHONY: extension_i18n_compile
