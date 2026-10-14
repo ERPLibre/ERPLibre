@@ -67,8 +67,9 @@ migrations that are not auto-applied.
   metadata.json in place — fewer accidental git diffs.
 - Device indicator finds the checkout through the extension symlink
   (installed link and hot-reload copy alike) and launches the
-  controller with `.venv.streamdeck`; the gallery launcher runs
-  `make streamdeck_gallery`. Without that venv, both say that
+  controller with `.venv.streamdeck`; the gallery launcher starts
+  `gallery_server.py` with the same interpreter, without `make`.
+  Without that venv, both say that
   ERPLibre Home Stream Deck is not installed and name
   `make erplibre_home_streamdeck_install`, instead of failing.
 

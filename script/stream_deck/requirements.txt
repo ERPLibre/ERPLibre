@@ -6,5 +6,3 @@ opencv-python
 requests
 # Key events of keyboard_talk.py.
 keyboard
-# i18n compile helper for erplibre_home_compile_locale.
-polib

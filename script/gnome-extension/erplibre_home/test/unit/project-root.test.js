@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {projectRootFrom, makeGioReadLink, normalizePath, resolveLinkTarget,
-    streamDeckPython} from '../../lib/project-root.js';
+    streamDeckPython, galleryServerCommand} from '../../lib/project-root.js';
 
 const CHECKOUT = '/opt/depot';
 const EXT_SRC = `${CHECKOUT}/script/gnome-extension/erplibre_home`;
@@ -208,4 +208,25 @@ test('both deck indicators show that message, and only through _()', () => {
         assert.ok(src.includes('streamDeckPython('), js);
         assert.ok(!src.includes('.venv.erplibre'), js);
     }
+});
+
+test('galleryServerCommand runs the gallery under the venv python, no make', () => {
+    assert.equal(galleryServerCommand(CHECKOUT, DECK_PYTHON),
+        `'${DECK_PYTHON}' '${CHECKOUT}/script/stream_deck/gallery_server.py'`);
+    assert.equal(galleryServerCommand(`${CHECKOUT}/`, DECK_PYTHON),
+        `'${DECK_PYTHON}' '${CHECKOUT}/script/stream_deck/gallery_server.py'`);
+});
+
+test('galleryServerCommand quotes a path with a space or a quote', () => {
+    const root = "/opt/mon dépôt/l'autre";
+    const python = `${root}/.venv.streamdeck/bin/python`;
+    assert.equal(galleryServerCommand(root, python),
+        "'/opt/mon dépôt/l'\\''autre/.venv.streamdeck/bin/python' " +
+        "'/opt/mon dépôt/l'\\''autre/script/stream_deck/gallery_server.py'");
+});
+
+test('the controller launches the gallery through galleryServerCommand', () => {
+    const src = extensionFile('indicators/controller.js');
+    assert.ok(src.includes('galleryServerCommand('));
+    assert.ok(!src.includes('make streamdeck_gallery'));
 });

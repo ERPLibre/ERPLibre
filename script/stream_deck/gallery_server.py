@@ -8,7 +8,7 @@ Serves index.html and handles /launch/<game_id> requests
 to start games in a terminal. Kills previous game terminal
 before opening a new one.
 
-Usage: python3 gallery_server.py
+Usage: make streamdeck_gallery, which runs it under .venv.streamdeck.
 Then open http://localhost:8042
 """
 
