@@ -484,6 +484,14 @@ there if that installation fails, which is exactly when you log in by hand.
 The guide is not shown to `ssh host 'command'`, so it never pollutes an
 installation log.
 
+A VM with a desktop (`--desktop`) does not get `/etc/motd`: `pam_motd` sits in
+the generic login PAM stack, so GDM would show the guide as a PAM message and
+delay the start of the graphical session in proportion to its length (tens of
+seconds). The same text is written to `/etc/erplibre-login-guide`, and
+`/etc/profile.d/erplibre-login-guide.sh` prints it for interactive SSH login
+shells only: desktop terminals, `ssh host 'command'`, `scp` and `sftp` stay
+silent. A server VM keeps `/etc/motd`.
+
 The host's git identity travels with it, into the VM's `~/.gitconfig`: a
 commit made in the VM then carries your name instead of
 `erplibre@<vm-name>`. The editor follows the same route — `core.editor`, the
@@ -689,6 +697,15 @@ encore là si elle échoue — le moment où l'on se connecte justement à la ma
 `--dry-run` affiche le guide généré avec le reste du user-data. Il ne
 s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
 restent nets.
+
+Une VM à bureau (`--desktop`) ne reçoit PAS `/etc/motd` : `pam_motd` figure
+dans la pile PAM générique de connexion, donc GDM afficherait le guide comme
+message PAM et retarderait l'ouverture de la session graphique en proportion
+de sa longueur (des dizaines de secondes). Le même texte est écrit dans
+`/etc/erplibre-login-guide`, et `/etc/profile.d/erplibre-login-guide.sh`
+l'affiche aux seuls shells de connexion SSH interactifs : terminaux du
+bureau, `ssh hôte 'commande'`, `scp` et `sftp` restent silencieux. Une VM
+serveur garde `/etc/motd`.
 
 L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
 un commit fait dans la VM porte alors votre nom plutôt que
