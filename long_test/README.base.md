@@ -277,8 +277,9 @@ That is the first of five stages, run in order on the same VM:
    writes the udev rule, the venv imports what the deck programs import,
    the deck service unit runs this checkout's entry point and is enabled,
    `systemctl --user start` skips it since a VM has no deck (inactive,
-   `Result=success`, `ExecMainStartTimestampMonotonic=0`, and the entry
-   point's "no Stream Deck plugged in" line in the unit's journal), the
+   `Result=exec-condition`, or `success` on some systemd versions,
+   `ExecMainStartTimestampMonotonic=0`, and the entry point's "no Stream
+   Deck plugged in" line in the unit's journal), the
    extension stays ACTIVE, and a second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
@@ -637,9 +638,10 @@ C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
    écrit la règle udev, le venv importe ce qu'importent les programmes du
    deck, l'unité du service du deck lance le point d'entrée de ce checkout
    et est activée, `systemctl --user start` la saute faute de deck dans
-   une VM (inactive, `Result=success`, `ExecMainStartTimestampMonotonic=0`,
-   et la ligne « no Stream Deck plugged in » du point d'entrée dans le
-   journal de l'unité), l'extension reste ACTIVE, et une seconde exécution
+   une VM (inactive, `Result=exec-condition`, ou `success` selon la version
+   de systemd, `ExecMainStartTimestampMonotonic=0`, et la ligne « no Stream
+   Deck plugged in » du point d'entrée dans le journal de l'unité),
+   l'extension reste ACTIVE, et une seconde exécution
    ne change rien, unité et réglages compris ;
 3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle,
    le venv, l'unité, son lien `graphical-session.target.wants` et ses

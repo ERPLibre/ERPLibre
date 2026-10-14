@@ -272,8 +272,9 @@ That is the first of five stages, run in order on the same VM:
    writes the udev rule, the venv imports what the deck programs import,
    the deck service unit runs this checkout's entry point and is enabled,
    `systemctl --user start` skips it since a VM has no deck (inactive,
-   `Result=success`, `ExecMainStartTimestampMonotonic=0`, and the entry
-   point's "no Stream Deck plugged in" line in the unit's journal), the
+   `Result=exec-condition`, or `success` on some systemd versions,
+   `ExecMainStartTimestampMonotonic=0`, and the entry point's "no Stream
+   Deck plugged in" line in the unit's journal), the
    extension stays ACTIVE, and a second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,

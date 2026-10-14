@@ -228,8 +228,9 @@ CMD_UNITE = (
 )
 CMD_AUTOSTART = SYSTEMD_USER + f"systemctl --user is-enabled {UNITE_DECK}"
 # Une VM n'a pas de deck : ExecCondition sort en 1, systemd saute le
-# démarrage sans marquer l'unité en échec (inactive, Result=success) et
-# ExecStart ne tourne jamais (horodatage de démarrage nul).
+# démarrage sans marquer l'unité en échec (inactive, Result dans
+# RESULTATS_SAUT) et ExecStart ne tourne jamais (horodatage de démarrage
+# nul).
 CMD_CONDITION = SYSTEMD_USER + (
     f"systemctl --user start {UNITE_DECK};"
     " systemctl --user show -p ActiveState -p Result"
@@ -502,14 +503,22 @@ def etat_systemd(sortie):
     return etat
 
 
+# Le Result= d'une unité dont ExecCondition a sauté le démarrage : la
+# plupart des systemd le disent « exec-condition », d'autres « success ».
+# Un ExecCondition qui sort en 255 ou meurt d'un signal rend aussi
+# « exec-condition », mais c'est un échec et l'unité est alors « failed » :
+# ActiveState=inactive les sépare.
+RESULTATS_SAUT = ("exec-condition", "success")
+
+
 def condition_sautee(etat, journal):
     """Vrai quand systemd a sauté le démarrage sur ExecCondition : unité
-    inactive, Result=success (un saut n'est pas un échec), ExecStart jamais
-    lancé (horodatage nul), et la raison du point d'entrée dans le journal
-    de l'unité. `etat` vient d'etat_systemd ; `journal` peut être None."""
+    inactive, Result dans RESULTATS_SAUT, ExecStart jamais lancé
+    (horodatage nul), et la raison du point d'entrée dans le journal de
+    l'unité. `etat` vient d'etat_systemd ; `journal` peut être None."""
     return (
         etat.get("ActiveState") == "inactive"
-        and etat.get("Result") == "success"
+        and etat.get("Result") in RESULTATS_SAUT
         and etat.get("ExecMainStartTimestampMonotonic") == "0"
         and RAISON_SAUT in (journal or "")
     )
