@@ -59,6 +59,7 @@ die() {
 # long : la raison tient sur une ligne, en anglais, et rien d'autre ne part
 # sur la sortie d'erreur avant elle.
 unsupported() {
+    UNSUPPORTED_EXIT=1
     echo "UNSUPPORTED: $*" >&2
     exit 2
 }
@@ -330,8 +331,299 @@ mo_file() {
     echo "${EXT_SRC}/locale/$1/LC_MESSAGES/erplibre-home.mo"
 }
 
-not_implemented() {
-    die "étape pas encore implémentée : $1"
+# ---------- Installation ----------
+
+REQUIREMENTS="${RACINE}/script/stream_deck/requirements.txt"
+
+# Ce que l'exécution a réellement changé, une ligne par effet, pour le bilan.
+DONE=()
+
+# EPEL au besoin (--stream-deck sur AlmaLinux et Rocky Linux), les paquets
+# du niveau, puis chaque extra seul. Chaque ligne est celle de package_cmd,
+# celle même que --dry-run affiche ; eval l'exécute, et chacun de ses mots
+# est un littéral de packages_for, streamdeck_packages_for, extras_for ou
+# « epel-release ». L'échec des paquets du niveau arrête l'installation
+# (set -e) ; celui d'un extra n'est qu'un avertissement, et un extra absent
+# du dépôt ne fait échouer que sa propre commande.
+install_packages() {
+    local level pkg
+    if [ "${STREAM_DECK}" = 1 ] && needs_epel; then
+        eval "$(package_cmd "${FAMILY}" epel-release)"
+    fi
+    level="$(level_packages "${FAMILY}")"
+    # shellcheck disable=SC2086
+    eval "$(package_cmd "${FAMILY}" ${level})"
+    DONE+=("system packages: ${level}")
+    [ "${WITH_EXTRAS}" = 1 ] || return 0
+    for pkg in $(extras_for "${FAMILY}"); do
+        if eval "$(package_cmd "${FAMILY}" "${pkg}")"; then
+            DONE+=("optional package: ${pkg}")
+        else
+            log "WARNING: optional package ${pkg} not installed, skipped"
+        fi
+    done
+}
+
+# ---------- Règle udev ----------
+
+# Le contenu exact de la règle. « uaccess » donne l'accès à l'utilisateur
+# assis devant le poste sur toutes les familles, là où le groupe plugdev
+# n'existe que sur Debian et Ubuntu. Le préfixe 70- passe avant
+# 73-seat-late.rules, qui applique uaccess.
+udev_rule_content() {
+    printf '%s\n' \
+        'SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"' \
+        'KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"'
+}
+
+# Écrit la règle seulement si le fichier en place diffère (cmp), et ne
+# recharge udev que dans ce cas : une seconde exécution ne touche ni au
+# fichier ni à son mtime.
+write_udev_rule() {
+    if cmp -s <(udev_rule_content) "${UDEV_RULE}"; then
+        log "udev rule already in place: ${UDEV_RULE}"
+        return 0
+    fi
+    udev_rule_content | sudo tee "${UDEV_RULE}" >/dev/null
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
+    DONE+=("udev rule: ${UDEV_RULE}")
+}
+
+# ---------- venv ----------
+
+# Crée le venv avec le python3 du système s'il manque, puis y installe les
+# dépendances. pip ne réinstalle pas ce qui est déjà satisfait : le venv
+# existant garde son contenu.
+make_venv() {
+    if [ ! -x "${VENV}/bin/python" ]; then
+        python3 -m venv "${VENV}"
+        DONE+=("venv created: ${VENV}")
+    fi
+    "${VENV}/bin/python" -m pip install --quiet --disable-pip-version-check \
+        -r "${REQUIREMENTS}"
+}
+
+# ---------- Extension GNOME ----------
+
+# Pose le lien vers le checkout, sauf s'il pointe déjà au bon endroit. Un
+# répertoire ou un fichier ordinaire à cette place (une copie posée à la
+# main, une extension installée depuis une archive) n'est jamais écrasé :
+# l'installation s'arrête en le nommant. « ln -sfn » sur un répertoire
+# créerait d'ailleurs le lien DEDANS.
+#
+# La migration de l'ancienne identité passe d'abord, à chaque exécution :
+# elle libère l'ancien UUID, ses réglages et ses données, et reprend au
+# passage suivant ce qu'une session absente a laissé. Elle rend toujours
+# 0 ; le « || » couvre un bit d'exécution perdu ou un python3 absent, que
+# « set -e » changerait sinon en arrêt de l'installation.
+link_extension() {
+    "${EXT_SRC}/tools/migrate_legacy.py" ||
+        log "legacy migration did not run; the install goes on"
+    mkdir -p "$(dirname "${EXT_LINK}")"
+    if [ "$(readlink "${EXT_LINK}" 2>/dev/null || true)" = "${EXT_SRC}" ]; then
+        log "extension link already in place: ${EXT_LINK}"
+        return 0
+    fi
+    if [ -e "${EXT_LINK}" ] && [ ! -L "${EXT_LINK}" ]; then
+        die "${EXT_LINK} exists and is not a symlink; move it away and rerun"
+    fi
+    ln -sfn "${EXT_SRC}" "${EXT_LINK}"
+    DONE+=("extension link: ${EXT_LINK} -> ${EXT_SRC}")
+}
+
+# --strict refuse un schéma douteux ; son échec arrête l'installation, faute
+# de quoi l'extension se chargerait sans réglages.
+compile_schemas() {
+    glib-compile-schemas --strict "${EXT_SRC}/schemas/"
+}
+
+# Le paquet qui porte msgfmt dans la famille. Sous --extension-only, la
+# famille n'est pas lue : le message nomme alors les deux noms.
+gettext_package() {
+    case "$1" in
+        suse) echo "gettext-tools" ;;
+        debian | rhel | arch) echo "gettext" ;;
+        *) echo "gettext (gettext-tools on openSUSE)" ;;
+    esac
+}
+
+# Un .mo par po/<langue>.po, là où l'extension le cherche, par « msgfmt
+# --check » : ni polib ni venv, msgfmt vient du paquet gettext de la base.
+# --check refuse un format ou un en-tête faux ; ce refus, comme un msgfmt
+# absent, arrête l'installation, faute de quoi l'extension se chargerait
+# sans traductions.
+compile_locales() {
+    local lang mo
+    command -v msgfmt >/dev/null 2>&1 \
+        || die "msgfmt is missing; install $(gettext_package "${FAMILY}")"
+    for lang in $(locale_langs); do
+        mo="$(mo_file "${lang}")"
+        mkdir -p "$(dirname "${mo}")"
+        msgfmt --check -o "${mo}" "${EXT_SRC}/po/${lang}.po"
+    done
+}
+
+# Lance une commande sur le bus de la session ouverte quand il y en a une :
+# celui de l'environnement, sinon le socket du compte (ssh dans une machine
+# dont la session graphique tourne). Le dconf-service de cette session garde
+# la base qu'il a lue et la réécrit en entier : une écriture faite à côté,
+# sous un dbus-run-session, lui échappe et peut être recouverte. Sans
+# aucune session (ssh, VM fraîche), dbus-run-session lance un dconf-service
+# à part qui écrit le profil de l'utilisateur, que la prochaine session lit.
+on_session_bus() {
+    local bus
+    if bus="$(shell_bus_address)"; then
+        DBUS_SESSION_BUS_ADDRESS="${bus}" "$@"
+    else
+        dbus-run-session -- "$@"
+    fi
+}
+
+# gsettings, sur le bus que choisit on_session_bus.
+gsettings_bus() {
+    on_session_bus gsettings "$@"
+}
+
+# uuid_list_edit has <liste> <uuid> rend « yes » ou « no » ;
+# uuid_list_edit remove <liste> <uuid> rend la liste GVariant « as » sans
+# <uuid>, ou l'entrée telle quelle quand il n'y a rien à retirer :
+# l'appelant compare pour savoir s'il doit écrire. La liste se lit par
+# tools/gsettings_strv.py, le lecteur que partagent les outils de
+# l'extension, qui accepte les deux formes que gsettings affiche,
+# « @as [] » et « ['a', 'b'] ». Une liste illisible sort en erreur.
+uuid_list_edit() {
+    python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+from gsettings_strv import format_strv, parse_strv
+mode, current, uuid = sys.argv[2:5]
+items = parse_strv(current)
+if mode == "has":
+    print("yes" if uuid in items else "no")
+elif uuid in items:
+    print(format_strv([item for item in items if item != uuid]))
+else:
+    print(current.strip())
+' "${EXT_SRC}/tools" "$@"
+}
+
+# L'adresse d'un bus de session joignable : celle de l'environnement, sinon
+# le socket du compte sous /run/user. Rien, et un code 1, quand aucun
+# n'existe.
+shell_bus_address() {
+    if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        echo "${DBUS_SESSION_BUS_ADDRESS}"
+        return 0
+    fi
+    local sock
+    sock="/run/user/$(id -u)/bus"
+    [ -S "${sock}" ] || return 1
+    echo "unix:path=${sock}"
+}
+
+# Active l'extension pour le compte. Les deux listes s'écrivent par
+# tools/enable_next_login.py, l'aide de la cible make
+# erplibre_home_enable_extension, sur le bus que choisit on_session_bus :
+# l'UUID retiré de disabled-extensions, où l'application Extensions le range
+# quand on l'y éteint et qui l'emporte sur enabled-extensions, puis ajouté à
+# enabled-extensions sans doublon. make et l'installateur activent donc par
+# le même code. disable-user-extensions passe ensuite à false. Les trois
+# clés sont relues ; une écriture qui n'a pas pris arrête l'installation.
+# gnome-extensions enable ne sert que si GNOME Shell tourne déjà sur un bus
+# joignable, et son échec n'arrête rien : la prochaine session charge
+# l'extension depuis les clés.
+enable_extension() {
+    local enabled disabled bus
+    enabled="$(gsettings_bus get org.gnome.shell enabled-extensions)"
+    disabled="$(gsettings_bus get org.gnome.shell disabled-extensions)"
+    on_session_bus "${EXT_SRC}/tools/enable_next_login.py" "${UUID}" >/dev/null \
+        || die "enabled-extensions not written for ${UUID}"
+    if [ "$(uuid_list_edit has "${disabled}" "${UUID}")" = yes ]; then
+        DONE+=("disabled-extensions -= ${UUID}")
+    fi
+    if [ "$(uuid_list_edit has "${enabled}" "${UUID}")" = no ]; then
+        DONE+=("enabled-extensions += ${UUID}")
+    fi
+    if [ "$(gsettings_bus get org.gnome.shell disable-user-extensions)" != "false" ]; then
+        gsettings_bus set org.gnome.shell disable-user-extensions false
+        DONE+=("disable-user-extensions = false")
+    fi
+    enabled="$(gsettings_bus get org.gnome.shell enabled-extensions)"
+    if [ "$(uuid_list_edit has "${enabled}" "${UUID}")" != yes ]; then
+        die "enabled-extensions does not hold ${UUID} after writing it"
+    fi
+    disabled="$(gsettings_bus get org.gnome.shell disabled-extensions)"
+    if [ "$(uuid_list_edit has "${disabled}" "${UUID}")" != no ]; then
+        die "disabled-extensions still holds ${UUID} after removing it"
+    fi
+    if [ "$(gsettings_bus get org.gnome.shell disable-user-extensions)" != "false" ]; then
+        die "disable-user-extensions is still true after writing it"
+    fi
+    bus="$(shell_bus_address || true)"
+    if [ -n "${bus}" ] && DBUS_SESSION_BUS_ADDRESS="${bus}" gdbus call --session \
+        --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.NameHasOwner org.gnome.Shell \
+        2>/dev/null | grep -q true; then
+        DBUS_SESSION_BUS_ADDRESS="${bus}" gnome-extensions enable "${UUID}" \
+            || log "gnome-extensions enable failed; the next session loads the extension"
+    fi
+}
+
+# ---------- Désinstallation ----------
+
+# Retire le niveau Stream Deck : la règle udev, puis la relecture des règles,
+# et le venv. Ce qui manque déjà est sauté, si bien qu'une seconde
+# exécution n'appelle ni sudo ni udevadm.
+uninstall_streamdeck() {
+    if [ -e "${UDEV_RULE}" ]; then
+        sudo rm -f "${UDEV_RULE}"
+        sudo udevadm control --reload-rules
+        DONE+=("removed ${UDEV_RULE}")
+    fi
+    if [ -e "${VENV}" ]; then
+        rm -rf "${VENV}"
+        DONE+=("removed ${VENV}")
+    fi
+}
+
+# Défait tout ce que l'installation pose : l'UUID d'enabled-extensions, le
+# lien, puis le niveau Stream Deck. Jamais de paquet système : d'autres
+# logiciels peuvent s'en servir. Un répertoire ordinaire à la place du lien
+# n'a pas été posé par ce script et reste en place.
+uninstall() {
+    local current wanted
+    current="$(gsettings_bus get org.gnome.shell enabled-extensions 2>/dev/null || true)"
+    if [ -n "${current}" ]; then
+        wanted="$(uuid_list_edit remove "${current}" "${UUID}")"
+        if [ "${wanted}" != "${current}" ]; then
+            gsettings_bus set org.gnome.shell enabled-extensions "${wanted}"
+            DONE+=("enabled-extensions -= ${UUID}")
+        fi
+    fi
+    if [ -L "${EXT_LINK}" ]; then
+        rm -f "${EXT_LINK}"
+        DONE+=("removed ${EXT_LINK}")
+    elif [ -e "${EXT_LINK}" ]; then
+        log "left in place, not a symlink: ${EXT_LINK}"
+    fi
+    uninstall_streamdeck
+}
+
+# ---------- Bilan ----------
+
+summary() {
+    local line
+    if [ "${#DONE[@]}" -eq 0 ]; then
+        log "nothing to change"
+    else
+        for line in "${DONE[@]}"; do
+            log "${line}"
+        done
+    fi
+    if [ "${UNINSTALL}" = 0 ]; then
+        log "log out and back in: GNOME Shell loads a new extension only at session start under Wayland"
+    fi
 }
 
 # Chaque étape affiche, sous --dry-run, une ligne par effet qu'elle aurait,
@@ -349,7 +641,7 @@ step_packages() {
         fi
         return 0
     fi
-    not_implemented "paquets système"
+    install_packages
 }
 
 step_udev() {
@@ -357,7 +649,7 @@ step_udev() {
         echo "write: ${UDEV_RULE}"
         return 0
     fi
-    not_implemented "règle udev"
+    write_udev_rule
 }
 
 step_venv() {
@@ -365,7 +657,7 @@ step_venv() {
         echo "venv: ${VENV}"
         return 0
     fi
-    not_implemented "venv"
+    make_venv
 }
 
 step_extension() {
@@ -380,7 +672,9 @@ step_extension() {
         done
         return 0
     fi
-    not_implemented "extension"
+    link_extension
+    compile_schemas
+    compile_locales
 }
 
 step_enable() {
@@ -389,11 +683,11 @@ step_enable() {
         echo "gsettings: org.gnome.shell disable-user-extensions false"
         return 0
     fi
-    not_implemented "activation"
+    enable_extension
 }
 
 step_summary() {
-    not_implemented "résumé"
+    summary
 }
 
 # --uninstall retire tout ; --uninstall --stream-deck ne retire que le
@@ -408,7 +702,12 @@ step_uninstall() {
         echo "remove: ${VENV}"
         return 0
     fi
-    not_implemented "désinstallation"
+    if [ "${STREAM_DECK}" = 1 ]; then
+        uninstall_streamdeck
+    else
+        uninstall
+    fi
+    summary
 }
 
 # --uninstall et --extension-only ne lisent ni os-release ni la version de
@@ -447,4 +746,14 @@ main() {
     fi
 }
 
-main "$@"
+# Sourcé avec ERPLIBRE_HOME_SOURCE_ONLY=1, le script définit ses fonctions et
+# s'arrête là : les tests unitaires les appellent une à une, sans sudo.
+#
+# Le code 2 est réservé à unsupported. Une commande appelée qui rend 2 (pip,
+# un gestionnaire de paquets, msgfmt) et arrête le script sous set -e
+# sortirait sinon en 2, et TODO comme le test long y liraient un système
+# non supporté : le piège EXIT la ramène à 1.
+if [ "${ERPLIBRE_HOME_SOURCE_ONLY:-0}" != "1" ]; then
+    trap 'rc=$?; if [ "${rc}" = 2 ] && [ "${UNSUPPORTED_EXIT:-0}" != 1 ]; then exit 1; fi' EXIT
+    main "$@"
+fi

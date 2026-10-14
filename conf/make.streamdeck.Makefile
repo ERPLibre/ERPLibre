@@ -117,6 +117,30 @@ streamdeck_djscratch: $(STREAMDECK_PY)
 streamdeck_tiler: $(STREAMDECK_PY)
 	$(STREAMDECK_PY) script/stream_deck/game_tiler.py
 
+# ERPLibre Home, two levels. The base: the GNOME extension, its schemas
+# and translations, linked and enabled. The Stream Deck level adds the USB
+# packages, the udev rule and .venv.streamdeck, and installs the base too.
+# The installer holds every step; these targets only call it, so make and
+# the installer cannot disagree.
+.PHONY: erplibre_home_install
+erplibre_home_install:
+	./script/install/install_erplibre_home.sh
+
+# Removes both levels, except the system packages.
+.PHONY: erplibre_home_uninstall
+erplibre_home_uninstall:
+	./script/install/install_erplibre_home.sh --uninstall
+
+.PHONY: erplibre_home_streamdeck_install
+erplibre_home_streamdeck_install:
+	./script/install/install_erplibre_home.sh --stream-deck
+
+# Removes the udev rule and .venv.streamdeck only; the extension stays
+# installed and enabled.
+.PHONY: erplibre_home_streamdeck_uninstall
+erplibre_home_streamdeck_uninstall:
+	./script/install/install_erplibre_home.sh --uninstall --stream-deck
+
 ERPLIBRE_HOME_EXT_UUID       := erplibre-home@technolibre.ca
 ERPLIBRE_HOME_EXT_SRC        := script/gnome-extension/erplibre_home
 ERPLIBRE_HOME_EXT_BASE_DIR   := $(HOME)/.local/share/gnome-shell/extensions
@@ -125,15 +149,7 @@ ERPLIBRE_HOME_EXT_TMP_PREFIX := erplibre-home-reload-
 
 .PHONY: erplibre_home_install_extension
 erplibre_home_install_extension:
-	@"$(ERPLIBRE_HOME_EXT_SRC)/tools/migrate_legacy.py" || echo "legacy migration did not run" >&2
-	@if [ -L "$(ERPLIBRE_HOME_EXT_DST)" ] || [ -d "$(ERPLIBRE_HOME_EXT_DST)" ]; then \
-		rm -rf "$(ERPLIBRE_HOME_EXT_DST)"; \
-	fi
-	@mkdir -p "$(ERPLIBRE_HOME_EXT_BASE_DIR)"
-	@ln -sfn "$(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)" "$(ERPLIBRE_HOME_EXT_DST)"
-	@glib-compile-schemas "$(ERPLIBRE_HOME_EXT_SRC)/schemas/" 2>/dev/null || true
-	@python3 "$(ERPLIBRE_HOME_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
-		|| echo "(locale compile skipped — install python3-polib for translations)"
+	@./script/install/install_erplibre_home.sh --extension-only
 	@echo "Symlinked $(ERPLIBRE_HOME_EXT_DST) -> $(CURDIR)/$(ERPLIBRE_HOME_EXT_SRC)"
 	@echo "Then: make erplibre_home_enable_extension (Wayland: then log out / log in to load it; X11: Alt+F2, r)"
 
@@ -162,10 +178,6 @@ erplibre_home_uninstall_extension:
 		echo "Removed reload temp $$uuid"; \
 	done
 	@echo "Log out / log in to fully unload from gnome-shell."
-
-# Convenience aliases for the common short names users actually type.
-.PHONY: erplibre_home_uninstall
-erplibre_home_uninstall: erplibre_home_uninstall_extension
 
 # Launch a nested gnome-shell with the extension loaded in an
 # isolated XDG sandbox. Lets the dev reload code freely without
