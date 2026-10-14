@@ -2238,10 +2238,10 @@ def user_shell(distro: str) -> str:
 # connexion, les commandes de la machine où l'on vient d'entrer : apt là où
 # c'est apt, zypper là où c'est zypper.
 #
-# Le mécanisme est /etc/motd, sauf sur une VM à bureau (plus bas). Vérifié dans les images
-# cloud elles-mêmes, montées en lecture seule : sshd y est en « PrintMotd no »
-# et c'est pam_motd qui affiche le fichier. Trois conséquences tenues pour
-# acquises ici :
+# Le mécanisme est /etc/motd, sauf sur une VM à bureau (plus bas). Vérifié dans
+# les images cloud elles-mêmes, montées en lecture seule : sshd y est en
+# « PrintMotd no » et c'est pam_motd qui affiche le fichier. Trois conséquences
+# tenues pour acquises ici :
 #   - il suffit d'ÉCRIRE /etc/motd. Ajouter « PrintMotd yes » afficherait le
 #     guide DEUX FOIS — sshd lit /etc/motd en dur, PAM le lit aussi ;
 #   - « ssh hôte 'commande' » ne l'affiche PAS (openssh coupe les deux chemins
