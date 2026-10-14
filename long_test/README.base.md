@@ -243,6 +243,66 @@ receives, not what a local checkout holds. Say it before running: a fix still
 on an unmerged branch is *not* in the VM, and the test will fail on whatever
 that fix repairs.
 
+## install_erplibre_home.py — does ERPLibre Home run on every distribution?
+
+One VM per distribution version, one at a time: Ubuntu 24.04, 25.10 and
+26.04, Debian 13, Fedora 41 to 44, AlmaLinux 10, Rocky Linux 10, openSUSE
+Leap 16.0, and the two rolling ones, Arch Linux and openSUSE Tumbleweed. The
+systems GNOME 45 to 51 does not reach — Debian 12, the EL9 rebuilds — and
+those without a GNOME desktop path — NixOS, Proxmox — are listed
+`UNSUPPORTED` and get no VM.
+
+Each VM gets the GNOME desktop through the menu's own remote command, then
+the code of **this checkout**, sent as a `git bundle` of `HEAD`: the VM never
+reaches GitHub for it. A modified tracked file makes the run refuse to
+start, since it would not be in the VM. Then `install_erplibre_home.sh` installs
+the ERPLibre Home base, GDM logs the user in automatically, and the VM
+reboots.
+
+The verdict is what GNOME Shell answers, not a return code: `GetExtensionInfo`
+must report state `1` and an empty `error`. Being listed in
+`enabled-extensions` is not enough — an extension that throws in `enable()`
+stays listed, in ERROR. The extension's own `ListPaths` and `ListDevices`
+must answer too. ACTIVE does not prove the top bar either: the extension
+catches an indicator constructor's exception and keeps running, so the
+`extension-indicators` check reads the user journal: it requires the
+`[ERPLibreHome] enabled` line that ends `enable()`, so an unread journal
+fails too, and it fails on any `[ERPLibreHome] mount <id> failed` line.
+
+That is the first of five stages, run in order on the same VM:
+
+1. **base**: the checks above, then neither the udev rule nor
+   `.venv.streamdeck` exists, and a second base install changes nothing;
+2. **install-stream-deck**: `--stream-deck` writes the udev rule, the venv
+   imports what the deck programs import, the extension stays ACTIVE, and a
+   second run changes nothing;
+3. **uninstall-stream-deck**: `--uninstall --stream-deck` removes the rule
+   and the venv, and leaves the extension linked, enabled and ACTIVE;
+4. **uninstall**: `--uninstall` leaves neither link, nor UUID in
+   `enabled-extensions`, nor rule, nor venv;
+5. **reinstall**: the base again, then a reboot: the extension comes back
+   ACTIVE with every indicator mounted, without the rule or the venv.
+
+A stage command that fails, or the first failed check, names the verdict
+(`FAILED(install-stream-deck)`, `FAILED(reinstall-no-udev)`…): every name is
+unique, so it tells which stage stopped.
+
+```
+./long_test/install_erplibre_home.py                 # the whole matrix
+./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
+./long_test/install_erplibre_home.py --extras        # --with-extras on 24.04
+./long_test/install_erplibre_home.py --dry-run       # the plan, nothing created
+./long_test/install_erplibre_home.py --garder        # keep the VMs
+./long_test/install_erplibre_home.py --detruire      # undo the last run
+```
+
+The report lists one line per system, with the GNOME version expected and
+the one measured: the matrix in the script is corrected from those lines. On
+Arch and Tumbleweed, `UNSUPPORTED` means GNOME moved past 51, and it is the
+expected signal to update `metadata.json`. Each system's log — installer
+output, user journal, `gnome-extensions info` — is a `.log` in the run's
+sub-directory.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
@@ -520,6 +580,68 @@ défaut). C'est voulu : le test mesure ce qu'un utilisateur reçoit, pas ce
 qu'un checkout local contient. À dire avant de lancer : un correctif encore
 sur une branche non fusionnée n'est *pas* dans la VM, et le test échouera sur
 ce que ce correctif répare.
+
+## install_erplibre_home.py — ERPLibre Home tourne-t-il sur chaque distribution ?
+
+Une VM par version de distribution, l'une après l'autre : Ubuntu 24.04, 25.10
+et 26.04, Debian 13, Fedora 41 à 44, AlmaLinux 10, Rocky Linux 10, openSUSE
+Leap 16.0, et les deux roulantes, Arch Linux et openSUSE Tumbleweed. Les
+systèmes que GNOME 45 à 51 n'atteint pas — Debian 12, les reconstructions
+EL9 — et ceux sans chemin de bureau GNOME — NixOS, Proxmox — sont listés
+`UNSUPPORTED` et n'ont pas de VM.
+
+Chaque VM reçoit le bureau GNOME par la commande distante du menu, puis le
+code de **ce checkout**, envoyé en `git bundle` de `HEAD` : la VM ne joint
+jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course,
+puisqu'il ne serait pas dans la VM. Puis `install_erplibre_home.sh` installe
+la base d'ERPLibre Home, GDM ouvre la session de l'utilisateur tout seul, et
+la VM redémarre.
+
+Le verdict est ce que GNOME Shell répond, pas un code de retour :
+`GetExtensionInfo` doit rendre l'état `1` et une `error` vide. Figurer dans
+`enabled-extensions` ne suffit pas — une extension qui lève dans `enable()` y
+reste listée, en ERREUR. Les `ListPaths` et `ListDevices` de l'extension
+doivent répondre aussi. ACTIVE ne prouve pas non plus la barre du haut :
+l'extension attrape l'exception du constructeur d'un indicateur et continue,
+alors le contrôle `extension-indicators` lit le journal utilisateur : il
+exige la ligne `[ERPLibreHome] enabled` qui clôt `enable()`, si bien qu'un
+journal non lu échoue aussi, et il échoue sur toute ligne
+`[ERPLibreHome] mount <id> failed`.
+
+C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
+
+1. **base** : les contrôles ci-dessus, puis ni la règle udev ni
+   `.venv.streamdeck` n'existent, et une seconde installation de la base ne
+   change rien ;
+2. **install-stream-deck** : `--stream-deck` écrit la règle udev, le venv
+   importe ce qu'importent les programmes du deck, l'extension reste ACTIVE,
+   et une seconde exécution ne change rien ;
+3. **uninstall-stream-deck** : `--uninstall --stream-deck` retire la règle
+   et le venv, et laisse l'extension liée, activée et ACTIVE ;
+4. **uninstall** : `--uninstall` ne laisse ni lien, ni UUID dans
+   `enabled-extensions`, ni règle, ni venv ;
+5. **reinstall** : la base de nouveau, puis un redémarrage : l'extension
+   revient ACTIVE avec chaque indicateur monté, sans la règle ni le venv.
+
+Une commande d'étape qui échoue, ou le premier contrôle tombé, nomme le
+verdict (`FAILED(install-stream-deck)`, `FAILED(reinstall-no-udev)`…) :
+chaque nom est unique, il dit donc quelle étape s'est arrêtée.
+
+```
+./long_test/install_erplibre_home.py                 # toute la matrice
+./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
+./long_test/install_erplibre_home.py --extras        # --with-extras sur 24.04
+./long_test/install_erplibre_home.py --dry-run       # le plan, rien de créé
+./long_test/install_erplibre_home.py --garder        # garder les VM
+./long_test/install_erplibre_home.py --detruire      # défaire la dernière course
+```
+
+Le rapport porte une ligne par système, avec la version de GNOME attendue et
+celle mesurée : c'est d'après ces lignes que la matrice du script se
+corrige. Sur Arch et Tumbleweed, `UNSUPPORTED` veut dire que GNOME a dépassé
+51, et c'est le signal attendu pour mettre `metadata.json` à jour. Le
+journal de chaque système — sortie de l'installateur, journal utilisateur,
+`gnome-extensions info` — est un `.log` dans le sous-dossier de la course.
 
 ## Partir d'un hôte qu'on possède déjà
 

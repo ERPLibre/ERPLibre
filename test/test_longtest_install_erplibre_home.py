@@ -1416,5 +1416,20 @@ class LesCinqEtapes(unittest.TestCase):
         self.assertEqual(rendus, declares)
 
 
+class LeReadme(unittest.TestCase):
+    def test_the_readme_documents_it_in_both_languages(self):
+        """La source est le .base.md ; les deux .md en sont générés."""
+        base = (RACINE / "long_test/README.base.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(base.count("## install_erplibre_home.py"), 2)
+        for nom in ("README.md", "README.fr.md"):
+            with self.subTest(nom=nom):
+                texte = (RACINE / "long_test" / nom).read_text(
+                    encoding="utf-8"
+                )
+                self.assertIn("## install_erplibre_home.py", texte)
+
+
 if __name__ == "__main__":
     unittest.main()
