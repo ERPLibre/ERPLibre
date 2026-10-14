@@ -6,7 +6,7 @@ five events the GNOME extension reacts to. Re-running the script is a
 no-op once the entries are present.
 
 The settings file is rewritten atomically and backed up to
-`settings.json.bak-streamdeck-<ts>` before the first modification.
+`settings.json.bak-erplibre-home-<ts>` before the first modification.
 
 Usage:
     install_claude_hooks.py [--dry-run] [--remove]

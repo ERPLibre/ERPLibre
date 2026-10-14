@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the ERPLibre Stream Deck GNOME extension. Format
+All notable changes to the ERPLibre Home GNOME extension. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project loosely follows semver — major bumps reserved for schema
 migrations that are not auto-applied.
@@ -16,7 +16,19 @@ migrations that are not auto-applied.
   and cache directories, make targets `erplibre_home_*`. It replaces
   `streamdeck-tiler@technolibre.ca` ("Stream Deck Tiler");
   `make erplibre_home_install_extension` carries an existing
-  installation over.
+  installation over. A checkout updated by `git pull` rather than by
+  the move may keep ignored build output (`schemas/gschemas.compiled`,
+  `locale/`) under the former directory
+  `script/stream_deck/gnome-extension/`, which can be deleted.
+- Count badges sit beside the icon in a vertical stack capped at two
+  slots with an 11 px font instead of overlaying the icon corner.
+- Pencil collapses alive / awaiting / notify into a single
+  severity-ranked secondary badge so the urgent state still wins.
+- About link moved from the Controller dropdown into a dedicated
+  About page in prefs with project, docs, contact and license links.
+- Buttons toggle list, button-order and Theming icon overrides now
+  reference `media` (the live indicator id) instead of the dead
+  `film` toggle that did nothing post-migration.
 
 ### Added
 - Help and About pages in the prefs window covering badge colours,
@@ -34,18 +46,7 @@ migrations that are not auto-applied.
 - Full French translations for indicators, prefs window, modal
   dialogs and notify body messages (264 catalogue entries total).
 - Locale catalogues compile automatically as part of
-  `make streamdeck_tiler_install_extension`.
-
-### Changed
-- Count badges sit beside the icon in a vertical stack capped at two
-  slots with an 11 px font instead of overlaying the icon corner.
-- Pencil collapses alive / awaiting / notify into a single
-  severity-ranked secondary badge so the urgent state still wins.
-- About link moved from the Controller dropdown into a dedicated
-  About page in prefs with project, docs, contact and license links.
-- Buttons toggle list, button-order and Theming icon overrides now
-  reference `media` (the live indicator id) instead of the dead
-  `film` toggle that did nothing post-migration.
+  `make erplibre_home_install_extension`.
 
 ### Fixed
 - GNOME Shell 51: `shell-version` declares it, and `lib/shell-compat.js`
