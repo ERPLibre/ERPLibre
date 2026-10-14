@@ -26,6 +26,10 @@ import webbrowser
 PORT = 8042
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ERPLIBRE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+# Hands the deck over from the service to a game, then back.
+HANDOVER = os.path.join(
+    ERPLIBRE_DIR, "script", "install", "erplibre_home_handover.sh"
+)
 
 # Game metadata cache (populated at startup)
 _game_cache = []
@@ -103,10 +107,12 @@ def _game_bash_cmd(game_file):
     PATH. Every path is quoted for bash. The loop restarts the game when the
     user types "r" + Enter at the end-of-game prompt, which avoids
     re-picking it from the gallery; any other answer, or a closed stdin,
-    ends it.
+    ends it. The whole loop runs inside one erplibre_home_handover.sh: the
+    deck service stops before the first game and comes back once, when the
+    loop ends, not between two rounds.
     """
-    return (
-        f"cd {shlex.quote(ERPLIBRE_DIR)} && while true; do "
+    loop = (
+        f"while true; do "
         f"{shlex.quote(sys.executable)} {shlex.quote(game_file)}; "
         f'echo ""; '
         f'echo "Game ended. Press [r]+enter to restart, '
@@ -114,6 +120,10 @@ def _game_bash_cmd(game_file):
         f"read -r ans; "
         f'if [ "$ans" != "r" ] && [ "$ans" != "R" ]; then break; fi; '
         f"done"
+    )
+    return (
+        f"cd {shlex.quote(ERPLIBRE_DIR)} && "
+        f"{shlex.quote(HANDOVER)} bash -c {shlex.quote(loop)}"
     )
 
 

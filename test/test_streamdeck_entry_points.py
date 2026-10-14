@@ -18,9 +18,11 @@ Ce que ces tests gardent :
   make erplibre_home_streamdeck_install ;
 - requirements.txt porte ce que le code importe, et plus lz4, que le venv
   ne sert pas ;
-- la galerie lance un jeu sous son propre interpréteur, cité pour bash ;
-- le menu TODO lance un jeu sous le python du venv, et sans venv il le dit
-  dans la langue de l'utilisateur sans rien lancer ;
+- la galerie lance un jeu sous son propre interpréteur, cité pour bash, et
+  toute sa boucle de parties dans une seule passation du deck ;
+- le menu TODO lance un jeu sous le python du venv, à travers la passation
+  du deck, et sans venv il le dit dans la langue de l'utilisateur sans rien
+  lancer ;
 - launch_game.sh, que rien n'appelait, n'existe plus.
 """
 
@@ -248,19 +250,78 @@ def charger_galerie():
     return module
 
 
+# Un faux systemctl : chaque appel au journal, l'état de l'unité dans un
+# fichier. Il n'est jamais le vrai : les tests qui lancent la passation
+# posent aussi un HOME temporaire.
+FAUX_SYSTEMCTL = """#!/bin/sh
+echo "systemctl $*" >>"$JOURNAL"
+case "$2" in
+    is-active) [ "$(cat "$ETAT")" = active ] ;;
+    stop) echo inactive >"$ETAT" ;;
+    start) echo active >"$ETAT" ;;
+esac
+"""
+
+
+def environnement_isole(tmp, unite_active):
+    """Un environnement où la passation ne voit que des faux : HOME sous
+    `tmp`, un fichier d'unité, le faux systemctl en tête du PATH. Rend
+    (env, journal)."""
+    home = os.path.join(tmp, "home")
+    unite = os.path.join(
+        home, ".config/systemd/user/erplibre-home-streamdeck.service"
+    )
+    os.makedirs(os.path.dirname(unite))
+    with open(unite, "w", encoding="utf-8") as f:
+        f.write("[Unit]\n")
+    faux = os.path.join(tmp, "bin")
+    os.makedirs(faux)
+    with open(os.path.join(faux, "systemctl"), "w", encoding="utf-8") as f:
+        f.write(FAUX_SYSTEMCTL)
+    os.chmod(os.path.join(faux, "systemctl"), 0o755)
+    etat = os.path.join(tmp, "etat")
+    with open(etat, "w", encoding="utf-8") as f:
+        f.write("active\n" if unite_active else "inactive\n")
+    journal = os.path.join(tmp, "journal")
+    open(journal, "w", encoding="utf-8").close()
+    env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
+    env.update(
+        {
+            "HOME": home,
+            "PATH": faux + os.pathsep + env.get("PATH", ""),
+            "JOURNAL": journal,
+            "ETAT": etat,
+        }
+    )
+    return env, journal
+
+
 class TestGalleryLaunch(unittest.TestCase):
     def test_the_game_runs_under_the_server_interpreter(self):
         galerie = charger_galerie()
         jeu = "/srv/jeux de test/game_demo.py"
-        commande = galerie._game_bash_cmd(jeu)
-        self.assertIn(
-            f"{shlex.quote(sys.executable)} {shlex.quote(jeu)};", commande
+        mots = shlex.split(galerie._game_bash_cmd(jeu))
+        self.assertEqual(
+            mots[:6],
+            [
+                "cd",
+                galerie.ERPLIBRE_DIR,
+                "&&",
+                str(ROOT / "script/install/erplibre_home_handover.sh"),
+                "bash",
+                "-c",
+            ],
         )
-        self.assertNotIn("python3 ", commande)
+        boucle = mots[6]
+        self.assertIn(
+            f"{shlex.quote(sys.executable)} {shlex.quote(jeu)};", boucle
+        )
+        self.assertNotIn("python3 ", boucle)
 
     def test_the_loop_really_starts_that_interpreter(self):
         galerie = charger_galerie()
         with tempfile.TemporaryDirectory(prefix="jeu demo ") as tmp:
+            env, _journal = environnement_isole(tmp, unite_active=False)
             jeu = os.path.join(tmp, "game_demo.py")
             with open(jeu, "w", encoding="utf-8") as f:
                 f.write("import sys\nprint(sys.executable)\n")
@@ -271,9 +332,47 @@ class TestGalleryLaunch(unittest.TestCase):
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
+                env=env,
                 timeout=30,
             )
         self.assertEqual(res.stdout.splitlines()[0], sys.executable)
+
+    def test_two_rounds_run_inside_one_handover(self):
+        """« r » puis Entrée relance la partie sans rendre le deck : le
+        service s'arrête une fois avant la première, revient une fois après
+        la dernière."""
+        galerie = charger_galerie()
+        with tempfile.TemporaryDirectory(prefix="jeu demo ") as tmp:
+            env, journal = environnement_isole(tmp, unite_active=True)
+            jeu = os.path.join(tmp, "game_demo.py")
+            with open(jeu, "w", encoding="utf-8") as f:
+                f.write(
+                    "import os\n"
+                    "with open(os.environ['JOURNAL'], 'a') as j:\n"
+                    "    j.write('partie\\n')\n"
+                )
+            res = subprocess.run(
+                ["bash", "-c", galerie._game_bash_cmd(jeu)],
+                input="r\n\n",
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+            with open(journal, encoding="utf-8") as f:
+                appels = f.read().splitlines()
+        unite = "erplibre-home-streamdeck.service"
+        self.assertEqual(0, res.returncode, res.stderr)
+        self.assertEqual(
+            appels,
+            [
+                f"systemctl --user is-active --quiet {unite}",
+                f"systemctl --user stop {unite}",
+                "partie",
+                "partie",
+                f"systemctl --user start {unite}",
+            ],
+        )
 
 
 class TestLaunchGameScriptGone(unittest.TestCase):
@@ -331,22 +430,48 @@ class TestTodoGamesLauncher(unittest.TestCase):
             rendu = todo.prompt_execute_streamdeck_games()
         return todo, rendu, sortie.getvalue()
 
-    def test_the_command_names_the_streamdeck_venv(self):
+    def test_the_command_hands_the_deck_over_to_the_streamdeck_venv(self):
         todo = todo_mod.TODO.__new__(todo_mod.TODO)
-        commande = todo._streamdeck_game_command(self.JEU)
-        python = commande.split(" ", 1)[0]
-        self.assertTrue(
-            python.endswith(os.path.join(".venv.streamdeck", "bin", "python"))
+        mots = shlex.split(todo._streamdeck_game_command(self.JEU))
+        self.assertEqual(
+            mots,
+            [
+                str(ROOT / "script/install/erplibre_home_handover.sh"),
+                str(ROOT / ".venv.streamdeck/bin/python"),
+                self.JEU,
+            ],
         )
-        self.assertTrue(commande.endswith(" " + shlex.quote(self.JEU)))
 
     def test_the_menu_runs_the_chosen_game_with_that_command(self):
         todo, rendu, _sortie = self.menu(self.present)
         self.assertFalse(rendu)
         todo.execute.exec_command_live.assert_called_once_with(
-            f"{shlex.quote(self.present)} {shlex.quote(self.JEU)}",
+            f"{shlex.quote(todo_mod.ERPLIBRE_HOME_HANDOVER)}"
+            f" {shlex.quote(self.present)} {shlex.quote(self.JEU)}",
             source_erplibre=False,
         )
+
+    def test_the_command_really_runs_the_game(self):
+        """La commande, jouée par bash : la passation, sans unité, lance
+        le python du venv sur le jeu."""
+        with tempfile.TemporaryDirectory(prefix="jeu demo ") as tmp:
+            env, _journal = environnement_isole(tmp, unite_active=False)
+            python = os.path.join(tmp, "python")
+            with open(python, "w", encoding="utf-8") as f:
+                f.write('#!/bin/sh\necho "$1"\n')
+            os.chmod(python, 0o755)
+            todo = todo_mod.TODO.__new__(todo_mod.TODO)
+            with mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python):
+                commande = todo._streamdeck_game_command(self.JEU)
+            res = subprocess.run(
+                ["bash", "-c", commande],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+        self.assertEqual(0, res.returncode, res.stderr)
+        self.assertEqual(self.JEU, res.stdout.strip())
 
     def test_without_the_venv_it_says_so_and_launches_nothing(self):
         attendus = {

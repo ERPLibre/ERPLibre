@@ -62,6 +62,10 @@ VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python")
 VENV_STREAMDECK_PYTHON = os.path.join(
     new_path, ".venv.streamdeck", "bin", "python"
 )
+# Passe le deck du service Stream Deck au jeu, puis le lui rend.
+ERPLIBRE_HOME_HANDOVER = os.path.join(
+    new_path, "script", "install", "erplibre_home_handover.sh"
+)
 
 
 def _in_venv():
@@ -1893,8 +1897,13 @@ class TODO(
 
     def _streamdeck_game_command(self, path):
         """Rend la commande shell qui lance le jeu `path` sous le python de
-        .venv.streamdeck ; les deux chemins sont cités pour bash."""
-        return f"{shlex.quote(VENV_STREAMDECK_PYTHON)} {shlex.quote(path)}"
+        .venv.streamdeck, à travers erplibre_home_handover.sh : le service
+        du deck s'arrête pendant la partie et revient après. Les trois
+        chemins sont cités pour bash."""
+        return (
+            f"{shlex.quote(ERPLIBRE_HOME_HANDOVER)}"
+            f" {shlex.quote(VENV_STREAMDECK_PYTHON)} {shlex.quote(path)}"
+        )
 
     def _scan_streamdeck_games(self):
         """Scan game_*.py files and extract descriptions."""
