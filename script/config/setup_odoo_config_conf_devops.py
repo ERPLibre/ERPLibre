@@ -4,11 +4,8 @@
 
 import argparse
 import configparser
-import getpass
 import logging
 import os
-import sys
-from subprocess import check_output
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -39,9 +36,9 @@ SUGGESTION
 
 
 def main():
-    config = get_config()
+    get_config()
 
-    # check if it needs master password from config file
+    # Edit ./config.conf, else /etc/odoo/odoo.conf, else nothing
     has_config_file = True
     config_path = "./config.conf"
     if not os.path.isfile(config_path):
@@ -79,7 +76,7 @@ def main():
         # Support queue_job size channels
         queue_job_channels = ""
         if config_parser.has_section("queue_job"):
-            if config_parser.has_option("options", "queue_job"):
+            if config_parser.has_option("queue_job", "channels"):
                 queue_job_channels = config_parser.get("queue_job", "channels")
         else:
             config_parser.add_section("queue_job")
