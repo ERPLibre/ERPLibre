@@ -89,6 +89,10 @@ const SHOWN = {
         Result: 'exit-code', ExecMainCode: '1', ExecMainStatus: '1'},
     restartingKilled: {ActiveState: 'activating', SubState: 'auto-restart',
         Result: 'signal', ExecMainCode: '2', ExecMainStatus: '11'},
+    // systemd 254+: RestartSec elapsed, the restart job is queued.
+    restartQueued: {ActiveState: 'activating',
+        SubState: 'auto-restart-queued', Result: 'exit-code',
+        ExecMainCode: '1', ExecMainStatus: '1'},
     starting: {ActiveState: 'activating', SubState: 'start',
         Result: 'success', ExecMainCode: '0', ExecMainStatus: '0'},
 };
@@ -114,6 +118,9 @@ test('a program waiting to be restarted does not run', () => {
         {kind: 'failed', detail: 'auto-restart (exit-code, status 1)'});
     assert.deepEqual(deckStartOutcome(SHOWN.restartingKilled),
         {kind: 'failed', detail: 'auto-restart (signal)'});
+    assert.deepEqual(deckStartOutcome(SHOWN.restartQueued),
+        {kind: 'failed',
+            detail: 'auto-restart-queued (exit-code, status 1)'});
     assert.deepEqual(deckStartOutcome(SHOWN.starting), {kind: 'running'});
 });
 
