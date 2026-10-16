@@ -56,6 +56,16 @@ def _read_conf(name, fallback):
 VENV_ERPLIBRE = _read_conf("python-erplibre-venv", ".venv.erplibre")
 VENV_DIR = os.path.join(new_path, VENV_ERPLIBRE)
 VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python")
+# Interpréteur du venv dédié au Stream Deck. Les jeux tournent sous lui et
+# non par leur shebang : un shebang ne peut pas nommer un chemin relatif au
+# checkout, et le python du système n'a pas les modules du deck.
+VENV_STREAMDECK_PYTHON = os.path.join(
+    new_path, ".venv.streamdeck", "bin", "python"
+)
+# Passe le deck du service Stream Deck au jeu, puis le lui rend.
+ERPLIBRE_HOME_HANDOVER = os.path.join(
+    new_path, "script", "install", "erplibre_home_handover.sh"
+)
 
 
 def _in_venv():
@@ -133,6 +143,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.streamdeck_menu import StreamDeckMenuMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -204,6 +215,7 @@ class TODO(
     VpnMenuMixin,
     AssistantMenuMixin,
     ContainerMenuMixin,
+    StreamDeckMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -348,6 +360,9 @@ class TODO(
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
 [16] {t("Docker / Podman - Container engines")}
+
+── {t("Stream Deck")} ──
+[17] {t("Stream Deck - Games, service, status, install")}
 [0] {t("Back")}
 """
         while True:
@@ -417,6 +432,10 @@ class TODO(
                     return
             elif status == "16":
                 status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "17":
+                status = self.prompt_execute_streamdeck()
                 if status is not False:
                     return
             else:
@@ -715,6 +734,8 @@ class TODO(
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
+        "prompt_execute_streamdeck": "Stream Deck",
+        "prompt_execute_streamdeck_games": "Games",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_configuration": "Configuration",
@@ -1818,6 +1839,190 @@ class TODO(
                 input(f"  {t('Discard everything and start over? (y/N): ')}")
             ):
                 return False
+
+    def prompt_execute_streamdeck_games(self):
+        # Seul le niveau Stream Deck de l'installateur crée .venv.streamdeck :
+        # sans lui, aucun jeu ne démarre, et le menu dit quelle commande
+        # l'ajoute au lieu d'en lancer un.
+        if not os.access(VENV_STREAMDECK_PYTHON, os.X_OK):
+            print(
+                t(
+                    "ERPLibre Home Stream Deck is not installed:"
+                    " make erplibre_home_streamdeck_install"
+                )
+            )
+            return False
+        print(f"🎮 {t('Stream Deck games! Choose a game to play.')}")
+        games = self._scan_streamdeck_games()
+        if not games:
+            print(t("No Stream Deck games found."))
+            return False
+
+        choices = [
+            {"prompt_description": g["description"]}
+            for g in games
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            try:
+                idx = int(status) - 1
+                if 0 <= idx < len(games):
+                    game = games[idx]
+                    print(
+                        f"{t('Launching game:')} {game['name']}"
+                    )
+                    try:
+                        self.execute.exec_command_live(
+                            self._streamdeck_game_command(game["path"]),
+                            source_erplibre=False,
+                        )
+                    except KeyboardInterrupt:
+                        print()
+                else:
+                    print(t("Command not found !"))
+            except ValueError:
+                print(t("Command not found !"))
+
+    def _streamdeck_game_command(self, path):
+        """Rend la commande shell qui lance le jeu `path` sous le python de
+        .venv.streamdeck, à travers erplibre_home_handover.sh : le service
+        du deck s'arrête pendant la partie et revient après. Les trois
+        chemins sont cités pour bash."""
+        return (
+            f"{shlex.quote(ERPLIBRE_HOME_HANDOVER)}"
+            f" {shlex.quote(VENV_STREAMDECK_PYTHON)} {shlex.quote(path)}"
+        )
+
+    def _scan_streamdeck_games(self):
+        """Scan game_*.py files and extract descriptions."""
+        import glob
+
+        game_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "stream_deck",
+        )
+        pattern = os.path.join(game_dir, "game_*.py")
+        games = []
+
+        for filepath in sorted(glob.glob(pattern)):
+            name = (
+                os.path.basename(filepath)
+                .replace("game_", "")
+                .replace(".py", "")
+                .replace("_", " ")
+                .title()
+            )
+            # Try i18n key first, fallback to docstring
+            game_key = os.path.basename(filepath).replace(".py", "")
+            i18n_desc = t(game_key)
+            if i18n_desc != game_key:
+                description = i18n_desc
+            else:
+                description = ""
+                try:
+                    with open(filepath) as f:
+                        in_doc = False
+                        for line in f:
+                            if not in_doc and line.startswith('"""'):
+                                in_doc = True
+                                continue
+                            if in_doc:
+                                stripped = line.strip()
+                                if stripped.startswith('"""'):
+                                    break
+                                if stripped and not description:
+                                    description = stripped
+                                    break
+                except Exception:
+                    pass
+            if not description:
+                description = name
+            games.append(
+                {
+                    "name": name,
+                    "description": f"{name} — {description}",
+                    "path": filepath,
+                }
+            )
+        return games
+
+    # install_erplibre_home.sh sort en 2 pour un système hors périmètre
+    # (distribution, version de GNOME) et en écrit la raison sur une ligne
+    # « UNSUPPORTED: <raison> » ; tout autre code non nul est un échec.
+    _ERPLIBRE_HOME_INSTALLER = "./script/install/install_erplibre_home.sh"
+    _ERPLIBRE_HOME_UNSUPPORTED = 2
+
+    def _erplibre_home_install_local(self):
+        """Installer la base d'ERPLibre Home sur ce poste, sans Odoo :
+        l'extension GNOME, ses schémas et ses traductions, activée. Rend
+        False : le menu reste ouvert."""
+        return self._erplibre_home_run_installer(self._ERPLIBRE_HOME_INSTALLER)
+
+    def _erplibre_home_streamdeck_install_local(self):
+        """Installer le niveau Stream Deck d'ERPLibre Home : la base au
+        besoin, puis les paquets USB, la règle udev, .venv.streamdeck et le
+        service du deck. Les quatre questions du service deviennent des
+        options, et la commande s'affiche avant de partir. Rend False : le
+        menu reste ouvert."""
+        options = self._erplibre_home_streamdeck_options()
+        if options is None:
+            return False
+        commande = " ".join(
+            [self._ERPLIBRE_HOME_INSTALLER, "--stream-deck", *options]
+        )
+        print(f"{t('Will execute:')} {commande}")
+        return self._erplibre_home_run_installer(commande)
+
+    def _erplibre_home_run_installer(
+        self,
+        commande,
+        succes=(
+            "ERPLibre Home installed. Log out and back in to load the"
+            " extension."
+        ),
+        echec="ERPLibre Home installation failed, see the output above.",
+    ):
+        """Lance `commande`, l'installateur et ses options, et en résume
+        l'issue sur une ligne ; `succes` et `echec` sont les clés de
+        traduction de la ligne d'un code 0 et d'un code d'échec.
+
+        L'installateur tourne en direct et hors du venv ERPLibre : la base
+        n'a pas de venv, et le niveau Stream Deck crée le sien,
+        .venv.streamdeck. exec_command_live fusionne stdout et stderr et en
+        retient les lignes ; la ligne « UNSUPPORTED: » y est cherchée, pour
+        qu'un code 2 se résume par sa raison et non par un code d'erreur nu.
+        Rend False.
+        """
+        status, lignes = self.execute.exec_command_live(
+            commande,
+            source_erplibre=False,
+            return_status_and_output=True,
+        )
+        if status == self._ERPLIBRE_HOME_UNSUPPORTED:
+            prefixe = "UNSUPPORTED:"
+            raison = next(
+                (
+                    ligne.strip()[len(prefixe) :].strip()
+                    for ligne in lignes
+                    if ligne.strip().startswith(prefixe)
+                ),
+                "",
+            )
+            if not raison:
+                raison = t("no reason reported by the installer")
+            print(
+                f"⛔ {t('ERPLibre Home not supported on this system:')} {raison}"
+            )
+        elif status:
+            print("❌ " + t(echec))
+        else:
+            print("✅ " + t(succes))
+        return False
 
     # ---------------------------------------------------------------- #
     # Déploiement : catalogue (pur) -> collecte (CLI ou TUI) -> exécution
@@ -6262,11 +6467,19 @@ class TODO(
         )
 
         default_debug = False
+        default_skip_repos = False
+        default_skip_whisper = False
+        default_all_abis = False
+        default_livereload = False
         project_name = default_project_name
         project_url_name = default_project_url_name
         project_principal_subject = default_project_note_subject
         package_name = default_package_name
         do_debug = default_debug
+        do_skip_repos = default_skip_repos
+        do_skip_whisper = default_skip_whisper
+        do_all_abis = default_all_abis
+        do_livereload = default_livereload
         do_change_picture_menu = False
 
         do_personalize = input(
@@ -6299,6 +6512,36 @@ class TODO(
             )
             do_debug = self._is_yes(
                 input("Compilation with debug information, default No (Y) : ")
+            )
+            do_skip_repos = self._is_yes(
+                input(
+                    "Skip manifest repos bundling — saves ~15s build + ~180MB"
+                    " APK, the Code tool fail-softs on missing repos,"
+                    " default No (Y) : "
+                )
+            )
+            do_skip_whisper = self._is_yes(
+                input(
+                    "Skip whisper.cpp native build — disables transcription,"
+                    " saves ~5min first build + ~3.5MB APK,"
+                    " default No (Y) : "
+                )
+            )
+            do_all_abis = self._is_yes(
+                input(
+                    "Package all ABIs (arm64 + arm + x86 + x86_64) — needed"
+                    " for emulator, ~50% bigger native libs,"
+                    " default No (Y) : "
+                )
+            )
+            do_livereload = self._is_yes(
+                input(
+                    "Use Capacitor livereload — phone WebView fetches src/"
+                    " from a Vite dev server on this machine, hot-reload on"
+                    " every TS/SCSS save. Phone + machine must share WiFi."
+                    " Native (Java/Gradle/migrations) changes still need a"
+                    " regular rebuild. default No (Y) : "
+                )
             )
             do_change_picture_menu = self._is_yes(
                 input(
@@ -6353,20 +6596,33 @@ class TODO(
             cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/imgs/logo.png"
             self.execute.exec_command_live(cmd_client, source_erplibre=False)
 
-        # Pose AVANT la compilation, et hors de la personnalisation : c'est
-        # un choix de construction, pas d'habillage. Sans lui, la politique
-        # reseau d'Android refuse le HTTP en clair vers une adresse du
-        # reseau local — la passerelle en Wi-Fi ne joint alors rien, et
-        # chaque reconstruction ordinaire remplace l'APK qui le tolerait.
-        print(t("mobile_lan_cleartext_warning"))
-        do_lan_cleartext = self._is_yes(
-            input(t("mobile_lan_cleartext_ask"))
-        )
-        commande = "./mobile/compile_and_run.sh"
-        if do_lan_cleartext:
-            commande += " --lan-cleartext"
+        env_prefix = ""
+        if do_skip_repos:
+            env_prefix += "BUNDLE_SKIP_REPOS=1 "
+        if do_skip_whisper:
+            env_prefix += "BUNDLE_SKIP_WHISPER=1 "
+        if do_all_abis:
+            env_prefix += "ALL_ABIS=1 "
+        if do_livereload:
+            # Le WebView charge src/ depuis le serveur Vite : le script de
+            # livereload ne connait pas --lan-cleartext.
+            commande = "./mobile/compile_and_run_livereload.sh"
+        else:
+            # Pose AVANT la compilation, et hors de la personnalisation :
+            # c'est un choix de construction, pas d'habillage. Sans lui, la
+            # politique reseau d'Android refuse le HTTP en clair vers une
+            # adresse du reseau local — la passerelle en Wi-Fi ne joint alors
+            # rien, et chaque reconstruction ordinaire remplace l'APK qui le
+            # tolerait.
+            print(t("mobile_lan_cleartext_warning"))
+            do_lan_cleartext = self._is_yes(
+                input(t("mobile_lan_cleartext_ask"))
+            )
+            commande = "./mobile/compile_and_run.sh"
+            if do_lan_cleartext:
+                commande += " --lan-cleartext"
         status = self.execute.exec_command_live(
-            commande, source_erplibre=False
+            f"{env_prefix}{commande}", source_erplibre=False
         )
 
 

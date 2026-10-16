@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Sample env_var.sh for tests
+export ERPLIBRE_PORT_HTTP=8071
+export ERPLIBRE_PORT_LONGPOLLING=8072
+export EL_LANG="fr"

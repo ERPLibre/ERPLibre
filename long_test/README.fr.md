@@ -250,6 +250,91 @@ qu'un checkout local contient. À dire avant de lancer : un correctif encore
 sur une branche non fusionnée n'est *pas* dans la VM, et le test échouera sur
 ce que ce correctif répare.
 
+## install_erplibre_home.py — ERPLibre Home tourne-t-il sur chaque distribution ?
+
+Une VM par version de distribution, l'une après l'autre : Ubuntu 24.04, 25.10
+et 26.04, Debian 13, Fedora 41 à 44, AlmaLinux 10, Rocky Linux 10, openSUSE
+Leap 16.0, et les deux roulantes, Arch Linux et openSUSE Tumbleweed. Les
+systèmes que GNOME 45 à 51 n'atteint pas — Debian 12, les reconstructions
+EL9 — et ceux sans chemin de bureau GNOME — NixOS, Proxmox — sont listés
+`UNSUPPORTED` et n'ont pas de VM.
+
+Chaque VM reçoit le bureau GNOME par la commande distante du menu, puis le
+code de **ce checkout**, envoyé en `git bundle` de `HEAD` : la VM ne joint
+jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course,
+puisqu'il ne serait pas dans la VM. Puis `install_erplibre_home.sh` installe
+la base d'ERPLibre Home, GDM ouvre la session de l'utilisateur tout seul, et
+la VM redémarre.
+
+Le verdict est ce que GNOME Shell répond, pas un code de retour :
+`GetExtensionInfo` doit rendre l'état `1` et une `error` vide. Figurer dans
+`enabled-extensions` ne suffit pas — une extension qui lève dans `enable()` y
+reste listée, en ERREUR. Les `ListPaths` et `ListDevices` de l'extension
+doivent répondre aussi. ACTIVE ne prouve pas non plus la barre du haut :
+l'extension attrape l'exception du constructeur d'un indicateur et continue,
+alors le contrôle `extension-indicators` lit le journal utilisateur : il
+exige la ligne `[ERPLibreHome] enabled` qui clôt `enable()`, si bien qu'un
+journal non lu échoue aussi, et il échoue sur toute ligne
+`[ERPLibreHome] mount <id> failed`.
+
+C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
+
+1. **base** : les contrôles ci-dessus, puis ni la règle udev ni
+   `.venv.streamdeck` n'existent, et une seconde installation de la base ne
+   change rien ;
+2. **stream-deck** : `--stream-deck --deck-program=tiler --autostart`
+   écrit la règle udev, le venv importe ce qu'importent les programmes du
+   deck, l'unité du service du deck lance le point d'entrée de ce checkout
+   et est activée, `systemctl --user start` la saute faute de deck dans
+   une VM (inactive, `Result=exec-condition`, ou `success` selon la version
+   de systemd, `ExecMainStartTimestampMonotonic=0`, et la ligne « no Stream
+   Deck plugged in » du point d'entrée dans le journal de l'unité),
+   l'extension reste ACTIVE, et une seconde exécution
+   ne change rien, unité et réglages compris ;
+3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle,
+   le venv, l'unité, son lien `graphical-session.target.wants` et ses
+   réglages, `systemctl --user is-enabled` répond `not-found`, et
+   l'extension reste liée, activée et ACTIVE ;
+4. **uninstall** : `--uninstall` ne laisse ni lien, ni UUID dans
+   `enabled-extensions`, ni règle, ni venv, ni unité, ni réglages.
+   L'étape 3 a déjà retiré le service du deck : celle-ci vérifie seulement
+   qu'une désinstallation complète le laisse parti ; aucune étape ne lance
+   `--uninstall` sur un système qui porte encore l'unité ;
+5. **reinstall** : la base de nouveau, puis un redémarrage : l'extension
+   revient ACTIVE avec chaque indicateur monté, sans la règle ni le venv.
+
+Une commande d'étape qui échoue, ou le premier contrôle tombé, nomme le
+verdict (`FAILED(install-stream-deck)`, `FAILED(reinstall-no-udev)`…) :
+chaque nom est unique, il dit donc quelle étape s'est arrêtée.
+
+```
+./long_test/install_erplibre_home.py                 # toute la matrice
+./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
+./long_test/install_erplibre_home.py --extras        # --with-extras sur 24.04
+./long_test/install_erplibre_home.py --dry-run       # le plan, rien de créé
+./long_test/install_erplibre_home.py --garder        # garder les VM
+./long_test/install_erplibre_home.py --detruire      # défaire la dernière course
+```
+
+Une course réelle a besoin de `sudo` du début à la fin : chaque VM est
+créée par `sudo deploy_qemu.py`, et détruite par `sudo -n virsh`. Soit
+`virsh` et `deploy_qemu.py` sont permis sans mot de passe, soit une session
+sudo reste ouverte toute la course. Une seule VM vit à la fois : quand une
+VM survit à son défaire, même après `sudo -v`, la course s'arrête, marque
+les systèmes restants `FAILED(previous-vm-still-up)` et rend 1 ;
+`--detruire` la défait. `--garder` laisse chaque VM tourner, 4 Gio chacune :
+l'associer à `--only`.
+
+Le rapport porte une ligne par système, avec la version de GNOME attendue et
+celle mesurée : c'est d'après ces lignes que la matrice du script se
+corrige. Sur Arch et Tumbleweed, `UNSUPPORTED` veut dire que GNOME a dépassé
+51, et c'est le signal attendu pour mettre `metadata.json` à jour. Le
+journal de chaque système — sortie de l'installateur, journal utilisateur,
+`gnome-extensions info` — est un `.log` dans le sous-dossier de la course.
+Il prouve chaque contrôle : une ligne `── contrôle <nom> : réussi` ou
+`ÉCHEC` par commande et par contrôle, suivie de chaque commande lancée, et,
+sur un échec, de la réponse brute de cette commande.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un

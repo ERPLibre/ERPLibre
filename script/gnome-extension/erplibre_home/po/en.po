@@ -1,0 +1,930 @@
+#
+msgid ""
+msgstr ""
+"Language: en\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Open prefs"
+msgstr "Open prefs"
+
+msgid "Add path…"
+msgstr "Add path…"
+
+msgid "Add film…"
+msgstr "Add film…"
+
+msgid "Add media…"
+msgstr "Add media…"
+
+msgid "Edit media"
+msgstr "Edit media"
+
+msgid "Add media"
+msgstr "Add media"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Audio"
+msgstr "Audio"
+
+msgid "Kind:"
+msgstr "Kind:"
+
+msgid "Add remote instance…"
+msgstr "Add remote instance…"
+
+msgid "Refresh scan"
+msgstr "Refresh scan"
+
+msgid "Re-scan USB"
+msgstr "Re-scan USB"
+
+msgid "Re-scan local"
+msgstr "Re-scan local"
+
+# pencil indicator
+msgid "(no paths configured — use Add path…)"
+msgstr "(no paths configured — use Add path…)"
+
+msgid "+ Add path…"
+msgstr "+ Add path…"
+
+msgid "⚙ Open prefs"
+msgstr "⚙ Open prefs"
+
+msgid "— Other sessions ({n}) —"
+msgstr "— Other sessions ({n}) —"
+
+msgid "— Legend —"
+msgstr "— Legend —"
+
+msgid "Path / catalogue count"
+msgstr "Path / catalogue count"
+
+msgid "Active session (Claude working)"
+msgstr "Active session (Claude working)"
+
+msgid "Idle session (between turns)"
+msgstr "Idle session (between turns)"
+
+msgid "Computing (PreToolUse fired)"
+msgstr "Computing (PreToolUse fired)"
+
+msgid "Idle"
+msgstr "Idle"
+
+msgid "Computing"
+msgstr "Computing"
+
+msgid "Awaiting answer (Stop hook fired)"
+msgstr "Awaiting answer (Stop hook fired)"
+
+msgid "Needs attention (Notification hook)"
+msgstr "Needs attention (Notification hook)"
+
+msgid "Resume"
+msgstr "Resume"
+
+msgid "Fresh"
+msgstr "Fresh"
+
+msgid "Custom…"
+msgstr "Custom…"
+
+msgid "Set window…"
+msgstr "Set window…"
+
+msgid "Rename description…"
+msgstr "Rename description…"
+
+msgid "Rename description"
+msgstr "Rename description"
+
+msgid "Accept response (send Enter)"
+msgstr "Accept response (send Enter)"
+
+msgid "Working"
+msgstr "Working"
+
+msgid "Awaiting answer"
+msgstr "Awaiting answer"
+
+msgid "Needs attention"
+msgstr "Needs attention"
+
+msgid "(no description yet)"
+msgstr "(no description yet)"
+
+msgid "Add path"
+msgstr "Add path"
+
+msgid "Edit path"
+msgstr "Edit path"
+
+msgid "Stream Deck"
+msgstr "Stream Deck"
+
+msgid ""
+"Switch to the target terminal within 3 s — its window will be saved for this"
+" session."
+msgstr ""
+"Switch to the target terminal within 3 s — its window will be saved for this"
+" session."
+
+msgid "Window saved."
+msgstr "Window saved."
+
+msgid "No focused window — try again."
+msgstr "No focused window — try again."
+
+msgid "Could not send Enter — see script/stream_deck/INSTALL.md"
+msgstr "Could not send Enter — see script/stream_deck/INSTALL.md"
+
+msgid "Focus failed: "
+msgstr "Focus failed: "
+
+msgid "Action failed: "
+msgstr "Action failed: "
+
+msgid "No terminal found. Install gnome-terminal, kgx or xterm."
+msgstr "No terminal found. Install gnome-terminal, kgx or xterm."
+
+msgid "(no Stream Deck found)"
+msgstr "(no Stream Deck found)"
+
+msgid "🔄 Re-scan USB"
+msgstr "🔄 Re-scan USB"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Start deck program"
+msgstr "Start deck program"
+
+msgid "The deck program did not start:"
+msgstr "The deck program did not start:"
+
+msgid "the deck is held by"
+msgstr "the deck is held by"
+
+msgid "another program"
+msgstr "another program"
+
+msgid "no visual Stream Deck is plugged in"
+msgstr "no visual Stream Deck is plugged in"
+
+msgid "Restart deck"
+msgstr "Restart deck"
+
+msgid "Show details"
+msgstr "Show details"
+
+msgid "never"
+msgstr "never"
+
+msgid "Subnet: {cidr} · last scan {at}"
+msgstr "Subnet: {cidr} · last scan {at}"
+
+msgid "🔄 Scanning…"
+msgstr "🔄 Scanning…"
+
+msgid "🔄 Refresh scan"
+msgstr "🔄 Refresh scan"
+
+msgid "— Configured ({n}) —"
+msgstr "— Configured ({n}) —"
+
+msgid "(no Host stanzas)"
+msgstr "(no Host stanzas)"
+
+msgid "SSH terminal"
+msgstr "SSH terminal"
+
+msgid "Copy hostname"
+msgstr "Copy hostname"
+
+msgid "Open Files (sftp://)"
+msgstr "Open Files (sftp://)"
+
+msgid "(no fields)"
+msgstr "(no fields)"
+
+msgid "— Scanned ({n}) —"
+msgstr "— Scanned ({n}) —"
+
+msgid "Copy IP"
+msgstr "Copy IP"
+
+msgid "No network detected"
+msgstr "No network detected"
+
+msgid "(no media — use + Add media)"
+msgstr "(no media — use + Add media)"
+
+msgid "— Videos ({n}) —"
+msgstr "— Videos ({n}) —"
+
+msgid "— Audio ({n}) —"
+msgstr "— Audio ({n}) —"
+
+msgid "+ Add media…"
+msgstr "+ Add media…"
+
+msgid "▶ Browser"
+msgstr "▶ Browser"
+
+msgid "▶ mpv"
+msgstr "▶ mpv"
+
+msgid "▶ VLC"
+msgstr "▶ VLC"
+
+msgid "▶ Spotify"
+msgstr "▶ Spotify"
+
+msgid "✎ Edit"
+msgstr "✎ Edit"
+
+msgid "— Local —"
+msgstr "— Local —"
+
+msgid "(no local instances)"
+msgstr "(no local instances)"
+
+msgid "— Remote —"
+msgstr "— Remote —"
+
+msgid "(no remote instances — use Add)"
+msgstr "(no remote instances — use Add)"
+
+msgid "+ Add remote instance…"
+msgstr "+ Add remote instance…"
+
+msgid "🔄 Re-scan local"
+msgstr "🔄 Re-scan local"
+
+msgid "Open URL"
+msgstr "Open URL"
+
+msgid "Start server"
+msgstr "Start server"
+
+msgid "Auto-login ({method})"
+msgstr "Auto-login ({method})"
+
+msgid "Copy username"
+msgstr "Copy username"
+
+msgid "Copy password"
+msgstr "Copy password"
+
+msgid "Open in KeePassXC"
+msgstr "Open in KeePassXC"
+
+msgid "Edit instance"
+msgstr "Edit instance"
+
+msgid "Start gallery server…"
+msgstr "Start gallery server…"
+
+msgid "Loading…"
+msgstr "Loading…"
+
+msgid "Games"
+msgstr "Games"
+
+msgid "● Running on {url}"
+msgstr "● Running on {url}"
+
+msgid "Gallery server (running) {url}"
+msgstr "Gallery server (running) {url}"
+
+msgid "◐ Starting on {url}"
+msgstr "◐ Starting on {url}"
+
+msgid "Gallery server (starting)…"
+msgstr "Gallery server (starting)…"
+
+msgid "… Probing"
+msgstr "… Probing"
+
+msgid "○ Offline"
+msgstr "○ Offline"
+
+msgid "Open in browser"
+msgstr "Open in browser"
+
+msgid "(no paths configured — add one in pencil prefs)"
+msgstr "(no paths configured — add one in pencil prefs)"
+
+msgid "port busy"
+msgstr "port busy"
+
+msgid "Gallery offline (start gallery_server.py)"
+msgstr "Gallery offline (start gallery_server.py)"
+
+msgid "No ERPLibre tools"
+msgstr "No ERPLibre tools"
+
+msgid "No games found"
+msgstr "No games found"
+
+msgid "Could not launch {id}: gallery offline?"
+msgstr "Could not launch {id}: gallery offline?"
+
+msgid "Active sessions"
+msgstr "Active sessions"
+
+msgid "Buttons"
+msgstr "Buttons"
+
+msgid "Indicators"
+msgstr "Indicators"
+
+msgid "Toggle each panel button on or off."
+msgstr "Toggle each panel button on or off."
+
+msgid "Show the {label} indicator in the top bar"
+msgstr "Show the {label} indicator in the top bar"
+
+msgid "Controller"
+msgstr "Controller"
+
+msgid "Pencil"
+msgstr "Pencil"
+
+msgid "Film"
+msgstr "Film"
+
+msgid "ERPLibre"
+msgstr "ERPLibre"
+
+msgid "Network"
+msgstr "Network"
+
+msgid "Device"
+msgstr "Device"
+
+msgid "Order in top bar"
+msgstr "Order in top bar"
+
+msgid "Drag rows to change the left-to-right order."
+msgstr "Drag rows to change the left-to-right order."
+
+msgid "About"
+msgstr "About"
+
+msgid ""
+"Community fork of Odoo Community Edition under AGPL-3.0+. Supports Odoo 12 "
+"through 18 (default 18.0) and ships the Stream Deck tooling shown in this "
+"extension."
+msgstr ""
+"Community fork of Odoo Community Edition under AGPL-3.0+. Supports Odoo 12 "
+"through 18 (default 18.0) and ships the Stream Deck tooling shown in this "
+"extension."
+
+msgid "Project page"
+msgstr "Project page"
+
+msgid "Documentation"
+msgstr "Documentation"
+
+msgid "Issue tracker"
+msgstr "Issue tracker"
+
+msgid "TechnoLibre"
+msgstr "TechnoLibre"
+
+msgid ""
+"Quebec-based open-source company maintaining ERPLibre and the Stream Deck "
+"integration. Sponsors community development and offers commercial support."
+msgstr ""
+"Quebec-based open-source company maintaining ERPLibre and the Stream Deck "
+"integration. Sponsors community development and offers commercial support."
+
+msgid "Website"
+msgstr "Website"
+
+msgid "Contact"
+msgstr "Contact"
+
+msgid "Stream Deck integration"
+msgstr "Stream Deck integration"
+
+msgid ""
+"GNOME shell extension + Python deck driver under script/stream_deck/. Hooks "
+"Claude sessions, mpv, VLC, gallery server and Mutter window tiling onto the "
+"Elgato hardware."
+msgstr ""
+"GNOME shell extension + Python deck driver under script/stream_deck/. Hooks "
+"Claude sessions, mpv, VLC, gallery server and Mutter window tiling onto the "
+"Elgato hardware."
+
+msgid "Source folder"
+msgstr "Source folder"
+
+msgid "License"
+msgstr "License"
+
+msgid "Open"
+msgstr "Open"
+
+msgid "Help"
+msgstr "Help"
+
+msgid "Badge colours"
+msgstr "Badge colours"
+
+msgid "Counts shown beside each top-bar indicator."
+msgstr "Counts shown beside each top-bar indicator."
+
+msgid "● Blue — catalogue count"
+msgstr "● Blue — catalogue count"
+
+msgid "Paths, decks, instances or media stored in the indicator."
+msgstr "Paths, decks, instances or media stored in the indicator."
+
+msgid "● Green — active session"
+msgstr "● Green — active session"
+
+msgid ""
+"Alive Claude session: SessionStart or UserPromptSubmit fired and the session"
+" is between turns."
+msgstr ""
+"Alive Claude session: SessionStart or UserPromptSubmit fired and the session"
+" is between turns."
+
+msgid "● Cyan — computing"
+msgstr "● Cyan — computing"
+
+msgid "PreToolUse hook fired — Claude is running a tool."
+msgstr "PreToolUse hook fired — Claude is running a tool."
+
+msgid "● Yellow — awaiting answer"
+msgstr "● Yellow — awaiting answer"
+
+msgid ""
+"Stop hook fired — Claude finished its turn and waits for the next prompt."
+msgstr ""
+"Stop hook fired — Claude finished its turn and waits for the next prompt."
+
+msgid "● Red — needs attention"
+msgstr "● Red — needs attention"
+
+msgid ""
+"Notification hook fired — Claude needs explicit input (approval, missing "
+"tool, etc.)."
+msgstr ""
+"Notification hook fired — Claude needs explicit input (approval, missing "
+"tool, etc.)."
+
+msgid "Claude hooks"
+msgstr "Claude hooks"
+
+msgid ""
+"How the Claude session badges stay in sync with the agent. Install them once"
+" with make claude_install_hooks."
+msgstr ""
+"How the Claude session badges stay in sync with the agent. Install them once"
+" with make claude_install_hooks."
+
+msgid ""
+"Marks the session as active (green) and captures the focused window id for "
+"terminal focus + Set window."
+msgstr ""
+"Marks the session as active (green) and captures the focused window id for "
+"terminal focus + Set window."
+
+msgid "Marks the session as computing (cyan)."
+msgstr "Marks the session as computing (cyan)."
+
+msgid "Marks the session as awaiting answer (yellow)."
+msgstr "Marks the session as awaiting answer (yellow)."
+
+msgid ""
+"Marks the session as needs attention (red) and optionally fires a desktop "
+"notification."
+msgstr ""
+"Marks the session as needs attention (red) and optionally fires a desktop "
+"notification."
+
+msgid "Removes the state file when Claude exits cleanly."
+msgstr "Removes the state file when Claude exits cleanly."
+
+msgid "Ctrl+C interrupt"
+msgstr "Ctrl+C interrupt"
+
+msgid ""
+"Treated like Stop — the session goes back to awaiting answer instead of "
+"staying computing."
+msgstr ""
+"Treated like Stop — the session goes back to awaiting answer instead of "
+"staying computing."
+
+msgid "Indicator interactions"
+msgstr "Indicator interactions"
+
+msgid "Mouse shortcuts on the top-bar icons."
+msgstr "Mouse shortcuts on the top-bar icons."
+
+msgid "Hover"
+msgstr "Hover"
+
+msgid "Shows a tooltip with the per-kind breakdown."
+msgstr "Shows a tooltip with the per-kind breakdown."
+
+msgid "Click on a pencil count badge"
+msgstr "Click on a pencil count badge"
+
+msgid ""
+"Opens the dropdown filtered by that kind (active / awaiting / notify). A × "
+"Clear row at the top resets the filter."
+msgstr ""
+"Opens the dropdown filtered by that kind (active / awaiting / notify). A × "
+"Clear row at the top resets the filter."
+
+msgid "Click on a session row"
+msgstr "Click on a session row"
+
+msgid "Focuses the terminal window saved at SessionStart."
+msgstr "Focuses the terminal window saved at SessionStart."
+
+msgid ""
+"Re-saves the focused window for that session if the terminal was reopened or"
+" moved."
+msgstr ""
+"Re-saves the focused window for that session if the terminal was reopened or"
+" moved."
+
+msgid "Tiling on the deck"
+msgstr "Tiling on the deck"
+
+msgid "TILE button on the deck enters a corner-pick mode."
+msgstr "TILE button on the deck enters a corner-pick mode."
+
+msgid "Pick two corners"
+msgstr "Pick two corners"
+
+msgid ""
+"First press selects the top-left of the target tile, second press selects "
+"the bottom-right. The focused window is moved + resized via the Mutter D-Bus"
+" API."
+msgstr ""
+"First press selects the top-left of the target tile, second press selects "
+"the bottom-right. The focused window is moved + resized via the Mutter D-Bus"
+" API."
+
+msgid "Auto-cancel after 5 s"
+msgstr "Auto-cancel after 5 s"
+
+msgid ""
+"If the second corner is never picked, tiling mode returns to idle without "
+"touching the focused window."
+msgstr ""
+"If the second corner is never picked, tiling mode returns to idle without "
+"touching the focused window."
+
+msgid "Sync"
+msgstr "Sync"
+
+msgid "Git sync"
+msgstr "Git sync"
+
+msgid "Enable git sync"
+msgstr "Enable git sync"
+
+msgid "Sync repo path (must contain a git repo)"
+msgstr "Sync repo path (must contain a git repo)"
+
+msgid "Last write wins on conflict."
+msgstr "Last write wins on conflict."
+
+msgid "Manual merges may be required."
+msgstr "Manual merges may be required."
+
+msgid "Advanced"
+msgstr "Advanced"
+
+msgid "Backup & restore"
+msgstr "Backup & restore"
+
+msgid "Export settings…"
+msgstr "Export settings…"
+
+msgid "Import settings…"
+msgstr "Import settings…"
+
+msgid "Reset to defaults"
+msgstr "Reset to defaults"
+
+msgid "Export"
+msgstr "Export"
+
+msgid "Import"
+msgstr "Import"
+
+msgid "Reset"
+msgstr "Reset"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Export settings"
+msgstr "Export settings"
+
+msgid "Import settings"
+msgstr "Import settings"
+
+msgid "Theming"
+msgstr "Theming"
+
+msgid "Badges"
+msgstr "Badges"
+
+msgid "Count badges shown beside each top-bar indicator icon."
+msgstr "Count badges shown beside each top-bar indicator icon."
+
+msgid "Show count badges"
+msgstr "Show count badges"
+
+msgid "Display the number of items beside each indicator icon."
+msgstr "Display the number of items beside each indicator icon."
+
+msgid "Stack direction"
+msgstr "Stack direction"
+
+msgid ""
+"Vertical: stack beside icon, up to 3, centered when alone.\n"
+"Horizontal: single row beside icon."
+msgstr ""
+"Vertical: stack beside icon, up to 3, centered when alone.\n"
+"Horizontal: single row beside icon."
+
+msgid "Vertical"
+msgstr "Vertical"
+
+msgid "Horizontal"
+msgstr "Horizontal"
+
+msgid "Icon overrides"
+msgstr "Icon overrides"
+
+msgid "Options"
+msgstr "Options"
+
+msgid "Auto-refresh (seconds, 0 = off)"
+msgstr "Auto-refresh (seconds, 0 = off)"
+
+msgid "SSH user (empty = $USER)"
+msgstr "SSH user (empty = $USER)"
+
+msgid "Read ~/.ssh/config"
+msgstr "Read ~/.ssh/config"
+
+msgid "Use nmap if available"
+msgstr "Use nmap if available"
+
+msgid "CIDR ranges"
+msgstr "CIDR ranges"
+
+msgid "Empty list = auto-detect. Edit via dconf-editor."
+msgstr "Empty list = auto-detect. Edit via dconf-editor."
+
+msgid "Local detection"
+msgstr "Local detection"
+
+msgid "Auto-detect local instances"
+msgstr "Auto-detect local instances"
+
+msgid "Local search pattern"
+msgstr "Local search pattern"
+
+msgid "Remote instances"
+msgstr "Remote instances"
+
+msgid "Edit via the Add instance dialog from the panel button."
+msgstr "Edit via the Add instance dialog from the panel button."
+
+msgid "Films"
+msgstr "Films"
+
+msgid "Edit via the Add film dialog from the panel button."
+msgstr "Edit via the Add film dialog from the panel button."
+
+msgid "Import from Firefox"
+msgstr "Import from Firefox"
+
+msgid ""
+"Scan every running Firefox profile's open tabs and add YouTube URLs as new "
+"film entries (requires python3-lz4)."
+msgstr ""
+"Scan every running Firefox profile's open tabs and add YouTube URLs as new "
+"film entries (requires python3-lz4)."
+
+msgid "Import YouTube tabs"
+msgstr "Import YouTube tabs"
+
+msgid "Click to scan now"
+msgstr "Click to scan now"
+
+msgid "Scanning…"
+msgstr "Scanning…"
+
+msgid "Spawn failed: {err}"
+msgstr "Spawn failed: {err}"
+
+msgid "Helper failed: {err}"
+msgstr "Helper failed: {err}"
+
+msgid "Helper output not JSON — see prefs Log"
+msgstr "Helper output not JSON — see prefs Log"
+
+msgid "Install python3-lz4: sudo apt install python3-lz4"
+msgstr "Install python3-lz4: sudo apt install python3-lz4"
+
+msgid "No YouTube tabs found in Firefox session."
+msgstr "No YouTube tabs found in Firefox session."
+
+msgid "Imported {n} films"
+msgstr "Imported {n} films"
+
+msgid "({n} duplicates skipped)"
+msgstr "({n} duplicates skipped)"
+
+msgid "Log"
+msgstr "Log"
+
+msgid "Recent activity"
+msgstr "Recent activity"
+
+msgid "Last 200 entries from $XDG_STATE_HOME/erplibre-home/log.jsonl"
+msgstr "Last 200 entries from $XDG_STATE_HOME/erplibre-home/log.jsonl"
+
+msgid "Activity log"
+msgstr "Activity log"
+
+msgid "Refresh"
+msgstr "Refresh"
+
+msgid "Clear"
+msgstr "Clear"
+
+msgid "(empty)"
+msgstr "(empty)"
+
+msgid "Failed to read log: {err}"
+msgstr "Failed to read log: {err}"
+
+msgid "Label (optional)"
+msgstr "Label (optional)"
+
+msgid "/path/to/project"
+msgstr "/path/to/project"
+
+msgid "Recent:"
+msgstr "Recent:"
+
+msgid "Select project path"
+msgstr "Select project path"
+
+msgid "Rename"
+msgstr "Rename"
+
+msgid "description"
+msgstr "description"
+
+msgid "Unlock {db}"
+msgstr "Unlock {db}"
+
+msgid "Master password"
+msgstr "Master password"
+
+msgid "Unlock"
+msgstr "Unlock"
+
+msgid "Add instance"
+msgstr "Add instance"
+
+msgid "Name"
+msgstr "Name"
+
+msgid "URL (https://…)"
+msgstr "URL (https://…)"
+
+msgid "Port (8069)"
+msgstr "Port (8069)"
+
+msgid "KeePassXC DB path"
+msgstr "KeePassXC DB path"
+
+msgid "KeePassXC key file (optional)"
+msgstr "KeePassXC key file (optional)"
+
+msgid "YubiKey slot (1, 2, or empty)"
+msgstr "YubiKey slot (1, 2, or empty)"
+
+msgid "YubiKey serial (optional)"
+msgstr "YubiKey serial (optional)"
+
+msgid "KeePassXC entry title"
+msgstr "KeePassXC entry title"
+
+msgid "auto_login_method: selenium | xdotool | none"
+msgstr "auto_login_method: selenium | xdotool | none"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Name (required)"
+msgstr "Name (required)"
+
+msgid "URL (required)"
+msgstr "URL (required)"
+
+msgid "Episode (e.g. S2E5)"
+msgstr "Episode (e.g. S2E5)"
+
+msgid "Position (hh:mm:ss or seconds)"
+msgstr "Position (hh:mm:ss or seconds)"
+
+msgid "Invalid position format"
+msgstr "Invalid position format"
+
+msgid "ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install"
+msgstr "ERPLibre Home Stream Deck is not installed: make erplibre_home_streamdeck_install"
+
+msgid "Scan failed: {err}"
+msgstr "Scan failed: {err}"
+
+msgid "mpv spawn failed: {err}"
+msgstr "mpv spawn failed: {err}"
+
+msgid "KeePassXC unlock failed"
+msgstr "KeePassXC unlock failed"
+
+msgid "{attr} copied"
+msgstr "{attr} copied"
+
+msgid ".venv.erplibre missing — falling back to xdotool"
+msgstr ".venv.erplibre missing — falling back to xdotool"
+
+msgid "Media"
+msgstr "Media"
+
+msgid "Media catalogue"
+msgstr "Media catalogue"
+
+msgid "Edit via the Add media dialog from the panel button."
+msgstr "Edit via the Add media dialog from the panel button."
+
+msgid "— Recents ({n}) —"
+msgstr "— Recents ({n}) —"
+
+msgid "Summary"
+msgstr "Summary"
+
+msgid "⏭ Next episode"
+msgstr "⏭ Next episode"
+
+msgid "Name (auto-filled if empty)"
+msgstr "Name (auto-filled if empty)"
+
+msgid "Auto-fill"
+msgstr "Auto-fill"
+
+msgid "Paste a URL first."
+msgstr "Paste a URL first."
+
+msgid "Working…"
+msgstr "Working…"
+
+msgid "name"
+msgstr "name"
+
+msgid "episode"
+msgstr "episode"
+
+msgid "✓ Filled {fields}."
+msgstr "✓ Filled {fields}."
+
+msgid "⚠ Already filled — clear the field first."
+msgstr "⚠ Already filled — clear the field first."
+
+msgid "⚠ Could not extract anything from this URL."
+msgstr "⚠ Could not extract anything from this URL."
+
+msgid "× Auto-fill failed: {err}"
+msgstr "× Auto-fill failed: {err}"
+
+msgid "TODO"
+msgstr "TODO"
+
+msgid "today"
+msgstr "today"
+
+msgid "yesterday"
+msgstr "yesterday"

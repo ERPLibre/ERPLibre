@@ -756,13 +756,17 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         )
         self.lances = []
 
-    def _virsh(self, dominfo=0):
+    def _virsh(self, dominfo=0, erreur="error: failed to get domain 'x'"):
         import types
 
         def faux(argv, **kw):
             self.lances.append(" ".join(argv[2:]))
             code = dominfo if "dominfo" in argv else 0
-            return types.SimpleNamespace(returncode=code, stdout="", stderr="")
+            return types.SimpleNamespace(
+                returncode=code,
+                stdout="",
+                stderr=erreur if code else "",
+            )
 
         self.dp.subprocess.run = faux
 
@@ -813,6 +817,21 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             self.assertTrue(
                 self.dp.detruire_etage1(None, "deep-pve-1", attendu="X")
             )
+
+    def test_an_unreachable_libvirt_is_not_an_absent_domain(self):
+        """sudo qui refuse ou libvirtd arrêté : l'état est inconnu, la
+        machine est comptée debout et rien n'est détruit."""
+        for erreur in (
+            "sudo: a password is required",
+            "error: failed to connect to the hypervisor",
+        ):
+            self.lances = []
+            self._virsh(dominfo=1, erreur=erreur)
+            with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                res = self.dp.detruire_etage1(None, "deep-pve-1", attendu="X")
+            self.assertFalse(res)
+            self.assertIn(erreur, sortie.getvalue())
+            self.assertTrue(all("dominfo" in c for c in self.lances))
 
     def test_the_name_comes_from_the_report_not_from_the_level(self):
         """Le déduire du numéro d'étage supposait que nom_etage ne changera
@@ -1748,6 +1767,224 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
             vus["drop"],
             ("deep-pve-1", self.dp.alias_etage(2, "deep-pve-1")),
         )
+
+
+class TestDetruireChaqueEtage1(unittest.TestCase):
+    """detruire défait CHAQUE machine de niveau 1 que le rapport nomme.
+
+    Un test long qui crée une VM par système en laisse plusieurs au rapport,
+    gardées par --garder ou laissées par un arrêt en route : chacune est une
+    racine, identifiée par son UUID, et une seule confirmation les couvre
+    toutes. Un rapport deep_* n'en porte qu'une, défaite seule et sous le nom
+    que le rapport lui donne.
+    """
+
+    ALPHA = {
+        "niveau": 1,
+        "nom": "essai-sd-alpha",
+        "uuid": "uuid-alpha",
+        "alias": "essai-sd-alpha",
+        "cree": True,
+    }
+    BETA = {
+        "niveau": 1,
+        "nom": "essai-sd-beta",
+        "uuid": "uuid-beta",
+        "alias": "essai-sd-beta",
+        "cree": True,
+    }
+    IMBRIQUE = {
+        "niveau": 2,
+        "identite": "uuid-imbrique",
+        "parent_alias": "essai-sd-alpha",
+        "nom": "essai-sd-2",
+    }
+
+    def setUp(self):
+        import builtins
+
+        # Tout bouchon est posé sur le MOTEUR et rendu par addCleanup : un
+        # bouchon qui fuit fausse les classes suivantes, qui inspectent la
+        # vraie fonction.
+        for nom in (
+            "autre_descente",
+            "dernier_rapport",
+            "detruire_etage1",
+            "retirer_alias",
+        ):
+            self.addCleanup(setattr, moteur, nom, getattr(moteur, nom))
+        self.addCleanup(setattr, builtins, "input", builtins.input)
+        self.addCleanup(
+            setattr, moteur.subprocess, "run", moteur.subprocess.run
+        )
+        # Le staticmethod lui-même, pas la fonction qu'il enveloppe.
+        self.addCleanup(
+            setattr,
+            moteur.Descente,
+            "uuid_libvirt",
+            moteur.Descente.__dict__["uuid_libvirt"],
+        )
+        moteur.autre_descente = lambda: []
+        moteur.retirer_alias = lambda *a, **k: None
+        self.questions = []
+        builtins.input = lambda prompt="": (
+            self.questions.append(prompt) or "OUI"
+        )
+        self.imbriques = []
+        self.famille = moteur.Famille(
+            "essai_multi",
+            "essai-sd",
+            lambda parent, identite, nom, journal: (
+                self.imbriques.append(nom) or True
+            ),
+        )
+
+    def _rapport(self, *etages):
+        moteur.dernier_rapport = lambda outil="", prefixe="": {
+            "fichier": "/essai.json",
+            "outil": "essai_multi",
+            "etages": list(etages),
+        }
+
+    def _espionner_etage1(self, debout=()):
+        """Remplace detruire_etage1 ; rend la liste (nom, attendu, cree)."""
+        appels = []
+
+        def espion(journal, nom, dry_run=False, attendu=None, cree=True):
+            appels.append((nom, attendu, cree))
+            return nom not in debout
+
+        moteur.detruire_etage1 = espion
+        return appels
+
+    def _lancer(self, dry_run=False):
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            code = moteur.detruire(self.famille, None, dry_run=dry_run)
+        return code, sortie.getvalue()
+
+    def test_every_level_one_entry_is_destroyed_by_its_uuid(self):
+        self._rapport(self.ALPHA, self.BETA)
+        appels = self._espionner_etage1()
+        code, texte = self._lancer()
+        self.assertEqual(
+            appels,
+            [
+                ("essai-sd-alpha", "uuid-alpha", True),
+                ("essai-sd-beta", "uuid-beta", True),
+            ],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("2 / 2 défait(s)", texte)
+        self.assertEqual(len(self.questions), 1)
+
+    def test_a_surviving_root_is_named_and_the_others_still_go(self):
+        self._rapport(self.ALPHA, self.BETA)
+        appels = self._espionner_etage1(debout=("essai-sd-alpha",))
+        code, texte = self._lancer()
+        # L'échec de la première n'arrête pas la seconde.
+        self.assertEqual(len(appels), 2)
+        self.assertEqual(code, 1)
+        self.assertIn("1 / 2 défait(s)", texte)
+        self.assertIn("l'étage 1 est DEBOUT", texte)
+        self.assertIn("essai-sd-alpha", texte.split("DEBOUT")[1])
+
+    def test_the_dry_run_lists_every_root_and_touches_nothing(self):
+        self._rapport(self.ALPHA, self.BETA)
+        appels = self._espionner_etage1()
+        code, texte = self._lancer(dry_run=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(appels, [])
+        self.assertEqual(self.questions, [])
+        self.assertIn("0 VM imbriquée(s) + 2 VM d'étage 1 :", texte)
+        self.assertIn("étage  1  essai-sd-alpha (libvirt)", texte)
+        self.assertIn("étage  1  essai-sd-beta (libvirt)", texte)
+
+    def test_virsh_undefines_each_root_after_checking_its_uuid(self):
+        """La vraie detruire_etage1, virsh bouchonné : chaque racine est
+        lue (dominfo, UUID) puis effacée sous SON nom."""
+        import types
+
+        lances = []
+
+        def faux(argv, **kw):
+            lances.append(list(argv))
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        moteur.subprocess.run = faux
+        moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: {
+                "essai-sd-alpha": "uuid-alpha",
+                "essai-sd-beta": "uuid-beta",
+            }.get(nom, "")
+        )
+        self._rapport(self.ALPHA, self.BETA)
+        code, texte = self._lancer()
+        effaces = [
+            argv[3] for argv in lances if argv[1:3] == ["virsh", "undefine"]
+        ]
+        self.assertEqual(effaces, ["essai-sd-alpha", "essai-sd-beta"])
+        self.assertEqual(code, 0)
+        self.assertIn("2 / 2 défait(s)", texte)
+
+    def test_a_failed_root_keeps_its_ssh_alias(self):
+        self._rapport(self.ALPHA, self.BETA)
+        self._espionner_etage1(debout=("essai-sd-alpha",))
+        retires = []
+        moteur.retirer_alias = lambda rapport, *a, **k: retires.append(
+            [e["alias"] for e in rapport["etages"]]
+        )
+        code, _texte = self._lancer()
+        self.assertEqual(code, 1)
+        self.assertEqual(retires, [["essai-sd-beta"]])
+
+    def test_a_root_already_gone_does_not_hide_a_live_one(self):
+        """Un domaine absent compte défait ; un libvirt muet pour l'autre
+        racine la laisse debout, exit 1."""
+        import types
+
+        def faux(argv, **kw):
+            if "dominfo" in argv:
+                if argv[-1] == "essai-sd-alpha":
+                    return types.SimpleNamespace(
+                        returncode=1,
+                        stdout="",
+                        stderr="error: failed to get domain 'x'",
+                    )
+                return types.SimpleNamespace(
+                    returncode=1, stdout="", stderr="sudo: a password"
+                )
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        moteur.subprocess.run = faux
+        self._rapport(self.ALPHA, self.BETA)
+        code, texte = self._lancer()
+        self.assertEqual(code, 1)
+        self.assertIn("1 / 2 défait(s)", texte)
+        self.assertIn("essai-sd-beta", texte.split("DEBOUT")[1])
+
+    def test_a_single_root_report_is_undone_alone(self):
+        """La forme d'un rapport deep_* : un étage imbriqué, une racine."""
+        self._rapport(self.IMBRIQUE, self.ALPHA)
+        appels = self._espionner_etage1()
+        code, texte = self._lancer()
+        self.assertEqual(appels, [("essai-sd-alpha", "uuid-alpha", True)])
+        self.assertEqual(self.imbriques, ["essai-sd-2"])
+        self.assertIn("1 VM imbriquée(s) + l'étage 1 :", texte)
+        self.assertIn("2 / 2 défait(s)", texte)
+        self.assertEqual(code, 0)
+
+    def test_without_a_level_one_entry_the_root_is_the_base_name(self):
+        self._rapport(self.IMBRIQUE)
+        appels = self._espionner_etage1()
+        code, _texte = self._lancer()
+        self.assertEqual(appels, [("essai-sd-1", None, True)])
+        self.assertEqual(code, 0)
+
+    def test_a_borrowed_root_is_passed_as_not_created(self):
+        self._rapport(dict(self.ALPHA, uuid=None, cree=False))
+        appels = self._espionner_etage1()
+        self._lancer()
+        self.assertEqual(appels, [("essai-sd-alpha", None, False)])
 
 
 class TestLeMenu(unittest.TestCase):

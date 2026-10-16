@@ -106,6 +106,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
         "Docker / Podman": "prompt_execute_container",
+        "Stream Deck": "prompt_execute_streamdeck",
     }
 
     def _entry_key(self, label):
@@ -442,6 +443,32 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
         "Diagnostics (report to share)": "_qemu_diagnostics",
         "Show the libvirt network state": "_qemu_network_status",
         "Recreate the VM subnet": "_qemu_network_recreate",
+    }
+
+
+class TestStreamDeckMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Stream Deck, dans script/todo/streamdeck_menu.py : jeux,
+    installations, service, état, diagnostic, réunis sous une entrée
+    d'Exécution."""
+
+    SOURCE = TODO_DIR / "streamdeck_menu.py"
+    ENTRY = "def prompt_execute_streamdeck(self):"
+    END = "def _streamdeck_probe(argv):"
+    MINIMUM = 9
+
+    EXPECTED = {
+        "Games": "prompt_execute_streamdeck_games",
+        "Status": "_streamdeck_status",
+        "Service": "_streamdeck_service",
+        "Deck program": "_streamdeck_program",
+        "Autostart": "_streamdeck_autostart",
+        "Diagnosis": "_streamdeck_diagnosis",
+        "Install ERPLibre Home (local)": "_erplibre_home_install_local",
+        "Install ERPLibre Home Stream Deck (local)": (
+            "_erplibre_home_streamdeck_install_local"
+        ),
+        "Uninstall": "_streamdeck_uninstall",
+        "Extension": "_streamdeck_extension",
     }
 
 

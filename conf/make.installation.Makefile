@@ -187,3 +187,12 @@ install_docker_debian:
 .PHONY: install_docker_ubuntu
 install_docker_ubuntu:
 	./script/install/install_ubuntu_docker.sh
+
+extension_i18n_compile:
+	@for lang in en fr; do \
+		mkdir -p script/gnome-extension/erplibre_home/locale/$$lang/LC_MESSAGES; \
+		msgfmt -o script/gnome-extension/erplibre_home/locale/$$lang/LC_MESSAGES/erplibre-home.mo \
+		       script/gnome-extension/erplibre_home/po/$$lang.po; \
+	done
+
+.PHONY: extension_i18n_compile

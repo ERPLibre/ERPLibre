@@ -277,6 +277,53 @@ func TestDeuxDistributionsNePartagentPasLaCle(t *testing.T) {
 	}
 }
 
+// Fedora garde dans l'arbre d'une version les paquets qu'elle n'a pas
+// reconstruits : le NOM porte encore l'étiquette de la version précédente
+// (« .fc41 » dans l'arbre de la 42), mais le fichier est re-signé avec la clé
+// de la nouvelle version, donc d'autres octets. Une clé qui efface le numéro
+// de version sert à la 42 la copie de la 41, et dnf la rejette sur sa somme
+// auprès de chaque miroir de la liste.
+func TestDeuxVersionsDeFedoraNePartagentPasLaCle(t *testing.T) {
+	for _, cas := range [][2]string{
+		{
+			"https://a.example/fedora/linux/releases/41/Everything/x86_64/os/Packages/o/openexr-libs-3.2.4-3.fc41.x86_64.rpm",
+			"https://a.example/fedora/linux/releases/42/Everything/x86_64/os/Packages/o/openexr-libs-3.2.4-3.fc41.x86_64.rpm",
+		},
+		{
+			"https://a.example/fedora/linux/releases/43/Everything/x86_64/os/Packages/x/xdg-user-dirs-0.18-11.fc43.x86_64.rpm",
+			"https://b.example/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/x/xdg-user-dirs-0.18-11.fc43.x86_64.rpm",
+		},
+	} {
+		a, _ := url.Parse(cas[0])
+		b, _ := url.Parse(cas[1])
+		if CleDe("GET", a) == CleDe("GET", b) {
+			t.Errorf("deux versions partagent une clé : l'une recevrait la"+
+				" copie signée pour l'autre\n  %s\n  %s", cas[0], cas[1])
+		}
+	}
+}
+
+// La borne des paquets RPM garde la version SANS perdre la réunion des
+// miroirs : l'arbre « releases » de Fedora, le plus profond, préfixé de deux
+// façons, ne fait toujours qu'une clé.
+func TestLaBorneRPMReunitEncoreLesMiroirs(t *testing.T) {
+	a, _ := url.Parse("https://a.example/pub/archive/fedora/linux/releases/42/Everything/x86_64/os/Packages/o/openexr-libs-3.2.4-3.fc41.x86_64.rpm")
+	b, _ := url.Parse("https://b.example/fedora-buffet/archive/fedora/linux/releases/42/Everything/x86_64/os/Packages/o/openexr-libs-3.2.4-3.fc41.x86_64.rpm")
+	if CleDe("GET", a) != CleDe("GET", b) {
+		t.Error("deux miroirs du même paquet RPM donnent deux clés")
+	}
+}
+
+// La borne RPM ne déborde pas sur la famille deb : un préfixe de miroir
+// devant « debian/pool/… » ne doit toujours pas faire deux clés.
+func TestLaBorneRPMNeVautQuePourLesRPM(t *testing.T) {
+	a, _ := url.Parse("https://a.example/debian/pool/main/p/poppler-data/poppler-data_0.4.12-1_all.deb")
+	b, _ := url.Parse("https://b.example/mirror/debian/pool/main/p/poppler-data/poppler-data_0.4.12-1_all.deb")
+	if CleDe("GET", a) != CleDe("GET", b) {
+		t.Error("la borne RPM a débordé sur la famille deb")
+	}
+}
+
 // Un miroir d'Arch préfixe « archlinux/ », l'autre non : quatre et cinq
 // segments, trop courts pour la borne commune, qui les garde entiers et en
 // fait deux clés.

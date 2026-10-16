@@ -180,6 +180,16 @@ prévisualiser un dry-run, télécharger une image, lister les VM et afficher
 l'IP d'une VM — le menu demande les paramètres et construit la commande pour
 vous.
 
+Une VM graphique reçoit son bureau et un accès distant : xrdp (RDP, port 3389)
+là où la distribution le livre, TigerVNC sur Arch. Sur AlmaLinux et Rocky
+Linux, xrdp et le groupe Cinnamon viennent d'EPEL, que l'étape du bureau active
+avec CRB avant toute installation ; quand xrdp ne s'y installe toujours pas, le
+bureau reste et une ligne dit que le RDP manque. Sur Fedora, où xrdp est dans
+les dépôts de base, l'échec de son installation fait échouer l'étape, pour
+qu'on la relance. L'étape du bureau échoue aussi — code non nul, une ligne qui
+nomme le binaire absent, `gnome-shell` ou `cinnamon` — quand le bureau
+lui-même ne s'est pas installé.
+
 Quand une VM est graphique, le menu propose en plus une **liste à cocher
 d'outils de développement** : PyCharm Community (posé depuis l'archive
 officielle JetBrains dans `/opt/pycharm`, son lanceur ouvrant le dépôt
@@ -354,7 +364,7 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 
 Lancez `./script/qemu/deploy_qemu.py --help` pour la liste complète.
 
-## Guide de connexion (`/etc/motd`)
+## Guide de connexion (`/etc/motd` ou `profile.d`)
 
 Chaque VM accueille celui qui s'y connecte en SSH avec les commandes de **sa**
 distribution — `apt`, `dnf`, `zypper` ou `pacman` — et celles d'ERPLibre :
@@ -366,6 +376,18 @@ encore là si elle échoue — le moment où l'on se connecte justement à la ma
 `--dry-run` affiche le guide généré avec le reste du user-data. Il ne
 s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
 restent nets.
+
+Une VM à bureau (`--desktop`), hors NixOS, ne reçoit PAS `/etc/motd` : `pam_motd` figure
+dans la pile PAM générique de connexion, donc GDM afficherait le guide comme
+message PAM et retarderait l'ouverture de la session graphique en proportion
+de sa longueur (des dizaines de secondes). Le même texte est écrit dans
+`/etc/erplibre-login-guide`, et `/etc/profile.d/erplibre-login-guide.sh`
+l'affiche dans les shells de connexion interactifs d'une session SSH (un
+shell de connexion imbriqué qui garde `SSH_CONNECTION`, comme `bash -l`,
+l'affiche de nouveau) ; terminaux du bureau, `ssh hôte 'commande'`, `scp` et `sftp`
+restent silencieux. Une VM serveur garde `/etc/motd`, NixOS aussi, bureau
+compris : son sshd lit `/etc/motd`, il n'a pas de `pam_motd` et son
+`/etc/profile` ne source pas `profile.d`.
 
 L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
 un commit fait dans la VM porte alors votre nom plutôt que

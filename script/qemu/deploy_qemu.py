@@ -2231,17 +2231,17 @@ def user_shell(distro: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Guide de connexion (/etc/motd) et identité git de la VM
+# Guide de connexion (/etc/motd ou profile.d) et identité git de la VM
 # --------------------------------------------------------------------------- #
 # Le catalogue couvre quatre gestionnaires de paquets, et l'opérateur change de
 # distribution d'un déploiement à l'autre. Le guide met SOUS LES YEUX, à la
 # connexion, les commandes de la machine où l'on vient d'entrer : apt là où
 # c'est apt, zypper là où c'est zypper.
 #
-# Le mécanisme est /etc/motd, et il est le même partout. Vérifié dans les images
-# cloud elles-mêmes, montées en lecture seule : sshd y est en « PrintMotd no »
-# et c'est pam_motd qui affiche le fichier. Trois conséquences tenues pour
-# acquises ici :
+# Le mécanisme est /etc/motd, sauf sur une VM à bureau (plus bas). Vérifié dans
+# les images cloud elles-mêmes, montées en lecture seule : sshd y est en
+# « PrintMotd no » et c'est pam_motd qui affiche le fichier. Trois conséquences
+# tenues pour acquises ici :
 #   - il suffit d'ÉCRIRE /etc/motd. Ajouter « PrintMotd yes » afficherait le
 #     guide DEUX FOIS — sshd lit /etc/motd en dur, PAM le lit aussi ;
 #   - « ssh hôte 'commande' » ne l'affiche PAS (openssh coupe les deux chemins
@@ -2250,10 +2250,36 @@ def user_shell(distro: str) -> str:
 #   - openSUSE ajoute son « Have a lot of fun... » APRÈS le guide : il vient de
 #     /usr/lib/motd.d/welcome, que pam_motd lit après le fichier. On le laisse.
 #
+# Une VM à BUREAU n'a pas /etc/motd : pam_motd figure dans la pile PAM
+# générique de connexion, donc GDM reçoit le guide comme message PAM et le
+# laisse à l'écran un temps proportionnel à sa longueur (de l'ordre de 50 ms
+# par caractère) AVANT d'ouvrir la session. Le guide est alors écrit dans
+# LOGIN_GUIDE_PATH et un fragment profile.d (LOGIN_GUIDE_SNIPPET) l'affiche
+# aux seuls shells de connexion interactifs d'une session SSH. Rien n'y est
+# affiché pour un terminal du bureau, une commande distante, scp ou sftp. Une
+# VM serveur n'a pas de gestionnaire graphique et garde /etc/motd. NixOS aussi,
+# bureau compris : son sshd lit /etc/motd (PrintMotd), il n'a pas de pam_motd,
+# donc GDM n'est pas retardé, et son /etc/profile ne source pas profile.d.
+#
 # Ubuntu n'a PAS de /etc/motd (son postinst base-files ne le crée pas, à la
 # différence de Debian) : le fichier est donc créé, pas remplacé. Sur Debian il
 # écrase les cinq lignes de base-files, ce qui ne fâche pas dpkg — /etc/motd n'y
 # est ni un conffile ni même un fichier du paquet.
+
+LOGIN_GUIDE_PATH = "/etc/erplibre-login-guide"
+LOGIN_GUIDE_SNIPPET_PATH = "/etc/profile.d/erplibre-login-guide.sh"
+# POSIX sh, sourcé par les shells de connexion : pas de « exit » (il fermerait
+# la session), silencieux hors shell interactif ou hors SSH, et de statut nul
+# quand il n'affiche rien : un « set -e » du profil ne doit pas s'y arrêter.
+LOGIN_GUIDE_SNIPPET = (
+    "case $- in\n"
+    "    *i*)\n"
+    '        if [ -n "${SSH_CONNECTION:-}" ] && [ -r %s ]; then\n'
+    "            cat %s\n"
+    "        fi\n"
+    "        ;;\n"
+    "esac\n"
+) % (LOGIN_GUIDE_PATH, LOGIN_GUIDE_PATH)
 
 # Étiquette lisible d'une distribution. openSUSE livre DEUX produits sous un
 # seul nom de distro (Leap, numéroté ; Tumbleweed, rolling) : la version tranche.
@@ -3801,36 +3827,39 @@ def attente_cloud_final(bornes: int = 150) -> str:
 def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     """Fichiers d'accueil de la VM : le guide de connexion, l'identité git.
 
+    Le guide va dans /etc/motd sur un serveur ; sur une VM à bureau, dans
+    /etc/erplibre-login-guide que profile.d n'affiche qu'en SSH interactif.
     Une seule source pour les deux voies de déploiement — cloud-init l'écrit
     par write_files, l'installateur Debian par son late_command.
     """
     home = invoking_home()
     editor = "" if args.no_git_identity else vm_editor(home)[1]
-    files = [
-        (
-            "/etc/motd",
-            "0644",
-            build_motd(
-                args.distro,
-                args.version,
-                args.arch,
-                args.lang,
-                args.erplibre_dir,
-                args.erplibre_make,
-                editor,
-                bool(args.desktop),
-                # « getattr » et non « args.vm_tools » : la voie Proxmox
-                # bâtit ses arguments à la main, et un champ qui lui manque
-                # ferait avaler le guide par son « except Exception ».
-                tuple(
-                    c.strip()
-                    for c in getattr(args, "vm_tools", "").split(",")
-                    if c.strip()
-                ),
-            ),
-            "",
-        )
-    ]
+    guide = build_motd(
+        args.distro,
+        args.version,
+        args.arch,
+        args.lang,
+        args.erplibre_dir,
+        args.erplibre_make,
+        editor,
+        bool(args.desktop),
+        # « getattr » et non « args.vm_tools » : la voie Proxmox
+        # bâtit ses arguments à la main, et un champ qui lui manque
+        # ferait avaler le guide par son « except Exception ».
+        tuple(
+            c.strip()
+            for c in getattr(args, "vm_tools", "").split(",")
+            if c.strip()
+        ),
+    )
+    if args.desktop and args.distro != "nixos":
+        # Voir « Guide de connexion » : /etc/motd retarderait GDM.
+        files = [
+            (LOGIN_GUIDE_PATH, "0644", guide, ""),
+            (LOGIN_GUIDE_SNIPPET_PATH, "0644", LOGIN_GUIDE_SNIPPET, ""),
+        ]
+    else:
+        files = [("/etc/motd", "0644", guide, "")]
     if args.no_git_identity:
         return files
     # Ce que le formulaire a saisi PRIME sur l'identité de l'hôte, champ par

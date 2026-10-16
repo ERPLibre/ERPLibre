@@ -1,0 +1,10 @@
+{
+  "uuid": "erplibre-home@technolibre.ca",
+  "name": "ERPLibre Home",
+  "description": "ERPLibre for personal environment",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+  "version": 1,
+  "url": "https://github.com/ERPLibre/erplibre",
+  "gettext-domain": "erplibre-home",
+  "settings-schema": "org.gnome.shell.extensions.erplibre-home"
+}

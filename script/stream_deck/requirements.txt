@@ -1,0 +1,8 @@
+streamdeck
+pyudev
+Pillow>=9.0.0
+opencv-python
+# HTTP client of the controller (erplibre_controller.py).
+requests
+# Key events of keyboard_talk.py.
+keyboard

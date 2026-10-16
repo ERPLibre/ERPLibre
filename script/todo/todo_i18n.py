@@ -100,6 +100,529 @@ TRANSLATIONS = {
         "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "🪙 RTK - CLI proxy to reduce LLM token consumption",
     },
+    # Stream Deck Games section
+    "Stream Deck": {
+        "fr": "🎛️ Stream Deck",
+        "en": "🎛️ Stream Deck",
+    },
+    "Games - Stream Deck games": {
+        "fr": "🎮 Jeux - Jeux sur Stream Deck",
+        "en": "🎮 Games - Stream Deck games",
+    },
+    "Stream Deck games! Choose a game to play.": {
+        "fr": "Jeux Stream Deck! Choisis un jeu.",
+        "en": "Stream Deck games! Choose a game to play.",
+    },
+    "No Stream Deck games found.": {
+        "fr": "Aucun jeu Stream Deck trouvé.",
+        "en": "No Stream Deck games found.",
+    },
+    "ERPLibre Home Stream Deck is not installed:"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "ERPLibre Home Stream Deck n'est pas installé :"
+        " make erplibre_home_streamdeck_install",
+        "en": "ERPLibre Home Stream Deck is not installed:"
+        " make erplibre_home_streamdeck_install",
+    },
+    "Launching game:": {
+        "fr": "Lancement du jeu :",
+        "en": "Launching game:",
+    },
+    "Install ERPLibre Home (local)": {
+        "fr": "📦 Installer ERPLibre Home (local)",
+        "en": "📦 Install ERPLibre Home (local)",
+    },
+    "Install ERPLibre Home Stream Deck (local)": {
+        "fr": "📦 Installer ERPLibre Home Stream Deck (local)",
+        "en": "📦 Install ERPLibre Home Stream Deck (local)",
+    },
+    "ERPLibre Home not supported on this system:": {
+        "fr": "ERPLibre Home non pris en charge sur ce système :",
+        "en": "ERPLibre Home not supported on this system:",
+    },
+    "no reason reported by the installer": {
+        "fr": "aucune raison donnée par l'installateur",
+        "en": "no reason reported by the installer",
+    },
+    "ERPLibre Home installation failed, see the output above.": {
+        "fr": (
+            "L'installation d'ERPLibre Home a échoué, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "ERPLibre Home installation failed, see the output above.",
+    },
+    "ERPLibre Home installed. Log out and back in to load the extension.": {
+        "fr": (
+            "ERPLibre Home installé. Fermer la session puis la rouvrir"
+            " pour charger l'extension."
+        ),
+        "en": (
+            "ERPLibre Home installed. Log out and back in to load"
+            " the extension."
+        ),
+    },
+    # Stream Deck submenu (script/todo/streamdeck_menu.py)
+    "Stream Deck - Games, service, status, install": {
+        "fr": "🎛️ Stream Deck - Jeux, service, état, installation",
+        "en": "🎛️ Stream Deck - Games, service, status, install",
+    },
+    "Status - What is installed and what runs": {
+        "fr": "📋 État - Ce qui est installé et ce qui tourne",
+        "en": "📋 Status - What is installed and what runs",
+    },
+    "Service - Start, stop, restart, live log": {
+        "fr": "⚙️ Service - Démarrer, arrêter, redémarrer, journal en direct",
+        "en": "⚙️ Service - Start, stop, restart, live log",
+    },
+    "Deck program - Tiler, controller or none": {
+        "fr": "🎛️ Programme du deck - Tiler, contrôleur ou aucun",
+        "en": "🎛️ Deck program - Tiler, controller or none",
+    },
+    "Autostart - Enable or disable": {
+        "fr": "🚀 Démarrage auto - Activer ou désactiver",
+        "en": "🚀 Autostart - Enable or disable",
+    },
+    "Diagnosis - What is wrong and how to fix it": {
+        "fr": "🩺 Diagnostic - Ce qui ne va pas et comment le corriger",
+        "en": "🩺 Diagnosis - What is wrong and how to fix it",
+    },
+    "Uninstall - Stream Deck level or everything": {
+        "fr": "🗑 Désinstaller - Niveau Stream Deck ou tout",
+        "en": "🗑 Uninstall - Stream Deck level or everything",
+    },
+    "Extension - Reload or preferences": {
+        "fr": "🧩 Extension - Recharger ou préférences",
+        "en": "🧩 Extension - Reload or preferences",
+    },
+    "The Stream Deck service is not installed:"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "Le service Stream Deck n'est pas installé :"
+        " make erplibre_home_streamdeck_install",
+        "en": "The Stream Deck service is not installed:"
+        " make erplibre_home_streamdeck_install",
+    },
+    "Nothing to fix.": {
+        "fr": "Rien à corriger.",
+        "en": "Nothing to fix.",
+    },
+    "Service action:": {
+        "fr": "Action sur le service :",
+        "en": "Service action:",
+    },
+    "live log (Ctrl-C to leave)": {
+        "fr": "journal en direct (Ctrl-C pour sortir)",
+        "en": "live log (Ctrl-C to leave)",
+    },
+    "Deck program:": {
+        "fr": "Programme du deck :",
+        "en": "Deck program:",
+    },
+    "Tiler": {
+        "fr": "Tiler",
+        "en": "Tiler",
+    },
+    "Controller": {
+        "fr": "Contrôleur",
+        "en": "Controller",
+    },
+    "No program": {
+        "fr": "Aucun programme",
+        "en": "No program",
+    },
+    "Enable": {
+        "fr": "Activer",
+        "en": "Enable",
+    },
+    "Disable": {
+        "fr": "Désactiver",
+        "en": "Disable",
+    },
+    "Unchanged.": {
+        "fr": "Inchangé.",
+        "en": "Unchanged.",
+    },
+    "Autostart:": {
+        "fr": "Démarrage auto :",
+        "en": "Autostart:",
+    },
+    "Uninstall what?": {
+        "fr": "Désinstaller quoi ?",
+        "en": "Uninstall what?",
+    },
+    "The Stream Deck level": {
+        "fr": "Le niveau Stream Deck",
+        "en": "The Stream Deck level",
+    },
+    "Everything, the extension too": {
+        "fr": "Tout, l'extension aussi",
+        "en": "Everything, the extension too",
+    },
+    "ERPLibre Home uninstalled.": {
+        "fr": "ERPLibre Home désinstallé.",
+        "en": "ERPLibre Home uninstalled.",
+    },
+    "ERPLibre Home uninstall failed, see the output above.": {
+        "fr": (
+            "La désinstallation d'ERPLibre Home a échoué, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "ERPLibre Home uninstall failed, see the output above.",
+    },
+    "Extension action:": {
+        "fr": "Action sur l'extension :",
+        "en": "Extension action:",
+    },
+    "Reload the extension": {
+        "fr": "Recharger l'extension",
+        "en": "Reload the extension",
+    },
+    "Open its preferences": {
+        "fr": "Ouvrir ses préférences",
+        "en": "Open its preferences",
+    },
+    "Start the deck program at login? (y/N): ": {
+        "fr": "Démarrer le programme du deck à l'ouverture de session ?"
+        " (o/N) : ",
+        "en": "Start the deck program at login? (y/N): ",
+    },
+    "Restart the deck program after a game? (Y/n): ": {
+        "fr": "Relancer le programme du deck après un jeu ? (O/n) : ",
+        "en": "Restart the deck program after a game? (Y/n): ",
+    },
+    "Restart the deck program after a game? (y/N): ": {
+        "fr": "Relancer le programme du deck après un jeu ? (o/N) : ",
+        "en": "Restart the deck program after a game? (y/N): ",
+    },
+    "Install the optional tools (--with-extras)? (y/N): ": {
+        "fr": "Installer les outils facultatifs (--with-extras) ? (o/N) : ",
+        "en": "Install the optional tools (--with-extras)? (y/N): ",
+    },
+    # Stream Deck: status and diagnosis (script/todo/erplibre_home_status.py)
+    "Level: not installed": {
+        "fr": "Niveau : non installé",
+        "en": "Level: not installed",
+    },
+    "Level: base": {
+        "fr": "Niveau : base",
+        "en": "Level: base",
+    },
+    "Level: Stream Deck": {
+        "fr": "Niveau : Stream Deck",
+        "en": "Level: Stream Deck",
+    },
+    "Extension: active": {
+        "fr": "Extension : active",
+        "en": "Extension: active",
+    },
+    "Extension: not loaded in this session": {
+        "fr": "Extension : non chargée dans cette session",
+        "en": "Extension: not loaded in this session",
+    },
+    "Extension: state": {
+        "fr": "Extension : état",
+        "en": "Extension: state",
+    },
+    "error:": {
+        "fr": "erreur :",
+        "en": "error:",
+    },
+    "Indicators: journal not read": {
+        "fr": "Indicateurs : journal non lu",
+        "en": "Indicators: journal not read",
+    },
+    "Indicators: failed to mount:": {
+        "fr": "Indicateurs : non montés :",
+        "en": "Indicators: failed to mount:",
+    },
+    "Indicators: all mounted": {
+        "fr": "Indicateurs : tous montés",
+        "en": "Indicators: all mounted",
+    },
+    "program": {
+        "fr": "programme",
+        "en": "program",
+    },
+    "Service: not installed": {
+        "fr": "Service : non installé",
+        "en": "Service: not installed",
+    },
+    "Deck lock: held by": {
+        "fr": "Verrou du deck : tenu par",
+        "en": "Deck lock: held by",
+    },
+    "Deck lock: free": {
+        "fr": "Verrou du deck : libre",
+        "en": "Deck lock: free",
+    },
+    "Decks plugged in:": {
+        "fr": "Decks branchés :",
+        "en": "Decks plugged in:",
+    },
+    "Decks plugged in: none": {
+        "fr": "Decks branchés : aucun",
+        "en": "Decks plugged in: none",
+    },
+    "udev rule: present": {
+        "fr": "Règle udev : présente",
+        "en": "udev rule: present",
+    },
+    "udev rule: missing": {
+        "fr": "Règle udev : absente",
+        "en": "udev rule: missing",
+    },
+    "Stream Deck venv: present": {
+        "fr": "Venv Stream Deck : présent",
+        "en": "Stream Deck venv: present",
+    },
+    "Stream Deck venv: missing": {
+        "fr": "Venv Stream Deck : absent",
+        "en": "Stream Deck venv: missing",
+    },
+    "ERPLibre Home is not installed": {
+        "fr": "ERPLibre Home n'est pas installé",
+        "en": "ERPLibre Home is not installed",
+    },
+    "The extension is not loaded in this session": {
+        "fr": "L'extension n'est pas chargée dans cette session",
+        "en": "The extension is not loaded in this session",
+    },
+    "log out and back in": {
+        "fr": "fermer la session puis la rouvrir",
+        "en": "log out and back in",
+    },
+    "The extension is in error:": {
+        "fr": "L'extension est en erreur :",
+        "en": "The extension is in error:",
+    },
+    "Indicators failed to mount:": {
+        "fr": "Indicateurs non montés :",
+        "en": "Indicators failed to mount:",
+    },
+    "The Stream Deck level is not installed": {
+        "fr": "Le niveau Stream Deck n'est pas installé",
+        "en": "The Stream Deck level is not installed",
+    },
+    "The deck service is not installed": {
+        "fr": "Le service du deck n'est pas installé",
+        "en": "The deck service is not installed",
+    },
+    "Unknown DECK_PROGRAM:": {
+        "fr": "DECK_PROGRAM inconnu :",
+        "en": "Unknown DECK_PROGRAM:",
+    },
+    "TODO › Stream Deck › Deck program": {
+        "fr": "TODO › Stream Deck › Programme du deck",
+        "en": "TODO › Stream Deck › Deck program",
+    },
+    "No Stream Deck plugged in": {
+        "fr": "Aucun Stream Deck branché",
+        "en": "No Stream Deck plugged in",
+    },
+    "plug a Stream Deck in": {
+        "fr": "brancher un Stream Deck",
+        "en": "plug a Stream Deck in",
+    },
+    "The deck is held by": {
+        "fr": "Le deck est tenu par",
+        "en": "The deck is held by",
+    },
+    "close it, or:": {
+        "fr": "le fermer, ou :",
+        "en": "close it, or:",
+    },
+    "close the game; as a last resort:": {
+        "fr": "fermer le jeu ; en dernier recours :",
+        "en": "close the game; as a last resort:",
+    },
+    "The deck service is not running": {
+        "fr": "Le service du deck ne tourne pas",
+        "en": "The deck service is not running",
+    },
+    "The deck service state could not be read": {
+        "fr": "L'état du service du deck est illisible",
+        "en": "The deck service state could not be read",
+    },
+    "run it from the desktop session": {
+        "fr": "le lancer depuis la session du bureau",
+        "en": "run it from the desktop session",
+    },
+    # Stream Deck game descriptions (42 games)
+    "game_2048": {
+        "en": "Merge tiles to reach 2048! Corner buttons = directions.",
+        "fr": "Fusionne les tuiles pour atteindre 2048! Coins = directions.",
+    },
+    "game_battleship": {
+        "en": "Find hidden ships! Hit = keep turn. 1P solo or 2P.",
+        "fr": "Trouve les bateaux cachés! Touché = garde ton tour. 1P ou 2P.",
+    },
+    "game_bomberman": {
+        "en": "Place bombs, destroy walls, survive! 1P or 2P.",
+        "fr": "Pose des bombes, détruis les murs, survie! 1P ou 2P.",
+    },
+    "game_breakout": {
+        "en": "Break bricks! SD+ touchscreen, items, multi-ball, ammo.",
+        "fr": "Casse les briques! Écran tactile SD+, items, multi-balle.",
+    },
+    "game_checkers": {
+        "en": "Simplified checkers. Jump to capture! 1P vs AI or 2P.",
+        "fr": "Dames simplifiées. Saute pour capturer! 1P vs IA ou 2P.",
+    },
+    "game_colormatch": {
+        "en": "Flip cards, find matching pairs! 1P or 2P race.",
+        "fr": "Retourne les cartes, trouve les paires! 1P ou 2P course.",
+    },
+    "game_colormixer": {
+        "en": "Mix RGB with 3 dials to match target color. SD+.",
+        "fr": "Mixe RVB avec 3 dials pour matcher la couleur cible. SD+.",
+    },
+    "game_connect4": {
+        "en": "Drop pieces, get 4 in a row! 1P vs AI or 2P.",
+        "fr": "Lâche des pièces, aligne-en 4! 1P vs IA ou 2P.",
+    },
+    "game_djscratch": {
+        "en": "Scratch vinyl with dials. Waveforms on touchscreen. SD+.",
+        "fr": "Scratche du vinyl avec les dials. Waveforms sur écran. SD+.",
+    },
+    "game_fishing": {
+        "en": "Cast, wait for bite, reel in! Don't snap the line. SD+.",
+        "fr": "Lance, attends la touche, mouline! Ne casse pas la ligne. SD+.",
+    },
+    "game_flappy": {
+        "en": "Press any button to flap up. Avoid obstacles!",
+        "fr": "Appuie pour monter. Évite les obstacles!",
+    },
+    "game_floodfill": {
+        "en": "Pick colors to flood-fill from corner. Fill the grid! 1P or 2P.",
+        "fr": "Choisis des couleurs pour remplir depuis le coin. 1P ou 2P.",
+    },
+    "game_frogger": {
+        "en": "Cross traffic lanes to reach the top! Hop between cars.",
+        "fr": "Traverse la route pour atteindre le haut! Saute entre les voitures.",
+    },
+    "game_hangman": {
+        "en": "Guess the word, one letter at a time. 6 wrong = game over.",
+        "fr": "Devine le mot, une lettre à la fois. 6 erreurs = perdu.",
+    },
+    "game_langton": {
+        "en": "Langton's Ant automaton. Watch emergent patterns!",
+        "fr": "Automate de Langton. Observe les motifs émergents!",
+    },
+    "game_life": {
+        "en": "Conway's Game of Life. Toggle cells, play/pause.",
+        "fr": "Jeu de la Vie de Conway. Toggle les cellules, play/pause.",
+    },
+    "game_lightsout": {
+        "en": "Toggle button + neighbors. Turn all off! 1P or 2P coop.",
+        "fr": "Toggle bouton + voisins. Éteins tout! 1P ou 2P coop.",
+    },
+    "game_mastermind": {
+        "en": "Guess the secret color code. Feedback after each try.",
+        "fr": "Devine le code couleur secret. Feedback après chaque essai.",
+    },
+    "game_maze": {
+        "en": "Navigate a random maze from top-left to bottom-right.",
+        "fr": "Navigue un labyrinthe aléatoire du coin haut-gauche au bas-droite.",
+    },
+    "game_minesweeper": {
+        "en": "Classic minesweeper (1P) or mine hunter VS (2P).",
+        "fr": "Démineur classique (1P) ou chasseur de mines VS (2P).",
+    },
+    "game_numberguess": {
+        "en": "Guess 1-100 with hot/cold colors. Fewer tries = better!",
+        "fr": "Devine 1-100 avec couleurs chaud/froid. Moins d'essais = mieux!",
+    },
+    "game_pacman": {
+        "en": "Eat dots, power pellets, eat ghosts! SD+ touchscreen.",
+        "fr": "Mange les points, power pellets, mange les fantômes! SD+.",
+    },
+    "game_piano": {
+        "en": "Play piano keys on bottom row. Dial = octave. SD+.",
+        "fr": "Joue du piano sur la rangée du bas. Dial = octave. SD+.",
+    },
+    "game_pong": {
+        "en": "Pong with SD+ touchscreen support. 1P vs AI or 2P.",
+        "fr": "Pong avec support écran tactile SD+. 1P vs IA ou 2P.",
+    },
+    "game_reaction": {
+        "en": "Hit the green button ASAP! 5 rounds. 1P or 2P.",
+        "fr": "Tape le bouton vert vite! 5 rounds. 1P ou 2P.",
+    },
+    "game_reversi": {
+        "en": "Place pieces to flip opponent's. Most pieces wins! 1P or 2P.",
+        "fr": "Place des pièces pour retourner celles de l'adversaire. 1P ou 2P.",
+    },
+    "game_rps": {
+        "en": "Rock Paper Scissors! Best of 5. 1P vs AI or 2P.",
+        "fr": "Pierre Papier Ciseaux! Best of 5. 1P vs IA ou 2P.",
+    },
+    "game_safecracker": {
+        "en": "Turn 4 dials to guess the combo. Hot/cold hints. SD+.",
+        "fr": "Tourne 4 dials pour deviner la combo. Indices chaud/froid. SD+.",
+    },
+    "game_simon": {
+        "en": "Memorize and repeat the light sequence! 1P or 2P.",
+        "fr": "Mémorise et reproduis la séquence lumineuse! 1P ou 2P.",
+    },
+    "game_slots": {
+        "en": "Spin reels with dials, stop to match symbols! SD+.",
+        "fr": "Tourne les roues avec les dials, stoppe pour matcher! SD+.",
+    },
+    "game_snake": {
+        "en": "Classic snake. Eat, grow, don't crash! 1P or 2P VS.",
+        "fr": "Snake classique. Mange, grandit, crash pas! 1P ou 2P VS.",
+    },
+    "game_sokoban": {
+        "en": "Push boxes onto targets. Think before you move!",
+        "fr": "Pousse les boîtes sur les cibles. Réfléchis avant de bouger!",
+    },
+    "game_spaceinvaders": {
+        "en": "Shoot aliens before they reach the bottom!",
+        "fr": "Tire sur les aliens avant qu'ils atteignent le bas!",
+    },
+    "game_sudoku": {
+        "en": "Fill the 3x3 grid. No repeats in rows/columns!",
+        "fr": "Remplis la grille 3x3. Pas de répétitions en lignes/colonnes!",
+    },
+    "game_taquin": {
+        "en": "Slide tiles to order them 1 to N. Classic puzzle!",
+        "fr": "Glisse les tuiles pour les ordonner 1 à N. Classique!",
+    },
+    "game_tetris": {
+        "en": "Pieces fall from right. Rotate, move, drop!",
+        "fr": "Les pièces tombent de la droite. Rotation, déplace, drop!",
+    },
+    "game_thermometer": {
+        "en": "Guess the secret temperature with dial. Hot/cold bar. SD+.",
+        "fr": "Devine la température secrète avec le dial. Barre chaud/froid. SD+.",
+    },
+    "game_tictactoe": {
+        "en": "Tic-Tac-Toe on 3x3 grid. 1P hot seat or 2P.",
+        "fr": "Morpion sur grille 3x3. 1P hot seat ou 2P.",
+    },
+    "game_towerdefense": {
+        "en": "Place towers to stop enemies crossing! Survive 5 waves.",
+        "fr": "Place des tours pour bloquer les ennemis! Survie 5 vagues.",
+    },
+    "game_whackamole": {
+        "en": "Hit moles before they vanish! 30s. 1P or 2P VS.",
+        "fr": "Tape les taupes avant qu'elles disparaissent! 30s. 1P ou 2P VS.",
+    },
+    "game_wordle": {
+        "en": "Guess a 5-letter word. Green/yellow/grey hints. 6 tries.",
+        "fr": "Devine un mot de 5 lettres. Indices vert/jaune/gris. 6 essais.",
+    },
+    "game_racer": {
+        "en": "Dodge obstacles on a scrolling road! Speed increases.",
+        "fr": "Esquive les obstacles sur une route qui défile! Vitesse croissante.",
+    },
+    "game_dragrace": {
+        "en": "Shift gears at the right RPM! Too early or late = slow. 1P or 2P.",
+        "fr": "Passe les vitesses au bon régime! Trop tôt ou tard = lent. 1P ou 2P.",
+    },
+    "game_racingplus": {
+        "en": "Top-down race on touchscreen! Dial = steering. Avoid walls. SD+.",
+        "fr": "Course vue de haut sur écran tactile! Dial = volant. Évite les murs. SD+.",
+    },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "🚀 Déploiement - Déployer ERPLibre localement",
@@ -4697,6 +5220,22 @@ TRANSLATIONS = {
         "fr": "session graphique non démarrée ; redémarrer la VM",
         "en": "graphical session not started; reboot the VM",
     },
+    "desktop not installed:": {
+        "fr": "bureau non installé :",
+        "en": "desktop not installed:",
+    },
+    "xrdp not installed; no RDP access": {
+        "fr": "xrdp non installé ; pas d'accès RDP",
+        "en": "xrdp not installed; no RDP access",
+    },
+    "xrdp not installed": {
+        "fr": "xrdp non installé",
+        "en": "xrdp not installed",
+    },
+    "epel-release unavailable": {
+        "fr": "epel-release indisponible",
+        "en": "epel-release unavailable",
+    },
     "Hypervisor console (QEMU screen, no guest server)": {
         "fr": "Console de l'hyperviseur (écran QEMU, rien dans l'invitée)",
         "en": "Hypervisor console (QEMU screen, no guest server)",
@@ -5877,6 +6416,16 @@ TRANSLATIONS = {
     "Use a NixOS machine you already have": {
         "fr": "Partir d'une machine NixOS qu'on possède déjà",
         "en": "Use a NixOS machine you already have",
+    },
+    # ERPLibre Home installé sur chaque distribution, extension ACTIVE.
+    "ERPLibre Home on every distribution: plan only (dry-run)": {
+        "fr": "ERPLibre Home sur chaque distribution : le plan seulement"
+        " (à blanc)",
+        "en": "ERPLibre Home on every distribution: plan only (dry-run)",
+    },
+    "ERPLibre Home on every distribution: run it": {
+        "fr": "ERPLibre Home sur chaque distribution : le lancer",
+        "en": "ERPLibre Home on every distribution: run it",
     },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",
@@ -7062,6 +7611,10 @@ TRANSLATIONS = {
         "fr": "ERPLibre mobile (home)",
         "en": "ERPLibre mobile (home)",
     },
+    "ERPLibre Home (no Odoo)": {
+        "fr": "ERPLibre Home (sans Odoo)",
+        "en": "ERPLibre Home (no Odoo)",
+    },
     "ERPLibre Deployment (+ QEMU + dev)": {
         "fr": "ERPLibre Déploiement (+ QEMU + dev)",
         "en": "ERPLibre Deployment (+ QEMU + dev)",
@@ -7233,6 +7786,47 @@ TRANSLATIONS = {
     "nixos-anywhere missing, see the log above": {
         "fr": "nixos-anywhere absent, voir le journal ci-dessus",
         "en": "nixos-anywhere missing, see the log above",
+    },
+    # Outils QEMU « erplibre_home » et « erplibre_home_streamdeck » : leurs
+    # libellés, leurs indices et les lignes de leur « ? ».
+    "ERPLibre Home": {
+        "fr": "ERPLibre Home",
+        "en": "ERPLibre Home",
+    },
+    "ERPLibre Home Stream Deck": {
+        "fr": "ERPLibre Home Stream Deck",
+        "en": "ERPLibre Home Stream Deck",
+    },
+    "GNOME extension, no Stream Deck": {
+        "fr": "extension GNOME, sans Stream Deck",
+        "en": "GNOME extension, no Stream Deck",
+    },
+    "deck controller, games, GNOME extension": {
+        "fr": "contrôleur du deck, jeux, extension GNOME",
+        "en": "deck controller, games, GNOME extension",
+    },
+    "script/install/install_erplibre_home.sh in the VM's checkout": {
+        "fr": "script/install/install_erplibre_home.sh dans le checkout de la VM",
+        "en": "script/install/install_erplibre_home.sh in the VM's checkout",
+    },
+    "extension, schemas and translations, extension enabled": {
+        "fr": "extension, schémas et traductions, extension activée",
+        "en": "extension, schemas and translations, extension enabled",
+    },
+    "script/install/install_erplibre_home.sh --stream-deck"
+    " in the VM's checkout": {
+        "fr": "script/install/install_erplibre_home.sh --stream-deck"
+        " dans le checkout de la VM",
+        "en": "script/install/install_erplibre_home.sh --stream-deck"
+        " in the VM's checkout",
+    },
+    "ERPLibre Home, plus USB packages, udev rule, .venv.streamdeck": {
+        "fr": "ERPLibre Home, plus paquets USB, règle udev, .venv.streamdeck",
+        "en": "ERPLibre Home, plus USB packages, udev rule, .venv.streamdeck",
+    },
+    "log out and back in to load the extension": {
+        "fr": "fermer puis rouvrir la session pour charger l'extension",
+        "en": "log out and back in to load the extension",
     },
     "Help": {
         "fr": "Aide",

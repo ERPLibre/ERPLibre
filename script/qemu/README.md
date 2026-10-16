@@ -151,6 +151,16 @@ Ubuntu VM (libvirt)**. From there you can deploy a VM, preview a dry-run,
 download an image, list VMs and show a VM IP address — the menu asks for the
 parameters and builds the command for you.
 
+A graphical VM gets its desktop and a remote access to it: xrdp (RDP, port
+3389) where the distribution ships it, TigerVNC on Arch. On AlmaLinux and Rocky
+Linux, xrdp and the Cinnamon group come from EPEL, which the desktop step
+enables together with CRB before installing anything; when xrdp still does not
+install there, the desktop stays and one line says that RDP is missing. On
+Fedora, where xrdp is in the base repositories, a failed xrdp install fails the
+step so that it can be run again. The desktop step also fails — non-zero exit,
+one line naming the missing binary, `gnome-shell` or `cinnamon` — when the
+desktop itself did not install.
+
 When a VM is graphical, the menu also offers a **check list of development
 tools**: PyCharm Community (installed from the official
 JetBrains archive into `/opt/pycharm`, its launcher opening the ERPLibre
@@ -311,7 +321,7 @@ family — and its disk cost is added to the plan before anything is created.
 
 Run `./script/qemu/deploy_qemu.py --help` for the full list.
 
-## Login guide (`/etc/motd`)
+## Login guide (`/etc/motd` or `profile.d`)
 
 Every VM greets you, at each interactive SSH login, with the commands of
 **its own** distribution — `apt`, `dnf`, `zypper` or `pacman` — plus the
@@ -323,6 +333,17 @@ there if that installation fails, which is exactly when you log in by hand.
 `--dry-run` prints the generated guide along with the rest of the user-data.
 The guide is not shown to `ssh host 'command'`, so it never pollutes an
 installation log.
+
+A VM with a desktop (`--desktop`), except on NixOS, does not get `/etc/motd`: `pam_motd` sits in
+the generic login PAM stack, so GDM would show the guide as a PAM message and
+delay the start of the graphical session in proportion to its length (tens of
+seconds). The same text is written to `/etc/erplibre-login-guide`, and
+`/etc/profile.d/erplibre-login-guide.sh` prints it in interactive login
+shells of an SSH session (a nested login shell that keeps
+`SSH_CONNECTION`, such as `bash -l`, shows it again); desktop terminals, `ssh host 'command'`, `scp` and
+`sftp` stay silent. A server VM keeps `/etc/motd`, and so does a NixOS VM,
+desktop included: its sshd reads `/etc/motd`, it has no `pam_motd` and its
+`/etc/profile` does not source `profile.d`.
 
 The host's git identity travels with it, into the VM's `~/.gitconfig`: a
 commit made in the VM then carries your name instead of
