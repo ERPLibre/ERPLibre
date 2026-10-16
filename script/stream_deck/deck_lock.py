@@ -22,10 +22,16 @@ Lancé en commande, le module tient le verrou pour un jeu, que la passation
 
 Le verrou est pris au nom de « game », la commande tourne en enfant et le
 module sort avec son code, 128 + N quand un signal N l'a tuée, comme bash.
-Le descripteur du verrou n'est pas héritable (PEP 446) : un enfant que le
-jeu laisse derrière lui ne garde pas le deck. Un programme du deck lancé
-sous la commande, directement ou par un shell, trouve son ancêtre au nom de
-« game » dans le verrou et tourne sous ce verrou au lieu de sortir en 2.
+Le descripteur du verrou passe à la commande (pass_fds), et de là à tout
+processus qu'elle lance sans fermer ses descripteurs : le deck reste pris
+tant qu'un processus du jeu vit, même si l'enveloppe est tuée, et un
+service relancé trop tôt sort en 2 au lieu de se superposer au jeu.
+
+Un programme du deck lancé sous la commande tient le verrou par le
+descripteur hérité. S'il ne l'a pas hérité (un subprocess python ferme les
+descripteurs), il trouve son ancêtre au nom de « game » dans le verrou,
+tourne sous ce verrou, et un fil attend de le reprendre à son nom : le deck
+reste pris s'il survit au jeu.
 
 Bibliothèque standard seulement : TODO la charge hors du venv du deck, et
 la passation la lance sous le python3 du système.
@@ -34,11 +40,14 @@ la passation la lance sous le python3 du système.
 import fcntl
 import os
 import re
+import select
 import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 
 BUSY_EXIT = 2
 # Le tiler sort en NO_DECK_EXIT quand aucun Stream Deck à écran n'est
@@ -133,28 +142,89 @@ def _ancestors():
     return ancetres
 
 
+def _write_holder(fh, program):
+    fh.seek(0)
+    fh.truncate()
+    fh.write("%d %s\n" % (os.getpid(), program))
+    fh.flush()
+
+
+def _inherited(path):
+    """Un descripteur de ce processus ouvert sur le verrou `path`, hérité
+    d'un ancêtre, et qui le tient : flock sur une description de fichier
+    qui tient déjà le verrou réussit. None sinon. Les descripteurs que ce
+    processus a pris lui-même (_held) ne comptent pas : deux acquire() d'un
+    même processus s'excluent."""
+    try:
+        cible = os.stat(path, follow_symlinks=False)
+        noms = os.listdir("/proc/self/fd")
+    except OSError:
+        return None
+    propres = {fh.fileno() for fh in _held if not fh.closed}
+    for nom in noms:
+        fd = int(nom)
+        if fd in propres:
+            continue
+        try:
+            etat = os.fstat(fd)
+        except OSError:
+            continue
+        if not stat.S_ISREG(etat.st_mode) or (etat.st_dev, etat.st_ino) != (
+            cible.st_dev,
+            cible.st_ino,
+        ):
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            continue
+        return fd
+    return None
+
+
+def _take_over(fh, program):
+    """Un fil démon bloque sur le verrou par `fh` et, dès que le jeu le
+    rend, l'écrit au nom de ce processus, qu'il tient jusqu'à sa sortie."""
+
+    def attendre():
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        _write_holder(fh, program)
+
+    _held.append(fh)
+    threading.Thread(target=attendre, name="deck-lock", daemon=True).start()
+
+
 def acquire(program, path=None):
     """Prend le verrou pour `program` et le garde jusqu'à la sortie du
     processus. Rend le fichier ouvert, ou None quand un ancêtre le tient au
-    nom de HANDOVER_PROGRAM : la passation tient alors le deck pour ce
-    processus, qui tourne sous ce verrou. Lève DeckBusy quand un autre
-    processus le tient, OSError quand le dossier ou le fichier n'est pas
-    privé (voir _open_private)."""
+    nom de HANDOVER_PROGRAM.
+
+    Le verrou déjà tenu l'est pour ce processus dans deux cas, sans texte
+    réécrit : un descripteur hérité du jeu le tient (_inherited), et le
+    fichier rendu est ce descripteur ; ou un ancêtre le tient au nom de
+    « game » sans que le descripteur ait été hérité, et _take_over le
+    reprend à la fin du jeu. Lève DeckBusy quand un autre processus le
+    tient, OSError quand le dossier ou le fichier n'est pas privé (voir
+    _open_private)."""
     path = path or lock_path()
     fh = _open_private(path)
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         tenu = parse_holder(fh.read())
-        fh.close()
+        herite = _inherited(path)
+        if herite is not None:
+            fh.close()
+            fh = os.fdopen(herite, "r+", encoding="utf-8")
+            _held.append(fh)
+            return fh
         if tenu[1] == HANDOVER_PROGRAM and tenu[0] != "?":
             if int(tenu[0]) in _ancestors():
+                _take_over(fh, program)
                 return None
+        fh.close()
         raise DeckBusy(tenu) from None
-    fh.seek(0)
-    fh.truncate()
-    fh.write("%d %s\n" % (os.getpid(), program))
-    fh.flush()
+    _write_holder(fh, program)
     _held.append(fh)
     return fh
 
@@ -197,6 +267,32 @@ def holder(path=None):
     return None
 
 
+def holder_pids(path=None, proc="/proc"):
+    """Les PID, triés, des processus de ce compte qui ont le verrou ouvert :
+    le détenteur, ou, pour un jeu, l'enveloppe et chaque processus du jeu
+    qui en a hérité. Les processus d'un autre compte ne se lisent pas et
+    sont omis. Le lien /proc/<pid>/fd/<n> est comparé au chemin réel du
+    verrou, sans ouvrir ce qu'il désigne."""
+    path = os.path.realpath(path or lock_path())
+    pids = []
+    for nom in os.listdir(proc):
+        if not nom.isdigit():
+            continue
+        dossier = os.path.join(proc, nom, "fd")
+        try:
+            fds = os.listdir(dossier)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                if os.readlink(os.path.join(dossier, fd)) == path:
+                    pids.append(int(nom))
+                    break
+            except OSError:
+                continue
+    return sorted(pids)
+
+
 def exit_on_sigterm():
     """SIGTERM (systemctl stop, kill) lève SystemExit(128 + SIGTERM) dans le
     fil principal au lieu de tuer le processus sur place : les finally qui
@@ -210,19 +306,117 @@ def exit_on_sigterm():
     signal.signal(signal.SIGTERM, sortir)
 
 
+def process_table(proc="/proc"):
+    """{pid: (ppid, pgrp, tpgid, état)} des processus lisibles sous `proc`,
+    lus dans <pid>/stat après la dernière « ) » (le nom de commande peut en
+    porter). tpgid est le groupe au premier plan du terminal du processus,
+    -1 sans terminal. Un processus parti pendant la lecture est omis."""
+    table = {}
+    for nom in os.listdir(proc):
+        if not nom.isdigit():
+            continue
+        try:
+            with open(
+                os.path.join(proc, nom, "stat"),
+                encoding="utf-8",
+                errors="replace",
+            ) as fh:
+                champs = fh.read().rsplit(")", 1)[1].split()
+            table[int(nom)] = (
+                int(champs[1]),
+                int(champs[2]),
+                int(champs[5]),
+                champs[0],
+            )
+        except (OSError, IndexError, ValueError):
+            continue
+    return table
+
+
+def signal_targets(signum, root, table):
+    """Les PID à qui passer `signum` reçu par `root` : ses descendants dans
+    `table` (process_table), zombies exclus. Pour SIGINT, ceux qui sont au
+    premier plan de leur terminal (pgrp == tpgid) sont épargnés : un Ctrl-C
+    les a déjà frappés, et un second SIGINT couperait leur nettoyage."""
+    enfants = {}
+    for pid, (ppid, _pgrp, _tpgid, _etat) in table.items():
+        enfants.setdefault(ppid, []).append(pid)
+    cibles = []
+    vus = {root}
+    a_voir = list(enfants.get(root, ()))
+    while a_voir:
+        pid = a_voir.pop()
+        if pid in vus:
+            continue
+        vus.add(pid)
+        a_voir.extend(enfants.get(pid, ()))
+        _ppid, pgrp, tpgid, etat = table[pid]
+        if etat in ("Z", "X"):
+            continue
+        if signum == signal.SIGINT and pgrp == tpgid:
+            continue
+        cibles.append(pid)
+    return sorted(cibles)
+
+
+def _alive(pid):
+    try:
+        with open("/proc/%d/stat" % pid, encoding="utf-8") as fh:
+            return fh.read().rsplit(")", 1)[1].split()[0] not in ("Z", "X")
+    except (OSError, IndexError):
+        return False
+
+
+def _pidfd(pid):
+    """Un pidfd sur `pid` (Linux 5.3, Python 3.9), qui le désigne même si
+    son PID est repris ; None où il n'existe pas : l'attente lit alors
+    /proc. Lève ProcessLookupError quand `pid` est déjà parti."""
+    try:
+        return os.pidfd_open(pid)
+    except (AttributeError, PermissionError):
+        return None
+    except OSError as err:
+        if isinstance(err, ProcessLookupError):
+            raise
+        return None
+
+
+def _wait_gone(attendus):
+    """Attend la fin de chaque processus de `attendus` ({pid: pidfd|None}),
+    que le gestionnaire de signal peut agrandir pendant l'attente."""
+    while attendus:
+        pid, pidfd = attendus.popitem()
+        if pidfd is None:
+            while _alive(pid):
+                time.sleep(0.1)
+            continue
+        try:
+            select.select([pidfd], [], [])
+        finally:
+            os.close(pidfd)
+
+
 def run(program, argv, path=None):
     """Lance `argv` en tenant le verrou au nom de `program` jusqu'à sa fin.
     Rend le code de la commande, 128 + N quand le signal N l'a tuée ;
     BUSY_EXIT sans rien lancer quand le deck est pris, 1 quand le verrou ne
     s'ouvre pas, 127 ou 126 quand la commande manque ou ne s'exécute pas.
 
-    SIGINT et SIGHUP ne font rien ici : venus du terminal, ils frappent
-    tout le groupe, donc la commande aussi, et le module attend sa fin.
-    SIGTERM est passé à la commande : « kill <pid> » sur le PID que le
-    verrou nomme termine le jeu. Les gestionnaires sont des fonctions et
-    non SIG_IGN, si bien que la commande les reçoit à leur défaut."""
+    Le descripteur du verrou passe à la commande : le deck reste pris tant
+    qu'un processus du jeu le garde ouvert, après la fin du module compris.
+
+    SIGTERM et SIGINT sont passés à TOUS les descendants du module
+    (signal_targets), puis le module attend leur fin avant de sortir : un
+    jeu lancé sous un shell (la boucle de la galerie) est un petit-enfant,
+    qu'un shell non interactif tué ne prévient pas. La commande reste dans
+    le groupe de processus du module : un jeu interactif garde le premier
+    plan du terminal, ses Ctrl-C et ses lectures. SIGHUP ne fait rien : venu
+    du terminal, il frappe le jeu lui-même. Les gestionnaires sont des
+    fonctions et non SIG_IGN, si bien que la commande les reçoit à leur
+    défaut. Un signal reçu avant que la commande existe lui est passé dès
+    son lancement."""
     try:
-        acquire(program, path)
+        fh = acquire(program, path)
     except DeckBusy as busy:
         pid, detenteur = busy.holder
         print(
@@ -234,20 +428,41 @@ def run(program, argv, path=None):
     except OSError as err:
         print("Stream Deck lock: %s" % err, file=sys.stderr)
         return 1
-    enfant = []
+    lance = []
+    en_attente = []
+    attendus = {}
+
+    def faire_suivre(signum):
+        for pid in signal_targets(signum, os.getpid(), process_table()):
+            try:
+                if pid not in attendus:
+                    attendus[pid] = _pidfd(pid)
+                os.kill(pid, signum)
+            except ProcessLookupError:
+                continue
 
     def recevoir(signum, _frame):
-        if signum == signal.SIGTERM and enfant:
-            enfant[0].send_signal(signum)
+        if signum == signal.SIGHUP:
+            return
+        if lance:
+            faire_suivre(signum)
+        else:
+            en_attente.append(signum)
 
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(signum, recevoir)
     try:
-        enfant.append(subprocess.Popen(argv))
+        enfant = subprocess.Popen(
+            argv, pass_fds=() if fh is None else (fh.fileno(),)
+        )
     except OSError as err:
         print("%s: %s" % (argv[0], err.strerror), file=sys.stderr)
         return 126 if isinstance(err, PermissionError) else 127
-    code = enfant[0].wait()
+    lance.append(enfant)
+    for signum in en_attente:
+        faire_suivre(signum)
+    code = enfant.wait()
+    _wait_gone(attendus)
     return 128 - code if code < 0 else code
 
 
