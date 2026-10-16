@@ -119,6 +119,24 @@ test('a unit on its way down is read again for its end state', async () => {
     assert.equal(run.reads, 2);
 });
 
+test('a clean stop after the program ran is not a failed start',
+    async () => {
+        // A hand-over to a game or a restart click stops the unit while
+        // the reads go on: SIGTERM ends the program with 143, which
+        // SuccessExitStatus turns into Result=success.
+        const stopping = {ActiveState: 'deactivating',
+            SubState: 'stop-sigterm', Result: 'success', ExecMainCode: '0',
+            ExecMainStatus: '0'};
+        const stopped = {ActiveState: 'inactive', Result: 'success',
+            ExecMainCode: '1', ExecMainStatus: '143'};
+        const run = await series([SHOWN.running, stopping, stopped]);
+        assert.deepEqual(run.outcome, {kind: 'running'});
+        assert.equal(run.reads, 2);
+        const late = await series([SHOWN.running, SHOWN.crashed]);
+        assert.deepEqual(late.outcome,
+            {kind: 'failed', detail: 'failed (exit-code, status 1)'});
+    });
+
 test('systemctl show lines become properties', () => {
     assert.deepEqual(
         parseUnitShow('ActiveState=failed\nResult=exit-code\n' +
@@ -272,6 +290,8 @@ test('the indicator waits without blocking, and drops the wait on destroy',
         assert.ok(src.includes('awaitDeckStart({'));
         assert.ok(src.includes('GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms'));
         assert.ok(!src.includes('DECK_SETTLE_MS'));
+        assert.ok(src.includes('this._destroyed = true;'));
+        assert.ok(src.includes('if (this._destroyed)'));
         assert.ok(!src.includes('GLib.usleep'));
         const destroy = src.slice(src.indexOf('destroy() {'),
             src.indexOf('super.destroy()'));

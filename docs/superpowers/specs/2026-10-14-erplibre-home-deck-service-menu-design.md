@@ -247,20 +247,22 @@ The `device` indicator's "Start deck program" action starts the unit with
 `systemctl --user start erplibre-home-streamdeck.service` when the unit file
 exists, and keeps its current direct launch otherwise. Its "Restart deck"
 action restarts the unit in the same case. A start that `ExecCondition`
-skips exits 0, and with `Type=simple` a program that finds the deck busy
-or no visual deck exits after `systemctl` returns. Both actions therefore
-read, without blocking the shell, the unit's `ActiveState`, `SubState`,
-`Result`, `ExecMainCode` and `ExecMainStatus` 1.5, 3, 5 and 8 s after the
-start. The series stops at the first read where no program runs and the
-unit is not deactivating; a program still running at 8 s counts as
-started. The gaps never exceed `RestartSec=3`, so a crash loop is seen in
-its restart wait. When no program runs, the notice says why: the program holding the deck (from the lock's
-text), no visual Stream Deck (exit 3), the line the entry point's `--check`
-prints for a skipped start (`Result=exec-condition`) or, when it prints
-none, the unmet start condition with its three causes, or the state and exit status of a program that
-failed or waits for its restart (`SubState=auto-restart`, or
-`auto-restart-queued` from systemd 254 on). The other
-indicators are unchanged.
+skips exits 0, and with `Type=simple` a program that finds the deck busy or
+no visual deck exits after `systemctl` returns. Both actions therefore read,
+without blocking the shell, the unit's `ActiveState`, `SubState`, `Result`,
+`ExecMainCode` and `ExecMainStatus` 1.5, 3, 5 and 8 s after the start. The
+series stops at the first read where no program runs and the unit is not
+deactivating; a program still running at 8 s counts as started, and so does
+a program seen running whose unit then stops with `Result=success` (a
+hand-over to a game, a restart click). The gaps never exceed `RestartSec=3`,
+so a crash loop is seen in its restart wait. When no program runs, the
+notice says why: the program holding the deck (from the lock's text), no
+visual Stream Deck (exit 3), the line the entry point's `--check` prints for
+a skipped start (`Result=exec-condition`) or, when it prints none, the unmet
+start condition with its three causes, or the state and exit status of a
+program that failed or waits for its restart (`SubState=auto-restart`, or
+`auto-restart-queued` from systemd 254 on). The other indicators are
+unchanged.
 
 ## Testing
 
