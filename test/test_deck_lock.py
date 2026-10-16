@@ -25,7 +25,8 @@ Ce que ces tests gardent :
   jeu lancé sous un shell compris, et l'enveloppe attend leur fin ; SIGINT
   épargne ceux que le terminal a déjà frappés ;
 - un programme du deck lancé sous le jeu tourne sous son verrou, et le
-  reprend à son compte s'il survit au jeu sans en avoir hérité ;
+  reprend à son compte s'il survit au jeu sans en avoir hérité ; hérité
+  ou repris, le verrou écarte tout autre programme dès la fin du jeu ;
 - SIGTERM devient SystemExit : les finally et atexit d'un programme du
   deck passent ;
 - le tiler et le contrôleur prennent le verrou avant d'ouvrir le deck,
@@ -622,6 +623,56 @@ class LaCommandeSousVerrou(unittest.TestCase):
         self.assertEqual(
             ("4000000000", "game"), self.deck_lock.holder(self.chemin)
         )
+
+    def test_a_deck_program_that_outlives_the_game_keeps_others_out(self):
+        """Un programme du deck lancé sous le jeu, qui lui survit, garde le
+        deck dès la sortie de l'enveloppe : par le descripteur hérité, ou
+        par le fil qui reprend le verrou. Un second programme lancé hors du
+        jeu sort en 2 au lieu de se superposer à lui."""
+        for close_fds in ("True", "False"):
+            with self.subTest(close_fds=close_fds):
+                lancer = (
+                    "import subprocess, sys;"
+                    " p = subprocess.Popen(sys.argv[1:],"
+                    " stdout=subprocess.PIPE, stdin=subprocess.DEVNULL,"
+                    " stderr=subprocess.DEVNULL, text=True,"
+                    " close_fds=%s);"
+                    " assert p.stdout.readline() == 'pret\\n'; print(p.pid)"
+                    % close_fds
+                )
+                fini = self.lancer(
+                    "game",
+                    sys.executable,
+                    "-c",
+                    lancer,
+                    sys.executable,
+                    "-c",
+                    RESTER,
+                    str(DECK_DIR),
+                    "tiler",
+                    self.chemin,
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                programme = int(fini.stdout)
+                self.addCleanup(tuer, programme)
+                second = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        PRENDRE.format(fonction="acquire_or_exit"),
+                        str(DECK_DIR),
+                        "controller",
+                        self.chemin,
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(2, second.returncode, second.stdout)
+                self.assertEqual("", second.stdout)
+                tuer(programme)
+                self.attendre_le_verrou_libre()
 
     def test_sigterm_to_the_wrapper_ends_the_game(self):
         """« kill <pid> », que la diagnostic propose quand un jeu tient le
