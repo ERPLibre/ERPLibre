@@ -214,7 +214,10 @@ class StreamDeckMenuMixin:
 
     def _streamdeck_program(self):
         """Réécrit DECK_PROGRAM, puis redémarre l'unité si elle tournait,
-        pour qu'elle lance le nouveau programme."""
+        pour qu'elle lance le nouveau programme. Le programme déjà en
+        vigueur, celui du fichier ou le défaut de DEFAULTS quand la clé
+        manque, n'écrit rien : le point d'entrée du service prend le même
+        défaut, un fichier ne se crée pas pour le redire."""
         if not self._streamdeck_unit_installed():
             return
         chemin = service.settings_path()
@@ -226,7 +229,9 @@ class StreamDeckMenuMixin:
         )
         if choix is None:
             return
-        if not service.write_settings(chemin, {"DECK_PROGRAM": choix}):
+        if choix == actuel or not service.write_settings(
+            chemin, {"DECK_PROGRAM": choix}
+        ):
             print(t("Unchanged."))
             return
         print(f"{t('Deck program:')} {self._streamdeck_program_label(choix)}")
