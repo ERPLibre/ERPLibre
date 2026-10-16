@@ -718,10 +718,10 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
 
 
 class TestUneDescenteEstUnInterpreteQuiExecuteLeScript(unittest.TestCase):
-    """Une descente est un interpréteur Python dont le SCRIPT est un test
-    long. Un shell, un « timeout » ou un éditeur qui nomme le script n'en
-    est pas une, et ni ce processus ni ses ancêtres ne comptent : le shell
-    qui lance « --detruire » porte le nom du script dans sa ligne de
+    """Une descente est un interpréteur Python dont un argument nomme un
+    test long. Un shell, un « timeout » ou un éditeur qui nomme le script
+    n'en est pas une, et ni ce processus ni ses ancêtres ne comptent : le
+    shell qui lance « --detruire » porte le nom du script dans sa ligne de
     commande."""
 
     def setUp(self):
@@ -750,6 +750,49 @@ class TestUneDescenteEstUnInterpreteQuiExecuteLeScript(unittest.TestCase):
             ["python3.12", "-X", "dev", "-W", "ignore", "./deep_proxmox.py"],
             ["python", "-Wignore", "-I", "install_nixos.py"],
             ["python3", "-m", "long_test.qemu_cache", "--depth", "3"],
+            ["python3", "-Im", "long_test.deep_qemu"],
+            ["python3", "-mlong_test.deep_qemu"],
+        ):
+            with self.subTest(argv=argv):
+                self.assertTrue(self._lance(argv))
+
+    def test_a_script_run_under_a_python_wrapper_is_a_descent(self):
+        """Un débogueur, un profileur ou une mesure de couverture occupent
+        la place du script : le test long n'arrive qu'en argument. Le verrou
+        protège une destruction, et une descente qu'il ne voit pas se fait
+        détruire l'arbre sous elle ; un refus de trop ne coûte qu'un
+        message. Tout argument d'un interpréteur Python compte donc, et
+        aucune liste d'enveloppes connues n'est tenue."""
+        for argv in (
+            [
+                "/v/bin/python",
+                "/opt/ide/plugins/pydev/pydevd.py",
+                "--multiprocess",
+                "--client",
+                "127.0.0.1",
+                "--port",
+                "40001",
+                "--file",
+                "/r/long_test/deep_qemu.py",
+                "--depth",
+                "3",
+            ],
+            [
+                "python3",
+                "-m",
+                "debugpy",
+                "--listen",
+                "5678",
+                "/r/long_test/deep_qemu.py",
+            ],
+            ["/v/bin/python", "/v/bin/coverage", "run", "deep_qemu.py"],
+            ["python3", "-m", "pdb", "long_test/install_nixos.py"],
+            ["python3", "-m", "cProfile", "-o", "p", "deep_proxmox.py"],
+            ["python3", "-m", "pdb", "-m", "long_test.qemu_cache"],
+            ["python3", "-c", "import runpy", "deep_qemu.py"],
+            ["python3", "-", "deep_qemu.py"],
+            ["python3.13t", "long_test/deep_qemu.py"],
+            ["/usr/bin/pypy3", "long_test/deep_qemu.py"],
         ):
             with self.subTest(argv=argv):
                 self.assertTrue(self._lance(argv))
@@ -765,11 +808,11 @@ class TestUneDescenteEstUnInterpreteQuiExecuteLeScript(unittest.TestCase):
             ["timeout", "60", "python3", "long_test/deep_qemu.py"],
             ["less", "long_test/install_erplibre_home.py"],
             ["long_test/install_nixos.py"],
-            ["python3", "-c", "print('install_nixos.py')", "deep_qemu.py"],
-            ["python3", "-", "deep_qemu.py"],
+            ["python3", "-c", "print('install_nixos.py')"],
             ["python3", "-m", "unittest", "test.deep_qemu"],
             ["python3", "test/test_longtest_install_nixos.py"],
-            ["python3", "script/todo/todo.py", "long_test/deep_qemu.py"],
+            ["python3", "-Wignore", "script/todo/todo.py"],
+            ["python3-config", "long_test/deep_qemu.py"],
             [],
         ):
             with self.subTest(argv=argv):
@@ -1606,10 +1649,11 @@ class TestDeuxPilesNeSeMelangentPas(unittest.TestCase):
     def test_the_lock_looks_for_every_descent_script(self):
         """Deux descentes de piles différentes se disputent la RAM, le disque
         et ~/.ssh/config aussi sûrement que deux de la même."""
-        import inspect
-
-        src = inspect.getsource(moteur._lance_une_descente)
-        self.assertIn("SCRIPTS", src)
+        for script in moteur.SCRIPTS:
+            with self.subTest(script=script):
+                self.assertTrue(
+                    moteur._execute_un_script(["python3", f"a/{script}"])
+                )
         self.assertIn("deep_proxmox.py", moteur.SCRIPTS)
         self.assertIn("deep_qemu.py", moteur.SCRIPTS)
 

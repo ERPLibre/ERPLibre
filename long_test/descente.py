@@ -784,57 +784,56 @@ class Descente:
         return etat
 
 
-# argv[0] d'un interpréteur Python : python, python3, python3.12, chemin
-# d'un venv compris.
-_INTERPRETE = re.compile(r"python[0-9.]*")
-# Les options de l'interpréteur qui prennent une valeur, collée (« -Wignore »)
-# ou dans l'argument suivant (« -W ignore »).
-_OPTIONS_A_VALEUR = "cmWX"
+# argv[0] d'un interpréteur Python : python, python3, python3.12, une
+# construction suffixée (python3.13t, python3.12d), pypy3, chemin d'un venv
+# compris.
+_INTERPRETE = re.compile(r"(?:python|pypy)[0-9.]*[dmt]*")
+# Une grappe d'options courtes qui finit par -m : la valeur, collée
+# (« -mpaquet.module », « -Impaquet.module ») ou vide quand le module est
+# l'argument suivant (« -m », « -Im »).
+_MODULE = re.compile(r"-[A-Za-z]*m(.*)")
 
 
-def _script_execute(arguments):
-    """Le nom de fichier du script qu'exécute la ligne de commande
-    `arguments` (liste de str), ou "" quand ce n'est pas un interpréteur
-    Python qui exécute un fichier.
+def _execute_un_script(arguments):
+    """La ligne de commande `arguments` (liste de str) est-elle un
+    interpréteur Python dont un argument nomme un des SCRIPTS ?
 
-    argv[0] est un interpréteur ; ses options sont sautées avec leur valeur,
-    et le premier argument restant est le script, rendu par son basename.
-    « -m paquet.module » rend « module.py ». « -c » et « - » (stdin)
-    n'exécutent aucun fichier. Un shell, un « timeout » ou un éditeur qui
-    nomme le script rend "" : le nom n'y est qu'un argument, pas le code
-    qui s'exécute.
+    argv[0] doit être un interpréteur : un shell, un « timeout » ou un
+    éditeur qui nomme le script n'exécute pas de Python. Après lui, TOUS les
+    arguments comptent, par leur basename ; un module donné à -m compte par
+    son dernier composant, « paquet.module » valant « module.py ». Un
+    débogueur (pydevd, debugpy), un profileur (cProfile) ou coverage occupe
+    la place du script et ne reçoit le test long qu'en argument : seul un
+    balayage de toute la ligne le voit, sans liste d'enveloppes à tenir.
+
+    Le verrou protège une destruction : un processus Python qui nomme un
+    script sans l'exécuter fait refuser à tort, ce qui coûte un message,
+    alors qu'une descente manquée se fait détruire son arbre.
     """
     if not arguments or not _INTERPRETE.fullmatch(
         os.path.basename(arguments[0])
     ):
-        return ""
+        return False
     reste = iter(arguments[1:])
     for argument in reste:
-        if argument == "--check-hash-based-pycs":
-            next(reste, None)
-        elif argument.startswith("--"):
-            continue
-        elif argument.startswith("-") and argument != "-":
-            for i, lettre in enumerate(argument[1:], 2):
-                if lettre in _OPTIONS_A_VALEUR:
-                    valeur = argument[i:] or next(reste, "")
-                    if lettre == "c":
-                        return ""
-                    if lettre == "m":
-                        return valeur.rsplit(".", 1)[-1] + ".py"
-                    break
+        module = _MODULE.fullmatch(argument)
+        if module:
+            valeur = module.group(1) or next(reste, "")
+            nom = valeur.rsplit(".", 1)[-1] + ".py"
         else:
-            return "" if argument == "-" else os.path.basename(argument)
-    return ""
+            nom = os.path.basename(argument)
+        if nom in SCRIPTS:
+            return True
+    return False
 
 
 def _lance_une_descente(pid, proc="/proc"):
-    """`pid` est-il un interpréteur Python qui exécute UN des scripts de
-    descente ?
+    """`pid` est-il un interpréteur Python dont la ligne de commande nomme
+    UN des scripts de descente ?
 
     La ligne de commande, lue dans `proc`/<pid>/cmdline, passe par
-    _script_execute : seul le script que l'interpréteur exécute compte, pas
-    un argument qui le nomme. Le script se compare par NOM DE FICHIER, pas
+    _execute_un_script : seul un interpréteur Python compte, pas un shell
+    qui nomme le script. Le script se compare par NOM DE FICHIER, pas
     par suffixe : « test_longtest_install_nixos.py » n'est pas
     « install_nixos.py », et le chemin complet qu'un interpréteur reçoit se
     reconnaît toujours.
@@ -850,7 +849,7 @@ def _lance_une_descente(pid, proc="/proc"):
         arguments.pop()
     # LES scripts, tous : deux tests longs se disputent la RAM, le disque et
     # ~/.ssh/config aussi sûrement que deux descentes de la même pile.
-    return _script_execute(arguments) in SCRIPTS
+    return _execute_un_script(arguments)
 
 
 def descente_vivante(pid):
