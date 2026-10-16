@@ -510,7 +510,10 @@ check_checkout_path() {
 #   n'est jamais atteint avec RestartSec=3.
 # SuccessExitStatus=143 : sur SIGTERM (systemctl stop), le programme remet
 # le deck à zéro et sort en 128 + 15 (deck_lock.exit_on_sigterm) ; sans
-# cette ligne, l'arrêt laisserait l'unité « failed ». PYTHONUNBUFFERED : la
+# cette ligne, l'arrêt laisserait l'unité « failed ». TimeoutStopSec=10 :
+# un fil non démon (animation, webcam du contrôleur) retient SystemExit, et
+# l'arrêt finit alors en SIGKILL au bout de 10 s au lieu des 90 s par
+# défaut, que la passation attendrait avant le jeu. PYTHONUNBUFFERED : la
 # sortie va au journal ligne par ligne, et non par blocs à la sortie.
 unit_content() {
     local dir entry
@@ -534,6 +537,7 @@ unit_content() {
         "RestartSec=3" \
         "RestartPreventExitStatus=2 3" \
         "SuccessExitStatus=143" \
+        "TimeoutStopSec=10" \
         "" \
         "[Install]" \
         "WantedBy=graphical-session.target"

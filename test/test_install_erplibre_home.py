@@ -1226,6 +1226,7 @@ Restart=on-failure
 RestartSec=3
 RestartPreventExitStatus=2 3
 SuccessExitStatus=143
+TimeoutStopSec=10
 
 [Install]
 WantedBy=graphical-session.target
@@ -1255,6 +1256,14 @@ class TestUniteDuService(unittest.TestCase):
             lignes,
         )
         self.assertIn("SuccessExitStatus=%d" % (128 + signal.SIGTERM), lignes)
+
+    def test_a_stop_is_bounded(self):
+        """Un fil non démon d'un programme du deck retient SystemExit après
+        SIGTERM : sans borne, systemctl stop (la passation, Deck program =
+        none, la désinstallation) attendrait le défaut de 90 s."""
+        fait = sourcer('RACINE="/srv/exemple"\nunit_content\n')
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("TimeoutStopSec=10", fait.stdout.splitlines())
 
     def test_a_dollar_in_the_checkout_is_written_as_is(self):
         """systemd ne développe les variables que dans les ARGUMENTS d'une
