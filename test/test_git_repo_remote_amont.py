@@ -495,6 +495,11 @@ class TestDiagnostiquerParLeRemote(DepotsAvecManifeste):
             _git(clone, "rev-parse", "U/principale"),
             _git(self.travail, "rev-parse", "HEAD"),
         )
+        # L'état montré s'épingle : le commit amont et HEAD, en entier.
+        self.assertEqual(
+            res["cible_sha"], _git(self.travail, "rev-parse", "HEAD")
+        )
+        self.assertEqual(res["head"], _git(clone, "rev-parse", "HEAD"))
 
 
 class TestCatalogue(unittest.TestCase):

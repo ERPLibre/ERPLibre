@@ -361,6 +361,15 @@ def git(args, cwd, delai=DELAI_GIT):
     return done.stdout, done.stderr, done.returncode
 
 
+def commit_de(chemin, ref):
+    """Le commit complet que `ref` désigne dans ce clone, ou None."""
+    out, _err, code = git(
+        ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], chemin
+    )
+    sha = out.strip()
+    return sha if code == 0 and sha else None
+
+
 def est_superficiel(chemin):
     """Un clone tronqué n'a pas de base de fusion avec son amont."""
     out, _err, code = git(["rev-parse", "--is-shallow-repository"], chemin)
@@ -809,7 +818,10 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
     récupère par l'URL, sans remote.
 
     « cible » est la référence de l'amont récupéré, « <remote>/<branche> »
-    ou FETCH_HEAD, celle que `repo_apply.appliquer` rebase. « remote_amont »
+    ou FETCH_HEAD, celle que `repo_apply.appliquer` rebase ; « cible_sha »
+    est le commit qu'elle désigne après le fetch et « head » celui de HEAD :
+    les deux épinglent l'état montré, qu'une passe sans menu revérifie
+    avant d'écrire. « remote_amont »
     est l'état que `preparer_remote` rend. Un remote homonyme à une autre
     URL rend le fork non comparable : « url_en_place » porte cette URL et
     « correction » la commande qui la remplace.
@@ -821,6 +833,8 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
             "verdict": "non_comparable",
             "motif": None,
             "cible": None,
+            "cible_sha": None,
+            "head": None,
             "remote_amont": None,
             "url_en_place": None,
             "correction": None,
@@ -875,6 +889,8 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
         constat["motif"] = t("upstream unreachable")
         return constat
     constat["cible"] = cible
+    constat["cible_sha"] = commit_de(chemin, cible)
+    constat["head"] = commit_de(chemin, "HEAD")
     if constat.get("base_gelee"):
         constat["amont_depuis_gel"], constat["amont_reecrit"] = depuis_le_gel(
             chemin, constat["base_gelee"]

@@ -489,3 +489,22 @@ error, 2 usage, 3 target not found.
 .venv.erplibre/bin/python script/git/repo_state.py between odoo18.0/addons/OCA_web OLD_SHA NEW_SHA --max 50
 .venv.erplibre/bin/python script/git/repo_state.py cross-version odoo18.0/addons/OCA_web --module web_responsive --full
 ```
+
+#### Apply an upgrade pass without the menu
+
+`script/git/repo_apply.py --apply --confirm <Odoo version> --expect <path>...` applies a pass for a caller that has
+already shown the dry run and collected consent, such as the Odoo module `erplibre_info`; it prints JSON. It runs the
+diagnostic again and refuses to write anything (exit code 4) unless the forks without predicted conflict
+(`a_rebaser`, `en_retard`) are exactly the `--expect` paths. `--expect <path>=<upstream sha>:<HEAD sha>` also pins
+the state the dry run showed, from the `cible_sha` and `head` of its diagnostic: a pinned fork whose upstream or
+HEAD moved since refuses the pass the same way, listed under `derives`, so the rebase never lands on commits nobody
+reviewed. `--confirm` must be the active Odoo version, as the menu
+asks it typed again (exit code 2 otherwise). The forks with a predicted conflict (`en_conflit`, `absorbe`) are left
+to the menu and listed under `laisses`. A fork that conflicts anyway has its rebase aborted and returns to its start
+commit, state `conflit_annule`: no tree is left with conflicts. The pass is recorded under `tasks/git_repo_upgrade/`
+like a pass of the menu, and nothing is pushed.
+
+```bash
+.venv.erplibre/bin/python script/git/repo_apply.py --apply --confirm 18.0 --expect odoo18.0/addons/OCA_web
+.venv.erplibre/bin/python script/git/repo_apply.py --apply --confirm 18.0 --expect odoo18.0/addons/OCA_web=UPSTREAM_SHA:HEAD_SHA
+```

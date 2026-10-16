@@ -12,6 +12,8 @@ locaux : le rebase, le fast-forward et les push s'y jouent pour de vrai,
 sans réseau et sans toucher aux clones du checkout.
 """
 
+import io
+import json
 import os
 import shutil
 import subprocess
@@ -69,8 +71,9 @@ def constat(verdict="a_rebaser", revision="18.0_dev"):
 
 
 def appliquer_simule(c, simule, horodatage="20260927T0800"):
-    with patch.object(repo_apply, "git", simule), patch(
-        "os.path.isdir", return_value=False
+    with (
+        patch.object(repo_apply, "git", simule),
+        patch("os.path.isdir", return_value=False),
     ):
         return repo_apply.appliquer(c, horodatage)
 
@@ -344,15 +347,17 @@ class TestPasseAppliquer(unittest.TestCase):
             constat("en_conflit"),
             constat("non_comparable"),
         ]
-        with patch.object(repo_apply, "git", GitSimule()), patch(
-            "os.path.isdir", return_value=False
+        with (
+            patch.object(repo_apply, "git", GitSimule()),
+            patch("os.path.isdir", return_value=False),
         ):
             res = repo_apply.passe_appliquer(lst, "20260927T0800")
         self.assertEqual(len(res), 2)
 
     def test_en_retard_fait_partie_de_la_passe(self):
-        with patch.object(repo_apply, "git", GitSimule()), patch(
-            "os.path.isdir", return_value=False
+        with (
+            patch.object(repo_apply, "git", GitSimule()),
+            patch("os.path.isdir", return_value=False),
         ):
             res = repo_apply.passe_appliquer(
                 [constat("en_retard")], "20260927T0800"
@@ -406,8 +411,9 @@ class TestReprendreLaMain(unittest.TestCase):
         """Détacher sur FETCH_HEAD poserait le dépôt sur l'amont, soit
         précisément là où la mise à niveau voulait l'emmener."""
         simule = GitSimule()
-        with patch.object(repo_apply, "git", simule), patch(
-            "os.path.isdir", return_value=False
+        with (
+            patch.object(repo_apply, "git", simule),
+            patch("os.path.isdir", return_value=False),
         ):
             repo_apply.revenir_a_repo("/x", "cccc3333")
         self.assertEqual(simule.vues[-1], ["checkout", "--detach", "cccc3333"])
@@ -1084,8 +1090,9 @@ class TestDepotsReels(unittest.TestCase):
                 return "", "", 1
             return vrai_git(args, cwd, delai) if delai else vrai_git(args, cwd)
 
-        with patch.object(repo_apply, "git", espion), patch.object(
-            repo_apply, "a_retenir", return_value=[]
+        with (
+            patch.object(repo_apply, "git", espion),
+            patch.object(repo_apply, "a_retenir", return_value=[]),
         ):
             repo_apply.publier(self.clone, plan)
         push = [a for a in vues if a[0] == "push"][0]
@@ -1215,6 +1222,245 @@ class TestDepotsReels(unittest.TestCase):
         _out, _err, code = repo_apply.publier(self.clone, plan)
         self.assertNotEqual(code, 0)
         self.assertEqual(self.distant(), tiers)
+
+
+class TestPasseSansMenu(unittest.TestCase):
+    """« repo_apply.py --apply » : le plan consenti, le tri des verdicts,
+    le conflit abandonné. Le diagnostic est simulé ; le rebase, lui, se
+    joue dans les dépôts temporaires du banc « TestDepotsReels »."""
+
+    REVISION = TestDepotsReels.REVISION
+    REMOTE = TestDepotsReels.REMOTE
+    commit = TestDepotsReels.commit
+    amont_avance = TestDepotsReels.amont_avance
+    fetch_amont = TestDepotsReels.fetch_amont
+    constat = TestDepotsReels.constat
+
+    def setUp(self):
+        TestDepotsReels.setUp(self)
+        with open(os.path.join(self.dossier, ".odoo-version"), "w") as fh:
+            fh.write("X.0\n")
+
+    def diagnostic(self, lst):
+        return patch.object(
+            repo_apply.repo_upgrade, "passe_diagnostic", return_value=lst
+        )
+
+    def passes_ecrites(self):
+        return repo_apply.passes(self.dossier)
+
+    def test_plan_change_n_ecrit_rien(self):
+        lst = [self.constat("a_rebaser")]
+        with (
+            self.diagnostic(lst),
+            patch.object(repo_apply, "passe_appliquer") as applique,
+        ):
+            charge, code = repo_apply.passe_sans_menu(
+                "X.0", ["autre"], self.dossier
+            )
+        self.assertEqual(code, repo_apply.EXIT_PLAN_CHANGE)
+        self.assertEqual(charge["error"], "plan_changed")
+        self.assertEqual(charge["plan"], ["clone"])
+        applique.assert_not_called()
+        self.assertEqual(self.passes_ecrites(), [])
+
+    def test_seuls_les_verdicts_sans_conflit_s_appliquent(self):
+        lst = [
+            self.constat("a_rebaser"),
+            dict(self.constat("en_conflit"), chemin="autre"),
+            dict(self.constat("absorbe"), chemin="troisieme"),
+        ]
+        with (
+            self.diagnostic(lst),
+            patch.object(
+                repo_apply, "passe_appliquer", return_value=[]
+            ) as applique,
+        ):
+            charge, code = repo_apply.passe_sans_menu(
+                "X.0", ["clone"], self.dossier, "20990101T0800"
+            )
+        self.assertEqual(code, 0)
+        retenus = applique.call_args[0][0]
+        self.assertEqual([c["chemin"] for c in retenus], ["clone"])
+        self.assertEqual(charge["laisses"], ["autre", "troisieme"])
+        self.assertEqual(self.passes_ecrites(), ["20990101T0800"])
+
+    def test_rien_a_appliquer_n_ecrit_rien(self):
+        with self.diagnostic([self.constat("a_jour")]):
+            charge, code = repo_apply.passe_sans_menu("X.0", [], self.dossier)
+        self.assertEqual(code, 0)
+        self.assertIsNone(charge["dossier"])
+        self.assertEqual(self.passes_ecrites(), [])
+
+    def test_un_conflit_est_abandonne_et_le_depot_remis(self):
+        self.commit(self.clone, "amont.txt", "notre")
+        depart = _git(self.clone, "rev-parse", "HEAD")
+        self.amont_avance("deux")
+        self.fetch_amont()
+        with self.diagnostic([self.constat("a_rebaser")]):
+            charge, code = repo_apply.passe_sans_menu(
+                "X.0", ["clone"], self.dossier, "20990101T0800"
+            )
+        self.assertEqual(code, 0)
+        (res,) = charge["resultats"]
+        self.assertEqual(res["etat"], "conflit_annule")
+        self.assertTrue(res["restaure"])
+        self.assertIsNone(res["branche"])
+        self.assertEqual(res["conflits"], ["amont.txt"])
+        self.assertFalse(repo_apply.rebase_en_cours(self.clone))
+        self.assertEqual(_git(self.clone, "rev-parse", "HEAD"), depart)
+        self.assertEqual(
+            _git(self.clone, "rev-parse", "--abbrev-ref", "HEAD"),
+            self.REVISION,
+        )
+        self.assertEqual(_git(self.clone, "status", "--porcelain"), "")
+        passe = repo_apply.lire_passe(None, self.dossier)
+        self.assertEqual(passe["resultats"][0]["etat"], "conflit_annule")
+
+    def test_un_rebase_propre_est_garde(self):
+        self.commit(self.clone, "fork.txt", "notre")
+        self.amont_avance("deux")
+        self.fetch_amont()
+        with self.diagnostic([self.constat("a_rebaser")]):
+            charge, _code = repo_apply.passe_sans_menu(
+                "X.0", ["clone"], self.dossier, "20990101T0800"
+            )
+        (res,) = charge["resultats"]
+        self.assertEqual(res["etat"], "rebase")
+        self.assertEqual(
+            _git(self.clone, "rev-parse", "--abbrev-ref", "HEAD"),
+            "X.0_maj_20990101",
+        )
+
+    def test_un_amont_deplace_n_ecrit_rien(self):
+        """La liste des dépôts est la même, mais l'amont a avancé depuis
+        l'essai à sec : le rebase irait sur des commits que personne n'a
+        vus."""
+        self.commit(self.clone, "fork.txt", "notre")
+        head = _git(self.clone, "rev-parse", "HEAD")
+        self.fetch_amont()
+        montre = _git(self.clone, "rev-parse", "FETCH_HEAD")
+        nouveau = self.amont_avance("deux")
+        self.fetch_amont()
+        constat = self.constat("a_rebaser", cible_sha=nouveau, head=head)
+        epingles = {"clone": {"cible_sha": montre, "head": head}}
+        with (
+            self.diagnostic([constat]),
+            patch.object(repo_apply, "passe_appliquer") as applique,
+        ):
+            charge, code = repo_apply.passe_sans_menu(
+                "X.0", ["clone"], self.dossier, epingles=epingles
+            )
+        self.assertEqual(code, repo_apply.EXIT_PLAN_CHANGE)
+        self.assertEqual(charge["error"], "plan_changed")
+        self.assertEqual(
+            charge["derives"],
+            [
+                {
+                    "chemin": "clone",
+                    "cle": "cible_sha",
+                    "attendu": montre,
+                    "trouve": nouveau,
+                }
+            ],
+        )
+        applique.assert_not_called()
+        self.assertEqual(self.passes_ecrites(), [])
+        self.assertEqual(_git(self.clone, "rev-parse", "HEAD"), head)
+
+    def test_un_head_deplace_n_ecrit_rien(self):
+        head = _git(self.clone, "rev-parse", "HEAD")
+        autre = self.commit(self.clone, "fork.txt", "synchronisé")
+        constat = self.constat("a_rebaser", cible_sha="c" * 40, head=autre)
+        epingles = {"clone": {"cible_sha": "c" * 40, "head": head}}
+        with (
+            self.diagnostic([constat]),
+            patch.object(repo_apply, "passe_appliquer") as applique,
+        ):
+            charge, code = repo_apply.passe_sans_menu(
+                "X.0", ["clone"], self.dossier, epingles=epingles
+            )
+        self.assertEqual(code, repo_apply.EXIT_PLAN_CHANGE)
+        self.assertEqual([d["cle"] for d in charge["derives"]], ["head"])
+        applique.assert_not_called()
+
+    def test_l_etat_montre_s_applique(self):
+        constat = self.constat("a_rebaser", cible_sha="c" * 40, head="d" * 40)
+        epingles = {"clone": {"cible_sha": "c" * 40, "head": "d" * 40}}
+        with (
+            self.diagnostic([constat]),
+            patch.object(
+                repo_apply, "passe_appliquer", return_value=[]
+            ) as applique,
+        ):
+            charge, code = repo_apply.passe_sans_menu(
+                "X.0",
+                ["clone"],
+                self.dossier,
+                "20990101T0800",
+                epingles=epingles,
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(charge["derives"], [])
+        applique.assert_called_once()
+
+    def lancer(self, *argv):
+        sortie = io.StringIO()
+        with patch("sys.stdout", sortie):
+            code = repo_apply.main(["--root", self.dossier, *argv])
+        return code, json.loads(sortie.getvalue())
+
+    def test_main_exige_apply(self):
+        code, charge = self.lancer("--confirm", "X.0")
+        self.assertEqual(code, repo_apply.EXIT_USAGE)
+        self.assertIn("--apply", charge["error"])
+
+    def test_main_exige_la_version_retapee(self):
+        with patch.object(repo_apply, "passe_sans_menu") as passe:
+            code, charge = self.lancer("--apply", "--confirm", "Y.0")
+        self.assertEqual(code, repo_apply.EXIT_USAGE)
+        self.assertEqual(charge["error"], "confirm_mismatch")
+        passe.assert_not_called()
+
+    def test_main_transmet_le_plan(self):
+        with patch.object(
+            repo_apply, "passe_sans_menu", return_value=({"ok": 1}, 0)
+        ) as passe:
+            code, charge = self.lancer(
+                "--apply", "--confirm", "X.0", "--expect", "a", "--expect", "b"
+            )
+        self.assertEqual((code, charge), (0, {"ok": 1}))
+        self.assertEqual(passe.call_args[0][:2], ("X.0", ["a", "b"]))
+
+    def test_main_transmet_les_epingles(self):
+        cible, head = "c" * 40, "d" * 40
+        with patch.object(
+            repo_apply, "passe_sans_menu", return_value=({"ok": 1}, 0)
+        ) as passe:
+            code, _charge = self.lancer(
+                "--apply",
+                "--confirm",
+                "X.0",
+                "--expect",
+                f"a={cible}:{head}",
+                "--expect",
+                "b",
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(passe.call_args[0][:2], ("X.0", ["a", "b"]))
+        self.assertEqual(
+            passe.call_args[1]["epingles"],
+            {"a": {"cible_sha": cible, "head": head}},
+        )
+
+    def test_main_refuse_une_epingle_illisible(self):
+        with patch.object(repo_apply, "passe_sans_menu") as passe:
+            code, charge = self.lancer(
+                "--apply", "--confirm", "X.0", "--expect", "a=court:x"
+            )
+        self.assertEqual(code, repo_apply.EXIT_USAGE)
+        self.assertIn("PATH=TARGET_SHA:HEAD_SHA", charge["error"])
+        passe.assert_not_called()
 
 
 if __name__ == "__main__":
