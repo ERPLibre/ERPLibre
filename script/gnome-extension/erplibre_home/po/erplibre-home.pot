@@ -172,6 +172,9 @@ msgstr ""
 msgid "no visual Stream Deck is plugged in"
 msgstr ""
 
+msgid "its start condition is not met (DECK_PROGRAM=none, no venv or no Stream Deck plugged in)"
+msgstr ""
+
 msgid "Restart deck"
 msgstr ""
 

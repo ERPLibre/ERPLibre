@@ -256,7 +256,8 @@ unit is not deactivating; a program still running at 8 s counts as
 started. The gaps never exceed `RestartSec=3`, so a crash loop is seen in
 its restart wait. When no program runs, the notice says why: the program holding the deck (from the lock's
 text), no visual Stream Deck (exit 3), the line the entry point's `--check`
-prints for a skipped start, or the state and exit status of a program that
+prints for a skipped start (`Result=exec-condition`) or, when it prints
+none, the unmet start condition with its three causes, or the state and exit status of a program that
 failed or waits for its restart (`SubState=auto-restart`, or
 `auto-restart-queued` from systemd 254 on). The other
 indicators are unchanged.

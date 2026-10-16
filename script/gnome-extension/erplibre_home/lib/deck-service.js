@@ -209,7 +209,10 @@ export function parseLockHolder(text) {
 /**
  * The notice for `outcome` (deckStartOutcome), translated, or null when the
  * program runs. `holder` is parseLockHolder() of the lock, for 'busy';
- * `checkStderr` is the entry point's --check output, for 'skipped'.
+ * `checkStderr` is the entry point's --check output, for 'skipped', whose
+ * last line names the condition that failed. A check that prints nothing
+ * (its condition holds again by the time it runs, or it cannot run) leaves
+ * the notice naming the skip and its possible causes.
  */
 export function deckStartNotice(outcome, {holder = null, checkStderr = ''} = {}) {
     let why;
@@ -225,7 +228,8 @@ export function deckStartNotice(outcome, {holder = null, checkStderr = ''} = {})
         why = _('no visual Stream Deck is plugged in');
         break;
     case 'skipped':
-        why = deckStartFailure('inactive', checkStderr);
+        why = lastLine(checkStderr) ||
+            _('its start condition is not met (DECK_PROGRAM=none, no venv or no Stream Deck plugged in)');
         break;
     default:
         why = outcome.detail ?? '?';
@@ -255,9 +259,12 @@ export function deckCheckArgv(root) {
  * `state` trimmed, else "?".
  */
 export function deckStartFailure(state, checkStderr) {
-    const lines = String(checkStderr ?? '').split('\n')
+    return lastLine(checkStderr) || String(state ?? '').trim() || '?';
+}
+
+// The last non-empty line of `text`, trimmed; "" when there is none.
+function lastLine(text) {
+    const lines = String(text ?? '').split('\n')
         .map(l => l.trim()).filter(l => l !== '');
-    if (lines.length)
-        return lines[lines.length - 1];
-    return String(state ?? '').trim() || '?';
+    return lines.length ? lines[lines.length - 1] : '';
 }

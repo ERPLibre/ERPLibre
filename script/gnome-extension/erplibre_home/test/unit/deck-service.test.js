@@ -213,6 +213,12 @@ test('the notice says why no deck program runs', () => {
             '[ERPLibre Home] DECK_PROGRAM=none: no deck program to run\n'}),
         'The deck program did not start: [ERPLibre Home] ' +
         'DECK_PROGRAM=none: no deck program to run');
+    // The check gave no line (its condition holds again, or it could not
+    // run): the notice still names the skip and its causes.
+    for (const checkStderr of ['', '\n \n', null])
+        assert.equal(deckStartNotice({kind: 'skipped'}, {checkStderr}),
+            'The deck program did not start: its start condition is not ' +
+            'met (DECK_PROGRAM=none, no venv or no Stream Deck plugged in)');
     assert.equal(
         deckStartNotice({kind: 'failed', detail: 'failed (exit-code)'}, {}),
         'The deck program did not start: failed (exit-code)');
@@ -287,6 +293,10 @@ test('the menu entry says it starts the deck program', () => {
         ['another program', 'un autre programme'],
         ['no visual Stream Deck is plugged in',
             "aucun Stream Deck à écran n'est branché"],
+        ['its start condition is not met (DECK_PROGRAM=none, no venv or ' +
+            'no Stream Deck plugged in)',
+        "sa condition de démarrage n'est pas remplie (DECK_PROGRAM=none, " +
+            'venv absent ou aucun Stream Deck branché)'],
     ]) {
         assert.ok(fr.includes(`msgid "${msgid}"\nmsgstr "${msgstr}"`), msgid);
         assert.ok(extensionFile('po/en.po').includes(
