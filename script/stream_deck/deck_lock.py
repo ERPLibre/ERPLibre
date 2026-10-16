@@ -31,7 +31,10 @@ Un programme du deck lancé sous la commande tient le verrou par le
 descripteur hérité. S'il ne l'a pas hérité (un subprocess python ferme les
 descripteurs), il trouve son ancêtre au nom de « game » dans le verrou,
 tourne sous ce verrou, et un fil attend de le reprendre à son nom : le deck
-reste pris s'il survit au jeu.
+reste pris s'il survit au jeu. Par le descripteur hérité, le texte n'est
+jamais réécrit : il nomme encore « game » et le PID de l'enveloppe quand
+seul ce programme tient le deck, et holder_pids() nomme les vrais
+détenteurs.
 
 Bibliothèque standard seulement : TODO la charge hors du venv du deck, et
 la passation la lance sous le python3 du système.
@@ -149,18 +152,20 @@ def _write_holder(fh, program):
     fh.flush()
 
 
-def _inherited(path):
+def _inherited(path, exclu):
     """Un descripteur de ce processus ouvert sur le verrou `path`, hérité
     d'un ancêtre, et qui le tient : flock sur une description de fichier
     qui tient déjà le verrou réussit. None sinon. Les descripteurs que ce
     processus a pris lui-même (_held) ne comptent pas : deux acquire() d'un
-    même processus s'excluent."""
+    même processus s'excluent. `exclu`, le descripteur que l'appelant vient
+    d'ouvrir, ne compte pas non plus : sur un verrou devenu libre, son
+    flock réussirait."""
     try:
         cible = os.stat(path, follow_symlinks=False)
         noms = os.listdir("/proc/self/fd")
     except OSError:
         return None
-    propres = {fh.fileno() for fh in _held if not fh.closed}
+    propres = {fh.fileno() for fh in _held if not fh.closed} | {exclu}
     for nom in noms:
         fd = int(nom)
         if fd in propres:
@@ -203,27 +208,31 @@ def acquire(program, path=None):
     réécrit : un descripteur hérité du jeu le tient (_inherited), et le
     fichier rendu est ce descripteur ; ou un ancêtre le tient au nom de
     « game » sans que le descripteur ait été hérité, et _take_over le
-    reprend à la fin du jeu. Lève DeckBusy quand un autre processus le
-    tient, OSError quand le dossier ou le fichier n'est pas privé (voir
-    _open_private)."""
+    reprend à la fin du jeu. Un détenteur parti entre le premier essai et
+    cette recherche laisse le verrou libre : un second essai le prend. Lève
+    DeckBusy quand un autre processus le tient, OSError quand le dossier ou
+    le fichier n'est pas privé (voir _open_private)."""
     path = path or lock_path()
     fh = _open_private(path)
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         tenu = parse_holder(fh.read())
-        herite = _inherited(path)
+        herite = _inherited(path, fh.fileno())
         if herite is not None:
             fh.close()
             fh = os.fdopen(herite, "r+", encoding="utf-8")
             _held.append(fh)
             return fh
-        if tenu[1] == HANDOVER_PROGRAM and tenu[0] != "?":
-            if int(tenu[0]) in _ancestors():
-                _take_over(fh, program)
-                return None
-        fh.close()
-        raise DeckBusy(tenu) from None
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if tenu[1] == HANDOVER_PROGRAM and tenu[0] != "?":
+                if int(tenu[0]) in _ancestors():
+                    _take_over(fh, program)
+                    return None
+            fh.close()
+            raise DeckBusy(tenu) from None
     _write_holder(fh, program)
     _held.append(fh)
     return fh
@@ -381,6 +390,16 @@ def _pidfd(pid):
         return None
 
 
+def _send(pid, pidfd, signum):
+    """Envoie `signum` à `pid` par son pidfd quand il existe : un PID repris
+    entre la lecture de /proc et l'envoi ne reçoit rien. Lève
+    ProcessLookupError quand le processus est parti."""
+    if pidfd is None:
+        os.kill(pid, signum)
+    else:
+        signal.pidfd_send_signal(pidfd, signum)
+
+
 def _wait_gone(attendus):
     """Attend la fin de chaque processus de `attendus` ({pid: pidfd|None}),
     que le gestionnaire de signal peut agrandir pendant l'attente."""
@@ -406,9 +425,12 @@ def run(program, argv, path=None):
     qu'un processus du jeu le garde ouvert, après la fin du module compris.
 
     SIGTERM et SIGINT sont passés à TOUS les descendants du module
-    (signal_targets), puis le module attend leur fin avant de sortir : un
-    jeu lancé sous un shell (la boucle de la galerie) est un petit-enfant,
-    qu'un shell non interactif tué ne prévient pas. La commande reste dans
+    (signal_targets), sauf, pour SIGINT, ceux au premier plan du terminal,
+    que le Ctrl-C a déjà frappés ; puis le module attend leur fin avant de
+    sortir : un jeu lancé sous un shell (la boucle de la galerie) est un
+    petit-enfant, qu'un shell non interactif tué ne prévient pas. Un
+    descendant arrêté (état T) reçoit aussi SIGCONT, sans quoi le signal
+    resterait en suspens et l'attente sans fin. La commande reste dans
     le groupe de processus du module : un jeu interactif garde le premier
     plan du terminal, ses Ctrl-C et ses lectures. SIGHUP ne fait rien : venu
     du terminal, il frappe le jeu lui-même. Les gestionnaires sont des
@@ -433,11 +455,14 @@ def run(program, argv, path=None):
     attendus = {}
 
     def faire_suivre(signum):
-        for pid in signal_targets(signum, os.getpid(), process_table()):
+        table = process_table()
+        for pid in signal_targets(signum, os.getpid(), table):
             try:
                 if pid not in attendus:
                     attendus[pid] = _pidfd(pid)
-                os.kill(pid, signum)
+                _send(pid, attendus[pid], signum)
+                if table[pid][3] == "T":
+                    _send(pid, attendus[pid], signal.SIGCONT)
             except ProcessLookupError:
                 continue
 
