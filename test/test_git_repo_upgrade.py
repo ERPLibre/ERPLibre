@@ -164,9 +164,27 @@ class GitSimule:
         self.reponses = reponses
         self.vues = []
 
+    def _clone_et_remote(self, nom, args, cwd):
+        """Les réponses qui posent le remote amont, ou None pour les autres.
+
+        `cwd` est la racine de son clone. « url_en_place » est l'URL que le
+        clone donne déjà au remote amont, None quand il n'en a aucun.
+        """
+        if nom == "rev-parse" and "--show-toplevel" in args:
+            return cwd + "\n", "", 0
+        if nom == "config":
+            url = self.reponses.get("url_en_place")
+            return ("", "", 1) if url is None else (url + "\n", "", 0)
+        if nom == "remote":
+            return "", "", self.reponses.get("remote_code", 0)
+        return None
+
     def __call__(self, args, cwd, delai=None):
         self.vues.append(list(args))
         nom = args[0]
+        reponse = self._clone_et_remote(nom, args, cwd)
+        if reponse is not None:
+            return reponse
         if nom == "rev-parse":
             return self.reponses.get("superficiel", "false"), "", 0
         if nom == "fetch":
@@ -304,7 +322,8 @@ class TestDiagnostiquer(unittest.TestCase):
         self.assertEqual(res["verdict"], "non_comparable")
 
     def test_aucune_commande_n_ecrit(self):
-        """La passe à sec ne doit toucher ni branche, ni remote, ni index."""
+        """La passe à sec ne touche ni branche locale, ni index, ni arbre :
+        elle n'écrit que le remote amont nommé et sa branche de suivi."""
         simule = GitSimule(conflits=[], arbres={"HEAD": []})
         diagnostiquer_simule(constat_type(), simule)
         interdits = {
@@ -315,14 +334,98 @@ class TestDiagnostiquer(unittest.TestCase):
             "reset",
             "commit",
             "branch",
-            "remote",
             "cherry-pick",
             "am",
             "apply",
             "switch",
+            "update-ref",
         }
         for args in simule.vues:
             self.assertNotIn(args[0], interdits, f"commande écrivante {args}")
+        remotes = [a for a in simule.vues if a[0] == "remote"]
+        self.assertEqual(
+            remotes,
+            [
+                [
+                    "remote",
+                    "add",
+                    "--no-tags",
+                    "-t",
+                    "18.0",
+                    "Amont",
+                    "https://example.org/amont/d.git",
+                ]
+            ],
+        )
+        (fetch,) = [a for a in simule.vues if a[0] == "fetch"]
+        self.assertEqual(fetch[-1], "+refs/heads/18.0:refs/remotes/Amont/18.0")
+
+    def test_la_cible_est_la_branche_du_remote_amont(self):
+        res = diagnostiquer_simule(
+            constat_type(), GitSimule(divergence=(0, 3))
+        )
+        self.assertEqual(res["cible"], "Amont/18.0")
+        self.assertEqual(res["remote_amont"], "ajoute")
+
+    def test_remote_present_a_la_meme_url_sert_tel_quel(self):
+        simule = GitSimule(
+            divergence=(0, 0), url_en_place="https://example.org/amont/d.git"
+        )
+        res = diagnostiquer_simule(constat_type(), simule)
+        self.assertEqual(res["remote_amont"], "present")
+        self.assertEqual(res["cible"], "Amont/18.0")
+        self.assertNotIn("remote", [a[0] for a in simule.vues])
+
+    def test_remote_a_une_autre_url_non_comparable_et_intact(self):
+        """Le remote d'un humain n'est jamais réécrit : le constat donne la
+        commande qui le corrige, et rien n'est récupéré."""
+        simule = GitSimule(url_en_place="https://example.org/ailleurs/d.git")
+        res = diagnostiquer_simule(constat_type(), simule)
+        self.assertEqual(res["verdict"], "non_comparable")
+        self.assertEqual(res["remote_amont"], "autre_url")
+        self.assertEqual(
+            res["motif"],
+            repo_upgrade.t("upstream remote points to another URL"),
+        )
+        self.assertEqual(
+            res["correction"],
+            "git -C odooX/addons/Amont_d remote set-url Amont"
+            " https://example.org/amont/d.git",
+        )
+        self.assertIsNone(res["cible"])
+        commandes = [a[0] for a in simule.vues]
+        self.assertNotIn("remote", commandes)
+        self.assertNotIn("fetch", commandes)
+        texte = repo_upgrade.render_diagnostic([res], "X", colour=False)
+        self.assertIn(res["correction"], texte)
+        self.assertIn("https://example.org/ailleurs/d.git", texte)
+
+    def test_remote_refuse_non_comparable(self):
+        res = diagnostiquer_simule(constat_type(), GitSimule(remote_code=3))
+        self.assertEqual(res["verdict"], "non_comparable")
+        self.assertEqual(res["remote_amont"], "refuse")
+
+    def test_amont_devine_recupere_par_l_url_sans_remote(self):
+        constat = constat_type()
+        constat["amont"]["source"] = "convention"
+        simule = GitSimule(divergence=(0, 2))
+        res = diagnostiquer_simule(constat, simule)
+        self.assertEqual(res["cible"], "FETCH_HEAD")
+        self.assertIsNone(res["remote_amont"])
+        commandes = [a[0] for a in simule.vues]
+        self.assertNotIn("remote", commandes)
+        self.assertNotIn("config", commandes)
+        (fetch,) = [a for a in simule.vues if a[0] == "fetch"]
+        self.assertEqual(
+            fetch[-2:], ["https://example.org/amont/d.git", "18.0"]
+        )
+
+    def test_superficiel_ne_recoit_ni_remote_ni_fetch(self):
+        simule = GitSimule(superficiel="true")
+        diagnostiquer_simule(constat_type(), simule)
+        commandes = [a[0] for a in simule.vues]
+        self.assertNotIn("remote", commandes)
+        self.assertNotIn("fetch", commandes)
 
 
 BASE_GELEE = "e" * 40
@@ -524,9 +627,16 @@ class TestCumulerEtRendu(unittest.TestCase):
         self.assertIn("d2", texte)
         self.assertIn("dépôt superficiel", texte)
 
-    def test_le_rendu_annonce_l_absence_d_ecriture(self):
-        texte = repo_upgrade.render_diagnostic(self.lot(), "X", colour=False)
-        self.assertIn(repo_upgrade.t("No state was written"), texte)
+    def test_le_rendu_dit_ce_qui_a_ete_ecrit(self):
+        lot = self.lot()
+        lot[0]["remote_amont"] = "ajoute"
+        lot[1]["remote_amont"] = "present"
+        texte = repo_upgrade.render_diagnostic(lot, "X", colour=False)
+        self.assertIn(f"{repo_upgrade.t('Upstream remotes added:')} 1", texte)
+        self.assertIn(
+            repo_upgrade.t("no local branch moved, no work tree touched"),
+            texte,
+        )
 
 
 class TestSansInvite(unittest.TestCase):

@@ -38,13 +38,16 @@ et la traduction vers le drapeau git se fait ici, une fois pour toutes.
 
 La base gelée et le fast-forward
 --------------------------------
-Le rebase ordinaire, « rebase FETCH_HEAD », est la règle : git y écarte
-de lui-même, par leur patch-id, nos commits que l'amont a déjà repris, et
-il ne rejoue que ce que l'amont n'a pas. « rebase --onto FETCH_HEAD
-<base> » ne rejoue que les commits posés depuis la base gelée du fork
-(« fork-upstream-freeze-revision »), sans cet écart : il ne sert que
-lorsque l'amont a été RÉÉCRIT (la base n'est plus ancêtre de FETCH_HEAD),
-où un rebase ordinaire rejouerait l'ancien amont comme s'il était à nous.
+L'amont est la « cible » du diagnostic : « <remote>/<branche> », la
+branche de suivi du remote amont nommé, ou FETCH_HEAD pour un amont
+récupéré par l'URL. Le rebase ordinaire, « rebase <cible> », est la
+règle : git y écarte de lui-même, par leur patch-id, nos commits que
+l'amont a déjà repris, et il ne rejoue que ce que l'amont n'a pas.
+« rebase --onto <cible> <base> » ne rejoue que les commits posés depuis la
+base gelée du fork (« fork-upstream-freeze-revision »), sans cet écart :
+il ne sert que lorsque l'amont a été RÉÉCRIT (la base n'est plus ancêtre
+de la cible), où un rebase ordinaire rejouerait l'ancien amont comme s'il
+était à nous.
 Encore faut-il que la base décrive HEAD : le commit gelé doit être HEAD ou
 son ancêtre, et la base l'ancêtre du commit gelé. Une base périmée — le
 fork a intégré un amont plus récent depuis le gel — ferait rejouer comme
@@ -183,17 +186,18 @@ def fichiers_en_conflit(chemin):
     )
 
 
-def choisir_rebase(chemin, base, gel):
-    """(onto, mode) : faut-il « rebase --onto FETCH_HEAD <base> » ?
+def choisir_rebase(chemin, base, gel, cible="FETCH_HEAD"):
+    """(onto, mode) : faut-il « rebase --onto <cible> <base> » ?
 
-    `base` est la base amont gelée, `gel` le commit gelé du fork. True
-    seulement quand l'amont a perdu `base` (réécrit), que `gel` est HEAD
-    ou son ancêtre, et que `base` est l'ancêtre de `gel`. `mode` est l'une
-    des valeurs MODE_*, qui nomme la condition décisive.
+    `base` est la base amont gelée, `gel` le commit gelé du fork, `cible`
+    la référence de l'amont. True seulement quand l'amont a perdu `base`
+    (réécrit), que `gel` est HEAD ou son ancêtre, et que `base` est
+    l'ancêtre de `gel`. `mode` est l'une des valeurs MODE_*, qui nomme la
+    condition décisive.
     """
     if not base:
         return False, MODE_SANS_BASE
-    dans_amont = est_ancetre(chemin, base, "FETCH_HEAD")
+    dans_amont = est_ancetre(chemin, base, cible)
     if dans_amont is None:
         return False, MODE_BASE_ABSENTE
     if dans_amont:
@@ -212,12 +216,16 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
     est un résultat que la passe doit rapporter, pas une exception qui
     emporterait les quatorze autres.
 
-    FETCH_HEAD est l'amont que le diagnostic vient d'y amener ; son commit
-    s'inscrit dans « amont ». « base » est le commit d'où nos commits se
-    rejouent, « onto » dit si c'est la base gelée et « mode » pourquoi
-    (voir `choisir_rebase`). « remote », « revision », « gel » (le commit
-    gelé) et « distant » (la pointe suivie de la branche du fork, None
-    sans elle) servent à la publication : « distant » y devient le bail.
+    « cible » est la référence de l'amont que le diagnostic vient de
+    récupérer (« <remote>/<branche> », ou FETCH_HEAD sans elle) : le rebase
+    et le fast-forward la nomment, si bien que le reflog dit sur quoi la
+    branche datée a été posée. Son commit s'inscrit dans « amont », qu'une
+    récupération suivante ne déplace plus. « base » est le commit d'où nos
+    commits se rejouent, « onto » dit si c'est la base gelée et « mode »
+    pourquoi (voir `choisir_rebase`). « remote », « revision », « gel »
+    (le commit gelé) et « distant » (la pointe suivie de la branche du
+    fork, None sans elle) servent à la publication : « distant » y devient
+    le bail.
 
     Deux refus précèdent toute écriture : un arbre de travail modifié
     (« sale »), sur lequel git refuserait le rebase, et une branche du fork
@@ -226,10 +234,12 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
     les perdrait.
     """
     chemin = os.path.join(racine, constat["chemin"] or "")
+    cible = constat.get("cible") or "FETCH_HEAD"
     depart, _err, _code = git(["rev-parse", "HEAD"], chemin)
     resultat = {
         "chemin": constat["chemin"],
         "verdict_avant": constat.get("verdict"),
+        "cible": cible,
         "remote": constat.get("remote"),
         "revision": constat.get("revision"),
         "gel": constat.get("gel"),
@@ -263,7 +273,7 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
     if distant and est_ancetre(chemin, distant, "HEAD") is not True:
         resultat["etat"] = "distant_en_avance"
         return resultat
-    resultat["amont"] = sha_de(chemin, "FETCH_HEAD")
+    resultat["amont"] = sha_de(chemin, cible)
 
     branche = nom_branche(constat.get("revision") or "HEAD", horodatage)
     resultat["branche"] = branche
@@ -280,9 +290,7 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
         return resultat
 
     if constat.get("verdict") == "en_retard":
-        out, err, code = git(
-            ["merge", "--ff-only", "FETCH_HEAD"], chemin, delai
-        )
+        out, err, code = git(["merge", "--ff-only", cible], chemin, delai)
         resultat["sortie"] = (out + err).strip()
         resultat["etat"] = "avance_refusee" if code else "avance"
         if not code:
@@ -290,12 +298,14 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
         return resultat
 
     base = constat.get("base_gelee")
-    onto, resultat["mode"] = choisir_rebase(chemin, base, constat.get("gel"))
+    onto, resultat["mode"] = choisir_rebase(
+        chemin, base, constat.get("gel"), cible
+    )
     if onto:
-        commande = ["rebase", "--onto", "FETCH_HEAD", base]
+        commande = ["rebase", "--onto", cible, base]
         resultat["base"], resultat["onto"] = base, True
     else:
-        commande = ["rebase", "FETCH_HEAD"]
+        commande = ["rebase", cible]
         resultat["base"] = constat.get("base")
     out, err, code = git(commande, chemin, delai)
     resultat["sortie"] = (out + err).strip()
@@ -824,7 +834,7 @@ def revenir_a_repo(chemin, depart, delai=DELAI_GIT):
     """Ramène le dépôt à la HEAD détachée d'où la passe est partie.
 
     « depart » est le commit relevé AVANT la création de la branche, et
-    c'est le seul repère juste : détacher sur FETCH_HEAD poserait le dépôt
+    c'est le seul repère juste : détacher sur la cible poserait le dépôt
     sur l'amont, c'est-à-dire précisément là où la mise à niveau voulait
     l'emmener, et non là d'où elle venait.
 

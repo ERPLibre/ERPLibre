@@ -148,12 +148,19 @@ repository name differs. `fork-upstream` names the upstream branch; its
 ABSENCE, while the remote is declared, says the upstream carries nothing for
 this Odoo version — which is not the same thing as an unknown upstream.
 
-The dry run writes nothing: it brings the upstream into `FETCH_HEAD` and
-predicts the merge in memory, moving no ref and touching no work tree.
+The upstream lives in the clone under a remote named after
+`fork-upstream-remote` — `OCA` above, at `https://github.com/OCA/web.git` —
+so its branch reads `OCA/18.0`, in tig, in `git log` and in the reflog of the
+rebase, and on a full clone a plain `git fetch OCA` refreshes it by hand. The dry run adds that
+remote when it is missing, fetches the upstream branch into its tracking
+branch `refs/remotes/OCA/18.0`, then predicts the merge in memory. Nothing else
+is written: no local branch is created or moved, HEAD and the work tree stay
+put.
 
 ```bash
 PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --diagnostic
 PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --add-remotes
 ```
 
 When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revision`, see
@@ -166,19 +173,56 @@ read in the clone without network. A fork that is not cloned, whose clone lacks 
 shallow history no longer links the base to the frozen commit, shows its reason instead; nothing is fetched. `N` opens that range in tig — `git log --oneline --graph` without tig — and `a`
 opens each one in turn, stopping at a tig that does not exit with `q`.
 
+### Add the upstream remotes
+
+`Add the upstream remotes`, entry 3 of TODO › Execute › Git › Repo, or
+`--add-remotes`, does only that, on every fork, without diagnosing: add the
+named upstream remote, then fetch its branch. The remote is added with
+`--no-tags`, and every fetch passes it too, so the upstream tags never mix with
+those of the clone. It is added with `-t <branch>`: its refspec follows only the
+declared upstream branch, so `git fetch OCA` brings `OCA/18.0` and not every
+branch of the upstream. An existing remote of that name at the same URL, read
+raw from the git config without `insteadOf` rewriting, is reused as is, with
+its own refspec; the https and ssh spellings of the same repository,
+`https://github.com/OCA/web.git` and `git@github.com:OCA/web.git`, count as the
+same URL, so `make repo_use_all_ssh` does not turn the remote into a
+collision. One at another repository is never touched: the report shows the URL in place and the
+command that corrects it, `git -C <path> remote set-url <remote> <url>`, and
+the dry run marks that fork as not comparable.
+
+A shallow clone — the Odoo core fork, cloned with `clone-depth` — receives the
+remote but no fetch: fetching a full upstream into it would bring its whole
+history. The remote is marked `skipFetchAll`, so `git fetch --all`, and the
+fetch of missing commits by the freeze comparison, leave it out. The report
+gives the command that fetches it at the depth of the manifest,
+`git -C <path> fetch --depth=<clone-depth> <remote> <branch>`: on that clone it
+is the only fetch of the remote that keeps it shallow, and a plain
+`git fetch OCA` would bring the whole history of the branch. The
+dry run neither adds a remote nor fetches on a shallow clone. A fork whose
+upstream is guessed, without `fork-upstream-remote`, or that has no
+`fork-upstream` branch, receives nothing and is listed among the skipped forks
+with its reason; a guessed upstream keeps being fetched by URL in the dry run,
+into `FETCH_HEAD` only.
+
+A remote added to the clone is not part of git-repo's state: a
+`repo sync --force-sync` that rewrites the git directory loses it, and the next
+dry run or `Add the upstream remotes` adds it again. The freeze does not count
+the tracking branches of that remote as proof that the fork holds a commit.
+
 ### Apply the upgrade
 
 `Apply the upgrade` (TODO › Execute › Git › Repo) asks to type the Odoo version to confirm, then handles each fork
 the dry run marks to rebase, conflicting, absorbed upstream or behind upstream. Nothing is pushed. Each fork receives
 a dated branch `<branch>_maj_<YYYYMMDD>`, created on HEAD, where:
 
-- a fork with commits of its own replays them on the upstream: `rebase FETCH_HEAD`, where git drops by itself our
+- a fork with commits of its own replays them on the upstream branch of its named remote: `rebase OCA/18.0`
+  (`FETCH_HEAD` for an upstream fetched by URL), where git drops by itself our
   commits the upstream already took. Only when the upstream was rewritten since the freeze — the frozen base is no
   longer in its history — the frozen commit is in HEAD's history and the base under the frozen commit, are only the
-  commits laid since the base replayed: `rebase --onto FETCH_HEAD <base>`, so that the old upstream is not replayed
+  commits laid since the base replayed: `rebase --onto OCA/18.0 <base>`, so that the old upstream is not replayed
   as ours. A base the fork outgrew would replay as ours the upstream commits between it and HEAD: it falls back to the
   plain rebase. The chosen mode and its reason are recorded in the pass;
-- a fork without commits of its own, behind upstream, fast-forwards: `merge --ff-only FETCH_HEAD`.
+- a fork without commits of its own, behind upstream, fast-forwards: `merge --ff-only OCA/18.0`.
 
 Two refusals come before anything is written: a work tree whose tracked files are modified, on which git would refuse
 the rebase, and a fork branch whose tip known to the clone is not an ancestor of HEAD — the remote carries commits HEAD
@@ -398,7 +442,7 @@ make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
 make repo_freeze_diff ARGS="--graph 1"
 ```
 
-In TODO › Git repo, entry 13 offers the usual comparisons, a choice of two revisions among the freeze commits and the
+In TODO › Git repo, entry 14 offers the usual comparisons, a choice of two revisions among the freeze commits and the
 ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
 `b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
 `w` the command that opens an old commit in a git worktree beside the clone, without moving it.

@@ -18469,9 +18469,89 @@ TRANSLATIONS = {
         "fr": "Contient du code",
         "en": "Contains code",
     },
-    "No state was written": {
-        "fr": "Aucun état n'a été écrit",
-        "en": "No state was written",
+    "Upstream remotes added:": {
+        "fr": "Remotes amont ajoutés :",
+        "en": "Upstream remotes added:",
+    },
+    "no local branch moved, no work tree touched": {
+        "fr": "aucune branche locale déplacée, aucun arbre de travail touché",
+        "en": "no local branch moved, no work tree touched",
+    },
+    "upstream remote points to another URL": {
+        "fr": "le remote amont vise une autre URL",
+        "en": "upstream remote points to another URL",
+    },
+    "the upstream remote could not be added": {
+        "fr": "le remote amont n'a pas pu être ajouté",
+        "en": "the upstream remote could not be added",
+    },
+    "no fork-upstream-remote attribute": {
+        "fr": "aucun attribut fork-upstream-remote",
+        "en": "no fork-upstream-remote attribute",
+    },
+    "upstream remote absent from the manifests": {
+        "fr": "remote amont absent des manifestes",
+        "en": "upstream remote absent from the manifests",
+    },
+    "no fork-upstream branch for this version": {
+        "fr": "aucune branche fork-upstream pour cette version",
+        "en": "no fork-upstream branch for this version",
+    },
+    "Upstream remotes": {
+        "fr": "Remotes amont",
+        "en": "Upstream remotes",
+    },
+    "Upstream fetched": {
+        "fr": "Amont récupéré",
+        "en": "Upstream fetched",
+    },
+    "Remote with another URL, left untouched": {
+        "fr": "Remote à une autre URL, laissé tel quel",
+        "en": "Remote with another URL, left untouched",
+    },
+    "Remote refused by git": {
+        "fr": "Remote refusé par git",
+        "en": "Remote refused by git",
+    },
+    "Remote set, upstream unreachable": {
+        "fr": "Remote posé, amont injoignable",
+        "en": "Remote set, upstream unreachable",
+    },
+    "Shallow clone: remote set, fetch skipped": {
+        "fr": "Clone superficiel : remote posé, fetch sauté",
+        "en": "Shallow clone: remote set, fetch skipped",
+    },
+    "only this command keeps the clone shallow": {
+        "fr": "seule cette commande garde le clone superficiel",
+        "en": "only this command keeps the clone shallow",
+    },
+    "Not cloned": {
+        "fr": "Non cloné",
+        "en": "Not cloned",
+    },
+    "Remote added and fetched": {
+        "fr": "Remote ajouté et récupéré",
+        "en": "Remote added and fetched",
+    },
+    "Remote already present, fetched": {
+        "fr": "Remote déjà présent, récupéré",
+        "en": "Remote already present, fetched",
+    },
+    "Skipped: upstream not declared": {
+        "fr": "Sautés : amont non déclaré",
+        "en": "Skipped: upstream not declared",
+    },
+    "add and fetch the named upstream remote of each fork (network)": {
+        "fr": "ajoute et récupère le remote amont nommé de chaque fork (réseau)",
+        "en": "add and fetch the named upstream remote of each fork (network)",
+    },
+    "🌐 Add the upstream remotes": {
+        "fr": "🌐 Ajouter les remotes amont",
+        "en": "🌐 Add the upstream remotes",
+    },
+    "Add the upstream remotes": {
+        "fr": "Ajouter les remotes amont",
+        "en": "Add the upstream remotes",
     },
     "missing from disk": {
         "fr": "absent du disque",

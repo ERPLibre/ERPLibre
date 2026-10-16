@@ -697,7 +697,11 @@ def fetch_commits(chemin, shas):
     absents.
 
     Chaque distant du clone est essayé, d'abord sur le commit seul, puis en
-    entier : un serveur peut refuser un commit qu'il n'annonce pas.
+    entier : un serveur peut refuser un commit qu'il n'annonce pas. Un
+    distant marqué « remote.<nom>.skipFetchAll » est sauté, comme
+    « git fetch --all » le saute : c'est le remote amont qu'un clone
+    superficiel porte, et un fetch sans « --depth » y rapatrierait tout
+    l'historique amont.
     """
     if not is_clone(chemin):
         return list(shas)
@@ -706,6 +710,11 @@ def fetch_commits(chemin, shas):
         return []
     _, distants = _git(chemin, "remote")
     for distant in distants.splitlines():
+        _code, saute = _git(
+            chemin, "config", "--bool", f"remote.{distant}.skipFetchAll"
+        )
+        if saute == "true":
+            continue
         _git(chemin, "fetch", "--quiet", "--no-tags", distant, *manquants)
         manquants = [s for s in manquants if not has_commit(chemin, s)]
         if not manquants:

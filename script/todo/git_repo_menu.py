@@ -16,10 +16,11 @@ porte en propre. Elle peut entrer en conflit, elle réécrit l'historique, et
 elle se décide après avoir regardé.
 
 D'où la séparation des entrées, et d'où le fait que la mise à niveau se
-constate AVANT de s'appliquer : sa passe à sec amène l'amont dans FETCH_HEAD
-et prédit la fusion en mémoire, sans déplacer de référence ni toucher l'arbre
-de travail. Le constat coûte quelques secondes sur l'ensemble des forks, et
-se rejoue autant de fois qu'on veut.
+constate AVANT de s'appliquer : sa passe à sec récupère l'amont par son remote
+nommé, « <remote>/<branche> », et prédit la fusion en mémoire, sans créer ni
+déplacer de branche locale ni toucher l'arbre de travail. Le constat coûte
+quelques secondes sur l'ensemble des forks, et se rejoue autant de fois qu'on
+veut.
 
 Le GEL écrit le commit de chaque clone de la version d'Odoo active à côté
 de sa branche, dans ses fichiers de `manifest/` (`git_manifest_odoo<V>.xml`,
@@ -213,6 +214,7 @@ class GitRepoMenuMixin:
             {"prompt_description": t("🔄 Synchronize the repositories")},
             {"prompt_description": t("🔁 Reconfigure and synchronize")},
             {"section": t("Upgrade")},
+            {"prompt_description": t("🌐 Add the upstream remotes")},
             {"prompt_description": t("🔍 Upgrade — dry run")},
             {"prompt_description": t("⬆️ Apply the upgrade")},
             {"prompt_description": t("🧩 Conflict queue")},
@@ -242,26 +244,28 @@ class GitRepoMenuMixin:
         elif status == "2":
             self._git_repo_reconfigurer()
         elif status == "3":
-            self._git_repo_a_sec()
+            self._git_repo_ajouter_remotes()
         elif status == "4":
-            self._git_repo_appliquer()
+            self._git_repo_a_sec()
         elif status == "5":
-            self._git_repo_file_conflits()
+            self._git_repo_appliquer()
         elif status == "6":
-            self._git_repo_publier()
+            self._git_repo_file_conflits()
         elif status == "7":
-            self._git_repo_rapport()
+            self._git_repo_publier()
         elif status == "8":
-            self._git_repo_ecran()
+            self._git_repo_rapport()
         elif status == "9":
-            self._git_repo_etat_forks()
+            self._git_repo_ecran()
         elif status == "10":
-            self._git_repo_geler()
+            self._git_repo_etat_forks()
         elif status == "11":
-            self._git_repo_reconfigurer(freeze=True)
+            self._git_repo_geler()
         elif status == "12":
-            self._git_repo_geler(unfreeze=True)
+            self._git_repo_reconfigurer(freeze=True)
         elif status == "13":
+            self._git_repo_geler(unfreeze=True)
+        elif status == "14":
             self._git_repo_comparer()
         else:
             print(t("Command not found !"))
@@ -321,8 +325,34 @@ class GitRepoMenuMixin:
             print(f"✅ {t('Repositories reconfigured and synchronized.')}")
         return status
 
+    def _git_repo_ajouter_remotes(self):
+        """Pose et récupère le remote amont nommé de chaque fork, sans
+        diagnostic (voir `repo_upgrade.ajouter_remotes`).
+
+        Le remote porte le nom de « fork-upstream-remote » et ne suit que
+        la branche amont déclarée : elle se lit ensuite
+        « <remote>/<branche> », et sur un clone complet un « git fetch
+        <remote> » fait à la main la rafraîchit. Un clone superficiel ne se
+        rafraîchit que par la commande « fetch --depth » que le rapport
+        donne. Un remote homonyme à une autre URL n'est pas touché ; le
+        rapport donne la commande qui le corrige, et nomme les forks sautés.
+
+        Rend le nombre de forks dont l'amont est récupéré.
+        """
+        version = repo_upgrade.version_active(RACINE) or "?"
+        print(f"🌐 {t('Add the upstream remotes')} — Odoo {version}")
+        print(f"   {t('Querying each upstream, this takes a few seconds.')}")
+        lst = repo_upgrade.ajouter_remotes(version, racine=RACINE)
+        print()
+        print(repo_upgrade.render_remotes(lst, version, colour=True))
+        return len([x for x in lst if x["cible"]])
+
     def _git_repo_a_sec(self):
-        """Constate ce qu'une mise à niveau ferait, sans rien écrire.
+        """Constate ce qu'une mise à niveau ferait.
+
+        N'écrit que le remote amont nommé de chaque fork et sa branche de
+        suivi (voir `repo_upgrade.diagnostiquer`) : aucune branche locale,
+        aucun arbre de travail.
 
         Rend le nombre de dépôts qui demandent une décision, ce qui donne à
         l'appelant de quoi s'arrêter là quand il n'y a rien à faire.

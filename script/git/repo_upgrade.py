@@ -39,6 +39,16 @@ Sans « --upstream », la lecture est instantanée et ne dit que ce que les
 manifestes déclarent. Avec, chaque amont est interrogé et l'outil
 tranche. Un amont injoignable et un amont sans la branche attendue sont
 deux constats distincts, jamais fondus en un seul.
+
+Le remote amont NOMMÉ
+---------------------
+Un amont déclaré se range dans le clone sous un remote qui porte le nom de
+« fork-upstream-remote », à l'URL que `resoudre_amont` compose : la branche
+amont se lit alors « <remote>/<branche> », dans tig comme dans le reflog
+du rebase. `preparer_remote` le pose, `ajouter_remotes` le pose et le
+récupère sur tous les forks, et la passe à sec fait de même avant de
+comparer. Un remote homonyme qui vise une autre URL n'est jamais modifié :
+il est signalé, avec la commande qui le corrige.
 """
 
 from __future__ import annotations
@@ -252,7 +262,8 @@ def etat_forks(
     « fork-upstream-freeze-revision », ou None, et « gel » le commit gelé
     de « freeze-revision ». Les deux se lisent sur la définition qui
     l'emporte dans la fusion, comme « revision » et « remote », le remote
-    du fork, sous le nom que git-repo donne aussi au remote du clone.
+    du fork, sous le nom que git-repo donne aussi au remote du clone, et
+    « clone_depth », la profondeur de clonage du manifeste, ou None.
 
     « etat » vaut :
       declare        l'amont et sa branche sont inscrits
@@ -283,6 +294,7 @@ def etat_forks(
                 "nom": projet.get("name"),
                 "revision": projet.get("revision"),
                 "remote": projet.get("remote"),
+                "clone_depth": projet.get("clone-depth"),
                 "gel": projet.get(manifest_freeze.FREEZE_ATTR),
                 "base_gelee": projet.get(
                     manifest_freeze.FORK_UPSTREAM_FREEZE_ATTR
@@ -314,13 +326,18 @@ def etat_forks(
 
 # ── Le diagnostic d'une mise à niveau ──────────────────────────────────
 #
-# Tout ce qui suit LIT. « git fetch » range des objets dans le magasin, ce
-# qui est une écriture sur le disque, mais il ne déplace aucune référence,
-# n'ajoute aucun remote, ne crée aucune branche et ne touche pas l'arbre de
-# travail : rien de ce que git ou git-repo tient pour l'état du dépôt ne
-# change. C'est ce qui permet de constater avant de décider.
+# Tout ce qui suit LIT, à trois écritures près, toutes hors de ce que
+# git-repo suit : les objets que « git fetch » range dans le magasin, le
+# remote amont nommé quand il manque (`preparer_remote`), et sa branche de
+# suivi « refs/remotes/<remote>/<branche> », que le fetch avance. Aucune
+# branche locale n'est créée ni déplacée, HEAD et l'arbre de travail ne
+# bougent pas. C'est ce qui permet de constater avant de décider.
 
 DELAI_GIT = 300
+
+# La profondeur proposée pour récupérer à la main l'amont d'un clone
+# superficiel dont le manifeste ne donne pas « clone-depth ».
+PROFONDEUR_MANUELLE = 50
 
 
 def git(args, cwd, delai=DELAI_GIT):
@@ -350,12 +367,17 @@ def est_superficiel(chemin):
     return code == 0 and out.strip() == "true"
 
 
-def recuperer_amont(chemin, url, branche, delai=DELAI_GIT, profondeur=None):
+def recuperer_amont(
+    chemin, url, branche, delai=DELAI_GIT, profondeur=None, remote=None
+):
     """Amène la branche amont dans FETCH_HEAD. True si elle y est.
 
-    FETCH_HEAD et non un remote ajouté : un second remote survivrait mal à
-    « repo sync --force-sync », qui réécrit le répertoire git, et le poser
-    ferait sortir la passe du domaine de la lecture.
+    Sans `remote`, le fetch se fait par l'URL : seul FETCH_HEAD change.
+    Avec, il passe par ce remote, que `preparer_remote` a posé, et sa
+    refspec explicite « +refs/heads/<branche>:refs/remotes/<remote>/<branche> »
+    avance aussi la branche de suivi, quelle que soit la refspec que le
+    remote porte dans sa configuration. « --no-tags » garde les tags de
+    l'amont hors de ceux du clone, même sur un remote posé à la main.
 
     `profondeur` borne l'historique amont rapatrié (« --depth »). Elle ne
     sert qu'à un clone déjà superficiel : sur un clone complet, « --depth »
@@ -364,8 +386,138 @@ def recuperer_amont(chemin, url, branche, delai=DELAI_GIT, profondeur=None):
     args = ["fetch", "--quiet"]
     if profondeur:
         args.append(f"--depth={profondeur}")
-    _out, _err, code = git(args + [url, branche], chemin, delai)
+    if remote:
+        suivi = f"+refs/heads/{branche}:refs/remotes/{remote}/{branche}"
+        args += ["--no-tags", remote, suivi]
+    else:
+        args += [url, branche]
+    _out, _err, code = git(args, chemin, delai)
     return code == 0
+
+
+def remote_amont(amont):
+    """Le nom du remote amont à poser dans le clone, ou None.
+
+    Seul un amont DÉCLARÉ en a un : « fork-upstream-remote », une URL que
+    les manifestes résolvent et une branche « fork-upstream ». Un amont
+    deviné par la convention peut viser un autre dépôt, et un remote posé
+    sur lui resterait dans le clone après correction du manifeste.
+    """
+    if not amont or amont.get("source") != "declare":
+        return None
+    if not (amont.get("remote") and amont.get("url") and amont.get("branche")):
+        return None
+    return amont["remote"]
+
+
+def motif_sans_remote(amont):
+    """Pourquoi `remote_amont` ne rend rien pour cet amont."""
+    if not amont or amont.get("source") != "declare":
+        return t("no fork-upstream-remote attribute")
+    if not amont.get("url"):
+        return t("upstream remote absent from the manifests")
+    return t("no fork-upstream branch for this version")
+
+
+def url_du_remote(chemin, remote):
+    """L'URL que la configuration du clone donne à `remote`, ou None.
+
+    Lue brute par « git config » et non par « git remote get-url », qui
+    applique les réécritures « url.<base>.insteadOf » : la comparaison
+    porte sur ce qui est écrit, que `remote set-url` corrige.
+    """
+    out, _err, code = git(["config", "--get", f"remote.{remote}.url"], chemin)
+    return out.strip() if code == 0 else None
+
+
+def cle_url(url):
+    """La clé qui identifie le dépôt que vise `url`, quelle qu'en soit
+    l'écriture.
+
+    « https://hôte/chemin », « ssh://[user@]hôte[:port]/chemin » et
+    « user@hôte:chemin » rendent le même tuple (hôte en minuscules, chemin
+    sans « / » ni « .git » final). Toute autre forme — chemin local,
+    « file:// » — se rend telle quelle, sans « / » final : elle ne se
+    compare qu'à elle-même.
+    """
+    url = (url or "").strip()
+    m = re.match(
+        r"^(?:https?|ssh|git)://(?:[^@/]+@)?([^/:]+)(?::\d+)?/(.*)$", url
+    ) or re.match(r"^[^@/:]+@([^/:]+):(?!/)(.*)$", url)
+    if not m:
+        return url.rstrip("/")
+    depot = m.group(2).strip("/")
+    if depot.endswith(".git"):
+        depot = depot[: -len(".git")]
+    return m.group(1).lower(), depot
+
+
+def preparer_remote(chemin, amont, delai=DELAI_GIT):
+    """(etat, url en place) du remote amont nommé de ce clone.
+
+    `etat` vaut :
+      None        l'amont n'a pas de remote nommé (voir `remote_amont`)
+      non_clone   `chemin` n'est pas la racine d'un clone : rien n'est posé
+      ajoute      le remote manquait, « git remote add » l'a posé
+      present     le remote existe déjà à la même URL, et sert tel quel
+      autre_url   le remote existe à une autre URL : il n'est pas touché
+      refuse      git a refusé de l'ajouter ou de le configurer
+
+    « --no-tags » écrit « tagOpt = --no-tags » dans la configuration du
+    remote : les tags de l'amont ne se mêlent pas à ceux du clone, où un
+    tag homonyme du fork serait sinon remplacé ou refusé. « -t <branche> »
+    restreint sa refspec à « +refs/heads/<branche>:refs/remotes/<remote>/
+    <branche> » : un « git fetch <remote> » sans argument n'amène que la
+    branche amont déclarée, et non chaque branche de l'amont. Sur un clone
+    superficiel, « skipFetchAll » exclut en plus le remote de
+    « git fetch --all », qui y rapatrierait tout l'historique amont.
+
+    La même URL s'entend au sens de `cle_url` : l'écriture https et
+    l'écriture ssh d'un même dépôt se valent, puisque la conversion des
+    remotes du dépôt en ssh réécrit aussi celui-ci. Un remote déjà présent
+    garde sa refspec. L'URL en place n'est rendue que pour « present » et
+    « autre_url ».
+    """
+    remote = remote_amont(amont)
+    if not remote:
+        return None, None
+    if not est_clone(chemin):
+        return "non_clone", None
+    en_place = url_du_remote(chemin, remote)
+    if en_place is None:
+        branche = amont["branche"]
+        _out, _err, code = git(
+            [
+                "remote",
+                "add",
+                "--no-tags",
+                "-t",
+                branche,
+                remote,
+                amont["url"],
+            ],
+            chemin,
+            delai,
+        )
+        if not code and est_superficiel(chemin):
+            _out, _err, code = git(
+                ["config", f"remote.{remote}.skipFetchAll", "true"], chemin
+            )
+        return ("refuse" if code else "ajoute"), None
+    if cle_url(en_place) == cle_url(amont["url"]):
+        return "present", en_place
+    return "autre_url", en_place
+
+
+def commande_set_url(chemin, remote, url):
+    """La commande qui rend à `remote` l'URL déclarée, depuis la racine."""
+    return f"git -C {chemin} remote set-url {remote} {url}"
+
+
+def commande_fetch_superficiel(chemin, remote, branche, profondeur=None):
+    """La commande qui récupère à la main l'amont d'un clone superficiel."""
+    profondeur = profondeur or PROFONDEUR_MANUELLE
+    return f"git -C {chemin} fetch --depth={profondeur} {remote} {branche}"
 
 
 def divergence(chemin):
@@ -647,13 +799,31 @@ def prefixes_module(constat):
 
 
 def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
-    """Le verdict d'un fork, enrichi sur place. Ne modifie aucun dépôt."""
+    """Le verdict d'un fork, enrichi sur place.
+
+    Un amont déclaré passe par son remote nommé : `preparer_remote` le pose
+    s'il manque, puis le fetch avance « refs/remotes/<remote>/<branche> »
+    et FETCH_HEAD. C'est tout ce qui s'écrit, et seulement après les refus
+    qui précèdent (absent du disque, sans branche amont, superficiel) : un
+    clone superficiel ne reçoit ni remote ni fetch. Un amont deviné se
+    récupère par l'URL, sans remote.
+
+    « cible » est la référence de l'amont récupéré, « <remote>/<branche> »
+    ou FETCH_HEAD, celle que `repo_apply.appliquer` rebase. « remote_amont »
+    est l'état que `preparer_remote` rend. Un remote homonyme à une autre
+    URL rend le fork non comparable : « url_en_place » porte cette URL et
+    « correction » la commande qui la remplace.
+    """
     chemin = os.path.join(racine, constat["chemin"] or "")
     amont = constat["amont"]
     constat.update(
         {
             "verdict": "non_comparable",
             "motif": None,
+            "cible": None,
+            "remote_amont": None,
+            "url_en_place": None,
+            "correction": None,
             "nos": 0,
             "amont_avance": 0,
             "base": None,
@@ -679,9 +849,32 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
     if est_superficiel(chemin):
         constat["motif"] = t("shallow repository")
         return constat
-    if not recuperer_amont(chemin, amont["url"], amont["branche"], delai):
+    remote = remote_amont(amont)
+    if remote:
+        etat, en_place = preparer_remote(chemin, amont, delai)
+        constat["remote_amont"] = etat
+        if etat == "autre_url":
+            constat["motif"] = t("upstream remote points to another URL")
+            constat["url_en_place"] = en_place
+            constat["correction"] = commande_set_url(
+                constat["chemin"], remote, amont["url"]
+            )
+            return constat
+        if etat == "non_clone":
+            constat["motif"] = t("not cloned")
+            return constat
+        if etat == "refuse":
+            constat["motif"] = t("the upstream remote could not be added")
+            return constat
+        cible = f"{remote}/{amont['branche']}"
+    else:
+        cible = "FETCH_HEAD"
+    if not recuperer_amont(
+        chemin, amont["url"], amont["branche"], delai, remote=remote
+    ):
         constat["motif"] = t("upstream unreachable")
         return constat
+    constat["cible"] = cible
     if constat.get("base_gelee"):
         constat["amont_depuis_gel"], constat["amont_reecrit"] = depuis_le_gel(
             chemin, constat["base_gelee"]
@@ -759,6 +952,88 @@ def passe_diagnostic(
     lst = etat_forks(version, dossier, verifier=False)
     with ThreadPoolExecutor(max_workers=parallele) as pool:
         return list(pool.map(lambda c: diagnostiquer(c, racine, delai), lst))
+
+
+def ajouter_remote(constat, racine=REPO_ROOT, delai=DELAI_GIT):
+    """Pose et récupère le remote amont nommé d'un fork. Rend un dict.
+
+    « issue » vaut :
+      non_declare   l'amont n'a pas de remote nommé ; « motif » dit pourquoi
+      absent        aucun clone à ce chemin (« non_clone »)
+      autre_url     le remote vise une autre URL (« url_en_place ») : rien
+                    n'est touché, « commande » la corrige
+      refuse        git a refusé d'ajouter le remote
+      superficiel   le remote est posé mais le fetch est SAUTÉ : récupérer
+                    l'amont complet dans un clone superficiel rapatrierait
+                    tout son historique. « commande » le fait à la profondeur
+                    du manifeste, ou PROFONDEUR_MANUELLE ; c'est le seul
+                    fetch de ce remote qui garde le clone superficiel
+      fetch_echoue  le remote est posé, l'amont n'a pas répondu
+      ajoute        remote posé, amont récupéré dans « cible »
+      present       remote déjà là à la même URL, amont récupéré
+
+    « remote_ajoute » dit si le remote vient d'être posé, quelle que soit
+    l'issue du fetch.
+    """
+    amont = constat.get("amont") or {}
+    remote = remote_amont(amont)
+    chemin = os.path.join(racine, constat.get("chemin") or "")
+    res = {
+        "chemin": constat.get("chemin"),
+        "remote": amont.get("remote"),
+        "url": amont.get("url"),
+        "branche": amont.get("branche"),
+        "issue": "non_declare",
+        "motif": None,
+        "remote_ajoute": False,
+        "url_en_place": None,
+        "cible": None,
+        "commande": None,
+    }
+    if not remote:
+        res["motif"] = motif_sans_remote(amont)
+        return res
+    etat, en_place = preparer_remote(chemin, amont, delai)
+    res["remote_ajoute"] = etat == "ajoute"
+    if etat in ("autre_url", "refuse", "non_clone"):
+        res["issue"] = "absent" if etat == "non_clone" else etat
+        res["url_en_place"] = en_place
+        if etat == "autre_url":
+            res["commande"] = commande_set_url(
+                res["chemin"], remote, amont["url"]
+            )
+        return res
+    if est_superficiel(chemin):
+        res["issue"] = "superficiel"
+        res["commande"] = commande_fetch_superficiel(
+            res["chemin"], remote, amont["branche"], constat.get("clone_depth")
+        )
+        return res
+    if not recuperer_amont(
+        chemin, amont["url"], amont["branche"], delai, remote=remote
+    ):
+        res["issue"] = "fetch_echoue"
+        return res
+    res["issue"] = etat
+    res["cible"] = f"{remote}/{amont['branche']}"
+    return res
+
+
+def ajouter_remotes(
+    version,
+    dossier=DOSSIER,
+    racine=REPO_ROOT,
+    parallele=PARALLELE,
+    delai=DELAI_GIT,
+):
+    """`ajouter_remote` sur chaque fork d'une version, en parallèle.
+
+    Les forks sont ceux de la passe à sec, dans le même ordre, et aucun
+    n'est diagnostiqué : seuls le remote et sa branche de suivi s'écrivent.
+    """
+    lst = etat_forks(version, dossier, verifier=False)
+    with ThreadPoolExecutor(max_workers=parallele) as pool:
+        return list(pool.map(lambda c: ajouter_remote(c, racine, delai), lst))
 
 
 # Un constat qui demande une correction du manifeste. Les autres sont des
@@ -929,6 +1204,15 @@ def render_diagnostic(lst, version, colour=True):
             gel = ligne_gel(x)
             if gel:
                 out.append(paint(f"        ↳ {gel[0]}", gel[1], colour))
+            if x.get("correction"):
+                out.append(
+                    paint(
+                        f"        ↳ {x.get('url_en_place')}", "watch", colour
+                    )
+                )
+                out.append(
+                    paint(f"        $ {x['correction']}", "dim", colour)
+                )
     total = cumuler(lst)
     out.append("─" * 62)
     out.append(
@@ -947,7 +1231,96 @@ def render_diagnostic(lst, version, colour=True):
     )
     if langues:
         out.append(f"  {langues}")
-    out.append(paint(f"  {t('No state was written')}", "ok", colour))
+    ajoutes = len([x for x in lst if x.get("remote_amont") == "ajoute"])
+    out.append(
+        paint(
+            f"  {t('Upstream remotes added:')} {ajoutes} · "
+            f"{t('no local branch moved, no work tree touched')}",
+            "ok",
+            colour,
+        )
+    )
+    return "\n".join(out)
+
+
+# L'ordre du rapport des remotes : ce qui demande un geste d'abord, ce qui
+# est fait ensuite, les forks sautés en dernier.
+ISSUES_REMOTE = (
+    "autre_url",
+    "refuse",
+    "fetch_echoue",
+    "superficiel",
+    "absent",
+    "ajoute",
+    "present",
+    "non_declare",
+)
+_ISSUES_TITRE = {
+    "autre_url": t("Remote with another URL, left untouched"),
+    "refuse": t("Remote refused by git"),
+    "fetch_echoue": t("Remote set, upstream unreachable"),
+    "superficiel": t("Shallow clone: remote set, fetch skipped"),
+    "absent": t("Not cloned"),
+    "ajoute": t("Remote added and fetched"),
+    "present": t("Remote already present, fetched"),
+    "non_declare": t("Skipped: upstream not declared"),
+}
+_ISSUES_GENRE = {
+    "autre_url": "broken",
+    "refuse": "broken",
+    "fetch_echoue": "broken",
+    "superficiel": "watch",
+    "absent": "dim",
+    "ajoute": "ok",
+    "present": "ok",
+    "non_declare": "dim",
+}
+
+
+def render_remotes(lst, version, colour=True):
+    """Le rapport d'`ajouter_remotes`, groupé par issue.
+
+    Chaque fork est NOMMÉ, les sautés compris, avec ce qui l'a fait
+    sauter : un fork absent de la liste ne dirait pas s'il a été oublié.
+    """
+    out = [
+        paint(
+            f"🌐 {t('Upstream remotes')} — Odoo {version} — "
+            f"{len(lst)} {t('forks')}",
+            "step",
+            colour,
+        ),
+        "─" * 62,
+    ]
+    for issue in ISSUES_REMOTE:
+        groupe = [x for x in lst if x["issue"] == issue]
+        if not groupe:
+            continue
+        titre = f"  {_ISSUES_TITRE[issue]} ({len(groupe)})"
+        out.append(paint(titre, _ISSUES_GENRE[issue], colour))
+        for x in groupe:
+            out.append(f"    {x['chemin']}")
+            if issue == "non_declare":
+                out.append(paint(f"        → {x['motif']}", "dim", colour))
+                continue
+            vise = f"{x['remote']} {x['url']} @ {x['branche']}"
+            out.append(paint(f"        → {vise}", "dim", colour))
+            if x.get("url_en_place"):
+                out.append(
+                    paint(f"        ↳ {x['url_en_place']}", "watch", colour)
+                )
+            if x.get("commande"):
+                out.append(paint(f"        $ {x['commande']}", "dim", colour))
+            if issue == "superficiel":
+                note = t("only this command keeps the clone shallow")
+                out.append(paint(f"          {note}", "dim", colour))
+    out.append("─" * 62)
+    prets = len([x for x in lst if x["cible"]])
+    out.append(
+        f"  {t('Upstream fetched')} {prets} · "
+        f"{t('Upstream remotes added:')} "
+        f"{len([x for x in lst if x['remote_ajoute']])}"
+    )
     return "\n".join(out)
 
 
@@ -970,6 +1343,13 @@ def main(argv=None):
         action="store_true",
         help=t("dry run: diverge, conflicts and statistics (network)"),
     )
+    parser.add_argument(
+        "--add-remotes",
+        action="store_true",
+        help=t(
+            "add and fetch the named upstream remote of each fork (network)"
+        ),
+    )
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-color", action="store_true")
     args = parser.parse_args(argv)
@@ -981,6 +1361,22 @@ def main(argv=None):
     if not fichiers_manifeste(version, args.manifest_dir):
         print(f"❌ {args.manifest_dir} : {version}", file=sys.stderr)
         return 2
+
+    if args.add_remotes:
+        lst = ajouter_remotes(version, args.manifest_dir)
+        if args.json:
+            print(
+                json.dumps(
+                    {"version": version, "remotes": lst},
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            colour = sys.stdout.isatty() and not args.no_color
+            print(render_remotes(lst, version, colour))
+        echecs = ("autre_url", "refuse", "fetch_echoue")
+        return 1 if any(x["issue"] in echecs for x in lst) else 0
 
     if args.diagnostic:
         lst = passe_diagnostic(version, args.manifest_dir)

@@ -121,6 +121,21 @@ class TestAppliquer(unittest.TestCase):
             simule.commandes("rebase")[0], ["rebase", "FETCH_HEAD"]
         )
 
+    def test_le_rebase_vise_la_cible_du_diagnostic(self):
+        """La cible nommée, et non FETCH_HEAD, qu'un fetch suivant peut
+        avoir déplacé : le reflog dit alors sur quoi la branche est posée."""
+        simule = GitSimule()
+        res = appliquer_simule(dict(constat(), cible="U/18.0"), simule)
+        self.assertEqual(simule.commandes("rebase")[0], ["rebase", "U/18.0"])
+        self.assertEqual(res["cible"], "U/18.0")
+        self.assertNotIn(
+            "FETCH_HEAD", [x for args in simule.vues for x in args]
+        )
+
+    def test_sans_cible_fetch_head(self):
+        res = appliquer_simule(constat(), GitSimule())
+        self.assertEqual(res["cible"], "FETCH_HEAD")
+
     def test_une_branche_existante_n_est_jamais_ecrasee(self):
         """Une passe précédente du même jour peut porter des conflits
         résolus à la main ; les effacer serait irrattrapable."""
@@ -213,6 +228,20 @@ class TestAppliquer(unittest.TestCase):
         res = appliquer_simule(c, simule)
         self.assertEqual(res["mode"], repo_apply.MODE_GEL_HORS_HEAD)
         self.assertFalse(res["onto"])
+
+    def test_la_cible_sert_aussi_a_onto_et_au_fast_forward(self):
+        simule = GitSimule(ancetres={(self.BASE, "U/18.0"): 1})
+        c = dict(constat(), base_gelee=self.BASE, gel=self.GEL, cible="U/18.0")
+        appliquer_simule(c, simule)
+        self.assertEqual(
+            simule.commandes("rebase")[0],
+            ["rebase", "--onto", "U/18.0", self.BASE],
+        )
+        simule = GitSimule()
+        appliquer_simule(dict(constat("en_retard"), cible="U/18.0"), simule)
+        self.assertEqual(
+            simule.commandes("merge")[0], ["merge", "--ff-only", "U/18.0"]
+        )
 
     def test_en_retard_avance_sans_rebase(self):
         simule = GitSimule()
@@ -606,6 +635,39 @@ class TestDepotsReels(unittest.TestCase):
             _git(self.clone, "rev-list", "--count", "FETCH_HEAD..HEAD"), "1"
         )
         self.assertEqual(_git(self.clone, "rev-parse", "HEAD^"), nouvel_amont)
+
+    def test_rebase_sur_la_branche_du_remote_amont_nomme(self):
+        """Le remote amont nommé, posé par `preparer_remote` : le rebase
+        part de « amont_nomme/principale » même quand FETCH_HEAD désigne
+        autre chose, et le reflog le nomme."""
+        from script.git import repo_upgrade
+
+        self.commit_du_fork()
+        nouvel_amont = self.amont_avance()
+        amont = {
+            "remote": "amont_nomme",
+            "url": self.amont,
+            "branche": "principale",
+            "source": "declare",
+        }
+        self.assertEqual(
+            repo_upgrade.preparer_remote(self.clone, amont)[0], "ajoute"
+        )
+        self.assertTrue(
+            repo_upgrade.recuperer_amont(
+                self.clone, self.amont, "principale", remote="amont_nomme"
+            )
+        )
+        _git(self.clone, "fetch", "-q", self.fork, self.REVISION)
+        res = self.appliquer(self.constat(cible="amont_nomme/principale"))
+        self.assertEqual(res["etat"], "rebase", res["sortie"])
+        self.assertEqual(res["amont"], nouvel_amont)
+        self.assertEqual(res["cible"], "amont_nomme/principale")
+        self.assertEqual(_git(self.clone, "rev-parse", "HEAD^"), nouvel_amont)
+        self.assertIn(
+            "checkout amont_nomme/principale",
+            _git(self.clone, "reflog", "-n", "20"),
+        )
 
     def test_sans_base_gelee_le_rebase_est_ordinaire(self):
         self.commit_du_fork()

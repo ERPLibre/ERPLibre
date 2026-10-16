@@ -583,6 +583,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
     EXPECTED = {
         "🔄 Synchronize the repositories": "_git_repo_sync",
         "🔁 Reconfigure and synchronize": "_git_repo_reconfigurer",
+        "🌐 Add the upstream remotes": "_git_repo_ajouter_remotes",
         "🔍 Upgrade — dry run": "_git_repo_a_sec",
         "⬆️ Apply the upgrade": "_git_repo_appliquer",
         "🧩 Conflict queue": "_git_repo_file_conflits",
@@ -595,6 +596,42 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "🫗 Unfreeze the versions": "_git_repo_geler",
         "🔀 Compare two freezes": "_git_repo_comparer",
     }
+
+    def test_the_upstream_remotes_come_before_the_dry_run(self):
+        """« Ajouter les remotes amont » ouvre la section de la mise à
+        niveau : [3], la passe à sec suit en [4], la comparaison en [14]."""
+        rangs = {label: num for num, label in self.shown}
+        self.assertEqual(rangs["🌐 Add the upstream remotes"], 3)
+        self.assertEqual(rangs["🔍 Upgrade — dry run"], 4)
+        self.assertEqual(rangs["🔀 Compare two freezes"], 14)
+
+    def test_the_upstream_remotes_entry_reports_without_diagnosing(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        lst = [
+            {"chemin": "x/a", "cible": "U/18.0"},
+            {"chemin": "x/b", "cible": None},
+        ]
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        ru = git_repo_menu.repo_upgrade
+        with mock.patch.object(
+            ru, "ajouter_remotes", return_value=lst
+        ) as ajouter, mock.patch.object(
+            ru, "render_remotes", return_value=""
+        ) as rendu, mock.patch.object(
+            ru, "passe_diagnostic"
+        ) as diagnostic, mock.patch(
+            "builtins.print"
+        ):
+            self.assertEqual(Menu()._git_repo_choix("3"), None)
+        ajouter.assert_called_once()
+        rendu.assert_called_once()
+        diagnostic.assert_not_called()
 
 
 class TestGitRepoFreezeEntries(unittest.TestCase):
