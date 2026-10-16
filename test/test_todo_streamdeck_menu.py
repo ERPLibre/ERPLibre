@@ -12,8 +12,8 @@ Ce que ces tests gardent :
 
 - les quatre questions de l'installation Stream Deck deviennent des
   options, le programme et la relance toujours explicites, leurs défauts
-  pris dans les réglages en place, la commande s'affiche avant de partir,
-  et 0 n'installe rien ;
+  pris dans les réglages en place, la commande s'affiche une fois, par
+  l'annonce du lanceur, et 0 n'installe rien ;
 - une réponse hors liste est signalée et la question reposée ;
 - service, autostart et programme disent quoi installer sans unité, et
   appellent systemctl --user sinon ; le programme change le réglage et ne
@@ -62,6 +62,16 @@ class ExecuteFactice:
         if kwargs.get("return_status_and_output"):
             return self.code, []
         return self.code
+
+
+class ExecuteAnnonce(ExecuteFactice):
+    """Affiche la commande avant de la retenir, comme exec_command_live
+    l'annonce avant de la lancer."""
+
+    def exec_command_live(self, cmd, **kwargs):
+        print("🏠 ⬇ Execute command :\n")
+        print(cmd)
+        return super().exec_command_live(cmd, **kwargs)
 
 
 class ExecuteInterrompu(ExecuteFactice):
@@ -135,11 +145,13 @@ class LInstallationStreamDeck(Menu):
         for reponses, options in cas:
             with self.subTest(reponses=reponses):
                 commandes, sortie, rendu = self.jouer(
-                    "_erplibre_home_streamdeck_install_local", reponses
+                    "_erplibre_home_streamdeck_install_local",
+                    reponses,
+                    ExecuteAnnonce(),
                 )
                 commande = f"{INSTALLATEUR} --stream-deck{options}"
                 self.assertEqual([commande], commandes)
-                self.assertIn(f"Will execute: {commande}", sortie)
+                self.assertEqual(1, sortie.count(commande), sortie)
                 self.assertIs(rendu, False)
 
     def test_enter_keeps_the_settings_in_place(self):

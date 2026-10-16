@@ -1967,15 +1967,15 @@ class TODO(
         """Installer le niveau Stream Deck d'ERPLibre Home : la base au
         besoin, puis les paquets USB, la règle udev, .venv.streamdeck et le
         service du deck. Les quatre questions du service deviennent des
-        options, et la commande s'affiche avant de partir. Rend False : le
-        menu reste ouvert."""
+        options. La commande s'affiche par l'annonce d'exec_command_live,
+        juste avant de partir : aucune confirmation ne l'attend ici. Rend
+        False : le menu reste ouvert."""
         options = self._erplibre_home_streamdeck_options()
         if options is None:
             return False
         commande = " ".join(
             [self._ERPLIBRE_HOME_INSTALLER, "--stream-deck", *options]
         )
-        print(f"{t('Will execute:')} {commande}")
         return self._erplibre_home_run_installer(commande)
 
     def _erplibre_home_run_installer(
