@@ -97,8 +97,9 @@ export function deckLockPath(runtimeDir) {
  * deckStartOutcome() reads after a start or a restart.
  */
 export function deckStateArgv() {
-    return ['systemctl', '--user', 'show', '-p', 'ActiveState', '-p', 'Result',
-        '-p', 'ExecMainCode', '-p', 'ExecMainStatus', DECK_UNIT];
+    return ['systemctl', '--user', 'show', '-p', 'ActiveState',
+        '-p', 'SubState', '-p', 'Result', '-p', 'ExecMainCode',
+        '-p', 'ExecMainStatus', DECK_UNIT];
 }
 
 /**
@@ -120,11 +121,15 @@ export function parseUnitShow(stdout) {
  * deck_lock's BUSY_EXIT or NO_DECK_EXIT; 'skipped' when ExecCondition
  * kept the program from starting (Result=exec-condition, or, on a systemd
  * that reports a skip as success, no main process ever ran); otherwise
- * 'failed', with the state and result as `detail`.
+ * 'failed', with the state, the result and a non-zero exit status as
+ * `detail`. A program that exited and waits for Restart=on-failure shows
+ * ActiveState=activating with SubState=auto-restart: it does not run, and
+ * counts as 'failed' under the name of that sub-state.
  */
 export function deckStartOutcome(props) {
     const state = props.ActiveState ?? '';
-    if (deckRunning(state))
+    const restarting = props.SubState === 'auto-restart';
+    if (deckRunning(state) && !restarting)
         return {kind: 'running'};
     if (props.ExecMainCode === CLD_EXITED) {
         if (props.ExecMainStatus === BUSY_EXIT)
@@ -137,8 +142,13 @@ export function deckStartOutcome(props) {
         return {kind: 'skipped'};
     if (!state)
         return {kind: 'failed', detail: '?'};
+    const reasons = props.Result ? [props.Result] : [];
+    if (props.ExecMainCode === CLD_EXITED &&
+        (props.ExecMainStatus ?? '0') !== '0')
+        reasons.push(`status ${props.ExecMainStatus}`);
+    const where = restarting ? props.SubState : state;
     return {kind: 'failed',
-        detail: props.Result ? `${state} (${props.Result})` : state};
+        detail: reasons.length ? `${where} (${reasons.join(', ')})` : where};
 }
 
 /**

@@ -191,8 +191,9 @@ class DeviceIndicator extends PanelMenu.Button {
     // without blocking the shell, then reads the unit's state: a start
     // that ExecCondition skips exits 0 and leaves the unit inactive, and,
     // with Type=simple, a program that finds the deck busy or no visual
-    // deck exits after systemctl has returned. The click would otherwise
-    // do nothing visible; the notice says why no program runs.
+    // deck, or that crashes and waits for its restart, exits after
+    // systemctl has returned. The click would otherwise do nothing
+    // visible; the notice says why no program runs.
     async _driveUnit(argv, root) {
         const done = await runProcess(argv,
             {notify: _notify, title: 'Stream Deck'});
