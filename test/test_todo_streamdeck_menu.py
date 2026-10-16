@@ -266,6 +266,16 @@ class LeProgramme(Menu):
             ("systemctl", "--user", "is-active", UNITE), self.sondes
         )
 
+    def test_the_default_creates_no_settings_file(self):
+        """Sans réglages, Entrée garde le défaut, que l'installateur et le
+        service prennent déjà : aucun fichier ne se crée pour le redire."""
+        self.unite()
+        commandes, sortie, _ = self.jouer("_streamdeck_program", ("",))
+        self.assertFalse(self.reglages.exists())
+        self.assertFalse(self.reglages.parent.exists())
+        self.assertEqual([], commandes)
+        self.assertIn("Unchanged.", sortie)
+
 
 class LaDesinstallation(Menu):
     def test_each_choice_runs_its_options_after_confirmation(self):
