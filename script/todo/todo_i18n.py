@@ -5220,6 +5220,18 @@ TRANSLATIONS = {
         "fr": "session graphique non démarrée ; redémarrer la VM",
         "en": "graphical session not started; reboot the VM",
     },
+    "desktop not installed:": {
+        "fr": "bureau non installé :",
+        "en": "desktop not installed:",
+    },
+    "xrdp is in no enabled repository; no RDP access": {
+        "fr": "xrdp n'est dans aucun dépôt activé ; pas d'accès RDP",
+        "en": "xrdp is in no enabled repository; no RDP access",
+    },
+    "epel-release unavailable": {
+        "fr": "epel-release indisponible",
+        "en": "epel-release unavailable",
+    },
     "Hypervisor console (QEMU screen, no guest server)": {
         "fr": "Console de l'hyperviseur (écran QEMU, rien dans l'invitée)",
         "en": "Hypervisor console (QEMU screen, no guest server)",

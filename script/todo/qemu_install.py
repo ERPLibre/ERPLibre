@@ -282,6 +282,10 @@ class QemuInstallMixin:
             "pacman": "gnome gdm",
             "zypper": "patterns-gnome-gnome_basic gdm",
             "service": "gdm",
+            # Le binaire du bureau, cherché une fois les paquets posés. Un
+            # groupe ou un environnement peut réussir sans l'apporter, et un
+            # bureau sans son shell n'est pas un bureau.
+            "probe": "gnome-shell",
             # Suffixe ajouté au nom de VM, donc au nom d'hôte. Une VM
             # graphique se reconnaît alors d'un « virsh list », et deux VM de
             # même distribution mais de types différents ne se marchent plus
@@ -299,6 +303,7 @@ class QemuInstallMixin:
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
             "zypper": "cinnamon lightdm",
             "service": "lightdm",
+            "probe": "cinnamon",
             # « mint » plutôt que « cinnamon » : c'est le nom retenu pour le
             # parc. Le paquet installé reste bien Cinnamon, depuis les dépôts
             # de la distribution et non ceux de Mint.
@@ -764,6 +769,31 @@ class QemuInstallMixin:
             f'localhost:{local}  ({kind})"; '
         )
 
+    @staticmethod
+    def _qemu_epel_cmd():
+        """Active EPEL et CRB sur la famille RHEL (AlmaLinux, Rocky, CentOS
+        Stream, RHEL), et ne fait rien ailleurs — Fedora comprise, où EPEL
+        n'existe pas.
+
+        xrdp n'est pas dans les dépôts de base de ces distributions : EPEL le
+        porte, et EPEL demande CRB pour une partie de ses dépendances. Même
+        aiguillage et même ordre d'essais que install_fedora_dependency.sh :
+        « /usr/bin/crb » vient avec epel-release, « config-manager » sert de
+        repli. Aucun échec ici n'arrête le bloc : c'est l'installation de
+        xrdp, juste après, qui dit ce qui manque.
+
+        La famille se lit dans un sous-shell : sourcer os-release dans le
+        shell courant y laisserait NAME, VERSION et les autres."""
+        return (
+            'case "$( . /etc/os-release 2>/dev/null; '
+            'echo " ${ID:-} ${ID_LIKE:-} ")" in *" rhel "*) '
+            "sudo dnf install -y epel-release || "
+            f'echo "   ⚠ {t("epel-release unavailable")}"; '
+            "sudo /usr/bin/crb enable >/dev/null 2>&1 "
+            "|| sudo dnf config-manager --set-enabled crb >/dev/null 2>&1 "
+            "|| true;; esac; "
+        )
+
     def _qemu_desktop_remote_cmd(self, flavour="gnome", app_store="deb"):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
@@ -773,6 +803,13 @@ class QemuInstallMixin:
         de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
         rem = self._QEMU_DESKTOP_REMOTE
         label = de["label"]
+        probe = de["probe"]
+        # Une seule ligne, et un code non nul : la commande distante rend
+        # alors l'échec au lieu d'annoncer un bureau qui n'existe pas.
+        absent = (
+            f'{{ echo "   ✗ {t("desktop not installed:")} {label}'
+            f' ({probe} {t("missing")})"; exit 1; }}; '
+        )
         return (
             f'echo "== {t("Installing the desktop (long):")} {label} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
@@ -806,9 +843,15 @@ class QemuInstallMixin:
             "de_ok=0; "
             f"for e in {de['dnf_env']}; do "
             'sudo dnf -y group install "$e" && { de_ok=1; break; }; done; '
-            '[ "$de_ok" = 1 ] || echo "Aucun environnement graphique dnf '
-            "trouve pour " + label + '"; '
-            f"sudo dnf install -y {rem['dnf']['packages']}; "
+            # Sans bureau, l'accès distant n'a rien à servir : l'échec
+            # tombe ici, avant xrdp, et non après lui.
+            f'[ "$de_ok" = 1 ] || {absent}'
+            + self._qemu_epel_cmd()
+            # xrdp n'existe pas pour toutes les versions de la famille RHEL,
+            # même avec EPEL. Le bureau est installé à ce point : il reste,
+            # et la console de la VM avec lui. Une ligne dit ce qui manque.
+            + f"sudo dnf install -y {rem['dnf']['packages']} || "
+            f'echo "   ⚠ {t("xrdp is in no enabled repository; no RDP access")}"; '
             "elif command -v pacman >/dev/null 2>&1; then "
             "pgrep -x pacman >/dev/null 2>&1 "
             "|| sudo rm -f /var/lib/pacman/db.lck; "
@@ -824,24 +867,25 @@ class QemuInstallMixin:
             f"--auto-agree-with-licenses {de['zypper']} "
             f"{rem['zypper']['packages']}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
+            # Le gestionnaire a pu rendre 0 sans poser le bureau : le binaire
+            # du bureau tranche, pour toutes les familles.
+            f"command -v {probe} >/dev/null 2>&1 || {absent}"
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
             "sudo systemctl set-default graphical.target || true; "
             f"sudo systemctl enable {de['service']} >/dev/null 2>&1 || true; "
-            # Et il faut le DÉMARRER, pas seulement l'activer. Deux raisons,
-            # toutes deux mesurées sur erplibre-ubuntu-2604-gnome :
+            # Et il faut le DÉMARRER, pas seulement l'activer. Deux raisons :
             #
-            #   - graphical.target était DÉJÀ atteinte quand le paquet est
-            #     arrivé, et une cible active ne rattrape pas un service ajouté
-            #     après coup : display-manager.service est resté inactif ;
+            #   - graphical.target est DÉJÀ atteinte quand le paquet arrive,
+            #     et une cible active ne rattrape pas un service ajouté après
+            #     coup : display-manager.service reste inactif ;
             #   - sur Debian et Ubuntu, « systemctl enable gdm » rend 0 sans
             #     rien faire — l'unité n'a pas de « WantedBy », seulement
             #     « Alias=display-manager.service » que le paquet a déjà posé.
             #
-            # Résultat : GNOME installé, gdm3 installé, cible graphique par
-            # défaut… et la console de la VM restait en mode texte jusqu'au
-            # premier redémarrage. L'écran, c'est justement ce qu'on est venu
-            # chercher sur une VM graphique.
+            # Sans ce démarrage, la console d'une VM graphique reste en mode
+            # texte jusqu'au premier redémarrage, bureau installé et cible
+            # graphique par défaut.
             "if sudo systemctl start display-manager.service 2>/dev/null || "
             f"sudo systemctl start {de['service']} 2>/dev/null; then "
             f'echo "   {t("graphical session started")}"; '
