@@ -10,11 +10,13 @@ les mêmes entrées.
 """
 
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
@@ -210,6 +212,81 @@ class LaCommande(unittest.TestCase):
         self.assertEqual(
             (None, ""), service.run_command(["sleep", "5"], timeout=0.2)
         )
+
+    def test_the_command_gets_the_user_bus_fallback(self):
+        with (
+            mock.patch.dict(os.environ, {}),
+            mock.patch.object(
+                service,
+                "user_bus_env",
+                return_value={"XDG_RUNTIME_DIR": "/exemple/run"},
+            ),
+        ):
+            os.environ.pop("XDG_RUNTIME_DIR", None)
+            self.assertEqual(
+                (0, "/exemple/run\n"),
+                service.run_command(["sh", "-c", 'echo "$XDG_RUNTIME_DIR"']),
+            )
+
+
+class LeBusUtilisateur(unittest.TestCase):
+    """Sous su ou sudo -u, XDG_RUNTIME_DIR et DBUS_SESSION_BUS_ADDRESS
+    manquent : user_bus_env les prend sous /run/user/<uid>, comme
+    l'installateur, et seulement quand ils manquent et que le répertoire
+    ou le socket existe. `runtime_root` remplace /run/user."""
+
+    UID = 4242
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.racine = dossier.name
+        self.runtime = os.path.join(self.racine, str(self.UID))
+
+    def bus(self):
+        os.makedirs(self.runtime, exist_ok=True)
+        prise = socket.socket(socket.AF_UNIX)
+        self.addCleanup(prise.close)
+        prise.bind(os.path.join(self.runtime, "bus"))
+
+    def env(self, environ):
+        return service.user_bus_env(
+            environ, runtime_root=self.racine, uid=self.UID
+        )
+
+    def test_both_missing_are_taken_from_the_runtime_dir(self):
+        self.bus()
+        self.assertEqual(
+            {
+                "XDG_RUNTIME_DIR": self.runtime,
+                "DBUS_SESSION_BUS_ADDRESS": "unix:path=%s/bus" % self.runtime,
+            },
+            self.env({"HOME": "/exemple/maison"}),
+        )
+
+    def test_variables_already_set_are_kept(self):
+        self.bus()
+        self.assertEqual(
+            {},
+            self.env(
+                {
+                    "XDG_RUNTIME_DIR": "/exemple/run",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/exemple/bus",
+                }
+            ),
+        )
+
+    def test_without_the_socket_only_the_runtime_dir(self):
+        os.makedirs(self.runtime)
+        self.assertEqual({"XDG_RUNTIME_DIR": self.runtime}, self.env({}))
+
+    def test_a_plain_file_named_bus_is_not_a_bus(self):
+        os.makedirs(self.runtime)
+        Path(self.runtime, "bus").write_text("")
+        self.assertEqual({"XDG_RUNTIME_DIR": self.runtime}, self.env({}))
+
+    def test_nothing_under_run_user_gives_nothing(self):
+        self.assertEqual({}, self.env({"XDG_RUNTIME_DIR": ""}))
 
 
 if __name__ == "__main__":

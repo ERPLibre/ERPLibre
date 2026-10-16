@@ -170,9 +170,14 @@ class StreamDeckMenuMixin:
         return False
 
     def _streamdeck_systemctl(self, *args):
-        """systemctl --user <args> en direct, sortie affichée."""
+        """systemctl --user <args> en direct, sortie affichée, avec les
+        variables du bus que user_bus_env ajoute sous su ou sudo -u."""
         commande = "systemctl --user " + " ".join(shlex.quote(a) for a in args)
-        self.execute.exec_command_live(commande, source_erplibre=False)
+        self.execute.exec_command_live(
+            commande,
+            source_erplibre=False,
+            new_env=service.user_bus_env(),
+        )
 
     # -------------------------------------------------------------- #
     # Entrées

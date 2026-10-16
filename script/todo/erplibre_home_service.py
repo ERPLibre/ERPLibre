@@ -12,6 +12,7 @@ l'emporte, $XDG_CONFIG_HOME prime sur ~/.config. Les fonctions prennent
 """
 
 import os
+import stat
 import subprocess
 
 UNIT_NAME = "erplibre-home-streamdeck.service"
@@ -99,12 +100,41 @@ def write_settings(path, updates):
     return True
 
 
+def user_bus_env(environ=None, runtime_root="/run/user", uid=None):
+    """Les variables du bus utilisateur qui manquent à `environ`, prises
+    sous <runtime_root>/<uid> comme le fait l'installateur : rend
+    XDG_RUNTIME_DIR quand il manque et que ce répertoire existe,
+    DBUS_SESSION_BUS_ADDRESS quand il manque et que son socket « bus »
+    existe. Sous su ou sudo -u, ces deux variables manquent, et
+    systemctl --user ne trouve alors pas le gestionnaire du compte. Une
+    variable déjà posée, même ailleurs, est gardée ; rend {} quand rien ne
+    manque ou que rien n'existe. `uid` None prend celui du processus."""
+    environ = os.environ if environ is None else environ
+    uid = os.getuid() if uid is None else uid
+    runtime = os.path.join(runtime_root, str(uid))
+    ajouts = {}
+    if not environ.get("XDG_RUNTIME_DIR") and os.path.isdir(runtime):
+        ajouts["XDG_RUNTIME_DIR"] = runtime
+    bus = os.path.join(runtime, "bus")
+    try:
+        socket_bus = stat.S_ISSOCK(os.stat(bus).st_mode)
+    except OSError:
+        socket_bus = False
+    if not environ.get("DBUS_SESSION_BUS_ADDRESS") and socket_bus:
+        ajouts["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + bus
+    return ajouts
+
+
 def run_command(argv, timeout=20):
-    """(code, sortie standard) de `argv`, lancé sans shell. Une commande
+    """(code, sortie standard) de `argv`, lancé sans shell, dans
+    l'environnement du processus complété par user_bus_env. Une commande
     absente ou qui dépasse `timeout` secondes rend (None, "")."""
+    env = dict(os.environ)
+    env.update(user_bus_env(env))
     try:
         fini = subprocess.run(
             list(argv),
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,

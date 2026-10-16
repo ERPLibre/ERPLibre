@@ -55,10 +55,12 @@ class ExecuteFactice:
 
     def __init__(self, code=0):
         self.commandes = []
+        self.options = []
         self.code = code
 
     def exec_command_live(self, cmd, **kwargs):
         self.commandes.append(cmd)
+        self.options.append(kwargs)
         if kwargs.get("return_status_and_output"):
             return self.code, []
         return self.code
@@ -221,6 +223,21 @@ class LeService(Menu):
             with self.subTest(reponse=reponse):
                 commandes, _, _ = self.jouer("_streamdeck_service", (reponse,))
                 self.assertEqual([commande], commandes)
+
+    def test_systemctl_gets_the_user_bus_fallback(self):
+        """Sous su ou sudo -u, systemctl --user reçoit les variables du bus
+        que rend user_bus_env, comme l'installateur les pose."""
+        self.unite()
+        repli = {"XDG_RUNTIME_DIR": "/exemple/run"}
+        execute = ExecuteFactice()
+        with mock.patch.object(
+            streamdeck_menu.service, "user_bus_env", return_value=repli
+        ):
+            commandes, _, _ = self.jouer(
+                "_streamdeck_service", ("3",), execute
+            )
+        self.assertEqual([f"systemctl --user restart {UNITE}"], commandes)
+        self.assertEqual(repli, execute.options[0].get("new_env"))
 
     def test_ctrl_c_leaves_the_live_log_only(self):
         self.unite()
