@@ -545,8 +545,10 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
     def tearDown(self):
         if self._vrai is not None:
             os.environ["HOME"] = self._vrai
+        # Les tests bouchonnent le moteur ou le module : les deux sont repris.
         for nom, vrai in self._vrais.items():
             setattr(self.dp, nom, vrai)
+            setattr(moteur, nom, vrai)
 
     def _ecrire(self, nom, rapport):
         with open(
@@ -611,18 +613,6 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         termine celui d'un test long y tombait."""
         faux = self._argv0("/tmp/test_longtest_install_nixos.py")
         self.assertFalse(self.dp._lance_une_descente(faux.pid))
-
-    def test_the_real_path_of_a_script_is_still_recognised(self):
-        """Le basename ne doit pas rendre le contrôle aveugle : un
-        interpréteur reçoit le CHEMIN du script, pas son nom nu."""
-        for chemin in (
-            "long_test/install_nixos.py",
-            "/home/x/long_test/deep_qemu.py",
-            "./deep_proxmox.py",
-        ):
-            with self.subTest(chemin=chemin):
-                faux = self._argv0(chemin)
-                self.assertTrue(self.dp._lance_une_descente(faux.pid))
 
     def _fausse_descente(self):
         """Un processus qui exécute VRAIMENT un « deep_proxmox.py ».
@@ -725,6 +715,87 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         # rien, et surtout on n'attend pas un « OUI » sur un arbre vivant.
         self.assertEqual(appels, [])
         self.assertIn("descente tourne", sortie.getvalue())
+
+
+class TestUneDescenteEstUnInterpreteQuiExecuteLeScript(unittest.TestCase):
+    """Une descente est un interpréteur Python dont le SCRIPT est un test
+    long. Un shell, un « timeout » ou un éditeur qui nomme le script n'en
+    est pas une, et ni ce processus ni ses ancêtres ne comptent : le shell
+    qui lance « --detruire » porte le nom du script dans sa ligne de
+    commande."""
+
+    def setUp(self):
+        self.proc = tempfile.mkdtemp(prefix="longtest-proc-")
+        self.addCleanup(shutil.rmtree, self.proc, ignore_errors=True)
+
+    def _processus(self, pid, ppid, argv, comm="x"):
+        """Un faux /proc/<pid> : cmdline à arguments séparés par NUL, et un
+        stat dont le 4e champ est le parent."""
+        dossier = os.path.join(self.proc, str(pid))
+        os.makedirs(dossier)
+        with open(os.path.join(dossier, "cmdline"), "wb") as fh:
+            fh.write(b"\0".join(a.encode() for a in argv) + b"\0")
+        with open(os.path.join(dossier, "stat"), "w") as fh:
+            fh.write(f"{pid} ({comm}) S {ppid} {pid} {pid} 0 -1 4194560\n")
+        return pid
+
+    def _lance(self, argv):
+        pid = self._processus(4000 + len(os.listdir(self.proc)), 1, argv)
+        return moteur._lance_une_descente(pid, proc=self.proc)
+
+    def test_a_python_interpreter_running_a_script_is_a_descent(self):
+        for argv in (
+            ["python3", "long_test/install_erplibre_home.py", "--detruire"],
+            ["/opt/v/.venv.erplibre/bin/python", "-u", "/a/deep_qemu.py"],
+            ["python3.12", "-X", "dev", "-W", "ignore", "./deep_proxmox.py"],
+            ["python", "-Wignore", "-I", "install_nixos.py"],
+            ["python3", "-m", "long_test.qemu_cache", "--depth", "3"],
+        ):
+            with self.subTest(argv=argv):
+                self.assertTrue(self._lance(argv))
+
+    def test_a_command_that_merely_names_the_script_is_not_one(self):
+        for argv in (
+            [
+                "bash",
+                "-c",
+                "cd /a && python3 long_test/install_erplibre_home.py",
+            ],
+            ["bash", "-c", "x long_test/install_erplibre_home.py --detruire"],
+            ["timeout", "60", "python3", "long_test/deep_qemu.py"],
+            ["less", "long_test/install_erplibre_home.py"],
+            ["long_test/install_nixos.py"],
+            ["python3", "-c", "print('install_nixos.py')", "deep_qemu.py"],
+            ["python3", "-", "deep_qemu.py"],
+            ["python3", "-m", "unittest", "test.deep_qemu"],
+            ["python3", "test/test_longtest_install_nixos.py"],
+            ["python3", "script/todo/todo.py", "long_test/deep_qemu.py"],
+            [],
+        ):
+            with self.subTest(argv=argv):
+                self.assertFalse(self._lance(argv))
+
+    def test_this_process_and_its_ancestors_are_never_another_one(self):
+        """Le shell qui a lancé « --detruire » et un lanceur Python plus
+        haut nomment le script : exclus, comme ce processus. Une descente
+        sans lien de parenté reste vue."""
+        script = "long_test/install_erplibre_home.py"
+        self._processus(300, 1, ["python3", script])
+        self._processus(
+            400, 300, ["bash", "-c", f"python3 {script} --detruire"]
+        )
+        moi = self._processus(
+            500, 400, ["python3", script, "--detruire"], comm="a) (b"
+        )
+        self._processus(600, 1, ["python3", "long_test/deep_qemu.py"])
+        self._processus(700, 1, ["bash", "-c", f"python3 {script}"])
+        self.assertEqual(moteur.autre_descente(proc=self.proc, moi=moi), [600])
+
+    def test_a_parent_loop_or_an_unreadable_stat_ends_the_walk(self):
+        self._processus(10, 11, ["sh"])
+        self._processus(11, 10, ["sh"])
+        self.assertEqual(moteur._ascendance(10, proc=self.proc), {10, 11})
+        self.assertEqual(moteur._ascendance(99, proc=self.proc), {99})
 
 
 class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):

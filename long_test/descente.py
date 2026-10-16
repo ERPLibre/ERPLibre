@@ -784,31 +784,73 @@ class Descente:
         return etat
 
 
-def _lance_une_descente(pid):
-    """`pid` exécute-t-il UN des scripts de descente — pas seulement le
-    nomme-t-il ?
+# argv[0] d'un interpréteur Python : python, python3, python3.12, chemin
+# d'un venv compris.
+_INTERPRETE = re.compile(r"python[0-9.]*")
+# Les options de l'interpréteur qui prennent une valeur, collée (« -Wignore »)
+# ou dans l'argument suivant (« -W ignore »).
+_OPTIONS_A_VALEUR = "cmWX"
 
-    Par ARGUMENT, jamais par sous-chaîne. Un « pgrep -f deep_proxmox.py » posé
-    dans une boucle de surveillance donne un shell dont la ligne de commande
-    contient le motif, et le contrôle comptait ce shell comme une descente —
-    deux faux positifs sur trois.
 
-    Et par NOM DE FICHIER, pas par suffixe. « endswith » prenait
-    « test_longtest_install_nixos.py » pour « install_nixos.py » : le fichier
-    de tests se déclarait descente en cours, et « --detruire » refusait de
-    travailler tant qu'il tournait. Le basename ne confond pas deux fichiers
-    dont l'un finit comme l'autre, et reconnaît toujours le chemin complet
-    qu'un interpréteur reçoit.
+def _script_execute(arguments):
+    """Le nom de fichier du script qu'exécute la ligne de commande
+    `arguments` (liste de str), ou "" quand ce n'est pas un interpréteur
+    Python qui exécute un fichier.
+
+    argv[0] est un interpréteur ; ses options sont sautées avec leur valeur,
+    et le premier argument restant est le script, rendu par son basename.
+    « -m paquet.module » rend « module.py ». « -c » et « - » (stdin)
+    n'exécutent aucun fichier. Un shell, un « timeout » ou un éditeur qui
+    nomme le script rend "" : le nom n'y est qu'un argument, pas le code
+    qui s'exécute.
+    """
+    if not arguments or not _INTERPRETE.fullmatch(
+        os.path.basename(arguments[0])
+    ):
+        return ""
+    reste = iter(arguments[1:])
+    for argument in reste:
+        if argument == "--check-hash-based-pycs":
+            next(reste, None)
+        elif argument.startswith("--"):
+            continue
+        elif argument.startswith("-") and argument != "-":
+            for i, lettre in enumerate(argument[1:], 2):
+                if lettre in _OPTIONS_A_VALEUR:
+                    valeur = argument[i:] or next(reste, "")
+                    if lettre == "c":
+                        return ""
+                    if lettre == "m":
+                        return valeur.rsplit(".", 1)[-1] + ".py"
+                    break
+        else:
+            return "" if argument == "-" else os.path.basename(argument)
+    return ""
+
+
+def _lance_une_descente(pid, proc="/proc"):
+    """`pid` est-il un interpréteur Python qui exécute UN des scripts de
+    descente ?
+
+    La ligne de commande, lue dans `proc`/<pid>/cmdline, passe par
+    _script_execute : seul le script que l'interpréteur exécute compte, pas
+    un argument qui le nomme. Le script se compare par NOM DE FICHIER, pas
+    par suffixe : « test_longtest_install_nixos.py » n'est pas
+    « install_nixos.py », et le chemin complet qu'un interpréteur reçoit se
+    reconnaît toujours.
     """
     try:
-        with open(f"/proc/{int(pid)}/cmdline", "rb") as fh:
-            arguments = fh.read().split(b"\0")
+        with open(f"{proc}/{int(pid)}/cmdline", "rb") as fh:
+            brut = fh.read()
     except (OSError, ValueError):
         return False
+    # Chaque argument se termine par NUL, le dernier compris.
+    arguments = [os.fsdecode(a) for a in brut.split(b"\0")]
+    if arguments and not arguments[-1]:
+        arguments.pop()
     # LES scripts, tous : deux tests longs se disputent la RAM, le disque et
     # ~/.ssh/config aussi sûrement que deux descentes de la même pile.
-    attendus = {nom.encode() for nom in SCRIPTS}
-    return any(os.path.basename(a) in attendus for a in arguments)
+    return _script_execute(arguments) in SCRIPTS
 
 
 def descente_vivante(pid):
@@ -821,31 +863,51 @@ def descente_vivante(pid):
     return bool(pid) and _lance_une_descente(pid)
 
 
-def autre_descente():
-    """Les PID des AUTRES descentes vivantes. Le sien est exclu.
+def _ascendance(pid, proc="/proc"):
+    """`pid` et ses ancêtres, lus de parent en parent dans `proc`/<pid>/stat.
 
-    Le garde-fou du rapport — un PID dans le fichier — ne protège que les
-    descentes lancées APRÈS son écriture : celle qui tournait déjà avait
-    chargé l'ancien module en mémoire et n'écrira jamais de PID. Constaté sur
-    une descente réelle de dix étages, à l'étage 4. Ce contrôle-ci ne dépend
-    d'aucun rapport : détruire pendant qu'une descente tourne n'est jamais
-    juste, quel que soit le rapport choisi.
-
-    /proc plutôt que pgrep : « pgrep -f deep_proxmox » attrape le shell qui
-    l'invoque, et on croit alors voir survivre un processus qui n'existe pas.
+    Le nom de commande, entre parenthèses, peut contenir espaces et
+    parenthèses : le parent est le 2e champ après la DERNIÈRE « ) ». La
+    remontée s'arrête sur un stat illisible, sur le PID 0 et sur un PID
+    déjà vu.
     """
-    moi = os.getpid()
+    vus = set()
+    while pid > 0 and pid not in vus:
+        vus.add(pid)
+        try:
+            with open(f"{proc}/{pid}/stat", "rb") as fh:
+                stat = fh.read()
+            pid = int(stat[stat.rindex(b")") + 1 :].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    return vus
+
+
+def autre_descente(proc="/proc", moi=None):
+    """Les PID des AUTRES descentes vivantes, lues dans `proc`.
+
+    `moi` (os.getpid() par défaut) et tous ses ancêtres sont exclus : le
+    shell ou le lanceur qui a démarré ce processus nomme souvent le script,
+    et ce processus-ci peut lui-même en être un.
+
+    Le contrôle ne dépend d'aucun rapport : une descente lancée avant que le
+    rapport porte un PID n'en écrit jamais, et détruire pendant qu'une
+    descente tourne n'est jamais juste, quel que soit le rapport choisi.
+    /proc plutôt que pgrep : « pgrep -f » attrape aussi le shell qui
+    l'invoque.
+    """
+    exclus = _ascendance(os.getpid() if moi is None else moi, proc)
     vivants = []
     try:
-        entrees = os.listdir("/proc")
+        entrees = os.listdir(proc)
     except OSError:
         return vivants
     for entree in entrees:
-        if not entree.isdigit() or int(entree) == moi:
+        if not entree.isdigit() or int(entree) in exclus:
             continue
-        if _lance_une_descente(entree):
+        if _lance_une_descente(entree, proc):
             vivants.append(int(entree))
-    return vivants
+    return sorted(vivants)
 
 
 def joindre_racine(cible, jump=""):
