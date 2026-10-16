@@ -184,6 +184,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Corrigé
 
+- Le cache de téléchargement ne sert plus à une version de Fedora le paquet gardé pour une autre : un paquet que la nouvelle version n'a pas reconstruit garde son nom — `.fc41` dans l'arbre de la 42 — mais il est re-signé avec la clé de la nouvelle version, et les six derniers segments du chemin effaçaient le numéro de version, si bien que dnf rejetait la copie gardée sur sa somme auprès de chaque miroir. Les clés RPM gardent sept segments, à partir du numéro de version, ce qui réunit toujours les préfixes des miroirs. Un magasin rempli avant ce changement se rattrape par `--recle`, service arrêté
 - La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes
 - `--max_process` repart sur Python 3.10 et plus : `loop=` a quitté `asyncio.wait` en 3.10 et `asyncio.get_event_loop()` lève hors d'une loop en marche depuis 3.14, si bien que le pool n'était même plus instanciable alors que l'aide annonçait toujours l'option
 - Une invite n'écrit plus son deux-points deux fois — le menu le plus vu du logiciel demandait « Commande :: », et sept invites de déploiement à distance affichaient un deux-points suivi d'un autre

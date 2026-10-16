@@ -180,6 +180,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Fixed
 
+- The download cache no longer serves one Fedora release the package it kept for another: a package the new release did not rebuild keeps its name — `.fc41` in the 42 tree — but is re-signed with the new release's key, and the last six path segments dropped the release number, so dnf rejected the cached copy on its checksum from every mirror. RPM keys keep seven segments, from the release number on, which still merges the mirrors' prefixes. A store filled before this change is brought over by `--recle`, service stopped
 - Reading the dnsmasq leases no longer opens a root password prompt: the files are read directly, which suffices on a standard install where they are 0644, and only then is `sudo -n` tried, which fails instead of asking. Displaying a VM list called that path once per VM, and waiting on a VM called it every three seconds for ten minutes
 - `--max_process` runs again on Python 3.10 and later: `loop=` left `asyncio.wait` in 3.10 and `asyncio.get_event_loop()` raises outside a running loop since 3.14, so the pool was not even constructible while the help still advertised the flag
 - A prompt no longer writes its colon twice — the most-seen menu of the software asked « Command:: », and seven remote-deployment prompts showed a colon followed by another
