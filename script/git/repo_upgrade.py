@@ -71,6 +71,19 @@ DOSSIER = os.path.join(REPO_ROOT, "manifest")
 DELAI_RESEAU = 60
 PARALLELE = 8
 
+
+def env_sans_invite():
+    """L'environnement d'un git qui ne demande jamais d'identifiant.
+
+    Un dépôt HTTPS absent ou privé fait répondre 401 à l'hébergeur, et git
+    réclame alors un nom d'utilisateur sur le terminal : la passe, lancée
+    sur tous les forks en parallèle, resterait suspendue à une invite.
+    « GIT_TERMINAL_PROMPT=0 » fait échouer la commande à la place ; un
+    assistant d'identification configuré, et la clé SSH, servent toujours.
+    """
+    return dict(os.environ, GIT_TERMINAL_PROMPT="0")
+
+
 COULEURS = {
     "broken": "\033[31m",
     "watch": "\033[33m",
@@ -212,6 +225,7 @@ def branches(url, delai=DELAI_RESEAU):
             capture_output=True,
             text=True,
             timeout=delai,
+            env=env_sans_invite(),
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -323,6 +337,7 @@ def git(args, cwd, delai=DELAI_GIT):
             capture_output=True,
             text=True,
             timeout=delai,
+            env=env_sans_invite(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return "", str(exc), 1

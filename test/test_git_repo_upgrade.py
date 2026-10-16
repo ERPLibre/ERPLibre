@@ -529,5 +529,40 @@ class TestCumulerEtRendu(unittest.TestCase):
         self.assertIn(repo_upgrade.t("No state was written"), texte)
 
 
+class TestSansInvite(unittest.TestCase):
+    """Un git lancé par la passe ne peut jamais attendre un identifiant."""
+
+    def _env_passe(self, appel):
+        with patch.object(repo_upgrade.subprocess, "run") as run:
+            run.return_value.returncode = 1
+            run.return_value.stdout = ""
+            run.return_value.stderr = ""
+            appel()
+        return run.call_args.kwargs["env"]
+
+    def test_ls_remote_sans_invite(self):
+        env = self._env_passe(
+            lambda: repo_upgrade.branches("https://example.invalid/a.git")
+        )
+        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_git_sans_invite(self):
+        env = self._env_passe(lambda: repo_upgrade.git(["fetch"], "/nulle"))
+        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_environnement_conserve(self):
+        with patch.dict(os.environ, {"GIT_SSH_COMMAND": "ssh -o Batch=yes"}):
+            env = repo_upgrade.env_sans_invite()
+        self.assertEqual(env["GIT_SSH_COMMAND"], "ssh -o Batch=yes")
+
+    def test_branches_injoignable_rend_none(self):
+        with patch.object(repo_upgrade.subprocess, "run") as run:
+            run.return_value.returncode = 128
+            run.return_value.stdout = ""
+            self.assertIsNone(
+                repo_upgrade.branches("https://example.invalid/a.git")
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
