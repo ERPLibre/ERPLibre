@@ -313,11 +313,13 @@ parameters and builds the command for you.
 
 A graphical VM gets its desktop and a remote access to it: xrdp (RDP, port
 3389) where the distribution ships it, TigerVNC on Arch. On AlmaLinux and Rocky
-Linux, xrdp comes from EPEL, which the desktop step enables together with CRB;
-when no enabled repository carries xrdp, the desktop stays installed and one
-line says that RDP is missing. The desktop step fails — non-zero exit, one line
-naming the missing binary, `gnome-shell` or `cinnamon` — when the desktop
-itself did not install.
+Linux, xrdp and the Cinnamon group come from EPEL, which the desktop step
+enables together with CRB before installing anything; when xrdp still does not
+install there, the desktop stays and one line says that RDP is missing. On
+Fedora, where xrdp is in the base repositories, a failed xrdp install fails the
+step so that it can be run again. The desktop step also fails — non-zero exit,
+one line naming the missing binary, `gnome-shell` or `cinnamon` — when the
+desktop itself did not install.
 
 When a VM is graphical, the menu also offers a **check list of development
 tools**: PyCharm Community (installed from the official
@@ -524,11 +526,13 @@ vous.
 
 Une VM graphique reçoit son bureau et un accès distant : xrdp (RDP, port 3389)
 là où la distribution le livre, TigerVNC sur Arch. Sur AlmaLinux et Rocky
-Linux, xrdp vient d'EPEL, que l'étape du bureau active avec CRB ; quand aucun
-dépôt activé ne porte xrdp, le bureau reste installé et une ligne dit que le
-RDP manque. L'étape du bureau échoue — code non nul, une ligne qui nomme le
-binaire absent, `gnome-shell` ou `cinnamon` — quand le bureau lui-même ne s'est
-pas installé.
+Linux, xrdp et le groupe Cinnamon viennent d'EPEL, que l'étape du bureau active
+avec CRB avant toute installation ; quand xrdp ne s'y installe toujours pas, le
+bureau reste et une ligne dit que le RDP manque. Sur Fedora, où xrdp est dans
+les dépôts de base, l'échec de son installation fait échouer l'étape, pour
+qu'on la relance. L'étape du bureau échoue aussi — code non nul, une ligne qui
+nomme le binaire absent, `gnome-shell` ou `cinnamon` — quand le bureau
+lui-même ne s'est pas installé.
 
 Quand une VM est graphique, le menu propose en plus une **liste à cocher
 d'outils de développement** : PyCharm Community (posé depuis l'archive
