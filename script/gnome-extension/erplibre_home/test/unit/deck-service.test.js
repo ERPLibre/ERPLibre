@@ -1,9 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DECK_UNIT, CONTROLLER_REL, DECK_ENTRY_REL, deckUnitPath,
-    openDeckArgv, restartDeckArgv, deckStateArgv, deckRunning, deckCheckArgv,
-    deckStartFailure} from '../../lib/deck-service.js';
+import {DECK_UNIT, CONTROLLER_REL, DECK_ENTRY_REL, DECK_SETTLE_MS,
+    deckUnitPath, deckLockPath, openDeckArgv, restartDeckArgv, deckStateArgv,
+    deckRunning, deckCheckArgv, deckStartFailure, parseUnitShow,
+    deckStartOutcome, parseLockHolder, deckStartNotice}
+    from '../../lib/deck-service.js';
 
 const ROOT = '/opt/mon depot';
 const PYTHON = `${ROOT}/.venv.streamdeck/bin/python`;
@@ -45,8 +47,90 @@ test('restart goes through the unit only when it exists', () => {
 
 test('the state after a start is read from systemctl show', () => {
     assert.deepEqual(deckStateArgv(),
-        ['systemctl', '--user', 'show', '-p', 'ActiveState', '--value',
-            DECK_UNIT]);
+        ['systemctl', '--user', 'show', '-p', 'ActiveState', '-p', 'Result',
+            '-p', 'ExecMainCode', '-p', 'ExecMainStatus', DECK_UNIT]);
+});
+
+test('the state is read once the program had time to exit', () => {
+    // Type=simple: systemctl start returns once the program is forked,
+    // before a busy deck (2) or no visual deck (3) ends it.
+    assert.ok(DECK_SETTLE_MS >= 1000 && DECK_SETTLE_MS <= 3000,
+        String(DECK_SETTLE_MS));
+});
+
+test('systemctl show lines become properties', () => {
+    assert.deepEqual(
+        parseUnitShow('ActiveState=failed\nResult=exit-code\n' +
+            'ExecMainCode=1\nExecMainStatus=2\n\nodd line\n'),
+        {ActiveState: 'failed', Result: 'exit-code', ExecMainCode: '1',
+            ExecMainStatus: '2'});
+    assert.deepEqual(parseUnitShow(null), {});
+});
+
+// What systemctl show reports a moment after each kind of start.
+const SHOWN = {
+    running: {ActiveState: 'active', Result: 'success', ExecMainCode: '0',
+        ExecMainStatus: '0'},
+    busy: {ActiveState: 'failed', Result: 'exit-code', ExecMainCode: '1',
+        ExecMainStatus: '2'},
+    noDeck: {ActiveState: 'failed', Result: 'exit-code', ExecMainCode: '1',
+        ExecMainStatus: '3'},
+    skipped: {ActiveState: 'inactive', Result: 'exec-condition',
+        ExecMainCode: '0', ExecMainStatus: '0'},
+    skippedOld: {ActiveState: 'inactive', Result: 'success',
+        ExecMainCode: '0', ExecMainStatus: '0'},
+    crashed: {ActiveState: 'failed', Result: 'exit-code', ExecMainCode: '1',
+        ExecMainStatus: '1'},
+    killed: {ActiveState: 'failed', Result: 'signal', ExecMainCode: '2',
+        ExecMainStatus: '2'},
+};
+
+test('each start is classified from the unit state', () => {
+    assert.deepEqual(deckStartOutcome(SHOWN.running), {kind: 'running'});
+    assert.deepEqual(deckStartOutcome(SHOWN.busy), {kind: 'busy'});
+    assert.deepEqual(deckStartOutcome(SHOWN.noDeck), {kind: 'no-deck'});
+    assert.deepEqual(deckStartOutcome(SHOWN.skipped), {kind: 'skipped'});
+    assert.deepEqual(deckStartOutcome(SHOWN.skippedOld), {kind: 'skipped'});
+    assert.deepEqual(deckStartOutcome(SHOWN.crashed),
+        {kind: 'failed', detail: 'failed (exit-code)'});
+    // Killed by signal 2 is not the busy exit code 2.
+    assert.deepEqual(deckStartOutcome(SHOWN.killed),
+        {kind: 'failed', detail: 'failed (signal)'});
+    assert.deepEqual(deckStartOutcome({}), {kind: 'failed', detail: '?'});
+});
+
+test('the lock names its holder like deck_lock.parse_holder', () => {
+    assert.equal(deckLockPath('/run/user/1234'),
+        '/run/user/1234/erplibre-home/deck.lock');
+    assert.deepEqual(parseLockHolder('4242 game\n'),
+        {pid: '4242', program: 'game'});
+    assert.deepEqual(parseLockHolder('12;reboot $(exemple)\n'),
+        {pid: '?', program: '?'});
+    assert.equal(parseLockHolder(''), null);
+    assert.equal(parseLockHolder(null), null);
+});
+
+test('the notice says why no deck program runs', () => {
+    assert.equal(deckStartNotice({kind: 'running'}, {}), null);
+    assert.equal(
+        deckStartNotice({kind: 'busy'},
+            {holder: {pid: '4242', program: 'game'}}),
+        'The deck program did not start: the deck is held by game ' +
+        '(PID 4242)');
+    assert.equal(deckStartNotice({kind: 'busy'}, {holder: null}),
+        'The deck program did not start: the deck is held by another ' +
+        'program');
+    assert.equal(deckStartNotice({kind: 'no-deck'}, {}),
+        'The deck program did not start: no visual Stream Deck is ' +
+        'plugged in');
+    assert.equal(
+        deckStartNotice({kind: 'skipped'}, {checkStderr:
+            '[ERPLibre Home] DECK_PROGRAM=none: no deck program to run\n'}),
+        'The deck program did not start: [ERPLibre Home] ' +
+        'DECK_PROGRAM=none: no deck program to run');
+    assert.equal(
+        deckStartNotice({kind: 'failed', detail: 'failed (exit-code)'}, {}),
+        'The deck program did not start: failed (exit-code)');
 });
 
 test('active, activating and reloading count as running', () => {
@@ -82,10 +166,24 @@ test('the device indicator takes its argv from this module', () => {
     assert.ok(src.includes('restartDeckArgv('));
     assert.ok(src.includes('deckStateArgv()'));
     assert.ok(src.includes('deckCheckArgv('));
-    assert.ok(src.includes('deckStartFailure('));
+    assert.ok(src.includes('deckStartOutcome(parseUnitShow('));
+    assert.ok(src.includes('deckStartNotice('));
+    assert.ok(src.includes('parseLockHolder('));
+    assert.ok(src.includes('deckLockPath(GLib.get_user_runtime_dir())'));
     assert.ok(src.includes('deckUnitPath(GLib.get_user_config_dir())'));
     assert.ok(!src.includes("const CONTROLLER_REL"));
 });
+
+test('the indicator waits without blocking, and drops the wait on destroy',
+    () => {
+        const src = extensionFile('indicators/device.js');
+        assert.ok(src.includes(
+            'GLib.timeout_add(GLib.PRIORITY_DEFAULT, DECK_SETTLE_MS'));
+        assert.ok(!src.includes('GLib.usleep'));
+        const destroy = src.slice(src.indexOf('destroy() {'),
+            src.indexOf('super.destroy()'));
+        assert.ok(destroy.includes('this._settleIds'), destroy);
+    });
 
 test('the menu entry says it starts the deck program', () => {
     // It starts whichever program the settings name, not only the
@@ -98,6 +196,10 @@ test('the menu entry says it starts the deck program', () => {
         ['Start deck program', 'Démarrer le programme du deck'],
         ['The deck program did not start:',
             "Le programme du deck n'a pas démarré :"],
+        ['the deck is held by', 'le deck est tenu par'],
+        ['another program', 'un autre programme'],
+        ['no visual Stream Deck is plugged in',
+            "aucun Stream Deck à écran n'est branché"],
     ]) {
         assert.ok(fr.includes(`msgid "${msgid}"\nmsgstr "${msgstr}"`), msgid);
         assert.ok(extensionFile('po/en.po').includes(

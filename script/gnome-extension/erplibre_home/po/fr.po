@@ -165,6 +165,15 @@ msgstr "Démarrer le programme du deck"
 msgid "The deck program did not start:"
 msgstr "Le programme du deck n'a pas démarré :"
 
+msgid "the deck is held by"
+msgstr "le deck est tenu par"
+
+msgid "another program"
+msgstr "un autre programme"
+
+msgid "no visual Stream Deck is plugged in"
+msgstr "aucun Stream Deck à écran n'est branché"
+
 msgid "Restart deck"
 msgstr "Redémarrer le deck"
 
