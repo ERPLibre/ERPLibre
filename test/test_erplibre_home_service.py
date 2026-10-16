@@ -137,20 +137,33 @@ class LEcriture(unittest.TestCase):
             self.assertEqual(avant, chemin.stat().st_mtime_ns)
 
     def test_python_and_the_installer_write_the_same_text(self):
-        """settings_text et settings_content de l'installateur, sur les
-        mêmes entrées, rendent le même texte."""
+        """settings_text, write_settings et settings_content de
+        l'installateur, sur les mêmes entrées, rendent le même texte. Le
+        shell ne coupe les lignes que sur « \\n » : un « \\r », un
+        « \\x0b », un « \\x1c » ou un « \\u2028 » reste dans sa ligne,
+        des deux côtés."""
         entrees = (
             "",
             "DECK_PROGRAM=none\n",
             "# note\nEXEMPLE=1\nRESTART_AFTER_GAME=yes\nDECK_PROGRAM=tiler",
+            "DECK_PROGRAM=none\r\nEXEMPLE=1\r\n",
+            "DECK_PROGRAM=none\rRESTART_AFTER_GAME=yes\n",
+            "EXEMPLE=a\x0bDECK_PROGRAM=none\n",
+            "EXEMPLE=a\x1cRESTART_AFTER_GAME=yes\x1d\x1e\x85\n",
+            "EXEMPLE=a\u2028DECK_PROGRAM=none\u2029\n",
+            "\n\nEXEMPLE=1\n\n",
         )
         maj = {"DECK_PROGRAM": "controller", "RESTART_AFTER_GAME": "no"}
         for entree in entrees:
             with self.subTest(entree=entree):
                 with tempfile.TemporaryDirectory() as dossier:
                     chemin = Path(dossier, "streamdeck.conf")
+                    copie = Path(dossier, "copie.conf")
                     if entree:
-                        chemin.write_text(entree, encoding="utf-8")
+                        chemin.write_bytes(entree.encode("utf-8"))
+                        copie.write_bytes(entree.encode("utf-8"))
+                    service.write_settings(str(copie), maj)
+                    ecrit = copie.read_bytes().decode("utf-8")
                     env = {
                         k: v
                         for k, v in os.environ.items()
@@ -172,14 +185,13 @@ class LEcriture(unittest.TestCase):
                             " DECK_PROGRAM=controller RESTART_AFTER_GAME=no\n",
                         ],
                         capture_output=True,
-                        text=True,
                         env=env,
                         timeout=30,
                     )
                 self.assertEqual(0, fini.returncode, fini.stderr)
-                self.assertEqual(
-                    service.settings_text(entree, maj), fini.stdout
-                )
+                attendu = fini.stdout.decode("utf-8")
+                self.assertEqual(attendu, service.settings_text(entree, maj))
+                self.assertEqual(attendu, ecrit)
 
 
 class LaCommande(unittest.TestCase):
