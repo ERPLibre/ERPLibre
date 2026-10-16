@@ -450,3 +450,42 @@ In TODO › Git repo, entry 14 offers the usual comparisons, a choice of two rev
 ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
 `b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
 `w` the command that opens an old commit in a git worktree beside the clone, without moving it.
+
+#### Read the state of the code as JSON
+
+`script/git/repo_state.py` writes on its standard output a JSON object, versioned by its `schema` field (1), meant for a
+program rather than a person, such as an Odoo module that stores it in the database. It only reads — no
+fetch, no checkout, no index written — and every git call runs with `-c safe.directory=*`, `GIT_TERMINAL_PROMPT=0`,
+`GIT_OPTIONAL_LOCKS=0` and a timeout (`--timeout`, 30 s by default), so that the account of an Odoo service can run
+it on clones it does not own.
+
+`snapshot`, the default command, gives the ERPLibre version and commit, the Odoo version, the mode (`branches` or
+`frozen`, read in the local manifest as the menu header does), and for each repository of the local manifest: its
+HEAD, the commit its `revision` asks for, `freeze-revision`, the upstream of a fork, the Odoo modules it holds with
+the version of their `__manifest__.py` (read with `ast.literal_eval`, never imported), and a state: `conforme` (HEAD
+is the requested commit), `en_avance` (HEAD descends from it), `decale` (any other case), `absent` (not cloned),
+`hors_manifeste` (a clone under `odoo<V>/` the manifest does not name), `erreur`, and with `--dirty`, which also runs
+`git status` in every clone, `sale`: a modified tracked file or an untracked file that no `.gitignore` covers, such as
+a module copied into the clone; ignored files (`.pyc`, `__pycache__`) do not count. `fingerprint` hashes everything
+but the date: two snapshots of the same state share it. About 250 repositories take a second or two without `--dirty`.
+
+`between` lists the commits between two revisions of a clone, bounded by `--max` (200), and says when the list is
+cut or when the old commit is unknown to the clone; `--paths` adds the modules whose files differ between the two
+commits (`changed_modules`) and the changed files, bounded by `--max-paths` (1000). `cross-version` compares a
+repository with the same path under the other `odoo<V>/` trees of the checkout: presence and version of each module,
+our commits of the other version's fork that have no equivalent here, matched by `git patch-id --stable` on the
+module directory then by subject, the recent history of each module on both sides, and the diffstat of the modules
+both sides hold; `--full` adds the whole diff, bounded by `--max-bytes`. Our commits start at the newer of two
+upstream bases: the merge base with the upstream tracking branch, or `fork-upstream-freeze-revision` when it descends
+from that merge base, since only the upgrade diagnostic advances the tracking branch. The output stays bounded on a
+repository as large as the Odoo core: the diffstat counts every file but lists at most `--max-paths` (100) per module
+and `--max-paths-total` (1000) in all, and without `--module` only `--history-modules` (100) modules get a history,
+those that differ first. A repository that fails is reported in its entry, never as a traceback. Exit codes: 0 done, 1 internal
+error, 2 usage, 3 target not found.
+
+```bash
+.venv.erplibre/bin/python script/git/repo_state.py --pretty
+.venv.erplibre/bin/python script/git/repo_state.py snapshot --dirty --repo odoo18.0/addons/OCA_web
+.venv.erplibre/bin/python script/git/repo_state.py between odoo18.0/addons/OCA_web OLD_SHA NEW_SHA --max 50
+.venv.erplibre/bin/python script/git/repo_state.py cross-version odoo18.0/addons/OCA_web --module web_responsive --full
+```
