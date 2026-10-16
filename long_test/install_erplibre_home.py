@@ -104,8 +104,7 @@ def _entree(distro, version, gnome, roulante=False):
 # « shell-version » y rend UNSUPPORTED, et c'est le signal attendu pour mettre
 # metadata.json à jour, non une panne.
 #
-# EL 10 : GNOME 49 mesuré sur AlmaLinux 10 ; Rocky 10 suit le même mineur
-# RHEL 10.
+# EL 10 : AlmaLinux 10 et Rocky 10 livrent le GNOME de RHEL 10, le 49.
 MATRICE = [
     _entree("ubuntu", "24.04", "46"),
     _entree("ubuntu", "25.10", "49"),
@@ -223,8 +222,6 @@ REGLAGES_DECK = "~/.config/erplibre-home/streamdeck.conf"
 # systemctl --user par ssh : le gestionnaire de l'utilisateur se joint par
 # XDG_RUNTIME_DIR, qu'une session ssh ne pose pas toujours, ou par le bus.
 SYSTEMD_USER = BUS + "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
-# L'unité existe et lance le point d'entrée du checkout de la VM, chemin
-# entier entre guillemets.
 # Le bruit que journalctl écrit à la place d'un journal illisible ou vide :
 # ni une entrée, ni une preuve de lecture.
 _BRUIT_JOURNAL = "grep -Ev '^(-- |Hint: |No journal files)' || true"
@@ -252,6 +249,8 @@ def _journal_utilisateur(args_user, args_root, filtre=None):
     )
 
 
+# L'unité existe et lance le point d'entrée du checkout de la VM, chemin
+# entier entre guillemets.
 CMD_UNITE = (
     'grep -Fqx "ExecStart=\\"$HOME/git/erplibre/script/install/'
     f'erplibre_home_deck.sh\\"" {FICHIER_UNITE} && echo ok'
