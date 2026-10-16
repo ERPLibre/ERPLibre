@@ -180,6 +180,14 @@ prévisualiser un dry-run, télécharger une image, lister les VM et afficher
 l'IP d'une VM — le menu demande les paramètres et construit la commande pour
 vous.
 
+Une VM graphique reçoit son bureau et un accès distant : xrdp (RDP, port 3389)
+là où la distribution le livre, TigerVNC sur Arch. Sur AlmaLinux et Rocky
+Linux, xrdp vient d'EPEL, que l'étape du bureau active avec CRB ; quand aucun
+dépôt activé ne porte xrdp, le bureau reste installé et une ligne dit que le
+RDP manque. L'étape du bureau échoue — code non nul, une ligne qui nomme le
+binaire absent, `gnome-shell` ou `cinnamon` — quand le bureau lui-même ne s'est
+pas installé.
+
 Quand une VM est graphique, le menu propose en plus une **liste à cocher
 d'outils de développement** : PyCharm Community (posé depuis l'archive
 officielle JetBrains dans `/opt/pycharm`, son lanceur ouvrant le dépôt

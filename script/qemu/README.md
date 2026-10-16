@@ -151,6 +151,14 @@ Ubuntu VM (libvirt)**. From there you can deploy a VM, preview a dry-run,
 download an image, list VMs and show a VM IP address — the menu asks for the
 parameters and builds the command for you.
 
+A graphical VM gets its desktop and a remote access to it: xrdp (RDP, port
+3389) where the distribution ships it, TigerVNC on Arch. On AlmaLinux and Rocky
+Linux, xrdp comes from EPEL, which the desktop step enables together with CRB;
+when no enabled repository carries xrdp, the desktop stays installed and one
+line says that RDP is missing. The desktop step fails — non-zero exit, one line
+naming the missing binary, `gnome-shell` or `cinnamon` — when the desktop
+itself did not install.
+
 When a VM is graphical, the menu also offers a **check list of development
 tools**: PyCharm Community (installed from the official
 JetBrains archive into `/opt/pycharm`, its launcher opening the ERPLibre
