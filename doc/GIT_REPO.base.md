@@ -375,7 +375,11 @@ a dated branch `<branch>_maj_<YYYYMMDD>`, created on HEAD, where:
 Two refusals come before anything is written: a work tree whose tracked files are modified, on which git would refuse
 the rebase, and a fork branch whose tip known to the clone is not an ancestor of HEAD — the remote carries commits HEAD
 lacks, and publishing the result would lose them. A rebase git refuses to start is reported as such, not as a
-conflict. Each pass is recorded under `tasks/git_repo_upgrade/`, which is not versioned.
+conflict, and so is a refused fast-forward. Either can leave the work tree half written — a checkout interrupted by a
+symbolic link that a remote file system such as sshfs refuses, or a directory without write permission — so the
+repository is put back where the pass found it: `checkout -f` to its starting branch or commit, the upstream files that
+appeared untracked since are removed, and the dated branch is deleted. Should that return fail, the dated branch stays
+and the report prints the command to run by hand. Each pass is recorded under `tasks/git_repo_upgrade/`, which is not versioned.
 
 #### Conflict queue
 
@@ -476,7 +480,11 @@ n'est poussé. Chaque fork reçoit une branche datée `<branche>_maj_<AAAAMMJJ>`
 Deux refus précèdent toute écriture : un arbre de travail dont des fichiers suivis sont modifiés, sur lequel git
 refuserait le rebase, et une branche du fork dont la pointe connue du clone n'est pas un ancêtre de HEAD — le distant
 porte des commits que HEAD n'a pas, et publier le résultat les perdrait. Un rebase que git refuse de commencer est
-rapporté comme tel, et non comme un conflit. Chaque passe s'enregistre sous `tasks/git_repo_upgrade/`, qui n'est pas
+rapporté comme tel, et non comme un conflit, de même qu'un fast-forward refusé. L'un comme l'autre peut laisser l'arbre
+à moitié écrit — un checkout interrompu par un lien symbolique qu'un système de fichiers distant comme sshfs refuse, ou
+par un dossier sans droit d'écriture — : le dépôt est donc remis où la passe l'a pris, par `checkout -f` vers sa branche
+ou son commit de départ, les fichiers de l'amont apparus hors suivi depuis sont effacés et la branche datée est
+supprimée. Si ce retour échoue, la branche datée reste et le rapport affiche la commande à lancer à la main. Chaque passe s'enregistre sous `tasks/git_repo_upgrade/`, qui n'est pas
 versionné.
 
 #### File des conflits

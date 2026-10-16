@@ -18677,6 +18677,18 @@ TRANSLATIONS = {
         "fr": "Interrogation de chaque amont, cela prend quelques secondes.",
         "en": "Querying each upstream, this takes a few seconds.",
     },
+    "put back on its start commit": {
+        "fr": "remis sur son commit de départ",
+        "en": "put back on its start commit",
+    },
+    "could not be put back on its start commit": {
+        "fr": "n'a pas pu être remis sur son commit de départ",
+        "en": "could not be put back on its start commit",
+    },
+    "To run by hand:": {
+        "fr": "À lancer à la main :",
+        "en": "To run by hand:",
+    },
     "⬆️ Apply the upgrade": {
         "fr": "⬆️ Appliquer la mise à niveau",
         "en": "⬆️ Apply the upgrade",

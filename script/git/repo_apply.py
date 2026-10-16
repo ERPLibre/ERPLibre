@@ -255,6 +255,7 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
         "etat": "ignore",
         "conflits": [],
         "sortie": "",
+        "restaure": None,
     }
 
     if constat.get("verdict") not in VERDICTS_A_APPLIQUER:
@@ -283,6 +284,8 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
         resultat["etat"] = "branche_existante"
         return resultat
 
+    branche_depart = branche_courante(chemin)
+    hors_suivi = fichiers_hors_suivi(chemin)
     out, err, code = git(["checkout", "-b", branche], chemin, delai)
     if code:
         resultat["etat"] = "branche_refusee"
@@ -293,7 +296,14 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
         out, err, code = git(["merge", "--ff-only", cible], chemin, delai)
         resultat["sortie"] = (out + err).strip()
         resultat["etat"] = "avance_refusee" if code else "avance"
-        if not code:
+        if code:
+            resultat["restaure"], sortie = restaurer(
+                chemin, resultat, branche_depart, hors_suivi, delai
+            )
+            resultat["sortie"] = "\n".join(
+                x for x in (resultat["sortie"], sortie) if x
+            )
+        else:
             resultat["arrivee"] = sha_de(chemin, "HEAD")
         return resultat
 
@@ -319,13 +329,85 @@ def appliquer(constat, horodatage, racine=REPO_ROOT, delai=DELAI_GIT):
     # L'abandonner ici obligerait à tout refaire pour reprendre la main.
     # Un échec sans rebase en cours ni fichier en conflit n'est pas un
     # conflit : git a refusé de commencer, et la file n'aurait rien à
-    # reprendre.
+    # reprendre ; le dépôt est alors remis où la passe l'a pris.
     resultat["conflits"] = fichiers_en_conflit(chemin)
     if resultat["conflits"] or rebase_en_cours(chemin):
         resultat["etat"] = "conflit"
     else:
         resultat["etat"] = "rebase_refuse"
+        resultat["restaure"], sortie = restaurer(
+            chemin, resultat, branche_depart, hors_suivi, delai
+        )
+        resultat["sortie"] = "\n".join(
+            x for x in (resultat["sortie"], sortie) if x
+        )
     return resultat
+
+
+def fichiers_hors_suivi(chemin):
+    """Les fichiers non suivis de l'arbre, ignorés compris, en ensemble.
+
+    Le relevé d'AVANT une opération : `restaurer` n'efface que ce qui est
+    apparu depuis, jamais un fichier que l'arbre portait déjà.
+    """
+    out, _err, code = git(["ls-files", "--others", "-z"], chemin)
+    return set(x for x in out.split("\0") if x) if not code else set()
+
+
+def restaurer(chemin, resultat, branche_depart, hors_suivi, delai=DELAI_GIT):
+    """Remet le dépôt sur son départ après un rebase ou une avance refusés.
+
+    Un checkout que git interrompt (un lien symbolique qu'un système de
+    fichiers distant refuse, un dossier sans droit d'écriture) laisse
+    l'arbre à moitié écrit : des fichiers suivis au contenu de l'amont, des
+    fichiers de l'amont posés hors suivi, et HEAD sur la branche datée.
+    Trois gestes le défont :
+
+    - « checkout -f » vers `branche_depart`, ou HEAD détachée sur
+      « depart » sans elle. Le « -f » ne peut rien perdre : `appliquer` n'a
+      commencé que sur un arbre sans modification suivie ;
+    - l'effacement des fichiers non suivis apparus depuis le relevé
+      `hors_suivi` ET présents dans l'amont relevé, puis de leurs dossiers
+      devenus vides ;
+    - la suppression de la branche datée, qui pointe encore « depart ».
+
+    Rend (restauré, sortie). Une branche datée supprimée quitte
+    `resultat["branche"]`. Un échec garde la branche datée, et la sortie
+    donne la commande à lancer à la main.
+    """
+    depart, branche = resultat["depart"], resultat["branche"]
+    if branche_depart:
+        retour = ["checkout", "-f", branche_depart]
+    else:
+        retour = ["checkout", "-f", "--detach", depart]
+    out, err, code = git(retour, chemin, delai)
+    if code:
+        manuel = " ".join(["git", "-C", resultat["chemin"]] + retour)
+        return False, f"{(out + err).strip()}\n{t('To run by hand:')} {manuel}"
+    de_l_amont = set()
+    if resultat["amont"]:
+        amont, _err, code = git(
+            ["ls-tree", "-r", "--name-only", "-z", resultat["amont"]], chemin
+        )
+        de_l_amont = set(amont.split("\0")) if not code else set()
+    for relatif in sorted(fichiers_hors_suivi(chemin) - hors_suivi):
+        if relatif not in de_l_amont:
+            continue
+        try:
+            os.remove(os.path.join(chemin, relatif))
+        except OSError:
+            continue
+        dossier = os.path.dirname(relatif)
+        while dossier:
+            try:
+                os.rmdir(os.path.join(chemin, dossier))
+            except OSError:
+                break
+            dossier = os.path.dirname(dossier)
+    _out, _err, code = git(["branch", "-D", branche], chemin, delai)
+    if not code:
+        resultat["branche"] = None
+    return True, ""
 
 
 def passe_appliquer(

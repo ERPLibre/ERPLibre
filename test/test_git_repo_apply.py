@@ -175,6 +175,83 @@ class TestAppliquer(unittest.TestCase):
         res = appliquer_simule(constat(), simule)
         self.assertEqual(res["etat"], "rebase_refuse")
 
+    def test_rebase_refuse_remet_le_depart(self):
+        """HEAD détachée au départ : « checkout -f --detach » sur le départ,
+        puis la branche datée supprimée et retirée de l'enregistrement."""
+        simule = GitSimule(rebase_code=1)
+        res = appliquer_simule(constat(), simule)
+        self.assertIn(
+            ["checkout", "-f", "--detach", "aaaa1111"],
+            simule.commandes("checkout"),
+        )
+        self.assertIn(
+            ["branch", "-D", "18.0_dev_maj_20260927"],
+            simule.commandes("branch"),
+        )
+        self.assertIs(res["restaure"], True)
+        self.assertIsNone(res["branche"])
+
+    def test_rebase_refuse_revient_sur_la_branche_de_depart(self):
+        simule = GitSimule(rebase_code=1)
+        reponse = simule.__call__
+
+        def avec_branche(args, cwd, delai=None):
+            if args[0] == "symbolic-ref":
+                simule.vues.append(list(args))
+                return "18.0_dev\n", "", 0
+            return reponse(args, cwd, delai)
+
+        res = appliquer_simule(constat(), avec_branche)
+        self.assertIn(
+            ["checkout", "-f", "18.0_dev"], simule.commandes("checkout")
+        )
+        self.assertIs(res["restaure"], True)
+
+    def test_restauration_refusee_garde_la_branche(self):
+        """Le retour échoue : la branche datée reste, et la sortie donne la
+        commande à lancer à la main."""
+
+        class Simule(GitSimule):
+            def __call__(self, args, cwd, delai=None):
+                if args[:2] == ["checkout", "-f"]:
+                    self.vues.append(list(args))
+                    return "", "erreur", 1
+                return super().__call__(args, cwd, delai)
+
+        simule = Simule(rebase_code=1)
+        res = appliquer_simule(constat(), simule)
+        self.assertIs(res["restaure"], False)
+        self.assertEqual(res["branche"], "18.0_dev_maj_20260927")
+        self.assertEqual(simule.commandes("branch"), [])
+        self.assertIn("checkout -f --detach aaaa1111", res["sortie"])
+
+    def test_avance_refusee_remet_le_depart(self):
+        simule = GitSimule()
+        reponse = simule.__call__
+
+        def ff_refuse(args, cwd, delai=None):
+            if args[0] == "merge":
+                simule.vues.append(list(args))
+                return "", "", 1
+            return reponse(args, cwd, delai)
+
+        res = appliquer_simule(constat("en_retard"), ff_refuse)
+        self.assertEqual(res["etat"], "avance_refusee")
+        self.assertIs(res["restaure"], True)
+        self.assertIn(
+            ["checkout", "-f", "--detach", "aaaa1111"],
+            simule.commandes("checkout"),
+        )
+
+    def test_un_conflit_n_est_pas_restaure(self):
+        simule = GitSimule(rebase_code=1, conflits="m/a.py\n")
+        res = appliquer_simule(constat(), simule)
+        self.assertEqual(res["etat"], "conflit")
+        self.assertIsNone(res["restaure"])
+        self.assertEqual(
+            [a for a in simule.commandes("checkout") if "-f" in a], []
+        )
+
     BASE, GEL = "b" * 40, "c" * 40
 
     def _rebase_avec_base(self, **ancetres):
@@ -616,6 +693,39 @@ class TestDepotsReels(unittest.TestCase):
         )
 
     # ── appliquer ──
+
+    @unittest.skipIf(
+        hasattr(os, "geteuid") and os.geteuid() == 0,
+        "root écrit dans un dossier sans droit d'écriture",
+    )
+    def test_checkout_interrompu_remet_le_depart(self):
+        """Un dossier sans droit d'écriture arrête le checkout de l'amont à
+        mi-chemin : un fichier suivi et un fichier neuf sont déjà écrits.
+        Le dépôt revient sur son départ, sans le fichier neuf ni la branche
+        datée ; le fichier non suivi d'avant reste."""
+        notre = self.commit_du_fork()
+        self.commit(self.source, "a.txt", "neuf")
+        os.makedirs(os.path.join(self.source, "z"))
+        self.commit(self.source, os.path.join("z", "y.txt"), "bloque")
+        self.amont_avance("deux")
+        self.fetch_amont()
+        with open(os.path.join(self.clone, "a_moi.txt"), "w") as fh:
+            fh.write("à moi")
+        bloque = os.path.join(self.clone, "z")
+        os.makedirs(bloque)
+        os.chmod(bloque, 0o500)
+        self.addCleanup(os.chmod, bloque, 0o700)
+        res = self.appliquer(self.constat())
+        self.assertEqual(res["etat"], "rebase_refuse", res["sortie"])
+        self.assertIs(res["restaure"], True, res["sortie"])
+        self.assertEqual(_git(self.clone, "rev-parse", "HEAD"), notre)
+        self.assertEqual(
+            _git(self.clone, "status", "--porcelain", "--untracked-files=no"),
+            "",
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.clone, "a.txt")))
+        self.assertTrue(os.path.exists(os.path.join(self.clone, "a_moi.txt")))
+        self.assertEqual(_git(self.clone, "branch", "--list", "*_maj_*"), "")
 
     def test_rebase_onto_ne_rejoue_que_nos_commits(self):
         """Sur un amont réécrit, un rebase ordinaire rejouerait l'ancien

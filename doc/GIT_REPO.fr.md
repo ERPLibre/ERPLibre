@@ -229,7 +229,11 @@ n'est poussé. Chaque fork reçoit une branche datée `<branche>_maj_<AAAAMMJJ>`
 Deux refus précèdent toute écriture : un arbre de travail dont des fichiers suivis sont modifiés, sur lequel git
 refuserait le rebase, et une branche du fork dont la pointe connue du clone n'est pas un ancêtre de HEAD — le distant
 porte des commits que HEAD n'a pas, et publier le résultat les perdrait. Un rebase que git refuse de commencer est
-rapporté comme tel, et non comme un conflit. Chaque passe s'enregistre sous `tasks/git_repo_upgrade/`, qui n'est pas
+rapporté comme tel, et non comme un conflit, de même qu'un fast-forward refusé. L'un comme l'autre peut laisser l'arbre
+à moitié écrit — un checkout interrompu par un lien symbolique qu'un système de fichiers distant comme sshfs refuse, ou
+par un dossier sans droit d'écriture — : le dépôt est donc remis où la passe l'a pris, par `checkout -f` vers sa branche
+ou son commit de départ, les fichiers de l'amont apparus hors suivi depuis sont effacés et la branche datée est
+supprimée. Si ce retour échoue, la branche datée reste et le rapport affiche la commande à lancer à la main. Chaque passe s'enregistre sous `tasks/git_repo_upgrade/`, qui n'est pas
 versionné.
 
 #### File des conflits

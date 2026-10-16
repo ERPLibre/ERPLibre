@@ -520,9 +520,16 @@ class GitRepoMenuMixin:
             if etat in ("rebase", "ignore", "avance", "publie"):
                 continue
             for res in lst:
-                print(
-                    f"   ⚠  {res['chemin']} :" f" {t(ETATS.get(etat, etat))}"
-                )
+                ligne = f"   ⚠  {res['chemin']} : {t(ETATS.get(etat, etat))}"
+                if res.get("restaure") is True:
+                    ligne += f" — {t('put back on its start commit')}"
+                print(ligne)
+                if res.get("restaure") is False:
+                    print(
+                        f"      {t('could not be put back on its start commit')}"
+                    )
+                    for x in (res.get("sortie") or "").splitlines()[-1:]:
+                        print(f"      {x}")
         if conflits:
             print(f"   {t('Work them through the conflict queue.')}")
 
