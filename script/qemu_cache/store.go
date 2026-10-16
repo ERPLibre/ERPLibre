@@ -139,9 +139,14 @@ const SegmentsDeCleArch = 4
 // gardée pour l'une est servie à l'autre, et dnf la rejette sur sa somme
 // auprès de chaque miroir, puisque tous répondent par la même copie.
 //
-// Sept, et pas plus : la clé commence au numéro de version, et ce qui le
-// précède — « fedora/linux/releases », « pub/rocky » — est le préfixe que
-// chaque miroir écrit à sa guise.
+// Sept, et pas plus : sur l'arbre « releases » de Fedora et sur celui de
+// Rocky, la clé commence au numéro de version, et ce qui le précède —
+// « fedora/linux/releases », « pub/rocky » — est le préfixe que chaque miroir
+// écrit à sa guise. Un arbre moins profond — EPEL, CentOS Stream, AlmaLinux —
+// fait entrer dans la clé un segment de ce préfixe (« epel » ou
+// « fedora-epel », « centos-stream » ou rien, « almalinux ») : les mêmes
+// octets servis par deux miroirs y prennent alors deux clés. C'est une copie
+// de trop dans le cache, jamais un paquet servi à la place d'un autre.
 const SegmentsDeCleRPM = 7
 
 // estPaquetArch reconnaît un paquet de la famille pacman à son nom.
