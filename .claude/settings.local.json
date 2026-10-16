@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm test:*)",
       "Bash(npm run *)",
-      "Bash(rtk grep *)"
+      "Bash(rtk grep *)",
+      "Workflow"
     ]
   }
 }
