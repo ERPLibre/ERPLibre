@@ -58,10 +58,16 @@ def read_settings(path):
 def settings_text(current, updates):
     """Le texte `current` avec chaque clé de `updates` posée : la ligne de
     la clé remplacée sur place, une clé absente ajoutée à la fin, toute
-    autre ligne gardée dans son ordre. Rend un texte fini par « \\n »."""
+    autre ligne gardée dans son ordre. Rend un texte fini par « \\n ».
+    Les lignes se coupent sur « \\n » seul, comme settings_content de
+    l'installateur : un « \\r » ou tout autre séparateur Unicode reste
+    dans sa ligne, et une dernière ligne sans « \\n » compte."""
     vues = set()
     lignes = []
-    for ligne in current.splitlines():
+    morceaux = current.split("\n")
+    if morceaux[-1] == "":
+        morceaux.pop()
+    for ligne in morceaux:
         cle = ligne.partition("=")[0]
         if "=" in ligne and cle in updates:
             ligne = "%s=%s" % (cle, updates[cle])
@@ -75,9 +81,10 @@ def settings_text(current, updates):
 
 def write_settings(path, updates):
     """Pose `updates` dans le fichier de réglages `path`, créé au besoin.
-    N'écrit que si le texte change ; rend vrai quand il a écrit."""
+    N'écrit que si le texte change ; rend vrai quand il a écrit. Le
+    fichier se lit et s'écrit sans traduction des fins de ligne."""
     try:
-        with open(path, encoding="utf-8") as fh:
+        with open(path, encoding="utf-8", newline="") as fh:
             avant = fh.read()
     except FileNotFoundError:
         avant = ""
@@ -86,7 +93,7 @@ def write_settings(path, updates):
         return False
     os.makedirs(os.path.dirname(path), exist_ok=True)
     temporaire = path + ".tmp"
-    with open(temporaire, "w", encoding="utf-8") as fh:
+    with open(temporaire, "w", encoding="utf-8", newline="") as fh:
         fh.write(apres)
     os.replace(temporaire, path)
     return True
