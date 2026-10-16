@@ -12,14 +12,14 @@
  * running: ExecCondition skips the start (no deck plugged in,
  * DECK_PROGRAM=none), or, with Type=simple, the start returns once the
  * program is forked and the program exits a moment later (the deck lock
- * held elsewhere, no visual Stream Deck). The indicator therefore waits
- * DECK_SETTLE_MS, reads the unit's state, and when no program runs says
- * why: who holds the deck lock, no visual deck, or the reason the entry
- * point's --check gives for a skip.
+ * held elsewhere, no visual Stream Deck). The indicator therefore reads
+ * the unit's state at each time of DECK_READ_AT_MS until it no longer
+ * runs, and then says why: who holds the deck lock, no visual deck, or the
+ * reason the entry point's --check gives for a skip.
  *
  * Pure: the caller says whether the unit file exists, passes the venv
- * python, the command outputs and the lock text, so node --test loads this
- * module without any gi:// import.
+ * python, the command outputs, the timer and the lock text, so node --test
+ * loads this module without any gi:// import.
  */
 
 import {_} from './i18n.js';
@@ -47,10 +47,14 @@ const NO_DECK_EXIT = '3';
 // opposed to one killed by a signal, whose ExecMainStatus is the signal.
 const CLD_EXITED = '1';
 
-// Milliseconds between a start and the state read: long enough for a
-// program that finds the deck busy or no visual deck to have exited, short
-// enough for the notice to follow the click.
-export const DECK_SETTLE_MS = 1500;
+// Milliseconds after a start or a restart at which the unit is read. The
+// first read leaves a program that finds the deck busy or no visual deck
+// the time to exit, and is soon enough for the notice to follow the click.
+// The later ones catch a program slower to exit or to crash; spaced by at
+// most RestartSec (3 s), one of them lands in the restart wait of a crash
+// loop. The last one bounds the series: a program that still runs then
+// counts as started.
+export const DECK_READ_AT_MS = [1500, 3000, 5000, 8000];
 
 function trimRoot(root) {
     return root.length > 1 ? root.replace(/\/+$/, '') : root;
@@ -153,6 +157,39 @@ export function deckStartOutcome(props) {
     const where = restarting ? props.SubState : state;
     return {kind: 'failed',
         detail: reasons.length ? `${where} (${reasons.join(', ')})` : where};
+}
+
+/**
+ * Whether the reads after a start stop at `props`: the program does not
+ * run (deckStartOutcome() is not 'running') and the unit is not on its way
+ * down (deactivating), whose end state carries the reason. A running
+ * program never settles the series, since it may still exit.
+ */
+export function deckStartSettled(props) {
+    if (deckStartOutcome(props).kind === 'running')
+        return false;
+    return (props.ActiveState ?? '') !== 'deactivating';
+}
+
+/**
+ * Reads the unit at each time of `readAt` (milliseconds after the start)
+ * until deckStartSettled(), and resolves to deckStartOutcome() of the last
+ * read. `wait(ms)` resolves after `ms`; `readProps()` resolves to the
+ * unit's properties as parseUnitShow() returns them.
+ */
+export async function awaitDeckStart({wait, readProps,
+    readAt = DECK_READ_AT_MS}) {
+    let outcome = {kind: 'failed', detail: '?'};
+    let elapsed = 0;
+    for (const at of readAt) {
+        await wait(at - elapsed);
+        elapsed = at;
+        const props = await readProps();
+        outcome = deckStartOutcome(props);
+        if (deckStartSettled(props))
+            break;
+    }
+    return outcome;
 }
 
 /**

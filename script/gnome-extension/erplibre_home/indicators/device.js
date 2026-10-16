@@ -13,9 +13,9 @@ import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
 import {projectRootFrom, makeGioReadLink, streamDeckPython}
     from '../lib/project-root.js';
-import {DECK_SETTLE_MS, deckUnitPath, deckLockPath, openDeckArgv,
-    restartDeckArgv, deckStateArgv, deckCheckArgv, parseUnitShow,
-    deckStartOutcome, parseLockHolder, deckStartNotice}
+import {deckUnitPath, deckLockPath, openDeckArgv, restartDeckArgv,
+    deckStateArgv, deckCheckArgv, parseUnitShow, awaitDeckStart,
+    parseLockHolder, deckStartNotice}
     from '../lib/deck-service.js';
 import {_} from '../lib/i18n.js';
 
@@ -187,21 +187,23 @@ class DeviceIndicator extends PanelMenu.Button {
             spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
     }
 
-    // Runs systemctl start or restart on the unit, waits DECK_SETTLE_MS
-    // without blocking the shell, then reads the unit's state: a start
-    // that ExecCondition skips exits 0 and leaves the unit inactive, and,
-    // with Type=simple, a program that finds the deck busy or no visual
-    // deck, or that crashes and waits for its restart, exits after
-    // systemctl has returned. The click would otherwise do nothing
+    // Runs systemctl start or restart on the unit, then reads the unit's
+    // state at the times awaitDeckStart() sets, without blocking the
+    // shell: a start that ExecCondition skips exits 0 and leaves the unit
+    // inactive, and, with Type=simple, a program that finds the deck busy
+    // or no visual deck, or that crashes and waits for its restart, exits
+    // after systemctl has returned. The click would otherwise do nothing
     // visible; the notice says why no program runs.
     async _driveUnit(argv, root) {
         const done = await runProcess(argv,
             {notify: _notify, title: 'Stream Deck'});
         if (!done.ok)
             return;
-        await this._settle();
-        const shown = await runProcess(deckStateArgv());
-        const outcome = deckStartOutcome(parseUnitShow(shown.stdout));
+        const outcome = await awaitDeckStart({
+            wait: ms => this._settle(ms),
+            readProps: async () =>
+                parseUnitShow((await runProcess(deckStateArgv())).stdout),
+        });
         if (outcome.kind === 'running')
             return;
         const facts = {};
@@ -212,11 +214,11 @@ class DeviceIndicator extends PanelMenu.Button {
         _notify('Stream Deck', deckStartNotice(outcome, facts));
     }
 
-    // Resolves after DECK_SETTLE_MS; destroy() removes a pending wait,
-    // whose promise then never resolves.
-    _settle() {
+    // Resolves after `ms` milliseconds; destroy() removes a pending wait,
+    // whose promise then never resolves and ends the series of reads.
+    _settle(ms) {
         return new Promise(resolve => {
-            const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DECK_SETTLE_MS,
+            const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms,
                 () => {
                     this._settleIds.delete(id);
                     resolve();

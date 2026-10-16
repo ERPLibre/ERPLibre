@@ -1,10 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DECK_UNIT, CONTROLLER_REL, DECK_ENTRY_REL, DECK_SETTLE_MS,
+import {DECK_UNIT, CONTROLLER_REL, DECK_ENTRY_REL, DECK_READ_AT_MS,
     deckUnitPath, deckLockPath, openDeckArgv, restartDeckArgv, deckStateArgv,
     deckRunning, deckCheckArgv, deckStartFailure, parseUnitShow,
-    deckStartOutcome, parseLockHolder, deckStartNotice}
+    deckStartOutcome, deckStartSettled, awaitDeckStart, parseLockHolder,
+    deckStartNotice}
     from '../../lib/deck-service.js';
 
 const ROOT = '/opt/mon depot';
@@ -52,11 +53,70 @@ test('the state after a start is read from systemctl show', () => {
             '-p', 'ExecMainStatus', DECK_UNIT]);
 });
 
-test('the state is read once the program had time to exit', () => {
+test('the state is read in a short bounded series after the start', () => {
     // Type=simple: systemctl start returns once the program is forked,
-    // before a busy deck (2) or no visual deck (3) ends it.
-    assert.ok(DECK_SETTLE_MS >= 1000 && DECK_SETTLE_MS <= 3000,
-        String(DECK_SETTLE_MS));
+    // before a busy deck (2) or no visual deck (3) ends it. The first read
+    // follows the click; no gap exceeds RestartSec=3, so a read lands in
+    // the restart wait of a crash loop; the last read bounds the series.
+    const at = DECK_READ_AT_MS;
+    assert.ok(at.length >= 2 && at.length <= 6, String(at));
+    assert.ok(at[0] >= 1000 && at[0] <= 3000, String(at));
+    for (let i = 1; i < at.length; i++)
+        assert.ok(at[i] > at[i - 1] && at[i] - at[i - 1] <= 3000, String(at));
+    assert.ok(at[at.length - 1] <= 10000, String(at));
+});
+
+// Runs awaitDeckStart on `states` read in turn; returns the outcome, the
+// waits asked for and the number of reads.
+async function series(states) {
+    const waits = [];
+    let reads = 0;
+    const outcome = await awaitDeckStart({
+        wait: async ms => { waits.push(ms); },
+        readProps: async () => states[Math.min(reads++, states.length - 1)],
+    });
+    return {outcome, waits, reads};
+}
+
+test('the reads stop at the first state that says why nothing runs',
+    async () => {
+        const run = await series([SHOWN.running, SHOWN.busy, SHOWN.running]);
+        assert.deepEqual(run.outcome, {kind: 'busy'});
+        assert.equal(run.reads, 2);
+        assert.deepEqual(run.waits,
+            [DECK_READ_AT_MS[0], DECK_READ_AT_MS[1] - DECK_READ_AT_MS[0]]);
+        const skip = await series([SHOWN.skipped]);
+        assert.deepEqual(skip.outcome, {kind: 'skipped'});
+        assert.equal(skip.reads, 1);
+    });
+
+test('a program that fails late is still reported', async () => {
+    const states = DECK_READ_AT_MS.map(() => SHOWN.running);
+    states[states.length - 1] = SHOWN.crashed;
+    const run = await series(states);
+    assert.deepEqual(run.outcome,
+        {kind: 'failed', detail: 'failed (exit-code, status 1)'});
+    assert.equal(run.reads, DECK_READ_AT_MS.length);
+});
+
+test('a program still running at the last read counts as started',
+    async () => {
+        const run = await series([SHOWN.running]);
+        assert.deepEqual(run.outcome, {kind: 'running'});
+        assert.equal(run.reads, DECK_READ_AT_MS.length);
+        assert.equal(run.waits.reduce((a, b) => a + b, 0),
+            DECK_READ_AT_MS[DECK_READ_AT_MS.length - 1]);
+    });
+
+test('a unit on its way down is read again for its end state', async () => {
+    const stopping = {ActiveState: 'deactivating', SubState: 'stop-sigterm',
+        Result: 'success', ExecMainCode: '0', ExecMainStatus: '0'};
+    assert.equal(deckStartSettled(stopping), false);
+    assert.equal(deckStartSettled(SHOWN.running), false);
+    assert.equal(deckStartSettled(SHOWN.restartQueued), true);
+    const run = await series([stopping, SHOWN.noDeck]);
+    assert.deepEqual(run.outcome, {kind: 'no-deck'});
+    assert.equal(run.reads, 2);
 });
 
 test('systemctl show lines become properties', () => {
@@ -191,7 +251,8 @@ test('the device indicator takes its argv from this module', () => {
     assert.ok(src.includes('restartDeckArgv('));
     assert.ok(src.includes('deckStateArgv()'));
     assert.ok(src.includes('deckCheckArgv('));
-    assert.ok(src.includes('deckStartOutcome(parseUnitShow('));
+    assert.ok(src.includes(
+        'parseUnitShow((await runProcess(deckStateArgv())).stdout)'));
     assert.ok(src.includes('deckStartNotice('));
     assert.ok(src.includes('parseLockHolder('));
     assert.ok(src.includes('deckLockPath(GLib.get_user_runtime_dir())'));
@@ -202,8 +263,9 @@ test('the device indicator takes its argv from this module', () => {
 test('the indicator waits without blocking, and drops the wait on destroy',
     () => {
         const src = extensionFile('indicators/device.js');
-        assert.ok(src.includes(
-            'GLib.timeout_add(GLib.PRIORITY_DEFAULT, DECK_SETTLE_MS'));
+        assert.ok(src.includes('awaitDeckStart({'));
+        assert.ok(src.includes('GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms'));
+        assert.ok(!src.includes('DECK_SETTLE_MS'));
         assert.ok(!src.includes('GLib.usleep'));
         const destroy = src.slice(src.indexOf('destroy() {'),
             src.indexOf('super.destroy()'));
