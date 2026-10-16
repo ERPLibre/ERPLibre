@@ -285,8 +285,10 @@ That is the first of five stages, run in order on the same VM:
    `systemctl --user start` skips it since a VM has no deck (inactive,
    `Result=exec-condition`, or `success` on some systemd versions,
    `ExecMainStartTimestampMonotonic=0`, and the entry point's "no Stream
-   Deck plugged in" line in the unit's journal), the
-   extension stays ACTIVE, and a second run
+   Deck plugged in" line in the unit's journal written since that start,
+   so an earlier skip at login does not count; the read is retried a few
+   times while journald catches up), the extension stays ACTIVE, and a
+   second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
    the venv, the unit, its `graphical-session.target.wants` link and its
@@ -653,8 +655,10 @@ C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
    et est activée, `systemctl --user start` la saute faute de deck dans
    une VM (inactive, `Result=exec-condition`, ou `success` selon la version
    de systemd, `ExecMainStartTimestampMonotonic=0`, et la ligne « no Stream
-   Deck plugged in » du point d'entrée dans le journal de l'unité),
-   l'extension reste ACTIVE, et une seconde exécution
+   Deck plugged in » du point d'entrée dans le journal de l'unité écrit
+   depuis ce démarrage, si bien qu'un saut antérieur à l'ouverture de
+   session ne compte pas ; la lecture est reprise quelques fois, le temps
+   que journald écrive), l'extension reste ACTIVE, et une seconde exécution
    ne change rien, unité et réglages compris ;
 3. **partial-uninstall** : `--uninstall --stream-deck` retire la règle,
    le venv, l'unité, son lien `graphical-session.target.wants` et ses

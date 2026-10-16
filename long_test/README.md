@@ -280,8 +280,10 @@ That is the first of five stages, run in order on the same VM:
    `systemctl --user start` skips it since a VM has no deck (inactive,
    `Result=exec-condition`, or `success` on some systemd versions,
    `ExecMainStartTimestampMonotonic=0`, and the entry point's "no Stream
-   Deck plugged in" line in the unit's journal), the
-   extension stays ACTIVE, and a second run
+   Deck plugged in" line in the unit's journal written since that start,
+   so an earlier skip at login does not count; the read is retried a few
+   times while journald catches up), the extension stays ACTIVE, and a
+   second run
    changes nothing, unit and settings included;
 3. **partial-uninstall**: `--uninstall --stream-deck` removes the rule,
    the venv, the unit, its `graphical-session.target.wants` link and its

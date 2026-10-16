@@ -261,19 +261,41 @@ CMD_AUTOSTART = SYSTEMD_USER + f"systemctl --user is-enabled {UNITE_DECK}"
 # Une VM n'a pas de deck : ExecCondition sort en 1, systemd saute le
 # démarrage sans marquer l'unité en échec (inactive, Result dans
 # RESULTATS_SAUT) et ExecStart ne tourne jamais (horodatage de démarrage
-# nul).
+# nul). La première ligne, « Depuis= », est l'heure de la VM juste avant
+# « start », en secondes epoch : cmd_raison_saut en part.
 CMD_CONDITION = SYSTEMD_USER + (
-    f"systemctl --user start {UNITE_DECK};"
+    'echo "Depuis=$(date +%s.%6N)";'
+    f" systemctl --user start {UNITE_DECK};"
     " systemctl --user show -p ActiveState -p Result"
     f" -p ExecMainStartTimestampMonotonic {UNITE_DECK}"
 )
-# La raison que le point d'entrée écrit sur stderr avec --check : elle
-# distingue un saut sur condition d'une unité jamais chargée.
-CMD_RAISON_SAUT = SYSTEMD_USER + _journal_utilisateur(
-    f"-u {UNITE_DECK} -b -o cat --no-pager",
-    f"-b -o cat --no-pager _SYSTEMD_USER_UNIT={UNITE_DECK}",
-)
+# « Depuis= » entre dans une commande shell : un nombre, rien d'autre.
+DEPUIS = re.compile(r"[0-9]+(\.[0-9]+)?")
+
+
+def cmd_raison_saut(depuis):
+    """Commande qui lit le journal de l'unité écrit depuis `depuis`
+    (secondes epoch, validé par DEPUIS).
+
+    La raison que le point d'entrée écrit sur stderr avec --check distingue
+    un saut sur condition d'une unité jamais chargée. Le lancement
+    automatique à l'ouverture de session saute aussi, plus tôt dans le même
+    boot, et écrit la même ligne : `--since` limite la lecture, --user
+    comme sous sudo, au saut qui suit le « start » de CMD_CONDITION.
+    """
+    borne = f"-b --since @{depuis} -o cat --no-pager"
+    return SYSTEMD_USER + _journal_utilisateur(
+        f"-u {UNITE_DECK} {borne}",
+        f"{borne} _SYSTEMD_USER_UNIT={UNITE_DECK}",
+    )
+
+
 RAISON_SAUT = "[ERPLibre Home] no Stream Deck plugged in (USB vendor 0fd9)"
+# journald écrit la raison peu après le retour de « systemctl start » : la
+# lecture est reprise, au plus TENTATIVES_RAISON fois, à PAUSE_RAISON
+# secondes d'écart.
+TENTATIVES_RAISON = 4
+PAUSE_RAISON = 0.5
 # Le lien que pose « enable » (WantedBy=graphical-session.target).
 LIEN_WANTS = (
     f"~/.config/systemd/user/graphical-session.target.wants/{UNITE_DECK}"
@@ -544,17 +566,45 @@ def etat_systemd(sortie):
 RESULTATS_SAUT = ("exec-condition", "success")
 
 
-def condition_sautee(etat, journal):
-    """Vrai quand systemd a sauté le démarrage sur ExecCondition : unité
+def _saut_systemd(etat):
+    """Vrai quand l'état systemd montre un saut sur ExecCondition : unité
     inactive, Result dans RESULTATS_SAUT, ExecStart jamais lancé
-    (horodatage nul), et la raison du point d'entrée dans le journal de
-    l'unité. `etat` vient d'etat_systemd ; `journal` peut être None."""
+    (horodatage nul). `etat` vient d'etat_systemd."""
     return (
         etat.get("ActiveState") == "inactive"
         and etat.get("Result") in RESULTATS_SAUT
         and etat.get("ExecMainStartTimestampMonotonic") == "0"
-        and RAISON_SAUT in (journal or "")
     )
+
+
+def condition_sautee(etat, journal):
+    """Vrai quand systemd a sauté le démarrage sur ExecCondition
+    (_saut_systemd) et que la raison du point d'entrée est dans le journal
+    de l'unité. `journal` peut être None."""
+    return _saut_systemd(etat) and RAISON_SAUT in (journal or "")
+
+
+def raison_du_saut(controle, etat):
+    """Le journal de l'unité depuis le « Depuis= » de `etat`, ou None
+    quand cet instant manque ou n'est pas un nombre : sans borne, pas de
+    lecture.
+
+    Tant que RAISON_SAUT n'y est pas et que `etat` montre un saut, la
+    lecture est reprise jusqu'à TENTATIVES_RAISON fois : la reprise attend
+    journald, elle n'assouplit pas ce que condition_sautee exige. Sans
+    saut, une seule lecture, pour le journal du contrôle.
+    """
+    depuis = etat.get("Depuis", "")
+    if not DEPUIS.fullmatch(depuis):
+        return None
+    commande = cmd_raison_saut(depuis)
+    journal = controle.sonder(commande)
+    for _ in range(TENTATIVES_RAISON - 1):
+        if RAISON_SAUT in journal or not _saut_systemd(etat):
+            break
+        time.sleep(PAUSE_RAISON)
+        journal = controle.sonder(commande)
+    return journal
 
 
 def journal_lu(sortie):
@@ -1357,7 +1407,7 @@ def _etape_stream_deck(cible, log):
         return "service-enabled", None
     controle = Controle(cible, log, "service-condition")
     etat = etat_systemd(controle.sonder(CMD_CONDITION))
-    journal = controle.sonder(CMD_RAISON_SAUT)
+    journal = raison_du_saut(controle, etat)
     if not controle.clore(condition_sautee(etat, journal)):
         return "service-condition", None
     controle = Controle(cible, log, "stream-deck-active")

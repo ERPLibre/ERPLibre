@@ -39,6 +39,8 @@ sys.path.insert(0, str(RACINE / "long_test"))
 import install_erplibre_home as sd  # noqa: E402
 
 EXTENSION = RACINE / "script/gnome-extension/erplibre_home"
+# Un « Depuis= » de CMD_CONDITION : secondes epoch, microsecondes.
+DEPUIS = "1700000000.250000"
 
 # Sorties de « gdbus call … GetExtensionInfo », au format texte de GVariant.
 INFO_ACTIVE = (
@@ -381,18 +383,30 @@ class LeJournalSansDroitDeLecture(unittest.TestCase):
         self.assertFalse(sd.journal_lu(sortie))
 
     def test_unit_journal_falls_back_to_the_unit_field(self):
-        sortie = self.lancer(
-            sd.CMD_RAISON_SAUT, "", f"démarrage\n{sd.RAISON_SAUT}"
-        )
+        commande = sd.cmd_raison_saut(DEPUIS)
+        sortie = self.lancer(commande, "", f"démarrage\n{sd.RAISON_SAUT}")
         self.assertIn(sd.RAISON_SAUT, sortie)
         champ = "_SYSTEMD_USER_UNIT=" + sd.UNITE_DECK
-        self.assertIn(champ, sd.CMD_RAISON_SAUT)
-        self.assertIn("_UID=$(id -u)", sd.CMD_RAISON_SAUT)
+        self.assertIn(champ, commande)
+        self.assertIn("_UID=$(id -u)", commande)
 
     def test_unit_journal_never_uses_user_unit_under_sudo(self):
         """--user-unit= ajoute _UID=getuid() de journalctl, 0 sous sudo :
         la requête ne trouverait jamais les entrées de l'utilisateur."""
-        self.assertNotIn("--user-unit", sd.CMD_RAISON_SAUT)
+        self.assertNotIn("--user-unit", sd.cmd_raison_saut(DEPUIS))
+
+    def test_unit_journal_reads_only_after_the_checks_start(self):
+        """Les deux lectures, --user et sudo, s'arrêtent à l'instant noté
+        avant « systemctl start » : un saut antérieur du même boot ne
+        fournit pas la raison."""
+        commande = sd.cmd_raison_saut(DEPUIS)
+        self.assertEqual(commande.count(f"--since @{DEPUIS} "), 2)
+        self.assertLess(
+            sd.CMD_CONDITION.index('echo "Depuis=$(date +%s.%6N)"'),
+            sd.CMD_CONDITION.index("systemctl --user start"),
+        )
+        etat = sd.etat_systemd(f"Depuis={DEPUIS}\nActiveState=inactive")
+        self.assertEqual(etat["Depuis"], DEPUIS)
 
     def test_diagnostic_journal_falls_back_too(self):
         sortie = self.lancer(sd.CMD_JOURNAL, "", "gnome-shell: boom")
@@ -527,7 +541,7 @@ class LesEtapes(unittest.TestCase):
         for commande in (
             sd.CMD_AUTOSTART,
             sd.CMD_CONDITION,
-            sd.CMD_RAISON_SAUT,
+            sd.cmd_raison_saut(DEPUIS),
         ):
             with self.subTest(commande=commande):
                 self.assertIn("XDG_RUNTIME_DIR=/run/user/$(id -u)", commande)
@@ -1698,6 +1712,11 @@ class VMSimulee:
         # VM.
         self.condition = self.raison = True
         self.resultat = "exec-condition"
+        # Les lectures du journal de l'unité, et combien d'entre elles
+        # passent avant que journald n'y ait écrit la raison.
+        self.lectures_raison = self.retard_raison = 0
+        # L'instant que CMD_CONDITION note avant « systemctl start ».
+        self.depuis = DEPUIS
         self.__dict__.update(etat)
         self.journaux = list(journaux)
         self.echoue = set(echoue)
@@ -1727,6 +1746,11 @@ class VMSimulee:
         if commande == sd.CMD_MONTAGES:
             self.lectures += 1
             return self.journaux.pop(0)
+        if commande == sd.cmd_raison_saut(self.depuis):
+            self.lectures_raison += 1
+            if self.raison and self.lectures_raison > self.retard_raison:
+                return f"démarrage\n{sd.RAISON_SAUT}"
+            return "démarrage"
         reponses = {
             "gnome-shell --version": "GNOME Shell 46.0",
             sd.CMD_SANS_REGLE: "" if self.regle else "ok",
@@ -1742,15 +1766,13 @@ class VMSimulee:
             sd.CMD_MTIME_LIEN: "date du lien",
             sd.CMD_UNITE: "ok" if self.service else "",
             sd.CMD_AUTOSTART: "enabled" if self.autostart else "disabled",
-            sd.CMD_CONDITION: (
+            sd.CMD_CONDITION: f"Depuis={self.depuis}\n"
+            + (
                 f"ActiveState=inactive\nResult={self.resultat}\n"
                 "ExecMainStartTimestampMonotonic=0"
                 if self.condition
                 else "ActiveState=failed\nResult=exit-code\n"
                 "ExecMainStartTimestampMonotonic=123456"
-            ),
-            sd.CMD_RAISON_SAUT: (
-                f"démarrage\n{sd.RAISON_SAUT}" if self.raison else "démarrage"
             ),
             sd.CMD_SANS_SERVICE: "" if self.service else "ok",
         }
@@ -1798,6 +1820,8 @@ class LesCinqEtapes(unittest.TestCase):
             attendre_extension=vm.attendre_extension,
             installer=vm.installer,
             redemarrer=vm.redemarrer,
+            # La reprise du journal de l'unité, sans attendre.
+            PAUSE_RAISON=0,
         ):
             return sd.controler("vm", sd.MATRICE[0], self.log, extras)
 
@@ -1875,6 +1899,34 @@ class LesCinqEtapes(unittest.TestCase):
             with self.subTest(attendu=attendu):
                 vm = VMSimulee([self.ENTIER], apres={DECK: apres})
                 self.assertEqual(self._controler(vm)[0], attendu)
+
+    def test_a_late_reason_is_reread_a_bounded_number_of_times(self):
+        """journald écrit la raison un peu après le retour de systemctl :
+        la lecture est reprise, jamais plus de TENTATIVES_RAISON fois, et
+        une raison absente jusqu'au bout reste un échec."""
+        vm = VMSimulee([self.ENTIER] * 3)
+        vm.retard_raison = 1
+        self.assertIsNone(self._controler(vm)[0])
+        self.assertEqual(vm.lectures_raison, 2)
+        vm = VMSimulee([self.ENTIER], apres={DECK: {"raison": False}})
+        self.assertEqual(self._controler(vm)[0], "service-condition")
+        self.assertEqual(vm.lectures_raison, sd.TENTATIVES_RAISON)
+
+    def test_no_skip_reads_the_unit_journal_once(self):
+        vm = VMSimulee([self.ENTIER], apres={DECK: {"condition": False}})
+        self.assertEqual(self._controler(vm)[0], "service-condition")
+        self.assertEqual(vm.lectures_raison, 1)
+
+    def test_no_start_instant_fails_without_reading_the_journal(self):
+        """Sans l'instant noté avant le démarrage, aucune borne : le
+        journal n'est pas lu et le contrôle échoue. Une valeur qui n'est
+        pas un nombre n'entre pas dans une commande shell."""
+        for depuis in ("", "1; touch x", "@1"):
+            with self.subTest(depuis=depuis):
+                vm = VMSimulee([self.ENTIER])
+                vm.depuis = depuis
+                self.assertEqual(self._controler(vm)[0], "service-condition")
+                self.assertEqual(vm.lectures_raison, 0)
 
     def test_a_skip_passes_with_either_result_of_systemd(self):
         for resultat in ("exec-condition", "success"):
@@ -1976,14 +2028,14 @@ class LesCinqEtapes(unittest.TestCase):
             (
                 {"apres": {DECK: {"condition": False}}},
                 "service-condition",
-                f"   $ {sd.CMD_CONDITION}\n"
-                "   → ActiveState=failed\nResult=exit-code\n"
+                f"   $ {sd.CMD_CONDITION}\n   → Depuis={DEPUIS}\n"
+                "ActiveState=failed\nResult=exit-code\n"
                 "ExecMainStartTimestampMonotonic=123456\n",
             ),
             (
                 {"apres": {DECK: {"raison": False}}},
                 "service-condition",
-                f"   $ {sd.CMD_RAISON_SAUT}\n   → démarrage\n",
+                f"   $ {sd.cmd_raison_saut(DEPUIS)}\n   → démarrage\n",
             ),
             (
                 {"regle": True},
