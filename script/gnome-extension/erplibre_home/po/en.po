@@ -174,6 +174,9 @@ msgstr "another program"
 msgid "no visual Stream Deck is plugged in"
 msgstr "no visual Stream Deck is plugged in"
 
+msgid "its start condition is not met (DECK_PROGRAM=none, no venv or no Stream Deck plugged in)"
+msgstr "its start condition is not met (DECK_PROGRAM=none, no venv or no Stream Deck plugged in)"
+
 msgid "Restart deck"
 msgstr "Restart deck"
 
