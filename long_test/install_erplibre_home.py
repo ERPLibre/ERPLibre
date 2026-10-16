@@ -235,8 +235,10 @@ def _journal_utilisateur(args_user, args_root, filtre=None):
     filtre lit `sudo -n journalctl args_root _UID=$(id -u)` : un journald à
     stockage volatil (pas de /var/log/journal) garde les entrées de
     l'utilisateur dans le journal système, que `--user` ne lit pas sans le
-    groupe systemd-journal ou wheel. `args_root` désigne l'unité par
-    `--user-unit=`, qui filtre les mêmes champs que `-u` sous `--user`.
+    groupe systemd-journal ou wheel. `args_root` désigne l'unité par le
+    champ `_SYSTEMD_USER_UNIT=`, jamais par `--user-unit=` : cette option
+    ajoute `_UID=` de journalctl lui-même, 0 sous sudo, et ne trouve alors
+    rien de l'utilisateur.
     Une double lecture vide rend une sortie vide, jamais un succès.
     """
     filtre = filtre or _BRUIT_JOURNAL
@@ -269,7 +271,7 @@ CMD_CONDITION = SYSTEMD_USER + (
 # distingue un saut sur condition d'une unité jamais chargée.
 CMD_RAISON_SAUT = SYSTEMD_USER + _journal_utilisateur(
     f"-u {UNITE_DECK} -b -o cat --no-pager",
-    f"--user-unit={UNITE_DECK} -b -o cat --no-pager",
+    f"-b -o cat --no-pager _SYSTEMD_USER_UNIT={UNITE_DECK}",
 )
 RAISON_SAUT = "[ERPLibre Home] no Stream Deck plugged in (USB vendor 0fd9)"
 # Le lien que pose « enable » (WantedBy=graphical-session.target).

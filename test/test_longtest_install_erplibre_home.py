@@ -380,13 +380,19 @@ class LeJournalSansDroitDeLecture(unittest.TestCase):
         sortie = self.lancer(sd.CMD_MONTAGES, "", "")
         self.assertFalse(sd.journal_lu(sortie))
 
-    def test_unit_journal_falls_back_to_the_user_unit_filter(self):
+    def test_unit_journal_falls_back_to_the_unit_field(self):
         sortie = self.lancer(
             sd.CMD_RAISON_SAUT, "", f"démarrage\n{sd.RAISON_SAUT}"
         )
         self.assertIn(sd.RAISON_SAUT, sortie)
-        self.assertIn("--user-unit=" + sd.UNITE_DECK, sd.CMD_RAISON_SAUT)
+        champ = "_SYSTEMD_USER_UNIT=" + sd.UNITE_DECK
+        self.assertIn(champ, sd.CMD_RAISON_SAUT)
         self.assertIn("_UID=$(id -u)", sd.CMD_RAISON_SAUT)
+
+    def test_unit_journal_never_uses_user_unit_under_sudo(self):
+        """--user-unit= ajoute _UID=getuid() de journalctl, 0 sous sudo :
+        la requête ne trouverait jamais les entrées de l'utilisateur."""
+        self.assertNotIn("--user-unit", sd.CMD_RAISON_SAUT)
 
     def test_diagnostic_journal_falls_back_too(self):
         sortie = self.lancer(sd.CMD_JOURNAL, "", "gnome-shell: boom")
