@@ -291,8 +291,8 @@ def cmd_raison_saut(depuis):
 
 
 RAISON_SAUT = "[ERPLibre Home] no Stream Deck plugged in (USB vendor 0fd9)"
-# journald écrit la raison peu après le retour de « systemctl start » : la
-# lecture est reprise, au plus TENTATIVES_RAISON fois, à PAUSE_RAISON
+# journald écrit la raison peu après le retour de « systemctl start » : le
+# journal est lu au plus TENTATIVES_RAISON fois en tout, à PAUSE_RAISON
 # secondes d'écart.
 TENTATIVES_RAISON = 4
 PAUSE_RAISON = 0.5
@@ -589,8 +589,8 @@ def raison_du_saut(controle, etat):
     quand cet instant manque ou n'est pas un nombre : sans borne, pas de
     lecture.
 
-    Tant que RAISON_SAUT n'y est pas et que `etat` montre un saut, la
-    lecture est reprise jusqu'à TENTATIVES_RAISON fois : la reprise attend
+    Tant que RAISON_SAUT n'y est pas et que `etat` montre un saut, le
+    journal est relu, TENTATIVES_RAISON lectures en tout : la reprise attend
     journald, elle n'assouplit pas ce que condition_sautee exige. Sans
     saut, une seule lecture, pour le journal du contrôle.
     """
