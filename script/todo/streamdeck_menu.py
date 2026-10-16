@@ -111,14 +111,15 @@ class StreamDeckMenuMixin:
         """Affiche `question` puis `options`, des couples (valeur,
         libellé), numérotés à partir de 1, le défaut marqué d'une étoile.
         Rend la valeur choisie, celle du défaut sur une réponse vide, None
-        sur 0. Une réponse hors liste le dit et repose la question."""
+        sur 0. Une réponse hors liste le dit et repose la question ; sans
+        défaut (`defaut` None), une réponse vide est hors liste."""
         print(question)
         for rang, (_valeur, libelle) in enumerate(options, 1):
             marque = " *" if str(rang) == defaut else ""
             print(f"  [{rang}] {libelle}{marque}")
         print(f"  [0] {t('Back')}")
         while True:
-            reponse = input(t("Choice: ")).strip() or defaut
+            reponse = input(t("Choice: ")).strip() or defaut or ""
             if reponse == "0":
                 return None
             if reponse.isdigit() and 1 <= int(reponse) <= len(options):
@@ -139,17 +140,21 @@ class StreamDeckMenuMixin:
 
     @classmethod
     def _streamdeck_program_label(cls, programme):
-        """Le libellé traduit de `programme`, ou la valeur brute quand elle
-        n'est pas dans PROGRAMS."""
-        return dict(cls._streamdeck_programs()).get(programme, programme)
+        """Le libellé traduit de `programme`, ou la valeur brute suivie
+        de « (invalid) » quand elle n'est pas dans PROGRAMS."""
+        libelles = dict(cls._streamdeck_programs())
+        if programme in libelles:
+            return libelles[programme]
+        return "%s (%s)" % (programme, t("invalid"))
 
     @staticmethod
     def _streamdeck_program_default(programme):
         """Le rang, compté à partir de 1, de `programme` dans PROGRAMS ;
-        "1" quand il n'y est pas."""
+        None quand il n'y est pas : une valeur invalide n'a pas de défaut,
+        si bien qu'Entrée ne la remplace pas sans un choix explicite."""
         if programme in service.PROGRAMS:
             return str(service.PROGRAMS.index(programme) + 1)
-        return "1"
+        return None
 
     def _streamdeck_unit_installed(self):
         """Vrai quand l'unité du service existe ; sinon le dit avec la
@@ -293,15 +298,20 @@ class StreamDeckMenuMixin:
         après un jeu passent toujours leur option, défaut compris : leurs
         défauts sont les valeurs des réglages en place, si bien qu'Entrée
         partout les réécrit telles quelles ; sans réglages, ce sont ceux de
-        DEFAULTS. Le démarrage automatique et les outils facultatifs n'ont
-        pas d'option négative : « non » n'ajoute rien. Rend la liste des
-        options dans l'ordre des questions, ou None quand la première est
-        abandonnée par 0."""
+        DEFAULTS. Un programme invalide dans les réglages se montre avec
+        la question, sans défaut. Le démarrage automatique et les outils
+        facultatifs n'ont pas d'option négative : « non » n'ajoute rien.
+        Rend la liste des options dans l'ordre des questions, ou None quand
+        la première est abandonnée par 0."""
         reglages = service.read_settings(service.settings_path())
+        actuel = reglages["DECK_PROGRAM"]
+        question = t("Deck program:")
+        if actuel not in service.PROGRAMS:
+            question += " " + self._streamdeck_program_label(actuel)
         programme = self._streamdeck_choice(
-            t("Deck program:"),
+            question,
             self._streamdeck_programs(),
-            self._streamdeck_program_default(reglages["DECK_PROGRAM"]),
+            self._streamdeck_program_default(actuel),
         )
         if programme is None:
             return None

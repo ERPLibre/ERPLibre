@@ -229,6 +229,10 @@ TRANSLATIONS = {
         "fr": "Aucun programme",
         "en": "No program",
     },
+    "invalid": {
+        "fr": "invalide",
+        "en": "invalid",
+    },
     "Enable": {
         "fr": "Activer",
         "en": "Enable",

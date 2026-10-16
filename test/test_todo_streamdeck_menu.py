@@ -276,6 +276,40 @@ class LeProgramme(Menu):
         self.assertEqual([], commandes)
         self.assertIn("Unchanged.", sortie)
 
+    def test_an_invalid_value_is_shown_and_needs_an_explicit_choice(self):
+        """Une valeur hors PROGRAMS se dit invalide ; aucune option ne
+        porte l'étoile, et Entrée repose la question au lieu de remplacer
+        la valeur en silence."""
+        self.unite()
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("DECK_PROGRAM=exemple\n")
+        _, sortie, _ = self.jouer("_streamdeck_program", ("", "0"))
+        self.assertIn("Deck program: exemple (invalid)", sortie)
+        self.assertNotIn("*", sortie)
+        self.assertIn("Invalid selection!", sortie)
+        self.assertEqual("DECK_PROGRAM=exemple\n", self.reglages.read_text())
+        self.jouer("_streamdeck_program", ("", "2"))
+        self.assertEqual(
+            "DECK_PROGRAM=controller\n", self.reglages.read_text()
+        )
+
+    def test_an_invalid_value_needs_an_explicit_choice_to_install(self):
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("DECK_PROGRAM=exemple\n")
+        commandes, sortie, _ = self.jouer(
+            "_erplibre_home_streamdeck_install_local", ("", "3", "", "", "")
+        )
+        self.assertIn("Deck program: exemple (invalid)", sortie)
+        self.assertNotIn("*", sortie)
+        self.assertEqual(1, sortie.count("Invalid selection!"))
+        self.assertEqual(
+            [
+                f"{INSTALLATEUR} --stream-deck --deck-program=none"
+                " --restart-after-game"
+            ],
+            commandes,
+        )
+
 
 class LaDesinstallation(Menu):
     def test_each_choice_runs_its_options_after_confirmation(self):
