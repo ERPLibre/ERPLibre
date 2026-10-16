@@ -58,6 +58,7 @@ class DeviceIndicator extends PanelMenu.Button {
     }
 
     destroy() {
+        this._destroyed = true;
         if (this._timerId) GLib.source_remove(this._timerId);
         this._timerId = 0;
         for (const id of this._settleIds) GLib.source_remove(id);
@@ -215,9 +216,13 @@ class DeviceIndicator extends PanelMenu.Button {
     }
 
     // Resolves after `ms` milliseconds; destroy() removes a pending wait,
-    // whose promise then never resolves and ends the series of reads.
+    // whose promise then never resolves and ends the series of reads. A
+    // wait asked for after destroy(), once a read in flight returns, never
+    // resolves either and adds no source.
     _settle(ms) {
         return new Promise(resolve => {
+            if (this._destroyed)
+                return;
             const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms,
                 () => {
                     this._settleIds.delete(id);

@@ -175,17 +175,28 @@ export function deckStartSettled(props) {
  * Reads the unit at each time of `readAt` (milliseconds after the start)
  * until deckStartSettled(), and resolves to deckStartOutcome() of the last
  * read. `wait(ms)` resolves after `ms`; `readProps()` resolves to the
- * unit's properties as parseUnitShow() returns them.
+ * unit's properties as parseUnitShow() returns them. Once a read has shown
+ * the program running, a later read with Result=success is a stop from
+ * outside (a hand-over to a game, a restart click): the start succeeded,
+ * and the series ends on 'running'.
  */
 export async function awaitDeckStart({wait, readProps,
     readAt = DECK_READ_AT_MS}) {
     let outcome = {kind: 'failed', detail: '?'};
     let elapsed = 0;
+    let ran = false;
     for (const at of readAt) {
         await wait(at - elapsed);
         elapsed = at;
         const props = await readProps();
         outcome = deckStartOutcome(props);
+        if (outcome.kind === 'running') {
+            ran = true;
+            continue;
+        }
+        if (ran && props.Result === 'success' &&
+            !RESTART_SUBSTATES.includes(props.SubState))
+            return {kind: 'running'};
         if (deckStartSettled(props))
             break;
     }
