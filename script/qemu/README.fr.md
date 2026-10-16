@@ -182,11 +182,13 @@ vous.
 
 Une VM graphique reçoit son bureau et un accès distant : xrdp (RDP, port 3389)
 là où la distribution le livre, TigerVNC sur Arch. Sur AlmaLinux et Rocky
-Linux, xrdp vient d'EPEL, que l'étape du bureau active avec CRB ; quand aucun
-dépôt activé ne porte xrdp, le bureau reste installé et une ligne dit que le
-RDP manque. L'étape du bureau échoue — code non nul, une ligne qui nomme le
-binaire absent, `gnome-shell` ou `cinnamon` — quand le bureau lui-même ne s'est
-pas installé.
+Linux, xrdp et le groupe Cinnamon viennent d'EPEL, que l'étape du bureau active
+avec CRB avant toute installation ; quand xrdp ne s'y installe toujours pas, le
+bureau reste et une ligne dit que le RDP manque. Sur Fedora, où xrdp est dans
+les dépôts de base, l'échec de son installation fait échouer l'étape, pour
+qu'on la relance. L'étape du bureau échoue aussi — code non nul, une ligne qui
+nomme le binaire absent, `gnome-shell` ou `cinnamon` — quand le bureau
+lui-même ne s'est pas installé.
 
 Quand une VM est graphique, le menu propose en plus une **liste à cocher
 d'outils de développement** : PyCharm Community (posé depuis l'archive

@@ -153,11 +153,13 @@ parameters and builds the command for you.
 
 A graphical VM gets its desktop and a remote access to it: xrdp (RDP, port
 3389) where the distribution ships it, TigerVNC on Arch. On AlmaLinux and Rocky
-Linux, xrdp comes from EPEL, which the desktop step enables together with CRB;
-when no enabled repository carries xrdp, the desktop stays installed and one
-line says that RDP is missing. The desktop step fails — non-zero exit, one line
-naming the missing binary, `gnome-shell` or `cinnamon` — when the desktop
-itself did not install.
+Linux, xrdp and the Cinnamon group come from EPEL, which the desktop step
+enables together with CRB before installing anything; when xrdp still does not
+install there, the desktop stays and one line says that RDP is missing. On
+Fedora, where xrdp is in the base repositories, a failed xrdp install fails the
+step so that it can be run again. The desktop step also fails — non-zero exit,
+one line naming the missing binary, `gnome-shell` or `cinnamon` — when the
+desktop itself did not install.
 
 When a VM is graphical, the menu also offers a **check list of development
 tools**: PyCharm Community (installed from the official
