@@ -430,6 +430,10 @@ TRANSLATIONS = {
         "fr": "le fermer, ou :",
         "en": "close it, or:",
     },
+    "close the game; as a last resort:": {
+        "fr": "fermer le jeu ; en dernier recours :",
+        "en": "close the game; as a last resort:",
+    },
     "The deck service is not running": {
         "fr": "Le service du deck ne tourne pas",
         "en": "The deck service is not running",

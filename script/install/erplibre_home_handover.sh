@@ -26,10 +26,12 @@
 # Un Ctrl-C au terminal frappe tout le groupe de processus, la commande
 # comprise : elle meurt, et le script reprend après elle pour rendre le
 # deck au service. Un signal envoyé au seul PID du script, lui, attend :
-# bash ne traite son trap qu'à la fin de la commande, qui continue. Pour
-# finir le jeu, viser le PID que le verrou nomme : deck_lock.py passe
-# SIGTERM à la commande. RESTART_AFTER_GAME se lit APRÈS la commande : un
-# réglage changé pendant la partie compte.
+# bash ne traite son trap qu'à la fin de la commande, qui continue. Le PID
+# que le verrou nomme est celui de deck_lock.py : un SIGTERM qui le vise
+# atteint chaque processus du jeu, puis deck_lock.py attend leur fin. Le
+# deck reste pris tant qu'un processus du jeu vit : un service relancé trop
+# tôt sort en 2. RESTART_AFTER_GAME se lit APRÈS la commande : un réglage
+# changé pendant la partie compte.
 set -uo pipefail
 
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

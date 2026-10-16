@@ -19,6 +19,8 @@ Les faits :
   "" quand l'unité n'est pas installée ou que systemctl n'a rien rendu ;
 - settings : les réglages du service, défauts compris ;
 - lock : (pid, programme) du détenteur du verrou du deck, ou None ;
+- lock_pids : [pid] des processus qui ont le verrou ouvert, [] quand il
+  est libre ; pour un jeu, tout son arbre, l'enveloppe fût-elle morte ;
 - decks : [{"product": str, "id_product": str}], vendeur 0fd9.
 """
 
@@ -168,6 +170,8 @@ def collect(
     python = os.path.join(root, ".venv.streamdeck", "bin", "python")
     unit_file = os.path.exists(service.unit_path(environ))
     deck_lock = _deck_lock(root)
+    verrou = lock_path or deck_lock.lock_path(environ)
+    tenu = deck_lock.holder(verrou)
     return {
         "extension_linked": os.path.islink(lien),
         "venv": os.access(python, os.X_OK),
@@ -182,7 +186,8 @@ def collect(
             run(cmd_unit("is-active"))[1].strip() if unit_file else ""
         ),
         "settings": service.read_settings(service.settings_path(environ)),
-        "lock": deck_lock.holder(lock_path or deck_lock.lock_path(environ)),
+        "lock": tenu,
+        "lock_pids": deck_lock.holder_pids(verrou) if tenu else [],
         "decks": plugged_decks(sysfs),
     }
 
@@ -339,11 +344,22 @@ def diagnosis_lines(facts):
     ):
         if facts["lock"]:
             pid, detenteur = facts["lock"]
+            if detenteur == "game":
+                # Fermer le jeu le laisse finir proprement ; le dernier
+                # recours vise chaque processus qui tient le verrou, car
+                # l'enveloppe que le verrou nomme peut être déjà morte.
+                pids = facts["lock_pids"] or [pid]
+                remede = "%s kill %s" % (
+                    t("close the game; as a last resort:"),
+                    " ".join(str(p) for p in pids),
+                )
+            else:
+                remede = "%s kill %s" % (t("close it, or:"), pid)
             problemes.append(
                 (
                     "%s %s (PID %s)"
                     % (t("The deck is held by"), detenteur, pid),
-                    "%s kill %s" % (t("close it, or:"), pid),
+                    remede,
                 )
             )
         else:

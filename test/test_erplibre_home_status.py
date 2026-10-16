@@ -17,6 +17,7 @@ Ce que ces tests gardent :
 - chaque libellé a ses deux langues.
 """
 
+import fcntl
 import os
 import re
 import sys
@@ -63,6 +64,7 @@ def faits(**changes):
         "unit_active": "active",
         "settings": {"DECK_PROGRAM": "tiler", "RESTART_AFTER_GAME": "yes"},
         "lock": ("4242", "tiler"),
+        "lock_pids": [4242],
         "decks": [{"product": "Stream Deck MK.2", "id_product": "0080"}],
     }
     base.update(changes)
@@ -169,6 +171,7 @@ class LaCollecte(unittest.TestCase):
                     "RESTART_AFTER_GAME": "yes",
                 },
                 "lock": None,
+                "lock_pids": [],
                 "decks": [],
             },
             recu,
@@ -192,6 +195,20 @@ class LaCollecte(unittest.TestCase):
         self.assertTrue(recu["unit_file"])
         self.assertEqual("disabled", recu["unit_enabled"])
         self.assertEqual("inactive", recu["unit_active"])
+
+
+    def test_a_held_lock_names_every_process_holding_it(self):
+        chemin = self.tmp / "deck.lock"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(chemin.parent, 0o700)
+        tenu = open(chemin, "w", encoding="utf-8")
+        self.addCleanup(tenu.close)
+        tenu.write("777 game\n")
+        tenu.flush()
+        fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        recu = self.collecter({})
+        self.assertEqual(("777", "game"), recu["lock"])
+        self.assertEqual([os.getpid()], recu["lock_pids"])
 
 
 class LEtat(unittest.TestCase):
@@ -328,6 +345,33 @@ class LeDiagnostic(unittest.TestCase):
                 "close it, or: kill 777",
             ),
             problemes,
+        )
+
+    def test_a_game_is_closed_first_and_killed_as_a_whole(self):
+        """Tuer le seul PID du verrou laisserait le jeu sur le deck quand
+        l'enveloppe est déjà morte : le dernier recours nomme chaque
+        processus qui tient le verrou."""
+        problemes = statut.diagnosis_lines(
+            faits(
+                unit_active="inactive",
+                lock=("777", "game"),
+                lock_pids=[777, 778, 779],
+            )
+        )
+        self.assertIn(
+            (
+                "The deck is held by game (PID 777)",
+                "close the game; as a last resort: kill 777 778 779",
+            ),
+            problemes,
+        )
+
+    def test_a_game_with_no_process_found_names_the_lock_pid(self):
+        self.assertIn(
+            "close the game; as a last resort: kill 777",
+            self.corrections(
+                unit_active="inactive", lock=("777", "game"), lock_pids=[]
+            ),
         )
 
     def test_a_disabled_unit_is_a_choice_not_a_problem(self):

@@ -120,12 +120,15 @@ through `script/install/erplibre_home_handover.sh`, which stops the service,
 runs the game, and starts the service again when the game ends, unless
 `RESTART_AFTER_GAME=no`. The deck has a lock,
 `$XDG_RUNTIME_DIR/erplibre-home/deck.lock`: the window tiler and the
-controller take it, and the hand-over holds it as `game` for the game's
-whole run. A second holder exits with code 2 and names the program and PID
-that hold the deck, so the service, or **Start deck program** in the
-panel, stays down while a game runs. `kill <PID>` on that PID ends the
-game. A game started by `make streamdeck_<game>` skips the hand-over and
-takes no lock. `systemctl --user` controls the service:
+controller take it, and the hand-over takes it as `game` and passes it to
+the game, so it stays held while any process of the game runs. A second
+holder exits with code 2 and names the program and PID that hold the deck,
+so the service, or **Start deck program** in the panel, stays down while a
+game runs. To free the deck, close the game. As a last resort, TODO's
+Stream Deck diagnosis names every process that holds the lock, the whole
+game, for one `kill`; a `kill` on the PID the lock names also reaches every
+process of the game. A game started by `make streamdeck_<game>` skips the
+hand-over and takes no lock. `systemctl --user` controls the service:
 
 ```
 systemctl --user status erplibre-home-streamdeck.service
