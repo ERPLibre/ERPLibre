@@ -8,15 +8,21 @@
  * two programs on one deck; without it (a manual setup) the indicator
  * starts the controller itself under the deck venv.
  *
- * systemctl start (or restart) exits 0 even when the unit's ExecCondition
- * skips the start (no deck plugged in, DECK_PROGRAM=none): the indicator
- * then reads the unit's state and, when no program runs, shows the reason
- * the entry point's --check gives.
+ * systemctl start (or restart) exits 0 even when no program is left
+ * running: ExecCondition skips the start (no deck plugged in,
+ * DECK_PROGRAM=none), or, with Type=simple, the start returns once the
+ * program is forked and the program exits a moment later (the deck lock
+ * held elsewhere, no visual Stream Deck). The indicator therefore waits
+ * DECK_SETTLE_MS, reads the unit's state, and when no program runs says
+ * why: who holds the deck lock, no visual deck, or the reason the entry
+ * point's --check gives for a skip.
  *
  * Pure: the caller says whether the unit file exists, passes the venv
- * python and the command outputs, so node --test loads this module without
- * any gi:// import.
+ * python, the command outputs and the lock text, so node --test loads this
+ * module without any gi:// import.
  */
+
+import {_} from './i18n.js';
 
 export const DECK_UNIT = 'erplibre-home-streamdeck.service';
 
@@ -28,6 +34,20 @@ export const DECK_ENTRY_REL = 'script/install/erplibre_home_deck.sh';
 
 // ActiveState values in which the deck program runs or is about to.
 const RUNNING_STATES = ['active', 'activating', 'reloading'];
+
+// Exit codes of the deck programs that the unit does not restart
+// (script/stream_deck/deck_lock.py: BUSY_EXIT, NO_DECK_EXIT).
+const BUSY_EXIT = '2';
+const NO_DECK_EXIT = '3';
+
+// systemd's ExecMainCode for a main process that exited (CLD_EXITED), as
+// opposed to one killed by a signal, whose ExecMainStatus is the signal.
+const CLD_EXITED = '1';
+
+// Milliseconds between a start and the state read: long enough for a
+// program that finds the deck busy or no visual deck to have exited, short
+// enough for the notice to follow the click.
+export const DECK_SETTLE_MS = 1500;
 
 function trimRoot(root) {
     return root.length > 1 ? root.replace(/\/+$/, '') : root;
@@ -65,12 +85,101 @@ export function restartDeckArgv({unitExists}) {
 }
 
 /**
- * argv that prints the unit's ActiveState alone, read after a start or a
- * restart.
+ * Path of the deck lock under `runtimeDir` ($XDG_RUNTIME_DIR), as
+ * deck_lock.lock_path() builds it.
+ */
+export function deckLockPath(runtimeDir) {
+    return `${runtimeDir}/erplibre-home/deck.lock`;
+}
+
+/**
+ * argv that prints, as Key=Value lines, the unit properties
+ * deckStartOutcome() reads after a start or a restart.
  */
 export function deckStateArgv() {
-    return ['systemctl', '--user', 'show', '-p', 'ActiveState', '--value',
-        DECK_UNIT];
+    return ['systemctl', '--user', 'show', '-p', 'ActiveState', '-p', 'Result',
+        '-p', 'ExecMainCode', '-p', 'ExecMainStatus', DECK_UNIT];
+}
+
+/**
+ * The Key=Value lines of `stdout` as an object; other lines are skipped.
+ */
+export function parseUnitShow(stdout) {
+    const props = {};
+    for (const line of String(stdout ?? '').split('\n')) {
+        const eq = line.indexOf('=');
+        if (eq > 0)
+            props[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+    }
+    return props;
+}
+
+/**
+ * What a start left, from the properties parseUnitShow() reads:
+ * {kind: 'running'}; 'busy' and 'no-deck' when the program exited with
+ * deck_lock's BUSY_EXIT or NO_DECK_EXIT; 'skipped' when ExecCondition
+ * kept the program from starting (Result=exec-condition, or, on a systemd
+ * that reports a skip as success, no main process ever ran); otherwise
+ * 'failed', with the state and result as `detail`.
+ */
+export function deckStartOutcome(props) {
+    const state = props.ActiveState ?? '';
+    if (deckRunning(state))
+        return {kind: 'running'};
+    if (props.ExecMainCode === CLD_EXITED) {
+        if (props.ExecMainStatus === BUSY_EXIT)
+            return {kind: 'busy'};
+        if (props.ExecMainStatus === NO_DECK_EXIT)
+            return {kind: 'no-deck'};
+    }
+    if (props.Result === 'exec-condition' ||
+        (state === 'inactive' && props.ExecMainCode === '0'))
+        return {kind: 'skipped'};
+    if (!state)
+        return {kind: 'failed', detail: '?'};
+    return {kind: 'failed',
+        detail: props.Result ? `${state} (${props.Result})` : state};
+}
+
+/**
+ * {pid, program} read from the lock's text, each kept only in the form
+ * deck_lock.parse_holder() keeps ("?" otherwise); null for an empty text.
+ */
+export function parseLockHolder(text) {
+    const words = String(text ?? '').split(/\s+/).filter(w => w !== '');
+    if (!words.length)
+        return null;
+    const pid = /^[0-9]{1,10}$/.test(words[0]) ? words[0] : '?';
+    const program = /^[A-Za-z0-9_-]{1,32}$/.test(words[1] ?? '')
+        ? words[1] : '?';
+    return {pid, program};
+}
+
+/**
+ * The notice for `outcome` (deckStartOutcome), translated, or null when the
+ * program runs. `holder` is parseLockHolder() of the lock, for 'busy';
+ * `checkStderr` is the entry point's --check output, for 'skipped'.
+ */
+export function deckStartNotice(outcome, {holder = null, checkStderr = ''} = {}) {
+    let why;
+    switch (outcome.kind) {
+    case 'running':
+        return null;
+    case 'busy':
+        why = holder
+            ? `${_('the deck is held by')} ${holder.program} (PID ${holder.pid})`
+            : `${_('the deck is held by')} ${_('another program')}`;
+        break;
+    case 'no-deck':
+        why = _('no visual Stream Deck is plugged in');
+        break;
+    case 'skipped':
+        why = deckStartFailure('inactive', checkStderr);
+        break;
+    default:
+        why = outcome.detail ?? '?';
+    }
+    return `${_('The deck program did not start:')} ${why}`;
 }
 
 /**

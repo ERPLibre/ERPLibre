@@ -165,6 +165,15 @@ msgstr "Start deck program"
 msgid "The deck program did not start:"
 msgstr "The deck program did not start:"
 
+msgid "the deck is held by"
+msgstr "the deck is held by"
+
+msgid "another program"
+msgstr "another program"
+
+msgid "no visual Stream Deck is plugged in"
+msgstr "no visual Stream Deck is plugged in"
+
 msgid "Restart deck"
 msgstr "Restart deck"
 

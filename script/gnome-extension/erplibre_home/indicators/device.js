@@ -13,8 +13,9 @@ import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
 import {projectRootFrom, makeGioReadLink, streamDeckPython}
     from '../lib/project-root.js';
-import {deckUnitPath, openDeckArgv, restartDeckArgv, deckStateArgv,
-    deckRunning, deckCheckArgv, deckStartFailure}
+import {DECK_SETTLE_MS, deckUnitPath, deckLockPath, openDeckArgv,
+    restartDeckArgv, deckStateArgv, deckCheckArgv, parseUnitShow,
+    deckStartOutcome, parseLockHolder, deckStartNotice}
     from '../lib/deck-service.js';
 import {_} from '../lib/i18n.js';
 
@@ -36,6 +37,8 @@ class DeviceIndicator extends PanelMenu.Button {
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
         this._cache = [];
+        // GLib sources of the waits _driveUnit runs after a start.
+        this._settleIds = new Set();
         this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
         this.add_child(this._badged.actor);
         this._rescanThenRebuild();
@@ -57,6 +60,8 @@ class DeviceIndicator extends PanelMenu.Button {
     destroy() {
         if (this._timerId) GLib.source_remove(this._timerId);
         this._timerId = 0;
+        for (const id of this._settleIds) GLib.source_remove(id);
+        this._settleIds.clear();
         if (this._sigTimer) this._settings.disconnect(this._sigTimer);
         this._sigTimer = 0;
         if (this._sigBadges) this._settings.disconnect(this._sigBadges);
@@ -182,21 +187,58 @@ class DeviceIndicator extends PanelMenu.Button {
             spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
     }
 
-    // Runs systemctl start or restart on the unit, then reads its state:
-    // a start that ExecCondition skips exits 0 and leaves the unit
-    // inactive, so the click would otherwise do nothing visible. The
-    // entry point's --check then says why.
+    // Runs systemctl start or restart on the unit, waits DECK_SETTLE_MS
+    // without blocking the shell, then reads the unit's state: a start
+    // that ExecCondition skips exits 0 and leaves the unit inactive, and,
+    // with Type=simple, a program that finds the deck busy or no visual
+    // deck exits after systemctl has returned. The click would otherwise
+    // do nothing visible; the notice says why no program runs.
     async _driveUnit(argv, root) {
         const done = await runProcess(argv,
             {notify: _notify, title: 'Stream Deck'});
         if (!done.ok)
             return;
+        await this._settle();
         const shown = await runProcess(deckStateArgv());
-        if (deckRunning(shown.stdout))
+        const outcome = deckStartOutcome(parseUnitShow(shown.stdout));
+        if (outcome.kind === 'running')
             return;
-        const check = await runProcess(deckCheckArgv(root));
-        _notify('Stream Deck', `${_('The deck program did not start:')} ` +
-            deckStartFailure(shown.stdout, check.stderr));
+        const facts = {};
+        if (outcome.kind === 'busy')
+            facts.holder = parseLockHolder(this._readDeckLock());
+        else if (outcome.kind === 'skipped')
+            facts.checkStderr = (await runProcess(deckCheckArgv(root))).stderr;
+        _notify('Stream Deck', deckStartNotice(outcome, facts));
+    }
+
+    // Resolves after DECK_SETTLE_MS; destroy() removes a pending wait,
+    // whose promise then never resolves.
+    _settle() {
+        return new Promise(resolve => {
+            const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DECK_SETTLE_MS,
+                () => {
+                    this._settleIds.delete(id);
+                    resolve();
+                    return GLib.SOURCE_REMOVE;
+                });
+            this._settleIds.add(id);
+        });
+    }
+
+    // The deck lock's text, "" when it cannot be read. Only a regular
+    // file is read: the lock lives in the private $XDG_RUNTIME_DIR, and a
+    // FIFO in its place would block the shell.
+    _readDeckLock() {
+        const path = deckLockPath(GLib.get_user_runtime_dir());
+        if (GLib.file_test(path, GLib.FileTest.IS_SYMLINK) ||
+            !GLib.file_test(path, GLib.FileTest.IS_REGULAR))
+            return '';
+        try {
+            const [ok, contents] = GLib.file_get_contents(path);
+            return ok ? new TextDecoder().decode(contents) : '';
+        } catch (_e) {
+            return '';
+        }
     }
 
     _restart() {
