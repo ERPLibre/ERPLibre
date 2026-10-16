@@ -149,7 +149,9 @@ class Verrou(unittest.TestCase):
     def test_holder_pids_names_the_processes_with_the_lock_open(self):
         self.assertEqual([], self.deck_lock.holder_pids(self.chemin))
         premier = self.detenteur("tiler")
-        self.assertEqual([premier.pid], self.deck_lock.holder_pids(self.chemin))
+        self.assertEqual(
+            [premier.pid], self.deck_lock.holder_pids(self.chemin)
+        )
         premier.stdin.close()
         premier.wait(10)
         self.assertEqual([], self.deck_lock.holder_pids(self.chemin))
@@ -352,7 +354,9 @@ class LaCommandeSousVerrou(unittest.TestCase):
 
     def test_the_deck_stays_locked_when_the_wrapper_is_killed(self):
         marque = os.path.join(self.run_dir, "jeu.pid")
-        jeu = self.envelopper("sh", "-c", 'echo $$ > "$0"; exec sleep 30', marque)
+        jeu = self.envelopper(
+            "sh", "-c", 'echo $$ > "$0"; exec sleep 30', marque
+        )
         pid = self.lire_pid(marque)
         self.addCleanup(tuer, pid)
         jeu.kill()
@@ -441,7 +445,12 @@ class LaCommandeSousVerrou(unittest.TestCase):
         terminal, aucun signal ne lui vient du terminal du lanceur de
         tests."""
         jeu = subprocess.Popen(
-            [sys.executable, str(DECK_DIR / "deck_lock.py"), "game", *commande],
+            [
+                sys.executable,
+                str(DECK_DIR / "deck_lock.py"),
+                "game",
+                *commande,
+            ],
             env=self.environ,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
@@ -474,7 +483,9 @@ class LaCommandeSousVerrou(unittest.TestCase):
         """La diagnostic nomme chaque processus qui tient le deck : le PID
         du verrou, l'enveloppe, peut être mort quand le jeu tourne encore."""
         marque = os.path.join(self.run_dir, "jeu.pid")
-        jeu = self.envelopper("sh", "-c", 'echo $$ > "$0"; exec sleep 30', marque)
+        jeu = self.envelopper(
+            "sh", "-c", 'echo $$ > "$0"; exec sleep 30', marque
+        )
         pid = self.lire_pid(marque)
         self.assertEqual(
             [jeu.pid, pid], self.deck_lock.holder_pids(self.chemin)
@@ -639,7 +650,9 @@ class LesCiblesDuSignal(unittest.TestCase):
         )
 
     def test_without_a_terminal_sigint_reaches_everyone(self):
-        table = {pid: (p, g, -1, e) for pid, (p, g, _t, e) in self.TABLE.items()}
+        table = {
+            pid: (p, g, -1, e) for pid, (p, g, _t, e) in self.TABLE.items()
+        }
         self.assertEqual(
             [11, 12, 14],
             charger().signal_targets(signal.SIGINT, 10, table),

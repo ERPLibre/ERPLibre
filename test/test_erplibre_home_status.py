@@ -196,7 +196,6 @@ class LaCollecte(unittest.TestCase):
         self.assertEqual("disabled", recu["unit_enabled"])
         self.assertEqual("inactive", recu["unit_active"])
 
-
     def test_a_held_lock_names_every_process_holding_it(self):
         chemin = self.tmp / "deck.lock"
         chemin.parent.mkdir(parents=True, exist_ok=True)
