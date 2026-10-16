@@ -324,6 +324,84 @@ class LesIndicateursNonMontes(unittest.TestCase):
         self.assertIn("enabled", sd.CMD_MONTAGES)
 
 
+class LeJournalSansDroitDeLecture(unittest.TestCase):
+    """Un journald volatil garde les entrées de l'utilisateur dans le
+    journal système : `journalctl --user` n'imprime rien, et la commande
+    relit par `sudo -n journalctl _UID=...`. Les commandes tournent ici
+    pour de bon, sur un journalctl et un sudo factices."""
+
+    LIGNES = "[ERPLibreHome] mount pencil failed: boom\n[ERPLibreHome] enabled"
+
+    def lancer(self, commande, utilisateur, racine):
+        bac = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, bac)
+        journalctl = Path(bac) / "journalctl"
+        journalctl.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            "  '--user '*) printf '%s' \"$FAUX_USER\" ;;\n"
+            '  *) printf \'%s\' "$FAUX_ROOT" ;;\n'
+            "esac\n"
+        )
+        sudo = Path(bac) / "sudo"
+        sudo.write_text(
+            '#!/bin/sh\n[ "$1" = -n ] || exit 9\nshift\nexec "$@"\n'
+        )
+        for f in (journalctl, sudo):
+            f.chmod(0o755)
+        env = dict(
+            os.environ,
+            PATH=bac + os.pathsep + os.environ["PATH"],
+            FAUX_USER=utilisateur,
+            FAUX_ROOT=racine,
+        )
+        return subprocess.run(
+            ["sh", "-c", commande], env=env, capture_output=True, text=True
+        ).stdout
+
+    def test_empty_user_journal_falls_back_to_sudo(self):
+        sortie = self.lancer(sd.CMD_MONTAGES, "", self.LIGNES)
+        self.assertTrue(sd.journal_lu(sortie))
+        self.assertEqual(sd.indicateurs_en_echec(sortie), ["pencil"])
+
+    def test_journalctl_hint_alone_still_falls_back(self):
+        sortie = self.lancer(
+            sd.CMD_MONTAGES, "Hint: You are currently not seeing", self.LIGNES
+        )
+        self.assertTrue(sd.journal_lu(sortie))
+
+    def test_a_readable_user_journal_needs_no_sudo(self):
+        sortie = self.lancer(
+            sd.CMD_MONTAGES, "[ERPLibreHome] enabled", "[ERPLibreHome] x"
+        )
+        self.assertEqual(sortie.strip(), "[ERPLibreHome] enabled")
+
+    def test_both_empty_is_an_unread_journal(self):
+        sortie = self.lancer(sd.CMD_MONTAGES, "", "")
+        self.assertFalse(sd.journal_lu(sortie))
+
+    def test_unit_journal_falls_back_to_the_user_unit_filter(self):
+        sortie = self.lancer(
+            sd.CMD_RAISON_SAUT, "", f"démarrage\n{sd.RAISON_SAUT}"
+        )
+        self.assertIn(sd.RAISON_SAUT, sortie)
+        self.assertIn("--user-unit=" + sd.UNITE_DECK, sd.CMD_RAISON_SAUT)
+        self.assertIn("_UID=$(id -u)", sd.CMD_RAISON_SAUT)
+
+    def test_diagnostic_journal_falls_back_too(self):
+        sortie = self.lancer(sd.CMD_JOURNAL, "", "gnome-shell: boom")
+        self.assertIn("gnome-shell: boom", sortie)
+        self.assertEqual(self.lancer(sd.CMD_JOURNAL, "", ""), "\n")
+
+    def test_el10_expects_gnome_49(self):
+        gnomes = {
+            (e["distro"], e["version"]): e["gnome_attendu"]
+            for e in sd.MATRICE
+        }
+        self.assertEqual(gnomes[("almalinux", "10")], "49")
+        self.assertEqual(gnomes[("rocky", "10")], "49")
+
+
 class LesEtapes(unittest.TestCase):
     """Les cinq étapes de la spec, dans son ordre, avec ses noms."""
 

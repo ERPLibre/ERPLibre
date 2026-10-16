@@ -276,6 +276,13 @@ alors le contrôle `extension-indicators` lit le journal utilisateur : il
 exige la ligne `[ERPLibreHome] enabled` qui clôt `enable()`, si bien qu'un
 journal non lu échoue aussi, et il échoue sur toute ligne
 `[ERPLibreHome] mount <id> failed`.
+Toute lecture du journal utilisateur (ce contrôle, `reinstall-indicators`,
+`service-condition`, le diagnostic d'échec) retombe sur
+`sudo -n journalctl _UID=$(id -u)` quand `journalctl --user` n'imprime rien :
+avec un stockage journald volatil (images cloud EL 10), les entrées de
+l'utilisateur ne vivent que dans le journal système, que `--user` ne lit pas
+hors des groupes `systemd-journal` ou `wheel`. Deux lectures vides échouent
+toujours.
 
 C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
 

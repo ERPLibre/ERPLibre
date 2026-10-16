@@ -268,6 +268,12 @@ catches an indicator constructor's exception and keeps running, so the
 `extension-indicators` check reads the user journal: it requires the
 `[ERPLibreHome] enabled` line that ends `enable()`, so an unread journal
 fails too, and it fails on any `[ERPLibreHome] mount <id> failed` line.
+Every read of the user journal (this check, `reinstall-indicators`,
+`service-condition`, the failure diagnostic) falls back to
+`sudo -n journalctl _UID=$(id -u)` when `journalctl --user` prints nothing:
+with volatile journald storage (EL 10 cloud images) the user's entries live
+in the system journal only, which a user outside `systemd-journal` or
+`wheel` cannot read through `--user`. Two empty reads still fail.
 
 That is the first of five stages, run in order on the same VM:
 
@@ -628,6 +634,13 @@ alors le contrôle `extension-indicators` lit le journal utilisateur : il
 exige la ligne `[ERPLibreHome] enabled` qui clôt `enable()`, si bien qu'un
 journal non lu échoue aussi, et il échoue sur toute ligne
 `[ERPLibreHome] mount <id> failed`.
+Toute lecture du journal utilisateur (ce contrôle, `reinstall-indicators`,
+`service-condition`, le diagnostic d'échec) retombe sur
+`sudo -n journalctl _UID=$(id -u)` quand `journalctl --user` n'imprime rien :
+avec un stockage journald volatil (images cloud EL 10), les entrées de
+l'utilisateur ne vivent que dans le journal système, que `--user` ne lit pas
+hors des groupes `systemd-journal` ou `wheel`. Deux lectures vides échouent
+toujours.
 
 C'est la première de cinq étapes, menées dans l'ordre sur la même VM :
 
