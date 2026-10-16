@@ -98,6 +98,16 @@ class LeChoixDuDocument(unittest.TestCase):
         interface, désignée par son vrai nom."""
         self.assertIsNone(DQ.network_config_for("nixos"))
 
+    def test_el_gets_none_so_networkmanager_binds_the_real_nic(self):
+        """Le renderer NetworkManager ignore le « match » et écrit la clé en
+        « interface-name= » : sur un NIC nommé enp1s0, le profil ne
+        s'applique jamais et seul le DHCP automatique de NetworkManager
+        donne une IP, jusqu'à ce que NetworkManager-config-server, tiré par
+        le groupe « Server with GUI », pose « no-auto-default=* »."""
+        for distro in ("almalinux", "rocky"):
+            with self.subTest(distro=distro):
+                self.assertIsNone(DQ.network_config_for(distro))
+
     def test_everyone_else_keeps_the_document_unchanged(self):
         """Le corriger pour NixOS ne doit rien changer aux autres : Arch a le
         même renderer mais nomme son NIC eth0, que la clé couvre."""

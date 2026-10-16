@@ -4072,6 +4072,10 @@ NETWORK_CONFIG = (
 )
 
 
+# Les distributions dont cloud-init doit produire le réseau lui-même.
+SANS_DOCUMENT_RESEAU = ("nixos", "almalinux", "rocky")
+
+
 def network_config_for(distro: str) -> str | None:
     """Le network-config à mettre dans le seed, ou None pour n'en pas mettre.
 
@@ -4085,8 +4089,15 @@ def network_config_for(distro: str) -> str | None:
     (enp0s2 en q35, ens3 en i440fx). Arch a le même renderer mais nomme le
     sien eth0, ce que la clé du document couvre : il garde donc le document,
     et son réseau ne change pas.
+
+    AlmaLinux et Rocky aussi : le renderer NetworkManager ignore le « match »
+    comme networkd et écrit la clé en « interface-name=eth0 ». Sur un NIC
+    nommé enp1s0, ce profil ne s'applique jamais ; seul le DHCP automatique
+    de NetworkManager donne une IP, et NetworkManager-config-server, que tire
+    le groupe « Server with GUI », le coupe (« no-auto-default=* ») : la VM
+    perd le réseau au redémarrage qui suit le bureau.
     """
-    return None if distro == "nixos" else NETWORK_CONFIG
+    return None if distro in SANS_DOCUMENT_RESEAU else NETWORK_CONFIG
 
 
 def build_seed(
