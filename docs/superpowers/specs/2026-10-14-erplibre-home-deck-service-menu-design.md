@@ -93,6 +93,7 @@ Restart=on-failure
 RestartSec=3
 RestartPreventExitStatus=2 3
 SuccessExitStatus=143
+TimeoutStopSec=10
 
 [Install]
 WantedBy=graphical-session.target
@@ -119,6 +120,9 @@ WantedBy=graphical-session.target
   default limit (5 in 10 s) is never reached with `RestartSec=3`.
 - On SIGTERM (`systemctl stop`) the tiler and the controller reset the
   deck and exit 143, which `SuccessExitStatus` counts as a clean stop.
+  `TimeoutStopSec=10` bounds that stop: a program stuck in its cleanup is
+  killed after 10 s instead of systemd's default 90 s, so a game's
+  hand-over never waits long for the deck.
 
 ## Installer
 
@@ -169,11 +173,20 @@ makes that visible instead of silent.
 - While a game runs, the service's own start (from the panel, TODO's
   Service menu or the command Diagnosis suggests) therefore fails cleanly
   with exit 2, and Status names `game` as the holder. The lock's file
-  descriptor is not inherited by the game, so a child the game leaves
-  behind does not keep the deck. A deck program started as a game (the
-  tiler is in the games list) finds an ancestor holding the lock as `game`
-  and runs under it. `kill <PID>` on the holder's PID passes SIGTERM to the
-  game.
+  descriptor passes to the game (`pass_fds`) and to every process it
+  starts without closing its descriptors: the deck stays taken while any
+  of the game's processes runs, even once the wrapper is gone, so a child
+  the game leaves behind keeps the deck. A deck program started as a game
+  (the tiler is in the games list) holds the lock through the inherited
+  descriptor; one started with its descriptors closed finds an ancestor
+  holding the lock as `game`, runs under it, and takes the lock over when
+  the game releases it.
+- SIGTERM or SIGINT sent to the wrapper reaches every descendant (a game
+  under the gallery's bash loop is a grandchild), except, for SIGINT, the
+  processes in the terminal's foreground that Ctrl-C already hit; the
+  wrapper then waits for them all before it exits. Diagnosis advises to
+  close the game first, and, as a last resort, `kill` on every process that
+  holds the lock, since the wrapper the lock names may already be dead.
 - TODO's games menu and the gallery's launcher (`gallery_server.py`, the bash
   line built by `_game_bash_cmd`) run each game through the helper. The
   gallery's restart loop ("r" + Enter) stays inside one hand-over, so the
@@ -233,10 +246,16 @@ command is printed before it runs):
 The `device` indicator's "Start deck program" action starts the unit with
 `systemctl --user start erplibre-home-streamdeck.service` when the unit file
 exists, and keeps its current direct launch otherwise. Its "Restart deck"
-action restarts the unit in the same case. Since a start that
-`ExecCondition` skips exits 0, both then read the unit's `ActiveState`
-and, when no program runs, show the line the entry point's `--check`
-prints. The other indicators are unchanged.
+action restarts the unit in the same case. A start that `ExecCondition`
+skips exits 0, and with `Type=simple` a program that finds the deck busy
+or no visual deck exits after `systemctl` returns. Both actions therefore
+wait 1.5 s without blocking the shell, then read the unit's `ActiveState`,
+`SubState`, `Result`, `ExecMainCode` and `ExecMainStatus`. When no program
+runs, the notice says why: the program holding the deck (from the lock's
+text), no visual Stream Deck (exit 3), the line the entry point's `--check`
+prints for a skipped start, or the state and exit status of a program that
+failed or waits for its restart (`SubState=auto-restart`). The other
+indicators are unchanged.
 
 ## Testing
 
