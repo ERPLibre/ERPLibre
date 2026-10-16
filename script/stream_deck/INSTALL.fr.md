@@ -123,11 +123,15 @@ chaque jeu par `script/install/erplibre_home_handover.sh`, qui arrête le
 service, lance le jeu, puis relance le service à la fin du jeu, sauf si
 `RESTART_AFTER_GAME=no`. Le deck a un verrou,
 `$XDG_RUNTIME_DIR/erplibre-home/deck.lock` : le window tiler et le
-contrôleur le prennent, et la passation le tient au nom de `game` pendant
-toute la partie. Un second détenteur sort avec le code 2 et nomme le
-programme et le PID qui tiennent le deck : le service, ou **Démarrer le
-programme du deck** dans le panneau, reste arrêté pendant un jeu.
-`kill <PID>` sur ce PID termine le jeu. Un jeu lancé par
+contrôleur le prennent, et la passation le prend au nom de `game` et le
+passe au jeu : il reste tenu tant qu'un processus du jeu tourne. Un second
+détenteur sort avec le code 2 et nomme le programme et le PID qui tiennent
+le deck : le service, ou **Démarrer le programme du deck** dans le
+panneau, reste arrêté pendant un jeu. Pour libérer le deck, fermer le jeu.
+En dernier recours, le diagnostic Stream Deck de TODO nomme chaque
+processus qui tient le verrou, le jeu entier, pour un seul `kill` ; un
+`kill` sur le PID que nomme le verrou atteint lui aussi chaque processus du
+jeu. Un jeu lancé par
 `make streamdeck_<jeu>` contourne la passation et ne prend aucun verrou.
 `systemctl --user` pilote le service :
 
