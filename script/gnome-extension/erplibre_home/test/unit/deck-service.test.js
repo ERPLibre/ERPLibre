@@ -47,8 +47,9 @@ test('restart goes through the unit only when it exists', () => {
 
 test('the state after a start is read from systemctl show', () => {
     assert.deepEqual(deckStateArgv(),
-        ['systemctl', '--user', 'show', '-p', 'ActiveState', '-p', 'Result',
-            '-p', 'ExecMainCode', '-p', 'ExecMainStatus', DECK_UNIT]);
+        ['systemctl', '--user', 'show', '-p', 'ActiveState',
+            '-p', 'SubState', '-p', 'Result', '-p', 'ExecMainCode',
+            '-p', 'ExecMainStatus', DECK_UNIT]);
 });
 
 test('the state is read once the program had time to exit', () => {
@@ -83,6 +84,13 @@ const SHOWN = {
         ExecMainStatus: '1'},
     killed: {ActiveState: 'failed', Result: 'signal', ExecMainCode: '2',
         ExecMainStatus: '2'},
+    // Exited 1 and waiting RestartSec before Restart=on-failure.
+    restarting: {ActiveState: 'activating', SubState: 'auto-restart',
+        Result: 'exit-code', ExecMainCode: '1', ExecMainStatus: '1'},
+    restartingKilled: {ActiveState: 'activating', SubState: 'auto-restart',
+        Result: 'signal', ExecMainCode: '2', ExecMainStatus: '11'},
+    starting: {ActiveState: 'activating', SubState: 'start',
+        Result: 'success', ExecMainCode: '0', ExecMainStatus: '0'},
 };
 
 test('each start is classified from the unit state', () => {
@@ -92,11 +100,21 @@ test('each start is classified from the unit state', () => {
     assert.deepEqual(deckStartOutcome(SHOWN.skipped), {kind: 'skipped'});
     assert.deepEqual(deckStartOutcome(SHOWN.skippedOld), {kind: 'skipped'});
     assert.deepEqual(deckStartOutcome(SHOWN.crashed),
-        {kind: 'failed', detail: 'failed (exit-code)'});
+        {kind: 'failed', detail: 'failed (exit-code, status 1)'});
     // Killed by signal 2 is not the busy exit code 2.
     assert.deepEqual(deckStartOutcome(SHOWN.killed),
         {kind: 'failed', detail: 'failed (signal)'});
     assert.deepEqual(deckStartOutcome({}), {kind: 'failed', detail: '?'});
+});
+
+test('a program waiting to be restarted does not run', () => {
+    // activating is a running state, except between a crash and the
+    // restart: the click must not stay silent on a crash loop.
+    assert.deepEqual(deckStartOutcome(SHOWN.restarting),
+        {kind: 'failed', detail: 'auto-restart (exit-code, status 1)'});
+    assert.deepEqual(deckStartOutcome(SHOWN.restartingKilled),
+        {kind: 'failed', detail: 'auto-restart (signal)'});
+    assert.deepEqual(deckStartOutcome(SHOWN.starting), {kind: 'running'});
 });
 
 test('the lock names its holder like deck_lock.parse_holder', () => {
