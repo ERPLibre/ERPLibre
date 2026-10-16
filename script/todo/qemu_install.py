@@ -773,23 +773,28 @@ class QemuInstallMixin:
     def _qemu_epel_cmd():
         """Active EPEL et CRB sur la famille RHEL (AlmaLinux, Rocky, CentOS
         Stream, RHEL), et ne fait rien ailleurs — Fedora comprise, où EPEL
-        n'existe pas.
+        n'existe pas. Pose « el_family » à 1 sur cette famille, à 0 ailleurs :
+        la suite du bloc s'en sert pour juger l'absence de xrdp.
 
         xrdp n'est pas dans les dépôts de base de ces distributions : EPEL le
-        porte, et EPEL demande CRB pour une partie de ses dépendances. Même
-        aiguillage et même ordre d'essais que install_fedora_dependency.sh :
-        « /usr/bin/crb » vient avec epel-release, « config-manager » sert de
-        repli. Aucun échec ici n'arrête le bloc : c'est l'installation de
-        xrdp, juste après, qui dit ce qui manque.
+        porte, et EPEL demande CRB pour une partie de ses dépendances. Le
+        groupe « cinnamon-desktop » vient lui aussi d'EPEL, d'où un appel
+        AVANT la cascade des environnements. Même ordre d'essais que
+        install_fedora_dependency.sh : « crb », qui vient avec epel-release,
+        puis « config-manager » en repli. « crb » se cherche dans le PATH de
+        sudo, et non par un chemin absolu, pour qu'un banc d'essai le
+        remplace. Aucun échec ici n'arrête le bloc : c'est l'installation qui
+        suit qui dit ce qui manque.
 
         La famille se lit dans un sous-shell : sourcer os-release dans le
         shell courant y laisserait NAME, VERSION et les autres."""
         return (
+            "el_family=0; "
             'case "$( . /etc/os-release 2>/dev/null; '
-            'echo " ${ID:-} ${ID_LIKE:-} ")" in *" rhel "*) '
+            'echo " ${ID:-} ${ID_LIKE:-} ")" in *" rhel "*) el_family=1; '
             "sudo dnf install -y epel-release || "
             f'echo "   ⚠ {t("epel-release unavailable")}"; '
-            "sudo /usr/bin/crb enable >/dev/null 2>&1 "
+            "sudo crb enable >/dev/null 2>&1 "
             "|| sudo dnf config-manager --set-enabled crb >/dev/null 2>&1 "
             "|| true;; esac; "
         )
@@ -837,21 +842,25 @@ class QemuInstallMixin:
             f"{de['apt']} {rem['apt']['packages']} "
             f"{self._qemu_apt_store_pkgs(app_store)}; "
             "elif command -v dnf >/dev/null 2>&1; then "
+            + self._qemu_epel_cmd()
             # Cascade d'environnements : le premier qui existe gagne. Un
             # environnement absent fait rendre 1 à dnf sans rien installer,
             # d'où le « || » plutôt qu'une détection préalable.
-            "de_ok=0; "
+            + "de_ok=0; "
             f"for e in {de['dnf_env']}; do "
             'sudo dnf -y group install "$e" && { de_ok=1; break; }; done; '
             # Sans bureau, l'accès distant n'a rien à servir : l'échec
             # tombe ici, avant xrdp, et non après lui.
             f'[ "$de_ok" = 1 ] || {absent}'
-            + self._qemu_epel_cmd()
-            # xrdp n'existe pas pour toutes les versions de la famille RHEL,
-            # même avec EPEL. Le bureau est installé à ce point : il reste,
-            # et la console de la VM avec lui. Une ligne dit ce qui manque.
-            + f"sudo dnf install -y {rem['dnf']['packages']} || "
-            f'echo "   ⚠ {t("xrdp is in no enabled repository; no RDP access")}"; '
+            # Sur la famille RHEL, xrdp n'existe pas pour toutes les
+            # versions, même avec EPEL : le bureau, installé à ce point,
+            # reste, et la console de la VM avec lui. Ailleurs — Fedora, qui
+            # le porte dans ses dépôts de base — l'échec vient d'un miroir ou
+            # du cache, et l'étape échoue pour être relancée.
+            f"sudo dnf install -y {rem['dnf']['packages']} || "
+            '{ [ "$el_family" = 1 ] || '
+            f'{{ echo "   ✗ {t("xrdp not installed")}"; exit 1; }}; '
+            f'echo "   ⚠ {t("xrdp not installed; no RDP access")}"; }}; '
             "elif command -v pacman >/dev/null 2>&1; then "
             "pgrep -x pacman >/dev/null 2>&1 "
             "|| sudo rm -f /var/lib/pacman/db.lck; "
@@ -893,7 +902,9 @@ class QemuInstallMixin:
             "fi; "
             # xrdp là où il existe ; sur Arch c'est TigerVNC, qui se configure
             # par utilisateur et n'a pas de service à activer d'office.
-            "if command -v xrdp >/dev/null 2>&1; then "
+            # Debian et openSUSE le posent dans /usr/sbin, absent du PATH d'un
+            # utilisateur : « command -v » seul ne l'y trouve pas.
+            "if [ -x /usr/sbin/xrdp ] || command -v xrdp >/dev/null 2>&1; then "
             "sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
             f'echo "   {t("Remote desktop:")} RDP 3389"; '
             # L'IP est sur le reseau PRIVE de libvirt : annoncer le port sans

@@ -5224,9 +5224,13 @@ TRANSLATIONS = {
         "fr": "bureau non installé :",
         "en": "desktop not installed:",
     },
-    "xrdp is in no enabled repository; no RDP access": {
-        "fr": "xrdp n'est dans aucun dépôt activé ; pas d'accès RDP",
-        "en": "xrdp is in no enabled repository; no RDP access",
+    "xrdp not installed; no RDP access": {
+        "fr": "xrdp non installé ; pas d'accès RDP",
+        "en": "xrdp not installed; no RDP access",
+    },
+    "xrdp not installed": {
+        "fr": "xrdp non installé",
+        "en": "xrdp not installed",
     },
     "epel-release unavailable": {
         "fr": "epel-release indisponible",

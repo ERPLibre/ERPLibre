@@ -9,11 +9,15 @@ Deux contrats se vérifient ici sans VM :
 - le bloc rend NON NUL, sur une seule ligne claire, quand le bureau n'est pas
   là à la fin — un environnement dnf introuvable ou un téléchargement refusé
   ne laissent pas croire à un bureau installé ;
-- sur la famille RHEL, EPEL est activé avant xrdp, et un xrdp que même EPEL
-  ne porte pas coûte un avertissement, pas le bureau.
+- sur la famille RHEL, EPEL est activé avant le bureau et xrdp, et un xrdp
+  que même EPEL ne porte pas coûte un avertissement, pas le bureau ; sur
+  Fedora, qui le porte dans ses dépôts de base, son échec fait échouer
+  l'étape.
 
 Le PATH ne contient QUE le répertoire des faux outils : un gnome-shell de
-l'hôte qui exécute les tests ne doit pas répondre à la place de la VM.
+l'hôte qui exécute les tests ne doit pas répondre à la place de la VM. Les
+chemins absolus que le bloc lit — /etc/os-release, /usr/sbin/xrdp — sont
+remplacés par des chemins du répertoire temporaire, pour la même raison.
 """
 
 import os
@@ -108,10 +112,15 @@ class _DesktopRun(unittest.TestCase):
         p.write_text(body)
         p.chmod(0o755)
 
-    def run_block(self, os_release=_FEDORA, **env):
+    def run_block(self, os_release=_FEDORA, sbin_xrdp=None, **env):
+        """sbin_xrdp : chemin qui tient lieu de /usr/sbin/xrdp ; par défaut,
+        un chemin qui n'existe pas."""
         osr = pathlib.Path(self.tmp) / "os-release"
         osr.write_text(os_release)
-        script = "set -e; " + self.cmd.replace("/etc/os-release", str(osr))
+        sbin_xrdp = sbin_xrdp or pathlib.Path(self.tmp) / "no-xrdp"
+        script = "set -e; " + self.cmd.replace(
+            "/etc/os-release", str(osr)
+        ).replace("/usr/sbin/xrdp", str(sbin_xrdp))
         shell_bin = self.todo._QEMU_DESKTOP[self.flavour]["probe"]
         full_env = {
             "PATH": str(self.bin),
@@ -220,6 +229,23 @@ class TestDnfRemoteAccessOnRhelFamily(_DnfRun):
         )
         self.assertIn("RDP 3389", res.stdout)
 
+    def test_epel_comes_before_the_desktop(self):
+        """Le groupe « cinnamon-desktop » vient d'EPEL : activé après la
+        cascade, il ne serait jamais disponible."""
+        _, calls = self.run_block(
+            _ALMA, DE_ENVS="graphical-server-environment"
+        )
+        self.assertLess(
+            calls.index("install -y epel-release"),
+            calls.index("group install"),
+        )
+
+    def test_crb_is_looked_up_in_the_path(self):
+        """Un chemin absolu contournerait le faux PATH du banc et lancerait
+        le vrai « crb » d'un hôte de la famille RHEL."""
+        self.assertIn("sudo crb enable", self.cmd)
+        self.assertNotIn("/usr/bin/crb", self.cmd)
+
     def test_xrdp_nowhere_is_a_warning_not_a_failure(self):
         """EPEL ne porte pas xrdp pour toutes les versions : le bureau reste
         installé, et une ligne le dit."""
@@ -232,6 +258,47 @@ class TestDnfRemoteAccessOnRhelFamily(_DnfRun):
         ]
         self.assertEqual(1, len(warnings), res.stdout)
         self.assertIn("set-default graphical.target", calls)
+
+
+class TestDnfRemoteAccessOnFedora(_DnfRun):
+    def test_a_failed_xrdp_install_fails_the_step(self):
+        """Fedora porte xrdp dans ses dépôts de base : un échec y vient d'un
+        miroir ou du cache, et l'étape échoue pour être relancée, sur une
+        ligne qui ne prétend pas que le paquet n'existe pas."""
+        res, calls = self.run_block(
+            DE_ENVS="workstation-product-environment", XRDP_FROM=""
+        )
+        self.assertNotEqual(0, res.returncode, res.stdout)
+        failures = [ln for ln in res.stdout.splitlines() if "✗" in ln]
+        self.assertEqual(1, len(failures), res.stdout)
+        self.assertIn("xrdp", failures[0])
+        self.assertNotIn("repositor", res.stdout)
+        self.assertNotIn("set-default graphical.target", calls)
+
+
+class TestXrdpInSbin(_DnfRun):
+    def test_xrdp_outside_the_path_is_still_enabled(self):
+        """Debian et openSUSE posent xrdp dans /usr/sbin, hors du PATH d'un
+        utilisateur : le bloc l'y cherche aussi."""
+        sbin_xrdp = pathlib.Path(self.tmp) / "sbin-xrdp"
+        sbin_xrdp.write_text("#!/bin/sh\n")
+        sbin_xrdp.chmod(0o755)
+        # Le faux dnf réussit sans poser de xrdp dans le PATH.
+        self._tool(
+            "dnf",
+            _FAKE_DNF.replace(
+                'echo "Error: Unable to find a match: xrdp"; exit 1',
+                "exit 0",
+            ),
+        )
+        res, calls = self.run_block(
+            sbin_xrdp=sbin_xrdp,
+            DE_ENVS="workstation-product-environment",
+            XRDP_FROM="",
+        )
+        self.assertEqual(0, res.returncode, res.stdout + res.stderr)
+        self.assertIn("RDP 3389", res.stdout)
+        self.assertIn("enable --now xrdp", calls)
 
 
 class TestAptDesktopProbe(_DesktopRun):
