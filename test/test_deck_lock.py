@@ -92,6 +92,7 @@ class Verrou(unittest.TestCase):
         )
         self.addCleanup(proc.wait, 10)
         self.addCleanup(proc.stdin.close)
+        self.addCleanup(proc.stdout.close)
         self.assertEqual("pret\n", proc.stdout.readline())
         return proc
 
@@ -134,6 +135,26 @@ class Verrou(unittest.TestCase):
         with self.assertRaises(self.deck_lock.DeckBusy) as pris:
             self.deck_lock.acquire("controller", self.chemin)
         self.assertEqual((str(os.getpid()), "tiler"), pris.exception.holder)
+
+    def test_a_holder_leaving_during_acquire_hands_the_lock_over(self):
+        """Le détenteur sort entre l'échec du flock et la recherche d'un
+        descripteur hérité : acquire() prend le verrou par son propre
+        fichier, au lieu de rouvrir un descripteur qu'il vient de fermer."""
+        premier = self.detenteur("tiler")
+        lire = self.deck_lock.parse_holder
+
+        def le_detenteur_sort(texte):
+            premier.stdin.close()
+            premier.wait(10)
+            return lire(texte)
+
+        self.deck_lock.parse_holder = le_detenteur_sort
+        tenu = self.deck_lock.acquire("controller", self.chemin)
+        self.addCleanup(tenu.close)
+        self.assertEqual(
+            (str(os.getpid()), "controller"),
+            self.deck_lock.holder(self.chemin),
+        )
 
     def test_holder_names_who_holds_and_takes_nothing(self):
         self.assertIsNone(self.deck_lock.holder(self.chemin))
@@ -513,6 +534,27 @@ class LaCommandeSousVerrou(unittest.TestCase):
                 self.assertEqual(128 + signum, jeu.wait(10))
                 self.assertFalse(vivant(pid), "the game outlived its wrapper")
                 self.assertIsNone(self.deck_lock.holder(self.chemin))
+
+    def test_a_stopped_game_still_ends_on_sigterm(self):
+        """Un processus arrêté (état T) garde SIGTERM en suspens : l'enveloppe
+        lui envoie aussi SIGCONT, sans quoi elle attendrait sa fin pour
+        toujours."""
+        marque = os.path.join(self.run_dir, "jeu.pid")
+        jeu = self.envelopper(
+            "sh", "-c", 'echo $$ > "$0"; exec sleep 30', marque
+        )
+        pid = self.lire_pid(marque)
+        self.addCleanup(tuer, pid)
+        os.kill(pid, signal.SIGSTOP)
+        for _fois in range(100):
+            if self.deck_lock.process_table().get(pid, "....")[3] == "T":
+                break
+            time.sleep(0.05)
+        else:
+            self.fail("the game never stopped")
+        jeu.send_signal(signal.SIGTERM)
+        self.assertEqual(128 + signal.SIGTERM, jeu.wait(10))
+        self.assertFalse(vivant(pid), "the game outlived its wrapper")
 
     def test_a_deck_program_that_lost_the_lock_takes_it_over(self):
         """Un programme du deck lancé par un subprocess python (close_fds) n'a
