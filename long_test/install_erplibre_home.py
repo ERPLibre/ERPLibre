@@ -103,6 +103,9 @@ def _entree(distro, version, gnome, roulante=False):
 # « roulante » : la distribution avance sans numéro. Un GNOME au-delà de
 # « shell-version » y rend UNSUPPORTED, et c'est le signal attendu pour mettre
 # metadata.json à jour, non une panne.
+#
+# EL 10 : GNOME 49 mesuré sur AlmaLinux 10 ; Rocky 10 suit le même mineur
+# RHEL 10.
 MATRICE = [
     _entree("ubuntu", "24.04", "46"),
     _entree("ubuntu", "25.10", "49"),
@@ -112,8 +115,8 @@ MATRICE = [
     _entree("fedora", "42", "48"),
     _entree("fedora", "43", "49"),
     _entree("fedora", "44", "50"),
-    _entree("almalinux", "10", "47"),
-    _entree("rocky", "10", "47"),
+    _entree("almalinux", "10", "49"),
+    _entree("rocky", "10", "49"),
     _entree("opensuse", "16.0", "48"),
     _entree("arch", "latest", "51", roulante=True),
     _entree("opensuse", "tumbleweed", "50", roulante=True),
@@ -222,6 +225,33 @@ REGLAGES_DECK = "~/.config/erplibre-home/streamdeck.conf"
 SYSTEMD_USER = BUS + "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
 # L'unité existe et lance le point d'entrée du checkout de la VM, chemin
 # entier entre guillemets.
+# Le bruit que journalctl écrit à la place d'un journal illisible ou vide :
+# ni une entrée, ni une preuve de lecture.
+_BRUIT_JOURNAL = "grep -Ev '^(-- |Hint: |No journal files)' || true"
+
+
+def _journal_utilisateur(args_user, args_root, filtre=None):
+    """Commande shell qui lit le journal de l'utilisateur de la session.
+
+    `journalctl --user` d'abord, avec `args_user`. Quand `filtre` (un
+    filtre de tube, `_BRUIT_JOURNAL` par défaut) n'en laisse rien, le même
+    filtre lit `sudo -n journalctl args_root _UID=$(id -u)` : un journald à
+    stockage volatil (pas de /var/log/journal) garde les entrées de
+    l'utilisateur dans le journal système, que `--user` ne lit pas sans le
+    groupe systemd-journal ou wheel. `args_root` désigne l'unité par
+    `--user-unit=`, qui filtre les mêmes champs que `-u` sous `--user`.
+    Une double lecture vide rend une sortie vide, jamais un succès.
+    """
+    filtre = filtre or _BRUIT_JOURNAL
+    return (
+        f"j=$(journalctl --user {args_user} 2>&1 | {filtre});"
+        ' [ -n "$j" ] ||'
+        f" j=$(sudo -n journalctl {args_root} _UID=$(id -u) 2>&1"
+        f" | {filtre});"
+        ' printf "%s\\n" "$j"'
+    )
+
+
 CMD_UNITE = (
     'grep -Fqx "ExecStart=\\"$HOME/git/erplibre/script/install/'
     f'erplibre_home_deck.sh\\"" {FICHIER_UNITE} && echo ok'
@@ -238,8 +268,9 @@ CMD_CONDITION = SYSTEMD_USER + (
 )
 # La raison que le point d'entrée écrit sur stderr avec --check : elle
 # distingue un saut sur condition d'une unité jamais chargée.
-CMD_RAISON_SAUT = SYSTEMD_USER + (
-    f"journalctl --user -u {UNITE_DECK} -b -o cat --no-pager"
+CMD_RAISON_SAUT = SYSTEMD_USER + _journal_utilisateur(
+    f"-u {UNITE_DECK} -b -o cat --no-pager",
+    f"--user-unit={UNITE_DECK} -b -o cat --no-pager",
 )
 RAISON_SAUT = "[ERPLibre Home] no Stream Deck plugged in (USB vendor 0fd9)"
 # Le lien que pose « enable » (WantedBy=graphical-session.target).
@@ -268,10 +299,10 @@ CMD_MTIMES = (
     f"stat -c '%n %Y' {REGLE_UDEV} {VENV_DECK} {LIEN_EXTENSION}"
     f" {FICHIER_UNITE} {REGLAGES_DECK}"
 )
-CMD_JOURNAL = (
-    "journalctl --user -b --no-pager 2>&1"
-    " | grep -i -e erplibrehome -e erplibre-home -e gnome-shell"
-    " | tail -200"
+CMD_JOURNAL = _journal_utilisateur(
+    "-b --no-pager",
+    "-b --no-pager",
+    "grep -i -e erplibrehome -e erplibre-home -e gnome-shell | tail -200",
 )
 CMD_EXT_INFO = BUS + f"gnome-extensions info {UUID_EXTENSION} 2>&1"
 # La clé que l'installateur écrit et que la désinstallation vide.
@@ -283,9 +314,10 @@ CMD_ENABLED = BUS + "gsettings get org.gnome.shell enabled-extensions"
 # des appareils comme sans appareil. « || true » garde le code 0 quand grep
 # ne trouve rien ; une sortie sans « enabled » veut alors dire que le journal
 # n'a pas été lu (ssh tombé, journal vide), jamais que tout est monté.
-CMD_MONTAGES = (
-    "journalctl --user -b -o cat --no-pager 2>&1"
-    r" | grep -E '\[ERPLibreHome\] (mount [^ ]+ failed|enabled)' || true"
+CMD_MONTAGES = _journal_utilisateur(
+    "-b -o cat --no-pager",
+    "-b -o cat --no-pager",
+    r"{ grep -E '\[ERPLibreHome\] (mount [^ ]+ failed|enabled)' || true; }",
 )
 
 

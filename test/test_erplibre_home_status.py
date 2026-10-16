@@ -58,7 +58,7 @@ def faits(**changes):
         "venv": True,
         "udev_rule": True,
         "extension": {"state": 1.0, "error": ""},
-        "journal": {"read": True, "failed": []},
+        "journal": {"read": True, "failed": [], "visible": True},
         "unit_file": True,
         "unit_enabled": "enabled",
         "unit_active": "active",
@@ -87,14 +87,15 @@ class LesLectures(unittest.TestCase):
 
     def test_journal(self):
         self.assertEqual(
-            {"read": True, "failed": []}, statut.parse_journal(JOURNAL_SAIN)
+            {"read": True, "failed": [], "visible": True}, statut.parse_journal(JOURNAL_SAIN)
         )
         self.assertEqual(
-            {"read": True, "failed": ["device", "pencil"]},
+            {"read": True, "failed": ["device", "pencil"], "visible": True},
             statut.parse_journal(JOURNAL_ECHEC),
         )
         self.assertEqual(
-            {"read": False, "failed": []}, statut.parse_journal("")
+            {"read": False, "failed": [], "visible": False},
+            statut.parse_journal(""),
         )
 
     def test_plugged_decks_read_sysfs(self):
@@ -162,7 +163,7 @@ class LaCollecte(unittest.TestCase):
                 ),
                 "udev_rule": False,
                 "extension": {"state": None, "error": ""},
-                "journal": {"read": False, "failed": []},
+                "journal": {"read": False, "failed": [], "visible": False},
                 "unit_file": False,
                 "unit_enabled": "",
                 "unit_active": "",
@@ -236,7 +237,7 @@ class LEtat(unittest.TestCase):
                 venv=False,
                 udev_rule=False,
                 extension={"state": 3.0, "error": "boom"},
-                journal={"read": True, "failed": ["device"]},
+                journal={"read": True, "failed": ["device"], "visible": True},
                 unit_file=False,
                 unit_enabled="",
                 unit_active="",
@@ -264,14 +265,36 @@ class LEtat(unittest.TestCase):
                 extension_linked=False,
                 venv=False,
                 extension={"state": None, "error": ""},
-                journal={"read": False, "failed": []},
+                journal={"read": False, "failed": [], "visible": False},
                 decks=[],
             )
         )
         self.assertEqual("Level: not installed", lignes[0])
         self.assertEqual("Extension: not loaded in this session", lignes[1])
-        self.assertEqual("Indicators: journal not read", lignes[2])
+        self.assertEqual(
+            "Indicators: journal not readable by this user", lignes[2]
+        )
         self.assertEqual("Decks plugged in: none", lignes[5])
+
+    def test_a_journal_with_lines_but_no_enabled_stays_not_read(self):
+        lignes = statut.status_lines(
+            faits(journal={"read": False, "failed": [], "visible": True})
+        )
+        self.assertEqual("Indicators: journal not read", lignes[2])
+
+    def test_empty_journal_gives_the_hint_without_sudo(self):
+        problemes = statut.diagnosis_lines(
+            faits(journal={"read": False, "failed": [], "visible": False})
+        )
+        self.assertIn(
+            (
+                "The journal is not readable by this user",
+                statut.JOURNAL_HINT,
+            ),
+            problemes,
+        )
+        self.assertIn("systemd-journal", statut.JOURNAL_HINT)
+        self.assertIn("persistent", statut.JOURNAL_HINT)
 
 
 class LeDiagnostic(unittest.TestCase):
@@ -306,7 +329,7 @@ class LeDiagnostic(unittest.TestCase):
                 statut.JOURNAL_GREP,
             ),
             (
-                {"journal": {"read": True, "failed": ["device"]}},
+                {"journal": {"read": True, "failed": ["device"], "visible": True}},
                 statut.JOURNAL_GREP,
             ),
             ({"venv": False}, "make erplibre_home_streamdeck_install"),

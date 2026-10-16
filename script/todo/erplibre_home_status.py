@@ -14,7 +14,7 @@ Les faits :
 
 - extension_linked, venv, udev_rule, unit_file : bool ;
 - extension : {"state": float|None, "error": str} ;
-- journal : {"read": bool, "failed": [id d'indicateur]} ;
+- journal : {"read": bool, "failed": [id d'indicateur], "visible": bool} ;
 - unit_enabled, unit_active : sortie de systemctl is-enabled / is-active,
   "" quand l'unité n'est pas installée ou que systemctl n'a rien rendu ;
 - settings : les réglages du service, défauts compris ;
@@ -63,6 +63,12 @@ CMD_JOURNAL = (
 JOURNAL_GREP = (
     "journalctl --user -b -o cat _COMM=gnome-shell | grep ERPLibreHome"
 )
+# Les deux remèdes d'un journal que l'utilisateur ne lit pas ; TODO ne
+# passe jamais par sudo, il les montre.
+JOURNAL_HINT = (
+    "sudo usermod -aG systemd-journal $USER"
+    " # or: Storage=persistent in /etc/systemd/journald.conf"
+)
 STREAMDECK_INSTALL = "make erplibre_home_streamdeck_install"
 
 
@@ -100,11 +106,17 @@ def parse_extension_info(text):
 
 
 def parse_journal(text):
-    """{"read": bool, "failed": [id]} : read quand la ligne
+    """{"read": bool, "failed": [id], "visible": bool} : read quand la ligne
     « [ERPLibreHome] enabled » y est, preuve que le journal de la session a
-    été lu ; failed, les indicateurs non montés, triés, sans doublon."""
+    été lu ; failed, les indicateurs non montés, triés, sans doublon ;
+    visible quand la requête rend la moindre ligne. Une session GNOME en
+    marche écrit toujours dans le journal de gnome-shell : une sortie vide
+    veut dire un journal que l'utilisateur ne lit pas (stockage volatil de
+    journald, utilisateur hors du groupe systemd-journal), non un journal
+    sans indicateur."""
     lignes = (text or "").splitlines()
     return {
+        "visible": any(ligne.strip() for ligne in lignes),
         "read": any(
             ligne.strip().endswith("[ERPLibreHome] enabled")
             for ligne in lignes
@@ -217,7 +229,9 @@ def status_lines(facts):
             extension["error"] or "-",
         )
     journal = facts["journal"]
-    if not journal["read"]:
+    if not journal["read"] and not journal["visible"]:
+        indicateurs = t("Indicators: journal not readable by this user")
+    elif not journal["read"]:
         indicateurs = t("Indicators: journal not read")
     elif journal["failed"]:
         indicateurs = "%s %s" % (
@@ -304,6 +318,10 @@ def diagnosis_lines(facts):
             )
         )
     journal = facts["journal"]
+    if not journal["read"] and not journal["visible"]:
+        problemes.append(
+            (t("The journal is not readable by this user"), JOURNAL_HINT)
+        )
     if journal["read"] and journal["failed"]:
         problemes.append(
             (

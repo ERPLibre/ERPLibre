@@ -330,6 +330,14 @@ TRANSLATIONS = {
         "fr": "Indicateurs : journal non lu",
         "en": "Indicators: journal not read",
     },
+    "Indicators: journal not readable by this user": {
+        "fr": "Indicateurs : journal illisible par cet utilisateur",
+        "en": "Indicators: journal not readable by this user",
+    },
+    "The journal is not readable by this user": {
+        "fr": "Le journal n'est pas lisible par cet utilisateur",
+        "en": "The journal is not readable by this user",
+    },
     "Indicators: failed to mount:": {
         "fr": "Indicateurs : non montés :",
         "en": "Indicators: failed to mount:",
