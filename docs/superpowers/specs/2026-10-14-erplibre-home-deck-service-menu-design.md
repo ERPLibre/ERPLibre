@@ -254,7 +254,8 @@ wait 1.5 s without blocking the shell, then read the unit's `ActiveState`,
 runs, the notice says why: the program holding the deck (from the lock's
 text), no visual Stream Deck (exit 3), the line the entry point's `--check`
 prints for a skipped start, or the state and exit status of a program that
-failed or waits for its restart (`SubState=auto-restart`). The other
+failed or waits for its restart (`SubState=auto-restart`, or
+`auto-restart-queued` from systemd 254 on). The other
 indicators are unchanged.
 
 ## Testing

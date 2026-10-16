@@ -35,6 +35,9 @@ export const DECK_ENTRY_REL = 'script/install/erplibre_home_deck.sh';
 // ActiveState values in which the deck program runs or is about to.
 const RUNNING_STATES = ['active', 'activating', 'reloading'];
 
+// SubState values of a program that exited and waits for its restart.
+const RESTART_SUBSTATES = ['auto-restart', 'auto-restart-queued'];
+
 // Exit codes of the deck programs that the unit does not restart
 // (script/stream_deck/deck_lock.py: BUSY_EXIT, NO_DECK_EXIT).
 const BUSY_EXIT = '2';
@@ -123,12 +126,13 @@ export function parseUnitShow(stdout) {
  * that reports a skip as success, no main process ever ran); otherwise
  * 'failed', with the state, the result and a non-zero exit status as
  * `detail`. A program that exited and waits for Restart=on-failure shows
- * ActiveState=activating with SubState=auto-restart: it does not run, and
+ * ActiveState=activating with SubState=auto-restart, or, from systemd 254
+ * on, auto-restart-queued once RestartSec has elapsed: it does not run, and
  * counts as 'failed' under the name of that sub-state.
  */
 export function deckStartOutcome(props) {
     const state = props.ActiveState ?? '';
-    const restarting = props.SubState === 'auto-restart';
+    const restarting = RESTART_SUBSTATES.includes(props.SubState);
     if (deckRunning(state) && !restarting)
         return {kind: 'running'};
     if (props.ExecMainCode === CLD_EXITED) {
