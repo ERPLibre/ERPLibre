@@ -180,7 +180,13 @@ class LesJeux(unittest.TestCase):
         sortie, _ = self.shell("GAMES=off\n")
         self.assertIn("GAMES=off", sortie)
         self.assertIn("streamdeck.conf", sortie)
-        self.assertIn("TODO", sortie)
+        self.assertIn("TODO › Stream Deck › Games on/off", sortie)
+
+    def test_the_message_shows_a_carriage_return_instead_of_obeying_it(self):
+        sortie, _ = self.shell("GAMES=on\r\n")
+        message = sortie.split("rc=2", 1)[1]
+        self.assertIn("GAMES=on\\r", message)
+        self.assertNotIn("\r", message)
 
     def test_xdg_config_home_wins(self):
         with tempfile.TemporaryDirectory() as autre:

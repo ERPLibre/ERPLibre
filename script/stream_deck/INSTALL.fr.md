@@ -103,7 +103,6 @@ programme depuis ce dépôt, et ses réglages
 ```
 DECK_PROGRAM=tiler
 RESTART_AFTER_GAME=yes
-GAMES=on
 ```
 
 `DECK_PROGRAM` vaut `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
@@ -125,7 +124,7 @@ autre valeur la désactive aussi et TODO › Stream Deck › Diagnostic la
 nomme. Jeux désactivés, le menu des jeux de TODO, la galerie,
 `make streamdeck_<jeu>` et le passage de relais refusent de lancer un jeu et
 disent comment les activer ; le programme du deck, le contrôleur et le
-service ne sont jamais touchés. Se règle dans TODO › Stream Deck › Jeux,
+service ne sont jamais touchés. Se règle dans TODO › Stream Deck › Jeux on/off,
 ou à la main dans ce fichier.
 
 Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent

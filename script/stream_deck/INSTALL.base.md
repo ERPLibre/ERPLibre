@@ -211,7 +211,6 @@ programme depuis ce dépôt, et ses réglages
 ```
 DECK_PROGRAM=tiler
 RESTART_AFTER_GAME=yes
-GAMES=on
 ```
 
 <!-- [end] -->
@@ -234,7 +233,7 @@ too and TODO › Stream Deck › Diagnosis names it. With the games off, the
 TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
 refuse to start a game and say how to enable them; the deck program, the
 controller and the service are never affected. Set it from
-TODO › Stream Deck › Games, or by hand in this file.
+TODO › Stream Deck › Games on/off, or by hand in this file.
 
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,
@@ -272,7 +271,7 @@ autre valeur la désactive aussi et TODO › Stream Deck › Diagnostic la
 nomme. Jeux désactivés, le menu des jeux de TODO, la galerie,
 `make streamdeck_<jeu>` et le passage de relais refusent de lancer un jeu et
 disent comment les activer ; le programme du deck, le contrôleur et le
-service ne sont jamais touchés. Se règle dans TODO › Stream Deck › Jeux,
+service ne sont jamais touchés. Se règle dans TODO › Stream Deck › Jeux on/off,
 ou à la main dans ce fichier.
 
 Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent

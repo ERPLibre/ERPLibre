@@ -509,7 +509,10 @@ class LeDiagnostic(unittest.TestCase):
         f = faits(unit_file=False)
         f["settings"] = dict(f["settings"], GAMES="yes")
         self.assertIn(
-            ("Unknown GAMES value: 'yes'", "TODO › Stream Deck › Games"),
+            (
+                "Unknown GAMES value: 'yes'",
+                "TODO › Stream Deck › Games on/off",
+            ),
             statut.diagnosis_lines(f),
         )
 

@@ -355,7 +355,7 @@ def diagnosis_lines(facts):
         problemes.append(
             (
                 "%s %r" % (t("Unknown GAMES value:"), valeur_jeux),
-                t("TODO › Stream Deck › Games"),
+                t("TODO › Stream Deck › Games on/off"),
             )
         )
     if not facts["unit_file"]:

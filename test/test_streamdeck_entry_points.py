@@ -552,8 +552,17 @@ class TestTodoGamesLauncher(unittest.TestCase):
 
     def test_games_off_says_so_and_scans_nothing(self):
         for langue, attendu in (
-            ("en", "Stream Deck games are disabled"),
-            ("fr", "Les jeux Stream Deck sont désactivés"),
+            (
+                "en",
+                "Stream Deck games are disabled (GAMES): enable them in"
+                " TODO › Stream Deck › Games on/off, or set GAMES=on in ",
+            ),
+            (
+                "fr",
+                "Les jeux Stream Deck sont désactivés (GAMES) : activez-les"
+                " dans TODO › Stream Deck › Jeux on/off, ou mettez GAMES=on"
+                " dans ",
+            ),
         ):
             with self.subTest(langue=langue):
                 todo_i18n._current_lang = langue
@@ -575,6 +584,9 @@ class TestTodoGamesLauncher(unittest.TestCase):
                     self.assertFalse(todo.prompt_execute_streamdeck_games())
                 scan.assert_not_called()
                 self.assertIn(attendu, out.getvalue())
+                self.assertIn(
+                    todo_mod.service.settings_path(), out.getvalue()
+                )
 
     def test_the_command_hands_the_deck_over_to_the_streamdeck_venv(self):
         todo = todo_mod.TODO.__new__(todo_mod.TODO)
