@@ -264,6 +264,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Creating a CRM lead with an e-mail, from the website form for instance, no longer raises ModuleNotFoundError on Odoo 18: `dnsq`, which flanker imports to check the MX, is installed
 - The Odoo 18 venv no longer prints an AttributeError from extendable-pydantic at every Python start: pydantic stays below 2.14, which removes the internal function it reads
 - `poetry_update.py` evaluates the `python_version` markers of manifest dependencies and reads ranges such as `>=1.7.1,<2.9.0`: a manifest's pin no longer overrides the ERPLibre one, and a range no longer stops the script. `oauthlib<4` and `pylint<4.1` keep the Odoo 18 resolution solvable
+- The Odoo 18 venv receives `websocket-client`, without which every browser test raises SkipTest: the 18.0 pyproject declared it under a `[poetry.group.dev.dependencies]` table, missing its `tool.` prefix, that Poetry ignores without a word. It is now a main dependency, pinned to 1.8.0 in the ERPLibre requirements so that `poetry_update.py` keeps it
 
 ## Removed
 

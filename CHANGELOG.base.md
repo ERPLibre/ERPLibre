@@ -468,6 +468,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Creating a CRM lead with an e-mail, from the website form for instance, no longer raises ModuleNotFoundError on Odoo 18: `dnsq`, which flanker imports to check the MX, is installed
 - The Odoo 18 venv no longer prints an AttributeError from extendable-pydantic at every Python start: pydantic stays below 2.14, which removes the internal function it reads
 - `poetry_update.py` evaluates the `python_version` markers of manifest dependencies and reads ranges such as `>=1.7.1,<2.9.0`: a manifest's pin no longer overrides the ERPLibre one, and a range no longer stops the script. `oauthlib<4` and `pylint<4.1` keep the Odoo 18 resolution solvable
+- The Odoo 18 venv receives `websocket-client`, without which every browser test raises SkipTest: the 18.0 pyproject declared it under a `[poetry.group.dev.dependencies]` table, missing its `tool.` prefix, that Poetry ignores without a word. It is now a main dependency, pinned to 1.8.0 in the ERPLibre requirements so that `poetry_update.py` keeps it
 
 <!-- [fr] -->
 
@@ -552,6 +553,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Créer un prospect CRM avec un courriel, depuis le formulaire du site par exemple, ne lève plus ModuleNotFoundError sur Odoo 18 : `dnsq`, que flanker importe pour vérifier le MX, est installé
 - Le venv d'Odoo 18 n'imprime plus une AttributeError d'extendable-pydantic à chaque démarrage de Python : pydantic reste sous 2.14, qui retire la fonction interne qu'il lit
 - `poetry_update.py` évalue les marqueurs `python_version` des dépendances de manifest et lit les plages comme `>=1.7.1,<2.9.0` : l'épingle d'un manifest n'écrase plus celle d'ERPLibre, et une plage n'arrête plus le script. `oauthlib<4` et `pylint<4.1` gardent la résolution d'Odoo 18 possible
+- Le venv d'Odoo 18 reçoit `websocket-client`, sans lequel chaque test navigateur lève SkipTest : le pyproject 18.0 le déclarait sous une table `[poetry.group.dev.dependencies]`, privée de son préfixe `tool.`, que Poetry ignore sans un mot. C'est désormais une dépendance principale, épinglée à 1.8.0 dans le requirements d'ERPLibre pour que `poetry_update.py` la garde
 
 <!-- [en] -->
 ## Removed
