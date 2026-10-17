@@ -42,12 +42,15 @@ def read_settings(path):
     """DEFAULTS, puis chaque ligne « CLÉ=valeur » de `path` ; la dernière
     ligne d'une clé l'emporte. Un fichier absent ou illisible rend
     DEFAULTS. Une ligne sans « = » est ignorée. Les lignes se coupent sur
-    « \\n » seul, comme la lecture du shell."""
+    « \\n » seul, comme la lecture du shell. Un octet hors UTF-8 devient
+    U+FFFD : une clé ou une valeur ASCII se lit comme dans le shell, qui
+    compare des octets, et une valeur qui en porte reste affichable et
+    hors PROGRAMS."""
     settings = dict(DEFAULTS)
     try:
-        with open(path, encoding="utf-8", newline="") as fh:
+        with open(path, encoding="utf-8", errors="replace", newline="") as fh:
             lignes = fh.read().split("\n")
-    except (OSError, UnicodeDecodeError):
+    except OSError:
         return settings
     for ligne in lignes:
         cle, egal, valeur = ligne.partition("=")
@@ -83,9 +86,14 @@ def settings_text(current, updates):
 def write_settings(path, updates):
     """Pose `updates` dans le fichier de réglages `path`, créé au besoin.
     N'écrit que si le texte change ; rend vrai quand il a écrit. Le
-    fichier se lit et s'écrit sans traduction des fins de ligne."""
+    fichier se lit et s'écrit sans traduction des fins de ligne, et sous
+    « surrogateescape » : un octet hors UTF-8 se relit en substitut et se
+    réécrit en lui-même, si bien que seules les lignes des clés posées
+    changent, octet pour octet, comme avec settings_content."""
     try:
-        with open(path, encoding="utf-8", newline="") as fh:
+        with open(
+            path, encoding="utf-8", errors="surrogateescape", newline=""
+        ) as fh:
             avant = fh.read()
     except FileNotFoundError:
         avant = ""
@@ -94,7 +102,13 @@ def write_settings(path, updates):
         return False
     os.makedirs(os.path.dirname(path), exist_ok=True)
     temporaire = path + ".tmp"
-    with open(temporaire, "w", encoding="utf-8", newline="") as fh:
+    with open(
+        temporaire,
+        "w",
+        encoding="utf-8",
+        errors="surrogateescape",
+        newline="",
+    ) as fh:
         fh.write(apres)
     os.replace(temporaire, path)
     return True

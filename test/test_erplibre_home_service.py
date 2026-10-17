@@ -73,13 +73,17 @@ class LaLecture(unittest.TestCase):
 
     def test_python_and_the_shell_library_read_the_same_value(self):
         """read_settings et deck_setting de la bibliothèque shell rendent
-        la même valeur, y compris sur un « \\r » et sans retour final."""
+        la même valeur, y compris sur un « \\r », sans retour final, et
+        sur un fichier qui n'est pas en UTF-8 : le shell lit des octets,
+        un octet hors UTF-8 s'y compare remplacé par U+FFFD."""
         contenus = (
             "DECK_PROGRAM=none\n",
             "DECK_PROGRAM=a\nDECK_PROGRAM=controller",
             "# DECK_PROGRAM=none\nDECK_PROGRAM=\n",
             "DECK_PROGRAM=none\rRESTART_AFTER_GAME=no\n",
             "sans egal\nRESTART_AFTER_GAME=no\n",
+            "# réglé à la main\nDECK_PROGRAM=none\n".encode("latin-1"),
+            "DECK_PROGRAM=été\nRESTART_AFTER_GAME=no\n".encode("latin-1"),
         )
         for contenu in contenus:
             with self.subTest(contenu=contenu):
@@ -88,7 +92,9 @@ class LaLecture(unittest.TestCase):
                         dossier, ".config/erplibre-home/streamdeck.conf"
                     )
                     chemin.parent.mkdir(parents=True)
-                    chemin.write_bytes(contenu.encode("utf-8"))
+                    if isinstance(contenu, str):
+                        contenu = contenu.encode("utf-8")
+                    chemin.write_bytes(contenu)
                     env = {
                         k: v
                         for k, v in os.environ.items()
@@ -108,7 +114,9 @@ class LaLecture(unittest.TestCase):
                             timeout=30,
                         )
                         self.assertEqual(0, fini.returncode, fini.stderr)
-                        lu[cle] = fini.stdout.decode().rstrip("\n")
+                        lu[cle] = fini.stdout.decode(errors="replace").rstrip(
+                            "\n"
+                        )
                     self.assertEqual(
                         lu,
                         service.read_settings(str(chemin)),
@@ -194,6 +202,56 @@ class LEcriture(unittest.TestCase):
                 attendu = fini.stdout.decode("utf-8")
                 self.assertEqual(attendu, service.settings_text(entree, maj))
                 self.assertEqual(attendu, ecrit)
+
+    def test_bytes_outside_utf8_survive_an_update(self):
+        """Un fichier qui n'est pas en UTF-8 se met à jour sans erreur :
+        ses octets restent tels quels hors des lignes des clés posées,
+        comme le fait settings_content de l'installateur sur le même
+        fichier. Une mise à jour qui ne change rien ne le réécrit pas."""
+        commentaire = "# réglé à la main, ½\n".encode("latin-1")
+        avant = commentaire + b"DECK_PROGRAM=tiler\nEXEMPLE=\xe9\n"
+        maj = {"DECK_PROGRAM": "none", "RESTART_AFTER_GAME": "no"}
+        attendu = (
+            commentaire
+            + b"DECK_PROGRAM=none\nEXEMPLE=\xe9\nRESTART_AFTER_GAME=no\n"
+        )
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = Path(dossier, "streamdeck.conf")
+            installe = Path(dossier, "installe.conf")
+            chemin.write_bytes(avant)
+            installe.write_bytes(avant)
+            self.assertTrue(service.write_settings(str(chemin), maj))
+            self.assertEqual(attendu, chemin.read_bytes())
+            lu = service.read_settings(str(chemin))
+            self.assertEqual("none", lu["DECK_PROGRAM"])
+            self.assertEqual("no", lu["RESTART_AFTER_GAME"])
+            mtime = chemin.stat().st_mtime_ns
+            self.assertFalse(service.write_settings(str(chemin), maj))
+            self.assertEqual(mtime, chemin.stat().st_mtime_ns)
+            env = {
+                k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"
+            }
+            env.update(
+                {
+                    "HOME": dossier,
+                    "INSTALLEUR": str(INSTALLEUR),
+                    "FICHIER": str(installe),
+                }
+            )
+            fini = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    'ERPLIBRE_HOME_SOURCE_ONLY=1 . "$INSTALLEUR"\n'
+                    'settings_content "$FICHIER"'
+                    " DECK_PROGRAM=none RESTART_AFTER_GAME=no\n",
+                ],
+                capture_output=True,
+                env=env,
+                timeout=30,
+            )
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        self.assertEqual(attendu, fini.stdout)
 
 
 class LaCommande(unittest.TestCase):
