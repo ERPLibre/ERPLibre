@@ -181,12 +181,24 @@ makes that visible instead of silent.
   descriptor; one started with its descriptors closed finds an ancestor
   holding the lock as `game`, runs under it, and takes the lock over when
   the game releases it.
+- The lock's text is `<PID> <program> <start>`, where `<start>` is the
+  holder's process start time (field 22 of `/proc/<PID>/stat`). The third
+  field is optional: a text without it still parses, and keeps the older
+  rules. The ancestor check above accepts the PID only when that ancestor's
+  start time matches the text's: a deck program that outlives its wrapper
+  leaves the text naming a dead PID, and an unrelated ancestor that reuses
+  that PID is not taken for the game.
 - SIGTERM or SIGINT sent to the wrapper reaches every descendant (a game
   under the gallery's bash loop is a grandchild), except, for SIGINT, the
   processes in the terminal's foreground that Ctrl-C already hit; the
   wrapper then waits for them all before it exits. Diagnosis advises to
   close the game first, and, as a last resort, `kill` on every process that
   holds the lock, since the wrapper the lock names may already be dead.
+- Status and Diagnosis read the main lock only. When the PID the lock
+  names no longer designates its writer (gone, or its start time differs),
+  Status marks it "no longer running" and Diagnosis never offers `kill` on
+  it: it offers the processes that hold the lock instead, or only "close
+  it" / "close the game" when it finds none.
 - TODO's games menu and the gallery's launcher (`gallery_server.py`, the bash
   line built by `_game_bash_cmd`) run each game through the helper. The
   gallery's restart loop ("r" + Enter) stays inside one hand-over, so the
@@ -274,7 +286,9 @@ unchanged.
     idempotence, both uninstalls remove unit and settings;
   - `erplibre_home_deck.sh --check` on each condition, and the program it
     `exec`s for each `DECK_PROGRAM`, with a fake venv python;
-  - the lock: a second holder exits 2 and names the first;
+  - the lock: a second holder exits 2 and names the first; the text
+    carries the holder's start time, and an ancestor reusing a dead
+    wrapper's PID is not taken for the game;
   - the hand-over: stops and restarts an active fake unit, keeps a stopped
     one stopped, honours `RESTART_AFTER_GAME=no`, returns the game's code;
   - the submenu numbering, i18n keys, the install questions turning into

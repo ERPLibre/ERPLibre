@@ -27,6 +27,10 @@ Ce que ces tests gardent :
 - un programme du deck lancé sous le jeu tourne sous son verrou, et le
   reprend à son compte s'il survit au jeu sans en avoir hérité ; hérité
   ou repris, le verrou écarte tout autre programme dès la fin du jeu ;
+- le texte porte l'instant de départ du détenteur, troisième champ
+  facultatif : un ancêtre qui a repris le PID d'une enveloppe morte n'est
+  pas pris pour le jeu, et holder_running() dit si le PID nommé désigne
+  encore son auteur ;
 - SIGTERM devient SystemExit : les finally et atexit d'un programme du
   deck passent ;
 - le tiler et le contrôleur prennent le verrou avant d'ouvrir le deck,
@@ -58,6 +62,13 @@ def charger():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def debut(pid):
+    """Le champ 22 de /proc/<pid>/stat, l'instant de départ du processus,
+    tel que le verrou l'écrit."""
+    with open("/proc/%d/stat" % pid, encoding="utf-8") as fh:
+        return fh.read().rsplit(")", 1)[1].split()[19]
 
 
 # Le programme d'un preneur : argv = dossier du module, programme, chemin.
@@ -135,7 +146,10 @@ class Verrou(unittest.TestCase):
         self.addCleanup(tenu.close)
         with self.assertRaises(self.deck_lock.DeckBusy) as pris:
             self.deck_lock.acquire("controller", self.chemin)
-        self.assertEqual((str(os.getpid()), "tiler"), pris.exception.holder)
+        self.assertEqual(
+            (str(os.getpid()), "tiler", debut(os.getpid())),
+            pris.exception.holder,
+        )
 
     def test_a_holder_leaving_during_acquire_hands_the_lock_over(self):
         """Le détenteur sort entre l'échec du flock et la recherche d'un
@@ -153,7 +167,7 @@ class Verrou(unittest.TestCase):
         tenu = self.deck_lock.acquire("controller", self.chemin)
         self.addCleanup(tenu.close)
         self.assertEqual(
-            (str(os.getpid()), "controller"),
+            (str(os.getpid()), "controller", debut(os.getpid())),
             self.deck_lock.holder(self.chemin),
         )
 
@@ -162,7 +176,8 @@ class Verrou(unittest.TestCase):
         premier = self.detenteur("tiler")
         for _fois in range(2):
             self.assertEqual(
-                (str(premier.pid), "tiler"), self.deck_lock.holder(self.chemin)
+                (str(premier.pid), "tiler", debut(premier.pid)),
+                self.deck_lock.holder(self.chemin),
             )
         premier.stdin.close()
         premier.wait(10)
@@ -242,11 +257,25 @@ class HolderPrudent(unittest.TestCase):
 
     def test_only_a_numeric_pid_is_kept(self):
         self.tenir("12;reboot tiler\n")
-        self.assertEqual(("?", "tiler"), self.deck_lock.holder(self.chemin))
+        self.assertEqual(
+            ("?", "tiler", None), self.deck_lock.holder(self.chemin)
+        )
 
     def test_an_odd_program_name_is_not_kept(self):
         self.tenir("12 $(exemple)\n")
-        self.assertEqual(("12", "?"), self.deck_lock.holder(self.chemin))
+        self.assertEqual(("12", "?", None), self.deck_lock.holder(self.chemin))
+
+    def test_the_start_time_is_an_optional_third_field(self):
+        """Un texte écrit avant le troisième champ se lit encore ; un
+        troisième champ qui n'est pas fait de chiffres vaut « ? », que
+        rien ne reconnaît."""
+        for texte, attendu in (
+            ("12 tiler\n", ("12", "tiler", None)),
+            ("12 tiler 345\n", ("12", "tiler", "345")),
+            ("12 tiler 3;4\n", ("12", "tiler", "?")),
+        ):
+            with self.subTest(texte=texte):
+                self.assertEqual(attendu, self.deck_lock.parse_holder(texte))
 
     def test_a_directory_open_to_others_gives_no_holder(self):
         self.tenir("12 tiler\n", mode=0o777)
@@ -274,11 +303,61 @@ class HolderPrudent(unittest.TestCase):
         self.assertEqual("None\n", fini.stdout)
 
 
+def ligne_stat(pid, etat, depart):
+    """Une ligne de /proc/<pid>/stat : un nom à espaces et parenthèse, puis
+    l'état (champ 3) et l'instant de départ (champ 22)."""
+    milieu = " ".join(["0"] * 18)
+    return "%d (a) b) %s %s %s 0 0\n" % (pid, etat, milieu, depart)
+
+
+class LeDetenteurNomme(unittest.TestCase):
+    """holder_running() : le PID que nomme le verrou désigne-t-il encore le
+    processus qui l'a écrit ? Un /proc écrit à la main."""
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.proc = dossier.name
+        for pid, etat in ((123, "S"), (124, "Z")):
+            os.makedirs(os.path.join(self.proc, str(pid)))
+            with open(os.path.join(self.proc, str(pid), "stat"), "w") as fh:
+                fh.write(ligne_stat(pid, etat, 5555))
+        self.deck_lock = charger()
+
+    def test_the_start_time_must_match(self):
+        for tenu, attendu in (
+            (("123", "game", "5555"), True),
+            (("123", "game", "6666"), False),
+            (("123", "game", "?"), False),
+            (("123", "game", None), True),
+            (("124", "game", "5555"), False),
+            (("125", "game", None), False),
+            (("?", "game", None), False),
+        ):
+            with self.subTest(tenu=tenu):
+                self.assertEqual(
+                    attendu, self.deck_lock.holder_running(tenu, self.proc)
+                )
+
+    def test_a_live_holder_is_running(self):
+        dossier = os.path.join(self.proc, "run", "erplibre-home")
+        tenu = self.deck_lock.acquire("tiler", os.path.join(dossier, "x"))
+        self.addCleanup(tenu.close)
+        self.assertTrue(
+            self.deck_lock.holder_running(
+                self.deck_lock.holder(os.path.join(dossier, "x"))
+            )
+        )
+
+
 # Un programme python qui écrit le détenteur vu de l'intérieur de la
-# commande, et le PID de son parent : argv = dossier du module, chemin.
+# commande, le PID de son parent et l'instant de départ de celui-ci :
+# argv = dossier du module, chemin.
 VU_DEDANS = (
     "import os, sys; sys.path.insert(0, sys.argv[1]); import deck_lock;"
-    " print(deck_lock.holder(sys.argv[2]), os.getppid())"
+    " p = os.getppid();"
+    " d = open('/proc/%d/stat' % p).read().rsplit(')', 1)[1].split()[19];"
+    " print(deck_lock.holder(sys.argv[2]), p, d)"
 )
 
 
@@ -337,8 +416,8 @@ class LaCommandeSousVerrou(unittest.TestCase):
             "game", sys.executable, "-c", VU_DEDANS, str(DECK_DIR), self.chemin
         )
         self.assertEqual(0, fini.returncode, fini.stderr)
-        tenu, parent = fini.stdout.rsplit(" ", 1)
-        self.assertEqual(str((parent.strip(), "game")), tenu)
+        tenu, parent, depart = fini.stdout.rsplit(" ", 2)
+        self.assertEqual(str((parent, "game", depart.strip())), tenu)
         self.assertIsNone(self.deck_lock.holder(self.chemin))
 
     def test_the_exit_code_and_a_signal_pass_through(self):
@@ -384,7 +463,7 @@ class LaCommandeSousVerrou(unittest.TestCase):
         jeu.kill()
         jeu.wait(10)
         self.assertEqual(
-            (str(jeu.pid), "game"), self.deck_lock.holder(self.chemin)
+            (str(jeu.pid), "game"), self.deck_lock.holder(self.chemin)[:2]
         )
         tuer(pid)
         self.attendre_le_verrou_libre()
@@ -457,7 +536,8 @@ class LaCommandeSousVerrou(unittest.TestCase):
 
     def attendre_le_jeu(self, jeu):
         for _fois in range(100):
-            if self.deck_lock.holder(self.chemin) == (str(jeu.pid), "game"):
+            tenu = self.deck_lock.holder(self.chemin)
+            if tenu and tenu[:2] == (str(jeu.pid), "game"):
                 return
             time.sleep(0.05)
         self.fail("the lock was never taken as game")
@@ -584,7 +664,8 @@ class LaCommandeSousVerrou(unittest.TestCase):
         programme = int(fini.stdout)
         self.addCleanup(tuer, programme)
         for _fois in range(200):
-            if self.deck_lock.holder(self.chemin) == (str(programme), "tiler"):
+            tenu = self.deck_lock.holder(self.chemin)
+            if tenu and tenu[:2] == (str(programme), "tiler"):
                 break
             time.sleep(0.05)
         else:
@@ -621,7 +702,7 @@ class LaCommandeSousVerrou(unittest.TestCase):
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertEqual("pret\n", fini.stdout)
         self.assertEqual(
-            ("4000000000", "game"), self.deck_lock.holder(self.chemin)
+            ("4000000000", "game", None), self.deck_lock.holder(self.chemin)
         )
 
     def test_a_deck_program_that_outlives_the_game_keeps_others_out(self):
@@ -673,6 +754,45 @@ class LaCommandeSousVerrou(unittest.TestCase):
                 self.assertEqual("", second.stdout)
                 tuer(programme)
                 self.attendre_le_verrou_libre()
+
+    def tenir_au_nom_du_jeu(self, texte):
+        """Le verrou tenu par ce processus, sur un descripteur que ses
+        enfants n'héritent pas, avec `texte`."""
+        os.makedirs(os.path.dirname(self.chemin), mode=0o700, exist_ok=True)
+        tenu = open(self.chemin, "w", encoding="utf-8")
+        self.addCleanup(tenu.close)
+        tenu.write(texte)
+        tenu.flush()
+        fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return tenu
+
+    def test_a_reused_wrapper_pid_is_not_taken_for_the_game(self):
+        """Le verrou nomme une enveloppe morte dont le PID est repris par un
+        ancêtre du programme : l'instant de départ ne concorde pas, et le
+        programme sort en 2 au lieu de partager le deck. Un texte sans
+        instant de départ garde l'ancienne règle."""
+        moi = os.getpid()
+        for texte, code in (
+            ("%d game %d\n" % (moi, int(debut(moi)) + 1), 2),
+            ("%d game %s\n" % (moi, debut(moi)), 0),
+            ("%d game\n" % moi, 0),
+        ):
+            with self.subTest(texte=texte), self.tenir_au_nom_du_jeu(texte):
+                fini = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        PRENDRE.format(fonction="acquire_or_exit"),
+                        str(DECK_DIR),
+                        "tiler",
+                        self.chemin,
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(code, fini.returncode, fini.stderr)
 
     def test_sigterm_to_the_wrapper_ends_the_game(self):
         """« kill <pid> », que la diagnostic propose quand un jeu tient le

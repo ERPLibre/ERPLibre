@@ -207,6 +207,9 @@ test('the lock names its holder like deck_lock.parse_holder', () => {
         '/run/user/1234/erplibre-home/deck.lock');
     assert.deepEqual(parseLockHolder('4242 game\n'),
         {pid: '4242', program: 'game'});
+    // The optional third field, the holder's start time, is not shown.
+    assert.deepEqual(parseLockHolder('4242 game 123456\n'),
+        {pid: '4242', program: 'game'});
     assert.deepEqual(parseLockHolder('12;reboot $(exemple)\n'),
         {pid: '?', program: '?'});
     assert.equal(parseLockHolder(''), null);
