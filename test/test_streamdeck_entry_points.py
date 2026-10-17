@@ -48,6 +48,7 @@ from script.todo import todo_i18n  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 MAKEFILE = ROOT / "conf" / "make.streamdeck.Makefile"
 DECK_DIR = ROOT / "script" / "stream_deck"
+GAMES_DIR = DECK_DIR / "games"
 REQUIREMENTS = DECK_DIR / "requirements.txt"
 VENV_REF = "$(STREAMDECK_PY)"
 INSTALL_DECK = "make erplibre_home_streamdeck_install"
@@ -63,10 +64,8 @@ APPEL_PYTHON = re.compile(r"\bpython3?\s|\bpip3?\s+install|\S+\.py\b")
 # par son shebang : elle n'importe que la bibliothèque standard et tourne
 # avant que le venv existe. Le compilateur des locales n'est pas un point
 # d'entrée du deck : il garde le python3 du système.
-HORS_VENV = re.compile(
-    r"/tools/enable_next_login\.py\b|/po/compile_locales\.py\b"
-)
-SHEBANG_DECK = re.compile(r"\./script/stream_deck/\w+\.py")
+HORS_VENV = re.compile(r"/tools/enable_next_login\.py\b|/po/compile_locales\.py\b")
+SHEBANG_DECK = re.compile(r"\./script/stream_deck/[\w/]+\.py")
 REGLE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(?!=)(.*)$")
 
 
@@ -100,7 +99,7 @@ def regles(texte):
 
 def jeux():
     """Les jeux du dépôt : game_<id>.py -> id."""
-    return sorted(p.stem[len("game_") :] for p in DECK_DIR.glob("game_*.py"))
+    return sorted(p.stem[len("game_") :] for p in GAMES_DIR.glob("game_*.py"))
 
 
 class TestMakefileUsesTheVenv(unittest.TestCase):
@@ -148,7 +147,7 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
             self.assertIn(cible, self.regles)
             self.assertEqual(
                 self.regles[cible][1],
-                [f"{VENV_REF} script/stream_deck/game_{jeu}.py"],
+                [f"{VENV_REF} script/stream_deck/games/game_{jeu}.py"],
             )
 
     def test_the_tiler_target_is_an_alias(self):
@@ -218,7 +217,7 @@ class TestMakefileGuard(unittest.TestCase):
             res = self.make(f"STREAMDECK_PY={faux}", "streamdeck_snake")
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(
-            res.stdout.strip(), "faux-python script/stream_deck/game_snake.py"
+            res.stdout.strip(), "faux-python script/stream_deck/games/game_snake.py"
         )
 
 
@@ -228,9 +227,7 @@ class TestRequirements(unittest.TestCase):
         for ligne in REQUIREMENTS.read_text(encoding="utf-8").splitlines():
             ligne = ligne.split("#", 1)[0].strip()
             if ligne:
-                noms.add(
-                    re.split(r"[<>=!~\[; ]", ligne, maxsplit=1)[0].lower()
-                )
+                noms.add(re.split(r"[<>=!~\[; ]", ligne, maxsplit=1)[0].lower())
         return noms
 
     def test_what_the_deck_imports_is_required(self):
@@ -249,7 +246,7 @@ class TestRequirements(unittest.TestCase):
 def charger_galerie():
     """Charge gallery_server.py par son chemin : script/stream_deck n'est
     pas un paquet."""
-    chemin = DECK_DIR / "gallery_server.py"
+    chemin = GAMES_DIR / "gallery_server.py"
     spec = importlib.util.spec_from_file_location("gallery_server", chemin)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -275,9 +272,7 @@ def environnement_isole(tmp, unite_active):
     XDG_RUNTIME_DIR sous `tmp`, où la passation prend le verrou du deck au
     lieu de celui du compte qui lance les tests. Rend (env, journal)."""
     home = os.path.join(tmp, "home")
-    unite = os.path.join(
-        home, ".config/systemd/user/erplibre-home-streamdeck.service"
-    )
+    unite = os.path.join(home, ".config/systemd/user/erplibre-home-streamdeck.service")
     os.makedirs(os.path.dirname(unite))
     with open(unite, "w", encoding="utf-8") as f:
         f.write("[Unit]\n")
@@ -323,9 +318,7 @@ class TestGalleryLaunch(unittest.TestCase):
             ],
         )
         boucle = mots[6]
-        self.assertIn(
-            f"{shlex.quote(sys.executable)} {shlex.quote(jeu)};", boucle
-        )
+        self.assertIn(f"{shlex.quote(sys.executable)} {shlex.quote(jeu)};", boucle)
         self.assertNotIn("python3 ", boucle)
 
     def test_the_loop_really_starts_that_interpreter(self):
@@ -433,9 +426,7 @@ class TestTodoGamesLauncher(unittest.TestCase):
         sortie = io.StringIO()
         with (
             mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
-            mock.patch.object(
-                todo_mod.click, "prompt", side_effect=list(reponses)
-            ),
+            mock.patch.object(todo_mod.click, "prompt", side_effect=list(reponses)),
             contextlib.redirect_stdout(sortie),
         ):
             rendu = todo.prompt_execute_streamdeck_games()

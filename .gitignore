@@ -67,3 +67,4 @@ private/todo/todo_override_private.json
 
 # Sauvegardes locales des jeux Stream Deck.
 script/stream_deck/save/
+script/stream_deck/games/save/

@@ -1900,12 +1900,13 @@ class TODO(
         )
 
     def _scan_streamdeck_games(self):
-        """Scan game_*.py files and extract descriptions."""
+        """Scan script/stream_deck/games/game_*.py and extract descriptions."""
         import glob
 
         game_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "stream_deck",
+            "games",
         )
         pattern = os.path.join(game_dir, "game_*.py")
         games = []

@@ -21,97 +21,97 @@ streamdeck: $(STREAMDECK_PY)
 
 .PHONY: streamdeck_snake
 streamdeck_snake: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_snake.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_snake.py
 
 .PHONY: streamdeck_minesweeper
 streamdeck_minesweeper: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_minesweeper.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_minesweeper.py
 
 .PHONY: streamdeck_whackamole
 streamdeck_whackamole: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_whackamole.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_whackamole.py
 
 .PHONY: streamdeck_simon
 streamdeck_simon: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_simon.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_simon.py
 
 .PHONY: streamdeck_lightsout
 streamdeck_lightsout: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_lightsout.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_lightsout.py
 
 .PHONY: streamdeck_reaction
 streamdeck_reaction: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_reaction.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_reaction.py
 
 .PHONY: streamdeck_breakout
 streamdeck_breakout: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_breakout.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_breakout.py
 
 .PHONY: streamdeck_2048
 streamdeck_2048: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_2048.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_2048.py
 
 .PHONY: streamdeck_colormatch
 streamdeck_colormatch: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_colormatch.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_colormatch.py
 
 .PHONY: streamdeck_life
 streamdeck_life: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_life.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_life.py
 
 .PHONY: streamdeck_taquin
 streamdeck_taquin: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_taquin.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_taquin.py
 
 .PHONY: streamdeck_mastermind
 streamdeck_mastermind: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_mastermind.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_mastermind.py
 
 .PHONY: streamdeck_battleship
 streamdeck_battleship: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_battleship.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_battleship.py
 
 .PHONY: streamdeck_flappy
 streamdeck_flappy: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_flappy.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_flappy.py
 
 .PHONY: streamdeck_pong
 streamdeck_pong: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_pong.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_pong.py
 
 .PHONY: streamdeck_sokoban
 streamdeck_sokoban: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_sokoban.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_sokoban.py
 
 .PHONY: streamdeck_floodfill
 streamdeck_floodfill: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_floodfill.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_floodfill.py
 
 .PHONY: streamdeck_bomberman
 streamdeck_bomberman: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_bomberman.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_bomberman.py
 
 .PHONY: streamdeck_tictactoe
 streamdeck_tictactoe: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_tictactoe.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_tictactoe.py
 
 # Stream Deck + games (dials + touchscreen)
 
 .PHONY: streamdeck_safecracker
 streamdeck_safecracker: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_safecracker.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_safecracker.py
 
 .PHONY: streamdeck_slots
 streamdeck_slots: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_slots.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_slots.py
 
 .PHONY: streamdeck_colormixer
 streamdeck_colormixer: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_colormixer.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_colormixer.py
 
 .PHONY: streamdeck_djscratch
 streamdeck_djscratch: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_djscratch.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_djscratch.py
 
 # The deck program of ERPLibre Home; streamdeck_tiler is its former name.
 .PHONY: streamdeck_erplibre
@@ -341,95 +341,95 @@ erplibre_home_reload_clean:
 
 .PHONY: streamdeck_fishing
 streamdeck_fishing: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_fishing.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_fishing.py
 
 .PHONY: streamdeck_maze
 streamdeck_maze: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_maze.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_maze.py
 
 .PHONY: streamdeck_tetris
 streamdeck_tetris: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_tetris.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_tetris.py
 
 .PHONY: streamdeck_connect4
 streamdeck_connect4: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_connect4.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_connect4.py
 
 .PHONY: streamdeck_spaceinvaders
 streamdeck_spaceinvaders: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_spaceinvaders.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_spaceinvaders.py
 
 .PHONY: streamdeck_frogger
 streamdeck_frogger: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_frogger.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_frogger.py
 
 .PHONY: streamdeck_hangman
 streamdeck_hangman: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_hangman.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_hangman.py
 
 .PHONY: streamdeck_rps
 streamdeck_rps: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_rps.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_rps.py
 
 .PHONY: streamdeck_numberguess
 streamdeck_numberguess: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_numberguess.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_numberguess.py
 
 .PHONY: streamdeck_reversi
 streamdeck_reversi: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_reversi.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_reversi.py
 
 .PHONY: streamdeck_langton
 streamdeck_langton: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_langton.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_langton.py
 
 .PHONY: streamdeck_piano
 streamdeck_piano: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_piano.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_piano.py
 
 .PHONY: streamdeck_thermometer
 streamdeck_thermometer: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_thermometer.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_thermometer.py
 
 .PHONY: streamdeck_wordle
 streamdeck_wordle: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_wordle.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_wordle.py
 
 .PHONY: streamdeck_sudoku
 streamdeck_sudoku: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_sudoku.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_sudoku.py
 
 .PHONY: streamdeck_pacman
 streamdeck_pacman: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_pacman.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_pacman.py
 
 .PHONY: streamdeck_checkers
 streamdeck_checkers: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_checkers.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_checkers.py
 
 .PHONY: streamdeck_towerdefense
 streamdeck_towerdefense: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_towerdefense.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_towerdefense.py
 
 .PHONY: streamdeck_racer
 streamdeck_racer: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_racer.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_racer.py
 
 .PHONY: streamdeck_dragrace
 streamdeck_dragrace: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_dragrace.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_dragrace.py
 
 .PHONY: streamdeck_racingplus
 streamdeck_racingplus: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_racingplus.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_racingplus.py
 
 .PHONY: streamdeck_pinball
 streamdeck_pinball: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_pinball.py
+	$(STREAMDECK_PY) script/stream_deck/games/game_pinball.py
 
 .PHONY: streamdeck_gallery
 streamdeck_gallery: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/gallery_server.py
+	$(STREAMDECK_PY) script/stream_deck/games/gallery_server.py
 
 # ---------- Claude Code hooks ----------
 

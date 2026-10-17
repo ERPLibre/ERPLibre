@@ -123,7 +123,7 @@ export function streamDeckPython(root, fileExists) {
 }
 
 // Gallery server, relative to the checkout root.
-export const GALLERY_SERVER_REL = 'script/stream_deck/gallery_server.py';
+export const GALLERY_SERVER_REL = 'script/stream_deck/games/gallery_server.py';
 
 // `s` as one POSIX shell word: single-quoted, each ' written as '\''.
 function shellWord(s) {
