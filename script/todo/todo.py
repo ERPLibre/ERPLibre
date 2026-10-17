@@ -129,6 +129,7 @@ if __name__ == "__main__":
 from script.config import config_file
 from script.execute import execute
 from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
+from script.todo import erplibre_home_service as service
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
@@ -1849,6 +1850,18 @@ class TODO(
                 t(
                     "ERPLibre Home Stream Deck is not installed:"
                     " make erplibre_home_streamdeck_install"
+                )
+            )
+            return False
+        # GAMES=off, ou une valeur inconnue, coupe la bibliothèque de jeux ;
+        # le programme du deck n'en dépend pas.
+        if not service.games_enabled(
+            service.read_settings(service.settings_path())
+        ):
+            print(
+                t(
+                    "Stream Deck games are disabled (GAMES):"
+                    " enable them in TODO › Stream Deck › Games"
                 )
             )
             return False

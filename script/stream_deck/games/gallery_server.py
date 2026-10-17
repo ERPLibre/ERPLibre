@@ -31,6 +31,31 @@ ERPLIBRE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 HANDOVER = os.path.join(
     ERPLIBRE_DIR, "script", "install", "erplibre_home_handover.sh"
 )
+SETTINGS_LIB = os.path.join(
+    ERPLIBRE_DIR, "script", "install", "erplibre_home_settings.sh"
+)
+
+
+def _games_refusal():
+    """None quand GAMES active les jeux ; sinon la ligne qui dit pourquoi.
+    Le fichier se relit à chaque appel, par la bibliothèque shell qui le
+    lit pour make et la passation : un changement compte sans redémarrer
+    la galerie."""
+    fini = subprocess.run(
+        [
+            "bash",
+            "-c",
+            '. "$0" && { deck_games_enabled'
+            " || { deck_games_message; exit 1; }; }",
+            SETTINGS_LIB,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if fini.returncode == 0:
+        return None
+    return fini.stdout.strip() or fini.stderr.strip() or "games disabled"
 
 # Game metadata cache (populated at startup)
 _game_cache = []
@@ -270,6 +295,15 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
     def _launch_game(self, game_id):
         global _current_game_proc
 
+        refus = _games_refusal()
+        if refus:
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": refus}).encode())
+            return
+
         game_file = os.path.join(SCRIPT_DIR, f"game_{game_id}.py")
         if not os.path.isfile(game_file):
             self.send_response(404)
@@ -321,6 +355,10 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     global _game_cache
+    refus = _games_refusal()
+    if refus:
+        print(refus, file=sys.stderr)
+        sys.exit(1)
     print("Scanning games...")
     _game_cache = _scan_games()
     print(f"Found {len(_game_cache)} games")

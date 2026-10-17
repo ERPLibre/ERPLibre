@@ -117,6 +117,13 @@ TRANSLATIONS = {
         "fr": "Aucun jeu Stream Deck trouvé.",
         "en": "No Stream Deck games found.",
     },
+    "Stream Deck games are disabled (GAMES):"
+    " enable them in TODO › Stream Deck › Games": {
+        "fr": "Les jeux Stream Deck sont désactivés (GAMES) :"
+        " activez-les dans TODO › Stream Deck › Jeux",
+        "en": "Stream Deck games are disabled (GAMES):"
+        " enable them in TODO › Stream Deck › Games",
+    },
     "ERPLibre Home Stream Deck is not installed:"
     " make erplibre_home_streamdeck_install": {
         "fr": "ERPLibre Home Stream Deck n'est pas installé :"
