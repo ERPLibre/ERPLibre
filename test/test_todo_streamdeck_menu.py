@@ -591,5 +591,37 @@ class LesTraductions(unittest.TestCase):
                 self.assertTrue(entree.get("fr") and entree.get("en"))
 
 
+class LeReglageDesJeux(Menu):
+    def test_it_writes_off_without_the_unit_and_restarts_nothing(self):
+        commandes, _, _ = self.jouer("_streamdeck_games_setting", ("2",))
+        self.assertEqual("GAMES=off\n", self.reglages.read_text())
+        self.assertEqual([], commandes)
+        self.assertEqual([], self.sondes)
+
+    def test_keeping_the_current_value_writes_nothing(self):
+        _, sortie, _ = self.jouer("_streamdeck_games_setting", ("",))
+        self.assertFalse(self.reglages.exists())
+        self.assertIn("Unchanged.", sortie)
+
+    def test_an_invalid_value_needs_an_explicit_choice(self):
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("GAMES=peut-etre\n")
+        _, sortie, _ = self.jouer("_streamdeck_games_setting", ("", "1"))
+        self.assertIn("invalid", sortie)
+        self.assertEqual("GAMES=on\n", self.reglages.read_text())
+
+    def test_the_submenu_offers_the_entry(self):
+        todo = TODO.__new__(TODO)
+        with (
+            mock.patch.object(TODO, "_streamdeck_games_setting") as entree,
+            mock.patch.object(
+                streamdeck_menu.click, "prompt", side_effect=["11", "0"]
+            ),
+            mock.patch.object(TODO, "fill_help_info", return_value=""),
+        ):
+            todo.prompt_execute_streamdeck()
+        entree.assert_called_once_with()
+
+
 if __name__ == "__main__":
     unittest.main()

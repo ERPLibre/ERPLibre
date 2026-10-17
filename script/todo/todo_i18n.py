@@ -437,6 +437,25 @@ TRANSLATIONS = {
         "fr": "TODO › Stream Deck › Programme du deck",
         "en": "TODO › Stream Deck › Deck program",
     },
+    "Games - Enable or disable the games": {
+        "fr": "🎮 Jeux - Activer ou désactiver les jeux",
+        "en": "🎮 Games - Enable or disable the games",
+    },
+    "Games:": {"fr": "Jeux :", "en": "Games:"},
+    "Games: unknown value": {
+        "fr": "Jeux : valeur inconnue",
+        "en": "Games: unknown value",
+    },
+    "Unknown GAMES value:": {
+        "fr": "Valeur GAMES inconnue :",
+        "en": "Unknown GAMES value:",
+    },
+    "TODO › Stream Deck › Games": {
+        "fr": "TODO › Stream Deck › Jeux",
+        "en": "TODO › Stream Deck › Games",
+    },
+    "Enabled": {"fr": "Activés", "en": "Enabled"},
+    "Disabled": {"fr": "Désactivés", "en": "Disabled"},
     "No Stream Deck plugged in": {
         "fr": "Aucun Stream Deck branché",
         "en": "No Stream Deck plugged in",

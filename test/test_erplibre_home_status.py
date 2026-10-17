@@ -257,6 +257,7 @@ class LEtat(unittest.TestCase):
                 "Extension: active",
                 "Indicators: all mounted",
                 "Service: enabled, active, program tiler",
+                "Games: on",
                 "Deck lock: held by tiler (PID 4242)",
                 "Decks plugged in: Stream Deck MK.2",
                 "udev rule: present",
@@ -285,6 +286,7 @@ class LEtat(unittest.TestCase):
                 "Extension: state 3, error: boom",
                 "Indicators: failed to mount: device",
                 "Service: not installed",
+                "Games: on",
                 "Deck lock: free",
                 "Decks plugged in: 006c",
                 "udev rule: missing",
@@ -316,7 +318,7 @@ class LEtat(unittest.TestCase):
         self.assertEqual(
             "Indicators: journal not readable by this user", lignes[2]
         )
-        self.assertEqual("Decks plugged in: none", lignes[5])
+        self.assertEqual("Decks plugged in: none", lignes[6])
 
     def test_a_journal_with_lines_but_no_enabled_stays_not_read(self):
         lignes = statut.status_lines(
@@ -337,6 +339,18 @@ class LEtat(unittest.TestCase):
         )
         self.assertIn("systemd-journal", statut.JOURNAL_HINT)
         self.assertIn("persistent", statut.JOURNAL_HINT)
+
+    def test_status_shows_games_even_without_a_unit(self):
+        f = faits(unit_file=False)
+        f["settings"] = dict(f["settings"], GAMES="off")
+        self.assertIn("Games: off", statut.status_lines(f))
+
+    def test_status_shows_a_carriage_return_visibly(self):
+        f = faits()
+        f["settings"] = dict(f["settings"], GAMES="on\r")
+        self.assertIn(
+            "Games: unknown value 'on\\r'", statut.status_lines(f)
+        )
 
 
 class LeDiagnostic(unittest.TestCase):
@@ -489,6 +503,14 @@ class LeDiagnostic(unittest.TestCase):
             self.corrections(
                 settings={"DECK_PROGRAM": "none"}, unit_active="inactive"
             ),
+        )
+
+    def test_diagnosis_names_an_unknown_games_value(self):
+        f = faits(unit_file=False)
+        f["settings"] = dict(f["settings"], GAMES="yes")
+        self.assertIn(
+            ("Unknown GAMES value: 'yes'", "TODO › Stream Deck › Games"),
+            statut.diagnosis_lines(f),
         )
 
 

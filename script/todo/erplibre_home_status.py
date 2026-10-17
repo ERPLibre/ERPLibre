@@ -273,11 +273,17 @@ def status_lines(facts):
         )
     else:
         decks = t("Decks plugged in: none")
+    valeur_jeux = facts["settings"].get("GAMES", "on")
+    if valeur_jeux in service.GAMES_VALUES:
+        jeux = "%s %s" % (t("Games:"), valeur_jeux)
+    else:
+        jeux = "%s %r" % (t("Games: unknown value"), valeur_jeux)
     return [
         niveau,
         ligne_ext,
         indicateurs,
         unite,
+        jeux,
         verrou,
         decks,
         (
@@ -344,6 +350,14 @@ def diagnosis_lines(facts):
             (t("The Stream Deck level is not installed"), STREAMDECK_INSTALL)
         )
         return problemes
+    valeur_jeux = facts["settings"].get("GAMES", "on")
+    if valeur_jeux not in service.GAMES_VALUES:
+        problemes.append(
+            (
+                "%s %r" % (t("Unknown GAMES value:"), valeur_jeux),
+                t("TODO › Stream Deck › Games"),
+            )
+        )
     if not facts["unit_file"]:
         problemes.append(
             (t("The deck service is not installed"), STREAMDECK_INSTALL)
