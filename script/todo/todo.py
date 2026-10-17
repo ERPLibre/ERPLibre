@@ -1880,6 +1880,7 @@ class TODO(
                         self.execute.exec_command_live(
                             self._streamdeck_game_command(game["path"]),
                             source_erplibre=False,
+                            recap=False,
                         )
                     except KeyboardInterrupt:
                         print()

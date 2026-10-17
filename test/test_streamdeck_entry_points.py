@@ -454,6 +454,7 @@ class TestTodoGamesLauncher(unittest.TestCase):
             f"{shlex.quote(todo_mod.ERPLIBRE_HOME_HANDOVER)}"
             f" {shlex.quote(self.present)} {shlex.quote(self.JEU)}",
             source_erplibre=False,
+            recap=False,
         )
 
     def test_the_command_really_runs_the_game(self):

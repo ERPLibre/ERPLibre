@@ -484,6 +484,31 @@ class LAffichageUnique(Menu):
                 self.assertNotIn("Executed", sortie)
 
 
+class LeJeuLanceUneFois(Menu):
+    """Le jeu choisi s'affiche une fois, comme les autres commandes."""
+
+    def test_the_game_command_shows_once(self):
+        jeu = {"name": "g", "path": "script/stream_deck/game_g.py"}
+        todo_mod = sys.modules[TODO.__module__]
+        with (
+            mock.patch.object(todo_mod.os, "access", return_value=True),
+            mock.patch.object(
+                TODO, "_scan_streamdeck_games", return_value=[
+                    dict(jeu, description="g")
+                ]
+            ),
+            mock.patch.object(
+                todo_mod.click, "prompt", side_effect=["1", "0"]
+            ),
+        ):
+            commandes, sortie, _ = self.jouer(
+                "prompt_execute_streamdeck_games", (), ExecuteBannieres()
+            )
+        (commande,) = commandes
+        self.assertEqual(1, sortie.count(commande + "\n"), sortie)
+        self.assertNotIn("Executed", sortie)
+
+
 class LEtatEtLeDiagnostic(Menu):
     FAITS = {"exemple": True}
 
