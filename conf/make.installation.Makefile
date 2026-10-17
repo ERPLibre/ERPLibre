@@ -175,6 +175,11 @@ install_os:
 	#./script/install/install_dev.sh
 	./script/version/update_env_version.py --install
 
+# Browser for Odoo browser tests (tours, hoot), outside install_os on purpose
+.PHONY: install_browser_test
+install_browser_test:
+	./script/install/install_browser_test.sh
+
 .PHONY: install_production
 install_production:
 	./script/install/install_dev.sh
