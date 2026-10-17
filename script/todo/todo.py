@@ -181,6 +181,7 @@ from script.todo.install_update_menu import InstallUpdateMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
+from script.todo.ops_menu import OpsMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.python_menu import PythonMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -294,6 +295,7 @@ class TODO(
     SshKeyMenuMixin,
     StreamDeckMenuMixin,
     SystemMenuMixin,
+    OpsMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -453,6 +455,9 @@ class TODO(
 
 ── {t("🏠 ERPLibre Home")} ──
 [23] {t("ERPLibre Home - GNOME extension and Stream Deck")}
+
+── {t("Production")} ──
+[24] {t("Production - Update the modules of a systemd instance")}
 {retour(t("Back"))}
 """
         while True:
@@ -550,6 +555,10 @@ class TODO(
                     return
             elif status == "23":
                 status = self.prompt_execute_streamdeck()
+                if status is not False:
+                    return
+            elif status == "24":
+                status = self.prompt_execute_production()
                 if status is not False:
                     return
             else:
@@ -1394,6 +1403,7 @@ class TODO(
         "prompt_execute_streamdeck_games": "Games",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
+        "prompt_execute_production": "Production",
         "prompt_configuration": "Configuration",
     }
 

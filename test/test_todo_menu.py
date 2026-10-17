@@ -116,6 +116,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Docker / Podman": "prompt_execute_container",
         "System": "prompt_execute_system",
         "ERPLibre Home": "prompt_execute_streamdeck",
+        "Production": "prompt_execute_production",
     }
 
     def _entry_key(self, label):
@@ -729,6 +730,28 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
         "Change the Proxmox host": "_pve_forget_host",
+    }
+
+
+class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Production, dont une entrée arrête un service.
+
+    Chaque entrée a sa méthode : la mise à jour réelle et la simulation
+    seule se distinguent par leur nom, si bien qu'un décalage du dispatch
+    — la vraie mise à jour sous le libellé de la simulation — change la
+    méthode atteinte et fait échouer la table. La table ne lit que le nom
+    de la méthode, pas ses arguments ; test_ops_menu.py rejoue en plus le
+    choix au clavier.
+    """
+
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def prompt_execute_production(self):"
+    END = "def _ops_update_arguments(self):"
+    MINIMUM = 1
+
+    EXPECTED = {
+        "Update modules": "_ops_update_modules",
+        "Simulate only": "_ops_simulate_modules",
     }
 
 
