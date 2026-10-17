@@ -117,12 +117,13 @@ TRANSLATIONS = {
         "fr": "Aucun jeu Stream Deck trouvé.",
         "en": "No Stream Deck games found.",
     },
-    "Stream Deck games are disabled (GAMES):"
-    " enable them in TODO › Stream Deck › Games": {
-        "fr": "Les jeux Stream Deck sont désactivés (GAMES) :"
-        " activez-les dans TODO › Stream Deck › Jeux",
-        "en": "Stream Deck games are disabled (GAMES):"
-        " enable them in TODO › Stream Deck › Games",
+    "Stream Deck games are disabled (GAMES): enable them in"
+    " TODO › Stream Deck › Games on/off, or set GAMES=on in {path}": {
+        "fr": "Les jeux Stream Deck sont désactivés (GAMES) : activez-les"
+        " dans TODO › Stream Deck › Jeux on/off, ou mettez GAMES=on"
+        " dans {path}",
+        "en": "Stream Deck games are disabled (GAMES): enable them in"
+        " TODO › Stream Deck › Games on/off, or set GAMES=on in {path}",
     },
     "ERPLibre Home Stream Deck is not installed:"
     " make erplibre_home_streamdeck_install": {
@@ -437,9 +438,9 @@ TRANSLATIONS = {
         "fr": "TODO › Stream Deck › Programme du deck",
         "en": "TODO › Stream Deck › Deck program",
     },
-    "Games - Enable or disable the games": {
-        "fr": "🎮 Jeux - Activer ou désactiver les jeux",
-        "en": "🎮 Games - Enable or disable the games",
+    "Games on/off - Enable or disable the games": {
+        "fr": "🎚️ Jeux on/off - Activer ou désactiver les jeux",
+        "en": "🎚️ Games on/off - Enable or disable the games",
     },
     "Games:": {"fr": "Jeux :", "en": "Games:"},
     "Games: unknown value": {
@@ -450,9 +451,9 @@ TRANSLATIONS = {
         "fr": "Valeur GAMES inconnue :",
         "en": "Unknown GAMES value:",
     },
-    "TODO › Stream Deck › Games": {
-        "fr": "TODO › Stream Deck › Jeux",
-        "en": "TODO › Stream Deck › Games",
+    "TODO › Stream Deck › Games on/off": {
+        "fr": "TODO › Stream Deck › Jeux on/off",
+        "en": "TODO › Stream Deck › Games on/off",
     },
     "Enabled": {"fr": "Activés", "en": "Enabled"},
     "Disabled": {"fr": "Désactivés", "en": "Disabled"},

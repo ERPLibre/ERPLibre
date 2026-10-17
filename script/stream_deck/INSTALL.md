@@ -101,7 +101,6 @@ program from this checkout, and its settings
 ```
 DECK_PROGRAM=tiler
 RESTART_AFTER_GAME=yes
-GAMES=on
 ```
 
 `DECK_PROGRAM` is `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
@@ -122,7 +121,7 @@ too and TODO › Stream Deck › Diagnosis names it. With the games off, the
 TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
 refuse to start a game and say how to enable them; the deck program, the
 controller and the service are never affected. Set it from
-TODO › Stream Deck › Games, or by hand in this file.
+TODO › Stream Deck › Games on/off, or by hand in this file.
 
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,

@@ -456,9 +456,9 @@ class TestStreamDeckMenuNumbering(MenuCoherence, unittest.TestCase):
     END = "def _streamdeck_probe(argv):"
     MINIMUM = 9
 
-    # « Games - Enable » avant « Games » : _key prend le premier préfixe.
+    # « Games on/off » avant « Games » : _key prend le premier préfixe.
     EXPECTED = {
-        "Games - Enable": "_streamdeck_games_setting",
+        "Games on/off": "_streamdeck_games_setting",
         "Games": "prompt_execute_streamdeck_games",
         "Status": "_streamdeck_status",
         "Service": "_streamdeck_service",

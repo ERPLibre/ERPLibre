@@ -70,7 +70,11 @@ class StreamDeckMenuMixin:
                 )
             },
             {"prompt_description": t("Extension - Reload or preferences")},
-            {"prompt_description": t("Games - Enable or disable the games")},
+            {
+                "prompt_description": t(
+                    "Games on/off - Enable or disable the games"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:

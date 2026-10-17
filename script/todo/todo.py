@@ -1860,9 +1860,10 @@ class TODO(
         ):
             print(
                 t(
-                    "Stream Deck games are disabled (GAMES):"
-                    " enable them in TODO › Stream Deck › Games"
-                )
+                    "Stream Deck games are disabled (GAMES): enable them in"
+                    " TODO › Stream Deck › Games on/off, or set GAMES=on"
+                    " in {path}"
+                ).format(path=service.settings_path())
             )
             return False
         print(f"🎮 {t('Stream Deck games! Choose a game to play.')}")

@@ -67,10 +67,17 @@ deck_games_enabled() {
 
 # deck_games_message écrit, sur une ligne, pourquoi un jeu ne démarre pas :
 # la valeur de GAMES, le fichier qui la porte, et comment les réactiver.
+# Les caractères de contrôle de la valeur sont rendus visibles : un « \r »
+# brut ramènerait le curseur en début de ligne et masquerait le message.
 deck_games_message() {
+    local value
+    value="$(deck_setting GAMES on)"
+    value="${value//$'\r'/\\r}"
+    value="${value//$'\t'/\\t}"
+    value="${value//$'\033'/\\e}"
     echo "[ERPLibre Home] Stream Deck games are disabled" \
-        "(GAMES=$(deck_setting GAMES on) in $(deck_settings_file));" \
-        "enable them from TODO › Stream Deck › Games, or set GAMES=on"
+        "(GAMES=${value} in $(deck_settings_file));" \
+        "enable them from TODO › Stream Deck › Games on/off, or set GAMES=on"
 }
 
 # Vrai quand un périphérique USB du vendeur 0fd9 (Elgato) est branché, lu
