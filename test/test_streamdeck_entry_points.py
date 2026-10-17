@@ -47,6 +47,7 @@ from script.todo import todo_i18n  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MAKEFILE = ROOT / "conf" / "make.streamdeck.Makefile"
+GARDE = "streamdeck_games_guard"
 DECK_DIR = ROOT / "script" / "stream_deck"
 GAMES_DIR = DECK_DIR / "games"
 REQUIREMENTS = DECK_DIR / "requirements.txt"
@@ -117,6 +118,20 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
             ),
             "STREAMDECK_PY absent du fragment",
         )
+
+    def test_every_game_target_requires_the_games_guard(self):
+        for jeu in jeux():
+            self.assertIn(GARDE, self.regles[f"streamdeck_{jeu}"][0], jeu)
+
+    def test_the_deck_tools_are_never_gated(self):
+        for cible in (
+            "streamdeck",
+            "streamdeck_erplibre",
+            "streamdeck_tiler",
+            "streamdeck_translator_doctor",
+            "streamdeck_gallery",
+        ):
+            self.assertNotIn(GARDE, self.regles[cible][0], cible)
 
     def test_the_rules_were_actually_parsed(self):
         # Une forme de fichier que l'analyse ne lit plus doit tomber ici,
@@ -209,6 +224,42 @@ class TestMakefileGuard(unittest.TestCase):
             res = self.make(f"STREAMDECK_PY={absent}", "streamdeck_snake")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("Stream Deck venv missing: " + INSTALL_DECK, res.stderr)
+
+    def test_games_off_stops_a_game_target_with_the_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = os.path.join(tmp, "erplibre-home", "streamdeck.conf")
+            os.makedirs(os.path.dirname(conf))
+            with open(conf, "w", encoding="utf-8") as f:
+                f.write("GAMES=off\n")
+            faux = os.path.join(tmp, "python")
+            with open(faux, "w", encoding="utf-8") as f:
+                f.write('#!/bin/sh\necho "faux-python $*"\n')
+            os.chmod(faux, 0o755)
+            env = dict(os.environ, XDG_CONFIG_HOME=tmp)
+
+            def make(cible):
+                return subprocess.run(
+                    [
+                        "make",
+                        "-s",
+                        "-f",
+                        str(MAKEFILE),
+                        f"STREAMDECK_PY={faux}",
+                        cible,
+                    ],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env,
+                )
+
+            res = make("streamdeck_snake")
+            self.assertNotEqual(0, res.returncode)
+            self.assertIn("Stream Deck games are disabled", res.stderr)
+            self.assertNotIn("faux-python", res.stdout)
+            res = make("streamdeck_erplibre")
+            self.assertEqual(0, res.returncode, res.stderr)
 
     def test_a_present_venv_runs_the_game_under_it(self):
         with tempfile.TemporaryDirectory() as tmp:

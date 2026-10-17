@@ -100,6 +100,20 @@ class LeCheck(Copie):
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertEqual("", fini.stdout)
 
+    def test_games_off_never_gates_the_deck_entry_point(self):
+        """GAMES ne touche pas le programme du deck : --check rend la même
+        chose avec GAMES=off qu'avec GAMES=on."""
+        self.venv()
+        self.usb("1-1", "1d6b")
+        self.usb("3-2", "0fd9")
+        rendu = {}
+        for valeur in ("on", "off"):
+            self.regler(f"GAMES={valeur}\n")
+            fini = self.lancer("--check")
+            rendu[valeur] = (fini.returncode, fini.stdout)
+        self.assertEqual(0, rendu["on"][0])
+        self.assertEqual(rendu["on"], rendu["off"])
+
     def test_no_deck_exits_one_and_says_so(self):
         self.venv()
         self.usb("1-1", "1d6b")
