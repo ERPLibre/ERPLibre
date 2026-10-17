@@ -10,8 +10,10 @@ son diagnostic, la désinstallation, l'extension GNOME.
 
 Les commandes longues ou interactives (systemctl, journalctl -f,
 l'installateur, make) passent par self.execute.exec_command_live, en
-direct ; les sondes muettes par _streamdeck_probe, que les tests
-remplacent. L'état et le diagnostic viennent d'erplibre_home_status.
+direct et sans récapitulatif : l'annonce du lanceur, ou la question de
+confirmation qui la remplace, est le seul endroit où la commande
+s'affiche. Les sondes muettes passent par _streamdeck_probe, que les
+tests remplacent. L'état et le diagnostic viennent d'erplibre_home_status.
 """
 
 import os
@@ -177,6 +179,7 @@ class StreamDeckMenuMixin:
             commande,
             source_erplibre=False,
             new_env=service.user_bus_env(),
+            recap=False,
         )
 
     # -------------------------------------------------------------- #
@@ -218,6 +221,7 @@ class StreamDeckMenuMixin:
             self.execute.exec_command_live(
                 f"journalctl --user -u {service.UNIT_NAME} -f",
                 source_erplibre=False,
+                recap=False,
             )
         except KeyboardInterrupt:
             print()
@@ -278,6 +282,7 @@ class StreamDeckMenuMixin:
             commande,
             succes="ERPLibre Home uninstalled.",
             echec="ERPLibre Home uninstall failed, see the output above.",
+            annoncee=True,
         )
 
     def _streamdeck_extension(self):
@@ -292,7 +297,9 @@ class StreamDeckMenuMixin:
             ),
         )
         if commande is not None:
-            self.execute.exec_command_live(commande, source_erplibre=False)
+            self.execute.exec_command_live(
+                commande, source_erplibre=False, recap=False
+            )
 
     # -------------------------------------------------------------- #
     # Questions de l'installation Stream Deck
