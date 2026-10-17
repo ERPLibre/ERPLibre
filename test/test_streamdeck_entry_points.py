@@ -37,6 +37,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -439,6 +440,61 @@ class TestGalleryLaunch(unittest.TestCase):
         )
 
 
+class TestGalleryGames(unittest.TestCase):
+    """La galerie relit GAMES à chaque lancement : off refuse, sans
+    redémarrage."""
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.conf = Path(dossier.name, "erplibre-home", "streamdeck.conf")
+        self.conf.parent.mkdir(parents=True)
+        env = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": dossier.name})
+        env.start()
+        self.addCleanup(env.stop)
+        self.galerie = charger_galerie()
+
+    def test_refusal_follows_the_file(self):
+        self.assertIsNone(self.galerie._games_refusal())
+        self.conf.write_text("GAMES=off\n", encoding="utf-8")
+        self.assertIn("GAMES=off", self.galerie._games_refusal())
+        self.conf.write_text("GAMES=on\n", encoding="utf-8")
+        self.assertIsNone(self.galerie._games_refusal())
+
+    def test_main_refuses_to_start(self):
+        self.conf.write_text("GAMES=off\n", encoding="utf-8")
+        with (
+            mock.patch.object(self.galerie.http.server, "HTTPServer") as srv,
+            mock.patch("sys.stderr", new_callable=io.StringIO) as err,
+        ):
+            with self.assertRaises(SystemExit) as fin:
+                self.galerie.main()
+        self.assertEqual(1, fin.exception.code)
+        srv.assert_not_called()
+        self.assertIn("Stream Deck games are disabled", err.getvalue())
+
+    def test_launch_rereads_the_setting(self):
+        """Une galerie lancée avec on refuse dès que le fichier dit off."""
+        gestionnaire = self.galerie.GameHandler.__new__(
+            self.galerie.GameHandler
+        )
+        gestionnaire.wfile = io.BytesIO()
+        codes = []
+        gestionnaire.send_response = codes.append
+        gestionnaire.send_header = lambda *a: None
+        gestionnaire.end_headers = lambda: None
+        self.conf.write_text("GAMES=off\n", encoding="utf-8")
+        # subprocess.run appelle Popen : on ne remplace Popen que dans la
+        # vue qu'en a la galerie, pour que la lecture du réglage tourne.
+        popen = mock.Mock()
+        vue = types.SimpleNamespace(run=subprocess.run, Popen=popen)
+        with mock.patch.object(self.galerie, "subprocess", vue):
+            gestionnaire._launch_game("snake")
+        self.assertEqual([403], codes)
+        popen.assert_not_called()
+        self.assertIn(b"GAMES=off", gestionnaire.wfile.getvalue())
+
+
 class TestLaunchGameScriptGone(unittest.TestCase):
     def test_the_script_is_removed(self):
         self.assertFalse((DECK_DIR / "launch_game.sh").exists())
@@ -493,6 +549,32 @@ class TestTodoGamesLauncher(unittest.TestCase):
         ):
             rendu = todo.prompt_execute_streamdeck_games()
         return todo, rendu, sortie.getvalue()
+
+    def test_games_off_says_so_and_scans_nothing(self):
+        for langue, attendu in (
+            ("en", "Stream Deck games are disabled"),
+            ("fr", "Les jeux Stream Deck sont désactivés"),
+        ):
+            with self.subTest(langue=langue):
+                todo_i18n._current_lang = langue
+                todo = todo_mod.TODO.__new__(todo_mod.TODO)
+                with (
+                    mock.patch.object(
+                        todo_mod.os, "access", return_value=True
+                    ),
+                    mock.patch.object(
+                        todo_mod.service,
+                        "read_settings",
+                        return_value={"GAMES": "off"},
+                    ),
+                    mock.patch.object(
+                        todo_mod.TODO, "_scan_streamdeck_games"
+                    ) as scan,
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+                ):
+                    self.assertFalse(todo.prompt_execute_streamdeck_games())
+                scan.assert_not_called()
+                self.assertIn(attendu, out.getvalue())
 
     def test_the_command_hands_the_deck_over_to_the_streamdeck_venv(self):
         todo = todo_mod.TODO.__new__(todo_mod.TODO)
