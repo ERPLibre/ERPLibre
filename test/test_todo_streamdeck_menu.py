@@ -20,6 +20,9 @@ Ce que ces tests gardent :
   redémarre l'unité que si elle tournait ;
 - la désinstallation demande confirmation, et son échec se dit comme
   tel ;
+- chaque commande lancée s'affiche une seule fois : par l'annonce du
+  lanceur, ou par la question de confirmation de la désinstallation, et
+  jamais une seconde fois sous « Executed » ;
 - Ctrl-C quitte le journal en direct sans quitter le menu ;
 - l'extension se recharge par make, ses préférences par gnome-extensions ;
 - l'état et le diagnostic affichent ce que rend erplibre_home_status ;
@@ -41,6 +44,8 @@ RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 sys.argv = ["todo.py"]
 
+from script.execute import execute  # noqa: E402
+from script.execute.execute import Execute  # noqa: E402
 from script.todo import streamdeck_menu  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
@@ -66,14 +71,45 @@ class ExecuteFactice:
         return self.code
 
 
-class ExecuteAnnonce(ExecuteFactice):
-    """Affiche la commande avant de la retenir, comme exec_command_live
-    l'annonce avant de la lancer."""
+class ProcessusVide:
+    """Un processus déjà fini, sans sortie, qui rend `code`."""
+
+    def __init__(self, code):
+        lecture, ecriture = os.pipe()
+        os.close(ecriture)
+        self.stdout = os.fdopen(lecture, "rb")
+        self.returncode = code
+
+    def wait(self):
+        return self.returncode
+
+
+class ExecuteBannieres(Execute):
+    """Le vrai exec_command_live, bannières comprises, sur un Popen
+    remplacé : la commande est retenue, aucun processus ne part. Compter
+    la commande dans la sortie compte donc ce que le lanceur affiche
+    réellement, en plus de ce que le menu affiche lui-même."""
+
+    def __init__(self, code=0):
+        with mock.patch("shutil.which", return_value=None):
+            super().__init__()
+        self.commandes = []
+        self.code = code
 
     def exec_command_live(self, cmd, **kwargs):
-        print("🏠 ⬇ Execute command :\n")
-        print(cmd)
-        return super().exec_command_live(cmd, **kwargs)
+        self.commandes.append(cmd)
+        processus = []
+
+        def popen(_commande, **_kw):
+            processus.append(ProcessusVide(self.code))
+            return processus[-1]
+
+        try:
+            with mock.patch.object(execute.subprocess, "Popen", popen):
+                return super().exec_command_live(cmd, **kwargs)
+        finally:
+            for p in processus:
+                p.stdout.close()
 
 
 class ExecuteInterrompu(ExecuteFactice):
@@ -149,7 +185,7 @@ class LInstallationStreamDeck(Menu):
                 commandes, sortie, rendu = self.jouer(
                     "_erplibre_home_streamdeck_install_local",
                     reponses,
-                    ExecuteAnnonce(),
+                    ExecuteBannieres(),
                 )
                 commande = f"{INSTALLATEUR} --stream-deck{options}"
                 self.assertEqual([commande], commandes)
@@ -362,6 +398,24 @@ class LaDesinstallation(Menu):
         )
         self.assertNotIn("installation failed", sortie)
 
+    def test_the_command_shows_once_in_the_question(self):
+        """La question de confirmation porte la commande ; le lanceur ne
+        la répète ni avant ni après."""
+        for reponse, options in (
+            ("1", "--uninstall --stream-deck"),
+            ("2", "--uninstall"),
+        ):
+            with self.subTest(options=options):
+                commande = f"{INSTALLATEUR} {options}"
+                commandes, sortie, _ = self.jouer(
+                    "_streamdeck_uninstall",
+                    (reponse, "y"),
+                    ExecuteBannieres(),
+                )
+                self.assertEqual([commande], commandes)
+                self.assertEqual(1, sortie.count(commande), sortie)
+                self.assertIn(f"Will execute: {commande}\n", sortie)
+
     def test_no_confirmation_no_uninstall(self):
         commandes, _, _ = self.jouer("_streamdeck_uninstall", ("2", ""))
         self.assertEqual([], commandes)
@@ -378,6 +432,39 @@ class LExtension(Menu):
                     "_streamdeck_extension", (reponse,)
                 )
                 self.assertEqual([commande], commandes)
+
+
+class LAffichageUnique(Menu):
+    """Chaque commande lancée par le menu s'affiche une fois, par
+    l'annonce du lanceur, et non une seconde fois sous « Executed »."""
+
+    def test_each_command_shows_once(self):
+        self.unite()
+        self.reponses_sondes[("systemctl", "--user", "is-active", UNITE)] = (
+            0,
+            "active\n",
+        )
+        systemctl = "systemctl --user"
+        cas = (
+            ("_streamdeck_service", ("1",), f"{systemctl} start {UNITE}"),
+            (
+                "_streamdeck_service",
+                ("4",),
+                f"journalctl --user -u {UNITE} -f",
+            ),
+            ("_streamdeck_autostart", ("1",), f"{systemctl} enable {UNITE}"),
+            ("_streamdeck_program", ("2",), f"{systemctl} restart {UNITE}"),
+            ("_streamdeck_extension", ("1",), "make erplibre_home_reload"),
+            ("_erplibre_home_install_local", (), INSTALLATEUR),
+        )
+        for methode, reponses, commande in cas:
+            with self.subTest(methode=methode, commande=commande):
+                commandes, sortie, _ = self.jouer(
+                    methode, reponses, ExecuteBannieres()
+                )
+                self.assertEqual([commande], commandes)
+                self.assertEqual(1, sortie.count(commande + "\n"), sortie)
+                self.assertNotIn("Executed", sortie)
 
 
 class LEtatEtLeDiagnostic(Menu):

@@ -1986,10 +1986,17 @@ class TODO(
             " extension."
         ),
         echec="ERPLibre Home installation failed, see the output above.",
+        annoncee=False,
     ):
         """Lance `commande`, l'installateur et ses options, et en résume
         l'issue sur une ligne ; `succes` et `echec` sont les clés de
         traduction de la ligne d'un code 0 et d'un code d'échec.
+
+        La commande s'affiche une seule fois : par l'annonce du lanceur,
+        ou, quand `annoncee` est vrai, par l'appelant qui l'a déjà montrée
+        dans sa question de confirmation ; le lanceur ne l'annonce alors
+        pas. Le récapitulatif du lanceur ne la répète jamais : la ligne
+        d'issue ferme l'affichage.
 
         L'installateur tourne en direct et hors du venv ERPLibre : la base
         n'a pas de venv, et le niveau Stream Deck crée le sien,
@@ -2002,6 +2009,8 @@ class TODO(
             commande,
             source_erplibre=False,
             return_status_and_output=True,
+            announce=not annoncee,
+            recap=False,
         )
         if status == self._ERPLIBRE_HOME_UNSUPPORTED:
             prefixe = "UNSUPPORTED:"
