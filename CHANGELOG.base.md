@@ -329,6 +329,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `odoo/documentation-user` is cloned at depth 1 for Odoo 12 to 18: the whole history of Odoo's documentation, images included, no longer dominates a repository sync
 - The Odoo 18 lock is refreshed (27 packages up, factur-x 7 and plaid-python 45 among them); `python-dotenv` leaves the Odoo venv, since only an example file under `doc/examples` asked for it
 - The unit test runner gives each test file its own `TMPDIR`, removes what it leaves there and names it in the summary: forgotten temporaries no longer pile up in `/tmp` until a tmpfs runs out of inodes
+- The Stream Deck games, the gallery (`gallery_server.py`, `index.html`) and the saves live in `script/stream_deck/games/`; the deck program `game_tiler.py` becomes `script/stream_deck/erplibre_streamdeck.py`. `DECK_PROGRAM=tiler` and `make streamdeck_tiler` keep their meaning; `make streamdeck_erplibre` is added. A gallery started before the update has to be restarted, and GNOME Shell picks the new gallery path at the next login. djscratch saves move with `mv script/stream_deck/save/* script/stream_deck/games/save/`
+- The `GAMES=on|off` setting in the deck settings file turns the game library on or off; missing or `on` enables it. With the games off, the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over refuse to start a game; the deck program, the controller and the service are unaffected
 
 <!-- [fr] -->
 
@@ -374,6 +376,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `odoo/documentation-user` est cloné à la profondeur 1 pour Odoo 12 à 18 : tout l'historique de la documentation d'Odoo, images comprises, ne domine plus la synchronisation
 - Le lock d'Odoo 18 est rafraîchi (27 paquets, dont factur-x 7 et plaid-python 45) ; `python-dotenv` quitte le venv d'Odoo, seul un fichier d'exemple sous `doc/examples` le demandant
 - Le lanceur des tests unitaires donne à chaque fichier son propre `TMPDIR`, retire ce qu'il y laisse et le nomme au bilan : les temporaires oubliés ne s'accumulent plus dans `/tmp` jusqu'à épuiser les inodes d'un tmpfs
+- Les jeux Stream Deck, la galerie (`gallery_server.py`, `index.html`) et les sauvegardes vivent dans `script/stream_deck/games/` ; le programme du deck `game_tiler.py` devient `script/stream_deck/erplibre_streamdeck.py`. `DECK_PROGRAM=tiler` et `make streamdeck_tiler` gardent leur sens ; `make streamdeck_erplibre` s'y ajoute. Une galerie démarrée avant la mise à jour se relance, et GNOME Shell prend le nouveau chemin de la galerie à la prochaine ouverture de session. Les sauvegardes de djscratch se déplacent : `mv script/stream_deck/save/* script/stream_deck/games/save/`
+- Le réglage `GAMES=on|off` du fichier de réglages du deck active ou désactive la bibliothèque de jeux ; absent ou `on`, elle est active. Désactivée, le menu des jeux de TODO, la galerie, `make streamdeck_<jeu>` et le passage de relais refusent de lancer un jeu ; le programme du deck, le contrôleur et le service restent intacts
 
 <!-- [en] -->
 ## Fixed

@@ -177,6 +177,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `odoo/documentation-user` is cloned at depth 1 for Odoo 12 to 18: the whole history of Odoo's documentation, images included, no longer dominates a repository sync
 - The Odoo 18 lock is refreshed (27 packages up, factur-x 7 and plaid-python 45 among them); `python-dotenv` leaves the Odoo venv, since only an example file under `doc/examples` asked for it
 - The unit test runner gives each test file its own `TMPDIR`, removes what it leaves there and names it in the summary: forgotten temporaries no longer pile up in `/tmp` until a tmpfs runs out of inodes
+- The Stream Deck games, the gallery (`gallery_server.py`, `index.html`) and the saves live in `script/stream_deck/games/`; the deck program `game_tiler.py` becomes `script/stream_deck/erplibre_streamdeck.py`. `DECK_PROGRAM=tiler` and `make streamdeck_tiler` keep their meaning; `make streamdeck_erplibre` is added. A gallery started before the update has to be restarted, and GNOME Shell picks the new gallery path at the next login. djscratch saves move with `mv script/stream_deck/save/* script/stream_deck/games/save/`
+- The `GAMES=on|off` setting in the deck settings file turns the game library on or off; missing or `on` enables it. With the games off, the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over refuse to start a game; the deck program, the controller and the service are unaffected
 
 ## Fixed
 

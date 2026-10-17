@@ -24,7 +24,7 @@ persistent storage outside `$XDG_STATE_HOME/erplibre-home/`.
          | adds indicators
          v
 +--------+----------+      D-Bus      +---------------------+
-|  Top-bar buttons  | <-------------> |  game_tiler.py      |
+|  Top-bar buttons  | <-------------> |  erplibre_streamdeck |
 |  (indicators/*)   |                 |  (Stream Deck       |
 |                   |                 |   physical hardware)|
 +-------------------+                 +---------------------+
@@ -52,7 +52,7 @@ persistent storage outside `$XDG_STATE_HOME/erplibre-home/`.
 6. **Optional desktop notification**. When a session transitions to
    `awaiting_notification` the extension fires `Main.notify(...)`
    once per `ts_notification` value (throttled).
-7. **Deck mirror**. `game_tiler.py` reads the same state files in
+7. **Deck mirror**. `erplibre_streamdeck.py` reads the same state files in
    its render loop and shows a coloured per-session button (green /
    cyan / yellow / red) on its idle layout.
 
@@ -65,7 +65,7 @@ persistent storage outside `$XDG_STATE_HOME/erplibre-home/`.
 | Watcher | `lib/claude-state.js` | `parseStateEntry`, `indexSessions`. Pure helpers, unit-tested. |
 | Indicator | `indicators/pencil.js` | Lazy import so node tests can read `lib/`. |
 | D-Bus | `extension.js` | Interface `org.gnome.Shell.Extensions.ERPLibreHome` exposes `FocusClaudeSession`, `GetFocusedWindowId`, `AcceptClaudeSession`, `SetClaudeSessionWindow`, `KillClaudeSession`, `RenameClaudeSession`, `DebugClaudeIndex`, `ListMpvSessions`, `MpvSendCommand`, `TileWindow`, `OpenPath`, `OpenMedia`, etc. |
-| Driver | `script/stream_deck/game_tiler.py` | Python streamdeck library, reads the same state directories, calls back into the extension over D-Bus. |
+| Driver | `script/stream_deck/erplibre_streamdeck.py` | Python streamdeck library, reads the same state directories, calls back into the extension over D-Bus. |
 
 ## D-Bus interface
 

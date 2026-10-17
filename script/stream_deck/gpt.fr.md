@@ -14,7 +14,7 @@ bulle de dialogue avec trois points).
 | Fichier | Rôle |
 |---------|------|
 | `script/stream_deck/translator.py` | Enregistrement audio, backends STT, backends LLM, détection matériel, méthodes de sortie. |
-| `script/stream_deck/game_tiler.py` | UI: rendu `MODE_TRANSLATOR`, gestion des touches, persistance des réglages. |
+| `script/stream_deck/erplibre_streamdeck.py` | UI: rendu `MODE_TRANSLATOR`, gestion des touches, persistance des réglages. |
 | `~/.config/erplibre-home/settings.json` | Choix persistés: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
 | `tasks/translator-roadmap.md` | Plan des phases et notes de sécurité. |
 

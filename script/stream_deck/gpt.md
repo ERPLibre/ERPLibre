@@ -14,7 +14,7 @@ bubble with three dots).
 | File | Role |
 |------|------|
 | `script/stream_deck/translator.py` | Audio recording, STT backends, LLM backends, hardware detection, output methods. |
-| `script/stream_deck/game_tiler.py` | UI: `MODE_TRANSLATOR` rendering, key handling, settings persistence. |
+| `script/stream_deck/erplibre_streamdeck.py` | UI: `MODE_TRANSLATOR` rendering, key handling, settings persistence. |
 | `~/.config/erplibre-home/settings.json` | Persisted picks: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
 | `tasks/translator-roadmap.md` | Phase planning and security notes. |
 
