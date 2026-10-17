@@ -2,6 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import contextlib
+import io
 import os
 import unittest
 from unittest.mock import patch
@@ -167,6 +169,70 @@ class TestExecCommandLive(unittest.TestCase):
         )
         self.assertEqual(status, 0)
         self.assertEqual(output, [])
+
+
+class TestExecCommandLiveBanners(unittest.TestCase):
+    """L'annonce avant la commande et le récapitulatif après.
+
+    Par défaut, la commande s'affiche deux fois : à l'annonce, puis sous
+    « Executed ». recap=False retire le récapitulatif seul, announce=False
+    l'annonce seule ; la sortie de la commande, elle, reste affichée. La
+    commande porte un commentaire shell qui ne sort jamais : chaque
+    occurrence comptée vient d'une bannière.
+    """
+
+    COMMANDE = "printf 'sortie\\n' # repere-de-commande"
+
+    def setUp(self):
+        with patch("shutil.which", return_value=None):
+            self.exe = Execute()
+
+    def lancer(self, **kwargs):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            status = self.exe.exec_command_live(
+                self.COMMANDE, source_erplibre=False, **kwargs
+            )
+        self.assertEqual(status, 0)
+        return sortie.getvalue()
+
+    def test_default_shows_the_command_before_and_after(self):
+        sortie = self.lancer()
+        self.assertEqual(2, sortie.count(self.COMMANDE), sortie)
+        self.assertIn("Executed", sortie)
+        self.assertIn("sortie\n", sortie)
+
+    def test_recap_false_drops_only_the_closing_banner(self):
+        sortie = self.lancer(recap=False)
+        self.assertEqual(1, sortie.count(self.COMMANDE), sortie)
+        self.assertIn("Execute command", sortie)
+        self.assertNotIn("Executed", sortie)
+        self.assertIn("sortie\n", sortie)
+        self.assertLess(sortie.index(self.COMMANDE), sortie.index("sortie\n"))
+
+    def test_announce_false_drops_only_the_opening_banner(self):
+        sortie = self.lancer(announce=False)
+        self.assertEqual(1, sortie.count(self.COMMANDE), sortie)
+        self.assertNotIn("Execute command", sortie)
+        self.assertIn("Executed", sortie)
+        self.assertLess(sortie.index("sortie\n"), sortie.index(self.COMMANDE))
+
+    def test_both_false_keep_the_command_output(self):
+        sortie = self.lancer(announce=False, recap=False)
+        self.assertEqual("sortie\n", sortie)
+
+    def test_a_failure_still_reports_its_code_without_recap(self):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            status = self.exe.exec_command_live(
+                "exit 3", source_erplibre=False, recap=False
+            )
+        self.assertEqual(3, status)
+        self.assertIn("Command returned error code: 3", sortie.getvalue())
+
+    def test_quiet_still_hides_everything(self):
+        sortie = self.lancer(quiet=True, recap=True, announce=True)
+        self.assertEqual("", sortie)
 
 
 class TestRedactSecrets(unittest.TestCase):
