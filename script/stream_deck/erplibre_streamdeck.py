@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Window Tiler — tile windows via Stream Deck.
+"""ERPLibre Stream Deck — the deck program of ERPLibre Home.
 
 Press TILE to enter tiling mode. Grid appears on the deck.
 Press first corner, then second corner. The focused window is
@@ -10,6 +10,10 @@ tiled to that region via D-Bus (erplibre-home gnome extension).
 
 Press TIMER to list timers from the tracker@aliakseiz.github.com
 extension and start/stop them.
+
+It runs as the erplibre-home-streamdeck user service (DECK_PROGRAM=tiler)
+or by make streamdeck_erplibre. It is not a game: the gallery and the TODO
+games menu do not list it.
 """
 
 import csv
@@ -38,16 +42,6 @@ except ImportError as e:
 
 import deck_lock
 import translator as _translator
-
-GAME_META = {
-    "name": "Window Tiler",
-    "category": "sim",
-    "section": "erplibre",
-    "multiplayer": False,
-    "sdplus": False,
-    "description": "Tile windows on a grid. Pick two corners to place.",
-    "icon": "tiler"
-}
 
 COLOR_EMPTY = (20, 20, 30)
 COLOR_GRID = (40, 60, 100)
@@ -1768,7 +1762,7 @@ class Tiler:
 
     def _flag_err(self, reason):
         """Set the result-flash to 'err' AND surface `reason` in
-        stderr so the terminal running game_tiler.py captures every
+        stderr so the terminal running this program captures every
         button failure, not just the silent flash on the deck."""
         print(f"[erplibre-home] {reason}",
               file=sys.stderr, flush=True)
@@ -3618,12 +3612,6 @@ def main():
         with deck:
             deck.reset()
             deck.close()
-
-
-if len(sys.argv) > 1 and sys.argv[1] == "--meta":
-    import json as _json
-    print(_json.dumps(GAME_META))
-    sys.exit(0)
 
 
 if __name__ == "__main__":

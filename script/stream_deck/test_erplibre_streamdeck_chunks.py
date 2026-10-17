@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the pure helpers in game_tiler.py.
+"""Unit tests for the pure helpers in erplibre_streamdeck.py.
 
 Avoids importing PIL or Stream Deck SDKs by surgically pulling the
 helper functions through `importlib` after stubbing the heavy modules
@@ -16,16 +16,16 @@ import unittest
 from pathlib import Path
 
 
-def _load_game_tiler():
-    """Import game_tiler.py with PIL and StreamDeck stubbed.
+def _load_erplibre_streamdeck():
+    """Import erplibre_streamdeck.py with PIL and StreamDeck stubbed.
 
     The chunk helpers we test are evaluated at module import time, so
     we cannot let the PIL / StreamDeck imports fail. The stubs below
     expose the bare minimum the import path touches; the helpers we
     actually call are pure-Python.
     """
-    if "game_tiler" in sys.modules:
-        return sys.modules["game_tiler"]
+    if "erplibre_streamdeck" in sys.modules:
+        return sys.modules["erplibre_streamdeck"]
 
     here = Path(__file__).resolve().parent
 
@@ -75,7 +75,7 @@ def _load_game_tiler():
     sys.modules.setdefault("StreamDeck.Transport.Transport",
                            transport_t)
 
-    # Stub the optional translator dependency next to game_tiler.py.
+    # Stub the optional translator dependency next to erplibre_streamdeck.py.
     sys.modules.setdefault("translator", types.ModuleType("translator"))
 
     # deck_lock (stdlib only) is imported by name: the real module loads.
@@ -83,14 +83,14 @@ def _load_game_tiler():
         sys.path.insert(0, str(here))
 
     spec = importlib.util.spec_from_file_location(
-        "game_tiler", str(here / "game_tiler.py"))
+        "erplibre_streamdeck", str(here / "erplibre_streamdeck.py"))
     module = importlib.util.module_from_spec(spec)
-    sys.modules["game_tiler"] = module
+    sys.modules["erplibre_streamdeck"] = module
     spec.loader.exec_module(module)
     return module
 
 
-GT = _load_game_tiler()
+GT = _load_erplibre_streamdeck()
 
 
 class RecheckDbusTest(unittest.TestCase):
