@@ -199,27 +199,26 @@ if [ "$(uname -m)" = "s390x" ]; then
   # qpdf, et meme portee etroite : ailleurs pyproj pose une roue qui
   # embarque sa propre PROJ, ici il compile contre celle du systeme.
   el_proj_ensure
-  # cryptography ne publie aucune roue s390x : elle se compile, et son
-  # Cargo.lock est en version 4, que seul cargo >= 1.78 sait lire. Ubuntu 24.04
-  # livre 1.75 et s'arrête sur « lock file version 4 requires
-  # -Znext-lockfile-bump » ; 25.10 et au-delà passent. On complète alors par
-  # rustup, en exposant la chaîne hors du shell de connexion : les étapes
-  # suivantes sont des processus distincts, qui ne liront ni ~/.bashrc ni
-  # ~/.cargo/env.
-  CARGO_MIN_MINOR=78
-  cargo_ver="$(cargo --version 2>/dev/null | awk '{print $2}')"
-  cargo_major="${cargo_ver%%.*}"
-  cargo_rest="${cargo_ver#*.}"
-  cargo_minor="${cargo_rest%%.*}"
-  cargo_ok=0
-  if [[ "${cargo_major}" =~ ^[0-9]+$ && "${cargo_minor}" =~ ^[0-9]+$ ]]; then
-    if [[ ${cargo_major} -gt 1 ]] ||
-      [[ ${cargo_major} -eq 1 && ${cargo_minor} -ge ${CARGO_MIN_MINOR} ]]; then
-      cargo_ok=1
-    fi
-  fi
-  if [ "${cargo_ok}" -ne 1 ]; then
-    echo "cargo trop ancien ($(cargo --version 2>/dev/null || echo absent)) pour cryptography : installation via rustup."
+  # cryptography et orjson ne publient aucune roue s390x : ils se compilent.
+  # Le seuil est celui du paquet Rust le plus exigeant : orjson 3.13 (verrou
+  # d'Odoo 18) déclare rust-version 1.95, et maturin refuse tout rustc plus
+  # ancien. cryptography, lui, s'arrête sous 1.78 sur son Cargo.lock v4. Sous
+  # le seuil, on complète par rustup, en exposant la chaîne hors du shell de
+  # connexion : les étapes suivantes sont des processus distincts, qui ne
+  # liront ni ~/.bashrc ni ~/.cargo/env.
+  CARGO_MIN_MINOR=95
+  # Vrai si le cargo trouvé dans le PATH atteint 1.${CARGO_MIN_MINOR}.
+  cargo_assez_recent() {
+    local ver major rest minor
+    ver="$(PATH=/usr/local/bin:$PATH cargo --version 2>/dev/null | awk '{print $2}')"
+    major="${ver%%.*}"
+    rest="${ver#*.}"
+    minor="${rest%%.*}"
+    [[ "${major}" =~ ^[0-9]+$ && "${minor}" =~ ^[0-9]+$ ]] || return 1
+    [[ ${major} -gt 1 ]] || [[ ${major} -eq 1 && ${minor} -ge ${CARGO_MIN_MINOR} ]]
+  }
+  if ! cargo_assez_recent; then
+    echo "cargo trop ancien ($(cargo --version 2>/dev/null || echo absent)), 1.${CARGO_MIN_MINOR} requis : installation via rustup."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal --default-toolchain stable
     for bin in cargo rustc; do
@@ -228,6 +227,15 @@ if [ "$(uname -m)" = "s390x" ]; then
       fi
     done
     echo "cargo retenu : $(PATH=/usr/local/bin:$PATH cargo --version 2>/dev/null || echo absent)"
+    # rustup injoignable (proxy, miroir hors ligne) laisse le cargo de la
+    # distribution en place sans un mot : l'échec ne se verrait qu'au build
+    # d'orjson, au fond de la sortie de poetry. On le nomme ici. Pas d'arrêt :
+    # les versions d'Odoo dont le verrou n'a pas orjson 3.13 s'en passent.
+    if ! cargo_assez_recent; then
+      echo "AVERTISSEMENT : cargo reste sous 1.${CARGO_MIN_MINOR}, rustup a echoue."
+      echo "  L'installation d'Odoo 18 s'arretera sur orjson. Rejouez quand"
+      echo "  https://sh.rustup.rs est joignable : make install_os"
+    fi
   fi
 fi
 
