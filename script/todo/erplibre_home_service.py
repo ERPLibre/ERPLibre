@@ -17,7 +17,19 @@ import subprocess
 
 UNIT_NAME = "erplibre-home-streamdeck.service"
 PROGRAMS = ("tiler", "controller", "none")
-DEFAULTS = {"DECK_PROGRAM": "tiler", "RESTART_AFTER_GAME": "yes"}
+GAMES_VALUES = ("on", "off")
+DEFAULTS = {
+    "DECK_PROGRAM": "tiler",
+    "RESTART_AFTER_GAME": "yes",
+    "GAMES": "on",
+}
+
+
+def games_enabled(settings):
+    """Vrai quand les réglages lus par read_settings activent les jeux :
+    GAMES vaut « on », ou manque (DEFAULTS). « off » et toute autre valeur
+    les coupent, comme deck_games_enabled du shell."""
+    return settings.get("GAMES", DEFAULTS["GAMES"]) == "on"
 
 
 def config_home(environ=None):

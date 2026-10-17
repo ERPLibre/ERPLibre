@@ -54,6 +54,25 @@ deck_program_path() {
     esac
 }
 
+# deck_games_enabled sort en 0 quand GAMES vaut « on » ou manque, en 1 pour
+# « off », en 2 pour toute autre valeur, « GAMES= » compris : une valeur
+# inconnue coupe les jeux, comme un DECK_PROGRAM inconnu coupe le service.
+deck_games_enabled() {
+    case "$(deck_setting GAMES on)" in
+        on) return 0 ;;
+        off) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
+# deck_games_message écrit, sur une ligne, pourquoi un jeu ne démarre pas :
+# la valeur de GAMES, le fichier qui la porte, et comment les réactiver.
+deck_games_message() {
+    echo "[ERPLibre Home] Stream Deck games are disabled" \
+        "(GAMES=$(deck_setting GAMES on) in $(deck_settings_file));" \
+        "enable them from TODO › Stream Deck › Games, or set GAMES=on"
+}
+
 # Vrai quand un périphérique USB du vendeur 0fd9 (Elgato) est branché, lu
 # dans les idVendor de sysfs. ERPLIBRE_HOME_SYSFS remplace /sys, pour les
 # tests.
