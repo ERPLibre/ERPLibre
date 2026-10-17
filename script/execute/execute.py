@@ -129,6 +129,8 @@ class Execute:
         return_status_and_command: bool = False,
         return_status_and_output: bool = False,
         return_status_and_output_and_command: bool = False,
+        announce: bool = True,
+        recap: bool = True,
     ) -> (
         int
         | tuple[int, str]
@@ -140,6 +142,13 @@ class Execute:
 
         Args:
             command (str): The command to execute.
+            quiet (bool): Hide everything: both banners and the output.
+            announce (bool): Print the command before running it. False
+                suits a caller that has already shown it, for instance
+                in a confirmation question.
+            recap (bool): Print the duration and the command again once
+                it finishes. False keeps the command to a single display
+                when its announcement stays on screen above the output.
         """
 
         my_env = os.environ.copy()
@@ -181,7 +190,7 @@ class Execute:
         if new_window and self.cmd_source_default:
             command = self.cmd_source_default % command
 
-        if not quiet:
+        if announce and not quiet:
             print("🏠 ⬇ Execute command :\n")
             print(redact_secrets(command))
         output_lines = []
@@ -296,15 +305,13 @@ class Execute:
                 print(f"An error occurred: {redact_secrets(str(e))}")
         process_end_time = time.time()
         duration_sec = process_end_time - process_start_time
-        if humanize:
-            duration_delta = datetime.timedelta(seconds=duration_sec)
-            human_time = humanize.precisedelta(duration_delta)
-            if not quiet:
+        if recap and not quiet:
+            if humanize:
+                duration_delta = datetime.timedelta(seconds=duration_sec)
+                human_time = humanize.precisedelta(duration_delta)
                 print(f"🏠 ⬆ Executed ({human_time}) :\n")
-        else:
-            if not quiet:
+            else:
                 print(f"🏠 ⬆ Executed ({duration_sec:.2f} sec.) :\n")
-        if not quiet:
             print(redact_secrets(command))
             print()
         if return_status_and_output_and_command:
