@@ -103,9 +103,10 @@ programme depuis ce dépôt, et ses réglages
 ```
 DECK_PROGRAM=tiler
 RESTART_AFTER_GAME=yes
+GAMES=on
 ```
 
-`DECK_PROGRAM` vaut `tiler` (`script/stream_deck/game_tiler.py`),
+`DECK_PROGRAM` vaut `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
 `controller` (`script/stream_deck/erplibre_controller.py`) ou `none`. Une
 option donnée écrit sa clé ; une option absente garde la valeur déjà dans
 le fichier, et le défaut ne vaut que pour une clé absente : une
@@ -117,6 +118,15 @@ qu'une installation neuve charge à la prochaine ouverture de session. Avec
 `--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans
 gestionnaire utilisateur joignable (une installation par ssh sans session),
 le bilan nomme la commande à lancer après la prochaine connexion.
+
+`GAMES=on|off` active ou désactive la bibliothèque de jeux du Stream Deck.
+`on`, ou l'absence de ligne `GAMES`, l'active ; `off` la désactive ; toute
+autre valeur la désactive aussi et TODO › Stream Deck › Diagnostic la
+nomme. Jeux désactivés, le menu des jeux de TODO, la galerie,
+`make streamdeck_<jeu>` et le passage de relais refusent de lancer un jeu et
+disent comment les activer ; le programme du deck, le contrôleur et le
+service ne sont jamais touchés. Se règle dans TODO › Stream Deck › Jeux,
+ou à la main dans ce fichier.
 
 Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent
 chaque jeu par `script/install/erplibre_home_handover.sh`, qui arrête le

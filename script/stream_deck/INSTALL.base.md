@@ -211,11 +211,12 @@ programme depuis ce dépôt, et ses réglages
 ```
 DECK_PROGRAM=tiler
 RESTART_AFTER_GAME=yes
+GAMES=on
 ```
 
 <!-- [end] -->
 <!-- [en] -->
-`DECK_PROGRAM` is `tiler` (`script/stream_deck/game_tiler.py`),
+`DECK_PROGRAM` is `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
 `controller` (`script/stream_deck/erplibre_controller.py`) or `none`. An
 option given writes its key; an option left out keeps the value already in
 the file, and the default applies only to a missing key, so a reinstall
@@ -226,6 +227,14 @@ it: the program needs the extension, which a fresh install loads at the
 next login. With `--autostart` the unit is enabled and starts at login.
 Without a reachable user manager (an install over ssh with no session), the
 summary names the command to run after the next login.
+
+`GAMES=on|off` turns the Stream Deck game library on or off. `on`, or no
+`GAMES` line, enables it; `off` disables it; any other value disables it
+too and TODO › Stream Deck › Diagnosis names it. With the games off, the
+TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
+refuse to start a game and say how to enable them; the deck program, the
+controller and the service are never affected. Set it from
+TODO › Stream Deck › Games, or by hand in this file.
 
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,
@@ -244,7 +253,7 @@ lock names also reaches every process of the game. A game started by `make strea
 hand-over and takes no lock. `systemctl --user` controls the service:
 
 <!-- [fr] -->
-`DECK_PROGRAM` vaut `tiler` (`script/stream_deck/game_tiler.py`),
+`DECK_PROGRAM` vaut `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
 `controller` (`script/stream_deck/erplibre_controller.py`) ou `none`. Une
 option donnée écrit sa clé ; une option absente garde la valeur déjà dans
 le fichier, et le défaut ne vaut que pour une clé absente : une
@@ -256,6 +265,15 @@ qu'une installation neuve charge à la prochaine ouverture de session. Avec
 `--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans
 gestionnaire utilisateur joignable (une installation par ssh sans session),
 le bilan nomme la commande à lancer après la prochaine connexion.
+
+`GAMES=on|off` active ou désactive la bibliothèque de jeux du Stream Deck.
+`on`, ou l'absence de ligne `GAMES`, l'active ; `off` la désactive ; toute
+autre valeur la désactive aussi et TODO › Stream Deck › Diagnostic la
+nomme. Jeux désactivés, le menu des jeux de TODO, la galerie,
+`make streamdeck_<jeu>` et le passage de relais refusent de lancer un jeu et
+disent comment les activer ; le programme du deck, le contrôleur et le
+service ne sont jamais touchés. Se règle dans TODO › Stream Deck › Jeux,
+ou à la main dans ce fichier.
 
 Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent
 chaque jeu par `script/install/erplibre_home_handover.sh`, qui arrête le

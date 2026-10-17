@@ -101,9 +101,10 @@ program from this checkout, and its settings
 ```
 DECK_PROGRAM=tiler
 RESTART_AFTER_GAME=yes
+GAMES=on
 ```
 
-`DECK_PROGRAM` is `tiler` (`script/stream_deck/game_tiler.py`),
+`DECK_PROGRAM` is `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
 `controller` (`script/stream_deck/erplibre_controller.py`) or `none`. An
 option given writes its key; an option left out keeps the value already in
 the file, and the default applies only to a missing key, so a reinstall
@@ -114,6 +115,14 @@ it: the program needs the extension, which a fresh install loads at the
 next login. With `--autostart` the unit is enabled and starts at login.
 Without a reachable user manager (an install over ssh with no session), the
 summary names the command to run after the next login.
+
+`GAMES=on|off` turns the Stream Deck game library on or off. `on`, or no
+`GAMES` line, enables it; `off` disables it; any other value disables it
+too and TODO › Stream Deck › Diagnosis names it. With the games off, the
+TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
+refuse to start a game and say how to enable them; the deck program, the
+controller and the service are never affected. Set it from
+TODO › Stream Deck › Games, or by hand in this file.
 
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,

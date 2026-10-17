@@ -235,6 +235,9 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les manifestes d'Odoo 18 gèlent 110 dépôts sur la tête de leur branche, dont `queue_job`, de 18.0.2.0 à 18.0.4.1 : une base installée sur le gel précédent demande `-u` pour ses modules installés dont la version a changé, sans quoi Odoo fait tourner un code qui attend des colonnes que la base n'a pas, comme `queue_job_channel.capacity`.
 - `docker-compose.yml`, que lance `make docker_run_daemon`, démarre l'image publiée d'ERPLibre 1.8.0 pour Odoo 18, `technolibre/erplibre:1.8.0_odoo_18.0_d3e5b5ad`, au lieu d'une image 1.6.0. Ses volumes sont gardés : une base créée par l'image 1.6.0 demande `-u` pour ses modules installés, comme pour le gel ci-dessus. `docker/docker-compose_odoo_18.0.yml` et sa variante selenium lancent encore l'image 1.6.0
 
+- Les jeux Stream Deck, la galerie (`gallery_server.py`, `index.html`) et les sauvegardes vivent dans `script/stream_deck/games/` ; le programme du deck `game_tiler.py` devient `script/stream_deck/erplibre_streamdeck.py`. `DECK_PROGRAM=tiler` et `make streamdeck_tiler` gardent leur sens ; `make streamdeck_erplibre` s'y ajoute. Une galerie démarrée avant la mise à jour se relance, et GNOME Shell prend le nouveau chemin de la galerie à la prochaine ouverture de session. Les sauvegardes de djscratch se déplacent : `mv script/stream_deck/save/* script/stream_deck/games/save/`
+- Le réglage `GAMES=on|off` du fichier de réglages du deck active ou désactive la bibliothèque de jeux ; absent ou `on`, elle est active. Désactivée, le menu des jeux de TODO, la galerie, `make streamdeck_<jeu>` et le passage de relais refusent de lancer un jeu ; le programme du deck, le contrôleur et le service restent intacts
+
 ## Corrigé
 
 - F7 (versions principales) les coche de nouveau dans le formulaire de déploiement Proxmox : il cochait les entrées par leur rang, alors que cette liste les identifie par système, version et architecture, et aucune VM n'était retenue

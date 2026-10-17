@@ -231,6 +231,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Odoo 18 manifests freeze 110 repositories on the head of their branch, `queue_job` 18.0.2.0 to 18.0.4.1 among them: a database installed on the previous freeze needs `-u` for its installed modules whose version changed, otherwise Odoo runs code that expects columns the database lacks, such as `queue_job_channel.capacity`.
 - `docker-compose.yml`, which `make docker_run_daemon` starts, runs the published ERPLibre 1.8.0 Odoo 18 image, `technolibre/erplibre:1.8.0_odoo_18.0_d3e5b5ad`, instead of a 1.6.0 image. Its volumes are kept: a database created by the 1.6.0 image needs `-u` for its installed modules, as for the freeze above. `docker/docker-compose_odoo_18.0.yml` and its selenium variant still run the 1.6.0 image
 
+- The Stream Deck games, the gallery (`gallery_server.py`, `index.html`) and the saves live in `script/stream_deck/games/`; the deck program `game_tiler.py` becomes `script/stream_deck/erplibre_streamdeck.py`. `DECK_PROGRAM=tiler` and `make streamdeck_tiler` keep their meaning; `make streamdeck_erplibre` is added. A gallery started before the update has to be restarted, and GNOME Shell picks the new gallery path at the next login. djscratch saves move with `mv script/stream_deck/save/* script/stream_deck/games/save/`
+- The `GAMES=on|off` setting in the deck settings file turns the game library on or off; missing or `on` enables it. With the games off, the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over refuse to start a game; the deck program, the controller and the service are unaffected
+
 ## Fixed
 
 - F7 (main versions) ticks them again on the Proxmox deployment form: it ticked entries by their rank, while that list identifies them by distribution, version and architecture, so no VM was planned

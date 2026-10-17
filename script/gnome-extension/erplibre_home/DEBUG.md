@@ -108,7 +108,7 @@ gdbus call --session \
 
 ### Tiling mode locks on the corner-pick grid
 - Fixed: TILE auto-cancels after 5 s of inactivity. If your timeout
-  feels off, override `TILING_IDLE_TIMEOUT_SEC` in `game_tiler.py`.
+  feels off, override `TILING_IDLE_TIMEOUT_SEC` in `erplibre_streamdeck.py`.
 
 ## Reset to a clean state
 

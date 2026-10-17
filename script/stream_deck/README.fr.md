@@ -190,8 +190,8 @@ Démineur classique avec animation de flag (barre jaune progressive en appui lon
 
 ```bash
 make streamdeck_minesweeper           # auto (25% solo, 35% VS)
-./script/stream_deck/game_minesweeper.py -m 6      # 6 mines
-./script/stream_deck/game_minesweeper.py -v         # show params / afficher paramètres
+./script/stream_deck/games/game_minesweeper.py -m 6      # 6 mines
+./script/stream_deck/games/game_minesweeper.py -v         # show params / afficher paramètres
 ```
 
 
@@ -600,8 +600,13 @@ script/stream_deck/
 ├── requirements.txt           # Python dependencies / Dépendances Python
 ├── Assets/                    # Controller images and fonts / Images et polices
 ├── erplibre_controller.py     # Main ERPLibre controller / Contrôleur principal
+├── erplibre_streamdeck.py     # Deck program (window tiler) / Programme du deck
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
-└── game_*.py                  # 42 games / 42 jeux
+└── games/                     # Games, gallery, saves / Jeux, galerie, sauvegardes
+    ├── game_*.py              # 45 games / 45 jeux
+    ├── gallery_server.py      # Game gallery / Galerie des jeux
+    ├── index.html             # Gallery page / Page de la galerie
+    └── save/                  # Game saves / Sauvegardes des jeux
 ```
 
 The GNOME Shell extension lives in `script/gnome-extension/erplibre_home/`. /
