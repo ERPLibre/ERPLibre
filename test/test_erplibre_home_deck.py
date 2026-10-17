@@ -148,7 +148,7 @@ class LeLancement(Copie):
         self.assertEqual(
             [
                 str(self.depot),
-                str(self.depot / "script/stream_deck/game_tiler.py"),
+                str(self.depot / "script/stream_deck/erplibre_streamdeck.py"),
             ],
             fini.stdout.splitlines(),
         )
@@ -156,7 +156,7 @@ class LeLancement(Copie):
     def test_each_program_maps_to_its_script(self):
         self.venv()
         attendus = {
-            "tiler": "script/stream_deck/game_tiler.py",
+            "tiler": "script/stream_deck/erplibre_streamdeck.py",
             "controller": "script/stream_deck/erplibre_controller.py",
         }
         for programme, script in attendus.items():
@@ -194,7 +194,7 @@ class LeLancement(Copie):
         self.regler("DECK_PROGRAM=none\n")
         fini = self.lancer()
         self.assertEqual(0, fini.returncode, fini.stderr)
-        self.assertNotIn("game_tiler.py", fini.stdout)
+        self.assertNotIn("erplibre_streamdeck.py", fini.stdout)
         self.assertIn("nothing to run", fini.stdout)
 
     def test_without_the_venv_it_exits_one(self):
@@ -279,6 +279,40 @@ class LesScripts(unittest.TestCase):
                     text=True,
                 )
                 self.assertEqual(0, fini.returncode, fini.stderr)
+
+
+class LesProgrammesExistent(unittest.TestCase):
+    """deck_program_path nomme, pour chaque programme, un fichier du
+    dépôt : un renommage oublié dans la bibliothèque arrête le service."""
+
+    def test_each_program_names_a_file_that_exists(self):
+        bib = RACINE / "script/install/erplibre_home_settings.sh"
+        for programme in ("tiler", "controller"):
+            with self.subTest(programme=programme):
+                fini = subprocess.run(
+                    [
+                        "bash",
+                        "-c",
+                        '. "$0"; deck_program_path "$1"',
+                        str(bib),
+                        programme,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                chemin = RACINE / fini.stdout.strip()
+                self.assertTrue(chemin.is_file(), chemin)
+        fini = subprocess.run(
+            ["bash", "-c", ". \"$0\"; deck_program_path tiler", str(bib)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(
+            "script/stream_deck/erplibre_streamdeck.py", fini.stdout.strip()
+        )
 
 
 if __name__ == "__main__":

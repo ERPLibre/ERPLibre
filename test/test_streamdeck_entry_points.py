@@ -151,10 +151,16 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
                 [f"{VENV_REF} script/stream_deck/game_{jeu}.py"],
             )
 
+    def test_the_tiler_target_is_an_alias(self):
+        prerequis, commandes = self.regles["streamdeck_tiler"]
+        self.assertEqual(["streamdeck_erplibre"], prerequis)
+        self.assertEqual([], commandes)
+
     def test_the_spec_entry_points_use_the_venv(self):
         attendus = {
             "streamdeck": "erplibre_controller.py",
             "streamdeck_gallery": "gallery_server.py",
+            "streamdeck_erplibre": "erplibre_streamdeck.py",
             "streamdeck_translator_doctor": "translator_doctor.py",
             "streamdeck_translator_test": "translator_test.py",
             "streamdeck_translator_stream": "translator_stream.py",

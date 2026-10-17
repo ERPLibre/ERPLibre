@@ -481,9 +481,9 @@ class LaCommandeSousVerrou(unittest.TestCase):
         self.assertFalse(os.path.exists(marque))
 
     def test_a_deck_program_under_the_command_shares_its_lock(self):
-        """Le tiler lancé comme un jeu, par TODO (enfant direct) ou la
-        galerie (sous bash) : il trouve le verrou tenu par un ancêtre au nom
-        de « game » et tourne au lieu de sortir en 2."""
+        """Un programme du deck lancé dans un jeu, par TODO (enfant direct)
+        ou la galerie (sous bash) : il trouve le verrou tenu par un ancêtre
+        au nom de « game » et tourne au lieu de sortir en 2."""
         prendre = PRENDRE.format(fonction="acquire_or_exit")
         for commande in (
             [sys.executable, "-c", prendre, str(DECK_DIR), "tiler"],
@@ -1066,7 +1066,7 @@ class LesProgrammesLePrennent(unittest.TestCase):
     en SystemExit, pour que le deck soit remis à zéro."""
 
     def test_the_tiler_takes_it_first_thing_in_main(self):
-        source = (DECK_DIR / "game_tiler.py").read_text(encoding="utf-8")
+        source = (DECK_DIR / "erplibre_streamdeck.py").read_text(encoding="utf-8")
         main = fonction(source, "main")
         self.assertEqual("tiler", appel_du_verrou(main.body[0]))
         self.assertIsNone(appel_du_verrou(main.body[1], "exit_on_sigterm"))
@@ -1076,7 +1076,7 @@ class LesProgrammesLePrennent(unittest.TestCase):
         """L'unité ne relance pas un tiler qui ne trouve aucun deck à écran
         (un autre périphérique Elgato a passé ExecCondition)."""
         self.assertEqual(3, charger().NO_DECK_EXIT)
-        source = (DECK_DIR / "game_tiler.py").read_text(encoding="utf-8")
+        source = (DECK_DIR / "erplibre_streamdeck.py").read_text(encoding="utf-8")
         self.assertIn(
             'print("No visual Stream Deck found.")\n'
             "        sys.exit(deck_lock.NO_DECK_EXIT)",

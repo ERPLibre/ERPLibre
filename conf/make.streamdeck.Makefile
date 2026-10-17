@@ -113,9 +113,13 @@ streamdeck_colormixer: $(STREAMDECK_PY)
 streamdeck_djscratch: $(STREAMDECK_PY)
 	$(STREAMDECK_PY) script/stream_deck/game_djscratch.py
 
+# The deck program of ERPLibre Home; streamdeck_tiler is its former name.
+.PHONY: streamdeck_erplibre
+streamdeck_erplibre: $(STREAMDECK_PY)
+	$(STREAMDECK_PY) script/stream_deck/erplibre_streamdeck.py
+
 .PHONY: streamdeck_tiler
-streamdeck_tiler: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/game_tiler.py
+streamdeck_tiler: streamdeck_erplibre
 
 # ERPLibre Home, two levels. The base: the GNOME extension, its schemas
 # and translations, linked and enabled. The Stream Deck level adds the USB
@@ -216,7 +220,7 @@ streamdeck_translator_unittest: $(STREAMDECK_PY)
 .PHONY: streamdeck_tiler_unittest
 streamdeck_tiler_unittest: $(STREAMDECK_PY)
 	@$(STREAMDECK_PY) -m unittest \
-		discover -s ./script/stream_deck -p "test_game_tiler*.py" -v
+		discover -s ./script/stream_deck -p "test_erplibre_streamdeck*.py" -v
 
 .PHONY: streamdeck_translator_stream
 streamdeck_translator_stream: $(STREAMDECK_PY)
