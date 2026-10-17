@@ -19,6 +19,8 @@ Les faits :
   "" quand l'unité n'est pas installée ou que systemctl n'a rien rendu ;
 - settings : les réglages du service, défauts compris ;
 - lock : (pid, programme) du détenteur du verrou du deck, ou None ;
+- lock_running : bool, le PID de lock désigne encore le processus qui a
+  écrit le verrou (deck_lock.holder_running) ; faux quand il est libre ;
 - lock_pids : [pid] des processus qui ont le verrou ouvert, [] quand il
   est libre ; pour un jeu, tout son arbre, l'enveloppe fût-elle morte ;
 - decks : [{"product": str, "id_product": str}], vendeur 0fd9.
@@ -198,7 +200,8 @@ def collect(
             run(cmd_unit("is-active"))[1].strip() if unit_file else ""
         ),
         "settings": service.read_settings(service.settings_path(environ)),
-        "lock": tenu,
+        "lock": tenu[:2] if tenu else None,
+        "lock_running": deck_lock.holder_running(tenu) if tenu else False,
         "lock_pids": deck_lock.holder_pids(verrou) if tenu else [],
         "decks": plugged_decks(sysfs),
     }
@@ -251,10 +254,13 @@ def status_lines(facts):
     else:
         unite = t("Service: not installed")
     if facts["lock"]:
+        pid = facts["lock"][0]
+        if not facts["lock_running"]:
+            pid = "%s, %s" % (pid, t("no longer running"))
         verrou = "%s %s (PID %s)" % (
             t("Deck lock: held by"),
             facts["lock"][1],
-            facts["lock"][0],
+            pid,
         )
     else:
         verrou = t("Deck lock: free")
@@ -362,17 +368,28 @@ def diagnosis_lines(facts):
     ):
         if facts["lock"]:
             pid, detenteur = facts["lock"]
+            # Le PID nommé n'est proposé à « kill » que s'il désigne encore
+            # l'auteur du verrou : parti, il a pu être repris par un autre
+            # processus. Les processus qui tiennent le verrou le remplacent.
+            nomme = [pid] if facts["lock_running"] else []
             if detenteur == "game":
                 # Fermer le jeu le laisse finir proprement ; le dernier
                 # recours vise chaque processus qui tient le verrou, car
                 # l'enveloppe que le verrou nomme peut être déjà morte.
-                pids = facts["lock_pids"] or [pid]
+                pids = facts["lock_pids"] or nomme
+                ferme = t("close the game")
+                sinon = t("close the game; as a last resort:")
+            else:
+                pids = nomme or facts["lock_pids"]
+                ferme = t("close it")
+                sinon = t("close it, or:")
+            if pids:
                 remede = "%s kill %s" % (
-                    t("close the game; as a last resort:"),
+                    sinon,
                     " ".join(str(p) for p in pids),
                 )
             else:
-                remede = "%s kill %s" % (t("close it, or:"), pid)
+                remede = ferme
             problemes.append(
                 (
                     "%s %s (PID %s)"

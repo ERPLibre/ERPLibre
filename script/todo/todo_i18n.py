@@ -362,6 +362,10 @@ TRANSLATIONS = {
         "fr": "Verrou du deck : tenu par",
         "en": "Deck lock: held by",
     },
+    "no longer running": {
+        "fr": "ne tourne plus",
+        "en": "no longer running",
+    },
     "Deck lock: free": {
         "fr": "Verrou du deck : libre",
         "en": "Deck lock: free",
@@ -437,6 +441,14 @@ TRANSLATIONS = {
     "The deck is held by": {
         "fr": "Le deck est tenu par",
         "en": "The deck is held by",
+    },
+    "close it": {
+        "fr": "le fermer",
+        "en": "close it",
+    },
+    "close the game": {
+        "fr": "fermer le jeu",
+        "en": "close the game",
     },
     "close it, or:": {
         "fr": "le fermer, ou :",

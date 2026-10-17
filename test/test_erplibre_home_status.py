@@ -14,7 +14,9 @@ Ce que ces tests gardent :
 - chaque sonde qui n'est pas comme attendu a sa correction, et une
   installation saine n'en a aucune ;
 - sans unité installée, systemctl n'est pas appelé ;
-- chaque libellé a ses deux langues.
+- chaque libellé a ses deux langues ;
+- un PID que le verrou nomme, mais qui ne désigne plus son auteur (parti,
+  ou repris par un autre processus), n'est jamais proposé à « kill ».
 """
 
 import fcntl
@@ -64,6 +66,7 @@ def faits(**changes):
         "unit_active": "active",
         "settings": {"DECK_PROGRAM": "tiler", "RESTART_AFTER_GAME": "yes"},
         "lock": ("4242", "tiler"),
+        "lock_running": True,
         "lock_pids": [4242],
         "decks": [{"product": "Stream Deck MK.2", "id_product": "0080"}],
     }
@@ -172,6 +175,7 @@ class LaCollecte(unittest.TestCase):
                     "RESTART_AFTER_GAME": "yes",
                 },
                 "lock": None,
+                "lock_running": False,
                 "lock_pids": [],
                 "decks": [],
             },
@@ -209,6 +213,31 @@ class LaCollecte(unittest.TestCase):
         recu = self.collecter({})
         self.assertEqual(("777", "game"), recu["lock"])
         self.assertEqual([os.getpid()], recu["lock_pids"])
+
+    def test_the_lock_pid_is_running_only_with_its_start_time(self):
+        """Le troisième champ du verrou, l'instant de départ, dit si le PID
+        nommé désigne encore son auteur ; un texte qui n'en porte pas garde
+        l'ancienne lecture."""
+        chemin = self.tmp / "deck.lock"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(chemin.parent, 0o700)
+        moi = os.getpid()
+        with open("/proc/%d/stat" % moi, encoding="utf-8") as fh:
+            depart = int(fh.read().rsplit(")", 1)[1].split()[19])
+        for texte, attendu in (
+            ("%d game %d\n" % (moi, depart), True),
+            ("%d game %d\n" % (moi, depart + 1), False),
+            ("%d game\n" % moi, True),
+            ("4000000000 game\n", False),
+        ):
+            with self.subTest(texte=texte):
+                with open(chemin, "w", encoding="utf-8") as tenu:
+                    tenu.write(texte)
+                    tenu.flush()
+                    fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    recu = self.collecter({})
+                self.assertEqual(texte.split()[:2], list(recu["lock"]))
+                self.assertEqual(attendu, recu["lock_running"])
 
 
 class LEtat(unittest.TestCase):
@@ -257,6 +286,14 @@ class LEtat(unittest.TestCase):
                 "Stream Deck venv: missing",
             ],
             lignes,
+        )
+
+    def test_a_lock_naming_a_process_gone_says_so(self):
+        self.assertIn(
+            "Deck lock: held by game (PID 777, no longer running)",
+            statut.status_lines(
+                faits(lock=("777", "game"), lock_running=False)
+            ),
         )
 
     def test_nothing_installed_and_nothing_read(self):
@@ -395,6 +432,32 @@ class LeDiagnostic(unittest.TestCase):
                 unit_active="inactive", lock=("777", "game"), lock_pids=[]
             ),
         )
+
+    def test_a_pid_no_longer_running_is_never_killed(self):
+        """Le PID du verrou peut désigner un processus parti, ou repris par
+        un autre : la diagnostic ne propose « kill » que sur les processus
+        qui tiennent le verrou, et rien quand elle n'en trouve aucun."""
+        cas = (
+            (
+                ("777", "game"),
+                [778],
+                "close the game; as a last resort: kill 778",
+            ),
+            (("777", "game"), [], "close the game"),
+            (("777", "controller"), [778], "close it, or: kill 778"),
+            (("777", "controller"), [], "close it"),
+        )
+        for tenu, pids, attendu in cas:
+            with self.subTest(tenu=tenu, pids=pids):
+                self.assertIn(
+                    attendu,
+                    self.corrections(
+                        unit_active="inactive",
+                        lock=tenu,
+                        lock_running=False,
+                        lock_pids=pids,
+                    ),
+                )
 
     def test_a_disabled_unit_is_a_choice_not_a_problem(self):
         self.assertEqual(

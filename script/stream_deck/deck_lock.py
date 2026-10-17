@@ -12,8 +12,11 @@ Le verrou est un fcntl.flock exclusif sur $XDG_RUNTIME_DIR/erplibre-home/
 deck.lock. flock appartient à la description de fichier ouverte : il tient
 tant que le fichier reste ouvert, donc jusqu'à la fin du processus, et deux
 open() du même fichier, même dans un seul processus, s'excluent. Le fichier
-porte « PID programme » du détenteur ; il reste en place après lui, et seul
-le flock dit si le deck est pris.
+porte « PID programme départ » du détenteur, départ étant l'instant de
+départ de son processus (champ 22 de /proc/<pid>/stat), qui distingue un
+PID repris de celui qui a écrit ; un texte sans ce troisième champ se lit
+encore. Le fichier reste en place après le détenteur, et seul le flock dit
+si le deck est pris.
 
 Lancé en commande, le module tient le verrou pour un jeu, que la passation
 (erplibre_home_handover.sh) lance ainsi :
@@ -31,7 +34,9 @@ Un programme du deck lancé sous la commande tient le verrou par le
 descripteur hérité. S'il ne l'a pas hérité (un subprocess python ferme les
 descripteurs), il trouve son ancêtre au nom de « game » dans le verrou,
 tourne sous ce verrou, et un fil attend de le reprendre à son nom : le deck
-reste pris s'il survit au jeu. Par le descripteur hérité, le texte n'est
+reste pris s'il survit au jeu. L'ancêtre n'est reconnu que si son instant
+de départ est celui du texte : une enveloppe morte dont un ancêtre a repris
+le PID n'ouvre pas le deck. Par le descripteur hérité, le texte n'est
 jamais réécrit : il nomme encore « game » et le PID de l'enveloppe quand
 seul ce programme tient le deck, et holder_pids() nomme les vrais
 détenteurs.
@@ -67,10 +72,13 @@ _held = []
 
 
 class DeckBusy(Exception):
-    """Le verrou est tenu ailleurs ; `holder` vaut (pid, programme)."""
+    """Le verrou est tenu ailleurs ; `holder` vaut (pid, programme, départ),
+    voir parse_holder."""
 
     def __init__(self, holder):
-        super().__init__("Stream Deck in use by %s (PID %s)" % holder[::-1])
+        super().__init__(
+            "Stream Deck in use by %s (PID %s)" % (holder[1], holder[0])
+        )
         self.holder = holder
 
 
@@ -90,17 +98,60 @@ def lock_path(environ=None):
 
 
 def parse_holder(texte):
-    """(pid, programme) lus dans le texte du verrou, en chaînes. Le PID
-    n'est gardé que fait de chiffres, le programme que fait de lettres, de
-    chiffres, de « _ » et de « - » ; « ? » sinon, et pour ce qui manque.
-    Status affiche ces deux mots et la diagnostic en tire « kill <pid> » :
-    aucun texte arbitraire n'y passe."""
-    mots = texte.split() + ["?", "?"]
+    """(pid, programme, départ) lus dans le texte du verrou, en chaînes. Le
+    PID n'est gardé que fait de chiffres, le programme que fait de lettres,
+    de chiffres, de « _ » et de « - » ; « ? » sinon, et pour ce qui manque.
+    Le départ, troisième champ facultatif, vaut None quand il manque (un
+    texte écrit sans lui), « ? » quand il n'est pas fait de chiffres : il
+    ne concorde alors avec aucun processus. Status affiche ces mots et la
+    diagnostic en tire « kill <pid> » : aucun texte arbitraire n'y passe."""
+    mots = texte.split()
+    depart = None
+    if len(mots) > 2:
+        depart = mots[2] if re.fullmatch(r"[0-9]{1,20}", mots[2]) else "?"
+    mots += ["?", "?"]
     pid = mots[0] if re.fullmatch(r"[0-9]{1,10}", mots[0]) else "?"
     programme = (
         mots[1] if re.fullmatch(r"[A-Za-z0-9_-]{1,32}", mots[1]) else "?"
     )
-    return pid, programme
+    return pid, programme, depart
+
+
+def _stat_fields(pid, proc="/proc"):
+    """Les champs de <proc>/<pid>/stat après la dernière « ) » (le nom de
+    commande peut en porter) : l'état d'abord (champ 3), l'instant de
+    départ à l'index 19 (champ 22). None quand le fichier ne se lit pas."""
+    try:
+        with open(
+            os.path.join(proc, str(pid), "stat"),
+            encoding="utf-8",
+            errors="replace",
+        ) as fh:
+            return fh.read().rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+
+
+def _start_time(pid, proc="/proc"):
+    """L'instant de départ de `pid` (champ 22 de /proc/<pid>/stat, en tops
+    d'horloge depuis le démarrage), en chaîne, ou None. Un PID repris par un
+    autre processus en a un autre."""
+    champs = _stat_fields(pid, proc)
+    return champs[19] if champs and len(champs) > 19 else None
+
+
+def holder_running(tenu, proc="/proc"):
+    """Vrai quand le PID que nomme `tenu` (parse_holder) désigne encore le
+    processus qui a écrit le texte : il vit, n'est pas un zombie, et son
+    instant de départ est celui du texte quand le texte en porte un. Faux
+    pour un PID « ? »."""
+    pid, _programme, depart = tenu
+    if pid == "?":
+        return False
+    champs = _stat_fields(pid, proc)
+    if not champs or champs[0] in ("Z", "X"):
+        return False
+    return depart is None or (len(champs) > 19 and champs[19] == depart)
 
 
 def _check_private_dir(dossier):
@@ -146,10 +197,28 @@ def _ancestors():
 
 
 def _write_holder(fh, program):
+    """Écrit « PID programme départ » de ce processus dans `fh`, sans le
+    départ quand /proc ne le donne pas."""
+    texte = "%d %s" % (os.getpid(), program)
+    depart = _start_time(os.getpid())
+    if depart is not None:
+        texte += " " + depart
     fh.seek(0)
     fh.truncate()
-    fh.write("%d %s\n" % (os.getpid(), program))
+    fh.write(texte + "\n")
     fh.flush()
+
+
+def _game_ancestor(tenu):
+    """Vrai quand `tenu` (parse_holder) nomme « game » et un ancêtre de ce
+    processus, qui a l'instant de départ du texte quand le texte en porte
+    un : un PID d'enveloppe morte repris par un ancêtre ne compte pas."""
+    pid, programme, depart = tenu
+    if programme != HANDOVER_PROGRAM or pid == "?":
+        return False
+    if int(pid) not in _ancestors():
+        return False
+    return depart is None or depart == _start_time(int(pid))
 
 
 def _inherited(path, exclu):
@@ -207,11 +276,12 @@ def acquire(program, path=None):
     Le verrou déjà tenu l'est pour ce processus dans deux cas, sans texte
     réécrit : un descripteur hérité du jeu le tient (_inherited), et le
     fichier rendu est ce descripteur ; ou un ancêtre le tient au nom de
-    « game » sans que le descripteur ait été hérité, et _take_over le
-    reprend à la fin du jeu. Un détenteur parti entre le premier essai et
-    cette recherche laisse le verrou libre : un second essai le prend. Lève
-    DeckBusy quand un autre processus le tient, OSError quand le dossier ou
-    le fichier n'est pas privé (voir _open_private)."""
+    « game » (_game_ancestor) sans que le descripteur ait été hérité, et
+    _take_over le reprend à la fin du jeu. Un détenteur parti entre le
+    premier essai et cette recherche laisse le verrou libre : un second
+    essai le prend. Lève DeckBusy quand un autre processus le tient,
+    OSError quand le dossier ou le fichier n'est pas privé (voir
+    _open_private)."""
     path = path or lock_path()
     fh = _open_private(path)
     try:
@@ -227,10 +297,9 @@ def acquire(program, path=None):
         try:
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            if tenu[1] == HANDOVER_PROGRAM and tenu[0] != "?":
-                if int(tenu[0]) in _ancestors():
-                    _take_over(fh, program)
-                    return None
+            if _game_ancestor(tenu):
+                _take_over(fh, program)
+                return None
             fh.close()
             raise DeckBusy(tenu) from None
     _write_holder(fh, program)
@@ -244,7 +313,7 @@ def acquire_or_exit(program, path=None):
     try:
         return acquire(program, path)
     except DeckBusy as busy:
-        pid, detenteur = busy.holder
+        pid, detenteur, _depart = busy.holder
         print(
             "Stream Deck in use by %s (PID %s); close it first."
             % (detenteur, pid),
@@ -254,9 +323,9 @@ def acquire_or_exit(program, path=None):
 
 
 def holder(path=None):
-    """(pid, programme) du détenteur (voir parse_holder), ou None quand le
-    verrou est libre, n'a jamais été pris, ou que son dossier n'est pas
-    privé. Sonde par un flock non bloquant aussitôt rendu. L'ouverture est
+    """(pid, programme, départ) du détenteur (voir parse_holder), ou None
+    quand le verrou est libre, n'a jamais été pris, ou que son dossier n'est
+    pas privé. Sonde par un flock non bloquant aussitôt rendu. L'ouverture est
     non bloquante et seul un fichier ordinaire est lu : une FIFO posée à sa
     place ne fige pas Status."""
     path = path or lock_path()
@@ -440,7 +509,7 @@ def run(program, argv, path=None):
     try:
         fh = acquire(program, path)
     except DeckBusy as busy:
-        pid, detenteur = busy.holder
+        pid, detenteur, _depart = busy.holder
         print(
             "Stream Deck in use by %s (PID %s); close it first."
             % (detenteur, pid),
