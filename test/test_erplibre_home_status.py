@@ -64,7 +64,11 @@ def faits(**changes):
         "unit_file": True,
         "unit_enabled": "enabled",
         "unit_active": "active",
-        "settings": {"DECK_PROGRAM": "tiler", "RESTART_AFTER_GAME": "yes"},
+        "settings": {
+            "DECK_PROGRAM": "tiler",
+            "RESTART_AFTER_GAME": "yes",
+            "GAMES": "on",
+        },
         "lock": ("4242", "tiler"),
         "lock_running": True,
         "lock_pids": [4242],
@@ -173,6 +177,7 @@ class LaCollecte(unittest.TestCase):
                 "settings": {
                     "DECK_PROGRAM": "tiler",
                     "RESTART_AFTER_GAME": "yes",
+                    "GAMES": "on",
                 },
                 "lock": None,
                 "lock_running": False,
