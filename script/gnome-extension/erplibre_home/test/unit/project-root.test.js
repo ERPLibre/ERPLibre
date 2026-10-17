@@ -212,9 +212,9 @@ test('both deck indicators show that message, and only through _()', () => {
 
 test('galleryServerCommand runs the gallery under the venv python, no make', () => {
     assert.equal(galleryServerCommand(CHECKOUT, DECK_PYTHON),
-        `'${DECK_PYTHON}' '${CHECKOUT}/script/stream_deck/gallery_server.py'`);
+        `'${DECK_PYTHON}' '${CHECKOUT}/script/stream_deck/games/gallery_server.py'`);
     assert.equal(galleryServerCommand(`${CHECKOUT}/`, DECK_PYTHON),
-        `'${DECK_PYTHON}' '${CHECKOUT}/script/stream_deck/gallery_server.py'`);
+        `'${DECK_PYTHON}' '${CHECKOUT}/script/stream_deck/games/gallery_server.py'`);
 });
 
 test('galleryServerCommand quotes a path with a space or a quote', () => {
@@ -222,7 +222,7 @@ test('galleryServerCommand quotes a path with a space or a quote', () => {
     const python = `${root}/.venv.streamdeck/bin/python`;
     assert.equal(galleryServerCommand(root, python),
         "'/opt/mon dépôt/l'\\''autre/.venv.streamdeck/bin/python' " +
-        "'/opt/mon dépôt/l'\\''autre/script/stream_deck/gallery_server.py'");
+        "'/opt/mon dépôt/l'\\''autre/script/stream_deck/games/gallery_server.py'");
 });
 
 test('the controller launches the gallery through galleryServerCommand', () => {

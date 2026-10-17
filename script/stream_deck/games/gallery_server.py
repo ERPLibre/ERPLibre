@@ -25,7 +25,8 @@ import webbrowser
 
 PORT = 8042
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ERPLIBRE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+# script/stream_deck/games/ -> the repository root, three levels up.
+ERPLIBRE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 # Hands the deck over from the service to a game, then back.
 HANDOVER = os.path.join(
     ERPLIBRE_DIR, "script", "install", "erplibre_home_handover.sh"
