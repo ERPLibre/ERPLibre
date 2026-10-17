@@ -28,6 +28,8 @@ PATTERNS = (
     "script/analyse/*.py",
     "script/analyse/*/*.py",
     "script/odoo/migration/*.py",
+    "script/odoo/*.py",
+    "script/lib_ops/*.py",
 )
 
 

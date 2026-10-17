@@ -116,6 +116,21 @@ Update all features.
 ./run.sh --limit-time-real 99999 --no-http --stop-after-init -u all -d DATABASE
 ```
 
+### Update modules of an instance run by systemd
+
+`script/odoo/update_module.py` stops the unit, backs the database up,
+updates the modules, restarts the unit and checks its log. The unit is only
+read, never modified, and a unit that was running is restarted whatever
+happens. Always simulate first:
+
+```bash
+./script/odoo/update_module.py --module 'my_module_*' --db DATABASE --dry-run
+sudo ./script/odoo/update_module.py --module 'my_module_*' --db DATABASE
+```
+
+The same is reachable from `make todo`: `Execute > Production`. Options,
+detection order and exit codes: [script/odoo/README.md](../script/odoo/README.md).
+
 # Postgresql
 
 To show config files:

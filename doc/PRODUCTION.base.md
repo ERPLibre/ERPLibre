@@ -210,6 +210,37 @@ Mettre à jour toutes les fonctionnalités.
 ```
 
 <!-- [en] -->
+### Update modules of an instance run by systemd
+
+`script/odoo/update_module.py` stops the unit, backs the database up,
+updates the modules, restarts the unit and checks its log. The unit is only
+read, never modified, and a unit that was running is restarted whatever
+happens. Always simulate first:
+
+<!-- [fr] -->
+### Mettre à jour les modules d'une instance servie par systemd
+
+`script/odoo/update_module.py` arrête l'unité, sauvegarde la base, met à
+jour les modules, relance l'unité et vérifie son journal. L'unité est
+seulement lue, jamais modifiée, et une unité qui tournait est relancée quoi
+qu'il arrive. Toujours simuler d'abord :
+
+<!-- [common] -->
+```bash
+./script/odoo/update_module.py --module 'my_module_*' --db DATABASE --dry-run
+sudo ./script/odoo/update_module.py --module 'my_module_*' --db DATABASE
+```
+
+<!-- [en] -->
+The same is reachable from `make todo`: `Execute > Production`. Options,
+detection order and exit codes: [script/odoo/README.md](../script/odoo/README.md).
+
+<!-- [fr] -->
+Le même geste est accessible depuis `make todo` : `Exécuter > Production`.
+Options, ordre de détection et codes de sortie :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+<!-- [en] -->
 # Postgresql
 
 To show config files:
