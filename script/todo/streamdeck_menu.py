@@ -70,6 +70,7 @@ class StreamDeckMenuMixin:
                 )
             },
             {"prompt_description": t("Extension - Reload or preferences")},
+            {"prompt_description": t("Games - Enable or disable the games")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -97,6 +98,8 @@ class StreamDeckMenuMixin:
                 self._streamdeck_uninstall()
             elif status == "10":
                 self._streamdeck_extension()
+            elif status == "11":
+                self._streamdeck_games_setting()
             else:
                 print(t("Command not found !"))
 
@@ -252,6 +255,34 @@ class StreamDeckMenuMixin:
         code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
         if code == 0:
             self._streamdeck_systemctl("restart", service.UNIT_NAME)
+
+    def _streamdeck_games_setting(self):
+        """Réécrit GAMES. Il ne faut pas l'unité, et rien ne redémarre :
+        la galerie, make et la passation relisent le fichier à chaque jeu.
+        La valeur en vigueur, celle du fichier ou « on » quand la clé
+        manque, n'écrit rien ; une valeur invalide se montre comme telle et
+        n'a pas de défaut, si bien qu'Entrée ne la remplace pas."""
+        chemin = service.settings_path()
+        actuel = service.read_settings(chemin)["GAMES"]
+        libelles = (("on", t("Enabled")), ("off", t("Disabled")))
+        connus = dict(libelles)
+        affiche = connus.get(actuel, "%r (%s)" % (actuel, t("invalid")))
+        defaut = (
+            str(service.GAMES_VALUES.index(actuel) + 1)
+            if actuel in service.GAMES_VALUES
+            else None
+        )
+        choix = self._streamdeck_choice(
+            f"{t('Games:')} {affiche}", libelles, defaut
+        )
+        if choix is None:
+            return
+        if choix == actuel or not service.write_settings(
+            chemin, {"GAMES": choix}
+        ):
+            print(t("Unchanged."))
+            return
+        print(f"{t('Games:')} {connus[choix]}")
 
     def _streamdeck_autostart(self):
         if not self._streamdeck_unit_installed():
