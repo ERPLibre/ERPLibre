@@ -15,102 +15,111 @@ $(STREAMDECK_PY):
 	@echo "Stream Deck venv missing: make erplibre_home_streamdeck_install" >&2
 	@exit 1
 
+# A game target lists streamdeck_games_guard as a prerequisite: with
+# GAMES=off, or an unknown value, in streamdeck.conf, it stops there with
+# the reason. The deck program, the controller and the translator tools
+# are never gated.
+.PHONY: streamdeck_games_guard
+streamdeck_games_guard:
+	@bash -c '. script/install/erplibre_home_settings.sh && \
+		{ deck_games_enabled || { deck_games_message >&2; exit 1; }; }'
+
 .PHONY: streamdeck
 streamdeck: $(STREAMDECK_PY)
 	$(STREAMDECK_PY) script/stream_deck/erplibre_controller.py
 
 .PHONY: streamdeck_snake
-streamdeck_snake: $(STREAMDECK_PY)
+streamdeck_snake: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_snake.py
 
 .PHONY: streamdeck_minesweeper
-streamdeck_minesweeper: $(STREAMDECK_PY)
+streamdeck_minesweeper: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_minesweeper.py
 
 .PHONY: streamdeck_whackamole
-streamdeck_whackamole: $(STREAMDECK_PY)
+streamdeck_whackamole: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_whackamole.py
 
 .PHONY: streamdeck_simon
-streamdeck_simon: $(STREAMDECK_PY)
+streamdeck_simon: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_simon.py
 
 .PHONY: streamdeck_lightsout
-streamdeck_lightsout: $(STREAMDECK_PY)
+streamdeck_lightsout: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_lightsout.py
 
 .PHONY: streamdeck_reaction
-streamdeck_reaction: $(STREAMDECK_PY)
+streamdeck_reaction: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_reaction.py
 
 .PHONY: streamdeck_breakout
-streamdeck_breakout: $(STREAMDECK_PY)
+streamdeck_breakout: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_breakout.py
 
 .PHONY: streamdeck_2048
-streamdeck_2048: $(STREAMDECK_PY)
+streamdeck_2048: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_2048.py
 
 .PHONY: streamdeck_colormatch
-streamdeck_colormatch: $(STREAMDECK_PY)
+streamdeck_colormatch: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_colormatch.py
 
 .PHONY: streamdeck_life
-streamdeck_life: $(STREAMDECK_PY)
+streamdeck_life: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_life.py
 
 .PHONY: streamdeck_taquin
-streamdeck_taquin: $(STREAMDECK_PY)
+streamdeck_taquin: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_taquin.py
 
 .PHONY: streamdeck_mastermind
-streamdeck_mastermind: $(STREAMDECK_PY)
+streamdeck_mastermind: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_mastermind.py
 
 .PHONY: streamdeck_battleship
-streamdeck_battleship: $(STREAMDECK_PY)
+streamdeck_battleship: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_battleship.py
 
 .PHONY: streamdeck_flappy
-streamdeck_flappy: $(STREAMDECK_PY)
+streamdeck_flappy: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_flappy.py
 
 .PHONY: streamdeck_pong
-streamdeck_pong: $(STREAMDECK_PY)
+streamdeck_pong: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_pong.py
 
 .PHONY: streamdeck_sokoban
-streamdeck_sokoban: $(STREAMDECK_PY)
+streamdeck_sokoban: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_sokoban.py
 
 .PHONY: streamdeck_floodfill
-streamdeck_floodfill: $(STREAMDECK_PY)
+streamdeck_floodfill: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_floodfill.py
 
 .PHONY: streamdeck_bomberman
-streamdeck_bomberman: $(STREAMDECK_PY)
+streamdeck_bomberman: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_bomberman.py
 
 .PHONY: streamdeck_tictactoe
-streamdeck_tictactoe: $(STREAMDECK_PY)
+streamdeck_tictactoe: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_tictactoe.py
 
 # Stream Deck + games (dials + touchscreen)
 
 .PHONY: streamdeck_safecracker
-streamdeck_safecracker: $(STREAMDECK_PY)
+streamdeck_safecracker: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_safecracker.py
 
 .PHONY: streamdeck_slots
-streamdeck_slots: $(STREAMDECK_PY)
+streamdeck_slots: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_slots.py
 
 .PHONY: streamdeck_colormixer
-streamdeck_colormixer: $(STREAMDECK_PY)
+streamdeck_colormixer: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_colormixer.py
 
 .PHONY: streamdeck_djscratch
-streamdeck_djscratch: $(STREAMDECK_PY)
+streamdeck_djscratch: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_djscratch.py
 
 # The deck program of ERPLibre Home; streamdeck_tiler is its former name.
@@ -340,91 +349,91 @@ erplibre_home_reload_clean:
 	@echo "After re-login:  main UUID loads the latest installed source."
 
 .PHONY: streamdeck_fishing
-streamdeck_fishing: $(STREAMDECK_PY)
+streamdeck_fishing: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_fishing.py
 
 .PHONY: streamdeck_maze
-streamdeck_maze: $(STREAMDECK_PY)
+streamdeck_maze: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_maze.py
 
 .PHONY: streamdeck_tetris
-streamdeck_tetris: $(STREAMDECK_PY)
+streamdeck_tetris: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_tetris.py
 
 .PHONY: streamdeck_connect4
-streamdeck_connect4: $(STREAMDECK_PY)
+streamdeck_connect4: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_connect4.py
 
 .PHONY: streamdeck_spaceinvaders
-streamdeck_spaceinvaders: $(STREAMDECK_PY)
+streamdeck_spaceinvaders: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_spaceinvaders.py
 
 .PHONY: streamdeck_frogger
-streamdeck_frogger: $(STREAMDECK_PY)
+streamdeck_frogger: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_frogger.py
 
 .PHONY: streamdeck_hangman
-streamdeck_hangman: $(STREAMDECK_PY)
+streamdeck_hangman: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_hangman.py
 
 .PHONY: streamdeck_rps
-streamdeck_rps: $(STREAMDECK_PY)
+streamdeck_rps: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_rps.py
 
 .PHONY: streamdeck_numberguess
-streamdeck_numberguess: $(STREAMDECK_PY)
+streamdeck_numberguess: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_numberguess.py
 
 .PHONY: streamdeck_reversi
-streamdeck_reversi: $(STREAMDECK_PY)
+streamdeck_reversi: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_reversi.py
 
 .PHONY: streamdeck_langton
-streamdeck_langton: $(STREAMDECK_PY)
+streamdeck_langton: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_langton.py
 
 .PHONY: streamdeck_piano
-streamdeck_piano: $(STREAMDECK_PY)
+streamdeck_piano: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_piano.py
 
 .PHONY: streamdeck_thermometer
-streamdeck_thermometer: $(STREAMDECK_PY)
+streamdeck_thermometer: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_thermometer.py
 
 .PHONY: streamdeck_wordle
-streamdeck_wordle: $(STREAMDECK_PY)
+streamdeck_wordle: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_wordle.py
 
 .PHONY: streamdeck_sudoku
-streamdeck_sudoku: $(STREAMDECK_PY)
+streamdeck_sudoku: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_sudoku.py
 
 .PHONY: streamdeck_pacman
-streamdeck_pacman: $(STREAMDECK_PY)
+streamdeck_pacman: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_pacman.py
 
 .PHONY: streamdeck_checkers
-streamdeck_checkers: $(STREAMDECK_PY)
+streamdeck_checkers: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_checkers.py
 
 .PHONY: streamdeck_towerdefense
-streamdeck_towerdefense: $(STREAMDECK_PY)
+streamdeck_towerdefense: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_towerdefense.py
 
 .PHONY: streamdeck_racer
-streamdeck_racer: $(STREAMDECK_PY)
+streamdeck_racer: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_racer.py
 
 .PHONY: streamdeck_dragrace
-streamdeck_dragrace: $(STREAMDECK_PY)
+streamdeck_dragrace: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_dragrace.py
 
 .PHONY: streamdeck_racingplus
-streamdeck_racingplus: $(STREAMDECK_PY)
+streamdeck_racingplus: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_racingplus.py
 
 .PHONY: streamdeck_pinball
-streamdeck_pinball: $(STREAMDECK_PY)
+streamdeck_pinball: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_pinball.py
 
 .PHONY: streamdeck_gallery

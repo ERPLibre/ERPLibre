@@ -253,6 +253,36 @@ class Passation(unittest.TestCase):
         self.assertIn("jeu", journal)
         self.assertNotIn(f"systemctl --user start {UNITE}", journal)
 
+    def test_games_off_refuses_before_stopping_anything(self):
+        self.unite("active")
+        for valeur in ("off", "", "yes"):
+            with self.subTest(valeur=valeur):
+                self.journal.write_text("", encoding="utf-8")
+                self.regler(f"GAMES={valeur}\n")
+                fini, journal = self.jouer()
+                self.assertEqual(4, fini.returncode)
+                self.assertEqual([], journal)
+                self.assertIn("Stream Deck games are disabled", fini.stderr)
+                self.assertEqual(1, len(fini.stderr.strip().splitlines()))
+
+    def test_games_on_or_missing_still_play(self):
+        self.unite("inactive")
+        for texte in ("GAMES=on\n", "DECK_PROGRAM=tiler\n"):
+            with self.subTest(texte=texte):
+                self.journal.write_text("", encoding="utf-8")
+                self.regler(texte)
+                fini, journal = self.jouer()
+                self.assertEqual(7, fini.returncode, fini.stderr)
+                self.assertIn("jeu", journal)
+
+    def test_handover_reads_xdg_config_home(self):
+        self.unite("inactive")
+        autre = self.tmp / "autre"
+        (autre / "erplibre-home").mkdir(parents=True)
+        (autre / "erplibre-home/streamdeck.conf").write_text("GAMES=off\n")
+        fini, _ = self.jouer(env={"XDG_CONFIG_HOME": str(autre)})
+        self.assertEqual(4, fini.returncode)
+
     def test_no_command_is_a_usage_error(self):
         fini = subprocess.run(
             [str(PASSATION)], capture_output=True, text=True, timeout=30
