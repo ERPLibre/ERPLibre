@@ -331,6 +331,23 @@ class LeProgramme(Menu):
             ("systemctl", "--user", "is-active", UNITE), self.sondes
         )
 
+    def test_a_settings_file_outside_utf8_is_read_and_kept(self):
+        """Un fichier de réglages qui n'est pas en UTF-8 montre son
+        programme, comme le service le lit, et ses autres octets restent
+        tels quels quand le programme change."""
+        self.unite()
+        self.reglages.parent.mkdir(parents=True)
+        commentaire = "# réglé à la main\n".encode("latin-1")
+        self.reglages.write_bytes(commentaire + b"DECK_PROGRAM=none\n")
+        commandes, sortie, _ = self.jouer("_streamdeck_program", ("1",))
+        self.assertIn("Deck program: No program", sortie)
+        self.assertIn("Deck program: Tiler", sortie)
+        self.assertNotIn("Unchanged.", sortie)
+        self.assertEqual(
+            commentaire + b"DECK_PROGRAM=tiler\n", self.reglages.read_bytes()
+        )
+        self.assertEqual([], commandes)
+
     def test_the_default_creates_no_settings_file(self):
         """Sans réglages, Entrée garde le défaut, que l'installateur et le
         service prennent déjà : aucun fichier ne se crée pour le redire."""
