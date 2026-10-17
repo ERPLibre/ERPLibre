@@ -230,3 +230,11 @@ test('the controller launches the gallery through galleryServerCommand', () => {
     assert.ok(src.includes('galleryServerCommand('));
     assert.ok(!src.includes('make streamdeck_gallery'));
 });
+
+test('the ERPLibre submenu shows only when the gallery lists a tool', () => {
+    const src = extensionFile('indicators/controller.js');
+    assert.ok(src.includes('this._erplibreSection.visible = false;'));
+    assert.ok(src.includes(
+        'this._erplibreSection.visible = erplibre.length > 0;'));
+    assert.ok(!src.includes("_('No ERPLibre tools')"));
+});

@@ -8,7 +8,7 @@ Run after each `gnome-extensions enable` cycle.
 
 - [ ] Controller indicator shows in top bar with `input-gaming-symbolic` icon
 - [ ] Click → menu: About, Start gallery server… ▶, ERPLibre ▶, Games ▶, "Open prefs…"
-- [ ] ERPLibre submenu lists "Window Tiler" (when gallery server is running)
+- [ ] ERPLibre submenu is hidden (the deck program is not in the gallery list); "Window Tiler" starts from the `device` indicator's "Start deck program"
 - [ ] Games submenu lists every other game and excludes Window Tiler
 - [ ] "Start gallery server…" submenu lists every entry from the `paths` GSetting (label + path)
 - [ ] Picking a path opens gnome-terminal in that directory running `source .venv.erplibre/bin/activate && make streamdeck_gallery`
