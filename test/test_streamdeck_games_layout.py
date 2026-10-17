@@ -69,8 +69,12 @@ class LesVraisScans(unittest.TestCase):
 
     def test_todo_finds_exactly_the_games_of_games_dir(self):
         todo = todo_mod.TODO.__new__(todo_mod.TODO)
-        trouves = sorted(g["path"] for g in todo._scan_streamdeck_games())
-        attendus = sorted(str(p) for p in suivis("script/stream_deck/games/game_*.py"))
+        trouves = sorted(
+            g["path"] for g in todo._scan_streamdeck_games()
+        )
+        attendus = sorted(
+            str(p) for p in suivis("script/stream_deck/games/game_*.py")
+        )
         self.assertEqual(attendus, trouves)
         self.assertNotIn("tiler", " ".join(trouves))
 
@@ -91,7 +95,9 @@ class LesVraisScans(unittest.TestCase):
 
         with mock.patch.object(galerie.subprocess, "run", side_effect=meta):
             ids = {g["id"] for g in galerie._scan_games()}
-        attendus = [str(p) for p in suivis("script/stream_deck/games/game_*.py")]
+        attendus = [
+            str(p) for p in suivis("script/stream_deck/games/game_*.py")
+        ]
         self.assertEqual(attendus, sorted(scannes))
         self.assertIn("snake", ids)
         self.assertNotIn("tiler", ids)
