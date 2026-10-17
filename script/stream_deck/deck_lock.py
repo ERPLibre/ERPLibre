@@ -41,6 +41,13 @@ jamais réécrit : il nomme encore « game » et le PID de l'enveloppe quand
 seul ce programme tient le deck, et holder_pids() nomme les vrais
 détenteurs.
 
+Tout processus d'un jeu passe ce verrou : un programme du deck qui y tourne
+prend en plus, sans attendre, un second flock sur deck.inner, à côté du
+verrou. Le suivant, dans le même jeu, le trouve tenu et sort en BUSY_EXIT
+en nommant le premier. deck.inner part avec son programme (son descripteur
+ne passe pas à un exec) ; hors jeu, il n'est jamais lu, et l'enveloppe
+lancée dans un jeu ne le prend pas.
+
 Bibliothèque standard seulement : TODO la charge hors du venv du deck, et
 la passation la lance sous le python3 du système.
 """
@@ -63,6 +70,9 @@ BUSY_EXIT = 2
 # BUSY_EXIT, l'unité ne le relance pas.
 NO_DECK_EXIT = 3
 LOCK_NAME = "deck.lock"
+# Le verrou qui écarte un second programme du deck dans un même jeu, posé
+# à côté de LOCK_NAME.
+INNER_NAME = "deck.inner"
 # Le nom sous lequel la passation tient le verrou pendant un jeu.
 HANDOVER_PROGRAM = "game"
 
@@ -221,6 +231,27 @@ def _game_ancestor(tenu):
     return depart is None or depart == _start_time(int(pid))
 
 
+def _hold_inner(program, path):
+    """Dans un jeu, prend deck.inner (INNER_NAME, à côté de `path`) pour
+    `program` sans attendre, et le garde jusqu'à la sortie du processus.
+    Lève DeckBusy en nommant le programme du deck qui le tient déjà dans ce
+    jeu. L'enveloppe (HANDOVER_PROGRAM) n'en prend pas : le programme du
+    deck qu'elle lance le prend. Le descripteur, comme tout descripteur
+    ouvert par python, ne passe pas à un exec : un enfant du programme ne
+    garde pas deck.inner après lui."""
+    if program == HANDOVER_PROGRAM:
+        return
+    fh = _open_private(os.path.join(os.path.dirname(path), INNER_NAME))
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        tenu = parse_holder(fh.read())
+        fh.close()
+        raise DeckBusy(tenu) from None
+    _write_holder(fh, program)
+    _held.append(fh)
+
+
 def _inherited(path, exclu):
     """Un descripteur de ce processus ouvert sur le verrou `path`, hérité
     d'un ancêtre, et qui le tient : flock sur une description de fichier
@@ -277,11 +308,12 @@ def acquire(program, path=None):
     réécrit : un descripteur hérité du jeu le tient (_inherited), et le
     fichier rendu est ce descripteur ; ou un ancêtre le tient au nom de
     « game » (_game_ancestor) sans que le descripteur ait été hérité, et
-    _take_over le reprend à la fin du jeu. Un détenteur parti entre le
-    premier essai et cette recherche laisse le verrou libre : un second
-    essai le prend. Lève DeckBusy quand un autre processus le tient,
-    OSError quand le dossier ou le fichier n'est pas privé (voir
-    _open_private)."""
+    _take_over le reprend à la fin du jeu. Dans ces deux cas, deck.inner
+    (_hold_inner) écarte un second programme du deck du même jeu. Un
+    détenteur parti entre le premier essai et cette recherche laisse le
+    verrou libre : un second essai le prend. Lève DeckBusy quand un autre
+    processus le tient, OSError quand le dossier ou le fichier n'est pas
+    privé (voir _open_private)."""
     path = path or lock_path()
     fh = _open_private(path)
     try:
@@ -291,6 +323,7 @@ def acquire(program, path=None):
         herite = _inherited(path, fh.fileno())
         if herite is not None:
             fh.close()
+            _hold_inner(program, path)
             fh = os.fdopen(herite, "r+", encoding="utf-8")
             _held.append(fh)
             return fh
@@ -298,6 +331,11 @@ def acquire(program, path=None):
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             if _game_ancestor(tenu):
+                try:
+                    _hold_inner(program, path)
+                except BaseException:
+                    fh.close()
+                    raise
                 _take_over(fh, program)
                 return None
             fh.close()

@@ -188,6 +188,19 @@ makes that visible instead of silent.
   start time matches the text's: a deck program that outlives its wrapper
   leaves the text naming a dead PID, and an unrelated ancestor that reuses
   that PID is not taken for the game.
+- One deck program per game: every process of a game may drive the deck
+  (inherited descriptor, or the ancestor rule), so a game that starts two
+  deck programs at once (`bash -c 'tiler & controller'`) would run both.
+  Inside a game, a deck program therefore also takes a non-blocking `flock`
+  on `deck.inner`, next to `deck.lock` (same private directory, same
+  creation rules), and writes its own holder text there. The next deck
+  program inside the same game finds it held and exits 2, naming the first.
+  The inner lock is held until the program exits, so a deck program run
+  after another in the same game (the gallery's restart loop) starts
+  normally; its descriptor does not pass to an `exec`, so a child of the
+  deck program does not keep it. The wrapper itself
+  (`deck_lock.py game`, even started inside a game) never takes it, and a
+  deck program outside any game never reads it.
 - SIGTERM or SIGINT sent to the wrapper reaches every descendant (a game
   under the gallery's bash loop is a grandchild), except, for SIGINT, the
   processes in the terminal's foreground that Ctrl-C already hit; the
@@ -288,7 +301,9 @@ unchanged.
     `exec`s for each `DECK_PROGRAM`, with a fake venv python;
   - the lock: a second holder exits 2 and names the first; the text
     carries the holder's start time, and an ancestor reusing a dead
-    wrapper's PID is not taken for the game;
+    wrapper's PID is not taken for the game; two deck programs inside one
+    game exclude each other through `deck.inner`, one after the other they
+    both run;
   - the hand-over: stops and restarts an active fake unit, keeps a stopped
     one stopped, honours `RESTART_AFTER_GAME=no`, returns the game's code;
   - the submenu numbering, i18n keys, the install questions turning into
