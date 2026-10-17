@@ -17,8 +17,10 @@
 # 4. le script sort avec le code de la commande.
 #
 # Tant que le verrou est tenu, le service, et tout autre programme du deck
-# lancé hors de la commande, sort en 2 en nommant « game ». Un deck déjà
-# pris ne lance pas la commande : le script sort en 2.
+# lancé hors de la commande, sort en 2 en nommant « game ». Dans la
+# commande, un seul programme du deck tourne à la fois : le second sort en 2
+# en nommant le premier (deck.inner, voir deck_lock.py). Un deck déjà pris
+# ne lance pas la commande : le script sort en 2.
 #
 # Sans fichier d'unité (niveau de base, ou installation à la main), seule
 # la commande tourne, sous le verrou : systemctl n'est pas appelé.

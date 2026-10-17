@@ -31,6 +31,9 @@ Ce que ces tests gardent :
   facultatif : un ancêtre qui a repris le PID d'une enveloppe morte n'est
   pas pris pour le jeu, et holder_running() dit si le PID nommé désigne
   encore son auteur ;
+- deux programmes du deck dans un même jeu s'excluent par deck.inner ;
+  l'un après l'autre, ils tournent ; l'enveloppe ne le prend pas, et hors
+  jeu il n'est jamais lu ;
 - SIGTERM devient SystemExit : les finally et atexit d'un programme du
   deck passent ;
 - le tiler et le contrôleur prennent le verrou avant d'ouvrir le deck,
@@ -793,6 +796,108 @@ class LaCommandeSousVerrou(unittest.TestCase):
                     timeout=30,
                 )
                 self.assertEqual(code, fini.returncode, fini.stderr)
+
+    def test_two_deck_programs_in_one_game_exclude_each_other(self):
+        """Deux programmes du deck lancés dans un même jeu, par le
+        descripteur hérité ou sans lui : le second trouve deck.inner tenu
+        et sort en 2 en nommant le premier."""
+        lancer = (
+            "import subprocess, sys;"
+            " cf = sys.argv[1] == 'True';"
+            " py, rester, prendre, dossier, chemin = sys.argv[2:];"
+            " p = subprocess.Popen([py, '-c', rester, dossier, 'tiler',"
+            " chemin], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL,"
+            " close_fds=cf, text=True);"
+            " assert p.stdout.readline() == 'pret\\n';"
+            " s = subprocess.run([py, '-c', prendre, dossier, 'controller',"
+            " chemin], stdin=subprocess.DEVNULL, capture_output=True,"
+            " close_fds=cf, text=True);"
+            " p.kill(); p.wait();"
+            " print(s.returncode, p.pid, s.stdout.strip(), s.stderr)"
+        )
+        for close_fds in ("True", "False"):
+            with self.subTest(close_fds=close_fds):
+                fini = self.lancer(
+                    "game",
+                    sys.executable,
+                    "-c",
+                    lancer,
+                    close_fds,
+                    sys.executable,
+                    RESTER,
+                    PRENDRE.format(fonction="acquire_or_exit"),
+                    str(DECK_DIR),
+                    self.chemin,
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                code, premier, reste = fini.stdout.split(" ", 2)
+                self.assertEqual("2", code, reste)
+                self.assertIn("tiler (PID %s)" % premier, reste)
+                self.attendre_le_verrou_libre()
+
+    def test_deck_programs_one_after_the_other_in_a_game_run(self):
+        """deck.inner part avec le programme qui le tient : la boucle de la
+        galerie relance le tiler autant de fois qu'on veut."""
+        prendre = PRENDRE.format(fonction="acquire_or_exit")
+        fini = self.lancer(
+            "game",
+            "sh",
+            "-c",
+            '"$@"; "$@"',
+            "sh",
+            sys.executable,
+            "-c",
+            prendre,
+            str(DECK_DIR),
+            "tiler",
+            self.chemin,
+            stdin=subprocess.DEVNULL,
+        )
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        self.assertEqual("pret\npret\n", fini.stdout)
+
+    def test_a_wrapper_inside_a_game_leaves_the_inner_lock_free(self):
+        """deck_lock.py game lancé dans un jeu n'est pas un programme du
+        deck : il ne prend pas deck.inner, et le tiler qu'il lance tourne."""
+        fini = self.lancer(
+            "game",
+            sys.executable,
+            str(DECK_DIR / "deck_lock.py"),
+            "game",
+            sys.executable,
+            "-c",
+            PRENDRE.format(fonction="acquire_or_exit"),
+            str(DECK_DIR),
+            "tiler",
+            self.chemin,
+            stdin=subprocess.DEVNULL,
+        )
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        self.assertEqual("pret\n", fini.stdout)
+
+    def test_the_inner_lock_never_blocks_outside_a_game(self):
+        """Hors jeu, le verrou se prend sans regarder deck.inner, fût-il
+        tenu."""
+        interieur = os.path.join(os.path.dirname(self.chemin), "deck.inner")
+        os.makedirs(os.path.dirname(self.chemin), mode=0o700)
+        tenu = open(interieur, "w", encoding="utf-8")
+        self.addCleanup(tenu.close)
+        fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fini = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                PRENDRE.format(fonction="acquire_or_exit"),
+                str(DECK_DIR),
+                "tiler",
+                self.chemin,
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(0, fini.returncode, fini.stderr)
 
     def test_sigterm_to_the_wrapper_ends_the_game(self):
         """« kill <pid> », que la diagnostic propose quand un jeu tient le

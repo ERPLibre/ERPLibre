@@ -127,7 +127,9 @@ contrôleur le prennent, et la passation le prend au nom de `game` et le
 passe au jeu : il reste tenu tant qu'un processus du jeu tourne. Un second
 détenteur sort avec le code 2 et nomme le programme et le PID qui tiennent
 le deck : le service, ou **Démarrer le programme du deck** dans le
-panneau, reste arrêté pendant un jeu. Pour libérer le deck, fermer le jeu.
+panneau, reste arrêté pendant un jeu. Dans un jeu, un seul programme du
+deck tourne à la fois : un second sort avec le code 2 et nomme le premier.
+Pour libérer le deck, fermer le jeu.
 En dernier recours, le diagnostic Stream Deck de TODO nomme chaque
 processus qui tient le verrou, le jeu entier, pour un seul `kill` ; un
 `kill` sur le PID que nomme le verrou atteint lui aussi chaque processus du

@@ -236,10 +236,11 @@ controller take it, and the hand-over takes it as `game` and passes it to
 the game, so it stays held while any process of the game runs. A second
 holder exits with code 2 and names the program and PID that hold the deck,
 so the service, or **Start deck program** in the panel, stays down while a
-game runs. To free the deck, close the game. As a last resort, TODO's
-Stream Deck diagnosis names every process that holds the lock, the whole
-game, for one `kill`; a `kill` on the PID the lock names also reaches every
-process of the game. A game started by `make streamdeck_<game>` skips the
+game runs. Inside a game, one deck program runs at a time: a second one
+exits with code 2 and names the first. To free the deck, close the game.
+As a last resort, TODO's Stream Deck diagnosis names every process that
+holds the lock, the whole game, for one `kill`; a `kill` on the PID the
+lock names also reaches every process of the game. A game started by `make streamdeck_<game>` skips the
 hand-over and takes no lock. `systemctl --user` controls the service:
 
 <!-- [fr] -->
@@ -265,7 +266,9 @@ contrôleur le prennent, et la passation le prend au nom de `game` et le
 passe au jeu : il reste tenu tant qu'un processus du jeu tourne. Un second
 détenteur sort avec le code 2 et nomme le programme et le PID qui tiennent
 le deck : le service, ou **Démarrer le programme du deck** dans le
-panneau, reste arrêté pendant un jeu. Pour libérer le deck, fermer le jeu.
+panneau, reste arrêté pendant un jeu. Dans un jeu, un seul programme du
+deck tourne à la fois : un second sort avec le code 2 et nomme le premier.
+Pour libérer le deck, fermer le jeu.
 En dernier recours, le diagnostic Stream Deck de TODO nomme chaque
 processus qui tient le verrou, le jeu entier, pour un seul `kill` ; un
 `kill` sur le PID que nomme le verrou atteint lui aussi chaque processus du
