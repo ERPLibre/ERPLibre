@@ -118,7 +118,8 @@ class ControllerIndicator extends PanelMenu.Button {
         this._erplibreSection = new PopupMenu.PopupSubMenuMenuItem(
             'ERPLibre');
         this.menu.addMenuItem(this._erplibreSection);
-        this._populateSectionPlaceholder(this._erplibreSection, _('Loading…'));
+        // Shown only when the gallery lists a tool with section 'erplibre'.
+        this._erplibreSection.visible = false;
 
         this._gamesSection = new PopupMenu.PopupSubMenuMenuItem(_('Games'));
         this.menu.addMenuItem(this._gamesSection);
@@ -240,7 +241,7 @@ class ControllerIndicator extends PanelMenu.Button {
 
     _populateGamesPlaceholder(label) {
         this._populateSectionPlaceholder(this._gamesSection, label);
-        this._populateSectionPlaceholder(this._erplibreSection, label);
+        this._erplibreSection.visible = false;
     }
 
     _refreshGames() {
@@ -305,8 +306,9 @@ class ControllerIndicator extends PanelMenu.Button {
                 .localeCompare(b.name || b.id || ''));
         const erplibre = sorted.filter(g => g.section === 'erplibre');
         const others = sorted.filter(g => g.section !== 'erplibre');
-        this._fillSection(this._erplibreSection, erplibre,
-            _('No ERPLibre tools'));
+        this._erplibreSection.visible = erplibre.length > 0;
+        if (erplibre.length)
+            this._fillSection(this._erplibreSection, erplibre, '');
         this._fillSection(this._gamesSection, others, _('No games found'));
     }
 
