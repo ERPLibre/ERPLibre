@@ -19912,6 +19912,435 @@ TRANSLATIONS = {
         "fr": "bascule sur la cible du manifeste",
         "en": "switch to the manifest target",
     },
+    # Production - mise à jour de modules (ops_menu, update_module)
+    "Production": {
+        "fr": "Production",
+        "en": "Production",
+    },
+    "Production - Update the modules of a systemd instance": {
+        "fr": "🏭 Production - Mettre à jour les modules d'une instance systemd",
+        "en": "🏭 Production - Update the modules of a systemd instance",
+    },
+    "Production: an instance run by systemd on this host.": {
+        "fr": "Production : une instance servie par systemd sur ce poste.",
+        "en": "Production: an instance run by systemd on this host.",
+    },
+    "Update modules - simulate, confirm, then run with sudo": {
+        "fr": "Mettre à jour des modules - simuler, confirmer, puis exécuter avec sudo",
+        "en": "Update modules - simulate, confirm, then run with sudo",
+    },
+    "Simulate only - show what an update would do": {
+        "fr": "Simuler seulement - montrer ce que ferait une mise à jour",
+        "en": "Simulate only - show what an update would do",
+    },
+    "Modules to update (commas, * and ? patterns, or all): ": {
+        "fr": "Modules à mettre à jour (virgules, motifs * et ?, ou all) : ",
+        "en": "Modules to update (commas, * and ? patterns, or all): ",
+    },
+    "Cancelled: no module given.": {
+        "fr": "Annulé : aucun module donné.",
+        "en": "Cancelled: no module given.",
+    },
+    "Database (empty = detect from the service): ": {
+        "fr": "Base (vide = détectée depuis le service) : ",
+        "en": "Database (empty = detect from the service): ",
+    },
+    "Back up the database before the update? [Y/n] ": {
+        "fr": "Sauvegarder la base avant la mise à jour ? [O/n] ",
+        "en": "Back up the database before the update? [Y/n] ",
+    },
+    "The simulation refused: nothing was done.": {
+        "fr": "La simulation a refusé : rien n'a été fait.",
+        "en": "The simulation refused: nothing was done.",
+    },
+    "Run this update for real? The service stops meanwhile.": {
+        "fr": "Exécuter cette mise à jour pour de vrai ? Le service s'arrête pendant ce temps.",
+        "en": "Run this update for real? The service stops meanwhile.",
+    },
+    "The update ended with code": {
+        "fr": "La mise à jour s'est terminée avec le code",
+        "en": "The update ended with code",
+    },
+    "{host}:{port} still answers.": {
+        "fr": "{host}:{port} répond encore.",
+        "en": "{host}:{port} still answers.",
+    },
+    "{count} ERROR/CRITICAL line(s) since the start.": {
+        "fr": "{count} ligne(s) ERROR/CRITICAL depuis le démarrage.",
+        "en": "{count} ERROR/CRITICAL line(s) since the start.",
+    },
+    "{count} ERROR/CRITICAL line(s) during the update.": {
+        "fr": "{count} ligne(s) ERROR/CRITICAL pendant la mise à jour.",
+        "en": "{count} ERROR/CRITICAL line(s) during the update.",
+    },
+    "systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.": {
+        "fr": "Unité systemd ; par défaut : l'unité dont WorkingDirectory est ce checkout, sinon la seule active.",
+        "en": "systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.",
+    },
+    "systemctl start failed (journalctl -u {unit} -n 50).": {
+        "fr": "systemctl start a échoué (journalctl -u {unit} -n 50).",
+        "en": "systemctl start failed (journalctl -u {unit} -n 50).",
+    },
+    "only if it was active": {
+        "fr": "seulement s'il était actif",
+        "en": "only if it was active",
+    },
+    "none (--no-backup)": {
+        "fr": "aucune (--no-backup)",
+        "en": "none (--no-backup)",
+    },
+    "invalid user name: {name}": {
+        "fr": "nom d'utilisateur invalide : {name}",
+        "en": "invalid user name: {name}",
+    },
+    "invalid service name: {name}": {
+        "fr": "nom de service invalide : {name}",
+        "en": "invalid service name: {name}",
+    },
+    "invalid regular expression: {error}": {
+        "fr": "expression régulière invalide : {error}",
+        "en": "invalid regular expression: {error}",
+    },
+    "invalid module pattern: {pattern}": {
+        "fr": "motif de module invalide : {pattern}",
+        "en": "invalid module pattern: {pattern}",
+    },
+    "expected an integer >= 1: {value}": {
+        "fr": "entier >= 1 attendu : {value}",
+        "en": "expected an integer >= 1: {value}",
+    },
+    "empty module list": {
+        "fr": "liste de modules vide",
+        "en": "empty module list",
+    },
+    "Update of {modules} in {database}": {
+        "fr": "Mise à jour de {modules} dans {database}",
+        "en": "Update of {modules} in {database}",
+    },
+    "Update interrupted: Odoo was stopped before the restart.": {
+        "fr": "Mise à jour interrompue : Odoo a été arrêté avant la relance.",
+        "en": "Update interrupted: Odoo was stopped before the restart.",
+    },
+    "Update installed Odoo modules of an instance run by systemd: stop, back up, update, restart, check.": {
+        "fr": "Mettre à jour les modules Odoo installés d'une instance servie par systemd : arrêter, sauvegarder, mettre à jour, relancer, vérifier.",
+        "en": "Update installed Odoo modules of an instance run by systemd: stop, back up, update, restart, check.",
+    },
+    "Update finished: {modules}": {
+        "fr": "Mise à jour terminée : {modules}",
+        "en": "Update finished: {modules}",
+    },
+    "Update failed.": {
+        "fr": "Mise à jour en échec.",
+        "en": "Update failed.",
+    },
+    "Unexpected error: {error}": {
+        "fr": "Erreur inattendue : {error}",
+        "en": "Unexpected error: {error}",
+    },
+    "The working directory of {unit} is unknown or missing.": {
+        "fr": "Le dossier de travail de {unit} est inconnu ou absent.",
+        "en": "The working directory of {unit} is unknown or missing.",
+    },
+    "The update exceeded {seconds} s: process killed.": {
+        "fr": "La mise à jour a dépassé {seconds} s : processus tué.",
+        "en": "The update exceeded {seconds} s: process killed.",
+    },
+    "The service {unit} has no ExecStart.": {
+        "fr": "Le service {unit} n'a pas d'ExecStart.",
+        "en": "The service {unit} has no ExecStart.",
+    },
+    "The service was not running before: it is left stopped.": {
+        "fr": "Le service ne tournait pas avant : il reste arrêté.",
+        "en": "The service was not running before: it is left stopped.",
+    },
+    "The service is not stopped after systemctl stop (code {code}, state {state}): nothing was changed.": {
+        "fr": "Le service n'est pas arrêté après systemctl stop (code {code}, état {state}) : rien n'a été changé.",
+        "en": "The service is not stopped after systemctl stop (code {code}, state {state}): nothing was changed.",
+    },
+    "Cannot read the state of {unit} (systemctl): nothing was stopped.": {
+        "fr": "Impossible de lire l'état de {unit} (systemctl) : rien n'a été arrêté.",
+        "en": "Cannot read the state of {unit} (systemctl): nothing was stopped.",
+    },
+    "The database session of the killed update may still hold locks for a while: the restart can wait for them.": {
+        "fr": "La session de base de la mise à jour tuée peut garder ses verrous un moment : le démarrage peut les attendre.",
+        "en": "The database session of the killed update may still hold locks for a while: the restart can wait for them.",
+    },
+    "The service is not active after {seconds} s.": {
+        "fr": "Le service n'est pas actif après {seconds} s.",
+        "en": "The service is not active after {seconds} s.",
+    },
+    "The service is active but nothing listens on {host}:{port} after {seconds} s.": {
+        "fr": "Le service est actif mais rien n'écoute sur {host}:{port} après {seconds} s.",
+        "en": "The service is active but nothing listens on {host}:{port} after {seconds} s.",
+    },
+    "The backup is incomplete ({missing}): nothing was updated.": {
+        "fr": "La sauvegarde est incomplète ({missing}) : rien n'a été mis à jour.",
+        "en": "The backup is incomplete ({missing}): nothing was updated.",
+    },
+    "The backup holds no filestore.": {
+        "fr": "La sauvegarde ne contient pas de filestore.",
+        "en": "The backup holds no filestore.",
+    },
+    "The backup file already exists: {path}": {
+        "fr": "Le fichier de sauvegarde existe déjà : {path}",
+        "en": "The backup file already exists: {path}",
+    },
+    "Stopping {unit}": {
+        "fr": "Arrêt de {unit}",
+        "en": "Stopping {unit}",
+    },
+    "Starting {unit}": {
+        "fr": "Démarrage de {unit}",
+        "en": "Starting {unit}",
+    },
+    "Simulation finished: nothing was stopped, written or started.": {
+        "fr": "Simulation terminée : rien n'a été arrêté, écrit ni démarré.",
+        "en": "Simulation finished: nothing was stopped, written or started.",
+    },
+    "Show each system command on stderr.": {
+        "fr": "Afficher chaque commande système sur stderr.",
+        "en": "Show each system command on stderr.",
+    },
+    "Several Odoo services are possible, choose one with --service: {names}": {
+        "fr": "Plusieurs services Odoo sont possibles, en choisir un avec --service : {names}",
+        "en": "Several Odoo services are possible, choose one with --service: {names}",
+    },
+    "Service": {
+        "fr": "Service",
+        "en": "Service",
+    },
+    "Service {unit} not found (systemctl).": {
+        "fr": "Service {unit} introuvable (systemctl).",
+        "en": "Service {unit} not found (systemctl).",
+    },
+    "Service stopped.": {
+        "fr": "Service arrêté.",
+        "en": "Service stopped.",
+    },
+    "Service started and answering: {url}": {
+        "fr": "Service démarré et qui répond : {url}",
+        "en": "Service started and answering: {url}",
+    },
+    "Root is required (sudo), except with --dry-run.": {
+        "fr": "Root est exigé (sudo), sauf avec --dry-run.",
+        "en": "Root is required (sudo), except with --dry-run.",
+    },
+    "Resuming.": {
+        "fr": "Reprise.",
+        "en": "Resuming.",
+    },
+    "Restart check failed: {error}": {
+        "fr": "La vérification de la relance a échoué : {error}",
+        "en": "Restart check failed: {error}",
+    },
+    "Odoo still runs on this database or port outside the service: refused (--force to go on).": {
+        "fr": "Odoo tourne encore sur cette base ou ce port hors du service : refusé (--force pour continuer).",
+        "en": "Odoo still runs on this database or port outside the service: refused (--force to go on).",
+    },
+    "Odoo module update": {
+        "fr": "Mise à jour des modules Odoo",
+        "en": "Odoo module update",
+    },
+    "Odoo finished with code {code}.": {
+        "fr": "Odoo s'est terminé avec le code {code}.",
+        "en": "Odoo finished with code {code}.",
+    },
+    "Odoo finished the update by itself in {seconds} s.": {
+        "fr": "Odoo a terminé la mise à jour de lui-même en {seconds} s.",
+        "en": "Odoo finished the update by itself in {seconds} s.",
+    },
+    "Odoo configuration file; default: the one the unit reads.": {
+        "fr": "Fichier de configuration Odoo ; par défaut : celui que lit l'unité.",
+        "en": "Odoo configuration file; default: the one the unit reads.",
+    },
+    "Odoo config": {
+        "fr": "Config Odoo",
+        "en": "Odoo config",
+    },
+    "No module matches the requested patterns.": {
+        "fr": "Aucun module ne répond aux motifs demandés.",
+        "en": "No module matches the requested patterns.",
+    },
+    "No module matches the pattern {pattern}.": {
+        "fr": "Aucun module ne répond au motif {pattern}.",
+        "en": "No module matches the pattern {pattern}.",
+    },
+    "No addons_path directory found in {path}.": {
+        "fr": "Aucun dossier d'addons_path trouvé dans {path}.",
+        "en": "No addons_path directory found in {path}.",
+    },
+    "No Odoo service found: name it with --service.": {
+        "fr": "Aucun service Odoo trouvé : le nommer avec --service.",
+        "en": "No Odoo service found: name it with --service.",
+    },
+    "No Odoo configuration file found (try --odoo-conf).": {
+        "fr": "Aucun fichier de configuration Odoo trouvé (essayer --odoo-conf).",
+        "en": "No Odoo configuration file found (try --odoo-conf).",
+    },
+    "No HTTP answer from {url}.": {
+        "fr": "Aucune réponse HTTP de {url}.",
+        "en": "No HTTP answer from {url}.",
+    },
+    "No ERROR or CRITICAL line since the start.": {
+        "fr": "Aucune ligne ERROR ou CRITICAL depuis le démarrage.",
+        "en": "No ERROR or CRITICAL line since the start.",
+    },
+    "Module not found in addons_path: {names}": {
+        "fr": "Module introuvable dans l'addons_path : {names}",
+        "en": "Module not found in addons_path: {names}",
+    },
+    "Maximum seconds for the service to listen after start.": {
+        "fr": "Secondes au plus pour que le service écoute après le démarrage.",
+        "en": "Maximum seconds for the service to listen after start.",
+    },
+    "Maximum seconds for the backup and for the update.": {
+        "fr": "Secondes au plus pour la sauvegarde et pour la mise à jour.",
+        "en": "Maximum seconds for the backup and for the update.",
+    },
+    "Log: {path}": {
+        "fr": "Journal : {path}",
+        "en": "Log: {path}",
+    },
+    "Log": {
+        "fr": "Journal",
+        "en": "Log",
+    },
+    "Invalid database name: {database}": {
+        "fr": "Nom de base invalide : {database}",
+        "en": "Invalid database name: {database}",
+    },
+    "Interrupted.": {
+        "fr": "Interrompu.",
+        "en": "Interrupted.",
+    },
+    "Interrupt the update? Odoo will be stopped, then the service restarted. [y/N] ": {
+        "fr": "Interrompre la mise à jour ? Odoo sera arrêté, puis le service relancé. [o/N] ",
+        "en": "Interrupt the update? Odoo will be stopped, then the service restarted. [y/N] ",
+    },
+    "Go on even if Odoo still runs on this database or port.": {
+        "fr": "Continuer même si Odoo tourne encore sur cette base ou ce port.",
+        "en": "Go on even if Odoo still runs on this database or port.",
+    },
+    "Errors in the Odoo log since the start": {
+        "fr": "Erreurs du journal Odoo depuis le démarrage",
+        "en": "Errors in the Odoo log since the start",
+    },
+    "ERROR/CRITICAL lines matching REGEX do not fail; repeatable.": {
+        "fr": "Les lignes ERROR/CRITICAL reconnues par REGEX ne font pas échouer ; répétable.",
+        "en": "ERROR/CRITICAL lines matching REGEX do not fail; repeatable.",
+    },
+    "Do not back up the database before the update.": {
+        "fr": "Ne pas sauvegarder la base avant la mise à jour.",
+        "en": "Do not back up the database before the update.",
+    },
+    "Directory": {
+        "fr": "Dossier",
+        "en": "Directory",
+    },
+    "Directory of the update log; default: {path}.": {
+        "fr": "Dossier du journal de mise à jour ; par défaut : {path}.",
+        "en": "Directory of the update log; default: {path}.",
+    },
+    "Detect and show the commands; stop, write or start nothing.": {
+        "fr": "Détecter et montrer les commandes ; n'arrêter, n'écrire ni ne démarrer rien.",
+        "en": "Detect and show the commands; stop, write or start nothing.",
+    },
+    "Database; default: -d of the unit, else db_name.": {
+        "fr": "Base ; par défaut : le -d de l'unité, sinon db_name.",
+        "en": "Database; default: -d of the unit, else db_name.",
+    },
+    "Database not found in the service nor in its configuration: specify --db.": {
+        "fr": "Base introuvable dans le service comme dans sa configuration : préciser --db.",
+        "en": "Database not found in the service nor in its configuration: specify --db.",
+    },
+    "Cannot take the lock: {error}": {
+        "fr": "Impossible de prendre le verrou : {error}",
+        "en": "Cannot take the lock: {error}",
+    },
+    "Cannot read {path}: run with sudo.": {
+        "fr": "Impossible de lire {path} : lancer avec sudo.",
+        "en": "Cannot read {path}: run with sudo.",
+    },
+    "Cannot read the service {unit}: {error}": {
+        "fr": "Impossible de lire le service {unit} : {error}",
+        "en": "Cannot read the service {unit}: {error}",
+    },
+    "Backup written: {path}": {
+        "fr": "Sauvegarde écrite : {path}",
+        "en": "Backup written: {path}",
+    },
+    "Backup taken before the update: {path}": {
+        "fr": "Sauvegarde prise avant la mise à jour : {path}",
+        "en": "Backup taken before the update: {path}",
+    },
+    "Backup of {database}": {
+        "fr": "Sauvegarde de {database}",
+        "en": "Backup of {database}",
+    },
+    "Backup interrupted: nothing was updated.": {
+        "fr": "Sauvegarde interrompue : rien n'a été mis à jour.",
+        "en": "Backup interrupted: nothing was updated.",
+    },
+    "Backup impossible: {path} is missing (use --no-backup to skip it).": {
+        "fr": "Sauvegarde impossible : {path} est absent (--no-backup pour s'en passer).",
+        "en": "Backup impossible: {path} is missing (use --no-backup to skip it).",
+    },
+    "Backup impossible: {path} is not a directory writable by {user} (create it, or use --no-backup to skip it).": {
+        "fr": "Sauvegarde impossible : {path} n'est pas un dossier où {user} peut écrire (le créer, ou --no-backup pour s'en passer).",
+        "en": "Backup impossible: {path} is not a directory writable by {user} (create it, or use --no-backup to skip it).",
+    },
+    "Backup impossible: {path} is missing and {user} cannot create it in {parent} (create it, or use --no-backup to skip it).": {
+        "fr": "Sauvegarde impossible : {path} manque et {user} ne peut pas le créer dans {parent} (le créer, ou --no-backup pour s'en passer).",
+        "en": "Backup impossible: {path} is missing and {user} cannot create it in {parent} (create it, or use --no-backup to skip it).",
+    },
+    "Cannot create {path}: {error}. Nothing was stopped.": {
+        "fr": "Impossible de créer {path} : {error}. Rien n'a été arrêté.",
+        "en": "Cannot create {path}: {error}. Nothing was stopped.",
+    },
+    "Created {path}, owned by {user}.": {
+        "fr": "{path} créé, propriété de {user}.",
+        "en": "Created {path}, owned by {user}.",
+    },
+    "Backup impossible: list_db = False forbids it (use --no-backup to skip it).": {
+        "fr": "Sauvegarde impossible : list_db = False l'interdit (--no-backup pour s'en passer).",
+        "en": "Backup impossible: list_db = False forbids it (use --no-backup to skip it).",
+    },
+    "Backup failed (code {code}): nothing was updated.": {
+        "fr": "Sauvegarde en échec (code {code}) : rien n'a été mis à jour.",
+        "en": "Backup failed (code {code}): nothing was updated.",
+    },
+    "Another update of {database} is running (lock {path}).": {
+        "fr": "Une autre mise à jour de {database} est en cours (verrou {path}).",
+        "en": "Another update of {database} is running (lock {path}).",
+    },
+    "Address": {
+        "fr": "Adresse",
+        "en": "Address",
+    },
+    "Account": {
+        "fr": "Compte",
+        "en": "Account",
+    },
+    "Account running the update; default: User= of the unit.": {
+        "fr": "Compte qui lance la mise à jour ; par défaut : le User= de l'unité.",
+        "en": "Account running the update; default: User= of the unit.",
+    },
+    "--force: going on despite the Odoo found.": {
+        "fr": "--force : on continue malgré l'Odoo trouvé.",
+        "en": "--force: going on despite the Odoo found.",
+    },
+    "(detected)": {
+        "fr": "(détecté)",
+        "en": "(detected)",
+    },
+    "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'.": {
+        "fr": "Module(s) à mettre à jour ; répétable, virgules permises, motifs * et ?, ou 'all'.",
+        "en": "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'.",
+    },
+    "'all' cannot be combined with other modules.": {
+        "fr": "'all' ne se combine pas avec d'autres modules.",
+        "en": "'all' cannot be combined with other modules.",
+    },
 }
 
 

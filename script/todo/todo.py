@@ -125,6 +125,7 @@ from script.todo.database_manager import DatabaseManager
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.ops_menu import OpsMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
@@ -206,6 +207,7 @@ class TODO(
     AssistantMenuMixin,
     ContainerMenuMixin,
     GitRepoMenuMixin,
+    OpsMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -350,6 +352,9 @@ class TODO(
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
 [16] {t("Docker / Podman - Container engines")}
+
+── {t("Production")} ──
+[17] {t("Production - Update the modules of a systemd instance")}
 [0] {t("Back")}
 """
         while True:
@@ -419,6 +424,10 @@ class TODO(
                     return
             elif status == "16":
                 status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "17":
+                status = self.prompt_execute_production()
                 if status is not False:
                     return
             else:
@@ -777,6 +786,7 @@ class TODO(
         "_container_erplibre": "ERPLibre container",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
+        "prompt_execute_production": "Production",
         "prompt_configuration": "Configuration",
     }
 
