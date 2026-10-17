@@ -57,6 +57,7 @@ def _games_refusal():
         return None
     return fini.stdout.strip() or fini.stderr.strip() or "games disabled"
 
+
 # Game metadata cache (populated at startup)
 _game_cache = []
 

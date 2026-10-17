@@ -24,7 +24,7 @@ persistent storage outside `$XDG_STATE_HOME/erplibre-home/`.
          | adds indicators
          v
 +--------+----------+      D-Bus      +---------------------+
-|  Top-bar buttons  | <-------------> |  erplibre_streamdeck |
+|  Top-bar buttons  | <-------------> | erplibre_streamdeck |
 |  (indicators/*)   |                 |  (Stream Deck       |
 |                   |                 |   physical hardware)|
 +-------------------+                 +---------------------+
