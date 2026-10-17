@@ -1066,7 +1066,9 @@ class LesProgrammesLePrennent(unittest.TestCase):
     en SystemExit, pour que le deck soit remis à zéro."""
 
     def test_the_tiler_takes_it_first_thing_in_main(self):
-        source = (DECK_DIR / "erplibre_streamdeck.py").read_text(encoding="utf-8")
+        source = (DECK_DIR / "erplibre_streamdeck.py").read_text(
+            encoding="utf-8"
+        )
         main = fonction(source, "main")
         self.assertEqual("tiler", appel_du_verrou(main.body[0]))
         self.assertIsNone(appel_du_verrou(main.body[1], "exit_on_sigterm"))
@@ -1076,7 +1078,9 @@ class LesProgrammesLePrennent(unittest.TestCase):
         """L'unité ne relance pas un tiler qui ne trouve aucun deck à écran
         (un autre périphérique Elgato a passé ExecCondition)."""
         self.assertEqual(3, charger().NO_DECK_EXIT)
-        source = (DECK_DIR / "erplibre_streamdeck.py").read_text(encoding="utf-8")
+        source = (DECK_DIR / "erplibre_streamdeck.py").read_text(
+            encoding="utf-8"
+        )
         self.assertIn(
             'print("No visual Stream Deck found.")\n'
             "        sys.exit(deck_lock.NO_DECK_EXIT)",

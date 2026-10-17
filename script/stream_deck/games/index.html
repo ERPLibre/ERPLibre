@@ -388,7 +388,7 @@ function launchGame(gameId) {
       setTimeout(function() { toast.style.display = 'none'; }, 3000);
     })
     .catch(function() {
-      toast.textContent = 'Run: python3 script/stream_deck/gallery_server.py';
+      toast.textContent = 'Run: make streamdeck_gallery';
       toast.style.background = '#d29922';
       setTimeout(function() { toast.style.display = 'none'; }, 5000);
     });

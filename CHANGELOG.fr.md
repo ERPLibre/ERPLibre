@@ -183,6 +183,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le lanceur des tests unitaires donne à chaque fichier son propre `TMPDIR`, retire ce qu'il y laisse et le nomme au bilan : les temporaires oubliés ne s'accumulent plus dans `/tmp` jusqu'à épuiser les inodes d'un tmpfs
 - Les jeux Stream Deck, la galerie (`gallery_server.py`, `index.html`) et les sauvegardes vivent dans `script/stream_deck/games/` ; le programme du deck `game_tiler.py` devient `script/stream_deck/erplibre_streamdeck.py`. `DECK_PROGRAM=tiler` et `make streamdeck_tiler` gardent leur sens ; `make streamdeck_erplibre` s'y ajoute. Une galerie démarrée avant la mise à jour se relance, et GNOME Shell prend le nouveau chemin de la galerie à la prochaine ouverture de session. Les sauvegardes de djscratch se déplacent : `mv script/stream_deck/save/* script/stream_deck/games/save/`
 - Le réglage `GAMES=on|off` du fichier de réglages du deck active ou désactive la bibliothèque de jeux ; absent ou `on`, elle est active. Désactivée, le menu des jeux de TODO, la galerie, `make streamdeck_<jeu>` et le passage de relais refusent de lancer un jeu ; le programme du deck, le contrôleur et le service restent intacts
+- Le sous-menu ERPLibre de l'extension est masqué tant qu'il ne liste aucun outil ; le programme du deck se lance depuis l'indicateur du périphérique
 
 ## Corrigé
 
