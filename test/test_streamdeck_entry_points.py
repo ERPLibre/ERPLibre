@@ -64,7 +64,9 @@ APPEL_PYTHON = re.compile(r"\bpython3?\s|\bpip3?\s+install|\S+\.py\b")
 # par son shebang : elle n'importe que la bibliothèque standard et tourne
 # avant que le venv existe. Le compilateur des locales n'est pas un point
 # d'entrée du deck : il garde le python3 du système.
-HORS_VENV = re.compile(r"/tools/enable_next_login\.py\b|/po/compile_locales\.py\b")
+HORS_VENV = re.compile(
+    r"/tools/enable_next_login\.py\b|/po/compile_locales\.py\b"
+)
 SHEBANG_DECK = re.compile(r"\./script/stream_deck/[\w/]+\.py")
 REGLE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(?!=)(.*)$")
 
@@ -217,7 +219,8 @@ class TestMakefileGuard(unittest.TestCase):
             res = self.make(f"STREAMDECK_PY={faux}", "streamdeck_snake")
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(
-            res.stdout.strip(), "faux-python script/stream_deck/games/game_snake.py"
+            res.stdout.strip(),
+            "faux-python script/stream_deck/games/game_snake.py",
         )
 
 
@@ -227,7 +230,9 @@ class TestRequirements(unittest.TestCase):
         for ligne in REQUIREMENTS.read_text(encoding="utf-8").splitlines():
             ligne = ligne.split("#", 1)[0].strip()
             if ligne:
-                noms.add(re.split(r"[<>=!~\[; ]", ligne, maxsplit=1)[0].lower())
+                noms.add(
+                    re.split(r"[<>=!~\[; ]", ligne, maxsplit=1)[0].lower()
+                )
         return noms
 
     def test_what_the_deck_imports_is_required(self):
@@ -272,7 +277,9 @@ def environnement_isole(tmp, unite_active):
     XDG_RUNTIME_DIR sous `tmp`, où la passation prend le verrou du deck au
     lieu de celui du compte qui lance les tests. Rend (env, journal)."""
     home = os.path.join(tmp, "home")
-    unite = os.path.join(home, ".config/systemd/user/erplibre-home-streamdeck.service")
+    unite = os.path.join(
+        home, ".config/systemd/user/erplibre-home-streamdeck.service"
+    )
     os.makedirs(os.path.dirname(unite))
     with open(unite, "w", encoding="utf-8") as f:
         f.write("[Unit]\n")
@@ -318,7 +325,9 @@ class TestGalleryLaunch(unittest.TestCase):
             ],
         )
         boucle = mots[6]
-        self.assertIn(f"{shlex.quote(sys.executable)} {shlex.quote(jeu)};", boucle)
+        self.assertIn(
+            f"{shlex.quote(sys.executable)} {shlex.quote(jeu)};", boucle
+        )
         self.assertNotIn("python3 ", boucle)
 
     def test_the_loop_really_starts_that_interpreter(self):
@@ -426,7 +435,9 @@ class TestTodoGamesLauncher(unittest.TestCase):
         sortie = io.StringIO()
         with (
             mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
-            mock.patch.object(todo_mod.click, "prompt", side_effect=list(reponses)),
+            mock.patch.object(
+                todo_mod.click, "prompt", side_effect=list(reponses)
+            ),
             contextlib.redirect_stdout(sortie),
         ):
             rendu = todo.prompt_execute_streamdeck_games()
