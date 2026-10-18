@@ -8,12 +8,13 @@ single file until the module that owns each helper exists."""
 import os
 import sys
 import unittest
-from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
 
 GT = S.load_monolith()
+S.install()
+from erplibre_streamdeck.ui import text  # noqa: E402
 
 
 class RecheckDbusTest(unittest.TestCase):
@@ -58,44 +59,44 @@ class RecheckDbusTest(unittest.TestCase):
 
 class ChunkTextForCellsTest(unittest.TestCase):
     def test_empty_returns_empty(self):
-        self.assertEqual(GT._chunk_text_for_cells("", 5), [])
-        self.assertEqual(GT._chunk_text_for_cells(None, 5), [])
-        self.assertEqual(GT._chunk_text_for_cells("hello", 0), [])
+        self.assertEqual(text.chunk_text_for_cells("", 5), [])
+        self.assertEqual(text.chunk_text_for_cells(None, 5), [])
+        self.assertEqual(text.chunk_text_for_cells("hello", 0), [])
 
     def test_short_text_single_chunk(self):
-        self.assertEqual(GT._chunk_text_for_cells("hello", 5), ["hello"])
+        self.assertEqual(text.chunk_text_for_cells("hello", 5), ["hello"])
 
     def test_breaks_on_word_boundary(self):
-        out = GT._chunk_text_for_cells(
+        out = text.chunk_text_for_cells(
             "the quick brown fox", 4, per_cell=10)
         self.assertEqual(out[0], "the quick")
         self.assertTrue(all(" " not in c[-1] for c in out if c))
 
     def test_truncates_to_num_cells(self):
-        out = GT._chunk_text_for_cells(
+        out = text.chunk_text_for_cells(
             "one two three four five six", 2, per_cell=8)
         self.assertEqual(len(out), 2)
         self.assertEqual(out[0], "one two")
 
     def test_falls_back_to_hard_cut_when_no_space(self):
-        out = GT._chunk_text_for_cells(
+        out = text.chunk_text_for_cells(
             "abcdefghijklmnop", 3, per_cell=5)
         self.assertEqual(out, ["abcde", "fghij", "klmno"])
 
 
 class WrapChunkTest(unittest.TestCase):
     def test_short_no_wrap(self):
-        self.assertEqual(GT._wrap_chunk("abc", line_chars=6), "abc")
-        self.assertEqual(GT._wrap_chunk("", line_chars=6), "")
+        self.assertEqual(text.wrap_chunk("abc", line_chars=6), "abc")
+        self.assertEqual(text.wrap_chunk("", line_chars=6), "")
 
     def test_word_break(self):
         self.assertEqual(
-            GT._wrap_chunk("hello world", line_chars=6),
+            text.wrap_chunk("hello world", line_chars=6),
             "hello\nworld")
 
     def test_hard_break_when_no_space(self):
         self.assertEqual(
-            GT._wrap_chunk("abcdefghij", line_chars=4),
+            text.wrap_chunk("abcdefghij", line_chars=4),
             "abcd\nefghij")
 
 
@@ -139,19 +140,19 @@ class ClaudeLabelTest(unittest.TestCase):
 
 class WrapButtonLabelTest(unittest.TestCase):
     def test_short_one_line(self):
-        self.assertEqual(GT._wrap_button_label("Hi"), "Hi")
+        self.assertEqual(text.wrap_button_label("Hi"), "Hi")
 
     def test_breaks_at_space(self):
         self.assertEqual(
-            GT._wrap_button_label("Add path", max_chars=8, max_lines=2),
+            text.wrap_button_label("Add path", max_chars=8, max_lines=2),
             "Add path")
         self.assertEqual(
-            GT._wrap_button_label("Add new database",
+            text.wrap_button_label("Add new database",
                 max_chars=8, max_lines=2),
             "Add new\ndatabase")
 
     def test_hard_break_long_word(self):
-        out = GT._wrap_button_label("supercalifragilistic",
+        out = text.wrap_button_label("supercalifragilistic",
             max_chars=8, max_lines=2)
         # Two lines of <= 8 chars, last truncated with ellipsis.
         self.assertEqual(out.count("\n"), 1)
@@ -160,8 +161,8 @@ class WrapButtonLabelTest(unittest.TestCase):
         self.assertTrue(out.endswith("…"))
 
     def test_empty_input(self):
-        self.assertEqual(GT._wrap_button_label(""), "")
-        self.assertEqual(GT._wrap_button_label(None), "")
+        self.assertEqual(text.wrap_button_label(""), "")
+        self.assertEqual(text.wrap_button_label(None), "")
 
 
 class TodoMenuParseTest(unittest.TestCase):
