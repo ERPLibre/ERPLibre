@@ -9,7 +9,7 @@ sends commands to it through the extension's MpvSendCommand method."""
 import json
 import os
 
-from erplibre_streamdeck import paths
+from erplibre_streamdeck import liveness, paths
 from erplibre_streamdeck.plugin import (
     PLUGIN_API, KeyFace, Page, Plugin, TileProvider,
 )
@@ -45,13 +45,18 @@ def load_sessions():
         except (OSError, json.JSONDecodeError):
             continue
         pid = int(d.get("pid") or 0)
-        if pid > 0 and not os.path.exists(f"/proc/{pid}"):
-            continue
+        started_at = int(d.get("started_at") or 0)
+        if pid > 0:
+            if started_at > 0:
+                if not liveness.alive(pid, started_at):
+                    continue
+            elif not os.path.exists(f"/proc/{pid}"):
+                continue
         out.append({
             "pid": pid,
             "title": d.get("title", "") or d.get("url", ""),
             "url": d.get("url", ""),
-            "started_at": int(d.get("started_at") or 0),
+            "started_at": started_at,
         })
     out.sort(key=lambda s: -s.get("started_at", 0))
     return out

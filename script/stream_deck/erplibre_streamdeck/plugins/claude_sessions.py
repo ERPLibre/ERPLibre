@@ -9,7 +9,7 @@ calls the extension over D-Bus with the session id."""
 import json
 import os
 
-from erplibre_streamdeck import paths
+from erplibre_streamdeck import liveness, paths
 from erplibre_streamdeck.plugin import (
     PLUGIN_API, KeyFace, Page, Plugin, TileProvider,
 )
@@ -47,12 +47,19 @@ def load_sessions():
         except (OSError, json.JSONDecodeError):
             continue
         pid = int(d.get("pid") or 0)
-        if pid > 0 and not os.path.exists(f"/proc/{pid}"):
-            continue
         ts_active = int(d.get("ts_active") or 0)
         ts_stop = int(d.get("ts_stop") or 0)
         ts_notif = int(d.get("ts_notification") or 0)
         ts_tool = int(d.get("ts_tool") or 0)
+        stamps = [
+            t for t in (ts_active, ts_stop, ts_notif, ts_tool) if t > 0
+        ]
+        if pid > 0:
+            if stamps:
+                if not liveness.alive(pid, min(stamps)):
+                    continue
+            elif not os.path.exists(f"/proc/{pid}"):
+                continue
         ts = max(ts_active, ts_stop, ts_notif, ts_tool)
         if ts == ts_notif and ts_notif > 0:
             status = "awaiting_notification"

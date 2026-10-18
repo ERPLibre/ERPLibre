@@ -183,7 +183,7 @@ def full_world(h):
     h.write_json(
         "STATE/erplibre-home/mpv/demo.json",
         {"pid": 1, "title": "Demo stream",
-         "url": "https://example.org/demo", "started_at": 1799999000},
+         "url": "https://example.org/demo", "started_at": 1799999000000},
     )
     h.write_json(
         "STATE/erplibre-home/claude/a.json",
@@ -614,7 +614,7 @@ class PackageDashboardTap(unittest.TestCase):
                 "STATE/erplibre-home/mpv/later.json",
                 {"pid": os.getpid(), "title": "Later stream",
                  "url": "https://example.org/later",
-                 "started_at": 1799999900},
+                 "started_at": 1799999900000},
             )
             mpv = sys.modules["erplibre_streamdeck.plugins.mpv_sessions"]
             self.assertEqual(os.getpid(), mpv.load_sessions()[0]["pid"])
