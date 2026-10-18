@@ -13,8 +13,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
 
 S.install()
-from erplibre_streamdeck import settings  # noqa: E402
-from erplibre_streamdeck.plugins import bluetooth, sound  # noqa: E402
+from erplibre_streamdeck import dbus, paths, settings  # noqa: E402
+from erplibre_streamdeck.plugins import (  # noqa: E402
+    bluetooth, layouts, sound,
+)
 from erplibre_streamdeck.ui import render  # noqa: E402
 
 
@@ -148,6 +150,42 @@ class BluetoothTest(unittest.TestCase):
     def test_paired_empty_without_bluetoothctl(self):
         with mock.patch("shutil.which", return_value=None):
             self.assertEqual([], bluetooth._bt_list_paired())
+
+
+class LayoutsTest(unittest.TestCase):
+    def test_save_then_load_round_trips_through_layouts_file(self):
+        class Ctx:
+            pass
+
+        ctx = Ctx()
+        ctx.dbus = dbus
+        ctx.log = lambda msg: None
+        answers = {
+            "ListWindows": done("('[{\"id\": \"1\", \"x\": 0}]',)\n"),
+            "ApplyLayout": done("(1,)\n"),
+        }
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append(argv)
+            return answers[argv[8].rsplit(".", 1)[1]]
+
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / "conf"
+            with mock.patch.object(paths, "CONFIG_DIR", conf), \
+                    mock.patch.object(
+                        paths, "LAYOUTS_FILE", conf / "layouts.json"
+                    ), mock.patch("subprocess.run", side_effect=run):
+                self.assertTrue(layouts._save_layout_slot(ctx, 2))
+                saved = layouts._layouts_load()["slots"]["2"]
+                self.assertEqual([{"id": "1", "x": 0}], saved["windows"])
+                self.assertEqual(1, saved["count"])
+                self.assertTrue(layouts._load_layout_slot(ctx, 2))
+                self.assertFalse(layouts._load_layout_slot(ctx, 3))
+        self.assertTrue(calls[-1][-1].startswith('[{"id"'))
 
 
 class SettingsKeepTest(unittest.TestCase):
