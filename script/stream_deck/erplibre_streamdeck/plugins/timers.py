@@ -6,8 +6,9 @@ running timers on the home dashboard.
 The timers come from the tracker extension through the ERPLibre Home
 extension's D-Bus methods. `state().timers` is the last list read: the
 home dashboard and the TIMER page both draw from it. A poll reads it
-every 2 s, away from the lock, while either shows; the RFSH key and the
-export read it at the press."""
+every 2 s, away from the lock, while either shows; every job (toggle,
+NEW, RFSH, export, reset) reads it again after its action, and its
+result stores that read."""
 
 import csv
 import json
@@ -134,14 +135,15 @@ def _export_timers_csv(path, rows):
         return False
 
 
-def _export(rows):
-    """The save dialog, then the CSV write: one job, outside the lock.
-    None when the dialog is cancelled, else whether the write
-    succeeded."""
+def _export(dbus, log):
+    """The list read, the save dialog, then the CSV write: one job,
+    outside the lock. (None when the dialog is cancelled, else whether
+    the write succeeded; the timers read)."""
+    timers = _list_timers(dbus, log)
     path = _ask_save_path()
     if not path:
-        return None
-    return _export_timers_csv(path, rows)
+        return None, timers
+    return _export_timers_csv(path, _csv_rows(timers)), timers
 
 
 def _label_for_timer(timer):
@@ -188,9 +190,15 @@ def _store(ctx, timers):
     return changed
 
 
-def _refresh(ctx):
-    """Read the timers now, under the lock, into the state."""
-    _store(ctx, _list_timers(ctx.dbus, ctx.log))
+def _then_read(action, dbus, log):
+    """work() of a timer job: action(), then the list read again, so
+    the result, (action's answer, timers), carries the state the action
+    left. Runs outside the lock: only its arguments."""
+
+    def work():
+        return action(), _list_timers(dbus, log)
+
+    return work
 
 
 def _shown(ctx):
@@ -247,32 +255,43 @@ def _render_list(ctx):
         ctx.set_key(key, color, _label_for_timer(timer))
 
 
-def _render_or_flash(reason):
-    """then() of a toggle or add job: on failure ERR with `reason` in
-    the journal; renders the page shown, from the cache, which the next
-    poll brings up to date."""
+def _stored(ctx, result, error):
+    """The action's answer of a job's result, once the timers read
+    after it are in the cache, as the poll stores them; None when the
+    job raised."""
+    if error is not None:
+        return None
+    ok, timers = result
+    _store(ctx, timers)
+    return ok
 
-    def then(ctx, ok, error):
-        if not ok or error is not None:
+
+def _render_or_flash(reason):
+    """then() of a toggle or add job: the list read after the action
+    goes into the cache; on failure ERR with `reason` in the journal;
+    renders the page shown."""
+
+    def then(ctx, result, error):
+        if not _stored(ctx, result, error):
             ctx.flash(False, reason)
         ctx.render()
 
     return then
 
 
-def _export_done(ctx, ok, error):
-    # Cancelled (None, no error): no flash, the page renders again.
-    if ok is not None or error is not None:
-        ctx.flash(bool(ok) and error is None)
+def _refreshed(ctx, timers, error):
+    """then() of RFSH: the list read goes into the cache; renders."""
+    if error is None:
+        _store(ctx, timers)
     ctx.render()
 
 
-def _handle_export(ctx):
-    # The list is read first so the export is current; the dialog
-    # waits on the user, so it and the write run as one job.
-    _refresh(ctx)
-    rows = _csv_rows(ctx.state().timers)
-    ctx.run_blocking(lambda: _export(rows), _export_done)
+def _export_done(ctx, result, error):
+    # Cancelled (None, no error): no flash, the page renders again.
+    ok = _stored(ctx, result, error)
+    if ok is not None or error is not None:
+        ctx.flash(bool(ok) and error is None)
+    ctx.render()
 
 
 def _handle_list(ctx, key):
@@ -281,22 +300,23 @@ def _handle_list(ctx, key):
     if key == k["back"]:
         ctx.home()
         return
-    if key == k["refresh"]:
-        _refresh(ctx)
-        ctx.render()
-        return
     if key == k["reset"]:
         ctx.goto(CONFIRM)
         return
     dbus, log = ctx.dbus, ctx.log
+    if key == k["refresh"]:
+        ctx.run_blocking(lambda: _list_timers(dbus, log), _refreshed)
+        return
     if key == k["new"]:
         ctx.run_blocking(
-            lambda: _add_timer(dbus, log),
+            _then_read(lambda: _add_timer(dbus, log), dbus, log),
             _render_or_flash("AddTrackerTimer returned no id"),
         )
         return
     if key == k["export"]:
-        _handle_export(ctx)
+        # The dialog waits on the user: the list read, it and the
+        # write run as one job, so the export is current.
+        ctx.run_blocking(lambda: _export(dbus, log), _export_done)
         return
     if key == k["clean"]:
         # Hide every running timer from the home dashboard: they keep
@@ -312,7 +332,7 @@ def _handle_list(ctx, key):
     if not timer_id:
         return
     ctx.run_blocking(
-        lambda: _toggle_timer(dbus, log, timer_id),
+        _then_read(lambda: _toggle_timer(dbus, log, timer_id), dbus, log),
         _render_or_flash(f"ToggleTrackerTimer({timer_id}) failed"),
     )
 
@@ -349,13 +369,14 @@ def _handle_confirm(ctx, key):
     if key == k["ok"]:
         dbus, log = ctx.dbus, ctx.log
         ctx.run_blocking(
-            lambda: _reset_all_timers(dbus, log), _reset_done
+            _then_read(lambda: _reset_all_timers(dbus, log), dbus, log),
+            _reset_done,
         )
     # Other keys: ignored, the choice is explicit.
 
 
-def _reset_done(ctx, ok, error):
-    if ok and error is None:
+def _reset_done(ctx, result, error):
+    if _stored(ctx, result, error):
         ctx.flash(True)
     else:
         ctx.flash(False, "ResetAllTrackerTimers failed via D-Bus")

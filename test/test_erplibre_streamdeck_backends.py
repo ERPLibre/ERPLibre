@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Parsers of the system tools the deck plugins read."""
 
+import json
 import os
 import subprocess
 import sys
@@ -413,10 +414,11 @@ class SlowKeyTest(unittest.TestCase):
         h = self.timer_page()
         press, threads, loop = self.press_slow(h, 1)
         self.assertEqual([], press["effects"])
+        # The job reads the list again after the toggle.
         self.assertEqual(
-            ["gdbus ToggleTrackerTimer t1"], threads["effects"]
+            ["gdbus ListTrackerTimers", "gdbus ToggleTrackerTimer t1"],
+            threads["effects"],
         )
-        self.assertIn("gdbus ListTrackerTimers", loop["effects"])
         self.assertEqual("timer_list", loop["page"])
         self.assert_no_flash(h)
         self.assertEqual("Writin\n02:05", h.deck.screen[1][1])
@@ -433,8 +435,10 @@ class SlowKeyTest(unittest.TestCase):
     def test_timer_add_is_a_job(self):
         h = self.timer_page()
         press, threads, loop = self.press_slow(h, 12)  # NEW
-        self.assertEqual(["gdbus AddTrackerTimer"], threads["effects"])
-        self.assertIn("gdbus ListTrackerTimers", loop["effects"])
+        self.assertEqual(
+            ["gdbus AddTrackerTimer", "gdbus ListTrackerTimers"],
+            threads["effects"],
+        )
         self.assert_no_flash(h)
 
     def test_timer_add_without_id_flashes_err(self):
@@ -450,10 +454,11 @@ class SlowKeyTest(unittest.TestCase):
         h = self.timer_page()
         csv_path = S.SANDBOX / "tmp" / "export" / "timers.csv"
         press, threads, loop = self.press_slow(h, 11)  # EXPT CSV
-        # The list is read under the lock, before the dialog opens.
-        self.assertEqual(["gdbus ListTrackerTimers"], press["effects"])
+        # The list is read in the job, before the dialog opens.
+        self.assertEqual([], press["effects"])
         self.assertEqual(
-            ["zenity"], [e.split()[0] for e in threads["effects"]]
+            ["gdbus ListTrackerTimers", "zenity"],
+            [e.split(" --")[0] for e in threads["effects"]],
         )
         self.assertEqual(P.TIMERS_CSV, csv_path.read_bytes().decode())
         self.assertEqual([], loop["effects"])
@@ -481,10 +486,9 @@ class SlowKeyTest(unittest.TestCase):
         press, threads, loop = self.press_slow(h, 14)  # OK
         self.assertEqual("timer_reset_confirm", press["page"])
         self.assertEqual(
-            ["gdbus ResetAllTrackerTimers"], threads["effects"]
+            ["gdbus ListTrackerTimers", "gdbus ResetAllTrackerTimers"],
+            threads["effects"],
         )
-        # The OK flash ends the pass: the poll reads the list on the
-        # first pass after it.
         self.assertEqual([], loop["effects"])
         self.assertEqual("timer_list", loop["page"])
         self.assert_flash(h, 14, "OK!")
@@ -986,6 +990,32 @@ class CachedRenderTest(unittest.TestCase):
         self.finish_job(h)
         devices = h.target.kernel.state("bluetooth").bt[1]
         self.assertEqual([True, True], [d[2] for d in devices])
+
+    def test_timer_jobs_show_the_list_read_after_them(self):
+        h = self.start(P.full_world)
+        h.goto("timer_list")
+        h.loop(1)
+        paused = [dict(P.TIMERS[0], running=False)]
+        h.proc.answer("gdbus ListTrackerTimers",
+                      S.gvariant_string(json.dumps(paused)))
+        h.press(1)  # toggle t1
+        self.finish_job(h)
+        self.assertEqual("32466e", h.deck.screen[1][0])  # paused
+        self.assertEqual(paused, h.target.kernel.state("timers").timers)
+
+    def test_timer_refresh_is_a_job(self):
+        h = self.start(P.full_world)
+        h.goto("timer_list")
+        h.loop(1)
+        h.proc.answer("gdbus ListTrackerTimers", S.gvariant_string("[]"))
+        h.press(14)  # RFSH
+        self.assertEqual([], h.steps[-1]["effects"])
+        self.assertEqual(1, len(S.FakeThread.queue))
+        self.finish_job(h)
+        self.assertEqual(
+            ["gdbus ListTrackerTimers"], h.steps[-1]["effects"]
+        )
+        self.assertEqual("NO\nTIMERS", h.deck.screen[1][1])
 
     def test_sound_press_shows_the_new_level_at_once(self):
         h = self.start(P.full_world)

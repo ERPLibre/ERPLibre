@@ -413,7 +413,8 @@
    {
     "do": "threads",
     "effects": [
-     "gdbus AddTrackerTimer"
+     "gdbus AddTrackerTimer",
+     "gdbus ListTrackerTimers"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -550,9 +551,7 @@
    },
    {
     "do": "press 2",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -620,6 +619,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "zenity --file-selection --save --confirm-overwrite '--file-filter=CSV files | *.csv' --filename=timers.csv"
     ],
     "files": {
@@ -890,6 +890,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ResetAllTrackerTimers"
     ],
     "files": {
@@ -1474,6 +1475,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ToggleTrackerTimer t1"
     ],
     "files": {
@@ -1865,7 +1867,8 @@
    {
     "do": "threads",
     "effects": [
-     "gdbus AddTrackerTimer"
+     "gdbus AddTrackerTimer",
+     "gdbus ListTrackerTimers"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -2022,9 +2025,7 @@
    },
    {
     "do": "press 4",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2102,6 +2103,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "zenity --file-selection --save --confirm-overwrite '--file-filter=CSV files | *.csv' --filename=timers.csv"
     ],
     "files": {
@@ -2412,6 +2414,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ResetAllTrackerTimers"
     ],
     "files": {
@@ -3176,6 +3179,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ToggleTrackerTimer t1"
     ],
     "files": {
@@ -3742,7 +3746,8 @@
    {
     "do": "threads",
     "effects": [
-     "gdbus AddTrackerTimer"
+     "gdbus AddTrackerTimer",
+     "gdbus ListTrackerTimers"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -3969,9 +3974,7 @@
    },
    {
     "do": "press 11",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -4084,6 +4087,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "zenity --file-selection --save --confirm-overwrite '--file-filter=CSV files | *.csv' --filename=timers.csv"
     ],
     "files": {
@@ -4534,6 +4538,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ResetAllTrackerTimers"
     ],
     "files": {
@@ -5778,6 +5783,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ToggleTrackerTimer t1"
     ],
     "files": {
@@ -6769,7 +6775,8 @@
    {
     "do": "threads",
     "effects": [
-     "gdbus AddTrackerTimer"
+     "gdbus AddTrackerTimer",
+     "gdbus ListTrackerTimers"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -7166,9 +7173,7 @@
    },
    {
     "do": "press 28",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -7366,6 +7371,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "zenity --file-selection --save --confirm-overwrite '--file-filter=CSV files | *.csv' --filename=timers.csv"
     ],
     "files": {
@@ -8156,6 +8162,7 @@
    {
     "do": "threads",
     "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ResetAllTrackerTimers"
     ],
     "files": {
