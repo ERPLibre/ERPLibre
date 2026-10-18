@@ -313,7 +313,12 @@ class Kernel:
         # The caller holds the lock and drain_jobs() needs it: the job
         # cannot be drained before it is marked busy.
         self.busy[plugin_id] = (self.page_id, self.last_press_key)
-        self._paint_busy()
+        if self.flash_result:
+            # A recorded flash, even expired, stays painted until a
+            # render; render() clears an expired one and paints "…".
+            self.render()
+        else:
+            self._paint_busy()
         return True
 
     def _paint_busy(self):

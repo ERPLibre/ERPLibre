@@ -533,6 +533,26 @@ class JobTest(KernelCase):
         k.step(self.clock.now)
         self.assertEqual([ZeroDivisionError], seen)
 
+    def test_job_press_after_an_expired_flash_clears_it(self):
+        # The flash is over but still painted: the press repaints the
+        # page under the "…", and the next pass hands the result back
+        # instead of spending itself on clearing the flash.
+        seen = []
+        k = self.kernel(self.slow_plugin(
+            lambda: True, lambda ctx, r, e: seen.append(r)))
+        k.goto("pg")
+        k.set_flash(True)
+        k.render()
+        self.assertEqual("OK!", self.deck.screen[0][1])
+        self.clock.advance(K.RESULT_FLASH_SEC + 0.1)
+        k.handle_key(3, True)
+        self.assertIsNone(k.flash_result)
+        self.assertEqual("X", self.deck.screen[0][1])
+        self.assertEqual("\u2026", self.deck.screen[3][1])
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertEqual([True], seen)
+
     def test_second_press_on_busy_plugin_flashes_err(self):
         calls = []
         k = self.kernel(self.slow_plugin(lambda: True, calls=calls))
