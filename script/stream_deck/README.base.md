@@ -114,11 +114,11 @@ python script/stream_deck/erplibre_streamdeck --list-plugins
 
 <!-- [en] -->
 
-`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off` or `refused` with its reason) without opening the deck or taking its lock. Layout of the package:
+`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off`, `replaced by user` or `refused` with its reason; `unreadable` for a plugin directory it cannot list) without opening the deck or taking its lock. Layout of the package:
 
 <!-- [fr] -->
 
-`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off` ou `refused` avec sa raison) sans ouvrir le deck ni prendre son verrou. Disposition du paquet :
+`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. Disposition du paquet :
 
 <!-- [common] -->
 
@@ -204,13 +204,13 @@ PLUGIN = Plugin(
 
 <!-- [en] -->
 
-A `Plugin` also takes `fixtures` (keys placed on the home screen), `tiles` (dashboard tiles), `home_tick`, `setup(ctx)` and `shutdown(ctx)`; `plugin.py` documents each. `shutdown` runs with the lock held: it must not take `ctx.locked()` nor wait for a thread that does. A thread a plugin starts takes the lock with `with ctx.locked():`.
+A `Plugin` also takes `fixtures` (keys placed on the home screen), `tiles` (dashboard tiles), `home_tick`, `setup(ctx)` and `shutdown(ctx)`; `plugin.py` documents each. `shutdown` runs with the lock held (without it when a key press still holds it after 5 s): it must not take `ctx.locked()` nor wait for a thread that does. A thread a plugin starts takes the lock with `with ctx.locked():`.
 
 A plugin of the user goes in `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/` (`~/.config/erplibre-home/deck-plugins/` when unset), and replaces a plugin of the repository with the same id. **Trust:** user plugins run inside the deck service with the user's rights, like a shell profile; put there only code you wrote or read.
 
 <!-- [fr] -->
 
-Un `Plugin` prend aussi `fixtures` (touches placées sur l'accueil), `tiles` (tuiles du tableau de bord), `home_tick`, `setup(ctx)` et `shutdown(ctx)` ; `plugin.py` documente chacun. `shutdown` s'exécute verrou tenu : il ne doit ni prendre `ctx.locked()` ni attendre un fil qui le prend. Un fil lancé par un plugin prend le verrou par `with ctx.locked():`.
+Un `Plugin` prend aussi `fixtures` (touches placées sur l'accueil), `tiles` (tuiles du tableau de bord), `home_tick`, `setup(ctx)` et `shutdown(ctx)` ; `plugin.py` documente chacun. `shutdown` s'exécute verrou tenu (sans lui quand une touche le tient encore après 5 s) : il ne doit ni prendre `ctx.locked()` ni attendre un fil qui le prend. Un fil lancé par un plugin prend le verrou par `with ctx.locked():`.
 
 Un plugin de l'utilisateur va dans `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/` (`~/.config/erplibre-home/deck-plugins/` si la variable est absente) et remplace le plugin du dépôt de même identifiant. **Confiance :** les plugins de l'utilisateur s'exécutent dans le service du deck avec les droits de l'utilisateur, comme un profil de shell ; n'y mettre que du code écrit ou relu par soi.
 
