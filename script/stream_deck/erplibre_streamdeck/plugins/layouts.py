@@ -28,37 +28,41 @@ def _layouts_save(data):
     jsonfile.write_atomic(paths.LAYOUTS_FILE, data)
 
 
-def _list_windows_dbus(ctx):
+def _list_windows_dbus(dbus, log):
     """Query the extension for all live windows. Returns list of dicts."""
     try:
-        r = ctx.dbus.call("ListWindows", timeout=3)
+        r = dbus.call("ListWindows", timeout=3)
         if not r.ok:
-            ctx.log(f"ListWindows dbus: {r.stderr}")
+            log(f"ListWindows dbus: {r.stderr}")
             return []
         payload = r.string
         return json.loads(payload) if payload else []
     except Exception as e:
-        ctx.log(f"ListWindows error: {e}")
+        log(f"ListWindows error: {e}")
         return []
 
 
-def _apply_layout_dbus(ctx, windows):
+def _apply_layout_dbus(dbus, log, windows):
     """Apply a list of window records via D-Bus. Returns matched count."""
     try:
         payload = json.dumps(windows)
-        r = ctx.dbus.call("ApplyLayout", payload, timeout=10)
+        r = dbus.call("ApplyLayout", payload, timeout=10)
         if not r.ok:
-            ctx.log(f"ApplyLayout dbus: {r.stderr}")
+            log(f"ApplyLayout dbus: {r.stderr}")
             return 0
         m = re.search(r"\((\d+),\)", r.stdout.strip())
         return int(m.group(1)) if m else 0
     except Exception as e:
-        ctx.log(f"ApplyLayout error: {e}")
+        log(f"ApplyLayout error: {e}")
         return 0
 
 
-def _save_layout_slot(ctx, slot_id):
-    windows = _list_windows_dbus(ctx)
+def _save_layout_slot(dbus, log, slot_id):
+    """Store the live windows in a slot of layouts.json; False when the
+    extension lists none. Runs outside the lock: only `dbus`, `log` and
+    the file, which the plugin's other callables cannot write while
+    this job keeps it busy."""
+    windows = _list_windows_dbus(dbus, log)
     if not windows:
         return False
     data = _layouts_load()
@@ -71,13 +75,47 @@ def _save_layout_slot(ctx, slot_id):
     return True
 
 
-def _load_layout_slot(ctx, slot_id):
-    data = _layouts_load()
-    slot = data.get("slots", {}).get(str(slot_id))
+def _slot_windows(slot_id):
+    """The window records saved in a slot; None when the slot is
+    empty."""
+    slot = _layouts_load().get("slots", {}).get(str(slot_id))
     if not slot:
-        return False
-    matched = _apply_layout_dbus(ctx, slot.get("windows") or [])
-    return matched > 0
+        return None
+    return slot.get("windows") or []
+
+
+def _load_layout(dbus, log, windows):
+    """ApplyLayout on saved window records; True when one matched. Runs
+    outside the lock: only `dbus` and `log`."""
+    return _apply_layout_dbus(dbus, log, windows) > 0
+
+
+def _flash_then(reason):
+    """then() of a layout job: flash OK on a truthy result, else ERR
+    with `reason` in the journal; renders the page shown."""
+
+    def then(ctx, ok, error):
+        if ok and error is None:
+            ctx.flash(True)
+        else:
+            ctx.flash(False, reason)
+        ctx.render()
+
+    return then
+
+
+def _start_load(ctx, slot, reason):
+    """Apply a slot as a job; its windows are read here, under the
+    lock. An empty slot flashes ERR without a job."""
+    windows = _slot_windows(slot)
+    if windows is None:
+        ctx.flash(False, reason)
+        ctx.render()
+        return
+    dbus, log = ctx.dbus, ctx.log
+    ctx.run_blocking(
+        lambda: _load_layout(dbus, log, windows), _flash_then(reason)
+    )
 
 
 def _delete_layout_slot(slot_id):
@@ -200,19 +238,15 @@ def _handle_layout(ctx, key):
         return
     if key in lk["save"]:
         slot = lk["save"].index(key) + 1
-        if _save_layout_slot(ctx, slot):
-            ctx.flash(True)
-        else:
-            ctx.flash(False, f"layout save slot {slot} failed")
-        ctx.render()
+        dbus, log = ctx.dbus, ctx.log
+        ctx.run_blocking(
+            lambda: _save_layout_slot(dbus, log, slot),
+            _flash_then(f"layout save slot {slot} failed"),
+        )
         return
     if key in lk["load"]:
         slot = lk["load"].index(key) + 1
-        if _load_layout_slot(ctx, slot):
-            ctx.flash(True)
-        else:
-            ctx.flash(False, f"layout load slot {slot} failed")
-        ctx.render()
+        _start_load(ctx, slot, f"layout load slot {slot} failed")
         return
     if key in lk["delete"]:
         slot = lk["delete"].index(key) + 1
@@ -283,11 +317,7 @@ def _shortcut_press(ctx, key, index):
     slot = index + 1
     if str(slot) not in _layouts_load().get("slots", {}):
         return
-    if _load_layout_slot(ctx, slot):
-        ctx.flash(True)
-    else:
-        ctx.flash(False, f"layout shortcut load slot {slot} failed")
-    ctx.render()
+    _start_load(ctx, slot, f"layout shortcut load slot {slot} failed")
 
 
 def _setup(ctx):

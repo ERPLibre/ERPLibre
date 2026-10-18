@@ -157,12 +157,6 @@ class BluetoothTest(unittest.TestCase):
 
 class LayoutsTest(unittest.TestCase):
     def test_save_then_load_round_trips_through_layouts_file(self):
-        class Ctx:
-            pass
-
-        ctx = Ctx()
-        ctx.dbus = dbus
-        ctx.log = lambda msg: None
         answers = {
             "ListWindows": done("('[{\"id\": \"1\", \"x\": 0}]',)\n"),
             "ApplyLayout": done("(1,)\n"),
@@ -176,18 +170,20 @@ class LayoutsTest(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
+        log = lambda msg: None  # noqa: E731
         with tempfile.TemporaryDirectory() as tmp:
             conf = Path(tmp) / "conf"
             with mock.patch.object(paths, "CONFIG_DIR", conf), \
                     mock.patch.object(
                         paths, "LAYOUTS_FILE", conf / "layouts.json"
                     ), mock.patch("subprocess.run", side_effect=run):
-                self.assertTrue(layouts._save_layout_slot(ctx, 2))
+                self.assertTrue(layouts._save_layout_slot(dbus, log, 2))
                 saved = layouts._layouts_load()["slots"]["2"]
                 self.assertEqual([{"id": "1", "x": 0}], saved["windows"])
                 self.assertEqual(1, saved["count"])
-                self.assertTrue(layouts._load_layout_slot(ctx, 2))
-                self.assertFalse(layouts._load_layout_slot(ctx, 3))
+                windows = layouts._slot_windows(2)
+                self.assertTrue(layouts._load_layout(dbus, log, windows))
+                self.assertIsNone(layouts._slot_windows(3))
         self.assertTrue(calls[-1][-1].startswith('[{"id"'))
 
 
@@ -332,6 +328,65 @@ class SlowKeyTest(unittest.TestCase):
         self.assertIn(
             "tiling: TileWindow(5x3 0,0-1,0) failed via D-Bus",
             h.journal.getvalue(),
+        )
+
+    def layout_page(self):
+        h = self.start(P.full_world)
+        h.goto("layout")
+        return h
+
+    def test_layout_save_is_a_job(self):
+        h = self.layout_page()
+        before = h.steps[-1]["files"]
+        press, threads, loop = self.press_slow(h, 6)  # SAVE 1
+        self.assertEqual(([], before), (press["effects"], press["files"]))
+        self.assertEqual(["gdbus ListWindows"], threads["effects"])
+        saved = threads["files"]["CONFIG/erplibre-home/layouts.json"]
+        self.assertEqual(P.WINDOWS, saved["slots"]["1"]["windows"])
+        self.assertEqual("layout", loop["page"])
+        self.assert_flash(h, 6, "OK!")
+
+    def test_layout_save_without_windows_flashes_err(self):
+        h = self.layout_page()
+        h.proc.answer("gdbus ListWindows", S.gvariant_string("[]"))
+        self.press_slow(h, 7)  # SAVE 2
+        self.assert_flash(h, 7, "ERR")
+        self.assertIn("layout save slot 2 failed", h.journal.getvalue())
+
+    def test_layout_load_is_a_job(self):
+        h = self.layout_page()
+        press, threads, loop = self.press_slow(h, 11)  # LOAD 1
+        self.assertEqual([], press["effects"])
+        self.assertEqual(
+            "gdbus ApplyLayout", threads["effects"][0][:17]
+        )
+        self.assertEqual("layout", loop["page"])
+        self.assert_flash(h, 11, "OK!")
+
+    def test_layout_load_of_empty_slot_starts_no_job(self):
+        h = self.layout_page()
+        h.press(12)  # LOAD 2, empty
+        self.assertEqual([], S.FakeThread.queue)
+        self.assert_flash(h, 12, "ERR")
+
+    def test_layout_shortcut_load_is_a_job(self):
+        h = self.start(P.full_world, 8, 4)  # the shortcuts fit at 8x4
+        key = P.face_key(h, "*\n1")
+        press, threads, loop = self.press_slow(h, key)
+        self.assertEqual(
+            "gdbus ApplyLayout", threads["effects"][0][:17]
+        )
+        self.assertEqual("idle", loop["page"])
+        self.assert_flash(h, key, "OK!")
+
+    def test_layout_shortcut_failure_flashes_err(self):
+        h = self.start(P.full_world, 8, 4)  # the shortcuts fit at 8x4
+        h.proc.answer("gdbus ApplyLayout", "(0,)\n")
+        key = P.face_key(h, "*\n1")
+        self.press_slow(h, key)
+        self.assert_flash(h, key, "ERR")
+        self.assertIn(
+            "layout shortcut load slot 1 failed", h.journal.getvalue()
         )
 
 
