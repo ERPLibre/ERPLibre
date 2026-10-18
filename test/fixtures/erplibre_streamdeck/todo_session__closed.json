@@ -140,8 +140,72 @@
     ]
    },
    {
-    "do": "loop 4",
+    "do": "loop 1",
     "effects": [
+     "gdbus ListWindows",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": []
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ListWindows",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
     ],
@@ -362,8 +426,82 @@
     ]
    },
    {
-    "do": "loop 4",
+    "do": "loop 1",
     "effects": [
+     "gdbus ListWindows",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": []
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
+     "gdbus ListTrackerTimers",
      "gdbus ListWindows",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
     ],
@@ -664,7 +802,7 @@
     ]
    },
    {
-    "do": "loop 4",
+    "do": "loop 1",
     "effects": [
      "gdbus ListWindows",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
@@ -768,6 +906,115 @@
       "14141e",
       "",
       null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
+     "gdbus ListTrackerTimers",
+     "gdbus ListWindows",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": []
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "00a028",
+      "Writin\n02:05",
+      "timer"
+     ],
+     [
+      "00a028",
+      "Review\n62:05",
+      "timer"
      ]
     ]
    }
@@ -1171,7 +1418,7 @@
     ]
    },
    {
-    "do": "loop 4",
+    "do": "loop 1",
     "effects": [
      "gdbus ListWindows",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
@@ -1270,6 +1517,200 @@
       "14141e",
       "",
       null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "009650",
+      "*\n1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
+     "gdbus ListTrackerTimers",
+     "gdbus ListWindows",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": []
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "00a028",
+      "Writin\n02:05",
+      "timer"
+     ],
+     [
+      "00a028",
+      "Review\n62:05",
+      "timer"
      ],
      [
       "14141e",

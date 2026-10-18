@@ -286,7 +286,7 @@
       {
        "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-1800000000.log",
        "name": "TODO 1",
-       "opened_at": 1800000001.4,
+       "opened_at": 1800000001.2,
        "window_id": "201"
       }
      ]
@@ -730,7 +730,7 @@
       {
        "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-1800000000.log",
        "name": "TODO 1",
-       "opened_at": 1800000001.4,
+       "opened_at": 1800000001.2,
        "window_id": "201"
       }
      ]

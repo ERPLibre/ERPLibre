@@ -377,7 +377,11 @@ class Scenarios:
             if key is None:
                 return
             h.press(key)
-            h.wait(1.1)
+            # Passes at +0.6 s (the flash ends), +0.9 s (the 2 s home
+            # refresh), +1.2 s (the capture, due at +1.0 s): the capture
+            # never shares a pass with the refresh, whose renders the
+            # two implementations count differently.
+            h.wait(FLASH_GAP)
             h.loop(5)
 
         self.run_all("todo_launch", EMPTY + "; window 201 opens",
@@ -584,7 +588,12 @@ class Scenarios:
             h.goto("todo_session", window_id="101")
             h.proc.answer("gdbus ListWindows", S.gvariant_string(
                 json.dumps(WINDOWS[1:])))
-            h.loop(4)
+            # The page tick sees the window gone and goes home. The home
+            # refresh is pinned on its own, once due on every schedule:
+            # the passes right after the return are not.
+            h.loop(1)
+            h.wait(2.1)
+            h.loop(1)
 
         self.run_all("todo_session__closed", FULL + "; window 101 closes",
                      full_world, script, pages=("todo_session",))
