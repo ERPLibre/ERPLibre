@@ -27,8 +27,8 @@ from erplibre_streamdeck.ui import colors, render
 from erplibre_streamdeck.ui.text import wrap_button_label
 
 PAGE_ID = "todo_session"
-# The new terminal's window is read this long after the spawn, once it
-# has settled and taken the focus.
+# The new terminal's window is read this long after the spawn's result
+# reaches the deck, once the window has settled and taken the focus.
 CAPTURE_DELAY_SEC = 1.0
 REFRESH_SEC = 2.0
 DIGITS = "1234567890"
@@ -104,12 +104,13 @@ def focused_window_id(ctx):
     return (r.string or "") if r.ok else ""
 
 
-def send_keys(ctx, window_id, text):
+def send_keys(dbus, window_id, text):
     """Synthesise `text` into the window `window_id` through the
-    extension's virtual keyboard. True when it answers `true`."""
+    extension's virtual keyboard. True when it answers `true`. Runs as
+    a job, outside the lock: only `dbus` and its arguments."""
     if not window_id:
         return False
-    r = ctx.dbus.call("SendKeysToWindow", str(window_id), text, timeout=2)
+    r = dbus.call("SendKeysToWindow", str(window_id), text, timeout=2)
     if r.returncode is None:
         print(f"SendKeysToWindow error: {r.stderr}",
               file=sys.stderr, flush=True)
@@ -120,10 +121,11 @@ def send_keys(ctx, window_id, text):
     return r.true
 
 
-def focus_window(ctx, window_id):
+def focus_window(dbus, window_id):
     """Raise and focus the window; True when the extension answers
-    `true`."""
-    return ctx.dbus.call("FocusWindowById", str(window_id), timeout=2).true
+    `true`. Runs as a job, outside the lock: only `dbus` and its
+    arguments."""
+    return dbus.call("FocusWindowById", str(window_id), timeout=2).true
 
 
 # ------------------------------------------------------------ todo.py log
@@ -234,13 +236,56 @@ def _capture(ctx):
     save_registry(st.terminals)
 
 
+def _spawn_terminal(terminals):
+    """Start the first of `terminals` (argv lists) found on the PATH;
+    True once one has started. Runs as a job, outside the lock: only
+    its argument."""
+    for argv in terminals:
+        if shutil.which(argv[0]) is None:
+            continue
+        try:
+            subprocess.Popen(argv,
+                             stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except Exception as e:
+            print(f"todo terminal spawn failed: {e}",
+                  file=sys.stderr, flush=True)
+            continue
+        return True
+    return False
+
+
+def _launched(log_path):
+    """then() of the launch: once a terminal has started, the capture
+    of its window is armed CAPTURE_DELAY_SEC from now, with the log it
+    writes, and OK flashes; ERR when none could start."""
+
+    def then(ctx, started, error):
+        if started and error is None:
+            st = ctx.state()
+            st.capture_at = time.monotonic() + CAPTURE_DELAY_SEC
+            st.capture_log_path = log_path
+            ctx.flash(True)
+        elif error is None:
+            ctx.flash(
+                False, "No terminal found (gnome-terminal / kgx / xterm)"
+            )
+        else:
+            ctx.flash(False)
+        ctx.render()
+
+    return then
+
+
 def _launch_todo_terminal(ctx):
     """Open a terminal under the repository root, activate the ERPLibre
-    venv, and run script/todo/todo.py. The window id is captured
-    CAPTURE_DELAY_SEC later by the home tick, so the deck registers
-    the terminal and shows a tile that drives the todo.py menu through
-    the extension's SendKeysToWindow D-Bus method."""
-    st = ctx.state()
+    venv, and run script/todo/todo.py. The command and its log path are
+    built here; the terminal starts as a job. CAPTURE_DELAY_SEC after
+    its result, the home tick captures the window id, so the deck
+    registers the terminal and shows a tile that drives the todo.py
+    menu through the extension's SendKeysToWindow D-Bus method."""
     root = str(paths.REPO_ROOT)
     venv = os.path.join(root, ".venv.erplibre", "bin", "activate")
     script = os.path.join(root, "script", "todo", "todo.py")
@@ -273,26 +318,9 @@ def _launch_todo_terminal(ctx):
          "--", "bash", "-lc", cmd],
         ["xterm", "-e", f"cd '{root}' && {cmd}"],
     ]
-    for argv in terminals:
-        if shutil.which(argv[0]) is None:
-            continue
-        try:
-            subprocess.Popen(argv,
-                             stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL,
-                             start_new_session=True)
-        except Exception as e:
-            print(f"todo terminal spawn failed: {e}",
-                  file=sys.stderr, flush=True)
-            continue
-        st.capture_at = time.monotonic() + CAPTURE_DELAY_SEC
-        st.capture_log_path = log_path
-        ctx.flash(True)
-        ctx.render()
-        return
-    ctx.flash(False, "No terminal found (gnome-terminal / kgx / xterm)")
-    ctx.render()
+    ctx.run_blocking(
+        lambda: _spawn_terminal(terminals), _launched(log_path)
+    )
 
 
 # --------------------------------------------------------- todo_session
@@ -366,6 +394,13 @@ def _render(ctx):
             ctx.set_key(key, colors.EMPTY, "")
 
 
+def _sent(ctx, ok, error):
+    """then() of a key sent to the terminal or of its focus: OK or ERR,
+    then the page again."""
+    ctx.flash(bool(ok) and error is None)
+    ctx.render()
+
+
 def _handle(ctx, key):
     st = ctx.state()
     ts = _session_keys(ctx.geo)
@@ -380,13 +415,12 @@ def _handle(ctx, key):
     if not wid:
         ctx.home()
         return
+    dbus = ctx.dbus
     if key == ts["enter"]:
-        ctx.flash(send_keys(ctx, wid, "\n"))
-        ctx.render()
+        ctx.run_blocking(lambda: send_keys(dbus, wid, "\n"), _sent)
         return
     if key == ts["focus"]:
-        ctx.flash(focus_window(ctx, wid))
-        ctx.render()
+        ctx.run_blocking(lambda: focus_window(dbus, wid), _sent)
         return
     if key == ts["forget"]:
         st.terminals = [
@@ -414,8 +448,8 @@ def _handle(ctx, key):
         digit = DIGITS[idx]
     # The digit and a newline: todo.py's input() prompt advances on a
     # single deck press.
-    ctx.flash(send_keys(ctx, wid, f"{digit}\n"))
-    ctx.render()
+    text = f"{digit}\n"
+    ctx.run_blocking(lambda: send_keys(dbus, wid, text), _sent)
 
 
 def _tick(ctx, now):

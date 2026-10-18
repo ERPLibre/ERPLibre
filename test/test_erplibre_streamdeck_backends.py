@@ -627,6 +627,69 @@ class SlowKeyTest(unittest.TestCase):
             "MpvSendCommand(1, 'vol_up') failed", h.journal.getvalue()
         )
 
+    def test_todo_launch_is_a_job_that_arms_the_capture(self):
+        h = self.start(P.launch_world)
+        key = P.face_key(h, "TODO")
+        press, threads, loop = self.press_slow(h, key)
+        self.assertEqual([], press["effects"])
+        self.assertEqual(1, len(threads["effects"]))
+        self.assertTrue(
+            threads["effects"][0].startswith('popen ["gnome-terminal"')
+        )
+        self.assertEqual("idle", loop["page"])
+        self.assert_flash(h, key, "OK!")
+        st = h.target.kernel.state("todo_terminals")
+        # Armed when the result is back: one second from that pass.
+        self.assertEqual(h.clock.now - P.LOOP_SEC + 1.0, st.capture_at)
+        self.assertTrue(st.capture_log_path.endswith(".log"))
+        h.wait(P.FLASH_GAP)
+        h.loop(4)
+        registry = h.steps[-1]["files"][
+            "STATE/erplibre-home/todo_terminals.json"
+        ]
+        self.assertEqual(["201"], [t["window_id"] for t in registry])
+
+    def test_todo_launch_without_terminal_flashes_err(self):
+        h = self.start(P.launch_world)
+        h.which.discard("gnome-terminal")
+        key = P.face_key(h, "TODO")
+        press, threads, loop = self.press_slow(h, key)
+        self.assertEqual([], threads["effects"])
+        self.assert_flash(h, key, "ERR")
+        self.assertIn("No terminal found", h.journal.getvalue())
+        st = h.target.kernel.state("todo_terminals")
+        self.assertEqual((0.0, ""), (st.capture_at, st.capture_log_path))
+
+    def test_todo_session_keys_are_jobs(self):
+        h = self.start(P.full_world)
+        for key, effect in (
+            (5, "gdbus SendKeysToWindow 101 '1\n'"),  # [1] First
+            (1, "gdbus SendKeysToWindow 101 '\n'"),  # ENTER
+            (2, "gdbus FocusWindowById 101"),  # FOCUS
+        ):
+            h.goto("todo_session", window_id="101")
+            h.wait(P.FLASH_GAP)
+            press, threads, loop = self.press_slow(h, key)
+            self.assertEqual([], press["effects"])
+            self.assertEqual([effect], threads["effects"])
+            self.assertEqual("todo_session", loop["page"])
+            self.assert_flash(h, key, "OK!")
+
+    def test_todo_session_send_failure_flashes_err(self):
+        h = self.start(P.full_world)
+        h.proc.answer("gdbus SendKeysToWindow", returncode=1)
+        h.goto("todo_session", window_id="101")
+        self.press_slow(h, 1)  # ENTER
+        self.assertEqual("todo_session", h.target.page())
+        self.assert_flash(h, 1, "ERR")
+
+    def test_todo_session_forget_starts_no_job(self):
+        h = self.start(P.full_world)
+        h.goto("todo_session", window_id="101")
+        h.press(3)  # FORGET
+        self.assertEqual([], S.FakeThread.queue)
+        self.assertEqual("idle", h.target.page())
+
 
 class SettingsKeepTest(unittest.TestCase):
     def test_font_scale_save_keeps_other_keys(self):

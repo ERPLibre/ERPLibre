@@ -300,9 +300,163 @@
    },
    {
     "do": "press 4",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus SendKeysToWindow 101 '1\n'"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -379,9 +533,163 @@
    },
    {
     "do": "press 1",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus SendKeysToWindow 101 '\n'"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -458,9 +766,163 @@
    },
    {
     "do": "press 2",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus FocusWindowById 101"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -917,9 +1379,233 @@
    },
    {
     "do": "press 5",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus SendKeysToWindow 101 '1\n'"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1031,9 +1717,233 @@
    },
    {
     "do": "press 1",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus SendKeysToWindow 101 '\n'"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1145,9 +2055,233 @@
    },
    {
     "do": "press 2",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus FocusWindowById 101"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1879,9 +3013,403 @@
    },
    {
     "do": "press 8",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus SendKeysToWindow 101 '1\n'"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2078,9 +3606,403 @@
    },
    {
     "do": "press 1",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus SendKeysToWindow 101 '\n'"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2277,9 +4199,403 @@
    },
    {
     "do": "press 2",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
     "effects": [
      "gdbus FocusWindowById 101"
     ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "todo_session",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "00b428",
+      "ENTER\n↵",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "b40000",
+      "FORGET",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "8c5a32",
+      "[1]\nFirst",
+      null
+     ],
+     [
+      "8c5a32",
+      "[2]\nSecond",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {

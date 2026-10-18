@@ -117,7 +117,7 @@ HOME_LABELS = (
     "TRANSL", "TODO",
 )
 # Home keys whose press runs as a job (kernel run_blocking).
-HOME_JOBS = {"DEV\nRELOAD"}
+HOME_JOBS = {"DEV\nRELOAD", "TODO"}
 
 EMPTY = (
     "EMPTY: extension present, no session, no timer, no window, wpctl "
@@ -389,12 +389,13 @@ class Scenarios:
             key = face_key(h, "TODO")
             if key is None:
                 return
-            h.press(key)
+            # The terminal starts as a job; its result, back at +0 s,
+            # arms the capture.
+            tap_job(h, key)
             # Passes at +0.6 s (the flash ends), +0.9 s (the 2 s home
             # refresh), +1.2 s (the capture, due at +1.0 s): the capture
             # never shares a pass with the refresh, whose renders the
             # two implementations count differently.
-            h.wait(FLASH_GAP)
             h.loop(5)
 
         self.run_all("todo_launch", EMPTY + "; window 201 opens",
@@ -591,9 +592,9 @@ class Scenarios:
             h.goto("todo_session", window_id="101")
             if h.deck.cols < 4:
                 return  # DECK TOO SMALL
-            tap(h, h.deck.cols)  # [1] First
-            tap(h, 1)  # ENTER
-            tap(h, 2)  # FOCUS
+            tap_job(h, h.deck.cols)  # [1] First
+            tap_job(h, 1)  # ENTER
+            tap_job(h, 2)  # FOCUS
             h.loop(4)
             tap(h, 3)  # FORGET
 
