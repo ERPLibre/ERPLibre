@@ -131,6 +131,12 @@ names an id that matches no plugin. User plugins live in
 script/stream_deck/erplibre_streamdeck --list-plugins` prints each plugin
 the loader finds and its status, without opening the deck.
 
+`DECK_SESSION_REFRESH_SEC=<seconds>` sets how often the Claude and mpv
+session pages refresh: a number from 0.5 to 60, 1 when absent. A value that
+is not a number, or out of range, gives 1, and TODO › Stream Deck ›
+Diagnosis names it. Set it from TODO › Stream Deck › [13] Session refresh
+(which offers to restart the deck service), or by hand in this file.
+
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,
 runs the game, and starts the service again when the game ends, unless
