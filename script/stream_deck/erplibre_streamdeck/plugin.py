@@ -4,8 +4,9 @@
 
 A plugin module exposes PLUGIN = Plugin(api=PLUGIN_API, ...). Its id is
 its file name; the loader sets it. Every callable receives a Context,
-and is called with the kernel lock held, except threads the plugin
-starts itself (they take ctx.locked())."""
+and is called with the kernel lock held, except Poll.read (no Context,
+no lock) and threads the plugin starts itself (they take
+ctx.locked())."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,6 +79,20 @@ class TileProvider:
 
 
 @dataclass
+class Poll:
+    """Data a render needs, read away from the lock. active(ctx) says,
+    under the lock, whether it is needed now; read() runs in the loop
+    thread without the lock and must not touch a Context; store(ctx,
+    data) keeps it, under the lock, and returns True when what the deck
+    shows changed."""
+
+    period: float
+    active: Callable
+    read: Callable
+    store: Callable
+
+
+@dataclass
 class Plugin:
     api: int
     pages: list = field(default_factory=list)
@@ -86,6 +101,9 @@ class Plugin:
     tiles: list = field(default_factory=list)
     home_tick: Callable | None = None
     home_period: float = 0.0
+    # Polls each have their own `period` stamp; a busy plugin's are
+    # skipped (see Poll).
+    polls: list = field(default_factory=list)
     setup: Callable | None = None
     # shutdown(ctx) runs with the kernel lock held, like every other
     # callable, or without it when a key callback still holds it after

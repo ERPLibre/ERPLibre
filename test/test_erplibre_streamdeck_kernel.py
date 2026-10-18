@@ -23,6 +23,7 @@ from erplibre_streamdeck.plugin import (  # noqa: E402
     Page,
     Plugin,
     PLUGIN_API,
+    Poll,
     TileProvider,
 )
 from erplibre_streamdeck.ui import colors, render  # noqa: E402
@@ -328,6 +329,127 @@ class TickTest(KernelCase):
         self.assertEqual(2, len(ticks))
 
 
+class PollTest(KernelCase):
+    """Polls: active under the lock, read without it, store under it."""
+
+    def poll_plugin(self, read, period=0.0, active=None, store=None,
+                    pages=()):
+        self.seen = []
+
+        def store_(ctx, data):
+            self.seen.append(("store", data, self.k.lock.locked()))
+            ctx.state().value = data
+            return False
+
+        def active_(ctx):
+            self.seen.append(("active", self.k.lock.locked()))
+            return True
+
+        poll = Poll(period, active or active_, read, store or store_)
+        return loaded("p", Plugin(
+            api=PLUGIN_API, pages=list(pages), polls=[poll]
+        ))
+
+    def test_inactive_poll_is_not_read(self):
+        reads = []
+        self.k = self.kernel(self.poll_plugin(
+            lambda: reads.append(1), active=lambda ctx: False
+        ))
+        for _ in range(3):
+            self.k.step(self.clock.now)
+            self.clock.advance(1)
+        self.assertEqual([], reads)
+
+    def test_read_once_per_period(self):
+        reads = []
+
+        def read():
+            reads.append(self.clock.now)
+            return len(reads)
+
+        self.k = self.kernel(self.poll_plugin(read, period=2.0))
+        for _ in range(5):
+            self.k.step(self.clock.now)
+            self.clock.advance(1)
+        self.assertEqual(3, len(reads))
+        self.assertEqual(3, self.k.state("p").value)
+
+    def test_read_runs_outside_the_lock(self):
+        held = []
+        self.k = self.kernel(self.poll_plugin(
+            lambda: held.append(self.k.lock.locked()) or "d"
+        ))
+        self.k.step(self.clock.now)
+        self.assertEqual([False], held)
+        self.assertEqual(
+            [("active", True), ("store", "d", True)], self.seen
+        )
+
+    def test_store_true_on_home_renders_once(self):
+        renders = []
+        changed = {"v": True}
+        self.k = self.kernel(self.poll_plugin(
+            lambda: 1, store=lambda ctx, data: changed["v"]
+        ))
+        with mock.patch.object(
+            self.k, "render", lambda: renders.append(1)
+        ):
+            self.k.step(self.clock.now)    # store and refresh: one
+            self.assertEqual(1, len(renders))
+            self.clock.advance(0.3)
+            self.k.step(self.clock.now)    # store asks: one
+            self.assertEqual(2, len(renders))
+            changed["v"] = False
+            self.clock.advance(0.3)
+            self.k.step(self.clock.now)    # nothing asks
+        self.assertEqual(2, len(renders))
+
+    def test_failing_read_keeps_cache_and_logs_once(self):
+        values = iter([7])
+
+        def read():
+            return next(values)            # StopIteration after one
+
+        self.k = self.kernel(self.poll_plugin(read))
+        for _ in range(4):
+            self.k.step(self.clock.now)
+            self.clock.advance(1)
+        self.assertEqual(7, self.k.state("p").value)
+        self.assertEqual(
+            1, self.journal.getvalue().count("p: poll 0 read failed")
+        )
+
+    def test_flash_blocks_every_poll(self):
+        reads = []
+        self.k = self.kernel(self.poll_plugin(lambda: reads.append(1)))
+        self.k.set_flash(True)
+        self.k.step(self.clock.now)        # flash live: nothing
+        self.clock.advance(K.RESULT_FLASH_SEC)
+        self.k.step(self.clock.now)        # expired: render only
+        self.assertEqual([], reads)
+        self.assertEqual([], self.seen)
+        self.k.step(self.clock.now)
+        self.assertEqual([1], reads)
+
+    def test_store_true_on_a_page_renders_before_the_tick(self):
+        order = []
+
+        def render_(ctx):
+            order.append("render")
+
+        page = Page(
+            "pg", None, render_, print,
+            tick=lambda ctx, now: order.append("tick"),
+        )
+        self.k = self.kernel(self.poll_plugin(
+            lambda: 1, store=lambda ctx, data: True, pages=[page]
+        ))
+        self.k.goto("pg")
+        order.clear()
+        self.k.step(self.clock.now)
+        self.assertEqual(["render", "tick"], order)
+
+
 class RecheckDbusTest(KernelCase):
     def test_rechecks_while_missing_then_stops(self):
         dbus = FakeDbus(ok=False)
@@ -573,6 +695,33 @@ class JobTest(KernelCase):
         k.step(self.clock.now)          # flash expired: render only
         k.step(self.clock.now)
         self.assertEqual(1, len(ticks))
+
+
+    def test_busy_plugin_poll_is_skipped(self):
+        reads, actives = [], []
+        poll = Poll(
+            0.0, lambda ctx: actives.append(1) or True,
+            lambda: reads.append(1), lambda ctx, data: False,
+        )
+        k = self.kernel(loaded("p", Plugin(
+            api=PLUGIN_API,
+            pages=[Page(
+                "pg", None, print,
+                lambda ctx, key: ctx.run_blocking(lambda: True),
+            )],
+            polls=[poll],
+        )))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.clock.advance(1)
+        k.step(self.clock.now)
+        self.assertEqual(([], []), (reads, actives))
+        self.run_jobs()
+        k.step(self.clock.now)          # drained: OK flash ends the pass
+        self.clock.advance(K.RESULT_FLASH_SEC)
+        k.step(self.clock.now)          # flash expired: render only
+        k.step(self.clock.now)
+        self.assertEqual([1], reads)
 
 
 if __name__ == "__main__":

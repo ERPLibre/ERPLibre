@@ -14,8 +14,12 @@ neither thread dies.
 A slow call runs through run_blocking(): a worker thread runs it without
 the lock, and the next loop pass hands its result back under the lock.
 Until then the plugin is busy: its last pressed key shows "…", and its
-presses, page tick and home tick do not reach it; key 0 of its page
-still leaves for the home screen."""
+presses, polls, page tick and home tick do not reach it; key 0 of its
+page still leaves for the home screen.
+
+A plugin's polls (plugin.Poll) feed its renders: read() runs in the loop
+thread with the lock released, so a slow process never holds the keys,
+and store() keeps the result under the lock."""
 
 import sys
 import threading
@@ -360,15 +364,14 @@ class Kernel:
         return False
 
     def step(self, now):
-        """One loop pass. Outside the lock: the D-Bus recheck (gdbus may
-        take its 3 s timeout). Under it: a recorded flash ends the pass
+        """One loop pass. Under the lock: a recorded flash ends the pass
         (rendered once expired); finished jobs are handed back, and a
-        flash they record ends the pass too; otherwise the page's tick,
-        or on the home screen the due home ticks and at most one render.
-        A busy plugin's ticks are skipped."""
-        if self.recheck_dbus(now):
-            with self.lock:
-                self.render()
+        flash they record ends the pass too; the due polls are chosen.
+        Outside it: the D-Bus recheck (gdbus may take its 3 s timeout)
+        and the polls' read(). Under it again: their store(), then the
+        page's tick, or on the home screen the due home ticks, with at
+        most one render for the polls and the home step together. A
+        busy plugin's polls and ticks are skipped."""
         with self.lock:
             if self.flash_result:
                 if not self._flash_live():
@@ -377,25 +380,71 @@ class Kernel:
             self.drain_jobs()
             if self.flash_result:
                 return
+            due = self._due_polls(now)
+        if self.recheck_dbus(now):
+            with self.lock:
+                self.render()
+        reads = [
+            (lp, i, poll, self.guard(lp.id, f"poll {i} read", poll.read))
+            for lp, i, poll in due
+        ]
+        with self.lock:
+            # A key press may have flashed, or a shutdown stopped the
+            # kernel, while the lock was released.
+            if not self.running or self.flash_result:
+                return
+            want = False
+            for lp, i, poll, (ok, data) in reads:
+                if not ok:
+                    continue
+                ok, changed = self.guard(
+                    lp.id, f"poll {i} store", poll.store, self.ctx(lp.id),
+                    data,
+                )
+                want = want or bool(ok and changed)
             if self.page_id not in self.pages:
                 self.page_id = HOME
             if self.page_id == HOME:
-                self._home_step(now)
+                self._home_step(now, want)
                 return
-            owner, page = self.pages[self.page_id]
-            if page.tick is None or owner in self.busy:
-                return
-            if not self._due(f"page:{page.id}", page.period, now):
-                return
-            ok, _ = self.guard(
-                owner, f"page {page.id} tick", page.tick,
-                self.ctx(owner), now,
-            )
-            if not ok:
-                self.goto(HOME)
+            if want:
+                self.render()
+            self._page_tick(now)
 
-    def _home_step(self, now):
-        want = False
+    def _due_polls(self, now):
+        """(plugin, index, poll) of the active polls whose period has
+        elapsed; each has its own stamp, so the first pass takes them
+        all."""
+        due = []
+        for lp in self.plugins:
+            if lp.id in self.busy:
+                continue
+            for i, poll in enumerate(lp.plugin.polls):
+                ok, active = self.guard(
+                    lp.id, f"poll {i} active", poll.active, self.ctx(lp.id)
+                )
+                if ok and active and self._due(
+                    f"poll:{lp.id}:{i}", poll.period, now
+                ):
+                    due.append((lp, i, poll))
+        return due
+
+    def _page_tick(self, now):
+        owner, page = self.pages[self.page_id]
+        if page.tick is None or owner in self.busy:
+            return
+        if not self._due(f"page:{page.id}", page.period, now):
+            return
+        ok, _ = self.guard(
+            owner, f"page {page.id} tick", page.tick,
+            self.ctx(owner), now,
+        )
+        if not ok:
+            self.goto(HOME)
+
+    def _home_step(self, now, want=False):
+        """The due home ticks, then one render when a tick, the polls
+        (`want`) or the HOME_REFRESH_SEC refresh asks for it."""
         for lp in self.plugins:
             tick = lp.plugin.home_tick
             if tick is None or lp.id in self.busy:
