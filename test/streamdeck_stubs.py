@@ -582,9 +582,8 @@ class PackageTarget:
     }
     # page id -> (plugin id, function of the plugin module). goto calls
     # that function with the plugin's context in place of kernel.goto:
-    # the timers plugin exposes enter(ctx), which reads the timers and
-    # then calls ctx.goto, so a golden never shows a state the deck
-    # cannot reach.
+    # the timers plugin exposes enter(ctx), the way its home key opens
+    # the page, so a golden never shows a state the deck cannot reach.
     ENTRIES = {"timer_list": ("timers", "enter")}
 
     def __init__(self):

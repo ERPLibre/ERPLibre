@@ -207,9 +207,7 @@
    },
    {
     "do": "press 1",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -989,9 +987,7 @@
    },
    {
     "do": "press 1",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1030,13 +1026,13 @@
       null
      ],
      [
-      "00a028",
-      "Writin\n02:05",
+      "14141e",
+      "NO\nTIMERS",
       null
      ],
      [
-      "00a028",
-      "Review\n62:05",
+      "14141e",
+      "",
       null
      ],
      [
@@ -2110,9 +2106,7 @@
    },
    {
     "do": "press 1",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2151,18 +2145,18 @@
       null
      ],
      [
-      "00a028",
-      "Writin\n02:05",
+      "14141e",
+      "NO\nTIMERS",
       null
      ],
      [
-      "00a028",
-      "Review\n62:05",
+      "14141e",
+      "",
       null
      ],
      [
-      "32466e",
-      "Paused\n01:00",
+      "14141e",
+      "",
       null
      ],
      [
@@ -2323,14 +2317,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -2435,14 +2429,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -2549,14 +2543,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -2661,14 +2655,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -2773,14 +2767,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -2997,14 +2991,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -3261,14 +3255,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -3485,14 +3479,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -3709,14 +3703,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -3933,14 +3927,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -4045,14 +4039,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -4159,14 +4153,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -4276,9 +4270,9 @@
       null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -4383,14 +4377,14 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
+      "8c5a32",
+      "TODO 1",
+      null
      ],
      [
-      "00a028",
-      "Review\n62:05",
-      "timer"
+      "14141e",
+      "",
+      null
      ]
     ]
    },
@@ -5222,9 +5216,7 @@
    },
    {
     "do": "press 1",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5263,18 +5255,18 @@
       null
      ],
      [
-      "00a028",
-      "Writin\n02:05",
+      "14141e",
+      "NO\nTIMERS",
       null
      ],
      [
-      "00a028",
-      "Review\n62:05",
+      "14141e",
+      "",
       null
      ],
      [
-      "32466e",
-      "Paused\n01:00",
+      "14141e",
+      "",
       null
      ],
      [
@@ -5515,18 +5507,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -5712,18 +5704,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -5911,18 +5903,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -6108,18 +6100,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -6305,18 +6297,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -6699,18 +6691,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -7133,18 +7125,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -7527,18 +7519,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -7921,18 +7913,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -8315,18 +8307,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -8512,18 +8504,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -8711,18 +8703,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -8908,18 +8900,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
@@ -9105,18 +9097,18 @@
       "robot"
      ],
      [
-      "00a028",
-      "Writin\n02:05",
-      "timer"
-     ],
-     [
-      "00a028",
-      "Review\n62:05",
-      "timer"
-     ],
-     [
       "8c5a32",
       "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
       null
      ],
      [
