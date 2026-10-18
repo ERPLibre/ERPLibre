@@ -30,6 +30,7 @@ from erplibre_streamdeck.plugin import (
     Page,
     Plugin,
     PLUGIN_API,
+    Poll,
     TileProvider,
 )
 
@@ -126,6 +127,14 @@ def _shape_error(plugin):
             return f"{name} is not callable"
     if not _is_number(plugin.home_period):
         return "home_period is not a number"
+    if not isinstance(plugin.polls, list):
+        return "polls is not a list"
+    for poll in plugin.polls:
+        if not (isinstance(poll, Poll) and _is_number(poll.period)
+                and callable(poll.active) and callable(poll.read)
+                and callable(poll.store)):
+            return ("polls must hold Polls with a number period and "
+                    "callables")
     return None
 
 

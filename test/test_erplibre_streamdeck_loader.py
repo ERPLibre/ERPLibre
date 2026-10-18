@@ -118,6 +118,11 @@ BAD_SHAPES = {
     "home_tick": "home_tick=5",
     "home_period": "home_period='2'",
     "shutdown": "shutdown='stop'",
+    "polls_not_list": "polls=Poll(1, print, print, print)",
+    "poll_class": "polls=[object()]",
+    "poll_period": "polls=[Poll('1', print, print, print)]",
+    "poll_bool": "polls=[Poll(True, print, print, print)]",
+    "poll_read": "polls=[Poll(1, print, 5, print)]",
 }
 
 
@@ -133,6 +138,8 @@ class ShapeTest(LoaderCase):
             self.assertEqual("refused", st[pid][0], pid)
             self.assertTrue(st[pid][1], pid)
         self.assertIn("home_button", st["button_list"][1])
+        for pid in ("polls_not_list", "poll_class", "poll_period"):
+            self.assertIn("polls", st[pid][1], pid)
 
     def test_well_formed_parts_are_accepted(self):
         self.put(self.user, "full.py", SHAPED.format(kw=(
@@ -141,7 +148,7 @@ class ShapeTest(LoaderCase):
             "fixtures=[Fixture(2, print, print, print)], "
             "tiles=[TileProvider(3, print, print, print)], "
             "home_tick=print, home_period=2.0, setup=print, "
-            "shutdown=print"
+            "shutdown=print, polls=[Poll(1.5, print, print, print)]"
         )))
         plugins, report = self.load()
         self.assertEqual(["full"], [p.id for p in plugins], report.lines())
