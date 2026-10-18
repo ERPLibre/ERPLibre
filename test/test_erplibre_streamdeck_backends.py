@@ -305,6 +305,35 @@ class SlowKeyTest(unittest.TestCase):
         self.press_slow(h, key)
         self.assert_flash(h, key, "ERR")
 
+    def test_tiling_tile_window_is_a_job(self):
+        h = self.start(P.empty_world)
+        h.goto("tiling")
+        h.press(0)
+        last = h.deck.key_count() - 1
+        press, threads, loop = self.press_slow(h, last)
+        st = h.target.kernel.state("tiling")
+        self.assertEqual((None, 0.0), (st.corner1, st.last_touch))
+        self.assertEqual("tiling", press["page"])
+        self.assertEqual([], press["effects"])
+        self.assertEqual(
+            ["gdbus TileWindow 5 3 0 0 4 2"], threads["effects"]
+        )
+        self.assertEqual("idle", loop["page"])
+        self.assert_flash(h, last, "OK!")
+
+    def test_tiling_failure_flashes_err_with_reason(self):
+        h = self.start(P.empty_world)
+        h.proc.answer("gdbus TileWindow", returncode=1)
+        h.goto("tiling")
+        h.press(0)
+        self.press_slow(h, 1)
+        self.assertEqual("idle", h.target.page())
+        self.assert_flash(h, 1, "ERR")
+        self.assertIn(
+            "tiling: TileWindow(5x3 0,0-1,0) failed via D-Bus",
+            h.journal.getvalue(),
+        )
+
 
 class SettingsKeepTest(unittest.TestCase):
     def test_font_scale_save_keeps_other_keys(self):

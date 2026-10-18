@@ -404,7 +404,7 @@ class Scenarios:
         def script(h):
             h.goto("tiling")
             tap(h, 0)
-            tap(h, h.deck.key_count() - 1)
+            tap_job(h, h.deck.key_count() - 1)
 
         self.run_all("tiling__select", EMPTY, empty_world, script,
                      pages=("tiling",))
