@@ -2,8 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Pure helpers of the deck program: text cutting, Claude tile colour and
-label, the TODO menu parser. They run against the
-single file until the module that owns each helper exists."""
+label, the TODO menu parser."""
 
 import os
 import sys
@@ -12,9 +11,9 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
 
-GT = S.load_monolith()
 S.install()
 from erplibre_streamdeck.plugins import claude_sessions as cs  # noqa: E402
+from erplibre_streamdeck.plugins import todo_terminals as tt  # noqa: E402
 from erplibre_streamdeck.ui import colors, text  # noqa: E402
 
 
@@ -134,7 +133,7 @@ class TodoMenuParseTest(unittest.TestCase):
             "[2] Add-ons\n"
             "[3] Quit\n"
             "Select: ")
-        items, prompt = GT._parse_todo_menu(text)
+        items, prompt = tt._parse_todo_menu(text)
         self.assertEqual(items,
             [("1", "Database"), ("2", "Add-ons"), ("3", "Quit")])
         self.assertEqual(prompt, "Select:")
@@ -144,7 +143,7 @@ class TodoMenuParseTest(unittest.TestCase):
             "\x1b[31m[1] Red\x1b[0m\n"
             "\x1b[32m[2] Green\x1b[0m\n"
             "Choose: ")
-        items, _ = GT._parse_todo_menu(text)
+        items, _ = tt._parse_todo_menu(text)
         self.assertEqual(items, [("1", "Red"), ("2", "Green")])
 
     def test_ignores_logo_above_menu(self):
@@ -153,12 +152,12 @@ class TodoMenuParseTest(unittest.TestCase):
             "Random preamble\n"
             "[1] First\n"
             "[2] Second\n")
-        items, _ = GT._parse_todo_menu(text)
+        items, _ = tt._parse_todo_menu(text)
         self.assertEqual(items, [("1", "First"), ("2", "Second")])
 
     def test_empty_text(self):
-        self.assertEqual(GT._parse_todo_menu(""), ([], ""))
-        self.assertEqual(GT._parse_todo_menu(None), ([], ""))
+        self.assertEqual(tt._parse_todo_menu(""), ([], ""))
+        self.assertEqual(tt._parse_todo_menu(None), ([], ""))
 
 
 if __name__ == "__main__":

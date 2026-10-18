@@ -602,5 +602,37 @@ class PackagePages(Scenarios, unittest.TestCase):
     make_target = staticmethod(S.PackageTarget)
 
 
+@unittest.skipUnless((S.PACKAGE / "app.py").exists(), "no package yet")
+class PackageDashboardTap(unittest.TestCase):
+    """A dashboard tap opens what the key showed at the last render,
+    where the single file recomputed the tile from a fresh read: the
+    one change of behaviour of the package, so no golden pins it."""
+
+    def test_tap_opens_the_session_the_key_showed(self):
+        with S.Harness(S.PackageTarget(), 5, 3) as h:
+            full_world(h)
+            h.boot()
+            tiles = [
+                k for k, f in enumerate(h.deck.rendering())
+                if f and f[0] in DASHBOARD
+            ]
+            key = face_key(h, "Demo\nstream")
+            self.assertEqual(tiles[0], key)
+            # A newer player appears after the render: a fresh read
+            # lists it first, the key still shows pid 1.
+            h.write_json(
+                "STATE/erplibre-home/mpv/later.json",
+                {"pid": os.getpid(), "title": "Later stream",
+                 "url": "https://example.org/later",
+                 "started_at": 1799999900},
+            )
+            mpv = sys.modules["erplibre_streamdeck.plugins.mpv_sessions"]
+            self.assertEqual(os.getpid(), mpv.load_sessions()[0]["pid"])
+            h.press(key)
+            h.check_clean(self)
+            self.assertEqual("mpv_session", h.target.page())
+            self.assertEqual(1, h.target.kernel.state("mpv_sessions").pid)
+
+
 if __name__ == "__main__":
     unittest.main()
