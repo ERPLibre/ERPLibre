@@ -241,6 +241,83 @@ Options, ordre de détection et codes de sortie :
 [script/odoo/README.fr.md](../script/odoo/README.fr.md).
 
 <!-- [en] -->
+### Verified backups
+
+`script/database/odoo_backup.py` backs a database up in Odoo's own zip
+format, verifies the file, keeps a daily, weekly and monthly retention,
+reports the age of the last success, test-restores into a temporary
+database and restores into a new database only. `update_module.py` uses it
+for its backup before an update, under the same database lock.
+
+<!-- [fr] -->
+### Sauvegardes vérifiées
+
+`script/database/odoo_backup.py` sauvegarde une base au format zip d'Odoo,
+vérifie le fichier, tient une rétention quotidienne, hebdomadaire et
+mensuelle, donne l'âge du dernier succès, essaie la restauration dans une
+base temporaire et ne restaure que dans une nouvelle base.
+`update_module.py` s'en sert pour sa sauvegarde avant une mise à jour, sous
+le même verrou de base.
+
+<!-- [common] -->
+```bash
+./script/database/odoo_backup.py --db DATABASE --dry-run
+sudo ./script/database/odoo_backup.py --db DATABASE
+./script/database/odoo_backup.py --status
+sudo ./script/database/odoo_backup.py --test-restore --db DATABASE
+```
+
+<!-- [en] -->
+The scheduled backup is a systemd service and timer written by
+`script/systemd/install_backup_timer.py`. The service runs the backup as
+the account of the Odoo unit, never as root, with every option in its
+`ExecStart`; the timer runs daily at 03:00 by default (`--on-calendar`),
+with `RandomizedDelaySec` and `Persistent=true`. A tmpfiles.d entry
+creates the shared lock file `/run/lock/erplibre-db-DATABASE.lock` at
+boot, so the account can take the lock where `/run/lock` belongs to root.
+Before writing anything, the script checks as that account that it can
+run the interpreter and read the tool and the Odoo configuration. It
+refuses to replace a file it did not write, and `--uninstall` keeps the
+backups:
+
+<!-- [fr] -->
+La sauvegarde planifiée est un service et une minuterie systemd écrits par
+`script/systemd/install_backup_timer.py`. Le service lance la sauvegarde
+sous le compte de l'unité Odoo, jamais en root, toutes ses options dans son
+`ExecStart` ; la minuterie part chaque jour à 03:00 par défaut
+(`--on-calendar`), avec `RandomizedDelaySec` et `Persistent=true`. Une
+entrée tmpfiles.d crée au démarrage le fichier du verrou partagé
+`/run/lock/erplibre-db-DATABASE.lock` : le compte prend le verrou même là
+où `/run/lock` appartient à root. Avant d'écrire quoi que ce soit, le
+script vérifie sous ce compte qu'il peut lancer l'interpréteur et lire
+l'outil et la configuration Odoo. Il refuse de remplacer un fichier qu'il
+n'a pas écrit, et `--uninstall` garde les sauvegardes :
+
+<!-- [common] -->
+```bash
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --dry-run
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups
+systemctl list-timers 'erplibre-backup-*'
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
+```
+
+<!-- [en] -->
+`--copy-to` adds an off-site copy (rsync over ssh with the account's key;
+the remote side has no retention and grows). Monitor `--status`: it exits
+with code 1 when the last success is older than `--max-age` hours (26).
+All of it is also in `make todo`: `Execute > Production`. Details,
+retention rules and exit codes:
+[script/database/README.md](../script/database/README.md).
+
+<!-- [fr] -->
+`--copy-to` ajoute une copie hors site (rsync sur ssh avec la clé du
+compte ; le côté distant n'a pas de rétention et grossit). Surveiller
+`--status` : il sort en code 1 quand le dernier succès date de plus de
+`--max-age` heures (26). Tout cela est aussi dans `make todo` :
+`Exécuter > Production`. Détails, règles de rétention et codes de sortie :
+[script/database/README.fr.md](../script/database/README.fr.md).
+
+<!-- [en] -->
 # Postgresql
 
 To show config files:

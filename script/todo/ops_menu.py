@@ -3,12 +3,15 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le menu Production : opérer une instance servie par systemd sur ce poste.
 
-Ce mixin ne fait que poser les questions et lancer
-`script/odoo/update_module.py`, qui porte toute la logique — détection,
-arrêt, sauvegarde, mise à jour, relance. Le menu n'en duplique rien : ce
-qui se fait depuis ici se fait aussi bien en ligne de commande.
+Ce mixin ne fait que poser les questions et lancer les outils qui portent
+toute la logique : `script/odoo/update_module.py` (mise à jour),
+`script/database/odoo_backup.py` (sauvegarde, état, restauration d'essai,
+restauration dans une nouvelle base) et
+`script/systemd/install_backup_timer.py` (sauvegarde planifiée). Le menu
+n'en duplique rien : ce qui se fait depuis ici se fait aussi bien en ligne
+de commande.
 
-La mise à jour passe toujours par deux temps :
+Tout ce qui écrit passe par deux temps :
 
 1. la simulation (`--dry-run`), lancée sous le compte courant, montre ce
    qui a été détecté et les commandes exactes ;
@@ -18,7 +21,8 @@ La mise à jour passe toujours par deux temps :
    poser sa question quand on l'interrompt par Ctrl-C.
 
 Une simulation qui refuse (code non nul) arrête là : il n'y a rien à
-confirmer.
+confirmer. L'état des sauvegardes, qui n'écrit rien, se lance directement,
+sans confirmation ni sudo.
 """
 
 import os
@@ -33,6 +37,14 @@ from script.todo.todo_i18n import t
 # Le programme lancé, relatif à la racine du dépôt (le dossier courant de
 # todo.py).
 UPDATE_MODULE = os.path.join("script", "odoo", "update_module.py")
+ODOO_BACKUP = os.path.join("script", "database", "odoo_backup.py")
+INSTALL_BACKUP_TIMER = os.path.join(
+    "script", "systemd", "install_backup_timer.py"
+)
+
+
+def joindre(argv):
+    return " ".join(shlex.quote(a) for a in argv)
 
 
 class OpsMenuMixin:
@@ -53,6 +65,35 @@ class OpsMenuMixin:
                     "Simulate only - show what an update would do"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Verified backup now - simulate, confirm, then run with"
+                    " sudo"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Backup status - age of the last successful backup"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Test restore of the latest backup - temporary database,"
+                    " dropped afterwards"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Restore a backup into a new database - simulate,"
+                    " confirm, then run with sudo"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Install / remove the scheduled backup - systemd timer,"
+                    " with sudo"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -64,6 +105,16 @@ class OpsMenuMixin:
                 self._ops_update_modules()
             elif status == "2":
                 self._ops_simulate_modules()
+            elif status == "3":
+                self._ops_backup_now()
+            elif status == "4":
+                self._ops_backup_status()
+            elif status == "5":
+                self._ops_test_restore()
+            elif status == "6":
+                self._ops_restore_new_database()
+            elif status == "7":
+                self._ops_backup_timer()
             else:
                 print(t("Command not found !"))
 
@@ -126,3 +177,92 @@ class OpsMenuMixin:
         fin = subprocess.run(reelle)
         if fin.returncode != 0:
             print(f"  ✗ {t('The update ended with code')} {fin.returncode}")
+
+    def _ops_lancer(self, script, args, question):
+        """Simulation (`--dry-run`), confirmation, puis exécution réelle
+        sous sudo, sans capture. Rend True si l'exécution réelle a été
+        lancée. Les valeurs saisies sont transmises telles quelles : l'outil
+        les valide et refuse avant d'agir."""
+        commande = [sys.executable, script] + args
+        simulation = joindre(commande + ["--dry-run"])
+        print(f"\n{t('Will execute:')} {simulation}")
+        status = self.execute.exec_command_live(
+            simulation, source_erplibre=False
+        )
+        if status != 0:
+            print(f"  ✗ {t('The simulation refused: nothing was done.')}")
+            return False
+        if not click.confirm(question):
+            return False
+        reelle = ["sudo"] + commande
+        print(f"\n{t('Will execute:')} {joindre(reelle)}")
+        fin = subprocess.run(reelle)
+        if fin.returncode != 0:
+            print(f"  ✗ {t('The command ended with code')} {fin.returncode}")
+        return True
+
+    def _ops_base(self):
+        """`--db BASE`, ou rien pour la base que l'outil détecte."""
+        base = input(t("Database (empty = detect from the service): ")).strip()
+        return ["--db", base] if base else []
+
+    def _ops_backup_now(self):
+        self._ops_lancer(
+            ODOO_BACKUP,
+            self._ops_base(),
+            t("Run this backup now?"),
+        )
+
+    def _ops_backup_status(self):
+        """L'état se lit sans root : fichiers d'état lisibles par tous.
+        Illisible (code 2), la commande sous sudo est proposée."""
+        commande = [sys.executable, ODOO_BACKUP, "--status"]
+        print(f"\n{t('Will execute:')} {joindre(commande)}")
+        status = self.execute.exec_command_live(
+            joindre(commande), source_erplibre=False
+        )
+        if status == 2:
+            print(
+                f"  ✗ {t('The state is not readable; run it with sudo:')}"
+                f" sudo {joindre(commande)}"
+            )
+
+    def _ops_test_restore(self):
+        self._ops_lancer(
+            ODOO_BACKUP,
+            ["--test-restore"] + self._ops_base(),
+            t(
+                "Run this test restore? A temporary database is created,"
+                " then dropped."
+            ),
+        )
+
+    def _ops_restore_new_database(self):
+        fichier = input(t("Backup file to restore (.zip): ")).strip()
+        if not fichier:
+            print(t("Cancelled: no file given."))
+            return
+        nouvelle = input(t("New database name (must not exist): ")).strip()
+        if not nouvelle:
+            print(t("Cancelled: no database given."))
+            return
+        self._ops_lancer(
+            ODOO_BACKUP,
+            ["--restore", "--file", fichier, "--into", nouvelle],
+            t("Restore into the new database {database}?").format(
+                database=nouvelle
+            ),
+        )
+
+    def _ops_backup_timer(self):
+        reponse = input(
+            t("Install or remove the scheduled backup? [I/r] ")
+        ).strip()
+        retirer = reponse.lower() in ("r", "remove", "retirer")
+        args = (["--uninstall"] if retirer else []) + self._ops_base()
+        question = (
+            t("Remove the scheduled backup? Backups are kept.")
+            if retirer
+            else t("Install the scheduled backup (daily at 03:00)?")
+        )
+        self._ops_lancer(INSTALL_BACKUP_TIMER, args, question)

@@ -28,18 +28,24 @@ Ce qu'il fait, dans l'ordre :
    portant un `__manifest__.py`) en sont déduits. Tout manque refuse avec
    le code 2.
 2. **Root et verrou.** Root est exigé (sauf `--dry-run`) ; un verrou par
-   base, code 75 quand une autre mise à jour le détient.
+   base, partagé avec l'outil de sauvegarde, code 75 quand une autre mise à
+   jour ou une sauvegarde le détient.
 3. **Arrêt.** L'état d'avant se lit dans `ActiveState` ; sans réponse de
    systemctl, rien n'est arrêté (code 2). Après `systemctl stop`, l'unité
    doit être `inactive` ou `failed` (pas `deactivating`). Si le port répond
    encore, ou qu'un processus Odoo tourne sur la même base hors de
    l'unité, la mise à jour est refusée, sauf `--force`.
 4. **Sauvegarde** (sauf `--no-backup`), après l'arrêt pour être cohérente :
-   `odoo_bin.sh db --backup` dans `image_db/`, sous le compte de l'unité.
-   Exige `odoo_bin.sh` dans le dossier de l'unité, un dossier `image_db/`
-   où le compte de l'unité peut écrire, et un `list_db` qui ne vaut pas
-   `False`. Le zip s'écrit en `<nom>.partial.zip`, est relu, puis renommé :
-   un fichier au nom définitif est toujours une sauvegarde complète.
+   la sauvegarde vérifiée de
+   [script/database/odoo_backup.py](../database/README.fr.md), appelée
+   alors que la mise à jour tient déjà le verrou de la base. Elle s'écrit
+   dans `--backup-dest/<base>/` (par défaut `/var/backups/erplibre`) et se
+   note dans `--state-dir` (par défaut `/var/lib/erplibre-backup`). Avant
+   tout arrêt, la détection vérifie que le compte de l'unité peut y écrire
+   (les dossiers manquants sont créés pour lui), que la base se lit et que
+   l'espace disque suffit ; sinon elle refuse avec le code 2. Elle ne copie
+   pas hors site et n'applique pas de rétention : la sauvegarde planifiée
+   s'en charge.
 5. **Mise à jour** : la ligne de commande de l'unité suivie de `-c CONFIG
    -d BASE -u MODULES --stop-after-init --no-http --workers=0
    --max-cron-threads=0`, sous le compte de l'unité — le `-c` répété garde
@@ -63,7 +69,7 @@ restauration décidée par une personne.
 | 0 | réussi (ou simulation) |
 | 1 | mise à jour en échec, service relancé |
 | 2 | refusé avant tout arrêt |
-| 75 | une autre mise à jour de cette base est en cours |
+| 75 | une autre mise à jour ou sauvegarde de cette base est en cours |
 | 130 | interrompu, service relancé |
 
 Le journal de la mise à jour va dans `--log-dir` (par défaut

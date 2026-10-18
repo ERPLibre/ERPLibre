@@ -28,22 +28,29 @@ What it does, in order:
    a `__manifest__.py`) are deduced from them. Anything missing refuses
    with code 2.
 2. **Root and lock.** Root is required (except `--dry-run`); one lock per
-   database, code 75 when another update holds it.
+   database, shared with the backup tool, code 75 when another update or
+   backup holds it.
 3. **Stop.** The state before is read from `ActiveState`; without an
    answer from systemctl nothing is stopped (code 2). After `systemctl
    stop`, the unit must be `inactive` or `failed` (not `deactivating`).
    If the port still answers, or an Odoo process runs on the same database
    outside the unit, the update is refused unless `--force`.
 4. **Backup** (unless `--no-backup`), after the stop so that it is
-   consistent: `odoo_bin.sh db --backup` into `image_db/`, as the unit's
-   account. Requires `odoo_bin.sh` in the unit's directory, an `image_db/`
-   folder the unit's account can write to, and `list_db` not set to
-   `False`. The zip is written as `<name>.partial.zip`, read back, then
-   renamed: a file with the final name is always a complete backup.
+   consistent: the verified backup of
+   [script/database/odoo_backup.py](../database/README.md), called while
+   the update already holds the database lock. It is written to
+   `--backup-dest/<db>/` (default `/var/backups/erplibre`) and recorded in
+   `--state-dir` (default `/var/lib/erplibre-backup`). Before anything is
+   stopped, the detection checks that the unit's account can write there
+   (missing folders are created for it), that the database can be read and
+   that there is enough disk space; otherwise it refuses with code 2. It
+   neither copies off-site nor applies retention: the scheduled backup
+   does.
 5. **Update**: the unit's command line followed by `-c CONFIG -d DB -u
    MODULES --stop-after-init --no-http --workers=0 --max-cron-threads=0`,
    as the unit's account — the repeated `-c` keeps the update on the file
-   the detection and the backup read (`--odoo-conf` included). It fails on a non-zero code, on `--timeout`, or on an
+   the detection and the backup read (`--odoo-conf` included). It fails
+   on a non-zero code, on `--timeout`, or on an
    `ERROR`/`CRITICAL` line in its output or in what was appended to the
    configured `logfile`. `--ignore-error REGEX` excludes known lines.
 6. **Restart**, if the unit was running: wait for `active` and the port
@@ -61,7 +68,7 @@ restore decided by a person.
 | 0 | success (or simulation) |
 | 1 | update failed, service restarted |
 | 2 | refused before anything was stopped |
-| 75 | another update of this database is running |
+| 75 | another update or backup of this database is running |
 | 130 | interrupted, service restarted |
 
 The update log goes to `--log-dir` (default `/var/log/erplibre`, falling

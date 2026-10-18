@@ -30,6 +30,10 @@ PATTERNS = (
     "script/odoo/migration/*.py",
     "script/odoo/*.py",
     "script/lib_ops/*.py",
+    # Par chemin et non « script/database/*.py » : des fichiers plus anciens
+    # du dossier portent un shebang sans le bit d'exécution.
+    "script/database/odoo_backup.py",
+    "script/systemd/*.py",
 )
 
 

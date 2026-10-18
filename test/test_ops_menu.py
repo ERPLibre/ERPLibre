@@ -4,11 +4,12 @@
 
 """Le menu Production : simulation d'abord, exécution réelle sur accord.
 
-La mise à jour arrête un service. Le menu doit donc toujours passer par
-la simulation, ne rien lancer quand elle refuse, demander avant
-l'exécution réelle, et ne lancer celle-ci que sous sudo, sans capture.
-Rien n'est réellement exécuté : `execute` est remplacé, `subprocess.run`
-aussi.
+La mise à jour arrête un service ; la sauvegarde, la restauration et la
+minuterie écrivent. Le menu doit donc toujours passer par la simulation,
+ne rien lancer quand elle refuse, demander avant l'exécution réelle, et ne
+lancer celle-ci que sous sudo, sans capture. L'état des sauvegardes se lit
+sans sudo. Rien n'est réellement exécuté : `execute` est remplacé,
+`subprocess.run` aussi.
 """
 
 import sys
@@ -108,6 +109,125 @@ class TestMiseAJourDepuisLeMenu(unittest.TestCase):
         self.assertIn("'base; id'", todo.execute.commandes[0])
 
 
+def jouer(methode, reponses, code_simulation=0, confirme=True):
+    """Joue une entrée de sauvegarde ; rend (todo, run, confirm)."""
+    todo = TODO.__new__(TODO)
+    todo.execute = FauxExecute(code_simulation)
+    with (
+        mock.patch("builtins.input", side_effect=reponses),
+        mock.patch(
+            "script.todo.ops_menu.click.confirm", return_value=confirme
+        ) as confirm,
+        mock.patch(
+            "script.todo.ops_menu.subprocess.run",
+            return_value=mock.Mock(returncode=0),
+        ) as run,
+        mock.patch("builtins.print"),
+    ):
+        getattr(todo, methode)()
+    return todo, run, confirm
+
+
+class TestSauvegardeDepuisLeMenu(unittest.TestCase):
+    """Les entrées de sauvegarde : simulation, accord, sudo sans capture."""
+
+    CAS = (
+        ("_ops_backup_now", ["demo_db"], "odoo_backup.py", []),
+        (
+            "_ops_test_restore",
+            [""],
+            "odoo_backup.py",
+            ["--test-restore"],
+        ),
+        (
+            "_ops_restore_new_database",
+            ["/srv/sauvegardes/demo_db/x.zip", "copie_db"],
+            "odoo_backup.py",
+            [
+                "--restore",
+                "--file",
+                "/srv/sauvegardes/demo_db/x.zip",
+                "--into",
+                "copie_db",
+            ],
+        ),
+        ("_ops_backup_timer", ["", "demo_db"], "install_backup_timer.py", []),
+        (
+            "_ops_backup_timer",
+            ["r", ""],
+            "install_backup_timer.py",
+            ["--uninstall"],
+        ),
+    )
+
+    def test_simulation_accord_puis_sudo(self):
+        for methode, reponses, script, attendus in self.CAS:
+            with self.subTest(methode=methode, reponses=reponses):
+                todo, run, confirm = jouer(methode, reponses)
+                self.assertEqual(len(todo.execute.commandes), 1)
+                simulation = todo.execute.commandes[0]
+                self.assertIn(script, simulation)
+                self.assertTrue(simulation.endswith("--dry-run"))
+                self.assertIs(
+                    todo.execute.options[0]["source_erplibre"], False
+                )
+                self.assertTrue(confirm.called)
+                argv = run.call_args.args[0]
+                self.assertEqual(argv[0], "sudo")
+                self.assertTrue(argv[2].endswith(script))
+                self.assertNotIn("--dry-run", argv)
+                for valeur in attendus:
+                    self.assertIn(valeur, argv)
+                self.assertNotIn("capture_output", run.call_args.kwargs)
+                self.assertNotIn("stdout", run.call_args.kwargs)
+
+    def test_base_transmise_ou_detectee(self):
+        _, run, _ = jouer("_ops_backup_now", ["demo_db"])
+        self.assertEqual(run.call_args.args[0][-2:], ["--db", "demo_db"])
+        _, run, _ = jouer("_ops_backup_now", [""])
+        self.assertNotIn("--db", run.call_args.args[0])
+
+    def test_refus_de_l_accord(self):
+        for methode, reponses, _script, _attendus in self.CAS:
+            with self.subTest(methode=methode):
+                todo, run, _ = jouer(methode, reponses, confirme=False)
+                self.assertEqual(len(todo.execute.commandes), 1)
+                self.assertFalse(run.called)
+
+    def test_simulation_qui_refuse_n_execute_rien(self):
+        for methode, reponses, _script, _attendus in self.CAS:
+            with self.subTest(methode=methode):
+                _, run, confirm = jouer(methode, reponses, code_simulation=2)
+                self.assertFalse(confirm.called)
+                self.assertFalse(run.called)
+
+    def test_restauration_sans_fichier_ni_base(self):
+        for reponses in ([""], ["x.zip", ""]):
+            with self.subTest(reponses=reponses):
+                todo, run, _ = jouer("_ops_restore_new_database", reponses)
+                self.assertEqual(todo.execute.commandes, [])
+                self.assertFalse(run.called)
+
+    def test_valeurs_citees_pour_le_shell(self):
+        todo, _, _ = jouer(
+            "_ops_restore_new_database", ["a b.zip", "x; id"], confirme=False
+        )
+        self.assertIn("'a b.zip'", todo.execute.commandes[0])
+        self.assertIn("'x; id'", todo.execute.commandes[0])
+
+    def test_etat_sans_sudo_ni_accord(self):
+        for code in (0, 1, 2):
+            with self.subTest(code=code):
+                todo, run, confirm = jouer(
+                    "_ops_backup_status", [], code_simulation=code
+                )
+                self.assertEqual(len(todo.execute.commandes), 1)
+                self.assertIn("--status", todo.execute.commandes[0])
+                self.assertNotIn("sudo", todo.execute.commandes[0])
+                self.assertFalse(confirm.called)
+                self.assertFalse(run.called)
+
+
 class TestLeMenuEstBranche(unittest.TestCase):
     def test_retour_rend_false(self):
         todo = TODO.__new__(TODO)
@@ -118,7 +238,7 @@ class TestLeMenuEstBranche(unittest.TestCase):
         ):
             self.assertIs(todo.prompt_execute_production(), False)
 
-    def choisir(self, choix):
+    def choisir(self, choix, reponses=("base", "", "")):
         """Joue le menu au clavier : `choix`, puis 0 ; rend (todo, run)."""
         todo = TODO.__new__(TODO)
         todo.execute = FauxExecute(0)
@@ -128,7 +248,7 @@ class TestLeMenuEstBranche(unittest.TestCase):
                 side_effect=[choix, "0"],
             ),
             mock.patch.object(TODO, "fill_help_info", return_value=""),
-            mock.patch("builtins.input", side_effect=["base", "", ""]),
+            mock.patch("builtins.input", side_effect=list(reponses)),
             mock.patch(
                 "script.todo.ops_menu.click.confirm", return_value=True
             ),
@@ -152,10 +272,27 @@ class TestLeMenuEstBranche(unittest.TestCase):
         self.assertIn("--dry-run", todo.execute.commandes[0])
         self.assertEqual(run.call_args.args[0][0], "sudo")
 
+    def test_choix_3_a_7(self):
+        for choix, reponses, script in (
+            ("3", [""], "odoo_backup.py"),
+            ("5", [""], "odoo_backup.py"),
+            ("6", ["x.zip", "copie_db"], "odoo_backup.py"),
+            ("7", ["", ""], "install_backup_timer.py"),
+        ):
+            with self.subTest(choix=choix):
+                todo, run = self.choisir(choix, reponses)
+                self.assertIn(script, todo.execute.commandes[0])
+                self.assertIn("--dry-run", todo.execute.commandes[0])
+                self.assertEqual(run.call_args.args[0][0], "sudo")
+        todo, run = self.choisir("4", [])
+        self.assertIn("--status", todo.execute.commandes[0])
+        self.assertFalse(run.called)
+
     def test_entree_17_du_menu_execute(self):
         source = (RACINE / "script" / "todo" / "todo.py").read_text()
         self.assertIn(
-            '[17] {t("Production - Update the modules of a systemd instance")}',
+            '[17] {t("Production - Update, back up and restore a systemd'
+            ' instance")}',
             source,
         )
         self.assertIn("status = self.prompt_execute_production()", source)

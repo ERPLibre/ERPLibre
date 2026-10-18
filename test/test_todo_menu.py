@@ -556,11 +556,16 @@ class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
     SOURCE = TODO_DIR / "ops_menu.py"
     ENTRY = "def prompt_execute_production(self):"
     END = "def _ops_update_arguments(self):"
-    MINIMUM = 1
+    MINIMUM = 6
 
     EXPECTED = {
         "Update modules": "_ops_update_modules",
         "Simulate only": "_ops_simulate_modules",
+        "Verified backup now": "_ops_backup_now",
+        "Backup status": "_ops_backup_status",
+        "Test restore of the latest backup": "_ops_test_restore",
+        "Restore a backup into a new database": "_ops_restore_new_database",
+        "Install / remove the scheduled backup": "_ops_backup_timer",
     }
 
 

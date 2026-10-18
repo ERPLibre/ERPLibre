@@ -19917,9 +19917,9 @@ TRANSLATIONS = {
         "fr": "Production",
         "en": "Production",
     },
-    "Production - Update the modules of a systemd instance": {
-        "fr": "🏭 Production - Mettre à jour les modules d'une instance systemd",
-        "en": "🏭 Production - Update the modules of a systemd instance",
+    "Production - Update, back up and restore a systemd instance": {
+        "fr": "🏭 Production - Mettre à jour, sauvegarder et restaurer une instance systemd",
+        "en": "🏭 Production - Update, back up and restore a systemd instance",
     },
     "Production: an instance run by systemd on this host.": {
         "fr": "Production : une instance servie par systemd sur ce poste.",
@@ -20072,14 +20072,6 @@ TRANSLATIONS = {
     "The service is active but nothing listens on {host}:{port} after {seconds} s.": {
         "fr": "Le service est actif mais rien n'écoute sur {host}:{port} après {seconds} s.",
         "en": "The service is active but nothing listens on {host}:{port} after {seconds} s.",
-    },
-    "The backup is incomplete ({missing}): nothing was updated.": {
-        "fr": "La sauvegarde est incomplète ({missing}) : rien n'a été mis à jour.",
-        "en": "The backup is incomplete ({missing}): nothing was updated.",
-    },
-    "The backup holds no filestore.": {
-        "fr": "La sauvegarde ne contient pas de filestore.",
-        "en": "The backup holds no filestore.",
     },
     "The backup file already exists: {path}": {
         "fr": "Le fichier de sauvegarde existe déjà : {path}",
@@ -20265,10 +20257,6 @@ TRANSLATIONS = {
         "fr": "Impossible de lire le service {unit} : {error}",
         "en": "Cannot read the service {unit}: {error}",
     },
-    "Backup written: {path}": {
-        "fr": "Sauvegarde écrite : {path}",
-        "en": "Backup written: {path}",
-    },
     "Backup taken before the update: {path}": {
         "fr": "Sauvegarde prise avant la mise à jour : {path}",
         "en": "Backup taken before the update: {path}",
@@ -20281,33 +20269,9 @@ TRANSLATIONS = {
         "fr": "Sauvegarde interrompue : rien n'a été mis à jour.",
         "en": "Backup interrupted: nothing was updated.",
     },
-    "Backup impossible: {path} is missing (use --no-backup to skip it).": {
-        "fr": "Sauvegarde impossible : {path} est absent (--no-backup pour s'en passer).",
-        "en": "Backup impossible: {path} is missing (use --no-backup to skip it).",
-    },
-    "Backup impossible: {path} is not a directory writable by {user} (create it, or use --no-backup to skip it).": {
-        "fr": "Sauvegarde impossible : {path} n'est pas un dossier où {user} peut écrire (le créer, ou --no-backup pour s'en passer).",
-        "en": "Backup impossible: {path} is not a directory writable by {user} (create it, or use --no-backup to skip it).",
-    },
-    "Backup impossible: {path} is missing and {user} cannot create it in {parent} (create it, or use --no-backup to skip it).": {
-        "fr": "Sauvegarde impossible : {path} manque et {user} ne peut pas le créer dans {parent} (le créer, ou --no-backup pour s'en passer).",
-        "en": "Backup impossible: {path} is missing and {user} cannot create it in {parent} (create it, or use --no-backup to skip it).",
-    },
-    "Cannot create {path}: {error}. Nothing was stopped.": {
-        "fr": "Impossible de créer {path} : {error}. Rien n'a été arrêté.",
-        "en": "Cannot create {path}: {error}. Nothing was stopped.",
-    },
     "Created {path}, owned by {user}.": {
         "fr": "{path} créé, propriété de {user}.",
         "en": "Created {path}, owned by {user}.",
-    },
-    "Backup impossible: list_db = False forbids it (use --no-backup to skip it).": {
-        "fr": "Sauvegarde impossible : list_db = False l'interdit (--no-backup pour s'en passer).",
-        "en": "Backup impossible: list_db = False forbids it (use --no-backup to skip it).",
-    },
-    "Backup failed (code {code}): nothing was updated.": {
-        "fr": "Sauvegarde en échec (code {code}) : rien n'a été mis à jour.",
-        "en": "Backup failed (code {code}): nothing was updated.",
     },
     "Another update of {database} is running (lock {path}).": {
         "fr": "Une autre mise à jour de {database} est en cours (verrou {path}).",
@@ -20340,6 +20304,648 @@ TRANSLATIONS = {
     "'all' cannot be combined with other modules.": {
         "fr": "'all' ne se combine pas avec d'autres modules.",
         "en": "'all' cannot be combined with other modules.",
+    },
+    # Production - sauvegardes vérifiées (odoo_backup, install_backup_timer)
+    "Original db": {
+        "fr": "Base d'origine",
+        "en": "Original db",
+    },
+    "Temporary db": {
+        "fr": "Base temporaire",
+        "en": "Temporary db",
+    },
+    "Test restore passed: the backup is restorable.": {
+        "fr": "Restauration d'essai réussie : la sauvegarde se restaure.",
+        "en": "Test restore passed: the backup is restorable.",
+    },
+    "Simulation finished: nothing was created or written.": {
+        "fr": "Simulation terminée : rien n'a été créé ni écrit.",
+        "en": "Simulation finished: nothing was created or written.",
+    },
+    "New database": {
+        "fr": "Nouvelle base",
+        "en": "New database",
+    },
+    "Filestore": {
+        "fr": "Filestore",
+        "en": "Filestore",
+    },
+    "database.uuid is the same as in the source: Odoo's own copy regenerates it, this restore does not.": {
+        "fr": "database.uuid est celui de la source : la copie d'Odoo le régénère, cette restauration non.",
+        "en": "database.uuid is the same as in the source: Odoo's own copy regenerates it, this restore does not.",
+    },
+    "Data dir": {
+        "fr": "Données",
+        "en": "Data dir",
+    },
+    "no JSON answer": {
+        "fr": "pas de réponse JSON",
+        "en": "no JSON answer",
+    },
+    "Not enough space in {path}: {free} free, {needed} needed.": {
+        "fr": "Espace insuffisant dans {path} : {free} libres, {needed} nécessaires.",
+        "en": "Not enough space in {path}: {free} free, {needed} needed.",
+    },
+    "{database} is not an Odoo database: no version for the base module.": {
+        "fr": "{database} n'est pas une base Odoo : aucune version pour le module base.",
+        "en": "{database} is not an Odoo database: no version for the base module.",
+    },
+    "The filestore {path} is missing while {count} attachment(s) are stored on disk.": {
+        "fr": "Le filestore {path} manque alors que {count} pièce(s) jointe(s) sont stockées sur disque.",
+        "en": "The filestore {path} is missing while {count} attachment(s) are stored on disk.",
+    },
+    "The dump does not end with the pg_dump end marker.": {
+        "fr": "Le dump ne se termine pas par la marque de fin de pg_dump.",
+        "en": "The dump does not end with the pg_dump end marker.",
+    },
+    "Size": {
+        "fr": "Taille",
+        "en": "Size",
+    },
+    "The archive holds no dump.sql.": {
+        "fr": "L'archive ne contient pas de dump.sql.",
+        "en": "The archive holds no dump.sql.",
+    },
+    "Loading the dump exceeded the time limit.": {
+        "fr": "Le chargement du dump a dépassé le délai.",
+        "en": "Loading the dump exceeded the time limit.",
+    },
+    "The restored database has no table.": {
+        "fr": "La base restaurée n'a aucune table.",
+        "en": "The restored database has no table.",
+    },
+    "The base module is not installed in the restored database.": {
+        "fr": "Le module base n'est pas installé dans la base restaurée.",
+        "en": "The base module is not installed in the restored database.",
+    },
+    "Existing databases: unknown (requires sudo).": {
+        "fr": "Bases existantes : inconnues (sudo requis).",
+        "en": "Existing databases: unknown (requires sudo).",
+    },
+    "Neutralize it by hand before starting Odoo on it: disable the crons and the outgoing mail servers.": {
+        "fr": "La neutraliser à la main avant d'y démarrer Odoo : désactiver les tâches planifiées et les serveurs de courriel sortant.",
+        "en": "Neutralize it by hand before starting Odoo on it: disable the crons and the outgoing mail servers.",
+    },
+    "Estimate": {
+        "fr": "Estimation",
+        "en": "Estimate",
+    },
+    "unknown (requires sudo)": {
+        "fr": "inconnue (sudo requis)",
+        "en": "unknown (requires sudo)",
+    },
+    "Retention": {
+        "fr": "Rétention",
+        "en": "Retention",
+    },
+    "Verified backups of an Odoo database run by systemd: back up, status, test restore, restore into a new database.": {
+        "fr": "Sauvegardes vérifiées d'une base Odoo servie par systemd : sauvegarder, état, restauration d'essai, restauration dans une nouvelle base.",
+        "en": "Verified backups of an Odoo database run by systemd: back up, status, test restore, restore into a new database.",
+    },
+    "Show the age of the last successful backup of each database.": {
+        "fr": "Afficher l'âge de la dernière sauvegarde réussie de chaque base.",
+        "en": "Show the age of the last successful backup of each database.",
+    },
+    "Restore the latest backup (or --file) into a temporary database, check it, then drop it.": {
+        "fr": "Restaurer la dernière sauvegarde (ou --file) dans une base temporaire, la contrôler, puis la supprimer.",
+        "en": "Restore the latest backup (or --file) into a temporary database, check it, then drop it.",
+    },
+    "Restore --file into the new database --into.": {
+        "fr": "Restaurer --file dans la nouvelle base --into.",
+        "en": "Restore --file into the new database --into.",
+    },
+    "Backup file (.zip) to restore.": {
+        "fr": "Fichier de sauvegarde (.zip) à restaurer.",
+        "en": "Backup file (.zip) to restore.",
+    },
+    "New database for --restore; must not exist.": {
+        "fr": "Nouvelle base pour --restore ; ne doit pas exister.",
+        "en": "New database for --restore; must not exist.",
+    },
+    "Account running PostgreSQL tools; default: User= of the unit.": {
+        "fr": "Compte qui lance les outils PostgreSQL ; par défaut : le User= de l'unité.",
+        "en": "Account running PostgreSQL tools; default: User= of the unit.",
+    },
+    "Off-site copy with rsync over ssh: [user@]host:/path or an absolute path; disabled by default.": {
+        "fr": "Copie hors site par rsync sur ssh : [compte@]hôte:/chemin ou un chemin absolu ; désactivée par défaut.",
+        "en": "Off-site copy with rsync over ssh: [user@]host:/path or an absolute path; disabled by default.",
+    },
+    "Detect and show the commands; write nothing.": {
+        "fr": "Détecter et montrer les commandes ; ne rien écrire.",
+        "en": "Detect and show the commands; write nothing.",
+    },
+    "--restore requires --file and --into.": {
+        "fr": "--restore exige --file et --into.",
+        "en": "--restore requires --file and --into.",
+    },
+    "--into is only used with --restore.": {
+        "fr": "--into ne sert qu'avec --restore.",
+        "en": "--into is only used with --restore.",
+    },
+    "--file is only used with --restore or --test-restore.": {
+        "fr": "--file ne sert qu'avec --restore ou --test-restore.",
+        "en": "--file is only used with --restore or --test-restore.",
+    },
+    "Odoo backup": {
+        "fr": "Sauvegarde Odoo",
+        "en": "Odoo backup",
+    },
+    "Cannot read the free space of {path}: {error}": {
+        "fr": "Impossible de lire l'espace libre de {path} : {error}",
+        "en": "Cannot read the free space of {path}: {error}",
+    },
+    "Cannot read the database {database}: {error}": {
+        "fr": "Impossible de lire la base {database} : {error}",
+        "en": "Cannot read the database {database}: {error}",
+    },
+    "{path} is not a directory.": {
+        "fr": "{path} n'est pas un dossier.",
+        "en": "{path} is not a directory.",
+    },
+    "Database {size}, filestore {fs} ({count} files).": {
+        "fr": "Base {size}, filestore {fs} ({count} fichiers).",
+        "en": "Database {size}, filestore {fs} ({count} files).",
+    },
+    "Backup written and verified: {path} ({size}, {count} files)": {
+        "fr": "Sauvegarde écrite et vérifiée : {path} ({size}, {count} fichiers)",
+        "en": "Backup written and verified: {path} ({size}, {count} files)",
+    },
+    "Off-site copy failed (rsync code {code}): {error}. The local backup is kept.": {
+        "fr": "Copie hors site en échec (rsync code {code}) : {error}. La sauvegarde locale est gardée.",
+        "en": "Off-site copy failed (rsync code {code}): {error}. The local backup is kept.",
+    },
+    "Retention: {kept} kept, {deleted} deleted.": {
+        "fr": "Rétention : {kept} gardée(s), {deleted} supprimée(s).",
+        "en": "Retention: {kept} kept, {deleted} deleted.",
+    },
+    "Checksum verified.": {
+        "fr": "Empreinte vérifiée.",
+        "en": "Checksum verified.",
+    },
+    "Dump loaded into {database}.": {
+        "fr": "Dump chargé dans {database}.",
+        "en": "Dump loaded into {database}.",
+    },
+    "Checks passed: {tables} tables, {modules} modules installed.": {
+        "fr": "Contrôles réussis : {tables} tables, {modules} modules installés.",
+        "en": "Checks passed: {tables} tables, {modules} modules installed.",
+    },
+    "Cannot drop {database} ({error}); drop it by hand: {command}": {
+        "fr": "Impossible de supprimer {database} ({error}) ; la supprimer à la main : {command}",
+        "en": "Cannot drop {database} ({error}); drop it by hand: {command}",
+    },
+    "Filestore extracted: {count} files.": {
+        "fr": "Filestore extrait : {count} fichiers.",
+        "en": "Filestore extracted: {count} files.",
+    },
+    "Restored into {database}, filestore {path} ({count} files).": {
+        "fr": "Restaurée dans {database}, filestore {path} ({count} fichiers).",
+        "en": "Restored into {database}, filestore {path} ({count} files).",
+    },
+    "retention: {daily} daily, {weekly} weekly, {monthly} monthly, everything from the last {recent} day(s)": {
+        "fr": "rétention : {daily} quotidiennes, {weekly} hebdomadaires, {monthly} mensuelles, tout ce qui date des {recent} dernier(s) jour(s)",
+        "en": "retention: {daily} daily, {weekly} weekly, {monthly} monthly, everything from the last {recent} day(s)",
+    },
+    "Off-site copy": {
+        "fr": "Copie hors site",
+        "en": "Off-site copy",
+    },
+    "{path} is missing and cannot be created by {user}: run once with sudo, or install the scheduled backup.": {
+        "fr": "{path} manque et {user} ne peut pas le créer : lancer une fois avec sudo, ou installer la sauvegarde planifiée.",
+        "en": "{path} is missing and cannot be created by {user}: run once with sudo, or install the scheduled backup.",
+    },
+    "{path} is not a directory writable by {user}.": {
+        "fr": "{path} n'est pas un dossier où {user} peut écrire.",
+        "en": "{path} is not a directory writable by {user}.",
+    },
+    "pg_dump exceeded {seconds} s: stopped.": {
+        "fr": "pg_dump a dépassé {seconds} s : arrêté.",
+        "en": "pg_dump exceeded {seconds} s: stopped.",
+    },
+    "pg_dump failed (code {code}): {error}": {
+        "fr": "pg_dump en échec (code {code}) : {error}",
+        "en": "pg_dump failed (code {code}): {error}",
+    },
+    "No filestore at {path}: the database stores no attachment on disk.": {
+        "fr": "Aucun filestore en {path} : la base ne stocke aucune pièce jointe sur disque.",
+        "en": "No filestore at {path}: the database stores no attachment on disk.",
+    },
+    "Skipped (not a regular file): filestore/{path}": {
+        "fr": "Écarté (pas un fichier ordinaire) : filestore/{path}",
+        "en": "Skipped (not a regular file): filestore/{path}",
+    },
+    "Copied to {destination}.": {
+        "fr": "Copiée vers {destination}.",
+        "en": "Copied to {destination}.",
+    },
+    "No backup state in {path}.": {
+        "fr": "Aucun état de sauvegarde dans {path}.",
+        "en": "No backup state in {path}.",
+    },
+    "{database}: no successful backup recorded.": {
+        "fr": "{database} : aucune sauvegarde réussie notée.",
+        "en": "{database}: no successful backup recorded.",
+    },
+    "{database}: a failure is more recent than the last success: {message}": {
+        "fr": "{database} : un échec est plus récent que le dernier succès : {message}",
+        "en": "{database}: a failure is more recent than the last success: {message}",
+    },
+    "{database}: the last off-site copy failed: {message}": {
+        "fr": "{database} : la dernière copie hors site a échoué : {message}",
+        "en": "{database}: the last off-site copy failed: {message}",
+    },
+    "No checksum file next to {path}: integrity not checked.": {
+        "fr": "Aucune empreinte à côté de {path} : intégrité non vérifiée.",
+        "en": "No checksum file next to {path}: integrity not checked.",
+    },
+    "Dangerous paths in the archive, refused: {names}": {
+        "fr": "Chemins dangereux dans l'archive, refusée : {names}",
+        "en": "Dangerous paths in the archive, refused: {names}",
+    },
+    "Loading the dump failed (code {code}, {count} SQL error(s)).": {
+        "fr": "Chargement du dump en échec (code {code}, {count} erreur(s) SQL).",
+        "en": "Loading the dump failed (code {code}, {count} SQL error(s)).",
+    },
+    "The installed modules differ from the manifest: {names}": {
+        "fr": "Les modules installés diffèrent du manifeste : {names}",
+        "en": "The installed modules differ from the manifest: {names}",
+    },
+    "Database {database} dropped.": {
+        "fr": "Base {database} supprimée.",
+        "en": "Database {database} dropped.",
+    },
+    "createdb failed: {error} (the PostgreSQL role needs CREATEDB).": {
+        "fr": "createdb en échec : {error} (le rôle PostgreSQL doit avoir CREATEDB).",
+        "en": "createdb failed: {error} (the PostgreSQL role needs CREATEDB).",
+    },
+    "No backup of {database} in {path}.": {
+        "fr": "Aucune sauvegarde de {database} dans {path}.",
+        "en": "No backup of {database} in {path}.",
+    },
+    "The database {database} already exists: refused.": {
+        "fr": "La base {database} existe déjà : refusé.",
+        "en": "The database {database} already exists: refused.",
+    },
+    "Filestore: {count} of {total} files extracted.": {
+        "fr": "Filestore : {count} fichiers extraits sur {total}.",
+        "en": "Filestore: {count} of {total} files extracted.",
+    },
+    "The database references {expected} stored files, the backup holds {count}.": {
+        "fr": "La base référence {expected} fichiers stockés, la sauvegarde en contient {count}.",
+        "en": "The database references {expected} stored files, the backup holds {count}.",
+    },
+    "Cannot open {path}: {error}": {
+        "fr": "Impossible d'ouvrir {path} : {error}",
+        "en": "Cannot open {path}: {error}",
+    },
+    "Neutralize it before starting Odoo on it (crons, outgoing mail): {command}": {
+        "fr": "La neutraliser avant d'y démarrer Odoo (tâches planifiées, courriel sortant) : {command}",
+        "en": "Neutralize it before starting Odoo on it (crons, outgoing mail): {command}",
+    },
+    "invalid copy destination: {value}": {
+        "fr": "destination de copie invalide : {value}",
+        "en": "invalid copy destination: {value}",
+    },
+    "Backup directory; default: {path}.": {
+        "fr": "Dossier des sauvegardes ; par défaut : {path}.",
+        "en": "Backup directory; default: {path}.",
+    },
+    "State directory; default: {path}.": {
+        "fr": "Dossier d'état ; par défaut : {path}.",
+        "en": "State directory; default: {path}.",
+    },
+    "Daily backups kept; default: {value}.": {
+        "fr": "Sauvegardes quotidiennes gardées ; par défaut : {value}.",
+        "en": "Daily backups kept; default: {value}.",
+    },
+    "Weekly backups kept; default: {value}.": {
+        "fr": "Sauvegardes hebdomadaires gardées ; par défaut : {value}.",
+        "en": "Weekly backups kept; default: {value}.",
+    },
+    "Monthly backups kept; default: {value}.": {
+        "fr": "Sauvegardes mensuelles gardées ; par défaut : {value}.",
+        "en": "Monthly backups kept; default: {value}.",
+    },
+    "Keep every backup of the last N days; default: {value}.": {
+        "fr": "Garder toutes les sauvegardes des N derniers jours ; par défaut : {value}.",
+        "en": "Keep every backup of the last N days; default: {value}.",
+    },
+    "--status fails when the last success is older than this many hours; default: {value}.": {
+        "fr": "--status échoue quand le dernier succès date de plus de ce nombre d'heures ; par défaut : {value}.",
+        "en": "--status fails when the last success is older than this many hours; default: {value}.",
+    },
+    "Maximum seconds for pg_dump; default: {value}.": {
+        "fr": "Secondes au plus pour pg_dump ; par défaut : {value}.",
+        "en": "Maximum seconds for pg_dump; default: {value}.",
+    },
+    "Run as root (sudo) or as {user}; other accounts only with --dry-run or --status.": {
+        "fr": "Lancer en root (sudo) ou sous {user} ; les autres comptes seulement avec --dry-run ou --status.",
+        "en": "Run as root (sudo) or as {user}; other accounts only with --dry-run or --status.",
+    },
+    "Unreadable version of the base module: {version}": {
+        "fr": "Version illisible du module base : {version}",
+        "en": "Unreadable version of the base module: {version}",
+    },
+    "Cannot record the state in {path}: {error}": {
+        "fr": "Impossible de noter l'état dans {path} : {error}",
+        "en": "Cannot record the state in {path}: {error}",
+    },
+    "Backup failed: {error}": {
+        "fr": "Sauvegarde en échec : {error}",
+        "en": "Backup failed: {error}",
+    },
+    "Cannot write {path}: {error}": {
+        "fr": "Impossible d'écrire {path} : {error}",
+        "en": "Cannot write {path}: {error}",
+    },
+    "Retention skipped: {error}": {
+        "fr": "Rétention sautée : {error}",
+        "en": "Retention skipped: {error}",
+    },
+    "{database}: last backup {hours:.1f} h old, more than {limit} h.": {
+        "fr": "{database} : dernière sauvegarde vieille de {hours:.1f} h, plus de {limit} h.",
+        "en": "{database}: last backup {hours:.1f} h old, more than {limit} h.",
+    },
+    "{database}: last backup {hours:.1f} h old.": {
+        "fr": "{database} : dernière sauvegarde vieille de {hours:.1f} h.",
+        "en": "{database}: last backup {hours:.1f} h old.",
+    },
+    "Checksum mismatch for {path}: refused.": {
+        "fr": "Empreinte fausse pour {path} : refusé.",
+        "en": "Checksum mismatch for {path}: refused.",
+    },
+    "The restored database cannot be read: {error}": {
+        "fr": "La base restaurée ne se lit pas : {error}",
+        "en": "The restored database cannot be read: {error}",
+    },
+    "Test restore failed: {error}": {
+        "fr": "Restauration d'essai en échec : {error}",
+        "en": "Test restore failed: {error}",
+    },
+    "filestore/ → {path}": {
+        "fr": "filestore/ → {path}",
+        "en": "filestore/ → {path}",
+    },
+    "{path} already exists: refused.": {
+        "fr": "{path} existe déjà : refusé.",
+        "en": "{path} already exists: refused.",
+    },
+    "Restore failed: {error}": {
+        "fr": "Restauration en échec : {error}",
+        "en": "Restore failed: {error}",
+    },
+    "{needed} needed, {free} free": {
+        "fr": "{needed} nécessaires, {free} libres",
+        "en": "{needed} needed, {free} free",
+    },
+    "Another operation on {database} is running (lock {path}).": {
+        "fr": "Une autre opération sur {database} est en cours (verrou {path}).",
+        "en": "Another operation on {database} is running (lock {path}).",
+    },
+    "Test restore of {database}": {
+        "fr": "Restauration d'essai de {database}",
+        "en": "Test restore of {database}",
+    },
+    "Cannot create {path}: {error}": {
+        "fr": "Impossible de créer {path} : {error}",
+        "en": "Cannot create {path}: {error}",
+    },
+    "Removed a leftover partial file: {name}": {
+        "fr": "Fichier provisoire oublié retiré : {name}",
+        "en": "Removed a leftover partial file: {name}",
+    },
+    "The backup is incomplete ({missing}).": {
+        "fr": "La sauvegarde est incomplète ({missing}).",
+        "en": "The backup is incomplete ({missing}).",
+    },
+    "{database}: the recorded file is missing on disk.": {
+        "fr": "{database} : le fichier noté manque sur le disque.",
+        "en": "{database}: the recorded file is missing on disk.",
+    },
+    "{path} is not a readable zip: {error}": {
+        "fr": "{path} n'est pas un zip lisible : {error}",
+        "en": "{path} is not a readable zip: {error}",
+    },
+    "Backups in {path}: unknown (requires sudo).": {
+        "fr": "Sauvegardes dans {path} : inconnues (sudo requis).",
+        "en": "Backups in {path}: unknown (requires sudo).",
+    },
+    "Cannot delete {path}: {error}": {
+        "fr": "Impossible de supprimer {path} : {error}",
+        "en": "Cannot delete {path}: {error}",
+    },
+    "Simulation finished: nothing was written.": {
+        "fr": "Simulation terminée : rien n'a été écrit.",
+        "en": "Simulation finished: nothing was written.",
+    },
+    "Invalid OnCalendar value: {value}": {
+        "fr": "Valeur OnCalendar invalide : {value}",
+        "en": "Invalid OnCalendar value: {value}",
+    },
+    "Invalid RandomizedDelaySec value: {value}": {
+        "fr": "Valeur RandomizedDelaySec invalide : {value}",
+        "en": "Invalid RandomizedDelaySec value: {value}",
+    },
+    "Install or remove the scheduled verified backup of an Odoo database: a systemd service and timer run as the unit's account.": {
+        "fr": "Installer ou retirer la sauvegarde vérifiée planifiée d'une base Odoo : un service et une minuterie systemd lancés sous le compte de l'unité.",
+        "en": "Install or remove the scheduled verified backup of an Odoo database: a systemd service and timer run as the unit's account.",
+    },
+    "Stop and remove the timer and the service; keep backups.": {
+        "fr": "Arrêter et retirer la minuterie et le service ; garder les sauvegardes.",
+        "en": "Stop and remove the timer and the service; keep backups.",
+    },
+    "Prefix of every path written (tests); default: /.": {
+        "fr": "Préfixe de chaque chemin écrit (tests) ; par défaut : /.",
+        "en": "Prefix of every path written (tests); default: /.",
+    },
+    "Show both units and the commands; write nothing.": {
+        "fr": "Montrer les deux unités et les commandes ; ne rien écrire.",
+        "en": "Show both units and the commands; write nothing.",
+    },
+    "{path} exists and was not written by this script: nothing was changed.": {
+        "fr": "{path} existe et n'a pas été écrit par ce script : rien n'a été changé.",
+        "en": "{path} exists and was not written by this script: nothing was changed.",
+    },
+    "Unknown account: {user}": {
+        "fr": "Compte inconnu : {user}",
+        "en": "Unknown account: {user}",
+    },
+    "Control character in an argument: {value}": {
+        "fr": "Caractère de contrôle dans un argument : {value}",
+        "en": "Control character in an argument: {value}",
+    },
+    "Scheduled backup installed: {timer} ({calendar}).": {
+        "fr": "Sauvegarde planifiée installée : {timer} ({calendar}).",
+        "en": "Scheduled backup installed: {timer} ({calendar}).",
+    },
+    "Backups and state are kept: {dest}, {state}.": {
+        "fr": "Les sauvegardes et l'état restent : {dest}, {state}.",
+        "en": "Backups and state are kept: {dest}, {state}.",
+    },
+    "systemd-analyze is missing: {value} not validated.": {
+        "fr": "systemd-analyze manque : {value} non validé.",
+        "en": "systemd-analyze is missing: {value} not validated.",
+    },
+    "systemctl {command} failed (code {code}): {output}": {
+        "fr": "systemctl {command} en échec (code {code}) : {output}",
+        "en": "systemctl {command} failed (code {code}): {output}",
+    },
+    "The unit's working directory has no {tool}: this checkout is used, {path}.": {
+        "fr": "Le dossier de travail de l'unité n'a pas {tool} : ce checkout-ci sert, {path}.",
+        "en": "The unit's working directory has no {tool}: this checkout is used, {path}.",
+    },
+    "Created {path}.": {
+        "fr": "Créé : {path}.",
+        "en": "Created {path}.",
+    },
+    "Written: {path}": {
+        "fr": "Écrit : {path}",
+        "en": "Written: {path}",
+    },
+    "Nothing to remove for {database}.": {
+        "fr": "Rien à retirer pour {database}.",
+        "en": "Nothing to remove for {database}.",
+    },
+    "When the backup runs (OnCalendar); default: {value}.": {
+        "fr": "Quand la sauvegarde part (OnCalendar) ; par défaut : {value}.",
+        "en": "When the backup runs (OnCalendar); default: {value}.",
+    },
+    "RandomizedDelaySec of the timer; default: {value}.": {
+        "fr": "RandomizedDelaySec de la minuterie ; par défaut : {value}.",
+        "en": "RandomizedDelaySec of the timer; default: {value}.",
+    },
+    "{unit} from an older tool is installed: two timers would back up twice. Remove one of them.": {
+        "fr": "{unit} d'un outil antérieur est installé : deux minuteries sauvegarderaient deux fois. En retirer une.",
+        "en": "{unit} from an older tool is installed: two timers would back up twice. Remove one of them.",
+    },
+    "Removed: {path}": {
+        "fr": "Retiré : {path}",
+        "en": "Removed: {path}",
+    },
+    "Nothing was stopped.": {
+        "fr": "Rien n'a été arrêté.",
+        "en": "Nothing was stopped.",
+    },
+    "Backup failed: nothing was updated.": {
+        "fr": "Sauvegarde en échec : rien n'a été mis à jour.",
+        "en": "Backup failed: nothing was updated.",
+    },
+    "Backup impossible: {reason} (use --no-backup to skip it).": {
+        "fr": "Sauvegarde impossible : {reason} (--no-backup pour s'en passer).",
+        "en": "Backup impossible: {reason} (use --no-backup to skip it).",
+    },
+    "Run this backup now?": {
+        "fr": "Lancer cette sauvegarde maintenant ?",
+        "en": "Run this backup now?",
+    },
+    "Run this test restore? A temporary database is created, then dropped.": {
+        "fr": "Lancer cette restauration d'essai ? Une base temporaire est créée, puis supprimée.",
+        "en": "Run this test restore? A temporary database is created, then dropped.",
+    },
+    "Remove the scheduled backup? Backups are kept.": {
+        "fr": "Retirer la sauvegarde planifiée ? Les sauvegardes restent.",
+        "en": "Remove the scheduled backup? Backups are kept.",
+    },
+    "Install the scheduled backup (daily at 03:00)?": {
+        "fr": "Installer la sauvegarde planifiée (chaque jour à 03:00) ?",
+        "en": "Install the scheduled backup (daily at 03:00)?",
+    },
+    "Verified backup now - simulate, confirm, then run with sudo": {
+        "fr": "Sauvegarde vérifiée maintenant - simuler, confirmer, puis exécuter avec sudo",
+        "en": "Verified backup now - simulate, confirm, then run with sudo",
+    },
+    "Backup status - age of the last successful backup": {
+        "fr": "État des sauvegardes - âge de la dernière sauvegarde réussie",
+        "en": "Backup status - age of the last successful backup",
+    },
+    "Test restore of the latest backup - temporary database, dropped afterwards": {
+        "fr": "Restauration d'essai de la dernière sauvegarde - base temporaire, supprimée ensuite",
+        "en": "Test restore of the latest backup - temporary database, dropped afterwards",
+    },
+    "Restore a backup into a new database - simulate, confirm, then run with sudo": {
+        "fr": "Restaurer une sauvegarde dans une nouvelle base - simuler, confirmer, puis exécuter avec sudo",
+        "en": "Restore a backup into a new database - simulate, confirm, then run with sudo",
+    },
+    "Install / remove the scheduled backup - systemd timer, with sudo": {
+        "fr": "Installer / retirer la sauvegarde planifiée - minuterie systemd, avec sudo",
+        "en": "Install / remove the scheduled backup - systemd timer, with sudo",
+    },
+    "Cancelled: no file given.": {
+        "fr": "Annulé : aucun fichier donné.",
+        "en": "Cancelled: no file given.",
+    },
+    "Cancelled: no database given.": {
+        "fr": "Annulé : aucune base donnée.",
+        "en": "Cancelled: no database given.",
+    },
+    "Backup file to restore (.zip): ": {
+        "fr": "Fichier de sauvegarde à restaurer (.zip) : ",
+        "en": "Backup file to restore (.zip): ",
+    },
+    "New database name (must not exist): ": {
+        "fr": "Nom de la nouvelle base (ne doit pas exister) : ",
+        "en": "New database name (must not exist): ",
+    },
+    "Restore into the new database {database}?": {
+        "fr": "Restaurer dans la nouvelle base {database} ?",
+        "en": "Restore into the new database {database}?",
+    },
+    "Install or remove the scheduled backup? [I/r] ": {
+        "fr": "Installer ou retirer la sauvegarde planifiée ? [I/r] ",
+        "en": "Install or remove the scheduled backup? [I/r] ",
+    },
+    "The command ended with code": {
+        "fr": "La commande s'est terminée avec le code",
+        "en": "The command ended with code",
+    },
+    "The state is not readable; run it with sudo:": {
+        "fr": "L'état ne se lit pas ; le lancer avec sudo :",
+        "en": "The state is not readable; run it with sudo:",
+    },
+    "expected an integer >= 0: {value}": {
+        "fr": "entier >= 0 attendu : {value}",
+        "en": "expected an integer >= 0: {value}",
+    },
+    # Production - sauvegardes vérifiées : refus, espace de PostgreSQL, minuterie
+    "Some folders can only be created by root: the real run creates them under sudo.": {
+        "fr": "Certains dossiers ne peuvent être créés que par root : l'exécution réelle les crée sous sudo.",
+        "en": "Some folders can only be created by root: the real run creates them under sudo.",
+    },
+    "The filestore {path} does not belong to the account of the service: refused.": {
+        "fr": "Le filestore {path} n'appartient pas au compte du service : refusé.",
+        "en": "The filestore {path} does not belong to the account of the service: refused.",
+    },
+    "Free space of PostgreSQL not checked (--force-space): {needed} needed.": {
+        "fr": "Espace libre de PostgreSQL non vérifié (--force-space) : {needed} nécessaires.",
+        "en": "Free space of PostgreSQL not checked (--force-space): {needed} needed.",
+    },
+    "Free space of PostgreSQL unknown: the real run checks it under sudo, or refuses without --force-space.": {
+        "fr": "Espace libre de PostgreSQL inconnu : l'exécution réelle le vérifie sous sudo, ou refuse sans --force-space.",
+        "en": "Free space of PostgreSQL unknown: the real run checks it under sudo, or refuses without --force-space.",
+    },
+    "Cannot check the free space of PostgreSQL ({needed} needed): its data directory is unreadable or on another host. Check it, then rerun with --force-space.": {
+        "fr": "Impossible de vérifier l'espace libre de PostgreSQL ({needed} nécessaires) : son dossier de données est illisible ou sur un autre hôte. Le vérifier, puis relancer avec --force-space.",
+        "en": "Cannot check the free space of PostgreSQL ({needed} needed): its data directory is unreadable or on another host. Check it, then rerun with --force-space.",
+    },
+    "--test-restore, --restore: go on when the free space of PostgreSQL cannot be checked.": {
+        "fr": "--test-restore, --restore : continuer quand l'espace libre de PostgreSQL ne peut pas être vérifié.",
+        "en": "--test-restore, --restore: go on when the free space of PostgreSQL cannot be checked.",
+    },
+    "Access of {user} to the tool and its configuration: not checked (requires sudo).": {
+        "fr": "Accès de {user} à l'outil et à sa configuration : non vérifié (exige sudo).",
+        "en": "Access of {user} to the tool and its configuration: not checked (requires sudo).",
+    },
+    "{user} cannot read {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.": {
+        "fr": "{user} ne peut pas lire {path} : chaque sauvegarde planifiée échouerait. Lui en donner l'accès, ou installer depuis un checkout qu'il peut lire.",
+        "en": "{user} cannot read {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.",
+    },
+    "{user} cannot execute {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.": {
+        "fr": "{user} ne peut pas exécuter {path} : chaque sauvegarde planifiée échouerait. Lui en donner l'accès, ou installer depuis un checkout qu'il peut lire.",
+        "en": "{user} cannot execute {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.",
+    },
+    "systemd-tmpfiles failed (code {code}): {output}. The lock file is missing until the next boot.": {
+        "fr": "systemd-tmpfiles a échoué (code {code}) : {output}. Le fichier du verrou manque jusqu'au prochain démarrage.",
+        "en": "systemd-tmpfiles failed (code {code}): {output}. The lock file is missing until the next boot.",
     },
 }
 

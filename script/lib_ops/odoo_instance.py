@@ -12,7 +12,11 @@ dossier de travail et de son fichier de configuration, ce module dit :
 - quels dossiers forment l'addons_path, et quels modules y répondent à
   des motifs (`chemins_addons`, `developper_modules`) ;
 - quels processus Odoo tournent sur une base (`processus_odoo`) ;
-- quelles lignes d'un journal sont des erreurs (`lignes_erreur`).
+- quelles lignes d'un journal sont des erreurs (`lignes_erreur`) ;
+- où vit le filestore d'une base (`data_dir`, `filestore`) ;
+- si une sauvegarde au format zip d'Odoo est complète
+  (`verifier_sauvegarde`) et quels membres en extraire
+  (`membres_a_extraire`).
 
 La ligne de commande l'emporte toujours sur la configuration, comme dans
 Odoo : une option passée à odoo-bin écrase la valeur du fichier.
@@ -28,9 +32,11 @@ from __future__ import annotations
 
 import configparser
 import fnmatch
+import json
 import os
 import re
 import zipfile
+import zlib
 
 PORT_PAR_DEFAUT = 8069
 HOTE_LOCAL = "127.0.0.1"
@@ -375,22 +381,144 @@ def lire_ajout(chemin, depuis):
         return ""
 
 
+# Dossier de données d'Odoo quand le compte n'a pas de dossier personnel :
+# le repli d'appdirs que reprend `odoo.tools.config`.
+DATA_DIR_SANS_HOME = "/var/lib/odoo"
+
+# La dernière ligne utile d'un dump au format texte. pg_dump récent écrit
+# encore `\unrestrict <clé>` après elle : on la cherche dans la fin du
+# fichier, pas sur sa dernière ligne.
+FIN_DE_DUMP = b"PostgreSQL database dump complete"
+TAILLE_FIN = 4096
+BLOC = 1024 * 1024
+
+
+def data_dir(argv, config, home, dossier, env_unite=None, existe=None):
+    """Le dossier de données qu'Odoo utilise : (chemin, origine).
+
+    Ordre d'Odoo : `-D`/`--data-dir` de la ligne de commande ; `data_dir`
+    de la configuration ; sinon appdirs `user_data_dir("Odoo")`, qui suit
+    `XDG_DATA_HOME` de l'environnement de l'unité, puis
+    `<home>/.local/share/Odoo` ; `/var/lib/odoo` quand `home` n'existe pas.
+    `~` se développe avec `home`, le dossier personnel du COMPTE de l'unité
+    et non de celui qui lance l'outil ; un chemin relatif se lit depuis
+    `dossier`, le dossier de travail de l'unité.
+
+    `origine` vaut "argv", "data_dir", "XDG_DATA_HOME", "home" ou "default".
+    `existe` (os.path.isdir par défaut) teste le dossier personnel.
+    """
+    existe = existe or os.path.isdir
+
+    def resoudre(valeur):
+        if valeur == "~" or valeur.startswith("~/"):
+            valeur = (home or "") + valeur[1:]
+        if os.path.isabs(valeur):
+            return os.path.normpath(valeur)
+        return os.path.normpath(os.path.join(dossier or "/", valeur))
+
+    depuis_argv = valeur_argv(argv, ("-D",), ("--data-dir",))
+    if depuis_argv:
+        return resoudre(depuis_argv), "argv"
+    valeur = _renseigne(config.get("data_dir"))
+    if valeur:
+        return resoudre(valeur), "data_dir"
+    xdg = _renseigne((env_unite or {}).get("XDG_DATA_HOME"))
+    if xdg and os.path.isabs(xdg):
+        return os.path.join(xdg, "Odoo"), "XDG_DATA_HOME"
+    if home and existe(home):
+        return os.path.join(home, ".local", "share", "Odoo"), "home"
+    return DATA_DIR_SANS_HOME, "default"
+
+
+def filestore(dossier_donnees, base):
+    """Le filestore de `base` : `<data_dir>/filestore/<base>`."""
+    return os.path.join(dossier_donnees, "filestore", base)
+
+
+def _lire_membre(archive, nom, fin=0):
+    """Lit le membre `nom` en entier — le CRC est vérifié en fin de
+    lecture, BadZipFile s'il ne correspond pas — et rend ses `fin`
+    derniers octets."""
+    queue = b""
+    with archive.open(nom) as membre:
+        while True:
+            bloc = membre.read(BLOC)
+            if not bloc:
+                break
+            if fin:
+                queue = (queue + bloc)[-fin:]
+    return queue
+
+
 def verifier_sauvegarde(chemin):
     """Relit une sauvegarde Odoo au format zip : (ok, problèmes).
 
-    `dump.sql` et `manifest.json` sont exigés : sans eux, il n'y a rien à
-    restaurer, et `ok` est False. Un filestore absent n'est qu'un
+    Chaque membre est relu en entier, ce qui vérifie son CRC (l'équivalent
+    de `testzip`). `dump.sql` doit se terminer par la marque de fin de
+    pg_dump, et `manifest.json` être un objet JSON : sans eux, il n'y a
+    rien à restaurer, et `ok` est False. Un filestore absent n'est qu'un
     problème signalé (une base sans pièce jointe n'en a pas), `ok` reste
-    True.
+    True. `chemin` peut être un chemin ou un fichier ouvert.
     """
     try:
         with zipfile.ZipFile(chemin) as archive:
             noms = archive.namelist()
-    except (OSError, zipfile.BadZipFile):
+            problemes = [
+                n for n in ("dump.sql", "manifest.json") if n not in noms
+            ]
+            if problemes:
+                return False, problemes
+            for nom in noms:
+                if nom == "dump.sql":
+                    queue = _lire_membre(archive, nom, TAILLE_FIN)
+                    if FIN_DE_DUMP not in queue:
+                        problemes.append("dump.sql incomplete")
+                elif nom == "manifest.json":
+                    try:
+                        manifeste = json.loads(archive.read(nom).decode())
+                    except ValueError:
+                        manifeste = None
+                    if not isinstance(manifeste, dict):
+                        problemes.append("manifest.json unreadable")
+                else:
+                    _lire_membre(archive, nom)
+    except (
+        OSError,
+        zipfile.BadZipFile,
+        zlib.error,
+        EOFError,
+        RuntimeError,
+    ):
         return False, ["unreadable"]
-    problemes = [n for n in ("dump.sql", "manifest.json") if n not in noms]
     if problemes:
         return False, problemes
     if not any(n.startswith("filestore/") for n in noms):
         return True, ["filestore"]
     return True, []
+
+
+def membre_dangereux(nom):
+    """True si le nom de membre sortirait du dossier d'extraction : chemin
+    absolu, composant `..`, barre oblique inverse (séparateur sous
+    Windows), octet nul."""
+    if not nom or "\\" in nom or "\0" in nom or nom.startswith("/"):
+        return True
+    return ".." in nom.split("/")
+
+
+def membres_a_extraire(noms):
+    """(à extraire, dangereux) : `dump.sql` et les fichiers de
+    `filestore/`, les seuls membres qu'Odoo extrait d'une sauvegarde ; et
+    les noms qui sortiraient du dossier d'extraction. Les autres membres
+    (manifest.json compris) ne sont pas extraits."""
+    dangereux = [nom for nom in noms if membre_dangereux(nom)]
+    extraire = [
+        nom
+        for nom in noms
+        if nom not in dangereux
+        and (
+            nom == "dump.sql"
+            or (nom.startswith("filestore/") and not nom.endswith("/"))
+        )
+    ]
+    return extraire, dangereux

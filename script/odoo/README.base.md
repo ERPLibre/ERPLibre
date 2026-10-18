@@ -33,22 +33,29 @@ What it does, in order:
    a `__manifest__.py`) are deduced from them. Anything missing refuses
    with code 2.
 2. **Root and lock.** Root is required (except `--dry-run`); one lock per
-   database, code 75 when another update holds it.
+   database, shared with the backup tool, code 75 when another update or
+   backup holds it.
 3. **Stop.** The state before is read from `ActiveState`; without an
    answer from systemctl nothing is stopped (code 2). After `systemctl
    stop`, the unit must be `inactive` or `failed` (not `deactivating`).
    If the port still answers, or an Odoo process runs on the same database
    outside the unit, the update is refused unless `--force`.
 4. **Backup** (unless `--no-backup`), after the stop so that it is
-   consistent: `odoo_bin.sh db --backup` into `image_db/`, as the unit's
-   account. Requires `odoo_bin.sh` in the unit's directory, an `image_db/`
-   folder the unit's account can write to, and `list_db` not set to
-   `False`. The zip is written as `<name>.partial.zip`, read back, then
-   renamed: a file with the final name is always a complete backup.
+   consistent: the verified backup of
+   [script/database/odoo_backup.py](../database/README.md), called while
+   the update already holds the database lock. It is written to
+   `--backup-dest/<db>/` (default `/var/backups/erplibre`) and recorded in
+   `--state-dir` (default `/var/lib/erplibre-backup`). Before anything is
+   stopped, the detection checks that the unit's account can write there
+   (missing folders are created for it), that the database can be read and
+   that there is enough disk space; otherwise it refuses with code 2. It
+   neither copies off-site nor applies retention: the scheduled backup
+   does.
 5. **Update**: the unit's command line followed by `-c CONFIG -d DB -u
    MODULES --stop-after-init --no-http --workers=0 --max-cron-threads=0`,
    as the unit's account — the repeated `-c` keeps the update on the file
-   the detection and the backup read (`--odoo-conf` included). It fails on a non-zero code, on `--timeout`, or on an
+   the detection and the backup read (`--odoo-conf` included). It fails
+   on a non-zero code, on `--timeout`, or on an
    `ERROR`/`CRITICAL` line in its output or in what was appended to the
    configured `logfile`. `--ignore-error REGEX` excludes known lines.
 6. **Restart**, if the unit was running: wait for `active` and the port
@@ -66,7 +73,7 @@ restore decided by a person.
 | 0 | success (or simulation) |
 | 1 | update failed, service restarted |
 | 2 | refused before anything was stopped |
-| 75 | another update of this database is running |
+| 75 | another update or backup of this database is running |
 | 130 | interrupted, service restarted |
 
 The update log goes to `--log-dir` (default `/var/log/erplibre`, falling
@@ -102,18 +109,24 @@ Ce qu'il fait, dans l'ordre :
    portant un `__manifest__.py`) en sont déduits. Tout manque refuse avec
    le code 2.
 2. **Root et verrou.** Root est exigé (sauf `--dry-run`) ; un verrou par
-   base, code 75 quand une autre mise à jour le détient.
+   base, partagé avec l'outil de sauvegarde, code 75 quand une autre mise à
+   jour ou une sauvegarde le détient.
 3. **Arrêt.** L'état d'avant se lit dans `ActiveState` ; sans réponse de
    systemctl, rien n'est arrêté (code 2). Après `systemctl stop`, l'unité
    doit être `inactive` ou `failed` (pas `deactivating`). Si le port répond
    encore, ou qu'un processus Odoo tourne sur la même base hors de
    l'unité, la mise à jour est refusée, sauf `--force`.
 4. **Sauvegarde** (sauf `--no-backup`), après l'arrêt pour être cohérente :
-   `odoo_bin.sh db --backup` dans `image_db/`, sous le compte de l'unité.
-   Exige `odoo_bin.sh` dans le dossier de l'unité, un dossier `image_db/`
-   où le compte de l'unité peut écrire, et un `list_db` qui ne vaut pas
-   `False`. Le zip s'écrit en `<nom>.partial.zip`, est relu, puis renommé :
-   un fichier au nom définitif est toujours une sauvegarde complète.
+   la sauvegarde vérifiée de
+   [script/database/odoo_backup.py](../database/README.fr.md), appelée
+   alors que la mise à jour tient déjà le verrou de la base. Elle s'écrit
+   dans `--backup-dest/<base>/` (par défaut `/var/backups/erplibre`) et se
+   note dans `--state-dir` (par défaut `/var/lib/erplibre-backup`). Avant
+   tout arrêt, la détection vérifie que le compte de l'unité peut y écrire
+   (les dossiers manquants sont créés pour lui), que la base se lit et que
+   l'espace disque suffit ; sinon elle refuse avec le code 2. Elle ne copie
+   pas hors site et n'applique pas de rétention : la sauvegarde planifiée
+   s'en charge.
 5. **Mise à jour** : la ligne de commande de l'unité suivie de `-c CONFIG
    -d BASE -u MODULES --stop-after-init --no-http --workers=0
    --max-cron-threads=0`, sous le compte de l'unité — le `-c` répété garde
@@ -137,7 +150,7 @@ restauration décidée par une personne.
 | 0 | réussi (ou simulation) |
 | 1 | mise à jour en échec, service relancé |
 | 2 | refusé avant tout arrêt |
-| 75 | une autre mise à jour de cette base est en cours |
+| 75 | une autre mise à jour ou sauvegarde de cette base est en cours |
 | 130 | interrompu, service relancé |
 
 Le journal de la mise à jour va dans `--log-dir` (par défaut

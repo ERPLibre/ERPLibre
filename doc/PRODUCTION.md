@@ -131,6 +131,47 @@ sudo ./script/odoo/update_module.py --module 'my_module_*' --db DATABASE
 The same is reachable from `make todo`: `Execute > Production`. Options,
 detection order and exit codes: [script/odoo/README.md](../script/odoo/README.md).
 
+### Verified backups
+
+`script/database/odoo_backup.py` backs a database up in Odoo's own zip
+format, verifies the file, keeps a daily, weekly and monthly retention,
+reports the age of the last success, test-restores into a temporary
+database and restores into a new database only. `update_module.py` uses it
+for its backup before an update, under the same database lock.
+
+```bash
+./script/database/odoo_backup.py --db DATABASE --dry-run
+sudo ./script/database/odoo_backup.py --db DATABASE
+./script/database/odoo_backup.py --status
+sudo ./script/database/odoo_backup.py --test-restore --db DATABASE
+```
+
+The scheduled backup is a systemd service and timer written by
+`script/systemd/install_backup_timer.py`. The service runs the backup as
+the account of the Odoo unit, never as root, with every option in its
+`ExecStart`; the timer runs daily at 03:00 by default (`--on-calendar`),
+with `RandomizedDelaySec` and `Persistent=true`. A tmpfiles.d entry
+creates the shared lock file `/run/lock/erplibre-db-DATABASE.lock` at
+boot, so the account can take the lock where `/run/lock` belongs to root.
+Before writing anything, the script checks as that account that it can
+run the interpreter and read the tool and the Odoo configuration. It
+refuses to replace a file it did not write, and `--uninstall` keeps the
+backups:
+
+```bash
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --dry-run
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups
+systemctl list-timers 'erplibre-backup-*'
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
+```
+
+`--copy-to` adds an off-site copy (rsync over ssh with the account's key;
+the remote side has no retention and grows). Monitor `--status`: it exits
+with code 1 when the last success is older than `--max-age` hours (26).
+All of it is also in `make todo`: `Execute > Production`. Details,
+retention rules and exit codes:
+[script/database/README.md](../script/database/README.md).
+
 # Postgresql
 
 To show config files:
