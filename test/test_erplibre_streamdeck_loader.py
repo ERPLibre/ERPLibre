@@ -98,10 +98,92 @@ class LoaderTest(LoaderCase):
         self.assertEqual([], plugins)
         self.assertEqual("off", self.status(report)["dup"][0])
 
-    def test_parse_off(self):
+
+
+SHAPED = (
+    "from erplibre_streamdeck.plugin import *\n"
+    "PLUGIN = Plugin(api=PLUGIN_API, {kw})\n"
+)
+# Each entry: a Plugin(...) argument list the loader must refuse.
+BAD_SHAPES = {
+    "button_list": "home_button=[HomeButton(1, print, print)]",
+    "button_order": "home_button=HomeButton('1', print, print)",
+    "pages_not_list": "pages=Page('p', None, print, print)",
+    "page_id": "pages=[Page(5, None, print, print)]",
+    "page_render": "pages=[Page('q', None, 5, print)]",
+    "page_period": "pages=[Page('r', None, print, print, print, 'x')]",
+    "fixture_class": "fixtures=[object()]",
+    "fixture_place": "fixtures=[Fixture(1, None, print, print)]",
+    "tile_order": "tiles=[TileProvider(1.5, print, print, print)]",
+    "tiles_not_list": "tiles=TileProvider(1, print, print, print)",
+    "home_tick": "home_tick=5",
+    "home_period": "home_period='2'",
+    "shutdown": "shutdown='stop'",
+}
+
+
+class ShapeTest(LoaderCase):
+    def test_malformed_plugins_are_refused_the_others_load(self):
+        for pid, kw in BAD_SHAPES.items():
+            self.put(self.user, f"{pid}.py", SHAPED.format(kw=kw))
+        self.put(self.repo, "fine.py", GOOD.format(page="f"))
+        plugins, report = self.load()
+        self.assertEqual(["fine"], [p.id for p in plugins])
+        st = self.status(report)
+        for pid in BAD_SHAPES:
+            self.assertEqual("refused", st[pid][0], pid)
+            self.assertTrue(st[pid][1], pid)
+        self.assertIn("home_button", st["button_list"][1])
+
+    def test_well_formed_parts_are_accepted(self):
+        self.put(self.user, "full.py", SHAPED.format(kw=(
+            "pages=[Page('p', None, print, print, print, 1)], "
+            "home_button=HomeButton(1, print, print), "
+            "fixtures=[Fixture(2, print, print, print)], "
+            "tiles=[TileProvider(3, print, print, print)], "
+            "home_tick=print, home_period=2.0, setup=print, "
+            "shutdown=print"
+        )))
+        plugins, report = self.load()
+        self.assertEqual(["full"], [p.id for p in plugins], report.lines())
+
+    def test_repository_plugins_pass_the_shape_check(self):
+        plugins, report = loader.load(user_dir=self.user)
         self.assertEqual(
-            ["a", "b_c"], loader.parse_off(" a , ,b_c,\n")
+            sorted(S.REPO_PLUGINS),
+            [p.id for p in plugins],
+            report.lines(),
         )
+
+
+class ImportExitTest(LoaderCase):
+    def test_sys_exit_at_import_is_refused(self):
+        self.put(self.user, "quits.py", "import sys\nsys.exit(3)\n")
+        self.put(self.repo, "fine.py", GOOD.format(page="f"))
+        plugins, report = self.load()
+        self.assertEqual(["fine"], [p.id for p in plugins])
+        status, detail = self.status(report)["quits"]
+        self.assertEqual("refused", status)
+        self.assertIn("SystemExit", detail)
+
+    def test_keyboard_interrupt_at_import_propagates(self):
+        self.put(self.user, "ctrl_c.py", "raise KeyboardInterrupt\n")
+        with self.assertRaises(KeyboardInterrupt):
+            self.load()
+
+
+@unittest.skipIf(os.geteuid() == 0, "root lists any directory")
+class UnreadableDirTest(LoaderCase):
+    def test_unreadable_user_dir_is_reported_and_empty(self):
+        self.put(self.user, "hidden.py", GOOD.format(page="h"))
+        self.put(self.repo, "fine.py", GOOD.format(page="f"))
+        self.user.chmod(0)
+        self.addCleanup(self.user.chmod, 0o755)
+        plugins, report = self.load()
+        self.assertEqual(["fine"], [p.id for p in plugins])
+        status, detail = self.status(report)[str(self.user)]
+        self.assertEqual("unreadable", status)
+        self.assertIn("PermissionError", detail)
 
 
 class ListPluginsTest(unittest.TestCase):
