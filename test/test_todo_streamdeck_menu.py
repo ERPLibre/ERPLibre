@@ -724,6 +724,13 @@ class LeReglageDeLaPeriode(Menu):
                 )
                 self.assertEqual([], commandes)
 
+    def test_a_decimal_comma_is_read_and_written_with_a_dot(self):
+        todo_i18n._current_lang = "fr"
+        self.jouer("_streamdeck_session_refresh_setting", ("0,5",))
+        self.assertEqual(
+            "DECK_SESSION_REFRESH_SEC=0.5\n", self.reglages.read_text()
+        )
+
     def test_entry_refuses_out_of_range(self):
         for langue, bornes in (
             ("fr", "de 0.5 à 60 secondes"),
