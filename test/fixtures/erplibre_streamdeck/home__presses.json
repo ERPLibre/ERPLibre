@@ -3498,11 +3498,7 @@
    },
    {
     "do": "press 6",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired",
-     "bluetoothctl show"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3566,18 +3562,18 @@
       null
      ],
      [
-      "0096dc",
-      "BT\nON",
+      "642828",
+      "BT\nN/A",
       null
      ],
      [
-      "0096dc",
-      "Headph",
+      "14141e",
+      "",
       null
      ],
      [
-      "3c3c3c",
-      "Keyboa",
+      "14141e",
+      "",
       null
      ],
      [
@@ -7634,11 +7630,7 @@
    },
    {
     "do": "press 6",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired",
-     "bluetoothctl show"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -7717,18 +7709,18 @@
       null
      ],
      [
-      "0096dc",
-      "BT\nON",
+      "642828",
+      "BT\nN/A",
       null
      ],
      [
-      "0096dc",
-      "Headph",
+      "14141e",
+      "",
       null
      ],
      [
-      "3c3c3c",
-      "Keyboa",
+      "14141e",
+      "",
       null
      ],
      [

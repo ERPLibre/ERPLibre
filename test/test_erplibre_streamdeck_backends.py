@@ -506,13 +506,15 @@ class SlowKeyTest(unittest.TestCase):
     def bluetooth_page(self, world=P.full_world):
         h = self.start(world)
         h.goto("bluetooth")
+        h.loop(1)  # the page poll reads the adapter
         return h
 
     def test_bluetooth_power_is_a_job(self):
         h = self.bluetooth_page()
         press, threads, loop = self.press_slow(h, 6)  # BT ON
-        # The power state is read under the lock; the switch is the job.
-        self.assertEqual(["bluetoothctl show"], press["effects"])
+        # The power state comes from the poll's cache; the switch is
+        # the job.
+        self.assertEqual([], press["effects"])
         self.assertEqual(["bluetoothctl power off"], threads["effects"])
         self.assertIn("bluetoothctl show", loop["effects"])
         self.assertEqual("bluetooth", loop["page"])
@@ -540,11 +542,7 @@ class SlowKeyTest(unittest.TestCase):
     def test_bluetooth_disconnect_is_a_job(self):
         h = self.bluetooth_page()
         press, threads, loop = self.press_slow(h, 7)  # connected
-        self.assertEqual(
-            ["bluetoothctl devices Connected",
-             "bluetoothctl devices Paired"],
-            press["effects"],
-        )
+        self.assertEqual([], press["effects"])
         self.assertEqual(
             ["bluetoothctl disconnect 00:00:5E:00:53:10"],
             threads["effects"],
@@ -756,6 +754,59 @@ class CachedRenderTest(unittest.TestCase):
         self.assertEqual((False, True), (page.active(ctx), mic.active(ctx)))
         h.goto("sound")
         self.assertEqual((True, False), (page.active(ctx), mic.active(ctx)))
+
+    def test_bluetooth_page_reads_the_cache(self):
+        h = self.start(P.full_world)
+        h.goto("bluetooth")
+        h.loop(1)
+        self.assert_render_runs_nothing(h, "bluetooth")
+        self.assertEqual(
+            ["BT\nON", "Headph", "Keyboa"],
+            [h.deck.screen[k][1] for k in (6, 7, 8)],
+        )
+
+    def test_bluetooth_without_data_shows_na_and_toggle_flashes_err(self):
+        h = self.start(P.full_world)
+        h.goto("bluetooth")
+        self.assertEqual("BT\nN/A", h.deck.screen[6][1])
+        h.press(6)
+        self.assertEqual([], S.FakeThread.queue)
+        self.assertEqual("ERR", h.deck.screen[6][1])
+        h.wait(P.FLASH_GAP)
+        h.press(7)
+        self.assertEqual([], S.FakeThread.queue)
+
+    def test_bluetooth_poll_reads_power_and_devices(self):
+        h = self.start(P.bt_off_world)
+        poll = self.poll(bluetooth, 0)
+        data = poll.read()
+        # Paired devices are read with the adapter off too: a device
+        # key acts on them.
+        self.assertEqual(
+            (False, [("00:00:5E:00:53:10", "Demo Headphones", True),
+                     ("00:00:5E:00:53:11", "Demo Keyboard", False)]),
+            data,
+        )
+        ctx = h.target.kernel.ctx("bluetooth")
+        self.assertFalse(poll.active(ctx))
+        h.goto("bluetooth")
+        self.assertTrue(poll.active(ctx))
+        self.assertTrue(poll.store(ctx, data))
+        self.assertFalse(poll.store(ctx, data))
+        self.assertTrue(poll.store(ctx, (True, data[1])))
+
+    def test_bluetooth_device_key_acts_on_the_cached_device(self):
+        h = self.start(P.full_world)
+        h.goto("bluetooth")
+        h.loop(1)
+        h.proc.answer("bluetoothctl devices Paired")
+        h.press(7)
+        self.assertEqual([], h.steps[-1]["effects"])
+        h.run_threads()
+        self.assertEqual(
+            ["bluetoothctl disconnect 00:00:5E:00:53:10"],
+            h.steps[-1]["effects"],
+        )
 
     def test_sound_press_shows_the_new_level_at_once(self):
         h = self.start(P.full_world)

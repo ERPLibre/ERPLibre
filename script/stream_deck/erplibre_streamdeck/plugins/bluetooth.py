@@ -1,13 +1,18 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Bluetooth page: adapter power and paired devices."""
+"""Bluetooth page: adapter power and paired devices.
+
+A poll reads the adapter every 2 s while the page shows, away from the
+lock, into `state().bt` as (powered, devices). The page draws from it
+and a press acts on it: the toggle's direction is the cached power, a
+device key's device the cached device at its slot."""
 
 import shutil
 import subprocess
 import sys
 
 from erplibre_streamdeck.plugin import (
-    PLUGIN_API, HomeButton, KeyFace, Page, Plugin,
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll,
 )
 from erplibre_streamdeck.ui import colors, render
 
@@ -151,12 +156,41 @@ def _keys(geo):
     }
 
 
+# What the page shows before its first poll: what a missing adapter
+# gives (power unknown, no device).
+NO_BT = (None, [])
+
+
+def _read():
+    """(powered, devices) of the adapter, the poll's read: no Context,
+    no lock. The paired devices are listed even with the adapter off,
+    since a device key acts on them."""
+    return _bt_powered(), _bt_list_paired()
+
+
+def _store(ctx, data):
+    """Keep the poll's data as state().bt; True when it changed."""
+    st = ctx.state()
+    changed = st.bt != data
+    st.bt = data
+    return changed
+
+
+def _shown(ctx):
+    """The page shows at a size that draws the adapter."""
+    return ctx.page == "bluetooth" and bool(ctx.keys)
+
+
+def _setup(ctx):
+    ctx.state().bt = None
+
+
 def _render(ctx):
     bk = ctx.keys
     if not bk:
         render.too_small(ctx)
         return
-    powered = _bt_powered()
+    powered, devices = ctx.state().bt or NO_BT
     if powered is None:
         toggle_color, toggle_label = colors.BT_NA, ctx.t("BT\nN/A")
     elif powered:
@@ -167,11 +201,10 @@ def _render(ctx):
         bk["back"]: (colors.BACK, ctx.t("BACK")),
         bk["toggle"]: (toggle_color, toggle_label),
     }
-    # Device slots only when the adapter is powered: the listing is
-    # empty otherwise.
+    # Device names show only when the adapter is powered; the slots
+    # still act on the cached devices otherwise (see _handle).
     device_keys = bk.get("devices", [])
     if powered and device_keys:
-        devices = _bt_list_paired()
         for i, k in enumerate(device_keys):
             if i >= len(devices):
                 break
@@ -190,7 +223,8 @@ def _render(ctx):
 
 def _render_then(ctx, _result, _error):
     """then() of a bluetooth job: the page is drawn again from the
-    adapter, with no flash, success or not."""
+    cache, with no flash, success or not; the next poll shows the
+    adapter's new state."""
     ctx.render()
 
 
@@ -202,21 +236,20 @@ def _handle(ctx, key):
     if key == bk["back"]:
         ctx.home()
         return
+    powered, devices = ctx.state().bt or NO_BT
     if key == bk["toggle"]:
-        current = _bt_powered()
-        if current is None:
+        if powered is None:
             ctx.flash(
                 False, "bluetooth: bluetoothctl unavailable or no adapter"
             )
             ctx.render()
             return
-        ctx.run_blocking(lambda: _bt_set_power(not current), _render_then)
+        ctx.run_blocking(lambda: _bt_set_power(not powered), _render_then)
         return
-    # A device key is live even when blank (adapter off): the listing is
-    # read again and the press acts on the device it finds.
+    # A device key is live even when blank (adapter off): the press
+    # acts on the cached device at its slot.
     if key in bk.get("devices", []):
         idx = bk["devices"].index(key)
-        devices = _bt_list_paired()
         if idx < len(devices):
             mac, _name, connected = devices[idx]
             switch = _bt_disconnect if connected else _bt_connect
@@ -231,4 +264,6 @@ PLUGIN = Plugin(
         face=lambda ctx: KeyFace(colors.BT_TITLE, "BT", icon="bt"),
         press=lambda ctx: ctx.goto("bluetooth"),
     ),
+    polls=[Poll(2.0, _shown, _read, _store)],
+    setup=_setup,
 )
