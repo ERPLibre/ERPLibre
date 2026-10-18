@@ -336,6 +336,9 @@ msgstr "No games found"
 msgid "Could not launch {id}: gallery offline?"
 msgstr "Could not launch {id}: gallery offline?"
 
+msgid "Could not launch {id}: {why}"
+msgstr "Could not launch {id}: {why}"
+
 msgid "Active sessions"
 msgstr "Active sessions"
 
