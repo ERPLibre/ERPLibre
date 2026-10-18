@@ -457,7 +457,7 @@ class TODO(
 [23] {t("ERPLibre Home - GNOME extension and Stream Deck")}
 
 ── {t("Production")} ──
-[24] {t("Production - Update the modules of a systemd instance")}
+[24] {t("Production - Update, back up and restore a systemd instance")}
 {retour(t("Back"))}
 """
         while True:

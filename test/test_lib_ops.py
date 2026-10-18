@@ -2,26 +2,42 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""script/lib_ops : lecture d'unité, instance Odoo, verrou, rapport.
+"""script/lib_ops : lecture d'unité, instance Odoo, verrou, rapport,
+rétention, PostgreSQL.
 
 Aucun systemctl réel n'est appelé : chaque fonction de `systemd` reçoit un
 lanceur fabriqué qui répond depuis une table. Les fichiers (configuration,
-addons, /proc) sont fabriqués dans un dossier temporaire.
+addons, /proc) sont fabriqués dans un dossier temporaire. Les dates de la
+rétention sont inventées.
 """
 
+import datetime
 import fcntl
 import io
+import json
 import os
 import sys
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.lib_ops import lock, odoo_instance, report, systemd  # noqa: E402
+from script.lib_ops import (  # noqa: E402
+    lock,
+    odoo_instance,
+    postgres,
+    report,
+    retention,
+    service,
+    systemd,
+)
+
+DUMP = b"--\n-- PostgreSQL database dump complete\n--\n\\unrestrict abc\n"
+MANIFESTE = json.dumps({"odoo_dump": "1", "modules": {"base": "18.0.1.3"}})
 
 
 def dossier_temporaire(test):
@@ -562,13 +578,54 @@ class TestJournal(unittest.TestCase):
 
 
 class TestVerifierSauvegarde(unittest.TestCase):
-    def zip(self, noms):
+    CONTENUS = {"dump.sql": DUMP, "manifest.json": MANIFESTE}
+
+    def zip(self, noms, contenus=None):
+        contenus = dict(self.CONTENUS, **(contenus or {}))
         d = dossier_temporaire(self)
         chemin = os.path.join(d, "s.zip")
-        with zipfile.ZipFile(chemin, "w") as z:
+        with zipfile.ZipFile(chemin, "w", zipfile.ZIP_DEFLATED) as z:
             for nom in noms:
-                z.writestr(nom, "x")
+                z.writestr(nom, contenus.get(nom, "x"))
         return chemin
+
+    def test_dump_sans_marque_de_fin(self):
+        chemin = self.zip(
+            ["dump.sql", "manifest.json"], {"dump.sql": b"-- tronque\n"}
+        )
+        self.assertEqual(
+            odoo_instance.verifier_sauvegarde(chemin),
+            (False, ["dump.sql incomplete"]),
+        )
+
+    def test_manifeste_illisible(self):
+        chemin = self.zip(
+            ["dump.sql", "manifest.json"], {"manifest.json": "pas du json"}
+        )
+        self.assertEqual(
+            odoo_instance.verifier_sauvegarde(chemin),
+            (False, ["manifest.json unreadable"]),
+        )
+
+    def test_crc_faux(self):
+        chemin = self.zip(
+            ["dump.sql", "manifest.json", "filestore/ab/cd"],
+            {"filestore/ab/cd": b"A" * 4000},
+        )
+        with zipfile.ZipFile(chemin) as z:
+            info = z.getinfo("filestore/ab/cd")
+            debut = info.header_offset + 30 + len(info.filename)
+        with open(chemin, "r+b") as f:
+            f.seek(debut + 2)
+            octet = f.read(1)
+            f.seek(debut + 2)
+            f.write(bytes([octet[0] ^ 0xFF]))
+        self.assertFalse(odoo_instance.verifier_sauvegarde(chemin)[0])
+
+    def test_fichier_ouvert(self):
+        chemin = self.zip(["dump.sql", "manifest.json", "filestore/a"])
+        with open(chemin, "rb") as f:
+            self.assertEqual(odoo_instance.verifier_sauvegarde(f), (True, []))
 
     def test_complete(self):
         chemin = self.zip(["dump.sql", "manifest.json", "filestore/ab/cd"])
@@ -618,9 +675,348 @@ class TestVerrou(unittest.TestCase):
             tempfile.gettempdir(),
         )
 
+    def test_fichier_en_lecture_seule_se_prend_quand_meme(self):
+        """Créé par un autre compte en 0644 : le nôtre ne peut pas l'ouvrir
+        en écriture, mais flock n'en demande pas."""
+        d = dossier_temporaire(self)
+        chemin = lock.chemin_verrou("erplibre-db-demo_db", d)
+        ecrire(chemin)
+        os.chmod(chemin, 0o444)
+        if os.access(chemin, os.W_OK):
+            self.skipTest("root écrit partout")
+        with lock.Verrou("erplibre-db-demo_db", d, strict=True):
+            with self.assertRaises(lock.VerrouPris):
+                lock.Verrou("erplibre-db-demo_db", d, strict=True).acquerir()
+
+    def test_un_fichier_existant_s_ouvre_sans_o_creat(self):
+        d = dossier_temporaire(self)
+        chemin = ecrire(lock.chemin_verrou("x", d))
+        vrai = os.open
+        drapeaux = []
+
+        def espion(p, flags, *reste):
+            drapeaux.append(flags)
+            return vrai(p, flags, *reste)
+
+        with mock.patch.object(lock.os, "open", side_effect=espion):
+            with lock.Verrou("x", d):
+                pass
+        self.assertEqual(len(drapeaux), 1)
+        self.assertFalse(drapeaux[0] & os.O_CREAT)
+        self.assertEqual(drapeaux[0] & os.O_ACCMODE, os.O_RDONLY)
+        self.assertTrue(os.path.exists(chemin))
+
+    def test_un_fichier_cree_est_lisible_par_tous(self):
+        d = dossier_temporaire(self)
+        ancien = os.umask(0o077)
+        try:
+            with lock.Verrou("x", d) as v:
+                mode = os.stat(v.chemin).st_mode & 0o777
+        finally:
+            os.umask(ancien)
+        self.assertEqual(mode, 0o644)
+
+    def test_strict_ne_se_replie_jamais(self):
+        with self.assertRaises(lock.VerrouIndisponible):
+            lock.Verrou("x", "/dossier/qui/n/existe/pas", strict=True)
+        if os.geteuid() == 0:
+            self.skipTest("root écrit partout")
+        d = dossier_temporaire(self)
+        os.chmod(d, 0o555)
+        self.addCleanup(os.chmod, d, 0o755)
+        verrou = lock.Verrou("x", d, strict=True)
+        self.assertEqual(os.path.dirname(verrou.chemin), d)
+        with self.assertRaises(lock.VerrouIndisponible) as ctx:
+            verrou.acquerir()
+        self.assertIsInstance(ctx.exception, OSError)
+
     def test_nom_refuse(self):
         with self.assertRaises(ValueError):
             lock.chemin_verrou("../x")
+
+
+class TestDataDir(unittest.TestCase):
+    """Le dossier de données qu'Odoo utilise, dans son ordre."""
+
+    HOME = "/srv/home/demo"
+
+    def data_dir(self, argv=(), config=None, env=None, existe=True):
+        return odoo_instance.data_dir(
+            list(argv),
+            config or {},
+            self.HOME,
+            "/srv/demo/odoo",
+            env or {},
+            existe=lambda p: existe,
+        )
+
+    def test_argv_l_emporte_sur_la_configuration(self):
+        config = {"data_dir": "/srv/conf_data"}
+        for argv in (["-D", "/srv/a"], ["--data-dir=/srv/a"], ["-D/srv/a"]):
+            with self.subTest(argv=argv):
+                self.assertEqual(
+                    self.data_dir(argv, config), ("/srv/a", "argv")
+                )
+
+    def test_tilde_du_compte_de_l_unite(self):
+        self.assertEqual(
+            self.data_dir(config={"data_dir": "~/odoo-data"}),
+            (self.HOME + "/odoo-data", "data_dir"),
+        )
+
+    def test_chemin_relatif_depuis_le_dossier_de_travail(self):
+        self.assertEqual(
+            self.data_dir(config={"data_dir": "data"}),
+            ("/srv/demo/odoo/data", "data_dir"),
+        )
+
+    def test_xdg_data_home_de_l_unite(self):
+        self.assertEqual(
+            self.data_dir(env={"XDG_DATA_HOME": "/srv/xdg"}),
+            ("/srv/xdg/Odoo", "XDG_DATA_HOME"),
+        )
+
+    def test_home_puis_var_lib_odoo(self):
+        self.assertEqual(
+            self.data_dir(config={"data_dir": "False"}),
+            (self.HOME + "/.local/share/Odoo", "home"),
+        )
+        self.assertEqual(
+            self.data_dir(existe=False), ("/var/lib/odoo", "default")
+        )
+
+    def test_filestore(self):
+        self.assertEqual(
+            odoo_instance.filestore("/srv/d", "demo_db"),
+            "/srv/d/filestore/demo_db",
+        )
+
+
+class TestMembres(unittest.TestCase):
+    def test_seuls_dump_et_filestore_sont_extraits(self):
+        extraire, dangereux = odoo_instance.membres_a_extraire(
+            [
+                "dump.sql",
+                "manifest.json",
+                "filestore/ab/f0",
+                "filestore/",
+                "autre.txt",
+            ]
+        )
+        self.assertEqual(extraire, ["dump.sql", "filestore/ab/f0"])
+        self.assertEqual(dangereux, [])
+
+    def test_chemins_dangereux(self):
+        for nom in ("../../etc/x", "/abs", "a\\..\\b", "filestore/../x"):
+            with self.subTest(nom=nom):
+                self.assertEqual(
+                    odoo_instance.membres_a_extraire(["dump.sql", nom])[1],
+                    [nom],
+                )
+
+
+def j(texte):
+    return datetime.datetime.strptime(texte, "%Y-%m-%d %H:%M")
+
+
+def nom(texte, base="demo"):
+    return retention.nom_sauvegarde(base, j(texte))
+
+
+class TestRetention(unittest.TestCase):
+    """La rétention, sur des dates inventées."""
+
+    def gardes(self, noms, *garde, recents=0, aujourd_hui=None):
+        supprimes = retention.a_supprimer(
+            noms,
+            "demo",
+            *garde,
+            recents_jours=recents,
+            aujourd_hui=aujourd_hui,
+        )
+        return sorted(set(noms) - supprimes), supprimes
+
+    def test_nom(self):
+        self.assertEqual(
+            nom("2031-03-01 03:04"), "demo_2031-03-01_03h04m00s.zip"
+        )
+        self.assertEqual(
+            retention.date_de("demo_2031-03-01_03h04m05s.zip", "demo"),
+            datetime.datetime(2031, 3, 1, 3, 4, 5),
+        )
+
+    def test_r1_une_par_jour_pendant_trois_mois(self):
+        jour = datetime.date(2031, 1, 1)
+        noms = []
+        while jour <= datetime.date(2031, 3, 31):
+            noms.append(nom(f"{jour.isoformat()} 03:00"))
+            jour += datetime.timedelta(days=1)
+        gardes, _ = self.gardes(noms, 7, 4, 12)
+        attendus = [nom(f"2031-03-{d:02d} 03:00") for d in range(25, 32)]
+        attendus += [
+            nom("2031-03-23 03:00"),
+            nom("2031-03-16 03:00"),
+            nom("2031-02-28 03:00"),
+            nom("2031-01-31 03:00"),
+        ]
+        self.assertEqual(gardes, sorted(attendus))
+        self.assertEqual(len(gardes), 11)
+
+    def test_r2_meme_jour(self):
+        noms = [
+            nom("2031-03-09 03:00"),
+            nom("2031-03-10 03:00"),
+            nom("2031-03-10 14:00"),
+        ]
+        gardes, supprimes = self.gardes(noms, 7, 4, 12)
+        self.assertEqual(supprimes, {nom("2031-03-10 03:00")})
+        gardes, supprimes = self.gardes(
+            noms, 7, 4, 12, recents=2, aujourd_hui=datetime.date(2031, 3, 10)
+        )
+        self.assertEqual(supprimes, set())
+
+    def test_r2_limite_des_jours_recents(self):
+        """`recents=2` le 10 : le 10 et le 9 gardés en entier, le 8 n'a que
+        sa plus récente, gardée par la règle quotidienne."""
+        noms = [
+            nom("2031-03-08 03:00"),
+            nom("2031-03-08 14:00"),
+            nom("2031-03-09 03:00"),
+            nom("2031-03-09 14:00"),
+            nom("2031-03-10 03:00"),
+        ]
+        _gardes, supprimes = self.gardes(
+            noms, 7, 0, 0, recents=2, aujourd_hui=datetime.date(2031, 3, 10)
+        )
+        self.assertEqual(supprimes, {nom("2031-03-08 03:00")})
+
+    def test_r3_une_interruption_n_efface_pas_tout(self):
+        noms = [
+            nom("2031-01-05 03:00"),
+            nom("2031-02-20 03:00"),
+            nom("2031-03-01 03:00"),
+        ]
+        gardes, _ = self.gardes(noms, 2, 0, 0)
+        self.assertEqual(
+            gardes, sorted([nom("2031-02-20 03:00"), nom("2031-03-01 03:00")])
+        )
+
+    def test_r4_semaine_iso_a_cheval_sur_deux_annees(self):
+        noms = [nom("2030-12-30 03:00"), nom("2031-01-01 03:00")]
+        # Même semaine ISO 2031-W01 : une seule gardée par la règle hebdo.
+        self.assertEqual(self.gardes(noms, 0, 2, 0)[0], [noms[1]])
+        # Deux mois : les deux gardées par la règle mensuelle.
+        self.assertEqual(self.gardes(noms, 0, 0, 2)[0], sorted(noms))
+
+    def test_r5_les_autres_noms_ne_sont_jamais_candidats(self):
+        autres = [
+            "demo_bar_2031-03-01_03h00m00s.zip",
+            "notes.zip",
+            "demo_2031-03-01.zip",
+            nom("2031-03-01 03:00") + ".partial",
+            "demo_2031-13-45_03h00m00s.zip",
+        ]
+        noms = autres + [nom("2031-01-01 03:00"), nom("2031-03-02 03:00")]
+        supprimes = retention.a_supprimer(noms, "demo", 0, 0, 0)
+        self.assertEqual(supprimes, {nom("2031-01-01 03:00")})
+        self.assertTrue(retention.est_partiel(autres[3], "demo"))
+        self.assertFalse(retention.est_partiel(autres[0], "demo"))
+
+    def test_r7_la_plus_recente_est_toujours_gardee(self):
+        noms = [nom("2031-01-01 03:00"), nom("2031-03-02 03:00")]
+        self.assertEqual(self.gardes(noms, 0, 0, 0)[0], [noms[1]])
+        with self.assertRaises(ValueError):
+            retention.a_supprimer(noms, "demo", -1, 0, 0)
+
+    def test_plus_recente_par_le_nom(self):
+        noms = [nom("2031-03-02 03:00"), nom("2031-03-10 03:00"), "x.zip"]
+        self.assertEqual(retention.plus_recente(noms, "demo"), noms[1])
+        self.assertIsNone(retention.plus_recente(["x.zip"], "demo"))
+
+
+class TestPostgres(unittest.TestCase):
+    CONFIG = {
+        "db_host": "192.0.2.10",
+        "db_port": "5433",
+        "db_user": "demo",
+        "db_password": "secret-demo",
+        "db_sslmode": "False",
+    }
+
+    def test_env_pg(self):
+        variables = postgres.env_pg(self.CONFIG)
+        self.assertEqual(variables["PGHOST"], "192.0.2.10")
+        self.assertEqual(variables["PGPASSWORD"], "secret-demo")
+        self.assertNotIn("PGSSLMODE", variables)
+        self.assertNotIn("PGOPTIONS", variables)
+        self.assertEqual(variables["PSQLRC"], "")
+        lecture = postgres.env_pg(self.CONFIG, lecture_seule=True, delai=30)
+        self.assertIn("default_transaction_read_only=on", lecture["PGOPTIONS"])
+        self.assertIn("statement_timeout=30s", lecture["PGOPTIONS"])
+
+    def test_masquer(self):
+        masque = postgres.masquer(postgres.env_pg(self.CONFIG))
+        self.assertEqual(masque["PGPASSWORD"], "***")
+        self.assertEqual(masque["PGUSER"], "demo")
+
+    def test_outil_dans_pg_path(self):
+        config = {"pg_path": "/opt/pg16/bin"}
+        self.assertEqual(
+            postgres.outil("pg_dump", config, existe=lambda p: True),
+            "/opt/pg16/bin/pg_dump",
+        )
+        self.assertEqual(
+            postgres.outil("pg_dump", config, existe=lambda p: False),
+            "pg_dump",
+        )
+        self.assertEqual(postgres.outil("psql", {"pg_path": "None"}), "psql")
+
+    def test_noms(self):
+        self.assertTrue(postgres.nom_valide("demo_db.1-a"))
+        for valeur in ("", "-x", "a b", "a;b", "x" * 64, "a=b"):
+            with self.subTest(valeur=valeur):
+                self.assertFalse(postgres.nom_valide(valeur))
+
+    def test_nom_temporaire_tient_en_63_octets(self):
+        court = postgres.nom_temporaire("demo_db", "20310301030000")
+        self.assertEqual(court, "demo_db_restoretest_20310301030000")
+        long_ = postgres.nom_temporaire("d" * 70, "20310301030000")
+        self.assertEqual(len(long_.encode()), 63)
+        self.assertTrue(long_.endswith("_restoretest_20310301030000"))
+        self.assertNotEqual(
+            long_, postgres.nom_temporaire("d" * 70, "20310301030001")
+        )
+
+    def test_version_pg(self):
+        self.assertEqual(postgres.version_pg(160004), "16.0")
+        self.assertEqual(postgres.version_pg(90624), "9.6")
+        self.assertEqual(postgres.version_pg(120017), "12.0")
+
+    def test_erreurs_graves(self):
+        lignes = [
+            "psql:<stdin>:10: ERROR:  must be owner of extension plpgsql",
+            'psql:<stdin>:11: ERROR:  extension "plpgsql" already exists',
+            'psql:<stdin>:12: ERROR:  relation "x" does not exist',
+            "NOTICE: rien",
+        ]
+        self.assertEqual(postgres.erreurs_graves(lignes), [lignes[2]])
+
+    def test_lire_json(self):
+        self.assertEqual(postgres.lire_json('\n{"a": 1}\n'), {"a": 1})
+        self.assertIsNone(postgres.lire_json("rien"))
+
+
+class TestRefus(unittest.TestCase):
+    def test_modele_traduit_par_l_appelant(self):
+        err = service.Refus("Service {unit} not found.", unit="a.service")
+        self.assertEqual(str(err), "Service a.service not found.")
+        self.assertEqual(
+            err.message(lambda k: k.replace("Service", "Unité")),
+            "Unité a.service not found.",
+        )
+        self.assertEqual(
+            service.Refus("déjà formé {x}").message(str), "déjà formé {x}"
+        )
 
 
 class TestRapport(unittest.TestCase):

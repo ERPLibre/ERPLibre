@@ -13,6 +13,11 @@ dans `appels`, ce qui permet de vérifier l'ordre arrêt < sauvegarde <
 odoo < démarrage. `start` avance l'horloge : une époque lue après lui se
 distingue d'une époque lue avant.
 
+La sauvegarde est celle d'odoo_backup, appelée en fonction : `requete`
+répond à la requête des faits de la base, `flux` joue pg_dump en écrivant
+un dump inventé, `espace_libre` rend l'espace demandé. Aucun psql ni
+pg_dump réel n'est lancé : une commande non prévue rend un code d'erreur.
+
 Seule la classe `TestLancerLong` lance de vrais processus : des python
 qui dorment, ignorent TERM ou lancent un petit-enfant, pour éprouver le
 délai, l'interruption et l'arrêt du groupe. `TestSignauxReels` pose les
@@ -22,6 +27,7 @@ vrais gestionnaires de signaux, sans processus.
 import contextlib
 import errno
 import io
+import json
 import os
 import re
 import signal
@@ -38,7 +44,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.lib_ops import lock, report  # noqa: E402
+from script.lib_ops import lock, report, service  # noqa: E402
 from script.odoo import update_module as um  # noqa: E402
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -49,6 +55,17 @@ LIGNE_ERREUR = (
 )
 LIGNE_AVERTISSEMENT = (
     "2026-01-31 12:00:00,123 4242 WARNING demo_db odoo.models: attention"
+)
+DUMP = b"-- dump\n-- PostgreSQL database dump complete\n"
+FAITS = {
+    "base": "18.0.1.3",
+    "modules": {"base": "18.0.1.3", "my_module_a": "18.0.1.0"},
+    "server_version_num": 160004,
+    "size": 1000,
+    "stored_attachments": 1,
+}
+RE_SAUVEGARDE = re.compile(
+    r"demo_db_\d{4}-\d{2}-\d{2}_\d{2}h\d{2}m\d{2}s\.zip"
 )
 
 
@@ -99,8 +116,13 @@ class FauxSysteme(um.Systeme):
         self.odoo_sortie = "fin\n"
         self.odoo_logfile = None
         self.odoo_ajout_logfile = ""
-        self.sauvegarde_issue = um.Issue(0, False, False)
-        self.sauvegarde_noms = ("dump.sql", "manifest.json", "filestore/a")
+        # pg_dump joué par `flux` : ce qu'il écrit, puis (code, stderr, tué).
+        self.dump_contenu = DUMP
+        self.dump_issue = (0, "", False)
+        self.faits = dict(FAITS)
+        self.libre = 10**12
+        self.chowns = []
+        self.verrou_pendant_sauvegarde = None
         self.lever = {}
         # Levées APRÈS que l'étape a écrit son fichier.
         self.lever_apres = {}
@@ -192,10 +214,67 @@ class FauxSysteme(um.Systeme):
     def inscriptible(self, dossier, utilisateur):
         return dossier not in self.non_inscriptibles
 
-    def creer_dossier(self, dossier, utilisateur):
+    def _dans_le_bac(self, chemin):
+        """Garde : rien ne se crée hors du dossier temporaire du test."""
+        bac = os.path.dirname(self.wd)
+        if not os.path.abspath(chemin).startswith(bac + os.sep):
+            raise AssertionError(f"création hors du test : {chemin}")
+
+    def creer_dossier(self, dossier, utilisateur, mode=0o750):
         self.appels.append(f"mkdir {dossier} {utilisateur}")
+        self._dans_le_bac(dossier)
         self._lever("mkdir")
-        os.mkdir(dossier)
+        os.mkdir(dossier, mode)
+
+    def mkdir(self, dossier, mode):
+        self.appels.append(f"mkdir {dossier}")
+        self._dans_le_bac(dossier)
+        self._lever("mkdir")
+        os.mkdir(dossier, mode)
+
+    def chown(self, chemin, utilisateur):
+        self.chowns.append((os.path.basename(chemin), utilisateur))
+
+    def fchown(self, fd, utilisateur):
+        chemin = os.readlink(f"/proc/self/fd/{fd}")
+        self.chowns.append((os.path.basename(chemin), utilisateur))
+
+    def uid(self, utilisateur):
+        return os.getuid()
+
+    def espace_libre(self, chemin):
+        return self.libre
+
+    def requete(self, argv, env, delai=60):
+        self.appels.append("requete " + " ".join(argv))
+        self.vu["requete"] = {"argv": list(argv), "env": dict(env)}
+        psql = any(os.path.basename(a) == "psql" for a in argv)
+        if psql and "json_build_object" in argv[-1]:
+            return 0, json.dumps(self.faits) + "\n", ""
+        return 1, "", "commande inattendue"
+
+    def flux(self, argv, env, recevoir, delai):
+        self.appels.append(f"backup {' '.join(argv)}")
+        self.vu["backup"] = {
+            "argv": list(argv),
+            "env": dict(env),
+            "etat": self.etat,
+            "delai": delai,
+        }
+        sonde = lock.Verrou("erplibre-db-demo_db", self.dossier_verrou)
+        try:
+            sonde.acquerir()
+        except lock.VerrouPris:
+            self.verrou_pendant_sauvegarde = True
+        else:
+            self.verrou_pendant_sauvegarde = False
+            sonde.relacher()
+        self._lever("backup")
+        recevoir(self.dump_contenu)
+        erreur = self.lever_apres.get("backup")
+        if erreur is not None:
+            raise erreur
+        return self.dump_issue
 
     def proteger_signaux(self):
         return lambda: None
@@ -204,7 +283,7 @@ class FauxSysteme(um.Systeme):
         return lambda: None
 
     def lancer_long(self, argv, cwd, env, journal, delai):
-        nature = "backup" if "--backup" in argv else "odoo"
+        nature = "odoo"
         self.appels.append(f"{nature} {' '.join(argv)}")
         self.vu[nature] = {
             "argv": list(argv),
@@ -213,18 +292,6 @@ class FauxSysteme(um.Systeme):
             "delai": delai,
         }
         self._lever(nature)
-        if nature == "backup":
-            # Comme Odoo : ./image_db/<nom>.zip, sans créer le dossier.
-            nom = argv[argv.index("--restore_image") + 1]
-            with zipfile.ZipFile(
-                os.path.join(cwd, "image_db", nom + ".zip"), "w"
-            ) as z:
-                for membre in self.sauvegarde_noms:
-                    z.writestr(membre, "x")
-            erreur = self.lever_apres.get(nature)
-            if erreur is not None:
-                raise erreur
-            return self.sauvegarde_issue
         sonde = lock.Verrou("erplibre-db-demo_db", self.dossier_verrou)
         try:
             sonde.acquerir()
@@ -249,9 +316,13 @@ def ecrire(chemin, texte=""):
 
 
 class Base(unittest.TestCase):
-    """Un checkout fabriqué : run.sh, odoo_bin.sh, config.conf, addons."""
+    """Un checkout fabriqué : run.sh, config.conf, addons, un filestore ;
+    les dossiers de sauvegarde et d'état dans le dossier temporaire."""
 
-    CONFIG = "[options]\naddons_path = addons,custom\nxmlrpc_port = 10000\n"
+    CONFIG = (
+        "[options]\naddons_path = addons,custom\nxmlrpc_port = 10000\n"
+        "data_dir = data\n"
+    )
 
     def setUp(self):
         d = tempfile.TemporaryDirectory()
@@ -259,8 +330,26 @@ class Base(unittest.TestCase):
         self.tmp = d.name
         self.wd = os.path.join(self.tmp, "odoo")
         ecrire(os.path.join(self.wd, "run.sh"), "#!/bin/bash\n")
-        ecrire(os.path.join(self.wd, "odoo_bin.sh"), "#!/bin/bash\n")
-        os.makedirs(os.path.join(self.wd, "image_db"))
+        self.filestore = os.path.join(self.wd, "data", "filestore", "demo_db")
+        ecrire(os.path.join(self.filestore, "ab", "f0"), "piece jointe")
+        self.dest = os.path.join(self.tmp, "sauvegardes")
+        self.etat = os.path.join(self.tmp, "etat")
+        os.makedirs(self.dest)
+        os.makedirs(self.etat)
+        # Les valeurs par défaut des options visent /var : chaque appel de
+        # main, même sans --backup-dest, reste dans le dossier temporaire.
+        # Elles visent d'AUTRES dossiers que ceux que `lancer` passe : une
+        # option perdue en route écrirait là, et se verrait.
+        self.dest_defaut = os.path.join(self.tmp, "dest_par_defaut")
+        self.etat_defaut = os.path.join(self.tmp, "etat_par_defaut")
+        for nom, valeur in (
+            ("DEST_PAR_DEFAUT", self.dest_defaut),
+            ("ETAT_PAR_DEFAUT", self.etat_defaut),
+        ):
+            rustine = mock.patch.object(um.odoo_backup, nom, valeur)
+            rustine.start()
+            self.addCleanup(rustine.stop)
+        self.dossier = os.path.join(self.dest, "demo_db")
         self.conf = ecrire(os.path.join(self.wd, "config.conf"), self.CONFIG)
         for nom in ("my_module_a", "my_module_b", "other_module"):
             ecrire(
@@ -279,6 +368,7 @@ class Base(unittest.TestCase):
 
     def lancer(self, *options, systeme=None):
         argv = ["--module", "my_module_*", "--log-dir", self.journaux]
+        argv += ["--backup-dest", self.dest, "--state-dir", self.etat]
         argv += list(options)
         if "--service" not in options:
             argv += ["--service", "erplibre_demo"]
@@ -301,6 +391,13 @@ class Base(unittest.TestCase):
 
     def a_appele(self, debut):
         return any(a.startswith(debut) for a in self.systeme.appels)
+
+    def fichiers_de_sauvegarde(self):
+        """Les fichiers du dossier de la base, sidecars et provisoires
+        compris ; [] s'il n'existe pas."""
+        if not os.path.isdir(self.dossier):
+            return []
+        return sorted(os.listdir(self.dossier))
 
 
 class TestOrdreEtReussite(Base):
@@ -344,35 +441,46 @@ class TestOrdreEtReussite(Base):
         self.assertEqual(self.systeme.vu["odoo"]["delai"], 1800)
 
     def test_la_commande_de_sauvegarde(self):
-        self.lancer()
-        argv = self.systeme.vu["backup"]["argv"]
-        self.assertIn("ODOO_RC=" + self.conf, argv)
-        fin = argv[argv.index("bash") :]
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+        # Même compte : pg_dump directement, sans runuser ni odoo_bin.sh.
         self.assertEqual(
-            fin[:7],
-            [
-                "bash",
-                "./odoo_bin.sh",
-                "db",
-                "--backup",
-                "--database",
-                "demo_db",
-                "--restore_image",
-            ],
+            self.systeme.vu["backup"]["argv"],
+            ["pg_dump", "--no-owner", "demo_db"],
         )
-        # Écrite sous un nom provisoire, renommée une fois relue.
-        self.assertTrue(fin[7].startswith("demo_db_pre_update_"))
-        self.assertTrue(fin[7].endswith(um.SUFFIXE_PARTIEL))
-        self.assertEqual(self.systeme.vu["backup"]["cwd"], self.wd)
-        definitif = fin[7][: -len(um.SUFFIXE_PARTIEL)] + ".zip"
+        self.assertEqual(self.systeme.vu["backup"]["delai"], 1800)
+        noms = self.fichiers_de_sauvegarde()
+        self.assertEqual(len(noms), 2, noms)
+        self.assertTrue(RE_SAUVEGARDE.fullmatch(noms[0]), noms)
+        self.assertEqual(noms[1], noms[0] + ".sha256")
+        with zipfile.ZipFile(os.path.join(self.dossier, noms[0])) as z:
+            self.assertEqual(
+                z.namelist(), ["dump.sql", "manifest.json", "filestore/ab/f0"]
+            )
+        with open(os.path.join(self.etat, "demo_db", "state.json")) as f:
+            etat = json.load(f)
         self.assertEqual(
-            os.listdir(os.path.join(self.wd, "image_db")), [definitif]
+            etat["last_success"]["file"], os.path.join(self.dossier, noms[0])
         )
+        # Sous root, tout ce qui est créé est donné au compte de l'unité.
+        self.assertIn((noms[0] + ".partial", "demo"), self.systeme.chowns)
+
+    def test_la_sauvegarde_court_sous_le_verrou_deja_tenu(self):
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+        self.assertIs(self.systeme.verrou_pendant_sauvegarde, True)
 
     def test_odoo_conf_vaut_pour_la_sauvegarde_et_la_mise_a_jour(self):
-        autre = ecrire(os.path.join(self.tmp, "autre.conf"), self.CONFIG)
+        autre = ecrire(
+            os.path.join(self.tmp, "autre.conf"),
+            self.CONFIG.replace(
+                "data_dir = data", "data_dir = " + self.wd + "/data"
+            )
+            + "db_password = secret-demo\n",
+        )
         self.assertEqual(self.lancer("--odoo-conf", autre), um.CODE_OK)
-        self.assertIn("ODOO_RC=" + autre, self.systeme.vu["backup"]["argv"])
+        vu = self.systeme.vu["backup"]
+        self.assertEqual(vu["env"]["PGPASSWORD"], "secret-demo")
+        self.assertNotIn("secret-demo", " ".join(vu["argv"]))
+        self.assertNotIn("secret-demo", self.sortie)
         argv = self.systeme.vu["odoo"]["argv"]
         # Le dernier -c est celui qu'Odoo retient.
         dernier = len(argv) - 1 - argv[::-1].index("-c")
@@ -518,32 +626,41 @@ class TestFilet(Base):
         self.assertLess(self.rang("odoo "), self.rang("systemctl start"))
 
     def test_sauvegarde_en_echec_rien_n_est_mis_a_jour(self):
-        self.systeme.sauvegarde_issue = um.Issue(1, False, False)
+        self.systeme.dump_issue = (
+            1,
+            "pg_dump: error: connexion refusée",
+            False,
+        )
         self.verifier_relance(um.CODE_ECHEC)
         self.assertFalse(self.a_appele("odoo "))
+        self.assertIn("connexion refusée", self.sortie)
         # Le zip tronqué est retiré.
-        self.assertEqual(os.listdir(os.path.join(self.wd, "image_db")), [])
+        self.assertEqual(self.fichiers_de_sauvegarde(), [])
+
+    def test_pg_dump_hors_delai(self):
+        self.systeme.dump_issue = (-9, "", True)
+        self.verifier_relance(um.CODE_ECHEC, "--timeout", "5")
+        self.assertEqual(self.systeme.vu["backup"]["delai"], 5)
+        self.assertFalse(self.a_appele("odoo "))
 
     def test_sauvegarde_incomplete(self):
-        self.systeme.sauvegarde_noms = ("manifest.json",)
+        self.systeme.dump_contenu = b"-- dump coupe\n"
         self.verifier_relance(um.CODE_ECHEC)
         self.assertFalse(self.a_appele("odoo "))
-        self.assertEqual(os.listdir(os.path.join(self.wd, "image_db")), [])
+        self.assertEqual(self.fichiers_de_sauvegarde(), [])
 
     def test_sauvegarde_tronquee_puis_exception(self):
         for erreur, code in (
             (um.Interruption(signal.SIGTERM), um.CODE_INTERROMPU),
             (RuntimeError("panne"), um.CODE_ECHEC),
+            (KeyboardInterrupt(), um.CODE_INTERROMPU),
         ):
             with self.subTest(erreur=type(erreur).__name__):
                 self.systeme = FauxSysteme(self.wd, self.verrous)
-                self.systeme.sauvegarde_noms = ("dump.sql",)
                 self.systeme.lever_apres["backup"] = erreur
                 self.verifier_relance(code)
                 self.assertFalse(self.a_appele("odoo "))
-                self.assertEqual(
-                    os.listdir(os.path.join(self.wd, "image_db")), []
-                )
+                self.assertEqual(self.fichiers_de_sauvegarde(), [])
 
     def test_sortie_qui_casse_apres_l_arret(self):
         """Terminal raccroché après l'arrêt : chaque écriture rend EIO, le
@@ -633,7 +750,10 @@ class TestFilet(Base):
         self.assertFalse(self.a_appele("odoo "))
 
     def test_sauvegarde_sans_filestore_est_un_avertissement(self):
-        self.systeme.sauvegarde_noms = ("dump.sql", "manifest.json")
+        import shutil
+
+        shutil.rmtree(self.filestore)
+        self.systeme.faits["stored_attachments"] = 0
         self.verifier_relance(um.CODE_OK)
         self.assertIn("[ATTN]", self.sortie)
 
@@ -735,6 +855,22 @@ class TestVerrouRootSimulation(Base):
         self.assertFalse(self.a_appele("systemctl stop"))
         self.assertIn("demo_db", self.erreurs)
 
+    def test_dossier_du_verrou_absent_refuse_sans_rien_arreter(self):
+        self.systeme.dossier_verrou = os.path.join(self.tmp, "absent")
+        self.assertEqual(self.lancer(), um.CODE_REFUS)
+        self.assertIn("absent", self.erreurs)
+        self.assertFalse(self.a_appele("systemctl stop"))
+
+    def test_le_verrou_de_la_base_est_partage_et_strict(self):
+        verrou = um.Systeme(
+            interactif=False, dossier_verrou=self.verrous
+        ).verrou("demo_db")
+        self.assertTrue(verrou.strict)
+        self.assertEqual(
+            verrou.chemin,
+            os.path.join(self.verrous, "erplibre-db-demo_db.lock"),
+        )
+
     def test_root_exige(self):
         self.systeme.euid_valeur = 1000
         self.assertEqual(self.lancer(), um.CODE_REFUS)
@@ -752,12 +888,13 @@ class TestVerrouRootSimulation(Base):
         ):
             self.assertFalse(self.a_appele(interdit), interdit)
         self.assertFalse(os.path.exists(self.journaux))
-        self.assertEqual(os.listdir(os.path.join(self.wd, "image_db")), [])
+        self.assertFalse(os.path.exists(self.dossier))
         self.assertIn(
             "(simulation) systemctl stop -- erplibre_demo.service", self.sortie
         )
         self.assertIn("--stop-after-init", self.sortie)
-        self.assertIn("--backup", self.sortie)
+        self.assertIn("pg_dump --no-owner demo_db", self.sortie)
+        self.assertNotIn("odoo_bin.sh", self.sortie)
 
     def test_simulation_affiche_les_commandes_executees(self):
         self.systeme.proprietes["User"] = "svc"
@@ -811,7 +948,8 @@ class TestDetection(Base):
         self.assertFalse(self.a_appele("systemctl stop"))
 
     def test_base_explicite_puis_unite_puis_db_name(self):
-        self.lancer("--db", "my_db", "--dry-run")
+        # Sans sauvegarde : le filestore inventé est celui de demo_db.
+        self.lancer("--db", "my_db", "--dry-run", "--no-backup")
         self.assertIn("-d my_db", self.sortie)
         self.systeme.proprietes["ExecStart"] = (
             "{ path=/bin/bash ; argv[]=/bin/bash "
@@ -820,7 +958,7 @@ class TestDetection(Base):
         )
         with open(self.conf, "a") as f:
             f.write("db_name = conf_db\n")
-        self.lancer("--dry-run")
+        self.lancer("--dry-run", "--no-backup")
         self.assertIn("conf_db (db_name)", self.sortie)
 
     def test_base_introuvable(self):
@@ -894,75 +1032,111 @@ class TestDetection(Base):
                         um.analyser(["--module", "base"] + option)
                 self.assertEqual(ctx.exception.code, 2)
 
-    def test_sauvegarde_impossible_sans_odoo_bin(self):
-        os.remove(os.path.join(self.wd, "odoo_bin.sh"))
-        self.assertEqual(self.lancer(), um.CODE_REFUS)
-        self.assertIn("--no-backup", self.erreurs)
-        self.assertEqual(self.lancer("--no-backup", "--dry-run"), um.CODE_OK)
-
-    def test_image_db_absent_simule_sans_rien_creer(self):
-        image_db = os.path.join(self.wd, "image_db")
-        os.rmdir(image_db)
+    def test_dossier_de_la_base_simule_sans_rien_creer(self):
         self.assertEqual(self.lancer("--dry-run"), um.CODE_OK, self.erreurs)
         self.assertIn(
-            "(simulation) mkdir -m 0750 -- " + image_db + " && chown demo: --",
+            "(simulation) mkdir -m 0700 -- "
+            + self.dossier
+            + " && chown demo: --",
             self.sortie,
         )
         self.assertLess(
             self.sortie.index("mkdir"), self.sortie.index("systemctl stop")
         )
-        self.assertFalse(os.path.exists(image_db))
+        self.assertFalse(os.path.exists(self.dossier))
         self.assertFalse(self.a_appele("mkdir"))
 
-    def test_image_db_absent_cree_avant_l_arret(self):
-        image_db = os.path.join(self.wd, "image_db")
-        os.rmdir(image_db)
+    def test_dossiers_crees_avant_l_arret_au_compte_de_l_unite(self):
         self.systeme.proprietes["User"] = "svc"
         self.assertEqual(self.lancer(), um.CODE_OK, self.erreurs)
         self.assertLess(
-            self.rang(f"mkdir {image_db} svc"), self.rang("systemctl stop")
+            self.rang(f"mkdir {self.dossier} svc"), self.rang("systemctl stop")
         )
-        self.assertEqual(len(os.listdir(image_db)), 1)
+        etat_base = os.path.join(self.etat, "demo_db")
+        self.assertLess(
+            self.rang(f"mkdir {etat_base} svc"), self.rang("systemctl stop")
+        )
+        self.assertEqual(len(self.fichiers_de_sauvegarde()), 2)
 
-    def test_image_db_absent_et_wd_non_inscriptible(self):
-        os.rmdir(os.path.join(self.wd, "image_db"))
-        self.systeme.non_inscriptibles.add(self.wd)
+    def test_dossier_non_inscriptible_refuse_avant_l_arret(self):
+        os.mkdir(self.dossier)
+        self.systeme.non_inscriptibles.add(self.dossier)
         self.assertEqual(self.lancer(), um.CODE_REFUS)
-        self.assertIn("image_db", self.erreurs)
+        self.assertIn(self.dossier, self.erreurs)
         self.assertIn("--no-backup", self.erreurs)
-        self.assertFalse(self.a_appele("mkdir"))
         self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertEqual(self.lancer("--no-backup", "--dry-run"), um.CODE_OK)
 
-    def test_image_db_creation_en_echec_rien_arrete(self):
-        os.rmdir(os.path.join(self.wd, "image_db"))
+    def test_creation_en_echec_rien_arrete(self):
         self.systeme.lever["mkdir"] = PermissionError(errno.EACCES, "refus")
         self.assertEqual(self.lancer(), um.CODE_REFUS)
-        self.assertIn("image_db", self.erreurs)
+        self.assertIn(self.dossier, self.erreurs)
         self.assertFalse(self.a_appele("systemctl stop"))
         self.assertEqual(self.systeme.etat, "active")
 
-    def test_sauvegarde_image_db_non_inscriptible(self):
-        self.systeme.non_inscriptibles.add(os.path.join(self.wd, "image_db"))
-        self.assertEqual(self.lancer(), um.CODE_REFUS)
-        self.assertIn("demo", self.erreurs)
-        self.assertFalse(self.a_appele("mkdir"))
-        self.assertFalse(self.a_appele("systemctl stop"))
-
-    def test_sauvegarde_deja_presente_refusee_avant_l_arret(self):
-        args = um.analyser(
-            ["--module", "my_module_a", "--service", "erplibre_demo"]
-        )
-        plan = um.detecter(args, self.systeme)
-        ecrire(plan.chemin_sauvegarde)
-        self.assertEqual(self.lancer(), um.CODE_REFUS)
-        self.assertIn(plan.chemin_sauvegarde, self.erreurs)
-        self.assertFalse(self.a_appele("systemctl stop"))
-
-    def test_sauvegarde_interdite_par_list_db(self):
-        with open(self.conf, "a") as f:
-            f.write("list_db = False\n")
+    def test_espace_insuffisant_refuse_avant_l_arret(self):
+        self.systeme.libre = 10
         self.assertEqual(self.lancer(), um.CODE_REFUS)
         self.assertIn("--no-backup", self.erreurs)
+        self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertFalse(self.a_appele("backup "))
+
+    def test_filestore_absent_avec_pieces_jointes_stockees(self):
+        import shutil
+
+        shutil.rmtree(self.filestore)
+        self.assertEqual(self.lancer(), um.CODE_REFUS)
+        self.assertIn(self.filestore, self.erreurs)
+        self.assertFalse(self.a_appele("systemctl stop"))
+
+    def test_base_illisible_refuse_avant_l_arret(self):
+        self.systeme.faits = {"base": None}
+        self.assertEqual(self.lancer(), um.CODE_REFUS)
+        self.assertFalse(self.a_appele("systemctl stop"))
+
+    def test_dossiers_passes_et_non_les_valeurs_par_defaut(self):
+        self.assertEqual(self.lancer(), um.CODE_OK, self.erreurs)
+        zips = [n for n in self.fichiers_de_sauvegarde() if n.endswith(".zip")]
+        self.assertEqual(len(zips), 1)
+        self.assertTrue(
+            os.path.isfile(os.path.join(self.etat, "demo_db", "state.json"))
+        )
+        for defaut in (self.dest_defaut, self.etat_defaut):
+            self.assertFalse(os.path.exists(defaut), defaut)
+
+    def test_simulation_sans_root_prevoit_les_dossiers_sous_sudo(self):
+        if os.geteuid() == 0:
+            self.skipTest("root écrit partout")
+        parent = os.path.join(self.tmp, "lecture_seule")
+        os.mkdir(parent)
+        os.chmod(parent, 0o555)
+        self.addCleanup(os.chmod, parent, 0o755)
+        dest = os.path.join(parent, "sauvegardes")
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(
+            self.lancer("--dry-run", "--backup-dest", dest),
+            um.CODE_OK,
+            self.erreurs,
+        )
+        self.assertIn("sudo mkdir -m 0755 -- " + dest, self.sortie)
+        self.assertIn(
+            "sudo chown demo: -- " + os.path.join(dest, "demo_db"),
+            self.sortie,
+        )
+        self.assertFalse(os.path.exists(dest))
+
+    def test_list_db_n_empeche_plus_la_sauvegarde(self):
+        with open(self.conf, "a") as f:
+            f.write("list_db = False\n")
+        self.assertEqual(self.lancer(), um.CODE_OK, self.erreurs)
+        self.assertTrue(self.a_appele("backup "))
+
+    def test_simulation_par_un_autre_compte_estimation_inconnue(self):
+        self.systeme.euid_valeur = 1000
+        self.systeme.proprietes["User"] = "svc"
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_OK, self.erreurs)
+        self.assertIn(um.t("unknown (requires sudo)"), self.sortie)
+        self.assertFalse(self.a_appele("requete "))
 
 
 class TestLancerLong(unittest.TestCase):
@@ -1329,18 +1503,77 @@ class TestCreerDossier(unittest.TestCase):
 
     def test_mkdir_puis_chown_au_compte(self):
         with (
-            mock.patch.object(um.pwd, "getpwnam", return_value=self.compte),
-            mock.patch.object(um.os, "chown") as chown,
+            mock.patch.object(
+                service.pwd, "getpwnam", return_value=self.compte
+            ),
+            mock.patch.object(service.os, "fchown") as fchown,
         ):
-            um.Systeme(interactif=False).creer_dossier(self.dossier, "svc")
+            um.Systeme(interactif=False).creer_dossier(
+                self.dossier, "svc", 0o700
+            )
         self.assertTrue(os.path.isdir(self.dossier))
-        chown.assert_called_once_with(self.dossier, 4321, 8765)
+        self.assertEqual(os.stat(self.dossier).st_mode & 0o777, 0o700)
+        self.assertEqual(fchown.call_count, 1)
+        self.assertEqual(fchown.call_args[0][1:], (4321, 8765))
+
+    def remplacer_apres_mkdir(self, par):
+        """Un os.mkdir qui, le dossier créé, met `par(chemin)` à sa place —
+        ce que le compte propriétaire du parent ferait avant le chown."""
+        vrai = os.mkdir
+
+        def mkdir(chemin, mode=0o777):
+            vrai(chemin, mode)
+            os.rmdir(chemin)
+            par(chemin)
+
+        return mock.patch.object(service.os, "mkdir", mkdir)
+
+    def test_nom_remplace_par_un_lien(self):
+        victime = os.path.join(os.path.dirname(self.dossier), "victime")
+        os.mkdir(victime)
+        os.chmod(victime, 0o755)
+        for appel in (
+            lambda s: s.creer_dossier(self.dossier, "svc", 0o700),
+            lambda s: s.mkdir(self.dossier, 0o700),
+        ):
+            with self.subTest(appel=appel):
+                with (
+                    mock.patch.object(
+                        service.pwd, "getpwnam", return_value=self.compte
+                    ),
+                    mock.patch.object(service.os, "fchown") as fchown,
+                    self.remplacer_apres_mkdir(
+                        lambda c: os.symlink(victime, c)
+                    ),
+                ):
+                    with self.assertRaises(OSError):
+                        appel(um.Systeme(interactif=False))
+                fchown.assert_not_called()
+                self.assertEqual(os.stat(victime).st_mode & 0o777, 0o755)
+                os.remove(self.dossier)
+
+    def test_nom_remplace_par_le_dossier_d_un_autre_compte(self):
+        with (
+            mock.patch.object(
+                service.pwd, "getpwnam", return_value=self.compte
+            ),
+            mock.patch.object(service.os, "fchown") as fchown,
+            mock.patch.object(
+                service.os, "geteuid", return_value=os.geteuid() + 1
+            ),
+        ):
+            with self.assertRaises(OSError):
+                um.Systeme(interactif=False).creer_dossier(self.dossier, "svc")
+        fchown.assert_not_called()
+        self.assertFalse(os.path.exists(self.dossier))
 
     def test_chown_en_echec_retire_le_dossier(self):
         with (
-            mock.patch.object(um.pwd, "getpwnam", return_value=self.compte),
             mock.patch.object(
-                um.os, "chown", side_effect=PermissionError("refus")
+                service.pwd, "getpwnam", return_value=self.compte
+            ),
+            mock.patch.object(
+                service.os, "fchown", side_effect=PermissionError("refus")
             ),
         ):
             with self.assertRaises(PermissionError):
@@ -1348,7 +1581,9 @@ class TestCreerDossier(unittest.TestCase):
         self.assertFalse(os.path.exists(self.dossier))
 
     def test_compte_inconnu_ne_cree_rien(self):
-        with mock.patch.object(um.pwd, "getpwnam", side_effect=KeyError("x")):
+        with mock.patch.object(
+            service.pwd, "getpwnam", side_effect=KeyError("x")
+        ):
             with self.assertRaises(KeyError):
                 um.Systeme(interactif=False).creer_dossier(self.dossier, "svc")
         self.assertFalse(os.path.exists(self.dossier))
@@ -1439,7 +1674,24 @@ class TestPythonAncien(unittest.TestCase):
         os.path.join(RACINE, "script", "lib_ops", "odoo_instance.py"),
         os.path.join(RACINE, "script", "lib_ops", "lock.py"),
         os.path.join(RACINE, "script", "lib_ops", "report.py"),
+        os.path.join(RACINE, "script", "lib_ops", "service.py"),
+        os.path.join(RACINE, "script", "lib_ops", "postgres.py"),
+        os.path.join(RACINE, "script", "lib_ops", "retention.py"),
+        os.path.join(RACINE, "script", "database", "odoo_backup.py"),
+        os.path.join(RACINE, "script", "systemd", "install_backup_timer.py"),
     ]
+
+    # API absentes de Python 3.7 : la syntaxe passe le garde, l'appel
+    # échoue à l'exécution.
+    API_RECENTES = (
+        "shlex.join",
+        ".removeprefix(",
+        ".removesuffix(",
+        "fromisocalendar",
+        "dirs_exist_ok",
+        "math.dist(",
+        "functools.cache(",
+    )
 
     def lire(self, chemin):
         with open(chemin, encoding="utf-8") as f:
@@ -1470,6 +1722,13 @@ class TestPythonAncien(unittest.TestCase):
         self.assertEqual(imbrications_pep701("x = f\"{d['k']}\"\n"), [])
         self.assertEqual(imbrications_pep701('x = f"""{d["k"]}"""\n'), [])
 
+    def test_aucune_api_posterieure_a_37(self):
+        for chemin in self.FICHIERS:
+            with self.subTest(fichier=os.path.basename(chemin)):
+                source = self.lire(chemin)
+                for api in self.API_RECENTES:
+                    self.assertNotIn(api, source)
+
     def test_annotations_differees(self):
         for chemin in self.FICHIERS:
             with self.subTest(fichier=os.path.basename(chemin)):
@@ -1478,10 +1737,17 @@ class TestPythonAncien(unittest.TestCase):
                 )
 
     def test_executable(self):
-        chemin = self.FICHIERS[0]
-        self.assertTrue(os.access(chemin, os.X_OK))
-        with open(chemin, "rb") as f:
-            self.assertEqual(f.read(2), b"#!")
+        for chemin in (
+            self.FICHIERS[0],
+            os.path.join(RACINE, "script", "database", "odoo_backup.py"),
+            os.path.join(
+                RACINE, "script", "systemd", "install_backup_timer.py"
+            ),
+        ):
+            with self.subTest(fichier=os.path.basename(chemin)):
+                self.assertTrue(os.access(chemin, os.X_OK))
+                with open(chemin, "rb") as f:
+                    self.assertEqual(f.read(2), b"#!")
 
 
 if __name__ == "__main__":
