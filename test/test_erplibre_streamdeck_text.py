@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Pure helpers of the deck program: text cutting, Claude tile colour and
-label, the TODO menu parser, the D-Bus recheck. They run against the
+label, the TODO menu parser. They run against the
 single file until the module that owns each helper exists."""
 
 import os
@@ -15,46 +15,6 @@ import streamdeck_stubs as S  # noqa: E402
 GT = S.load_monolith()
 S.install()
 from erplibre_streamdeck.ui import text  # noqa: E402
-
-
-class RecheckDbusTest(unittest.TestCase):
-    """Tiler._recheck_dbus on a bare Tiler (no deck), with the gdbus probe
-    replaced by a counter."""
-
-    def setUp(self):
-        self.calls = 0
-        self.answer = False
-
-        def probe():
-            self.calls += 1
-            return self.answer
-
-        original = GT._check_dbus_available
-        GT._check_dbus_available = probe
-        self.addCleanup(setattr, GT, "_check_dbus_available", original)
-        self.tiler = GT.Tiler.__new__(GT.Tiler)
-        self.tiler.dbus_ok = False
-        self.tiler._dbus_checked_at = 100.0
-
-    def test_waits_for_the_period(self):
-        self.assertFalse(
-            self.tiler._recheck_dbus(100.0 + GT.DBUS_RECHECK_SEC - 0.1))
-        self.assertEqual(self.calls, 0)
-
-    def test_still_missing_checks_again_one_period_later(self):
-        later = 100.0 + GT.DBUS_RECHECK_SEC
-        self.assertFalse(self.tiler._recheck_dbus(later))
-        self.assertEqual(self.calls, 1)
-        self.assertFalse(self.tiler._recheck_dbus(later + 1.0))
-        self.assertEqual(self.calls, 1)
-
-    def test_appearing_returns_true_once_then_stops_checking(self):
-        self.answer = True
-        later = 100.0 + GT.DBUS_RECHECK_SEC
-        self.assertTrue(self.tiler._recheck_dbus(later))
-        self.assertTrue(self.tiler.dbus_ok)
-        self.assertFalse(self.tiler._recheck_dbus(later * 10))
-        self.assertEqual(self.calls, 1)
 
 
 class ChunkTextForCellsTest(unittest.TestCase):
