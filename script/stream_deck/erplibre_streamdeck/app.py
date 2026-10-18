@@ -23,11 +23,22 @@ from erplibre_streamdeck import loader, paths, settings
 from erplibre_streamdeck.kernel import Kernel
 from erplibre_streamdeck.ui import render
 
+# How long the shutdown waits for the kernel lock. A key callback holds
+# it across a blocking plugin call (a dialog may wait minutes); past
+# this delay the plugins are shut down without it, so the deck is reset
+# before systemd's stop timeout kills the service.
+SHUTDOWN_LOCK_SEC = 5.0
+
+
+def _journal(msg):
+    print(f"[erplibre-home] {msg}", file=sys.stderr, flush=True)
+
 
 def read_plugins_off():
     """DECK_PLUGINS_OFF from streamdeck.conf, read by the settings
     library the installer and the service use; [] when it cannot be
-    read (one journal line)."""
+    read: bash missing, too slow, or the library failing (one journal
+    line, with the library's stderr)."""
     try:
         done = subprocess.run(
             ["bash", "-c", '. "$0" && deck_plugins_off',
@@ -35,8 +46,13 @@ def read_plugins_off():
             capture_output=True, text=True, timeout=10,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        print(f"[erplibre-home] DECK_PLUGINS_OFF unreadable: {exc}",
-              file=sys.stderr, flush=True)
+        _journal(f"DECK_PLUGINS_OFF unreadable: {exc}")
+        return []
+    if done.returncode != 0:
+        _journal(
+            f"DECK_PLUGINS_OFF unreadable: exit {done.returncode}: "
+            f"{done.stderr.strip()}"
+        )
         return []
     return [line for line in done.stdout.splitlines() if line]
 
@@ -44,15 +60,33 @@ def read_plugins_off():
 def build(deck, *, plugins_off=(), user_dir=None):
     render.STYLE.restore(settings.load())
     plugins, report = loader.load(off=plugins_off, user_dir=user_dir)
-    for pid, status, detail in report.entries:
-        if status != "active":
-            print(f"[erplibre-home] plugin {pid}: {status}: {detail}",
-                  file=sys.stderr, flush=True)
+    for entry in report.entries:
+        if entry[1] != "active":
+            _journal(f"plugin {loader.Report.line(*entry)}")
     kernel = Kernel(deck, plugins)
     for pid, reason in kernel.refused:
-        print(f"[erplibre-home] plugin {pid}: refused: {reason}",
-              file=sys.stderr, flush=True)
+        _journal(f"plugin {pid}: refused: {reason}")
     return kernel
+
+
+def _shutdown(kernel, deck):
+    """Shut the plugins down under the kernel lock, or without it after
+    SHUTDOWN_LOCK_SEC (one journal line); the deck is reset and closed
+    whatever the shutdown raises."""
+    locked = kernel.lock.acquire(timeout=SHUTDOWN_LOCK_SEC)
+    if not locked:
+        _journal(
+            f"kernel lock still held after {SHUTDOWN_LOCK_SEC:g} s: "
+            "shutting the plugins down without it"
+        )
+    try:
+        kernel.shutdown()
+    finally:
+        if locked:
+            kernel.lock.release()
+        with deck:
+            deck.reset()
+            deck.close()
 
 
 def main():
@@ -88,8 +122,4 @@ def main():
         pass
     finally:
         kernel.running = False
-        with kernel.lock:
-            kernel.shutdown()
-        with deck:
-            deck.reset()
-            deck.close()
+        _shutdown(kernel, deck)

@@ -88,9 +88,11 @@ class Plugin:
     home_period: float = 0.0
     setup: Callable | None = None
     # shutdown(ctx) runs with the kernel lock held, like every other
-    # callable: it must not take ctx.locked() nor wait for a thread
-    # that does (the lock is not reentrant: the deck would never be
-    # reset). It may terminate processes and signal threads to stop.
+    # callable, or without it when a key callback still holds it after
+    # app.SHUTDOWN_LOCK_SEC. It must not take ctx.locked() nor wait for
+    # a thread that does: the lock is not reentrant, and the deck is
+    # reset only once every shutdown has returned. It may terminate
+    # processes and signal threads to stop.
     shutdown: Callable | None = None
 
 
