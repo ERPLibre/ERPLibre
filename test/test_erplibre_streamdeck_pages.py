@@ -33,6 +33,8 @@ import streamdeck_stubs as S  # noqa: E402
 # Longer than the result flash (0.5 s): a press inside the flash is
 # dropped, so `tap` waits this long after each press.
 FLASH_GAP = 0.6
+# One loop pass advances the clock by the kernel's LOOP_SEC.
+LOOP_SEC = 0.3
 
 TRUE = "(true,)\n"
 INTROSPECT_OK = (
@@ -112,6 +114,8 @@ HOME_LABELS = (
     "TILE", "TIMER", "DEV\nRELOAD", "SOUND", "LAYOUT", "A11Y", "BT",
     "TRANSL", "TODO",
 )
+# Home keys whose press runs as a job (kernel run_blocking).
+HOME_JOBS = {"DEV\nRELOAD"}
 
 EMPTY = (
     "EMPTY: extension present, no session, no timer, no window, wpctl "
@@ -255,6 +259,17 @@ def tap(h, key):
     h.wait(FLASH_GAP)
 
 
+def tap_job(h, key):
+    """Press a key whose action runs as a job: the press shows "…", the
+    job runs, one loop pass hands its result back. The clock ends where
+    `tap` leaves it, past the flash that result starts: the steps after
+    it see the same time (a TODO log name carries the wall clock)."""
+    h.press(key)
+    h.run_threads()
+    h.loop(1)
+    h.wait(FLASH_GAP - LOOP_SEC)
+
+
 def face_key(h, text):
     """The first key showing `text`, or None when the deck shows none."""
     for key, face in enumerate(h.deck.rendering()):
@@ -333,7 +348,7 @@ class Scenarios:
                 key = face_key(h, label)
                 if key is None:
                     continue
-                tap(h, key)
+                (tap_job if label in HOME_JOBS else tap)(h, key)
                 h.goto("idle")
             tap(h, face_key(h, "MIC\nOFF"))
             key = face_key(h, "*\n1")
@@ -359,7 +374,9 @@ class Scenarios:
         def script(h):
             key = face_key(h, "DEV\nRELOAD")
             h.press(key)
-            h.press(key)
+            h.run_threads()
+            h.loop(1)  # the result flashes OK
+            h.press(key)  # inside the flash: dropped
             h.wait(FLASH_GAP)
             h.loop(2)
 

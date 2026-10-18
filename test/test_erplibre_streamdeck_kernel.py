@@ -696,7 +696,6 @@ class JobTest(KernelCase):
         k.step(self.clock.now)
         self.assertEqual(1, len(ticks))
 
-
     def test_busy_plugin_poll_is_skipped(self):
         reads, actives = [], []
         poll = Poll(
