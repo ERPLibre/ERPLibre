@@ -79,6 +79,8 @@ def _bt_list_paired():
 
 
 def _bt_connect(mac):
+    """Connect a paired device; True on exit 0. Runs as a job, outside
+    the lock: only `mac`."""
     if not shutil.which("bluetoothctl"):
         return False
     try:
@@ -93,6 +95,8 @@ def _bt_connect(mac):
 
 
 def _bt_disconnect(mac):
+    """Disconnect a device; True on exit 0. Runs as a job, outside the
+    lock: only `mac`."""
     if not shutil.which("bluetoothctl"):
         return False
     try:
@@ -109,7 +113,8 @@ def _bt_disconnect(mac):
 
 
 def _bt_set_power(on):
-    """Toggle bluetooth power. Returns True on success."""
+    """Switch the adapter on or off; True on success. Runs as a job,
+    outside the lock: only `on`."""
     if shutil.which("bluetoothctl"):
         try:
             r = subprocess.run(
@@ -183,6 +188,12 @@ def _render(ctx):
             ctx.set_key(key, colors.EMPTY, "")
 
 
+def _render_then(ctx, _result, _error):
+    """then() of a bluetooth job: the page is drawn again from the
+    adapter, with no flash, success or not."""
+    ctx.render()
+
+
 def _handle(ctx, key):
     bk = ctx.keys
     if not bk:
@@ -199,8 +210,7 @@ def _handle(ctx, key):
             )
             ctx.render()
             return
-        _bt_set_power(not current)
-        ctx.render()
+        ctx.run_blocking(lambda: _bt_set_power(not current), _render_then)
         return
     # A device key is live even when blank (adapter off): the listing is
     # read again and the press acts on the device it finds.
@@ -209,11 +219,8 @@ def _handle(ctx, key):
         devices = _bt_list_paired()
         if idx < len(devices):
             mac, _name, connected = devices[idx]
-            if connected:
-                _bt_disconnect(mac)
-            else:
-                _bt_connect(mac)
-            ctx.render()
+            switch = _bt_disconnect if connected else _bt_connect
+            ctx.run_blocking(lambda: switch(mac), _render_then)
 
 
 PLUGIN = Plugin(
