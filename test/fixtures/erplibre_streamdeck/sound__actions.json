@@ -5,8 +5,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -56,9 +55,9 @@
       "dev_reload"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -140,10 +139,75 @@
     ]
    },
    {
+    "do": "loop 1",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "sound",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "DECK\nTOO\nSMALL",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
     "do": "press 0",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -192,9 +256,9 @@
       "dev_reload"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -277,9 +341,7 @@
    },
    {
     "do": "press 3",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -328,9 +390,9 @@
       "dev_reload"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -416,8 +478,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -472,9 +533,9 @@
       "sound"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -571,10 +632,85 @@
     ]
    },
    {
+    "do": "loop 1",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "sound",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "DECK\nTOO\nSMALL",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
     "do": "press 0",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -628,9 +764,9 @@
       "sound"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -728,9 +864,7 @@
    },
    {
     "do": "press 4",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -784,9 +918,9 @@
       "sound"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -887,8 +1021,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -973,9 +1106,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "d4a017",
@@ -1001,6 +1134,118 @@
    },
    {
     "do": "goto sound",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "sound",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "643cb4",
+      "SINK\n?",
+      null
+     ],
+     [
+      "966432",
+      "SRC\n?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "2878c8",
+      "VOL\n-5%",
+      null
+     ],
+     [
+      "2878c8",
+      "VOL\n+5%",
+      null
+     ],
+     [
+      "00b428",
+      "OUT",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "966432",
+      "MIC\n-5%",
+      null
+     ],
+     [
+      "966432",
+      "MIC\n+5%",
+      null
+     ],
+     [
+      "00b428",
+      "MIC",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
     "effects": [
      "wpctl get-volume @DEFAULT_AUDIO_SINK@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
@@ -1118,9 +1363,7 @@
    },
    {
     "do": "press 0",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1204,9 +1447,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "d4a017",
@@ -1232,12 +1475,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1468,12 +1706,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1704,12 +1937,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1939,12 +2167,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2174,12 +2397,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2409,12 +2627,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2644,12 +2857,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2879,12 +3087,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3114,12 +3317,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3234,8 +3432,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -3390,9 +3587,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "14141e",
@@ -3433,6 +3630,203 @@
    },
    {
     "do": "goto sound",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "sound",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "643cb4",
+      "SINK\n?",
+      null
+     ],
+     [
+      "966432",
+      "SRC\n?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "2878c8",
+      "VOL\n-5%",
+      null
+     ],
+     [
+      "2878c8",
+      "VOL\n+5%",
+      null
+     ],
+     [
+      "00b428",
+      "OUT",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "966432",
+      "MIC\n-5%",
+      null
+     ],
+     [
+      "966432",
+      "MIC\n+5%",
+      null
+     ],
+     [
+      "00b428",
+      "MIC",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
     "effects": [
      "wpctl get-volume @DEFAULT_AUDIO_SINK@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
@@ -3635,9 +4029,7 @@
    },
    {
     "do": "press 0",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3791,9 +4183,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "14141e",
@@ -3834,12 +4226,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -4240,12 +4627,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -4646,12 +5028,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5051,12 +5428,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5456,12 +5828,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5861,12 +6228,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -6266,12 +6628,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -6671,12 +7028,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -7076,12 +7428,7 @@
    },
    {
     "do": "goto sound",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SINK@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl status",
-     "wpctl status"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {

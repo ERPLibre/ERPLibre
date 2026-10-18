@@ -691,6 +691,84 @@ class SlowKeyTest(unittest.TestCase):
         self.assertEqual("idle", h.target.page())
 
 
+class CachedRenderTest(unittest.TestCase):
+    """Renders and home faces draw from what the plugins' polls stored:
+    no render runs a process, and a poll stores only what changed."""
+
+    def start(self, world, cols=5, rows=3):
+        h = S.Harness(S.PackageTarget(), cols, rows)
+        h.__enter__()
+        self.addCleanup(h.__exit__, None, None, None)
+        world(h)
+        h.boot()
+        return h
+
+    def assert_render_runs_nothing(self, h, page):
+        """Render `page` with subprocess.run raising: it stays shown
+        (a raising render sends the deck home) and runs no process."""
+        refuse = mock.Mock(side_effect=AssertionError("process in render"))
+        with mock.patch("subprocess.run", refuse):
+            h.target.kernel.render()
+        self.assertEqual(0, refuse.call_count)
+        self.assertEqual(page, h.target.page())
+
+    def poll(self, plugin, index):
+        return plugin.PLUGIN.polls[index]
+
+    def test_sound_page_and_mic_face_read_the_cache(self):
+        h = self.start(P.full_world)
+        h.loop(1)
+        self.assert_render_runs_nothing(h, "idle")
+        self.assertEqual("MIC\nOFF", h.deck.screen[10][1])
+        h.goto("sound")
+        h.loop(1)
+        self.assert_render_runs_nothing(h, "sound")
+        self.assertEqual("OUT\n40%", h.deck.screen[8][1])
+        self.assertEqual("SINK\nStereo", h.deck.screen[1][1])
+
+    def test_sound_without_data_shows_what_failing_wpctl_showed(self):
+        h = self.start(P.full_world)
+        self.assertEqual("MIC\nN/A", h.deck.screen[10][1])
+        h.goto("sound")
+        self.assertEqual("OUT", h.deck.screen[8][1])
+        self.assertEqual("SINK\n?", h.deck.screen[1][1])
+        self.assertEqual("MIC", h.deck.screen[13][1])
+
+    def test_sound_polls_read_wpctl_and_store_changes(self):
+        h = self.start(P.full_world)
+        page, mic = self.poll(sound, 0), self.poll(sound, 1)
+        audio = page.read()
+        self.assertEqual(
+            (40, False, 65, True, "Stereo", "Mic"), audio
+        )
+        self.assertEqual((65, True), mic.read())
+        ctx = h.target.kernel.ctx("sound")
+        self.assertTrue(page.store(ctx, audio))
+        self.assertFalse(page.store(ctx, audio))
+        self.assertTrue(mic.store(ctx, (65, True)))
+        self.assertFalse(mic.store(ctx, (65, True)))
+        self.assertTrue(mic.store(ctx, (65, False)))
+
+    def test_sound_polls_run_where_their_data_shows(self):
+        h = self.start(P.full_world)
+        ctx = h.target.kernel.ctx("sound")
+        page, mic = self.poll(sound, 0), self.poll(sound, 1)
+        self.assertEqual((False, True), (page.active(ctx), mic.active(ctx)))
+        h.goto("sound")
+        self.assertEqual((True, False), (page.active(ctx), mic.active(ctx)))
+
+    def test_sound_press_shows_the_new_level_at_once(self):
+        h = self.start(P.full_world)
+        h.goto("sound")
+        h.loop(1)
+        h.proc.answer("wpctl get-volume @DEFAULT_AUDIO_SINK@",
+                      "Volume: 0.45\n")
+        h.press(7)  # VOL +5%
+        self.assertIn("wpctl set-volume --limit 1.5 @DEFAULT_AUDIO_SINK@ "
+                      "5%+", h.steps[-1]["effects"])
+        self.assertEqual("OUT\n45%", h.deck.screen[8][1])
+
+
 class SettingsKeepTest(unittest.TestCase):
     def test_font_scale_save_keeps_other_keys(self):
         stored = {"translator_llm": "ollama", "font_scale": 1.0}

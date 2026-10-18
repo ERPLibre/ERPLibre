@@ -5,8 +5,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -199,9 +198,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {},
     "page": "idle",
     "screen": [
@@ -242,8 +239,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -486,9 +482,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {},
     "page": "idle",
     "screen": [
@@ -539,8 +533,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -958,9 +951,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {},
     "page": "idle",
     "screen": [
@@ -1046,8 +1037,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -1890,9 +1880,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {},
     "page": "idle",
     "screen": [

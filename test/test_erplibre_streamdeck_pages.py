@@ -352,6 +352,7 @@ class Scenarios:
                     continue
                 (tap_job if label in HOME_JOBS else tap)(h, key)
                 h.goto("idle")
+            h.loop(1)  # the mic poll reads the source
             tap(h, face_key(h, "MIC\nOFF"))
             key = face_key(h, "*\n1")
             if key is not None:
@@ -447,6 +448,7 @@ class Scenarios:
     def test_sound_actions(self):
         def script(h):
             h.goto("sound")
+            h.loop(1)  # the page poll reads the levels
             for key in shown_keys(h):
                 tap(h, key)
                 h.goto("sound")

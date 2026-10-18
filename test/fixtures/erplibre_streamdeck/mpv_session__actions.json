@@ -5,8 +5,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -56,9 +55,9 @@
       "dev_reload"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -277,9 +276,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -328,9 +325,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "00c83c",
@@ -549,9 +546,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -600,9 +595,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -1161,8 +1156,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -1217,9 +1211,9 @@
       "sound"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -1473,9 +1467,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1529,9 +1521,9 @@
       "sound"
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "00c83c",
@@ -1785,9 +1777,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1841,9 +1831,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "2864b4",
@@ -2487,8 +2477,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -2573,9 +2562,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "d4a017",
@@ -2939,9 +2928,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3025,9 +3012,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "d4a017",
@@ -3391,9 +3378,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3477,9 +3462,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "d4a017",
@@ -4408,8 +4393,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -4564,9 +4548,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "14141e",
@@ -5200,9 +5184,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5356,9 +5338,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "14141e",
@@ -5992,9 +5974,7 @@
    },
    {
     "do": "loop 1",
-    "effects": [
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -6148,9 +6128,9 @@
       null
      ],
      [
-      "c80000",
-      "MIC\nOFF",
-      "mic_off"
+      "642828",
+      "MIC\nN/A",
+      null
      ],
      [
       "14141e",

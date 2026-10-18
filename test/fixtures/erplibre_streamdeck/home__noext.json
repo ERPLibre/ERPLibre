@@ -5,8 +5,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -78,7 +77,6 @@
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
     ],
     "files": {},
@@ -121,8 +119,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -195,7 +192,6 @@
      "gdbus introspect",
      "gdbus introspect",
      "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
@@ -257,8 +253,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -366,7 +361,6 @@
      "gdbus introspect",
      "gdbus introspect",
      "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
@@ -463,8 +457,7 @@
    {
     "do": "boot",
     "effects": [
-     "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+     "gdbus introspect"
     ],
     "files": {},
     "page": "idle",
@@ -657,7 +650,6 @@
      "gdbus introspect",
      "gdbus introspect",
      "gdbus introspect",
-     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
      "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
