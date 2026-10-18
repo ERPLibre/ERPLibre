@@ -33,7 +33,7 @@ def main():
 
 
 def list_plugins():
-    _, report = loader.load(off=app.read_plugins_off())
+    _, report = loader.load(off=app.read_deck_settings()["plugins_off"])
     for line in report.lines():
         print(line)
     return 0

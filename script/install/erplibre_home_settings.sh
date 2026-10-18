@@ -96,6 +96,25 @@ deck_plugins_off() {
     return 0
 }
 
+# deck_session_refresh_sec écrit la période, en secondes, à laquelle les
+# pages de session du deck se rafraîchissent : DECK_SESSION_REFRESH_SEC,
+# blancs de bord retirés, quand c'est un nombre décimal de 0.5 à 60 inclus ;
+# 1 sinon (clé absente, valeur vide, hors bornes ou pas un nombre). Sort
+# toujours en 0.
+deck_session_refresh_sec() {
+    local value
+    value="$(deck_setting DECK_SESSION_REFRESH_SEC 1)"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "${value}" =~ ^([0-9]+\.?[0-9]*|\.[0-9]+)$ ]] &&
+        awk -v v="${value}" 'BEGIN { exit !(v >= 0.5 && v <= 60) }'; then
+        echo "${value}"
+    else
+        echo 1
+    fi
+    return 0
+}
+
 # Vrai quand un périphérique USB du vendeur 0fd9 (Elgato) est branché, lu
 # dans les idVendor de sysfs. ERPLIBRE_HOME_SYSFS remplace /sys, pour les
 # tests.

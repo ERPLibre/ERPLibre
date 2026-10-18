@@ -80,6 +80,11 @@ class StreamDeckMenuMixin:
                     "Plugins on/off - Enable or disable deck plugins"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Session refresh - Period of the session pages"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -111,6 +116,8 @@ class StreamDeckMenuMixin:
                 self._streamdeck_games_setting()
             elif status == "12":
                 self._streamdeck_plugins_setting()
+            elif status == "13":
+                self._streamdeck_session_refresh_setting()
             else:
                 print(t("Command not found !"))
 
@@ -334,6 +341,48 @@ class StreamDeckMenuMixin:
             return
         etat = t("on") if choix not in coupes else t("off")
         print(f"{choix}: {etat}")
+        code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
+        if code == 0:
+            self._streamdeck_systemctl("restart", service.UNIT_NAME)
+
+    def _streamdeck_session_refresh_setting(self):
+        """Réécrit DECK_SESSION_REFRESH_SEC, la période des pages de
+        session du deck. La période en vigueur se montre, celle du fichier
+        ou 1 quand la clé manque ; une valeur invalide du fichier se montre
+        comme telle, avec la période 1 que le deck lui donne. Une réponse
+        vide garde la valeur. Une réponse que parse_session_refresh refuse
+        dit les bornes et laisse le fichier intact. Le deck lit le réglage
+        au démarrage : l'unité, quand elle tourne, se relance pour le
+        prendre en compte."""
+        chemin = service.settings_path()
+        brut = service.read_settings(chemin)["DECK_SESSION_REFRESH_SEC"]
+        if service.parse_session_refresh(brut) is None:
+            affiche = "%r (%s)" % (brut, t("invalid"))
+        else:
+            affiche = brut.strip()
+        print(f"{t('Session refresh:')} {affiche} s")
+        bas, haut = service.SESSION_REFRESH_RANGE
+        reponse = input(
+            t("New period in seconds ({bas} to {haut}), Enter to keep: ")
+            .replace("{bas}", f"{bas:g}")
+            .replace("{haut}", f"{haut:g}")
+        ).strip()
+        if not reponse:
+            print(t("Unchanged."))
+            return
+        if service.parse_session_refresh(reponse) is None:
+            print(
+                t("Invalid period, expected {bas} to {haut} seconds.")
+                .replace("{bas}", f"{bas:g}")
+                .replace("{haut}", f"{haut:g}")
+            )
+            return
+        if not service.write_settings(
+            chemin, {"DECK_SESSION_REFRESH_SEC": reponse}
+        ):
+            print(t("Unchanged."))
+            return
+        print(f"{t('Session refresh:')} {reponse} s")
         code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
         if code == 0:
             self._streamdeck_systemctl("restart", service.UNIT_NAME)
