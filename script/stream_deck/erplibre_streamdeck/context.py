@@ -68,7 +68,9 @@ class Context:
 
     def locked(self):
         """The kernel lock, for a thread the plugin started:
-        `with ctx.locked(): ...`."""
+        `with ctx.locked(): ...`. Never from a plugin callable: it
+        already runs with the lock held, and the lock is not
+        reentrant."""
         return self._kernel.lock
 
     def log(self, msg):
