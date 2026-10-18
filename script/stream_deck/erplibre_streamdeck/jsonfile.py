@@ -7,6 +7,19 @@ import os
 import tempfile
 
 
+def _read_umask():
+    """The process umask, read by setting it and restoring it: done once
+    at import, since the pair is not atomic and a file another thread
+    creates in between would get the wrong mode."""
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
+# The mode a new file gets is 0o666 minus this mask, as open() gives.
+_UMASK = _read_umask()
+
+
 def write_atomic(path, data, indent=2):
     """Write `data` as JSON to `path` through a temporary file in the
     same directory, flushed and fsynced, then os.replace: a reader sees
@@ -24,7 +37,7 @@ def write_atomic(path, data, indent=2):
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(tmp, 0o666 & ~_umask())
+        os.chmod(tmp, 0o666 & ~_UMASK)
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -33,9 +46,3 @@ def write_atomic(path, data, indent=2):
             pass
         raise
 
-
-def _umask():
-    """The process umask (read by setting it and restoring it)."""
-    mask = os.umask(0)
-    os.umask(mask)
-    return mask
