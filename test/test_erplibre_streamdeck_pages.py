@@ -485,13 +485,17 @@ class Scenarios:
         self.run_all("a11y__actions", EMPTY, empty_world, script,
                      pages=("a11y",))
 
-    def _bluetooth(self, name, inputs, world):
+    def _bluetooth(self, name, inputs, world, jobs=True):
+        """`jobs`: the toggle and the slots of the two paired devices
+        start a job; without an adapter, none does."""
+
         def script(h):
             cols = h.deck.cols
             h.goto("bluetooth")
-            tap(h, cols + 1)  # toggle
+            (tap_job if jobs else tap)(h, cols + 1)  # toggle
             for key in range(cols + 2, 2 * cols):  # device slots
-                tap(h, key)
+                paired = key < cols + 4
+                (tap_job if jobs and paired else tap)(h, key)
 
         self.run_all(name, inputs, world, script, pages=("bluetooth",))
 
@@ -506,7 +510,7 @@ class Scenarios:
         self._bluetooth(
             "bluetooth__na",
             FULL + "; no bluetoothctl, rfkill lists no adapter",
-            bt_na_world,
+            bt_na_world, jobs=False,
         )
 
     def test_translator_record(self):

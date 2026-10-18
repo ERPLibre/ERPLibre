@@ -146,10 +146,146 @@
    {
     "do": "press 4",
     "effects": [
+     "bluetoothctl show"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl power off"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl power off",
-     "bluetoothctl show",
      "bluetoothctl show"
     ],
     "files": {
@@ -220,10 +356,146 @@
     "do": "press 5",
     "effects": [
      "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl disconnect 00:00:5E:00:53:10"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl devices Paired",
-     "bluetoothctl disconnect 00:00:5E:00:53:10",
      "bluetoothctl show"
     ],
     "files": {
@@ -456,10 +728,166 @@
    {
     "do": "press 5",
     "effects": [
+     "bluetoothctl show"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl power off"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl power off",
-     "bluetoothctl show",
      "bluetoothctl show"
     ],
     "files": {
@@ -540,10 +968,166 @@
     "do": "press 6",
     "effects": [
      "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl disconnect 00:00:5E:00:53:10"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl devices Paired",
-     "bluetoothctl disconnect 00:00:5E:00:53:10",
      "bluetoothctl show"
     ],
     "files": {
@@ -623,10 +1207,166 @@
    {
     "do": "press 7",
     "effects": [
-     "bluetoothctl connect 00:00:5E:00:53:11",
      "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl connect 00:00:5E:00:53:11"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired",
      "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
@@ -940,10 +1680,236 @@
    {
     "do": "press 6",
     "effects": [
+     "bluetoothctl show"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl power off"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl power off",
-     "bluetoothctl show",
      "bluetoothctl show"
     ],
     "files": {
@@ -1059,10 +2025,236 @@
     "do": "press 7",
     "effects": [
      "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl disconnect 00:00:5E:00:53:10"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl devices Paired",
-     "bluetoothctl disconnect 00:00:5E:00:53:10",
      "bluetoothctl show"
     ],
     "files": {
@@ -1177,10 +2369,236 @@
    {
     "do": "press 8",
     "effects": [
-     "bluetoothctl connect 00:00:5E:00:53:11",
      "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl connect 00:00:5E:00:53:11"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired",
      "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
@@ -1814,10 +3232,406 @@
    {
     "do": "press 9",
     "effects": [
+     "bluetoothctl show"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl power off"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl power off",
-     "bluetoothctl show",
      "bluetoothctl show"
     ],
     "files": {
@@ -2018,10 +3832,406 @@
     "do": "press 10",
     "effects": [
      "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl disconnect 00:00:5E:00:53:10"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "3c3c3c",
+      "Keyboa",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
      "bluetoothctl devices Paired",
-     "bluetoothctl devices Paired",
-     "bluetoothctl disconnect 00:00:5E:00:53:10",
      "bluetoothctl show"
     ],
     "files": {
@@ -2221,10 +4431,406 @@
    {
     "do": "press 11",
     "effects": [
-     "bluetoothctl connect 00:00:5E:00:53:11",
      "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "threads",
+    "effects": [
+     "bluetoothctl connect 00:00:5E:00:53:11"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "0096dc",
+      "BT\nON",
+      null
+     ],
+     [
+      "0096dc",
+      "Headph",
+      null
+     ],
+     [
+      "5a5a28",
+      "…",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
+    "effects": [
      "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired",
      "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],

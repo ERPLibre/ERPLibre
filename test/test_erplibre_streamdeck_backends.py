@@ -503,6 +503,72 @@ class SlowKeyTest(unittest.TestCase):
             "ResetAllTrackerTimers failed via D-Bus", h.journal.getvalue()
         )
 
+    def bluetooth_page(self, world=P.full_world):
+        h = self.start(world)
+        h.goto("bluetooth")
+        return h
+
+    def test_bluetooth_power_is_a_job(self):
+        h = self.bluetooth_page()
+        press, threads, loop = self.press_slow(h, 6)  # BT ON
+        # The power state is read under the lock; the switch is the job.
+        self.assertEqual(["bluetoothctl show"], press["effects"])
+        self.assertEqual(["bluetoothctl power off"], threads["effects"])
+        self.assertIn("bluetoothctl show", loop["effects"])
+        self.assertEqual("bluetooth", loop["page"])
+        self.assert_no_flash(h)
+        self.assertEqual("BT\nON", h.deck.screen[6][1])
+
+    def test_bluetooth_power_failure_shows_no_flash(self):
+        h = self.bluetooth_page(P.bt_off_world)
+        h.proc.answer("bluetoothctl power", returncode=1)
+        h.proc.answer("rfkill unblock", returncode=1)
+        press, threads, loop = self.press_slow(h, 6)  # BT OFF
+        self.assertEqual(
+            ["bluetoothctl power on", "rfkill unblock bluetooth"],
+            threads["effects"],
+        )
+        self.assert_no_flash(h)
+        self.assertEqual("BT\nOFF", h.deck.screen[6][1])
+
+    def test_bluetooth_without_adapter_flashes_err_without_job(self):
+        h = self.bluetooth_page(P.bt_na_world)
+        h.press(6)
+        self.assertEqual([], S.FakeThread.queue)
+        self.assert_flash(h, 6, "ERR")
+
+    def test_bluetooth_disconnect_is_a_job(self):
+        h = self.bluetooth_page()
+        press, threads, loop = self.press_slow(h, 7)  # connected
+        self.assertEqual(
+            ["bluetoothctl devices Connected",
+             "bluetoothctl devices Paired"],
+            press["effects"],
+        )
+        self.assertEqual(
+            ["bluetoothctl disconnect 00:00:5E:00:53:10"],
+            threads["effects"],
+        )
+        self.assertIn("bluetoothctl show", loop["effects"])
+        self.assert_no_flash(h)
+        self.assertEqual("Headph", h.deck.screen[7][1])
+
+    def test_bluetooth_connect_is_a_job(self):
+        h = self.bluetooth_page()
+        press, threads, loop = self.press_slow(h, 8)  # not connected
+        self.assertEqual(
+            ["bluetoothctl connect 00:00:5E:00:53:11"],
+            threads["effects"],
+        )
+        self.assertEqual("bluetooth", loop["page"])
+        self.assert_no_flash(h)
+
+    def test_bluetooth_key_without_device_starts_no_job(self):
+        h = self.bluetooth_page()
+        h.press(9)  # a third slot, two paired devices
+        self.assertEqual([], S.FakeThread.queue)
+        self.assert_no_flash(h)
+
 
 class SettingsKeepTest(unittest.TestCase):
     def test_font_scale_save_keeps_other_keys(self):
