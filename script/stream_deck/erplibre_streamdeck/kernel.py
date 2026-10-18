@@ -14,7 +14,8 @@ neither thread dies.
 A slow call runs through run_blocking(): a worker thread runs it without
 the lock, and the next loop pass hands its result back under the lock.
 Until then the plugin is busy: its last pressed key shows "…", and its
-presses, page tick and home tick do not reach it."""
+presses, page tick and home tick do not reach it; key 0 of its page
+still leaves for the home screen."""
 
 import sys
 import threading
@@ -250,7 +251,9 @@ class Kernel:
 
     def handle_key(self, key, pressed):
         """A press reaches the plugin that owns the key, unless that
-        plugin is busy: the press then flashes ERR."""
+        plugin is busy: the press then flashes ERR, except key 0 of a
+        page, which the kernel answers by going home. Key 0 is BACK on
+        every page, so a long job never holds the deck on its page."""
         if not pressed or self._flash_live():
             return
         self.last_press_key = key
@@ -261,6 +264,9 @@ class Kernel:
         else:
             owner, page = self.pages[self.page_id]
         if owner in self.busy:
+            if self.page_id != HOME and key == 0:
+                self.goto(HOME)
+                return
             self.set_flash(False)
             self.render()
             return
@@ -280,24 +286,30 @@ class Kernel:
     def run_blocking(self, plugin_id, work, then=None):
         """Run work() in a thread, outside the lock; the plugin is busy
         until the next loop pass hands the result to then(ctx, result,
-        error) under the lock. False (and an ERR flash) when the plugin
-        already has a job."""
+        error) under the lock. Called from a plugin callable, with the
+        kernel lock held; it does not take the lock. False (and an ERR
+        flash) when the plugin already has a job. A thread that cannot
+        start raises here and leaves the plugin free."""
         if plugin_id in self.busy:
             self.set_flash(False)
             self.render()
             return False
-        self.busy[plugin_id] = (self.page_id, self.last_press_key)
-        self._paint_busy()
 
         def runner():
+            # Every exception reaches the result: a job that ends
+            # without queuing would leave its plugin busy for good.
             try:
                 result, error = work(), None
-            except (Exception, SystemExit) as exc:
+            except BaseException as exc:
                 result, error = None, exc
             with self._finished_lock:
                 self._finished.append((plugin_id, then, result, error))
 
         threading.Thread(target=runner, daemon=True).start()
+        # The caller holds the lock and drain_jobs() needs it: the job
+        # cannot be drained before it is marked busy.
+        self.busy[plugin_id] = (self.page_id, self.last_press_key)
+        self._paint_busy()
         return True
 
     def _paint_busy(self):
