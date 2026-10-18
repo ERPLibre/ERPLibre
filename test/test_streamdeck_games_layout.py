@@ -49,6 +49,7 @@ class LaDisposition(unittest.TestCase):
     def test_no_game_imports_a_sibling_module(self):
         voisins = {p.stem for p in DECK_DIR.glob("*.py")}
         voisins |= {p.stem for p in GAMES_DIR.glob("*.py")}
+        voisins |= {p.parent.name for p in DECK_DIR.glob("*/__init__.py")}
         motif = re.compile(r"^\s*(?:import|from)\s+(\w+)", re.M)
         for jeu in suivis("script/stream_deck/games/game_*.py"):
             with self.subTest(jeu=jeu.name):

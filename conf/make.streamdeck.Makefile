@@ -125,7 +125,7 @@ streamdeck_djscratch: $(STREAMDECK_PY) streamdeck_games_guard
 # The deck program of ERPLibre Home; streamdeck_tiler is its former name.
 .PHONY: streamdeck_erplibre
 streamdeck_erplibre: $(STREAMDECK_PY)
-	$(STREAMDECK_PY) script/stream_deck/erplibre_streamdeck.py
+	$(STREAMDECK_PY) script/stream_deck/erplibre_streamdeck
 
 .PHONY: streamdeck_tiler
 streamdeck_tiler: streamdeck_erplibre

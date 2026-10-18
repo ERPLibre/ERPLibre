@@ -4,9 +4,8 @@
 """Test harness of the Stream Deck deck program.
 
 Installs stub `PIL`, `StreamDeck` and `translator` modules, loads the deck
-program either as the single file `erplibre_streamdeck.py` (the reference
-the goldens come from) or as the package `erplibre_streamdeck/`, and drives
-it on a `FakeDeck` with every outside effect replaced:
+program as the package `erplibre_streamdeck/` and drives it on a
+`FakeDeck` with every outside effect replaced:
 
 - `subprocess.run`, `subprocess.check_output` and `subprocess.Popen` answer
   from a `FakeProcesses` table and record each call as one effect line;
@@ -16,11 +15,10 @@ it on a `FakeDeck` with every outside effect replaced:
 - `time.monotonic`, `time.time` and `time.sleep` read and advance a
   `FakeClock`, so flashes, ticks and timeouts are exact;
 - HOME, XDG_CONFIG_HOME and XDG_STATE_HOME point into a sandbox created
-  once per process, BEFORE the deck program is loaded: the single file
-  computes its paths at import.
+  once per process, BEFORE the deck program is loaded.
 
 The patches are global (module attributes of `subprocess`, `shutil`,
-`time`), so both implementations see them as long as they call
+`time`), so the program sees them as long as it calls
 `subprocess.run(...)`, never a name copied by `from subprocess import`.
 
 Without the `test_` prefix, the unit runner does not take this module for
@@ -30,7 +28,6 @@ a test file.
 import atexit
 import contextlib
 import importlib
-import importlib.util
 import io
 import json
 import os
@@ -47,17 +44,10 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 DECK_DIR = ROOT / "script" / "stream_deck"
-MONOLITH = DECK_DIR / "erplibre_streamdeck.py"
 PACKAGE = DECK_DIR / "erplibre_streamdeck"
 GOLDEN_DIR = ROOT / "test" / "fixtures" / "erplibre_streamdeck"
-# STREAMDECK_GOLDEN=update rewrites the goldens. Only the single file may
-# write them: they pin what the deck showed BEFORE the move.
-GOLDEN_ENV = "STREAMDECK_GOLDEN"
-# Module name of the single file: never "erplibre_streamdeck", which is
-# the package's name once both exist side by side.
-MONOLITH_NAME = "erplibre_streamdeck_monolith"
-# The plugins of the repository. The home screen of the package matches
-# the goldens only once all of them load.
+# The plugins of the repository: the goldens show the home screen with
+# every one of them, so a missing plugin fails the scenarios.
 REPO_PLUGINS = frozenset(
     {
         "a11y", "bluetooth", "claude_sessions", "dev_reload", "layouts",
@@ -344,21 +334,8 @@ def install():
     _INSTALLED = True
 
 
-def load_monolith():
-    """erplibre_streamdeck.py, loaded by path under MONOLITH_NAME."""
-    install()
-    if MONOLITH_NAME in sys.modules:
-        return sys.modules[MONOLITH_NAME]
-    spec = importlib.util.spec_from_file_location(MONOLITH_NAME, MONOLITH)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[MONOLITH_NAME] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def load_package():
-    """The package's app module. The package has an __init__.py: without
-    it, the sibling erplibre_streamdeck.py shadows the directory."""
+    """The package's app module."""
     install()
     return importlib.import_module("erplibre_streamdeck.app")
 
@@ -585,68 +562,6 @@ class FakeThread:
 # ---------------------------------------------------------------- targets
 
 
-class MonolithTarget:
-    """The single file. boot() mirrors main() minus its second D-Bus
-    probe, which the package drops."""
-
-    kind = "monolith"
-    SEEDS = {
-        "claude_session": {"sid": "_claude_session_sid"},
-        "mpv_session": {"pid": "_mpv_session_pid"},
-        "todo_session": {"window_id": "_todo_session_window_id"},
-        "layout_delete_confirm": {"slot": "layout_delete_pending"},
-        "tiling": {"corner1": "corner1"},
-    }
-    # Pages whose entry does more than switch the mode: goto runs the
-    # same step, so a golden never shows a state the deck cannot reach
-    # (a timer list painted before the timers are read).
-    ENTRY = {"timer_list": "_refresh_timers"}
-
-    def __init__(self):
-        self.mod = load_monolith()
-        self.app = None
-
-    def patches(self, set_key):
-        fake_file = FAKE_REPO / "script" / "stream_deck" / MONOLITH.name
-        return [
-            mock.patch.object(self.mod, "set_key", set_key),
-            mock.patch.object(self.mod, "__file__", str(fake_file)),
-        ]
-
-    def boot(self, deck, lang="en"):
-        self.mod._DECK_LANG = lang
-        self.mod._font_scale = self.mod.FONT_SCALE_DEFAULT
-        self.mod._show_labels = False
-        self.mod._init_font_scale()
-        self.app = self.mod.Tiler(deck)
-
-    def complete(self):
-        return True
-
-    def has_page(self, page):
-        return True
-
-    def page(self):
-        return self.app.mode
-
-    def render(self):
-        self.app.render()
-
-    def press(self, key, pressed=True):
-        self.app.handle_key(key, pressed)
-
-    def loop(self):
-        self.app.loop()
-
-    def goto(self, page, **seed):
-        for name, value in seed.items():
-            setattr(self.app, self.SEEDS[page][name], value)
-        if page in self.ENTRY:
-            getattr(self.app, self.ENTRY[page])()
-        self.app.mode = page
-        self.app.render()
-
-
 class PackageTarget:
     """The package. Its names (app.build, kernel.page_id, kernel.pages,
     kernel.state, render.STYLE, i18n.LANG, paths.REPO_ROOT) are the seams
@@ -662,9 +577,10 @@ class PackageTarget:
         "tiling": ("tiling", {"corner1": "corner1"}),
     }
     # page id -> (plugin id, function of the plugin module). goto calls
-    # that function with the plugin's context in place of kernel.goto,
-    # as MonolithTarget.ENTRY does: the timers plugin must expose
-    # enter(ctx), which reads the timers and then calls ctx.goto.
+    # that function with the plugin's context in place of kernel.goto:
+    # the timers plugin exposes enter(ctx), which reads the timers and
+    # then calls ctx.goto, so a golden never shows a state the deck
+    # cannot reach.
     ENTRIES = {"timer_list": ("timers", "enter")}
 
     def __init__(self):
@@ -724,14 +640,7 @@ class PackageTarget:
         if page in self.ENTRIES:
             pid, name = self.ENTRIES[page]
             modname = f"erplibre_streamdeck.plugins.{pid}"
-            try:
-                module = importlib.import_module(modname)
-            except ModuleNotFoundError as error:
-                # Only a plugin not written yet falls back to kernel.goto;
-                # an import error inside the plugin is raised.
-                if not modname.startswith(error.name or "?"):
-                    raise
-                module = None
+            module = importlib.import_module(modname)
             enter = getattr(module, name, None)
             if enter is not None:
                 enter(self.kernel.ctx(pid))
@@ -892,27 +801,13 @@ def golden_path(name):
     return GOLDEN_DIR / f"{name}.json"
 
 
-def check_golden(test, name, inputs, runs, partial=False):
-    """Compare `runs` ({"5x3": steps, ...}) to the golden `name`, or
-    write it when STREAMDECK_GOLDEN=update and the target is the single
-    file. With `partial`, the boot step and every step shown on the home
-    screen are left out: an incomplete package allocates the home screen
-    differently, while a page repaints every key."""
+def check_golden(test, name, inputs, runs):
+    """Compare `runs` ({"5x3": steps, ...}) to the golden `name`. The
+    goldens are frozen: a deliberate change of the deck's output edits
+    the JSON file."""
     path = golden_path(name)
-    kind = test.target_kind
-    if os.environ.get(GOLDEN_ENV) == "update":
-        if kind != "monolith":
-            test.fail("goldens are written from erplibre_streamdeck.py only")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        body = {"format": 1, "inputs": inputs, "geometries": runs}
-        path.write_text(
-            json.dumps(body, indent=1, ensure_ascii=False, sort_keys=True)
-            + "\n",
-            encoding="utf-8",
-        )
-        return
     if not path.exists():
-        test.fail(f"{path.name} missing: {GOLDEN_ENV}=update on the file")
+        test.fail(f"{path.name} missing")
     expected = json.loads(path.read_text(encoding="utf-8"))["geometries"]
     test.assertEqual(sorted(expected), sorted(runs))
     for geometry, steps in runs.items():
@@ -921,7 +816,5 @@ def check_golden(test, name, inputs, runs, partial=False):
             [s["do"] for s in want], [s["do"] for s in steps], geometry
         )
         for got, ref in zip(steps, want, strict=True):
-            if partial and (ref["do"] == "boot" or ref["page"] == "idle"):
-                continue
             with test.subTest(geometry=geometry, step=ref["do"]):
                 test.assertEqual(ref, got)

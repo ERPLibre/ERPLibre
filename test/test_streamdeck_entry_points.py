@@ -173,11 +173,17 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
         self.assertEqual(["streamdeck_erplibre"], prerequis)
         self.assertEqual([], commandes)
 
+    def test_the_tiler_runs_the_package_directory(self):
+        commandes = " ".join(self.regles["streamdeck_erplibre"][1])
+        self.assertRegex(
+            commandes, r"script/stream_deck/erplibre_streamdeck(?![\w./])"
+        )
+
     def test_the_spec_entry_points_use_the_venv(self):
         attendus = {
             "streamdeck": "erplibre_controller.py",
             "streamdeck_gallery": "gallery_server.py",
-            "streamdeck_erplibre": "erplibre_streamdeck.py",
+            "streamdeck_erplibre": "erplibre_streamdeck",
             "streamdeck_translator_doctor": "translator_doctor.py",
             "streamdeck_translator_test": "translator_test.py",
             "streamdeck_translator_stream": "translator_stream.py",
