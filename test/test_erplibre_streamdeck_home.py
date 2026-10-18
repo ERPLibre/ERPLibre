@@ -180,6 +180,16 @@ class DashboardTest(unittest.TestCase):
         screen = self.deck.rendering()
         self.assertEqual("a1", screen[9][1])
 
+    def test_owner_of_button_fixture_tile_and_free_key(self):
+        k = self.kernel()
+        self.assertIsNone(k.home.owner(9))   # no tile before a render
+        k.render()
+        self.assertEqual("tiling", k.home.owner(0))
+        self.assertEqual("sound", k.home.owner(10))
+        self.assertEqual("a", k.home.owner(9))
+        self.assertEqual("b", k.home.owner(12))
+        self.assertIsNone(k.home.owner(13))
+
     def test_no_ext_on_key_zero_only_when_free(self):
         k = self.kernel()
         k.dbus_ok = False

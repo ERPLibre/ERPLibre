@@ -158,6 +158,14 @@ class Home:
             if not ok:
                 kernel.paint(key, EMPTY)
 
+    def owner(self, key):
+        """The plugin id of the button, fixture or last-render tile at
+        `key`; None for a key no plugin shows."""
+        for table in (self.buttons, self.fixtures, self.tile_map):
+            if key in table:
+                return table[key][0]
+        return None
+
     def press(self, kernel, key):
         """The press of what `key` showed; the callee renders. A press
         that raises flashes ERR."""

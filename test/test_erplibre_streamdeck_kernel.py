@@ -17,6 +17,7 @@ import streamdeck_stubs as S  # noqa: E402
 S.install()
 from erplibre_streamdeck import kernel as K  # noqa: E402
 from erplibre_streamdeck.plugin import (  # noqa: E402
+    HomeButton,
     KeyFace,
     LoadedPlugin,
     Page,
@@ -367,6 +368,159 @@ class LeftoverTest(KernelCase):
         k.running = False
         k.render()
         self.assertEqual({}, self.deck.screen)
+
+
+class JobTest(KernelCase):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch("threading.Thread", S.FakeThread)
+        patch.start()
+        self.addCleanup(patch.stop)
+        S.FakeThread.queue.clear()
+
+    def run_jobs(self):
+        while S.FakeThread.queue:
+            job = S.FakeThread.queue.pop(0)
+            job.target(*job.args, **job.kwargs)
+
+    def slow_plugin(self, work, then=None, calls=None):
+        def handle(ctx, key):
+            (calls if calls is not None else []).append(key)
+            ctx.run_blocking(work, then)
+
+        return self.page_plugin(handle=handle)
+
+    def test_busy_mark_then_result_on_next_pass(self):
+        k = self.kernel(self.slow_plugin(lambda: True))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.assertEqual("…", self.deck.screen[3][1])
+        self.assertIn("p", k.busy)
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertNotIn("p", k.busy)
+        self.assertEqual("ok", k.flash_result)
+
+    def test_error_reaches_then(self):
+        seen = []
+        k = self.kernel(self.slow_plugin(
+            lambda: 1 / 0, lambda ctx, r, e: seen.append(type(e))))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertEqual([ZeroDivisionError], seen)
+
+    def test_second_press_on_busy_plugin_flashes_err(self):
+        calls = []
+        k = self.kernel(self.slow_plugin(lambda: True, calls=calls))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.clock.advance(1)
+        k.handle_key(4, True)
+        self.assertEqual([3], calls)          # plugin not called again
+        self.assertEqual("err", k.flash_result)
+        self.assertEqual(1, len(S.FakeThread.queue))
+
+    def test_busy_mark_only_on_its_page(self):
+        k = self.kernel(self.slow_plugin(lambda: True))
+        k.goto("pg")
+        k.handle_key(3, True)
+        k.goto("idle")
+        self.assertNotEqual(
+            "…", (self.deck.screen.get(3) or [0, ""])[1]
+        )
+
+    def test_results_dropped_after_stop(self):
+        seen = []
+        k = self.kernel(self.slow_plugin(
+            lambda: True, lambda ctx, r, e: seen.append(r)))
+        k.goto("pg")
+        k.handle_key(3, True)
+        k.running = False
+        self.run_jobs()
+        k.drain_jobs()
+        self.assertEqual([], seen)
+
+    def test_page_tick_skipped_while_busy(self):
+        ticks = []
+        k = self.kernel(self.page_plugin(
+            handle=lambda ctx, key: ctx.run_blocking(lambda: True),
+            tick=lambda ctx, now: ticks.append(now)))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.clock.advance(1)
+        k.step(self.clock.now)
+        self.assertEqual([], ticks)
+
+    def test_falsy_result_without_then_flashes_err(self):
+        k = self.kernel(self.slow_plugin(lambda: False))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertEqual("err", k.flash_result)
+
+    def test_then_that_raises_flashes_err(self):
+        def then(ctx, result, error):
+            raise ValueError("then")
+
+        k = self.kernel(self.slow_plugin(lambda: True, then))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertEqual("err", k.flash_result)
+        self.assertNotIn("p", k.busy)
+        self.assertIn("p: job result failed", self.journal.getvalue())
+
+    def test_render_repaints_the_busy_mark(self):
+        k = self.kernel(self.slow_plugin(lambda: True))
+        k.goto("pg")
+        k.handle_key(3, True)
+        k.render()
+        self.assertEqual("…", self.deck.screen[3][1])
+        self.assertEqual(
+            "%02x%02x%02x" % colors.BUSY, self.deck.screen[3][0]
+        )
+
+    def home_plugin(self, pid, tick=None, calls=None):
+        def press(ctx):
+            calls.append(pid)
+            ctx.run_blocking(lambda: True)
+
+        return loaded(pid, Plugin(
+            api=PLUGIN_API,
+            home_button=HomeButton(
+                1, lambda ctx: KeyFace((1, 1, 1), pid), press
+            ),
+            home_tick=tick,
+        ))
+
+    def test_home_press_on_busy_plugin_flashes_err(self):
+        calls = []
+        k = self.kernel(self.home_plugin("h", calls=calls))
+        key = k.home.home_keys["h"]
+        k.handle_key(key, True)
+        self.clock.advance(1)
+        k.handle_key(key, True)
+        self.assertEqual(["h"], calls)
+        self.assertEqual("err", k.flash_result)
+
+    def test_home_tick_skipped_while_busy(self):
+        ticks = []
+        k = self.kernel(self.home_plugin(
+            "h", tick=lambda ctx, now: ticks.append(now), calls=[]))
+        k.handle_key(k.home.home_keys["h"], True)
+        self.clock.advance(1)
+        k.step(self.clock.now)
+        self.assertEqual([], ticks)
+        self.run_jobs()
+        k.step(self.clock.now)          # drained: OK flash ends the pass
+        self.clock.advance(K.RESULT_FLASH_SEC)
+        k.step(self.clock.now)          # flash expired: render only
+        k.step(self.clock.now)
+        self.assertEqual(1, len(ticks))
 
 
 if __name__ == "__main__":

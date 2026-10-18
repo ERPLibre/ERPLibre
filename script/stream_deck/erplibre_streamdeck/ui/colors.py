@@ -44,6 +44,7 @@ LLM_OFF = (60, 60, 60)
 LLM_ON = (140, 60, 160)
 OK = (0, 200, 60)
 ERR = (200, 0, 0)
+BUSY = (90, 90, 40)
 CLAUDE_ACTIVE = (46, 125, 50)     # green
 CLAUDE_WORKING = (0, 131, 143)    # cyan / teal
 CLAUDE_AWAIT_STOP = (212, 160, 23)  # yellow
