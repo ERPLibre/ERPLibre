@@ -192,5 +192,61 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual("NO\nEXT", self.deck.rendering()[0][1])
 
 
+class IsolationTest(DashboardTest):
+    def fixture_plugin(self, pid, place):
+        return LoadedPlugin(pid, Plugin(api=PLUGIN_API, fixtures=[
+            Fixture(5, place, lambda ctx, key, i: None,
+                    lambda ctx, key, i: None)]), "repo", Path(f"{pid}.py"))
+
+    def test_bad_place_is_skipped(self):
+        def boom(geo, hk):
+            raise ValueError("x")
+
+        good = self.fixture_plugin("g", lambda geo, hk: [13])
+        for bad_place in (boom, lambda geo, hk: None,
+                          lambda geo, hk: ["a"]):
+            bad = self.fixture_plugin("bad", bad_place)
+            k = self.kernel(extra=[bad, good])
+            self.assertIn(13, k.home.fixtures)
+            self.assertEqual(
+                ["g"], [v[0] for v in k.home.fixtures.values()
+                        if v[0] in ("g", "bad")])
+
+    def test_generator_raising_midway(self):
+        def gen(ctx):
+            yield "z1"
+            raise OSError("mid")
+
+        bad = LoadedPlugin("z", Plugin(api=PLUGIN_API, tiles=[
+            TileProvider(5, gen, lambda c, i: None,
+                         lambda c, i: None)]), "repo", Path("z.py"))
+        k = self.kernel(extra=[bad])
+        k.render()
+        self.assertEqual("a1", self.deck.rendering()[9][1])
+        self.assertFalse(
+            [v for v in k.home.tile_map.values() if v[0] == "z"])
+
+    def test_non_keyface_paints_empty(self):
+        bad = LoadedPlugin("z", Plugin(api=PLUGIN_API, tiles=[
+            TileProvider(5, lambda ctx: ["q"], lambda c, i: "oops",
+                         lambda c, i: None)]), "repo", Path("z.py"))
+        k = self.kernel(extra=[bad])
+        k.render()
+        self.assertEqual("", self.deck.rendering()[9][1])
+
+    def test_raising_button_press_flashes_err(self):
+        def boom(ctx):
+            raise RuntimeError("press")
+
+        bad = LoadedPlugin("z", Plugin(
+            api=PLUGIN_API,
+            home_button=HomeButton(1, face("z"), boom),
+        ), "repo", Path("z.py"))
+        k = self.kernel(extra=[bad])
+        key = k.home.home_keys["z"]
+        k.handle_key(key, True)
+        self.assertEqual("err", k.flash_result)
+
+
 if __name__ == "__main__":
     unittest.main()

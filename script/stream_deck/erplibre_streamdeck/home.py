@@ -26,7 +26,17 @@ class Allocation:
     pool: list = field(default_factory=list)
 
 
-def allocate(geo, plugins):
+def _validated_place(fx, geo, home_keys):
+    """fx.place's keys as a list of ints, or raise."""
+    keys = list(fx.place(geo, home_keys))
+    if not all(isinstance(k, int) for k in keys):
+        raise TypeError("place must return a list of int keys")
+    return keys
+
+
+def allocate(geo, plugins, guard=None):
+    """Lay out `plugins` on `geo`. With `guard` (kernel.guard's
+    signature) a fixture whose place raises is skipped."""
     alloc = Allocation()
     with_button = sorted(
         (lp for lp in plugins if lp.plugin.home_button is not None),
@@ -57,7 +67,14 @@ def allocate(geo, plugins):
         key=lambda t: (t[0], t[1]),
     )
     for _, pid, fx in fixtures:
-        for index, key in enumerate(fx.place(geo, dict(alloc.home_keys))):
+        args = (fx, geo, dict(alloc.home_keys))
+        if guard is None:
+            keys = _validated_place(*args)
+        else:
+            ok, keys = guard(pid, "fixture place", _validated_place, *args)
+            if not ok:
+                continue
+        for index, key in enumerate(keys):
             if 0 <= key < geo.total_keys and key not in taken:
                 alloc.fixtures[key] = (pid, fx, index)
                 taken.add(key)
@@ -68,9 +85,9 @@ def allocate(geo, plugins):
 
 
 class Home:
-    def __init__(self, geo, plugins):
+    def __init__(self, geo, plugins, guard=None):
         self.geo = geo
-        alloc = allocate(geo, plugins)
+        alloc = allocate(geo, plugins, guard)
         self.home_keys = alloc.home_keys
         self.buttons = alloc.buttons
         self.fixtures = alloc.fixtures
@@ -91,8 +108,12 @@ class Home:
         tile_map = {}
         cursor = 0
         for _, pid, tp in self.providers:
-            ok, items = kernel.guard(pid, "tiles", tp.items, kernel.ctx(pid))
-            for item in (items or []) if ok else []:
+            ok, items = kernel.guard(
+                pid, "tiles", lambda tp=tp, pid=pid: list(
+                    tp.items(kernel.ctx(pid))
+                ),
+            )
+            for item in items if ok else []:
                 if cursor >= len(self.pool):
                     break
                 tile_map[self.pool[cursor]] = (pid, tp, item)
@@ -119,7 +140,7 @@ class Home:
             return KeyFace(colors.ERR, i18n.t("NO\nEXT"))
         else:
             return EMPTY
-        return face if ok and face is not None else EMPTY
+        return face if ok and isinstance(face, KeyFace) else EMPTY
 
     def render(self, kernel):
         self._fill(kernel)

@@ -74,7 +74,7 @@ class Kernel:
         self.plugins = []
         self.pages = {}
         self.page_keys = {}
-        self.home = home.Home(self.geo, [])
+        self.home = home.Home(self.geo, [], self.guard)
         for lp in self._setup(list(plugins)):
             keys = {}
             for page in lp.plugin.pages:
@@ -94,7 +94,7 @@ class Kernel:
                 for page in lp.plugin.pages:
                     self.pages[page.id] = (lp.id, page)
                     self.page_keys[page.id] = keys[page.id]
-        self.home = home.Home(self.geo, self.plugins)
+        self.home = home.Home(self.geo, self.plugins, self.guard)
         self.dbus_ok = self.dbus.available()
         self._dbus_checked_at = time.monotonic()
 
