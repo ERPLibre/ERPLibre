@@ -358,7 +358,6 @@ class LEtat(unittest.TestCase):
             "Games: unknown value 'on\\r'", statut.status_lines(f)
         )
 
-
     def test_status_lists_the_plugins_that_are_off(self):
         f = faits()
         f["settings"] = dict(
@@ -370,7 +369,8 @@ class LEtat(unittest.TestCase):
 
     def test_status_has_no_plugin_line_when_none_is_off(self):
         self.assertFalse(
-            [l for l in statut.status_lines(faits()) if "Plugins" in l]
+            [ligne for ligne in statut.status_lines(faits())
+             if "Plugins" in ligne]
         )
 
 
@@ -536,7 +536,6 @@ class LeDiagnostic(unittest.TestCase):
             ),
             statut.diagnosis_lines(f),
         )
-
 
     def test_diagnosis_names_an_unknown_plugin_id(self):
         f = faits()

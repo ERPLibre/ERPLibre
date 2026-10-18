@@ -164,6 +164,17 @@ class IsolationTest(KernelCase):
         self.assertEqual("bad", k.refused[0][0])
         self.assertNotIn("b", k.pages)
 
+    def test_shutdown_error_continues_with_the_next_plugin(self):
+        ran = []
+        a = loaded("a", Plugin(api=PLUGIN_API, shutdown=self.boom))
+        b = loaded(
+            "b",
+            Plugin(api=PLUGIN_API, shutdown=lambda ctx: ran.append("b")),
+        )
+        self.kernel(a, b).shutdown()
+        self.assertEqual(["b"], ran)
+        self.assertIn("a: shutdown failed", self.journal.getvalue())
+
 
 class LastResortTest(KernelCase):
     """What a plugin returns, or a bug in a pass, never stops the loop
