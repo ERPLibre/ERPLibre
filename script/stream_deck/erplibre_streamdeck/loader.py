@@ -7,11 +7,15 @@ $XDG_CONFIG_HOME/erplibre-home/deck-plugins/. A plugin's id is its file
 stem ([a-z][a-z0-9_]*); files starting with "_" are skipped. A user
 plugin replaces a repository plugin of the same id. An id listed in
 DECK_PLUGINS_OFF is not imported. A plugin is refused, with its reason
-in the report, when its import raises, it has no PLUGIN, its api is not
-PLUGIN_API, or one of its pages is already taken; the others load."""
+in the report, when its import raises (SystemExit included), it has no
+PLUGIN, its api is not PLUGIN_API, a field of PLUGIN has the wrong shape
+(see _shape_error), or one of its pages is already taken; the others
+load. A directory that cannot be listed counts as empty, with one
+"unreadable" entry in the report under its path."""
 
 import importlib
 import importlib.util
+import os
 import re
 import sys
 import types
@@ -19,7 +23,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from erplibre_streamdeck import paths
-from erplibre_streamdeck.plugin import LoadedPlugin, Plugin, PLUGIN_API
+from erplibre_streamdeck.plugin import (
+    Fixture,
+    HomeButton,
+    LoadedPlugin,
+    Page,
+    Plugin,
+    PLUGIN_API,
+    TileProvider,
+)
 
 ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 REPO_DIR = Path(__file__).resolve().parent / "plugins"
@@ -33,24 +45,88 @@ class Report:
     def add(self, pid, status, detail=""):
         self.entries.append((pid, status, detail))
 
+    @staticmethod
+    def line(pid, status, detail=""):
+        return f"{pid}: {status}" + (f": {detail}" if detail else "")
+
     def lines(self):
-        out = []
-        for pid, status, detail in self.entries:
-            out.append(f"{pid}: {status}" + (f": {detail}" if detail else ""))
-        return out
+        return [self.line(*entry) for entry in self.entries]
 
 
-def parse_off(text):
-    return [part.strip() for part in text.split(",") if part.strip()]
-
-
-def _files(directory):
-    if directory is None or not Path(directory).is_dir():
+def _files(directory, report):
+    """The plugin files of `directory`, sorted; [] when it is None or
+    not a directory, and [] plus an "unreadable" entry when listing it
+    raises OSError."""
+    if directory is None:
+        return []
+    directory = Path(directory)
+    try:
+        if not directory.is_dir():
+            return []
+        names = os.listdir(directory)
+    except OSError as exc:
+        report.add(
+            str(directory),
+            "unreadable",
+            f"{type(exc).__name__}: {exc.strerror or exc}",
+        )
         return []
     return sorted(
-        p for p in Path(directory).glob("*.py")
-        if not p.name.startswith("_")
+        directory / name for name in names
+        if name.endswith(".py") and not name.startswith("_")
     )
+
+
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_order(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _optional(value):
+    return value is None or callable(value)
+
+
+def _shape_error(plugin):
+    """Why `plugin`'s fields cannot be laid out or called, or None. The
+    kernel and the home screen read these fields unguarded: orders are
+    sorted, page ids are dict keys, callables are called."""
+    if not isinstance(plugin.pages, list):
+        return "pages is not a list"
+    for page in plugin.pages:
+        if not isinstance(page, Page) or not isinstance(page.id, str):
+            return "pages must hold Pages with a str id"
+        if not (callable(page.render) and callable(page.handle)
+                and _optional(page.keys) and _optional(page.tick)
+                and _is_number(page.period)):
+            return f"page {page.id} has a field of the wrong type"
+    button = plugin.home_button
+    if button is not None and not (
+        isinstance(button, HomeButton) and _is_order(button.order)
+        and callable(button.face) and callable(button.press)
+    ):
+        return ("home_button must be None or a HomeButton with an int "
+                "order and callables")
+    for name, cls, calls in (
+        ("fixtures", Fixture, ("place", "face", "press")),
+        ("tiles", TileProvider, ("items", "face", "press")),
+    ):
+        items = getattr(plugin, name)
+        if not isinstance(items, list):
+            return f"{name} is not a list"
+        for item in items:
+            if not (isinstance(item, cls) and _is_order(item.order)
+                    and all(callable(getattr(item, c)) for c in calls)):
+                return (f"{name} must hold {cls.__name__}s with an int "
+                        "order and callables")
+    for name in ("home_tick", "setup", "shutdown"):
+        if not _optional(getattr(plugin, name)):
+            return f"{name} is not callable"
+    if not _is_number(plugin.home_period):
+        return "home_period is not a number"
+    return None
 
 
 def _import(pid, path, by_name):
@@ -78,7 +154,7 @@ def load(off=(), repo_dir=None, user_dir=None):
     report = Report()
     chosen = {}
     for origin, directory in (("repo", repo_dir), ("user", user_dir)):
-        for path in _files(directory):
+        for path in _files(directory, report):
             pid = path.stem
             if not ID_RE.match(pid):
                 report.add(pid, "refused", "file name is not a plugin id")
@@ -96,7 +172,9 @@ def load(off=(), repo_dir=None, user_dir=None):
         by_name = origin == "repo" and Path(repo_dir) == REPO_DIR
         try:
             module = _import(pid, path, by_name)
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
+            # SystemExit: a plugin calling sys.exit() at import must not
+            # stop the deck. KeyboardInterrupt still propagates.
             report.add(pid, "refused", f"import: {type(exc).__name__}: {exc}")
             continue
         plugin = getattr(module, "PLUGIN", None)
@@ -107,6 +185,10 @@ def load(off=(), repo_dir=None, user_dir=None):
             report.add(
                 pid, "refused", f"api {plugin.api} != {PLUGIN_API}"
             )
+            continue
+        shape = _shape_error(plugin)
+        if shape:
+            report.add(pid, "refused", shape)
             continue
         clash = [p.id for p in plugin.pages if p.id in pages]
         if clash:
