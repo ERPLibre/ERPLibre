@@ -11,6 +11,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Added
 
+- The Stream Deck deck program accepts plugins from `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`, next to the eleven the repository ships; a plugin that fails to load is refused with its reason in the journal and the others keep running
+- `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › Stream Deck › Plugins on/off turn deck plugins off; `erplibre_streamdeck --list-plugins` prints each plugin and its status without opening the deck
 - A cellular gateway on a USB modem, reachable from **Mobile gateway** in Odoo: it relays the SMS
   Odoo wants to send through the SIM, reports the calls that come in, and keeps the server from ever
   having to reach the appliance — the agent comes for its work, so a dynamic address and a carrier
@@ -135,6 +137,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Changed
 
+- The Stream Deck deck program moves from the file `script/stream_deck/erplibre_streamdeck.py` to the package directory `script/stream_deck/erplibre_streamdeck`, run as `python script/stream_deck/erplibre_streamdeck`: a kernel and one plugin per feature. Pages and keys look the same at every geometry, with one deliberate change: a tap on a dashboard tile opens what the key showed, even when the sessions changed since it was painted
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers
 - The comment hygiene check reads Go comments, not only `#` ones: `//` outside a string, the raw string between backticks, and `/* … */` blocks
 - Debian and Ubuntu `by-hash` index files are served from disk, their name being the digest of their content; `…/releases/latest/download/…` is no longer pinned to the first version seen

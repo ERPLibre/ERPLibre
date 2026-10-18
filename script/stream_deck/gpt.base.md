@@ -19,7 +19,7 @@ bubble with three dots).
 | File | Role |
 |------|------|
 | `script/stream_deck/translator.py` | Audio recording, STT backends, LLM backends, hardware detection, output methods. |
-| `script/stream_deck/erplibre_streamdeck.py` | UI: `MODE_TRANSLATOR` rendering, key handling, settings persistence. |
+| `script/stream_deck/erplibre_streamdeck/plugins/translate.py` | UI: translator page rendering and key handling. Settings persistence is in `erplibre_streamdeck/settings.py`. |
 | `~/.config/erplibre-home/settings.json` | Persisted picks: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
 | `tasks/translator-roadmap.md` | Phase planning and security notes. |
 
@@ -47,7 +47,7 @@ bulle de dialogue avec trois points).
 | Fichier | Rôle |
 |---------|------|
 | `script/stream_deck/translator.py` | Enregistrement audio, backends STT, backends LLM, détection matériel, méthodes de sortie. |
-| `script/stream_deck/erplibre_streamdeck.py` | UI: rendu `MODE_TRANSLATOR`, gestion des touches, persistance des réglages. |
+| `script/stream_deck/erplibre_streamdeck/plugins/translate.py` | UI : rendu de la page translator et gestion des touches. La persistance des réglages est dans `erplibre_streamdeck/settings.py`. |
 | `~/.config/erplibre-home/settings.json` | Choix persistés: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
 | `tasks/translator-roadmap.md` | Plan des phases et notes de sécurité. |
 
@@ -113,7 +113,7 @@ installed model.
 
 After every successful transcription the deck appends an entry to a
 ring buffer kept in `~/.config/erplibre-home/translator-history.json`
-(20 most recent kept). In `MODE_TRANSLATOR`, press the **HIST** button
+(20 most recent kept). On the translator page (`translator`), press the **HIST** button
 (8-col deck only) to enter history mode: each remaining key shows a
 truncated snippet of a saved entry; press to re-output it via the
 current OUT method. Top-right key = `CLEAR` (deletes the file, no
@@ -308,7 +308,7 @@ ignore ce réglage car la langue dépend du modèle installé.
 Après chaque transcription réussie, le deck ajoute une entrée à un
 ring buffer dans
 `~/.config/erplibre-home/translator-history.json` (20 dernières
-gardées). Dans `MODE_TRANSLATOR`, presse le bouton **HIST** (deck
+gardées). Sur la page translator (`translator`), presse le bouton **HIST** (deck
 8-col seulement) pour entrer en mode historique: chaque touche
 montre un extrait tronqué; presse pour ré-émettre via la méthode OUT
 courante. Touche en haut-à-droite = `CLEAR` (supprime le fichier,
@@ -787,7 +787,7 @@ backend / method and to `LLM_MODE_OFF`.
 
 ## End-to-end flow
 
-1. User presses TRANSL on the idle screen → `MODE_TRANSLATOR`.
+1. User presses TRANSL on the idle screen → the `translator` page.
 2. User picks a backend / output / LLM mode.
 3. User presses REC. `translator.start_recording()` spawns the
    recorder; the button turns red and the icon switches to `mic_on`.
@@ -840,7 +840,7 @@ le premier backend / méthode détecté et sur `LLM_MODE_OFF`.
 ## Flux de bout en bout
 
 1. L'utilisateur presse TRANSL sur l'écran d'accueil →
-   `MODE_TRANSLATOR`.
+   la page `translator`.
 2. L'utilisateur choisit un backend / sortie / mode LLM.
 3. L'utilisateur presse REC. `translator.start_recording()` lance
    l'enregistreur; le bouton devient rouge et l'icône passe à

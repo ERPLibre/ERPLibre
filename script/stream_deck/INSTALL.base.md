@@ -215,7 +215,7 @@ RESTART_AFTER_GAME=yes
 
 <!-- [end] -->
 <!-- [en] -->
-`DECK_PROGRAM` is `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
+`DECK_PROGRAM` is `tiler` (the package `script/stream_deck/erplibre_streamdeck`),
 `controller` (`script/stream_deck/erplibre_controller.py`) or `none`. An
 option given writes its key; an option left out keeps the value already in
 the file, and the default applies only to a missing key, so a reinstall
@@ -235,6 +235,14 @@ refuse to start a game and say how to enable them; the deck program, the
 controller and the service are never affected. Set it from
 TODO › Stream Deck › Games on/off, or by hand in this file.
 
+`DECK_PLUGINS_OFF=<id>,<id>` lists the deck program plugins that are not
+loaded (empty or absent: all load). Set it from TODO › Stream Deck ›
+Plugins on/off, or by hand in this file; TODO › Stream Deck › Diagnosis
+names an id that matches no plugin. User plugins live in
+`$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`. `python
+script/stream_deck/erplibre_streamdeck --list-plugins` prints each plugin
+the loader finds and its status, without opening the deck.
+
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,
 runs the game, and starts the service again when the game ends, unless
@@ -252,7 +260,7 @@ lock names also reaches every process of the game. A game started by `make strea
 hand-over and takes no lock. `systemctl --user` controls the service:
 
 <!-- [fr] -->
-`DECK_PROGRAM` vaut `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
+`DECK_PROGRAM` vaut `tiler` (le paquet `script/stream_deck/erplibre_streamdeck`),
 `controller` (`script/stream_deck/erplibre_controller.py`) ou `none`. Une
 option donnée écrit sa clé ; une option absente garde la valeur déjà dans
 le fichier, et le défaut ne vaut que pour une clé absente : une
@@ -273,6 +281,15 @@ nomme. Jeux désactivés, le menu des jeux de TODO, la galerie,
 disent comment les activer ; le programme du deck, le contrôleur et le
 service ne sont jamais touchés. Se règle dans TODO › Stream Deck › Jeux on/off,
 ou à la main dans ce fichier.
+
+`DECK_PLUGINS_OFF=<id>,<id>` liste les plugins du programme du deck qui ne
+sont pas chargés (vide ou absent : tous se chargent). Se règle dans TODO ›
+Stream Deck › Plugins on/off, ou à la main dans ce fichier ; TODO › Stream
+Deck › Diagnostic nomme un identifiant qui ne correspond à aucun plugin. Les
+plugins de l'utilisateur vivent dans
+`$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`. `python
+script/stream_deck/erplibre_streamdeck --list-plugins` affiche chaque plugin
+que le chargeur trouve et son état, sans ouvrir le deck.
 
 Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent
 chaque jeu par `script/install/erplibre_home_handover.sh`, qui arrête le

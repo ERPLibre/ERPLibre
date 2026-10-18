@@ -12,9 +12,10 @@
  *     started_at:   1700000000123
  *   }
  *
- * The deck (erplibre_streamdeck package) reads the directory to surface active
- * mpv sessions; the extension uses the `ipc_socket` field to send
- * `cycle pause`, `quit` etc. to the running process.
+ * The deck (`erplibre_streamdeck/plugins/mpv_sessions.py`) reads the
+ * directory to surface active mpv sessions; the extension uses the
+ * `ipc_socket` field to send `cycle pause`, `quit` etc. to the running
+ * process.
  */
 
 export const STATE_SUBDIR = 'erplibre-home/mpv';

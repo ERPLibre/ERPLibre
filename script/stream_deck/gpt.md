@@ -14,7 +14,7 @@ bubble with three dots).
 | File | Role |
 |------|------|
 | `script/stream_deck/translator.py` | Audio recording, STT backends, LLM backends, hardware detection, output methods. |
-| `script/stream_deck/erplibre_streamdeck.py` | UI: `MODE_TRANSLATOR` rendering, key handling, settings persistence. |
+| `script/stream_deck/erplibre_streamdeck/plugins/translate.py` | UI: translator page rendering and key handling. Settings persistence is in `erplibre_streamdeck/settings.py`. |
 | `~/.config/erplibre-home/settings.json` | Persisted picks: `translator_stt`, `translator_output`, `translator_llm`, `translator_llm_mode`. |
 | `tasks/translator-roadmap.md` | Phase planning and security notes. |
 
@@ -78,7 +78,7 @@ installed model.
 
 After every successful transcription the deck appends an entry to a
 ring buffer kept in `~/.config/erplibre-home/translator-history.json`
-(20 most recent kept). In `MODE_TRANSLATOR`, press the **HIST** button
+(20 most recent kept). On the translator page (`translator`), press the **HIST** button
 (8-col deck only) to enter history mode: each remaining key shows a
 truncated snippet of a saved entry; press to re-output it via the
 current OUT method. Top-right key = `CLEAR` (deletes the file, no
@@ -406,7 +406,7 @@ backend / method and to `LLM_MODE_OFF`.
 
 ## End-to-end flow
 
-1. User presses TRANSL on the idle screen → `MODE_TRANSLATOR`.
+1. User presses TRANSL on the idle screen → the `translator` page.
 2. User picks a backend / output / LLM mode.
 3. User presses REC. `translator.start_recording()` spawns the
    recorder; the button turns red and the icon switches to `mic_on`.

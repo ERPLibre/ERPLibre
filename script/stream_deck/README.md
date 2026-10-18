@@ -56,6 +56,91 @@ The `script/gnome-extension/erplibre_home/` directory ships a six-indicator pane
 pencil, film, ERPLibre, network, device) plus the tiling D-Bus interface used by
 the Python helpers. See [`../gnome-extension/erplibre_home/README.md`](../gnome-extension/erplibre_home/README.md).
 
+
+## Deck program
+
+`script/stream_deck/erplibre_streamdeck/` is the deck program of ERPLibre Home (`DECK_PROGRAM=tiler`, `make streamdeck_erplibre`). It is a package run as a directory: a small kernel owns the deck, the lock, the flash, the home screen and the key dispatch, and every feature is a plugin.
+
+
+```bash
+python script/stream_deck/erplibre_streamdeck
+python script/stream_deck/erplibre_streamdeck --list-plugins
+```
+
+
+`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off` or `refused` with its reason) without opening the deck or taking its lock. Layout of the package:
+
+
+```
+erplibre_streamdeck/
+├── __main__.py   # entry point, --list-plugins / point d'entrée
+├── app.py        # build(): settings, plugins, kernel / assemblage
+├── kernel.py     # deck, lock, flash, loop, dispatch / noyau
+├── home.py       # home screen: buttons, fixtures, tiles / accueil
+├── loader.py     # discovery of the plugins / découverte
+├── plugin.py     # Plugin, Page, HomeButton, Fixture, TileProvider
+├── context.py    # Context, the one object a plugin receives
+├── paths.py, settings.py, dbus.py
+├── ui/           # rendering, colours, i18n / rendu, couleurs, i18n
+└── plugins/      # a11y, bluetooth, claude_sessions, dev_reload,
+                  # layouts, mpv_sessions, sound, tiling, timers,
+                  # todo_terminals, translate
+```
+
+
+### Turning plugins off
+
+The setting `DECK_PLUGINS_OFF` in `streamdeck.conf` is a comma-separated list of plugin ids that are not imported. Set it from TODO › Stream Deck › Plugins on/off, or by hand. A plugin that raises on import, has no `PLUGIN`, declares another `api` than `PLUGIN_API`, takes a page id already taken, or fails in `setup` is refused and the others keep running; the journal names the plugin and the reason.
+
+
+```
+DECK_PLUGINS_OFF=bluetooth,translate
+```
+
+
+### Writing a plugin
+
+A plugin is one `.py` file. Its id is its file stem (`[a-z][a-z0-9_]*`; files starting with `_` are skipped) and it exposes `PLUGIN = Plugin(api=PLUGIN_API, ...)`. Every callable receives a `Context` (`ctx`) and runs with the kernel lock held. This plugin adds a home button and one page with a back key:
+
+
+```python
+from erplibre_streamdeck.plugin import (
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin,
+)
+
+
+def _keys(geo):
+    return {"back": 0} if geo.cols >= 2 else None
+
+
+def _render(ctx):
+    for key in range(ctx.geo.total_keys):
+        ctx.set_key(key, (20, 20, 30))
+    ctx.set_key(0, (60, 60, 60), ctx.t("BACK"))
+
+
+def _handle(ctx, key):
+    if key == 0:
+        ctx.home()
+
+
+PLUGIN = Plugin(
+    api=PLUGIN_API,
+    pages=[Page("hello", _keys, _render, _handle)],
+    home_button=HomeButton(
+        90,
+        face=lambda ctx: KeyFace((30, 90, 60), "HELLO"),
+        press=lambda ctx: ctx.goto("hello"),
+    ),
+)
+```
+
+
+A `Plugin` also takes `fixtures` (keys placed on the home screen), `tiles` (dashboard tiles), `home_tick`, `setup(ctx)` and `shutdown(ctx)`; `plugin.py` documents each. `shutdown` runs with the lock held: it must not take `ctx.locked()` nor wait for a thread that does. A thread a plugin starts takes the lock with `with ctx.locked():`.
+
+A plugin of the user goes in `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/` (`~/.config/erplibre-home/deck-plugins/` when unset), and replaces a plugin of the repository with the same id. **Trust:** user plugins run inside the deck service with the user's rights, like a shell profile; put there only code you wrote or read.
+
+
 ## Games
 
 19 games playable directly on the Stream Deck. 11 support 2-player mode with two Stream Decks (auto-detection).
@@ -600,7 +685,7 @@ script/stream_deck/
 ├── requirements.txt           # Python dependencies / Dépendances Python
 ├── Assets/                    # Controller images and fonts / Images et polices
 ├── erplibre_controller.py     # Main ERPLibre controller / Contrôleur principal
-├── erplibre_streamdeck.py     # Deck program (window tiler) / Programme du deck
+├── erplibre_streamdeck/       # Deck program package (plugins) / Paquet du deck
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
 └── games/                     # Games, gallery, saves / Jeux, galerie, sauvegardes
     ├── game_*.py              # 45 games / 45 jeux

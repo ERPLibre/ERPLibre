@@ -46,6 +46,90 @@ make streamdeck
 ```
 
 
+## Programme du deck
+
+`script/stream_deck/erplibre_streamdeck/` est le programme du deck d'ERPLibre Home (`DECK_PROGRAM=tiler`, `make streamdeck_erplibre`). C'est un paquet lancé comme un répertoire : un petit noyau possède le deck, le verrou, le flash, l'écran d'accueil et la distribution des touches, et chaque fonction est un plugin.
+
+
+```bash
+python script/stream_deck/erplibre_streamdeck
+python script/stream_deck/erplibre_streamdeck --list-plugins
+```
+
+
+`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off` ou `refused` avec sa raison) sans ouvrir le deck ni prendre son verrou. Disposition du paquet :
+
+
+```
+erplibre_streamdeck/
+├── __main__.py   # entry point, --list-plugins / point d'entrée
+├── app.py        # build(): settings, plugins, kernel / assemblage
+├── kernel.py     # deck, lock, flash, loop, dispatch / noyau
+├── home.py       # home screen: buttons, fixtures, tiles / accueil
+├── loader.py     # discovery of the plugins / découverte
+├── plugin.py     # Plugin, Page, HomeButton, Fixture, TileProvider
+├── context.py    # Context, the one object a plugin receives
+├── paths.py, settings.py, dbus.py
+├── ui/           # rendering, colours, i18n / rendu, couleurs, i18n
+└── plugins/      # a11y, bluetooth, claude_sessions, dev_reload,
+                  # layouts, mpv_sessions, sound, tiling, timers,
+                  # todo_terminals, translate
+```
+
+
+### Couper des plugins
+
+Le réglage `DECK_PLUGINS_OFF` de `streamdeck.conf` est une liste d'identifiants de plugins, séparés par des virgules, qui ne sont pas importés. Le régler depuis TODO › Stream Deck › Plugins on/off, ou à la main. Un plugin qui lève à l'import, n'a pas de `PLUGIN`, déclare un autre `api` que `PLUGIN_API`, prend un identifiant de page déjà pris ou échoue dans `setup` est refusé et les autres continuent ; le journal nomme le plugin et la raison.
+
+
+```
+DECK_PLUGINS_OFF=bluetooth,translate
+```
+
+
+### Écrire un plugin
+
+Un plugin est un fichier `.py`. Son identifiant est le nom du fichier sans extension (`[a-z][a-z0-9_]*` ; les fichiers qui commencent par `_` sont ignorés) et il expose `PLUGIN = Plugin(api=PLUGIN_API, ...)`. Chaque fonction reçoit un `Context` (`ctx`) et s'exécute avec le verrou du noyau tenu. Ce plugin ajoute un bouton d'accueil et une page avec une touche retour :
+
+
+```python
+from erplibre_streamdeck.plugin import (
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin,
+)
+
+
+def _keys(geo):
+    return {"back": 0} if geo.cols >= 2 else None
+
+
+def _render(ctx):
+    for key in range(ctx.geo.total_keys):
+        ctx.set_key(key, (20, 20, 30))
+    ctx.set_key(0, (60, 60, 60), ctx.t("BACK"))
+
+
+def _handle(ctx, key):
+    if key == 0:
+        ctx.home()
+
+
+PLUGIN = Plugin(
+    api=PLUGIN_API,
+    pages=[Page("hello", _keys, _render, _handle)],
+    home_button=HomeButton(
+        90,
+        face=lambda ctx: KeyFace((30, 90, 60), "HELLO"),
+        press=lambda ctx: ctx.goto("hello"),
+    ),
+)
+```
+
+
+Un `Plugin` prend aussi `fixtures` (touches placées sur l'accueil), `tiles` (tuiles du tableau de bord), `home_tick`, `setup(ctx)` et `shutdown(ctx)` ; `plugin.py` documente chacun. `shutdown` s'exécute verrou tenu : il ne doit ni prendre `ctx.locked()` ni attendre un fil qui le prend. Un fil lancé par un plugin prend le verrou par `with ctx.locked():`.
+
+Un plugin de l'utilisateur va dans `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/` (`~/.config/erplibre-home/deck-plugins/` si la variable est absente) et remplace le plugin du dépôt de même identifiant. **Confiance :** les plugins de l'utilisateur s'exécutent dans le service du deck avec les droits de l'utilisateur, comme un profil de shell ; n'y mettre que du code écrit ou relu par soi.
+
+
 ### keyboard_talk.py
 
 Script d'automatisation clavier. Utilise `wmctrl` pour cibler une fenêtre terminal, puis envoie une séquence de touches automatisée via la librairie `keyboard`.
@@ -600,7 +684,7 @@ script/stream_deck/
 ├── requirements.txt           # Python dependencies / Dépendances Python
 ├── Assets/                    # Controller images and fonts / Images et polices
 ├── erplibre_controller.py     # Main ERPLibre controller / Contrôleur principal
-├── erplibre_streamdeck.py     # Deck program (window tiler) / Programme du deck
+├── erplibre_streamdeck/       # Deck program package (plugins) / Paquet du deck
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
 └── games/                     # Games, gallery, saves / Jeux, galerie, sauvegardes
     ├── game_*.py              # 45 games / 45 jeux

@@ -11,6 +11,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Ajouté
 
+- Le programme du deck Stream Deck accepte des plugins venus de `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`, en plus des onze que livre le dépôt ; un plugin qui ne se charge pas est refusé avec sa raison au journal et les autres continuent
+- `DECK_PLUGINS_OFF` dans `streamdeck.conf` et TODO › Stream Deck › Plugins on/off coupent des plugins du deck ; `erplibre_streamdeck --list-plugins` affiche chaque plugin et son état sans ouvrir le deck
 - Une passerelle cellulaire sur un modem USB, accessible depuis **Passerelle mobile** dans Odoo :
   elle relaie par la carte SIM les SMS qu'Odoo veut envoyer, rapporte les appels qui entrent, et
   évite au serveur d'avoir jamais à joindre l'appareil — c'est l'agent qui vient chercher son
@@ -139,6 +141,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Modifié
 
+- Le programme du deck Stream Deck passe du fichier `script/stream_deck/erplibre_streamdeck.py` au répertoire-paquet `script/stream_deck/erplibre_streamdeck`, lancé par `python script/stream_deck/erplibre_streamdeck` : un noyau et un plugin par fonction. Les pages et les touches restent les mêmes à toute géométrie, avec un changement voulu : un appui sur une tuile du tableau de bord ouvre ce que la touche montrait, même si les sessions ont changé depuis son affichage
 - `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond
 - Le contrôle d'hygiène des commentaires lit le Go, et non les seuls `#` : `//` hors d'une chaîne, la chaîne brute entre accents graves, et les blocs `/* … */`
 - Les index `by-hash` de Debian et d'Ubuntu sont servis du disque, leur nom étant l'empreinte de leur contenu ; `…/releases/latest/download/…` n'est plus figé sur la première version vue
