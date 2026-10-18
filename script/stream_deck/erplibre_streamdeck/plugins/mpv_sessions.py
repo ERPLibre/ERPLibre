@@ -74,15 +74,30 @@ def page_keys(geo):
     return keys
 
 
-def _send(ctx, pid, command):
+def _send(dbus, log, pid, command):
     """MpvSendCommand(pid, command); True when the extension answers
-    `true`. A failure goes to the journal."""
-    r = ctx.dbus.call("MpvSendCommand", str(int(pid)), command, timeout=2)
+    `true`. A failure goes to the journal. Runs as a job, outside the
+    lock: only `dbus`, `log` and its arguments."""
+    r = dbus.call("MpvSendCommand", str(int(pid)), command, timeout=2)
     if not r.true:
         out = (r.stdout + r.stderr).strip()
         verb = "returned" if r.ok else "failed"
-        ctx.log(f"MpvSendCommand({pid}, {command!r}) {verb}: {out}")
+        log(f"MpvSendCommand({pid}, {command!r}) {verb}: {out}")
     return r.true
+
+
+def _sent(stay_on_page):
+    """then() of a command: OK or ERR, then the page again for a
+    volume nudge (it repeats), the home screen otherwise."""
+
+    def then(ctx, ok, error):
+        ctx.flash(bool(ok) and error is None)
+        if stay_on_page:
+            ctx.render()
+        else:
+            ctx.home()
+
+    return then
 
 
 def _render(ctx):
@@ -122,14 +137,12 @@ def _handle(ctx, key):
     if not ms or key == ms.get("back") or not pid:
         ctx.home()
         return
+    dbus, log = ctx.dbus, ctx.log
     for command, stay_on_page in _COMMANDS:
         if key == ms.get(command):
-            ctx.flash(_send(ctx, pid, command))
-            if stay_on_page:
-                # Volume nudges repeat: the page stays up.
-                ctx.render()
-            else:
-                ctx.home()
+            ctx.run_blocking(
+                lambda: _send(dbus, log, pid, command), _sent(stay_on_page)
+            )
             return
 
 

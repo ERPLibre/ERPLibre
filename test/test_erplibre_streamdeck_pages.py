@@ -581,7 +581,7 @@ class Scenarios:
             # PLAY/PAUSE, QUIT, VOL -, VOL +
             for key in (1, 2, cols, cols + 1):
                 h.goto("mpv_session", pid=1)
-                tap(h, key)
+                tap_job(h, key)
 
         self.run_all("mpv_session__actions", FULL, full_world, script,
                      pages=("mpv_session",))

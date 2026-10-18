@@ -598,6 +598,35 @@ class SlowKeyTest(unittest.TestCase):
             "KillClaudeSession(sess-a) failed", h.journal.getvalue()
         )
 
+    def test_mpv_commands_are_jobs(self):
+        h = self.start(P.full_world)
+        # key, command, page shown once the result is back
+        for key, command, page in (
+            (1, "play_pause", "idle"), (2, "quit", "idle"),
+            (5, "vol_down", "mpv_session"), (6, "vol_up", "mpv_session"),
+        ):
+            h.goto("mpv_session", pid=1)
+            h.wait(P.FLASH_GAP)
+            press, threads, loop = self.press_slow(h, key)
+            self.assertEqual("mpv_session", press["page"])
+            self.assertEqual([], press["effects"])
+            self.assertEqual(
+                [f"gdbus MpvSendCommand 1 {command}"], threads["effects"]
+            )
+            self.assertEqual(page, loop["page"])
+            self.assert_flash(h, key, "OK!")
+
+    def test_mpv_volume_failure_flashes_err_on_the_page(self):
+        h = self.start(P.full_world)
+        h.proc.answer("gdbus MpvSendCommand", returncode=1)
+        h.goto("mpv_session", pid=1)
+        self.press_slow(h, 6)  # VOL +
+        self.assertEqual("mpv_session", h.target.page())
+        self.assert_flash(h, 6, "ERR")
+        self.assertIn(
+            "MpvSendCommand(1, 'vol_up') failed", h.journal.getvalue()
+        )
+
 
 class SettingsKeepTest(unittest.TestCase):
     def test_font_scale_save_keeps_other_keys(self):
