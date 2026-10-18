@@ -80,6 +80,22 @@ deck_games_message() {
         "enable them from TODO › Stream Deck › Games on/off, or set GAMES=on"
 }
 
+# deck_plugins_off écrit, un par ligne, les identifiants de plugins que
+# DECK_PLUGINS_OFF coupe : la valeur se coupe aux virgules, chaque morceau
+# perd tous ses blancs, un morceau vide est ignoré. Sort toujours en 0, clé
+# absente comprise.
+deck_plugins_off() {
+    local value part
+    local -a parts
+    value="$(deck_setting DECK_PLUGINS_OFF "")"
+    IFS=',' read -r -a parts <<<"${value}"
+    for part in "${parts[@]}"; do
+        part="${part//[[:space:]]/}"
+        [ -n "${part}" ] && echo "${part}"
+    done
+    return 0
+}
+
 # Vrai quand un périphérique USB du vendeur 0fd9 (Elgato) est branché, lu
 # dans les idVendor de sysfs. ERPLIBRE_HOME_SYSFS remplace /sys, pour les
 # tests.

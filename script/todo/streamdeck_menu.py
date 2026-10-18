@@ -75,6 +75,11 @@ class StreamDeckMenuMixin:
                     "Games on/off - Enable or disable the games"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Plugins on/off - Enable or disable deck plugins"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -104,6 +109,8 @@ class StreamDeckMenuMixin:
                 self._streamdeck_extension()
             elif status == "11":
                 self._streamdeck_games_setting()
+            elif status == "12":
+                self._streamdeck_plugins_setting()
             else:
                 print(t("Command not found !"))
 
@@ -287,6 +294,49 @@ class StreamDeckMenuMixin:
             print(t("Unchanged."))
             return
         print(f"{t('Games:')} {connus[choix]}")
+
+    def _streamdeck_plugins_setting(self):
+        """Bascule un plugin du deck dans DECK_PLUGINS_OFF. Les plugins
+        sont ceux que deck_plugin_ids trouve sur disque, chacun avec son
+        état. Les identifiants de la liste qui n'ont pas de fichier
+        restent là où ils sont : seul l'identifiant choisi entre ou sort,
+        à la fin de la liste quand il y entre. Le deck lit le réglage au
+        démarrage : l'unité, quand elle tourne, se relance pour le
+        prendre en compte."""
+        chemin = service.settings_path()
+        coupes = service.plugins_off(service.read_settings(chemin))
+        ids = service.deck_plugin_ids(RACINE)
+        if not ids:
+            print(t("No deck plugins found."))
+            return
+        options = [
+            (
+                identifiant,
+                "%s: %s"
+                % (
+                    identifiant,
+                    t("off") if identifiant in coupes else t("on"),
+                ),
+            )
+            for identifiant in ids
+        ]
+        choix = self._streamdeck_choice(t("Deck plugins:"), options, None)
+        if choix is None:
+            return
+        if choix in coupes:
+            coupes = [c for c in coupes if c != choix]
+        else:
+            coupes.append(choix)
+        if not service.write_settings(
+            chemin, {"DECK_PLUGINS_OFF": ",".join(coupes)}
+        ):
+            print(t("Unchanged."))
+            return
+        etat = t("on") if choix not in coupes else t("off")
+        print(f"{choix}: {etat}")
+        code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
+        if code == 0:
+            self._streamdeck_systemctl("restart", service.UNIT_NAME)
 
     def _streamdeck_autostart(self):
         if not self._streamdeck_unit_installed():

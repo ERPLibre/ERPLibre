@@ -59,6 +59,7 @@ class LaLecture(unittest.TestCase):
                 "DECK_PROGRAM": "tiler",
                 "RESTART_AFTER_GAME": "yes",
                 "GAMES": "on",
+                "DECK_PLUGINS_OFF": "",
             },
             service.read_settings("/exemple/absent.conf"),
         )
@@ -193,6 +194,65 @@ class LesJeux(unittest.TestCase):
             sortie, _ = self.shell("GAMES=off\n", {"XDG_CONFIG_HOME": autre})
         self.assertIn("rc=1", sortie)
         self.assertIn(autre, sortie)
+
+
+class LesPluginsCoupes(unittest.TestCase):
+    """DECK_PLUGINS_OFF : le shell et Python rendent la même liste."""
+
+    def shell(self, contenu):
+        with tempfile.TemporaryDirectory() as dossier:
+            conf = Path(dossier, ".config/erplibre-home/streamdeck.conf")
+            if contenu is not None:
+                conf.parent.mkdir(parents=True)
+                conf.write_bytes(contenu.encode("utf-8"))
+            environ = {
+                k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"
+            }
+            environ.update({"HOME": dossier, "BIB": str(BIBLIOTHEQUE)})
+            fini = subprocess.run(
+                ["bash", "-c", '. "$BIB"; deck_plugins_off'],
+                capture_output=True,
+                text=True,
+                env=environ,
+                timeout=30,
+            )
+            self.assertEqual(0, fini.returncode, fini.stderr)
+            return fini.stdout.splitlines(), service.read_settings(str(conf))
+
+    def test_shell_and_python_give_the_same_list(self):
+        cas = (
+            (None, []),
+            ("DECK_PLUGINS_OFF=\n", []),
+            ("DECK_PLUGINS_OFF=tiling\n", ["tiling"]),
+            ("DECK_PLUGINS_OFF= a , ,b_c,\n", ["a", "b_c"]),
+            ("DECK_PLUGINS_OFF=a,b\r\n", ["a", "b"]),
+            ("DECK_PLUGINS_OFF=a\nDECK_PLUGINS_OFF=b\n", ["b"]),
+        )
+        for contenu, attendu in cas:
+            with self.subTest(contenu=contenu):
+                sortie, lu = self.shell(contenu)
+                self.assertEqual(attendu, sortie)
+                self.assertEqual(attendu, service.plugins_off(lu))
+
+    def test_the_plugin_ids_merge_both_directories(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            base = Path(dossier)
+            depot = base / "depot/script/stream_deck/erplibre_streamdeck"
+            (depot / "plugins").mkdir(parents=True)
+            usager = base / "cfg/erplibre-home/deck-plugins"
+            usager.mkdir(parents=True)
+            for nom in ("tiling.py", "sound.py", "_helper.py", "note.txt"):
+                (depot / "plugins" / nom).write_text("")
+            for nom in ("sound.py", "mine.py", "_x.py"):
+                (usager / nom).write_text("")
+            ids = service.deck_plugin_ids(
+                str(base / "depot"), {"XDG_CONFIG_HOME": str(base / "cfg")}
+            )
+            absent = service.deck_plugin_ids(
+                str(base / "rien"), {"XDG_CONFIG_HOME": str(base / "rien")}
+            )
+        self.assertEqual(["mine", "sound", "tiling"], ids)
+        self.assertEqual([], absent)
 
 
 class LEcriture(unittest.TestCase):
