@@ -237,6 +237,60 @@ dropped from the dashboard and from its page.
 - TODO › Status shows `Session refresh: N s` when it is not the default;
   the diagnosis names an invalid value and how to fix it.
 
+## Amendments from the plan
+
+Where a rule below differs from the text above, this section wins.
+
+1. **Setting channel.** `app.build` takes `settings=`, a dict of deck
+   settings (key `"session_refresh_sec"`), not `session_refresh_sec=`: one
+   channel for every deck setting. `ctx.setting(name, default=None)` reads
+   it and returns `default` when the kernel was not given the key.
+2. **Session pages' period.** `Page.period` stays a float. The session
+   pages' tick has period 0.0 and gates itself: it compares
+   `state().last_check` with `ctx.setting("session_refresh_sec", 1.0)`. A
+   plugin's `setup` never mutates its module-level `PLUGIN`, since that
+   object is shared by every kernel in one process. `PLUGIN_API` stays 1.
+3. **Deck settings reader.** `read_deck_settings` replaces
+   `read_plugins_off`: one `bash` call returns `DECK_PLUGINS_OFF` and the
+   refresh period.
+4. **Umask.** `write_atomic` reads the process umask once, at import: the
+   set-and-restore pair is not thread-safe, and the layouts writer runs in
+   a job thread.
+5. **Busy plugin and key 0.** While a page's owner is busy, key 0 of that
+   page (BACK on every repository page and on `render.too_small`) sends
+   the deck home through the kernel without calling the plugin; the other
+   keys flash ERR. A user plugin whose page uses key 0 for something else
+   cannot use it while busy.
+6. **Starting a job.** The plugin is marked busy only once its thread has
+   started; a thread that cannot start raises to the caller and leaves the
+   plugin free. The runner catches `BaseException`, so every job queues a
+   result. `run_blocking` is called with the lock held and does not take
+   it.
+7. **Failed jobs are journaled by the kernel.** The runner keeps the
+   traceback text with the error. The drain writes
+   `[erplibre-home] <plugin>: job failed: <exc!r>` and the traceback once
+   per (plugin, error) through `ErrorLog`, before calling `then` or the
+   default flash, for every plugin. A job that ends without raising clears
+   the entry.
+8. **Flashes around jobs.** A drained job's `then` may flash, and a flash
+   it records ends the loop pass. A job press right after an expired flash
+   renders the page first, so the expired flash is cleared before "…" is
+   painted.
+9. **A job's post-action read.** When a job changes what a poll shows,
+   `work` returns the post-action read and `then` stores it in the
+   plugin's cache before rendering, so the render shows the new state
+   without waiting for the next poll.
+10. **Cached state in handlers.** The Bluetooth handlers act on the cached
+    state (powered flag for the toggle direction, paired list for the
+    slot); with no data yet they behave as "not available" does: ERR
+    flash. No D-Bus or `wpctl` call remains in a timers handler: the
+    refresh key and the export read inside their job. The Sound page's
+    mute stores the microphone state too. The volume and mute presses of
+    the Sound page re-read `wpctl` under the lock: they are fast, as in
+    the out-of-scope list above.
+11. **Capture poll.** The TODO terminals' capture poll runs on any page,
+    since a pending capture is due at its own time.
+
 ## Contracts that stay
 
 Everything B2 lists under "Contracts that stay", the plugin interface
