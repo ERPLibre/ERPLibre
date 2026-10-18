@@ -172,6 +172,61 @@ All of it is also in `make todo`: `Execute > Production`. Details,
 retention rules and exit codes:
 [script/database/README.md](../script/database/README.md).
 
+### Odoo journal
+
+`script/odoo/log_check.py` reads the journal of the instance and says what
+needs a look: Python tracebacks grouped by their final exception, other
+`ERROR`/`CRITICAL` records, refused SQL queries, and mail sending failures
+classified as transient or PERMANENT with the Odoo setting to check. It
+reads the unit's `logfile` when its configuration sets one, otherwise
+`journalctl` for the unit; `--file` reads any Odoo log file. Known harmless
+messages are counted apart, and `--ignore REGEX` adds local ones.
+
+```bash
+./script/odoo/log_check.py --since-last
+./script/odoo/log_check.py --last 6
+./script/odoo/log_check.py --by-hour --days 7
+./script/odoo/log_check.py --since-last --json
+```
+
+`--since-last` remembers where it stopped (journal cursor, or file inode
+and offset) in `/var/lib/erplibre-logcheck/<unit>.json` (`--state-dir`),
+only after a complete read; the first run covers the last 24 h. Without a
+window option it reads the last 24 h. If the state folder is not writable
+the report is still printed and says that the position was not saved; run
+it with sudo, or point `--state-dir` to a folder the account can write. An
+account in the `systemd-journal` (or `adm`) group reads the journal without
+sudo; otherwise the tool exits with code 2 instead of reporting nothing.
+Exit codes: 0 nothing to review, 1 something to review, 2 could not read.
+It writes nothing but its state file. Details:
+[script/odoo/README.md](../script/odoo/README.md).
+
+### Failed outgoing mail
+
+`script/odoo/mail_retry.py` lists the mails Odoo could not send in the last
+`--days` (30), read-only, as the unit's account: date, subject, recipients
+masked unless `--details`, and the cause, transient or PERMANENT. A
+PERMANENT cause (authentication, sender, relay, TLS, invalid address) fails
+again on resend until the named setting is fixed. Resending puts the chosen
+mails back in the queue through the unit's Odoo shell and the ORM
+(`action_retry`, or `state = outgoing` where that method does not exist);
+the scheduled action "Mail: Email Queue Manager" sends them at its next
+run.
+
+```bash
+./script/odoo/mail_retry.py --dry-run
+sudo ./script/odoo/mail_retry.py
+sudo ./script/odoo/mail_retry.py --resend oldest 10 --yes
+```
+
+On a terminal, without `--resend`, a menu asks which ones to resend (all,
+the oldest batch, chosen ids, none — the default). Without a terminal,
+`--resend all | oldest N | ids LIST` needs `--yes`. Exit codes: 0 nothing
+failed or every chosen mail requeued, 1 failures left or part of the
+selection skipped, 2 refused or impossible. Both tools are in `make todo`:
+`Execute > Production`. Details and the Odoo 12 to 18 matrix:
+[script/odoo/README.md](../script/odoo/README.md).
+
 # Postgresql
 
 To show config files:

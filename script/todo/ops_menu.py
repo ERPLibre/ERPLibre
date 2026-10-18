@@ -6,10 +6,11 @@
 Ce mixin ne fait que poser les questions et lancer les outils qui portent
 toute la logique : `script/odoo/update_module.py` (mise à jour),
 `script/database/odoo_backup.py` (sauvegarde, état, restauration d'essai,
-restauration dans une nouvelle base) et
-`script/systemd/install_backup_timer.py` (sauvegarde planifiée). Le menu
-n'en duplique rien : ce qui se fait depuis ici se fait aussi bien en ligne
-de commande.
+restauration dans une nouvelle base),
+`script/systemd/install_backup_timer.py` (sauvegarde planifiée),
+`script/odoo/log_check.py` (journal d'Odoo) et `script/odoo/mail_retry.py`
+(courriels en échec d'envoi). Le menu n'en duplique rien : ce qui se fait
+depuis ici se fait aussi bien en ligne de commande.
 
 Tout ce qui écrit passe par deux temps :
 
@@ -21,8 +22,16 @@ Tout ce qui écrit passe par deux temps :
    poser sa question quand on l'interrompt par Ctrl-C.
 
 Une simulation qui refuse (code non nul) arrête là : il n'y a rien à
-confirmer. L'état des sauvegardes, qui n'écrit rien, se lance directement,
-sans confirmation ni sudo.
+confirmer. L'état des sauvegardes, le journal d'Odoo et la liste des
+courriels en échec, qui n'écrivent rien dans l'instance, se lancent
+directement, sans confirmation ni sudo ; quand le compte courant ne peut
+pas les lire (code 2), la même commande sous sudo est proposée.
+
+`log_check --since-last` retient sa position dans un dossier de root : le
+menu propose sudo d'avance quand ce dossier n'est pas inscriptible, sinon
+chaque lecture repartirait des dernières 24 h. Le renvoi des courriels
+passe par sudo SANS capture : le menu de sélection de `mail_retry` a
+besoin du terminal.
 """
 
 import os
@@ -41,6 +50,10 @@ ODOO_BACKUP = os.path.join("script", "database", "odoo_backup.py")
 INSTALL_BACKUP_TIMER = os.path.join(
     "script", "systemd", "install_backup_timer.py"
 )
+LOG_CHECK = os.path.join("script", "odoo", "log_check.py")
+MAIL_RETRY = os.path.join("script", "odoo", "mail_retry.py")
+# Le dossier d'état par défaut de log_check.py.
+ETAT_LOG_CHECK = "/var/lib/erplibre-logcheck"
 
 
 def joindre(argv):
@@ -94,6 +107,32 @@ class OpsMenuMixin:
                     " with sudo"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Odoo journal: errors since the last check - read-only"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Odoo journal: errors of the last N hours - read-only"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Odoo journal: hourly report - errors per hour over N days"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Failed outgoing mail: list - read-only, addresses masked"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Failed outgoing mail: retry - confirm, then choose with"
+                    " sudo"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -115,6 +154,16 @@ class OpsMenuMixin:
                 self._ops_restore_new_database()
             elif status == "7":
                 self._ops_backup_timer()
+            elif status == "8":
+                self._ops_log_since_last()
+            elif status == "9":
+                self._ops_log_last_hours()
+            elif status == "10":
+                self._ops_log_hourly()
+            elif status == "11":
+                self._ops_mail_list()
+            elif status == "12":
+                self._ops_mail_retry()
             else:
                 print(t("Command not found !"))
 
@@ -266,3 +315,98 @@ class OpsMenuMixin:
             else t("Install the scheduled backup (daily at 03:00)?")
         )
         self._ops_lancer(INSTALL_BACKUP_TIMER, args, question)
+
+    def _ops_lire(self, script, args, sudo_d_avance=False):
+        """Lance un outil qui ne fait que lire, sans sudo, par
+        `exec_command_live`. Code 2 (lecture refusée au compte courant) :
+        la commande sous sudo est montrée, puis lancée sur accord, sans
+        capture. `sudo_d_avance` : lancer directement sous sudo."""
+        commande = [sys.executable, script] + args
+        if sudo_d_avance:
+            reelle = ["sudo"] + commande
+            print(f"\n{t('Will execute:')} {joindre(reelle)}")
+            fin = subprocess.run(reelle)
+            if fin.returncode not in (0, 1):
+                print(
+                    f"  ✗ {t('The command ended with code')} {fin.returncode}"
+                )
+            return
+        print(f"\n{t('Will execute:')} {joindre(commande)}")
+        status = self.execute.exec_command_live(
+            joindre(commande), source_erplibre=False
+        )
+        if status != 2:
+            return
+        print(
+            f"  ✗ {t('Not readable by this account; with sudo:')}"
+            f" sudo {joindre(commande)}"
+        )
+        if click.confirm(t("Run it with sudo?")):
+            subprocess.run(["sudo"] + commande)
+
+    def _ops_nombre(self, question, defaut):
+        """Un entier ≥ 1 saisi, `defaut` sur une réponse vide ; None sur
+        une réponse invalide (message affiché)."""
+        texte = input(question).strip()
+        if not texte:
+            return defaut
+        if not texte.isdigit() or int(texte) < 1:
+            print(t("Cancelled: expected a whole number >= 1."))
+            return None
+        return int(texte)
+
+    def _ops_log_since_last(self):
+        """La position se garde dans un dossier de root : sans droit
+        d'écriture, sudo est proposé d'avance (refusé, la lecture se fait
+        quand même, sans retenir la position)."""
+        sudo = False
+        if os.geteuid() != 0 and not _inscriptible(ETAT_LOG_CHECK):
+            sudo = click.confirm(
+                t(
+                    "The position is kept in {path}, writable by root only:"
+                    " run with sudo?"
+                ).format(path=ETAT_LOG_CHECK),
+                default=True,
+            )
+        self._ops_lire(LOG_CHECK, ["--since-last"], sudo_d_avance=sudo)
+
+    def _ops_log_last_hours(self):
+        heures = self._ops_nombre(t("Number of hours [24]: "), 24)
+        if heures is not None:
+            self._ops_lire(LOG_CHECK, ["--last", str(heures)])
+
+    def _ops_log_hourly(self):
+        jours = self._ops_nombre(t("Number of days [7]: "), 7)
+        if jours is not None:
+            self._ops_lire(LOG_CHECK, ["--by-hour", "--days", str(jours)])
+
+    def _ops_mail_list(self):
+        self._ops_lire(MAIL_RETRY, ["--list"] + self._ops_base())
+
+    def _ops_mail_retry(self):
+        """Le renvoi : sudo sans capture, après accord ; la sélection se
+        fait dans le menu de mail_retry.py, qui a le terminal."""
+        args = self._ops_base()
+        if not click.confirm(
+            t(
+                "Open the failed mail list with sudo to choose which ones to"
+                " resend?"
+            )
+        ):
+            return
+        reelle = ["sudo", sys.executable, MAIL_RETRY] + args
+        print(f"\n{t('Will execute:')} {joindre(reelle)}")
+        fin = subprocess.run(reelle)
+        if fin.returncode not in (0, 1):
+            print(f"  ✗ {t('The command ended with code')} {fin.returncode}")
+
+
+def _inscriptible(dossier):
+    """True si le compte courant peut écrire dans `dossier`, ou le créer
+    dans son parent existant le plus proche."""
+    while dossier and not os.path.exists(dossier):
+        parent = os.path.dirname(dossier)
+        if parent == dossier:
+            break
+        dossier = parent
+    return os.access(dossier, os.W_OK)

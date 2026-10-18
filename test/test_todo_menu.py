@@ -566,6 +566,11 @@ class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
         "Test restore of the latest backup": "_ops_test_restore",
         "Restore a backup into a new database": "_ops_restore_new_database",
         "Install / remove the scheduled backup": "_ops_backup_timer",
+        "Odoo journal: errors since the last check": "_ops_log_since_last",
+        "Odoo journal: errors of the last N hours": "_ops_log_last_hours",
+        "Odoo journal: hourly report": "_ops_log_hourly",
+        "Failed outgoing mail: list": "_ops_mail_list",
+        "Failed outgoing mail: retry": "_ops_mail_retry",
     }
 
 

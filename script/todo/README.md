@@ -24,7 +24,7 @@ boundary.
 | `qemu_manage.py` | lifecycle, disks, hardware, cleanup, addresses |
 | `qemu_access.py` | SSH, tunnels, consoles, Android emulator |
 | `proxmox_menu.py` | the same, on a REMOTE Proxmox VE host |
-| `ops_menu.py` | the Production menu for an instance run by systemd on this host: update its modules (`script/odoo/update_module.py`), back it up, check, test-restore or restore its backups (`script/database/odoo_backup.py`), install its scheduled backup (`script/systemd/install_backup_timer.py`) |
+| `ops_menu.py` | the Production menu for an instance run by systemd on this host: update its modules (`script/odoo/update_module.py`), back it up, check, test-restore or restore its backups (`script/database/odoo_backup.py`), install its scheduled backup (`script/systemd/install_backup_timer.py`), read its Odoo journal (`script/odoo/log_check.py`), list and resend its failed outgoing mails (`script/odoo/mail_retry.py`) |
 
 The two deployment forms — libvirt here, Proxmox over there — ask the same
 questions, so they share a foundation rather than each holding a copy:

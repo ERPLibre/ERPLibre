@@ -173,6 +173,64 @@ compte ; le côté distant n'a pas de rétention et grossit). Surveiller
 `Exécuter > Production`. Détails, règles de rétention et codes de sortie :
 [script/database/README.fr.md](../script/database/README.fr.md).
 
+### Journal d'Odoo
+
+`script/odoo/log_check.py` lit le journal de l'instance et dit ce qui mérite
+un regard : traces Python groupées par leur exception finale, autres
+enregistrements `ERROR`/`CRITICAL`, requêtes SQL refusées, et échecs
+d'envoi de courriel classés passagers ou PERMANENTS avec le réglage d'Odoo
+à vérifier. Il lit le `logfile` de l'unité quand sa configuration en pose
+un, sinon `journalctl` pour l'unité ; `--file` lit n'importe quel fichier
+de journal d'Odoo. Les messages connus et sans gravité sont comptés à part,
+et `--ignore REGEX` en ajoute de locaux.
+
+```bash
+./script/odoo/log_check.py --since-last
+./script/odoo/log_check.py --last 6
+./script/odoo/log_check.py --by-hour --days 7
+./script/odoo/log_check.py --since-last --json
+```
+
+`--since-last` retient où il s'est arrêté (curseur du journal, ou inode et
+octet d'un fichier) dans `/var/lib/erplibre-logcheck/<unité>.json`
+(`--state-dir`), seulement après une lecture complète ; la première fois
+couvre les dernières 24 h. Sans option de fenêtre, il lit les dernières
+24 h. Si le dossier d'état n'est pas inscriptible, le rapport s'affiche
+quand même et dit que la position n'a pas été retenue ; le lancer avec
+sudo, ou désigner par `--state-dir` un dossier où le compte peut écrire. Un
+compte du groupe `systemd-journal` (ou `adm`) lit le journal sans sudo ;
+sinon l'outil sort en code 2 au lieu de ne rien signaler. Codes de sortie :
+0 rien à revoir, 1 quelque chose à revoir, 2 lecture impossible. Il
+n'écrit rien d'autre que son fichier d'état. Détails :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+### Courriels sortants en échec
+
+`script/odoo/mail_retry.py` liste les courriels qu'Odoo n'a pas pu envoyer
+dans les `--days` derniers jours (30), en lecture seule, sous le compte de
+l'unité : date, sujet, destinataires masqués sauf `--details`, et la
+cause, passagère ou PERMANENTE. Une cause PERMANENTE (authentification,
+expéditeur, relais, TLS, adresse invalide) échoue de nouveau au renvoi tant
+que le réglage nommé n'est pas corrigé. Le renvoi remet les courriels
+choisis en file par le shell d'Odoo de l'unité et l'ORM (`action_retry`, ou
+`state = outgoing` là où la méthode n'existe pas) ; l'action planifiée
+« Mail: Email Queue Manager » les envoie à son prochain passage.
+
+```bash
+./script/odoo/mail_retry.py --dry-run
+sudo ./script/odoo/mail_retry.py
+sudo ./script/odoo/mail_retry.py --resend oldest 10 --yes
+```
+
+Sur un terminal, sans `--resend`, un menu demande lesquels renvoyer (tous,
+les plus anciens, des ids choisis, aucun — le défaut). Sans terminal,
+`--resend all | oldest N | ids LISTE` exige `--yes`. Codes de sortie : 0
+aucun échec ou tous les courriels choisis remis en file, 1 des échecs
+restent ou une partie de la sélection est ignorée, 2 refusé ou impossible.
+Les deux outils sont dans `make todo` : `Exécuter > Production`. Détails et
+matrice Odoo 12 à 18 :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
 # Postgresql
 
 Pour afficher les fichiers de configuration :

@@ -12,7 +12,7 @@ dossier de travail et de son fichier de configuration, ce module dit :
 - quels dossiers forment l'addons_path, et quels modules y répondent à
   des motifs (`chemins_addons`, `developper_modules`) ;
 - quels processus Odoo tournent sur une base (`processus_odoo`) ;
-- quelles lignes d'un journal sont des erreurs (`lignes_erreur`) ;
+- ce qu'un journal a reçu depuis une position (`taille`, `lire_ajout`) ;
 - où vit le filestore d'une base (`data_dir`, `filestore`) ;
 - si une sauvegarde au format zip d'Odoo est complète
   (`verifier_sauvegarde`) et quels membres en extraire
@@ -45,14 +45,6 @@ CONFIG_SYSTEME = "/etc/odoo/odoo.conf"
 # Motif de module admis : un nom technique Odoo, avec * et ? pour les
 # jokers. Rien qu'un shell ou une option interpréterait.
 RE_MOTIF_MODULE = re.compile(r"[a-z0-9_*?]+")
-
-# Une ligne de journal Odoo de niveau ERROR ou CRITICAL :
-# « AAAA-MM-JJ hh:mm:ss,mmm PID ERROR base logger: message ».
-# L'ancrage sur le format évite de compter un « ERROR » cité au milieu
-# d'un message INFO.
-RE_LIGNE_ERREUR = re.compile(
-    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d+)? \d+ (ERROR|CRITICAL) "
-)
 
 # Noms de fichier qui désignent un lanceur d'Odoo dans une ligne de
 # commande.
@@ -337,19 +329,6 @@ def processus_odoo(base, processus, exclus=()):
         if valeur_argv(argv, ("-d",), ("--database",)) == base:
             trouves.append((pid, argv))
     return trouves
-
-
-def lignes_erreur(texte, ignorer=()):
-    """Les lignes ERROR/CRITICAL au format Odoo, moins celles qu'un des
-    motifs compilés de `ignorer` reconnaît."""
-    lignes = []
-    for ligne in (texte or "").splitlines():
-        if not RE_LIGNE_ERREUR.match(ligne):
-            continue
-        if any(motif.search(ligne) for motif in ignorer):
-            continue
-        lignes.append(ligne)
-    return lignes
 
 
 def taille(chemin):

@@ -56,6 +56,17 @@ LIGNE_ERREUR = (
 LIGNE_AVERTISSEMENT = (
     "2026-01-31 12:00:00,123 4242 WARNING demo_db odoo.models: attention"
 )
+TRACE_KEYERROR = (
+    LIGNE_ERREUR + "\nTraceback (most recent call last):\n"
+    '  File "/srv/odoo/odoo/modules/loading.py", line 1, in load\n'
+    "KeyError: 'x'\n"
+)
+TRACE_VALUEERROR = (
+    "2026-01-31 12:00:01,000 4242 ERROR demo_db odoo.modules.registry:"
+    " Failed to load registry\nTraceback (most recent call last):\n"
+    '  File "/srv/odoo/odoo/modules/registry.py", line 2, in new\n'
+    "ValueError: y\n"
+)
 DUMP = b"-- dump\n-- PostgreSQL database dump complete\n"
 FAITS = {
     "base": "18.0.1.3",
@@ -585,12 +596,50 @@ class TestEchecsDeLaMiseAJour(Base):
         self.assertEqual(self.lancer(), um.CODE_ECHEC, self.sortie)
         self.assertTrue(self.a_appele("odoo "))
         self.assertIn(
-            um.t("{count} ERROR/CRITICAL line(s) during the update.").format(
-                count=1
-            ),
+            um.t(
+                "{count} ERROR/CRITICAL record(s) in {groups} group(s) during"
+                " the update."
+            ).format(count=1, groups=1),
             self.sortie,
         )
         self.assertTrue(self.a_appele("systemctl start"))
+
+    def test_u1_traces_groupees(self):
+        """Deux traces identiques et une autre : un échec, deux groupes,
+        le plus nombreux d'abord."""
+        self.systeme.odoo_sortie = (
+            TRACE_KEYERROR + TRACE_KEYERROR + TRACE_VALUEERROR
+        )
+        self.assertEqual(self.lancer(), um.CODE_ECHEC, self.sortie)
+        self.assertIn(
+            um.t(
+                "{count} ERROR/CRITICAL record(s) in {groups} group(s) during"
+                " the update."
+            ).format(count=3, groups=2),
+            self.sortie,
+        )
+        self.assertIn("[2x] KeyError: 'x' (odoo.modules.loading)", self.sortie)
+        self.assertLess(
+            self.sortie.index("[2x] KeyError"),
+            self.sortie.index("[1x] ValueError"),
+        )
+        self.assertTrue(self.a_appele("systemctl start"))
+
+    def test_u3_ignore_error_retire_tout_l_enregistrement(self):
+        self.systeme.odoo_sortie = TRACE_KEYERROR
+        self.assertEqual(
+            self.lancer("--ignore-error", "Failed to load"), um.CODE_OK
+        )
+        # Le titre de la trace compte aussi.
+        self.assertEqual(self.lancer("--ignore-error", "KeyError"), um.CODE_OK)
+        # Le bruit connu de log_check n'est pas écarté ici.
+        self.systeme.odoo_sortie = (
+            "2026-01-31 12:00:00,123 4242 ERROR demo_db"
+            " odoo.addons.web.controllers.binary: .map should have been"
+            " generated through debug assets, (version 0a1b2c3 most likely"
+            " outdated)\n"
+        )
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
 
 
 class TestFilet(Base):
@@ -841,11 +890,21 @@ class TestRedemarrage(Base):
         self.systeme.logfile_au_demarrage = LIGNE_ERREUR + "\n"
         self.assertEqual(self.lancer(), um.CODE_ECHEC, self.sortie)
         self.assertIn(
-            um.t("{count} ERROR/CRITICAL line(s) since the start.").format(
-                count=1
-            ),
+            um.t(
+                "{count} ERROR/CRITICAL record(s) in {groups} group(s) since"
+                " the start."
+            ).format(count=1, groups=1),
             self.sortie,
         )
+
+    def test_u2_journal_apres_demarrage_groupe(self):
+        """`journalctl -o cat` : les lignes de la trace, sans préfixe,
+        restent avec leur en-tête ; le service reste lancé."""
+        self.systeme.journal_texte = TRACE_KEYERROR * 2
+        self.assertEqual(self.lancer(), um.CODE_ECHEC, self.sortie)
+        self.assertIn("[2x] KeyError: 'x'", self.sortie)
+        self.assertNotIn("[1x] Traceback", self.sortie)
+        self.assertEqual(self.systeme.etat, "active")
 
 
 class TestVerrouRootSimulation(Base):
@@ -1453,6 +1512,47 @@ class TestSignauxReels(Base):
             self.assertIs(signal.getsignal(numero), self.origine[numero])
 
 
+class TestDossierDeBaseEnLien(Base):
+    """`<backup-dest>/<base>` ou `<state-dir>/<base>` en lien symbolique :
+    refus avant tout arrêt, rien écrit au bout du lien. update_module
+    passe par `odoo_backup.dossiers_a_creer`, pas par `detecter`."""
+
+    def verifier(self, dossier):
+        cible = os.path.join(self.tmp, "cible_du_lien")
+        os.makedirs(cible)
+        os.symlink(cible, dossier)
+        self.assertEqual(self.lancer(), um.CODE_REFUS, self.sortie)
+        self.assertIn(
+            um.t("{path} is a symbolic link: refused.").format(path=dossier),
+            self.erreurs + self.sortie,
+        )
+        self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertFalse(self.a_appele("backup "))
+        self.assertFalse(self.a_appele("odoo "))
+        self.assertEqual(os.listdir(cible), [])
+
+    def test_dossier_des_sauvegardes(self):
+        self.verifier(os.path.join(self.dest, "demo_db"))
+
+    def test_dossier_d_etat(self):
+        self.verifier(os.path.join(self.etat, "demo_db"))
+
+
+class TestGroupesMontres(unittest.TestCase):
+    def test_limite(self):
+        texte = "\n".join(
+            f"2026-03-01 11:00:00,000 7 ERROR demo_db odoo.x: panne {chr(97 + i)}"
+            for i in range(12)
+        )
+        args = mock.Mock(ignore_error=[])
+        analyse = um.erreurs_du_journal(texte, args)
+        flux = io.StringIO()
+        um.montrer_groupes(
+            report.Rapport(flux=flux, couleur=False), analyse, 10
+        )
+        self.assertEqual(flux.getvalue().count("[1x] odoo.x: panne"), 10)
+
+
 class TestDossierInscriptible(unittest.TestCase):
     """Le droit d'écrire d'un AUTRE compte, lu sur le mode du dossier.
 
@@ -1679,6 +1779,10 @@ class TestPythonAncien(unittest.TestCase):
         os.path.join(RACINE, "script", "lib_ops", "retention.py"),
         os.path.join(RACINE, "script", "database", "odoo_backup.py"),
         os.path.join(RACINE, "script", "systemd", "install_backup_timer.py"),
+        os.path.join(RACINE, "script", "odoo", "log_check.py"),
+        os.path.join(RACINE, "script", "odoo", "mail_retry.py"),
+        os.path.join(RACINE, "script", "lib_ops", "journal.py"),
+        os.path.join(RACINE, "script", "lib_ops", "mail_diagnostic.py"),
     ]
 
     # API absentes de Python 3.7 : la syntaxe passe le garde, l'appel
@@ -1743,6 +1847,8 @@ class TestPythonAncien(unittest.TestCase):
             os.path.join(
                 RACINE, "script", "systemd", "install_backup_timer.py"
             ),
+            os.path.join(RACINE, "script", "odoo", "log_check.py"),
+            os.path.join(RACINE, "script", "odoo", "mail_retry.py"),
         ):
             with self.subTest(fichier=os.path.basename(chemin)):
                 self.assertTrue(os.access(chemin, os.X_OK))

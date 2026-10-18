@@ -318,6 +318,116 @@ compte ; le côté distant n'a pas de rétention et grossit). Surveiller
 [script/database/README.fr.md](../script/database/README.fr.md).
 
 <!-- [en] -->
+### Odoo journal
+
+`script/odoo/log_check.py` reads the journal of the instance and says what
+needs a look: Python tracebacks grouped by their final exception, other
+`ERROR`/`CRITICAL` records, refused SQL queries, and mail sending failures
+classified as transient or PERMANENT with the Odoo setting to check. It
+reads the unit's `logfile` when its configuration sets one, otherwise
+`journalctl` for the unit; `--file` reads any Odoo log file. Known harmless
+messages are counted apart, and `--ignore REGEX` adds local ones.
+
+<!-- [fr] -->
+### Journal d'Odoo
+
+`script/odoo/log_check.py` lit le journal de l'instance et dit ce qui mérite
+un regard : traces Python groupées par leur exception finale, autres
+enregistrements `ERROR`/`CRITICAL`, requêtes SQL refusées, et échecs
+d'envoi de courriel classés passagers ou PERMANENTS avec le réglage d'Odoo
+à vérifier. Il lit le `logfile` de l'unité quand sa configuration en pose
+un, sinon `journalctl` pour l'unité ; `--file` lit n'importe quel fichier
+de journal d'Odoo. Les messages connus et sans gravité sont comptés à part,
+et `--ignore REGEX` en ajoute de locaux.
+
+<!-- [common] -->
+```bash
+./script/odoo/log_check.py --since-last
+./script/odoo/log_check.py --last 6
+./script/odoo/log_check.py --by-hour --days 7
+./script/odoo/log_check.py --since-last --json
+```
+
+<!-- [en] -->
+`--since-last` remembers where it stopped (journal cursor, or file inode
+and offset) in `/var/lib/erplibre-logcheck/<unit>.json` (`--state-dir`),
+only after a complete read; the first run covers the last 24 h. Without a
+window option it reads the last 24 h. If the state folder is not writable
+the report is still printed and says that the position was not saved; run
+it with sudo, or point `--state-dir` to a folder the account can write. An
+account in the `systemd-journal` (or `adm`) group reads the journal without
+sudo; otherwise the tool exits with code 2 instead of reporting nothing.
+Exit codes: 0 nothing to review, 1 something to review, 2 could not read.
+It writes nothing but its state file. Details:
+[script/odoo/README.md](../script/odoo/README.md).
+
+<!-- [fr] -->
+`--since-last` retient où il s'est arrêté (curseur du journal, ou inode et
+octet d'un fichier) dans `/var/lib/erplibre-logcheck/<unité>.json`
+(`--state-dir`), seulement après une lecture complète ; la première fois
+couvre les dernières 24 h. Sans option de fenêtre, il lit les dernières
+24 h. Si le dossier d'état n'est pas inscriptible, le rapport s'affiche
+quand même et dit que la position n'a pas été retenue ; le lancer avec
+sudo, ou désigner par `--state-dir` un dossier où le compte peut écrire. Un
+compte du groupe `systemd-journal` (ou `adm`) lit le journal sans sudo ;
+sinon l'outil sort en code 2 au lieu de ne rien signaler. Codes de sortie :
+0 rien à revoir, 1 quelque chose à revoir, 2 lecture impossible. Il
+n'écrit rien d'autre que son fichier d'état. Détails :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+<!-- [en] -->
+### Failed outgoing mail
+
+`script/odoo/mail_retry.py` lists the mails Odoo could not send in the last
+`--days` (30), read-only, as the unit's account: date, subject, recipients
+masked unless `--details`, and the cause, transient or PERMANENT. A
+PERMANENT cause (authentication, sender, relay, TLS, invalid address) fails
+again on resend until the named setting is fixed. Resending puts the chosen
+mails back in the queue through the unit's Odoo shell and the ORM
+(`action_retry`, or `state = outgoing` where that method does not exist);
+the scheduled action "Mail: Email Queue Manager" sends them at its next
+run.
+
+<!-- [fr] -->
+### Courriels sortants en échec
+
+`script/odoo/mail_retry.py` liste les courriels qu'Odoo n'a pas pu envoyer
+dans les `--days` derniers jours (30), en lecture seule, sous le compte de
+l'unité : date, sujet, destinataires masqués sauf `--details`, et la
+cause, passagère ou PERMANENTE. Une cause PERMANENTE (authentification,
+expéditeur, relais, TLS, adresse invalide) échoue de nouveau au renvoi tant
+que le réglage nommé n'est pas corrigé. Le renvoi remet les courriels
+choisis en file par le shell d'Odoo de l'unité et l'ORM (`action_retry`, ou
+`state = outgoing` là où la méthode n'existe pas) ; l'action planifiée
+« Mail: Email Queue Manager » les envoie à son prochain passage.
+
+<!-- [common] -->
+```bash
+./script/odoo/mail_retry.py --dry-run
+sudo ./script/odoo/mail_retry.py
+sudo ./script/odoo/mail_retry.py --resend oldest 10 --yes
+```
+
+<!-- [en] -->
+On a terminal, without `--resend`, a menu asks which ones to resend (all,
+the oldest batch, chosen ids, none — the default). Without a terminal,
+`--resend all | oldest N | ids LIST` needs `--yes`. Exit codes: 0 nothing
+failed or every chosen mail requeued, 1 failures left or part of the
+selection skipped, 2 refused or impossible. Both tools are in `make todo`:
+`Execute > Production`. Details and the Odoo 12 to 18 matrix:
+[script/odoo/README.md](../script/odoo/README.md).
+
+<!-- [fr] -->
+Sur un terminal, sans `--resend`, un menu demande lesquels renvoyer (tous,
+les plus anciens, des ids choisis, aucun — le défaut). Sans terminal,
+`--resend all | oldest N | ids LISTE` exige `--yes`. Codes de sortie : 0
+aucun échec ou tous les courriels choisis remis en file, 1 des échecs
+restent ou une partie de la sélection est ignorée, 2 refusé ou impossible.
+Les deux outils sont dans `make todo` : `Exécuter > Production`. Détails et
+matrice Odoo 12 à 18 :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+<!-- [en] -->
 # Postgresql
 
 To show config files:

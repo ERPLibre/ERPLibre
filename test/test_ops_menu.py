@@ -7,12 +7,15 @@
 La mise à jour arrête un service ; la sauvegarde, la restauration et la
 minuterie écrivent. Le menu doit donc toujours passer par la simulation,
 ne rien lancer quand elle refuse, demander avant l'exécution réelle, et ne
-lancer celle-ci que sous sudo, sans capture. L'état des sauvegardes se lit
-sans sudo. Rien n'est réellement exécuté : `execute` est remplacé,
+lancer celle-ci que sous sudo, sans capture. L'état des sauvegardes, le
+journal d'Odoo et la liste des courriels en échec se lisent sans sudo ;
+le renvoi des courriels passe par sudo après accord. Rien n'est réellement exécuté : `execute` est remplacé,
 `subprocess.run` aussi.
 """
 
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -21,6 +24,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 sys.argv = ["todo.py"]
 
+from script.todo import ops_menu  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 
@@ -228,6 +232,153 @@ class TestSauvegardeDepuisLeMenu(unittest.TestCase):
                 self.assertFalse(run.called)
 
 
+class TestJournalEtCourrielsDepuisLeMenu(unittest.TestCase):
+    """Le journal et la liste des courriels se lisent sans sudo ; un refus
+    de lecture (code 2) propose la même commande sous sudo. Le renvoi des
+    courriels passe par sudo, sans capture, après accord."""
+
+    def jouer(self, methode, reponses=(), code=0, confirme=True, ecrit=True):
+        todo = TODO.__new__(TODO)
+        todo.execute = FauxExecute(code)
+        with (
+            mock.patch("builtins.input", side_effect=list(reponses)),
+            mock.patch(
+                "script.todo.ops_menu.click.confirm", return_value=confirme
+            ) as confirm,
+            mock.patch(
+                "script.todo.ops_menu.subprocess.run",
+                return_value=mock.Mock(returncode=0),
+            ) as run,
+            mock.patch(
+                "script.todo.ops_menu._inscriptible", return_value=ecrit
+            ),
+            mock.patch("builtins.print"),
+        ):
+            getattr(todo, methode)()
+        return todo, run, confirm
+
+    def test_lectures_sans_sudo(self):
+        for methode, reponses, attendus in (
+            ("_ops_log_since_last", [], ["log_check.py", "--since-last"]),
+            ("_ops_log_last_hours", [""], ["log_check.py", "--last 24"]),
+            ("_ops_log_last_hours", ["6"], ["--last 6"]),
+            ("_ops_log_hourly", [""], ["--by-hour --days 7"]),
+            ("_ops_log_hourly", ["3"], ["--by-hour --days 3"]),
+            ("_ops_mail_list", [""], ["mail_retry.py", "--list"]),
+            ("_ops_mail_list", ["base_essai"], ["--list --db base_essai"]),
+        ):
+            with self.subTest(methode=methode, reponses=reponses):
+                todo, run, confirm = self.jouer(methode, reponses)
+                (commande,) = todo.execute.commandes
+                for attendu in attendus:
+                    self.assertIn(attendu, commande)
+                self.assertNotIn("sudo", commande)
+                self.assertIs(
+                    todo.execute.options[0]["source_erplibre"], False
+                )
+                self.assertFalse(confirm.called)
+                self.assertFalse(run.called)
+
+    def test_refus_de_lecture_propose_sudo(self):
+        for methode, reponses in (
+            ("_ops_log_last_hours", [""]),
+            ("_ops_mail_list", [""]),
+        ):
+            with self.subTest(methode=methode):
+                _todo, run, confirm = self.jouer(methode, reponses, code=2)
+                self.assertTrue(confirm.called)
+                argv = run.call_args.args[0]
+                self.assertEqual(argv[0], "sudo")
+                self.assertNotIn("capture_output", run.call_args.kwargs)
+                _todo, run, _ = self.jouer(
+                    methode, reponses, code=2, confirme=False
+                )
+                self.assertFalse(run.called)
+
+    def test_nombre_invalide_ne_lance_rien(self):
+        todo, run, _ = self.jouer("_ops_log_last_hours", ["x"])
+        self.assertEqual(todo.execute.commandes, [])
+        self.assertFalse(run.called)
+
+    def test_position_dans_un_dossier_de_root(self):
+        if os.geteuid() == 0:
+            self.skipTest("root écrit partout")
+        todo, run, confirm = self.jouer("_ops_log_since_last", ecrit=False)
+        self.assertTrue(confirm.called)
+        self.assertEqual(todo.execute.commandes, [])
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[0], "sudo")
+        self.assertIn("--since-last", argv)
+        todo, run, _ = self.jouer(
+            "_ops_log_since_last", ecrit=False, confirme=False
+        )
+        self.assertFalse(run.called)
+        self.assertEqual(len(todo.execute.commandes), 1)
+
+    def test_renvoi_sous_sudo_apres_accord(self):
+        _todo, run, confirm = self.jouer("_ops_mail_retry", ["base_essai"])
+        self.assertTrue(confirm.called)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[0], "sudo")
+        self.assertTrue(argv[2].endswith("mail_retry.py"))
+        self.assertEqual(argv[-2:], ["--db", "base_essai"])
+        self.assertNotIn("--yes", argv)
+        self.assertNotIn("capture_output", run.call_args.kwargs)
+        self.assertNotIn("stdout", run.call_args.kwargs)
+        todo, run, _ = self.jouer("_ops_mail_retry", [""], confirme=False)
+        self.assertFalse(run.called)
+        self.assertEqual(todo.execute.commandes, [])
+
+
+class TestDossierInscriptible(unittest.TestCase):
+    """`_inscriptible` sur de vrais dossiers : celui qui existe, sinon son
+    parent existant le plus proche."""
+
+    def test_dossiers(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        racine = d.name
+        self.assertTrue(ops_menu._inscriptible(racine))
+        self.assertTrue(ops_menu._inscriptible(os.path.join(racine, "a", "b")))
+        if os.geteuid() == 0:
+            self.skipTest("root écrit partout")
+        fermee = os.path.join(racine, "fermee")
+        os.makedirs(fermee)
+        os.chmod(fermee, 0o555)
+        self.addCleanup(os.chmod, fermee, 0o755)
+        self.assertFalse(ops_menu._inscriptible(fermee))
+        self.assertFalse(ops_menu._inscriptible(os.path.join(fermee, "etat")))
+
+
+class TestCodeDeSortieSousSudo(unittest.TestCase):
+    """Un code autre que 0 ou 1 sous sudo est affiché : rien n'est
+    capturé, c'est la seule trace d'un refus."""
+
+    def test_code_affiche(self):
+        todo = TODO.__new__(TODO)
+        todo.execute = FauxExecute(0)
+        for code, montre in ((0, False), (1, False), (2, True)):
+            with self.subTest(code=code):
+                with (
+                    mock.patch("builtins.input", side_effect=[""]),
+                    mock.patch(
+                        "script.todo.ops_menu.click.confirm",
+                        return_value=True,
+                    ),
+                    mock.patch(
+                        "script.todo.ops_menu.subprocess.run",
+                        return_value=mock.Mock(returncode=code),
+                    ),
+                    mock.patch("builtins.print") as affiche,
+                ):
+                    todo._ops_mail_retry()
+                textes = [str(a.args[0]) for a in affiche.call_args_list]
+                attendu = f"{ops_menu.t('The command ended with code')} {code}"
+                self.assertEqual(
+                    any(attendu in texte for texte in textes), montre
+                )
+
+
 class TestLeMenuEstBranche(unittest.TestCase):
     def test_retour_rend_false(self):
         todo = TODO.__new__(TODO)
@@ -288,11 +439,30 @@ class TestLeMenuEstBranche(unittest.TestCase):
         self.assertIn("--status", todo.execute.commandes[0])
         self.assertFalse(run.called)
 
+    def test_choix_8_a_12(self):
+        with mock.patch(
+            "script.todo.ops_menu._inscriptible", return_value=True
+        ):
+            for choix, reponses, attendu in (
+                ("8", [], "log_check.py --since-last"),
+                ("9", [""], "log_check.py --last 24"),
+                ("10", [""], "log_check.py --by-hour --days 7"),
+                ("11", [""], "mail_retry.py --list"),
+            ):
+                with self.subTest(choix=choix):
+                    todo, run = self.choisir(choix, reponses)
+                    self.assertIn(attendu, todo.execute.commandes[0])
+                    self.assertFalse(run.called)
+        todo, run = self.choisir("12", [""])
+        self.assertEqual(todo.execute.commandes, [])
+        self.assertEqual(run.call_args.args[0][0], "sudo")
+        self.assertTrue(run.call_args.args[0][2].endswith("mail_retry.py"))
+
     def test_entree_17_du_menu_execute(self):
         source = (RACINE / "script" / "todo" / "todo.py").read_text()
         self.assertIn(
-            '[17] {t("Production - Update, back up and restore a systemd'
-            ' instance")}',
+            '[17] {t("Production - Update, back up, restore and watch a'
+            ' systemd instance")}',
             source,
         )
         self.assertIn("status = self.prompt_execute_production()", source)

@@ -354,7 +354,7 @@ class TODO(
 [16] {t("Docker / Podman - Container engines")}
 
 ── {t("Production")} ──
-[17] {t("Production - Update, back up and restore a systemd instance")}
+[17] {t("Production - Update, back up, restore and watch a systemd instance")}
 [0] {t("Back")}
 """
         while True:

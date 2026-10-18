@@ -19917,9 +19917,9 @@ TRANSLATIONS = {
         "fr": "Production",
         "en": "Production",
     },
-    "Production - Update, back up and restore a systemd instance": {
-        "fr": "🏭 Production - Mettre à jour, sauvegarder et restaurer une instance systemd",
-        "en": "🏭 Production - Update, back up and restore a systemd instance",
+    "Production - Update, back up, restore and watch a systemd instance": {
+        "fr": "🏭 Production - Mettre à jour, sauvegarder, restaurer et surveiller une instance systemd",
+        "en": "🏭 Production - Update, back up, restore and watch a systemd instance",
     },
     "Production: an instance run by systemd on this host.": {
         "fr": "Production : une instance servie par systemd sur ce poste.",
@@ -19964,14 +19964,6 @@ TRANSLATIONS = {
     "{host}:{port} still answers.": {
         "fr": "{host}:{port} répond encore.",
         "en": "{host}:{port} still answers.",
-    },
-    "{count} ERROR/CRITICAL line(s) since the start.": {
-        "fr": "{count} ligne(s) ERROR/CRITICAL depuis le démarrage.",
-        "en": "{count} ERROR/CRITICAL line(s) since the start.",
-    },
-    "{count} ERROR/CRITICAL line(s) during the update.": {
-        "fr": "{count} ligne(s) ERROR/CRITICAL pendant la mise à jour.",
-        "en": "{count} ERROR/CRITICAL line(s) during the update.",
     },
     "systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.": {
         "fr": "Unité systemd ; par défaut : l'unité dont WorkingDirectory est ce checkout, sinon la seule active.",
@@ -20216,10 +20208,6 @@ TRANSLATIONS = {
     "Errors in the Odoo log since the start": {
         "fr": "Erreurs du journal Odoo depuis le démarrage",
         "en": "Errors in the Odoo log since the start",
-    },
-    "ERROR/CRITICAL lines matching REGEX do not fail; repeatable.": {
-        "fr": "Les lignes ERROR/CRITICAL reconnues par REGEX ne font pas échouer ; répétable.",
-        "en": "ERROR/CRITICAL lines matching REGEX do not fail; repeatable.",
     },
     "Do not back up the database before the update.": {
         "fr": "Ne pas sauvegarder la base avant la mise à jour.",
@@ -20907,6 +20895,10 @@ TRANSLATIONS = {
         "en": "expected an integer >= 0: {value}",
     },
     # Production - sauvegardes vérifiées : refus, espace de PostgreSQL, minuterie
+    "{path} is a symbolic link: refused.": {
+        "fr": "{path} est un lien symbolique : refusé.",
+        "en": "{path} is a symbolic link: refused.",
+    },
     "Some folders can only be created by root: the real run creates them under sudo.": {
         "fr": "Certains dossiers ne peuvent être créés que par root : l'exécution réelle les crée sous sudo.",
         "en": "Some folders can only be created by root: the real run creates them under sudo.",
@@ -20946,6 +20938,539 @@ TRANSLATIONS = {
     "systemd-tmpfiles failed (code {code}): {output}. The lock file is missing until the next boot.": {
         "fr": "systemd-tmpfiles a échoué (code {code}) : {output}. Le fichier du verrou manque jusqu'au prochain démarrage.",
         "en": "systemd-tmpfiles failed (code {code}): {output}. The lock file is missing until the next boot.",
+    },
+    # Production - journal Odoo et courriels en échec (log_check, mail_retry)
+    "System parameter mail.session.batch.size: lower than the provider's per-connection limit (try 10); also the provider's hourly and daily sending cap.": {
+        "fr": "Paramètre système mail.session.batch.size : plus petit que la limite par connexion du fournisseur (essayer 10) ; voir aussi le plafond d'envoi horaire et quotidien du fournisseur.",
+        "en": "System parameter mail.session.batch.size: lower than the provider's per-connection limit (try 10); also the provider's hourly and daily sending cap.",
+    },
+    "System parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.": {
+        "fr": "Paramètres système mail.default.from et mail.catchall.domain : l'adresse « De » doit être une adresse au nom de laquelle le compte SMTP peut envoyer.",
+        "en": "System parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.",
+    },
+    "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and the system parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.": {
+        "fr": "Filtre « De » du serveur de courrier sortant (ou from_filter dans le fichier de configuration d'Odoo), et paramètres système mail.default.from et mail.catchall.domain : l'adresse « De » doit être une adresse au nom de laquelle le compte SMTP peut envoyer.",
+        "en": "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and the system parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.",
+    },
+    "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and Settings > Technical > Email > Alias Domains (default from, catchall): the From address must be one the SMTP account may send as.": {
+        "fr": "Filtre « De » du serveur de courrier sortant (ou from_filter dans le fichier de configuration d'Odoo), et Paramètres > Technique > Courriel > Domaines d'alias (expéditeur par défaut, catchall) : l'adresse « De » doit être une adresse au nom de laquelle le compte SMTP peut envoyer.",
+        "en": "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and Settings > Technical > Email > Alias Domains (default from, catchall): the From address must be one the SMTP account may send as.",
+    },
+    "From Filter of the outgoing mail server or from_filter in the Odoo configuration file (15+); default sender: system parameters mail.default.from and mail.catchall.domain (up to 16), or Settings > Technical > Email > Alias Domains (17+).": {
+        "fr": "Filtre « De » du serveur de courrier sortant ou from_filter dans le fichier de configuration d'Odoo (15+) ; expéditeur par défaut : paramètres système mail.default.from et mail.catchall.domain (jusqu'à 16), ou Paramètres > Technique > Courriel > Domaines d'alias (17+).",
+        "en": "From Filter of the outgoing mail server or from_filter in the Odoo configuration file (15+); default sender: system parameters mail.default.from and mail.catchall.domain (up to 16), or Settings > Technical > Email > Alias Domains (17+).",
+    },
+    "invalid or missing recipient address": {
+        "fr": "adresse du destinataire invalide ou absente",
+        "en": "invalid or missing recipient address",
+    },
+    "Port and encryption of the outgoing mail server (465 with SSL/TLS, 587 with STARTTLS) and its certificate; or smtp_port and smtp_ssl in the Odoo configuration file.": {
+        "fr": "Port et chiffrement du serveur de courrier sortant (465 avec SSL/TLS, 587 avec STARTTLS) et son certificat ; ou smtp_port et smtp_ssl dans le fichier de configuration d'Odoo.",
+        "en": "Port and encryption of the outgoing mail server (465 with SSL/TLS, 587 with STARTTLS) and its certificate; or smtp_port and smtp_ssl in the Odoo configuration file.",
+    },
+    "Login and password of the outgoing mail server (Test Connection), or smtp_user and smtp_password in the Odoo configuration file; an application password where the provider requires one.": {
+        "fr": "Identifiant et mot de passe du serveur de courrier sortant (Tester la connexion), ou smtp_user et smtp_password dans le fichier de configuration d'Odoo ; un mot de passe d'application là où le fournisseur l'exige.",
+        "en": "Login and password of the outgoing mail server (Test Connection), or smtp_user and smtp_password in the Odoo configuration file; an application password where the provider requires one.",
+    },
+    "Authentication on the outgoing mail server, and a From address in a domain this server accepts to relay.": {
+        "fr": "Authentification sur le serveur de courrier sortant, et une adresse « De » dans un domaine que ce serveur accepte de relayer.",
+        "en": "Authentication on the outgoing mail server, and a From address in a domain this server accepts to relay.",
+    },
+    "The recipient address itself: the destination server does not know it.": {
+        "fr": "L'adresse du destinataire elle-même : le serveur de destination ne la connaît pas.",
+        "en": "The recipient address itself: the destination server does not know it.",
+    },
+    "The recipient address of the mail or of its contact: missing or malformed.": {
+        "fr": "L'adresse du destinataire du courriel ou de son contact : absente ou mal formée.",
+        "en": "The recipient address of the mail or of its contact: missing or malformed.",
+    },
+    "Host and port of the outgoing mail server (or smtp_server and smtp_port in the Odoo configuration file), outgoing firewall and DNS of this host.": {
+        "fr": "Hôte et port du serveur de courrier sortant (ou smtp_server et smtp_port dans le fichier de configuration d'Odoo), pare-feu sortant et DNS de cet hôte.",
+        "en": "Host and port of the outgoing mail server (or smtp_server and smtp_port in the Odoo configuration file), outgoing firewall and DNS of this host.",
+    },
+    "TLS or certificate error": {
+        "fr": "erreur TLS ou de certificat",
+        "en": "TLS or certificate error",
+    },
+    "sending rate or per-session limit (421/450/451/452)": {
+        "fr": "limite de débit ou de messages par connexion (421/450/451/452)",
+        "en": "sending rate or per-session limit (421/450/451/452)",
+    },
+    "'Multiple MAIL' after an earlier failure (503)": {
+        "fr": "« Multiple MAIL » après un échec précédent (503)",
+        "en": "'Multiple MAIL' after an earlier failure (503)",
+    },
+    "authentication refused (535)": {
+        "fr": "authentification refusée (535)",
+        "en": "authentication refused (535)",
+    },
+    "relay refused": {
+        "fr": "relais refusé",
+        "en": "relay refused",
+    },
+    "sender refused (550/553)": {
+        "fr": "expéditeur refusé (550/553)",
+        "en": "sender refused (550/553)",
+    },
+    "recipient refused": {
+        "fr": "destinataire refusé",
+        "en": "recipient refused",
+    },
+    "SMTP server unreachable": {
+        "fr": "serveur SMTP injoignable",
+        "en": "SMTP server unreachable",
+    },
+    "Source map (.map) of an outdated asset bundle": {
+        "fr": "Carte source (.map) d'un paquet d'assets périmé",
+        "en": "Source map (.map) of an outdated asset bundle",
+    },
+    "Concurrent update conflict, retried by Odoo (bad query)": {
+        "fr": "Conflit de mise à jour concurrente, rejoué par Odoo (bad query)",
+        "en": "Concurrent update conflict, retried by Odoo (bad query)",
+    },
+    "Push subscription with an outdated VAPID key": {
+        "fr": "Abonnement push avec une clé VAPID périmée",
+        "en": "Push subscription with an outdated VAPID key",
+    },
+    "run with sudo, or add the user to the systemd-journal group.": {
+        "fr": "lancer avec sudo, ou ajouter le compte au groupe systemd-journal.",
+        "en": "run with sudo, or add the user to the systemd-journal group.",
+    },
+    "since the last check": {
+        "fr": "depuis la dernière lecture",
+        "en": "since the last check",
+    },
+    "Window": {
+        "fr": "Fenêtre",
+        "en": "Window",
+    },
+    "Records": {
+        "fr": "Enregistrements",
+        "en": "Records",
+    },
+    "[4] Mail sending failures": {
+        "fr": "[4] Échecs d'envoi de courriel",
+        "en": "[4] Mail sending failures",
+    },
+    "[5] Ignored as known noise": {
+        "fr": "[5] Ignoré comme bruit connu",
+        "en": "[5] Ignored as known noise",
+    },
+    "[6] Errors per hour (local time)": {
+        "fr": "[6] Erreurs par heure (heure locale)",
+        "en": "[6] Errors per hour (local time)",
+    },
+    "hour": {
+        "fr": "heure",
+        "en": "hour",
+    },
+    "Nothing to review.": {
+        "fr": "Rien à revoir.",
+        "en": "Nothing to review.",
+    },
+    "Read the journal of an Odoo instance: tracebacks, errors, refused SQL queries and mail sending failures to review.": {
+        "fr": "Lire le journal d'une instance Odoo : traces, erreurs, requêtes SQL refusées et échecs d'envoi de courriel à revoir.",
+        "en": "Read the journal of an Odoo instance: tracebacks, errors, refused SQL queries and mail sending failures to review.",
+    },
+    "Odoo log file to read instead of a unit.": {
+        "fr": "Fichier de journal d'Odoo à lire au lieu d'une unité.",
+        "en": "Odoo log file to read instead of a unit.",
+    },
+    "Since the last check (position kept in --state-dir).": {
+        "fr": "Depuis la dernière lecture (position gardée dans --state-dir).",
+        "en": "Since the last check (position kept in --state-dir).",
+    },
+    "The last HOURS hours.": {
+        "fr": "Les HOURS dernières heures.",
+        "en": "The last HOURS hours.",
+    },
+    "From this local date: YYYY-MM-DD[ HH:MM[:SS]].": {
+        "fr": "À partir de cette date locale : AAAA-MM-JJ[ hh:mm[:ss]].",
+        "en": "From this local date: YYYY-MM-DD[ HH:MM[:SS]].",
+    },
+    "Errors per hour over --days days.": {
+        "fr": "Erreurs par heure sur --days jours.",
+        "en": "Errors per hour over --days days.",
+    },
+    "With --since: up to this local date.": {
+        "fr": "Avec --since : jusqu'à cette date locale.",
+        "en": "With --since: up to this local date.",
+    },
+    "Records whose header line or final exception matches REGEX are not to review; repeatable.": {
+        "fr": "Les enregistrements dont la ligne d'en-tête ou l'exception finale correspond à REGEX ne sont pas à revoir ; répétable.",
+        "en": "Records whose header line or final exception matches REGEX are not to review; repeatable.",
+    },
+    "Print the summary as JSON (untranslated keys).": {
+        "fr": "Afficher le résumé en JSON (clés non traduites).",
+        "en": "Print the summary as JSON (untranslated keys).",
+    },
+    "Show every line of each traceback sample.": {
+        "fr": "Montrer toutes les lignes de chaque exemple de trace.",
+        "en": "Show every line of each traceback sample.",
+    },
+    "--until requires --since.": {
+        "fr": "--until exige --since.",
+        "en": "--until requires --since.",
+    },
+    "First run: last 24 h.": {
+        "fr": "Première lecture : dernières 24 h.",
+        "en": "First run: last 24 h.",
+    },
+    "journalctl not found: {error}": {
+        "fr": "journalctl introuvable : {error}",
+        "en": "journalctl not found: {error}",
+    },
+    "Odoo journal: {source}": {
+        "fr": "Journal d'Odoo : {source}",
+        "en": "Odoo journal: {source}",
+    },
+    "errors per hour over {days} day(s)": {
+        "fr": "erreurs par heure sur {days} jour(s)",
+        "en": "errors per hour over {days} day(s)",
+    },
+    "now": {
+        "fr": "maintenant",
+        "en": "now",
+    },
+    "PERMANENT": {
+        "fr": "PERMANENTE",
+        "en": "PERMANENT",
+    },
+    "transient": {
+        "fr": "passagère",
+        "en": "transient",
+    },
+    "The journal read exceeded {seconds} s (--timeout).": {
+        "fr": "La lecture du journal a dépassé {seconds} s (--timeout).",
+        "en": "The journal read exceeded {seconds} s (--timeout).",
+    },
+    "Cannot read {path}: {error}": {
+        "fr": "Impossible de lire {path} : {error}",
+        "en": "Cannot read {path}: {error}",
+    },
+    "Run with sudo.": {
+        "fr": "Lancer avec sudo.",
+        "en": "Run with sudo.",
+    },
+    "[1] Python tracebacks: {count} in {groups} group(s)": {
+        "fr": "[1] Traces Python : {count} en {groups} groupe(s)",
+        "en": "[1] Python tracebacks: {count} in {groups} group(s)",
+    },
+    "[2] Errors: {count} in {groups} group(s)": {
+        "fr": "[2] Erreurs : {count} en {groups} groupe(s)",
+        "en": "[2] Errors: {count} in {groups} group(s)",
+    },
+    "[3] Refused SQL queries: {count} in {groups} group(s)": {
+        "fr": "[3] Requêtes SQL refusées : {count} en {groups} groupe(s)",
+        "en": "[3] Refused SQL queries: {count} in {groups} group(s)",
+    },
+    "No error in this window.": {
+        "fr": "Aucune erreur dans cette fenêtre.",
+        "en": "No error in this window.",
+    },
+    "{count} record(s) to review.": {
+        "fr": "{count} enregistrement(s) à revoir.",
+        "en": "{count} record(s) to review.",
+    },
+    "expected a number of days from 1 to {maximum}: {value}": {
+        "fr": "nombre de jours attendu de 1 à {maximum} : {value}",
+        "en": "expected a number of days from 1 to {maximum}: {value}",
+    },
+    "Days of --by-hour; default: {days}.": {
+        "fr": "Jours de --by-hour ; par défaut : {days}.",
+        "en": "Days of --by-hour; default: {days}.",
+    },
+    "Groups shown per section; default: {count}.": {
+        "fr": "Groupes montrés par section ; par défaut : {count}.",
+        "en": "Groups shown per section; default: {count}.",
+    },
+    "Maximum seconds for the journal read; default: {seconds}.": {
+        "fr": "Durée maximale de la lecture du journal, en secondes ; par défaut : {seconds}.",
+        "en": "Maximum seconds for the journal read; default: {seconds}.",
+    },
+    "Odoo configuration not read ({error}): the journal is read.": {
+        "fr": "Configuration d'Odoo non lue ({error}) : le journal est lu.",
+        "en": "Odoo configuration not read ({error}): the journal is read.",
+    },
+    "{error} The journal holds no Odoo record in this window: Odoo may write to a logfile set in that configuration.": {
+        "fr": "{error} Le journal ne porte aucun enregistrement d'Odoo dans cette fenêtre : Odoo écrit peut-être dans un logfile posé par cette configuration.",
+        "en": "{error} The journal holds no Odoo record in this window: Odoo may write to a logfile set in that configuration.",
+    },
+    "This account cannot read the journal of {unit}: {advice}": {
+        "fr": "Ce compte ne peut pas lire le journal de {unit} : {advice}",
+        "en": "This account cannot read the journal of {unit}: {advice}",
+    },
+    "+{count} more group(s) (--top).": {
+        "fr": "+{count} groupe(s) de plus (--top).",
+        "en": "+{count} more group(s) (--top).",
+    },
+    "List and resend the failed mails: {command}": {
+        "fr": "Lister et renvoyer les courriels en échec : {command}",
+        "en": "List and resend the failed mails: {command}",
+    },
+    "Position not saved: {reason}": {
+        "fr": "Position non retenue : {reason}",
+        "en": "Position not saved: {reason}",
+    },
+    "Invalid date: {value}": {
+        "fr": "Date invalide : {value}",
+        "en": "Invalid date: {value}",
+    },
+    "journalctl failed (code {code}): {error}": {
+        "fr": "journalctl a échoué (code {code}) : {error}",
+        "en": "journalctl failed (code {code}): {error}",
+    },
+    "{path} was rotated or truncated: read from the start.": {
+        "fr": "{path} a été renouvelé ou tronqué : lu depuis le début.",
+        "en": "{path} was rotated or truncated: read from the start.",
+    },
+    "Check: {setting}": {
+        "fr": "À vérifier : {setting}",
+        "en": "Check: {setting}",
+    },
+    "Hours without errors: {ranges}": {
+        "fr": "Heures sans erreur : {ranges}",
+        "en": "Hours without errors: {ranges}",
+    },
+    "Mails: {ids}": {
+        "fr": "Courriels : {ids}",
+        "en": "Mails: {ids}",
+    },
+    "unknown cause": {
+        "fr": "cause inconnue",
+        "en": "unknown cause",
+    },
+    "Mail states": {
+        "fr": "États des courriels",
+        "en": "Mail states",
+    },
+    "(no recipient recorded)": {
+        "fr": "(aucun destinataire noté)",
+        "en": "(no recipient recorded)",
+    },
+    "To:": {
+        "fr": "À :",
+        "en": "To:",
+    },
+    "cause:": {
+        "fr": "cause :",
+        "en": "cause:",
+    },
+    "By subject": {
+        "fr": "Par sujet",
+        "en": "By subject",
+    },
+    "By cause": {
+        "fr": "Par cause",
+        "en": "By cause",
+    },
+    "By day": {
+        "fr": "Par jour",
+        "en": "By day",
+    },
+    "List the failed outgoing mails of an Odoo instance (read-only), then requeue the chosen ones through the Odoo shell.": {
+        "fr": "Lister les courriels sortants en échec d'une instance Odoo (lecture seule), puis remettre en file ceux qu'on choisit par le shell d'Odoo.",
+        "en": "List the failed outgoing mails of an Odoo instance (read-only), then requeue the chosen ones through the Odoo shell.",
+    },
+    "Account of the instance; default: User= of the unit.": {
+        "fr": "Compte de l'instance ; par défaut : User= de l'unité.",
+        "en": "Account of the instance; default: User= of the unit.",
+    },
+    "Show full recipient addresses and failure reasons.": {
+        "fr": "Montrer les adresses complètes des destinataires et les raisons d'échec.",
+        "en": "Show full recipient addresses and failure reasons.",
+    },
+    "Mails to requeue: all, the N oldest, or ids (comma list); requires --yes without a terminal.": {
+        "fr": "Courriels à remettre en file : all (tous), oldest N (les N plus anciens) ou ids (liste à virgules) ; exige --yes sans terminal.",
+        "en": "Mails to requeue: all, the N oldest, or ids (comma list); requires --yes without a terminal.",
+    },
+    "Confirm --resend without asking.": {
+        "fr": "Confirmer --resend sans demander.",
+        "en": "Confirm --resend without asking.",
+    },
+    "List only: no question, no resend.": {
+        "fr": "Lister seulement : aucune question, aucun renvoi.",
+        "en": "List only: no question, no resend.",
+    },
+    "Show the selection and the exact commands; write nothing.": {
+        "fr": "Montrer la sélection et les commandes exactes ; ne rien écrire.",
+        "en": "Show the selection and the exact commands; write nothing.",
+    },
+    "Print the result as JSON (untranslated keys).": {
+        "fr": "Afficher le résultat en JSON (clés non traduites).",
+        "en": "Print the result as JSON (untranslated keys).",
+    },
+    "--list cannot be combined with --resend.": {
+        "fr": "--list ne se combine pas avec --resend.",
+        "en": "--list cannot be combined with --resend.",
+    },
+    "No mail resent.": {
+        "fr": "Aucun courriel renvoyé.",
+        "en": "No mail resent.",
+    },
+    "{count} failed mail(s) in the last {days} day(s):": {
+        "fr": "{count} courriel(s) en échec dans les {days} dernier(s) jour(s) :",
+        "en": "{count} failed mail(s) in the last {days} day(s):",
+    },
+    "The scheduled action 'Mail: Email Queue Manager' sends them at its next run.": {
+        "fr": "L'action planifiée « Mail: Email Queue Manager » les envoie à son prochain passage.",
+        "en": "The scheduled action 'Mail: Email Queue Manager' sends them at its next run.",
+    },
+    "Would resend {count} mail(s): {ids}": {
+        "fr": "Renverrait {count} courriel(s) : {ids}",
+        "en": "Would resend {count} mail(s): {ids}",
+    },
+    "Nothing resent: re-run with --yes to confirm --resend.": {
+        "fr": "Rien renvoyé : relancer avec --yes pour confirmer --resend.",
+        "en": "Nothing resent: re-run with --yes to confirm --resend.",
+    },
+    "Requeue {count} mail(s) through the Odoo shell…": {
+        "fr": "Remise en file de {count} courriel(s) par le shell d'Odoo…",
+        "en": "Requeue {count} mail(s) through the Odoo shell…",
+    },
+    "No failed mail in the last {days} day(s).": {
+        "fr": "Aucun courriel en échec dans les {days} dernier(s) jour(s).",
+        "en": "No failed mail in the last {days} day(s).",
+    },
+    "{count} mail(s) failed for a PERMANENT cause: a resend fails again until the setting is fixed.": {
+        "fr": "{count} courriel(s) en échec pour une cause PERMANENTE : un renvoi échoue de nouveau tant que le réglage n'est pas corrigé.",
+        "en": "{count} mail(s) failed for a PERMANENT cause: a resend fails again until the setting is fixed.",
+    },
+    "{count} mails and mail.session.batch.size is {value}: a server limit of messages per connection may refuse part of the resend; set it to 10 or 20 first.": {
+        "fr": "{count} courriels et mail.session.batch.size vaut {value} : une limite de messages par connexion du serveur peut refuser une partie du renvoi ; le régler d'abord à 10 ou 20.",
+        "en": "{count} mails and mail.session.batch.size is {value}: a server limit of messages per connection may refuse part of the resend; set it to 10 or 20 first.",
+    },
+    "The Odoo shell exceeded {seconds} s and was stopped: whether the mails were requeued is unknown; list them again.": {
+        "fr": "Le shell d'Odoo a dépassé {seconds} s et a été arrêté : on ne sait pas si les courriels ont été remis en file ; les lister de nouveau.",
+        "en": "The Odoo shell exceeded {seconds} s and was stopped: whether the mails were requeued is unknown; list them again.",
+    },
+    "The Odoo shell returned no result (code {code}).": {
+        "fr": "Le shell d'Odoo n'a rendu aucun résultat (code {code}).",
+        "en": "The Odoo shell returned no result (code {code}).",
+    },
+    "{count} mail(s) requeued ({ids}).": {
+        "fr": "{count} courriel(s) remis en file ({ids}).",
+        "en": "{count} mail(s) requeued ({ids}).",
+    },
+    "{count} mail(s) skipped: no longer failed or deleted ({ids}).": {
+        "fr": "{count} courriel(s) ignoré(s) : plus en échec ou supprimé(s) ({ids}).",
+        "en": "{count} mail(s) skipped: no longer failed or deleted ({ids}).",
+    },
+    "Failed mails of the last DAYS days; default: {days}.": {
+        "fr": "Courriels en échec des DAYS derniers jours ; par défaut : {days}.",
+        "en": "Failed mails of the last DAYS days; default: {days}.",
+    },
+    "Maximum seconds for the Odoo shell; default: {seconds}.": {
+        "fr": "Durée maximale du shell d'Odoo, en secondes ; par défaut : {seconds}.",
+        "en": "Maximum seconds for the Odoo shell; default: {seconds}.",
+    },
+    "{path} is missing: the Odoo shell cannot be run.": {
+        "fr": "{path} manque : le shell d'Odoo ne peut pas être lancé.",
+        "en": "{path} is missing: the Odoo shell cannot be run.",
+    },
+    "Run as root (sudo) or as {user}; other accounts only with --dry-run.": {
+        "fr": "Lancer en root (sudo) ou sous {user} ; les autres comptes seulement avec --dry-run.",
+        "en": "Run as root (sudo) or as {user}; other accounts only with --dry-run.",
+    },
+    "Resend {count} mail(s)? [y/N] ": {
+        "fr": "Renvoyer {count} courriel(s) ? [o/N] ",
+        "en": "Resend {count} mail(s)? [y/N] ",
+    },
+    "Not in the list, not resent: {ids}": {
+        "fr": "Absent(s) de la liste, non renvoyé(s) : {ids}",
+        "en": "Not in the list, not resent: {ids}",
+    },
+    "unset": {
+        "fr": "non défini",
+        "en": "unset",
+    },
+    "Mail ids (comma list): ": {
+        "fr": "Ids des courriels (liste à virgules) : ",
+        "en": "Mail ids (comma list): ",
+    },
+    "Reading the database requires sudo or the account {user}: planned commands only.": {
+        "fr": "Lire la base exige sudo ou le compte {user} : commandes prévues seulement.",
+        "en": "Reading the database requires sudo or the account {user}: planned commands only.",
+    },
+    "Cannot read the failed mails of {database}: {error}": {
+        "fr": "Impossible de lire les courriels en échec de {database} : {error}",
+        "en": "Cannot read the failed mails of {database}: {error}",
+    },
+    "invalid --resend: {value}": {
+        "fr": "--resend invalide : {value}",
+        "en": "invalid --resend: {value}",
+    },
+    "How many of the oldest? [{count}]: ": {
+        "fr": "Combien des plus anciens ? [{count}] : ",
+        "en": "How many of the oldest? [{count}]: ",
+    },
+    "Resend: [a]ll ({count})  [o]ldest batch  [i]ds  [n]one [n]: ": {
+        "fr": "Renvoyer : [a] tous ({count})  [o] les plus anciens  [i] des ids  [n] aucun [n] : ",
+        "en": "Resend: [a]ll ({count})  [o]ldest batch  [i]ds  [n]one [n]: ",
+    },
+    "ERROR/CRITICAL records whose header line or final exception matches REGEX do not fail; repeatable.": {
+        "fr": "Les enregistrements ERROR/CRITICAL dont la ligne d'en-tête ou l'exception finale correspond à REGEX ne font pas échouer ; répétable.",
+        "en": "ERROR/CRITICAL records whose header line or final exception matches REGEX do not fail; repeatable.",
+    },
+    "{count} ERROR/CRITICAL record(s) in {groups} group(s) during the update.": {
+        "fr": "{count} enregistrement(s) ERROR/CRITICAL en {groups} groupe(s) pendant la mise à jour.",
+        "en": "{count} ERROR/CRITICAL record(s) in {groups} group(s) during the update.",
+    },
+    "{count} ERROR/CRITICAL record(s) in {groups} group(s) since the start.": {
+        "fr": "{count} enregistrement(s) ERROR/CRITICAL en {groups} groupe(s) depuis le démarrage.",
+        "en": "{count} ERROR/CRITICAL record(s) in {groups} group(s) since the start.",
+    },
+    "Run it with sudo?": {
+        "fr": "La lancer avec sudo ?",
+        "en": "Run it with sudo?",
+    },
+    "Number of hours [24]: ": {
+        "fr": "Nombre d'heures [24] : ",
+        "en": "Number of hours [24]: ",
+    },
+    "Number of days [7]: ": {
+        "fr": "Nombre de jours [7] : ",
+        "en": "Number of days [7]: ",
+    },
+    "Odoo journal: errors since the last check - read-only": {
+        "fr": "Journal d'Odoo : erreurs depuis la dernière lecture - lecture seule",
+        "en": "Odoo journal: errors since the last check - read-only",
+    },
+    "Odoo journal: errors of the last N hours - read-only": {
+        "fr": "Journal d'Odoo : erreurs des N dernières heures - lecture seule",
+        "en": "Odoo journal: errors of the last N hours - read-only",
+    },
+    "Odoo journal: hourly report - errors per hour over N days": {
+        "fr": "Journal d'Odoo : rapport horaire - erreurs par heure sur N jours",
+        "en": "Odoo journal: hourly report - errors per hour over N days",
+    },
+    "Failed outgoing mail: list - read-only, addresses masked": {
+        "fr": "Courriels sortants en échec : liste - lecture seule, adresses masquées",
+        "en": "Failed outgoing mail: list - read-only, addresses masked",
+    },
+    "Failed outgoing mail: retry - confirm, then choose with sudo": {
+        "fr": "Courriels sortants en échec : renvoi - confirmer, puis choisir sous sudo",
+        "en": "Failed outgoing mail: retry - confirm, then choose with sudo",
+    },
+    "Cancelled: expected a whole number >= 1.": {
+        "fr": "Annulé : nombre entier >= 1 attendu.",
+        "en": "Cancelled: expected a whole number >= 1.",
+    },
+    "Open the failed mail list with sudo to choose which ones to resend?": {
+        "fr": "Ouvrir la liste des courriels en échec sous sudo pour choisir ceux à renvoyer ?",
+        "en": "Open the failed mail list with sudo to choose which ones to resend?",
+    },
+    "Not readable by this account; with sudo:": {
+        "fr": "Illisible par ce compte ; avec sudo :",
+        "en": "Not readable by this account; with sudo:",
+    },
+    "The position is kept in {path}, writable by root only: run with sudo?": {
+        "fr": "La position est gardée dans {path}, inscriptible par root seulement : lancer avec sudo ?",
+        "en": "The position is kept in {path}, writable by root only: run with sudo?",
+    },
+    "Only the messages of this account are visible: those of the unit, which runs under it.": {
+        "fr": "Seuls les messages de ce compte sont visibles : ceux de l'unité, qui tourne sous lui.",
+        "en": "Only the messages of this account are visible: those of the unit, which runs under it.",
     },
 }
 

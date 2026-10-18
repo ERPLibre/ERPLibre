@@ -7,7 +7,8 @@
 `t()` rend sa CLÉ quand la traduction manque : une clé oubliée s'affiche
 en anglais sans que rien ne signale l'oubli. Le test lit les appels
 `t("…")` des outils et du menu, et les modèles `N_("…")` que
-`lib_ops/service.py` laisse traduire à l'outil qui attrape son refus.
+`lib_ops/service.py` et `lib_ops/mail_diagnostic.py` laissent traduire à
+l'outil qui les affiche.
 """
 
 import ast
@@ -24,6 +25,9 @@ FICHIERS = (
     "script/systemd/install_backup_timer.py",
     "script/todo/ops_menu.py",
     "script/lib_ops/service.py",
+    "script/odoo/log_check.py",
+    "script/odoo/mail_retry.py",
+    "script/lib_ops/mail_diagnostic.py",
 )
 
 
