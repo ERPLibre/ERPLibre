@@ -14,8 +14,10 @@ import streamdeck_stubs as S  # noqa: E402
 
 S.install()
 from erplibre_streamdeck import dbus, paths, settings  # noqa: E402
+from erplibre_streamdeck.kernel import Kernel  # noqa: E402
+from erplibre_streamdeck.plugin import LoadedPlugin  # noqa: E402
 from erplibre_streamdeck.plugins import (  # noqa: E402
-    bluetooth, layouts, sound, timers,
+    bluetooth, claude_sessions, layouts, sound, timers,
 )
 from erplibre_streamdeck.ui import render  # noqa: E402
 
@@ -204,6 +206,44 @@ class TimersTest(unittest.TestCase):
         with mock.patch("subprocess.run", return_value=answer):
             found = timers._list_timers(ctx)
         self.assertEqual([{"id": "t1", "running": True}], found)
+
+
+class SessionsTest(unittest.TestCase):
+    def test_bad_pid_file_is_skipped_or_isolated(self):
+        import contextlib
+        import io
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "claude"
+            state.mkdir()
+            (state / "bad.json").write_text(
+                json.dumps({"session_id": "s", "pid": "abc"})
+            )
+            with mock.patch.object(paths, "state_dir", lambda: Path(tmp)):
+                # int("abc") escapes load_sessions: it neither skips the
+                # file nor drops the others.
+                with self.assertRaises(ValueError):
+                    claude_sessions.load_sessions()
+                loaded = LoadedPlugin(
+                    "claude_sessions", claude_sessions.PLUGIN, "repo",
+                    Path(claude_sessions.__file__),
+                )
+                err = io.StringIO()
+                with mock.patch.object(dbus, "available", lambda: False):
+                    kernel = Kernel(S.FakeDeck(5, 3), [loaded])
+                    with contextlib.redirect_stderr(err):
+                        kernel.render()
+                        kernel.render()
+        lines = [
+            ln for ln in err.getvalue().splitlines()
+            if ln.startswith("[erplibre-home] claude_sessions")
+        ]
+        # One journal entry for the two renders, not none: the kernel
+        # reports the failing provider once and goes on.
+        self.assertEqual(1, len(lines))
 
 
 class SettingsKeepTest(unittest.TestCase):
