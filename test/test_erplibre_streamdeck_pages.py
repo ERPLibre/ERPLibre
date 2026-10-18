@@ -353,7 +353,7 @@ class Scenarios:
             tap(h, face_key(h, "MIC\nOFF"))
             key = face_key(h, "*\n1")
             if key is not None:
-                tap(h, key)
+                tap_job(h, key)
 
         self.run_all("home__presses", FULL, full_world, script)
 
@@ -456,8 +456,8 @@ class Scenarios:
             h.goto("layout")
             if h.deck.cols < 4 or h.deck.rows < 3:
                 return  # DECK TOO SMALL
-            tap(h, row(h, 1, 1))  # SAVE 1
-            tap(h, row(h, 2, 1))  # LOAD 1
+            tap_job(h, row(h, 1, 1))  # SAVE 1
+            tap_job(h, row(h, 2, 1))  # LOAD 1
             tap(h, row(h, 2, 2))  # LOAD 2, an empty slot
             delete = row(h, 3, 1)  # DEL 1
             if delete is None:
