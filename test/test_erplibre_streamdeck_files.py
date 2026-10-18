@@ -56,6 +56,40 @@ class WriteAtomicTest(unittest.TestCase):
         jsonfile.write_atomic(self.path, {"a": 1})
         self.assertEqual(0o666 & ~mask, self.path.stat().st_mode & 0o777)
 
+    def test_link_is_followed_and_target_mode_kept(self):
+        self.dir.mkdir()
+        real = self.dir / "real.json"
+        real.write_text("{}")
+        real.chmod(0o600)
+        link = self.dir / "link.json"
+        link.symlink_to(real)
+        jsonfile.write_atomic(link, {"a": 3})
+        self.assertTrue(link.is_symlink())
+        self.assertEqual({"a": 3}, json.loads(real.read_text()))
+        self.assertEqual(0o600, real.stat().st_mode & 0o7777)
+
+    def test_existing_file_keeps_its_mode(self):
+        self.dir.mkdir()
+        self.path.write_text("{}")
+        self.path.chmod(0o600)
+        jsonfile.write_atomic(self.path, {"a": 1})
+        self.assertEqual(0o600, self.path.stat().st_mode & 0o7777)
+
+    def test_new_file_gets_the_umask_default(self):
+        mask = os.umask(0)
+        os.umask(mask)
+        jsonfile.write_atomic(self.path, {"a": 1})
+        self.assertEqual(0o666 & ~mask, self.path.stat().st_mode & 0o7777)
+
+    def test_dangling_link_creates_its_target(self):
+        self.dir.mkdir()
+        real = self.dir / "real.json"
+        link = self.dir / "link.json"
+        link.symlink_to(real)
+        jsonfile.write_atomic(link, {"a": 4})
+        self.assertTrue(link.is_symlink())
+        self.assertEqual({"a": 4}, json.loads(real.read_text()))
+
     def test_write_leaves_the_process_umask_alone(self):
         # The umask is process-wide: setting it in a job thread would
         # widen or narrow the files every other thread creates.

@@ -24,8 +24,11 @@ def write_atomic(path, data, indent=2):
     """Write `data` as JSON to `path` through a temporary file in the
     same directory, flushed and fsynced, then os.replace: a reader sees
     the old file or the new one, never a truncated one. The directory is
-    created when missing; the temporary file is removed on failure."""
-    path = os.fspath(path)
+    created when missing; the temporary file is removed on failure.
+    A symbolic link is followed: the temporary file lives next to the
+    real file and replaces it, so the link stays a link. An existing
+    file keeps its permission bits; a new one gets 0o666 minus umask."""
+    path = os.path.realpath(os.fspath(path))
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
     text = json.dumps(data, indent=indent)
@@ -37,7 +40,11 @@ def write_atomic(path, data, indent=2):
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(tmp, 0o666 & ~_UMASK)
+        try:
+            mode = os.stat(path).st_mode & 0o7777
+        except OSError:
+            mode = 0o666 & ~_UMASK
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         try:
