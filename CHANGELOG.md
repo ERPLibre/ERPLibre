@@ -13,6 +13,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The Stream Deck deck program accepts plugins from `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`, next to the eleven the repository ships; a plugin that fails to load is refused with its reason in the journal and the others keep running
 - `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › Stream Deck › Plugins on/off turn deck plugins off; `erplibre_streamdeck --list-plugins` prints each plugin and its status without opening the deck
+- `DECK_SESSION_REFRESH_SEC` in `streamdeck.conf` (0.5 to 60 seconds, 1 by default) sets how often the session pages refresh; TODO › Stream Deck › [13] edits it
 - A cellular gateway on a USB modem, reachable from **Mobile gateway** in Odoo: it relays the SMS
   Odoo wants to send through the SIM, reports the calls that come in, and keeps the server from ever
   having to reach the appliance — the agent comes for its work, so a dynamic address and a carrier
@@ -186,6 +187,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Fixed
 
+- The deck program runs a slow action (the zenity export, hot reload, applying a layout, a Bluetooth connect, session commands) off the lock: its key shows "…", the rest of the deck stays usable, a key of the busy plugin flashes ERR, key 0 of its page goes home, and the result flashes when the action ends; a failed job is journaled once
+- The Sound, Bluetooth, timers and TODO terminals pages, and the home screen's microphone key, start no process when they render: they read caches that polls fill outside the lock
+- `settings.json`, `layouts.json` and `todo_terminals.json` are replaced atomically: a crash or a full disk no longer leaves a truncated file
+- A Claude or mpv session whose pid now belongs to a younger process is dropped, instead of being kept as long as any process holds that pid number
+- The Claude and mpv session pages refresh, and the deck goes home when their session ends
 - The QEMU menu's desktop step fails, with a non-zero exit and one line naming the missing binary, when the desktop did not install: a dnf environment that no mirror would deliver used to end on 0 and a VM without `gnome-shell`. On AlmaLinux and Rocky Linux it enables EPEL and CRB before xrdp; when no enabled repository carries xrdp, the desktop stays installed and one line says that RDP is missing
 - The download cache no longer serves one Fedora release the package it kept for another: a package the new release did not rebuild keeps its name — `.fc41` in the 42 tree — but is re-signed with the new release's key, and the last six path segments dropped the release number, so dnf rejected the cached copy on its checksum from every mirror. RPM keys keep seven segments, from the release number on, which still merges the mirrors' prefixes. A store filled before this change is brought over by `--recle`, service stopped
 - Reading the dnsmasq leases no longer opens a root password prompt: the files are read directly, which suffices on a standard install where they are 0644, and only then is `sudo -n` tried, which fails instead of asking. Displaying a VM list called that path once per VM, and waiting on a VM called it every three seconds for ten minutes

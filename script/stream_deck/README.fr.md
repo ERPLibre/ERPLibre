@@ -130,6 +130,91 @@ Un `Plugin` prend aussi `fixtures` (touches placées sur l'accueil), `tiles` (tu
 Un plugin de l'utilisateur va dans `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/` (`~/.config/erplibre-home/deck-plugins/` si la variable est absente) et remplace le plugin du dépôt de même identifiant. **Confiance :** les plugins de l'utilisateur s'exécutent dans le service du deck avec les droits de l'utilisateur, comme un profil de shell ; n'y mettre que du code écrit ou relu par soi.
 
 
+#### Actions lentes, sondages et réglages
+
+Une fonction s'exécute verrou tenu : elle ne doit pas attendre un processus. `ctx.run_blocking(work, then=None)` exécute `work()` dans un fil, sans le verrou, et rend `True` :
+
+- `work` ne prend aucun argument et ne touche que ce qu'elle a capturé avant l'appel, plus `ctx.dbus` et `ctx.log` ; jamais `ctx`.
+- La touche pressée affiche « … » pendant la tâche et le reste du deck reste utilisable.
+- Au prochain passage de la boucle, verrou tenu, le noyau appelle `then(ctx, result, error)` (`error` est l'exception levée par `work`, ou `None`). `then` fait son propre rendu, comme un gestionnaire. Sans `then`, le noyau fait clignoter OK quand `error` vaut `None` et que le résultat est vrai, ERR sinon, et rend.
+- Un plugin n'a qu'une tâche à la fois : `run_blocking` pendant qu'une tâche tourne rend `False` et fait clignoter ERR. Une touche qui atteindrait un plugin occupé clignote en ERR sans l'appeler ; la touche 0 de sa page, le retour, ramène à l'accueil. Ses sondages et ses ticks attendent.
+- Une tâche qui lève est inscrite une fois au journal, avec sa trace, avant l'appel de `then`.
+
+`Plugin.polls` est une liste de `Poll(period, active, read, store)`. Un rendu lit `ctx.state()` et ne lance aucun processus ; un sondage remplit cet état :
+
+- `active(ctx)` (verrou tenu) dit si la donnée est utile maintenant, par exemple parce que la page du plugin est affichée.
+- `read()` (sans verrou) lance les processus et rend la donnée. Il ne touche jamais `ctx` ; un `read` qui échoue garde la donnée précédente.
+- `store(ctx, data)` (verrou tenu) garde la donnée dans `ctx.state()` et rend `True` pour demander un rendu.
+
+`ctx.setting(name, default=None)` lit un réglage du deck donné au noyau au démarrage (`session_refresh_sec`, issu de `DECK_SESSION_REFRESH_SEC`), ou `default`. Un rendu peut avoir lieu avant la fin du premier sondage : poser l'état dans `setup(ctx)`. Ce plugin lance une tâche à l'appui d'une touche et affiche un compteur qu'un sondage rafraîchit :
+
+
+```python
+import subprocess
+
+from erplibre_streamdeck.plugin import (
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll,
+)
+
+
+def _setup(ctx):
+    ctx.state().lines = 0
+
+
+def _keys(geo):
+    return {"back": 0, "run": 1} if geo.total_keys > 1 else None
+
+
+def _render(ctx):
+    for key in range(ctx.geo.total_keys):
+        ctx.set_key(key, (20, 20, 30))
+    ctx.set_key(0, (60, 60, 60), ctx.t("BACK"))
+    ctx.set_key(1, (30, 90, 60), f"RUN\n{ctx.state().lines}")
+
+
+def _work():
+    # no ctx, no lock / ni ctx, ni verrou
+    done = subprocess.run(["uptime"], capture_output=True, timeout=5)
+    return done.returncode == 0
+
+
+def _then(ctx, result, error):
+    ctx.flash(error is None and result)
+    ctx.render()
+
+
+def _handle(ctx, key):
+    if key == 0:
+        ctx.home()
+    elif key == 1:
+        ctx.run_blocking(_work, _then)
+
+
+def _read():
+    done = subprocess.run(["uptime"], capture_output=True, timeout=5)
+    return len(done.stdout.splitlines())
+
+
+def _store(ctx, lines):
+    changed = ctx.state().lines != lines
+    ctx.state().lines = lines
+    return changed
+
+
+PLUGIN = Plugin(
+    api=PLUGIN_API,
+    pages=[Page("hello", _keys, _render, _handle)],
+    home_button=HomeButton(
+        90,
+        face=lambda ctx: KeyFace((30, 90, 60), "HELLO"),
+        press=lambda ctx: ctx.goto("hello"),
+    ),
+    polls=[Poll(2.0, lambda ctx: ctx.page == "hello", _read, _store)],
+    setup=_setup,
+)
+```
+
+
 ### keyboard_talk.py
 
 Script d'automatisation clavier. Utilise `wmctrl` pour cibler une fenêtre terminal, puis envoie une séquence de touches automatisée via la librairie `keyboard`.

@@ -54,9 +54,12 @@ persistent storage outside `$XDG_STATE_HOME/erplibre-home/`.
    once per `ts_notification` value (throttled).
 7. **Deck mirror**. The deck program's `claude_sessions` plugin
    (`erplibre_streamdeck/plugins/claude_sessions.py`) reads the same state
-   files in its render loop and shows a coloured per-session button
+   files on the deck's loop and shows a coloured per-session button
    (green / cyan / yellow / red) on its idle layout; `mpv_sessions.py`
-   does the same for the mpv state directory.
+   does the same for the mpv state directory. A session whose pid now
+   belongs to a younger process is dropped (`liveness.py`), and a session
+   page refreshes every `DECK_SESSION_REFRESH_SEC` and goes home when its
+   session ends.
 
 ## Key surfaces
 

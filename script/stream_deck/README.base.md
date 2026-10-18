@@ -216,6 +216,113 @@ Un plugin de l'utilisateur va dans `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/
 
 <!-- [en] -->
 
+#### Slow actions, polls and settings
+
+A callable runs with the lock held, so it must not wait on a process. `ctx.run_blocking(work, then=None)` runs `work()` in a thread, without the lock, and returns `True`:
+
+- `work` takes no argument and touches only what it captured before the call, plus `ctx.dbus` and `ctx.log`; never `ctx` itself.
+- The pressed key shows "…" while the job runs and the rest of the deck stays usable.
+- On the next loop pass, under the lock, the kernel calls `then(ctx, result, error)` (`error` is the exception `work` raised, or `None`). `then` renders itself, like a handler. Without `then`, the kernel flashes OK when `error` is `None` and the result is truthy, ERR otherwise, and renders.
+- A plugin has one job at a time: `run_blocking` while one runs returns `False` and flashes ERR. A press that would reach a busy plugin flashes ERR without calling it; key 0 of its page, the back key, goes home instead. Its polls and ticks wait.
+- A job that raises is journaled once, with its traceback, before `then` runs.
+
+`Plugin.polls` is a list of `Poll(period, active, read, store)`. A render reads `ctx.state()` and starts no process; a poll fills that state:
+
+- `active(ctx)` (lock held) says whether the data is needed now, for example because the plugin's page shows.
+- `read()` (no lock) runs the processes and returns the data. It never touches `ctx`; a failing `read` keeps the previous data.
+- `store(ctx, data)` (lock held) keeps the data in `ctx.state()` and returns `True` to ask for one render.
+
+`ctx.setting(name, default=None)` reads a deck setting given to the kernel at start (`session_refresh_sec`, from `DECK_SESSION_REFRESH_SEC`), or `default`. A render may run before the first poll ends: set the state in `setup(ctx)`. This plugin runs a job on a key press and shows a counter that a poll refreshes:
+
+<!-- [fr] -->
+
+#### Actions lentes, sondages et réglages
+
+Une fonction s'exécute verrou tenu : elle ne doit pas attendre un processus. `ctx.run_blocking(work, then=None)` exécute `work()` dans un fil, sans le verrou, et rend `True` :
+
+- `work` ne prend aucun argument et ne touche que ce qu'elle a capturé avant l'appel, plus `ctx.dbus` et `ctx.log` ; jamais `ctx`.
+- La touche pressée affiche « … » pendant la tâche et le reste du deck reste utilisable.
+- Au prochain passage de la boucle, verrou tenu, le noyau appelle `then(ctx, result, error)` (`error` est l'exception levée par `work`, ou `None`). `then` fait son propre rendu, comme un gestionnaire. Sans `then`, le noyau fait clignoter OK quand `error` vaut `None` et que le résultat est vrai, ERR sinon, et rend.
+- Un plugin n'a qu'une tâche à la fois : `run_blocking` pendant qu'une tâche tourne rend `False` et fait clignoter ERR. Une touche qui atteindrait un plugin occupé clignote en ERR sans l'appeler ; la touche 0 de sa page, le retour, ramène à l'accueil. Ses sondages et ses ticks attendent.
+- Une tâche qui lève est inscrite une fois au journal, avec sa trace, avant l'appel de `then`.
+
+`Plugin.polls` est une liste de `Poll(period, active, read, store)`. Un rendu lit `ctx.state()` et ne lance aucun processus ; un sondage remplit cet état :
+
+- `active(ctx)` (verrou tenu) dit si la donnée est utile maintenant, par exemple parce que la page du plugin est affichée.
+- `read()` (sans verrou) lance les processus et rend la donnée. Il ne touche jamais `ctx` ; un `read` qui échoue garde la donnée précédente.
+- `store(ctx, data)` (verrou tenu) garde la donnée dans `ctx.state()` et rend `True` pour demander un rendu.
+
+`ctx.setting(name, default=None)` lit un réglage du deck donné au noyau au démarrage (`session_refresh_sec`, issu de `DECK_SESSION_REFRESH_SEC`), ou `default`. Un rendu peut avoir lieu avant la fin du premier sondage : poser l'état dans `setup(ctx)`. Ce plugin lance une tâche à l'appui d'une touche et affiche un compteur qu'un sondage rafraîchit :
+
+<!-- [common] -->
+
+```python
+import subprocess
+
+from erplibre_streamdeck.plugin import (
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll,
+)
+
+
+def _setup(ctx):
+    ctx.state().lines = 0
+
+
+def _keys(geo):
+    return {"back": 0, "run": 1} if geo.total_keys > 1 else None
+
+
+def _render(ctx):
+    for key in range(ctx.geo.total_keys):
+        ctx.set_key(key, (20, 20, 30))
+    ctx.set_key(0, (60, 60, 60), ctx.t("BACK"))
+    ctx.set_key(1, (30, 90, 60), f"RUN\n{ctx.state().lines}")
+
+
+def _work():
+    # no ctx, no lock / ni ctx, ni verrou
+    done = subprocess.run(["uptime"], capture_output=True, timeout=5)
+    return done.returncode == 0
+
+
+def _then(ctx, result, error):
+    ctx.flash(error is None and result)
+    ctx.render()
+
+
+def _handle(ctx, key):
+    if key == 0:
+        ctx.home()
+    elif key == 1:
+        ctx.run_blocking(_work, _then)
+
+
+def _read():
+    done = subprocess.run(["uptime"], capture_output=True, timeout=5)
+    return len(done.stdout.splitlines())
+
+
+def _store(ctx, lines):
+    changed = ctx.state().lines != lines
+    ctx.state().lines = lines
+    return changed
+
+
+PLUGIN = Plugin(
+    api=PLUGIN_API,
+    pages=[Page("hello", _keys, _render, _handle)],
+    home_button=HomeButton(
+        90,
+        face=lambda ctx: KeyFace((30, 90, 60), "HELLO"),
+        press=lambda ctx: ctx.goto("hello"),
+    ),
+    polls=[Poll(2.0, lambda ctx: ctx.page == "hello", _read, _store)],
+    setup=_setup,
+)
+```
+
+<!-- [en] -->
+
 ## Games
 
 19 games playable directly on the Stream Deck. 11 support 2-player mode with two Stream Decks (auto-detection).

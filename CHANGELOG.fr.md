@@ -13,6 +13,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Le programme du deck Stream Deck accepte des plugins venus de `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`, en plus des onze que livre le dépôt ; un plugin qui ne se charge pas est refusé avec sa raison au journal et les autres continuent
 - `DECK_PLUGINS_OFF` dans `streamdeck.conf` et TODO › Stream Deck › Plugins on/off coupent des plugins du deck ; `erplibre_streamdeck --list-plugins` affiche chaque plugin et son état sans ouvrir le deck
+- `DECK_SESSION_REFRESH_SEC` dans `streamdeck.conf` (0,5 à 60 secondes, 1 par défaut) règle la fréquence de rafraîchissement des pages de session ; TODO › Stream Deck › [13] le modifie
 - Une passerelle cellulaire sur un modem USB, accessible depuis **Passerelle mobile** dans Odoo :
   elle relaie par la carte SIM les SMS qu'Odoo veut envoyer, rapporte les appels qui entrent, et
   évite au serveur d'avoir jamais à joindre l'appareil — c'est l'agent qui vient chercher son
@@ -190,6 +191,11 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Corrigé
 
+- Le programme du deck lance une action lente (export zenity, rechargement à chaud, application d'une disposition, connexion Bluetooth, commandes de session) hors du verrou : la touche affiche « … », le reste du deck reste utilisable, une touche du plugin occupé clignote en erreur, la touche 0 de sa page ramène à l'accueil, et le résultat clignote à la fin ; une tâche en échec est inscrite une fois au journal
+- Les pages Son, Bluetooth, minuteurs et terminaux TODO, et la touche du micro de l'accueil, ne lancent plus de processus au rendu : elles lisent des caches que des sondages remplissent hors du verrou
+- `settings.json`, `layouts.json` et `todo_terminals.json` sont remplacés de façon atomique : un plantage ou un disque plein ne laisse plus de fichier tronqué
+- Une session Claude ou mpv dont le numéro de processus est maintenant porté par un processus plus récent est écartée, au lieu d'être gardée tant qu'un processus porte ce numéro
+- Les pages de session Claude et mpv se rafraîchissent, et le deck revient à l'accueil quand leur session se termine
 - L'étape du bureau du menu QEMU échoue, avec un code non nul et une ligne qui nomme le binaire absent, quand le bureau ne s'est pas installé : un environnement dnf qu'aucun miroir ne livrait finissait sur 0 et une VM sans `gnome-shell`. Sur AlmaLinux et Rocky Linux, elle active EPEL et CRB avant xrdp ; quand aucun dépôt activé ne porte xrdp, le bureau reste installé et une ligne dit que le RDP manque
 - Le cache de téléchargement ne sert plus à une version de Fedora le paquet gardé pour une autre : un paquet que la nouvelle version n'a pas reconstruit garde son nom — `.fc41` dans l'arbre de la 42 — mais il est re-signé avec la clé de la nouvelle version, et les six derniers segments du chemin effaçaient le numéro de version, si bien que dnf rejetait la copie gardée sur sa somme auprès de chaque miroir. Les clés RPM gardent sept segments, à partir du numéro de version, ce qui réunit toujours les préfixes des miroirs. Un magasin rempli avant ce changement se rattrape par `--recle`, service arrêté
 - La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes

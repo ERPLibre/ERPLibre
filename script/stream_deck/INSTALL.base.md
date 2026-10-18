@@ -243,6 +243,12 @@ names an id that matches no plugin. User plugins live in
 script/stream_deck/erplibre_streamdeck --list-plugins` prints each plugin
 the loader finds and its status, without opening the deck.
 
+`DECK_SESSION_REFRESH_SEC=<seconds>` sets how often the Claude and mpv
+session pages refresh: a number from 0.5 to 60, 1 when absent. A value that
+is not a number, or out of range, gives 1, and TODO › Stream Deck ›
+Diagnosis names it. Set it from TODO › Stream Deck › [13] Session refresh
+(which offers to restart the deck service), or by hand in this file.
+
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,
 runs the game, and starts the service again when the game ends, unless
@@ -290,6 +296,13 @@ plugins de l'utilisateur vivent dans
 `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`. `python
 script/stream_deck/erplibre_streamdeck --list-plugins` affiche chaque plugin
 que le chargeur trouve et son état, sans ouvrir le deck.
+
+`DECK_SESSION_REFRESH_SEC=<secondes>` règle la fréquence de rafraîchissement
+des pages de session Claude et mpv : un nombre de 0,5 à 60, 1 si absent. Une
+valeur qui n'est pas un nombre, ou hors de l'intervalle, donne 1, et TODO ›
+Stream Deck › Diagnostic la nomme. Se règle dans TODO › Stream Deck › [13]
+Rafraîchissement (qui propose de redémarrer le service du
+deck), ou à la main dans ce fichier.
 
 Les jeux prennent le deck : le menu des jeux de TODO et la galerie lancent
 chaque jeu par `script/install/erplibre_home_handover.sh`, qui arrête le

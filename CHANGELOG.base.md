@@ -33,6 +33,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The Stream Deck deck program accepts plugins from `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`, next to the eleven the repository ships; a plugin that fails to load is refused with its reason in the journal and the others keep running
 - `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › Stream Deck › Plugins on/off turn deck plugins off; `erplibre_streamdeck --list-plugins` prints each plugin and its status without opening the deck
+- `DECK_SESSION_REFRESH_SEC` in `streamdeck.conf` (0.5 to 60 seconds, 1 by default) sets how often the session pages refresh; TODO › Stream Deck › [13] edits it
 - A cellular gateway on a USB modem, reachable from **Mobile gateway** in Odoo: it relays the SMS
   Odoo wants to send through the SIM, reports the calls that come in, and keeps the server from ever
   having to reach the appliance — the agent comes for its work, so a dynamic address and a carrier
@@ -159,6 +160,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Le programme du deck Stream Deck accepte des plugins venus de `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`, en plus des onze que livre le dépôt ; un plugin qui ne se charge pas est refusé avec sa raison au journal et les autres continuent
 - `DECK_PLUGINS_OFF` dans `streamdeck.conf` et TODO › Stream Deck › Plugins on/off coupent des plugins du deck ; `erplibre_streamdeck --list-plugins` affiche chaque plugin et son état sans ouvrir le deck
+- `DECK_SESSION_REFRESH_SEC` dans `streamdeck.conf` (0,5 à 60 secondes, 1 par défaut) règle la fréquence de rafraîchissement des pages de session ; TODO › Stream Deck › [13] le modifie
 - Une passerelle cellulaire sur un modem USB, accessible depuis **Passerelle mobile** dans Odoo :
   elle relaie par la carte SIM les SMS qu'Odoo veut envoyer, rapporte les appels qui entrent, et
   évite au serveur d'avoir jamais à joindre l'appareil — c'est l'agent qui vient chercher son
@@ -393,6 +395,11 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Corrigé
 <!-- [en] -->
 
+- The deck program runs a slow action (the zenity export, hot reload, applying a layout, a Bluetooth connect, session commands) off the lock: its key shows "…", the rest of the deck stays usable, a key of the busy plugin flashes ERR, key 0 of its page goes home, and the result flashes when the action ends; a failed job is journaled once
+- The Sound, Bluetooth, timers and TODO terminals pages, and the home screen's microphone key, start no process when they render: they read caches that polls fill outside the lock
+- `settings.json`, `layouts.json` and `todo_terminals.json` are replaced atomically: a crash or a full disk no longer leaves a truncated file
+- A Claude or mpv session whose pid now belongs to a younger process is dropped, instead of being kept as long as any process holds that pid number
+- The Claude and mpv session pages refresh, and the deck goes home when their session ends
 - The QEMU menu's desktop step fails, with a non-zero exit and one line naming the missing binary, when the desktop did not install: a dnf environment that no mirror would deliver used to end on 0 and a VM without `gnome-shell`. On AlmaLinux and Rocky Linux it enables EPEL and CRB before xrdp; when no enabled repository carries xrdp, the desktop stays installed and one line says that RDP is missing
 - The download cache no longer serves one Fedora release the package it kept for another: a package the new release did not rebuild keeps its name — `.fc41` in the 42 tree — but is re-signed with the new release's key, and the last six path segments dropped the release number, so dnf rejected the cached copy on its checksum from every mirror. RPM keys keep seven segments, from the release number on, which still merges the mirrors' prefixes. A store filled before this change is brought over by `--recle`, service stopped
 - Reading the dnsmasq leases no longer opens a root password prompt: the files are read directly, which suffices on a standard install where they are 0644, and only then is `sudo -n` tried, which fails instead of asking. Displaying a VM list called that path once per VM, and waiting on a VM called it every three seconds for ten minutes
@@ -479,6 +486,11 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- Le programme du deck lance une action lente (export zenity, rechargement à chaud, application d'une disposition, connexion Bluetooth, commandes de session) hors du verrou : la touche affiche « … », le reste du deck reste utilisable, une touche du plugin occupé clignote en erreur, la touche 0 de sa page ramène à l'accueil, et le résultat clignote à la fin ; une tâche en échec est inscrite une fois au journal
+- Les pages Son, Bluetooth, minuteurs et terminaux TODO, et la touche du micro de l'accueil, ne lancent plus de processus au rendu : elles lisent des caches que des sondages remplissent hors du verrou
+- `settings.json`, `layouts.json` et `todo_terminals.json` sont remplacés de façon atomique : un plantage ou un disque plein ne laisse plus de fichier tronqué
+- Une session Claude ou mpv dont le numéro de processus est maintenant porté par un processus plus récent est écartée, au lieu d'être gardée tant qu'un processus porte ce numéro
+- Les pages de session Claude et mpv se rafraîchissent, et le deck revient à l'accueil quand leur session se termine
 - L'étape du bureau du menu QEMU échoue, avec un code non nul et une ligne qui nomme le binaire absent, quand le bureau ne s'est pas installé : un environnement dnf qu'aucun miroir ne livrait finissait sur 0 et une VM sans `gnome-shell`. Sur AlmaLinux et Rocky Linux, elle active EPEL et CRB avant xrdp ; quand aucun dépôt activé ne porte xrdp, le bureau reste installé et une ligne dit que le RDP manque
 - Le cache de téléchargement ne sert plus à une version de Fedora le paquet gardé pour une autre : un paquet que la nouvelle version n'a pas reconstruit garde son nom — `.fc41` dans l'arbre de la 42 — mais il est re-signé avec la clé de la nouvelle version, et les six derniers segments du chemin effaçaient le numéro de version, si bien que dnf rejetait la copie gardée sur sa somme auprès de chaque miroir. Les clés RPM gardent sept segments, à partir du numéro de version, ce qui réunit toujours les préfixes des miroirs. Un magasin rempli avant ce changement se rattrape par `--recle`, service arrêté
 - La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes
