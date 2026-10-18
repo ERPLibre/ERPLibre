@@ -63,6 +63,13 @@ class Context:
     def render(self):
         self._kernel.render()
 
+    def run_blocking(self, work, then=None):
+        """Run work() in a thread, without the lock; the next loop pass
+        calls then(ctx, result, error) under it. work() uses only values
+        captured before the call, plus `dbus` and `log`. False (and an
+        ERR flash) while this plugin already has a job running."""
+        return self._kernel.run_blocking(self.plugin_id, work, then)
+
     def state(self, plugin_id=None):
         return self._kernel.state(plugin_id or self.plugin_id)
 

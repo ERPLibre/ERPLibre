@@ -46,6 +46,10 @@ ROOT = Path(__file__).resolve().parent.parent
 DECK_DIR = ROOT / "script" / "stream_deck"
 PACKAGE = DECK_DIR / "erplibre_streamdeck"
 GOLDEN_DIR = ROOT / "test" / "fixtures" / "erplibre_streamdeck"
+# STREAMDECK_GOLDEN=update-from-package makes check_golden write the
+# goldens from the run instead of comparing.
+GOLDEN_ENV = "STREAMDECK_GOLDEN"
+GOLDEN_UPDATE = "update-from-package"
 # The plugins of the repository: the goldens show the home screen with
 # every one of them, so a missing plugin fails the scenarios.
 REPO_PLUGINS = frozenset(
@@ -802,10 +806,20 @@ def golden_path(name):
 
 
 def check_golden(test, name, inputs, runs):
-    """Compare `runs` ({"5x3": steps, ...}) to the golden `name`. The
-    goldens are frozen: a deliberate change of the deck's output edits
-    the JSON file."""
+    """Compare `runs` ({"5x3": steps, ...}) to the golden `name`, or
+    write it from the run when STREAMDECK_GOLDEN=update-from-package:
+    a deliberate change of the deck's output rewrites the goldens it
+    touches, and the diff of the JSON files is what gets reviewed."""
     path = golden_path(name)
+    if os.environ.get(GOLDEN_ENV) == GOLDEN_UPDATE:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = {"format": 1, "inputs": inputs, "geometries": runs}
+        path.write_text(
+            json.dumps(body, indent=1, ensure_ascii=False, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
+        return
     if not path.exists():
         test.fail(f"{path.name} missing")
     expected = json.loads(path.read_text(encoding="utf-8"))["geometries"]

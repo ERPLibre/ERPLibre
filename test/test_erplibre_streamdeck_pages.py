@@ -9,9 +9,10 @@ its steps and compares what every key shows, every command the program
 ran and the state files after each step with
 `test/fixtures/erplibre_streamdeck/<name>.json`.
 
-`PackagePages` runs the package against the goldens, which are frozen:
-a deliberate change of the deck's output edits the JSON. A scenario whose
-page has no plugin, or a package that lacks a repository plugin, fails.
+`PackagePages` runs the package against the goldens. A deliberate change
+of the deck's output rewrites them with
+`STREAMDECK_GOLDEN=update-from-package`. A scenario whose page has no
+plugin, or a package that lacks a repository plugin, fails.
 
 A page scenario reaches its page with `goto` right after boot, never by a
 home press. The `home__*` scenarios pin the passage from the home screen
@@ -21,7 +22,10 @@ to each page.
 import json
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
@@ -622,6 +626,29 @@ class PackageDashboardTap(unittest.TestCase):
             h.check_clean(self)
             self.assertEqual("mpv_session", h.target.page())
             self.assertEqual(1, h.target.kernel.state("mpv_sessions").pid)
+
+
+class GoldenWriterTest(unittest.TestCase):
+    RUNS = {"3x2": [{"do": "boot", "page": "idle", "screen": ["é"]}]}
+
+    def test_update_writes_then_compare_reads(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            S, "GOLDEN_DIR", Path(tmp)
+        ):
+            env = {S.GOLDEN_ENV: S.GOLDEN_UPDATE}
+            with mock.patch.dict(os.environ, env):
+                S.check_golden(self, "w", {"k": 1}, self.RUNS)
+            text = S.golden_path("w").read_text(encoding="utf-8")
+            self.assertEqual(
+                json.dumps(
+                    {"format": 1, "inputs": {"k": 1},
+                     "geometries": self.RUNS},
+                    indent=1, ensure_ascii=False, sort_keys=True,
+                ) + "\n",
+                text,
+            )
+            with mock.patch.dict(os.environ, {S.GOLDEN_ENV: ""}):
+                S.check_golden(self, "w", {"k": 1}, self.RUNS)
 
 
 if __name__ == "__main__":

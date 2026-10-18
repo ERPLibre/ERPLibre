@@ -9,7 +9,12 @@ and the kernel recovers (flash ERR, home screen, empty key) instead of
 dying. handle_key, render and step's locked part expect the caller to
 hold `lock`; on_key() (the deck's key callback) and loop() take it.
 Both also catch what escapes a pass under the plugin id "kernel", so
-neither thread dies."""
+neither thread dies.
+
+A slow call runs through run_blocking(): a worker thread runs it without
+the lock, and the next loop pass hands its result back under the lock.
+Until then the plugin is busy: its last pressed key shows "…", and its
+presses, page tick and home tick do not reach it."""
 
 import sys
 import threading
@@ -19,7 +24,7 @@ import types
 
 from erplibre_streamdeck import dbus as dbus_mod
 from erplibre_streamdeck.context import Context
-from erplibre_streamdeck.plugin import Geometry
+from erplibre_streamdeck.plugin import Geometry, KeyFace
 from erplibre_streamdeck.ui import colors, render
 
 HOME = "idle"
@@ -72,6 +77,13 @@ class Kernel:
         self._states = {}
         self._contexts = {}
         self._schedule = {}
+        # Plugin id -> (page id, key) of the press that started its job.
+        self.busy = {}
+        # (plugin id, then, result, error) of the jobs that ended: the
+        # only kernel state a worker thread touches, under
+        # _finished_lock.
+        self._finished = []
+        self._finished_lock = threading.Lock()
         self.refused = []
         self.plugins = []
         self.pages = {}
@@ -182,10 +194,12 @@ class Kernel:
         if self.flash_result:
             if self._flash_live():
                 self._render_page()
+                self._paint_busy()
                 self._overlay_flash()
                 return
             self.flash_result = None
         self._render_page()
+        self._paint_busy()
 
     def _render_page(self):
         if self.page_id not in self.pages:
@@ -235,15 +249,24 @@ class Kernel:
                        pressed)
 
     def handle_key(self, key, pressed):
+        """A press reaches the plugin that owns the key, unless that
+        plugin is busy: the press then flashes ERR."""
         if not pressed or self._flash_live():
             return
         self.last_press_key = key
         if self.page_id not in self.pages:
             self.page_id = HOME
         if self.page_id == HOME:
+            owner = self.home.owner(key)
+        else:
+            owner, page = self.pages[self.page_id]
+        if owner in self.busy:
+            self.set_flash(False)
+            self.render()
+            return
+        if self.page_id == HOME:
             self.home.press(self, key)
             return
-        owner, page = self.pages[self.page_id]
         ok, _ = self.guard(
             owner, f"page {page.id} handle", page.handle,
             self.ctx(owner), key,
@@ -251,6 +274,60 @@ class Kernel:
         if not ok:
             self.set_flash(False)
             self.goto(HOME)
+
+    # -- slow actions
+
+    def run_blocking(self, plugin_id, work, then=None):
+        """Run work() in a thread, outside the lock; the plugin is busy
+        until the next loop pass hands the result to then(ctx, result,
+        error) under the lock. False (and an ERR flash) when the plugin
+        already has a job."""
+        if plugin_id in self.busy:
+            self.set_flash(False)
+            self.render()
+            return False
+        self.busy[plugin_id] = (self.page_id, self.last_press_key)
+        self._paint_busy()
+
+        def runner():
+            try:
+                result, error = work(), None
+            except (Exception, SystemExit) as exc:
+                result, error = None, exc
+            with self._finished_lock:
+                self._finished.append((plugin_id, then, result, error))
+
+        threading.Thread(target=runner, daemon=True).start()
+        return True
+
+    def _paint_busy(self):
+        """Paint "…" on the key of each job started on the page shown."""
+        for page_id, key in self.busy.values():
+            if key is not None and page_id == self.page_id:
+                self.paint(key, KeyFace(colors.BUSY, "…"))
+
+    def drain_jobs(self):
+        """Hand finished jobs to their plugins; True when one ran. Once
+        the kernel has stopped, results are dropped. Without `then`, a
+        truthy result without error flashes OK, anything else ERR."""
+        with self._finished_lock:
+            finished, self._finished = self._finished, []
+        for plugin_id, then, result, error in finished:
+            self.busy.pop(plugin_id, None)
+            if not self.running:
+                continue
+            if then is None:
+                self.set_flash(error is None and bool(result))
+                self.render()
+                continue
+            ok, _ = self.guard(
+                plugin_id, "job result", then, self.ctx(plugin_id),
+                result, error,
+            )
+            if not ok:
+                self.set_flash(False)
+                self.render()
+        return bool(finished)
 
     # -- loop
 
@@ -273,8 +350,10 @@ class Kernel:
     def step(self, now):
         """One loop pass. Outside the lock: the D-Bus recheck (gdbus may
         take its 3 s timeout). Under it: a recorded flash ends the pass
-        (rendered once expired); otherwise the page's tick, or on the
-        home screen the due home ticks and at most one render."""
+        (rendered once expired); finished jobs are handed back, and a
+        flash they record ends the pass too; otherwise the page's tick,
+        or on the home screen the due home ticks and at most one render.
+        A busy plugin's ticks are skipped."""
         if self.recheck_dbus(now):
             with self.lock:
                 self.render()
@@ -283,13 +362,16 @@ class Kernel:
                 if not self._flash_live():
                     self.render()
                 return
+            self.drain_jobs()
+            if self.flash_result:
+                return
             if self.page_id not in self.pages:
                 self.page_id = HOME
             if self.page_id == HOME:
                 self._home_step(now)
                 return
             owner, page = self.pages[self.page_id]
-            if page.tick is None:
+            if page.tick is None or owner in self.busy:
                 return
             if not self._due(f"page:{page.id}", page.period, now):
                 return
@@ -304,7 +386,7 @@ class Kernel:
         want = False
         for lp in self.plugins:
             tick = lp.plugin.home_tick
-            if tick is None:
+            if tick is None or lp.id in self.busy:
                 continue
             if not self._due(f"home:{lp.id}", lp.plugin.home_period, now):
                 continue
