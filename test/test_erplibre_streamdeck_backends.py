@@ -353,6 +353,22 @@ class SlowKeyTest(unittest.TestCase):
         self.assert_flash(h, 7, "ERR")
         self.assertIn("layout save slot 2 failed", h.journal.getvalue())
 
+    def test_layout_save_write_failure_is_journaled(self):
+        h = self.layout_page()
+        denied = OSError(13, "Permission denied")
+        with mock.patch.object(
+            layouts.jsonfile, "write_atomic", side_effect=denied
+        ):
+            self.press_slow(h, 6)  # SAVE 1
+        self.assertEqual("layout", h.target.page())
+        self.assert_flash(h, 6, "ERR")
+        journal = h.journal.getvalue()
+        self.assertIn(
+            "layouts: job failed: PermissionError(13, 'Permission "
+            "denied')", journal,
+        )
+        self.assertIn("layout save slot 1 failed", journal)
+
     def test_layout_load_is_a_job(self):
         h = self.layout_page()
         press, threads, loop = self.press_slow(h, 11)  # LOAD 1
