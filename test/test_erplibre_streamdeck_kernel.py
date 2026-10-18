@@ -553,6 +553,50 @@ class JobTest(KernelCase):
         k.step(self.clock.now)
         self.assertEqual([True], seen)
 
+    def fail_once(self, k, exc_or_none):
+        """Run one job of plugin p that raises `exc_or_none` (or returns
+        True when None), and hand it back."""
+        def work():
+            if exc_or_none is not None:
+                raise exc_or_none
+            return True
+
+        k.state("p").work = work
+        k.handle_key(3, True)
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.clock.advance(1)
+        k.step(self.clock.now)
+
+    def job_failures(self):
+        return self.journal.getvalue().count("p: job failed: ")
+
+    def test_failed_job_is_journaled_with_its_traceback_once(self):
+        seen = []
+        k = self.kernel(self.slow_plugin(
+            lambda: k.state("p").work(),
+            lambda ctx, r, e: seen.append(e)))
+        k.goto("pg")
+        self.fail_once(k, OSError(28, "No space left on device"))
+        journal = self.journal.getvalue()
+        self.assertIn(
+            "[erplibre-home] p: job failed: OSError(28, "
+            "'No space left on device')", journal)
+        self.assertIn("Traceback (most recent call last)", journal)
+        self.assertIn("raise exc_or_none", journal)
+        self.assertEqual(OSError, type(seen[0]))
+        self.fail_once(k, OSError(28, "No space left on device"))
+        self.assertEqual(1, self.job_failures())
+        self.assertEqual(2, len(seen))
+
+    def test_job_success_rearms_the_failure_journal(self):
+        k = self.kernel(self.slow_plugin(lambda: k.state("p").work()))
+        k.goto("pg")
+        self.fail_once(k, OSError("disk"))
+        self.fail_once(k, None)
+        self.fail_once(k, OSError("disk"))
+        self.assertEqual(2, self.job_failures())
+
     def test_second_press_on_busy_plugin_flashes_err(self):
         calls = []
         k = self.kernel(self.slow_plugin(lambda: True, calls=calls))

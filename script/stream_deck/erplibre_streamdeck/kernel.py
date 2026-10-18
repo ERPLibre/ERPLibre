@@ -148,16 +148,21 @@ class Kernel:
         try:
             result = fn(*args)
         except (Exception, SystemExit) as exc:
-            if self.errors.failed(plugin_id, what, exc):
-                print(
-                    f"[erplibre-home] {plugin_id}: {what} failed: "
-                    f"{exc!r}\n{traceback.format_exc()}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+            self._journal(plugin_id, what, exc, traceback.format_exc())
             return False, None
         self.errors.succeeded(plugin_id, what)
         return True, result
+
+    def _journal(self, plugin_id, what, exc, trace):
+        """Write `what failed: exc!r` and its traceback, unless ErrorLog
+        has already written this failure."""
+        if self.errors.failed(plugin_id, what, exc):
+            print(
+                f"[erplibre-home] {plugin_id}: {what} failed: "
+                f"{exc!r}\n{trace}",
+                file=sys.stderr,
+                flush=True,
+            )
 
     def paint(self, key, face):
         """Paint a KeyFace; raises what render.set_key raises on a bad
@@ -302,12 +307,17 @@ class Kernel:
         def runner():
             # Every exception reaches the result: a job that ends
             # without queuing would leave its plugin busy for good.
+            # The traceback is formatted here, where it is current; the
+            # drain journals it under the lock.
             try:
-                result, error = work(), None
+                result, error, trace = work(), None, None
             except BaseException as exc:
                 result, error = None, exc
+                trace = traceback.format_exc()
             with self._finished_lock:
-                self._finished.append((plugin_id, then, result, error))
+                self._finished.append(
+                    (plugin_id, then, result, error, trace)
+                )
 
         threading.Thread(target=runner, daemon=True).start()
         # The caller holds the lock and drain_jobs() needs it: the job
@@ -329,14 +339,20 @@ class Kernel:
 
     def drain_jobs(self):
         """Hand finished jobs to their plugins; True when one ran. Once
-        the kernel has stopped, results are dropped. Without `then`, a
+        the kernel has stopped, results are dropped. A job that raised
+        is journaled first, as "job failed", once until a job of that
+        plugin ends without raising (ErrorLog). Without `then`, a
         truthy result without error flashes OK, anything else ERR."""
         with self._finished_lock:
             finished, self._finished = self._finished, []
-        for plugin_id, then, result, error in finished:
+        for plugin_id, then, result, error, trace in finished:
             self.busy.pop(plugin_id, None)
             if not self.running:
                 continue
+            if error is None:
+                self.errors.succeeded(plugin_id, "job")
+            else:
+                self._journal(plugin_id, "job", error, trace)
             if then is None:
                 self.set_flash(error is None and bool(result))
                 self.render()

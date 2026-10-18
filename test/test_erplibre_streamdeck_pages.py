@@ -30,11 +30,13 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
 
+S.install()
+# One loop pass advances the clock by the kernel's LOOP_SEC.
+from erplibre_streamdeck.kernel import LOOP_SEC  # noqa: E402
+
 # Longer than the result flash (0.5 s): a press inside the flash is
 # dropped, so `tap` waits this long after each press.
 FLASH_GAP = 0.6
-# One loop pass advances the clock by the kernel's LOOP_SEC.
-LOOP_SEC = 0.3
 
 TRUE = "(true,)\n"
 INTROSPECT_OK = (
