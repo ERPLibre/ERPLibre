@@ -278,7 +278,11 @@ def _handle(ctx, key):
         _wpctl_cycle_default("Sources")
     else:
         return
-    _store_audio(ctx, _read_audio())
+    audio = _read_audio()
+    _store_audio(ctx, audio)
+    # The source read also feeds the mic key: back home, it shows a
+    # mute made on this page at once.
+    _store_mic(ctx, audio[2:4])
     ctx.render()
 
 

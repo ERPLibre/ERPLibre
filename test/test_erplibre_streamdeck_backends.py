@@ -1017,6 +1017,17 @@ class CachedRenderTest(unittest.TestCase):
         )
         self.assertEqual("NO\nTIMERS", h.deck.screen[1][1])
 
+    def test_sound_page_mute_shows_on_the_mic_key_at_once(self):
+        h = self.start(P.full_world)
+        h.goto("sound")
+        h.loop(1)
+        h.proc.answer("wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+                      "Volume: 0.65\n")
+        h.press(13)  # MIC MUTE: unmute
+        self.assertEqual((65, False), h.target.kernel.state("sound").mic)
+        h.goto("idle")
+        self.assertEqual("MIC\nON", h.deck.screen[10][1])
+
     def test_sound_press_shows_the_new_level_at_once(self):
         h = self.start(P.full_world)
         h.goto("sound")
