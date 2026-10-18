@@ -431,6 +431,24 @@ class PollTest(KernelCase):
         self.k.step(self.clock.now)
         self.assertEqual([1], reads)
 
+    def test_flash_during_read_skips_the_store(self):
+        def read():
+            self.k.set_flash(True)     # a press flashed meanwhile
+            return 1
+
+        self.k = self.kernel(self.poll_plugin(read))
+        self.k.step(self.clock.now)
+        self.assertEqual([], [e for e in self.seen if e[0] == "store"])
+
+    def test_stop_during_read_skips_the_store(self):
+        def read():
+            self.k.running = False     # shutdown meanwhile
+            return 1
+
+        self.k = self.kernel(self.poll_plugin(read))
+        self.k.step(self.clock.now)
+        self.assertEqual([], [e for e in self.seen if e[0] == "store"])
+
     def test_store_true_on_a_page_renders_before_the_tick(self):
         order = []
 
