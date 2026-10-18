@@ -661,6 +661,11 @@ class PackageTarget:
         "layout_delete_confirm": ("layouts", {"slot": "pending"}),
         "tiling": ("tiling", {"corner1": "corner1"}),
     }
+    # page id -> (plugin id, function of the plugin module). goto calls
+    # that function with the plugin's context in place of kernel.goto,
+    # as MonolithTarget.ENTRY does: the timers plugin must expose
+    # enter(ctx), which reads the timers and then calls ctx.goto.
+    ENTRIES = {"timer_list": ("timers", "enter")}
 
     def __init__(self):
         self.app_mod = load_package()
@@ -716,6 +721,21 @@ class PackageTarget:
         plugin, names = self.SEEDS.get(page, (None, {}))
         for name, value in seed.items():
             setattr(self.kernel.state(plugin), names[name], value)
+        if page in self.ENTRIES:
+            pid, name = self.ENTRIES[page]
+            modname = f"erplibre_streamdeck.plugins.{pid}"
+            try:
+                module = importlib.import_module(modname)
+            except ModuleNotFoundError as error:
+                # Only a plugin not written yet falls back to kernel.goto;
+                # an import error inside the plugin is raised.
+                if not modname.startswith(error.name or "?"):
+                    raise
+                module = None
+            enter = getattr(module, name, None)
+            if enter is not None:
+                enter(self.kernel.ctx(pid))
+                return
         self.kernel.goto(page)
 
 

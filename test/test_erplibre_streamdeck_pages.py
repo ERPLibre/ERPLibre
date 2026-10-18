@@ -121,7 +121,7 @@ FULL = (
     "log ends on a 2-item menu, layout slot 1, sink 40 %, source muted, "
     "2 sinks 1 source, bluetooth on with 2 paired 1 connected"
 )
-NOEXT = "NOEXT: EMPTY, introspect without TileWindow until 5 s"
+NOEXT = "NOEXT: EMPTY, introspect without TileWindow until 11 s"
 
 
 # ----------------------------------------------------------------- worlds
@@ -321,10 +321,12 @@ class Scenarios:
             start = h.clock.now
 
             def on_poll():
-                if h.clock.now - start >= 5.0:
+                if h.clock.now - start >= 11.0:
                     h.proc.answer("gdbus introspect", INTROSPECT_OK)
 
-            h.loop(18, on_poll=on_poll)
+            # Rechecks every 5 s: two fail (5.1 s, 10.2 s), the third
+            # (15.3 s) finds the extension; none follows by 20.7 s.
+            h.loop(70, on_poll=on_poll)
 
         self.run_all("home__noext", NOEXT, noext_world, script,
                      home_based=True)
