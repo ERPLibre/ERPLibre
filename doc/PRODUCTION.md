@@ -128,6 +128,10 @@ happens. Always simulate first:
 sudo ./script/odoo/update_module.py --module 'my_module_*' --db DATABASE
 ```
 
+After a verified restart, the tool checks the health of the local instance
+(see below; findings are warnings, never a failure of the update), and
+`--warmup-deep` first warms up the public pages and their asset bundles.
+
 The same is reachable from `make todo`: `Execute > Production`. Options,
 detection order and exit codes: [script/odoo/README.md](../script/odoo/README.md).
 
@@ -226,6 +230,43 @@ failed or every chosen mail requeued, 1 failures left or part of the
 selection skipped, 2 refused or impossible. Both tools are in `make todo`:
 `Execute > Production`. Details and the Odoo 12 to 18 matrix:
 [script/odoo/README.md](../script/odoo/README.md).
+
+### Health check and cache warm-up
+
+`script/odoo/health_check.py` checks, read-only, that an instance answers
+and exposes nothing it should not. `--url https://host` probes through the
+reverse proxy, as a browser would; `--local` probes the instance of the
+detected systemd unit where Odoo listens. Each check says OK, ATTN, FAIL or
+SKIP with a one-line hint: login page, `/web/health` (SKIP where the route
+does not exist), TLS certificate (ATTN under 21 days, FAIL under 7),
+HTTP to HTTPS redirect, HSTS, database manager and selector, bus path
+behind the proxy (`/websocket` from Odoo 16, `/longpolling/poll` before),
+robots.txt, and with `--mail-domain` the SPF, DMARC (and `--dkim-selector`
+DKIM) records, read by `dig` or `host`. No credential, no cookie, no
+third-party service.
+
+```bash
+./script/odoo/health_check.py --url https://odoo.example.org --mail-domain example.org
+./script/odoo/health_check.py --local --json
+./script/odoo/warmup_http.py --deep --local
+```
+
+A default deployment exposes the database manager: Odoo keeps
+`list_db = True` when the configuration does not set it, and the nginx
+templates do not block `/web/database`. The check rightly reports FAIL on
+`--url`; set `list_db = False` in the Odoo configuration, or deny
+`/web/database` in nginx. Exit codes: 0 no FAIL (ATTN are listed), 1 at
+least one FAIL, 2 could not check (usage, detection, unreadable
+configuration: run with sudo).
+
+`script/odoo/warmup_http.py --deep` fetches `/web/login`, `/` and up to
+`--max-pages` (20) pages of `/sitemap.xml`, then the asset bundles they
+reference, each `--repeat` (4) times at once to reach several workers. With
+`--login` and `--api-key-file` (an Odoo API key read from a file, never on
+the command line), it also loads menus and views through read-only RPC
+calls. It prints a summary and exits 0, or 1 with `--strict` when a request
+failed. All three are in `make todo`: `Execute > Production`. Details and
+the Odoo 12 to 18 matrix: [script/odoo/README.md](../script/odoo/README.md).
 
 # Postgresql
 

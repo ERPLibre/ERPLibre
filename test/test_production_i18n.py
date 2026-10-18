@@ -28,6 +28,8 @@ FICHIERS = (
     "script/odoo/log_check.py",
     "script/odoo/mail_retry.py",
     "script/lib_ops/mail_diagnostic.py",
+    "script/odoo/health_check.py",
+    "script/odoo/warmup_http.py",
 )
 
 

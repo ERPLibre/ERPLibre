@@ -21472,6 +21472,679 @@ TRANSLATIONS = {
         "fr": "Seuls les messages de ce compte sont visibles : ceux de l'unité, qui tourne sous lui.",
         "en": "Only the messages of this account are visible: those of the unit, which runs under it.",
     },
+    # Production - santé et préchauffage (health_check, warmup_http)
+    "Certificate refused: {reason}.": {
+        "fr": "Certificat refusé : {reason}.",
+        "en": "Certificate refused: {reason}.",
+    },
+    'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block.': {
+        "fr": 'add_header Strict-Transport-Security "max-age=31536000" always; dans le bloc server de nginx.',
+        "en": 'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block.',
+    },
+    "Set list_db = False in the Odoo configuration, or deny /web/database in the proxy.": {
+        "fr": "Poser list_db = False dans la configuration d'Odoo, ou refuser /web/database dans le proxy.",
+        "en": "Set list_db = False in the Odoo configuration, or deny /web/database in the proxy.",
+    },
+    "TLS certificate: not checked on the local address (use --url).": {
+        "fr": "Certificat TLS : non vérifié sur l'adresse locale (utiliser --url).",
+        "en": "TLS certificate: not checked on the local address (use --url).",
+    },
+    "HTTPS redirect: not checked on the local address (use --url).": {
+        "fr": "Redirection HTTPS : non vérifiée sur l'adresse locale (utiliser --url).",
+        "en": "HTTPS redirect: not checked on the local address (use --url).",
+    },
+    "HSTS: not checked on the local address (use --url).": {
+        "fr": "HSTS : non vérifié sur l'adresse locale (utiliser --url).",
+        "en": "HSTS: not checked on the local address (use --url).",
+    },
+    "Bus path: not checked on the local address (use --url).": {
+        "fr": "Chemin du bus : non vérifié sur l'adresse locale (utiliser --url).",
+        "en": "Bus path: not checked on the local address (use --url).",
+    },
+    "robots.txt: judged on the public URL only (use --url).": {
+        "fr": "robots.txt : jugé sur l'URL publique seulement (utiliser --url).",
+        "en": "robots.txt: judged on the public URL only (use --url).",
+    },
+    "TLS certificate: not an HTTPS URL.": {
+        "fr": "Certificat TLS : l'URL n'est pas en HTTPS.",
+        "en": "TLS certificate: not an HTTPS URL.",
+    },
+    "HTTPS redirect: not an HTTPS URL.": {
+        "fr": "Redirection HTTPS : l'URL n'est pas en HTTPS.",
+        "en": "HTTPS redirect: not an HTTPS URL.",
+    },
+    "HSTS: not an HTTPS URL.": {
+        "fr": "HSTS : l'URL n'est pas en HTTPS.",
+        "en": "HSTS: not an HTTPS URL.",
+    },
+    "Login page: HTTP 200 in {seconds} s.": {
+        "fr": "Page de connexion : HTTP 200 en {seconds} s.",
+        "en": "Login page: HTTP 200 in {seconds} s.",
+    },
+    "/web/health: unexpected answer (HTTP {status}).": {
+        "fr": "/web/health : réponse inattendue (HTTP {status}).",
+        "en": "/web/health: unexpected answer (HTTP {status}).",
+    },
+    "The proxy may serve another page for /web/health.": {
+        "fr": "Le proxy sert peut-être une autre page pour /web/health.",
+        "en": "The proxy may serve another page for /web/health.",
+    },
+    "Certificate refused: it does not match the host name.": {
+        "fr": "Certificat refusé : il ne correspond pas au nom d'hôte.",
+        "en": "Certificate refused: it does not match the host name.",
+    },
+    "Certificate refused: it has expired.": {
+        "fr": "Certificat refusé : il a expiré.",
+        "en": "Certificate refused: it has expired.",
+    },
+    "Certificate refused: self-signed.": {
+        "fr": "Certificat refusé : autosigné.",
+        "en": "Certificate refused: self-signed.",
+    },
+    "Certificate refused: unknown issuer (incomplete chain served?).": {
+        "fr": "Certificat refusé : émetteur inconnu (chaîne servie incomplète ?).",
+        "en": "Certificate refused: unknown issuer (incomplete chain served?).",
+    },
+    "Certificate expired since {date}.": {
+        "fr": "Certificat expiré depuis le {date}.",
+        "en": "Certificate expired since {date}.",
+    },
+    "Certificate expires in {days} days ({date}).": {
+        "fr": "Le certificat expire dans {days} jours ({date}).",
+        "en": "Certificate expires in {days} days ({date}).",
+    },
+    "The automatic renewal seems to fail: certbot renew --dry-run, then systemctl list-timers.": {
+        "fr": "Le renouvellement automatique semble échouer : certbot renew --dry-run, puis systemctl list-timers.",
+        "en": "The automatic renewal seems to fail: certbot renew --dry-run, then systemctl list-timers.",
+    },
+    "Serve a certificate for {host} with its full chain (certbot: fullchain.pem).": {
+        "fr": "Servir un certificat pour {host} avec sa chaîne complète (certbot : fullchain.pem).",
+        "en": "Serve a certificate for {host} with its full chain (certbot: fullchain.pem).",
+    },
+    "Port 80 answers HTTP {status} instead of a redirection.": {
+        "fr": "Le port 80 répond HTTP {status} au lieu d'une redirection.",
+        "en": "Port 80 answers HTTP {status} instead of a redirection.",
+    },
+    "Redirect port 80 to https://$host$request_uri in nginx.": {
+        "fr": "Rediriger le port 80 vers https://$host$request_uri dans nginx.",
+        "en": "Redirect port 80 to https://$host$request_uri in nginx.",
+    },
+    "HSTS: {value}": {
+        "fr": "HSTS : {value}",
+        "en": "HSTS: {value}",
+    },
+    "{path}: HTTP 200 without the database manager page.": {
+        "fr": "{path} : HTTP 200 sans la page du gestionnaire de bases.",
+        "en": "{path}: HTTP 200 without the database manager page.",
+    },
+    "list_db is {value}: the database manager is enabled.": {
+        "fr": "list_db vaut {value} : le gestionnaire de bases est actif.",
+        "en": "list_db is {value}: the database manager is enabled.",
+    },
+    "list_db is absent (True by default): the database manager is enabled.": {
+        "fr": "list_db est absent (vrai par défaut) : le gestionnaire de"
+        " bases est actif.",
+        "en": "list_db is absent (True by default): the database manager"
+        " is enabled.",
+    },
+    "{path}: forwarded to Odoo (HTTP {status}).": {
+        "fr": "{path} : relayé à Odoo (HTTP {status}).",
+        "en": "{path}: forwarded to Odoo (HTTP {status}).",
+    },
+    "robots.txt served.": {
+        "fr": "robots.txt servi.",
+        "en": "robots.txt served.",
+    },
+    "SPF: {record}": {
+        "fr": "SPF : {record}",
+        "en": "SPF: {record}",
+    },
+    "DMARC of {domain}: policy {policy}.": {
+        "fr": "DMARC de {domain} : politique {policy}.",
+        "en": "DMARC of {domain}: policy {policy}.",
+    },
+    "No DKIM key at {name}.": {
+        "fr": "Aucune clé DKIM en {name}.",
+        "en": "No DKIM key at {name}.",
+    },
+    "Publish the public key given by the sending service, or check the selector.": {
+        "fr": "Publier la clé publique fournie par le service d'envoi, ou vérifier le sélecteur.",
+        "en": "Publish the public key given by the sending service, or check the selector.",
+    },
+    "empty URL": {
+        "fr": "URL vide",
+        "en": "empty URL",
+    },
+    "only http:// and https:// URLs are accepted": {
+        "fr": "seules les URL http:// et https:// sont acceptées",
+        "en": "only http:// and https:// URLs are accepted",
+    },
+    "no credentials in the URL: none is ever sent": {
+        "fr": "pas d'identifiant dans l'URL : aucun n'est jamais envoyé",
+        "en": "no credentials in the URL: none is ever sent",
+    },
+    "no host in the URL": {
+        "fr": "aucun hôte dans l'URL",
+        "en": "no host in the URL",
+    },
+    "Login page: no answer ({error}).": {
+        "fr": "Page de connexion : aucune réponse ({error}).",
+        "en": "Login page: no answer ({error}).",
+    },
+    "Check that the service runs (systemctl status) and that the proxy reaches it.": {
+        "fr": "Vérifier que le service tourne (systemctl status) et que le proxy le joint.",
+        "en": "Check that the service runs (systemctl status) and that the proxy reaches it.",
+    },
+    "Login page: redirects to the database selector.": {
+        "fr": "Page de connexion : redirige vers le sélecteur de bases.",
+        "en": "Login page: redirects to the database selector.",
+    },
+    "Several databases and no filter: set dbfilter or db_name in the Odoo configuration.": {
+        "fr": "Plusieurs bases et aucun filtre : poser dbfilter ou db_name dans la configuration d'Odoo.",
+        "en": "Several databases and no filter: set dbfilter or db_name in the Odoo configuration.",
+    },
+    "Login page: redirects to plain HTTP ({url}).": {
+        "fr": "Page de connexion : redirige vers HTTP en clair ({url}).",
+        "en": "Login page: redirects to plain HTTP ({url}).",
+    },
+    "Set proxy_mode = True in Odoo and send X-Forwarded-Proto from the proxy.": {
+        "fr": "Poser proxy_mode = True dans Odoo et envoyer X-Forwarded-Proto depuis le proxy.",
+        "en": "Set proxy_mode = True in Odoo and send X-Forwarded-Proto from the proxy.",
+    },
+    "Login page: HTTP {status}.": {
+        "fr": "Page de connexion : HTTP {status}.",
+        "en": "Login page: HTTP {status}.",
+    },
+    "Odoo or its proxy fails: read the Odoo log (log_check.py).": {
+        "fr": "Odoo ou son proxy échoue : lire le journal d'Odoo (log_check.py).",
+        "en": "Odoo or its proxy fails: read the Odoo log (log_check.py).",
+    },
+    "Login page: redirects to {url}.": {
+        "fr": "Page de connexion : redirige vers {url}.",
+        "en": "Login page: redirects to {url}.",
+    },
+    "Check the proxy redirections for this host.": {
+        "fr": "Vérifier les redirections du proxy pour cet hôte.",
+        "en": "Check the proxy redirections for this host.",
+    },
+    "The proxy or Odoo refuses /web/login: check both.": {
+        "fr": "Le proxy ou Odoo refuse /web/login : vérifier les deux.",
+        "en": "The proxy or Odoo refuses /web/login: check both.",
+    },
+    "Login page: HTTP 200, slow ({seconds} s).": {
+        "fr": "Page de connexion : HTTP 200, lente ({seconds} s).",
+        "en": "Login page: HTTP 200, slow ({seconds} s).",
+    },
+    "A first request after a start loads the registry: warm up the cache (warmup_http.py --deep).": {
+        "fr": "Une première requête après un démarrage charge le registre : préchauffer le cache (warmup_http.py --deep).",
+        "en": "A first request after a start loads the registry: warm up the cache (warmup_http.py --deep).",
+    },
+    "/web/health: no answer ({error}).": {
+        "fr": "/web/health : aucune réponse ({error}).",
+        "en": "/web/health: no answer ({error}).",
+    },
+    "Check that the service runs and that the proxy reaches it.": {
+        "fr": "Vérifier que le service tourne et que le proxy le joint.",
+        "en": "Check that the service runs and that the proxy reaches it.",
+    },
+    "/web/health does not exist in this Odoo version.": {
+        "fr": "/web/health n'existe pas dans cette version d'Odoo.",
+        "en": "/web/health does not exist in this Odoo version.",
+    },
+    "/web/health: pass, PostgreSQL reachable.": {
+        "fr": "/web/health : pass, PostgreSQL joignable.",
+        "en": "/web/health: pass, PostgreSQL reachable.",
+    },
+    "/web/health: HTTP {status}, the server or PostgreSQL fails.": {
+        "fr": "/web/health : HTTP {status}, le serveur ou PostgreSQL échoue.",
+        "en": "/web/health: HTTP {status}, the server or PostgreSQL fails.",
+    },
+    "Check PostgreSQL (systemctl status postgresql) and db_host, db_port in the Odoo configuration.": {
+        "fr": "Vérifier PostgreSQL (systemctl status postgresql) et db_host, db_port dans la configuration d'Odoo.",
+        "en": "Check PostgreSQL (systemctl status postgresql) and db_host, db_port in the Odoo configuration.",
+    },
+    "Certificate valid for {days} days (until {date}).": {
+        "fr": "Certificat valide encore {days} jours (jusqu'au {date}).",
+        "en": "Certificate valid for {days} days (until {date}).",
+    },
+    "Port 80 does not answer ({error}).": {
+        "fr": "Le port 80 ne répond pas ({error}).",
+        "en": "Port 80 does not answer ({error}).",
+    },
+    "Open port 80 and redirect it to HTTPS: the certbot HTTP-01 renewal needs it too.": {
+        "fr": "Ouvrir le port 80 et le rediriger vers HTTPS : le renouvellement HTTP-01 de certbot en a besoin aussi.",
+        "en": "Open port 80 and redirect it to HTTPS: the certbot HTTP-01 renewal needs it too.",
+    },
+    "HTTP redirects to {location}, not to HTTPS.": {
+        "fr": "HTTP redirige vers {location}, pas vers HTTPS.",
+        "en": "HTTP redirects to {location}, not to HTTPS.",
+    },
+    "The site is served in clear text over HTTP.": {
+        "fr": "Le site est servi en clair par HTTP.",
+        "en": "The site is served in clear text over HTTP.",
+    },
+    "No Strict-Transport-Security header.": {
+        "fr": "Aucun en-tête Strict-Transport-Security.",
+        "en": "No Strict-Transport-Security header.",
+    },
+    "HSTS max-age is short ({seconds} s).": {
+        "fr": "Le max-age HSTS est court ({seconds} s).",
+        "en": "HSTS max-age is short ({seconds} s).",
+    },
+    "{path}: undetermined (HTTP {status} {error}).": {
+        "fr": "{path} : indéterminé (HTTP {status} {error}).",
+        "en": "{path}: undetermined (HTTP {status} {error}).",
+    },
+    "Open the page by hand to check what it shows.": {
+        "fr": "Ouvrir la page à la main pour voir ce qu'elle montre.",
+        "en": "Open the page by hand to check what it shows.",
+    },
+    "{path}: blocked (HTTP {status}).": {
+        "fr": "{path} : bloqué (HTTP {status}).",
+        "en": "{path}: blocked (HTTP {status}).",
+    },
+    "{path}: disabled by list_db = False.": {
+        "fr": "{path} : désactivé par list_db = False.",
+        "en": "{path}: disabled by list_db = False.",
+    },
+    "{path}: reachable, and the master password is not set.": {
+        "fr": "{path} : joignable, et le mot de passe maître n'est pas posé.",
+        "en": "{path}: reachable, and the master password is not set.",
+    },
+    "Set a strong admin_passwd, then list_db = False or deny /web/database in the proxy.": {
+        "fr": "Poser un admin_passwd solide, puis list_db = False ou refuser /web/database dans le proxy.",
+        "en": "Set a strong admin_passwd, then list_db = False or deny /web/database in the proxy.",
+    },
+    "{path}: the database list is reachable.": {
+        "fr": "{path} : la liste des bases est joignable.",
+        "en": "{path}: the database list is reachable.",
+    },
+    "list_db = False in the configuration.": {
+        "fr": "list_db = False dans la configuration.",
+        "en": "list_db = False in the configuration.",
+    },
+    "{path}: no answer ({error}).": {
+        "fr": "{path} : aucune réponse ({error}).",
+        "en": "{path}: no answer ({error}).",
+    },
+    "Check the proxy location for {path}.": {
+        "fr": "Vérifier le bloc location du proxy pour {path}.",
+        "en": "Check the proxy location for {path}.",
+    },
+    "{path}: HTTP {status}, the proxy does not reach the bus.": {
+        "fr": "{path} : HTTP {status}, le proxy ne joint pas le bus.",
+        "en": "{path}: HTTP {status}, the proxy does not reach the bus.",
+    },
+    "Odoo serves the bus on gevent_port (longpolling_port) only with workers > 0: match the proxy upstream.": {
+        "fr": "Odoo ne sert le bus sur gevent_port (longpolling_port) qu'avec workers > 0 : accorder l'amont du proxy.",
+        "en": "Odoo serves the bus on gevent_port (longpolling_port) only with workers > 0: match the proxy upstream.",
+    },
+    "{path}: not found (HTTP 404).": {
+        "fr": "{path} : introuvable (HTTP 404).",
+        "en": "{path}: not found (HTTP 404).",
+    },
+    "The proxy does not forward {path} to Odoo's bus port.": {
+        "fr": "Le proxy ne relaie pas {path} vers le port du bus d'Odoo.",
+        "en": "The proxy does not forward {path} to Odoo's bus port.",
+    },
+    "No robots.txt (no website module).": {
+        "fr": "Aucun robots.txt (pas de module website).",
+        "en": "No robots.txt (no website module).",
+    },
+    "robots.txt: HTTP {status}.": {
+        "fr": "robots.txt : HTTP {status}.",
+        "en": "robots.txt: HTTP {status}.",
+    },
+    "Check what the proxy serves for /robots.txt.": {
+        "fr": "Vérifier ce que le proxy sert pour /robots.txt.",
+        "en": "Check what the proxy serves for /robots.txt.",
+    },
+    "robots.txt forbids everything while the site has a sitemap.": {
+        "fr": "robots.txt interdit tout alors que le site a un sitemap.",
+        "en": "robots.txt forbids everything while the site has a sitemap.",
+    },
+    "Check the domain in the Website settings: Odoo forbids indexing when the URL used is not that domain.": {
+        "fr": "Vérifier le domaine dans les paramètres du site web : Odoo interdit l'indexation quand l'URL employée n'est pas ce domaine.",
+        "en": "Check the domain in the Website settings: Odoo forbids indexing when the URL used is not that domain.",
+    },
+    "robots.txt forbids indexing (no public website).": {
+        "fr": "robots.txt interdit l'indexation (pas de site public).",
+        "en": "robots.txt forbids indexing (no public website).",
+    },
+    "No SPF record for {domain}.": {
+        "fr": "Aucun enregistrement SPF pour {domain}.",
+        "en": "No SPF record for {domain}.",
+    },
+    'Publish one TXT record "v=spf1 ... -all" naming the servers that send for {domain}.': {
+        "fr": "Publier un seul enregistrement TXT « v=spf1 ... -all » qui nomme les serveurs qui envoient pour {domain}.",
+        "en": 'Publish one TXT record "v=spf1 ... -all" naming the servers that send for {domain}.',
+    },
+    "{count} SPF records for {domain}: only one is valid.": {
+        "fr": "{count} enregistrements SPF pour {domain} : un seul est valide.",
+        "en": "{count} SPF records for {domain}: only one is valid.",
+    },
+    "Merge them into a single record.": {
+        "fr": "Les fusionner en un seul enregistrement.",
+        "en": "Merge them into a single record.",
+    },
+    "The SPF record of {domain} allows any server (+all).": {
+        "fr": "L'enregistrement SPF de {domain} admet n'importe quel serveur (+all).",
+        "en": "The SPF record of {domain} allows any server (+all).",
+    },
+    "End the record with -all or ~all.": {
+        "fr": "Terminer l'enregistrement par -all ou ~all.",
+        "en": "End the record with -all or ~all.",
+    },
+    "The SPF record of {domain} does not end with -all or ~all.": {
+        "fr": "L'enregistrement SPF de {domain} ne se termine pas par -all ou ~all.",
+        "en": "The SPF record of {domain} does not end with -all or ~all.",
+    },
+    "No DMARC record for {domain}.": {
+        "fr": "Aucun enregistrement DMARC pour {domain}.",
+        "en": "No DMARC record for {domain}.",
+    },
+    'Publish _dmarc.{domain} TXT "v=DMARC1; p=none" at least.': {
+        "fr": "Publier au moins _dmarc.{domain} TXT « v=DMARC1; p=none ».",
+        "en": 'Publish _dmarc.{domain} TXT "v=DMARC1; p=none" at least.',
+    },
+    "DKIM key found: {name}.": {
+        "fr": "Clé DKIM trouvée : {name}.",
+        "en": "DKIM key found: {name}.",
+    },
+    "The DKIM key {name} is empty (revoked).": {
+        "fr": "La clé DKIM {name} est vide (révoquée).",
+        "en": "The DKIM key {name} is empty (revoked).",
+    },
+    "Publish the public key given by the sending service.": {
+        "fr": "Publier la clé publique fournie par le service d'envoi.",
+        "en": "Publish the public key given by the sending service.",
+    },
+    "The URL is plain HTTP: nothing is encrypted.": {
+        "fr": "L'URL est en HTTP clair : rien n'est chiffré.",
+        "en": "The URL is plain HTTP: nothing is encrypted.",
+    },
+    "Odoo health check": {
+        "fr": "Vérification de santé d'Odoo",
+        "en": "Odoo health check",
+    },
+    "Check that an Odoo instance answers and exposes nothing it should not: login page, /web/health, TLS, HTTPS redirect, HSTS, database manager, bus, robots.txt, mail DNS.": {
+        "fr": "Vérifier qu'une instance Odoo répond et n'expose rien de trop : page de connexion, /web/health, TLS, redirection HTTPS, HSTS, gestionnaire de bases, bus, robots.txt, DNS du courriel.",
+        "en": "Check that an Odoo instance answers and exposes nothing it should not: login page, /web/health, TLS, HTTPS redirect, HSTS, database manager, bus, robots.txt, mail DNS.",
+    },
+    "Public URL to probe through the proxy; repeatable. A bare host means https://host.": {
+        "fr": "URL publique à sonder à travers le proxy ; répétable. Un hôte nu veut dire https://hote.",
+        "en": "Public URL to probe through the proxy; repeatable. A bare host means https://host.",
+    },
+    "Probe the local instance of the systemd unit, where Odoo listens.": {
+        "fr": "Sonder l'instance locale de l'unité systemd, là où Odoo écoute.",
+        "en": "Probe the local instance of the systemd unit, where Odoo listens.",
+    },
+    "With --local: systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.": {
+        "fr": "Avec --local : unité systemd ; par défaut, celle dont WorkingDirectory est ce checkout, sinon la seule active.",
+        "en": "With --local: systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.",
+    },
+    "Check the SPF and DMARC records of this sending domain.": {
+        "fr": "Vérifier les enregistrements SPF et DMARC de ce domaine d'envoi.",
+        "en": "Check the SPF and DMARC records of this sending domain.",
+    },
+    "With --mail-domain: also check this DKIM selector.": {
+        "fr": "Avec --mail-domain : vérifier aussi ce sélecteur DKIM.",
+        "en": "With --mail-domain: also check this DKIM selector.",
+    },
+    "Give --url URL, --local, or both.": {
+        "fr": "Donner --url URL, --local, ou les deux.",
+        "en": "Give --url URL, --local, or both.",
+    },
+    "--service requires --local.": {
+        "fr": "--service exige --local.",
+        "en": "--service requires --local.",
+    },
+    "--dkim-selector requires --mail-domain.": {
+        "fr": "--dkim-selector exige --mail-domain.",
+        "en": "--dkim-selector requires --mail-domain.",
+    },
+    "invalid port in the URL": {
+        "fr": "port invalide dans l'URL",
+        "en": "invalid port in the URL",
+    },
+    "TLS connection impossible: {error}": {
+        "fr": "Connexion TLS impossible : {error}",
+        "en": "TLS connection impossible: {error}",
+    },
+    "Check that port {port} is open and served by the proxy.": {
+        "fr": "Vérifier que le port {port} est ouvert et servi par le proxy.",
+        "en": "Check that port {port} is open and served by the proxy.",
+    },
+    "Certificate accepted, expiry date unreadable.": {
+        "fr": "Certificat accepté, date d'expiration illisible.",
+        "en": "Certificate accepted, expiry date unreadable.",
+    },
+    "HTTP redirects to another host ({location}).": {
+        "fr": "HTTP redirige vers un autre hôte ({location}).",
+        "en": "HTTP redirects to another host ({location}).",
+    },
+    "Redirect http://{host}/ to https on the same host.": {
+        "fr": "Rediriger http://{host}/ vers https sur le même hôte.",
+        "en": "Redirect http://{host}/ to https on the same host.",
+    },
+    "{path}: the database manager is reachable.": {
+        "fr": "{path} : le gestionnaire de bases est joignable.",
+        "en": "{path}: the database manager is reachable.",
+    },
+    "Neither dig nor host is installed: DNS not checked.": {
+        "fr": "Ni dig ni host n'est installé : DNS non vérifié.",
+        "en": "Neither dig nor host is installed: DNS not checked.",
+    },
+    "Serve the site over HTTPS (deploy_nginx_and_certbot.py).": {
+        "fr": "Servir le site en HTTPS (deploy_nginx_and_certbot.py).",
+        "en": "Serve the site over HTTPS (deploy_nginx_and_certbot.py).",
+    },
+    "HSTS: no HTTP 200 on /web/login to read it on.": {
+        "fr": "HSTS : aucune réponse HTTP 200 de /web/login où le lire.",
+        "en": "HSTS: no HTTP 200 on /web/login to read it on.",
+    },
+    "{url} (local, {unit})": {
+        "fr": "{url} (locale, {unit})",
+        "en": "{url} (local, {unit})",
+    },
+    "HTTP redirects to HTTPS ({location}).": {
+        "fr": "HTTP redirige vers HTTPS ({location}).",
+        "en": "HTTP redirects to HTTPS ({location}).",
+    },
+    "Install dnsutils (dig) or bind9-host (host).": {
+        "fr": "Installer dnsutils (dig) ou bind9-host (host).",
+        "en": "Install dnsutils (dig) or bind9-host (host).",
+    },
+    "DNS lookup of {name} failed (code {code}).": {
+        "fr": "La recherche DNS de {name} a échoué (code {code}).",
+        "en": "DNS lookup of {name} failed (code {code}).",
+    },
+    "Check the DNS resolver of this host.": {
+        "fr": "Vérifier le résolveur DNS de ce poste.",
+        "en": "Check the DNS resolver of this host.",
+    },
+    "Outgoing mail DNS of {domain}": {
+        "fr": "DNS du courriel sortant de {domain}",
+        "en": "Outgoing mail DNS of {domain}",
+    },
+    "To review: {checks}": {
+        "fr": "À revoir : {checks}",
+        "en": "To review: {checks}",
+    },
+    "invalid DNS name: {value}": {
+        "fr": "nom DNS invalide : {value}",
+        "en": "invalid DNS name: {value}",
+    },
+    "expected seconds between 0 and 300: {value}": {
+        "fr": "secondes attendues entre 0 et 300 : {value}",
+        "en": "expected seconds between 0 and 300: {value}",
+    },
+    "Seconds for each request, TLS connection and DNS lookup; default: {seconds}.": {
+        "fr": "Secondes accordées à chaque requête, connexion TLS et recherche DNS ; par défaut : {seconds}.",
+        "en": "Seconds for each request, TLS connection and DNS lookup; default: {seconds}.",
+    },
+    "invalid URL ({reason}): {value}": {
+        "fr": "URL invalide ({reason}) : {value}",
+        "en": "invalid URL ({reason}): {value}",
+    },
+    "empty model list": {
+        "fr": "liste de modèles vide",
+        "en": "empty model list",
+    },
+    "--login and --api-key-file go together.": {
+        "fr": "--login et --api-key-file vont ensemble.",
+        "en": "--login and --api-key-file go together.",
+    },
+    "A database is required with --login: give -d.": {
+        "fr": "Une base est exigée avec --login : donner -d.",
+        "en": "A database is required with --login: give -d.",
+    },
+    "--login sends the API key: refused over plain http:// to another host. Use an https:// URL or --local.": {
+        "fr": "--login envoie la clé d'API : refusé en http:// simple vers un"
+        " autre hôte. Employer une URL https:// ou --local.",
+        "en": "--login sends the API key: refused over plain http:// to"
+        " another host. Use an https:// URL or --local.",
+    },
+    "Deep warm-up: public pages, sitemap pages, their asset bundles, then optional read-only views; prints a summary.": {
+        "fr": "Préchauffage profond : pages publiques, pages du sitemap, leurs paquets d'assets, puis vues en lecture seule en option ; affiche un bilan.",
+        "en": "Deep warm-up: public pages, sitemap pages, their asset bundles, then optional read-only views; prints a summary.",
+    },
+    "With --deep: base URL to warm up instead of the local one.": {
+        "fr": "Avec --deep : URL de base à préchauffer au lieu de l'adresse locale.",
+        "en": "With --deep: base URL to warm up instead of the local one.",
+    },
+    "With --deep: the instance of the detected systemd unit.": {
+        "fr": "Avec --deep : l'instance de l'unité systemd détectée.",
+        "en": "With --deep: the instance of the detected systemd unit.",
+    },
+    "With --local: systemd unit to use.": {
+        "fr": "Avec --local : unité systemd à employer.",
+        "en": "With --local: systemd unit to use.",
+    },
+    "With --deep: Odoo login for the read-only view warm-up.": {
+        "fr": "Avec --deep : identifiant Odoo du préchauffage des vues en lecture seule.",
+        "en": "With --deep: Odoo login for the read-only view warm-up.",
+    },
+    "File holding the Odoo API key of --login (never on argv).": {
+        "fr": "Fichier qui porte la clé d'API Odoo de --login (jamais sur la ligne de commande).",
+        "en": "File holding the Odoo API key of --login (never on argv).",
+    },
+    "With --deep: exit 1 when a request failed.": {
+        "fr": "Avec --deep : sortir en 1 quand une requête a échoué.",
+        "en": "With --deep: exit 1 when a request failed.",
+    },
+    "Pages: {pages} · assets: {assets} · RPC calls: {rpc} · failures: {failures} · not public: {private} · {seconds} s": {
+        "fr": "Pages : {pages} · assets : {assets} · appels RPC : {rpc} · échecs : {failures} · non publics : {private} · {seconds} s",
+        "en": "Pages: {pages} · assets: {assets} · RPC calls: {rpc} · failures: {failures} · not public: {private} · {seconds} s",
+    },
+    "Unknown option(s) with --deep: {options}": {
+        "fr": "Option(s) inconnue(s) avec --deep : {options}",
+        "en": "Unknown option(s) with --deep: {options}",
+    },
+    "With --deep: pages taken from the sitemap; default: {n}.": {
+        "fr": "Avec --deep : pages prises dans le sitemap ; par défaut : {n}.",
+        "en": "With --deep: pages taken from the sitemap; default: {n}.",
+    },
+    "With --deep: simultaneous requests per page, asset or call, to reach several workers; default: {n}.": {
+        "fr": "Avec --deep : requêtes simultanées par page, asset ou appel, pour atteindre plusieurs workers ; par défaut : {n}.",
+        "en": "With --deep: simultaneous requests per page, asset or call, to reach several workers; default: {n}.",
+    },
+    "With --login: models whose views are loaded, commas; default: {models}.": {
+        "fr": "Avec --login : modèles dont les vues sont chargées, séparés par des virgules ; par défaut : {models}.",
+        "en": "With --login: models whose views are loaded, commas; default: {models}.",
+    },
+    "Login refused for {login}: check the login and the API key (Odoo 14+).": {
+        "fr": "Connexion refusée pour {login} : vérifier l'identifiant et la clé d'API (Odoo 14 et plus).",
+        "en": "Login refused for {login}: check the login and the API key (Odoo 14+).",
+    },
+    "expected an integer from {minimum} to {maximum}: {value}": {
+        "fr": "entier attendu de {minimum} à {maximum} : {value}",
+        "en": "expected an integer from {minimum} to {maximum}: {value}",
+    },
+    "invalid model name: {model}": {
+        "fr": "nom de modèle invalide : {model}",
+        "en": "invalid model name: {model}",
+    },
+    "No answer within {seconds} s.": {
+        "fr": "Aucune réponse en {seconds} s.",
+        "en": "No answer within {seconds} s.",
+    },
+    "Cannot read the API key from {path}.": {
+        "fr": "Impossible de lire la clé d'API dans {path}.",
+        "en": "Cannot read the API key from {path}.",
+    },
+    "{path} is readable by other accounts: chmod 600 it.": {
+        "fr": "{path} est lisible par d'autres comptes : chmod 600.",
+        "en": "{path} is readable by other accounts: chmod 600 it.",
+    },
+    "Health check of the instance": {
+        "fr": "Vérification de santé de l'instance",
+        "en": "Health check of the instance",
+    },
+    "after a verified restart": {
+        "fr": "après une relance vérifiée",
+        "en": "after a verified restart",
+    },
+    "Deep cache warm-up": {
+        "fr": "Préchauffage profond du cache",
+        "en": "Deep cache warm-up",
+    },
+    "After a verified restart, warm up public pages and asset bundles (warmup_http.py --deep).": {
+        "fr": "Après une relance vérifiée, préchauffer les pages publiques et les paquets d'assets (warmup_http.py --deep).",
+        "en": "After a verified restart, warm up public pages and asset bundles (warmup_http.py --deep).",
+    },
+    "{pages} page(s), {assets} asset bundle(s) in {seconds} s.": {
+        "fr": "{pages} page(s), {assets} paquet(s) d'assets en {seconds} s.",
+        "en": "{pages} page(s), {assets} asset bundle(s) in {seconds} s.",
+    },
+    "health check of {url}": {
+        "fr": "vérification de santé de {url}",
+        "en": "health check of {url}",
+    },
+    "Health check not done: {error}": {
+        "fr": "Vérification de santé non faite : {error}",
+        "en": "Health check not done: {error}",
+    },
+    "deep cache warm-up of {url}": {
+        "fr": "préchauffage profond du cache de {url}",
+        "en": "deep cache warm-up of {url}",
+    },
+    "Warm-up not done: {error}": {
+        "fr": "Préchauffage non fait : {error}",
+        "en": "Warm-up not done: {error}",
+    },
+    "{count} request(s) failed.": {
+        "fr": "{count} requête(s) en échec.",
+        "en": "{count} request(s) failed.",
+    },
+    "Health check of this instance (local) - read-only": {
+        "fr": "Santé de cette instance (locale) - lecture seule",
+        "en": "Health check of this instance (local) - read-only",
+    },
+    "Health check of a public URL - TLS, redirect, database manager, optional mail DNS": {
+        "fr": "Santé d'une URL publique - TLS, redirection, gestionnaire de bases, DNS du courriel en option",
+        "en": "Health check of a public URL - TLS, redirect, database manager, optional mail DNS",
+    },
+    "Warm up the cache (deep) - public pages and asset bundles": {
+        "fr": "Préchauffer le cache (profond) - pages publiques et paquets d'assets",
+        "en": "Warm up the cache (deep) - public pages and asset bundles",
+    },
+    "Public URL (https://host): ": {
+        "fr": "URL publique (https://hote) : ",
+        "en": "Public URL (https://host): ",
+    },
+    "Sending mail domain to check (empty = none): ": {
+        "fr": "Domaine d'envoi du courriel à vérifier (vide = aucun) : ",
+        "en": "Sending mail domain to check (empty = none): ",
+    },
+    "Cancelled: invalid domain.": {
+        "fr": "Annulé : domaine invalide.",
+        "en": "Cancelled: invalid domain.",
+    },
+    "Cancelled: invalid URL ({reason}).": {
+        "fr": "Annulé : URL invalide ({reason}).",
+        "en": "Cancelled: invalid URL ({reason}).",
+    },
 }
 
 

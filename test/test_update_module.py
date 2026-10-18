@@ -45,6 +45,7 @@ sys.path.append(
 )
 
 from script.lib_ops import lock, report, service  # noqa: E402
+from script.odoo import health_check, warmup_http  # noqa: E402
 from script.odoo import update_module as um  # noqa: E402
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -138,6 +139,13 @@ class FauxSysteme(um.Systeme):
         # Levées APRÈS que l'étape a écrit son fichier.
         self.lever_apres = {}
         self.vu = {}
+        # Après la relance : le bilan du préchauffage et les verdicts de la
+        # santé servis, et si le verrou de la base était libre à ce moment.
+        self.bilan = warmup_http.Bilan()
+        self.resultats_sante = [
+            health_check.Resultat("http_login", health_check.OK, "login ok")
+        ]
+        self.verrou_libre_apres = None
 
     def _lever(self, etape):
         erreur = self.lever.get(etape)
@@ -221,6 +229,27 @@ class FauxSysteme(um.Systeme):
     def sonder(self, cible, delai):
         self.appels.append(f"sonde {cible}")
         return self.sonde
+
+    def _verrou_libre(self):
+        sonde = lock.Verrou("erplibre-db-demo_db", self.dossier_verrou)
+        try:
+            sonde.acquerir()
+        except lock.VerrouPris:
+            return False
+        sonde.relacher()
+        return True
+
+    def prechauffer(self, plan):
+        self.appels.append(f"prechauffage {plan.hote}:{plan.port}")
+        self.verrou_libre_apres = self._verrou_libre()
+        self._lever("prechauffage")
+        return self.bilan
+
+    def sante(self, plan):
+        self.appels.append(f"sante {plan.hote}:{plan.port} {plan.list_db}")
+        self.verrou_libre_apres = self._verrou_libre()
+        self._lever("sante")
+        return 18, list(self.resultats_sante)
 
     def inscriptible(self, dossier, utilisateur):
         return dossier not in self.non_inscriptibles
@@ -518,14 +547,14 @@ class TestOrdreEtReussite(Base):
 
     def test_sortie_lisible_numerotee(self):
         self.lancer()
-        for etape in ("[1/5]", "[2/5]", "[3/5]", "[4/5]", "[5/5]"):
+        for etape in ("[1/6]", "[2/6]", "[3/6]", "[4/6]", "[5/6]", "[6/6]"):
             self.assertIn(etape, self.sortie)
         self.assertNotIn("\x1b[", self.sortie)
 
     def test_sans_sauvegarde(self):
         self.assertEqual(self.lancer("--no-backup"), um.CODE_OK)
         self.assertFalse(self.a_appele("backup "))
-        self.assertIn("[4/4]", self.sortie)
+        self.assertIn("[5/5]", self.sortie)
 
     def test_un_compte_different_passe_par_runuser(self):
         self.systeme.proprietes["User"] = "svc"
@@ -904,6 +933,114 @@ class TestRedemarrage(Base):
         self.assertEqual(self.lancer(), um.CODE_ECHEC, self.sortie)
         self.assertIn("[2x] KeyError: 'x'", self.sortie)
         self.assertNotIn("[1x] Traceback", self.sortie)
+        self.assertEqual(self.systeme.etat, "active")
+
+
+class TestApresLaRelance(Base):
+    """Préchauffage profond (`--warmup-deep`) et santé : après une relance
+    vérifiée seulement, verrou relâché, en ATTN au plus."""
+
+    def test_ordre_avec_warmup_deep(self):
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        self.assertLess(self.rang("systemctl start"), self.rang("sonde "))
+        self.assertLess(self.rang("sonde "), self.rang("journalctl"))
+        self.assertLess(self.rang("journalctl"), self.rang("prechauffage"))
+        self.assertLess(self.rang("prechauffage"), self.rang("sante"))
+        self.assertIn("prechauffage 127.0.0.1:10000", self.systeme.appels)
+        self.assertIn("[7/7]", self.sortie)
+        self.assertTrue(self.systeme.verrou_libre_apres)
+        # La ligne finale reste la dernière.
+        fin = um.t("Update finished: {modules}").format(
+            modules="my_module_a,my_module_b"
+        )
+        self.assertTrue(self.sortie.rstrip().endswith(fin), self.sortie)
+        self.assertIn("login ok", self.sortie)
+
+    def test_sans_l_option_la_sante_seule(self):
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertFalse(self.a_appele("prechauffage"))
+        self.assertTrue(self.a_appele("sante 127.0.0.1:10000 None"))
+
+    def test_list_db_transmis(self):
+        with open(self.conf, "a") as f:
+            f.write("list_db = False\n")
+        self.lancer()
+        self.assertTrue(self.a_appele("sante 127.0.0.1:10000 False"))
+
+    def test_relance_en_echec_ni_l_un_ni_l_autre(self):
+        self.systeme.demarrage_code = 1
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_ECHEC)
+        self.assertFalse(self.a_appele("prechauffage"))
+        self.assertFalse(self.a_appele("sante"))
+
+    def test_mise_a_jour_en_echec_ni_l_un_ni_l_autre(self):
+        self.systeme.odoo_issue = um.Issue(1, False, False)
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_ECHEC)
+        self.assertFalse(self.a_appele("prechauffage"))
+        self.assertFalse(self.a_appele("sante"))
+
+    def test_service_arrete_avant_ni_l_un_ni_l_autre(self):
+        self.systeme.etat = "inactive"
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        self.assertFalse(self.a_appele("prechauffage"))
+        self.assertFalse(self.a_appele("sante"))
+
+    def test_simulation_les_annonce_sans_les_lancer(self):
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(self.lancer("--dry-run", "--warmup-deep"), 0)
+        self.assertFalse(self.a_appele("prechauffage"))
+        self.assertFalse(self.a_appele("sante"))
+        adresse = "http://127.0.0.1:10000"
+        self.assertIn(
+            um.t("deep cache warm-up of {url}").format(url=adresse),
+            self.sortie,
+        )
+        self.assertIn(
+            um.t("health check of {url}").format(url=adresse), self.sortie
+        )
+        self.lancer("--dry-run")
+        self.assertNotIn(
+            um.t("deep cache warm-up of {url}").format(url=adresse),
+            self.sortie,
+        )
+
+    def test_un_fail_de_sante_devient_attn(self):
+        self.systeme.resultats_sante = [
+            health_check.Resultat(
+                "db_manager",
+                health_check.FAIL,
+                "manager exposed",
+                conseil="close it",
+            ),
+            health_check.Resultat("hsts", health_check.SKIP, "skipped row"),
+        ]
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertIn("[ATTN] manager exposed", self.sortie)
+        self.assertIn("→ close it", self.sortie)
+        self.assertNotIn("[FAIL] manager exposed", self.sortie)
+        self.assertNotIn("skipped row", self.sortie)
+
+    def test_echecs_du_prechauffage_en_attn(self):
+        self.systeme.bilan.pages = 3
+        self.systeme.bilan.echecs = [("/page-b", 500)]
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("/page-b: 500", self.sortie)
+
+    def test_une_exception_ne_change_rien(self):
+        self.systeme.lever = {
+            "prechauffage": RuntimeError("panne de prechauffage"),
+            "sante": RuntimeError("panne de sante"),
+        }
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        self.assertIn("panne de prechauffage", self.sortie)
+        self.assertIn("panne de sante", self.sortie)
+        self.assertEqual(self.systeme.etat, "active")
+
+    def test_ctrl_c_n_arrete_que_le_prechauffage(self):
+        self.systeme.lever = {"prechauffage": KeyboardInterrupt()}
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        self.assertTrue(self.a_appele("sante"))
         self.assertEqual(self.systeme.etat, "active")
 
 
@@ -1783,6 +1920,8 @@ class TestPythonAncien(unittest.TestCase):
         os.path.join(RACINE, "script", "odoo", "mail_retry.py"),
         os.path.join(RACINE, "script", "lib_ops", "journal.py"),
         os.path.join(RACINE, "script", "lib_ops", "mail_diagnostic.py"),
+        os.path.join(RACINE, "script", "odoo", "health_check.py"),
+        os.path.join(RACINE, "script", "odoo", "warmup_http.py"),
     ]
 
     # API absentes de Python 3.7 : la syntaxe passe le garde, l'appel
@@ -1849,6 +1988,7 @@ class TestPythonAncien(unittest.TestCase):
             ),
             os.path.join(RACINE, "script", "odoo", "log_check.py"),
             os.path.join(RACINE, "script", "odoo", "mail_retry.py"),
+            os.path.join(RACINE, "script", "odoo", "health_check.py"),
         ):
             with self.subTest(fichier=os.path.basename(chemin)):
                 self.assertTrue(os.access(chemin, os.X_OK))

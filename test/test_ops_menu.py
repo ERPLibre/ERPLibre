@@ -8,8 +8,9 @@ La mise à jour arrête un service ; la sauvegarde, la restauration et la
 minuterie écrivent. Le menu doit donc toujours passer par la simulation,
 ne rien lancer quand elle refuse, demander avant l'exécution réelle, et ne
 lancer celle-ci que sous sudo, sans capture. L'état des sauvegardes, le
-journal d'Odoo et la liste des courriels en échec se lisent sans sudo ;
-le renvoi des courriels passe par sudo après accord. Rien n'est réellement exécuté : `execute` est remplacé,
+journal d'Odoo, la liste des courriels en échec, la santé locale et le
+préchauffage se lisent sans sudo ; le renvoi des courriels passe par sudo
+après accord ; la santé d'une URL publique ne propose jamais sudo. Rien n'est réellement exécuté : `execute` est remplacé,
 `subprocess.run` aussi.
 """
 
@@ -330,6 +331,80 @@ class TestJournalEtCourrielsDepuisLeMenu(unittest.TestCase):
         self.assertEqual(todo.execute.commandes, [])
 
 
+class TestSanteDepuisLeMenu(unittest.TestCase):
+    """Santé locale et préchauffage : lancés sans sudo, sudo proposé sur
+    un code 2. Santé d'une URL : l'URL validée avant tout lancement, le
+    domaine de courriel facultatif, jamais de sudo."""
+
+    def jouer(self, methode, reponses=(), code=0, confirme=True):
+        todo = TODO.__new__(TODO)
+        todo.execute = FauxExecute(code)
+        with (
+            mock.patch("builtins.input", side_effect=list(reponses)),
+            mock.patch(
+                "script.todo.ops_menu.click.confirm", return_value=confirme
+            ) as confirm,
+            mock.patch(
+                "script.todo.ops_menu.subprocess.run",
+                return_value=mock.Mock(returncode=0),
+            ) as run,
+            mock.patch("builtins.print"),
+        ):
+            getattr(todo, methode)()
+        return todo, run, confirm
+
+    def test_sante_locale_et_prechauffage(self):
+        for methode, attendu in (
+            ("_ops_health_local", "health_check.py --local"),
+            ("_ops_warmup_deep", "warmup_http.py --deep --local"),
+        ):
+            with self.subTest(methode=methode):
+                todo, run, confirm = self.jouer(methode)
+                (commande,) = todo.execute.commandes
+                self.assertTrue(commande.endswith(attendu), commande)
+                self.assertNotIn("sudo", commande)
+                self.assertFalse(confirm.called)
+                self.assertFalse(run.called)
+                _todo, run, confirm = self.jouer(methode, code=2)
+                self.assertTrue(confirm.called)
+                argv = run.call_args.args[0]
+                self.assertEqual(argv[0], "sudo")
+                self.assertEqual(argv[-1], attendu.split()[-1])
+
+    def test_sante_d_une_url(self):
+        for reponses, attendu in (
+            (["example.org", ""], "--url https://example.org"),
+            (
+                ["https://www.example.org/web", "example.org"],
+                "--url https://www.example.org --mail-domain example.org",
+            ),
+        ):
+            with self.subTest(reponses=reponses):
+                todo, run, confirm = self.jouer("_ops_health_url", reponses)
+                (commande,) = todo.execute.commandes
+                self.assertIn("health_check.py", commande)
+                self.assertTrue(commande.endswith(attendu), commande)
+                self.assertFalse(run.called)
+        todo, run, confirm = self.jouer(
+            "_ops_health_url", ["example.org", ""], code=2
+        )
+        self.assertFalse(confirm.called)
+        self.assertFalse(run.called)
+
+    def test_url_ou_domaine_invalide_ne_lance_rien(self):
+        for reponses in (
+            ["ftp://example.org"],
+            ["https://u:p@example.org"],
+            [""],
+            ["example.org", "-f/etc/passwd"],
+            ["example.org", "a;b"],
+        ):
+            with self.subTest(reponses=reponses):
+                todo, run, _ = self.jouer("_ops_health_url", reponses)
+                self.assertEqual(todo.execute.commandes, [])
+                self.assertFalse(run.called)
+
+
 class TestDossierInscriptible(unittest.TestCase):
     """`_inscriptible` sur de vrais dossiers : celui qui existe, sinon son
     parent existant le plus proche."""
@@ -457,6 +532,17 @@ class TestLeMenuEstBranche(unittest.TestCase):
         self.assertEqual(todo.execute.commandes, [])
         self.assertEqual(run.call_args.args[0][0], "sudo")
         self.assertTrue(run.call_args.args[0][2].endswith("mail_retry.py"))
+
+    def test_choix_13_a_15(self):
+        for choix, reponses, attendu in (
+            ("13", [], "health_check.py --local"),
+            ("14", ["example.org", ""], "--url https://example.org"),
+            ("15", [], "warmup_http.py --deep --local"),
+        ):
+            with self.subTest(choix=choix):
+                todo, run = self.choisir(choix, reponses)
+                self.assertIn(attendu, todo.execute.commandes[0])
+                self.assertFalse(run.called)
 
     def test_entree_17_du_menu_execute(self):
         source = (RACINE / "script" / "todo" / "todo.py").read_text()

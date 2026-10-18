@@ -6,7 +6,8 @@
 | `update_module.py` | met à jour des modules installés d'une instance servie par systemd : arrêter, sauvegarder, mettre à jour, relancer, vérifier |
 | `log_check.py` | lit le journal d'une instance : traces, erreurs, requêtes SQL refusées, échecs d'envoi de courriel, à revoir (lecture seule) |
 | `mail_retry.py` | liste les courriels sortants en échec d'une instance (lecture seule), puis remet en file ceux qu'on choisit par le shell d'Odoo |
-| `warmup_http.py` | réveille le registre dès que le serveur écoute ; lancé par `run.sh` |
+| `health_check.py` | vérifie qu'une instance répond et n'expose rien de trop : page de connexion, `/web/health`, TLS, redirection HTTPS, HSTS, gestionnaire de bases, bus, robots.txt, DNS du courriel (lecture seule) |
+| `warmup_http.py` | réveille le registre dès que le serveur écoute ; lancé par `run.sh`. `--deep` préchauffe les pages publiques, les paquets d'assets et, avec une clé d'API, les vues |
 | `migration/` | outils de migration, voir [migration/README.fr.md](migration/README.fr.md) |
 
 ## update_module.py
@@ -62,6 +63,11 @@ Ce qu'il fait, dans l'ordre :
 6. **Relance**, si l'unité tournait : attente de `active` et du port
    (`--start-wait`), une requête HTTP, puis lecture du journal de l'unité et
    du `logfile` depuis le démarrage.
+7. **Après une relance vérifiée**, verrou relâché : avec `--warmup-deep`,
+   le préchauffage profond de `warmup_http.py` (pages publiques et paquets
+   d'assets, sans clé), puis la vérification de santé de l'instance locale
+   (`health_check.py`). Leurs constats s'affichent en ATTN au plus et ne
+   changent jamais le code de sortie ; un Ctrl-C n'y arrête que l'étape.
 
 L'unité n'est jamais modifiée : l'outil la lit et lance seulement
 `systemctl stop` / `start`. Quoi qu'il arrive après l'arrêt — échec,
@@ -196,3 +202,117 @@ Root n'est nécessaire que pour devenir le compte de l'unité.
 | Filtre « De » (`from_filter`) | 15+ ; nommé dans le conseil sur l'expéditeur à partir de 15 |
 | Domaines d'alias (expéditeur par défaut, catchall) | 17+ ; paramètres système `mail.default.from` et `mail.catchall.domain` jusqu'à 16 |
 | `mail.session.batch.size` | présent en 18 ; non vérifié de 12 à 14 |
+
+## health_check.py
+
+```bash
+./script/odoo/health_check.py --url https://odoo.example.org
+./script/odoo/health_check.py --url odoo.example.org --mail-domain example.org --dkim-selector s1
+./script/odoo/health_check.py --local --json
+```
+
+`--url` (répétable ; un hôte nu veut dire `https://hote`) sonde à travers
+le proxy inverse ; `--local` (avec `--service`, sinon l'unité détectée)
+sonde l'adresse que donne la configuration de l'unité, avec `?db=` quand la
+base est connue. Une URL qui porte un identifiant (`compte:mdp@`) ou un
+autre schéma que http(s) est refusée. Lecture seule : des GET, et un appel
+JSON-RPC sans authentification à `/web/webclient/version_info` pour la
+version. Aucun cookie, aucun en-tête `Authorization`, aucun proxy de
+l'environnement, corps lus jusqu'à 1 Mio, `--timeout` (10 s) sur chaque
+requête, connexion TLS et recherche DNS.
+
+| Vérification | OK | ATTN | FAIL | SKIP |
+|--------------|----|------|------|------|
+| `http_login` | 200 en moins de 5 s | lente, redirection vers le sélecteur de bases, vers HTTP clair ou un autre hôte | aucune réponse, 5xx, autre statut | |
+| `web_health` | 200 `pass` | réponse inattendue | aucune réponse, 5xx, `fail` | 404 (route absente) |
+| `tls_certificate` | 21 jours ou plus | moins de 21 jours | moins de 7 jours, expiré, refusé (nom, chaîne, autosigné) | URL http, `--local` |
+| `http_redirect` | `http://hote/` redirige vers https sur le même hôte | autre hôte, port 80 fermé, autre statut | servi en clair | URL http, `--local` |
+| `hsts` | `max-age` ≥ 1 jour | absent, plus court | | pas de 200 sur `/web/login`, URL http, `--local` |
+| `db_manager`, `db_selector` | bloqué (401/403/404/3xx), page « disabled » (`list_db = False`) | indéterminé (5xx) ; exposé en `--local` ; sélecteur qui liste les bases | gestionnaire joignable, ou mot de passe maître absent, en `--url` | |
+| `list_db` (`--local`) | `False` | absent ou vrai | | |
+| `websocket` (`--url`) | relayé (400/426) | 404, aucune réponse | 502/503/504 | `--local` |
+| `robots` (`--url`) | servi, ou `Disallow: /` sans ligne `Sitemap:` (pas de site public) | `Disallow: /` avec une ligne `Sitemap:` (l'URL employée n'est pas le domaine du site) | | 404 |
+| `mail_spf` | un enregistrement fini par `-all`/`~all` | autre fin | aucun, plusieurs, `+all` | ni dig ni host, recherche en échec |
+| `mail_dmarc` | présent (politique affichée) | absent | | ni dig ni host, recherche en échec |
+| `mail_dkim` (`--dkim-selector`) | clé trouvée | | absente, clé vide | ni dig ni host, recherche en échec |
+
+Le certificat n'est jugé que par `tls_certificate` : les autres requêtes
+HTTPS ne le vérifient pas, pour qu'un certificat refusé donne un seul FAIL
+et que les autres vérifications répondent encore. Une `--url` en HTTP clair
+ajoute un ATTN `https`. Le DNS passe par `dig` ou `host`, domaine et
+sélecteur validés d'abord (pas de `-` en tête) ; une recherche en échec est
+un SKIP, jamais « enregistrement absent ». dig rend 0 pour toute réponse,
+SERVFAIL et REFUSED compris : le statut de l'en-tête de sa réponse
+tranche, et seuls NOERROR et NXDOMAIN sont définitifs. Aucun service web
+tiers n'est contacté.
+
+Un déploiement par défaut obtient un FAIL sur `db_manager` par `--url` :
+Odoo garde `list_db = True` quand la configuration ne le pose pas, et les
+gabarits nginx ne bloquent pas `/web/database`. Poser `list_db = False`, ou
+refuser `/web/database` dans nginx.
+
+Clés de `--json` (anglais, stables) : `tool`, `odoo_version`, `targets`
+(`kind`, `url`, `odoo_version`), `checks` (`id`, `target`, `status`,
+`message`, `hint`, `data`), `summary` (`ok`, `attn`, `fail`, `skip`),
+`exit_code`.
+
+| Code | Sens |
+|------|------|
+| 0 | aucun FAIL (les ATTN sont listés) |
+| 1 | au moins un FAIL |
+| 2 | vérification impossible (usage, détection, configuration illisible : lancer avec sudo) |
+| 130 | interrompu |
+
+## warmup_http.py --deep
+
+```bash
+./script/odoo/warmup_http.py --deep --local
+./script/odoo/warmup_http.py --deep --url https://odoo.example.org -d BASE --max-pages 50
+./script/odoo/warmup_http.py --deep --local --login admin --api-key-file ~/.odoo_key --models res.partner,sale.order
+```
+
+Sans `--deep`, rien ne change : une ligne, muet avec `--quiet`, toujours le
+code 0, options inconnues transmises à Odoo ; un `--deep` placé après `--`
+appartient à Odoo. Avec `--deep` : attente de la première réponse
+(`--timeout`, 120 s), session ouverte sur `/web/login?db=BASE`, puis
+`/web/login`, `/` et au plus `--max-pages` (20) pages HTML de
+`/sitemap.xml` (un index est suivi d'un cran ; seul le chemin de chaque
+`<loc>` est gardé, la requête part vers la cible), chacune `--repeat` (4,
+16 au plus) fois à la fois. Puis chaque paquet d'assets que ces pages citent
+(`/web/assets/…`, et `/web/content/…assets_…` des versions anciennes), une
+fois seul — cette requête le construit —, puis `--repeat` − 1 fois à la
+fois. Avec `--login` et `--api-key-file` : `common.login` par `/jsonrpc`
+avec la clé d'API (Odoo n'accepte une clé que hors d'une connexion
+interactive), puis `execute_kw` d'une liste fermée de méthodes de lecture :
+`res.users.context_get`, `ir.ui.menu.load_menus` et, pour chaque modèle de
+`--models` (`res.partner`), `get_views` (16+) ou `load_views` (15 et avant).
+Le fichier de la clé est lu sans suivre de lien ; un fichier lisible par
+d'autres comptes reçoit un avertissement. La clé ne part qu'en https, ou
+en http vers la boucle locale (`--local`, l'adresse du mode par défaut) :
+`--login` avec une URL `http://` sur un autre hôte est refusé (code 2). La
+cible est `--url`, `--local` (unité détectée) ou l'adresse du mode par
+défaut. Un `<loc>` du sitemap qui n'est ni une URL absolue ni un chemin
+commençant par `/` est ignoré : seul son chemin part, vers la cible.
+
+Une requête échoue sur une absence de réponse ou un code ≥ 500, et sur une
+erreur JSON-RPC ; un 4xx est compté à part (« non public »).
+
+| Code | Sens |
+|------|------|
+| 0 | fait, échecs compris |
+| 1 | avec `--strict`, au moins un échec |
+| 2 | option invalide, fichier de clé illisible, pas de base avec `--login` |
+| 130 | interrompu |
+
+### Odoo 12 à 18 (santé, préchauffage)
+
+| Point | Variation |
+|-------|-----------|
+| `/web/health` | 18 : présent, `db_server_status=1` vérifie PostgreSQL ; 16 et 17 : présent (non vérifié) ; 12 à 15 : absent, SKIP |
+| Chemin du bus derrière le proxy | `/websocket` dès 16 (vérifié en 18) ; `/longpolling/poll` jusqu'à 15 ; une version inconnue essaie les deux |
+| URL du client web | `/odoo` en 18, `/web` y redirige ; `/web` jusqu'à 17 |
+| Chargement des vues par RPC | `get_views` dès 16, `load_views` jusqu'à 15 ; type de vue liste `list` en 18, `tree` avant |
+| Clé d'API avec `common.login` | 14+ (hors connexion interactive seulement) ; aucune en 12 et 13 |
+| `/robots.txt` | sans website, 18 : `Disallow: /` et des lignes `Allow:`, 404 jusqu'à 17 (non vérifié) ; avec website : une ligne `Sitemap:`, et `Disallow: /` quand l'URL n'est pas le domaine du site (vérifié en 18) |
+| Gestionnaire de bases avec `list_db = False` | 18 : 200 avec la page « disabled » (le corps est lu, pas seulement le statut) ; non vérifié de 12 à 17, un 403 est traité aussi |
+| Gabarits nginx d'ERPLibre | pas de HSTS de 12 à 15 ; HSTS dans `location /` dès 16 ; aucun ne bloque `/web/database` |

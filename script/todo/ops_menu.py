@@ -8,8 +8,10 @@ toute la logique : `script/odoo/update_module.py` (mise à jour),
 `script/database/odoo_backup.py` (sauvegarde, état, restauration d'essai,
 restauration dans une nouvelle base),
 `script/systemd/install_backup_timer.py` (sauvegarde planifiée),
-`script/odoo/log_check.py` (journal d'Odoo) et `script/odoo/mail_retry.py`
-(courriels en échec d'envoi). Le menu n'en duplique rien : ce qui se fait
+`script/odoo/log_check.py` (journal d'Odoo), `script/odoo/mail_retry.py`
+(courriels en échec d'envoi), `script/odoo/health_check.py` (santé de
+l'instance ou d'une URL publique) et `script/odoo/warmup_http.py --deep`
+(préchauffage du cache). Le menu n'en duplique rien : ce qui se fait
 depuis ici se fait aussi bien en ligne de commande.
 
 Tout ce qui écrit passe par deux temps :
@@ -22,10 +24,13 @@ Tout ce qui écrit passe par deux temps :
    poser sa question quand on l'interrompt par Ctrl-C.
 
 Une simulation qui refuse (code non nul) arrête là : il n'y a rien à
-confirmer. L'état des sauvegardes, le journal d'Odoo et la liste des
-courriels en échec, qui n'écrivent rien dans l'instance, se lancent
-directement, sans confirmation ni sudo ; quand le compte courant ne peut
-pas les lire (code 2), la même commande sous sudo est proposée.
+confirmer. L'état des sauvegardes, le journal d'Odoo, la liste des
+courriels en échec, la santé de l'instance locale et le préchauffage, qui
+n'écrivent rien dans l'instance, se lancent directement, sans
+confirmation ni sudo ; quand le compte courant ne peut pas lire ce qu'il
+faut (code 2), la même commande sous sudo est proposée. La santé d'une
+URL publique ne lit rien sur ce poste : son code 2 est une URL refusée, et
+sudo n'est jamais proposé.
 
 `log_check --since-last` retient sa position dans un dossier de root : le
 menu propose sudo d'avance quand ce dossier n'est pas inscriptible, sinon
@@ -52,6 +57,8 @@ INSTALL_BACKUP_TIMER = os.path.join(
 )
 LOG_CHECK = os.path.join("script", "odoo", "log_check.py")
 MAIL_RETRY = os.path.join("script", "odoo", "mail_retry.py")
+HEALTH_CHECK = os.path.join("script", "odoo", "health_check.py")
+WARMUP_HTTP = os.path.join("script", "odoo", "warmup_http.py")
 # Le dossier d'état par défaut de log_check.py.
 ETAT_LOG_CHECK = "/var/lib/erplibre-logcheck"
 
@@ -133,6 +140,22 @@ class OpsMenuMixin:
                     " sudo"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Health check of this instance (local) - read-only"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Health check of a public URL - TLS, redirect, database"
+                    " manager, optional mail DNS"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Warm up the cache (deep) - public pages and asset bundles"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -164,8 +187,21 @@ class OpsMenuMixin:
                 self._ops_mail_list()
             elif status == "12":
                 self._ops_mail_retry()
-            else:
+            elif not self._ops_production_sante(status):
                 print(t("Command not found !"))
+
+    def _ops_production_sante(self, status):
+        """Les entrées 13 à 15 du menu (santé, préchauffage) ; False pour
+        un autre choix. À part pour borner la taille du dispatch."""
+        if status == "13":
+            self._ops_health_local()
+        elif status == "14":
+            self._ops_health_url()
+        elif status == "15":
+            self._ops_warmup_deep()
+        else:
+            return False
+        return True
 
     def _ops_update_arguments(self):
         """Les arguments d'update_module.py tirés des réponses, ou None.
@@ -399,6 +435,43 @@ class OpsMenuMixin:
         fin = subprocess.run(reelle)
         if fin.returncode not in (0, 1):
             print(f"  ✗ {t('The command ended with code')} {fin.returncode}")
+
+    def _ops_health_local(self):
+        self._ops_lire(HEALTH_CHECK, ["--local"])
+
+    def _ops_health_url(self):
+        """L'URL est validée ici par la règle de health_check.py (schéma
+        http ou https, aucun identifiant) ; le domaine de courriel est
+        facultatif. Aucun sudo : rien n'est lu sur ce poste."""
+        from script.odoo import health_check
+
+        texte = input(t("Public URL (https://host): ")).strip()
+        try:
+            cible = health_check.normaliser_url(texte)
+        except ValueError as err:
+            print(
+                t("Cancelled: invalid URL ({reason}).").format(
+                    reason=t(str(err))
+                )
+            )
+            return
+        args = ["--url", cible.url]
+        domaine = input(
+            t("Sending mail domain to check (empty = none): ")
+        ).strip()
+        if domaine:
+            if health_check.RE_DOMAINE.fullmatch(domaine) is None:
+                print(t("Cancelled: invalid domain."))
+                return
+            args += ["--mail-domain", domaine]
+        commande = [sys.executable, HEALTH_CHECK] + args
+        print(f"\n{t('Will execute:')} {joindre(commande)}")
+        self.execute.exec_command_live(
+            joindre(commande), source_erplibre=False
+        )
+
+    def _ops_warmup_deep(self):
+        self._ops_lire(WARMUP_HTTP, ["--deep", "--local"])
 
 
 def _inscriptible(dossier):

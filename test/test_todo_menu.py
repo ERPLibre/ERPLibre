@@ -571,6 +571,9 @@ class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
         "Odoo journal: hourly report": "_ops_log_hourly",
         "Failed outgoing mail: list": "_ops_mail_list",
         "Failed outgoing mail: retry": "_ops_mail_retry",
+        "Health check of this instance": "_ops_health_local",
+        "Health check of a public URL": "_ops_health_url",
+        "Warm up the cache (deep)": "_ops_warmup_deep",
     }
 
 

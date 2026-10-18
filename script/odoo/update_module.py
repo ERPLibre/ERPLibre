@@ -46,6 +46,12 @@ Le déroulé
    fenêtre lue ensuite ; attente de `active` et du port, une requête HTTP
    qui force le chargement du registre, puis lecture du journal de
    l'unité et du `logfile` depuis cette époque.
+7. Après une relance vérifiée seulement, verrou relâché et signaux rendus
+   — un Ctrl-C n'y interrompt que cette étape : avec `--warmup-deep`, le
+   préchauffage profond de `warmup_http.py` (pages publiques et paquets
+   d'assets, sans clé), puis la vérification de santé de l'instance
+   locale par `health_check.py`. Leurs constats sont des ATTN au plus :
+   ils ne changent jamais le code de sortie.
 
 L'invariant
 -----------
@@ -109,7 +115,7 @@ from script.lib_ops import (  # noqa: E402
     service,
     systemd,
 )
-from script.odoo import warmup_http  # noqa: E402
+from script.odoo import health_check, warmup_http  # noqa: E402
 
 try:
     from script.todo.todo_i18n import t
@@ -198,6 +204,19 @@ class Systeme(odoo_backup.Systeme):
 
     def sonder(self, cible, delai):
         return warmup_http.sonder(cible, delai_total=delai)
+
+    def prechauffer(self, plan):
+        """Le préchauffage profond de l'instance relancée : un Bilan."""
+        return warmup_http.prechauffer_profond(
+            f"http://{plan.hote}:{plan.port}", plan.base
+        )
+
+    def sante(self, plan):
+        """La vérification de santé de l'instance locale : (version,
+        [Resultat])."""
+        return health_check.verifier_local(
+            plan.hote, plan.port, plan.base, plan.list_db
+        )
 
     def proteger_signaux(self):
         """Arme le programme : SIGTERM et SIGHUP lèvent Interruption, SIGINT
@@ -366,6 +385,9 @@ class Plan:
         self.hote = odoo_instance.HOTE_LOCAL
         self.port = odoo_instance.PORT_PAR_DEFAUT
         self.logfile = None
+        # `list_db` de la configuration, brut : lu par la vérification de
+        # santé après la relance.
+        self.list_db = None
         self.modules = []
         self.motifs_vides = []
         self.sauvegarde = True
@@ -379,6 +401,8 @@ class Plan:
         self.chemin_sauvegarde = ""
         self.journal = ""
         self.commande = []
+        # Vrai quand la relance a été vérifiée (port, HTTP, journal).
+        self.relance_verifiee = False
         self.__dict__.update(valeurs)
 
 
@@ -442,6 +466,7 @@ def _detecter_adresse(plan, config):
     plan.logfile = odoo_instance.fichier_journal(
         plan.execstart, config, plan.wd
     )
+    plan.list_db = config.get("list_db")
 
 
 def _detecter_modules(args, plan, config):
@@ -581,7 +606,7 @@ def creer_dossier_sauvegarde(plan, systeme, rapport):
     return False
 
 
-def simuler(plan, rapport):
+def simuler(plan, rapport, args):
     if plan.sauvegarde:
         for ligne in odoo_backup.commandes_creation(
             plan.dossiers_a_creer, plan.cible
@@ -611,6 +636,18 @@ def simuler(plan, rapport):
         joindre(["systemctl", "start", "--", plan.unite])
         + "  # "
         + t("only if it was active")
+    )
+    adresse = f"http://{plan.hote}:{plan.port}"
+    if args.warmup_deep:
+        rapport.sim(
+            t("deep cache warm-up of {url}").format(url=adresse)
+            + "  # "
+            + t("after a verified restart")
+        )
+    rapport.sim(
+        t("health check of {url}").format(url=adresse)
+        + "  # "
+        + t("after a verified restart")
     )
     rapport.ok(
         t("Simulation finished: nothing was stopped, written or started.")
@@ -903,7 +940,8 @@ def executer(plan, systeme, rapport, args):
         )
         return CODE_REFUS
     etait_actif = not systemd.est_arrete(etat)
-    rapport.total = 2 + int(plan.sauvegarde) + (2 if etait_actif else 0)
+    apres = 3 + int(args.warmup_deep) if etait_actif else 0
+    rapport.total = 2 + int(plan.sauvegarde) + apres
     code = CODE_ECHEC
     restaurer = systeme.proteger_signaux()
     try:
@@ -924,12 +962,10 @@ def executer(plan, systeme, rapport, args):
             liberer = systeme.ignorer_interruptions()
             try:
                 if etait_actif:
-                    if (
-                        not _relancer_quoi_qu_il_arrive(
-                            plan, systeme, rapport, args
-                        )
-                        and code == CODE_OK
-                    ):
+                    plan.relance_verifiee = _relancer_quoi_qu_il_arrive(
+                        plan, systeme, rapport, args
+                    )
+                    if not plan.relance_verifiee and code == CODE_OK:
                         code = CODE_ECHEC
                 else:
                     rapport.attn(
@@ -942,6 +978,66 @@ def executer(plan, systeme, rapport, args):
                 liberer()
     finally:
         restaurer()
+    return code
+
+
+def verifier_apres_relance(plan, systeme, rapport, args):
+    """Préchauffage profond (`--warmup-deep`), puis santé de l'instance
+    relancée. Appelée hors du verrou et des signaux protégés, seulement
+    après une relance vérifiée. Ne lève pas : chaque constat est un ATTN
+    au plus, un FAIL de la santé compris, et une erreur ou un Ctrl-C n'y
+    arrête que l'étape en cours."""
+    if args.warmup_deep:
+        rapport.etape(t("Deep cache warm-up"))
+        try:
+            bilan = systeme.prechauffer(plan)
+            resume = t(
+                "{pages} page(s), {assets} asset bundle(s) in {seconds} s."
+            ).format(
+                pages=bilan.pages,
+                assets=bilan.assets,
+                seconds=f"{bilan.duree:.1f}",
+            )
+            if bilan.echecs:
+                rapport.attn(
+                    resume
+                    + " "
+                    + t("{count} request(s) failed.").format(
+                        count=len(bilan.echecs)
+                    )
+                )
+                rapport.extrait(
+                    [f"{quoi}: {detail}" for quoi, detail in bilan.echecs], 5
+                )
+            else:
+                rapport.ok(resume)
+        except (Exception, KeyboardInterrupt) as err:  # noqa: BLE001
+            rapport.attn(
+                t("Warm-up not done: {error}").format(
+                    error=str(err) or type(err).__name__
+                )
+            )
+    rapport.etape(t("Health check of the instance"))
+    try:
+        _version, resultats = systeme.sante(plan)
+        for resultat in resultats:
+            if resultat.statut == health_check.OK:
+                rapport.ok(resultat.message(t))
+            elif resultat.statut in (health_check.ATTN, health_check.FAIL):
+                rapport.attn(resultat.message(t))
+                if resultat.conseil(t):
+                    rapport.detail("→ " + resultat.conseil(t))
+    except (Exception, KeyboardInterrupt) as err:  # noqa: BLE001
+        rapport.attn(
+            t("Health check not done: {error}").format(
+                error=str(err) or type(err).__name__
+            )
+        )
+
+
+def conclure(plan, rapport, code):
+    """La dernière ligne du rapport : réussite ou échec de la mise à
+    jour."""
     if code == CODE_OK:
         rapport.ok(
             t("Update finished: {modules}").format(
@@ -950,7 +1046,6 @@ def executer(plan, systeme, rapport, args):
         )
     elif code == CODE_ECHEC:
         rapport.fail(t("Update failed."))
-    return code
 
 
 def _type_motifs(valeur):
@@ -1071,6 +1166,14 @@ def analyser(argv=None):
         ),
     )
     parser.add_argument(
+        "--warmup-deep",
+        action="store_true",
+        help=t(
+            "After a verified restart, warm up public pages and asset"
+            " bundles (warmup_http.py --deep)."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help=t("Detect and show the commands; stop, write or start nothing."),
@@ -1106,7 +1209,7 @@ def main(argv=None, systeme=None, rapport=None):
         return CODE_INTERROMPU
     afficher_plan(plan, rapport)
     if args.dry_run:
-        simuler(plan, rapport)
+        simuler(plan, rapport, args)
         return CODE_OK
     if systeme.euid() != 0:
         rapport.erreur(t("Root is required (sudo), except with --dry-run."))
@@ -1130,9 +1233,13 @@ def main(argv=None, systeme=None, rapport=None):
         preparer_journal(plan)
         if not creer_dossier_sauvegarde(plan, systeme, rapport):
             return CODE_REFUS
-        return executer(plan, systeme, rapport, args)
+        code = executer(plan, systeme, rapport, args)
     finally:
         verrou.relacher()
+    if code == CODE_OK and plan.relance_verifiee:
+        verifier_apres_relance(plan, systeme, rapport, args)
+    conclure(plan, rapport, code)
+    return code
 
 
 if __name__ == "__main__":
