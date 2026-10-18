@@ -1,0 +1,3720 @@
+{
+ "format": 1,
+ "geometries": {
+  "3x2": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 1",
+    "effects": [
+     "gdbus FocusClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 2",
+    "effects": [
+     "gdbus AcceptClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ]
+    ]
+   }
+  ],
+  "4x2": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 1",
+    "effects": [
+     "gdbus FocusClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 2",
+    "effects": [
+     "gdbus AcceptClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 3",
+    "effects": [
+     "gdbus SetClaudeSessionWindow sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ]
+    ]
+   }
+  ],
+  "5x3": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 1",
+    "effects": [
+     "gdbus FocusClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 2",
+    "effects": [
+     "gdbus AcceptClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 3",
+    "effects": [
+     "gdbus SetClaudeSessionWindow sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 4",
+    "effects": [
+     "gdbus KillClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   }
+  ],
+  "8x4": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "009650",
+      "*\n1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 1",
+    "effects": [
+     "gdbus FocusClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "009650",
+      "*\n1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 2",
+    "effects": [
+     "gdbus AcceptClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "009650",
+      "*\n1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 3",
+    "effects": [
+     "gdbus SetClaudeSessionWindow sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "8c5a32",
+      "TODO 1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "009650",
+      "*\n1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "goto claude_session",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "claude_session",
+    "screen": [
+     [
+      "0050a0",
+      "BACK",
+      null
+     ],
+     [
+      "2878c8",
+      "FOCUS",
+      "robot"
+     ],
+     [
+      "d4a017",
+      "ACCEPT\n↵",
+      null
+     ],
+     [
+      "509650",
+      "SET\nWIN",
+      null
+     ],
+     [
+      "b40000",
+      "KILL",
+      null
+     ],
+     [
+      "14141e",
+      "Allow\nthe",
+      null
+     ],
+     [
+      "14141e",
+      "edit\nof",
+      null
+     ],
+     [
+      "14141e",
+      "parser\n.py?",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "press 4",
+    "effects": [
+     "gdbus KillClaudeSession sess-a",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "2864b4",
+      "Demo\nstream",
+      null
+     ],
+     [
+      "d4a017",
+      "Refactor the demo",
+      "robot"
+     ],
+     [
+      "00838f",
+      "Write the demo",
+      "robot"
+     ],
+     [
+      "00c83c",
+      "OK!",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "c80000",
+      "MIC\nOFF",
+      "mic_off"
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "009650",
+      "*\n1",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   }
+  ]
+ },
+ "inputs": "FULL: 1 mpv (pid 1), 2 Claude sessions (awaiting_stop with a notification, working), 3 timers (2 running), 1 TODO terminal whose log ends on a 2-item menu, layout slot 1, sink 40 %, source muted, 2 sinks 1 source, bluetooth on with 2 paired 1 connected"
+}

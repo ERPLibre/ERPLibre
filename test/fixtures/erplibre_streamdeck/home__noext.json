@@ -1,0 +1,748 @@
+{
+ "format": 1,
+ "geometries": {
+  "3x2": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 18",
+    "effects": [
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   }
+  ],
+  "4x2": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 18",
+    "effects": [
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   }
+  ],
+  "5x3": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 18",
+    "effects": [
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   }
+  ],
+  "8x4": [
+   {
+    "do": "boot",
+    "effects": [
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 18",
+    "effects": [
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListTrackerTimers",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus ListWindows",
+     "gdbus introspect",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@",
+     "wpctl get-volume @DEFAULT_AUDIO_SOURCE@"
+    ],
+    "files": {},
+    "page": "idle",
+    "screen": [
+     [
+      "0050a0",
+      "TILE",
+      "tile"
+     ],
+     [
+      "783c00",
+      "TIMER",
+      "timer"
+     ],
+     [
+      "a02878",
+      "DEV\nRELOAD",
+      "dev_reload"
+     ],
+     [
+      "643cb4",
+      "SOUND",
+      "sound"
+     ],
+     [
+      "509650",
+      "LAYOUT",
+      "layout"
+     ],
+     [
+      "b4a03c",
+      "A11Y",
+      "a11y"
+     ],
+     [
+      "0064c8",
+      "BT",
+      "bt"
+     ],
+     [
+      "a05ac8",
+      "TRANSL",
+      "translator"
+     ],
+     [
+      "783c00",
+      "TODO",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "MIC\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   }
+  ]
+ },
+ "inputs": "NOEXT: EMPTY, introspect without TileWindow until 5 s"
+}
