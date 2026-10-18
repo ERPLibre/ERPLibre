@@ -139,14 +139,30 @@ def _flash_home(ctx, ok, error):
     ctx.home()
 
 
-def _render(ctx):
-    cs = page_keys(ctx.geo)
-    sid = ctx.state().sid
-    session = None
+def _find(sid):
+    """The live session with this id, or None."""
     for s in load_sessions():
         if s.get("session_id") == sid:
-            session = s
-            break
+            return s
+    return None
+
+
+def _signature(session):
+    """What the action page shows of a session: a change of any of
+    these is a reason to draw the page again."""
+    return (
+        session.get("status"),
+        session_color(session),
+        session.get("notification_message"),
+        session.get("description"),
+    )
+
+
+def _render(ctx):
+    cs = page_keys(ctx.geo)
+    st = ctx.state()
+    session = _find(st.sid)
+    st.shown = _signature(session) if session else None
     text_keys = [
         k for k in range(ctx.geo.total_keys) if k not in cs.values()
     ]
@@ -199,8 +215,26 @@ def _handle(ctx, key):
             return
 
 
+def _tick(ctx, now):
+    """Every loop pass, at most once per `session_refresh_sec`: the
+    session is gone (file removed, pid dead or recycled) -> home; its
+    signature differs from the one drawn -> draw again."""
+    st = ctx.state()
+    if now - st.last_check < ctx.setting("session_refresh_sec", 1.0):
+        return
+    st.last_check = now
+    session = _find(st.sid)
+    if session is None:
+        ctx.home()
+    elif _signature(session) != st.shown:
+        ctx.render()
+
+
 def _setup(ctx):
-    ctx.state().sid = None
+    st = ctx.state()
+    st.sid = None
+    st.shown = None
+    st.last_check = 0.0
 
 
 def _face(ctx, session):
@@ -212,13 +246,17 @@ def _face(ctx, session):
 def _press(ctx, session):
     sid = session.get("session_id") or ""
     if sid:
-        ctx.state().sid = sid
+        st = ctx.state()
+        st.sid = sid
+        st.shown = None
         ctx.goto(PAGE_ID)
 
 
 PLUGIN = Plugin(
     api=PLUGIN_API,
-    pages=[Page(PAGE_ID, page_keys, _render, _handle)],
+    pages=[Page(
+        PAGE_ID, page_keys, _render, _handle, tick=_tick, period=0.0
+    )],
     tiles=[
         TileProvider(20, lambda ctx: load_sessions(), _face, _press)
     ],

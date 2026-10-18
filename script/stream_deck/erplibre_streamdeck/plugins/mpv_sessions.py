@@ -100,14 +100,24 @@ def _sent(stay_on_page):
     return then
 
 
-def _render(ctx):
-    ms = page_keys(ctx.geo)
-    pid = ctx.state().pid
-    sess = None
+def _find(pid):
+    """The live player with this pid, or None."""
     for s in load_sessions():
         if s.get("pid") == pid:
-            sess = s
-            break
+            return s
+    return None
+
+
+def _signature(sess):
+    """What the action page shows of a player: its title."""
+    return sess.get("title") or sess.get("url") or ""
+
+
+def _render(ctx):
+    ms = page_keys(ctx.geo)
+    st = ctx.state()
+    sess = _find(st.pid)
+    st.shown = _signature(sess) if sess else None
     text_keys = [
         k for k in range(ctx.geo.total_keys) if k not in ms.values()
     ]
@@ -146,8 +156,26 @@ def _handle(ctx, key):
             return
 
 
+def _tick(ctx, now):
+    """Every loop pass, at most once per `session_refresh_sec`: the
+    player is gone (file removed, pid dead or recycled) -> home; its
+    title differs from the one drawn -> draw again."""
+    st = ctx.state()
+    if now - st.last_check < ctx.setting("session_refresh_sec", 1.0):
+        return
+    st.last_check = now
+    sess = _find(st.pid)
+    if sess is None:
+        ctx.home()
+    elif _signature(sess) != st.shown:
+        ctx.render()
+
+
 def _setup(ctx):
-    ctx.state().pid = None
+    st = ctx.state()
+    st.pid = None
+    st.shown = None
+    st.last_check = 0.0
 
 
 def _face(ctx, session):
@@ -156,13 +184,17 @@ def _face(ctx, session):
 
 
 def _press(ctx, session):
-    ctx.state().pid = session["pid"]
+    st = ctx.state()
+    st.pid = session["pid"]
+    st.shown = None
     ctx.goto(PAGE_ID)
 
 
 PLUGIN = Plugin(
     api=PLUGIN_API,
-    pages=[Page(PAGE_ID, page_keys, _render, _handle)],
+    pages=[Page(
+        PAGE_ID, page_keys, _render, _handle, tick=_tick, period=0.0
+    )],
     tiles=[
         TileProvider(10, lambda ctx: load_sessions(), _face, _press)
     ],
