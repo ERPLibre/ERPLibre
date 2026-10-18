@@ -15,7 +15,7 @@ import streamdeck_stubs as S  # noqa: E402
 S.install()
 from erplibre_streamdeck import dbus, paths, settings  # noqa: E402
 from erplibre_streamdeck.plugins import (  # noqa: E402
-    bluetooth, layouts, sound,
+    bluetooth, layouts, sound, timers,
 )
 from erplibre_streamdeck.ui import render  # noqa: E402
 
@@ -186,6 +186,24 @@ class LayoutsTest(unittest.TestCase):
                 self.assertTrue(layouts._load_layout_slot(ctx, 2))
                 self.assertFalse(layouts._load_layout_slot(ctx, 3))
         self.assertTrue(calls[-1][-1].startswith('[{"id"'))
+
+
+class TimersTest(unittest.TestCase):
+    def test_label_is_first_word_and_minutes_seconds(self):
+        timer = {"name": "Write report", "elapsed": 125}
+        self.assertEqual("Write\n02:05", timers._label_for_timer(timer))
+
+    def test_tracker_answer_gives_one_timer(self):
+        class Ctx:
+            pass
+
+        ctx = Ctx()
+        ctx.dbus = dbus
+        ctx.log = lambda msg: None
+        answer = done('(\'[{"id": "t1", "running": true}]\',)\n')
+        with mock.patch("subprocess.run", return_value=answer):
+            found = timers._list_timers(ctx)
+        self.assertEqual([{"id": "t1", "running": True}], found)
 
 
 class SettingsKeepTest(unittest.TestCase):
