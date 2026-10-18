@@ -5,10 +5,13 @@ registry remembers each terminal's window, and a page drives todo.py
 through keys the extension synthesises in that window.
 
 `state().terminals` is the registry as last read: the dashboard tiles
-draw from it, never from the file. It is reloaded by the 2 s home
-refresh, the page tick and the capture of a new terminal's window.
-The registry file is shared with the extension, which adds the
-terminals its own menu opens; its format does not change."""
+draw from it, never from the file. Polls read the open windows away
+from the lock, every 2 s on the home screen and every second on the
+session page; their store reloads the registry and drops the closed
+terminals. A third poll, due once at `capture_at`, reads the window of
+a terminal just opened and registers it. The registry file is shared
+with the extension, which adds the terminals its own menu opens; its
+format does not change."""
 
 import json
 import os
@@ -19,9 +22,10 @@ import subprocess
 import sys
 import time
 
+from erplibre_streamdeck import dbus as dbus_mod
 from erplibre_streamdeck import jsonfile, paths
 from erplibre_streamdeck.plugin import (
-    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, TileProvider,
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll, TileProvider,
 )
 from erplibre_streamdeck.ui import colors, render
 from erplibre_streamdeck.ui.text import wrap_button_label
@@ -75,11 +79,11 @@ def save_registry(entries):
 # --------------------------------------------------------------- D-Bus
 
 
-def live_window_ids(ctx):
+def live_window_ids(dbus):
     """The ids of the open windows, as strings, from the extension's
     ListWindows; None when the answer is missing or unreadable."""
     try:
-        r = ctx.dbus.call("ListWindows", timeout=2)
+        r = dbus.call("ListWindows", timeout=2)
         if not r.ok:
             return None
         payload = r.string
@@ -98,9 +102,9 @@ def live_window_ids(ctx):
         return None
 
 
-def focused_window_id(ctx):
+def focused_window_id(dbus):
     """The id of the focused window; "" when unknown."""
-    r = ctx.dbus.call("GetFocusedWindowId", timeout=2)
+    r = dbus.call("GetFocusedWindowId", timeout=2)
     return (r.string or "") if r.ok else ""
 
 
@@ -184,35 +188,72 @@ def _read_todo_log_tail(path, max_bytes=8192):
 # ------------------------------------------------------ registry upkeep
 
 
-def _refresh(ctx):
-    """Reload the registry from disk, so the terminals the extension
-    registers show here too, then drop the entries whose window has
-    closed. An empty or id-less ListWindows answer leaves the list
-    whole: it would otherwise purge a terminal registered a moment
-    ago."""
+def _read_live():
+    """The registry polls' read: live_window_ids, without Context or
+    lock."""
+    return live_window_ids(dbus_mod)
+
+
+def _refresh(ctx, live):
+    """The registry polls' store: reload the registry from disk, so the
+    terminals the extension registers show here too, then drop the
+    entries whose window is not in `live`. An empty or id-less
+    ListWindows answer (`live` empty or None) leaves the list whole: it
+    would otherwise purge a terminal registered a moment ago. The file
+    is read and written here, under the lock, so a capture or a FORGET
+    is never overwritten by an older copy. True when the list
+    changed."""
     st = ctx.state()
+    before = st.terminals
     st.terminals = load_registry()
-    live = live_window_ids(ctx)
-    if not live:
-        return
-    before = len(st.terminals)
-    st.terminals = [
-        t for t in st.terminals if str(t.get("window_id")) in live
-    ]
-    if len(st.terminals) != before:
-        save_registry(st.terminals)
+    if live:
+        kept = [
+            t for t in st.terminals if str(t.get("window_id")) in live
+        ]
+        if len(kept) != len(st.terminals):
+            st.terminals = kept
+            save_registry(st.terminals)
+    return st.terminals != before
 
 
-def _capture(ctx):
-    """Register the focused window as the terminal just opened. The
-    entry is appended to the list in memory, which is not re-read
-    first, and the list is saved."""
+def _refresh_session(ctx, live):
+    """The session page's store: the registry as on the home screen;
+    once the page's terminal has left it, the deck goes home. False:
+    the page tick redraws the page every second."""
     st = ctx.state()
-    wid = focused_window_id(ctx)
+    _refresh(ctx, live)
+    wid = st.window_id
+    if wid and not any(str(t.get("window_id")) == str(wid)
+                       for t in (st.terminals or [])):
+        st.window_id = None
+        ctx.home()
+    return False
+
+
+def _capture_due(ctx):
+    """A launched terminal awaits its capture and its time has come."""
+    st = ctx.state()
+    return bool(st.capture_at) and time.monotonic() >= st.capture_at
+
+
+def _read_capture():
+    """The capture poll's read: (focused window id, open window ids);
+    the open windows are not asked for without a focused window."""
+    wid = focused_window_id(dbus_mod)
+    return wid, (live_window_ids(dbus_mod) if wid else None)
+
+
+def _capture(ctx, data):
+    """The capture poll's store: register the focused window as the
+    terminal just opened, or flash ERR without one. The entry is
+    appended to the list in memory, which is not re-read first, and the
+    list is saved. True: the deck shows the new tile or the flash."""
+    st = ctx.state()
+    st.capture_at = 0.0
+    wid, live = data
     if not wid:
         ctx.flash(False, "Could not capture TODO terminal window id")
-        return
-    live = live_window_ids(ctx)
+        return True
     if live:
         # Drop registrations whose windows have closed; an empty or
         # id-less answer leaves the list untouched so the terminal
@@ -234,6 +275,7 @@ def _capture(ctx):
         existing["log_path"] = st.capture_log_path or ""
     st.capture_log_path = ""
     save_registry(st.terminals)
+    return True
 
 
 def _spawn_terminal(terminals):
@@ -283,7 +325,7 @@ def _launch_todo_terminal(ctx):
     """Open a terminal under the repository root, activate the ERPLibre
     venv, and run script/todo/todo.py. The command and its log path are
     built here; the terminal starts as a job. CAPTURE_DELAY_SEC after
-    its result, the home tick captures the window id, so the deck
+    its result, the capture poll reads the window id, so the deck
     registers the terminal and shows a tile that drives the todo.py
     menu through the extension's SendKeysToWindow D-Bus method."""
     root = str(paths.REPO_ROOT)
@@ -453,40 +495,12 @@ def _handle(ctx, key):
 
 
 def _tick(ctx, now):
-    """Re-read the registry and the log every second, so a menu todo.py
-    prints shows within a second; a terminal closed meanwhile sends the
-    deck back home. The reload counts as the home refresh's: back home,
-    the next one waits REFRESH_SEC."""
-    st = ctx.state()
-    _refresh(ctx)
-    st.last_refresh = now
-    wid = st.window_id
-    if wid and not any(str(t.get("window_id")) == str(wid)
-                       for t in (st.terminals or [])):
-        st.window_id = None
-        ctx.home()
-        return
+    """Draw the page again every second: its render re-reads the log,
+    so a menu todo.py prints shows within a second."""
     ctx.render()
 
 
 # ----------------------------------------------------------------- home
-
-
-def _home_tick(ctx, now):
-    """Every pass: the capture of a launched terminal once due (True:
-    the home screen shows the new tile, or the failure flash). Every
-    REFRESH_SEC: the registry reload, which the kernel's own home
-    refresh then draws (False)."""
-    st = ctx.state()
-    ran = False
-    if st.capture_at and now >= st.capture_at:
-        st.capture_at = 0.0
-        _capture(ctx)
-        ran = True
-    if now - st.last_refresh >= REFRESH_SEC:
-        st.last_refresh = now
-        _refresh(ctx)
-    return ran
 
 
 def _tile_press(ctx, term):
@@ -504,7 +518,6 @@ def _setup(ctx):
     st.capture_at = 0.0
     st.capture_log_path = ""
     st.terminals = load_registry()
-    st.last_refresh = 0.0
 
 
 PLUGIN = Plugin(
@@ -527,7 +540,12 @@ PLUGIN = Plugin(
             press=_tile_press,
         )
     ],
-    home_tick=_home_tick,
-    home_period=0.0,
+    polls=[
+        Poll(REFRESH_SEC, lambda ctx: ctx.page == "idle", _read_live,
+             _refresh),
+        Poll(1.0, lambda ctx: ctx.page == PAGE_ID, _read_live,
+             _refresh_session),
+        Poll(0.0, _capture_due, _read_capture, _capture),
+    ],
     setup=_setup,
 )

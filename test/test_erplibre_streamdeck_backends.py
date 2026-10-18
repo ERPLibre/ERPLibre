@@ -18,7 +18,7 @@ from erplibre_streamdeck import dbus, paths, settings  # noqa: E402
 from erplibre_streamdeck.kernel import Kernel  # noqa: E402
 from erplibre_streamdeck.plugin import LoadedPlugin  # noqa: E402
 from erplibre_streamdeck.plugins import (  # noqa: E402
-    bluetooth, claude_sessions, layouts, sound, timers,
+    bluetooth, claude_sessions, layouts, sound, timers, todo_terminals,
 )
 from erplibre_streamdeck.ui import render  # noqa: E402
 
@@ -710,6 +710,25 @@ class CachedRenderTest(unittest.TestCase):
     def poll(self, plugin, index):
         return plugin.PLUGIN.polls[index]
 
+    # What a page needs in its plugin's state to draw (harness seeds).
+    SEEDS = {
+        "claude_session": {"sid": "sess-a"},
+        "mpv_session": {"pid": 1},
+        "todo_session": {"window_id": "101"},
+        "layout_delete_confirm": {"slot": 1},
+    }
+
+    def test_no_page_or_home_face_runs_a_process(self):
+        for cols, rows in S.GEOMETRIES:
+            with self.subTest(geometry=f"{cols}x{rows}"):
+                h = self.start(P.full_world, cols, rows)
+                h.loop(1)
+                self.assert_render_runs_nothing(h, "idle")
+                for page in sorted(h.target.kernel.pages):
+                    h.goto(page, **self.SEEDS.get(page, {}))
+                    h.loop(1)
+                    self.assert_render_runs_nothing(h, page)
+
     def test_sound_page_and_mic_face_read_the_cache(self):
         h = self.start(P.full_world)
         h.loop(1)
@@ -844,6 +863,97 @@ class CachedRenderTest(unittest.TestCase):
             h.target.kernel.goto(page)
             shown.append(poll.active(ctx))
         self.assertEqual([True, True, False], shown)
+
+    def test_todo_tiles_and_session_page_read_the_cache(self):
+        h = self.start(P.full_world, 8, 4)  # the TODO tile fits at 8x4
+        h.loop(1)
+        self.assert_render_runs_nothing(h, "idle")
+        self.assertIsNotNone(P.face_key(h, "TODO 1"))
+        h.goto("todo_session", window_id="101")
+        self.assert_render_runs_nothing(h, "todo_session")
+        self.assertEqual("[1]\nFirst", h.deck.screen[8][1])
+
+    def todo_polls(self, h):
+        """(home registry, session registry, capture) polls and the
+        plugin's context."""
+        polls = todo_terminals.PLUGIN.polls
+        return polls[0], polls[1], polls[2], \
+            h.target.kernel.ctx("todo_terminals")
+
+    def test_todo_polls_run_where_their_data_shows(self):
+        h = self.start(P.full_world)
+        home, session, capture, ctx = self.todo_polls(h)
+        self.assertEqual(
+            (True, False, False),
+            (home.active(ctx), session.active(ctx), capture.active(ctx)),
+        )
+        h.goto("todo_session", window_id="101")
+        self.assertEqual(
+            (False, True), (home.active(ctx), session.active(ctx))
+        )
+        st = ctx.state()
+        st.capture_at = h.clock.now + 1.0
+        self.assertFalse(capture.active(ctx))
+        h.wait(1.0)
+        self.assertTrue(capture.active(ctx))
+
+    def test_todo_registry_poll_prunes_closed_windows(self):
+        h = self.start(P.full_world)
+        home, _session, _capture, ctx = self.todo_polls(h)
+        self.assertEqual({"101", "102"}, home.read())
+        self.assertFalse(home.store(ctx, {"101", "102"}))
+        self.assertTrue(home.store(ctx, {"102"}))
+        self.assertEqual([], ctx.state().terminals)
+        self.assertEqual([], todo_terminals.load_registry())
+        self.assertFalse(home.store(ctx, {"102"}))
+
+    def test_todo_registry_poll_without_answer_keeps_the_list(self):
+        h = self.start(P.full_world)
+        home, _session, _capture, ctx = self.todo_polls(h)
+        h.proc.answer("gdbus ListWindows", returncode=1)
+        self.assertIsNone(home.read())
+        self.assertFalse(home.store(ctx, None))
+        self.assertEqual(["101"], [
+            t["window_id"] for t in ctx.state().terminals
+        ])
+
+    def test_todo_session_poll_goes_home_when_the_window_closes(self):
+        h = self.start(P.full_world)
+        _home, session, _capture, ctx = self.todo_polls(h)
+        h.goto("todo_session", window_id="101")
+        session.store(ctx, {"101"})
+        self.assertEqual("todo_session", h.target.page())
+        session.store(ctx, {"102"})
+        self.assertEqual("idle", h.target.page())
+        self.assertIsNone(ctx.state().window_id)
+
+    def test_todo_capture_poll_registers_the_focused_window(self):
+        h = self.start(P.launch_world)
+        _home, _session, capture, ctx = self.todo_polls(h)
+        data = capture.read()
+        self.assertEqual(("201", {"201"}), data)
+        st = ctx.state()
+        st.capture_at, st.capture_log_path = h.clock.now, "/x/todo.log"
+        self.assertTrue(capture.store(ctx, data))
+        self.assertEqual(0.0, st.capture_at)
+        self.assertEqual(
+            [("201", "TODO 1", "/x/todo.log")],
+            [(t["window_id"], t["name"], t["log_path"])
+             for t in todo_terminals.load_registry()],
+        )
+
+    def test_todo_capture_without_focus_flashes_err(self):
+        h = self.start(P.launch_world)
+        _home, _session, capture, ctx = self.todo_polls(h)
+        h.proc.answer("gdbus GetFocusedWindowId", returncode=1)
+        data = capture.read()
+        # No focused window: the open windows are not asked for.
+        self.assertEqual(("", None), data)
+        self.assertEqual(["gdbus GetFocusedWindowId"], h.proc.calls)
+        ctx.state().capture_at = h.clock.now
+        self.assertTrue(capture.store(ctx, data))
+        self.assertEqual("err", h.target.kernel.flash_result)
+        self.assertEqual([], todo_terminals.load_registry())
 
     def test_sound_press_shows_the_new_level_at_once(self):
         h = self.start(P.full_world)
