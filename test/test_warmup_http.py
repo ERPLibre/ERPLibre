@@ -991,7 +991,7 @@ class TestDeepCommandLine(unittest.TestCase):
             ("http://[::1]:8069", True),
             ("http://localhost:8069", True),
             ("http://www.example.org", False),
-            ("http://10.0.0.5:8069", False),
+            ("http://192.0.2.10:8069", False),
             ("http://localhost.example.org", False),
         ):
             with self.subTest(url=url):
