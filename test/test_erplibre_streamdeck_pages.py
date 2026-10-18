@@ -495,6 +495,7 @@ class Scenarios:
         def script(h):
             cols = h.deck.cols
             h.goto("bluetooth")
+            h.loop(1)  # the page poll reads the adapter
             (tap_job if jobs else tap)(h, cols + 1)  # toggle
             for key in range(cols + 2, 2 * cols):  # device slots
                 paired = key < cols + 4

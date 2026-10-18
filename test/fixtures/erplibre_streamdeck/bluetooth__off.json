@@ -73,7 +73,76 @@
    },
    {
     "do": "goto bluetooth",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "BT\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -142,9 +211,7 @@
    },
    {
     "do": "press 4",
-    "effects": [
-     "bluetoothctl show"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -281,6 +348,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -349,10 +418,7 @@
    },
    {
     "do": "press 5",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -489,6 +555,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -638,7 +706,86 @@
    },
    {
     "do": "goto bluetooth",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "BT\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -717,9 +864,7 @@
    },
    {
     "do": "press 5",
-    "effects": [
-     "bluetoothctl show"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -876,6 +1021,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -954,10 +1101,7 @@
    },
    {
     "do": "press 6",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1114,6 +1258,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -1192,10 +1338,7 @@
    },
    {
     "do": "press 7",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1352,6 +1495,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -1546,7 +1691,121 @@
    },
    {
     "do": "goto bluetooth",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "BT\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -1660,9 +1919,7 @@
    },
    {
     "do": "press 6",
-    "effects": [
-     "bluetoothctl show"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -1889,6 +2146,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -2002,10 +2261,7 @@
    },
    {
     "do": "press 7",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2232,6 +2488,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -2345,10 +2603,7 @@
    },
    {
     "do": "press 8",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2575,6 +2830,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -2688,10 +2945,7 @@
    },
    {
     "do": "press 9",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3004,7 +3258,206 @@
    },
    {
     "do": "goto bluetooth",
+    "effects": [],
+    "files": {
+     "CONFIG/erplibre-home/layouts.json": {
+      "slots": {
+       "1": {
+        "count": 1,
+        "saved_at": "<T>",
+        "windows": [
+         {
+          "h": 1080,
+          "id": "103",
+          "stacking": 1,
+          "title": "Notes",
+          "w": 1920,
+          "wm_class": "Demo-editor",
+          "x": 0,
+          "y": 0
+         }
+        ]
+       }
+      }
+     },
+     "STATE/erplibre-home/todo_terminals.json": [
+      {
+       "log_path": "<SANDBOX>/home/.local/state/erplibre-home/todo/todo-demo.log",
+       "name": "TODO 1",
+       "opened_at": 1799999000.0,
+       "window_id": "101"
+      }
+     ]
+    },
+    "page": "bluetooth",
+    "screen": [
+     [
+      "3c3c3c",
+      "BACK",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "642828",
+      "BT\nN/A",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ],
+     [
+      "14141e",
+      "",
+      null
+     ]
+    ]
+   },
+   {
+    "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -3203,9 +3656,7 @@
    },
    {
     "do": "press 9",
-    "effects": [
-     "bluetoothctl show"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3602,6 +4053,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -3800,10 +4253,7 @@
    },
    {
     "do": "press 10",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -4200,6 +4650,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -4398,10 +4850,7 @@
    },
    {
     "do": "press 11",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -4798,6 +5247,8 @@
    {
     "do": "loop 1",
     "effects": [
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
      "bluetoothctl show"
     ],
     "files": {
@@ -4996,10 +5447,7 @@
    },
    {
     "do": "press 12",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5196,10 +5644,7 @@
    },
    {
     "do": "press 13",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5396,10 +5841,7 @@
    },
    {
     "do": "press 14",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -5596,10 +6038,7 @@
    },
    {
     "do": "press 15",
-    "effects": [
-     "bluetoothctl devices Connected",
-     "bluetoothctl devices Paired"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
