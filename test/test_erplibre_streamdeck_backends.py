@@ -389,6 +389,104 @@ class SlowKeyTest(unittest.TestCase):
             "layout shortcut load slot 1 failed", h.journal.getvalue()
         )
 
+    def timer_page(self):
+        h = self.start(P.full_world)
+        h.goto("timer_list")
+        return h
+
+    def assert_no_flash(self, h):
+        faces = [f[1] for f in h.deck.rendering() if f]
+        self.assertEqual([], [t for t in faces if t in ("OK!", "ERR")])
+
+    def test_timer_toggle_is_a_job(self):
+        h = self.timer_page()
+        press, threads, loop = self.press_slow(h, 1)
+        self.assertEqual([], press["effects"])
+        self.assertEqual(
+            ["gdbus ToggleTrackerTimer t1"], threads["effects"]
+        )
+        self.assertIn("gdbus ListTrackerTimers", loop["effects"])
+        self.assertEqual("timer_list", loop["page"])
+        self.assert_no_flash(h)
+        self.assertEqual("Writin\n02:05", h.deck.screen[1][1])
+
+    def test_timer_toggle_failure_flashes_err(self):
+        h = self.timer_page()
+        h.proc.answer("gdbus ToggleTrackerTimer", returncode=1)
+        self.press_slow(h, 1)
+        self.assert_flash(h, 1, "ERR")
+        self.assertIn(
+            "ToggleTrackerTimer(t1) failed", h.journal.getvalue()
+        )
+
+    def test_timer_add_is_a_job(self):
+        h = self.timer_page()
+        press, threads, loop = self.press_slow(h, 12)  # NEW
+        self.assertEqual(["gdbus AddTrackerTimer"], threads["effects"])
+        self.assertIn("gdbus ListTrackerTimers", loop["effects"])
+        self.assert_no_flash(h)
+
+    def test_timer_add_without_id_flashes_err(self):
+        h = self.timer_page()
+        h.proc.answer("gdbus AddTrackerTimer", S.gvariant_string(""))
+        self.press_slow(h, 12)
+        self.assert_flash(h, 12, "ERR")
+        self.assertIn(
+            "AddTrackerTimer returned no id", h.journal.getvalue()
+        )
+
+    def test_timer_export_dialog_and_write_are_one_job(self):
+        h = self.timer_page()
+        csv_path = S.SANDBOX / "tmp" / "export" / "timers.csv"
+        press, threads, loop = self.press_slow(h, 11)  # EXPT CSV
+        # The list is read under the lock, before the dialog opens.
+        self.assertEqual(["gdbus ListTrackerTimers"], press["effects"])
+        self.assertEqual(
+            ["zenity"], [e.split()[0] for e in threads["effects"]]
+        )
+        self.assertEqual(P.TIMERS_CSV, csv_path.read_bytes().decode())
+        self.assertEqual([], loop["effects"])
+        self.assert_flash(h, 11, "OK!")
+
+    def test_timer_export_cancelled_renders_without_flash(self):
+        h = self.timer_page()
+        h.proc.answer("zenity", returncode=1)
+        self.press_slow(h, 11)
+        self.assertEqual("timer_list", h.target.page())
+        self.assert_no_flash(h)
+        self.assertEqual("EXPT\nCSV", h.deck.screen[11][1])
+
+    def test_timer_export_write_failure_flashes_err(self):
+        h = self.timer_page()
+        blocker = S.SANDBOX / "tmp" / "blocker"
+        blocker.write_text("", encoding="utf-8")
+        h.proc.answer("zenity", f"{blocker / 'timers'}\n")
+        self.press_slow(h, 11)
+        self.assert_flash(h, 11, "ERR")
+
+    def test_timer_reset_is_a_job(self):
+        h = self.timer_page()
+        h.press(13)  # RESET ALL
+        press, threads, loop = self.press_slow(h, 14)  # OK
+        self.assertEqual("timer_reset_confirm", press["page"])
+        self.assertEqual(
+            ["gdbus ResetAllTrackerTimers"], threads["effects"]
+        )
+        self.assertEqual(["gdbus ListTrackerTimers"], loop["effects"])
+        self.assertEqual("timer_list", loop["page"])
+        self.assert_flash(h, 14, "OK!")
+
+    def test_timer_reset_failure_flashes_err(self):
+        h = self.timer_page()
+        h.proc.answer("gdbus ResetAllTrackerTimers", returncode=1)
+        h.press(13)
+        self.press_slow(h, 14)
+        self.assertEqual("timer_list", h.target.page())
+        self.assert_flash(h, 14, "ERR")
+        self.assertIn(
+            "ResetAllTrackerTimers failed via D-Bus", h.journal.getvalue()
+        )
+
 
 class SettingsKeepTest(unittest.TestCase):
     def test_font_scale_save_keeps_other_keys(self):

@@ -41,26 +41,30 @@ def _list_timers(ctx):
         return []
 
 
-def _toggle_timer(ctx, timer_id):
-    r = ctx.dbus.call("ToggleTrackerTimer", timer_id)
+# The three tracker actions run as jobs, outside the lock: they use
+# only `dbus` and `log`.
+
+
+def _toggle_timer(dbus, log, timer_id):
+    r = dbus.call("ToggleTrackerTimer", timer_id)
     if not r.true:
-        ctx.log(f"Timer toggle dbus: {r.stdout} {r.stderr}")
+        log(f"Timer toggle dbus: {r.stdout} {r.stderr}")
     return r.true
 
 
-def _add_timer(ctx):
+def _add_timer(dbus, log):
     """Id answered by AddTrackerTimer, '' on failure."""
-    r = ctx.dbus.call("AddTrackerTimer")
+    r = dbus.call("AddTrackerTimer")
     if not r.ok:
-        ctx.log(f"Timer add dbus: {r.stderr}")
+        log(f"Timer add dbus: {r.stderr}")
         return ""
     return r.string or ""
 
 
-def _reset_all_timers(ctx):
-    r = ctx.dbus.call("ResetAllTrackerTimers")
+def _reset_all_timers(dbus, log):
+    r = dbus.call("ResetAllTrackerTimers")
     if not r.true:
-        ctx.log(f"Timer reset dbus: {r.stdout} {r.stderr}")
+        log(f"Timer reset dbus: {r.stdout} {r.stderr}")
     return r.true
 
 
@@ -90,24 +94,42 @@ def _ask_save_path():
         return ""
 
 
-def _export_timers_csv(path, timers):
-    """Write the timers to a CSV at path. Returns True on success."""
+def _csv_rows(timers):
+    """[name, seconds, HH:MM:SS] of each timer, the CSV export's rows."""
+    rows = []
+    for t in timers:
+        elapsed = int(t.get("elapsed") or 0)
+        hh = elapsed // 3600
+        mm = (elapsed % 3600) // 60
+        ss = elapsed % 60
+        rows.append(
+            [t.get("name") or "", elapsed, f"{hh:02d}:{mm:02d}:{ss:02d}"]
+        )
+    return rows
+
+
+def _export_timers_csv(path, rows):
+    """Write the CSV rows to path. Returns True on success."""
     try:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["name", "seconds", "time"])
-            for t in timers:
-                name = t.get("name") or ""
-                elapsed = int(t.get("elapsed") or 0)
-                hh = elapsed // 3600
-                mm = (elapsed % 3600) // 60
-                ss = elapsed % 60
-                writer.writerow([name, elapsed, f"{hh:02d}:{mm:02d}:{ss:02d}"])
+            writer.writerows(rows)
         return True
     except Exception as e:
         print(f"CSV write error: {e}", file=sys.stderr, flush=True)
         return False
+
+
+def _export(rows):
+    """The save dialog, then the CSV write: one job, outside the lock.
+    None when the dialog is cancelled, else whether the write
+    succeeded."""
+    path = _ask_save_path()
+    if not path:
+        return None
+    return _export_timers_csv(path, rows)
 
 
 def _label_for_timer(timer):
@@ -200,16 +222,33 @@ def _render_list(ctx):
         ctx.set_key(key, color, _label_for_timer(timer))
 
 
-def _handle_export(ctx):
-    # zenity blocks; the list is read first so the export is current.
-    _refresh(ctx)
-    path = _ask_save_path()
-    if not path:
-        # Cancelled: no flash, stay on the list.
+def _refresh_or_flash(reason):
+    """then() of a toggle or add job: on success the list is read again,
+    else ERR with `reason` in the journal; renders the page shown."""
+
+    def then(ctx, ok, error):
+        if ok and error is None:
+            _refresh(ctx)
+        else:
+            ctx.flash(False, reason)
         ctx.render()
-        return
-    ctx.flash(_export_timers_csv(path, ctx.state().timers))
+
+    return then
+
+
+def _export_done(ctx, ok, error):
+    # Cancelled (None, no error): no flash, the page renders again.
+    if ok is not None or error is not None:
+        ctx.flash(bool(ok) and error is None)
     ctx.render()
+
+
+def _handle_export(ctx):
+    # The list is read first so the export is current; the dialog
+    # waits on the user, so it and the write run as one job.
+    _refresh(ctx)
+    rows = _csv_rows(ctx.state().timers)
+    ctx.run_blocking(lambda: _export(rows), _export_done)
 
 
 def _handle_list(ctx, key):
@@ -225,12 +264,12 @@ def _handle_list(ctx, key):
     if key == k["reset"]:
         ctx.goto(CONFIRM)
         return
+    dbus, log = ctx.dbus, ctx.log
     if key == k["new"]:
-        if _add_timer(ctx):
-            _refresh(ctx)
-        else:
-            ctx.flash(False, "AddTrackerTimer returned no id")
-        ctx.render()
+        ctx.run_blocking(
+            lambda: _add_timer(dbus, log),
+            _refresh_or_flash("AddTrackerTimer returned no id"),
+        )
         return
     if key == k["export"]:
         _handle_export(ctx)
@@ -248,11 +287,10 @@ def _handle_list(ctx, key):
     timer_id = st.key_map.get(key)
     if not timer_id:
         return
-    if _toggle_timer(ctx, timer_id):
-        _refresh(ctx)
-    else:
-        ctx.flash(False, f"ToggleTrackerTimer({timer_id}) failed")
-    ctx.render()
+    ctx.run_blocking(
+        lambda: _toggle_timer(dbus, log, timer_id),
+        _refresh_or_flash(f"ToggleTrackerTimer({timer_id}) failed"),
+    )
 
 
 def _tick_list(ctx, now):
@@ -290,13 +328,20 @@ def _handle_confirm(ctx, key):
         ctx.goto(LIST)
         return
     if key == k["ok"]:
-        if _reset_all_timers(ctx):
-            _refresh(ctx)
-            ctx.flash(True)
-        else:
-            ctx.flash(False, "ResetAllTrackerTimers failed via D-Bus")
-        ctx.goto(LIST)
+        dbus, log = ctx.dbus, ctx.log
+        ctx.run_blocking(
+            lambda: _reset_all_timers(dbus, log), _reset_done
+        )
     # Other keys: ignored, the choice is explicit.
+
+
+def _reset_done(ctx, ok, error):
+    if ok and error is None:
+        _refresh(ctx)
+        ctx.flash(True)
+    else:
+        ctx.flash(False, "ResetAllTrackerTimers failed via D-Bus")
+    ctx.goto(LIST)
 
 
 def _home_tick(ctx, now):

@@ -424,17 +424,17 @@ class Scenarios:
             total = h.deck.key_count()
             h.goto("timer_list")
             if total - 5 > 1:
-                tap(h, 1)
+                tap_job(h, 1)
             h.loop(7)
             tap(h, total - 5)  # CLEAN DASH
-            tap(h, total - 3)  # NEW
-            tap(h, total - 4)  # EXPT CSV
+            tap_job(h, total - 3)  # NEW
+            tap_job(h, total - 4)  # EXPT CSV
             csv_path = S.SANDBOX / "tmp" / "export" / "timers.csv"
             self.assertEqual(
                 TIMERS_CSV, csv_path.read_bytes().decode("utf-8")
             )
             tap(h, total - 2)  # RESET ALL
-            tap(h, total - 1)  # OK
+            tap_job(h, total - 1)  # OK
             tap(h, total - 2)  # RESET ALL
             tap(h, 0)  # CANCEL
 
