@@ -427,6 +427,7 @@ class Scenarios:
         def script(h):
             total = h.deck.key_count()
             h.goto("timer_list")
+            h.loop(1)  # the poll reads the timers
             if total - 5 > 1:
                 tap_job(h, 1)
             h.loop(7)

@@ -1940,9 +1940,7 @@
    },
    {
     "do": "press 13",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -2166,9 +2164,7 @@
    },
    {
     "do": "press 14",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -3976,9 +3972,7 @@
    },
    {
     "do": "press 12",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {
@@ -4372,9 +4366,7 @@
    },
    {
     "do": "press 13",
-    "effects": [
-     "gdbus ListTrackerTimers"
-    ],
+    "effects": [],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
       "slots": {

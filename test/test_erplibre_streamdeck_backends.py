@@ -193,15 +193,9 @@ class TimersTest(unittest.TestCase):
         self.assertEqual("Write\n02:05", timers._label_for_timer(timer))
 
     def test_tracker_answer_gives_one_timer(self):
-        class Ctx:
-            pass
-
-        ctx = Ctx()
-        ctx.dbus = dbus
-        ctx.log = lambda msg: None
         answer = done('(\'[{"id": "t1", "running": true}]\',)\n')
         with mock.patch("subprocess.run", return_value=answer):
-            found = timers._list_timers(ctx)
+            found = timers._list_timers(dbus, lambda msg: None)
         self.assertEqual([{"id": "t1", "running": True}], found)
 
 
@@ -408,6 +402,7 @@ class SlowKeyTest(unittest.TestCase):
     def timer_page(self):
         h = self.start(P.full_world)
         h.goto("timer_list")
+        h.loop(1)  # the poll reads the timers
         return h
 
     def assert_no_flash(self, h):
@@ -488,7 +483,9 @@ class SlowKeyTest(unittest.TestCase):
         self.assertEqual(
             ["gdbus ResetAllTrackerTimers"], threads["effects"]
         )
-        self.assertEqual(["gdbus ListTrackerTimers"], loop["effects"])
+        # The OK flash ends the pass: the poll reads the list on the
+        # first pass after it.
+        self.assertEqual([], loop["effects"])
         self.assertEqual("timer_list", loop["page"])
         self.assert_flash(h, 14, "OK!")
 
@@ -807,6 +804,46 @@ class CachedRenderTest(unittest.TestCase):
             ["bluetoothctl disconnect 00:00:5E:00:53:10"],
             h.steps[-1]["effects"],
         )
+
+    def test_timer_page_and_tiles_read_the_cache(self):
+        h = self.start(P.full_world)
+        h.loop(1)
+        self.assert_render_runs_nothing(h, "idle")
+        tiles = [f[1] for f in h.deck.rendering() if f and f[2] == "timer"]
+        self.assertIn("Writin\n02:05", tiles)
+        h.goto("timer_list")
+        self.assertEqual([], h.steps[-1]["effects"])
+        self.assert_render_runs_nothing(h, "timer_list")
+        self.assertEqual("Writin\n02:05", h.deck.screen[1][1])
+
+    def test_timer_page_without_data_shows_no_timers(self):
+        h = self.start(P.full_world)
+        h.goto("timer_list")
+        self.assertEqual([], h.steps[-1]["effects"])
+        self.assertEqual("NO\nTIMERS", h.deck.screen[1][1])
+        h.loop(1)
+        self.assertEqual("Writin\n02:05", h.deck.screen[1][1])
+
+    def test_timer_poll_reads_the_tracker_and_stores_changes(self):
+        h = self.start(P.full_world)
+        poll = self.poll(timers, 0)
+        self.assertEqual(P.TIMERS, poll.read())
+        ctx = h.target.kernel.ctx("timers")
+        self.assertTrue(poll.store(ctx, P.TIMERS))
+        self.assertEqual("t2", ctx.state().key_map[2])
+        self.assertFalse(poll.store(ctx, P.TIMERS))
+        self.assertTrue(poll.store(ctx, P.TIMERS[:1]))
+        self.assertEqual({1: "t1"}, ctx.state().key_map)
+
+    def test_timer_poll_runs_on_home_and_the_list(self):
+        h = self.start(P.full_world)
+        poll = self.poll(timers, 0)
+        ctx = h.target.kernel.ctx("timers")
+        shown = []
+        for page in ("idle", "timer_list", "timer_reset_confirm"):
+            h.target.kernel.goto(page)
+            shown.append(poll.active(ctx))
+        self.assertEqual([True, True, False], shown)
 
     def test_sound_press_shows_the_new_level_at_once(self):
         h = self.start(P.full_world)

@@ -5,8 +5,9 @@ running timers on the home dashboard.
 
 The timers come from the tracker extension through the ERPLibre Home
 extension's D-Bus methods. `state().timers` is the last list read: the
-home dashboard and the TIMER page both draw from it, and the two 2 s
-refreshes (page tick, home tick) are its only readers of D-Bus."""
+home dashboard and the TIMER page both draw from it. A poll reads it
+every 2 s, away from the lock, while either shows; the RFSH key and the
+export read it at the press."""
 
 import csv
 import json
@@ -15,8 +16,9 @@ import shutil
 import subprocess
 import sys
 
+from erplibre_streamdeck import dbus as dbus_mod
 from erplibre_streamdeck.plugin import (
-    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, TileProvider,
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll, TileProvider,
 )
 from erplibre_streamdeck.ui import colors
 
@@ -25,11 +27,11 @@ CONFIRM = "timer_reset_confirm"
 REFRESH_SEC = 2.0
 
 
-def _list_timers(ctx):
+def _list_timers(dbus, log):
     """The tracker's timers as a list of dicts; [] when unavailable."""
-    r = ctx.dbus.call("ListTrackerTimers")
+    r = dbus.call("ListTrackerTimers")
     if not r.ok:
-        ctx.log(f"Timer list dbus: {r.stderr}")
+        log(f"Timer list dbus: {r.stderr}")
         return []
     payload = r.string
     if not payload:
@@ -37,8 +39,18 @@ def _list_timers(ctx):
     try:
         return json.loads(payload)
     except Exception as e:
-        ctx.log(f"Timer list error: {e}")
+        log(f"Timer list error: {e}")
         return []
+
+
+def _log(msg):
+    """Context.log's line, for the poll's read, which has no Context."""
+    print(f"[erplibre-home] timers: {msg}", file=sys.stderr, flush=True)
+
+
+def _read():
+    """The poll's read: the timers, without Context or lock."""
+    return _list_timers(dbus_mod, _log)
 
 
 # The three tracker actions run as jobs, outside the lock: they use
@@ -161,21 +173,34 @@ def _list_keys(geo):
     }
 
 
-def _refresh(ctx):
-    """Read the timers into the state and map them onto the slots."""
+def _store(ctx, timers):
+    """Keep the timers in the state and map them onto the slots; True
+    when the list changed."""
     st = ctx.state()
-    st.timers = _list_timers(ctx)
+    changed = st.timers != timers
+    st.timers = timers
     st.key_map = {}
     slots = _list_keys(ctx.geo)["slots"]
     for idx, timer in enumerate(st.timers):
         if idx >= len(slots):
             break
         st.key_map[slots[idx]] = timer.get("id")
+    return changed
+
+
+def _refresh(ctx):
+    """Read the timers now, under the lock, into the state."""
+    _store(ctx, _list_timers(ctx.dbus, ctx.log))
+
+
+def _shown(ctx):
+    """The home screen ("idle") or the timer page shows the timers."""
+    return ctx.page in ("idle", LIST)
 
 
 def enter(ctx):
-    """Open the timer page on a fresh list."""
-    _refresh(ctx)
+    """Open the timer page on the cached list; the poll, active from
+    this page on, reads it again on the next pass."""
     ctx.goto(LIST)
 
 
@@ -222,14 +247,13 @@ def _render_list(ctx):
         ctx.set_key(key, color, _label_for_timer(timer))
 
 
-def _refresh_or_flash(reason):
-    """then() of a toggle or add job: on success the list is read again,
-    else ERR with `reason` in the journal; renders the page shown."""
+def _render_or_flash(reason):
+    """then() of a toggle or add job: on failure ERR with `reason` in
+    the journal; renders the page shown, from the cache, which the next
+    poll brings up to date."""
 
     def then(ctx, ok, error):
-        if ok and error is None:
-            _refresh(ctx)
-        else:
+        if not ok or error is not None:
             ctx.flash(False, reason)
         ctx.render()
 
@@ -268,7 +292,7 @@ def _handle_list(ctx, key):
     if key == k["new"]:
         ctx.run_blocking(
             lambda: _add_timer(dbus, log),
-            _refresh_or_flash("AddTrackerTimer returned no id"),
+            _render_or_flash("AddTrackerTimer returned no id"),
         )
         return
     if key == k["export"]:
@@ -289,13 +313,8 @@ def _handle_list(ctx, key):
         return
     ctx.run_blocking(
         lambda: _toggle_timer(dbus, log, timer_id),
-        _refresh_or_flash(f"ToggleTrackerTimer({timer_id}) failed"),
+        _render_or_flash(f"ToggleTrackerTimer({timer_id}) failed"),
     )
-
-
-def _tick_list(ctx, now):
-    _refresh(ctx)
-    ctx.render()
 
 
 def _confirm_keys(geo):
@@ -337,17 +356,10 @@ def _handle_confirm(ctx, key):
 
 def _reset_done(ctx, ok, error):
     if ok and error is None:
-        _refresh(ctx)
         ctx.flash(True)
     else:
         ctx.flash(False, "ResetAllTrackerTimers failed via D-Bus")
     ctx.goto(LIST)
-
-
-def _home_tick(ctx, now):
-    """Refresh the list; the kernel's home refresh renders it."""
-    _refresh(ctx)
-    return False
 
 
 def _running(ctx):
@@ -366,8 +378,7 @@ PLUGIN = Plugin(
     api=PLUGIN_API,
     setup=_setup,
     pages=[
-        Page(LIST, None, _render_list, _handle_list,
-             tick=_tick_list, period=REFRESH_SEC),
+        Page(LIST, None, _render_list, _handle_list),
         Page(CONFIRM, _confirm_keys, _render_confirm, _handle_confirm),
     ],
     home_button=HomeButton(
@@ -387,6 +398,5 @@ PLUGIN = Plugin(
             press=lambda ctx, t: enter(ctx),
         )
     ],
-    home_tick=_home_tick,
-    home_period=REFRESH_SEC,
+    polls=[Poll(REFRESH_SEC, _shown, _read, _store)],
 )
