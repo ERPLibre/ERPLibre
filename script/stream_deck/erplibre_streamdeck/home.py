@@ -127,17 +127,18 @@ class Home:
         if key in self.buttons:
             pid, button = self.buttons[key]
             ok, face = kernel.guard(
-                pid, "home face", button.face, kernel.ctx(pid)
+                pid, f"home face {key}", button.face, kernel.ctx(pid)
             )
         elif key in self.fixtures:
             pid, fx, index = self.fixtures[key]
             ok, face = kernel.guard(
-                pid, "fixture face", fx.face, kernel.ctx(pid), key, index
+                pid, f"fixture face {key}", fx.face, kernel.ctx(pid), key,
+                index
             )
         elif key in self.tile_map:
             pid, tp, item = self.tile_map[key]
             ok, face = kernel.guard(
-                pid, "tile face", tp.face, kernel.ctx(pid), item
+                pid, f"tile face {key}", tp.face, kernel.ctx(pid), item
             )
         elif key == 0 and not kernel.dbus_ok:
             return "kernel", KeyFace(colors.ERR, i18n.t("NO\nEXT"))

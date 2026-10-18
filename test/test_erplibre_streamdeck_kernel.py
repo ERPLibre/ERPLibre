@@ -340,5 +340,34 @@ class RecheckDbusTest(KernelCase):
         self.assertEqual(2, dbus.checks)
 
 
+class LeftoverTest(KernelCase):
+    def test_system_exit_in_handle_is_isolated(self):
+        def bye(ctx, key):
+            raise SystemExit(3)
+
+        k = self.kernel(self.page_plugin(handle=bye))
+        k.goto("pg")
+        k.handle_key(1, True)
+        self.assertEqual("idle", k.page_id)
+        self.assertIn("handle failed", self.journal.getvalue())
+
+    def test_keyboard_interrupt_still_propagates(self):
+        def stop(ctx, key):
+            raise KeyboardInterrupt
+
+        k = self.kernel(self.page_plugin(handle=stop))
+        k.goto("pg")
+        with self.assertRaises(KeyboardInterrupt):
+            k.handle_key(1, True)
+
+    def test_nothing_painted_after_running_is_false(self):
+        k = self.kernel(self.page_plugin())
+        k.goto("pg")
+        self.deck.screen.clear()
+        k.running = False
+        k.render()
+        self.assertEqual({}, self.deck.screen)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -130,7 +130,7 @@ class Kernel:
         writing the error to the journal (see ErrorLog)."""
         try:
             result = fn(*args)
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
             if self.errors.failed(plugin_id, what, exc):
                 print(
                     f"[erplibre-home] {plugin_id}: {what} failed: "
@@ -144,7 +144,10 @@ class Kernel:
 
     def paint(self, key, face):
         """Paint a KeyFace; raises what render.set_key raises on a bad
-        field (a text that is not a str, a colour PIL refuses)."""
+        field (a text that is not a str, a colour PIL refuses). Draws
+        nothing once the kernel has stopped."""
+        if not self.running:
+            return
         render.set_key(
             self.deck, key, face.color, face.text, face.icon,
             face.extra_draw,
@@ -174,6 +177,8 @@ class Kernel:
         self.render()
 
     def render(self):
+        if not self.running:
+            return
         if self.flash_result:
             if self._flash_live():
                 self._render_page()
