@@ -9,15 +9,13 @@ its steps and compares what every key shows, every command the program
 ran and the state files after each step with
 `test/fixtures/erplibre_streamdeck/<name>.json`.
 
-`MonolithPages` runs the single file `erplibre_streamdeck.py`, the
-reference: `STREAMDECK_GOLDEN=update` rewrites the goldens from it.
-`PackagePages` runs the package against the same goldens; a scenario whose
-page has no plugin yet is skipped, and a scenario that starts from the
-home screen waits for every repository plugin.
+`PackagePages` runs the package against the goldens, which are frozen:
+a deliberate change of the deck's output edits the JSON. A scenario whose
+page has no plugin, or a package that lacks a repository plugin, fails.
 
 A page scenario reaches its page with `goto` right after boot, never by a
-home press: the home screen of an incomplete package differs. The
-`home__*` scenarios pin the passage from the home screen to each page.
+home press. The `home__*` scenarios pin the passage from the home screen
+to each page.
 """
 
 import json
@@ -279,29 +277,25 @@ def row(h, index, col):
 class Scenarios:
     """Mixed into one TestCase per target."""
 
-    def run_all(self, name, inputs, world, script, pages=(),
-                home_based=False):
-        runs, complete = {}, True
+    def run_all(self, name, inputs, world, script, pages=()):
+        runs = {}
         for cols, rows in S.GEOMETRIES:
             with S.Harness(self.make_target(), cols, rows) as h:
                 world(h)
                 h.boot()
                 missing = [p for p in pages if not h.target.has_page(p)]
-                if missing:
-                    self.skipTest(f"no plugin yet for {missing}")
-                complete = complete and h.target.complete()
-                if home_based and not complete:
-                    self.skipTest("home screen incomplete")
+                self.assertEqual([], missing, "no plugin for these pages")
+                self.assertTrue(h.target.complete(), "plugin missing")
                 script(h)
                 h.check_clean(self)
                 runs[f"{cols}x{rows}"] = h.steps
-        S.check_golden(self, name, inputs, runs, partial=not complete)
+        S.check_golden(self, name, inputs, runs)
 
     # -- home screen
 
     def test_home_empty(self):
         self.run_all("home__empty", EMPTY, empty_world,
-                     lambda h: h.loop(1), home_based=True)
+                     lambda h: h.loop(1))
 
     def test_home_full(self):
         def script(h):
@@ -309,12 +303,11 @@ class Scenarios:
             h.wait(2.1)
             h.loop(1)
 
-        self.run_all("home__full", FULL, full_world, script,
-                     home_based=True)
+        self.run_all("home__full", FULL, full_world, script)
 
     def test_home_full_fr(self):
         self.run_all("home__full_fr", FULL + "; lang fr", full_fr_world,
-                     lambda h: h.loop(1), home_based=True)
+                     lambda h: h.loop(1))
 
     def test_home_noext(self):
         def script(h):
@@ -328,8 +321,7 @@ class Scenarios:
             # (15.3 s) finds the extension; none follows by 20.7 s.
             h.loop(70, on_poll=on_poll)
 
-        self.run_all("home__noext", NOEXT, noext_world, script,
-                     home_based=True)
+        self.run_all("home__noext", NOEXT, noext_world, script)
 
     def test_home_presses(self):
         def script(h):
@@ -344,8 +336,7 @@ class Scenarios:
             if key is not None:
                 tap(h, key)
 
-        self.run_all("home__presses", FULL, full_world, script,
-                     home_based=True)
+        self.run_all("home__presses", FULL, full_world, script)
 
     def test_home_dashboard(self):
         def script(h):
@@ -358,8 +349,7 @@ class Scenarios:
                 tap(h, key)
                 h.goto("idle")
 
-        self.run_all("home__dashboard", FULL, full_world, script,
-                     home_based=True)
+        self.run_all("home__dashboard", FULL, full_world, script)
 
     def test_flash(self):
         def script(h):
@@ -369,7 +359,7 @@ class Scenarios:
             h.wait(FLASH_GAP)
             h.loop(2)
 
-        self.run_all("flash", FULL, full_world, script, home_based=True)
+        self.run_all("flash", FULL, full_world, script)
 
     def test_todo_launch(self):
         def script(h):
@@ -385,7 +375,7 @@ class Scenarios:
             h.loop(5)
 
         self.run_all("todo_launch", EMPTY + "; window 201 opens",
-                     launch_world, script, home_based=True)
+                     launch_world, script)
 
     # -- pages
 
@@ -599,19 +589,10 @@ class Scenarios:
                      full_world, script, pages=("todo_session",))
 
 
-@unittest.skipUnless(S.MONOLITH.exists(), "single file gone")
-class MonolithPages(Scenarios, unittest.TestCase):
-    target_kind = "monolith"
-    make_target = staticmethod(S.MonolithTarget)
-
-
-@unittest.skipUnless((S.PACKAGE / "app.py").exists(), "no package yet")
 class PackagePages(Scenarios, unittest.TestCase):
-    target_kind = "package"
     make_target = staticmethod(S.PackageTarget)
 
 
-@unittest.skipUnless((S.PACKAGE / "app.py").exists(), "no package yet")
 class PackageDashboardTap(unittest.TestCase):
     """A dashboard tap opens what the key showed at the last render,
     where the single file recomputed the tile from a fresh read: the

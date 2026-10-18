@@ -12,7 +12,7 @@
  *     started_at:   1700000000123
  *   }
  *
- * The deck (erplibre_streamdeck.py) reads the directory to surface active
+ * The deck (erplibre_streamdeck package) reads the directory to surface active
  * mpv sessions; the extension uses the `ipc_socket` field to send
  * `cycle pause`, `quit` etc. to the running process.
  */

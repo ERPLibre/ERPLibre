@@ -47,7 +47,7 @@ deck_setting() {
 # valeur inconnue.
 deck_program_path() {
     case "$1" in
-        tiler) echo "script/stream_deck/erplibre_streamdeck.py" ;;
+        tiler) echo "script/stream_deck/erplibre_streamdeck" ;;
         controller) echo "script/stream_deck/erplibre_controller.py" ;;
         none) echo "" ;;
         *) return 1 ;;
