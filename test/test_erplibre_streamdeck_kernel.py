@@ -484,6 +484,58 @@ class JobTest(KernelCase):
             "%02x%02x%02x" % colors.BUSY, self.deck.screen[3][0]
         )
 
+    def test_key_zero_leaves_a_busy_page_without_the_plugin(self):
+        calls = []
+        k = self.kernel(self.slow_plugin(lambda: True, calls=calls))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.clock.advance(1)
+        k.handle_key(0, True)
+        self.assertEqual("idle", k.page_id)
+        self.assertIsNone(k.flash_result)
+        self.assertEqual([3], calls)
+
+    def test_other_key_of_a_busy_page_flashes_err(self):
+        calls = []
+        k = self.kernel(self.slow_plugin(lambda: True, calls=calls))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.clock.advance(1)
+        k.handle_key(3, True)
+        self.assertEqual("pg", k.page_id)
+        self.assertEqual("err", k.flash_result)
+        self.assertEqual([3], calls)
+
+    def test_thread_that_fails_to_start_leaves_plugin_free(self):
+        class NoThread(S.FakeThread):
+            def start(self):
+                raise RuntimeError("can't start new thread")
+
+        k = self.kernel(self.slow_plugin(lambda: True))
+        k.goto("pg")
+        with mock.patch("threading.Thread", NoThread):
+            k.handle_key(3, True)
+        self.assertNotIn("p", k.busy)
+        self.assertNotEqual("\u2026", self.deck.screen[3][1])
+        self.assertIn("p: page pg handle failed", self.journal.getvalue())
+
+    def test_base_exception_in_work_reaches_then(self):
+        class Abort(BaseException):
+            pass
+
+        def work():
+            raise Abort()
+
+        seen = []
+        k = self.kernel(self.slow_plugin(
+            work, lambda ctx, r, e: seen.append(type(e))))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertEqual([Abort], seen)
+        self.assertNotIn("p", k.busy)
+
     def home_plugin(self, pid, tick=None, calls=None):
         def press(ctx):
             calls.append(pid)
