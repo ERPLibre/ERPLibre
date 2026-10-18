@@ -1309,6 +1309,81 @@ class TestDossiersCommuns(Base):
         self.assertFalse(os.path.exists(self.dest))
 
 
+class TestDossierDeBaseEnLien(Base):
+    """`<dest>/<base>` ou `<state-dir>/<base>` en lien symbolique : refus
+    (code 2) avant toute commande, aucun fichier écrit dans la cible du
+    lien ; `--status` ne lit pas l'état derrière le lien. Le dossier
+    commun (`--dest`) en lien reste admis : il est choisi par
+    l'opérateur."""
+
+    def lien(self, chemin):
+        cible = os.path.join(self.bac, "ailleurs", os.path.basename(chemin))
+        os.makedirs(cible)
+        os.symlink(cible, chemin)
+        return cible
+
+    @staticmethod
+    def message(chemin):
+        return ob.t("{path} is a symbolic link: refused.").format(path=chemin)
+
+    def verifier_refus(self, lien, cible, *options):
+        self.assertEqual(self.lancer(*options), ob.CODE_REFUS, self.sortie)
+        self.assertIn(self.message(lien), self.erreurs)
+        # Seule la lecture de l'unité a eu lieu : ni psql, ni pg_dump.
+        self.assertEqual(
+            [nom for nom in self.outils() if nom != "systemctl"], []
+        )
+        self.assertEqual(os.listdir(cible), [])
+
+    def test_dossier_des_sauvegardes(self):
+        cible = self.lien(self.dossier)
+        self.verifier_refus(self.dossier, cible)
+
+    def test_dossier_d_etat(self):
+        etat_base = os.path.join(self.etat, "demo_db")
+        cible = self.lien(etat_base)
+        self.verifier_refus(etat_base, cible)
+
+    def test_simulation_refuse_aussi(self):
+        cible = self.lien(self.dossier)
+        self.verifier_refus(self.dossier, cible, "--dry-run")
+
+    def test_essai_de_restauration(self):
+        cible = self.lien(self.dossier)
+        self.verifier_refus(self.dossier, cible, "--test-restore")
+
+    def test_status_ne_lit_pas_l_etat_derriere_le_lien(self):
+        etat_base = os.path.join(self.etat, "demo_db")
+        cible = self.lien(etat_base)
+        ecrire(
+            os.path.join(cible, "state.json"),
+            json.dumps({"last_success": {"time": HORLOGE}}),
+        )
+        sortie, erreurs = io.StringIO(), io.StringIO()
+        rapport = report.Rapport(flux=sortie, erreurs=erreurs, couleur=False)
+        with mock.patch.object(
+            ob, "lire_etat", side_effect=AssertionError("lu")
+        ):
+            for options in (["--db", "demo_db"], []):
+                with self.subTest(options=options):
+                    code = ob.main(
+                        ["--status", "--state-dir", self.etat] + options,
+                        self.systeme,
+                        rapport,
+                    )
+                    self.assertEqual(code, ob.CODE_REFUS)
+        self.assertIn(self.message(etat_base), erreurs.getvalue())
+
+    def test_dest_commun_en_lien_admis(self):
+        vrai = os.path.join(self.bac, "vrai_dest")
+        os.makedirs(vrai)
+        self.dest = os.path.join(self.bac, "dest_lien")
+        os.symlink(vrai, self.dest)
+        self.dossier = os.path.join(self.dest, "demo_db")
+        self.assertEqual(self.lancer(), ob.CODE_OK, self.sortie + self.erreurs)
+        self.assertEqual(len(self.zips()), 1)
+
+
 class TestVerrouIndisponible(Base):
     """Le dossier du verrou partagé absent : refus propre (code 2), sans
     trace d'exception."""

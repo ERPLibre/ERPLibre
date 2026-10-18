@@ -708,6 +708,21 @@ def manifeste(base, faits):
 # --- Dossiers --------------------------------------------------------------
 
 
+def refuser_liens(cible):
+    """Refus quand le dossier propre à la base, `<dest>/<base>` ou
+    `<state-dir>/<base>`, est un lien symbolique.
+
+    `os.path.isdir` suit un lien : un lien posé par le compte de l'unité
+    vers un dossier qu'il peut écrire ferait écrire la sauvegarde, l'état
+    ou la rétention ailleurs que prévu, sous root. Le dossier commun
+    (`--dest`, `--state-dir`) peut, lui, être un lien : c'est l'opérateur
+    qui le choisit, et il appartient à root.
+    """
+    for chemin in (cible.dossier, cible.dossier_etat):
+        if chemin and os.path.islink(chemin):
+            raise Refus(N_("{path} is a symbolic link: refused."), path=chemin)
+
+
 def dossiers_a_creer(cible, systeme, simulation=False):
     """[(chemin, mode, au_compte)] des dossiers à créer avant la sauvegarde,
     dans l'ordre, parents manquants compris. Refus quand un dossier existe
@@ -722,7 +737,11 @@ def dossiers_a_creer(cible, systeme, simulation=False):
     `simulation` : un dossier que le compte courant ne peut pas créer est
     prévu quand même, comme root le créerait, et `cible.creation_sudo`
     le signale — la simulation précède l'exécution sous sudo.
+
+    Un dossier de la base qui est un lien symbolique refuse
+    (`refuser_liens`).
     """
+    refuser_liens(cible)
     a_creer = []
 
     def hors_de_portee(parent, chemin):
@@ -1391,9 +1410,18 @@ def appliquer_retention(cible, systeme, rapport, args):
 def afficher_etat(etat_dir, base, age_max, systeme, rapport):
     """L'état de chaque base (ou de `base`) ; rend le code de sortie : 1
     s'il n'y a aucun état, ou qu'une base n'a pas de succès plus récent
-    que `age_max` heures ; 2 si le dossier d'état ne se lit pas."""
+    que `age_max` heures ; 2 si le dossier d'état ne se lit pas, ou si le
+    dossier d'une base y est un lien symbolique — son état n'est alors pas
+    lu (voir `refuser_liens`)."""
     try:
         if base:
+            if os.path.islink(os.path.join(etat_dir, base)):
+                rapport.erreur(
+                    t("{path} is a symbolic link: refused.").format(
+                        path=os.path.join(etat_dir, base)
+                    )
+                )
+                return CODE_REFUS
             os.stat(chemin_etat(etat_dir, base))
             noms = [base]
         else:
@@ -1409,6 +1437,14 @@ def afficher_etat(etat_dir, base, age_max, systeme, rapport):
             t("Cannot read {path}: run with sudo.").format(path=etat_dir)
         )
         return CODE_REFUS
+    for nom in noms:
+        if os.path.islink(os.path.join(etat_dir, nom)):
+            rapport.erreur(
+                t("{path} is a symbolic link: refused.").format(
+                    path=os.path.join(etat_dir, nom)
+                )
+            )
+            return CODE_REFUS
     if not noms:
         rapport.fail(
             t("No backup state in {path}.").format(
@@ -2209,7 +2245,9 @@ def detecter(args, systeme, racine=RACINE, base_exigee=True):
         if base_exigee:
             raise
         plan.base, plan.origine_base = "", ""
-    return preparer_cible(plan, config, args.dest, args.state_dir, systeme)
+    cible = preparer_cible(plan, config, args.dest, args.state_dir, systeme)
+    refuser_liens(cible)
+    return cible
 
 
 def afficher_cible(cible, rapport):
