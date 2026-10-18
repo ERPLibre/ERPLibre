@@ -103,7 +103,7 @@ DECK_PROGRAM=tiler
 RESTART_AFTER_GAME=yes
 ```
 
-`DECK_PROGRAM` is `tiler` (`script/stream_deck/erplibre_streamdeck.py`),
+`DECK_PROGRAM` is `tiler` (the package `script/stream_deck/erplibre_streamdeck`),
 `controller` (`script/stream_deck/erplibre_controller.py`) or `none`. An
 option given writes its key; an option left out keeps the value already in
 the file, and the default applies only to a missing key, so a reinstall
@@ -122,6 +122,14 @@ TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
 refuse to start a game and say how to enable them; the deck program, the
 controller and the service are never affected. Set it from
 TODO › Stream Deck › Games on/off, or by hand in this file.
+
+`DECK_PLUGINS_OFF=<id>,<id>` lists the deck program plugins that are not
+loaded (empty or absent: all load). Set it from TODO › Stream Deck ›
+Plugins on/off, or by hand in this file; TODO › Stream Deck › Diagnosis
+names an id that matches no plugin. User plugins live in
+`$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`. `python
+script/stream_deck/erplibre_streamdeck --list-plugins` prints each plugin
+the loader finds and its status, without opening the deck.
 
 Games take the deck over: TODO's games menu and the gallery run each game
 through `script/install/erplibre_home_handover.sh`, which stops the service,
