@@ -11,6 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
+import test_erplibre_streamdeck_pages as P  # noqa: E402
 
 S.install()
 from erplibre_streamdeck import dbus, paths, settings  # noqa: E402
@@ -244,6 +245,65 @@ class SessionsTest(unittest.TestCase):
         # One journal entry for the two renders, not none: the kernel
         # reports the failing provider once and goes on.
         self.assertEqual(1, len(lines))
+
+
+class SlowKeyTest(unittest.TestCase):
+    """A key whose action waits on D-Bus or a dialog starts one job: the
+    key shows "…" until the next loop pass hands the result back, which
+    then shows what the press alone showed before."""
+
+    BUSY = ["5a5a28", "\u2026", None]
+
+    def start(self, world, cols=5, rows=3):
+        h = S.Harness(S.PackageTarget(), cols, rows)
+        h.__enter__()
+        self.addCleanup(h.__exit__, None, None, None)
+        world(h)
+        h.boot()
+        return h
+
+    def press_slow(self, h, key):
+        """Press `key`, check it started one job and shows "…", run the
+        job and one loop pass; the press, threads and loop steps."""
+        h.press(key)
+        self.assertEqual(1, len(S.FakeThread.queue))
+        self.assertEqual(self.BUSY, h.deck.screen[key])
+        h.run_threads()
+        h.loop(1)
+        h.check_clean(self)
+        return h.steps[-3:]
+
+    def assert_flash(self, h, key, label):
+        """`label` shows on `key` and its row and column neighbours."""
+        cols, rows = h.deck.cols, h.deck.rows
+        c, r = key % cols, key // cols
+        around = {
+            y * cols + x
+            for x, y in ((c, r), (c - 1, r), (c + 1, r), (c, r - 1),
+                         (c, r + 1))
+            if 0 <= x < cols and 0 <= y < rows
+        }
+        shown = {
+            k for k, f in enumerate(h.deck.rendering())
+            if f and f[1] == label
+        }
+        self.assertEqual(around, shown)
+
+    def test_dev_reload_hot_reload_is_a_job(self):
+        h = self.start(P.full_world)
+        key = P.face_key(h, "DEV\nRELOAD")
+        press, threads, loop = self.press_slow(h, key)
+        self.assertEqual([], press["effects"])
+        self.assertEqual(["gdbus HotReload"], threads["effects"])
+        self.assertEqual("idle", loop["page"])
+        self.assert_flash(h, key, "OK!")
+
+    def test_dev_reload_failure_flashes_err(self):
+        h = self.start(P.full_world)
+        h.proc.answer("gdbus HotReload", returncode=1)
+        key = P.face_key(h, "DEV\nRELOAD")
+        self.press_slow(h, key)
+        self.assert_flash(h, key, "ERR")
 
 
 class SettingsKeepTest(unittest.TestCase):
