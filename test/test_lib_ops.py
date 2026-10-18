@@ -1681,6 +1681,7 @@ class TestRapport(unittest.TestCase):
         r.ok("fait")
         r.attn("regard")
         r.fail("raté")
+        r.skip("non vérifié")
         r.sim("systemctl stop x")
         texte = flux.getvalue()
         self.assertNotIn("\x1b[", texte)
@@ -1688,6 +1689,7 @@ class TestRapport(unittest.TestCase):
         self.assertIn("✔ fait", texte)
         self.assertIn("⚠ [ATTN] regard", texte)
         self.assertIn("✖ [FAIL] raté", texte)
+        self.assertIn("– [SKIP] non vérifié", texte)
         self.assertIn("(simulation) systemctl stop x", texte)
 
     def test_couleur_forcee(self):

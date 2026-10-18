@@ -3,14 +3,15 @@
 
 """Le rapport d'une opération : étapes numérotées et verdicts.
 
-Quatre formes de ligne, une par nature de message :
+Cinq formes de ligne, une par nature de message :
 
     ▶ [2/5] titre        une étape commence
       ✔ message          ce qui a réussi
       ⚠ [ATTN] message   ce qui mérite un regard sans faire échouer
       ✖ [FAIL] message   ce qui fait échouer l'opération
+      – [SKIP] message   ce qui n'a pas été vérifié, et pourquoi
 
-`[ATTN]` et `[FAIL]` sont écrits en toutes lettres et pas seulement en
+`[ATTN]`, `[FAIL]` et `[SKIP]` sont écrits en toutes lettres et pas seulement en
 couleur : une sortie lue dans un journal, un courriel ou un terminal sans
 couleur doit dire la même chose. La couleur n'est émise que vers un
 terminal, et `NO_COLOR` l'éteint (https://no-color.org).
@@ -101,6 +102,9 @@ class Rapport:
 
     def fail(self, message):
         self._ecrire(self._peindre(ROUGE, f"  ✖ [FAIL] {message}"))
+
+    def skip(self, message):
+        self._ecrire(self._peindre(GRIS, f"  – [SKIP] {message}"))
 
     def detail(self, message):
         self._ecrire(self._peindre(GRIS, f"    {message}"))
