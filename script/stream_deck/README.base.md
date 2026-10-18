@@ -223,7 +223,7 @@ A callable runs with the lock held, so it must not wait on a process. `ctx.run_b
 - `work` takes no argument and touches only what it captured before the call, plus `ctx.dbus` and `ctx.log`; never `ctx` itself.
 - The pressed key shows "…" while the job runs and the rest of the deck stays usable.
 - On the next loop pass, under the lock, the kernel calls `then(ctx, result, error)` (`error` is the exception `work` raised, or `None`). `then` renders itself, like a handler. Without `then`, the kernel flashes OK when `error` is `None` and the result is truthy, ERR otherwise, and renders.
-- A plugin has one job at a time: `run_blocking` while one runs returns `False` and flashes ERR. A press that would reach a busy plugin flashes ERR without calling it; key 0 of its page, the back key, goes home instead. Its polls and ticks wait.
+- A plugin has one job at a time: `run_blocking` while one runs returns `False` and flashes ERR. A press that would reach a busy plugin flashes ERR without calling it; key 0 of its page (BACK on most pages) goes home instead. Its polls and ticks wait.
 - A job that raises is journaled once, with its traceback, before `then` runs.
 
 `Plugin.polls` is a list of `Poll(period, active, read, store)`. A render reads `ctx.state()` and starts no process; a poll fills that state:
@@ -243,7 +243,7 @@ Une fonction s'exécute verrou tenu : elle ne doit pas attendre un processus. `c
 - `work` ne prend aucun argument et ne touche que ce qu'elle a capturé avant l'appel, plus `ctx.dbus` et `ctx.log` ; jamais `ctx`.
 - La touche pressée affiche « … » pendant la tâche et le reste du deck reste utilisable.
 - Au prochain passage de la boucle, verrou tenu, le noyau appelle `then(ctx, result, error)` (`error` est l'exception levée par `work`, ou `None`). `then` fait son propre rendu, comme un gestionnaire. Sans `then`, le noyau fait clignoter OK quand `error` vaut `None` et que le résultat est vrai, ERR sinon, et rend.
-- Un plugin n'a qu'une tâche à la fois : `run_blocking` pendant qu'une tâche tourne rend `False` et fait clignoter ERR. Une touche qui atteindrait un plugin occupé clignote en ERR sans l'appeler ; la touche 0 de sa page, le retour, ramène à l'accueil. Ses sondages et ses ticks attendent.
+- Un plugin n'a qu'une tâche à la fois : `run_blocking` pendant qu'une tâche tourne rend `False` et fait clignoter ERR. Une touche qui atteindrait un plugin occupé clignote en ERR sans l'appeler ; la touche 0 de sa page (RETOUR sur la plupart des pages) ramène à l'accueil. Ses sondages et ses ticks attendent.
 - Une tâche qui lève est inscrite une fois au journal, avec sa trace, avant l'appel de `then`.
 
 `Plugin.polls` est une liste de `Poll(period, active, read, store)`. Un rendu lit `ctx.state()` et ne lance aucun processus ; un sondage remplit cet état :

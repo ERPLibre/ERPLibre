@@ -370,6 +370,9 @@ class StreamDeckMenuMixin:
         if not reponse:
             print(t("Unchanged."))
             return
+        # La virgule décimale (« 0,5 », comme la documentation française
+        # l'écrit) se lit comme un point ; le fichier garde le point.
+        reponse = reponse.replace(",", ".", 1)
         if service.parse_session_refresh(reponse) is None:
             print(
                 t("Invalid period, expected {bas} to {haut} seconds.")

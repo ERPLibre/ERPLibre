@@ -257,8 +257,8 @@ Where a rule below differs from the text above, this section wins.
    set-and-restore pair is not thread-safe, and the layouts writer runs in
    a job thread.
 5. **Busy plugin and key 0.** While a page's owner is busy, key 0 of that
-   page (BACK on every repository page and on `render.too_small`) sends
-   the deck home through the kernel without calling the plugin; the other
+   page (BACK on most pages, a grid cell on `tiling`, CANCEL on
+   `timer_reset_confirm`) sends the deck home through the kernel without calling the plugin; the other
    keys flash ERR. A user plugin whose page uses key 0 for something else
    cannot use it while busy.
 6. **Starting a job.** The plugin is marked busy only once its thread has
