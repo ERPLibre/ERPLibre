@@ -68,7 +68,9 @@ def faits(**changes):
             "DECK_PROGRAM": "tiler",
             "RESTART_AFTER_GAME": "yes",
             "GAMES": "on",
+            "DECK_PLUGINS_OFF": "",
         },
+        "plugin_ids": ["sound", "tiling"],
         "lock": ("4242", "tiler"),
         "lock_running": True,
         "lock_pids": [4242],
@@ -178,7 +180,11 @@ class LaCollecte(unittest.TestCase):
                     "DECK_PROGRAM": "tiler",
                     "RESTART_AFTER_GAME": "yes",
                     "GAMES": "on",
+                    "DECK_PLUGINS_OFF": "",
                 },
+                "plugin_ids": statut.service.deck_plugin_ids(
+                    str(RACINE), {"HOME": str(self.home)}
+                ),
                 "lock": None,
                 "lock_running": False,
                 "lock_pids": [],
@@ -353,6 +359,21 @@ class LEtat(unittest.TestCase):
         )
 
 
+    def test_status_lists_the_plugins_that_are_off(self):
+        f = faits()
+        f["settings"] = dict(
+            f["settings"], DECK_PLUGINS_OFF=" tiling , ,sound,"
+        )
+        lignes = statut.status_lines(f)
+        self.assertEqual("Games: on", lignes[4])
+        self.assertEqual("Plugins off: tiling, sound", lignes[5])
+
+    def test_status_has_no_plugin_line_when_none_is_off(self):
+        self.assertFalse(
+            [l for l in statut.status_lines(faits()) if "Plugins" in l]
+        )
+
+
 class LeDiagnostic(unittest.TestCase):
     def setUp(self):
         todo_i18n._current_lang = "en"
@@ -514,6 +535,30 @@ class LeDiagnostic(unittest.TestCase):
                 "TODO › Stream Deck › Games on/off",
             ),
             statut.diagnosis_lines(f),
+        )
+
+
+    def test_diagnosis_names_an_unknown_plugin_id(self):
+        f = faits()
+        f["settings"] = dict(
+            f["settings"], DECK_PLUGINS_OFF="tiling, nope ,sound"
+        )
+        problemes = statut.diagnosis_lines(f)
+        self.assertEqual(
+            [
+                (
+                    "Unknown plugin in DECK_PLUGINS_OFF: nope",
+                    "TODO › Stream Deck › Plugins on/off",
+                )
+            ],
+            [p for p in problemes if "DECK_PLUGINS_OFF" in p[0]],
+        )
+
+    def test_diagnosis_accepts_known_plugin_ids(self):
+        f = faits()
+        f["settings"] = dict(f["settings"], DECK_PLUGINS_OFF="tiling,sound")
+        self.assertFalse(
+            [p for p in statut.diagnosis_lines(f) if "PLUGINS" in p[0]]
         )
 
 

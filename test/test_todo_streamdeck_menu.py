@@ -623,5 +623,80 @@ class LeReglageDesJeux(Menu):
         entree.assert_called_once_with()
 
 
+class LeReglageDesPlugins(Menu):
+    def setUp(self):
+        super().setUp()
+        racine = self.home / "depot"
+        plugins = racine / "script/stream_deck/erplibre_streamdeck/plugins"
+        plugins.mkdir(parents=True)
+        for nom in ("sound", "tiling"):
+            (plugins / f"{nom}.py").write_text("")
+        patch = mock.patch.object(streamdeck_menu, "RACINE", str(racine))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_it_lists_the_ids_with_their_state(self):
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("DECK_PLUGINS_OFF=tiling\n")
+        _, sortie, _ = self.jouer("_streamdeck_plugins_setting", ("0",))
+        self.assertIn("[1] sound: on", sortie)
+        self.assertIn("[2] tiling: off", sortie)
+
+    def test_choosing_an_id_turns_it_off_and_writes_the_setting(self):
+        commandes, sortie, _ = self.jouer(
+            "_streamdeck_plugins_setting", ("2",)
+        )
+        self.assertEqual(
+            "DECK_PLUGINS_OFF=tiling\n", self.reglages.read_text()
+        )
+        self.assertIn("tiling: off", sortie)
+        self.assertEqual([], commandes)
+
+    def test_choosing_an_off_id_turns_it_on_and_keeps_the_others(self):
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text(
+            "GAMES=off\nDECK_PLUGINS_OFF=tiling,ghost,sound\n"
+        )
+        self.jouer("_streamdeck_plugins_setting", ("2",))
+        self.assertEqual(
+            "GAMES=off\nDECK_PLUGINS_OFF=ghost,sound\n",
+            self.reglages.read_text(),
+        )
+
+    def test_back_writes_nothing(self):
+        self.jouer("_streamdeck_plugins_setting", ("0",))
+        self.assertFalse(self.reglages.exists())
+
+    def test_an_active_unit_is_restarted(self):
+        self.reponses_sondes[
+            ("systemctl", "--user", "is-active", UNITE)
+        ] = (0, "active\n")
+        commandes, _, _ = self.jouer("_streamdeck_plugins_setting", ("1",))
+        self.assertEqual([f"systemctl --user restart {UNITE}"], commandes)
+
+    def test_a_stopped_unit_stays_stopped(self):
+        commandes, _, _ = self.jouer("_streamdeck_plugins_setting", ("1",))
+        self.assertEqual([], commandes)
+
+    def test_without_plugins_it_says_so(self):
+        with mock.patch.object(
+            streamdeck_menu.service, "deck_plugin_ids", return_value=[]
+        ):
+            _, sortie, _ = self.jouer("_streamdeck_plugins_setting", ())
+        self.assertIn("No deck plugins found.", sortie)
+
+    def test_the_submenu_offers_the_entry(self):
+        todo = TODO.__new__(TODO)
+        with (
+            mock.patch.object(TODO, "_streamdeck_plugins_setting") as entree,
+            mock.patch.object(
+                streamdeck_menu.click, "prompt", side_effect=["12", "0"]
+            ),
+            mock.patch.object(TODO, "fill_help_info", return_value=""),
+        ):
+            todo.prompt_execute_streamdeck()
+        entree.assert_called_once_with()
+
+
 if __name__ == "__main__":
     unittest.main()

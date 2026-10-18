@@ -200,6 +200,7 @@ def collect(
             run(cmd_unit("is-active"))[1].strip() if unit_file else ""
         ),
         "settings": service.read_settings(service.settings_path(environ)),
+        "plugin_ids": service.deck_plugin_ids(root, environ),
         "lock": tenu[:2] if tenu else None,
         "lock_running": deck_lock.holder_running(tenu) if tenu else False,
         "lock_pids": deck_lock.holder_pids(verrou) if tenu else [],
@@ -278,12 +279,17 @@ def status_lines(facts):
         jeux = "%s %s" % (t("Games:"), valeur_jeux)
     else:
         jeux = "%s %r" % (t("Games: unknown value"), valeur_jeux)
+    coupes = service.plugins_off(facts["settings"])
+    lignes_plugins = (
+        ["%s %s" % (t("Plugins off:"), ", ".join(coupes))] if coupes else []
+    )
     return [
         niveau,
         ligne_ext,
         indicateurs,
         unite,
         jeux,
+        *lignes_plugins,
         verrou,
         decks,
         (
@@ -358,6 +364,15 @@ def diagnosis_lines(facts):
                 t("TODO › Stream Deck › Games on/off"),
             )
         )
+    for identifiant in service.plugins_off(facts["settings"]):
+        if identifiant not in facts["plugin_ids"]:
+            problemes.append(
+                (
+                    "%s %s"
+                    % (t("Unknown plugin in DECK_PLUGINS_OFF:"), identifiant),
+                    t("TODO › Stream Deck › Plugins on/off"),
+                )
+            )
     if not facts["unit_file"]:
         problemes.append(
             (t("The deck service is not installed"), STREAMDECK_INSTALL)

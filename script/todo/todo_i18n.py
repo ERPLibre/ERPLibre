@@ -455,6 +455,26 @@ TRANSLATIONS = {
         "fr": "TODO › Stream Deck › Jeux on/off",
         "en": "TODO › Stream Deck › Games on/off",
     },
+    "Plugins on/off - Enable or disable deck plugins": {
+        "fr": "🧩 Plugins on/off - Activer ou désactiver les plugins du deck",
+        "en": "🧩 Plugins on/off - Enable or disable deck plugins",
+    },
+    "No deck plugins found.": {
+        "fr": "Aucun plugin du deck trouvé.",
+        "en": "No deck plugins found.",
+    },
+    "Deck plugins:": {"fr": "Plugins du deck :", "en": "Deck plugins:"},
+    "on": {"fr": "actif", "en": "on"},
+    "off": {"fr": "coupé", "en": "off"},
+    "Plugins off:": {"fr": "Plugins coupés :", "en": "Plugins off:"},
+    "Unknown plugin in DECK_PLUGINS_OFF:": {
+        "fr": "Plugin inconnu dans DECK_PLUGINS_OFF :",
+        "en": "Unknown plugin in DECK_PLUGINS_OFF:",
+    },
+    "TODO › Stream Deck › Plugins on/off": {
+        "fr": "TODO › Stream Deck › Plugins on/off",
+        "en": "TODO › Stream Deck › Plugins on/off",
+    },
     "Enabled": {"fr": "Activés", "en": "Enabled"},
     "Disabled": {"fr": "Désactivés", "en": "Disabled"},
     "No Stream Deck plugged in": {

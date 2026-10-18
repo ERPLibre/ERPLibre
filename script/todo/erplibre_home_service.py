@@ -22,6 +22,7 @@ DEFAULTS = {
     "DECK_PROGRAM": "tiler",
     "RESTART_AFTER_GAME": "yes",
     "GAMES": "on",
+    "DECK_PLUGINS_OFF": "",
 }
 
 
@@ -30,6 +31,44 @@ def games_enabled(settings):
     GAMES vaut « on », ou manque (DEFAULTS). « off » et toute autre valeur
     les coupent, comme deck_games_enabled du shell."""
     return settings.get("GAMES", DEFAULTS["GAMES"]) == "on"
+
+
+def plugins_off(settings):
+    """Les identifiants que DECK_PLUGINS_OFF coupe, comme deck_plugins_off
+    du shell : valeur coupée aux virgules, tous les blancs retirés, morceau
+    vide ignoré."""
+    morceaux = (
+        "".join(part.split())
+        for part in settings.get("DECK_PLUGINS_OFF", "").split(",")
+    )
+    return [part for part in morceaux if part]
+
+
+def deck_plugin_ids(repo_root, environ=None):
+    """Les identifiants des plugins du deck présents sur disque, triés et
+    sans doublon : ceux du dépôt et ceux de l'utilisateur. Les fichiers
+    « _* » sont ignorés, et rien n'est importé : l'import demande le venv
+    Stream Deck."""
+    dossiers = (
+        os.path.join(
+            repo_root,
+            "script",
+            "stream_deck",
+            "erplibre_streamdeck",
+            "plugins",
+        ),
+        os.path.join(config_home(environ), "erplibre-home", "deck-plugins"),
+    )
+    ids = set()
+    for dossier in dossiers:
+        try:
+            noms = os.listdir(dossier)
+        except OSError:
+            continue
+        for nom in noms:
+            if nom.endswith(".py") and not nom.startswith("_"):
+                ids.add(nom[:-3])
+    return sorted(ids)
 
 
 def config_home(environ=None):
