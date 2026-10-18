@@ -20,19 +20,20 @@ def _setup(ctx):
     st.last_touch = 0.0
 
 
-def _tile_via_dbus(ctx, grid_cols, grid_rows, c1, r1, c2, r2):
+def _tile_via_dbus(dbus, log, grid_cols, grid_rows, c1, r1, c2, r2):
     """Ask the extension to tile the focused window onto the box
-    (c1, r1)-(c2, r2) of a grid_cols x grid_rows grid."""
+    (c1, r1)-(c2, r2) of a grid_cols x grid_rows grid. Runs outside the
+    lock: only `dbus` and `log`."""
     try:
-        r = ctx.dbus.call(
+        r = dbus.call(
             "TileWindow", grid_cols, grid_rows, c1, r1, c2, r2, timeout=3
         )
         if r.true:
             return True
-        ctx.log(f"Tiler dbus: {r.stdout} {r.stderr}")
+        log(f"Tiler dbus: {r.stdout} {r.stderr}")
         return False
     except Exception as e:
-        ctx.log(f"Tiler dbus error: {e}")
+        log(f"Tiler dbus error: {e}")
         return False
 
 
@@ -60,21 +61,32 @@ def _handle(ctx, key):
         st.corner1 = (col, row)
         ctx.render()
         return
+    rows = ctx.geo.rows
     c1 = min(st.corner1[0], col)
     r1 = min(st.corner1[1], row)
     c2 = max(st.corner1[0], col)
     r2 = max(st.corner1[1], row)
-    if _tile_via_dbus(ctx, cols, ctx.geo.rows, c1, r1, c2, r2):
-        ctx.flash(True)
-    else:
-        ctx.flash(
-            False,
-            f"TileWindow({cols}x{ctx.geo.rows} "
-            f"{c1},{r1}-{c2},{r2}) failed via D-Bus",
-        )
+    # The selection ends with this press: the idle timeout has nothing
+    # left to cancel once the job hands its result back.
     st.last_touch = 0.0
     st.corner1 = None
-    ctx.home()
+    dbus, log = ctx.dbus, ctx.log
+
+    def done(ctx, ok, error):
+        if ok and error is None:
+            ctx.flash(True)
+        else:
+            ctx.flash(
+                False,
+                f"TileWindow({cols}x{rows} "
+                f"{c1},{r1}-{c2},{r2}) failed via D-Bus",
+            )
+        ctx.home()
+
+    ctx.run_blocking(
+        lambda: _tile_via_dbus(dbus, log, cols, rows, c1, r1, c2, r2),
+        done,
+    )
 
 
 def _tick(ctx, now):
