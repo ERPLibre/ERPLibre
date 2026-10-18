@@ -121,15 +121,22 @@ def page_keys(geo):
     return keys
 
 
-def _call(ctx, method, sid):
+def _call(dbus, log, method, sid):
     """Call the extension with the session id; True when it answers
-    `true`. A failure goes to the journal."""
-    r = ctx.dbus.call(method, sid, timeout=2)
+    `true`. A failure goes to the journal. Runs as a job, outside the
+    lock: only `dbus`, `log` and its arguments."""
+    r = dbus.call(method, sid, timeout=2)
     if not r.true:
         out = (r.stdout + r.stderr).strip()
         verb = "returned" if r.ok else "failed"
-        ctx.log(f"{method}({sid}) {verb}: {out}")
+        log(f"{method}({sid}) {verb}: {out}")
     return r.true
+
+
+def _flash_home(ctx, ok, error):
+    """then() of a session action: OK or ERR, then the home screen."""
+    ctx.flash(bool(ok) and error is None)
+    ctx.home()
 
 
 def _render(ctx):
@@ -183,10 +190,12 @@ def _handle(ctx, key):
     if not cs or key == cs.get("back") or not sid:
         ctx.home()
         return
+    dbus, log = ctx.dbus, ctx.log
     for name, method in _ACTIONS:
         if name in cs and key == cs[name]:
-            ctx.flash(_call(ctx, method, sid))
-            ctx.home()
+            ctx.run_blocking(
+                lambda: _call(dbus, log, method, sid), _flash_home
+            )
             return
 
 
