@@ -477,8 +477,9 @@ complete it and bind the code; 16 to 22 were settled while building.
     something other than integers, is skipped.
 19. **Tile guard.** A tile provider's `items()` is listed inside the
     guard, and a face that is not a `KeyFace` paints its key empty.
-20. **Shutdown.** `shutdown(ctx)` runs with the kernel lock held and must
-    not take `ctx.locked()` nor wait for a thread that does.
+20. **Shutdown.** `shutdown(ctx)` runs with the kernel lock held when the app
+    takes it within 5 s, and without it otherwise; it never takes
+    `ctx.locked()` nor waits for a thread that does.
 21. **Timer entry.** The TIMER home entry is `timers.enter(ctx)`.
 22. **Scenarios.** Scenarios do not pin the coincidence of independent
     tick schedules: two ticks of different periods are never asserted to

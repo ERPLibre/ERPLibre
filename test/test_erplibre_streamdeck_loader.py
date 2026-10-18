@@ -99,7 +99,6 @@ class LoaderTest(LoaderCase):
         self.assertEqual("off", self.status(report)["dup"][0])
 
 
-
 SHAPED = (
     "from erplibre_streamdeck.plugin import *\n"
     "PLUGIN = Plugin(api=PLUGIN_API, {kw})\n"

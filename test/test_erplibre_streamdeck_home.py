@@ -247,6 +247,26 @@ class IsolationTest(DashboardTest):
         k.handle_key(key, True)
         self.assertEqual("err", k.flash_result)
 
+    def test_face_failure_is_journaled_once_per_key(self):
+        def face_(ctx, item):
+            if item == "bad":
+                raise RuntimeError("face")
+            return KeyFace((3, 3, 3), item)
+
+        z = LoadedPlugin("z", Plugin(api=PLUGIN_API, tiles=[
+            TileProvider(5, lambda ctx: ["bad", "good"], face_,
+                         lambda c, i: None)]), "repo", Path("z.py"))
+        journal = io.StringIO()
+        with contextlib.redirect_stderr(journal):
+            k = self.kernel(extra=[z])
+            for _ in range(3):
+                k.render()
+        lines = [
+            ln for ln in journal.getvalue().splitlines()
+            if "tile face" in ln and "failed" in ln
+        ]
+        self.assertEqual(1, len(lines), lines)
+
 
 if __name__ == "__main__":
     unittest.main()
