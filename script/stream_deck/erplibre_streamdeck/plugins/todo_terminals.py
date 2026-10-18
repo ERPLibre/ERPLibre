@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 
-from erplibre_streamdeck import paths
+from erplibre_streamdeck import jsonfile, paths
 from erplibre_streamdeck.plugin import (
     PLUGIN_API, HomeButton, KeyFace, Page, Plugin, TileProvider,
 )
@@ -67,11 +67,7 @@ def save_registry(entries):
     """Replace the registry on disk (temporary file, then rename)."""
     path = registry_path()
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(entries, f)
-        os.replace(tmp, path)
+        jsonfile.write_atomic(path, entries, indent=None)
     except OSError as e:
         print(f"todo terminals save: {e}", file=sys.stderr, flush=True)
 
