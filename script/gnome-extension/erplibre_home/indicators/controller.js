@@ -16,6 +16,7 @@ import {parseList} from '../lib/settings.js';
 import {buildTerminalArgv, findTerminal, spawnDetached}
     from '../lib/spawn.js';
 import {streamDeckPython, galleryServerCommand} from '../lib/project-root.js';
+import {launchRefusal} from '../lib/gallery-launch.js';
 
 const GALLERY_PORT = 8042;
 const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
@@ -336,12 +337,22 @@ class ControllerIndicator extends PanelMenu.Button {
             `${GALLERY_URL}/launch/${gameId}`);
         session.send_and_read_async(
             message, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                let bytes;
                 try {
-                    sess.send_and_read_finish(result);
+                    bytes = sess.send_and_read_finish(result);
                 } catch (_e) {
                     _notify(PROJECT_NAME,
                         _('Could not launch {id}: gallery offline?')
                             .replace('{id}', gameId));
+                    return;
+                }
+                const why = launchRefusal(message.get_status(),
+                    new TextDecoder().decode(bytes.get_data() ?? []));
+                if (why) {
+                    _notify(PROJECT_NAME,
+                        _('Could not launch {id}: {why}')
+                            .replace('{id}', gameId)
+                            .replace('{why}', why));
                 }
             });
     }

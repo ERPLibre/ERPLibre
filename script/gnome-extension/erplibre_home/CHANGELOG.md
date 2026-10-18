@@ -49,6 +49,9 @@ migrations that are not auto-applied.
   `make erplibre_home_install_extension`.
 
 ### Fixed
+- Launching a game from the menu says why the gallery refused it — the
+  games turned off by `GAMES=off`, an unknown game — instead of failing
+  silently; only an unreachable gallery was reported before.
 - GNOME Shell 51: `shell-version` declares it, and `lib/shell-compat.js`
   covers the APIs it drops. Every indicator mounts again (`St.BoxLayout`
   `vertical` is gone), `ListWindows` and `ApplyLayout` see the windows

@@ -334,6 +334,9 @@ msgstr ""
 msgid "Could not launch {id}: gallery offline?"
 msgstr ""
 
+msgid "Could not launch {id}: {why}"
+msgstr ""
+
 msgid "Active sessions"
 msgstr ""
 
