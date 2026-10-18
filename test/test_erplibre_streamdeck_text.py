@@ -1,96 +1,19 @@
 #!/usr/bin/env python3
-"""Unit tests for the pure helpers in erplibre_streamdeck.py.
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Pure helpers of the deck program: text cutting, Claude tile colour and
+label, the TODO menu parser, the D-Bus recheck. They run against the
+single file until the module that owns each helper exists."""
 
-Avoids importing PIL or Stream Deck SDKs by surgically pulling the
-helper functions through `importlib` after stubbing the heavy modules
-that the file imports unconditionally at top.
-"""
-
-from __future__ import annotations
-
-import importlib
-import importlib.util
+import os
 import sys
-import types
 import unittest
-from pathlib import Path
+from unittest import mock
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import streamdeck_stubs as S  # noqa: E402
 
-def _load_erplibre_streamdeck():
-    """Import erplibre_streamdeck.py with PIL and StreamDeck stubbed.
-
-    The chunk helpers we test are evaluated at module import time, so
-    we cannot let the PIL / StreamDeck imports fail. The stubs below
-    expose the bare minimum the import path touches; the helpers we
-    actually call are pure-Python.
-    """
-    if "erplibre_streamdeck" in sys.modules:
-        return sys.modules["erplibre_streamdeck"]
-
-    here = Path(__file__).resolve().parent
-
-    # Stub PIL with the names the file dereferences at import.
-    pil = types.ModuleType("PIL")
-    image = types.ModuleType("PIL.Image")
-    image_draw = types.ModuleType("PIL.ImageDraw")
-    image_font = types.ModuleType("PIL.ImageFont")
-    image.new = lambda *a, **kw: None
-    image_draw.Draw = lambda *a, **kw: None
-    image_font.load_default = lambda *a, **kw: None
-    pil.Image = image
-    pil.ImageDraw = image_draw
-    pil.ImageFont = image_font
-    sys.modules.setdefault("PIL", pil)
-    sys.modules.setdefault("PIL.Image", image)
-    sys.modules.setdefault("PIL.ImageDraw", image_draw)
-    sys.modules.setdefault("PIL.ImageFont", image_font)
-
-    sdk = types.ModuleType("StreamDeck")
-    devmgr = types.ModuleType("StreamDeck.DeviceManager")
-    helpers = types.ModuleType("StreamDeck.ImageHelpers")
-    pilhelper = types.ModuleType("StreamDeck.ImageHelpers.PILHelper")
-    transport = types.ModuleType("StreamDeck.Transport")
-    transport_t = types.ModuleType("StreamDeck.Transport.Transport")
-
-    devmgr.DeviceManager = lambda *a, **kw: None
-    pilhelper.to_native_key_format = lambda *a, **kw: None
-    pilhelper.create_image = lambda *a, **kw: None
-
-    class _TransportError(Exception):
-        pass
-
-    transport_t.TransportError = _TransportError
-    sdk.DeviceManager = devmgr
-    sdk.ImageHelpers = helpers
-    helpers.PILHelper = pilhelper
-    sdk.Transport = transport
-    transport.Transport = transport_t
-
-    sys.modules.setdefault("StreamDeck", sdk)
-    sys.modules.setdefault("StreamDeck.DeviceManager", devmgr)
-    sys.modules.setdefault("StreamDeck.ImageHelpers", helpers)
-    sys.modules.setdefault("StreamDeck.ImageHelpers.PILHelper",
-                           pilhelper)
-    sys.modules.setdefault("StreamDeck.Transport", transport)
-    sys.modules.setdefault("StreamDeck.Transport.Transport",
-                           transport_t)
-
-    # Stub the optional translator dependency next to erplibre_streamdeck.py.
-    sys.modules.setdefault("translator", types.ModuleType("translator"))
-
-    # deck_lock (stdlib only) is imported by name: the real module loads.
-    if str(here) not in sys.path:
-        sys.path.insert(0, str(here))
-
-    spec = importlib.util.spec_from_file_location(
-        "erplibre_streamdeck", str(here / "erplibre_streamdeck.py"))
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["erplibre_streamdeck"] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-GT = _load_erplibre_streamdeck()
+GT = S.load_monolith()
 
 
 class RecheckDbusTest(unittest.TestCase):

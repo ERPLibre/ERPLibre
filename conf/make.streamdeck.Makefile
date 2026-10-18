@@ -229,7 +229,7 @@ streamdeck_translator_unittest: $(STREAMDECK_PY)
 .PHONY: streamdeck_tiler_unittest
 streamdeck_tiler_unittest: $(STREAMDECK_PY)
 	@$(STREAMDECK_PY) -m unittest \
-		discover -s ./script/stream_deck -p "test_erplibre_streamdeck*.py" -v
+		discover -s ./test -p "test_erplibre_streamdeck*.py" -v
 
 .PHONY: streamdeck_translator_stream
 streamdeck_translator_stream: $(STREAMDECK_PY)
