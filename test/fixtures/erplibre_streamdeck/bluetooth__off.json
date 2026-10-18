@@ -279,7 +279,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl power on"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl power on",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -486,7 +489,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl disconnect 00:00:5E:00:53:10"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl disconnect 00:00:5E:00:53:10",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -942,7 +948,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl power on"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl power on",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -1179,7 +1188,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl disconnect 00:00:5E:00:53:10"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl disconnect 00:00:5E:00:53:10",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -1416,7 +1428,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl connect 00:00:5E:00:53:11"
+     "bluetoothctl connect 00:00:5E:00:53:11",
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -2032,7 +2047,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl power on"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl power on",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -2374,7 +2392,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl disconnect 00:00:5E:00:53:10"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl disconnect 00:00:5E:00:53:10",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -2716,7 +2737,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl connect 00:00:5E:00:53:11"
+     "bluetoothctl connect 00:00:5E:00:53:11",
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -3854,7 +3878,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl power on"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl power on",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -4451,7 +4478,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl disconnect 00:00:5E:00:53:10"
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl disconnect 00:00:5E:00:53:10",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {
@@ -5048,7 +5078,10 @@
    {
     "do": "threads",
     "effects": [
-     "bluetoothctl connect 00:00:5E:00:53:11"
+     "bluetoothctl connect 00:00:5E:00:53:11",
+     "bluetoothctl devices Connected",
+     "bluetoothctl devices Paired",
+     "bluetoothctl show"
     ],
     "files": {
      "CONFIG/erplibre-home/layouts.json": {

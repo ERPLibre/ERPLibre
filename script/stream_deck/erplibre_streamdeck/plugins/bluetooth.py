@@ -221,10 +221,24 @@ def _render(ctx):
             ctx.set_key(key, colors.EMPTY, "")
 
 
-def _render_then(ctx, _result, _error):
-    """then() of a bluetooth job: the page is drawn again from the
-    cache, with no flash, success or not; the next poll shows the
-    adapter's new state."""
+def _job(action):
+    """work() of a bluetooth job: action(), then the adapter read again
+    (`_read`), so the result carries the state the action left. Runs
+    outside the lock: only `action` and module functions."""
+
+    def work():
+        action()
+        return _read()
+
+    return work
+
+
+def _render_then(ctx, data, error):
+    """then() of a bluetooth job: the adapter read after the action
+    goes into the cache, as the poll stores it, and the page is drawn
+    again, with no flash, success or not."""
+    if error is None:
+        _store(ctx, data)
     ctx.render()
 
 
@@ -244,7 +258,9 @@ def _handle(ctx, key):
             )
             ctx.render()
             return
-        ctx.run_blocking(lambda: _bt_set_power(not powered), _render_then)
+        ctx.run_blocking(
+            _job(lambda: _bt_set_power(not powered)), _render_then
+        )
         return
     # A device key is live even when blank (adapter off): the press
     # acts on the cached device at its slot.
@@ -253,7 +269,7 @@ def _handle(ctx, key):
         if idx < len(devices):
             mac, _name, connected = devices[idx]
             switch = _bt_disconnect if connected else _bt_connect
-            ctx.run_blocking(lambda: switch(mac), _render_then)
+            ctx.run_blocking(_job(lambda: switch(mac)), _render_then)
 
 
 PLUGIN = Plugin(
