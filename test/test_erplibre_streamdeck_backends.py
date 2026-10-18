@@ -14,8 +14,24 @@ import streamdeck_stubs as S  # noqa: E402
 
 S.install()
 from erplibre_streamdeck import settings  # noqa: E402
-from erplibre_streamdeck.plugins import bluetooth  # noqa: E402
+from erplibre_streamdeck.plugins import bluetooth, sound  # noqa: E402
 from erplibre_streamdeck.ui import render  # noqa: E402
+
+
+WPCTL_STATUS = """\
+Audio
+ ├─ Devices:
+ │      40. Built-in Audio                      [alsa]
+ │
+ ├─ Sinks:
+ │  *   51. Built-in Audio Analog Stereo        [vol: 0.40]
+ │      62. Demo Headset                        [vol: 0.70]
+ │
+ ├─ Sources:
+ │  *   52. Built-in Audio Analog Stereo        [vol: 1.00 MUTED]
+ │
+ ├─ Filters:
+"""
 
 
 def done(stdout="", code=0):
@@ -29,6 +45,54 @@ def by_argv(answers):
         return answers.get(tuple(argv[:2]), done("", 1))
 
     return run
+
+
+class WpctlTest(unittest.TestCase):
+    def test_get_volume_and_mute(self):
+        with mock.patch(
+            "subprocess.run", return_value=done("Volume: 0.50 [MUTED]\n")
+        ):
+            self.assertEqual((50, True), sound._wpctl_get("@X@"))
+
+    def test_get_volume_not_muted(self):
+        with mock.patch(
+            "subprocess.run", return_value=done("Volume: 1.00\n")
+        ):
+            self.assertEqual((100, False), sound._wpctl_get("@X@"))
+
+    def test_get_malformed(self):
+        with mock.patch("subprocess.run", return_value=done("garbage")):
+            self.assertEqual((None, None), sound._wpctl_get("@X@"))
+
+    def test_get_failure(self):
+        with mock.patch("subprocess.run", return_value=done("", 1)):
+            self.assertEqual((None, None), sound._wpctl_get("@X@"))
+
+    def test_list_devices(self):
+        with mock.patch("subprocess.run", return_value=done(WPCTL_STATUS)):
+            sinks = sound._wpctl_list_devices("Sinks")
+            sources = sound._wpctl_list_devices("Sources")
+        self.assertEqual(
+            [
+                {"id": 51, "default": True,
+                 "name": "Built-in Audio Analog Stereo"},
+                {"id": 62, "default": False, "name": "Demo Headset"},
+            ],
+            sinks,
+        )
+        self.assertEqual([52], [d["id"] for d in sources])
+
+    def test_list_devices_failure(self):
+        with mock.patch("subprocess.run", return_value=done("", 1)):
+            self.assertEqual([], sound._wpctl_list_devices("Sinks"))
+
+    def test_default_short_is_last_word_cut_to_six(self):
+        with mock.patch("subprocess.run", return_value=done(WPCTL_STATUS)):
+            self.assertEqual("Stereo", sound._wpctl_default_short("Sinks"))
+
+    def test_default_short_empty_without_devices(self):
+        with mock.patch("subprocess.run", return_value=done("", 1)):
+            self.assertEqual("", sound._wpctl_default_short("Sinks"))
 
 
 class BluetoothTest(unittest.TestCase):
