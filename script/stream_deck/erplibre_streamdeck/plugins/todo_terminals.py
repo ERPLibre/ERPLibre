@@ -231,7 +231,9 @@ def _refresh_session(ctx, live):
 
 
 def _capture_due(ctx):
-    """A launched terminal awaits its capture and its time has come."""
+    """A launched terminal awaits its capture and its time has come.
+    On any page, not only home: the window is captured on time, and its
+    ERR flash, when no window has the focus, shows on the page shown."""
     st = ctx.state()
     return bool(st.capture_at) and time.monotonic() >= st.capture_at
 

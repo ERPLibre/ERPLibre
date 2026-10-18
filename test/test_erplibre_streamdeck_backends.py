@@ -712,13 +712,19 @@ class CachedRenderTest(unittest.TestCase):
         h.boot()
         return h
 
-    def assert_render_runs_nothing(self, h, page):
-        """Render `page` with subprocess.run raising: it stays shown
-        (a raising render sends the deck home) and runs no process."""
+    def assert_render_runs_nothing(self, h, page, show=None):
+        """show() (when given), then render `page`, with subprocess.run
+        raising: it stays shown (a raising render sends the deck home)
+        and no process starts, through run, check_output or Popen (the
+        harness records all three in proc.calls)."""
         refuse = mock.Mock(side_effect=AssertionError("process in render"))
+        calls = list(h.proc.calls)
         with mock.patch("subprocess.run", refuse):
+            if show is not None:
+                show()
             h.target.kernel.render()
         self.assertEqual(0, refuse.call_count)
+        self.assertEqual(calls, h.proc.calls)
         self.assertEqual(page, h.target.page())
 
     def poll(self, plugin, index):
@@ -731,6 +737,19 @@ class CachedRenderTest(unittest.TestCase):
         "todo_session": {"window_id": "101"},
         "layout_delete_confirm": {"slot": 1},
     }
+
+    def test_no_data_page_or_home_face_runs_a_process(self):
+        """Before any poll: each page reached the way the harness's
+        goto reaches it, then rendered."""
+        for cols, rows in S.GEOMETRIES:
+            with self.subTest(geometry=f"{cols}x{rows}"):
+                h = self.start(P.full_world, cols, rows)
+                self.assert_render_runs_nothing(h, "idle")
+                for page in sorted(h.target.kernel.pages):
+                    seed = self.SEEDS.get(page, {})
+                    self.assert_render_runs_nothing(
+                        h, page, lambda: h.target.goto(page, **seed)
+                    )
 
     def test_no_page_or_home_face_runs_a_process(self):
         for cols, rows in S.GEOMETRIES:
