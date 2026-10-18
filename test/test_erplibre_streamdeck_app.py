@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""The deck program's start and stop: build(), read_plugins_off(),
+"""The deck program's start and stop: build(), read_deck_settings(),
 and main()'s shutdown."""
 
 import contextlib
@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
 
 app = S.load_package()
+from erplibre_streamdeck import context  # noqa: E402
 from erplibre_streamdeck import kernel as K  # noqa: E402
 from erplibre_streamdeck import paths  # noqa: E402
 from erplibre_streamdeck.plugin import (  # noqa: E402
@@ -66,10 +67,10 @@ class AppCase(unittest.TestCase):
             PLUGIN_SRC.format(kw=kw), encoding="utf-8"
         )
 
-    def build(self, off=()):
+    def build(self, off=(), settings=None):
         return app.build(
             self.deck, plugins_off=ALL_REPO_OFF + tuple(off),
-            user_dir=self.user,
+            user_dir=self.user, settings=settings,
         )
 
 
@@ -117,13 +118,38 @@ class BuildTest(AppCase):
         self.assertIn("tile: key 5 paint failed", self.journal.getvalue())
 
 
-class ReadPluginsOffTest(AppCase):
-    def test_one_id_per_line_from_the_settings_library(self):
-        conf = S.CONFIG / "erplibre-home" / "streamdeck.conf"
-        conf.write_text("DECK_PLUGINS_OFF= a , ,b\n", encoding="utf-8")
-        self.assertEqual(["a", "b"], app.read_plugins_off())
+class ReadDeckSettingsTest(AppCase):
+    DEFAULTS = {"plugins_off": [], "session_refresh_sec": 1.0}
 
-    def test_bash_missing_or_timing_out_gives_none_and_a_line(self):
+    def conf(self, text):
+        path = S.CONFIG / "erplibre-home" / "streamdeck.conf"
+        path.write_text(text, encoding="utf-8")
+
+    def test_ids_and_refresh_from_the_settings_library(self):
+        self.conf("DECK_PLUGINS_OFF= a , ,b\nDECK_SESSION_REFRESH_SEC=2\n")
+        self.assertEqual(
+            {"plugins_off": ["a", "b"], "session_refresh_sec": 2.0},
+            app.read_deck_settings(),
+        )
+
+    def test_missing_file_gives_the_defaults(self):
+        self.assertEqual(self.DEFAULTS, app.read_deck_settings())
+
+    def test_invalid_refresh_reads_as_one(self):
+        for value in ("0.4", "61", "abc", ""):
+            self.conf(f"DECK_SESSION_REFRESH_SEC={value}\n")
+            self.assertEqual(
+                1.0, app.read_deck_settings()["session_refresh_sec"], value
+            )
+
+    def test_half_second_and_sixty_are_kept(self):
+        for value, expected in (("0.5", 0.5), ("60", 60.0)):
+            self.conf(f"DECK_SESSION_REFRESH_SEC={value}\n")
+            self.assertEqual(
+                expected, app.read_deck_settings()["session_refresh_sec"]
+            )
+
+    def test_bash_missing_or_timing_out_gives_defaults_and_a_line(self):
         for exc in (
             FileNotFoundError("bash"),
             subprocess.TimeoutExpired("bash", 10),
@@ -132,18 +158,36 @@ class ReadPluginsOffTest(AppCase):
             with mock.patch.object(
                 app.subprocess, "run", side_effect=exc
             ):
-                self.assertEqual([], app.read_plugins_off())
-            self.assertIn(
-                "DECK_PLUGINS_OFF unreadable", self.journal.getvalue()
-            )
+                self.assertEqual(self.DEFAULTS, app.read_deck_settings())
+            self.assertIn("deck settings unreadable", self.journal.getvalue())
 
-    def test_library_failing_gives_none_and_its_stderr(self):
+    def test_library_failing_gives_defaults_and_its_stderr(self):
         missing = self.user / "no_such_settings.sh"
         with mock.patch.object(app.paths, "SETTINGS_LIB", missing):
-            self.assertEqual([], app.read_plugins_off())
+            self.assertEqual(self.DEFAULTS, app.read_deck_settings())
         journal = self.journal.getvalue()
-        self.assertIn("DECK_PLUGINS_OFF unreadable", journal)
+        self.assertIn("deck settings unreadable", journal)
         self.assertIn("no_such_settings.sh", journal)
+
+    def test_defaults_are_not_shared_between_calls(self):
+        with mock.patch.object(
+            app.subprocess, "run", side_effect=FileNotFoundError("bash")
+        ):
+            app.read_deck_settings()["plugins_off"].append("x")
+            self.assertEqual([], app.read_deck_settings()["plugins_off"])
+
+
+class BuildSettingsTest(AppCase):
+    def test_settings_reach_the_kernel_and_the_context(self):
+        k = self.build(settings={"session_refresh_sec": 2.5})
+        self.assertEqual({"session_refresh_sec": 2.5}, k.settings)
+        ctx = context.Context(k, "p")
+        self.assertEqual(2.5, ctx.setting("session_refresh_sec"))
+        self.assertEqual(7, ctx.setting("nope", 7))
+        self.assertIsNone(ctx.setting("nope"))
+
+    def test_no_settings_is_an_empty_dict(self):
+        self.assertEqual({}, self.build().settings)
 
 
 class RecordingDeck(S.FakeDeck):
@@ -169,7 +213,7 @@ class MainTest(AppCase):
             api=PLUGIN_API, shutdown=lambda ctx: self.shut.append(1),
         ), "user", Path("p.py"))
 
-        def build(d, plugins_off=()):
+        def build(d, plugins_off=(), settings=None):
             kernel = K.Kernel(d, [plugin])
             kernel_hook(kernel)
             self.kernel = kernel
@@ -180,7 +224,10 @@ class MainTest(AppCase):
         stack.enter_context(mock.patch.object(S, "DEVICES", [deck]))
         stack.enter_context(mock.patch.object(app, "build", build))
         stack.enter_context(
-            mock.patch.object(app, "read_plugins_off", list)
+            mock.patch.object(
+                app, "read_deck_settings",
+                lambda: dict(plugins_off=[], session_refresh_sec=1.0),
+            )
         )
         stack.enter_context(
             mock.patch.object(render, "set_key", S.recorder())

@@ -698,5 +698,104 @@ class LeReglageDesPlugins(Menu):
         entree.assert_called_once_with()
 
 
+class LeReglageDeLaPeriode(Menu):
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+
+    def test_it_shows_the_value_and_accepts_a_valid_period(self):
+        for langue in ("fr", "en"):
+            with self.subTest(langue=langue):
+                todo_i18n._current_lang = langue
+                if self.reglages.exists():
+                    self.reglages.unlink()
+                commandes, sortie, _ = self.jouer(
+                    "_streamdeck_session_refresh_setting", (" 2 ",)
+                )
+                self.assertIn(
+                    "Rafraîchissement des sessions : 1 s"
+                    if langue == "fr"
+                    else "Session refresh: 1 s",
+                    sortie,
+                )
+                self.assertEqual(
+                    "DECK_SESSION_REFRESH_SEC=2\n",
+                    self.reglages.read_text(),
+                )
+                self.assertEqual([], commandes)
+
+    def test_entry_refuses_out_of_range(self):
+        for langue, bornes in (
+            ("fr", "de 0.5 à 60 secondes"),
+            ("en", "0.5 to 60 seconds"),
+        ):
+            for reponse in ("0.1", "abc", "61", "1e1"):
+                with self.subTest(langue=langue, reponse=reponse):
+                    todo_i18n._current_lang = langue
+                    self.reglages.parent.mkdir(parents=True, exist_ok=True)
+                    self.reglages.write_text(
+                        "GAMES=off\nDECK_SESSION_REFRESH_SEC=3\n"
+                    )
+                    commandes, sortie, _ = self.jouer(
+                        "_streamdeck_session_refresh_setting", (reponse,)
+                    )
+                    self.assertEqual(
+                        "GAMES=off\nDECK_SESSION_REFRESH_SEC=3\n",
+                        self.reglages.read_text(),
+                    )
+                    self.assertIn(bornes, sortie)
+                    self.assertEqual([], commandes)
+                    self.assertEqual([], self.sondes)
+
+    def test_an_empty_answer_keeps_the_value(self):
+        todo_i18n._current_lang = "en"
+        _, sortie, _ = self.jouer(
+            "_streamdeck_session_refresh_setting", ("",)
+        )
+        self.assertFalse(self.reglages.exists())
+        self.assertIn("Unchanged.", sortie)
+
+    def test_an_invalid_value_in_the_file_shows_as_invalid(self):
+        todo_i18n._current_lang = "en"
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("DECK_SESSION_REFRESH_SEC=abc\n")
+        _, sortie, _ = self.jouer(
+            "_streamdeck_session_refresh_setting", ("",)
+        )
+        self.assertIn("'abc' (invalid) s", sortie)
+
+    def test_an_active_unit_is_restarted(self):
+        self.reponses_sondes[
+            ("systemctl", "--user", "is-active", UNITE)
+        ] = (0, "active\n")
+        commandes, _, _ = self.jouer(
+            "_streamdeck_session_refresh_setting", ("0.5",)
+        )
+        self.assertEqual([f"systemctl --user restart {UNITE}"], commandes)
+
+    def test_a_stopped_unit_stays_stopped(self):
+        commandes, _, _ = self.jouer(
+            "_streamdeck_session_refresh_setting", ("0.5",)
+        )
+        self.assertEqual([], commandes)
+        self.assertEqual(
+            "DECK_SESSION_REFRESH_SEC=0.5\n", self.reglages.read_text()
+        )
+
+    def test_the_submenu_offers_the_entry(self):
+        todo = TODO.__new__(TODO)
+        with (
+            mock.patch.object(
+                TODO, "_streamdeck_session_refresh_setting"
+            ) as entree,
+            mock.patch.object(
+                streamdeck_menu.click, "prompt", side_effect=["13", "0"]
+            ),
+            mock.patch.object(TODO, "fill_help_info", return_value=""),
+        ):
+            todo.prompt_execute_streamdeck()
+        entree.assert_called_once_with()
+
+
 if __name__ == "__main__":
     unittest.main()

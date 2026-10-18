@@ -12,6 +12,7 @@ l'emporte, $XDG_CONFIG_HOME prime sur ~/.config. Les fonctions prennent
 """
 
 import os
+import re
 import stat
 import subprocess
 
@@ -23,7 +24,11 @@ DEFAULTS = {
     "RESTART_AFTER_GAME": "yes",
     "GAMES": "on",
     "DECK_PLUGINS_OFF": "",
+    "DECK_SESSION_REFRESH_SEC": "1",
 }
+# Bornes incluses de DECK_SESSION_REFRESH_SEC, en secondes.
+SESSION_REFRESH_RANGE = (0.5, 60.0)
+_NOMBRE = re.compile(r"([0-9]+\.?[0-9]*|\.[0-9]+)")
 
 
 def games_enabled(settings):
@@ -42,6 +47,31 @@ def plugins_off(settings):
         for part in settings.get("DECK_PLUGINS_OFF", "").split(",")
     )
     return [part for part in morceaux if part]
+
+
+def parse_session_refresh(valeur):
+    """La période en secondes que dit `valeur`, blancs de bord retirés, ou
+    None : un nombre décimal dans SESSION_REFRESH_RANGE, bornes incluses,
+    et rien d'autre (ni vide, ni signe, ni exposant)."""
+    valeur = valeur.strip()
+    if not _NOMBRE.fullmatch(valeur):
+        return None
+    nombre = float(valeur)
+    if SESSION_REFRESH_RANGE[0] <= nombre <= SESSION_REFRESH_RANGE[1]:
+        return nombre
+    return None
+
+
+def session_refresh_sec(settings):
+    """La période, en secondes, de DECK_SESSION_REFRESH_SEC, comme
+    deck_session_refresh_sec du shell : celle que parse_session_refresh
+    accepte, 1.0 sinon (clé absente, vide, hors bornes, pas un nombre)."""
+    nombre = parse_session_refresh(
+        settings.get(
+            "DECK_SESSION_REFRESH_SEC", DEFAULTS["DECK_SESSION_REFRESH_SEC"]
+        )
+    )
+    return 1.0 if nombre is None else nombre
 
 
 def deck_plugin_ids(repo_root, environ=None):

@@ -475,6 +475,31 @@ TRANSLATIONS = {
         "fr": "TODO › Stream Deck › Plugins on/off",
         "en": "TODO › Stream Deck › Plugins on/off",
     },
+    "Session refresh - Period of the session pages": {
+        "fr": "⏱️ Rafraîchissement - Période des pages de session",
+        "en": "⏱️ Session refresh - Period of the session pages",
+    },
+    "Session refresh:": {
+        "fr": "Rafraîchissement des sessions :",
+        "en": "Session refresh:",
+    },
+    "New period in seconds ({bas} to {haut}), Enter to keep: ": {
+        "fr": "Nouvelle période en secondes ({bas} à {haut}), "
+        "Entrée pour garder : ",
+        "en": "New period in seconds ({bas} to {haut}), Enter to keep: ",
+    },
+    "Invalid period, expected {bas} to {haut} seconds.": {
+        "fr": "Période invalide, attendu de {bas} à {haut} secondes.",
+        "en": "Invalid period, expected {bas} to {haut} seconds.",
+    },
+    "Invalid DECK_SESSION_REFRESH_SEC:": {
+        "fr": "DECK_SESSION_REFRESH_SEC invalide :",
+        "en": "Invalid DECK_SESSION_REFRESH_SEC:",
+    },
+    "TODO › Stream Deck › Session refresh": {
+        "fr": "TODO › Stream Deck › Rafraîchissement",
+        "en": "TODO › Stream Deck › Session refresh",
+    },
     "Enabled": {"fr": "Activés", "en": "Enabled"},
     "Disabled": {"fr": "Désactivés", "en": "Disabled"},
     "No Stream Deck plugged in": {

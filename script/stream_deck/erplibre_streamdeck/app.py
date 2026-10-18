@@ -19,7 +19,8 @@ except ImportError as e:
 
 import deck_lock
 
-from erplibre_streamdeck import loader, paths, settings
+from erplibre_streamdeck import loader, paths
+from erplibre_streamdeck import settings as settings_mod
 from erplibre_streamdeck.kernel import Kernel
 from erplibre_streamdeck.ui import render
 
@@ -34,36 +35,55 @@ def _journal(msg):
     print(f"[erplibre-home] {msg}", file=sys.stderr, flush=True)
 
 
-def read_plugins_off():
-    """DECK_PLUGINS_OFF from streamdeck.conf, read by the settings
-    library the installer and the service use; [] when it cannot be
-    read: bash missing, too slow, or the library failing (one journal
-    line, with the library's stderr)."""
+DECK_SETTING_DEFAULTS = {"plugins_off": [], "session_refresh_sec": 1.0}
+
+# One bash call: the plugin ids, one "off=<id>" line each, then one
+# "refresh=<seconds>" line, both validated by the settings library.
+_READ_SCRIPT = (
+    '. "$0" && deck_plugins_off | sed \'s/^/off=/\' '
+    '&& echo "refresh=$(deck_session_refresh_sec)"'
+)
+
+
+def read_deck_settings():
+    """The deck's settings from streamdeck.conf, read by the settings
+    library the installer and the service use: {"plugins_off": [ids],
+    "session_refresh_sec": float}. The defaults come back, with one
+    journal line carrying the library's stderr, when the library cannot
+    be read: bash missing, too slow, or failing."""
     try:
         done = subprocess.run(
-            ["bash", "-c", '. "$0" && deck_plugins_off',
-             str(paths.SETTINGS_LIB)],
+            ["bash", "-c", _READ_SCRIPT, str(paths.SETTINGS_LIB)],
             capture_output=True, text=True, timeout=10,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        _journal(f"DECK_PLUGINS_OFF unreadable: {exc}")
-        return []
+        _journal(f"deck settings unreadable: {exc}")
+        return dict(DECK_SETTING_DEFAULTS, plugins_off=[])
     if done.returncode != 0:
         _journal(
-            f"DECK_PLUGINS_OFF unreadable: exit {done.returncode}: "
+            f"deck settings unreadable: exit {done.returncode}: "
             f"{done.stderr.strip()}"
         )
-        return []
-    return [line for line in done.stdout.splitlines() if line]
+        return dict(DECK_SETTING_DEFAULTS, plugins_off=[])
+    result = dict(DECK_SETTING_DEFAULTS, plugins_off=[])
+    for line in done.stdout.splitlines():
+        if line.startswith("off=") and line[4:]:
+            result["plugins_off"].append(line[4:])
+        elif line.startswith("refresh="):
+            try:
+                result["session_refresh_sec"] = float(line[8:])
+            except ValueError:
+                _journal(f"deck settings: bad refresh line {line!r}")
+    return result
 
 
-def build(deck, *, plugins_off=(), user_dir=None):
-    render.STYLE.restore(settings.load())
+def build(deck, *, plugins_off=(), user_dir=None, settings=None):
+    render.STYLE.restore(settings_mod.load())
     plugins, report = loader.load(off=plugins_off, user_dir=user_dir)
     for entry in report.entries:
         if entry[1] != "active":
             _journal(f"plugin {loader.Report.line(*entry)}")
-    kernel = Kernel(deck, plugins)
+    kernel = Kernel(deck, plugins, settings)
     for pid, reason in kernel.refused:
         _journal(f"plugin {pid}: refused: {reason}")
     return kernel
@@ -102,7 +122,14 @@ def main():
     rows, cols = deck.key_layout()
     print(f"Window Tiler on {deck.deck_type()} ({cols}x{rows})")
 
-    kernel = build(deck, plugins_off=read_plugins_off())
+    deck_settings = read_deck_settings()
+    kernel = build(
+        deck,
+        plugins_off=deck_settings["plugins_off"],
+        settings={
+            "session_refresh_sec": deck_settings["session_refresh_sec"]
+        },
+    )
     if kernel.dbus_ok:
         print("D-Bus tiler extension detected!")
     else:

@@ -65,10 +65,13 @@ class ErrorLog:
 
 
 class Kernel:
-    def __init__(self, deck, plugins):
+    def __init__(self, deck, plugins, settings=None):
         from erplibre_streamdeck import home
 
         self.deck = deck
+        # Read-only deck settings (Context.setting); set before any
+        # plugin setup runs.
+        self.settings = dict(settings or {})
         rows, cols = deck.key_layout()
         self.geo = Geometry(cols, rows, cols * rows)
         self.lock = threading.Lock()

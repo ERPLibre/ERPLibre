@@ -460,6 +460,7 @@ class TestStreamDeckMenuNumbering(MenuCoherence, unittest.TestCase):
     EXPECTED = {
         "Games on/off": "_streamdeck_games_setting",
         "Plugins on/off": "_streamdeck_plugins_setting",
+        "Session refresh": "_streamdeck_session_refresh_setting",
         "Games": "prompt_execute_streamdeck_games",
         "Status": "_streamdeck_status",
         "Service": "_streamdeck_service",

@@ -283,6 +283,12 @@ def status_lines(facts):
     lignes_plugins = (
         ["%s %s" % (t("Plugins off:"), ", ".join(coupes))] if coupes else []
     )
+    periode = service.session_refresh_sec(facts["settings"])
+    lignes_rafraichissement = (
+        ["%s %g s" % (t("Session refresh:"), periode)]
+        if periode != float(service.DEFAULTS["DECK_SESSION_REFRESH_SEC"])
+        else []
+    )
     return [
         niveau,
         ligne_ext,
@@ -290,6 +296,7 @@ def status_lines(facts):
         unite,
         jeux,
         *lignes_plugins,
+        *lignes_rafraichissement,
         verrou,
         decks,
         (
@@ -373,6 +380,14 @@ def diagnosis_lines(facts):
                     t("TODO › Stream Deck › Plugins on/off"),
                 )
             )
+    brut = facts["settings"].get("DECK_SESSION_REFRESH_SEC")
+    if brut is not None and service.parse_session_refresh(brut) is None:
+        problemes.append(
+            (
+                "%s %r" % (t("Invalid DECK_SESSION_REFRESH_SEC:"), brut),
+                t("TODO › Stream Deck › Session refresh"),
+            )
+        )
     if not facts["unit_file"]:
         problemes.append(
             (t("The deck service is not installed"), STREAMDECK_INSTALL)

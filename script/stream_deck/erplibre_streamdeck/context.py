@@ -71,6 +71,11 @@ class Context:
         ERR flash) while this plugin already has a job running."""
         return self._kernel.run_blocking(self.plugin_id, work, then)
 
+    def setting(self, name, default=None):
+        """A deck setting read at start (`session_refresh_sec`), or
+        `default` when the kernel was not given it."""
+        return self._kernel.settings.get(name, default)
+
     def state(self, plugin_id=None):
         return self._kernel.state(plugin_id or self.plugin_id)
 

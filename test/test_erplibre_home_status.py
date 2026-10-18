@@ -69,6 +69,7 @@ def faits(**changes):
             "RESTART_AFTER_GAME": "yes",
             "GAMES": "on",
             "DECK_PLUGINS_OFF": "",
+            "DECK_SESSION_REFRESH_SEC": "1",
         },
         "plugin_ids": ["sound", "tiling"],
         "lock": ("4242", "tiler"),
@@ -181,6 +182,7 @@ class LaCollecte(unittest.TestCase):
                     "RESTART_AFTER_GAME": "yes",
                     "GAMES": "on",
                     "DECK_PLUGINS_OFF": "",
+                    "DECK_SESSION_REFRESH_SEC": "1",
                 },
                 "plugin_ids": statut.service.deck_plugin_ids(
                     str(RACINE), {"HOME": str(self.home)}
@@ -371,6 +373,61 @@ class LEtat(unittest.TestCase):
         self.assertFalse(
             [ligne for ligne in statut.status_lines(faits())
              if "Plugins" in ligne]
+        )
+
+
+class LaPeriodeDansLEtat(unittest.TestCase):
+    def setUp(self):
+        todo_i18n._current_lang = "en"
+        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+
+    def test_status_shows_the_period_when_it_is_not_the_default(self):
+        f = faits()
+        f["settings"] = dict(f["settings"], DECK_SESSION_REFRESH_SEC="2.5")
+        self.assertIn("Session refresh: 2.5 s", statut.status_lines(f))
+
+    def test_status_has_no_line_for_the_default(self):
+        for valeur in ("1", "1.0", "abc", "61"):
+            f = faits()
+            f["settings"] = dict(
+                f["settings"], DECK_SESSION_REFRESH_SEC=valeur
+            )
+            self.assertFalse(
+                [l for l in statut.status_lines(f) if "refresh" in l],
+                valeur,
+            )
+
+    def test_diagnosis_names_an_invalid_period_and_the_menu_path(self):
+        for valeur in ("abc", "0.4", "61", ""):
+            f = faits()
+            f["settings"] = dict(
+                f["settings"], DECK_SESSION_REFRESH_SEC=valeur
+            )
+            self.assertIn(
+                (
+                    "Invalid DECK_SESSION_REFRESH_SEC: %r" % valeur,
+                    "TODO › Stream Deck › Session refresh",
+                ),
+                statut.diagnosis_lines(f),
+                valeur,
+            )
+
+    def test_diagnosis_accepts_valid_and_absent_periods(self):
+        for valeur in ("1", "0.5", "60", " 2 "):
+            f = faits()
+            f["settings"] = dict(
+                f["settings"], DECK_SESSION_REFRESH_SEC=valeur
+            )
+            self.assertFalse(
+                [p for p in statut.diagnosis_lines(f) if "REFRESH" in p[0]]
+            )
+        f = faits()
+        f["settings"] = {
+            k: v for k, v in f["settings"].items()
+            if k != "DECK_SESSION_REFRESH_SEC"
+        }
+        self.assertFalse(
+            [p for p in statut.diagnosis_lines(f) if "REFRESH" in p[0]]
         )
 
 

@@ -60,6 +60,7 @@ class LaLecture(unittest.TestCase):
                 "RESTART_AFTER_GAME": "yes",
                 "GAMES": "on",
                 "DECK_PLUGINS_OFF": "",
+                "DECK_SESSION_REFRESH_SEC": "1",
             },
             service.read_settings("/exemple/absent.conf"),
         )
@@ -194,6 +195,64 @@ class LesJeux(unittest.TestCase):
             sortie, _ = self.shell("GAMES=off\n", {"XDG_CONFIG_HOME": autre})
         self.assertIn("rc=1", sortie)
         self.assertIn(autre, sortie)
+
+
+class LaPeriodeDeRafraichissement(unittest.TestCase):
+    """DECK_SESSION_REFRESH_SEC : le shell et Python rendent la même
+    période."""
+
+    def shell(self, contenu):
+        with tempfile.TemporaryDirectory() as dossier:
+            conf = Path(dossier, ".config/erplibre-home/streamdeck.conf")
+            if contenu is not None:
+                conf.parent.mkdir(parents=True)
+                conf.write_bytes(contenu.encode("utf-8"))
+            environ = {
+                k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"
+            }
+            environ.update({"HOME": dossier, "BIB": str(BIBLIOTHEQUE)})
+            fini = subprocess.run(
+                ["bash", "-c", '. "$BIB"; deck_session_refresh_sec'],
+                capture_output=True,
+                text=True,
+                env=environ,
+                timeout=30,
+            )
+            self.assertEqual(0, fini.returncode, fini.stderr)
+            return fini.stdout.strip(), service.read_settings(str(conf))
+
+    def test_shell_and_python_give_the_same_period(self):
+        cas = (
+            (None, 1.0),
+            ("DECK_SESSION_REFRESH_SEC=\n", 1.0),
+            ("DECK_SESSION_REFRESH_SEC=1\n", 1.0),
+            ("DECK_SESSION_REFRESH_SEC=0.5\n", 0.5),
+            ("DECK_SESSION_REFRESH_SEC=60\n", 60.0),
+            ("DECK_SESSION_REFRESH_SEC=0.4\n", 1.0),
+            ("DECK_SESSION_REFRESH_SEC=61\n", 1.0),
+            ("DECK_SESSION_REFRESH_SEC=abc\n", 1.0),
+            ("DECK_SESSION_REFRESH_SEC=2\r\n", 2.0),
+            ("DECK_SESSION_REFRESH_SEC= 2.5 \n", 2.5),
+            ("DECK_SESSION_REFRESH_SEC=1e1\n", 1.0),
+            ("DECK_SESSION_REFRESH_SEC=-3\n", 1.0),
+            ("DECK_SESSION_REFRESH_SEC=2\nDECK_SESSION_REFRESH_SEC=3\n", 3.0),
+        )
+        for contenu, attendu in cas:
+            with self.subTest(contenu=contenu):
+                sortie, lu = self.shell(contenu)
+                self.assertEqual(attendu, float(sortie))
+                self.assertEqual(
+                    attendu, service.session_refresh_sec(lu)
+                )
+
+    def test_the_shell_prints_the_value_as_written(self):
+        for contenu, attendu in (
+            ("DECK_SESSION_REFRESH_SEC=0.5\n", "0.5"),
+            ("DECK_SESSION_REFRESH_SEC=2\r\n", "2"),
+            ("DECK_SESSION_REFRESH_SEC=61\n", "1"),
+        ):
+            with self.subTest(contenu=contenu):
+                self.assertEqual(attendu, self.shell(contenu)[0])
 
 
 class LesPluginsCoupes(unittest.TestCase):
