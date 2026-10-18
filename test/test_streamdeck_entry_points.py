@@ -461,6 +461,23 @@ class TestGalleryGames(unittest.TestCase):
         self.conf.write_text("GAMES=on\n", encoding="utf-8")
         self.assertIsNone(self.galerie._games_refusal())
 
+    def test_unreadable_setting_refuses(self):
+        """Un réglage qu'on ne sait pas lire refuse, comme une valeur
+        inconnue : la ligne dit pourquoi, et la galerie ne plante pas."""
+        echecs = [
+            FileNotFoundError(2, "No such file or directory", "bash"),
+            subprocess.TimeoutExpired(["bash"], 10),
+        ]
+        for echec in echecs:
+            vue = types.SimpleNamespace(
+                run=mock.Mock(side_effect=echec),
+                TimeoutExpired=subprocess.TimeoutExpired,
+            )
+            with mock.patch.object(self.galerie, "subprocess", vue):
+                refus = self.galerie._games_refusal()
+            self.assertIn("cannot read the GAMES setting", refus)
+            self.assertNotIn("\n", refus)
+
     def test_main_refuses_to_start(self):
         self.conf.write_text("GAMES=off\n", encoding="utf-8")
         with (
