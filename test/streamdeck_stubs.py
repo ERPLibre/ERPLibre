@@ -597,6 +597,10 @@ class MonolithTarget:
         "layout_delete_confirm": {"slot": "layout_delete_pending"},
         "tiling": {"corner1": "corner1"},
     }
+    # Pages whose entry does more than switch the mode: goto runs the
+    # same step, so a golden never shows a state the deck cannot reach
+    # (a timer list painted before the timers are read).
+    ENTRY = {"timer_list": "_refresh_timers"}
 
     def __init__(self):
         self.mod = load_monolith()
@@ -637,6 +641,8 @@ class MonolithTarget:
     def goto(self, page, **seed):
         for name, value in seed.items():
             setattr(self.app, self.SEEDS[page][name], value)
+        if page in self.ENTRY:
+            getattr(self.app, self.ENTRY[page])()
         self.app.mode = page
         self.app.render()
 
