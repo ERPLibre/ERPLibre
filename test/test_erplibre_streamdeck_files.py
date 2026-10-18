@@ -50,6 +50,19 @@ class WriteAtomicTest(unittest.TestCase):
         self.assertEqual({"a": 1}, json.loads(self.path.read_text()))
         self.assertEqual(["settings.json"], os.listdir(self.dir))
 
+    def test_file_mode_follows_the_umask(self):
+        mask = os.umask(0)
+        os.umask(mask)
+        jsonfile.write_atomic(self.path, {"a": 1})
+        self.assertEqual(0o666 & ~mask, self.path.stat().st_mode & 0o777)
+
+    def test_write_leaves_the_process_umask_alone(self):
+        # The umask is process-wide: setting it in a job thread would
+        # widen or narrow the files every other thread creates.
+        with mock.patch("os.umask", side_effect=AssertionError("umask")):
+            jsonfile.write_atomic(self.path, {"a": 1})
+        self.assertEqual({"a": 1}, json.loads(self.path.read_text()))
+
 
 class LivenessTest(unittest.TestCase):
     LINE = ("4242 (a b) c (d)) S 1 4242 4242 0 -1 4194560 100 0 0 0 "
