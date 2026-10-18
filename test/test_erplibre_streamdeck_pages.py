@@ -570,7 +570,7 @@ class Scenarios:
                 if key is None:
                     continue
                 h.goto("claude_session", sid="sess-a")
-                tap(h, key)
+                tap_job(h, key)
 
         self.run_all("claude_session__actions", FULL, full_world, script,
                      pages=("claude_session",))

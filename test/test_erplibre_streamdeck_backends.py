@@ -569,6 +569,35 @@ class SlowKeyTest(unittest.TestCase):
         self.assertEqual([], S.FakeThread.queue)
         self.assert_no_flash(h)
 
+    def test_claude_session_actions_are_jobs(self):
+        h = self.start(P.full_world)
+        for key, method in enumerate(
+            ("FocusClaudeSession", "AcceptClaudeSession",
+             "SetClaudeSessionWindow", "KillClaudeSession"),
+            start=1,
+        ):
+            h.goto("claude_session", sid="sess-a")
+            h.wait(P.FLASH_GAP)
+            press, threads, loop = self.press_slow(h, key)
+            self.assertEqual("claude_session", press["page"])
+            self.assertEqual([], press["effects"])
+            self.assertEqual(
+                [f"gdbus {method} sess-a"], threads["effects"]
+            )
+            self.assertEqual("idle", loop["page"])
+            self.assert_flash(h, key, "OK!")
+
+    def test_claude_session_failure_flashes_err_and_goes_home(self):
+        h = self.start(P.full_world)
+        h.proc.answer("gdbus KillClaudeSession", returncode=1)
+        h.goto("claude_session", sid="sess-a")
+        self.press_slow(h, 4)  # KILL
+        self.assertEqual("idle", h.target.page())
+        self.assert_flash(h, 4, "ERR")
+        self.assertIn(
+            "KillClaudeSession(sess-a) failed", h.journal.getvalue()
+        )
+
 
 class SettingsKeepTest(unittest.TestCase):
     def test_font_scale_save_keeps_other_keys(self):
