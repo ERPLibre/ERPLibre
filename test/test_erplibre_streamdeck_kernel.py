@@ -159,6 +159,32 @@ class IsolationTest(KernelCase):
         self.assertNotIn("b", k.pages)
 
 
+class UnknownPageTest(KernelCase):
+    def test_goto_unknown_goes_home_and_loop_survives(self):
+        k = self.kernel(self.page_plugin())
+        k.goto("missing")
+        self.assertEqual("idle", k.page_id)
+        self.assertIn("unknown page missing", self.journal.getvalue())
+        k.page_id = "poisoned"
+        k.handle_key(1, True)
+        self.assertEqual("idle", k.page_id)
+        k.page_id = "poisoned"
+        self.deck.polls = 2
+        k.loop()
+        self.assertEqual("idle", k.page_id)
+
+    def test_keys_error_refuses_the_plugin(self):
+        bad = loaded(
+            "bad",
+            Plugin(api=PLUGIN_API,
+                   pages=[Page("b", lambda geo: 1 / 0, print, print)]),
+        )
+        k = self.kernel(bad, self.page_plugin())
+        self.assertEqual(["p"], [lp.id for lp in k.plugins])
+        self.assertEqual(("bad", "keys raised"), k.refused[0])
+        self.assertNotIn("b", k.pages)
+
+
 class TickTest(KernelCase):
     def test_flash_blocks_every_tick(self):
         ticks = []

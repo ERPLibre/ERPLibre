@@ -75,13 +75,25 @@ class Kernel:
         self.pages = {}
         self.page_keys = {}
         self.home = home.Home(self.geo, [])
-        self.plugins = self._setup(list(plugins))
-        for lp in self.plugins:
+        for lp in self._setup(list(plugins)):
+            keys = {}
             for page in lp.plugin.pages:
-                self.pages[page.id] = (lp.id, page)
-                self.page_keys[page.id] = (
-                    page.keys(self.geo) if page.keys else None
+                ok, value = (
+                    self.guard(
+                        lp.id, f"page {page.id} keys", page.keys, self.geo
+                    )
+                    if page.keys
+                    else (True, None)
                 )
+                if not ok:
+                    self.refused.append((lp.id, "keys raised"))
+                    break
+                keys[page.id] = value
+            else:
+                self.plugins.append(lp)
+                for page in lp.plugin.pages:
+                    self.pages[page.id] = (lp.id, page)
+                    self.page_keys[page.id] = keys[page.id]
         self.home = home.Home(self.geo, self.plugins)
         self.dbus_ok = self.dbus.available()
         self._dbus_checked_at = time.monotonic()
@@ -147,6 +159,13 @@ class Kernel:
         )
 
     def goto(self, page_id):
+        if page_id != HOME and page_id not in self.pages:
+            print(
+                f"[erplibre-home] kernel: unknown page {page_id}",
+                file=sys.stderr,
+                flush=True,
+            )
+            page_id = HOME
         self.page_id = page_id
         self.render()
 
@@ -160,6 +179,8 @@ class Kernel:
         self._render_page()
 
     def _render_page(self):
+        if self.page_id not in self.pages:
+            self.page_id = HOME
         if self.page_id != HOME:
             owner, page = self.pages[self.page_id]
             ok, _ = self.guard(
@@ -201,6 +222,8 @@ class Kernel:
         if not pressed or self._flash_live():
             return
         self.last_press_key = key
+        if self.page_id not in self.pages:
+            self.page_id = HOME
         if self.page_id == HOME:
             self.home.press(self, key)
             return
@@ -244,6 +267,8 @@ class Kernel:
                 if not self._flash_live():
                     self.render()
                 return
+            if self.page_id not in self.pages:
+                self.page_id = HOME
             if self.page_id == HOME:
                 self._home_step(now)
                 return
