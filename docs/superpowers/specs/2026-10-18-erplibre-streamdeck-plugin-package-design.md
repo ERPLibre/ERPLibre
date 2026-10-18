@@ -1,6 +1,6 @@
 # ERPLibre Stream Deck: the deck program as a plugin package
 
-**Status:** design, awaiting review.
+**Status:** implemented; the amendments below complete the interface.
 **Sub-project:** B2 of the `game_tiler.py` project. B1 (games apart,
 `erplibre_streamdeck.py`, `GAMES`) has landed. B3 (blocking calls under
 the lock, atomic `settings.json`, Claude and mpv liveness, refresh of
@@ -413,3 +413,73 @@ Each step leaves the suite green and the service startable.
 7. **Formatting churn.** Moves and reformatting go in separate commits;
    black is never run on whole files (it uses 88 columns; the repository
    uses 79).
+
+## Amendments from the plan
+
+The mapping found points the interface above leaves open. These rulings
+complete it and bind the code; 16 to 22 were settled while building.
+
+1. **Flash precedence.** In a loop pass, a recorded flash (expired or not)
+   blocks every tick: if expired, render (which clears it); then the pass
+   ends. Ticks run only when no flash is recorded.
+2. **Home refresh.** The kernel re-renders the home screen every
+   `HOME_REFRESH_SEC = 2.0` on its own (the mic indicator and the
+   session tiles have no tick). `home_tick(ctx, now) -> bool` returns
+   true to ask for a render; the kernel renders at most once per pass.
+   `home_period = 0.0` means every pass.
+3. **Schedules.** Each page tick and each home tick has its own
+   last-run stamp, starting at 0.0, cleared when `loop()` starts; the
+   first pass runs every due tick at once, as today.
+4. **One home button per plugin:** `Plugin.home_button` (singular,
+   optional), not a list.
+5. **Fixtures** gain `order` (sound mic 10, layouts shortcuts 20);
+   `place(geo, home_keys)` gets `{plugin_id: key or -1}`; `face(ctx, key,
+   index)` and `press(ctx, key, index)` get the key's index in the list
+   `place` returned. A key already taken (button or earlier fixture) is
+   skipped. Every placed key is reserved, even when its face is `None`
+   (painted empty), and a press on it is passed to the fixture.
+6. **`Page.keys` may return `None`** (deck too small). The kernel
+   computes it once per page at start; `ctx.keys` gives the current
+   page's value. Pages whose keys change at run time pass `keys=None`
+   and compute their own.
+7. **Context additions:** `ctx.page` (current page id), `ctx.keys`,
+   `ctx.home_keys`, `ctx.locked()` (the kernel lock, for threads a plugin
+   starts), `ctx.state()` without argument = the calling plugin's
+   namespace.
+8. **`ctx.flash(ok, reason=None)` only records** (and writes one journal
+   line `[erplibre-home] <plugin>: <reason>` when `ok` is false and a
+   reason is given). It never renders; `goto`, `home` and `render` do.
+9. **`dbus.call(method, *args, timeout=3)` returns a `Reply`**
+   (`returncode`, `stdout`, `stderr`; `.ok`, `.true`, `.string`) and never
+   raises; parsing stays in the plugins.
+10. **`Kernel.handle_key` does not take the lock**; the app's key callback
+    does, as today.
+11. **Test seam:** `app.build(deck, *, plugins_off=(), user_dir=None)`
+    restores the style from `settings.json`, loads the plugins and returns
+    the kernel, without lock file, signal handler or thread.
+12. **Errors in home providers:** an `items()` that raises contributes no
+    tiles this render (the next providers fill the keys); a `face` that
+    raises paints its key empty.
+13. **Font scale restore** is the kernel's (`app.build`), not the a11y
+    plugin's: turning a11y off keeps the last chosen style.
+14. **Tests that load the single file** load it as module
+    `erplibre_streamdeck_monolith`, never `erplibre_streamdeck`, and the
+    package has `__init__.py` files (without them the sibling `.py` file
+    shadows the directory).
+15. **`--list-plugins`** reports the import-level result (import, `PLUGIN`,
+    `api`, duplicate page id); a `setup` failure shows only in the
+    journal of a real start.
+16. **Unknown page.** A page id nobody registered sends the deck home
+    and writes one journal line.
+17. **Page keys.** A plugin whose page `keys()` raises is refused like a
+    `setup` failure; the others load.
+18. **Fixture placement.** A fixture whose `place` raises, or returns
+    something other than integers, is skipped.
+19. **Tile guard.** A tile provider's `items()` is listed inside the
+    guard, and a face that is not a `KeyFace` paints its key empty.
+20. **Shutdown.** `shutdown(ctx)` runs with the kernel lock held and must
+    not take `ctx.locked()` nor wait for a thread that does.
+21. **Timer entry.** The TIMER home entry is `timers.enter(ctx)`.
+22. **Scenarios.** Scenarios do not pin the coincidence of independent
+    tick schedules: two ticks of different periods are never asserted to
+    fire in the same pass.
