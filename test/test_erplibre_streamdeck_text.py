@@ -14,7 +14,8 @@ import streamdeck_stubs as S  # noqa: E402
 
 GT = S.load_monolith()
 S.install()
-from erplibre_streamdeck.ui import text  # noqa: E402
+from erplibre_streamdeck.plugins import claude_sessions as cs  # noqa: E402
+from erplibre_streamdeck.ui import colors, text  # noqa: E402
 
 
 class ChunkTextForCellsTest(unittest.TestCase):
@@ -63,39 +64,39 @@ class WrapChunkTest(unittest.TestCase):
 class ClaudeColorTest(unittest.TestCase):
     def test_active_default_green(self):
         self.assertEqual(
-            GT._claude_color({"status": "active"}),
-            GT.COLOR_CLAUDE_ACTIVE)
+            cs.session_color({"status": "active"}),
+            colors.CLAUDE_ACTIVE)
 
     def test_await_stop_yellow(self):
         self.assertEqual(
-            GT._claude_color({"status": "awaiting_stop"}),
-            GT.COLOR_CLAUDE_AWAIT_STOP)
+            cs.session_color({"status": "awaiting_stop"}),
+            colors.CLAUDE_AWAIT_STOP)
 
     def test_await_notification_red(self):
         self.assertEqual(
-            GT._claude_color({"status": "awaiting_notification"}),
-            GT.COLOR_CLAUDE_AWAIT_NOTIFY)
+            cs.session_color({"status": "awaiting_notification"}),
+            colors.CLAUDE_AWAIT_NOTIFY)
 
     def test_unknown_falls_back_to_active(self):
         self.assertEqual(
-            GT._claude_color({"status": "anything-else"}),
-            GT.COLOR_CLAUDE_ACTIVE)
+            cs.session_color({"status": "anything-else"}),
+            colors.CLAUDE_ACTIVE)
 
 
 class ClaudeLabelTest(unittest.TestCase):
     def test_short_passthrough(self):
         self.assertEqual(
-            GT._claude_label({"description": "hi"}, max_chars=18),
+            cs.session_label({"description": "hi"}, max_chars=18),
             "hi")
 
     def test_word_break_truncation(self):
-        out = GT._claude_label(
+        out = cs.session_label(
             {"description": "hello world this is long"}, max_chars=18)
         self.assertTrue(len(out) <= 18)
         self.assertFalse(out.endswith(" "))
 
     def test_no_description(self):
-        self.assertEqual(GT._claude_label({}, max_chars=18), "")
+        self.assertEqual(cs.session_label({}, max_chars=18), "")
 
 
 class WrapButtonLabelTest(unittest.TestCase):
