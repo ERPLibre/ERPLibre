@@ -35,10 +35,12 @@ Le déroulé
    `-c` répété garde la mise à jour sur le fichier que la détection et
    la sauvegarde ont lu —, sous le compte de l'unité (`runuser`), HOME
    tiré de passwd. Échec si le
-   code est non nul, si le délai est dépassé, ou si une ligne ERROR ou
-   CRITICAL paraît dans la sortie ou dans ce qui s'est AJOUTÉ au
+   code est non nul, si le délai est dépassé, ou si un enregistrement
+   ERROR ou CRITICAL paraît dans la sortie ou dans ce qui s'est AJOUTÉ au
    `logfile` configuré — Odoo y écrit au lieu de stderr quand il est
-   posé.
+   posé. Les enregistrements sont lus par `lib_ops.journal` : une trace
+   compte avec son en-tête, et le rapport groupe les traces par leur
+   exception finale.
 6. Redémarrage, si l'unité tournait avant : l'époque est prise AVANT
    `systemctl start`, pour que les erreurs du chargement entrent dans la
    fenêtre lue ensuite ; attente de `active` et du port, une requête HTTP
@@ -100,6 +102,7 @@ sys.path.append(
 
 from script.database import odoo_backup  # noqa: E402
 from script.lib_ops import (  # noqa: E402
+    journal,
     lock,
     odoo_instance,
     report,
@@ -641,6 +644,31 @@ def _sauvegarder(plan, systeme, rapport, args):
     return CODE_OK
 
 
+def erreurs_du_journal(texte, args):
+    """L'Analyse (`lib_ops.journal`) des enregistrements de `texte` : une
+    ligne d'en-tête ERROR ou CRITICAL et ses lignes de continuation (une
+    trace) forment un enregistrement. Seul `--ignore-error` filtre, cherché
+    dans la ligne d'en-tête et dans la ligne d'exception finale ; le bruit
+    connu de `log_check.py` n'est pas écarté : après une mise à jour, tout
+    ERROR mérite un regard."""
+    return journal.analyser(
+        journal.enregistrements(texte.splitlines()),
+        ignorer=args.ignore_error,
+        builtin=False,
+    )
+
+
+def montrer_groupes(rapport, analyse, limite):
+    """Au plus `limite` groupes, du plus nombreux au moins nombreux :
+    `[Nx] exception finale ou message (logger)`, puis la première ligne
+    d'en-tête du groupe."""
+    for groupe in analyse.groupes_a_revoir()[:limite]:
+        titre = f"[{groupe.nombre}x] {groupe.titre}"
+        if not groupe.titre.startswith(groupe.logger + ":"):
+            titre += f" ({groupe.logger})"
+        rapport.extrait([titre, f"    {groupe.echantillon[0]}"], 2)
+
+
 def _mettre_a_jour(plan, systeme, rapport, args):
     debut_journal = odoo_instance.taille(plan.journal)
     debut_logfile = odoo_instance.taille(plan.logfile)
@@ -679,14 +707,18 @@ def _mettre_a_jour(plan, systeme, rapport, args):
         return CODE_ECHEC
     texte = odoo_instance.lire_ajout(plan.journal, debut_journal)
     texte += "\n" + odoo_instance.lire_ajout(plan.logfile, debut_logfile)
-    erreurs = odoo_instance.lignes_erreur(texte, args.ignore_error)
-    if erreurs:
+    analyse = erreurs_du_journal(texte, args)
+    if analyse.a_revoir:
         rapport.fail(
-            t("{count} ERROR/CRITICAL line(s) during the update.").format(
-                count=len(erreurs)
+            t(
+                "{count} ERROR/CRITICAL record(s) in {groups} group(s) during"
+                " the update."
+            ).format(
+                count=analyse.a_revoir,
+                groups=len(analyse.groupes_a_revoir()),
             )
         )
-        rapport.extrait(erreurs, 10)
+        montrer_groupes(rapport, analyse, 10)
         return CODE_ECHEC
     rapport.ok(
         t("Odoo finished the update by itself in {seconds} s.").format(
@@ -819,14 +851,18 @@ def _relancer(plan, systeme, rapport, args):
         rapport.etape(t("Errors in the Odoo log since the start"))
         texte = systeme.journal(plan.unite, epoque)
         texte += "\n" + odoo_instance.lire_ajout(plan.logfile, debut_logfile)
-        erreurs = odoo_instance.lignes_erreur(texte, args.ignore_error)
-        if erreurs:
+        analyse = erreurs_du_journal(texte, args)
+        if analyse.a_revoir:
             rapport.fail(
-                t("{count} ERROR/CRITICAL line(s) since the start.").format(
-                    count=len(erreurs)
+                t(
+                    "{count} ERROR/CRITICAL record(s) in {groups} group(s)"
+                    " since the start."
+                ).format(
+                    count=analyse.a_revoir,
+                    groups=len(analyse.groupes_a_revoir()),
                 )
             )
-            rapport.extrait(erreurs, 8)
+            montrer_groupes(rapport, analyse, 8)
             return False
         rapport.ok(t("No ERROR or CRITICAL line since the start."))
         return True
@@ -1023,7 +1059,10 @@ def analyser(argv=None):
         type=_type_regex,
         default=[],
         metavar="REGEX",
-        help=t("ERROR/CRITICAL lines matching REGEX do not fail; repeatable."),
+        help=t(
+            "ERROR/CRITICAL records whose header line or final exception"
+            " matches REGEX do not fail; repeatable."
+        ),
     )
     parser.add_argument(
         "--log-dir",

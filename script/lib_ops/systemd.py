@@ -291,3 +291,31 @@ def journal_depuis(unite, epoque, lanceur=lancer):
         60,
     )
     return sortie if code == 0 else ""
+
+
+def commande_journal(
+    unite,
+    depuis_epoque=None,
+    jusqu_epoque=None,
+    curseur=None,
+    sortie="short-iso",
+):
+    """La commande journalctl d'une lecture du journal de l'unité.
+
+    `-o short-iso` préfixe chaque ligne de son heure locale avec décalage
+    et de son identifiant ; `--show-cursor` termine la sortie par
+    `-- cursor: …`, la position d'où reprendre (`--after-cursor`). Avec un
+    `curseur`, la lecture reprend juste après lui et `depuis_epoque` est
+    ignoré : un enregistrement n'est jamais lu deux fois. Les bornes sont
+    des secondes Unix (`@E`), sans dépendre du fuseau ni de la langue.
+    Sans `-q` : l'avertissement d'un compte qui ne voit pas le journal du
+    système doit rester sur stderr.
+    """
+    argv = ["journalctl", "-u", unite, "-o", sortie, "--no-pager"]
+    if curseur:
+        argv += ["--after-cursor", curseur]
+    elif depuis_epoque is not None:
+        argv += ["--since", f"@{int(depuis_epoque)}"]
+    if jusqu_epoque is not None:
+        argv += ["--until", f"@{int(jusqu_epoque)}"]
+    return argv + ["--show-cursor"]

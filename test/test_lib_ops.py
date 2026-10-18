@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 """script/lib_ops : lecture d'unité, instance Odoo, verrou, rapport,
-rétention, PostgreSQL.
+rétention, PostgreSQL, journal d'Odoo et causes d'échec d'envoi.
 
 Aucun systemctl réel n'est appelé : chaque fonction de `systemd` reçoit un
 lanceur fabriqué qui répond depuis une table. Les fichiers (configuration,
@@ -11,6 +11,7 @@ addons, /proc) sont fabriqués dans un dossier temporaire. Les dates de la
 rétention sont inventées.
 """
 
+import contextlib
 import datetime
 import fcntl
 import io
@@ -18,6 +19,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 from unittest import mock
@@ -27,7 +29,9 @@ sys.path.append(
 )
 
 from script.lib_ops import (  # noqa: E402
+    journal,
     lock,
+    mail_diagnostic,
     odoo_instance,
     postgres,
     report,
@@ -525,42 +529,7 @@ class TestProcessus(unittest.TestCase):
         self.assertEqual(odoo_instance.lister_processus("/proc_absent_x"), [])
 
 
-class TestJournal(unittest.TestCase):
-    ERREUR = (
-        "2026-01-31 12:00:00,123 4242 ERROR demo_db odoo.modules.loading: boom"
-    )
-    CRITIQUE = (
-        "2026-01-31 12:00:00,123 4242 CRITICAL demo_db odoo.service: fin"
-    )
-    INFO = "2026-01-31 12:00:00,123 4242 INFO demo_db odoo: message ERROR cité"
-    AVERTISSEMENT = (
-        "2026-01-31 12:00:00,123 4242 WARNING demo_db odoo: attention"
-    )
-
-    def test_seules_les_lignes_au_format_odoo(self):
-        texte = "\n".join(
-            [
-                self.ERREUR,
-                self.INFO,
-                self.AVERTISSEMENT,
-                self.CRITIQUE,
-                "ERROR libre",
-            ]
-        )
-        self.assertEqual(
-            odoo_instance.lignes_erreur(texte), [self.ERREUR, self.CRITIQUE]
-        )
-
-    def test_ignorer(self):
-        import re
-
-        self.assertEqual(
-            odoo_instance.lignes_erreur(
-                self.ERREUR + "\n" + self.CRITIQUE, [re.compile("loading")]
-            ),
-            [self.CRITIQUE],
-        )
-
+class TestLireAjout(unittest.TestCase):
     def test_lire_ajout(self):
         d = dossier_temporaire(self)
         chemin = ecrire(os.path.join(d, "odoo.log"), "ancien\n")
@@ -575,6 +544,691 @@ class TestJournal(unittest.TestCase):
             odoo_instance.lire_ajout(os.path.join(d, "absent"), 0), ""
         )
         self.assertEqual(odoo_instance.taille(None), 0)
+
+
+@contextlib.contextmanager
+def fuseau(nom):
+    """Le fuseau local forcé à `nom` le temps du bloc."""
+    ancien = os.environ.get("TZ")
+    os.environ["TZ"] = nom
+    time.tzset()
+    try:
+        yield
+    finally:
+        if ancien is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = ancien
+        time.tzset()
+
+
+def recs(texte):
+    return list(journal.enregistrements(texte.splitlines()))
+
+
+TRACE_CHAINEE = """\
+2026-01-15 03:00:00,123 4242 ERROR base_essai odoo.http: Exception during request handling.
+Traceback (most recent call last):
+  File "/srv/odoo/odoo/http.py", line 10, in dispatch
+    return self._call()
+KeyError: 'x'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/srv/odoo/odoo/models.py", line 20, in read
+    raise ValueError("y")
+ValueError: y
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/srv/odoo/odoo/service/model.py", line 30, in retrying
+    raise odoo.exceptions.UserError("z") from err
+odoo.exceptions.UserError: z
+"""
+
+
+class TestJournalEntetes(unittest.TestCase):
+    """J1 : les formes d'en-tête de 12 à 18 et des sorties de journalctl."""
+
+    def un(self, ligne):
+        (rec,) = recs(ligne)
+        return rec
+
+    def test_formes_d_odoo(self):
+        for ligne, niveau, base, logger, message in (
+            (
+                "2026-01-15 03:00:00,123 4242 ERROR base_essai"
+                " odoo.modules.loading: boom",
+                "ERROR",
+                "base_essai",
+                "odoo.modules.loading",
+                "boom",
+            ),
+            (
+                "2026-01-15 03:00:00,123 4242 INFO base_essai"
+                " odoo.service.server: HTTP service running ",
+                "INFO",
+                "base_essai",
+                "odoo.service.server",
+                "HTTP service running",
+            ),
+            (
+                "2026-01-15 03:00:00,123 4242 INFO base_essai werkzeug:"
+                ' 192.0.2.10 - - [15/Jan/2026 03:00:00] "GET /web HTTP/1.1"'
+                " 200 - - - -",
+                "INFO",
+                "base_essai",
+                "werkzeug",
+                '192.0.2.10 - - [15/Jan/2026 03:00:00] "GET /web HTTP/1.1"'
+                " 200 - - - -",
+            ),
+            (
+                "2026-01-15 03:00:00,123 4242 WARNING ? odoo.addons.base: x",
+                "WARNING",
+                "?",
+                "odoo.addons.base",
+                "x",
+            ),
+            (
+                "2026-01-15 03:00:00,123 4242 \x1b[1;31m\x1b[1;49mERROR"
+                "\x1b[0m base_essai odoo.http: boom",
+                "ERROR",
+                "base_essai",
+                "odoo.http",
+                "boom",
+            ),
+            (
+                "2026-01-15 03:00:00,123 4242 INFO base_essai odoo: un"
+                " message qui cite ERROR",
+                "INFO",
+                "base_essai",
+                "odoo",
+                "un message qui cite ERROR",
+            ),
+        ):
+            with self.subTest(ligne=ligne):
+                rec = self.un(ligne)
+                self.assertEqual(
+                    (rec.niveau, rec.base, rec.logger, rec.message),
+                    (niveau, base, logger, message),
+                )
+                self.assertEqual(rec.pid, 4242)
+                self.assertNotIn("\x1b", rec.entete)
+
+    def test_prefixes_de_journalctl(self):
+        entete = "2026-03-04 10:06:07,000 77 ERROR base_essai odoo.http: boom"
+        with fuseau("UTC"):
+            for prefixe, attendu in (
+                ("2026-03-04T05:06:07-0500", "2026-03-04T10:06:07+00:00"),
+                ("2026-03-04T06:06:07-04:00", "2026-03-04T10:06:07+00:00"),
+                ("2026-03-04T10:06:07Z", "2026-03-04T10:06:07+00:00"),
+                (
+                    "2026-03-04T10:06:07.123456+0000",
+                    "2026-03-04T10:06:07+00:00",
+                ),
+            ):
+                with self.subTest(prefixe=prefixe):
+                    rec = self.un(f"{prefixe} hote odoo-bin[77]: {entete}")
+                    self.assertEqual(journal.iso(rec.quand), attendu)
+                    self.assertEqual(rec.entete, entete)
+
+
+class TestJournalTraces(unittest.TestCase):
+    def test_j2_chaine_le_titre_est_l_exception_externe(self):
+        (rec,) = recs(TRACE_CHAINEE)
+        self.assertEqual(rec.titre, "odoo.exceptions.UserError: z")
+        self.assertEqual(len(rec.lignes), TRACE_CHAINEE.count("\n"))
+
+    def test_j3_noms_d_exception(self):
+        for derniere, suite, attendu in (
+            ("odoo.exceptions.AccessDenied: Access Denied", [], None),
+            (
+                "psycopg2.errors.UniqueViolation: duplicate key value"
+                ' violates unique constraint "res_users_login_key"',
+                ["DETAIL:  Key (login)=(user@example.org) already exists."],
+                None,
+            ),
+            ("KeyboardInterrupt", [], None),
+            (
+                "odoo.exceptions.ValidationError: première ligne",
+                ["Seconde ligne du message", "Fin"],
+                None,
+            ),
+        ):
+            with self.subTest(derniere=derniere):
+                lignes = [
+                    "2026-01-15 03:00:00,123 1 ERROR b odoo.http: x",
+                    journal.DEBUT_TRACE,
+                    '  File "x.py", line 1, in f',
+                    "    f()",
+                    derniere,
+                ] + suite
+                self.assertEqual(
+                    journal.titre_trace(lignes), attendu or derniere
+                )
+
+    def test_j4_bloc_de_donnees_jamais_titre(self):
+        blob = "QUJD" * 60
+        lignes = [
+            "2026-01-15 03:00:00,123 1 WARNING b odoo.addons.mass_mailing: x",
+            journal.DEBUT_TRACE,
+            '  File "x.py", line 3, in f',
+            "PIL.UnidentifiedImageError: cannot identify image file",
+            blob,
+        ]
+        self.assertEqual(
+            journal.titre_trace(lignes),
+            "PIL.UnidentifiedImageError: cannot identify image file",
+        )
+        sans = lignes[:3] + ["    données reçues non valides", blob]
+        self.assertEqual(
+            journal.titre_trace(sans), "données reçues non valides"
+        )
+        self.assertLessEqual(len(journal.abreger("x" * 500)), 200)
+        abrege = journal.abreger("image " + blob)
+        self.assertNotIn(blob, abrege)
+        self.assertIn(f"[data: {len(blob)} chars]", abrege)
+        self.assertIsNone(journal.titre_trace(lignes[:1]))
+
+
+def trace(heure, titre, pid=10, logger="odoo.http", niveau="ERROR"):
+    return (
+        f"2026-01-15 {heure},000 {pid} {niveau} base_essai {logger}:"
+        " Exception during request handling\n"
+        f"{journal.DEBUT_TRACE}\n"
+        '  File "/srv/odoo/x.py", line 1, in f\n'
+        f"{titre}\n"
+    )
+
+
+class TestCommandeJournal(unittest.TestCase):
+    def test_bornes_et_curseur(self):
+        self.assertEqual(
+            systemd.commande_journal("u.service", 1000.7, 2000),
+            [
+                "journalctl",
+                "-u",
+                "u.service",
+                "-o",
+                "short-iso",
+                "--no-pager",
+                "--since",
+                "@1000",
+                "--until",
+                "@2000",
+                "--show-cursor",
+            ],
+        )
+        argv = systemd.commande_journal("u.service", 1000, None, "s=1")
+        self.assertIn("--after-cursor", argv)
+        self.assertNotIn("--since", argv)
+        self.assertNotIn("-q", argv)
+
+
+class TestJournalGroupes(unittest.TestCase):
+    def test_j5_regroupement(self):
+        texte = "".join(
+            [
+                trace(
+                    "03:00:02",
+                    "odoo.exceptions.MissingError: Record does not exist:"
+                    " res.partner(12,)",
+                ),
+                trace(
+                    "03:00:01",
+                    "odoo.exceptions.MissingError: Record does not exist:"
+                    " res.partner(11,)",
+                ),
+                trace(
+                    "03:00:03",
+                    "odoo.exceptions.MissingError: Record does not exist:"
+                    " res.partner(13,)",
+                ),
+                trace("03:00:04", "KeyError: 'x'"),
+            ]
+        )
+        with fuseau("UTC"):
+            analyse = journal.analyser(recs(texte))
+        groupes = analyse.groupes_tracebacks()
+        self.assertEqual([g.nombre for g in groupes], [3, 1])
+        self.assertEqual(journal.iso(groupes[0].premier)[11:19], "03:00:01")
+        self.assertEqual(journal.iso(groupes[0].dernier)[11:19], "03:00:03")
+        self.assertIn("res.partner(12,)", groupes[0].titre)
+        self.assertEqual(analyse.a_revoir, 4)
+
+    def test_j6_entrelacement_systemd_et_curseur(self):
+        lignes = [
+            "ligne perdue avant tout en-tête",
+            "-- Boot 0123 --",
+            "2026-01-15T03:00:00+0000 hote odoo-bin[10]: 2026-01-15"
+            " 03:00:00,000 10 ERROR base_essai odoo.http: A",
+            "2026-01-15T03:00:00+0000 hote odoo-bin[10]: "
+            + journal.DEBUT_TRACE,
+            "2026-01-15T03:00:01+0000 hote odoo-bin[10]: 2026-01-15"
+            " 03:00:01,000 11 ERROR base_essai odoo.http: B",
+            "2026-01-15T03:00:02+0000 hote systemd[1]: Stopping demo...",
+            "2026-01-15T03:00:02+0000 hote odoo-bin[10]: suite orpheline",
+            "-- cursor: s=abc;i=2a",
+        ]
+        decoupeur = journal.Decoupeur()
+        trouves = list(journal.enregistrements(lignes, decoupeur))
+        self.assertEqual([r.message for r in trouves], ["A", "B"])
+        self.assertEqual(len(trouves[0].lignes), 2)
+        self.assertEqual(trouves[1].lignes, [trouves[1].entete])
+        self.assertEqual(decoupeur.curseur, "s=abc;i=2a")
+
+    def test_j7_fuseau(self):
+        ligne = "2026-01-15 03:00:00,000 1 ERROR b odoo.http: x"
+        with fuseau("America/Toronto"):
+            (rec,) = recs(ligne)
+            self.assertEqual(
+                journal.iso(rec.quand), "2026-01-14T22:00:00-05:00"
+            )
+            (rec,) = recs(
+                f"2026-01-15T08:30:00-0500 hote odoo-bin[1]: {ligne}"
+            )
+            self.assertEqual(
+                journal.iso(rec.quand), "2026-01-15T08:30:00-05:00"
+            )
+
+    def test_j8_requetes_refusees(self):
+        def requete(sql, raison):
+            texte = (
+                "2026-01-15 03:00:00,000 1 ERROR base_essai odoo.sql_db:"
+                f" bad query: {sql}\n"
+            )
+            return texte + (f"ERROR: {raison}\n" if raison else "")
+
+        texte = "".join(
+            [
+                requete(
+                    "INSERT INTO res_partner (name) VALUES ('a')",
+                    'duplicate key value violates unique constraint "k1"',
+                ),
+                requete(
+                    'UPDATE "res_users" SET x = 1 WHERE id = 4',
+                    "value too long for type character varying(64)",
+                ),
+                requete(
+                    "DELETE FROM mail_mail WHERE id = 9", "deadlock detected"
+                ),
+                requete('SELECT id FROM "res_partner" WHERE id = 3', ""),
+                requete(
+                    'UPDATE "res_users" SET x = 2 WHERE id = 5',
+                    "value too long for type character varying(32)",
+                ),
+            ]
+        )
+        analyse = journal.analyser(recs(texte), builtin=False)
+        tables = {(g.table, g.nombre) for g in analyse.groupes_sql()}
+        self.assertEqual(
+            tables,
+            {
+                ("res_partner", 1),
+                ("res_users", 2),
+                ("mail_mail", 1),
+                ("res_partner", 1),
+            },
+        )
+        cles = [g.cle for g in analyse.groupes_sql()]
+        self.assertIn("res_partner: " + journal.RAISON_ABSENTE, cles)
+        self.assertIn(
+            "res_users: value too long for type character varying(N)", cles
+        )
+        self.assertEqual(analyse.a_revoir, 5)
+
+
+class TestJournalBruit(unittest.TestCase):
+    """J9 : bruit connu sur l'en-tête ou le titre seulement."""
+
+    def test_bruit_connu_et_ce_qui_reste(self):
+        texte = "".join(
+            [
+                "2026-01-15 03:00:00,000 1 ERROR base_essai"
+                " odoo.addons.web.controllers.binary: .map should have been"
+                " generated through debug assets, (version 0a1b2c3 most"
+                " likely outdated)\n",
+                "2026-01-15 03:00:00,000 1 ERROR base_essai odoo.sql_db: bad"
+                " query: UPDATE website_visitor SET x = 1\n"
+                "ERROR: could not serialize access due to concurrent"
+                " update\n",
+                trace(
+                    "03:00:01",
+                    "psycopg2.errors.SerializationFailure: could not"
+                    " serialize access due to concurrent update",
+                ),
+                trace(
+                    "03:00:02", "odoo.exceptions.AccessDenied: Access Denied"
+                ),
+                trace(
+                    "03:00:03",
+                    "odoo.addons.mail.tools.jwt.InvalidVapidError: Invalid"
+                    " VAPID public key",
+                ),
+            ]
+        )
+        analyse = journal.analyser(recs(texte))
+        self.assertEqual(
+            dict(analyse.ignores),
+            {"sourcemap": 1, "serialization_retry": 1, "vapid": 1},
+        )
+        titres = [g.titre for g in analyse.groupes_tracebacks()]
+        self.assertEqual(len(titres), 2)
+        self.assertTrue(any("SerializationFailure" in t for t in titres))
+        self.assertTrue(any("AccessDenied" in t for t in titres))
+        self.assertEqual(analyse.a_revoir, 2)
+        sans = journal.analyser(recs(texte), builtin=False)
+        self.assertEqual(sans.a_revoir, 5)
+
+    def test_ignorer_ne_lit_pas_les_cadres(self):
+        import re
+
+        texte = trace("03:00:00", "KeyError: 'x'")
+        cadre = [re.compile(r"/srv/odoo/x\.py")]
+        self.assertEqual(journal.analyser(recs(texte), cadre).a_revoir, 1)
+        for motif in (r"odoo\.http", r"KeyError"):
+            with self.subTest(motif=motif):
+                analyse = journal.analyser(recs(texte), [re.compile(motif)])
+                self.assertEqual(analyse.a_revoir, 0)
+                self.assertEqual(list(analyse.ignores), ["--ignore " + motif])
+
+
+class TestJournalHeuresEtJson(unittest.TestCase):
+    def test_j10_matrice(self):
+        texte = "".join(
+            trace(heure, "KeyError: 'x'")
+            for heure in ("03:00:00", "03:10:00", "19:00:00")
+        )
+        with fuseau("UTC"):
+            analyse = journal.analyser(recs(texte))
+        self.assertEqual(
+            dict(analyse.par_heure),
+            {("2026-01-15", 3): 2, ("2026-01-15", 19): 1},
+        )
+        jours = [f"2026-01-{j:02d}" for j in range(1, 16)]
+        par_heure = dict(analyse.par_heure)
+        par_heure[("2026-01-14", 3)] = 1234
+        lignes = journal.tableau_horaire(par_heure, jours, "h", "total")
+        self.assertEqual(len(lignes), 4)
+        self.assertEqual(len(lignes[0].split()), 1 + 14 + 1)
+        self.assertNotIn("01-01", lignes[0])
+        self.assertIn("1234", lignes[1])
+        self.assertNotIn("1,234", "\n".join(lignes))
+        self.assertTrue(lignes[1].startswith("03 h"))
+        self.assertIn("█", lignes[1])
+        self.assertLessEqual(lignes[1].count("█"), journal.BARRE_MAX)
+        self.assertTrue(lignes[-1].split()[-1] == "1237")
+        self.assertEqual(
+            journal.plages_sans({3, 19, 20, 21, 22, 23}),
+            "00 h–02 h, 04 h–18 h",
+        )
+        self.assertEqual(journal.plages_sans(set(range(24)) - {5}), "05 h")
+        self.assertEqual(journal.tableau_horaire({}, jours), [])
+
+    def test_j11_cles_json_stables(self):
+        from script.todo import todo_i18n
+
+        with mock.patch.object(todo_i18n, "get_lang", return_value="fr"):
+            resume = journal.resume_json(journal.analyser(recs(TRACE_CHAINEE)))
+        self.assertEqual(
+            list(resume),
+            [
+                "version",
+                "source",
+                "window",
+                "records",
+                "to_review",
+                "tracebacks",
+                "errors",
+                "sql",
+                "mail",
+                "ignored",
+                "by_hour",
+                "state",
+                "exit_code",
+            ],
+        )
+        self.assertEqual(
+            list(resume["tracebacks"][0]),
+            [
+                "key",
+                "headline",
+                "logger",
+                "db",
+                "count",
+                "first",
+                "last",
+                "sample",
+                "sql",
+            ],
+        )
+        json.dumps(resume)
+
+    def test_j12_ligne_demesuree(self):
+        import time as horloge
+
+        ligne = "2026-01-15 03:00:00,000 1 ERROR b odoo.http: " + "a" * 200000
+        debut = horloge.monotonic()
+        (rec,) = recs(ligne + "\n" + "b" * 200000 + " :")
+        self.assertLess(horloge.monotonic() - debut, 2)
+        self.assertEqual(len(rec.entete), journal.LIGNE_MAX)
+        self.assertLessEqual(len(rec.lignes[1]), journal.LIGNE_MAX)
+
+
+def courriel(classe_smtp, detail, mid=7404, preambule=None):
+    """Un échec d'envoi tel qu'Odoo le journalise : en-tête, trace de
+    smtplib, puis MailDeliveryException avec la phrase traduite."""
+    preambule = preambule or "Mail delivery failed via SMTP server 'None'."
+    return (
+        f"2026-01-15 03:00:00,000 7 ERROR base_essai"
+        f" odoo.addons.mail.models.mail_mail: failed sending mail (id: {mid})"
+        " due to Mail Delivery Failed\n"
+        f"{journal.DEBUT_TRACE}\n"
+        '  File "/srv/odoo/odoo/addons/base/models/ir_mail_server.py",'
+        " line 769, in send_email\n"
+        "    smtp.send_message(message, smtp_from, smtp_to_list)\n"
+        f"smtplib.{classe_smtp}: {detail}\n"
+        "\nDuring handling of the above exception, another exception"
+        " occurred:\n\n"
+        f"{journal.DEBUT_TRACE}\n"
+        "odoo.addons.base.models.ir_mail_server.MailDeliveryException:"
+        f" ('Mail Delivery Failed', \"{preambule}\\n{classe_smtp}: {detail}\")\n"
+    )
+
+
+class TestDiagnosticCourriel(unittest.TestCase):
+    CAS = (
+        (
+            "SMTPDataError",
+            "(452, b'4.4.5 Maximum number of messages per session exceeded')",
+            "rate_limit",
+            False,
+        ),
+        (
+            "SMTPDataError",
+            "(421, b'4.7.0 Try again later')",
+            "rate_limit",
+            False,
+        ),
+        (
+            "SMTPDataError",
+            "(550, b'5.4.5 Daily user sending quota exceeded')",
+            "rate_limit",
+            False,
+        ),
+        (
+            "SMTPSenderRefused",
+            "(503, b'5.5.1 Multiple MAIL commands not allowed', 'a@example.org')",
+            "cascade_503",
+            False,
+        ),
+        (
+            "SMTPAuthenticationError",
+            "(535, b'5.7.8 Username and Password not accepted')",
+            "auth",
+            True,
+        ),
+        (
+            "SMTPRecipientsRefused",
+            "{'x@example.org': (554, b'5.7.1 Relay access denied')}",
+            "relay",
+            True,
+        ),
+        (
+            "SMTPDataError",
+            "(550, b'You are not allowed to send emails as"
+            ' "a@example.org" (header From) while using'
+            ' "b@example.org" as envelope sender\')',
+            "sender",
+            True,
+        ),
+        (
+            "SMTPSenderRefused",
+            "(553, b'5.7.1 Sender address rejected', 'a@example.org')",
+            "sender",
+            True,
+        ),
+        (
+            "SSLError",
+            "[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1006)",
+            "tls",
+            True,
+        ),
+        (
+            "SMTPNotSupportedError",
+            "STARTTLS extension not supported by server.",
+            "tls",
+            True,
+        ),
+        (
+            "SMTPServerDisconnected",
+            "Connection unexpectedly closed: timed out",
+            "connection",
+            False,
+        ),
+        (
+            "SMTPRecipientsRefused",
+            "{'x@example.net': (550, b'5.1.1 User unknown')}",
+            "recipient",
+            True,
+        ),
+    )
+
+    def test_d1_chaque_classe(self):
+        for exc, detail, attendu, permanent in self.CAS:
+            with self.subTest(attendu=attendu, detail=detail):
+                classe = mail_diagnostic.classer(courriel(exc, detail))
+                self.assertEqual(classe.id, attendu)
+                self.assertEqual(classe.permanent, permanent)
+        texte = (
+            "MailDeliveryException: ConnectionRefusedError:"
+            " [Errno 111] Connection refused"
+        )
+        self.assertEqual(mail_diagnostic.classer(texte).id, "connection")
+
+    def test_d2_pas_de_contexte_pas_de_courriel(self):
+        texte = (
+            "2026-01-15 03:00:00,000 7 ERROR base_essai"
+            " odoo.addons.base.models.res_partner: Connection refused par le"
+            " service de géocodage\n"
+            f"{journal.DEBUT_TRACE}\n"
+            "ConnectionRefusedError: [Errno 111] Connection refused"
+        )
+        self.assertIsNone(mail_diagnostic.classer(texte))
+        self.assertEqual(
+            mail_diagnostic.classer(texte, contexte_requis=False).id,
+            "connection",
+        )
+
+    def test_d3_independant_de_la_langue(self):
+        detail = (
+            "(452, b'4.4.5 Maximum number of messages per session exceeded')"
+        )
+        anglais = (
+            "Mail Delivery Failed\nMail delivery failed via SMTP server"
+            f" 'None'.\nSMTPDataError: {detail}"
+        )
+        francais = (
+            "Échec de l'envoi\nÉchec de l'envoi de l'e-mail via le serveur"
+            f" SMTP 'None'.\nSMTPDataError: {detail}"
+        )
+        for raison in (anglais, francais, francais.replace("\n", " ")):
+            with self.subTest(raison=raison):
+                self.assertEqual(
+                    mail_diagnostic.classer_echec(raison).id, "rate_limit"
+                )
+                cause = mail_diagnostic.cause_courte(raison)
+                self.assertTrue(cause.startswith("SMTPDataError: (452, "))
+                self.assertLessEqual(len(cause), 70)
+        self.assertEqual(
+            mail_diagnostic.classer(courriel("SMTPDataError", detail)).id,
+            mail_diagnostic.classer(
+                courriel(
+                    "SMTPDataError",
+                    detail,
+                    preambule="Échec de l'envoi via le serveur SMTP 'None'.",
+                )
+            ).id,
+        )
+        self.assertEqual(mail_diagnostic.cause_courte(""), "")
+        self.assertEqual(
+            mail_diagnostic.cause_courte("ligne une\nsans exception"),
+            "sans exception",
+        )
+
+    def test_d4_type_d_echec(self):
+        classe = mail_diagnostic.classer_echec("", "mail_email_invalid")
+        self.assertEqual(
+            (classe.id, classe.permanent), ("invalid_address", True)
+        )
+        self.assertEqual(
+            mail_diagnostic.classer_echec("", "mail_from_missing").id, "sender"
+        )
+        texte = "SMTPDataError: (452, b'4.4.5 Too many messages')"
+        self.assertEqual(
+            mail_diagnostic.classer_echec(texte, "mail_smtp").id, "rate_limit"
+        )
+        self.assertEqual(
+            mail_diagnostic.classer_echec(texte, None).id, "rate_limit"
+        )
+        self.assertIsNone(mail_diagnostic.classer_echec("", None))
+
+    def test_d5_reglage_selon_la_version(self):
+        r14 = mail_diagnostic.reglage("sender", 14)
+        self.assertIn("mail.default.from", r14)
+        self.assertNotIn("From Filter", r14)
+        r16 = mail_diagnostic.reglage("sender", 16)
+        self.assertIn("From Filter", r16)
+        self.assertIn("mail.catchall.domain", r16)
+        r18 = mail_diagnostic.reglage("sender", 18)
+        self.assertIn("Alias Domains", r18)
+        self.assertNotIn("mail.catchall.domain", r18)
+        generique = mail_diagnostic.reglage("sender", None)
+        self.assertIn("15+", generique)
+        self.assertIn("17+", generique)
+        self.assertEqual(mail_diagnostic.reglage("inconnue"), "")
+        self.assertEqual(mail_diagnostic.version_majeure("18.0.1.3"), 18)
+        self.assertIsNone(mail_diagnostic.version_majeure(None))
+
+    def test_classe_dans_le_journal(self):
+        texte = "".join(
+            courriel(exc, detail, mid=7404 + rang)
+            for rang, (exc, detail, _a, _p) in enumerate(self.CAS[:2])
+        )
+        analyse = journal.analyser(recs(texte))
+        (groupe,) = analyse.groupes_courriels()
+        self.assertEqual(
+            (groupe.classe.id, groupe.nombre, sorted(groupe.ids)),
+            ("rate_limit", 2, [7404, 7405]),
+        )
+        # Chaque échec reste aussi une trace à revoir, comptée une fois ;
+        # les deux réponses du serveur diffèrent, d'où deux groupes.
+        self.assertEqual(analyse.a_revoir, 2)
+        self.assertEqual(
+            [g.nombre for g in analyse.groupes_tracebacks()], [1, 1]
+        )
 
 
 class TestVerifierSauvegarde(unittest.TestCase):
