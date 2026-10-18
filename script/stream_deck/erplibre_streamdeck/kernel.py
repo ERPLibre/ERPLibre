@@ -7,7 +7,9 @@ Every plugin call goes through guard(): an exception is written to the
 journal once per (plugin, call, error) until that call succeeds again,
 and the kernel recovers (flash ERR, home screen, empty key) instead of
 dying. handle_key, render and step's locked part expect the caller to
-hold `lock`; the app's key callback and loop() take it."""
+hold `lock`; on_key() (the deck's key callback) and loop() take it.
+Both also catch what escapes a pass under the plugin id "kernel", so
+neither thread dies."""
 
 import sys
 import threading
@@ -141,6 +143,8 @@ class Kernel:
         return True, result
 
     def paint(self, key, face):
+        """Paint a KeyFace; raises what render.set_key raises on a bad
+        field (a text that is not a str, a colour PIL refuses)."""
         render.set_key(
             self.deck, key, face.color, face.text, face.icon,
             face.extra_draw,
@@ -217,6 +221,13 @@ class Kernel:
             if 0 <= nc < cols and 0 <= nr < rows:
                 out.add(nr * cols + nc)
         return out
+
+    def on_key(self, deck, key, pressed):
+        """The deck's key callback, run by the StreamDeck reader thread:
+        an exception escaping it would end that thread's reads."""
+        with self.lock:
+            self.guard("kernel", "key callback", self.handle_key, key,
+                       pressed)
 
     def handle_key(self, key, pressed):
         if not pressed or self._flash_live():
@@ -304,7 +315,7 @@ class Kernel:
     def loop(self):
         self._schedule.clear()
         while self.running and self.deck.is_open():
-            self.step(time.monotonic())
+            self.guard("kernel", "loop pass", self.step, time.monotonic())
             time.sleep(LOOP_SEC)
 
     def shutdown(self):

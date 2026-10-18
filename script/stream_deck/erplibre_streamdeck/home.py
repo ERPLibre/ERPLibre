@@ -8,7 +8,8 @@ full; the rest get no key. Fixtures are then placed in their order,
 skipping keys already taken. The dashboard is every other key from row
 1 on, in reading order, filled by the tile providers in their order.
 A render stores which item each dashboard key shows, and a tap reads
-that: it opens what the key showed."""
+that: it opens what the key showed. A face whose paint raises leaves
+its key empty."""
 
 from dataclasses import dataclass, field
 
@@ -121,6 +122,8 @@ class Home:
         self.tile_map = tile_map
 
     def _face(self, kernel, key):
+        """(owner plugin id, face) of `key`; "kernel" owns the faces it
+        draws itself (NO EXT, empty)."""
         if key in self.buttons:
             pid, button = self.buttons[key]
             ok, face = kernel.guard(
@@ -137,15 +140,22 @@ class Home:
                 pid, "tile face", tp.face, kernel.ctx(pid), item
             )
         elif key == 0 and not kernel.dbus_ok:
-            return KeyFace(colors.ERR, i18n.t("NO\nEXT"))
+            return "kernel", KeyFace(colors.ERR, i18n.t("NO\nEXT"))
         else:
-            return EMPTY
-        return face if ok and isinstance(face, KeyFace) else EMPTY
+            return "kernel", EMPTY
+        return pid, (face if ok and isinstance(face, KeyFace) else EMPTY)
 
     def render(self, kernel):
         self._fill(kernel)
         for key in range(self.geo.total_keys):
-            kernel.paint(key, self._face(kernel, key))
+            pid, face = self._face(kernel, key)
+            # One journal entry per key: a provider whose faces fail on
+            # one key and paint on the next is not logged every render.
+            ok, _ = kernel.guard(
+                pid, f"key {key} paint", kernel.paint, key, face
+            )
+            if not ok:
+                kernel.paint(key, EMPTY)
 
     def press(self, kernel, key):
         """The press of what `key` showed; the callee renders. A press

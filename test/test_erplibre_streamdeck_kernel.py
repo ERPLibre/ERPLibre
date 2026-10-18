@@ -17,12 +17,18 @@ import streamdeck_stubs as S  # noqa: E402
 S.install()
 from erplibre_streamdeck import kernel as K  # noqa: E402
 from erplibre_streamdeck.plugin import (  # noqa: E402
+    KeyFace,
     LoadedPlugin,
     Page,
     Plugin,
     PLUGIN_API,
+    TileProvider,
 )
-from erplibre_streamdeck.ui import render  # noqa: E402
+from erplibre_streamdeck.ui import colors, render  # noqa: E402
+
+# The real painter: KernelCase replaces it with a recorder, which takes
+# any text; the real one calls len() on it.
+REAL_SET_KEY = render.set_key
 
 
 class FakeDbus:
@@ -157,6 +163,62 @@ class IsolationTest(KernelCase):
         self.assertEqual(["p"], [lp.id for lp in k.plugins])
         self.assertEqual("bad", k.refused[0][0])
         self.assertNotIn("b", k.pages)
+
+
+class LastResortTest(KernelCase):
+    """What a plugin returns, or a bug in a pass, never stops the loop
+    thread, the key callback or the first render."""
+
+    def tile_plugin(self, face):
+        return loaded("z", Plugin(api=PLUGIN_API, tiles=[TileProvider(
+            5, lambda ctx: ["q"], lambda ctx, item: face,
+            lambda ctx, item: None,
+        )]))
+
+    def test_face_whose_paint_raises_is_painted_empty(self):
+        k = self.kernel(self.tile_plugin(KeyFace(colors.OK, 5)))
+        key = k.home.pool[0]
+        with mock.patch.object(render, "set_key", REAL_SET_KEY):
+            k.render()
+            k.render()
+        last = [img for kk, img in self.deck.images if kk == key][-1]
+        self.assertEqual(colors.EMPTY, last.color)
+        self.assertEqual(
+            1,
+            self.journal.getvalue().count(f"z: key {key} paint failed"),
+        )
+
+    def test_loop_pass_that_raises_is_logged_and_the_loop_goes_on(self):
+        k = self.kernel(self.page_plugin())
+        passes = []
+
+        def step(now):
+            passes.append(now)
+            raise RuntimeError("pass")
+
+        self.deck.polls = 3
+        with mock.patch.object(k, "step", step):
+            k.loop()
+        self.assertEqual(3, len(passes))
+        self.assertEqual(
+            1, self.journal.getvalue().count("kernel: loop pass failed")
+        )
+
+    def test_key_callback_that_raises_is_logged_and_unlocks(self):
+        k = self.kernel(self.page_plugin())
+        k.goto("pg")
+        self.calls.clear()
+        with mock.patch.object(
+            k, "handle_key", side_effect=RuntimeError("key")
+        ):
+            k.on_key(self.deck, 3, True)
+            k.on_key(self.deck, 3, True)
+        self.assertFalse(k.lock.locked())
+        self.assertEqual(
+            1, self.journal.getvalue().count("kernel: key callback failed")
+        )
+        k.on_key(self.deck, 3, True)
+        self.assertEqual([("handle", 3)], self.calls)
 
 
 class UnknownPageTest(KernelCase):

@@ -78,13 +78,8 @@ def main():
     print("Press TILE to enter tiling mode (first corner, second corner).")
     print("Press TIMER to list and toggle tracker timers.")
 
-    kernel.render()
-
-    def key_cb(d, k, s):
-        with kernel.lock:
-            kernel.handle_key(k, s)
-
-    deck.set_key_callback(key_cb)
+    kernel.guard("kernel", "first render", kernel.render)
+    deck.set_key_callback(kernel.on_key)
     threading.Thread(target=kernel.loop, daemon=True).start()
     try:
         while deck.is_open():
