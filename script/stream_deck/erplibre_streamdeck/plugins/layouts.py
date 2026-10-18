@@ -4,11 +4,10 @@
 (ListWindows / ApplyLayout), stored in layouts.json."""
 
 import json
-import os
 import re
 from datetime import datetime
 
-from erplibre_streamdeck import paths
+from erplibre_streamdeck import jsonfile, paths
 from erplibre_streamdeck.plugin import (
     PLUGIN_API, Fixture, HomeButton, KeyFace, Page, Plugin,
 )
@@ -26,9 +25,7 @@ def _layouts_load():
 
 
 def _layouts_save(data):
-    os.makedirs(paths.CONFIG_DIR, exist_ok=True)
-    with open(paths.LAYOUTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    jsonfile.write_atomic(paths.LAYOUTS_FILE, data)
 
 
 def _list_windows_dbus(ctx):

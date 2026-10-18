@@ -4,12 +4,11 @@
 
 Each writer reloads the file right before saving and changes only its
 own keys, so a11y and the translator keep each other's values. The
-write is not atomic."""
+file is replaced atomically."""
 
 import json
-import os
 
-from erplibre_streamdeck import paths
+from erplibre_streamdeck import jsonfile, paths
 
 
 def load():
@@ -22,6 +21,4 @@ def load():
 
 
 def save(data):
-    os.makedirs(paths.CONFIG_DIR, exist_ok=True)
-    with open(paths.SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    jsonfile.write_atomic(paths.SETTINGS_FILE, data)
