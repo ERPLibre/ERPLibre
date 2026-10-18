@@ -40,19 +40,24 @@ def _games_refusal():
     """None quand GAMES active les jeux ; sinon la ligne qui dit pourquoi.
     Le fichier se relit à chaque appel, par la bibliothèque shell qui le
     lit pour make et la passation : un changement compte sans redémarrer
-    la galerie."""
-    fini = subprocess.run(
-        [
-            "bash",
-            "-c",
-            '. "$0" && { deck_games_enabled'
-            " || { deck_games_message; exit 1; }; }",
-            SETTINGS_LIB,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    la galerie. Une lecture qui échoue (bash absent, délai dépassé) refuse
+    aussi, comme une valeur inconnue : la ligne nomme l'échec."""
+    try:
+        fini = subprocess.run(
+            [
+                "bash",
+                "-c",
+                '. "$0" && { deck_games_enabled'
+                " || { deck_games_message; exit 1; }; }",
+                SETTINGS_LIB,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as echec:
+        raison = " ".join(str(echec).split())
+        return f"cannot read the GAMES setting: {raison}"
     if fini.returncode == 0:
         return None
     return fini.stdout.strip() or fini.stderr.strip() or "games disabled"
