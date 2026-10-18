@@ -27,8 +27,6 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime
 
 try:
@@ -46,7 +44,6 @@ import translator as _translator
 COLOR_EMPTY = (20, 20, 30)
 COLOR_GRID = (40, 60, 100)
 COLOR_SELECTED = (0, 180, 255)
-COLOR_PREVIEW = (0, 120, 60)
 COLOR_TITLE = (0, 80, 160)
 COLOR_TIMER_TITLE = (120, 60, 0)
 COLOR_TIMER_RUNNING = (0, 160, 40)
@@ -98,8 +95,6 @@ FONT_SCALE_DEFAULT = 1.0
 _font_scale = FONT_SCALE_DEFAULT
 _show_labels = False  # show text labels on buttons that have icons
 
-GALLERY_RESTART_URL = "http://localhost:8042/api/restart"
-COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
 
@@ -813,10 +808,6 @@ def _bt_set_power(on):
         except Exception as e:
             print(f"rfkill error: {e}", file=sys.stderr, flush=True)
     return False
-
-
-def _wpctl_available():
-    return shutil.which("wpctl") is not None
 
 
 def _wpctl_get(target):
@@ -1769,26 +1760,6 @@ class Tiler:
         self.last_result = "err"
         self.result_time = time.monotonic()
 
-    def _enter_claude_session_mode(self, key):
-        """Open the actions page for the claude session attached to
-        `key`. Stores the session id so re-renders survive state file
-        churn from new prompts."""
-        if not self.claude_keys:
-            return
-        try:
-            idx = self.claude_keys.index(key)
-        except ValueError:
-            return
-        sessions = _load_claude_sessions()
-        if idx >= len(sessions):
-            return
-        sid = sessions[idx].get("session_id") or ""
-        if not sid:
-            return
-        self._claude_session_sid = sid
-        self.mode = MODE_CLAUDE_SESSION
-        self.render()
-
     def _call_claude_dbus(self, method, sid):
         try:
             out = subprocess.check_output([
@@ -1815,21 +1786,6 @@ class Tiler:
             print(f"[erplibre-home] {method}({sid!r}) failed: {e}",
                   file=sys.stderr, flush=True)
             return False
-
-    def _focus_claude_for_key(self, key):
-        if not self.claude_keys:
-            return False
-        try:
-            idx = self.claude_keys.index(key)
-        except ValueError:
-            return False
-        sessions = _load_claude_sessions()
-        if idx >= len(sessions):
-            return False
-        sid = sessions[idx].get("session_id") or ""
-        if not sid:
-            return False
-        return self._call_claude_dbus("FocusClaudeSession", sid)
 
     def _compute_claude_session_keys(self):
         """Layout for the per-session action page. Requires >= 2 cols.
@@ -1961,9 +1917,8 @@ class Tiler:
             "mic_up": 2 * self.cols + 2,
             "mic_mute": 2 * self.cols + 3,
         }
-        if self.cols >= 4:
-            keys["sink"] = 1     # row 0, col 1 — cycles default output
-            keys["source"] = 2   # row 0, col 2 — cycles default input
+        keys["sink"] = 1     # row 0, col 1 — cycles default output
+        keys["source"] = 2   # row 0, col 2 — cycles default input
         self.sound_keys = keys
 
     # ---------- Key handling ----------
@@ -2970,8 +2925,7 @@ class Tiler:
                 and session.get('notification_message')):
             text_to_show = session['notification_message']
         else:
-            text_to_show = (session or {}).get('description') \
-                or (session or {}).get('last_prompt') or ''
+            text_to_show = (session or {}).get('description') or ''
         chunks = _chunk_text_for_cells(text_to_show, len(text_keys))
         chunk_by_key = dict(zip(text_keys, chunks))
 
@@ -3378,16 +3332,11 @@ class Tiler:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
     def _render_tiling(self):
-        preview = set()
-        if self.corner1:
-            preview.add(self.corner1)
         for key in range(self.total_keys):
             r = key // self.cols
             c = key % self.cols
             if (c, r) == self.corner1:
                 set_key(self.deck, key, COLOR_SELECTED, "1")
-            elif (c, r) in preview:
-                set_key(self.deck, key, COLOR_PREVIEW, "")
             else:
                 label = f"{c},{r}"
                 set_key(self.deck, key, COLOR_GRID, label)
