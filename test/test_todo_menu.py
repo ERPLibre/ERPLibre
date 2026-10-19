@@ -337,6 +337,7 @@ class TestLesIconesDuMenuProxmox(unittest.TestCase):
         "List available images and their specs": "🗂",
         "Proxmox - example sequence (dry-run)": "🎬",
         "Change the Proxmox host": "🔀",
+        "Host performance audit (read-only)": "⏱",
         "Host": "🏠",
     }
 
@@ -730,6 +731,7 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
         "Change the Proxmox host": "_pve_forget_host",
+        "Host performance audit": "_pve_perf_audit",
     }
 
 
@@ -765,6 +767,7 @@ class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
         "Health check of this instance": "_ops_health_local",
         "Health check of a public URL": "_ops_health_url",
         "Warm up the cache (deep)": "_ops_warmup_deep",
+        "Host performance audit of this machine": "_ops_perf_audit",
     }
 
 

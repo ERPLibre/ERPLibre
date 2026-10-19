@@ -34,6 +34,9 @@ PATTERNS = (
     # du dossier portent un shebang sans le bit d'exécution.
     "script/database/odoo_backup.py",
     "script/systemd/*.py",
+    # Par chemin pour la même raison : nesting.py et proxmox_deploy.py
+    # portent un shebang sans le bit d'exécution.
+    "script/proxmox/host_perf_audit.py",
 )
 
 

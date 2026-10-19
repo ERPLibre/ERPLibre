@@ -1922,6 +1922,7 @@ class TestPythonAncien(unittest.TestCase):
         os.path.join(RACINE, "script", "lib_ops", "mail_diagnostic.py"),
         os.path.join(RACINE, "script", "odoo", "health_check.py"),
         os.path.join(RACINE, "script", "odoo", "warmup_http.py"),
+        os.path.join(RACINE, "script", "proxmox", "host_perf_audit.py"),
     ]
 
     # API absentes de Python 3.7 : la syntaxe passe le garde, l'appel
@@ -1989,6 +1990,7 @@ class TestPythonAncien(unittest.TestCase):
             os.path.join(RACINE, "script", "odoo", "log_check.py"),
             os.path.join(RACINE, "script", "odoo", "mail_retry.py"),
             os.path.join(RACINE, "script", "odoo", "health_check.py"),
+            os.path.join(RACINE, "script", "proxmox", "host_perf_audit.py"),
         ):
             with self.subTest(fichier=os.path.basename(chemin)):
                 self.assertTrue(os.access(chemin, os.X_OK))
