@@ -10,9 +10,10 @@ restauration dans une nouvelle base),
 `script/systemd/install_backup_timer.py` (sauvegarde planifiée),
 `script/odoo/log_check.py` (journal d'Odoo), `script/odoo/mail_retry.py`
 (courriels en échec d'envoi), `script/odoo/health_check.py` (santé de
-l'instance ou d'une URL publique) et `script/odoo/warmup_http.py --deep`
-(préchauffage du cache). Le menu n'en duplique rien : ce qui se fait
-depuis ici se fait aussi bien en ligne de commande.
+l'instance ou d'une URL publique), `script/odoo/warmup_http.py --deep`
+(préchauffage du cache) et `script/proxmox/host_perf_audit.py` (audit de
+performance de ce poste, en lecture seule). Le menu n'en duplique rien :
+ce qui se fait depuis ici se fait aussi bien en ligne de commande.
 
 Tout ce qui écrit passe par deux temps :
 
@@ -31,6 +32,10 @@ confirmation ni sudo ; quand le compte courant ne peut pas lire ce qu'il
 faut (code 2), la même commande sous sudo est proposée. La santé d'une
 URL publique ne lit rien sur ce poste : son code 2 est une URL refusée, et
 sudo n'est jamais proposé.
+
+L'audit de performance se lance sans sudo ni capture, avec un délai égal
+à la durée demandée plus une marge ; le menu Proxmox réutilise les mêmes
+méthodes pour l'envoyer à l'hôte retenu par ssh, le fichier sur stdin.
 
 `log_check --since-last` retient sa position dans un dossier de root : le
 menu propose sudo d'avance quand ce dossier n'est pas inscriptible, sinon
@@ -61,6 +66,22 @@ HEALTH_CHECK = os.path.join("script", "odoo", "health_check.py")
 WARMUP_HTTP = os.path.join("script", "odoo", "warmup_http.py")
 # Le dossier d'état par défaut de log_check.py.
 ETAT_LOG_CHECK = "/var/lib/erplibre-logcheck"
+# L'audit de performance, en chemin absolu : il est ouvert pour être envoyé
+# sur le stdin de ssh, et lancé tel quel en local.
+HOST_PERF_AUDIT_RELATIF = os.path.join(
+    "script", "proxmox", "host_perf_audit.py"
+)
+HOST_PERF_AUDIT = os.path.join(
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ),
+    HOST_PERF_AUDIT_RELATIF,
+)
+# Au-delà de la durée mesurée : les commandes lancées une fois (zpool, zfs,
+# smartctl, chacune bornée à 20 s) et le rapport.
+MARGE_AUDIT_S = 300
+# Après un Ctrl-C, le temps laissé à l'audit local pour écrire son rapport.
+ATTENTE_RAPPORT_S = 60
 
 
 def joindre(argv):
@@ -156,6 +177,11 @@ class OpsMenuMixin:
                     "Warm up the cache (deep) - public pages and asset bundles"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Host performance audit of this machine - read-only"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -191,14 +217,17 @@ class OpsMenuMixin:
                 print(t("Command not found !"))
 
     def _ops_production_sante(self, status):
-        """Les entrées 13 à 15 du menu (santé, préchauffage) ; False pour
-        un autre choix. À part pour borner la taille du dispatch."""
+        """Les entrées 13 à 16 du menu (santé, préchauffage, audit de
+        performance) ; False pour un autre choix. À part pour borner la
+        taille du dispatch."""
         if status == "13":
             self._ops_health_local()
         elif status == "14":
             self._ops_health_url()
         elif status == "15":
             self._ops_warmup_deep()
+        elif status == "16":
+            self._ops_perf_audit()
         else:
             return False
         return True
@@ -472,6 +501,137 @@ class OpsMenuMixin:
 
     def _ops_warmup_deep(self):
         self._ops_lire(WARMUP_HTTP, ["--deep", "--local"])
+
+    def _ops_perf_duree(self):
+        """La durée saisie, validée par la règle de host_perf_audit.py
+        (1 s à 7 jours), en secondes ; None si refusée. Seul ce nombre est
+        transmis : rien de ce qui est tapé n'atteint un shell distant."""
+        from script.proxmox import host_perf_audit
+
+        texte = input(
+            t("Audit duration (90, 30s, 10m, 2h; default 60): ")
+        ).strip()
+        try:
+            return host_perf_audit.duree_valide(texte or "60")
+        except ValueError:
+            print(
+                t(
+                    "Cancelled: duration refused (1 second to 7 days, e.g."
+                    " 90, 10m, 1h30m)."
+                )
+            )
+            return None
+
+    def _ops_perf_audit(self):
+        """L'audit de performance de CE poste."""
+        secondes = self._ops_perf_duree()
+        if secondes is not None:
+            self._ops_perf_local(secondes)
+
+    def _ops_perf_local(self, secondes, runner=None):
+        """Lance l'audit ici, sans sudo : il dit lui-même ce qui manque
+        sans root."""
+        conseil = t(
+            "SMART health and some ZFS details need root; for a complete"
+            " report:"
+        )
+        print(f"  {conseil} sudo {joindre([sys.executable, HOST_PERF_AUDIT])}")
+        argv = [sys.executable, HOST_PERF_AUDIT, "--duration", str(secondes)]
+        self._ops_perf_lancer(argv, secondes, runner=runner)
+
+    def _ops_perf_lancer(self, argv, secondes, runner=None, distant=False):
+        """Affiche puis lance `argv` sans capture, avec un délai de
+        `secondes` + MARGE_AUDIT_S ; `distant` envoie le fichier de l'audit
+        sur son stdin. Rend le code de sortie, ou None (délai, Ctrl-C,
+        lancement impossible). `runner(argv, stdin=, timeout=)` est
+        remplacé par les tests."""
+        runner = runner or lancer_en_direct
+        affichee = joindre(argv)
+        if distant:
+            affichee += " < " + HOST_PERF_AUDIT_RELATIF
+        print(f"\n{t('Will execute:')} {affichee}")
+        delai = secondes + MARGE_AUDIT_S
+        try:
+            if distant:
+                with open(HOST_PERF_AUDIT, "rb") as fichier:
+                    code = runner(argv, stdin=fichier, timeout=delai)
+            else:
+                code = runner(argv, stdin=None, timeout=delai)
+        except subprocess.TimeoutExpired:
+            message = t("The audit did not finish in time and was stopped.")
+            print(f"  ✗ {message}")
+            return None
+        except KeyboardInterrupt:
+            if distant:
+                message = t(
+                    "The remote audit ended without its report: a local"
+                    " Ctrl-C closes the connection. To stop early and still"
+                    " get a report, run the script on the host itself."
+                )
+                print(f"  ✗ {message}")
+            else:
+                message = t(
+                    "Interrupted: the report above covers the samples"
+                    " already taken."
+                )
+                print(f"  {message}")
+            return None
+        except OSError as err:
+            print(f"  ✗ {t('Could not start it:')} {err}")
+            return None
+        self._ops_perf_bilan(code, distant)
+        return code
+
+    @staticmethod
+    def _ops_perf_bilan(code, distant):
+        """Le message d'un code de sortie de l'audit ; rien pour 0."""
+        if code == 0:
+            return
+        if distant and code == 127:
+            print(f"  ✗ {t('python3 is missing on the Proxmox host.')}")
+        elif distant and code == 255:
+            print(f"  ✗ {t('The SSH connection failed (code 255).')}")
+        elif code == 2:
+            message = t(
+                "The audit could not run (code 2): see the message above."
+            )
+            print(f"  ✗ {message}")
+        else:
+            print(f"  ✗ {t('The command ended with code')} {code}")
+
+
+def lancer_en_direct(argv, stdin=None, timeout=None):
+    """Lance `argv` SANS capture (la sortie s'affiche au fil de l'eau) et
+    rend son code.
+
+    Délai dépassé : TERM, puis KILL, et TimeoutExpired remonte. Ctrl-C :
+    un programme local reçoit le même SIGINT (même groupe de processus) ;
+    on lui laisse ATTENTE_RAPPORT_S pour écrire son rapport, puis
+    KeyboardInterrupt remonte. Un second Ctrl-C l'arrête net.
+    `subprocess.run` ne convient pas : sur Ctrl-C, il tue l'enfant après
+    un quart de seconde, au milieu du rapport."""
+    proc = subprocess.Popen(argv, stdin=stdin)
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _arreter(proc)
+        raise
+    except KeyboardInterrupt:
+        try:
+            proc.wait(timeout=ATTENTE_RAPPORT_S)
+        except (KeyboardInterrupt, subprocess.TimeoutExpired):
+            _arreter(proc)
+        raise
+
+
+def _arreter(proc):
+    """TERM, puis KILL après 10 s."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
 
 def _inscriptible(dossier):

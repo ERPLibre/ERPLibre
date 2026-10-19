@@ -5842,6 +5842,22 @@ TRANSLATIONS = {
         "fr": "🔀 Changer d'hôte Proxmox",
         "en": "🔀 Change the Proxmox host",
     },
+    "Host performance audit (read-only)": {
+        "fr": "⏱  Audit de performance de l'hôte (lecture seule)",
+        "en": "⏱  Host performance audit (read-only)",
+    },
+    "Where should the audit run?": {
+        "fr": "Où lancer l'audit ?",
+        "en": "Where should the audit run?",
+    },
+    "On the Proxmox host": {
+        "fr": "Sur l'hôte Proxmox",
+        "en": "On the Proxmox host",
+    },
+    "On this machine": {
+        "fr": "Sur ce poste",
+        "en": "On this machine",
+    },
     "VM name (default: erplibre-<distro>): ": {
         "fr": "Nom de la VM (défaut : erplibre-<distro>) : ",
         "en": "VM name (default: erplibre-<distro>): ",
@@ -22144,6 +22160,47 @@ TRANSLATIONS = {
     "Cancelled: invalid URL ({reason}).": {
         "fr": "Annulé : URL invalide ({reason}).",
         "en": "Cancelled: invalid URL ({reason}).",
+    },
+    # Production - audit de performance de l'hôte (ops_menu, host_perf_audit)
+    "Host performance audit of this machine - read-only": {
+        "fr": "Audit de performance de ce poste - lecture seule",
+        "en": "Host performance audit of this machine - read-only",
+    },
+    "Audit duration (90, 30s, 10m, 2h; default 60): ": {
+        "fr": "Durée de l'audit (90, 30s, 10m, 2h ; défaut 60) : ",
+        "en": "Audit duration (90, 30s, 10m, 2h; default 60): ",
+    },
+    "Cancelled: duration refused (1 second to 7 days, e.g. 90, 10m, 1h30m).": {
+        "fr": "Annulé : durée refusée (1 seconde à 7 jours, p. ex. 90, 10m, 1h30m).",
+        "en": "Cancelled: duration refused (1 second to 7 days, e.g. 90, 10m, 1h30m).",
+    },
+    "SMART health and some ZFS details need root; for a complete report:": {
+        "fr": "La santé SMART et certains détails ZFS exigent root ; pour un rapport complet :",
+        "en": "SMART health and some ZFS details need root; for a complete report:",
+    },
+    "The audit did not finish in time and was stopped.": {
+        "fr": "L'audit n'a pas fini à temps et a été arrêté.",
+        "en": "The audit did not finish in time and was stopped.",
+    },
+    "The remote audit ended without its report: a local Ctrl-C closes the connection. To stop early and still get a report, run the script on the host itself.": {
+        "fr": "L'audit distant s'est terminé sans son rapport : un Ctrl-C local ferme la connexion. Pour arrêter tôt et garder le rapport, lancer le script sur l'hôte lui-même.",
+        "en": "The remote audit ended without its report: a local Ctrl-C closes the connection. To stop early and still get a report, run the script on the host itself.",
+    },
+    "Interrupted: the report above covers the samples already taken.": {
+        "fr": "Interrompu : le rapport ci-dessus porte sur les échantillons déjà pris.",
+        "en": "Interrupted: the report above covers the samples already taken.",
+    },
+    "python3 is missing on the Proxmox host.": {
+        "fr": "python3 manque sur l'hôte Proxmox.",
+        "en": "python3 is missing on the Proxmox host.",
+    },
+    "The SSH connection failed (code 255).": {
+        "fr": "La connexion SSH a échoué (code 255).",
+        "en": "The SSH connection failed (code 255).",
+    },
+    "The audit could not run (code 2): see the message above.": {
+        "fr": "L'audit n'a pas pu se faire (code 2) : voir le message ci-dessus.",
+        "en": "The audit could not run (code 2): see the message above.",
     },
 }
 

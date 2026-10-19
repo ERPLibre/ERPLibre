@@ -268,6 +268,17 @@ calls. It prints a summary and exits 0, or 1 with `--strict` when a request
 failed. All three are in `make todo`: `Execute > Production`. Details and
 the Odoo 12 to 18 matrix: [script/odoo/README.md](../script/odoo/README.md).
 
+### Host performance audit
+
+`script/proxmox/host_perf_audit.py` measures, read-only, what limits the
+performance of the host — processor, memory, disks, network, ZFS and, on
+Proxmox VE, each guest — over a chosen duration, and prints a verdict per
+resource, the answer to "are SSD disks justified?" and the settings to
+consider as commands, never run. It is in `make todo`:
+`Execute > Production` for this host, and the Proxmox VE menu for the
+remembered hypervisor. Details:
+[script/proxmox/README.md](../script/proxmox/README.md).
+
 # Postgresql
 
 To show config files:

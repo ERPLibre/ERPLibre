@@ -8,6 +8,9 @@ Deux choses différentes vivent dans ce répertoire :
   de déploiement.
 - `proxmox_deploy.py` déploie des VM **sur** un tel hôte, depuis
   `TODO › Execute › Deploy › Proxmox VE`, juste sous `QEMU/KVM`.
+- `host_perf_audit.py` mesure, en lecture seule, ce qui limite les
+  performances d'un tel hôte (ou de tout serveur Linux). Voir
+  [Audit de performance de l'hôte](#audit-de-performance-de-lhôte-lecture-seule).
 
 ## Toute la différence : l'hyperviseur est ailleurs
 
@@ -76,10 +79,50 @@ atteignent les invités Proxmox par les entrées `~/.ssh/config` que l'entrée 1
 [2] Prévisualiser          [9]  Effacer des VM             [16] Catalogue d'images *
 [3] Télécharger une image  [10] Nettoyer (orphelins)       [17] Exemple (dry-run)
 [4] Rouvrir le suivi *     [11] Tester une VM (Odoo)       [18] Changer d'hôte
-[5] Lister (qm list)       [12] Statistiques
+[5] Lister (qm list)       [12] Statistiques               [19] Audit de performance
 [6] Adresse IP d'une VM    [13] Configuration SSH
 [7] Console d'une VM       [14] Tunnel bureau distant *
                                         * code partagé avec le menu QEMU/KVM
+```
+
+## Audit de performance de l'hôte (lecture seule)
+
+`host_perf_audit.py` échantillonne `/proc` et `/sys` toutes les
+`--interval` secondes (5 par défaut) pendant `--duration` (`60`, `30s`,
+`10m`, `2h`, `1h30m` ; de 1 seconde à 7 jours), puis rend un verdict par
+ressource — `ok`, `watch` ou `limiting` — pour le processeur, la mémoire,
+les disques et le réseau, la réponse à « des disques SSD sont-ils
+justifiés ? », et les réglages à envisager (compression et atime ZFS,
+maximum de l'ARC, `vm.swappiness`, options des disques de VM…), chacun
+**affiché** avec la commande qui l'appliquerait. Rien n'est jamais modifié.
+
+Il couvre la pression (PSI, `/proc/pressure`), l'utilisation et l'attente
+de chaque disque (un disque rotatif est jugé sur son utilisation et son
+attente, un SSD ou un NVMe sur son attente seulement), l'activité du swap,
+ZFS (taux de succès de l'ARC, remplissage, fragmentation, santé, latence
+des pools) et, sur un hôte Proxmox en cgroup v2, chaque conteneur et VM en
+marche, nommés d'après `/etc/pve`. Les disques d'un pool sont lus dans ses
+propres vdev (`zpool status -P -L`) : un HDD de sauvegarde oisif, hors de
+tout pool, ne fait jamais répondre « oui, des SSD ».
+
+C'est un seul fichier, bibliothèque standard seulement, lançable par le
+`python3` d'un hôte dès Debian 10. L'entrée `[19]` de ce menu l'envoie à
+l'hôte retenu par `ssh -T`, le fichier sur stdin, ou le lance sur ce
+poste ; `TODO › Exécuter › Production` le lance aussi en local. Ctrl-C
+arrête la mesure plus tôt et donne quand même le rapport quand le script
+tourne sur l'hôte lui-même ; par ssh, un Ctrl-C local ferme la connexion
+et le rapport est perdu. `--json` produit un document aux clés stables,
+`--csv FICHIER` garde les échantillons bruts ; une erreur d'écriture
+(disque plein) coupe le fichier, pas l'audit. Chaque commande lancée une
+fois (`zpool`, `zfs`, `smartctl`) est abandonnée après 20 s, même bloquée
+sur un pool suspendu, et `smartctl` laisse dormir un disque en veille.
+Codes de sortie : 0 audit
+fait, 2 impossible, 130 interrompu avant la mesure.
+
+```bash
+./script/proxmox/host_perf_audit.py --duration 10m
+sudo ./script/proxmox/host_perf_audit.py --duration 24h --csv /var/tmp/perf.csv
+ssh -T root@pve.example.org python3 -I - --duration 2h < script/proxmox/host_perf_audit.py
 ```
 
 ## Vérifié

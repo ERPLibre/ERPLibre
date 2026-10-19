@@ -511,6 +511,30 @@ gestes sont dans `make todo` : `Exécuter > Production`. Détails et matrice
 Odoo 12 à 18 : [script/odoo/README.fr.md](../script/odoo/README.fr.md).
 
 <!-- [en] -->
+### Host performance audit
+
+`script/proxmox/host_perf_audit.py` measures, read-only, what limits the
+performance of the host — processor, memory, disks, network, ZFS and, on
+Proxmox VE, each guest — over a chosen duration, and prints a verdict per
+resource, the answer to "are SSD disks justified?" and the settings to
+consider as commands, never run. It is in `make todo`:
+`Execute > Production` for this host, and the Proxmox VE menu for the
+remembered hypervisor. Details:
+[script/proxmox/README.md](../script/proxmox/README.md).
+
+<!-- [fr] -->
+### Audit de performance de l'hôte
+
+`script/proxmox/host_perf_audit.py` mesure, en lecture seule, ce qui
+limite les performances de l'hôte — processeur, mémoire, disques, réseau,
+ZFS et, sous Proxmox VE, chaque invité — sur une durée choisie, et affiche
+un verdict par ressource, la réponse à « des disques SSD sont-ils
+justifiés ? » et les réglages à envisager sous forme de commandes, jamais
+exécutées. Il est dans `make todo` : `Exécuter > Production` pour ce poste,
+et le menu Proxmox VE pour l'hyperviseur retenu. Détails :
+[script/proxmox/README.fr.md](../script/proxmox/README.fr.md).
+
+<!-- [en] -->
 # Postgresql
 
 To show config files:

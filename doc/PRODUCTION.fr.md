@@ -274,6 +274,17 @@ sort en 0, ou en 1 avec `--strict` quand une requête a échoué. Les trois
 gestes sont dans `make todo` : `Exécuter > Production`. Détails et matrice
 Odoo 12 à 18 : [script/odoo/README.fr.md](../script/odoo/README.fr.md).
 
+### Audit de performance de l'hôte
+
+`script/proxmox/host_perf_audit.py` mesure, en lecture seule, ce qui
+limite les performances de l'hôte — processeur, mémoire, disques, réseau,
+ZFS et, sous Proxmox VE, chaque invité — sur une durée choisie, et affiche
+un verdict par ressource, la réponse à « des disques SSD sont-ils
+justifiés ? » et les réglages à envisager sous forme de commandes, jamais
+exécutées. Il est dans `make todo` : `Exécuter > Production` pour ce poste,
+et le menu Proxmox VE pour l'hyperviseur retenu. Détails :
+[script/proxmox/README.fr.md](../script/proxmox/README.fr.md).
+
 # Postgresql
 
 Pour afficher les fichiers de configuration :
