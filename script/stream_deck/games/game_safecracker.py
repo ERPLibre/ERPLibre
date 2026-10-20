@@ -16,6 +16,11 @@ import sys
 import threading
 import time
 
+import games_cli
+
+if __name__ == "__main__":
+    games_cli.parser(__doc__).parse_args()
+
 try:
     from PIL import Image, ImageDraw, ImageFont
     from StreamDeck.DeviceManager import DeviceManager

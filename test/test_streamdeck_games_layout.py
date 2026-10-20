@@ -47,9 +47,12 @@ class LaDisposition(unittest.TestCase):
                 self.assertTrue(premiere.startswith("#!"), premiere)
 
     def test_no_game_imports_a_sibling_module(self):
+        """Sauf games_cli, la ligne de commande commune des jeux, qui
+        vit à côté d'eux et n'importe que la bibliothèque standard."""
         voisins = {p.stem for p in DECK_DIR.glob("*.py")}
         voisins |= {p.stem for p in GAMES_DIR.glob("*.py")}
         voisins |= {p.parent.name for p in DECK_DIR.glob("*/__init__.py")}
+        voisins.discard("games_cli")
         motif = re.compile(r"^\s*(?:import|from)\s+(\w+)", re.M)
         for jeu in suivis("script/stream_deck/games/game_*.py"):
             with self.subTest(jeu=jeu.name):
@@ -59,6 +62,23 @@ class LaDisposition(unittest.TestCase):
     def test_the_assets_stay_with_the_controller(self):
         self.assertTrue((DECK_DIR / "Assets").is_dir())
         self.assertTrue((DECK_DIR / "erplibre_controller.py").is_file())
+
+    def test_every_game_reads_its_command_line_through_games_cli(self):
+        for jeu in suivis("script/stream_deck/games/game_*.py"):
+            with self.subTest(jeu=jeu.name):
+                texte = jeu.read_text(encoding="utf-8")
+                self.assertIn("\nimport games_cli\n", texte)
+                self.assertIn("games_cli.parser(__doc__)", texte)
+
+    def test_games_cli_is_not_listed_as_a_game(self):
+        """La galerie et le menu TODO prennent tout game_*.py pour un
+        jeu ; games_cli n'en est pas un."""
+        cli = GAMES_DIR / "games_cli.py"
+        self.assertTrue(cli.is_file())
+        self.assertNotIn(cli, list(GAMES_DIR.glob("game_*.py")))
+        motif = re.compile(r"^\s*(?:import|from)\s+(\w+)", re.M)
+        importes = set(motif.findall(cli.read_text(encoding="utf-8")))
+        self.assertEqual({"argparse"}, importes)
 
     def test_the_gallery_and_its_page_are_in_games(self):
         self.assertTrue((GAMES_DIR / "gallery_server.py").is_file())

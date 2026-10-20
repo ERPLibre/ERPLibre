@@ -232,6 +232,8 @@ utilisée par les helpers Python. Voir [`../gnome-extension/erplibre_home/README
 
 19 jeux jouables directement sur le Stream Deck. 11 supportent le mode 2 joueurs avec deux Stream Decks (auto-détection).
 
+Chaque `game_*.py` lit sa ligne de commande par `games_cli.py`, avant d'importer PIL et la bibliothèque Stream Deck : `-h` et `--help` affichent l'usage et sortent en 0, tout argument inconnu l'affiche sur la sortie d'erreur et sort en 2, et ni l'un ni l'autre n'ouvre le deck. `--meta` affiche les métadonnées du jeu en JSON, que lit la galerie. Hangman ajoute `-l`/`--lang`, Minesweeper `-m` et `-v`.
+
 ### Arcade
 
 #### Snake
@@ -776,6 +778,7 @@ script/stream_deck/
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
 └── games/                     # Games, gallery, saves / Jeux, galerie, sauvegardes
     ├── game_*.py              # 45 games / 45 jeux
+    ├── games_cli.py           # Games' command line / Ligne de commande
     ├── gallery_server.py      # Game gallery / Galerie des jeux
     ├── index.html             # Gallery page / Page de la galerie
     └── save/                  # Game saves / Sauvegardes des jeux
