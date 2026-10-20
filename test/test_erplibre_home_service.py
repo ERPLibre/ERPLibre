@@ -26,6 +26,11 @@ from script.todo import erplibre_home_service as service  # noqa: E402
 INSTALLEUR = RACINE / "script/install/install_erplibre_home.sh"
 BIBLIOTHEQUE = RACINE / "script/install/erplibre_home_settings.sh"
 
+# Locale UTF-8 du bash lancé sur un fichier hors UTF-8 : c'est là que
+# « read » joint à un octet invalide le saut de ligne qui le suit. Hérité de
+# l'hôte, un C ou POSIX ferait passer ces tests sans rien prouver.
+LOCALE_UTF8 = {"LC_ALL": "C.UTF-8"}
+
 
 class LesChemins(unittest.TestCase):
     def test_under_dot_config_by_default(self):
@@ -106,7 +111,10 @@ class LaLecture(unittest.TestCase):
                         for k, v in os.environ.items()
                         if k != "XDG_CONFIG_HOME"
                     }
-                    env.update({"HOME": dossier, "BIB": str(BIBLIOTHEQUE)})
+                    env.update(
+                        {"HOME": dossier, "BIB": str(BIBLIOTHEQUE)},
+                        **LOCALE_UTF8,
+                    )
                     lu = {}
                     for cle, defaut in service.DEFAULTS.items():
                         fini = subprocess.run(
@@ -427,7 +435,8 @@ class LEcriture(unittest.TestCase):
                     "HOME": dossier,
                     "INSTALLEUR": str(INSTALLEUR),
                     "FICHIER": str(installe),
-                }
+                },
+                **LOCALE_UTF8,
             )
             fini = subprocess.run(
                 [

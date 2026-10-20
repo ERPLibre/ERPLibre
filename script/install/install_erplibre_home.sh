@@ -546,8 +546,10 @@ unit_content() {
 # settings_content FICHIER CLÉ=valeur… rend les lignes de FICHIER (rien
 # s'il manque), chaque ligne « CLÉ=… » d'une clé donnée remplacée sur place,
 # puis les clés données qui n'y étaient pas. Les autres lignes restent
-# telles quelles, dans leur ordre.
+# telles quelles, dans leur ordre. Lu octet par octet (LC_ALL=C local),
+# comme deck_setting : un octet hors UTF-8 ne mange pas le saut de ligne.
 settings_content() {
+    local LC_ALL=C
     local file="$1" line pair seen=" "
     shift
     if [ -f "${file}" ]; then
