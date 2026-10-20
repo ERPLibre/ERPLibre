@@ -14,6 +14,19 @@
 
 **Spec:** `docs/superpowers/specs/2026-04-25-streamdeck-mobile-plugin-design.md`
 
+> **Status:** built. The spec's "Amendments from the implementation"
+> section records where the plugin differs from this plan (eight models,
+> one Neo info screen, write failures, automatic reopen, power options).
+> A tick means the step's deliverable is on the mobile repository's
+> `main`, one commit per task; the TDD "confirm fail" runs left no record
+> and are ticked with their task. Final Validation steps 1 and 2 are
+> ticked on the counts the mobile work branch's last commit records
+> (JUnit 158/158, Vitest 1171/1171); the APK build, the hardware matrix
+> run and the hand-off stay unticked: none is recorded. The consumer of
+> the plugin is `src/services/streamDeckController.ts`, not a
+> `streamDeckService.ts`. The Neo `setInfoBar` the last note defers was
+> built after this plan.
+
 **Working dir for all paths:** `mobile/erplibre_home_mobile/` unless prefixed with `docs/`.
 
 **Reference for protocol bytes:** When writing transports/encoders, cross-check exact header bytes, command IDs, and report offsets against [`python-elgato-streamdeck`](https://github.com/abcminiuser/python-elgato-streamdeck) source under `src/StreamDeck/Devices/` (`StreamDeckMini.py`, `StreamDeckOriginal.py`, `StreamDeckOriginalV2.py`, `StreamDeckXL.py`, `StreamDeckMK2.py`, `StreamDeckPlus.py`, `StreamDeckNeo.py`). The `_KEY_IMAGE_FORMAT`, `_REPORT_LENGTH_PROTOCOL`, and `IMAGE_REPORT_HEADER` constants there are the source of truth.
@@ -25,7 +38,7 @@
 **Files:**
 - Create: `android/app/src/main/res/xml/streamdeck_devices.xml`
 
-- [ ] **Step 1: Create the XML file with all seven product IDs**
+- [x] **Step 1: Create the XML file with all seven product IDs**
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -41,7 +54,7 @@
 </resources>
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -56,14 +69,14 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: USB device filte
 **Files:**
 - Modify: `android/app/src/main/AndroidManifest.xml`
 
-- [ ] **Step 1: Add `<uses-feature>` near other `uses-feature` blocks (after line 80 `android.hardware.location.gps`)**
+- [x] **Step 1: Add `<uses-feature>` near other `uses-feature` blocks (after line 80 `android.hardware.location.gps`)**
 
 ```xml
     <!-- Stream Deck USB Host -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 ```
 
-- [ ] **Step 2: Add the `USB_DEVICE_ATTACHED` intent-filter inside the existing `MainActivity` element**
+- [x] **Step 2: Add the `USB_DEVICE_ATTACHED` intent-filter inside the existing `MainActivity` element**
 
 Locate the `<activity android:name=".MainActivity" ...>` block (line 14-28). Inside it, after the existing `intent-filter` for `MAIN`/`LAUNCHER`, add:
 
@@ -76,12 +89,12 @@ Locate the `<activity android:name=".MainActivity" ...>` block (line 14-28). Ins
                 android:resource="@xml/streamdeck_devices" />
 ```
 
-- [ ] **Step 3: Verify the manifest still parses**
+- [x] **Step 3: Verify the manifest still parses**
 
 Run: `cd android && ./gradlew assembleDebug --dry-run`
 Expected: `BUILD SUCCESSFUL` (no manifest errors). If gradle is slow, alternatively run `./gradlew :app:processDebugManifest`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -96,7 +109,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: USB intent-filte
 **Files:**
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/DeckSpec.java`
 
-- [ ] **Step 1: Create the data class**
+- [x] **Step 1: Create the data class**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -174,12 +187,12 @@ public final class DeckSpec {
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 Run: `cd android && ./gradlew :app:compileDebugJavaWithJavac`
 Expected: `BUILD SUCCESSFUL`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -195,7 +208,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: DeckSpec immutab
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/DeckRegistry.java`
 - Create: `android/app/src/test/java/ca/erplibre/home/streamdeck/DeckRegistryTest.java`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -269,12 +282,12 @@ public class DeckRegistryTest {
 }
 ```
 
-- [ ] **Step 2: Run the test and confirm it fails**
+- [x] **Step 2: Run the test and confirm it fails**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.DeckRegistryTest`
 Expected: FAIL — `DeckRegistry` does not exist.
 
-- [ ] **Step 3: Implement `DeckRegistry`**
+- [x] **Step 3: Implement `DeckRegistry`**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -367,12 +380,12 @@ public final class DeckRegistry {
 }
 ```
 
-- [ ] **Step 4: Run the test, confirm pass**
+- [x] **Step 4: Run the test, confirm pass**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.DeckRegistryTest`
 Expected: `BUILD SUCCESSFUL`, 7 tests passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -391,7 +404,7 @@ This is the pure-logic core of `BmpEncoder`. Splitting it out keeps Bitmap-depen
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/encoder/RgbaRotator.java`
 - Create: `android/app/src/test/java/ca/erplibre/home/streamdeck/encoder/RgbaRotatorTest.java`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package ca.erplibre.home.streamdeck.encoder;
@@ -484,12 +497,12 @@ public class RgbaRotatorTest {
 }
 ```
 
-- [ ] **Step 2: Run, confirm failure**
+- [x] **Step 2: Run, confirm failure**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.encoder.RgbaRotatorTest`
 Expected: FAIL — `RgbaRotator` does not exist.
 
-- [ ] **Step 3: Implement `RgbaRotator`**
+- [x] **Step 3: Implement `RgbaRotator`**
 
 ```java
 package ca.erplibre.home.streamdeck.encoder;
@@ -545,12 +558,12 @@ public final class RgbaRotator {
 }
 ```
 
-- [ ] **Step 4: Run, confirm pass**
+- [x] **Step 4: Run, confirm pass**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.encoder.RgbaRotatorTest`
 Expected: 5 tests passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -583,7 +596,7 @@ This task implements only pagination logic, not USB I/O. The output is a `List<b
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/transport/TransportV2.java`
 - Create: `android/app/src/test/java/ca/erplibre/home/streamdeck/transport/TransportV2Test.java`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package ca.erplibre.home.streamdeck.transport;
@@ -666,12 +679,12 @@ public class TransportV2Test {
 }
 ```
 
-- [ ] **Step 2: Run, confirm failure**
+- [x] **Step 2: Run, confirm failure**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.transport.TransportV2Test`
 Expected: FAIL — class missing.
 
-- [ ] **Step 3: Implement `DeckTransport` interface and `TransportV2`**
+- [x] **Step 3: Implement `DeckTransport` interface and `TransportV2`**
 
 `DeckTransport.java`:
 
@@ -762,12 +775,12 @@ public final class TransportV2 implements DeckTransport {
 }
 ```
 
-- [ ] **Step 4: Run, confirm pass**
+- [x] **Step 4: Run, confirm pass**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.transport.TransportV2Test`
 Expected: 4 tests passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -799,7 +812,7 @@ Verify by reading the python source at the start of this task.
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/transport/TransportV1.java`
 - Create: `android/app/src/test/java/ca/erplibre/home/streamdeck/transport/TransportV1Test.java`
 
-- [ ] **Step 1: Verify protocol details against the python reference**
+- [x] **Step 1: Verify protocol details against the python reference**
 
 ```bash
 # In a scratch dir, fetch the upstream constants for cross-check.
@@ -811,7 +824,7 @@ grep -E "IMAGE_REPORT_HEADER|IMAGE_REPORT_LENGTH|KEY_IMAGE_FORMAT|KEY_PIXEL_HEIG
 
 Use the constants returned to confirm `PAGE_SIZE`, `HEADER_SIZE`, and the exact header byte layout. If the upstream constants differ from the values below, update `TransportV1` and tests accordingly before committing.
 
-- [ ] **Step 2: Write the failing test (using the layout above; adjust if upstream differs)**
+- [x] **Step 2: Write the failing test (using the layout above; adjust if upstream differs)**
 
 ```java
 package ca.erplibre.home.streamdeck.transport;
@@ -862,11 +875,11 @@ public class TransportV1Test {
 }
 ```
 
-- [ ] **Step 3: Run, confirm fail**
+- [x] **Step 3: Run, confirm fail**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.transport.TransportV1Test`
 
-- [ ] **Step 4: Implement `TransportV1`**
+- [x] **Step 4: Implement `TransportV1`**
 
 ```java
 package ca.erplibre.home.streamdeck.transport;
@@ -930,12 +943,12 @@ public final class TransportV1 implements DeckTransport {
 }
 ```
 
-- [ ] **Step 5: Run, confirm pass**
+- [x] **Step 5: Run, confirm pass**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.transport.TransportV1Test`
 Expected: 3 tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -952,7 +965,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: TransportV1 pagi
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/WriterQueue.java`
 - Create: `android/app/src/test/java/ca/erplibre/home/streamdeck/WriterQueueTest.java`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -1037,11 +1050,11 @@ public class WriterQueueTest {
 }
 ```
 
-- [ ] **Step 2: Run, confirm fail**
+- [x] **Step 2: Run, confirm fail**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.WriterQueueTest`
 
-- [ ] **Step 3: Implement `WriteJob` and `WriterQueue`**
+- [x] **Step 3: Implement `WriteJob` and `WriterQueue`**
 
 `WriteJob.java`:
 
@@ -1120,12 +1133,12 @@ public final class WriterQueue {
 }
 ```
 
-- [ ] **Step 4: Run, confirm pass**
+- [x] **Step 4: Run, confirm pass**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.WriterQueueTest`
 Expected: 5 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -1144,7 +1157,7 @@ Thin wrapper to emit Capacitor plugin events with the typed payload shape.
 **Files:**
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/events/EventEmitter.java`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```java
 package ca.erplibre.home.streamdeck.events;
@@ -1160,11 +1173,11 @@ public interface EventEmitter {
 }
 ```
 
-- [ ] **Step 2: Verify compile**
+- [x] **Step 2: Verify compile**
 
 Run: `cd android && ./gradlew :app:compileDebugJavaWithJavac`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -1183,7 +1196,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: EventEmitter SAM
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/encoder/JpegEncoder.java`
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/encoder/BmpEncoder.java`
 
-- [ ] **Step 1: Implement `ImageEncoder` interface**
+- [x] **Step 1: Implement `ImageEncoder` interface**
 
 ```java
 package ca.erplibre.home.streamdeck.encoder;
@@ -1208,7 +1221,7 @@ public interface ImageEncoder {
 }
 ```
 
-- [ ] **Step 2: Implement `JpegEncoder` (passthrough)**
+- [x] **Step 2: Implement `JpegEncoder` (passthrough)**
 
 ```java
 package ca.erplibre.home.streamdeck.encoder;
@@ -1237,7 +1250,7 @@ public final class JpegEncoder implements ImageEncoder {
 }
 ```
 
-- [ ] **Step 3: Implement `BmpEncoder`**
+- [x] **Step 3: Implement `BmpEncoder`**
 
 ```java
 package ca.erplibre.home.streamdeck.encoder;
@@ -1345,12 +1358,12 @@ public final class BmpEncoder implements ImageEncoder {
 }
 ```
 
-- [ ] **Step 4: Verify compile**
+- [x] **Step 4: Verify compile**
 
 Run: `cd android && ./gradlew :app:compileDebugJavaWithJavac`
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -1370,7 +1383,7 @@ The Plus LCD touch strip and Neo info bars take JPEG too. Plus full LCD goes via
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/lcd/LcdEncoder.java`
 - Create: `android/app/src/test/java/ca/erplibre/home/streamdeck/lcd/LcdEncoderTest.java`
 
-- [ ] **Step 1: Verify Plus + Neo LCD/info-bar protocol**
+- [x] **Step 1: Verify Plus + Neo LCD/info-bar protocol**
 
 ```bash
 cd /tmp/streamdeck-ref
@@ -1381,7 +1394,7 @@ grep -n -E "set_screen_image|TOUCHSCREEN|INFOBAR|IMAGE_REPORT|0x0[bcd]" StreamDe
 
 Use the constants there for header layout below. The LCD command on Plus is `0x0C` with a 16-byte header carrying x/y/w/h.
 
-- [ ] **Step 2: Write the failing test (structure-level only — assert page header bytes and sizes)**
+- [x] **Step 2: Write the failing test (structure-level only — assert page header bytes and sizes)**
 
 ```java
 package ca.erplibre.home.streamdeck.lcd;
@@ -1423,11 +1436,11 @@ public class LcdEncoderTest {
 }
 ```
 
-- [ ] **Step 3: Run, confirm fail**
+- [x] **Step 3: Run, confirm fail**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.lcd.LcdEncoderTest`
 
-- [ ] **Step 4: Implement `LcdEncoder`**
+- [x] **Step 4: Implement `LcdEncoder`**
 
 ```java
 package ca.erplibre.home.streamdeck.lcd;
@@ -1510,11 +1523,11 @@ public final class LcdEncoder {
 }
 ```
 
-- [ ] **Step 5: Run, confirm pass**
+- [x] **Step 5: Run, confirm pass**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest --tests ca.erplibre.home.streamdeck.lcd.LcdEncoderTest`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -1530,7 +1543,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: LcdEncoder for P
 **Files:**
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/usb/UsbPermissionRequester.java`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```java
 package ca.erplibre.home.streamdeck.usb;
@@ -1620,11 +1633,11 @@ public final class UsbPermissionRequester {
 }
 ```
 
-- [ ] **Step 2: Verify compile**
+- [x] **Step 2: Verify compile**
 
 Run: `cd android && ./gradlew :app:compileDebugJavaWithJavac`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -1639,7 +1652,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: USB permission r
 **Files:**
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/usb/UsbHotplugReceiver.java`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```java
 package ca.erplibre.home.streamdeck.usb;
@@ -1699,11 +1712,11 @@ public final class UsbHotplugReceiver extends BroadcastReceiver {
 }
 ```
 
-- [ ] **Step 2: Verify compile**
+- [x] **Step 2: Verify compile**
 
 Run: `cd android && ./gradlew :app:compileDebugJavaWithJavac`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -1720,7 +1733,7 @@ This is the largest single file. It owns one `UsbDeviceConnection`, one reader t
 **Files:**
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/DeckSession.java`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -2065,12 +2078,12 @@ public final class DeckSession {
 }
 ```
 
-- [ ] **Step 2: Verify compile**
+- [x] **Step 2: Verify compile**
 
 Run: `cd android && ./gradlew :app:compileDebugJavaWithJavac`
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -2089,7 +2102,7 @@ Wires the receivers, manages sessions keyed by USB device path AND serial, dispa
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/ImageWriteJob.java`
 - Create: `android/app/src/main/java/ca/erplibre/home/streamdeck/LcdWriteJob.java`
 
-- [ ] **Step 1: Implement `ImageWriteJob`**
+- [x] **Step 1: Implement `ImageWriteJob`**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -2149,7 +2162,7 @@ final class ImageWriteJob extends WriteJob {
 }
 ```
 
-- [ ] **Step 1b: Implement `LcdWriteJob`**
+- [x] **Step 1b: Implement `LcdWriteJob`**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -2219,7 +2232,7 @@ final class LcdWriteJob extends WriteJob {
 }
 ```
 
-- [ ] **Step 2: Implement `StreamDeckPlugin`**
+- [x] **Step 2: Implement `StreamDeckPlugin`**
 
 ```java
 package ca.erplibre.home.streamdeck;
@@ -2524,12 +2537,12 @@ public class StreamDeckPlugin extends Plugin implements UsbHotplugReceiver.Liste
 }
 ```
 
-- [ ] **Step 3: Verify compile**
+- [x] **Step 3: Verify compile**
 
 Run: `cd android && ./gradlew :app:compileDebugJavaWithJavac`
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -2546,7 +2559,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: StreamDeckPlugin
 **Files:**
 - Modify: `android/app/src/main/java/ca/erplibre/home/MainActivity.java`
 
-- [ ] **Step 1: Add the import and the registerPlugin line**
+- [x] **Step 1: Add the import and the registerPlugin line**
 
 Add the import near the existing imports:
 
@@ -2560,12 +2573,12 @@ Add the `registerPlugin` call inside `onCreate`, alongside the other six existin
         registerPlugin(StreamDeckPlugin.class);
 ```
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `cd android && ./gradlew :app:assembleDebug`
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -2580,7 +2593,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: register StreamD
 **Files:**
 - Create: `src/plugins/streamDeckPlugin.ts`
 
-- [ ] **Step 1: Create the file with the typed bridge**
+- [x] **Step 1: Create the file with the typed bridge**
 
 ```typescript
 import { registerPlugin } from "@capacitor/core";
@@ -2720,12 +2733,12 @@ interface StreamDeckPluginApi {
 export const StreamDeckPlugin = registerPlugin<StreamDeckPluginApi>("StreamDeckPlugin");
 ```
 
-- [ ] **Step 2: Verify TS compiles**
+- [x] **Step 2: Verify TS compiles**
 
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -2740,7 +2753,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: TypeScript bridg
 **Files:**
 - Create: `src/__tests__/streamDeckPlugin.test.ts`
 
-- [ ] **Step 1: Write the failing test (uses the existing Capacitor mock pattern from `networkScanPlugin.test.ts`)**
+- [x] **Step 1: Write the failing test (uses the existing Capacitor mock pattern from `networkScanPlugin.test.ts`)**
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -2821,14 +2834,14 @@ describe("StreamDeckPlugin TS bridge", () => {
 });
 ```
 
-- [ ] **Step 2: Run, confirm fail (no test file yet — but the file exists now, so this should already run)**
+- [x] **Step 2: Run, confirm fail (no test file yet — but the file exists now, so this should already run)**
 
 Run: `npm test -- streamDeckPlugin`
 Expected: 4 tests pass.
 
 If a test fails because of an actual bridge bug, fix the bridge in `src/plugins/streamDeckPlugin.ts`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -2843,7 +2856,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: vitest tests for
 **Files:**
 - Create: `mobile/erplibre_home_mobile/doc/streamdeck_test_matrix.md`
 
-- [ ] **Step 1: Create the doc**
+- [x] **Step 1: Create the doc**
 
 ```markdown
 # Stream Deck Mobile — Hardware Test Matrix
@@ -2883,7 +2896,7 @@ For each of: Original v1, Mini, Original v2, MK.2, XL, Plus, Neo.
 - [ ] Replug — `deckConnected` fires; `deckId` (serial) is the same as before.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -2898,7 +2911,7 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: manual hardware 
 **Files:**
 - Modify: `mobile/erplibre_home_mobile/doc/NATIVE_PLUGINS.md`
 
-- [ ] **Step 1: Append a new section following the existing format**
+- [x] **Step 1: Append a new section following the existing format**
 
 After the last existing plugin section (`DeviceStatsPlugin`), append:
 
@@ -2969,7 +2982,7 @@ gagne, les plus anciennes résolvent leur Promise avec `{dropped: true}`.
 Voir `doc/streamdeck_test_matrix.md` — checklist par modèle physique.
 ````
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cd mobile/erplibre_home_mobile
@@ -2981,12 +2994,12 @@ git -c commit.gpgsign=false commit -m "[ADD] streamdeck_mobile: document plugin 
 
 ## Final Validation
 
-- [ ] **Step 1: All Java unit tests green**
+- [x] **Step 1: All Java unit tests green**
 
 Run: `cd mobile/erplibre_home_mobile/android && ./gradlew :app:testDebugUnitTest`
 Expected: BUILD SUCCESSFUL with 5 test classes (`DeckRegistryTest`, `RgbaRotatorTest`, `TransportV1Test`, `TransportV2Test`, `WriterQueueTest`, `LcdEncoderTest`).
 
-- [ ] **Step 2: Vitest green**
+- [x] **Step 2: Vitest green**
 
 Run: `cd mobile/erplibre_home_mobile && npm test`
 Expected: BUILD SUCCESSFUL including the new `streamDeckPlugin.test.ts`.
