@@ -7,7 +7,7 @@ default devices into `state().audio`, every second while the page
 shows, and the microphone's into `state().mic`, every 2 s while the
 home screen shows. The page and the mic key draw only from those; a
 press re-reads its levels itself, so the key shows its effect at
-once."""
+once. Each poll writes a failing wpctl once while it repeats."""
 
 import re
 import subprocess
@@ -15,6 +15,7 @@ import sys
 
 from erplibre_streamdeck.plugin import (
     PLUGIN_API, Fixture, HomeButton, KeyFace, Page, Plugin, Poll,
+    RepeatLog,
 )
 from erplibre_streamdeck.ui import colors, render
 
@@ -28,8 +29,15 @@ NO_AUDIO = (None, None, None, None, "", "")
 NO_MIC = (None, None)
 
 
-def _wpctl_get(target):
-    """Return (volume_percent, muted) for target or (None, None) on error."""
+def _log(msg):
+    """Context.log's line, for the wpctl reads, which take no
+    Context."""
+    print(f"[erplibre-home] sound: {msg}", file=sys.stderr, flush=True)
+
+
+def _wpctl_get(target, log=_log):
+    """Return (volume_percent, muted) for target or (None, None) on
+    error, which goes to log(msg)."""
     try:
         r = subprocess.run(
             ["wpctl", "get-volume", target],
@@ -45,7 +53,7 @@ def _wpctl_get(target):
         muted = len(parts) > 2 and "MUTED" in parts[2]
         return int(round(vol * 100)), muted
     except Exception as e:
-        print(f"wpctl get error: {e}", file=sys.stderr, flush=True)
+        log(f"wpctl get-volume {target} error: {e}")
         return None, None
 
 
@@ -181,20 +189,37 @@ def _keys(geo):
     }
 
 
-def _read_audio():
-    """The Sound page's data, as NO_AUDIO orders it. The page poll's
-    read: no Context, no lock."""
-    out_vol, out_muted = _wpctl_get(WPCTL_SINK)
-    mic_vol, mic_muted = _wpctl_get(WPCTL_SOURCE)
+def _read_audio(log=_log):
+    """The Sound page's data, as NO_AUDIO orders it: no Context, no
+    lock."""
+    out_vol, out_muted = _wpctl_get(WPCTL_SINK, log)
+    mic_vol, mic_muted = _wpctl_get(WPCTL_SOURCE, log)
     return (
         out_vol, out_muted, mic_vol, mic_muted,
         _wpctl_default_short("Sinks"), _wpctl_default_short("Sources"),
     )
 
 
-def _read_mic():
-    """(volume, muted) of the default source; the mic poll's read."""
-    return _wpctl_get(WPCTL_SOURCE)
+def _read_mic(log=_log):
+    """(volume, muted) of the default source."""
+    return _wpctl_get(WPCTL_SOURCE, log)
+
+
+# One per poll: a press reads with _log, from another thread.
+_AUDIO_LOG = RepeatLog(_log, "Sound levels")
+_MIC_LOG = RepeatLog(_log, "Mic level")
+
+
+def _poll_audio():
+    """The page poll's read (see RepeatLog)."""
+    with _AUDIO_LOG.watch() as log:
+        return _read_audio(log)
+
+
+def _poll_mic():
+    """The mic poll's read (see RepeatLog)."""
+    with _MIC_LOG.watch() as log:
+        return _read_mic(log)
 
 
 def _keeper(name):
@@ -339,8 +364,8 @@ PLUGIN = Plugin(
     ),
     fixtures=[Fixture(10, _mic_place, _mic_face, _mic_press)],
     polls=[
-        Poll(1.0, _page_shown, _read_audio, _store_audio),
-        Poll(2.0, _mic_shown, _read_mic, _store_mic),
+        Poll(1.0, _page_shown, _poll_audio, _store_audio),
+        Poll(2.0, _mic_shown, _poll_mic, _store_mic),
     ],
     setup=_setup,
 )

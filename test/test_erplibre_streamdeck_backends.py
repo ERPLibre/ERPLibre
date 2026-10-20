@@ -104,6 +104,54 @@ class WpctlTest(unittest.TestCase):
             self.assertEqual("", sound._wpctl_default_short("Sinks"))
 
 
+class PollRepeatTest(unittest.TestCase):
+    """A poll whose tool fails on every pass writes it once."""
+
+    def passes(self, read, log_name, n=4):
+        """stderr lines of n failing passes of `read`, then of two
+        passes with the tool answering."""
+        broken = FileNotFoundError(2, "No such file or directory")
+        module = sys.modules[read.__module__]
+        fresh = RepeatLog(module._log, "x")
+        with mock.patch.object(module, log_name, fresh), \
+                mock.patch("shutil.which", return_value="/usr/bin/x"), \
+                mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            with mock.patch("subprocess.run", side_effect=broken):
+                for _ in range(n):
+                    read()
+            with mock.patch("subprocess.run", return_value=done("", 1)):
+                read()
+                read()
+        return err.getvalue().splitlines()
+
+    def test_sound_mic_poll(self):
+        lines = self.passes(sound._poll_mic, "_MIC_LOG")
+        self.assertEqual(2, len(lines))
+        self.assertTrue(lines[0].startswith("[erplibre-home] sound: "))
+        self.assertIn("No such file", lines[0])
+        self.assertEqual("[erplibre-home] sound: x: recovered", lines[1])
+
+    def test_sound_page_poll(self):
+        lines = self.passes(sound._poll_audio, "_AUDIO_LOG")
+        # Sink and source each fail once, then one recovery line.
+        self.assertEqual(3, len(lines))
+        self.assertIn(sound.WPCTL_SINK, lines[0])
+        self.assertIn(sound.WPCTL_SOURCE, lines[1])
+        self.assertEqual("[erplibre-home] sound: x: recovered", lines[-1])
+
+    def test_bluetooth_poll(self):
+        lines = self.passes(bluetooth._poll_read, "_POLL_LOG")
+        # show, rfkill and the paired list each fail once; with the
+        # tools answering an error code, the read is clean.
+        self.assertEqual(4, len(lines))
+        self.assertTrue(
+            all(x.startswith("[erplibre-home] bluetooth: ") for x in lines)
+        )
+        self.assertEqual(
+            "[erplibre-home] bluetooth: x: recovered", lines[-1]
+        )
+
+
 class BluetoothTest(unittest.TestCase):
     def test_powered_from_bluetoothctl(self):
         shown = done(
