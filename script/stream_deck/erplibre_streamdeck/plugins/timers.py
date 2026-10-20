@@ -6,9 +6,10 @@ running timers on the home dashboard.
 The timers come from the tracker extension through the ERPLibre Home
 extension's D-Bus methods. `state().timers` is the last list read: the
 home dashboard and the TIMER page both draw from it. A poll reads it
-every 2 s, away from the lock, while either shows; every job (toggle,
-NEW, RFSH, export, reset) reads it again after its action, and its
-result stores that read."""
+every 2 s, away from the lock, while either shows; it writes a failed
+read once, not on every pass, while the extension stays absent. Every
+job (toggle, NEW, RFSH, export, reset) reads it again after its
+action, and its result stores that read."""
 
 import csv
 import json
@@ -19,7 +20,8 @@ import sys
 
 from erplibre_streamdeck import dbus as dbus_mod
 from erplibre_streamdeck.plugin import (
-    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll, TileProvider,
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll, RepeatLog,
+    TileProvider,
 )
 from erplibre_streamdeck.ui import colors
 
@@ -49,9 +51,14 @@ def _log(msg):
     print(f"[erplibre-home] timers: {msg}", file=sys.stderr, flush=True)
 
 
+_POLL_LOG = RepeatLog(_log, "Timer list")
+
+
 def _read():
-    """The poll's read: the timers, without Context or lock."""
-    return _list_timers(dbus_mod, _log)
+    """The poll's read: the timers, without Context or lock. Its
+    failure is written once while it repeats (see RepeatLog)."""
+    with _POLL_LOG.watch() as log:
+        return _list_timers(dbus_mod, log)
 
 
 # The three tracker actions run as jobs, outside the lock: they use

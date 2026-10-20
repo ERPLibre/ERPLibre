@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Parsers of the system tools the deck plugins read."""
 
+import io
 import json
 import os
 import subprocess
@@ -17,7 +18,9 @@ import test_erplibre_streamdeck_pages as P  # noqa: E402
 S.install()
 from erplibre_streamdeck import dbus, paths, settings  # noqa: E402
 from erplibre_streamdeck.kernel import Kernel  # noqa: E402
-from erplibre_streamdeck.plugin import LoadedPlugin  # noqa: E402
+from erplibre_streamdeck.plugin import (  # noqa: E402
+    LoadedPlugin, RepeatLog,
+)
 from erplibre_streamdeck.plugins import (  # noqa: E402
     bluetooth, claude_sessions, layouts, sound, timers, todo_terminals,
 )
@@ -198,6 +201,29 @@ class TimersTest(unittest.TestCase):
         with mock.patch("subprocess.run", return_value=answer):
             found = timers._list_timers(dbus, lambda msg: None)
         self.assertEqual([{"id": "t1", "running": True}], found)
+
+    def test_poll_writes_a_repeated_dbus_failure_once(self):
+        gone = subprocess.CompletedProcess(
+            [], 1, "", "Error: GDBus.Error: UnknownMethod\n"
+        )
+        answer = done("('[]',)\n")
+        fresh = RepeatLog(timers._log, "Timer list")
+        with mock.patch.object(timers, "_POLL_LOG", fresh), \
+                mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            with mock.patch("subprocess.run", return_value=gone):
+                for _ in range(4):
+                    self.assertEqual([], timers._read())
+            with mock.patch("subprocess.run", return_value=answer):
+                for _ in range(3):
+                    timers._read()
+        self.assertEqual(
+            [
+                "[erplibre-home] timers: Timer list dbus: "
+                "Error: GDBus.Error: UnknownMethod",
+                "[erplibre-home] timers: Timer list: recovered",
+            ],
+            err.getvalue().splitlines(),
+        )
 
 
 class SessionsTest(unittest.TestCase):
