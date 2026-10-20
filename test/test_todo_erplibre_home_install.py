@@ -141,6 +141,49 @@ class TestInstallationLocale(unittest.TestCase):
                 self.assertNotIn("not supported", sortie)
                 self.assertIs(rendu, False)
 
+    def test_le_menu_installation_offre_s_pour_le_stream_deck(self):
+        """« s » du choix de version d'Installation mène à la même entrée
+        que le menu Stream Deck, ses quatre questions comprises : aucune
+        commande n'est lancée par le choix de version lui-même."""
+        todo = TODO.__new__(TODO)
+        todo.execute = ExecuteFactice(0)
+        questions = []
+
+        def repondre(question=""):
+            # Un « s » refusé repose la question : « 0 » y met fin.
+            questions.append(question)
+            if "Choose a version:" not in question:
+                return "n"
+            deja = sum("Choose a version:" in q for q in questions)
+            return "s" if deja == 1 else "0"
+
+        absent = mock.Mock(returncode=1)
+        sortie = io.StringIO()
+        with (
+            contextlib.redirect_stdout(sortie),
+            mock.patch("builtins.input", side_effect=repondre),
+            mock.patch(
+                "script.todo.todo.get_odoo_version",
+                return_value=([], [], None),
+            ),
+            mock.patch(
+                "script.todo.todo.subprocess.run", return_value=absent
+            ) as lance,
+            mock.patch.object(
+                TODO,
+                "_erplibre_home_streamdeck_install_local",
+                return_value=False,
+            ) as entree,
+        ):
+            todo.prompt_install()
+        entree.assert_called_once_with()
+        choix = [q for q in questions if "Choose a version:" in q]
+        self.assertEqual(len(choix), 1)
+        self.assertIn("s: ERPLibre Home with Stream Deck", choix[0])
+        for appel in lance.call_args_list:
+            self.assertNotIn(INSTALLATEUR, str(appel))
+        self.assertEqual(todo.execute.appels, [])
+
     def test_l_installateur_appele_existe_et_s_execute(self):
         chemin = RACINE / INSTALLATEUR
         self.assertTrue(chemin.is_file(), f"{INSTALLATEUR} absent")

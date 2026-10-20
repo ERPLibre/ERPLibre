@@ -516,6 +516,12 @@ class TODO(
                 "m: ERPLibre with mobile home",
                 "./mobile/install_and_run.sh",
             ),
+            # Sans commande : « s » passe par l'entrée du menu Stream Deck,
+            # qui pose ses quatre questions avant l'installateur.
+            "s": (
+                "s",
+                "s: ERPLibre Home with Stream Deck",
+            ),
             "0": (
                 "0",
                 f"0: {t('Quit')}",
@@ -567,6 +573,9 @@ class TODO(
             )
 
         if odoo_version_input == "0":
+            return
+        if odoo_version_input == "s":
+            self._erplibre_home_streamdeck_install_local()
             return
 
         cmd_intern = install_commands.get(odoo_version_input)[2]
