@@ -15,6 +15,7 @@ quitter le dashboard n'arrête rien, on peut le rouvrir pour ré-attacher.
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import platform
@@ -23,6 +24,7 @@ import shlex
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -436,6 +438,7 @@ def launch_installs(
     deploy_started: float | None = None,
     hors_ligne: bool | None = None,
     identity: str = "",
+    session: str | None = None,
 ) -> str:
     """vms : [{name, ip, distro?, version?, arch?}]. Lance chaque install
     détachée, écrit un manifeste et retourne son chemin. remote_cmd : script
@@ -453,12 +456,30 @@ def launch_installs(
     ligne le traite comme tel.
 
     `identity` : clé privée que présente chaque ssh lancé ici ; « » laisse
-    ssh choisir."""
-    sdir = session_dir()
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    ssh choisir.
+
+    `session` : chemin d'un session.json existant. Les journaux vont alors
+    dans SON dossier, et les nouvelles entrées s'ajoutent à ses « vms » ;
+    « started », « deploy_started », « offline » et « branch » restent ceux
+    de la session, et les paramètres du même nom sont ignorés. Un nom déjà
+    présent lève ValueError avant tout lancement : le suivi indexe ses
+    lignes par nom. Le manifeste est réécrit d'un bloc (fichier temporaire
+    puis os.replace), et un lecteur concurrent ne voit jamais un JSON
+    tronqué. Rend le même chemin."""
     when = time.strftime("%Y-%m-%d %H:%M:%S")
-    logdir = sdir / stamp
-    logdir.mkdir(parents=True, exist_ok=True)
+    if session:
+        logdir = Path(session).parent
+        manifest = json.loads(Path(session).read_text(encoding="utf-8"))
+        noms = [vm.get("name") for vm in manifest.get("vms") or []]
+        noms += [vm["name"] for vm in vms]
+        doublons = sorted({n for n in noms if noms.count(n) > 1})
+        if doublons:
+            raise ValueError(
+                f"duplicate VM names in the session: {', '.join(doublons)}"
+            )
+    else:
+        logdir = session_dir() / time.strftime("%Y%m%d-%H%M%S")
+        logdir.mkdir(parents=True, exist_ok=True)
     entries = []
     for vm in vms:
         log_path = str(logdir / f"{vm['name']}.log")
@@ -502,6 +523,29 @@ def launch_installs(
             # lui qui arme le garde de la suppression.
             entree["uuid"] = local_uuid(vm["name"])
         entries.append(entree)
+    if session:
+        # Relu SOUS VERROU juste avant d'écrire : un autre ajout a pu passer
+        # depuis la première lecture. Le verrou porte sur le DOSSIER : le
+        # fichier, lui, change d'inode à chaque os.replace. Fichier
+        # temporaire unique, puis os.replace : un lecteur ne voit jamais un
+        # manifeste à moitié écrit.
+        verrou = os.open(str(logdir), os.O_RDONLY)
+        try:
+            fcntl.flock(verrou, fcntl.LOCK_EX)
+            manifest = json.loads(Path(session).read_text(encoding="utf-8"))
+            presents = {v.get("name") for v in manifest.get("vms", [])}
+            manifest.setdefault("vms", []).extend(
+                e for e in entries if e["name"] not in presents
+            )
+            fd, tmp = tempfile.mkstemp(
+                dir=str(logdir), prefix=".session-", suffix=".json"
+            )
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(manifest, indent=2))
+            os.replace(tmp, session)
+        finally:
+            os.close(verrou)
+        return str(session)
     manifest = {
         "branch": branch,
         "started": time.time(),

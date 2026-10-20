@@ -17,7 +17,11 @@ import threading
 import time
 
 from script.todo import todo_prefs
-from script.todo.qemu_privilege import sudo_prefix
+from script.todo.qemu_privilege import (
+    needs_sudo,
+    sudo_non_interactif,
+    sudo_prefix,
+)
 from script.todo.todo_i18n import get_lang, t
 
 
@@ -362,6 +366,7 @@ class QemuDeployMixin:
         deploy_started=None,
         hors_ligne=None,
         identity="",
+        session=None,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -384,7 +389,12 @@ class QemuDeployMixin:
         avant l'installation, recopié en tête de son journal.
         `meta` : {nom: (distro, version, arch)} quand l'appelant SAIT ce que
         sont ces VM. Sans elle, on le demande à virsh — juste ici, donc faux
-        pour une VM qui vit sur un Proxmox distant."""
+        pour une VM qui vit sur un Proxmox distant.
+        `session` : session.json d'un suivi déjà ouvert. Les installations
+        s'y ajoutent (`launch_installs(session=...)`) et la méthode rend les
+        nouvelles entrées du manifeste, [] s'il n'y en a aucune. Elle n'ouvre
+        alors aucun tableau, n'imprime pas les chemins de fermeture et ne
+        confie aucune levée de coupure : c'est le tableau ouvert qui suit."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -478,7 +488,7 @@ class QemuDeployMixin:
                 print(f"  {name}: {t('no IP, skipped.')}")
         if not vms:
             print(t("No VM to install."))
-            return
+            return [] if session else None
         # Le mot-clé ne part que s'il porte une valeur : un lanceur de
         # remplacement à trois arguments reste alors appelable.
         debut = {}
@@ -488,12 +498,19 @@ class QemuDeployMixin:
             debut["hors_ligne"] = bool(hors_ligne)
         if identity:
             debut["identity"] = identity
+        if session:
+            debut["session"] = session
         manifest = launch_installs(
             vms,
             branch_def or next(iter(branch_map.values()), ""),
             remote,
             **debut,
         )
+        if session:
+            # Les entrées ajoutées sont les dernières du manifeste, dans
+            # l'ordre de `vms`.
+            with open(manifest, encoding="utf-8") as _fh:
+                return json.load(_fh)["vms"][-len(vms) :]
         if guet_hors_ligne:
             self._qemu_confier_la_levee(manifest)
         print(f"\n🖥  {t('Opening the interactive monitor...')}")
@@ -1289,14 +1306,18 @@ class QemuDeployMixin:
         parts.append("--dry-run" if dry_run else "-y")
         return parts
 
-    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False):
+    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False, sudo_n=False):
         """Commande deploy_qemu.py d'une VM de la spec.
 
         POINT DE PASSAGE UNIQUE des deux interfaces : le formulaire TUI et les
         invites en ligne produisent la même spec, donc forcément la même
-        commande. C'est ce qui rend leur divergence vérifiable par un test."""
+        commande. C'est ce qui rend leur divergence vérifiable par un test.
+
+        `sudo_n` : la commande commence par « sudo -n ». Sans ticket valide,
+        sudo échoue alors au lieu d'afficher une invite de mot de passe, que
+        personne ne verrait derrière un écran plein."""
         install = spec.get("install")
-        return self._qemu_build_deploy_parts(
+        parts = self._qemu_build_deploy_parts(
             vm["distro"],
             vm["version"],
             vm["arch"],
@@ -1348,6 +1369,9 @@ class QemuDeployMixin:
             cache_bypass=bool(spec.get("cache_bypass")),
             offline=bool(spec.get("offline")),
         )
+        if sudo_n and parts[:1] == ["sudo"]:
+            parts.insert(1, "-n")
+        return parts
 
     # Où l'installateur du cache pose son autorité. Un test compare cette
     # valeur au défaut du script d'installation : les deux séparées, la case
@@ -1737,6 +1761,73 @@ class QemuDeployMixin:
         if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
             print(t("Cancelled."))
             return None
+        return spec
+
+    def _qemu_collect_spec_for_session(self, monitored_names):
+        """Choix d'un ajout de VM à un suivi ouvert. Rend la spec, ou None.
+
+        Pose, dans le terminal, toutes les questions du déploiement par le
+        menu : groupe libvirt et KVM, formulaire, récapitulatif et
+        confirmation, disques orphelins, coupure tenue par un autre
+        déploiement, clé SSH, puis « sudo -v ». La spec rendue s'exécute
+        ensuite sans terminal (`_qemu_deploie_spec(session=...)`), et chaque
+        invite doit donc avoir eu lieu ici.
+
+        `monitored_names` : noms déjà dans le suivi. Une VM à créer qui en
+        porte un est refusée ; une VM existante qui en porte un est retirée
+        de « existing », puisqu'elle est déjà suivie. Le mode hors ligne est
+        refusé : sa coupure se lève à la fin du bloc qui la pose, et ce bloc
+        ne couvre pas un suivi déjà ouvert."""
+        try:
+            mod = self._qemu_import_module()
+        except Exception as exc:
+            print(f"{t('Cannot load QEMU catalog: ')}{exc}")
+            return None
+        self._qemu_check_libvirt_group()
+        self._qemu_check_kvm()
+        spec = self._qemu_deploy_form(mod, False)
+        # {} signale un formulaire indisponible : sans lui, rien à ajouter.
+        if not spec:
+            return None
+        if spec.get("offline"):
+            print(
+                f"{t('Offline deployment is not available from the monitor:')}"
+                f" {t('use the deployment menu.')}"
+            )
+            return None
+        suivis = set(monitored_names or ())
+        noms = [vm["name"] for vm in spec.get("vms") or []]
+        deja = sorted(suivis.intersection(noms))
+        if deja:
+            print(
+                f"{t('Already in the monitor:')} {', '.join(deja)}."
+                f" {t('Cancelled.')}"
+            )
+            return None
+        ecartees = sorted(suivis.intersection(spec.get("existing") or []))
+        if ecartees:
+            print(f"{t('Already in the monitor:')} {', '.join(ecartees)}.")
+        spec["existing"] = [
+            n for n in spec.get("existing") or [] if n not in suivis
+        ]
+        if not noms and not spec["existing"]:
+            print(t("No VM to install."))
+            return None
+        if not self._qemu_offer_orphan_removal(noms):
+            print(t("Cancelled."))
+            return None
+        if not self._qemu_en_ligne_malgre_la_coupure():
+            return None
+        if not self._qemu_ensure_spec_ssh_key(spec):
+            return None
+        # deploy_qemu.py et virsh partiront sous « sudo -n » : le ticket se
+        # prend ici, là où l'invite de mot de passe a un terminal où
+        # s'afficher. Des VM existantes seules l'exigent aussi quand libvirt
+        # n'est joignable que par sudo.
+        if os.geteuid() != 0 and (noms or needs_sudo()):
+            if subprocess.run(["sudo", "-v"], check=False).returncode != 0:
+                print(t("Cancelled."))
+                return None
         return spec
 
     def _qemu_print_dry_run(self, vms):
@@ -2825,7 +2916,7 @@ class QemuDeployMixin:
             print(f"   {need} {pub}")
         return False
 
-    def _qemu_deploie_spec(self, spec, coupee=False):
+    def _qemu_deploie_spec(self, spec, coupee=False, session=None):
         """Exécute une spec de déploiement : création des VM en parallèle,
         résolution des IP, ~/.ssh/config, installation ERPLibre.
 
@@ -2833,7 +2924,25 @@ class QemuDeployMixin:
         qu'elle vienne (invites en ligne ou formulaire TUI).
 
         `coupee` : l'amont du cache est coupé autour de cet appel. La voie
-        suivie en confie alors la levée au guet, dès le lancement."""
+        suivie en confie alors la levée au guet, dès le lancement.
+
+        `session` : session.json d'un suivi déjà ouvert, qui reçoit les VM
+        créées. La méthode tourne alors hors du terminal, derrière ce suivi :
+        la sortie texte remplace la vue Textual, deploy_qemu.py part sous
+        « sudo -n », le suivi est d'office et seule sa voie est prise, sans
+        bilan final. Elle rend {"added": [entrées du manifeste], "failed":
+        [noms dont la création a échoué], "no_ip": [noms sans adresse]}.
+        Sans `session`, elle ne rend rien."""
+        if session:
+            # Derrière le suivi, aucun sudo ne doit pouvoir demander un mot de
+            # passe : virsh compris, il échoue plutôt que d'attendre une
+            # réponse que personne ne voit.
+            with sudo_non_interactif():
+                return self._qemu_deploie_spec_corps(spec, coupee, session)
+        return self._qemu_deploie_spec_corps(spec, coupee, session)
+
+    def _qemu_deploie_spec_corps(self, spec, coupee, session):
+        """Corps de _qemu_deploie_spec ; voir sa documentation."""
         pending = spec["vms"]
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
@@ -2883,18 +2992,22 @@ class QemuDeployMixin:
         # si les résultats reviennent dans le désordre (exécution parallèle).
         jobs = []  # (id, name, parts)
         for k, vm in enumerate(pending, 1):
-            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=False)
+            parts = self._qemu_deploy_parts_for(
+                vm, spec, dry_run=False, sudo_n=bool(session)
+            )
             jobs.append((f"{k}/{n_jobs}", vm["name"], parts))
 
         deploy_start = time.time()
         n_ok = 0
+        failed = []
         if jobs:
             workers = min(parallelism, len(jobs))
             print(
                 f"\n{t('Deploying')} {len(jobs)} VM "
                 f"({t('parallel jobs:')} {workers})…"
             )
-            if todo_prefs.get("qemu_deploy_progress") == "tui":
+            # Une App Textual ne s'ouvre pas dans le suivi qui tourne déjà.
+            if not session and todo_prefs.get("qemu_deploy_progress") == "tui":
                 outcome = self._qemu_deploy_jobs_tui(jobs, workers)
             else:
                 outcome = None
@@ -2904,6 +3017,8 @@ class QemuDeployMixin:
                 if rc == 0:
                     deployed.append(name)
                     n_ok += 1
+                else:
+                    failed.append(name)
             print(
                 f"\n{t('Deploy summary:')} {n_ok} OK, "
                 f"{len(jobs) - n_ok} {t('failed')}, "
@@ -2917,7 +3032,10 @@ class QemuDeployMixin:
         ip_map = {}
         # `desktop` compte aussi : sans IP résolue, l'installation du bureau
         # n'aurait aucune VM à joindre.
-        if deployed and (add_ssh_config or install_branch or desktop):
+        # Le suivi d'une session ouverte joint lui aussi chaque VM par son IP.
+        if deployed and (
+            add_ssh_config or install_branch or desktop or session
+        ):
             labels = {
                 nm: f"{k}/{len(deployed)}" for k, nm in enumerate(deployed, 1)
             }
@@ -2946,12 +3064,13 @@ class QemuDeployMixin:
         # installation. Sans lui, la voie synchrone n'a aucun guet, et une spec
         # sans rien à installer lèverait la coupure dès les IP connues, avant
         # que cloud-init et l'agent invité aient fini de télécharger.
-        if spec.get("offline"):
+        if spec.get("offline") or session:
             monitor = True
+        added = []
         if install or desktop or monitor:
             if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
-                self._qemu_install_erplibre_monitored(
+                added = self._qemu_install_erplibre_monitored(
                     deployed,
                     branch_map if branch_multi else install_branch,
                     ip_map,
@@ -2968,6 +3087,7 @@ class QemuDeployMixin:
                     # elle qui fait qu'une réussite prouve le hors ligne.
                     hors_ligne=bool(coupee),
                     identity=identity,
+                    session=session,
                 )
             elif install:
                 print(
@@ -2988,6 +3108,13 @@ class QemuDeployMixin:
                         vm_tools=vm_tools,
                         ai_agent=ai_agent,
                     )
+
+        if session:
+            return {
+                "added": added or [],
+                "failed": failed,
+                "no_ip": [n for n in deployed if not ip_map.get(n)],
+            }
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
         # synchrone ; l'install monitorée est détachée, non comptée ici).
