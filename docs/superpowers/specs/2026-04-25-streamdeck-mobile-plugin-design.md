@@ -1,6 +1,7 @@
 # Stream Deck Mobile Plugin (Android USB Host) — Design
 
-- **Status**: Draft
+- **Status**: implemented; the amendments at the end record what was
+  built where it differs from the text, and win over it.
 - **Date**: 2026-04-25
 - **Author**: Mathieu Benoit (brainstormed with Claude)
 - **Target**: `mobile/erplibre_home_mobile/` (Android, Capacitor 8, Owl 2.8)
@@ -385,3 +386,101 @@ Each follow-up sub-project gets its own brainstorming → spec → plan cycle.
 - Exact reader-thread report-parsing offsets per model (need to be cross-checked against `python-elgato-streamdeck` source during implementation; the spec assumes the parsing tables there are correct).
 - Whether to call `forceClaim=true` on `claimInterface()`. Default `false` is safer; revisit if real-device testing shows the kernel HID driver grabs the interface first.
 - LCD touch event coordinate origin on Plus (top-left vs LCD-relative). To verify on hardware.
+
+## Amendments from the implementation
+
+Where a rule below differs from the text above, this section wins. The
+plugin's current reference, method by method and event by event, is the
+StreamDeckPlugin section of `mobile/erplibre_home_mobile/doc/NATIVE_PLUGINS.base.md`.
+
+1. **Eight models.** The XL v2 (PID `0x008f`, model `xl_v2`) is
+   supported and listed in `streamdeck_devices.xml`. It shares every XL
+   value: 8×4 keys, 96×96 JPEG, 180° rotation, and the XL's bezel ratio
+   for a picture spread over the keys.
+2. **Neo.** The Neo has one 248×58 info screen, not two: `infoBars.count`
+   is 1 and `setInfoBar` accepts index 0 only. Its keys and its screen
+   are rotated 180°, as on the XL and the MK.2; the Plus keys are sent as
+   drawn.
+3. **BMP keys.** `BmpEncoder` applies python-elgato-streamdeck's rotation
+   and flips, then writes the Pillow layout (rows bottom-up, positive
+   height): the Original v1 and the Mini receive the bytes of the
+   reference driver. A JPEG model given anything but JPEG rejects
+   `format_mismatch:jpeg_model_requires_jpeg`; a BMP model given anything
+   but PNG still rejects `format_mismatch:bmp_model_requires_png`.
+4. **`clearKey`** checks the key index like `setKeyImage` and sends the
+   encoder's black image at the key's native size, already in wire format,
+   not a 1×1 image.
+5. **`image_oversized` is checked in Java only.** `setKeyImage` rejects
+   `image_oversized:WxH>KWxKH` when the PNG or JPEG header declares more
+   than the key size; `setKeyImagesBatch` counts such an entry as dropped;
+   the LCD and info-screen jobs reject it too. The TypeScript pre-encode
+   check of §9 is not built: the TS callers render at the native size read
+   from `getDeckInfo`.
+6. **Write failures (§9, "Disconnect mid-write").** `bulkTransfer`
+   returns -1 for a 500 ms timeout as for a gone pipe, so one failed
+   transfer does not close the session. The writer closes it after three
+   failed transfers in a row; a job without a failed transfer resets the
+   count. The close is announced by `deckDisconnected` with reason
+   `usb_lost:<detail>`. A failed fire-and-forget write (a
+   `setKeyImagesBatch` entry) is sent as `writeFailed {deckId, key,
+   reason}`, once per key and reason until a write to that key succeeds.
+7. **Pending writes on close (§5.3).** On any close the queued jobs, and
+   the job the writer had taken when the close began, resolve
+   `{dropped: true}`; none is rejected `"disconnected"`. The write methods
+   settle as plain calls, never kept alive, so a settled call leaves
+   nothing in Capacitor's saved calls.
+8. **Lifecycle events.** One session per deck at a time: the device is
+   reserved before the permission request, and any other attach is refused
+   while it is reserved or open. `deckConnected {deckId, info}` is sent
+   once the session is registered, so a `getDeckInfo` sent in reply finds
+   it. `deckDisconnected` is sent exactly once per announced deck, when its
+   last session closes, and never for a deck JS was not told about; its
+   reason is matched on the prefix (`usb_lost`, `usb_lost:<detail>`,
+   `restart_requested`, `app_destroyed`, or a reader failure). The
+   `deckReconnected` event of §9 is not built: a second registration under
+   one serial stays silent while the other entry carries it.
+9. **`requestPermission({deckId?})`** asks the OS, for one deck or,
+   without `deckId`, for every attached Stream Deck, and resolves
+   `{granted, results[]}` with one outcome per device: `already_granted`
+   (no dialog), `granted`, `denied`, `timeout` (30 s) or `error`. A granted
+   deck that is not open is opened through the attach path. `listDecks`
+   lists open decks only: the `permission: "denied"` entry of §9 is not
+   built.
+10. **Automatic reopen.** A session that closes itself (reader failure,
+    `polled_reset`, three failed writes) while its deck stays plugged in
+    is re-attached after 2, 4 then 8 s: three attempts, each through the
+    hotplug attach path, so it never opens a second session nor shows a
+    dialog. The count resets once a session has stayed registered 60 s,
+    and `restartSessions` or `retryAttach` give every deck its three
+    attempts back; both also attach every permitted deck that has no
+    session. An unplug, `restartSessions`, `retryAttach` and the app's
+    destruction cancel the pending retries. A retry that finds the USB
+    permission missing gives up at once with `permission_missing`, since
+    no retry raises the dialog. Giving up sends `reattachGaveUp {deckId,
+    deviceName, attempts, reason}` once, and the app writes one journal
+    line naming the deck and, for a missing permission, the permission
+    button.
+11. **Power options (new).** `showOverLockScreen` and `keepAwake` are both
+    opt-in, off by default, kept in SharedPreferences and read before any
+    JS runs (`getPowerOptions`, `setPowerOptions`). `keepAwake` holds a
+    partial wake lock and a 700 ms USB heartbeat while a deck is open, the
+    lock also while a self-closed deck waits for its reopen. Wake on key
+    press (`setWakeOnKeyPress`, armed by the Sleep section's "keep the
+    deck lit" option) is coupled with `keepAwake`: turning that option on
+    stores `keepAwake` first and leaves the option off when `keepAwake`
+    stays off; turning `keepAwake` off turns the option off. App boot never
+    writes `keepAwake`: an option stored on with `keepAwake` off is turned
+    off, with one journal line. Only `showOverLockScreen` lets a key press
+    turn the screen on; without it, a key press brings a paused app forward
+    only over a screen already lit, and otherwise arrives as `keyChanged`
+    only.
+12. **API added to §6:** `setKeyImagesBatch`, `getPowerOptions`,
+    `setPowerOptions`, `setWakeOnKeyPress`, `restartSessions`,
+    `retryAttach`; events `writeFailed` and `reattachGaveUp`.
+13. **Tests (§10.1).** The test classes are `TransportV1Test`,
+    `TransportV2Test` and `WriterQueueTest`. `JpegEncoderTest` pins the
+    passthrough and the blank-key bytes of the reference driver at 72, 96
+    and 120; the decode round-trip through `BitmapFactory` is not built:
+    it needs an Android runtime (Robolectric), which the JVM tests lack.
+    The reader, the transports and the power options on a real device
+    are covered by the manual matrix only, which now lists the XL v2.
