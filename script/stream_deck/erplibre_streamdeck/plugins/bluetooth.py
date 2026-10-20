@@ -3,22 +3,31 @@
 """Bluetooth page: adapter power and paired devices.
 
 A poll reads the adapter every 2 s while the page shows, away from the
-lock, into `state().bt` as (powered, devices). The page draws from it
-and a press acts on it: the toggle's direction is the cached power, a
-device key's device the cached device at its slot."""
+lock, into `state().bt` as (powered, devices), and writes a failing
+tool once while it repeats. The page draws from it and a press acts on
+it: the toggle's direction is the cached power, a device key's device
+the cached device at its slot."""
 
 import shutil
 import subprocess
 import sys
 
 from erplibre_streamdeck.plugin import (
-    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll,
+    PLUGIN_API, HomeButton, KeyFace, Page, Plugin, Poll, RepeatLog,
 )
 from erplibre_streamdeck.ui import colors, render
 
 
-def _bt_powered():
-    """Return True/False/None. None = unable to determine."""
+def _log(msg):
+    """Context.log's line, for the reads, which have no Context."""
+    print(
+        f"[erplibre-home] bluetooth: {msg}", file=sys.stderr, flush=True
+    )
+
+
+def _bt_powered(log=_log):
+    """Return True/False/None. None = unable to determine. A tool that
+    raises goes to log(msg)."""
     if shutil.which("bluetoothctl"):
         try:
             r = subprocess.run(
@@ -30,7 +39,7 @@ def _bt_powered():
                     if line.strip().startswith("Powered:"):
                         return line.split(":", 1)[1].strip() == "yes"
         except Exception as e:
-            print(f"bluetoothctl show error: {e}", file=sys.stderr, flush=True)
+            log(f"bluetoothctl show error: {e}")
     if shutil.which("rfkill"):
         try:
             r = subprocess.run(
@@ -42,12 +51,13 @@ def _bt_powered():
                     if line.strip().startswith("Soft blocked:"):
                         return line.split(":", 1)[1].strip() == "no"
         except Exception as e:
-            print(f"rfkill list error: {e}", file=sys.stderr, flush=True)
+            log(f"rfkill list error: {e}")
     return None
 
 
-def _bt_list_paired():
-    """Return [(mac, name, connected)] for paired devices via bluetoothctl."""
+def _bt_list_paired(log=_log):
+    """Return [(mac, name, connected)] for paired devices via
+    bluetoothctl; a failing listing goes to log(msg)."""
     paired = []
     if not shutil.which("bluetoothctl"):
         return paired
@@ -62,10 +72,7 @@ def _bt_list_paired():
                 if len(parts) >= 3 and parts[0] == "Device":
                     paired.append((parts[1], parts[2]))
     except Exception as e:
-        print(
-            f"bluetoothctl devices Paired error: {e}",
-            file=sys.stderr, flush=True,
-        )
+        log(f"bluetoothctl devices Paired error: {e}")
         return []
     connected = set()
     try:
@@ -161,11 +168,20 @@ def _keys(geo):
 NO_BT = (None, [])
 
 
-def _read():
-    """(powered, devices) of the adapter, the poll's read: no Context,
-    no lock. The paired devices are listed even with the adapter off,
-    since a device key acts on them."""
-    return _bt_powered(), _bt_list_paired()
+def _read(log=_log):
+    """(powered, devices) of the adapter: no Context, no lock. The
+    paired devices are listed even with the adapter off, since a device
+    key acts on them."""
+    return _bt_powered(log), _bt_list_paired(log)
+
+
+_POLL_LOG = RepeatLog(_log, "Bluetooth read")
+
+
+def _poll_read():
+    """The poll's read (see RepeatLog); a job reads with _log."""
+    with _POLL_LOG.watch() as log:
+        return _read(log)
 
 
 def _store(ctx, data):
@@ -280,6 +296,6 @@ PLUGIN = Plugin(
         face=lambda ctx: KeyFace(colors.BT_TITLE, "BT", icon="bt"),
         press=lambda ctx: ctx.goto("bluetooth"),
     ),
-    polls=[Poll(2.0, _shown, _read, _store)],
+    polls=[Poll(2.0, _shown, _poll_read, _store)],
     setup=_setup,
 )
