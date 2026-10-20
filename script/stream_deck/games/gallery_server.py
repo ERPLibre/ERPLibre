@@ -12,6 +12,7 @@ Usage: make streamdeck_gallery, which runs it under .venv.streamdeck.
 Then open http://localhost:8042
 """
 
+import argparse
 import glob
 import http.server
 import json
@@ -359,6 +360,30 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
             super().log_message(format, *args)
 
 
+def parser():
+    """The command line. argparse exits 0 on -h and 2 on any argument it
+    does not know, before main() scans the games, listens on PORT or opens
+    a browser."""
+    return argparse.ArgumentParser(
+        prog="python script/stream_deck/games/gallery_server.py",
+        description=(
+            "Stream Deck game gallery (make streamdeck_gallery).\n"
+            "Without an option, it serves the gallery on"
+            f" http://localhost:{PORT},\nopens it in the browser and"
+            " launches the game picked there."
+        ),
+        epilog=(
+            "Exit codes:\n"
+            "  0  stopped by Ctrl+C, or --help\n"
+            "  1  GAMES is not on in erplibre-home/streamdeck.conf, the port"
+            " is taken,\n     or an unexpected error\n"
+            "  2  a bad option"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
+    )
+
+
 def main():
     global _game_cache
     refus = _games_refusal()
@@ -384,4 +409,5 @@ def main():
 
 
 if __name__ == "__main__":
+    parser().parse_args()
     main()
