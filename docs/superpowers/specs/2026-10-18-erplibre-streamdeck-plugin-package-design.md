@@ -514,7 +514,9 @@ paragraph and the exit codes under "Contracts that stay".
     before anything else. `-h`/`--help` print the usage, the settings file
     and the exit codes, and exit 0; an unknown argument prints the usage
     on stderr and exits 2, the code a busy lock also uses; `--list-plugins`
-    behaves as the Loader section says. None of them takes the lock or
-    imports `app`, and with it the Stream Deck library: `main()` starts
-    with `acquire_or_exit` and imports `app` after it. Without an
+    behaves as the Loader section says. None of them takes the lock.
+    `-h`/`--help` and an unknown argument do not import `app`, and with
+    it the Stream Deck library: `main()` starts with `acquire_or_exit`
+    and imports `app` after it. `--list-plugins` imports `app` to read
+    the settings, so it needs the library, but not the deck. Without an
     argument, as the service runs it, exit 2 still means a busy lock.
