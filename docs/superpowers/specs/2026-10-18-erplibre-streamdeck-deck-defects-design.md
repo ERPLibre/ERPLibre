@@ -302,6 +302,18 @@ Where a rule below differs from the text above, this section wins.
     comma as a dot ("0,5" is 0.5) before the range check, and writes the
     value with a dot; the shell and the deck read only the dot. An
     English "1,000" is therefore read as 1 s.
+14. **Poll failures journaled once.** A poll's `read` that fails the
+    same way on every pass writes through `RepeatLog` (in `plugin.py`,
+    beside `Poll`): `with repeat_log.watch() as log:` wraps one pass, its
+    failures are written once while they repeat and again when they
+    change, and the first clean pass writes `<what>: recovered`. A pass
+    that starts more than `FORGET_SEC` (10 s, above every poll period)
+    after the last one ended starts from a clean state, so a failure that
+    comes back after its poll was idle is written again. The timers,
+    Sound (page and microphone) and Bluetooth polls use it; presses and
+    jobs still journal every failure. `dbus.call` strips the gdbus output,
+    so no empty line follows a caller's message. A failing read still
+    keeps the old cache (section 2).
 
 ## Contracts that stay
 
