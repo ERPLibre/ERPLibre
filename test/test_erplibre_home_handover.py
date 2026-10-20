@@ -16,6 +16,8 @@ Ce que ces tests gardent :
 
 - une unité active, ou qui attend de redémarrer, est arrêtée avant le jeu
   et relancée après, son compteur de démarrages remis à zéro ;
+- une unité que systemd a déchargée après l'arrêt est relancée sans ligne
+  d'erreur ; toute autre erreur de la remise à zéro reste visible ;
 - le jeu tourne sous le verrou du deck, au nom de « game » ; un deck déjà
   pris ne lance pas le jeu ;
 - une unité arrêtée le reste, et RESTART_AFTER_GAME=no la laisse arrêtée ;
@@ -42,10 +44,25 @@ UNITE = "erplibre-home-streamdeck.service"
 DECK_DIR = RACINE / "script/stream_deck"
 
 # Comme systemctl is-active : l'état sur la sortie, 0 pour « active » seul.
+# DECHARGEE fait répondre reset-failed comme pour une unité que systemd a
+# déchargée après un arrêt propre ; ECHEC_RESET, comme pour toute autre
+# erreur.
 SYSTEMCTL = """#!/bin/sh
 echo "systemctl $*" >>"$JOURNAL"
 case "$2" in
     is-active) cat "$ETAT"; [ "$(cat "$ETAT")" = active ] ;;
+    reset-failed)
+        if [ -n "${DECHARGEE:-}" ]; then
+            echo "Failed to reset failed state of unit $3:" \\
+                "Unit $3 not loaded." >&2
+            exit 1
+        fi
+        if [ -n "${ECHEC_RESET:-}" ]; then
+            echo "Failed to reset failed state of unit $3:" \\
+                "Access denied" >&2
+            exit 1
+        fi
+        ;;
     stop) [ -z "${ECHEC_STOP:-}" ] && echo inactive >"$ETAT" ;;
     start) echo active >"$ETAT" ;;
 esac
@@ -140,6 +157,23 @@ class Passation(unittest.TestCase):
             journal,
         )
         self.assertEqual("active", self.etat.read_text().strip())
+
+    def test_an_unloaded_unit_restarts_without_an_error_line(self):
+        """Après un arrêt propre, systemd décharge l'unité : son compteur
+        de démarrages part avec elle, il n'y a rien à remettre à zéro."""
+        self.unite("active")
+        fini, journal = self.jouer(env={"DECHARGEE": "1"})
+        self.assertEqual(7, fini.returncode, fini.stderr)
+        self.assertEqual("", fini.stderr)
+        self.assertEqual(f"systemctl --user start {UNITE}", journal[-1])
+        self.assertEqual("active", self.etat.read_text().strip())
+
+    def test_another_reset_failure_stays_visible(self):
+        self.unite("active")
+        fini, journal = self.jouer(env={"ECHEC_RESET": "1"})
+        self.assertEqual(7, fini.returncode, fini.stderr)
+        self.assertIn("Access denied", fini.stderr)
+        self.assertEqual(f"systemctl --user start {UNITE}", journal[-1])
 
     def test_a_unit_waiting_to_restart_is_stopped_too(self):
         """Pendant RestartSec, l'unité est « activating » : laissée seule,
