@@ -147,6 +147,37 @@ class RepeatLogTest(unittest.TestCase):
         self.assertEqual(["dbus: UnknownMethod"], self.lines)
 
 
+    def test_a_failure_after_a_pause_is_written_again(self):
+        """A poll inactive for a while (its page not shown, its plugin
+        busy, the deck replugged) may have seen its cause fixed and come
+        back: the same failure is news again."""
+        now = [0.0]
+        self.log = RepeatLog(self.lines.append, "Bluetooth read",
+                             clock=lambda: now[0])
+        self.run_pass("bluetoothctl show error: X")
+        now[0] += RepeatLog.FORGET_SEC + 1
+        self.run_pass("bluetoothctl show error: X")
+        self.assertEqual(2, len(self.lines))
+
+    def test_a_pass_within_the_pause_keeps_quiet(self):
+        now = [0.0]
+        self.log = RepeatLog(self.lines.append, "Bluetooth read",
+                             clock=lambda: now[0])
+        self.run_pass("bluetoothctl show error: X")
+        now[0] += RepeatLog.FORGET_SEC - 1
+        self.run_pass("bluetoothctl show error: X")
+        self.assertEqual(1, len(self.lines))
+
+    def test_a_clean_pass_after_a_pause_writes_nothing(self):
+        now = [0.0]
+        self.log = RepeatLog(self.lines.append, "Bluetooth read",
+                             clock=lambda: now[0])
+        self.run_pass("bluetoothctl show error: X")
+        now[0] += RepeatLog.FORGET_SEC + 1
+        self.run_pass()
+        self.assertEqual(["bluetoothctl show error: X"], self.lines)
+
+
 class StyleTest(unittest.TestCase):
     def test_restore_clamps_and_survives_garbage(self):
         style = render.Style()
