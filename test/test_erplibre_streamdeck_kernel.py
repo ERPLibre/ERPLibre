@@ -501,6 +501,21 @@ class LeftoverTest(KernelCase):
         with self.assertRaises(KeyboardInterrupt):
             k.handle_key(1, True)
 
+    def test_a_sigterm_during_a_plugin_call_propagates(self):
+        """The SystemExit of exit_on_sigterm is the service's stop, not a
+        plugin's error: swallowed, it would leave the service running
+        with SIGTERM already ignored."""
+        import deck_lock
+
+        def probe(ctx):
+            raise deck_lock.SigtermExit(143)
+
+        plugin = loaded("p", Plugin(api=PLUGIN_API, setup=probe))
+        with self.assertRaises(SystemExit) as caught:
+            self.kernel(plugin)
+        self.assertEqual(143, caught.exception.code)
+        self.assertNotIn("setup failed", self.journal.getvalue())
+
     def test_nothing_painted_after_running_is_false(self):
         k = self.kernel(self.page_plugin())
         k.goto("pg")

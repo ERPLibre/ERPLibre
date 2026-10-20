@@ -999,6 +999,19 @@ class SigtermPropre(unittest.TestCase):
                 self.assertEqual(["finally", "atexit"], fh.read().split())
 
 
+    def test_sigterm_raises_its_own_system_exit(self):
+        """Un code qui isole les SystemExit d'un greffon reconnaît
+        l'arrêt du service à sa classe."""
+        deck_lock = charger()
+        ancien = signal.getsignal(signal.SIGTERM)
+        self.addCleanup(signal.signal, signal.SIGTERM, ancien)
+        deck_lock.exit_on_sigterm()
+        with self.assertRaises(deck_lock.SigtermExit) as pris:
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        self.assertIsInstance(pris.exception, SystemExit)
+        self.assertEqual(128 + signal.SIGTERM, pris.exception.code)
+
+
 class LeChemin(unittest.TestCase):
     def test_under_the_runtime_dir(self):
         deck_lock = charger()

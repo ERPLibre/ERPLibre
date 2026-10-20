@@ -6,8 +6,10 @@ keys, renders and ticks to the plugins, and their isolation.
 Every plugin call goes through guard(): an exception is written to the
 journal once per (plugin, call, error) until that call succeeds again,
 and the kernel recovers (flash ERR, home screen, empty key) instead of
-dying. handle_key, render and step's locked part expect the caller to
-hold `lock`; on_key() (the deck's key callback) and loop() take it.
+dying. A plugin's SystemExit is such an exception; the one a SIGTERM
+raises (deck_lock.SigtermExit) is the service's stop and passes.
+handle_key, render and step's locked part expect the caller to hold
+`lock`; on_key() (the deck's key callback) and loop() take it.
 Both also catch what escapes a pass under the plugin id "kernel", so
 neither thread dies.
 
@@ -26,6 +28,8 @@ import threading
 import time
 import traceback
 import types
+
+import deck_lock
 
 from erplibre_streamdeck import dbus as dbus_mod
 from erplibre_streamdeck.context import Context
@@ -150,6 +154,8 @@ class Kernel:
         writing the error to the journal (see ErrorLog)."""
         try:
             result = fn(*args)
+        except deck_lock.SigtermExit:
+            raise
         except (Exception, SystemExit) as exc:
             self._journal(plugin_id, what, exc, traceback.format_exc())
             return False, None

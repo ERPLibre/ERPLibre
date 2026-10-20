@@ -409,15 +409,22 @@ def holder_pids(path=None, proc="/proc"):
     return sorted(pids)
 
 
+class SigtermExit(SystemExit):
+    """Le SystemExit que lève exit_on_sigterm. Un code qui isole les
+    appels d'un greffon, SystemExit compris, le laisse passer : l'arrêt du
+    service n'est pas une erreur du greffon, et le second SIGTERM est
+    ignoré."""
+
+
 def exit_on_sigterm():
-    """SIGTERM (systemctl stop, kill) lève SystemExit(128 + SIGTERM) dans le
-    fil principal au lieu de tuer le processus sur place : les finally qui
-    remettent le deck à zéro et les fonctions atexit passent. Un second
+    """SIGTERM (systemctl stop, kill) lève SigtermExit(128 + SIGTERM) dans
+    le fil principal au lieu de tuer le processus sur place : les finally
+    qui remettent le deck à zéro et les fonctions atexit passent. Un second
     SIGTERM est ignoré, pour ne pas interrompre ce nettoyage."""
 
     def sortir(signum, _frame):
         signal.signal(signum, signal.SIG_IGN)
-        raise SystemExit(128 + signum)
+        raise SigtermExit(128 + signum)
 
     signal.signal(signal.SIGTERM, sortir)
 
