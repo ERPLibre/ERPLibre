@@ -65,15 +65,16 @@ the Python helpers. See [`../gnome-extension/erplibre_home/README.md`](../gnome-
 ```bash
 python script/stream_deck/erplibre_streamdeck
 python script/stream_deck/erplibre_streamdeck --list-plugins
+python script/stream_deck/erplibre_streamdeck --help
 ```
 
 
-`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off`, `replaced by user` or `refused` with its reason; `unreadable` for a plugin directory it cannot list) without opening the deck or taking its lock. Layout of the package:
+`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off`, `replaced by user` or `refused` with its reason; `unreadable` for a plugin directory it cannot list) without opening the deck or taking its lock. `-h` and `--help` print the usage, the settings file and the exit codes (2: deck lock held or bad option, 3: no Stream Deck with a screen, 143: SIGTERM), then exit 0; any other argument prints the usage on stderr and exits 2. Neither takes the lock nor needs the Stream Deck library. Layout of the package:
 
 
 ```
 erplibre_streamdeck/
-├── __main__.py   # entry point, --list-plugins / point d'entrée
+├── __main__.py   # entry point, --help, --list-plugins / point d'entrée
 ├── app.py        # build(): settings, plugins, kernel / assemblage
 ├── kernel.py     # deck, lock, flash, loop, dispatch / noyau
 ├── home.py       # home screen: buttons, fixtures, tiles / accueil

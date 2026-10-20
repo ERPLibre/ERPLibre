@@ -54,15 +54,16 @@ make streamdeck
 ```bash
 python script/stream_deck/erplibre_streamdeck
 python script/stream_deck/erplibre_streamdeck --list-plugins
+python script/stream_deck/erplibre_streamdeck --help
 ```
 
 
-`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. Disposition du paquet :
+`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. `-h` et `--help` affichent l'usage, le fichier de réglages et les codes de sortie (2 : verrou du deck tenu ou option invalide, 3 : aucun Stream Deck à écran, 143 : SIGTERM), puis sortent en 0 ; tout autre argument affiche l'usage sur la sortie d'erreur et sort en 2. Ni l'un ni l'autre ne prend le verrou ni n'a besoin de la bibliothèque Stream Deck. Disposition du paquet :
 
 
 ```
 erplibre_streamdeck/
-├── __main__.py   # entry point, --list-plugins / point d'entrée
+├── __main__.py   # entry point, --help, --list-plugins / point d'entrée
 ├── app.py        # build(): settings, plugins, kernel / assemblage
 ├── kernel.py     # deck, lock, flash, loop, dispatch / noyau
 ├── home.py       # home screen: buttons, fixtures, tiles / accueil

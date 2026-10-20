@@ -23,7 +23,9 @@ Ce que ces tests gardent :
 - le menu TODO lance un jeu sous le python du venv, à travers la passation
   du deck, et sans venv il le dit dans la langue de l'utilisateur sans rien
   lancer ;
-- launch_game.sh, que rien n'appelait, n'existe plus.
+- launch_game.sh, que rien n'appelait, n'existe plus ;
+- le programme du deck répond à -h, --help et à une option inconnue sans
+  importer le matériel ni prendre le verrou du deck.
 """
 
 import contextlib
@@ -530,6 +532,83 @@ class TestLaunchGameScriptGone(unittest.TestCase):
                 continue
             texte = chemin.read_text(encoding="utf-8", errors="replace")
             self.assertNotIn("launch_game.sh", texte, str(chemin))
+
+
+# Un faux StreamDeck, et un faux PIL, placés en tête de PYTHONPATH : les
+# importer écrit un témoin et tue le processus. Un programme du deck lancé
+# par erreur ne touche donc jamais un vrai deck, et le témoin le dit.
+FAUX_MATERIEL = """import os
+with open(os.environ["TEMOIN_MATERIEL"], "w") as f:
+    f.write(__name__)
+os._exit(99)
+"""
+
+
+class TestTilerCommandLine(unittest.TestCase):
+    """La ligne de commande du programme du deck : -h et --help affichent
+    l'aide et sortent en 0, toute autre option l'affiche sur la sortie
+    d'erreur et sort en 2. Ni l'une ni l'autre n'importe le matériel ni ne
+    prend le verrou du deck, posé ici sous un XDG_RUNTIME_DIR temporaire."""
+
+    def lancer(self, *args):
+        with tempfile.TemporaryDirectory() as tmp:
+            faux = os.path.join(tmp, "faux")
+            for paquet in ("StreamDeck", "PIL"):
+                os.makedirs(os.path.join(faux, paquet))
+                init = os.path.join(faux, paquet, "__init__.py")
+                with open(init, "w", encoding="utf-8") as f:
+                    f.write(FAUX_MATERIEL)
+            run_dir = os.path.join(tmp, "run")
+            os.makedirs(run_dir, mode=0o700)
+            temoin = os.path.join(tmp, "temoin")
+            env = dict(
+                os.environ,
+                PYTHONPATH=faux,
+                XDG_RUNTIME_DIR=run_dir,
+                XDG_CONFIG_HOME=os.path.join(tmp, "config"),
+                HOME=os.path.join(tmp, "home"),
+                TEMOIN_MATERIEL=temoin,
+            )
+            res = subprocess.run(
+                [sys.executable, str(DECK_DIR / "erplibre_streamdeck")]
+                + list(args),
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            self.assertFalse(os.path.exists(temoin), res.stderr)
+            self.assertEqual(
+                [], os.listdir(run_dir), "le verrou du deck a été pris"
+            )
+        return res
+
+    def test_help_prints_the_usage_and_exits_0(self):
+        for option in ("-h", "--help"):
+            res = self.lancer(option)
+            self.assertEqual(0, res.returncode, res.stderr)
+            self.assertIn("usage:", res.stdout)
+            self.assertIn("--list-plugins", res.stdout)
+            self.assertIn("erplibre-home/streamdeck.conf", res.stdout)
+            self.assertEqual("", res.stderr)
+
+    def test_help_names_the_exit_codes(self):
+        aide = self.lancer("--help").stdout
+        for code in ("2", "3", "143"):
+            self.assertRegex(aide, r"(?m)^\s+%s\s" % code)
+
+    def test_an_unknown_option_exits_2_with_the_usage(self):
+        for args in (
+            ["--bogus"],
+            ["run"],
+            ["--list"],
+            ["--list-plugins", "x"],
+        ):
+            res = self.lancer(*args)
+            self.assertEqual(2, res.returncode, args)
+            self.assertIn("usage:", res.stderr, args)
+            self.assertEqual("", res.stdout, args)
 
 
 class TestTodoGamesLauncher(unittest.TestCase):
