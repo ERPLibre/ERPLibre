@@ -476,7 +476,16 @@ StreamDeckPlugin section of `mobile/erplibre_home_mobile/doc/NATIVE_PLUGINS.base
     only.
 12. **API added to §6:** `setKeyImagesBatch`, `getPowerOptions`,
     `setPowerOptions`, `setWakeOnKeyPress`, `restartSessions`,
-    `retryAttach`; events `writeFailed` and `reattachGaveUp`.
+    `retryAttach`, `clearPendingWrites` (drops a deck's queued image
+    writes, resolves `{dropped}`, their count); events `writeFailed` and
+    `reattachGaveUp`. The diagnostic panel of the Stream Deck options
+    calls `listAllUsbDevices` (every USB device the phone sees, Elgato or
+    not), `requestPermissionForUsb({deviceName})` (a device no session
+    has opened), `setDebugLogging` with its event `rawInputReport` (each
+    input report in hex), `setReaderMode` and `getReaderMode`
+    (`userequest`, `bulk` or `polled`, applied at the next session open).
+    `setReaderUseBulk` and `getReaderUseBulk`, the boolean form of the
+    reader mode, stay for older callers; the app does not call them.
 13. **Tests (§10.1).** The test classes are `TransportV1Test`,
     `TransportV2Test` and `WriterQueueTest`. `JpegEncoderTest` pins the
     passthrough and the blank-key bytes of the reference driver at 72, 96
