@@ -4,7 +4,13 @@
 
 build() is what a test drives: the style restored from settings.json,
 the plugins loaded, the kernel made, without the lock file, the signal
-handler or the loop thread."""
+handler or the loop thread.
+
+main() outlives its deck. When the library closes a deck that vanished,
+the plugins are shut down, DeviceManager is polled every
+REPLUG_POLL_SEC, and the first visual deck that answers gets a new
+kernel built with the same settings. The process, and the deck lock its
+caller took, stay for the whole wait; a SIGTERM or a Ctrl-C ends it."""
 
 import subprocess
 import sys
@@ -13,6 +19,7 @@ import time
 
 try:
     from StreamDeck.DeviceManager import DeviceManager
+    from StreamDeck.Transport.Transport import TransportError
 except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
@@ -29,6 +36,11 @@ from erplibre_streamdeck.ui import render
 # this delay the plugins are shut down without it, so the deck is reset
 # before systemd's stop timeout kills the service.
 SHUTDOWN_LOCK_SEC = 5.0
+# While no deck is plugged in, DeviceManager is asked this often.
+REPLUG_POLL_SEC = 2.0
+# How often main() checks that its deck is still open.
+OPEN_POLL_SEC = 0.5
+BRIGHTNESS = 80
 
 
 def _journal(msg):
@@ -89,10 +101,10 @@ def build(deck, *, plugins_off=(), user_dir=None, settings=None):
     return kernel
 
 
-def _shutdown(kernel, deck):
+def _shutdown_plugins(kernel):
     """Shut the plugins down under the kernel lock, or without it after
-    SHUTDOWN_LOCK_SEC (one journal line); the deck is reset and closed
-    whatever the shutdown raises."""
+    SHUTDOWN_LOCK_SEC (one journal line)."""
+    kernel.running = False
     locked = kernel.lock.acquire(timeout=SHUTDOWN_LOCK_SEC)
     if not locked:
         _journal(
@@ -104,25 +116,57 @@ def _shutdown(kernel, deck):
     finally:
         if locked:
             kernel.lock.release()
-        with deck:
-            deck.reset()
-            deck.close()
 
 
-def main():
-    streamdecks = DeviceManager().enumerate()
-    deck = next((d for d in streamdecks if d.is_visual()), None)
-    if not deck:
-        print("No visual Stream Deck found.")
-        sys.exit(deck_lock.NO_DECK_EXIT)
+def _shutdown(kernel, deck):
+    """Shut the plugins down, then reset and close the deck whatever the
+    shutdown raises. A deck that vanished cannot be reset: the library's
+    TransportError is one journal line, not a traceback."""
+    try:
+        _shutdown_plugins(kernel)
+    finally:
+        try:
+            with deck:
+                deck.reset()
+                deck.close()
+        except TransportError as exc:
+            _journal(f"Stream Deck not reset: {exc}")
+
+
+def _first_visual():
+    """The first visual deck DeviceManager lists, not opened; None when
+    there is none."""
+    decks = DeviceManager().enumerate()
+    return next((d for d in decks if d.is_visual()), None)
+
+
+def _open(deck):
     deck.open()
     deck.reset()
-    deck.set_brightness(80)
+    deck.set_brightness(BRIGHTNESS)
 
-    rows, cols = deck.key_layout()
-    print(f"Window Tiler on {deck.deck_type()} ({cols}x{rows})")
 
-    deck_settings = read_deck_settings()
+def _wait_for_deck():
+    """Poll every REPLUG_POLL_SEC until a visual deck opens; return it
+    opened, reset and lit. A deck that fails to open, still settling
+    after its plug, is closed and tried again at the next poll."""
+    _journal("Stream Deck unplugged, waiting for it to come back")
+    while True:
+        time.sleep(REPLUG_POLL_SEC)
+        deck = _first_visual()
+        if deck is None:
+            continue
+        try:
+            _open(deck)
+        except TransportError:
+            deck.close()
+            continue
+        return deck
+
+
+def _run(deck, deck_settings):
+    """Build a kernel on an opened deck, render it, bind the key
+    callback and start the loop thread; return the kernel."""
     kernel = build(
         deck,
         plugins_off=deck_settings["plugins_off"],
@@ -130,6 +174,24 @@ def main():
             "session_refresh_sec": deck_settings["session_refresh_sec"]
         },
     )
+    kernel.guard("kernel", "first render", kernel.render)
+    deck.set_key_callback(kernel.on_key)
+    threading.Thread(target=kernel.loop, daemon=True).start()
+    return kernel
+
+
+def main():
+    deck = _first_visual()
+    if not deck:
+        print("No visual Stream Deck found.")
+        sys.exit(deck_lock.NO_DECK_EXIT)
+    _open(deck)
+
+    rows, cols = deck.key_layout()
+    print(f"Window Tiler on {deck.deck_type()} ({cols}x{rows})")
+
+    deck_settings = read_deck_settings()
+    kernel = _run(deck, deck_settings)
     if kernel.dbus_ok:
         print("D-Bus tiler extension detected!")
     else:
@@ -139,14 +201,20 @@ def main():
     print("Press TILE to enter tiling mode (first corner, second corner).")
     print("Press TIMER to list and toggle tracker timers.")
 
-    kernel.guard("kernel", "first render", kernel.render)
-    deck.set_key_callback(kernel.on_key)
-    threading.Thread(target=kernel.loop, daemon=True).start()
+    # `kernel` is None while no deck is plugged in: the plugins are
+    # already shut down and there is no deck to reset.
     try:
-        while deck.is_open():
-            time.sleep(0.5)
+        while True:
+            while deck.is_open():
+                time.sleep(OPEN_POLL_SEC)
+            gone, kernel = kernel, None
+            _shutdown_plugins(gone)
+            deck = _wait_for_deck()
+            kernel = _run(deck, deck_settings)
+            rows, cols = deck.key_layout()
+            _journal(f"Stream Deck back: {deck.deck_type()} ({cols}x{rows})")
     except KeyboardInterrupt:
         pass
     finally:
-        kernel.running = False
-        _shutdown(kernel, deck)
+        if kernel is not None:
+            _shutdown(kernel, deck)

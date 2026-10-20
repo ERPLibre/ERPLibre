@@ -112,6 +112,9 @@ le fichier, et le défaut ne vaut que pour une clé absente : une
 réinstallation garde un programme choisi dans TODO. Toute autre ligne
 reste. L'unité ne démarre que si un programme est choisi, que
 `.venv.streamdeck` existe et qu'un deck est branché ; sinon systemd la saute.
+Une fois lancé, le programme du deck survit à son deck : débranché, il
+écrit une ligne au journal, garde le verrou du deck et cherche un deck
+toutes les 2 secondes ; le deck rebranché revient sur l'écran d'accueil.
 L'installateur ne la démarre jamais : le programme a besoin de l'extension,
 qu'une installation neuve charge à la prochaine ouverture de session. Avec
 `--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans

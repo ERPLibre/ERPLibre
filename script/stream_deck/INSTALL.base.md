@@ -221,7 +221,10 @@ option given writes its key; an option left out keeps the value already in
 the file, and the default applies only to a missing key, so a reinstall
 keeps a program chosen in TODO. Any other line stays. The unit starts only
 when a program is chosen, `.venv.streamdeck` exists and a deck is plugged
-in; otherwise systemd skips it. The installer never starts
+in; otherwise systemd skips it. Once started, the deck program
+outlives its deck: unplugged, it writes one journal line, keeps the deck
+lock and looks for a deck every 2 seconds; the deck plugged back in comes
+up on the home screen. The installer never starts
 it: the program needs the extension, which a fresh install loads at the
 next login. With `--autostart` the unit is enabled and starts at login.
 Without a reachable user manager (an install over ssh with no session), the
@@ -273,6 +276,9 @@ le fichier, et le défaut ne vaut que pour une clé absente : une
 réinstallation garde un programme choisi dans TODO. Toute autre ligne
 reste. L'unité ne démarre que si un programme est choisi, que
 `.venv.streamdeck` existe et qu'un deck est branché ; sinon systemd la saute.
+Une fois lancé, le programme du deck survit à son deck : débranché, il
+écrit une ligne au journal, garde le verrou du deck et cherche un deck
+toutes les 2 secondes ; le deck rebranché revient sur l'écran d'accueil.
 L'installateur ne la démarre jamais : le programme a besoin de l'extension,
 qu'une installation neuve charge à la prochaine ouverture de session. Avec
 `--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans
