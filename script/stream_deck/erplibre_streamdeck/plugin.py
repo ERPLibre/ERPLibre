@@ -8,6 +8,7 @@ and is called with the kernel lock held, except Poll.read (no Context,
 no lock) and threads the plugin starts itself (they take
 ctx.locked())."""
 
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -104,18 +105,35 @@ class RepeatLog:
     previous pass's, and nothing is written while they repeat. The
     first pass without failure after one writes `<what>: recovered`.
     A block that raises leaves the state as it was: the kernel
-    journals the exception itself."""
+    journals the exception itself.
 
-    def __init__(self, write, what):
+    A pass that starts more than FORGET_SEC after the last one ended
+    starts from a clean state: the poll was inactive (its page not
+    shown, its plugin busy, its deck unplugged a while) and its cause
+    may have been fixed and come back since, so its failures are
+    written again, and a clean pass writes nothing."""
+
+    # Longer than any poll period, the loop's own delays included.
+    FORGET_SEC = 10.0
+
+    def __init__(self, write, what, clock=time.monotonic):
         self._write = write
         self._what = what
+        self._clock = clock
         # The failures of the last pass, None after a clean pass.
         self._failing = None
+        self._ended_at = None
 
     @contextmanager
     def watch(self):
+        if (
+            self._ended_at is not None
+            and self._clock() - self._ended_at > self.FORGET_SEC
+        ):
+            self._failing = None
         failures = []
         yield lambda msg: failures.append(" ".join(str(msg).split()))
+        self._ended_at = self._clock()
         if failures:
             if tuple(failures) != self._failing:
                 for line in failures:

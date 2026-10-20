@@ -231,7 +231,7 @@ A callable runs with the lock held, so it must not wait on a process. `ctx.run_b
 
 - `active(ctx)` (lock held) says whether the data is needed now, for example because the plugin's page shows.
 - `read()` (no lock) runs the processes and returns the data. It never touches `ctx`; a failing `read` keeps the previous data.
-- A `read` that writes its own failures wraps its pass in `with repeat_log.watch() as log:`, where `repeat_log = RepeatLog(write, what)` is created once with the module: `log(msg)` records a failure, written once while it repeats on every pass, again when it changes, and `what: recovered` is written on the first pass without failure.
+- A `read` that writes its own failures wraps its pass in `with repeat_log.watch() as log:`, where `repeat_log = RepeatLog(write, what)` is created once with the module: `log(msg)` records a failure, written once while it repeats on every pass, again when it changes, and `what: recovered` is written on the first pass without failure. A pass that comes more than `RepeatLog.FORGET_SEC` (10 s) after the last one, the poll having been inactive, starts afresh: its failures are written again.
 - `store(ctx, data)` (lock held) keeps the data in `ctx.state()` and returns `True` to ask for one render.
 
 `ctx.setting(name, default=None)` reads a deck setting given to the kernel at start (`session_refresh_sec`, from `DECK_SESSION_REFRESH_SEC`), or `default`. A render may run before the first poll ends: set the state in `setup(ctx)`. This plugin runs a job on a key press and shows a counter that a poll refreshes:
@@ -252,7 +252,7 @@ Une fonction s'exécute verrou tenu : elle ne doit pas attendre un processus. `c
 
 - `active(ctx)` (verrou tenu) dit si la donnée est utile maintenant, par exemple parce que la page du plugin est affichée.
 - `read()` (sans verrou) lance les processus et rend la donnée. Il ne touche jamais `ctx` ; un `read` qui échoue garde la donnée précédente.
-- Un `read` qui inscrit ses propres échecs enveloppe son passage dans `with repeat_log.watch() as log:`, où `repeat_log = RepeatLog(write, what)` est créé une fois avec le module : `log(msg)` consigne un échec, inscrit une fois tant qu'il se répète à chaque passage, de nouveau quand il change, et `what: recovered` est inscrit au premier passage sans échec.
+- Un `read` qui inscrit ses propres échecs enveloppe son passage dans `with repeat_log.watch() as log:`, où `repeat_log = RepeatLog(write, what)` est créé une fois avec le module : `log(msg)` consigne un échec, inscrit une fois tant qu'il se répète à chaque passage, de nouveau quand il change, et `what: recovered` est inscrit au premier passage sans échec. Un passage qui vient plus de `RepeatLog.FORGET_SEC` (10 s) après le précédent, le sondage ayant été inactif, repart de zéro : ses échecs sont inscrits de nouveau.
 - `store(ctx, data)` (verrou tenu) garde la donnée dans `ctx.state()` et rend `True` pour demander un rendu.
 
 `ctx.setting(name, default=None)` lit un réglage du deck donné au noyau au démarrage (`session_refresh_sec`, issu de `DECK_SESSION_REFRESH_SEC`), ou `default`. Un rendu peut avoir lieu avant la fin du premier sondage : poser l'état dans `setup(ctx)`. Ce plugin lance une tâche à l'appui d'une touche et affiche un compteur qu'un sondage rafraîchit :
