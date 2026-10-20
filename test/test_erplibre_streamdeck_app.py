@@ -431,6 +431,32 @@ class ReplugTest(MainCase):
         self.assertIn("Could not open HID device.", journal)
         self.assertEqual(["close", "close", "close"], bad.events)
 
+    def flapping(self):
+        """main() over a deck that comes back three times and vanishes
+        at once each time; the delays its waits were given."""
+        backs = [RecordingDeck(5, 3) for _ in range(3)]
+        backs[-1].stop = SystemExit(143)
+        manager = ScriptedManager(*[[d] for d in backs])
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        with mock.patch.object(
+            app, "_wait_for_deck", wraps=app._wait_for_deck
+        ) as wait, self.assertRaises(SystemExit):
+            app.main()
+        return [c.args[0] for c in wait.call_args_list]
+
+    def test_a_deck_that_vanishes_again_at_once_backs_off(self):
+        """Each rebuild runs every plugin setup: a deck that keeps
+        closing as soon as it opens is looked for less and less often,
+        up to REPLUG_MAX_SEC."""
+        with mock.patch.object(app, "REPLUG_MAX_SEC", 0.003):
+            self.assertEqual([0.001, 0.002, 0.003], self.flapping())
+        self.assertIn("looking every 0.002 s", self.journal.getvalue())
+
+    def test_a_deck_that_stays_keeps_the_short_poll(self):
+        with mock.patch.object(app, "FLAP_SEC", 0.0):
+            self.assertEqual([0.001] * 3, self.flapping())
+
     def test_sigterm_while_the_kernel_is_rebuilt_resets_the_deck(self):
         """The deck that came back is open and lit before its kernel
         exists: a SIGTERM then still resets and closes it."""
