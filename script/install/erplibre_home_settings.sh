@@ -29,7 +29,11 @@ deck_unit_file() {
 # deck_setting CLÉ DÉFAUT rend la valeur de la dernière ligne « CLÉ=… » du
 # fichier de réglages, ou DÉFAUT quand le fichier ou la clé manque. Une
 # valeur vide est rendue vide : c'est à l'appelant de la refuser.
+# Le fichier se lit octet par octet (LC_ALL=C local) : sous une locale
+# UTF-8, le « read » de bash joint à un octet invalide le saut de ligne qui
+# le suit, et la clé de la ligne suivante disparaît dans cette valeur.
 deck_setting() {
+    local LC_ALL=C
     local key="$1" value="$2" file line
     file="$(deck_settings_file)"
     if [ -f "${file}" ]; then
