@@ -120,17 +120,20 @@ def _shutdown_plugins(kernel):
 
 def _shutdown(kernel, deck):
     """Shut the plugins down, then reset and close the deck whatever the
-    shutdown raises. A deck that vanished cannot be reset: the library's
+    shutdown raises. Either may be None: no kernel built yet, or no deck
+    held. A deck that vanished cannot be reset: the library's
     TransportError is one journal line, not a traceback."""
     try:
-        _shutdown_plugins(kernel)
+        if kernel is not None:
+            _shutdown_plugins(kernel)
     finally:
-        try:
-            with deck:
-                deck.reset()
-                deck.close()
-        except TransportError as exc:
-            _journal(f"Stream Deck not reset: {exc}")
+        if deck is not None:
+            try:
+                with deck:
+                    deck.reset()
+                    deck.close()
+            except TransportError as exc:
+                _journal(f"Stream Deck not reset: {exc}")
 
 
 def _first_visual():
@@ -185,29 +188,33 @@ def main():
     if not deck:
         print("No visual Stream Deck found.")
         sys.exit(deck_lock.NO_DECK_EXIT)
-    _open(deck)
 
-    rows, cols = deck.key_layout()
-    print(f"Window Tiler on {deck.deck_type()} ({cols}x{rows})")
-
-    deck_settings = read_deck_settings()
-    kernel = _run(deck, deck_settings)
-    if kernel.dbus_ok:
-        print("D-Bus tiler extension detected!")
-    else:
-        print("WARNING: erplibre-home extension not found.",
-              file=sys.stderr, flush=True)
-        print("Install: re-login to GNOME to activate the extension.")
-    print("Press TILE to enter tiling mode (first corner, second corner).")
-    print("Press TIMER to list and toggle tracker timers.")
-
-    # `kernel` is None while no deck is plugged in: the plugins are
-    # already shut down and there is no deck to reset.
+    # From the first open on, `deck` is the deck to reset and `kernel`
+    # the plugins to shut down, None for what is not there: a SIGTERM
+    # while a kernel builds still resets the deck already lit. While no
+    # deck is plugged in, both are None: the plugins are already shut
+    # down and there is no deck to reset.
+    kernel = None
     try:
+        _open(deck)
+        rows, cols = deck.key_layout()
+        print(f"Window Tiler on {deck.deck_type()} ({cols}x{rows})")
+
+        deck_settings = read_deck_settings()
+        kernel = _run(deck, deck_settings)
+        if kernel.dbus_ok:
+            print("D-Bus tiler extension detected!")
+        else:
+            print("WARNING: erplibre-home extension not found.",
+                  file=sys.stderr, flush=True)
+            print("Install: re-login to GNOME to activate the extension.")
+        print("Press TILE to enter tiling mode (first corner, second corner).")
+        print("Press TIMER to list and toggle tracker timers.")
+
         while True:
             while deck.is_open():
                 time.sleep(OPEN_POLL_SEC)
-            gone, kernel = kernel, None
+            gone, kernel, deck = kernel, None, None
             _shutdown_plugins(gone)
             deck = _wait_for_deck()
             kernel = _run(deck, deck_settings)
@@ -216,5 +223,4 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        if kernel is not None:
-            _shutdown(kernel, deck)
+        _shutdown(kernel, deck)

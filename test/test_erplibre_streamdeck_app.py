@@ -351,6 +351,19 @@ class ShutdownTest(MainCase):
         self.assertEqual(143, caught.exception.code)
         self.assertEqual([1], self.shut)
 
+    def test_sigterm_while_the_first_kernel_builds_resets_the_deck(self):
+        def stop(kernel):
+            raise SystemExit(143)
+
+        deck = self.run_main(stop)
+        with self.assertRaises(SystemExit) as caught:
+            app.main()
+        self.assertEqual(143, caught.exception.code)
+        self.assertEqual(
+            ["open", "reset", "brightness 80", "reset", "close"],
+            deck.events,
+        )
+
 
 class ReplugTest(MainCase):
     """The deck vanishes while main() runs: one journal line, a poll of
@@ -400,6 +413,30 @@ class ReplugTest(MainCase):
             app.main()
         self.assertEqual(2, len(self.kernels))
         self.assertIs(back, self.kernels[1].deck)
+
+    def test_sigterm_while_the_kernel_is_rebuilt_resets_the_deck(self):
+        """The deck that came back is open and lit before its kernel
+        exists: a SIGTERM then still resets and closes it."""
+        back = RecordingDeck(5, 3)
+        manager = ScriptedManager([], [back])
+        built = []
+
+        def stop_second(kernel):
+            built.append(kernel)
+            if len(built) == 2:
+                raise SystemExit(143)
+
+        first = self.run_main(stop_second, manager=manager)
+        manager.script.insert(0, [first])
+        with self.assertRaises(SystemExit) as caught:
+            app.main()
+        self.assertEqual(143, caught.exception.code)
+        self.assertEqual(
+            ["open", "reset", "brightness 80", "reset", "close"],
+            back.events,
+        )
+        self.assertEqual(["open", "reset", "brightness 80"], first.events)
+        self.assertEqual([1], self.shut)
 
     def test_sigterm_during_the_wait_stops_cleanly(self):
         manager = ScriptedManager([], SystemExit(143))
