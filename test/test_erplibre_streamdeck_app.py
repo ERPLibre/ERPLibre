@@ -191,24 +191,72 @@ class BuildSettingsTest(AppCase):
 
 
 class RecordingDeck(S.FakeDeck):
+    """A deck that records open, reset, brightness and close. The thread
+    that opens it is the one main() runs in: is_open() raises `stop`
+    there when it is set (a Ctrl-C or a SIGTERM while the deck runs),
+    and answers False otherwise, as a deck the library has closed. Once
+    it answered False, reset() raises the library's TransportError, as
+    on a vanished device."""
+
     def __init__(self, *a):
         super().__init__(*a)
         self.events = []
+        self.owner = None
+        self.stop = None
+        self.gone = False
+        self.fail_open = False
+
+    def open(self):
+        if self.fail_open:
+            raise S.TransportError("Could not open HID device.")
+        self.owner = threading.get_ident()
+        self.events.append("open")
+
+    def set_brightness(self, percent):
+        self.events.append(f"brightness {percent}")
+
+    def is_open(self):
+        if self.stop is not None and threading.get_ident() == self.owner:
+            raise self.stop
+        self.gone = self.stop is None
+        return False
 
     def reset(self):
+        if self.gone:
+            raise S.TransportError("No HID device.")
         self.events.append("reset")
 
     def close(self):
         self.events.append("close")
 
 
-class MainTest(AppCase):
-    """main() with a deck that is already closed: it builds, renders,
-    installs the callback, then goes straight to its shutdown."""
+class ScriptedManager:
+    """DeviceManager().enumerate() answering `script` in turn, one item a
+    call: a list of decks, or an exception it raises."""
 
-    def run_main(self, kernel_hook):
+    def __init__(self, *script):
+        self.script = list(script)
+        self.calls = 0
+
+    def __call__(self):
+        return self
+
+    def enumerate(self):
+        self.calls += 1
+        item = self.script.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return list(item)
+
+
+class MainCase(AppCase):
+    def run_main(self, kernel_hook=lambda kernel: None, manager=None):
+        """Patch main()'s collaborators: each built kernel runs one
+        plugin `p` whose shutdown appends to self.shut, and lands in
+        self.kernels; the decks come from `manager`, else S.DEVICES."""
         deck = RecordingDeck(5, 3)
         self.shut = []
+        self.kernels = []
         plugin = LoadedPlugin("p", Plugin(
             api=PLUGIN_API, shutdown=lambda ctx: self.shut.append(1),
         ), "user", Path("p.py"))
@@ -217,11 +265,16 @@ class MainTest(AppCase):
             kernel = K.Kernel(d, [plugin])
             kernel_hook(kernel)
             self.kernel = kernel
+            self.kernels.append(kernel)
             return kernel
 
         stack = contextlib.ExitStack()
         self.addCleanup(stack.close)
         stack.enter_context(mock.patch.object(S, "DEVICES", [deck]))
+        if manager is not None:
+            stack.enter_context(
+                mock.patch.object(app, "DeviceManager", manager)
+            )
         stack.enter_context(mock.patch.object(app, "build", build))
         stack.enter_context(
             mock.patch.object(
@@ -235,7 +288,15 @@ class MainTest(AppCase):
         stack.enter_context(
             mock.patch.object(app, "SHUTDOWN_LOCK_SEC", 0.05, create=True)
         )
+        stack.enter_context(
+            mock.patch.object(app, "REPLUG_POLL_SEC", 0.001, create=True)
+        )
         return deck
+
+
+class MainTest(MainCase):
+    """main() stopped by a Ctrl-C while the deck runs: it builds,
+    renders, installs the callback, then goes to its shutdown."""
 
     def test_shutdown_does_not_wait_forever_for_the_lock(self):
         def hold(kernel):
@@ -243,12 +304,16 @@ class MainTest(AppCase):
             self.addCleanup(kernel.lock.release)
 
         deck = self.run_main(hold)
+        deck.stop = KeyboardInterrupt()
         thread = threading.Thread(target=app.main, daemon=True)
         thread.start()
         thread.join(timeout=5)
         self.assertFalse(thread.is_alive(), "main waits for the lock")
         self.assertEqual([1], self.shut)
-        self.assertEqual(["reset", "reset", "close"], deck.events)
+        self.assertEqual(
+            ["open", "reset", "brightness 80", "reset", "close"],
+            deck.events,
+        )
         self.assertIn("kernel lock", self.journal.getvalue())
         self.assertEqual(self.kernel.on_key, deck.callback)
 
@@ -257,10 +322,104 @@ class MainTest(AppCase):
             kernel.shutdown = mock.Mock(side_effect=RuntimeError("stop"))
 
         deck = self.run_main(broken)
+        deck.stop = KeyboardInterrupt()
         with self.assertRaises(RuntimeError):
             app.main()
-        self.assertEqual(["reset", "reset", "close"], deck.events)
+        self.assertEqual(
+            ["open", "reset", "brightness 80", "reset", "close"],
+            deck.events,
+        )
         self.assertFalse(self.kernel.lock.locked())
+
+
+class ShutdownTest(MainCase):
+    def test_a_vanished_deck_is_one_journal_line_not_a_traceback(self):
+        deck = RecordingDeck(5, 3)
+        deck.gone = True
+        kernel = K.Kernel(deck, [])
+        app._shutdown(kernel, deck)
+        journal = self.journal.getvalue()
+        self.assertEqual(1, journal.count("No HID device."), journal)
+        self.assertFalse(kernel.lock.locked())
+
+    def test_sigterm_with_the_deck_gone_exits_with_its_code(self):
+        deck = self.run_main()
+        deck.stop = SystemExit(143)
+        deck.reset = mock.Mock(side_effect=[None, S.TransportError("x")])
+        with self.assertRaises(SystemExit) as caught:
+            app.main()
+        self.assertEqual(143, caught.exception.code)
+        self.assertEqual([1], self.shut)
+
+
+class ReplugTest(MainCase):
+    """The deck vanishes while main() runs: one journal line, a poll of
+    DeviceManager every REPLUG_POLL_SEC, and a kernel rebuilt on the deck
+    that comes back."""
+
+    def unplugged_lines(self):
+        return self.journal.getvalue().count(
+            "Stream Deck unplugged, waiting for it to come back"
+        )
+
+    def test_a_deck_plugged_back_gets_a_new_kernel(self):
+        back = RecordingDeck(5, 3)
+        back.stop = SystemExit(143)
+        manager = ScriptedManager([], [], [back])
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        with self.assertRaises(SystemExit) as caught:
+            app.main()
+        self.assertEqual(143, caught.exception.code)
+        self.assertEqual(4, manager.calls)
+        self.assertEqual(1, self.unplugged_lines())
+        self.assertIn("Stream Deck back", self.journal.getvalue())
+        self.assertNotIn("Traceback", self.journal.getvalue())
+        old, new = self.kernels
+        self.assertIs(first, old.deck)
+        self.assertFalse(old.running)
+        self.assertIs(back, new.deck)
+        self.assertEqual(new.on_key, back.callback)
+        self.assertTrue(any(back.rendering()), "nothing rendered")
+        self.assertEqual(
+            ["open", "reset", "brightness 80", "reset", "close"],
+            back.events,
+        )
+        self.assertEqual(["open", "reset", "brightness 80"], first.events)
+        self.assertEqual([1, 1], self.shut)
+
+    def test_a_deck_that_fails_to_open_is_tried_again(self):
+        bad = RecordingDeck(5, 3)
+        bad.fail_open = True
+        back = RecordingDeck(5, 3)
+        back.stop = SystemExit(143)
+        manager = ScriptedManager([bad], [back])
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        with self.assertRaises(SystemExit):
+            app.main()
+        self.assertEqual(2, len(self.kernels))
+        self.assertIs(back, self.kernels[1].deck)
+
+    def test_sigterm_during_the_wait_stops_cleanly(self):
+        manager = ScriptedManager([], SystemExit(143))
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        with self.assertRaises(SystemExit) as caught:
+            app.main()
+        self.assertEqual(143, caught.exception.code)
+        self.assertEqual(1, self.unplugged_lines())
+        self.assertNotIn("Stream Deck back", self.journal.getvalue())
+        self.assertEqual([1], self.shut)
+        self.assertEqual(["open", "reset", "brightness 80"], first.events)
+        self.assertFalse(self.kernel.lock.locked())
+
+    def test_ctrl_c_during_the_wait_returns(self):
+        manager = ScriptedManager([], KeyboardInterrupt())
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        app.main()
+        self.assertEqual([1], self.shut)
 
 
 if __name__ == "__main__":
