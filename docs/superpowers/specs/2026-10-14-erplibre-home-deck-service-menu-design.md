@@ -332,3 +332,32 @@ unchanged.
   systemd does not look and the service read its default settings.
   `XDG_CONFIG_HOME` belongs in `~/.config/environment.d/`, which the
   session and the user manager share (INSTALL says so).
+
+## Amendments from the implementation
+
+Where a rule below differs from the text above, this section wins. The
+tiler is now the package `script/stream_deck/erplibre_streamdeck/`
+(`DECK_PROGRAM=tiler` unchanged).
+
+1. **An unplugged deck (The unit).** The tiler no longer exits when its
+   deck is unplugged: it shuts its plugins down, keeps its process and
+   the deck lock, polls for the deck, and rebuilds its kernel on the
+   home screen when the deck returns (plugin package spec, amendment 23).
+   The unit stays active through the unplug, so neither `Restart=` nor
+   the start limit is involved. `ExecCondition` still skips a start with
+   no deck present. The controller is not changed by this rule.
+2. **`reset-failed` in the hand-over (step 3).** After a clean stop
+   systemd unloads the unit, and its start counter with it:
+   `reset-failed` then answers `Unit … not loaded.`. That answer, alone on
+   one line, is silent; any other output, a line printed before it
+   included, reaches stderr whole. The start runs in every case. The test
+   reads the answer itself, since `systemctl show -p LoadState` loads the
+   unit to read it and always reports it loaded.
+3. **Command lines.** The tiler, the controller, every game and the
+   gallery read their arguments with argparse before importing the Stream
+   Deck library. `-h`/`--help` print the usage and the exit codes and
+   exit 0; an unknown argument prints the usage on stderr and exits 2.
+   Neither takes the deck lock, opens the deck, scans the games or
+   serves. `ExecStart` passes no argument, so under the unit exit 2 still
+   means a busy lock and `RestartPreventExitStatus=2 3` keeps its
+   meaning; the hand-over passes a game's exit 2 through as is.
