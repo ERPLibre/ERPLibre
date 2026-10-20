@@ -8,13 +8,31 @@ Each button = a letter. Press to guess. 6 wrong guesses = game over.
 Word shown on touchscreen (SD+) or top row buttons.
 """
 
-import argparse
 import io
 import os
 import random
 import sys
 import threading
 import time
+
+import games_cli
+
+
+def parser():
+    """The command line: the shared one of the games and -l/--lang."""
+    p = games_cli.parser(__doc__)
+    p.add_argument(
+        "-l",
+        "--lang",
+        choices=["fr", "en"],
+        default="fr",
+        help="Language for words (default: fr)",
+    )
+    return p
+
+
+if __name__ == "__main__":
+    parser().parse_args()
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -501,12 +519,7 @@ class Hangman:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Hangman on Stream Deck")
-    parser.add_argument(
-        "-l", "--lang", choices=["fr", "en"], default="fr",
-        help="Language for words (default: fr)",
-    )
-    args = parser.parse_args()
+    args = parser().parse_args()
     words = WORDS_FR if args.lang == "fr" else WORDS_EN
 
     streamdecks = DeviceManager().enumerate()

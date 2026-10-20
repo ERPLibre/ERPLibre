@@ -331,6 +331,8 @@ PLUGIN = Plugin(
 
 19 games playable directly on the Stream Deck. 11 support 2-player mode with two Stream Decks (auto-detection).
 
+Every `game_*.py` reads its command line through `games_cli.py`, before importing PIL and the Stream Deck library: `-h` and `--help` print the usage and exit 0, any unknown argument prints it on stderr and exits 2, and neither opens the deck. `--meta` prints the game's metadata as JSON, which the gallery reads. Hangman adds `-l`/`--lang`, Minesweeper `-m` and `-v`.
+
 ### Arcade
 
 #### Snake
@@ -355,6 +357,8 @@ utilisée par les helpers Python. Voir [`../gnome-extension/erplibre_home/README
 ## Jeux
 
 19 jeux jouables directement sur le Stream Deck. 11 supportent le mode 2 joueurs avec deux Stream Decks (auto-détection).
+
+Chaque `game_*.py` lit sa ligne de commande par `games_cli.py`, avant d'importer PIL et la bibliothèque Stream Deck : `-h` et `--help` affichent l'usage et sortent en 0, tout argument inconnu l'affiche sur la sortie d'erreur et sort en 2, et ni l'un ni l'autre n'ouvre le deck. `--meta` affiche les métadonnées du jeu en JSON, que lit la galerie. Hangman ajoute `-l`/`--lang`, Minesweeper `-m` et `-v`.
 
 ### Arcade
 
@@ -1338,6 +1342,7 @@ script/stream_deck/
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
 └── games/                     # Games, gallery, saves / Jeux, galerie, sauvegardes
     ├── game_*.py              # 45 games / 45 jeux
+    ├── games_cli.py           # Games' command line / Ligne de commande
     ├── gallery_server.py      # Game gallery / Galerie des jeux
     ├── index.html             # Gallery page / Page de la galerie
     └── save/                  # Game saves / Sauvegardes des jeux

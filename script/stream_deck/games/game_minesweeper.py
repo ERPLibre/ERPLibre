@@ -20,6 +20,39 @@ import sys
 import threading
 import time
 
+import games_cli
+
+
+def parser():
+    """The command line: the shared one of the games, -m and -v."""
+    p = games_cli.parser(__doc__)
+    p.add_argument(
+        "-m",
+        "--mines",
+        type=int,
+        default=None,
+        help="number of mines (default: auto ~25%% solo, ~35%% VS)",
+    )
+    p.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="show game parameters and exit",
+    )
+    p.epilog = (
+        "examples:\n"
+        "  %(prog)s                  # auto-detect mode, default mines\n"
+        "  %(prog)s -m 6             # 6 mines\n"
+        "  %(prog)s -v               # show game parameters and exit\n"
+        "  %(prog)s -m 3 -v          # show parameters with 3 mines\n\n"
+        + p.epilog
+    )
+    return p
+
+
+if __name__ == "__main__":
+    parser().parse_args()
+
 try:
     from PIL import Image, ImageDraw, ImageFont
     from StreamDeck.DeviceManager import DeviceManager
@@ -992,35 +1025,8 @@ class MinesweeperVS:
 # Main
 # ──────────────────────────────────────────────────────────────
 
-def parse_args():
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Minesweeper —",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""\
-examples:
-  %(prog)s                  # auto-detect mode, default mines
-  %(prog)s -m 6             # 6 mines
-  %(prog)s -v               # show game parameters and exit
-  %(prog)s -m 3 -v          # show parameters with 3 mines
-""",
-    )
-    parser.add_argument(
-        "-m", "--mines",
-        type=int,
-        default=None,
-        help="number of mines (default: auto ~25%% solo, ~35%% VS)",
-    )
-    parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="show game parameters and exit",
-    )
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
+    args = parser().parse_args()
 
     streamdecks = DeviceManager().enumerate()
     visual = [d for d in streamdecks if d.is_visual()]
