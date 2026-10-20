@@ -26,7 +26,8 @@ Ce que ces tests gardent :
 - launch_game.sh, que rien n'appelait, n'existe plus ;
 - le programme du deck, le contrôleur, chaque jeu et la galerie répondent
   à -h, --help et à une option inconnue sans importer le matériel ni
-  prendre le verrou du deck ; --meta d'un jeu rend toujours son JSON.
+  prendre le verrou du deck ; --meta d'un jeu rend toujours son JSON,
+  même placé après les options propres du jeu.
 """
 
 import concurrent.futures
@@ -563,19 +564,65 @@ def open(*_args, **_kw):
 """
 
 
-def executer_sans_materiel(script, *args):
+# Un faux matériel qui s'importe : tout nom de PIL et de StreamDeck existe,
+# et seul DeviceManager().enumerate(), le premier pas vers le deck, pose le
+# témoin et tue le processus en 77. Il laisse donc un jeu définir GAME_META
+# et lire sa ligne de commande jusqu'au bout.
+FAUX_QUELCONQUE = """class _Quelconque:
+    def __getattr__(self, _nom):
+        return _Quelconque()
+
+    def __call__(self, *_args, **_kw):
+        return _Quelconque()
+
+
+def __getattr__(_nom):
+    return _Quelconque()
+"""
+FAUX_DEVICE_MANAGER = """import os
+
+
+class DeviceManager:
+    def enumerate(self):
+        with open(os.environ["TEMOIN_MATERIEL"], "w") as f:
+            f.write("enumerate")
+        os._exit(77)
+"""
+FAUX_MATERIEL_IMPORTABLE = {
+    "PIL/__init__.py": FAUX_QUELCONQUE,
+    "StreamDeck/__init__.py": "",
+    "StreamDeck/DeviceManager.py": FAUX_DEVICE_MANAGER,
+    "StreamDeck/Devices/__init__.py": "",
+    "StreamDeck/Devices/StreamDeck.py": FAUX_QUELCONQUE,
+    "StreamDeck/ImageHelpers.py": FAUX_QUELCONQUE,
+    "StreamDeck/Transport/__init__.py": "",
+    "StreamDeck/Transport/Transport.py": (
+        "class TransportError(Exception):\n    pass\n"
+    ),
+}
+
+
+def executer_sans_materiel(script, *args, faux_paquets=None):
     """Lance `script` sous le python des tests avec les faux paquets du
     matériel, un faux webbrowser et un XDG_RUNTIME_DIR temporaire. Rend le
     CompletedProcess, si un faux a posé son témoin, et le contenu du
-    répertoire du verrou du deck. N'affirme rien : un fil peut l'appeler."""
+    répertoire du verrou du deck. N'affirme rien : un fil peut l'appeler.
+
+    `faux_paquets`, {chemin relatif: source}, remplace les faux qui tuent
+    le processus à l'import, par exemple FAUX_MATERIEL_IMPORTABLE."""
+    if faux_paquets is None:
+        faux_paquets = {
+            "%s/__init__.py" % paquet: FAUX_MATERIEL
+            for paquet in PAQUETS_MATERIEL
+        }
     with tempfile.TemporaryDirectory() as tmp:
         faux = os.path.join(tmp, "faux")
-        sources = dict.fromkeys(PAQUETS_MATERIEL, FAUX_MATERIEL)
-        sources["webbrowser"] = FAUX_WEBBROWSER
-        for paquet, source in sources.items():
-            os.makedirs(os.path.join(faux, paquet))
-            init = os.path.join(faux, paquet, "__init__.py")
-            with open(init, "w", encoding="utf-8") as f:
+        sources = dict(faux_paquets)
+        sources["webbrowser/__init__.py"] = FAUX_WEBBROWSER
+        for relatif, source in sources.items():
+            chemin = os.path.join(faux, relatif)
+            os.makedirs(os.path.dirname(chemin), exist_ok=True)
+            with open(chemin, "w", encoding="utf-8") as f:
                 f.write(source)
         run_dir = os.path.join(tmp, "run")
         os.makedirs(run_dir, mode=0o700)
@@ -743,6 +790,40 @@ class TestGamesCommandLine(unittest.TestCase):
             self, GAMES_DIR / "game_hangman.py", "-l", "de"
         )
         self.assertEqual(2, res.returncode, res.stderr)
+
+    def test_meta_answers_wherever_it_stands_among_the_options(self):
+        """--meta après les options propres d'un jeu rend le JSON et sort
+        en 0, comme en tête : le faux matériel importable laisse le jeu
+        aller jusqu'à DeviceManager().enumerate(), qui sortirait en 77."""
+        for jeu, args in (
+            ("game_hangman.py", ["--meta"]),
+            ("game_hangman.py", ["-l", "en", "--meta"]),
+            ("game_minesweeper.py", ["--meta"]),
+            ("game_minesweeper.py", ["-m", "3", "--meta"]),
+            ("game_minesweeper.py", ["-v", "--meta", "-m", "3"]),
+        ):
+            with self.subTest(jeu=jeu, args=args):
+                res, importe, verrou = executer_sans_materiel(
+                    GAMES_DIR / jeu,
+                    *args,
+                    faux_paquets=FAUX_MATERIEL_IMPORTABLE,
+                )
+                self.assertFalse(importe, res.stderr)
+                self.assertEqual([], verrou)
+                self.assertEqual(0, res.returncode, res.stderr)
+                self.assertIn("name", json.loads(res.stdout))
+
+    def test_the_importable_fake_reaches_the_deck(self):
+        """Le témoin du test précédent : sans --meta, le même faux mène
+        le jeu jusqu'à enumerate()."""
+        res, importe, _verrou = executer_sans_materiel(
+            GAMES_DIR / "game_hangman.py",
+            "-l",
+            "en",
+            faux_paquets=FAUX_MATERIEL_IMPORTABLE,
+        )
+        self.assertTrue(importe, res.stderr)
+        self.assertEqual(77, res.returncode, res.stderr)
 
     @unittest.skipUnless(
         (ROOT / ".venv.streamdeck" / "bin" / "python").exists(),

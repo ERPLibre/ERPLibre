@@ -9,6 +9,7 @@ Word shown on touchscreen (SD+) or top row buttons.
 """
 
 import io
+import json
 import os
 import random
 import sys
@@ -520,6 +521,11 @@ class Hangman:
 
 def main():
     args = parser().parse_args()
+    if args.meta:
+        # Read from the parse, not argv[1]: --meta may follow the
+        # game's own options.
+        print(json.dumps(GAME_META))
+        return
     words = WORDS_FR if args.lang == "fr" else WORDS_EN
 
     streamdecks = DeviceManager().enumerate()
@@ -565,13 +571,6 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nWins: {game.wins}")
-
-
-
-if len(sys.argv) > 1 and sys.argv[1] == "--meta":
-    import json as _json
-    print(_json.dumps(GAME_META))
-    sys.exit(0)
 
 
 if __name__ == "__main__":

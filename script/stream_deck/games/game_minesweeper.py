@@ -13,6 +13,7 @@
   - Player with most mines found wins!
 """
 
+import json
 import math
 import os
 import random
@@ -1027,6 +1028,11 @@ class MinesweeperVS:
 
 def main():
     args = parser().parse_args()
+    if args.meta:
+        # Read from the parse, not argv[1]: --meta may follow the
+        # game's own options.
+        print(json.dumps(GAME_META))
+        return
 
     streamdecks = DeviceManager().enumerate()
     visual = [d for d in streamdecks if d.is_visual()]
@@ -1159,13 +1165,6 @@ def main():
                 deck.reset()
                 deck.close()
             print(f"\nGames: {game.games_played} | Won: {game.games_won}")
-
-
-
-if len(sys.argv) > 1 and sys.argv[1] == "--meta":
-    import json as _json
-    print(_json.dumps(GAME_META))
-    sys.exit(0)
 
 
 if __name__ == "__main__":
