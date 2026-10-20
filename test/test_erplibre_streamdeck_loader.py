@@ -172,6 +172,15 @@ class ImportExitTest(LoaderCase):
         self.assertEqual("refused", status)
         self.assertIn("SystemExit", detail)
 
+    def test_a_sigterm_at_import_propagates(self):
+        self.put(
+            self.user, "slow.py",
+            "import deck_lock\nraise deck_lock.SigtermExit(143)\n",
+        )
+        with self.assertRaises(SystemExit) as caught:
+            self.load()
+        self.assertEqual(143, caught.exception.code)
+
     def test_keyboard_interrupt_at_import_propagates(self):
         self.put(self.user, "ctrl_c.py", "raise KeyboardInterrupt\n")
         with self.assertRaises(KeyboardInterrupt):

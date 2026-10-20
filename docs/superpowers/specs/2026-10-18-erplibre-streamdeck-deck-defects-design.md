@@ -75,7 +75,9 @@ The B2 ledger parked five points; they are fixed first.
   item and succeeding on another logs once per key, not every refresh.
 - `Kernel.guard` also catches `SystemExit` (never `KeyboardInterrupt`): a
   plugin calling `sys.exit()` from a callable is isolated like any other
-  exception instead of ending its thread.
+  exception instead of ending its thread. The SystemExit a SIGTERM raises
+  (`deck_lock.SigtermExit`) is the service's stop and passes, in the
+  guard and in the loader's import alike.
 - Once `kernel.running` is false, `Kernel.paint` and `Kernel.render` draw
   nothing, so a callback still finishing after the 5 s shutdown bound
   cannot repaint a deck that was just reset.

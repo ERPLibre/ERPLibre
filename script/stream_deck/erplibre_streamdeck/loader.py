@@ -7,7 +7,8 @@ $XDG_CONFIG_HOME/erplibre-home/deck-plugins/. A plugin's id is its file
 stem ([a-z][a-z0-9_]*); files starting with "_" are skipped. A user
 plugin replaces a repository plugin of the same id. An id listed in
 DECK_PLUGINS_OFF is not imported. A plugin is refused, with its reason
-in the report, when its import raises (SystemExit included), it has no
+in the report, when its import raises (SystemExit included, but not
+the SIGTERM's deck_lock.SigtermExit, which stops the service), it has no
 PLUGIN, its api is not PLUGIN_API, a field of PLUGIN has the wrong shape
 (see _shape_error), or one of its pages is already taken; the others
 load. A directory that cannot be listed counts as empty, with one
@@ -21,6 +22,8 @@ import sys
 import types
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import deck_lock
 
 from erplibre_streamdeck import paths
 from erplibre_streamdeck.plugin import (
@@ -181,9 +184,12 @@ def load(off=(), repo_dir=None, user_dir=None):
         by_name = origin == "repo" and Path(repo_dir) == REPO_DIR
         try:
             module = _import(pid, path, by_name)
+        except deck_lock.SigtermExit:
+            raise
         except (Exception, SystemExit) as exc:
             # SystemExit: a plugin calling sys.exit() at import must not
-            # stop the deck. KeyboardInterrupt still propagates.
+            # stop the deck. KeyboardInterrupt and a SIGTERM still
+            # propagate.
             report.add(pid, "refused", f"import: {type(exc).__name__}: {exc}")
             continue
         plugin = getattr(module, "PLUGIN", None)
