@@ -20,8 +20,8 @@
 > A tick means the step's deliverable is on the mobile repository's
 > `main`, one commit per task; the TDD "confirm fail" runs left no record
 > and are ticked with their task. Final Validation steps 1 and 2 are
-> ticked on the counts the mobile work branch's last commit records
-> (JUnit 158/158, Vitest 1171/1171); the APK build, the hardware matrix
+> ticked on the counts the mobile work branch's commit `cd57807` records
+> (JUnit 160/160, Vitest 1171/1171); the APK build, the hardware matrix
 > run and the hand-off stay unticked: none is recorded. The consumer of
 > the plugin is `src/services/streamDeckController.ts`, not a
 > `streamDeckService.ts`. The Neo `setInfoBar` the last note defers was
