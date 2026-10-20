@@ -8,6 +8,7 @@ and is called with the kernel lock held, except Poll.read (no Context,
 no lock) and threads the plugin starts itself (they take
 ctx.locked())."""
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -90,6 +91,39 @@ class Poll:
     active: Callable
     read: Callable
     store: Callable
+
+
+class RepeatLog:
+    """The journal of a Poll.read, which fails the same way on every
+    pass while its cause lasts (an absent D-Bus method, a missing
+    tool).
+
+    `with repeat_log.watch() as log:` wraps one pass; log(msg) records
+    a failure of that pass, as one line. When the block ends, the
+    failures are written through write(line) if they differ from the
+    previous pass's, and nothing is written while they repeat. The
+    first pass without failure after one writes `<what>: recovered`.
+    A block that raises leaves the state as it was: the kernel
+    journals the exception itself."""
+
+    def __init__(self, write, what):
+        self._write = write
+        self._what = what
+        # The failures of the last pass, None after a clean pass.
+        self._failing = None
+
+    @contextmanager
+    def watch(self):
+        failures = []
+        yield lambda msg: failures.append(" ".join(str(msg).split()))
+        if failures:
+            if tuple(failures) != self._failing:
+                for line in failures:
+                    self._write(line)
+            self._failing = tuple(failures)
+        elif self._failing is not None:
+            self._failing = None
+            self._write(f"{self._what}: recovered")
 
 
 @dataclass

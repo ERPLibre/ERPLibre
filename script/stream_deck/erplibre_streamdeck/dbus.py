@@ -4,7 +4,9 @@
 
 call() runs `gdbus call` and returns a Reply; it never raises: a
 missing gdbus, a timeout or undecodable output give returncode None.
-The callers read the reply the way their method answers."""
+The Reply's stdout and stderr are stripped: gdbus ends its error with
+a newline, which a journal line quoting it would turn into an empty
+line. The callers read the reply the way their method answers."""
 
 import subprocess
 from dataclasses import dataclass
@@ -64,7 +66,11 @@ def call(method, *args, timeout=3):
         )
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         return Reply(None, "", str(exc))
-    return Reply(done.returncode, done.stdout or "", done.stderr or "")
+    return Reply(
+        done.returncode,
+        (done.stdout or "").strip(),
+        (done.stderr or "").strip(),
+    )
 
 
 def available():

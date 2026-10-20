@@ -15,6 +15,7 @@ import streamdeck_stubs as S  # noqa: E402
 
 S.install()
 from erplibre_streamdeck import dbus, paths, settings  # noqa: E402
+from erplibre_streamdeck.plugin import RepeatLog  # noqa: E402
 from erplibre_streamdeck.ui import render  # noqa: E402
 
 
@@ -75,11 +76,75 @@ class DbusTest(unittest.TestCase):
             self.assertFalse(reply.true)
             self.assertIsNone(reply.string)
 
+    def test_call_strips_the_output_of_its_trailing_newline(self):
+        # gdbus ends its error with a newline: kept, a journal line
+        # quoting it is followed by an empty one.
+        with self.run_with(
+            returncode=1, stdout="(false,)\n", stderr="Error: gone\n"
+        ):
+            reply = dbus.call("ListTrackerTimers")
+        self.assertEqual("Error: gone", reply.stderr)
+        self.assertEqual("(false,)", reply.stdout)
+
     def test_string_tuple(self):
         self.assertEqual(
             "a'b\\c", dbus.parse_string_tuple("('a\\'b\\\\c',)\n")
         )
         self.assertIsNone(dbus.parse_string_tuple("(true,)"))
+
+
+class RepeatLogTest(unittest.TestCase):
+    def setUp(self):
+        self.lines = []
+        self.log = RepeatLog(self.lines.append, "Timer list")
+
+    def run_pass(self, *failures):
+        with self.log.watch() as log:
+            for msg in failures:
+                log(msg)
+
+    def test_a_failure_repeated_is_written_once(self):
+        for _ in range(5):
+            self.run_pass("dbus: UnknownMethod")
+        self.assertEqual(["dbus: UnknownMethod"], self.lines)
+
+    def test_recovery_is_written_once(self):
+        self.run_pass("dbus: UnknownMethod")
+        self.run_pass()
+        self.run_pass()
+        self.assertEqual(
+            ["dbus: UnknownMethod", "Timer list: recovered"], self.lines
+        )
+
+    def test_success_without_a_failure_writes_nothing(self):
+        self.run_pass()
+        self.run_pass()
+        self.assertEqual([], self.lines)
+
+    def test_a_different_failure_is_written_again(self):
+        self.run_pass("dbus: UnknownMethod")
+        self.run_pass("dbus: UnknownMethod")
+        self.run_pass("dbus: Timeout")
+        self.run_pass("dbus: Timeout")
+        self.assertEqual(["dbus: UnknownMethod", "dbus: Timeout"], self.lines)
+
+    def test_a_failure_after_recovery_is_written_again(self):
+        self.run_pass("dbus: UnknownMethod")
+        self.run_pass()
+        self.run_pass("dbus: UnknownMethod")
+        self.assertEqual(3, len(self.lines))
+
+    def test_a_message_is_one_line(self):
+        self.run_pass("dbus: Error\nsecond line\n")
+        self.assertEqual(["dbus: Error second line"], self.lines)
+
+    def test_a_raising_pass_leaves_the_state(self):
+        self.run_pass("dbus: UnknownMethod")
+        with self.assertRaises(ValueError):
+            with self.log.watch():
+                raise ValueError("bad")
+        self.run_pass("dbus: UnknownMethod")
+        self.assertEqual(["dbus: UnknownMethod"], self.lines)
 
 
 class StyleTest(unittest.TestCase):
