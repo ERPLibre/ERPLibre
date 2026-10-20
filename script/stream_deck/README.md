@@ -233,7 +233,7 @@ PLUGIN = Plugin(
 
 19 games playable directly on the Stream Deck. 11 support 2-player mode with two Stream Decks (auto-detection).
 
-Every `game_*.py` reads its command line through `games_cli.py`, before importing PIL and the Stream Deck library: `-h` and `--help` print the usage and exit 0, any unknown argument prints it on stderr and exits 2, and neither opens the deck. `--meta` prints the game's metadata as JSON, which the gallery reads. Hangman adds `-l`/`--lang`, Minesweeper `-m` and `-v`.
+Every `game_*.py` reads its command line through `games_cli.py`, before importing PIL and the Stream Deck library: `-h` and `--help` print the usage and exit 0, any unknown argument prints it on stderr and exits 2, and neither opens the deck. `--meta` prints the game's metadata as JSON, which the gallery reads. Hangman adds `-l`/`--lang`, Minesweeper `-m` and `-v`. The gallery (`make streamdeck_gallery`, `gallery_server.py`) answers `-h` and `--help` the same way, without listening or opening a browser.
 
 ### Arcade
 

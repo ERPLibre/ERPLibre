@@ -24,9 +24,9 @@ Ce que ces tests gardent :
   du deck, et sans venv il le dit dans la langue de l'utilisateur sans rien
   lancer ;
 - launch_game.sh, que rien n'appelait, n'existe plus ;
-- le programme du deck, le contrôleur et chaque jeu répondent à -h,
-  --help et à une option inconnue sans importer le matériel ni prendre le
-  verrou du deck ; --meta d'un jeu rend toujours son JSON.
+- le programme du deck, le contrôleur, chaque jeu et la galerie répondent
+  à -h, --help et à une option inconnue sans importer le matériel ni
+  prendre le verrou du deck ; --meta d'un jeu rend toujours son JSON.
 """
 
 import concurrent.futures
@@ -548,22 +548,35 @@ os._exit(99)
 """
 
 
-# Les paquets que les points d'entrée du deck importent pour le matériel.
+# Les paquets que les points d'entrée du deck importent pour le matériel,
+# et webbrowser, que seule la galerie ouvre : son faux pose le témoin à
+# l'appel de open(), pas à l'import.
 PAQUETS_MATERIEL = ("StreamDeck", "PIL", "cv2", "requests", "pyudev")
+FAUX_WEBBROWSER = """import builtins
+import os
+
+
+def open(*_args, **_kw):
+    with builtins.open(os.environ["TEMOIN_MATERIEL"], "w") as f:
+        f.write("webbrowser")
+    os._exit(98)
+"""
 
 
 def executer_sans_materiel(script, *args):
     """Lance `script` sous le python des tests avec les faux paquets du
-    matériel et un XDG_RUNTIME_DIR temporaire. Rend le CompletedProcess, si
-    un faux a posé son témoin, et le contenu du répertoire du verrou du
-    deck. N'affirme rien : un fil peut l'appeler."""
+    matériel, un faux webbrowser et un XDG_RUNTIME_DIR temporaire. Rend le
+    CompletedProcess, si un faux a posé son témoin, et le contenu du
+    répertoire du verrou du deck. N'affirme rien : un fil peut l'appeler."""
     with tempfile.TemporaryDirectory() as tmp:
         faux = os.path.join(tmp, "faux")
-        for paquet in PAQUETS_MATERIEL:
+        sources = dict.fromkeys(PAQUETS_MATERIEL, FAUX_MATERIEL)
+        sources["webbrowser"] = FAUX_WEBBROWSER
+        for paquet, source in sources.items():
             os.makedirs(os.path.join(faux, paquet))
             init = os.path.join(faux, paquet, "__init__.py")
             with open(init, "w", encoding="utf-8") as f:
-                f.write(FAUX_MATERIEL)
+                f.write(source)
         run_dir = os.path.join(tmp, "run")
         os.makedirs(run_dir, mode=0o700)
         temoin = os.path.join(tmp, "temoin")
@@ -753,6 +766,30 @@ class TestGamesCommandLine(unittest.TestCase):
             with self.subTest(jeu=jeu):
                 self.assertEqual(0, res.returncode, res.stderr)
                 self.assertIn("name", json.loads(res.stdout))
+
+
+class TestGalleryCommandLine(unittest.TestCase):
+    """La ligne de commande de la galerie : -h et --help sortent en 0, une
+    option inconnue en 2, sans lire GAMES, sans lancer un jeu pour son
+    --meta, sans écouter ni ouvrir de navigateur : un jeu lancé importerait
+    le faux PIL, un navigateur ouvert poserait le témoin de webbrowser."""
+
+    SCRIPT = GAMES_DIR / "gallery_server.py"
+
+    def test_help_prints_the_usage_and_exits_0(self):
+        for option in ("-h", "--help"):
+            res = lancer_sans_materiel(self, self.SCRIPT, option)
+            self.assertEqual(0, res.returncode, res.stderr)
+            self.assertIn("usage:", res.stdout)
+            self.assertIn("http://localhost:8042", res.stdout)
+            self.assertEqual("", res.stderr)
+
+    def test_an_unknown_option_exits_2_with_the_usage(self):
+        for args in (["--bogus"], ["8042"], ["--hel"]):
+            res = lancer_sans_materiel(self, self.SCRIPT, *args)
+            self.assertEqual(2, res.returncode, args)
+            self.assertIn("usage:", res.stderr, args)
+            self.assertEqual("", res.stdout, args)
 
 
 class TestTodoGamesLauncher(unittest.TestCase):
