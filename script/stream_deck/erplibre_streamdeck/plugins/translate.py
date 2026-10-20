@@ -394,11 +394,23 @@ def _render(ctx):
 
 
 def _shutdown(ctx):
-    """Stop the streaming translator; a recording in progress is left
-    as it is. Runs with the kernel lock held: no lock, no join."""
+    """Stop the streaming translator, and a recording in progress
+    without a transcription: its WAV file is removed. The process may
+    outlive this kernel (an unplugged deck), and no tick or key of the
+    next one reaches these children. Runs with the kernel lock held: no
+    lock, no join; each stop waits a few seconds at most."""
     st = ctx.state()
     if st.streaming_proc is not None:
         _stop_streaming(st.streaming_proc)
+    if st.record_proc is not None:
+        translator.stop_recording(st.record_proc)
+        st.record_proc = None
+    if st.record_path is not None:
+        try:
+            os.unlink(st.record_path)
+        except OSError:
+            pass
+        st.record_path = None
 
 
 PLUGIN = Plugin(

@@ -8,6 +8,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -23,6 +25,7 @@ from erplibre_streamdeck.plugin import (  # noqa: E402
 )
 from erplibre_streamdeck.plugins import (  # noqa: E402
     bluetooth, claude_sessions, layouts, sound, timers, todo_terminals,
+    translate,
 )
 from erplibre_streamdeck.ui import render  # noqa: E402
 
@@ -1146,6 +1149,34 @@ class SettingsKeepTest(unittest.TestCase):
             render.Style().set_font_scale(1.2, settings)
         self.assertEqual("ollama", stored["translator_llm"])
         self.assertEqual(1.2, stored["font_scale"])
+
+
+class TranslateShutdownTest(unittest.TestCase):
+    """A kernel shut down by an unplug leaves the process running: the
+    translator's children must not outlive their kernel."""
+
+    def setUp(self):
+        self.st = types.SimpleNamespace(
+            record_proc=None, record_path=None, streaming_proc=None,
+        )
+        self.ctx = types.SimpleNamespace(state=lambda: self.st)
+        S.TRANSLATOR.calls = []
+
+    def test_a_recording_in_progress_is_stopped_and_its_file_removed(self):
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+        self.st.record_proc = S.FakePopen(["arecord", path])
+        self.st.record_path = path
+        translate._shutdown(self.ctx)
+        self.assertEqual(["stop_recording"], S.TRANSLATOR.calls)
+        self.assertIsNone(self.st.record_proc)
+        self.assertIsNone(self.st.record_path)
+        self.assertFalse(os.path.exists(path))
+
+    def test_nothing_running_stops_nothing(self):
+        translate._shutdown(self.ctx)
+        self.assertEqual([], S.TRANSLATOR.calls)
 
 
 if __name__ == "__main__":
