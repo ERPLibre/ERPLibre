@@ -484,3 +484,37 @@ complete it and bind the code; 16 to 22 were settled while building.
 22. **Scenarios.** Scenarios do not pin the coincidence of independent
     tick schedules: two ticks of different periods are never asserted to
     fire in the same pass.
+
+Rulings 23 to 26 came after B3 and replace the text above where they
+touch it: the Layout's `__main__.py` line, the Loader's `--list-plugins`
+paragraph and the exit codes under "Contracts that stay".
+
+23. **A deck that vanishes.** `app.main()` outlives its deck. When the
+    library closes a deck that vanished, every plugin's `shutdown` runs,
+    one journal line says the deck is unplugged, and `DeviceManager` is
+    polled every `REPLUG_POLL_SEC` (2 s); the process and its deck lock
+    stay. The first visual deck that answers gets a new kernel from
+    `build()` with the settings read at start: every plugin's `setup`
+    runs again and the deck opens on the home screen, whatever its model.
+    A deck that enumerates but does not open is closed and tried again at
+    the next poll, its error journaled once until it changes. A deck back
+    whose kernel ran less than `FLAP_SEC` (10 s) doubles the next wait's
+    poll, up to `REPLUG_MAX_SEC` (30 s); a deck that stays resets it. A
+    reset that fails on a vanished deck is one journal line, not a
+    traceback. Exit 3 (no visual deck) is decided at start only.
+24. **SIGTERM during a build.** The deck is reset and the kernel shut
+    down as soon as each exists: a SIGTERM while a kernel builds, at start
+    or after a replug, still resets a lit deck and exits 143. The
+    `SystemExit` the SIGTERM handler raises is `deck_lock.SigtermExit`,
+    which the guard and the loader let through (B3, section 0).
+25. **Translator shutdown.** The translate plugin's `shutdown` stops a
+    recording in progress without a transcription and removes its WAV
+    file, so a kernel shut down for an unplug leaves no recorder running.
+26. **Command line.** `__main__` reads the command line with argparse
+    before anything else. `-h`/`--help` print the usage, the settings file
+    and the exit codes, and exit 0; an unknown argument prints the usage
+    on stderr and exits 2, the code a busy lock also uses; `--list-plugins`
+    behaves as the Loader section says. None of them takes the lock or
+    imports `app`, and with it the Stream Deck library: `main()` starts
+    with `acquire_or_exit` and imports `app` after it. Without an
+    argument, as the service runs it, exit 2 still means a busy lock.
