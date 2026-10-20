@@ -8,8 +8,9 @@ handler or the loop thread.
 
 main() outlives its deck. When the library closes a deck that vanished,
 the plugins are shut down, DeviceManager is polled every
-REPLUG_POLL_SEC, and the first visual deck that answers gets a new
-kernel built with the same settings. The process, and the deck lock its
+REPLUG_POLL_SEC (more seldom for a deck that keeps vanishing as soon as
+it is back, see FLAP_SEC), and the first visual deck that answers gets
+a new kernel built with the same settings. The process, and the deck lock its
 caller took, stay for the whole wait; a SIGTERM or a Ctrl-C ends it."""
 
 import subprocess
@@ -38,6 +39,11 @@ from erplibre_streamdeck.ui import render
 SHUTDOWN_LOCK_SEC = 5.0
 # While no deck is plugged in, DeviceManager is asked this often.
 REPLUG_POLL_SEC = 2.0
+# A deck back that closes again within FLAP_SEC doubles the next wait's
+# poll, up to REPLUG_MAX_SEC: each rebuild runs every plugin setup and
+# writes two journal lines. A deck that stays FLAP_SEC resets it.
+FLAP_SEC = 10.0
+REPLUG_MAX_SEC = 30.0
 # How often main() checks that its deck is still open.
 OPEN_POLL_SEC = 0.5
 BRIGHTNESS = 80
@@ -149,17 +155,20 @@ def _open(deck):
     deck.set_brightness(BRIGHTNESS)
 
 
-def _wait_for_deck():
-    """Poll every REPLUG_POLL_SEC until a visual deck opens; return it
+def _wait_for_deck(poll_sec):
+    """Poll every `poll_sec` until a visual deck opens; return it
     opened, reset and lit. A deck that fails to open, still settling
     after its plug or refused by its device node, is closed and tried
     again at the next poll; its error is journaled once, and again only
     when it changes, so a deck plugged in but refused reads apart from
     an unplugged one."""
-    _journal("Stream Deck unplugged, waiting for it to come back")
+    note = ""
+    if poll_sec != REPLUG_POLL_SEC:
+        note = f", looking every {poll_sec:g} s"
+    _journal(f"Stream Deck unplugged, waiting for it to come back{note}")
     refused = None
     while True:
-        time.sleep(REPLUG_POLL_SEC)
+        time.sleep(poll_sec)
         deck = _first_visual()
         if deck is None:
             continue
@@ -171,7 +180,7 @@ def _wait_for_deck():
                 refused = str(exc)
                 _journal(
                     f"Stream Deck found but not opened: {exc}; trying "
-                    f"again every {REPLUG_POLL_SEC:g} s"
+                    f"again every {poll_sec:g} s"
                 )
             continue
         return deck
@@ -205,6 +214,10 @@ def main():
     # deck is plugged in, both are None: the plugins are already shut
     # down and there is no deck to reset.
     kernel = None
+    # The poll of the next wait, and when the kernel of the deck now
+    # held was up (None for the deck found at start, which never counts
+    # as a flap).
+    poll_sec, back_at = REPLUG_POLL_SEC, None
     try:
         _open(deck)
         rows, cols = deck.key_layout()
@@ -226,8 +239,13 @@ def main():
                 time.sleep(OPEN_POLL_SEC)
             gone, kernel, deck = kernel, None, None
             _shutdown_plugins(gone)
-            deck = _wait_for_deck()
+            if back_at is not None and time.monotonic() - back_at < FLAP_SEC:
+                poll_sec = min(poll_sec * 2, REPLUG_MAX_SEC)
+            else:
+                poll_sec = REPLUG_POLL_SEC
+            deck = _wait_for_deck(poll_sec)
             kernel = _run(deck, deck_settings)
+            back_at = time.monotonic()
             rows, cols = deck.key_layout()
             _journal(f"Stream Deck back: {deck.deck_type()} ({cols}x{rows})")
     except KeyboardInterrupt:

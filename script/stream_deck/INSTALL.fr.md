@@ -116,7 +116,9 @@ Une fois lancé, le programme du deck survit à son deck : débranché, il
 écrit une ligne au journal, garde le verrou du deck et cherche un deck
 toutes les 2 secondes ; le deck rebranché revient sur l'écran d'accueil.
 Un deck trouvé mais refusé à l'ouverture (son nœud de périphérique
-inaccessible) écrit une ligne de plus, qui nomme l'erreur.
+inaccessible) écrit une ligne de plus, qui nomme l'erreur. Un deck qui
+disparaît de nouveau moins de 10 secondes après son retour est cherché deux
+fois moins souvent à chaque fois, jusqu'à une fois toutes les 30 secondes.
 L'installateur ne la démarre jamais : le programme a besoin de l'extension,
 qu'une installation neuve charge à la prochaine ouverture de session. Avec
 `--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans
