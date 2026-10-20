@@ -152,8 +152,12 @@ def _open(deck):
 def _wait_for_deck():
     """Poll every REPLUG_POLL_SEC until a visual deck opens; return it
     opened, reset and lit. A deck that fails to open, still settling
-    after its plug, is closed and tried again at the next poll."""
+    after its plug or refused by its device node, is closed and tried
+    again at the next poll; its error is journaled once, and again only
+    when it changes, so a deck plugged in but refused reads apart from
+    an unplugged one."""
     _journal("Stream Deck unplugged, waiting for it to come back")
+    refused = None
     while True:
         time.sleep(REPLUG_POLL_SEC)
         deck = _first_visual()
@@ -161,8 +165,14 @@ def _wait_for_deck():
             continue
         try:
             _open(deck)
-        except TransportError:
+        except TransportError as exc:
             deck.close()
+            if str(exc) != refused:
+                refused = str(exc)
+                _journal(
+                    f"Stream Deck found but not opened: {exc}; trying "
+                    f"again every {REPLUG_POLL_SEC:g} s"
+                )
             continue
         return deck
 
