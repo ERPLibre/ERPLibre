@@ -45,13 +45,16 @@ DECK_DIR = RACINE / "script/stream_deck"
 
 # Comme systemctl is-active : l'état sur la sortie, 0 pour « active » seul.
 # DECHARGEE fait répondre reset-failed comme pour une unité que systemd a
-# déchargée après un arrêt propre ; ECHEC_RESET, comme pour toute autre
-# erreur.
+# déchargée après un arrêt propre ; AVERTI fait précéder cette réponse
+# d'un avertissement ; ECHEC_RESET, comme pour toute autre erreur.
 SYSTEMCTL = """#!/bin/sh
 echo "systemctl $*" >>"$JOURNAL"
 case "$2" in
     is-active) cat "$ETAT"; [ "$(cat "$ETAT")" = active ] ;;
     reset-failed)
+        if [ -n "${AVERTI:-}" ]; then
+            echo "Warning: the bus answered late" >&2
+        fi
         if [ -n "${DECHARGEE:-}" ]; then
             echo "Failed to reset failed state of unit $3:" \\
                 "Unit $3 not loaded." >&2
@@ -167,6 +170,15 @@ class Passation(unittest.TestCase):
         self.assertEqual("", fini.stderr)
         self.assertEqual(f"systemctl --user start {UNITE}", journal[-1])
         self.assertEqual("active", self.etat.read_text().strip())
+
+    def test_a_warning_before_not_loaded_stays_visible(self):
+        """Seule la réponse « not loaded » SEULE se tait : une autre ligne
+        qui la précède passe, avec elle."""
+        self.unite("active")
+        fini, journal = self.jouer(env={"DECHARGEE": "1", "AVERTI": "1"})
+        self.assertEqual(7, fini.returncode, fini.stderr)
+        self.assertIn("the bus answered late", fini.stderr)
+        self.assertEqual(f"systemctl --user start {UNITE}", journal[-1])
 
     def test_another_reset_failure_stays_visible(self):
         self.unite("active")
