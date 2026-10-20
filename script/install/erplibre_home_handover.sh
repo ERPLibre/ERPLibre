@@ -15,7 +15,7 @@
 #    commande ; son code est gardé ;
 # 3. si le service était actif et que RESTART_AFTER_GAME vaut yes (défaut),
 #    il est relancé, son compteur de démarrages (StartLimitBurst) remis à
-#    zéro : des parties enchaînées ne l'épuisent pas ;
+#    zéro s'il existe encore : des parties enchaînées ne l'épuisent pas ;
 # 4. le script sort avec le code de la commande. Le code 4 peut aussi venir
 #    du jeu lui-même : la ligne sur stderr est le signal sûr.
 #
@@ -79,7 +79,16 @@ rc=$?
 
 if [ "${was_active}" = 1 ] \
     && [ "$(deck_setting RESTART_AFTER_GAME yes)" = yes ]; then
-    systemctl --user reset-failed "${DECK_UNIT_NAME}"
+    # Après un arrêt propre, systemd décharge l'unité, et son compteur de
+    # démarrages avec elle : reset-failed répond « not loaded », sans rien
+    # à remettre à zéro. Seule cette réponse se tait, toute autre sortie
+    # passe sur stderr. Le test se fait sur la réponse même : « show -p
+    # LoadState » charge l'unité pour la lire et dit toujours « loaded ».
+    sortie="$(systemctl --user reset-failed "${DECK_UNIT_NAME}" 2>&1)"
+    case "${sortie}" in
+        "" | *" not loaded.") ;;
+        *) printf '%s\n' "${sortie}" >&2 ;;
+    esac
     systemctl --user start "${DECK_UNIT_NAME}" \
         || echo "[ERPLibre Home] could not start ${DECK_UNIT_NAME} again" >&2
 fi
