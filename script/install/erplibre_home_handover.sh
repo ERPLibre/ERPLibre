@@ -81,12 +81,15 @@ if [ "${was_active}" = 1 ] \
     && [ "$(deck_setting RESTART_AFTER_GAME yes)" = yes ]; then
     # Après un arrêt propre, systemd décharge l'unité, et son compteur de
     # démarrages avec elle : reset-failed répond « not loaded », sans rien
-    # à remettre à zéro. Seule cette réponse se tait, toute autre sortie
-    # passe sur stderr. Le test se fait sur la réponse même : « show -p
-    # LoadState » charge l'unité pour la lire et dit toujours « loaded ».
+    # à remettre à zéro. Seule cette réponse, sur une ligne seule, se tait ;
+    # toute autre sortie, et une ligne qui la précède, passe sur stderr. Le
+    # test se fait sur la réponse même : « show -p LoadState » charge
+    # l'unité pour la lire et dit toujours « loaded ».
     sortie="$(systemctl --user reset-failed "${DECK_UNIT_NAME}" 2>&1)"
     case "${sortie}" in
-        "" | *" not loaded.") ;;
+        "") ;;
+        *$'\n'*) printf '%s\n' "${sortie}" >&2 ;;
+        *" not loaded.") ;;
         *) printf '%s\n' "${sortie}" >&2 ;;
     esac
     systemctl --user start "${DECK_UNIT_NAME}" \
