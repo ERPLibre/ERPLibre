@@ -290,6 +290,16 @@ Where a rule below differs from the text above, this section wins.
     the out-of-scope list above.
 11. **Capture poll.** The TODO terminals' capture poll runs on any page,
     since a pending capture is due at its own time.
+12. **Links and mode in `write_atomic`.** The path is resolved with
+    `os.path.realpath` first: the temporary file lives next to the real
+    file and replaces it, so a symbolic link stays a link. An existing
+    file keeps its permission bits; a new one gets 0o666 minus the umask.
+    A link into a directory that cannot be written raises `OSError`, which
+    the kernel's guard turns into an ERR flash and a journal line.
+13. **Decimal comma.** The TODO "Session refresh" entry reads the first
+    comma as a dot ("0,5" is 0.5) before the range check, and writes the
+    value with a dot; the shell and the deck read only the dot. An
+    English "1,000" is therefore read as 1 s.
 
 ## Contracts that stay
 

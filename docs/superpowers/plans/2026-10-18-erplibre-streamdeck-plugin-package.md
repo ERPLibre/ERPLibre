@@ -160,7 +160,7 @@ complete it; Task 16 copies them into the spec's text.
   `MonolithTarget`, `PackageTarget`, `Harness`, `check_golden(test, name,
   inputs, runs, partial=False)`, `MONOLITH`, `PACKAGE`, `REPO_PLUGINS`.
 
-- [ ] **Step 1: Copy the harness.** Copy
+- [x] **Step 1: Copy the harness.** Copy
   `docs/superpowers/plans/2026-10-18-erplibre-streamdeck-plugin-package/streamdeck_stubs.draft.txt`
   to `test/streamdeck_stubs.py`. Then add, after `MONOLITH_NAME`:
 
@@ -231,7 +231,7 @@ def check_golden(test, name, inputs, runs, partial=False):
                 test.assertEqual(ref, got)
 ```
 
-- [ ] **Step 2: Move the 26 chunk tests.** Create
+- [x] **Step 2: Move the 26 chunk tests.** Create
   `test/test_erplibre_streamdeck_text.py` with the six test classes of
   `script/stream_deck/test_erplibre_streamdeck_chunks.py`
   (`RecheckDbusTest`, `ChunkTextForCellsTest`, `WrapChunkTest`,
@@ -261,19 +261,19 @@ GT = S.load_monolith()
   Keep every `GT.<name>` reference as it is. Delete
   `script/stream_deck/test_erplibre_streamdeck_chunks.py` with `git rm`.
 
-- [ ] **Step 3: Point the Make target at `test/`.** In
+- [x] **Step 3: Point the Make target at `test/`.** In
   `conf/make.streamdeck.Makefile`, target `streamdeck_tiler_unittest`,
   replace `discover -s ./script/stream_deck -p "test_erplibre_streamdeck*.py" -v`
   with `discover -s ./test -p "test_erplibre_streamdeck*.py" -v`. If
   `test/test_streamdeck_entry_points.py` pins that recipe text, update
   its expectation in the same commit.
 
-- [ ] **Step 4: Run.**
+- [x] **Step 4: Run.**
   `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_text.py test/test_streamdeck_entry_points.py`
   Expected: 26 tests in the first file pass; the second passes.
   Then the full suite: `./script/test/run_unit_test.sh`, all green.
 
-- [ ] **Step 5: Commit** `[REF] stream_deck tests: harness, chunk tests
+- [x] **Step 5: Commit** `[REF] stream_deck tests: harness, chunk tests
   moved to test/` (files: the two new test files, the deleted file, the
   Makefile, and `test/test_streamdeck_entry_points.py` if touched).
 
@@ -296,12 +296,12 @@ The items are listed with evidence in `map-kernel.md` § "Dead code" and
 - in `_compute_sound_buttons`, the always-true `if self.cols >= 4:`
   (dedent its body).
 
-- [ ] **Step 1:** `grep -n` each name first; each must have no use other
+- [x] **Step 1:** `grep -n` each name first; each must have no use other
   than the one removed. Remove them.
-- [ ] **Step 2:** `python3 -m py_compile script/stream_deck/erplibre_streamdeck.py`
+- [x] **Step 2:** `python3 -m py_compile script/stream_deck/erplibre_streamdeck.py`
   and `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_text.py test/test_deck_lock.py`.
   Expected: pass.
-- [ ] **Step 3: Commit** `[REM] stream_deck: dead code of the deck program`.
+- [x] **Step 3: Commit** `[REM] stream_deck: dead code of the deck program`.
 
 ### Task 3: Characterization goldens from the single file
 
@@ -364,7 +364,7 @@ Steps a geometry cannot show (a key absent at 3x2) are skipped by the
 scenario for that geometry with `if key is None: continue`, and the
 golden records what was done.
 
-- [ ] **Step 1: Write the scenario file** following the usage block of
+- [x] **Step 1: Write the scenario file** following the usage block of
   `map-tests.md` §7: one `Scenarios` method per row above. `run_all`
   takes the pages the scenario shows and whether it starts from home
   presses, skips what the target cannot show yet, and tells
@@ -419,11 +419,11 @@ class PackagePages(Scenarios, unittest.TestCase):
                      pages=("sound",))
 ```
 
-- [ ] **Step 2: Generate the goldens from the single file.**
+- [x] **Step 2: Generate the goldens from the single file.**
   `STREAMDECK_GOLDEN=update .venv.erplibre/bin/python test/test_erplibre_streamdeck_pages.py MonolithPages`
   Expected: one JSON file per row in `test/fixtures/erplibre_streamdeck/`.
 
-- [ ] **Step 3: Check them.** Read three goldens (home__full 5x3,
+- [x] **Step 3: Check them.** Read three goldens (home__full 5x3,
   sound__actions 8x4, todo_session__menu 4x2) against the code: the
   screen arrays show the expected labels, colours and keys
   (`map-tests.md` §4 table "Geometry facts"). Run without the variable:
@@ -432,7 +432,7 @@ class PackagePages(Scenarios, unittest.TestCase):
   Run it twice more: identical results (no flakiness, no host effect;
   `check_clean` passes).
 
-- [ ] **Step 4: Commit** `[ADD] stream_deck tests: goldens of every deck
+- [x] **Step 4: Commit** `[ADD] stream_deck tests: goldens of every deck
   page` (scenario file + fixtures).
 
 ### Task 4: Package base — paths, settings, D-Bus client, `ui/`
@@ -462,7 +462,7 @@ class PackagePages(Scenarios, unittest.TestCase):
   `render.load_label_font(fs)`, `render.set_key(deck, key, color,
   text="", icon=None, extra_draw=None)`, `render.too_small(ctx)`.
 
-- [ ] **Step 1: Write the failing tests** in
+- [x] **Step 1: Write the failing tests** in
   `test/test_erplibre_streamdeck_base.py`:
 
 ```python
@@ -575,10 +575,10 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_base.py`
+- [x] **Step 2: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_base.py`
   Expected: FAIL (`ModuleNotFoundError: erplibre_streamdeck`).
 
-- [ ] **Step 3: Write `paths.py`:**
+- [x] **Step 3: Write `paths.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -621,7 +621,7 @@ def user_plugin_dir():
   Note: `CONFIG_DIR` is computed at import, like the single file's
   `LAYOUT_DIR`; the harness sets `HOME` before any import.
 
-- [ ] **Step 4: Write `settings.py`:**
+- [x] **Step 4: Write `settings.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -653,7 +653,7 @@ def save(data):
         json.dump(data, f, indent=2)
 ```
 
-- [ ] **Step 5: Write `dbus.py`:**
+- [x] **Step 5: Write `dbus.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -741,7 +741,7 @@ def available():
         return False
 ```
 
-- [ ] **Step 6: Write `ui/colors.py`, `ui/i18n.py`, `ui/text.py`,
+- [x] **Step 6: Write `ui/colors.py`, `ui/i18n.py`, `ui/text.py`,
   `ui/icons.py` by copying from the single file:**
   - `colors.py`: every `COLOR_*` constant (see `map-kernel.md` §1b),
     renamed without the `COLOR_` prefix (`COLOR_EMPTY` → `EMPTY`), plus
@@ -759,7 +759,7 @@ def available():
   - `icons.py`: the `_icon_*` painters (names without the underscore)
     and `ICONS` (from `_ICONS`), using `colors.ICON_WHITE/ICON_RED`.
 
-- [ ] **Step 7: Write `ui/render.py`:**
+- [x] **Step 7: Write `ui/render.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -846,16 +846,16 @@ def too_small(ctx):
             ctx.set_key(key, colors.EMPTY, "")
 ```
 
-- [ ] **Step 8: Re-point the text tests.** In
+- [x] **Step 8: Re-point the text tests.** In
   `test/test_erplibre_streamdeck_text.py`, `ChunkTextForCellsTest`,
   `WrapChunkTest` and `WrapButtonLabelTest` call
   `erplibre_streamdeck.ui.text` (`from erplibre_streamdeck.ui import
   text`, `text.chunk_text_for_cells` …). Other classes stay on `GT`.
 
-- [ ] **Step 9: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_base.py test/test_erplibre_streamdeck_text.py test/test_erplibre_streamdeck_pages.py test/test_todo.py`
+- [x] **Step 9: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_base.py test/test_erplibre_streamdeck_text.py test/test_erplibre_streamdeck_pages.py test/test_todo.py`
   Expected: all pass (pages: PackagePages still skipped — no `app.py`).
 
-- [ ] **Step 10: Commit** `[ADD] stream_deck: package base, paths,
+- [x] **Step 10: Commit** `[ADD] stream_deck: package base, paths,
   settings, D-Bus client, ui`.
 
 ### Task 5: Plugin interface, context, kernel
@@ -889,7 +889,7 @@ def too_small(ctx):
   `__init__`) and the Task 5 tests give plugins with no home
   contribution.
 
-- [ ] **Step 1: Write `plugin.py`:**
+- [x] **Step 1: Write `plugin.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -992,7 +992,7 @@ class LoadedPlugin:
     path: Path
 ```
 
-- [ ] **Step 2: Write `context.py`:**
+- [x] **Step 2: Write `context.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -1076,7 +1076,7 @@ class Context:
         )
 ```
 
-- [ ] **Step 3: Write the failing kernel tests**
+- [x] **Step 3: Write the failing kernel tests**
   `test/test_erplibre_streamdeck_kernel.py`:
 
 ```python
@@ -1329,10 +1329,10 @@ if __name__ == "__main__":
 
   Delete `RecheckDbusTest` from `test/test_erplibre_streamdeck_text.py`.
 
-- [ ] **Step 4: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_kernel.py`
+- [x] **Step 4: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_kernel.py`
   Expected: FAIL (`No module named 'erplibre_streamdeck.kernel'`).
 
-- [ ] **Step 5: Write `kernel.py`:**
+- [x] **Step 5: Write `kernel.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -1630,7 +1630,7 @@ class Kernel:
   construction; the tests patch `K.dbus_mod`. Wrap the
   `ok, asked = self.guard(...)` line to 79 columns when formatting.
 
-- [ ] **Step 6: Add a minimal `home.py` so the kernel imports** (Task 6
+- [x] **Step 6: Add a minimal `home.py` so the kernel imports** (Task 6
   replaces it entirely):
 
 ```python
@@ -1651,10 +1651,10 @@ class Home:
         pass
 ```
 
-- [ ] **Step 7: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_kernel.py test/test_erplibre_streamdeck_text.py`
+- [x] **Step 7: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_kernel.py test/test_erplibre_streamdeck_text.py`
   Expected: PASS.
 
-- [ ] **Step 8: Commit** `[ADD] stream_deck: deck kernel, plugin
+- [x] **Step 8: Commit** `[ADD] stream_deck: deck kernel, plugin
   interface and context`.
 
 ### Task 6: Home screen
@@ -1673,7 +1673,7 @@ class Home:
   `tile_map` (`{key: (pid, TileProvider, item)}` of the last render),
   `render(kernel)`, `press(kernel, key)`; `home.allocate(geo, plugins)`.
 
-- [ ] **Step 1: Write the failing tests** `test/test_erplibre_streamdeck_home.py`:
+- [x] **Step 1: Write the failing tests** `test/test_erplibre_streamdeck_home.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -1874,9 +1874,9 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run** the file. Expected: FAIL (`home.allocate` missing).
+- [x] **Step 2: Run** the file. Expected: FAIL (`home.allocate` missing).
 
-- [ ] **Step 3: Write `home.py`:**
+- [x] **Step 3: Write `home.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -2028,11 +2028,11 @@ class Home:
             kernel.render()
 ```
 
-- [ ] **Step 4: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_home.py test/test_erplibre_streamdeck_kernel.py`
+- [x] **Step 4: Run** `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_home.py test/test_erplibre_streamdeck_kernel.py`
   Expected: PASS. Fix any expectation in `AllocationTest.EXPECT` only
   against the goldens of Task 3 (`home__full` screens), never by guess.
 
-- [ ] **Step 5: Commit** `[ADD] stream_deck: home screen allocation and
+- [x] **Step 5: Commit** `[ADD] stream_deck: home screen allocation and
   dashboard`.
 
 ### Task 7: Loader, app, `__main__`, `--list-plugins`
@@ -2052,7 +2052,7 @@ class Home:
   plugins_off=(), user_dir=None) -> Kernel`, `app.read_plugins_off()`,
   `app.main()`; `__main__.main()`, `__main__.list_plugins()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   `test/test_erplibre_streamdeck_loader.py`:
 
 ```python
@@ -2187,9 +2187,9 @@ if __name__ == "__main__":
 
   (Without `.venv.streamdeck` the last test is skipped.)
 
-- [ ] **Step 2: Run** the loader tests. Expected: FAIL (no `loader`).
+- [x] **Step 2: Run** the loader tests. Expected: FAIL (no `loader`).
 
-- [ ] **Step 3: Write `loader.py`:**
+- [x] **Step 3: Write `loader.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -2317,7 +2317,7 @@ def load(off=(), repo_dir=None, user_dir=None):
     return loaded, report
 ```
 
-- [ ] **Step 4: Write `app.py`:**
+- [x] **Step 4: Write `app.py`:**
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -2421,7 +2421,7 @@ def main():
             deck.close()
 ```
 
-- [ ] **Step 5: Write `__main__.py`:**
+- [x] **Step 5: Write `__main__.py`:**
 
 ```python
 #!/usr/bin/env python3
@@ -2474,14 +2474,14 @@ if __name__ == "__main__":
   and `plugins/__init__.py` (header + docstring "The repository's deck
   plugins; one file per plugin, the file name is the id.").
 
-- [ ] **Step 6: Make the harness boot the package.** With `app.py`
+- [x] **Step 6: Make the harness boot the package.** With `app.py`
   present, `PackagePages` stops skipping: every page scenario skips on
   `has_page` (no plugin yet). Run
   `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_loader.py test/test_erplibre_streamdeck_pages.py test/test_erplibre_streamdeck_kernel.py test/test_erplibre_streamdeck_home.py`
   Expected: loader tests pass (ListPluginsTest per its note);
   PackagePages all skipped; others pass.
 
-- [ ] **Step 7: Commit** `[ADD] stream_deck: plugin loader, app and
+- [x] **Step 7: Commit** `[ADD] stream_deck: plugin loader, app and
   package entry point`.
 
 ### Task 8: Plugins `a11y`, `bluetooth`, `sound`
@@ -2526,7 +2526,7 @@ Plugin declarations:
   press `_wpctl_mute_toggle(WPCTL_SOURCE)` then `ctx.render()`; the
   `wpctl` helpers, `VOL_STEP_PCT`, `WPCTL_SINK/SOURCE`.
 
-- [ ] **Step 1: Write the failing backend tests** (parsers that have no
+- [x] **Step 1: Write the failing backend tests** (parsers that have no
   test today) in `test/test_erplibre_streamdeck_backends.py`:
 
 ```python
@@ -2623,13 +2623,13 @@ if __name__ == "__main__":
   and set the expected tuple shapes to what they return today; the test
   must pin today's behaviour, not a wished one.
 
-- [ ] **Step 2:** Port `a11y` → run
+- [x] **Step 2:** Port `a11y` → run
   `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_pages.py`
   (Expected: `a11y__actions` package parity passes, others skipped) →
   commit `[REF] stream_deck: a11y page as a deck plugin`.
-- [ ] **Step 3:** Port `bluetooth` → run pages + backends → commit
+- [x] **Step 3:** Port `bluetooth` → run pages + backends → commit
   `[REF] stream_deck: Bluetooth page as a deck plugin`.
-- [ ] **Step 4:** Port `sound` → run pages + backends → commit
+- [x] **Step 4:** Port `sound` → run pages + backends → commit
   `[REF] stream_deck: sound page and mic key as a deck plugin`.
 
 ### Task 9: Plugins `layouts`, `tiling`, `dev_reload`
@@ -2658,7 +2658,7 @@ Source map: `map-layouts_tiling_reload.md`. Same port rules as Task 8.
   `"DEV\nRELOAD"`, `icon="dev_reload"`), press: HotReload (10 s) →
   `ctx.flash(ok)` (no reason), `ctx.render()`.
 
-- [ ] **Step 1:** Port `layouts`; test: add to
+- [x] **Step 1:** Port `layouts`; test: add to
   `test/test_erplibre_streamdeck_backends.py` a test that
   `_save_layout_slot` then `_load_layout_slot` round-trips through a
   temporary `paths.LAYOUTS_FILE` (patch `paths.LAYOUTS_FILE` and
@@ -2666,9 +2666,9 @@ Source map: `map-layouts_tiling_reload.md`. Same port rules as Task 8.
   `('[{"id": "1", "x": 0}]',)` and `ApplyLayout` answering `(1,)`;
   run pages + backends; commit `[REF] stream_deck: layouts as a deck
   plugin`.
-- [ ] **Step 2:** Port `tiling`; run pages; commit `[REF] stream_deck:
+- [x] **Step 2:** Port `tiling`; run pages; commit `[REF] stream_deck:
   window tiling as a deck plugin`.
-- [ ] **Step 3:** Port `dev_reload`; run pages; commit `[REF]
+- [x] **Step 3:** Port `dev_reload`; run pages; commit `[REF]
   stream_deck: extension reload key as a deck plugin`.
 
 ### Task 10: Plugin `timers`
@@ -2692,10 +2692,10 @@ Source map: `map-timers.md`. Same port rules.
   `ctx.flash(False)` with no reason; reset confirm calls `ctx.flash`
   then `ctx.goto("timer_list")`.
 
-- [ ] **Step 1:** Add to the backends test: `_label_for_timer({"name":
+- [x] **Step 1:** Add to the backends test: `_label_for_timer({"name":
   "Write report", "elapsed": 125})` → `"Write\n02:05"`; a tracker answer
   `('[{"id": "t1", "running": true}]',)` gives one timer.
-- [ ] **Step 2:** Port; run pages + backends; commit `[REF] stream_deck:
+- [x] **Step 2:** Port; run pages + backends; commit `[REF] stream_deck:
   tracker timers as a deck plugin`.
 
 ### Task 11: Plugin `translate`
@@ -2718,7 +2718,7 @@ Source map: `map-translate.md`. Same port rules, plus:
 - `translator_stream.py` through `os.fspath(paths.STREAM_DECK_DIR /
   "translator_stream.py")`, read inside the function.
 
-- [ ] **Step 1:** Port; run pages (`translator__record`,
+- [x] **Step 1:** Port; run pages (`translator__record`,
   `translator__vad_timeout`, `translator_history`) + the full suite;
   commit `[REF] stream_deck: translator pages as a deck plugin`.
 
@@ -2735,16 +2735,16 @@ Source map: `map-sessions.md` (draft modules in §7). Same port rules:
   `_claude_color`, `_claude_label`) and the colours stay
   `colors.CLAUDE_*`.
 
-- [ ] **Step 1:** Re-point `ClaudeColorTest` and `ClaudeLabelTest` in
+- [x] **Step 1:** Re-point `ClaudeColorTest` and `ClaudeLabelTest` in
   `test/test_erplibre_streamdeck_text.py` to
   `erplibre_streamdeck.plugins.claude_sessions`. Add to the backends
   test `test_bad_pid_file_is_skipped_or_isolated`: a claude state file
   with `"pid": "abc"` → `load_sessions()` raises or skips it; then a
   `Kernel` built with the plugin renders home twice and the journal
   holds at most one `claude_sessions` line.
-- [ ] **Step 2:** Port `mpv_sessions`; run pages; commit `[REF]
+- [x] **Step 2:** Port `mpv_sessions`; run pages; commit `[REF]
   stream_deck: mpv sessions as a deck plugin`.
-- [ ] **Step 3:** Port `claude_sessions`; run pages + text + backends;
+- [x] **Step 3:** Port `claude_sessions`; run pages + text + backends;
   commit `[REF] stream_deck: Claude sessions as a deck plugin`.
 
 ### Task 13: Plugin `todo_terminals`, home parity
@@ -2766,18 +2766,18 @@ Source map: `map-todo_terminals.md`. Same port rules, plus:
   `GetFocusedWindowId`, `SendKeysToWindow` through `ctx.dbus.call`
   (timeout 2).
 
-- [ ] **Step 1:** Re-point `TodoMenuParseTest` to
+- [x] **Step 1:** Re-point `TodoMenuParseTest` to
   `erplibre_streamdeck.plugins.todo_terminals`.
-- [ ] **Step 2:** Port. Now every repository plugin loads: the
+- [x] **Step 2:** Port. Now every repository plugin loads: the
   `home__*`, `flash` and `todo_launch` package scenarios run in full,
   and `partial` turns off. Run
   `./script/test/run_unit_test.sh test/test_erplibre_streamdeck_pages.py`
   Expected: MonolithPages and PackagePages all pass, nothing skipped.
-- [ ] **Step 3:** Add the package-only test of the deliberate change
+- [x] **Step 3:** Add the package-only test of the deliberate change
   (`test/test_erplibre_streamdeck_home.py` or the pages file): render
   home with the FULL world, add a second mpv session file, tap the first
   dashboard key → page `mpv_session` with the pid the key SHOWED.
-- [ ] **Step 4:** Commit `[REF] stream_deck: TODO terminals as a deck
+- [x] **Step 4:** Commit `[REF] stream_deck: TODO terminals as a deck
   plugin`.
 
 ### Task 14: Switch — the package becomes the deck program
@@ -2813,16 +2813,16 @@ Exact line changes: `map-tests.md` §9. In short:
 - `test_erplibre_streamdeck_text.py`: no `GT` left (all classes point at
   package modules by now); drop `load_monolith`.
 
-- [ ] **Step 1:** Make every change above in the working tree, `git rm`
+- [x] **Step 1:** Make every change above in the working tree, `git rm`
   the single file.
-- [ ] **Step 2: Run** the full suite `./script/test/run_unit_test.sh`.
+- [x] **Step 2: Run** the full suite `./script/test/run_unit_test.sh`.
   Expected: all green. Then
   `grep -rn "erplibre_streamdeck\.py" --include=*.py --include=*.sh --include=Makefile --include=*.js . | grep -v docs/superpowers`
   Expected: no hit outside the docs Task 16 updates.
-- [ ] **Step 3:** If `.venv.streamdeck` exists:
+- [x] **Step 3:** If `.venv.streamdeck` exists:
   `.venv.streamdeck/bin/python script/stream_deck/erplibre_streamdeck --list-plugins`
   Expected: 11 lines `<id>: active: repo`.
-- [ ] **Step 4: Commit** (one commit) `[REF] stream_deck: deck program
+- [x] **Step 4: Commit** (one commit) `[REF] stream_deck: deck program
   runs from the erplibre_streamdeck package`.
 
 ### Task 15: `DECK_PLUGINS_OFF`
@@ -2846,7 +2846,7 @@ Exact line changes: `map-tests.md` §9. In short:
   erplibre_streamdeck/plugins/*.py` and of the user directory, no `_`
   files, sorted, unique).
 
-- [ ] **Step 1: Failing tests.** Shell/Python parity on these values:
+- [x] **Step 1: Failing tests.** Shell/Python parity on these values:
   `""` → `[]`; `"tiling"` → `["tiling"]`; `" a , ,b_c,"` →
   `["a", "b_c"]`; a value with `\r` → the `\r` is stripped as
   whitespace. `deck_plugin_ids` on a temporary repository and user dir
@@ -2857,7 +2857,7 @@ Exact line changes: `map-tests.md` §9. In short:
   line when non-empty; diagnosis line `Unknown plugin in
   DECK_PLUGINS_OFF: x` for an id with no file. i18n: fr and en for
   every new string (the existing completeness test enforces it).
-- [ ] **Step 2: Implement.** Shell:
+- [x] **Step 2: Implement.** Shell:
 
 ```bash
 # deck_plugins_off écrit, un par ligne, les identifiants de plugins que
@@ -2915,8 +2915,8 @@ def deck_plugin_ids(repo_root, environ=None):
   Menu, status, i18n: follow the Games entry ([11],
   `_streamdeck_games_setting`) and the `Games:` status line added by B1
   as templates.
-- [ ] **Step 3: Run** the touched test files, then the full suite.
-- [ ] **Step 4: Commit** `[ADD] stream_deck: DECK_PLUGINS_OFF setting,
+- [x] **Step 3: Run** the touched test files, then the full suite.
+- [x] **Step 4: Commit** `[ADD] stream_deck: DECK_PLUGINS_OFF setting,
   TODO entry and status`.
 
 ### Task 16: Docs and spec amendments
@@ -2934,9 +2934,9 @@ def deck_plugin_ids(repo_root, environ=None):
 - Modify: the spec — add a section "Amendments from the plan" copying
   the 15 rulings above.
 
-- [ ] **Step 1:** Write the docs; `source .venv.erplibre/bin/activate && mmg --yes`.
-- [ ] **Step 2:** `grep -rn "erplibre_streamdeck\.py" script/ conf/ *.md | grep -v CHANGELOG`
+- [x] **Step 1:** Write the docs; `source .venv.erplibre/bin/activate && mmg --yes`.
+- [x] **Step 2:** `grep -rn "erplibre_streamdeck\.py" script/ conf/ *.md | grep -v CHANGELOG`
   Expected: no hit (the CHANGELOG names the old path on purpose).
-- [ ] **Step 3:** Full suite + `node --test script/gnome-extension/erplibre_home/test/unit/*.test.js`.
-- [ ] **Step 4: Commit** `[UPD] doc: deck program as a plugin package,
+- [x] **Step 3:** Full suite + `node --test script/gnome-extension/erplibre_home/test/unit/*.test.js`.
+- [x] **Step 4: Commit** `[UPD] doc: deck program as a plugin package,
   DECK_PLUGINS_OFF, user plugins`.

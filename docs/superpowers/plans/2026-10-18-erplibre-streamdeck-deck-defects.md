@@ -89,7 +89,7 @@ unittest via `./script/test/run_unit_test.sh`, mmg for docs.
 (never `KeyboardInterrupt`); `Kernel.paint` and `Kernel.render` return
 without drawing when `self.running` is false.
 
-- [ ] **Step 1: Failing tests** in `test/test_erplibre_streamdeck_kernel.py`:
+- [x] **Step 1: Failing tests** in `test/test_erplibre_streamdeck_kernel.py`:
 
 ```python
 class LeftoverTest(KernelCase):
@@ -125,8 +125,8 @@ class LeftoverTest(KernelCase):
   raises for one item and succeeds for another, rendered three times:
   the journal holds exactly one `tile face <key>` line.
 
-- [ ] **Step 2: Run** both files; expected FAIL on the new tests.
-- [ ] **Step 3: Implement.** `guard`: `except (Exception, SystemExit) as
+- [x] **Step 2: Run** both files; expected FAIL on the new tests.
+- [x] **Step 3: Implement.** `guard`: `except (Exception, SystemExit) as
   exc:`. `paint` and `render` start with `if not self.running: return`.
   In `home.py`, the guard labels become `f"home face {key}"`,
   `f"fixture face {key}"`, `f"tile face {key}"`. Remove the extra blank
@@ -134,8 +134,8 @@ class LeftoverTest(KernelCase):
   reads: "`shutdown(ctx)` runs with the kernel lock held when the app
   takes it within 5 s, and without it otherwise; it never takes
   `ctx.locked()` nor waits for a thread that does."
-- [ ] **Step 4: Run** the two files and the full suite; PASS.
-- [ ] **Step 5: Commit** `[FIX] stream_deck kernel: SystemExit isolated,
+- [x] **Step 4: Run** the two files and the full suite; PASS.
+- [x] **Step 5: Commit** `[FIX] stream_deck kernel: SystemExit isolated,
   no paint after stop, keyed face logs`.
 
 ### Task 2: Atomic JSON files and process liveness
@@ -154,7 +154,7 @@ class LeftoverTest(KernelCase):
 `liveness.alive(pid, born_by_ms, slack_ms=5000) -> bool`,
 `liveness.parse_start_ticks(stat_line) -> int`.
 
-- [ ] **Step 1: Failing tests** `test/test_erplibre_streamdeck_files.py`:
+- [x] **Step 1: Failing tests** `test/test_erplibre_streamdeck_files.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -237,8 +237,8 @@ class LivenessTest(unittest.TestCase):
   kept. And: `settings.save`, the layouts writer and the TODO registry
   writer call `jsonfile.write_atomic` (patch it and assert the call).
 
-- [ ] **Step 2: Run** the new file; FAIL (`No module named ...jsonfile`).
-- [ ] **Step 3: Implement** `jsonfile.py`:
+- [x] **Step 2: Run** the new file; FAIL (`No module named ...jsonfile`).
+- [x] **Step 3: Implement** `jsonfile.py`:
 
 ```python
 # © 2026 TechnoLibre (http://www.technolibre.ca)
@@ -347,10 +347,10 @@ def alive(pid, born_by_ms, slack_ms=5000):
   os.path.exists(f"/proc/{pid}"): continue`. In `mpv_sessions`: when
   `started_at > 0` use `liveness.alive(pid, started_at)`, else the
   existence check.
-- [ ] **Step 4: Run** the new file, the pages file (goldens use pid 1 and
+- [x] **Step 4: Run** the new file, the pages file (goldens use pid 1 and
   pid 0: pid 1 started at boot, before every stamp, so they stay green)
   and the full suite.
-- [ ] **Step 5: Commit** two commits: `[FIX] stream_deck: JSON files
+- [x] **Step 5: Commit** two commits: `[FIX] stream_deck: JSON files
   replaced atomically` and `[FIX] stream_deck sessions: recycled pids
   dropped by start time`.
 
@@ -370,7 +370,7 @@ def alive(pid, born_by_ms, slack_ms=5000):
   `check_golden` writing from the package when
   `STREAMDECK_GOLDEN=update-from-package`.
 
-- [ ] **Step 1: Failing tests** in the kernel test file (FakeThread is
+- [x] **Step 1: Failing tests** in the kernel test file (FakeThread is
   installed by the harness: `S.FakeThread.queue` holds started jobs; run
   them with a small helper `run_jobs()` that pops and calls each target):
 
@@ -457,8 +457,8 @@ class JobTest(KernelCase):
         self.assertEqual([], ticks)
 ```
 
-- [ ] **Step 2: Run**; FAIL.
-- [ ] **Step 3: Implement** in `kernel.py` (and `colors.BUSY = (90, 90,
+- [x] **Step 2: Run**; FAIL.
+- [x] **Step 3: Implement** in `kernel.py` (and `colors.BUSY = (90, 90,
   40)`):
 
 ```python
@@ -536,8 +536,8 @@ class JobTest(KernelCase):
   `ensure_ascii=False`, trailing newline) when
   `os.environ.get("STREAMDECK_GOLDEN") == "update-from-package"`, and
   compares otherwise.
-- [ ] **Step 4: Run** the kernel, home, pages files and the full suite.
-- [ ] **Step 5: Commit** `[ADD] stream_deck kernel: slow actions off the
+- [x] **Step 4: Run** the kernel, home, pages files and the full suite.
+- [x] **Step 5: Commit** `[ADD] stream_deck kernel: slow actions off the
   lock with a busy key`.
 
 ### Task 4: Kernel polls
@@ -551,7 +551,7 @@ class JobTest(KernelCase):
 **Interfaces:** Produces `plugin.Poll(period, active, read, store)` and
 `Plugin.polls: list` (default empty).
 
-- [ ] **Step 1: Failing tests** (kernel): a poll is not read while
+- [x] **Step 1: Failing tests** (kernel): a poll is not read while
   `active` is false; it is read once per `period`; `read` runs outside the
   lock (assert `k.lock.locked()` is False inside `read`); `store` returning
   True on the home screen makes exactly one render that pass; a `read`
@@ -560,8 +560,8 @@ class JobTest(KernelCase):
   poll is skipped; while a flash is recorded no poll is read. Loader:
   `polls=[object()]` and `polls=[Poll("1", ...)]` are refused with a
   reason; a valid `Poll` loads.
-- [ ] **Step 2: Run**; FAIL.
-- [ ] **Step 3: Implement.** `plugin.py`:
+- [x] **Step 2: Run**; FAIL.
+- [x] **Step 3: Implement.** `plugin.py`:
 
 ```python
 @dataclass
@@ -642,8 +642,8 @@ class Poll:
 
   `_page_tick(now)` is today's page-tick block (skipped when the owner is
   busy). `_home_step(now, want=False)` starts with the given `want`.
-- [ ] **Step 4: Run** kernel, loader, pages files and the full suite.
-- [ ] **Step 5: Commit** `[ADD] stream_deck kernel: polls read outside
+- [x] **Step 4: Run** kernel, loader, pages files and the full suite.
+- [x] **Step 5: Commit** `[ADD] stream_deck kernel: polls read outside
   the lock`.
 
 ### Task 5: Slow actions moved — timers, dev_reload, layouts, tiling
@@ -692,20 +692,20 @@ list and renders. Layouts: save (ListWindows + write) and load
 Tiling: TileWindow is a job; the corner/timeout state is reset when the
 job is started, as today before the call.
 
-- [ ] **Step 1:** For each plugin, write the backend test first: the
+- [x] **Step 1:** For each plugin, write the backend test first: the
   handler starts exactly one job (`S.FakeThread.queue` length 1), the
   page shows "…" on the pressed key, and after running the job and one
   loop pass the screen and the effects match what the handler produced
   before (use the existing golden steps as the expected values).
-- [ ] **Step 2:** Convert the plugin; run its backend tests.
-- [ ] **Step 3:** Adjust the page scenarios that press these keys (add the
+- [x] **Step 2:** Convert the plugin; run its backend tests.
+- [x] **Step 3:** Adjust the page scenarios that press these keys (add the
   `run_threads()` + `loop(1)` steps), regenerate only their goldens with
   `STREAMDECK_GOLDEN=update-from-package .venv.erplibre/bin/python
   test/test_erplibre_streamdeck_pages.py PackagePages.<test>`, read each
   diff (`git diff --stat` + one geometry in full), and check that the only
   differences are: the "…" step, the result one step later, effects moved
   from the press step to the threads/loop steps.
-- [ ] **Step 4:** Full suite; commit one per plugin, `[FIX] stream_deck
+- [x] **Step 4:** Full suite; commit one per plugin, `[FIX] stream_deck
   <plugin>: <call> off the lock`, body listing every rewritten golden and
   why.
 
@@ -753,15 +753,15 @@ change.
   capture becomes a poll active only when `capture_at` is due; the session
   page's auto-return moves into the poll's `store` (window gone → home).
 
-- [ ] **Step 1:** Per plugin, backend tests: render makes no
+- [x] **Step 1:** Per plugin, backend tests: render makes no
   `subprocess.run` call (patch it to raise); the poll's `read` returns the
   data the render used to fetch; `store` returns True only when it
   changed.
-- [ ] **Step 2:** Convert; run.
-- [ ] **Step 3:** Regenerate the affected goldens (update-from-package),
+- [x] **Step 2:** Convert; run.
+- [x] **Step 3:** Regenerate the affected goldens (update-from-package),
   checking the diffs show only effects moving from render steps to loop
   steps and the first frame of a page before its first poll.
-- [ ] **Step 4:** Full suite; one commit per plugin, `[FIX] stream_deck
+- [x] **Step 4:** Full suite; one commit per plugin, `[FIX] stream_deck
   <plugin>: render reads a polled cache`, listing the rewritten goldens.
 
 ### Task 8: `DECK_SESSION_REFRESH_SEC`
@@ -784,7 +784,7 @@ everywhere; `app.build(deck, *, plugins_off=(), user_dir=None,
 settings=None)`; `Kernel(deck, plugins, settings=None)` with
 `kernel.settings` a dict; `Context.setting(name, default=None)`.
 
-- [ ] **Step 1:** Tests: shell/Python parity on `""`, `"1"`, `"0.5"`,
+- [x] **Step 1:** Tests: shell/Python parity on `""`, `"1"`, `"0.5"`,
   `"60"`, `"0.4"`, `"61"`, `"abc"`, `"2\r"` (→ 1, 1, 0.5, 60, 1, 1, 1, 2
   — a trailing `\r` is stripped as white space, like `deck_plugins_off`);
   `read_deck_settings` on a real `streamdeck.conf` in a temp
@@ -794,9 +794,9 @@ settings=None)`; `Kernel(deck, plugins, settings=None)` with
   when the unit is active (template: entry [12]); Status line
   `Session refresh: N s` when not the default; diagnosis for an invalid
   value naming the menu path.
-- [ ] **Step 2:** Implement following the `DECK_PLUGINS_OFF` code of B2
+- [x] **Step 2:** Implement following the `DECK_PLUGINS_OFF` code of B2
   (Task 15) as the template in every file.
-- [ ] **Step 3:** Full suite; commit `[ADD] stream_deck: DECK_SESSION_REFRESH_SEC
+- [x] **Step 3:** Full suite; commit `[ADD] stream_deck: DECK_SESSION_REFRESH_SEC
   setting, TODO entry and status`.
 
 ### Task 9: Session pages refresh
@@ -815,12 +815,12 @@ scenarios/goldens if a scenario's loop now ticks these pages.
   colour, notification_message, description; mpv: title) with
   `state().shown` and `ctx.render()` only when it changed.
 
-- [ ] **Step 1:** Tests: unchanged session → no render on tick; changed
+- [x] **Step 1:** Tests: unchanged session → no render on tick; changed
   status → one render; file removed → home; the period follows
   `settings={"session_refresh_sec": 2.5}` given to the kernel.
-- [ ] **Step 2:** Implement; regenerate any golden whose loop now ticks
+- [x] **Step 2:** Implement; regenerate any golden whose loop now ticks
   these pages (update-from-package, listed in the body).
-- [ ] **Step 3:** Full suite; commit `[FIX] stream_deck sessions: pages
+- [x] **Step 3:** Full suite; commit `[FIX] stream_deck sessions: pages
   refresh and go home when the session ends`.
 
 ### Task 10: Docs and spec amendments
@@ -831,5 +831,5 @@ scenarios/goldens if a scenario's loop now ticks these pages.
   the four fixes and the setting; regenerate with mmg.
 - The B3 spec gains "Amendments from the plan" with every ruling the
   execution ledger records.
-- [ ] Full suite + node tests; commit `[UPD] doc: deck slow actions,
+- [x] Full suite + node tests; commit `[UPD] doc: deck slow actions,
   polls, atomic files, session refresh`.
