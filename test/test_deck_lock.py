@@ -1062,15 +1062,17 @@ def appel_du_verrou(instruction, attr="acquire_or_exit"):
 
 
 def principal(source):
-    """Le bloc « if __name__ == "__main__": » du module."""
-    return next(
+    """Le dernier bloc « if __name__ == "__main__": » du module, celui qui
+    lance le programme ; un bloc plus haut peut lire la ligne de commande
+    avant les imports du matériel."""
+    return [
         n
         for n in ast.parse(source).body
         if isinstance(n, ast.If)
         and isinstance(n.test, ast.Compare)
         and isinstance(n.test.left, ast.Name)
         and n.test.left.id == "__name__"
-    )
+    ][-1]
 
 
 class LesProgrammesLePrennent(unittest.TestCase):

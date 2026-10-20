@@ -2,6 +2,7 @@
 # © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import argparse
 import atexit
 import io
 import itertools
@@ -13,6 +14,40 @@ import threading
 import time
 from fractions import Fraction
 from pathlib import Path
+
+import deck_lock
+
+EPILOG = """\
+Exit codes:
+  0    the program ended, or --help
+  1    the Stream Deck driver cannot probe, or an unexpected error
+  %(busy)d    another program holds the deck lock, or a bad option
+  143  stopped by SIGTERM, after the decks are reset
+While it runs, its pid is in $XDG_CACHE_HOME/erplibre-home/controller.pid
+(default ~/.cache/erplibre-home/controller.pid).
+""" % {"busy": deck_lock.BUSY_EXIT}
+
+
+def parser():
+    """The command line. argparse exits 0 on -h and 2 on any argument it
+    does not know; the module calls it before the imports of cv2, PIL and
+    the Stream Deck library, so neither exit needs them nor takes the deck
+    lock."""
+    return argparse.ArgumentParser(
+        prog="python script/stream_deck/erplibre_controller.py",
+        description=(
+            "ERPLibre Stream Deck controller (DECK_PROGRAM=controller).\n"
+            "Without an option, it takes the deck lock and drives every"
+            " Stream Deck\nwith a screen."
+        ),
+        epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
+    )
+
+
+if __name__ == "__main__":
+    parser().parse_args()
 
 try:
     import cv2
@@ -32,8 +67,6 @@ except ImportError as e:
         "Install python dependency: pip install -r script/stream_deck/requirements.txt"
     )
     raise e
-
-import deck_lock
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
 DEFAULT_BRIGHTNESS = 30

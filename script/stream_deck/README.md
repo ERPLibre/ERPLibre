@@ -38,11 +38,12 @@ Main Stream Deck controller for ERPLibre. Handles physical buttons with assigned
 | 4 | Reset Stream Deck |
 | 5 | Cycle display mode: Animation -> Big image -> Webcam |
 
-Supports the Stream Deck Plus (touchscreen, dials), USB hotplug detection (pyudev), and GIF animations.
+Supports the Stream Deck Plus (touchscreen, dials), USB hotplug detection (pyudev), and GIF animations. `-h` and `--help` print the usage and the exit codes (1: driver cannot probe, 2: deck lock held or bad option, 143: SIGTERM), then exit 0; any other argument prints the usage on stderr and exits 2. Neither takes the deck lock nor needs cv2, PIL or the Stream Deck library.
 
 
 ```bash
 make streamdeck
+python script/stream_deck/erplibre_controller.py --help
 ```
 
 

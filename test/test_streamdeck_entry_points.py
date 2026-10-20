@@ -24,8 +24,8 @@ Ce que ces tests gardent :
   du deck, et sans venv il le dit dans la langue de l'utilisateur sans rien
   lancer ;
 - launch_game.sh, que rien n'appelait, n'existe plus ;
-- le programme du deck répond à -h, --help et à une option inconnue sans
-  importer le matériel ni prendre le verrou du deck.
+- le programme du deck et le contrôleur répondent à -h, --help et à une
+  option inconnue sans importer le matériel ni prendre le verrou du deck.
 """
 
 import contextlib
@@ -534,14 +534,58 @@ class TestLaunchGameScriptGone(unittest.TestCase):
             self.assertNotIn("launch_game.sh", texte, str(chemin))
 
 
-# Un faux StreamDeck, et un faux PIL, placés en tête de PYTHONPATH : les
-# importer écrit un témoin et tue le processus. Un programme du deck lancé
-# par erreur ne touche donc jamais un vrai deck, et le témoin le dit.
+# De faux paquets du matériel (StreamDeck, PIL, cv2...), placés en tête de
+# PYTHONPATH : les importer écrit un témoin et tue le processus. Un
+# programme du deck lancé par erreur ne touche donc jamais un vrai deck, et
+# le témoin le dit.
 FAUX_MATERIEL = """import os
 with open(os.environ["TEMOIN_MATERIEL"], "w") as f:
     f.write(__name__)
 os._exit(99)
 """
+
+
+# Les paquets que les points d'entrée du deck importent pour le matériel.
+PAQUETS_MATERIEL = ("StreamDeck", "PIL", "cv2", "requests", "pyudev")
+
+
+def lancer_sans_materiel(cas, script, *args, materiel=False):
+    """Lance `script` sous le python des tests avec les faux paquets du
+    matériel et un XDG_RUNTIME_DIR temporaire ; échoue si le verrou du deck
+    a été pris, et si un faux paquet a été importé ou non selon `materiel`.
+    Rend le CompletedProcess."""
+    with tempfile.TemporaryDirectory() as tmp:
+        faux = os.path.join(tmp, "faux")
+        for paquet in PAQUETS_MATERIEL:
+            os.makedirs(os.path.join(faux, paquet))
+            init = os.path.join(faux, paquet, "__init__.py")
+            with open(init, "w", encoding="utf-8") as f:
+                f.write(FAUX_MATERIEL)
+        run_dir = os.path.join(tmp, "run")
+        os.makedirs(run_dir, mode=0o700)
+        temoin = os.path.join(tmp, "temoin")
+        env = dict(
+            os.environ,
+            PYTHONPATH=faux,
+            XDG_RUNTIME_DIR=run_dir,
+            XDG_CONFIG_HOME=os.path.join(tmp, "config"),
+            XDG_CACHE_HOME=os.path.join(tmp, "cache"),
+            HOME=os.path.join(tmp, "home"),
+            TEMOIN_MATERIEL=temoin,
+        )
+        res = subprocess.run(
+            [sys.executable, str(script)] + list(args),
+            cwd=tmp,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        cas.assertEqual(materiel, os.path.exists(temoin), res.stderr)
+        cas.assertEqual(
+            [], os.listdir(run_dir), "le verrou du deck a été pris"
+        )
+    return res
 
 
 class TestTilerCommandLine(unittest.TestCase):
@@ -551,38 +595,9 @@ class TestTilerCommandLine(unittest.TestCase):
     prend le verrou du deck, posé ici sous un XDG_RUNTIME_DIR temporaire."""
 
     def lancer(self, *args):
-        with tempfile.TemporaryDirectory() as tmp:
-            faux = os.path.join(tmp, "faux")
-            for paquet in ("StreamDeck", "PIL"):
-                os.makedirs(os.path.join(faux, paquet))
-                init = os.path.join(faux, paquet, "__init__.py")
-                with open(init, "w", encoding="utf-8") as f:
-                    f.write(FAUX_MATERIEL)
-            run_dir = os.path.join(tmp, "run")
-            os.makedirs(run_dir, mode=0o700)
-            temoin = os.path.join(tmp, "temoin")
-            env = dict(
-                os.environ,
-                PYTHONPATH=faux,
-                XDG_RUNTIME_DIR=run_dir,
-                XDG_CONFIG_HOME=os.path.join(tmp, "config"),
-                HOME=os.path.join(tmp, "home"),
-                TEMOIN_MATERIEL=temoin,
-            )
-            res = subprocess.run(
-                [sys.executable, str(DECK_DIR / "erplibre_streamdeck")]
-                + list(args),
-                cwd=tmp,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            self.assertFalse(os.path.exists(temoin), res.stderr)
-            self.assertEqual(
-                [], os.listdir(run_dir), "le verrou du deck a été pris"
-            )
-        return res
+        return lancer_sans_materiel(
+            self, DECK_DIR / "erplibre_streamdeck", *args
+        )
 
     def test_help_prints_the_usage_and_exits_0(self):
         for option in ("-h", "--help"):
@@ -609,6 +624,38 @@ class TestTilerCommandLine(unittest.TestCase):
             self.assertEqual(2, res.returncode, args)
             self.assertIn("usage:", res.stderr, args)
             self.assertEqual("", res.stdout, args)
+
+
+class TestControllerCommandLine(unittest.TestCase):
+    """La ligne de commande du contrôleur : -h et --help sortent en 0, une
+    option inconnue en 2 avec l'usage sur la sortie d'erreur, avant les
+    imports de cv2, de PIL et de StreamDeck et sans le verrou du deck."""
+
+    SCRIPT = DECK_DIR / "erplibre_controller.py"
+
+    def test_help_prints_the_usage_and_exits_0(self):
+        for option in ("-h", "--help"):
+            res = lancer_sans_materiel(self, self.SCRIPT, option)
+            self.assertEqual(0, res.returncode, res.stderr)
+            self.assertIn("usage:", res.stdout)
+            self.assertIn("deck lock", res.stdout)
+            self.assertRegex(res.stdout, r"(?m)^\s+2\s")
+            self.assertRegex(res.stdout, r"(?m)^\s+143\s")
+            self.assertEqual("", res.stderr)
+
+    def test_an_unknown_option_exits_2_with_the_usage(self):
+        for args in (["--bogus"], ["run"], ["--hel"], ["-x"]):
+            res = lancer_sans_materiel(self, self.SCRIPT, *args)
+            self.assertEqual(2, res.returncode, args)
+            self.assertIn("usage:", res.stderr, args)
+            self.assertEqual("", res.stdout, args)
+
+    def test_without_an_option_it_goes_on_to_the_hardware(self):
+        """Sans option, rien ne s'arrête à la ligne de commande : le
+        premier import du matériel est atteint, et son faux tue le
+        processus avant le verrou."""
+        res = lancer_sans_materiel(self, self.SCRIPT, materiel=True)
+        self.assertEqual(99, res.returncode, res.stderr)
 
 
 class TestTodoGamesLauncher(unittest.TestCase):
