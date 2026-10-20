@@ -414,6 +414,23 @@ class ReplugTest(MainCase):
         self.assertEqual(2, len(self.kernels))
         self.assertIs(back, self.kernels[1].deck)
 
+    def test_a_deck_that_never_opens_is_journaled_once(self):
+        """A deck plugged in but refused (its hidraw node not
+        accessible) is told apart from an unplugged one, without a line
+        every poll."""
+        bad = RecordingDeck(5, 3)
+        bad.fail_open = True
+        manager = ScriptedManager([bad], [bad], [bad], KeyboardInterrupt())
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        app.main()
+        journal = self.journal.getvalue()
+        self.assertEqual(
+            1, journal.count("Stream Deck found but not opened"), journal
+        )
+        self.assertIn("Could not open HID device.", journal)
+        self.assertEqual(["close", "close", "close"], bad.events)
+
     def test_sigterm_while_the_kernel_is_rebuilt_resets_the_deck(self):
         """The deck that came back is open and lit before its kernel
         exists: a SIGTERM then still resets and closes it."""

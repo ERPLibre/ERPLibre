@@ -224,7 +224,9 @@ when a program is chosen, `.venv.streamdeck` exists and a deck is plugged
 in; otherwise systemd skips it. Once started, the deck program
 outlives its deck: unplugged, it writes one journal line, keeps the deck
 lock and looks for a deck every 2 seconds; the deck plugged back in comes
-up on the home screen. The installer never starts
+up on the home screen. A deck found but refused at its opening (its device
+node not accessible) writes one more line, naming the error. The installer
+never starts
 it: the program needs the extension, which a fresh install loads at the
 next login. With `--autostart` the unit is enabled and starts at login.
 Without a reachable user manager (an install over ssh with no session), the
@@ -279,6 +281,8 @@ reste. L'unité ne démarre que si un programme est choisi, que
 Une fois lancé, le programme du deck survit à son deck : débranché, il
 écrit une ligne au journal, garde le verrou du deck et cherche un deck
 toutes les 2 secondes ; le deck rebranché revient sur l'écran d'accueil.
+Un deck trouvé mais refusé à l'ouverture (son nœud de périphérique
+inaccessible) écrit une ligne de plus, qui nomme l'erreur.
 L'installateur ne la démarre jamais : le programme a besoin de l'extension,
 qu'une installation neuve charge à la prochaine ouverture de session. Avec
 `--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans

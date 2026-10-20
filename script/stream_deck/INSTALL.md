@@ -112,7 +112,9 @@ when a program is chosen, `.venv.streamdeck` exists and a deck is plugged
 in; otherwise systemd skips it. Once started, the deck program
 outlives its deck: unplugged, it writes one journal line, keeps the deck
 lock and looks for a deck every 2 seconds; the deck plugged back in comes
-up on the home screen. The installer never starts
+up on the home screen. A deck found but refused at its opening (its device
+node not accessible) writes one more line, naming the error. The installer
+never starts
 it: the program needs the extension, which a fresh install loads at the
 next login. With `--autostart` the unit is enabled and starts at login.
 Without a reachable user manager (an install over ssh with no session), the
