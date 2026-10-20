@@ -110,21 +110,22 @@ the Python helpers. See [`../gnome-extension/erplibre_home/README.md`](../gnome-
 ```bash
 python script/stream_deck/erplibre_streamdeck
 python script/stream_deck/erplibre_streamdeck --list-plugins
+python script/stream_deck/erplibre_streamdeck --help
 ```
 
 <!-- [en] -->
 
-`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off`, `replaced by user` or `refused` with its reason; `unreadable` for a plugin directory it cannot list) without opening the deck or taking its lock. Layout of the package:
+`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off`, `replaced by user` or `refused` with its reason; `unreadable` for a plugin directory it cannot list) without opening the deck or taking its lock. `-h` and `--help` print the usage, the settings file and the exit codes (2: deck lock held or bad option, 3: no Stream Deck with a screen, 143: SIGTERM), then exit 0; any other argument prints the usage on stderr and exits 2. Neither takes the lock nor needs the Stream Deck library. Layout of the package:
 
 <!-- [fr] -->
 
-`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. Disposition du paquet :
+`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. `-h` et `--help` affichent l'usage, le fichier de réglages et les codes de sortie (2 : verrou du deck tenu ou option invalide, 3 : aucun Stream Deck à écran, 143 : SIGTERM), puis sortent en 0 ; tout autre argument affiche l'usage sur la sortie d'erreur et sort en 2. Ni l'un ni l'autre ne prend le verrou ni n'a besoin de la bibliothèque Stream Deck. Disposition du paquet :
 
 <!-- [common] -->
 
 ```
 erplibre_streamdeck/
-├── __main__.py   # entry point, --list-plugins / point d'entrée
+├── __main__.py   # entry point, --help, --list-plugins / point d'entrée
 ├── app.py        # build(): settings, plugins, kernel / assemblage
 ├── kernel.py     # deck, lock, flash, loop, dispatch / noyau
 ├── home.py       # home screen: buttons, fixtures, tiles / accueil
