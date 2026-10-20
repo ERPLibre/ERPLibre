@@ -355,8 +355,10 @@ tiler is now the package `script/stream_deck/erplibre_streamdeck/`
    unit to read it and always reports it loaded.
 3. **Command lines.** The tiler, the controller, every game and the
    gallery read their arguments with argparse before importing the Stream
-   Deck library. `-h`/`--help` print the usage and the exit codes and
-   exit 0; an unknown argument prints the usage on stderr and exits 2.
+   Deck library. `-h`/`--help` print the usage and exit 0; the tiler,
+   the controller and the gallery add their exit codes, a game says how
+   the deck is handed over instead. An unknown argument prints the usage
+   on stderr and exits 2.
    Neither takes the deck lock, opens the deck, scans the games or
    serves. `ExecStart` passes no argument, so under the unit exit 2 still
    means a busy lock and `RestartPreventExitStatus=2 3` keeps its
