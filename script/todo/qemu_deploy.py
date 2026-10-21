@@ -1416,6 +1416,9 @@ class QemuDeployMixin:
         # table vit dans deploy_qemu.py, qui refuse aussi ces combinaisons :
         # une seule source, donc aucun écran n'offre un choix rejeté ensuite.
         only = getattr(mod, "arch_versions", None)
+        # La RAM par défaut dépend aussi de l'architecture : même source que la
+        # CLI, pour que le formulaire propose ce qu'un déploiement direct ferait.
+        ram_for = getattr(mod, "default_ram", lambda _a, r: r)
         for d in distros:
             versions_map, default_v = mod.DISTROS[d]
             for v, (_c, _o, ram, disk) in versions_map.items():
@@ -1427,7 +1430,7 @@ class QemuDeployMixin:
                             "distro": d,
                             "version": v,
                             "arch": a,
-                            "ram": ram,
+                            "ram": ram_for(a, ram),
                             "disk": disk,
                             "default": v == default_v,
                         }
@@ -1803,6 +1806,8 @@ class QemuDeployMixin:
         granular = raw in ("granulaire", "granular", "g")
 
         selected = []  # (distro, version, ram_mb, disk_str, arch)
+        # RAM par défaut selon l'architecture : celle du catalogue partagé.
+        ram_for = getattr(mod, "default_ram", lambda _a, r: r)
         if granular:
             # Liste APLATIE distro + version + ARCHITECTURE : on choisit des
             # combinaisons précises par numéros séparés de virgules. La liste
@@ -1830,7 +1835,7 @@ class QemuDeployMixin:
                 versions_map, default_v = mod.DISTROS[d]
                 _c, _o, ram, disk = versions_map[default_v]
                 for a in arches_for(d):
-                    selected.append((d, default_v, ram, disk, a))
+                    selected.append((d, default_v, ram_for(a, ram), disk, a))
         else:
             sel_distros = (
                 distros
@@ -1864,7 +1869,7 @@ class QemuDeployMixin:
                 for v in chosen:
                     _c, _o, ram, disk = versions_map[v]
                     for a in arches_for(d):
-                        selected.append((d, v, ram, disk, a))
+                        selected.append((d, v, ram_for(a, ram), disk, a))
         if not selected:
             print(t("Nothing selected."))
             return None

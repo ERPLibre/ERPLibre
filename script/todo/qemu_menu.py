@@ -189,7 +189,7 @@ class QemuMenuMixin:
             if a == native:
                 label += f" — {t('native')} *"
             elif a == "s390x":
-                label += f"  ({t('IBM Z — emulated, slow; Ubuntu only')})"
+                label += f"  ({t('IBM Z — emulated, slow')})"
             elif a == "arm64":
                 label += f"  ({t('ARM 64-bit — emulated, slow')})"
             else:

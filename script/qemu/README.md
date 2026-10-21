@@ -92,7 +92,7 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 | Distro | Versions | amd64 | arm64 | s390x |
 |---|---|:-:|:-:|:-:|
 | ubuntu | `24.04` (default), `25.10`, `26.04` | ✔ | ✔ | ✔ |
-| debian | `11`, `12` (default), `13` | ✔ | ✔ | — |
+| debian | `12` (default), `13` | ✔ | ✔ | ✔ (debian-installer) |
 | fedora | `41`, `42` (default), `43`, `44` | ✔ | ✔ | `43` only |
 | almalinux | `9` (default), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
