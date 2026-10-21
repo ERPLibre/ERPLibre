@@ -29,7 +29,7 @@ POETRY_ODOO_PATH=${VENV_ODOO_PATH}/bin/poetry
 # shellcheck source=script/install/lib_pip_provider.sh
 . ./script/install/lib_pip_provider.sh
 # Bornage des compilations : voir el_build_limit_jobs.
-. ./script/install/lib_lowmem.sh
+. ./script/install/S390x/lib_lowmem.sh
 export WITH_POETRY_INSTALLATION=1
 
 # Verbosité de l'installation Poetry. « -q » a été retiré du défaut : dans Cleo,
