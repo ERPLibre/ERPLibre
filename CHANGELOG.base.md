@@ -145,6 +145,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Search the cache of the open folder, of the account or of every account, and put the same question to the server when the cache cannot answer it. A sealed cache carries no full-text index — the sealing is what forbids one — and the search then compares the fields it can still read
 - The installers set up gettext (gettext-tools on SUSE) on every supported system, without ever blocking: `msgfmt --check` catches a translation that lost a `%s` before it shows on a page, and `msgmerge` carries translations over to a regenerated `.pot`
 - `coverage` is in the Odoo 18 venv: `ODOO_MODE_COVERAGE=true` runs Odoo under coverage instead of failing on « command not found »
+- `doc/S390x/` guides an install on IBM Z: the order of the steps, each supported system's specifics, and what s390x lacks or needs beyond amd64 — PyPI has almost no s390x wheels, so pip compiles, which brings extra packages, swap, Rust and qpdf/PROJ builds, and leaves out wkhtmltopdf, PyMuPDF and factur-x 4
 
 <!-- [fr] -->
 
@@ -266,6 +267,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Chercher dans le cache du dossier ouvert, du compte ou de tous les comptes, et poser la même question au serveur quand le cache ne sait pas y répondre. Un cache scellé ne porte pas d'index plein texte — c'est le scellement qui l'interdit — et la recherche compare alors les champs qu'elle peut encore lire
 - Les installeurs posent gettext (gettext-tools sur SUSE) sur chaque système supporté, sans jamais bloquer : `msgfmt --check` attrape une traduction qui a perdu un `%s` avant qu'elle n'apparaisse sur une page, et `msgmerge` reporte les traductions sur un `.pot` régénéré
 - `coverage` est dans le venv d'Odoo 18 : `ODOO_MODE_COVERAGE=true` fait tourner Odoo sous coverage au lieu d'échouer sur « command not found »
+- `doc/S390x/` guide une installation sur IBM Z : l'ordre des étapes, les particularités de chaque système supporté, et ce qui manque à s390x ou s'y ajoute par rapport à amd64 — PyPI n'a presque aucun wheel s390x, pip compile donc, ce qui amène des paquets en plus, du swap, Rust et la compilation de qpdf et PROJ, et écarte wkhtmltopdf, PyMuPDF et factur-x 4
 
 <!-- [en] -->
 ## Changed
@@ -315,6 +317,9 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `odoo/documentation-user` is cloned at depth 1 for Odoo 12 to 18: the whole history of Odoo's documentation, images included, no longer dominates a repository sync
 - The Odoo 18 lock is refreshed (27 packages up, factur-x 7 and plaid-python 45 among them); `python-dotenv` leaves the Odoo venv, since only an example file under `doc/examples` asked for it
 - The unit test runner gives each test file its own `TMPDIR`, removes what it leaves there and names it in the summary: forgotten temporaries no longer pile up in `/tmp` until a tmpfs runs out of inodes
+- s390x VMs deploy from Ubuntu, Debian (through debian-installer), Fedora 43, AlmaLinux, Rocky and openSUSE, and get 4 GiB of RAM when no size is given: nearly every package compiles there, and one compiler process takes up to 2.5 GiB. Other architectures keep the catalogue's minimum
+- The s390x-only install code lives in `script/install/S390x/`; the apt, dnf and zypper scripts and `install_erplibre.sh` keep a one-line guard, and behave as before
+- A missing build header stops the install in seconds and prints the command to run, instead of pyenv compiling CPython for minutes and failing on « zlib not available ». On s390x the check names the packages as apt, dnf or zypper calls them, and the qpdf and PROJ builds say when the library is absent and how long they take
 
 <!-- [fr] -->
 
@@ -360,6 +365,9 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `odoo/documentation-user` est cloné à la profondeur 1 pour Odoo 12 à 18 : tout l'historique de la documentation d'Odoo, images comprises, ne domine plus la synchronisation
 - Le lock d'Odoo 18 est rafraîchi (27 paquets, dont factur-x 7 et plaid-python 45) ; `python-dotenv` quitte le venv d'Odoo, seul un fichier d'exemple sous `doc/examples` le demandant
 - Le lanceur des tests unitaires donne à chaque fichier son propre `TMPDIR`, retire ce qu'il y laisse et le nomme au bilan : les temporaires oubliés ne s'accumulent plus dans `/tmp` jusqu'à épuiser les inodes d'un tmpfs
+- Les VM s390x se déploient depuis Ubuntu, Debian (par debian-installer), Fedora 43, AlmaLinux, Rocky et openSUSE, et reçoivent 4 Gio de RAM quand aucune taille n'est donnée : presque tout paquet y compile, et un seul processus du compilateur prend jusqu'à 2,5 Gio. Les autres architectures gardent le minimum du catalogue
+- Le code d'installation propre à s390x vit dans `script/install/S390x/` ; les scripts apt, dnf et zypper et `install_erplibre.sh` gardent une garde d'une ligne, et se comportent comme avant
+- Un en-tête de compilation manquant arrête l'installation en quelques secondes et imprime la commande à lancer, au lieu que pyenv compile CPython pendant des minutes et échoue sur « zlib not available ». Sur s390x, la vérification nomme les paquets comme apt, dnf ou zypper les appellent, et les compilations de qpdf et PROJ disent quand la bibliothèque est absente et combien de temps elles prennent
 
 <!-- [en] -->
 ## Fixed
@@ -448,6 +456,12 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Creating a CRM lead with an e-mail, from the website form for instance, no longer raises ModuleNotFoundError on Odoo 18: `dnsq`, which flanker imports to check the MX, is installed
 - The Odoo 18 venv no longer prints an AttributeError from extendable-pydantic at every Python start: pydantic stays below 2.14, which removes the internal function it reads
 - `poetry_update.py` evaluates the `python_version` markers of manifest dependencies and reads ranges such as `>=1.7.1,<2.9.0`: a manifest's pin no longer overrides the ERPLibre one, and a range no longer stops the script. `oauthlib<4` and `pylint<4.1` keep the Odoo 18 resolution solvable
+- Odoo 18 installs on s390x with every supported system: orjson's Rust 1.95 or later comes from rustup when the distribution's is older, on apt, dnf and zypper alike, with no false error beside the distribution's Rust
+- pynacl and pykcs11 build again where they compile: the SWIG alias moves from a `-D` whose parentheses broke autotools Makefiles to a header forced by `-include`
+- Swap works on a btrfs root, as on Fedora and openSUSE, in a dedicated NOCOW subvolume; an active swap is left alone, and when memory already suffices the step says so instead of blaming the disk
+- `poetry install` no longer fails at random on a deleted `_virtualenv.py`: the packages Poetry brings into the venv are first aligned on `poetry.lock`, the dependencies of their new versions included, and a venv left incomplete is repaired
+- An install whose `poetry install` failed resumes on rerun: the background repo sync is stopped as a whole and keeps its log, and `--install_dev` requires `odoo-bin` and a recorded successful install. A first install is no longer reported as resumed
+- QEMU: Debian VMs installed through debian-installer trust the download cache's authority, so their clone no longer fails on TLS; Fedora s390x VMs no longer show a failed systemd-firstboot at every login; a deployment takes or generates the SSH key before creating any VM, instead of probing for 20 minutes then failing on « Permission denied »; the emulation note shows only under emulation; the cache log names an unreachable upstream instead of reading as a cache outage
 
 <!-- [fr] -->
 
@@ -532,6 +546,12 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Créer un prospect CRM avec un courriel, depuis le formulaire du site par exemple, ne lève plus ModuleNotFoundError sur Odoo 18 : `dnsq`, que flanker importe pour vérifier le MX, est installé
 - Le venv d'Odoo 18 n'imprime plus une AttributeError d'extendable-pydantic à chaque démarrage de Python : pydantic reste sous 2.14, qui retire la fonction interne qu'il lit
 - `poetry_update.py` évalue les marqueurs `python_version` des dépendances de manifest et lit les plages comme `>=1.7.1,<2.9.0` : l'épingle d'un manifest n'écrase plus celle d'ERPLibre, et une plage n'arrête plus le script. `oauthlib<4` et `pylint<4.1` gardent la résolution d'Odoo 18 possible
+- Odoo 18 s'installe sur s390x avec chaque système supporté : le Rust 1.95 ou plus récent qu'exige orjson vient de rustup quand celui de la distribution est plus ancien, avec apt, dnf et zypper pareillement, sans fausse erreur à côté du Rust de la distribution
+- pynacl et pykcs11 compilent de nouveau là où ils compilent : l'alias SWIG passe d'un `-D` dont les parenthèses cassaient les Makefile d'autotools à un en-tête forcé par `-include`
+- Le swap fonctionne sur une racine btrfs, comme sur Fedora et openSUSE, dans un sous-volume NOCOW dédié ; un swap actif est laissé tel quel, et quand la mémoire suffit déjà, l'étape le dit au lieu d'accuser le disque
+- `poetry install` n'échoue plus au hasard sur un `_virtualenv.py` supprimé : les paquets que Poetry amène dans le venv sont d'abord alignés sur `poetry.lock`, dépendances de leurs nouvelles versions comprises, et un venv resté incomplet est réparé
+- Une installation dont `poetry install` a échoué reprend à la relance : la synchronisation repo en arrière-plan s'arrête en entier et garde son journal, et `--install_dev` exige `odoo-bin` et une installation réussie enregistrée. Une première installation n'est plus annoncée comme reprise
+- QEMU : les VM Debian installées par debian-installer font confiance à l'autorité du cache de téléchargement, et leur clone n'échoue plus sur TLS ; les VM Fedora s390x n'affichent plus un systemd-firstboot en échec à chaque connexion ; un déploiement prend ou génère la clé SSH avant de créer la moindre VM, au lieu de sonder 20 minutes puis d'échouer sur « Permission denied » ; la note d'émulation ne paraît que sous émulation ; le journal du cache nomme un amont injoignable au lieu de se lire comme une panne du cache
 
 <!-- [en] -->
 ## Removed
