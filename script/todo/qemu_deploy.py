@@ -521,14 +521,14 @@ class QemuDeployMixin:
             for entry in json.load(_fh)["vms"]:
                 print(f"    {entry['log']}")
         try:
-            run_monitor(manifest)
+            run_monitor(manifest, todo=self)
         except ImportError:
             # textual absent : les installs tournent déjà (détachées), on ne
             # plante donc pas — on propose de l'installer pour rouvrir.
             from script.todo import textual_setup
 
             if textual_setup.ensure():
-                run_monitor(manifest)
+                run_monitor(manifest, todo=self)
         print(
             f"\n{t('Monitor closed. Installs keep running in the background.')}"
         )

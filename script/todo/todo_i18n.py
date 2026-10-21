@@ -18380,6 +18380,63 @@ TRANSLATIONS = {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
     },
+    # Ajout de VM depuis le suivi d'installation (touche « e »).
+    "Add VMs": {
+        "fr": "Ajouter des VM",
+        "en": "Add VMs",
+    },
+    "Adding VMs is not available from this monitor.": {
+        "fr": "L'ajout de VM n'est pas disponible depuis ce suivi.",
+        "en": "Adding VMs is not available from this monitor.",
+    },
+    "VMs are already being added.": {
+        "fr": "Un ajout de VM est déjà en cours.",
+        "en": "VMs are already being added.",
+    },
+    "Creating": {
+        "fr": "Création de",
+        "en": "Creating",
+    },
+    "This terminal cannot hand over to the form.": {
+        "fr": "Ce terminal ne peut pas céder la main au formulaire.",
+        "en": "This terminal cannot hand over to the form.",
+    },
+    "Added:": {
+        "fr": "Ajoutées :",
+        "en": "Added:",
+    },
+    "Creation failed:": {
+        "fr": "Création échouée :",
+        "en": "Creation failed:",
+    },
+    "no IP:": {
+        "fr": "sans IP :",
+        "en": "no IP:",
+    },
+    "Already in the monitor:": {
+        "fr": "Déjà dans le suivi :",
+        "en": "Already in the monitor:",
+    },
+    "VMs are being added. Quit?": {
+        "fr": "Des VM sont en cours d'ajout. Quitter ?",
+        "en": "VMs are being added. Quit?",
+    },
+    "Creation goes on unseen; reopen the monitor to see it.": {
+        "fr": "La création continue, cachée ; rouvrir le suivi la montre.",
+        "en": "Creation goes on unseen; reopen the monitor to see it.",
+    },
+    "Waiting for the VMs being added...": {
+        "fr": "Attente des VM en cours d'ajout...",
+        "en": "Waiting for the VMs being added...",
+    },
+    "Offline deployment is not available from the monitor:": {
+        "fr": "Déploiement hors ligne indisponible depuis le suivi :",
+        "en": "Offline deployment is not available from the monitor:",
+    },
+    "use the deployment menu.": {
+        "fr": "passez par le menu de déploiement.",
+        "en": "use the deployment menu.",
+    },
 }
 
 
