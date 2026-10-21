@@ -2257,6 +2257,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         BINDINGS = [
             ("escape", "dismiss", "Fermer"),
             ("q", "dismiss", "Fermer"),
+            ("h", "dismiss", "Fermer"),
             ("f1", "dismiss", "Fermer"),
         ]
 
@@ -2280,8 +2281,12 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     f"{t('Keyboard shortcuts')}   ({t('Esc to close')})",
                     id="helptitle",
                 )
-                for cles, label in self._lignes.values():
-                    yield Static(f"  {' / '.join(cles):<10} {label}")
+                # La colonne des touches prend la largeur de la plus longue :
+                # les libellés restent alignés quelle que soit la liste.
+                touches = [" / ".join(c) for c, _ in self._lignes.values()]
+                large = max(map(len, touches), default=0) + 1
+                for cles, (_, label) in zip(touches, self._lignes.values()):
+                    yield Static(f"  {cles:<{large}} {label}")
 
         def action_dismiss(self) -> None:
             self.dismiss()
@@ -2450,6 +2455,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         """
         BINDINGS = [
             ("q", "quit", "Quitter (détaché)"),
+            # F1 et « ? » aussi, les touches qu'on essaie d'abord ; cachées
+            # du pied de page, où la même action se lirait trois fois.
+            ("h", "help", t("Help")),
+            Binding("f1", "help", t("Help"), show=False),
+            Binding("question_mark", "help", t("Help"), show=False),
             ("s", "ssh", "SSH"),
             ("v", "console", "Console (virsh)"),
             ("w", "web", "Web (navigateur CLI)"),
@@ -2467,10 +2477,6 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
             ("e", "add_vms", t("Add VMs")),
-            # « ? » aussi, la touche qu'on essaie d'abord ; cachée du pied
-            # de page, où la même action se lirait deux fois.
-            ("f1", "help", t("Help")),
-            Binding("question_mark", "help", t("Help"), show=False),
         ]
 
         def __init__(self):
