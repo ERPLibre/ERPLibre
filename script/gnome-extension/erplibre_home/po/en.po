@@ -324,6 +324,12 @@ msgstr "(no paths configured — add one in pencil prefs)"
 msgid "port busy"
 msgstr "port busy"
 
+msgid "This checkout"
+msgstr "This checkout"
+
+msgid "Stream Deck not installed"
+msgstr "Stream Deck not installed"
+
 msgid "Gallery offline (start gallery_server.py)"
 msgstr "Gallery offline (start gallery_server.py)"
 

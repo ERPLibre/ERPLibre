@@ -324,6 +324,12 @@ msgstr "(aucun chemin configuré — ajoutez-en un dans les prefs du crayon)"
 msgid "port busy"
 msgstr "port occupé"
 
+msgid "This checkout"
+msgstr "Ce dépôt"
+
+msgid "Stream Deck not installed"
+msgstr "Stream Deck non installé"
+
 msgid "Gallery offline (start gallery_server.py)"
 msgstr "Galerie hors ligne (lancez gallery_server.py)"
 
