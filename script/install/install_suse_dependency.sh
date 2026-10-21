@@ -16,6 +16,7 @@
 . ./env_var.sh
 . ./script/install/lib_qpdf.sh
 . ./script/install/lib_lowmem.sh
+. ./script/install/lib_rust.sh
 
 EL_USER=${USER}
 
@@ -220,8 +221,8 @@ echo -e "\n--- Installing suse dependency --"
 # Rust n'est nécessaire QUE là où les roues manquent : bcrypt et cryptography
 # portent une extension Rust, et sur amd64 leurs roues masquent le besoin. Sur
 # s390x tout compile, et bcrypt s'arrête sur « error: can't find Rust
-# compiler ». Tumbleweed livre 1.94, bien au-dessus du 1.78 qu'exige le
-# Cargo.lock v4 de cryptography. On évite ainsi ~200 Mo inutiles sur amd64.
+# compiler ». Un Rust livré sous le seuil d'orjson est complété par
+# el_rust_ensure. On évite ainsi ~200 Mo inutiles sur amd64.
 if [ "$(uname -m)" = "s390x" ]; then
   # La mémoire est la ressource qui manque en premier ici : cc1plus
   # demande jusqu'à 2,5 Gio pour un seul fichier de matplotlib, et le
@@ -241,6 +242,7 @@ if [ "$(uname -m)" = "s390x" ]; then
     echo "  Verifiez le miroir zypper, puis relancez." >&2
     exit 1
   fi
+  el_rust_ensure
   # Sans roue s390x, TOUT se compile contre les en-têtes de la distribution.
   # Cette liste reprend donc celles d'apt et de dnf, aux noms d'openSUSE près
   # — pris dans l'index oss de zsystems, jamais devinés. Elle se tient

@@ -12,6 +12,7 @@
 . ./env_var.sh
 . ./script/install/lib_qpdf.sh
 . ./script/install/lib_lowmem.sh
+. ./script/install/lib_rust.sh
 
 EL_USER=${USER}
 
@@ -113,8 +114,9 @@ if [ "$(uname -m)" = "s390x" ]; then
   # « rust » et « cargo » : plusieurs paquets Python portent une extension
   # RUST, pas seulement C — bcrypt et cryptography en tête. Sur amd64 leurs
   # roues masquent le besoin ; ici tout compile, et bcrypt s'arrête net sur
-  # « error: can't find Rust compiler ». Les versions livrées suffisent
-  # (AlmaLinux 1.92, Fedora plus récent) au Cargo.lock v4 qui exige 1.78.
+  # « error: can't find Rust compiler ». La version livrée ne suffit pas
+  # toujours : AlmaLinux 10 donne 1.92, sous le seuil d'orjson, que
+  # el_rust_ensure complète plus bas.
   # « proj » nommé À CÔTÉ de « proj-devel » : pyproj n'a pas de roue s390x, il
   # compile, et sa configuration EXÉCUTE le binaire « proj » pour localiser
   # l'installation — les en-têtes seules ne suffisent pas. Ici le paquet
@@ -150,6 +152,7 @@ if [ "$(uname -m)" = "s390x" ]; then
   if ! command -v cargo > /dev/null 2>&1; then
     echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
   fi
+  el_rust_ensure
   # pymupdf charge « libclang.so » par son nom nu, via ctypes. Le paquet le
   # livre sous un nom versionné : il ne manque que le lien.
   for d in /usr/lib64 /usr/lib; do
