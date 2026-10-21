@@ -15,6 +15,7 @@ quitter le dashboard n'arrête rien, on peut le rouvrir pour ré-attacher.
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import platform
@@ -23,11 +24,17 @@ import shlex
 import shutil
 import socket
 import subprocess
+import sys
+import tempfile
+import threading
 import time
 from pathlib import Path
 
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
+
+# Racine du dépôt : le formulaire d'ajout s'y lance en « python -m ».
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 try:
     from script.todo.todo_i18n import t
@@ -436,6 +443,7 @@ def launch_installs(
     deploy_started: float | None = None,
     hors_ligne: bool | None = None,
     identity: str = "",
+    session: str | None = None,
 ) -> str:
     """vms : [{name, ip, distro?, version?, arch?}]. Lance chaque install
     détachée, écrit un manifeste et retourne son chemin. remote_cmd : script
@@ -453,12 +461,30 @@ def launch_installs(
     ligne le traite comme tel.
 
     `identity` : clé privée que présente chaque ssh lancé ici ; « » laisse
-    ssh choisir."""
-    sdir = session_dir()
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    ssh choisir.
+
+    `session` : chemin d'un session.json existant. Les journaux vont alors
+    dans SON dossier, et les nouvelles entrées s'ajoutent à ses « vms » ;
+    « started », « deploy_started », « offline » et « branch » restent ceux
+    de la session, et les paramètres du même nom sont ignorés. Un nom déjà
+    présent lève ValueError avant tout lancement : le suivi indexe ses
+    lignes par nom. Le manifeste est réécrit d'un bloc (fichier temporaire
+    puis os.replace), et un lecteur concurrent ne voit jamais un JSON
+    tronqué. Rend le même chemin."""
     when = time.strftime("%Y-%m-%d %H:%M:%S")
-    logdir = sdir / stamp
-    logdir.mkdir(parents=True, exist_ok=True)
+    if session:
+        logdir = Path(session).parent
+        manifest = json.loads(Path(session).read_text(encoding="utf-8"))
+        noms = [vm.get("name") for vm in manifest.get("vms") or []]
+        noms += [vm["name"] for vm in vms]
+        doublons = sorted({n for n in noms if noms.count(n) > 1})
+        if doublons:
+            raise ValueError(
+                f"duplicate VM names in the session: {', '.join(doublons)}"
+            )
+    else:
+        logdir = session_dir() / time.strftime("%Y%m%d-%H%M%S")
+        logdir.mkdir(parents=True, exist_ok=True)
     entries = []
     for vm in vms:
         log_path = str(logdir / f"{vm['name']}.log")
@@ -502,6 +528,29 @@ def launch_installs(
             # lui qui arme le garde de la suppression.
             entree["uuid"] = local_uuid(vm["name"])
         entries.append(entree)
+    if session:
+        # Relu SOUS VERROU juste avant d'écrire : un autre ajout a pu passer
+        # depuis la première lecture. Le verrou porte sur le DOSSIER : le
+        # fichier, lui, change d'inode à chaque os.replace. Fichier
+        # temporaire unique, puis os.replace : un lecteur ne voit jamais un
+        # manifeste à moitié écrit.
+        verrou = os.open(str(logdir), os.O_RDONLY)
+        try:
+            fcntl.flock(verrou, fcntl.LOCK_EX)
+            manifest = json.loads(Path(session).read_text(encoding="utf-8"))
+            presents = {v.get("name") for v in manifest.get("vms", [])}
+            manifest.setdefault("vms", []).extend(
+                e for e in entries if e["name"] not in presents
+            )
+            fd, tmp = tempfile.mkstemp(
+                dir=str(logdir), prefix=".session-", suffix=".json"
+            )
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(manifest, indent=2))
+            os.replace(tmp, session)
+        finally:
+            os.close(verrou)
+        return str(session)
     manifest = {
         "branch": branch,
         "started": time.time(),
@@ -2080,11 +2129,16 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     return cmd
 
 
-def run_monitor(manifest_path: str, run_app: bool = True):
+def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
     """Ouvre le dashboard Textual sur un manifeste d'installation. `run_app`
-    à False renvoie l'instance sans la lancer (tests headless)."""
-    from textual.app import App, ComposeResult
+    à False renvoie l'instance sans la lancer (tests headless).
+
+    `todo` : l'objet TODO qui a ouvert le suivi. La touche « e » s'en sert
+    pour créer des VM et les ajouter à la session ouverte ; sans lui, elle
+    se contente de le signaler."""
+    from textual.app import App, ComposeResult, SuspendNotSupported
     from textual.containers import Horizontal, Vertical
+    from textual.message import Message
     from textual.screen import ModalScreen
     from textual.widgets import (
         Button,
@@ -2181,6 +2235,26 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def action_dismiss(self) -> None:
             self.dismiss()
 
+    def _cellules_initiales(i, vm):
+        """Cellules d'une ligne neuve, dans l'ordre des colonnes de
+        compose(). Une VM ajoutée en cours de suivi part des mêmes."""
+        return (
+            str(i),
+            vm["name"],
+            vm.get("arch") or "?",
+            "",
+            # « rien encore », comme ses voisines : « ⏳ » affirmerait
+            # qu'on attend quelque chose, alors qu'on ne sait rien du
+            # tout — le journal n'a pas encore parlé. Le sablier
+            # apparaît dès que l'attente est constatée.
+            "-",
+            "—",
+            "--:--",
+            "-",
+            "-",
+            "-",
+        )
+
     class ConfirmScreen(ModalScreen):
         """Confirmation d'une action irréversible. Le bouton dangereux n'est
         PAS le défaut : il faut le viser, pas juste appuyer sur Entrée."""
@@ -2267,6 +2341,15 @@ def run_monitor(manifest_path: str, run_app: bool = True):
     }
 
     class Monitor(App):
+        class AddDone(Message):
+            """Fin d'un ajout de VM, postée par son thread. post_message ne
+            bloque pas : une App déjà fermée ignore simplement le message."""
+
+            def __init__(self, res, erreur):
+                super().__init__()
+                self.res = res
+                self.erreur = erreur
+
         CSS = """
         /* « width: 74 » figeait la table : au-delà, les colonnes élargies
         n'étaient plus atteignables, et la barre horizontale ne s'affichait
@@ -2284,6 +2367,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         #stats { height: 1; color: $accent; }
         #statsdetail { display: none; height: auto; color: $text-muted; }
         #sshbar { height: 2; color: $text-muted; }
+        #addbar { display: none; height: 1; color: $warning; }
         ErrorLinesScreen { align: center middle; }
         #errbox {
             width: 80%; height: 70%;
@@ -2325,6 +2409,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("greater_than_sign", "col_next", "Colonne suivante"),
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
+            ("e", "add_vms", t("Add VMs")),
         ]
 
         def __init__(self):
@@ -2376,6 +2461,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # clavier ; on ne recharge le log qu'une fois le curseur STABILISÉ.
             self._pending_sel = None
             self._sel_timer = None
+            # Ajout de VM (touche « e ») : un seul à la fois. `_add_log` est
+            # le journal où va la sortie de la création.
+            self._adding = False
+            self._add_log = None
+            self._add_thread = None
+            # VM de l'ajout en cours, pas encore dans le tableau : le titre
+            # les compte à part tant que la création n'a pas abouti.
+            self._en_ajout = 0
 
         @staticmethod
         def _fmt(secs):
@@ -2430,23 +2523,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 "Disque", key="disk", width=COL_DEFAULT_WIDTHS["disk"]
             )
             for i, vm in enumerate(vms, 1):
-                table.add_row(
-                    str(i),
-                    vm["name"],
-                    vm.get("arch") or "?",
-                    "",
-                    # « rien encore », comme ses voisines : « ⏳ » affirmerait
-                    # qu'on attend quelque chose, alors qu'on ne sait rien du
-                    # tout — le journal n'a pas encore parlé. Le sablier
-                    # apparaît dès que l'attente est constatée.
-                    "-",
-                    "—",
-                    "--:--",
-                    "-",
-                    "-",
-                    "-",
-                    key=vm["name"],
-                )
+                table.add_row(*_cellules_initiales(i, vm), key=vm["name"])
             # max_lines borne la mémoire/rendu (un install verbeux × 30 VM).
             self._log = RichLog(
                 id="log", highlight=False, markup=False, max_lines=5000
@@ -2465,14 +2542,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # machines ; la sélection suit déjà le journal et la barre SSH.
             yield Static("", id="vmstats")
             yield Static("", id="sshbar")
+            # Progression d'un ajout de VM : cachée hors ajout.
+            yield Static("", id="addbar")
             yield Footer()
 
         def on_mount(self) -> None:
             # Le NOMBRE de VM figure dans le titre ; le sous-titre suit la
             # progression (terminées / total + durée globale).
-            self.title = (
-                f"ERPLibre — {t('install monitoring')} ({len(vms)} VM)"
-            )
+            self._update_title()
             self.sub_title = f"0/{len(vms)} {t('completed')}"
             self._refresh_ssh()
             self._refresh_vmstats()
@@ -2488,6 +2565,26 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self.run_worker(self._tick_domstate(), exclusive=False)
 
         # -- helpers -------------------------------------------------------- #
+        def _en_ajout_texte(self):
+            return f"+ {self._en_ajout} {t('being added')}"
+
+        def _update_title(self):
+            compte = f"{len(vms)} VM"
+            if self._en_ajout:
+                compte += f" {self._en_ajout_texte()}"
+            self.title = f"ERPLibre — {t('install monitoring')} ({compte})"
+
+        def format_title(self, title, sub_title):
+            """Titre de l'en-tête : « + N en ajout » ressort en rouge gras,
+            le reste garde le rendu par défaut de Textual."""
+            contenu = super().format_title(title, sub_title)
+            if self._en_ajout:
+                debut = contenu.plain.find(self._en_ajout_texte())
+                if debut >= 0:
+                    fin = debut + len(self._en_ajout_texte())
+                    contenu = contenu.stylize("bold red", debut, fin)
+            return contenu
+
         def _vm_by_name(self, name):
             return next((v for v in vms if v["name"] == name), None)
 
@@ -3410,7 +3507,242 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # Rafraîchit tout de suite l'état libvirt (pause/reprise visible).
             self.run_worker(self._tick_domstate(), exclusive=False)
 
+        # -- ajout de VM (touche « e ») ------------------------------------- #
+        def action_add_vms(self) -> None:
+            """Crée des VM et les ajoute à ce suivi, sans le quitter.
+
+            Le formulaire et ses confirmations s'exécutent terminal rendu
+            (_collect_spec) ; la création, elle, tourne dans un thread
+            pendant que le tableau continue de suivre (_add_worker)."""
+            if todo is None:
+                self.notify(
+                    t("Adding VMs is not available from this monitor."),
+                    severity="warning",
+                )
+                return
+            if self._adding:
+                self.notify(t("VMs are already being added."))
+                return
+            spec = self._collect_spec([vm["name"] for vm in vms])
+            if not spec:
+                return
+            self._adding = True
+            self._add_log = str(
+                Path(manifest_path).parent
+                / f"ajout-{time.strftime('%Y%m%d-%H%M%S')}.log"
+            )
+            n = len(spec.get("vms") or []) + len(spec.get("existing") or [])
+            bar = self.query_one("#addbar", Static)
+            bar.update(f"➕ {t('Creating')} {n} VM…")
+            bar.display = True
+            self._en_ajout = n
+            self._update_title()
+            # La sortie du thread devient des événements Print, reçus par
+            # on_print sur la boucle de l'App.
+            self.begin_capture_print(self)
+            self.run_worker(
+                lambda: self._add_worker(spec),
+                thread=True,
+                exclusive=True,
+                group="add",
+                exit_on_error=False,
+            )
+
+        def _collect_spec(self, monitored):
+            """Pose les questions de l'ajout et rend la spec, ou None.
+
+            Un processus neuf (qemu_deploy_collect) prend le terminal que
+            suspend() rend : le formulaire est une App Textual, qui ne
+            s'ouvre pas dans celle-ci, et sudo peut y demander son mot de
+            passe. Le fichier d'échange vit dans le dossier de la session,
+            créé en 0600 par mkstemp, et disparaît une fois lu."""
+            fd, out = tempfile.mkstemp(
+                dir=str(Path(manifest_path).parent),
+                prefix=".ajout-",
+                suffix=".json",
+            )
+            os.close(fd)
+            try:
+                try:
+                    with self.suspend():
+                        rc = subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "script.todo.qemu_deploy_collect",
+                                "--out",
+                                out,
+                                "--monitored",
+                                *monitored,
+                            ],
+                            cwd=str(REPO_ROOT),
+                            check=False,
+                        ).returncode
+                except SuspendNotSupported:
+                    self.notify(
+                        t("This terminal cannot hand over to the form."),
+                        severity="error",
+                    )
+                    return None
+                if rc != 0 or os.path.getsize(out) == 0:
+                    self.notify(t("Cancelled."))
+                    return None
+                with open(out, encoding="utf-8") as fh:
+                    return json.load(fh)
+            except (OSError, ValueError) as exc:
+                self.notify(f"{t('Command failed: ')}{exc}", severity="error")
+                return None
+            finally:
+                try:
+                    os.unlink(out)
+                except OSError:
+                    pass
+
+        def _add_worker(self, spec):
+            """Thread de création : déploie la spec dans cette session.
+
+            Tant qu'il tourne, « sudo -n -v » renouvelle toutes les 60 s le
+            ticket pris par le formulaire : deploy_qemu.py et virsh partent
+            en « sudo -n » et échoueraient sur un ticket expiré."""
+            fin = threading.Event()
+
+            def maintien():
+                while not fin.wait(60):
+                    subprocess.run(
+                        ["sudo", "-n", "-v"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    )
+
+            # run_monitor attend ce thread après la fermeture de l'App.
+            self._add_thread = threading.current_thread()
+            if os.geteuid() != 0:
+                threading.Thread(target=maintien, daemon=True).start()
+            res = None
+            erreur = None
+            try:
+                res = todo._qemu_deploie_spec(spec, session=manifest_path)
+            except Exception as exc:
+                erreur = f"{type(exc).__name__}: {exc}"
+            finally:
+                fin.set()
+            # App fermée : le message se perd, mais le manifeste porte déjà
+            # les VM, et la prochaine ouverture du suivi les montre.
+            self.post_message(self.AddDone(res, erreur))
+
+        def on_monitor_add_done(self, message) -> None:
+            """Bilan d'un ajout, sur la boucle de l'App."""
+            res, erreur = message.res, message.erreur
+            try:
+                res = res or {}
+                if not erreur:
+                    self._add_entries(res.get("added") or [])
+                ajoutees = len(res.get("added") or [])
+                echecs = list(res.get("failed") or [])
+                sans_ip = list(res.get("no_ip") or [])
+                lignes = [f"{t('Added:')} {ajoutees}"]
+                if echecs:
+                    lignes.append(
+                        f"{t('Creation failed:')} {', '.join(echecs)}"
+                    )
+                if sans_ip:
+                    lignes.append(f"{t('no IP:')} {', '.join(sans_ip)}")
+                if erreur:
+                    lignes.append(erreur)
+                lignes.append(f"{t('Log:')} {self._add_log}")
+                self.notify(
+                    "\n".join(lignes),
+                    title=t("Add VMs"),
+                    severity="error" if (echecs or erreur) else "information",
+                    timeout=20,
+                )
+            finally:
+                self.end_capture_print(self)
+                self._adding = False
+                self._en_ajout = 0
+                self._update_title()
+                try:
+                    self.query_one("#addbar", Static).display = False
+                except Exception:
+                    pass
+
+        def _add_entries(self, entries):
+            """Ajoute au tableau les entrées que le manifeste vient de
+            recevoir.
+
+            La ligne existe AVANT que l'entrée entre dans `vms` : les ticks
+            parcourent `vms` et appellent update_cell sur la ligne de chaque
+            VM, qui doit donc déjà être là. Un nom déjà suivi est ignoré et
+            signalé : le tableau indexe ses lignes par nom."""
+            table = self.query_one("#vms", DataTable)
+            for entry in entries:
+                name = entry.get("name")
+                if not name or self._vm_by_name(name):
+                    self.notify(
+                        f"{t('Already in the monitor:')} {name}",
+                        severity="warning",
+                    )
+                    continue
+                self._offsets[name] = 0
+                table.add_row(
+                    *_cellules_initiales(len(vms) + 1, entry), key=name
+                )
+                vms.append(entry)
+                if self._selected is None:
+                    self._selected = name
+                    self._disk_dir = os.path.dirname(vm_disk_path(entry))
+            self._update_title()
+
+        def on_print(self, event) -> None:
+            """Sortie de la création : ajoutée au journal de l'ajout, et sa
+            dernière ligne non vide affichée dans la barre d'ajout."""
+            if self._add_log:
+                try:
+                    with open(self._add_log, "a", encoding="utf-8") as fh:
+                        fh.write(event.text)
+                except OSError:
+                    pass
+            derniere = next(
+                (
+                    ligne.strip()
+                    for ligne in reversed(event.text.splitlines())
+                    if ligne.strip()
+                ),
+                "",
+            )
+            if derniere:
+                try:
+                    self.query_one("#addbar", Static).update(f"➕ {derniere}")
+                except Exception:
+                    pass
+
+        async def action_quit(self) -> None:
+            """Quitter pendant un ajout demande confirmation : la création
+            continue, mais plus rien ne l'affiche."""
+            if not self._adding:
+                self.exit()
+                return
+
+            def confirmed(yes):
+                if yes:
+                    self.exit()
+
+            suite = "Creation goes on unseen; reopen the monitor to see it."
+            self.push_screen(
+                ConfirmScreen(
+                    t("VMs are being added. Quit?"), [t(suite)], t("Quit")
+                ),
+                confirmed,
+            )
+
     app = Monitor()
     if run_app:
         app.run()
+        # Un ajout encore en cours finit son travail : ses VM entrent dans
+        # le manifeste, et la prochaine ouverture du suivi les montre.
+        fil = app._add_thread
+        if fil is not None and fil.is_alive():
+            print(t("Waiting for the VMs being added..."))
+            fil.join()
     return app

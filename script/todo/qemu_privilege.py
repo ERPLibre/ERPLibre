@@ -17,6 +17,7 @@ qu'un outil de la distribution ne s'amorce pas sur le venv, et la commande
 qui installe un paquet manquant selon le gestionnaire de l'hôte.
 """
 
+import contextlib
 import grp
 import os
 import shutil
@@ -71,9 +72,32 @@ def needs_sudo() -> bool:
     return not libvirt_reachable()
 
 
+# Vrai le temps d'un sudo_non_interactif() : chaque sudo de ce module devient
+# « sudo -n ». Sans ticket valide, la commande échoue alors sur une erreur au
+# lieu d'ouvrir une invite de mot de passe — invisible quand elle s'affiche
+# derrière une interface Textual, depuis un thread de travail.
+_SUDO_NON_INTERACTIF = False
+
+
+@contextlib.contextmanager
+def sudo_non_interactif():
+    """Bloc où les sudo de virsh_argv et sudo_prefix ne demandent rien."""
+    global _SUDO_NON_INTERACTIF
+    avant = _SUDO_NON_INTERACTIF
+    _SUDO_NON_INTERACTIF = True
+    try:
+        yield
+    finally:
+        _SUDO_NON_INTERACTIF = avant
+
+
+def _sudo() -> list:
+    return ["sudo", "-n"] if _SUDO_NON_INTERACTIF else ["sudo"]
+
+
 def sudo_prefix() -> str:
     """« sudo » et son espace, ou la chaîne vide. À coller devant virsh."""
-    return "sudo " if needs_sudo() else ""
+    return " ".join(_sudo()) + " " if needs_sudo() else ""
 
 
 # L'URI ne se laisse JAMAIS implicite. Pour un utilisateur non root, libvirt
@@ -87,7 +111,7 @@ LIBVIRT_URI = "qemu:///system"
 
 def virsh_argv(*args: str) -> list:
     """Argv d'un virsh local : sudo si besoin, URI toujours."""
-    prefixe = ["sudo"] if needs_sudo() else []
+    prefixe = _sudo() if needs_sudo() else []
     return prefixe + ["virsh", "--connect", LIBVIRT_URI, *args]
 
 
