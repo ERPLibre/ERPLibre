@@ -39,8 +39,16 @@ el_swap_mb() {
 # Volontairement NON persisté dans /etc/fstab : un swap déclaré et disparu
 # dégrade le démarrage, et cette machine n'en a besoin que le temps de
 # l'installation. La fonction est idempotente, elle repassera au besoin.
+#
+# Sur btrfs, un fichier d'échange doit être sans copie sur écriture et sans
+# compression : celui de fallocate est refusé par swapon (« Invalid
+# argument »), et Fedora comme openSUSE montent leur racine en btrfs
+# compressé. Il doit aussi vivre hors de tout sous-volume photographié — la
+# racine d'openSUSE l'est par snapper. D'où un sous-volume dédié, qu'aucun
+# instantané de son parent n'inclut, et un fichier marqué « +C » (sans copie
+# sur écriture, donc sans compression) avant d'être rempli.
 el_swap_ensure() {
-  local ram swap missing free_mb size
+  local ram swap missing free_mb size file btrfs=0
   [ "${EL_SWAP_TARGET_GIB}" -gt 0 ] 2> /dev/null || return 0
   ram="$(el_mem_mb)"
   swap="$(el_swap_mb)"
@@ -49,39 +57,78 @@ el_swap_ensure() {
     echo "  memoire : ${ram} Mio + ${swap} Mio de swap, suffisant."
     return 0
   fi
-  if [ -e "${EL_SWAP_FILE}" ]; then
+  file="${EL_SWAP_FILE}"
+  if [ "$(findmnt -no FSTYPE -T "$(dirname "${file}")" 2> /dev/null)" = "btrfs" ]; then
+    btrfs=1
+    # « %/ » : dirname de « /swapfile » rend « / », qui doublerait la barre.
+    file="$(dirname "${file}")"
+    file="${file%/}/.erplibre-swap/$(basename "${EL_SWAP_FILE}")"
+  fi
+  # Déjà actif : on n'y touche plus. Quand la première passe a été bornée par
+  # le disque, il « manque » encore de la mémoire, et la suite recréerait le
+  # fichier — Linux laisse supprimer un swap actif, qui garderait alors son
+  # espace disque jusqu'au redémarrage.
+  if awk 'NR > 1 {print $1}' /proc/swaps 2> /dev/null | grep -qxF "${file}"; then
+    echo "  swap : ${file} deja actif."
+    return 0
+  fi
+  if [ -e "${file}" ]; then
     # Déjà là mais pas actif : un « swapon » suffit, on ne le réécrit pas.
-    sudo swapon "${EL_SWAP_FILE}" 2> /dev/null && {
-      echo "  swap : ${EL_SWAP_FILE} reactive."
+    sudo swapon "${file}" 2> /dev/null && {
+      echo "  swap : ${file} reactive."
       return 0
     }
   fi
   # Ne jamais remplir le disque pour gagner de la mémoire : au plus la moitié
   # de ce qui reste libre. Un disque plein casse l'installation autrement.
-  free_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
+  # Mesurée là où le fichier ira, pas sur « / » : EL_SWAP_FILE peut viser un
+  # autre système de fichiers.
+  free_mb="$(df -Pm "$(dirname "${EL_SWAP_FILE}")" | awk 'NR==2 {print $4}')"
   size="${missing}"
   [ "${size}" -gt $((free_mb / 2)) ] && size=$((free_mb / 2))
+  # Deux raisons de ne rien ajouter, à ne pas confondre : un manque trop
+  # petit pour valoir un fichier, ou un disque trop plein pour l'accueillir.
+  if [ "${missing}" -lt 512 ]; then
+    echo "  memoire : ${ram} Mio + ${swap} Mio de swap, il manque moins de 512 Mio : rien n'est ajoute."
+    return 0
+  fi
   if [ "${size}" -lt 512 ]; then
     echo "  swap : pas assez d'espace disque libre (${free_mb} Mio), abandon." >&2
     return 0
   fi
   echo "  memoire : ${ram} Mio seulement — ajout de ${size} Mio de swap."
+  if [ "${btrfs}" -eq 1 ]; then
+    [ -d "$(dirname "${file}")" ] \
+      || sudo btrfs subvolume create "$(dirname "${file}")" > /dev/null
+    # « +C » ne prend que sur un fichier encore VIDE, d'où l'ordre : créer,
+    # marquer, puis réserver. « btrfs filesystem mkswapfile » n'est pas
+    # employé : il peut rendre un fichier sans l'attribut, que swapon refuse.
+    sudo rm -f "${file}"
+    sudo touch "${file}"
+    sudo chattr +C "${file}" 2> /dev/null
+    sudo fallocate -l "${size}M" "${file}" 2> /dev/null || {
+      echo "  swap : creation impossible, on continue sans." >&2
+      sudo rm -f "${file}"
+      return 0
+    }
   # fallocate est instantané ; dd est le repli des systèmes de fichiers qui
   # ne le supportent pas (et un swap sur trous ne fonctionnerait pas).
-  if ! sudo fallocate -l "${size}M" "${EL_SWAP_FILE}" 2> /dev/null; then
-    sudo dd if=/dev/zero of="${EL_SWAP_FILE}" bs=1M count="${size}" \
+  elif ! sudo fallocate -l "${size}M" "${file}" 2> /dev/null; then
+    sudo dd if=/dev/zero of="${file}" bs=1M count="${size}" \
       status=none 2> /dev/null || {
       echo "  swap : creation impossible, on continue sans." >&2
+      # Un dd interrompu laisse un fichier partiel, qui occupe le disque.
+      sudo rm -f "${file}"
       return 0
     }
   fi
-  sudo chmod 600 "${EL_SWAP_FILE}"
-  if sudo mkswap "${EL_SWAP_FILE}" > /dev/null 2>&1 \
-    && sudo swapon "${EL_SWAP_FILE}"; then
-    echo "  swap : ${size} Mio actifs (${EL_SWAP_FILE})."
+  sudo chmod 600 "${file}"
+  if sudo mkswap "${file}" > /dev/null 2>&1 \
+    && sudo swapon "${file}"; then
+    echo "  swap : ${size} Mio actifs (${file})."
   else
     echo "  swap : activation impossible, on continue sans." >&2
-    sudo rm -f "${EL_SWAP_FILE}"
+    sudo rm -f "${file}"
   fi
 }
 
