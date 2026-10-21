@@ -68,9 +68,15 @@ def reboot_expected(remote_cmd) -> str:
     return ""
 
 
+# ServerAlive : un signe de vie toutes les 30 s, six sans réponse ferment la
+# session. Sans lui, une VM qui meurt pendant l'installation — tuée par le
+# manque de mémoire de l'hôte, par exemple — laisse le ssh attendre le délai
+# TCP du système, plus de deux heures, avant de conclure. Ces échanges sont
+# ceux du protocole, pas de la sortie : une compilation longue et muette
+# n'est pas coupée.
 SSH_OPTS = (
     "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-    "-o ConnectTimeout=8"
+    "-o ConnectTimeout=8 -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
 )
 # Pour les ssh NON INTERACTIFS : « -n » branche leur entrée sur /dev/null.
 # Ceinture et bretelles avec le stdin du processus détaché — un ssh qui lit le
