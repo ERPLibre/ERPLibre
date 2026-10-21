@@ -185,6 +185,16 @@ class TestActionAddVms(Base):
                 await pilot.press("e")
                 await pilot.pause()
                 self.assertIn(f"(2 VM + 1 {t('being added')})", app.title)
+                # « + 1 en ajout » ressort en rouge dans l'en-tête.
+                rendu = app.format_title(app.title, "")
+                marque = f"+ 1 {t('being added')}"
+                debut = rendu.plain.index(marque)
+                styles = [
+                    str(span.style)
+                    for span in rendu.spans
+                    if span.start <= debut and span.end >= debut + len(marque)
+                ]
+                self.assertTrue(any("red" in st for st in styles), styles)
                 feu.set()
                 await app.workers.wait_for_complete()
                 await pilot.pause()

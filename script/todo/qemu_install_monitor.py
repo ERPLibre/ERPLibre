@@ -2632,11 +2632,25 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             self.run_worker(self._tick_domstate(), exclusive=False)
 
         # -- helpers -------------------------------------------------------- #
+        def _en_ajout_texte(self):
+            return f"+ {self._en_ajout} {t('being added')}"
+
         def _update_title(self):
             compte = f"{len(vms)} VM"
             if self._en_ajout:
-                compte += f" + {self._en_ajout} {t('being added')}"
+                compte += f" {self._en_ajout_texte()}"
             self.title = f"ERPLibre — {t('install monitoring')} ({compte})"
+
+        def format_title(self, title, sub_title):
+            """Titre de l'en-tête : « + N en ajout » ressort en rouge gras,
+            le reste garde le rendu par défaut de Textual."""
+            contenu = super().format_title(title, sub_title)
+            if self._en_ajout:
+                debut = contenu.plain.find(self._en_ajout_texte())
+                if debut >= 0:
+                    fin = debut + len(self._en_ajout_texte())
+                    contenu = contenu.stylize("bold red", debut, fin)
+            return contenu
 
         def _vm_by_name(self, name):
             return next((v for v in vms if v["name"] == name), None)
