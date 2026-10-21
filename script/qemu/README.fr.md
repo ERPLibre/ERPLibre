@@ -98,7 +98,7 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 | Distro | Versions | amd64 | arm64 | s390x |
 |---|---|:-:|:-:|:-:|
 | ubuntu | `24.04` (défaut), `25.10`, `26.04` | ✔ | ✔ | ✔ |
-| debian | `11`, `12` (défaut), `13` | ✔ | ✔ | — |
+| debian | `12` (défaut), `13` | ✔ | ✔ | ✔ (debian-installer) |
 | fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | `43` seule |
 | almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |

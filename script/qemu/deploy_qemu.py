@@ -209,9 +209,10 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
 # diffèrent de l'architecture de l'hôte.
 NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 
-# Distros publiant des images cloud par architecture (vérifié juillet 2026) :
-# - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
-# - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
+# Distros déployables par architecture :
+# - s390x (IBM Z)  : la liste ci-dessous ; Debian par debian-installer, faute
+#   d'image cloud. Ni Arch (x86 seulement), ni NixOS, ni Proxmox.
+# - arm64/aarch64  : voir ARM64_DISTROS (Arch : pas d'image cloud officielle
 #   aarch64 sur geo.mirror.pkgbuild.com).
 S390X_DISTROS: tuple[str, ...] = (
     "ubuntu",
@@ -262,6 +263,23 @@ INSTALLER_URL = (
 def uses_installer(distro: str, arch: str) -> bool:
     """Vrai si cette combinaison s'installe par debian-installer."""
     return (distro, arch) in INSTALLER_COMBOS
+
+
+# RAM par défaut d'une VM s390x, en Mio. Le catalogue donne le minimum pour
+# DÉMARRER la distribution ; sur s390x, PyPI n'a presque aucune roue et
+# l'installation d'ERPLibre compile tout, et un seul cc1plus demande jusqu'à
+# 2,5 Gio. Les autres architectures gardent le minimum du catalogue.
+S390X_DEFAULT_RAM = 4096
+
+
+def default_ram(arch: str, catalogue_ram: int) -> int:
+    """RAM par défaut, en Mio, d'une VM de cette architecture.
+
+    `catalogue_ram` est le minimum de la version, tiré de son catalogue. Un
+    réglage explicite de l'utilisateur ne passe jamais par ici."""
+    if arch == "s390x":
+        return max(catalogue_ram, S390X_DEFAULT_RAM)
+    return catalogue_ram
 
 
 def arch_versions(distro: str, arch: str, versions) -> list[str]:
@@ -3684,6 +3702,30 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
 CACHE_SUDOERS = "/etc/sudoers.d/erplibre-cache"
 
 
+# Où le late_command de debian-installer dépose, puis efface, les gestes de
+# cache_commands : un script, et non une suite d'« in-target sh -c '…' »,
+# parce que ces gestes portent eux-mêmes des guillemets simples et que le
+# late_command tient sur UNE ligne de preseed.
+CACHE_INSTALLER_SCRIPT = "/tmp/erplibre-cache-trust.sh"
+
+
+def installer_cache_files(
+    args: argparse.Namespace,
+) -> list[tuple[str, str, str, str]]:
+    """L'autorité du cache et le script qui l'approuve, pour debian-installer.
+
+    Le pendant de ce que cloud-init écrit et exécute ailleurs : sans eux, une
+    VM installée par d-i est interceptée par le cache sans connaître son
+    autorité, et chaque téléchargement HTTPS — le clone d'ERPLibre le
+    premier — échoue sur « certificate signer not trusted ». Liste vide
+    quand cache_files n'a rien à poser."""
+    files = cache_files(args)
+    if not files:
+        return []
+    script = "#!/bin/sh\n" + "\n".join(cache_commands(args)) + "\n"
+    return files + [(CACHE_INSTALLER_SCRIPT, "0700", script, "")]
+
+
 def commande_sudoers(variables, fichier: str = CACHE_SUDOERS) -> str:
     """La commande qui fait traverser « sudo » aux variables du cache.
 
@@ -3960,6 +4002,16 @@ def build_cloud_config(
         "  - for d in ttysclp0 sclp_line0 hvc0 ttyS0; do"
         " test -c /dev/$d && systemctl enable --now serial-getty@$d.service"
         " 2>/dev/null && break; done || true",
+        # Même défaut d'image, autre victime : une ligne de commande noyau qui
+        # désigne une console absente (« console=ttyS0 » sur s390x, sans port
+        # série ISA) fait échouer systemd-firstboot au premier démarrage, sur
+        # « Failed to set up standard input ». Le système reste alors
+        # « degraded » et chaque connexion affiche « Failed Units ». Ce service
+        # ne sert à rien ici — cloud-init pose déjà locale, clavier et fuseau —
+        # et ne tourne qu'au premier démarrage : on efface son échec. Sans
+        # échec à effacer, la commande ne fait rien.
+        "  - systemctl reset-failed systemd-firstboot.service 2>/dev/null"
+        " || true",
         # qemu-guest-agent : installé APRÈS sshd, et surtout HORS de cloud-init.
         #
         # Son installation tire plusieurs paquets de virtualisation, et sur une
@@ -4408,6 +4460,17 @@ def build_preseed(
         post.append(f"chmod {mode} /target{path} || true")
         if owner:
             post.append(f"in-target chown {owner}:{owner} {path} || true")
+    # L'autorité du cache : le même trajet que le guide, puis les gestes qui
+    # la rendent effective, exécutés DANS le système installé.
+    cache = installer_cache_files(args)
+    for path, mode, _content, _owner in cache:
+        src = "/" + installer_guide_name(path)
+        post.append(f"mkdir -p /target{os.path.dirname(path)}")
+        post.append(f"cp {src} /target{path} || true")
+        post.append(f"chmod {mode} /target{path} || true")
+    if cache:
+        post.append(f"in-target sh {CACHE_INSTALLER_SCRIPT} || true")
+        post.append(f"rm -f /target{CACHE_INSTALLER_SCRIPT}")
     # Le code de sortie du late_command est celui de sa DERNIÈRE commande, et
     # d-i s'arrête sur « Failed to run preseeded command » dès qu'il n'est pas
     # nul. Sans ce « true », un chmod qui échoue bloque l'installation sur un
@@ -5348,8 +5411,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--arch",
         default="amd64",
         help="Architecture de l'image (défaut : amd64). amd64/x86_64, "
-        "arm64/aarch64 (Ubuntu/Debian/Fedora) ou s390x (Ubuntu). Toute arch "
-        "différente de l'hôte est ÉMULÉE (TCG, lente).",
+        "arm64/aarch64 ou s390x, selon la distribution (voir --list-images). "
+        "Toute arch différente de l'hôte est ÉMULÉE (TCG, lente).",
     )
     g_img.add_argument(
         "--image-dir",
@@ -5387,7 +5450,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="RAM en Mo (défaut : minimum requis par la version choisie, "
-        "voir --list-images).",
+        "voir --list-images ; au moins 4096 sur s390x, où tout se compile).",
     )
     g_vm.add_argument(
         "--vcpus", type=int, default=2, help="Nombre de vCPU (défaut : 2)."
@@ -5759,9 +5822,10 @@ def main() -> None:
     if args.codename:
         code = args.codename
     osinfo = args.osinfo or default_osinfo
-    # Dimensionnement par défaut = minimum requis par la version (libosinfo).
+    # Dimensionnement par défaut = minimum requis par la version (libosinfo),
+    # relevé sur s390x par default_ram.
     if args.memory is None:
-        args.memory = min_ram
+        args.memory = default_ram(args.arch, min_ram)
     if args.disk_size is None:
         args.disk_size = min_disk
     # Un nombre nu (« 30 ») serait pris pour des OCTETS par qemu-img et ferait
@@ -5913,11 +5977,14 @@ def main() -> None:
                 "  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
                 " la question à l'écran et l'installation s'arrêtera."
             )
+        # Les fichiers que le late_command copie vers /target voyagent dans
+        # l'initrd : sans eux, ses « cp » échouent en silence (« || true »).
         build_installer_initrd(
             build_preseed(args, pw_hash, ssh_keys, static),
             initrd_src,
             initrd,
             runner,
+            guide=guide_files(args) + installer_cache_files(args),
         )
         installer = (kernel, initrd)
     else:

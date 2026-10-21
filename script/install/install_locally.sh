@@ -29,7 +29,7 @@ POETRY_ODOO_PATH=${VENV_ODOO_PATH}/bin/poetry
 # shellcheck source=script/install/lib_pip_provider.sh
 . ./script/install/lib_pip_provider.sh
 # Bornage des compilations : voir el_build_limit_jobs.
-. ./script/install/lib_lowmem.sh
+. ./script/install/S390x/lib_lowmem.sh
 export WITH_POETRY_INSTALLATION=1
 
 # Verbosité de l'installation Poetry. « -q » a été retiré du défaut : dans Cleo,
@@ -170,28 +170,71 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # ne livre AUCUN wrapper pré-généré dans son sdist : SWIG tourne à CHAQUE
     # installation. Et ce n'est pas le SWIG du système qui tourne : le
     # « requires = ["setuptools", "swig"] » de pykcs11 n'est pas borné, donc
-    # Poetry télécharge la DERNIÈRE version publiée sur PyPI (4.5.0 le 21 août
-    # 2026, vue dans le journal d'installation).
+    # Poetry télécharge la DERNIÈRE version publiée sur PyPI.
     #
     # Or SWIG a retiré en 4.3 les alias Python 2 que ses versions antérieures
     # écrivaient dans le code généré (PyInt_FromLong, PyString_Check…), et le
-    # typemap CK_RV de pykcs11 en utilise un. D'où, sur une VM Ubuntu 26.04:
-    # « ‘PyInt_FromLong’ was not declared in this scope », 55 fois, et
-    # install_odoo_17 s'arrête. Aucune sonde locale ne peut le prévoir — le
-    # SWIG qui tourne est choisi au moment du build, pas ici.
+    # typemap CK_RV de pykcs11 en utilise un : « ‘PyInt_FromLong’ was not
+    # declared in this scope », et l'installation s'arrête. Aucune sonde
+    # locale ne peut le prévoir — le SWIG qui tourne est choisi au moment du
+    # build, pas ici.
     #
-    # On redonne l'alias au préprocesseur, dans la forme EXACTE que SWIG 4.2
-    # écrivait : définition identique token pour token, donc aucun
-    # avertissement de redéfinition là où SWIG la fournit encore (vérifié en
-    # -Werror contre un wrapper généré par SWIG 4.2).
+    # swig_compat.h redonne l'alias, inclus de force dans chaque compilation.
+    # Un fichier et non un « -D » : voir l'en-tête, qui dit pourquoi les
+    # parenthèses d'un -D cassent tout paquet bâti par autotools.
     #
     # CPPFLAGS et non CFLAGS : un .cpp passe par « compiler_so_cxx », qui lit
-    # CXXFLAGS et CPPFLAGS — CFLAGS ne l'atteint JAMAIS. Mesuré sur setuptools
-    # 84, et c'est ce qui a fait échouer le premier correctif.
-    export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-DPyInt_FromLong(x)=PyLong_FromLong(x)"
+    # CXXFLAGS et CPPFLAGS — CFLAGS ne l'atteint JAMAIS (setuptools 84).
+    #
+    # Les outils qui lisent CPPFLAGS le découpent aux espaces en honorant les
+    # guillemets (setuptools, shlex, le shell d'un Makefile). Un chemin qui
+    # porte une espace est donc entouré de guillemets simples ; sans espace,
+    # il reste nu, pour l'outil qui ne retirerait pas les guillemets.
+    swig_compat="${PWD}/script/install/swig_compat.h"
+    case "${swig_compat}" in
+        *[[:space:]]*) swig_compat="'${swig_compat}'" ;;
+    esac
+    export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-include ${swig_compat}"
     # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
     # (astral-sh/uv#1804, « not planned ») et Poetry 2.1.3 n'a plus « export ».
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
+        # Les dépendances que Poetry a amenées dans ce venv, alignées sur le
+        # verrou AVANT l'installation : sans quoi Poetry les remplace pendant
+        # qu'il s'en sert pour compiler. Voir script/poetry/poetry_lock_align.py.
+        contraintes_verrou="$(mktemp)"
+        a_aligner="$("${VENV_ODOO_PATH}/bin/python" -m pip list \
+            --format=freeze 2> /dev/null \
+            | "./${VENV_ERPLIBRE_PATH}/bin/python" \
+                ./script/poetry/poetry_lock_align.py \
+                --contraintes "${contraintes_verrou}" poetry.lock)"
+        if [[ -n "${a_aligner}" ]]; then
+            echo "Alignement sur poetry.lock :" ${a_aligner}
+            # Les dépendances des paquets alignés suivent, contraintes aux
+            # versions du verrou : virtualenv 21 réclame python-discovery,
+            # que virtualenv 20 n'avait pas. Le verrou peut dépasser la borne
+            # que Poetry déclare pour ses propres dépendances — virtualenv 21
+            # contre « <21 » — et pip le signalerait en « ERROR », alors que
+            # « poetry install » aboutit de toute façon à cet état.
+            # shellcheck disable=SC2086
+            "${VENV_ODOO_PATH}/bin/python" -m pip install -q \
+                --no-warn-conflicts -c "${contraintes_verrou}" ${a_aligner} \
+                || echo "Alignement incomplet : poetry install s'en chargera."
+        fi
+        # Une dépendance ABSENTE d'un paquet déjà aligné — venv laissé
+        # incomplet par une installation interrompue — bloquerait Poetry dès
+        # sa première compilation isolée. « pip check » la nomme ; seules
+        # celles que le verrou épingle sont posées, à sa version.
+        manquantes="$("${VENV_ODOO_PATH}/bin/python" -m pip check 2> /dev/null \
+            | awk '/which is not installed/ {sub(/,$/, "", $4); print $4}' \
+            | sort -u | grep -ixF -f <(cut -d= -f1 "${contraintes_verrou}"))"
+        if [[ -n "${manquantes}" ]]; then
+            echo "Dependances absentes, posees depuis poetry.lock :" ${manquantes}
+            # shellcheck disable=SC2086
+            "${VENV_ODOO_PATH}/bin/python" -m pip install -q \
+                --no-warn-conflicts -c "${contraintes_verrou}" ${manquantes} \
+                || echo "Dependances incompletes : poetry install s'en chargera."
+        fi
+        rm -f "${contraintes_verrou}"
         "${POETRY_ODOO_PATH}" install --no-root ${POETRY_VERBOSE}
         retVal=$?
         if [[ $retVal -ne 0 ]]; then

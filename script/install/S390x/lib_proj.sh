@@ -14,8 +14,8 @@
 #
 #   ERROR: Minimum supported PROJ version is 9.4.0, installed version is 9.1.1
 #
-# Mesuré sur Debian 12 (bookworm) s390x. Debian 13 livre 9.6 et passe sans
-# rien faire ; ce fichier ne s'y déclenche donc pas.
+# Debian 12 (bookworm) livre PROJ 9.1.1 et déclenche donc la compilation ;
+# Debian 13 livre 9.6 et passe sans rien faire.
 
 # Seuil réclamé par pyproj 3.7.x. Le monter suppose de vérifier ce qu'exige la
 # version de pyproj réellement verrouillée dans poetry.lock.
@@ -58,7 +58,9 @@ el_proj_ensure() {
     return 0
   fi
 
-  echo "PROJ ${have} < ${EL_PROJ_MIN} requis par pyproj : compilation de PROJ ${EL_PROJ_VER} (long en emulation)."
+  # « 0 » est la réponse d'el_proj_version quand rien n'est trouvé.
+  [ "${have}" = "0" ] && have="absent"
+  echo "PROJ ${have}, ${EL_PROJ_MIN} requis par pyproj : compilation de PROJ ${EL_PROJ_VER} (plusieurs minutes, bien plus en emulation)."
   build="$(mktemp -d)"
   # TESTING=OFF et les outils en moins : seule la bibliothèque intéresse
   # pyproj, et la suite de tests de PROJ double le temps de compilation.

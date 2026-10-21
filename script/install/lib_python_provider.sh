@@ -120,6 +120,33 @@ el_mise_install() {
   echo "${exe}"
 }
 
+# Imprime, un par ligne, les en-têtes C qui manquent pour que CPython bâtisse
+# les modules dont l'installation dépend. Muet si tout est là.
+#
+# configure ne s'arrête sur aucun d'eux : il désactive le module en silence,
+# la compilation va au bout, et c'est « ensurepip », à la toute fin, qui casse
+# sur « zlib not available ». Demandé au préprocesseur et non à un chemin
+# figé : ffi.h vit sous /usr/include/<triplet> chez Debian, pas chez Fedora.
+#
+# Chaque ligne : « en-tête paquet-apt paquet-dnf ».
+el_pyenv_missing_headers() {
+  local cc header apt dnf
+  cc="$(command -v cc || command -v gcc)" || return 0
+  while read -r header apt dnf; do
+    printf '#include <%s>\n' "${header}" \
+      | "${cc}" -E -x c - > /dev/null 2>&1 \
+      || echo "${header} ${apt} ${dnf}"
+  done << 'EOF'
+zlib.h zlib1g-dev zlib-devel
+openssl/ssl.h libssl-dev openssl-devel
+ffi.h libffi-dev libffi-devel
+bzlib.h libbz2-dev bzip2-devel
+lzma.h liblzma-dev xz-devel
+sqlite3.h libsqlite3-dev sqlite-devel
+readline/readline.h libreadline-dev readline-devel
+EOF
+}
+
 # Installe la version via pyenv, en posant pyenv lui-même au besoin.
 el_pyenv_install() {
   local version="$1" root exe installer
@@ -167,6 +194,22 @@ el_pyenv_install() {
       echo "  gcc/gcc-c++, ou le motif devel_basis) puis relancez." >&2
       return 1
     fi
+    local missing
+    missing="$(el_pyenv_missing_headers)"
+    if [ -n "${missing}" ]; then
+      echo "En-tetes manquants, CPython se compilerait sans eux :" >&2
+      echo "${missing}" | awk '{print "  " $1}' >&2
+      if command -v apt-get > /dev/null 2>&1; then
+        echo "  sudo apt-get install -y build-essential libncurses-dev" \
+          "tk-dev uuid-dev libgdbm-dev libzstd-dev" \
+          "$(echo "${missing}" | awk '{printf "%s ", $2}')" >&2
+      elif command -v dnf > /dev/null 2>&1; then
+        echo "  sudo dnf install -y" \
+          "$(echo "${missing}" | awk '{printf "%s ", $3}')" >&2
+      fi
+      echo "  puis relancez." >&2
+      return 1
+    fi
     echo "---- Python ${version} via pyenv (compilation) ----" >&2
     # La liste des versions connues vient du dépôt git de pyenv : sans ce
     # « pull », une version récente est « not a known version ».
@@ -192,6 +235,10 @@ el_warn_pyenv_fallback() {
     echo "mise n'a pas pu fournir Python ${version} : repli sur pyenv," >&2
     echo "  qui COMPILE CPython. Pour lire ce que mise reproche :" >&2
     echo "    mise install python@${version}   (reseau requis)" >&2
+  elif [ "$(uname -m)" = "s390x" ]; then
+    # mise ne publie aucun binaire s390x : « make install_mise » n'y fait rien.
+    echo "pyenv va COMPILER CPython ${version} : aucun Python precompile" >&2
+    echo "  n'existe pour s390x. Quelques minutes." >&2
   else
     echo "mise est absent : pyenv va etre pose, puis COMPILER CPython" >&2
     echo "  ${version} -- quelques minutes, bien plus sous emulation, et il" >&2

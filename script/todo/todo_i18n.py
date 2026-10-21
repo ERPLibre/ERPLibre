@@ -3553,14 +3553,6 @@ TRANSLATIONS = {
         "fr": "native",
         "en": "native",
     },
-    "IBM Z — emulated, slow on x86; Ubuntu only": {
-        "fr": "IBM Z — émulé, lent sur x86 ; Ubuntu uniquement",
-        "en": "IBM Z — emulated, slow on x86; Ubuntu only",
-    },
-    "IBM Z — emulated, slow; Ubuntu only": {
-        "fr": "IBM Z — émulé, lent ; Ubuntu uniquement",
-        "en": "IBM Z — emulated, slow; Ubuntu only",
-    },
     "ARM 64-bit — emulated, slow": {
         "fr": "ARM 64 bits — émulé, lent",
         "en": "ARM 64-bit — emulated, slow",
@@ -3818,6 +3810,14 @@ TRANSLATIONS = {
     "Without one the VMs start with no SSH access.": {
         "fr": "Sans elle, les VM démarrent sans accès SSH.",
         "en": "Without one the VMs start with no SSH access.",
+    },
+    "No usable SSH key: the VMs would be unreachable.": {
+        "fr": "Aucune clé SSH utilisable : les VM seraient injoignables.",
+        "en": "No usable SSH key: the VMs would be unreachable.",
+    },
+    "Both the public key and its private key are required:": {
+        "fr": "La clé publique et sa clé privée sont toutes deux requises :",
+        "en": "Both the public key and its private key are required:",
     },
     "Generate one now? (Y/n): ": {
         "fr": "En générer une maintenant ? (O/n, défaut : oui) : ",
@@ -6570,6 +6570,10 @@ TRANSLATIONS = {
     "ignored:": {
         "fr": "ignoré :",
         "en": "ignored:",
+    },
+    "IBM Z — emulated, slow": {
+        "fr": "IBM Z — émulé, lent",
+        "en": "IBM Z — emulated, slow",
     },
     "IBM Z — emulated, slow on x86": {
         "fr": "IBM Z — émulé, lent sur x86",
