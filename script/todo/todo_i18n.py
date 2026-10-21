@@ -3811,6 +3811,14 @@ TRANSLATIONS = {
         "fr": "Sans elle, les VM démarrent sans accès SSH.",
         "en": "Without one the VMs start with no SSH access.",
     },
+    "No usable SSH key: the VMs would be unreachable.": {
+        "fr": "Aucune clé SSH utilisable : les VM seraient injoignables.",
+        "en": "No usable SSH key: the VMs would be unreachable.",
+    },
+    "Both the public key and its private key are required:": {
+        "fr": "La clé publique et sa clé privée sont toutes deux requises :",
+        "en": "Both the public key and its private key are required:",
+    },
     "Generate one now? (Y/n): ": {
         "fr": "En générer une maintenant ? (O/n, défaut : oui) : ",
         "en": "Generate one now? (Y/n, default: yes): ",

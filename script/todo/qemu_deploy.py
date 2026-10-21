@@ -361,6 +361,7 @@ class QemuDeployMixin:
         guet_hors_ligne=False,
         deploy_started=None,
         hors_ligne=None,
+        identity="",
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -371,6 +372,8 @@ class QemuDeployMixin:
         `hors_ligne` : l'amont du cache était-il coupé pour ce déploiement ?
         Recopié dans le manifeste, où le bilan hors ligne le lit ; None, pour
         un appelant qui ne le sait pas, n'y écrit rien.
+        `identity` : clé privée que présente chaque ssh du suivi ; « » s'en
+        remet aux clés que ssh essaie de lui-même.
         `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE).
         `final_cmd` : commande d'install selon le profil choisi.
         `prod` : install /opt/erplibre + service SELinux confiné.
@@ -483,6 +486,8 @@ class QemuDeployMixin:
             debut["deploy_started"] = deploy_started
         if hors_ligne is not None:
             debut["hors_ligne"] = bool(hors_ligne)
+        if identity:
+            debut["identity"] = identity
         manifest = launch_installs(
             vms,
             branch_def or next(iter(branch_map.values()), ""),
@@ -2761,11 +2766,64 @@ class QemuDeployMixin:
         bloc, et un « with » autour de deux cents lignes déjà indentées se
         relit mal.
         """
+        if not self._qemu_ensure_spec_ssh_key(spec):
+            return
         try:
             with self._qemu_sans_internet(bool(spec.get("offline"))) as coupee:
                 return self._qemu_deploie_spec(spec, coupee=coupee)
         except _SansInternetImpossible:
             return
+
+    @staticmethod
+    def _qemu_spec_uses_ssh(spec):
+        """Vrai si la spec crée des VM puis les joint par SSH sans terminal.
+
+        Le suivi, l'installation et le bureau passent par un ssh non
+        interactif (BatchMode) : seule une clé y ouvre la session, le mot de
+        passe n'est jamais proposé. Sans VM à créer, aucune clé n'est injectée
+        et la question ne se pose pas."""
+        vms = spec.get("vms") or []
+        if not vms:
+            return False
+        return bool(
+            spec.get("install")
+            or spec.get("desktop")
+            or any(vm.get("desktop") for vm in vms)
+            or spec.get("monitor", True)
+            or spec.get("offline")
+        )
+
+    def _qemu_ensure_spec_ssh_key(self, spec):
+        """Garantit une clé SSH utilisable AVANT de créer la moindre VM.
+
+        Renvoie True quand le déploiement peut partir : `spec["ssh_key"]`
+        désigne alors une clé publique dont la clé privée existe. Renvoie
+        False, après l'avoir dit, quand il doit être refusé.
+
+        Une spec sans clé reçoit celle de ~/.ssh, générée au besoin par
+        `_ssh_ensure_key` — le défaut que propose déjà la voie guidée. Aucune
+        question n'est posée : le formulaire et les enchaînements automatiques
+        appellent sans terminal. Une clé NOMMÉE mais inutilisable est refusée
+        plutôt que remplacée, pour ne pas injecter une autre clé que celle
+        choisie. Sans ce garde, la VM ne connaît que le mot de passe : le
+        suivi sonde vingt minutes en vain, puis l'installation échoue sur
+        « Permission denied »."""
+        if not self._qemu_spec_uses_ssh(spec):
+            return True
+        pub = os.path.expanduser(spec.get("ssh_key") or "")
+        if not pub:
+            pub = self._ssh_ensure_key()
+        if pub and os.path.isfile(pub) and self._ssh_private_key(pub):
+            spec["ssh_key"] = pub
+            return True
+        print(
+            f"\n❌ {t('No usable SSH key: the VMs would be unreachable.')} "
+            f"{t('Cancelled.')}"
+        )
+        if pub:
+            need = t("Both the public key and its private key are required:")
+            print(f"   {need} {pub}")
+        return False
 
     def _qemu_deploie_spec(self, spec, coupee=False):
         """Exécute une spec de déploiement : création des VM en parallèle,
@@ -2814,6 +2872,9 @@ class QemuDeployMixin:
             cmd_map.setdefault(_n, base_cmd)
         cmd_multi = self._qemu_per_vm(cmd_map, base_cmd)
         ssh_key = spec.get("ssh_key")
+        # La clé injectée par cloud-init est celle de la spec : c'est elle que
+        # doit présenter ssh, pas la première venue de l'agent ou de ~/.ssh.
+        identity = self._ssh_private_key(ssh_key)
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
         n_jobs = len(pending)
@@ -2863,9 +2924,6 @@ class QemuDeployMixin:
             ip_map = self._qemu_resolve_ips(deployed, labels)
 
         if add_ssh_config:
-            # La clé injectée par cloud-init est celle de la spec : c'est
-            # elle que doit présenter ssh, pas la première venue de l'agent.
-            identity = self._ssh_private_key(ssh_key)
             for name in deployed:
                 ip = ip_map.get(name)
                 if ip:
@@ -2909,6 +2967,7 @@ class QemuDeployMixin:
                     # La coupure TENUE, et non la case de la spec : c'est
                     # elle qui fait qu'une réussite prouve le hors ligne.
                     hors_ligne=bool(coupee),
+                    identity=identity,
                 )
             elif install:
                 print(

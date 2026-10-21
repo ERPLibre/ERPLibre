@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -163,6 +164,29 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
     )
 
 
+# Jetons d'architecture de deploy_qemu.py, et les noms que rend le noyau.
+_ARCH_TOKENS = {
+    "x86_64": "amd64",
+    "amd64": "amd64",
+    "aarch64": "arm64",
+    "arm64": "arm64",
+    "s390x": "s390x",
+}
+
+
+def is_emulated(vm_arch: str | None, machine: str | None = None) -> bool:
+    """Vrai si une VM de l'architecture `vm_arch` tourne ÉMULÉE sur cet hôte.
+
+    `machine` : architecture de l'hôte, platform.machine() par défaut. Les
+    deux côtés passent par les mêmes jetons (amd64, arm64, s390x). Une
+    architecture inconnue n'est pas déclarée émulée : l'avertissement de
+    lenteur ferait alors passer pour normale une attente qui ne l'est pas."""
+    if not vm_arch:
+        return False
+    host = platform.machine() if machine is None else machine
+    return _ARCH_TOKENS.get(vm_arch, vm_arch) != _ARCH_TOKENS.get(host, host)
+
+
 def _launch_one(
     ip: str,
     remote_cmd: str,
@@ -171,6 +195,8 @@ def _launch_one(
     installs: bool = True,
     pve: bool = False,
     reboot: str = "",
+    emulated: bool = True,
+    identity: str = "",
 ) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie.
@@ -181,11 +207,19 @@ def _launch_one(
     C'est ici et non dans la VM parce qu'un script ne survit pas à son propre
     redémarrage : cette enveloppe, elle, tourne sur NOTRE machine.
 
+    `emulated` : la VM tourne sous émulation. Le journal ne prévient d'une
+    attente longue que dans ce cas ; en natif (KVM), une attente qui s'étire
+    signale un vrai blocage et ne doit pas passer pour normale.
+
+    `identity` : clé privée que présente CHAQUE ssh du script — sonde,
+    installation, redémarrage. Une fonction « ssh » posée en tête l'impose,
+    y compris pour une clé dont le nom n'est pas de ceux que ssh essaie de
+    lui-même. Vide, ssh garde son choix par défaut.
+
     `pve` : la VM vit sur un hôte Proxmox. On ne RÉ-RÉSOUT alors PAS son
-    adresse par virsh — et c'est vital. Vécu le 24 août 2026 : une VM
-    « erplibre-ubuntu-2604 » déployée sur Proxmox portait le nom d'un domaine
-    LOCAL existant ; la ré-résolution a trouvé le domaine local et
-    l'installation d'ERPLibre + Odoo est partie sur la mauvaise machine, sans
+    adresse par virsh — et c'est vital. Une VM Proxmox peut porter le nom d'un
+    domaine LOCAL existant : la ré-résolution trouverait le domaine local, et
+    l'installation d'ERPLibre + Odoo partirait sur la mauvaise machine, sans
     que rien ne le dise. Pour une VM distante, l'alias ~/.ssh/config est la
     seule vérité : il porte le rebond par l'hôte."""
     # Sonde de disponibilité : on attend que sshd réponde ET que cloud-init
@@ -291,12 +325,23 @@ def _launch_one(
         if name and not pve
         else ""
     )
+    slow = (
+        f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
+        if emulated
+        else ""
+    )
+    ssh_fn = (
+        f'ssh() {{ command ssh -i {shlex.quote(identity)} "$@"; }}; '
+        if identity
+        else ""
+    )
     wrapper = (
+        f"{ssh_fn}"
         f"ip={shlex.quote(ip)}; "
         f"{vsh if name and not pve else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
-        f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
-        f"seen=0; "
+        f"{slow}"
+        "seen=0; "
         f"for i in $(seq 1 240); do "
         f"{refresh}"
         f'st=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
@@ -384,6 +429,7 @@ def launch_installs(
     remote_cmd: str,
     deploy_started: float | None = None,
     hors_ligne: bool | None = None,
+    identity: str = "",
 ) -> str:
     """vms : [{name, ip, distro?, version?, arch?}]. Lance chaque install
     détachée, écrit un manifeste et retourne son chemin. remote_cmd : script
@@ -398,7 +444,10 @@ def launch_installs(
     `hors_ligne` : l'amont du cache était coupé pendant ce déploiement.
     Écrit sous « offline », true ou false, et seulement s'il est donné : un
     manifeste sans la clé ne dit pas s'il a tourné coupé, et le bilan hors
-    ligne le traite comme tel."""
+    ligne le traite comme tel.
+
+    `identity` : clé privée que présente chaque ssh lancé ici ; « » laisse
+    ssh choisir."""
     sdir = session_dir()
     stamp = time.strftime("%Y%m%d-%H%M%S")
     when = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -425,6 +474,8 @@ def launch_installs(
             # Une installation qui pose un NOYAU ne vaut rien avant le
             # redémarrage : l'enveloppe s'en charge et ne conclut qu'après.
             reboot=reboot_expected(cmd_vm),
+            emulated=is_emulated(vm.get("arch")),
+            identity=identity,
         )
         entree = {
             "name": vm["name"],
