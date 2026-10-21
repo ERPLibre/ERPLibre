@@ -89,9 +89,12 @@ Used by:
 
 ## Hot reload
 
-`HotReload` clones the source folder under
-`erplibre-home-reload-{ts}@technolibre.ca`, calls
-`gnome-extensions enable` on the new UUID and disables the old one.
+`HotReload` builds `erplibre-home-reload-{ts}@technolibre.ca` as a real
+directory: one symlink per entry of the source folder, and a
+`metadata.json` of its own that names the new UUID, so the checkout's
+file is never written. It then enables the new UUID and disables the old
+one. `projectRootFrom` finds the checkout through the directory's
+`extension.js` link.
 Each indicator class registers a per-process random `GTypeName`
 suffix so the second load does not collide with GObject's
 process-wide type table.

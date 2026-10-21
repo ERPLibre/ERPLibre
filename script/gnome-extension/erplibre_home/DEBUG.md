@@ -95,11 +95,6 @@ gdbus call --session \
 - `LANG` does not start with `fr` / your target language; verify with
   `echo $LANG`.
 
-### HotReload pollutes git with metadata.json edits
-- Each HotReload mutates the symlinked metadata.json to give the
-  reload UUID a unique name. Reset before commit:
-  `git checkout -- script/gnome-extension/erplibre_home/metadata.json`.
-
 ### Stream Deck device not detected
 - `lsusb` should list the Elgato vendor (0fd9). If yes but the
   controller fails, check `~/.local/state/erplibre-home/log.jsonl`
