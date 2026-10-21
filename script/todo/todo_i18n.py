@@ -18441,6 +18441,10 @@ TRANSLATIONS = {
         "fr": "Raccourcis clavier",
         "en": "Keyboard shortcuts",
     },
+    "being added": {
+        "fr": "en ajout",
+        "en": "being added",
+    },
 }
 
 

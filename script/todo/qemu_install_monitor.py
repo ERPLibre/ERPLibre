@@ -2527,6 +2527,9 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             self._adding = False
             self._add_log = None
             self._add_thread = None
+            # VM de l'ajout en cours, pas encore dans le tableau : le titre
+            # les compte à part tant que la création n'a pas abouti.
+            self._en_ajout = 0
 
         @staticmethod
         def _fmt(secs):
@@ -2624,9 +2627,10 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
 
         # -- helpers -------------------------------------------------------- #
         def _update_title(self):
-            self.title = (
-                f"ERPLibre — {t('install monitoring')} ({len(vms)} VM)"
-            )
+            compte = f"{len(vms)} VM"
+            if self._en_ajout:
+                compte += f" + {self._en_ajout} {t('being added')}"
+            self.title = f"ERPLibre — {t('install monitoring')} ({compte})"
 
         def _vm_by_name(self, name):
             return next((v for v in vms if v["name"] == name), None)
@@ -3583,6 +3587,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             bar = self.query_one("#addbar", Static)
             bar.update(f"➕ {t('Creating')} {n} VM…")
             bar.display = True
+            self._en_ajout = n
+            self._update_title()
             # La sortie du thread devient des événements Print, reçus par
             # on_print sur la boucle de l'App.
             self.begin_capture_print(self)
@@ -3706,6 +3712,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             finally:
                 self.end_capture_print(self)
                 self._adding = False
+                self._en_ajout = 0
+                self._update_title()
                 try:
                     self.query_one("#addbar", Static).display = False
                 except Exception:

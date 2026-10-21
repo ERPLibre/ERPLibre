@@ -159,6 +159,38 @@ class TestActionAddVms(Base):
             self.assertEqual(self.base, journal.parent)
             self.assertIn("vm-trois", journal.read_text(encoding="utf-8"))
 
+    async def test_the_title_counts_vms_being_added(self):
+        """Pendant la création, le titre annonce les VM à venir ; une fois
+        leurs lignes ajoutées, il revient au seul compte du tableau."""
+        import threading
+
+        from script.todo.todo_i18n import t
+
+        feu = threading.Event()
+        todo = FauxTodo(
+            {"added": [self.entree("vm-trois")], "failed": [], "no_ip": []}
+        )
+        deploie = todo._qemu_deploie_spec
+
+        def bloque(spec, session=None):
+            feu.wait(5)
+            return deploie(spec, session=session)
+
+        todo._qemu_deploie_spec = bloque
+        app = self.app(todo)
+        spec = {"vms": [{"name": "vm-trois"}], "existing": []}
+        async with app.run_test(size=(150, 30)) as pilot:
+            await pilot.pause()
+            with mock.patch.object(app, "_collect_spec", return_value=spec):
+                await pilot.press("e")
+                await pilot.pause()
+                self.assertIn(f"(2 VM + 1 {t('being added')})", app.title)
+                feu.set()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+            self.assertIn("(3 VM)", app.title)
+            self.assertNotIn("+", app.title)
+
     async def test_a_failing_creation_is_reported_and_releases_the_key(self):
         todo = FauxTodo(exc=RuntimeError("sudo: a password is required"))
         app = self.app(todo)
