@@ -18437,6 +18437,10 @@ TRANSLATIONS = {
         "fr": "passez par le menu de déploiement.",
         "en": "use the deployment menu.",
     },
+    "Keyboard shortcuts": {
+        "fr": "Raccourcis clavier",
+        "en": "Keyboard shortcuts",
+    },
 }
 
 

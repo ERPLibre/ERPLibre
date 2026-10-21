@@ -2137,6 +2137,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
     pour créer des VM et les ajouter à la session ouverte ; sans lui, elle
     se contente de le signaler."""
     from textual.app import App, ComposeResult, SuspendNotSupported
+    from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
     from textual.message import Message
     from textual.screen import ModalScreen
@@ -2231,6 +2232,56 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     log.write(line)
             if not (steps or hard or self._errs or self._warns):
                 log.write(t("No error detected."))
+
+        def action_dismiss(self) -> None:
+            self.dismiss()
+
+    # Nom de touche Textual -> ce qu'on lit sur le clavier.
+    _TOUCHES_LISIBLES = {
+        "plus": "+",
+        "minus": "-",
+        "less_than_sign": "<",
+        "greater_than_sign": ">",
+        "question_mark": "?",
+        "escape": "Échap",
+        "f1": "F1",
+    }
+
+    class HelpScreen(ModalScreen):
+        """Petite fenêtre modale : tous les raccourcis du suivi, une ligne
+        par action. La liste se construit à partir des BINDINGS reçus, et
+        une touche ajoutée au suivi y paraît d'office ; le pied de page,
+        lui, tronque ce qui dépasse la largeur du terminal. Les touches
+        d'une même action partagent sa ligne."""
+
+        BINDINGS = [
+            ("escape", "dismiss", "Fermer"),
+            ("q", "dismiss", "Fermer"),
+            ("f1", "dismiss", "Fermer"),
+        ]
+
+        def __init__(self, bindings):
+            super().__init__()
+            self._lignes = {}
+            for b in bindings:
+                key, action, label = (
+                    (b.key, b.action, b.description)
+                    if isinstance(b, Binding)
+                    else b[:3]
+                )
+                touche = _TOUCHES_LISIBLES.get(key, key)
+                cles, _ = self._lignes.get(action, ([], label))
+                cles.append(touche)
+                self._lignes[action] = (cles, label)
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="helpbox"):
+                yield Static(
+                    f"{t('Keyboard shortcuts')}   ({t('Esc to close')})",
+                    id="helptitle",
+                )
+                for cles, label in self._lignes.values():
+                    yield Static(f"  {' / '.join(cles):<10} {label}")
 
         def action_dismiss(self) -> None:
             self.dismiss()
@@ -2369,6 +2420,12 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         #sshbar { height: 2; color: $text-muted; }
         #addbar { display: none; height: 1; color: $warning; }
         ErrorLinesScreen { align: center middle; }
+        HelpScreen { align: center middle; }
+        #helpbox {
+            width: 60; height: auto; max-height: 90%; padding: 1 2;
+            border: thick $accent; background: $surface;
+        }
+        #helptitle { text-style: bold; padding-bottom: 1; }
         #errbox {
             width: 80%; height: 70%;
             border: thick $accent; background: $surface;
@@ -2410,6 +2467,10 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
             ("e", "add_vms", t("Add VMs")),
+            # « ? » aussi, la touche qu'on essaie d'abord ; cachée du pied
+            # de page, où la même action se lirait deux fois.
+            ("f1", "help", t("Help")),
+            Binding("question_mark", "help", t("Help"), show=False),
         ]
 
         def __init__(self):
@@ -3488,6 +3549,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             self.notify(f"{len(targets)} VM {verb}.")
             # Rafraîchit tout de suite l'état libvirt (pause/reprise visible).
             self.run_worker(self._tick_domstate(), exclusive=False)
+
+        def action_help(self) -> None:
+            """Fenêtre d'aide : tous les raccourcis du suivi."""
+            if not isinstance(self.screen, HelpScreen):
+                self.push_screen(HelpScreen(self.BINDINGS))
 
         # -- ajout de VM (touche « e ») ------------------------------------- #
         def action_add_vms(self) -> None:
