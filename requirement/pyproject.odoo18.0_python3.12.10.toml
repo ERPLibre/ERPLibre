@@ -95,7 +95,6 @@ meteostat = "1.7.6"
 mock = "^5.2.0"
 mpld3 = "0.5.10"
 msgraphfs = "^0.5"
-mysqlclient = "^2.3.0"
 nextcloud-api-wrapper = "^0.2.3"
 num2words = "0.5.13"
 numpy = ">=1.15"
@@ -228,6 +227,10 @@ rev = "update_imghdr_python3"
 [tool.poetry.dependencies.fsspec]
 extras = [ "s3",]
 version = "^2026.9.0"
+
+[tool.poetry.dependencies.mysqlclient]
+version = "^2.3.0"
+markers = "platform_machine != \"s390x\""
 
 [tool.poetry.dependencies.pymupdf]
 version = ">=1.28.2"

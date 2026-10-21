@@ -60,11 +60,28 @@ echo -e "\n---- Dépendances pyenv (compilation Python) + outils ----"
 # quand même son paginateur par défaut et log, diff, show, tag s'arrêtent sur
 # « unable to execute pager 'less' ». Debian et Ubuntu l'obtiennent par les
 # recommandations de leur paquet git, notion que pacman n'a pas.
-${PAC} git wget curl less openssl zlib xz tk bzip2 readline sqlite libffi
+# « tk » donne à CPython son module tkinter, dont ERPLibre se sert dans
+# script/selenium/selenium_lib.py et script/todo/kdbx_manager.py. Il reste
+# EXIGÉ là où Arch le distribue.
+#
+# Sur s390x il n'y a pas de paquet tk : Arch ne publie pas cette
+# architecture, et le portage communautaire ne porte pas la pile X11 dont tk
+# dépend — l'installer demanderait libx11 et une demi-douzaine d'autres sur
+# une machine sans écran. Les deux imports ci-dessus sont gardés par un
+# « except ModuleNotFoundError », donc leur boîte de dialogue disparaît et
+# le reste fonctionne. L'exiger en dur arrêtait l'installation entière.
+_PYENV_DEPS="git wget curl less openssl zlib xz bzip2 readline sqlite libffi"
+if [ "$(uname -m)" != "s390x" ]; then
+  _PYENV_DEPS="${_PYENV_DEPS} tk"
+fi
+${PAC} ${_PYENV_DEPS}
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "pacman pyenv dependencies installation error."
   exit 1
+fi
+if [ "$(uname -m)" = "s390x" ]; then
+  echo "  tk : absent sur s390x, tkinter indisponible (boîtes de dialogue)."
 fi
 
 #--------------------------------------------------
