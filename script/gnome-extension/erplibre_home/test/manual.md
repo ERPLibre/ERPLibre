@@ -10,9 +10,10 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Click → menu: About, Start gallery server… ▶, ERPLibre ▶, Games ▶, "Open prefs…"
 - [ ] ERPLibre submenu is hidden (the deck program is not in the gallery list); "Window Tiler" starts from the `device` indicator's "Start deck program"
 - [ ] Games submenu lists every other game and excludes Window Tiler
-- [ ] "Start gallery server…" submenu lists every entry from the `paths` GSetting (label + path)
-- [ ] Picking a path opens gnome-terminal in that directory running `source .venv.erplibre/bin/activate && make streamdeck_gallery`
-- [ ] If `paths` is empty the submenu shows "(no paths configured — add one in pencil prefs)"
+- [ ] "Start gallery server…" submenu lists "This checkout (<checkout of the extension>)" first, then every other entry from the `paths` GSetting (label + path); a path equal to the checkout appears once
+- [ ] A folder without `.venv.streamdeck/bin/python` or `script/stream_deck/games/gallery_server.py` shows "— Stream Deck not installed" and is insensitive
+- [ ] Picking a folder opens a terminal there running `<folder>/.venv.streamdeck/bin/python <folder>/script/stream_deck/games/gallery_server.py`
+- [ ] Only when the checkout of the extension is unknown and `paths` is empty does the submenu show "(no paths configured — add one in pencil prefs)"
 - [ ] Submenu top line shows `○ Offline` when the gallery is not running
 - [ ] After launching, re-opening the menu (or waiting ~2.5s + reopening) shows `● Running on http://localhost:8042`, the submenu title becomes "Gallery server (running) …", and an "Open in browser" item appears
 - [ ] Path entries show "— port busy" + are insensitive while running

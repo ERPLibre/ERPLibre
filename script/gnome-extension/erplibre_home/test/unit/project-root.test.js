@@ -2,7 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {projectRootFrom, makeGioReadLink, normalizePath, resolveLinkTarget,
-    streamDeckPython, galleryServerCommand} from '../../lib/project-root.js';
+    streamDeckPython, galleryServerCommand, galleryReady}
+    from '../../lib/project-root.js';
 
 const CHECKOUT = '/opt/depot';
 const EXT_SRC = `${CHECKOUT}/script/gnome-extension/erplibre_home`;
@@ -237,4 +238,20 @@ test('the ERPLibre submenu shows only when the gallery lists a tool', () => {
     assert.ok(src.includes(
         'this._erplibreSection.visible = erplibre.length > 0;'));
     assert.ok(!src.includes("_('No ERPLibre tools')"));
+});
+
+test('galleryReady needs both the deck venv and the gallery server', () => {
+    const venv = `${CHECKOUT}/.venv.streamdeck/bin/python`;
+    const server = `${CHECKOUT}/script/stream_deck/games/gallery_server.py`;
+    const has = (set) => (p) => set.includes(p);
+    assert.equal(galleryReady(CHECKOUT, has([venv]), has([server])), true);
+    assert.equal(galleryReady(`${CHECKOUT}/`, has([venv]), has([server])),
+        true);
+    assert.equal(galleryReady(CHECKOUT, has([]), has([server])), false);
+    assert.equal(galleryReady(CHECKOUT, has([venv]), has([])), false);
+    const boom = () => {
+        throw new Error('stat');
+    };
+    assert.equal(galleryReady(CHECKOUT, has([venv]), boom), false);
+    assert.equal(galleryReady('', has([venv]), has([server])), false);
 });

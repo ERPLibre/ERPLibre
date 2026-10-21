@@ -322,6 +322,12 @@ msgstr ""
 msgid "port busy"
 msgstr ""
 
+msgid "This checkout"
+msgstr ""
+
+msgid "Stream Deck not installed"
+msgstr ""
+
 msgid "Gallery offline (start gallery_server.py)"
 msgstr ""
 

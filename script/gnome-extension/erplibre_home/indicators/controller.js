@@ -15,8 +15,9 @@ import {_} from '../lib/i18n.js';
 import {parseList} from '../lib/settings.js';
 import {buildTerminalArgv, findTerminal, spawnDetached}
     from '../lib/spawn.js';
-import {streamDeckPython, galleryServerCommand} from '../lib/project-root.js';
-import {launchRefusal} from '../lib/gallery-launch.js';
+import {projectRootFrom, makeGioReadLink, streamDeckPython,
+    galleryServerCommand, galleryReady} from '../lib/project-root.js';
+import {launchRefusal, galleryTargets} from '../lib/gallery-launch.js';
 
 const GALLERY_PORT = 8042;
 const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
@@ -174,29 +175,49 @@ class ControllerIndicator extends PanelMenu.Button {
             this._gallerySection.menu.addMenuItem(open);
         }
 
+        // The checkout of the extension comes first, then the pencil's
+        // paths; a folder without the Stream Deck level is greyed out
+        // instead of failing at the click. Readiness is read again each
+        // time the menu opens, since the gallery probe repopulates it.
         const paths = this._settings
             ? parseList(this._settings.get_string('paths'))
             : [];
-        if (!paths.length) {
+        const targets = galleryTargets(this._projectRoot(), paths,
+            (p) => galleryReady(p,
+                (f) => GLib.file_test(f, GLib.FileTest.IS_EXECUTABLE),
+                (f) => GLib.file_test(f, GLib.FileTest.IS_REGULAR)));
+        if (!targets.length) {
             this._gallerySection.menu.addMenuItem(
                 new PopupMenu.PopupMenuItem(
                     _('(no paths configured — add one in pencil prefs)'),
                     {reactive: false}));
             return;
         }
-        for (const p of paths) {
-            const baseLabel = p.label && p.label.trim() !== ''
-                ? `${p.label} (${p.path})` : p.path;
-            const label = online ? `${baseLabel} — ${_('port busy')}`
-                : baseLabel;
-            const item = new PopupMenu.PopupMenuItem(label,
-                {reactive: !online});
-            if (!online) {
+        for (const target of targets) {
+            const name = target.own ? _('This checkout')
+                : target.label.trim();
+            let label = name ? `${name} (${target.path})` : target.path;
+            let reactive = false;
+            if (online)
+                label = `${label} — ${_('port busy')}`;
+            else if (!target.ready)
+                label = `${label} — ${_('Stream Deck not installed')}`;
+            else
+                reactive = true;
+            const item = new PopupMenu.PopupMenuItem(label, {reactive});
+            if (reactive) {
                 item.connect('activate',
-                    () => this._launchGalleryAt(p.path));
+                    () => this._launchGalleryAt(target.path));
             }
             this._gallerySection.menu.addMenuItem(item);
         }
+    }
+
+    _projectRoot() {
+        // extension.path is the link under gnome-shell/extensions; the
+        // checkout root is derived from the link target, as in device.js.
+        if (!this._extension?.path) return '';
+        return projectRootFrom(this._extension.path, makeGioReadLink(Gio));
     }
 
     async _launchGalleryAt(cwd) {

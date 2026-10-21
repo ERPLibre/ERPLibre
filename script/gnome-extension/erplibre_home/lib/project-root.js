@@ -140,3 +140,19 @@ export function galleryServerCommand(root, python) {
     const base = root.length > 1 ? root.replace(/\/+$/, '') : root;
     return `${shellWord(python)} ${shellWord(`${base}/${GALLERY_SERVER_REL}`)}`;
 }
+
+/**
+ * Whether the gallery of `root` can start: the Stream Deck venv's python
+ * passes `isExecutable` and the gallery server passes `isFile`. A callback
+ * that throws counts as absent; an empty root gives false. The controller
+ * indicator greys out a folder for which this is false.
+ */
+export function galleryReady(root, isExecutable, isFile) {
+    if (streamDeckPython(root, isExecutable) === null) return false;
+    const base = root.length > 1 ? root.replace(/\/+$/, '') : root;
+    try {
+        return Boolean(isFile(`${base}/${GALLERY_SERVER_REL}`));
+    } catch (_e) {
+        return false;
+    }
+}
