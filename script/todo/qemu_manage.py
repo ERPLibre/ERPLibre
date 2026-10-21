@@ -1388,12 +1388,12 @@ class QemuManageMixin:
         from script.todo import qemu_install_monitor as mon
 
         try:
-            mon.run_monitor(manifest)
+            mon.run_monitor(manifest, todo=self)
         except ImportError:
             from script.todo import textual_setup
 
             if textual_setup.ensure():
-                mon.run_monitor(manifest)
+                mon.run_monitor(manifest, todo=self)
         except Exception as exc:
             print(f"{t('Command failed: ')}{exc}")
 

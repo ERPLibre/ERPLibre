@@ -146,6 +146,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The installers set up gettext (gettext-tools on SUSE) on every supported system, without ever blocking: `msgfmt --check` catches a translation that lost a `%s` before it shows on a page, and `msgmerge` carries translations over to a regenerated `.pot`
 - `coverage` is in the Odoo 18 venv: `ODOO_MODE_COVERAGE=true` runs Odoo under coverage instead of failing on « command not found »
 - `doc/S390x/` guides an install on IBM Z: the order of the steps, each supported system's specifics, and what s390x lacks or needs beyond amd64 — PyPI has almost no s390x wheels, so pip compiles, which brings extra packages, swap, Rust and qpdf/PROJ builds, and leaves out wkhtmltopdf, PyMuPDF and factur-x 4
+- The install monitor adds VMs to installs under way: key `e` opens the usual deployment form in the same terminal, then creates the VMs while the table keeps following, appends them to the open session and adds their rows; the title counts in red those still being created. Offline mode and names already monitored are refused
+- A help window on `h`, or F1 and `?`, lists every shortcut of the install monitor, which its footer truncates on a narrow terminal
 
 <!-- [fr] -->
 
@@ -268,6 +270,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les installeurs posent gettext (gettext-tools sur SUSE) sur chaque système supporté, sans jamais bloquer : `msgfmt --check` attrape une traduction qui a perdu un `%s` avant qu'elle n'apparaisse sur une page, et `msgmerge` reporte les traductions sur un `.pot` régénéré
 - `coverage` est dans le venv d'Odoo 18 : `ODOO_MODE_COVERAGE=true` fait tourner Odoo sous coverage au lieu d'échouer sur « command not found »
 - `doc/S390x/` guide une installation sur IBM Z : l'ordre des étapes, les particularités de chaque système supporté, et ce qui manque à s390x ou s'y ajoute par rapport à amd64 — PyPI n'a presque aucun wheel s390x, pip compile donc, ce qui amène des paquets en plus, du swap, Rust et la compilation de qpdf et PROJ, et écarte wkhtmltopdf, PyMuPDF et factur-x 4
+- Le suivi d'installation ajoute des VM aux installations en cours : la touche `e` ouvre le formulaire de déploiement habituel dans le même terminal, puis crée les VM pendant que le tableau continue de suivre, les ajoute à la session ouverte et ajoute leurs lignes ; le titre compte en rouge celles encore en création. Le mode hors ligne et les noms déjà suivis sont refusés
+- Une fenêtre d'aide sur `h`, ou F1 et `?`, liste tous les raccourcis du suivi d'installation, que son pied de page tronque dans un terminal étroit
 
 <!-- [en] -->
 ## Changed
@@ -464,6 +468,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `poetry install` no longer fails at random on a deleted `_virtualenv.py`: the packages Poetry brings into the venv are first aligned on `poetry.lock`, the dependencies of their new versions included, and a venv left incomplete is repaired
 - An install whose `poetry install` failed resumes on rerun: the background repo sync is stopped as a whole and keeps its log, and `--install_dev` requires `odoo-bin` and a recorded successful install. A first install is no longer reported as resumed
 - QEMU: Debian VMs installed through debian-installer trust the download cache's authority, so their clone no longer fails on TLS; Fedora s390x VMs no longer show a failed systemd-firstboot at every login; a deployment takes or generates the SSH key before creating any VM, instead of probing for 20 minutes then failing on « Permission denied »; the emulation note shows only under emulation; the cache log names an unreachable upstream instead of reading as a cache outage
+- The install monitor ends the install of a VM that stopped answering within about three minutes: its SSH sessions send keepalives instead of waiting on a dead connection for the system's TCP timeout, over two hours
 
 <!-- [fr] -->
 
@@ -554,6 +559,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `poetry install` n'échoue plus au hasard sur un `_virtualenv.py` supprimé : les paquets que Poetry amène dans le venv sont d'abord alignés sur `poetry.lock`, dépendances de leurs nouvelles versions comprises, et un venv resté incomplet est réparé
 - Une installation dont `poetry install` a échoué reprend à la relance : la synchronisation repo en arrière-plan s'arrête en entier et garde son journal, et `--install_dev` exige `odoo-bin` et une installation réussie enregistrée. Une première installation n'est plus annoncée comme reprise
 - QEMU : les VM Debian installées par debian-installer font confiance à l'autorité du cache de téléchargement, et leur clone n'échoue plus sur TLS ; les VM Fedora s390x n'affichent plus un systemd-firstboot en échec à chaque connexion ; un déploiement prend ou génère la clé SSH avant de créer la moindre VM, au lieu de sonder 20 minutes puis d'échouer sur « Permission denied » ; la note d'émulation ne paraît que sous émulation ; le journal du cache nomme un amont injoignable au lieu de se lire comme une panne du cache
+- Le suivi d'installation termine en trois minutes environ l'installation d'une VM qui ne répond plus : ses sessions SSH envoient des keepalive au lieu d'attendre sur une connexion morte le délai TCP du système, plus de deux heures
 
 <!-- [en] -->
 ## Removed

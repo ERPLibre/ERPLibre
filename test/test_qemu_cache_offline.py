@@ -861,7 +861,9 @@ class TestLaLeveeConfieeAuGuet(_SansSysteme, unittest.TestCase):
         with (
             mock.patch.object(mon, "launch_installs", lance),
             mock.patch.object(
-                mon, "run_monitor", lambda m: vu["ordre"].append("tableau")
+                mon,
+                "run_monitor",
+                lambda m, **_k: vu["ordre"].append("tableau"),
             ),
             contextlib.redirect_stdout(io.StringIO()) as sortie,
         ):
@@ -1853,7 +1855,7 @@ class TestLeDebutDuDeploiementDansLaSession(_SansSysteme, unittest.TestCase):
         todo._qemu_erplibre_remote_cmd = lambda *a, **k: "true"
         with (
             mock.patch.object(mon, "launch_installs", lance),
-            mock.patch.object(mon, "run_monitor", lambda m: None),
+            mock.patch.object(mon, "run_monitor", lambda m, **_k: None),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             todo._qemu_install_erplibre_monitored(

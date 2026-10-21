@@ -126,6 +126,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The installers set up gettext (gettext-tools on SUSE) on every supported system, without ever blocking: `msgfmt --check` catches a translation that lost a `%s` before it shows on a page, and `msgmerge` carries translations over to a regenerated `.pot`
 - `coverage` is in the Odoo 18 venv: `ODOO_MODE_COVERAGE=true` runs Odoo under coverage instead of failing on « command not found »
 - `doc/S390x/` guides an install on IBM Z: the order of the steps, each supported system's specifics, and what s390x lacks or needs beyond amd64 — PyPI has almost no s390x wheels, so pip compiles, which brings extra packages, swap, Rust and qpdf/PROJ builds, and leaves out wkhtmltopdf, PyMuPDF and factur-x 4
+- The install monitor adds VMs to installs under way: key `e` opens the usual deployment form in the same terminal, then creates the VMs while the table keeps following, appends them to the open session and adds their rows; the title counts in red those still being created. Offline mode and names already monitored are refused
+- A help window on `h`, or F1 and `?`, lists every shortcut of the install monitor, which its footer truncates on a narrow terminal
 
 ## Changed
 
@@ -265,6 +267,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `poetry install` no longer fails at random on a deleted `_virtualenv.py`: the packages Poetry brings into the venv are first aligned on `poetry.lock`, the dependencies of their new versions included, and a venv left incomplete is repaired
 - An install whose `poetry install` failed resumes on rerun: the background repo sync is stopped as a whole and keeps its log, and `--install_dev` requires `odoo-bin` and a recorded successful install. A first install is no longer reported as resumed
 - QEMU: Debian VMs installed through debian-installer trust the download cache's authority, so their clone no longer fails on TLS; Fedora s390x VMs no longer show a failed systemd-firstboot at every login; a deployment takes or generates the SSH key before creating any VM, instead of probing for 20 minutes then failing on « Permission denied »; the emulation note shows only under emulation; the cache log names an unreachable upstream instead of reading as a cache outage
+- The install monitor ends the install of a VM that stopped answering within about three minutes: its SSH sessions send keepalives instead of waiting on a dead connection for the system's TCP timeout, over two hours
 
 ## Removed
 
