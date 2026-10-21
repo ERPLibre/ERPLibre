@@ -434,6 +434,28 @@ class Update:
         )
         if not os.path.isdir(self.expected_addons_name):
             status = False
+        # Les sources d'Odoo viennent du repo sync, pas de Poetry : un sync
+        # interrompu laisse un venv complet et odoo<ver>/addons partiel, mais
+        # aucun odoo-bin. L'environnement est alors à réinstaller, sans quoi
+        # le script répond « Nothing to do » et ./run.sh échoue.
+        odoo_bin = os.path.join(self.expected_odoo_name, "odoo", "odoo-bin")
+        if not os.path.isfile(odoo_bin):
+            _logger.info(f"Missing '{odoo_bin}', the repo sync is required.")
+            status = False
+        # Ni le venv ni les sources ne prouvent une installation FINIE : un
+        # poetry install en échec laisse les deux en place. Seul l'état écrit
+        # après une installation réussie le dit. Réservé à --install_dev : un
+        # changement de version n'installe rien et garde son comportement.
+        if (
+            self.config.install_dev
+            and _STATE_AVAILABLE
+            and not get_version_installed(self.new_version_odoo)
+        ):
+            _logger.info(
+                f"Odoo {self.new_version_odoo} is not recorded as installed:"
+                " installation required."
+            )
+            status = False
         return status
 
     def update_environment(self):
