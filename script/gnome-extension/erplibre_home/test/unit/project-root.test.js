@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {projectRootFrom, makeGioReadLink, normalizePath, resolveLinkTarget,
+    resolveLinks,
     streamDeckPython, galleryServerCommand, galleryReady}
     from '../../lib/project-root.js';
 
@@ -67,7 +68,33 @@ test('relative symlink: resolved against the link parent', () => {
     assert.equal(projectRootFrom(LINK, linksTo({[LINK]: target})), CHECKOUT);
 });
 
-test('hot-reload uuid dir: a copy of the link, same root', () => {
+test('hot-reload uuid dir: a real dir whose entries link to the source',
+    () => {
+        const reload =
+            `${EXT_DIR}/erplibre-home-reload-1700000000000@technolibre.ca`;
+        const readLink = linksTo({
+            [`${reload}/extension.js`]: `${EXT_SRC}/extension.js`,
+        });
+        assert.equal(projectRootFrom(reload, readLink), CHECKOUT);
+        assert.equal(projectRootFrom(`${reload}/`, readLink), CHECKOUT);
+    });
+
+test('a dir whose extension.js links elsewhere keeps its own path', () => {
+    const dir = '/opt/ailleurs/erplibre_home';
+    const readLink = linksTo({[`${dir}/extension.js`]: '/opt/x/extension.js'});
+    assert.equal(projectRootFrom(dir, readLink), dir);
+});
+
+test('resolveLinks follows a chain and stops on a cycle', () => {
+    const middle = '/opt/liens/extension';
+    assert.equal(resolveLinks(LINK, linksTo({[LINK]: middle,
+        [middle]: EXT_SRC})), EXT_SRC);
+    assert.equal(resolveLinks(`${LINK}/`, linksTo({})), LINK);
+    const loop = linksTo({'/a': '/b', '/b': '/a'});
+    assert.ok(['/a', '/b'].includes(resolveLinks('/a', loop)));
+});
+
+test('hot-reload uuid dir: a link to the source, same root', () => {
     const reload =
         `${EXT_DIR}/erplibre-home-reload-1700000000000@technolibre.ca`;
     assert.equal(projectRootFrom(reload, linksTo({[reload]: EXT_SRC})),
@@ -83,7 +110,7 @@ test('chained symlinks are followed', () => {
 test('a symlink cycle stops after a bounded number of hops', () => {
     const readLink = linksTo({[LINK]: 'erplibre-home@technolibre.ca'});
     assert.equal(projectRootFrom(LINK, readLink), LINK);
-    assert.equal(readLink.calls.length, 8);
+    assert.equal(readLink.calls.filter((c) => c === LINK).length, 8);
 });
 
 test('a readLink that throws counts as no symlink', () => {

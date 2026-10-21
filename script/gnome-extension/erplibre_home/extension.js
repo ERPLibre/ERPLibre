@@ -19,6 +19,7 @@ import {parseObject} from './lib/settings.js';
 import {exportSettingsAsObj} from './lib/settings.js';
 import {Debouncer, gitPull, gitCommitPush, SYNC_FILE, syncImportPath} from './lib/git-sync.js';
 import {setGettext} from './lib/i18n.js';
+import {resolveLinks, makeGioReadLink} from './lib/project-root.js';
 import {ClaudeStateWatcher} from './lib/claude-state.js';
 import {listMpvEntriesSync, sendMpvCommand} from './lib/mpv-state.js';
 import {runSchemaMigrations} from './lib/migrations.js';
@@ -1117,14 +1118,35 @@ export default class ERPLibreHomeExtension extends Extension {
         return out;
     }
 
-    _patchMetadataUuid(dir, newUuid) {
-        const path = `${dir}/metadata.json`;
+    // Writes srcDir's metadata.json into newDir under newUuid, as a file of
+    // its own: GNOME Shell refuses a directory whose metadata names another
+    // uuid, and the source file stays untouched.
+    _writeMetadataUuid(srcDir, newDir, newUuid) {
+        const path = `${srcDir}/metadata.json`;
         const [ok, contents] = GLib.file_get_contents(path);
         if (!ok) throw new Error(`cannot read ${path}`);
         const text = new TextDecoder().decode(contents);
         const patched = text.replace(/"uuid"\s*:\s*"[^"]+"/,
             `"uuid": "${newUuid}"`);
-        GLib.file_set_contents(path, patched);
+        GLib.file_set_contents(`${newDir}/metadata.json`, patched);
+    }
+
+    // Builds the hot-reload directory newDir from srcDir, the real source
+    // directory: one symlink per entry, metadata.json aside. A copy of the
+    // installed link would be a link too, and its metadata.json the
+    // checkout's own file.
+    _buildReloadDir(srcDir, newDir) {
+        const dir = Gio.File.new_for_path(newDir);
+        dir.make_directory(null);
+        const enumerator = Gio.File.new_for_path(srcDir).enumerate_children(
+            'standard::name', Gio.FileQueryInfoFlags.NONE, null);
+        let info;
+        while ((info = enumerator.next_file(null)) !== null) {
+            const name = info.get_name();
+            if (name === 'metadata.json') continue;
+            dir.get_child(name).make_symbolic_link(`${srcDir}/${name}`, null);
+        }
+        enumerator.close(null);
     }
 
     HotReload() {
@@ -1133,12 +1155,11 @@ export default class ERPLibreHomeExtension extends Extension {
                 this._removeExtensionByUuid(uuid);
             const ts = Math.floor(GLib.get_real_time() / 1000);
             const newUuid = `${RELOAD_UUID_PREFIX}${ts}@technolibre.ca`;
-            const srcDir = `${this._extensionsDir()}/${MAIN_UUID}`;
+            const srcDir = resolveLinks(
+                `${this._extensionsDir()}/${MAIN_UUID}`, makeGioReadLink(Gio));
             const newDir = `${this._extensionsDir()}/${newUuid}`;
-            const [cpOk] = GLib.spawn_command_line_sync(
-                `cp -r "${srcDir}" "${newDir}"`);
-            if (!cpOk) throw new Error('cp failed');
-            this._patchMetadataUuid(newDir, newUuid);
+            this._buildReloadDir(srcDir, newDir);
+            this._writeMetadataUuid(srcDir, newDir, newUuid);
             const createObj = Main.extensionManager.createExtensionObject ||
                 Main.extensionManager._createExtensionObject;
             const loadExt = Main.extensionManager.loadExtension ||

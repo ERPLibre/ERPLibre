@@ -3,9 +3,10 @@
  *
  * GNOME Shell reports `extension.path` as the directory under
  * ~/.local/share/gnome-shell/extensions, and that directory is a symlink
- * to <checkout>/script/gnome-extension/erplibre_home (the hot-reload copy
- * too: `cp -r` copies the link, not the tree). The root is read on the
- * link target, not on the link path.
+ * to <checkout>/script/gnome-extension/erplibre_home. The root is read on
+ * the link target, not on the link path. The hot-reload directory is a
+ * real one, whose entries are links to that source and whose
+ * metadata.json is its own: its root is read on its extension.js link.
  *
  * Pure: the filesystem is reached only through the injected `readLink`,
  * so node --test loads this module without any gi:// import.
@@ -59,25 +60,40 @@ function _readLinkOrNull(readLink, path) {
 }
 
 /**
+ * `path` with its symlinks followed, up to MAX_LINK_HOPS, trailing
+ * slashes dropped. `readLink(p)` returns the symlink target of `p`
+ * (absolute or relative), or null when `p` is not a symlink.
+ */
+export function resolveLinks(path, readLink) {
+    let current = path.length > 1 ? path.replace(/\/+$/, '') : path;
+    for (let hop = 0; hop < MAX_LINK_HOPS; hop++) {
+        const target = _readLinkOrNull(readLink, current);
+        if (target === null) break;
+        current = resolveLinkTarget(current, target);
+    }
+    return current;
+}
+
+/**
  * Checkout root for an extension path.
  *
- * `readLink(p)` returns the symlink target of `p` (absolute or relative),
- * or null when `p` is not a symlink. Links are followed up to
- * MAX_LINK_HOPS, then the /script/gnome-extension/erplibre_home suffix is
- * stripped (trailing slash tolerated). A path that is not a symlink
- * gives exactly `path` minus that suffix; a path without the suffix
- * comes back resolved but otherwise unchanged.
+ * The path's links are followed (resolveLinks), then the
+ * /script/gnome-extension/erplibre_home suffix is stripped. A resolved path
+ * without the suffix is read through its extension.js instead, which a
+ * hot-reload directory links into the source; when that does not lead to
+ * the suffix either, the path comes back resolved, or as given when it is
+ * not a link.
  */
 export function projectRootFrom(path, readLink) {
     if (typeof path !== 'string' || path === '') return '';
-    let current = path;
-    for (let hop = 0; hop < MAX_LINK_HOPS; hop++) {
-        const link = current.length > 1 ? current.replace(/\/+$/, '') : current;
-        const target = _readLinkOrNull(readLink, link);
-        if (target === null) break;
-        current = resolveLinkTarget(link, target);
-    }
-    return current.replace(EXTENSION_SUFFIX_RE, '');
+    const current = resolveLinks(path, readLink);
+    if (EXTENSION_SUFFIX_RE.test(current))
+        return current.replace(EXTENSION_SUFFIX_RE, '');
+    const entry = resolveLinks(`${current}/extension.js`, readLink);
+    const source = entry.replace(/\/extension\.js$/, '');
+    if (source !== entry && EXTENSION_SUFFIX_RE.test(source))
+        return source.replace(EXTENSION_SUFFIX_RE, '');
+    return current === resolveLinks(path, null) ? path : current;
 }
 
 /**
