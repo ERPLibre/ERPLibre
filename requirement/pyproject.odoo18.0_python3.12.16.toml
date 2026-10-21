@@ -122,7 +122,6 @@ msgpack = "1.2.3"
 msgraphfs = "^0.5"
 multidict = "6.9.1"
 mysql-connector-python = "^26.10.0"
-mysqlclient = "^2.3.0"
 nextcloud-api-wrapper = "^0.2.3"
 num2words = "0.5.13"
 numpy = "2.5.4"
@@ -266,6 +265,10 @@ rev = "update_imghdr_python3"
 [tool.poetry.dependencies.fsspec]
 extras = [ "s3",]
 version = "^2026.9.0"
+
+[tool.poetry.dependencies.mysqlclient]
+version = "^2.3.0"
+markers = "platform_machine != \"s390x\""
 
 [tool.poetry.dependencies.pymupdf]
 version = ">=1.28.2"
