@@ -795,7 +795,9 @@ func (p *Proxy) offlineMiss(
 		Outcome: OutcomeOfflineMiss, Status: http.StatusGatewayTimeout,
 		Client: client,
 	})
-	log.Printf(T("hors ligne, absent du cache : %s"), u)
+	// Le journal dit l'amont, non le cache : le service tourne et répond,
+	// c'est la source qui manque pour cette adresse.
+	log.Printf(T("amont injoignable, absent du cache : %s (%v)"), u, cause)
 }
 
 // maxRedirections borne la chaîne : une boucle de redirections tournerait

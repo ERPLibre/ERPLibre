@@ -4,7 +4,10 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -501,6 +504,30 @@ func TestUneCauseMultiligneResteCommentee(t *testing.T) {
 	for _, l := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
 		if !strings.HasPrefix(l, "# ") {
 			t.Fatalf("ligne non commentée : %q", l)
+		}
+	}
+}
+
+// La ligne de journal d'un manque hors ligne accuse l'AMONT et porte sa
+// cause : le cache, lui, tourne et répond, et une ligne qui le dirait « hors
+// ligne » enverrait le lecteur chercher la panne du mauvais côté.
+func TestLeJournalDUnManqueNommeLAmontEtSaCause(t *testing.T) {
+	var journal bytes.Buffer
+	avant := log.Writer()
+	log.SetOutput(&journal)
+	t.Cleanup(func() { log.SetOutput(avant) })
+
+	p := proxyDeTest(t)
+	u, _ := url.Parse("http://miroir.example/x/jamais-vu.deb")
+	p.offlineMiss(httptest.NewRecorder(), u, ClassImmutable, "GET",
+		"127.0.0.1", errors.New("cause inventée"))
+
+	ligne := journal.String()
+	for _, attendu := range []string{
+		"amont injoignable", u.String(), "cause inventée",
+	} {
+		if !strings.Contains(ligne, attendu) {
+			t.Errorf("le journal ne dit pas %q : %q", attendu, ligne)
 		}
 	}
 }
