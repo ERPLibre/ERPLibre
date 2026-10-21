@@ -61,7 +61,9 @@ el_qpdf_ensure() {
     return 0
   fi
 
-  echo "qpdf ${have} < ${EL_QPDF_MIN} requis par pikepdf : compilation de qpdf ${EL_QPDF_VER} (long en emulation)."
+  # « 0 » est la réponse d'el_qpdf_version quand pkg-config ne trouve rien.
+  [ "${have}" = "0" ] && have="absent"
+  echo "qpdf ${have}, ${EL_QPDF_MIN} requis par pikepdf : compilation de qpdf ${EL_QPDF_VER} (plusieurs minutes, bien plus en emulation)."
   build="$(mktemp -d)"
   if curl -fsSL --max-time 600 -o "${build}/qpdf.tar.gz" \
     "https://github.com/qpdf/qpdf/releases/download/v${EL_QPDF_VER}/qpdf-${EL_QPDF_VER}.tar.gz" \

@@ -34,8 +34,13 @@ el_cargo_assez_recent() {
 el_rust_ensure() {
   el_cargo_assez_recent && return 0
   echo "cargo trop ancien ($(cargo --version 2> /dev/null || echo absent)), 1.${EL_RUST_MIN_MINOR} requis : installation via rustup."
+  # Le Rust de la distribution reste installé : rustup le signale par
+  # « error: cannot install while Rust is installed », puis passe outre
+  # sous -y. RUSTUP_INIT_SKIP_PATH_CHECK lui fait sauter ce contrôle, et le
+  # journal ne porte plus une erreur qui n'en est pas une.
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --profile minimal --default-toolchain stable
+    | RUSTUP_INIT_SKIP_PATH_CHECK=yes \
+      sh -s -- -y --profile minimal --default-toolchain stable
   for bin in cargo rustc; do
     if [ -x "${HOME}/.cargo/bin/${bin}" ]; then
       sudo ln -sf "${HOME}/.cargo/bin/${bin}" "/usr/local/bin/${bin}"
