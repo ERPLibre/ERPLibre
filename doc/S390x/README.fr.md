@@ -59,8 +59,8 @@ fois plus.
 Si `make` est lancé avant `make install_os`, l'installation n'échoue plus
 après de longues minutes de compilation : elle vérifie d'abord les prérequis
 de compilation (en-têtes C, compilateur, pkg-config, cargo) et nomme ce qui
-manque, avec la commande apt pour l'installer, ou apt ou dnf pour le contrôle
-pyenv (`script/install/S390x/build_check.sh` et
+manque, avec la commande apt, dnf ou zypper pour l'installer, ou apt ou dnf
+pour le contrôle pyenv (`script/install/S390x/build_check.sh` et
 `script/install/lib_python_provider.sh`).
 
 ## Ce qu'ERPLibre ajoute sur s390x, et pourquoi
@@ -228,7 +228,7 @@ qui sert toutes les architectures reste à sa place.
 | `S390x/debian.sh` | partie s390x de l'installation apt |
 | `S390x/fedora.sh` | partie s390x de l'installation dnf |
 | `S390x/suse.sh` | partie s390x de l'installation zypper |
-| `S390x/build_check.sh` | vérification des prérequis de compilation avant le venv d'outillage, sur toute architecture autre qu'amd64 et arm64 |
+| `S390x/build_check.sh` | vérification des prérequis de compilation avant le venv d'outillage, sur s390x |
 | `S390x/lib_lowmem.sh` | swap et limite des compilations parallèles |
 | `S390x/lib_rust.sh` | version minimale de Rust, repli rustup |
 | `S390x/lib_qpdf.sh` | qpdf compilé depuis les sources si trop ancien |

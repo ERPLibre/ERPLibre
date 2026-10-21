@@ -15,6 +15,11 @@ set -e
 # bati. install_dev_extra_ubuntu.sh garde OSTYPE : il ne vise qu'Ubuntu.
 OS_KERNEL="$(uname -s)"
 
+# Architecture non supportée : question avant toute dépendance système ;
+# EL_ALLOW_UNSUPPORTED_ARCH=1 y répond oui. Voir lib_arch_check.sh.
+. ./script/install/lib_arch_check.sh
+el_arch_check || exit 1
+
 if [[ "${OS_KERNEL}" == "Linux" ]]; then
   source /etc/os-release
   if [[ "${ID}" == "ubuntu" ]]; then

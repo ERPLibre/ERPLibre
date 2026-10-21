@@ -2,11 +2,11 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
-# Fragment SOURCÉ par install_erplibre.sh, hors amd64 et arm64 (s390x en
-# pratique), AVANT la création du venv d'outillage.
+# Fragment SOURCÉ par install_erplibre.sh, sur s390x, AVANT la création du
+# venv d'outillage.
 #
-# Hors amd64 et arm64, PyPI n'a pas de roue pour lxml, cryptography ni
-# pillow : pip les compile, et chacun exige ses en-têtes ou rustc. Vérifié
+# Sur s390x, PyPI n'a pas de wheel pour lxml, cryptography ni pillow : pip
+# les compile, et chacun exige ses en-têtes ou rustc. Vérifié
 # AVANT le venv, dont pyenv peut compiler l'interpréteur pendant des minutes
 # pour que pip échoue ensuite sur le premier en-tête absent.
 

@@ -61,7 +61,7 @@ distribution does not carry it, pyenv compiles it.
 - **NixOS** : 25.11 — the dependencies are DECLARED in `conf/nixos/erplibre.nix` and applied by `nixos-rebuild`, where the four other families install them one command at a time
 - **macOS** : through mise or pyenv
 - **Windows** : through WSL or Docker
-- **Architectures** : amd64, arm64 and s390x (IBM Z mainframe)
+- **Architectures** : amd64, arm64 and s390x (IBM Z mainframe). On any other, `make install_os` and `make install` say so and ask whether to go on; `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` answers yes without asking, as needed without a terminal
 
 
 # Installation in production

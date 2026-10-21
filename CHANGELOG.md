@@ -174,6 +174,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - s390x VMs deploy from Ubuntu, Debian (through debian-installer), Fedora 43, AlmaLinux, Rocky and openSUSE, and get 4 GiB of RAM when no size is given: nearly every package compiles there, and one compiler process takes up to 2.5 GiB. Other architectures keep the catalogue's minimum
 - The s390x-only install code lives in `script/install/S390x/`; the apt, dnf and zypper scripts and `install_erplibre.sh` keep a one-line guard, and behave as before
 - A missing build header stops the install in seconds and prints the command to run, instead of pyenv compiling CPython for minutes and failing on « zlib not available ». On s390x the check names the packages as apt, dnf or zypper calls them, and the qpdf and PROJ builds say when the library is absent and how long they take
+- `make install_os` and `make install` name an architecture other than amd64, arm64 and s390x and ask whether to go on, before any work; Enter alone stops. `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` answers yes without asking, which an install without a terminal needs. The s390x build check now runs on s390x only
 
 ## Fixed
 

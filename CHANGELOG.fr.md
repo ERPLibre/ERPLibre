@@ -178,6 +178,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les VM s390x se déploient depuis Ubuntu, Debian (par debian-installer), Fedora 43, AlmaLinux, Rocky et openSUSE, et reçoivent 4 Gio de RAM quand aucune taille n'est donnée : presque tout paquet y compile, et un seul processus du compilateur prend jusqu'à 2,5 Gio. Les autres architectures gardent le minimum du catalogue
 - Le code d'installation propre à s390x vit dans `script/install/S390x/` ; les scripts apt, dnf et zypper et `install_erplibre.sh` gardent une garde d'une ligne, et se comportent comme avant
 - Un en-tête de compilation manquant arrête l'installation en quelques secondes et imprime la commande à lancer, au lieu que pyenv compile CPython pendant des minutes et échoue sur « zlib not available ». Sur s390x, la vérification nomme les paquets comme apt, dnf ou zypper les appellent, et les compilations de qpdf et PROJ disent quand la bibliothèque est absente et combien de temps elles prennent
+- `make install_os` et `make install` nomment une architecture autre qu'amd64, arm64 et s390x et demandent s'il faut continuer, avant tout travail ; Entrée seule arrête. `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` répond oui sans question, ce qu'exige une installation sans terminal. Le contrôle de compilation s390x ne tourne plus que sur s390x
 
 ## Corrigé
 

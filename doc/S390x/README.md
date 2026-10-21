@@ -57,7 +57,7 @@ Under emulation on an x86 host, count roughly ten times longer.
 If `make` is run before `make install_os`, the installer no longer fails
 after long minutes of compilation: it first checks the build prerequisites
 (C headers, compiler, pkg-config, cargo) and names what is missing, with the
-apt command to install it, or apt or dnf for the pyenv check
+apt, dnf or zypper command to install it, or apt or dnf for the pyenv check
 (`script/install/S390x/build_check.sh` and
 `script/install/lib_python_provider.sh`).
 
@@ -222,7 +222,7 @@ every architecture stays where it is.
 | `S390x/debian.sh` | s390x part of the apt installation |
 | `S390x/fedora.sh` | s390x part of the dnf installation |
 | `S390x/suse.sh` | s390x part of the zypper installation |
-| `S390x/build_check.sh` | build prerequisites check before the tooling venv, on every architecture other than amd64 and arm64 |
+| `S390x/build_check.sh` | build prerequisites check before the tooling venv, on s390x |
 | `S390x/lib_lowmem.sh` | swap and limit on parallel compilations |
 | `S390x/lib_rust.sh` | Rust minimum version, rustup fallback |
 | `S390x/lib_qpdf.sh` | qpdf built from source when too old |

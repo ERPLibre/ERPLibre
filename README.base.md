@@ -115,7 +115,7 @@ le compile.
 - **NixOS** : 25.11 — the dependencies are DECLARED in `conf/nixos/erplibre.nix` and applied by `nixos-rebuild`, where the four other families install them one command at a time
 - **macOS** : through mise or pyenv
 - **Windows** : through WSL or Docker
-- **Architectures** : amd64, arm64 and s390x (IBM Z mainframe)
+- **Architectures** : amd64, arm64 and s390x (IBM Z mainframe). On any other, `make install_os` and `make install` say so and ask whether to go on; `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` answers yes without asking, as needed without a terminal
 
 <!-- [fr] -->
 
@@ -131,7 +131,7 @@ le compile.
 - **NixOS** : 25.11 — les dépendances y sont DÉCLARÉES dans `conf/nixos/erplibre.nix` puis appliquées par `nixos-rebuild`, là où les quatre autres familles les installent commande par commande
 - **macOS** : par mise ou pyenv
 - **Windows** : par WSL ou Docker
-- **Architectures** : amd64, arm64 et s390x (mainframe IBM Z)
+- **Architectures** : amd64, arm64 et s390x (mainframe IBM Z). Sur toute autre, `make install_os` et `make install` le disent et demandent s'il faut continuer ; `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` répond oui sans question, comme il le faut sans terminal
 
 <!-- [en] -->
 

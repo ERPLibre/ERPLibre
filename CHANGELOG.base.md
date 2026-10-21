@@ -320,6 +320,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - s390x VMs deploy from Ubuntu, Debian (through debian-installer), Fedora 43, AlmaLinux, Rocky and openSUSE, and get 4 GiB of RAM when no size is given: nearly every package compiles there, and one compiler process takes up to 2.5 GiB. Other architectures keep the catalogue's minimum
 - The s390x-only install code lives in `script/install/S390x/`; the apt, dnf and zypper scripts and `install_erplibre.sh` keep a one-line guard, and behave as before
 - A missing build header stops the install in seconds and prints the command to run, instead of pyenv compiling CPython for minutes and failing on « zlib not available ». On s390x the check names the packages as apt, dnf or zypper calls them, and the qpdf and PROJ builds say when the library is absent and how long they take
+- `make install_os` and `make install` name an architecture other than amd64, arm64 and s390x and ask whether to go on, before any work; Enter alone stops. `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` answers yes without asking, which an install without a terminal needs. The s390x build check now runs on s390x only
 
 <!-- [fr] -->
 
@@ -368,6 +369,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les VM s390x se déploient depuis Ubuntu, Debian (par debian-installer), Fedora 43, AlmaLinux, Rocky et openSUSE, et reçoivent 4 Gio de RAM quand aucune taille n'est donnée : presque tout paquet y compile, et un seul processus du compilateur prend jusqu'à 2,5 Gio. Les autres architectures gardent le minimum du catalogue
 - Le code d'installation propre à s390x vit dans `script/install/S390x/` ; les scripts apt, dnf et zypper et `install_erplibre.sh` gardent une garde d'une ligne, et se comportent comme avant
 - Un en-tête de compilation manquant arrête l'installation en quelques secondes et imprime la commande à lancer, au lieu que pyenv compile CPython pendant des minutes et échoue sur « zlib not available ». Sur s390x, la vérification nomme les paquets comme apt, dnf ou zypper les appellent, et les compilations de qpdf et PROJ disent quand la bibliothèque est absente et combien de temps elles prennent
+- `make install_os` et `make install` nomment une architecture autre qu'amd64, arm64 et s390x et demandent s'il faut continuer, avant tout travail ; Entrée seule arrête. `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` répond oui sans question, ce qu'exige une installation sans terminal. Le contrôle de compilation s390x ne tourne plus que sur s390x
 
 <!-- [en] -->
 ## Fixed

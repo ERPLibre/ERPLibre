@@ -23,12 +23,16 @@ done
 VENV_ERPLIBRE_PATH=$(xargs < "${CONF_VENV}")
 PYTHON_ERPLIBRE_VERSION=$(xargs < "${CONF_PYTHON_VERSION}")
 
-# Hors amd64 et arm64, pip compile ce qui n'a pas de roue : on vérifie qu'il
-# en a les moyens AVANT le venv. Voir S390x/build_check.sh.
-case "$(uname -m)" in
-  x86_64 | amd64 | aarch64 | arm64) ;;
-  *) . ./script/install/S390x/build_check.sh ;;
-esac
+# Architecture non supportée : question avant tout travail ;
+# EL_ALLOW_UNSUPPORTED_ARCH=1 y répond oui. Voir lib_arch_check.sh.
+. ./script/install/lib_arch_check.sh
+el_arch_check || exit 1
+
+# Sur s390x, pip compile ce qui n'a pas de wheel : on vérifie qu'il en a les
+# moyens AVANT le venv. Voir S390x/build_check.sh.
+if [ "$(uname -m)" = "s390x" ]; then
+  . ./script/install/S390x/build_check.sh
+fi
 
 echo -e "Install ${VENV_ERPLIBRE_PATH} with ${PYTHON_ERPLIBRE_VERSION}"
 if ! ./script/install/install_venv.sh \
