@@ -41,6 +41,10 @@ EXT_SRC="${RACINE}/script/gnome-extension/erplibre_home"
 EXT_LINK="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 METADATA="${EXT_SRC}/metadata.json"
 UDEV_RULE="/etc/udev/rules.d/70-streamdeck.rules"
+# Le nom stable que la règle udev donne au deck branché, et l'unité .device
+# que systemd en tire : l'unité du service la nomme dans WantedBy=.
+DECK_DEVICE_ALIAS="/sys/subsystem/erplibre/streamdeck"
+DECK_DEVICE_UNIT="sys-subsystem-erplibre-streamdeck.device"
 VENV="${RACINE}/.venv.streamdeck"
 UNIT_FILE="$(deck_unit_file)"
 SETTINGS_FILE="$(deck_settings_file)"
@@ -436,10 +440,21 @@ install_packages() {
 # assis devant le poste sur toutes les familles, là où le groupe plugdev
 # n'existe que sur Debian et Ubuntu. Le préfixe 70- passe avant
 # 73-seat-late.rules, qui applique uaccess.
+# La troisième ligne fait du deck branché l'unité DECK_DEVICE_UNIT dans
+# chaque gestionnaire systemd --user (tag « systemd » et alias). L'unité du
+# service la nomme dans WantedBy= : « enable » démarre alors le service au
+# branchement comme à l'ouverture de session, et « disable » coupe les deux.
+# La ligne ne vise que le périphérique entier (usb_device), pas ses
+# interfaces ni son hidraw. Un service déjà actif n'est pas relancé ; hors
+# de la session graphique, --check saute le démarrage.
 udev_rule_content() {
     printf '%s\n' \
         'SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"' \
         'KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"'
+    printf '%s, %s, %s\n' \
+        'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device"' \
+        'ATTR{idVendor}=="0fd9", TAG+="systemd"' \
+        "ENV{SYSTEMD_ALIAS}=\"${DECK_DEVICE_ALIAS}\""
 }
 
 # Écrit la règle seulement si le fichier en place diffère (cmp), et ne
@@ -540,7 +555,7 @@ unit_content() {
         "TimeoutStopSec=10" \
         "" \
         "[Install]" \
-        "WantedBy=graphical-session.target"
+        "WantedBy=graphical-session.target ${DECK_DEVICE_UNIT}"
 }
 
 # settings_content FICHIER CLÉ=valeur… rend les lignes de FICHIER (rien
@@ -655,16 +670,28 @@ write_unit() {
 # seulement. Jamais start : le programme demande l'extension chargée, ce
 # qu'une installation neuve n'a qu'à la prochaine connexion. daemon-reload
 # passe même quand l'unité n'a pas changé : celui qu'une installation
-# précédente n'a pas pu faire est ainsi refait. Un systemctl qui échoue
-# n'arrête rien, et sa commande va au bilan.
+# précédente n'a pas pu faire est ainsi refait. Une unité déjà en place,
+# réécrite et activée est réactivée (reenable) : enable ne pose les liens
+# que de la section [Install] qu'il lit, et un WantedBy= ajouté resterait
+# sans lien. Un systemctl qui échoue n'arrête rien, et sa commande va au
+# bilan.
 install_service() {
-    local changed=1
+    local changed=1 existed=0
+    [ ! -e "${UNIT_FILE}" ] || existed=1
     write_settings
     write_unit || changed=0
     if user_systemctl daemon-reload; then
         [ "${changed}" = 0 ] || DONE+=("systemctl --user daemon-reload")
     else
         SERVICE_HINTS+=("systemctl --user daemon-reload")
+    fi
+    if [ "${changed}${existed}" = 11 ] \
+        && user_systemctl is-enabled --quiet "${DECK_UNIT_NAME}" 2>/dev/null; then
+        if user_systemctl reenable "${DECK_UNIT_NAME}"; then
+            DONE+=("systemctl --user reenable ${DECK_UNIT_NAME}")
+        else
+            SERVICE_HINTS+=("systemctl --user reenable ${DECK_UNIT_NAME}")
+        fi
     fi
     [ "${AUTOSTART}" = 1 ] || return 0
     if user_systemctl is-enabled --quiet "${DECK_UNIT_NAME}" 2>/dev/null; then
@@ -677,13 +704,13 @@ install_service() {
 }
 
 # Arrête, désactive et retire l'unité, recharge systemd, puis retire les
-# réglages. Le lien de graphical-session.target.wants part aussi quand
-# disable n'a pas pu le retirer. Ce qui manque est sauté : une seconde
-# exécution n'appelle pas systemctl. Un systemctl qui échoue n'arrête rien.
+# réglages. Les liens de graphical-session.target.wants et du .wants du deck
+# partent aussi quand disable n'a pas pu les retirer. Ce qui manque est
+# sauté : une seconde exécution n'appelle pas systemctl. Un systemctl qui
+# échoue n'arrête rien.
 uninstall_service() {
-    local wants
-    wants="$(dirname "${UNIT_FILE}")/graphical-session.target.wants"
-    wants="${wants}/${DECK_UNIT_NAME}"
+    local wants dir
+    dir="$(dirname "${UNIT_FILE}")"
     if [ -e "${UNIT_FILE}" ]; then
         user_systemctl stop "${DECK_UNIT_NAME}" \
             || log "WARNING: systemctl --user stop ${DECK_UNIT_NAME} failed"
@@ -694,10 +721,14 @@ uninstall_service() {
         user_systemctl daemon-reload \
             || log "WARNING: systemctl --user daemon-reload failed"
     fi
-    if [ -L "${wants}" ]; then
-        rm -f "${wants}"
-        DONE+=("removed ${wants}")
-    fi
+    for wants in "${dir}/graphical-session.target.wants" \
+        "${dir}/${DECK_DEVICE_UNIT}.wants"; do
+        wants="${wants}/${DECK_UNIT_NAME}"
+        if [ -L "${wants}" ]; then
+            rm -f "${wants}"
+            DONE+=("removed ${wants}")
+        fi
+    done
     if [ -e "${SETTINGS_FILE}" ]; then
         rm -f "${SETTINGS_FILE}"
         DONE+=("removed ${SETTINGS_FILE}")

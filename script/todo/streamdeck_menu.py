@@ -465,7 +465,11 @@ class StreamDeckMenuMixin:
         if programme is None:
             return None
         options = [f"--deck-program={programme}"]
-        if self._is_yes(input(t("Start the deck program at login? (y/N): "))):
+        demande = t(
+            "Start the deck program at login and when the deck is plugged in?"
+            " (y/N): "
+        )
+        if self._is_yes(input(demande)):
             options.append("--autostart")
         if reglages["RESTART_AFTER_GAME"] == "no":
             relance = self._is_yes(

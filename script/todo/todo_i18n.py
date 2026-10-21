@@ -292,10 +292,12 @@ TRANSLATIONS = {
         "fr": "Ouvrir ses préférences",
         "en": "Open its preferences",
     },
-    "Start the deck program at login? (y/N): ": {
-        "fr": "Démarrer le programme du deck à l'ouverture de session ?"
-        " (o/N) : ",
-        "en": "Start the deck program at login? (y/N): ",
+    "Start the deck program at login and when the deck is plugged in?"
+    " (y/N): ": {
+        "fr": "Démarrer le programme du deck à l'ouverture de session et"
+        " au branchement du deck ? (o/N) : ",
+        "en": "Start the deck program at login and when the deck is"
+        " plugged in? (y/N): ",
     },
     "Restart the deck program after a game? (Y/n): ": {
         "fr": "Relancer le programme du deck après un jeu ? (O/n) : ",

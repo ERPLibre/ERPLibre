@@ -363,3 +363,18 @@ tiler is now the package `script/stream_deck/erplibre_streamdeck/`
    serves. `ExecStart` passes no argument, so under the unit exit 2 still
    means a busy lock and `RestartPreventExitStatus=2 3` keeps its
    meaning; the hand-over passes a game's exit 2 through as is.
+4. **A deck plugged in after login (Out of scope, The unit).** The
+   hot-plug start is in scope. The udev rule gains a third line: the whole
+   USB device of vendor `0fd9` (`DEVTYPE=usb_device`) is tagged `systemd`
+   with the alias `/sys/subsystem/erplibre/streamdeck`, which every user
+   manager sees as `sys-subsystem-erplibre-streamdeck.device`. The unit's
+   `[Install]` reads `WantedBy=graphical-session.target
+   sys-subsystem-erplibre-streamdeck.device`, so `enable` (Autostart)
+   starts the service at login and when a deck is plugged in later, and
+   `disable` stops both; a plain `SYSTEMD_USER_WANTS` would start it even
+   with Autostart off. `--check` also requires `graphical-session.target`
+   active, checked after the deck so that a deck-less skip keeps its
+   reason: a user manager running before the session (lingering) must not
+   start a program that needs the extension. A reinstall that rewrites an
+   enabled unit runs `reenable`, since `enable` only links the
+   `WantedBy=` it reads; the uninstall removes both `.wants` links.

@@ -662,13 +662,18 @@ class TestListeEnabledExtensions(unittest.TestCase):
 
 
 class TestRegleUdev(unittest.TestCase):
-    def test_le_contenu_est_les_deux_lignes_uaccess(self):
+    def test_le_contenu_est_uaccess_puis_l_unite_du_deck(self):
+        """Deux lignes uaccess, puis le périphérique USB entier, tagué
+        pour systemd sous le nom stable que WantedBy= de l'unité nomme."""
         fait = sourcer("udev_rule_content\n")
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertEqual(
             fait.stdout,
             'SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"\n'
-            'KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"\n',
+            'KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"\n'
+            'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device",'
+            ' ATTR{idVendor}=="0fd9", TAG+="systemd",'
+            ' ENV{SYSTEMD_ALIAS}="/sys/subsystem/erplibre/streamdeck"\n',
         )
 
     def test_une_regle_identique_n_est_ni_reecrite_ni_rechargee(self):
@@ -1229,7 +1234,7 @@ SuccessExitStatus=143
 TimeoutStopSec=10
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical-session.target sys-subsystem-erplibre-streamdeck.device
 """
 
 
@@ -1493,6 +1498,33 @@ class TestServiceInstalle(unittest.TestCase):
             )
             self.assertIn("nothing to change", fait.stdout)
 
+    def test_a_rewritten_enabled_unit_is_reenabled(self):
+        """Une unité en place qui change et qui est activée est
+        réactivée : les liens de son nouveau WantedBy= sont posés.
+        Désactivée, elle le reste."""
+        for active, attendu in (("1", ["reenable"]), ("", [])):
+            with self.subTest(enabled=bool(active)):
+                with tempfile.TemporaryDirectory() as dossier:
+                    unite = Path(dossier, "config/systemd/user", UNITE)
+                    unite.parent.mkdir(parents=True)
+                    unite.write_text("[Unit]\n")
+                    fait, appels, _unite, _conf = self.jouer(
+                        dossier, env={"ENABLED": active}
+                    )
+                    self.assertEqual(fait.returncode, 0, fait.stderr)
+                    self.assertEqual(
+                        attendu,
+                        [
+                            a.split()[2]
+                            for a in appels
+                            if a.split()[2] in ("reenable", "enable")
+                        ],
+                    )
+                    self.assertIn(
+                        f"systemctl --user is-enabled --quiet {UNITE}",
+                        appels,
+                    )
+
     def test_a_failed_reload_is_named_and_retried(self):
         """daemon-reload passe à chaque installation : celui qu'un premier
         passage sans gestionnaire n'a pas pu faire est refait par le
@@ -1638,13 +1670,21 @@ class TestServiceRetire(unittest.TestCase):
         unite = config / "systemd/user" / UNITE
         unite.parent.mkdir(parents=True)
         unite.write_text("[Unit]\n")
-        voulu = config / "systemd/user/graphical-session.target.wants" / UNITE
-        voulu.parent.mkdir()
-        voulu.symlink_to(unite)
+        for cible in (
+            "graphical-session.target",
+            "sys-subsystem-erplibre-streamdeck.device",
+        ):
+            voulu = config / "systemd/user" / f"{cible}.wants" / UNITE
+            voulu.parent.mkdir()
+            voulu.symlink_to(unite)
+            self.liens.append(voulu)
         conf = config / "erplibre-home/streamdeck.conf"
         conf.parent.mkdir()
         conf.write_text("DECK_PROGRAM=tiler\n")
         return config, unite, voulu, conf
+
+    def setUp(self):
+        self.liens = []
 
     def test_stop_disable_remove_reload_then_settings(self):
         with tempfile.TemporaryDirectory() as dossier:
@@ -1673,7 +1713,8 @@ class TestServiceRetire(unittest.TestCase):
             self.assertEqual("", second)
             for chemin in (unite, conf):
                 self.assertFalse(chemin.exists(), chemin)
-            self.assertFalse(os.path.lexists(voulu))
+            for lien in self.liens:
+                self.assertFalse(os.path.lexists(lien), lien)
 
     def test_a_failing_systemctl_still_removes_the_files(self):
         with tempfile.TemporaryDirectory() as dossier:
@@ -1694,7 +1735,8 @@ class TestServiceRetire(unittest.TestCase):
             self.assertEqual(fait.returncode, 0, fait.stderr)
             self.assertIn("WARNING", fait.stdout)
             self.assertFalse(unite.exists())
-            self.assertFalse(os.path.lexists(voulu))
+            for lien in self.liens:
+                self.assertFalse(os.path.lexists(lien), lien)
             self.assertFalse(conf.exists())
 
     def test_both_uninstalls_remove_the_service(self):

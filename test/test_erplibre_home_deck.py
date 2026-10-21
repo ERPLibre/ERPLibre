@@ -5,13 +5,16 @@
 
 erplibre_home_deck.sh tourne ici dans une copie du dépôt dont le chemin
 porte une espace, sous un HOME temporaire : le venv est un faux python qui
-écrit ses arguments, et l'arbre sysfs un faux, désigné par
-ERPLIBRE_HOME_SYSFS. Rien ne touche ni au vrai venv ni au vrai /sys.
+écrit ses arguments, l'arbre sysfs un faux, désigné par
+ERPLIBRE_HOME_SYSFS, et systemctl un faux placé en tête du PATH, qui rend
+le code de FAUX_SESSION (0, une session graphique, par défaut). Rien ne
+touche ni au vrai venv, ni au vrai /sys, ni au gestionnaire systemd.
 
 Ce que ces tests gardent :
 
-- --check rend 0 seulement avec un programme, le venv et un deck du vendeur
-  0fd9 ; chaque manque rend 1 et le dit sur une ligne ;
+- --check rend 0 seulement avec un programme, le venv, un deck du vendeur
+  0fd9 et graphical-session.target actif ; chaque manque rend 1 et le dit
+  sur une ligne ;
 - sans option, le script remplace son processus par le python du venv sur
   le programme de DECK_PROGRAM, tiler par défaut ;
 - une valeur inconnue sort en 1 et nomme le fichier ; « none » ne lance
@@ -49,6 +52,16 @@ class Copie(unittest.TestCase):
         self.sysfs = self.tmp / "sys"
         (self.sysfs / "bus/usb/devices").mkdir(parents=True)
         self.reglages = self.home / ".config/erplibre-home/streamdeck.conf"
+        self.bin = self.tmp / "bin"
+        self.bin.mkdir()
+        self.appels = self.tmp / "systemctl.log"
+        systemctl = self.bin / "systemctl"
+        systemctl.write_text(
+            '#!/bin/sh\necho "$*" >>"$FAUX_APPELS"\n'
+            'exit "${FAUX_SESSION:-0}"\n',
+            encoding="utf-8",
+        )
+        systemctl.chmod(0o755)
 
     def venv(self):
         """Pose le faux python du venv : il écrit son répertoire courant
@@ -77,6 +90,8 @@ class Copie(unittest.TestCase):
         }
         environ["HOME"] = str(self.home)
         environ["ERPLIBRE_HOME_SYSFS"] = str(self.sysfs)
+        environ["PATH"] = f"{self.bin}:{environ['PATH']}"
+        environ["FAUX_APPELS"] = str(self.appels)
         environ.update(env or {})
         return subprocess.run(
             [
@@ -121,6 +136,29 @@ class LeCheck(Copie):
         self.assertEqual(1, fini.returncode)
         self.assertIn("no Stream Deck plugged in", fini.stderr)
         self.assertEqual(1, len(fini.stderr.strip().splitlines()))
+
+    def test_no_graphical_session_exits_one_and_says_so(self):
+        """La règle udev demande le service avant l'ouverture de session
+        aussi : sans graphical-session.target actif, --check le saute."""
+        self.venv()
+        self.usb("3-2", "0fd9")
+        fini = self.lancer("--check", env={"FAUX_SESSION": "3"})
+        self.assertEqual(1, fini.returncode)
+        self.assertIn("no graphical session", fini.stderr)
+        self.assertEqual(1, len(fini.stderr.strip().splitlines()))
+        self.assertEqual(
+            "--user is-active --quiet graphical-session.target\n",
+            self.appels.read_text(encoding="utf-8"),
+        )
+
+    def test_no_deck_is_said_before_the_session_is_asked(self):
+        """Sans deck, la raison reste « no Stream Deck » et le
+        gestionnaire n'est pas interrogé."""
+        self.venv()
+        fini = self.lancer("--check", env={"FAUX_SESSION": "3"})
+        self.assertEqual(1, fini.returncode)
+        self.assertIn("no Stream Deck plugged in", fini.stderr)
+        self.assertFalse(self.appels.exists())
 
     def test_no_venv_exits_one_and_names_the_install(self):
         self.usb("3-2", "0fd9")
