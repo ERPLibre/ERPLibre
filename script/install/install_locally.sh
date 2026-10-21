@@ -198,6 +198,43 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
     # (astral-sh/uv#1804, « not planned ») et Poetry 2.1.3 n'a plus « export ».
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
+        # Les dépendances que Poetry a amenées dans ce venv, alignées sur le
+        # verrou AVANT l'installation : sans quoi Poetry les remplace pendant
+        # qu'il s'en sert pour compiler. Voir script/poetry/poetry_lock_align.py.
+        contraintes_verrou="$(mktemp)"
+        a_aligner="$("${VENV_ODOO_PATH}/bin/python" -m pip list \
+            --format=freeze 2> /dev/null \
+            | "./${VENV_ERPLIBRE_PATH}/bin/python" \
+                ./script/poetry/poetry_lock_align.py \
+                --contraintes "${contraintes_verrou}" poetry.lock)"
+        if [[ -n "${a_aligner}" ]]; then
+            echo "Alignement sur poetry.lock :" ${a_aligner}
+            # Les dépendances des paquets alignés suivent, contraintes aux
+            # versions du verrou : virtualenv 21 réclame python-discovery,
+            # que virtualenv 20 n'avait pas. Le verrou peut dépasser la borne
+            # que Poetry déclare pour ses propres dépendances — virtualenv 21
+            # contre « <21 » — et pip le signalerait en « ERROR », alors que
+            # « poetry install » aboutit de toute façon à cet état.
+            # shellcheck disable=SC2086
+            "${VENV_ODOO_PATH}/bin/python" -m pip install -q \
+                --no-warn-conflicts -c "${contraintes_verrou}" ${a_aligner} \
+                || echo "Alignement incomplet : poetry install s'en chargera."
+        fi
+        # Une dépendance ABSENTE d'un paquet déjà aligné — venv laissé
+        # incomplet par une installation interrompue — bloquerait Poetry dès
+        # sa première compilation isolée. « pip check » la nomme ; seules
+        # celles que le verrou épingle sont posées, à sa version.
+        manquantes="$("${VENV_ODOO_PATH}/bin/python" -m pip check 2> /dev/null \
+            | awk '/which is not installed/ {sub(/,$/, "", $4); print $4}' \
+            | sort -u | grep -ixF -f <(cut -d= -f1 "${contraintes_verrou}"))"
+        if [[ -n "${manquantes}" ]]; then
+            echo "Dependances absentes, posees depuis poetry.lock :" ${manquantes}
+            # shellcheck disable=SC2086
+            "${VENV_ODOO_PATH}/bin/python" -m pip install -q \
+                --no-warn-conflicts -c "${contraintes_verrou}" ${manquantes} \
+                || echo "Dependances incompletes : poetry install s'en chargera."
+        fi
+        rm -f "${contraintes_verrou}"
         "${POETRY_ODOO_PATH}" install --no-root ${POETRY_VERBOSE}
         retVal=$?
         if [[ $retVal -ne 0 ]]; then
