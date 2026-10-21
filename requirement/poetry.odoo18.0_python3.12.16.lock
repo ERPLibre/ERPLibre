@@ -5886,6 +5886,7 @@ description = "Python interface to MySQL"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "platform_machine != \"s390x\""
 files = [
     {file = "mysqlclient-2.3.0-cp310-cp310-win_amd64.whl", hash = "sha256:3153c5c9538b1fe6363b1c61b7e0d31e8007624bfa3de70dcca00b4d2461ca93"},
     {file = "mysqlclient-2.3.0-cp310-cp310-win_arm64.whl", hash = "sha256:fb94f509834cbe119c93c2b661d6115ff293d5db9300d8a410126923b5960d48"},
@@ -12027,4 +12028,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12.16,<3.13"
-content-hash = "bf905c9a68f4f74ca59f7a8227551aae81a2134d05b8f38812d320c308d1d74e"
+content-hash = "36fd62df9f8171b39bed4b5fe588ddd9b0b560706615644e7c23267085f03374"
