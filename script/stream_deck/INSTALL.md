@@ -38,7 +38,7 @@ script takes these options:
 | `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
 | `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level, one package manager command each; a missing one is skipped with a warning |
 | `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
-| `--autostart` | with `--stream-deck`: enable the deck service at login (default: not enabled) |
+| `--autostart` | with `--stream-deck`: enable the deck service at login and when a deck is plugged in (default: not enabled) |
 | `--restart-after-game`, `--no-restart-after-game` | with `--stream-deck`: the deck service comes back after a game, or not (default: it does); the two exclude each other |
 | `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages always stay |
 | `--dry-run` | print what would be done, change nothing |
@@ -76,13 +76,17 @@ With `--stream-deck`, the installer writes
 ```
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
 KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0fd9", TAG+="systemd", ENV{SYSTEMD_ALIAS}="/sys/subsystem/erplibre/streamdeck"
 ```
 
 `0fd9` is Elgato's USB vendor id, so the rule covers every Stream Deck model.
 `uaccess` gives the user logged in at the seat access to the device, on every
 distribution family; no group membership is needed, unlike the `plugdev`
 group, which exists only on Debian and Ubuntu. The `70-` prefix orders the
-rule before `73-seat-late.rules`, where `uaccess` is applied. To diagnose a
+rule before `73-seat-late.rules`, where `uaccess` is applied. The third
+line names the plugged deck `sys-subsystem-erplibre-streamdeck.device` in
+the user's systemd manager; the deck service is wanted by that unit, so an
+enabled service starts when a deck is plugged in after login. To diagnose a
 device that is not seen, or to add new hardware, watch the events while you
 plug it in:
 
@@ -108,8 +112,8 @@ RESTART_AFTER_GAME=yes
 option given writes its key; an option left out keeps the value already in
 the file, and the default applies only to a missing key, so a reinstall
 keeps a program chosen in TODO. Any other line stays. The unit starts only
-when a program is chosen, `.venv.streamdeck` exists and a deck is plugged
-in; otherwise systemd skips it. Once started, the deck program
+when a program is chosen, `.venv.streamdeck` exists, a deck is plugged in
+and the graphical session is up; otherwise systemd skips it. Once started, the deck program
 outlives its deck: unplugged, it writes one journal line, keeps the deck
 lock and looks for a deck every 2 seconds; the deck plugged back in comes
 up on the home screen. A deck found but refused at its opening (its device
@@ -117,7 +121,8 @@ node not accessible) writes one more line, naming the error. A deck that
 vanishes again within 10 seconds of coming back is looked for half as
 often each time, down to every 30 seconds. The installer never starts
 it: the program needs the extension, which a fresh install loads at the
-next login. With `--autostart` the unit is enabled and starts at login.
+next login. With `--autostart` the unit is enabled and starts at login, or
+when a deck is plugged in later.
 Without a reachable user manager (an install over ssh with no session), the
 summary names the command to run after the next login.
 

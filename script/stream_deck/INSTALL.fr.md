@@ -38,7 +38,7 @@ script accepte ces options :
 | `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
 | `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau, une commande du gestionnaire de paquets chacun ; un paquet absent est sauté avec un avertissement |
 | `--deck-program=tiler\|controller\|none` | avec `--stream-deck` : le programme que lance le service du deck (défaut `tiler`) |
-| `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session (défaut : non activé) |
+| `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session et au branchement d'un deck (défaut : non activé) |
 | `--restart-after-game`, `--no-restart-after-game` | avec `--stream-deck` : le service du deck revient après un jeu, ou non (défaut : il revient) ; les deux s'excluent |
 | `--uninstall` | retire tout : désactive l'extension, retire son lien, le service du deck et ses réglages, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, tout sauf l'extension, qui reste active ; les paquets système restent toujours |
 | `--dry-run` | affiche ce qui serait fait, ne change rien |
@@ -77,6 +77,7 @@ Avec `--stream-deck`, l'installateur écrit
 ```
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
 KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0fd9", TAG+="systemd", ENV{SYSTEMD_ALIAS}="/sys/subsystem/erplibre/streamdeck"
 ```
 
 `0fd9` est l'identifiant de fabricant USB d'Elgato : la règle couvre tous les
@@ -84,9 +85,12 @@ modèles de Stream Deck. `uaccess` donne l'accès au périphérique à
 l'utilisateur assis devant le poste, sur toutes les familles de distribution ;
 aucun groupe n'est requis, contrairement au groupe `plugdev`, qui n'existe que
 sur Debian et Ubuntu. Le préfixe `70-` place la règle avant
-`73-seat-late.rules`, qui applique `uaccess`. Pour diagnostiquer un
-périphérique qui n'est pas vu, ou ajouter du nouveau matériel, observer les
-événements en le branchant :
+`73-seat-late.rules`, qui applique `uaccess`. La troisième ligne nomme le
+deck branché `sys-subsystem-erplibre-streamdeck.device` dans le gestionnaire
+systemd de l'utilisateur ; cette unité veut le service du deck, si bien
+qu'un service activé démarre quand un deck est branché après l'ouverture de
+session. Pour diagnostiquer un périphérique qui n'est pas vu, ou ajouter du
+nouveau matériel, observer les événements en le branchant :
 
 ```
 sudo udevadm monitor
@@ -111,7 +115,8 @@ option donnée écrit sa clé ; une option absente garde la valeur déjà dans
 le fichier, et le défaut ne vaut que pour une clé absente : une
 réinstallation garde un programme choisi dans TODO. Toute autre ligne
 reste. L'unité ne démarre que si un programme est choisi, que
-`.venv.streamdeck` existe et qu'un deck est branché ; sinon systemd la saute.
+`.venv.streamdeck` existe, qu'un deck est branché et que la session
+graphique est ouverte ; sinon systemd la saute.
 Une fois lancé, le programme du deck survit à son deck : débranché, il
 écrit une ligne au journal, garde le verrou du deck et cherche un deck
 toutes les 2 secondes ; le deck rebranché revient sur l'écran d'accueil.
@@ -121,7 +126,8 @@ disparaît de nouveau moins de 10 secondes après son retour est cherché deux
 fois moins souvent à chaque fois, jusqu'à une fois toutes les 30 secondes.
 L'installateur ne la démarre jamais : le programme a besoin de l'extension,
 qu'une installation neuve charge à la prochaine ouverture de session. Avec
-`--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans
+`--autostart`, l'unité est activée et démarre à l'ouverture de session, ou
+au branchement d'un deck par la suite. Sans
 gestionnaire utilisateur joignable (une installation par ssh sans session),
 le bilan nomme la commande à lancer après la prochaine connexion.
 

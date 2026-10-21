@@ -10,9 +10,13 @@
 #   ./script/install/erplibre_home_deck.sh --check    ExecCondition du service
 #
 # --check rend 0 quand un programme est choisi (pas « none »), que le venv
-# existe et qu'un deck est branché ; 1 sinon, avec la raison sur une ligne
-# de la sortie d'erreur. systemd saute alors le démarrage au lieu de boucler
-# sur un programme qui sort aussitôt sans deck.
+# existe, qu'un deck est branché et que graphical-session.target est actif ;
+# 1 sinon, avec la raison sur une ligne de la sortie d'erreur. systemd saute
+# alors le démarrage au lieu de boucler sur un programme qui sort aussitôt
+# sans deck. La session compte parce que la règle udev demande le service à
+# chaque branchement, y compris avant l'ouverture de session : lancé là, le
+# programme ne trouverait pas l'extension GNOME, et graphical-session.target
+# le démarre de toute façon à son arrivée.
 #
 # Sans option, le script REMPLACE son processus par le programme (exec) :
 # le verrou du deck appartient à la description de fichier que le programme
@@ -45,6 +49,8 @@ case "${1:-}" in
         [ -x "${VENV_PYTHON}" ] \
             || fail "${VENV_PYTHON} missing: make erplibre_home_streamdeck_install"
         deck_present || fail "no Stream Deck plugged in (USB vendor 0fd9)"
+        systemctl --user is-active --quiet graphical-session.target \
+            || fail "no graphical session (graphical-session.target inactive)"
         exit 0
         ;;
     "") ;;

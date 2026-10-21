@@ -78,7 +78,7 @@ script accepte ces options :
 | `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
 | `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level, one package manager command each; a missing one is skipped with a warning |
 | `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
-| `--autostart` | with `--stream-deck`: enable the deck service at login (default: not enabled) |
+| `--autostart` | with `--stream-deck`: enable the deck service at login and when a deck is plugged in (default: not enabled) |
 | `--restart-after-game`, `--no-restart-after-game` | with `--stream-deck`: the deck service comes back after a game, or not (default: it does); the two exclude each other |
 | `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages always stay |
 | `--dry-run` | print what would be done, change nothing |
@@ -98,7 +98,7 @@ starting with `UNSUPPORTED:`), `1` any other failure, including an
 | `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
 | `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau, une commande du gestionnaire de paquets chacun ; un paquet absent est sauté avec un avertissement |
 | `--deck-program=tiler\|controller\|none` | avec `--stream-deck` : le programme que lance le service du deck (défaut `tiler`) |
-| `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session (défaut : non activé) |
+| `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session et au branchement d'un deck (défaut : non activé) |
 | `--restart-after-game`, `--no-restart-after-game` | avec `--stream-deck` : le service du deck revient après un jeu, ou non (défaut : il revient) ; les deux s'excluent |
 | `--uninstall` | retire tout : désactive l'extension, retire son lien, le service du deck et ses réglages, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, tout sauf l'extension, qui reste active ; les paquets système restent toujours |
 | `--dry-run` | affiche ce qui serait fait, ne change rien |
@@ -159,6 +159,7 @@ Avec `--stream-deck`, l'installateur écrit
 ```
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
 KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0fd9", TAG+="systemd", ENV{SYSTEMD_ALIAS}="/sys/subsystem/erplibre/streamdeck"
 ```
 
 <!-- [end] -->
@@ -167,7 +168,10 @@ KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
 `uaccess` gives the user logged in at the seat access to the device, on every
 distribution family; no group membership is needed, unlike the `plugdev`
 group, which exists only on Debian and Ubuntu. The `70-` prefix orders the
-rule before `73-seat-late.rules`, where `uaccess` is applied. To diagnose a
+rule before `73-seat-late.rules`, where `uaccess` is applied. The third
+line names the plugged deck `sys-subsystem-erplibre-streamdeck.device` in
+the user's systemd manager; the deck service is wanted by that unit, so an
+enabled service starts when a deck is plugged in after login. To diagnose a
 device that is not seen, or to add new hardware, watch the events while you
 plug it in:
 
@@ -177,9 +181,12 @@ modèles de Stream Deck. `uaccess` donne l'accès au périphérique à
 l'utilisateur assis devant le poste, sur toutes les familles de distribution ;
 aucun groupe n'est requis, contrairement au groupe `plugdev`, qui n'existe que
 sur Debian et Ubuntu. Le préfixe `70-` place la règle avant
-`73-seat-late.rules`, qui applique `uaccess`. Pour diagnostiquer un
-périphérique qui n'est pas vu, ou ajouter du nouveau matériel, observer les
-événements en le branchant :
+`73-seat-late.rules`, qui applique `uaccess`. La troisième ligne nomme le
+deck branché `sys-subsystem-erplibre-streamdeck.device` dans le gestionnaire
+systemd de l'utilisateur ; cette unité veut le service du deck, si bien
+qu'un service activé démarre quand un deck est branché après l'ouverture de
+session. Pour diagnostiquer un périphérique qui n'est pas vu, ou ajouter du
+nouveau matériel, observer les événements en le branchant :
 
 <!-- [end] -->
 <!-- [common] -->
@@ -220,8 +227,8 @@ RESTART_AFTER_GAME=yes
 option given writes its key; an option left out keeps the value already in
 the file, and the default applies only to a missing key, so a reinstall
 keeps a program chosen in TODO. Any other line stays. The unit starts only
-when a program is chosen, `.venv.streamdeck` exists and a deck is plugged
-in; otherwise systemd skips it. Once started, the deck program
+when a program is chosen, `.venv.streamdeck` exists, a deck is plugged in
+and the graphical session is up; otherwise systemd skips it. Once started, the deck program
 outlives its deck: unplugged, it writes one journal line, keeps the deck
 lock and looks for a deck every 2 seconds; the deck plugged back in comes
 up on the home screen. A deck found but refused at its opening (its device
@@ -229,7 +236,8 @@ node not accessible) writes one more line, naming the error. A deck that
 vanishes again within 10 seconds of coming back is looked for half as
 often each time, down to every 30 seconds. The installer never starts
 it: the program needs the extension, which a fresh install loads at the
-next login. With `--autostart` the unit is enabled and starts at login.
+next login. With `--autostart` the unit is enabled and starts at login, or
+when a deck is plugged in later.
 Without a reachable user manager (an install over ssh with no session), the
 summary names the command to run after the next login.
 
@@ -278,7 +286,8 @@ option donnée écrit sa clé ; une option absente garde la valeur déjà dans
 le fichier, et le défaut ne vaut que pour une clé absente : une
 réinstallation garde un programme choisi dans TODO. Toute autre ligne
 reste. L'unité ne démarre que si un programme est choisi, que
-`.venv.streamdeck` existe et qu'un deck est branché ; sinon systemd la saute.
+`.venv.streamdeck` existe, qu'un deck est branché et que la session
+graphique est ouverte ; sinon systemd la saute.
 Une fois lancé, le programme du deck survit à son deck : débranché, il
 écrit une ligne au journal, garde le verrou du deck et cherche un deck
 toutes les 2 secondes ; le deck rebranché revient sur l'écran d'accueil.
@@ -288,7 +297,8 @@ disparaît de nouveau moins de 10 secondes après son retour est cherché deux
 fois moins souvent à chaque fois, jusqu'à une fois toutes les 30 secondes.
 L'installateur ne la démarre jamais : le programme a besoin de l'extension,
 qu'une installation neuve charge à la prochaine ouverture de session. Avec
-`--autostart`, l'unité est activée et démarre à l'ouverture de session. Sans
+`--autostart`, l'unité est activée et démarre à l'ouverture de session, ou
+au branchement d'un deck par la suite. Sans
 gestionnaire utilisateur joignable (une installation par ssh sans session),
 le bilan nomme la commande à lancer après la prochaine connexion.
 
