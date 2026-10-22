@@ -5,6 +5,7 @@
 | Note mobile field      | project.task field    | Type             | Notes |
 |------------------------|-----------------------|------------------|-------|
 | *(no mobile id sent)*  | `id`                  | Integer (server) | Odoo ID stored in mobile SQLite `note_links`, per server and database, after first push |
+| *(target, per server)* | `project_id`          | Many2one         | Chosen per server at first push (none = personal task), sent by `create` only; the server's last choice is offered first |
 | `title`                | `name`                | Char             | Required |
 | `done`                 | `state`               | Selection        | Odoo 17+ : `'1_done'` ↔ done=true ; `'01_in_progress'` ↔ done=false |
 | `archived`             | `active`              | Boolean          | false = archived |
@@ -78,8 +79,16 @@ Timestamps and text descriptions are preserved in the HTML description `<p>` lin
 - Mobile stores it in its local SQLite `note_links` table, keyed by the sync
   config id `url|username|database`: an id is only meaningful in the database
   that issued it.
-- Subsequent pushes to that server use `project.task.write([[id], {...}])`; a
-  push to another server creates and links that server's own task.
+- Subsequent pushes to that server use `project.task.write([[id], {...}])`,
+  without `project_id`, so a task moved to another project on the server
+  stays there; a push to another server creates and links that server's own
+  task.
+- Pull and poll read the tasks linked on the server by id, whatever their
+  project.
+- Every write still replaces `tag_ids` (command 6) and, on Odoo 17+, `state`
+  with the note's values: on a task others edit in a shared project, their
+  tags and a state other than in progress or done are overwritten by the
+  next push. Pull does not copy tags back yet.
 - Multiple mobile clients: each independently stores the same `id` — fully supported.
 
 ## Conflict resolution
