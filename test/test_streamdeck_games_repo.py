@@ -9,7 +9,7 @@ Ce que ces tests gardent :
 
 - ERPLibre ne suit aucun fichier de games/, qu'il ignore, ni aucun jeu à
   côté du programme du deck ;
-- le manifeste des jeux les épingle sur une étiquette, à leur chemin, et
+- le manifeste des jeux suit leur branche main, à leur chemin, et
   les trois listes de manifestes le nomment : git_merge_repo_manifest.py
   n'en lit pas toujours la même ;
 - games_contract porte une version MAJEUR.MINEUR, et des jeux clonés dont
@@ -90,7 +90,9 @@ class LeManifeste(unittest.TestCase):
             if p.get("path") == GAMES_PATH
         ]
 
-    def test_it_pins_the_games_repository_on_a_tag(self):
+    def test_it_follows_the_main_branch_of_the_games(self):
+        """Une version MAJEURE du contrat qui change sur main touche tout
+        checkout à sa prochaine mise à jour : LeContrat le surveille."""
         remotes = {
             r.get("name"): r.get("fetch") for r in self.racine.iter("remote")
         }
@@ -99,9 +101,7 @@ class LeManifeste(unittest.TestCase):
             "https://github.com/TechnoLibre/",
             remotes[self.projet.get("remote")],
         )
-        self.assertRegex(
-            self.projet.get("revision"), r"^refs/tags/v\d+\.\d+\.\d+$"
-        )
+        self.assertEqual("main", self.projet.get("revision"))
 
     def test_every_manifest_list_names_it(self):
         """git_merge_repo_manifest.py lit l'une ou l'autre selon que le
@@ -128,8 +128,8 @@ class LeContrat(unittest.TestCase):
     @SANS_JEUX
     def test_the_cloned_games_share_its_major(self):
         """Une MAJEURE qui diffère : ERPLibre et les jeux ne s'entendent
-        plus sur CONTRACT.md, et l'étiquette du manifeste ne convient pas
-        à ce checkout."""
+        plus sur CONTRACT.md ; main des jeux a changé de MAJEURE sans que
+        games_contract suive."""
         attendue = CONTRAT.read_text(encoding="utf-8").strip()
         clonee = charger(
             "games_cli", GAMES_DIR / "games_cli.py"
