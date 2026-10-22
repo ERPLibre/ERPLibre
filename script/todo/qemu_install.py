@@ -880,10 +880,13 @@ class QemuInstallMixin:
         message nommé, sur les deux chemins, au lieu de laisser la suite
         installer sur un système à moitié mis à niveau."""
         # « {sync} » vaut « -Sy » au premier essai, « -Syy » à la reprise.
+        # « $el_reflector » vaut « reflector » sur x86_64 et rien ailleurs :
+        # le paquet n'existe que là, et une cible introuvable ferait échouer
+        # la mise à niveau entière.
         up = (
             "if ! {{ sudo pacman {sync} --needed --noconfirm "
             "archlinux-keyring && sudo pacman -Su --needed --noconfirm "
-            "reflector; }}; then "
+            "$el_reflector; }}; then "
         )
         retry = t(
             "pacman full upgrade failed, retrying after a forced refresh"
@@ -898,6 +901,10 @@ class QemuInstallMixin:
             # aucun pacman ne tourne, sinon on attend qu'il se libère.
             "pgrep -x pacman >/dev/null 2>&1 "
             "|| sudo rm -f /var/lib/pacman/db.lck; "
+            # « case » et non « [ ] && » : il rend 0 sur toute architecture,
+            # ce que la commande distante, sous « set -e », exige.
+            'case "$(uname -m)" in x86_64) el_reflector=reflector;; '
+            "*) el_reflector=;; esac; "
             # Le trousseau d'abord, puis la mise à niveau COMPLÈTE, reflector
             # compris dans la même transaction : installé seul après un
             # « -Sy », il tirerait python contre un système resté ancien,
@@ -917,8 +924,17 @@ class QemuInstallMixin:
             + "fi; fi; "
             # reflector d'abord, nos miroirs ensuite : « --save » écrase le
             # fichier, écrire avant lui ne servirait à rien.
+            #
+            # Gardé sur x86_64, comme la mirrorlist qui suit : reflector trie
+            # la mirrorlist officielle, et elle ne sert que cette
+            # architecture. Ailleurs, la mise à niveau ne l'a pas posé.
+            '[ "$(uname -m)" = x86_64 ] && { '
             "sudo reflector --latest 20 --protocol https --sort rate "
             "--save /etc/pacman.d/mirrorlist || true; "
+            # Une garde fausse rend 1 à la liste ET : ce bloc ne doit jamais
+            # TERMINER la commande distante, qui tourne sous « set -e ». Les
+            # miroirs puis « pacman -Syu » le suivent.
+            "}; "
             + self._qemu_pacman_mirror_cmd()
             # Peu coûteux après la mise à niveau : relit les index des
             # nouveaux miroirs, qui servent les mêmes versions. Sans
