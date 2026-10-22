@@ -223,6 +223,11 @@ S390X_DISTROS: tuple[str, ...] = (
     "rocky",
     "fedora",
     "opensuse",
+    # Arch ne publie AUCUNE image s390x : geo.mirror.pkgbuild.com ne sert que
+    # x86_64. Celle-ci vient du portage communautaire archlinux-s390x, qui la
+    # bâtit avec cloud-init — donc elle se déploie comme toutes les autres,
+    # sans voie particulière. Son adresse se règle par EL_ARCH_S390X_BASE.
+    "arch",
     # Debian n'a PAS d'image cloud s390x, et n'en aura pas par cette voie :
     # vérifié sur cloud.debian.org, les arborescences bookworm et trixie ne
     # publient que amd64, arm64, ppc64el et riscv64. Le port s390x existe
@@ -446,6 +451,14 @@ def gpu_install_args(node: str) -> list[str]:
 
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
+# L'image s390x d'Arch n'existe pas en amont : elle est produite par le
+# portage archlinux-s390x. Par defaut elle est servie par l'hote qui fait
+# deja tourner le depot pacman du portage, sur le pont libvirt ; un serveur
+# ailleurs se designe par EL_ARCH_S390X_BASE, sans toucher au code.
+ARCH_S390X_BASE = os.environ.get(
+    "EL_ARCH_S390X_BASE", "http://192.168.123.1:8081/images"
+)
+
 # Image NixOS : release ÉPINGLÉE d'un tiers, jamais « latest ». Une release
 # qui bouge changerait le système de base d'un déploiement à l'autre, et
 # celle-ci n'est signée par personne — la somme ci-dessous est donc la nôtre,
@@ -580,6 +593,9 @@ def image_candidates(
             f"Leap-{version}-Minimal-VM.{tag}-Cloud.qcow2"
         ]
     if distro == "arch":
+        if arch == "s390x":
+            # Pas d'amont : voir ARCH_S390X_BASE.
+            return [f"{ARCH_S390X_BASE}/Arch-Linux-s390x-cloudimg.qcow2"]
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
     if distro == "nixos":

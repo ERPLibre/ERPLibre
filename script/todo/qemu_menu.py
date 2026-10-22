@@ -108,6 +108,9 @@ class QemuMenuMixin:
         "fedora",
         "opensuse",
         "debian",
+        # Image produite par le portage archlinux-s390x, pas par Arch :
+        # l'amont ne sert que x86_64.
+        "arch",
     )
 
     _QEMU_ARM64_DISTROS = (
