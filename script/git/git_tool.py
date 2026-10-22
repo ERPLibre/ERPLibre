@@ -8,6 +8,7 @@
 # migration meurt sur un TypeError avant d'avoir rien fait.
 from __future__ import annotations
 
+import csv
 import os
 import pathlib
 import webbrowser
@@ -33,6 +34,16 @@ EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
+# Les listes des manifestes qu'ERPLibre déclare pour lui-même, hors versions
+# d'Odoo : le mobile et les jeux du Stream Deck, entre autres.
+DECLARED_MANIFEST_LISTS = tuple(
+    os.path.join("conf", nom)
+    for nom in (
+        "git_manifest.csv",
+        "git_manifest_mobile.csv",
+        "git_manifest_streamdeck.csv",
+    )
+)
 
 
 class RepoAttrs(object):
@@ -224,6 +235,60 @@ class GitTool:
             repos.append(data)
 
         return self._with_root_repo(repos, repo_path, add_root)
+
+    def add_declared_repos(self, repos: list, repo_path: str = ".") -> list:
+        """`repos` complétée des projets des manifestes que nomment
+        DECLARED_MANIFEST_LISTS, présents sur le disque comme dépôt git et
+        absents de `repos`, puis triée par nom.
+
+        Le manifeste local ne liste que ce que Google Repo a synchronisé à
+        sa dernière exécution. Un checkout sans .repo, ou dont le manifeste
+        local est antérieur à un projet, porte pourtant ce projet quand
+        install_erplibre_home.sh l'a cloné : les jeux du Stream Deck dans
+        script/stream_deck/games, notamment. Un projet absent du disque, ou
+        un répertoire sans .git, n'est pas ajouté.
+        """
+        connus = {repo.get("name") for repo in repos}
+        manifestes = []
+        for liste in DECLARED_MANIFEST_LISTS:
+            try:
+                with open(
+                    os.path.join(repo_path, liste), encoding="utf-8"
+                ) as fh:
+                    for ligne in csv.DictReader(fh):
+                        if ligne.get("filepath") not in manifestes:
+                            manifestes.append(ligne.get("filepath") or "")
+            except OSError:
+                continue
+        for manifeste in manifestes:
+            fichier = os.path.join(repo_path, manifeste)
+            if not manifeste or not os.path.isfile(fichier):
+                continue
+            remotes, projects, _default = self.get_manifest_xml_info(
+                filename=fichier
+            )
+            for project in projects.values():
+                path = project.get("@path")
+                if not path or path in connus:
+                    continue
+                if not os.path.exists(os.path.join(repo_path, path, ".git")):
+                    continue
+                remote = remotes.get(project.get("@remote")) or {}
+                url = f"{remote.get('@fetch', '')}{project.get('@name')}"
+                url, url_https, url_git = self.get_url(url)
+                repos.append(
+                    {
+                        "url": url,
+                        "url_https": url_https,
+                        "url_git": url_git,
+                        "path": path,
+                        "relative_path": os.path.join(repo_path, path),
+                        "name": path,
+                        "group": project.get("@groups"),
+                    }
+                )
+                connus.add(path)
+        return sorted(repos, key=lambda k: k.get("name"))
 
     def get_repo_info_manifest_xml(
         self, repo_path: str = ".", add_root: bool = False, filter_group=None

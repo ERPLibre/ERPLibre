@@ -140,7 +140,11 @@ def main():
     git_tool = GitTool()
     config = get_config()
 
-    lst_repo = git_tool.get_repo_info(config.dir, add_root=True)
+    # Le manifeste local ne connaît que ce que repo a synchronisé : les
+    # projets qu'ERPLibre déclare, présents sur le disque, s'y ajoutent.
+    lst_repo = git_tool.add_declared_repos(
+        git_tool.get_repo_info(config.dir, add_root=True), config.dir
+    )
     changed, skipped = change_all_remotes(
         git_tool,
         lst_repo,
