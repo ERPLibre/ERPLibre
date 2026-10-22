@@ -24,17 +24,19 @@ Ce que ces tests gardent :
   du deck, et sans venv il le dit dans la langue de l'utilisateur sans rien
   lancer ;
 - launch_game.sh, que rien n'appelait, n'existe plus ;
-- le programme du deck, le contrôleur, chaque jeu et la galerie répondent
-  à -h, --help et à une option inconnue sans importer le matériel ni
-  prendre le verrou du deck ; --meta d'un jeu rend toujours son JSON,
-  même placé après les options propres du jeu.
+- le programme du deck et le contrôleur répondent à -h, --help et à une
+  option inconnue sans importer le matériel ni prendre le verrou du deck.
+
+Les jeux et la galerie sont un dépôt à part, cloné dans
+script/stream_deck/games/ ; leur propre ligne de commande se teste là-bas
+(tests/test_contract.py). Ici, les cibles make tournent dans une copie
+réduite du dépôt avec un faux games/, et ce qui lit les vrais jeux ou la
+vraie galerie est sauté, avec sa raison, quand games/ manque.
 """
 
-import concurrent.futures
 import contextlib
 import importlib.util
 import io
-import json
 import os
 import re
 import shlex
@@ -110,9 +112,31 @@ def regles(texte):
     return resultat
 
 
-def jeux():
-    """Les jeux du dépôt : game_<id>.py -> id."""
+# Les tests qui lisent les vrais jeux ou la vraie galerie : un checkout
+# peut ne pas avoir cloné leur dépôt.
+SANS_JEUX = unittest.skipUnless(
+    (GAMES_DIR / "games_cli.py").is_file(),
+    "script/stream_deck/games/ absent : make erplibre_home_streamdeck_install",
+)
+CIBLE_DE_JEU = re.compile(
+    r"^\$\(STREAMDECK_PY\) script/stream_deck/games/game_(\w+)\.py$"
+)
+
+
+def jeux_installes():
+    """Les jeux clonés dans games/ : game_<id>.py -> id."""
     return sorted(p.stem[len("game_") :] for p in GAMES_DIR.glob("game_*.py"))
+
+
+def jeux_du_fragment(regles_):
+    """{cible: id} des cibles dont la recette lance un jeu de games/."""
+    trouves = {}
+    for cible, (_, commandes) in regles_.items():
+        for commande in commandes:
+            m = CIBLE_DE_JEU.match(commande)
+            if m:
+                trouves[cible] = m.group(1)
+    return trouves
 
 
 class TestMakefileUsesTheVenv(unittest.TestCase):
@@ -130,8 +154,11 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
         )
 
     def test_every_game_target_requires_the_games_guard(self):
-        for jeu in jeux():
-            self.assertIn(GARDE, self.regles[f"streamdeck_{jeu}"][0], jeu)
+        cibles = jeux_du_fragment(self.regles)
+        self.assertIn("streamdeck_snake", cibles)
+        for cible, jeu in cibles.items():
+            self.assertEqual(f"streamdeck_{jeu}", cible)
+            self.assertIn(GARDE, self.regles[cible][0], cible)
 
     def test_the_deck_tools_are_never_gated(self):
         for cible in (
@@ -167,15 +194,14 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
             if any(VENV_REF in c for c in commandes):
                 self.assertIn(VENV_REF, prerequis, cible)
 
-    def test_every_game_has_its_target_under_the_venv(self):
-        self.assertIn("snake", jeux())
-        for jeu in jeux():
-            cible = f"streamdeck_{jeu}"
-            self.assertIn(cible, self.regles)
-            self.assertEqual(
-                self.regles[cible][1],
-                [f"{VENV_REF} script/stream_deck/games/game_{jeu}.py"],
-            )
+    @SANS_JEUX
+    def test_the_game_targets_are_the_games_of_the_clone(self):
+        """Un jeu ajouté ou retiré par une nouvelle étiquette du dépôt des
+        jeux tombe ici, jusqu'à ce que le fragment le suive."""
+        self.assertEqual(
+            jeux_installes(),
+            sorted(jeux_du_fragment(self.regles).values()),
+        )
 
     def test_the_tiler_target_is_an_alias(self):
         prerequis, commandes = self.regles["streamdeck_tiler"]
@@ -387,6 +413,7 @@ def environnement_isole(tmp, unite_active):
     return env, journal
 
 
+@SANS_JEUX
 class TestGalleryLaunch(unittest.TestCase):
     def test_the_game_runs_under_the_server_interpreter(self):
         galerie = charger_galerie()
@@ -467,6 +494,7 @@ class TestGalleryLaunch(unittest.TestCase):
         )
 
 
+@SANS_JEUX
 class TestGalleryGames(unittest.TestCase):
     """La galerie relit GAMES à chaque lancement : off refuse, sans
     redémarrage."""
@@ -544,10 +572,11 @@ class TestLaunchGameScriptGone(unittest.TestCase):
         self.assertFalse((DECK_DIR / "launch_game.sh").exists())
 
     def test_nothing_refers_to_it(self):
+        """games/ est un autre dépôt, et n'est pas lu."""
         for chemin in DECK_DIR.rglob("*"):
             if chemin.suffix not in {".py", ".js", ".html", ".md", ".sh"}:
                 continue
-            if "node_modules" in chemin.parts:
+            if "node_modules" in chemin.parts or GAMES_DIR in chemin.parents:
                 continue
             texte = chemin.read_text(encoding="utf-8", errors="replace")
             self.assertNotIn("launch_game.sh", texte, str(chemin))
@@ -565,7 +594,7 @@ os._exit(99)
 
 
 # Les paquets que les points d'entrée du deck importent pour le matériel,
-# et webbrowser, que seule la galerie ouvre : son faux pose le témoin à
+# et webbrowser, qu'aucun ne doit ouvrir : son faux pose le témoin à
 # l'appel de open(), pas à l'import.
 PAQUETS_MATERIEL = ("StreamDeck", "PIL", "cv2", "requests", "pyudev")
 FAUX_WEBBROWSER = """import builtins
@@ -579,60 +608,17 @@ def open(*_args, **_kw):
 """
 
 
-# Un faux matériel qui s'importe : tout nom de PIL et de StreamDeck existe,
-# et seul DeviceManager().enumerate(), le premier pas vers le deck, pose le
-# témoin et tue le processus en 77. Il laisse donc un jeu définir GAME_META
-# et lire sa ligne de commande jusqu'au bout.
-FAUX_QUELCONQUE = """class _Quelconque:
-    def __getattr__(self, _nom):
-        return _Quelconque()
-
-    def __call__(self, *_args, **_kw):
-        return _Quelconque()
-
-
-def __getattr__(_nom):
-    return _Quelconque()
-"""
-FAUX_DEVICE_MANAGER = """import os
-
-
-class DeviceManager:
-    def enumerate(self):
-        with open(os.environ["TEMOIN_MATERIEL"], "w") as f:
-            f.write("enumerate")
-        os._exit(77)
-"""
-FAUX_MATERIEL_IMPORTABLE = {
-    "PIL/__init__.py": FAUX_QUELCONQUE,
-    "StreamDeck/__init__.py": "",
-    "StreamDeck/DeviceManager.py": FAUX_DEVICE_MANAGER,
-    "StreamDeck/Devices/__init__.py": "",
-    "StreamDeck/Devices/StreamDeck.py": FAUX_QUELCONQUE,
-    "StreamDeck/ImageHelpers.py": FAUX_QUELCONQUE,
-    "StreamDeck/Transport/__init__.py": "",
-    "StreamDeck/Transport/Transport.py": (
-        "class TransportError(Exception):\n    pass\n"
-    ),
-}
-
-
-def executer_sans_materiel(script, *args, faux_paquets=None):
+def executer_sans_materiel(script, *args):
     """Lance `script` sous le python des tests avec les faux paquets du
     matériel, un faux webbrowser et un XDG_RUNTIME_DIR temporaire. Rend le
     CompletedProcess, si un faux a posé son témoin, et le contenu du
-    répertoire du verrou du deck. N'affirme rien : un fil peut l'appeler.
-
-    `faux_paquets`, {chemin relatif: source}, remplace les faux qui tuent
-    le processus à l'import, par exemple FAUX_MATERIEL_IMPORTABLE."""
-    if faux_paquets is None:
-        faux_paquets = {
+    répertoire du verrou du deck. N'affirme rien."""
+    with tempfile.TemporaryDirectory() as tmp:
+        faux = os.path.join(tmp, "faux")
+        sources = {
             "%s/__init__.py" % paquet: FAUX_MATERIEL
             for paquet in PAQUETS_MATERIEL
         }
-    with tempfile.TemporaryDirectory() as tmp:
-        faux = os.path.join(tmp, "faux")
-        sources = dict(faux_paquets)
         sources["webbrowser/__init__.py"] = FAUX_WEBBROWSER
         for relatif, source in sources.items():
             chemin = os.path.join(faux, relatif)
@@ -740,152 +726,6 @@ class TestControllerCommandLine(unittest.TestCase):
         processus avant le verrou."""
         res = lancer_sans_materiel(self, self.SCRIPT, materiel=True)
         self.assertEqual(99, res.returncode, res.stderr)
-
-
-def en_parallele(fonction, appels):
-    """fonction(*appel) pour chaque appel, sur 8 fils : un processus par
-    jeu reste rapide. Rend les résultats dans l'ordre des appels."""
-    with concurrent.futures.ThreadPoolExecutor(8) as fils:
-        return list(fils.map(lambda appel: fonction(*appel), appels))
-
-
-class TestGamesCommandLine(unittest.TestCase):
-    """La ligne de commande de chaque jeu, que games_cli lui donne : -h et
-    --help sortent en 0, une option inconnue en 2, avant l'import de PIL et
-    de StreamDeck et sans le verrou du deck ; sans option, le jeu va
-    jusqu'au matériel. --meta garde la sortie que lit la galerie."""
-
-    def lancer_tous(self, *args):
-        """(jeu, CompletedProcess, témoin posé, verrou) pour chaque jeu."""
-        chemins = [GAMES_DIR / ("game_%s.py" % jeu) for jeu in jeux()]
-        resultats = en_parallele(
-            executer_sans_materiel, [(c,) + args for c in chemins]
-        )
-        return [(c.name,) + r for c, r in zip(chemins, resultats)]
-
-    def test_every_game_answers_help_with_its_usage(self):
-        resultats = self.lancer_tous("-h")
-        self.assertEqual(45, len(resultats))
-        for jeu, res, importe, verrou in resultats:
-            with self.subTest(jeu=jeu):
-                self.assertFalse(importe, res.stderr)
-                self.assertEqual([], verrou)
-                self.assertEqual(0, res.returncode, res.stderr)
-                self.assertIn("usage: %s" % jeu, res.stdout)
-                self.assertIn("--meta", res.stdout)
-                self.assertEqual("", res.stderr)
-
-    def test_every_game_refuses_an_unknown_option_with_2(self):
-        for jeu, res, importe, verrou in self.lancer_tous("--bogus"):
-            with self.subTest(jeu=jeu):
-                self.assertFalse(importe, res.stderr)
-                self.assertEqual([], verrou)
-                self.assertEqual(2, res.returncode, res.stderr)
-                self.assertIn("usage:", res.stderr)
-                self.assertEqual("", res.stdout)
-
-    def test_without_an_option_every_game_goes_on_to_the_hardware(self):
-        for jeu, res, importe, verrou in self.lancer_tous():
-            with self.subTest(jeu=jeu):
-                self.assertTrue(importe, res.stderr)
-                self.assertEqual(99, res.returncode, res.stderr)
-
-    def test_the_options_of_a_game_are_still_read(self):
-        """Hangman et Minesweeper ajoutent les leurs au parseur commun :
-        elles passent la ligne de commande et vont jusqu'au matériel."""
-        for jeu, args in (
-            ("game_hangman.py", ["-l", "en"]),
-            ("game_minesweeper.py", ["-m", "6", "-v"]),
-        ):
-            res = lancer_sans_materiel(
-                self, GAMES_DIR / jeu, *args, materiel=True
-            )
-            self.assertEqual(99, res.returncode, (jeu, res.stderr))
-        res = lancer_sans_materiel(
-            self, GAMES_DIR / "game_hangman.py", "-l", "de"
-        )
-        self.assertEqual(2, res.returncode, res.stderr)
-
-    def test_meta_answers_wherever_it_stands_among_the_options(self):
-        """--meta après les options propres d'un jeu rend le JSON et sort
-        en 0, comme en tête : le faux matériel importable laisse le jeu
-        aller jusqu'à DeviceManager().enumerate(), qui sortirait en 77."""
-        for jeu, args in (
-            ("game_hangman.py", ["--meta"]),
-            ("game_hangman.py", ["-l", "en", "--meta"]),
-            ("game_minesweeper.py", ["--meta"]),
-            ("game_minesweeper.py", ["-m", "3", "--meta"]),
-            ("game_minesweeper.py", ["-v", "--meta", "-m", "3"]),
-        ):
-            with self.subTest(jeu=jeu, args=args):
-                res, importe, verrou = executer_sans_materiel(
-                    GAMES_DIR / jeu,
-                    *args,
-                    faux_paquets=FAUX_MATERIEL_IMPORTABLE,
-                )
-                self.assertFalse(importe, res.stderr)
-                self.assertEqual([], verrou)
-                self.assertEqual(0, res.returncode, res.stderr)
-                self.assertIn("name", json.loads(res.stdout))
-
-    def test_the_importable_fake_reaches_the_deck(self):
-        """Le témoin du test précédent : sans --meta, le même faux mène
-        le jeu jusqu'à enumerate()."""
-        res, importe, _verrou = executer_sans_materiel(
-            GAMES_DIR / "game_hangman.py",
-            "-l",
-            "en",
-            faux_paquets=FAUX_MATERIEL_IMPORTABLE,
-        )
-        self.assertTrue(importe, res.stderr)
-        self.assertEqual(77, res.returncode, res.stderr)
-
-    @unittest.skipUnless(
-        (ROOT / ".venv.streamdeck" / "bin" / "python").exists(),
-        "sans .venv.streamdeck, les jeux n'importent pas leurs dépendances",
-    )
-    def test_meta_prints_the_json_the_gallery_reads(self):
-        """Le vrai --meta, sous le python du venv comme dans la galerie :
-        il importe la bibliothèque Stream Deck sans ouvrir le deck."""
-        python = str(ROOT / ".venv.streamdeck" / "bin" / "python")
-
-        def meta(jeu):
-            return subprocess.run(
-                [python, str(GAMES_DIR / ("game_%s.py" % jeu)), "--meta"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-        tous = jeux()
-        for jeu, res in zip(tous, en_parallele(meta, [(j,) for j in tous])):
-            with self.subTest(jeu=jeu):
-                self.assertEqual(0, res.returncode, res.stderr)
-                self.assertIn("name", json.loads(res.stdout))
-
-
-class TestGalleryCommandLine(unittest.TestCase):
-    """La ligne de commande de la galerie : -h et --help sortent en 0, une
-    option inconnue en 2, sans lire GAMES, sans lancer un jeu pour son
-    --meta, sans écouter ni ouvrir de navigateur : un jeu lancé importerait
-    le faux PIL, un navigateur ouvert poserait le témoin de webbrowser."""
-
-    SCRIPT = GAMES_DIR / "gallery_server.py"
-
-    def test_help_prints_the_usage_and_exits_0(self):
-        for option in ("-h", "--help"):
-            res = lancer_sans_materiel(self, self.SCRIPT, option)
-            self.assertEqual(0, res.returncode, res.stderr)
-            self.assertIn("usage:", res.stdout)
-            self.assertIn("http://localhost:8042", res.stdout)
-            self.assertEqual("", res.stderr)
-
-    def test_an_unknown_option_exits_2_with_the_usage(self):
-        for args in (["--bogus"], ["8042"], ["--hel"]):
-            res = lancer_sans_materiel(self, self.SCRIPT, *args)
-            self.assertEqual(2, res.returncode, args)
-            self.assertIn("usage:", res.stderr, args)
-            self.assertEqual("", res.stdout, args)
 
 
 class TestTodoGamesLauncher(unittest.TestCase):

@@ -24,7 +24,10 @@ CE QU'IL INSTALLE : HEAD, ET RIEN D'AUTRE
 
 Le code part du checkout par « git bundle create … HEAD », et la VM ne joint
 jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course :
-ce qui serait installé ne serait pas ce qui est commité.
+ce qui serait installé ne serait pas ce qui est commité. Seuls les jeux du
+Stream Deck, un dépôt à part que le bundle ne porte pas, viennent de GitHub :
+le niveau Stream Deck les clone à l'étiquette que leur manifeste épingle, et
+le contrôle « games » le vérifie.
 
   ./long_test/install_erplibre_home.py                 # toute la matrice
   ./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
@@ -42,6 +45,7 @@ import shlex
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
@@ -200,6 +204,26 @@ CMD_VENV = (
     "cd ~/git/erplibre && .venv.streamdeck/bin/python -c"
     " 'import StreamDeck, pyudev, PIL, cv2, requests, keyboard;"
     ' print("ok")\''
+)
+
+
+def etiquette_des_jeux():
+    """L'étiquette du dépôt des jeux que le manifeste épingle, sans
+    « refs/tags/ » : celle que --stream-deck doit cloner."""
+    manifeste = os.path.join(
+        RACINE, "manifest", "git_manifest_streamdeck_game.xml"
+    )
+    (projet,) = ET.parse(manifeste).getroot().iter("project")
+    return projet.get("revision").removeprefix("refs/tags/")
+
+
+# Les jeux : le bundle git de HEAD ne porte que les fichiers qu'ERPLibre
+# suit, et --stream-deck les clone donc à l'étiquette du manifeste.
+CMD_JEUX = (
+    "cd ~/git/erplibre/script/stream_deck/games && test -f games_cli.py"
+    ' && test "$(git describe --tags --exact-match HEAD)" = '
+    + shlex.quote(etiquette_des_jeux())
+    + " && echo ok"
 )
 REGLE_UDEV = "/etc/udev/rules.d/70-streamdeck.rules"
 VENV_DECK = "~/git/erplibre/.venv.streamdeck"
@@ -382,6 +406,7 @@ ETAPES = (
         (
             "udev",
             "venv",
+            "games",
             "service-unit",
             "service-enabled",
             "service-condition",
@@ -1400,6 +1425,8 @@ def _etape_stream_deck(cible, log):
         return "udev", None
     if not constat(cible, log, "venv", CMD_VENV, DELAIS_CONTROLE["venv"]):
         return "venv", None
+    if not constat(cible, log, "games", CMD_JEUX):
+        return "games", None
     if not constat(cible, log, "service-unit", CMD_UNITE):
         return "service-unit", None
     controle = Controle(cible, log, "service-enabled")

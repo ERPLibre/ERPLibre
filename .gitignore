@@ -65,6 +65,10 @@ private/todo/todo_override_private.json
 # pese douze megaoctets.
 /script/erplibre_sip_go/erplibre_sip_go
 
-# Sauvegardes locales des jeux Stream Deck.
+# Les jeux Stream Deck : un dépôt à part, cloné ici par Google Repo ou par
+# install_erplibre_home.sh --stream-deck
+# (manifest/git_manifest_streamdeck_game.xml).
+/script/stream_deck/games/
+# L'ancien emplacement des sauvegardes des jeux, qu'un checkout garde tant
+# qu'il ne les a pas déplacées dans games/save/.
 script/stream_deck/save/
-script/stream_deck/games/save/

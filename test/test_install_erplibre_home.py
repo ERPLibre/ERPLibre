@@ -18,6 +18,9 @@ Ce que ces tests gardent :
 - les deux niveaux : la base ne pose ni règle udev, ni venv, ni paquet du
   deck ; --stream-deck ajoute les trois, et EPEL n'est activé qu'avec lui,
   sur les reconstructions d'EL, où wmctrl en dépend ;
+- --stream-deck clone les jeux, quand ils manquent, à la révision que leur
+  manifeste épingle ; un répertoire présent n'est jamais touché, et un
+  clone qui échoue ne laisse rien ;
 - les traductions se compilent par « msgfmt --check », aux deux niveaux ;
 - --uninstall retire tout, --uninstall --stream-deck tout sauf
   l'extension, et aucun des deux ne vérifie le système ;
@@ -50,6 +53,7 @@ import signal
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[1]
@@ -376,6 +380,14 @@ class LeDryRun(Installateur):
         self.assertIn(self.lien, ecrits)
         # Lancé hors du dépôt, il se place quand même à sa racine.
         self.assertEqual([self.venv], self.lignes(fini, "venv: "))
+
+    def test_only_the_stream_deck_level_has_a_games_line(self):
+        self.assertEqual([], self.lignes(self.lancer("--dry-run"), "games: "))
+        fini = self.lancer("--dry-run", "--stream-deck")
+        (ligne,) = self.lignes(fini, "games: ")
+        self.assertTrue(
+            ligne.endswith(str(RACINE / "script/stream_deck/games")), ligne
+        )
 
     def test_the_translations_use_msgfmt_check_at_both_levels(self):
         attendus = [str(EXTENSION / "tools/migrate_legacy.py")] + [
@@ -775,6 +787,164 @@ class TestPaquets(unittest.TestCase):
     def test_pas_d_epel_sur_fedora(self):
         fait, appels = self.jouer("fedora", "0", stream_deck="1")
         self.assertNotIn("dnf install -y epel-release", appels)
+
+
+def depot_de_jeux(dossier):
+    """Un dépôt git local de jeux sous `dossier`/jeux.git : un premier
+    commit étiqueté v9.9.9, puis un second sur la branche. Rend
+    (sha du commit étiqueté, chemin d'un manifeste qui l'épingle)."""
+    depot = os.path.join(dossier, "jeux.git")
+
+    def git(*args):
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                depot,
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                *args,
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+    os.makedirs(depot)
+    git("init", "-q")
+    Path(depot, "games_cli.py").write_text("import argparse\n")
+    git("add", "games_cli.py")
+    git("commit", "-q", "-m", "un")
+    git("tag", "v9.9.9")
+    Path(depot, "game_apres.py").write_text("")
+    git("add", "game_apres.py")
+    git("commit", "-q", "-m", "deux")
+    sha = subprocess.run(
+        ["git", "-C", depot, "rev-parse", "v9.9.9"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    manifeste = os.path.join(dossier, "manifeste.xml")
+    Path(manifeste).write_text(
+        '<?xml version="1.0" encoding="UTF-8" ?>\n<manifest>\n'
+        '  <remote name="local" fetch="file://%s/" />\n'
+        '  <project name="jeux.git" path="script/stream_deck/games"'
+        ' remote="local" revision="refs/tags/v9.9.9" />\n</manifest>\n'
+        % dossier
+    )
+    return sha, manifeste
+
+
+@unittest.skipUnless(shutil.which("git"), "git absent")
+class TestJeux(unittest.TestCase):
+    """clone_games : les jeux manquants se clonent à la révision du
+    manifeste ; un répertoire présent n'est jamais touché."""
+
+    def cloner(self, dossier, manifeste, avant=""):
+        return sourcer(
+            'GAMES_DIR="$DOSSIER/games"\n'
+            'GAMES_MANIFEST="$MANIFESTE"\n'
+            + avant
+            + 'clone_games\nprintf "%s\\n" "${DONE[@]}"\n',
+            {"DOSSIER": dossier, "MANIFESTE": manifeste},
+        )
+
+    def test_the_source_is_the_project_of_the_manifest(self):
+        racine = ET.parse(RACINE / "manifest/git_manifest_streamdeck_game.xml")
+        projet = racine.find("project")
+        attendu = "https://github.com/TechnoLibre/%s %s\n" % (
+            projet.get("name"),
+            projet.get("revision"),
+        )
+        fait = sourcer("games_source\n")
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertEqual(attendu, fait.stdout)
+
+    def test_missing_games_are_cloned_at_the_pinned_revision(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            sha, manifeste = depot_de_jeux(dossier)
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            jeux = Path(dossier, "games")
+            tete = subprocess.run(
+                ["git", "-C", str(jeux), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            self.assertEqual(sha, tete)
+            self.assertTrue((jeux / "games_cli.py").is_file())
+            self.assertFalse((jeux / "game_apres.py").exists())
+            self.assertEqual(
+                "games cloned: %s (refs/tags/v9.9.9)\n" % jeux, fait.stdout
+            )
+            self.assertEqual("", fait.stderr)
+
+    def test_an_existing_directory_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            Path(dossier, "games").mkdir()
+            Path(dossier, "games", "a_moi").write_text("x")
+            fait = self.cloner(
+                dossier, manifeste, avant='git() { echo "git $*"; }\n'
+            )
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual("\n", fait.stdout)
+            self.assertEqual(["a_moi"], os.listdir(Path(dossier, "games")))
+
+    def test_leftovers_of_the_untrack_are_cloned_around_the_saves(self):
+        """La mise à jour d'ERPLibre qui cesse de suivre les jeux en retire
+        les fichiers et laisse save/ et __pycache__/, ignorés : ce games/
+        se clone, et les sauvegardes passent dans le clone."""
+        with tempfile.TemporaryDirectory() as dossier:
+            sha, manifeste = depot_de_jeux(dossier)
+            jeux = Path(dossier, "games")
+            (jeux / "save").mkdir(parents=True)
+            (jeux / "save" / "partie.json").write_text("{}")
+            (jeux / "__pycache__").mkdir()
+            (jeux / "__pycache__" / "games_cli.pyc").write_text("")
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertTrue((jeux / ".git").is_dir())
+            self.assertTrue((jeux / "games_cli.py").is_file())
+            self.assertEqual("{}", (jeux / "save" / "partie.json").read_text())
+            self.assertFalse((jeux / "__pycache__").exists())
+
+    def test_the_dry_run_names_the_clone_or_the_kept_directory(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            jeux = os.path.join(dossier, "games")
+            fragment = (
+                'GAMES_DIR="$DOSSIER/games"\nGAMES_MANIFEST="$MANIFESTE"\n'
+                "DRY_RUN=1\nstep_games\n"
+            )
+            env = {"DOSSIER": dossier, "MANIFESTE": manifeste}
+            fait = sourcer(fragment, env)
+            self.assertEqual(
+                "games: clone file://%s/jeux.git at refs/tags/v9.9.9 into %s\n"
+                % (dossier, jeux),
+                fait.stdout,
+            )
+            self.assertFalse(os.path.exists(jeux))
+            os.mkdir(jeux)
+            Path(jeux, "a_moi").write_text("x")
+            fait = sourcer(fragment, env)
+            self.assertEqual("games: keep %s\n" % jeux, fait.stdout)
+
+    def test_a_failed_clone_leaves_no_directory(self):
+        """Une révision absente : ni games/ ni le répertoire du clone
+        partiel ne restent, que deck_games_present prendrait pour des
+        jeux installés."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            texte = Path(manifeste).read_text()
+            Path(manifeste).write_text(texte.replace("v9.9.9", "v0.0.0"))
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(1, fait.returncode)
+            self.assertIn("clone des jeux impossible", fait.stderr)
+            restes = [n for n in os.listdir(dossier) if n.startswith("games")]
+            self.assertEqual([], restes)
 
 
 class TestActivation(unittest.TestCase):

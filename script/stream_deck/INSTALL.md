@@ -19,8 +19,9 @@ packages of the base, `make` among them, then it links the GNOME extension
 into `~/.local/share/gnome-shell/extensions/`, compiles its schemas and its
 translations (with `msgfmt`), and enables it. The second one, for a
 workstation with a Stream Deck, adds the Stream Deck packages, writes the
-udev rule and creates `.venv.streamdeck` from
-`script/stream_deck/requirements.txt`. Then log out and back in: under
+udev rule, creates `.venv.streamdeck` from
+`script/stream_deck/requirements.txt`, and clones the games (see below).
+Then log out and back in: under
 Wayland, GNOME Shell loads a new extension only at session start. A second
 run changes nothing. Without the Stream Deck level, the extension's
 `device` and `controller` indicators say that ERPLibre Home Stream Deck is
@@ -40,7 +41,7 @@ script takes these options:
 | `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
 | `--autostart` | with `--stream-deck`: enable the deck service at login and when a deck is plugged in (default: not enabled) |
 | `--restart-after-game`, `--no-restart-after-game` | with `--stream-deck`: the deck service comes back after a game, or not (default: it does); the two exclude each other |
-| `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages always stay |
+| `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages and the games always stay |
 | `--dry-run` | print what would be done, change nothing |
 
 Exit code `0` means done, `2` an unsupported system (one line on stderr
@@ -49,6 +50,25 @@ starting with `UNSUPPORTED:`), `1` any other failure, including an
 `enabled-extensions`.
 `make erplibre_home_uninstall` runs `--uninstall`, and
 `make erplibre_home_streamdeck_uninstall` runs `--uninstall --stream-deck`.
+
+### The games
+
+The games and their gallery are a separate repository,
+[streamdeck_game](https://github.com/TechnoLibre/streamdeck_game), cloned
+at `script/stream_deck/games/`. `manifest/git_manifest_streamdeck_game.xml`
+pins it on a tag: Google Repo clones it there in a checkout it manages, and
+`--stream-deck` clones it at that same tag when the directory is missing.
+A directory already there is left as it is, except one holding only
+`save/` and `__pycache__/`, which a checkout keeps when the update that
+stopped tracking the games removes their files: the installer clones the
+games there, keeping the saves. `--uninstall` never removes them.
+`CONTRACT.md`, at the root of the games, says what they and ERPLibre
+expect of each other; `script/stream_deck/games_contract` holds the
+contract version ERPLibre was written against.
+
+Without the games, the deck program, the controller and the service work;
+the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
+refuse with one line naming `make erplibre_home_streamdeck_install`.
 
 ### System packages, for reference
 
