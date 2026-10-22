@@ -162,4 +162,16 @@ if [ "${EL_INSTALL_WKHTMLTOPDF}" = "True" ]; then
   fi
 fi
 
+#--------------------------------------------------
+# s390x : ce que PyPI ne publie pas en roue, et qu'il faut donc compiler
+#--------------------------------------------------
+# Sur cette architecture presque aucune roue n'existe : « poetry install »
+# compile ce que pip poserait ailleurs tout prêt, et chaque extension veut
+# sa bibliotheque systeme. Leur absence arrete l'installation tres loin de
+# sa cause. Debian, Fedora et openSUSE ont ce fragment depuis longtemps ;
+# Arch etait la seule distribution a ne pas l'avoir.
+if [ "$(uname -m)" = "s390x" ]; then
+  . ./script/install/S390x/arch.sh
+fi
+
 echo -e "\n---- Arch Linux dependency installation done ----"
