@@ -784,9 +784,19 @@ class QemuInstallMixin:
             "|| sudo rm -f /var/lib/pacman/db.lck; "
             # reflector d'abord, nos miroirs ensuite : « --save » écrase le
             # fichier, écrire avant lui ne servirait à rien.
+            #
+            # Gardé sur x86_64, comme la mirrorlist qui suit : reflector trie
+            # la mirrorlist officielle, et elle ne sert que cette
+            # architecture. Ailleurs, ou bien le paquet manque, ou bien
+            # « --save » écrit des miroirs qui ne servent pas la machine.
+            '[ "$(uname -m)" = x86_64 ] && { '
             "sudo pacman -Sy --needed --noconfirm reflector || true; "
             "sudo reflector --latest 20 --protocol https --sort rate "
             "--save /etc/pacman.d/mirrorlist || true; "
+            # Une garde fausse rend 1 à la liste ET : ce bloc ne doit jamais
+            # TERMINER la commande distante, qui tourne sous « set -e ». Les
+            # miroirs puis « pacman -Syu » le suivent.
+            "}; "
             + self._qemu_pacman_mirror_cmd()
             + "sudo pacman -Syu --noconfirm || true; "
             "fi; "
