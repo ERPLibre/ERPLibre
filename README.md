@@ -230,6 +230,8 @@ time make test_full_fast
 | [MIGRATION](doc/MIGRATION.md) | Database migration between versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Git repository management |
 | [IMPROVE_ODOO](doc/improve_odoo.md) | ERPLibre's Odoo fork and its patches |
+
+| [streamdeck_game](doc/streamdeck_game.md) | Stream Deck games, a repository of their own |
 | [POETRY](doc/POETRY.md) | Python dependency management |
 | [FAQ](doc/FAQ.md) | Frequently asked questions |
 | [HOWTO](doc/HOWTO.md) | How-to guides |

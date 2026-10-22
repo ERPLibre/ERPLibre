@@ -54,37 +54,20 @@ compris un `--uninstall` qui a retiré le reste mais n'a pu ni lire ni écrire
 
 Les jeux et leur galerie sont un dépôt à part,
 [streamdeck_game](https://github.com/TechnoLibre/streamdeck_game), cloné
-dans `script/stream_deck/games/`. `manifest/git_manifest_streamdeck_game.xml`
-l'épingle sur une étiquette : Google Repo l'y clone dans un checkout qu'il
-gère, et `--stream-deck` le clone à cette même étiquette quand le
-répertoire manque. Un répertoire déjà là reste tel quel, sauf celui qui ne
-garde que `save/` et `__pycache__/`, ce qu'un checkout garde quand la mise
-à jour qui a cessé de suivre les jeux en retire les fichiers :
-l'installateur y clone les jeux, sauvegardes comprises. Tout autre contenu retient le clone, et le
-bilan de l'installateur nomme ce qu'il faut déplacer. `--uninstall` ne
-retire jamais les jeux. `CONTRACT.md`, à la racine des jeux, dit ce que les jeux
-et ERPLibre attendent l'un de l'autre ; `script/stream_deck/games_contract`
-porte la version du contrat pour laquelle ERPLibre est écrit.
+dans `script/stream_deck/games/` depuis la branche `main` que nomme
+`manifest/git_manifest_streamdeck_game.xml`. `--stream-deck` les clone
+quand ils manquent, amène un clone qu'il a fait au dernier commit de `main`
+à chaque exécution, installe leur
+`requirements.txt` dans `.venv.streamdeck`, et laisse tout autre contenu de
+`games/` en le nommant dans le bilan. `--uninstall` ne les retire jamais.
+Leurs sauvegardes vivent dans
+`$XDG_DATA_HOME/erplibre-home/streamdeck/save/` (`~/.local/share` par
+défaut). Comment un checkout géré
+par Google Repo les reçoit, et comment les modifier, est
+dans [doc/streamdeck_game.fr.md](../../doc/streamdeck_game.fr.md).
 
-Un checkout géré par Google Repo peut porter un clone ordinaire fait par
-l'installateur, que `repo sync` refuse (`.git: unsupported checkout
-state`). Les scripts `script/manifest/update_manifest_*.sh` lancent donc
-`script/manifest/streamdeck_games_to_repo.sh` entre `repo init` et
-`repo sync`. Quand repo va extraire les jeux, un clone sans travail local
-passe, entier, dans `script/stream_deck/games.plain-clone-<date>/`, et
-`games/` garde une copie de `save/`, que repo remplit ensuite ; rien n'est
-supprimé, et le clone déplacé se retire à la main une fois inutile. Un clone
-avec une modification, un fichier non suivi, un commit sur aucun remote,
-une remise ou un worktree lié arrête la mise à jour, en le nommant. repo
-supprime aussi le répertoire d'un projet qu'un init écarte, sauvegardes
-comprises : l'init du générateur de code garde le groupe `streamdeck`, et
-quand un init écarte quand même les jeux, `save/` est d'abord copié dans
-`script/stream_deck/games.save-<date>/`. Un commit d'ERPLibre d'avant le
-départ des jeux n'a pas cette garde : copie `save/` avant d'en extraire un
-et d'en lancer la mise à jour.
-
-Un fichier de jeu modifié dans le checkout avant cette mise à jour bloque le
-`git pull` : copie la modification ailleurs, `git checkout -- <fichier>`,
+Un fichier de jeu modifié dans le checkout avant le départ des jeux bloque
+le `git pull` : copie la modification ailleurs, `git checkout -- <fichier>`,
 tire, puis reporte la modification dans le dépôt streamdeck_game.
 
 Sans les jeux, le programme du deck, le contrôleur et le service
