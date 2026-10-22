@@ -41,4 +41,7 @@ set -- "${FORWARD_ARGS[@]}"
 # La branche doit exister sur le dépôt distant passé à -u.
 MANIFEST_REV=$(manifest_revision) || exit 1
 .venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b "${MANIFEST_REV}" -m ${EL_MANIFEST_DEV}
+# Un clone ordinaire des jeux Stream Deck, que repo sync refuserait, est
+# mis de côté une fois l'init fait (voir le script).
+./script/manifest/streamdeck_games_to_repo.sh || exit 1
 .venv.erplibre/bin/repo sync ${REPO_VERBOSE}
