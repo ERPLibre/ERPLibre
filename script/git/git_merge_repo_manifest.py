@@ -33,6 +33,9 @@ DEFAULT_PATH_MANIFEST_CONF = os.path.join("conf", "git_manifest.csv")
 DEFAULT_PATH_MANIFEST_MOBILE_CONF = os.path.join(
     "conf", "git_manifest_mobile.csv"
 )
+DEFAULT_PATH_MANIFEST_STREAMDECK_CONF = os.path.join(
+    "conf", "git_manifest_streamdeck.csv"
+)
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
@@ -41,6 +44,10 @@ DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(
     ".repo", "installed_odoo_version.txt"
 )
 MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
+# Les jeux du Stream Deck : comme le mobile, leur manifeste n'entre que si
+# leur répertoire existe (install_erplibre_home.sh --stream-deck les y
+# clone) ou avec --with_streamdeck. Un serveur Odoo ne les clone pas.
+STREAMDECK_GAMES_PATH = os.path.join("script", "stream_deck", "games")
 ODOO_VERSION_PATH = ".odoo-version"
 
 
@@ -78,6 +85,11 @@ def get_config(argv=None):
         "--with_mobile",
         action="store_true",
         help="Add mobile project manifest",
+    )
+    parser.add_argument(
+        "--with_streamdeck",
+        action="store_true",
+        help="Add the Stream Deck games manifest",
     )
     parser.add_argument(
         "--with_extra",
@@ -125,6 +137,7 @@ def main():
         input_paths = default_input_paths(
             with_OCA=config.with_OCA,
             with_mobile=config.with_mobile,
+            with_streamdeck=config.with_streamdeck,
             with_extra=config.with_extra,
             with_new_manifest=config.with_new_manifest,
         )
@@ -225,6 +238,7 @@ def main():
 def default_input_paths(
     with_OCA=False,
     with_mobile=False,
+    with_streamdeck=False,
     with_extra=False,
     with_new_manifest=False,
 ):
@@ -247,6 +261,8 @@ def default_input_paths(
             with_OCA = True
         if os.path.isdir(MOBILE_PATH):
             with_mobile = True
+        if os.path.isdir(STREAMDECK_GAMES_PATH):
+            with_streamdeck = True
         if odoo_version and get_version_extra(odoo_version.strip()):
             with_extra = True
 
@@ -295,6 +311,10 @@ def default_input_paths(
     if with_mobile:
         append_file_path_manifest(
             input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+        )
+    if with_streamdeck:
+        append_file_path_manifest(
+            input_paths, DEFAULT_PATH_MANIFEST_STREAMDECK_CONF
         )
     if with_extra and odoo_version:
         path_extra = os.path.join(

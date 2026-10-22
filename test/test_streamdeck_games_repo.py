@@ -9,9 +9,10 @@ Ce que ces tests gardent :
 
 - ERPLibre ne suit aucun fichier de games/, qu'il ignore, ni aucun jeu à
   côté du programme du deck ;
-- le manifeste des jeux suit leur branche main, à leur chemin, et
-  les trois listes de manifestes le nomment : git_merge_repo_manifest.py
-  n'en lit pas toujours la même ;
+- le manifeste des jeux suit leur branche main, à leur chemin ; seule
+  conf/git_manifest_streamdeck.csv le nomme, que git_merge_repo_manifest.py
+  ne lit que si les jeux sont là ou avec --with_streamdeck, comme pour le
+  mobile : un serveur Odoo ne les clone pas ;
 - games_contract porte une version MAJEUR.MINEUR, et des jeux clonés dont
   la version MAJEURE diffère font échouer la suite ;
 - le menu TODO et la galerie trouvent exactement les jeux du clone.
@@ -104,18 +105,20 @@ class LeManifeste(unittest.TestCase):
         )
         self.assertEqual("main", self.projet.get("revision"))
 
-    def test_every_manifest_list_names_it(self):
-        """git_merge_repo_manifest.py lit l'une ou l'autre selon que le
-        checkout a le mobile ou les modules d'Odoo."""
-        for liste in (
-            "git_manifest.csv",
-            "git_manifest_mobile.csv",
-            "git_manifest_odoo.csv",
+    def test_only_the_streamdeck_list_names_it(self):
+        """Les listes générales entrent dans toute fusion, celle d'un
+        serveur Odoo comprise ; la liste du Stream Deck n'y entre que pour
+        un checkout qui a les jeux."""
+        for liste, nomme in (
+            ("git_manifest_streamdeck.csv", True),
+            ("git_manifest.csv", False),
+            ("git_manifest_mobile.csv", False),
+            ("git_manifest_odoo.csv", False),
         ):
             with self.subTest(liste=liste):
                 with open(ROOT / "conf" / liste, encoding="utf-8") as fh:
                     fichiers = [l["filepath"] for l in csv.DictReader(fh)]
-                self.assertIn(MANIFESTE, fichiers)
+                self.assertEqual(nomme, MANIFESTE in fichiers)
 
 
 class LeContrat(unittest.TestCase):

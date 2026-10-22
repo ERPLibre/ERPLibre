@@ -20,9 +20,12 @@ quand la version MAJEURE du clone diffère.
 
 Ils arrivent de deux façons :
 
-- **Google Repo.** Les trois listes `conf/git_manifest*.csv` nomment le
-  manifeste : chaque `script/manifest/update_manifest_*.sh` synchronise les
-  jeux sur `main`. `repo sync` refuse un clone ordinaire fait par
+- **Google Repo.** `conf/git_manifest_streamdeck.csv` nomme le manifeste.
+  Comme la liste du mobile, `git_merge_repo_manifest.py` l'ajoute quand
+  `script/stream_deck/games` existe, ou avec `--with_streamdeck` ; un
+  serveur Odoo ne clone jamais les jeux. Chaque
+  `script/manifest/update_manifest_*.sh` les synchronise alors sur
+  `main`. `repo sync` refuse un clone ordinaire fait par
   l'installateur : `script/manifest/streamdeck_games_to_repo.sh`, lancé
   entre `repo init` et `repo sync`, le déplace vers
   `script/stream_deck/games.plain-clone-<date>/` quand il ne porte aucun

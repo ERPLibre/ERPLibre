@@ -7,17 +7,20 @@ Le script lit ses listes (conf/*.csv, private/default_git_manifest.csv) par
 chemins relatifs au répertoire courant ; il est donc lancé comme en vrai, en
 sous-processus, depuis une racine jetable.
 
-Deux propriétés gardées :
+Propriétés gardées :
 - l'ordre des manifests est celui des listes : private/ est lu en dernier et
   l'emporte, quel que soit PYTHONHASHSEED (un ensemble le rendait aléatoire) ;
 - le projet Dolibarr entre dans la fusion avec --with_dolibarr, ou d'office
   quand son checkout existe. Sorti de la fusion, il serait effacé par le
   prochain « repo sync », conf.php compris.
 
-Et une troisième, dans une copie de conf/ et manifest/ sans mobile/ ni
-.repo/ : un .odoo-version terminé par un saut de ligne, comme l'écrit un
-éditeur, donne le même manifeste fusionné que sans, avec les modules de
-cette version d'Odoo et sans ligne d'erreur.
+Et, dans une copie de conf/ et manifest/ sans mobile/ ni .repo/ :
+- un .odoo-version terminé par un saut de ligne, comme l'écrit un éditeur,
+  donne le même manifeste fusionné que sans, avec les modules de cette
+  version d'Odoo et sans ligne d'erreur ;
+- les jeux du Stream Deck n'entrent dans la fusion que si
+  script/stream_deck/games existe, ou avec --with_streamdeck, comme le
+  mobile.
 """
 
 import os
@@ -128,14 +131,17 @@ def chemins(manifeste):
 
 
 class LaVersionDOdoo(unittest.TestCase):
-    def fusionner(self, contenu):
+    def fusionner(self, contenu, jeux=False, options=()):
         with tempfile.TemporaryDirectory() as dossier:
             for nom in ("conf", "manifest"):
                 shutil.copytree(RACINE / nom, Path(dossier, nom))
-            Path(dossier, ".odoo-version").write_text(contenu)
+            if contenu is not None:
+                Path(dossier, ".odoo-version").write_text(contenu)
+            if jeux:
+                Path(dossier, "script/stream_deck/games").mkdir(parents=True)
             sortie = os.path.join(dossier, "fusion.xml")
             fini = subprocess.run(
-                [sys.executable, str(SCRIPT), "--output", sortie],
+                [sys.executable, str(SCRIPT), "--output", sortie, *options],
                 cwd=dossier,
                 capture_output=True,
                 text=True,
@@ -152,6 +158,23 @@ class LaVersionDOdoo(unittest.TestCase):
         self.assertNotIn("ERROR", sans_saut)
         self.assertEqual(projets, projets_avec_saut)
         self.assertTrue(set(attendus) <= set(projets_avec_saut))
+
+
+class LesJeuxDuStreamDeck(unittest.TestCase):
+    JEUX = "script/stream_deck/games"
+    fusionner = LaVersionDOdoo.fusionner
+
+    def test_they_come_only_with_their_directory_or_the_option(self):
+        for contenu, jeux, options, attendu in (
+            (None, False, (), False),
+            (VERSION, False, (), False),
+            (None, True, (), True),
+            (VERSION, True, (), True),
+            (None, False, ("--with_streamdeck",), True),
+        ):
+            with self.subTest(odoo=contenu, jeux=jeux, options=options):
+                _sortie, projets = self.fusionner(contenu, jeux, options)
+                self.assertEqual(attendu, self.JEUX in projets)
 
 
 if __name__ == "__main__":

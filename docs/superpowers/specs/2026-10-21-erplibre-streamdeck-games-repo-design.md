@@ -148,12 +148,11 @@ reads.
    project `name="streamdeck_game.git"` at
    `path="script/stream_deck/games"`, `groups="streamdeck"`, first pinned
    to the tag `v1.0.0`, then on `main` from version 1.1 (see Version 1.1).
-   The three lists
-   `conf/git_manifest.csv`, `git_manifest_mobile.csv` and
-   `git_manifest_odoo.csv` name it: `git_merge_repo_manifest.py` skips
-   `git_manifest.csv` when a checkout has both the mobile project and the
-   Odoo modules, so one list alone would miss that case. Unlike the mobile
-   project, it needs no `--with_…` option, since it weighs under 1 MB.
+   It was first named in the three general lists, which every merge
+   reads, an Odoo server's included. It now has its own,
+   `conf/git_manifest_streamdeck.csv`, which `git_merge_repo_manifest.py`
+   reads as it reads the mobile's: when `script/stream_deck/games` exists
+   (the installer clones it there) or with `--with_streamdeck`.
 2. **A checkout without Google Repo.** `install_erplibre_home.sh
    --stream-deck` never runs `repo sync`, and a plain `git clone` of
    ERPLibre has no games. The Stream Deck level therefore clones the games
@@ -209,8 +208,9 @@ reads.
   suite passes both with and without `games/`.
 - **Boundary and contract:** `test_streamdeck_games_repo.py` checks that
   ERPLibre tracks nothing under `games/` and ignores it, that the manifest
-  names the games' `main` branch (a tag before 1.1) and the three lists
-  name it, and that `games_contract` and,
+  names the games' `main` branch (a tag before 1.1) and only
+  `conf/git_manifest_streamdeck.csv` names it, and that `games_contract`
+  and,
   when cloned, `games_cli.CONTRACT_VERSION` share their MAJOR.
 - **Installer:** `games_source` returns the manifest's project; a clone
   from a local repository lands on the manifest's revision, detached; a
