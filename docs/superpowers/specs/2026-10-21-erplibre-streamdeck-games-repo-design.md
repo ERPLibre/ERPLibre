@@ -339,9 +339,14 @@ What it found, and the fixes:
   repo delete them; the saves survive as a copy in `games.save-<date>/`.
   An ERPLibre commit from before the move has no such guard, and its
   update deletes `games/` with the saves (open question 4).
-- **The gallery listens on every interface** (`("", 8042)`): any host on
-  the network can launch a game or delete saves. Not changed here, since
-  the contract only moves it; a separate fix should bind it to 127.0.0.1.
+- **The gallery listened on every interface,** with acting routes on a
+  plain GET and `Access-Control-Allow-Origin: *`: any host on the
+  network, or any page in the browser, could launch a game or delete
+  saves. Contract 2.0 closes it: 127.0.0.1 only, a Host check against DNS
+  rebinding, Sec-Fetch-Site against other sites, and the header
+  `X-Stream-Deck-Gallery: 1` on acting routes, which the extension sends;
+  a client that sends no Sec-Fetch-Site, such as wkhtmltopdf rendering an
+  `<img>`, cannot add it. A MAJOR change, landed on both sides together.
 - **Saves.** Today `script/stream_deck/games/save/` is ignored by ERPLibre;
   after the move it is ignored by the games repository. A `git clean -fdx`
   in the games repository deletes them, as it would today in ERPLibre.
