@@ -87,7 +87,7 @@
     },
 
     "notes.pull": {
-      "description": "Pull todos modified since last sync",
+      "description": "Pull the tasks linked on this server (any project) modified since last sync; no linked task, no request",
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": {
@@ -97,7 +97,7 @@
           "args": [],
           "kwargs": {
             "domain": [
-              ["project_id", "=", false],
+              ["id", "in", ["{note_links.res_id of this server's live task links}"]],
               ["write_date", ">=", "{pull_cursor or oldest link last_synced_at}"]
             ],
             "fields": [
@@ -112,11 +112,11 @@
           }
         }
       },
-      "notes": "project_id=False = project_todo personal tasks. geo_task_point requires erplibre_mobile_todo installed."
+      "notes": "Filtered by linked ids, not project_id: a task created in a project, or moved to one on the server, keeps syncing. geo_task_point requires erplibre_mobile_todo installed."
     },
 
     "notes.poll": {
-      "description": "Lightweight poll — fetch only IDs and write_date to detect changes",
+      "description": "Lightweight poll — fetch only IDs and write_date of the linked tasks to detect changes; no linked task, no request",
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": {
@@ -126,7 +126,7 @@
           "args": [],
           "kwargs": {
             "domain": [
-              ["project_id", "=", false],
+              ["id", "in", ["{note_links.res_id of this server's live task links}"]],
               ["write_date", ">", "{last_synced_at_iso}"]
             ],
             "fields": ["id", "write_date"],
@@ -148,7 +148,7 @@
             {
               "name": "{note.title}",
               "description": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
-              "project_id": false,
+              "project_id": "{outbox.params.projectId} — the project chosen for this server, or false (personal task)",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
               "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
@@ -161,7 +161,41 @@
         }
       },
       "response": "integer — Odoo task ID → stored in mobile SQLite note_links (note, server config id, project.task, id, client_uuid)",
-      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string. Runs as the note's task.create row of sync_outbox; on a retry (attempts > 1) notes.find_created runs first."
+      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string. Runs as the note's task.create row of sync_outbox; on a retry (attempts > 1) notes.find_created runs first. With a project, projects.check runs just before. AccessError, ValidationError, UserError or MissingError on create blocks the row as refused (no retry, createSentAt cleared since the server answered) until the user chooses again. A task deleted on the server is recreated only through the picker: choosing its project queues this create. project_id is sent by create only: notes.update never sends it."
+    },
+
+    "projects.list": {
+      "description": "Projects offered for a new task on one server, cached in remote_records_cache (replaced on each read) for offline choices",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.project",
+          "method": "search_read",
+          "args": [],
+          "kwargs": { "domain": [], "fields": ["id", "name"], "order": "name asc", "limit": 500 }
+        }
+      },
+      "response": "active projects the user can read; 500 rows means the list may be cut"
+    },
+
+    "projects.check": {
+      "description": "Before creating a task in a project: the project still exists, is active (as projects.list offers it) and the user sees it",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.project",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["id", "=", "{outbox.params.projectId}"]],
+            "fields": ["id"],
+            "limit": 1
+          }
+        }
+      },
+      "response": "1 row → create; 0 rows (gone, archived, hidden) or AccessError → the outbox row turns blocked as project_missing, no create sent, sync_target_prefs stops offering that project, and the next tap asks for a project again"
     },
 
     "notes.find_created": {
@@ -209,6 +243,7 @@
             {
               "name": "{note.title}",
               "description": "{note.html_description} (+ the marker when the link has a client_uuid)",
+              "project_id": "never sent: a task moved to another project on the server stays there",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
               "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
@@ -312,6 +347,16 @@
       "migration": "2026102202",
       "columns": ["id (config_id#model)", "config_id", "model", "exists_flag", "can_read", "can_create", "can_write", "has_activities", "has_chatter", "fields_json", "odoo_version", "probed_at", "error"],
       "notes": "Result of capabilities.probe per server and model, used offline; probed again after one day when online."
+    },
+    "remote_records_cache": {
+      "migration": "2026102203",
+      "columns": ["id (config_id#model#res_id)", "config_id", "model", "res_id", "display_name", "extra_json", "fetched_at"],
+      "notes": "Records of a server kept for offline choices (projects.list); one model's rows on one server are replaced as a whole on each read."
+    },
+    "sync_target_prefs": {
+      "migration": "2026102203",
+      "columns": ["id (config_id#kind)", "config_id", "kind (task.create, …)", "params_json", "updated_at"],
+      "notes": "Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice."
     }
   }
 }
