@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+Red='\033[0;31m'         # Red
+Color_Off='\033[0m'      # Text Reset
+
 . ./env_var.sh
 
 # --freeze, ou EL_FREEZE=1 : l'installation prend le SHA du freeze-revision de
@@ -51,6 +54,15 @@ sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME_ERPLIBRE}/env_var.sh
 LAST_PWD=$PWD
 cd ${EL_HOME_ERPLIBRE}
 sudo su ${EL_USER} -c "./script/install/install_locally_prod.sh ${PROD_ARGS}"
+retVal=$?
+# Sans ce contrôle, une installation ratée se poursuit : le script n'est pas
+# sous « set -e », donc il pose ensuite une unité systemd pour un Odoo jamais
+# cloné, finit sur nginx qui rend 0, et « make install_production » rend 0.
+# La panne ne se montre qu'au premier démarrage, loin de sa cause.
+if [[ $retVal -ne 0 ]]; then
+  echo -e "${Red}Error${Color_Off} ./script/install/install_locally_prod.sh"
+  exit 1
+fi
 cd ${LAST_PWD}
 #echo -e "\n* Updating server config file"
 #sudo su ${EL_USER} -c "printf 'logfile = /var/log/${EL_USER}/${EL_CONFIG}.log\n' >> /${EL_USER}/erplibre/config.conf"
