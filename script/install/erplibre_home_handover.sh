@@ -6,8 +6,9 @@
 #
 #   ./script/install/erplibre_home_handover.sh <commande> [arguments…]
 #
-# 0. si GAMES ne vaut pas « on » (voir erplibre_home_settings.sh), le script
-#    sort en 4 sans rien arrêter ni lancer ;
+# 0. si les jeux ne sont pas installés (deck_games_present), le script sort
+#    en 5, et si GAMES ne vaut pas « on » (voir erplibre_home_settings.sh),
+#    en 4, sans rien arrêter ni lancer ;
 # 1. si erplibre-home-streamdeck.service est actif, ou attend de redémarrer
 #    (« activating » pendant RestartSec), il est arrêté ;
 # 2. la commande tourne au premier plan sous le verrou du deck, tenu au nom
@@ -16,8 +17,8 @@
 # 3. si le service était actif et que RESTART_AFTER_GAME vaut yes (défaut),
 #    il est relancé, son compteur de démarrages (StartLimitBurst) remis à
 #    zéro s'il existe encore : des parties enchaînées ne l'épuisent pas ;
-# 4. le script sort avec le code de la commande. Le code 4 peut aussi venir
-#    du jeu lui-même : la ligne sur stderr est le signal sûr.
+# 4. le script sort avec le code de la commande. Les codes 4 et 5 peuvent
+#    aussi venir du jeu lui-même : la ligne sur stderr est le signal sûr.
 #
 # Tant que le verrou est tenu, le service, et tout autre programme du deck
 # lancé hors de la commande, sort en 2 en nommant « game ». Dans la
@@ -46,6 +47,12 @@ RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [ $# -eq 0 ]; then
     echo "usage: $0 <command> [arguments…]" >&2
     exit 1
+fi
+
+# Sans les jeux, rien à passer : le service garde le deck.
+if ! deck_games_present "${RACINE}"; then
+    deck_games_absent_message >&2
+    exit 5
 fi
 
 # GAMES=off, ou une valeur inconnue, refuse tout jeu avant d'arrêter quoi

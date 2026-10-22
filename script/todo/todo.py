@@ -66,6 +66,12 @@ VENV_STREAMDECK_PYTHON = os.path.join(
 ERPLIBRE_HOME_HANDOVER = os.path.join(
     new_path, "script", "install", "erplibre_home_handover.sh"
 )
+# Les jeux sont un dépôt à part, cloné dans script/stream_deck/games/ ;
+# games_cli.py, que chaque jeu importe, témoigne qu'ils sont installés,
+# comme deck_games_present de erplibre_home_settings.sh.
+STREAMDECK_GAMES_CLI = os.path.join(
+    new_path, "script", "stream_deck", "games", "games_cli.py"
+)
 
 
 def _in_venv():
@@ -1858,6 +1864,15 @@ class TODO(
             print(
                 t(
                     "ERPLibre Home Stream Deck is not installed:"
+                    " make erplibre_home_streamdeck_install"
+                )
+            )
+            return False
+        if not os.path.isfile(STREAMDECK_GAMES_CLI):
+            print(
+                t(
+                    "Stream Deck games are not installed"
+                    " (script/stream_deck/games/ is missing):"
                     " make erplibre_home_streamdeck_install"
                 )
             )

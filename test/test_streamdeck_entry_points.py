@@ -48,6 +48,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from streamdeck_checkout import copier_depot  # noqa: E402
+
 sys.argv = ["todo.py"]
 from script.todo import todo as todo_mod  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
@@ -222,65 +225,77 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("make"), "make absent")
 class TestMakefileGuard(unittest.TestCase):
-    def make(self, *args):
+    """Le fragment tourne dans une copie réduite du dépôt, avec ou sans
+    faux games/, sous un faux python qui affiche ses arguments et un
+    XDG_CONFIG_HOME temporaire."""
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.tmp = dossier.name
+        self.faux = os.path.join(self.tmp, "python")
+        with open(self.faux, "w", encoding="utf-8") as f:
+            f.write('#!/bin/sh\necho "faux-python $*"\n')
+        os.chmod(self.faux, os.stat(self.faux).st_mode | stat.S_IXUSR)
+
+    def make(self, cible, jeux=True, python=None):
+        depot = copier_depot(
+            os.path.join(self.tmp, "avec" if jeux else "sans"), jeux=jeux
+        )
         return subprocess.run(
-            ["make", "-s", "-f", str(MAKEFILE), *args],
-            cwd=ROOT,
+            [
+                "make",
+                "-s",
+                "-f",
+                str(MAKEFILE),
+                f"STREAMDECK_PY={python or self.faux}",
+                cible,
+            ],
+            cwd=depot,
             capture_output=True,
             text=True,
             timeout=30,
+            env=dict(os.environ, XDG_CONFIG_HOME=self.tmp),
         )
 
     def test_a_missing_venv_stops_with_the_install_command(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            absent = os.path.join(tmp, "absent", "python")
-            res = self.make(f"STREAMDECK_PY={absent}", "streamdeck_snake")
+        absent = os.path.join(self.tmp, "absent", "python")
+        res = self.make("streamdeck_snake", python=absent)
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("Stream Deck venv missing: " + INSTALL_DECK, res.stderr)
 
     def test_games_off_stops_a_game_target_with_the_message(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            conf = os.path.join(tmp, "erplibre-home", "streamdeck.conf")
-            os.makedirs(os.path.dirname(conf))
-            with open(conf, "w", encoding="utf-8") as f:
-                f.write("GAMES=off\n")
-            faux = os.path.join(tmp, "python")
-            with open(faux, "w", encoding="utf-8") as f:
-                f.write('#!/bin/sh\necho "faux-python $*"\n')
-            os.chmod(faux, 0o755)
-            env = dict(os.environ, XDG_CONFIG_HOME=tmp)
+        conf = os.path.join(self.tmp, "erplibre-home", "streamdeck.conf")
+        os.makedirs(os.path.dirname(conf))
+        with open(conf, "w", encoding="utf-8") as f:
+            f.write("GAMES=off\n")
+        res = self.make("streamdeck_snake")
+        self.assertNotEqual(0, res.returncode)
+        self.assertIn("Stream Deck games are disabled", res.stderr)
+        self.assertNotIn("faux-python", res.stdout)
+        res = self.make("streamdeck_erplibre")
+        self.assertEqual(0, res.returncode, res.stderr)
 
-            def make(cible):
-                return subprocess.run(
-                    [
-                        "make",
-                        "-s",
-                        "-f",
-                        str(MAKEFILE),
-                        f"STREAMDECK_PY={faux}",
-                        cible,
-                    ],
-                    cwd=ROOT,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=env,
+    def test_missing_games_stop_the_game_and_gallery_targets(self):
+        """Ni games/ ni la galerie : le programme du deck, lui, ne dépend
+        pas des jeux."""
+        for cible in ("streamdeck_snake", "streamdeck_gallery"):
+            with self.subTest(cible=cible):
+                res = self.make(cible, jeux=False)
+                self.assertNotEqual(0, res.returncode)
+                self.assertIn(
+                    "Stream Deck games are not installed"
+                    " (script/stream_deck/games/ is missing);"
+                    " install them with " + INSTALL_DECK,
+                    res.stderr,
                 )
-
-            res = make("streamdeck_snake")
-            self.assertNotEqual(0, res.returncode)
-            self.assertIn("Stream Deck games are disabled", res.stderr)
-            self.assertNotIn("faux-python", res.stdout)
-            res = make("streamdeck_erplibre")
-            self.assertEqual(0, res.returncode, res.stderr)
+                self.assertNotIn("faux-python", res.stdout)
+        res = self.make("streamdeck_erplibre", jeux=False)
+        self.assertEqual(0, res.returncode, res.stderr)
+        self.assertIn("faux-python", res.stdout)
 
     def test_a_present_venv_runs_the_game_under_it(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            faux = os.path.join(tmp, "python")
-            with open(faux, "w", encoding="utf-8") as f:
-                f.write('#!/bin/sh\necho "faux-python $*"\n')
-            os.chmod(faux, os.stat(faux).st_mode | stat.S_IXUSR)
-            res = self.make(f"STREAMDECK_PY={faux}", "streamdeck_snake")
+        res = self.make("streamdeck_snake")
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(
             res.stdout.strip(),
@@ -906,6 +921,7 @@ class TestTodoGamesLauncher(unittest.TestCase):
         sortie = io.StringIO()
         with (
             mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
+            mock.patch.object(todo_mod, "STREAMDECK_GAMES_CLI", self.present),
             mock.patch.object(
                 todo_mod.click, "prompt", side_effect=list(reponses)
             ),
@@ -913,6 +929,45 @@ class TestTodoGamesLauncher(unittest.TestCase):
         ):
             rendu = todo.prompt_execute_streamdeck_games()
         return todo, rendu, sortie.getvalue()
+
+    def test_missing_games_say_how_to_install_them_and_scan_nothing(self):
+        for langue, attendu in (
+            (
+                "en",
+                "Stream Deck games are not installed"
+                " (script/stream_deck/games/ is missing):"
+                " make erplibre_home_streamdeck_install",
+            ),
+            (
+                "fr",
+                "Les jeux Stream Deck ne sont pas installés"
+                " (script/stream_deck/games/ manque) :"
+                " make erplibre_home_streamdeck_install",
+            ),
+        ):
+            with self.subTest(langue=langue):
+                todo_i18n._current_lang = langue
+                todo = todo_mod.TODO.__new__(todo_mod.TODO)
+                with (
+                    mock.patch.object(
+                        todo_mod, "VENV_STREAMDECK_PYTHON", self.present
+                    ),
+                    mock.patch.object(
+                        todo_mod, "STREAMDECK_GAMES_CLI", self.absent
+                    ),
+                    mock.patch.object(
+                        todo_mod.TODO, "_scan_streamdeck_games"
+                    ) as scan,
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+                ):
+                    self.assertFalse(todo.prompt_execute_streamdeck_games())
+                scan.assert_not_called()
+                self.assertEqual(attendu, out.getvalue().strip())
+
+    def test_the_games_cli_witness_is_the_one_of_the_checkout(self):
+        self.assertEqual(
+            str(GAMES_DIR / "games_cli.py"), todo_mod.STREAMDECK_GAMES_CLI
+        )
 
     def test_games_off_says_so_and_scans_nothing(self):
         for langue, attendu in (
@@ -934,6 +989,9 @@ class TestTodoGamesLauncher(unittest.TestCase):
                 with (
                     mock.patch.object(
                         todo_mod.os, "access", return_value=True
+                    ),
+                    mock.patch.object(
+                        todo_mod, "STREAMDECK_GAMES_CLI", self.present
                     ),
                     mock.patch.object(
                         todo_mod.service,
@@ -976,15 +1034,24 @@ class TestTodoGamesLauncher(unittest.TestCase):
 
     def test_the_command_really_runs_the_game(self):
         """La commande, jouée par bash : la passation, sans unité, lance
-        le python du venv sur le jeu."""
+        le python du venv sur le jeu. Elle tourne dans une copie réduite du
+        dépôt, avec un faux games/."""
         with tempfile.TemporaryDirectory(prefix="jeu demo ") as tmp:
             env, _journal = environnement_isole(tmp, unite_active=False)
             python = os.path.join(tmp, "python")
             with open(python, "w", encoding="utf-8") as f:
                 f.write('#!/bin/sh\necho "$1"\n')
             os.chmod(python, 0o755)
+            passation = copier_depot(os.path.join(tmp, "depot")) / (
+                "script/install/erplibre_home_handover.sh"
+            )
             todo = todo_mod.TODO.__new__(todo_mod.TODO)
-            with mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python):
+            with (
+                mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
+                mock.patch.object(
+                    todo_mod, "ERPLIBRE_HOME_HANDOVER", str(passation)
+                ),
+            ):
                 commande = todo._streamdeck_game_command(self.JEU)
             res = subprocess.run(
                 ["bash", "-c", commande],

@@ -125,6 +125,16 @@ TRANSLATIONS = {
         "en": "Stream Deck games are disabled (GAMES): enable them in"
         " TODO › Stream Deck › Games on/off, or set GAMES=on in {path}",
     },
+    "Stream Deck games are not installed"
+    " (script/stream_deck/games/ is missing):"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "Les jeux Stream Deck ne sont pas installés"
+        " (script/stream_deck/games/ manque) :"
+        " make erplibre_home_streamdeck_install",
+        "en": "Stream Deck games are not installed"
+        " (script/stream_deck/games/ is missing):"
+        " make erplibre_home_streamdeck_install",
+    },
     "ERPLibre Home Stream Deck is not installed:"
     " make erplibre_home_streamdeck_install": {
         "fr": "ERPLibre Home Stream Deck n'est pas installé :"

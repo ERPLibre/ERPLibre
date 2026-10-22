@@ -15,12 +15,19 @@ $(STREAMDECK_PY):
 	@echo "Stream Deck venv missing: make erplibre_home_streamdeck_install" >&2
 	@exit 1
 
-# A game target lists streamdeck_games_guard as a prerequisite: with
-# GAMES=off, or an unknown value, in streamdeck.conf, it stops there with
-# the reason. The deck program, the controller and the translator tools
-# are never gated.
+# The games are a separate repository cloned at script/stream_deck/games/.
+# streamdeck_games_present stops a target when it is missing, with the
+# command that installs it. A game target lists streamdeck_games_guard,
+# which also stops it with GAMES=off, or an unknown value, in
+# streamdeck.conf, with the reason. The deck program, the controller and
+# the translator tools are never gated.
+.PHONY: streamdeck_games_present
+streamdeck_games_present:
+	@bash -c '. script/install/erplibre_home_settings.sh && \
+		{ deck_games_present || { deck_games_absent_message >&2; exit 1; }; }'
+
 .PHONY: streamdeck_games_guard
-streamdeck_games_guard:
+streamdeck_games_guard: streamdeck_games_present
 	@bash -c '. script/install/erplibre_home_settings.sh && \
 		{ deck_games_enabled || { deck_games_message >&2; exit 1; }; }'
 
@@ -437,7 +444,7 @@ streamdeck_pinball: $(STREAMDECK_PY) streamdeck_games_guard
 	$(STREAMDECK_PY) script/stream_deck/games/game_pinball.py
 
 .PHONY: streamdeck_gallery
-streamdeck_gallery: $(STREAMDECK_PY)
+streamdeck_gallery: $(STREAMDECK_PY) streamdeck_games_present
 	$(STREAMDECK_PY) script/stream_deck/games/gallery_server.py
 
 # ---------- Claude Code hooks ----------
