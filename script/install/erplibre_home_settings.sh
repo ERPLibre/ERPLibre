@@ -4,13 +4,18 @@
 # Bibliothèque sourcée par l'installateur, le point d'entrée du service et
 # l'outil de passation : les noms et les chemins du service Stream Deck, et
 # la lecture de ses réglages. Elle ne lance rien et ne pose que des
-# fonctions et la constante DECK_UNIT_NAME.
+# fonctions et les constantes DECK_UNIT_NAME et DECK_GAMES_DIR.
 #
 # Les réglages sont des lignes « CLÉ=valeur » ; une ligne qui ne commence pas
 # par « CLÉ= » est ignorée, si bien qu'un commentaire « # … » est permis.
 # Rien n'est sourcé : un fichier de réglages n'exécute jamais de code.
 
 DECK_UNIT_NAME="erplibre-home-streamdeck.service"
+
+# Les jeux, relatifs à la racine du dépôt : un dépôt à part, que Google Repo
+# ou le niveau Stream Deck de l'installateur clone là. Le programme du deck,
+# le contrôleur et le service n'en dépendent pas.
+DECK_GAMES_DIR="script/stream_deck/games"
 
 # Le répertoire de configuration de l'utilisateur : $XDG_CONFIG_HOME, ou
 # ~/.config quand il est vide ou absent, comme systemd --user le lit.
@@ -82,6 +87,21 @@ deck_games_message() {
     echo "[ERPLibre Home] Stream Deck games are disabled" \
         "(GAMES=${value} in $(deck_settings_file));" \
         "enable them from TODO › Stream Deck › Games on/off, or set GAMES=on"
+}
+
+# deck_games_present [RACINE] sort en 0 quand les jeux sont installés sous
+# RACINE, le répertoire courant par défaut : games_cli.py, que chaque jeu
+# importe, en est le témoin, un répertoire vide ne suffit pas.
+deck_games_present() {
+    [ -f "${1:-.}/${DECK_GAMES_DIR}/games_cli.py" ]
+}
+
+# deck_games_absent_message écrit, sur une ligne, que les jeux manquent et
+# la commande qui les installe.
+deck_games_absent_message() {
+    echo "[ERPLibre Home] Stream Deck games are not installed" \
+        "(${DECK_GAMES_DIR}/ is missing);" \
+        "install them with make erplibre_home_streamdeck_install"
 }
 
 # deck_plugins_off écrit, un par ligne, les identifiants de plugins que

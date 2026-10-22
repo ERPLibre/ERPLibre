@@ -10,7 +10,9 @@ dans le même journal, si bien que l'ordre arrêt, jeu, relance se lit d'un
 coup.
 
 Le verrou du deck vit sous un XDG_RUNTIME_DIR temporaire : jamais celui du
-compte qui lance les tests.
+compte qui lance les tests. La passation tourne dans une copie réduite du
+dépôt, avec un faux games/ : elle refuse de tourner sans les jeux, qu'un
+checkout peut ne pas avoir.
 
 Ce que ces tests gardent :
 
@@ -25,7 +27,8 @@ Ce que ces tests gardent :
 - sans fichier d'unité, systemctl n'est jamais appelé ;
 - un jeu interrompu (SIGINT, SIGTERM au groupe) rend quand même le deck au
   service ; un SIGTERM au seul script laisse le jeu finir ;
-- le réglage se lit après la partie.
+- le réglage se lit après la partie ;
+- sans les jeux, rien n'est arrêté ni lancé : le script sort en 5.
 """
 
 import importlib.util
@@ -37,6 +40,9 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from streamdeck_checkout import copier_depot  # noqa: E402
 
 RACINE = Path(__file__).resolve().parents[1]
 PASSATION = RACINE / "script/install/erplibre_home_handover.sh"
@@ -105,6 +111,10 @@ class Passation(unittest.TestCase):
         self.reglages = self.home / ".config/erplibre-home/streamdeck.conf"
         self.run_dir = self.tmp / "run"
         self.run_dir.mkdir(mode=0o700)
+        self.passation = (
+            copier_depot(self.tmp / "depot")
+            / "script/install/erplibre_home_handover.sh"
+        )
 
     def unite(self, etat):
         """Pose le fichier d'unité et l'état que rend le faux systemctl."""
@@ -136,7 +146,7 @@ class Passation(unittest.TestCase):
 
     def jouer(self, jeu='echo jeu >>"$JOURNAL"; exit 7', env=None, **kw):
         fini = subprocess.run(
-            [str(PASSATION), "sh", "-c", jeu],
+            [str(self.passation), "sh", "-c", jeu],
             capture_output=True,
             text=True,
             env=self.environ(env),
@@ -271,7 +281,7 @@ class Passation(unittest.TestCase):
         self.unite("active")
         proc = subprocess.Popen(
             [
-                str(PASSATION),
+                str(self.passation),
                 "sh",
                 "-c",
                 'echo debut >>"$JOURNAL"; sleep 1; echo jeu >>"$JOURNAL";'
@@ -320,6 +330,32 @@ class Passation(unittest.TestCase):
                 fini, journal = self.jouer()
                 self.assertEqual(7, fini.returncode, fini.stderr)
                 self.assertIn("jeu", journal)
+
+    def test_without_the_games_it_refuses_before_stopping_anything(self):
+        """Une copie du dépôt sans script/stream_deck/games/ : ni systemctl
+        ni le jeu ne tournent, une ligne dit comment installer les jeux."""
+        self.unite("active")
+        copie = copier_depot(self.tmp / "sans_jeux", jeux=False)
+        fini = subprocess.run(
+            [
+                str(copie / "script/install/erplibre_home_handover.sh"),
+                "sh",
+                "-c",
+                'echo jeu >>"$JOURNAL"',
+            ],
+            capture_output=True,
+            text=True,
+            env=self.environ(),
+            timeout=30,
+        )
+        self.assertEqual(5, fini.returncode, fini.stderr)
+        self.assertEqual("", self.journal.read_text(encoding="utf-8"))
+        self.assertEqual(
+            "[ERPLibre Home] Stream Deck games are not installed"
+            " (script/stream_deck/games/ is missing);"
+            " install them with make erplibre_home_streamdeck_install",
+            fini.stderr.strip(),
+        )
 
     def test_handover_reads_xdg_config_home(self):
         self.unite("inactive")

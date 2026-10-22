@@ -492,6 +492,9 @@ class LeJeuLanceUneFois(Menu):
         todo_mod = sys.modules[TODO.__module__]
         with (
             mock.patch.object(todo_mod.os, "access", return_value=True),
+            # Les jeux sont un dépôt à part, que le checkout peut ne pas
+            # avoir : leur témoin pointe sur un fichier qui existe.
+            mock.patch.object(todo_mod, "STREAMDECK_GAMES_CLI", __file__),
             mock.patch.object(
                 TODO, "_scan_streamdeck_games", return_value=[
                     dict(jeu, description="g")
