@@ -1,9 +1,8 @@
 # ERPLibre Stream Deck: the game library in its own repository
 
-**Status:** steps 1 to 4 done. The games repository is pushed and tagged
-`v1.0.0`. ERPLibre's side (missing games, manifest, untrack, installer
-clone, tests, docs) is committed in two commits, which land together.
-Step 5, the end-to-end check, remains.
+**Status:** steps 1 to 5 done. The games repository is pushed and tagged
+`v1.0.0`, ERPLibre's side is pushed, and step 5's fixes follow it. Playing
+a game on the deck, from TODO, make and the gallery, remains for a person.
 **Builds on:** `2026-10-17-erplibre-streamdeck-games-split-design.md` (B1:
 games and gallery in `script/stream_deck/games/`, the `GAMES` setting) and
 `2026-10-14-erplibre-home-deck-service-menu-design.md` (deck service, deck
@@ -234,12 +233,52 @@ reads.
    installer that clones them back).
 5. On a fresh `git clone` and on a `repo sync` checkout: install the Stream
    Deck level, play one game from TODO, from make and from the gallery.
+   Done in scratch checkouts, without hardware (see Step 5 below); playing
+   on the deck remains for a person.
 
 Step 2 is useful on its own. Since the repository existed when the work
 started, step 1 landed in it, after the import of step 3, rather than in
 ERPLibre first. The ERPLibre tests that check the games themselves
 (`test_streamdeck_games_layout.py`, the games' part of
 `test_streamdeck_entry_points.py`) leave with step 4.
+
+## Step 5
+
+Checked on scratch checkouts, never on a real session: a fresh clone of
+`dev/streamdeck`, one pulled from the commit before the move, and repo
+v2.69 workspaces. What held: without the games every entry point refuses
+with one line; the installer clones `v1.0.0`, also over the `save/` and
+`__pycache__/` a pull leaves, keeping the saves; with the games, make, the
+TODO scan and the real gallery scan under `.venv.streamdeck` list the 45
+games; the unit suite passes with and without `games/`.
+
+What it found, and the fixes:
+
+- **repo sync refuses an installer clone** (`.git: unsupported checkout
+  state`), while it adopts a directory of untracked files.
+  `script/manifest/streamdeck_games_to_repo.sh` runs between `repo init`
+  and `repo sync` in every `update_manifest_*.sh`. When `repo list -p
+  --all` names the path (without `--all`, repo lists only projects already
+  checked out), it moves a plain clone without visible local work to
+  `games.plain-clone-<date>/` and copies `save/` back; visible local work
+  stops the update. A first version deleted the clone and lost work its
+  checks missed (`status.showUntrackedFiles=no`, skip-worktree, commits
+  reached only by a local tag or the reflog, linked worktrees): nothing is
+  deleted now.
+- **repo deletes a project directory an init leaves out**, saves
+  included (the games ignore `save/*`, so repo sees nothing dirty): the
+  code generator's init gains the `streamdeck` group, and the same script
+  copies `save/` to `games.save-<date>/` when an init leaves a repo-managed
+  `games/` out. A `.git` file not pointing into `.repo/` holds the clone
+  back; the old repo layout (`.git/objects` a link) counts as repo's.
+- **A silent dead end:** a `games/` holding anything besides `save/` and
+  `__pycache__/` was kept without a word. The installer's summary now
+  names those entries; dotted names, dangling links and a `games` file
+  count too.
+- The absent message names `games_cli.py`, which is what is tested; the
+  installer's clone gets the umask mode instead of `mktemp`'s 0700.
+- A tracked game file edited before the pull blocks it; INSTALL says what
+  to do.
 
 ## Open questions
 
@@ -251,6 +290,10 @@ ERPLibre first. The ERPLibre tests that check the games themselves
    or moves to ERPLibre next to the deck program.
 3. Whether the extension should hide its Games submenu when `games/` is
    absent, in this work or the follow-up.
+4. Where the saves should live. Inside a repo-managed `games/`, an init
+   whose groups leave `streamdeck` out deletes them with the directory;
+   a user data directory (`$XDG_DATA_HOME/erplibre-home/`) would not
+   depend on who manages the code. That changes the contract (MAJOR).
 
 ## Risks
 
@@ -259,13 +302,17 @@ ERPLibre first. The ERPLibre tests that check the games themselves
 - **A checkout with the files still tracked** when `repo sync` brings the
   project: repo refuses to overwrite tracked files. The untrack commit
   and the manifest land together (step 4) for that reason.
-- **`repo sync` on a pulled checkout:** after the pull, `games/` may keep
-  `save/` and `__pycache__/`; whether repo checks the project out over that
-  directory is untested. Step 5 tries it; moving `save/` aside first is
-  the fallback.
 - **Mobile bundle:** the workspace bundle walks the disk, not
-  `git ls-files`, so `games/` stays in it; a manifest-repo build may also
-  pack it as `streamdeck_game`. Step 5 checks the bundle.
+  `git ls-files`, so `games/` stays in it, and once a local manifest names
+  the games the manifest-repo loop packs them too: 56 files twice, about
+  0.75 MB. The fix belongs to the mobile repository: pass the manifest
+  projects present on disk as `excludeAbsPaths` to the workspace walk.
+  Not done here.
+- **A `-g` without `streamdeck`** passed to `update_manifest_local_dev.sh`
+  or `update_manifest_local_mobile.sh` once repo manages the games makes
+  repo delete them; the saves survive as a copy in `games.save-<date>/`.
+  An ERPLibre commit from before the move has no such guard, and its
+  update deletes `games/` with the saves (open question 4).
 - **The gallery listens on every interface** (`("", 8042)`): any host on
   the network can launch a game or delete saves. Not changed here, since
   the contract only moves it; a separate fix should bind it to 127.0.0.1.
