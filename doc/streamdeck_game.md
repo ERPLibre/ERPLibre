@@ -19,11 +19,14 @@ clone's MAJOR differs.
 
 They arrive two ways:
 
-- **Google Repo.** The three lists `conf/git_manifest*.csv` name the
-  manifest, so every `script/manifest/update_manifest_*.sh` syncs the games
-  to `main`. A plain clone made by the installer is refused by
-  `repo sync`: `script/manifest/streamdeck_games_to_repo.sh`, run between
-  `repo init` and `repo sync`, moves it to
+- **Google Repo.** `conf/git_manifest_streamdeck.csv` names the
+  manifest. Like the mobile's list, `git_merge_repo_manifest.py` adds it
+  when `script/stream_deck/games` exists, or with `--with_streamdeck`; an
+  Odoo server never clones the games. Every
+  `script/manifest/update_manifest_*.sh` then syncs them to `main`. A
+  plain clone made by the installer is refused by `repo sync`:
+  `script/manifest/streamdeck_games_to_repo.sh`, run between `repo init`
+  and `repo sync`, moves it to
   `script/stream_deck/games.plain-clone-<date>/` when it holds no local
   work, and stops the update, naming that work, otherwise.
 - **The installer**, for a checkout without Google Repo:
