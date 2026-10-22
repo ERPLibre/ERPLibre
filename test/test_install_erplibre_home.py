@@ -19,8 +19,9 @@ Ce que ces tests gardent :
   deck ; --stream-deck ajoute les trois, et EPEL n'est activé qu'avec lui,
   sur les reconstructions d'EL, où wmctrl en dépend ;
 - --stream-deck clone les jeux, quand ils manquent, à la révision que leur
-  manifeste épingle ; un répertoire présent n'est jamais touché, et un
-  clone qui échoue ne laisse rien ;
+  manifeste nomme, main, que chaque exécution suit ; un clone ordinaire
+  propre y est amené, une branche ou du travail local le retient, un clone
+  qui échoue ne laisse rien ;
 - les traductions se compilent par « msgfmt --check », aux deux niveaux ;
 - --uninstall retire tout, --uninstall --stream-deck tout sauf
   l'extension, et aucun des deux ne vérifie le système ;
@@ -385,9 +386,7 @@ class LeDryRun(Installateur):
         self.assertEqual([], self.lignes(self.lancer("--dry-run"), "games: "))
         fini = self.lancer("--dry-run", "--stream-deck")
         (ligne,) = self.lignes(fini, "games: ")
-        self.assertTrue(
-            ligne.endswith(str(RACINE / "script/stream_deck/games")), ligne
-        )
+        self.assertIn(str(RACINE / "script/stream_deck/games"), ligne)
 
     def test_the_translations_use_msgfmt_check_at_both_levels(self):
         attendus = [str(EXTENSION / "tools/migrate_legacy.py")] + [
@@ -812,7 +811,7 @@ def depot_de_jeux(dossier):
         )
 
     os.makedirs(depot)
-    git("init", "-q")
+    git("init", "-q", "-b", "main")
     Path(depot, "games_cli.py").write_text("import argparse\n")
     git("add", "games_cli.py")
     git("commit", "-q", "-m", "un")
@@ -840,7 +839,8 @@ def depot_de_jeux(dossier):
 @unittest.skipUnless(shutil.which("git"), "git absent")
 class TestJeux(unittest.TestCase):
     """clone_games : les jeux manquants se clonent à la révision du
-    manifeste ; un répertoire présent n'est jamais touché."""
+    manifeste ; un clone ordinaire propre la suit, tout autre répertoire
+    présent reste tel quel."""
 
     def cloner(self, dossier, manifeste, avant=""):
         return sourcer(
@@ -996,6 +996,326 @@ class TestJeux(unittest.TestCase):
             os.mkdir(jeux)
             Path(jeux, "games_cli.py").write_text("x")
             fait = sourcer(fragment, env)
+            self.assertEqual("games: keep %s\n" % jeux, fait.stdout)
+
+    def nouvelle_etiquette(self, dossier, manifeste):
+        """Étiquette v9.9.10 sur le second commit du dépôt de jeux et
+        épingle le manifeste dessus. Rend le sha du commit."""
+        depot = os.path.join(dossier, "jeux.git")
+        subprocess.run(["git", "-C", depot, "tag", "v9.9.10"], check=True)
+        texte = Path(manifeste).read_text()
+        Path(manifeste).write_text(texte.replace("v9.9.9", "v9.9.10"))
+        return subprocess.run(
+            ["git", "-C", depot, "rev-parse", "v9.9.10"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    def tete(self, jeux):
+        return subprocess.run(
+            ["git", "-C", str(jeux), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    def test_a_clean_clone_moves_to_a_new_pinned_tag(self):
+        """Un ERPLibre mis à jour épingle une autre étiquette : le clone
+        posé par ce script la suit, ce que fait repo sync de son côté."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            self.assertEqual(0, self.cloner(dossier, manifeste).returncode)
+            jeux = Path(dossier, "games")
+            sha = self.nouvelle_etiquette(dossier, manifeste)
+            fait = sourcer(
+                'GAMES_DIR="$DOSSIER/games"\nGAMES_MANIFEST="$MANIFESTE"\n'
+                "DRY_RUN=1\nstep_games\n",
+                {"DOSSIER": dossier, "MANIFESTE": manifeste},
+            )
+            self.assertEqual(
+                "games: keep %s (update to refs/tags/v9.9.10)\n" % jeux,
+                fait.stdout,
+            )
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(sha, self.tete(jeux))
+            self.assertEqual(
+                "games updated: %s (refs/tags/v9.9.10)\n" % jeux, fait.stdout
+            )
+            # À jour : plus rien à faire.
+            self.assertEqual("\n", self.cloner(dossier, manifeste).stdout)
+
+    def test_a_branch_or_local_work_stays_where_it_is(self):
+        for nom, poser in (
+            (
+                "branche",
+                lambda j: subprocess.run(
+                    ["git", "-C", str(j), "switch", "-q", "-c", "travail"],
+                    check=True,
+                ),
+            ),
+            ("modification", lambda j: (j / "games_cli.py").write_text("x")),
+        ):
+            with self.subTest(cas=nom):
+                with tempfile.TemporaryDirectory() as dossier:
+                    sha, manifeste = depot_de_jeux(dossier)
+                    self.cloner(dossier, manifeste)
+                    jeux = Path(dossier, "games")
+                    poser(jeux)
+                    self.nouvelle_etiquette(dossier, manifeste)
+                    fait = sourcer(
+                        'GAMES_DIR="$DOSSIER/games"\n'
+                        'GAMES_MANIFEST="$MANIFESTE"\nDRY_RUN=1\nstep_games\n',
+                        {"DOSSIER": dossier, "MANIFESTE": manifeste},
+                    )
+                    self.assertEqual(
+                        "games: keep %s (not updated to refs/tags/v9.9.10:"
+                        " a branch or local work)\n" % jeux,
+                        fait.stdout,
+                    )
+                    fait = self.cloner(dossier, manifeste)
+                    self.assertEqual(0, fait.returncode, fait.stderr)
+                    self.assertEqual(sha, self.tete(jeux))
+                    self.assertEqual(
+                        "games NOT updated to refs/tags/v9.9.10: %s holds a"
+                        " branch or local work\n" % jeux,
+                        fait.stdout,
+                    )
+
+    def test_the_venv_gets_the_games_requirements_when_they_are_there(self):
+        """Un second appel de pip, après celui du deck ; son échec est dit
+        au bilan et n'arrête pas l'installation."""
+        with tempfile.TemporaryDirectory() as dossier:
+            python = Path(dossier, "venv/bin/python")
+            python.parent.mkdir(parents=True)
+            python.write_text(
+                '#!/bin/sh\necho "$@" >>"$DOSSIER/pip"\n'
+                'case "$*" in *games/requirements.txt*) exit "$CODE" ;; esac\n'
+            )
+            python.chmod(0o755)
+            fragment = (
+                'VENV="$DOSSIER/venv"\nGAMES_DIR="$DOSSIER/games"\n'
+                'make_venv\nprintf "%s\\n" "${DONE[@]}"\n'
+            )
+            env = {"DOSSIER": dossier, "CODE": "0"}
+            sourcer(fragment, env)
+            sans = Path(dossier, "pip").read_text().splitlines()
+            Path(dossier, "pip").unlink()
+            Path(dossier, "games").mkdir()
+            Path(dossier, "games/requirements.txt").write_text("Pillow\n")
+            fait = sourcer(fragment, env)
+            avec = Path(dossier, "pip").read_text().splitlines()
+            fait_echec = sourcer(fragment, dict(env, CODE="1"))
+        deck = str(RACINE / "script/stream_deck/requirements.txt")
+        self.assertEqual(1, len(sans))
+        self.assertTrue(sans[0].endswith("-r %s" % deck), sans)
+        self.assertEqual(2, len(avec))
+        self.assertTrue(avec[0].endswith("-r %s" % deck), avec)
+        self.assertTrue(
+            avec[1].endswith("-r %s/games/requirements.txt" % dossier), avec
+        )
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertEqual(0, fait_echec.returncode, fait_echec.stderr)
+        self.assertIn(
+            "games requirements NOT installed: %s/games/requirements.txt"
+            % dossier,
+            fait_echec.stdout,
+        )
+
+    def test_a_revision_is_a_branch_unless_a_tag_or_a_commit(self):
+        fait = sourcer(
+            "for r in main refs/heads/dev refs/tags/v1.0.0 "
+            + "a" * 40
+            + "; do\n"
+            '    games_is_branch "$r" && echo "$r branch" || echo "$r not"\n'
+            '    games_ref "$r"\n'
+            "done\n"
+        )
+        self.assertEqual(
+            [
+                "main branch",
+                "refs/remotes/origin/main",
+                "refs/heads/dev branch",
+                "refs/remotes/origin/dev",
+                "refs/tags/v1.0.0 not",
+                "refs/tags/v1.0.0",
+                "a" * 40 + " not",
+                "a" * 40,
+            ],
+            fait.stdout.splitlines(),
+        )
+
+    def test_a_branch_is_cloned_detached_and_followed(self):
+        """Le manifeste nomme main : le clone part en HEAD détaché sur son
+        dernier commit, puis chaque installation va chercher le suivant."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            texte = Path(manifeste).read_text()
+            Path(manifeste).write_text(
+                texte.replace("refs/tags/v9.9.9", "main")
+            )
+            depot = Path(dossier, "jeux.git")
+            jeux = Path(dossier, "games")
+
+            def commit_de(ref):
+                return subprocess.run(
+                    ["git", "-C", str(depot), "rev-parse", ref],
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(commit_de("main"), self.tete(jeux))
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "-C", str(jeux), "symbolic-ref", "-q", "HEAD"]
+                ).returncode,
+            )
+            Path(depot, "game_neuf.py").write_text("")
+            subprocess.run(
+                ["git", "-C", str(depot), "add", "game_neuf.py"], check=True
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(depot),
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "trois",
+                ],
+                check=True,
+            )
+            fait = sourcer(
+                'GAMES_DIR="$DOSSIER/games"\nGAMES_MANIFEST="$MANIFESTE"\n'
+                "DRY_RUN=1\nstep_games\n",
+                {"DOSSIER": dossier, "MANIFESTE": manifeste},
+            )
+            self.assertEqual(
+                "games: keep %s (follow main: fetched on install)\n" % jeux,
+                fait.stdout,
+            )
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual("games updated: %s (main)\n" % jeux, fait.stdout)
+            self.assertEqual(commit_de("main"), self.tete(jeux))
+            self.assertTrue((jeux / "game_neuf.py").exists())
+            # Sans le dépôt, le fetch échoue : le clone reste, et le bilan
+            # le dit.
+            depot.rename(Path(dossier, "ailleurs.git"))
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(
+                "games NOT updated to main: fetch from origin failed\n",
+                fait.stdout,
+            )
+
+    def sur_main(self, manifeste):
+        texte = Path(manifeste).read_text()
+        Path(manifeste).write_text(texte.replace("refs/tags/v9.9.9", "main"))
+
+    def test_a_rewritten_main_upstream_still_moves_the_clone(self):
+        """Un force-push sur main laisse le commit installé hors des
+        remotes : refs/erplibre/installed le garde pour ce qu'il est, un
+        commit extrait par l'installateur, et le clone suit le nouveau
+        main. Le clone n'a pas de branche locale."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            self.sur_main(manifeste)
+            depot = Path(dossier, "jeux.git")
+            jeux = Path(dossier, "games")
+            self.cloner(dossier, manifeste)
+            branches = subprocess.run(
+                ["git", "-C", str(jeux), "for-each-ref", "refs/heads/"],
+                capture_output=True,
+                text=True,
+            ).stdout
+            self.assertEqual("", branches)
+            installe = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(jeux),
+                    "rev-parse",
+                    "refs/erplibre/installed",
+                ],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            self.assertEqual(self.tete(jeux), installe)
+            identite = [
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=t@example.invalid",
+            ]
+            subprocess.run(
+                ["git", "-C", str(depot), "reset", "-q", "--hard", "v9.9.9"],
+                check=True,
+            )
+            Path(depot, "autre.py").write_text("")
+            subprocess.run(
+                ["git", "-C", str(depot), "add", "autre.py"], check=True
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(depot),
+                    *identite,
+                    "commit",
+                    "-q",
+                    "-m",
+                    "réécrit",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(depot),
+                    "reflog",
+                    "expire",
+                    "--expire=now",
+                    "--all",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(depot), "gc", "-q", "--prune=now"],
+                check=True,
+            )
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual("games updated: %s (main)\n" % jeux, fait.stdout)
+            self.assertTrue((jeux / "autre.py").exists())
+
+    def test_the_old_repo_layout_is_left_to_repo(self):
+        """Un .git répertoire dont objects/ est un lien : l'ancienne
+        disposition de repo, que l'installateur ne met pas à jour."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            self.sur_main(manifeste)
+            self.cloner(dossier, manifeste)
+            jeux = Path(dossier, "games")
+            objets = Path(dossier, "objets")
+            shutil.move(jeux / ".git/objects", objets)
+            os.symlink(objets, jeux / ".git/objects")
+            fait = self.cloner(
+                dossier, manifeste, avant='git() { echo "git $*"; }\n'
+            )
+            self.assertEqual("\n", fait.stdout)
+            fait = sourcer(
+                'GAMES_DIR="$DOSSIER/games"\nGAMES_MANIFEST="$MANIFESTE"\n'
+                "DRY_RUN=1\nstep_games\n",
+                {"DOSSIER": dossier, "MANIFESTE": manifeste},
+            )
             self.assertEqual("games: keep %s\n" % jeux, fait.stdout)
 
     def test_a_failed_clone_leaves_no_directory(self):
