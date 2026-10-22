@@ -189,6 +189,26 @@ class LeScript(unittest.TestCase):
                 self.assertEqual(avant, self.contenu())
                 self.assertEqual([], self.mis_de_cote())
 
+    def test_the_installed_commit_is_not_local_work(self):
+        """main réécrit en amont : le commit extrait n'est plus sur un
+        remote, mais refs/erplibre/installed, posé par l'installateur, le
+        dit installé ; sans cette marque, il retient le clone."""
+        git(self.jeux, "update-ref", "-d", "refs/remotes/origin/HEAD")
+        for ref in git(
+            self.jeux,
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/remotes/",
+            "refs/heads/",
+            "refs/tags/",
+        ).split():
+            git(self.jeux, "update-ref", "-d", ref)
+        self.assertEqual(1, self.lancer().returncode)
+        git(self.jeux, "update-ref", "refs/erplibre/installed", "HEAD")
+        fini = self.lancer()
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        self.assertEqual(1, len(self.mis_de_cote()))
+
     def test_untracked_files_hidden_by_the_user_config_still_count(self):
         reglage = self.tmp / "gitconfig"
         reglage.write_text("[status]\n\tshowUntrackedFiles = no\n")

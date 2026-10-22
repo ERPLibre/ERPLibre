@@ -83,7 +83,10 @@ fi
 # pour qu'un status.showUntrackedFiles=no de l'utilisateur ne les cache pas.
 modifs="$(git -C "${DIR}" status --porcelain --untracked-files=normal)"
 [ -z "${modifs}" ] || retenu "changes or untracked files: $(echo "${modifs}" | head -3 | tr '\n' ' ')"
-locaux="$(git -C "${DIR}" rev-list HEAD --branches --not --remotes --tags)"
+# refs/erplibre/installed marque le commit que l'installateur a extrait :
+# un main réécrit en amont ne le fait pas passer pour un commit local.
+locaux="$(git -C "${DIR}" rev-list HEAD --branches --not --remotes --tags \
+    --glob='refs/erplibre/*')"
 [ -z "${locaux}" ] || retenu "commits on no remote: $(echo "${locaux}" | wc -l)"
 [ -z "$(git -C "${DIR}" stash list)" ] || retenu "a stash"
 liees="$(git -C "${DIR}" worktree list --porcelain | grep -c '^worktree ' || true)"

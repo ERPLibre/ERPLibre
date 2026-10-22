@@ -26,7 +26,7 @@ Le code part du checkout par « git bundle create … HEAD », et la VM ne joint
 jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course :
 ce qui serait installé ne serait pas ce qui est commité. Seuls les jeux du
 Stream Deck, un dépôt à part que le bundle ne porte pas, viennent de GitHub :
-le niveau Stream Deck les clone à l'étiquette que leur manifeste épingle, et
+le niveau Stream Deck les clone à la révision que leur manifeste nomme, et
 le contrôle « games » le vérifie.
 
   ./long_test/install_erplibre_home.py                 # toute la matrice
@@ -207,23 +207,29 @@ CMD_VENV = (
 )
 
 
-def etiquette_des_jeux():
-    """L'étiquette du dépôt des jeux que le manifeste épingle, sans
-    « refs/tags/ » : celle que --stream-deck doit cloner."""
+def reference_des_jeux():
+    """La référence du clone des jeux qui porte la révision du manifeste,
+    comme install_erplibre_home.sh la lit : refs/remotes/origin/<x> pour
+    une branche, la révision elle-même pour une étiquette ou un commit."""
     manifeste = os.path.join(
         RACINE, "manifest", "git_manifest_streamdeck_game.xml"
     )
     (projet,) = ET.parse(manifeste).getroot().iter("project")
-    return projet.get("revision").removeprefix("refs/tags/")
+    revision = projet.get("revision")
+    if revision.startswith("refs/tags/") or re.fullmatch(
+        r"[0-9a-f]{40}", revision
+    ):
+        return revision
+    return "refs/remotes/origin/" + revision.removeprefix("refs/heads/")
 
 
 # Les jeux : le bundle git de HEAD ne porte que les fichiers qu'ERPLibre
-# suit, et --stream-deck les clone donc à l'étiquette du manifeste.
+# suit, et --stream-deck les clone donc à la révision du manifeste.
 CMD_JEUX = (
     "cd ~/git/erplibre/script/stream_deck/games && test -f games_cli.py"
-    ' && test "$(git describe --tags --exact-match HEAD)" = '
-    + shlex.quote(etiquette_des_jeux())
-    + " && echo ok"
+    ' && test "$(git rev-parse HEAD)" = "$(git rev-parse '
+    + shlex.quote(reference_des_jeux() + "^{commit}")
+    + ')" && echo ok'
 )
 REGLE_UDEV = "/etc/udev/rules.d/70-streamdeck.rules"
 VENV_DECK = "~/git/erplibre/.venv.streamdeck"

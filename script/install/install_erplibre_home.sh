@@ -6,7 +6,8 @@
 # GNOME liée au dépôt, ses schémas et ses traductions, puis activée ; ni
 # accès au périphérique ni venv. --stream-deck ajoute le niveau Stream Deck
 # par-dessus la base : paquets USB, règle udev, venv dédié .venv.streamdeck,
-# les jeux quand ils manquent, et le service systemd --user
+# les jeux, clonés quand ils manquent et amenés au dernier commit de main à
+# chaque exécution, et le service systemd --user
 # erplibre-home-streamdeck.service avec ses réglages. Le niveau Stream Deck inclut toujours la base ; la base
 # s'installe seule.
 #
@@ -93,8 +94,10 @@ schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
 
   --stream-deck     ajoute le niveau Stream Deck : paquets USB, règle udev,
                     .venv.streamdeck, et les jeux de
-                    script/stream_deck/games/ quand ils manquent ; la base
-                    s'installe aussi, au besoin
+                    script/stream_deck/games/ : clonés quand ils manquent,
+                    amenés au dernier commit de main à chaque exécution
+                    (une branche ou du travail local les retient) ; la
+                    base s'installe aussi, au besoin
   --no-enable       n'active pas l'extension ; un poste où l'ancienne
                     extension était active garde cet état sous le
                     nouveau nom (migration)
@@ -476,8 +479,11 @@ write_udev_rule() {
 # ---------- venv ----------
 
 # Crée le venv avec le python3 du système s'il manque, puis y installe les
-# dépendances. pip ne réinstalle pas ce qui est déjà satisfait : le venv
-# existant garde son contenu.
+# dépendances du deck et, quand les jeux sont là, les leurs : leur dépôt les
+# liste dans son requirements.txt. Celles des jeux passent par un second
+# appel, dont l'échec est dit au bilan sans arrêter l'installation : le
+# programme du deck et le service n'en dépendent pas. pip ne réinstalle pas
+# ce qui est déjà satisfait : le venv existant garde son contenu.
 make_venv() {
     if [ ! -x "${VENV}/bin/python" ]; then
         python3 -m venv "${VENV}"
@@ -485,13 +491,19 @@ make_venv() {
     fi
     "${VENV}/bin/python" -m pip install --quiet --disable-pip-version-check \
         -r "${REQUIREMENTS}"
+    if [ -f "${GAMES_DIR}/requirements.txt" ] \
+        && ! "${VENV}/bin/python" -m pip install --quiet \
+            --disable-pip-version-check -r "${GAMES_DIR}/requirements.txt"; then
+        DONE+=("games requirements NOT installed: ${GAMES_DIR}/requirements.txt")
+    fi
 }
 
 # ---------- Jeux ----------
 
 # Les jeux sont un dépôt à part, que Google Repo clone dans un checkout qu'il
 # gère. Un checkout cloné par git ne les a pas : le niveau Stream Deck les
-# clone alors lui-même, à la révision que le manifeste épingle.
+# clone alors lui-même, à la révision que le manifeste nomme : une branche,
+# que chaque installation suit, une étiquette ou un commit.
 GAMES_DIR="${RACINE}/${DECK_GAMES_DIR}"
 GAMES_MANIFEST="${RACINE}/manifest/git_manifest_streamdeck_game.xml"
 
@@ -519,9 +531,8 @@ PY
 # Les entrées de games/ autres que save/ et __pycache__/, séparées par une
 # espace. save/ et __pycache__/ sont les fichiers ignorés qui restent dans
 # games/ quand la mise à jour d'ERPLibre qui a cessé de suivre les jeux en
-# retire les fichiers.
-# Toute entrée compte, liens cassés et noms à points compris ; save et
-# __pycache__ ne sont des restes que s'ils sont de vrais répertoires. Un
+# retire les fichiers ; ils ne comptent que s'ils sont de vrais répertoires.
+# Toute autre entrée compte, liens cassés et noms à points compris. Un
 # GAMES_DIR qui n'est pas un répertoire est lui-même nommé.
 games_strays() {
     local nom
@@ -569,6 +580,8 @@ clone_games() {
         raison="$(games_kept_without_games)"
         if [ -n "${raison}" ]; then
             DONE+=("games NOT installed, ${GAMES_DIR} kept: ${raison}")
+        else
+            update_games
         fi
         return 0
     fi
@@ -579,12 +592,18 @@ clone_games() {
     url="${origine% *}"
     revision="${origine#* }"
     partiel="$(mktemp -d "${GAMES_DIR}.XXXXXX")"
+    # HEAD détaché, même sur une branche, et sans la branche locale que
+    # git clone crée : update_games et streamdeck_games_to_repo.sh prennent
+    # une branche locale pour un travail en cours. refs/erplibre/installed
+    # marque le commit installé : un main réécrit en amont ne le fait pas
+    # passer pour un commit local.
     # mktemp crée le répertoire en 0700 ; le clone prend le mode qu'un
     # git clone ou repo sync lui donnerait sous le même umask.
     chmod "$(printf '%o' "$((0777 & ~$(umask)))")" "${partiel}"
     if git clone --quiet --no-checkout "${url}" "${partiel}" \
         && git -C "${partiel}" -c advice.detachedHead=false \
-            checkout --quiet "${revision}"; then
+            checkout --quiet --detach "$(games_ref "${revision}")" \
+        && games_mark_installed "${partiel}"; then
         if [ -d "${GAMES_DIR}/save" ]; then
             mkdir -p "${partiel}/save"
             cp -a "${GAMES_DIR}/save/." "${partiel}/save/"
@@ -596,6 +615,101 @@ clone_games() {
         rm -rf "${partiel}"
         die "clone des jeux impossible : ${url} ${revision}"
     fi
+}
+
+# Sort en 0 quand la révision du manifeste est une branche : refs/heads/<x>,
+# ou un nom nu qui n'est pas un commit, comme repo les lit. Les étiquettes
+# s'écrivent refs/tags/<x>.
+games_is_branch() {
+    case "${1}" in
+        refs/tags/*) return 1 ;;
+        refs/heads/*) return 0 ;;
+    esac
+    ! [[ "${1}" =~ ^[0-9a-f]{40}$ ]]
+}
+
+# La référence du clone ordinaire qui porte la révision du manifeste : celle
+# du remote pour une branche, qu'un fetch avance, la révision elle-même
+# sinon.
+games_ref() {
+    if games_is_branch "${1}"; then
+        echo "refs/remotes/origin/${1#refs/heads/}"
+    else
+        echo "${1}"
+    fi
+}
+
+# Le commit de la révision du manifeste dans le clone ordinaire des jeux,
+# vide quand le clone ne la connaît pas (encore).
+games_pinned_commit() {
+    git -C "${GAMES_DIR}" rev-parse -q --verify \
+        "$(games_ref "${1}")^{commit}" 2>/dev/null || true
+}
+
+# Retire les branches locales du clone `$1`, détaché, et marque son HEAD
+# dans refs/erplibre/installed : games_held_back et
+# streamdeck_games_to_repo.sh ne comptent pas ce commit comme local.
+games_mark_installed() {
+    local ref
+    git -C "${1}" for-each-ref --format='%(refname)' refs/heads/ \
+        | while IFS= read -r ref; do
+            git -C "${1}" update-ref -d "${ref}"
+        done
+    git -C "${1}" update-ref refs/erplibre/installed HEAD
+}
+
+# Sort en 0 quand games/ est un clone ordinaire, celui que clone_games pose :
+# un .git répertoire. Celui de repo est un lien, ou, dans son ancienne
+# disposition, un répertoire dont objects/ est un lien ; il suit repo sync.
+games_plain_clone() {
+    [ -d "${GAMES_DIR}/.git" ] && [ ! -L "${GAMES_DIR}/.git" ] \
+        && [ ! -L "${GAMES_DIR}/.git/objects" ]
+}
+
+# Sort en 0 quand le clone ordinaire des jeux ne doit pas bouger : HEAD sur
+# une branche, une modification ou un fichier non suivi, ou un commit que ni
+# ses remotes, ni une étiquette, ni refs/erplibre/installed n'atteignent.
+# clone_games le laisse en HEAD détaché sans rien de tel.
+games_held_back() {
+    git -C "${GAMES_DIR}" symbolic-ref -q HEAD >/dev/null \
+        || [ -n "$(git -C "${GAMES_DIR}" status --porcelain --untracked-files=normal)" ] \
+        || [ -n "$(git -C "${GAMES_DIR}" rev-list HEAD --not --remotes --tags \
+            --glob='refs/erplibre/*')" ]
+}
+
+# Amène le clone ordinaire des jeux à la révision du manifeste, sauf quand
+# games_held_back le retient : le bilan le dit alors. Une branche se
+# rafraîchit à chaque appel ; une étiquette ou un commit déjà connus ne
+# demandent pas le réseau. Un fetch qui échoue laisse le clone où il est.
+update_games() {
+    local origine revision voulu=""
+    games_plain_clone || return 0
+    origine="$(games_source)" \
+        || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
+    revision="${origine#* }"
+    if ! games_is_branch "${revision}"; then
+        voulu="$(games_pinned_commit "${revision}")"
+    fi
+    if [ -z "${voulu}" ]; then
+        if ! git -C "${GAMES_DIR}" fetch --quiet --tags origin 2>/dev/null; then
+            DONE+=("games NOT updated to ${revision}: fetch from origin failed")
+            return 0
+        fi
+        voulu="$(games_pinned_commit "${revision}")"
+    fi
+    if [ -z "${voulu}" ]; then
+        DONE+=("games NOT updated to ${revision}: unknown to ${GAMES_DIR}")
+        return 0
+    fi
+    [ "$(git -C "${GAMES_DIR}" rev-parse HEAD)" = "${voulu}" ] && return 0
+    if games_held_back; then
+        DONE+=("games NOT updated to ${revision}: ${GAMES_DIR} holds a branch or local work")
+        return 0
+    fi
+    git -C "${GAMES_DIR}" -c advice.detachedHead=false checkout --quiet \
+        --detach "${voulu}"
+    games_mark_installed "${GAMES_DIR}"
+    DONE+=("games updated: ${GAMES_DIR} (${revision})")
 }
 
 # ---------- Service du deck ----------
@@ -1124,12 +1238,34 @@ step_venv() {
 
 # Sous --dry-run, « games: clone » quand les jeux sont à cloner, « games:
 # keep » sinon, suivi de la raison quand le répertoire gardé n'a pas les
-# jeux.
+# jeux, ou, pour un clone ordinaire, de ce qu'en ferait l'installation : la
+# mise à jour, ou le refus de games_held_back. Le dry-run ne va pas sur le
+# réseau : une branche n'y est donc qu'annoncée, l'installation la
+# rafraîchit.
 step_games() {
-    local origine raison
+    local origine raison revision
     if [ "${DRY_RUN}" = 1 ]; then
         if ! games_need_clone; then
             raison="$(games_kept_without_games)"
+            if [ -z "${raison}" ] && games_plain_clone; then
+                origine="$(games_source)" \
+                    || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
+                revision="${origine#* }"
+                if games_is_branch "${revision}" \
+                    || [ "$(git -C "${GAMES_DIR}" rev-parse HEAD 2>/dev/null)" \
+                        != "$(games_pinned_commit "${revision}")" ]; then
+                    if games_is_branch "${revision}"; then
+                        raison="follow ${revision}: fetched on install"
+                        if games_held_back; then
+                            raison="${raison}; a branch or local work keeps it"
+                        fi
+                    elif games_held_back; then
+                        raison="not updated to ${revision}: a branch or local work"
+                    else
+                        raison="update to ${revision}"
+                    fi
+                fi
+            fi
             echo "games: keep ${GAMES_DIR}${raison:+ (${raison})}"
         else
             origine="$(games_source)" \
@@ -1242,8 +1378,8 @@ main() {
         step_packages
         if [ "${STREAM_DECK}" = 1 ]; then
             step_udev
-            step_venv
             step_games
+            step_venv
             step_service
         fi
     fi
