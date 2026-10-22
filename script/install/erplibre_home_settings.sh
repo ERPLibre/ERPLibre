@@ -100,7 +100,7 @@ deck_games_present() {
 # la commande qui les installe.
 deck_games_absent_message() {
     echo "[ERPLibre Home] Stream Deck games are not installed" \
-        "(${DECK_GAMES_DIR}/ is missing);" \
+        "(no games_cli.py in ${DECK_GAMES_DIR}/);" \
         "install them with make erplibre_home_streamdeck_install"
 }
 

@@ -352,7 +352,7 @@ class Passation(unittest.TestCase):
         self.assertEqual("", self.journal.read_text(encoding="utf-8"))
         self.assertEqual(
             "[ERPLibre Home] Stream Deck games are not installed"
-            " (script/stream_deck/games/ is missing);"
+            " (no games_cli.py in script/stream_deck/games/);"
             " install them with make erplibre_home_streamdeck_install",
             fini.stderr.strip(),
         )
