@@ -98,16 +98,17 @@
           "kwargs": {
             "domain": [
               ["project_id", "=", false],
-              ["write_date", ">", "{last_synced_at_iso}"]
+              ["write_date", ">=", "{pull_cursor or oldest link last_synced_at}"]
             ],
             "fields": [
-              "id", "name", "description", "priority", "active",
-              "state", "tag_ids", "date_deadline",
-              "geo_task_point", "write_date", "attachment_ids"
+              "id", "name", "priority", "active",
+              "tag_ids", "date_deadline", "write_date",
+              "state (Odoo 17+ only)"
             ],
             "limit": 100,
-            "offset": 0,
-            "order": "write_date asc"
+            "offset": "{page * 100} — pages until fewer than 100 rows, at most 50 pages",
+            "order": "write_date asc, id asc",
+            "context": { "active_test": false }
           }
         }
       },
@@ -150,16 +151,16 @@
               "project_id": false,
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
-              "state": "done if note.done else 01_in_progress",
+              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
               "tag_ids": [[6, 0, ["{tag_id_1}", "{tag_id_2}"]]],
               "date_deadline": "{first_date_entry_iso or null}",
-              "geo_task_point": "{geojson_multipoint or null}"
+              "geo_task_point": "{geojson_multipoint} — only when the note has positions and fields_get finds the field"
             }
           ],
           "kwargs": {}
         }
       },
-      "response": "integer — Odoo task ID → store as odoo_id in mobile SQLite",
+      "response": "integer — Odoo task ID → stored in mobile SQLite note_links (note, server config id, project.task, id)",
       "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string."
     },
 
@@ -172,16 +173,16 @@
           "model": "project.task",
           "method": "write",
           "args": [
-            ["{note.odoo_id}"],
+            ["{note_links.res_id for this server}"],
             {
               "name": "{note.title}",
               "description": "{note.html_description}",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
-              "state": "done if note.done else 01_in_progress",
+              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
               "tag_ids": [[6, 0, ["{tag_id_1}"]]],
               "date_deadline": "{first_date_entry_iso or null}",
-              "geo_task_point": "{geojson_multipoint or null}"
+              "geo_task_point": "{geojson_multipoint} — only when the note has positions and fields_get finds the field"
             }
           ],
           "kwargs": {}
@@ -202,7 +203,7 @@
           "kwargs": {
             "domain": [
               ["res_model", "=", "project.task"],
-              ["res_id", "in", ["{odoo_id_1}", "{odoo_id_2}"]]
+              ["res_id", "in", ["{note_links.res_id_1}", "{note_links.res_id_2}"]]
             ],
             "fields": ["id", "name", "mimetype", "file_size", "create_date", "res_id"]
           }
@@ -217,7 +218,7 @@
       "content_type": "multipart/form-data",
       "request_fields": {
         "model": "project.task",
-        "id": "{note.odoo_id}",
+        "id": "{note_links.res_id for this server}",
         "ufile": "<binary file content>"
       },
       "response_fields": {
@@ -229,32 +230,46 @@
   },
 
   "re_auth_strategy": {
-    "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401",
+    "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401 — never the error message text",
     "steps": [
       "1. Retrieve credentials from SecureStorage key 'odoo_sync_credentials_{app_url}'",
       "2. Call auth.login with retrieved credentials",
-      "3. Store new session cookie in SecureStorage key 'odoo_sync_session_{app_url}'",
+      "3. Store new session cookie in SecureStorage key 'odoo_sync_session_{base64(app_url|username|database)}'",
       "4. Retry original request once",
-      "5. If still failing — set sync_status='error', notify user"
+      "5. If still failing — mark this server 'error' in sync_per_server_status (the note's sync_status is derived), notify user"
     ]
   },
 
   "sync_status_values": {
-    "local": "Note exists only on device — never pushed",
-    "pending": "Modified since last sync — push needed",
-    "synced": "In sync with Odoo — write_date matches",
-    "conflict": "Both mobile and Odoo modified since last sync (v1: Odoo wins)",
-    "error": "Last sync attempt failed — show error to user"
+    "notes": "Per server in sync_per_server_status (synced | pending | error); the note's sync_status is derived from the entries of live applications: error, then pending, then synced; none left → synced if a live link remains, else local.",
+    "local": "Note bound to no live server",
+    "pending": "Some server still has to receive the note (queued offline, edited, or edited during its push); syncAll pushes it",
+    "synced": "Every live server received the latest pushed content",
+    "conflict": "Unused in v1",
+    "error": "Last push to some server failed; syncAll retries it",
+    "remote_deleted": "Not a status: a write() answering odoo.exceptions.MissingError marks the note_links row remote_state='deleted' and drops that server from the queue; the task is recreated only when the user confirms"
   },
 
   "sqlite_columns_added": {
     "table": "notes",
     "migration": "2026032901",
     "columns": {
-      "odoo_id": "INTEGER — Odoo project.task id, null if never pushed",
-      "odoo_url": "TEXT — Base URL of the Odoo instance used for sync",
-      "sync_status": "TEXT DEFAULT 'local' — see sync_status_values",
+      "odoo_id": "INTEGER — legacy single binding, no longer written; migration 2026102201 copies it to note_links",
+      "odoo_url": "TEXT — legacy, no longer written",
+      "sync_status": "TEXT DEFAULT 'local' — see sync_status_values; derived from sync_per_server_status",
       "last_synced_at": "TEXT — ISO 8601 datetime of last successful sync"
+    }
+  },
+
+  "sqlite_tables_added": {
+    "migration": "2026102201",
+    "note_links": {
+      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted)", "created_at", "last_synced_at"],
+      "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
+    },
+    "sync_pull_cursors": {
+      "columns": ["scope (sync config id)", "write_date"],
+      "notes": "Highest task write_date already pulled; next pull starts there (>=). Pages by write_date >= last read, excluding the ids already read at it (search_read truncates write_date to the second). Without a cursor: one day before the oldest link's last sync (device clock vs server clock)."
     }
   }
 }
