@@ -4,9 +4,9 @@
 
 | Note mobile field      | project.task field    | Type             | Notes |
 |------------------------|-----------------------|------------------|-------|
-| *(no mobile id sent)*  | `id`                  | Integer (server) | Odoo ID stored in mobile SQLite as `odoo_id` after first push |
+| *(no mobile id sent)*  | `id`                  | Integer (server) | Odoo ID stored in mobile SQLite `note_links`, per server and database, after first push |
 | `title`                | `name`                | Char             | Required |
-| `done`                 | `state`               | Selection        | `'done'` ↔ done=true ; `'01_in_progress'` ↔ done=false |
+| `done`                 | `state`               | Selection        | Odoo 17+ : `'1_done'` ↔ done=true ; `'01_in_progress'` ↔ done=false |
 | `archived`             | `active`              | Boolean          | false = archived |
 | `pinned`               | `priority`            | Selection        | `'1'` = pinned, `'0'` = normal |
 | `tags`                 | `tag_ids`             | Many2many        | Matched by tag name; created if missing |
@@ -15,7 +15,7 @@
 | entry `audio`          | `attachment_ids`      | ir.attachment    | + `<p>🎙️ Enregistrement audio — ISO_DATE</p>` in description |
 | entry `photo`          | `attachment_ids`      | ir.attachment    | + `<p>📷 Photo — ISO_DATE</p>` in description |
 | entry `video`          | `attachment_ids`      | ir.attachment    | + `<p>🎥 Vidéo — ISO_DATE</p>` in description |
-| entry `geolocation`    | `geo_task_point`      | GeoMultiPoint    | All lat/lon → MultiPoint GeoJSON ; `<p>📍 text — lat,lon — ISO_DATE</p>` in description |
+| entry `geolocation`    | `geo_task_point`      | GeoMultiPoint    | All lat/lon → MultiPoint GeoJSON, sent only when `fields_get` finds the field (module `erplibre_mobile_todo`) ; `<p>📍 text — lat,lon — ISO_DATE</p>` in description |
 
 ## Description HTML structure
 
@@ -64,18 +64,23 @@ Timestamps and text descriptions are preserved in the HTML description `<p>` lin
 ## Sync ID strategy
 
 - Mobile does **not** send its internal UUID to Odoo.
-- On first push: `project.task.create()` returns the Odoo `id` (integer).
-- Mobile stores it as `odoo_id` in its local SQLite `notes` table.
-- Subsequent pushes use `project.task.write([[odoo_id], {...}])`.
-- Multiple mobile clients: each independently stores the same `odoo_id` — fully supported.
+- On first push to a server: `project.task.create()` returns the Odoo `id` (integer).
+- Mobile stores it in its local SQLite `note_links` table, keyed by the sync
+  config id `url|username|database`: an id is only meaningful in the database
+  that issued it.
+- Subsequent pushes to that server use `project.task.write([[id], {...}])`; a
+  push to another server creates and links that server's own task.
+- Multiple mobile clients: each independently stores the same `id` — fully supported.
 
 ## Conflict resolution
 
 | Condition | Resolution |
 |-----------|------------|
-| `write_date` (Odoo) > `last_synced_at` (mobile) | Odoo wins — pull overwrites mobile |
-| Mobile modified since `last_synced_at`, Odoo not changed | Mobile wins — push |
-| Both modified since last sync | Odoo wins (last-write-wins, v1) |
+| Odoo modified, note not pending for that server | Odoo wins — pull overwrites mobile |
+| Note pending (or in error) for that server | Mobile wins — pull skips the note, the next push overwrites the task |
+| Both modified since last sync | Mobile wins while its change is pending (v1, no merge) |
+| Pull changed a note linked on several servers | The other servers are queued, so they receive the new values |
+| Task deleted on the server | The link is marked deleted; nothing is recreated unless the user confirms |
 
 ## Tag resolution
 
