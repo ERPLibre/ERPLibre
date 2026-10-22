@@ -69,6 +69,9 @@ private/todo/todo_override_private.json
 # install_erplibre_home.sh --stream-deck
 # (manifest/git_manifest_streamdeck_game.xml).
 /script/stream_deck/games/
+# Ce que streamdeck_games_to_repo.sh met de côté (games.plain-clone-<date>,
+# games.save-<date>), et le clone en cours de l'installateur (games.XXXXXX).
+/script/stream_deck/games.*/
 # L'ancien emplacement des sauvegardes des jeux, qu'un checkout garde tant
 # qu'il ne les a pas déplacées dans games/save/.
 script/stream_deck/save/

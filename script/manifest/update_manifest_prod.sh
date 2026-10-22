@@ -26,4 +26,7 @@ fi
 
 # Update git-repo
 .venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b $(git rev-parse --verify HEAD)
+# Un clone ordinaire des jeux Stream Deck, que repo sync refuserait, est
+# mis de côté une fois l'init fait (voir le script).
+./script/manifest/streamdeck_games_to_repo.sh || exit 1
 .venv.erplibre/bin/repo sync ${REPO_VERBOSE} -j "$JOBS"

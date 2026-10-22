@@ -123,10 +123,33 @@ pins it on a tag: Google Repo clones it there in a checkout it manages, and
 A directory already there is left as it is, except one holding only
 `save/` and `__pycache__/`, which a checkout keeps when the update that
 stopped tracking the games removes their files: the installer clones the
-games there, keeping the saves. `--uninstall` never removes them.
+games there, keeping the saves. Anything else in it holds the clone back,
+and the installer's summary names what to move away. `--uninstall` never
+removes the games.
 `CONTRACT.md`, at the root of the games, says what they and ERPLibre
 expect of each other; `script/stream_deck/games_contract` holds the
 contract version ERPLibre was written against.
+
+A checkout managed by Google Repo can hold a plain clone the installer
+made, which `repo sync` refuses (`.git: unsupported checkout state`). The
+`script/manifest/update_manifest_*.sh` scripts therefore run
+`script/manifest/streamdeck_games_to_repo.sh` between `repo init` and
+`repo sync`. When repo is about to check the games out, a clone without
+local work moves, whole, to `script/stream_deck/games.plain-clone-<date>/`,
+and `games/` keeps a copy of `save/`, which repo then fills; nothing is
+deleted, and the moved clone is removed by hand once no longer needed. A
+clone with a change, an untracked file, a commit on no remote, a stash or
+a linked worktree stops the update, naming it. repo also deletes the
+directory of a project an init leaves out, saves included: the code
+generator's init keeps the `streamdeck` group, and when an init leaves the
+games out anyway, `save/` is first copied to
+`script/stream_deck/games.save-<date>/`. An ERPLibre commit from before
+the move has no such guard: copy `save/` before checking one out and
+running its update.
+
+A game file edited in the checkout before this update blocks the
+`git pull`: copy the edit elsewhere, `git checkout -- <file>`, pull, then
+carry the edit over to the streamdeck_game repository.
 
 Without the games, the deck program, the controller and the service work;
 the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
@@ -143,10 +166,32 @@ gère, et `--stream-deck` le clone à cette même étiquette quand le
 répertoire manque. Un répertoire déjà là reste tel quel, sauf celui qui ne
 garde que `save/` et `__pycache__/`, ce qu'un checkout garde quand la mise
 à jour qui a cessé de suivre les jeux en retire les fichiers :
-l'installateur y clone les jeux, sauvegardes comprises. `--uninstall` ne
-les retire jamais. `CONTRACT.md`, à la racine des jeux, dit ce que les jeux
+l'installateur y clone les jeux, sauvegardes comprises. Tout autre contenu retient le clone, et le
+bilan de l'installateur nomme ce qu'il faut déplacer. `--uninstall` ne
+retire jamais les jeux. `CONTRACT.md`, à la racine des jeux, dit ce que les jeux
 et ERPLibre attendent l'un de l'autre ; `script/stream_deck/games_contract`
 porte la version du contrat pour laquelle ERPLibre est écrit.
+
+Un checkout géré par Google Repo peut porter un clone ordinaire fait par
+l'installateur, que `repo sync` refuse (`.git: unsupported checkout
+state`). Les scripts `script/manifest/update_manifest_*.sh` lancent donc
+`script/manifest/streamdeck_games_to_repo.sh` entre `repo init` et
+`repo sync`. Quand repo va extraire les jeux, un clone sans travail local
+passe, entier, dans `script/stream_deck/games.plain-clone-<date>/`, et
+`games/` garde une copie de `save/`, que repo remplit ensuite ; rien n'est
+supprimé, et le clone déplacé se retire à la main une fois inutile. Un clone
+avec une modification, un fichier non suivi, un commit sur aucun remote,
+une remise ou un worktree lié arrête la mise à jour, en le nommant. repo
+supprime aussi le répertoire d'un projet qu'un init écarte, sauvegardes
+comprises : l'init du générateur de code garde le groupe `streamdeck`, et
+quand un init écarte quand même les jeux, `save/` est d'abord copié dans
+`script/stream_deck/games.save-<date>/`. Un commit d'ERPLibre d'avant le
+départ des jeux n'a pas cette garde : copie `save/` avant d'en extraire un
+et d'en lancer la mise à jour.
+
+Un fichier de jeu modifié dans le checkout avant cette mise à jour bloque le
+`git pull` : copie la modification ailleurs, `git checkout -- <fichier>`,
+tire, puis reporte la modification dans le dépôt streamdeck_game.
 
 Sans les jeux, le programme du deck, le contrôleur et le service
 fonctionnent ; le menu des jeux de TODO, la galerie,

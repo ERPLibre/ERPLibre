@@ -61,10 +61,33 @@ pins it on a tag: Google Repo clones it there in a checkout it manages, and
 A directory already there is left as it is, except one holding only
 `save/` and `__pycache__/`, which a checkout keeps when the update that
 stopped tracking the games removes their files: the installer clones the
-games there, keeping the saves. `--uninstall` never removes them.
+games there, keeping the saves. Anything else in it holds the clone back,
+and the installer's summary names what to move away. `--uninstall` never
+removes the games.
 `CONTRACT.md`, at the root of the games, says what they and ERPLibre
 expect of each other; `script/stream_deck/games_contract` holds the
 contract version ERPLibre was written against.
+
+A checkout managed by Google Repo can hold a plain clone the installer
+made, which `repo sync` refuses (`.git: unsupported checkout state`). The
+`script/manifest/update_manifest_*.sh` scripts therefore run
+`script/manifest/streamdeck_games_to_repo.sh` between `repo init` and
+`repo sync`. When repo is about to check the games out, a clone without
+local work moves, whole, to `script/stream_deck/games.plain-clone-<date>/`,
+and `games/` keeps a copy of `save/`, which repo then fills; nothing is
+deleted, and the moved clone is removed by hand once no longer needed. A
+clone with a change, an untracked file, a commit on no remote, a stash or
+a linked worktree stops the update, naming it. repo also deletes the
+directory of a project an init leaves out, saves included: the code
+generator's init keeps the `streamdeck` group, and when an init leaves the
+games out anyway, `save/` is first copied to
+`script/stream_deck/games.save-<date>/`. An ERPLibre commit from before
+the move has no such guard: copy `save/` before checking one out and
+running its update.
+
+A game file edited in the checkout before this update blocks the
+`git pull`: copy the edit elsewhere, `git checkout -- <file>`, pull, then
+carry the edit over to the streamdeck_game repository.
 
 Without the games, the deck program, the controller and the service work;
 the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
