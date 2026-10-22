@@ -96,6 +96,12 @@ first. Without the games, each entry prints one line naming
 stopping anything; the deck program, the controller and the service do not
 need the games.
 
+The gallery listens on 127.0.0.1:8042 only. Its routes that act (launch,
+stop, delete saves) take only a request carrying the header
+`X-Stream-Deck-Gallery: 1`, which its page and the GNOME extension send:
+another site's page, a link or a document renderer cannot launch a game
+or delete saves through it.
+
 ## Saves
 
 Games keep their saves in `$XDG_DATA_HOME/erplibre-home/streamdeck/save/`
@@ -132,6 +138,12 @@ arrête donc le service d'abord. Sans les jeux, chaque entrée affiche une
 ligne qui nomme `make erplibre_home_streamdeck_install`, et la passation
 sort en 5 avant d'arrêter quoi que ce soit ; le programme du deck, le
 contrôleur et le service n'ont pas besoin des jeux.
+
+La galerie n'écoute que sur 127.0.0.1:8042. Ses routes qui agissent
+(lancer, arrêter, effacer des sauvegardes) n'acceptent qu'une requête
+portant l'en-tête `X-Stream-Deck-Gallery: 1`, que sa page et l'extension
+GNOME envoient : la page d'un autre site, un lien ou un moteur de rendu de
+documents ne peut ni lancer un jeu ni effacer de sauvegarde par elle.
 
 ## Sauvegardes
 
