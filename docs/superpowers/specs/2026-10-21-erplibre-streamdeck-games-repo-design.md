@@ -1,8 +1,9 @@
 # ERPLibre Stream Deck: the game library in its own repository
 
-**Status:** steps 1 to 5 done. The games repository is pushed and tagged
-`v1.0.0`, ERPLibre's side is pushed, and step 5's fixes follow it. Playing
-a game on the deck, from TODO, make and the gallery, remains for a person.
+**Status:** steps 1 to 5 done, and version 1.1. The games repository is
+pushed; its first version is tagged `v1.0.0`, and from 1.1 ERPLibre follows
+its `main` branch instead of a tag. Playing a game on the deck, from TODO,
+make and the gallery, remains for a person.
 **Builds on:** `2026-10-17-erplibre-streamdeck-games-split-design.md` (B1:
 games and gallery in `script/stream_deck/games/`, the `GAMES` setting) and
 `2026-10-14-erplibre-home-deck-service-menu-design.md` (deck service, deck
@@ -145,9 +146,9 @@ reads.
 1. **Manifest.** `manifest/git_manifest_streamdeck_game.xml` declares the
    `TechnoLibre` remote, as `git_manifest_mobile_home.xml` does, and the
    project `name="streamdeck_game.git"` at
-   `path="script/stream_deck/games"`, `groups="streamdeck"`, pinned to a
-   tag of the games repository (not `main`, so two checkouts of one
-   ERPLibre commit get the same games). The three lists
+   `path="script/stream_deck/games"`, `groups="streamdeck"`, first pinned
+   to the tag `v1.0.0`, then on `main` from version 1.1 (see Version 1.1).
+   The three lists
    `conf/git_manifest.csv`, `git_manifest_mobile.csv` and
    `git_manifest_odoo.csv` name it: `git_merge_repo_manifest.py` skips
    `git_manifest.csv` when a checkout has both the mobile project and the
@@ -161,7 +162,9 @@ reads.
    holds only `save/` and `__pycache__/`. Those two are what a checkout
    keeps when it pulls the untrack commit, since git removes the tracked
    files and leaves the ignored ones; the clone then takes the saves over.
-   Any other existing directory is left alone, whatever manages it. The
+   Any other existing directory is left alone, whatever manages it,
+   except a clean detached clone the installer made, which follows the
+   manifest's revision (see Version 1.1). The
    clone goes to a sibling temporary directory renamed once checked out, so
    a failure leaves no half-filled `games/`. `--uninstall` does not delete
    it (open question 1, as proposed). `--dry-run` prints
@@ -206,15 +209,18 @@ reads.
   suite passes both with and without `games/`.
 - **Boundary and contract:** `test_streamdeck_games_repo.py` checks that
   ERPLibre tracks nothing under `games/` and ignores it, that the manifest
-  pins a tag and the three lists name it, and that `games_contract` and,
+  names the games' `main` branch (a tag before 1.1) and the three lists
+  name it, and that `games_contract` and,
   when cloned, `games_cli.CONTRACT_VERSION` share their MAJOR.
 - **Installer:** `games_source` returns the manifest's project; a clone
-  from a local repository lands on the tagged commit; an existing
+  from a local repository lands on the manifest's revision, detached; a
+  clean clone follows a new tag or a new commit of `main`, also after
+  `main` is rewritten upstream; a branch or local work stays; any other
   directory is untouched; leftovers are cloned around the saves; a failed
   clone leaves nothing; the dry-run lines.
 - **Long test:** `long_test/install_erplibre_home.py` gains the `games`
-  check after `venv`: on the VM, `games/games_cli.py` exists and
-  `git describe --tags --exact-match` is the manifest's tag.
+  check after `venv`: on the VM, `games/games_cli.py` exists and HEAD is
+  the manifest's revision (`origin/main` from 1.1).
 - **Mobile bundle:** one build with the games as a manifest repository,
   checking the bundle index lists `script/stream_deck/games/` (its files
   are all under the 1 MB limit) and `check_bundle_transfer.py` passes.
@@ -290,15 +296,35 @@ What it found, and the fixes:
    or moves to ERPLibre next to the deck program.
 3. Whether the extension should hide its Games submenu when `games/` is
    absent, in this work or the follow-up.
-4. Where the saves should live. Inside a repo-managed `games/`, an init
-   whose groups leave `streamdeck` out deletes them with the directory;
-   a user data directory (`$XDG_DATA_HOME/erplibre-home/`) would not
-   depend on who manages the code. That changes the contract (MAJOR).
+4. Where the saves should live: decided for streamdeck_game 1.1 (see
+   Version 1.1 below).
+
+## Version 1.1
+
+- **Saves out of the repository.** `games_cli.save_dir()` is
+  `$XDG_DATA_HOME/erplibre-home/streamdeck/save/`: no clone, `repo sync`,
+  `git clean` or excluding init reaches it, and the mobile bundle, which
+  walks the workspace, no longer ships it. Files left in the former
+  `save/` move there, never over an existing file; djscratch finds the WAV
+  paths its state recorded by their name. ERPLibre never reads the saves,
+  so the contract moves to 1.1, not 2.0.
+- **The repository stands alone.** Its README installs and runs the games
+  without ERPLibre (`requirements.txt`, a udev rule, a venv); a game
+  missing its libraries names that file; the gallery, with no ERPLibre
+  three levels up, reads no `GAMES` setting and runs games without a
+  hand-over. ERPLibre's side is in `doc/streamdeck_game.md`.
+- **ERPLibre follows `main`, not a tag.** The manifest names the games'
+  `main` branch, so repo sync and the installer bring their last commit;
+  no tag is cut per version. The installer clones detached on
+  `origin/main`, fetches at each run and moves a clone it made, unless it
+  holds a branch or local work; it installs the games' `requirements.txt`
+  in `.venv.streamdeck`. The contract's MAJOR check is then the only guard
+  between the two sides: a MAJOR change lands on both together.
 
 ## Risks
 
-- **Two sources of the pinned revision.** The installer must read the tag
-  from the manifest file, not carry its own copy.
+- **Two sources of the revision.** The installer reads it from the
+  manifest file, never from a copy of its own.
 - **A checkout with the files still tracked** when `repo sync` brings the
   project: repo refuses to overwrite tracked files. The untrack commit
   and the manifest land together (step 4) for that reason.
