@@ -147,7 +147,7 @@
           "args": [
             {
               "name": "{note.title}",
-              "description": "{note.html_description}",
+              "description": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
               "project_id": false,
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
@@ -160,8 +160,40 @@
           "kwargs": {}
         }
       },
-      "response": "integer — Odoo task ID → stored in mobile SQLite note_links (note, server config id, project.task, id)",
-      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string."
+      "response": "integer — Odoo task ID → stored in mobile SQLite note_links (note, server config id, project.task, id, client_uuid)",
+      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string. Runs as the note's task.create row of sync_outbox; on a retry (attempts > 1) notes.find_created runs first."
+    },
+
+    "notes.find_created": {
+      "description": "Before retrying a create whose answer may have been lost: find the task an earlier attempt created, by its marker. Runs no earlier than 3 minutes after the last create was sent (stored in params.createSentAt before sending): longer than the 30 s read timeout plus Odoo's default limit_time_real (120 s), so an uncommitted create cannot be missed",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.task",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["description", "ilike", "erplibre-mobile:{outbox.client_uuid}"]],
+            "fields": ["id"],
+            "limit": 5,
+            "order": "id asc",
+            "context": { "active_test": false }
+          }
+        }
+      },
+      "response": "0 rows → create; 1 row → adopt it (notes.update with the current content, then link); several rows (a copy made on the server carries the marker too, archived or not) → the outbox row turns blocked as ambiguous with the ids as candidates, and the app asks the user which task to link"
+    },
+
+    "capabilities.probe": {
+      "description": "What a server allows on a model, cached in server_capabilities; never reads ir.model (not readable by an ordinary internal user on 17 and 18)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "calls": [
+        "{model}.fields_get([], attributes=[type, string, required, readonly, relation, selection]) — an unknown model answers KeyError: exists=false; AccessError: exists, no right; any other error leaves the cache unchanged",
+        "Odoo 18: {model}.has_access([], 'read'|'create'|'write'); refused, or Odoo 16-17: {model}.check_access_rights('read'|'create'|'write', raise_exception=False); neither answering → null (not blocking)",
+        "activity_ids / message_ids among the fields → activities / chatter available"
+      ]
     },
 
     "notes.update": {
@@ -176,7 +208,7 @@
             ["{note_links.res_id for this server}"],
             {
               "name": "{note.title}",
-              "description": "{note.html_description}",
+              "description": "{note.html_description} (+ the marker when the link has a client_uuid)",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
               "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
@@ -264,12 +296,22 @@
   "sqlite_tables_added": {
     "migration": "2026102201",
     "note_links": {
-      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted)", "created_at", "last_synced_at"],
+      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)"],
       "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
     },
     "sync_pull_cursors": {
       "columns": ["scope (sync config id)", "write_date"],
       "notes": "Highest task write_date already pulled; next pull starts there (>=). Pages by write_date >= last read, excluding the ids already read at it (search_read truncates write_date to the second). Without a cursor: one day before the oldest link's last sync (device clock vs server clock)."
+    },
+    "sync_outbox": {
+      "migration": "2026102202",
+      "columns": ["id", "client_uuid", "note_id", "config_id", "kind (task.create, …)", "params_json", "status (queued|running|failed|blocked|incomplete)", "attempts", "next_attempt_at", "last_error", "depends_on", "created_at", "updated_at"],
+      "notes": "One row per operation of a note on one server. attempts and running are stored before the server is contacted; success deletes the row; failure retries after 30 s doubled per attempt (1 h max); a handler may postpone a row to params.notBefore without counting an attempt, honoured even by a forced sync; blocked and incomplete wait for the user; running rows of a killed app turn failed at startup."
+    },
+    "server_capabilities": {
+      "migration": "2026102202",
+      "columns": ["id (config_id#model)", "config_id", "model", "exists_flag", "can_read", "can_create", "can_write", "has_activities", "has_chatter", "fields_json", "odoo_version", "probed_at", "error"],
+      "notes": "Result of capabilities.probe per server and model, used offline; probed again after one day when online."
     }
   }
 }

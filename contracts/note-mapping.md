@@ -63,8 +63,18 @@ Timestamps and text descriptions are preserved in the HTML description `<p>` lin
 
 ## Sync ID strategy
 
-- Mobile does **not** send its internal UUID to Odoo.
-- On first push to a server: `project.task.create()` returns the Odoo `id` (integer).
+- Mobile does **not** send the note's internal id to Odoo.
+- On first push to a server, the creation runs as an outbox operation
+  (`sync_outbox`, kind `task.create`) with its own `client_uuid`; the task
+  description ends with `<p><small>erplibre-mobile:{client_uuid}</small></p>`,
+  kept on every later write.
+- `project.task.create()` returns the Odoo `id` (integer).
+- A retry of that operation first searches the marker (`description ilike`,
+  archived included): one task found is adopted, none means create, several
+  (a copy made on the server carries the marker too) block the operation
+  until the user picks the task to link — a create whose answer was lost is
+  not duplicated. The search runs no earlier than 3 minutes after the last
+  create was sent, so a create still running on the server has committed.
 - Mobile stores it in its local SQLite `note_links` table, keyed by the sync
   config id `url|username|database`: an id is only meaningful in the database
   that issued it.
