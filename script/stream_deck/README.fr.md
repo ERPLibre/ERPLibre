@@ -232,7 +232,7 @@ utilisée par les helpers Python. Voir [`../gnome-extension/erplibre_home/README
 
 19 jeux jouables directement sur le Stream Deck. 11 supportent le mode 2 joueurs avec deux Stream Decks (auto-détection).
 
-Les jeux et leur galerie vivent dans leur propre dépôt, [streamdeck_game](https://github.com/TechnoLibre/streamdeck_game), cloné dans `script/stream_deck/games/` par Google Repo ou par `make erplibre_home_streamdeck_install` ; [INSTALL.fr.md](INSTALL.fr.md) dit comment.
+Les jeux et leur galerie vivent dans leur propre dépôt, [streamdeck_game](https://github.com/TechnoLibre/streamdeck_game), cloné dans `script/stream_deck/games/` par Google Repo ou par `make erplibre_home_streamdeck_install` ; [doc/streamdeck_game.fr.md](../../doc/streamdeck_game.fr.md) dit comment, et le README du dépôt comment les lancer sans ERPLibre.
 
 Chaque `game_*.py` lit sa ligne de commande par `games_cli.py`, avant d'importer PIL et la bibliothèque Stream Deck : `-h` et `--help` affichent l'usage et sortent en 0, tout argument inconnu l'affiche sur la sortie d'erreur et sort en 2, et ni l'un ni l'autre n'ouvre le deck. `--meta` affiche les métadonnées du jeu en JSON, que lit la galerie. Hangman ajoute `-l`/`--lang`, Minesweeper `-m` et `-v`. La galerie (`make streamdeck_gallery`, `gallery_server.py`) répond de même à `-h` et `--help`, sans écouter ni ouvrir de navigateur.
 
@@ -778,12 +778,11 @@ script/stream_deck/
 ├── erplibre_controller.py     # Main ERPLibre controller / Contrôleur principal
 ├── erplibre_streamdeck/       # Deck program package (plugins) / Paquet du deck
 ├── keyboard_talk.py           # Keyboard automation / Automatisation clavier
-└── games/                     # Games, gallery, saves / Jeux, galerie, sauvegardes
+└── games/                     # streamdeck_game clone / Clone de streamdeck_game
     ├── game_*.py              # 45 games / 45 jeux
     ├── games_cli.py           # Games' command line / Ligne de commande
     ├── gallery_server.py      # Game gallery / Galerie des jeux
-    ├── index.html             # Gallery page / Page de la galerie
-    └── save/                  # Game saves / Sauvegardes des jeux
+    └── index.html             # Gallery page / Page de la galerie
 ```
 
 The GNOME Shell extension lives in `script/gnome-extension/erplibre_home/`. /

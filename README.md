@@ -229,6 +229,7 @@ time make test_full_fast
 | [CODE_GENERATOR](doc/CODE_GENERATOR.md) | Odoo module code generation |
 | [MIGRATION](doc/MIGRATION.md) | Database migration between versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Git repository management |
+| [streamdeck_game](doc/streamdeck_game.md) | Stream Deck games, a repository of their own |
 | [POETRY](doc/POETRY.md) | Python dependency management |
 | [FAQ](doc/FAQ.md) | Frequently asked questions |
 | [HOWTO](doc/HOWTO.md) | How-to guides |
