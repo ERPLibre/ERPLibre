@@ -94,7 +94,10 @@ def main():
     odoo_version = None
     if os.path.isfile(ODOO_VERSION_PATH):
         with open(ODOO_VERSION_PATH, "r") as f:
-            odoo_version = f.readline()
+            # Sans strip, le saut de ligne qu'un éditeur ajoute entre dans le
+            # nom du manifeste, qui n'existe pas : les modules d'Odoo
+            # tombent sans que le script échoue.
+            odoo_version = f.readline().strip()
 
     # Add local manifest
     if not config.with_new_manifest:
@@ -102,7 +105,7 @@ def main():
             config.with_OCA = True
         if os.path.isdir(MOBILE_PATH):
             config.with_mobile = True
-        if odoo_version and get_version_extra(odoo_version.strip()):
+        if odoo_version and get_version_extra(odoo_version):
             config.with_extra = True
 
     input_paths = config.input
@@ -158,7 +161,7 @@ def main():
         if config.with_extra and odoo_version:
             path_extra = os.path.join(
                 "manifest",
-                f"git_manifest_extra_odoo{odoo_version.strip()}.xml",
+                f"git_manifest_extra_odoo{odoo_version}.xml",
             )
             if os.path.exists(path_extra):
                 input_paths.append(path_extra)
