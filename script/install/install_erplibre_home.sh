@@ -6,8 +6,8 @@
 # GNOME liée au dépôt, ses schémas et ses traductions, puis activée ; ni
 # accès au périphérique ni venv. --stream-deck ajoute le niveau Stream Deck
 # par-dessus la base : paquets USB, règle udev, venv dédié .venv.streamdeck,
-# et le service systemd --user erplibre-home-streamdeck.service avec ses
-# réglages. Le niveau Stream Deck inclut toujours la base ; la base
+# les jeux quand ils manquent, et le service systemd --user
+# erplibre-home-streamdeck.service avec ses réglages. Le niveau Stream Deck inclut toujours la base ; la base
 # s'installe seule.
 #
 #   ./script/install/install_erplibre_home.sh [--stream-deck] [--no-enable]
@@ -92,7 +92,9 @@ Installe ERPLibre Home sans Odoo : l'extension GNOME erplibre-home, ses
 schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
 
   --stream-deck     ajoute le niveau Stream Deck : paquets USB, règle udev,
-                    .venv.streamdeck ; la base s'installe aussi, au besoin
+                    .venv.streamdeck, et les jeux de
+                    script/stream_deck/games/ quand ils manquent ; la base
+                    s'installe aussi, au besoin
   --no-enable       n'active pas l'extension ; un poste où l'ancienne
                     extension était active garde cet état sous le
                     nouveau nom (migration)
@@ -117,7 +119,7 @@ schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
   --uninstall       retire tout : extension, règle udev, .venv.streamdeck,
                     service et réglages ; avec --stream-deck, tout sauf
                     l'extension, qui reste active ; les paquets système
-                    restent
+                    et les jeux restent
   --dry-run         affiche ce qui serait fait, sans rien changer ni
                     appeler sudo
   -h, --help        cette aide
@@ -483,6 +485,83 @@ make_venv() {
     fi
     "${VENV}/bin/python" -m pip install --quiet --disable-pip-version-check \
         -r "${REQUIREMENTS}"
+}
+
+# ---------- Jeux ----------
+
+# Les jeux sont un dépôt à part, que Google Repo clone dans un checkout qu'il
+# gère. Un checkout cloné par git ne les a pas : le niveau Stream Deck les
+# clone alors lui-même, à la révision que le manifeste épingle.
+GAMES_DIR="${RACINE}/${DECK_GAMES_DIR}"
+GAMES_MANIFEST="${RACINE}/manifest/git_manifest_streamdeck_game.xml"
+
+# Rend « <url> <révision> » du projet du manifeste dont le path est celui des
+# jeux ; l'URL est le fetch de son remote suivi de son name. La révision ne
+# se lit que là, pour que l'installateur et repo sync clonent la même.
+games_source() {
+    python3 - "${GAMES_MANIFEST}" "${DECK_GAMES_DIR}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+manifeste, chemin = sys.argv[1:]
+racine = ET.parse(manifeste).getroot()
+remotes = {r.get("name"): r.get("fetch") for r in racine.iter("remote")}
+for projet in racine.iter("project"):
+    if projet.get("path") == chemin:
+        fetch = remotes[projet.get("remote")].rstrip("/")
+        print("%s/%s %s" % (fetch, projet.get("name"), projet.get("revision")))
+        break
+else:
+    sys.exit("no project at %s in %s" % (chemin, manifeste))
+PY
+}
+
+# Sort en 0 quand les jeux sont à cloner : leur répertoire manque, ou ne
+# garde que save/ et __pycache__/. Ce sont les fichiers ignorés qui restent
+# dans games/ quand la mise à jour d'ERPLibre qui a cessé de suivre les jeux
+# en retire les fichiers. Tout autre contenu est un clone, de ce script ou de
+# repo, ou un travail en cours, et reste en place.
+games_need_clone() {
+    local entree
+    [ -e "${GAMES_DIR}" ] || return 0
+    for entree in "${GAMES_DIR}"/* "${GAMES_DIR}"/.[!.]*; do
+        [ -e "${entree}" ] || continue
+        case "${entree##*/}" in
+            save | __pycache__) ;;
+            *) return 1 ;;
+        esac
+    done
+    return 0
+}
+
+# Clone les jeux quand games_need_clone le demande. Le clone se fait dans un
+# répertoire voisin, renommé une fois la révision extraite : un échec ne
+# laisse pas un games/ à moitié rempli. Les sauvegardes d'un games/ qui n'en
+# gardait que des restes passent dans le clone avant qu'il le remplace.
+clone_games() {
+    local origine url revision partiel
+    games_need_clone || return 0
+    command -v git >/dev/null \
+        || die "git est requis pour cloner les jeux : installez le paquet git"
+    origine="$(games_source)" \
+        || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
+    url="${origine% *}"
+    revision="${origine#* }"
+    partiel="$(mktemp -d "${GAMES_DIR}.XXXXXX")"
+    if git clone --quiet --no-checkout "${url}" "${partiel}" \
+        && git -C "${partiel}" -c advice.detachedHead=false \
+            checkout --quiet "${revision}"; then
+        if [ -d "${GAMES_DIR}/save" ]; then
+            mkdir -p "${partiel}/save"
+            cp -a "${GAMES_DIR}/save/." "${partiel}/save/"
+        fi
+        rm -rf "${GAMES_DIR}"
+        mv "${partiel}" "${GAMES_DIR}"
+        DONE+=("games cloned: ${GAMES_DIR} (${revision})")
+    else
+        rm -rf "${partiel}"
+        die "clone des jeux impossible : ${url} ${revision}"
+    fi
 }
 
 # ---------- Service du deck ----------
@@ -1009,6 +1088,23 @@ step_venv() {
     make_venv
 }
 
+# Sous --dry-run, « games: clone » quand les jeux sont à cloner, « games:
+# keep » sinon.
+step_games() {
+    local origine
+    if [ "${DRY_RUN}" = 1 ]; then
+        if ! games_need_clone; then
+            echo "games: keep ${GAMES_DIR}"
+        else
+            origine="$(games_source)" \
+                || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
+            echo "games: clone ${origine% *} at ${origine#* } into ${GAMES_DIR}"
+        fi
+        return 0
+    fi
+    clone_games
+}
+
 step_service() {
     if [ "${DRY_RUN}" = 1 ]; then
         echo "write: ${UNIT_FILE}"
@@ -1085,8 +1181,8 @@ step_uninstall() {
 # --uninstall et --extension-only ne lisent ni os-release ni la version de
 # GNOME : ni l'un ni l'autre n'installe de paquet, et une désinstallation
 # doit marcher sur un GNOME sorti de shell-version. La base passe toujours ;
-# la règle udev, le venv et le service n'arrivent qu'avec --stream-deck, dont
-# le chemin du dépôt se vérifie avant tout le reste.
+# la règle udev, le venv, les jeux et le service n'arrivent qu'avec
+# --stream-deck, dont le chemin du dépôt se vérifie avant tout le reste.
 main() {
     parse_args "$@"
     check_not_root
@@ -1111,6 +1207,7 @@ main() {
         if [ "${STREAM_DECK}" = 1 ]; then
             step_udev
             step_venv
+            step_games
             step_service
         fi
     fi

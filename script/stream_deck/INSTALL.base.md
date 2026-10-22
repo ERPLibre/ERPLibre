@@ -39,8 +39,9 @@ packages of the base, `make` among them, then it links the GNOME extension
 into `~/.local/share/gnome-shell/extensions/`, compiles its schemas and its
 translations (with `msgfmt`), and enables it. The second one, for a
 workstation with a Stream Deck, adds the Stream Deck packages, writes the
-udev rule and creates `.venv.streamdeck` from
-`script/stream_deck/requirements.txt`. Then log out and back in: under
+udev rule, creates `.venv.streamdeck` from
+`script/stream_deck/requirements.txt`, and clones the games (see below).
+Then log out and back in: under
 Wayland, GNOME Shell loads a new extension only at session start. A second
 run changes nothing. Without the Stream Deck level, the extension's
 `device` and `controller` indicators say that ERPLibre Home Stream Deck is
@@ -56,9 +57,9 @@ Lance-les depuis le dépôt. La première commande installe la base : les
 paquets système de la base, `make` compris, puis elle lie l'extension GNOME
 dans `~/.local/share/gnome-shell/extensions/`, compile ses schémas et ses
 traductions (avec `msgfmt`), et l'active. La seconde, pour un poste qui a un
-Stream Deck, ajoute les paquets du Stream Deck, écrit la règle udev et crée
-`.venv.streamdeck` depuis `script/stream_deck/requirements.txt`. Ferme
-ensuite ta session et rouvre-la : sous Wayland, GNOME Shell ne charge une
+Stream Deck, ajoute les paquets du Stream Deck, écrit la règle udev, crée
+`.venv.streamdeck` depuis `script/stream_deck/requirements.txt` et clone les
+jeux (voir plus bas). Ferme ensuite ta session et rouvre-la : sous Wayland, GNOME Shell ne charge une
 nouvelle extension qu'à l'ouverture de session. Une seconde exécution ne
 change rien. Sans le niveau Stream Deck, les indicateurs `device` et
 `controller` de l'extension disent qu'ERPLibre Home Stream Deck n'est pas
@@ -80,7 +81,7 @@ script accepte ces options :
 | `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
 | `--autostart` | with `--stream-deck`: enable the deck service at login and when a deck is plugged in (default: not enabled) |
 | `--restart-after-game`, `--no-restart-after-game` | with `--stream-deck`: the deck service comes back after a game, or not (default: it does); the two exclude each other |
-| `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages always stay |
+| `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages and the games always stay |
 | `--dry-run` | print what would be done, change nothing |
 
 Exit code `0` means done, `2` an unsupported system (one line on stderr
@@ -100,7 +101,7 @@ starting with `UNSUPPORTED:`), `1` any other failure, including an
 | `--deck-program=tiler\|controller\|none` | avec `--stream-deck` : le programme que lance le service du deck (défaut `tiler`) |
 | `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session et au branchement d'un deck (défaut : non activé) |
 | `--restart-after-game`, `--no-restart-after-game` | avec `--stream-deck` : le service du deck revient après un jeu, ou non (défaut : il revient) ; les deux s'excluent |
-| `--uninstall` | retire tout : désactive l'extension, retire son lien, le service du deck et ses réglages, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, tout sauf l'extension, qui reste active ; les paquets système restent toujours |
+| `--uninstall` | retire tout : désactive l'extension, retire son lien, le service du deck et ses réglages, la règle udev et `.venv.streamdeck` ; avec `--stream-deck`, tout sauf l'extension, qui reste active ; les paquets système et les jeux restent toujours |
 | `--dry-run` | affiche ce qui serait fait, ne change rien |
 
 Le code de sortie `0` veut dire fait, `2` un système non supporté (une
@@ -109,6 +110,48 @@ compris un `--uninstall` qui a retiré le reste mais n'a pu ni lire ni écrire
 `enabled-extensions`.
 `make erplibre_home_uninstall` lance `--uninstall`, et
 `make erplibre_home_streamdeck_uninstall` lance `--uninstall --stream-deck`.
+
+<!-- [end] -->
+<!-- [en] -->
+### The games
+
+The games and their gallery are a separate repository,
+[streamdeck_game](https://github.com/TechnoLibre/streamdeck_game), cloned
+at `script/stream_deck/games/`. `manifest/git_manifest_streamdeck_game.xml`
+pins it on a tag: Google Repo clones it there in a checkout it manages, and
+`--stream-deck` clones it at that same tag when the directory is missing.
+A directory already there is left as it is, except one holding only
+`save/` and `__pycache__/`, which a checkout keeps when the update that
+stopped tracking the games removes their files: the installer clones the
+games there, keeping the saves. `--uninstall` never removes them.
+`CONTRACT.md`, at the root of the games, says what they and ERPLibre
+expect of each other; `script/stream_deck/games_contract` holds the
+contract version ERPLibre was written against.
+
+Without the games, the deck program, the controller and the service work;
+the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
+refuse with one line naming `make erplibre_home_streamdeck_install`.
+
+<!-- [fr] -->
+### Les jeux
+
+Les jeux et leur galerie sont un dépôt à part,
+[streamdeck_game](https://github.com/TechnoLibre/streamdeck_game), cloné
+dans `script/stream_deck/games/`. `manifest/git_manifest_streamdeck_game.xml`
+l'épingle sur une étiquette : Google Repo l'y clone dans un checkout qu'il
+gère, et `--stream-deck` le clone à cette même étiquette quand le
+répertoire manque. Un répertoire déjà là reste tel quel, sauf celui qui ne
+garde que `save/` et `__pycache__/`, ce qu'un checkout garde quand la mise
+à jour qui a cessé de suivre les jeux en retire les fichiers :
+l'installateur y clone les jeux, sauvegardes comprises. `--uninstall` ne
+les retire jamais. `CONTRACT.md`, à la racine des jeux, dit ce que les jeux
+et ERPLibre attendent l'un de l'autre ; `script/stream_deck/games_contract`
+porte la version du contrat pour laquelle ERPLibre est écrit.
+
+Sans les jeux, le programme du deck, le contrôleur et le service
+fonctionnent ; le menu des jeux de TODO, la galerie,
+`make streamdeck_<jeu>` et la passation refusent, en une ligne qui nomme
+`make erplibre_home_streamdeck_install`.
 
 <!-- [end] -->
 <!-- [en] -->

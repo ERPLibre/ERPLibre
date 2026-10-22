@@ -462,6 +462,7 @@ class LesEtapes(unittest.TestCase):
                 [
                     "udev",
                     "venv",
+                    "games",
                     "service-unit",
                     "service-enabled",
                     "service-condition",
@@ -1705,6 +1706,8 @@ class VMSimulee:
 
     def __init__(self, journaux, echoue=(), apres=None, **etat):
         self.regle = self.venv = self.service = self.autostart = False
+        # Les jeux clonés : aucune désinstallation ne les retire.
+        self.jeux = False
         self.lien = self.uuid = self.actif = True
         # Sans deck, systemd saute le démarrage du service et le point
         # d'entrée en écrit la raison au journal de l'unité. « resultat »
@@ -1737,7 +1740,7 @@ class VMSimulee:
         else:
             self.lien = self.uuid = True
             if "--stream-deck" in options:
-                self.regle = self.venv = self.service = True
+                self.regle = self.venv = self.service = self.jeux = True
                 self.autostart = "--autostart" in options
         self.__dict__.update(self.apres.get(options, {}))
         return 0, ""
@@ -1757,6 +1760,7 @@ class VMSimulee:
             sd.CMD_SANS_VENV: "" if self.venv else "ok",
             sd.CMD_UDEV: "ok" if self.regle else "",
             sd.CMD_VENV: "ok" if self.venv else "",
+            sd.CMD_JEUX: "ok" if self.jeux else "",
             sd.CMD_LIEN: "ok" if self.lien else "",
             sd.CMD_SANS_LIEN: "" if self.lien else "ok",
             sd.CMD_ENABLED: (
@@ -1888,6 +1892,7 @@ class LesCinqEtapes(unittest.TestCase):
         for apres, attendu in (
             ({"regle": False}, "udev"),
             ({"venv": False}, "venv"),
+            ({"jeux": False}, "games"),
             ({"service": False}, "service-unit"),
             ({"autostart": False}, "service-enabled"),
             ({"condition": False}, "service-condition"),
