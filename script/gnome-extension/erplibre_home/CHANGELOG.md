@@ -8,6 +8,10 @@ migrations that are not auto-applied.
 ## [Unreleased]
 
 ### Changed
+- The Games submenu sends `X-Stream-Deck-Gallery: 1` with `/launch/<id>`:
+  the Stream Deck game gallery (games contract 2.0) refuses an action
+  without it, so another site's page cannot launch a game through it. A
+  gallery that refuses for any reason still shows its one-line error.
 - The extension is now **ERPLibre Home** (`erplibre-home@technolibre.ca`),
   in `script/gnome-extension/erplibre_home/`. Every identifier follows:
   schema `org.gnome.shell.extensions.erplibre-home`, D-Bus interface

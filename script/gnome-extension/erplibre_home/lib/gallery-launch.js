@@ -4,9 +4,17 @@
  * gallery's answer to `GET /launch/<id>`.
  *
  * The gallery answers 2xx when the game starts, and otherwise a JSON body
- * `{"error": "<one line>"}`: 403 when GAMES refuses the games, 404 for an
- * unknown game. Pure: node --test loads it without any gi:// import.
+ * `{"error": "<one line>"}`: 403 when GAMES refuses the games or the
+ * request lacks GALLERY_ACTION_HEADER, 404 for an unknown game, 503 when no
+ * terminal can run it. Pure: node --test loads it without any gi:// import.
  */
+
+/**
+ * The header, set to '1', that the gallery requires on a route that acts,
+ * `/launch/<id>` included (contract 2.0 of the games): a page of another
+ * site cannot send it, so it cannot launch a game through the gallery.
+ */
+export const GALLERY_ACTION_HEADER = 'X-Stream-Deck-Gallery';
 
 /**
  * Returns null for a 2xx status, else the line that says why: the

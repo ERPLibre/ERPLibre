@@ -1,6 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {launchRefusal, galleryTargets} from '../../lib/gallery-launch.js';
+import {
+    GALLERY_ACTION_HEADER, launchRefusal, galleryTargets,
+} from '../../lib/gallery-launch.js';
+
+test('GALLERY_ACTION_HEADER: the header the gallery requires to act', () => {
+    assert.equal(GALLERY_ACTION_HEADER, 'X-Stream-Deck-Gallery');
+});
+
+test('launchRefusal: a gallery without the header gives its line', () => {
+    const body = JSON.stringify(
+        {error: 'missing X-Stream-Deck-Gallery header'});
+    assert.equal(launchRefusal(403, body),
+        'missing X-Stream-Deck-Gallery header');
+});
 
 test('launchRefusal: a 2xx answer is no refusal', () => {
     assert.equal(launchRefusal(200, '{"ok": true}'), null);

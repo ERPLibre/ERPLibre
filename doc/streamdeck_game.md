@@ -56,6 +56,12 @@ first. Without the games, each entry prints one line naming
 stopping anything; the deck program, the controller and the service do not
 need the games.
 
+The gallery listens on 127.0.0.1:8042 only. Its routes that act (launch,
+stop, delete saves) take only a request carrying the header
+`X-Stream-Deck-Gallery: 1`, which its page and the GNOME extension send:
+another site's page, a link or a document renderer cannot launch a game
+or delete saves through it.
+
 ## Saves
 
 Games keep their saves in `$XDG_DATA_HOME/erplibre-home/streamdeck/save/`

@@ -17,7 +17,9 @@ import {buildTerminalArgv, findTerminal, spawnDetached}
     from '../lib/spawn.js';
 import {projectRootFrom, makeGioReadLink, streamDeckPython,
     galleryServerCommand, galleryReady} from '../lib/project-root.js';
-import {launchRefusal, galleryTargets} from '../lib/gallery-launch.js';
+import {
+    GALLERY_ACTION_HEADER, launchRefusal, galleryTargets,
+} from '../lib/gallery-launch.js';
 
 const GALLERY_PORT = 8042;
 const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
@@ -356,6 +358,7 @@ class ControllerIndicator extends PanelMenu.Button {
         session.timeout = 3;
         const message = Soup.Message.new('GET',
             `${GALLERY_URL}/launch/${gameId}`);
+        message.get_request_headers().append(GALLERY_ACTION_HEADER, '1');
         session.send_and_read_async(
             message, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
                 let bytes;

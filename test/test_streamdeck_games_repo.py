@@ -22,6 +22,7 @@ Les jeux eux-mêmes se testent dans leur dépôt (tests/test_contract.py).
 
 import csv
 import importlib.util
+import re
 import subprocess
 import sys
 import unittest
@@ -135,6 +136,32 @@ class LeContrat(unittest.TestCase):
             "games_cli", GAMES_DIR / "games_cli.py"
         ).CONTRACT_VERSION
         self.assertEqual(self.majeure(attendue), self.majeure(clonee))
+
+
+@SANS_JEUX
+class LEnTeteDActionDeLaGalerie(unittest.TestCase):
+    """Une route de la galerie qui agit exige un en-tête (contrat 2.0) :
+    l'extension GNOME l'envoie à /launch/<id>, sous le nom que la galerie
+    du clone attend."""
+
+    EXTENSION = ROOT / "script/gnome-extension/erplibre_home"
+
+    def test_the_extension_sends_the_header_the_gallery_requires(self):
+        galerie = charger("gallery_server", GAMES_DIR / "gallery_server.py")
+        lib = (self.EXTENSION / "lib/gallery-launch.js").read_text(
+            encoding="utf-8"
+        )
+        (nom,) = re.findall(
+            r"export const GALLERY_ACTION_HEADER = '([^']+)';", lib
+        )
+        self.assertEqual(galerie.GameHandler.ACTION_HEADER, nom)
+        controleur = (self.EXTENSION / "indicators/controller.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "get_request_headers().append(GALLERY_ACTION_HEADER, '1')",
+            controleur,
+        )
 
 
 @SANS_JEUX
