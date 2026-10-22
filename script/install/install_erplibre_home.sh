@@ -516,22 +516,47 @@ else:
 PY
 }
 
-# Sort en 0 quand les jeux sont à cloner : leur répertoire manque, ou ne
-# garde que save/ et __pycache__/. Ce sont les fichiers ignorés qui restent
-# dans games/ quand la mise à jour d'ERPLibre qui a cessé de suivre les jeux
-# en retire les fichiers. Tout autre contenu est un clone, de ce script ou de
-# repo, ou un travail en cours, et reste en place.
-games_need_clone() {
-    local entree
-    [ -e "${GAMES_DIR}" ] || return 0
-    for entree in "${GAMES_DIR}"/* "${GAMES_DIR}"/.[!.]*; do
-        [ -e "${entree}" ] || continue
-        case "${entree##*/}" in
-            save | __pycache__) ;;
-            *) return 1 ;;
+# Les entrées de games/ autres que save/ et __pycache__/, séparées par une
+# espace. save/ et __pycache__/ sont les fichiers ignorés qui restent dans
+# games/ quand la mise à jour d'ERPLibre qui a cessé de suivre les jeux en
+# retire les fichiers.
+# Toute entrée compte, liens cassés et noms à points compris ; save et
+# __pycache__ ne sont des restes que s'ils sont de vrais répertoires. Un
+# GAMES_DIR qui n'est pas un répertoire est lui-même nommé.
+games_strays() {
+    local nom
+    if [ ! -d "${GAMES_DIR}" ] || [ -L "${GAMES_DIR}" ]; then
+        printf '%s ' "${GAMES_DIR}"
+        return 0
+    fi
+    while IFS= read -r -d '' nom; do
+        case "${nom}" in
+            save | __pycache__)
+                if [ -d "${GAMES_DIR}/${nom}" ] \
+                    && [ ! -L "${GAMES_DIR}/${nom}" ]; then
+                    continue
+                fi
+                ;;
         esac
-    done
-    return 0
+        printf '%s ' "${nom}"
+    done < <(find "${GAMES_DIR}" -mindepth 1 -maxdepth 1 -printf '%f\0')
+}
+
+# Sort en 0 quand les jeux sont à cloner : leur répertoire manque, ou ne
+# garde que save/ et __pycache__/. Tout autre contenu est un clone, de ce
+# script ou de repo, ou un travail en cours, et reste en place.
+games_need_clone() {
+    [ -e "${GAMES_DIR}" ] || [ -L "${GAMES_DIR}" ] || return 0
+    [ -z "$(games_strays)" ]
+}
+
+# Rend, vide quand games/ porte les jeux, la raison pour laquelle un games/
+# gardé ne les porte pas : games_cli.py manque, et les entrées qui ont
+# empêché le clone sont nommées. Sans elle, l'installation réussirait sans
+# jeux, et chaque point d'entrée renverrait à cette même installation.
+games_kept_without_games() {
+    [ -f "${GAMES_DIR}/games_cli.py" ] && return 0
+    echo "no games_cli.py; move away $(games_strays)then run again"
 }
 
 # Clone les jeux quand games_need_clone le demande. Le clone se fait dans un
@@ -539,8 +564,14 @@ games_need_clone() {
 # laisse pas un games/ à moitié rempli. Les sauvegardes d'un games/ qui n'en
 # gardait que des restes passent dans le clone avant qu'il le remplace.
 clone_games() {
-    local origine url revision partiel
-    games_need_clone || return 0
+    local origine url revision partiel raison
+    if ! games_need_clone; then
+        raison="$(games_kept_without_games)"
+        if [ -n "${raison}" ]; then
+            DONE+=("games NOT installed, ${GAMES_DIR} kept: ${raison}")
+        fi
+        return 0
+    fi
     command -v git >/dev/null \
         || die "git est requis pour cloner les jeux : installez le paquet git"
     origine="$(games_source)" \
@@ -548,6 +579,9 @@ clone_games() {
     url="${origine% *}"
     revision="${origine#* }"
     partiel="$(mktemp -d "${GAMES_DIR}.XXXXXX")"
+    # mktemp crée le répertoire en 0700 ; le clone prend le mode qu'un
+    # git clone ou repo sync lui donnerait sous le même umask.
+    chmod "$(printf '%o' "$((0777 & ~$(umask)))")" "${partiel}"
     if git clone --quiet --no-checkout "${url}" "${partiel}" \
         && git -C "${partiel}" -c advice.detachedHead=false \
             checkout --quiet "${revision}"; then
@@ -1089,12 +1123,14 @@ step_venv() {
 }
 
 # Sous --dry-run, « games: clone » quand les jeux sont à cloner, « games:
-# keep » sinon.
+# keep » sinon, suivi de la raison quand le répertoire gardé n'a pas les
+# jeux.
 step_games() {
-    local origine
+    local origine raison
     if [ "${DRY_RUN}" = 1 ]; then
         if ! games_need_clone; then
-            echo "games: keep ${GAMES_DIR}"
+            raison="$(games_kept_without_games)"
+            echo "games: keep ${GAMES_DIR}${raison:+ (${raison})}"
         else
             origine="$(games_source)" \
                 || die "révision des jeux illisible dans ${GAMES_MANIFEST}"

@@ -880,18 +880,54 @@ class TestJeux(unittest.TestCase):
                 "games cloned: %s (refs/tags/v9.9.9)\n" % jeux, fait.stdout
             )
             self.assertEqual("", fait.stderr)
+            # Le mode d'un git clone sous le même umask, pas le 0700 de
+            # mktemp.
+            masque = os.umask(0)
+            os.umask(masque)
+            self.assertEqual(0o777 & ~masque, jeux.stat().st_mode & 0o777)
 
-    def test_an_existing_directory_is_left_alone(self):
+    def test_an_existing_directory_with_the_games_is_left_alone(self):
         with tempfile.TemporaryDirectory() as dossier:
             _sha, manifeste = depot_de_jeux(dossier)
             Path(dossier, "games").mkdir()
-            Path(dossier, "games", "a_moi").write_text("x")
+            Path(dossier, "games", "games_cli.py").write_text("x")
             fait = self.cloner(
                 dossier, manifeste, avant='git() { echo "git $*"; }\n'
             )
             self.assertEqual(0, fait.returncode, fait.stderr)
             self.assertEqual("\n", fait.stdout)
-            self.assertEqual(["a_moi"], os.listdir(Path(dossier, "games")))
+            self.assertEqual(
+                ["games_cli.py"], os.listdir(Path(dossier, "games"))
+            )
+
+    def test_a_kept_directory_without_the_games_says_why(self):
+        """Une entrée de trop empêche le clone : le bilan le dit et la
+        nomme, au lieu d'une installation réussie sans jeux, que chaque
+        point d'entrée renverrait à elle-même."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            jeux = Path(dossier, "games")
+            (jeux / "save").mkdir(parents=True)
+            (jeux / "notes.txt").write_text("x")
+            fait = self.cloner(
+                dossier, manifeste, avant='git() { echo "git $*"; }\n'
+            )
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(
+                "games NOT installed, %s kept: no games_cli.py; move away"
+                " notes.txt then run again\n" % jeux,
+                fait.stdout,
+            )
+            self.assertEqual(["notes.txt", "save"], sorted(os.listdir(jeux)))
+            fait = sourcer(
+                'GAMES_DIR="$DOSSIER/games"\nDRY_RUN=1\nstep_games\n',
+                {"DOSSIER": dossier},
+            )
+            self.assertEqual(
+                "games: keep %s (no games_cli.py; move away notes.txt then"
+                " run again)\n" % jeux,
+                fait.stdout,
+            )
 
     def test_leftovers_of_the_untrack_are_cloned_around_the_saves(self):
         """La mise à jour d'ERPLibre qui cesse de suivre les jeux en retire
@@ -911,6 +947,36 @@ class TestJeux(unittest.TestCase):
             self.assertEqual("{}", (jeux / "save" / "partie.json").read_text())
             self.assertFalse((jeux / "__pycache__").exists())
 
+    def test_every_kind_of_entry_holds_the_clone_back(self):
+        """Un nom à deux points, un lien cassé, un save qui n'est pas un
+        répertoire ou un games qui est un fichier : le clone, qui remplace
+        games/, les supprimerait."""
+        for nom, poser in (
+            ("..notes", lambda j: (j / "..notes").write_text("x")),
+            ("lien", lambda j: os.symlink("/nulle/part", j / "lien")),
+            ("save", lambda j: (j / "save").write_text("x")),
+        ):
+            with self.subTest(nom=nom):
+                with tempfile.TemporaryDirectory() as dossier:
+                    jeux = Path(dossier, "games")
+                    jeux.mkdir()
+                    poser(jeux)
+                    fait = sourcer(
+                        'GAMES_DIR="$DOSSIER/games"\n'
+                        "games_need_clone && echo need || echo keep\n"
+                        'echo "[$(games_strays)]"\n',
+                        {"DOSSIER": dossier},
+                    )
+                    self.assertEqual("keep\n[%s ]\n" % nom, fait.stdout)
+        with tempfile.TemporaryDirectory() as dossier:
+            Path(dossier, "games").write_text("x")
+            fait = sourcer(
+                'GAMES_DIR="$DOSSIER/games"\n'
+                "games_need_clone && echo need || echo keep\n",
+                {"DOSSIER": dossier},
+            )
+            self.assertEqual("keep\n", fait.stdout)
+
     def test_the_dry_run_names_the_clone_or_the_kept_directory(self):
         with tempfile.TemporaryDirectory() as dossier:
             _sha, manifeste = depot_de_jeux(dossier)
@@ -928,7 +994,7 @@ class TestJeux(unittest.TestCase):
             )
             self.assertFalse(os.path.exists(jeux))
             os.mkdir(jeux)
-            Path(jeux, "a_moi").write_text("x")
+            Path(jeux, "games_cli.py").write_text("x")
             fait = sourcer(fragment, env)
             self.assertEqual("games: keep %s\n" % jeux, fait.stdout)
 

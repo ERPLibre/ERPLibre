@@ -311,7 +311,7 @@ class TestMakefileGuard(unittest.TestCase):
                 self.assertNotEqual(0, res.returncode)
                 self.assertIn(
                     "Stream Deck games are not installed"
-                    " (script/stream_deck/games/ is missing);"
+                    " (no games_cli.py in script/stream_deck/games/);"
                     " install them with " + INSTALL_DECK,
                     res.stderr,
                 )
@@ -775,13 +775,13 @@ class TestTodoGamesLauncher(unittest.TestCase):
             (
                 "en",
                 "Stream Deck games are not installed"
-                " (script/stream_deck/games/ is missing):"
+                " (no games_cli.py in script/stream_deck/games/):"
                 " make erplibre_home_streamdeck_install",
             ),
             (
                 "fr",
                 "Les jeux Stream Deck ne sont pas installés"
-                " (script/stream_deck/games/ manque) :"
+                " (pas de games_cli.py dans script/stream_deck/games/) :"
                 " make erplibre_home_streamdeck_install",
             ),
         ):

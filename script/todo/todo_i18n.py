@@ -126,13 +126,13 @@ TRANSLATIONS = {
         " TODO › Stream Deck › Games on/off, or set GAMES=on in {path}",
     },
     "Stream Deck games are not installed"
-    " (script/stream_deck/games/ is missing):"
+    " (no games_cli.py in script/stream_deck/games/):"
     " make erplibre_home_streamdeck_install": {
         "fr": "Les jeux Stream Deck ne sont pas installés"
-        " (script/stream_deck/games/ manque) :"
+        " (pas de games_cli.py dans script/stream_deck/games/) :"
         " make erplibre_home_streamdeck_install",
         "en": "Stream Deck games are not installed"
-        " (script/stream_deck/games/ is missing):"
+        " (no games_cli.py in script/stream_deck/games/):"
         " make erplibre_home_streamdeck_install",
     },
     "ERPLibre Home Stream Deck is not installed:"

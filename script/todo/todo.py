@@ -1872,7 +1872,7 @@ class TODO(
             print(
                 t(
                     "Stream Deck games are not installed"
-                    " (script/stream_deck/games/ is missing):"
+                    " (no games_cli.py in script/stream_deck/games/):"
                     " make erplibre_home_streamdeck_install"
                 )
             )
