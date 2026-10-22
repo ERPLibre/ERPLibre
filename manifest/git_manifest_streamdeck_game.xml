@@ -2,17 +2,19 @@
 <manifest>
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
 
-    <!-- Les jeux du Stream Deck et leur galerie. Épinglés sur une étiquette,
-         et non sur « main » : deux checkouts d'un même commit d'ERPLibre ont
-         les mêmes jeux. CONTRACT.md, à la racine du dépôt, dit ce que les
-         jeux et ERPLibre attendent l'un de l'autre ; sa version MAJEURE est
-         celle de script/stream_deck/games_contract. install_erplibre_home.sh
-         lit la révision ici pour cloner sans Google Repo. -->
+    <!-- Les jeux du Stream Deck et leur galerie, sur leur branche main :
+         repo sync et le niveau Stream Deck d'install_erplibre_home.sh
+         amènent leur dernier commit. CONTRACT.md, à la racine du dépôt, dit
+         ce que les jeux et ERPLibre attendent l'un de l'autre ; sa version
+         MAJEURE est celle de script/stream_deck/games_contract, et
+         test/test_streamdeck_games_repo.py échoue quand elles divergent.
+         install_erplibre_home.sh lit la révision ici pour cloner sans
+         Google Repo. -->
     <project
         name="streamdeck_game.git"
         path="script/stream_deck/games"
         remote="TechnoLibre"
-        revision="refs/tags/v1.0.0"
+        revision="main"
         groups="streamdeck"
     />
 </manifest>

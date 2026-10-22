@@ -196,8 +196,8 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
 
     @SANS_JEUX
     def test_the_game_targets_are_the_games_of_the_clone(self):
-        """Un jeu ajouté ou retiré par une nouvelle étiquette du dépôt des
-        jeux tombe ici, jusqu'à ce que le fragment le suive."""
+        """Un jeu ajouté ou retiré sur main du dépôt des jeux tombe ici,
+        jusqu'à ce que le fragment le suive."""
         self.assertEqual(
             jeux_installes(),
             sorted(jeux_du_fragment(self.regles).values()),
