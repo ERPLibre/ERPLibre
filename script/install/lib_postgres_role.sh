@@ -6,10 +6,20 @@
 # une fois PostgreSQL installé et démarré.
 #
 # el_postgres_role <rôle> : rend 0 quand le rôle PostgreSQL <rôle> existe en
-# superutilisateur — déjà là, ou créé ici. Sinon, le dit avec la commande à
-# taper, et rend 1 : l'installeur s'arrête plutôt que de se déclarer réussi
-# devant un Odoo qui répondra « Internal Server Error » à chaque page, faute
-# de rôle pour se connecter.
+# superutilisateur — déjà là, promu ici, ou créé ici. Sinon, le dit avec la
+# commande à taper, et rend 1 : l'installeur s'arrête plutôt que de se
+# déclarer réussi devant un Odoo qui répondra « Internal Server Error » à
+# chaque page, faute de rôle pour se connecter.
+#
+# Un rôle présent mais SANS rolsuper (créé par un « createuser » sans -s) ne
+# suffit pas : Odoo s'y connecte, puis échoue à créer sa base. Il est promu
+# par ALTER ROLE ... SUPERUSER plutôt que tenu pour bon.
+#
+# Le nom du rôle n'entre jamais dans le texte SQL : il passe en variable psql
+# (-v r=...), interpolée par psql lui-même — :'r' en littéral, :"r" en
+# identifiant —, ce qui le protège des guillemets qu'il contiendrait.
+# ON_ERROR_STOP fait rendre à psql un code non nul quand l'ALTER échoue ;
+# sans lui, psql lisant son entrée standard rend 0 malgré l'erreur.
 #
 # Devient root par sudo, puis postgres par runuser — ni « su - postgres »,
 # ni « sudo -u postgres ». su vérifie le compte CIBLE par PAM, et un compte
@@ -24,11 +34,28 @@
 
 el_postgres_role() {
   local role="$1"
-  if (cd / && printf "SELECT 1 FROM pg_roles WHERE rolname = :'r'\n" |
-    sudo runuser -u postgres -- psql -XAt -v r="${role}") 2>/dev/null |
-    grep -qx 1; then
+  local super
+  # « t » : superutilisateur, « f » : rôle simple, vide : absent (ou psql
+  # injoignable, ce que createuser dira ensuite).
+  super="$( (cd / && printf "SELECT rolsuper FROM pg_roles WHERE rolname = :'r'\n" |
+    sudo runuser -u postgres -- psql -XAt -v r="${role}") 2>/dev/null)"
+  if [[ "${super}" == "t" ]]; then
     echo "Rôle PostgreSQL « ${role} » déjà présent."
     return 0
+  fi
+  if [[ "${super}" == "f" ]]; then
+    if (cd / && printf "ALTER ROLE :\"r\" SUPERUSER\n" |
+      sudo runuser -u postgres -- psql -XAq -v ON_ERROR_STOP=1 -v r="${role}"); then
+      echo "Rôle PostgreSQL « ${role} » promu superutilisateur."
+      return 0
+    fi
+    echo "ERREUR : le rôle PostgreSQL « ${role} » existe sans être"
+    echo "  superutilisateur, et n'a pas pu être promu."
+    echo "  Sans ce droit, Odoo ne peut pas créer sa base de données."
+    echo "  L'erreur de psql est affichée plus haut ; une fois sa cause"
+    echo "  corrigée, sur cette machine :"
+    echo "    sudo runuser -u postgres -- psql -c 'ALTER ROLE \"${role}\" SUPERUSER'"
+    return 1
   fi
   if (cd / && sudo runuser -u postgres -- createuser -s "${role}"); then
     echo "Rôle PostgreSQL « ${role} » créé."

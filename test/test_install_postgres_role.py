@@ -11,10 +11,16 @@ compte système est verrouillé, comme sous Arch, et « sudo -u postgres »
 demande le mot de passe de postgres sous « Defaults targetpw », comme sous
 openSUSE — et rendre 1, avec la commande à taper, quand la création échoue.
 
+Un rôle présent sans rolsuper ne suffit pas non plus : Odoo s'y connecte,
+puis échoue à créer sa base. Il doit être promu, ou l'installeur s'arrêter.
+
 « sudo » est remplacé par un script qui journalise ses arguments et son
-répertoire courant, connaît les rôles de FAUX_ROLES et rend FAUX_RC_CREATE
-pour createuser. Il n'accepte que la requête à égalité exacte sur le nom :
-une comparaison plus lâche prendrait « erplibre2 » pour « erplibre ».
+répertoire courant, connaît les superutilisateurs de FAUX_ROLES et les rôles
+simples de FAUX_ROLES_SIMPLES, et rend FAUX_RC_CREATE pour createuser. Il
+n'accepte que la requête à égalité exacte sur le nom : une comparaison plus
+lâche prendrait « erplibre2 » pour « erplibre ». Pour l'ALTER ROLE, il imite
+psql : un échec (FAUX_RC_ALTER non nul) ne rend un code non nul que sous
+ON_ERROR_STOP=1.
 """
 
 import os
@@ -39,14 +45,32 @@ echo "$(pwd) | $*" >> "$FAUX_JOURNAL"
 shift 4
 case "$1" in
   psql)
-    [[ "$(cat)" == "SELECT 1 FROM pg_roles WHERE rolname = :'r'" ]] || exit 97
+    sql="$(cat)"
+    echo "$(pwd) | sql: $sql" >> "$FAUX_JOURNAL"
+    arret=0
     for a in "$@"; do
-      case "$a" in r=*) role="${a#r=}" ;; esac
+      case "$a" in
+        r=*) role="${a#r=}" ;;
+        ON_ERROR_STOP=1) arret=1 ;;
+      esac
     done
-    for r in $FAUX_ROLES; do
-      [[ "$r" == "$role" ]] && echo 1
-    done
-    exit 0 ;;
+    case "$sql" in
+      "SELECT rolsuper FROM pg_roles WHERE rolname = :'r'")
+        for r in $FAUX_ROLES; do
+          [[ "$r" == "$role" ]] && echo t
+        done
+        for r in $FAUX_ROLES_SIMPLES; do
+          [[ "$r" == "$role" ]] && echo f
+        done
+        exit 0 ;;
+      'ALTER ROLE :"r" SUPERUSER')
+        if [[ "${FAUX_RC_ALTER:-0}" != 0 ]]; then
+          echo "ERROR: permission denied" >&2
+          (( arret )) && exit 3
+        fi
+        exit 0 ;;
+    esac
+    exit 97 ;;
   createuser) exit "${FAUX_RC_CREATE:-0}" ;;
 esac
 exit 98
@@ -54,7 +78,7 @@ exit 98
 
 
 class TestRolePostgres(unittest.TestCase):
-    def lance(self, roles="", rc_create=0):
+    def lance(self, roles="", rc_create=0, simples="", rc_alter=0):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         faux = Path(tmp.name, "sudo")
@@ -67,6 +91,8 @@ class TestRolePostgres(unittest.TestCase):
             FAUX_JOURNAL=str(journal),
             FAUX_ROLES=roles,
             FAUX_RC_CREATE=str(rc_create),
+            FAUX_ROLES_SIMPLES=simples,
+            FAUX_RC_ALTER=str(rc_alter),
         )
         res = subprocess.run(
             ["bash", "-c", LIB],
@@ -84,6 +110,43 @@ class TestRolePostgres(unittest.TestCase):
         self.assertEqual(0, res.returncode, res.stdout + res.stderr)
         self.assertIn("déjà présent", res.stdout)
         self.assertFalse([a for a in appels if "createuser" in a])
+        self.assertFalse([a for a in appels if "ALTER" in a])
+
+    def test_un_role_sans_rolsuper_est_promu(self):
+        """createuser sans -s laisse un rôle qui ne peut créer de base."""
+        res, appels = self.lance(roles="postgres", simples="erplibre")
+        self.assertEqual(0, res.returncode, res.stdout + res.stderr)
+        self.assertNotIn("déjà présent", res.stdout)
+        self.assertIn("promu superutilisateur", res.stdout)
+        self.assertIn('/ | sql: ALTER ROLE :"r" SUPERUSER', appels)
+        self.assertTrue(
+            [
+                a
+                for a in appels
+                if a.startswith("/ | runuser -u postgres -- psql")
+                and "ON_ERROR_STOP=1" in a
+                and "r=erplibre" in a
+            ],
+            appels,
+        )
+        self.assertFalse([a for a in appels if "createuser" in a])
+
+    def test_une_promotion_refusee_arrete_et_donne_la_commande(self):
+        res, appels = self.lance(simples="erplibre", rc_alter=1)
+        self.assertEqual(1, res.returncode, res.stdout + res.stderr)
+        self.assertIn("superutilisateur", res.stdout)
+        self.assertIn(
+            "sudo runuser -u postgres -- psql -c "
+            "'ALTER ROLE \"erplibre\" SUPERUSER'",
+            res.stdout,
+        )
+        self.assertFalse([a for a in appels if "createuser" in a])
+
+    def test_un_nom_voisin_n_est_pas_pris_pour_le_role(self):
+        res, appels = self.lance(roles="erplibre2", simples="erplibre_x")
+        self.assertEqual(0, res.returncode, res.stdout + res.stderr)
+        self.assertIn("créé", res.stdout)
+        self.assertFalse([a for a in appels if "ALTER" in a])
 
     def test_un_role_absent_est_cree_par_runuser(self):
         res, appels = self.lance(roles="postgres")
