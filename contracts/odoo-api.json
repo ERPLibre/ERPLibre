@@ -179,6 +179,63 @@
       "response": "active projects the user can read; 500 rows means the list may be cut"
     },
 
+    "leads.create": {
+      "description": "Push a note as a CRM opportunity (lead.create row of sync_outbox, same marker, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "crm.lead",
+          "method": "create",
+          "args": [
+            {
+              "name": "{note.title}",
+              "description": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "type": "opportunity",
+              "partner_id": "{outbox.params.partnerId} — omitted when none chosen",
+              "expected_revenue": "{outbox.params.expectedRevenue} — omitted when none typed",
+              "tag_ids": [[6, 0, ["{crm.tag ids, found or created by name}"]]],
+              "date_deadline": "{first date entry, local day YYYY-MM-DD} — omitted when the note has no date",
+              "active": "not note.archived — create only"
+            }
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "integer — crm.lead id → note_links (note, server config id, crm.lead, id, client_uuid)",
+      "notes": "Team and salesperson are the server's defaults. done and pinned are not sent. Before create, a chosen partner is checked with res.partner search_read [('id','=',partnerId)] (active only): none or AccessError blocks the row as partner_missing. Refused create: as notes.create."
+    },
+
+    "leads.update": {
+      "description": "Push changes to a linked opportunity",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "crm.lead",
+          "method": "write",
+          "args": [["{note_links.res_id}"], { "name": "…", "description": "…", "tag_ids": "…", "date_deadline": "… only when the note has a date" }],
+          "kwargs": {}
+        }
+      },
+      "notes": "type, partner_id, expected_revenue and active are never written: they belong to the server once created (writing active would revive an opportunity marked lost). MissingError marks the link deleted; the server leaves the note's queue only when no other kind of the note is live there. Leads are not pulled back yet; a pulled task change queues the note's opportunity on the same server."
+    },
+
+    "partners.search": {
+      "description": "Client search for a new opportunity",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.partner",
+          "method": "name_search",
+          "args": [],
+          "kwargs": { "name": "{text}", "args": [], "operator": "ilike", "limit": 20 }
+        }
+      },
+      "response": "[[id, display_name], …] — kept in remote_records_cache (200 most recent per server) for offline search"
+    },
+
     "projects.check": {
       "description": "Before creating a task in a project: the project still exists, is active (as projects.list offers it) and the user sees it",
       "method": "POST",
@@ -296,6 +353,10 @@
     }
   },
 
+  "transport_policy": {
+    "http": "An http:// url is refused before any request (InsecureHttpError) unless the user turned on « Autoriser http (non chiffré) » in Options › Synchronisation Odoo (localStorage options.sync.allowHttp). The same rule refuses opening an application or a note's record in the web view, whose login script types the password. https is always allowed."
+  },
+
   "re_auth_strategy": {
     "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401 — never the error message text",
     "steps": [
@@ -314,7 +375,7 @@
     "synced": "Every live server received the latest pushed content",
     "conflict": "Unused in v1",
     "error": "Last push to some server failed; syncAll retries it",
-    "remote_deleted": "Not a status: a write() answering odoo.exceptions.MissingError marks the note_links row remote_state='deleted' and drops that server from the queue; the task is recreated only when the user confirms"
+    "remote_deleted": "Not a status: a write() answering odoo.exceptions.MissingError marks the note_links row remote_state='deleted'; the server leaves the note's queue only when no other kind of the note is live there (a background push next to a live kind skips the deleted one). The record is recreated only when the user chooses it again in the picker; unchecking it there marks the link 'dismissed': kept as history, never pushed nor asked again"
   },
 
   "sqlite_columns_added": {
@@ -331,7 +392,7 @@
   "sqlite_tables_added": {
     "migration": "2026102201",
     "note_links": {
-      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)"],
+      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted|dismissed)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)"],
       "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
     },
     "sync_pull_cursors": {
@@ -351,12 +412,12 @@
     "remote_records_cache": {
       "migration": "2026102203",
       "columns": ["id (config_id#model#res_id)", "config_id", "model", "res_id", "display_name", "extra_json", "fetched_at"],
-      "notes": "Records of a server kept for offline choices (projects.list); one model's rows on one server are replaced as a whole on each read."
+      "notes": "Records of a server kept for offline choices. projects.list replaces the project rows of that server as a whole; partners.search adds or refreshes the partners found and keeps the 200 most recently fetched per server."
     },
     "sync_target_prefs": {
       "migration": "2026102203",
       "columns": ["id (config_id#kind)", "config_id", "kind (task.create, …)", "params_json", "updated_at"],
-      "notes": "Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice."
+      "notes": "Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice. Kind targets: the target kinds last checked in the picker for that server (task, lead), checked by default for a note with nothing there. A lead's client and revenue are not remembered."
     }
   }
 }
