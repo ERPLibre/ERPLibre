@@ -266,6 +266,42 @@
       "response": "fields required, not readonly, with empty depends (not computed or related), absent from default_get and not the form's own (move_type, partner_id, invoice_date, ref, invoice_line_ids, line_ids, narration). char, text, integer, float, monetary, date, datetime, boolean, selection and many2one (name_search on its relation) are asked; other types are listed as unsupported. Kept per server and type in sync_target_prefs (kind invoice.form.{moveType}) for offline."
     },
 
+    "calendar.read": {
+      "description": "Activities of the activity calendar, per server: the connected user's and those of the users chosen, kept in activities_cache (replaced on each read, local changes still pending kept)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["user_id", "in", ["{uid}", "{chosen user ids}"]], ["date_deadline", ">=", "{today}"], ["date_deadline", "<=", "{today + 90 days}"]],
+            "fields": ["res_model", "res_id", "res_name", "activity_type_id", "summary", "date_deadline", "user_id"],
+            "order": "date_deadline asc, id asc",
+            "limit": 500
+          }
+        }
+      },
+      "notes": "A second read gets the overdue ones ([('date_deadline','<',today)], order date_deadline desc, own limit of 500), so a long backlog never hides what is coming; a read returning its limit flags the calendar as truncated. On Odoo 17+ a third read gets those done since today - 30 days: domain + [('active','=',False),('date_done','>=',…)], context active_test false, fields date_done and write_date; a done one sits on the local day of write_date (16 deletes done activities). uid comes from /web/session/get_session_info (auth user), read once per server and kept in sync_target_prefs (kind calendar.uid) to tell the user's activities apart offline. Chosen users are kept per server in sync_target_prefs (kind calendar.users); the sales team shortcut reads crm.team [('member_ids','in',[uid])] member_ids, then res.users names (none without the CRM: KeyError)."
+    },
+
+    "calendar.done": {
+      "description": "Mark an activity done from the calendar (calendar.done row of sync_outbox, note_id 'calendar')",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "mail.activity", "method": "action_feedback", "args": [["{activityId}"]], "kwargs": { "feedback": false } } },
+      "notes": "Applied to the cache at once (done, pending), sent at once online, else by the next sync. On 17+ the activity's active flag is read first: archived means done already, no second call. MissingError or no row drops it from the cache. A note_links row of kind activity for that id turns 'done'. A newer change of the same kind for the same activity replaces the queued one. AccessError, ValidationError or UserError is final: the operation is dropped, the cached activity back to its state before the change (kept in params.before), with the reason (lastError)."
+    },
+
+    "calendar.reschedule": {
+      "description": "Give an activity a new deadline from the calendar (calendar.reschedule row of sync_outbox, note_id 'calendar')",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "mail.activity", "method": "write", "args": [["{activityId}"], { "date_deadline": "{YYYY-MM-DD}" }], "kwargs": {} } },
+      "notes": "Same queueing as calendar.done. Local reminders (hour, days before, off by default) of the user's open activities are rescheduled after each calendar read."
+    },
+
     "partners.search": {
       "description": "Client search for a new opportunity",
       "method": "POST",
@@ -567,6 +603,11 @@
       "migration": "2026102203",
       "columns": ["id (config_id#model#res_id)", "config_id", "model", "res_id", "display_name", "extra_json", "fetched_at"],
       "notes": "Records of a server kept for offline choices. projects.list replaces the project rows of that server as a whole; partners.search adds or refreshes the partners found and keeps the 200 most recently fetched per server."
+    },
+    "activities_cache": {
+      "migration": "2026102302",
+      "columns": ["id (config_id#res_id)", "config_id", "res_id", "deadline", "data_json", "fetched_at"],
+      "notes": "The activity calendar's activities per server (see calendar.read): record, type, summary, deadline, user, done/dateDone, pending (a local change waiting in the outbox)."
     },
     "sync_target_prefs": {
       "migration": "2026102203",
