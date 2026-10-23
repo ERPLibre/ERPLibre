@@ -13,11 +13,11 @@ Deux familles s'écartent de la forme commune :
   paquets à part, et sans php8-openssl dolEncrypt de Dolibarr range les
   valeurs en clair, sans erreur.
 
-Absents exprès partout : php-imap (introuvable sur Debian 13, Ubuntu 26.04,
-Arch, EL et SUSE), php-opcache et php-json. OPcache est intégré à PHP 8.5,
-qui n'a plus de paquet à part, alors que php-fpm ne le tire ni sur EL 9/10
-ni sur Leap 16 : une instance y tourne sans cache d'opcodes. json est dans
-PHP 8, et son paquet seul tire apache2 sur Ubuntu 26.04.
+Absents exprès des listes : php-imap (introuvable sur Debian 13, Ubuntu
+26.04, Arch, EL et SUSE), php-json (json est dans PHP 8, et son paquet seul
+tire apache2 sur Ubuntu 26.04) et php-opcache : PHP 8.5 intègre OPcache et
+n'a plus de paquet à part, alors que php-fpm ne le tire ni sur EL 9/10 ni
+sur Leap 16. opcache_package le nomme pour qui le demande après coup.
 """
 
 FAMILIES = ("apt-get", "dnf", "pacman", "zypper")
@@ -140,6 +140,23 @@ def certbot_packages(family):
     """
     _check(family)
     return list(_CERTBOT[family])
+
+
+_OPCACHE = {
+    "apt-get": "php-opcache",
+    "dnf": "php-opcache",
+    "zypper": "php8-opcache",
+}
+
+
+def opcache_package(family):
+    """Le paquet qui porte OPcache, ou None là où php le porte déjà (Arch).
+
+    À n'installer que si PHP ne le charge pas : le paquet n'existe plus là
+    où PHP 8.5 l'intègre.
+    """
+    _check(family)
+    return _OPCACHE.get(family)
 
 
 def fpm_layout(family, php_version):
