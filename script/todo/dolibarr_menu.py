@@ -86,6 +86,7 @@ class DolibarrMenuMixin:
                 )
             },
             {"prompt_description": t("Dolibarr - Back up an instance")},
+            {"prompt_description": t("Dolibarr - Restore a backup")},
             {"section": t("Inventory")},
             {
                 "prompt_description": t(
@@ -116,6 +117,8 @@ class DolibarrMenuMixin:
             elif status == "8":
                 self._dolibarr_backup()
             elif status == "9":
+                self._dolibarr_restore()
+            elif status == "10":
                 self._dolibarr_detect()
             else:
                 print(t("Command not found !"))
@@ -147,6 +150,52 @@ class DolibarrMenuMixin:
             return
         self.execute.exec_command_live(
             f"{BACKUP_CLI} create --instance {shlex.quote(name)}",
+            source_erplibre=False,
+        )
+
+    def _dolibarr_restore(self):
+        """Destructif : l'instance, son archive (la plus récente d'abord),
+        puis son nom retapé en entier ; restore.py le vérifie encore et
+        prend une sauvegarde de sûreté avant d'écrire."""
+        from script.dolibarr import backup
+
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        saved = {n: backup.archives(ROOT, n) for n in sorted(known)}
+        names = [n for n, found in saved.items() if found]
+        if not names:
+            print(t("No backup to restore."))
+            return
+        name = (
+            names[0]
+            if len(names) == 1
+            else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
+        )
+        if name is None:
+            return
+        archive = self._dolibarr_choose(
+            t("Backup to restore:"),
+            [(p, os.path.basename(p)) for p in saved[name]],
+        )
+        if archive is None:
+            return
+        print(
+            t(
+                "This overwrites the database, documents and modules of %s;"
+                " a safety backup comes first."
+            )
+            % name
+        )
+        if input(t("Retype %s to confirm: ") % name).strip() != name:
+            print(t("Cancelled."))
+            return
+        relative = os.path.relpath(archive, ROOT)
+        self.execute.exec_command_live(
+            f"{BACKUP_CLI} restore --instance {shlex.quote(name)}"
+            f" --archive {shlex.quote(relative)} --confirm {shlex.quote(name)}",
             source_erplibre=False,
         )
 
