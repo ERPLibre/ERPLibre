@@ -139,11 +139,15 @@ de ce dépôt, est dans `conf/template_claude_commands_commit.md`.
 
 ### Tout commit assisté par IA
 
-Trois exigences, sans exception — `AI_POLICY.md` en donne la raison :
+Quatre exigences, sans exception — `AI_POLICY.md` en donne la raison :
 
 - Trailer `Assisted-by: <modèle>`, une ligne par modèle. C'est **binaire** :
   il y a eu IA ou non, aucun seuil à apprécier.
 - **Jamais** d'IA dans `Co-authored-by:` — ce champ est réservé aux humains.
+- **Jamais** de `Claude-Session:`, ni d'aucun trailer qui renvoie à une
+  session ou à une conversation : `Assisted-by:` est le seul trailer d'IA. Un
+  lien de session mène à un échange privé, illisible pour qui lit le dépôt,
+  et qui porte l'enquête que le message laisse dans `tasks/`.
 - Message **bilingue, l'anglais d'abord** : le sujet et le corps en anglais,
   puis `--- FR ---`, puis le sujet traduit en français sous le même tag, puis
   le corps traduit. `--- EN ---` n'existe plus : l'ordre ne varie jamais.

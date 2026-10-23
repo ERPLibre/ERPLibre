@@ -222,6 +222,10 @@ the work.
 - NEVER name an AI in `Co-authored-by:`: authorship of a work by a machine is
   legally undefined. That field is for other HUMANS who worked on the change.
   You are already the author, so never co-author yourself.
+- NEVER add a `Claude-Session:` trailer, nor any trailer that links to a
+  session or a conversation: `Assisted-by:` is the only AI trailer. A session
+  link leads to a private exchange no reader of the repository can open, and
+  it carries the investigation the message leaves to `tasks/`.
 - No blank line between trailers.
 
 ### Rules
