@@ -544,6 +544,11 @@
     }
   },
 
+  "companies": {
+    "read": "/web/session/get_session_info (auth user): uid and user_companies (current_company, allowed_companies id → {id, name}); kept per server in sync_target_prefs (kind companies), the one last chosen in kind company.",
+    "scope": "For a user of several companies, every call_kw to that server carries context allowed_company_ids = all of them (current first) unless the call names its own, so records of each company are read and written. A creation carries the company chosen in the picker first (outbox params.companyId), the one the record is created in. A user of one company gets no such context."
+  },
+
   "transport_policy": {
     "http": "An http:// url is refused before any request (InsecureHttpError) unless the user turned on « Autoriser http (non chiffré) » in Options › Synchronisation Odoo (localStorage options.sync.allowHttp). The same rule refuses opening an application or a note's record in the web view, whose login script types the password. https is always allowed."
   },
