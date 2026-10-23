@@ -18611,6 +18611,11 @@ TRANSLATIONS = {
         "fr": "Ancien lanceur arrêté : {n}",
         "en": "Previous launcher stopped: {n}",
     },
+    # Rafraîchissement forcé du suivi d'installation (touche F5).
+    "State and probes refreshed.": {
+        "fr": "État et sondes relus.",
+        "en": "State and probes refreshed.",
+    },
     # Ajout de VM depuis le suivi d'installation (touche « e »).
     "Add VMs": {
         "fr": "Ajouter des VM",

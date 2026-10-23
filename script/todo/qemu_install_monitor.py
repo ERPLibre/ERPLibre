@@ -2624,6 +2624,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         "question_mark": "?",
         "escape": "Échap",
         "f1": "F1",
+        "f5": "F5",
     }
 
     class HelpScreen(ModalScreen):
@@ -2859,6 +2860,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             ("r", "relaunch", t("Relaunch")),
             ("R", "relaunch_failed", t("Relaunch all failed")),
             ("n", "recreate", t("Recreate")),
+            ("f5", "refresh", t("Refresh")),
         ]
 
         def __init__(self):
@@ -2910,6 +2912,9 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             # Relevés SUCCESSIFS sans la VM, par nom : « effacée » est un état
             # terminal, il se mérite.
             self._pve_absences = {}
+            # Rafraîchissement forcé (F5) en cours : un second appui pendant
+            # le relevé ne lance rien de plus.
+            self._rafraichit = False
             # Debounce du changement de VM : la sélection défile vite au
             # clavier ; on ne recharge le log qu'une fois le curseur STABILISÉ.
             self._pending_sel = None
@@ -3415,9 +3420,12 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if EXIT_MARKER not in line:
                     self._log.write(line)
 
-        async def _tick_domstate(self):
+        async def _tick_domstate(self, compte=True):
             # Relevé LENT (subprocess virsh) DÉPORTÉ en thread : ne bloque plus
             # la boucle. Une VM absente de « virsh list » est EFFACÉE (« gone »).
+            # compte=False relit sans compter les absences : elles mènent à un
+            # « effacée » définitif, que des relevés rapprochés à la demande
+            # ne doivent pas atteindre plus vite que le rythme régulier.
             try:
                 states = await asyncio.to_thread(virsh_domstates)
             except Exception:
@@ -3454,6 +3462,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         continue
                     # L'hôte a répondu SANS elle : peut-être en cours de
                     # création, peut-être vraiment partie. On compte.
+                    if not compte:
+                        continue
                     self._pve_absences[nom] = (
                         self._pve_absences.get(nom, 0) + 1
                     )
@@ -3467,6 +3477,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     # « effacées » mettait TOUT le parc local à la poubelle,
                     # définitivement. Même règle que pour l'hôte distant : on
                     # compte avant de conclure.
+                    if not compte:
+                        continue
                     self._pve_absences[nom] = (
                         self._pve_absences.get(nom, 0) + 1
                     )
@@ -4303,6 +4315,29 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             self.notify(f"{len(targets)} VM {verb}.")
             # Rafraîchit tout de suite l'état libvirt (pause/reprise visible).
             self.run_worker(self._tick_domstate(), exclusive=False)
+
+        def action_refresh(self) -> None:
+            """F5 : relit tout de suite l'état libvirt, les adresses, les
+            colonnes du tableau et la sonde Odoo de chaque VM, sans attendre
+            leurs périodes (10 s pour l'état, 30 s pour une sonde déjà verte,
+            5 s pour le cache Proxmox)."""
+            if self._rafraichit:
+                return
+            self._rafraichit = True
+            self.run_worker(self._force_refresh(), exclusive=False)
+
+        async def _force_refresh(self):
+            try:
+                _PVE_CACHE["at"] = 0.0
+                # Sans date de dernière sonde, odoo_reading resonde aussi les
+                # VM déjà vertes.
+                self._odoo_revu.clear()
+                # L'état d'abord : le tableau qui suit l'applique.
+                await self._tick_domstate(compte=False)
+                await self._tick_table()
+                self.notify(t("State and probes refreshed."))
+            finally:
+                self._rafraichit = False
 
         def action_help(self) -> None:
             """Fenêtre d'aide : tous les raccourcis du suivi."""
