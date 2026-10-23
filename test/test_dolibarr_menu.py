@@ -47,6 +47,8 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Health, security and integrity": "_dolibarr_doctor",
         "Dolibarr - Back up an instance": "_dolibarr_backup",
         "Dolibarr - Restore a backup": "_dolibarr_restore",
+        "Dolibarr - List the instances": "_dolibarr_fleet_list",
+        "Dolibarr - Remove an instance": "_dolibarr_remove",
         "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
     }
 
@@ -239,6 +241,57 @@ class TestRestauration(Banc):
         self.registre = {"autre": dict(DEV)}
         lances, _s = self.lancer_restauration([])
         self.assertEqual(lances, [])
+
+
+FLEET = "./.venv.erplibre/bin/python -u script/dolibarr/fleet.py"
+
+
+class TestParc(Banc):
+    def lancer_parc(self, methode, reponses=(), codes=None):
+        todo = TODO.__new__(TODO)
+        lances = []
+        codes = list(codes or [])
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return codes.pop(0) if codes else 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            getattr(todo, methode)()
+        return lances
+
+    def test_list_runs_fleet_list(self):
+        self.assertEqual(
+            self.lancer_parc("_dolibarr_fleet_list"), [f"{FLEET} list"]
+        )
+
+    def test_remove_shows_the_plan_backs_up_then_asks_the_name(self):
+        self.registre = {"erp": dict(DEV)}
+        lances = self.lancer_parc("_dolibarr_remove", ["y", "erp"])
+        self.assertEqual(
+            lances,
+            [
+                f"{FLEET} remove --instance erp --dry-run",
+                f"{BACKUP} create --instance erp",
+                f"{FLEET} remove --instance erp --confirm erp",
+            ],
+        )
+
+    def test_a_failed_backup_stops_the_removal(self):
+        self.registre = {"erp": dict(DEV)}
+        lances = self.lancer_parc("_dolibarr_remove", ["y"], codes=[0, 1])
+        self.assertEqual(len(lances), 2)
+
+    def test_no_backup_asked_and_a_wrong_name_removes_nothing(self):
+        self.registre = {"erp": dict(DEV)}
+        lances = self.lancer_parc("_dolibarr_remove", ["n", "er"])
+        self.assertEqual(lances, [f"{FLEET} remove --instance erp --dry-run"])
 
 
 class TestBilan(unittest.TestCase):
