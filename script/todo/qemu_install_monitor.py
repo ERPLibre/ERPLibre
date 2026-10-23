@@ -298,10 +298,23 @@ def _launch_one(
     # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
     # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
     # pour les hôtes où le groupe manque.
+    #
+    # « sg libvirt » en dernier : une session ouverte AVANT l'ajout au groupe
+    # ne le porte pas, et ce processus en hérite ; sg prend le groupe dans
+    # /etc/group, sans reconnexion ni mot de passe pour un membre. Son entrée
+    # est fermée : hors du groupe, sg demanderait un mot de passe et échoue.
+    # Là où shadow ne fournit pas sg (Arch), le newgrp d'util-linux fait de
+    # même en lisant la commande sur son entrée ; sans tty, un non-membre y
+    # échoue aussi au lieu d'attendre.
     name_q = shlex.quote(name) if name else ""
     vsh = (
         'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
-        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
+        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null '
+        "|| { command -v sg >/dev/null 2>&1 && sg libvirt -c "
+        '"virsh --connect qemu:///system $(printf \'%q \' "$@")" '
+        "</dev/null 2>/dev/null; } "
+        "|| { printf '%s\\n' \"virsh --connect qemu:///system "
+        '$(printf \'%q \' "$@")" | newgrp libvirt 2>/dev/null; }; }; '
     )
     # Deux trous rendaient cette ré-résolution incapable de rattraper une IP
     # qui bouge — le cas exact où elle sert :
@@ -318,7 +331,11 @@ def _launch_one(
     refresh = (
         (
             f"raw=$(vsh domifaddr {name_q} --source lease); vrc=$?; "
-            'if [ $vrc -ne 0 ] && [ -z "$vwarn" ]; then vwarn=1; '
+            # domifaddr échoue aussi sur une VM pas encore démarrée : seul un
+            # « virsh uri » refusé, qui ne dépend d'aucune VM, dit que libvirt
+            # est injoignable.
+            'if [ $vrc -ne 0 ] && [ -z "$vwarn" ] '
+            "&& ! vsh uri >/dev/null; then vwarn=1; "
             f"echo {shlex.quote('   ' + msg_novirsh)} >> {log_q}; fi; "
             "cands=$(echo \"$raw\" | grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.'); "
