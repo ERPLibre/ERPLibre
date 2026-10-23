@@ -41,6 +41,32 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 # --------------------------------------------------------------------------- #
 # Logique pure — aucune dépendance à Textual, testable telle quelle
 # --------------------------------------------------------------------------- #
+def version_key(version) -> tuple:
+    """Clé de tri d'une version : ses nombres comparés comme des nombres.
+
+    « 9 » vient avant « 10 » et « 24.04 » avant « 26.04 », là où un tri de
+    chaînes mettrait « 10 » devant « 9 ». Un nom (« tumbleweed », « latest »)
+    vient après les numéros. Chaque morceau rend un triplet de même forme,
+    donc deux clés se comparent toujours."""
+    return tuple(
+        (0, int(part), "") if part.isdigit() else (1, 0, part.lower())
+        for part in re.findall(r"\d+|\D+", str(version))
+    )
+
+
+def catalog_order(entries) -> list:
+    """Le catalogue tel que le formulaire le liste : par système, en ordre
+    alphabétique, puis par version, puis par architecture."""
+    return sorted(
+        entries,
+        key=lambda e: (
+            str(e["distro"]).lower(),
+            version_key(e["version"]),
+            str(e["arch"]),
+        ),
+    )
+
+
 def entry_key(entry) -> tuple:
     """Identité stable d'une VM du plan, indépendante de son rang d'affichage :
     surcharges et verrous y survivent quand la sélection change.
@@ -660,6 +686,13 @@ HelpScreen { align: center middle; }
 #helptitle { height: 1; color: $accent; text-style: bold; }
 #helpbody { height: 1fr; }
 .helphead { color: $accent; text-style: bold; }
+HistoryScreen { align: center middle; }
+#histbox {
+    width: 84%; height: 80%; padding: 1 2;
+    border: thick $accent; background: $surface;
+}
+#histtitle { height: 1; color: $accent; text-style: bold; }
+#histlist { height: 1fr; }
 RenameScreen { align: center middle; }
 #renbox {
     width: 60; height: auto; padding: 1 2;

@@ -367,6 +367,8 @@ class QemuDeployMixin:
         hors_ligne=None,
         identity="",
         session=None,
+        specs=None,
+        remplace=False,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -394,7 +396,11 @@ class QemuDeployMixin:
         s'y ajoutent (`launch_installs(session=...)`) et la méthode rend les
         nouvelles entrées du manifeste, [] s'il n'y en a aucune. Elle n'ouvre
         alors aucun tableau, n'imprime pas les chemins de fermeture et ne
-        confie aucune levée de coupure : c'est le tableau ouvert qui suit."""
+        confie aucune levée de coupure : c'est le tableau ouvert qui suit.
+        `specs` : {nom: spec réduite à cette VM}, gardée à côté de son journal
+        pour que le suivi puisse la RECRÉER à l'identique.
+        `remplace` : avec `session`, une VM déjà suivie voit son entrée
+        remplacée au lieu d'être refusée — la recréation d'une VM du suivi."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -460,6 +466,8 @@ class QemuDeployMixin:
                 # échoué. La console qui l'a dit a défilé depuis.
                 if (notes or {}).get(name):
                     entry["notes"] = list(notes[name])
+                if (specs or {}).get(name):
+                    entry["spec"] = specs[name]
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
@@ -500,6 +508,8 @@ class QemuDeployMixin:
             debut["identity"] = identity
         if session:
             debut["session"] = session
+            if remplace:
+                debut["replace"] = True
         manifest = launch_installs(
             vms,
             branch_def or next(iter(branch_map.values()), ""),
@@ -507,10 +517,14 @@ class QemuDeployMixin:
             **debut,
         )
         if session:
-            # Les entrées ajoutées sont les dernières du manifeste, dans
-            # l'ordre de `vms`.
+            # Les entrées de CES VM, dans l'ordre de `vms`, cherchées par nom :
+            # une entrée remplacée garde sa place dans le manifeste, elle
+            # n'est pas en queue.
             with open(manifest, encoding="utf-8") as _fh:
-                return json.load(_fh)["vms"][-len(vms) :]
+                par_nom = {
+                    e.get("name"): e for e in json.load(_fh).get("vms", [])
+                }
+            return [par_nom[v["name"]] for v in vms if v["name"] in par_nom]
         if guet_hors_ligne:
             self._qemu_confier_la_levee(manifest)
         print(f"\n🖥  {t('Opening the interactive monitor...')}")
@@ -1614,6 +1628,8 @@ class QemuDeployMixin:
         TOUT ce qui exige sudo (liste des domaines) ou le réseau (branches)
         est fait ICI, pendant que le terminal est encore à nous : une invite
         de mot de passe pendant que Textual affiche casserait l'écran."""
+        from script.todo.deploy_form_lib import catalog_order
+
         native = self._native_arch()
         arches = ["amd64", "arm64", "s390x"]
         if native not in arches:
@@ -1633,7 +1649,9 @@ class QemuDeployMixin:
                 e["name"] = self._qemu_infra_name(
                     e["distro"], e["version"], e["arch"]
                 )
-            catalog[a] = entries
+            # Trié pour la liste à cocher seulement : la CLI granulaire garde
+            # l'ordre du catalogue, ses numéros sont ceux qu'on retape.
+            catalog[a] = catalog_order(entries)
 
         print(f"\n{t('Loading (VM list, branches)...')}")
         disque_libre, disque_total = self._host_disk_gb()
@@ -2637,6 +2655,21 @@ class QemuDeployMixin:
             os.close(fd)
         return False
 
+    def _qemu_coupure_tenue_ailleurs(self):
+        """La coupure hors ligne est-elle tenue par un autre déploiement ?
+        Lecture seule, sans question : True si son guet attend encore ses
+        installations, ou s'il est en train de se lancer (verrou tenu).
+
+        Les deux, et pas le seul verrou : il tombe dès que le déploiement
+        hors ligne a confié la levée à son guet, alors que la table reste en
+        place jusqu'à la fin de sa dernière installation."""
+        from script.qemu import cache_offline
+
+        return (
+            self._qemu_shell(cache_offline.guet_actif_cmd()) == 0
+            or self._qemu_verrou_tenu_ailleurs()
+        )
+
     def _qemu_en_ligne_malgre_la_coupure(self):
         """Un déploiement EN LIGNE peut-il partir ? True si oui.
 
@@ -2941,6 +2974,22 @@ class QemuDeployMixin:
                 return self._qemu_deploie_spec_corps(spec, coupee, session)
         return self._qemu_deploie_spec_corps(spec, coupee, session)
 
+    @staticmethod
+    def _qemu_spec_vm(spec, vm):
+        """La spec réduite à la seule VM `vm` : tous ses choix de parc, cette
+        VM pour seule création, aucune VM « existante ». Rejouée par
+        _qemu_deploie_spec, elle recrée cette VM-là à l'identique. La clé
+        « recreate » n'y est pas gardée : c'est la demande du moment, pas un
+        paramètre de la VM."""
+        reduite = {
+            k: v
+            for k, v in spec.items()
+            if k not in ("vms", "existing", "recreate")
+        }
+        reduite["vms"] = [dict(vm)]
+        reduite["existing"] = []
+        return reduite
+
     def _qemu_deploie_spec_corps(self, spec, coupee, session):
         """Corps de _qemu_deploie_spec ; voir sa documentation."""
         pending = spec["vms"]
@@ -2980,6 +3029,9 @@ class QemuDeployMixin:
         for _n in deployed:
             cmd_map.setdefault(_n, base_cmd)
         cmd_multi = self._qemu_per_vm(cmd_map, base_cmd)
+        # La spec de chaque VM, réduite à elle seule : le suivi la garde pour
+        # la recréer avec les mêmes paramètres.
+        specs = {vm["name"]: self._qemu_spec_vm(spec, vm) for vm in pending}
         ssh_key = spec.get("ssh_key")
         # La clé injectée par cloud-init est celle de la spec : c'est elle que
         # doit présenter ssh, pas la première venue de l'agent ou de ~/.ssh.
@@ -3088,6 +3140,8 @@ class QemuDeployMixin:
                     hors_ligne=bool(coupee),
                     identity=identity,
                     session=session,
+                    specs=specs,
+                    remplace=bool(spec.get("recreate")),
                 )
             elif install:
                 print(

@@ -401,13 +401,28 @@ class PlanMixin:
 
         return self.query_one("#f_catalog", SelectionList)
 
+    # Les crochets de l'historique, sans effet tant que le formulaire n'en a
+    # pas : HistoryMixin, placé avant ce mixin, les remplace.
+    def _hist_gesture(self, label, fn) -> None:
+        fn()
+
+    def _hist_wait(self, fn) -> bool:
+        return False
+
     def action_select_all(self) -> None:
-        self._catalog().select_all()
+        self._hist_gesture(
+            f"F6 {t('All')}", lambda: self._catalog().select_all()
+        )
 
     def action_select_none(self) -> None:
-        self._catalog().deselect_all()
+        self._hist_gesture(
+            f"F8 {t('None')}", lambda: self._catalog().deselect_all()
+        )
 
     def action_select_main(self) -> None:
+        self._hist_gesture(f"F7 {t('Main versions')}", self._select_main)
+
+    def _select_main(self) -> None:
         """Une VM par distribution : la version marquée par défaut.
 
         Ici et non dans un formulaire : les trois gestes sont les mêmes des
@@ -417,7 +432,11 @@ class PlanMixin:
         widget.deselect_all()
         for i, e in enumerate(self._entries()):
             if e.get("default"):
-                widget.select(i)
+                # La VALEUR de l'option, pas son rang : le formulaire QEMU
+                # numérote ses options, Proxmox les identifie. Un rang passé à
+                # une liste d'identités y coche une valeur qu'aucune option ne
+                # porte — aucune VM n'est retenue.
+                widget.select(widget.get_option_at_index(i).value)
 
     def _auto_name(self, index):
         """Nom que la VM reprendrait si on effaçait le sien."""

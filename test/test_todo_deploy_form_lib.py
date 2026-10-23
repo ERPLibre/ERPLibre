@@ -104,6 +104,45 @@ class TestLesBranches(unittest.TestCase):
         self.assertEqual(len(ordre), len(set(ordre)))
 
 
+class TestOrdreDuCatalogue(unittest.TestCase):
+    """La liste à cocher : systèmes en ordre alphabétique, puis versions
+    comparées comme des nombres, puis architectures."""
+
+    def entree(self, distro, version, arch="amd64"):
+        return {"distro": distro, "version": version, "arch": arch}
+
+    def test_versions_compare_as_numbers(self):
+        cles = ["10", "9", "26.04", "24.04", "25.10", "16.0", "tumbleweed"]
+        self.assertEqual(
+            ["9", "10", "16.0", "24.04", "25.10", "26.04", "tumbleweed"],
+            sorted(cles, key=lib.version_key),
+        )
+
+    def test_distributions_then_versions_then_arches(self):
+        entrees = [
+            self.entree("ubuntu", "26.04"),
+            self.entree("ubuntu", "24.04", "arm64"),
+            self.entree("debian", "13"),
+            self.entree("ubuntu", "24.04"),
+            self.entree("almalinux", "10"),
+            self.entree("almalinux", "9"),
+        ]
+        self.assertEqual(
+            [
+                ("almalinux", "9", "amd64"),
+                ("almalinux", "10", "amd64"),
+                ("debian", "13", "amd64"),
+                ("ubuntu", "24.04", "amd64"),
+                ("ubuntu", "24.04", "arm64"),
+                ("ubuntu", "26.04", "amd64"),
+            ],
+            [
+                (e["distro"], e["version"], e["arch"])
+                for e in lib.catalog_order(entrees)
+            ],
+        )
+
+
 class TestPlaceDisque(unittest.TestCase):
     """La demande du plan ne dit pas si ça rentre : il faut la place à côté."""
 

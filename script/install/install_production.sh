@@ -22,7 +22,8 @@ sudo adduser --system --quiet --shell=/bin/bash --home=/${EL_USER} --gecos 'ERPL
 sudo adduser ${EL_USER} sudo
 
 echo -e "\n---- Creating the ERPLIBRE PostgreSQL User  ----"
-sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
+. ./script/install/lib_postgres_role.sh
+el_postgres_role "${EL_USER}" || exit 1
 
 #echo -e "\n---- Create Log directory ----"
 #sudo mkdir /var/log/${EL_USER}

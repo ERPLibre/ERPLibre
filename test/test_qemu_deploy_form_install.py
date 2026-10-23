@@ -122,7 +122,15 @@ class TestCeQuElleGrise(unittest.TestCase):
             async with app.run_test(size=(200, 60)) as pilote:
                 await pilote.pause()
                 liste = app.query_one(SelectionList)
-                liste.select(liste.get_option_at_index(0).value)
+                # Une Ubuntu, désignée par son système et non par son rang :
+                # le magasin d'applications ne sert qu'à une distribution à
+                # snap, et la liste est triée par ordre alphabétique.
+                rang = next(
+                    i
+                    for i, e in enumerate(app._entries())
+                    if e["distro"] == "ubuntu"
+                )
+                liste.select(liste.get_option_at_index(rang).value)
                 await pilote.pause()
                 await pilote.pause()
 

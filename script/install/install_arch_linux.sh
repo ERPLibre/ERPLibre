@@ -88,7 +88,8 @@ sudo systemctl enable --now postgresql 2>/dev/null || true
 ${PAC} postgis || echo "PostGIS non installé (optionnel)."
 
 echo -e "\n---- Creating the ERPLibre PostgreSQL User ----"
-sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
+. ./script/install/lib_postgres_role.sh
+el_postgres_role "${EL_USER}" || exit 1
 
 #--------------------------------------------------
 # Dépendances Odoo / ERPLibre (extensions Python, bindings)

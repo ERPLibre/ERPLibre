@@ -49,10 +49,12 @@ from __future__ import annotations
 import argparse
 import base64
 import contextlib
+import fcntl
 import getpass
 import grp
 import gzip
 import hashlib
+import http.client
 import ipaddress
 import os
 import pwd
@@ -66,6 +68,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -1551,6 +1554,97 @@ DOWNLOAD_TIMEOUT = 30
 # aboutir. Trois essais, puis le miroir suivant.
 REPRISES_MAX = 3
 
+# Pause (s) avant de réessayer après une erreur réseau PASSAGÈRE, multipliée
+# par le rang de l'essai : 5 s, puis 10 s. Un miroir qui rend 503 ou un lien
+# qui flanche se remet rarement dans la seconde ; réessayer aussitôt brûlerait
+# les essais pendant la panne même. Une coupure en cours de transfert, elle,
+# se reprend sans attendre : le serveur répondait l'instant d'avant.
+PAUSE_RESEAU = 5
+
+# Codes HTTP qui disent « pas maintenant » plutôt que « jamais » : ils se
+# réessayent sur le même miroir. Tout autre code — 404 en tête — décrit le
+# miroir lui-même, et l'on passe au suivant.
+HTTP_PASSAGERS = {408, 425, 429, 500, 502, 503, 504}
+
+# Verrous d'image tenus par CE processus, par fil d'exécution : un fil qui
+# tient déjà le verrou d'une image le reprend sans attendre. Sans cela,
+# verify_sha256 — qui retélécharge sous le verrou — se bloquerait sur le sien.
+_VERROUS_TENUS: dict[tuple[int, str], int] = {}
+
+
+@contextlib.contextmanager
+def verrou_image(dest: Path):
+    """Tient le verrou exclusif de l'image `dest` le temps du bloc.
+
+    Plusieurs installations lancées ensemble visent la MÊME image en cache.
+    Sans verrou, chacune la constate absente, la télécharge en entier dans le
+    même `.part`, et la première à finir le renomme sous le nez des autres :
+    elles échouent sur un « No such file or directory » après avoir chacune
+    tiré tout le fichier. Sous le verrou, une seule télécharge ; les autres
+    attendent, puis trouvent l'image en place.
+
+    Le verrou est un `flock` sur `<dest>.lock`, à côté de l'image : il tombe
+    avec le descripteur, donc aussi à la mort du processus, et le fichier
+    vide qui reste ne se supprime pas — l'effacer pendant qu'un autre le tient
+    rouvrirait la course. Un fichier impossible à créer, ou un système de
+    fichiers sans flock, laisse passer sans verrou : l'écriture de l'image
+    elle-même dira alors ce qui ne va pas.
+    """
+    cle = (threading.get_ident(), str(dest))
+    if cle in _VERROUS_TENUS:
+        _VERROUS_TENUS[cle] += 1
+        try:
+            yield
+        finally:
+            _VERROUS_TENUS[cle] -= 1
+        return
+    try:
+        fd = os.open(f"{dest}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError:
+        yield
+        return
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(
+                "  Une autre installation télécharge ou vérifie déjà"
+                f" {dest.name} : attente de sa fin...",
+                flush=True,
+            )
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            pass
+        _VERROUS_TENUS[cle] = 1
+        try:
+            yield
+        finally:
+            del _VERROUS_TENUS[cle]
+    finally:
+        os.close(fd)
+
+
+def erreur_passagere(exc: BaseException) -> bool:
+    """L'échec `exc` vaut-il un nouvel essai sur le MÊME miroir ?
+
+    Oui pour ce que le réseau fait subir sans que le miroir y soit pour
+    rien : délai dépassé, connexion refusée ou coupée, nom qui ne se résout
+    pas, réponse HTTP mal formée, et les codes de HTTP_PASSAGERS. Non pour un
+    code HTTP qui décrit le miroir (404, 403...), et non pour une erreur
+    LOCALE — disque plein, droits — qu'aucune attente ne corrige.
+    """
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in HTTP_PASSAGERS
+    return isinstance(
+        exc,
+        (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionError,
+            http.client.HTTPException,
+        ),
+    )
+
 
 class TelechargementTronque(OSError):
     """Le serveur a annoncé une taille, et la connexion a coupé avant.
@@ -1616,7 +1710,10 @@ def download_image(
     urls, dest: Path, dry_run: bool, timeout: int = DOWNLOAD_TIMEOUT
 ) -> None:
     """Télécharge l'image (essaie chaque miroir dans l'ordre) si absente du
-    cache. Échoue proprement — jamais de blocage infini — grâce au timeout."""
+    cache. Échoue proprement — jamais de blocage infini — grâce au timeout.
+
+    Le téléchargement se fait sous verrou_image : des installations lancées
+    ensemble ne tirent l'image qu'une fois, les autres la trouvent en place."""
     if isinstance(urls, str):
         urls = [urls]
     if dest.exists() and dest.stat().st_size > 0:
@@ -1639,43 +1736,85 @@ def download_image(
             "  Relancez avec sudo, ou choisissez --image-dir vers un dossier"
             " accessible en écriture."
         )
+    with verrou_image(dest):
+        # Revue SOUS le verrou : l'installation qui le tenait vient peut-être
+        # de poser l'image. Le .part, lui, n'est jamais visé par deux
+        # processus à la fois.
+        if dest.exists() and dest.stat().st_size > 0:
+            print(
+                f"  Image posée entre-temps par une autre installation : {dest}",
+                flush=True,
+            )
+            return
+        _telecharge_miroirs(urls, dest, timeout)
+
+
+def _motif(exc: BaseException) -> str:
+    """Une ligne qui dit l'échec : « HTTP 404 » plutôt que la représentation
+    complète de HTTPError, et le nom de la classe quand le message est vide
+    (certaines coupures n'en portent aucun)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTP {exc.code}"
+    return str(exc) or type(exc).__name__
+
+
+def _telecharge_miroirs(urls, dest: Path, timeout: int) -> None:
+    """Essaie chaque miroir de `urls` dans l'ordre jusqu'à poser `dest`.
+
+    Appelée sous verrou_image. Sur chaque miroir, REPRISES_MAX essais : une
+    coupure en cours de transfert se reprend aussitôt par « Range », une
+    erreur passagère (erreur_passagere) attend PAUSE_RESEAU s fois le rang de
+    l'essai, puis reprend aussi là où le .part s'est arrêté. Un échec qui
+    décrit le miroir — 404 en tête — passe au suivant sans insister. Quitte
+    le processus (sys.exit) quand aucun miroir n'a abouti."""
     tmp = dest.with_suffix(dest.suffix + ".part")
     errors = []
     had_404 = False
     for i, url in enumerate(urls, 1):
         tag = "" if len(urls) == 1 else f" (miroir {i}/{len(urls)})"
         print(f"  Téléchargement{tag} : {url}", flush=True)
-        # Une coupure se REPREND sur le même miroir avant d'en changer :
-        # les octets déjà écrits restent bons, et le .part survit entre deux
-        # essais. Tout autre échec — 404, timeout, réseau — passe au miroir
-        # suivant sans insister.
+        # Le .part survit entre deux essais d'un même miroir : les octets
+        # déjà écrits restent bons. Il part dès qu'on abandonne le miroir, un
+        # autre serveur n'ayant aucune raison de servir les mêmes octets. Un
+        # .part trouvé en arrivant est le reste d'un processus mort — sous le
+        # verrou, personne d'autre ne l'écrit : un essai qui échoue avant
+        # d'avoir rien écrit en reprendrait sinon les octets au suivant.
+        tmp.unlink(missing_ok=True)
         for essai in range(1, REPRISES_MAX + 1):
             depuis = tmp.stat().st_size if tmp.exists() else 0
             try:
                 _download_one(url, tmp, timeout, depuis if essai > 1 else 0)
                 tmp.replace(dest)
                 return
-            except TelechargementTronque as exc:
-                if essai < REPRISES_MAX:
+            except Exception as exc:
+                # Une HTTPError porte la réponse ouverte : la fermer avant de
+                # réessayer, sans quoi chaque essai laisse une socket derrière.
+                if isinstance(exc, urllib.error.HTTPError):
+                    exc.close()
+                tronque = isinstance(exc, TelechargementTronque)
+                if essai < REPRISES_MAX and (tronque or erreur_passagere(exc)):
                     recus = tmp.stat().st_size if tmp.exists() else 0
-                    print(
-                        f"\n  Coupé à {recus} octets, reprise"
-                        f" {essai}/{REPRISES_MAX - 1}...",
-                        flush=True,
-                    )
+                    if tronque:
+                        print(
+                            f"\n  Coupé à {recus} octets, reprise"
+                            f" {essai}/{REPRISES_MAX - 1}...",
+                            flush=True,
+                        )
+                    else:
+                        pause = PAUSE_RESEAU * essai
+                        print(
+                            f"\n  Erreur passagère : {_motif(exc)} — nouvel"
+                            f" essai {essai}/{REPRISES_MAX - 1} dans"
+                            f" {pause} s...",
+                            flush=True,
+                        )
+                        time.sleep(pause)
                     continue
                 tmp.unlink(missing_ok=True)
-                print(f"\n  Échec : {exc}", flush=True)
-                errors.append(f"{url} -> {exc}")
-            except urllib.error.HTTPError as exc:  # absente de ce miroir
-                tmp.unlink(missing_ok=True)
-                had_404 = had_404 or exc.code == 404
-                print(f"\n  Échec : HTTP {exc.code}", flush=True)
-                errors.append(f"{url} -> HTTP {exc.code}")
-            except Exception as exc:  # réseau/timeout : miroir suivant
-                tmp.unlink(missing_ok=True)
-                print(f"\n  Échec : {exc}", flush=True)
-                errors.append(f"{url} -> {exc}")
+                if isinstance(exc, urllib.error.HTTPError):
+                    had_404 = had_404 or exc.code == 404
+                print(f"\n  Échec : {_motif(exc)}", flush=True)
+                errors.append(f"{url} -> {_motif(exc)}")
             break
     hint = (
         "\n  Image introuvable (404) : cette version est probablement EOL et"
@@ -1878,26 +2017,42 @@ def verify_sha256(
                 h.update(chunk)
         return h.hexdigest()
 
-    obtenu = empreinte()
-    # Un écart sur une image GARDÉE ne prouve pas une substitution : le
-    # répertoire « latest » d'une distribution avance à chaque version
-    # mineure, et la somme publiée cesse alors de décrire celle du disque.
-    # Supprimer puis abandonner coûtait toute une campagne pour une simple
-    # péremption. L'image est reprise UNE fois ; un second écart, lui, porte
-    # sur des octets fraîchement téléchargés et arrête tout.
-    if obtenu != expected and urls:
-        print(f"  Somme {algo} NON conforme : image reprise une fois.")
-        image.unlink(missing_ok=True)
-        download_image(list(urls), image, dry_run)
+    # Empreinte, suppression et reprise forment UN bloc sous verrou_image :
+    # des installations lancées ensemble sur une image périmée la jugeraient
+    # chacune à reprendre, et chacune effacerait celle que la précédente
+    # vient de poser. Sous le verrou, la première la reprend ; les suivantes
+    # en calculent l'empreinte après elle, et la trouvent conforme.
+    with verrou_image(image):
+        # Absente ici, l'image a été effacée par une installation dont la
+        # reprise a échoué pendant que celle-ci attendait le verrou : elle
+        # retente le téléchargement à son tour plutôt que de lever sur un
+        # fichier manquant. Ces octets-là sont frais : un écart les condamne
+        # sans seconde reprise, sinon chaque installation en attente tirerait
+        # l'image deux fois de suite avant d'échouer comme la première.
+        frais = not image.exists()
+        if frais:
+            download_image(list(urls) or [url], image, dry_run)
         obtenu = empreinte()
-    if obtenu != expected:
-        image.unlink(
-            missing_ok=True
-        )  # évite la réutilisation du cache corrompu
-        sys.exit(
-            f"Somme {algo} NON conforme ! Image supprimée : {image}\n"
-            f"  attendu : {expected}\n  obtenu  : {obtenu}"
-        )
+        # Un écart sur une image GARDÉE ne prouve pas une substitution : le
+        # répertoire « latest » d'une distribution avance à chaque version
+        # mineure, et la somme publiée cesse alors de décrire celle du
+        # disque. Supprimer puis abandonner coûtait toute une campagne pour
+        # une simple péremption. L'image est reprise UNE fois ; un second
+        # écart, lui, porte sur des octets fraîchement téléchargés et arrête
+        # tout.
+        if obtenu != expected and urls and not frais:
+            print(f"  Somme {algo} NON conforme : image reprise une fois.")
+            image.unlink(missing_ok=True)
+            download_image(list(urls), image, dry_run)
+            obtenu = empreinte()
+        if obtenu != expected:
+            image.unlink(
+                missing_ok=True
+            )  # évite la réutilisation du cache corrompu
+            sys.exit(
+                f"Somme {algo} NON conforme ! Image supprimée : {image}\n"
+                f"  attendu : {expected}\n  obtenu  : {obtenu}"
+            )
     print(f"  Somme {algo} conforme.")
 
 

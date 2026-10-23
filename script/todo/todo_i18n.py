@@ -4919,6 +4919,79 @@ TRANSLATIONS = {
         "fr": "Réinit. VM",
         "en": "Reset VM",
     },
+    # Historique des modifications du formulaire de déploiement.
+    "History": {
+        "fr": "Historique",
+        "en": "History",
+    },
+    "Undo": {
+        "fr": "Défaire",
+        "en": "Undo",
+    },
+    "Redo": {
+        "fr": "Refaire",
+        "en": "Redo",
+    },
+    "Form opened": {
+        "fr": "Ouverture du formulaire",
+        "en": "Form opened",
+    },
+    "back to": {
+        "fr": "retour à",
+        "en": "back to",
+    },
+    "Undone:": {
+        "fr": "Annulé :",
+        "en": "Undone:",
+    },
+    "Redone:": {
+        "fr": "Rétabli :",
+        "en": "Redone:",
+    },
+    "Back to:": {
+        "fr": "Retour à :",
+        "en": "Back to:",
+    },
+    "Nothing to undo.": {
+        "fr": "Rien à annuler.",
+        "en": "Nothing to undo.",
+    },
+    "Nothing to redo.": {
+        "fr": "Rien à rétablir.",
+        "en": "Nothing to redo.",
+    },
+    "Modification history": {
+        "fr": "Historique des modifications",
+        "en": "Modification history",
+    },
+    "Enter: back to this state · Esc: close · ctrl+z / ctrl+y in the form: one step": {
+        "fr": "Entrée : revenir à cet état · Échap : fermer · ctrl+z / ctrl+y dans le formulaire : un pas",
+        "en": "Enter: back to this state · Esc: close · ctrl+z / ctrl+y in the form: one step",
+    },
+    "undone — ctrl+y": {
+        "fr": "annulé — ctrl+y",
+        "en": "undone — ctrl+y",
+    },
+    "Resources": {
+        "fr": "Ressources",
+        "en": "Resources",
+    },
+    "copy": {
+        "fr": "copie",
+        "en": "copy",
+    },
+    "common settings": {
+        "fr": "réglages communs",
+        "en": "common settings",
+    },
+    "ERPLibre branch": {
+        "fr": "Branche ERPLibre",
+        "en": "ERPLibre branch",
+    },
+    "Install profile": {
+        "fr": "Profil d'installation",
+        "en": "Install profile",
+    },
     "Preview": {
         "fr": "Aperçu",
         "en": "Preview",
@@ -18407,6 +18480,214 @@ TRANSLATIONS = {
     "forced: the name only, the space stays": {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
+    },
+    # Relance des installations en échec depuis le suivi (touches « r »,
+    # « R »).
+    "Relaunch": {
+        "fr": "Relancer",
+        "en": "Relaunch",
+    },
+    "Relaunch all failed": {
+        "fr": "Relancer les échecs",
+        "en": "Relaunch all failed",
+    },
+    "This VM is not in the session.": {
+        "fr": "Cette VM n'est pas dans la session.",
+        "en": "This VM is not in the session.",
+    },
+    "Relaunch is not available for an offline session.": {
+        "fr": "La relance n'est pas disponible pour une session hors ligne.",
+        "en": "Relaunch is not available for an offline session.",
+    },
+    (
+        "This session predates relaunch: its install command was not kept. "
+        "Deploy the VM again."
+    ): {
+        "fr": (
+            "Cette session est antérieure à la relance : sa commande "
+            "d'installation n'a pas été conservée. Redéployez la VM."
+        ),
+        "en": (
+            "This session predates relaunch: its install command was not kept. "
+            "Deploy the VM again."
+        ),
+    },
+    "Only a failed install can be relaunched.": {
+        "fr": "Seule une installation en échec peut être relancée.",
+        "en": "Only a failed install can be relaunched.",
+    },
+    "No failed install to relaunch.": {
+        "fr": "Aucune installation en échec à relancer.",
+        "en": "No failed install to relaunch.",
+    },
+    "Relaunch {n}; previous log: {path}": {
+        "fr": "Relance {n} ; journal précédent : {path}",
+        "en": "Relaunch {n}; previous log: {path}",
+    },
+    "An install is already running in this VM (make).": {
+        "fr": "Une installation tourne déjà dans cette VM (make).",
+        "en": "An install is already running in this VM (make).",
+    },
+    (
+        "An offline deployment holds the cut: the relaunch would run without "
+        "Internet."
+    ): {
+        "fr": (
+            "Un déploiement hors ligne tient la coupure : la relance "
+            "tournerait sans Internet."
+        ),
+        "en": (
+            "An offline deployment holds the cut: the relaunch would run "
+            "without Internet."
+        ),
+    },
+    (
+        "255: ssh lost the connection; the install may still run in the VM. "
+        "The relaunch refuses to start while a make runs there."
+    ): {
+        "fr": (
+            "255 : ssh a perdu la connexion ; l'installation tourne peut-être "
+            "encore dans la VM. La relance refuse de partir tant qu'un make y "
+            "tourne."
+        ),
+        "en": (
+            "255: ssh lost the connection; the install may still run in the "
+            "VM. The relaunch refuses to start while a make runs there."
+        ),
+    },
+    (
+        "Each current log is kept as <log>.N; the relaunch writes a new one, "
+        "with the same parameters."
+    ): {
+        "fr": (
+            "Chaque journal actuel est gardé en <journal>.N ; la relance en "
+            "écrit un neuf, avec les mêmes paramètres."
+        ),
+        "en": (
+            "Each current log is kept as <log>.N; the relaunch writes a new "
+            "one, with the same parameters."
+        ),
+    },
+    "Relaunch {n} install(s)?": {
+        "fr": "Relancer {n} installation(s) ?",
+        "en": "Relaunch {n} install(s)?",
+    },
+    "Relaunched: {names}": {
+        "fr": "Relancée(s) : {names}",
+        "en": "Relaunched: {names}",
+    },
+    # Recréation d'une VM depuis le suivi (touche « n »).
+    "Recreate": {
+        "fr": "Recréer",
+        "en": "Recreate",
+    },
+    "Recreating a VM is not available from this monitor.": {
+        "fr": "La recréation de VM n'est pas disponible depuis ce suivi.",
+        "en": "Recreating a VM is not available from this monitor.",
+    },
+    "A Proxmox VM cannot be recreated from the monitor.": {
+        "fr": "Une VM Proxmox ne peut pas être recréée depuis le suivi.",
+        "en": "A Proxmox VM cannot be recreated from the monitor.",
+    },
+    (
+        "This VM's creation parameters were not kept (older session, or a VM "
+        "only monitored). Deploy it again from the menu."
+    ): {
+        "fr": (
+            "Les paramètres de création de cette VM n'ont pas été gardés "
+            "(session antérieure, ou VM seulement suivie). Redéployez-la "
+            "depuis le menu."
+        ),
+        "en": (
+            "This VM's creation parameters were not kept (older session, or a "
+            "VM only monitored). Deploy it again from the menu."
+        ),
+    },
+    (
+        "Its install is still running: wait for it to end before recreating "
+        "the VM."
+    ): {
+        "fr": (
+            "Son installation tourne encore : attendez qu'elle finisse avant "
+            "de recréer la VM."
+        ),
+        "en": (
+            "Its install is still running: wait for it to end before "
+            "recreating the VM."
+        ),
+    },
+    "Recreate is not available for an offline session.": {
+        "fr": (
+            "La recréation n'est pas disponible pour une session hors ligne."
+        ),
+        "en": "Recreate is not available for an offline session.",
+    },
+    (
+        "An offline deployment holds the cut: the recreation would run without "
+        "Internet."
+    ): {
+        "fr": (
+            "Un déploiement hors ligne tient la coupure : la recréation "
+            "tournerait sans Internet."
+        ),
+        "en": (
+            "An offline deployment holds the cut: the recreation would run "
+            "without Internet."
+        ),
+    },
+    (
+        "The VM is deleted (domain, disk, seed), then created again with the "
+        "same parameters:"
+    ): {
+        "fr": (
+            "La VM est effacée (domaine, disque, seed), puis recréée avec les "
+            "mêmes paramètres :"
+        ),
+        "en": (
+            "The VM is deleted (domain, disk, seed), then created again with "
+            "the same parameters:"
+        ),
+    },
+    "The current log is kept as <log>.N.": {
+        "fr": "Le journal actuel est gardé en <journal>.N.",
+        "en": "The current log is kept as <log>.N.",
+    },
+    "Recreate {name}?": {
+        "fr": "Recréer {name} ?",
+        "en": "Recreate {name}?",
+    },
+    "Delete and recreate": {
+        "fr": "Effacer et recréer",
+        "en": "Delete and recreate",
+    },
+    "Deletion refused or failed: nothing recreated.": {
+        "fr": "Effacement refusé ou en échec : rien n'est recréé.",
+        "en": "Deletion refused or failed: nothing recreated.",
+    },
+    "Press Enter to return to the monitor": {
+        "fr": "Entrée pour revenir au suivi",
+        "en": "Press Enter to return to the monitor",
+    },
+    "This terminal cannot be handed back.": {
+        "fr": "Ce terminal ne peut pas être rendu.",
+        "en": "This terminal cannot be handed back.",
+    },
+    "Recreated: {names}": {
+        "fr": "Recréée(s) : {names}",
+        "en": "Recreated: {names}",
+    },
+    "A recreation of this VM is already under way.": {
+        "fr": "Une recréation de cette VM est déjà en cours.",
+        "en": "A recreation of this VM is already under way.",
+    },
+    "Previous launcher stopped: {n}": {
+        "fr": "Ancien lanceur arrêté : {n}",
+        "en": "Previous launcher stopped: {n}",
+    },
+    # Rafraîchissement forcé du suivi d'installation (touche F5).
+    "State and probes refreshed.": {
+        "fr": "État et sondes relus.",
+        "en": "State and probes refreshed.",
     },
     # Ajout de VM depuis le suivi d'installation (touche « e »).
     "Add VMs": {

@@ -2726,14 +2726,17 @@ class QemuManageMixin:
         self._cleanup_stale_leases()
         # 6) Tout le cache d'images de base (option lourde : re-téléchargement).
         # Une image de base peut servir de FOND à un disque (backingStore) :
-        # elle est alors référencée, et l'effacer creverait la VM.
+        # elle est alors référencée, et l'effacer creverait la VM. Le .lock
+        # voisin d'une image n'en est pas une : c'est le verrou de son
+        # téléchargement, vide, et l'effacer pendant qu'on le tient rouvre la
+        # course entre installations parallèles.
         cached = [
             (s, p)
             for s, p, _m in self._qemu_split_orphans(
                 [
                     (s, p, "")
                     for s, p in self._qemu_find_files(seed_dir, "*")
-                    if not p.endswith("-seed.iso") and not p.endswith(".part")
+                    if not p.endswith(("-seed.iso", ".part", ".lock"))
                 ]
             )[0]
         ]
