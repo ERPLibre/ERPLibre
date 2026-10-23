@@ -16,7 +16,7 @@ services:
         - db
       networks:
         - front
-      command: odoo -c /ERPLibre/odoo/odoo.conf --without-demo=ALL -i base -d odoo
+      command: odoo --without-demo=ALL -i base -d odoo
       user: ${CURRENT_UID:?"Please run as follows 'CURRENT_UID=$(id -u):$(id -g) docker-compose up'"}
       # user:
       volumes:

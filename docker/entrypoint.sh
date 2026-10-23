@@ -1,48 +1,43 @@
 #!/bin/bash
 
 set -e
+# Fix volumes of odoo.conf if not exist. Before the dev mode, which reads it.
+if [ ! -f "/etc/odoo/odoo.conf" ]; then
+  cp /odoo.conf /etc/odoo/odoo.conf
+fi
+
 if [[ "$ENV" == "dev" ]] && [ ! -z ${CURRENT_UID} ]; then
   export HOME=$ODOO_PREFIX
   cd $HOME
 
-  # As it's only possible to fetch git repos manifest from an git url, we create one using git-daemon.
-  git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
-  GIT_PID=$!
-  echo "my repo" $(git rev-parse --abbrev-ref HEAD)
-  repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m default.dev.xml
+  # Sync the repositories of the mounted checkout, as on the host: the script
+  # serves the checkout through git daemon, merges the manifests of the active
+  # Odoo version, gives repo init a branch and stops the daemon when done.
+  ./script/manifest/update_manifest_local_dev.sh
 
-  repo sync -c -j $(nproc --all)
-
-  # After sync, terminate the git checkout. We don't need graceful kill as we don't do commit on the git repo during the operation.
-  kill -9 $GIT_PID
-
-  ls $HOME/odoo$(cat ".odoo-version" | xargs)/odoo/odoo-bin
-  # $? give the posix return value of the last command. 0 == success
-  # then IS_ODOO_FILE_EXIST : 0 == YES
-  IS_ODOO_FILE_EXIST=$?
-
-  if [ "$IS_ODOO_FILE_EXIST" -ne "0" ]; then
-    echo "The file $HOME/odoo$(cat ".odoo-version" | xargs)/odoo/odoo-bin doesnt exist. Verify entrypoint.sh"
+  # An "if" rather than an exit code: under "set -e", a failing test command
+  # would end the script before the message.
+  ODOO_VERSION_DIR="$HOME/odoo$(cat ".odoo-version" | xargs)"
+  ODOO_BIN="${ODOO_VERSION_DIR}/odoo/odoo-bin"
+  if [ ! -f "${ODOO_BIN}" ]; then
+    echo "The file ${ODOO_BIN} doesnt exist. Verify entrypoint.sh"
     exit 1
   fi
 
-  # Add the odoo bins code on $PATH
-  echo PATH=$HOME/odoo$(cat ".odoo-version" | xargs)/odoo/:$PATH
+  # odoo-bin on the PATH. The "odoo" command needs no alias: the case at the
+  # end of this script takes it as its first argument.
+  export PATH="${ODOO_VERSION_DIR}/odoo:${PATH}"
 
-  # Configure an alias to use "odoo-bin" as "odoo".
-  alias odoo=odoo-bin
-
-  repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons $ODOO_RC $ODOO_PREFIX/odoo/odoo.conf && head $ODOO_PREFIX/odoo/odoo.conf
-  export ODOO_RC=$ODOO_PREFIX/odoo/odoo.conf
+  # The image configuration with the addons_path of the mounted checkout,
+  # written inside the container: the checkout belongs to the host, and
+  # /etc/odoo is not writable by CURRENT_UID. Odoo starts on ODOO_RC.
+  DEV_ODOO_RC="${TMPDIR:-/tmp}/odoo.conf"
+  python3 ./docker/repo_manifest_gen_org_prefix_path.py "${ODOO_VERSION_DIR}/addons" "${ODOO_RC}" "${DEV_ODOO_RC}"
+  export ODOO_RC="${DEV_ODOO_RC}"
 
 elif [[ "$ENV" == "dev" ]] && [ -z ${CURRENT_UID} ]; then
   echo 'Please run as follows : CURRENT_UID=$(id -u):$(id -g) docker compose up'
   exit 1
-fi
-
-# Fix volumes of odoo.conf if not exist
-if [ ! -f "/etc/odoo/odoo.conf" ]; then
-  cp /odoo.conf /etc/odoo/odoo.conf
 fi
 
 # set the postgres database host, port, user and password according to the environment
@@ -83,9 +78,9 @@ case "$1" in
       python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
       if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
         # --stop-after-init
-        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
+        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC" -u all -d "${DB_NAME}"
       else
-        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
+        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC"
       fi
     fi
     ;;
@@ -96,9 +91,9 @@ case "$1" in
     fi
     python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
     if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
-      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
+      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC" -u all -d "${DB_NAME}"
     else
-      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
+      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC"
     fi
     ;;
   *)
