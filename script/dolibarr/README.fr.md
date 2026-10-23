@@ -30,6 +30,7 @@ chaque script se lance aussi seul.
 | `upgrade.py` | Monter une instance à la version épinglée, retour arrière sur échec |
 | `debug.py` | Profil de déverminage d'une instance `on`/`off`, `status`, `tail` de son journal |
 | `module.py` | `create`, `link`, `enable`, `disable` les modules d'une instance de développement |
+| `package.py` | `check` d'un module selon les règles de DoliStore, `build` de son zip |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -153,6 +154,8 @@ ne sont pas posés.
 ./script/dolibarr/module.py create --instance erp --name Zorglub --enable
 ./script/dolibarr/module.py link --instance erp --path ~/src/zorglub
 ./script/dolibarr/module.py enable --instance erp --name Stock
+./script/dolibarr/package.py check --instance erp --name Zorglub
+./script/dolibarr/package.py build --instance erp --name Zorglub --dolistore
 ```
 
 - `debug.py on` montre les fonctionnalités en développement
@@ -171,6 +174,16 @@ ne sont pas posés.
   son propre dépôt (natif seulement : un conteneur ne voit que son
   `custom/`). `enable` et `disable` passent par Dolibarr, dépendances et
   droits compris. Une production est refusée : elle reçoit un paquet.
+- `package.py build` écrit `<module>/bin/module_<nom>-<version>.zip` comme
+  « Générer le paquet » du ModuleBuilder ; la page « Déployer un module
+  externe » de Dolibarr le prend tel quel. Un descripteur cassé, une
+  version non numérique ou une erreur de syntaxe PHP bloquent le zip.
+  `check` applique aussi les règles de DoliStore : un numéro de 95000 à
+  499999 (500000 et plus ne se distribue jamais), un en_US complet, des
+  pages qui essaient `main.inc.php` à plusieurs endroits,
+  `#!/usr/bin/env php` en tête des scripts, aucune copie d'un fichier du
+  cœur ; `--dolistore` les rend bloquantes. « Dolibarr » comme mot du nom
+  et un éditeur vide sont des avis.
 
 ## Version épinglée
 
