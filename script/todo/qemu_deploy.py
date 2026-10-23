@@ -164,8 +164,7 @@ class QemuDeployMixin:
             chain.append(f"{{ {after_cmd} }}")
         install_chain = " && ".join(chain)
         return (
-            "set -e; "
-            + self._qemu_cloud_init_wait()
+            "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
             # le verrou entre l'attente cloud-init et l'installation.
             + no_auto_upgrade
@@ -270,7 +269,7 @@ class QemuDeployMixin:
             # peu : l'installation choisit ensuite le Python d'Odoo, que le
             # module déclare et que le profil du système porte, cherché avant
             # celui de l'utilisateur.
-             + "elif command -v nix-env >/dev/null 2>&1; then "
+            + "elif command -v nix-env >/dev/null 2>&1; then "
             "nix-env -f '<nixpkgs>' -iA git gnumake curl python3"
             f"{self._qemu_editor_suffix()}; "
             # Le PATH de cette commande distante a été figé à l'ouverture du
