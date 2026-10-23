@@ -21,7 +21,7 @@ import shlex
 import shutil
 import socket
 
-from script.dolibarr import lib_dolibarr
+from script.dolibarr import lib_dolibarr, web_config
 from script.todo import todo_install
 from script.todo.todo_i18n import t
 
@@ -350,7 +350,7 @@ class DolibarrMenuMixin:
             params["port"] = port
 
         if mode == "prod":
-            domain = input(t("Domain name (empty for none): ")).strip()
+            domain = self._dolibarr_ask_domain(runtime == "native")
             if domain:
                 tls = self._dolibarr_choose(
                     t("HTTPS certificate:"),
@@ -385,6 +385,25 @@ class DolibarrMenuMixin:
             )
         params["admin_login"] = login
         return params
+
+    def _dolibarr_ask_domain(self, required):
+        """Nom sous lequel nginx sert l'instance, en minuscules.
+
+        Redemandé tant qu'il est invalide ; vide accepté seulement quand il
+        n'est pas `required` — le natif de production le demande toujours.
+        """
+        question = (
+            t("Domain name (e.g.: example.com): ")
+            if required
+            else t("Domain name (empty for none): ")
+        )
+        while True:
+            domain = input(question).strip().lower()
+            if not domain and not required:
+                return ""
+            if web_config.valid_domain(domain):
+                return domain
+            print(t("Invalid domain name: letters, digits, dots and hyphens."))
 
     def _dolibarr_ask_admin_password(self):
         """Mot de passe saisi deux fois ; "" = généré par le script ; None
