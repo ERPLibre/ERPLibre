@@ -286,6 +286,35 @@
       "notes": "Replaces activities.update for a done note, after the same active check (an archived activity is not marked done again). The server removes the activity, or archives it when its type keeps done activities; the link turns remote_state 'done' and is never written again, even if the note is undone. An activity created for a note already done is marked done in the same push."
     },
 
+    "messages.post": {
+      "description": "Post a note in a chosen record's chatter (message.post row of sync_outbox; several per server; same marker, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "{outbox.params.resModel}",
+          "method": "message_post",
+          "args": [["{outbox.params.resId}"]],
+          "kwargs": {
+            "body": "<p><b>{note.title}</b></p> + {note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+            "body_is_html": "true — Odoo 17+ only",
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_note"
+          }
+        }
+      },
+      "response": "integer — mail.message id → note_links (kind message, params_json: resModel, resId, resName, bodyHash)",
+      "notes": "A logged note, the only kind the edit route accepts on 16. Before posting, the model is probed (missing or without message_ids: model_unusable) and the record checked (active_test false): none, AccessError or KeyError blocks as record_missing; builtins.AttributeError blocks as refused. The retry search reads mail.message [('model','=',resModel),('res_id','=',resId),('body','ilike',marker)]. Posting needs write access on most models, read on those whose _mail_post_access is read (account.move)."
+    },
+
+    "messages.update": {
+      "description": "Push a change of the note's text to its posted message",
+      "method": "POST",
+      "path": "/mail/message/update_content",
+      "request": { "params": { "message_id": "{note_links.res_id}", "body": "{same body as messages.post}", "attachment_ids": [] } },
+      "notes": "The web client's edit route (type json, auth public), on Odoo 16, 17 and 18; only the author (or an admin) of a comment without tracking may edit, and 16 only a logged note. Sent only when the body's hash differs from note_links.params.bodyHash. The message is read first through call_kw (mail.message search_read [('id','=',…)], fields body, attachment_ids): a stale session there answers code 100 and is renewed, where the public route would answer NotFound; no row, or an emptied body without attachments (deleted in the chatter), marks the link deleted; its attachment_ids are sent back, since the route replaces the list. A message found again by its marker with the hash it was posted with is linked without an edit."
+    },
+
     "activity_types.list": {
       "description": "Activity types offered for a new activity, cached in remote_records_cache (replaced on each read)",
       "method": "POST",
@@ -473,7 +502,7 @@
     "migration": "2026102201",
     "note_links": {
       "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted|dismissed|done)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)", "params_json (migration 2026102301)"],
-      "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. kind 'create': the note's task or opportunity, one per model and server; kind 'activity': a mail.activity, several per server, its choices in params_json; remote_state 'done': an activity the app marked done. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
+      "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. kind 'create': the note's task or opportunity, one per model and server; kind 'activity': a mail.activity, several per server, its choices in params_json; kind 'message': a mail.message posted in a record's chatter, several per server, its record and bodyHash in params_json; remote_state 'done': an activity the app marked done. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
     },
     "sync_pull_cursors": {
       "columns": ["scope (sync config id)", "write_date"],
