@@ -44,6 +44,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Instance status": "_dolibarr_run",
         "Dolibarr - Instance logs": "_dolibarr_run",
         "Dolibarr - Update the pinned commit": "_dolibarr_pin",
+        "Dolibarr - Upgrade an instance": "_dolibarr_upgrade",
         "Dolibarr - Health, security and integrity": "_dolibarr_doctor",
         "Dolibarr - Back up an instance": "_dolibarr_backup",
         "Dolibarr - Restore a backup": "_dolibarr_restore",
@@ -292,6 +293,40 @@ class TestParc(Banc):
         self.registre = {"erp": dict(DEV)}
         lances = self.lancer_parc("_dolibarr_remove", ["n", "er"])
         self.assertEqual(lances, [f"{FLEET} remove --instance erp --dry-run"])
+
+
+UPGRADE = "./.venv.erplibre/bin/python -u script/dolibarr/upgrade.py"
+
+
+class TestMontee(Banc):
+    def lancer_montee(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_upgrade()
+        return lances
+
+    def test_the_chosen_instance_is_upgraded_after_a_yes(self):
+        self.registre = {"aaa": dict(DEV), "zzz": dict(DEV, mode="prod")}
+        self.assertEqual(
+            self.lancer_montee(["2", "y"]),
+            [f"{UPGRADE} --instance zzz"],
+        )
+
+    def test_no_runs_nothing(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(self.lancer_montee(["n"]), [])
 
 
 class TestBilan(unittest.TestCase):
