@@ -121,10 +121,12 @@ class Systeme:
         self.page = "<title>Login @ 24.0.1</title>"
         self.prochain_pid = 4000
         self.run_dir = None
+        self.envs = []
 
     # interface attendue par run.py
-    def spawn(self, argv, log):
+    def spawn(self, argv, log, env=None):
         self.lances.append(argv)
+        self.envs.append(env)
         self.prochain_pid += 1
         self.vivants.add(self.prochain_pid)
         if self.run_dir:
@@ -301,6 +303,18 @@ class TestStopStatus(Banc):
         _code, sortie = self.lancer("status", "--instance", "erp")
         self.assertIn(run_mod.t(run_mod.STATE_LABELS["unknown"]), sortie)
         self.assertNotIn(run_mod.t(run_mod.STATE_LABELS["stopped"]), sortie)
+
+    def test_fpm_reads_the_instance_ini_dir_only_when_it_has_one(self):
+        # Xdebug de debug.py : un .ini propre à l'instance, ajouté au
+        # dossier que PHP lit déjà (« : » en tête), rien dans /etc.
+        self.lancer("start", "--instance", "erp")
+        self.assertIsNone(self.sys.envs[0])
+        self.lancer("stop", "--instance", "erp")
+        php_d = self.run_dir / "php.d"
+        php_d.mkdir()
+        (php_d / "90-erplibre-xdebug.ini").write_text("xdebug.mode=debug\n")
+        self.lancer("start", "--instance", "erp")
+        self.assertEqual(self.sys.envs[-1], {"PHP_INI_SCAN_DIR": f":{php_d}"})
 
     def test_start_refuses_an_unknown_state(self):
         (self.run_dir / "nginx.pid").write_bytes(b"\xff\xfe")

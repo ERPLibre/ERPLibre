@@ -149,6 +149,19 @@ class TestOpcache(unittest.TestCase):
                 self.assertEqual(packages.opcache_package(famille), nom)
 
 
+class TestXdebug(unittest.TestCase):
+    def test_the_package_of_each_family(self):
+        attendu = {
+            "apt-get": "php-xdebug",
+            "dnf": "php-pecl-xdebug3",
+            "pacman": "xdebug",
+            "zypper": "php8-xdebug",
+        }
+        for famille, nom in attendu.items():
+            with self.subTest(famille=famille):
+                self.assertEqual(packages.xdebug_package(famille), nom)
+
+
 class TestFpmLayout(unittest.TestCase):
     def test_debian_paths_carry_the_php_version(self):
         self.assertEqual(
