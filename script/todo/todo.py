@@ -1950,16 +1950,20 @@ class TODO(
         import getpass
 
         print(f"\n{t('Deploy a hardened Asterisk VoIP server (no FreePBX)')}")
-        print(t(
-            "No web admin panel is installed: it is the main attack surface"
-            " of a PBX. Anonymous SIP is refused and the dial plan accepts"
-            " North American numbers only."
-        ))
+        print(
+            t(
+                "No web admin panel is installed: it is the main attack surface"
+                " of a PBX. Anonymous SIP is refused and the dial plan accepts"
+                " North American numbers only."
+            )
+        )
 
         script_path = os.path.realpath(
             os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                "..", "install", "install_asterisk.sh",
+                "..",
+                "install",
+                "install_asterisk.sh",
             )
         )
         if not os.path.isfile(script_path):
@@ -1977,9 +1981,10 @@ class TODO(
             ).strip()
             if not hote:
                 break
-            nom = input(
-                t("Line name (default: line%s): ") % rang
-            ).strip() or f"line{rang}"
+            nom = (
+                input(t("Line name (default: line%s): ") % rang).strip()
+                or f"line{rang}"
+            )
             util = input(t("SIP trunk username: ")).strip()
             # getpass et non input : le mot de passe ne doit rester ni a
             # l'ecran ni dans l'historique du terminal.
@@ -1995,12 +2000,17 @@ class TODO(
             lignes.append((nom, hote, util, mdp))
 
         if not lignes:
-            print(t(
-                "No trunk: the server will install but cannot call out."
-                " That is deliberate — a mute PBX beats an open one."
-            ))
+            print(
+                t(
+                    "No trunk: the server will install but cannot call out."
+                    " That is deliberate — a mute PBX beats an open one."
+                )
+            )
         else:
-            print(t("Lines to configure: %s") % ", ".join(n for n, _, _, _ in lignes))
+            print(
+                t("Lines to configure: %s")
+                % ", ".join(n for n, _, _, _ in lignes)
+            )
 
         # Les mots de passe voyagent par l'environnement du sous-processus,
         # jamais dans la commande : elle est affichee, journalisee, et reste
@@ -6463,9 +6473,7 @@ class TODO(
         # reseau local — la passerelle en Wi-Fi ne joint alors rien, et
         # chaque reconstruction ordinaire remplace l'APK qui le tolerait.
         print(t("mobile_lan_cleartext_warning"))
-        do_lan_cleartext = self._is_yes(
-            input(t("mobile_lan_cleartext_ask"))
-        )
+        do_lan_cleartext = self._is_yes(input(t("mobile_lan_cleartext_ask")))
         commande = "./mobile/compile_and_run.sh"
         if do_lan_cleartext:
             commande += " --lan-cleartext"
