@@ -39,6 +39,9 @@ DEFAULT_PATH_MANIFEST_STREAMDECK_CONF = os.path.join(
 DEFAULT_PATH_MANIFEST_ERPLIBRE_HOME_CONF = os.path.join(
     "conf", "git_manifest_erplibre_home.csv"
 )
+DEFAULT_PATH_MANIFEST_DOLIBARR_CONF = os.path.join(
+    "conf", "git_manifest_dolibarr.csv"
+)
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
@@ -58,6 +61,7 @@ STREAMDECK_DECK_PATH = os.path.join("script", "stream_deck", "deck")
 ERPLIBRE_HOME_EXTENSION_PATH = os.path.join(
     "script", "gnome-extension", "erplibre_home"
 )
+DOLIBARR_PATH = os.path.join("dolibarr", "dolibarr")
 ODOO_VERSION_PATH = ".odoo-version"
 
 
@@ -107,6 +111,11 @@ def get_config(argv=None):
         help="Add the ERPLibre Home GNOME extension manifest",
     )
     parser.add_argument(
+        "--with_dolibarr",
+        action="store_true",
+        help="Add the pinned Dolibarr project manifest",
+    )
+    parser.add_argument(
         "--with_extra",
         action="store_true",
         help=(
@@ -154,6 +163,7 @@ def main():
             with_mobile=config.with_mobile,
             with_streamdeck=config.with_streamdeck,
             with_erplibre_home=config.with_erplibre_home,
+            with_dolibarr=config.with_dolibarr,
             with_extra=config.with_extra,
             with_new_manifest=config.with_new_manifest,
         )
@@ -260,6 +270,7 @@ def default_input_paths(
     with_mobile=False,
     with_streamdeck=False,
     with_erplibre_home=False,
+    with_dolibarr=False,
     with_extra=False,
     with_new_manifest=False,
 ):
@@ -267,10 +278,10 @@ def default_input_paths(
 
     Sans `with_new_manifest`, les drapeaux se déduisent du checkout : la
     version d'Odoo active, les versions installées, l'application mobile,
-    le programme du deck, l'extension GNOME, les modules extra. Un
-    fichier cité deux fois n'est gardé qu'à sa PREMIÈRE place, et l'ordre
-    est celui de la liste : lors de la fusion, le dernier fichier qui
-    définit un projet l'emporte.
+    le programme du deck, l'extension GNOME, le checkout Dolibarr, les
+    modules extra. Un fichier cité deux fois n'est gardé qu'à sa PREMIÈRE
+    place, et l'ordre est celui de la liste : lors de la fusion, le dernier
+    fichier qui définit un projet l'emporte.
     """
     odoo_version = None
     if os.path.isfile(ODOO_VERSION_PATH):
@@ -287,6 +298,11 @@ def default_input_paths(
             with_streamdeck = True
         if os.path.isdir(ERPLIBRE_HOME_EXTENSION_PATH):
             with_erplibre_home = True
+        # Un projet sorti de la fusion est effacé par le prochain « repo
+        # sync », fichiers ignorés compris : le checkout Dolibarr y reste
+        # donc dès qu'il existe.
+        if os.path.isdir(DOLIBARR_PATH):
+            with_dolibarr = True
         if odoo_version and get_version_extra(odoo_version.strip()):
             with_extra = True
 
@@ -343,6 +359,10 @@ def default_input_paths(
     if with_erplibre_home:
         append_file_path_manifest(
             input_paths, DEFAULT_PATH_MANIFEST_ERPLIBRE_HOME_CONF
+        )
+    if with_dolibarr:
+        append_file_path_manifest(
+            input_paths, DEFAULT_PATH_MANIFEST_DOLIBARR_CONF
         )
     if with_extra and odoo_version:
         path_extra = os.path.join(

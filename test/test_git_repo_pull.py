@@ -776,6 +776,35 @@ class TestManifeste(Banc):
         self.assertEqual(vus, ["deux\n", True])
         self.assertNotEqual(self.appels_regenerer[0][0], self.racine)
 
+    def test_la_prediction_voit_les_checkouts_que_la_fusion_detecte(self):
+        """La fusion ajoute un fragment quand le checkout mobile ou Dolibarr
+        existe : le dossier de la prédiction porte les mêmes marqueurs que
+        la racine, sinon elle retirerait leurs projets et l'écriture,
+        relancée depuis la racine, serait refusée."""
+        from script.git import git_merge_repo_manifest as fusion
+
+        self.assertEqual(
+            repo_pull.MARQUEURS_DE_FUSION,
+            (fusion.MOBILE_PATH, fusion.DOLIBARR_PATH),
+        )
+        for marqueur in repo_pull.MARQUEURS_DE_FUSION:
+            os.makedirs(os.path.join(self.racine, marqueur))
+        self.avancer("erplibre.git", {"manifest/lisezmoi.txt": "deux\n"})
+        vus = []
+
+        def predit():
+            cwd = self.appels_regenerer[-1][0]
+            vus.extend(
+                os.path.isdir(os.path.join(cwd, m))
+                for m in repo_pull.MARQUEURS_DE_FUSION
+            )
+            return None
+
+        self.predit = predit
+        self.diag("manifeste")
+        self.assertNotEqual(self.appels_regenerer[0][0], self.racine)
+        self.assertEqual(vus, [True, True])
+
     def test_gel_suit_l_etat_actuel(self):
         sha = self.head()
         self.manifeste_local([("a.git", CHEMIN_A, sha)])

@@ -75,13 +75,17 @@ fi
 
 # Generate local manifest. Un échec de la fusion arrête le script : le sync
 # repartirait sinon sur le manifeste local précédent.
-.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}" "${MERGE_STRICT[@]}" "${MERGE_EXTRA[@]}" || exit 1
+# EL_MANIFEST_MERGE_FLAGS ajoute des drapeaux de fusion (--with_dolibarr) et
+# EL_REPO_SYNC_PROJECTS restreint la synchronisation à ces projets
+# (dolibarr/dolibarr) : update_manifest_local_dolibarr.sh s'en sert. Non
+# guillemetés exprès : chacun peut porter plusieurs mots.
+.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}" "${MERGE_STRICT[@]}" "${MERGE_EXTRA[@]}" ${EL_MANIFEST_MERGE_FLAGS:-} || exit 1
 
 . ./script/manifest/manifest_revision.sh
 MANIFEST_REV=$(manifest_revision) || exit 1
 
 . ./script/manifest/repo_init.sh
 repo_init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} "$@"
-.venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}
+.venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET} ${EL_REPO_SYNC_PROJECTS:-}
 
 # Daemon cleanup handled by the EXIT trap above (tolerant of an already-dead PID).

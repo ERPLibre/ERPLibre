@@ -227,12 +227,25 @@ class TestRepoInit(Banc):
         self.assertEqual(sortie, "")
 
 
+# Un script qui délègue à un autre par « exec ./script/manifest/… » n'appelle
+# pas repo init lui-même : c'est le script délégué qui passe par le fragment.
+DELEGATION = re.compile(
+    r"^[ \t]*exec \./script/manifest/(update_manifest_\S+\.sh)", re.M
+)
+
+
 class TestScriptsDeManifeste(unittest.TestCase):
     def test_repo_init_passe_par_le_fragment(self):
-        self.assertEqual(len(SCRIPTS), 6, [s.name for s in SCRIPTS])
+        self.assertEqual(len(SCRIPTS), 7, [s.name for s in SCRIPTS])
+        noms = {s.name for s in SCRIPTS}
         for script in SCRIPTS:
             texte = script.read_text(encoding="utf-8")
             with self.subTest(script=script.name):
+                delegue = DELEGATION.search(texte)
+                if delegue:
+                    self.assertIn(delegue.group(1), noms)
+                    self.assertNotIn("repo init", texte)
+                    continue
                 self.assertIsNone(
                     re.search(r"^[^#\n]*bin/repo init", texte, re.M)
                 )

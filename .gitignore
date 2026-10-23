@@ -61,6 +61,7 @@ private/todo/todo_override_private.json
 /private/sceau/
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
+/dolibarr/
 
 # Investigation notes, dated measurements and execution traces.
 # UNVERSIONED ON PURPOSE: it holds what neither the code nor the commits
