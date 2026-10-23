@@ -42,6 +42,8 @@ DETECT_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/detect.py"
 DOCTOR_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/doctor.py"
 # Sauvegarde d'une instance, sous private/dolibarr/backups/.
 BACKUP_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/backup.py"
+# Le parc : lister les instances, en retirer une.
+FLEET_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/fleet.py"
 SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
 
 # Le script qui bâtit le venv d'outillage quand il manque, comme le fait
@@ -88,6 +90,8 @@ class DolibarrMenuMixin:
             {"prompt_description": t("Dolibarr - Back up an instance")},
             {"prompt_description": t("Dolibarr - Restore a backup")},
             {"section": t("Inventory")},
+            {"prompt_description": t("Dolibarr - List the instances")},
+            {"prompt_description": t("Dolibarr - Remove an instance")},
             {
                 "prompt_description": t(
                     "Dolibarr - Find installations (local or SSH)"
@@ -119,6 +123,10 @@ class DolibarrMenuMixin:
             elif status == "9":
                 self._dolibarr_restore()
             elif status == "10":
+                self._dolibarr_fleet_list()
+            elif status == "11":
+                self._dolibarr_remove()
+            elif status == "12":
                 self._dolibarr_detect()
             else:
                 print(t("Command not found !"))
@@ -196,6 +204,54 @@ class DolibarrMenuMixin:
         self.execute.exec_command_live(
             f"{BACKUP_CLI} restore --instance {shlex.quote(name)}"
             f" --archive {shlex.quote(relative)} --confirm {shlex.quote(name)}",
+            source_erplibre=False,
+        )
+
+    def _dolibarr_fleet_list(self):
+        """fleet.py list : chaque instance, son exécution, ce qu'elle sert."""
+        self.execute.exec_command_live(
+            f"{FLEET_CLI} list", source_erplibre=False
+        )
+
+    def _dolibarr_remove(self):
+        """Destructif : le plan à blanc, une sauvegarde proposée (son échec
+        arrête tout), puis le nom retapé en entier."""
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        names = sorted(known)
+        if not names:
+            print(t("No Dolibarr instance."))
+            return
+        name = (
+            names[0]
+            if len(names) == 1
+            else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
+        )
+        if name is None:
+            return
+        quoted = shlex.quote(name)
+        self.execute.exec_command_live(
+            f"{FLEET_CLI} remove --instance {quoted} --dry-run",
+            source_erplibre=False,
+        )
+        if self._is_yes(
+            input(t("Back up the instance first? (Y/n): ")).strip().lower()
+            or "y"
+        ):
+            if self.execute.exec_command_live(
+                f"{BACKUP_CLI} create --instance {quoted}",
+                source_erplibre=False,
+            ):
+                print(t("The backup failed: nothing was removed."))
+                return
+        if input(t("Retype %s to confirm: ") % name).strip() != name:
+            print(t("Cancelled."))
+            return
+        self.execute.exec_command_live(
+            f"{FLEET_CLI} remove --instance {quoted} --confirm {quoted}",
             source_erplibre=False,
         )
 
