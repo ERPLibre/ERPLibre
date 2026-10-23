@@ -423,6 +423,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Corrigé
 <!-- [en] -->
 
+- F7 (main versions) ticks them again on the Proxmox deployment form: it ticked entries by their rank, while that list identifies them by distribution, version and architecture, so no VM was planned
 - The install monitor's update action (`a`) reaches a production install: the git and Python parts went to `~/git/erplibre`, absent from a VM installed under `/opt/erplibre`, and stopped there. The directory is now read from the erplibre service
 - Reading the dnsmasq leases no longer opens a root password prompt: the files are read directly, which suffices on a standard install where they are 0644, and only then is `sudo -n` tried, which fails instead of asking. Displaying a VM list called that path once per VM, and waiting on a VM called it every three seconds for ten minutes
 - `--max_process` runs again on Python 3.10 and later: `loop=` left `asyncio.wait` in 3.10 and `asyncio.get_event_loop()` raises outside a running loop since 3.14, so the pool was not even constructible while the help still advertised the flag
@@ -524,6 +525,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- F7 (versions principales) les coche de nouveau dans le formulaire de déploiement Proxmox : il cochait les entrées par leur rang, alors que cette liste les identifie par système, version et architecture, et aucune VM n'était retenue
 - L'action de mise à jour du suivi d'installation (`a`) atteint une installation de production : les parties git et Python allaient dans `~/git/erplibre`, absent d'une VM installée sous `/opt/erplibre`, et s'y arrêtaient. Le dossier est désormais lu dans le service erplibre
 - La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes
 - `--max_process` repart sur Python 3.10 et plus : `loop=` a quitté `asyncio.wait` en 3.10 et `asyncio.get_event_loop()` lève hors d'une loop en marche depuis 3.14, si bien que le pool n'était même plus instanciable alors que l'aide annonçait toujours l'option

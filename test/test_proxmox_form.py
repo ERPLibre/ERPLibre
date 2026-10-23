@@ -2538,5 +2538,29 @@ class UnInviteImbriqueSortMasqueDerriereSonHote(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestF7(unittest.TestCase):
+    """F7 coche la version par défaut de chaque système. La liste Proxmox
+    identifie ses options par système, version et architecture : cocher par
+    rang y posait une valeur qu'aucune option ne porte."""
+
+    def test_f7_ticks_the_default_versions(self):
+        ctx = contexte()
+        ctx["catalog"]["amd64"][1]["default"] = True
+        vu = {}
+
+        async def scenario():
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 55)) as pilote:
+                await pilote.pause()
+                await pilote.press("f7")
+                await pilote.pause()
+                await pilote.pause()
+                vu["noms"] = [r["vm"]["name"] for r in app.rows]
+
+        asyncio.run(scenario())
+        self.assertEqual([ctx["catalog"]["amd64"][1]["name"]], vu["noms"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

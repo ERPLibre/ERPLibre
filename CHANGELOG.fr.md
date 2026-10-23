@@ -205,6 +205,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Corrigé
 
+- F7 (versions principales) les coche de nouveau dans le formulaire de déploiement Proxmox : il cochait les entrées par leur rang, alors que cette liste les identifie par système, version et architecture, et aucune VM n'était retenue
 - L'action de mise à jour du suivi d'installation (`a`) atteint une installation de production : les parties git et Python allaient dans `~/git/erplibre`, absent d'une VM installée sous `/opt/erplibre`, et s'y arrêtaient. Le dossier est désormais lu dans le service erplibre
 - La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes
 - `--max_process` repart sur Python 3.10 et plus : `loop=` a quitté `asyncio.wait` en 3.10 et `asyncio.get_event_loop()` lève hors d'une loop en marche depuis 3.14, si bien que le pool n'était même plus instanciable alors que l'aide annonçait toujours l'option

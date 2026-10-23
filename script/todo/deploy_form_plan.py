@@ -432,7 +432,11 @@ class PlanMixin:
         widget.deselect_all()
         for i, e in enumerate(self._entries()):
             if e.get("default"):
-                widget.select(i)
+                # La VALEUR de l'option, pas son rang : le formulaire QEMU
+                # numérote ses options, Proxmox les identifie. Un rang passé à
+                # une liste d'identités y coche une valeur qu'aucune option ne
+                # porte — aucune VM n'est retenue.
+                widget.select(widget.get_option_at_index(i).value)
 
     def _auto_name(self, index):
         """Nom que la VM reprendrait si on effaçait le sien."""
