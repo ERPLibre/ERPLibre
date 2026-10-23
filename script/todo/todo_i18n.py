@@ -18408,6 +18408,101 @@ TRANSLATIONS = {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
     },
+    # Relance des installations en échec depuis le suivi (touches « r »,
+    # « R »).
+    "Relaunch": {
+        "fr": "Relancer",
+        "en": "Relaunch",
+    },
+    "Relaunch all failed": {
+        "fr": "Relancer les échecs",
+        "en": "Relaunch all failed",
+    },
+    "This VM is not in the session.": {
+        "fr": "Cette VM n'est pas dans la session.",
+        "en": "This VM is not in the session.",
+    },
+    "Relaunch is not available for an offline session.": {
+        "fr": "La relance n'est pas disponible pour une session hors ligne.",
+        "en": "Relaunch is not available for an offline session.",
+    },
+    (
+        "This session predates relaunch: its install command was not kept. "
+        "Deploy the VM again."
+    ): {
+        "fr": (
+            "Cette session est antérieure à la relance : sa commande "
+            "d'installation n'a pas été conservée. Redéployez la VM."
+        ),
+        "en": (
+            "This session predates relaunch: its install command was not kept. "
+            "Deploy the VM again."
+        ),
+    },
+    "Only a failed install can be relaunched.": {
+        "fr": "Seule une installation en échec peut être relancée.",
+        "en": "Only a failed install can be relaunched.",
+    },
+    "No failed install to relaunch.": {
+        "fr": "Aucune installation en échec à relancer.",
+        "en": "No failed install to relaunch.",
+    },
+    "Relaunch {n}; previous log: {path}": {
+        "fr": "Relance {n} ; journal précédent : {path}",
+        "en": "Relaunch {n}; previous log: {path}",
+    },
+    "An install is already running in this VM (make).": {
+        "fr": "Une installation tourne déjà dans cette VM (make).",
+        "en": "An install is already running in this VM (make).",
+    },
+    (
+        "An offline deployment holds the cut: the relaunch would run without "
+        "Internet."
+    ): {
+        "fr": (
+            "Un déploiement hors ligne tient la coupure : la relance "
+            "tournerait sans Internet."
+        ),
+        "en": (
+            "An offline deployment holds the cut: the relaunch would run "
+            "without Internet."
+        ),
+    },
+    (
+        "255: ssh lost the connection; the install may still run in the VM. "
+        "The relaunch refuses to start while a make runs there."
+    ): {
+        "fr": (
+            "255 : ssh a perdu la connexion ; l'installation tourne peut-être "
+            "encore dans la VM. La relance refuse de partir tant qu'un make y "
+            "tourne."
+        ),
+        "en": (
+            "255: ssh lost the connection; the install may still run in the "
+            "VM. The relaunch refuses to start while a make runs there."
+        ),
+    },
+    (
+        "Each current log is kept as <log>.N; the relaunch writes a new one, "
+        "with the same parameters."
+    ): {
+        "fr": (
+            "Chaque journal actuel est gardé en <journal>.N ; la relance en "
+            "écrit un neuf, avec les mêmes paramètres."
+        ),
+        "en": (
+            "Each current log is kept as <log>.N; the relaunch writes a new "
+            "one, with the same parameters."
+        ),
+    },
+    "Relaunch {n} install(s)?": {
+        "fr": "Relancer {n} installation(s) ?",
+        "en": "Relaunch {n} install(s)?",
+    },
+    "Relaunched: {names}": {
+        "fr": "Relancée(s) : {names}",
+        "en": "Relaunched: {names}",
+    },
     # Ajout de VM depuis le suivi d'installation (touche « e »).
     "Add VMs": {
         "fr": "Ajouter des VM",

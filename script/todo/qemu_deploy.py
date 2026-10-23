@@ -2637,6 +2637,21 @@ class QemuDeployMixin:
             os.close(fd)
         return False
 
+    def _qemu_coupure_tenue_ailleurs(self):
+        """La coupure hors ligne est-elle tenue par un autre déploiement ?
+        Lecture seule, sans question : True si son guet attend encore ses
+        installations, ou s'il est en train de se lancer (verrou tenu).
+
+        Les deux, et pas le seul verrou : il tombe dès que le déploiement
+        hors ligne a confié la levée à son guet, alors que la table reste en
+        place jusqu'à la fin de sa dernière installation."""
+        from script.qemu import cache_offline
+
+        return (
+            self._qemu_shell(cache_offline.guet_actif_cmd()) == 0
+            or self._qemu_verrou_tenu_ailleurs()
+        )
+
     def _qemu_en_ligne_malgre_la_coupure(self):
         """Un déploiement EN LIGNE peut-il partir ? True si oui.
 

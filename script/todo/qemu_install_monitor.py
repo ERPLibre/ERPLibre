@@ -15,6 +15,7 @@ quitter le dashboard n'arrête rien, on peut le rouvrir pour ré-attacher.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import json
 import os
@@ -517,7 +518,22 @@ def launch_installs(
             "arch": vm.get("arch"),
             "log": log_path,
             "ssh": f"ssh erplibre@{vm['ip']}",
+            # Ce que relaunch_install rejoue à l'identique. La commande ne
+            # porte aucun secret — le cache, son autorité et la coupure hors
+            # ligne sont des arguments de la CRÉATION, pas de l'installation —
+            # et l'identité est le CHEMIN d'une clé, non son contenu.
+            "remote_cmd": cmd_vm,
+            # Début propre à la VM : une VM ajoutée ou relancée en cours de
+            # session ne part pas à l'heure de la session.
+            "started": time.time(),
         }
+        if identity:
+            entree["identity"] = identity
+        # Les décisions de l'hôte (cache, exception, miroir) : l'en-tête d'un
+        # journal relancé les redit. Les mêmes lignes que le journal, aucun
+        # secret.
+        if vm.get("notes"):
+            entree["notes"] = list(vm["notes"])
         # Une VM posée sur un hôte Proxmox : c'est LUI qui connaît son état.
         if vm.get("pve"):
             entree["pve"] = vm["pve"]
@@ -529,27 +545,14 @@ def launch_installs(
             entree["uuid"] = local_uuid(vm["name"])
         entries.append(entree)
     if session:
-        # Relu SOUS VERROU juste avant d'écrire : un autre ajout a pu passer
-        # depuis la première lecture. Le verrou porte sur le DOSSIER : le
-        # fichier, lui, change d'inode à chaque os.replace. Fichier
-        # temporaire unique, puis os.replace : un lecteur ne voit jamais un
-        # manifeste à moitié écrit.
-        verrou = os.open(str(logdir), os.O_RDONLY)
-        try:
-            fcntl.flock(verrou, fcntl.LOCK_EX)
-            manifest = json.loads(Path(session).read_text(encoding="utf-8"))
+
+        def ajoute(manifest):
             presents = {v.get("name") for v in manifest.get("vms", [])}
             manifest.setdefault("vms", []).extend(
                 e for e in entries if e["name"] not in presents
             )
-            fd, tmp = tempfile.mkstemp(
-                dir=str(logdir), prefix=".session-", suffix=".json"
-            )
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(json.dumps(manifest, indent=2))
-            os.replace(tmp, session)
-        finally:
-            os.close(verrou)
+
+        _rewrite_session(session, ajoute)
         return str(session)
     manifest = {
         "branch": branch,
@@ -563,6 +566,182 @@ def launch_installs(
     manifest_path = str(logdir / "session.json")
     Path(manifest_path).write_text(json.dumps(manifest, indent=2))
     return manifest_path
+
+
+@contextlib.contextmanager
+def _session_lock(session: str):
+    """Verrou exclusif sur le DOSSIER de la session : le fichier, lui,
+    change d'inode à chaque os.replace, et un verrou posé dessus ne
+    protégerait que l'ancien. Rend la main avec le verrou tenu."""
+    verrou = os.open(str(Path(session).parent), os.O_RDONLY)
+    try:
+        fcntl.flock(verrou, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(verrou)
+
+
+def _write_session(session: str, manifest: dict) -> None:
+    """Écrit le manifeste d'un bloc : fichier temporaire unique puis
+    os.replace, et un lecteur ne voit jamais un JSON à moitié écrit. À
+    appeler sous _session_lock."""
+    fd, tmp = tempfile.mkstemp(
+        dir=str(Path(session).parent), prefix=".session-", suffix=".json"
+    )
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(manifest, indent=2))
+    os.replace(tmp, session)
+
+
+def _rewrite_session(session: str, mutate) -> dict:
+    """Relit le manifeste SOUS VERROU, lui applique `mutate(manifest)`, puis
+    le réécrit. Relu juste avant d'écrire : un autre ajout ou une autre
+    relance a pu passer depuis la dernière lecture. Rend le manifeste écrit."""
+    with _session_lock(session):
+        manifest = json.loads(Path(session).read_text(encoding="utf-8"))
+        mutate(manifest)
+        _write_session(session, manifest)
+    return manifest
+
+
+# Préfixe de la commande RELANCÉE, exécuté dans la VM avant elle. Un échec
+# 255 dit que ssh a perdu la connexion, pas que l'installation s'est
+# arrêtée : lancée sans pty, elle continue dans la VM. Deux installations
+# dans le même dépôt se marcheraient dessus ; la relance refuse donc de
+# partir tant qu'un make de l'utilisateur tourne. Code 75 (EX_TEMPFAIL) :
+# réessayer plus tard est la bonne réponse.
+RELAUNCH_GUARD = (
+    'if pgrep -u "$(id -u)" -x make >/dev/null 2>&1; then '
+    'echo "{msg}"; exit 75; fi; '
+)
+
+
+class RelaunchRefused(Exception):
+    """La relance n'a pas lieu ; le message dit pourquoi, prêt à afficher."""
+
+
+def relaunch_refusal(manifest: dict, vm: dict | None) -> str:
+    """Pourquoi `vm` ne peut pas être relancée d'après le manifeste, ou "".
+
+    Une session hors ligne est refusée pour la même raison qu'un ajout : sa
+    coupure est levée par le guet de la session, qui ne couvre pas une
+    installation partie après lui, et le bilan hors ligne compterait une
+    installation faite en ligne. Une entrée sans « remote_cmd » vient d'un
+    suivi antérieur à la relance : rien ne dit ce qu'il faudrait rejouer."""
+    if vm is None:
+        return t("This VM is not in the session.")
+    if manifest.get("offline"):
+        return t("Relaunch is not available for an offline session.")
+    if not vm.get("remote_cmd"):
+        return t(
+            "This session predates relaunch: its install command was not"
+            " kept. Deploy the VM again."
+        )
+    return ""
+
+
+def _next_rotation(log_path: str) -> str:
+    """Premier « <journal>.N » libre, N à partir de 1."""
+    n = 1
+    while Path(f"{log_path}.{n}").exists():
+        n += 1
+    return f"{log_path}.{n}"
+
+
+def relaunch_install(session: str, name: str, ip: str = "") -> dict:
+    """Relance l'installation de la VM `name`, dont la dernière a échoué.
+
+    Sous le verrou de la session : relit le manifeste et l'état du journal
+    SUR LE DISQUE — un autre suivi ouvert sur la même session a pu relancer
+    entre-temps, et son journal neuf, sans marqueur, se lit « running » —,
+    puis met l'ancien journal de côté en « <journal>.N » et en écrit un neuf.
+    Écrire à la suite laisserait l'ancien marqueur d'échec dans les derniers
+    4 Kio que lit read_status : la ligne repasserait aussitôt en ❌, et les
+    erreurs des deux essais se mêleraient. L'entrée gagne « started »
+    (l'heure de la relance), « relaunches » et « previous_logs ».
+
+    La commande est celle du lancement, précédée de RELAUNCH_GUARD, et
+    rejouée par _launch_one avec les mêmes paramètres : « reboot » et
+    « emulated » se déduisent de la commande et de l'architecture. Lève
+    RelaunchRefused avec la raison si la relance n'a pas lieu. Rend
+    l'entrée mise à jour.
+
+    `ip` : l'adresse que le suivi connaît EN MÉMOIRE, plus fraîche que celle
+    du manifeste, qu'il ne réécrit pas. Vide, celle du manifeste. Une VM
+    Proxmox garde toujours la sienne : c'est l'alias ssh qui porte le rebond
+    par l'hôte.
+
+    Une VM locale dont l'UUID est connu doit être ENCORE ce domaine : le
+    lanceur résout l'adresse par le NOM, et un nom repris par un déploiement
+    plus récent, ou un domaine effacé dont l'ancienne adresse a été rendue
+    à une autre VM, enverraient l'installation sur une autre machine. Un
+    UUID illisible ou différent refuse. Une VM Proxmox n'a pas cette
+    vérification : son alias ssh désigne la VM par son hôte et son vmid.
+
+    Un échec après la mise de côté — disque plein à l'écriture du journal,
+    fork refusé au lancement — remet l'ancien journal en place : la VM reste
+    en échec, donc relançable, au lieu d'un journal sans marqueur qui se
+    lirait « en cours » pour toujours. Le manifeste n'est écrit qu'une fois
+    le lanceur parti."""
+    when = time.strftime("%Y-%m-%d %H:%M:%S")
+    with _session_lock(session):
+        manifest = json.loads(Path(session).read_text(encoding="utf-8"))
+        vm = next(
+            (v for v in manifest.get("vms", []) if v.get("name") == name),
+            None,
+        )
+        refus = relaunch_refusal(manifest, vm)
+        if refus:
+            raise RelaunchRefused(refus)
+        etat, _code = read_status(vm["log"])
+        if etat != "failed":
+            raise RelaunchRefused(
+                t("Only a failed install can be relaunched.")
+            )
+        if vm.get("uuid") and not vm.get("pve"):
+            if local_uuid(name) != vm["uuid"]:
+                raise RelaunchRefused(
+                    t(
+                        "The domain {name} is no longer the deployed VM"
+                        " (deleted, or its name reused): relaunch refused."
+                    ).format(name=name)
+                )
+        if ip and not vm.get("pve"):
+            vm["ip"] = ip
+            vm["ssh"] = f"ssh erplibre@{ip}"
+        ancien = _next_rotation(vm["log"])
+        os.replace(vm["log"], ancien)
+        try:
+            rang = int(vm.get("relaunches") or 0) + 1
+            note = t("Relaunch {n}; previous log: {path}").format(
+                n=rang, path=ancien
+            )
+            en_tete = dict(vm, notes=list(vm.get("notes") or []) + [note])
+            Path(vm["log"]).write_text(
+                _log_header(en_tete, manifest.get("branch") or "", when)
+            )
+            garde = RELAUNCH_GUARD.format(
+                msg=t("An install is already running in this VM (make).")
+            )
+            _launch_one(
+                vm["ip"],
+                garde + vm["remote_cmd"],
+                vm["log"],
+                vm["name"],
+                installs=bool(manifest.get("branch")),
+                pve=bool(vm.get("pve")),
+                reboot=reboot_expected(vm["remote_cmd"]),
+                emulated=is_emulated(vm.get("arch")),
+                identity=vm.get("identity") or "",
+            )
+        except OSError as exc:
+            os.replace(ancien, vm["log"])
+            raise RelaunchRefused(str(exc)) from exc
+        vm["relaunches"] = rang
+        vm["started"] = time.time()
+        vm["previous_logs"] = list(vm.get("previous_logs") or []) + [ancien]
+        _write_session(session, manifest)
+    return vm
 
 
 def local_uuid(name: str) -> str:
@@ -928,11 +1107,26 @@ def _port_open(ip: str, port: int = 8069, timeout: float = 0.5) -> bool:
         return False
 
 
+def _inode(path: str):
+    """Inode du journal, ou None s'il est illisible."""
+    try:
+        return os.stat(path).st_ino
+    except OSError:
+        return None
+
+
 def _read_new(path: str, offset: int) -> tuple[str, int]:
     """Lit le log à partir de `offset` (lecture incrémentale). Renvoie
-    (nouveau_texte, nouvel_offset). Bloquant -> à appeler dans un thread."""
+    (nouveau_texte, nouvel_offset). Bloquant -> à appeler dans un thread.
+
+    Un offset au-delà de la fin dit que le journal a été REMPLACÉ — mis de
+    côté par une relance, ici ou dans un autre suivi — : la lecture repart
+    du début du nouveau, au lieu de rester muette jusqu'à ce qu'il dépasse
+    la taille de l'ancien."""
     try:
         with open(path, "r", errors="replace") as fh:
+            if offset > os.fstat(fh.fileno()).st_size:
+                offset = 0
             fh.seek(offset)
             data = fh.read()
             return data, fh.tell()
@@ -2477,6 +2671,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
             ("e", "add_vms", t("Add VMs")),
+            ("r", "relaunch", t("Relaunch")),
+            ("R", "relaunch_failed", t("Relaunch all failed")),
         ]
 
         def __init__(self):
@@ -2491,6 +2687,10 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             # (réduit fortement l'I/O sur un gros parc). Valeur = (état, code,
             # durée à la complétion).
             self._final = {}
+            # Inode du journal au moment de l'échec. Un autre suivi qui
+            # relance la VM met ce journal de côté : l'inode change, et la
+            # ligne quitte son ❌ ici aussi (_tick_table).
+            self._final_ino = {}
             # Cache des cellules AFFICHÉES : on n'appelle update_cell (donc on
             # ne re-render) que si la valeur CHANGE -> plus de churn de rendu.
             self._cells = {}
@@ -2817,6 +3017,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     self._odoo_up.discard(nom_vm)
             try:
                 table = self.query_one("#vms", DataTable)
+                self._adopt_relaunches()
                 now = time.time()
                 remaining = []
                 for vm in vms:
@@ -2841,7 +3042,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         self._final[name] = (
                             "deleted",
                             None,
-                            max(0.0, finished_at(vm["log"], now) - started),
+                            max(
+                                0.0,
+                                finished_at(vm["log"], now)
+                                - vm.get("started", started),
+                            ),
                         )
                         # Icône seule (VM effacée) : évite « ❌ effacée » (10
                         # cellules) qui forçait une colonne État large.
@@ -2854,10 +3059,15 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     if state in ("done", "failed"):
                         # Bornée à la dernière écriture du log, pas à l'instant
                         # présent : le suivi peut être rouvert bien plus tard.
+                        # Depuis le début propre à la VM : une VM relancée ou
+                        # ajoutée ne compte pas le temps passé avant elle.
                         elapsed = max(
-                            0.0, finished_at(vm["log"], now) - started
+                            0.0,
+                            finished_at(vm["log"], now)
+                            - vm.get("started", started),
                         )
                         self._final[name] = (state, code, elapsed)
+                        self._final_ino[name] = _inode(vm["log"])
                         # Les échecs sont enregistrés eux aussi (ok=False) :
                         # sans eux, aucun taux de réussite n'est calculable.
                         record_duration(
@@ -2894,7 +3104,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         )
                         ref = eta_reference(self._stats, vm.get("arch"))
                         if ref is not None:
-                            remaining.append(max(0, ref - (now - started)))
+                            debut = vm.get("started", started)
+                            remaining.append(max(0, ref - (now - debut)))
                 done = len(self._final)
                 eta = (
                     f" · ETA ~{_fmt_secs(max(remaining))}" if remaining else ""
@@ -3001,11 +3212,16 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             if not vm:
                 return
             name = vm["name"]
+            depart = self._offsets.get(name, 0)
             try:
                 new, off = await asyncio.to_thread(
-                    _read_new, vm["log"], self._offsets.get(name, 0)
+                    _read_new, vm["log"], depart
                 )
             except Exception:
+                return
+            # Une relance a remis l'offset à zéro pendant la lecture : ce
+            # résultat vient de l'ancien journal.
+            if self._offsets.get(name, 0) != depart:
                 return
             self._offsets[name] = off
             for line in new.splitlines():
@@ -3469,7 +3685,17 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             et repartait de plus belle à chaque réouverture."""
             if len(self._final) < len(vms) or not self._final:
                 return now - started
-            return max(e for _s, _c, e in self._final.values())
+            # Fin de la dernière VM, sur l'horloge de la SESSION : une VM
+            # relancée ou ajoutée mesure sa durée depuis son propre début, et
+            # le plus long de ces écarts n'est pas la durée de la session.
+            return (
+                max(
+                    (v.get("started", started) + self._final[v["name"]][2])
+                    for v in vms
+                    if v["name"] in self._final
+                )
+                - started
+            )
 
         def action_vm_actions(self) -> None:
             """Ouvre les actions de la VM sélectionnée."""
@@ -3543,6 +3769,169 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 ),
                 confirmed,
             )
+
+        def _failed_names(self):
+            """VM dont l'installation a échoué, dans l'ordre du tableau. Une
+            VM effacée depuis son échec n'en est plus : relancée, elle
+            enverrait l'installation à l'adresse qu'elle avait."""
+            return [
+                vm["name"]
+                for vm in vms
+                if (self._final.get(vm["name"]) or ("",))[0] == "failed"
+                and self._domstate.get(vm["name"]) != "gone"
+            ]
+
+        def action_relaunch(self) -> None:
+            """Relance l'installation de la VM sélectionnée, si elle a
+            échoué."""
+            name = self._selected
+            if name not in self._failed_names():
+                self.notify(t("Only a failed install can be relaunched."))
+                return
+            self._ask_relaunch([name])
+
+        def action_relaunch_failed(self) -> None:
+            """Relance toutes les installations en échec de la session."""
+            noms = self._failed_names()
+            if not noms:
+                self.notify(t("No failed install to relaunch."))
+                return
+            self._ask_relaunch(noms)
+
+        def _ask_relaunch(self, noms) -> None:
+            """Confirme, puis relance. Une session hors ligne, ou une coupure
+            tenue par un autre déploiement, sont refusées AVANT la question :
+            la relance tournerait sans Internet sans l'avoir demandé."""
+            # Les mêmes refus que relaunch_install, dits avant la question
+            # plutôt qu'après : le suivi a chargé le manifeste, et une entrée
+            # sans commande vient d'un suivi antérieur à la relance.
+            refus = next(
+                (
+                    r
+                    for r in (
+                        relaunch_refusal(manifest, self._vm_by_name(n))
+                        for n in noms
+                    )
+                    if r
+                ),
+                "",
+            )
+            if not refus and todo is not None:
+                tenu = getattr(todo, "_qemu_coupure_tenue_ailleurs", None)
+                if tenu is not None and tenu():
+                    refus = t(
+                        "An offline deployment holds the cut: the relaunch"
+                        " would run without Internet."
+                    )
+            if refus:
+                self.notify(refus, severity="warning")
+                return
+            lignes = []
+            for nom in noms:
+                code = (self._final.get(nom) or ("", None))[1]
+                lignes.append(f"• {nom} — ❌ ({code})")
+                if code == 255:
+                    lignes.append(
+                        "  "
+                        + t(
+                            "255: ssh lost the connection; the install may"
+                            " still run in the VM. The relaunch refuses to"
+                            " start while a make runs there."
+                        )
+                    )
+            lignes.append(
+                t(
+                    "Each current log is kept as <log>.N; the relaunch writes"
+                    " a new one, with the same parameters."
+                )
+            )
+
+            def confirmed(yes):
+                if yes:
+                    self.run_worker(
+                        self._relaunch_worker(noms),
+                        exclusive=False,
+                        group="relaunch",
+                    )
+
+            self.push_screen(
+                ConfirmScreen(
+                    t("Relaunch {n} install(s)?").format(n=len(noms)),
+                    lignes,
+                    t("Relaunch"),
+                ),
+                confirmed,
+            )
+
+        async def _relaunch_worker(self, noms):
+            """Relance chaque VM hors de la boucle d'événements (verrou,
+            fichiers, Popen), puis remet sa ligne à zéro."""
+            relancees, refus = [], []
+            for nom in noms:
+                vm = self._vm_by_name(nom)
+                try:
+                    entree = await asyncio.to_thread(
+                        relaunch_install,
+                        manifest_path,
+                        nom,
+                        (vm or {}).get("ip") or "",
+                    )
+                except RelaunchRefused as exc:
+                    refus.append(f"{nom} : {exc}")
+                    continue
+                except OSError as exc:
+                    refus.append(f"{nom} : {exc}")
+                    continue
+                self._reset_row(nom, entree)
+                relancees.append(nom)
+            if relancees:
+                self.notify(
+                    t("Relaunched: {names}").format(names=", ".join(relancees))
+                )
+            if refus:
+                self.notify("\n".join(refus), severity="warning", timeout=20)
+            await self._tick_table()
+
+        def _adopt_relaunches(self) -> None:
+            """Remet à zéro les lignes en échec dont le journal a été
+            remplacé depuis : une relance faite par un autre suivi ouvert
+            sur la même session. L'entrée relue dans le manifeste donne le
+            nouveau début de la VM."""
+            for nom in self._failed_names():
+                vm = self._vm_by_name(nom)
+                ino = _inode(vm["log"])
+                if ino is None or ino == self._final_ino.get(nom, ino):
+                    continue
+                try:
+                    lu = json.loads(
+                        Path(manifest_path).read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    continue
+                entree = next(
+                    (v for v in lu.get("vms", []) if v.get("name") == nom), {}
+                )
+                self._reset_row(nom, entree)
+
+        def _reset_row(self, nom, entree) -> None:
+            """Remet la ligne de `nom` à l'état d'une installation qui part :
+            hors des états terminaux mémorisés, compteurs d'erreurs vidés,
+            journal relu depuis le début. L'entrée en mémoire reprend ce que
+            la relance a écrit dans le manifeste."""
+            vm = self._vm_by_name(nom)
+            if vm is not None:
+                for cle in ("ip", "ssh", "started", "relaunches"):
+                    if cle in entree:
+                        vm[cle] = entree[cle]
+            self._final.pop(nom, None)
+            self._errcount.pop(nom, None)
+            self._offsets[nom] = 0
+            table = self.query_one("#vms", DataTable)
+            self._set_cell(table, nom, "err", "")
+            self._set_cell(table, nom, "state", "-")
+            self._set_cell(table, nom, "elapsed", "--:--")
+            if nom == self._selected:
+                self._load_selected_log(reset=True)
 
         def action_pause_all(self) -> None:
             """Met en PAUSE (virsh suspend) toutes les VM en cours d'exécution.
