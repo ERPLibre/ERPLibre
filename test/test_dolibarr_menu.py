@@ -117,6 +117,12 @@ class TestChoixDeLInstance(Banc):
         lances, _s = self.lancer("start")
         self.assertEqual(lances, [])
 
+    def test_a_development_container_instance_is_offered_too(self):
+        # run.py la pilote par son moteur.
+        self.registre = {"ctr": dict(DEV, runtime="container")}
+        lances, _s = self.lancer("start")
+        self.assertEqual(lances, [f"{RUN} start --instance ctr"])
+
     def test_status_covers_every_instance_without_asking(self):
         self.registre = {"aaa": dict(DEV), "zzz": dict(DEV)}
         lances, _s = self.lancer("status")

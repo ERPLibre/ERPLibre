@@ -331,5 +331,146 @@ class TestLogs(Banc):
         self.assertIn("dernier message", sortie)
 
 
+NOMS = (
+    "erplibre-dolibarr-ctr-db",
+    "erplibre-dolibarr-ctr-web",
+    "erplibre-dolibarr-ctr-cron",
+)
+
+
+class SystemeConteneurs(Systeme):
+    """Le même système, plus un moteur de conteneurs en mémoire."""
+
+    def __init__(self):
+        super().__init__()
+        self.conteneurs = {nom: "exited" for nom in NOMS}
+        self.page = "<title>Login @ 24.0.0</title>"
+
+    def engine(self, moteur):
+        return {
+            "moteur": moteur,
+            "sans_sudo": True,
+            "avec_sudo": False,
+            "rootless": True,
+            "docker_host": None,
+        }
+
+    def call(self, argv):
+        if argv[0] not in ("podman", "docker"):
+            return super().call(argv)
+        self.lances.append(argv)
+        verbe = argv[1:]
+        if verbe[:2] == ["container", "inspect"]:
+            etat = self.conteneurs.get(verbe[-1])
+            if etat is None:
+                return 125, "no such container"
+            return 0, "true" if etat == "running" else "false"
+        if verbe[0] in ("start", "stop"):
+            for nom in verbe[1:]:
+                self.conteneurs[nom] = (
+                    "running" if verbe[0] == "start" else "exited"
+                )
+            return 0, "\n".join(verbe[1:])
+        if verbe[0] == "logs":
+            return 0, f"journal de {verbe[-1]}"
+        return 0, ""
+
+
+class BancConteneur(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.racine = Path(tmp.name)
+        registre = self.racine / "private" / "dolibarr" / "instances.json"
+        registre.parent.mkdir(parents=True)
+        registre.write_text(
+            json.dumps(
+                {
+                    "instances": {
+                        "ctr": {
+                            "mode": "dev",
+                            "runtime": "container",
+                            "engine": "podman",
+                            "containers": list(NOMS),
+                            "port": 8081,
+                            "url": "http://127.0.0.1:8081",
+                            "version": "24.0.0",
+                        }
+                    }
+                }
+            )
+        )
+        self.sys = SystemeConteneurs()
+
+    def lancer(self, *argv):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = run_mod.main(
+                list(argv), root=str(self.racine), system=self.sys
+            )
+        return code, sortie.getvalue()
+
+    def moteur(self):
+        return [a for a in self.sys.lances if a[0] == "podman"]
+
+
+class TestConteneurs(BancConteneur):
+    def test_start_starts_the_database_then_the_site_then_cron(self):
+        code, sortie = self.lancer("start", "--instance", "ctr")
+        self.assertEqual(code, 0, sortie)
+        self.assertIn(["podman", "start", *NOMS], self.moteur())
+        self.assertIn("24.0.0", sortie)
+        self.assertIn("http://127.0.0.1:8081", sortie)
+
+    def test_stop_stops_cron_then_the_site_then_the_database(self):
+        self.sys.conteneurs = {nom: "running" for nom in NOMS}
+        code, _sortie = self.lancer("stop", "--instance", "ctr")
+        self.assertEqual(code, 0)
+        self.assertIn(["podman", "stop", *reversed(NOMS)], self.moteur())
+        self.assertEqual(set(self.sys.conteneurs.values()), {"exited"})
+
+    def test_status_reads_the_three_containers(self):
+        self.sys.conteneurs = {nom: "running" for nom in NOMS}
+        _code, sortie = self.lancer("status")
+        self.assertIn(
+            f"ctr: {run_mod.t(run_mod.STATE_LABELS['running'])}", sortie
+        )
+        self.sys.conteneurs[NOMS[2]] = "exited"
+        _code, sortie = self.lancer("status", "--instance", "ctr")
+        self.assertIn(
+            run_mod.t(run_mod.CONTAINER_LABELS["half running"]), sortie
+        )
+
+    def test_a_missing_container_is_said_and_not_started(self):
+        del self.sys.conteneurs[NOMS[1]]
+        code, sortie = self.lancer("start", "--instance", "ctr")
+        self.assertEqual(code, 1)
+        self.assertIn(run_mod.t(run_mod.CONTAINER_LABELS["missing"]), sortie)
+        self.assertFalse([a for a in self.moteur() if a[1] == "start"])
+
+    def test_a_running_instance_is_left_alone(self):
+        self.sys.conteneurs = {nom: "running" for nom in NOMS}
+        code, _sortie = self.lancer("start", "--instance", "ctr")
+        self.assertEqual(code, 0)
+        self.assertFalse([a for a in self.moteur() if a[1] == "start"])
+
+    def test_a_taken_port_refuses_to_start(self):
+        self.sys.ports_pris.add(8081)
+        code, _sortie = self.lancer("start", "--instance", "ctr")
+        self.assertEqual(code, 1)
+        self.assertFalse([a for a in self.moteur() if a[1] == "start"])
+
+    def test_logs_show_the_site_and_cron_containers(self):
+        _code, sortie = self.lancer(
+            "logs", "--instance", "ctr", "--lines", "5"
+        )
+        for nom in NOMS[1:]:
+            with self.subTest(nom=nom):
+                self.assertIn(
+                    ["podman", "logs", "--tail", "5", nom], self.moteur()
+                )
+                self.assertIn(f"journal de {nom}", sortie)
+
+
 if __name__ == "__main__":
     unittest.main()
