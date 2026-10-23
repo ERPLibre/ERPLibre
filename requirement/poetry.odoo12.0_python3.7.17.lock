@@ -2020,36 +2020,34 @@ files = [
 
 [[package]]
 name = "libsass"
-version = "0.12.3"
-description = "SASS for Python: A straightforward binding of libsass for Python."
+version = "0.17.0"
+description = "Sass for Python: A straightforward binding of libsass for Python."
 optional = false
 python-versions = "*"
 files = [
-    {file = "libsass-0.12.3-cp27-cp27m-macosx_10_11_x86_64.whl", hash = "sha256:ff07c2c55f9d73d9f57cded30138ff99dfbb9fe7fbc71a4bbb43aa067ad2beed"},
-    {file = "libsass-0.12.3-cp27-cp27m-win32.whl", hash = "sha256:2fb999d978e9cc8f7459f8f07a8acf9fc03d6e9fa95fcf98169bf0a5ede81eb6"},
-    {file = "libsass-0.12.3-cp27-cp27m-win_amd64.whl", hash = "sha256:d2b77e43726cd658b1bc13f1a2df543dc34c9f945a9144faecc88ca03fe581ff"},
-    {file = "libsass-0.12.3-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:edb366b784c58c635ace69ef392e5ad3a42690aeac80d43521c64e0ee7706331"},
-    {file = "libsass-0.12.3-cp34-cp34m-manylinux1_x86_64.whl", hash = "sha256:ebf413799057a4dd59d85ceb533935f171117565053341e3714e4cb05253bbbf"},
-    {file = "libsass-0.12.3-cp34-cp34m-win32.whl", hash = "sha256:815d60626b329db2943c5d331a5b74d36eb2e441047ae2bd6ad8d1b2c14cfc5d"},
-    {file = "libsass-0.12.3-cp34-cp34m-win_amd64.whl", hash = "sha256:cd20479d80cdb49ba7007611d8a9a7004579d54552e010277764c19d82233a51"},
-    {file = "libsass-0.12.3-cp35-cp35m-macosx_10_12_x86_64.whl", hash = "sha256:38e9b9b08d299793fffa7b5003d473a6c537e495117f2c44787e3437a5e38f90"},
-    {file = "libsass-0.12.3-cp35-cp35m-macosx_10_6_intel.whl", hash = "sha256:28a490f350d38fa3a16da8a52e5ae685e71c8938a7b87cf2d58aee892f30c756"},
-    {file = "libsass-0.12.3-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:a1e3f19ef392badcc87ad75d8988b1720a4d4f5a506f2f52ebb781300c57136d"},
-    {file = "libsass-0.12.3-cp35-cp35m-win32.whl", hash = "sha256:64414697e65da4bfb47f0e11471bf5c79e1dd81e10e2e4b1a70f8ed1cdc33f5b"},
-    {file = "libsass-0.12.3-cp35-cp35m-win_amd64.whl", hash = "sha256:b8f8cf7c5ee16d217541e6b34def3f45286545077301adc4f54e94977fc69c9f"},
-    {file = "libsass-0.12.3-cp36-cp36m-macosx_10_12_x86_64.whl", hash = "sha256:c3ea0cbb36745b6cc10278539e0bf93a426f2f497306181fc6214193f493b8d5"},
-    {file = "libsass-0.12.3-cp36-cp36m-macosx_10_6_intel.whl", hash = "sha256:ec659d4d2f60d95160e60f7f52d569bf1b29318018b6f07f8706ff6d4bc04de7"},
-    {file = "libsass-0.12.3-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:b064ccedb51b874c725a40f03fc952afd85bd6f5369d41aa74f393ff3388b9e1"},
-    {file = "libsass-0.12.3-cp36-cp36m-win32.whl", hash = "sha256:cf43ea1a69bab2836fc953e3d73f32d15efdcbf44c6082df36dd12c76ff59322"},
-    {file = "libsass-0.12.3-cp36-cp36m-win_amd64.whl", hash = "sha256:55cb32142f8c5f449edcb4baf040b553d59a604c8957aa177d26782a06d0eb6f"},
-    {file = "libsass-0.12.3.tar.gz", hash = "sha256:236762af9c693bb72ed92d65ff4a5a77d27af9494b6174fbec7e6308416673b0"},
+    {file = "libsass-0.17.0-cp27-cp27m-macosx_10_14_intel.whl", hash = "sha256:bf6b7ad08f287695338f050c80f79d258a405e5c349cdaeb9be5d5376c09e37a"},
+    {file = "libsass-0.17.0-cp27-cp27m-win32.whl", hash = "sha256:411833c623288138744865d882f5226f6db52afce1e19f42722c416df9d308dc"},
+    {file = "libsass-0.17.0-cp27-cp27m-win_amd64.whl", hash = "sha256:66e3062ff508c81928e35c66702f0cc4f70fb12eb76ba23eeb0ff87a6340cc13"},
+    {file = "libsass-0.17.0-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:0da943e00e028211cb4bb91496a20becab9fe82407bb75266ec4212af04acb45"},
+    {file = "libsass-0.17.0-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:b3e4abf50ad3a6bec25acd0c67495301cab6137aa79b8640364276f7f3712586"},
+    {file = "libsass-0.17.0-cp35-cp35m-win32.whl", hash = "sha256:75605a97f4b2f47fafc5a372f09efec210c7f33908c6de726362f85489fd53aa"},
+    {file = "libsass-0.17.0-cp35-cp35m-win_amd64.whl", hash = "sha256:7c7a531b8cd786c35170e97338be2e73a74806f95539366a8ee837df94b8a8cf"},
+    {file = "libsass-0.17.0-cp36-cp36m-macosx_10_14_x86_64.whl", hash = "sha256:a19041e78d5bb7c5d72e010e893c29119693628b6ee06025503ab2584cf24edd"},
+    {file = "libsass-0.17.0-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:107591ba2c0d173bb1705bef0e9fd04a5b6f482f3584f4ea51b28ab8b137fbb2"},
+    {file = "libsass-0.17.0-cp36-cp36m-win32.whl", hash = "sha256:4bf7a80a956da9de9715436b85343a179da4ff399a6e9a1694e70bff93d43099"},
+    {file = "libsass-0.17.0-cp36-cp36m-win_amd64.whl", hash = "sha256:55b77204cfa363142ab02c49ee871321a396b8e51f6361ebc226c3953c780541"},
+    {file = "libsass-0.17.0-cp37-cp37m-macosx_10_14_x86_64.whl", hash = "sha256:1aeadc155594af23879e27792667dc06e7f248c2c599c40ff2a7335193abdf05"},
+    {file = "libsass-0.17.0-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:53be1c6cea9458fc0b59fafff5307d63cbde4d6f8a4413fb52ae467566273357"},
+    {file = "libsass-0.17.0-cp37-cp37m-win32.whl", hash = "sha256:747e1cb3624b25ce9104315cf98b080246c5112d008cba6536a7dd2edb16fcc2"},
+    {file = "libsass-0.17.0-cp37-cp37m-win_amd64.whl", hash = "sha256:fcbc861a001ffd68c4df00164b41c6152d5451185d06c654ac240d811be9f7e2"},
+    {file = "libsass-0.17.0.tar.gz", hash = "sha256:953ebe810f09d81b84ccafdca0fb6171d1b58c8f0147cb650184a41e124e296f"},
 ]
 
 [package.dependencies]
 six = "*"
 
 [package.extras]
-upload-appveyor-builds = ["twine (==1.5.0)"]
+upload-appveyor-builds = ["twine (==1.11.0)"]
 
 [[package]]
 name = "lxml"
@@ -6323,4 +6321,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.7.16,<3.8"
-content-hash = "98ad947ce0fabd528bab1f8eb6b81e8528ea8a0238a64586c5fcbe9b165dd697"
+content-hash = "613109621116f43cb3ba07b9f444693ff8c29acc5acaba8d5fce5b1bbd88c835"
