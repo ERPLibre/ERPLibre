@@ -622,6 +622,25 @@ class TestFormulaireQemu(AsyncCase):
             await pilote.press("f6")
         app._hist_settle()
 
+    async def test_a_row_field_gone_from_the_dom_is_ignored(self):
+        """À la fermeture, l'écran retire ses widgets pendant que les
+        Input.Changed de leur montage attendent encore : le champ est de la
+        génération courante, mais plus dans le DOM. Le retrait d'un seul
+        champ reproduit cet état sans dépendre de la charge."""
+        from textual.widgets import Input
+
+        app = self.app
+        async with app.run_test(size=(200, 50)) as pilote:
+            await self.ouvert(pilote)
+            await pilote.press("f6")
+            await self.calme(pilote)
+            saisie = app.query_one("#c0_disk", Input)
+            await saisie.remove()
+            self.assertTrue(app._is_current(saisie))
+            avant = {k: dict(v) for k, v in app.overrides.items()}
+            app.on_input_changed(Input.Changed(saisie, "50G"))
+            self.assertEqual(avant, app.overrides)
+
     async def test_nothing_to_undo_says_so(self):
         app = self.app
         async with app.run_test(size=(200, 50)) as pilote:
