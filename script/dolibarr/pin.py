@@ -12,8 +12,11 @@ montre ce qui changerait ; --apply l'écrit. Le manifest (commit, branche)
 et conf/supported_version_dolibarr.json (version, branche, image) changent
 ensemble : read_pin refuse un couple qui ne s'accorde pas.
 
-L'étiquette de l'image Docker ne suit la version que si le Hub la publie :
-l'image officielle paraît souvent après la version.
+Les images sont épinglées par empreinte (dépôt:étiquette@sha256:…), lue au
+Hub à chaque update : une image reconstruite sous la même étiquette
+(correctifs de PHP, de MariaDB) déplace l'épinglage. L'étiquette de l'image
+Dolibarr ne suit la version que si le Hub la publie : l'image officielle
+paraît souvent après la version. Un Hub injoignable garde les images.
 
 Codes de sortie : 0 rien à faire ou écrit, 1 refus, 2 épinglage
 illisible, 3 (PENDING) des changements montrés et non écrits.
@@ -42,12 +45,12 @@ from script.dolibarr import lib_dolibarr  # noqa: E402
 ROOT = new_path
 UPSTREAM = "https://github.com/Dolibarr/dolibarr.git"
 RAW = "https://raw.githubusercontent.com/Dolibarr/dolibarr"
-HUB_TAG = "https://hub.docker.com/v2/repositories/dolibarr/dolibarr/tags/"
-IMAGE = "docker.io/dolibarr/dolibarr"
+HUB = "https://hub.docker.com/v2/repositories"
 
 # Code de sortie d'un essai à blanc qui a trouvé quoi changer.
 PENDING = 3
 
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _MAJOR = re.compile(r"define\('DOL_MAJOR_VERSION',\s*'([0-9]+)'\)")
 _MINOR = re.compile(r"define\('DOL_MINOR_VERSION',\s*'([0-9][0-9.]*)'\)")
 _FULL = re.compile(r"define\('DOL_VERSION',\s*'([0-9][0-9.]*)'\)")
@@ -122,12 +125,37 @@ class Network:
         except (urllib.error.URLError, OSError):
             return None
 
-    def hub_has(self, tag):
+    def hub_digest(self, repo, tag):
+        """Empreinte de l'index de `repo`:`tag` au Hub, ou None."""
+        path = repo.removeprefix("docker.io/")
         try:
-            with urllib.request.urlopen(HUB_TAG + tag, timeout=30) as resp:
-                return resp.status == 200
-        except (urllib.error.URLError, OSError):
-            return False
+            with urllib.request.urlopen(
+                f"{HUB}/{path}/tags/{tag}", timeout=30
+            ) as resp:
+                digest = json.load(resp).get("digest")
+        except (urllib.error.URLError, OSError, ValueError):
+            return None
+        return digest if _DIGEST.fullmatch(digest or "") else None
+
+
+def split_image(ref):
+    """(dépôt, étiquette, empreinte ou None) d'une référence d'image."""
+    ref, _at, digest = ref.partition("@")
+    repo, _colon, tag = ref.rpartition(":")
+    return repo, tag, digest or None
+
+
+def image_ref(repo, tag, digest):
+    return f"{repo}:{tag}@{digest}" if digest else f"{repo}:{tag}"
+
+
+def refreshed_image(net, current, tag=None):
+    """`current` à l'étiquette `tag` (la sienne par défaut), empreinte lue
+    au Hub ; `current` tel quel si le Hub ne connaît pas cette étiquette."""
+    repo, own_tag, _digest = split_image(current)
+    tag = tag or own_tag
+    digest = net.hub_digest(repo, tag)
+    return image_ref(repo, tag, digest) if digest else current
 
 
 def target(net, branch, tag):
@@ -180,16 +208,17 @@ def cmd_update(root, pin, net, branch, tag, apply):
         return 1
     # L'image paraît souvent après la version : elle se rattrape même
     # quand le commit, lui, ne bouge plus.
-    image, wanted = pin["docker_image"], f"{IMAGE}:{version}"
-    if image != wanted:
-        if net.hub_has(version):
-            image = wanted
-        else:
-            print(
-                t("No %s image on Docker Hub yet: keeping %s.")
-                % (version, image)
-            )
-    if same and image == pin["docker_image"]:
+    image = refreshed_image(net, pin["docker_image"], version)
+    if split_image(image)[1] != version:
+        image = refreshed_image(net, pin["docker_image"])
+        print(
+            t("No %s image on Docker Hub yet: keeping %s.") % (version, image)
+        )
+    mariadb = refreshed_image(net, pin["mariadb_image"])
+    images_same = (
+        image == pin["docker_image"] and mariadb == pin["mariadb_image"]
+    )
+    if same and images_same:
         print(t("Already pinned on %s.") % commit[:7])
         return 0
     print(
@@ -203,8 +232,12 @@ def cmd_update(root, pin, net, branch, tag, apply):
             branch,
         )
     )
-    if image != pin["docker_image"]:
-        print(t("Image %s -> %s") % (pin["docker_image"], image))
+    for old, new in (
+        (pin["docker_image"], image),
+        (pin["mariadb_image"], mariadb),
+    ):
+        if new != old:
+            print(t("Image %s -> %s") % (old, new))
     if not apply:
         print(t("Nothing written: add --apply."))
         return PENDING
@@ -214,7 +247,12 @@ def cmd_update(root, pin, net, branch, tag, apply):
         manifest = rewrite_manifest(f.read(), commit, branch)
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
-    data.update(version=version, branch=branch, docker_image=image)
+    data.update(
+        version=version,
+        branch=branch,
+        docker_image=image,
+        mariadb_image=mariadb,
+    )
     with open(manifest_path, "w", encoding="utf-8") as f:
         f.write(manifest)
     with open(json_path, "w", encoding="utf-8") as f:
