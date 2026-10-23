@@ -258,17 +258,18 @@ class TestProduction(Banc):
             "sudo rm -f /etc/nginx/sites-available/erplibre-dolibarr-erp"
             " /etc/nginx/sites-enabled/erplibre-dolibarr-erp",
             "sudo systemctl reload nginx",
-            "sudo rm -rf /opt/erplibre-dolibarr/erp",
+            # Les arbres laissés par une montée partent aussi : leur conf.php
+            # garde le groupe du compte supprimé, que le prochain compte
+            # système reçoit.
+            "sudo rm -rf /opt/erplibre-dolibarr/erp /opt/erplibre-dolibarr/erp.new"
+            " /opt/erplibre-dolibarr/erp.prev /opt/erplibre-dolibarr/erp.failed",
             "sudo rm -rf /var/lib/erplibre-dolibarr/erp",
             "sudo rm -rf /etc/erplibre-dolibarr/erp",
         ]
         for attendu in attendus:
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, cmds)
-        self.assertLess(
-            cmds.index(attendus[0]),
-            cmds.index("sudo rm -rf /opt/erplibre-dolibarr/erp"),
-        )
+        self.assertLess(cmds.index(attendus[0]), cmds.index(attendus[8]))
         compte = [c for c in cmds if c.startswith("sudo userdel")]
         self.assertEqual(compte, ["sudo userdel dolibarr_erp"])
         # certbot garde son certificat : dit, pas supprimé.

@@ -240,5 +240,108 @@ class TestNatifDev(Banc):
         restaure.assert_called_once()
 
 
+class TestProduction(Banc):
+    CODE = "/opt/erplibre-dolibarr/erp"
+    DATA = "/var/lib/erplibre-dolibarr/erp/documents"
+
+    def setUp(self):
+        super().setUp()
+        self.entree.update(
+            mode="prod",
+            user="dolibarr_erp",
+            code_root=self.CODE,
+            data_root=self.DATA,
+            state_dir="/var/lib/erplibre-dolibarr/erp",
+            cron_timer="erplibre-dolibarr-cron-erp.timer",
+            domain="erp.example.org",
+            tls="local",
+            url="https://erp.example.org",
+        )
+        p = mock.patch.object(
+            upgrade,
+            "host_facts",
+            lambda system: {"family": "apt-get", "php_version": "8.2"},
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_stage_swap_then_scripts_as_the_instance_account(self):
+        code, sortie, _r = self.monter()
+        self.assertEqual(code, 0, sortie)
+        cmds = self.cmds()
+        joint = " ; ".join(cmds)
+        new = f"{self.CODE}.new"
+        ordre = [
+            f"sudo tar -x -C {new}",
+            f"sudo cp -a {self.CODE}/htdocs/conf/conf.php {new}/htdocs/conf/conf.php",
+            f"sudo cp -a -n {self.CODE}/htdocs/custom/. {new}/htdocs/custom/",
+            f"sudo cp -a {self.CODE}/htdocs/install.lock {new}/htdocs/install.lock",
+            "sudo systemctl stop erplibre-dolibarr-cron-erp.timer",
+            f"sudo mv {self.CODE} {self.CODE}.prev",
+            f"sudo mv {new} {self.CODE}",
+            f"sudo -u dolibarr_erp touch {self.DATA}/upgrade.unlock",
+            "php upgrade.php 23.0.4 24.0.1",
+            "php step5.php 23.0.4 24.0.1",
+            f"sudo rm -f {self.DATA}/upgrade.unlock {self.CODE}/htdocs/upgrade.unlock",
+            "sudo systemctl reload-or-restart php8.2-fpm.service",
+            "sudo systemctl start erplibre-dolibarr-cron-erp.timer",
+        ]
+        positions = [joint.index(x) for x in ordre]
+        self.assertEqual(positions, sorted(positions))
+        script = next(c for c in cmds if "php upgrade.php" in c)
+        self.assertTrue(script.startswith("sudo -u dolibarr_erp sh -c"))
+        self.assertIn(f"cd {self.CODE}/htdocs/install", script)
+        self.assertEqual(self.registre()["version"], "24.0.1")
+
+    def test_a_failure_after_the_swap_puts_the_old_code_back(self):
+        self.sys.echec.add("upgrade2.php")
+        code, _s, restaure = self.monter()
+        self.assertEqual(code, 1)
+        cmds = self.cmds()
+        self.assertIn(f"sudo mv {self.CODE} {self.CODE}.failed", cmds)
+        self.assertIn(f"sudo mv {self.CODE}.prev {self.CODE}", cmds)
+        restaure.assert_called_once()
+        self.assertEqual(self.registre()["version"], "23.0.4")
+
+    def test_a_failure_before_the_swap_touches_nothing_live(self):
+        self.sys.echec.add("tar -x")
+        code, _s, restaure = self.monter()
+        self.assertEqual(code, 1)
+        cmds = self.cmds()
+        self.assertFalse(
+            [c for c in cmds if c.startswith(f"sudo mv {self.CODE} ")]
+        )
+        self.assertFalse([c for c in cmds if "systemctl stop" in c])
+        restaure.assert_not_called()
+
+    def test_a_failure_between_the_timer_and_the_swap_restarts_the_timer(self):
+        self.sys.echec.add(f"mv {self.CODE} {self.CODE}.prev")
+        code, _s, restaure = self.monter()
+        self.assertEqual(code, 1)
+        cmds = self.cmds()
+        arret = cmds.index(
+            "sudo systemctl stop erplibre-dolibarr-cron-erp.timer"
+        )
+        self.assertIn(
+            "sudo systemctl start erplibre-dolibarr-cron-erp.timer",
+            cmds[arret:],
+        )
+        restaure.assert_not_called()
+
+    def test_a_site_still_serving_the_old_version_rolls_back(self):
+        # PHP-FPM gardé sur l'ancien code (opcache, pool non rechargé).
+        self.sys.page = "<title>Login @ 23.0.4</title>"
+        code, _s, restaure = self.monter()
+        self.assertEqual(code, 1)
+        restaure.assert_called_once()
+
+    def test_the_database_is_read_through_sudo(self):
+        self.monter()
+        requete = next(
+            c for c in self.cmds() if "MAIN_VERSION_LAST_UPGRADE" in c
+        )
+        self.assertTrue(requete.startswith("sudo mariadb -N -D dolibarr_erp"))
+
+
 if __name__ == "__main__":
     unittest.main()

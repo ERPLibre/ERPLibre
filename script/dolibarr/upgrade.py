@@ -39,7 +39,13 @@ new_path = os.path.normpath(
 if new_path not in sys.path:
     sys.path.append(new_path)
 
-from script.dolibarr import backup, lib_dolibarr, restore  # noqa: E402
+from script.dolibarr import (  # noqa: E402
+    backup,
+    lib_dolibarr,
+    packages,
+    restore,
+)
+from script.dolibarr.run import served_version  # noqa: E402
 
 ROOT = new_path
 SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
@@ -75,12 +81,27 @@ def start_dev(name, root):
     return run.main(["start", "--instance", name], root=root)
 
 
+def host_facts(system):
+    from script.dolibarr import fleet
+
+    return fleet.host_facts(system)
+
+
 def _query(entry, system, name):
     """Valeur de la constante `name` (entité 0), ou "" si illisible."""
     sql = _CONST.format(name=name)
     db = entry["db_name"]
+    mariadb = entry.get("db", "mariadb") == "mariadb"
+    if entry.get("mode") == "prod":
+        argv = (
+            ["sudo", "mariadb", "-N", "-D", db, "-e", sql]
+            if mariadb
+            else ["sudo", "-u", "postgres", "psql", "-d", db, "-Atc", sql]
+        )
+        code, out = system.run(argv)
+        return out.strip() if not code else ""
     password = backup._secrets(entry).get("DB_PASSWORD", "")
-    if entry.get("db", "mariadb") == "mariadb":
+    if mariadb:
         argv = ["mariadb", "-u", db, "-N", "-D", db, "-e", sql]
         env = {"MYSQL_PWD": password}
     else:
@@ -206,8 +227,158 @@ class NativeDev:
         return {"version": self.pin["version"], "commit": self.pin["commit"]}
 
 
+class NativeProd(NativeDev):
+    """Le code est exporté dans /opt : le nouveau se prépare à côté, puis
+    les deux dossiers permutent avant les scripts, qui incluent depuis
+    le document_root de conf.php."""
+
+    def __init__(self, name, entry, pin, system, root):
+        super().__init__(name, entry, pin, system, root)
+        self.checkout = os.path.join(root, pin["path"])
+        self.git = ["git", "-C", self.checkout]
+        self.code = entry["code_root"]
+        self.user = entry["user"]
+        self.timer = entry["cron_timer"]
+
+    def check(self):
+        pass
+
+    def run(self, from_v, to_v):
+        sudo, code, new = ["sudo"], self.code, self.code + ".new"
+        commit = self.pin["commit"]
+        present = self.git + ["cat-file", "-e", f"{commit}^{{commit}}"]
+        if self.system.run(present)[0]:
+            _run(self.system, "Checkout synchronized", ["bash", SYNC_SCRIPT])
+        stage = "New code staged"
+        for argv in (
+            sudo + ["rm", "-rf", new],
+            sudo + ["mkdir", "-p", new],
+            [
+                "bash",
+                "-c",
+                f"set -o pipefail; git -C {shlex.quote(self.checkout)} archive"
+                f" --format=tar {commit} | sudo tar -x -C {shlex.quote(new)}",
+            ],
+            sudo + ["chown", "-R", "root:root", new],
+            sudo + ["chmod", "-R", "go-w", new],
+            sudo
+            + [
+                "cp",
+                "-a",
+                f"{code}/htdocs/conf/conf.php",
+                f"{new}/htdocs/conf/conf.php",
+            ],
+            sudo
+            + [
+                "cp",
+                "-a",
+                "-n",
+                f"{code}/htdocs/custom/.",
+                f"{new}/htdocs/custom/",
+            ],
+            sudo
+            + [
+                "cp",
+                "-a",
+                f"{code}/htdocs/install.lock",
+                f"{new}/htdocs/install.lock",
+            ],
+        ):
+            _run(self.system, stage, argv)
+        _run(
+            self.system,
+            "Scheduled jobs stopped",
+            sudo + ["systemctl", "stop", self.timer],
+        )
+        _run(self.system, "Code swapped", sudo + ["rm", "-rf", f"{code}.prev"])
+        _run(self.system, "Code swapped", sudo + ["mv", code, f"{code}.prev"])
+        _run(self.system, "Code swapped", sudo + ["mv", new, code])
+        self.swapped = True
+        data = self.entry["data_root"]
+        as_user = ["sudo", "-u", self.user]
+        _run(
+            self.system,
+            "Upgrade scripts",
+            as_user + ["touch", f"{data}/upgrade.unlock"],
+        )
+        install = f"{code}/htdocs/install"
+        for a, b in hops(from_v, to_v):
+            for script in ("upgrade.php", "upgrade2.php"):
+                self._as_user(install, f"php {script} {a} {b}")
+        self._as_user(install, f"php step5.php {from_v} {to_v}")
+        got = _query(self.entry, self.system, "MAIN_VERSION_LAST_UPGRADE")
+        if got != to_v:
+            raise UpgradeError(
+                t("The database reads %s, %s expected.") % (got or "?", to_v)
+            )
+        self.relock()
+        self.restart()
+        base = f"{'http' if self.entry.get('tls') == 'none' else 'https'}://127.0.0.1"
+        page = self.system.http_get(base + "/", self.entry.get("domain", ""))
+        if served_version(page) != to_v:
+            raise UpgradeError(t("The site does not serve %s.") % to_v)
+
+    def _as_user(self, directory, command):
+        _run(
+            self.system,
+            "Upgrade scripts",
+            [
+                "sudo",
+                "-u",
+                self.user,
+                "sh",
+                "-c",
+                f"cd {shlex.quote(directory)} && exec {command}",
+            ],
+        )
+
+    def relock(self):
+        data = self.entry["data_root"]
+        self.system.run(
+            [
+                "sudo",
+                "rm",
+                "-f",
+                f"{data}/upgrade.unlock",
+                f"{self.code}/htdocs/upgrade.unlock",
+            ]
+        )
+        self.system.run(
+            [
+                "sudo",
+                "find",
+                "/tmp",
+                "-maxdepth",
+                "1",
+                "-name",
+                "dolibarr_install.log",
+                "-user",
+                self.user,
+                "-delete",
+            ]
+        )
+
+    def rollback(self):
+        self.relock()
+        if self.swapped:
+            code = self.code
+            self.system.run(["sudo", "rm", "-rf", f"{code}.failed"])
+            self.system.run(["sudo", "mv", code, f"{code}.failed"])
+            self.system.run(["sudo", "mv", f"{code}.prev", code])
+
+    def restart(self):
+        facts = host_facts(self.system)
+        unit = packages.fpm_layout(facts["family"], facts["php_version"])[
+            "unit"
+        ]
+        self.system.run(["sudo", "systemctl", "reload-or-restart", unit])
+        self.system.run(["sudo", "systemctl", "start", self.timer])
+
+
 def _runtime(name, entry, pin, system, root):
-    if entry.get("runtime") == "native" and entry.get("mode") != "prod":
+    if entry.get("runtime") == "native" and entry.get("mode") == "prod":
+        return NativeProd(name, entry, pin, system, root)
+    if entry.get("runtime") == "native":
         return NativeDev(name, entry, pin, system, root)
     raise UpgradeError(t("This runtime is not upgraded by this tool yet."))
 
@@ -241,12 +412,15 @@ def upgrade(name, entry, pin, system, root, stamp):
         work.run(from_v, target)
     except UpgradeError as e:
         print(t("Upgrade stopped: %s") % e)
-        if backup_path and getattr(work, "swapped", False):
+        if backup_path:
+            # Tout ce qui a été arrêté repart ; la base et les fichiers ne
+            # reviennent de la sauvegarde que si le code a changé.
             work.rollback()
-            print(t("Rolling back to the backup…"))
-            restore.restore(
-                name, entry, backup_path, name, system, root, stamp
-            )
+            if work.swapped:
+                print(t("Rolling back to the backup…"))
+                restore.restore(
+                    name, entry, backup_path, name, system, root, stamp
+                )
             work.restart()
         return 1
     _record(root, name, **work.recorded())
