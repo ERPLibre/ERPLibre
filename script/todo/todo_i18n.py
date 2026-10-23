@@ -18763,9 +18763,9 @@ TRANSLATIONS = {
         "fr": "Base de données",
         "en": "Odoo database",
     },
-    "Recreates « {db} » from the image of the version installed in the VM.": {
-        "fr": "Recrée « {db} » depuis l'image de la version installée dans la VM.",
-        "en": "Recreates « {db} » from the image of the version installed in the VM.",
+    "Recreates the database from an image of the version installed in the VM.": {
+        "fr": "Recrée la base depuis une image de la version installée dans la VM.",
+        "en": "Recreates the database from an image of the version installed in the VM.",
     },
     "Neutralize: disables the crons": {
         "fr": "Neutraliser : désactive les crons",
@@ -18775,9 +18775,21 @@ TRANSLATIONS = {
         "fr": "Sans base _cache_ : restaure directement",
         "en": "No _cache_ database: restores directly",
     },
-    "Restore the « {db} » database": {
-        "fr": "Restaurer la base « {db} »",
-        "en": "Restore the « {db} » database",
+    "Restore this database": {
+        "fr": "Restaurer la base",
+        "en": "Restore this database",
+    },
+    "Database name": {
+        "fr": "Nom de la base",
+        "en": "Database name",
+    },
+    "Invalid database name: letters, digits, _ . - (63 at most).": {
+        "fr": "Nom de base invalide : lettres, chiffres, _ . - (63 au plus).",
+        "en": "Invalid database name: letters, digits, _ . - (63 at most).",
+    },
+    "No image {img} for this version; available:": {
+        "fr": "Pas d'image {img} pour cette version ; disponibles :",
+        "en": "No image {img} for this version; available:",
     },
     "Irreversible": {
         "fr": "Irréversible",
@@ -18811,9 +18823,9 @@ TRANSLATIONS = {
         "fr": "La base « {db} », si elle existe, est SUPPRIMÉE",
         "en": "The « {db} » database, if it exists, is DROPPED",
     },
-    "then reloaded from the odoo<version>_base image of the": {
-        "fr": "puis rechargée depuis l'image odoo<version>_base du",
-        "en": "then reloaded from the odoo<version>_base image of the",
+    "then reloaded from the odoo<version>_{image} image of the": {
+        "fr": "puis rechargée depuis l'image odoo<version>_{image} du",
+        "en": "then reloaded from the odoo<version>_{image} image of the",
     },
     "image_db directory. Nothing can be recovered.": {
         "fr": "répertoire image_db. Rien n'est récupérable.",

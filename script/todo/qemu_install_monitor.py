@@ -2322,12 +2322,28 @@ def restart_odoo_cmd() -> str:
     )
 
 
-# Nom de la base que l'écran de suivi crée. Il n'y a pas de champ de saisie :
-# l'écran n'a que des cases à cocher et des boutons, et le fichier n'importe
-# aucun widget de saisie. « test » est le nom que les cibles « db_restore_* »
-# du Makefile emploient déjà, donc celui que la documentation et les commandes
-# du dépôt désignent ensuite.
+# Nom proposé pour la base que l'écran de suivi crée. « test » est le nom que
+# les cibles « db_restore_* » du Makefile emploient déjà, donc celui que la
+# documentation et les commandes du dépôt désignent ensuite.
 DB_RESTORE_NAME = "test"
+
+# Un nom de base qu'on peut passer tel quel à PostgreSQL et à db_restore.py :
+# lettres, chiffres, « _ », « . » et « - », sans commencer par un signe, et
+# 63 caractères au plus — au-delà, PostgreSQL tronque le nom sans le dire.
+DB_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+
+# Les variantes d'image que le dépôt image_db publie, la base d'abord. Toutes
+# n'existent pas pour chaque version d'Odoo : la commande le vérifie DANS la
+# VM, où la version est connue, et nomme alors celles qui existent.
+DB_RESTORE_IMAGES = (
+    "base",
+    "base_demo",
+    "base_demo_adv_full",
+    "website",
+    "website_crm",
+    "website_crm_chat",
+    "website_ecommerce",
+)
 
 # Options de db_restore.py offertes par l'écran, dans l'ordre d'affichage. Les
 # deux sont cochées par défaut : une base de démonstration ne doit pas lancer
@@ -2339,15 +2355,17 @@ DB_RESTORE_PARTS = (
 )
 
 
-def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
+def db_restore_cmd(parts, database=DB_RESTORE_NAME, image="base") -> str:
     """Commande exécutée DANS la VM pour (re)créer une base depuis une image.
 
     L'image SUIT la version du checkout : « .odoo-version » est lu à
-    l'exécution, dans la VM, et composé en « odoo<version>_base » — le nom
+    l'exécution, dans la VM, et composé en « odoo<version>_<image> » — le nom
     que porte chaque image du répertoire image_db, que le repo sync rapatrie.
     Rien n'est figé ici : une VM change de version après son installation sans
     que ce code le sache. « tr -d » retire le saut de ligne final du fichier,
-    qui sinon couperait le nom en deux.
+    qui sinon couperait le nom en deux. Une variante absente pour cette
+    version arrête tout AVANT le service et la base, en nommant celles qui
+    existent.
 
     db_restore.py ne touche à aucun service : il SUPPRIME la base puis la
     recharge, pendant qu'un Odoo lancé garde ses connexions ouvertes et les
@@ -2367,7 +2385,13 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
     db = shlex.quote(database)
     return (
         "set -u; " + el_dir_cd() + "ver=$(tr -d '[:space:]' < .odoo-version); "
-        'img="odoo${ver}_base"; '
+        f'img="odoo${{ver}}_"{shlex.quote(image)}; '
+        'if [ ! -f "image_db/$img.zip" ]; then echo "'
+        + _dq(t("No image {img} for this version; available:")).format(
+            img="$img"
+        )
+        + '"; ls image_db | sed -n "s/^\\(odoo${ver}_.*\\)\\.zip$/  \\1/p"; '
+        "exit 1; fi; "
         'echo "== '
         + _dq(t("Restoring {db} from {img}")).format(
             db=_dq(database), img="$img"
@@ -2391,18 +2415,20 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
     )
 
 
-def db_restore_lines(parts) -> list:
+def db_restore_lines(parts, database=DB_RESTORE_NAME, image="base") -> list:
     """Ce que la restauration détruit, dit avant qu'elle parte.
 
     Une confirmation nomme ce qu'elle détruit : une base de ce nom existe
     peut-être déjà dans la VM, et db_restore.py la supprime sans rien
-    demander. L'image n'est pas nommée : son nom se calcule dans la VM, à
-    partir d'une version que cet écran ne lit pas."""
+    demander. La version de l'image reste « <version> » : elle se lit dans la
+    VM, et cet écran ne la connaît pas."""
     lignes = [
         t("The « {db} » database, if it exists, is DROPPED").format(
-            db=DB_RESTORE_NAME
+            db=database
         ),
-        t("then reloaded from the odoo<version>_base image of the"),
+        t("then reloaded from the odoo<version>_{image} image of the").format(
+            image=image
+        ),
         t("image_db directory. Nothing can be recovered."),
         "",
         t("The erplibre service is stopped during the operation,"),
@@ -2663,7 +2689,9 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         DataTable,
         Footer,
         Header,
+        Input,
         RichLog,
+        Select,
         Static,
     )
 
@@ -2887,16 +2915,25 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 yield Static(t("Odoo database"), classes="actgroup")
                 yield Static(
                     t(
-                        "Recreates « {db} » from the image of the version"
+                        "Recreates the database from an image of the version"
                         " installed in the VM."
-                    ).format(db=DB_RESTORE_NAME)
+                    )
+                )
+                yield Input(
+                    value=DB_RESTORE_NAME,
+                    placeholder=t("Database name"),
+                    id="d_name",
+                )
+                yield Select(
+                    [(img, img) for img in DB_RESTORE_IMAGES],
+                    value=DB_RESTORE_IMAGES[0],
+                    allow_blank=False,
+                    id="d_image",
                 )
                 for key, label in DB_RESTORE_PARTS:
                     yield Checkbox(t(label), value=True, id=f"d_{key}")
                 yield Button(
-                    t("Restore the « {db} » database").format(
-                        db=DB_RESTORE_NAME
-                    ),
+                    t("Restore this database"),
                     variant="warning",
                     id="a_dbrestore",
                 )
@@ -2918,12 +2955,25 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             elif event.button.id == "a_restart":
                 self.dismiss(("restart", []))
             elif event.button.id == "a_dbrestore":
+                nom = self.query_one("#d_name", Input).value.strip()
+                if not DB_NAME_RE.match(nom):
+                    # Refusé ICI, la fenêtre ouverte : le nom se corrige sur
+                    # place au lieu de partir vers la VM.
+                    self.notify(
+                        t(
+                            "Invalid database name: letters, digits, _ . -"
+                            " (63 at most)."
+                        ),
+                        severity="error",
+                    )
+                    return
                 parts = [
                     k
                     for k, _lbl in DB_RESTORE_PARTS
                     if self.query_one(f"#d_{k}", Checkbox).value
                 ]
-                self.dismiss(("dbrestore", parts))
+                image = self.query_one("#d_image", Select).value
+                self.dismiss(("dbrestore", (parts, nom, image)))
             elif event.button.id == "a_delete":
                 self.dismiss(("delete", []))
 
@@ -4074,7 +4124,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         vm, restart_odoo_cmd(), t("Restarting Odoo")
                     )
                 elif kind == "dbrestore":
-                    self._ask_db_restore(vm, parts)
+                    self._ask_db_restore(vm, *parts)
                 elif kind == "delete":
                     self._ask_delete(vm)
 
@@ -4104,7 +4154,9 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 return
             self._run_in_vm(vm, cmd, t("Update"))
 
-        def _ask_db_restore(self, vm, parts) -> None:
+        def _ask_db_restore(
+            self, vm, parts, database=DB_RESTORE_NAME, image="base"
+        ) -> None:
             """Restauration : une base du même nom est PERDUE.
 
             Même garde que la suppression d'une VM, et pour la même raison :
@@ -4116,16 +4168,18 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if not yes:
                     return
                 self._run_in_vm(
-                    vm, db_restore_cmd(parts), t("Database restore")
+                    vm,
+                    db_restore_cmd(parts, database, image),
+                    t("Database restore"),
                 )
 
             self.push_screen(
                 ConfirmScreen(
                     t("Restore « {db} » on {name}?").format(
-                        db=DB_RESTORE_NAME, name=vm["name"]
+                        db=database, name=vm["name"]
                     ),
-                    db_restore_lines(parts),
-                    t("Overwrite {db}").format(db=DB_RESTORE_NAME),
+                    db_restore_lines(parts, database, image),
+                    t("Overwrite {db}").format(db=database),
                 ),
                 confirmed,
             )

@@ -87,8 +87,13 @@ class Bac(unittest.TestCase):
         ):
             _ecrit(self.base / "bin" / nom, texte, executable=True)
 
-    def erplibre(self, dossier, version="18.0\n"):
+    def erplibre(self, dossier, version="18.0\n", images=("base", "website")):
         _ecrit(dossier / ".odoo-version", version)
+        for image in images:
+            _ecrit(
+                dossier / "image_db" / f"odoo{version.strip()}_{image}.zip",
+                "",
+            )
         _ecrit(
             dossier / "script" / "database" / "db_restore.py",
             FAUX_RESTORE,
@@ -210,9 +215,29 @@ class TestLaRestauration(Bac):
         self.assertNotIn("systemctl stop erplibre.service", journal)
         self.assertFalse([x for x in journal if x.startswith("restore")])
 
+    def test_a_chosen_name_and_image_are_passed(self):
+        _rc, journal = self.lance(
+            mon.db_restore_cmd([], database="essai_2", image="website")
+        )
+        ligne = self.restore(journal)
+        self.assertIn(" --database| essai_2|", ligne)
+        self.assertIn(" --image| odoo18.0_website|", ligne)
+
+    def test_a_missing_image_stops_before_the_service(self):
+        rc, journal = self.lance(mon.db_restore_cmd([], image="base_demo"))
+        self.assertEqual(1, rc)
+        self.assertNotIn("systemctl stop erplibre.service", journal)
+        self.assertFalse([x for x in journal if x.startswith("restore")])
+        # Les images de cette version sont nommées, pour choisir.
+        self.assertIn("odoo18.0_base", self.sortie)
+        self.assertIn("odoo18.0_website", self.sortie)
+
     def test_the_confirmation_names_what_is_lost(self):
         lignes = "\n".join(mon.db_restore_lines(["neutralize"]))
         self.assertIn(mon.DB_RESTORE_NAME, lignes)
+        choisi = "\n".join(mon.db_restore_lines([], "essai_2", "website"))
+        self.assertIn("essai_2", choisi)
+        self.assertIn("odoo<version>_website", choisi)
         self.assertIn("crons", lignes)
         self.assertNotIn("crons", "\n".join(mon.db_restore_lines([])))
 
@@ -378,6 +403,48 @@ class TestLeBouton(AsyncCase):
         self.assertEqual(1, len(lances))
         self.assertTrue(lances[0].startswith("ssh -t "), lances[0])
         self.assertNotIn("-t", mon.vm_ssh_prefix(vm).split()[:2])
+
+    async def test_an_invalid_name_is_refused_on_the_spot(self):
+        from textual.widgets import Input
+
+        with mock.patch.object(type(self.app), "_run_in_vm") as lance:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await pilote.pause()
+                await pilote.press("a")
+                await pilote.pause()
+                self.app.screen.query_one("#d_name", Input).value = "a b;rm"
+                self.app.screen.query_one("#a_dbrestore").press()
+                await pilote.pause()
+                await pilote.pause()
+                self.assertEqual(
+                    "VmActionsScreen", type(self.app.screen).__name__
+                )
+        lance.assert_not_called()
+
+    async def test_the_chosen_name_and_image_reach_the_command(self):
+        from textual.widgets import Input, Select
+
+        with mock.patch.object(type(self.app), "_run_in_vm") as lance:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await pilote.pause()
+                await pilote.press("a")
+                await pilote.pause()
+                ecran = self.app.screen
+                ecran.query_one("#d_name", Input).value = "essai_2"
+                ecran.query_one("#d_image", Select).value = "website"
+                ecran.query_one("#a_dbrestore").press()
+                await pilote.pause()
+                await pilote.pause()
+                self.app.screen.query_one("#c_yes").press()
+                await pilote.pause()
+                await pilote.pause()
+        _vm, cmd, _titre = lance.call_args[0]
+        self.assertEqual(
+            mon.db_restore_cmd(
+                ["neutralize", "ignore_cache"], "essai_2", "website"
+            ),
+            cmd,
+        )
 
     async def test_nothing_runs_without_yes(self):
         with mock.patch.object(type(self.app), "_run_in_vm") as lance:
