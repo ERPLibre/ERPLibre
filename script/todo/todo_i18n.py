@@ -19585,6 +19585,15 @@ TRANSLATIONS = {
         "fr": "Ancien lanceur arrêté : {n}",
         "en": "Previous launcher stopped: {n}",
     },
+    # Nom lisible de la touche Échap, dans l'aide des formulaires.
+    "Esc": {
+        "fr": "Échap",
+        "en": "Esc",
+    },
+    "Shortcuts and options": {
+        "fr": "Raccourcis et options",
+        "en": "Shortcuts and options",
+    },
     # Messages des commandes que les actions VM lancent dans la VM.
     "System packages": {
         "fr": "Paquets système",
