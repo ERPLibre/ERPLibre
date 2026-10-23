@@ -13,7 +13,7 @@
 | `tags`                 | `tag_ids`             | Many2many        | Matched by tag name; created if missing |
 | entry `text`           | `description`         | Html             | Each entry → `<p>text content</p>` |
 | entry `date`           | `date_deadline`       | Datetime         | First date entry only |
-| entry `audio`          | `attachment_ids`      | ir.attachment    | + `<p>🎙️ Enregistrement audio</p>` in description |
+| entry `audio`          | `attachment_ids`      | ir.attachment    | The file as an attachment of the record (see attachments in odoo-api.json) + `<p>🎙️ Enregistrement audio</p>` in description |
 | entry `photo`          | `attachment_ids`      | ir.attachment    | + `<p>📷 Photo</p>` in description |
 | entry `video`          | `attachment_ids`      | ir.attachment    | + `<p>🎥 Vidéo</p>` in description |
 | entry `geolocation`    | `geo_task_point`      | GeoMultiPoint    | All lat/lon → MultiPoint GeoJSON, sent only when `fields_get` finds the field (module `erplibre_mobile_todo`) ; `<p>📍 text — lat,lon — ISO_DATE</p>` in description |
