@@ -36,3 +36,8 @@ diagnostic/
 # Rapports de script/dolibarr/detect.py : un fichier par hôte, à son nom, avec
 # les chemins, versions et bases des installations qu'il porte.
 /dolibarr/inventory/
+
+# Sauvegardes Dolibarr : le vidage de la base, et conf.php avec le mot de passe
+# de la base et la clé d'instance. backup.py refuse un dossier que git pourrait
+# commiter.
+/dolibarr/backups/
