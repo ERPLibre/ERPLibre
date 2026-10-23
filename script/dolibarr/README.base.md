@@ -24,12 +24,14 @@ script also runs on its own.
 | Script | Role |
 |--------|------|
 | `install_native.py` | Installs an instance with nginx, PHP-FPM and MariaDB or PostgreSQL |
+| `install_container.py` | Installs a development instance in Docker or Podman containers |
 | `native_prod.py` | Production steps, played by `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` of a development instance |
 | `pin.py` | `show` the pinned commit, `update` it (dry run unless `--apply`) |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
+| `container_plan.py` | Pure rendering of the Docker/Podman commands of an instance |
 
 Supported families: Debian/Ubuntu (apt), Fedora/EL (dnf), Arch (pacman),
 openSUSE (zypper).
@@ -57,12 +59,14 @@ chaque script se lance aussi seul.
 | Script | Rôle |
 |--------|------|
 | `install_native.py` | Installe une instance avec nginx, PHP-FPM et MariaDB ou PostgreSQL |
+| `install_container.py` | Installe une instance de développement en conteneurs Docker ou Podman |
 | `native_prod.py` | Étapes de production, jouées par `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` d'une instance de développement |
 | `pin.py` | `show` le commit épinglé, `update` le relève (à blanc sans `--apply`) |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
+| `container_plan.py` | Rendu pur des commandes Docker/Podman d'une instance |
 
 Familles prises en charge : Debian/Ubuntu (apt), Fedora/EL (dnf), Arch
 (pacman), openSUSE (zypper).
@@ -90,7 +94,7 @@ The administrator password is asked by TODO, or generated when left empty.
 On the command line it comes from the `EL_DOLIBARR_ADMIN_PASSWORD`
 environment variable, never from an argument.
 
-## Production
+## Containers (development)
 
 <!-- [fr] -->
 nginx et PHP-FPM tournent sous votre compte sur `127.0.0.1:<port>` ; rien ne
@@ -103,6 +107,34 @@ passe de la base et de l'administrateur).
 Le mot de passe administrateur est demandé par TODO, ou généré s'il reste
 vide. En ligne de commande, il vient de la variable d'environnement
 `EL_DOLIBARR_ADMIN_PASSWORD`, jamais d'un argument.
+
+## Conteneurs (développement)
+
+<!-- [common] -->
+```bash
+./script/dolibarr/install_container.py --mode dev --instance erp --port 8081 [--engine podman]
+```
+
+<!-- [en] -->
+The official `dolibarr/dolibarr` image on MariaDB, with Docker or Podman,
+whichever answers without sudo first; no compose tool is needed. The image
+runs the version Docker Hub publishes, which can trail the native pin. Its
+data lives in named volumes; `custom/` is a host directory, writable from
+the container, for module development. Secrets are files (0600) in
+`~/.local/share/ERPLibre/dolibarr/<instance>/secrets`, passed to the
+containers read-only. The first start takes about 70 to 100 s.
+
+## Production
+
+<!-- [fr] -->
+L'image officielle `dolibarr/dolibarr` sur MariaDB, avec Docker ou Podman,
+celui qui répond sans sudo d'abord ; aucun outil compose n'est requis.
+L'image porte la version que publie Docker Hub, parfois en retard sur
+l'épinglage natif. Ses données vivent dans des volumes nommés ; `custom/`
+est un dossier de l'hôte, inscriptible depuis le conteneur, pour
+développer des modules. Les secrets sont des fichiers (0600) de
+`~/.local/share/ERPLibre/dolibarr/<instance>/secrets`, montés en lecture
+seule. Le premier démarrage prend de 70 à 100 s environ.
 
 ## Production
 
