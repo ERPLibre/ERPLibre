@@ -18585,10 +18585,6 @@ TRANSLATIONS = {
         "fr": "La recréation de VM n'est pas disponible depuis ce suivi.",
         "en": "Recreating a VM is not available from this monitor.",
     },
-    "A Proxmox VM cannot be recreated from the monitor.": {
-        "fr": "Une VM Proxmox ne peut pas être recréée depuis le suivi.",
-        "en": "A Proxmox VM cannot be recreated from the monitor.",
-    },
     (
         "This VM's creation parameters were not kept (older session, or a VM "
         "only monitored). Deploy it again from the menu."
@@ -18692,6 +18688,27 @@ TRANSLATIONS = {
     "Shortcuts and options": {
         "fr": "Raccourcis et options",
         "en": "Shortcuts and options",
+    },
+    # Recréation d'une VM Proxmox depuis le suivi (touche « n »).
+    "The kept parameters do not match this VM (host or VMID): deploy it again from the menu.": {
+        "fr": "Les paramètres gardés ne correspondent pas à cette VM (hôte ou VMID) : redéployez-la depuis le menu.",
+        "en": "The kept parameters do not match this VM (host or VMID): deploy it again from the menu.",
+    },
+    "The VM is destroyed on its Proxmox host, then created again with the same VMID and parameters:": {
+        "fr": "La VM est détruite sur son hôte Proxmox, puis recréée avec le même VMID et les mêmes paramètres :",
+        "en": "The VM is destroyed on its Proxmox host, then created again with the same VMID and parameters:",
+    },
+    "On a DHCP bridge its address may change.": {
+        "fr": "Sur un pont DHCP, son adresse peut changer.",
+        "en": "On a DHCP bridge its address may change.",
+    },
+    "It is a Proxmox VE hypervisor: the VMs it carries disappear with it.": {
+        "fr": "C'est un hyperviseur Proxmox VE : les VM qu'il porte disparaissent avec lui.",
+        "en": "It is a Proxmox VE hypervisor: the VMs it carries disappear with it.",
+    },
+    "The kept parameters no longer build this VM (the catalog changed): deploy it again from the menu.": {
+        "fr": "Les paramètres gardés ne permettent plus de bâtir cette VM (le catalogue a changé) : redéployez-la depuis le menu.",
+        "en": "The kept parameters no longer build this VM (the catalog changed): deploy it again from the menu.",
     },
     # Messages des commandes que les actions VM lancent dans la VM.
     "System packages": {

@@ -12,6 +12,8 @@ librement les helpers généraux (self._is_yes, self.fill_help_info) et ceux du
 menu QEMU (self._qemu_prompt_distro, self._qemu_install_erplibre_monitored),
 qu'elles réutilisent volontairement plutôt que de les redire."""
 
+import contextlib
+import json
 import os
 import re
 import shlex
@@ -22,6 +24,7 @@ import time
 import click
 
 from script.todo import todo_prefs
+from script.todo import qemu_privilege
 from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
 
@@ -1471,8 +1474,24 @@ class ProxmoxMenuMixin:
             pve.image_fetch_cmd(url, image, sha256=somme)
         ] + pve.create_cmds(vm["vmid"], detail)
 
-    def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
+    def _pve_deploy_spec(
+        self,
+        host,
+        spec,
+        mod,
+        dry_run=False,
+        coupee=False,
+        session=None,
+        remplace=False,
+    ):
         """Exécute la spec rendue par l'écran.
+
+        `session` : le manifeste d'un suivi ouvert, qui recrée une de ses VM
+        (« n »). Rien n'y demande quoi que ce soit — ni confirmation, ni
+        écran de progression, qui serait une seconde App dans le suivi —,
+        les VM rejoignent cette session au lieu d'en ouvrir une, et la
+        méthode rend {added, failed, no_ip}, comme la voie QEMU/KVM.
+        `remplace` y remplace l'entrée du même nom.
 
         `coupee` : l'amont du cache est coupé autour de cet appel. La levée
         est alors confiée au guet, au lancement des installations, comme sur
@@ -1495,14 +1514,20 @@ class ProxmoxMenuMixin:
         # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
         # téléchargeait 350 Mio d'image pour finir sur « net0: invalid format
         # - missing key » — vécu sur l'hôte d'essai.
+        noms = [vm["name"] for vm in spec["vms"]]
+        echec = {"added": [], "failed": noms, "no_ip": []} if session else None
         for valeur, message in (
             (spec.get("storage"), t("No storage able to hold a VM disk.")),
             (spec.get("bridge"), t("No bridge on the host.")),
         ):
             if not valeur:
                 print(f"\n  ✗ {message}")
-                return
-        if not dry_run and not self._pve_confirm_spec(host, spec):
+                return echec
+        if (
+            not dry_run
+            and not session
+            and not self._pve_confirm_spec(host, spec)
+        ):
             print(t("Cancelled."))
             return
         cle_locale = spec.get("ssh_key") or self._qemu_default_ssh_key()
@@ -1539,14 +1564,14 @@ class ProxmoxMenuMixin:
         if spec["existing"]:
             print(f"  ⏭ {t('already there')} : {', '.join(spec['existing'])}")
         if not travaux:
-            return
+            return echec
         # Le journal AVANT de lancer : la vue de progression se referme et
         # emporte tout ce qu'elle montrait. Rapporté — « il manque plein
         # d'informations qu'il y avait avant, où est le fichier de log ? ».
         # L'ancienne voie par questions imprimait chaque commande et sa
         # sortie ; celle-ci les écrit, ce qui vaut mieux qu'un défilement.
-        session = self._pve_log_dir()
-        print(f"\n  {t('Log:')} {session}")
+        journaux = self._pve_log_dir()
+        print(f"\n  {t('Log:')} {journaux}")
         # Comment joindre chaque VM SANS dépendre de ~/.ssh/config, qui n'est
         # écrit qu'après : par le rebond de l'hôte, explicitement. C'est ce que
         # « s » utilise dans la vue de progression — sans quoi il partait sur
@@ -1568,16 +1593,25 @@ class ProxmoxMenuMixin:
             suite = t("Quit (q) to start the ERPLibre install")
         elif spec.get("monitor", True):
             suite = t("Quit (q) to follow the VM starting up")
-        resultats = run_deploy_progress(
-            travaux,
-            spec.get("parallelism") or 1,
-            ssh_cmds=cibles_ssh,
-            suite=suite,
-        )
+        if session:
+            # Sortie texte : elle part dans le journal d'ajout du suivi, et
+            # une création en échec y laisse sa sortie complète.
+            resultats = self._qemu_deploy_jobs_cli(
+                travaux,
+                max(1, min(spec.get("parallelism") or 1, len(travaux))),
+                stdin=subprocess.DEVNULL,
+            )
+        else:
+            resultats = run_deploy_progress(
+                travaux,
+                spec.get("parallelism") or 1,
+                ssh_cmds=cibles_ssh,
+                suite=suite,
+            )
         reussies = [nom for nom, code, _o, _d in resultats if code == 0]
         for nom, code, sortie, duree in resultats:
             chemin = self._pve_write_log(
-                session,
+                journaux,
                 nom,
                 spec,
                 commandes.get(nom) or [],
@@ -1594,12 +1628,29 @@ class ProxmoxMenuMixin:
                 propre = pve.collapse_progress(pve.strip_ssh_noise(sortie))
                 for ligne in propre.rstrip().splitlines()[-12:]:
                     print(f"    {ligne}")
+        echouees = [nom for nom in noms if nom not in reussies]
         if not reussies:
-            return
+            return echec
+        entrees = []
         joignables = self._pve_after_create(
-            host, spec, reussies, cle_locale, coupee=coupee, debut=debut
+            host,
+            spec,
+            reussies,
+            cle_locale,
+            coupee=coupee,
+            debut=debut,
+            session=session,
+            remplace=remplace,
+            entrees=entrees,
         )
-        self._pve_print_summary(spec, joignables or [], session)
+        if session:
+            jointes = {vm["name"] for vm in joignables or []}
+            return {
+                "added": entrees,
+                "failed": echouees,
+                "no_ip": [nom for nom in reussies if nom not in jointes],
+            }
+        self._pve_print_summary(spec, joignables or [], journaux)
 
     @staticmethod
     def _pve_log_dir():
@@ -1761,9 +1812,8 @@ class ProxmoxMenuMixin:
         POURQUOI LA MAC DE L'HÔTE, ET NON CELLE DE L'INVITÉ. Un invité
         imbriqué sort MASQUÉ derrière son hôte : sur le pont d'ici, le cache
         ne voit jamais que la MAC de l'hôte Proxmox, et c'est donc elle
-        qu'il faut excepter. Mesuré des deux côtés — sans l'exception, une
-        requête de l'invité vers cache.nixos.org rend code 000 et
-        vérification SSL 19 ; avec, code 200 et vérification 0.
+        qu'il faut excepter. Sans l'exception, une requête de l'invité vers
+        un cache binaire échoue sur la vérification TLS ; avec, elle passe.
 
         CE QUE COÛTE L'ABSENCE DE REMÈDE. Une distribution dont le magasin de
         confiance n'a pas de forme par fichier ne peut pas recevoir
@@ -1816,10 +1866,13 @@ class ProxmoxMenuMixin:
         # Le binaire écrit le fichier d'exceptions et rend sur sa sortie le
         # geste à chaud ; sans nft, seul le redémarrage du service repose la
         # chaîne entière.
+        # « sudo -n » dans un bloc sudo_non_interactif : derrière le suivi,
+        # une invite de mot de passe attendrait sans que personne la voie.
+        sudo = qemu_privilege._sudo()
         if shutil.which("nft"):
-            cmd = ["sudo", "sh", "-c", f"{geste} | nft -f -"]
+            cmd = [*sudo, "sh", "-c", f"{geste} | nft -f -"]
         else:
-            cmd = ["sudo", "sh", "-c", geste]
+            cmd = [*sudo, "sh", "-c", geste]
         try:
             fini = subprocess.run(cmd, capture_output=True, text=True)
         except (OSError, subprocess.SubprocessError) as souci:
@@ -2109,9 +2162,15 @@ class ProxmoxMenuMixin:
             cible,
             remote,
         ]
+        # Entrée fermée : BatchMode ne demande rien, et un ssh qui hériterait
+        # du terminal volerait les frappes du suivi qui le lance.
         try:
             res = subprocess.run(
-                argv, capture_output=True, text=True, timeout=timeout
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                stdin=subprocess.DEVNULL,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             return 255, str(exc)
@@ -2206,7 +2265,16 @@ class ProxmoxMenuMixin:
         )
 
     def _pve_after_create(
-        self, host, spec, reussies, cle_locale, coupee=False, debut=None
+        self,
+        host,
+        spec,
+        reussies,
+        cle_locale,
+        coupee=False,
+        debut=None,
+        session=None,
+        remplace=False,
+        entrees=None,
     ):
         """Ce qui suit la création : l'adresse, ~/.ssh/config, l'installation.
 
@@ -2214,11 +2282,25 @@ class ProxmoxMenuMixin:
         fait confier la levée de la coupure au guet, le second date le
         déploiement dans le manifeste, où le bilan hors ligne le lit.
 
+        La spec de chaque VM part avec elle dans la session : c'est ce que
+        « n » rejoue pour la recréer. `session`, `remplace` et `entrees`
+        servent cette recréation : la VM rejoint le suivi ouvert, son entrée
+        remplace l'ancienne, et `entrees` reçoit ce que le suivi doit
+        relire.
+
         L'alias et non l'IP dans les étapes suivantes : ssh y lit le rebond
         par l'hôte Proxmox, et le suivi d'installation en a besoin pour
         entrer dans une VM qui n'est pas sur notre réseau."""
         from script.proxmox import proxmox_deploy as pve
 
+        # Prises AVANT la boucle qui pose l'adresse, l'alias et les notes :
+        # rien de ce que le déploiement ajoute en route n'appartient aux
+        # paramètres de création.
+        specs = {
+            vm["name"]: self._pve_spec_vm(spec, vm)
+            for vm in spec["vms"]
+            if vm["name"] in reussies
+        }
         # Les domaines LOCAUX : un nom partagé avec l'un d'eux fait dérailler
         # l'alias ssh et le suivi d'installation.
         locaux = set(self._qemu_list_domains())
@@ -2346,7 +2428,8 @@ class ProxmoxMenuMixin:
         # qu'en QEMU/KVM. Sans elle, la case « Suivre l'installation » ne
         # commandait rien : décochée, le tableau de bord s'ouvrait quand
         # même ; cochée sans rien à installer, il ne s'ouvrait jamais.
-        suivi = spec.get("monitor", True)
+        # Une recréation rejoint TOUJOURS le suivi qui l'a demandée.
+        suivi = spec.get("monitor", True) or bool(session)
         if not joignables or not (install or suivi):
             return resultat
         noms = [vm["name"] for vm in joignables]
@@ -2399,7 +2482,7 @@ class ProxmoxMenuMixin:
                 for vm in joignables
                 if vm.get("vmid")
             }
-            self._qemu_install_erplibre_monitored(
+            lancees = self._qemu_install_erplibre_monitored(
                 noms,
                 branche,
                 {n: alias.get(n, n) for n in noms},
@@ -2435,7 +2518,12 @@ class ProxmoxMenuMixin:
                     for vm in joignables
                     if vm.get("notes")
                 },
+                session=session,
+                specs=specs,
+                remplace=remplace,
             )
+            if entrees is not None and session:
+                entrees.extend(lancees or [])
             return resultat
         # Sans suivi mais avec quelque chose à installer : en série, sortie à
         # l'écran. C'est le pendant exact de la voie QEMU/KVM.
@@ -2455,6 +2543,53 @@ class ProxmoxMenuMixin:
                 vm_tools=spec.get("vm_tools") or (),
             )
         return resultat
+
+    def _pve_spec_vm(self, spec, vm):
+        """La spec de recréation d'UNE VM.
+
+        Celle du déploiement réduite à cette VM (_qemu_spec_vm), copiée par
+        JSON — c'est sous cette forme qu'elle est gardée —, et sans ce que le
+        déploiement y a ajouté en route : la clé posée sur l'hôte, l'adresse,
+        l'alias et les notes. Le VMID et l'ipconfig restent : la recréation
+        reprend le même numéro, donc sur un pont interne la même adresse."""
+        reduite = json.loads(json.dumps(self._qemu_spec_vm(spec, vm)))
+        reduite.pop("sshkey_path", None)
+        for une in reduite.get("vms") or []:
+            for cle in ("adresse", "alias", "notes"):
+                une.pop(cle, None)
+        return reduite
+
+    @contextlib.contextmanager
+    def _pve_host_pinned(self, host):
+        """L'hôte retenu est `host` le temps du bloc, puis redevient ce qu'il
+        était. Les lectures de la création passent par _pve_host() : sans
+        cela, elles iraient à l'hôte mémorisé dans les préférences, qui peut
+        être un autre hyperviseur — ou poser la question de l'hôte."""
+        avant = getattr(self, "_pve_host_cache", None)
+        self._pve_host_cache = host
+        try:
+            yield
+        finally:
+            self._pve_host_cache = avant
+
+    def _pve_deploie_spec(self, spec, session):
+        """Recrée, pour le suivi ouvert sur `session`, la VM Proxmox de
+        `spec` : le pendant de _qemu_deploie_spec.
+
+        Ni coupure hors ligne ni confirmation : le suivi refuse une session
+        hors ligne et une coupure tenue ailleurs avant d'arriver ici. sudo n'y
+        demande rien — il tourne dans un fil, derrière l'écran du suivi."""
+        mod = self._qemu_import_module()
+        with qemu_privilege.sudo_non_interactif(), self._pve_host_pinned(
+            spec["host"]
+        ):
+            return self._pve_deploy_spec(
+                spec["host"],
+                spec,
+                mod,
+                session=session,
+                remplace=bool(spec.get("recreate")),
+            )
 
     def _pve_deploy_prompts(self, dry_run=False):
         """Déploie une VM SUR l'hôte Proxmox choisi, par questions.

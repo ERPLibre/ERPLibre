@@ -2607,5 +2607,229 @@ class TestOrdreDuCatalogue(unittest.TestCase):
             self.assertEqual(sorted(cles), cles)
 
 
+class TestLaRecreationProxmox(unittest.TestCase):
+    """Ce que « n » du suivi demande à la voie Proxmox : les paramètres de
+    création gardés par VM, et un déploiement qui rejoint la session sans
+    rien demander à personne."""
+
+    def _todo(self):
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._ssh_config_block = lambda nom: {}
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._pve_attendre_ssh = lambda alias: True
+        todo._qemu_import_module = lambda: None
+        todo._qemu_list_domains = lambda: []
+        return todo
+
+    def _spec(self, **kw):
+        spec = {
+            "host": {"target": "pve1", "sudo": "sudo "},
+            "storage": "local-lvm",
+            "bridge": "vmbr1",
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "existing": [],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": {"branch": "develop", "cmd": "make", "label": "X"},
+            "monitor": True,
+            "vm_tools": ("aidev",),
+        }
+        spec.update(kw)
+        return spec
+
+    def _apres(self, spec, **kw):
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {}
+
+        def installe(*a, **k):
+            vu.update(k)
+            return [{"name": "vm-a", "pve": {"vmid": 100}}]
+
+        todo._qemu_install_erplibre_monitored = installe
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "", **kw)
+        return vu
+
+    def test_the_kept_spec_is_this_vm_without_what_the_deploy_added(self):
+        todo = self._todo()
+        spec = self._spec(sshkey_path="/root/.ssh/erplibre-deploy.pub")
+        vm = dict(spec["vms"][0], adresse="10.0.0.9", alias="a", notes=["x"])
+        reduite = todo._pve_spec_vm(dict(spec, vms=[vm]), vm)
+        self.assertNotIn("sshkey_path", reduite)
+        for cle in ("adresse", "alias", "notes"):
+            self.assertNotIn(cle, reduite["vms"][0])
+        self.assertEqual(100, reduite["vms"][0]["vmid"])
+        self.assertIn("ipconfig", reduite["vms"][0])
+        self.assertEqual("pve1", reduite["host"]["target"])
+        # Gardée en JSON : le tuple des outils y devient une liste.
+        self.assertEqual(["aidev"], reduite["vm_tools"])
+
+    def test_every_deploy_keeps_its_specs_in_the_session(self):
+        vu = self._apres(self._spec())
+        self.assertEqual({"vm-a"}, set(vu["specs"]))
+        self.assertIsNone(vu["session"])
+        self.assertFalse(vu["remplace"])
+
+    def test_a_recreation_joins_the_open_session_even_unmonitored(self):
+        entrees = []
+        vu = self._apres(
+            self._spec(monitor=False, install=None),
+            session="/s/session.json",
+            remplace=True,
+            entrees=entrees,
+        )
+        self.assertEqual("/s/session.json", vu["session"])
+        self.assertTrue(vu["remplace"])
+        self.assertEqual(["vm-a"], [e["name"] for e in entrees])
+
+    def test_the_host_is_pinned_then_given_back_even_on_error(self):
+        todo = self._todo()
+        todo._qemu_import_module = lambda: object()
+        todo._pve_host_cache = {"target": "autre"}
+        vu = {}
+
+        def deploie(host, spec, mod, **k):
+            vu.update(k, hote=todo._pve_host())
+            raise RuntimeError("panne")
+
+        todo._pve_deploy_spec = deploie
+        spec = self._spec(recreate=True)
+        with self.assertRaises(RuntimeError):
+            todo._pve_deploie_spec(spec, session="/s/session.json")
+        self.assertEqual("pve1", vu["hote"]["target"])
+        self.assertEqual("/s/session.json", vu["session"])
+        self.assertTrue(vu["remplace"])
+        self.assertEqual({"target": "autre"}, todo._pve_host_cache)
+
+    def test_the_session_mode_asks_nothing_and_reports(self):
+        import contextlib
+        import io
+        import tempfile
+
+        from script.todo import deploy_form_lib
+
+        todo = self._todo()
+
+        def interdit(*a, **k):
+            raise AssertionError("une invite dans le suivi")
+
+        todo._pve_confirm_spec = interdit
+        todo._pve_vm_commands = lambda mod, vm, spec: ["true"]
+        todo._pve_push_key = lambda cle: False
+        todo._qemu_default_ssh_key = lambda: ""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, dossier, True)
+        todo._pve_log_dir = lambda: dossier
+        vu = {}
+
+        def travaux(jobs, workers, stdin=None):
+            vu["stdin"] = stdin
+            return [
+                ("vm-a", 0, "", 1.0),
+                ("vm-b", 1, "qm create: echec", 1.0),
+            ]
+
+        todo._qemu_deploy_jobs_cli = travaux
+
+        def apres(host, spec, reussies, cle, **k):
+            vu.update(k, reussies=reussies)
+            k["entrees"].append({"name": "vm-a"})
+            return [{"name": "vm-a"}]
+
+        todo._pve_after_create = apres
+        spec = self._spec()
+        spec["vms"].append(dict(spec["vms"][0], name="vm-b", vmid=101))
+        with mock.patch.object(
+            deploy_form_lib, "run_deploy_progress", interdit
+        ), contextlib.redirect_stdout(io.StringIO()):
+            res = todo._pve_deploy_spec(
+                spec["host"], spec, None, session="/s/session.json"
+            )
+        self.assertEqual(["vm-a"], vu["reussies"])
+        self.assertEqual([{"name": "vm-a"}], res["added"])
+        self.assertEqual(["vm-b"], res["failed"])
+        self.assertEqual([], res["no_ip"])
+        import subprocess
+
+        self.assertEqual(subprocess.DEVNULL, vu["stdin"])
+
+    def test_no_ssh_of_the_creation_reads_the_terminal(self):
+        """Le suivi lit le terminal pendant la création : un ssh qui en
+        hériterait lui volerait des frappes."""
+        from script.proxmox import proxmox_deploy as pve
+        from script.todo import proxmox_menu, qemu_deploy
+
+        todo = self._todo()
+        vus = []
+
+        def run(argv, **k):
+            vus.append(k.get("stdin"))
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(pve.subprocess, "run", run):
+            pve.run({"target": "pve1"}, "true")
+        with mock.patch.object(proxmox_menu.subprocess, "run", run):
+            todo._pve_ssh("pve1+vm-a", "true")
+        with mock.patch.object(qemu_deploy.subprocess, "run", run):
+            import contextlib
+            import io
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                todo._qemu_deploy_jobs_cli(
+                    [("vm-a", "vm-a", ["true"])],
+                    1,
+                    stdin=__import__("subprocess").DEVNULL,
+                )
+        import subprocess
+
+        self.assertEqual([subprocess.DEVNULL] * 3, vus)
+
+    def test_the_cache_bypass_never_prompts_behind_the_monitor(self):
+        from script.todo import proxmox_menu, qemu_privilege
+
+        todo = self._todo()
+
+        class Mod:
+            CACHE_BIN = "/usr/bin/cache"
+
+            @staticmethod
+            def cache_sans_autorite(distro):
+                return True
+
+        todo._qemu_import_module = lambda: Mod
+        todo._qemu_list_domains = lambda: ["pve1"]
+        todo._qemu_domain_mac = lambda nom: "52:54:00:aa:bb:cc"
+        lances = []
+
+        def run(argv, **k):
+            lances.append(argv)
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(
+            proxmox_menu.subprocess, "run", run
+        ), qemu_privilege.sudo_non_interactif():
+            todo._pve_cache_bypass_hote(
+                {"target": "erplibre@pve1"}, {"distro": "nixos"}
+            )
+        self.assertEqual(["sudo", "-n"], lances[0][:2])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

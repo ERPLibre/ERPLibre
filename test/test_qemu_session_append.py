@@ -158,7 +158,7 @@ class TestDeploieSpecSession(unittest.TestCase):
         self.jobs = []
         self.tui = []
 
-        def cli(jobs, workers):
+        def cli(jobs, workers, stdin=None):
             self.jobs.extend(jobs)
             return [
                 (n, 1 if n == "vm-bad" else 0, "", 1.0) for _, n, _ in jobs
@@ -380,7 +380,9 @@ class TestCollectProgram(unittest.TestCase):
 class TestSudoNonInteractif(unittest.TestCase):
     def test_block_adds_dash_n_and_restores(self):
         with mock.patch.object(qemu_privilege, "needs_sudo", lambda: True):
-            self.assertEqual(["sudo", "virsh"], qemu_privilege.virsh_argv()[:2])
+            self.assertEqual(
+                ["sudo", "virsh"], qemu_privilege.virsh_argv()[:2]
+            )
             with qemu_privilege.sudo_non_interactif():
                 self.assertEqual(
                     ["sudo", "-n", "virsh"], qemu_privilege.virsh_argv()[:3]

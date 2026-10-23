@@ -2408,15 +2408,22 @@ class QemuDeployMixin:
             return None
         return spec
 
-    def _qemu_deploy_jobs_cli(self, jobs, workers):
+    def _qemu_deploy_jobs_cli(self, jobs, workers, stdin=None):
         """Déploiement parallèle, sortie texte. Renvoie
-        [(nom, rc, sortie, durée)] — même contrat que la vue TUI."""
+        [(nom, rc, sortie, durée)] — même contrat que la vue TUI.
+
+        `stdin` : l'entrée des travaux. subprocess.DEVNULL derrière un suivi
+        ouvert, dont la boucle lit le même terminal : un ssh qui en hérite lui
+        vole des frappes pendant toute la création. Hors du suivi, l'entrée
+        reste ouverte, une invite sudo pouvant y attendre."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def _run(job):
             jid, jname, jparts = job
             j0 = time.time()
-            res = subprocess.run(jparts, capture_output=True, text=True)
+            res = subprocess.run(
+                jparts, capture_output=True, text=True, stdin=stdin
+            )
             out = (res.stdout or "") + (res.stderr or "")
             return jid, jname, res.returncode, out, time.time() - j0
 
@@ -3063,7 +3070,11 @@ class QemuDeployMixin:
             else:
                 outcome = None
             if outcome is None:
-                outcome = self._qemu_deploy_jobs_cli(jobs, workers)
+                outcome = self._qemu_deploy_jobs_cli(
+                    jobs,
+                    workers,
+                    stdin=subprocess.DEVNULL if session else None,
+                )
             for name, rc, _out, _secs in outcome:
                 if rc == 0:
                     deployed.append(name)

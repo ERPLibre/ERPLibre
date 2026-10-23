@@ -2479,6 +2479,78 @@ def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
     return pve_host_cmd(info, suite)
 
 
+def is_pve_spec(spec) -> bool:
+    """La spec vient-elle d'un déploiement Proxmox ? Elle seule porte l'hôte :
+    une spec QEMU/KVM n'a pas de clé « host »."""
+    return bool(((spec or {}).get("host") or {}).get("target"))
+
+
+def recreate_delete_suite_pve(
+    vmid, name, storage="", bridge="", gpu3d=False
+) -> str:
+    """Shell, sur l'hôte Proxmox, qui efface une VM avant sa recréation.
+
+    Échoue FERMÉ, et rien n'est détruit avant que tout ait été vérifié :
+
+    - le stockage, le pont et, pour la 3D, le nœud de rendu dont la
+      recréation aura besoin existent encore. Sinon elle échouerait APRÈS
+      l'effacement, et ce qu'il faudrait reposer — un pont, les paquets du
+      GPU — ne se pose que depuis le formulaire ;
+    - « qm list » répond ;
+    - le VMID, s'il existe, porte encore ce nom (pve_identity_guard).
+
+    Un VMID absent n'est pas une erreur : la VM a déjà disparu, et la
+    recréation la reprend sous le même numéro."""
+    vmid = int(vmid)
+
+    def refus(motif):
+        texte = f"REFUS : {motif} Rien n'a ete efface."
+        return "{ echo " + shlex.quote(texte) + "; exit 1; }"
+
+    suite = ""
+    if storage:
+        suite += (
+            f"pvesm status --storage {shlex.quote(storage)} >/dev/null 2>&1 "
+            f"|| {refus(f'le stockage {storage} est introuvable.')}; "
+        )
+    if bridge:
+        suite += (
+            f"ip link show {shlex.quote(bridge)} >/dev/null 2>&1 "
+            f"|| {refus(f'le pont {bridge} est introuvable.')}; "
+        )
+    if gpu3d:
+        suite += (
+            "ls /dev/dri/renderD* >/dev/null 2>&1 "
+            f"|| {refus('aucun noeud de rendu pour la 3D.')}; "
+        )
+    suite += f"ids=$(qm list) || {refus('qm list ne repond pas.')}; "
+    suite += (
+        "if printf '%s\\n' \"$ids\" | awk 'NR>1{print $1}' "
+        f"| grep -qx {vmid}; then "
+        + pve_identity_guard(vmid, name)
+        + f"qm stop {vmid} --skiplock 1 || true; "
+        f"qm destroy {vmid} --purge 1 --destroy-unreferenced-disks 1 "
+        "|| exit 1; fi"
+    )
+    return suite
+
+
+def recreate_delete_cmd_pve(info, name, spec) -> str:
+    """La suite d'effacement, envoyée à l'hôte de la VM. Le stockage, le
+    pont et la 3D sont ceux que la spec gardée réclamera à la recréation."""
+    spec = spec or {}
+    return pve_host_cmd(
+        info,
+        recreate_delete_suite_pve(
+            int((info or {}).get("vmid") or 0),
+            name,
+            spec.get("storage") or "",
+            spec.get("bridge") or "",
+            bool(spec.get("gpu3d")),
+        ),
+    )
+
+
 def delete_lines(vm) -> list:
     """Ce qui va RÉELLEMENT disparaître, dit selon l'endroit où la VM vit.
 
@@ -4339,23 +4411,53 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def _recreate_refusal(self, vm):
             """Pourquoi `vm` ne peut pas être recréée d'ici, ou "".
 
-            Il faut un objet TODO (c'est lui qui crée), une VM LOCALE — une VM
-            Proxmox se recrée par son hôte, par un autre chemin —, sa spec de
-            création gardée, aucune installation en cours (la VM serait
-            effacée sous elle), et Internet : la même règle que la relance,
-            pour la même raison."""
+            Il faut un objet TODO (c'est lui qui crée), la spec de création
+            gardée, aucune installation en cours (la VM serait effacée sous
+            elle), et Internet : la même règle que la relance, pour la même
+            raison. Une VM Proxmox exige en plus une spec Proxmox qui désigne
+            le MÊME hôte et le MÊME VMID que sa ligne : c'est cet hôte qu'on
+            vide et ce VMID qu'on recrée."""
             if todo is None:
                 return t("Recreating a VM is not available from this monitor.")
             if self._adding:
                 return t("VMs are already being added.")
-            if vm.get("pve"):
-                return t("A Proxmox VM cannot be recreated from the monitor.")
-            if read_vm_spec(vm) is None:
+            spec = read_vm_spec(vm)
+            if spec is None:
                 return t(
                     "This VM's creation parameters were not kept (older"
                     " session, or a VM only monitored). Deploy it again"
                     " from the menu."
                 )
+            info = vm.get("pve") or {}
+            cible = (spec.get("vms") or [{}])[0]
+            if bool(info) != is_pve_spec(spec) or (
+                info
+                and (
+                    spec["host"]["target"] != info.get("target")
+                    or str(cible.get("vmid")) != str(info.get("vmid"))
+                )
+            ):
+                return t(
+                    "The kept parameters do not match this VM (host or"
+                    " VMID): deploy it again from the menu."
+                )
+            if info and not hasattr(todo, "_pve_deploie_spec"):
+                return t("Recreating a VM is not available from this monitor.")
+            if info:
+                # Les commandes de création se bâtissent ICI, avant toute
+                # destruction : une version retirée du catalogue depuis le
+                # déploiement ne se recréerait plus, et la VM serait perdue.
+                try:
+                    todo._pve_vm_commands(
+                        todo._qemu_import_module(), cible, spec
+                    )
+                except Exception:
+                    return t(
+                        "The kept parameters no longer build this VM (the"
+                        " catalog changed): deploy it again from the menu."
+                    )
+            if spec.get("offline"):
+                return t("Recreate is not available for an offline session.")
             nom = vm["name"]
             if nom not in self._final and self._domstate.get(nom) != "gone":
                 return t(
@@ -4384,11 +4486,18 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 return
             spec = read_vm_spec(vm)
             cible = (spec.get("vms") or [{}])[0]
-            lignes = [
-                t(
+            if vm.get("pve"):
+                entete = t(
+                    "The VM is destroyed on its Proxmox host, then created"
+                    " again with the same VMID and parameters:"
+                )
+            else:
+                entete = t(
                     "The VM is deleted (domain, disk, seed), then created"
                     " again with the same parameters:"
-                ),
+                )
+            lignes = [
+                entete,
                 "  "
                 + " ".join(
                     str(cible.get(k) or "")
@@ -4398,6 +4507,17 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 f"{cible.get('vcpus', '?')} vCPU · {cible.get('disk', '?')}",
                 t("The current log is kept as <log>.N."),
             ]
+            if vm.get("pve"):
+                lignes.append(t("On a DHCP bridge its address may change."))
+                if cible.get("distro") == "proxmox":
+                    # Un hyperviseur imbriqué emporte ses propres VM : la
+                    # confirmation le dit, puisque rien d'autre ne le dira.
+                    lignes.append(
+                        t(
+                            "It is a Proxmox VE hypervisor: the VMs it"
+                            " carries disappear with it."
+                        )
+                    )
 
             def confirmed(yes):
                 if not yes:
@@ -4407,7 +4527,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 except RelaunchRefused as exc:
                     self.notify(str(exc), severity="warning")
                     return
-                if not self._delete_for_recreate(vm):
+                if not self._delete_for_recreate(vm, spec):
                     release_recreate(manifest_path, vm["name"])
                     return
                 spec["recreate"] = True
@@ -4422,7 +4542,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 confirmed,
             )
 
-        def _delete_for_recreate(self, vm) -> bool:
+        def _delete_for_recreate(self, vm, spec=None) -> bool:
             """Terminal rendu : ticket sudo, arrêt de l'ancien lanceur,
             effacement de la VM (recreate_delete_cmd), puis ménage des
             exceptions du cache. Rend True si l'effacement a réussi,
@@ -4431,7 +4551,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             Un ticket sudo refusé arrête tout : sans lui, virsh serait
             illisible et la commande refuserait de toute façon, mais autant
             le dire tout de suite. Ce ticket est celui que le thread de
-            création entretient ensuite."""
+            création entretient ensuite — y compris pour une VM Proxmox, dont
+            la création lit les domaines locaux et l'état du cache.
+
+            Une VM Proxmox est effacée sur son hôte (recreate_delete_cmd_pve),
+            et aucun ménage local ne suit : rien n'a bougé ici."""
             nom = vm["name"]
             try:
                 with self.suspend():
@@ -4439,6 +4563,10 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     ok = True
                     if os.geteuid() != 0:
                         ok = subprocess.run(["sudo", "-v"]).returncode == 0
+                        # Une VM Proxmox s'efface sur son hôte : le sudo local
+                        # n'y sert qu'aux étapes facultatives de la création,
+                        # qui le demandent sans invite. Son refus n'arrête rien.
+                        ok = ok or bool(vm.get("pve"))
                     if ok:
                         arretes = stop_launchers(vm["log"])
                         if arretes:
@@ -4447,7 +4575,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                                     n=arretes
                                 )
                             )
-                        cmd = recreate_delete_cmd(nom, vm.get("uuid") or "")
+                        cmd = (
+                            recreate_delete_cmd_pve(vm["pve"], nom, spec)
+                            if vm.get("pve")
+                            else recreate_delete_cmd(nom, vm.get("uuid") or "")
+                        )
                         print(f"→ {cmd}\n")
                         ok = (
                             subprocess.run(["bash", "-c", cmd]).returncode == 0
@@ -4464,6 +4596,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                             f"\n{t('Press Enter to return to the monitor')}… "
                         )
                         return False
+                    if vm.get("pve"):
+                        return True
                     try:
                         from script.todo.qemu_cache_menu import bypass_menage
 
@@ -4521,6 +4655,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             # la reposerait en 🗑 avant que virsh la revoie. Son ancien 🟢,
             # lui, ne dit rien de la nouvelle.
             self._domstate.pop(nom, None)
+            # Une VM Proxmox recréée a manqué à l'hôte le temps de sa
+            # recréation : ces absences comptées, et un relevé en cache d'avant
+            # elle, la remettraient en 🗑 au tour suivant.
+            self._pve_absences.pop(nom, None)
+            _PVE_CACHE["at"] = 0.0
             self._odoo_up.discard(nom)
             self._odoo_revu.pop(nom, None)
             self._offsets[nom] = 0
@@ -4701,6 +4840,14 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             ajoutees = {e.get("name") for e in res.get("added") or []}
             if not nom or nom in ajoutees:
                 return res
+            if is_pve_spec(spec):
+                # Une VM Proxmox n'a pas d'UUID local : en lire un ici
+                # trouverait au mieux rien, au pire un domaine homonyme.
+                try:
+                    release_recreate(manifest_path, nom)
+                except (OSError, ValueError):
+                    pass
+                return res
             uuid = local_uuid(nom)
             try:
                 release_recreate(manifest_path, nom, uuid=uuid)
@@ -4733,7 +4880,12 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             res = None
             erreur = None
             try:
-                res = todo._qemu_deploie_spec(spec, session=manifest_path)
+                deploie = (
+                    todo._pve_deploie_spec
+                    if is_pve_spec(spec)
+                    else todo._qemu_deploie_spec
+                )
+                res = deploie(spec, session=manifest_path)
             except Exception as exc:
                 erreur = f"{type(exc).__name__}: {exc}"
             finally:
