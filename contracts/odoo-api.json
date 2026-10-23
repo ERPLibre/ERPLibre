@@ -299,7 +299,7 @@
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": { "params": { "model": "mail.activity", "method": "write", "args": [["{activityId}"], { "date_deadline": "{YYYY-MM-DD}" }], "kwargs": {} } },
-      "notes": "Same queueing as calendar.done. Local reminders (hour, days before, off by default) of the user's open activities are rescheduled after each calendar read."
+      "notes": "Same queueing as calendar.done. Once written, the deadline goes into the base (remote date) of the note link of that activity, if any: the next pull proposes nothing, and the note keeps its own date. Local reminders (hour, days before, off by default) of the user's open activities are rescheduled after each calendar read and at the app's start, from the cache."
     },
 
     "partners.search": {
@@ -546,7 +546,7 @@
 
   "attachments": {
     "create": "ir.attachment create {name (file name), datas (base64), res_model, res_id, mimetype} for each photo, audio or video entry with a file not sent yet to that record, after each create or write of the note's task, opportunity or invoice (on it) and of each of its messages (on the message's record, then /mail/message/update_content with the message's attachment_ids plus the new ones). Activities take none.",
-    "limits": "Options › Odoo sync (localStorage options.sync.attachments): wifiOnly holds files on a mobile network (the server stays pending until a push on Wi-Fi); maxMb, and always 90 MB (base64 must stay under the server's request limit), leave a larger file out. note_links.params.attachments maps entry id → {id, path}: each file goes once per record, a replaced one (another path) again, a removed one stays on the server; a file already sent to the same record by another link of the note is reused. params.attachmentsSkipped notes a file too big, missing or refused (the round goes on), named on the note until sent, as are the files held for Wi-Fi while off it; going onto Wi-Fi from another link runs syncAll; params.attachmentsInFlight marks a create sent, so an unanswered one is looked for first (ir.attachment search on res_model, res_id, name); params.attachmentsUnlinked keeps ids a message could not take yet. Never fails the push.",
+    "limits": "Options › Odoo sync (localStorage options.sync.attachments): wifiOnly holds files on a mobile network (the server stays pending until a push on Wi-Fi); maxMb, and always 90 MB (base64 must stay under the server's request limit), leave a larger file out. note_links.params.attachments maps entry id → {id, path}: each file goes once per record, a replaced one (another path) again, a removed one stays on the server; a file already sent to the same record by another link of the note is reused. params.attachmentsSkipped notes a file too big, missing or refused (the round goes on), named on the note until sent, as are the files held for Wi-Fi while off it; going onto Wi-Fi from another link syncs the servers with due work, retry delays kept; params.attachmentsInFlight marks a create sent, so an unanswered one is looked for first (ir.attachment search on res_model, res_id, name); params.attachmentsUnlinked keeps ids a message could not take yet. Never fails the push.",
     "paths": "An entry's file is read through Filesystem: a web view URL (http://localhost/_capacitor_file_/…) as its native file, an absolute path or file:// as is, a relative path (a recording) under Directory.Data."
   },
 
