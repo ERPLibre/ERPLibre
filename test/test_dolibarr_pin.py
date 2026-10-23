@@ -10,7 +10,9 @@ Ce qui se garde :
 - sans --apply, rien n'est écrit ;
 - la version lue au commit visé doit appartenir à la branche suivie ;
 - l'étiquette Docker ne suit que si le Hub la publie : sinon l'ancienne
-  reste, et c'est dit.
+  reste, et c'est dit ;
+- les images sont épinglées par empreinte, relue au Hub à chaque update :
+  une image reconstruite sous la même étiquette déplace l'épinglage.
 """
 
 import contextlib
@@ -20,16 +22,24 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 
 from script.dolibarr import lib_dolibarr, pin  # noqa: E402
 
-# Commits inventés.
+# Commits et empreintes inventés.
 ANCIEN = "a" * 40
 NOUVEAU = "b" * 40
 TAG = "c" * 40
+DOLI = "docker.io/dolibarr/dolibarr"
+MARIA = "docker.io/library/mariadb"
+D_2400 = "sha256:" + "1" * 64
+D_2400_REFAIT = "sha256:" + "4" * 64
+D_2402 = "sha256:" + "2" * 64
+D_MARIA = "sha256:" + "3" * 64
+D_MARIA_REFAIT = "sha256:" + "5" * 64
 
 MANIFEST = """<?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
@@ -53,6 +63,56 @@ define('DOL_MAJOR_VERSION', '{major}');
 define('DOL_MINOR_VERSION', '{minor}');
 define('DOL_VERSION', constant('DOL_MAJOR_VERSION').'.'.constant('DOL_MINOR_VERSION'));
 """
+
+
+class TestImage(unittest.TestCase):
+    def test_a_reference_splits_into_repository_tag_and_digest(self):
+        self.assertEqual(
+            pin.split_image(f"{DOLI}:24.0.0@{D_2400}"),
+            (DOLI, "24.0.0", D_2400),
+        )
+        self.assertEqual(
+            pin.split_image(f"{MARIA}:11.4"), (MARIA, "11.4", None)
+        )
+
+    def test_a_reference_is_rebuilt_from_its_parts(self):
+        self.assertEqual(
+            pin.image_ref(DOLI, "24.0.0", D_2400), f"{DOLI}:24.0.0@{D_2400}"
+        )
+        self.assertEqual(pin.image_ref(MARIA, "11.4", None), f"{MARIA}:11.4")
+
+
+class TestHub(unittest.TestCase):
+    """Network.hub_digest lit la réponse du Hub, sans réseau ici."""
+
+    def lire(self, corps):
+        reponse = mock.MagicMock()
+        reponse.__enter__.return_value = io.BytesIO(corps.encode())
+        with mock.patch.object(
+            pin.urllib.request, "urlopen", return_value=reponse
+        ) as urlopen:
+            digest = pin.Network().hub_digest(DOLI, "24.0.0")
+        return digest, urlopen.call_args[0][0]
+
+    def test_the_digest_of_the_tag(self):
+        digest, url = self.lire(json.dumps({"digest": D_2400}))
+        self.assertEqual(digest, D_2400)
+        self.assertEqual(
+            url,
+            "https://hub.docker.com/v2/repositories/dolibarr/dolibarr"
+            "/tags/24.0.0",
+        )
+
+    def test_anything_but_a_sha256_digest_is_none(self):
+        # Il finit dans une commande « run » : rien d'autre n'y entre.
+        for corps in (
+            json.dumps({"digest": "sha256:court"}),
+            json.dumps({"digest": D_2400 + " --privileged"}),
+            json.dumps({}),
+            "pas du json",
+        ):
+            with self.subTest(corps=corps):
+                self.assertIsNone(self.lire(corps)[0])
 
 
 class TestParse(unittest.TestCase):
@@ -114,7 +174,7 @@ class Reseau:
             NOUVEAU: VERSION_INC.format(major="24", minor="0.2"),
             TAG: VERSION_INC.format(major="24", minor="0.2"),
         }
-        self.tags_hub = {"24.0.0"}
+        self.hub = {(DOLI, "24.0.0"): D_2400, (MARIA, "11.4"): D_MARIA}
 
     def ls_remote(self, ref):
         return self.refs.get(ref)
@@ -122,8 +182,8 @@ class Reseau:
     def raw(self, commit, path):
         return self.versions.get(commit)
 
-    def hub_has(self, tag):
-        return tag in self.tags_hub
+    def hub_digest(self, repo, tag):
+        return self.hub.get((repo, tag))
 
 
 class Banc(unittest.TestCase):
@@ -192,16 +252,57 @@ class TestUpdate(Banc):
     def test_the_docker_tag_follows_only_when_the_hub_has_it(self):
         _code, sortie = self.lancer("update", "--apply")
         data = json.loads(self.json.read_text())
-        self.assertEqual(
-            data["docker_image"], "docker.io/dolibarr/dolibarr:24.0.0"
-        )
+        self.assertEqual(data["docker_image"], f"{DOLI}:24.0.0@{D_2400}")
         self.assertIn("24.0.0", sortie)
-        self.net.tags_hub.add("24.0.2")
+        self.net.hub[(DOLI, "24.0.2")] = D_2402
+        self.lancer("update", "--apply")
+        data = json.loads(self.json.read_text())
+        self.assertEqual(data["docker_image"], f"{DOLI}:24.0.2@{D_2402}")
+
+    def test_images_are_pinned_by_digest(self):
+        # Une étiquette peut être repoussée : l'empreinte fixe ce qui tourne.
+        self.lancer("update", "--apply")
+        data = json.loads(self.json.read_text())
+        self.assertEqual(data["mariadb_image"], f"{MARIA}:11.4@{D_MARIA}")
+        self.assertEqual(
+            lib_dolibarr.read_pin(str(self.racine))["docker_image"],
+            f"{DOLI}:24.0.0@{D_2400}",
+        )
+
+    def test_a_rebuilt_image_moves_the_digest_of_the_same_tag(self):
+        # Les images sont reconstruites (correctifs de PHP, de MariaDB) sous
+        # la même étiquette : relever l'épinglage les prend.
+        self.lancer("update", "--apply")
+        self.net.hub[(DOLI, "24.0.0")] = D_2400_REFAIT
+        self.net.hub[(MARIA, "11.4")] = D_MARIA_REFAIT
+        code, sortie = self.lancer("update")
+        self.assertEqual(code, pin.PENDING)
+        self.assertIn(D_2400_REFAIT[:19], sortie)
         self.lancer("update", "--apply")
         data = json.loads(self.json.read_text())
         self.assertEqual(
-            data["docker_image"], "docker.io/dolibarr/dolibarr:24.0.2"
+            data["docker_image"], f"{DOLI}:24.0.0@{D_2400_REFAIT}"
         )
+        self.assertEqual(
+            data["mariadb_image"], f"{MARIA}:11.4@{D_MARIA_REFAIT}"
+        )
+
+    def test_a_rebuilt_mariadb_alone_is_a_change(self):
+        self.lancer("update", "--apply")
+        self.net.hub[(MARIA, "11.4")] = D_MARIA_REFAIT
+        code, _sortie = self.lancer("update")
+        self.assertEqual(code, pin.PENDING)
+
+    def test_an_unreachable_hub_keeps_the_images(self):
+        self.lancer("update", "--apply")
+        avant = json.loads(self.json.read_text())
+        self.net.hub = {}
+        self.net.refs["refs/heads/24.0"] = TAG
+        self.lancer("update", "--apply")
+        data = json.loads(self.json.read_text())
+        self.assertEqual(data["docker_image"], avant["docker_image"])
+        self.assertEqual(data["mariadb_image"], avant["mariadb_image"])
+        self.assertEqual(data["version"], "24.0.2")
 
     def test_a_tag_pins_its_commit(self):
         self.lancer("update", "--tag", "24.0.2", "--apply")
