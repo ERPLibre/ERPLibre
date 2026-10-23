@@ -18,6 +18,23 @@
 | entry `video`          | `attachment_ids`      | ir.attachment    | + `<p>🎥 Vidéo — ISO_DATE</p>` in description |
 | entry `geolocation`    | `geo_task_point`      | GeoMultiPoint    | All lat/lon → MultiPoint GeoJSON, sent only when `fields_get` finds the field (module `erplibre_mobile_todo`) ; `<p>📍 text — lat,lon — ISO_DATE</p>` in description |
 
+## Note mobile → crm.lead (opportunity)
+
+A note can also be sent as an opportunity, beside or instead of its task,
+per server (picker boxes Task / Opportunity).
+
+| Note mobile field      | crm.lead field     | Notes |
+|------------------------|--------------------|-------|
+| *(target)*             | `type`             | `'opportunity'`, create only |
+| *(target)*             | `partner_id`       | Client chosen in the picker (name_search), create only, optional |
+| *(target)*             | `expected_revenue` | Typed in the picker, create only, optional |
+| `title`                | `name`             | |
+| entries                | `description`      | Same HTML as the task, with the marker |
+| `tags`                 | `tag_ids`          | `crm.tag`, matched by name, created if missing |
+| first `date` entry     | `date_deadline`    | Date: the day only |
+| `archived`             | `active`           | Create only: never written after, it would revive an opportunity marked lost |
+| `done`, `pinned`       | —                  | Not mapped (no won/lost, no stars) |
+
 ## Description HTML structure
 
 Each note's `description` field is built by concatenating all entries in order:
