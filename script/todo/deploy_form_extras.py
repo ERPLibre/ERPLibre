@@ -330,11 +330,50 @@ class ExtrasMixin:
             blocs.append((label, lignes))
         return blocs
 
+    def shortcuts_block(self) -> tuple:
+        """(titre, lignes) : les raccourcis de cet écran, une ligne par action.
+
+        Lus dans ses BINDINGS : une touche ajoutée à l'écran y paraît d'office,
+        alors que le pied de page tronque ce qui dépasse la largeur du
+        terminal et cache les liaisons marquées « show=False ». Les touches
+        d'une même action partagent sa ligne."""
+        from textual.binding import Binding
+
+        lisibles = {"escape": t("Esc"), "question_mark": "?"}
+        actions = {}
+        for liaison in getattr(self, "BINDINGS", ()):
+            key, action, label = (
+                (liaison.key, liaison.action, liaison.description)
+                if isinstance(liaison, Binding)
+                else liaison[:3]
+            )
+            touche = lisibles.get(
+                key, key.upper() if key[1:].isdigit() else key
+            )
+            touches, _ = actions.get(action, ([], label))
+            touches.append(touche)
+            actions[action] = (touches, label)
+        colonnes = [" / ".join(k) for k, _l in actions.values()]
+        large = max(map(len, colonnes), default=0)
+        return (
+            t("Keyboard shortcuts"),
+            [
+                f"{col:<{large}}  {label}"
+                for col, (_k, label) in zip(colonnes, actions.values())
+            ],
+        )
+
     def action_help(self) -> None:
-        """Ouvre l'aide. Esc ou q la ferme, et rien n'a bougé."""
+        """Ouvre l'aide : les raccourcis, puis ce que chaque option installe.
+        Esc ou q la ferme, et rien n'a bougé."""
         from script.todo.deploy_form_plan import help_screen
 
-        self.push_screen(help_screen()(self.extras_help_blocks()))
+        self.push_screen(
+            help_screen()(
+                [self.shortcuts_block()] + self.extras_help_blocks(),
+                title=t("Shortcuts and options"),
+            )
+        )
 
     # ------------------------------------------------------------------ #
     # Lire les widgets
