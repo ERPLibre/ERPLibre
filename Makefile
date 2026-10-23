@@ -160,12 +160,12 @@ install_mise:
 .PHONY: db_create_db_test
 db_create_db_test:
 	./script/make.sh db_drop_db_test
-	./odoo_bin.sh db --create --database test
+	./odoo_bin.sh db create test
 
 .PHONY: db_clone_test_to_test2
 db_clone_test_to_test2:
-	./odoo_bin.sh db --drop --database test2
-	./odoo_bin.sh db --clone --database test2 --from_database test
+	./odoo_bin.sh db drop --if-exists test2
+	./odoo_bin.sh db duplicate test test2
 
 .PHONY: db_test_export
 db_test_export:
@@ -399,7 +399,7 @@ config_gen_migration:
 # i18n generation demo_portal
 .PHONY: i18n_generate_demo_portal
 i18n_generate_demo_portal:
-	./odoo_bin.sh i18n --database code_generator --module demo_portal --addons_path addons/TechnoLibre_odoo-code-generator
+	./odoo_bin.sh i18n --database code_generator --module demo_portal --addons_path ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator
 
 ###########
 #  Clean  #

@@ -301,13 +301,13 @@ def main():
     all_temp_bd = []
 
     # Step 0, drop and restore
-    cmd_drop_db = f"./odoo_bin.sh db --drop --database {bd_temp_name}"
+    cmd_drop_db = f"./odoo_bin.sh db drop --if-exists {bd_temp_name}"
     all_temp_bd.append(bd_temp_name)
     run_cmd(cmd_drop_db)
     if not base_image_name or base_image_name == image_name_to_generate:
         with_demo = dct_config_image.get("with_demo")
         # Create a new one
-        cmd = f"./odoo_bin.sh db --create --database {bd_temp_name}"
+        cmd = f"./odoo_bin.sh db create {bd_temp_name}"
         if with_demo:
             cmd += " --demo"
     else:
@@ -338,8 +338,8 @@ def main():
             else f"{image_name_to_generate}_{pkg_name}"
         )
         cmd = (
-            f"./odoo_bin.sh db --backup --database"
-            f" {bd_temp_name} --restore_image {module_image_name}"
+            f"./odoo_bin.sh db dump {bd_temp_name}"
+            f" --image {module_image_name}"
         )
         run_cmd(cmd)
         # Step 5, loop to 1 with same bd name for next package
@@ -347,7 +347,7 @@ def main():
     # Step 6, clean if ask
     if not config.keep_database:
         for db_name in all_temp_bd:
-            cmd_drop_db = f"./odoo_bin.sh db --drop --database {db_name}"
+            cmd_drop_db = f"./odoo_bin.sh db drop {db_name}"
             run_cmd(cmd_drop_db)
 
 

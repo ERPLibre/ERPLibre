@@ -592,7 +592,7 @@ des informations dans la base de données.
 Supposons que le nom de votre BD est `test_website` :
 
 ```bash
-./odoo_bin.sh db --backup --database test_website --restore_image test_website_backup
+./odoo_bin.sh db dump test_website --image test_website_backup
 ./script/database/db_restore.py --database test_website_2 --image test_website_backup.zip --clean_cache
 ```
 

@@ -1142,7 +1142,7 @@ class TransformMenuMixin:
     def _transform_export_zip(self, base):
         """Vider la base anonymisée dans un zip NEUF.
 
-        Par la sauvegarde d'Odoo lui-même — `odoo_bin.sh db --backup` —
+        Par la sauvegarde d'Odoo lui-même — `odoo_bin.sh db dump` —
         et non par un `pg_dump` à nous : c'est Odoo qui écrit le
         `dump.sql`, le `filestore/` et le `manifest.json`, donc le format
         est juste par construction. Le zip atterrit dans `image_db/`,
@@ -1171,8 +1171,7 @@ class TransformMenuMixin:
             if not self._transform_confirm_overwrite([cible]):
                 return
         statut, _sortie = self.execute.exec_command_live(
-            f"./odoo_bin.sh db --backup --database {base}"
-            f" --restore_image {nom}",
+            f"./odoo_bin.sh db dump {base} --image {nom}",
             return_status_and_output=True,
             single_source_erplibre=True,
             source_erplibre=False,
@@ -1262,7 +1261,7 @@ class TransformMenuMixin:
     def _transform_bases_vivantes(self):
         """Les bases que le serveur porte VRAIMENT, ou () si on ne sait pas.
 
-        La MÊME commande que `select_database` — `odoo_bin.sh db --list` —
+        La MÊME commande que `select_database` — `odoo_bin.sh db list` —
         et non un appel à psql de plus : deux façons de demander la même
         chose se contredisent le jour où l'une change.
 
@@ -1271,7 +1270,7 @@ class TransformMenuMixin:
         rendent `()`, et l'appelant ne propose alors aucun effacement.
         """
         statut, sortie = self.execute.exec_command_live(
-            "./odoo_bin.sh db --list",
+            "./odoo_bin.sh db list",
             return_status_and_output=True,
             quiet=True,
             source_erplibre=False,

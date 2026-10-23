@@ -140,7 +140,7 @@ test_installation_demo:
 .PHONY: test_addons_sale
 test_addons_sale:
 	./.venv.erplibre/bin/coverage erase
-	./odoo_bin.sh db --drop --database test_addons_sale
+	./odoo_bin.sh db drop --if-exists test_addons_sale
 	./test.sh -d test_addons_sale --db-filter test_addons_sale -i sale
 	./.venv.erplibre/bin/coverage combine -a
 	./.venv.erplibre/bin/coverage report -m
@@ -150,7 +150,7 @@ test_addons_sale:
 .PHONY: test_addons_helpdesk
 test_addons_helpdesk:
 	./.venv.erplibre/bin/coverage erase
-	./odoo_bin.sh db --drop --database test_addons_helpdesk
+	./odoo_bin.sh db drop --if-exists test_addons_helpdesk
 	./test.sh -d test_addons_helpdesk --db-filter test_addons_helpdesk -i helpdesk_mgmt
 	./.venv.erplibre/bin/coverage combine -a
 	./.venv.erplibre/bin/coverage report -m
@@ -159,6 +159,6 @@ test_addons_helpdesk:
 
 .PHONY: test_addons_project_sale_link_specific_file
 test_addons_project_sale_link_specific_file:
-	./odoo_bin.sh db --drop --database test_addons_project_sale_link
+	./odoo_bin.sh db drop --if-exists test_addons_project_sale_link
 	./script/addons/install_addons_dev.sh test_addons_project_sale_link project_sale_link
 	./test.sh -d test_addons_project_sale_link --db-filter test_addons_project_sale_link -i project_sale_link --test-file=odoo18.0/addons/OCA_project/project_sale_link/tests/test_project_sale_link.py

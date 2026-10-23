@@ -17,7 +17,7 @@ fi
 echo "Uninstall module '$2' on BD '$1'"
 
 if [[ $# -eq 3 ]]; then
-  ./run.sh --no-http --stop-after-init -d "$1" --uninstall "$2" "$3"
+  ./odoo_bin.sh module uninstall -c "$3" -d "$1" "$2"
 else
-  ./run.sh --no-http --stop-after-init -d "$1" --uninstall "$2"
+  ./odoo_bin.sh module uninstall -d "$1" "$2"
 fi

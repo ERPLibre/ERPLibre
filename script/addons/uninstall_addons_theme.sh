@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Désinstaller un thème comme Odoo le fait lui-même.
 #
-# « ./run.sh --uninstall theme_x » retire le MODULE, pas le THÈME. Choisir un
-# thème (button_choose_theme, dont --install-theme refait le travail) fait DEUX
+# « ./odoo_bin.sh module uninstall » retire le MODULE, pas le THÈME. Choisir un
+# thème (button_choose_theme, que « theme apply » appelle) fait DEUX
 # choses : copier ses vues et ressources dans chaque site, et écrire dans
 # user_values.scss une personnalisation qui DÉFINIT $o-theme-font-number et
 # ses trois voisines. Le chemin de retrait d'Odoo, _theme_remove(), défait les
@@ -73,14 +73,14 @@ fi
 echo "Uninstall theme module '$THEME' on BD '$DATABASE'"
 
 if [[ $# -eq 3 ]]; then
-  ./run.sh --no-http --stop-after-init -d "$DATABASE" --uninstall "$THEME" -c "$3"
+  ./odoo_bin.sh module uninstall -c "$3" -d "$DATABASE" "$THEME"
 else
-  ./run.sh --no-http --stop-after-init -d "$DATABASE" --uninstall "$THEME"
+  ./odoo_bin.sh module uninstall -d "$DATABASE" "$THEME"
 fi
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-  echo -e "${Red}Error${Color_Off} run.sh into uninstall_addons_theme.sh"
+  echo -e "${Red}Error${Color_Off} odoo_bin.sh module uninstall into uninstall_addons_theme.sh"
   exit 1
 fi
 

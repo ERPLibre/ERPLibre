@@ -758,8 +758,7 @@ async def test_exec(
         res, status = await run_command(
             "./odoo_bin.sh",
             "db",
-            "--drop",
-            "--database",
+            "drop",
             unique_database_name,
             test_name=test_name,
         )

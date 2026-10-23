@@ -199,13 +199,14 @@ class TestTheWiring(unittest.TestCase):
         self.assertTrue(self.bloc_sonde())
 
     def test_the_probe_uses_the_only_action_that_reads_the_password(self):
-        # `--list` ne LIT jamais le mot de passe : mesuré,
-        # MASTER_PWD="ceci_est_faux" … db --list sort en 0. La sonde
-        # d'avant acceptait donc le premier mot saisi, et la boucle des
-        # dix essais ne servait à rien. Seul `drop` consulte le secret.
+        # `list` ne LIT jamais le mot de passe : avec un MASTER_PWD faux,
+        # « db list » sort en 0. Une sonde par `list` accepterait donc le
+        # premier mot saisi, et la boucle des dix essais ne servirait à
+        # rien. Seul `drop` consulte le secret ; `--if-exists` le fait
+        # répondre 0 sur la base absente qu'il vise.
         bloc = self.bloc_sonde()
-        self.assertIn("--drop", bloc)
-        self.assertNotIn("--list", bloc)
+        self.assertIn(" drop --if-exists ", bloc)
+        self.assertNotIn(" list", bloc)
 
     def test_it_never_names_a_database_that_could_exist(self):
         # La sonde DEMANDE une suppression : sur un vrai nom et avec un
@@ -218,7 +219,7 @@ class TestTheWiring(unittest.TestCase):
 
     def test_it_never_asks_to_restore_or_clone(self):
         bloc = self.bloc_sonde()
-        for danger in ("--restore", "--clone"):
+        for danger in (" load", " duplicate"):
             self.assertNotIn(danger, bloc)
 
     def test_the_bound_is_ten(self):

@@ -868,7 +868,7 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
         cmd = todo.db_manager._execute.exec_command_live.call_args_list[-1][0][
             0
         ]
-        self.assertIn("--backup", cmd)
+        self.assertIn(" dump ", cmd)
         self.assertIn("test_db", cmd)
 
 

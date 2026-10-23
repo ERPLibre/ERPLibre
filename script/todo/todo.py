@@ -5912,7 +5912,7 @@ class TODO(
             print(
                 f"\n--- {t('Cleaning up temporary database')} '{db_name}' ---"
             )
-            cmd_drop = f"./odoo_bin.sh db --drop --database {db_name}"
+            cmd_drop = f"./odoo_bin.sh db drop {db_name}"
             self.execute.exec_command_live(
                 cmd_drop,
                 source_erplibre=False,

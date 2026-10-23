@@ -423,10 +423,10 @@ class TestEveryPromptAnnouncesTheCountdown(EnvCase):
 class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
     """Un `input()` nu ne sait rien du mode auto : il attend, pour toujours.
 
-    Vécu à l'échelle du fichier : deux invites avaient échappé au premier
-    passage — la prédiction COW et le choix de désinstallation — parce que
-    le garde-fou ne regardait qu'`execute_odoo_upgrade`. On regarde
-    désormais TOUTES les méthodes du chemin de migration.
+    Le garde-fou regarde TOUTES les méthodes du chemin de migration, et
+    non la seule `execute_odoo_upgrade` : une invite posée dans une
+    méthode voisine, comme la prédiction COW ou le choix de
+    désinstallation, y échapperait sinon.
     """
 
     METHODES = (
@@ -560,8 +560,8 @@ class TestTheBackupAtTheEnd(unittest.TestCase):
     nom de fichier. « non.zip » est donc un fichier, pas un refus.
     """
 
-    TPL = "./odoo_bin.sh db --backup --database x --restore_image"
-    DEFAUT = "./odoo_bin.sh db --backup --database x --restore_image x_f_2026"
+    TPL = "./odoo_bin.sh db dump x --image"
+    DEFAUT = "./odoo_bin.sh db dump x --image x_f_2026"
 
     def cmd(self, answer):
         return TodoUpgrade.backup_command(answer, self.TPL, self.DEFAUT)

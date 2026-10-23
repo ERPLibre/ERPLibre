@@ -974,7 +974,7 @@ class TestTheMigrationWiring(unittest.TestCase):
 
     def test_the_clone_path_still_offers_nothing(self):
         src = self.source("script/database/db_restore.py")
-        debut = src.index("--clone --from_database")
+        debut = src.index("{arg_base} duplicate")
         fin = src.index("verify_filestore(config.database", debut)
         self.assertNotIn("offer_tidy", src[debut:fin])
 
@@ -1085,8 +1085,8 @@ class TestTheRestoreWiring(unittest.TestCase):
         # Le miroir recopie sa source, défauts compris : contrôler là
         # dirait deux fois la même chose, et au mauvais endroit.
         src = self.source("script/database/db_restore.py")
-        self.assertIn("--clone --from_database", src)
-        debut = src.index("--clone --from_database")
+        self.assertIn("{arg_base} duplicate", src)
+        debut = src.index("{arg_base} duplicate")
         marque = "verify_filestore(config.database"
         self.assertIn(
             marque, src, "le contrôle d'après-restauration a disparu"

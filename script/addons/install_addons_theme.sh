@@ -18,13 +18,13 @@ fi
 echo "Install theme module '$2' on BD '$1'"
 
 if [[ $# -eq 3 ]]; then
-  ./run.sh --no-http --stop-after-init -d "$1" --install-theme "$2" -c "$3"
+  ./odoo_bin.sh theme apply -c "$3" -d "$1" "$2"
 else
-  ./run.sh --no-http --stop-after-init -d "$1" --install-theme "$2"
+  ./odoo_bin.sh theme apply -d "$1" "$2"
 fi
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-  echo -e "${Red}Error${Color_Off} run.sh into install_addons_theme.sh"
+  echo -e "${Red}Error${Color_Off} odoo_bin.sh theme apply into install_addons_theme.sh"
   exit 1
 fi

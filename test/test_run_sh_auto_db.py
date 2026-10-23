@@ -32,7 +32,7 @@ LIB = RACINE / "script" / "database" / "lib_db_select.sh"
 
 DELAI = 30
 
-# Le bouchon joue les DEUX rôles : la sonde (`db --list`) et le lancement
+# Le bouchon joue les DEUX rôles : la sonde (`db list`) et le lancement
 # d'Odoo. `$1` vaut « db » dans un cas et « -c » dans l'autre, le
 # discriminant est donc fiable.
 #
@@ -51,8 +51,8 @@ UNE_BASE = BOUCHON % "printf '%s\\n' _cache_odoo18.0_base demo"
 QUE_DU_CACHE = BOUCHON % "printf '%s\\n' _cache_odoo18.0_base"
 AUCUNE_BASE = BOUCHON % ":"
 # Le cas qui compte pour la fusion des flux : la sonde RÉUSSIT, et parle
-# quand même sur stderr. Le CLI « db » n'appelle jamais parse_config(),
-# donc aucun journal n'est configuré et tout enregistrement part nu par là.
+# quand même sur stderr. « db list » ne configure aucun journal : ce qui
+# reste d'avertissements part nu par là.
 SONDE_BAVARDE = BOUCHON % (
     "printf 'WARNING odoo.modules.module: module xyz not loadable\\n' >&2;"
     " printf '%s\\n' demo"
@@ -118,8 +118,7 @@ class Banc:
         # ÉCHÉANCE sur la LECTURE, pas seulement sur l'attente du fils.
         # `os.read` sur un pseudo-terminal bloque tant que le maître est
         # ouvert : si une régression ouvre un menu là où le test ne tape
-        # rien, la suite entière pend au lieu d'échouer. Mesuré — une
-        # mutation du filtre « _cache_ » a fait durer 600 s.
+        # rien, la suite entière pend au lieu d'échouer.
         limite = time.monotonic() + DELAI
         depasse = False
         try:

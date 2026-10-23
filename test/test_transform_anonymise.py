@@ -208,7 +208,7 @@ class TestOrdreDesGestes(BaseDialogue):
         self.assertEqual(menu.restaurations, ["/tmp/s.zip"])
         self.assertEqual(menu.flots, [("anonymize", "s_neutralize")])
         self.assertEqual(len(execute.commandes), 1)
-        self.assertIn("--backup", execute.commandes[0])
+        self.assertIn(" dump ", execute.commandes[0])
         self.assertIn("s_neutralize", execute.commandes[0])
 
     def test_une_base_locale_n_est_PAS_reexportee(self):
@@ -287,7 +287,7 @@ class TestExportDuZip(BaseDialogue):
         self._repondre("")
         menu._transform_export_zip("s_neutralize")
         (commande,) = execute.commandes
-        self.assertIn("--database s_neutralize", commande)
+        self.assertIn(" dump s_neutralize ", commande)
         self.assertIn("s_neutralize_anon_", commande)
 
     def test_un_nom_tape_l_emporte(self):
@@ -295,16 +295,16 @@ class TestExportDuZip(BaseDialogue):
         menu = _menu(execute=execute)
         self._repondre("livraison_2026")
         menu._transform_export_zip("s")
-        self.assertIn("--restore_image livraison_2026", execute.commandes[0])
+        self.assertIn("--image livraison_2026", execute.commandes[0])
 
     def test_le_suffixe_zip_tape_n_est_pas_doublé(self):
-        """`--restore_image` prend un nom, non un chemin : « .zip » y
-        ferait un fichier « .zip.zip »."""
+        """`--image` prend un nom, non un chemin : « .zip » y est
+        ajouté, le garder ferait un fichier « .zip.zip »."""
         execute = _Execute()
         menu = _menu(execute=execute)
         self._repondre("livraison.zip")
         menu._transform_export_zip("s")
-        self.assertIn("--restore_image livraison ", execute.commandes[0] + " ")
+        self.assertIn("--image livraison ", execute.commandes[0] + " ")
 
     def test_un_echec_de_la_sauvegarde_est_DIT(self):
         execute = _Execute(statut=1)

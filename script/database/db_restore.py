@@ -123,16 +123,17 @@ def probe_name():
 def probe_master_password(arg_base, mot):
     """(accepté, sortie) — éprouver le mot de passe pour de vrai.
 
-    `--list` ne lit JAMAIS le mot de passe : `odoo-bin db --list` sort
-    en 0 avec un mot de passe faux. Une sonde par `--list` accepterait
-    donc n'importe quel mot, et le refus n'arriverait qu'au `--restore`,
+    `list` ne lit JAMAIS le mot de passe : `odoo_bin.sh db list` sort
+    en 0 avec un mot de passe faux. Une sonde par `list` accepterait
+    donc n'importe quel mot, et le refus n'arriverait qu'au `load`,
     une fois la base déjà supprimée.
 
     Seule l'action `drop` consulte le mot de passe, et elle le fait
-    AVANT de regarder la base : `check_super` d'abord, `db_exists`
-    ensuite. Sur un nom qui n'existe pas, elle ne touche donc rien et
-    répond quand même : mauvais mot de passe → code 1 et `AccessDenied`
-    dans la trace ; bon mot de passe → code 0, sans rien supprimer.
+    AVANT de regarder la base : `check_super` d'abord, l'existence
+    ensuite. Avec `--if-exists`, sur un nom qui n'existe pas, elle ne
+    touche donc rien et répond quand même : mauvais mot de passe → code 1
+    et `AccessDenied` dans la sortie ; bon mot de passe → code 0, sans
+    rien supprimer.
 
     Le secret passe par l'environnement, jamais par argv :
     /proc/<pid>/cmdline est lisible par tout utilisateur de la machine.
@@ -140,7 +141,7 @@ def probe_master_password(arg_base, mot):
     env = os.environ.copy()
     env["MASTER_PWD"] = mot
     done = subprocess.run(
-        f"{arg_base} --drop --database {probe_name()}".split(" "),
+        f"{arg_base} drop --if-exists {probe_name()}".split(" "),
         capture_output=True,
         text=True,
         env=env,
@@ -180,7 +181,7 @@ def ask_master_password(arg_base, essais=MAX_ESSAIS_MOT_DE_PASSE):
 
 
 def get_list_db_cache(arg_base):
-    arg = f"{arg_base} --list"
+    arg = f"{arg_base} list"
     out = check_output(arg.split(" ")).decode()
     lst_db = out.strip().split("\n")
     lst_db_cache = [a for a in lst_db if a.startswith("_cache_")]
@@ -188,8 +189,8 @@ def get_list_db_cache(arg_base):
 
 
 def drop_database(arg_base, database):
-    """Supprimer une base par « odoo_bin.sh db --drop », sortie filtrée."""
-    arg = f"{arg_base} --drop --database {database}"
+    """Supprimer une base par « odoo_bin.sh db drop », sortie filtrée."""
+    arg = f"{arg_base} drop {database}"
     print(redact_secrets(check_output(arg.split(" ")).decode()))
 
 
@@ -466,10 +467,7 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
         _logger.info(
             f"## Create cache {cache_database} from image {config.image} ##"
         )
-        arg = (
-            f"{arg_base} --restore"
-            f" --restore_image {config.image} --database {cache_database}"
-        )
+        arg = f"{arg_base} load {cache_database} --image {config.image}"
         print(
             redact_secrets(
                 check_output(
@@ -484,10 +482,7 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
         _logger.info(
             f"## Restoring {config.image} to database {config.database} ##"
         )
-        arg = (
-            f"{arg_base} --restore --restore_image"
-            f" {config.image} --database {config.database}"
-        )
+        arg = f"{arg_base} load {config.database} --image {config.image}"
         # Ce chemin EXTRAIT, donc il a le même besoin que le cache. Le
         # clone, lui, ne décompresse rien : lui passer cet environnement
         # ferait journaliser une extraction qui n'a pas lieu.
@@ -496,10 +491,7 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
         _logger.info(
             f"## Clone cache {cache_database} to database {config.database} ##"
         )
-        arg = (
-            f"{arg_base} --clone --from_database"
-            f" {cache_database} --database {config.database}"
-        )
+        arg = f"{arg_base} duplicate {cache_database} {config.database}"
         env = None
     if config.neutralize:
         arg += " --neutralize"

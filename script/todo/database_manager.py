@@ -33,15 +33,14 @@ class DatabaseManager:
     def select_database(self) -> str | bool:
         """Faire choisir une base parmi celles que PostgreSQL expose.
 
-        Le code de retour de « db --list » est vérifié AVANT de construire le
+        Le code de retour de « db list » est vérifié AVANT de construire le
         menu. Sans cette vérification, un PostgreSQL injoignable ne se distingue
         pas d'une base absente : la sortie et l'erreur sont fusionnées dans le
         même flux (`stderr=STDOUT`, execute.py), donc les lignes de la trace
-        d'appel devenaient les entrées du menu. « Traceback (most recent call
-        last): » s'affichait comme la base [1], et la choisir renvoyait cette
-        ligne comme nom de base à l'appelant, qui la passait à sa commande.
+        d'appel deviendraient les entrées du menu, et « Traceback (most recent
+        call last): » un nom de base rendu à l'appelant.
         """
-        cmd_server = "./odoo_bin.sh db --list"
+        cmd_server = "./odoo_bin.sh db list"
         status, output = self._execute.exec_command_live(
             cmd_server,
             return_status_and_output=True,
@@ -136,7 +135,7 @@ class DatabaseManager:
             print(t("Database deletion cancelled."))
             return
         self._execute.exec_command_live(
-            f"./odoo_bin.sh db --drop --database {database_name}",
+            f"./odoo_bin.sh db drop {database_name}",
             source_erplibre=False,
             single_source_erplibre=True,
         )
@@ -207,11 +206,12 @@ class DatabaseManager:
         ouvertes sur la source, régénère le `database.uuid`, copie le
         filestore et sait neutraliser pour de bon.
 
-        La neutralisation est proposée par DÉFAUT. Mesuré sur trois
-        migrations de suite : la copie gardait 33 crons actifs, aucun
-        serveur de courriel — donc le repli sur `smtp_server` de la
-        configuration — et une clé de paiement vivante. Le défaut à
-        « oui » est le seul qui protège celui qui appuie sur Entrée.
+        La neutralisation est proposée par DÉFAUT. Une copie non
+        neutralisée d'une base de production garde ses crons actifs, se
+        replie sur le `smtp_server` de la configuration quand elle n'a
+        aucun serveur de courriel, et garde ses clés de paiement vivantes.
+        Le défaut à « oui » est le seul qui protège celui qui appuie sur
+        Entrée.
         """
         source = self.select_database()
         if not source:
@@ -288,10 +288,7 @@ class DatabaseManager:
 
         print(backup_name)
 
-        cmd = (
-            f"./odoo_bin.sh db --backup --database {database_name}"
-            f" --restore_image {backup_name}"
-        )
+        cmd = f"./odoo_bin.sh db dump {database_name} --image {backup_name}"
         status, output_lines = self._execute.exec_command_live(
             cmd,
             return_status_and_output=True,
