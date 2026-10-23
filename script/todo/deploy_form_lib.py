@@ -660,6 +660,13 @@ HelpScreen { align: center middle; }
 #helptitle { height: 1; color: $accent; text-style: bold; }
 #helpbody { height: 1fr; }
 .helphead { color: $accent; text-style: bold; }
+HistoryScreen { align: center middle; }
+#histbox {
+    width: 84%; height: 80%; padding: 1 2;
+    border: thick $accent; background: $surface;
+}
+#histtitle { height: 1; color: $accent; text-style: bold; }
+#histlist { height: 1fr; }
 RenameScreen { align: center middle; }
 #renbox {
     width: 60; height: auto; padding: 1 2;

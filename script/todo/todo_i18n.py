@@ -4919,6 +4919,79 @@ TRANSLATIONS = {
         "fr": "Réinit. VM",
         "en": "Reset VM",
     },
+    # Historique des modifications du formulaire de déploiement.
+    "History": {
+        "fr": "Historique",
+        "en": "History",
+    },
+    "Undo": {
+        "fr": "Défaire",
+        "en": "Undo",
+    },
+    "Redo": {
+        "fr": "Refaire",
+        "en": "Redo",
+    },
+    "Form opened": {
+        "fr": "Ouverture du formulaire",
+        "en": "Form opened",
+    },
+    "back to": {
+        "fr": "retour à",
+        "en": "back to",
+    },
+    "Undone:": {
+        "fr": "Annulé :",
+        "en": "Undone:",
+    },
+    "Redone:": {
+        "fr": "Rétabli :",
+        "en": "Redone:",
+    },
+    "Back to:": {
+        "fr": "Retour à :",
+        "en": "Back to:",
+    },
+    "Nothing to undo.": {
+        "fr": "Rien à annuler.",
+        "en": "Nothing to undo.",
+    },
+    "Nothing to redo.": {
+        "fr": "Rien à rétablir.",
+        "en": "Nothing to redo.",
+    },
+    "Modification history": {
+        "fr": "Historique des modifications",
+        "en": "Modification history",
+    },
+    "Enter: back to this state · Esc: close · ctrl+z / ctrl+y in the form: one step": {
+        "fr": "Entrée : revenir à cet état · Échap : fermer · ctrl+z / ctrl+y dans le formulaire : un pas",
+        "en": "Enter: back to this state · Esc: close · ctrl+z / ctrl+y in the form: one step",
+    },
+    "undone — ctrl+y": {
+        "fr": "annulé — ctrl+y",
+        "en": "undone — ctrl+y",
+    },
+    "Resources": {
+        "fr": "Ressources",
+        "en": "Resources",
+    },
+    "copy": {
+        "fr": "copie",
+        "en": "copy",
+    },
+    "common settings": {
+        "fr": "réglages communs",
+        "en": "common settings",
+    },
+    "ERPLibre branch": {
+        "fr": "Branche ERPLibre",
+        "en": "ERPLibre branch",
+    },
+    "Install profile": {
+        "fr": "Profil d'installation",
+        "en": "Install profile",
+    },
     "Preview": {
         "fr": "Aperçu",
         "en": "Preview",

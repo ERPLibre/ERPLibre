@@ -35,6 +35,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
 from script.todo.deploy_form_extras import SERVER, ExtrasMixin
+from script.todo.deploy_form_history import HistoryMixin
 from script.todo.deploy_form_lib import (  # noqa: F401
     CLIP_LIMIT,
     CSS_BASE,
@@ -150,7 +151,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             f"RAM≥{e['ram']}Mo  {e['disk']}"
         )
 
-    class DeployForm(ExtrasMixin, PlanMixin, App):
+    class DeployForm(HistoryMixin, ExtrasMixin, PlanMixin, App):
         # Le socle porte la mise en page et les modales ; ne reste ici que ce
         # qui nomme les widgets propres à QEMU/KVM.
         CSS = (
@@ -186,6 +187,16 @@ def run_deploy_form(ctx, run_app: bool = True):
             # comme deux aides. Un champ de saisie qui a le focus l'avale, et
             # c'est pourquoi F1 existe à côté.
             Binding("?", "help", t("Help"), show=False),
+            # « h » ouvre l'historique, mais un champ de saisie qui a le
+            # focus l'avale, comme « ? » : F2 l'ouvre de partout, et
+            # ctrl+z / ctrl+y, qu'aucun champ ne prend, reculent et
+            # avancent d'un pas sans l'ouvrir.
+            ("h", "history", t("History")),
+            Binding("f2", "history", t("History"), show=False),
+            # Cachées du pied de page : elles y repousseraient Échap hors de
+            # l'écran. La liste de l'historique les nomme.
+            Binding("ctrl+z", "undo", t("Undo"), show=False),
+            Binding("ctrl+y", "redo", t("Redo"), show=False),
             ("escape", "cancel", t("Cancel")),
         ]
 
@@ -220,6 +231,10 @@ def run_deploy_form(ctx, run_app: bool = True):
             self.rows = []
             self.vms = []
             self.rows = []
+            # Valeur du suivi avant que la coupure ne le force : posée ici
+            # pour que l'historique la garde dès l'ouverture.
+            self._suivi_avant = True
+            self.hist_init()
 
         # -- construction de l'écran ----------------------------------- #
         def compose(self) -> ComposeResult:
@@ -544,6 +559,9 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._sync_install_deps()
             self._sync_ai()
             self._sync_offline()
+            # L'origine de l'historique : prise au premier silence, une fois
+            # passés les échos du montage.
+            self._hist_touch()
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -685,6 +703,95 @@ def run_deploy_form(ctx, run_app: bool = True):
                 row["locked"] = key in self.locked
             self._render_plan()
             self.render_extras()
+            # Tout changement du modèle passe par ici, y compris ceux qu'aucun
+            # message ne porte : le renommage, F4, les copies, le verrou.
+            self._hist_touch()
+
+        # -- historique : ce que la mixin attend de ce formulaire -------- #
+        def _hist_model_attrs(self):
+            return (
+                "arch",
+                "profile",
+                "custom",
+                "_free",
+                "overrides",
+                "locked",
+                "copies",
+                "_suivi_avant",
+            )
+
+        def _hist_catalog(self):
+            """Les cases cochées par IDENTITÉ : le rang change avec
+            l'architecture, l'identité non."""
+            entries = self._entries()
+            return tuple(
+                sorted(
+                    entry_key(entries[i])
+                    for i in self._catalog().selected
+                    if i < len(entries)
+                )
+            )
+
+        def _hist_restore_catalog(self, snap):
+            widget = self._catalog()
+            keys = set(snap["catalog"])
+            entries = self._entries()
+            if getattr(self, "_entries_before", None) is not entries:
+                # Une autre architecture : la liste elle-même change.
+                widget.clear_options()
+                for i, e in enumerate(entries):
+                    widget.add_option(
+                        (entry_label(e), i, entry_key(e) in keys)
+                    )
+                self._entries_before = entries
+                return
+            # Même liste : la reconstruire perdrait sa position de défilement.
+            widget.deselect_all()
+            for i, e in enumerate(entries):
+                if entry_key(e) in keys:
+                    widget.select(i)
+
+        def _hist_restore_radios(self, snap):
+            self._hist_put(
+                "f_arch",
+                arches.index(self.arch) if self.arch in arches else -1,
+            )
+            self._hist_put(
+                "f_profile",
+                4 if self.profile == "custom" else int(self.profile) - 1,
+            )
+
+        def _hist_sync_derived(self, snap):
+            """Ce que les gestionnaires auraient posé en recevant ces
+            valeurs : les champs grisés, les saisies révélées."""
+            custom = self.profile == "custom"
+            for field, (sel, _inp) in RES_FIELDS.items():
+                self.query_one(sel, Select).disabled = not custom
+                self._show_free(field, custom and self._free.get(field))
+            self.query_one("#f_par", Select).disabled = self.query_one(
+                "#f_par_all", Checkbox
+            ).value
+            fuseau, saisie = self._widget("#f_tz_sel"), self._widget("#f_tz")
+            if fuseau is not None and saisie is not None:
+                saisie.display = fuseau.value is FREE
+                saisie.disabled = fuseau.value is not FREE
+            self._sync_install_deps()
+            self._sync_ai()
+            # _sync_offline réécrit le suivi et sa mémoire depuis l'état
+            # qu'elle quitte : ceux de l'instantané l'emportent.
+            self._sync_offline()
+            self._suivi_avant = snap.get("_suivi_avant", True)
+            self._hist_put("f_monitor", snap["widgets"].get("f_monitor"))
+
+        def _hist_sync_rows(self):
+            self._sync_install_deps()
+            self._sync_free_inputs()
+
+        def _hist_rebuild(self):
+            # None et non () : un plan restauré VIDE ne différerait pas de ()
+            # et ses anciennes cartes resteraient à l'écran.
+            self._shown_ids = None
+            self._recompute()
 
         # -- panneau droit : une rangée de widgets par VM ---------------- #
         def _mount_rows(self) -> None:
@@ -1065,11 +1172,15 @@ def run_deploy_form(ctx, run_app: bool = True):
             key = self._row_key(index)
             if key is None or key not in self.overrides:
                 return
-            self.overrides.pop(key)
-            # Les widgets de la rangée portent encore l'ancienne valeur : on
-            # les remonte pour qu'ils disent la vérité.
-            self._recompute()
-            self._mount_rows()
+
+            def remettre():
+                self.overrides.pop(key, None)
+                # Les widgets de la rangée portent encore l'ancienne valeur :
+                # on les remonte pour qu'ils disent la vérité.
+                self._recompute()
+                self._mount_rows()
+
+            self._hist_gesture(f"F4 {t('Reset VM')}", remettre)
 
         def _form_values(self):
             # La case n'existe que si le cache tourne : la chercher toujours
@@ -1135,6 +1246,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             }
 
         def action_preview(self) -> None:
+            if self._hist_wait(self.action_preview):
+                return
             spec = build_spec(self.vms, domains, self._form_values())
             build = ctx.get("build_command")
             if not build:
@@ -1200,6 +1313,9 @@ def run_deploy_form(ctx, run_app: bool = True):
             self.notify(f"{t('State written to')} {path}")
 
         def action_deploy(self) -> None:
+            # Pendant une restauration, self.vms est encore le plan d'avant.
+            if self._hist_wait(self.action_deploy):
+                return
             if not self.vms:
                 self.notify(t("Nothing selected."), severity="warning")
                 return
