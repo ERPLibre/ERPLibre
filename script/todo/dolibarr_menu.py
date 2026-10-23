@@ -36,6 +36,8 @@ RUN_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/run.py"
 # blanc a trouvé quoi changer (sa valeur ici évite d'importer pin.py).
 PIN_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/pin.py"
 PIN_PENDING = 3
+# Trouver les installations Dolibarr, sur ce poste ou par SSH.
+DETECT_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/detect.py"
 SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
 
 # Le script qui bâtit le venv d'outillage quand il manque, comme le fait
@@ -74,6 +76,12 @@ class DolibarrMenuMixin:
             {"prompt_description": t("Dolibarr - Instance logs")},
             {"section": t("Maintenance")},
             {"prompt_description": t("Dolibarr - Update the pinned commit")},
+            {"section": t("Inventory")},
+            {
+                "prompt_description": t(
+                    "Dolibarr - Find installations (local or SSH)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -93,8 +101,32 @@ class DolibarrMenuMixin:
                 self._dolibarr_run("logs")
             elif status == "6":
                 self._dolibarr_pin()
+            elif status == "7":
+                self._dolibarr_detect()
             else:
                 print(t("Command not found !"))
+
+    def _dolibarr_detect(self):
+        """Ce poste, un hôte de ~/.ssh/config ou tous : detect.py sonde et
+        range son rapport sous private/dolibarr/inventory/."""
+        aliases = self._ssh_config_hosts()
+        options = [("local", t("This machine"))]
+        if aliases:
+            options.append(("all", t("Every host of ~/.ssh/config")))
+            options += [(a, a) for a in aliases]
+        target = self._dolibarr_choose(
+            t("Where to look for Dolibarr?"), options
+        )
+        if target is None:
+            return
+        if target == "local":
+            args = ["--local"]
+        else:
+            hosts = aliases if target == "all" else [target]
+            args = [x for h in hosts for x in ("--ssh", h)]
+        self.execute.exec_command_live(
+            f"{DETECT_CLI} {shlex.join(args)}", source_erplibre=False
+        )
 
     def _dolibarr_pin(self):
         """pin.py à blanc ; s'il trouve quoi changer, l'appliquer puis
