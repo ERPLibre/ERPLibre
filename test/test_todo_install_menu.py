@@ -413,11 +413,20 @@ class TestVoiesLivrees(BancDolibarr):
         p.start()
         self.addCleanup(p.stop)
 
-    def test_development_offers_native_only(self):
+    def test_development_offers_native_and_containers(self):
         self.mots_de_passe = [""]
         questions, appels, _s = self.dolibarr(["1", "1", "1", "", "", "", "y"])
-        self.assertNotIn("dolibarr/dolibarr", questions[1])
+        self.assertIn("dolibarr/dolibarr", questions[1])
         self.assertIn("install_native.py --mode dev", appels[0][0])
+
+    def test_a_development_container_takes_no_database_question(self):
+        self.mots_de_passe = [""]
+        _q, appels, _s = self.dolibarr(["1", "2", "", "", "", "y"])
+        self.assertEqual(
+            appels[0][0],
+            "./.venv.erplibre/bin/python -u script/dolibarr/install_container.py"
+            " --mode dev --instance dolibarr --port 8080 --admin-login admin",
+        )
 
     def test_production_offers_native_behind_a_domain(self):
         self.mots_de_passe = [""]
