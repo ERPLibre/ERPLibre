@@ -5842,6 +5842,22 @@ TRANSLATIONS = {
         "fr": "🔀 Changer d'hôte Proxmox",
         "en": "🔀 Change the Proxmox host",
     },
+    "Host performance audit (read-only)": {
+        "fr": "⏱  Audit de performance de l'hôte (lecture seule)",
+        "en": "⏱  Host performance audit (read-only)",
+    },
+    "Where should the audit run?": {
+        "fr": "Où lancer l'audit ?",
+        "en": "Where should the audit run?",
+    },
+    "On the Proxmox host": {
+        "fr": "Sur l'hôte Proxmox",
+        "en": "On the Proxmox host",
+    },
+    "On this machine": {
+        "fr": "Sur ce poste",
+        "en": "On this machine",
+    },
     "VM name (default: erplibre-<distro>): ": {
         "fr": "Nom de la VM (défaut : erplibre-<distro>) : ",
         "en": "VM name (default: erplibre-<distro>): ",
@@ -19911,6 +19927,2280 @@ TRANSLATIONS = {
     "switch to the manifest target": {
         "fr": "bascule sur la cible du manifeste",
         "en": "switch to the manifest target",
+    },
+    # Production - mise à jour de modules (ops_menu, update_module)
+    "Production": {
+        "fr": "Production",
+        "en": "Production",
+    },
+    "Production - Update, back up, restore and watch a systemd instance": {
+        "fr": "🏭 Production - Mettre à jour, sauvegarder, restaurer et surveiller une instance systemd",
+        "en": "🏭 Production - Update, back up, restore and watch a systemd instance",
+    },
+    "Production: an instance run by systemd on this host.": {
+        "fr": "Production : une instance servie par systemd sur ce poste.",
+        "en": "Production: an instance run by systemd on this host.",
+    },
+    "Update modules - simulate, confirm, then run with sudo": {
+        "fr": "Mettre à jour des modules - simuler, confirmer, puis exécuter avec sudo",
+        "en": "Update modules - simulate, confirm, then run with sudo",
+    },
+    "Simulate only - show what an update would do": {
+        "fr": "Simuler seulement - montrer ce que ferait une mise à jour",
+        "en": "Simulate only - show what an update would do",
+    },
+    "Modules to update (commas, * and ? patterns, or all): ": {
+        "fr": "Modules à mettre à jour (virgules, motifs * et ?, ou all) : ",
+        "en": "Modules to update (commas, * and ? patterns, or all): ",
+    },
+    "Cancelled: no module given.": {
+        "fr": "Annulé : aucun module donné.",
+        "en": "Cancelled: no module given.",
+    },
+    "Database (empty = detect from the service): ": {
+        "fr": "Base (vide = détectée depuis le service) : ",
+        "en": "Database (empty = detect from the service): ",
+    },
+    "Back up the database before the update? [Y/n] ": {
+        "fr": "Sauvegarder la base avant la mise à jour ? [O/n] ",
+        "en": "Back up the database before the update? [Y/n] ",
+    },
+    "The simulation refused: nothing was done.": {
+        "fr": "La simulation a refusé : rien n'a été fait.",
+        "en": "The simulation refused: nothing was done.",
+    },
+    "Run this update for real? The service stops meanwhile.": {
+        "fr": "Exécuter cette mise à jour pour de vrai ? Le service s'arrête pendant ce temps.",
+        "en": "Run this update for real? The service stops meanwhile.",
+    },
+    "The update ended with code": {
+        "fr": "La mise à jour s'est terminée avec le code",
+        "en": "The update ended with code",
+    },
+    "{host}:{port} still answers.": {
+        "fr": "{host}:{port} répond encore.",
+        "en": "{host}:{port} still answers.",
+    },
+    "systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.": {
+        "fr": "Unité systemd ; par défaut : l'unité dont WorkingDirectory est ce checkout, sinon la seule active.",
+        "en": "systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.",
+    },
+    "systemctl start failed (journalctl -u {unit} -n 50).": {
+        "fr": "systemctl start a échoué (journalctl -u {unit} -n 50).",
+        "en": "systemctl start failed (journalctl -u {unit} -n 50).",
+    },
+    "only if it was active": {
+        "fr": "seulement s'il était actif",
+        "en": "only if it was active",
+    },
+    "none (--no-backup)": {
+        "fr": "aucune (--no-backup)",
+        "en": "none (--no-backup)",
+    },
+    "invalid user name: {name}": {
+        "fr": "nom d'utilisateur invalide : {name}",
+        "en": "invalid user name: {name}",
+    },
+    "invalid service name: {name}": {
+        "fr": "nom de service invalide : {name}",
+        "en": "invalid service name: {name}",
+    },
+    "invalid regular expression: {error}": {
+        "fr": "expression régulière invalide : {error}",
+        "en": "invalid regular expression: {error}",
+    },
+    "invalid module pattern: {pattern}": {
+        "fr": "motif de module invalide : {pattern}",
+        "en": "invalid module pattern: {pattern}",
+    },
+    "expected an integer >= 1: {value}": {
+        "fr": "entier >= 1 attendu : {value}",
+        "en": "expected an integer >= 1: {value}",
+    },
+    "empty module list": {
+        "fr": "liste de modules vide",
+        "en": "empty module list",
+    },
+    "Update of {modules} in {database}": {
+        "fr": "Mise à jour de {modules} dans {database}",
+        "en": "Update of {modules} in {database}",
+    },
+    "Update interrupted: Odoo was stopped before the restart.": {
+        "fr": "Mise à jour interrompue : Odoo a été arrêté avant la relance.",
+        "en": "Update interrupted: Odoo was stopped before the restart.",
+    },
+    "Update installed Odoo modules of an instance run by systemd: stop, back up, update, restart, check.": {
+        "fr": "Mettre à jour les modules Odoo installés d'une instance servie par systemd : arrêter, sauvegarder, mettre à jour, relancer, vérifier.",
+        "en": "Update installed Odoo modules of an instance run by systemd: stop, back up, update, restart, check.",
+    },
+    "Update finished: {modules}": {
+        "fr": "Mise à jour terminée : {modules}",
+        "en": "Update finished: {modules}",
+    },
+    "Update failed.": {
+        "fr": "Mise à jour en échec.",
+        "en": "Update failed.",
+    },
+    "Unexpected error: {error}": {
+        "fr": "Erreur inattendue : {error}",
+        "en": "Unexpected error: {error}",
+    },
+    "The working directory of {unit} is unknown or missing.": {
+        "fr": "Le dossier de travail de {unit} est inconnu ou absent.",
+        "en": "The working directory of {unit} is unknown or missing.",
+    },
+    "The update exceeded {seconds} s: process killed.": {
+        "fr": "La mise à jour a dépassé {seconds} s : processus tué.",
+        "en": "The update exceeded {seconds} s: process killed.",
+    },
+    "The service {unit} has no ExecStart.": {
+        "fr": "Le service {unit} n'a pas d'ExecStart.",
+        "en": "The service {unit} has no ExecStart.",
+    },
+    "The service was not running before: it is left stopped.": {
+        "fr": "Le service ne tournait pas avant : il reste arrêté.",
+        "en": "The service was not running before: it is left stopped.",
+    },
+    "The service is not stopped after systemctl stop (code {code}, state {state}): nothing was changed.": {
+        "fr": "Le service n'est pas arrêté après systemctl stop (code {code}, état {state}) : rien n'a été changé.",
+        "en": "The service is not stopped after systemctl stop (code {code}, state {state}): nothing was changed.",
+    },
+    "Cannot read the state of {unit} (systemctl): nothing was stopped.": {
+        "fr": "Impossible de lire l'état de {unit} (systemctl) : rien n'a été arrêté.",
+        "en": "Cannot read the state of {unit} (systemctl): nothing was stopped.",
+    },
+    "The database session of the killed update may still hold locks for a while: the restart can wait for them.": {
+        "fr": "La session de base de la mise à jour tuée peut garder ses verrous un moment : le démarrage peut les attendre.",
+        "en": "The database session of the killed update may still hold locks for a while: the restart can wait for them.",
+    },
+    "The service is not active after {seconds} s.": {
+        "fr": "Le service n'est pas actif après {seconds} s.",
+        "en": "The service is not active after {seconds} s.",
+    },
+    "The service is active but nothing listens on {host}:{port} after {seconds} s.": {
+        "fr": "Le service est actif mais rien n'écoute sur {host}:{port} après {seconds} s.",
+        "en": "The service is active but nothing listens on {host}:{port} after {seconds} s.",
+    },
+    "The backup file already exists: {path}": {
+        "fr": "Le fichier de sauvegarde existe déjà : {path}",
+        "en": "The backup file already exists: {path}",
+    },
+    "Stopping {unit}": {
+        "fr": "Arrêt de {unit}",
+        "en": "Stopping {unit}",
+    },
+    "Starting {unit}": {
+        "fr": "Démarrage de {unit}",
+        "en": "Starting {unit}",
+    },
+    "Simulation finished: nothing was stopped, written or started.": {
+        "fr": "Simulation terminée : rien n'a été arrêté, écrit ni démarré.",
+        "en": "Simulation finished: nothing was stopped, written or started.",
+    },
+    "Show each system command on stderr.": {
+        "fr": "Afficher chaque commande système sur stderr.",
+        "en": "Show each system command on stderr.",
+    },
+    "Several Odoo services are possible, choose one with --service: {names}": {
+        "fr": "Plusieurs services Odoo sont possibles, en choisir un avec --service : {names}",
+        "en": "Several Odoo services are possible, choose one with --service: {names}",
+    },
+    "Service": {
+        "fr": "Service",
+        "en": "Service",
+    },
+    "Service {unit} not found (systemctl).": {
+        "fr": "Service {unit} introuvable (systemctl).",
+        "en": "Service {unit} not found (systemctl).",
+    },
+    "Service stopped.": {
+        "fr": "Service arrêté.",
+        "en": "Service stopped.",
+    },
+    "Service started and answering: {url}": {
+        "fr": "Service démarré et qui répond : {url}",
+        "en": "Service started and answering: {url}",
+    },
+    "Root is required (sudo), except with --dry-run.": {
+        "fr": "Root est exigé (sudo), sauf avec --dry-run.",
+        "en": "Root is required (sudo), except with --dry-run.",
+    },
+    "Resuming.": {
+        "fr": "Reprise.",
+        "en": "Resuming.",
+    },
+    "Restart check failed: {error}": {
+        "fr": "La vérification de la relance a échoué : {error}",
+        "en": "Restart check failed: {error}",
+    },
+    "Odoo still runs on this database or port outside the service: refused (--force to go on).": {
+        "fr": "Odoo tourne encore sur cette base ou ce port hors du service : refusé (--force pour continuer).",
+        "en": "Odoo still runs on this database or port outside the service: refused (--force to go on).",
+    },
+    "Odoo module update": {
+        "fr": "Mise à jour des modules Odoo",
+        "en": "Odoo module update",
+    },
+    "Odoo finished with code {code}.": {
+        "fr": "Odoo s'est terminé avec le code {code}.",
+        "en": "Odoo finished with code {code}.",
+    },
+    "Odoo finished the update by itself in {seconds} s.": {
+        "fr": "Odoo a terminé la mise à jour de lui-même en {seconds} s.",
+        "en": "Odoo finished the update by itself in {seconds} s.",
+    },
+    "Odoo configuration file; default: the one the unit reads.": {
+        "fr": "Fichier de configuration Odoo ; par défaut : celui que lit l'unité.",
+        "en": "Odoo configuration file; default: the one the unit reads.",
+    },
+    "Odoo config": {
+        "fr": "Config Odoo",
+        "en": "Odoo config",
+    },
+    "No module matches the requested patterns.": {
+        "fr": "Aucun module ne répond aux motifs demandés.",
+        "en": "No module matches the requested patterns.",
+    },
+    "No module matches the pattern {pattern}.": {
+        "fr": "Aucun module ne répond au motif {pattern}.",
+        "en": "No module matches the pattern {pattern}.",
+    },
+    "No addons_path directory found in {path}.": {
+        "fr": "Aucun dossier d'addons_path trouvé dans {path}.",
+        "en": "No addons_path directory found in {path}.",
+    },
+    "No Odoo service found: name it with --service.": {
+        "fr": "Aucun service Odoo trouvé : le nommer avec --service.",
+        "en": "No Odoo service found: name it with --service.",
+    },
+    "No Odoo configuration file found (try --odoo-conf).": {
+        "fr": "Aucun fichier de configuration Odoo trouvé (essayer --odoo-conf).",
+        "en": "No Odoo configuration file found (try --odoo-conf).",
+    },
+    "No HTTP answer from {url}.": {
+        "fr": "Aucune réponse HTTP de {url}.",
+        "en": "No HTTP answer from {url}.",
+    },
+    "No ERROR or CRITICAL line since the start.": {
+        "fr": "Aucune ligne ERROR ou CRITICAL depuis le démarrage.",
+        "en": "No ERROR or CRITICAL line since the start.",
+    },
+    "Module not found in addons_path: {names}": {
+        "fr": "Module introuvable dans l'addons_path : {names}",
+        "en": "Module not found in addons_path: {names}",
+    },
+    "Maximum seconds for the service to listen after start.": {
+        "fr": "Secondes au plus pour que le service écoute après le démarrage.",
+        "en": "Maximum seconds for the service to listen after start.",
+    },
+    "Maximum seconds for the backup and for the update.": {
+        "fr": "Secondes au plus pour la sauvegarde et pour la mise à jour.",
+        "en": "Maximum seconds for the backup and for the update.",
+    },
+    "Log: {path}": {
+        "fr": "Journal : {path}",
+        "en": "Log: {path}",
+    },
+    "Log": {
+        "fr": "Journal",
+        "en": "Log",
+    },
+    "Invalid database name: {database}": {
+        "fr": "Nom de base invalide : {database}",
+        "en": "Invalid database name: {database}",
+    },
+    "Interrupted.": {
+        "fr": "Interrompu.",
+        "en": "Interrupted.",
+    },
+    "Interrupt the update? Odoo will be stopped, then the service restarted. [y/N] ": {
+        "fr": "Interrompre la mise à jour ? Odoo sera arrêté, puis le service relancé. [o/N] ",
+        "en": "Interrupt the update? Odoo will be stopped, then the service restarted. [y/N] ",
+    },
+    "Go on even if Odoo still runs on this database or port.": {
+        "fr": "Continuer même si Odoo tourne encore sur cette base ou ce port.",
+        "en": "Go on even if Odoo still runs on this database or port.",
+    },
+    "Errors in the Odoo log since the start": {
+        "fr": "Erreurs du journal Odoo depuis le démarrage",
+        "en": "Errors in the Odoo log since the start",
+    },
+    "Do not back up the database before the update.": {
+        "fr": "Ne pas sauvegarder la base avant la mise à jour.",
+        "en": "Do not back up the database before the update.",
+    },
+    "Directory": {
+        "fr": "Dossier",
+        "en": "Directory",
+    },
+    "Directory of the update log; default: {path}.": {
+        "fr": "Dossier du journal de mise à jour ; par défaut : {path}.",
+        "en": "Directory of the update log; default: {path}.",
+    },
+    "Detect and show the commands; stop, write or start nothing.": {
+        "fr": "Détecter et montrer les commandes ; n'arrêter, n'écrire ni ne démarrer rien.",
+        "en": "Detect and show the commands; stop, write or start nothing.",
+    },
+    "Database; default: -d of the unit, else db_name.": {
+        "fr": "Base ; par défaut : le -d de l'unité, sinon db_name.",
+        "en": "Database; default: -d of the unit, else db_name.",
+    },
+    "Database not found in the service nor in its configuration: specify --db.": {
+        "fr": "Base introuvable dans le service comme dans sa configuration : préciser --db.",
+        "en": "Database not found in the service nor in its configuration: specify --db.",
+    },
+    "Cannot take the lock: {error}": {
+        "fr": "Impossible de prendre le verrou : {error}",
+        "en": "Cannot take the lock: {error}",
+    },
+    "Cannot read {path}: run with sudo.": {
+        "fr": "Impossible de lire {path} : lancer avec sudo.",
+        "en": "Cannot read {path}: run with sudo.",
+    },
+    "Cannot read the service {unit}: {error}": {
+        "fr": "Impossible de lire le service {unit} : {error}",
+        "en": "Cannot read the service {unit}: {error}",
+    },
+    "Backup taken before the update: {path}": {
+        "fr": "Sauvegarde prise avant la mise à jour : {path}",
+        "en": "Backup taken before the update: {path}",
+    },
+    "Backup of {database}": {
+        "fr": "Sauvegarde de {database}",
+        "en": "Backup of {database}",
+    },
+    "Backup interrupted: nothing was updated.": {
+        "fr": "Sauvegarde interrompue : rien n'a été mis à jour.",
+        "en": "Backup interrupted: nothing was updated.",
+    },
+    "Created {path}, owned by {user}.": {
+        "fr": "{path} créé, propriété de {user}.",
+        "en": "Created {path}, owned by {user}.",
+    },
+    "Another update of {database} is running (lock {path}).": {
+        "fr": "Une autre mise à jour de {database} est en cours (verrou {path}).",
+        "en": "Another update of {database} is running (lock {path}).",
+    },
+    "Address": {
+        "fr": "Adresse",
+        "en": "Address",
+    },
+    "Account": {
+        "fr": "Compte",
+        "en": "Account",
+    },
+    "Account running the update; default: User= of the unit.": {
+        "fr": "Compte qui lance la mise à jour ; par défaut : le User= de l'unité.",
+        "en": "Account running the update; default: User= of the unit.",
+    },
+    "--force: going on despite the Odoo found.": {
+        "fr": "--force : on continue malgré l'Odoo trouvé.",
+        "en": "--force: going on despite the Odoo found.",
+    },
+    "(detected)": {
+        "fr": "(détecté)",
+        "en": "(detected)",
+    },
+    "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'.": {
+        "fr": "Module(s) à mettre à jour ; répétable, virgules permises, motifs * et ?, ou 'all'.",
+        "en": "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'.",
+    },
+    "'all' cannot be combined with other modules.": {
+        "fr": "'all' ne se combine pas avec d'autres modules.",
+        "en": "'all' cannot be combined with other modules.",
+    },
+    # Production - sauvegardes vérifiées (odoo_backup, install_backup_timer)
+    "Original db": {
+        "fr": "Base d'origine",
+        "en": "Original db",
+    },
+    "Temporary db": {
+        "fr": "Base temporaire",
+        "en": "Temporary db",
+    },
+    "Test restore passed: the backup is restorable.": {
+        "fr": "Restauration d'essai réussie : la sauvegarde se restaure.",
+        "en": "Test restore passed: the backup is restorable.",
+    },
+    "Simulation finished: nothing was created or written.": {
+        "fr": "Simulation terminée : rien n'a été créé ni écrit.",
+        "en": "Simulation finished: nothing was created or written.",
+    },
+    "New database": {
+        "fr": "Nouvelle base",
+        "en": "New database",
+    },
+    "Filestore": {
+        "fr": "Filestore",
+        "en": "Filestore",
+    },
+    "database.uuid is the same as in the source: Odoo's own copy regenerates it, this restore does not.": {
+        "fr": "database.uuid est celui de la source : la copie d'Odoo le régénère, cette restauration non.",
+        "en": "database.uuid is the same as in the source: Odoo's own copy regenerates it, this restore does not.",
+    },
+    "Data dir": {
+        "fr": "Données",
+        "en": "Data dir",
+    },
+    "no JSON answer": {
+        "fr": "pas de réponse JSON",
+        "en": "no JSON answer",
+    },
+    "Not enough space in {path}: {free} free, {needed} needed.": {
+        "fr": "Espace insuffisant dans {path} : {free} libres, {needed} nécessaires.",
+        "en": "Not enough space in {path}: {free} free, {needed} needed.",
+    },
+    "{database} is not an Odoo database: no version for the base module.": {
+        "fr": "{database} n'est pas une base Odoo : aucune version pour le module base.",
+        "en": "{database} is not an Odoo database: no version for the base module.",
+    },
+    "The filestore {path} is missing while {count} attachment(s) are stored on disk.": {
+        "fr": "Le filestore {path} manque alors que {count} pièce(s) jointe(s) sont stockées sur disque.",
+        "en": "The filestore {path} is missing while {count} attachment(s) are stored on disk.",
+    },
+    "The dump does not end with the pg_dump end marker.": {
+        "fr": "Le dump ne se termine pas par la marque de fin de pg_dump.",
+        "en": "The dump does not end with the pg_dump end marker.",
+    },
+    "Size": {
+        "fr": "Taille",
+        "en": "Size",
+    },
+    "The archive holds no dump.sql.": {
+        "fr": "L'archive ne contient pas de dump.sql.",
+        "en": "The archive holds no dump.sql.",
+    },
+    "Loading the dump exceeded the time limit.": {
+        "fr": "Le chargement du dump a dépassé le délai.",
+        "en": "Loading the dump exceeded the time limit.",
+    },
+    "The restored database has no table.": {
+        "fr": "La base restaurée n'a aucune table.",
+        "en": "The restored database has no table.",
+    },
+    "The base module is not installed in the restored database.": {
+        "fr": "Le module base n'est pas installé dans la base restaurée.",
+        "en": "The base module is not installed in the restored database.",
+    },
+    "Existing databases: unknown (requires sudo).": {
+        "fr": "Bases existantes : inconnues (sudo requis).",
+        "en": "Existing databases: unknown (requires sudo).",
+    },
+    "Neutralize it by hand before starting Odoo on it: disable the crons and the outgoing mail servers.": {
+        "fr": "La neutraliser à la main avant d'y démarrer Odoo : désactiver les tâches planifiées et les serveurs de courriel sortant.",
+        "en": "Neutralize it by hand before starting Odoo on it: disable the crons and the outgoing mail servers.",
+    },
+    "Estimate": {
+        "fr": "Estimation",
+        "en": "Estimate",
+    },
+    "unknown (requires sudo)": {
+        "fr": "inconnue (sudo requis)",
+        "en": "unknown (requires sudo)",
+    },
+    "Retention": {
+        "fr": "Rétention",
+        "en": "Retention",
+    },
+    "Verified backups of an Odoo database run by systemd: back up, status, test restore, restore into a new database.": {
+        "fr": "Sauvegardes vérifiées d'une base Odoo servie par systemd : sauvegarder, état, restauration d'essai, restauration dans une nouvelle base.",
+        "en": "Verified backups of an Odoo database run by systemd: back up, status, test restore, restore into a new database.",
+    },
+    "Show the age of the last successful backup of each database.": {
+        "fr": "Afficher l'âge de la dernière sauvegarde réussie de chaque base.",
+        "en": "Show the age of the last successful backup of each database.",
+    },
+    "Restore the latest backup (or --file) into a temporary database, check it, then drop it.": {
+        "fr": "Restaurer la dernière sauvegarde (ou --file) dans une base temporaire, la contrôler, puis la supprimer.",
+        "en": "Restore the latest backup (or --file) into a temporary database, check it, then drop it.",
+    },
+    "Restore --file into the new database --into.": {
+        "fr": "Restaurer --file dans la nouvelle base --into.",
+        "en": "Restore --file into the new database --into.",
+    },
+    "Backup file (.zip) to restore.": {
+        "fr": "Fichier de sauvegarde (.zip) à restaurer.",
+        "en": "Backup file (.zip) to restore.",
+    },
+    "New database for --restore; must not exist.": {
+        "fr": "Nouvelle base pour --restore ; ne doit pas exister.",
+        "en": "New database for --restore; must not exist.",
+    },
+    "Account running PostgreSQL tools; default: User= of the unit.": {
+        "fr": "Compte qui lance les outils PostgreSQL ; par défaut : le User= de l'unité.",
+        "en": "Account running PostgreSQL tools; default: User= of the unit.",
+    },
+    "Off-site copy with rsync over ssh: [user@]host:/path or an absolute path; disabled by default.": {
+        "fr": "Copie hors site par rsync sur ssh : [compte@]hôte:/chemin ou un chemin absolu ; désactivée par défaut.",
+        "en": "Off-site copy with rsync over ssh: [user@]host:/path or an absolute path; disabled by default.",
+    },
+    "Detect and show the commands; write nothing.": {
+        "fr": "Détecter et montrer les commandes ; ne rien écrire.",
+        "en": "Detect and show the commands; write nothing.",
+    },
+    "--restore requires --file and --into.": {
+        "fr": "--restore exige --file et --into.",
+        "en": "--restore requires --file and --into.",
+    },
+    "--into is only used with --restore.": {
+        "fr": "--into ne sert qu'avec --restore.",
+        "en": "--into is only used with --restore.",
+    },
+    "--file is only used with --restore or --test-restore.": {
+        "fr": "--file ne sert qu'avec --restore ou --test-restore.",
+        "en": "--file is only used with --restore or --test-restore.",
+    },
+    "Odoo backup": {
+        "fr": "Sauvegarde Odoo",
+        "en": "Odoo backup",
+    },
+    "Cannot read the free space of {path}: {error}": {
+        "fr": "Impossible de lire l'espace libre de {path} : {error}",
+        "en": "Cannot read the free space of {path}: {error}",
+    },
+    "Cannot read the database {database}: {error}": {
+        "fr": "Impossible de lire la base {database} : {error}",
+        "en": "Cannot read the database {database}: {error}",
+    },
+    "{path} is not a directory.": {
+        "fr": "{path} n'est pas un dossier.",
+        "en": "{path} is not a directory.",
+    },
+    "Database {size}, filestore {fs} ({count} files).": {
+        "fr": "Base {size}, filestore {fs} ({count} fichiers).",
+        "en": "Database {size}, filestore {fs} ({count} files).",
+    },
+    "Backup written and verified: {path} ({size}, {count} files)": {
+        "fr": "Sauvegarde écrite et vérifiée : {path} ({size}, {count} fichiers)",
+        "en": "Backup written and verified: {path} ({size}, {count} files)",
+    },
+    "Off-site copy failed (rsync code {code}): {error}. The local backup is kept.": {
+        "fr": "Copie hors site en échec (rsync code {code}) : {error}. La sauvegarde locale est gardée.",
+        "en": "Off-site copy failed (rsync code {code}): {error}. The local backup is kept.",
+    },
+    "Retention: {kept} kept, {deleted} deleted.": {
+        "fr": "Rétention : {kept} gardée(s), {deleted} supprimée(s).",
+        "en": "Retention: {kept} kept, {deleted} deleted.",
+    },
+    "Checksum verified.": {
+        "fr": "Empreinte vérifiée.",
+        "en": "Checksum verified.",
+    },
+    "Dump loaded into {database}.": {
+        "fr": "Dump chargé dans {database}.",
+        "en": "Dump loaded into {database}.",
+    },
+    "Checks passed: {tables} tables, {modules} modules installed.": {
+        "fr": "Contrôles réussis : {tables} tables, {modules} modules installés.",
+        "en": "Checks passed: {tables} tables, {modules} modules installed.",
+    },
+    "Cannot drop {database} ({error}); drop it by hand: {command}": {
+        "fr": "Impossible de supprimer {database} ({error}) ; la supprimer à la main : {command}",
+        "en": "Cannot drop {database} ({error}); drop it by hand: {command}",
+    },
+    "Filestore extracted: {count} files.": {
+        "fr": "Filestore extrait : {count} fichiers.",
+        "en": "Filestore extracted: {count} files.",
+    },
+    "Restored into {database}, filestore {path} ({count} files).": {
+        "fr": "Restaurée dans {database}, filestore {path} ({count} fichiers).",
+        "en": "Restored into {database}, filestore {path} ({count} files).",
+    },
+    "retention: {daily} daily, {weekly} weekly, {monthly} monthly, everything from the last {recent} day(s)": {
+        "fr": "rétention : {daily} quotidiennes, {weekly} hebdomadaires, {monthly} mensuelles, tout ce qui date des {recent} dernier(s) jour(s)",
+        "en": "retention: {daily} daily, {weekly} weekly, {monthly} monthly, everything from the last {recent} day(s)",
+    },
+    "Off-site copy": {
+        "fr": "Copie hors site",
+        "en": "Off-site copy",
+    },
+    "{path} is missing and cannot be created by {user}: run once with sudo, or install the scheduled backup.": {
+        "fr": "{path} manque et {user} ne peut pas le créer : lancer une fois avec sudo, ou installer la sauvegarde planifiée.",
+        "en": "{path} is missing and cannot be created by {user}: run once with sudo, or install the scheduled backup.",
+    },
+    "{path} is not a directory writable by {user}.": {
+        "fr": "{path} n'est pas un dossier où {user} peut écrire.",
+        "en": "{path} is not a directory writable by {user}.",
+    },
+    "pg_dump exceeded {seconds} s: stopped.": {
+        "fr": "pg_dump a dépassé {seconds} s : arrêté.",
+        "en": "pg_dump exceeded {seconds} s: stopped.",
+    },
+    "pg_dump failed (code {code}): {error}": {
+        "fr": "pg_dump en échec (code {code}) : {error}",
+        "en": "pg_dump failed (code {code}): {error}",
+    },
+    "No filestore at {path}: the database stores no attachment on disk.": {
+        "fr": "Aucun filestore en {path} : la base ne stocke aucune pièce jointe sur disque.",
+        "en": "No filestore at {path}: the database stores no attachment on disk.",
+    },
+    "Skipped (not a regular file): filestore/{path}": {
+        "fr": "Écarté (pas un fichier ordinaire) : filestore/{path}",
+        "en": "Skipped (not a regular file): filestore/{path}",
+    },
+    "Copied to {destination}.": {
+        "fr": "Copiée vers {destination}.",
+        "en": "Copied to {destination}.",
+    },
+    "No backup state in {path}.": {
+        "fr": "Aucun état de sauvegarde dans {path}.",
+        "en": "No backup state in {path}.",
+    },
+    "{database}: no successful backup recorded.": {
+        "fr": "{database} : aucune sauvegarde réussie notée.",
+        "en": "{database}: no successful backup recorded.",
+    },
+    "{database}: a failure is more recent than the last success: {message}": {
+        "fr": "{database} : un échec est plus récent que le dernier succès : {message}",
+        "en": "{database}: a failure is more recent than the last success: {message}",
+    },
+    "{database}: the last off-site copy failed: {message}": {
+        "fr": "{database} : la dernière copie hors site a échoué : {message}",
+        "en": "{database}: the last off-site copy failed: {message}",
+    },
+    "No checksum file next to {path}: integrity not checked.": {
+        "fr": "Aucune empreinte à côté de {path} : intégrité non vérifiée.",
+        "en": "No checksum file next to {path}: integrity not checked.",
+    },
+    "Dangerous paths in the archive, refused: {names}": {
+        "fr": "Chemins dangereux dans l'archive, refusée : {names}",
+        "en": "Dangerous paths in the archive, refused: {names}",
+    },
+    "Loading the dump failed (code {code}, {count} SQL error(s)).": {
+        "fr": "Chargement du dump en échec (code {code}, {count} erreur(s) SQL).",
+        "en": "Loading the dump failed (code {code}, {count} SQL error(s)).",
+    },
+    "The installed modules differ from the manifest: {names}": {
+        "fr": "Les modules installés diffèrent du manifeste : {names}",
+        "en": "The installed modules differ from the manifest: {names}",
+    },
+    "Database {database} dropped.": {
+        "fr": "Base {database} supprimée.",
+        "en": "Database {database} dropped.",
+    },
+    "createdb failed: {error} (the PostgreSQL role needs CREATEDB).": {
+        "fr": "createdb en échec : {error} (le rôle PostgreSQL doit avoir CREATEDB).",
+        "en": "createdb failed: {error} (the PostgreSQL role needs CREATEDB).",
+    },
+    "No backup of {database} in {path}.": {
+        "fr": "Aucune sauvegarde de {database} dans {path}.",
+        "en": "No backup of {database} in {path}.",
+    },
+    "The database {database} already exists: refused.": {
+        "fr": "La base {database} existe déjà : refusé.",
+        "en": "The database {database} already exists: refused.",
+    },
+    "Filestore: {count} of {total} files extracted.": {
+        "fr": "Filestore : {count} fichiers extraits sur {total}.",
+        "en": "Filestore: {count} of {total} files extracted.",
+    },
+    "The database references {expected} stored files, the backup holds {count}.": {
+        "fr": "La base référence {expected} fichiers stockés, la sauvegarde en contient {count}.",
+        "en": "The database references {expected} stored files, the backup holds {count}.",
+    },
+    "Cannot open {path}: {error}": {
+        "fr": "Impossible d'ouvrir {path} : {error}",
+        "en": "Cannot open {path}: {error}",
+    },
+    "Neutralize it before starting Odoo on it (crons, outgoing mail): {command}": {
+        "fr": "La neutraliser avant d'y démarrer Odoo (tâches planifiées, courriel sortant) : {command}",
+        "en": "Neutralize it before starting Odoo on it (crons, outgoing mail): {command}",
+    },
+    "invalid copy destination: {value}": {
+        "fr": "destination de copie invalide : {value}",
+        "en": "invalid copy destination: {value}",
+    },
+    "Backup directory; default: {path}.": {
+        "fr": "Dossier des sauvegardes ; par défaut : {path}.",
+        "en": "Backup directory; default: {path}.",
+    },
+    "State directory; default: {path}.": {
+        "fr": "Dossier d'état ; par défaut : {path}.",
+        "en": "State directory; default: {path}.",
+    },
+    "Daily backups kept; default: {value}.": {
+        "fr": "Sauvegardes quotidiennes gardées ; par défaut : {value}.",
+        "en": "Daily backups kept; default: {value}.",
+    },
+    "Weekly backups kept; default: {value}.": {
+        "fr": "Sauvegardes hebdomadaires gardées ; par défaut : {value}.",
+        "en": "Weekly backups kept; default: {value}.",
+    },
+    "Monthly backups kept; default: {value}.": {
+        "fr": "Sauvegardes mensuelles gardées ; par défaut : {value}.",
+        "en": "Monthly backups kept; default: {value}.",
+    },
+    "Keep every backup of the last N days; default: {value}.": {
+        "fr": "Garder toutes les sauvegardes des N derniers jours ; par défaut : {value}.",
+        "en": "Keep every backup of the last N days; default: {value}.",
+    },
+    "--status fails when the last success is older than this many hours; default: {value}.": {
+        "fr": "--status échoue quand le dernier succès date de plus de ce nombre d'heures ; par défaut : {value}.",
+        "en": "--status fails when the last success is older than this many hours; default: {value}.",
+    },
+    "Maximum seconds for pg_dump; default: {value}.": {
+        "fr": "Secondes au plus pour pg_dump ; par défaut : {value}.",
+        "en": "Maximum seconds for pg_dump; default: {value}.",
+    },
+    "Run as root (sudo) or as {user}; other accounts only with --dry-run or --status.": {
+        "fr": "Lancer en root (sudo) ou sous {user} ; les autres comptes seulement avec --dry-run ou --status.",
+        "en": "Run as root (sudo) or as {user}; other accounts only with --dry-run or --status.",
+    },
+    "Unreadable version of the base module: {version}": {
+        "fr": "Version illisible du module base : {version}",
+        "en": "Unreadable version of the base module: {version}",
+    },
+    "Cannot record the state in {path}: {error}": {
+        "fr": "Impossible de noter l'état dans {path} : {error}",
+        "en": "Cannot record the state in {path}: {error}",
+    },
+    "Backup failed: {error}": {
+        "fr": "Sauvegarde en échec : {error}",
+        "en": "Backup failed: {error}",
+    },
+    "Cannot write {path}: {error}": {
+        "fr": "Impossible d'écrire {path} : {error}",
+        "en": "Cannot write {path}: {error}",
+    },
+    "Retention skipped: {error}": {
+        "fr": "Rétention sautée : {error}",
+        "en": "Retention skipped: {error}",
+    },
+    "{database}: last backup {hours:.1f} h old, more than {limit} h.": {
+        "fr": "{database} : dernière sauvegarde vieille de {hours:.1f} h, plus de {limit} h.",
+        "en": "{database}: last backup {hours:.1f} h old, more than {limit} h.",
+    },
+    "{database}: last backup {hours:.1f} h old.": {
+        "fr": "{database} : dernière sauvegarde vieille de {hours:.1f} h.",
+        "en": "{database}: last backup {hours:.1f} h old.",
+    },
+    "Checksum mismatch for {path}: refused.": {
+        "fr": "Empreinte fausse pour {path} : refusé.",
+        "en": "Checksum mismatch for {path}: refused.",
+    },
+    "The restored database cannot be read: {error}": {
+        "fr": "La base restaurée ne se lit pas : {error}",
+        "en": "The restored database cannot be read: {error}",
+    },
+    "Test restore failed: {error}": {
+        "fr": "Restauration d'essai en échec : {error}",
+        "en": "Test restore failed: {error}",
+    },
+    "filestore/ → {path}": {
+        "fr": "filestore/ → {path}",
+        "en": "filestore/ → {path}",
+    },
+    "{path} already exists: refused.": {
+        "fr": "{path} existe déjà : refusé.",
+        "en": "{path} already exists: refused.",
+    },
+    "Restore failed: {error}": {
+        "fr": "Restauration en échec : {error}",
+        "en": "Restore failed: {error}",
+    },
+    "{needed} needed, {free} free": {
+        "fr": "{needed} nécessaires, {free} libres",
+        "en": "{needed} needed, {free} free",
+    },
+    "Another operation on {database} is running (lock {path}).": {
+        "fr": "Une autre opération sur {database} est en cours (verrou {path}).",
+        "en": "Another operation on {database} is running (lock {path}).",
+    },
+    "Test restore of {database}": {
+        "fr": "Restauration d'essai de {database}",
+        "en": "Test restore of {database}",
+    },
+    "Cannot create {path}: {error}": {
+        "fr": "Impossible de créer {path} : {error}",
+        "en": "Cannot create {path}: {error}",
+    },
+    "Removed a leftover partial file: {name}": {
+        "fr": "Fichier provisoire oublié retiré : {name}",
+        "en": "Removed a leftover partial file: {name}",
+    },
+    "The backup is incomplete ({missing}).": {
+        "fr": "La sauvegarde est incomplète ({missing}).",
+        "en": "The backup is incomplete ({missing}).",
+    },
+    "{database}: the recorded file is missing on disk.": {
+        "fr": "{database} : le fichier noté manque sur le disque.",
+        "en": "{database}: the recorded file is missing on disk.",
+    },
+    "{path} is not a readable zip: {error}": {
+        "fr": "{path} n'est pas un zip lisible : {error}",
+        "en": "{path} is not a readable zip: {error}",
+    },
+    "Backups in {path}: unknown (requires sudo).": {
+        "fr": "Sauvegardes dans {path} : inconnues (sudo requis).",
+        "en": "Backups in {path}: unknown (requires sudo).",
+    },
+    "Cannot delete {path}: {error}": {
+        "fr": "Impossible de supprimer {path} : {error}",
+        "en": "Cannot delete {path}: {error}",
+    },
+    "Simulation finished: nothing was written.": {
+        "fr": "Simulation terminée : rien n'a été écrit.",
+        "en": "Simulation finished: nothing was written.",
+    },
+    "Invalid OnCalendar value: {value}": {
+        "fr": "Valeur OnCalendar invalide : {value}",
+        "en": "Invalid OnCalendar value: {value}",
+    },
+    "Invalid RandomizedDelaySec value: {value}": {
+        "fr": "Valeur RandomizedDelaySec invalide : {value}",
+        "en": "Invalid RandomizedDelaySec value: {value}",
+    },
+    "Install or remove the scheduled verified backup of an Odoo database: a systemd service and timer run as the unit's account.": {
+        "fr": "Installer ou retirer la sauvegarde vérifiée planifiée d'une base Odoo : un service et une minuterie systemd lancés sous le compte de l'unité.",
+        "en": "Install or remove the scheduled verified backup of an Odoo database: a systemd service and timer run as the unit's account.",
+    },
+    "Stop and remove the timer and the service; keep backups.": {
+        "fr": "Arrêter et retirer la minuterie et le service ; garder les sauvegardes.",
+        "en": "Stop and remove the timer and the service; keep backups.",
+    },
+    "Prefix of every path written (tests); default: /.": {
+        "fr": "Préfixe de chaque chemin écrit (tests) ; par défaut : /.",
+        "en": "Prefix of every path written (tests); default: /.",
+    },
+    "Show both units and the commands; write nothing.": {
+        "fr": "Montrer les deux unités et les commandes ; ne rien écrire.",
+        "en": "Show both units and the commands; write nothing.",
+    },
+    "{path} exists and was not written by this script: nothing was changed.": {
+        "fr": "{path} existe et n'a pas été écrit par ce script : rien n'a été changé.",
+        "en": "{path} exists and was not written by this script: nothing was changed.",
+    },
+    "Unknown account: {user}": {
+        "fr": "Compte inconnu : {user}",
+        "en": "Unknown account: {user}",
+    },
+    "Control character in an argument: {value}": {
+        "fr": "Caractère de contrôle dans un argument : {value}",
+        "en": "Control character in an argument: {value}",
+    },
+    "Scheduled backup installed: {timer} ({calendar}).": {
+        "fr": "Sauvegarde planifiée installée : {timer} ({calendar}).",
+        "en": "Scheduled backup installed: {timer} ({calendar}).",
+    },
+    "Backups and state are kept: {dest}, {state}.": {
+        "fr": "Les sauvegardes et l'état restent : {dest}, {state}.",
+        "en": "Backups and state are kept: {dest}, {state}.",
+    },
+    "systemd-analyze is missing: {value} not validated.": {
+        "fr": "systemd-analyze manque : {value} non validé.",
+        "en": "systemd-analyze is missing: {value} not validated.",
+    },
+    "systemctl {command} failed (code {code}): {output}": {
+        "fr": "systemctl {command} en échec (code {code}) : {output}",
+        "en": "systemctl {command} failed (code {code}): {output}",
+    },
+    "The unit's working directory has no {tool}: this checkout is used, {path}.": {
+        "fr": "Le dossier de travail de l'unité n'a pas {tool} : ce checkout-ci sert, {path}.",
+        "en": "The unit's working directory has no {tool}: this checkout is used, {path}.",
+    },
+    "Created {path}.": {
+        "fr": "Créé : {path}.",
+        "en": "Created {path}.",
+    },
+    "Written: {path}": {
+        "fr": "Écrit : {path}",
+        "en": "Written: {path}",
+    },
+    "Nothing to remove for {database}.": {
+        "fr": "Rien à retirer pour {database}.",
+        "en": "Nothing to remove for {database}.",
+    },
+    "When the backup runs (OnCalendar); default: {value}.": {
+        "fr": "Quand la sauvegarde part (OnCalendar) ; par défaut : {value}.",
+        "en": "When the backup runs (OnCalendar); default: {value}.",
+    },
+    "RandomizedDelaySec of the timer; default: {value}.": {
+        "fr": "RandomizedDelaySec de la minuterie ; par défaut : {value}.",
+        "en": "RandomizedDelaySec of the timer; default: {value}.",
+    },
+    "{unit} from an older tool is installed: two timers would back up twice. Remove one of them.": {
+        "fr": "{unit} d'un outil antérieur est installé : deux minuteries sauvegarderaient deux fois. En retirer une.",
+        "en": "{unit} from an older tool is installed: two timers would back up twice. Remove one of them.",
+    },
+    "Removed: {path}": {
+        "fr": "Retiré : {path}",
+        "en": "Removed: {path}",
+    },
+    "Nothing was stopped.": {
+        "fr": "Rien n'a été arrêté.",
+        "en": "Nothing was stopped.",
+    },
+    "Backup failed: nothing was updated.": {
+        "fr": "Sauvegarde en échec : rien n'a été mis à jour.",
+        "en": "Backup failed: nothing was updated.",
+    },
+    "Backup impossible: {reason} (use --no-backup to skip it).": {
+        "fr": "Sauvegarde impossible : {reason} (--no-backup pour s'en passer).",
+        "en": "Backup impossible: {reason} (use --no-backup to skip it).",
+    },
+    "Run this backup now?": {
+        "fr": "Lancer cette sauvegarde maintenant ?",
+        "en": "Run this backup now?",
+    },
+    "Run this test restore? A temporary database is created, then dropped.": {
+        "fr": "Lancer cette restauration d'essai ? Une base temporaire est créée, puis supprimée.",
+        "en": "Run this test restore? A temporary database is created, then dropped.",
+    },
+    "Remove the scheduled backup? Backups are kept.": {
+        "fr": "Retirer la sauvegarde planifiée ? Les sauvegardes restent.",
+        "en": "Remove the scheduled backup? Backups are kept.",
+    },
+    "Install the scheduled backup (daily at 03:00)?": {
+        "fr": "Installer la sauvegarde planifiée (chaque jour à 03:00) ?",
+        "en": "Install the scheduled backup (daily at 03:00)?",
+    },
+    "Verified backup now - simulate, confirm, then run with sudo": {
+        "fr": "Sauvegarde vérifiée maintenant - simuler, confirmer, puis exécuter avec sudo",
+        "en": "Verified backup now - simulate, confirm, then run with sudo",
+    },
+    "Backup status - age of the last successful backup": {
+        "fr": "État des sauvegardes - âge de la dernière sauvegarde réussie",
+        "en": "Backup status - age of the last successful backup",
+    },
+    "Test restore of the latest backup - temporary database, dropped afterwards": {
+        "fr": "Restauration d'essai de la dernière sauvegarde - base temporaire, supprimée ensuite",
+        "en": "Test restore of the latest backup - temporary database, dropped afterwards",
+    },
+    "Restore a backup into a new database - simulate, confirm, then run with sudo": {
+        "fr": "Restaurer une sauvegarde dans une nouvelle base - simuler, confirmer, puis exécuter avec sudo",
+        "en": "Restore a backup into a new database - simulate, confirm, then run with sudo",
+    },
+    "Install / remove the scheduled backup - systemd timer, with sudo": {
+        "fr": "Installer / retirer la sauvegarde planifiée - minuterie systemd, avec sudo",
+        "en": "Install / remove the scheduled backup - systemd timer, with sudo",
+    },
+    "Cancelled: no file given.": {
+        "fr": "Annulé : aucun fichier donné.",
+        "en": "Cancelled: no file given.",
+    },
+    "Cancelled: no database given.": {
+        "fr": "Annulé : aucune base donnée.",
+        "en": "Cancelled: no database given.",
+    },
+    "Backup file to restore (.zip): ": {
+        "fr": "Fichier de sauvegarde à restaurer (.zip) : ",
+        "en": "Backup file to restore (.zip): ",
+    },
+    "New database name (must not exist): ": {
+        "fr": "Nom de la nouvelle base (ne doit pas exister) : ",
+        "en": "New database name (must not exist): ",
+    },
+    "Restore into the new database {database}?": {
+        "fr": "Restaurer dans la nouvelle base {database} ?",
+        "en": "Restore into the new database {database}?",
+    },
+    "Install or remove the scheduled backup? [I/r] ": {
+        "fr": "Installer ou retirer la sauvegarde planifiée ? [I/r] ",
+        "en": "Install or remove the scheduled backup? [I/r] ",
+    },
+    "The command ended with code": {
+        "fr": "La commande s'est terminée avec le code",
+        "en": "The command ended with code",
+    },
+    "The state is not readable; run it with sudo:": {
+        "fr": "L'état ne se lit pas ; le lancer avec sudo :",
+        "en": "The state is not readable; run it with sudo:",
+    },
+    "expected an integer >= 0: {value}": {
+        "fr": "entier >= 0 attendu : {value}",
+        "en": "expected an integer >= 0: {value}",
+    },
+    # Production - sauvegardes vérifiées : refus, espace de PostgreSQL, minuterie
+    "{path} is a symbolic link: refused.": {
+        "fr": "{path} est un lien symbolique : refusé.",
+        "en": "{path} is a symbolic link: refused.",
+    },
+    "Some folders can only be created by root: the real run creates them under sudo.": {
+        "fr": "Certains dossiers ne peuvent être créés que par root : l'exécution réelle les crée sous sudo.",
+        "en": "Some folders can only be created by root: the real run creates them under sudo.",
+    },
+    "The filestore {path} does not belong to the account of the service: refused.": {
+        "fr": "Le filestore {path} n'appartient pas au compte du service : refusé.",
+        "en": "The filestore {path} does not belong to the account of the service: refused.",
+    },
+    "Free space of PostgreSQL not checked (--force-space): {needed} needed.": {
+        "fr": "Espace libre de PostgreSQL non vérifié (--force-space) : {needed} nécessaires.",
+        "en": "Free space of PostgreSQL not checked (--force-space): {needed} needed.",
+    },
+    "Free space of PostgreSQL unknown: the real run checks it under sudo, or refuses without --force-space.": {
+        "fr": "Espace libre de PostgreSQL inconnu : l'exécution réelle le vérifie sous sudo, ou refuse sans --force-space.",
+        "en": "Free space of PostgreSQL unknown: the real run checks it under sudo, or refuses without --force-space.",
+    },
+    "Cannot check the free space of PostgreSQL ({needed} needed): its data directory is unreadable or on another host. Check it, then rerun with --force-space.": {
+        "fr": "Impossible de vérifier l'espace libre de PostgreSQL ({needed} nécessaires) : son dossier de données est illisible ou sur un autre hôte. Le vérifier, puis relancer avec --force-space.",
+        "en": "Cannot check the free space of PostgreSQL ({needed} needed): its data directory is unreadable or on another host. Check it, then rerun with --force-space.",
+    },
+    "--test-restore, --restore: go on when the free space of PostgreSQL cannot be checked.": {
+        "fr": "--test-restore, --restore : continuer quand l'espace libre de PostgreSQL ne peut pas être vérifié.",
+        "en": "--test-restore, --restore: go on when the free space of PostgreSQL cannot be checked.",
+    },
+    "Access of {user} to the tool and its configuration: not checked (requires sudo).": {
+        "fr": "Accès de {user} à l'outil et à sa configuration : non vérifié (exige sudo).",
+        "en": "Access of {user} to the tool and its configuration: not checked (requires sudo).",
+    },
+    "{user} cannot read {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.": {
+        "fr": "{user} ne peut pas lire {path} : chaque sauvegarde planifiée échouerait. Lui en donner l'accès, ou installer depuis un checkout qu'il peut lire.",
+        "en": "{user} cannot read {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.",
+    },
+    "{user} cannot execute {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.": {
+        "fr": "{user} ne peut pas exécuter {path} : chaque sauvegarde planifiée échouerait. Lui en donner l'accès, ou installer depuis un checkout qu'il peut lire.",
+        "en": "{user} cannot execute {path}: every scheduled backup would fail. Give it access, or install from a checkout it can read.",
+    },
+    "systemd-tmpfiles failed (code {code}): {output}. The lock file is missing until the next boot.": {
+        "fr": "systemd-tmpfiles a échoué (code {code}) : {output}. Le fichier du verrou manque jusqu'au prochain démarrage.",
+        "en": "systemd-tmpfiles failed (code {code}): {output}. The lock file is missing until the next boot.",
+    },
+    # Production - journal Odoo et courriels en échec (log_check, mail_retry)
+    "System parameter mail.session.batch.size: lower than the provider's per-connection limit (try 10); also the provider's hourly and daily sending cap.": {
+        "fr": "Paramètre système mail.session.batch.size : plus petit que la limite par connexion du fournisseur (essayer 10) ; voir aussi le plafond d'envoi horaire et quotidien du fournisseur.",
+        "en": "System parameter mail.session.batch.size: lower than the provider's per-connection limit (try 10); also the provider's hourly and daily sending cap.",
+    },
+    "System parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.": {
+        "fr": "Paramètres système mail.default.from et mail.catchall.domain : l'adresse « De » doit être une adresse au nom de laquelle le compte SMTP peut envoyer.",
+        "en": "System parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.",
+    },
+    "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and the system parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.": {
+        "fr": "Filtre « De » du serveur de courrier sortant (ou from_filter dans le fichier de configuration d'Odoo), et paramètres système mail.default.from et mail.catchall.domain : l'adresse « De » doit être une adresse au nom de laquelle le compte SMTP peut envoyer.",
+        "en": "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and the system parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.",
+    },
+    "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and Settings > Technical > Email > Alias Domains (default from, catchall): the From address must be one the SMTP account may send as.": {
+        "fr": "Filtre « De » du serveur de courrier sortant (ou from_filter dans le fichier de configuration d'Odoo), et Paramètres > Technique > Courriel > Domaines d'alias (expéditeur par défaut, catchall) : l'adresse « De » doit être une adresse au nom de laquelle le compte SMTP peut envoyer.",
+        "en": "From Filter of the outgoing mail server (or from_filter in the Odoo configuration file), and Settings > Technical > Email > Alias Domains (default from, catchall): the From address must be one the SMTP account may send as.",
+    },
+    "From Filter of the outgoing mail server or from_filter in the Odoo configuration file (15+); default sender: system parameters mail.default.from and mail.catchall.domain (up to 16), or Settings > Technical > Email > Alias Domains (17+).": {
+        "fr": "Filtre « De » du serveur de courrier sortant ou from_filter dans le fichier de configuration d'Odoo (15+) ; expéditeur par défaut : paramètres système mail.default.from et mail.catchall.domain (jusqu'à 16), ou Paramètres > Technique > Courriel > Domaines d'alias (17+).",
+        "en": "From Filter of the outgoing mail server or from_filter in the Odoo configuration file (15+); default sender: system parameters mail.default.from and mail.catchall.domain (up to 16), or Settings > Technical > Email > Alias Domains (17+).",
+    },
+    "invalid or missing recipient address": {
+        "fr": "adresse du destinataire invalide ou absente",
+        "en": "invalid or missing recipient address",
+    },
+    "Port and encryption of the outgoing mail server (465 with SSL/TLS, 587 with STARTTLS) and its certificate; or smtp_port and smtp_ssl in the Odoo configuration file.": {
+        "fr": "Port et chiffrement du serveur de courrier sortant (465 avec SSL/TLS, 587 avec STARTTLS) et son certificat ; ou smtp_port et smtp_ssl dans le fichier de configuration d'Odoo.",
+        "en": "Port and encryption of the outgoing mail server (465 with SSL/TLS, 587 with STARTTLS) and its certificate; or smtp_port and smtp_ssl in the Odoo configuration file.",
+    },
+    "Login and password of the outgoing mail server (Test Connection), or smtp_user and smtp_password in the Odoo configuration file; an application password where the provider requires one.": {
+        "fr": "Identifiant et mot de passe du serveur de courrier sortant (Tester la connexion), ou smtp_user et smtp_password dans le fichier de configuration d'Odoo ; un mot de passe d'application là où le fournisseur l'exige.",
+        "en": "Login and password of the outgoing mail server (Test Connection), or smtp_user and smtp_password in the Odoo configuration file; an application password where the provider requires one.",
+    },
+    "Authentication on the outgoing mail server, and a From address in a domain this server accepts to relay.": {
+        "fr": "Authentification sur le serveur de courrier sortant, et une adresse « De » dans un domaine que ce serveur accepte de relayer.",
+        "en": "Authentication on the outgoing mail server, and a From address in a domain this server accepts to relay.",
+    },
+    "The recipient address itself: the destination server does not know it.": {
+        "fr": "L'adresse du destinataire elle-même : le serveur de destination ne la connaît pas.",
+        "en": "The recipient address itself: the destination server does not know it.",
+    },
+    "The recipient address of the mail or of its contact: missing or malformed.": {
+        "fr": "L'adresse du destinataire du courriel ou de son contact : absente ou mal formée.",
+        "en": "The recipient address of the mail or of its contact: missing or malformed.",
+    },
+    "Host and port of the outgoing mail server (or smtp_server and smtp_port in the Odoo configuration file), outgoing firewall and DNS of this host.": {
+        "fr": "Hôte et port du serveur de courrier sortant (ou smtp_server et smtp_port dans le fichier de configuration d'Odoo), pare-feu sortant et DNS de cet hôte.",
+        "en": "Host and port of the outgoing mail server (or smtp_server and smtp_port in the Odoo configuration file), outgoing firewall and DNS of this host.",
+    },
+    "TLS or certificate error": {
+        "fr": "erreur TLS ou de certificat",
+        "en": "TLS or certificate error",
+    },
+    "sending rate or per-session limit (421/450/451/452)": {
+        "fr": "limite de débit ou de messages par connexion (421/450/451/452)",
+        "en": "sending rate or per-session limit (421/450/451/452)",
+    },
+    "'Multiple MAIL' after an earlier failure (503)": {
+        "fr": "« Multiple MAIL » après un échec précédent (503)",
+        "en": "'Multiple MAIL' after an earlier failure (503)",
+    },
+    "authentication refused (535)": {
+        "fr": "authentification refusée (535)",
+        "en": "authentication refused (535)",
+    },
+    "relay refused": {
+        "fr": "relais refusé",
+        "en": "relay refused",
+    },
+    "sender refused (550/553)": {
+        "fr": "expéditeur refusé (550/553)",
+        "en": "sender refused (550/553)",
+    },
+    "recipient refused": {
+        "fr": "destinataire refusé",
+        "en": "recipient refused",
+    },
+    "SMTP server unreachable": {
+        "fr": "serveur SMTP injoignable",
+        "en": "SMTP server unreachable",
+    },
+    "Source map (.map) of an outdated asset bundle": {
+        "fr": "Carte source (.map) d'un paquet d'assets périmé",
+        "en": "Source map (.map) of an outdated asset bundle",
+    },
+    "Concurrent update conflict, retried by Odoo (bad query)": {
+        "fr": "Conflit de mise à jour concurrente, rejoué par Odoo (bad query)",
+        "en": "Concurrent update conflict, retried by Odoo (bad query)",
+    },
+    "Push subscription with an outdated VAPID key": {
+        "fr": "Abonnement push avec une clé VAPID périmée",
+        "en": "Push subscription with an outdated VAPID key",
+    },
+    "run with sudo, or add the user to the systemd-journal group.": {
+        "fr": "lancer avec sudo, ou ajouter le compte au groupe systemd-journal.",
+        "en": "run with sudo, or add the user to the systemd-journal group.",
+    },
+    "since the last check": {
+        "fr": "depuis la dernière lecture",
+        "en": "since the last check",
+    },
+    "Window": {
+        "fr": "Fenêtre",
+        "en": "Window",
+    },
+    "Records": {
+        "fr": "Enregistrements",
+        "en": "Records",
+    },
+    "[4] Mail sending failures": {
+        "fr": "[4] Échecs d'envoi de courriel",
+        "en": "[4] Mail sending failures",
+    },
+    "[5] Ignored as known noise": {
+        "fr": "[5] Ignoré comme bruit connu",
+        "en": "[5] Ignored as known noise",
+    },
+    "[6] Errors per hour (local time)": {
+        "fr": "[6] Erreurs par heure (heure locale)",
+        "en": "[6] Errors per hour (local time)",
+    },
+    "hour": {
+        "fr": "heure",
+        "en": "hour",
+    },
+    "Nothing to review.": {
+        "fr": "Rien à revoir.",
+        "en": "Nothing to review.",
+    },
+    "Read the journal of an Odoo instance: tracebacks, errors, refused SQL queries and mail sending failures to review.": {
+        "fr": "Lire le journal d'une instance Odoo : traces, erreurs, requêtes SQL refusées et échecs d'envoi de courriel à revoir.",
+        "en": "Read the journal of an Odoo instance: tracebacks, errors, refused SQL queries and mail sending failures to review.",
+    },
+    "Odoo log file to read instead of a unit.": {
+        "fr": "Fichier de journal d'Odoo à lire au lieu d'une unité.",
+        "en": "Odoo log file to read instead of a unit.",
+    },
+    "Since the last check (position kept in --state-dir).": {
+        "fr": "Depuis la dernière lecture (position gardée dans --state-dir).",
+        "en": "Since the last check (position kept in --state-dir).",
+    },
+    "The last HOURS hours.": {
+        "fr": "Les HOURS dernières heures.",
+        "en": "The last HOURS hours.",
+    },
+    "From this local date: YYYY-MM-DD[ HH:MM[:SS]].": {
+        "fr": "À partir de cette date locale : AAAA-MM-JJ[ hh:mm[:ss]].",
+        "en": "From this local date: YYYY-MM-DD[ HH:MM[:SS]].",
+    },
+    "Errors per hour over --days days.": {
+        "fr": "Erreurs par heure sur --days jours.",
+        "en": "Errors per hour over --days days.",
+    },
+    "With --since: up to this local date.": {
+        "fr": "Avec --since : jusqu'à cette date locale.",
+        "en": "With --since: up to this local date.",
+    },
+    "Records whose header line or final exception matches REGEX are not to review; repeatable.": {
+        "fr": "Les enregistrements dont la ligne d'en-tête ou l'exception finale correspond à REGEX ne sont pas à revoir ; répétable.",
+        "en": "Records whose header line or final exception matches REGEX are not to review; repeatable.",
+    },
+    "Print the summary as JSON (untranslated keys).": {
+        "fr": "Afficher le résumé en JSON (clés non traduites).",
+        "en": "Print the summary as JSON (untranslated keys).",
+    },
+    "Show every line of each traceback sample.": {
+        "fr": "Montrer toutes les lignes de chaque exemple de trace.",
+        "en": "Show every line of each traceback sample.",
+    },
+    "--until requires --since.": {
+        "fr": "--until exige --since.",
+        "en": "--until requires --since.",
+    },
+    "First run: last 24 h.": {
+        "fr": "Première lecture : dernières 24 h.",
+        "en": "First run: last 24 h.",
+    },
+    "journalctl not found: {error}": {
+        "fr": "journalctl introuvable : {error}",
+        "en": "journalctl not found: {error}",
+    },
+    "Odoo journal: {source}": {
+        "fr": "Journal d'Odoo : {source}",
+        "en": "Odoo journal: {source}",
+    },
+    "errors per hour over {days} day(s)": {
+        "fr": "erreurs par heure sur {days} jour(s)",
+        "en": "errors per hour over {days} day(s)",
+    },
+    "now": {
+        "fr": "maintenant",
+        "en": "now",
+    },
+    "PERMANENT": {
+        "fr": "PERMANENTE",
+        "en": "PERMANENT",
+    },
+    "transient": {
+        "fr": "passagère",
+        "en": "transient",
+    },
+    "The journal read exceeded {seconds} s (--timeout).": {
+        "fr": "La lecture du journal a dépassé {seconds} s (--timeout).",
+        "en": "The journal read exceeded {seconds} s (--timeout).",
+    },
+    "Cannot read {path}: {error}": {
+        "fr": "Impossible de lire {path} : {error}",
+        "en": "Cannot read {path}: {error}",
+    },
+    "Run with sudo.": {
+        "fr": "Lancer avec sudo.",
+        "en": "Run with sudo.",
+    },
+    "[1] Python tracebacks: {count} in {groups} group(s)": {
+        "fr": "[1] Traces Python : {count} en {groups} groupe(s)",
+        "en": "[1] Python tracebacks: {count} in {groups} group(s)",
+    },
+    "[2] Errors: {count} in {groups} group(s)": {
+        "fr": "[2] Erreurs : {count} en {groups} groupe(s)",
+        "en": "[2] Errors: {count} in {groups} group(s)",
+    },
+    "[3] Refused SQL queries: {count} in {groups} group(s)": {
+        "fr": "[3] Requêtes SQL refusées : {count} en {groups} groupe(s)",
+        "en": "[3] Refused SQL queries: {count} in {groups} group(s)",
+    },
+    "No error in this window.": {
+        "fr": "Aucune erreur dans cette fenêtre.",
+        "en": "No error in this window.",
+    },
+    "{count} record(s) to review.": {
+        "fr": "{count} enregistrement(s) à revoir.",
+        "en": "{count} record(s) to review.",
+    },
+    "expected a number of days from 1 to {maximum}: {value}": {
+        "fr": "nombre de jours attendu de 1 à {maximum} : {value}",
+        "en": "expected a number of days from 1 to {maximum}: {value}",
+    },
+    "Days of --by-hour; default: {days}.": {
+        "fr": "Jours de --by-hour ; par défaut : {days}.",
+        "en": "Days of --by-hour; default: {days}.",
+    },
+    "Groups shown per section; default: {count}.": {
+        "fr": "Groupes montrés par section ; par défaut : {count}.",
+        "en": "Groups shown per section; default: {count}.",
+    },
+    "Maximum seconds for the journal read; default: {seconds}.": {
+        "fr": "Durée maximale de la lecture du journal, en secondes ; par défaut : {seconds}.",
+        "en": "Maximum seconds for the journal read; default: {seconds}.",
+    },
+    "Odoo configuration not read ({error}): the journal is read.": {
+        "fr": "Configuration d'Odoo non lue ({error}) : le journal est lu.",
+        "en": "Odoo configuration not read ({error}): the journal is read.",
+    },
+    "{error} The journal holds no Odoo record in this window: Odoo may write to a logfile set in that configuration.": {
+        "fr": "{error} Le journal ne porte aucun enregistrement d'Odoo dans cette fenêtre : Odoo écrit peut-être dans un logfile posé par cette configuration.",
+        "en": "{error} The journal holds no Odoo record in this window: Odoo may write to a logfile set in that configuration.",
+    },
+    "This account cannot read the journal of {unit}: {advice}": {
+        "fr": "Ce compte ne peut pas lire le journal de {unit} : {advice}",
+        "en": "This account cannot read the journal of {unit}: {advice}",
+    },
+    "+{count} more group(s) (--top).": {
+        "fr": "+{count} groupe(s) de plus (--top).",
+        "en": "+{count} more group(s) (--top).",
+    },
+    "List and resend the failed mails: {command}": {
+        "fr": "Lister et renvoyer les courriels en échec : {command}",
+        "en": "List and resend the failed mails: {command}",
+    },
+    "Position not saved: {reason}": {
+        "fr": "Position non retenue : {reason}",
+        "en": "Position not saved: {reason}",
+    },
+    "Invalid date: {value}": {
+        "fr": "Date invalide : {value}",
+        "en": "Invalid date: {value}",
+    },
+    "journalctl failed (code {code}): {error}": {
+        "fr": "journalctl a échoué (code {code}) : {error}",
+        "en": "journalctl failed (code {code}): {error}",
+    },
+    "{path} was rotated or truncated: read from the start.": {
+        "fr": "{path} a été renouvelé ou tronqué : lu depuis le début.",
+        "en": "{path} was rotated or truncated: read from the start.",
+    },
+    "Check: {setting}": {
+        "fr": "À vérifier : {setting}",
+        "en": "Check: {setting}",
+    },
+    "Hours without errors: {ranges}": {
+        "fr": "Heures sans erreur : {ranges}",
+        "en": "Hours without errors: {ranges}",
+    },
+    "Mails: {ids}": {
+        "fr": "Courriels : {ids}",
+        "en": "Mails: {ids}",
+    },
+    "unknown cause": {
+        "fr": "cause inconnue",
+        "en": "unknown cause",
+    },
+    "Mail states": {
+        "fr": "États des courriels",
+        "en": "Mail states",
+    },
+    "(no recipient recorded)": {
+        "fr": "(aucun destinataire noté)",
+        "en": "(no recipient recorded)",
+    },
+    "To:": {
+        "fr": "À :",
+        "en": "To:",
+    },
+    "cause:": {
+        "fr": "cause :",
+        "en": "cause:",
+    },
+    "By subject": {
+        "fr": "Par sujet",
+        "en": "By subject",
+    },
+    "By cause": {
+        "fr": "Par cause",
+        "en": "By cause",
+    },
+    "By day": {
+        "fr": "Par jour",
+        "en": "By day",
+    },
+    "List the failed outgoing mails of an Odoo instance (read-only), then requeue the chosen ones through the Odoo shell.": {
+        "fr": "Lister les courriels sortants en échec d'une instance Odoo (lecture seule), puis remettre en file ceux qu'on choisit par le shell d'Odoo.",
+        "en": "List the failed outgoing mails of an Odoo instance (read-only), then requeue the chosen ones through the Odoo shell.",
+    },
+    "Account of the instance; default: User= of the unit.": {
+        "fr": "Compte de l'instance ; par défaut : User= de l'unité.",
+        "en": "Account of the instance; default: User= of the unit.",
+    },
+    "Show full recipient addresses and failure reasons.": {
+        "fr": "Montrer les adresses complètes des destinataires et les raisons d'échec.",
+        "en": "Show full recipient addresses and failure reasons.",
+    },
+    "Mails to requeue: all, the N oldest, or ids (comma list); requires --yes without a terminal.": {
+        "fr": "Courriels à remettre en file : all (tous), oldest N (les N plus anciens) ou ids (liste à virgules) ; exige --yes sans terminal.",
+        "en": "Mails to requeue: all, the N oldest, or ids (comma list); requires --yes without a terminal.",
+    },
+    "Confirm --resend without asking.": {
+        "fr": "Confirmer --resend sans demander.",
+        "en": "Confirm --resend without asking.",
+    },
+    "List only: no question, no resend.": {
+        "fr": "Lister seulement : aucune question, aucun renvoi.",
+        "en": "List only: no question, no resend.",
+    },
+    "Show the selection and the exact commands; write nothing.": {
+        "fr": "Montrer la sélection et les commandes exactes ; ne rien écrire.",
+        "en": "Show the selection and the exact commands; write nothing.",
+    },
+    "Print the result as JSON (untranslated keys).": {
+        "fr": "Afficher le résultat en JSON (clés non traduites).",
+        "en": "Print the result as JSON (untranslated keys).",
+    },
+    "--list cannot be combined with --resend.": {
+        "fr": "--list ne se combine pas avec --resend.",
+        "en": "--list cannot be combined with --resend.",
+    },
+    "No mail resent.": {
+        "fr": "Aucun courriel renvoyé.",
+        "en": "No mail resent.",
+    },
+    "{count} failed mail(s) in the last {days} day(s):": {
+        "fr": "{count} courriel(s) en échec dans les {days} dernier(s) jour(s) :",
+        "en": "{count} failed mail(s) in the last {days} day(s):",
+    },
+    "The scheduled action 'Mail: Email Queue Manager' sends them at its next run.": {
+        "fr": "L'action planifiée « Mail: Email Queue Manager » les envoie à son prochain passage.",
+        "en": "The scheduled action 'Mail: Email Queue Manager' sends them at its next run.",
+    },
+    "Would resend {count} mail(s): {ids}": {
+        "fr": "Renverrait {count} courriel(s) : {ids}",
+        "en": "Would resend {count} mail(s): {ids}",
+    },
+    "Nothing resent: re-run with --yes to confirm --resend.": {
+        "fr": "Rien renvoyé : relancer avec --yes pour confirmer --resend.",
+        "en": "Nothing resent: re-run with --yes to confirm --resend.",
+    },
+    "Requeue {count} mail(s) through the Odoo shell…": {
+        "fr": "Remise en file de {count} courriel(s) par le shell d'Odoo…",
+        "en": "Requeue {count} mail(s) through the Odoo shell…",
+    },
+    "No failed mail in the last {days} day(s).": {
+        "fr": "Aucun courriel en échec dans les {days} dernier(s) jour(s).",
+        "en": "No failed mail in the last {days} day(s).",
+    },
+    "{count} mail(s) failed for a PERMANENT cause: a resend fails again until the setting is fixed.": {
+        "fr": "{count} courriel(s) en échec pour une cause PERMANENTE : un renvoi échoue de nouveau tant que le réglage n'est pas corrigé.",
+        "en": "{count} mail(s) failed for a PERMANENT cause: a resend fails again until the setting is fixed.",
+    },
+    "{count} mails and mail.session.batch.size is {value}: a server limit of messages per connection may refuse part of the resend; set it to 10 or 20 first.": {
+        "fr": "{count} courriels et mail.session.batch.size vaut {value} : une limite de messages par connexion du serveur peut refuser une partie du renvoi ; le régler d'abord à 10 ou 20.",
+        "en": "{count} mails and mail.session.batch.size is {value}: a server limit of messages per connection may refuse part of the resend; set it to 10 or 20 first.",
+    },
+    "The Odoo shell exceeded {seconds} s and was stopped: whether the mails were requeued is unknown; list them again.": {
+        "fr": "Le shell d'Odoo a dépassé {seconds} s et a été arrêté : on ne sait pas si les courriels ont été remis en file ; les lister de nouveau.",
+        "en": "The Odoo shell exceeded {seconds} s and was stopped: whether the mails were requeued is unknown; list them again.",
+    },
+    "The Odoo shell returned no result (code {code}).": {
+        "fr": "Le shell d'Odoo n'a rendu aucun résultat (code {code}).",
+        "en": "The Odoo shell returned no result (code {code}).",
+    },
+    "{count} mail(s) requeued ({ids}).": {
+        "fr": "{count} courriel(s) remis en file ({ids}).",
+        "en": "{count} mail(s) requeued ({ids}).",
+    },
+    "{count} mail(s) skipped: no longer failed or deleted ({ids}).": {
+        "fr": "{count} courriel(s) ignoré(s) : plus en échec ou supprimé(s) ({ids}).",
+        "en": "{count} mail(s) skipped: no longer failed or deleted ({ids}).",
+    },
+    "Failed mails of the last DAYS days; default: {days}.": {
+        "fr": "Courriels en échec des DAYS derniers jours ; par défaut : {days}.",
+        "en": "Failed mails of the last DAYS days; default: {days}.",
+    },
+    "Maximum seconds for the Odoo shell; default: {seconds}.": {
+        "fr": "Durée maximale du shell d'Odoo, en secondes ; par défaut : {seconds}.",
+        "en": "Maximum seconds for the Odoo shell; default: {seconds}.",
+    },
+    "{path} is missing: the Odoo shell cannot be run.": {
+        "fr": "{path} manque : le shell d'Odoo ne peut pas être lancé.",
+        "en": "{path} is missing: the Odoo shell cannot be run.",
+    },
+    "Run as root (sudo) or as {user}; other accounts only with --dry-run.": {
+        "fr": "Lancer en root (sudo) ou sous {user} ; les autres comptes seulement avec --dry-run.",
+        "en": "Run as root (sudo) or as {user}; other accounts only with --dry-run.",
+    },
+    "Resend {count} mail(s)? [y/N] ": {
+        "fr": "Renvoyer {count} courriel(s) ? [o/N] ",
+        "en": "Resend {count} mail(s)? [y/N] ",
+    },
+    "Not in the list, not resent: {ids}": {
+        "fr": "Absent(s) de la liste, non renvoyé(s) : {ids}",
+        "en": "Not in the list, not resent: {ids}",
+    },
+    "unset": {
+        "fr": "non défini",
+        "en": "unset",
+    },
+    "Mail ids (comma list): ": {
+        "fr": "Ids des courriels (liste à virgules) : ",
+        "en": "Mail ids (comma list): ",
+    },
+    "Reading the database requires sudo or the account {user}: planned commands only.": {
+        "fr": "Lire la base exige sudo ou le compte {user} : commandes prévues seulement.",
+        "en": "Reading the database requires sudo or the account {user}: planned commands only.",
+    },
+    "Cannot read the failed mails of {database}: {error}": {
+        "fr": "Impossible de lire les courriels en échec de {database} : {error}",
+        "en": "Cannot read the failed mails of {database}: {error}",
+    },
+    "invalid --resend: {value}": {
+        "fr": "--resend invalide : {value}",
+        "en": "invalid --resend: {value}",
+    },
+    "How many of the oldest? [{count}]: ": {
+        "fr": "Combien des plus anciens ? [{count}] : ",
+        "en": "How many of the oldest? [{count}]: ",
+    },
+    "Resend: [a]ll ({count})  [o]ldest batch  [i]ds  [n]one [n]: ": {
+        "fr": "Renvoyer : [a] tous ({count})  [o] les plus anciens  [i] des ids  [n] aucun [n] : ",
+        "en": "Resend: [a]ll ({count})  [o]ldest batch  [i]ds  [n]one [n]: ",
+    },
+    "ERROR/CRITICAL records whose header line or final exception matches REGEX do not fail; repeatable.": {
+        "fr": "Les enregistrements ERROR/CRITICAL dont la ligne d'en-tête ou l'exception finale correspond à REGEX ne font pas échouer ; répétable.",
+        "en": "ERROR/CRITICAL records whose header line or final exception matches REGEX do not fail; repeatable.",
+    },
+    "{count} ERROR/CRITICAL record(s) in {groups} group(s) during the update.": {
+        "fr": "{count} enregistrement(s) ERROR/CRITICAL en {groups} groupe(s) pendant la mise à jour.",
+        "en": "{count} ERROR/CRITICAL record(s) in {groups} group(s) during the update.",
+    },
+    "{count} ERROR/CRITICAL record(s) in {groups} group(s) since the start.": {
+        "fr": "{count} enregistrement(s) ERROR/CRITICAL en {groups} groupe(s) depuis le démarrage.",
+        "en": "{count} ERROR/CRITICAL record(s) in {groups} group(s) since the start.",
+    },
+    "Run it with sudo?": {
+        "fr": "La lancer avec sudo ?",
+        "en": "Run it with sudo?",
+    },
+    "Number of hours [24]: ": {
+        "fr": "Nombre d'heures [24] : ",
+        "en": "Number of hours [24]: ",
+    },
+    "Number of days [7]: ": {
+        "fr": "Nombre de jours [7] : ",
+        "en": "Number of days [7]: ",
+    },
+    "Odoo journal: errors since the last check - read-only": {
+        "fr": "Journal d'Odoo : erreurs depuis la dernière lecture - lecture seule",
+        "en": "Odoo journal: errors since the last check - read-only",
+    },
+    "Odoo journal: errors of the last N hours - read-only": {
+        "fr": "Journal d'Odoo : erreurs des N dernières heures - lecture seule",
+        "en": "Odoo journal: errors of the last N hours - read-only",
+    },
+    "Odoo journal: hourly report - errors per hour over N days": {
+        "fr": "Journal d'Odoo : rapport horaire - erreurs par heure sur N jours",
+        "en": "Odoo journal: hourly report - errors per hour over N days",
+    },
+    "Failed outgoing mail: list - read-only, addresses masked": {
+        "fr": "Courriels sortants en échec : liste - lecture seule, adresses masquées",
+        "en": "Failed outgoing mail: list - read-only, addresses masked",
+    },
+    "Failed outgoing mail: retry - confirm, then choose with sudo": {
+        "fr": "Courriels sortants en échec : renvoi - confirmer, puis choisir sous sudo",
+        "en": "Failed outgoing mail: retry - confirm, then choose with sudo",
+    },
+    "Cancelled: expected a whole number >= 1.": {
+        "fr": "Annulé : nombre entier >= 1 attendu.",
+        "en": "Cancelled: expected a whole number >= 1.",
+    },
+    "Open the failed mail list with sudo to choose which ones to resend?": {
+        "fr": "Ouvrir la liste des courriels en échec sous sudo pour choisir ceux à renvoyer ?",
+        "en": "Open the failed mail list with sudo to choose which ones to resend?",
+    },
+    "Not readable by this account; with sudo:": {
+        "fr": "Illisible par ce compte ; avec sudo :",
+        "en": "Not readable by this account; with sudo:",
+    },
+    "The position is kept in {path}, writable by root only: run with sudo?": {
+        "fr": "La position est gardée dans {path}, inscriptible par root seulement : lancer avec sudo ?",
+        "en": "The position is kept in {path}, writable by root only: run with sudo?",
+    },
+    "Only the messages of this account are visible: those of the unit, which runs under it.": {
+        "fr": "Seuls les messages de ce compte sont visibles : ceux de l'unité, qui tourne sous lui.",
+        "en": "Only the messages of this account are visible: those of the unit, which runs under it.",
+    },
+    # Production - santé et préchauffage (health_check, warmup_http)
+    "Certificate refused: {reason}.": {
+        "fr": "Certificat refusé : {reason}.",
+        "en": "Certificate refused: {reason}.",
+    },
+    'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block.': {
+        "fr": 'add_header Strict-Transport-Security "max-age=31536000" always; dans le bloc server de nginx.',
+        "en": 'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block.',
+    },
+    "Set list_db = False in the Odoo configuration, or deny /web/database in the proxy.": {
+        "fr": "Poser list_db = False dans la configuration d'Odoo, ou refuser /web/database dans le proxy.",
+        "en": "Set list_db = False in the Odoo configuration, or deny /web/database in the proxy.",
+    },
+    "TLS certificate: not checked on the local address (use --url).": {
+        "fr": "Certificat TLS : non vérifié sur l'adresse locale (utiliser --url).",
+        "en": "TLS certificate: not checked on the local address (use --url).",
+    },
+    "HTTPS redirect: not checked on the local address (use --url).": {
+        "fr": "Redirection HTTPS : non vérifiée sur l'adresse locale (utiliser --url).",
+        "en": "HTTPS redirect: not checked on the local address (use --url).",
+    },
+    "HSTS: not checked on the local address (use --url).": {
+        "fr": "HSTS : non vérifié sur l'adresse locale (utiliser --url).",
+        "en": "HSTS: not checked on the local address (use --url).",
+    },
+    "Bus path: not checked on the local address (use --url).": {
+        "fr": "Chemin du bus : non vérifié sur l'adresse locale (utiliser --url).",
+        "en": "Bus path: not checked on the local address (use --url).",
+    },
+    "robots.txt: judged on the public URL only (use --url).": {
+        "fr": "robots.txt : jugé sur l'URL publique seulement (utiliser --url).",
+        "en": "robots.txt: judged on the public URL only (use --url).",
+    },
+    "TLS certificate: not an HTTPS URL.": {
+        "fr": "Certificat TLS : l'URL n'est pas en HTTPS.",
+        "en": "TLS certificate: not an HTTPS URL.",
+    },
+    "HTTPS redirect: not an HTTPS URL.": {
+        "fr": "Redirection HTTPS : l'URL n'est pas en HTTPS.",
+        "en": "HTTPS redirect: not an HTTPS URL.",
+    },
+    "HSTS: not an HTTPS URL.": {
+        "fr": "HSTS : l'URL n'est pas en HTTPS.",
+        "en": "HSTS: not an HTTPS URL.",
+    },
+    "Login page: HTTP 200 in {seconds} s.": {
+        "fr": "Page de connexion : HTTP 200 en {seconds} s.",
+        "en": "Login page: HTTP 200 in {seconds} s.",
+    },
+    "/web/health: unexpected answer (HTTP {status}).": {
+        "fr": "/web/health : réponse inattendue (HTTP {status}).",
+        "en": "/web/health: unexpected answer (HTTP {status}).",
+    },
+    "The proxy may serve another page for /web/health.": {
+        "fr": "Le proxy sert peut-être une autre page pour /web/health.",
+        "en": "The proxy may serve another page for /web/health.",
+    },
+    "Certificate refused: it does not match the host name.": {
+        "fr": "Certificat refusé : il ne correspond pas au nom d'hôte.",
+        "en": "Certificate refused: it does not match the host name.",
+    },
+    "Certificate refused: it has expired.": {
+        "fr": "Certificat refusé : il a expiré.",
+        "en": "Certificate refused: it has expired.",
+    },
+    "Certificate refused: self-signed.": {
+        "fr": "Certificat refusé : autosigné.",
+        "en": "Certificate refused: self-signed.",
+    },
+    "Certificate refused: unknown issuer (incomplete chain served?).": {
+        "fr": "Certificat refusé : émetteur inconnu (chaîne servie incomplète ?).",
+        "en": "Certificate refused: unknown issuer (incomplete chain served?).",
+    },
+    "Certificate expired since {date}.": {
+        "fr": "Certificat expiré depuis le {date}.",
+        "en": "Certificate expired since {date}.",
+    },
+    "Certificate expires in {days} days ({date}).": {
+        "fr": "Le certificat expire dans {days} jours ({date}).",
+        "en": "Certificate expires in {days} days ({date}).",
+    },
+    "The automatic renewal seems to fail: certbot renew --dry-run, then systemctl list-timers.": {
+        "fr": "Le renouvellement automatique semble échouer : certbot renew --dry-run, puis systemctl list-timers.",
+        "en": "The automatic renewal seems to fail: certbot renew --dry-run, then systemctl list-timers.",
+    },
+    "Serve a certificate for {host} with its full chain (certbot: fullchain.pem).": {
+        "fr": "Servir un certificat pour {host} avec sa chaîne complète (certbot : fullchain.pem).",
+        "en": "Serve a certificate for {host} with its full chain (certbot: fullchain.pem).",
+    },
+    "Port 80 answers HTTP {status} instead of a redirection.": {
+        "fr": "Le port 80 répond HTTP {status} au lieu d'une redirection.",
+        "en": "Port 80 answers HTTP {status} instead of a redirection.",
+    },
+    "Redirect port 80 to https://$host$request_uri in nginx.": {
+        "fr": "Rediriger le port 80 vers https://$host$request_uri dans nginx.",
+        "en": "Redirect port 80 to https://$host$request_uri in nginx.",
+    },
+    "HSTS: {value}": {
+        "fr": "HSTS : {value}",
+        "en": "HSTS: {value}",
+    },
+    "{path}: HTTP 200 without the database manager page.": {
+        "fr": "{path} : HTTP 200 sans la page du gestionnaire de bases.",
+        "en": "{path}: HTTP 200 without the database manager page.",
+    },
+    "list_db is {value}: the database manager is enabled.": {
+        "fr": "list_db vaut {value} : le gestionnaire de bases est actif.",
+        "en": "list_db is {value}: the database manager is enabled.",
+    },
+    "list_db is absent (True by default): the database manager is enabled.": {
+        "fr": "list_db est absent (vrai par défaut) : le gestionnaire de"
+        " bases est actif.",
+        "en": "list_db is absent (True by default): the database manager"
+        " is enabled.",
+    },
+    "{path}: forwarded to Odoo (HTTP {status}).": {
+        "fr": "{path} : relayé à Odoo (HTTP {status}).",
+        "en": "{path}: forwarded to Odoo (HTTP {status}).",
+    },
+    "robots.txt served.": {
+        "fr": "robots.txt servi.",
+        "en": "robots.txt served.",
+    },
+    "SPF: {record}": {
+        "fr": "SPF : {record}",
+        "en": "SPF: {record}",
+    },
+    "DMARC of {domain}: policy {policy}.": {
+        "fr": "DMARC de {domain} : politique {policy}.",
+        "en": "DMARC of {domain}: policy {policy}.",
+    },
+    "No DKIM key at {name}.": {
+        "fr": "Aucune clé DKIM en {name}.",
+        "en": "No DKIM key at {name}.",
+    },
+    "Publish the public key given by the sending service, or check the selector.": {
+        "fr": "Publier la clé publique fournie par le service d'envoi, ou vérifier le sélecteur.",
+        "en": "Publish the public key given by the sending service, or check the selector.",
+    },
+    "empty URL": {
+        "fr": "URL vide",
+        "en": "empty URL",
+    },
+    "only http:// and https:// URLs are accepted": {
+        "fr": "seules les URL http:// et https:// sont acceptées",
+        "en": "only http:// and https:// URLs are accepted",
+    },
+    "no credentials in the URL: none is ever sent": {
+        "fr": "pas d'identifiant dans l'URL : aucun n'est jamais envoyé",
+        "en": "no credentials in the URL: none is ever sent",
+    },
+    "no host in the URL": {
+        "fr": "aucun hôte dans l'URL",
+        "en": "no host in the URL",
+    },
+    "Login page: no answer ({error}).": {
+        "fr": "Page de connexion : aucune réponse ({error}).",
+        "en": "Login page: no answer ({error}).",
+    },
+    "Check that the service runs (systemctl status) and that the proxy reaches it.": {
+        "fr": "Vérifier que le service tourne (systemctl status) et que le proxy le joint.",
+        "en": "Check that the service runs (systemctl status) and that the proxy reaches it.",
+    },
+    "Login page: redirects to the database selector.": {
+        "fr": "Page de connexion : redirige vers le sélecteur de bases.",
+        "en": "Login page: redirects to the database selector.",
+    },
+    "Several databases and no filter: set dbfilter or db_name in the Odoo configuration.": {
+        "fr": "Plusieurs bases et aucun filtre : poser dbfilter ou db_name dans la configuration d'Odoo.",
+        "en": "Several databases and no filter: set dbfilter or db_name in the Odoo configuration.",
+    },
+    "Login page: redirects to plain HTTP ({url}).": {
+        "fr": "Page de connexion : redirige vers HTTP en clair ({url}).",
+        "en": "Login page: redirects to plain HTTP ({url}).",
+    },
+    "Set proxy_mode = True in Odoo and send X-Forwarded-Proto from the proxy.": {
+        "fr": "Poser proxy_mode = True dans Odoo et envoyer X-Forwarded-Proto depuis le proxy.",
+        "en": "Set proxy_mode = True in Odoo and send X-Forwarded-Proto from the proxy.",
+    },
+    "Login page: HTTP {status}.": {
+        "fr": "Page de connexion : HTTP {status}.",
+        "en": "Login page: HTTP {status}.",
+    },
+    "Odoo or its proxy fails: read the Odoo log (log_check.py).": {
+        "fr": "Odoo ou son proxy échoue : lire le journal d'Odoo (log_check.py).",
+        "en": "Odoo or its proxy fails: read the Odoo log (log_check.py).",
+    },
+    "Login page: redirects to {url}.": {
+        "fr": "Page de connexion : redirige vers {url}.",
+        "en": "Login page: redirects to {url}.",
+    },
+    "Check the proxy redirections for this host.": {
+        "fr": "Vérifier les redirections du proxy pour cet hôte.",
+        "en": "Check the proxy redirections for this host.",
+    },
+    "The proxy or Odoo refuses /web/login: check both.": {
+        "fr": "Le proxy ou Odoo refuse /web/login : vérifier les deux.",
+        "en": "The proxy or Odoo refuses /web/login: check both.",
+    },
+    "Login page: HTTP 200, slow ({seconds} s).": {
+        "fr": "Page de connexion : HTTP 200, lente ({seconds} s).",
+        "en": "Login page: HTTP 200, slow ({seconds} s).",
+    },
+    "A first request after a start loads the registry: warm up the cache (warmup_http.py --deep).": {
+        "fr": "Une première requête après un démarrage charge le registre : préchauffer le cache (warmup_http.py --deep).",
+        "en": "A first request after a start loads the registry: warm up the cache (warmup_http.py --deep).",
+    },
+    "/web/health: no answer ({error}).": {
+        "fr": "/web/health : aucune réponse ({error}).",
+        "en": "/web/health: no answer ({error}).",
+    },
+    "Check that the service runs and that the proxy reaches it.": {
+        "fr": "Vérifier que le service tourne et que le proxy le joint.",
+        "en": "Check that the service runs and that the proxy reaches it.",
+    },
+    "/web/health does not exist in this Odoo version.": {
+        "fr": "/web/health n'existe pas dans cette version d'Odoo.",
+        "en": "/web/health does not exist in this Odoo version.",
+    },
+    "/web/health: pass, PostgreSQL reachable.": {
+        "fr": "/web/health : pass, PostgreSQL joignable.",
+        "en": "/web/health: pass, PostgreSQL reachable.",
+    },
+    "/web/health: HTTP {status}, the server or PostgreSQL fails.": {
+        "fr": "/web/health : HTTP {status}, le serveur ou PostgreSQL échoue.",
+        "en": "/web/health: HTTP {status}, the server or PostgreSQL fails.",
+    },
+    "Check PostgreSQL (systemctl status postgresql) and db_host, db_port in the Odoo configuration.": {
+        "fr": "Vérifier PostgreSQL (systemctl status postgresql) et db_host, db_port dans la configuration d'Odoo.",
+        "en": "Check PostgreSQL (systemctl status postgresql) and db_host, db_port in the Odoo configuration.",
+    },
+    "Certificate valid for {days} days (until {date}).": {
+        "fr": "Certificat valide encore {days} jours (jusqu'au {date}).",
+        "en": "Certificate valid for {days} days (until {date}).",
+    },
+    "Port 80 does not answer ({error}).": {
+        "fr": "Le port 80 ne répond pas ({error}).",
+        "en": "Port 80 does not answer ({error}).",
+    },
+    "Open port 80 and redirect it to HTTPS: the certbot HTTP-01 renewal needs it too.": {
+        "fr": "Ouvrir le port 80 et le rediriger vers HTTPS : le renouvellement HTTP-01 de certbot en a besoin aussi.",
+        "en": "Open port 80 and redirect it to HTTPS: the certbot HTTP-01 renewal needs it too.",
+    },
+    "HTTP redirects to {location}, not to HTTPS.": {
+        "fr": "HTTP redirige vers {location}, pas vers HTTPS.",
+        "en": "HTTP redirects to {location}, not to HTTPS.",
+    },
+    "The site is served in clear text over HTTP.": {
+        "fr": "Le site est servi en clair par HTTP.",
+        "en": "The site is served in clear text over HTTP.",
+    },
+    "No Strict-Transport-Security header.": {
+        "fr": "Aucun en-tête Strict-Transport-Security.",
+        "en": "No Strict-Transport-Security header.",
+    },
+    "HSTS max-age is short ({seconds} s).": {
+        "fr": "Le max-age HSTS est court ({seconds} s).",
+        "en": "HSTS max-age is short ({seconds} s).",
+    },
+    "{path}: undetermined (HTTP {status} {error}).": {
+        "fr": "{path} : indéterminé (HTTP {status} {error}).",
+        "en": "{path}: undetermined (HTTP {status} {error}).",
+    },
+    "Open the page by hand to check what it shows.": {
+        "fr": "Ouvrir la page à la main pour voir ce qu'elle montre.",
+        "en": "Open the page by hand to check what it shows.",
+    },
+    "{path}: blocked (HTTP {status}).": {
+        "fr": "{path} : bloqué (HTTP {status}).",
+        "en": "{path}: blocked (HTTP {status}).",
+    },
+    "{path}: disabled by list_db = False.": {
+        "fr": "{path} : désactivé par list_db = False.",
+        "en": "{path}: disabled by list_db = False.",
+    },
+    "{path}: reachable, and the master password is not set.": {
+        "fr": "{path} : joignable, et le mot de passe maître n'est pas posé.",
+        "en": "{path}: reachable, and the master password is not set.",
+    },
+    "Set a strong admin_passwd, then list_db = False or deny /web/database in the proxy.": {
+        "fr": "Poser un admin_passwd solide, puis list_db = False ou refuser /web/database dans le proxy.",
+        "en": "Set a strong admin_passwd, then list_db = False or deny /web/database in the proxy.",
+    },
+    "{path}: the database list is reachable.": {
+        "fr": "{path} : la liste des bases est joignable.",
+        "en": "{path}: the database list is reachable.",
+    },
+    "list_db = False in the configuration.": {
+        "fr": "list_db = False dans la configuration.",
+        "en": "list_db = False in the configuration.",
+    },
+    "{path}: no answer ({error}).": {
+        "fr": "{path} : aucune réponse ({error}).",
+        "en": "{path}: no answer ({error}).",
+    },
+    "Check the proxy location for {path}.": {
+        "fr": "Vérifier le bloc location du proxy pour {path}.",
+        "en": "Check the proxy location for {path}.",
+    },
+    "{path}: HTTP {status}, the proxy does not reach the bus.": {
+        "fr": "{path} : HTTP {status}, le proxy ne joint pas le bus.",
+        "en": "{path}: HTTP {status}, the proxy does not reach the bus.",
+    },
+    "Odoo serves the bus on gevent_port (longpolling_port) only with workers > 0: match the proxy upstream.": {
+        "fr": "Odoo ne sert le bus sur gevent_port (longpolling_port) qu'avec workers > 0 : accorder l'amont du proxy.",
+        "en": "Odoo serves the bus on gevent_port (longpolling_port) only with workers > 0: match the proxy upstream.",
+    },
+    "{path}: not found (HTTP 404).": {
+        "fr": "{path} : introuvable (HTTP 404).",
+        "en": "{path}: not found (HTTP 404).",
+    },
+    "The proxy does not forward {path} to Odoo's bus port.": {
+        "fr": "Le proxy ne relaie pas {path} vers le port du bus d'Odoo.",
+        "en": "The proxy does not forward {path} to Odoo's bus port.",
+    },
+    "No robots.txt (no website module).": {
+        "fr": "Aucun robots.txt (pas de module website).",
+        "en": "No robots.txt (no website module).",
+    },
+    "robots.txt: HTTP {status}.": {
+        "fr": "robots.txt : HTTP {status}.",
+        "en": "robots.txt: HTTP {status}.",
+    },
+    "Check what the proxy serves for /robots.txt.": {
+        "fr": "Vérifier ce que le proxy sert pour /robots.txt.",
+        "en": "Check what the proxy serves for /robots.txt.",
+    },
+    "robots.txt forbids everything while the site has a sitemap.": {
+        "fr": "robots.txt interdit tout alors que le site a un sitemap.",
+        "en": "robots.txt forbids everything while the site has a sitemap.",
+    },
+    "Check the domain in the Website settings: Odoo forbids indexing when the URL used is not that domain.": {
+        "fr": "Vérifier le domaine dans les paramètres du site web : Odoo interdit l'indexation quand l'URL employée n'est pas ce domaine.",
+        "en": "Check the domain in the Website settings: Odoo forbids indexing when the URL used is not that domain.",
+    },
+    "robots.txt forbids indexing (no public website).": {
+        "fr": "robots.txt interdit l'indexation (pas de site public).",
+        "en": "robots.txt forbids indexing (no public website).",
+    },
+    "No SPF record for {domain}.": {
+        "fr": "Aucun enregistrement SPF pour {domain}.",
+        "en": "No SPF record for {domain}.",
+    },
+    'Publish one TXT record "v=spf1 ... -all" naming the servers that send for {domain}.': {
+        "fr": "Publier un seul enregistrement TXT « v=spf1 ... -all » qui nomme les serveurs qui envoient pour {domain}.",
+        "en": 'Publish one TXT record "v=spf1 ... -all" naming the servers that send for {domain}.',
+    },
+    "{count} SPF records for {domain}: only one is valid.": {
+        "fr": "{count} enregistrements SPF pour {domain} : un seul est valide.",
+        "en": "{count} SPF records for {domain}: only one is valid.",
+    },
+    "Merge them into a single record.": {
+        "fr": "Les fusionner en un seul enregistrement.",
+        "en": "Merge them into a single record.",
+    },
+    "The SPF record of {domain} allows any server (+all).": {
+        "fr": "L'enregistrement SPF de {domain} admet n'importe quel serveur (+all).",
+        "en": "The SPF record of {domain} allows any server (+all).",
+    },
+    "End the record with -all or ~all.": {
+        "fr": "Terminer l'enregistrement par -all ou ~all.",
+        "en": "End the record with -all or ~all.",
+    },
+    "The SPF record of {domain} does not end with -all or ~all.": {
+        "fr": "L'enregistrement SPF de {domain} ne se termine pas par -all ou ~all.",
+        "en": "The SPF record of {domain} does not end with -all or ~all.",
+    },
+    "No DMARC record for {domain}.": {
+        "fr": "Aucun enregistrement DMARC pour {domain}.",
+        "en": "No DMARC record for {domain}.",
+    },
+    'Publish _dmarc.{domain} TXT "v=DMARC1; p=none" at least.': {
+        "fr": "Publier au moins _dmarc.{domain} TXT « v=DMARC1; p=none ».",
+        "en": 'Publish _dmarc.{domain} TXT "v=DMARC1; p=none" at least.',
+    },
+    "DKIM key found: {name}.": {
+        "fr": "Clé DKIM trouvée : {name}.",
+        "en": "DKIM key found: {name}.",
+    },
+    "The DKIM key {name} is empty (revoked).": {
+        "fr": "La clé DKIM {name} est vide (révoquée).",
+        "en": "The DKIM key {name} is empty (revoked).",
+    },
+    "Publish the public key given by the sending service.": {
+        "fr": "Publier la clé publique fournie par le service d'envoi.",
+        "en": "Publish the public key given by the sending service.",
+    },
+    "The URL is plain HTTP: nothing is encrypted.": {
+        "fr": "L'URL est en HTTP clair : rien n'est chiffré.",
+        "en": "The URL is plain HTTP: nothing is encrypted.",
+    },
+    "Odoo health check": {
+        "fr": "Vérification de santé d'Odoo",
+        "en": "Odoo health check",
+    },
+    "Check that an Odoo instance answers and exposes nothing it should not: login page, /web/health, TLS, HTTPS redirect, HSTS, database manager, bus, robots.txt, mail DNS.": {
+        "fr": "Vérifier qu'une instance Odoo répond et n'expose rien de trop : page de connexion, /web/health, TLS, redirection HTTPS, HSTS, gestionnaire de bases, bus, robots.txt, DNS du courriel.",
+        "en": "Check that an Odoo instance answers and exposes nothing it should not: login page, /web/health, TLS, HTTPS redirect, HSTS, database manager, bus, robots.txt, mail DNS.",
+    },
+    "Public URL to probe through the proxy; repeatable. A bare host means https://host.": {
+        "fr": "URL publique à sonder à travers le proxy ; répétable. Un hôte nu veut dire https://hote.",
+        "en": "Public URL to probe through the proxy; repeatable. A bare host means https://host.",
+    },
+    "Probe the local instance of the systemd unit, where Odoo listens.": {
+        "fr": "Sonder l'instance locale de l'unité systemd, là où Odoo écoute.",
+        "en": "Probe the local instance of the systemd unit, where Odoo listens.",
+    },
+    "With --local: systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.": {
+        "fr": "Avec --local : unité systemd ; par défaut, celle dont WorkingDirectory est ce checkout, sinon la seule active.",
+        "en": "With --local: systemd unit; default: the unit whose WorkingDirectory is this checkout, else the only active one.",
+    },
+    "Check the SPF and DMARC records of this sending domain.": {
+        "fr": "Vérifier les enregistrements SPF et DMARC de ce domaine d'envoi.",
+        "en": "Check the SPF and DMARC records of this sending domain.",
+    },
+    "With --mail-domain: also check this DKIM selector.": {
+        "fr": "Avec --mail-domain : vérifier aussi ce sélecteur DKIM.",
+        "en": "With --mail-domain: also check this DKIM selector.",
+    },
+    "Give --url URL, --local, or both.": {
+        "fr": "Donner --url URL, --local, ou les deux.",
+        "en": "Give --url URL, --local, or both.",
+    },
+    "--service requires --local.": {
+        "fr": "--service exige --local.",
+        "en": "--service requires --local.",
+    },
+    "--dkim-selector requires --mail-domain.": {
+        "fr": "--dkim-selector exige --mail-domain.",
+        "en": "--dkim-selector requires --mail-domain.",
+    },
+    "invalid port in the URL": {
+        "fr": "port invalide dans l'URL",
+        "en": "invalid port in the URL",
+    },
+    "TLS connection impossible: {error}": {
+        "fr": "Connexion TLS impossible : {error}",
+        "en": "TLS connection impossible: {error}",
+    },
+    "Check that port {port} is open and served by the proxy.": {
+        "fr": "Vérifier que le port {port} est ouvert et servi par le proxy.",
+        "en": "Check that port {port} is open and served by the proxy.",
+    },
+    "Certificate accepted, expiry date unreadable.": {
+        "fr": "Certificat accepté, date d'expiration illisible.",
+        "en": "Certificate accepted, expiry date unreadable.",
+    },
+    "HTTP redirects to another host ({location}).": {
+        "fr": "HTTP redirige vers un autre hôte ({location}).",
+        "en": "HTTP redirects to another host ({location}).",
+    },
+    "Redirect http://{host}/ to https on the same host.": {
+        "fr": "Rediriger http://{host}/ vers https sur le même hôte.",
+        "en": "Redirect http://{host}/ to https on the same host.",
+    },
+    "{path}: the database manager is reachable.": {
+        "fr": "{path} : le gestionnaire de bases est joignable.",
+        "en": "{path}: the database manager is reachable.",
+    },
+    "Neither dig nor host is installed: DNS not checked.": {
+        "fr": "Ni dig ni host n'est installé : DNS non vérifié.",
+        "en": "Neither dig nor host is installed: DNS not checked.",
+    },
+    "Serve the site over HTTPS (deploy_nginx_and_certbot.py).": {
+        "fr": "Servir le site en HTTPS (deploy_nginx_and_certbot.py).",
+        "en": "Serve the site over HTTPS (deploy_nginx_and_certbot.py).",
+    },
+    "HSTS: no HTTP 200 on /web/login to read it on.": {
+        "fr": "HSTS : aucune réponse HTTP 200 de /web/login où le lire.",
+        "en": "HSTS: no HTTP 200 on /web/login to read it on.",
+    },
+    "{url} (local, {unit})": {
+        "fr": "{url} (locale, {unit})",
+        "en": "{url} (local, {unit})",
+    },
+    "HTTP redirects to HTTPS ({location}).": {
+        "fr": "HTTP redirige vers HTTPS ({location}).",
+        "en": "HTTP redirects to HTTPS ({location}).",
+    },
+    "Install dnsutils (dig) or bind9-host (host).": {
+        "fr": "Installer dnsutils (dig) ou bind9-host (host).",
+        "en": "Install dnsutils (dig) or bind9-host (host).",
+    },
+    "DNS lookup of {name} failed (code {code}).": {
+        "fr": "La recherche DNS de {name} a échoué (code {code}).",
+        "en": "DNS lookup of {name} failed (code {code}).",
+    },
+    "Check the DNS resolver of this host.": {
+        "fr": "Vérifier le résolveur DNS de ce poste.",
+        "en": "Check the DNS resolver of this host.",
+    },
+    "Outgoing mail DNS of {domain}": {
+        "fr": "DNS du courriel sortant de {domain}",
+        "en": "Outgoing mail DNS of {domain}",
+    },
+    "To review: {checks}": {
+        "fr": "À revoir : {checks}",
+        "en": "To review: {checks}",
+    },
+    "invalid DNS name: {value}": {
+        "fr": "nom DNS invalide : {value}",
+        "en": "invalid DNS name: {value}",
+    },
+    "expected seconds between 0 and 300: {value}": {
+        "fr": "secondes attendues entre 0 et 300 : {value}",
+        "en": "expected seconds between 0 and 300: {value}",
+    },
+    "Seconds for each request, TLS connection and DNS lookup; default: {seconds}.": {
+        "fr": "Secondes accordées à chaque requête, connexion TLS et recherche DNS ; par défaut : {seconds}.",
+        "en": "Seconds for each request, TLS connection and DNS lookup; default: {seconds}.",
+    },
+    "invalid URL ({reason}): {value}": {
+        "fr": "URL invalide ({reason}) : {value}",
+        "en": "invalid URL ({reason}): {value}",
+    },
+    "empty model list": {
+        "fr": "liste de modèles vide",
+        "en": "empty model list",
+    },
+    "--login and --api-key-file go together.": {
+        "fr": "--login et --api-key-file vont ensemble.",
+        "en": "--login and --api-key-file go together.",
+    },
+    "A database is required with --login: give -d.": {
+        "fr": "Une base est exigée avec --login : donner -d.",
+        "en": "A database is required with --login: give -d.",
+    },
+    "--login sends the API key: refused over plain http:// to another host. Use an https:// URL or --local.": {
+        "fr": "--login envoie la clé d'API : refusé en http:// simple vers un"
+        " autre hôte. Employer une URL https:// ou --local.",
+        "en": "--login sends the API key: refused over plain http:// to"
+        " another host. Use an https:// URL or --local.",
+    },
+    "Deep warm-up: public pages, sitemap pages, their asset bundles, then optional read-only views; prints a summary.": {
+        "fr": "Préchauffage profond : pages publiques, pages du sitemap, leurs paquets d'assets, puis vues en lecture seule en option ; affiche un bilan.",
+        "en": "Deep warm-up: public pages, sitemap pages, their asset bundles, then optional read-only views; prints a summary.",
+    },
+    "With --deep: base URL to warm up instead of the local one.": {
+        "fr": "Avec --deep : URL de base à préchauffer au lieu de l'adresse locale.",
+        "en": "With --deep: base URL to warm up instead of the local one.",
+    },
+    "With --deep: the instance of the detected systemd unit.": {
+        "fr": "Avec --deep : l'instance de l'unité systemd détectée.",
+        "en": "With --deep: the instance of the detected systemd unit.",
+    },
+    "With --local: systemd unit to use.": {
+        "fr": "Avec --local : unité systemd à employer.",
+        "en": "With --local: systemd unit to use.",
+    },
+    "With --deep: Odoo login for the read-only view warm-up.": {
+        "fr": "Avec --deep : identifiant Odoo du préchauffage des vues en lecture seule.",
+        "en": "With --deep: Odoo login for the read-only view warm-up.",
+    },
+    "File holding the Odoo API key of --login (never on argv).": {
+        "fr": "Fichier qui porte la clé d'API Odoo de --login (jamais sur la ligne de commande).",
+        "en": "File holding the Odoo API key of --login (never on argv).",
+    },
+    "With --deep: exit 1 when a request failed.": {
+        "fr": "Avec --deep : sortir en 1 quand une requête a échoué.",
+        "en": "With --deep: exit 1 when a request failed.",
+    },
+    "Pages: {pages} · assets: {assets} · RPC calls: {rpc} · failures: {failures} · not public: {private} · {seconds} s": {
+        "fr": "Pages : {pages} · assets : {assets} · appels RPC : {rpc} · échecs : {failures} · non publics : {private} · {seconds} s",
+        "en": "Pages: {pages} · assets: {assets} · RPC calls: {rpc} · failures: {failures} · not public: {private} · {seconds} s",
+    },
+    "Unknown option(s) with --deep: {options}": {
+        "fr": "Option(s) inconnue(s) avec --deep : {options}",
+        "en": "Unknown option(s) with --deep: {options}",
+    },
+    "With --deep: pages taken from the sitemap; default: {n}.": {
+        "fr": "Avec --deep : pages prises dans le sitemap ; par défaut : {n}.",
+        "en": "With --deep: pages taken from the sitemap; default: {n}.",
+    },
+    "With --deep: simultaneous requests per page, asset or call, to reach several workers; default: {n}.": {
+        "fr": "Avec --deep : requêtes simultanées par page, asset ou appel, pour atteindre plusieurs workers ; par défaut : {n}.",
+        "en": "With --deep: simultaneous requests per page, asset or call, to reach several workers; default: {n}.",
+    },
+    "With --login: models whose views are loaded, commas; default: {models}.": {
+        "fr": "Avec --login : modèles dont les vues sont chargées, séparés par des virgules ; par défaut : {models}.",
+        "en": "With --login: models whose views are loaded, commas; default: {models}.",
+    },
+    "Login refused for {login}: check the login and the API key (Odoo 14+).": {
+        "fr": "Connexion refusée pour {login} : vérifier l'identifiant et la clé d'API (Odoo 14 et plus).",
+        "en": "Login refused for {login}: check the login and the API key (Odoo 14+).",
+    },
+    "expected an integer from {minimum} to {maximum}: {value}": {
+        "fr": "entier attendu de {minimum} à {maximum} : {value}",
+        "en": "expected an integer from {minimum} to {maximum}: {value}",
+    },
+    "invalid model name: {model}": {
+        "fr": "nom de modèle invalide : {model}",
+        "en": "invalid model name: {model}",
+    },
+    "No answer within {seconds} s.": {
+        "fr": "Aucune réponse en {seconds} s.",
+        "en": "No answer within {seconds} s.",
+    },
+    "Cannot read the API key from {path}.": {
+        "fr": "Impossible de lire la clé d'API dans {path}.",
+        "en": "Cannot read the API key from {path}.",
+    },
+    "{path} is readable by other accounts: chmod 600 it.": {
+        "fr": "{path} est lisible par d'autres comptes : chmod 600.",
+        "en": "{path} is readable by other accounts: chmod 600 it.",
+    },
+    "Health check of the instance": {
+        "fr": "Vérification de santé de l'instance",
+        "en": "Health check of the instance",
+    },
+    "after a verified restart": {
+        "fr": "après une relance vérifiée",
+        "en": "after a verified restart",
+    },
+    "Deep cache warm-up": {
+        "fr": "Préchauffage profond du cache",
+        "en": "Deep cache warm-up",
+    },
+    "After a verified restart, warm up public pages and asset bundles (warmup_http.py --deep).": {
+        "fr": "Après une relance vérifiée, préchauffer les pages publiques et les paquets d'assets (warmup_http.py --deep).",
+        "en": "After a verified restart, warm up public pages and asset bundles (warmup_http.py --deep).",
+    },
+    "{pages} page(s), {assets} asset bundle(s) in {seconds} s.": {
+        "fr": "{pages} page(s), {assets} paquet(s) d'assets en {seconds} s.",
+        "en": "{pages} page(s), {assets} asset bundle(s) in {seconds} s.",
+    },
+    "health check of {url}": {
+        "fr": "vérification de santé de {url}",
+        "en": "health check of {url}",
+    },
+    "Health check not done: {error}": {
+        "fr": "Vérification de santé non faite : {error}",
+        "en": "Health check not done: {error}",
+    },
+    "deep cache warm-up of {url}": {
+        "fr": "préchauffage profond du cache de {url}",
+        "en": "deep cache warm-up of {url}",
+    },
+    "Warm-up not done: {error}": {
+        "fr": "Préchauffage non fait : {error}",
+        "en": "Warm-up not done: {error}",
+    },
+    "{count} request(s) failed.": {
+        "fr": "{count} requête(s) en échec.",
+        "en": "{count} request(s) failed.",
+    },
+    "Health check of this instance (local) - read-only": {
+        "fr": "Santé de cette instance (locale) - lecture seule",
+        "en": "Health check of this instance (local) - read-only",
+    },
+    "Health check of a public URL - TLS, redirect, database manager, optional mail DNS": {
+        "fr": "Santé d'une URL publique - TLS, redirection, gestionnaire de bases, DNS du courriel en option",
+        "en": "Health check of a public URL - TLS, redirect, database manager, optional mail DNS",
+    },
+    "Warm up the cache (deep) - public pages and asset bundles": {
+        "fr": "Préchauffer le cache (profond) - pages publiques et paquets d'assets",
+        "en": "Warm up the cache (deep) - public pages and asset bundles",
+    },
+    "Public URL (https://host): ": {
+        "fr": "URL publique (https://hote) : ",
+        "en": "Public URL (https://host): ",
+    },
+    "Sending mail domain to check (empty = none): ": {
+        "fr": "Domaine d'envoi du courriel à vérifier (vide = aucun) : ",
+        "en": "Sending mail domain to check (empty = none): ",
+    },
+    "Cancelled: invalid domain.": {
+        "fr": "Annulé : domaine invalide.",
+        "en": "Cancelled: invalid domain.",
+    },
+    "Cancelled: invalid URL ({reason}).": {
+        "fr": "Annulé : URL invalide ({reason}).",
+        "en": "Cancelled: invalid URL ({reason}).",
+    },
+    # Production - audit de performance de l'hôte (ops_menu, host_perf_audit)
+    "Host performance audit of this machine - read-only": {
+        "fr": "Audit de performance de ce poste - lecture seule",
+        "en": "Host performance audit of this machine - read-only",
+    },
+    "Audit duration (90, 30s, 10m, 2h; default 60): ": {
+        "fr": "Durée de l'audit (90, 30s, 10m, 2h ; défaut 60) : ",
+        "en": "Audit duration (90, 30s, 10m, 2h; default 60): ",
+    },
+    "Cancelled: duration refused (1 second to 7 days, e.g. 90, 10m, 1h30m).": {
+        "fr": "Annulé : durée refusée (1 seconde à 7 jours, p. ex. 90, 10m, 1h30m).",
+        "en": "Cancelled: duration refused (1 second to 7 days, e.g. 90, 10m, 1h30m).",
+    },
+    "SMART health and some ZFS details need root; for a complete report:": {
+        "fr": "La santé SMART et certains détails ZFS exigent root ; pour un rapport complet :",
+        "en": "SMART health and some ZFS details need root; for a complete report:",
+    },
+    "The audit did not finish in time and was stopped.": {
+        "fr": "L'audit n'a pas fini à temps et a été arrêté.",
+        "en": "The audit did not finish in time and was stopped.",
+    },
+    "The remote audit ended without its report: a local Ctrl-C closes the connection. To stop early and still get a report, run the script on the host itself.": {
+        "fr": "L'audit distant s'est terminé sans son rapport : un Ctrl-C local ferme la connexion. Pour arrêter tôt et garder le rapport, lancer le script sur l'hôte lui-même.",
+        "en": "The remote audit ended without its report: a local Ctrl-C closes the connection. To stop early and still get a report, run the script on the host itself.",
+    },
+    "Interrupted: the report above covers the samples already taken.": {
+        "fr": "Interrompu : le rapport ci-dessus porte sur les échantillons déjà pris.",
+        "en": "Interrupted: the report above covers the samples already taken.",
+    },
+    "python3 is missing on the Proxmox host.": {
+        "fr": "python3 manque sur l'hôte Proxmox.",
+        "en": "python3 is missing on the Proxmox host.",
+    },
+    "The SSH connection failed (code 255).": {
+        "fr": "La connexion SSH a échoué (code 255).",
+        "en": "The SSH connection failed (code 255).",
+    },
+    "The audit could not run (code 2): see the message above.": {
+        "fr": "L'audit n'a pas pu se faire (code 2) : voir le message ci-dessus.",
+        "en": "The audit could not run (code 2): see the message above.",
     },
 }
 

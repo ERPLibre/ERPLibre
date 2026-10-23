@@ -36,8 +36,9 @@ class ProxmoxMenuMixin:
     # Proxmox VE : l'hyperviseur est AILLEURS
     # ----------------------------------------------------------------- #
     # Toute la différence avec QEMU/KVM tient là : ici on n'exécute rien sur
-    # la machine locale. Il faut donc d'abord SAVOIR OÙ, et le retenir — sans
-    # quoi chacune des dix-sept commandes reposerait la question.
+    # la machine locale (seul l'audit de performance offre aussi ce poste).
+    # Il faut donc d'abord SAVOIR OÙ, et le retenir — sans quoi chacune des
+    # commandes du menu reposerait la question.
     _PVE_PREF_KEY = "proxmox_host"
     # Le script qui transforme une Debian en hyperviseur. Autonome : il se
     # laisse exécuter par un tube, sans être copié d'abord.
@@ -46,7 +47,7 @@ class ProxmoxMenuMixin:
     def _pve_host(self, ask=True):
         """Hôte Proxmox retenu, ou None. Demande au besoin.
 
-        Mémorisé dans les préférences : le menu compte dix-sept entrées, et
+        Mémorisé dans les préférences : le menu compte dix-neuf entrées, et
         redemander l'hôte à chacune serait insupportable. Le choix reste
         affiché en tête du menu, et se change par son entrée dédiée.
         """
@@ -2808,6 +2809,7 @@ class ProxmoxMenuMixin:
             {"prompt_description": t("Proxmox - example sequence (dry-run)")},
             {"section": t("Host")},
             {"prompt_description": t("Change the Proxmox host")},
+            {"prompt_description": t("Host performance audit (read-only)")},
         ]
         # Même extension que le menu QEMU/KVM : ce que todo.json ajoute
         # s'affiche à la suite et se lance par son numéro.
@@ -2861,6 +2863,8 @@ class ProxmoxMenuMixin:
             elif status == "18":
                 self._pve_forget_host()
                 self._pve_pick_host()
+            elif status == "19":
+                self._pve_perf_audit()
             else:
                 introuvable = True
                 try:
@@ -2874,6 +2878,59 @@ class ProxmoxMenuMixin:
                     pass
                 if introuvable:
                     print(t("Command not found !"))
+
+    # -- Audit de performance (lecture seule) ------------------------- #
+    def _pve_perf_audit(self, runner=None):
+        """Audit de performance en lecture seule, sur l'hôte retenu ou sur
+        ce poste.
+
+        À distance, `script/proxmox/host_perf_audit.py` part sur le stdin
+        de `ssh -T` et s'exécute par `python3 -I -` : rien n'est copié sur
+        l'hôte, aucun `__pycache__` n'y est écrit, et `-I` empêche un
+        module du dossier courant distant de masquer la bibliothèque
+        standard. La durée, la saisie, le lancement et les messages sont
+        ceux du menu Production (`_ops_perf_*`)."""
+        secondes = self._ops_perf_duree()
+        if secondes is None:
+            return
+        hote = self._pve_host(ask=False)
+        print(f"\n{t('Where should the audit run?')}")
+        print(
+            f"  [1] {t('On the Proxmox host')} : {self._pve_label(hote) or '-'}"
+        )
+        print(f"  [2] {t('On this machine')}")
+        choix = input(t("Choice: ")).strip()
+        if choix == "1" and hote:
+            self._ops_perf_lancer(
+                self._pve_perf_argv(hote, secondes),
+                secondes,
+                runner=runner,
+                distant=True,
+            )
+        elif choix == "2":
+            self._ops_perf_local(secondes, runner=runner)
+        else:
+            print(t("Cancelled."))
+
+    @staticmethod
+    def _pve_perf_argv(host, secondes):
+        """`ssh -T … python3 -I - --duration N` vers l'hôte retenu.
+
+        `-T` : stdin porte le script, pas de terminal. ServerAliveInterval
+        détecte une connexion morte pendant une longue mesure. Les deux
+        options suivent directement « ssh », devant celles de ssh_argv :
+        ssh lit ses options dans n'importe quel ordre avant la cible, et
+        l'argv ne dépend d'aucune option précise de ssh_argv. Avec sudo,
+        `sudo -n sh -c '…'` : sans `-n`, sudo lirait son mot de passe sur
+        stdin, c'est-à-dire dans le script. Seul le nombre de secondes,
+        déjà validé, entre dans la commande distante."""
+        from script.proxmox import proxmox_deploy as pve
+
+        distante = "python3 -I - --duration %d" % int(secondes)
+        if host.get("sudo"):
+            distante = "sudo -n sh -c " + shlex.quote(distante)
+        argv = pve.ssh_argv(host, distante)
+        return ["ssh", "-T", "-o", "ServerAliveInterval=30"] + argv[1:]
 
     def _pve_fetch_image(self):
         """Télécharge une image cloud SUR l'hôte Proxmox.

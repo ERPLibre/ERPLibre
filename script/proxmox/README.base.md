@@ -17,6 +17,9 @@ Two different things live in this directory:
   deployment catalog.
 - `proxmox_deploy.py` deploys VMs **on** such a host, from
   `TODO › Execute › Deploy › Proxmox VE`, right under `QEMU/KVM`.
+- `host_perf_audit.py` measures, read-only, what limits the performance of
+  such a host (or of any Linux server). See
+  [Host performance audit](#host-performance-audit-read-only).
 
 <!-- [fr] -->
 Deux choses différentes vivent dans ce répertoire :
@@ -26,6 +29,9 @@ Deux choses différentes vivent dans ce répertoire :
   de déploiement.
 - `proxmox_deploy.py` déploie des VM **sur** un tel hôte, depuis
   `TODO › Execute › Deploy › Proxmox VE`, juste sous `QEMU/KVM`.
+- `host_perf_audit.py` mesure, en lecture seule, ce qui limite les
+  performances d'un tel hôte (ou de tout serveur Linux). Voir
+  [Audit de performance de l'hôte](#audit-de-performance-de-lhôte-lecture-seule).
 
 <!-- [en] -->
 ## The whole difference: the hypervisor is elsewhere
@@ -162,10 +168,85 @@ atteignent les invités Proxmox par les entrées `~/.ssh/config` que l'entrée 1
 [2] Prévisualiser          [9]  Effacer des VM             [16] Catalogue d'images *
 [3] Télécharger une image  [10] Nettoyer (orphelins)       [17] Exemple (dry-run)
 [4] Rouvrir le suivi *     [11] Tester une VM (Odoo)       [18] Changer d'hôte
-[5] Lister (qm list)       [12] Statistiques
+[5] Lister (qm list)       [12] Statistiques               [19] Audit de performance
 [6] Adresse IP d'une VM    [13] Configuration SSH
 [7] Console d'une VM       [14] Tunnel bureau distant *
                                         * code partagé avec le menu QEMU/KVM
+```
+
+<!-- [en] -->
+## Host performance audit (read-only)
+
+`host_perf_audit.py` samples `/proc` and `/sys` every `--interval` seconds
+(5 by default) for `--duration` (`60`, `30s`, `10m`, `2h`, `1h30m`; 1 second
+to 7 days), then gives a verdict per resource — `ok`, `watch` or
+`limiting` — for the processor, memory, disks and network, the answer to
+"are SSD disks justified?", and the settings worth considering (ZFS
+compression and atime, ARC maximum, `vm.swappiness`, VM disk options…),
+each **printed** with the command that would apply it. Nothing is ever
+changed.
+
+It covers pressure stall information (`/proc/pressure`), per-disk
+utilisation and wait (rotational disks are judged on utilisation and wait,
+SSD and NVMe on wait only), swap activity, ZFS (ARC hit ratio, pool fill,
+fragmentation, health, latency) and, on a Proxmox host with cgroup v2, each
+running container and VM, named from `/etc/pve`. A pool's disks are read
+from its own vdevs (`zpool status -P -L`): an idle backup HDD outside any
+pool never makes the answer "yes, buy SSD".
+
+It is a single file, standard library only, runnable by the `python3` of a
+host from Debian 10 on. Entry `[19]` of this menu sends it to the
+remembered host over `ssh -T` with the file on stdin, or runs it on this
+machine; `TODO › Execute › Production` also runs it locally. Ctrl-C stops
+the measurement early and still prints the report when the script runs on
+the host itself; over ssh, a local Ctrl-C closes the connection and the
+report is lost. `--json` prints a document with stable keys, `--csv FILE`
+keeps the raw samples; a write error on it (full disk) disables the file,
+not the audit. Each one-time command (`zpool`, `zfs`, `smartctl`) is
+abandoned after 20 s, even when stuck on a suspended pool, and `smartctl`
+leaves a disk in standby asleep. Exit codes: 0 audit done, 2 could not run, 130
+interrupted before measuring.
+
+<!-- [fr] -->
+## Audit de performance de l'hôte (lecture seule)
+
+`host_perf_audit.py` échantillonne `/proc` et `/sys` toutes les
+`--interval` secondes (5 par défaut) pendant `--duration` (`60`, `30s`,
+`10m`, `2h`, `1h30m` ; de 1 seconde à 7 jours), puis rend un verdict par
+ressource — `ok`, `watch` ou `limiting` — pour le processeur, la mémoire,
+les disques et le réseau, la réponse à « des disques SSD sont-ils
+justifiés ? », et les réglages à envisager (compression et atime ZFS,
+maximum de l'ARC, `vm.swappiness`, options des disques de VM…), chacun
+**affiché** avec la commande qui l'appliquerait. Rien n'est jamais modifié.
+
+Il couvre la pression (PSI, `/proc/pressure`), l'utilisation et l'attente
+de chaque disque (un disque rotatif est jugé sur son utilisation et son
+attente, un SSD ou un NVMe sur son attente seulement), l'activité du swap,
+ZFS (taux de succès de l'ARC, remplissage, fragmentation, santé, latence
+des pools) et, sur un hôte Proxmox en cgroup v2, chaque conteneur et VM en
+marche, nommés d'après `/etc/pve`. Les disques d'un pool sont lus dans ses
+propres vdev (`zpool status -P -L`) : un HDD de sauvegarde oisif, hors de
+tout pool, ne fait jamais répondre « oui, des SSD ».
+
+C'est un seul fichier, bibliothèque standard seulement, lançable par le
+`python3` d'un hôte dès Debian 10. L'entrée `[19]` de ce menu l'envoie à
+l'hôte retenu par `ssh -T`, le fichier sur stdin, ou le lance sur ce
+poste ; `TODO › Exécuter › Production` le lance aussi en local. Ctrl-C
+arrête la mesure plus tôt et donne quand même le rapport quand le script
+tourne sur l'hôte lui-même ; par ssh, un Ctrl-C local ferme la connexion
+et le rapport est perdu. `--json` produit un document aux clés stables,
+`--csv FICHIER` garde les échantillons bruts ; une erreur d'écriture
+(disque plein) coupe le fichier, pas l'audit. Chaque commande lancée une
+fois (`zpool`, `zfs`, `smartctl`) est abandonnée après 20 s, même bloquée
+sur un pool suspendu, et `smartctl` laisse dormir un disque en veille.
+Codes de sortie : 0 audit
+fait, 2 impossible, 130 interrompu avant la mesure.
+
+<!-- [common] -->
+```bash
+./script/proxmox/host_perf_audit.py --duration 10m
+sudo ./script/proxmox/host_perf_audit.py --duration 24h --csv /var/tmp/perf.csv
+ssh -T root@pve.example.org python3 -I - --duration 2h < script/proxmox/host_perf_audit.py
 ```
 
 <!-- [en] -->

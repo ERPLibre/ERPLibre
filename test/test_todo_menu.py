@@ -107,6 +107,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
         "Docker / Podman": "prompt_execute_container",
+        "Production": "prompt_execute_production",
     }
 
     def _entry_key(self, label):
@@ -301,7 +302,7 @@ class TestLaParitéProxmox(unittest.TestCase):
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
     """L'icône vit DANS la chaîne traduite, et les deux langues la portent.
 
-    Une entrée sans icône se perd dans une liste de dix-huit : l'œil s'y
+    Une entrée sans icône se perd dans une liste de dix-neuf : l'œil s'y
     repère par le pictogramme avant de lire. Le même pictogramme dit la même
     chose partout dans l'outil — 📋 liste, 🧹 nettoie, 📊 mesure — et ce
     tableau est ce qui l'empêche de dériver d'un menu à l'autre.
@@ -326,6 +327,7 @@ class TestLesIconesDuMenuProxmox(unittest.TestCase):
         "List available images and their specs": "🗂",
         "Proxmox - example sequence (dry-run)": "🎬",
         "Change the Proxmox host": "🔀",
+        "Host performance audit (read-only)": "⏱",
         "Host": "🏠",
     }
 
@@ -506,7 +508,7 @@ class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Proxmox : dix-huit entrées, le même piège.
+    """Le menu Proxmox : dix-neuf entrées, le même piège.
 
     Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU —
     c'est le même travail, et le refactor n'a pas dupliqué ce code. La table
@@ -538,6 +540,43 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
         "Change the Proxmox host": "_pve_forget_host",
+        "Host performance audit": "_pve_perf_audit",
+    }
+
+
+class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Production, dont une entrée arrête un service.
+
+    Chaque entrée a sa méthode : la mise à jour réelle et la simulation
+    seule se distinguent par leur nom, si bien qu'un décalage du dispatch
+    — la vraie mise à jour sous le libellé de la simulation — change la
+    méthode atteinte et fait échouer la table. La table ne lit que le nom
+    de la méthode, pas ses arguments ; test_ops_menu.py rejoue en plus le
+    choix au clavier.
+    """
+
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def prompt_execute_production(self):"
+    END = "def _ops_update_arguments(self):"
+    MINIMUM = 6
+
+    EXPECTED = {
+        "Update modules": "_ops_update_modules",
+        "Simulate only": "_ops_simulate_modules",
+        "Verified backup now": "_ops_backup_now",
+        "Backup status": "_ops_backup_status",
+        "Test restore of the latest backup": "_ops_test_restore",
+        "Restore a backup into a new database": "_ops_restore_new_database",
+        "Install / remove the scheduled backup": "_ops_backup_timer",
+        "Odoo journal: errors since the last check": "_ops_log_since_last",
+        "Odoo journal: errors of the last N hours": "_ops_log_last_hours",
+        "Odoo journal: hourly report": "_ops_log_hourly",
+        "Failed outgoing mail: list": "_ops_mail_list",
+        "Failed outgoing mail: retry": "_ops_mail_retry",
+        "Health check of this instance": "_ops_health_local",
+        "Health check of a public URL": "_ops_health_url",
+        "Warm up the cache (deep)": "_ops_warmup_deep",
+        "Host performance audit of this machine": "_ops_perf_audit",
     }
 
 

@@ -210,6 +210,331 @@ Mettre à jour toutes les fonctionnalités.
 ```
 
 <!-- [en] -->
+### Update modules of an instance run by systemd
+
+`script/odoo/update_module.py` stops the unit, backs the database up,
+updates the modules, restarts the unit and checks its log. The unit is only
+read, never modified, and a unit that was running is restarted whatever
+happens. Always simulate first:
+
+<!-- [fr] -->
+### Mettre à jour les modules d'une instance servie par systemd
+
+`script/odoo/update_module.py` arrête l'unité, sauvegarde la base, met à
+jour les modules, relance l'unité et vérifie son journal. L'unité est
+seulement lue, jamais modifiée, et une unité qui tournait est relancée quoi
+qu'il arrive. Toujours simuler d'abord :
+
+<!-- [common] -->
+```bash
+./script/odoo/update_module.py --module 'my_module_*' --db DATABASE --dry-run
+sudo ./script/odoo/update_module.py --module 'my_module_*' --db DATABASE
+```
+
+<!-- [en] -->
+After a verified restart, the tool checks the health of the local instance
+(see below; findings are warnings, never a failure of the update), and
+`--warmup-deep` first warms up the public pages and their asset bundles.
+
+The same is reachable from `make todo`: `Execute > Production`. Options,
+detection order and exit codes: [script/odoo/README.md](../script/odoo/README.md).
+
+<!-- [fr] -->
+Après une relance vérifiée, l'outil vérifie la santé de l'instance locale
+(voir plus bas ; ses constats sont des avertissements, jamais un échec de
+la mise à jour), et `--warmup-deep` préchauffe d'abord les pages publiques
+et leurs paquets d'assets.
+
+Le même geste est accessible depuis `make todo` : `Exécuter > Production`.
+Options, ordre de détection et codes de sortie :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+<!-- [en] -->
+### Verified backups
+
+`script/database/odoo_backup.py` backs a database up in Odoo's own zip
+format, verifies the file, keeps a daily, weekly and monthly retention,
+reports the age of the last success, test-restores into a temporary
+database and restores into a new database only. `update_module.py` uses it
+for its backup before an update, under the same database lock.
+
+<!-- [fr] -->
+### Sauvegardes vérifiées
+
+`script/database/odoo_backup.py` sauvegarde une base au format zip d'Odoo,
+vérifie le fichier, tient une rétention quotidienne, hebdomadaire et
+mensuelle, donne l'âge du dernier succès, essaie la restauration dans une
+base temporaire et ne restaure que dans une nouvelle base.
+`update_module.py` s'en sert pour sa sauvegarde avant une mise à jour, sous
+le même verrou de base.
+
+<!-- [common] -->
+```bash
+./script/database/odoo_backup.py --db DATABASE --dry-run
+sudo ./script/database/odoo_backup.py --db DATABASE
+./script/database/odoo_backup.py --status
+sudo ./script/database/odoo_backup.py --test-restore --db DATABASE
+```
+
+<!-- [en] -->
+The scheduled backup is a systemd service and timer written by
+`script/systemd/install_backup_timer.py`. The service runs the backup as
+the account of the Odoo unit, never as root, with every option in its
+`ExecStart`; the timer runs daily at 03:00 by default (`--on-calendar`),
+with `RandomizedDelaySec` and `Persistent=true`. A tmpfiles.d entry
+creates the shared lock file `/run/lock/erplibre-db-DATABASE.lock` at
+boot, so the account can take the lock where `/run/lock` belongs to root.
+Before writing anything, the script checks as that account that it can
+run the interpreter and read the tool and the Odoo configuration. It
+refuses to replace a file it did not write, and `--uninstall` keeps the
+backups:
+
+<!-- [fr] -->
+La sauvegarde planifiée est un service et une minuterie systemd écrits par
+`script/systemd/install_backup_timer.py`. Le service lance la sauvegarde
+sous le compte de l'unité Odoo, jamais en root, toutes ses options dans son
+`ExecStart` ; la minuterie part chaque jour à 03:00 par défaut
+(`--on-calendar`), avec `RandomizedDelaySec` et `Persistent=true`. Une
+entrée tmpfiles.d crée au démarrage le fichier du verrou partagé
+`/run/lock/erplibre-db-DATABASE.lock` : le compte prend le verrou même là
+où `/run/lock` appartient à root. Avant d'écrire quoi que ce soit, le
+script vérifie sous ce compte qu'il peut lancer l'interpréteur et lire
+l'outil et la configuration Odoo. Il refuse de remplacer un fichier qu'il
+n'a pas écrit, et `--uninstall` garde les sauvegardes :
+
+<!-- [common] -->
+```bash
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --dry-run
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups
+systemctl list-timers 'erplibre-backup-*'
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
+```
+
+<!-- [en] -->
+`--copy-to` adds an off-site copy (rsync over ssh with the account's key;
+the remote side has no retention and grows). Monitor `--status`: it exits
+with code 1 when the last success is older than `--max-age` hours (26).
+All of it is also in `make todo`: `Execute > Production`. Details,
+retention rules and exit codes:
+[script/database/README.md](../script/database/README.md).
+
+<!-- [fr] -->
+`--copy-to` ajoute une copie hors site (rsync sur ssh avec la clé du
+compte ; le côté distant n'a pas de rétention et grossit). Surveiller
+`--status` : il sort en code 1 quand le dernier succès date de plus de
+`--max-age` heures (26). Tout cela est aussi dans `make todo` :
+`Exécuter > Production`. Détails, règles de rétention et codes de sortie :
+[script/database/README.fr.md](../script/database/README.fr.md).
+
+<!-- [en] -->
+### Odoo journal
+
+`script/odoo/log_check.py` reads the journal of the instance and says what
+needs a look: Python tracebacks grouped by their final exception, other
+`ERROR`/`CRITICAL` records, refused SQL queries, and mail sending failures
+classified as transient or PERMANENT with the Odoo setting to check. It
+reads the unit's `logfile` when its configuration sets one, otherwise
+`journalctl` for the unit; `--file` reads any Odoo log file. Known harmless
+messages are counted apart, and `--ignore REGEX` adds local ones.
+
+<!-- [fr] -->
+### Journal d'Odoo
+
+`script/odoo/log_check.py` lit le journal de l'instance et dit ce qui mérite
+un regard : traces Python groupées par leur exception finale, autres
+enregistrements `ERROR`/`CRITICAL`, requêtes SQL refusées, et échecs
+d'envoi de courriel classés passagers ou PERMANENTS avec le réglage d'Odoo
+à vérifier. Il lit le `logfile` de l'unité quand sa configuration en pose
+un, sinon `journalctl` pour l'unité ; `--file` lit n'importe quel fichier
+de journal d'Odoo. Les messages connus et sans gravité sont comptés à part,
+et `--ignore REGEX` en ajoute de locaux.
+
+<!-- [common] -->
+```bash
+./script/odoo/log_check.py --since-last
+./script/odoo/log_check.py --last 6
+./script/odoo/log_check.py --by-hour --days 7
+./script/odoo/log_check.py --since-last --json
+```
+
+<!-- [en] -->
+`--since-last` remembers where it stopped (journal cursor, or file inode
+and offset) in `/var/lib/erplibre-logcheck/<unit>.json` (`--state-dir`),
+only after a complete read; the first run covers the last 24 h. Without a
+window option it reads the last 24 h. If the state folder is not writable
+the report is still printed and says that the position was not saved; run
+it with sudo, or point `--state-dir` to a folder the account can write. An
+account in the `systemd-journal` (or `adm`) group reads the journal without
+sudo; otherwise the tool exits with code 2 instead of reporting nothing.
+Exit codes: 0 nothing to review, 1 something to review, 2 could not read.
+It writes nothing but its state file. Details:
+[script/odoo/README.md](../script/odoo/README.md).
+
+<!-- [fr] -->
+`--since-last` retient où il s'est arrêté (curseur du journal, ou inode et
+octet d'un fichier) dans `/var/lib/erplibre-logcheck/<unité>.json`
+(`--state-dir`), seulement après une lecture complète ; la première fois
+couvre les dernières 24 h. Sans option de fenêtre, il lit les dernières
+24 h. Si le dossier d'état n'est pas inscriptible, le rapport s'affiche
+quand même et dit que la position n'a pas été retenue ; le lancer avec
+sudo, ou désigner par `--state-dir` un dossier où le compte peut écrire. Un
+compte du groupe `systemd-journal` (ou `adm`) lit le journal sans sudo ;
+sinon l'outil sort en code 2 au lieu de ne rien signaler. Codes de sortie :
+0 rien à revoir, 1 quelque chose à revoir, 2 lecture impossible. Il
+n'écrit rien d'autre que son fichier d'état. Détails :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+<!-- [en] -->
+### Failed outgoing mail
+
+`script/odoo/mail_retry.py` lists the mails Odoo could not send in the last
+`--days` (30), read-only, as the unit's account: date, subject, recipients
+masked unless `--details`, and the cause, transient or PERMANENT. A
+PERMANENT cause (authentication, sender, relay, TLS, invalid address) fails
+again on resend until the named setting is fixed. Resending puts the chosen
+mails back in the queue through the unit's Odoo shell and the ORM
+(`action_retry`, or `state = outgoing` where that method does not exist);
+the scheduled action "Mail: Email Queue Manager" sends them at its next
+run.
+
+<!-- [fr] -->
+### Courriels sortants en échec
+
+`script/odoo/mail_retry.py` liste les courriels qu'Odoo n'a pas pu envoyer
+dans les `--days` derniers jours (30), en lecture seule, sous le compte de
+l'unité : date, sujet, destinataires masqués sauf `--details`, et la
+cause, passagère ou PERMANENTE. Une cause PERMANENTE (authentification,
+expéditeur, relais, TLS, adresse invalide) échoue de nouveau au renvoi tant
+que le réglage nommé n'est pas corrigé. Le renvoi remet les courriels
+choisis en file par le shell d'Odoo de l'unité et l'ORM (`action_retry`, ou
+`state = outgoing` là où la méthode n'existe pas) ; l'action planifiée
+« Mail: Email Queue Manager » les envoie à son prochain passage.
+
+<!-- [common] -->
+```bash
+./script/odoo/mail_retry.py --dry-run
+sudo ./script/odoo/mail_retry.py
+sudo ./script/odoo/mail_retry.py --resend oldest 10 --yes
+```
+
+<!-- [en] -->
+On a terminal, without `--resend`, a menu asks which ones to resend (all,
+the oldest batch, chosen ids, none — the default). Without a terminal,
+`--resend all | oldest N | ids LIST` needs `--yes`. Exit codes: 0 nothing
+failed or every chosen mail requeued, 1 failures left or part of the
+selection skipped, 2 refused or impossible. Both tools are in `make todo`:
+`Execute > Production`. Details and the Odoo 12 to 18 matrix:
+[script/odoo/README.md](../script/odoo/README.md).
+
+<!-- [fr] -->
+Sur un terminal, sans `--resend`, un menu demande lesquels renvoyer (tous,
+les plus anciens, des ids choisis, aucun — le défaut). Sans terminal,
+`--resend all | oldest N | ids LISTE` exige `--yes`. Codes de sortie : 0
+aucun échec ou tous les courriels choisis remis en file, 1 des échecs
+restent ou une partie de la sélection est ignorée, 2 refusé ou impossible.
+Les deux outils sont dans `make todo` : `Exécuter > Production`. Détails et
+matrice Odoo 12 à 18 :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+<!-- [en] -->
+### Health check and cache warm-up
+
+`script/odoo/health_check.py` checks, read-only, that an instance answers
+and exposes nothing it should not. `--url https://host` probes through the
+reverse proxy, as a browser would; `--local` probes the instance of the
+detected systemd unit where Odoo listens. Each check says OK, ATTN, FAIL or
+SKIP with a one-line hint: login page, `/web/health` (SKIP where the route
+does not exist), TLS certificate (ATTN under 21 days, FAIL under 7),
+HTTP to HTTPS redirect, HSTS, database manager and selector, bus path
+behind the proxy (`/websocket` from Odoo 16, `/longpolling/poll` before),
+robots.txt, and with `--mail-domain` the SPF, DMARC (and `--dkim-selector`
+DKIM) records, read by `dig` or `host`. No credential, no cookie, no
+third-party service.
+
+<!-- [fr] -->
+### Santé et préchauffage du cache
+
+`script/odoo/health_check.py` vérifie, en lecture seule, qu'une instance
+répond et n'expose rien de trop. `--url https://hote` sonde à travers le
+proxy inverse, comme un navigateur ; `--local` sonde l'instance de l'unité
+systemd détectée, là où Odoo écoute. Chaque vérification dit OK, ATTN, FAIL
+ou SKIP avec un conseil d'une ligne : page de connexion, `/web/health`
+(SKIP là où la route n'existe pas), certificat TLS (ATTN sous 21 jours,
+FAIL sous 7), redirection HTTP vers HTTPS, HSTS, gestionnaire et sélecteur
+de bases, chemin du bus derrière le proxy (`/websocket` dès Odoo 16,
+`/longpolling/poll` avant), robots.txt, et avec `--mail-domain` les
+enregistrements SPF, DMARC (et DKIM avec `--dkim-selector`), lus par `dig`
+ou `host`. Aucun identifiant, aucun cookie, aucun service tiers.
+
+<!-- [common] -->
+```bash
+./script/odoo/health_check.py --url https://odoo.example.org --mail-domain example.org
+./script/odoo/health_check.py --local --json
+./script/odoo/warmup_http.py --deep --local
+```
+
+<!-- [en] -->
+A default deployment exposes the database manager: Odoo keeps
+`list_db = True` when the configuration does not set it, and the nginx
+templates do not block `/web/database`. The check rightly reports FAIL on
+`--url`; set `list_db = False` in the Odoo configuration, or deny
+`/web/database` in nginx. Exit codes: 0 no FAIL (ATTN are listed), 1 at
+least one FAIL, 2 could not check (usage, detection, unreadable
+configuration: run with sudo).
+
+`script/odoo/warmup_http.py --deep` fetches `/web/login`, `/` and up to
+`--max-pages` (20) pages of `/sitemap.xml`, then the asset bundles they
+reference, each `--repeat` (4) times at once to reach several workers. With
+`--login` and `--api-key-file` (an Odoo API key read from a file, never on
+the command line), it also loads menus and views through read-only RPC
+calls. It prints a summary and exits 0, or 1 with `--strict` when a request
+failed. All three are in `make todo`: `Execute > Production`. Details and
+the Odoo 12 to 18 matrix: [script/odoo/README.md](../script/odoo/README.md).
+
+<!-- [fr] -->
+Un déploiement par défaut expose le gestionnaire de bases : Odoo garde
+`list_db = True` quand la configuration ne le pose pas, et les gabarits
+nginx ne bloquent pas `/web/database`. La vérification rend à juste titre
+un FAIL sur `--url` ; poser `list_db = False` dans la configuration d'Odoo,
+ou refuser `/web/database` dans nginx. Codes de sortie : 0 aucun FAIL (les
+ATTN sont listés), 1 au moins un FAIL, 2 vérification impossible (usage,
+détection, configuration illisible : lancer avec sudo).
+
+`script/odoo/warmup_http.py --deep` demande `/web/login`, `/` et au plus
+`--max-pages` (20) pages de `/sitemap.xml`, puis les paquets d'assets
+qu'elles citent, chacun `--repeat` (4) fois à la fois pour atteindre
+plusieurs workers. Avec `--login` et `--api-key-file` (une clé d'API Odoo
+lue dans un fichier, jamais sur la ligne de commande), il charge aussi
+menus et vues par des appels RPC en lecture seule. Il affiche un bilan et
+sort en 0, ou en 1 avec `--strict` quand une requête a échoué. Les trois
+gestes sont dans `make todo` : `Exécuter > Production`. Détails et matrice
+Odoo 12 à 18 : [script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+<!-- [en] -->
+### Host performance audit
+
+`script/proxmox/host_perf_audit.py` measures, read-only, what limits the
+performance of the host — processor, memory, disks, network, ZFS and, on
+Proxmox VE, each guest — over a chosen duration, and prints a verdict per
+resource, the answer to "are SSD disks justified?" and the settings to
+consider as commands, never run. It is in `make todo`:
+`Execute > Production` for this host, and the Proxmox VE menu for the
+remembered hypervisor. Details:
+[script/proxmox/README.md](../script/proxmox/README.md).
+
+<!-- [fr] -->
+### Audit de performance de l'hôte
+
+`script/proxmox/host_perf_audit.py` mesure, en lecture seule, ce qui
+limite les performances de l'hôte — processeur, mémoire, disques, réseau,
+ZFS et, sous Proxmox VE, chaque invité — sur une durée choisie, et affiche
+un verdict par ressource, la réponse à « des disques SSD sont-ils
+justifiés ? » et les réglages à envisager sous forme de commandes, jamais
+exécutées. Il est dans `make todo` : `Exécuter > Production` pour ce poste,
+et le menu Proxmox VE pour l'hyperviseur retenu. Détails :
+[script/proxmox/README.fr.md](../script/proxmox/README.fr.md).
+
+<!-- [en] -->
 # Postgresql
 
 To show config files:

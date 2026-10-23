@@ -23,7 +23,8 @@ boundary.
 | `qemu_install.py` | the recipes run inside a VM |
 | `qemu_manage.py` | lifecycle, disks, hardware, cleanup, addresses |
 | `qemu_access.py` | SSH, tunnels, consoles, Android emulator |
-| `proxmox_menu.py` | the same, on a REMOTE Proxmox VE host |
+| `proxmox_menu.py` | the same, on a REMOTE Proxmox VE host, plus its read-only performance audit (`script/proxmox/host_perf_audit.py`, sent over ssh) |
+| `ops_menu.py` | the Production menu for an instance run by systemd on this host: update its modules (`script/odoo/update_module.py`), back it up, check, test-restore or restore its backups (`script/database/odoo_backup.py`), install its scheduled backup (`script/systemd/install_backup_timer.py`), read its Odoo journal (`script/odoo/log_check.py`), list and resend its failed outgoing mails (`script/odoo/mail_retry.py`), check its health or a public URL (`script/odoo/health_check.py`), warm up its cache (`script/odoo/warmup_http.py --deep`), audit the performance of this host, read-only (`script/proxmox/host_perf_audit.py`) |
 
 The two deployment forms — libvirt here, Proxmox over there — ask the same
 questions, so they share a foundation rather than each holding a copy:
