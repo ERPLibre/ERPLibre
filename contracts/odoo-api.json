@@ -87,7 +87,7 @@
     },
 
     "notes.pull": {
-      "description": "Pull the tasks linked on this server (any project) modified since last sync; no linked task, no request",
+      "description": "Pull the records linked on this server modified since last sync: tasks (any project) as below, and in the same way crm.lead (name, description, tag_ids, date_deadline), account.move (narration) and mail.activity (summary, note, date_deadline, active on 17+); one pull cursor per model (tasks keep the server's own); nothing linked, no request",
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": {
@@ -112,7 +112,7 @@
           }
         }
       },
-      "notes": "Filtered by linked ids, not project_id: a task created in a project, or moved to one on the server, keeps syncing. geo_task_point requires erplibre_mobile_todo installed."
+      "notes": "Filtered by linked ids, not project_id: a task created in a project, or moved to one on the server, keeps syncing. Tag names are read from project.tags / crm.tag; the note keeps the app's own tag of each name (created when missing), and pushes send the names of its tags, never the app's ids. Each row is merged into its note three ways against the link's base (note_links.params.base, the note's and the record's values at their last exchange): a field changed on the server only is copied into the note (text: the record's paragraphs replace the note's text entries, app lines and the marker skipped; date: the first date entry's day), one changed in the app only waits for the push, one changed on both sides to different values is kept as note_links.params.conflict and the server turns 'conflict'. An activity archived on 17+ turns its link 'done'. A link with no base takes the server's values unless the note waits for that server. geo_task_point requires erplibre_mobile_todo installed."
     },
 
     "notes.poll": {
@@ -161,7 +161,7 @@
         }
       },
       "response": "integer — Odoo task ID → stored in mobile SQLite note_links (note, server config id, project.task, id, client_uuid)",
-      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string. Runs as the note's task.create row of sync_outbox; on a retry (attempts > 1) notes.find_created runs first. With a project, projects.check runs just before. AccessError, ValidationError, UserError or MissingError on create blocks the row as refused (no retry, createSentAt cleared since the server answered) until the user chooses again. A task deleted on the server is recreated only through the picker: choosing its project queues this create. project_id is sent by create only: notes.update never sends it."
+      "notes": "tag_ids uses Odoo ORM command 6 (replace all) on create; writes send the tags added and removed (see notes.update). The link starts with a base of the values sent. geo_task_point is GeoJSON string. Runs as the note's task.create row of sync_outbox; on a retry (attempts > 1) notes.find_created runs first. With a project, projects.check runs just before. AccessError, ValidationError, UserError or MissingError on create blocks the row as refused (no retry, createSentAt cleared since the server answered) until the user chooses again. A task deleted on the server is recreated only through the picker: choosing its project queues this create. project_id is sent by create only: notes.update never sends it."
     },
 
     "projects.list": {
@@ -195,7 +195,7 @@
               "partner_id": "{outbox.params.partnerId} — omitted when none chosen",
               "expected_revenue": "{outbox.params.expectedRevenue} — omitted when none typed",
               "tag_ids": [[6, 0, ["{crm.tag ids, found or created by name}"]]],
-              "date_deadline": "{first date entry, local day YYYY-MM-DD} — omitted when the note has no date",
+              "date_deadline": "{first date entry, local day YYYY-MM-DD} — false when the note has no date",
               "active": "not note.archived — create only"
             }
           ],
@@ -331,7 +331,7 @@
               "summary": "{note.title}",
               "note": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
               "activity_type_id": "{outbox.params.typeId} — omitted: the server's default type",
-              "date_deadline": "{outbox.params.deadline} YYYY-MM-DD — omitted: today on the server",
+              "date_deadline": "{outbox.params.deadline} YYYY-MM-DD — none chosen: the device's day, fixed once in params.defaultDeadline",
               "user_id": "{outbox.params.userId} — omitted: the connected user"
             }
           ],
@@ -493,16 +493,17 @@
               "project_id": "never sent: a task moved to another project on the server stays there",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
-              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
-              "tag_ids": [[6, 0, ["{tag_id_1}"]]],
-              "date_deadline": "{first_date_entry_iso or null}",
+              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only) — only when done changed in the app",
+              "tag_ids": [[4, "{tag added in the app}"], [3, "{tag removed in the app}"]],
+              "date_deadline": "{first date entry: its local day YYYY-MM-DD on Odoo 16 (Date), its UTC instant YYYY-MM-DD HH:MM:SS on 17+ (Datetime); false for none}",
               "geo_task_point": "{geojson_multipoint} — only when the note has positions and fields_get finds the field"
             }
           ],
           "kwargs": {}
         }
       },
-      "response": "true on success"
+      "response": "true on success",
+      "notes": "The task is read and merged first (see notes.pull); a conflict stops the push (nothing written; a background push leaves it to the user). Only the fields changed in the app since the base are sent: name (title), description (text: the user's paragraphs; media: the lines the app writes from photos, audio, video, date and position, sent but never read back) and geo_task_point, tag_ids (tags, as commands 4 and 3 so tags others set stay), date_deadline (date), state (done), active (archived), priority (pinned); none changed, no write. The same applies to crm.lead (name, description, tag_ids, date_deadline), account.move (narration for title or text) and mail.activity (summary, note; its deadline is pulled, never written). A record not read back is written in full, so the server says whether it is deleted (MissingError). A link with no base yet is written in full as before, then gets one."
     },
 
     "attachments.list": {
@@ -559,11 +560,11 @@
   },
 
   "sync_status_values": {
-    "notes": "Per server in sync_per_server_status (synced | pending | error); the note's sync_status is derived from the entries of live applications: error, then pending, then synced; none left → synced if a live link remains, else local.",
+    "notes": "Per server in sync_per_server_status (synced | pending | error | conflict); the note's sync_status is derived from the entries of live applications: conflict, then error, then pending, then synced; none left → synced if a live link remains, else local.",
     "local": "Note bound to no live server",
     "pending": "Some server still has to receive the note (queued offline, edited, or edited during its push); syncAll pushes it",
     "synced": "Every live server received the latest pushed content",
-    "conflict": "Unused in v1",
+    "conflict": "A record of the note changed in the app and on the server, the same field to different values (note_links.params.conflict: per field mine and theirs). Nothing is pushed there and syncAll skips the note until the user keeps, per field, the app's version (sent by the next push) or the server's (copied into the note).",
     "error": "Last push to some server failed; syncAll retries it",
     "remote_deleted": "Not a status: a write() answering odoo.exceptions.MissingError marks the note_links row remote_state='deleted'; the server leaves the note's queue only when no other kind of the note is live there (a background push next to a live kind skips the deleted one). The record is recreated only when the user chooses it again in the picker; unchecking it there marks the link 'dismissed': kept as history, never pushed nor asked again"
   },
