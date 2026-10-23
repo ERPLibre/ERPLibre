@@ -1296,8 +1296,8 @@ class TransformMenuMixin:
         if transform_setup.requetes_access_lisibles():
             print(f"✅ {t('Access saved queries are readable here.')}")
             return
-        commande = transform_setup.system_packages_cmd()
-        if commande is None:
+        etapes = transform_setup.system_packages_steps()
+        if not etapes:
             print(f"   {t('No package known here for:')} mdb-queries")
             print(
                 f"   {t('Install it by hand to read Access saved queries.')}"
@@ -1309,7 +1309,7 @@ class TransformMenuMixin:
 
         todo_install.ask_and_install(
             self.execute,
-            commande,
+            etapes,
             t("Create it now? (Y/n): "),
             self._is_yes_default_yes,
         )

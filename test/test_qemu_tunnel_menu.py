@@ -244,7 +244,10 @@ class TestEnsureVirtViewer(unittest.TestCase):
             mock.patch("sys.stdout", io.StringIO()),
         ):
             self.assertFalse(self.todo._qemu_ensure_virt_viewer())
-        self.assertEqual(1, len(self.ran))
+        # Le rafraîchissement des index passe d'abord, puis l'installation.
+        self.assertEqual(2, len(self.ran))
+        self.assertEqual("sudo apt-get update", self.ran[0])
+        self.assertIn("apt-get install -y virt-viewer", self.ran[1])
 
     def test_every_family_is_covered(self):
         """La table des familles a quitté ce menu pour todo_install, qui la
