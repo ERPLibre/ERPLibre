@@ -23,6 +23,7 @@ import contextlib
 import io
 import json
 import os
+import runpy
 import sys
 import tempfile
 import unittest
@@ -70,7 +71,9 @@ class FauxRunner:
             return None
         return self.repondre(list(argv))
 
-    def write(self, path, text, mode=0o600, sudo=False):
+    def write(
+        self, path, text, mode=0o600, sudo=False, owner=None, group=None
+    ):
         if self.dry_run:
             return
         if sudo:
@@ -86,6 +89,7 @@ class Systeme:
     def __init__(self, racine):
         self.racine = racine
         self.paquets_presents = set()
+        self.base_refuse = False
         self.service_actif = False
         self.version_installee = None
         self.echec = {}  # nom d'étape php -> (code, sortie)
@@ -105,6 +109,8 @@ class Systeme:
             return (0, "install ok installed") if ok else (1, "")
         if argv[:2] == ["pacman", "-Q"] or argv[:2] == ["rpm", "-q"]:
             return (0, "") if argv[-1] in self.paquets_presents else (1, "")
+        if argv == ["sudo", "mariadb"] and self.base_refuse:
+            return 1, "ERROR 2002: Can't connect"
         if argv[:2] == ["systemctl", "is-active"]:
             return (0, "") if self.service_actif else (3, "")
         if argv[:2] == ["sudo", "test"]:
@@ -306,6 +312,33 @@ class TestRejouer(Banc):
         sql = [s for a, s in runner.lances if a == ["sudo", "mariadb"]][0]
         self.assertIn("IDENTIFIED BY 'Deja1Genere'", sql)
 
+    def test_a_rerun_after_a_late_failure_keeps_every_secret(self):
+        # conf.php porte déjà le mot de passe de la base quand une étape
+        # tardive échoue ; relancer ne doit pas réaligner le compte sur un
+        # nouveau.
+        self.sys.marqueur = "rien"
+        code, premier = self.installer("--yes")
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            set(self.secrets()), {"ADMIN_PASSWORD", "DB_PASSWORD"}
+        )
+        self.sys.marqueur = "ERPLIBRE_CHECK 24.0.1 24.0.1"
+        code, second = self.installer("--yes")
+        self.assertEqual(code, 0)
+
+        def sql(runner):
+            return [s for a, s in runner.lances if a == ["sudo", "mariadb"]]
+
+        self.assertEqual(sql(premier), sql(second))
+
+    def test_every_secret_is_written_before_the_database_is_touched(self):
+        self.sys.base_refuse = True
+        code, _runner = self.installer("--yes")
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            set(self.secrets()), {"ADMIN_PASSWORD", "DB_PASSWORD"}
+        )
+
     def test_present_packages_are_not_installed_again(self):
         self.sys.paquets_presents = set(
             install_native.packages.packages_for("apt-get", "mariadb")
@@ -406,7 +439,9 @@ def sans_saisie():
 
 
 class TestRefus(Banc):
-    def test_production_is_not_offered_yet(self):
+    def test_production_without_a_domain_is_refused_before_anything(self):
+        # La production se teste dans test_dolibarr_install_prod.py ; ici,
+        # seulement le refus d'entrée, avant toute commande.
         runner = FauxRunner(self.sys.repondre)
         with contextlib.redirect_stdout(io.StringIO()), sans_saisie():
             code = install_native.main(
@@ -414,7 +449,7 @@ class TestRefus(Banc):
                 facts=self.faits,
                 runner=runner,
             )
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertFalse(runner.lances)
 
     def test_an_existing_instance_is_refused(self):
@@ -461,6 +496,23 @@ class TestEssaiABlanc(Banc):
         self.assertFalse((self.racine / "private").exists())
         self.assertFalse((self.htdocs / "conf" / "conf.php").exists())
         self.assertFalse(runner.ecrits_sudo)
+
+
+class TestPointDEntree(unittest.TestCase):
+    def test_the_script_runs_the_module_native_prod_shares(self):
+        # Lancé comme script, le fichier est __main__ ; native_prod importe
+        # script.dolibarr.install_native, un second module dont StepError
+        # est une autre classe : run_steps laisserait passer ses erreurs en
+        # traceback. Le point d'entrée délègue au module du paquet.
+        script = RACINE / "script" / "dolibarr" / "install_native.py"
+        with (
+            mock.patch.object(install_native, "main", return_value=0) as main,
+            mock.patch.object(sys, "argv", [str(script)]),
+            self.assertRaises(SystemExit) as fin,
+        ):
+            runpy.run_path(str(script), run_name="__main__")
+        self.assertEqual(fin.exception.code, 0)
+        main.assert_called_once_with()
 
 
 if __name__ == "__main__":
