@@ -11,7 +11,11 @@ Depuis TODO :
 - **Exécution › Dolibarr** regroupe les outils des instances par section :
   - **Instances de développement** : installer, lancer, arrêter, état et
     journaux ;
-  - **Maintenance** : relever le commit épinglé.
+  - **Maintenance** : relever le commit épinglé, vérifier la santé, la
+    sécurité et l'intégrité d'une instance, la sauvegarder, restaurer une
+    sauvegarde ;
+  - **Inventaire** : lister les instances, en retirer une, trouver les
+    installations, locales ou par SSH.
 
 Chaque entrée de TODO lance un script de ce dossier avec ses paramètres ;
 chaque script se lance aussi seul.
@@ -25,10 +29,15 @@ chaque script se lance aussi seul.
 | `native_prod.py` | Étapes de production, jouées par `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` d'une instance de développement |
 | `pin.py` | `show` le commit épinglé, `update` le relève (à blanc sans `--apply`) |
+| `detect.py` | Trouver les installations Dolibarr, sur ce poste ou par SSH |
+| `doctor.py` | Santé, sécurité et intégrité de chaque instance inscrite |
+| `backup.py` | `create`, `list` et `restore` des sauvegardes (restauration : `restore.py`) |
+| `fleet.py` | `list` des instances, `remove` d'une instance |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
 | `container_plan.py` | Rendu pur des commandes Docker/Podman d'une instance |
+| `integrity.py` | Code installé contre l'archive de son commit épinglé |
 
 Familles prises en charge : Debian/Ubuntu (apt), Fedora/EL (dnf), Arch
 (pacman), openSUSE (zypper).
@@ -110,6 +119,36 @@ mots de passe.
 
 Limite connue : SELinux en mode enforcing est refusé tant que ses contextes
 ne sont pas posés.
+
+## Exploitation
+
+```bash
+./script/dolibarr/detect.py --local            # or --ssh host (repeatable)
+./script/dolibarr/doctor.py --all
+./script/dolibarr/backup.py create --instance erp
+./script/dolibarr/backup.py restore --instance erp --archive <file> --confirm erp
+./script/dolibarr/fleet.py list
+./script/dolibarr/fleet.py remove --instance erp --dry-run
+```
+
+- `detect.py` envoie une sonde POSIX sh en lecture seule (un aller-retour,
+  aucun privilège) et rapporte chaque installation et conteneur Dolibarr,
+  jamais un mot de passe ; rapports sous `private/dolibarr/inventory/`.
+- `doctor.py` vérifie ce que sert chaque instance, son code (en production,
+  chaque fichier contre l'archive épinglée : un PHP ajouté échoue), son
+  `conf.php`, son verrou, sa minuterie cron et PHP ; il ne change rien.
+- Une sauvegarde porte la base, `documents/`, `custom/` et `conf.php`, dont
+  la clé d'instance chiffre des valeurs en base ; 0600, sous
+  `private/dolibarr/backups/`. Restaurer demande le nom de l'instance,
+  prend d'abord une sauvegarde de sûreté, refuse une sauvegarde plus récente
+  que le code, et clone aussi une sauvegarde dans une instance neuve.
+- `private/` est versionné, mais les sauvegardes, les rapports d'inventaire
+  et le registre des instances (`instances.json`) sous `private/dolibarr/`
+  sont ignorés par git : ils portent les secrets d'une machine ou la
+  décrivent. Une sauvegarde est refusée dans un dossier que git pourrait
+  commiter.
+- Retirer une instance montre d'abord son plan et demande son nom ; le
+  `custom/` d'un conteneur reste.
 
 ## Version épinglée
 
