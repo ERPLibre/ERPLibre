@@ -18503,6 +18503,114 @@ TRANSLATIONS = {
         "fr": "Relancée(s) : {names}",
         "en": "Relaunched: {names}",
     },
+    # Recréation d'une VM depuis le suivi (touche « n »).
+    "Recreate": {
+        "fr": "Recréer",
+        "en": "Recreate",
+    },
+    "Recreating a VM is not available from this monitor.": {
+        "fr": "La recréation de VM n'est pas disponible depuis ce suivi.",
+        "en": "Recreating a VM is not available from this monitor.",
+    },
+    "A Proxmox VM cannot be recreated from the monitor.": {
+        "fr": "Une VM Proxmox ne peut pas être recréée depuis le suivi.",
+        "en": "A Proxmox VM cannot be recreated from the monitor.",
+    },
+    (
+        "This VM's creation parameters were not kept (older session, or a VM "
+        "only monitored). Deploy it again from the menu."
+    ): {
+        "fr": (
+            "Les paramètres de création de cette VM n'ont pas été gardés "
+            "(session antérieure, ou VM seulement suivie). Redéployez-la "
+            "depuis le menu."
+        ),
+        "en": (
+            "This VM's creation parameters were not kept (older session, or a "
+            "VM only monitored). Deploy it again from the menu."
+        ),
+    },
+    (
+        "Its install is still running: wait for it to end before recreating "
+        "the VM."
+    ): {
+        "fr": (
+            "Son installation tourne encore : attendez qu'elle finisse avant "
+            "de recréer la VM."
+        ),
+        "en": (
+            "Its install is still running: wait for it to end before "
+            "recreating the VM."
+        ),
+    },
+    "Recreate is not available for an offline session.": {
+        "fr": (
+            "La recréation n'est pas disponible pour une session hors ligne."
+        ),
+        "en": "Recreate is not available for an offline session.",
+    },
+    (
+        "An offline deployment holds the cut: the recreation would run without "
+        "Internet."
+    ): {
+        "fr": (
+            "Un déploiement hors ligne tient la coupure : la recréation "
+            "tournerait sans Internet."
+        ),
+        "en": (
+            "An offline deployment holds the cut: the recreation would run "
+            "without Internet."
+        ),
+    },
+    (
+        "The VM is deleted (domain, disk, seed), then created again with the "
+        "same parameters:"
+    ): {
+        "fr": (
+            "La VM est effacée (domaine, disque, seed), puis recréée avec les "
+            "mêmes paramètres :"
+        ),
+        "en": (
+            "The VM is deleted (domain, disk, seed), then created again with "
+            "the same parameters:"
+        ),
+    },
+    "The current log is kept as <log>.N.": {
+        "fr": "Le journal actuel est gardé en <journal>.N.",
+        "en": "The current log is kept as <log>.N.",
+    },
+    "Recreate {name}?": {
+        "fr": "Recréer {name} ?",
+        "en": "Recreate {name}?",
+    },
+    "Delete and recreate": {
+        "fr": "Effacer et recréer",
+        "en": "Delete and recreate",
+    },
+    "Deletion refused or failed: nothing recreated.": {
+        "fr": "Effacement refusé ou en échec : rien n'est recréé.",
+        "en": "Deletion refused or failed: nothing recreated.",
+    },
+    "Press Enter to return to the monitor": {
+        "fr": "Entrée pour revenir au suivi",
+        "en": "Press Enter to return to the monitor",
+    },
+    "This terminal cannot be handed back.": {
+        "fr": "Ce terminal ne peut pas être rendu.",
+        "en": "This terminal cannot be handed back.",
+    },
+    "Recreated: {names}": {
+        "fr": "Recréée(s) : {names}",
+        "en": "Recreated: {names}",
+    },
+    "A recreation of this VM is already under way.": {
+        "fr": "Une recréation de cette VM est déjà en cours.",
+        "en": "A recreation of this VM is already under way.",
+    },
+    "Previous launcher stopped: {n}": {
+        "fr": "Ancien lanceur arrêté : {n}",
+        "en": "Previous launcher stopped: {n}",
+    },
     # Ajout de VM depuis le suivi d'installation (touche « e »).
     "Add VMs": {
         "fr": "Ajouter des VM",

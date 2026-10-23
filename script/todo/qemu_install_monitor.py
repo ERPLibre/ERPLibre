@@ -23,6 +23,7 @@ import platform
 import re
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -445,6 +446,7 @@ def launch_installs(
     hors_ligne: bool | None = None,
     identity: str = "",
     session: str | None = None,
+    replace: bool = False,
 ) -> str:
     """vms : [{name, ip, distro?, version?, arch?}]. Lance chaque install
     détachée, écrit un manifeste et retourne son chemin. remote_cmd : script
@@ -471,12 +473,25 @@ def launch_installs(
     présent lève ValueError avant tout lancement : le suivi indexe ses
     lignes par nom. Le manifeste est réécrit d'un bloc (fichier temporaire
     puis os.replace), et un lecteur concurrent ne voit jamais un JSON
-    tronqué. Rend le même chemin."""
+    tronqué. Rend le même chemin.
+
+    `replace` : avec `session`, un nom déjà présent n'est plus refusé — son
+    entrée est REMPLACÉE, à la même place : c'est la recréation d'une VM du
+    suivi. Son journal précédent est mis de côté en « <journal>.N » (voir
+    relaunch_install) et nommé dans « previous_logs ». Un nom en double DANS
+    `vms` reste refusé.
+
+    Une VM qui porte « spec » (ses paramètres de création, voir
+    _qemu_spec_vm) la voit écrite en « <nom>.spec.json », mode 0600, à côté
+    de son journal ; l'entrée n'en garde que le chemin, « spec_file ». La
+    spec porte l'identité git de l'utilisateur, et session.json est lisible
+    de tous."""
     when = time.strftime("%Y-%m-%d %H:%M:%S")
     if session:
         logdir = Path(session).parent
         manifest = json.loads(Path(session).read_text(encoding="utf-8"))
-        noms = [vm.get("name") for vm in manifest.get("vms") or []]
+        anciennes = {v.get("name"): v for v in manifest.get("vms") or []}
+        noms = [] if replace else list(anciennes)
         noms += [vm["name"] for vm in vms]
         doublons = sorted({n for n in noms if noms.count(n) > 1})
         if doublons:
@@ -484,11 +499,21 @@ def launch_installs(
                 f"duplicate VM names in the session: {', '.join(doublons)}"
             )
     else:
+        anciennes = {}
         logdir = session_dir() / time.strftime("%Y%m%d-%H%M%S")
         logdir.mkdir(parents=True, exist_ok=True)
     entries = []
     for vm in vms:
+        ancienne = anciennes.get(vm["name"]) if replace else None
         log_path = str(logdir / f"{vm['name']}.log")
+        mis_de_cote = []
+        if ancienne:
+            log_path = ancienne.get("log") or log_path
+            mis_de_cote = list(ancienne.get("previous_logs") or [])
+            if Path(log_path).exists():
+                rang = _next_rotation(log_path)
+                os.replace(log_path, rang)
+                mis_de_cote.append(rang)
         # En-tête d'emblée (date/distro/version/arch) : le log n'est jamais
         # vide, l'utilisateur voit tout de suite QUOI s'installe.
         Path(log_path).write_text(_log_header(vm, branch, when))
@@ -534,6 +559,13 @@ def launch_installs(
         # secret.
         if vm.get("notes"):
             entree["notes"] = list(vm["notes"])
+        if vm.get("spec"):
+            entree["spec_file"] = _write_spec_file(
+                logdir / f"{vm['name']}.spec.json", vm["spec"]
+            )
+        if ancienne:
+            entree["previous_logs"] = mis_de_cote
+            entree["recreations"] = int(ancienne.get("recreations") or 0) + 1
         # Une VM posée sur un hôte Proxmox : c'est LUI qui connaît son état.
         if vm.get("pve"):
             entree["pve"] = vm["pve"]
@@ -547,10 +579,13 @@ def launch_installs(
     if session:
 
         def ajoute(manifest):
-            presents = {v.get("name") for v in manifest.get("vms", [])}
-            manifest.setdefault("vms", []).extend(
-                e for e in entries if e["name"] not in presents
-            )
+            liste = manifest.setdefault("vms", [])
+            index = {v.get("name"): i for i, v in enumerate(liste)}
+            for e in entries:
+                if e["name"] not in index:
+                    liste.append(e)
+                elif replace:
+                    liste[index[e["name"]]] = e
 
         _rewrite_session(session, ajoute)
         return str(session)
@@ -566,6 +601,29 @@ def launch_installs(
     manifest_path = str(logdir / "session.json")
     Path(manifest_path).write_text(json.dumps(manifest, indent=2))
     return manifest_path
+
+
+def _write_spec_file(path, spec: dict) -> str:
+    """Écrit `spec` en JSON dans `path`, mode 0600 dès la création, et rend
+    le chemin. O_CREAT avec le mode, puis fchmod pour un fichier qui existait
+    déjà avec d'autres droits."""
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(spec, fh, indent=2)
+    return str(path)
+
+
+def read_vm_spec(vm: dict) -> dict | None:
+    """La spec de création gardée pour `vm`, ou None : session antérieure à
+    la recréation, VM seulement suivie (« existante »), fichier illisible."""
+    chemin = vm.get("spec_file")
+    if not chemin:
+        return None
+    try:
+        return json.loads(Path(chemin).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 @contextlib.contextmanager
@@ -693,6 +751,10 @@ def relaunch_install(session: str, name: str, ip: str = "") -> dict:
         refus = relaunch_refusal(manifest, vm)
         if refus:
             raise RelaunchRefused(refus)
+        if _claim_alive(vm.get("recreating")):
+            raise RelaunchRefused(
+                t("A recreation of this VM is already under way.")
+            )
         etat, _code = read_status(vm["log"])
         if etat != "failed":
             raise RelaunchRefused(
@@ -2323,6 +2385,129 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     return cmd
 
 
+def recreate_delete_cmd(name: str, uuid: str) -> str:
+    """Efface la VM `name` avant sa recréation, en ÉCHOUANT FERMÉ.
+
+    L'existence du domaine se décide DANS le shell privilégié, par
+    « virsh list --all --name » : un virsh illisible — ticket sudo absent,
+    libvirtd qui redémarre — refuse tout, au lieu de passer pour « domaine
+    absent » et d'effacer sans garde. Un domaine présent doit porter `uuid`,
+    l'UUID gardé dans la session : un nom repris par une autre VM est
+    refusé, et une session qui n'a pas d'UUID ne peut rien prouver, donc
+    refuse aussi. Un domaine absent ne laisse que son disque et son seed,
+    que la création refuserait d'écraser : ils partent. Sort en 1 sur tout
+    refus, sans rien avoir effacé."""
+    q = shlex.quote(name)
+    v = f"{sudo_prefix()}virsh --connect {URI}"
+    rien = "Rien n'a été effacé."
+    if uuid:
+        garde = (
+            f"vu=$({v} domuuid {q} 2>/dev/null | tr -d '[:space:]'); "
+            f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
+            f"echo \"REFUS : {name} n'est plus le même domaine ($vu)."
+            f' {rien}"; exit 1; fi; '
+        )
+    else:
+        garde = (
+            f"echo \"REFUS : la session ne connaît pas l'UUID de {name}."
+            f' {rien}"; exit 1; '
+        )
+    disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
+    seed = shlex.quote(f"/var/lib/libvirt/images/iso/{name}-seed.iso")
+    return (
+        f"noms=$({v} list --all --name) || "
+        f'{{ echo "REFUS : virsh illisible. {rien}"; exit 1; }}; '
+        f"if printf '%s\\n' \"$noms\" | grep -qxF -- {q}; then "
+        + garde
+        + f"{v} destroy {q} 2>/dev/null; "
+        f"{v} undefine {q} --nvram 2>/dev/null || {v} undefine {q} || exit 1; "
+        f"fi; "
+        f"sudo rm -f {disk} {seed}"
+    )
+
+
+def stop_launchers(log_path: str) -> int:
+    """Arrête les lanceurs détachés qui écrivent encore dans `log_path`.
+    Rend leur nombre.
+
+    Une VM effacée en pleine installation laisse son lanceur vivant : il
+    résout l'adresse par le NOM et écrit dans le journal par son CHEMIN. Une
+    recréation lui offrirait la nouvelle VM — même nom, même clé — et le
+    nouveau journal : deux installations dans la même machine. Le lanceur se
+    reconnaît à sa ligne de commande, qui porte le chemin du journal et le
+    marqueur de fin ; « setsid -f » en a fait un chef de session, et tout son
+    groupe (ssh compris) part avec lui. Lu dans /proc plutôt que par
+    « pkill -f », qui se trouverait lui-même."""
+    arretes = 0
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            argv = (proc / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        texte = b" ".join(argv).decode(errors="replace")
+        if log_path not in texte or EXIT_MARKER not in texte:
+            continue
+        pid = int(proc.name)
+        try:
+            if os.getsid(pid) != pid or pid == os.getpid():
+                continue
+            os.killpg(pid, signal.SIGTERM)
+            arretes += 1
+        except (OSError, ProcessLookupError):
+            continue
+    return arretes
+
+
+def _claim_alive(claim) -> bool:
+    """Une marque de recréation tient-elle encore ? Oui tant que le suivi
+    qui l'a posée vit : un suivi tué ne la laisse pas bloquer la VM."""
+    try:
+        os.kill(int((claim or {}).get("pid") or 0), 0)
+    except (OSError, ValueError):
+        return False
+    return bool((claim or {}).get("pid"))
+
+
+def claim_recreate(session: str, name: str) -> None:
+    """Pose, sous le verrou de la session, la marque « recreating » de
+    `name`. Un autre suivi ouvert sur la même session la voit et refuse de
+    recréer, relancer ou effacer pendant que celle-ci efface puis crée.
+    Lève RelaunchRefused si une marque vivante est déjà là. La nouvelle
+    entrée écrite par launch_installs ne la porte plus ; release_recreate
+    la retire sinon."""
+
+    def marque(manifest):
+        vm = next(
+            (v for v in manifest.get("vms", []) if v.get("name") == name),
+            None,
+        )
+        if vm is None:
+            raise RelaunchRefused(t("This VM is not in the session."))
+        if _claim_alive(vm.get("recreating")):
+            raise RelaunchRefused(
+                t("A recreation of this VM is already under way.")
+            )
+        vm["recreating"] = {"pid": os.getpid(), "since": time.time()}
+
+    _rewrite_session(session, marque)
+
+
+def release_recreate(session: str, name: str, uuid=None) -> None:
+    """Retire la marque de recréation de `name`. `uuid`, s'il est donné,
+    devient celui de l'entrée : une recréation qui a défini un domaine sans
+    lancer d'installation (pas d'adresse, échec après virt-install) laisse un
+    domaine neuf, que les gardes doivent reconnaître."""
+
+    def retire(manifest):
+        for vm in manifest.get("vms", []):
+            if vm.get("name") == name:
+                vm.pop("recreating", None)
+                if uuid is not None:
+                    vm["uuid"] = uuid
+
+    _rewrite_session(session, retire)
+
+
 def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
     """Ouvre le dashboard Textual sur un manifeste d'installation. `run_app`
     à False renvoie l'instance sans la lancer (tests headless).
@@ -2673,6 +2858,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             ("e", "add_vms", t("Add VMs")),
             ("r", "relaunch", t("Relaunch")),
             ("R", "relaunch_failed", t("Relaunch all failed")),
+            ("n", "recreate", t("Recreate")),
         ]
 
         def __init__(self):
@@ -3048,6 +3234,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                                 - vm.get("started", started),
                             ),
                         )
+                        self._final_ino[name] = _inode(vm["log"])
                         # Icône seule (VM effacée) : évite « ❌ effacée » (10
                         # cellules) qui forçait une colonne État large.
                         self._set_cell(table, name, "state", "🗑")
@@ -3892,13 +4079,161 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 self.notify("\n".join(refus), severity="warning", timeout=20)
             await self._tick_table()
 
+        def _recreate_refusal(self, vm):
+            """Pourquoi `vm` ne peut pas être recréée d'ici, ou "".
+
+            Il faut un objet TODO (c'est lui qui crée), une VM LOCALE — une VM
+            Proxmox se recrée par son hôte, par un autre chemin —, sa spec de
+            création gardée, aucune installation en cours (la VM serait
+            effacée sous elle), et Internet : la même règle que la relance,
+            pour la même raison."""
+            if todo is None:
+                return t("Recreating a VM is not available from this monitor.")
+            if self._adding:
+                return t("VMs are already being added.")
+            if vm.get("pve"):
+                return t("A Proxmox VM cannot be recreated from the monitor.")
+            if read_vm_spec(vm) is None:
+                return t(
+                    "This VM's creation parameters were not kept (older"
+                    " session, or a VM only monitored). Deploy it again"
+                    " from the menu."
+                )
+            nom = vm["name"]
+            if nom not in self._final and self._domstate.get(nom) != "gone":
+                return t(
+                    "Its install is still running: wait for it to end"
+                    " before recreating the VM."
+                )
+            if manifest.get("offline"):
+                return t("Recreate is not available for an offline session.")
+            tenu = getattr(todo, "_qemu_coupure_tenue_ailleurs", None)
+            if tenu is not None and tenu():
+                return t(
+                    "An offline deployment holds the cut: the recreation"
+                    " would run without Internet."
+                )
+            return ""
+
+        def action_recreate(self) -> None:
+            """Efface la VM sélectionnée et la recrée avec les mêmes
+            paramètres, puis reprend son suivi sur la même ligne."""
+            vm = self._vm_by_name(self._selected)
+            if not vm:
+                return
+            refus = self._recreate_refusal(vm)
+            if refus:
+                self.notify(refus, severity="warning")
+                return
+            spec = read_vm_spec(vm)
+            cible = (spec.get("vms") or [{}])[0]
+            lignes = [
+                t(
+                    "The VM is deleted (domain, disk, seed), then created"
+                    " again with the same parameters:"
+                ),
+                "  "
+                + " ".join(
+                    str(cible.get(k) or "")
+                    for k in ("distro", "version", "arch")
+                )
+                + f" · {cible.get('ram', '?')} MiB · "
+                f"{cible.get('vcpus', '?')} vCPU · {cible.get('disk', '?')}",
+                t("The current log is kept as <log>.N."),
+            ]
+
+            def confirmed(yes):
+                if not yes:
+                    return
+                try:
+                    claim_recreate(manifest_path, vm["name"])
+                except RelaunchRefused as exc:
+                    self.notify(str(exc), severity="warning")
+                    return
+                if not self._delete_for_recreate(vm):
+                    release_recreate(manifest_path, vm["name"])
+                    return
+                spec["recreate"] = True
+                self._start_add(spec)
+
+            self.push_screen(
+                ConfirmScreen(
+                    t("Recreate {name}?").format(name=vm["name"]),
+                    lignes,
+                    t("Delete and recreate"),
+                ),
+                confirmed,
+            )
+
+        def _delete_for_recreate(self, vm) -> bool:
+            """Terminal rendu : ticket sudo, arrêt de l'ancien lanceur,
+            effacement de la VM (recreate_delete_cmd), puis ménage des
+            exceptions du cache. Rend True si l'effacement a réussi,
+            condition de la création qui suit.
+
+            Un ticket sudo refusé arrête tout : sans lui, virsh serait
+            illisible et la commande refuserait de toute façon, mais autant
+            le dire tout de suite. Ce ticket est celui que le thread de
+            création entretient ensuite."""
+            nom = vm["name"]
+            try:
+                with self.suspend():
+                    print(f"\n=== {t('Recreate')} — {nom} ===")
+                    ok = True
+                    if os.geteuid() != 0:
+                        ok = subprocess.run(["sudo", "-v"]).returncode == 0
+                    if ok:
+                        arretes = stop_launchers(vm["log"])
+                        if arretes:
+                            print(
+                                t("Previous launcher stopped: {n}").format(
+                                    n=arretes
+                                )
+                            )
+                        cmd = recreate_delete_cmd(nom, vm.get("uuid") or "")
+                        print(f"→ {cmd}\n")
+                        ok = (
+                            subprocess.run(["bash", "-c", cmd]).returncode == 0
+                        )
+                    if not ok:
+                        print(
+                            "\n"
+                            + t(
+                                "Deletion refused or failed: nothing"
+                                " recreated."
+                            )
+                        )
+                        input(
+                            f"\n{t('Press Enter to return to the monitor')}… "
+                        )
+                        return False
+                    try:
+                        from script.todo.qemu_cache_menu import bypass_menage
+
+                        bypass_menage(todo.execute)
+                    except Exception as exc:  # le ménage n'empêche rien
+                        print(f"  ⚠ {exc}")
+            except SuspendNotSupported:
+                self.notify(
+                    t("This terminal cannot be handed back."), severity="error"
+                )
+                return False
+            return True
+
         def _adopt_relaunches(self) -> None:
-            """Remet à zéro les lignes en échec dont le journal a été
-            remplacé depuis : une relance faite par un autre suivi ouvert
-            sur la même session. L'entrée relue dans le manifeste donne le
-            nouveau début de la VM."""
-            for nom in self._failed_names():
+            """Remet à zéro les lignes terminées dont le journal a été
+            remplacé depuis : une relance ou une recréation faite par un
+            autre suivi ouvert sur la même session. L'entrée relue dans le
+            manifeste donne le nouveau début, la nouvelle adresse et le
+            nouvel UUID de la VM."""
+            for nom in [
+                n
+                for n, (etat, _c, _e) in self._final.items()
+                if etat in ("failed", "deleted", "done")
+            ]:
                 vm = self._vm_by_name(nom)
+                if vm is None:
+                    continue
                 ino = _inode(vm["log"])
                 if ino is None or ino == self._final_ino.get(nom, ino):
                     continue
@@ -3920,11 +4255,17 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             la relance a écrit dans le manifeste."""
             vm = self._vm_by_name(nom)
             if vm is not None:
-                for cle in ("ip", "ssh", "started", "relaunches"):
-                    if cle in entree:
-                        vm[cle] = entree[cle]
+                # L'entrée entière : une recréation change aussi l'UUID, que
+                # les gardes de relance et de suppression comparent.
+                vm.update(entree)
             self._final.pop(nom, None)
             self._errcount.pop(nom, None)
+            # Une VM recréée était « gone » : sans cet oubli, le tick suivant
+            # la reposerait en 🗑 avant que virsh la revoie. Son ancien 🟢,
+            # lui, ne dit rien de la nouvelle.
+            self._domstate.pop(nom, None)
+            self._odoo_up.discard(nom)
+            self._odoo_revu.pop(nom, None)
             self._offsets[nom] = 0
             table = self.query_one("#vms", DataTable)
             self._set_cell(table, nom, "err", "")
@@ -3987,6 +4328,12 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             spec = self._collect_spec([vm["name"] for vm in vms])
             if not spec:
                 return
+            self._start_add(spec)
+
+        def _start_add(self, spec) -> None:
+            """Crée les VM de `spec` dans un thread, pendant que le tableau
+            continue de suivre. Partagé par l'ajout (« e ») et la recréation
+            (« n ») : seule la provenance de la spec diffère."""
             self._adding = True
             self._add_log = str(
                 Path(manifest_path).parent
@@ -4059,6 +4406,29 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 except OSError:
                     pass
 
+        def _settle_recreation(self, spec, res):
+            """(THREAD) Après une recréation qui n'a lancé aucune
+            installation — création en échec, ou VM sans adresse —, retire la
+            marque de recréation et enregistre l'UUID du domaine tel qu'il
+            est : neuf s'il a été défini, vide sinon. Sans cela, l'entrée
+            garderait l'UUID de la VM effacée, et les gardes de « n », « r »
+            et de la suppression refuseraient pour toujours le domaine neuf.
+            Rend `res`, complété de « recreated_uuid »."""
+            if not spec.get("recreate"):
+                return res
+            res = dict(res or {})
+            nom = (spec.get("vms") or [{}])[0].get("name")
+            ajoutees = {e.get("name") for e in res.get("added") or []}
+            if not nom or nom in ajoutees:
+                return res
+            uuid = local_uuid(nom)
+            try:
+                release_recreate(manifest_path, nom, uuid=uuid)
+            except (OSError, ValueError):
+                pass
+            res["recreated_uuid"] = {nom: uuid}
+            return res
+
         def _add_worker(self, spec):
             """Thread de création : déploie la spec dans cette session.
 
@@ -4087,7 +4457,10 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             except Exception as exc:
                 erreur = f"{type(exc).__name__}: {exc}"
             finally:
-                fin.set()
+                try:
+                    res = self._settle_recreation(spec, res)
+                finally:
+                    fin.set()
             # App fermée : le message se perd, mais le manifeste porte déjà
             # les VM, et la prochaine ouverture du suivi les montre.
             self.post_message(self.AddDone(res, erreur))
@@ -4097,16 +4470,42 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             res, erreur = message.res, message.erreur
             try:
                 res = res or {}
+                recreees = []
                 if not erreur:
-                    self._add_entries(res.get("added") or [])
-                ajoutees = len(res.get("added") or [])
+                    added = res.get("added") or []
+                    # Une entrée dont le nom est déjà suivi vient d'une
+                    # recréation : sa ligne repart de zéro au lieu d'être
+                    # refusée comme un doublon.
+                    for e in added:
+                        if self._vm_by_name(e.get("name")):
+                            self._reset_row(e["name"], e)
+                            recreees.append(e["name"])
+                    self._add_entries(
+                        [e for e in added if e.get("name") not in recreees]
+                    )
+                for nom, uuid in (res.get("recreated_uuid") or {}).items():
+                    vm = self._vm_by_name(nom)
+                    if vm is not None:
+                        vm["uuid"] = uuid
+                ajoutees = len(res.get("added") or []) - len(recreees)
                 echecs = list(res.get("failed") or [])
                 sans_ip = list(res.get("no_ip") or [])
                 lignes = [f"{t('Added:')} {ajoutees}"]
+                if recreees:
+                    lignes = [
+                        t("Recreated: {names}").format(
+                            names=", ".join(recreees)
+                        )
+                    ]
                 if echecs:
                     lignes.append(
                         f"{t('Creation failed:')} {', '.join(echecs)}"
                     )
+                    # deploy_qemu y a laissé sa sortie complète.
+                    for nom in echecs:
+                        lignes.append(
+                            f"  {session_dir() / (nom + '-create.log')}"
+                        )
                 if sans_ip:
                     lignes.append(f"{t('no IP:')} {', '.join(sans_ip)}")
                 if erreur:
