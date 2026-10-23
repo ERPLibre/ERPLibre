@@ -28,6 +28,8 @@ script also runs on its own.
 | `backup.py` | `create`, `list` and `restore` backups (restore: `restore.py`) |
 | `fleet.py` | `list` the instances, `remove` one |
 | `upgrade.py` | Upgrade an instance to the pinned version, rollback on failure |
+| `debug.py` | Debug profile of an instance `on`/`off`, `status`, `tail` of its log |
+| `module.py` | `create`, `link`, `enable`, `disable` the modules of a development instance |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -137,6 +139,32 @@ set.
   of the same version is upgraded too: its schema can differ. The full
   output of each upgrade goes to `private/dolibarr/upgrades/`, and
   `doctor.py` warns when an instance is behind the pin.
+
+## Development tools
+
+```bash
+./script/dolibarr/debug.py on --instance erp       # off puts everything back
+./script/dolibarr/debug.py tail --instance erp --filter ERR
+./script/dolibarr/module.py create --instance erp --name Zorglub --enable
+./script/dolibarr/module.py link --instance erp --path ~/src/zorglub
+./script/dolibarr/module.py enable --instance erp --name Stock
+```
+
+- `debug.py on` shows development features (`MAIN_FEATURES_LEVEL=2`),
+  enables DebugBar and Syslog at level 7 (every SQL query), and on a native
+  development instance sets `conf.php` to prod=0 and strict mode. The
+  previous state is saved once; `off` puts it back row for row. A production
+  needs its name retyped: level 7 logs session ids.
+- `module.py create` does what the ModuleBuilder's "New module" does, from
+  the instance's own template, so the module goes on in the ModuleBuilder.
+  It lands in `custom/` (the checkout's `htdocs/custom`, or the host
+  directory mounted in the container) with the first free ID from 500000;
+  IDs from 100000 to 499999 are reserved on the Dolibarr wiki. The author
+  comes from `--author` or git.
+- `module.py link` symlinks a module kept in its own repository into
+  `htdocs/custom` (native only: a container sees only its `custom/`).
+  `enable` and `disable` go through Dolibarr, dependencies and permissions
+  included. A production is refused: it receives a package.
 
 ## Pinned version
 
