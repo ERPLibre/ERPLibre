@@ -54,6 +54,9 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Debug profile": "_dolibarr_debug",
         "Dolibarr - Modules: create, link, enable": "_dolibarr_module",
         "Dolibarr - Package a module (DoliStore)": "_dolibarr_package",
+        "Dolibarr - Code quality of a module (phpcs, PHPStan)": (
+            "_dolibarr_quality"
+        ),
     }
 
 
@@ -499,6 +502,47 @@ class TestPaquet(Banc):
         self.assertEqual(self.lancer_paquet([]), [])
         self.registre = {"erp": dict(DEV)}
         self.assertEqual(self.lancer_paquet(["1", ""]), [])
+
+
+QUALITY = "./.venv.erplibre/bin/python -u script/dolibarr/quality.py"
+
+
+class TestQualite(Banc):
+    def lancer_qualite(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_quality()
+        return lances
+
+    def test_both_tools_or_one(self):
+        self.registre = {"erp": dict(DEV)}
+        base = f"{QUALITY} --instance erp --name Zorglub"
+        for choix, fin in (
+            ("1", ""),
+            ("2", " --only phpcs"),
+            ("3", " --only phpstan"),
+        ):
+            self.assertEqual(
+                self.lancer_qualite([choix, "Zorglub"]), [base + fin]
+            )
+
+    def test_only_development_instances_and_a_name(self):
+        self.registre = {"prod": dict(DEV, mode="prod")}
+        self.assertEqual(self.lancer_qualite([]), [])
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(self.lancer_qualite(["1", ""]), [])
 
 
 class TestBilan(unittest.TestCase):
