@@ -19912,6 +19912,1755 @@ TRANSLATIONS = {
         "fr": "bascule sur la cible du manifeste",
         "en": "switch to the manifest target",
     },
+    # Dolibarr (script/todo/dolibarr_menu.py, script/dolibarr/)
+    "Dolibarr pin unreadable: %s": {
+        "fr": "Épinglage de Dolibarr illisible : %s",
+        "en": "Dolibarr pin unreadable: %s",
+    },
+    "Dolibarr environment:": {
+        "fr": "Environnement Dolibarr :",
+        "en": "Dolibarr environment:",
+    },
+    "Development - your user, local port, debugging allowed": {
+        "fr": "Développement - votre utilisateur, port local, déverminage permis",
+        "en": "Development - your user, local port, debugging allowed",
+    },
+    "Production - system services, hardened, scheduled jobs": {
+        "fr": "Production - services système, durcie, tâches planifiées",
+        "en": "Production - system services, hardened, scheduled jobs",
+    },
+    "Dolibarr runtime:": {
+        "fr": "Exécution de Dolibarr :",
+        "en": "Dolibarr runtime:",
+    },
+    "Native - nginx + PHP-FPM": {
+        "fr": "Natif - nginx + PHP-FPM",
+        "en": "Native - nginx + PHP-FPM",
+    },
+    "Docker / Podman - official dolibarr/dolibarr image": {
+        "fr": "Docker / Podman - image officielle dolibarr/dolibarr",
+        "en": "Docker / Podman - official dolibarr/dolibarr image",
+    },
+    "Native is not offered here: %s": {
+        "fr": "Le natif n'est pas proposé ici : %s",
+        "en": "Native is not offered here: %s",
+    },
+    "Docker / Podman is not offered here: %s": {
+        "fr": "Docker / Podman n'est pas proposé ici : %s",
+        "en": "Docker / Podman is not offered here: %s",
+    },
+    "native production needs systemd": {
+        "fr": "la production native exige systemd",
+        "en": "native production needs systemd",
+    },
+    "unsupported system for a native install": {
+        "fr": "système non pris en charge pour une installation native",
+        "en": "unsupported system for a native install",
+    },
+    "on NixOS, declare services.dolibarr in conf/nixos/erplibre.nix": {
+        "fr": "sous NixOS, déclarez services.dolibarr dans conf/nixos/erplibre.nix",
+        "en": "on NixOS, declare services.dolibarr in conf/nixos/erplibre.nix",
+    },
+    "a native install on macOS needs Homebrew": {
+        "fr": "une installation native sous macOS exige Homebrew",
+        "en": "a native install on macOS needs Homebrew",
+    },
+    "no container engine, and none can be installed here": {
+        "fr": "aucun moteur de conteneurs, et aucun ne s'installe ici",
+        "en": "no container engine, and none can be installed here",
+    },
+    "install Docker Desktop first": {
+        "fr": "installez d'abord Docker Desktop",
+        "en": "install Docker Desktop first",
+    },
+    "Dolibarr database:": {
+        "fr": "Base de données Dolibarr :",
+        "en": "Dolibarr database:",
+    },
+    "MariaDB (recommended)": {
+        "fr": "MariaDB (recommandé)",
+        "en": "MariaDB (recommended)",
+    },
+    "PostgreSQL (the ERPLibre server)": {
+        "fr": "PostgreSQL (le serveur d'ERPLibre)",
+        "en": "PostgreSQL (the ERPLibre server)",
+    },
+    "Docker / Podman: MariaDB only, the official image installs itself on MariaDB alone.": {
+        "fr": "Docker / Podman : MariaDB seulement, l'image officielle ne s'installe d'elle-même que sur MariaDB.",
+        "en": "Docker / Podman: MariaDB only, the official image installs itself on MariaDB alone.",
+    },
+    "Dolibarr registry unreadable: %s": {
+        "fr": "Registre Dolibarr illisible : %s",
+        "en": "Dolibarr registry unreadable: %s",
+    },
+    "Instance name (default: %s): ": {
+        "fr": "Nom de l'instance (défaut : %s) : ",
+        "en": "Instance name (default: %s): ",
+    },
+    "Invalid name: lowercase letters, digits and _, starting with a letter.": {
+        "fr": "Nom invalide : minuscules, chiffres et _, en commençant par une lettre.",
+        "en": "Invalid name: lowercase letters, digits and _, starting with a letter.",
+    },
+    "This instance already exists: %s": {
+        "fr": "Cette instance existe déjà : %s",
+        "en": "This instance already exists: %s",
+    },
+    "No free web port from %s.": {
+        "fr": "Aucun port web libre à partir de %s.",
+        "en": "No free web port from %s.",
+    },
+    "Web port (default: %s): ": {
+        "fr": "Port web (défaut : %s) : ",
+        "en": "Web port (default: %s): ",
+    },
+    "Invalid port: a number from 1024 to 65535.": {
+        "fr": "Port invalide : un nombre de 1024 à 65535.",
+        "en": "Invalid port: a number from 1024 to 65535.",
+    },
+    "Domain name (empty for none): ": {
+        "fr": "Nom de domaine (vide pour aucun) : ",
+        "en": "Domain name (empty for none): ",
+    },
+    "HTTPS certificate:": {
+        "fr": "Certificat HTTPS :",
+        "en": "HTTPS certificate:",
+    },
+    "Let's Encrypt (public name, certbot)": {
+        "fr": "Let's Encrypt (nom public, certbot)",
+        "en": "Let's Encrypt (public name, certbot)",
+    },
+    "Local CA (tests)": {
+        "fr": "Autorité locale (essais)",
+        "en": "Local CA (tests)",
+    },
+    "None (HTTP only)": {
+        "fr": "Aucun (HTTP seulement)",
+        "en": "None (HTTP only)",
+    },
+    "Email for certbot (empty for none): ": {
+        "fr": "Courriel pour certbot (vide pour aucun) : ",
+        "en": "Email for certbot (empty for none): ",
+    },
+    "Administrator login (default: admin): ": {
+        "fr": "Identifiant de l'administrateur (défaut : admin) : ",
+        "en": "Administrator login (default: admin): ",
+    },
+    "Invalid login: letters, digits and . _ @ -, starting with a letter or a digit.": {
+        "fr": "Identifiant invalide : lettres, chiffres et . _ @ -, en commençant par une lettre ou un chiffre.",
+        "en": "Invalid login: letters, digits and . _ @ -, starting with a letter or a digit.",
+    },
+    "Administrator password (empty = generated and saved for this instance): ": {
+        "fr": "Mot de passe de l'administrateur (vide = généré et gardé pour cette instance) : ",
+        "en": "Administrator password (empty = generated and saved for this instance): ",
+    },
+    "Confirm the password: ": {
+        "fr": "Confirmez le mot de passe : ",
+        "en": "Confirm the password: ",
+    },
+    "Passwords differ.": {
+        "fr": "Les mots de passe diffèrent.",
+        "en": "Passwords differ.",
+    },
+    "Dolibarr %s (%s) will be installed:": {
+        "fr": "Dolibarr %s (%s) sera installé :",
+        "en": "Dolibarr %s (%s) will be installed:",
+    },
+    "Instance: %s": {
+        "fr": "Instance : %s",
+        "en": "Instance: %s",
+    },
+    "Web port: %s": {
+        "fr": "Port web : %s",
+        "en": "Web port: %s",
+    },
+    "Domain: %s": {
+        "fr": "Domaine : %s",
+        "en": "Domain: %s",
+    },
+    "Image: %s": {
+        "fr": "Image : %s",
+        "en": "Image: %s",
+    },
+    # Dolibarr — installateur natif (script/dolibarr/install_native.py)
+    "Checks": {
+        "fr": "Vérifications",
+        "en": "Checks",
+    },
+    "System packages": {
+        "fr": "Paquets système",
+        "en": "System packages",
+    },
+    "PHP and its extensions": {
+        "fr": "PHP et ses extensions",
+        "en": "PHP and its extensions",
+    },
+    "Database server": {
+        "fr": "Serveur de base de données",
+        "en": "Database server",
+    },
+    "Database and account": {
+        "fr": "Base et compte",
+        "en": "Database and account",
+    },
+    "Dolibarr source": {
+        "fr": "Source de Dolibarr",
+        "en": "Dolibarr source",
+    },
+    "Data directories": {
+        "fr": "Dossiers de données",
+        "en": "Data directories",
+    },
+    "Headless install": {
+        "fr": "Installation sans navigateur",
+        "en": "Headless install",
+    },
+    "Install lock": {
+        "fr": "Verrou d'installation",
+        "en": "Install lock",
+    },
+    "Web configuration": {
+        "fr": "Configuration web",
+        "en": "Web configuration",
+    },
+    "Check from PHP": {
+        "fr": "Contrôle depuis PHP",
+        "en": "Check from PHP",
+    },
+    "Instance record": {
+        "fr": "Enregistrement de l'instance",
+        "en": "Instance record",
+    },
+    "ok": {
+        "fr": "ok",
+        "en": "ok",
+    },
+    "already done": {
+        "fr": "déjà fait",
+        "en": "already done",
+    },
+    "FAILED": {
+        "fr": "ÉCHEC",
+        "en": "FAILED",
+    },
+    "checked after the packages": {
+        "fr": "vérifié après les paquets",
+        "en": "checked after the packages",
+    },
+    "checkout at %s, pin %s": {
+        "fr": "checkout à %s, épinglage %s",
+        "en": "checkout at %s, pin %s",
+    },
+    "Cannot write %s": {
+        "fr": "Impossible d'écrire %s",
+        "en": "Cannot write %s",
+    },
+    "This installer handles Linux for now.": {
+        "fr": "Cet installateur ne traite que Linux pour l'instant.",
+        "en": "This installer handles Linux for now.",
+    },
+    "Install these packages? (y/N): ": {
+        "fr": "Installer ces paquets ? (o/N) : ",
+        "en": "Install these packages? (y/N): ",
+    },
+    "Packages refused, nothing installed.": {
+        "fr": "Paquets refusés, rien n'est installé.",
+        "en": "Packages refused, nothing installed.",
+    },
+    "Package installation failed.": {
+        "fr": "L'installation des paquets a échoué.",
+        "en": "Package installation failed.",
+    },
+    "php does not answer.": {
+        "fr": "php ne répond pas.",
+        "en": "php does not answer.",
+    },
+    "PHP %s is outside what Dolibarr supports (%s to %s).": {
+        "fr": "PHP %s est hors de ce que Dolibarr prend en charge (%s à %s).",
+        "en": "PHP %s is outside what Dolibarr supports (%s to %s).",
+    },
+    "PHP extensions missing: %s": {
+        "fr": "Extensions PHP manquantes : %s",
+        "en": "PHP extensions missing: %s",
+    },
+    "Database server does not start.": {
+        "fr": "Le serveur de base de données ne démarre pas.",
+        "en": "Database server does not start.",
+    },
+    "Cannot create the database.": {
+        "fr": "Impossible de créer la base.",
+        "en": "Cannot create the database.",
+    },
+    "Cannot find pg_hba.conf.": {
+        "fr": "Impossible de trouver pg_hba.conf.",
+        "en": "Cannot find pg_hba.conf.",
+    },
+    "PostgreSQL does not reload.": {
+        "fr": "PostgreSQL ne se recharge pas.",
+        "en": "PostgreSQL does not reload.",
+    },
+    "Cannot fetch the Dolibarr source.": {
+        "fr": "Impossible de récupérer la source de Dolibarr.",
+        "en": "Cannot fetch the Dolibarr source.",
+    },
+    "%s already configures another instance; one checkout serves one instance.": {
+        "fr": "%s configure déjà une autre instance ; un checkout ne sert qu'une instance.",
+        "en": "%s already configures another instance; one checkout serves one instance.",
+    },
+    "%s failed.": {
+        "fr": "%s a échoué.",
+        "en": "%s failed.",
+    },
+    "step1.php did not write conf.php.": {
+        "fr": "step1.php n'a pas écrit conf.php.",
+        "en": "step1.php did not write conf.php.",
+    },
+    "The database holds no installed version.": {
+        "fr": "La base ne porte aucune version installée.",
+        "en": "The database holds no installed version.",
+    },
+    "step5.php did not lock the install.": {
+        "fr": "step5.php n'a pas verrouillé l'installation.",
+        "en": "step5.php did not lock the install.",
+    },
+    "Dolibarr does not answer from PHP.": {
+        "fr": "Dolibarr ne répond pas depuis PHP.",
+        "en": "Dolibarr does not answer from PHP.",
+    },
+    "Dolibarr answers, but reads no installed version.": {
+        "fr": "Dolibarr répond, mais ne lit aucune version installée.",
+        "en": "Dolibarr answers, but reads no installed version.",
+    },
+    "Nothing was undone: running again resumes at this step.": {
+        "fr": "Rien n'a été défait : relancer reprend à cette étape.",
+        "en": "Nothing was undone: running again resumes at this step.",
+    },
+    "Dolibarr %s installed: %s": {
+        "fr": "Dolibarr %s installé : %s",
+        "en": "Dolibarr %s installed: %s",
+    },
+    "Login: %s — password in %s": {
+        "fr": "Identifiant : %s — mot de passe dans %s",
+        "en": "Login: %s — password in %s",
+    },
+    # Dolibarr — lancer et suivre (script/dolibarr/run.py)
+    "Already running: %s": {
+        "fr": "Déjà lancée : %s",
+        "en": "Already running: %s",
+    },
+    "Dolibarr %s serves %s": {
+        "fr": "Dolibarr %s sert %s",
+        "en": "Dolibarr %s serves %s",
+    },
+    "No development Dolibarr instance.": {
+        "fr": "Aucune instance Dolibarr de développement.",
+        "en": "No development Dolibarr instance.",
+    },
+    "No development instance named %s.": {
+        "fr": "Aucune instance de développement nommée %s.",
+        "en": "No development instance named %s.",
+    },
+    "PHP-FPM or nginx is missing: install the instance again.": {
+        "fr": "PHP-FPM ou nginx manque : réinstallez l'instance.",
+        "en": "PHP-FPM or nginx is missing: install the instance again.",
+    },
+    "Port %s is already taken.": {
+        "fr": "Le port %s est déjà pris.",
+        "en": "Port %s is already taken.",
+    },
+    "Stopped: %s": {
+        "fr": "Arrêtée : %s",
+        "en": "Stopped: %s",
+    },
+    "nginx does not start:": {
+        "fr": "nginx ne démarre pas :",
+        "en": "nginx does not start:",
+    },
+    "serving": {
+        "fr": "en service",
+        "en": "serving",
+    },
+    "not running": {
+        "fr": "arrêtée",
+        "en": "not running",
+    },
+    "half running: one daemon is down": {
+        "fr": "à moitié lancée : un démon est arrêté",
+        "en": "half running: one daemon is down",
+    },
+    "unknown: a pid file is unreadable": {
+        "fr": "inconnu : un fichier pid est illisible",
+        "en": "unknown: a pid file is unreadable",
+    },
+    "Check %s before starting.": {
+        "fr": "Vérifiez %s avant de lancer.",
+        "en": "Check %s before starting.",
+    },
+    # Dolibarr — Exécution › Dolibarr (script/todo/dolibarr_menu.py)
+    "Dolibarr": {
+        "fr": "🐘 Dolibarr",
+        "en": "🐘 Dolibarr",
+    },
+    "Dolibarr - Instances: install, run, follow": {
+        "fr": "🐘 Dolibarr - Instances : installer, lancer, suivre",
+        "en": "🐘 Dolibarr - Instances: install, run, follow",
+    },
+    "Development instances": {
+        "fr": "🛠️ Instances de développement",
+        "en": "🛠️ Development instances",
+    },
+    "Dolibarr - Install an instance": {
+        "fr": "📥 Dolibarr - Installer une instance",
+        "en": "📥 Dolibarr - Install an instance",
+    },
+    "Dolibarr - Start an instance": {
+        "fr": "▶️ Dolibarr - Lancer une instance",
+        "en": "▶️ Dolibarr - Start an instance",
+    },
+    "Dolibarr - Stop an instance": {
+        "fr": "⏹️ Dolibarr - Arrêter une instance",
+        "en": "⏹️ Dolibarr - Stop an instance",
+    },
+    "Dolibarr - Instance status": {
+        "fr": "📊 Dolibarr - État des instances",
+        "en": "📊 Dolibarr - Instance status",
+    },
+    "Dolibarr - Instance logs": {
+        "fr": "📜 Dolibarr - Journaux d'une instance",
+        "en": "📜 Dolibarr - Instance logs",
+    },
+    "Dolibarr instance:": {
+        "fr": "Instance Dolibarr :",
+        "en": "Dolibarr instance:",
+    },
+    # Dolibarr — épinglage (script/dolibarr/pin.py)
+    "Already pinned on %s.": {
+        "fr": "Déjà épinglé sur %s.",
+        "en": "Already pinned on %s.",
+    },
+    "Cannot read the version at %s.": {
+        "fr": "Impossible de lire la version à %s.",
+        "en": "Cannot read the version at %s.",
+    },
+    "Commit %s -> %s, version %s -> %s, branch %s -> %s": {
+        "fr": "Commit %s -> %s, version %s -> %s, branche %s -> %s",
+        "en": "Commit %s -> %s, version %s -> %s, branch %s -> %s",
+    },
+    "Head of %s upstream: %s": {
+        "fr": "Tête de %s en amont : %s",
+        "en": "Head of %s upstream: %s",
+    },
+    "Head of %s upstream: unreachable": {
+        "fr": "Tête de %s en amont : injoignable",
+        "en": "Head of %s upstream: unreachable",
+    },
+    "Image %s -> %s": {
+        "fr": "Image %s -> %s",
+        "en": "Image %s -> %s",
+    },
+    "No %s image on Docker Hub yet: keeping %s.": {
+        "fr": "Pas encore d'image %s sur Docker Hub : %s est gardée.",
+        "en": "No %s image on Docker Hub yet: keeping %s.",
+    },
+    "Nothing upstream at %s.": {
+        "fr": "Rien en amont à %s.",
+        "en": "Nothing upstream at %s.",
+    },
+    "Nothing written: add --apply.": {
+        "fr": "Rien n'est écrit : ajoutez --apply.",
+        "en": "Nothing written: add --apply.",
+    },
+    "Pin written. Sync the checkout with:": {
+        "fr": "Épinglage écrit. Synchronisez le checkout avec :",
+        "en": "Pin written. Sync the checkout with:",
+    },
+    "Pinned: Dolibarr %s, branch %s, commit %s": {
+        "fr": "Épinglé : Dolibarr %s, branche %s, commit %s",
+        "en": "Pinned: Dolibarr %s, branch %s, commit %s",
+    },
+    "Version %s does not belong to branch %s.": {
+        "fr": "La version %s n'appartient pas à la branche %s.",
+        "en": "Version %s does not belong to branch %s.",
+    },
+    "Dolibarr - Update the pinned commit": {
+        "fr": "📌 Dolibarr - Relever le commit épinglé",
+        "en": "📌 Dolibarr - Update the pinned commit",
+    },
+    "Apply this pin? (y/N): ": {
+        "fr": "Appliquer cet épinglage ? (o/N) : ",
+        "en": "Apply this pin? (y/N): ",
+    },
+    "Sync the Dolibarr checkout now? (y/N): ": {
+        "fr": "Synchroniser le checkout Dolibarr maintenant ? (o/N) : ",
+        "en": "Sync the Dolibarr checkout now? (y/N): ",
+    },
+    "Production needs a valid domain name (--domain).": {
+        "fr": "La production exige un nom de domaine valide (--domain).",
+        "en": "Production needs a valid domain name (--domain).",
+    },
+    "not needed": {
+        "fr": "sans objet",
+        "en": "not needed",
+    },
+    "Production checks": {
+        "fr": "Vérifications de production",
+        "en": "Production checks",
+    },
+    "certbot": {
+        "fr": "certbot",
+        "en": "certbot",
+    },
+    "System account": {
+        "fr": "Compte système",
+        "en": "System account",
+    },
+    "Code in /opt": {
+        "fr": "Code dans /opt",
+        "en": "Code in /opt",
+    },
+    "Hardening": {
+        "fr": "Durcissement",
+        "en": "Hardening",
+    },
+    "Scheduled jobs": {
+        "fr": "Tâches planifiées",
+        "en": "Scheduled jobs",
+    },
+    "PHP-FPM pool": {
+        "fr": "Pool PHP-FPM",
+        "en": "PHP-FPM pool",
+    },
+    "nginx site": {
+        "fr": "Site nginx",
+        "en": "nginx site",
+    },
+    "Check from PHP and HTTP": {
+        "fr": "Vérification par PHP et HTTP",
+        "en": "Check from PHP and HTTP",
+    },
+    "SELinux is enforcing: native production is not validated there yet.": {
+        "fr": "SELinux est en mode enforcing : la production native n'y est pas encore éprouvée.",
+        "en": "SELinux is enforcing: native production is not validated there yet.",
+    },
+    "The checkout lacks the pinned commit %s.": {
+        "fr": "Le dépôt local n'a pas le commit épinglé %s.",
+        "en": "The checkout lacks the pinned commit %s.",
+    },
+    "Cannot create the system account.": {
+        "fr": "Impossible de créer le compte système.",
+        "en": "Cannot create the system account.",
+    },
+    "Cannot create %s.": {
+        "fr": "Impossible de créer %s.",
+        "en": "Cannot create %s.",
+    },
+    "Cannot export the pinned code.": {
+        "fr": "Impossible d'exporter le code épinglé.",
+        "en": "Cannot export the pinned code.",
+    },
+    "Cannot secure %s.": {
+        "fr": "Impossible de protéger %s.",
+        "en": "Cannot secure %s.",
+    },
+    "Cannot read %s.": {
+        "fr": "Impossible de lire %s.",
+        "en": "Cannot read %s.",
+    },
+    "Cannot enable the Cron module.": {
+        "fr": "Impossible d'activer le module Cron.",
+        "en": "Cannot enable the Cron module.",
+    },
+    "Cannot enable the scheduled jobs.": {
+        "fr": "Impossible d'activer les tâches planifiées.",
+        "en": "Cannot enable the scheduled jobs.",
+    },
+    "PHP-FPM rejects the pool.": {
+        "fr": "PHP-FPM refuse le pool.",
+        "en": "PHP-FPM rejects the pool.",
+    },
+    "PHP-FPM does not start.": {
+        "fr": "PHP-FPM ne démarre pas.",
+        "en": "PHP-FPM does not start.",
+    },
+    "Cannot enable the site.": {
+        "fr": "Impossible d'activer le site.",
+        "en": "Cannot enable the site.",
+    },
+    "nginx rejects the configuration.": {
+        "fr": "nginx refuse la configuration.",
+        "en": "nginx rejects the configuration.",
+    },
+    "nginx does not start.": {
+        "fr": "nginx ne démarre pas.",
+        "en": "nginx does not start.",
+    },
+    "certbot could not obtain the certificate.": {
+        "fr": "certbot n'a pas pu obtenir le certificat.",
+        "en": "certbot could not obtain the certificate.",
+    },
+    "nginx does not serve the login page.": {
+        "fr": "nginx ne sert pas la page de connexion.",
+        "en": "nginx does not serve the login page.",
+    },
+    "Invalid domain name: letters, digits, dots and hyphens.": {
+        "fr": "Nom de domaine invalide : lettres, chiffres, points et tirets.",
+        "en": "Invalid domain name: letters, digits, dots and hyphens.",
+    },
+    "OPcache stays off: PHP runs without its opcode cache.": {
+        "fr": "OPcache reste éteint : PHP tourne sans son cache d'opcodes.",
+        "en": "OPcache stays off: PHP runs without its opcode cache.",
+    },
+    "Instance files": {
+        "fr": "Fichiers de l'instance",
+        "en": "Instance files",
+    },
+    "Network and volumes": {
+        "fr": "Réseau et volumes",
+        "en": "Network and volumes",
+    },
+    "Database container": {
+        "fr": "Conteneur de la base",
+        "en": "Database container",
+    },
+    "Site container": {
+        "fr": "Conteneur du site",
+        "en": "Site container",
+    },
+    "First start": {
+        "fr": "Premier démarrage",
+        "en": "First start",
+    },
+    "Scheduled jobs container": {
+        "fr": "Conteneur des tâches planifiées",
+        "en": "Scheduled jobs container",
+    },
+    "Cannot pull %s.": {
+        "fr": "Impossible de télécharger %s.",
+        "en": "Cannot pull %s.",
+    },
+    "Cannot start %s.": {
+        "fr": "Impossible de démarrer %s.",
+        "en": "Cannot start %s.",
+    },
+    "Port %s is already in use.": {
+        "fr": "Le port %s est déjà pris.",
+        "en": "Port %s is already in use.",
+    },
+    "The site does not serve the login page.": {
+        "fr": "Le site ne sert pas la page de connexion.",
+        "en": "The site does not serve the login page.",
+    },
+    "Container images": {
+        "fr": "Images des conteneurs",
+        "en": "Container images",
+    },
+    "container started": {
+        "fr": "conteneur démarré",
+        "en": "container started",
+    },
+    "half running: a container is stopped": {
+        "fr": "à moitié lancée : un conteneur est arrêté",
+        "en": "half running: a container is stopped",
+    },
+    "a container is missing: install the instance again": {
+        "fr": "un conteneur manque : réinstallez l'instance",
+        "en": "a container is missing: install the instance again",
+    },
+    "The containers do not start:": {
+        "fr": "Les conteneurs ne démarrent pas :",
+        "en": "The containers do not start:",
+    },
+    "Dolibarr - Find installations (local or SSH)": {
+        "fr": "🔎 Dolibarr - Trouver les installations (locales ou SSH)",
+        "en": "🔎 Dolibarr - Find installations (local or SSH)",
+    },
+    "This machine": {
+        "fr": "Ce poste",
+        "en": "This machine",
+    },
+    "Every host of ~/.ssh/config": {
+        "fr": "Tous les hôtes de ~/.ssh/config",
+        "en": "Every host of ~/.ssh/config",
+    },
+    "Where to look for Dolibarr?": {
+        "fr": "Où chercher Dolibarr ?",
+        "en": "Where to look for Dolibarr?",
+    },
+    "Name a host with --ssh, or use --local.": {
+        "fr": "Nommez un hôte avec --ssh, ou utilisez --local.",
+        "en": "Name a host with --ssh, or use --local.",
+    },
+    "reached": {
+        "fr": "joint",
+        "en": "reached",
+    },
+    "key refused: check the SSH key of this host": {
+        "fr": "clé refusée : vérifiez la clé SSH de cet hôte",
+        "en": "key refused: check the SSH key of this host",
+    },
+    "unknown or changed host key: connect once by hand": {
+        "fr": "clé d'hôte inconnue ou changée : connectez-vous une fois à la main",
+        "en": "unknown or changed host key: connect once by hand",
+    },
+    "the probe did not answer": {
+        "fr": "la sonde n'a pas répondu",
+        "en": "the probe did not answer",
+    },
+    "Dolibarr found": {
+        "fr": "Dolibarr trouvé",
+        "en": "Dolibarr found",
+    },
+    "no Dolibarr found": {
+        "fr": "aucun Dolibarr trouvé",
+        "en": "no Dolibarr found",
+    },
+    "no Dolibarr found, some directories are unreadable": {
+        "fr": "aucun Dolibarr trouvé, des dossiers sont illisibles",
+        "en": "no Dolibarr found, some directories are unreadable",
+    },
+    "Report:": {
+        "fr": "Rapport :",
+        "en": "Report:",
+    },
+    "Served version": {
+        "fr": "Version servie",
+        "en": "Served version",
+    },
+    "Code": {
+        "fr": "Code",
+        "en": "Code",
+    },
+    "conf.php": {
+        "fr": "conf.php",
+        "en": "conf.php",
+    },
+    "Install page": {
+        "fr": "Page d'installation",
+        "en": "Install page",
+    },
+    "PHP": {
+        "fr": "PHP",
+        "en": "PHP",
+    },
+    "Instance containers": {
+        "fr": "Conteneurs de l'instance",
+        "en": "Instance containers",
+    },
+    "%d core files modified": {
+        "fr": "%d fichiers du core modifiés",
+        "en": "%d core files modified",
+    },
+    "%s served, %s expected": {
+        "fr": "%s servie, %s attendue",
+        "en": "%s served, %s expected",
+    },
+    "No Dolibarr instance.": {
+        "fr": "Aucune instance Dolibarr.",
+        "en": "No Dolibarr instance.",
+    },
+    "No instance named %s.": {
+        "fr": "Aucune instance nommée %s.",
+        "en": "No instance named %s.",
+    },
+    "absent: %s": {
+        "fr": "absent : %s",
+        "en": "absent: %s",
+    },
+    "absent: the installer can run again": {
+        "fr": "absent : l'installateur peut se relancer",
+        "en": "absent: the installer can run again",
+    },
+    "added": {
+        "fr": "ajoutés",
+        "en": "added",
+    },
+    "modified": {
+        "fr": "modifiés",
+        "en": "modified",
+    },
+    "unreadable": {
+        "fr": "illisibles",
+        "en": "unreadable",
+    },
+    "cannot read the pinned archive: %s": {
+        "fr": "archive épinglée illisible : %s",
+        "en": "cannot read the pinned archive: %s",
+    },
+    "checkout at %s, pinned at %s": {
+        "fr": "checkout à %s, épinglage à %s",
+        "en": "checkout at %s, pinned at %s",
+    },
+    "identical to the pinned archive": {
+        "fr": "identique à l'archive épinglée",
+        "en": "identical to the pinned archive",
+    },
+    "last run: %s": {
+        "fr": "dernier passage : %s",
+        "en": "last run: %s",
+    },
+    "missing: %s": {
+        "fr": "manquant : %s",
+        "en": "missing: %s",
+    },
+    "mode %o, %o expected": {
+        "fr": "mode %o, %o attendu",
+        "en": "mode %o, %o expected",
+    },
+    "no login page at %s": {
+        "fr": "aucune page de connexion à %s",
+        "en": "no login page at %s",
+    },
+    "readable by every account (%o)": {
+        "fr": "lisible par tous les comptes (%o)",
+        "en": "readable by every account (%o)",
+    },
+    "refused (403)": {
+        "fr": "refusée (403)",
+        "en": "refused (403)",
+    },
+    "stopped: %s": {
+        "fr": "arrêtés : %s",
+        "en": "stopped: %s",
+    },
+    "the install pages are served": {
+        "fr": "les pages d'installation sont servies",
+        "en": "the install pages are served",
+    },
+    "the pinned commit, unmodified": {
+        "fr": "le commit épinglé, sans modification",
+        "en": "the pinned commit, unmodified",
+    },
+    "the three are running": {
+        "fr": "les trois tournent",
+        "en": "the three are running",
+    },
+    "timer %s inactive": {
+        "fr": "minuterie %s inactive",
+        "en": "timer %s inactive",
+    },
+    "Dolibarr - Health, security and integrity": {
+        "fr": "🩺 Dolibarr - Santé, sécurité et intégrité",
+        "en": "🩺 Dolibarr - Health, security and integrity",
+    },
+    "Dolibarr - Back up an instance": {
+        "fr": "💾 Dolibarr - Sauvegarder une instance",
+        "en": "💾 Dolibarr - Back up an instance",
+    },
+    "Cannot save %s:": {
+        "fr": "Impossible de sauvegarder %s :",
+        "en": "Cannot save %s:",
+    },
+    "Backup written: %s": {
+        "fr": "Sauvegarde écrite : %s",
+        "en": "Backup written: %s",
+    },
+    "Instance:": {
+        "fr": "Instance :",
+        "en": "Instance:",
+    },
+    "Dolibarr - Restore a backup": {
+        "fr": "♻️ Dolibarr - Restaurer une sauvegarde",
+        "en": "♻️ Dolibarr - Restore a backup",
+    },
+    "No backup to restore.": {
+        "fr": "Aucune sauvegarde à restaurer.",
+        "en": "No backup to restore.",
+    },
+    "Backup to restore:": {
+        "fr": "Sauvegarde à restaurer :",
+        "en": "Backup to restore:",
+    },
+    "This overwrites the database, documents and modules of %s; a safety backup comes first.": {
+        "fr": "Ceci écrase la base, les documents et les modules de %s ; une sauvegarde de sûreté est prise d'abord.",
+        "en": "This overwrites the database, documents and modules of %s; a safety backup comes first.",
+    },
+    "Retype %s to confirm: ": {
+        "fr": "Retapez %s pour confirmer : ",
+        "en": "Retype %s to confirm: ",
+    },
+    "Restoring overwrites %s: retype its name with --confirm.": {
+        "fr": "Restaurer écrase %s : retapez son nom avec --confirm.",
+        "en": "Restoring overwrites %s: retype its name with --confirm.",
+    },
+    "Unsafe or unreadable archive: %s": {
+        "fr": "Archive dangereuse ou illisible : %s",
+        "en": "Unsafe or unreadable archive: %s",
+    },
+    "Not a Dolibarr backup: %s": {
+        "fr": "Pas une sauvegarde Dolibarr : %s",
+        "en": "Not a Dolibarr backup: %s",
+    },
+    "The backup comes from %s, newer than the instance (%s).": {
+        "fr": "La sauvegarde vient de %s, plus récente que l'instance (%s).",
+        "en": "The backup comes from %s, newer than the instance (%s).",
+    },
+    "The safety backup failed: nothing was restored.": {
+        "fr": "La sauvegarde de sûreté a échoué : rien n'a été restauré.",
+        "en": "The safety backup failed: nothing was restored.",
+    },
+    "Safety backup: %s": {
+        "fr": "Sauvegarde de sûreté : %s",
+        "en": "Safety backup: %s",
+    },
+    "Restored from %s.": {
+        "fr": "Restauré depuis %s.",
+        "en": "Restored from %s.",
+    },
+    "Restore stopped: %s": {
+        "fr": "Restauration arrêtée : %s",
+        "en": "Restore stopped: %s",
+    },
+    "The state before the restore is in %s.": {
+        "fr": "L'état d'avant la restauration est dans %s.",
+        "en": "The state before the restore is in %s.",
+    },
+    "Scheduled jobs stopped": {
+        "fr": "Tâches planifiées arrêtées",
+        "en": "Scheduled jobs stopped",
+    },
+    "Scheduled jobs started": {
+        "fr": "Tâches planifiées relancées",
+        "en": "Scheduled jobs started",
+    },
+    "Scheduled jobs key applied": {
+        "fr": "Clé des tâches planifiées appliquée",
+        "en": "Scheduled jobs key applied",
+    },
+    "Database recreated": {
+        "fr": "Base recréée",
+        "en": "Database recreated",
+    },
+    "Database loaded": {
+        "fr": "Base chargée",
+        "en": "Database loaded",
+    },
+    "Documents replaced": {
+        "fr": "Documents remplacés",
+        "en": "Documents replaced",
+    },
+    "Modules replaced": {
+        "fr": "Modules remplacés",
+        "en": "Modules replaced",
+    },
+    "Instance key restored": {
+        "fr": "Clé d'instance restaurée",
+        "en": "Instance key restored",
+    },
+    "Containers recreated": {
+        "fr": "Conteneurs recréés",
+        "en": "Containers recreated",
+    },
+    "Dolibarr - List the instances": {
+        "fr": "📋 Dolibarr - Lister les instances",
+        "en": "📋 Dolibarr - List the instances",
+    },
+    "Dolibarr - Remove an instance": {
+        "fr": "🗑️ Dolibarr - Retirer une instance",
+        "en": "🗑️ Dolibarr - Remove an instance",
+    },
+    "Back up the instance first? (Y/n): ": {
+        "fr": "Sauvegarder l'instance d'abord ? (O/n) : ",
+        "en": "Back up the instance first? (Y/n): ",
+    },
+    "The backup failed: nothing was removed.": {
+        "fr": "La sauvegarde a échoué : rien n'a été retiré.",
+        "en": "The backup failed: nothing was removed.",
+    },
+    "Removing deletes %s: retype its name with --confirm.": {
+        "fr": "Retirer supprime %s : retapez son nom avec --confirm.",
+        "en": "Removing deletes %s: retype its name with --confirm.",
+    },
+    "Not everything was removed; running the removal again resumes:": {
+        "fr": "Tout n'a pas été retiré ; relancer le retrait reprend :",
+        "en": "Not everything was removed; running the removal again resumes:",
+    },
+    "Instance %s removed.": {
+        "fr": "Instance %s retirée.",
+        "en": "Instance %s removed.",
+    },
+    "Kept, your modules: %s": {
+        "fr": "Gardés, vos modules : %s",
+        "en": "Kept, your modules: %s",
+    },
+    "custom/ kept": {
+        "fr": "custom/ gardé",
+        "en": "custom/ kept",
+    },
+    "The certbot certificate of %s is kept; to remove it:": {
+        "fr": "Le certificat certbot de %s est gardé ; pour le supprimer :",
+        "en": "The certbot certificate of %s is kept; to remove it:",
+    },
+    "Already at %s (%s).": {
+        "fr": "Déjà à %s (%s).",
+        "en": "Already at %s (%s).",
+    },
+    "Backup before the upgrade: %s": {
+        "fr": "Sauvegarde avant la montée : %s",
+        "en": "Backup before the upgrade: %s",
+    },
+    "Dolibarr %s upgraded to %s.": {
+        "fr": "Dolibarr %s monté à %s.",
+        "en": "Dolibarr %s upgraded to %s.",
+    },
+    "Rolling back to the backup…": {
+        "fr": "Retour arrière vers la sauvegarde…",
+        "en": "Rolling back to the backup…",
+    },
+    "The backup failed: nothing was upgraded.": {
+        "fr": "La sauvegarde a échoué : rien n'a été monté.",
+        "en": "The backup failed: nothing was upgraded.",
+    },
+    "The core is modified in %s: commit or set it aside first.": {
+        "fr": "Le core est modifié dans %s : committez-le ou mettez-le de côté d'abord.",
+        "en": "The core is modified in %s: commit or set it aside first.",
+    },
+    "The database reads %s, %s expected.": {
+        "fr": "La base indique %s, %s attendue.",
+        "en": "The database reads %s, %s expected.",
+    },
+    "The pin (%s) is older than the instance (%s): no downgrade.": {
+        "fr": "L'épinglage (%s) est plus ancien que l'instance (%s) : pas de descente.",
+        "en": "The pin (%s) is older than the instance (%s): no downgrade.",
+    },
+    "This runtime is not upgraded by this tool yet.": {
+        "fr": "Cette exécution ne se monte pas encore par cet outil.",
+        "en": "This runtime is not upgraded by this tool yet.",
+    },
+    "Upgrade stopped: %s": {
+        "fr": "Montée arrêtée : %s",
+        "en": "Upgrade stopped: %s",
+    },
+    "Upgrading %s from %s to %s.": {
+        "fr": "Montée de %s de %s à %s.",
+        "en": "Upgrading %s from %s to %s.",
+    },
+    "Checkout synchronized": {
+        "fr": "Checkout synchronisé",
+        "en": "Checkout synchronized",
+    },
+    "Code at the pinned commit": {
+        "fr": "Code au commit épinglé",
+        "en": "Code at the pinned commit",
+    },
+    "Upgrade scripts": {
+        "fr": "Scripts de montée",
+        "en": "Upgrade scripts",
+    },
+    "New code staged": {
+        "fr": "Nouveau code préparé",
+        "en": "New code staged",
+    },
+    "Code swapped": {
+        "fr": "Code permuté",
+        "en": "Code swapped",
+    },
+    "The site does not serve %s.": {
+        "fr": "Le site ne sert pas %s.",
+        "en": "The site does not serve %s.",
+    },
+    "Image pulled": {
+        "fr": "Image téléchargée",
+        "en": "Image pulled",
+    },
+    "Install lock removed": {
+        "fr": "Verrou d'installation ôté",
+        "en": "Install lock removed",
+    },
+    "The image migrates one major version at a time (%s to %s).": {
+        "fr": "L'image ne migre qu'une version majeure à la fois (%s vers %s).",
+        "en": "The image migrates one major version at a time (%s to %s).",
+    },
+    "Dolibarr - Upgrade an instance": {
+        "fr": "⬆️ Dolibarr - Monter une instance",
+        "en": "⬆️ Dolibarr - Upgrade an instance",
+    },
+    "The instance stops during the upgrade; a backup comes first and a failure rolls back.": {
+        "fr": "L'instance s'arrête pendant la montée ; une sauvegarde vient d'abord et un échec revient en arrière.",
+        "en": "The instance stops during the upgrade; a backup comes first and a failure rolls back.",
+    },
+    "Upgrade %s to the pinned version? (y/N): ": {
+        "fr": "Monter %s à la version épinglée ? (o/N) : ",
+        "en": "Upgrade %s to the pinned version? (y/N): ",
+    },
+    "Full output: %s": {
+        "fr": "Sortie complète : %s",
+        "en": "Full output: %s",
+    },
+    "Pin": {
+        "fr": "Épinglage",
+        "en": "Pin",
+    },
+    "at %s, pinned at %s: upgrade it": {
+        "fr": "à %s, épinglée à %s : montez-la",
+        "en": "at %s, pinned at %s: upgrade it",
+    },
+    "Development tools": {
+        "fr": "🧑‍💻 Outils de développement",
+        "en": "🧑‍💻 Development tools",
+    },
+    "Dolibarr - Debug profile": {
+        "fr": "🐞 Dolibarr - Profil de déverminage",
+        "en": "🐞 Dolibarr - Debug profile",
+    },
+    "Debug profile:": {
+        "fr": "Profil de déverminage :",
+        "en": "Debug profile:",
+    },
+    "Turn on (DebugBar, Syslog level 7, strict mode)": {
+        "fr": "Allumer (DebugBar, Syslog niveau 7, mode strict)",
+        "en": "Turn on (DebugBar, Syslog level 7, strict mode)",
+    },
+    "Turn off, previous settings back": {
+        "fr": "Éteindre, réglages d'avant rendus",
+        "en": "Turn off, previous settings back",
+    },
+    "Follow dolibarr.log": {
+        "fr": "Suivre dolibarr.log",
+        "en": "Follow dolibarr.log",
+    },
+    "Filter (regular expression, Enter for everything): ": {
+        "fr": "Filtre (expression régulière, Entrée pour tout) : ",
+        "en": "Filter (regular expression, Enter for everything): ",
+    },
+    "Debug already on for %s.": {
+        "fr": "Déverminage déjà allumé pour %s.",
+        "en": "Debug already on for %s.",
+    },
+    "Debug could not be turned on:": {
+        "fr": "Impossible d'allumer le déverminage :",
+        "en": "Debug could not be turned on:",
+    },
+    "conf.php is left as is: the image rewrites it on each recreation.": {
+        "fr": "conf.php reste tel quel : l'image le réécrit à chaque recréation.",
+        "en": "conf.php is left as is: the image rewrites it on each recreation.",
+    },
+    "Debug on for %s: DebugBar, Syslog level 7, development features.": {
+        "fr": "Déverminage allumé pour %s : DebugBar, Syslog niveau 7, fonctionnalités en développement.",
+        "en": "Debug on for %s: DebugBar, Syslog level 7, development features.",
+    },
+    "Follow the log with: debug.py tail --instance %s": {
+        "fr": "Suivre le journal : debug.py tail --instance %s",
+        "en": "Follow the log with: debug.py tail --instance %s",
+    },
+    "Debug is not on for %s.": {
+        "fr": "Le déverminage n'est pas allumé pour %s.",
+        "en": "Debug is not on for %s.",
+    },
+    "Debug could not be turned off:": {
+        "fr": "Impossible d'éteindre le déverminage :",
+        "en": "Debug could not be turned off:",
+    },
+    "Debug off for %s: the previous settings are back.": {
+        "fr": "Déverminage éteint pour %s : les réglages d'avant sont revenus.",
+        "en": "Debug off for %s: the previous settings are back.",
+    },
+    "Debug on for %s since %s.": {
+        "fr": "Déverminage allumé pour %s depuis %s.",
+        "en": "Debug on for %s since %s.",
+    },
+    "%s is a production: retype its name with --confirm.": {
+        "fr": "%s est une production : retapez son nom avec --confirm.",
+        "en": "%s is a production: retype its name with --confirm.",
+    },
+    "Dolibarr - Modules: create, link, enable": {
+        "fr": "🧩 Dolibarr - Modules : créer, lier, activer",
+        "en": "🧩 Dolibarr - Modules: create, link, enable",
+    },
+    "No development instance.": {
+        "fr": "Aucune instance de développement.",
+        "en": "No development instance.",
+    },
+    "Create from the ModuleBuilder template": {
+        "fr": "Créer depuis le gabarit du ModuleBuilder",
+        "en": "Create from the ModuleBuilder template",
+    },
+    "Link a module kept in its own directory": {
+        "fr": "Lier un module tenu dans son propre dossier",
+        "en": "Link a module kept in its own directory",
+    },
+    "Enable a module": {
+        "fr": "Activer un module",
+        "en": "Enable a module",
+    },
+    "Disable a module": {
+        "fr": "Désactiver un module",
+        "en": "Disable a module",
+    },
+    "Module:": {
+        "fr": "Module :",
+        "en": "Module:",
+    },
+    "Module directory: ": {
+        "fr": "Dossier du module : ",
+        "en": "Module directory: ",
+    },
+    "Module name (letters and digits): ": {
+        "fr": "Nom du module (lettres et chiffres) : ",
+        "en": "Module name (letters and digits): ",
+    },
+    "Module ID (Enter: first free from 500000): ": {
+        "fr": "Numéro du module (Entrée : premier libre dès 500000) : ",
+        "en": "Module ID (Enter: first free from 500000): ",
+    },
+    "A module ID is a number.": {
+        "fr": "Le numéro d'un module est un nombre.",
+        "en": "A module ID is a number.",
+    },
+    "Enable it now? (y/N): ": {
+        "fr": "L'activer maintenant ? (o/N) : ",
+        "en": "Enable it now? (y/N): ",
+    },
+    "The code of %s cannot be read; a container instance must be running (run.py start).": {
+        "fr": "Le code de %s est illisible ; une instance conteneur doit tourner (run.py start).",
+        "en": "The code of %s cannot be read; a container instance must be running (run.py start).",
+    },
+    "%s exists": {
+        "fr": "%s existe",
+        "en": "%s exists",
+    },
+    "Module %s created: %s (ID %d).": {
+        "fr": "Module %s créé : %s (numéro %d).",
+        "en": "Module %s created: %s (ID %d).",
+    },
+    "IDs below 500000 are reserved one by one on the Dolibarr wiki (List_of_modules_id): keep this one only if it is reserved for this module.": {
+        "fr": "Sous 500000, les numéros se réservent un par un sur le wiki de Dolibarr (List_of_modules_id) : ne gardez celui-ci que s'il est réservé à ce module.",
+        "en": "IDs below 500000 are reserved one by one on the Dolibarr wiki (List_of_modules_id): keep this one only if it is reserved for this module.",
+    },
+    "%s links to %s.": {
+        "fr": "%s pointe vers %s.",
+        "en": "%s links to %s.",
+    },
+    "module %s exists: %s": {
+        "fr": "le module %s existe : %s",
+        "en": "module %s exists: %s",
+    },
+    "htdocs/%s exists": {
+        "fr": "htdocs/%s existe",
+        "en": "htdocs/%s exists",
+    },
+    "Invalid version: %s": {
+        "fr": "Version invalide : %s",
+        "en": "Invalid version: %s",
+    },
+    "Invalid picto: %s": {
+        "fr": "Picto invalide : %s",
+        "en": "Invalid picto: %s",
+    },
+    "Invalid editor URL: %s": {
+        "fr": "URL d'éditeur invalide : %s",
+        "en": "Invalid editor URL: %s",
+    },
+    "Name %s is taken: %s": {
+        "fr": "Le nom %s est pris : %s",
+        "en": "Name %s is taken: %s",
+    },
+    "A container only sees its custom/: create or copy the module into %s.": {
+        "fr": "Un conteneur ne voit que son custom/ : créez ou copiez le module dans %s.",
+        "en": "A container only sees its custom/: create or copy the module into %s.",
+    },
+    "No module descriptor in %s/core/modules.": {
+        "fr": "Aucun descripteur de module dans %s/core/modules.",
+        "en": "No module descriptor in %s/core/modules.",
+    },
+    "%s already links to %s.": {
+        "fr": "%s pointe déjà vers %s.",
+        "en": "%s already links to %s.",
+    },
+    "No module %s on %s.": {
+        "fr": "Aucun module %s sur %s.",
+        "en": "No module %s on %s.",
+    },
+    "Dolibarr refused: %s": {
+        "fr": "Dolibarr a refusé : %s",
+        "en": "Dolibarr refused: %s",
+    },
+    "%s enabled on %s.": {
+        "fr": "%s activé sur %s.",
+        "en": "%s enabled on %s.",
+    },
+    "%s disabled on %s.": {
+        "fr": "%s désactivé sur %s.",
+        "en": "%s disabled on %s.",
+    },
+    "%s is a production: modules are developed on a development instance.": {
+        "fr": "%s est une production : les modules se développent sur une instance de développement.",
+        "en": "%s is a production: modules are developed on a development instance.",
+    },
+    "Invalid author or editor: %s": {
+        "fr": "Auteur ou éditeur invalide : %s",
+        "en": "Invalid author or editor: %s",
+    },
+    "Invalid module name %r: letters and digits only.": {
+        "fr": "Nom de module %r invalide : lettres et chiffres seulement.",
+        "en": "Invalid module name %r: letters and digits only.",
+    },
+    "A module ID starts at %d.": {
+        "fr": "Le numéro d'un module commence à %d.",
+        "en": "A module ID starts at %d.",
+    },
+    "ID %d is used by %s.": {
+        "fr": "Le numéro %d est pris par %s.",
+        "en": "ID %d is used by %s.",
+    },
+    "Module not created: %s": {
+        "fr": "Module non créé : %s",
+        "en": "Module not created: %s",
+    },
+    "ID %d is in the core range (below 95000)": {
+        "fr": "Le numéro %d est dans la plage du cœur (sous 95000)",
+        "en": "ID %d is in the core range (below 95000)",
+    },
+    "No package built.": {
+        "fr": "Aucun paquet bâti.",
+        "en": "No package built.",
+    },
+    "Package: %s": {
+        "fr": "Paquet : %s",
+        "en": "Package: %s",
+    },
+    "Not ready for DoliStore: see the ✗ above.": {
+        "fr": "Pas prêt pour DoliStore : voir les ✗ plus haut.",
+        "en": "Not ready for DoliStore: see the ✗ above.",
+    },
+    "ID %d in a distributable range": {
+        "fr": "Numéro %d dans une plage distribuable",
+        "en": "ID %d in a distributable range",
+    },
+    "ID %d is private (500000 and up): reserve one from 100000 to 499999 on the Dolibarr wiki (List_of_modules_id)": {
+        "fr": "Le numéro %d est privé (500000 et plus) : en réserver un de 100000 à 499999 sur le wiki de Dolibarr (List_of_modules_id)",
+        "en": "ID %d is private (500000 and up): reserve one from 100000 to 499999 on the Dolibarr wiki (List_of_modules_id)",
+    },
+    "Module descriptor: version %s": {
+        "fr": "Descripteur du module : version %s",
+        "en": "Module descriptor: version %s",
+    },
+    "PHP syntax": {
+        "fr": "Syntaxe PHP",
+        "en": "PHP syntax",
+    },
+    "en_US language file missing": {
+        "fr": "Fichier de langue en_US absent",
+        "en": "en_US language file missing",
+    },
+    "Pages try main.inc.php in several places": {
+        "fr": "Les pages essaient main.inc.php à plusieurs endroits",
+        "en": "Pages try main.inc.php in several places",
+    },
+    "Command-line scripts": {
+        "fr": "Scripts en ligne de commande",
+        "en": "Command-line scripts",
+    },
+    "Copies of core files not checked: no core checkout here": {
+        "fr": "Copies de fichiers du cœur non vérifiées : aucun checkout du cœur ici",
+        "en": "Copies of core files not checked: no core checkout here",
+    },
+    "%s uses the Dolibarr trademark as a word of the name": {
+        "fr": "%s emploie la marque Dolibarr comme mot du nom",
+        "en": "%s uses the Dolibarr trademark as a word of the name",
+    },
+    "Editor name or URL empty in the descriptor": {
+        "fr": "Nom ou URL de l'éditeur vide dans le descripteur",
+        "en": "Editor name or URL empty in the descriptor",
+    },
+    "No module %s in the custom/ of this instance.": {
+        "fr": "Aucun module %s dans le custom/ de cette instance.",
+        "en": "No module %s in the custom/ of this instance.",
+    },
+    "Package name: %s": {
+        "fr": "Nom du paquet : %s",
+        "en": "Package name: %s",
+    },
+    "Package name %s is refused by Dolibarr: numeric version needed": {
+        "fr": "Dolibarr refuse le nom de paquet %s : il faut une version numérique",
+        "en": "Package name %s is refused by Dolibarr: numeric version needed",
+    },
+    "PHP syntax: %s": {
+        "fr": "Syntaxe PHP : %s",
+        "en": "PHP syntax: %s",
+    },
+    "en_US language file, complete": {
+        "fr": "Fichier de langue en_US, complet",
+        "en": "en_US language file, complete",
+    },
+    "Pages that try main.inc.php in one place only: %s": {
+        "fr": "Pages qui n'essaient main.inc.php qu'à un endroit : %s",
+        "en": "Pages that try main.inc.php in one place only: %s",
+    },
+    "Scripts without #!/usr/bin/env php: %s": {
+        "fr": "Scripts sans #!/usr/bin/env php : %s",
+        "en": "Scripts without #!/usr/bin/env php: %s",
+    },
+    "No copy of a Dolibarr core file": {
+        "fr": "Aucune copie d'un fichier du cœur de Dolibarr",
+        "en": "No copy of a Dolibarr core file",
+    },
+    "Module descriptor: %s": {
+        "fr": "Descripteur du module : %s",
+        "en": "Module descriptor: %s",
+    },
+    "Keys missing from en_US: %s": {
+        "fr": "Clés absentes d'en_US : %s",
+        "en": "Keys missing from en_US: %s",
+    },
+    "Copies of Dolibarr core files: %s": {
+        "fr": "Copies de fichiers du cœur de Dolibarr : %s",
+        "en": "Copies of Dolibarr core files: %s",
+    },
+    "Package:": {
+        "fr": "Paquet :",
+        "en": "Package:",
+    },
+    "Dolibarr - Package a module (DoliStore)": {
+        "fr": "📦 Dolibarr - Empaqueter un module (DoliStore)",
+        "en": "📦 Dolibarr - Package a module (DoliStore)",
+    },
+    "Check only": {
+        "fr": "Contrôler seulement",
+        "en": "Check only",
+    },
+    "Build the zip": {
+        "fr": "Bâtir le zip",
+        "en": "Build the zip",
+    },
+    "Build the zip only if DoliStore-ready": {
+        "fr": "Bâtir le zip seulement s'il est prêt pour DoliStore",
+        "en": "Build the zip only if DoliStore-ready",
+    },
+    "The quality tools could not be installed:": {
+        "fr": "Les outils qualité n'ont pas pu s'installer :",
+        "en": "The quality tools could not be installed:",
+    },
+    "No module %s in %s.": {
+        "fr": "Aucun module %s dans %s.",
+        "en": "No module %s in %s.",
+    },
+    "no finding": {
+        "fr": "aucun constat",
+        "en": "no finding",
+    },
+    "findings above": {
+        "fr": "constats ci-dessus",
+        "en": "findings above",
+    },
+    "did not run to the end (code %d)": {
+        "fr": "n'est pas allé au bout (code %d)",
+        "en": "did not run to the end (code %d)",
+    },
+    "The Dolibarr checkout lacks %s: %s": {
+        "fr": "Il manque %s au checkout de Dolibarr : %s",
+        "en": "The Dolibarr checkout lacks %s: %s",
+    },
+    "Quality tools:": {
+        "fr": "Outils qualité :",
+        "en": "Quality tools:",
+    },
+    "Dolibarr - Code quality of a module (phpcs, PHPStan)": {
+        "fr": "🔬 Dolibarr - Qualité du code d'un module (phpcs, PHPStan)",
+        "en": "🔬 Dolibarr - Code quality of a module (phpcs, PHPStan)",
+    },
+    "phpcs and PHPStan": {
+        "fr": "phpcs et PHPStan",
+        "en": "phpcs and PHPStan",
+    },
+    "phpcs only (Dolibarr rules)": {
+        "fr": "phpcs seulement (règles de Dolibarr)",
+        "en": "phpcs only (Dolibarr rules)",
+    },
+    "PHPStan only": {
+        "fr": "PHPStan seulement",
+        "en": "PHPStan only",
+    },
+    "Dolibarr %s -> %s": {
+        "fr": "Dolibarr %s -> %s",
+        "en": "Dolibarr %s -> %s",
+    },
+    "Version %s not found upstream.": {
+        "fr": "Version %s introuvable en amont.",
+        "en": "Version %s not found upstream.",
+    },
+    "Hooks and triggers:": {
+        "fr": "Hooks et déclencheurs :",
+        "en": "Hooks and triggers:",
+    },
+    "Dolibarr - Hooks and triggers between versions": {
+        "fr": "🪝 Dolibarr - Hooks et déclencheurs entre versions",
+        "en": "🪝 Dolibarr - Hooks and triggers between versions",
+    },
+    "List, at a version": {
+        "fr": "Lister, à une version",
+        "en": "List, at a version",
+    },
+    "What changed since a version": {
+        "fr": "Ce qui a changé depuis une version",
+        "en": "What changed since a version",
+    },
+    "Version (tag, branch or commit; Enter: the pinned one): ": {
+        "fr": "Version (tag, branche ou commit ; Entrée : l'épinglée) : ",
+        "en": "Version (tag, branch or commit; Enter: the pinned one): ",
+    },
+    "Since which version (tag, branch or commit): ": {
+        "fr": "Depuis quelle version (tag, branche ou commit) : ",
+        "en": "Since which version (tag, branch or commit): ",
+    },
+    "detached": {
+        "fr": "détaché",
+        "en": "detached",
+    },
+    "A fix targets the oldest affected version (N-2 advised), anything else develop.": {
+        "fr": "Un correctif vise la plus vieille version touchée (N-2 conseillé), le reste develop.",
+        "en": "A fix targets the oldest affected version (N-2 advised), anything else develop.",
+    },
+    "No git identity (user.email): repo sync would reset the branch. Set it with: git config --global user.email ...": {
+        "fr": "Aucune identité git (user.email) : repo sync remettrait la branche à zéro. La poser par : git config --global user.email ...",
+        "en": "No git identity (user.email): repo sync would reset the branch. Set it with: git config --global user.email ...",
+    },
+    "Branch %s at the pinned commit %s, history deepened by %d.": {
+        "fr": "Branche %s au commit épinglé %s, historique approfondi de %d.",
+        "en": "Branch %s at the pinned commit %s, history deepened by %d.",
+    },
+    "Pinned commit: %s (%s, branch %s)": {
+        "fr": "Commit épinglé : %s (%s, branche %s)",
+        "en": "Pinned commit: %s (%s, branch %s)",
+    },
+    "Checkout: %s at %s": {
+        "fr": "Checkout : %s à %s",
+        "en": "Checkout: %s at %s",
+    },
+    "Work since the pin: %d commit(s), %d uncommitted file(s)": {
+        "fr": "Travail depuis l'épinglé : %d commit(s), %d fichier(s) non commité(s)",
+        "en": "Work since the pin: %d commit(s), %d uncommitted file(s)",
+    },
+    "Fork ERPLibre/dolibarr: answers; its development manifest comes next.": {
+        "fr": "Fork ERPLibre/dolibarr : il répond ; son manifest de développement vient ensuite.",
+        "en": "Fork ERPLibre/dolibarr: answers; its development manifest comes next.",
+    },
+    "Fork ERPLibre/dolibarr: not found; work stays on a local branch.": {
+        "fr": "Fork ERPLibre/dolibarr : introuvable ; le travail reste sur une branche locale.",
+        "en": "Fork ERPLibre/dolibarr: not found; work stays on a local branch.",
+    },
+    "No work commit since the pinned commit.": {
+        "fr": "Aucun commit de travail depuis le commit épinglé.",
+        "en": "No work commit since the pinned commit.",
+    },
+    "%d patch(es) in %s": {
+        "fr": "%d patch(s) dans %s",
+        "en": "%d patch(es) in %s",
+    },
+    "Every commit signed off by its author (DCO)": {
+        "fr": "Chaque commit signé par son auteur (DCO)",
+        "en": "Every commit signed off by its author (DCO)",
+    },
+    "Neither ChangeLog nor a language other than en_US": {
+        "fr": "Ni ChangeLog ni langue autre qu'en_US",
+        "en": "Neither ChangeLog nor a language other than en_US",
+    },
+    "Invalid branch name: %s": {
+        "fr": "Nom de branche invalide : %s",
+        "en": "Invalid branch name: %s",
+    },
+    "Branch %s created; the history could not be deepened:": {
+        "fr": "Branche %s créée ; l'historique n'a pas pu être approfondi :",
+        "en": "Branch %s created; the history could not be deepened:",
+    },
+    "History: shallow, %s commit(s)": {
+        "fr": "Historique : peu profond, %s commit(s)",
+        "en": "History: shallow, %s commit(s)",
+    },
+    "History: full, %s commit(s)": {
+        "fr": "Historique : complet, %s commit(s)",
+        "en": "History: full, %s commit(s)",
+    },
+    "Without the author's Signed-off-by (DCO): %s": {
+        "fr": "Sans le Signed-off-by de l'auteur (DCO) : %s",
+        "en": "Without the author's Signed-off-by (DCO): %s",
+    },
+    "Files left to the release process or to Transifex: %s": {
+        "fr": "Fichiers laissés à la publication ou à Transifex : %s",
+        "en": "Files left to the release process or to Transifex: %s",
+    },
+    "No Dolibarr checkout at %s: sync it with script/manifest/update_manifest_local_dolibarr.sh": {
+        "fr": "Aucun checkout Dolibarr à %s : le synchroniser par script/manifest/update_manifest_local_dolibarr.sh",
+        "en": "No Dolibarr checkout at %s: sync it with script/manifest/update_manifest_local_dolibarr.sh",
+    },
+    "No commit carries %s: the next repo sync resets this branch.": {
+        "fr": "Aucun commit ne porte %s : le prochain repo sync remet cette branche à zéro.",
+        "en": "No commit carries %s: the next repo sync resets this branch.",
+    },
+    "%s: no keyword (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC)": {
+        "fr": "%s : aucun mot-clé (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC)",
+        "en": "%s: no keyword (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC)",
+    },
+    "%s: CLOSE names the issue it closes (#123)": {
+        "fr": "%s : CLOSE nomme le ticket qu'il ferme (#123)",
+        "en": "%s: CLOSE names the issue it closes (#123)",
+    },
+    "%s: description of %d characters, 50 at most advised": {
+        "fr": "%s : description de %d caractères, 50 au plus conseillé",
+        "en": "%s: description of %d characters, 50 at most advised",
+    },
+    "Branch %s is stable: one fix per PR, here %d commits": {
+        "fr": "La branche %s est stable : un correctif par PR, ici %d commits",
+        "en": "Branch %s is stable: one fix per PR, here %d commits",
+    },
+    "Branch %s is stable: anything but a fix goes to develop": {
+        "fr": "La branche %s est stable : tout sauf un correctif va à develop",
+        "en": "Branch %s is stable: anything but a fix goes to develop",
+    },
+    "%s: structure changes go first in a PR of their own": {
+        "fr": "%s : un changement de structure passe d'abord dans sa propre PR",
+        "en": "%s: structure changes go first in a PR of their own",
+    },
+    "%s: %s reaches the ChangeLog only in capitals": {
+        "fr": "%s : %s n'entre au ChangeLog qu'en capitales",
+        "en": "%s: %s reaches the ChangeLog only in capitals",
+    },
+    "%s: a new library needs the project's approval first": {
+        "fr": "%s : une nouvelle bibliothèque demande d'abord l'accord du projet",
+        "en": "%s: a new library needs the project's approval first",
+    },
+    "Core changes:": {
+        "fr": "Modifications du cœur :",
+        "en": "Core changes:",
+    },
+    "Dolibarr - Core changes: branch, check, patches": {
+        "fr": "🛠️ Dolibarr - Modifier le cœur : branche, contrôle, patchs",
+        "en": "🛠️ Dolibarr - Core changes: branch, check, patches",
+    },
+    "Status of the checkout": {
+        "fr": "État du checkout",
+        "en": "Status of the checkout",
+    },
+    "Start a work branch at the pinned commit": {
+        "fr": "Ouvrir une branche de travail au commit épinglé",
+        "en": "Start a work branch at the pinned commit",
+    },
+    "Check the commits against Dolibarr's rules": {
+        "fr": "Contrôler les commits selon les règles de Dolibarr",
+        "en": "Check the commits against Dolibarr's rules",
+    },
+    "Export the patch series": {
+        "fr": "Exporter la série de patchs",
+        "en": "Export the patch series",
+    },
+    "Branch name: ": {
+        "fr": "Nom de la branche : ",
+        "en": "Branch name: ",
+    },
+    "Dolibarr refused:": {
+        "fr": "Dolibarr a refusé :",
+        "en": "Dolibarr refused:",
+    },
+    "API on for %s: user %s, %s read right(s), key in %s (0600).": {
+        "fr": "API allumée pour %s : utilisateur %s, %s droit(s) de lecture, clé dans %s (0600).",
+        "en": "API on for %s: user %s, %s read right(s), key in %s (0600).",
+    },
+    "API off for %s; its key stays for a later enable.": {
+        "fr": "API éteinte pour %s ; sa clé reste pour un prochain enable.",
+        "en": "API off for %s; its key stays for a later enable.",
+    },
+    "No API key for %s: run api.py enable.": {
+        "fr": "Aucune clé d'API pour %s : lancer api.py enable.",
+        "en": "No API key for %s: run api.py enable.",
+    },
+    "API of %s answers with its key: Dolibarr %s.": {
+        "fr": "L'API de %s répond à sa clé : Dolibarr %s.",
+        "en": "API of %s answers with its key: Dolibarr %s.",
+    },
+    "Explorer: %s": {
+        "fr": "Explorateur : %s",
+        "en": "Explorer: %s",
+    },
+    "API of %s refuses the key (401).": {
+        "fr": "L'API de %s refuse la clé (401).",
+        "en": "API of %s refuses the key (401).",
+    },
+    "Invalid login: %s": {
+        "fr": "Identifiant invalide : %s",
+        "en": "Invalid login: %s",
+    },
+    "API of %s is off: run api.py enable.": {
+        "fr": "L'API de %s est éteinte : lancer api.py enable.",
+        "en": "API of %s is off: run api.py enable.",
+    },
+    "API of %s does not answer: %s": {
+        "fr": "L'API de %s ne répond pas : %s",
+        "en": "API of %s does not answer: %s",
+    },
+    "REST API:": {
+        "fr": "API REST :",
+        "en": "REST API:",
+    },
+    "Integration": {
+        "fr": "Intégration",
+        "en": "Integration",
+    },
+    "Dolibarr - REST API: technical user and key": {
+        "fr": "🔌 Dolibarr - API REST : utilisateur technique et clé",
+        "en": "🔌 Dolibarr - REST API: technical user and key",
+    },
+    "Turn on: module, read-only user, key": {
+        "fr": "Allumer : module, utilisateur en lecture, clé",
+        "en": "Turn on: module, read-only user, key",
+    },
+    "Status: does the key open the API?": {
+        "fr": "État : la clé ouvre-t-elle l'API ?",
+        "en": "Status: does the key open the API?",
+    },
+    "New key (the old one stops)": {
+        "fr": "Nouvelle clé (l'ancienne cesse)",
+        "en": "New key (the old one stops)",
+    },
+    "Turn off": {
+        "fr": "Éteindre",
+        "en": "Turn off",
+    },
+    "PHP-FPM is missing: install the instance again.": {
+        "fr": "PHP-FPM manque : réinstaller l'instance.",
+        "en": "PHP-FPM is missing: install the instance again.",
+    },
+    "Xdebug does not load in PHP-FPM after its install.": {
+        "fr": "Xdebug ne se charge pas dans PHP-FPM après son installation.",
+        "en": "Xdebug does not load in PHP-FPM after its install.",
+    },
+    "Xdebug is missing; installing it: %s": {
+        "fr": "Xdebug manque ; installation : %s",
+        "en": "Xdebug is missing; installing it: %s",
+    },
+    "Xdebug could not be installed.": {
+        "fr": "Xdebug n'a pas pu s'installer.",
+        "en": "Xdebug could not be installed.",
+    },
+    "This host's PHP already loads Xdebug for every program; step debugging is switched on in this pool only.": {
+        "fr": "Le PHP de cet hôte charge déjà Xdebug pour tout programme ; le pas à pas n'est allumé que dans ce pool.",
+        "en": "This host's PHP already loads Xdebug for every program; step debugging is switched on in this pool only.",
+    },
+    "PhpStorm: Settings › PHP › Debug, Xdebug port %d; Settings › PHP › Servers, host 127.0.0.1, port %s, debugger Xdebug, no path mapping; then Run › Start Listening for PHP Debug Connections.": {
+        "fr": "PhpStorm : Settings › PHP › Debug, port Xdebug %d ; Settings › PHP › Servers, hôte 127.0.0.1, port %s, débogueur Xdebug, aucun mappage de chemin ; puis Run › Start Listening for PHP Debug Connections.",
+        "en": "PhpStorm: Settings › PHP › Debug, Xdebug port %d; Settings › PHP › Servers, host 127.0.0.1, port %s, debugger Xdebug, no path mapping; then Run › Start Listening for PHP Debug Connections.",
+    },
+    "Trigger a request with the Xdebug helper of your browser, or add ?XDEBUG_TRIGGER=1 to the address.": {
+        "fr": "Déclencher une requête par l'extension Xdebug du navigateur, ou ajouter ?XDEBUG_TRIGGER=1 à l'adresse.",
+        "en": "Trigger a request with the Xdebug helper of your browser, or add ?XDEBUG_TRIGGER=1 to the address.",
+    },
+    "%s holds comments and is left as is; add this configuration:": {
+        "fr": "%s contient des commentaires et reste tel quel ; y ajouter cette configuration :",
+        "en": "%s holds comments and is left as is; add this configuration:",
+    },
+    "VS Code: configuration « %s » in %s": {
+        "fr": "VS Code : configuration « %s » dans %s",
+        "en": "VS Code: configuration « %s » in %s",
+    },
+    "Xdebug on, port %d.": {
+        "fr": "Xdebug allumé, port %d.",
+        "en": "Xdebug on, port %d.",
+    },
+    "Xdebug is offered on native development instances only.": {
+        "fr": "Xdebug n'est offert que sur les instances de développement natives.",
+        "en": "Xdebug is offered on native development instances only.",
+    },
+    "Turn on with Xdebug (step debugging)": {
+        "fr": "Allumer avec Xdebug (pas à pas)",
+        "en": "Turn on with Xdebug (step debugging)",
+    },
 }
 
 

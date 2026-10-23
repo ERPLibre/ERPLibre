@@ -44,6 +44,7 @@ ssh_push:
 		--exclude='odoo18.0/' \
 		--exclude='.git/' \
 		--exclude='private/' \
+		--exclude='dolibarr/' \
 		--exclude='*.pyc' \
 		--exclude='__pycache__/' \
 		-e "$(_RSYNC_SSH)" \

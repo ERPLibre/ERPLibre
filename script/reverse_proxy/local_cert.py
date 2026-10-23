@@ -109,17 +109,24 @@ def _private(path):
     os.chmod(path, 0o600)
 
 
-def issue(directory, names):
+def issue(directory, names, ca_dir=None):
     """Émet le certificat serveur pour `names`, et l'autorité s'il le faut.
 
     :param directory: répertoire des certificats, créé en 0700 au besoin
     :param names: noms DNS et adresses IP que le certificat doit couvrir
-    :return: paths(directory)
+    :param ca_dir: répertoire de l'autorité, `directory` par défaut ; un
+        autre répertoire fait signer plusieurs serveurs par UNE autorité,
+        importée une seule fois, sans toucher aux autres certificats
+    :return: paths(directory), l'autorité prise dans ca_dir
     :raises subprocess.CalledProcessError: openssl a refusé une étape
     """
-    os.makedirs(directory, mode=0o700, exist_ok=True)
-    os.chmod(directory, 0o700)
+    ca_dir = ca_dir or directory
+    for d in dict.fromkeys((ca_dir, directory)):
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        os.chmod(d, 0o700)
     p = paths(directory)
+    ca = paths(ca_dir)
+    p["ca_crt"], p["ca_key"] = ca["ca_crt"], ca["ca_key"]
     if not (os.path.isfile(p["ca_crt"]) and os.path.isfile(p["ca_key"])):
         _openssl(
             "req", "-x509", "-newkey", "rsa:2048", "-nodes",
@@ -152,7 +159,7 @@ def issue(directory, names):
             "-out", p["server_crt"], "-days", str(SERVER_DAYS),
             "-extfile", ext,
         )  # fmt: skip
-    serial = os.path.join(directory, "ca.srl")
+    serial = os.path.join(ca_dir, "ca.srl")
     if os.path.exists(serial):
         _private(serial)
     return p
