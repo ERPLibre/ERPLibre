@@ -509,6 +509,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 12 compiles its SCSS bundles again: `libsass` 0.17.0 replaces 0.12.3, which has no Python 3.7 wheel and, built by a recent GCC, missed a symbol at import
 - TODO reads the Odoo port from `xmlrpc_port` as well as `http_port`: kill by port no longer crashes on a `config.conf` written by `generate_config.sh`, and the HTTP warm-up knocks on the configured port
 - QEMU: VMs deployed together download their shared base image once; the others wait and reuse it, instead of each pulling it in full into the same `.part` and failing on « No such file or directory » when the first one renames it. A stale cached image is likewise fetched again once, not once per VM. A transient network error (timeout, dropped connection, HTTP 5xx or 429) is retried on the same mirror after 5 s then 10 s, resuming the partial file
+- The Linux installers create the PostgreSQL role through `sudo runuser -u postgres` and stop when it fails, instead of hiding the error: `su - postgres` is refused on Arch, whose postgres account is locked, and the install then reported success while Odoo answered « Internal Server Error » on every page for lack of a role. `sudo -u postgres` would ask for postgres's password under openSUSE's default `targetpw`
 
 <!-- [fr] -->
 
@@ -608,6 +609,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 12 compile de nouveau ses bundles SCSS : `libsass` 0.17.0 remplace 0.12.3, qui n'a pas de wheel pour Python 3.7 et, compilé par un GCC récent, perdait un symbole à l'import
 - TODO lit le port d'Odoo dans `xmlrpc_port` comme dans `http_port` : tuer par port ne plante plus sur un `config.conf` écrit par `generate_config.sh`, et la mise en route HTTP frappe au port configuré
 - QEMU : des VM déployées ensemble téléchargent une seule fois leur image de base commune ; les autres attendent et la réutilisent, au lieu de la tirer chacune en entier dans le même `.part` et d'échouer sur « No such file or directory » quand la première le renomme. Une image en cache périmée n'est de même reprise qu'une fois, et non une fois par VM. Une erreur réseau passagère (délai dépassé, connexion coupée, HTTP 5xx ou 429) est réessayée sur le même miroir après 5 s puis 10 s, en reprenant le fichier partiel
+- Les installeurs Linux créent le rôle PostgreSQL par `sudo runuser -u postgres` et s'arrêtent quand cela échoue, au lieu de masquer l'erreur : `su - postgres` est refusé sous Arch, dont le compte postgres est verrouillé, et l'installation se déclarait alors réussie quand Odoo répondait « Internal Server Error » à chaque page, faute de rôle. `sudo -u postgres` demanderait le mot de passe de postgres sous le `targetpw` par défaut d'openSUSE
 
 <!-- [en] -->
 ## Removed
