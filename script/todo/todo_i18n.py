@@ -19391,6 +19391,46 @@ TRANSLATIONS = {
         "fr": "Clones superficiels : l'approfondissement télécharge de l'historique (réseau).",
         "en": "Shallow clones: deepening downloads history (network).",
     },
+    "The whole fork branch, then its upstream branch:": {
+        "fr": "La branche du fork en entier, puis sa branche amont :",
+        "en": "The whole fork branch, then its upstream branch:",
+    },
+    "Not deepened: these forks stay out of it.": {
+        "fr": "Non approfondis : ces forks restent hors de la mise à niveau.",
+        "en": "Not deepened: these forks stay out of it.",
+    },
+    "By hand:": {
+        "fr": "À la main :",
+        "en": "By hand:",
+    },
+    "nothing to complete": {
+        "fr": "rien à compléter",
+        "en": "nothing to complete",
+    },
+    "fork fetch failed": {
+        "fr": "le fetch du fork a échoué",
+        "en": "fork fetch failed",
+    },
+    "still shallow: HEAD is outside the branch": {
+        "fr": "encore superficiel : HEAD est hors de la branche",
+        "en": "still shallow: HEAD is outside the branch",
+    },
+    "git refused the upstream remote": {
+        "fr": "git a refusé le remote amont",
+        "en": "git refused the upstream remote",
+    },
+    "not a git clone": {
+        "fr": "pas un clone git",
+        "en": "not a git clone",
+    },
+    "complete, but the upstream did not answer": {
+        "fr": "complet, mais l'amont n'a pas répondu",
+        "en": "complete, but the upstream did not answer",
+    },
+    "complete, upstream fetched": {
+        "fr": "complet, amont récupéré",
+        "en": "complete, upstream fetched",
+    },
     "ahead of the target": {
         "fr": "en avance sur la cible",
         "en": "ahead of the target",

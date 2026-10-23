@@ -668,6 +668,68 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         self.assertEqual(3, recuperes)
 
 
+class TestGitRepoApprofondir(unittest.TestCase):
+    """Les clones superficiels du diagnostic : une question, non par défaut,
+    puis le diagnostic refait sur les clones complétés. `repo_upgrade` est
+    simulé."""
+
+    CANDIDAT = {
+        "chemin": "odooX.0/odoo",
+        "revision": "ERPLibre/X.0",
+        "amont": {"remote": "OCA", "branche": "X.0"},
+        "verdict": "non_comparable",
+    }
+
+    def _lancer(self, reponse, issue="complet"):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        ru = git_repo_menu.repo_upgrade
+        refait = [dict(self.CANDIDAT, verdict="a_rebaser")]
+        res = {"issue": issue, "erreur": None, "commandes": ["git fetch"]}
+        with mock.patch.object(
+            ru, "a_approfondir", side_effect=lambda x, _r: "amont" in x
+        ), mock.patch.object(
+            ru, "approfondir", return_value=res
+        ) as approfondir, mock.patch.object(
+            ru, "passe_diagnostic", return_value=refait
+        ) as diagnostic, mock.patch.object(
+            ru, "render_diagnostic", return_value=""
+        ), mock.patch(
+            "builtins.input", return_value=reponse
+        ), mock.patch(
+            "builtins.print"
+        ):
+            lst = [self.CANDIDAT, {"chemin": "autre"}]
+            rendu = Menu()._git_repo_approfondir(lst, "X.0")
+        return lst, rendu, approfondir, diagnostic, refait
+
+    def test_sans_oui_rien_n_est_lance(self):
+        lst, rendu, approfondir, diagnostic, _refait = self._lancer("")
+        self.assertIs(rendu, lst)
+        approfondir.assert_not_called()
+        diagnostic.assert_not_called()
+
+    def test_oui_complete_puis_refait_le_diagnostic(self):
+        _lst, rendu, approfondir, diagnostic, refait = self._lancer("o")
+        approfondir.assert_called_once()
+        self.assertEqual(approfondir.call_args.args[0], self.CANDIDAT)
+        diagnostic.assert_called_once()
+        self.assertIs(rendu, refait)
+
+    def test_un_echec_ne_refait_pas_le_diagnostic(self):
+        lst, rendu, approfondir, diagnostic, _r = self._lancer(
+            "y", issue="fork_echoue"
+        )
+        approfondir.assert_called_once()
+        diagnostic.assert_not_called()
+        self.assertIs(rendu, lst)
+
+
 class TestGitRepoPull(unittest.TestCase):
     """« Tirer les dépôts » : l'essai à sec d'abord, chaque question à part,
     et la passe seulement sur un oui. `repo_pull` est simulé."""

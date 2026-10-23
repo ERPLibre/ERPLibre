@@ -11,6 +11,7 @@ entrées choisies plutôt que sur l'état courant d'un amont public.
 
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -672,6 +673,138 @@ class TestSansInvite(unittest.TestCase):
             self.assertIsNone(
                 repo_upgrade.branches("https://example.invalid/a.git")
             )
+
+
+def _git_reel(depot, *args):
+    return subprocess.run(
+        ["git", "-C", depot, *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+class TestApprofondir(unittest.TestCase):
+    """Un amont de 30 commits, un fork qui y ajoute 2 commits, et un clone
+    du fork à 2 commits de profondeur : sans historique, il n'a aucune base
+    de fusion avec l'amont. Tous les dépôts sont dans le dossier temporaire,
+    joints par « file:// », la seule URL locale qui respecte « --depth »."""
+
+    REMOTE = "fork_origin_amont"
+    REVISION = "X.0"
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, True)
+        env = patch.dict(
+            os.environ,
+            {
+                "GIT_CEILING_DIRECTORIES": self.dossier,
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_AUTHOR_NAME": "Test",
+                "GIT_AUTHOR_EMAIL": "test@example.invalid",
+                "GIT_COMMITTER_NAME": "Test",
+                "GIT_COMMITTER_EMAIL": "test@example.invalid",
+            },
+        )
+        env.start()
+        self.addCleanup(env.stop)
+        amont = os.path.join(self.dossier, "amont.git")
+        fork = os.path.join(self.dossier, "fork.git")
+        source = os.path.join(self.dossier, "source")
+        _git_reel(self.dossier, "init", "-q", "--bare", amont)
+        _git_reel(self.dossier, "init", "-q", "--bare", fork)
+        _git_reel(self.dossier, "init", "-q", source)
+        for i in range(30):
+            _git_reel(source, "commit", "-q", "--allow-empty", "-m", f"a{i}")
+        self.base = _git_reel(source, "rev-parse", "HEAD")
+        _git_reel(source, "push", "-q", amont, "HEAD:principale")
+        for i in range(2):
+            _git_reel(source, "commit", "-q", "--allow-empty", "-m", f"f{i}")
+        _git_reel(source, "push", "-q", fork, f"HEAD:{self.REVISION}")
+        self.racine = os.path.join(self.dossier, "racine")
+        self.clone = os.path.join(self.racine, "c", "p")
+        _git_reel(
+            self.dossier,
+            "clone",
+            "-q",
+            "--depth",
+            "2",
+            "-o",
+            self.REMOTE,
+            "-b",
+            self.REVISION,
+            f"file://{fork}",
+            self.clone,
+        )
+        self.constat = {
+            "chemin": "c/p",
+            "remote": self.REMOTE,
+            "revision": self.REVISION,
+            "amont": {
+                "remote": "amont_up",
+                "nom": "amont.git",
+                "url": f"file://{amont}",
+                "branche": "principale",
+                "source": "declare",
+                "remote_declare": True,
+            },
+        }
+
+    def test_le_clone_superficiel_est_candidat(self):
+        self.assertTrue(repo_upgrade.est_superficiel(self.clone))
+        self.assertTrue(repo_upgrade.a_approfondir(self.constat, self.racine))
+
+    def test_complet_avec_sa_base_de_fusion(self):
+        tete = _git_reel(self.clone, "rev-parse", "HEAD")
+        # Posé sur le clone encore superficiel, comme le fait le diagnostic.
+        repo_upgrade.preparer_remote(self.clone, self.constat["amont"])
+        res = repo_upgrade.approfondir(self.constat, self.racine)
+        self.assertEqual(res["issue"], "complet", res)
+        self.assertFalse(repo_upgrade.est_superficiel(self.clone))
+        self.assertEqual(
+            _git_reel(self.clone, "merge-base", "HEAD", "amont_up/principale"),
+            self.base,
+        )
+        # Ni la branche ni l'arbre n'ont bougé.
+        self.assertEqual(_git_reel(self.clone, "rev-parse", "HEAD"), tete)
+        out, _err, code = repo_upgrade.git(
+            ["config", "--get", "remote.amont_up.skipFetchAll"], self.clone
+        )
+        self.assertEqual((code, out), (1, ""))
+        self.assertFalse(repo_upgrade.a_approfondir(self.constat, self.racine))
+
+    def test_une_branche_absente_du_fork_echoue(self):
+        constat = dict(self.constat, revision="inexistante")
+        res = repo_upgrade.approfondir(constat, self.racine)
+        self.assertEqual(res["issue"], "fork_echoue")
+        self.assertTrue(res["erreur"])
+        self.assertTrue(repo_upgrade.est_superficiel(self.clone))
+
+    def test_un_clone_complet_n_est_pas_touche(self):
+        _git_reel(self.clone, "fetch", "-q", "--unshallow")
+        res = repo_upgrade.approfondir(self.constat, self.racine)
+        self.assertEqual(res["issue"], "non_applicable")
+
+    def test_les_commandes_a_la_main(self):
+        self.assertEqual(
+            repo_upgrade.commandes_approfondir(self.constat),
+            [
+                f"git -C c/p fetch --unshallow --no-tags {self.REMOTE} X.0",
+                "git -C c/p fetch amont_up",
+            ],
+        )
+
+    def test_chaque_issue_a_son_libelle(self):
+        for issue in (
+            "non_applicable",
+            "fork_echoue",
+            "encore_superficiel",
+            "autre_url",
+            "refuse",
+            "non_clone",
+            "amont_echoue",
+            "complet",
+        ):
+            self.assertIn(issue, repo_upgrade.LIBELLES_APPROFONDIR)
 
 
 if __name__ == "__main__":

@@ -560,12 +560,68 @@ class GitRepoMenuMixin:
         lst = repo_upgrade.passe_diagnostic(version, racine=RACINE)
         print()
         print(repo_upgrade.render_diagnostic(lst, version, colour=True))
+        lst = self._git_repo_approfondir(lst, version)
         a_decider = [
             x
             for x in lst
             if x["verdict"] in ("a_rebaser", "en_conflit", "absorbe")
         ]
         return len(a_decider)
+
+    def _git_repo_approfondir(self, lst, version):
+        """Propose de compléter les clones superficiels du diagnostic `lst`.
+
+        Un clone superficiel n'a pas de base de fusion avec son amont : le
+        diagnostic le laisse « non comparable », hors de la mise à niveau.
+        `repo_upgrade.approfondir` rapatrie l'historique entier de la branche
+        du fork puis de son amont, un clone après l'autre : en parallèle,
+        plusieurs cœurs Odoo se téléchargeraient à la fois. La réponse par
+        défaut est non.
+
+        Rend le diagnostic, refait quand au moins un clone a été complété,
+        et `lst` tel quel sinon.
+        """
+        candidats = [x for x in lst if repo_upgrade.a_approfondir(x, RACINE)]
+        if not candidats:
+            return lst
+        print()
+        avis = t("Shallow clones: deepening downloads history (network).")
+        print(f"⚠️  {avis}")
+        print(f"   {t('The whole fork branch, then its upstream branch:')}")
+        for x in candidats:
+            amont = x["amont"]
+            print(
+                f"     {x['chemin']} ({x['revision']} ·"
+                f" {amont['remote']}/{amont['branche']})"
+            )
+        reponse = input(
+            f"💬 {t('Deepen the shallow clones (network)? (y/N): ')}"
+        )
+        if reponse.strip().lower() not in ("o", "oui", "y", "yes"):
+            print(f"↩️  {t('Not deepened: these forks stay out of it.')}")
+            return lst
+        complets = 0
+        for x in candidats:
+            print(f"   {x['chemin']} …", flush=True)
+            res = repo_upgrade.approfondir(x, racine=RACINE)
+            libelle = repo_upgrade.LIBELLES_APPROFONDIR[res["issue"]]
+            if res["issue"] == "complet":
+                complets += 1
+                print(f"   ✅ {libelle}")
+                continue
+            erreur = f" — {res['erreur']}" if res["erreur"] else ""
+            print(f"   ⚠  {libelle}{erreur}")
+            print(f"      {t('By hand:')}")
+            for commande in res["commandes"]:
+                print(f"        {commande}")
+        if not complets:
+            return lst
+        print()
+        print(f"   {t('Querying each upstream, this takes a few seconds.')}")
+        lst = repo_upgrade.passe_diagnostic(version, racine=RACINE)
+        print()
+        print(repo_upgrade.render_diagnostic(lst, version, colour=True))
+        return lst
 
     def _git_repo_etat_forks(self):
         """D'où descend chaque fork, et l'amont répond-il encore.
@@ -653,11 +709,12 @@ class GitRepoMenuMixin:
         print(f"⬆️  {t('Apply the upgrade')} — Odoo {version}")
         print(f"   {t('Querying each upstream, this takes a few seconds.')}")
         lst = repo_upgrade.passe_diagnostic(version, racine=RACINE)
+        print()
+        print(repo_upgrade.render_diagnostic(lst, version, colour=True))
+        lst = self._git_repo_approfondir(lst, version)
         a_faire = [
             x for x in lst if x["verdict"] in repo_apply.VERDICTS_A_APPLIQUER
         ]
-        print()
-        print(repo_upgrade.render_diagnostic(lst, version, colour=True))
         if not a_faire:
             print(f"\n↩️  {t('Nothing to upgrade: nothing to confirm.')}")
             return 0

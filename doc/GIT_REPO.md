@@ -310,6 +310,15 @@ upstream is guessed, without `fork-upstream-remote`, or that has no
 with its reason; a guessed upstream keeps being fetched by URL in the dry run,
 into `FETCH_HEAD` only.
 
+Without history, a shallow clone has no merge base with its upstream, and the
+diagnosis leaves it out of the upgrade. The dry run and the apply entry then
+offer to deepen it, after the report, with no as the default answer: the whole
+branch the fork follows comes first, `git fetch --unshallow <remote> <branch>`,
+then its upstream branch in full, one clone after the other. Neither a local
+branch nor the working tree moves. The diagnosis then runs again, and the fork
+can be rebased like any complete clone. A clone that could not be completed
+shows the same commands, to run by hand.
+
 A remote added to the clone is not part of git-repo's state: a
 `repo sync --force-sync` that rewrites the git directory loses it, and the next
 dry run or `Add the upstream remotes` adds it again. The freeze does not count

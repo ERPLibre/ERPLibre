@@ -552,6 +552,121 @@ def commande_fetch_superficiel(chemin, remote, branche, profondeur=None):
     return f"git -C {chemin} fetch --depth={profondeur} {remote} {branche}"
 
 
+# Compléter un clone superficiel rapatrie l'historique entier de la branche
+# du fork puis de son amont : des centaines de mégaoctets pour un cœur Odoo.
+DELAI_APPROFONDIR = 3600
+
+
+def a_approfondir(constat, racine=REPO_ROOT):
+    """Vrai si `approfondir` peut compléter le clone de ce fork.
+
+    Le clone est superficiel, l'amont est DÉCLARÉ avec un remote nommé et
+    une branche (`remote_amont`), et le manifeste donne le remote et la
+    branche que le fork suit. Le diagnostic refuse un tel clone (« shallow
+    repository ») : sans historique, il n'a aucune base de fusion.
+    """
+    chemin = os.path.join(racine, constat.get("chemin") or "")
+    return bool(
+        remote_amont(constat.get("amont"))
+        and constat.get("remote")
+        and constat.get("revision")
+        and os.path.isdir(chemin)
+        and est_superficiel(chemin)
+    )
+
+
+def commandes_approfondir(constat):
+    """Les commandes de `approfondir`, à lancer à la main depuis la racine."""
+    chemin = constat.get("chemin")
+    remote = remote_amont(constat.get("amont"))
+    return [
+        f"git -C {chemin} fetch --unshallow --no-tags"
+        f" {constat.get('remote')} {constat.get('revision')}",
+        f"git -C {chemin} fetch {remote}",
+    ]
+
+
+def approfondir(constat, racine=REPO_ROOT, delai=DELAI_APPROFONDIR):
+    """Complète un clone superficiel, puis récupère son amont. Rend un dict.
+
+    Le fork d'abord : « git fetch --unshallow » de la SEULE branche qu'il
+    suit, depuis son remote. Sans branche nommée, la refspec
+    « +refs/heads/* » d'un clone de git-repo rapatrierait l'historique de
+    toutes les branches du fork. Puis l'amont : son remote nommé est posé
+    au besoin (`preparer_remote`) et sa branche déclarée arrive en entier
+    (`recuperer_amont`, sans profondeur). Sur le clone complet,
+    « skipFetchAll », que `preparer_remote` pose sur un clone superficiel,
+    est retiré. Ni branche locale ni arbre de travail ne bougent : seuls
+    l'historique présent et les branches de suivi changent.
+
+    « issue » vaut :
+      non_applicable       `a_approfondir` est faux : rien n'est lancé
+      fork_echoue          le fetch du fork a échoué ; « erreur » dit pourquoi
+      encore_superficiel   des frontières restent : HEAD n'est pas dans
+                           l'historique de la branche suivie
+      autre_url, refuse    le remote amont (voir `preparer_remote`)
+      amont_echoue         le clone est complet, l'amont n'a pas répondu
+      complet              clone complet, amont récupéré
+
+    « commandes » donne les mêmes opérations à lancer à la main.
+    """
+    res = {
+        "chemin": constat.get("chemin"),
+        "issue": "non_applicable",
+        "erreur": None,
+        "commandes": commandes_approfondir(constat),
+    }
+    if not a_approfondir(constat, racine):
+        return res
+    chemin = os.path.join(racine, constat["chemin"])
+    amont = constat["amont"]
+    remote = remote_amont(amont)
+    _out, err, code = git(
+        [
+            "fetch",
+            "--quiet",
+            "--unshallow",
+            "--no-tags",
+            constat["remote"],
+            constat["revision"],
+        ],
+        chemin,
+        delai,
+    )
+    if code:
+        res["issue"] = "fork_echoue"
+        res["erreur"] = (err.strip().splitlines() or [""])[-1]
+        return res
+    if est_superficiel(chemin):
+        res["issue"] = "encore_superficiel"
+        return res
+    etat, _en_place = preparer_remote(chemin, amont)
+    if etat in ("autre_url", "refuse", "non_clone"):
+        res["issue"] = etat
+        return res
+    # Absente, la clé fait rendre 5 à « git config --unset » : sans effet.
+    git(["config", "--unset", f"remote.{remote}.skipFetchAll"], chemin)
+    if not recuperer_amont(
+        chemin, amont["url"], amont["branche"], delai, remote=remote
+    ):
+        res["issue"] = "amont_echoue"
+        return res
+    res["issue"] = "complet"
+    return res
+
+
+LIBELLES_APPROFONDIR = {
+    "non_applicable": t("nothing to complete"),
+    "fork_echoue": t("fork fetch failed"),
+    "encore_superficiel": t("still shallow: HEAD is outside the branch"),
+    "autre_url": t("upstream remote points to another URL"),
+    "refuse": t("git refused the upstream remote"),
+    "non_clone": t("not a git clone"),
+    "amont_echoue": t("complete, but the upstream did not answer"),
+    "complet": t("complete, upstream fetched"),
+}
+
+
 def divergence(chemin):
     """(nos commits, commits amont) depuis la base de fusion, ou None."""
     out, _err, code = git(

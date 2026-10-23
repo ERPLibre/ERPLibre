@@ -561,6 +561,15 @@ upstream is guessed, without `fork-upstream-remote`, or that has no
 with its reason; a guessed upstream keeps being fetched by URL in the dry run,
 into `FETCH_HEAD` only.
 
+Without history, a shallow clone has no merge base with its upstream, and the
+diagnosis leaves it out of the upgrade. The dry run and the apply entry then
+offer to deepen it, after the report, with no as the default answer: the whole
+branch the fork follows comes first, `git fetch --unshallow <remote> <branch>`,
+then its upstream branch in full, one clone after the other. Neither a local
+branch nor the working tree moves. The diagnosis then runs again, and the fork
+can be rebased like any complete clone. A clone that could not be completed
+shows the same commands, to run by hand.
+
 A remote added to the clone is not part of git-repo's state: a
 `repo sync --force-sync` that rewrites the git directory loses it, and the next
 dry run or `Add the upstream remotes` adds it again. The freeze does not count
@@ -669,6 +678,16 @@ superficiel. Un fork dont l'amont est deviné, sans `fork-upstream-remote`, ou
 qui n'a pas de branche `fork-upstream`, ne reçoit rien et figure parmi les
 forks sautés avec son motif ; un amont deviné reste récupéré par l'URL dans la
 passe à sec, dans `FETCH_HEAD` seulement.
+
+Sans historique, un clone superficiel n'a pas de base de fusion avec son amont,
+et le diagnostic le laisse hors de la mise à niveau. La passe à sec et
+l'application proposent alors de l'approfondir, après le rapport, avec non
+comme réponse par défaut : la branche que suit le fork d'abord, en entier,
+`git fetch --unshallow <remote> <branche>`, puis sa branche amont complète, un
+clone après l'autre. Ni branche locale ni arbre de travail ne bougent. Le
+diagnostic tourne ensuite de nouveau, et le fork se rebase comme tout clone
+complet. Un clone qui n'a pas pu être complété affiche les mêmes commandes, à
+lancer à la main.
 
 Un remote posé dans le clone ne fait pas partie de l'état de git-repo : un
 `repo sync --force-sync` qui réécrit le répertoire git le perd, et la passe à
