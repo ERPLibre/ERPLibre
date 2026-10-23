@@ -106,6 +106,7 @@ class Banc(unittest.TestCase):
             ),
             mock.patch.object(upgrade, "stop_dev", lambda name, root: None),
             mock.patch.object(upgrade, "start_dev", lambda name, root: 0),
+            mock.patch.object(upgrade.time, "sleep"),
         ]
         for p in patches:
             p.start()
@@ -341,6 +342,125 @@ class TestProduction(Banc):
             c for c in self.cmds() if "MAIN_VERSION_LAST_UPGRADE" in c
         )
         self.assertTrue(requete.startswith("sudo mariadb -N -D dolibarr_erp"))
+
+
+class TestConteneur(Banc):
+    ANCIENNE = "docker.io/dolibarr/dolibarr:23.0.4"
+
+    def setUp(self):
+        super().setUp()
+        (self.etat / "secrets").mkdir()
+        self.noms = [
+            f"erplibre-dolibarr-erp-{r}" for r in ("db", "web", "cron")
+        ]
+        self.entree = {
+            "mode": "dev",
+            "runtime": "container",
+            "engine": "podman",
+            "db": "mariadb",
+            "containers": self.noms,
+            "custom_dir": str(self.etat / "custom"),
+            "state_dir": str(self.etat),
+            "port": 8081,
+            "url": "http://127.0.0.1:8081",
+            "admin_login": "admin",
+            "image": self.ANCIENNE,
+            "version": "23.0.4",
+        }
+        self.sys.page = "<title>Login @ 24.0.0</title>"
+        self.sys.base = {"MAIN_VERSION_LAST_INSTALL": "23.0.4"}
+        self.sys.apres_step5 = None
+        # L'entrée de l'image migre la base quand le site repart.
+        origine = self.sys.run
+
+        def run(argv, env=None, stdin_path=None):
+            if (
+                argv[:2] == ["podman", "run"]
+                and "erplibre-dolibarr-erp-web" in argv
+            ):
+                self.sys.base["MAIN_VERSION_LAST_UPGRADE"] = "24.0.0"
+            return origine(argv, env, stdin_path)
+
+        self.sys.run = run
+
+    def test_the_site_is_recreated_on_the_new_image_without_the_lock(self):
+        code, sortie, _r = self.monter()
+        self.assertEqual(code, 0, sortie)
+        cmds = self.cmds()
+        nouvelle = self.pin["docker_image"]
+        ordre = [
+            f"podman pull {nouvelle}",
+            "podman rm -f erplibre-dolibarr-erp-cron",
+            "podman exec erplibre-dolibarr-erp-web rm -f /var/www/documents/install.lock",
+            "podman rm -f erplibre-dolibarr-erp-web",
+        ]
+        positions = [cmds.index(x) for x in ordre]
+        self.assertEqual(positions, sorted(positions))
+        relances = [a for a in self.sys.appels if a[:2] == ["podman", "run"]]
+        self.assertEqual([a[-1] for a in relances], [nouvelle, nouvelle])
+        self.assertIn("erplibre-dolibarr-erp-web", relances[0])
+        self.assertIn("erplibre-dolibarr-erp-cron", relances[1])
+        self.assertTrue(
+            [
+                c
+                for c in cmds
+                if "backup-before-upgrade.sql" in c and " rm " in f" {c} "
+            ]
+        )
+        fiche = self.registre()
+        self.assertEqual(
+            (fiche["image"], fiche["version"]), (nouvelle, "24.0.0")
+        )
+
+    def test_the_same_image_is_up_to_date(self):
+        self.entree.update(image=self.pin["docker_image"], version="24.0.0")
+        code, _s, _r = self.monter()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.sys.appels, [])
+
+    def test_more_than_one_major_is_refused(self):
+        # L'entrée de l'image ne migre qu'un saut majeur.
+        self.entree["version"] = "22.0.5"
+        self.sys.base = {"MAIN_VERSION_LAST_INSTALL": "22.0.5"}
+        code, _s, _r = self.monter()
+        self.assertEqual(code, 1)
+        self.assertFalse([c for c in self.cmds() if "pull" in c])
+
+    def test_a_site_that_never_serves_the_new_version_rolls_back(self):
+        self.sys.page = "<title>Login @ 23.0.4</title>"
+        code, _s, restaure = self.monter()
+        self.assertEqual(code, 1)
+        restaure.assert_called_once()
+        self.assertEqual(self.registre()["image"], self.ANCIENNE)
+        # La restauration recrée site et tâches : rien de plus ici.
+        anciennes = [
+            a
+            for a in self.sys.appels
+            if a[:2] == ["podman", "run"] and a[-1] == self.ANCIENNE
+        ]
+        self.assertEqual(anciennes, [])
+
+    def test_a_failure_after_the_lock_went_puts_it_back(self):
+        self.sys.echec.add("rm -f erplibre-dolibarr-erp-web")
+        code, _s, _r = self.monter()
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "podman exec -u www-data erplibre-dolibarr-erp-web touch"
+            " /var/www/documents/install.lock",
+            self.cmds(),
+        )
+
+    def test_a_failure_before_the_site_is_recreated_restores_cron_and_lock(
+        self,
+    ):
+        self.sys.echec.add("rm -f /var/www/documents/install.lock")
+        code, _s, restaure = self.monter()
+        self.assertEqual(code, 1)
+        restaure.assert_not_called()
+        relance = [a for a in self.sys.appels if a[:2] == ["podman", "run"]]
+        self.assertEqual(len(relance), 1)
+        self.assertIn("erplibre-dolibarr-erp-cron", relance[0])
+        self.assertEqual(relance[0][-1], self.ANCIENNE)
 
 
 if __name__ == "__main__":

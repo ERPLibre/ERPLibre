@@ -32,6 +32,7 @@ import os
 import re
 import shlex
 import sys
+import time
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -41,6 +42,7 @@ if new_path not in sys.path:
 
 from script.dolibarr import (  # noqa: E402
     backup,
+    container_plan,
     lib_dolibarr,
     packages,
     restore,
@@ -50,6 +52,17 @@ from script.dolibarr.run import served_version  # noqa: E402
 ROOT = new_path
 SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
 _CONST = "SELECT value FROM llx_const WHERE entity = 0 AND name = '{name}'"
+_ROOTPW = 'MYSQL_PWD="$(cat /run/secrets/db_root_password)"'
+# Relancée sur une nouvelle image, l'entrée migre la base en quelques
+# secondes avant d'ouvrir Apache.
+WAIT_TRIES = 90
+WAIT_PAUSE = 2.0
+# Laissés dans le volume par l'entrée de l'image : un vidage complet
+# (hachés compris) et le journal HTML de la migration.
+_LEFTOVERS = (
+    "/var/www/documents/backup-before-upgrade.sql",
+    "/var/www/documents/migration_error.html",
+)
 
 t = backup.t
 
@@ -90,6 +103,27 @@ def host_facts(system):
 def _query(entry, system, name):
     """Valeur de la constante `name` (entité 0), ou "" si illisible."""
     sql = _CONST.format(name=name)
+    if entry.get("runtime") == "container":
+        from script.todo import container_runtime
+
+        fiche = system.engine(entry["engine"])
+        db = entry["containers"][0]
+        dbn = "dolibarr_" + db.removeprefix("erplibre-dolibarr-").removesuffix(
+            "-db"
+        )
+        code, out = system.run(
+            container_runtime.commande(
+                fiche,
+                [
+                    "exec",
+                    db,
+                    "sh",
+                    "-c",
+                    f'{_ROOTPW} exec mariadb -uroot -N -D {dbn} -e "{sql}"',
+                ],
+            )
+        )
+        return out.strip() if not code else ""
     db = entry["db_name"]
     mariadb = entry.get("db", "mariadb") == "mariadb"
     if entry.get("mode") == "prod":
@@ -222,6 +256,14 @@ class NativeDev:
 
     def restart(self):
         start_dev(self.name, self.root)
+
+    def target(self):
+        """(version visée, identité) : l'identité distingue deux commits
+        d'une même version."""
+        return self.pin["version"], self.pin["commit"]
+
+    def current(self):
+        return self.entry.get("commit")
 
     def recorded(self):
         return {"version": self.pin["version"], "commit": self.pin["commit"]}
@@ -375,17 +417,181 @@ class NativeProd(NativeDev):
         self.system.run(["sudo", "systemctl", "start", self.timer])
 
 
+class Container:
+    """L'entrée de l'image migre la base au démarrage du site, si
+    documents/install.lock est absent : ôté, puis le site recréé avec la
+    seule image changée. Un saut majeur à la fois."""
+
+    def __init__(self, name, entry, pin, system, root):
+        from script.todo import container_runtime
+
+        self.name, self.entry, self.pin = name, entry, pin
+        self.system, self.root = system, root
+        self.fiche = system.engine(entry["engine"])
+        self.cmd = lambda args: container_runtime.commande(self.fiche, args)
+        self.db, self.web, self.cron = entry["containers"]
+        self.swapped = False
+        self.cron_removed = False
+        self.unlocked = False
+
+    def target(self):
+        image = self.pin["docker_image"]
+        return container_plan.image_version(image), image
+
+    def current(self):
+        return self.entry.get("image")
+
+    def check(self):
+        pass
+
+    def _plan_args(self, image):
+        e = self.entry
+        state = e["state_dir"]
+        engine = {
+            "moteur": self.fiche["moteur"],
+            "rootless": bool(
+                self.fiche["sans_sudo"] and self.fiche.get("rootless")
+            ),
+        }
+        return (
+            {"docker_image": image},
+            os.path.join(state, "secrets"),
+            os.path.join(state, "init.d"),
+            e.get("mode", "dev"),
+            engine,
+        )
+
+    def _web(self, image):
+        pin, secrets, init_dir, mode, engine = self._plan_args(image)
+        e = self.entry
+        return container_plan.run_web(
+            self.name,
+            pin,
+            secrets,
+            init_dir,
+            mode,
+            engine,
+            e["port"],
+            e["url"],
+            e.get("admin_login", "admin"),
+            e.get("custom_dir"),
+            (os.getuid(), os.getgid()),
+        )
+
+    def _cron(self, image):
+        pin, secrets, _init, mode, engine = self._plan_args(image)
+        e = self.entry
+        return container_plan.run_cron(
+            self.name,
+            pin,
+            secrets,
+            mode,
+            engine,
+            e.get("admin_login", "admin"),
+            e.get("custom_dir"),
+            (os.getuid(), os.getgid()),
+        )
+
+    def run(self, from_v, to_v):
+        if _version(to_v)[0] - _version(from_v)[0] > 1:
+            raise UpgradeError(
+                t("The image migrates one major version at a time (%s to %s).")
+                % (from_v, to_v)
+            )
+        image = self.pin["docker_image"]
+        _run(self.system, "Image pulled", self.cmd(["pull", image]))
+        _run(
+            self.system,
+            "Containers recreated",
+            self.cmd(["rm", "-f", self.cron]),
+        )
+        self.cron_removed = True
+        _run(
+            self.system,
+            "Install lock removed",
+            self.cmd(
+                [
+                    "exec",
+                    self.web,
+                    "rm",
+                    "-f",
+                    "/var/www/documents/install.lock",
+                ]
+            ),
+        )
+        self.unlocked = True
+        _run(
+            self.system,
+            "Containers recreated",
+            self.cmd(["rm", "-f", self.web]),
+        )
+        self.swapped = True
+        _run(self.system, "Containers recreated", self.cmd(self._web(image)))
+        url = self.entry["url"] + "/"
+        for attempt in range(WAIT_TRIES):
+            if attempt:
+                time.sleep(WAIT_PAUSE)
+            if served_version(self.system.http_get(url, "127.0.0.1")) == to_v:
+                break
+        else:
+            raise UpgradeError(t("The site does not serve %s.") % to_v)
+        got = _query(self.entry, self.system, "MAIN_VERSION_LAST_UPGRADE")
+        if got != to_v:
+            raise UpgradeError(
+                t("The database reads %s, %s expected.") % (got or "?", to_v)
+            )
+        _run(self.system, "Containers recreated", self.cmd(self._cron(image)))
+        self.cron_removed = False
+        self.system.run(self.cmd(["exec", self.web, "rm", "-f", *_LEFTOVERS]))
+
+    def rollback(self):
+        pass
+
+    def restart(self):
+        """Avant la recréation du site : le verrou et les tâches reviennent.
+        Après, la restauration a recréé site et tâches sur l'ancienne
+        image."""
+        if self.swapped:
+            return
+        if self.unlocked:
+            self.system.run(
+                self.cmd(
+                    [
+                        "exec",
+                        "-u",
+                        "www-data",
+                        self.web,
+                        "touch",
+                        "/var/www/documents/install.lock",
+                    ]
+                )
+            )
+        if self.cron_removed:
+            self.system.run(self.cmd(self._cron(self.entry["image"])))
+
+    def recorded(self):
+        version, image = self.target()
+        return {"version": version, "image": image}
+
+
 def _runtime(name, entry, pin, system, root):
     if entry.get("runtime") == "native" and entry.get("mode") == "prod":
         return NativeProd(name, entry, pin, system, root)
     if entry.get("runtime") == "native":
         return NativeDev(name, entry, pin, system, root)
+    if entry.get("runtime") == "container":
+        return Container(name, entry, pin, system, root)
     raise UpgradeError(t("This runtime is not upgraded by this tool yet."))
 
 
 def upgrade(name, entry, pin, system, root, stamp):
     """Monte `name` à l'épinglage ; 0 (fait ou rien à faire) ou 1."""
-    target, commit = pin["version"], pin["commit"]
+    try:
+        work = _runtime(name, entry, pin, system, root)
+    except UpgradeError as e:
+        print(t("Upgrade stopped: %s") % e)
+        return 1
+    target, ident = work.target()
     current = entry.get("version", "")
     if _version(target) < _version(current):
         print(
@@ -393,12 +599,11 @@ def upgrade(name, entry, pin, system, root, stamp):
             % (target, current)
         )
         return 1
-    if target == current and commit == entry.get("commit"):
-        print(t("Already at %s (%s).") % (target, commit[:7]))
+    if target == current and ident == work.current():
+        print(t("Already at %s (%s).") % (target, ident[-12:]))
         return 0
     backup_path = None
     try:
-        work = _runtime(name, entry, pin, system, root)
         work.check()
         from_v = _db_version(entry, system)
         dest = os.path.join(root, backup.BACKUPS, name)
