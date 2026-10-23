@@ -78,6 +78,16 @@ class TestWhereItKnocks(unittest.TestCase):
         finally:
             warmup.lib_analyse.read_config = vrai
 
+    def test_the_old_xmlrpc_port_name_is_read_too(self):
+        vrai = warmup.lib_analyse.read_config
+        warmup.lib_analyse.read_config = lambda *a, **k: {
+            "xmlrpc_port": "7069",
+        }
+        try:
+            self.assertEqual(warmup.adresse(journal="/nonexistent")[1], 7069)
+        finally:
+            warmup.lib_analyse.read_config = vrai
+
 
 class TestReadingTheExecutionLog(unittest.TestCase):
     """La seule source exacte quand le port demandé était déjà pris."""

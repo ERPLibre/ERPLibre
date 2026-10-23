@@ -7,6 +7,7 @@ import builtins
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -330,6 +331,39 @@ class TestProcessKillGitDaemon(unittest.TestCase):
         cmd = todo.execute.exec_command_live.call_args[0][0]
         self.assertIn("pkill", cmd)
         self.assertIn("git daemon", cmd)
+
+
+class TestProcessKillFromPort(unittest.TestCase):
+    """Le port vient de config.conf, sous son nom actuel ou l'ancien."""
+
+    def _port(self, contenu):
+        dossier = tempfile.mkdtemp(prefix="el_kill_port_")
+        self.addCleanup(shutil.rmtree, dossier, True)
+        if contenu is not None:
+            Path(dossier, "config.conf").write_text(contenu)
+        retour = os.getcwd()
+        os.chdir(dossier)
+        self.addCleanup(os.chdir, retour)
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.process_kill_from_port()
+        return todo.execute.exec_command_live.call_args[0][0].split()[1]
+
+    def test_http_port(self):
+        self.assertEqual("8071", self._port("[options]\nhttp_port = 8071\n"))
+
+    def test_l_ancien_nom_xmlrpc_port(self):
+        self.assertEqual("7069", self._port("[options]\nxmlrpc_port = 7069\n"))
+
+    def test_http_port_l_emporte(self):
+        self.assertEqual(
+            "8071",
+            self._port("[options]\nxmlrpc_port = 7069\nhttp_port = 8071\n"),
+        )
+
+    def test_sans_port_le_defaut_d_odoo(self):
+        self.assertEqual("8069", self._port("[options]\ndb_user = x\n"))
+        self.assertEqual("8069", self._port(None))
 
 
 class TestExecuteUnitTests(unittest.TestCase):

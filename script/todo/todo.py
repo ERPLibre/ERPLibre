@@ -6278,9 +6278,18 @@ class TODO(
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def process_kill_from_port(self):
-        cfg = configparser.ConfigParser()
+        # script/generate_config.sh écrit xmlrpc_port, l'ancien nom qu'Odoo
+        # lit encore comme http_port ; sans l'un ni l'autre, Odoo écoute sur
+        # son port par défaut.
+        cfg = configparser.ConfigParser(interpolation=None)
         cfg.read("./config.conf")
-        http_port = cfg.getint("options", "http_port")
+        http_port = 8069
+        for option in ("http_port", "xmlrpc_port"):
+            try:
+                http_port = cfg.getint("options", option)
+                break
+            except (configparser.Error, ValueError):
+                continue
 
         status = self.execute.exec_command_live(
             f"./script/process/kill_process_by_port.py {http_port} --kill-tree --nb_parent 2",
