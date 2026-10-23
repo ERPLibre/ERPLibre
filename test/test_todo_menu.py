@@ -620,6 +620,8 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
 
         ru = git_repo_menu.repo_upgrade
         with mock.patch.object(
+            ru, "versions_installees", return_value=["18.0"]
+        ), mock.patch.object(
             ru, "ajouter_remotes", return_value=lst
         ) as ajouter, mock.patch.object(
             ru, "render_remotes", return_value=""
@@ -632,6 +634,34 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         ajouter.assert_called_once()
         rendu.assert_called_once()
         diagnostic.assert_not_called()
+
+    def test_the_upstream_remotes_entry_covers_every_installed_version(self):
+        """Chaque version d'Odoo du checkout, dans l'ordre, et non la
+        seule active : synchroniser une autre version en a besoin."""
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        ru = git_repo_menu.repo_upgrade
+        with mock.patch.object(
+            ru, "versions_installees", return_value=["16.0", "17.0", "18.0"]
+        ), mock.patch.object(
+            ru, "ajouter_remotes", return_value=[{"cible": "U/x"}]
+        ) as ajouter, mock.patch.object(
+            ru, "render_remotes", return_value=""
+        ) as rendu, mock.patch(
+            "builtins.print"
+        ):
+            recuperes = Menu()._git_repo_ajouter_remotes()
+        self.assertEqual(
+            ["16.0", "17.0", "18.0"],
+            [appel.args[0] for appel in ajouter.call_args_list],
+        )
+        self.assertEqual(3, rendu.call_count)
+        self.assertEqual(3, recuperes)
 
 
 class TestGitRepoFreezeEntries(unittest.TestCase):

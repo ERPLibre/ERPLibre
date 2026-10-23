@@ -121,6 +121,29 @@ def version_active(racine=REPO_ROOT):
         return ""
 
 
+def versions_installees(racine=REPO_ROOT, dossier=DOSSIER):
+    """Les versions d'Odoo du checkout, croissantes : celles qui ont un arbre
+    « odoo<V>/ » à la racine ET un manifeste.
+
+    Un arbre sans manifeste n'a aucun fork à lire, et un manifeste sans
+    arbre n'a aucun clone où poser un remote.
+    """
+    try:
+        noms = os.listdir(racine)
+    except OSError:
+        return []
+    versions = []
+    for nom in noms:
+        m = re.match(r"^odoo(\d+\.\d+)$", nom)
+        if (
+            m
+            and os.path.isdir(os.path.join(racine, nom))
+            and fichiers_manifeste(m.group(1), dossier)
+        ):
+            versions.append(m.group(1))
+    return sorted(versions, key=lambda v: tuple(int(x) for x in v.split(".")))
+
+
 def fichiers_manifeste(version, dossier=DOSSIER):
     """Les manifestes d'une version, dans l'ordre où ils se fusionnent.
 
@@ -359,6 +382,15 @@ def git(args, cwd, delai=DELAI_GIT):
     except (OSError, subprocess.SubprocessError) as exc:
         return "", str(exc), 1
     return done.stdout, done.stderr, done.returncode
+
+
+def commit_de(chemin, ref):
+    """Le commit complet que `ref` désigne dans ce clone, ou None."""
+    out, _err, code = git(
+        ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], chemin
+    )
+    sha = out.strip()
+    return sha if code == 0 and sha else None
 
 
 def est_superficiel(chemin):
@@ -809,7 +841,10 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
     récupère par l'URL, sans remote.
 
     « cible » est la référence de l'amont récupéré, « <remote>/<branche> »
-    ou FETCH_HEAD, celle que `repo_apply.appliquer` rebase. « remote_amont »
+    ou FETCH_HEAD, celle que `repo_apply.appliquer` rebase ; « cible_sha »
+    est le commit qu'elle désigne après le fetch et « head » celui de HEAD :
+    les deux épinglent l'état montré, qu'une passe sans menu revérifie
+    avant d'écrire. « remote_amont »
     est l'état que `preparer_remote` rend. Un remote homonyme à une autre
     URL rend le fork non comparable : « url_en_place » porte cette URL et
     « correction » la commande qui la remplace.
@@ -821,6 +856,8 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
             "verdict": "non_comparable",
             "motif": None,
             "cible": None,
+            "cible_sha": None,
+            "head": None,
             "remote_amont": None,
             "url_en_place": None,
             "correction": None,
@@ -875,6 +912,8 @@ def diagnostiquer(constat, racine=REPO_ROOT, delai=DELAI_GIT):
         constat["motif"] = t("upstream unreachable")
         return constat
     constat["cible"] = cible
+    constat["cible_sha"] = commit_de(chemin, cible)
+    constat["head"] = commit_de(chemin, "HEAD")
     if constat.get("base_gelee"):
         constat["amont_depuis_gel"], constat["amont_reecrit"] = depuis_le_gel(
             chemin, constat["base_gelee"]
@@ -1324,6 +1363,52 @@ def render_remotes(lst, version, colour=True):
     return "\n".join(out)
 
 
+def _main_remotes_toutes_versions(args):
+    """`--add-remotes --all-versions` : chaque version installée, croissante.
+
+    Sort 2 sans aucune version, 1 dès qu'un fork d'une version a échoué.
+    """
+    import json
+
+    versions = versions_installees(dossier=args.manifest_dir)
+    if not versions:
+        print(f"❌ {t('No Odoo version found')}", file=sys.stderr)
+        return 2
+    par_version = [
+        (version, ajouter_remotes(version, args.manifest_dir))
+        for version in versions
+    ]
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "versions": [
+                        {"version": version, "remotes": lst}
+                        for version, lst in par_version
+                    ]
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    else:
+        colour = sys.stdout.isatty() and not args.no_color
+        print(
+            "\n\n".join(
+                render_remotes(lst, version, colour)
+                for version, lst in par_version
+            )
+        )
+    echecs = ("autre_url", "refuse", "fetch_echoue")
+    return (
+        1
+        if any(
+            x["issue"] in echecs for _version, lst in par_version for x in lst
+        )
+        else 0
+    )
+
+
 def main(argv=None):
     import argparse
     import json
@@ -1350,9 +1435,20 @@ def main(argv=None):
             "add and fetch the named upstream remote of each fork (network)"
         ),
     )
+    parser.add_argument(
+        "--all-versions",
+        action="store_true",
+        help=t(
+            "with --add-remotes: every Odoo version of the checkout, not only"
+            " the active one"
+        ),
+    )
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-color", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.add_remotes and args.all_versions:
+        return _main_remotes_toutes_versions(args)
 
     version = args.version or version_active()
     if not version:

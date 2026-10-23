@@ -337,15 +337,25 @@ class GitRepoMenuMixin:
         donne. Un remote homonyme à une autre URL n'est pas touché ; le
         rapport donne la commande qui le corrige, et nomme les forks sautés.
 
+        Toutes les versions d'Odoo du checkout passent, et non la seule
+        active : synchroniser une autre version demande ses amonts aussi.
+
         Rend le nombre de forks dont l'amont est récupéré.
         """
-        version = repo_upgrade.version_active(RACINE) or "?"
-        print(f"🌐 {t('Add the upstream remotes')} — Odoo {version}")
+        versions = repo_upgrade.versions_installees(RACINE)
+        if not versions:
+            versions = [repo_upgrade.version_active(RACINE) or "?"]
+        print(
+            f"🌐 {t('Add the upstream remotes')} — Odoo {', '.join(versions)}"
+        )
         print(f"   {t('Querying each upstream, this takes a few seconds.')}")
-        lst = repo_upgrade.ajouter_remotes(version, racine=RACINE)
-        print()
-        print(repo_upgrade.render_remotes(lst, version, colour=True))
-        return len([x for x in lst if x["cible"]])
+        recuperes = 0
+        for version in versions:
+            lst = repo_upgrade.ajouter_remotes(version, racine=RACINE)
+            print()
+            print(repo_upgrade.render_remotes(lst, version, colour=True))
+            recuperes += len([x for x in lst if x["cible"]])
+        return recuperes
 
     def _git_repo_a_sec(self):
         """Constate ce qu'une mise à niveau ferait.
@@ -441,12 +451,11 @@ class GitRepoMenuMixin:
                     break
 
     def _git_repo_appliquer(self):
-        """Constate, montre, fait retaper la version, puis applique.
+        """Constate, montre, demande confirmation, puis applique.
 
         La passe à sec tourne TOUJOURS d'abord et son compte fait contrat :
         une question posée avant de savoir ce qui sera touché n'est pas un
-        consentement, c'est un pari. La confirmation redemande la version
-        plutôt qu'un « o » : recopier oblige à regarder.
+        consentement, c'est un pari. La réponse par défaut est non.
 
         Un fork sans commit propre, en retard sur l'amont, avance par
         fast-forward au lieu d'être rebasé.
@@ -483,10 +492,8 @@ class GitRepoMenuMixin:
             )
             print(f"     {x['chemin']} → {branche}{avance}")
         print(f"   {t('Nothing is pushed.')}")
-        tape = input(
-            f"💬 {t('Type the Odoo version to confirm (empty to cancel): ')}"
-        ).strip()
-        if tape != version:
+        reponse = input(f"💬 {t('Apply the upgrade? (y/N): ')}")
+        if reponse.strip().lower() not in ("o", "oui", "y", "yes"):
             print(f"↩️  {t('Cancelled: nothing was written.')}")
             return 0
 

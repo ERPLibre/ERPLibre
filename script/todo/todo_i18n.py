@@ -18614,6 +18614,10 @@ TRANSLATIONS = {
         "fr": "ajoute et récupère le remote amont nommé de chaque fork (réseau)",
         "en": "add and fetch the named upstream remote of each fork (network)",
     },
+    "with --add-remotes: every Odoo version of the checkout, not only the active one": {
+        "fr": "avec --add-remotes : chaque version d'Odoo du checkout, et non la seule active",
+        "en": "with --add-remotes: every Odoo version of the checkout, not only the active one",
+    },
     "🌐 Add the upstream remotes": {
         "fr": "🌐 Ajouter les remotes amont",
         "en": "🌐 Add the upstream remotes",
@@ -18798,9 +18802,9 @@ TRANSLATIONS = {
         "fr": "Rien n'est poussé.",
         "en": "Nothing is pushed.",
     },
-    "Type the Odoo version to confirm (empty to cancel): ": {
-        "fr": "Retapez la version d'Odoo pour confirmer (vide pour annuler) : ",
-        "en": "Type the Odoo version to confirm (empty to cancel): ",
+    "Apply the upgrade? (y/N): ": {
+        "fr": "Appliquer la mise à niveau ? (o/N) : ",
+        "en": "Apply the upgrade? (y/N): ",
     },
     "Pass recorded in": {
         "fr": "Passe enregistrée dans",

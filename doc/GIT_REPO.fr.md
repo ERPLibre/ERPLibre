@@ -179,7 +179,11 @@ tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne 
 
 `Ajouter les remotes amont`, l'entrée 3 de TODO › Execute › Git › Repo, ou
 `--add-remotes`, ne fait que cela, sur chaque fork, sans diagnostic : poser le
-remote amont nommé, puis récupérer sa branche. Le remote est posé avec
+remote amont nommé, puis récupérer sa branche. L'entrée du menu passe chaque
+version d'Odoo du checkout, chaque arbre `odoo<V>/` qui a un manifeste, en
+ordre croissant et non la seule active ; en ligne de commande,
+`--add-remotes --all-versions` fait de même, et `--version` seul en choisit une.
+Le remote est posé avec
 `--no-tags`, et chaque fetch le passe aussi : les tags de l'amont ne se mêlent
 jamais à ceux du clone. Il est posé avec `-t <branche>` : sa refspec ne suit
 que la branche amont déclarée, si bien que `git fetch OCA` amène `OCA/18.0` et
@@ -213,7 +217,7 @@ branches de suivi de ce remote comme la preuve que le fork porte un commit.
 
 ### Appliquer la mise à niveau
 
-`Appliquer la mise à niveau` (TODO › Execute › Git › Repo) demande de taper la version d'Odoo pour confirmer, puis
+`Appliquer la mise à niveau` (TODO › Execute › Git › Repo) demande une confirmation (`o/N`), puis
 traite chaque fork que la passe à sec marque à rebaser, en conflit, absorbé par l'amont ou en retard sur l'amont. Rien
 n'est poussé. Chaque fork reçoit une branche datée `<branche>_maj_<AAAAMMJJ>`, créée sur HEAD, où :
 
@@ -500,4 +504,23 @@ reste bornée sur un dépôt aussi grand que le cœur d'Odoo : le diffstat compt
 .venv.erplibre/bin/python script/git/repo_state.py snapshot --dirty --repo odoo18.0/addons/OCA_web
 .venv.erplibre/bin/python script/git/repo_state.py between odoo18.0/addons/OCA_web OLD_SHA NEW_SHA --max 50
 .venv.erplibre/bin/python script/git/repo_state.py cross-version odoo18.0/addons/OCA_web --module web_responsive --full
+```
+
+#### Appliquer une passe de mise à niveau sans le menu
+
+`script/git/repo_apply.py --apply --confirm <version d'Odoo> --expect <chemin>...` applique une passe pour un appelant
+qui a déjà montré l'essai à sec et recueilli le consentement, tel le module Odoo `erplibre_info` ; il écrit du JSON.
+Il refait le diagnostic et refuse de rien écrire (code de sortie 4) si les forks sans conflit prédit (`a_rebaser`,
+`en_retard`) ne sont pas exactement les chemins `--expect`. `--expect <chemin>=<sha amont>:<sha HEAD>` épingle en
+plus l'état que l'essai à sec a montré, tiré des `cible_sha` et `head` de son diagnostic : un fork épinglé dont
+l'amont ou le HEAD a bougé depuis refuse la passe de la même façon, listé sous `derives`, si bien que le rebase ne
+se pose jamais sur des commits que personne n'a vus. `--confirm` doit valoir la version d'Odoo active
+(code de sortie 2 sinon). Les forks dont un conflit est prédit (`en_conflit`, `absorbe`) sont
+laissés au menu et listés sous `laisses`. Un fork qui bute malgré tout voit son rebase abandonné et revient sur son
+commit de départ, état `conflit_annule` : aucun arbre ne reste en conflit. La passe s'inscrit sous
+`tasks/git_repo_upgrade/` comme une passe du menu, et rien n'est poussé.
+
+```bash
+.venv.erplibre/bin/python script/git/repo_apply.py --apply --confirm 18.0 --expect odoo18.0/addons/OCA_web
+.venv.erplibre/bin/python script/git/repo_apply.py --apply --confirm 18.0 --expect odoo18.0/addons/OCA_web=UPSTREAM_SHA:HEAD_SHA
 ```

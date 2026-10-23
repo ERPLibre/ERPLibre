@@ -56,6 +56,19 @@ Le mode retenu et sa raison s'inscrivent dans « mode ». Un fork sans
 commit propre ne se rebase pas : sa branche datée avance sur l'amont
 (« merge --ff-only »).
 
+La passe sans menu
+------------------
+« repo_apply.py --apply » applique une passe sans terminal, pour un
+appelant qui a déjà montré l'essai à sec et recueilli le consentement
+(le module Odoo erplibre_info). Trois écarts au menu la bornent. Seuls
+les verdicts sans conflit prédit s'appliquent (VERDICTS_SANS_CONFLIT).
+Un dépôt qui bute malgré tout voit son rebase abandonné et revient sur
+son départ (« conflit_annule ») : hors du menu, personne ne reprend la
+file, et un arbre en conflit est un code que le serveur chargerait. La
+liste des dépôts consentie (« --expect ») doit être celle que le
+diagnostic refait à l'instant, et chaque dépôt épinglé doit avoir gardé le
+commit amont et le HEAD montrés ; sinon rien ne s'écrit (code 4).
+
 La publication
 --------------
 Seule la publication sort du dépôt local. Elle pousse la pointe de la
@@ -80,7 +93,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
-from script.git import manifest_freeze  # noqa: E402
+from script.git import manifest_freeze, repo_upgrade  # noqa: E402
 from script.git.repo_upgrade import (  # noqa: E402
     DELAI_GIT,
     REPO_ROOT,
@@ -928,3 +941,228 @@ def revenir_a_repo(chemin, depart, delai=DELAI_GIT):
     if rebase_en_cours(chemin):
         abandonner_rebase(chemin, delai)
     return git(["checkout", "--detach", depart], chemin, delai)
+
+
+# ── passe sans menu ─────────────────────────────────────────────────────
+
+# Les verdicts qu'une passe sans menu applique : ceux pour lesquels le
+# diagnostic ne prédit aucun conflit.
+VERDICTS_SANS_CONFLIT = ("a_rebaser", "en_retard")
+
+EXIT_USAGE = 2
+EXIT_PLAN_CHANGE = 4
+
+
+def annuler_conflit(chemin, res, branche_depart, delai=DELAI_GIT):
+    """Abandonne le rebase en conflit de `res` et remet le dépôt sur son
+    départ : la branche `branche_depart`, ou la HEAD détachée « depart ».
+
+    Après « rebase --abort » l'arbre est propre et HEAD sur la branche
+    datée, que `restaurer` quitte puis supprime. Le relevé des fichiers
+    hors suivi est pris APRÈS l'abandon : aucun fichier n'est effacé.
+    « etat » devient « conflit_annule » ; « conflits » garde la liste des
+    fichiers qui ont buté.
+    """
+    out, err, code = abandonner_rebase(chemin, delai)
+    if code:
+        res["restaure"] = False
+        res["sortie"] = "\n".join(
+            x for x in (res.get("sortie"), (out + err).strip()) if x
+        )
+        return res
+    res["restaure"], sortie = restaurer(
+        chemin, res, branche_depart, fichiers_hors_suivi(chemin), delai
+    )
+    res["etat"] = "conflit_annule"
+    res["sortie"] = "\n".join(x for x in (res.get("sortie"), sortie) if x)
+    return res
+
+
+def lire_attendu(texte):
+    """(chemin, épingle) d'un argument « --expect ».
+
+    « CHEMIN » seul ne consent qu'à la liste des dépôts ; « CHEMIN=CIBLE:HEAD »
+    épingle en plus le commit amont et le HEAD que l'essai à sec a montrés
+    (« cible_sha » et « head » du diagnostic) : l'épingle vaut alors
+    {"cible_sha", "head"}, None sans elle. Un « = » sans deux commits
+    complets lève ValueError.
+    """
+    chemin, egal, reste = texte.partition("=")
+    if not egal:
+        return texte, None
+    cible, deux_points, head = reste.partition(":")
+    if not (
+        deux_points
+        and manifest_freeze.is_sha(cible)
+        and manifest_freeze.is_sha(head)
+    ):
+        raise ValueError(
+            f"--expect {texte}: expected PATH=TARGET_SHA:HEAD_SHA"
+        )
+    return chemin, {"cible_sha": cible, "head": head}
+
+
+def derives(retenus, epingles):
+    """[{chemin, cle, attendu, trouve}] des forks retenus dont la cible ou le
+    HEAD n'est plus celui de leur épingle ; un fork sans épingle n'est
+    comparé à rien."""
+    lst = []
+    for constat in retenus:
+        epingle = (epingles or {}).get(constat["chemin"])
+        if not epingle:
+            continue
+        for cle in ("cible_sha", "head"):
+            if constat.get(cle) != epingle[cle]:
+                lst.append(
+                    {
+                        "chemin": constat["chemin"],
+                        "cle": cle,
+                        "attendu": epingle[cle],
+                        "trouve": constat.get(cle),
+                    }
+                )
+    return lst
+
+
+def passe_sans_menu(
+    version,
+    attendus,
+    racine=REPO_ROOT,
+    horodatage=None,
+    delai=DELAI_GIT,
+    epingles=None,
+):
+    """Refait le diagnostic, vérifie le plan consenti, applique et inscrit.
+
+    `attendus` est la liste des chemins que l'appelant a montrée et fait
+    valider, `epingles` {chemin: {cible_sha, head}} l'état de chacun qu'il
+    a montré (voir `lire_attendu`). Rend (charge, code) : code 0 quand la
+    passe a tourné (les refus par dépôt sont dans « resultats »),
+    EXIT_PLAN_CHANGE quand le diagnostic ne retient plus les mêmes dépôts,
+    ou qu'un dépôt épinglé a un autre commit amont ou un autre HEAD
+    (« derives ») — rien n'est alors écrit : le rebase irait sur un amont
+    que personne n'a vu. « laisses » nomme les forks dont un conflit est
+    prédit, à reprendre dans le menu. Rien n'est jamais poussé.
+    """
+    dossier = os.path.join(racine, "manifest")
+    lst = repo_upgrade.passe_diagnostic(version, dossier, racine=racine)
+    retenus = [c for c in lst if c.get("verdict") in VERDICTS_SANS_CONFLIT]
+    plan = sorted(c["chemin"] for c in retenus)
+    charge = {
+        "version": version,
+        "horodatage": None,
+        "dossier": None,
+        "plan": plan,
+        "attendus": sorted(set(attendus)),
+        "laisses": sorted(
+            c["chemin"]
+            for c in lst
+            if c.get("verdict") in VERDICTS_A_APPLIQUER
+            and c.get("verdict") not in VERDICTS_SANS_CONFLIT
+        ),
+        "resultats": [],
+        "derives": [],
+        "error": None,
+    }
+    if plan != charge["attendus"]:
+        charge["error"] = "plan_changed"
+        return charge, EXIT_PLAN_CHANGE
+    charge["derives"] = derives(retenus, epingles)
+    if charge["derives"]:
+        charge["error"] = "plan_changed"
+        return charge, EXIT_PLAN_CHANGE
+    if not retenus:
+        return charge, 0
+
+    import datetime
+
+    horodatage = horodatage or datetime.datetime.now().strftime("%Y%m%dT%H%M")
+    departs = {
+        c["chemin"]: branche_courante(os.path.join(racine, c["chemin"]))
+        for c in retenus
+    }
+    resultats = passe_appliquer(retenus, horodatage, racine, delai=delai)
+    for res in resultats:
+        if res["etat"] == "conflit":
+            annuler_conflit(
+                os.path.join(racine, res["chemin"]),
+                res,
+                departs.get(res["chemin"]),
+                delai,
+            )
+    dossier_ecrit = ecrire_passe(horodatage, version, lst, resultats, racine)
+    charge["horodatage"] = horodatage
+    charge["dossier"] = os.path.relpath(dossier_ecrit, racine)
+    charge["resultats"] = resultats
+    return charge, 0
+
+
+def main(argv=None):
+    """« --apply --confirm <version> [--expect CHEMIN[=CIBLE:HEAD]]… » : la
+    passe sans menu, sortie JSON sur stdout. Code 2 pour un usage refusé
+    (version retapée fausse, épingle illisible), 4 pour un plan changé, 1
+    pour une erreur interne."""
+    import argparse
+    import traceback
+
+    parser = argparse.ArgumentParser(
+        description="Apply an upgrade pass without the menu (JSON output)."
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="apply the forks without predicted conflict; never pushes",
+    )
+    parser.add_argument(
+        "--confirm",
+        metavar="VERSION",
+        default="",
+        help="the active Odoo version, typed again",
+    )
+    parser.add_argument(
+        "--expect",
+        metavar="PATH[=TARGET_SHA:HEAD_SHA]",
+        action="append",
+        default=[],
+        help="a repository of the plan shown by the dry run, optionally "
+        "pinned to the upstream commit and the HEAD it showed (repeatable)",
+    )
+    parser.add_argument("--root", default=REPO_ROOT)
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="accepted for compatibility: the output is always JSON",
+    )
+    args = parser.parse_args(argv)
+    racine = os.path.realpath(args.root)
+    version = repo_upgrade.version_active(racine)
+
+    def sortir(charge, code):
+        json.dump(charge, sys.stdout, ensure_ascii=False, default=sorted)
+        sys.stdout.write("\n")
+        return code
+
+    if not args.apply:
+        return sortir({"error": "usage: --apply is required"}, EXIT_USAGE)
+    if not version or args.confirm != version:
+        return sortir(
+            {"version": version, "error": "confirm_mismatch"}, EXIT_USAGE
+        )
+    try:
+        lus = [lire_attendu(x) for x in args.expect]
+    except ValueError as exc:
+        return sortir({"version": version, "error": str(exc)}, EXIT_USAGE)
+    attendus = [chemin for chemin, _e in lus]
+    epingles = {chemin: e for chemin, e in lus if e}
+    try:
+        charge, code = passe_sans_menu(
+            version, attendus, racine, epingles=epingles
+        )
+    except Exception as exc:
+        traceback.print_exc(file=sys.stderr)
+        return sortir({"error": f"internal: {type(exc).__name__}: {exc}"}, 1)
+    return sortir(charge, code)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

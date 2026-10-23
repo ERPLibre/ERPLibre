@@ -495,6 +495,11 @@ class TestDiagnostiquerParLeRemote(DepotsAvecManifeste):
             _git(clone, "rev-parse", "U/principale"),
             _git(self.travail, "rev-parse", "HEAD"),
         )
+        # L'état montré s'épingle : le commit amont et HEAD, en entier.
+        self.assertEqual(
+            res["cible_sha"], _git(self.travail, "rev-parse", "HEAD")
+        )
+        self.assertEqual(res["head"], _git(clone, "rev-parse", "HEAD"))
 
 
 class TestCatalogue(unittest.TestCase):
@@ -526,6 +531,87 @@ class TestCatalogue(unittest.TestCase):
         ):
             self.assertIn(cle, todo_i18n.TRANSLATIONS)
             self.assertTrue(todo_i18n.TRANSLATIONS[cle]["fr"])
+
+
+class TestToutesLesVersions(unittest.TestCase):
+    """Les remotes de chaque version installée, et non de la seule active."""
+
+    def setUp(self):
+        self.racine = tempfile.mkdtemp(prefix="el_versions_")
+        self.addCleanup(shutil.rmtree, self.racine, True)
+        self.manifestes = os.path.join(self.racine, "manifest")
+        os.mkdir(self.manifestes)
+        # 9.0 et 16.0 : arbre et manifeste ; 15.0 : arbre sans manifeste ;
+        # 17.0 : manifeste et un FICHIER à la place de l'arbre.
+        for version in ("9.0", "16.0", "15.0"):
+            os.mkdir(os.path.join(self.racine, f"odoo{version}"))
+        open(os.path.join(self.racine, "odoo17.0"), "w").close()
+        for version in ("9.0", "16.0", "17.0"):
+            open(
+                os.path.join(
+                    self.manifestes, f"git_manifest_odoo{version}.xml"
+                ),
+                "w",
+            ).close()
+
+    def test_les_versions_installees_croissantes(self):
+        self.assertEqual(
+            ["9.0", "16.0"],
+            repo_upgrade.versions_installees(self.racine, self.manifestes),
+        )
+
+    def test_la_cli_passe_chaque_version(self):
+        import contextlib
+        import io
+        import json
+
+        vues = []
+
+        def ajouter(version, dossier):
+            vues.append(version)
+            issue = "fetch_echoue" if version == "16.0" else "ajoute"
+            return [{"chemin": f"odoo{version}/odoo", "issue": issue}]
+
+        sortie = io.StringIO()
+        with patch.object(
+            repo_upgrade, "versions_installees", return_value=["9.0", "16.0"]
+        ), patch.object(
+            repo_upgrade, "ajouter_remotes", side_effect=ajouter
+        ), contextlib.redirect_stdout(
+            sortie
+        ):
+            code = repo_upgrade.main(
+                [
+                    "--manifest-dir",
+                    self.manifestes,
+                    "--add-remotes",
+                    "--all-versions",
+                    "--json",
+                ]
+            )
+        self.assertEqual(["9.0", "16.0"], vues)
+        self.assertEqual(1, code)
+        charge = json.loads(sortie.getvalue())
+        self.assertEqual(
+            ["9.0", "16.0"], [x["version"] for x in charge["versions"]]
+        )
+
+    def test_sans_version_la_cli_sort_en_2(self):
+        import contextlib
+        import io
+
+        with patch.object(
+            repo_upgrade, "versions_installees", return_value=[]
+        ), contextlib.redirect_stderr(io.StringIO()):
+            code = repo_upgrade.main(
+                [
+                    "--manifest-dir",
+                    self.manifestes,
+                    "--add-remotes",
+                    "--all-versions",
+                ]
+            )
+        self.assertEqual(2, code)
 
 
 if __name__ == "__main__":
