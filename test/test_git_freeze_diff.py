@@ -233,7 +233,10 @@ class _Checkout(unittest.TestCase):
         plafond.start()
         self.addCleanup(plafond.stop)
         _git(self.racine, "init", "-q")
-        _git(self.racine, "commit", "-q", "--allow-empty", "-m", "départ")
+        # La version active : son manifeste est le seul que le gel lit.
+        self.fichier(os.path.join(self.racine, ".odoo-version"), "X.0\n")
+        _git(self.racine, "add", ".odoo-version")
+        _git(self.racine, "commit", "-q", "-m", "départ")
         os.makedirs(os.path.join(self.racine, "manifest"))
         self.alpha = self.clone("c/alpha", 4)
         self.beta = self.clone("c/beta", 2)
@@ -289,7 +292,7 @@ class _Checkout(unittest.TestCase):
 
     def gel(self, projets, message):
         self.fichier(
-            os.path.join(self.racine, "manifest", "git_manifest_t.xml"),
+            os.path.join(self.racine, "manifest", "git_manifest_odooX.0.xml"),
             _manifeste(projets),
         )
         _git(self.racine, "add", "manifest")
@@ -410,7 +413,7 @@ class TestBaseAmont(_Checkout):
     la base de fusion d'un fork l'est toujours.
     """
 
-    MANIFESTE = os.path.join("manifest", "git_manifest_t.xml")
+    MANIFESTE = os.path.join("manifest", "git_manifest_odooX.0.xml")
 
     def ecrire(self, projets, message=None):
         """Écrit le fichier source ; le committe si `message` est donné."""
@@ -545,6 +548,25 @@ class TestLectureDesCotes(_Checkout):
             self.alpha[3],
         )
 
+    def test_un_gel_d_une_autre_version_n_est_pas_lu(self):
+        # La fusion retire le gel des fichiers hors de la version active :
+        # il n'est jamais installé, ni le disque ni une révision ne le lisent.
+        self.fichier(
+            os.path.join(self.racine, "manifest", "git_manifest_odooY.0.xml"),
+            _manifeste([("delta", "c/delta", self.beta[0])]),
+        )
+        self.assertIsNone(
+            fd.read_worktree(self.racine)["delta+c/delta"]["sha"]
+        )
+        _git(self.racine, "add", "manifest")
+        _git(self.racine, "commit", "-q", "-m", "gel d'une autre version")
+        gel = fd.read_ref(self.racine, "HEAD")
+        self.assertIsNone(gel["delta+c/delta"]["sha"])
+        self.assertEqual(gel["alpha+c/alpha"]["sha"], self.alpha[2])
+        self.assertNotIn(
+            "delta+c/delta", fd._clone_definitions(self.racine, [gel])
+        )
+
     def test_les_clones_rendent_leur_head(self):
         clones = fd.read_clones(self.racine, self.definitions(), jobs=2)
         self.assertEqual(clones["alpha+c/alpha"]["sha"], self.alpha[3])
@@ -601,7 +623,7 @@ class TestHistoriqueDesGels(_Checkout):
     def test_gel_non_committe(self):
         self.assertEqual(fd.uncommitted_freeze(self.racine), [])
         self.fichier(
-            os.path.join(self.racine, "manifest", "git_manifest_t.xml"),
+            os.path.join(self.racine, "manifest", "git_manifest_odooX.0.xml"),
             _manifeste([("alpha", "c/alpha", self.alpha[3])]),
         )
         self.assertEqual(
@@ -651,7 +673,7 @@ class TestRapport(_Checkout):
     def test_le_sommaire_signale_clones_modifies_et_gel_non_committe(self):
         self.fichier(os.path.join(self.chemin("c/beta"), "f.txt"), "sale")
         self.fichier(
-            os.path.join(self.racine, "manifest", "git_manifest_t.xml"),
+            os.path.join(self.racine, "manifest", "git_manifest_odooX.0.xml"),
             _manifeste([("alpha", "c/alpha", self.alpha[3])]),
         )
         rapport = self.build("HEAD", fd.CLONES)

@@ -90,7 +90,7 @@ def default_jobs():
 # Lecture d'un côté
 
 
-def _entries_from_texts(textes):
+def _entries_from_texts(textes, portee=None):
     """{clé: entrée} des projets de plusieurs fichiers sources.
 
     `textes` est une suite de (fichier, texte). Une entrée porte « name »,
@@ -100,9 +100,15 @@ def _entries_from_texts(textes):
     commit compris, même absent : c'est la règle de la fusion qui produit le
     manifeste local, et `textes` vient donc dans son ordre (`merge_order`).
     Un projet sans « path » prend son nom pour chemin, comme dans git-repo.
+
+    `portee`, quand elle est donnée, est l'ensemble des fichiers que le gel
+    écrit. Hors d'elle, une entrée n'a ni « sha » ni « upstream_base » : la
+    fusion retire ces deux attributs des autres fichiers (`strip_freeze`),
+    si bien qu'un tel gel n'est jamais installé et n'a rien à comparer.
     """
     entrees = {}
     for fichier, texte in textes:
+        hors_portee = portee is not None and fichier not in portee
         for _, _, attrs in manifest_freeze.iter_projects(texte):
             cle = manifest_freeze.project_key(
                 attrs.get("name"), attrs.get("path")
@@ -110,11 +116,17 @@ def _entries_from_texts(textes):
             entrees[cle] = {
                 "name": attrs.get("name"),
                 "path": attrs.get("path") or attrs.get("name"),
-                "sha": attrs.get(manifest_freeze.FREEZE_ATTR) or None,
-                "upstream_base": attrs.get(
-                    manifest_freeze.FORK_UPSTREAM_FREEZE_ATTR
-                )
-                or None,
+                "sha": (
+                    None
+                    if hors_portee
+                    else attrs.get(manifest_freeze.FREEZE_ATTR) or None
+                ),
+                "upstream_base": (
+                    None
+                    if hors_portee
+                    else attrs.get(manifest_freeze.FORK_UPSTREAM_FREEZE_ATTR)
+                    or None
+                ),
                 "branch": attrs.get("revision"),
                 "remote": attrs.get("remote"),
                 "file": fichier,
@@ -152,7 +164,8 @@ def merge_order(racine, fichiers):
 
 
 def read_worktree(racine):
-    """Le gel des fichiers de `manifest/` tels qu'ils sont sur le disque."""
+    """Le gel des fichiers de `manifest/` tels qu'ils sont sur le disque,
+    réduit aux fichiers de la version d'Odoo active (`freeze_sources`)."""
     fichiers = [
         os.path.relpath(chemin, racine)
         for chemin in glob.glob(os.path.join(racine, MANIFEST_DIR, "*.xml"))
@@ -161,7 +174,7 @@ def read_worktree(racine):
     for fichier in merge_order(racine, fichiers):
         with open(os.path.join(racine, fichier)) as fh:
             textes.append((fichier, fh.read()))
-    return _entries_from_texts(textes)
+    return _entries_from_texts(textes, set(freeze_sources(racine)))
 
 
 def resolve_ref(racine, ref):
@@ -173,7 +186,9 @@ def resolve_ref(racine, ref):
 
 
 def read_ref(racine, ref):
-    """Le gel des fichiers de `manifest/` tels que `ref` les a committés."""
+    """Le gel des fichiers de `manifest/` tels que `ref` les a committés,
+    réduit aux fichiers de la version d'Odoo active (`freeze_sources`) : la
+    version active est celle du checkout, pas celle de `ref`."""
     code, liste = _git(
         racine, "ls-tree", "--name-only", ref, "--", f"{MANIFEST_DIR}/"
     )
@@ -185,7 +200,7 @@ def read_ref(racine, ref):
         code, texte = _git(racine, "show", f"{ref}:{fichier}")
         if not code:
             textes.append((fichier, texte))
-    return _entries_from_texts(textes)
+    return _entries_from_texts(textes, set(freeze_sources(racine)))
 
 
 def is_clone(chemin):
