@@ -38,6 +38,8 @@ PIN_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/pin.py"
 PIN_PENDING = 3
 # Trouver les installations Dolibarr, sur ce poste ou par SSH.
 DETECT_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/detect.py"
+# Bilan de santé, sécurité et intégrité de chaque instance inscrite.
+DOCTOR_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/doctor.py"
 SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
 
 # Le script qui bâtit le venv d'outillage quand il manque, comme le fait
@@ -76,6 +78,11 @@ class DolibarrMenuMixin:
             {"prompt_description": t("Dolibarr - Instance logs")},
             {"section": t("Maintenance")},
             {"prompt_description": t("Dolibarr - Update the pinned commit")},
+            {
+                "prompt_description": t(
+                    "Dolibarr - Health, security and integrity"
+                )
+            },
             {"section": t("Inventory")},
             {
                 "prompt_description": t(
@@ -102,9 +109,17 @@ class DolibarrMenuMixin:
             elif status == "6":
                 self._dolibarr_pin()
             elif status == "7":
+                self._dolibarr_doctor()
+            elif status == "8":
                 self._dolibarr_detect()
             else:
                 print(t("Command not found !"))
+
+    def _dolibarr_doctor(self):
+        """doctor.py sur toutes les instances ; il dit lui-même ce qui va."""
+        self.execute.exec_command_live(
+            f"{DOCTOR_CLI} --all", source_erplibre=False
+        )
 
     def _dolibarr_detect(self):
         """Ce poste, un hôte de ~/.ssh/config ou tous : detect.py sonde et
