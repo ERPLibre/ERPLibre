@@ -165,6 +165,7 @@ writes, merge field by field:
 | Condition (per field, since the base) | Resolution |
 |---------------------------------------|------------|
 | Changed on the server only | The note takes the server's value |
+| Date changed on the server only | Proposed on the note (params.dateProposal): the user takes it, or keeps the note's date; nothing is sent back meanwhile, a refused day is not proposed again |
 | Changed in the app only | The push sends it, alone |
 | Changed on both sides to the same value | Nothing to do |
 | Changed on both sides to different values | Conflict: nothing is sent to that server until the user keeps the app's or the server's version |
