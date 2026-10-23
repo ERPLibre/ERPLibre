@@ -35,6 +35,24 @@ per server (picker boxes Task / Opportunity).
 | `archived`             | `active`           | Create only: never written after, it would revive an opportunity marked lost |
 | `done`, `pinned`       | —                  | Not mapped (no won/lost, no stars) |
 
+## Note mobile → mail.activity
+
+A note can schedule several activities per server, each on a record chosen
+in the picker (a contact, an opportunity, a task, … or the note's own task
+or opportunity).
+
+| Note mobile field      | mail.activity field | Notes |
+|------------------------|---------------------|-------|
+| *(target)*             | `res_model_id`      | From `default_res_model` in the create context, create only |
+| *(target)*             | `res_id`            | Record chosen (name_search), create only |
+| *(target)*             | `activity_type_id`  | Chosen among mail.activity.type, create only; none: server default |
+| *(target)*             | `date_deadline`     | Picker: the note's first date, else today + the type's delay; create only |
+| *(target)*             | `user_id`           | Chosen among res.users, create only; none: the connected user |
+| `title`                | `summary`           | |
+| entries                | `note`              | Same HTML as the task, with the marker |
+| `done`                 | —                   | `action_feedback`: the activity is marked done, once |
+| `tags`, `pinned`, `archived` | —             | Not mapped |
+
 ## Description HTML structure
 
 Each note's `description` field is built by concatenating all entries in order:
