@@ -13,9 +13,9 @@
 | `tags`                 | `tag_ids`             | Many2many        | Matched by tag name; created if missing |
 | entry `text`           | `description`         | Html             | Each entry → `<p>text content</p>` |
 | entry `date`           | `date_deadline`       | Datetime         | First date entry only |
-| entry `audio`          | `attachment_ids`      | ir.attachment    | + `<p>🎙️ Enregistrement audio — ISO_DATE</p>` in description |
-| entry `photo`          | `attachment_ids`      | ir.attachment    | + `<p>📷 Photo — ISO_DATE</p>` in description |
-| entry `video`          | `attachment_ids`      | ir.attachment    | + `<p>🎥 Vidéo — ISO_DATE</p>` in description |
+| entry `audio`          | `attachment_ids`      | ir.attachment    | + `<p>🎙️ Enregistrement audio</p>` in description |
+| entry `photo`          | `attachment_ids`      | ir.attachment    | + `<p>📷 Photo</p>` in description |
+| entry `video`          | `attachment_ids`      | ir.attachment    | + `<p>🎥 Vidéo</p>` in description |
 | entry `geolocation`    | `geo_task_point`      | GeoMultiPoint    | All lat/lon → MultiPoint GeoJSON, sent only when `fields_get` finds the field (module `erplibre_mobile_todo`) ; `<p>📍 text — lat,lon — ISO_DATE</p>` in description |
 
 ## Note mobile → crm.lead (opportunity)
@@ -52,6 +52,19 @@ or opportunity).
 | entries                | `note`              | Same HTML as the task, with the marker |
 | `done`                 | —                   | `action_feedback`: the activity is marked done, once |
 | `tags`, `pinned`, `archived` | —             | Not mapped |
+
+## Note mobile → mail.message (message in a chatter)
+
+A note can be posted, as a logged note, in the chatter of several records
+per server, chosen in the picker.
+
+| Note mobile field      | mail.message        | Notes |
+|------------------------|---------------------|-------|
+| *(target)*             | `model`, `res_id`   | Record chosen; the message is posted with `message_post` on it |
+| `title`                | `body`              | First paragraph, in bold |
+| entries                | `body`              | Same HTML as the task, then the marker |
+| *(change)*             | `body`              | Edited through `/mail/message/update_content` when its hash changed |
+| `done`, `tags`, `pinned`, `archived` | —     | Not mapped |
 
 ## Description HTML structure
 
