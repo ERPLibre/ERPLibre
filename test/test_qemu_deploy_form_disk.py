@@ -77,6 +77,48 @@ class TestOrdreDuCatalogue(unittest.TestCase):
 
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestListesAPeineMontees(unittest.TestCase):
+    """Un recalcul qui tombe juste après le montage des rangées trouvait des
+    listes construites à moitié : poser leur valeur levait NoMatches dans
+    Textual et faisait tomber le formulaire. Le délai entre les deux recalculs
+    est balayé, car la fenêtre ne dure que quelques tours de boucle."""
+
+    def test_a_recompute_right_after_the_mount_is_safe(self):
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        ctx = contexte()
+        erreurs, ecarts = [], []
+
+        async def essai(tours):
+            from textual.widgets import Select, SelectionList
+
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 50)) as pilote:
+                await pilote.pause()
+                liste = app.query_one(SelectionList)
+                liste.select(liste.get_option_at_index(0).value)
+                app._recompute()
+                for _ in range(tours):
+                    await asyncio.sleep(0)
+                app._recompute()
+                for _ in range(4):
+                    await pilote.pause()
+                vm = app.rows[0]["vm"]
+                for champ in ("vcpus", "ram"):
+                    vu = app.query_one(f"#v0_{champ}", Select).value
+                    if vu != vm[champ]:
+                        ecarts.append((tours, champ, vu, vm[champ]))
+
+        for tours in range(9):
+            try:
+                asyncio.run(essai(tours))
+            except Exception as erreur:  # noqa: BLE001 - c'est la panne visée
+                erreurs.append((tours, type(erreur).__name__))
+        self.assertEqual([], erreurs)
+        self.assertEqual([], ecarts)
+
+
+@unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestLigneDeTotaux(unittest.TestCase):
     def _ligne(self, combien, ctx=None):
         from script.todo.qemu_deploy_form import run_deploy_form
