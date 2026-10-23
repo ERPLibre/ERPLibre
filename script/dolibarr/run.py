@@ -8,11 +8,16 @@
     ./script/dolibarr/run.py status [--instance erp]
     ./script/dolibarr/run.py logs   --instance erp [--lines 40]
 
-Une instance de développement fait tourner PHP-FPM et nginx sous le compte
-de l'utilisateur, avec les configurations que install_native.py a écrites
-dans son dossier run/ ; leurs pid y sont aussi. L'état se lit en trois
-valeurs : lancée, arrêtée, ou à moitié lancée quand un seul des deux démons
-vit. Une instance de production relève de systemd, pas de ce script.
+Une instance de développement native fait tourner PHP-FPM et nginx sous le
+compte de l'utilisateur, avec les configurations que install_native.py a
+écrites dans son dossier run/ ; leurs pid y sont aussi. L'état se lit en
+trois valeurs : lancée, arrêtée, ou à moitié lancée quand un seul des deux
+démons vit.
+
+Une instance de développement en conteneurs (install_container.py) se pilote
+par son moteur : ses trois conteneurs démarrent base, site puis tâches, et
+s'arrêtent dans l'ordre inverse. Une instance de production relève de
+systemd ou du moteur, pas de ce script.
 """
 
 import argparse
@@ -130,6 +135,12 @@ class System:
         except OSError:
             return ""
 
+    def engine(self, moteur):
+        """La fiche du moteur, relue : sudo et socket peuvent avoir changé."""
+        from script.todo import container_runtime
+
+        return container_runtime.etat(moteur)
+
 
 # Un fichier pid présent mais illisible : ni vivant ni mort, inconnu.
 UNREADABLE = -1
@@ -243,10 +254,114 @@ def cmd_stop(inst, system, nginx):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Instances en conteneurs
+# ---------------------------------------------------------------------------
+
+# État d'une instance en conteneurs -> libellé affiché (clé i18n).
+CONTAINER_LABELS = {
+    "running": "serving",
+    "stopped": "not running",
+    "half running": "half running: a container is stopped",
+    "missing": "a container is missing: install the instance again",
+}
+
+# Relancée, l'image sert en moins d'une seconde ; MariaDB, quelques-unes.
+START_TRIES = 30
+
+
+class ContainerInstance:
+    """Une instance en conteneurs, tirée du registre, et son moteur."""
+
+    def __init__(self, name, entry, fiche):
+        self.name = name
+        self.entry = entry
+        self.fiche = fiche
+        # Base, site, tâches : l'ordre du démarrage.
+        self.containers = list(entry["containers"])
+        self.port = int(entry["port"])
+        self.url = entry["url"]
+
+    def command(self, args):
+        from script.todo import container_runtime
+
+        return container_runtime.commande(self.fiche, args)
+
+
+def container_state(inst, system):
+    running = []
+    for name in inst.containers:
+        code, out = system.call(
+            inst.command(
+                [
+                    "container",
+                    "inspect",
+                    "--format",
+                    "{{.State.Running}}",
+                    name,
+                ]
+            )
+        )
+        if code:
+            return "missing"
+        running.append(out.strip() == "true")
+    if all(running):
+        return "running"
+    return "half running" if any(running) else "stopped"
+
+
+def container_start(inst, system):
+    st = container_state(inst, system)
+    if st == "missing":
+        print(t(CONTAINER_LABELS["missing"]))
+        return 1
+    if st == "running":
+        print(t("Already running: %s") % inst.url)
+        return 0
+    if st == "stopped" and not system.port_free(inst.port):
+        print(t("Port %s is already taken.") % inst.port)
+        return 1
+    code, out = system.call(inst.command(["start", *inst.containers]))
+    if code:
+        print(t("The containers do not start:"))
+        print(out.strip())
+        return 1
+    version = None
+    for attempt in range(START_TRIES):
+        if attempt:
+            time.sleep(1)
+        version = served_version(system.http_get(inst.url + "/"))
+        if version:
+            break
+    print(t("Dolibarr %s serves %s") % (version or "?", inst.url))
+    return 0
+
+
+def container_stop(inst, system):
+    system.call(inst.command(["stop", *reversed(inst.containers)]))
+    print(t("Stopped: %s") % inst.name)
+    return 0
+
+
+def container_logs(inst, system, lines):
+    # Le site et les tâches ; la base n'a rien à dire d'utile ici.
+    for name in inst.containers[1:]:
+        _code, out = system.call(
+            inst.command(["logs", "--tail", str(lines), name])
+        )
+        print(f"==> {name} <==")
+        print(out.rstrip())
+    return 0
+
+
 def cmd_status(instances, system):
     for inst in instances:
-        st = state(inst, system)
-        line = f"{inst.name}: {t(STATE_LABELS[st])}"
+        if isinstance(inst, ContainerInstance):
+            st = container_state(inst, system)
+            line = f"{inst.name}: {t(CONTAINER_LABELS[st])}"
+        else:
+            st = state(inst, system)
+            line = f"{inst.name}: {t(STATE_LABELS[st])}"
         if st == "running":
             version = served_version(system.http_get(inst.url + "/"))
             line += f" — {inst.url}, Dolibarr {version or '?'}"
@@ -300,8 +415,15 @@ def _dev_instances(root):
     return {
         name: e
         for name, e in known.items()
-        if e.get("mode") == "dev" and e.get("runtime") == "native"
+        if e.get("mode") == "dev"
+        and e.get("runtime") in ("native", "container")
     }
+
+
+def _instance(name, entry, system):
+    if entry.get("runtime") == "container":
+        return ContainerInstance(name, entry, system.engine(entry["engine"]))
+    return Instance(name, entry)
 
 
 def _local_binaries():
@@ -330,14 +452,20 @@ def main(argv=None, root=None, system=None, binaries=None):
         if not dev:
             print(t("No development Dolibarr instance."))
         return cmd_status(
-            [Instance(n, e) for n, e in sorted(dev.items())], system
+            [_instance(n, e, system) for n, e in sorted(dev.items())], system
         )
     if args.instance not in dev:
         print(t("No development instance named %s.") % args.instance)
         return 2
-    inst = Instance(args.instance, dev[args.instance])
+    inst = _instance(args.instance, dev[args.instance], system)
     if args.action == "status":
         return cmd_status([inst], system)
+    if isinstance(inst, ContainerInstance):
+        if args.action == "logs":
+            return container_logs(inst, system, args.lines)
+        if args.action == "start":
+            return container_start(inst, system)
+        return container_stop(inst, system)
     if args.action == "logs":
         return cmd_logs(inst, args.lines)
     fpm, nginx = binaries or _local_binaries()

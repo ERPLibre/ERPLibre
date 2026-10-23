@@ -131,7 +131,8 @@ class DolibarrMenuMixin:
         dev = sorted(
             name
             for name, e in known.items()
-            if e.get("mode") == "dev" and e.get("runtime") == "native"
+            if e.get("mode") == "dev"
+            and e.get("runtime") in ("native", "container")
         )
         if not dev:
             print(t("No development Dolibarr instance."))
