@@ -151,7 +151,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Changed
 
-- The deployment form lists its catalog in alphabetical order of system, then by version compared as numbers — ubuntu 26.04 after 24.04, almalinux 10 after 9 —, then by architecture. The command-line list keeps its order, since its numbers are the ones typed back
+- The QEMU and Proxmox deployment forms list their catalog in alphabetical order of system, then by version compared as numbers — ubuntu 26.04 after 24.04, almalinux 10 after 9 —, then by architecture. The command-line list keeps its order, since its numbers are the ones typed back
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers
 - The comment hygiene check reads Go comments, not only `#` ones: `//` outside a string, the raw string between backticks, and `/* … */` blocks
 - Debian and Ubuntu `by-hash` index files are served from disk, their name being the digest of their content; `…/releases/latest/download/…` is no longer pinned to the first version seen

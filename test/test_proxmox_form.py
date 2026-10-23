@@ -2562,5 +2562,50 @@ class TestF7(unittest.TestCase):
         self.assertEqual([ctx["catalog"]["amd64"][1]["name"]], vu["noms"])
 
 
+class TestOrdreDuCatalogue(unittest.TestCase):
+    """Le catalogue Proxmox suit l'ordre du formulaire QEMU/KVM : par
+    système, puis par version comparée comme un nombre."""
+
+    def test_the_context_sorts_the_catalog_of_every_arch(self):
+        import contextlib
+        import io
+
+        from script.todo import deploy_form_lib
+        from script.todo.todo import TODO
+
+        class Arret(Exception):
+            """Le catalogue est bâti : la suite interroge l'hôte."""
+
+        todo = TODO.__new__(TODO)
+        mod = todo._qemu_import_module()
+        tries = []
+        vrai = deploy_form_lib.catalog_order
+
+        def espion(entrees):
+            tries.append(vrai(entrees))
+            return tries[-1]
+
+        with mock.patch.object(
+            deploy_form_lib, "catalog_order", espion
+        ), mock.patch.object(
+            TODO, "_pve_vms", side_effect=Arret
+        ), contextlib.redirect_stdout(
+            io.StringIO()
+        ):
+            with self.assertRaises(Arret):
+                todo._pve_form_context(mod, {"target": "pve"})
+        self.assertGreaterEqual(len(tries), 3)
+        for entrees in tries:
+            cles = [
+                (
+                    e["distro"],
+                    deploy_form_lib.version_key(e["version"]),
+                    e["arch"],
+                )
+                for e in entrees
+            ]
+            self.assertEqual(sorted(cles), cles)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
