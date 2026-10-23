@@ -109,7 +109,11 @@ def adresse(argv=(), config_path=None, journal=None):
     if port is None:
         hote, port = adresse_du_journal(journal)
     if port is None:
-        brut = str(config.get("http_port", "")).strip()
+        # xmlrpc_port : l'ancien nom, qu'écrit script/generate_config.sh et
+        # qu'Odoo lit encore comme http_port.
+        brut = str(
+            config.get("http_port") or config.get("xmlrpc_port") or ""
+        ).strip()
         port = int(brut) if brut.isdigit() else PORT_PAR_DEFAUT
 
     if not hote:

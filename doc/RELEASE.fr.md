@@ -28,7 +28,7 @@ make install_odoo_all_version
 
 ## Valider l'environnement
 
-- Vérifier si chaque version de manifeste comme [manifest/default.dev.odoo16.0.xml](../manifest/default.dev.odoo16.0.xml) est prête pour la production.
+- Vérifier si chaque version de manifeste comme [manifest/git_manifest_odoo16.0.xml](../manifest/git_manifest_odoo16.0.xml) est prête pour la production.
 - Exécuter les tests :
 
 ```bash
@@ -100,11 +100,25 @@ Pour le tester, vous devez nettoyer les caches et l'installer :
 
 ## Générer la nouvelle production et publication
 
-Générer le manifeste de production et geler toutes les versions des dépôts.
+Geler les versions des dépôts de la version d'Odoo active : chaque projet de `manifest/git_manifest_odoo<V>.xml`,
+`git_manifest_odoo<V>_dev.xml` et `git_manifest_extra_odoo<V>.xml` reçoit le commit de son clone, à côté de sa
+branche. Vérifier d'abord ce qui changerait, puis geler et committer les fichiers de
+manifeste. Un clone dont le commit n'est sur aucune branche distante est écarté : le pousser d'abord.
+[GIT_REPO.fr.md](./GIT_REPO.fr.md#geler-les-versions) détaille ce qui est écarté.
+
+Pour porter les changements amont dans la publication, mettre d'abord les forks à niveau sur leur amont et les publier
+([GIT_REPO.fr.md](./GIT_REPO.fr.md#appliquer-la-mise-à-niveau)) : le gel retient les commits publiés. Geler avec
+`UPSTREAM=1`, pour que la publication retienne aussi, dans `fork-upstream-freeze-revision`, le commit amont sur lequel
+repose chaque fork ; il interroge chaque amont déclaré par le réseau.
 
 ```bash
-.venv.erplibre/bin/repo manifest -r -o ./default.xml
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
+git add manifest/
 ```
+
+Une installation faite depuis ce commit suit les commits gelés avec `make repo_configure_all FREEZE=1` ; sans
+l'argument, elle suit les branches.
 
 Mettre à jour la variable ERPLIBRE_VERSION dans [env_var.sh](../env_var.sh), [Dockerfile.prod](../docker/Dockerfile.prod.pkg)
 et [docker-compose](../docker-compose.yml).
@@ -163,7 +177,9 @@ Ajouter le commentaire `Release v#.#.#`.
 
 ## Créer le tag
 
-Ajouter un tag sur le commit dans la branche master avec votre publication. Lors de l'ajout du tag, assurez-vous de mettre à jour default.xml
+Ajouter un tag sur le commit dans la branche master avec votre publication. Le commit étiqueté doit porter le gel :
+vérifier que `.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run` ne signale aucun changement
+avant de poser le tag.
 
 ```bash
 git tag v#.#.#

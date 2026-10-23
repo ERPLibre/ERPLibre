@@ -224,9 +224,12 @@ class QemuInstallMixin:
             "exit 1; fi; "
             "else "
         )
+        # SVC_DIR est posé AVANT l'aiguillage : la vérification qui suit le
+        # « fi » lit $SVC_DIR/config.conf sur les deux voies.
         return (
-            nixos
-            + f'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); SVC_DIR="{svc_dir}"; '
+            f'SVC_DIR="{svc_dir}"; '
+            + nixos
+            + "SVC_USER=$(whoami); SVC_GROUP=$(id -gn); "
             + pre
             + selinux_shell
             + "sudo tee /etc/systemd/system/erplibre.service >/dev/null <<UNIT\n"
@@ -251,6 +254,111 @@ class QemuInstallMixin:
             "UNIT\n"
             "sudo systemctl daemon-reload; "
             "sudo systemctl enable --now erplibre.service; "
+            "fi; " + self._qemu_odoo_health_cmd()
+        )
+
+    @staticmethod
+    def _qemu_odoo_health_cmd(delai=600):
+        """Snippet shell (exécuté dans la VM, $SVC_DIR posé) qui vérifie
+        qu'Odoo SERT, une fois son service démarré, et sort en 1 sinon.
+
+        Un service actif et un port 8069 ouvert ne prouvent rien : sans rôle
+        PostgreSQL, Odoo 14 rend « Internal Server Error » à chaque page, et
+        Odoo 15 à 17 affichent le sélecteur de bases, sans qu'aucune base ne
+        puisse s'y créer. Deux épreuves, donc :
+
+        - PostgreSQL, par psql, avec le db_user de config.conf, sur le socket
+          local comme Odoo quand db_host vaut False. Avec un db_host
+          explicite, Odoo passe par TCP et un mot de passe que psql n'a pas :
+          l'épreuve est sautée plutôt que fausse ;
+        - HTTP sur /web/login, jusqu'à `delai` secondes. Une réponse 5xx deux
+          fois de suite échoue. Aucune réponse au bout du délai n'échoue que
+          si le service a redémarré ou ne tourne plus : sous émulation, le
+          premier démarrage d'Odoo peut dépasser le délai sans que rien ne
+          soit cassé, et l'installation entière ne se jette pas pour une
+          lenteur.
+
+        Chaque échec nomme la commande à taper sur la VM, puis montre la fin
+        du journal du service. Sans psql ou sans curl, l'épreuve
+        correspondante est sautée en le disant."""
+        journal = (
+            'echo "   Journal du service (sudo journalctl -u erplibre) :"; '
+            "sudo journalctl -u erplibre.service -n 30 --no-pager -o cat "
+            "2>/dev/null | sed 's/^/     /'; "
+        )
+        return (
+            'echo "== Vérification d\'Odoo =="; '
+            'EL_CONF="$SVC_DIR/config.conf"; '
+            "EL_DBHOST=$(sed -n 's/^db_host *= *//p' \"$EL_CONF\" "
+            "2>/dev/null | head -n1); "
+            "EL_DBUSER=$(sed -n 's/^db_user *= *//p' \"$EL_CONF\" "
+            "2>/dev/null | head -n1); "
+            'EL_DBUSER="${EL_DBUSER:-$(whoami)}"; '
+            "if ! command -v psql >/dev/null 2>&1; then "
+            'echo "   psql absent : connexion PostgreSQL non vérifiée."; '
+            'elif [ -n "$EL_DBHOST" ] && [ "$EL_DBHOST" != False ]; then '
+            'echo "   db_host = $EL_DBHOST : connexion PostgreSQL non'
+            ' vérifiée (TCP, mot de passe)."; '
+            'elif ! EL_PG=$(cd / && psql -XAt -U "$EL_DBUSER" -d postgres '
+            "-c 'SELECT 1' 2>&1); then "
+            'echo "❌ Odoo ne peut pas se connecter à PostgreSQL en tant'
+            ' que $EL_DBUSER :"; '
+            'echo "   $EL_PG"; '
+            'echo "   Si le rôle manque, sur la VM :"; '
+            'echo "     sudo runuser -u postgres -- createuser -s $EL_DBUSER'
+            ' && sudo systemctl restart erplibre"; '
+            "exit 1; "
+            "else "
+            'echo "   PostgreSQL : connexion en tant que $EL_DBUSER réussie."; '
+            "fi; "
+            "if ! command -v curl >/dev/null 2>&1; then "
+            'echo "   curl absent : réponse HTTP d\'Odoo non vérifiée."; '
+            "else "
+            "EL_URL=http://127.0.0.1:8069/web/login; "
+            f"EL_FIN=$(( $(date +%s) + {delai} )); EL_5XX=0; EL_CODE=000; "
+            "while :; do "
+            # « || true » : la commande distante tourne sous « set -e », actif
+            # ici quand ce bloc ferme la chaîne « && ». Sans réponse, curl
+            # écrit 000 et rend 7, ce qui terminerait le shell à la première
+            # tentative.
+            "EL_CODE=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "
+            '"$EL_URL" 2>/dev/null || true); '
+            'case "$EL_CODE" in '
+            "[1-4]??) break ;; "
+            "5??) EL_5XX=$((EL_5XX + 1)); "
+            '[ "$EL_5XX" -ge 2 ] && break ;; '
+            "*) EL_5XX=0 ;; "
+            "esac; "
+            '[ "$(date +%s)" -ge "$EL_FIN" ] && break; '
+            "sleep 5; "
+            "done; "
+            # Le verdict porte sur EL_5XX, et non sur le dernier code : un 5xx
+            # isolé reçu à l'échéance n'est pas « deux de suite », et rejoint
+            # le cas sans réponse. NRestarts distingue un démarrage lent d'un
+            # service qui plante en boucle : avec Restart=always et
+            # RestartSec=5, systemd relance sans fin, et un unique
+            # « is-active » tombe le plus souvent pendant un essai.
+            "EL_REDEM=$(systemctl show -p NRestarts --value erplibre.service "
+            "2>/dev/null || true); "
+            'if [ "${EL_CODE#[1-4]}" != "$EL_CODE" ]; then '
+            'echo "   HTTP : $EL_URL répond $EL_CODE."; '
+            'elif [ "$EL_5XX" -ge 2 ]; then '
+            'echo "❌ Odoo répond HTTP $EL_CODE sur $EL_URL."; '
+            + journal
+            + 'echo "   Sur la VM : sudo journalctl -u erplibre -f,'
+            ' puis rechargez la page."; '
+            "exit 1; "
+            'elif [ "${EL_REDEM:-0}" -gt 0 ] 2>/dev/null; then '
+            'echo "❌ Le service erplibre a redémarré $EL_REDEM fois, et'
+            ' Odoo ne répond pas sur $EL_URL."; ' + journal + "exit 1; "
+            "elif systemctl is-active --quiet erplibre.service; then "
+            f"echo \"   ⚠ Odoo n'a pas répondu en {delai} s, mais son"
+            " service tourne : premier démarrage lent ? Sur la VM :"
+            ' curl -sI $EL_URL"; '
+            "else "
+            'echo "❌ Le service erplibre ne tourne plus, et Odoo ne répond'
+            ' pas sur $EL_URL."; ' + journal + "exit 1; "
+            "fi; "
             "fi"
         )
 

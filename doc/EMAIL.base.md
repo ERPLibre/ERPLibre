@@ -1150,6 +1150,7 @@ keystroke of a search, in a screen that answers instantly today. Searching
 is unaffected — a search looks at the whole cache, not at what the list
 has loaded.
 
+<!-- [fr] -->
 ## Lire un long dossier
 
 Un dossier arrive par pages de 500 messages, le plus récent d'abord. La

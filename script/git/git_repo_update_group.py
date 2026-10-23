@@ -35,7 +35,8 @@ def get_config():
     parser.add_argument(
         "--group",
         default="",
-        help="Prod by default, use 'dev' for manifest/default.dev.xml",
+        help="git-repo groups to keep, comma separated (base,code_generator);"
+        " every group by default",
     )
     parser.add_argument(
         "--extra-addons-path",

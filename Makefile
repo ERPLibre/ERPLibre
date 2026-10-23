@@ -160,12 +160,12 @@ install_mise:
 .PHONY: db_create_db_test
 db_create_db_test:
 	./script/make.sh db_drop_db_test
-	./odoo_bin.sh db --create --database test
+	./odoo_bin.sh db create test
 
 .PHONY: db_clone_test_to_test2
 db_clone_test_to_test2:
-	./odoo_bin.sh db --drop --database test2
-	./odoo_bin.sh db --clone --database test2 --from_database test
+	./odoo_bin.sh db drop --if-exists test2
+	./odoo_bin.sh db duplicate test test2
 
 .PHONY: db_test_export
 db_test_export:
@@ -270,10 +270,40 @@ clean_test:
 repo_clear_all:
 	./script/git/clean_repo_manifest.sh
 
-# configure all repo
+# FREEZE=1: repos are checked out on their freeze-revision SHA instead of
+# following their branch. repo_configure_all passes --freeze; the install
+# targets reach the manifest scripts through the exported EL_FREEZE, which is
+# set to 0 otherwise: a value left in the calling shell never freezes a target
+# that was not given FREEZE=1.
+ifeq ($(FREEZE),1)
+export EL_FREEZE := 1
+else
+export EL_FREEZE := 0
+endif
+
+# configure all repo (FREEZE=1: on the frozen SHAs)
 .PHONY: repo_configure_all
 repo_configure_all:
-	./script/manifest/update_manifest_local_dev.sh
+	./script/manifest/update_manifest_local_dev.sh $(if $(filter 1,$(FREEZE)),--freeze,)
+
+# write the SHA of every cloned repo of the active Odoo version into its
+# manifest/ file (git_manifest_odoo<V>.xml, _dev, extra) as freeze-revision
+# (UPSTREAM=1: also fork-upstream-freeze-revision, the upstream commit each
+# frozen fork is based on; fetches every declared upstream over the network)
+.PHONY: repo_freeze
+repo_freeze:
+	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py $(if $(filter 1,$(UPSTREAM)),--upstream,)
+
+# remove freeze-revision from manifest/, repos follow their branch again
+.PHONY: repo_unfreeze
+repo_unfreeze:
+	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py --unfreeze
+
+# compare two freezes; FROM and TO: an ERPLibre revision, worktree or clones
+# (default HEAD -> clones); ARGS: more options, see --help
+.PHONY: repo_freeze_diff
+repo_freeze_diff:
+	./.venv.erplibre/bin/python ./script/git/git_freeze_diff.py $(if $(FROM),--from $(FROM),) $(if $(TO),--to $(TO),) $(ARGS)
 
 # configure only group code_generator
 .PHONY: repo_configure_group_code_generator
@@ -369,7 +399,7 @@ config_gen_migration:
 # i18n generation demo_portal
 .PHONY: i18n_generate_demo_portal
 i18n_generate_demo_portal:
-	./odoo_bin.sh i18n --database code_generator --module demo_portal --addons_path addons/TechnoLibre_odoo-code-generator
+	./odoo_bin.sh i18n --database code_generator --module demo_portal --addons_path ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator
 
 ###########
 #  Clean  #

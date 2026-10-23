@@ -12,8 +12,26 @@ else
   REPO_VERBOSE=""; DAEMON_VERBOSE=""
 fi
 
-#EL_MANIFEST_PROD="./default.xml"
-#EL_MANIFEST_DEV="./manifest/default.dev.xml"
+# --freeze : chaque dépôt est installé sur le SHA de son freeze-revision
+# plutôt que sur la tête de sa branche ; un projet sans freeze-revision suit
+# sa branche. Le choix vaut pour cet appel et n'est conservé nulle part.
+# EL_FREEZE=1 fait le même choix pour un appelant qui ne transmet pas
+# d'argument : le Makefile l'exporte quand une cible reçoit FREEZE=1.
+# L'argument est retiré de "$@" ; les autres sont gardés dans leur ordre.
+MERGE_FREEZE=()
+if [ "${EL_FREEZE:-0}" = "1" ]; then
+  MERGE_FREEZE=(--freeze)
+fi
+FORWARD_ARGS=()
+for arg in "$@"; do
+  if [ "${arg}" = "--freeze" ]; then
+    MERGE_FREEZE=(--freeze)
+  else
+    FORWARD_ARGS+=("${arg}")
+  fi
+done
+set -- "${FORWARD_ARGS[@]}"
+
 
 if command -v nproc >/dev/null 2>&1; then
   JOBS="$(nproc --all)"
@@ -22,8 +40,12 @@ else
 fi
 
 # Generate local manifest
-.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA
+.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}"
 
-# Update git-repo
-.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b $(git rev-parse --verify HEAD)
+. ./script/manifest/manifest_revision.sh
+# La branche doit exister sur le dépôt distant passé à -u.
+MANIFEST_REV=$(manifest_revision) || exit 1
+
+# Update git-repo. Sans -m, repo init prendrait default.xml, absent du dépôt.
+.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b "${MANIFEST_REV}" -m "${EL_MANIFEST_DEV}"
 .venv.erplibre/bin/repo sync ${REPO_VERBOSE} -j "$JOBS"

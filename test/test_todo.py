@@ -7,6 +7,7 @@ import builtins
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -330,6 +331,39 @@ class TestProcessKillGitDaemon(unittest.TestCase):
         cmd = todo.execute.exec_command_live.call_args[0][0]
         self.assertIn("pkill", cmd)
         self.assertIn("git daemon", cmd)
+
+
+class TestProcessKillFromPort(unittest.TestCase):
+    """Le port vient de config.conf, sous son nom actuel ou l'ancien."""
+
+    def _port(self, contenu):
+        dossier = tempfile.mkdtemp(prefix="el_kill_port_")
+        self.addCleanup(shutil.rmtree, dossier, True)
+        if contenu is not None:
+            Path(dossier, "config.conf").write_text(contenu)
+        retour = os.getcwd()
+        os.chdir(dossier)
+        self.addCleanup(os.chdir, retour)
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.process_kill_from_port()
+        return todo.execute.exec_command_live.call_args[0][0].split()[1]
+
+    def test_http_port(self):
+        self.assertEqual("8071", self._port("[options]\nhttp_port = 8071\n"))
+
+    def test_l_ancien_nom_xmlrpc_port(self):
+        self.assertEqual("7069", self._port("[options]\nxmlrpc_port = 7069\n"))
+
+    def test_http_port_l_emporte(self):
+        self.assertEqual(
+            "8071",
+            self._port("[options]\nxmlrpc_port = 7069\nhttp_port = 8071\n"),
+        )
+
+    def test_sans_port_le_defaut_d_odoo(self):
+        self.assertEqual("8069", self._port("[options]\ndb_user = x\n"))
+        self.assertEqual("8069", self._port(None))
 
 
 class TestExecuteUnitTests(unittest.TestCase):
@@ -868,7 +902,7 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
         cmd = todo.db_manager._execute.exec_command_live.call_args_list[-1][0][
             0
         ]
-        self.assertIn("--backup", cmd)
+        self.assertIn(" dump ", cmd)
         self.assertIn("test_db", cmd)
 
 
@@ -1201,6 +1235,71 @@ class TestLeFluxQuiEcrit(unittest.TestCase):
                 anonymize.SORTIE_SANS_EFFET,
             ),
         )
+
+
+class TestModeInstallation(unittest.TestCase):
+    """Le choix développement / production avant les modules extra.
+
+    Le préfixe rendu décide de EL_FREEZE pour toute la chaîne
+    d'installation ; le compte des gels vient de `gel_des_sources`,
+    remplacé ici par une valeur inventée.
+    """
+
+    def setUp(self):
+        from script.todo.todo import TODO
+
+        self.todo = TODO.__new__(TODO)
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+
+    def choisir(self, etat, *reponses):
+        import script.todo.todo as module
+
+        suite = iter(reponses)
+        with patch.object(
+            module, "gel_des_sources", return_value=etat
+        ) as gel, patch("builtins.input", lambda _: next(suite)):
+            mode = self.todo._choisir_mode_installation("X.0")
+        gel.assert_called_once_with(odoo_version="X.0")
+        return mode
+
+    def test_le_developpement_suit_les_branches(self):
+        self.assertEqual(self.choisir((5, 9), "1"), "EL_FREEZE=0")
+
+    def test_la_production_prend_les_commits_geles(self):
+        self.assertEqual(self.choisir((5, 9), "2"), "EL_FREEZE=1")
+
+    def test_sans_gel_la_production_se_rabat_sur_le_developpement(self):
+        for etat in ((0, 9), None):
+            self.assertEqual(self.choisir(etat, "2"), "EL_FREEZE=0")
+        self.assertIn(
+            todo_i18n.t(
+                "No frozen commit for this Odoo version: installing the"
+                " development, on the branches."
+            ),
+            self.sortie.getvalue(),
+        )
+
+    def test_retour_et_saisie_invalide(self):
+        self.assertIsNone(self.choisir((5, 9), "x", "0"))
+        self.assertIn("'x'", self.sortie.getvalue())
+
+    def test_le_compte_des_gels_est_affiche(self):
+        import script.todo.todo as module
+
+        invites = []
+
+        def saisir(texte):
+            invites.append(texte)
+            return "1"
+
+        with patch.object(
+            module, "gel_des_sources", return_value=(5, 9)
+        ), patch("builtins.input", saisir):
+            self.todo._choisir_mode_installation("X.0")
+        self.assertIn(f"5/9 {todo_i18n.t('projects frozen')}", invites[0])
 
 
 if __name__ == "__main__":

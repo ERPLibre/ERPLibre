@@ -16,6 +16,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.execute.execute import Execute
+from script.git.manifest_freeze import manifest_branch
 
 _logger = logging.getLogger(__name__)
 
@@ -195,8 +196,22 @@ def require_permissions_or_exit(path):
     sys.exit(1)
 
 
+def _short_branch(branch):
+    """Ce qui suit le dernier « / » : « refs/heads/18.0 » devient « 18.0 »."""
+    if not branch:
+        return None
+    return branch.split("/")[-1] if "/" in branch else branch
+
+
 def parse_manifest(manifest_path):
-    """Parse the manifest XML and return list of projects."""
+    """Lit le manifeste et rend la liste de ses projets.
+
+    « revision » est la valeur brute du manifeste : une branche, ou un
+    commit quand la fusion a tourné avec --freeze. « branch » est la
+    branche que le projet suit dans les deux cas, lue dans « dest-branch »
+    puis « upstream » pour un commit ; None pour un commit sans branche
+    connue.
+    """
     tree = ET.parse(manifest_path)
     root = tree.getroot()
 
@@ -210,12 +225,16 @@ def parse_manifest(manifest_path):
         path = project.get("path")
         remote = project.get("remote")
         revision = project.get("revision")
+        branch = manifest_branch(
+            revision, project.get("upstream"), project.get("dest-branch")
+        )
         projects.append(
             {
                 "name": name,
                 "path": path,
                 "remote": remote,
                 "revision": revision,
+                "branch": branch,
                 "fetch_url": remotes.get(remote, ""),
             }
         )
@@ -249,6 +268,9 @@ def get_erplibre_root_project(erplibre_root):
         "path": ".",
         "remote": "origin",
         "revision": revision,
+        # « --abbrev-ref HEAD » rend « HEAD » sur une tête détachée : ce
+        # n'est pas une branche à extraire.
+        "branch": None if revision == "HEAD" else revision,
         "fetch_url": ERPLIBRE_REPO_URL,
     }
 
@@ -435,14 +457,23 @@ async def _is_detached_head(repo_path):
     return rc != 0
 
 
-async def _checkout_manifest_branch(repo_path, revision):
-    """Checkout the branch from the manifest revision.
+async def _checkout_manifest_branch(repo_path, manifest_branch_name):
+    """Extrait la branche que le projet suit dans le manifeste.
 
-    When Google Repo syncs, repos end up in detached HEAD
-    on the exact commit. We create/checkout a local branch
-    matching the manifest revision so git push works.
+    Google Repo laisse chaque dépôt en tête détachée sur le commit exact.
+    Une branche locale du nom de la branche du manifeste est créée, ou
+    extraite si elle existe ET pointe sur ce commit, pour que « git push »
+    ait une branche à pousser. Reçoit la clé « branch » de `parse_manifest`,
+    jamais un commit.
+
+    Rend (nom court de la branche, extraite). Une branche locale qui existe
+    sur un AUTRE commit n'est pas extraite : la quitter sortirait l'arbre de
+    travail du commit gelé, et le serveur local servirait cette branche au
+    lieu du commit. L'appelant pousse alors HEAD sous ce nom
+    (`_push_refspecs`, forcée), sans toucher ni l'arbre ni la branche
+    locale.
     """
-    branch = revision.split("/")[-1] if "/" in revision else revision
+    branch = _short_branch(manifest_branch_name)
 
     # Check if local branch already exists
     _, _, rc = await _run_git(
@@ -453,9 +484,7 @@ async def _checkout_manifest_branch(repo_path, revision):
         "--verify",
         f"refs/heads/{branch}",
     )
-    if rc == 0:
-        await _run_git("git", "-C", repo_path, "checkout", branch)
-    else:
+    if rc != 0:
         await _run_git(
             "git",
             "-C",
@@ -464,7 +493,34 @@ async def _checkout_manifest_branch(repo_path, revision):
             "-b",
             branch,
         )
-    return branch
+        return branch, True
+    locale, _, _ = await _run_git(
+        "git", "-C", repo_path, "rev-parse", f"refs/heads/{branch}"
+    )
+    tete, _, _ = await _run_git("git", "-C", repo_path, "rev-parse", "HEAD")
+    if locale.strip() != tete.strip():
+        return branch, False
+    await _run_git("git", "-C", repo_path, "checkout", branch)
+    return branch, True
+
+
+def _push_refspecs(push_all_branches, branche=None, forcer=False):
+    """Les poussées à faire vers le serveur local, dans l'ordre.
+
+    Sans `branche`, une seule : la branche courante, ou toutes avec
+    `push_all_branches`. Avec, le dépôt était détaché, et
+    « HEAD:refs/heads/<branche> » nomme sa destination : une branche qui
+    vient d'être créée n'a pas d'amont, et « git push <remote> » la refuse
+    sous « push.default=simple ». Avec `push_all_branches`, cette poussée
+    passe APRÈS « --all », dont la branche locale homonyme écraserait sinon
+    le commit. `forcer` vaut pour un dépôt resté sur son commit gelé
+    (`_checkout_manifest_branch`) : le serveur local est une copie, la
+    branche y suit le commit gelé même quand elle recule.
+    """
+    if not branche:
+        return [["--all"]] if push_all_branches else [[]]
+    tete = [f"{'+' if forcer else ''}HEAD:refs/heads/{branche}"]
+    return [["--all"], tete] if push_all_branches else [tete]
 
 
 async def _update_bare_head(git_path, project):
@@ -478,10 +534,14 @@ async def _update_bare_head(git_path, project):
     if not os.path.isdir(bare_path):
         return
 
-    revision = project.get("revision", "")
-    if not revision:
+    branch = _short_branch(project.get("branch"))
+    if not branch:
+        if project.get("revision"):
+            _logger.info(
+                f"  No branch in manifest for {project['path']},"
+                " bare HEAD left unchanged"
+            )
         return
-    branch = revision.split("/")[-1] if "/" in revision else revision
     await _run_git(
         "git",
         "-C",
@@ -567,16 +627,33 @@ async def _push_single_repo(
 
         # Handle detached HEAD: checkout manifest branch
         did_checkout = False
+        branche_poussee = None
         if await _is_detached_head(repo_path):
             revision = project.get("revision", "")
-            if revision:
-                branch = await _checkout_manifest_branch(repo_path, revision)
-                _logger.info(
-                    f"  Checkout {branch} for"
-                    f" {project['path']}"
-                    " (was detached HEAD)"
+            if project.get("branch"):
+                branch, did_checkout = await _checkout_manifest_branch(
+                    repo_path, project["branch"]
                 )
-                did_checkout = True
+                branche_poussee = branch
+                if did_checkout:
+                    _logger.info(
+                        f"  Checkout {branch} for"
+                        f" {project['path']}"
+                        " (was detached HEAD)"
+                    )
+                else:
+                    _logger.info(
+                        f"  Local branch {branch} is on another commit"
+                        f" for {project['path']}: HEAD pushed as {branch},"
+                        " checkout skipped"
+                    )
+            elif revision:
+                # Un commit sans branche connue : une branche nommée
+                # d'après le commit serait poussée au serveur local.
+                _logger.warning(
+                    f"  Detached HEAD on {revision} with no branch in"
+                    f" manifest for {project['path']}, checkout skipped"
+                )
             else:
                 _logger.warning(
                     f"  Detached HEAD with no revision"
@@ -586,33 +663,19 @@ async def _push_single_repo(
 
         # Push
         try:
-            if push_all_branches:
-                cmd = [
-                    "git",
-                    "-C",
-                    repo_path,
-                    "push",
-                    remote_name,
-                    "--all",
-                ]
-            else:
-                cmd = [
-                    "git",
-                    "-C",
-                    repo_path,
-                    "push",
-                    remote_name,
-                ]
-            _, err, rc = await _run_git(*cmd, timeout=120)
-            if rc != 0:
-                _logger.warning(
-                    f"  Push failed for {project['path']}: {err.strip()}"
-                )
-                return "error", did_checkout
-            else:
-                await _update_bare_head(git_path, project)
-                _logger.info(f"  Pushed: {project['path']}")
-                return "pushed", did_checkout
+            for refspecs in _push_refspecs(
+                push_all_branches, branche_poussee, not did_checkout
+            ):
+                cmd = ["git", "-C", repo_path, "push", remote_name, *refspecs]
+                _, err, rc = await _run_git(*cmd, timeout=120)
+                if rc != 0:
+                    _logger.warning(
+                        f"  Push failed for {project['path']}: {err.strip()}"
+                    )
+                    return "error", did_checkout
+            await _update_bare_head(git_path, project)
+            _logger.info(f"  Pushed: {project['path']}")
+            return "pushed", did_checkout
         except asyncio.TimeoutError:
             _logger.warning(f"  Timeout pushing {project['path']}")
             return "error", did_checkout

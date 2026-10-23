@@ -1686,7 +1686,9 @@ class TestTheVerdictsAreReadFromTheFile(Base):
         lus = quality.read_events(
             {
                 "lst_event": [
-                    evenement(kind="command", name="./odoo_bin.sh db --clone"),
+                    evenement(
+                        kind="command", name="./odoo_bin.sh db duplicate"
+                    ),
                     evenement(kind="test"),
                 ]
             }
@@ -1971,7 +1973,7 @@ class TestEveryVerdictIsListed(Base):
         dct = self.journal(0)
         dct["lst_event"].append(
             evenement(
-                kind="command", name="./odoo_bin.sh db --clone", status=1
+                kind="command", name="./odoo_bin.sh db duplicate", status=1
             )
         )
         lignes = [

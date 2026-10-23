@@ -80,15 +80,14 @@ el_db_list() {
   # Les bases, une par ligne. Sortie non nulle si la SONDE a échoué — et
   # alors on ne rend rien plutôt que d'inventer.
   #
-  # stderr jeté, jamais fusionné : le CLI « db » n'appelle pas
-  # parse_config(), donc aucun journal n'est configuré et tout part nu sur
-  # stderr. Fusionner ferait de chaque ligne d'une trace un nom de base —
-  # le défaut que script/todo/database_manager.py a déjà dû corriger.
+  # stderr jeté, jamais fusionné : « db list » ne configure aucun
+  # journal, et ce qui reste d'avertissements part nu sur stderr. Fusionner
+  # ferait de chaque ligne d'une trace un nom de base.
   #
   # Le mode couverture est neutralisé pour ce seul appel : sinon la sonde
   # se mesure elle-même et sème un .coverage.* dans le rapport.
   local brut retenu
-  brut="$(ODOO_MODE_COVERAGE= ./odoo_bin.sh db --list 2>/dev/null)" || return 1
+  brut="$(ODOO_MODE_COVERAGE= ./odoo_bin.sh db list 2>/dev/null)" || return 1
   # « _cache_ » nomme les bases-modèles, pas des bases de travail. Sur une
   # machine qui vient de lancer les tests, ce peut être la SEULE : sans ce
   # filtre, la règle « une seule base » démarrerait Odoo sur un modèle.

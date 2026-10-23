@@ -60,9 +60,6 @@ VERSION_PYTHON_ERPLIBRE_FILE = os.path.join("conf", "python-erplibre-version")
 ADDONS_PATH = os.path.join("addons")
 MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
 VENV_TEMPLATE_FILE = ".venv.%s"
-MANIFEST_FILE = "default.dev.xml"
-MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
-MANIFEST_FILE_PATH = os.path.join(".", "manifest", MANIFEST_FILE)
 PYPROJECT_FILE = os.path.join("pyproject.toml")
 PYPROJECT_TEMPLATE_FILE = "pyproject.%s.toml"
 POETRY_LOCK_FILE = os.path.join("poetry.lock")
@@ -197,8 +194,6 @@ class Update:
         self.expected_odoo_path = None
         self.expected_addons_name = None
         self.expected_venv_name = None
-        self.expected_manifest_name = None
-        self.expected_manifest_path = None
         self.expected_pyproject_name = None
         self.expected_pyproject_path = None
         self.expected_poetry_lock_name = None
@@ -369,12 +364,6 @@ class Update:
 
         self.expected_venv_name = (
             VENV_TEMPLATE_FILE % self.new_version_erplibre
-        )
-        self.expected_manifest_name = (
-            MANIFEST_TEMPLATE_FILE % self.new_version_odoo
-        )
-        self.expected_manifest_path = os.path.join(
-            ".", "manifest", self.expected_manifest_name
         )
         self.expected_pyproject_name = (
             PYPROJECT_TEMPLATE_FILE % self.new_version_erplibre

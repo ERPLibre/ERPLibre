@@ -626,6 +626,34 @@ TRANSLATIONS = {
         "fr": "Type d'installation :",
         "en": "Install type:",
     },
+    "Environment:": {
+        "fr": "Environnement :",
+        "en": "Environment:",
+    },
+    "Development: follows the branches (revision)": {
+        "fr": "Développement : suit les branches (revision)",
+        "en": "Development: follows the branches (revision)",
+    },
+    "Production: frozen commits (freeze-revision)": {
+        "fr": "Production : commits gelés (freeze-revision)",
+        "en": "Production: frozen commits (freeze-revision)",
+    },
+    "projects frozen": {
+        "fr": "projets gelés",
+        "en": "projects frozen",
+    },
+    "no freeze, falls back to development": {
+        "fr": "aucun gel, repli sur le développement",
+        "en": "no freeze, falls back to development",
+    },
+    "Production: each repository on its frozen commit.": {
+        "fr": "Production : chaque dépôt sur son commit gelé.",
+        "en": "Production: each repository on its frozen commit.",
+    },
+    "No frozen commit for this Odoo version: installing the development, on the branches.": {
+        "fr": "Aucun commit gelé pour cette version d'Odoo : installation du développement, sur les branches.",
+        "en": "No frozen commit for this Odoo version: installing the development, on the branches.",
+    },
     "Standard install (without extra modules)": {
         "fr": "Installation standard (sans modules extra)",
         "en": "Standard install (without extra modules)",
@@ -18444,6 +18472,1164 @@ TRANSLATIONS = {
     "being added": {
         "fr": "en ajout",
         "en": "being added",
+    },
+    # Mise à jour et mise à niveau des dépôts git
+    "Upgrade dry run": {
+        "fr": "Mise à niveau à sec",
+        "en": "Upgrade dry run",
+    },
+    "forks": {
+        "fr": "forks",
+        "en": "forks",
+    },
+    "Conflicting": {
+        "fr": "En conflit",
+        "en": "Conflicting",
+    },
+    "Absorbed upstream": {
+        "fr": "Absorbé en amont",
+        "en": "Absorbed upstream",
+    },
+    "To rebase": {
+        "fr": "À rebaser",
+        "en": "To rebase",
+    },
+    "Behind upstream": {
+        "fr": "En retard sur l'amont",
+        "en": "Behind upstream",
+    },
+    "Cannot be compared": {
+        "fr": "Non comparable",
+        "en": "Cannot be compared",
+    },
+    "Up to date": {
+        "fr": "À jour",
+        "en": "Up to date",
+    },
+    "conflicting files": {
+        "fr": "fichiers en conflit",
+        "en": "conflicting files",
+    },
+    "upstream now carries": {
+        "fr": "l'amont porte désormais",
+        "en": "upstream now carries",
+    },
+    "upstream commits since the freeze": {
+        "fr": "commits amont depuis le gel",
+        "en": "upstream commits since the freeze",
+    },
+    "upstream rewritten since the freeze": {
+        "fr": "amont réécrit depuis le gel",
+        "en": "upstream rewritten since the freeze",
+    },
+    "frozen base": {
+        "fr": "base gelée",
+        "en": "frozen base",
+    },
+    "Modules touched": {
+        "fr": "Modules touchés",
+        "en": "Modules touched",
+    },
+    "Documentation and translation only": {
+        "fr": "Documentation et traduction seulement",
+        "en": "Documentation and translation only",
+    },
+    "Contains code": {
+        "fr": "Contient du code",
+        "en": "Contains code",
+    },
+    "Upstream remotes added:": {
+        "fr": "Remotes amont ajoutés :",
+        "en": "Upstream remotes added:",
+    },
+    "no local branch moved, no work tree touched": {
+        "fr": "aucune branche locale déplacée, aucun arbre de travail touché",
+        "en": "no local branch moved, no work tree touched",
+    },
+    "upstream remote points to another URL": {
+        "fr": "le remote amont vise une autre URL",
+        "en": "upstream remote points to another URL",
+    },
+    "the upstream remote could not be added": {
+        "fr": "le remote amont n'a pas pu être ajouté",
+        "en": "the upstream remote could not be added",
+    },
+    "no fork-upstream-remote attribute": {
+        "fr": "aucun attribut fork-upstream-remote",
+        "en": "no fork-upstream-remote attribute",
+    },
+    "upstream remote absent from the manifests": {
+        "fr": "remote amont absent des manifestes",
+        "en": "upstream remote absent from the manifests",
+    },
+    "no fork-upstream branch for this version": {
+        "fr": "aucune branche fork-upstream pour cette version",
+        "en": "no fork-upstream branch for this version",
+    },
+    "Upstream remotes": {
+        "fr": "Remotes amont",
+        "en": "Upstream remotes",
+    },
+    "Upstream fetched": {
+        "fr": "Amont récupéré",
+        "en": "Upstream fetched",
+    },
+    "Remote with another URL, left untouched": {
+        "fr": "Remote à une autre URL, laissé tel quel",
+        "en": "Remote with another URL, left untouched",
+    },
+    "Remote refused by git": {
+        "fr": "Remote refusé par git",
+        "en": "Remote refused by git",
+    },
+    "Remote set, upstream unreachable": {
+        "fr": "Remote posé, amont injoignable",
+        "en": "Remote set, upstream unreachable",
+    },
+    "Shallow clone: remote set, fetch skipped": {
+        "fr": "Clone superficiel : remote posé, fetch sauté",
+        "en": "Shallow clone: remote set, fetch skipped",
+    },
+    "only this command keeps the clone shallow": {
+        "fr": "seule cette commande garde le clone superficiel",
+        "en": "only this command keeps the clone shallow",
+    },
+    "Not cloned": {
+        "fr": "Non cloné",
+        "en": "Not cloned",
+    },
+    "Remote added and fetched": {
+        "fr": "Remote ajouté et récupéré",
+        "en": "Remote added and fetched",
+    },
+    "Remote already present, fetched": {
+        "fr": "Remote déjà présent, récupéré",
+        "en": "Remote already present, fetched",
+    },
+    "Skipped: upstream not declared": {
+        "fr": "Sautés : amont non déclaré",
+        "en": "Skipped: upstream not declared",
+    },
+    "add and fetch the named upstream remote of each fork (network)": {
+        "fr": "ajoute et récupère le remote amont nommé de chaque fork (réseau)",
+        "en": "add and fetch the named upstream remote of each fork (network)",
+    },
+    "with --add-remotes: every Odoo version of the checkout, not only the active one": {
+        "fr": "avec --add-remotes : chaque version d'Odoo du checkout, et non la seule active",
+        "en": "with --add-remotes: every Odoo version of the checkout, not only the active one",
+    },
+    "🌐 Add the upstream remotes": {
+        "fr": "🌐 Ajouter les remotes amont",
+        "en": "🌐 Add the upstream remotes",
+    },
+    "Add the upstream remotes": {
+        "fr": "Ajouter les remotes amont",
+        "en": "Add the upstream remotes",
+    },
+    "missing from disk": {
+        "fr": "absent du disque",
+        "en": "missing from disk",
+    },
+    "no upstream branch declared": {
+        "fr": "aucune branche amont déclarée",
+        "en": "no upstream branch declared",
+    },
+    "shallow repository": {
+        "fr": "dépôt superficiel",
+        "en": "shallow repository",
+    },
+    "divergence unreadable": {
+        "fr": "divergence illisible",
+        "en": "divergence unreadable",
+    },
+    "no merge base": {
+        "fr": "aucune base de fusion",
+        "en": "no merge base",
+    },
+    "No upstream declared for this fork": {
+        "fr": "Aucun amont déclaré pour ce fork",
+        "en": "No upstream declared for this fork",
+    },
+    "Upstream guessed from the remote name": {
+        "fr": "Amont deviné d'après le nom du remote",
+        "en": "Upstream guessed from the remote name",
+    },
+    "The declared upstream branch does not exist": {
+        "fr": "La branche amont déclarée n'existe pas",
+        "en": "The declared upstream branch does not exist",
+    },
+    "Upstream did not answer": {
+        "fr": "L'amont n'a pas répondu",
+        "en": "Upstream did not answer",
+    },
+    "Upstream carries no branch for this version": {
+        "fr": "L'amont ne porte aucune branche pour cette version",
+        "en": "Upstream carries no branch for this version",
+    },
+    "Upstream declared": {
+        "fr": "Amont déclaré",
+        "en": "Upstream declared",
+    },
+    "Upstream confirmed": {
+        "fr": "Amont confirmé",
+        "en": "Upstream confirmed",
+    },
+    "Upstreams were not queried; use --upstream.": {
+        "fr": "Les amonts n'ont pas été interrogés ; utiliser --upstream.",
+        "en": "Upstreams were not queried; use --upstream.",
+    },
+    "Where each forked repository comes from.": {
+        "fr": "D'où vient chaque dépôt forké.",
+        "en": "Where each forked repository comes from.",
+    },
+    "dry run: diverge, conflicts and statistics (network)": {
+        "fr": "à sec : divergence, conflits et statistiques (réseau)",
+        "en": "dry run: diverge, conflicts and statistics (network)",
+    },
+    "No Odoo version found": {
+        "fr": "Aucune version d'Odoo trouvée",
+        "en": "No Odoo version found",
+    },
+    "Update and upgrade the git repositories": {
+        "fr": "Mise à jour et mise à niveau des dépôts git",
+        "en": "Update and upgrade the git repositories",
+    },
+    "🔃 Update git repo": {
+        "fr": "🔃 Mise à jour git repo",
+        "en": "🔃 Update git repo",
+    },
+    "🔄 Synchronize the repositories": {
+        "fr": "🔄 Synchroniser les dépôts",
+        "en": "🔄 Synchronize the repositories",
+    },
+    "🔁 Reconfigure and synchronize": {
+        "fr": "🔁 Reconfigurer et synchroniser",
+        "en": "🔁 Reconfigure and synchronize",
+    },
+    "🔍 Upgrade — dry run": {
+        "fr": "🔍 Mise à niveau — à sec",
+        "en": "🔍 Upgrade — dry run",
+    },
+    "🔗 Fork and upstream status": {
+        "fr": "🔗 État des forks et de leurs amonts",
+        "en": "🔗 Fork and upstream status",
+    },
+    "Fork and upstream status": {
+        "fr": "État des forks et de leurs amonts",
+        "en": "Fork and upstream status",
+    },
+    "Upgrade": {
+        "fr": "Mise à niveau",
+        "en": "Upgrade",
+    },
+    "Observe": {
+        "fr": "Constater",
+        "en": "Observe",
+    },
+    "Update": {
+        "fr": "Mise à jour",
+        "en": "Update",
+    },
+    "Synchronization failed.": {
+        "fr": "La synchronisation a échoué.",
+        "en": "Synchronization failed.",
+    },
+    "Repositories synchronized.": {
+        "fr": "Dépôts synchronisés.",
+        "en": "Repositories synchronized.",
+    },
+    "Reconfiguration failed.": {
+        "fr": "La reconfiguration a échoué.",
+        "en": "Reconfiguration failed.",
+    },
+    "Repositories reconfigured and synchronized.": {
+        "fr": "Dépôts reconfigurés et synchronisés.",
+        "en": "Repositories reconfigured and synchronized.",
+    },
+    "Querying each upstream, this takes a few seconds.": {
+        "fr": "Interrogation de chaque amont, cela prend quelques secondes.",
+        "en": "Querying each upstream, this takes a few seconds.",
+    },
+    "put back on its start commit": {
+        "fr": "remis sur son commit de départ",
+        "en": "put back on its start commit",
+    },
+    "could not be put back on its start commit": {
+        "fr": "n'a pas pu être remis sur son commit de départ",
+        "en": "could not be put back on its start commit",
+    },
+    "To run by hand:": {
+        "fr": "À lancer à la main :",
+        "en": "To run by hand:",
+    },
+    "⬆️ Apply the upgrade": {
+        "fr": "⬆️ Appliquer la mise à niveau",
+        "en": "⬆️ Apply the upgrade",
+    },
+    "🧩 Conflict queue": {
+        "fr": "🧩 File des conflits",
+        "en": "🧩 Conflict queue",
+    },
+    "📊 Report of the last pass": {
+        "fr": "📊 Rapport de la dernière passe",
+        "en": "📊 Report of the last pass",
+    },
+    "Apply the upgrade": {
+        "fr": "Appliquer la mise à niveau",
+        "en": "Apply the upgrade",
+    },
+    "Conflict queue": {
+        "fr": "File des conflits",
+        "en": "Conflict queue",
+    },
+    "Report of the last pass": {
+        "fr": "Rapport de la dernière passe",
+        "en": "Report of the last pass",
+    },
+    "Nothing to upgrade: nothing to confirm.": {
+        "fr": "Rien à mettre à niveau : rien à confirmer.",
+        "en": "Nothing to upgrade: nothing to confirm.",
+    },
+    "repositories will be rebased.": {
+        "fr": "dépôts seront rebasés.",
+        "en": "repositories will be rebased.",
+    },
+    "A dated branch is created; the current one stays.": {
+        "fr": "Une branche datée est créée ; l'actuelle reste.",
+        "en": "A dated branch is created; the current one stays.",
+    },
+    "Nothing is pushed.": {
+        "fr": "Rien n'est poussé.",
+        "en": "Nothing is pushed.",
+    },
+    "Apply the upgrade? (y/N): ": {
+        "fr": "Appliquer la mise à niveau ? (o/N) : ",
+        "en": "Apply the upgrade? (y/N): ",
+    },
+    "Pass recorded in": {
+        "fr": "Passe enregistrée dans",
+        "en": "Pass recorded in",
+    },
+    "rebased": {
+        "fr": "rebasés",
+        "en": "rebased",
+    },
+    "conflicting": {
+        "fr": "en conflit",
+        "en": "conflicting",
+    },
+    "a dated branch already exists": {
+        "fr": "une branche datée existe déjà",
+        "en": "a dated branch already exists",
+    },
+    "the branch could not be created": {
+        "fr": "la branche n'a pas pu être créée",
+        "en": "the branch could not be created",
+    },
+    "a rebase was already in progress": {
+        "fr": "un rebase était déjà en cours",
+        "en": "a rebase was already in progress",
+    },
+    "Work them through the conflict queue.": {
+        "fr": "Reprenez-les par la file des conflits.",
+        "en": "Work them through the conflict queue.",
+    },
+    "No pass recorded yet.": {
+        "fr": "Aucune passe enregistrée pour l'instant.",
+        "en": "No pass recorded yet.",
+    },
+    "No repository is left in conflict.": {
+        "fr": "Aucun dépôt ne reste en conflit.",
+        "en": "No repository is left in conflict.",
+    },
+    "Repository number (empty to go back): ": {
+        "fr": "Numéro du dépôt (vide pour revenir) : ",
+        "en": "Repository number (empty to go back): ",
+    },
+    "Nothing left in conflict here.": {
+        "fr": "Plus rien en conflit ici.",
+        "en": "Nothing left in conflict here.",
+    },
+    "Open a shell here": {
+        "fr": "Ouvrir un shell ici",
+        "en": "Open a shell here",
+    },
+    "Show the conflicting diff": {
+        "fr": "Montrer le diff en conflit",
+        "en": "Show the conflicting diff",
+    },
+    "Keep ours": {
+        "fr": "Garder le nôtre",
+        "en": "Keep ours",
+    },
+    "Take upstream": {
+        "fr": "Prendre l'amont",
+        "en": "Take upstream",
+    },
+    "Continue the rebase": {
+        "fr": "Continuer le rebase",
+        "en": "Continue the rebase",
+    },
+    "Skip this commit": {
+        "fr": "Sauter ce commit",
+        "en": "Skip this commit",
+    },
+    "Abort this rebase": {
+        "fr": "Abandonner ce rebase",
+        "en": "Abort this rebase",
+    },
+    "Return to the state managed by repo": {
+        "fr": "Revenir à l'état géré par repo",
+        "en": "Return to the state managed by repo",
+    },
+    "Later": {
+        "fr": "Plus tard",
+        "en": "Later",
+    },
+    "Rebase finished.": {
+        "fr": "Rebase terminé.",
+        "en": "Rebase finished.",
+    },
+    "Rebase aborted.": {
+        "fr": "Rebase abandonné.",
+        "en": "Rebase aborted.",
+    },
+    "Back to the state managed by repo.": {
+        "fr": "Retour à l'état géré par repo.",
+        "en": "Back to the state managed by repo.",
+    },
+    "📤 Publish the updated forks": {
+        "fr": "📤 Publier les forks mis à niveau",
+        "en": "📤 Publish the updated forks",
+    },
+    "Publish the updated forks": {
+        "fr": "Publier les forks mis à niveau",
+        "en": "Publish the updated forks",
+    },
+    "Nothing to publish in the last pass.": {
+        "fr": "Rien à publier dans la dernière passe.",
+        "en": "Nothing to publish in the last pass.",
+    },
+    "Numbers to publish, separated by commas (all, empty to cancel): ": {
+        "fr": "Numéros à publier, séparés par des virgules (all, vide pour annuler) : ",
+        "en": "Numbers to publish, separated by commas (all, empty to cancel): ",
+    },
+    "Cancelled: nothing was pushed.": {
+        "fr": "Annulé : rien n'a été poussé.",
+        "en": "Cancelled: nothing was pushed.",
+    },
+    "Cancelled: the fork branch was not pushed.": {
+        "fr": "Annulé : la branche du fork n'a pas été poussée.",
+        "en": "Cancelled: the fork branch was not pushed.",
+    },
+    "The dated branch is missing: nothing to push.": {
+        "fr": "La branche datée est introuvable : rien à pousser.",
+        "en": "The dated branch is missing: nothing to push.",
+    },
+    "Remote:": {
+        "fr": "Remote :",
+        "en": "Remote:",
+    },
+    "Branch:": {
+        "fr": "Branche :",
+        "en": "Branch:",
+    },
+    "forced (lease)": {
+        "fr": "forcé (bail)",
+        "en": "forced (lease)",
+    },
+    "fast-forward": {
+        "fr": "fast-forward",
+        "en": "fast-forward",
+    },
+    "Push to the fork?": {
+        "fr": "Pousser sur le fork ?",
+        "en": "Push to the fork?",
+    },
+    "published": {
+        "fr": "publiés",
+        "en": "published",
+    },
+    "published (one)": {
+        "fr": "publié",
+        "en": "published",
+    },
+    "fast-forwarded (one)": {
+        "fr": "avancé en fast-forward",
+        "en": "fast-forwarded",
+    },
+    "rebased (one)": {
+        "fr": "rebasé",
+        "en": "rebased",
+    },
+    "fork remote unreachable": {
+        "fr": "remote du fork injoignable",
+        "en": "fork remote unreachable",
+    },
+    "remote moved since the pass: run the pass again": {
+        "fr": "le distant a bougé depuis la passe : refaites la passe",
+        "en": "remote moved since the pass: run the pass again",
+    },
+    "no rebase in progress and no known outcome, record left as is": {
+        "fr": "aucun rebase en cours ni issue reconnue, enregistrement laissé tel quel",
+        "en": "no rebase in progress and no known outcome, record left as is",
+    },
+    "The manifest still holds the old frozen commits.": {
+        "fr": "Le manifeste porte encore les anciens commits gelés.",
+        "en": "The manifest still holds the old frozen commits.",
+    },
+    "Freeze the versions again now?": {
+        "fr": "Geler à nouveau les versions maintenant ?",
+        "en": "Freeze the versions again now?",
+    },
+    "Freeze the versions, then commit manifest/.": {
+        "fr": "Gelez les versions, puis committez manifest/.",
+        "en": "Freeze the versions, then commit manifest/.",
+    },
+    "is retained by no tag or branch: the forced push would lose it.": {
+        "fr": "n'est retenu par aucun tag ni aucune branche : le push forcé le perdrait.",
+        "en": "is retained by no tag or branch: the forced push would lose it.",
+    },
+    "Keep it with a tag or a branch?": {
+        "fr": "Le garder par un tag ou par une branche ?",
+        "en": "Keep it with a tag or a branch?",
+    },
+    "Push": {
+        "fr": "Pousser",
+        "en": "Push",
+    },
+    "commits retained by no tag or branch": {
+        "fr": "commits retenus par aucun tag ni aucune branche",
+        "en": "commits retained by no tag or branch",
+    },
+    "fast-forwarded": {
+        "fr": "avancés en fast-forward",
+        "en": "fast-forwarded",
+    },
+    "the fast-forward was refused": {
+        "fr": "le fast-forward a été refusé",
+        "en": "the fast-forward was refused",
+    },
+    "git refused to start the rebase": {
+        "fr": "git a refusé de commencer le rebase",
+        "en": "git refused to start the rebase",
+    },
+    "the work tree has uncommitted changes": {
+        "fr": "l'arbre de travail porte des modifications non committées",
+        "en": "the work tree has uncommitted changes",
+    },
+    "the fork branch has commits HEAD lacks": {
+        "fr": "la branche du fork porte des commits absents de HEAD",
+        "en": "the fork branch has commits HEAD lacks",
+    },
+    "rebase aborted": {
+        "fr": "rebase abandonné",
+        "en": "rebase aborted",
+    },
+    "back to the state managed by repo": {
+        "fr": "revenu à l'état géré par repo",
+        "en": "back to the state managed by repo",
+    },
+    "🖥️ Browse the upgrade on screen": {
+        "fr": "🖥️ Parcourir la mise à niveau à l'écran",
+        "en": "🖥️ Browse the upgrade on screen",
+    },
+    "Falling back to the text report.": {
+        "fr": "Repli sur le rapport texte.",
+        "en": "Falling back to the text report.",
+    },
+    "Our commits": {
+        "fr": "Nos commits",
+        "en": "Our commits",
+    },
+    "What upstream brings": {
+        "fr": "Ce que l'amont apporte",
+        "en": "What upstream brings",
+    },
+    "Only what needs a decision": {
+        "fr": "Seulement ce qui demande une décision",
+        "en": "Only what needs a decision",
+    },
+    "Copied.": {
+        "fr": "Copié.",
+        "en": "Copied.",
+    },
+    "repository": {
+        "fr": "dépôt",
+        "en": "repository",
+    },
+    "shown": {
+        "fr": "affichés",
+        "en": "shown",
+    },
+    "Nothing to show.": {
+        "fr": "Rien à montrer.",
+        "en": "Nothing to show.",
+    },
+    "🧊 Freeze the versions": {
+        "fr": "🧊 Geler les versions",
+        "en": "🧊 Freeze the versions",
+    },
+    "📌 Reconfigure on the frozen commits": {
+        "fr": "📌 Reconfigurer sur les commits gelés",
+        "en": "📌 Reconfigure on the frozen commits",
+    },
+    "🫗 Unfreeze the versions": {
+        "fr": "🫗 Dégeler les versions",
+        "en": "🫗 Unfreeze the versions",
+    },
+    "Freeze the versions": {
+        "fr": "Geler les versions",
+        "en": "Freeze the versions",
+    },
+    "Unfreeze the versions": {
+        "fr": "Dégeler les versions",
+        "en": "Unfreeze the versions",
+    },
+    "Versions": {
+        "fr": "Versions",
+        "en": "Versions",
+    },
+    "no local manifest": {
+        "fr": "aucun manifeste local",
+        "en": "no local manifest",
+    },
+    "projects pinned to a commit": {
+        "fr": "projets épinglés sur un commit",
+        "en": "projects pinned to a commit",
+    },
+    "follows the branches": {
+        "fr": "suit les branches",
+        "en": "follows the branches",
+    },
+    "Frozen in the manifest files:": {
+        "fr": "Gelés dans les fichiers de manifeste :",
+        "en": "Frozen in the manifest files:",
+    },
+    "No commit is frozen in the manifest files.": {
+        "fr": "Aucun commit n'est gelé dans les fichiers de manifeste.",
+        "en": "No commit is frozen in the manifest files.",
+    },
+    "Freeze the versions first.": {
+        "fr": "Gelez d'abord les versions.",
+        "en": "Freeze the versions first.",
+    },
+    "Nothing was written; see the messages above.": {
+        "fr": "Rien n'a été écrit ; voir les messages ci-dessus.",
+        "en": "Nothing was written; see the messages above.",
+    },
+    "Write these changes to the manifest files?": {
+        "fr": "Écrire ces changements dans les fichiers de manifeste ?",
+        "en": "Write these changes to the manifest files?",
+    },
+    "Also freeze the upstream base of each fork (network)?": {
+        "fr": "Geler aussi la base amont de chaque fork (réseau) ?",
+        "en": "Also freeze the upstream base of each fork (network)?",
+    },
+    "forks with upstream base": {
+        "fr": "forks avec base amont",
+        "en": "forks with upstream base",
+    },
+    "The manifest files were not written.": {
+        "fr": "Les fichiers de manifeste n'ont pas été écrits.",
+        "en": "The manifest files were not written.",
+    },
+    "Manifest files written; commit them to share them.": {
+        "fr": "Fichiers de manifeste écrits ; à committer pour les partager.",
+        "en": "Manifest files written; commit them to share them.",
+    },
+    "Apply with: Reconfigure and synchronize.": {
+        "fr": "Appliquer par : Reconfigurer et synchroniser.",
+        "en": "Apply with: Reconfigure and synchronize.",
+    },
+    "Apply with: Reconfigure on the frozen commits.": {
+        "fr": "Appliquer par : Reconfigurer sur les commits gelés.",
+        "en": "Apply with: Reconfigure on the frozen commits.",
+    },
+    "🔀 Compare two freezes": {
+        "fr": "🔀 Comparer deux gels",
+        "en": "🔀 Compare two freezes",
+    },
+    "Compare two freezes": {
+        "fr": "Comparer deux gels",
+        "en": "Compare two freezes",
+    },
+    "Committed freeze → clones (real state)": {
+        "fr": "Gel committé → clones (état réel)",
+        "en": "Committed freeze → clones (real state)",
+    },
+    "Written freeze (manifest/) → clones": {
+        "fr": "Gel écrit (manifest/) → clones",
+        "en": "Written freeze (manifest/) → clones",
+    },
+    "Committed freeze → written freeze, not committed": {
+        "fr": "Gel committé → gel écrit, pas encore committé",
+        "en": "Committed freeze → written freeze, not committed",
+    },
+    "Previous freeze → last freeze": {
+        "fr": "Gel précédent → dernier gel",
+        "en": "Previous freeze → last freeze",
+    },
+    "Two revisions of your choice": {
+        "fr": "Deux révisions au choix",
+        "en": "Two revisions of your choice",
+    },
+    "Fewer than two commits changed a freeze.": {
+        "fr": "Moins de deux commits ont changé un gel.",
+        "en": "Fewer than two commits changed a freeze.",
+    },
+    "Commits that changed a freeze:": {
+        "fr": "Commits qui ont changé un gel :",
+        "en": "Commits that changed a freeze:",
+    },
+    "No commit changed a freeze yet.": {
+        "fr": "Aucun commit n'a encore changé un gel.",
+        "en": "No commit changed a freeze yet.",
+    },
+    "number, revision, worktree or clones": {
+        "fr": "numéro, révision, worktree ou clones",
+        "en": "number, revision, worktree or clones",
+    },
+    "From": {
+        "fr": "De",
+        "en": "From",
+    },
+    "To": {
+        "fr": "Vers",
+        "en": "To",
+    },
+    "tig on project N of the table": {
+        "fr": "tig sur le projet N du tableau",
+        "en": "tig on project N of the table",
+    },
+    "tig on each project, one after another": {
+        "fr": "tig sur chaque projet, l'un après l'autre",
+        "en": "tig on each project, one after another",
+    },
+    "Our frozen commits since the frozen upstream base:": {
+        "fr": "Nos commits gelés depuis la base amont gelée :",
+        "en": "Our frozen commits since the frozen upstream base:",
+    },
+    "ours": {
+        "fr": "à nous",
+        "en": "ours",
+    },
+    "not cloned": {
+        "fr": "non cloné",
+        "en": "not cloned",
+    },
+    "base absent from the clone: run the freeze with the upstream base": {
+        "fr": "base absente du clone : lancer le gel avec la base amont",
+        "en": "base absent from the clone: run the freeze with the upstream base",
+    },
+    "history cut between the base and the frozen commit (shallow clone)": {
+        "fr": "historique coupé entre la base et le commit gelé (clone superficiel)",
+        "en": "history cut between the base and the frozen commit (shallow clone)",
+    },
+    "the base is not an ancestor of the frozen commit": {
+        "fr": "la base n'est pas un ancêtre du commit gelé",
+        "en": "the base is not an ancestor of the frozen commit",
+    },
+    "frozen commit absent from the clone: synchronize the repositories": {
+        "fr": "commit gelé absent du clone : synchroniser les dépôts",
+        "en": "frozen commit absent from the clone: synchronize the repositories",
+    },
+    "git could not count the commits": {
+        "fr": "git n'a pas pu compter les commits",
+        "en": "git could not count the commits",
+    },
+    "tig on fork N: its commits since the base": {
+        "fr": "tig sur le fork N : ses commits depuis la base",
+        "en": "tig on fork N: its commits since the base",
+    },
+    "tig on each fork, one after another": {
+        "fr": "tig sur chaque fork, l'un après l'autre",
+        "en": "tig on each fork, one after another",
+    },
+    "Diffstat and groups": {
+        "fr": "Diffstat et regroupements",
+        "en": "Diffstat and groups",
+    },
+    "Full diffstat of project N": {
+        "fr": "Diffstat complet du projet N",
+        "en": "Full diffstat of project N",
+    },
+    "Next grouping: file type, module, folder": {
+        "fr": "Regroupement suivant : type de fichier, module, dossier",
+        "en": "Next grouping: file type, module, folder",
+    },
+    "Open an old commit in a git worktree": {
+        "fr": "Ouvrir un ancien commit dans un worktree git",
+        "en": "Open an old commit in a git worktree",
+    },
+    "No changed project with both commits here.": {
+        "fr": "Aucun projet changé dont les deux commits sont présents ici.",
+        "en": "No changed project with both commits here.",
+    },
+    "Grouping:": {
+        "fr": "Regroupement :",
+        "en": "Grouping:",
+    },
+    "Matrix: the ERPLibre branches and tags side by side": {
+        "fr": "Matrice : les branches et tags d'ERPLibre côte à côte",
+        "en": "Matrix: the ERPLibre branches and tags side by side",
+    },
+    "ERPLibre branches and tags holding a freeze:": {
+        "fr": "Branches et tags d'ERPLibre qui portent un gel :",
+        "en": "ERPLibre branches and tags holding a freeze:",
+    },
+    "Sides, separated by commas": {
+        "fr": "Côtés, séparés par des virgules",
+        "en": "Sides, separated by commas",
+    },
+    "Graph of project N with its branches": {
+        "fr": "Graphe du projet N avec ses branches",
+        "en": "Graph of project N with its branches",
+    },
+    "Refresh: branches, tags and missing commits": {
+        "fr": "Rafraîchir : branches, tags et commits absents",
+        "en": "Refresh: branches, tags and missing commits",
+    },
+    "Refreshing the clones, in parallel.": {
+        "fr": "Rafraîchissement des clones, en parallèle.",
+        "en": "Refreshing the clones, in parallel.",
+    },
+    "Still missing:": {
+        "fr": "Toujours absent :",
+        "en": "Still missing:",
+    },
+    # Tirer les dépôts (script/git/repo_pull.py)
+    "⬇️ Pull the repositories": {
+        "fr": "⬇️ Tirer les dépôts",
+        "en": "⬇️ Pull the repositories",
+    },
+    "Pull the repositories": {
+        "fr": "Tirer les dépôts",
+        "en": "Pull the repositories",
+    },
+    "Mode: 1 manifest, 2 branches": {
+        "fr": "Mode : 1 manifeste, 2 branches",
+        "en": "Mode: 1 manifest, 2 branches",
+    },
+    "Strategy (rebase, ff, merge)": {
+        "fr": "Stratégie (rebase, ff, merge)",
+        "en": "Strategy (rebase, ff, merge)",
+    },
+    "Querying each remote, this takes a few seconds.": {
+        "fr": "Interrogation de chaque remote, quelques secondes.",
+        "en": "Querying each remote, this takes a few seconds.",
+    },
+    "Nothing to pull: nothing to confirm.": {
+        "fr": "Rien à tirer : rien à confirmer.",
+        "en": "Nothing to pull: nothing to confirm.",
+    },
+    "Deepen the shallow clones (network)? (y/N): ": {
+        "fr": "Approfondir les clones superficiels (réseau) ? (o/N) : ",
+        "en": "Deepen the shallow clones (network)? (y/N): ",
+    },
+    "Clone the new repositories? (y/N): ": {
+        "fr": "Cloner les nouveaux dépôts ? (o/N) : ",
+        "en": "Clone the new repositories? (y/N): ",
+    },
+    "repositories will be pulled.": {
+        "fr": "dépôts seront tirés.",
+        "en": "repositories will be pulled.",
+    },
+    "A backup branch is created on each HEAD:": {
+        "fr": "Une branche de sauvegarde est posée sur chaque HEAD :",
+        "en": "A backup branch is created on each HEAD:",
+    },
+    "Stashed, then reapplied:": {
+        "fr": "Mis de côté, puis réappliqués :",
+        "en": "Stashed, then reapplied:",
+    },
+    "Pull the repositories? (y/N): ": {
+        "fr": "Tirer les dépôts ? (o/N) : ",
+        "en": "Pull the repositories? (y/N): ",
+    },
+    "The remote moved since the dry run: nothing was written.": {
+        "fr": "Le distant a bougé depuis l'essai à sec : rien n'a été écrit.",
+        "en": "The remote moved since the dry run: nothing was written.",
+    },
+    "Install the Python dependencies now (poetry install --no-root)? (y/N): ": {
+        "fr": "Installer les dépendances Python maintenant (poetry install --no-root) ? (o/N) : ",
+        "en": "Install the Python dependencies now (poetry install --no-root)? (y/N): ",
+    },
+    "To restore:": {
+        "fr": "Pour revenir :",
+        "en": "To restore:",
+    },
+    "To delete:": {
+        "fr": "Pour supprimer :",
+        "en": "To delete:",
+    },
+    "Incoming commits": {
+        "fr": "commits entrants",
+        "en": "Incoming commits",
+    },
+    "Regenerated manifest": {
+        "fr": "Manifeste régénéré",
+        "en": "Regenerated manifest",
+    },
+    "New repositories": {
+        "fr": "Nouveaux dépôts",
+        "en": "New repositories",
+    },
+    "Retired from the manifest (kept on disk)": {
+        "fr": "Retirés du manifeste (gardés sur le disque)",
+        "en": "Retired from the manifest (kept on disk)",
+    },
+    "Python dependencies changed": {
+        "fr": "Dépendances Python modifiées",
+        "en": "Python dependencies changed",
+    },
+    "The Python/Odoo couple changes: run make install.": {
+        "fr": "Le couple Python/Odoo change : lancer make install.",
+        "en": "The Python/Odoo couple changes: run make install.",
+    },
+    "Shallow clones: deepening downloads history (network).": {
+        "fr": "Clones superficiels : l'approfondissement télécharge de l'historique (réseau).",
+        "en": "Shallow clones: deepening downloads history (network).",
+    },
+    "The whole fork branch, then its upstream branch:": {
+        "fr": "La branche du fork en entier, puis sa branche amont :",
+        "en": "The whole fork branch, then its upstream branch:",
+    },
+    "Not deepened: these forks stay out of it.": {
+        "fr": "Non approfondis : ces forks restent hors de la mise à niveau.",
+        "en": "Not deepened: these forks stay out of it.",
+    },
+    "By hand:": {
+        "fr": "À la main :",
+        "en": "By hand:",
+    },
+    "nothing to complete": {
+        "fr": "rien à compléter",
+        "en": "nothing to complete",
+    },
+    "fork fetch failed": {
+        "fr": "le fetch du fork a échoué",
+        "en": "fork fetch failed",
+    },
+    "still shallow: HEAD is outside the branch": {
+        "fr": "encore superficiel : HEAD est hors de la branche",
+        "en": "still shallow: HEAD is outside the branch",
+    },
+    "git refused the upstream remote": {
+        "fr": "git a refusé le remote amont",
+        "en": "git refused the upstream remote",
+    },
+    "not a git clone": {
+        "fr": "pas un clone git",
+        "en": "not a git clone",
+    },
+    "complete, but the upstream did not answer": {
+        "fr": "complet, mais l'amont n'a pas répondu",
+        "en": "complete, but the upstream did not answer",
+    },
+    "complete, upstream fetched": {
+        "fr": "complet, amont récupéré",
+        "en": "complete, upstream fetched",
+    },
+    "ahead of the target": {
+        "fr": "en avance sur la cible",
+        "en": "ahead of the target",
+    },
+    "fast-forward possible": {
+        "fr": "avance rapide possible",
+        "en": "fast-forward possible",
+    },
+    "diverged": {
+        "fr": "divergé",
+        "en": "diverged",
+    },
+    "shallow: deepening needed": {
+        "fr": "superficiel : approfondissement requis",
+        "en": "shallow: deepening needed",
+    },
+    "detached HEAD: skipped": {
+        "fr": "HEAD détachée : sauté",
+        "en": "detached HEAD: skipped",
+    },
+    "no target": {
+        "fr": "sans cible",
+        "en": "no target",
+    },
+    "target missing": {
+        "fr": "cible absente",
+        "en": "target missing",
+    },
+    "fetch failed": {
+        "fr": "récupération échouée",
+        "en": "fetch failed",
+    },
+    "operation in progress: skipped": {
+        "fr": "opération en cours : sauté",
+        "en": "operation in progress: skipped",
+    },
+    "error": {
+        "fr": "erreur",
+        "en": "error",
+    },
+    "pulled": {
+        "fr": "tiré",
+        "en": "pulled",
+    },
+    "conflict: put back": {
+        "fr": "conflit : remis au départ",
+        "en": "conflict: put back",
+    },
+    "stash kept": {
+        "fr": "stash gardé",
+        "en": "stash kept",
+    },
+    "diverged: fast-forward refused": {
+        "fr": "divergé : avance rapide refusée",
+        "en": "diverged: fast-forward refused",
+    },
+    "shallow: not deepened": {
+        "fr": "superficiel : non approfondi",
+        "en": "shallow: not deepened",
+    },
+    "shallow: no base found": {
+        "fr": "superficiel : aucune base trouvée",
+        "en": "shallow: no base found",
+    },
+    "backup already exists": {
+        "fr": "la sauvegarde existe déjà",
+        "en": "backup already exists",
+    },
+    "restore failed: fix by hand": {
+        "fr": "retour échoué : à corriger à la main",
+        "en": "restore failed: fix by hand",
+    },
+    "cloned": {
+        "fr": "cloné",
+        "en": "cloned",
+    },
+    "clone failed": {
+        "fr": "clonage échoué",
+        "en": "clone failed",
+    },
+    "clone refused": {
+        "fr": "clonage refusé",
+        "en": "clone refused",
+    },
+    "path already occupied": {
+        "fr": "chemin déjà occupé",
+        "en": "path already occupied",
+    },
+    "A pass with this stamp already exists: retry in a minute.": {
+        "fr": "Une passe porte déjà cet horodatage : réessayer dans une minute.",
+        "en": "A pass with this stamp already exists: retry in a minute.",
+    },
+    "Another pull is running on this checkout.": {
+        "fr": "Un autre tirage tourne sur ce checkout.",
+        "en": "Another pull is running on this checkout.",
+    },
+    "Cloned by a repo sync restricted to their paths, only when asked.": {
+        "fr": "Clonés par un repo sync restreint à leurs chemins, seulement sur demande.",
+        "en": "Cloned by a repo sync restricted to their paths, only when asked.",
+    },
+    "Cloned by a restricted repo sync:": {
+        "fr": "Clonés par un repo sync restreint :",
+        "en": "Cloned by a restricted repo sync:",
+    },
+    "Ignored local files the target overwrites (copied first):": {
+        "fr": "Fichiers locaux ignorés que la cible écrase (copiés d'abord) :",
+        "en": "Ignored local files the target overwrites (copied first):",
+    },
+    "Manifest regeneration failed:": {
+        "fr": "La régénération du manifeste a échoué :",
+        "en": "Manifest regeneration failed:",
+    },
+    "Overwritten ignored files copied to": {
+        "fr": "Fichiers ignorés écrasés, copiés dans",
+        "en": "Overwritten ignored files copied to",
+    },
+    "The Python dependencies are installed.": {
+        "fr": "Les dépendances Python sont installées.",
+        "en": "The Python dependencies are installed.",
+    },
+    "The local manifest is regenerated and rewritten:": {
+        "fr": "Le manifeste local est régénéré et réécrit :",
+        "en": "The local manifest is regenerated and rewritten:",
+    },
+    "The regenerated manifest differs from the dry run: it was not written and no clone was integrated.": {
+        "fr": "Le manifeste régénéré diffère de l'essai à sec : il n'est pas écrit et aucun clone n'est intégré.",
+        "en": "The regenerated manifest differs from the dry run: it was not written and no clone was integrated.",
+    },
+    "The server can also restart without installing.": {
+        "fr": "Le serveur peut aussi redémarrer sans installer.",
+        "en": "The server can also restart without installing.",
+    },
+    "The stamp of the pass is not YYYYMMDDTHHMM.": {
+        "fr": "L'horodatage de la passe n'est pas AAAAMMJJTHHMM.",
+        "en": "The stamp of the pass is not YYYYMMDDTHHMM.",
+    },
+    "The time budget ran out: the steps not started are listed; run a new pull for them.": {
+        "fr": "Le délai est épuisé : les étapes non commencées sont listées ; lancer un nouveau tirage pour elles.",
+        "en": "The time budget ran out: the steps not started are listed; run a new pull for them.",
+    },
+    "The version typed does not match the active one.": {
+        "fr": "La version tapée n'est pas la version active.",
+        "en": "The version typed does not match the active one.",
+    },
+    "To install them later:": {
+        "fr": "Pour les installer plus tard :",
+        "en": "To install them later:",
+    },
+    "To retry:": {
+        "fr": "Pour réessayer :",
+        "en": "To retry:",
+    },
+    "entry added": {
+        "fr": "entrée ajoutée",
+        "en": "entry added",
+    },
+    "branches": {
+        "fr": "branches",
+        "en": "branches",
+    },
+    "entry removed": {
+        "fr": "entrée retirée",
+        "en": "entry removed",
+    },
+    "entry changed": {
+        "fr": "entrée changée",
+        "en": "entry changed",
+    },
+    "dirty": {
+        "fr": "modifié",
+        "en": "dirty",
+    },
+    "manifest": {
+        "fr": "manifeste",
+        "en": "manifest",
+    },
+    "not started: time budget exhausted": {
+        "fr": "non commencé : délai épuisé",
+        "en": "not started: time budget exhausted",
+    },
+    "poetry install failed.": {
+        "fr": "poetry install a échoué.",
+        "en": "poetry install failed.",
+    },
+    "poetry not found:": {
+        "fr": "poetry introuvable :",
+        "en": "poetry not found:",
+    },
+    "shallow": {
+        "fr": "superficiel",
+        "en": "shallow",
+    },
+    "stash": {
+        "fr": "stash",
+        "en": "stash",
+    },
+    "switch to the manifest target": {
+        "fr": "bascule sur la cible du manifeste",
+        "en": "switch to the manifest target",
     },
 }
 

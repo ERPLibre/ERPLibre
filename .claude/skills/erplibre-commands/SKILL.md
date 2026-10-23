@@ -55,18 +55,18 @@ make open_test_coverage      # Ouvrir le rapport HTML de couverture
 ### Tester un module spécifique
 ```bash
 # 1. Supprimer la DB de test et lancer les tests du module
-./odoo_bin.sh db --drop --database test_mon_module
+./odoo_bin.sh db drop --if-exists test_mon_module
 ./test.sh -d test_mon_module --db-filter test_mon_module -i mon_module
 
 # 2. Lancer un fichier de test précis
-./odoo_bin.sh db --drop --database test_mon_module
+./odoo_bin.sh db drop --if-exists test_mon_module
 ./script/addons/install_addons_dev.sh test_mon_module mon_module
 ./test.sh -d test_mon_module --db-filter test_mon_module -i mon_module \
   --test-file=addons/MON_REPO/mon_module/tests/test_mon_fichier.py
 
 # 3. Avec couverture de code
 ./.venv.erplibre/bin/coverage erase
-./odoo_bin.sh db --drop --database test_mon_module
+./odoo_bin.sh db drop --if-exists test_mon_module
 ./test.sh -d test_mon_module --db-filter test_mon_module -i mon_module
 ./.venv.erplibre/bin/coverage combine -a
 ./.venv.erplibre/bin/coverage report -m

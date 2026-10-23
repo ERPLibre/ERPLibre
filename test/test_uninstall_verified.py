@@ -4,11 +4,11 @@
 
 """Une désinstallation se MESURE, elle ne se suppose pas.
 
-`odoo-bin --uninstall` ne cherche que l'état « installed ». Un module resté
-en « to remove » d'une tentative précédente est ignoré en silence, et Odoo
-sort en 0. Le pilote tenait ce 0 pour une réussite : c'est ainsi que
-muk_web_theme a traversé quatre paliers de 12 → 18 en étant réputé retiré,
-alors qu'il était « installed » de la 15 à la 18.
+`odoo_bin.sh module uninstall` ne cherche que l'état « installed ». Un
+module resté en « to remove » d'une tentative précédente est ignoré en
+silence, et Odoo sort en 0. Tenir ce 0 pour une réussite laisse le module
+traverser les paliers suivants en étant réputé retiré, alors qu'il y est
+toujours « installed ».
 """
 
 import ast
@@ -80,7 +80,7 @@ class TestStillInstalled(unittest.TestCase):
 
     def test_it_counts_to_remove_as_still_there(self):
         # « to remove » n'est pas « uninstalled » : c'est justement l'état
-        # que --uninstall refuse de traiter, donc celui qu'il faut voir.
+        # que « module uninstall » refuse de traiter, donc celui qu'il faut voir.
         pilote = FauxPilote()
         pilote.still_installed("db", ["web_responsive"])
         self.assertIn("state <> 'uninstalled'", pilote.commandes[0])
@@ -190,12 +190,12 @@ class TestAFailedOpenUpgradeStaysUnrecorded(unittest.TestCase):
     """Un OpenUpgrade raté ne doit pas passer pour fait.
 
     `lst_upgrade_odoo` n'est pas une copie : `dct_progression.get()` rend
-    l'objet stocké. L'affecter avant l'exécution le faisait persister au
+    l'objet stocké. L'affecter avant l'exécution le fait persister au
     premier `write_config()` venu — celui du chemin d'échec compris, qui
     remet pourtant le drapeau de clonage à zéro pour forcer un nouvel
-    essai. La reprise sautait alors OpenUpgrade et laissait une base 17
-    tourner sous le code 18. Mesuré sur test_neutralize_upgrade_18 :
-    base = 17.0.1.3, et sa commande de migration déjà consignée.
+    essai. La reprise saute alors OpenUpgrade et laisse une base 17
+    tourner sous le code 18 : la base reste en 17.0.1.3, sa commande de
+    migration déjà consignée.
 
     Conduire `execute_odoo_upgrade` en vrai demanderait une migration
     complète ; la faute est un ORDRE dans le source, et c'est l'ordre
@@ -353,7 +353,7 @@ class TestDiscardingTheCloneDiscardsItsPreparation(unittest.TestCase):
 class FauxPiloteParNom(FauxPilote):
     """Un faux qui reproduit le VRAI mécanisme du lot.
 
-    « --uninstall » prend une liste virgulée, et Odoo annule la
+    « module uninstall » prend une liste virgulée, et Odoo annule la
     transaction entière au premier échec : soit tout part, soit rien.
     C'est cela qu'il faut simuler — un faux où chaque nom part
     indépendamment ne montrerait jamais le défaut.
@@ -387,13 +387,13 @@ class FauxPiloteParNom(FauxPilote):
 
 
 class TestOneBadNameNoLongerProtectsTheOthers(unittest.TestCase):
-    """Un seul module fautif emportait tout le lot.
+    """Un seul module fautif n'emporte plus tout le lot.
 
-    « --uninstall » prend une liste et Odoo annule la transaction
-    entière au premier échec. Mesuré sur une chaîne 12 → 18 :
-    `crm_phone` échoue sur une colonne absente de res_users et fait
-    tomber les 22 autres — dont huit modules sans code en 13, qui sont
-    alors montés d'un palier « installed » sans rien pour les charger.
+    « module uninstall » prend une liste et Odoo annule la transaction
+    entière au premier échec. Un module qui échoue, par exemple sur une
+    colonne absente, fait tomber tous les autres, y compris ceux qui
+    n'ont plus de code au palier suivant et y montent « installed » sans
+    rien pour les charger.
     """
 
     def pilote(self, fautifs, tous):

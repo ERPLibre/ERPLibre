@@ -7,14 +7,15 @@
     <remote name="ERPLibre_origin_CybroOdoo" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_TechnoLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_ONLYOFFICE" fetch="https://github.com/ERPLibre/" />
+    <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="ONLYOFFICE" fetch="https://github.com/ONLYOFFICE" />
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
     <remote name="ajepe" fetch="https://github.com/ajepe/" />
-    <remote name="bemade" fetch="https://git.bemade.org/bemade/" />
-    <remote name="ERPLibre_origin_bemade" fetch="https://git.bemade.org/technolibre/" />
+    <remote name="bemade" fetch="https://github.com/bemade/" />
+    <remote name="ERPLibre_origin_bemade" fetch="https://github.com/technolibre/" />
     <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
     <remote name="cetmix" fetch="https://github.com/cetmix/" />
     <remote name="dhongu" fetch="https://github.com/dhongu/" />
@@ -23,10 +24,12 @@
     <remote name="kinjal-sorathiya" fetch="https://github.com/kinjal-sorathiya/" />
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
     <remote name="TechnoLibre_origin_muk-it" fetch="https://github.com/TechnoLibre/" />
-    <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
+    <!-- Amont retiré de GitHub, gardé pour mémoire : -->
+    <!-- <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" /> -->
     <remote name="ERPLibre_origin_novacode-nl" fetch="https://github.com/ERPLibre/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
     <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
+    <remote name="odoo" fetch="https://github.com/odoo/" />
     <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
     <remote name="odoomates" fetch="https://github.com/odoomates/" />
     <remote name="openeducat" fetch="https://github.com/openeducat/" />
@@ -36,6 +39,7 @@
     <project
         name="account-analytic.git"
         revision="18.0"
+        freeze-revision="ae02ec04adeb571005692327a2c8aff9efd22477"
         path="odoo18.0/addons/OCA_account-analytic"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -43,6 +47,7 @@
     <project
         name="account-budgeting.git"
         revision="18.0"
+        freeze-revision="4281ef06e174352052ba45218c5e1bb71cbec130"
         path="odoo18.0/addons/OCA_account-budgeting"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -50,6 +55,7 @@
     <project
         name="account-closing.git"
         revision="18.0"
+        freeze-revision="b72923c006f6d9917b4422cfa9cdc40105f1f96a"
         path="odoo18.0/addons/OCA_account-closing"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -57,6 +63,7 @@
     <project
         name="account-consolidation.git"
         revision="18.0"
+        freeze-revision="85a1fd4d7b80a7accadbb12e9e0e0fd9775ce67b"
         path="odoo18.0/addons/OCA_account-consolidation"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -64,6 +71,7 @@
     <project
         name="account-financial-reporting.git"
         revision="18.0"
+        freeze-revision="c0df72b9a8d9074cc7d8c3ef93a12f14212621be"
         path="odoo18.0/addons/OCA_account-financial-reporting"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -71,6 +79,7 @@
     <project
         name="account-financial-tools.git"
         revision="18.0"
+        freeze-revision="bdca3d443768bc94a532ed92f856d805ba5f81aa"
         path="odoo18.0/addons/OCA_account-financial-tools"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -78,6 +87,7 @@
     <project
         name="account-fiscal-rule.git"
         revision="18.0"
+        freeze-revision="87d259619adf39d07a3afa74f3baeacb27c39c02"
         path="odoo18.0/addons/OCA_account-fiscal-rule"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -85,6 +95,7 @@
     <project
         name="account-invoice-reporting.git"
         revision="18.0"
+        freeze-revision="7f47e244636ecf08b26e988c2328be99c9505f97"
         path="odoo18.0/addons/OCA_account-invoice-reporting"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -92,6 +103,7 @@
     <project
         name="account-invoicing.git"
         revision="18.0"
+        freeze-revision="0174ac67e7519b3670997faa697633c63de7e676"
         path="odoo18.0/addons/OCA_account-invoicing"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -99,6 +111,7 @@
     <project
         name="account-payment.git"
         revision="18.0"
+        freeze-revision="ebcb045e751397ef65e8da030f275d3494d5a9a5"
         path="odoo18.0/addons/OCA_account-payment"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -106,6 +119,7 @@
     <project
         name="account-reconcile.git"
         revision="18.0"
+        freeze-revision="3342b2c0c3adcf469fac4da526d05f7ae27366c4"
         path="odoo18.0/addons/OCA_account-reconcile"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -113,14 +127,16 @@
     <project
         name="agreement.git"
         revision="18.0"
+        freeze-revision="17e6f0d166b5e4e8e77d64530cd8bbe0a6dfac57"
         path="odoo18.0/addons/OCA_agreement"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="ai.git" revision="18.0" path="odoo18.0/addons/OCA_ai" remote="OCA" groups="addons,odoo18.0" />
+    <project name="ai.git" revision="18.0" freeze-revision="b4bf5df158fdcdf47101ae4d488272210853a3bc" path="odoo18.0/addons/OCA_ai" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="apps-store.git"
         revision="18.0"
+        freeze-revision="0366754da0279e049db506ed6fdbd89f5d10764b"
         path="odoo18.0/addons/OCA_apps-store"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -128,6 +144,7 @@
     <project
         name="automation.git"
         revision="18.0"
+        freeze-revision="27fc2bb82624b27bd8a567766a069dccfb446ae7"
         path="odoo18.0/addons/OCA_automation"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -135,6 +152,7 @@
     <project
         name="bank-payment.git"
         revision="18.0"
+        freeze-revision="5e967278a6add5eb0df4c2ba69785c6d2f2b5632"
         path="odoo18.0/addons/OCA_bank-payment"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -142,6 +160,7 @@
     <project
         name="bank-statement-import.git"
         revision="18.0"
+        freeze-revision="7919e8f95dd39c23f6e14bc5137b14301d4a241a"
         path="odoo18.0/addons/OCA_bank-statement-import"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -149,6 +168,7 @@
     <project
         name="bank-payment-alternative.git"
         revision="18.0"
+        freeze-revision="751b2e47f9f15dbe390a19d8f75fd5baca09043e"
         path="odoo18.0/addons/OCA_bank-payment-alternative"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -156,14 +176,19 @@
     <project
         name="bemade-addons.git"
         revision="18.0_dev"
+        freeze-revision="58f2798e5cd9335f33c305940712302164f27723"
         path="odoo18.0/addons/bemade_bemade-addons"
         remote="ERPLibre_origin_bemade"
+        fork-upstream-remote="bemade"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="6050570d8a793ddb56e048b37b67f546dd49e1f0"
         groups="addons,odoo18.0"
     />
-    <project name="brand.git" revision="18.0" path="odoo18.0/addons/OCA_brand" remote="OCA" groups="addons,odoo18.0" />
+    <project name="brand.git" revision="18.0" freeze-revision="7494e1227c7c88a0240ecdf7532648fa51fce9b0" path="odoo18.0/addons/OCA_brand" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="business-requirement.git"
         revision="18.0"
+        freeze-revision="6c32be91baa3b0837e2ef9310c4647f9d07777d4"
         path="odoo18.0/addons/OCA_business-requirement"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -171,6 +196,7 @@
     <project
         name="commission.git"
         revision="18.0"
+        freeze-revision="4fda7389728801c0a47af115863fdf41c6e0f54f"
         path="odoo18.0/addons/OCA_commission"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -178,6 +204,7 @@
     <project
         name="calendar.git"
         revision="18.0"
+        freeze-revision="2da90c675938ffc187739e0ecdc4b76550dd5edb"
         path="odoo18.0/addons/OCA_calendar"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -185,6 +212,7 @@
     <project
         name="cetmix-tower.git"
         revision="18.0"
+        freeze-revision="6b2a9616812f255966ca0b33b75a9a1898327a14"
         path="odoo18.0/addons/cetmix_cetmix-tower"
         remote="cetmix"
         groups="addons,odoo18.0"
@@ -192,6 +220,7 @@
     <project
         name="community-data-files.git"
         revision="18.0"
+        freeze-revision="cdc3086f25dbbca568985ba8db1a49aa377529be"
         path="odoo18.0/addons/OCA_community-data-files"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -199,6 +228,7 @@
     <project
         name="connector-ecommerce.git"
         revision="18.0"
+        freeze-revision="7d9c0ea9f260a1b7998697befaa4f72a89a82572"
         path="odoo18.0/addons/OCA_connector-ecommerce"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -206,6 +236,7 @@
     <project
         name="connector-interfaces.git"
         revision="18.0"
+        freeze-revision="c1cc6f04d2a3102eb02fed6f6df9a321328760b1"
         path="odoo18.0/addons/OCA_connector-interfaces"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -213,6 +244,7 @@
     <project
         name="connector-jira.git"
         revision="18.0"
+        freeze-revision="8d3b409fa69f440b036a86e466a20ece47644bf9"
         path="odoo18.0/addons/OCA_connector-jira"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -220,6 +252,7 @@
     <project
         name="connector-telephony.git"
         revision="18.0"
+        freeze-revision="7a0e9952e1959f17977d63ea9c9241ba9afd6ec1"
         path="odoo18.0/addons/OCA_connector-telephony"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -227,6 +260,7 @@
     <project
         name="connector.git"
         revision="18.0"
+        freeze-revision="10416a62a86edf72abb8d68b208cfe4620526866"
         path="odoo18.0/addons/OCA_connector"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -234,6 +268,7 @@
     <project
         name="contract.git"
         revision="18.0"
+        freeze-revision="f657a9cab6d7074f955479237549f459c8b5c486"
         path="odoo18.0/addons/OCA_contract"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -241,6 +276,7 @@
     <project
         name="credit-control.git"
         revision="18.0"
+        freeze-revision="9a807af091fdfbd051312387f3459d76084b1135"
         path="odoo18.0/addons/OCA_credit-control"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -248,14 +284,16 @@
     <project
         name="crowdfunding.git"
         revision="18.0"
+        freeze-revision="f70c1b2608b6f9ed6186fe9ab40eb98c96d33d9f"
         path="odoo18.0/addons/OCA_crowdfunding"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="crm.git" revision="18.0" path="odoo18.0/addons/OCA_crm" remote="OCA" groups="addons,odoo18.0" />
+    <project name="crm.git" revision="18.0" freeze-revision="b432f8f6c3a91462dc04c2767ce9077e9e1d5c4c" path="odoo18.0/addons/OCA_crm" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="currency.git"
         revision="18.0"
+        freeze-revision="bbf64bef869ca809b195c852438d1e8fab122408"
         path="odoo18.0/addons/OCA_currency"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -263,15 +301,17 @@
     <project
         name="data-protection.git"
         revision="18.0"
+        freeze-revision="60211f794801f045f1460322eef292ee56b06563"
         path="odoo18.0/addons/OCA_data-protection"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="ddmrp.git" revision="18.0" path="odoo18.0/addons/OCA_ddmrp" remote="OCA" groups="addons,odoo18.0" />
-    <project name="dms.git" revision="18.0" path="odoo18.0/addons/OCA_dms" remote="OCA" groups="addons,odoo18.0" />
+    <project name="ddmrp.git" revision="18.0" freeze-revision="e65b6ce3190bf452646a9089948eab590143bb1c" path="odoo18.0/addons/OCA_ddmrp" remote="OCA" groups="addons,odoo18.0" />
+    <project name="dms.git" revision="18.0" freeze-revision="262712782980b904a139ee165ae8c71325488d26" path="odoo18.0/addons/OCA_dms" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="delivery-carrier.git"
         revision="18.0"
+        freeze-revision="a8a3e626d5eb23ceaf8ba8ba3fa11d877020fb0f"
         path="odoo18.0/addons/OCA_delivery-carrier"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -279,6 +319,7 @@
     <project
         name="deltatech.git"
         revision="18.0"
+        freeze-revision="f35e206574fbd3700c609e3acd6fbd0686e2a77f"
         path="odoo18.0/addons/dhongu_deltatech"
         remote="dhongu"
         groups="addons,odoo18.0"
@@ -286,13 +327,16 @@
     <project
         name="development.git"
         revision="18.0"
+        freeze-revision="53e9463451fe665a3f41e44c524a0d51870bbecb"
         path="odoo18.0/addons/MathBenTech_development"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         groups="addons,base,odoo18.0"
     />
     <project
         name="donation.git"
         revision="18.0"
+        freeze-revision="357b6a3e11d5f3947ffcc06ced702ae28261577d"
         path="odoo18.0/addons/OCA_donation"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -300,30 +344,34 @@
     <project
         name="e-commerce.git"
         revision="18.0"
+        freeze-revision="e9841dc9768d92007d3b9a6d86dee3aec4ae4374"
         path="odoo18.0/addons/OCA_e-commerce"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="edi.git" revision="18.0" path="odoo18.0/addons/OCA_edi" remote="OCA" groups="addons,odoo18.0" />
+    <project name="edi.git" revision="18.0" freeze-revision="541fc97ebd1cd06f09c977840ba980eacc4fd527" path="odoo18.0/addons/OCA_edi" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="erplibre_addons.git"
         revision="18.0"
+        freeze-revision="41cef754eda22a79303d0237a06ebba882d88049"
         path="odoo18.0/addons/ERPLibre_erplibre_addons"
         remote="ERPLibre"
         groups="addons,base,odoo18.0"
     />
-    <project name="event.git" revision="18.0" path="odoo18.0/addons/OCA_event" remote="OCA" groups="addons,odoo18.0" />
+    <project name="event.git" revision="18.0" freeze-revision="6c8b29ea4eff8d581565a049413314101376ee34" path="odoo18.0/addons/OCA_event" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="field-service.git"
         revision="18.0"
+        freeze-revision="e65d06af922004f130afbdc56e3dc5f50137df18"
         path="odoo18.0/addons/OCA_field-service"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="fleet.git" revision="18.0" path="odoo18.0/addons/OCA_fleet" remote="OCA" groups="addons,odoo18.0" />
+    <project name="fleet.git" revision="18.0" freeze-revision="05f7599dcd0490e7ae94d5033b8c70ba87aba9b4" path="odoo18.0/addons/OCA_fleet" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="geospatial.git"
         revision="18.0"
+        freeze-revision="f713dc8b306dfde72da90b742d8572588fcbf8b8"
         path="odoo18.0/addons/OCA_geospatial"
         remote="OCA"
         groups="addons,odoo18.0,code_generator"
@@ -331,14 +379,19 @@
     <project
         name="helpdesk.git"
         revision="18.0_dev"
+        freeze-revision="d3e43a46a0337b5572dfb9b11cb01e439b3315c2"
         path="odoo18.0/addons/OCA_helpdesk"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="6cc29f13983e255ee8d3b11224bf2e8518e4e38f"
         groups="addons,odoo18.0"
     />
-    <project name="hr.git" revision="18.0" path="odoo18.0/addons/OCA_hr" remote="OCA" groups="addons,odoo18.0" />
+    <project name="hr.git" revision="18.0" freeze-revision="613514a083778febd0657ec887e6dd13c56a126b" path="odoo18.0/addons/OCA_hr" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="hr-attendance.git"
         revision="18.0"
+        freeze-revision="27d69ba2ef5ab141fc5243d5baa9f4eedd199e63"
         path="odoo18.0/addons/OCA_hr-attendance"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -346,6 +399,7 @@
     <project
         name="hr-expense.git"
         revision="18.0"
+        freeze-revision="0a0e27a891dce84238898298392a6e18fa8e3ca8"
         path="odoo18.0/addons/OCA_hr-expense"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -353,6 +407,7 @@
     <project
         name="hr-holidays.git"
         revision="18.0"
+        freeze-revision="cf3d98fa322c3928861cf8227c757e7e1d29bb7e"
         path="odoo18.0/addons/OCA_hr-holidays"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -360,6 +415,7 @@
     <project
         name="infrastructure.git"
         revision="18.0"
+        freeze-revision="d783f8c16f7bec785e16b519c8ceea86752af5bb"
         path="odoo18.0/addons/OCA_infrastructure"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -367,6 +423,7 @@
     <project
         name="intrastat-extrastat.git"
         revision="18.0"
+        freeze-revision="a504eda0f59a3ebae3199d2bca5e3437a05a1c22"
         path="odoo18.0/addons/OCA_intrastat-extrastat"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -374,14 +431,16 @@
     <project
         name="interface-github.git"
         revision="18.0"
+        freeze-revision="7e4fe5b6d6b71cb9c7586d7d33a3c3fb77cc6478"
         path="odoo18.0/addons/OCA_interface-github"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="iot.git" revision="18.0" path="odoo18.0/addons/OCA_iot" remote="OCA" groups="addons,odoo18.0" />
+    <project name="iot.git" revision="18.0" freeze-revision="daee3761b2bae7c3eb7b347042d04925a2b4c662" path="odoo18.0/addons/OCA_iot" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="knowledge.git"
         revision="18.0"
+        freeze-revision="0881d75a35e7fc2f814110df4878177e805e589b"
         path="odoo18.0/addons/OCA_knowledge"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -389,6 +448,7 @@
     <project
         name="l10n-canada.git"
         revision="18.0"
+        freeze-revision="f5a0496dbf3359c180fc1a82e21c93b9f010863c"
         path="odoo18.0/addons/OCA_l10n-canada"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -396,14 +456,16 @@
     <project
         name="maintenance.git"
         revision="18.0"
+        freeze-revision="1ac56b576d1f9e9692c2f09af073ecb7ccee0cba"
         path="odoo18.0/addons/OCA_maintenance"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="mail.git" revision="18.0" path="odoo18.0/addons/OCA_mail" remote="OCA" groups="addons,odoo18.0" />
+    <project name="mail.git" revision="18.0" freeze-revision="718e52426bab4204a340c6fa2eb71d83baa79af1" path="odoo18.0/addons/OCA_mail" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="mass-mailing.git"
         revision="18.0"
+        freeze-revision="503d381037f968438cca960d520f17929e96f011"
         path="odoo18.0/addons/OCA_mass-mailing"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -411,6 +473,7 @@
     <project
         name="management-system.git"
         revision="18.0"
+        freeze-revision="ce9d421e5f5c262a9b0d9aa136fb9fe4968960dc"
         path="odoo18.0/addons/OCA_management-system"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -418,6 +481,7 @@
     <project
         name="manufacture.git"
         revision="18.0"
+        freeze-revision="2d4ce7f5974bf881e2613818d3515cdcd5dbf858"
         path="odoo18.0/addons/OCA_manufacture"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -425,6 +489,7 @@
     <project
         name="manufacture-reporting.git"
         revision="18.0"
+        freeze-revision="4c0859ad9d677e033f492a3382ab678f648c154e"
         path="odoo18.0/addons/OCA_manufacture-reporting"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -432,6 +497,7 @@
     <project
         name="margin-analysis.git"
         revision="18.0"
+        freeze-revision="dad09a53835812991b4049e099e172268f32ed9f"
         path="odoo18.0/addons/OCA_margin-analysis"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -440,6 +506,7 @@
     <project
         name="mis-builder.git"
         revision="18.0"
+        freeze-revision="1875e0d75015c437cbbdaf323db8664f3c2f14d4"
         path="odoo18.0/addons/OCA_mis-builder"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -447,6 +514,7 @@
     <project
         name="multi-company.git"
         revision="18.0"
+        freeze-revision="24defc75a2cb56bd96682ec09767ee77ca07f7ec"
         path="odoo18.0/addons/OCA_multi-company"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -455,7 +523,12 @@
         name="muk-it_odoo-modules.git"
         path="odoo18.0/addons/muk-it_odoo-modules"
         remote="TechnoLibre_origin_muk-it"
-        revision="18.0"
+        fork-upstream-remote="muk-it"
+        fork-upstream-name="odoo-modules.git"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="580669aaa403235d1aef6283e7570fe6e0e2567e"
+        revision="18.0_dev"
+        freeze-revision="06f23ae0999fcabfb9d2b8e67456a94fb132ccc9"
         groups="addons,odoo18.0,code_generator"
     />
     <!--    <project name="muk_web.git" revision="18.0" path="odoo18.0/addons/muk-it_muk_web" remote="muk-it" groups="addons,odoo18.0" />-->
@@ -468,6 +541,7 @@
     <project
         name="odoo-cloud-platform.git"
         revision="18.0"
+        freeze-revision="92b965e338a1a9a8b098f9074a3077fc3e08193c"
         path="odoo18.0/addons/camptocamp_odoo-cloud-platform"
         remote="camptocamp"
         groups="addons,odoo18.0"
@@ -476,26 +550,38 @@
         name="odoo-code-generator-template.git"
         path="odoo18.0/addons/TechnoLibre_odoo-code-generator-template"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="18.0"
+        freeze-revision="8cb807fe8850b1ec109cd5688f69dc85834a7470"
         groups="addons,odoo18.0,code_generator,image_db"
     />
     <project
         name="odoo-code-generator.git"
         path="odoo18.0/addons/TechnoLibre_odoo-code-generator"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="18.0"
+        freeze-revision="9b8d93775198d3ed8efff2d43cad93e3dd07bdff"
         groups="addons,odoo18.0,code_generator,image_db"
     />
+    <!-- L'amont novacode-nl/odoo-formio n'est plus publié : le fork
+         ERPLibre est sa propre référence, sans branche amont.
+         Ancienne déclaration : fork-upstream-remote="novacode-nl"
+         fork-upstream="18.0"
+         fork-upstream-freeze-revision="c6e56724c9778cb972108ecabe4f93de75f83217" -->
     <project
         name="odoo-formio.git"
         revision="18.0"
+        freeze-revision="c6e56724c9778cb972108ecabe4f93de75f83217"
         path="odoo18.0/addons/novacode-nl_odoo-formio"
         remote="ERPLibre_origin_novacode-nl"
+        fork-upstream-remote="ERPLibre_origin_novacode-nl"
         groups="addons,odoo18.0"
     />
     <project
         name="odoo-pim.git"
         revision="18.0"
+        freeze-revision="86e8efe1951aa9146318d98d98be9703ce570905"
         path="odoo18.0/addons/OCA_odoo-pim"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -504,13 +590,19 @@
         name="odoo.git"
         path="odoo18.0/odoo"
         remote="ERPLibre_origin_odoo"
+        fork-upstream-remote="OCA"
+        fork-upstream-name="OCB.git"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="ea190cc5029d18458c8296a0e583dc6427cd9091"
         clone-depth="10"
         revision="ERPLibre/18.0"
+        freeze-revision="abbc2026adb79a8932019020d62fb9316dac5817"
         groups="odoo,odoo18.0"
     />
     <project
         name="odooapps.git"
         revision="18.0"
+        freeze-revision="084b961178c725a8e05c73c6a6e6e8a1827e8861"
         path="odoo18.0/addons/odoomates_odooapps"
         remote="odoomates"
         groups="addons,odoo18.0"
@@ -518,6 +610,7 @@
     <project
         name="odooplm.git"
         revision="18.0"
+        freeze-revision="021f0ffca5a21c3b5fbddc2cc51af364be131327"
         path="odoo18.0/addons/OmniaGit_odooplm"
         remote="OmniaGit"
         groups="addons,odoo18.0"
@@ -525,13 +618,18 @@
     <project
         name="onlyoffice_odoo.git"
         revision="18.0"
+        freeze-revision="5a33247ca3346f20b2359959e2c9d034a0b6b981"
         path="odoo18.0/addons/ONLYOFFICE_onlyoffice_odoo"
         remote="ERPLibre_origin_ONLYOFFICE"
+        fork-upstream-remote="ONLYOFFICE"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="5a33247ca3346f20b2359959e2c9d034a0b6b981"
         groups="addons,odoo18.0"
     />
     <project
         name="openeducat_erp.git"
         revision="18.0"
+        freeze-revision="5b59f9c089083c6d23c5a6998501ec9d23b17945"
         path="odoo18.0/addons/openeducat_openeducat_erp"
         remote="openeducat"
         groups="addons,odoo18.0"
@@ -539,6 +637,7 @@
     <project
         name="operating-unit.git"
         revision="18.0"
+        freeze-revision="59fa3bea769c4087296c8e9e129e66ecedd04682"
         path="odoo18.0/addons/OCA_operating-unit"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -546,6 +645,7 @@
     <project
         name="partner-contact.git"
         revision="18.0"
+        freeze-revision="1a7a408945ed4d8dd6b9a061dfe5b7f2ad53bc83"
         path="odoo18.0/addons/OCA_partner-contact"
         remote="OCA"
         groups="addons,odoo18.0,code_generator"
@@ -553,14 +653,16 @@
     <project
         name="payroll.git"
         revision="18.0"
+        freeze-revision="a9d5444a6e9ae6907b9dac5391e53621fb79955b"
         path="odoo18.0/addons/OCA_payroll"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="pos.git" revision="18.0" path="odoo18.0/addons/OCA_pos" remote="OCA" groups="addons,odoo18.0" />
+    <project name="pos.git" revision="18.0" freeze-revision="ae2cccccb3b1e7849584aee4cb9ec9f0db7a67d8" path="odoo18.0/addons/OCA_pos" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="product-attribute.git"
         revision="18.0"
+        freeze-revision="c01c6d7af962644373793c7d5d8d2a0062c4a115"
         path="odoo18.0/addons/OCA_product-attribute"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -568,6 +670,7 @@
     <project
         name="product-configurator.git"
         revision="18.0"
+        freeze-revision="084fc1d524ba01fa6cbc9c6ecc3f0ad7b3007df5"
         path="odoo18.0/addons/OCA_product-configurator"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -575,6 +678,7 @@
     <project
         name="product-pack.git"
         revision="18.0"
+        freeze-revision="657af34de0ed8f8f7c9571c7f47ce43b199c482a"
         path="odoo18.0/addons/OCA_product-pack"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -582,6 +686,7 @@
     <project
         name="product-variant.git"
         revision="18.0"
+        freeze-revision="440439e1e7f6968a4738ae094f6944857b7719b6"
         path="odoo18.0/addons/OCA_product-variant"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -589,6 +694,7 @@
     <project
         name="project-reporting.git"
         revision="18.0"
+        freeze-revision="7aefaa6f9d1dd1537c9ce08dc6f4acdac285435a"
         path="odoo18.0/addons/OCA_project-reporting"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -596,6 +702,7 @@
     <project
         name="project-agile.git"
         revision="18.0"
+        freeze-revision="5bb1d6acaaec229fa1da64c990724ae232c202ba"
         path="odoo18.0/addons/OCA_project-agile"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -603,13 +710,18 @@
     <project
         name="project.git"
         revision="18.0_dev"
+        freeze-revision="86c6b62ebe89485861e7d45adbe493c89126c3d3"
         path="odoo18.0/addons/OCA_project"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="62507a6752a3982faae61c1d03c5759a256e45c5"
         groups="addons,odoo18.0"
     />
     <project
         name="purchase-reporting.git"
         revision="18.0"
+        freeze-revision="44e5d62c75d95fd57d0e25293c634a8fabf855c4"
         path="odoo18.0/addons/OCA_purchase-reporting"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -617,6 +729,7 @@
     <project
         name="purchase-workflow.git"
         revision="18.0"
+        freeze-revision="d64948a881ce93642cf7072e872c0ed961de748f"
         path="odoo18.0/addons/OCA_purchase-workflow"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -624,6 +737,7 @@
     <project
         name="queue.git"
         revision="18.0"
+        freeze-revision="b4ec9b2425056a757419ee7f4008cf365ad08f48"
         path="odoo18.0/addons/OCA_queue"
         remote="OCA"
         groups="addons,odoo18.0,code_generator"
@@ -631,6 +745,7 @@
     <project
         name="repair.git"
         revision="18.0"
+        freeze-revision="7b6db0c7c8f1dcc9878e6e0e342c4c36b0dc8dd8"
         path="odoo18.0/addons/OCA_repair"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -638,6 +753,7 @@
     <project
         name="report-print-send.git"
         revision="18.0"
+        freeze-revision="6f554ae9d621be33a366dcb4d7225b17554a08a0"
         path="odoo18.0/addons/OCA_report-print-send"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -645,6 +761,7 @@
     <project
         name="reporting-engine.git"
         revision="18.0"
+        freeze-revision="ff52dccce63e9268f98e45081f95c639e19d0614"
         path="odoo18.0/addons/OCA_reporting-engine"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -652,11 +769,12 @@
     <project
         name="rest-framework.git"
         revision="18.0"
+        freeze-revision="3a265d838699e85c43b6739c50ec2f12b4103767"
         path="odoo18.0/addons/OCA_rest-framework"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="rma.git" revision="18.0" path="odoo18.0/addons/OCA_rma" remote="OCA" groups="addons,odoo18.0" />
+    <project name="rma.git" revision="18.0" freeze-revision="0e8c870e91cbbaf7b3d53d4828153f536640f90f" path="odoo18.0/addons/OCA_rma" remote="OCA" groups="addons,odoo18.0" />
     <!--    <project-->
     <!--        name="saas-addons.git"-->
     <!--        revision="18.0" path="odoo18.0/addons/it-projects-llc_saas-addons"-->
@@ -666,6 +784,7 @@
     <project
         name="sale-blanket.git"
         revision="18.0"
+        freeze-revision="13b16d7dda64e7b18e09d896c558a8867c3cf143"
         path="odoo18.0/addons/OCA_sale-blanket"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -673,6 +792,7 @@
     <project
         name="sale-channel.git"
         revision="18.0"
+        freeze-revision="01db81dd0a32810401ea4094971b12ee53c00233"
         path="odoo18.0/addons/OCA_sale-channel"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -680,6 +800,7 @@
     <project
         name="sale-promotion.git"
         revision="18.0"
+        freeze-revision="630f8b04e9f6ab1093ded45aaadb962ee4fa5617"
         path="odoo18.0/addons/OCA_sale-promotion"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -687,6 +808,7 @@
     <project
         name="sale-reporting.git"
         revision="18.0"
+        freeze-revision="d19ef23764400dd12fe447ba2b0e68ab59ad0de9"
         path="odoo18.0/addons/OCA_sale-reporting"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -694,6 +816,7 @@
     <project
         name="sale-workflow.git"
         revision="18.0"
+        freeze-revision="1c233a44420a2575d1c29d19241c65fd0afef469"
         path="odoo18.0/addons/OCA_sale-workflow"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -701,6 +824,7 @@
     <project
         name="server-auth.git"
         revision="18.0"
+        freeze-revision="05bf187146736dbb5096ef963094f9aac897c7be"
         path="odoo18.0/addons/OCA_server-auth"
         remote="OCA"
         groups="addons,odoo18.0,code_generator"
@@ -708,6 +832,7 @@
     <project
         name="server-backend.git"
         revision="18.0"
+        freeze-revision="fd8dc76bf57af7350c79060e9824bb20ad096f1d"
         path="odoo18.0/addons/OCA_server-backend"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -715,6 +840,7 @@
     <project
         name="server-brand.git"
         revision="18.0"
+        freeze-revision="b6a1044f43158c5b846deb67c12effcd3c0ad323"
         path="odoo18.0/addons/OCA_server-brand"
         remote="OCA"
         groups="addons,odoo18.0,code_generator"
@@ -722,6 +848,7 @@
     <project
         name="server-env.git"
         revision="18.0"
+        freeze-revision="4a3b9466dc9f2349989af444d34f1a569c208fc1"
         path="odoo18.0/addons/OCA_server-env"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -729,28 +856,38 @@
     <project
         name="server-tools.git"
         revision="18.0_dev"
+        freeze-revision="3e92454cb866e0569fae693b48da8e072f08696d"
         path="odoo18.0/addons/OCA_server-tools"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="126afd2a62ec528386285aa753b24c15277d1f15"
         groups="addons,odoo18.0"
     />
     <project
         name="server-ux.git"
         revision="18.0_fix_base_tier_validation_message_repetition"
+        freeze-revision="ca4af11bbc6d00dac3304e6d989150bac628d4dd"
         path="odoo18.0/addons/OCA_server-ux"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="8ae4369943650d72619f6b390e361847865fde30"
         groups="addons,odoo18.0,code_generator"
     />
     <project
         name="shift-planning.git"
         revision="18.0"
+        freeze-revision="c73be25f3aa6532849db0e521932ad8213a15756"
         path="odoo18.0/addons/OCA_shift-planning"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="sign.git" revision="18.0" path="odoo18.0/addons/OCA_sign" remote="OCA" groups="addons,odoo18.0" />
+    <project name="sign.git" revision="18.0" freeze-revision="2fab4ed865ae1a5a0995540b5a47bd2a8bfd98ad" path="odoo18.0/addons/OCA_sign" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="spreadsheet.git"
         revision="18.0"
+        freeze-revision="5013d52ee8a1ab98013ecb705f65bf30326172fc"
         path="odoo18.0/addons/OCA_spreadsheet"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -758,6 +895,7 @@
     <project
         name="shopfloor-app.git"
         revision="18.0"
+        freeze-revision="1da99c16b0ce2bfa0cc91f153d23e00d25954ad7"
         path="odoo18.0/addons/OCA_shopfloor-app"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -765,6 +903,7 @@
     <project
         name="social.git"
         revision="18.0"
+        freeze-revision="b1735c66e7487be724d618d66b056f226668e703"
         path="odoo18.0/addons/OCA_social"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -772,6 +911,7 @@
     <project
         name="survey.git"
         revision="18.0"
+        freeze-revision="e927e81a8ea554320206d8e6ab27a0e831a8f317"
         path="odoo18.0/addons/OCA_survey"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -779,6 +919,7 @@
     <project
         name="stock-logistics-putaway.git"
         revision="18.0"
+        freeze-revision="58be7edba0c519e616ea2bd8d22ad9e5559c97dc"
         path="odoo18.0/addons/OCA_stock-logistics-putaway"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -786,6 +927,7 @@
     <project
         name="stock-logistics-warehouse.git"
         revision="18.0"
+        freeze-revision="2341b20de79cedf664441f8078f05cd7ad149ecd"
         path="odoo18.0/addons/OCA_stock-logistics-warehouse"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -793,6 +935,7 @@
     <project
         name="storage.git"
         revision="18.0"
+        freeze-revision="4e18dba99ce4088d681c664b8d83024174782ec9"
         path="odoo18.0/addons/OCA_storage"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -800,6 +943,7 @@
     <project
         name="timesheet.git"
         revision="18.0"
+        freeze-revision="2658d54c7c71ec1a7e2f6b35043bc3565cd3bb1b"
         path="odoo18.0/addons/OCA_timesheet"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -807,6 +951,7 @@
     <project
         name="vertical-association.git"
         revision="18.0"
+        freeze-revision="065f5242adb4b729386c8ff78b1bd7a0bbf7ba52"
         path="odoo18.0/addons/OCA_vertical-association"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -814,6 +959,7 @@
     <project
         name="vertical-hotel.git"
         revision="18.0"
+        freeze-revision="748136b7e1553acdae0bafb90457d0a6cbf098d0"
         path="odoo18.0/addons/OCA_vertical-hotel"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -821,6 +967,7 @@
     <project
         name="vertical-isp.git"
         revision="18.0"
+        freeze-revision="151ce9d4e16162d2d9b46b73a79c7ba4e648a0e9"
         path="odoo18.0/addons/OCA_vertical-isp"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -828,6 +975,7 @@
     <project
         name="vertical-travel.git"
         revision="18.0"
+        freeze-revision="68450fba58bace4211f5109e3f1953adf0993bdd"
         path="odoo18.0/addons/OCA_vertical-travel"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -835,13 +983,18 @@
     <project
         name="web.git"
         revision="18.0_dev"
+        freeze-revision="c3120b0cf89a7b90ada70fd944c22b9b74fbd8a4"
         path="odoo18.0/addons/OCA_web"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="c3120b0cf89a7b90ada70fd944c22b9b74fbd8a4"
         groups="addons,odoo18.0,code_generator"
     />
     <project
         name="web-api.git"
         revision="18.0"
+        freeze-revision="6713cd92c995c3186ed73c9c97f876ba07e1b2f7"
         path="odoo18.0/addons/OCA_web-api"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -849,6 +1002,7 @@
     <project
         name="website-cms.git"
         revision="18.0"
+        freeze-revision="d8fdc92a6c7f236c9d97d39ab702711c8abb930c"
         path="odoo18.0/addons/OCA_website-cms"
         remote="OCA"
         groups="addons,odoo18.0"
@@ -856,9 +1010,10 @@
     <project
         name="website.git"
         revision="18.0"
+        freeze-revision="4c83ab59d924b679f22a2ed9affe36580049f940"
         path="odoo18.0/addons/OCA_website"
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="wms.git" revision="18.0" path="odoo18.0/addons/OCA_wms" remote="OCA" groups="addons,odoo18.0" />
+    <project name="wms.git" revision="18.0" freeze-revision="fcb1718ef8e498e1fb87fb2dbc48d5ad90473046" path="odoo18.0/addons/OCA_wms" remote="OCA" groups="addons,odoo18.0" />
 </manifest>

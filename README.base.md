@@ -434,6 +434,7 @@ time make test_full_fast
 | [CODE_GENERATOR](doc/CODE_GENERATOR.md) | Odoo module code generation |
 | [MIGRATION](doc/MIGRATION.md) | Database migration between versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Git repository management |
+| [IMPROVE_ODOO](doc/improve_odoo.md) | ERPLibre's Odoo fork and its patches |
 | [POETRY](doc/POETRY.md) | Python dependency management |
 | [FAQ](doc/FAQ.md) | Frequently asked questions |
 | [HOWTO](doc/HOWTO.md) | How-to guides |
@@ -452,6 +453,7 @@ time make test_full_fast
 | [CODE_GENERATOR](doc/CODE_GENERATOR.md) | Génération de code de modules Odoo |
 | [MIGRATION](doc/MIGRATION.md) | Migration de base de données entre versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Gestion des dépôts Git |
+| [IMPROVE_ODOO](doc/improve_odoo.fr.md) | Le fork Odoo d'ERPLibre et ses correctifs |
 | [POETRY](doc/POETRY.md) | Gestion des dépendances Python |
 | [FAQ](doc/FAQ.md) | Foire aux questions |
 | [HOWTO](doc/HOWTO.md) | Guides pratiques |

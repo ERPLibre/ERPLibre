@@ -148,7 +148,8 @@ repeating it teaches nothing.
 The bilingual rule holds as for a commit — the tagged line and the body in
 English, then `--- FR ---`, then the tagged line translated under the same
 tag, then the translated body — as does the ban on naming an AI in
-`Co-authored-by:`.
+`Co-authored-by:`, and on any `Claude-Session:` trailer: `Assisted-by:` is
+the only AI trailer.
 
 **The hook does not check this one.** `script/git/hooks/commit-msg` skips any
 message beginning with `Merge `, along with `Revert `, `fixup!` and `squash!`.

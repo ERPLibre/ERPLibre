@@ -4,27 +4,27 @@
 
 .PHONY: db_list
 db_list:
-	./odoo_bin.sh db --list
+	./odoo_bin.sh db list
 
 .PHONY: db_list_incompatible_database
 db_list_incompatible_database:
-	./odoo_bin.sh db --list_incompatible_db
+	./odoo_bin.sh db list-incompatible
 
 .PHONY: db_version
 db_version:
-	./odoo_bin.sh db --version
+	./odoo_bin.sh db version
 
 .PHONY: db_drop_db_test
 db_drop_db_test:
-	./odoo_bin.sh db --drop --database test
+	./odoo_bin.sh db drop --if-exists test
 
 .PHONY: db_drop_db_test2
 db_drop_db_test2:
-	./odoo_bin.sh db --drop --database test2
+	./odoo_bin.sh db drop --if-exists test2
 
 .PHONY: db_drop_db_test3
 db_drop_db_test3:
-	./odoo_bin.sh db --drop --database test3
+	./odoo_bin.sh db drop --if-exists test3
 
 .PHONY: db_drop_all
 db_drop_all:

@@ -28,7 +28,7 @@ make install_odoo_all_version
 
 ## Validate environment
 
-- Check if each manifest version like [manifest/default.dev.odoo16.0.xml](../manifest/default.dev.odoo16.0.xml) is ready for production.
+- Check if each manifest version like [manifest/git_manifest_odoo16.0.xml](../manifest/git_manifest_odoo16.0.xml) is ready for production.
 - Run test :
 
 ```bash
@@ -100,11 +100,24 @@ To test it, you need to clean caches and install it:
 
 ## Generate new prod and release
 
-Generate production manifest and freeze all repos versions.
+Freeze the repos versions of the active Odoo version: every project of `manifest/git_manifest_odoo<V>.xml`,
+`git_manifest_odoo<V>_dev.xml` and `git_manifest_extra_odoo<V>.xml` receives the commit of its clone, next to its
+branch. Check first what would change, then freeze and commit the manifest files. A clone whose commit is on no
+remote branch is skipped: push it first. [GIT_REPO.md](./GIT_REPO.md#freeze-the-versions) details what is skipped.
+
+To carry the upstream changes into the release, first upgrade the forks on their upstream and publish them
+([GIT_REPO.md](./GIT_REPO.md#apply-the-upgrade)): the freeze records the published commits. Freeze with `UPSTREAM=1`,
+so the release also records, in `fork-upstream-freeze-revision`, the upstream commit each fork rests on; it fetches
+every declared upstream over the network.
 
 ```bash
-.venv.erplibre/bin/repo manifest -r -o ./default.xml
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
+git add manifest/
 ```
+
+An installation made from this commit follows the frozen commits with `make repo_configure_all FREEZE=1`; without the
+argument, it follows the branches.
 
 Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh), [Dockerfile.prod](../docker/Dockerfile.prod.pkg)
 and [docker-compose](../docker-compose.yml).
@@ -163,7 +176,8 @@ Add comment `Release v#.#.#`.
 
 ## Create tag
 
-Add a tag on the commit in branch master with your release. When adding tag, be sure to update default.xml
+Add a tag on the commit in branch master with your release. The tagged commit must carry the freeze: check that
+`.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run` reports no change before tagging.
 
 ```bash
 git tag v#.#.#

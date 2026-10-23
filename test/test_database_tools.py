@@ -185,7 +185,7 @@ class UneDestructionNAnnonceQueCeQuElleAFait(unittest.TestCase):
         mod = self._module()
 
         def faux_shell(cmd):
-            if "--list" in cmd:
+            if cmd.rstrip().endswith(" list"):
                 return 0, "test_alpha\ntest_beta"
             return code_destruction, (
                 "" if not code_destruction else "parallel: command not found"

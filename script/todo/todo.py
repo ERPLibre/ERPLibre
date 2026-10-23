@@ -122,6 +122,7 @@ from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
@@ -204,6 +205,7 @@ class TODO(
     VpnMenuMixin,
     AssistantMenuMixin,
     ContainerMenuMixin,
+    GitRepoMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -506,9 +508,11 @@ class TODO(
             get_odoo_version()
         )
 
+        version_par_cle = {}
         for version_info in versions[::-1]:
             key_i += 1
             key_s = str(key_i)
+            version_par_cle[key_s] = version_info.get("odoo_version")
             label = f"{key_s}: Odoo {version_info.get('odoo_version')}"
 
             odoo_version = f"odoo{version_info.get('odoo_version')}"
@@ -553,6 +557,12 @@ class TODO(
 
         # For numbered version selections, offer extra modules sub-menu
         if odoo_version_input.isdigit():
+            mode = self._choisir_mode_installation(
+                version_par_cle[odoo_version_input]
+            )
+            if mode is None:
+                return
+            cmd_intern = f"{mode} {cmd_intern}"
             extra_choices = {
                 "1": (
                     "1",
@@ -597,6 +607,55 @@ class TODO(
             print("Wait after installation and open projects by terminal.")
             print("make open_terminal")
             self.restart_script(str(e))
+
+    def _choisir_mode_installation(self, odoo_version):
+        """Développement ou production pour `odoo_version` (« 18.0 »).
+
+        Rend le préfixe de la commande d'installation, « EL_FREEZE=0 » ou
+        « EL_FREEZE=1 », ou None pour revenir. Le développement suit les
+        branches, la « revision » des manifestes. La production pose chaque
+        dépôt sur son « freeze-revision » ; quand aucun manifeste de cette
+        version n'en porte, elle se rabat sur le développement et le dit.
+        EL_FREEZE atteint le script de manifeste par l'environnement, à
+        travers update_env_version.py et install_locally_dev.sh. Il est posé
+        dans les deux cas : une valeur exportée par le shell ne décide pas à
+        la place du choix.
+        """
+        etat = gel_des_sources(odoo_version=odoo_version)
+        geles = etat[0] if etat else 0
+        if geles:
+            detail = f"{geles}/{etat[1]} {t('projects frozen')}"
+        else:
+            detail = t("no freeze, falls back to development")
+        choix = {
+            "1": f"1: {t('Development: follows the branches (revision)')}",
+            "2": (
+                f"2: {t('Production: frozen commits (freeze-revision)')}"
+                f" — {detail}"
+            ),
+            "0": f"0: {t('Back')}",
+        }
+        saisie = ""
+        while saisie not in choix:
+            if saisie:
+                print(f"{t('Error, cannot understand value')} '{saisie}'")
+            saisie = input(
+                f"💬 {t('Environment:')}\n\t"
+                + "\n\t".join(choix.values())
+                + f"\n{t('Select: ')}"
+            ).strip()
+        if saisie == "0":
+            return None
+        if saisie == "2" and geles:
+            print(
+                f"🧊 {t('Production: each repository on its frozen commit.')}"
+            )
+            return "EL_FREEZE=1"
+        if saisie == "2":
+            print(
+                f"⚠  {t('No frozen commit for this Odoo version: installing the development, on the branches.')}"
+            )
+        return "EL_FREEZE=0"
 
     def execute_from_configuration(
         self, instance, exec_run_db=False, ignore_makefile=False
@@ -686,6 +745,7 @@ class TODO(
         "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
+        "prompt_execute_git_repo": "Repo",
         "prompt_execute_git_local_server": "Git local server",
         "_prompt_git_server_actions": "Actions",
         "prompt_execute_gpt_code": "GPT code",
@@ -1018,14 +1078,28 @@ class TODO(
         # TODO faire l'upgrade d'un odoo vers un autre
 
         choices = self.config_file.get_config("update_from_makefile")
-        menu_entry = {
-            "prompt_description": t("Upgrade Odoo - Migration Database"),
-        }
-        choices.append(menu_entry)
-        poetry_entry = {
-            "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
-        }
-        choices.append(poetry_entry)
+        # « method » porte la destination dans l'entrée elle-même. Un rang
+        # calculé sur la taille de la liste désignait l'entrée voisine dès
+        # qu'une autre s'ajoutait à la fin, et la soustraction en double du
+        # repli générique rendait la PREMIÈRE entrée injoignable.
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Odoo - Migration Database"),
+                "method": "_update_odoo_migration",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
+                "method": "upgrade_poetry",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("🔃 Update git repo"),
+                "method": "prompt_execute_git_repo",
+            }
+        )
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -1033,33 +1107,36 @@ class TODO(
             print()
             if status == "0":
                 return False
-            elif status == str(len(choices) - 1):
-                upgrade = todo_upgrade.TodoUpgrade(self)
-                try:
-                    upgrade.execute_odoo_upgrade()
-                except todo_upgrade.MigrationRewind:
-                    # L'état est déjà rembobiné et écrit : il ne reste qu'à
-                    # relancer, et l'écran de reprise repartira de l'étape
-                    # choisie. Sortir d'ici plutôt que de rappeler la méthode
-                    # évite de la reprendre au milieu de son état local.
-                    print(
-                        f"\n⏪ {t('Rewound.')}"
-                        f" {t('Relaunch the migration to resume from there.')}"
-                    )
-            elif status == str(len(choices)):
-                self.upgrade_poetry()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status) - 1
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
+            cmd_no_found = True
+            try:
+                int_cmd = int(status)
+                if 0 < int_cmd <= len(choices):
+                    cmd_no_found = False
+                    instance = choices[int_cmd - 1]
+                    method = instance.get("method")
+                    if method:
+                        getattr(self, method)()
+                    else:
                         self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+            except ValueError:
+                pass
+            if cmd_no_found:
+                print(t("Command not found !"))
+
+    def _update_odoo_migration(self):
+        """La migration d'une base d'une version d'Odoo vers la suivante."""
+        upgrade = todo_upgrade.TodoUpgrade(self)
+        try:
+            upgrade.execute_odoo_upgrade()
+        except todo_upgrade.MigrationRewind:
+            # L'état est déjà rembobiné et écrit : il ne reste qu'à
+            # relancer, et l'écran de reprise repartira de l'étape
+            # choisie. Sortir d'ici plutôt que de rappeler la méthode
+            # évite de la reprendre au milieu de son état local.
+            print(
+                f"\n⏪ {t('Rewound.')}"
+                f" {t('Relaunch the migration to resume from there.')}"
+            )
 
     def prompt_execute_deploy(self):
         print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
@@ -2894,22 +2971,28 @@ class TODO(
 
         choices = self.config_file.get_config("code_from_makefile")
 
-        menu_entry = {
-            "prompt_description": t("Open SHELL"),
-        }
-        choices.append(menu_entry)
-
-        menu_entry = {
-            "prompt_description": t("Upgrade Module"),
-        }
-        choices.append(menu_entry)
-
+        # « method » porte la destination dans l'entrée elle-même. Le rang
+        # de ces quatre-là dépend du nombre d'entrées venues de todo.json :
+        # un rang calculé sur la taille de la liste tient tant que rien ne
+        # s'insère, et désigne le voisin le jour où quelque chose s'insère.
+        choices.append(
+            {
+                "prompt_description": t("Open SHELL"),
+                "method": "open_shell_on_database",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Module"),
+                "method": "upgrade_module",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t("Debug"),
+                "method": "debug_ide",
             }
         )
-
         # Déplacé depuis le menu Execute : mise à jour de tout le code source
         # de dev en staging (sous-menu de mise à jour).
         choices.append(
@@ -2917,6 +3000,7 @@ class TODO(
                 "prompt_description": t(
                     "Update - Update all developed staging source code"
                 ),
+                "method": "prompt_execute_update",
             }
         )
 
@@ -2927,26 +3011,21 @@ class TODO(
             print()
             if status == "0":
                 return False
-            elif status == str(len(choices)):
-                self.prompt_execute_update()
-            elif status == str(len(choices) - 1):
-                self.debug_ide()
-            elif status == str(len(choices) - 2):
-                self.upgrade_module()
-            elif status == str(len(choices) - 3):
-                self.open_shell_on_database()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
+            cmd_no_found = True
+            try:
+                int_cmd = int(status)
+                if 0 < int_cmd <= len(choices):
+                    cmd_no_found = False
+                    instance = choices[int_cmd - 1]
+                    method = instance.get("method")
+                    if method:
+                        getattr(self, method)()
+                    else:
                         self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+            except ValueError:
+                pass
+            if cmd_no_found:
+                print(t("Command not found !"))
 
     # Les hooks que le dépôt fournit. git saute silencieusement un hook qui
     # ne porte pas le bit d'exécution, d'où la vérification à l'installation.
@@ -2995,6 +3074,12 @@ class TODO(
             {
                 "prompt_description": t("Install opencode"),
                 "method": "_shell_install_opencode",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("🔃 Update git repo"),
+                "method": "prompt_execute_git_repo",
             }
         )
 
@@ -5827,7 +5912,7 @@ class TODO(
             print(
                 f"\n--- {t('Cleaning up temporary database')} '{db_name}' ---"
             )
-            cmd_drop = f"./odoo_bin.sh db --drop --database {db_name}"
+            cmd_drop = f"./odoo_bin.sh db drop {db_name}"
             self.execute.exec_command_live(
                 cmd_drop,
                 source_erplibre=False,
@@ -6193,9 +6278,18 @@ class TODO(
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def process_kill_from_port(self):
-        cfg = configparser.ConfigParser()
+        # script/generate_config.sh écrit xmlrpc_port, l'ancien nom qu'Odoo
+        # lit encore comme http_port ; sans l'un ni l'autre, Odoo écoute sur
+        # son port par défaut.
+        cfg = configparser.ConfigParser(interpolation=None)
         cfg.read("./config.conf")
-        http_port = cfg.getint("options", "http_port")
+        http_port = 8069
+        for option in ("http_port", "xmlrpc_port"):
+            try:
+                http_port = cfg.getint("options", option)
+                break
+            except (configparser.Error, ValueError):
+                continue
 
         status = self.execute.exec_command_live(
             f"./script/process/kill_process_by_port.py {http_port} --kill-tree --nb_parent 2",

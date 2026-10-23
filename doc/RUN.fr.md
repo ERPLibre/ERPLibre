@@ -79,3 +79,40 @@ Exécutez vos tests sur un module spécifique avec des tags.
 ```bash
 ./run.sh -d [DATABASE] -u [module to test] --test-enable --no-http --stop-after-init --log-level=test --test-tags [module_name][tags]
 ```
+
+### Tests navigateur (tours, hoot)
+
+Les tours d'Odoo, les tests hoot et tout `HttpCase` qui pilote un navigateur
+ont besoin de deux choses, et l'absence de l'une comme de l'autre passe
+inaperçue : chacun de ces tests lève `SkipTest`, la passe finit verte, et seul un avertissement au
+journal — `Chrome executable not found` ou `websocket-client module is not
+installed` — dit que rien n'a tourné.
+
+- **Un Chrome ou un Chromium dans le `PATH`.** Sous Linux, Odoo cherche
+  `google-chrome`, `chromium`, `chromium-browser` puis `google-chrome-stable` ;
+  sous macOS, `Google Chrome.app` puis `Chromium.app` dans `/Applications`.
+  `make install_browser_test` en installe un selon la distribution détectée :
+  `chromium` des paquets du système sur Debian, Linux Mint, Fedora, la famille
+  RHEL (par EPEL), openSUSE et Arch, Google Chrome sur macOS, et le `.deb` de
+  Google Chrome sur Ubuntu, dont le `chromium-browser` est un snap : le snap a
+  son propre `/tmp`, où Odoo ne trouve jamais le port de débogage du
+  navigateur. Un Chromium snap déjà dans le `PATH` ne compte donc pas comme
+  installé. Sur NixOS, déclarer `chromium` dans `environment.systemPackages`
+  ou lancer les tests dans `nix-shell -p chromium`. La cible ne fait pas
+  partie de `make install_os`, un navigateur complet ne servant à rien sur un
+  serveur de production. `--dry-run` affiche les commandes sans les exécuter.
+- **Le paquet Python `websocket-client` dans le venv d'Odoo.** Il est déclaré
+  dans les dépendances d'Odoo 18 ; un venv existant le reçoit par
+  `poetry install --no-root`, lancé dans ce venv. Quand le fichier lock est
+  plus ancien que le pyproject, Poetry refuse cette commande (`pyproject.toml
+  changed significantly since poetry.lock was last generated`) : lancer
+  d'abord `poetry lock`, dans le même venv, avec accès au réseau.
+
+Le script vérifie l'un et l'autre. Lancer ensuite les tests comme plus haut,
+avec un tag qui les sélectionne, par exemple `--test-tags=/web:WebSuite` pour
+la suite hoot de `web`.
+
+```bash
+make install_browser_test
+./script/install/install_browser_test.sh --dry-run
+```

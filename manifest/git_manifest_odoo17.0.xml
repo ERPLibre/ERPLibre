@@ -16,7 +16,8 @@
     <remote name="itpp-labs" fetch="https://github.com/itpp-labs/" />
     <remote name="kinjal-sorathiya" fetch="https://github.com/kinjal-sorathiya/" />
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
-    <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
+    <!-- Amont retiré de GitHub, gardé pour mémoire : -->
+    <!-- <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" /> -->
     <remote name="ERPLibre_origin_novacode-nl" fetch="https://github.com/ERPLibre/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
     <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
@@ -25,6 +26,8 @@
     <remote name="openeducat" fetch="https://github.com/openeducat/" />
     <remote name="pledra" fetch="https://github.com/pledra/" />
     <remote name="tegin" fetch="https://github.com/tegin/" />
+    <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
+    <remote name="odoo" fetch="https://github.com/odoo/" />
 
     <project
         name="account-analytic.git"
@@ -245,12 +248,15 @@
         revision="17.0"
         path="odoo17.0/addons/MathBenTech_development"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         groups="addons,base,odoo17.0"
     />
     <project
         name="design-themes.git"
         path="odoo17.0/addons/odoo_design-themes"
         remote="ERPLibre_origin_odoo"
+        fork-upstream-remote="odoo"
+        fork-upstream="17.0"
         revision="17.0"
         groups="addons,odoo17.0"
     />
@@ -402,6 +408,7 @@
         name="odoo-code-generator-template.git"
         path="odoo17.0/addons/TechnoLibre_odoo-code-generator-template"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="17.0"
         groups="addons,odoo17.0,code_generator,image_db"
     />
@@ -409,13 +416,17 @@
         name="odoo-code-generator.git"
         path="odoo17.0/addons/TechnoLibre_odoo-code-generator"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="17.0"
         groups="addons,odoo17.0,code_generator,image_db"
     />
+    <!-- L'amont novacode-nl/odoo-formio n'est plus publié : le fork
+         ERPLibre est sa propre référence, sans branche amont. -->
     <project
         name="odoo-formio.git"
         path="odoo17.0/addons/novacode-nl_odoo-formio"
         remote="ERPLibre_origin_novacode-nl"
+        fork-upstream-remote="ERPLibre_origin_novacode-nl"
         revision="17.0"
         groups="addons,odoo17.0"
     />
@@ -430,6 +441,10 @@
         name="odoo.git"
         path="odoo17.0/odoo"
         remote="ERPLibre_origin_odoo"
+        fork-upstream-remote="OCA"
+        fork-upstream-name="OCB.git"
+        fork-upstream="17.0"
+        fork-upstream-freeze-revision="b64d74a6d330650901fa6f198574bc10eb73d3f8"
         clone-depth="10"
         revision="ERPLibre/17.0"
         groups="odoo,odoo17.0"

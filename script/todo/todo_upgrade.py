@@ -35,6 +35,7 @@ sys.path.append(new_path)
 
 from script.execute import execute
 from script.git.git_tool import GitTool
+from script.git.manifest_freeze import manifest_branch
 
 _logger = logging.getLogger(__name__)
 
@@ -2017,7 +2018,7 @@ class TodoUpgrade:
                 )
 
                 # Duplicate database
-                cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
+                cmd_clone_database = f"./odoo_bin.sh db duplicate {last_database_name} {database_name_upgrade}"
                 status, cmd_executed = self.todo_upgrade_execute(
                     cmd_clone_database
                 )
@@ -2331,7 +2332,7 @@ class TodoUpgrade:
                             f"./script/database/db_restore.py -d {database_name_upgrade} --only_drop",
                         )
                         # Duplicate database
-                        cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
+                        cmd_clone_database = f"./odoo_bin.sh db duplicate {last_database_name} {database_name_upgrade}"
                         self.todo_upgrade_execute(cmd_clone_database)
                         # Le clone est NEUF : ce qu'on avait retiré du
                         # précédent est revenu avec lui. La liste du palier
@@ -2655,11 +2656,11 @@ class TodoUpgrade:
                 # EST la liste de `dct_progression` — `.get` rend l'objet,
                 # pas une copie — donc la muter maintenant la fait persister
                 # au premier write_config() venu, y compris celui du chemin
-                # d'échec juste en dessous. L'étape passait alors pour faite
-                # et la reprise SAUTAIT OpenUpgrade : mesuré sur
-                # test_neutralize_upgrade_18, resté en base 17.0.1.3 avec sa
-                # commande 18 déjà consignée. On l'enregistre après la
-                # réussite, où le commentaire dit déjà qu'elle appartient.
+                # d'échec juste en dessous. L'étape passerait alors pour
+                # faite et la reprise SAUTERAIT OpenUpgrade : la base reste
+                # en 17.0.1.3 avec sa commande 18 déjà consignée. On
+                # l'enregistre après la réussite, où le commentaire dit déjà
+                # qu'elle appartient.
 
                 # Record the website COW views before the data migration. The
                 # upgrade silently deletes and recreates copies (measured on
@@ -2901,7 +2902,9 @@ class TodoUpgrade:
         self.print_step(msg)
         self.add_comment_progression(msg)
 
-        cmd_backup_template = f"./odoo_bin.sh db --backup --database {database_name_upgrade} --restore_image"
+        cmd_backup_template = (
+            f"./odoo_bin.sh db dump {database_name_upgrade} --image"
+        )
         cmd_backup = f"{cmd_backup_template} {database_name_upgrade}_finish_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
         print(f"✨ {t('A backup can be created')} :\n{cmd_backup}")
         status = self.ask(
@@ -3271,11 +3274,11 @@ class TodoUpgrade:
     def still_installed(self, database_name, lst_module):
         """Parmi ces modules, lesquels la base tient-elle ENCORE ?
 
-        Odoo ne signale rien quand il ne retire rien : « --uninstall » ne
-        cherche que l'état « installed » et laisse filer en silence un module
-        resté en « to remove » d'une tentative précédente. Le code de sortie
-        vaut donc 0 pour une désinstallation qui n'a pas eu lieu — c'est ainsi
-        que muk_web_theme a traversé quatre paliers en étant réputé retiré.
+        Odoo ne signale rien quand il ne retire rien : « module uninstall »
+        ne cherche que l'état « installed » et laisse filer en silence un
+        module resté en « to remove » d'une tentative précédente. Le code de
+        sortie vaut donc 0 pour une désinstallation qui n'a pas eu lieu, et
+        le module traverse les paliers suivants en étant réputé retiré.
 
         Rendre None, et non la liste vide, quand la base ne répond pas :
         « je ne sais pas » et « rien ne reste » appellent des suites
@@ -4075,12 +4078,12 @@ class TodoUpgrade:
         )
 
         lst_left = self.still_installed(database_name, lst_module_to_uninstall)
-        # UN SEUL nom fautif emporte tout le lot : « --uninstall » prend
-        # une liste, et Odoo annule la transaction entière au premier
-        # échec. Mesuré sur une chaîne 12 → 18 : `crm_phone` échoue sur
-        # une colonne absente de res_users et fait tomber les 22 autres
-        # avec lui — dont huit modules sans code en 13, qui sont alors
-        # montés d'un palier « installed » sans rien pour les charger.
+        # UN SEUL nom fautif emporte tout le lot : « module uninstall »
+        # prend une liste, et Odoo annule la transaction entière au premier
+        # échec. Un module qui échoue, par exemple sur une colonne absente,
+        # fait tomber tous les autres avec lui, y compris ceux qui n'ont
+        # plus de code au palier suivant et y montent « installed » sans
+        # rien pour les charger.
         #
         # On reprend donc un par un : ce qui peut partir part, et l'on
         # nomme précisément ce qui résiste.
@@ -4436,6 +4439,13 @@ class TodoUpgrade:
             )
 
     def get_branch_name_from_local_manifest(self, addons_path, default_branch):
+        """La branche que suit le dépôt `addons_path` dans le manifeste local.
+
+        Un manifeste fusionné avec --freeze porte un commit dans
+        « revision » : la branche est alors lue dans « dest-branch » puis
+        « upstream ». Rend `default_branch` pour un dépôt absent du
+        manifeste, ou un commit sans branche connue.
+        """
         relative_addons_path = addons_path.replace(os.getcwd() + "/", "")
         git_tool = GitTool()
         dct_remote, dct_project, default_remote = (
@@ -4444,8 +4454,12 @@ class TodoUpgrade:
         for dct_repo in dct_project.values():
             path = dct_repo.get("@path")
             if path == relative_addons_path:
-                revision = dct_repo.get("@revision")
-                return revision
+                branch = manifest_branch(
+                    dct_repo.get("@revision"),
+                    dct_repo.get("@upstream"),
+                    dct_repo.get("@dest-branch"),
+                )
+                return branch or default_branch
         return default_branch
 
     def get_local_branch_remote_actual_branch_git(self, lst_output):

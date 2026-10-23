@@ -47,7 +47,7 @@ def get_config():
 def main():
     config = get_config()
 
-    status, out_db = execute_shell("./odoo_bin.sh db --list")
+    status, out_db = execute_shell("./odoo_bin.sh db list")
     lst_db = out_db.split("\n")
 
     lst_database_to_delete = []
@@ -69,7 +69,7 @@ def main():
         if lst_database_to_delete and db_name not in lst_database_to_delete:
             continue
 
-        cmd_end += f' "./odoo_bin.sh db --drop --database {db_name}"'
+        cmd_end += f' "./odoo_bin.sh db drop {db_name}"'
         lst_db_name.append(db_name)
     if cmd_end:
         code, sortie = execute_shell(cmd_all + cmd_end)

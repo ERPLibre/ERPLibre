@@ -25,11 +25,33 @@
     <remote name="ERPLibre_origin_openeducat" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_pledra" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_tegin" fetch="https://github.com/ERPLibre/" />
+    <remote name="JayVora-SerpentCS" fetch="https://github.com/JayVora-SerpentCS/" />
+    <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
+    <remote name="Numigi" fetch="https://github.com/Numigi/" />
+    <remote name="OCA" fetch="https://github.com/OCA/" />
+    <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
+    <remote name="Smile-SA" fetch="https://github.com/Smile-SA/" />
+    <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
+    <remote name="ajepe" fetch="https://github.com/ajepe/" />
+    <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
+    <remote name="dhongu" fetch="https://github.com/dhongu/" />
+    <remote name="it-projects-llc" fetch="https://github.com/it-projects-llc/" />
+    <remote name="kinjal-sorathiya" fetch="https://github.com/kinjal-sorathiya/" />
+    <remote name="muk-it" fetch="https://github.com/muk-it/" />
+    <remote name="obayit" fetch="https://github.com/obayit/" />
+    <remote name="odoo" fetch="https://github.com/odoo/" />
+    <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
+    <remote name="odoomates" fetch="https://github.com/odoomates/" />
+    <remote name="openeducat" fetch="https://github.com/openeducat/" />
+    <remote name="pledra" fetch="https://github.com/pledra/" />
+    <remote name="tegin" fetch="https://github.com/tegin/" />
 
     <project
         name="Property-Management_odoo.git"
         path="odoo12.0/addons/kinjal-sorathiya_Property-Management_odoo"
         remote="ERPLibre_origin_kinjal-sorathiya"
+        fork-upstream-remote="kinjal-sorathiya"
+        fork-upstream="master"
         revision="master"
         groups="addons,odoo12.0"
     />
@@ -37,6 +59,7 @@
         name="QuotationRevision.git"
         path="odoo12.0/addons/MathBenTech_QuotationRevision"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -44,6 +67,8 @@
         name="access-addons.git"
         path="odoo12.0/addons/itpp-labs_access-addons"
         remote="ERPLibre_origin_itpp-labs"
+        fork-upstream-remote="itpp-labs"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -51,6 +76,8 @@
         name="account-analytic.git"
         path="odoo12.0/addons/OCA_account-analytic"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -58,6 +85,8 @@
         name="account-budgeting.git"
         path="odoo12.0/addons/OCA_account-budgeting"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -65,6 +94,8 @@
         name="account-closing.git"
         path="odoo12.0/addons/OCA_account-closing"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -72,6 +103,8 @@
         name="account-consolidation.git"
         path="odoo12.0/addons/OCA_account-consolidation"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -79,6 +112,8 @@
         name="account-financial-reporting.git"
         path="odoo12.0/addons/OCA_account-financial-reporting"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -86,6 +121,8 @@
         name="account-financial-tools.git"
         path="odoo12.0/addons/OCA_account-financial-tools"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -93,6 +130,8 @@
         name="account-fiscal-rule.git"
         path="odoo12.0/addons/OCA_account-fiscal-rule"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -100,6 +139,8 @@
         name="account-invoice-reporting.git"
         path="odoo12.0/addons/OCA_account-invoice-reporting"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -107,6 +148,8 @@
         name="account-invoicing.git"
         path="odoo12.0/addons/OCA_account-invoicing"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -114,6 +157,8 @@
         name="account-payment.git"
         path="odoo12.0/addons/OCA_account-payment"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -121,6 +166,8 @@
         name="account-reconcile.git"
         path="odoo12.0/addons/OCA_account-reconcile"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -128,6 +175,8 @@
         name="apps-store.git"
         path="odoo12.0/addons/OCA_apps-store"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -135,6 +184,8 @@
         name="bank-payment.git"
         path="odoo12.0/addons/OCA_bank-payment"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -142,6 +193,8 @@
         name="bank-statement-import.git"
         path="odoo12.0/addons/OCA_bank-statement-import"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -149,6 +202,8 @@
         name="brand.git"
         path="odoo12.0/addons/OCA_brand"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -156,6 +211,8 @@
         name="business-requirement.git"
         path="odoo12.0/addons/OCA_business-requirement"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -163,6 +220,8 @@
         name="commission.git"
         path="odoo12.0/addons/OCA_commission"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -170,6 +229,8 @@
         name="community-data-files.git"
         path="odoo12.0/addons/OCA_community-data-files"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -177,6 +238,8 @@
         name="connector-ecommerce.git"
         path="odoo12.0/addons/OCA_connector-ecommerce"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -184,6 +247,8 @@
         name="connector-interfaces.git"
         path="odoo12.0/addons/OCA_connector-interfaces"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -191,6 +256,8 @@
         name="connector-jira.git"
         path="odoo12.0/addons/OCA_connector-jira"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -198,6 +265,8 @@
         name="connector-telephony.git"
         path="odoo12.0/addons/OCA_connector-telephony"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -205,6 +274,8 @@
         name="connector.git"
         path="odoo12.0/addons/OCA_connector"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -212,6 +283,8 @@
         name="contract.git"
         path="odoo12.0/addons/OCA_contract"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,code_generator,image_db"
     />
@@ -219,6 +292,8 @@
         name="credit-control.git"
         path="odoo12.0/addons/OCA_credit-control"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -226,6 +301,8 @@
         name="crm.git"
         path="odoo12.0/addons/OCA_crm"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -233,6 +310,8 @@
         name="currency.git"
         path="odoo12.0/addons/OCA_currency"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -240,6 +319,8 @@
         name="data-protection.git"
         path="odoo12.0/addons/OCA_data-protection"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -247,6 +328,8 @@
         name="ddmrp.git"
         path="odoo12.0/addons/OCA_ddmrp"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -255,6 +338,8 @@
         name="delivery-carrier.git"
         path="odoo12.0/addons/OCA_delivery-carrier"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -262,6 +347,8 @@
         name="deltatech.git"
         path="odoo12.0/addons/dhongu_deltatech"
         remote="ERPLibre_origin_dhongu"
+        fork-upstream-remote="dhongu"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -269,6 +356,8 @@
         name="design-themes.git"
         path="odoo12.0/addons/odoo_design-themes"
         remote="ERPLibre_origin_odoo"
+        fork-upstream-remote="odoo"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,code_generator,image_db"
     />
@@ -276,6 +365,7 @@
         name="development.git"
         path="odoo12.0/addons/MathBenTech_development"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         revision="12.0"
         groups="addons,odoo12.0,base"
     />
@@ -283,6 +373,8 @@
         name="donation.git"
         path="odoo12.0/addons/OCA_donation"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_module_donation_website"
         groups="addons,odoo12.0"
     />
@@ -290,6 +382,8 @@
         name="e-commerce.git"
         path="odoo12.0/addons/OCA_e-commerce"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -297,6 +391,8 @@
         name="edi.git"
         path="odoo12.0/addons/OCA_edi"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -311,6 +407,7 @@
         name="erplibre-family-management.git"
         path="odoo12.0/addons/MathBenTech_erplibre-family-management"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         revision="12.0"
         groups="addons,odoo12.0,code_generator"
     />
@@ -332,6 +429,8 @@
         name="event.git"
         path="odoo12.0/addons/OCA_event"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -339,6 +438,8 @@
         name="field-service.git"
         path="odoo12.0/addons/OCA_field-service"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -346,6 +447,8 @@
         name="fleet.git"
         path="odoo12.0/addons/OCA_fleet"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -353,6 +456,8 @@
         name="geospatial.git"
         path="odoo12.0/addons/OCA_geospatial"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,code_generator,image_db"
     />
@@ -360,6 +465,8 @@
         name="helpdesk.git"
         path="odoo12.0/addons/OCA_helpdesk"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,code_generator,image_db"
     />
@@ -367,6 +474,8 @@
         name="hr.git"
         path="odoo12.0/addons/OCA_hr"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -374,6 +483,8 @@
         name="interface-github.git"
         path="odoo12.0/addons/OCA_interface-github"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -381,6 +492,8 @@
         name="knowledge.git"
         path="odoo12.0/addons/OCA_knowledge"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -388,6 +501,8 @@
         name="l10n-canada.git"
         path="odoo12.0/addons/OCA_l10n-canada"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -395,6 +510,8 @@
         name="maintenance.git"
         path="odoo12.0/addons/OCA_maintenance"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -402,6 +519,8 @@
         name="management-system.git"
         path="odoo12.0/addons/OCA_management-system"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -409,6 +528,8 @@
         name="manufacture.git"
         path="odoo12.0/addons/OCA_manufacture"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -416,6 +537,8 @@
         name="margin-analysis.git"
         path="odoo12.0/addons/OCA_margin-analysis"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_sale_margin_editor"
         groups="addons,odoo12.0"
     />
@@ -423,6 +546,8 @@
         name="medical-fhir.git"
         path="odoo12.0/addons/tegin_medical-fhir"
         remote="ERPLibre_origin_tegin"
+        fork-upstream-remote="tegin"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -430,6 +555,8 @@
         name="mis-builder.git"
         path="odoo12.0/addons/OCA_mis-builder"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -437,6 +564,8 @@
         name="muk_base.git"
         path="odoo12.0/addons/muk-it_muk_base"
         remote="ERPLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,base"
     />
@@ -444,6 +573,8 @@
         name="muk_dms.git"
         path="odoo12.0/addons/muk-it_muk_dms"
         remote="ERPLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -451,6 +582,8 @@
         name="muk_docs.git"
         path="odoo12.0/addons/muk-it_muk_docs"
         remote="ERPLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -458,6 +591,8 @@
         name="muk_misc.git"
         path="odoo12.0/addons/muk-it_muk_misc"
         remote="ERPLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,base"
     />
@@ -465,6 +600,8 @@
         name="muk_quality.git"
         path="odoo12.0/addons/muk-it_muk_quality"
         remote="ERPLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -472,6 +609,8 @@
         name="muk_web.git"
         path="odoo12.0/addons/muk-it_muk_web"
         remote="ERPLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,base,code_generator"
     />
@@ -479,6 +618,8 @@
         name="muk_website.git"
         path="odoo12.0/addons/muk-it_muk_website"
         remote="ERPLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream="12.0"
         revision="12.0_remove_autoinstall"
         groups="addons,odoo12.0,base"
     />
@@ -486,6 +627,8 @@
         name="multi-company.git"
         path="odoo12.0/addons/OCA_multi-company"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -493,6 +636,7 @@
         name="odoo-addons.git"
         path="odoo12.0/addons/ajepe_odoo-addons"
         remote="ERPLibre_origin_ajepe"
+        fork-upstream-remote="ajepe"
         revision="12.0_dev"
         groups="addons,odoo12.0,base"
     />
@@ -500,6 +644,8 @@
         name="odoo-base-addons.git"
         path="odoo12.0/addons/Numigi_odoo-base-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -507,6 +653,7 @@
         name="odoo-business-spending-management-quebec-canada.git"
         path="odoo12.0/addons/MathBenTech_odoo-business-spending-management-quebec-canada"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         revision="12.0"
         groups="addons,odoo12.0,base"
     />
@@ -514,6 +661,8 @@
         name="odoo-cloud-platform.git"
         path="odoo12.0/addons/camptocamp_odoo-cloud-platform"
         remote="ERPLibre_origin_camptocamp"
+        fork-upstream-remote="camptocamp"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -521,6 +670,7 @@
         name="odoo-code-generator-template.git"
         path="odoo12.0/addons/TechnoLibre_odoo-code-generator-template"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="12.0"
         groups="addons,odoo12.0,code_generator,image_db"
     />
@@ -528,6 +678,7 @@
         name="odoo-code-generator.git"
         path="odoo12.0/addons/TechnoLibre_odoo-code-generator"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="12.0"
         groups="addons,odoo12.0,code_generator,image_db"
     />
@@ -542,6 +693,8 @@
         name="odoo-entertainment-addons.git"
         path="odoo12.0/addons/Numigi_odoo-entertainment-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -549,13 +702,18 @@
         name="odoo-git-addons.git"
         path="odoo12.0/addons/Numigi_odoo-git-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
+    <!-- L'amont novacode-nl/odoo-formio n'est plus publié : le fork
+         ERPLibre est sa propre référence, sans branche amont. -->
     <project
         name="odoo-formio.git"
         path="odoo12.0/addons/novacode-nl_odoo-formio"
         remote="ERPLibre_origin_novacode-nl"
+        fork-upstream-remote="ERPLibre_origin_novacode-nl"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -563,6 +721,8 @@
         name="odoo-hr-addons.git"
         path="odoo12.0/addons/Numigi_odoo-hr-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -570,6 +730,8 @@
         name="odoo-partner-addons.git"
         path="odoo12.0/addons/Numigi_odoo-partner-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,base,image_db"
     />
@@ -577,6 +739,8 @@
         name="odoo-product-addons.git"
         path="odoo12.0/addons/Numigi_odoo-product-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -584,6 +748,8 @@
         name="odoo-product-configurator.git"
         path="odoo12.0/addons/pledra_odoo-product-configurator"
         remote="ERPLibre_origin_pledra"
+        fork-upstream-remote="pledra"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -591,6 +757,8 @@
         name="odoo-project-addons.git"
         path="odoo12.0/addons/Numigi_odoo-project-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -598,6 +766,8 @@
         name="odoo-purchase-addons.git"
         path="odoo12.0/addons/Numigi_odoo-purchase-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -605,6 +775,8 @@
         name="odoo-stock-addons.git"
         path="odoo12.0/addons/Numigi_odoo-stock-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -612,6 +784,8 @@
         name="odoo-survey-addons.git"
         path="odoo12.0/addons/Numigi_odoo-survey-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -619,6 +793,8 @@
         name="odoo-timesheet-addons.git"
         path="odoo12.0/addons/Numigi_odoo-timesheet-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -626,6 +802,8 @@
         name="odoo-web-addons.git"
         path="odoo12.0/addons/Numigi_odoo-web-addons"
         remote="ERPLibre_origin_Numigi"
+        fork-upstream-remote="Numigi"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,base"
     />
@@ -633,14 +811,19 @@
         name="odoo.git"
         path="odoo12.0/odoo"
         remote="ERPLibre_origin_odoo"
+        fork-upstream-remote="OCA"
+        fork-upstream-name="OCB.git"
+        fork-upstream="12.0"
         revision="ERPLibre/12.0"
-        clone-depth="10"
+        clone-depth="20"
         groups="odoo"
     />
     <project
         name="odoo_addons.git"
         path="odoo12.0/addons/Smile-SA_odoo_addons"
         remote="ERPLibre_origin_Smile-SA"
+        fork-upstream-remote="Smile-SA"
+        fork-upstream="12.0"
         revision="12.0_remote_autoinstall"
         groups="addons,odoo12.0"
     />
@@ -648,6 +831,8 @@
         name="odoo_dhtmlxgantt.git"
         path="odoo12.0/addons/obayit_odoo_dhtmlxgantt"
         remote="ERPLibre_origin_obayit"
+        fork-upstream-remote="obayit"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -655,6 +840,8 @@
         name="odooapps.git"
         path="odoo12.0/addons/odoomates_odooapps"
         remote="ERPLibre_origin_odoomates"
+        fork-upstream-remote="odoomates"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -662,6 +849,8 @@
         name="odooplm.git"
         path="odoo12.0/addons/OmniaGit_odooplm"
         remote="ERPLibre_origin_OmniaGit"
+        fork-upstream-remote="OmniaGit"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -669,6 +858,8 @@
         name="openeducat_erp.git"
         path="odoo12.0/addons/openeducat_openeducat_erp"
         remote="ERPLibre_origin_openeducat"
+        fork-upstream-remote="openeducat"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -676,6 +867,8 @@
         name="operating-unit.git"
         path="odoo12.0/addons/OCA_operating-unit"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -683,6 +876,8 @@
         name="partner-contact.git"
         path="odoo12.0/addons/OCA_partner-contact"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -697,6 +892,8 @@
         name="pos.git"
         path="odoo12.0/addons/OCA_pos"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -704,6 +901,8 @@
         name="product-attribute.git"
         path="odoo12.0/addons/OCA_product-attribute"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -711,6 +910,8 @@
         name="product-pack.git"
         path="odoo12.0/addons/OCA_product-pack"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -718,6 +919,8 @@
         name="product-variant.git"
         path="odoo12.0/addons/OCA_product-variant"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -725,6 +928,8 @@
         name="product_rating_app.git"
         path="odoo12.0/addons/odooaktiv_product_rating_app"
         remote="ERPLibre_origin_odooaktiv"
+        fork-upstream-remote="odooaktiv"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -732,6 +937,8 @@
         name="project-reporting.git"
         path="odoo12.0/addons/OCA_project-reporting"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -739,6 +946,8 @@
         name="project.git"
         path="odoo12.0/addons/OCA_project"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_fix_conflict_project_key"
         groups="addons,odoo12.0"
     />
@@ -746,6 +955,8 @@
         name="purchase-workflow.git"
         path="odoo12.0/addons/OCA_purchase-workflow"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -753,6 +964,8 @@
         name="queue.git"
         path="odoo12.0/addons/OCA_queue"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="erplibre/12.0"
         groups="addons,odoo12.0"
     />
@@ -760,6 +973,8 @@
         name="reporting-engine.git"
         path="odoo12.0/addons/OCA_reporting-engine"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -767,6 +982,8 @@
         name="rma.git"
         path="odoo12.0/addons/OCA_rma"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -774,6 +991,8 @@
         name="saas-addons.git"
         path="odoo12.0/addons/it-projects-llc_saas-addons"
         remote="ERPLibre_origin_it-projects-llc"
+        fork-upstream-remote="it-projects-llc"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -781,6 +1000,8 @@
         name="sale-reporting.git"
         path="odoo12.0/addons/OCA_sale-reporting"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -788,6 +1009,8 @@
         name="sale-workflow.git"
         path="odoo12.0/addons/OCA_sale-workflow"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_modules_sale_order_line"
         groups="addons,odoo12.0"
     />
@@ -795,6 +1018,7 @@
         name="scrummer.git"
         path="odoo12.0/addons/MathBenTech_scrummer"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         revision="12.0_dev"
         groups="addons,odoo12.0,base"
     />
@@ -802,6 +1026,8 @@
         name="SerpentCS_Contributions.git"
         path="odoo12.0/addons/JayVora-SerpentCS_SerpentCS_Contributions"
         remote="ERPLibre_origin_JayVora-SerpentCS"
+        fork-upstream-remote="JayVora-SerpentCS"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,code_generator,base"
     />
@@ -809,6 +1035,8 @@
         name="server-auth.git"
         path="odoo12.0/addons/OCA_server-auth"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,base,image_db"
     />
@@ -816,6 +1044,8 @@
         name="server-backend.git"
         path="odoo12.0/addons/OCA_server-backend"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -823,6 +1053,8 @@
         name="server-brand.git"
         path="odoo12.0/addons/OCA_server-brand"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,base"
     />
@@ -830,6 +1062,8 @@
         name="server-env.git"
         path="odoo12.0/addons/OCA_server-env"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -837,6 +1071,8 @@
         name="server-tools.git"
         path="odoo12.0/addons/OCA_server-tools"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,base"
     />
@@ -844,6 +1080,8 @@
         name="server-ux.git"
         path="odoo12.0/addons/OCA_server-ux"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,base"
     />
@@ -851,6 +1089,8 @@
         name="social.git"
         path="odoo12.0/addons/OCA_social"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0,base"
     />
@@ -858,6 +1098,8 @@
         name="stock-logistics-warehouse.git"
         path="odoo12.0/addons/OCA_stock-logistics-warehouse"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -865,6 +1107,8 @@
         name="storage.git"
         path="odoo12.0/addons/OCA_storage"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -872,6 +1116,8 @@
         name="timesheet.git"
         path="odoo12.0/addons/OCA_timesheet"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_support_project_agile_timesheet"
         groups="addons,odoo12.0"
     />
@@ -879,6 +1125,8 @@
         name="vertical-association.git"
         path="odoo12.0/addons/OCA_vertical-association"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -886,6 +1134,8 @@
         name="vertical-hotel.git"
         path="odoo12.0/addons/OCA_vertical-hotel"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -893,6 +1143,8 @@
         name="vertical-isp.git"
         path="odoo12.0/addons/OCA_vertical-isp"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -900,6 +1152,8 @@
         name="vertical-travel.git"
         path="odoo12.0/addons/OCA_vertical-travel"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -907,6 +1161,8 @@
         name="web.git"
         path="odoo12.0/addons/OCA_web"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,base"
     />
@@ -914,6 +1170,8 @@
         name="website-addons.git"
         path="odoo12.0/addons/itpp-labs_website-addons"
         remote="ERPLibre_origin_itpp-labs"
+        fork-upstream-remote="itpp-labs"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
@@ -921,6 +1179,8 @@
         name="website-cms.git"
         path="odoo12.0/addons/OCA_website-cms"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />
@@ -928,6 +1188,8 @@
         name="website.git"
         path="odoo12.0/addons/OCA_website"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0_dev"
         groups="addons,odoo12.0,code_generator,image_db"
     />
@@ -935,6 +1197,8 @@
         name="wms.git"
         path="odoo12.0/addons/OCA_wms"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="12.0"
         revision="12.0"
         groups="addons,odoo12.0"
     />

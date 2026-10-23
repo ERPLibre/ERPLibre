@@ -8,17 +8,14 @@
 # Odoo les écarte alors du graphe — « not installable, skipped » — et
 # signale des états incohérents ; le ménage ne vient qu'en fin de palier,
 # par database_cleanup, qui s'arrête à mi-course : les données partent,
-# l'état reste « to remove ». Or « --uninstall » ne cherche que
+# l'état reste « to remove ». Or « module uninstall » ne cherche que
 # « installed » et sort 0 sans rien faire sur « to remove » : le module
-# ne se retire alors plus JAMAIS. C'est ainsi que muk_web_theme a
-# traversé quatre paliers en étant réputé parti.
+# ne se retire alors plus JAMAIS.
 #
-# Mesuré sur une copie de test_neutralize avec le code de la 12 : les
-# huit se retirent en un appel, 139 modules installés → 131, et le diff
-# de ir_module_module ne montre que ces huit lignes. Aucune donnée
-# d'affaires ne part — les tables sinerkia sont vides, aucune page ne
-# pose les snippets maison, et le fuseau America/Montreal survit dans
-# ir_default, que la désinstallation ne touche pas.
+# Avec le code de la 12, les huit se retirent en un appel, et seules
+# leurs lignes de ir_module_module changent. La désinstallation ne
+# touche pas ir_default : le fuseau horaire posé par partner_quebec_tz y
+# reste.
 erplibre_base                            # code absent dès la 13
 erplibre_website_snippets_basic_html     # code absent dès la 13
 erplibre_website_snippets_cards          # code absent dès la 13

@@ -33,6 +33,11 @@ img2pdf
 
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
+# Le pilote du navigateur des tests d'Odoo (tours, hoot) importe websocket.
+# requirements.txt d'Odoo 18 ne le nomme pas : absent du venv, chaque test
+# navigateur lève SkipTest et la passe reste verte. La 1.8.0 couvre
+# Python 3.8 à 3.12.
+websocket-client==1.8.0
 pre-commit
 # odoo_bin.sh runs Odoo under « coverage run » when ODOO_MODE_COVERAGE=true:
 # coverage must sit in the interpreter that runs Odoo, this venv.

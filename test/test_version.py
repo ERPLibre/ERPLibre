@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 from script.version.update_env_version import (
     ADDONS_TEMPLATE_FILE,
     ERPLIBRE_TEMPLATE_VERSION,
-    MANIFEST_TEMPLATE_FILE,
     ODOO_TEMPLATE_FILE,
     POETRY_LOCK_TEMPLATE_FILE,
     PYPROJECT_TEMPLATE_FILE,
@@ -67,10 +66,6 @@ class TestConstants(unittest.TestCase):
     def test_venv_template(self):
         result = VENV_TEMPLATE_FILE % "odoo18.0_python3.12.10"
         self.assertEqual(result, ".venv.odoo18.0_python3.12.10")
-
-    def test_manifest_template(self):
-        result = MANIFEST_TEMPLATE_FILE % "18.0"
-        self.assertEqual(result, "default.dev.odoo18.0.xml")
 
     def test_pyproject_template(self):
         result = PYPROJECT_TEMPLATE_FILE % "odoo18.0_python3.12.10"
@@ -170,9 +165,6 @@ class TestUpdateValidateVersion(unittest.TestCase):
             {"erplibre_version": "odoo18.0_python3.12.10"},
         )
         update.validate_version()
-        self.assertIn(
-            "default.dev.odoo18.0.xml", update.expected_manifest_name
-        )
         self.assertIn("requirement", update.expected_pyproject_path)
         self.assertIn("requirement", update.expected_poetry_lock_path)
         self.assertEqual(update.expected_odoo_name, "odoo18.0")

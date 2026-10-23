@@ -6,6 +6,10 @@ wheel
 phonenumbers
 # Force update version to latest, no break update
 pytz>=2022.7
+# Odoo pins 0.12.3, which has no Python 3.7 wheel: built from source by a
+# recent GCC, its _sass module misses a symbol and every SCSS bundle fails.
+# 0.17.0 is Odoo 13's pin and ships a manylinux wheel for Python 3.7.
+libsass==0.17.0
 
 # For OCA
 factur-x

@@ -4,15 +4,15 @@
 
 """Désinstaller un thème n'est pas désinstaller son module.
 
-Choisir un thème — `button_choose_theme()`, dont `--install-theme` refait
-lui-même le travail après avoir installé le module par `-i` — fait deux
+Choisir un thème — `button_choose_theme()`, que `theme apply` appelle
+après avoir installé le module au besoin — fait deux
 choses : copier les vues et ressources du thème dans chaque site, et écrire
 dans `user_values.scss` une personnalisation qui DÉFINIT
 `$o-theme-font-number` et ses trois voisines. Le chemin de retrait d'Odoo,
 `_theme_remove()`, défait les deux — et son premier geste est
 `_reset_default_config()`, celui qui écrit ces définitions.
 
-Un `--uninstall` nu saute tout cela. Après une migration 12 → 13, le bundle
+Un `module uninstall` nu saute tout cela. Après une migration 12 → 13, le bundle
 `web.assets_frontend` s'arrête alors sur « Undefined variable:
 $o-theme-font-number ». La variable vient des fichiers `option_font_body_*`
 d'Odoo 12, supprimés en 13.0 ; seul le thème la redéfinit encore, et le
@@ -48,8 +48,8 @@ class TestTheScriptShape(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
 
     def test_it_goes_through_theme_remove(self):
-        # LE point : sans cet appel, le script ne serait qu'un --uninstall
-        # sous un autre nom, et laisserait la même panne derrière lui.
+        # LE point : sans cet appel, le script ne serait qu'un « module
+        # uninstall » sous un autre nom, et laisserait la même panne derrière lui.
         self.assertIn("_theme_remove(website)", self.source())
 
     def test_it_walks_every_website(self):
@@ -59,7 +59,7 @@ class TestTheScriptShape(unittest.TestCase):
         self.assertIn('env["website"].search([])', source)
 
     def test_it_still_uninstalls_the_module(self):
-        self.assertIn("--uninstall", self.source())
+        self.assertIn("module uninstall", self.source())
 
     def test_it_mirrors_the_installer_checks(self):
         # Même garde-fou que install_addons_theme.sh : un nom de module

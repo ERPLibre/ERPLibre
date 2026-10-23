@@ -203,7 +203,7 @@ system or runs for hours goes in `long_test/` instead, and undoes itself with
 **An Odoo module** — drop the database, then run the module's tests:
 
 ```bash
-./odoo_bin.sh db --drop --database test_<module>
+./odoo_bin.sh db drop --if-exists test_<module>
 ./test.sh -d test_<module> --db-filter test_<module> -i <module>
 ```
 
