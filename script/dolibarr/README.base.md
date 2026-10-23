@@ -19,7 +19,9 @@ From TODO:
     check an instance's health, security and integrity, back it up, restore
     a backup;
   - **Inventory**: list the instances, remove one, find installations here
-    or over SSH.
+    or over SSH;
+  - **Development tools**: debug profile and modules of a development
+    instance.
 
 Each TODO entry runs a script of this directory with its parameters; every
 script also runs on its own.
@@ -38,6 +40,8 @@ script also runs on its own.
 | `backup.py` | `create`, `list` and `restore` backups (restore: `restore.py`) |
 | `fleet.py` | `list` the instances, `remove` one |
 | `upgrade.py` | Upgrade an instance to the pinned version, rollback on failure |
+| `debug.py` | Debug profile of an instance `on`/`off`, `status`, `tail` of its log |
+| `module.py` | `create`, `link`, `enable`, `disable` the modules of a development instance |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -66,7 +70,9 @@ Depuis TODO :
     vérifier la santé, la sécurité et l'intégrité d'une instance, la
     sauvegarder, restaurer une sauvegarde ;
   - **Inventaire** : lister les instances, en retirer une, trouver les
-    installations, locales ou par SSH.
+    installations, locales ou par SSH ;
+  - **Outils de développement** : profil de déverminage et modules d'une
+    instance de développement.
 
 Chaque entrée de TODO lance un script de ce dossier avec ses paramètres ;
 chaque script se lance aussi seul.
@@ -85,6 +91,8 @@ chaque script se lance aussi seul.
 | `backup.py` | `create`, `list` et `restore` des sauvegardes (restauration : `restore.py`) |
 | `fleet.py` | `list` des instances, `remove` d'une instance |
 | `upgrade.py` | Monter une instance à la version épinglée, retour arrière sur échec |
+| `debug.py` | Profil de déverminage d'une instance `on`/`off`, `status`, `tail` de son journal |
+| `module.py` | `create`, `link`, `enable`, `disable` les modules d'une instance de développement |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -277,7 +285,7 @@ ne sont pas posés.
   output of each upgrade goes to `private/dolibarr/upgrades/`, git-ignored,
   and `doctor.py` warns when an instance is behind the pin.
 
-## Pinned version
+## Development tools
 
 <!-- [fr] -->
 - `detect.py` envoie une sonde POSIX sh en lecture seule (un aller-retour,
@@ -306,6 +314,54 @@ ne sont pas posés.
   peut différer. La sortie complète de chaque montée va dans
   `private/dolibarr/upgrades/`, ignoré par git, et `doctor.py` avertit
   quand une instance est en retard sur l'épinglage.
+
+## Outils de développement
+
+<!-- [common] -->
+```bash
+./script/dolibarr/debug.py on --instance erp       # off puts everything back
+./script/dolibarr/debug.py tail --instance erp --filter ERR
+./script/dolibarr/module.py create --instance erp --name Zorglub --enable
+./script/dolibarr/module.py link --instance erp --path ~/src/zorglub
+./script/dolibarr/module.py enable --instance erp --name Stock
+```
+
+<!-- [en] -->
+- `debug.py on` shows development features (`MAIN_FEATURES_LEVEL=2`),
+  enables DebugBar and Syslog at level 7 (every SQL query), and on a native
+  development instance sets `conf.php` to prod=0 and strict mode. The
+  previous state is saved once; `off` puts it back row for row. A production
+  needs its name retyped: level 7 logs session ids.
+- `module.py create` does what the ModuleBuilder's "New module" does, from
+  the instance's own template, so the module goes on in the ModuleBuilder.
+  It lands in `custom/` (the checkout's `htdocs/custom`, or the host
+  directory mounted in the container) with the first free ID from 500000;
+  IDs from 100000 to 499999 are reserved on the Dolibarr wiki. The author
+  comes from `--author` or git.
+- `module.py link` symlinks a module kept in its own repository into
+  `htdocs/custom` (native only: a container sees only its `custom/`).
+  `enable` and `disable` go through Dolibarr, dependencies and permissions
+  included. A production is refused: it receives a package.
+
+## Pinned version
+
+<!-- [fr] -->
+- `debug.py on` montre les fonctionnalités en développement
+  (`MAIN_FEATURES_LEVEL=2`), active DebugBar et Syslog au niveau 7 (chaque
+  requête SQL), et en développement natif passe `conf.php` à prod=0 et en
+  mode strict. L'état d'avant est gardé une fois ; `off` le remet ligne à
+  ligne. Une production exige son nom retapé : le niveau 7 journalise les
+  identifiants de session.
+- `module.py create` fait ce que fait « Nouveau module » du ModuleBuilder,
+  depuis le gabarit de l'instance elle-même : le module se poursuit dans le
+  ModuleBuilder. Il naît dans `custom/` (`htdocs/custom` du checkout, ou le
+  dossier de l'hôte monté dans le conteneur) avec le premier numéro libre
+  dès 500000 ; de 100000 à 499999, les numéros se réservent sur le wiki de
+  Dolibarr. L'auteur vient de `--author` ou de git.
+- `module.py link` pose dans `htdocs/custom` le lien d'un module tenu dans
+  son propre dépôt (natif seulement : un conteneur ne voit que son
+  `custom/`). `enable` et `disable` passent par Dolibarr, dépendances et
+  droits compris. Une production est refusée : elle reçoit un paquet.
 
 ## Version épinglée
 
