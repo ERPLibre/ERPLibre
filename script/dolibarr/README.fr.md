@@ -18,7 +18,9 @@ Depuis TODO :
     installations, locales ou par SSH ;
   - **Outils de développement** : profil de déverminage et modules d'une
     instance de développement, hooks et déclencheurs entre versions,
-    modifications du cœur.
+    modifications du cœur ;
+  - **Intégration** : l'API REST, avec un utilisateur technique en lecture
+    seule et sa clé.
 
 Chaque entrée de TODO lance un script de ce dossier avec ses paramètres ;
 chaque script se lance aussi seul.
@@ -43,6 +45,7 @@ chaque script se lance aussi seul.
 | `quality.py` | phpcs et PHPStan sur un module, avec les règles de Dolibarr |
 | `hooks_index.py` | Hooks, contextes et déclencheurs à une version, et le diff entre deux |
 | `core.py` | Modifier le cœur : `status`, `start` d'une branche, `check` selon CONTRIBUTING, `patches` |
+| `api.py` | API REST : `enable` (module, utilisateur en lecture, clé), `status`, `disable` |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -254,6 +257,26 @@ ne sont pas posés.
   stable. `patches` exporte la série sous `private/dolibarr/patches/`. Le
   fork `ERPLibre/dolibarr` n'existe pas encore ; `status` dit quand il
   répond.
+
+## Intégration
+
+```bash
+./script/dolibarr/api.py enable --instance erp     # --rotate for a new key
+./script/dolibarr/api.py status --instance erp
+```
+
+- `api.py enable` allume le module API REST et crée un utilisateur
+  technique, `erplibre_api`, qui a chaque droit de lecture et aucun autre.
+  Sa `DOLAPIKEY` est tirée par ERPLibre, n'atteint PHP que par stdin, est
+  gardée chiffrée par Dolibarr et dans `private/dolibarr/api/<instance>.key`
+  (0600, ignorée par git ; un chemin que git pourrait commiter est refusé).
+  Relancé, `enable` garde la clé ; `--rotate` en tire une autre et
+  l'ancienne cesse d'ouvrir l'API.
+- `status` appelle `/api/index.php/status` avec la clé : seule la réponse
+  de statut compte, car un module éteint répond 200 en texte.
+  L'explorateur (swagger) est à `/api/index.php/explorer/`. Une production
+  exige son nom retapé pour allumer ou éteindre l'API. Le serveur MCP de
+  Dolibarr 24, encore expérimental, viendra ensuite.
 
 ## Version épinglée
 
