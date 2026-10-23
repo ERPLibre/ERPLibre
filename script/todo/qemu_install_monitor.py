@@ -274,9 +274,8 @@ def _launch_one(
     # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
-    # lancement devient donc morte en cours de route, et l'attente échouait
-    # 20 minutes durant sur une VM parfaitement saine (vécu : bail .247 périmé
-    # pendant que la VM vivait en .248).
+    # lancement devient donc morte en cours de route, et l'attente échouerait
+    # 20 minutes durant sur une VM parfaitement saine.
     #
     # L'agent invité fait foi : il répond depuis l'intérieur, là où le bail
     # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
@@ -292,9 +291,8 @@ def _launch_one(
     # ici, puisque c'est par là que l'installation passera. Le bail périmé ne
     # répond pas, le bon répond.
     # virsh SANS sudo d'abord. Ce script tourne détaché, sans tty : « sudo -n »
-    # y échoue dès que l'hôte exige une authentification interactive — vécu sur
-    # erplibre01 (« sudo-rs: interactive authentication is required »), et la
-    # ré-résolution restait alors muette sans laisser la moindre trace.
+    # y échoue dès que l'hôte exige une authentification interactive, et la
+    # ré-résolution resterait alors muette sans laisser la moindre trace.
     # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
     # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
     # pour les hôtes où le groupe manque.
@@ -886,8 +884,8 @@ def read_status(log_path: str) -> tuple[str, int | None]:
 
 # Au-delà de ce silence, la colonne d'état le DIT. Ce n'est pas un verdict mais
 # un chiffre : plusieurs étapes sont légitimement muettes, leur sortie partant
-# ailleurs. Mesuré sur une installation réelle : le téléchargement d'Android
-# Studio tient ~5 min sans une ligne, et l'étape « APK debug » davantage — son
+# ailleurs. Le téléchargement d'Android Studio tient environ 5 min sans une
+# ligne, et l'étape « APK debug » davantage — son
 # détail va dans le journal de la VM. Dix minutes passent donc au-dessus du
 # premier sans attendre le second, qui reste bruyant par nature.
 #
@@ -1160,9 +1158,8 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
         if EXIT_MARKER in line:
             continue
         # Un échec d'étape EST une erreur, même sans le mot « error » : sinon le
-        # tableau de bord affiche « 0 erreur » sur une installation ratée —
-        # mesuré sur erplibre-ubuntu-2604-gnome, 0 ligne « error » pour un APK
-        # tué par le noyau.
+        # tableau de bord afficherait « 0 erreur » sur une installation ratée :
+        # un APK tué par le noyau n'écrit aucune ligne « error ».
         if _is_hard_signal(line):
             nerr += 1
             continue
@@ -1800,9 +1797,9 @@ def vm_stats_line(name, rec, bps, now, ecrit=None) -> str:
 def read_domstats() -> str:
     """Sortie brute de « virsh domstats --balloon --block » (tout le parc).
 
-    UN appel pour toutes les VM — 0,03 s mesuré sur deux domaines. Le suivi
-    relève toutes les deux secondes : une commande par VM y coûterait N
-    processus à chaque tour."""
+    UN appel pour toutes les VM, de l'ordre de quelques centièmes de seconde.
+    Le suivi relève toutes les deux secondes : une commande par VM y coûterait
+    N processus à chaque tour."""
     try:
         res = subprocess.run(
             virsh_argv("domstats", "--balloon", "--block"),
@@ -1978,8 +1975,8 @@ def parse_pvestats(text: str) -> dict:
 # Combien de relevés SUCCESSIFS sans la VM avant de la déclarer effacée. Un
 # seul silence ne prouve rien : l'hôte peut être occupé, la VM en train de
 # démarrer, le relevé en cache d'avant sa création. Or « effacée » est un état
-# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Vécu sur une VM Arch
-# déployée sur Proxmox : poubelle dès le premier tour.
+# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Conclure au premier
+# silence met à la poubelle une VM Proxmox à peine déployée.
 PVE_ABSENCES_AVANT_EFFACEE = 3
 
 
@@ -2002,10 +1999,8 @@ def drop_local_twins(stats, vms) -> dict:
     """Retire des relevés LOCAUX ceux d'une VM qui vit ailleurs.
 
     « virsh domstats » indexe par NOM, et un nom se partage : une VM posée
-    sur un Proxmox distant héritait des chiffres du domaine local homonyme.
-    Vécu sur trois VM — « erplibre-ubuntu-2604 » affichait 1,5 Gio de RAM sur
-    12 et 58 Gio de disque sur 65, tout cela appartenant à la machine locale
-    du même nom, pendant que la vraie tournait avec 3 Gio et 25.
+    sur un Proxmox distant hériterait des chiffres du domaine local homonyme,
+    sa RAM et son disque compris.
 
     Retirés AVANT d'ajouter ceux de l'hôte : ainsi un hôte muet laisse la
     colonne VIDE — ce qui est vrai — au lieu de la remplir avec la mauvaise
@@ -2071,14 +2066,13 @@ def _read_pvestats(vms, now=None):
         )
         # Le code de sortie ne prouve RIEN, dans AUCUN sens. La commande
         # est une SUITE (pvesh ; echo ; du ; echo ; boucle) et son code est
-        # celui du DERNIER maillon — la sonde Odoo. Un pvesh en panne rendait
+        # celui du DERNIER maillon — la sonde Odoo. Un pvesh en panne rend
         # donc 0, « l'hôte a répondu, la VM n'y est plus », et trois tours
-        # plus tard la poubelle ; c'est ce qu'on avait corrigé. Mais
-        # l'exiger à 0 était l'erreur SYMÉTRIQUE : tant qu'Odoo n'écoute pas
-        # — c'est-à-dire pendant TOUTE l'installation, précisément quand on
-        # regarde — la boucle finit en échec et le relevé, parfait, était
-        # jeté. Mesuré sur trois VM : colonnes vides côté Proxmox, et les
-        # lignes qui avaient un homonyme LOCAL affichaient ses chiffres.
+        # plus tard la poubelle. L'exiger à 0 est l'erreur SYMÉTRIQUE : tant
+        # qu'Odoo n'écoute pas — c'est-à-dire pendant TOUTE l'installation,
+        # précisément quand on regarde — la boucle finit en échec et le
+        # relevé, parfait, serait jeté : colonnes vides côté Proxmox, et une
+        # ligne qui a un homonyme LOCAL afficherait ses chiffres.
         #
         # Ce qui prouve une réponse, c'est une LISTE de ressources
         # analysable. Rien d'autre, et surtout pas le code.
@@ -2171,9 +2165,9 @@ def arm_balloon(names) -> None:
     """Arme la période de collecte du ballon (5 s) sur chaque VM.
 
     Sans elle, « balloon.available » et « balloon.usable » restent FIGÉS sur le
-    dernier rapport du pilote : mesuré sur une VM fraîche, 388 Mo annoncés
-    contre 1,1 Go réellement occupés, avec un horodatage vieux d'une
-    demi-heure. La période se perd quand le domaine redémarre — ce qu'une
+    dernier rapport du pilote : le chiffre annoncé peut valoir une fraction de
+    l'occupation réelle, avec un horodatage vieux d'une demi-heure. La
+    période se perd quand le domaine redémarre — ce qu'une
     installation fait — donc on la réarme à intervalle lent.
     """
     for name in names or ():
@@ -3595,11 +3589,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if vm.get("pve"):
                     if not hote_ok:
                         # L'hôte n'a pas répondu : on ne sait RIEN. Conclure
-                        # « effacée » ici gelait la ligne sur 🗑 dès le premier
-                        # tour, pour toujours — vécu sur une VM Arch à peine
-                        # déployée. Et on OUBLIE les absences déjà comptées :
-                        # elles ne prouvent une disparition que si elles se
-                        # SUIVENT, l'hôte répondant à chaque fois.
+                        # « effacée » ici gèlerait la ligne sur 🗑 dès le
+                        # premier tour, pour toujours. Et on OUBLIE les
+                        # absences déjà comptées : elles ne prouvent une
+                        # disparition que si elles se SUIVENT, l'hôte
+                        # répondant à chaque fois.
                         self._pve_absences[nom] = 0
                         continue
                     releve = distants.get(nom)
@@ -3962,12 +3956,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def _apply_column_widths(self, table) -> None:
             """Fait PRENDRE les largeurs à l'écran.
 
-            « refresh(layout=True) » ne suffit pas, et c'est le piège :
-            mesuré sur Textual 8.2.8, la largeur de la colonne passe bien de
-            22 à 34, mais la taille virtuelle du tableau reste à 81 — donc
-            rien ne bouge. « clear_cached_dimensions » et « refresh_column »
-            n'y changent rien non plus ; seul le recalcul des dimensions la
-            porte à 93.
+            « refresh(layout=True) » ne suffit pas, et c'est le piège : sous
+            Textual 8.2.8, la largeur de la colonne change bien, mais la
+            taille virtuelle du tableau ne suit pas — donc rien ne bouge.
+            « clear_cached_dimensions » et « refresh_column » n'y changent
+            rien non plus ; seul le recalcul des dimensions la met à jour.
 
             C'est une API privée, d'où le repli : une version future de
             Textual dégradera l'ajustement au lieu de casser le suivi."""
