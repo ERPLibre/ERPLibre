@@ -1628,6 +1628,8 @@ class QemuDeployMixin:
         TOUT ce qui exige sudo (liste des domaines) ou le réseau (branches)
         est fait ICI, pendant que le terminal est encore à nous : une invite
         de mot de passe pendant que Textual affiche casserait l'écran."""
+        from script.todo.deploy_form_lib import catalog_order
+
         native = self._native_arch()
         arches = ["amd64", "arm64", "s390x"]
         if native not in arches:
@@ -1647,7 +1649,9 @@ class QemuDeployMixin:
                 e["name"] = self._qemu_infra_name(
                     e["distro"], e["version"], e["arch"]
                 )
-            catalog[a] = entries
+            # Trié pour la liste à cocher seulement : la CLI granulaire garde
+            # l'ordre du catalogue, ses numéros sont ceux qu'on retape.
+            catalog[a] = catalog_order(entries)
 
         print(f"\n{t('Loading (VM list, branches)...')}")
         disque_libre, disque_total = self._host_disk_gb()

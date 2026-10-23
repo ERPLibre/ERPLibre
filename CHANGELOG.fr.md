@@ -155,6 +155,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Modifié
 
+- Le formulaire de déploiement liste son catalogue par ordre alphabétique de système, puis par version comparée comme un nombre — ubuntu 26.04 après 24.04, almalinux 10 après 9 —, puis par architecture. La liste en ligne de commande garde son ordre, ses numéros étant ceux qu'on retape
 - `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond
 - Le contrôle d'hygiène des commentaires lit le Go, et non les seuls `#` : `//` hors d'une chaîne, la chaîne brute entre accents graves, et les blocs `/* … */`
 - Les index `by-hash` de Debian et d'Ubuntu sont servis du disque, leur nom étant l'empreinte de leur contenu ; `…/releases/latest/download/…` n'est plus figé sur la première version vue

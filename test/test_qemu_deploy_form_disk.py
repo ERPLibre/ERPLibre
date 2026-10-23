@@ -60,6 +60,22 @@ def contexte():
     return ctx
 
 
+class TestOrdreDuCatalogue(unittest.TestCase):
+    def test_the_form_lists_the_catalog_in_order(self):
+        """Systèmes en ordre alphabétique, versions comparées comme des
+        nombres : ubuntu 26.04 après ubuntu 24.04, almalinux 10 après 9."""
+        from script.todo.deploy_form_lib import version_key
+
+        ctx = contexte()
+        for arch, entrees in ctx["catalog"].items():
+            cles = [
+                (e["distro"], version_key(e["version"]), e["arch"])
+                for e in entrees
+            ]
+            with self.subTest(arch=arch):
+                self.assertEqual(sorted(cles), cles)
+
+
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestLigneDeTotaux(unittest.TestCase):
     def _ligne(self, combien, ctx=None):
