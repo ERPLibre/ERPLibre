@@ -15,6 +15,7 @@ import builtins
 import contextlib
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -45,6 +46,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Update the pinned commit": "_dolibarr_pin",
         "Dolibarr - Health, security and integrity": "_dolibarr_doctor",
         "Dolibarr - Back up an instance": "_dolibarr_backup",
+        "Dolibarr - Restore a backup": "_dolibarr_restore",
         "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
     }
 
@@ -171,6 +173,72 @@ class TestSauvegarde(Banc):
 
     def test_no_instance_saves_nothing(self):
         self.assertEqual(self.lancer_sauvegarde(), [])
+
+
+class TestRestauration(Banc):
+    def setUp(self):
+        super().setUp()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.racine = Path(tmp.name)
+        dossier = self.racine / "private" / "dolibarr" / "backups" / "erp"
+        dossier.mkdir(parents=True)
+        for nom in (
+            "erp-20260901-000000.tar.gz",
+            "erp-20260927-081500.tar.gz",
+        ):
+            (dossier / nom).write_bytes(b"x")
+        p = mock.patch.object(dolibarr_menu, "ROOT", str(self.racine))
+        p.start()
+        self.addCleanup(p.stop)
+        self.registre = {"erp": dict(DEV, mode="prod")}
+
+    def lancer_restauration(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        sortie = io.StringIO()
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(sortie),
+        ):
+            todo._dolibarr_restore()
+        return lances, sortie.getvalue()
+
+    def test_the_newest_archive_comes_first_and_the_name_is_retyped(self):
+        lances, sortie = self.lancer_restauration(["1", "erp"])
+        archive = "private/dolibarr/backups/erp/erp-20260927-081500.tar.gz"
+        self.assertEqual(
+            lances,
+            [
+                f"{BACKUP} restore --instance erp --archive {archive}"
+                " --confirm erp"
+            ],
+        )
+        self.assertIn(
+            dolibarr_menu.t(
+                "This overwrites the database, documents and modules of %s;"
+                " a safety backup comes first."
+            )
+            % "erp",
+            sortie,
+        )
+
+    def test_a_wrong_name_runs_nothing(self):
+        lances, _s = self.lancer_restauration(["1", "er"])
+        self.assertEqual(lances, [])
+
+    def test_no_archive_says_so(self):
+        self.registre = {"autre": dict(DEV)}
+        lances, _s = self.lancer_restauration([])
+        self.assertEqual(lances, [])
 
 
 class TestBilan(unittest.TestCase):
