@@ -70,6 +70,23 @@ def served_version(html):
     return m.group(1) if m else None
 
 
+def port_is_free(port):
+    """Vrai si un serveur peut écouter sur 127.0.0.1:`port` maintenant.
+
+    SO_REUSEADDR, comme nginx et Apache : les connexions qu'un status vient
+    d'ouvrir restent en TIME_WAIT sur le port après l'arrêt, et un bind
+    sans l'option le croirait pris. Un autre serveur en écoute le prend
+    toujours.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
 class System:
     """Processus, ports et HTTP réels ; les tests en passent un factice."""
 
@@ -104,12 +121,7 @@ class System:
             pass
 
     def port_free(self, port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("127.0.0.1", port))
-            except OSError:
-                return False
-        return True
+        return port_is_free(port)
 
     def http_get(self, url):
         try:
