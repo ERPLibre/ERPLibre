@@ -72,26 +72,8 @@ fi
 # Generate local manifest
 .venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}" "${MERGE_EXTRA[@]}"
 
-# Révision du manifeste : un NOM DE BRANCHE, jamais un SHA nu.
-#
-# « repo init -b <sha> » échoue sur un espace de travail NEUF : repo doit y
-# cloner .repo/manifests et ne sait pas résoudre un commit en révision de
-# manifeste. Il abandonne sur « unparseable HEAD », puis repo sync sur
-# « manifest not found » ; -b <branche> réussit au même endroit.
-# Le piège est qu'un .repo DÉJÀ initialisé accepte le SHA — le défaut reste
-# donc invisible sur toute machine ayant réussi un init une fois, et ne frappe
-# que les installations neuves.
-MANIFEST_REV=$(git symbolic-ref --quiet --short HEAD || true)
-if [ -z "${MANIFEST_REV}" ]; then
-  # HEAD détaché : prendre une branche qui contient ce commit plutôt que de
-  # retomber sur le SHA, qui ne marcherait pas.
-  MANIFEST_REV=$(git branch --contains HEAD --format='%(refname:short)' 2>/dev/null | grep -v '[()]' | head -1)
-fi
-if [ -z "${MANIFEST_REV}" ]; then
-  echo "Erreur : impossible de déterminer une branche pour repo init." >&2
-  echo "  HEAD est détaché et aucune branche ne contient ce commit." >&2
-  exit 1
-fi
+. ./script/manifest/manifest_revision.sh
+MANIFEST_REV=$(manifest_revision) || exit 1
 
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} "$@"
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}

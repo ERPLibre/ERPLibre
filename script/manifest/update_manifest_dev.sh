@@ -39,5 +39,8 @@ set -- "${FORWARD_ARGS[@]}"
 .venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}"
 
 # Update git-repo
-.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b $(git rev-parse --verify HEAD) -m ${EL_MANIFEST_DEV}
+. ./script/manifest/manifest_revision.sh
+# La branche doit exister sur le dépôt distant passé à -u.
+MANIFEST_REV=$(manifest_revision) || exit 1
+.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b "${MANIFEST_REV}" -m ${EL_MANIFEST_DEV}
 .venv.erplibre/bin/repo sync ${REPO_VERBOSE}
