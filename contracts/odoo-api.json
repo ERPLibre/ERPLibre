@@ -236,6 +236,86 @@
       "response": "[[id, display_name], …] — kept in remote_records_cache (200 most recent per server) for offline search"
     },
 
+    "activities.create": {
+      "description": "Schedule one of a note's activities on a chosen record (activity.create row of sync_outbox; a note can have several per server; same marker, retry search in note, and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "create",
+          "args": [
+            {
+              "res_id": "{outbox.params.resId}",
+              "summary": "{note.title}",
+              "note": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "activity_type_id": "{outbox.params.typeId} — omitted: the server's default type",
+              "date_deadline": "{outbox.params.deadline} YYYY-MM-DD — omitted: today on the server",
+              "user_id": "{outbox.params.userId} — omitted: the connected user"
+            }
+          ],
+          "kwargs": { "context": { "default_res_model": "{outbox.params.resModel}" } }
+        }
+      },
+      "response": "integer — mail.activity id → note_links (kind activity, params_json: resModel, resId, resName, typeId, typeName, deadline, userId, userName)",
+      "notes": "res_model_id is resolved by mail.activity.default_get from default_res_model, so ir.model (admin only on 17 and 18) is never read. Before create, the record's model is probed (capabilities.probe, cached a day): missing, or without activity_ids, blocks the row as model_unusable; builtins.AttributeError on create (a model without mail.activity.mixin) blocks it as refused. Then the record (active_test false), the type and the user are each checked with search_read [('id','=',…)]: none, AccessError or KeyError (no such model) blocks the row as record_missing, type_missing or user_missing. A row without resId (chosen offline, no record in the cache) is incomplete and sends nothing. Refused create: as notes.create. The server checks the user's right on the record."
+    },
+
+    "activities.update": {
+      "description": "Push changes to a live activity of the note",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "write",
+          "args": [["{note_links.res_id}"], { "summary": "{note.title}", "note": "{note.html_description} + marker" }],
+          "kwargs": {}
+        }
+      },
+      "notes": "The record, type, deadline and user are create only. On Odoo 17+ the activity's active flag is read first (search_read [('id','=',…)], fields active, active_test false): archived (done on the server, its type keeping done activities) turns the link 'done' with no write; no row counts as MissingError. MissingError (the activity was done or cancelled on the server) marks the link deleted without raising; the server leaves the note's queue only when nothing else of the note lives there."
+    },
+
+    "activities.done": {
+      "description": "The note is done: mark its live activities done",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "mail.activity", "method": "action_feedback", "args": [["{note_links.res_id}"]], "kwargs": { "feedback": false } }
+      },
+      "notes": "Replaces activities.update for a done note, after the same active check (an archived activity is not marked done again). The server removes the activity, or archives it when its type keeps done activities; the link turns remote_state 'done' and is never written again, even if the note is undone. An activity created for a note already done is marked done in the same push."
+    },
+
+    "activity_types.list": {
+      "description": "Activity types offered for a new activity, cached in remote_records_cache (replaced on each read)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity.type",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [],
+            "fields": ["id", "name", "res_model", "delay_count", "delay_unit", "delay_from"],
+            "order": "sequence asc, id asc",
+            "limit": 200
+          }
+        }
+      },
+      "response": "active types; a type with res_model is offered only on that model. The default deadline is the note's first date, else today plus delay_count delay_unit, as the server computes it for an activity with no previous one (whatever delay_from)."
+    },
+
+    "records.search": {
+      "description": "Record an activity goes on, or the user it is assigned to: same as partners.search, on the chosen model (res.partner, crm.lead, project.task, project.project, sale.order, account.move, purchase.order, or a technical name typed) or on res.users",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "{model}", "method": "name_search", "args": [], "kwargs": { "name": "{text}", "args": [], "operator": "ilike", "limit": 20 } }
+      },
+      "response": "[[id, display_name], …] — kept in remote_records_cache (200 most recent per server and model). The fixed models are probed (capabilities.probe: read right and activity_ids) and greyed where missing."
+    },
+
     "projects.check": {
       "description": "Before creating a task in a project: the project still exists, is active (as projects.list offers it) and the user sees it",
       "method": "POST",
@@ -392,8 +472,8 @@
   "sqlite_tables_added": {
     "migration": "2026102201",
     "note_links": {
-      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted|dismissed)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)"],
-      "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
+      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted|dismissed|done)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)", "params_json (migration 2026102301)"],
+      "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. kind 'create': the note's task or opportunity, one per model and server; kind 'activity': a mail.activity, several per server, its choices in params_json; remote_state 'done': an activity the app marked done. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
     },
     "sync_pull_cursors": {
       "columns": ["scope (sync config id)", "write_date"],
