@@ -86,6 +86,35 @@ class TestCertificatsLocaux(unittest.TestCase):
             self.assertEqual(f.read(), avant)
         self.assertIn("DNS:odoo.test", self.texte(second["server_crt"]))
 
+    def test_une_autorite_partagee_signe_un_serveur_range_ailleurs(self):
+        # Une instance Dolibarr a son certificat serveur à elle, signé par
+        # l'autorité déjà importée pour le mandataire : aucune seconde
+        # alerte, et le certificat du mandataire n'est pas refait.
+        autorite = os.path.join(os.path.dirname(self.dossier), "mandataire")
+        mandataire = local_cert.issue(autorite, ["localhost"])
+        with open(mandataire["server_crt"], "rb") as f:
+            serveur_mandataire = f.read()
+        chemins = local_cert.issue(self.dossier, ["erp.test"], ca_dir=autorite)
+        self.assertEqual(chemins["ca_crt"], mandataire["ca_crt"])
+        verif = subprocess.run(
+            [
+                "openssl",
+                "verify",
+                "-CAfile",
+                mandataire["ca_crt"],
+                chemins["server_crt"],
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(verif.returncode, 0, verif.stdout + verif.stderr)
+        self.assertIn("DNS:erp.test", self.texte(chemins["server_crt"]))
+        with open(mandataire["server_crt"], "rb") as f:
+            self.assertEqual(f.read(), serveur_mandataire)
+        self.assertEqual(os.listdir(self.dossier).count("ca.key"), 0)
+        mode = stat.S_IMODE(os.stat(chemins["server_key"]).st_mode)
+        self.assertEqual(mode, 0o600)
+
     def test_l_existence_se_constate(self):
         self.assertFalse(local_cert.exists(self.dossier))
         local_cert.issue(self.dossier, ["localhost"])
