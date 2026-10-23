@@ -298,5 +298,74 @@ class TestProdNginx(unittest.TestCase):
                     )
 
 
+class TestProdProxy(unittest.TestCase):
+    """Le site d'une instance en conteneur : nginx de l'hôte devant le
+    port 127.0.0.1 du conteneur, avec la même garde que le natif."""
+
+    def rendre(self, tls, **kw):
+        texte = web_config.render_prod_proxy(
+            "erp", "erp.example.org", 8080, tls, **kw
+        )
+        return texte, [ligne.strip() for ligne in texte.splitlines()]
+
+    def test_it_proxies_to_the_container_on_loopback(self):
+        _texte, lignes = self.rendre("none")
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", lignes)
+        self.assertFalse([x for x in lignes if "fastcgi" in x])
+        self.assertFalse([x for x in lignes if x.startswith("root ")])
+
+    def test_the_container_learns_the_client_and_the_scheme(self):
+        _texte, lignes = self.rendre("local", cert=CERT, key=KEY)
+        for ligne in (
+            "proxy_set_header Host $host;",
+            "proxy_set_header X-Forwarded-Proto $scheme;",
+            # Écrasé, pas complété : Dolibarr prend la PREMIÈRE adresse, que
+            # $proxy_add_x_forwarded_for laisserait au client.
+            "proxy_set_header X-Forwarded-For $remote_addr;",
+            'proxy_set_header Client-IP "";',
+            'proxy_set_header CF-Connecting-IP "";',
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertIn(ligne, lignes)
+        self.assertFalse([x for x in lignes if "proxy_add_x_forwarded" in x])
+
+    def test_every_server_refuses_another_host_name(self):
+        for tls in web_config.TLS_MODES:
+            with self.subTest(tls=tls):
+                texte, _l = self.rendre(tls, cert=CERT, key=KEY)
+                for bloc in texte.split("server {")[1:]:
+                    lignes = [x.strip() for x in bloc.splitlines()]
+                    i = lignes.index('if ($host != "erp.example.org") {')
+                    self.assertEqual(lignes[i + 1], "return 444;")
+
+    def test_local_tls_redirects_to_the_domain_and_serves_443(self):
+        _texte, lignes = self.rendre("local", cert=CERT, key=KEY)
+        self.assertIn(
+            "return 301 https://erp.example.org$request_uri;", lignes
+        )
+        self.assertIn("listen 443 ssl;", lignes)
+        self.assertIn(f"ssl_certificate {CERT};", lignes)
+        self.assertEqual(lignes.count("proxy_pass http://127.0.0.1:8080;"), 1)
+
+    def test_install_and_hidden_files_are_refused_before_the_container(self):
+        _texte, lignes = self.rendre("none")
+        i = lignes.index("location ^~ /install/ {")
+        self.assertEqual(lignes[i + 1], "deny all;")
+        self.assertIn("location ~ /\\. {", lignes)
+
+    def test_uploads_and_long_requests_as_in_native(self):
+        _texte, lignes = self.rendre("none")
+        self.assertIn("client_max_body_size 64M;", lignes)
+        self.assertIn("proxy_read_timeout 600;", lignes)
+
+    def test_a_port_outside_the_unprivileged_range_is_refused(self):
+        for port in (80, 0, 70000):
+            with self.subTest(port=port):
+                with self.assertRaises(ValueError):
+                    web_config.render_prod_proxy(
+                        "erp", "erp.example.org", port, "none"
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()
