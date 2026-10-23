@@ -500,6 +500,13 @@ conclusive.
 If nesting is unavailable, QEMU still runs via software emulation (TCG) — it
 works but is slow.
 
+### Bridge for external access
+
+A NAT VM is isolated; a **bridged** VM gets an IP directly on the LAN,
+reachable by any machine. On the KVM host, create a bridge `br0` over the
+physical NIC (**wired only** — Wi-Fi cannot be bridged). netplan (Ubuntu
+server) — replace `enp3s0` with your interface:
+
 ```yaml
 # /etc/netplan/01-br0.yaml
 network:

@@ -542,13 +542,6 @@ absent, `virsh dumpxml` affichant `<domain type='qemu'>`, et un démarrage de
 ne prouve **pas** l'accélération — sur s390x, QEMU fabrique la réponse STSI et
 annonce `kvm` même en TCG. Seul `<domain type=…>` sur l'hôte fait foi.
 
-### Bridge for external access
-
-A NAT VM is isolated; a **bridged** VM gets an IP directly on the LAN,
-reachable by any machine. On the KVM host, create a bridge `br0` over the
-physical NIC (**wired only** — Wi-Fi cannot be bridged). netplan (Ubuntu
-server) — replace `enp3s0` with your interface:
-
 Si l'imbrication est indisponible, QEMU tourne quand même en émulation
 logicielle (TCG) — ça marche mais c'est lent.
 
