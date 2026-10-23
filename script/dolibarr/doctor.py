@@ -39,6 +39,7 @@ Result = collections.namedtuple("Result", "key level detail")
 
 LABELS = {
     "served": "Served version",
+    "pin": "Pin",
     "code": "Code",
     "conf": "conf.php",
     "lock": "Install lock",
@@ -113,6 +114,22 @@ def check_served(entry, system):
             t("%s served, %s expected") % (version, entry.get("version")),
         )
     return Result("served", "ok", f"Dolibarr {version} — {entry['url']}")
+
+
+def check_pin(entry, pin):
+    """L'instance est-elle au commit (à l'image) épinglé ? Après une montée
+    revenue en arrière, rien d'autre ne dit qu'elle est en retard."""
+    if entry.get("runtime") == "container":
+        have, want = entry.get("image", ""), pin.get("docker_image", "")
+        shown = (have.rsplit("/", 1)[-1][:40], want.rsplit("/", 1)[-1][:40])
+    else:
+        have, want = entry.get("commit", ""), pin.get("commit", "")
+        shown = (have[:7] or "?", want[:7])
+    if have != want:
+        return Result(
+            "pin", "warn", t("at %s, pinned at %s: upgrade it") % shown
+        )
+    return Result("pin", "ok", shown[1])
 
 
 def check_dev_code(entry, system):
@@ -286,10 +303,15 @@ def check_containers(entry, system):
 def check_instance(name, entry, pin, system, root):
     """Les vérifications de l'instance `name`, dans l'ordre d'affichage."""
     if entry.get("runtime") == "container":
-        return [check_served(entry, system), check_containers(entry, system)]
+        return [
+            check_served(entry, system),
+            check_pin(entry, pin),
+            check_containers(entry, system),
+        ]
     prod = entry.get("mode") == "prod"
     results = [
         check_served(entry, system),
+        check_pin(entry, pin),
         check_prod_code(entry, pin, root)
         if prod
         else check_dev_code(entry, system),
