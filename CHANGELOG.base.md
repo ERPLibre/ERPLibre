@@ -319,6 +319,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Modifié
 <!-- [en] -->
 
+- The F1 help of the QEMU and Proxmox deployment forms opens on every keyboard shortcut of the form, read from its own bindings, including those the footer hides or truncates: `h`/F2 history, `ctrl+z`, `ctrl+y`
 - The VM actions screen of the install monitor, its confirmations and its notices follow the chosen language instead of always speaking French
 - The QEMU and Proxmox deployment forms list their catalog in alphabetical order of system, then by version compared as numbers — ubuntu 26.04 after 24.04, almalinux 10 after 9 —, then by architecture. The command-line list keeps its order, since its numbers are the ones typed back
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers
@@ -372,6 +373,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- L'aide F1 des formulaires de déploiement QEMU et Proxmox s'ouvre sur tous les raccourcis du formulaire, lus dans ses propres liaisons, y compris ceux que le pied de page cache ou tronque : `h`/F2 historique, `ctrl+z`, `ctrl+y`
 - L'écran des actions VM du suivi d'installation, ses confirmations et ses avis suivent la langue choisie au lieu de parler toujours français
 - Les formulaires de déploiement QEMU et Proxmox listent leur catalogue par ordre alphabétique de système, puis par version comparée comme un nombre — ubuntu 26.04 après 24.04, almalinux 10 après 9 —, puis par architecture. La liste en ligne de commande garde son ordre, ses numéros étant ceux qu'on retape
 - `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond

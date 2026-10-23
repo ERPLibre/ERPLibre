@@ -151,6 +151,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Changed
 
+- The F1 help of the QEMU and Proxmox deployment forms opens on every keyboard shortcut of the form, read from its own bindings, including those the footer hides or truncates: `h`/F2 history, `ctrl+z`, `ctrl+y`
 - The VM actions screen of the install monitor, its confirmations and its notices follow the chosen language instead of always speaking French
 - The QEMU and Proxmox deployment forms list their catalog in alphabetical order of system, then by version compared as numbers — ubuntu 26.04 after 24.04, almalinux 10 after 9 —, then by architecture. The command-line list keeps its order, since its numbers are the ones typed back
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers

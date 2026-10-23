@@ -220,6 +220,26 @@ class LEcran(unittest.TestCase):
         self.assertEqual(vu["depart"], vu["ferme"])
         self.assertEqual(1, vu["piles"])
 
+    def test_it_lists_every_shortcut_on_both_forms(self):
+        """Le pied de page tronque, et cache ctrl+z, ctrl+y et F2 : l'aide
+        est le seul endroit où toutes les touches se lisent."""
+        from script.todo.todo_i18n import t
+
+        for forme in ("qemu", "proxmox"):
+            with self.subTest(forme=forme):
+                texte = ouvre_l_aide(forme)["texte"]
+                for morceau in (
+                    t("Shortcuts and options"),
+                    t("Keyboard shortcuts"),
+                    "F5",
+                    "F6",
+                    "h / F2",
+                    "ctrl+z",
+                    "ctrl+y",
+                    t("History"),
+                ):
+                    self.assertIn(morceau, texte)
+
     def test_what_it_shows_is_what_the_option_installs(self):
         vu = ouvre_l_aide("qemu")
         for morceau in ("tig", "zdiff3", "hooks"):
