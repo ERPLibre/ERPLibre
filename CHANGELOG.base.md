@@ -428,6 +428,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- [en] -->
 
 - The install launcher warns « libvirt unreachable » only when libvirt really refuses: a VM not yet started no longer triggers it, and a session opened before joining the libvirt group reaches libvirt through `sg libvirt`, or `newgrp` where sg is missing (Arch), so the VM's moving address is followed again
+- An interrupted database restore (`ctrl+C`, dropped connection) still starts the erplibre service again if it was running, and the VM actions run with a terminal (`ssh -t`): sudo can ask its password, and a changed Odoo master password is no longer echoed
 - F7 (main versions) ticks them again on the Proxmox deployment form: it ticked entries by their rank, while that list identifies them by distribution, version and architecture, so no VM was planned
 - The install monitor's update action (`a`) reaches a production install: the git and Python parts went to `~/git/erplibre`, absent from a VM installed under `/opt/erplibre`, and stopped there. The directory is now read from the erplibre service
 - Reading the dnsmasq leases no longer opens a root password prompt: the files are read directly, which suffices on a standard install where they are 0644, and only then is `sudo -n` tried, which fails instead of asking. Displaying a VM list called that path once per VM, and waiting on a VM called it every three seconds for ten minutes
@@ -531,6 +532,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- [fr] -->
 
 - Le lanceur d'installation n'avertit « libvirt injoignable » que si libvirt refuse vraiment : une VM pas encore démarrée ne le déclenche plus, et une session ouverte avant l'ajout au groupe libvirt joint libvirt par `sg libvirt`, ou `newgrp` là où sg manque (Arch), si bien que l'adresse mouvante de la VM est de nouveau suivie
+- Une restauration de base interrompue (`ctrl+C`, connexion coupée) relance quand même le service erplibre s'il tournait, et les actions VM tournent avec un terminal (`ssh -t`) : sudo peut demander son mot de passe, et un mot de passe maître d'Odoo changé ne s'affiche plus en clair
 - F7 (versions principales) les coche de nouveau dans le formulaire de déploiement Proxmox : il cochait les entrées par leur rang, alors que cette liste les identifie par système, version et architecture, et aucune VM n'était retenue
 - L'action de mise à jour du suivi d'installation (`a`) atteint une installation de production : les parties git et Python allaient dans `~/git/erplibre`, absent d'une VM installée sous `/opt/erplibre`, et s'y arrêtaient. Le dossier est désormais lu dans le service erplibre
 - La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes

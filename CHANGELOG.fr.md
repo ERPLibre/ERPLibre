@@ -208,6 +208,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Corrigé
 
 - Le lanceur d'installation n'avertit « libvirt injoignable » que si libvirt refuse vraiment : une VM pas encore démarrée ne le déclenche plus, et une session ouverte avant l'ajout au groupe libvirt joint libvirt par `sg libvirt`, ou `newgrp` là où sg manque (Arch), si bien que l'adresse mouvante de la VM est de nouveau suivie
+- Une restauration de base interrompue (`ctrl+C`, connexion coupée) relance quand même le service erplibre s'il tournait, et les actions VM tournent avec un terminal (`ssh -t`) : sudo peut demander son mot de passe, et un mot de passe maître d'Odoo changé ne s'affiche plus en clair
 - F7 (versions principales) les coche de nouveau dans le formulaire de déploiement Proxmox : il cochait les entrées par leur rang, alors que cette liste les identifie par système, version et architecture, et aucune VM n'était retenue
 - L'action de mise à jour du suivi d'installation (`a`) atteint une installation de production : les parties git et Python allaient dans `~/git/erplibre`, absent d'une VM installée sous `/opt/erplibre`, et s'y arrêtaient. Le dossier est désormais lu dans le service erplibre
 - La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes
