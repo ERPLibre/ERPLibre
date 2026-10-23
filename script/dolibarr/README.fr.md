@@ -28,6 +28,8 @@ chaque script se lance aussi seul.
 | `backup.py` | `create`, `list` et `restore` des sauvegardes (restauration : `restore.py`) |
 | `fleet.py` | `list` des instances, `remove` d'une instance |
 | `upgrade.py` | Monter une instance à la version épinglée, retour arrière sur échec |
+| `debug.py` | Profil de déverminage d'une instance `on`/`off`, `status`, `tail` de son journal |
+| `module.py` | `create`, `link`, `enable`, `disable` les modules d'une instance de développement |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -142,6 +144,33 @@ ne sont pas posés.
   peut différer. La sortie complète de chaque montée va dans
   `private/dolibarr/upgrades/`, et `doctor.py` avertit quand une instance
   est en retard sur l'épinglage.
+
+## Outils de développement
+
+```bash
+./script/dolibarr/debug.py on --instance erp       # off puts everything back
+./script/dolibarr/debug.py tail --instance erp --filter ERR
+./script/dolibarr/module.py create --instance erp --name Zorglub --enable
+./script/dolibarr/module.py link --instance erp --path ~/src/zorglub
+./script/dolibarr/module.py enable --instance erp --name Stock
+```
+
+- `debug.py on` montre les fonctionnalités en développement
+  (`MAIN_FEATURES_LEVEL=2`), active DebugBar et Syslog au niveau 7 (chaque
+  requête SQL), et en développement natif passe `conf.php` à prod=0 et en
+  mode strict. L'état d'avant est gardé une fois ; `off` le remet ligne à
+  ligne. Une production exige son nom retapé : le niveau 7 journalise les
+  identifiants de session.
+- `module.py create` fait ce que fait « Nouveau module » du ModuleBuilder,
+  depuis le gabarit de l'instance elle-même : le module se poursuit dans le
+  ModuleBuilder. Il naît dans `custom/` (`htdocs/custom` du checkout, ou le
+  dossier de l'hôte monté dans le conteneur) avec le premier numéro libre
+  dès 500000 ; de 100000 à 499999, les numéros se réservent sur le wiki de
+  Dolibarr. L'auteur vient de `--author` ou de git.
+- `module.py link` pose dans `htdocs/custom` le lien d'un module tenu dans
+  son propre dépôt (natif seulement : un conteneur ne voit que son
+  `custom/`). `enable` et `disable` passent par Dolibarr, dépendances et
+  droits compris. Une production est refusée : elle reçoit un paquet.
 
 ## Version épinglée
 
