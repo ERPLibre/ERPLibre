@@ -157,6 +157,7 @@ from script.todo import (
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.dolibarr_menu import DolibarrMenuMixin
 from script.todo.git_fork_menu import GitForkMenuMixin
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.install_update_menu import InstallUpdateMenuMixin
@@ -276,6 +277,7 @@ class TODO(
     SshKeyMenuMixin,
     StreamDeckMenuMixin,
     SystemMenuMixin,
+    DolibarrMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -813,7 +815,8 @@ class TODO(
         qu'aucune ne manque. Rend None sur « 0 », sinon le code de
         l'installation, 0 si elle réussit. Lancé depuis le menu
         (`reponses` à None), un échec relance TODO au lieu de rendre son
-        code.
+        code ; l'entrée Dolibarr rend le code de prompt_install_dolibarr
+        dans les deux cas, sans relancer TODO.
 
         Lancé du menu avec une version d'Odoo installée et présente sur
         disque, il demande d'abord s'il faut la mettre à jour, ce qui mène
@@ -858,6 +861,9 @@ class TODO(
             ),
         }
         commands_end = {}
+        # Les clés des versions d'Odoo, et elles seules, ouvrent le choix des
+        # modules extra : une autre entrée numérotée ne doit pas y tomber.
+        odoo_keys = set()
         versions, installed_versions, odoo_installed_version = (
             get_odoo_version()
         )
@@ -888,11 +894,19 @@ class TODO(
             if version_info.get("is_deprecated"):
                 label += f" - {t('odoo_version_deprecated')}"
             erplibre_version = version_info.get("erplibre_version")
+            odoo_keys.add(key_s)
             commands_begin[key_s] = (
                 key_s,
                 label,
                 f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
             )
+
+        # Dolibarr suit les versions d'Odoo : sa clé est la suivante, donc
+        # elle change le jour où une version d'Odoo s'ajoute.
+        dolibarr_key = str(key_i + 1)
+        dolibarr_entry = self._dolibarr_install_entry(dolibarr_key)
+        if dolibarr_entry:
+            commands_end[dolibarr_key] = dolibarr_entry
 
         # Add final command
         install_commands = {**commands_begin, **commands_end}
@@ -930,10 +944,14 @@ class TODO(
             self._erplibre_home_choose_install()
             return
 
+        if dolibarr_entry and odoo_version_input == dolibarr_key:
+            # Dolibarr installe ses propres paquets dans son parcours.
+            return self.prompt_install_dolibarr()
+
         cmd_intern = install_commands.get(odoo_version_input)[2]
 
-        # For numbered version selections, offer extra modules sub-menu
-        if odoo_version_input.isdigit():
+        # For Odoo version selections, offer extra modules sub-menu
+        if odoo_version_input in odoo_keys:
             environnement = reponses.get("environnement")
             mode = self._choisir_mode_installation(
                 version_par_cle[odoo_version_input],
