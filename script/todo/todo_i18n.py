@@ -18445,6 +18445,359 @@ TRANSLATIONS = {
         "fr": "en ajout",
         "en": "being added",
     },
+    # Mise à jour et mise à niveau des dépôts git
+    "Upgrade dry run": {
+        "fr": "Mise à niveau à sec",
+        "en": "Upgrade dry run",
+    },
+    "forks": {
+        "fr": "forks",
+        "en": "forks",
+    },
+    "Conflicting": {
+        "fr": "En conflit",
+        "en": "Conflicting",
+    },
+    "Absorbed upstream": {
+        "fr": "Absorbé en amont",
+        "en": "Absorbed upstream",
+    },
+    "To rebase": {
+        "fr": "À rebaser",
+        "en": "To rebase",
+    },
+    "Behind upstream": {
+        "fr": "En retard sur l'amont",
+        "en": "Behind upstream",
+    },
+    "Cannot be compared": {
+        "fr": "Non comparable",
+        "en": "Cannot be compared",
+    },
+    "Up to date": {
+        "fr": "À jour",
+        "en": "Up to date",
+    },
+    "conflicting files": {
+        "fr": "fichiers en conflit",
+        "en": "conflicting files",
+    },
+    "upstream now carries": {
+        "fr": "l'amont porte désormais",
+        "en": "upstream now carries",
+    },
+    "Modules touched": {
+        "fr": "Modules touchés",
+        "en": "Modules touched",
+    },
+    "Documentation and translation only": {
+        "fr": "Documentation et traduction seulement",
+        "en": "Documentation and translation only",
+    },
+    "Contains code": {
+        "fr": "Contient du code",
+        "en": "Contains code",
+    },
+    "No state was written": {
+        "fr": "Aucun état n'a été écrit",
+        "en": "No state was written",
+    },
+    "missing from disk": {
+        "fr": "absent du disque",
+        "en": "missing from disk",
+    },
+    "no upstream branch declared": {
+        "fr": "aucune branche amont déclarée",
+        "en": "no upstream branch declared",
+    },
+    "shallow repository": {
+        "fr": "dépôt superficiel",
+        "en": "shallow repository",
+    },
+    "divergence unreadable": {
+        "fr": "divergence illisible",
+        "en": "divergence unreadable",
+    },
+    "no merge base": {
+        "fr": "aucune base de fusion",
+        "en": "no merge base",
+    },
+    "No upstream declared for this fork": {
+        "fr": "Aucun amont déclaré pour ce fork",
+        "en": "No upstream declared for this fork",
+    },
+    "Upstream guessed from the remote name": {
+        "fr": "Amont deviné d'après le nom du remote",
+        "en": "Upstream guessed from the remote name",
+    },
+    "The declared upstream branch does not exist": {
+        "fr": "La branche amont déclarée n'existe pas",
+        "en": "The declared upstream branch does not exist",
+    },
+    "Upstream did not answer": {
+        "fr": "L'amont n'a pas répondu",
+        "en": "Upstream did not answer",
+    },
+    "Upstream carries no branch for this version": {
+        "fr": "L'amont ne porte aucune branche pour cette version",
+        "en": "Upstream carries no branch for this version",
+    },
+    "Upstream declared": {
+        "fr": "Amont déclaré",
+        "en": "Upstream declared",
+    },
+    "Upstream confirmed": {
+        "fr": "Amont confirmé",
+        "en": "Upstream confirmed",
+    },
+    "Upstreams were not queried; use --upstream.": {
+        "fr": "Les amonts n'ont pas été interrogés ; utiliser --upstream.",
+        "en": "Upstreams were not queried; use --upstream.",
+    },
+    "Where each forked repository comes from.": {
+        "fr": "D'où vient chaque dépôt forké.",
+        "en": "Where each forked repository comes from.",
+    },
+    "dry run: diverge, conflicts and statistics (network)": {
+        "fr": "à sec : divergence, conflits et statistiques (réseau)",
+        "en": "dry run: diverge, conflicts and statistics (network)",
+    },
+    "No Odoo version found": {
+        "fr": "Aucune version d'Odoo trouvée",
+        "en": "No Odoo version found",
+    },
+    "Update and upgrade the git repositories": {
+        "fr": "Mise à jour et mise à niveau des dépôts git",
+        "en": "Update and upgrade the git repositories",
+    },
+    "🔃 Update git repo": {
+        "fr": "🔃 Mise à jour git repo",
+        "en": "🔃 Update git repo",
+    },
+    "🔄 Synchronize the repositories": {
+        "fr": "🔄 Synchroniser les dépôts",
+        "en": "🔄 Synchronize the repositories",
+    },
+    "🔁 Reconfigure and synchronize": {
+        "fr": "🔁 Reconfigurer et synchroniser",
+        "en": "🔁 Reconfigure and synchronize",
+    },
+    "🔍 Upgrade — dry run": {
+        "fr": "🔍 Mise à niveau — à sec",
+        "en": "🔍 Upgrade — dry run",
+    },
+    "🔗 Fork and upstream status": {
+        "fr": "🔗 État des forks et de leurs amonts",
+        "en": "🔗 Fork and upstream status",
+    },
+    "Fork and upstream status": {
+        "fr": "État des forks et de leurs amonts",
+        "en": "Fork and upstream status",
+    },
+    "Upgrade": {
+        "fr": "Mise à niveau",
+        "en": "Upgrade",
+    },
+    "Observe": {
+        "fr": "Constater",
+        "en": "Observe",
+    },
+    "Update": {
+        "fr": "Mise à jour",
+        "en": "Update",
+    },
+    "Synchronization failed.": {
+        "fr": "La synchronisation a échoué.",
+        "en": "Synchronization failed.",
+    },
+    "Repositories synchronized.": {
+        "fr": "Dépôts synchronisés.",
+        "en": "Repositories synchronized.",
+    },
+    "Reconfiguration failed.": {
+        "fr": "La reconfiguration a échoué.",
+        "en": "Reconfiguration failed.",
+    },
+    "Repositories reconfigured and synchronized.": {
+        "fr": "Dépôts reconfigurés et synchronisés.",
+        "en": "Repositories reconfigured and synchronized.",
+    },
+    "Querying each upstream, this takes a few seconds.": {
+        "fr": "Interrogation de chaque amont, cela prend quelques secondes.",
+        "en": "Querying each upstream, this takes a few seconds.",
+    },
+    "⬆️ Apply the upgrade": {
+        "fr": "⬆️ Appliquer la mise à niveau",
+        "en": "⬆️ Apply the upgrade",
+    },
+    "🧩 Conflict queue": {
+        "fr": "🧩 File des conflits",
+        "en": "🧩 Conflict queue",
+    },
+    "📊 Report of the last pass": {
+        "fr": "📊 Rapport de la dernière passe",
+        "en": "📊 Report of the last pass",
+    },
+    "Apply the upgrade": {
+        "fr": "Appliquer la mise à niveau",
+        "en": "Apply the upgrade",
+    },
+    "Conflict queue": {
+        "fr": "File des conflits",
+        "en": "Conflict queue",
+    },
+    "Report of the last pass": {
+        "fr": "Rapport de la dernière passe",
+        "en": "Report of the last pass",
+    },
+    "Nothing to upgrade: nothing to confirm.": {
+        "fr": "Rien à mettre à niveau : rien à confirmer.",
+        "en": "Nothing to upgrade: nothing to confirm.",
+    },
+    "repositories will be rebased.": {
+        "fr": "dépôts seront rebasés.",
+        "en": "repositories will be rebased.",
+    },
+    "A dated branch is created; the current one stays.": {
+        "fr": "Une branche datée est créée ; l'actuelle reste.",
+        "en": "A dated branch is created; the current one stays.",
+    },
+    "Nothing is pushed.": {
+        "fr": "Rien n'est poussé.",
+        "en": "Nothing is pushed.",
+    },
+    "Type the Odoo version to confirm (empty to cancel): ": {
+        "fr": "Retapez la version d'Odoo pour confirmer (vide pour annuler) : ",
+        "en": "Type the Odoo version to confirm (empty to cancel): ",
+    },
+    "Pass recorded in": {
+        "fr": "Passe enregistrée dans",
+        "en": "Pass recorded in",
+    },
+    "rebased": {
+        "fr": "rebasés",
+        "en": "rebased",
+    },
+    "conflicting": {
+        "fr": "en conflit",
+        "en": "conflicting",
+    },
+    "a dated branch already exists": {
+        "fr": "une branche datée existe déjà",
+        "en": "a dated branch already exists",
+    },
+    "the branch could not be created": {
+        "fr": "la branche n'a pas pu être créée",
+        "en": "the branch could not be created",
+    },
+    "a rebase was already in progress": {
+        "fr": "un rebase était déjà en cours",
+        "en": "a rebase was already in progress",
+    },
+    "Work them through the conflict queue.": {
+        "fr": "Reprenez-les par la file des conflits.",
+        "en": "Work them through the conflict queue.",
+    },
+    "No pass recorded yet.": {
+        "fr": "Aucune passe enregistrée pour l'instant.",
+        "en": "No pass recorded yet.",
+    },
+    "No repository is left in conflict.": {
+        "fr": "Aucun dépôt ne reste en conflit.",
+        "en": "No repository is left in conflict.",
+    },
+    "Repository number (empty to go back): ": {
+        "fr": "Numéro du dépôt (vide pour revenir) : ",
+        "en": "Repository number (empty to go back): ",
+    },
+    "Nothing left in conflict here.": {
+        "fr": "Plus rien en conflit ici.",
+        "en": "Nothing left in conflict here.",
+    },
+    "Open a shell here": {
+        "fr": "Ouvrir un shell ici",
+        "en": "Open a shell here",
+    },
+    "Show the conflicting diff": {
+        "fr": "Montrer le diff en conflit",
+        "en": "Show the conflicting diff",
+    },
+    "Keep ours": {
+        "fr": "Garder le nôtre",
+        "en": "Keep ours",
+    },
+    "Take upstream": {
+        "fr": "Prendre l'amont",
+        "en": "Take upstream",
+    },
+    "Continue the rebase": {
+        "fr": "Continuer le rebase",
+        "en": "Continue the rebase",
+    },
+    "Skip this commit": {
+        "fr": "Sauter ce commit",
+        "en": "Skip this commit",
+    },
+    "Abort this rebase": {
+        "fr": "Abandonner ce rebase",
+        "en": "Abort this rebase",
+    },
+    "Return to the state managed by repo": {
+        "fr": "Revenir à l'état géré par repo",
+        "en": "Return to the state managed by repo",
+    },
+    "Later": {
+        "fr": "Plus tard",
+        "en": "Later",
+    },
+    "Rebase finished.": {
+        "fr": "Rebase terminé.",
+        "en": "Rebase finished.",
+    },
+    "Rebase aborted.": {
+        "fr": "Rebase abandonné.",
+        "en": "Rebase aborted.",
+    },
+    "Back to the state managed by repo.": {
+        "fr": "Retour à l'état géré par repo.",
+        "en": "Back to the state managed by repo.",
+    },
+    "🖥️ Browse the upgrade on screen": {
+        "fr": "🖥️ Parcourir la mise à niveau à l'écran",
+        "en": "🖥️ Browse the upgrade on screen",
+    },
+    "Falling back to the text report.": {
+        "fr": "Repli sur le rapport texte.",
+        "en": "Falling back to the text report.",
+    },
+    "Our commits": {
+        "fr": "Nos commits",
+        "en": "Our commits",
+    },
+    "What upstream brings": {
+        "fr": "Ce que l'amont apporte",
+        "en": "What upstream brings",
+    },
+    "Only what needs a decision": {
+        "fr": "Seulement ce qui demande une décision",
+        "en": "Only what needs a decision",
+    },
+    "Copied.": {
+        "fr": "Copié.",
+        "en": "Copied.",
+    },
+    "repository": {
+        "fr": "dépôt",
+        "en": "repository",
+    },
+    "shown": {
+        "fr": "affichés",
+        "en": "shown",
+    },
+    "Nothing to show.": {
+        "fr": "Rien à montrer.",
+        "en": "Nothing to show.",
+    },
 }
 
 
