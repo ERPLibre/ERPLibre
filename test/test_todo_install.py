@@ -202,5 +202,32 @@ class TestAskAndInstall(unittest.TestCase):
         self.assertIn("'a b'", ran[0])
 
 
+class TestRefresh(unittest.TestCase):
+    """Rafraîchir les index AVANT d'installer : un apt-get install sur un
+    système neuf échoue sur des index vides, et Arch ne supporte pas la mise
+    à jour partielle, d'où -Syu et jamais -Sy seul."""
+
+    def test_each_family_refreshes_without_asking(self):
+        self.assertEqual(
+            todo_install.refresh_command("apt-get"),
+            ["sudo", "apt-get", "update"],
+        )
+        self.assertEqual(
+            todo_install.refresh_command("pacman"),
+            ["sudo", "pacman", "-Syu", "--noconfirm"],
+        )
+        self.assertEqual(
+            todo_install.refresh_command("zypper"),
+            ["sudo", "zypper", "--non-interactive", "refresh"],
+        )
+
+    def test_dnf_refreshes_its_metadata_itself(self):
+        self.assertIsNone(todo_install.refresh_command("dnf"))
+
+    def test_no_family_no_command(self):
+        with patch("script.todo.todo_install.family", return_value=None):
+            self.assertIsNone(todo_install.refresh_command())
+
+
 if __name__ == "__main__":
     unittest.main()
