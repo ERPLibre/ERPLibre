@@ -2140,11 +2140,10 @@ def vm_ssh_prefix(vm, tty=False) -> str:
     info = (vm or {}).get("pve") or {}
     adresse = info.get("addr")
     if info.get("target") and adresse:
-        saut = f"-J {shlex.quote(info['jump'])} " if info.get("jump") else ""
-        return (
-            f"{ssh} {SSH_OPTS} {saut}-J {shlex.quote(info['target'])} "
-            f"erplibre@{adresse}"
-        )
+        # UNE option -J, les rebonds séparés par des virgules : ssh refuse
+        # une seconde option -J et s'arrête avant même de se connecter.
+        chaine = ",".join(h for h in (info.get("jump"), info["target"]) if h)
+        return f"{ssh} {SSH_OPTS} -J {shlex.quote(chaine)} erplibre@{adresse}"
     return f"{ssh} {SSH_OPTS} erplibre@{(vm or {}).get('ip')}"
 
 
