@@ -255,6 +255,8 @@ ne sont pas posés.
   exige son nom retapé pour allumer ou éteindre l'API. Le serveur MCP de
   Dolibarr 24, encore expérimental, viendra ensuite.
 
+Un site web Dolibarr passe à Odoo par l'addon `erplibre_website_import_from_dolibarr` : exporter le site depuis le module Site web de Dolibarr, puis importer le zip depuis Site web › Configuration › Import depuis Dolibarr, ou par `./odoo_bin.sh dolibarr_website_import -d DB --website-id 1 --zip FICHIER`. Le README du module décrit l'étape de revue et les règles du réimport.
+
 ## Version épinglée
 
 ```bash
