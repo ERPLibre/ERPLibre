@@ -59,14 +59,14 @@ déjà ainsi, aucun correctif. `-` : absent.
 | P4 installer et appliquer un thème | cœur | cœur | cœur | cœur | module | module | module |
 | P5 Message-ID `erplibre` | - | - | - | - | cœur | cœur | cœur |
 | P6 erreur de notification push masquée | - | - | - | - | - | - | cœur |
-| P7 `partner_autocomplete` sans auto-installation | - | cœur | - | - | cœur | cœur | OCB |
+| P7 `partner_autocomplete` sans auto-installation | - | cœur | - | - | cœur | OCB | OCB |
 | P8 `web_unsplash` sans auto-installation | cœur | cœur | cœur | cœur | - | - | - |
 | P9 identifiant sans espace final | cœur | cœur | cœur | cœur | - | - | - |
 | P10 correctifs propres à une version | cœur | - | cœur | cœur | - | - | - |
 
-De 16 à 18, P1 à P4 viennent de `erplibre_odoo_cli_base` : les forks 16 et
-17 sont OCB plus P5 et P7, le fork 18 est OCB plus P5 et P6. De 12 à 15, P1 à
-P4 restent dans le cœur.
+De 16 à 18, P1 à P4 viennent de `erplibre_odoo_cli_base` : le fork 16 est OCB
+plus P5 et P7, le fork 17 est OCB plus P5, le fork 18 est OCB plus P5 et P6.
+De 12 à 15, P1 à P4 restent dans le cœur.
 
 ## Les correctifs
 
@@ -146,8 +146,8 @@ le cœur : l'appel est au milieu d'une méthode du client web déjà surchargée
 `partner_autocomplete` envoie des données de partenaires à un service IAP
 d'Odoo. Le correctif pose `auto_install: False`.
 
-- 13 : `iap` et `partner_autocomplete` ; 16 et 17 : `partner_autocomplete`.
-- 18 : OCB pose déjà `auto_install: False` pour les deux ; aucun correctif.
+- 13 : `iap` et `partner_autocomplete` ; 16 : `partner_autocomplete`.
+- 17 et 18 : OCB pose déjà `auto_install: False` ; aucun correctif.
 
 ### P8 `web_unsplash` sans auto-installation
 

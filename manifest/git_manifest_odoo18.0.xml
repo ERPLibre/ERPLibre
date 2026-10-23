@@ -24,7 +24,8 @@
     <remote name="kinjal-sorathiya" fetch="https://github.com/kinjal-sorathiya/" />
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
     <remote name="TechnoLibre_origin_muk-it" fetch="https://github.com/TechnoLibre/" />
-    <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
+    <!-- Amont retiré de GitHub, gardé pour mémoire : -->
+    <!-- <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" /> -->
     <remote name="ERPLibre_origin_novacode-nl" fetch="https://github.com/ERPLibre/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
     <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
@@ -563,15 +564,18 @@
         freeze-revision="9b8d93775198d3ed8efff2d43cad93e3dd07bdff"
         groups="addons,odoo18.0,code_generator,image_db"
     />
+    <!-- L'amont novacode-nl/odoo-formio n'est plus publié : le fork
+         ERPLibre est sa propre référence, sans branche amont.
+         Ancienne déclaration : fork-upstream-remote="novacode-nl"
+         fork-upstream="18.0"
+         fork-upstream-freeze-revision="c6e56724c9778cb972108ecabe4f93de75f83217" -->
     <project
         name="odoo-formio.git"
         revision="18.0"
         freeze-revision="c6e56724c9778cb972108ecabe4f93de75f83217"
         path="odoo18.0/addons/novacode-nl_odoo-formio"
         remote="ERPLibre_origin_novacode-nl"
-        fork-upstream-remote="novacode-nl"
-        fork-upstream="18.0"
-        fork-upstream-freeze-revision="c6e56724c9778cb972108ecabe4f93de75f83217"
+        fork-upstream-remote="ERPLibre_origin_novacode-nl"
         groups="addons,odoo18.0"
     />
     <project

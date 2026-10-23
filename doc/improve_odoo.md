@@ -58,14 +58,14 @@ behaves this way, no patch is needed. `-`: absent.
 | P4 install and apply a theme | core | core | core | core | module | module | module |
 | P5 Message-ID `erplibre` | - | - | - | - | core | core | core |
 | P6 push notification error hidden | - | - | - | - | - | - | core |
-| P7 `partner_autocomplete` not auto-installed | - | core | - | - | core | core | OCB |
+| P7 `partner_autocomplete` not auto-installed | - | core | - | - | core | OCB | OCB |
 | P8 `web_unsplash` not auto-installed | core | core | core | core | - | - | - |
 | P9 login without trailing spaces | core | core | core | core | - | - | - |
 | P10 fixes of one version | core | - | core | core | - | - | - |
 
-From 16 to 18, P1 to P4 come from `erplibre_odoo_cli_base`: the 16 and 17
-forks are OCB plus P5 and P7, the 18 fork is OCB plus P5 and P6. In 12 to 15,
-P1 to P4 stay in the core.
+From 16 to 18, P1 to P4 come from `erplibre_odoo_cli_base`: the 16 fork is
+OCB plus P5 and P7, the 17 fork is OCB plus P5, the 18 fork is OCB plus P5 and
+P6. In 12 to 15, P1 to P4 stay in the core.
 
 ## The patches
 
@@ -143,8 +143,8 @@ of a patched method of the web client.
 `partner_autocomplete` sends partner data to an Odoo IAP service. The patch
 sets `auto_install: False`.
 
-- 13: `iap` and `partner_autocomplete`; 16 and 17: `partner_autocomplete`.
-- 18: OCB already sets `auto_install: False` for both; no patch.
+- 13: `iap` and `partner_autocomplete`; 16: `partner_autocomplete`.
+- 17 and 18: OCB already sets `auto_install: False`; no patch.
 
 ### P8 `web_unsplash` not auto-installed
 

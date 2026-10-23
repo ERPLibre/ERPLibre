@@ -8,6 +8,8 @@
         revision="17.0_dev"
         path="odoo17.0/OCA_OpenUpgrade"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="17.0"
         clone-depth="10"
         groups="migration,odoo17.0"
     />
