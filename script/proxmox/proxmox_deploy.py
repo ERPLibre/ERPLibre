@@ -150,12 +150,16 @@ def run(host: dict, remote: str, timeout: int = 120) -> tuple:
     privilèges, et l'accès offert par une VM du parc est celui d'`erplibre`.
     """
     remote = wrap_privilege(remote, host.get("sudo") or "")
+    # Entrée fermée : ssh_argv impose BatchMode, rien n'est demandé, et un
+    # ssh qui hériterait du terminal volerait les frappes de l'écran qui le
+    # lance — le suivi d'installation en relève l'hôte toutes les secondes.
     try:
         res = subprocess.run(
             ssh_argv(host, remote),
             capture_output=True,
             text=True,
             timeout=timeout,
+            stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
         return 255, "timeout"
