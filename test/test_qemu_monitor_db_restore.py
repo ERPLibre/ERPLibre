@@ -125,6 +125,7 @@ class Bac(unittest.TestCase):
         fin = subprocess.run(
             ["bash", "-c", cmd], env=env, capture_output=True, text=True
         )
+        self.sortie = fin.stdout
         return fin.returncode, self.journal.read_text().splitlines()
 
 
@@ -218,6 +219,75 @@ class TestLaRestauration(Bac):
         self.assertIn(mon.DB_RESTORE_NAME, lignes)
         self.assertIn("crons", lignes)
         self.assertNotIn("crons", "\n".join(mon.db_restore_lines([])))
+
+
+class TestLesDeuxLangues(unittest.TestCase):
+    """L'écran des actions VM et ses confirmations suivent la langue choisie,
+    au moment où ils s'affichent."""
+
+    def langue(self, code):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = code
+
+    def test_the_confirmations_follow_the_language(self):
+        self.langue("en")
+        en = " ".join(
+            mon.db_restore_lines(["neutralize"])
+            + mon.delete_lines({"name": "vm-a"})
+        )
+        self.langue("fr")
+        fr = " ".join(
+            mon.db_restore_lines(["neutralize"])
+            + mon.delete_lines({"name": "vm-a"})
+        )
+        self.assertIn("DROPPED", en)
+        self.assertIn("ERASED", en)
+        self.assertIn("SUPPRIMÉE", fr)
+        self.assertIn("EFFACÉ", fr)
+        for texte in (en, fr):
+            self.assertIn(mon.DB_RESTORE_NAME, texte)
+            self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", texte)
+
+    def test_every_tick_box_label_is_translated(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for _cle, libelle in mon.UPDATE_PARTS + mon.DB_RESTORE_PARTS:
+            with self.subTest(libelle=libelle):
+                self.assertIn(libelle, TRANSLATIONS)
+
+
+class TestLesMessagesDansLaVM(Bac):
+    """Ce que les commandes affichent dans la VM suit la langue choisie, et
+    une traduction ne peut rien développer dans le shell."""
+
+    def setUp(self):
+        super().setUp()
+        self.erplibre(self.home / "git" / "erplibre")
+
+    def test_the_restore_speaks_english_with_its_variables(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        self.lance(mon.db_restore_cmd([]), rc=3)
+        self.assertIn("== Restoring test from odoo18.0_base ==", self.sortie)
+        self.assertIn("== Restore finished (code 3) ==", self.sortie)
+
+    def test_a_translation_expands_nothing(self):
+        texte = 'a "b" $HOME `id` \\c'
+        fin = subprocess.run(
+            ["bash", "-c", f'echo "{mon._dq(texte)}"'],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(texte, fin.stdout.rstrip("\n"))
 
 
 class TestLaMiseAJourSuitLeMemeDossier(Bac):
