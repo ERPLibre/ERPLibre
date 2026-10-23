@@ -2210,6 +2210,23 @@ UPDATE_PARTS = (
 EL_DIR = "~/git/erplibre"
 
 
+def el_dir_cd() -> str:
+    """Shell qui se place dans le dossier ERPLibre de la VM, ou sort en 1.
+
+    Le dossier dépend du profil choisi à l'installation : EL_DIR en
+    développement, /opt/erplibre en production. Le manifeste du suivi ne
+    garde pas ce choix ; l'unité erplibre.service le porte, dans son
+    WorkingDirectory. Sans unité, ou si elle désigne un dossier absent,
+    c'est EL_DIR. Le tilde d'EL_DIR s'étend dans l'affectation, avant les
+    guillemets du « cd »."""
+    return (
+        "el_dir=$(systemctl show -p WorkingDirectory --value "
+        "erplibre.service 2>/dev/null); "
+        '[ -n "$el_dir" ] && [ -d "$el_dir" ] || el_dir=' + EL_DIR + "; "
+        'cd "$el_dir" || exit 1; '
+    )
+
+
 def update_remote_cmd(parts) -> str:
     """Commande exécutée DANS la VM pour remettre à jour ce qui est coché.
 
@@ -2246,10 +2263,10 @@ def update_remote_cmd(parts) -> str:
     if "git" in chosen:
         out.append(
             'echo "== Depots git =="; '
-            f"cd {EL_DIR} || exit 1; "
+            + el_dir_cd()
             # --ff-only : une VM ne doit jamais fusionner toute seule. Un
             # historique divergent s'arrête ici, visiblement.
-            "git pull --ff-only; "
+            + "git pull --ff-only; "
             # Les addons viennent de Google Repo, pas de git : c'est le script
             # de l'installation qui sait les synchroniser.
             "./script/install/install_git_repo.sh; "
@@ -2257,9 +2274,9 @@ def update_remote_cmd(parts) -> str:
     if "python" in chosen:
         out.append(
             'echo "== Dependances Python =="; '
-            f"cd {EL_DIR} || exit 1; "
+            + el_dir_cd()
             # La phase « poetry » seule : ni venvs ni repo, juste les paquets.
-            "EL_PHASE=poetry ./script/install/install_locally.sh; "
+            + "EL_PHASE=poetry ./script/install/install_locally.sh; "
         )
     out.append('echo "== Mise a jour terminee =="')
     return "".join(out[:1]) + "; " + "".join(out[1:])
@@ -2277,6 +2294,86 @@ def restart_odoo_cmd() -> str:
         "else echo 'Pas de service erplibre : lancez ./run.sh dans "
         f"{EL_DIR}'; fi"
     )
+
+
+# Nom de la base que l'écran de suivi crée. Il n'y a pas de champ de saisie :
+# l'écran n'a que des cases à cocher et des boutons, et le fichier n'importe
+# aucun widget de saisie. « test » est le nom que les cibles « db_restore_* »
+# du Makefile emploient déjà, donc celui que la documentation et les commandes
+# du dépôt désignent ensuite.
+DB_RESTORE_NAME = "test"
+
+# Options de db_restore.py offertes par l'écran, dans l'ordre d'affichage. Les
+# deux sont cochées par défaut : une base de démonstration ne doit pas lancer
+# de crons dans une VM d'essai, et restaurer sans « _cache_ » épargne au
+# disque de la VM un double complet de la base.
+DB_RESTORE_PARTS = (
+    ("neutralize", "Neutraliser : désactive les crons"),
+    ("ignore_cache", "Sans base _cache_ : restaure directement"),
+)
+
+
+def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
+    """Commande exécutée DANS la VM pour (re)créer une base depuis une image.
+
+    L'image SUIT la version du checkout : « .odoo-version » est lu à
+    l'exécution, dans la VM, et composé en « odoo<version>_base » — le nom
+    que porte chaque image du répertoire image_db, que le repo sync rapatrie.
+    Rien n'est figé ici : une VM change de version après son installation sans
+    que ce code le sache. « tr -d » retire le saut de ligne final du fichier,
+    qui sinon couperait le nom en deux.
+
+    db_restore.py ne touche à aucun service : il SUPPRIME la base puis la
+    recharge, pendant qu'un Odoo lancé garde ses connexions ouvertes et les
+    rouvre aussitôt qu'elles sont coupées — la suppression échoue alors sur
+    « database is being accessed by other users », et un Odoo qui y survit
+    sert un registre qui ne décrit plus la base. Le service est donc arrêté
+    autour de l'opération, et relancé SEULEMENT s'il tournait avant : une VM
+    installée sans profil de production n'a pas d'unité systemd.
+
+    Le code rendu est celui de la restauration, pas celui du redémarrage :
+    c'est la restauration qu'on vient lire."""
+    opts = "".join(
+        f" --{key}" for key, _lbl in DB_RESTORE_PARTS if key in parts
+    )
+    db = shlex.quote(database)
+    return (
+        "set -u; " + el_dir_cd() + "ver=$(tr -d '[:space:]' < .odoo-version); "
+        'img="odoo${ver}_base"; '
+        f'echo "== Restauration de {database} depuis $img =="; '
+        "actif=non; "
+        "if systemctl list-unit-files 2>/dev/null | grep -q '^erplibre'; then "
+        "systemctl is-active --quiet erplibre.service && actif=oui; "
+        "sudo systemctl stop erplibre.service; fi; "
+        f'./script/database/db_restore.py --database {db} --image "$img"'
+        f"{opts}; "
+        "rc=$?; "
+        'if [ "$actif" = oui ]; then sudo systemctl start erplibre.service; '
+        "fi; "
+        'echo "== Restauration terminee (code $rc) =="; '
+        "exit $rc"
+    )
+
+
+def db_restore_lines(parts) -> list:
+    """Ce que la restauration détruit, dit avant qu'elle parte.
+
+    Une confirmation nomme ce qu'elle détruit : une base de ce nom existe
+    peut-être déjà dans la VM, et db_restore.py la supprime sans rien
+    demander. L'image n'est pas nommée : son nom se calcule dans la VM, à
+    partir d'une version que cet écran ne lit pas."""
+    lignes = [
+        f"La base « {DB_RESTORE_NAME} », si elle existe, est SUPPRIMÉE",
+        "puis rechargée depuis l'image odoo<version>_base du",
+        "répertoire image_db. Rien n'est récupérable.",
+        "",
+        "Le service erplibre est arrêté le temps de l'opération,",
+        "puis relancé s'il tournait.",
+    ]
+    if "neutralize" in parts:
+        lignes.append("")
+        lignes.append("Les crons de la base restaurée restent désactivés.")
+    return lignes
 
 
 def pve_identity_guard(vmid: int, name: str) -> str:
@@ -2746,6 +2843,18 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 )
                 yield Static("Service", classes="actgroup")
                 yield Button("Redémarrer Odoo", id="a_restart")
+                yield Static("Base de données", classes="actgroup")
+                yield Static(
+                    f"Recrée « {DB_RESTORE_NAME} » depuis l'image de la"
+                    " version installée dans la VM."
+                )
+                for key, label in DB_RESTORE_PARTS:
+                    yield Checkbox(label, value=True, id=f"d_{key}")
+                yield Button(
+                    f"Restaurer la base « {DB_RESTORE_NAME} »",
+                    variant="warning",
+                    id="a_dbrestore",
+                )
                 yield Static("Irréversible", classes="actdanger")
                 yield Button(
                     "Supprimer la VM et ses disques",
@@ -2763,6 +2872,13 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 self.dismiss(("update", parts))
             elif event.button.id == "a_restart":
                 self.dismiss(("restart", []))
+            elif event.button.id == "a_dbrestore":
+                parts = [
+                    k
+                    for k, _lbl in DB_RESTORE_PARTS
+                    if self.query_one(f"#d_{k}", Checkbox).value
+                ]
+                self.dismiss(("dbrestore", parts))
             elif event.button.id == "a_delete":
                 self.dismiss(("delete", []))
 
@@ -2819,7 +2935,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         #errlog { height: 1fr; border: solid $accent; }
         VmActionsScreen { align: center middle; }
         #actbox {
-            width: 62; height: auto; padding: 1 2;
+            width: 62; height: auto; max-height: 100%; padding: 1 2;
+            overflow-y: auto;
             border: thick $accent; background: $surface;
         }
         #acttitle { color: $accent; text-style: bold; padding-bottom: 1; }
@@ -3912,6 +4029,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     self._run_in_vm(
                         vm, restart_odoo_cmd(), "Redemarrage d'Odoo"
                     )
+                elif kind == "dbrestore":
+                    self._ask_db_restore(vm, parts)
                 elif kind == "delete":
                     self._ask_delete(vm)
 
@@ -3938,6 +4057,30 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 self.notify("Rien de coché.", severity="warning")
                 return
             self._run_in_vm(vm, cmd, "Mise a jour")
+
+        def _ask_db_restore(self, vm, parts) -> None:
+            """Restauration : une base du même nom est PERDUE.
+
+            Même garde que la suppression d'une VM, et pour la même raison :
+            db_restore.py supprime la base cible avant de la recharger, sans
+            jamais le demander. Le bouton dangereux de ConfirmScreen n'est pas
+            le défaut, une Entrée réflexe ne déclenche donc rien."""
+
+            def confirmed(yes):
+                if not yes:
+                    return
+                self._run_in_vm(
+                    vm, db_restore_cmd(parts), "Restauration de la base"
+                )
+
+            self.push_screen(
+                ConfirmScreen(
+                    f"Restaurer « {DB_RESTORE_NAME} » sur {vm['name']} ?",
+                    db_restore_lines(parts),
+                    f"Écraser {DB_RESTORE_NAME}",
+                ),
+                confirmed,
+            )
 
         def _ask_delete(self, vm) -> None:
             """Suppression : jamais sans une seconde main."""
