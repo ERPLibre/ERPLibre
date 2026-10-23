@@ -35,13 +35,14 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
     SOURCE = RACINE / "script" / "todo" / "dolibarr_menu.py"
     ENTRY = "def prompt_execute_dolibarr(self):"
     END = "def _dolibarr_run(self, action):"
-    MINIMUM = 4
+    MINIMUM = 5
     EXPECTED = {
         "Dolibarr - Install an instance": "prompt_install_dolibarr",
         "Dolibarr - Start an instance": "_dolibarr_run",
         "Dolibarr - Stop an instance": "_dolibarr_run",
         "Dolibarr - Instance status": "_dolibarr_run",
         "Dolibarr - Instance logs": "_dolibarr_run",
+        "Dolibarr - Update the pinned commit": "_dolibarr_pin",
     }
 
 
@@ -120,6 +121,54 @@ class TestChoixDeLInstance(Banc):
         self.registre = {"aaa": dict(DEV), "zzz": dict(DEV)}
         lances, _s = self.lancer("status")
         self.assertEqual(lances, [f"{RUN} status"])
+
+
+PIN = "./.venv.erplibre/bin/python -u script/dolibarr/pin.py"
+SYNC = "./script/manifest/update_manifest_local_dolibarr.sh"
+
+
+class TestEpinglage(unittest.TestCase):
+    def lancer(self, codes, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+        suite_codes = iter(codes)
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return next(suite_codes)
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda *a: next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_pin()
+        return lances
+
+    def test_the_menu_and_pin_py_agree_on_the_pending_code(self):
+        from script.dolibarr import pin
+
+        self.assertEqual(dolibarr_menu.PIN_PENDING, pin.PENDING)
+
+    def test_nothing_pending_asks_nothing(self):
+        self.assertEqual(self.lancer([0], []), [f"{PIN} update"])
+
+    def test_pending_changes_apply_then_sync_on_yes(self):
+        self.assertEqual(
+            self.lancer([3, 0, 0], ["y", "y"]),
+            [f"{PIN} update", f"{PIN} update --apply", SYNC],
+        )
+
+    def test_no_writes_nothing(self):
+        self.assertEqual(self.lancer([3], ["n"]), [f"{PIN} update"])
+
+    def test_a_failed_apply_does_not_sync(self):
+        self.assertEqual(
+            self.lancer([3, 1], ["y"]),
+            [f"{PIN} update", f"{PIN} update --apply"],
+        )
 
 
 class TestExecuteMenu(unittest.TestCase):
