@@ -28,7 +28,7 @@ make install_odoo_all_version
 
 ## Validate environment
 
-- Check if each manifest version like [manifest/default.dev.odoo16.0.xml](../manifest/default.dev.odoo16.0.xml) is ready for production.
+- Check if each manifest version like [manifest/git_manifest_odoo16.0.xml](../manifest/git_manifest_odoo16.0.xml) is ready for production.
 - Run test :
 
 ```bash

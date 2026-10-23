@@ -27,8 +27,12 @@ cd ERPLibre
 
 ## Develop in Odoo repository
 
-You need to remove `clone-depth="10"` from `./manifest/default.dev.xml` in order to be able to commit and push. Make a
-temporary commit and regenerate with `./script/install/install_locally_dev.sh`
+The Odoo core is a shallow clone, at the `clone-depth` of its project in `./manifest/git_manifest_odoo<version>.xml`.
+Complete its history before committing and pushing in it:
+
+```bash
+git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
+```
 
 ## Fork project to create a new project independent of ERPLibre (deprecated)
 
@@ -94,7 +98,7 @@ Tools to display the differences between the repo and another project.
 To understand the divergences with the dev manifest.
 
 ```bash
-./script/git/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
+./script/git/git_show_code_diff_repo_manifest.py
 ```
 
 ## Sync repo with another project

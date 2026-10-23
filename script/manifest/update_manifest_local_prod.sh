@@ -32,8 +32,6 @@ for arg in "$@"; do
 done
 set -- "${FORWARD_ARGS[@]}"
 
-#EL_MANIFEST_PROD="./default.xml"
-#EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
 # Avant le démon : une sortie ici ne le laisse pas tourner.
 . ./script/manifest/manifest_revision.sh

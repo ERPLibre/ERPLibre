@@ -37,8 +37,6 @@ for arg in "$@"; do
   fi
 done
 set -- "${FORWARD_ARGS[@]}"
-#EL_MANIFEST_PROD="./default.xml"
-#EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
 # Update git-repo : local git daemon serving the repo over git://127.0.0.1:9418.
 # Kill any leftover daemon from a previous (interrupted) run first: otherwise the

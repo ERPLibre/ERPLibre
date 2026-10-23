@@ -58,13 +58,13 @@ make install_odoo_all_version
 <!-- [en] -->
 ## Validate environment
 
-- Check if each manifest version like [manifest/default.dev.odoo16.0.xml](../manifest/default.dev.odoo16.0.xml) is ready for production.
+- Check if each manifest version like [manifest/git_manifest_odoo16.0.xml](../manifest/git_manifest_odoo16.0.xml) is ready for production.
 - Run test :
 
 <!-- [fr] -->
 ## Valider l'environnement
 
-- Vérifier si chaque version de manifeste comme [manifest/default.dev.odoo16.0.xml](../manifest/default.dev.odoo16.0.xml) est prête pour la production.
+- Vérifier si chaque version de manifeste comme [manifest/git_manifest_odoo16.0.xml](../manifest/git_manifest_odoo16.0.xml) est prête pour la production.
 - Exécuter les tests :
 
 <!-- [common] -->

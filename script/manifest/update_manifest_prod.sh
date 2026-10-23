@@ -32,8 +32,6 @@ for arg in "$@"; do
 done
 set -- "${FORWARD_ARGS[@]}"
 
-#EL_MANIFEST_PROD="./default.xml"
-#EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
 if command -v nproc >/dev/null 2>&1; then
   JOBS="$(nproc --all)"

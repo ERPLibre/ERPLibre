@@ -22,19 +22,18 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > .venv.erplibre/bin
 ## dev
 
 ```bash
-.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b 12.0_repo -m ./manifest/default.dev.xml
-.venv.erplibre/bin/repo sync -c -j $(nproc --all)
+./script/manifest/update_manifest_dev.sh
 ```
 
 ## dev local
 
 [Guide pour configurer git localement](https://railsware.com/blog/taming-the-git-daemon-to-quickly-share-git-repository/).
 
-```bash
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+Le script sert ce checkout par `git daemon`, fusionne les manifestes, et passe une branche à `repo init -b`, jamais
+un commit nu : `repo init` refuse un commit sur un espace de travail neuf.
 
-.venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.dev.xml
-.venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.dev.xml
+```bash
+./script/manifest/update_manifest_local_dev.sh
 ```
 
 # Créer un Manifest
@@ -109,7 +108,7 @@ Avant de nettoyer, vérifiez les fichiers modifiés dans tous les dépôts.
 Vérifiez les branches modifiées, et poussez les changements si nécessaire.
 
 ```bash
-./script/git/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
+./script/git/git_show_code_diff_repo_manifest.py
 ```
 
 Peut-être que certaines versions divergent de votre manifest. Nettoyez simplement tout et relancez votre installation.

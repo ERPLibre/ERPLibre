@@ -48,8 +48,7 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > .venv.erplibre/bin
 
 <!-- [common] -->
 ```bash
-.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b 12.0_repo -m ./manifest/default.dev.xml
-.venv.erplibre/bin/repo sync -c -j $(nproc --all)
+./script/manifest/update_manifest_dev.sh
 ```
 
 <!-- [en] -->
@@ -57,17 +56,20 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > .venv.erplibre/bin
 
 [Guide to setup locally git](https://railsware.com/blog/taming-the-git-daemon-to-quickly-share-git-repository/).
 
+The script serves this checkout with `git daemon`, merges the manifests, and passes a branch to `repo init -b`,
+never a bare commit: `repo init` refuses a commit on a new workspace.
+
 <!-- [fr] -->
 ## dev local
 
 [Guide pour configurer git localement](https://railsware.com/blog/taming-the-git-daemon-to-quickly-share-git-repository/).
 
+Le script sert ce checkout par `git daemon`, fusionne les manifestes, et passe une branche à `repo init -b`, jamais
+un commit nu : `repo init` refuse un commit sur un espace de travail neuf.
+
 <!-- [common] -->
 ```bash
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
-
-.venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.dev.xml
-.venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.dev.xml
+./script/manifest/update_manifest_local_dev.sh
 ```
 
 <!-- [en] -->
@@ -209,7 +211,7 @@ Vérifiez les branches modifiées, et poussez les changements si nécessaire.
 
 <!-- [common] -->
 ```bash
-./script/git/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
+./script/git/git_show_code_diff_repo_manifest.py
 ```
 
 <!-- [en] -->
