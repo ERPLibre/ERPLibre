@@ -11,6 +11,32 @@ if [ "${EL_VERBOSE:-0}" = "1" ]; then
 else
   REPO_VERBOSE=""; DAEMON_VERBOSE=""
 fi
+
+# --freeze : chaque dépôt est installé sur le SHA de son freeze-revision
+# plutôt que sur la tête de sa branche ; un projet sans freeze-revision suit
+# sa branche. Le choix vaut pour cet appel et n'est conservé nulle part.
+# EL_FREEZE=1 fait le même choix pour un appelant qui ne transmet pas
+# d'argument (update_env_version.py, lancé par « make install_dev FREEZE=1 »).
+# --with_extra (update_env_version.py) va lui aussi à la fusion : repo init
+# refuse une option qu'il ne connaît pas.
+# Ces arguments sont retirés de "$@" ; les autres vont à repo init, dans
+# leur ordre.
+MERGE_FREEZE=()
+if [ "${EL_FREEZE:-0}" = "1" ]; then
+  MERGE_FREEZE=(--freeze)
+fi
+MERGE_EXTRA=()
+FORWARD_ARGS=()
+for arg in "$@"; do
+  if [ "${arg}" = "--freeze" ]; then
+    MERGE_FREEZE=(--freeze)
+  elif [ "${arg}" = "--with_extra" ]; then
+    MERGE_EXTRA=(--with_extra)
+  else
+    FORWARD_ARGS+=("${arg}")
+  fi
+done
+set -- "${FORWARD_ARGS[@]}"
 #EL_MANIFEST_PROD="./default.xml"
 #EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
@@ -44,7 +70,7 @@ else
 fi
 
 # Generate local manifest
-.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA
+.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}" "${MERGE_EXTRA[@]}"
 
 # Révision du manifeste : un NOM DE BRANCHE, jamais un SHA nu.
 #

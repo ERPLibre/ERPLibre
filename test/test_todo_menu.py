@@ -578,7 +578,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
     SOURCE = TODO_DIR / "git_repo_menu.py"
     ENTRY = "def prompt_execute_git_repo(self):"
     END = "def _git_repo_sync(self):"
-    MINIMUM = 7
+    MINIMUM = 9
 
     EXPECTED = {
         "🔄 Synchronize the repositories": "_git_repo_sync",
@@ -589,7 +589,363 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "📊 Report of the last pass": "_git_repo_rapport",
         "🖥️ Browse the upgrade on screen": "_git_repo_ecran",
         "🔗 Fork and upstream status": "_git_repo_etat_forks",
+        "🧊 Freeze the versions": "_git_repo_geler",
+        "📌 Reconfigure on the frozen commits": "_git_repo_reconfigurer",
+        "🫗 Unfreeze the versions": "_git_repo_geler",
+        "🔀 Compare two freezes": "_git_repo_comparer",
     }
+
+
+class TestGitRepoFreezeEntries(unittest.TestCase):
+    """Les entrées du gel : ce qu'elles lancent, et dans quel ordre.
+
+    Le gel et le dégel écrivent des fichiers suivis par git ; la passe à sec
+    tourne donc toujours avant, et rien ne s'écrit sans confirmation. Le
+    mode affiché se lit dans le manifeste local, jamais dans un état
+    enregistré.
+    """
+
+    SHA = "0123456789abcdef0123456789abcdef01234567"
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.cmds = []
+        self.status = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, source_erplibre=True):
+                self.cmds.append(cmd)
+                return self.status.pop(0) if self.status else 0
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            execute = Execute()
+
+        self.obj = Menu()
+
+    def _manifeste(self, dossier, texte):
+        import os
+
+        chemin = os.path.join(dossier, self.menu.MANIFESTE_LOCAL)
+        os.makedirs(os.path.dirname(chemin))
+        with open(chemin, "w") as fh:
+            fh.write(texte)
+
+    def test_mode_is_read_from_the_local_manifest(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as dossier:
+            self.assertIsNone(self.menu.etat_manifeste_local(dossier))
+            self._manifeste(
+                dossier,
+                "<manifest>\n"
+                f'  <project name="a" path="x/a" revision="{self.SHA}"/>\n'
+                '  <project name="b" path="x/b" revision="18.0"/>\n'
+                f'  <!-- <project name="c" path="x/c"'
+                f' revision="{self.SHA}"/> -->\n'
+                "</manifest>\n",
+            )
+            etat = self.menu.etat_manifeste_local(dossier)
+        self.assertEqual(etat, (1, 2))
+        self.assertTrue(self.menu.libelle_mode(etat).startswith("1/2 "))
+        self.assertEqual(
+            self.menu.libelle_mode((0, 2)),
+            self.menu.t("follows the branches"),
+        )
+
+    def test_header_counts_the_active_version_files_only(self):
+        import os
+        import tempfile
+
+        gel = 'freeze-revision="' + self.SHA + '"'
+        with tempfile.TemporaryDirectory() as dossier:
+            os.mkdir(os.path.join(dossier, "manifest"))
+            with open(os.path.join(dossier, ".odoo-version"), "w") as fh:
+                fh.write("X.0\n")
+            for fichier, projets in (
+                (
+                    "git_manifest_odooX.0.xml",
+                    f'<project name="a" path="x/a"'
+                    f' revision="X.0" {gel}/><project name="b" path="x/b"'
+                    ' revision="X.0"/>',
+                ),
+                (
+                    "git_manifest_erplibre_odoo.xml",
+                    f'<project name="c"' f' path="x/c" revision="X.0" {gel}/>',
+                ),
+            ):
+                with open(
+                    os.path.join(dossier, "manifest", fichier), "w"
+                ) as fh:
+                    fh.write(f"<manifest>{projets}</manifest>\n")
+            self.assertEqual(self.menu.gel_des_sources(dossier), (1, 2))
+
+    def _geler(self, confirme, amont=False, **kw):
+        """Lance le gel. `amont` répond à la question de la base amont,
+        posée avant la passe à sec ; `confirme`, à celle de l'écriture."""
+        reponses = [confirme] if kw.get("unfreeze") else [amont, confirme]
+        with self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=reponses
+        ) as confirm:
+            code = self.obj._git_repo_geler(**kw)
+        return code, confirm
+
+    def test_freeze_runs_the_dry_run_and_stops_without_consent(self):
+        code, confirm = self._geler(False)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.cmds), 1)
+        self.assertIn("git_freeze_manifest.py --dry-run", self.cmds[0])
+        self.assertEqual(confirm.call_count, 2)
+
+    def test_freeze_writes_after_consent(self):
+        code, _ = self._geler(True)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.cmds), 2)
+        self.assertTrue(self.cmds[1].endswith("git_freeze_manifest.py"))
+
+    def test_upstream_base_is_off_by_default(self):
+        _code, confirm = self._geler(True)
+        self.assertIs(confirm.call_args_list[0].kwargs["default"], False)
+        self.assertNotIn("--upstream", " ".join(self.cmds))
+
+    def test_upstream_base_passes_its_flag_to_both_runs(self):
+        self._geler(True, amont=True)
+        self.assertIn("--upstream --dry-run", self.cmds[0])
+        self.assertTrue(self.cmds[1].endswith("--upstream"))
+
+    def test_unfreeze_asks_nothing_about_the_upstream_base(self):
+        _code, confirm = self._geler(True, unfreeze=True)
+        confirm.assert_called_once()
+        self.assertNotIn("--upstream", " ".join(self.cmds))
+
+    def test_header_counts_the_forks_with_an_upstream_base(self):
+        forks = [{"base_gelee": "1" * 40}, {"base_gelee": None}, {}]
+        ligne = self.menu.ligne_du_gel((4, 9), forks)
+        self.assertIn("4/9", ligne)
+        self.assertIn(f"1/3 {self.menu.t('forks with upstream base')}", ligne)
+        self.assertNotIn(
+            self.menu.t("forks with upstream base"),
+            self.menu.ligne_du_gel((4, 9), []),
+        )
+        self.assertIsNone(self.menu.ligne_du_gel(None, forks))
+
+    def test_unfreeze_passes_its_flag_to_both_runs(self):
+        self._geler(True, unfreeze=True)
+        self.assertIn("--unfreeze --dry-run", self.cmds[0])
+        self.assertTrue(self.cmds[1].endswith("--unfreeze"))
+
+    def test_a_failed_dry_run_asks_nothing(self):
+        """Seule la question de la base amont, qui précède la passe à sec,
+        a été posée : l'écriture n'est pas proposée."""
+        self.status = [1]
+        code, confirm = self._geler(True)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self.cmds), 1)
+        confirm.assert_called_once()
+        self.status = [1]
+        code, confirm = self._geler(True, unfreeze=True)
+        self.assertEqual(code, 1)
+        confirm.assert_not_called()
+
+    def test_reconfigure_follows_branches_without_the_argument(self):
+        self.obj._git_repo_reconfigurer()
+        self.assertTrue(self.cmds[0].endswith("make repo_configure_all"))
+
+    def test_reconfigure_on_frozen_commits_passes_freeze(self):
+        with self.mock.patch.object(
+            self.menu, "gel_des_sources", return_value=(3, 5)
+        ):
+            self.obj._git_repo_reconfigurer(freeze=True)
+        self.assertTrue(
+            self.cmds[0].endswith("make repo_configure_all FREEZE=1")
+        )
+
+    def test_reconfigure_on_frozen_commits_refuses_an_empty_freeze(self):
+        with self.mock.patch.object(
+            self.menu, "gel_des_sources", return_value=(0, 5)
+        ):
+            code = self.obj._git_repo_reconfigurer(freeze=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.cmds, [])
+
+
+class TestGitRepoCompareFreezes(unittest.TestCase):
+    """L'entrée qui compare deux gels : le choix des côtés, puis les gestes.
+
+    Le rapport et l'historique viennent de `git_freeze_diff`, remplacé ici :
+    ces tests vérifient seulement ce que le menu en demande.
+    """
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.fd = git_repo_menu.git_freeze_diff
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            execute = None
+
+        self.obj = Menu()
+
+    def choisir(self, *saisies):
+        with self.mock.patch("builtins.input", side_effect=saisies):
+            return self.obj._git_repo_choisir_comparaison()
+
+    def test_les_cas_courants(self):
+        self.assertEqual(self.choisir("1"), ("HEAD", self.fd.CLONES))
+        self.assertEqual(self.choisir("2"), (self.fd.WORKTREE, self.fd.CLONES))
+        self.assertEqual(self.choisir("3"), ("HEAD", self.fd.WORKTREE))
+        self.assertIsNone(self.choisir("0"))
+        self.assertIsNone(self.choisir(""))
+
+    def test_gel_precedent(self):
+        with self.mock.patch.object(
+            self.fd, "previous_freeze", return_value=("a", "b")
+        ):
+            self.assertEqual(self.choisir("4"), ("a", "b"))
+        with self.mock.patch.object(
+            self.fd, "previous_freeze", return_value=None
+        ):
+            self.assertIsNone(self.choisir("4"))
+
+    def test_deux_revisions_dont_un_numero_de_la_liste(self):
+        gels = [
+            ("f" * 40, "2026-01-02", "gel 2"),
+            ("e" * 40, "2026-01-01", "x"),
+        ]
+        refs = [("release, origin/release", "d" * 40)]
+        with self.mock.patch.object(
+            self.fd, "freeze_commits", return_value=gels
+        ), self.mock.patch.object(
+            self.fd, "frozen_refs", return_value=(refs, 0)
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=["2", "3"]
+        ):
+            self.assertEqual(self.choisir("5"), ("e" * 40, "d" * 40))
+
+    def test_la_matrice(self):
+        with self.mock.patch.object(
+            self.fd, "default_matrix_sides", return_value=["v1", "clones"]
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", return_value="v1, clones"
+        ), self.mock.patch.object(
+            self.fd, "matrix", return_value={"columns": [], "rows": []}
+        ) as matrice, self.mock.patch.object(
+            self.fd, "render_matrix", return_value=["ok"]
+        ):
+            self.assertIsNone(self.choisir("6"))
+        self.assertEqual(matrice.call_args[0][1], ["v1", "clones"])
+        with self.mock.patch.object(
+            self.fd, "default_matrix_sides", return_value=[]
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", return_value="nulle"
+        ), self.mock.patch.object(
+            self.fd, "matrix", side_effect=ValueError("unknown revision")
+        ):
+            self.assertEqual(self.obj._git_repo_matrice(), 2)
+
+    def rapport(self, manquant=False):
+        stats = {"missing": ["new"] if manquant else [], "files": []}
+        ligne = {
+            "status": self.fd.STATUS_CHANGED,
+            "path": "x/a",
+            "stats": stats,
+        }
+        return {"rows": [ligne, dict(ligne, path="x/b")]}
+
+    def parcourir(self, rapport, *saisies):
+        with self.mock.patch(
+            "builtins.input", side_effect=list(saisies) + [""]
+        ), self.mock.patch.object(
+            self.fd, "open_history", return_value=0
+        ) as tig, self.mock.patch(
+            "builtins.print"
+        ) as sortie:
+            self.obj._git_repo_parcourir_comparaison(rapport)
+        return tig, sortie
+
+    def test_tig_sur_un_numero_puis_sur_chacun(self):
+        rapport = self.rapport()
+        tig, _ = self.parcourir(rapport, "2", "a")
+        chemins = [appel.args[1]["path"] for appel in tig.call_args_list]
+        self.assertEqual(chemins, ["x/b", "x/a", "x/b"])
+
+    def test_un_commit_absent_offre_la_recherche(self):
+        rapport = self.rapport(manquant=True)
+        with self.mock.patch.object(
+            self.fd, "fetch_missing", return_value={}
+        ) as recherche, self.mock.patch.object(
+            self.fd, "render_summary", return_value=[]
+        ):
+            tig, sortie = self.parcourir(rapport, "1", "f")
+        tig.assert_not_called()
+        recherche.assert_called_once()
+        texte = " ".join(str(a) for c in sortie.call_args_list for a in c.args)
+        self.assertIn(
+            self.menu.t("Refresh: branches, tags and missing commits"), texte
+        )
+
+    def test_le_graphe_d_un_projet(self):
+        rapport = self.rapport()
+        with self.mock.patch.object(
+            self.fd, "open_graph", return_value=0
+        ) as graphe:
+            tig, _ = self.parcourir(rapport, "b 2", "b9")
+        tig.assert_not_called()
+        self.assertEqual(
+            [c.args[1]["path"] for c in graphe.call_args_list], ["x/b"]
+        )
+
+    def test_le_regroupement_tourne(self):
+        rapport = self.rapport()
+        with self.mock.patch.object(
+            self.fd, "render_details", return_value=[]
+        ) as details:
+            self.parcourir(rapport, "g", "d", "g", "g", "d", "s2")
+        groupes = [c.kwargs["group_by"] for c in details.call_args_list]
+        self.assertEqual(groupes, ["module", "ext", "ext"])
+        self.assertEqual(details.call_args_list[-1].kwargs["numeros"], {2})
+        self.assertEqual(details.call_args_list[-1].kwargs["stat_count"], 0)
+
+    def test_tig_a_la_suite_s_arrete_sur_une_sortie_en_erreur(self):
+        rapport = self.rapport()
+        with self.mock.patch(
+            "builtins.input", side_effect=["a", ""]
+        ), self.mock.patch.object(
+            self.fd, "open_history", return_value=-2
+        ) as tig, self.mock.patch(
+            "builtins.print"
+        ):
+            self.obj._git_repo_parcourir_comparaison(rapport)
+        self.assertEqual(tig.call_count, 1)
+
+    def test_saisies_hors_limites(self):
+        rapport = self.rapport()
+        with self.mock.patch.object(
+            self.fd, "render_details", return_value=[]
+        ) as details:
+            tig, sortie = self.parcourir(rapport, "s 9", "s", "²", "S x", "9")
+        details.assert_not_called()
+        tig.assert_not_called()
+        texte = " ".join(str(a) for c in sortie.call_args_list for a in c.args)
+        self.assertIn(
+            self.menu.t("No changed project with both commits here."), texte
+        )
+
+    def test_une_revision_inconnue_rend_2(self):
+        with self.mock.patch.object(
+            self.obj, "_git_repo_choisir_comparaison", return_value=("x", "y")
+        ), self.mock.patch.object(
+            self.fd, "build", side_effect=ValueError("unknown revision: x")
+        ):
+            self.assertEqual(self.obj._git_repo_comparer(), 2)
 
 
 class TestUpdateMenuNumbering(MenuCoherence, unittest.TestCase):

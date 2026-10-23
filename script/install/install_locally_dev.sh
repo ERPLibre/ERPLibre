@@ -7,6 +7,17 @@ Green='\033[0;32m'       # Green
 Yellow='\033[0;33m'      # Yellow
 Color_Off='\033[0m'      # Text Reset
 
+# --freeze : transmis au script de manifeste, qui installe chaque dépôt sur
+# le SHA de son freeze-revision (voir update_manifest_local_dev.sh). Les autres
+# arguments sont ignorés. EL_FREEZE=1 atteint le script de manifeste par
+# l'environnement, sans passer par ici.
+MANIFEST_ARGS=()
+for arg in "$@"; do
+    if [ "${arg}" = "--freeze" ]; then
+        MANIFEST_ARGS=(--freeze)
+    fi
+done
+
 # EL_PARALLEL_INSTALL=1 (default): run repo sync in parallel with poetry install
 # EL_PARALLEL_INSTALL=0: legacy sequential behavior (set to debug or force order)
 EL_PARALLEL_INSTALL=${EL_PARALLEL_INSTALL:-1}
@@ -41,7 +52,7 @@ if [[ ${EL_PARALLEL_INSTALL} -eq 1 ]]; then
     # bash ne redirige plus l'entrée d'un job d'arrière-plan vers /dev/null,
     # d'où la redirection explicite.
     set -m
-    ./script/manifest/update_manifest_local_dev.sh </dev/null >"${REPO_SYNC_LOG}" 2>&1 &
+    ./script/manifest/update_manifest_local_dev.sh "${MANIFEST_ARGS[@]}" </dev/null >"${REPO_SYNC_LOG}" 2>&1 &
     PID_REPO=$!
     set +m
 
@@ -110,9 +121,9 @@ else
 
     # Update git-repo
     echo ""
-    echo "RUN ./script/manifest/update_manifest_local_dev.sh"
+    echo "RUN ./script/manifest/update_manifest_local_dev.sh ${MANIFEST_ARGS[*]}"
     echo ""
-    ./script/manifest/update_manifest_local_dev.sh
+    ./script/manifest/update_manifest_local_dev.sh "${MANIFEST_ARGS[@]}"
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
         echo -e "${Red}Error${Color_Off} manifest update, check git-repo."

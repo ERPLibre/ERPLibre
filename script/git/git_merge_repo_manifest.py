@@ -14,7 +14,16 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.git.git_freeze_manifest import (
+    freeze_sources,
+    read_sources,
+)
 from script.git.git_tool import GitTool
+from script.git.manifest_freeze import (
+    FORK_UPSTREAM_FREEZE_ATTR,
+    FREEZE_ATTR,
+    apply_freeze,
+)
 from script.version.erplibre_state import get_version_extra
 
 _logger = logging.getLogger(__name__)
@@ -35,7 +44,7 @@ MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
 ODOO_VERSION_PATH = ".odoo-version"
 
 
-def get_config():
+def get_config(argv=None):
     """Parse command line arguments, extracting the config file name,
     returning the union of config file and command line arguments
 
@@ -83,7 +92,17 @@ def get_config():
         action="store_true",
         help="Will overwrite local manifest",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--freeze",
+        action="store_true",
+        help=(
+            f"Pin every project to the commit of its @{FREEZE_ATTR},"
+            " keeping its branch in @upstream and @dest-branch. Only the"
+            " manifests of the active Odoo version are frozen; a project"
+            " without one follows its branch, with a warning."
+        ),
+    )
+    args = parser.parse_args(argv)
     return args
 
 
@@ -91,91 +110,26 @@ def main():
     config = get_config()
     git_tool = GitTool()
 
-    odoo_version = None
-    if os.path.isfile(ODOO_VERSION_PATH):
-        with open(ODOO_VERSION_PATH, "r") as f:
-            odoo_version = f.readline()
-
-    # Add local manifest
-    if not config.with_new_manifest:
-        if odoo_version:
-            config.with_OCA = True
-        if os.path.isdir(MOBILE_PATH):
-            config.with_mobile = True
-        if odoo_version and get_version_extra(odoo_version.strip()):
-            config.with_extra = True
-
-    input_paths = config.input
-    if not input_paths:
-        input_paths = []
-        if config.with_OCA:
-            append_file_path_manifest(
-                input_paths, DEFAULT_PATH_MANIFEST_ODOO_CONF
-            )
-            if os.path.exists(".odoo-version"):
-                if odoo_version:
-                    path_manifest_odoo_version = os.path.join(
-                        "manifest", f"git_manifest_odoo{odoo_version}.xml"
-                    )
-                    if os.path.exists(path_manifest_odoo_version):
-                        input_paths.append(path_manifest_odoo_version)
-                    else:
-                        print(
-                            f"ERROR: {path_manifest_odoo_version} does not exist"
-                        )
-                    path_manifest_odoo_version = os.path.join(
-                        "manifest", f"git_manifest_odoo{odoo_version}_dev.xml"
-                    )
-                    if os.path.exists(path_manifest_odoo_version):
-                        input_paths.append(path_manifest_odoo_version)
-
-            if os.path.exists(DEFAULT_PATH_INSTALLED_ODOO_VERSION):
-                with open(DEFAULT_PATH_INSTALLED_ODOO_VERSION, "r") as f:
-                    installed_versions = [a.strip() for a in f.readlines()]
-                if installed_versions:
-                    for installed_odoo_version in installed_versions:
-                        path_manifest_odoo_version = os.path.join(
-                            "manifest",
-                            f"git_manifest_{installed_odoo_version}.xml",
-                        )
-                        if os.path.exists(path_manifest_odoo_version):
-                            input_paths.append(path_manifest_odoo_version)
-                        else:
-                            print(
-                                f"ERROR: {path_manifest_odoo_version} does not exist"
-                            )
-                        path_manifest_odoo_version = os.path.join(
-                            "manifest",
-                            f"git_manifest_{installed_odoo_version}_dev.xml",
-                        )
-                        if os.path.exists(path_manifest_odoo_version):
-                            input_paths.append(path_manifest_odoo_version)
-
-        if config.with_mobile:
-            append_file_path_manifest(
-                input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
-            )
-        if config.with_extra and odoo_version:
-            path_extra = os.path.join(
-                "manifest",
-                f"git_manifest_extra_odoo{odoo_version.strip()}.xml",
-            )
-            if os.path.exists(path_extra):
-                input_paths.append(path_extra)
-            else:
-                print(f"WARNING: {path_extra} does not exist, skipping extra")
-        if not config.with_mobile or not config.with_OCA:
-            append_file_path_manifest(input_paths, DEFAULT_PATH_MANIFEST_CONF)
-        append_file_path_manifest(
-            input_paths, DEFAULT_PATH_MANIFEST_PRIVATE_CONF
+    if config.input:
+        input_paths = [a for a in config.input.split(";") if a]
+    else:
+        input_paths = default_input_paths(
+            with_OCA=config.with_OCA,
+            with_mobile=config.with_mobile,
+            with_extra=config.with_extra,
+            with_new_manifest=config.with_new_manifest,
         )
 
     remotes_total = {}
     projects_total = {}
     default_remote_total = None
 
-    # Be sure all input is unique
-    input_paths = list(set(input_paths))
+    # Un fichier cité deux fois ne compte qu'une fois, à sa première place.
+    # L'ordre reste celui de la liste : le dernier fichier qui définit un
+    # projet l'emporte, et un ensemble rendrait ce gagnant aléatoire.
+    input_paths = list(dict.fromkeys(input_paths))
+    fichiers_geles = freeze_sources()
+    hors_portee = []
 
     for index, input_path in enumerate(input_paths):
         (
@@ -190,6 +144,8 @@ def main():
         for key, value in projects_copy.items():
             new_key = f"{key}+{value.get('@path')}"
             projects[new_key] = value
+        if input_path not in fichiers_geles:
+            hors_portee += strip_freeze(projects)
 
         if len(input_paths) == 1:
             # Only 1 input, same output
@@ -203,10 +159,20 @@ def main():
             continue
         for key, value in projects.items():
             if key in projects_total:
+                # Le commit gelé et sa base amont suivent la définition qui
+                # l'emporte : ceux d'un fichier antérieur ne survivent pas à
+                # une redéfinition qui n'en porte pas, et qui peut changer
+                # de branche.
+                for attr in (FREEZE_ATTR, FORK_UPSTREAM_FREEZE_ATTR):
+                    projects_total[key].pop(f"@{attr}", None)
                 if config.att_revision_only:
                     revision = value.get("@revision")
                     if revision:
                         projects_total[key]["@revision"] = revision
+                    for attr in (FREEZE_ATTR, FORK_UPSTREAM_FREEZE_ATTR):
+                        sha = value.get(f"@{attr}")
+                        if sha:
+                            projects_total[key][f"@{attr}"] = sha
                 else:
                     projects_total[key].update(value)
             else:
@@ -218,12 +184,159 @@ def main():
             else:
                 remotes_total[key] = copy.deepcopy(value)
 
+    geles, manquants = apply_freeze(projects_total, config.freeze)
+    if config.freeze:
+        print(f"Freeze: {len(geles)} projects pinned to their commit.")
+        print_missing_freeze(manquants, fichiers_geles)
+        if hors_portee:
+            print(
+                f"WARNING: {len(hors_portee)} {FREEZE_ATTR} outside the"
+                " manifests of the active Odoo version are ignored; remove"
+                " them with make repo_unfreeze:"
+            )
+            for cle in sorted(hors_portee):
+                print(f"  - {cle}")
+
     git_tool.generate_repo_manifest(
         remotes_config=remotes_total,
         projects_config=projects_total,
         output=config.output,
         default_remote=default_remote_total,
     )
+
+
+def default_input_paths(
+    with_OCA=False,
+    with_mobile=False,
+    with_extra=False,
+    with_new_manifest=False,
+):
+    """Les fichiers sources du manifeste local, dans leur ordre de fusion.
+
+    Sans `with_new_manifest`, les drapeaux se déduisent du checkout : la
+    version d'Odoo active, les versions installées, l'application mobile,
+    les modules extra. Un fichier cité deux fois n'est gardé qu'à sa
+    PREMIÈRE place, et l'ordre est celui de la liste : lors de la fusion,
+    le dernier fichier qui définit un projet l'emporte.
+    """
+    odoo_version = None
+    if os.path.isfile(ODOO_VERSION_PATH):
+        with open(ODOO_VERSION_PATH, "r") as f:
+            odoo_version = f.readline().strip()
+
+    # Add local manifest
+    if not with_new_manifest:
+        if odoo_version:
+            with_OCA = True
+        if os.path.isdir(MOBILE_PATH):
+            with_mobile = True
+        if odoo_version and get_version_extra(odoo_version.strip()):
+            with_extra = True
+
+    input_paths = []
+    if with_OCA:
+        append_file_path_manifest(input_paths, DEFAULT_PATH_MANIFEST_ODOO_CONF)
+        if os.path.exists(".odoo-version"):
+            if odoo_version:
+                path_manifest_odoo_version = os.path.join(
+                    "manifest", f"git_manifest_odoo{odoo_version}.xml"
+                )
+                if os.path.exists(path_manifest_odoo_version):
+                    input_paths.append(path_manifest_odoo_version)
+                else:
+                    print(
+                        f"ERROR: {path_manifest_odoo_version} does not exist"
+                    )
+                path_manifest_odoo_version = os.path.join(
+                    "manifest", f"git_manifest_odoo{odoo_version}_dev.xml"
+                )
+                if os.path.exists(path_manifest_odoo_version):
+                    input_paths.append(path_manifest_odoo_version)
+
+        if os.path.exists(DEFAULT_PATH_INSTALLED_ODOO_VERSION):
+            with open(DEFAULT_PATH_INSTALLED_ODOO_VERSION, "r") as f:
+                installed_versions = [a.strip() for a in f.readlines()]
+            if installed_versions:
+                for installed_odoo_version in installed_versions:
+                    path_manifest_odoo_version = os.path.join(
+                        "manifest",
+                        f"git_manifest_{installed_odoo_version}.xml",
+                    )
+                    if os.path.exists(path_manifest_odoo_version):
+                        input_paths.append(path_manifest_odoo_version)
+                    else:
+                        print(
+                            f"ERROR: {path_manifest_odoo_version} does not exist"
+                        )
+                    path_manifest_odoo_version = os.path.join(
+                        "manifest",
+                        f"git_manifest_{installed_odoo_version}_dev.xml",
+                    )
+                    if os.path.exists(path_manifest_odoo_version):
+                        input_paths.append(path_manifest_odoo_version)
+
+    if with_mobile:
+        append_file_path_manifest(
+            input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+        )
+    if with_extra and odoo_version:
+        path_extra = os.path.join(
+            "manifest",
+            f"git_manifest_extra_odoo{odoo_version.strip()}.xml",
+        )
+        if os.path.exists(path_extra):
+            input_paths.append(path_extra)
+        else:
+            print(f"WARNING: {path_extra} does not exist, skipping extra")
+    if not with_mobile or not with_OCA:
+        append_file_path_manifest(input_paths, DEFAULT_PATH_MANIFEST_CONF)
+    append_file_path_manifest(input_paths, DEFAULT_PATH_MANIFEST_PRIVATE_CONF)
+
+    return list(dict.fromkeys(input_paths))
+
+
+def strip_freeze(projects):
+    """Retire « freeze-revision » et « fork-upstream-freeze-revision » des
+    projets d'un fichier. Rend les clés qui portaient l'un ou l'autre.
+
+    La fusion n'applique que le gel des fichiers de la version d'Odoo
+    active, ceux que `git_freeze_manifest` écrit ; celui d'un autre fichier
+    est retiré avant la fusion, et son projet suit sa branche.
+    """
+    retires = []
+    for cle, valeur in projects.items():
+        sha = valeur.pop(f"@{FREEZE_ATTR}", None)
+        base = valeur.pop(f"@{FORK_UPSTREAM_FREEZE_ATTR}", None)
+        if sha or base:
+            retires.append(cle)
+    return retires
+
+
+def print_missing_freeze(manquants, fichiers=None):
+    """Liste les projets restés sur leur branche en mode --freeze.
+
+    Seuls ceux des `fichiers` que le gel écrit (par défaut, ceux de la
+    version d'Odoo active) sont un avertissement, nommés un par un ; ceux
+    des autres fichiers ne sont jamais gelés et ne font l'objet que d'un
+    compte.
+    """
+    if fichiers is None:
+        fichiers = freeze_sources()
+    try:
+        portee = set(read_sources(fichiers))
+    except OSError:
+        portee = set(manquants)
+    oublies = sorted(c for c in manquants if c in portee)
+    hors = len(manquants) - len(oublies)
+    if oublies:
+        print(
+            f"WARNING: {len(oublies)} projects have no"
+            f" {FREEZE_ATTR} and follow their branch:"
+        )
+        for cle in oublies:
+            print(f"  - {cle}")
+    if hors:
+        print(f"{hors} projects outside the frozen files follow their branch.")
 
 
 def append_file_path_manifest(input_paths, path_manifest):

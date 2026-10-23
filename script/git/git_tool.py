@@ -545,8 +545,8 @@ class GitTool:
                 )
             # La provenance d'un fork, que git-repo ne sait pas exprimer.
             # « @upstream » et « @dest-branch » portent NOTRE branche, et
-            # « repo manifest -r » les réécrit toutes deux à chaque gel de
-            # version : la branche dont le fork DESCEND n'y tiendrait pas.
+            # la fusion avec « --freeze » les remplit toutes deux de cette
+            # branche : celle dont le fork DESCEND n'y tiendrait pas.
             # git-repo ignore un attribut qu'il ne connaît pas — son parseur
             # est une chaîne de tests sans rejet final — donc ces trois-là
             # traversent un « repo sync » sans rien casser.

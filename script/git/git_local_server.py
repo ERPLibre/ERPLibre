@@ -16,6 +16,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.execute.execute import Execute
+from script.git.manifest_freeze import manifest_branch
 
 _logger = logging.getLogger(__name__)
 
@@ -195,8 +196,22 @@ def require_permissions_or_exit(path):
     sys.exit(1)
 
 
+def _short_branch(branch):
+    """Ce qui suit le dernier « / » : « refs/heads/18.0 » devient « 18.0 »."""
+    if not branch:
+        return None
+    return branch.split("/")[-1] if "/" in branch else branch
+
+
 def parse_manifest(manifest_path):
-    """Parse the manifest XML and return list of projects."""
+    """Lit le manifeste et rend la liste de ses projets.
+
+    « revision » est la valeur brute du manifeste : une branche, ou un
+    commit quand la fusion a tourné avec --freeze. « branch » est la
+    branche que le projet suit dans les deux cas, lue dans « dest-branch »
+    puis « upstream » pour un commit ; None pour un commit sans branche
+    connue.
+    """
     tree = ET.parse(manifest_path)
     root = tree.getroot()
 
@@ -210,12 +225,16 @@ def parse_manifest(manifest_path):
         path = project.get("path")
         remote = project.get("remote")
         revision = project.get("revision")
+        branch = manifest_branch(
+            revision, project.get("upstream"), project.get("dest-branch")
+        )
         projects.append(
             {
                 "name": name,
                 "path": path,
                 "remote": remote,
                 "revision": revision,
+                "branch": branch,
                 "fetch_url": remotes.get(remote, ""),
             }
         )
@@ -249,6 +268,9 @@ def get_erplibre_root_project(erplibre_root):
         "path": ".",
         "remote": "origin",
         "revision": revision,
+        # « --abbrev-ref HEAD » rend « HEAD » sur une tête détachée : ce
+        # n'est pas une branche à extraire.
+        "branch": None if revision == "HEAD" else revision,
         "fetch_url": ERPLIBRE_REPO_URL,
     }
 
@@ -435,14 +457,16 @@ async def _is_detached_head(repo_path):
     return rc != 0
 
 
-async def _checkout_manifest_branch(repo_path, revision):
-    """Checkout the branch from the manifest revision.
+async def _checkout_manifest_branch(repo_path, manifest_branch_name):
+    """Extrait la branche que le projet suit dans le manifeste.
 
-    When Google Repo syncs, repos end up in detached HEAD
-    on the exact commit. We create/checkout a local branch
-    matching the manifest revision so git push works.
+    Google Repo laisse chaque dépôt en tête détachée sur le commit exact.
+    Une branche locale du nom de la branche du manifeste est créée, ou
+    extraite si elle existe, pour que « git push » ait une branche à
+    pousser. Reçoit la clé « branch » de `parse_manifest`, jamais un
+    commit. Rend le nom court de la branche.
     """
-    branch = revision.split("/")[-1] if "/" in revision else revision
+    branch = _short_branch(manifest_branch_name)
 
     # Check if local branch already exists
     _, _, rc = await _run_git(
@@ -478,10 +502,14 @@ async def _update_bare_head(git_path, project):
     if not os.path.isdir(bare_path):
         return
 
-    revision = project.get("revision", "")
-    if not revision:
+    branch = _short_branch(project.get("branch"))
+    if not branch:
+        if project.get("revision"):
+            _logger.info(
+                f"  No branch in manifest for {project['path']},"
+                " bare HEAD left unchanged"
+            )
         return
-    branch = revision.split("/")[-1] if "/" in revision else revision
     await _run_git(
         "git",
         "-C",
@@ -569,14 +597,23 @@ async def _push_single_repo(
         did_checkout = False
         if await _is_detached_head(repo_path):
             revision = project.get("revision", "")
-            if revision:
-                branch = await _checkout_manifest_branch(repo_path, revision)
+            if project.get("branch"):
+                branch = await _checkout_manifest_branch(
+                    repo_path, project["branch"]
+                )
                 _logger.info(
                     f"  Checkout {branch} for"
                     f" {project['path']}"
                     " (was detached HEAD)"
                 )
                 did_checkout = True
+            elif revision:
+                # Un commit sans branche connue : une branche nommée
+                # d'après le commit serait poussée au serveur local.
+                _logger.warning(
+                    f"  Detached HEAD on {revision} with no branch in"
+                    f" manifest for {project['path']}, checkout skipped"
+                )
             else:
                 _logger.warning(
                     f"  Detached HEAD with no revision"

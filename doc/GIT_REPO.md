@@ -42,50 +42,41 @@ git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose
 A [Manifest](https://gerrit.googlesource.com/git-repo/+/master/docs/manifest-format.md), is an XML file managed by
 git-repo to generate a repo.
 
+## Source files and the local manifest
+
+The manifests to edit are the files of `manifest/`: `git_manifest_odoo18.0.xml` for the projects of an Odoo version,
+`git_manifest_extra_odoo18.0.xml` for its extra modules, `git_manifest_mobile_home.xml` for the mobile application.
+git-repo reads none of them. Each reconfiguration merges them into `.repo/local_manifests/erplibre_manifest.xml`, the
+only manifest git-repo reads:
+
+```bash
+make repo_configure_all
+```
+
+That file is written again at every reconfiguration: never edit it, an edit made there is lost at the next one. Edit
+the source file. When two source files define the same project, the last one in the merge order wins.
+
+To merge chosen files only, `--input` takes a list separated by `;`, in merge order:
+
+```bash
+.venv.erplibre/bin/python script/git/git_merge_repo_manifest.py --input "./manifest/git_manifest_odoo18.0.xml;./manifest/git_manifest_odoo18.0_dev.xml" --output /tmp/erplibre_manifest.xml
+```
+
 ## Make a new version of prod
 
-It freezes all repo, from dev to prod.
-
-This will add revision git hash in the manifest.
-
-```bash
-.venv.erplibre/bin/repo manifest -r -o ./default.xml
-```
-
-Commit.
+It freezes the repos of the active Odoo version, from dev to prod: every project receives the commit of its clone
+in its source file, next to its branch. [Freeze the versions](#freeze-the-versions) says what is written and what is skipped.
 
 ```bash
-git commit -am "[#ticket] subject: short sentence"
-```
-
-### Mix prod and dev to create a stage version
-
-When dev contains specific revision with default revision, you need to replace default revision with prod revision and
-keep specific version:
-
-```bash
-./script/git/git_merge_repo_manifest.py --input "./manifest/default.dev.xml;./default.xml" --output ./manifest/default.staged.xml
-git commit -am "Updated manifest/default.staged.xml"
-
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
-
-.venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.staged.xml
-.venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.staged.xml
-
-.venv.erplibre/bin/repo manifest -r -o ./default.xml
+make repo_freeze
+git add manifest/
+git commit -m "[UPD] manifest: freeze the versions of v#.#.#"
 ```
 
 ## Create a dev version
 
-```bash
-.venv.erplibre/bin/repo manifest -o ./manifest/default.dev.xml
-```
-
-Commit.
-
-```bash
-git commit -am "[#ticket] subject: short sentence"
-```
+There is nothing to generate: the source files carry the branches, and a reconfiguration without `FREEZE=1` follows
+them.
 
 ## Useful commands
 
@@ -126,3 +117,220 @@ Maybe, some version diverge from your manifest. Simply clean all and relaunch yo
 ```bash
 ./script/git/clean_repo_manifest.sh
 ```
+
+## Update or upgrade
+
+Two gestures the word "update" used to cover. TODO › Execute › Git › Repo
+separates them, and Execute › Code › Update leads to the same screen.
+
+An **update** moves every project to the tip of the branch its manifest gives
+it. It asks nothing, cannot conflict, and runs every morning.
+
+An **upgrade** fetches the upstream a fork DESCENDS from — another repository,
+at another organisation — and replays the commits the fork carries of its own.
+It can conflict and it rewrites history, so it is observed before it is
+applied.
+
+### Where a fork comes from
+
+git-repo only knows the remote used to CLONE, and for a fork that is the
+fork's own. Three attributes carry what it cannot express:
+
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         fork-upstream-remote="OCA" fork-upstream="18.0" />
+```
+
+`fork-upstream-remote` names the upstream `<remote>`, whose `fetch` gives the
+URL. `fork-upstream-name` appears only on a RENAMED fork, where the upstream
+repository name differs. `fork-upstream` names the upstream branch; its
+ABSENCE, while the remote is declared, says the upstream carries nothing for
+this Odoo version — which is not the same thing as an unknown upstream.
+
+The dry run writes nothing: it brings the upstream into `FETCH_HEAD` and
+predicts the merge in memory, moving no ref and touching no work tree.
+
+```bash
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --diagnostic
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
+```
+
+When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revision`, see
+[Freeze the upstream base](#freeze-the-upstream-base)), the dry run also counts the upstream commits since the freeze,
+or flags in red an upstream rewritten since then: the frozen base is no longer in its history.
+
+### Freeze the versions
+
+Each `<project>` of a source file keeps its BRANCH in `revision`. The freeze writes the commit of its clone next to
+it, in `freeze-revision`:
+
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         freeze-revision="0123456789abcdef0123456789abcdef01234567" />
+```
+
+ONE file therefore carries both readings. Which one applies is an argument of the installation or the
+reconfiguration, stored nowhere: the same checkout follows the commits or the branches depending on how it is
+reconfigured.
+
+#### Write the freeze
+
+The freeze writes into the three files of the active Odoo version (`.odoo-version`), for 18.0
+`manifest/git_manifest_odoo18.0.xml`, `manifest/git_manifest_odoo18.0_dev.xml` and
+`manifest/git_manifest_extra_odoo18.0.xml`, and touches no clone. The other merged files, the common
+`git_manifest_erplibre*.xml` fragments, the other installed versions and the private manifests, are read but never
+written: their projects follow their branch. `--dry-run` shows what would change, `--source` writes only some of the
+three files and may be repeated; a file outside them is refused, since the reconfiguration would ignore its freeze:
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
+make repo_freeze
+git add manifest/
+git commit -m "[UPD] manifest: freeze the versions of v#.#.#"
+```
+
+Not frozen, and listed:
+
+- a project that is not cloned, left as it is;
+- a project that another merged file also defines: the merge keeps one of the definitions depending on the order of
+  the files, and the freeze writes only one;
+- a clone whose commit no remote branch contains, since a new installation could not fetch it: push it first.
+
+A clone with uncommitted changes is frozen on its commit, with a warning: its changes are not part of the freeze. The
+command exits with 1 when nothing was frozen.
+
+#### Freeze the upstream base
+
+The frozen commit of a fork does not say which upstream commit it rests on. `--upstream`, or
+`make repo_freeze UPSTREAM=1`, also writes it beside the fork attributes, in `fork-upstream-freeze-revision`: the merge
+base of the frozen commit and the upstream branch.
+
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         freeze-revision="0123456789abcdef0123456789abcdef01234567"
+         fork-upstream-remote="OCA" fork-upstream="18.0"
+         fork-upstream-freeze-revision="fedcba9876543210fedcba9876543210fedcba98" />
+```
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
+```
+
+It is the only part of the freeze that uses the network, so it is asked for: in TODO, the freeze first asks whether to
+freeze the upstream base too, No by default, and the answer holds for the dry run and for the write. Only a fork whose
+upstream is DECLARED is queried, `fork-upstream-remote` naming a `<remote>` of the merged files and `fork-upstream` its
+branch: a URL guessed from the name of the remote could point to another repository. The upstream branch is fetched
+into `FETCH_HEAD`, four forks at a time, and the base is computed right after. That fetch stores objects in the clone;
+it moves no branch or ref and does not touch the work tree.
+
+A shallow clone is deepened until a base appears: the fork side along its branch, from the URL of its remote, then
+the upstream at the same depth, doubling from 50 to 1600 commits. Only history is added. A base is accepted only when
+no shallow boundary is reachable from the frozen commit or the upstream without going through it: behind a boundary
+may lie a better base, while an older common commit stays reachable through the second parent of a merge.
+
+For each fork the report gives the frozen commit, its base, the commits of the fork since that base and how far it
+lags behind upstream; that delay is shown, never written. A fork without a base is listed with its reason, and its
+commit is frozen all the same:
+
+- `upstream not declared`;
+- `no upstream branch`: the upstream carries nothing for this Odoo version;
+- `upstream unreachable`, or `fork unreachable` when a shallow clone needs the fork's remote to deepen;
+- `shallow: no base within 1600`: no safe base within 1600 commits;
+- `no merge base`: the histories share no commit;
+- `ambiguous merge base`: several merge bases, and none to pick.
+
+The base only holds for the frozen commit beside it: a freeze that changes `freeze-revision` without computing a base
+removes it, and a freeze without `--upstream` keeps it only while the commit does not change. `make repo_unfreeze`
+removes both attributes. Like `freeze-revision`, it never reaches git-repo: the merge consumes it, and drops it from
+the files the freeze does not write. The header of TODO › Execute › Git › Repo counts the forks with an upstream
+base, read from the files without network.
+
+#### Install or reconfigure on the commits
+
+```bash
+make repo_configure_all FREEZE=1
+# same, from the script
+./script/manifest/update_manifest_local_dev.sh --freeze
+```
+
+`.repo/local_manifests/erplibre_manifest.xml` then carries the commit in `revision`, and the branch in `upstream` and
+`dest-branch`: `repo sync -c` fetches the commit, and a branch opened by `repo start` follows the branch rather than
+the commit. `freeze-revision` never reaches that file, git-repo does not know it. A project without `freeze-revision`,
+added after the freeze or skipped by it, follows its branch, and the reconfiguration lists it under a WARNING; the
+projects of the files the freeze does not write are only counted. A `freeze-revision` found in one of those files is
+ignored and listed under a WARNING: `make repo_unfreeze` removes it.
+
+#### Follow the branches again
+
+A reconfiguration without the argument follows the branches, whether the files carry a freeze or not: the freeze
+stays written, ready for the next `FREEZE=1`. `make repo_unfreeze` removes it from every source file:
+
+```bash
+# follow the branches, the freeze stays written
+make repo_configure_all
+# remove the freeze from every source file, then commit
+make repo_unfreeze
+```
+
+#### Compare two freezes
+
+A side of the comparison is an ERPLibre revision (`HEAD`, a tag, a commit), `worktree` for the files of `manifest/` on
+disk, or `clones` for the commit each clone is on. Without argument, the committed freeze is compared to the clones:
+what moved since the last freeze. The report also says which commit ERPLibre is on, whether `manifest/` holds a freeze
+not committed yet — a `freeze-revision` or a `fork-upstream-freeze-revision` that differs from HEAD, the base alone
+being enough —, and which clones carry uncommitted changes.
+
+```bash
+make repo_freeze_diff                                # HEAD -> clones
+make repo_freeze_diff TO=worktree                    # what the last freeze wrote
+make repo_freeze_diff ARGS=--previous                # previous freeze -> last freeze
+make repo_freeze_diff FROM=v1.8.0 TO=HEAD ARGS="--log --group-by module"
+.venv.erplibre/bin/python script/git/git_freeze_diff.py --list   # commits that changed a freeze
+```
+
+A compact table lists each changed project: old and new commit, commits gained and lost (`rollback` when the new
+commit only goes back), files and lines changed. A line above it gives the totals of all changed projects: commits
+gained and lost, files, lines added and removed, and how many projects a missing commit or a shallow clone leaves
+out. Below it, each project's diffstat is shown whole when the total is
+short, and limited to 10 files beyond 60 changed files; `--stat-count N` decides, 0 shows everything. The changed lines
+are then grouped by file type, Odoo module or folder (`--group-by`), per project and for all of them. `--log` adds the
+`git log --oneline` of each project, `--tig N` opens the history of project N in tig, or of each in turn without N.
+
+Commits are compared inside the local clone, without network. A commit the clone lacks is listed with its full SHA;
+`--fetch` fetches those commits from every remote of the clone, in parallel, before counting. In a shallow clone, two
+commits without a known common ancestor are not counted (`? shallow`): the cut history would show a divergence that
+does not exist. `--previous` and `--list` keep the commits that pin at least one project to a new commit; a commit that
+only unfreezes, or only edits another part of a frozen line, is not a freeze.
+
+The `vs branch` column places both commits on the branch the manifest names: `18.0 -12->tip` means the old commit was
+12 commits behind the tip of `18.0`, and the new one is the tip; `+2 off` counts commits that are not on that branch.
+Below it, each project names the refs of the clone that point to or contain each commit (branches, remote branches,
+tags, git-repo's `m/`), the ERPLibre branches and tags whose `manifest/` freezes that same commit, and the date of the
+clone's last fetch: remote branches are as fresh as that fetch, and a clone not fetched for over 7 days is listed.
+`--fetch` refreshes the branches and tags of every changed clone and fetches the commits it lacks, in parallel.
+`--graph N` opens the decorated graph of both commits and the tip of their branch, from their common ancestor.
+
+Between two freezes, a fork whose `fork-upstream-freeze-revision` changed carries `upstream <old> -> <new> +N -M` in
+its notes: the upstream commits of the new base missing from the old one, then the reverse, `-` standing for a side
+without a base. The counts are left out when a base is missing from the clone, or when a shallow clone does not know
+their common ancestor. The base can change under a frozen commit that does not: such projects are listed under
+`Upstream base changed, same frozen commit`. The `clones` side has no base, and shows no such line.
+
+A side may be any ERPLibre branch or tag: `--list-refs` lists those holding a freeze. `--matrix` shows, project by
+project, the frozen commit in several sides at once, by default those branches and tags, `worktree` and `clones`;
+only the projects where they differ, `=` standing for the commit of the column to its left:
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_diff.py --list-refs
+make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
+make repo_freeze_diff ARGS="--graph 1"
+```
+
+In TODO › Git repo, entry 12 offers the usual comparisons, a choice of two revisions among the freeze commits and the
+ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
+`b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
+`w` the command that opens an old commit in a git worktree beside the clone, without moving it.

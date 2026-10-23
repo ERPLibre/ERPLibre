@@ -21,6 +21,12 @@ et prédit la fusion en mémoire, sans déplacer de référence ni toucher l'arb
 de travail. Le constat coûte quelques secondes sur l'ensemble des forks, et
 se rejoue autant de fois qu'on veut.
 
+Le GEL écrit le commit de chaque clone de la version d'Odoo active à côté
+de sa branche, dans ses fichiers de `manifest/` (`git_manifest_odoo<V>.xml`,
+`_dev`, `git_manifest_extra_odoo<V>.xml`). Suivre les branches ou les commits gelés est un
+argument de la reconfiguration, jamais un état enregistré : le mode que
+l'en-tête affiche se lit dans le manifeste local que git-repo utilise.
+
 Module à part plutôt que méthodes de `TODO` : le fichier principal passe les
 cinq mille lignes, et chaque sujet y a désormais le sien.
 """
@@ -36,7 +42,13 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.git import repo_apply, repo_upgrade  # noqa: E402
+from script.git import (  # noqa: E402
+    git_freeze_diff,
+    git_freeze_manifest,
+    manifest_freeze,
+    repo_apply,
+    repo_upgrade,
+)
 from script.todo.todo_i18n import t  # noqa: E402
 
 # La racine du dépôt. Le lanceur de git-repo porte un shebang RELATIF vers le
@@ -44,6 +56,13 @@ from script.todo.todo_i18n import t  # noqa: E402
 # et meurt sur « bad interpreter ». Toutes ses invocations partent donc d'ici.
 RACINE = new_path
 REPO_BIN = ".venv.erplibre/bin/repo"
+PYTHON_ERPLIBRE = "./.venv.erplibre/bin/python"
+FREEZE_SCRIPT = "script/git/git_freeze_manifest.py"
+# Le manifeste que git-repo lit, produit par la fusion des fichiers de
+# `manifest/`. Ses « revision » disent ce que le checkout suit réellement.
+MANIFESTE_LOCAL = os.path.join(
+    ".repo", "local_manifests", "erplibre_manifest.xml"
+)
 
 # Les états que « repo_apply » rend, traduits en clés d'affichage. Les clés
 # du catalogue sont des phrases anglaises ; les états sont des identifiants
@@ -58,12 +77,93 @@ ETATS = {
 }
 
 
+def etat_manifeste_local(racine=RACINE):
+    """(épinglés, total) des projets du manifeste local, ou None s'il manque.
+
+    Un projet est épinglé quand sa « revision » est un commit complet. Le
+    mode du checkout se LIT ici plutôt que de s'enregistrer à part : c'est
+    la dernière reconfiguration qui l'a fixé, et ce fichier en est la trace.
+    """
+    try:
+        with open(os.path.join(racine, MANIFESTE_LOCAL)) as fh:
+            texte = fh.read()
+    except OSError:
+        return None
+    projets = [attrs for _, _, attrs in manifest_freeze.iter_projects(texte)]
+    epingles = [
+        p for p in projets if manifest_freeze.is_sha(p.get("revision"))
+    ]
+    return len(epingles), len(projets)
+
+
+def libelle_mode(etat):
+    """Le mode que l'en-tête affiche, tiré d'`etat_manifeste_local`."""
+    if etat is None:
+        return t("no local manifest")
+    epingles, total = etat
+    if epingles:
+        return f"{epingles}/{total} {t('projects pinned to a commit')}"
+    return t("follows the branches")
+
+
+def gel_des_sources(racine=RACINE):
+    """(gelés, total) des projets des fichiers que le gel écrit — ceux de la
+    version d'Odoo active —, ou None illisible.
+
+    Un projet est gelé quand l'un de ses fichiers lui donne
+    « freeze-revision ». Les chemins des sources sont relatifs à la racine
+    du dépôt : le répertoire courant y passe le temps de la lecture, puis
+    revient.
+    """
+    depart = os.getcwd()
+    try:
+        os.chdir(racine)
+        definitions = git_freeze_manifest.read_sources(
+            git_freeze_manifest.freeze_sources()
+        )
+    except OSError:
+        return None
+    finally:
+        os.chdir(depart)
+    geles = [
+        cle
+        for cle, defs in definitions.items()
+        if any(attrs.get(manifest_freeze.FREEZE_ATTR) for _, attrs in defs)
+    ]
+    return len(geles), len(definitions)
+
+
+def ligne_du_gel(sources, forks):
+    """La ligne d'en-tête du gel des fichiers de `manifest/`, ou None.
+
+    `sources` vient de `gel_des_sources`, `forks` d'`etat_forks`. La ligne
+    compte les projets gelés, puis les forks dont le gel a écrit la base
+    amont dans « fork-upstream-freeze-revision » : la lire ne coûte aucun
+    réseau. Sans `sources`, pas de ligne.
+    """
+    if not sources:
+        return None
+    ligne = (
+        f"   {t('Frozen in the manifest files:')} {sources[0]}/{sources[1]}"
+    )
+    if forks:
+        avec = len([f for f in forks if f.get("base_gelee")])
+        ligne += f" · {avec}/{len(forks)} {t('forks with upstream base')}"
+    return ligne
+
+
 class GitRepoMenuMixin:
     def prompt_execute_git_repo(self):
         version = repo_upgrade.version_active(RACINE) or "?"
         forks = repo_upgrade.etat_forks(version)
         print(f"🔃 {t('Update and upgrade the git repositories')}")
-        print(f"   Odoo {version} · {len(forks)} {t('forks')}")
+        print(
+            f"   Odoo {version} · {len(forks)} {t('forks')}"
+            f" · {libelle_mode(etat_manifeste_local())}"
+        )
+        ligne = ligne_du_gel(gel_des_sources(), forks)
+        if ligne:
+            print(ligne)
         choices = [
             {"section": t("Update")},
             {"prompt_description": t("🔄 Synchronize the repositories")},
@@ -76,6 +176,11 @@ class GitRepoMenuMixin:
             {"prompt_description": t("📊 Report of the last pass")},
             {"prompt_description": t("🖥️ Browse the upgrade on screen")},
             {"prompt_description": t("🔗 Fork and upstream status")},
+            {"section": t("Versions")},
+            {"prompt_description": t("🧊 Freeze the versions")},
+            {"prompt_description": t("📌 Reconfigure on the frozen commits")},
+            {"prompt_description": t("🫗 Unfreeze the versions")},
+            {"prompt_description": t("🔀 Compare two freezes")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -99,11 +204,22 @@ class GitRepoMenuMixin:
                 self._git_repo_ecran()
             elif status == "8":
                 self._git_repo_etat_forks()
+            elif status == "9":
+                self._git_repo_geler()
+            elif status == "10":
+                self._git_repo_reconfigurer(freeze=True)
+            elif status == "11":
+                self._git_repo_geler(unfreeze=True)
+            elif status == "12":
+                self._git_repo_comparer()
             else:
                 print(t("Command not found !"))
 
     def _git_repo_sync(self):
-        """Ramène chaque dépôt sur la pointe de sa branche de manifeste.
+        """Ramène chaque dépôt sur la révision de son manifeste local.
+
+        Cette révision est la pointe de la branche, ou le commit gelé quand
+        la dernière reconfiguration a tourné sur les commits gelés.
 
         Le chemin court : il ne régénère pas le manifeste local. Une
         modification apportée aux fichiers de `manifest/` ne prendra donc
@@ -122,14 +238,28 @@ class GitRepoMenuMixin:
             print(f"✅ {t('Repositories synchronized.')}")
         return status
 
-    def _git_repo_reconfigurer(self):
+    def _git_repo_reconfigurer(self, freeze=False):
         """Régénère le manifeste local, puis synchronise.
 
         Le chemin complet, et le seul qui prenne en compte une modification
         des fichiers de `manifest/` : il refond les fragments en un manifeste
         local et relance `repo init` avant de synchroniser.
+
+        Sans `freeze`, chaque projet suit sa branche. Avec `freeze`, chaque
+        projet qui porte « freeze-revision » est posé sur ce commit, et les
+        autres suivent leur branche ; la fusion les liste. Le choix n'est
+        enregistré nulle part : la reconfiguration suivante, lancée sans
+        l'argument, revient aux branches.
         """
+        if freeze:
+            sources = gel_des_sources()
+            if sources is not None and not sources[0]:
+                print(f"⚠  {t('No commit is frozen in the manifest files.')}")
+                print(f"   {t('Freeze the versions first.')}")
+                return 1
         cmd = "make repo_configure_all"
+        if freeze:
+            cmd += " FREEZE=1"
         print(f"  {t('Will execute:')} {cmd}")
         status = self.execute.exec_command_live(
             f"cd {RACINE} && {cmd}", source_erplibre=False
@@ -398,3 +528,262 @@ class GitRepoMenuMixin:
         lst = repo_upgrade.passe_diagnostic(version, racine=RACINE)
         git_repo_tui.run_git_repo_tui({"version": version, "forks": lst})
         return len(lst)
+
+    def _git_repo_geler(self, unfreeze=False):
+        """Écrit le commit de chaque clone de la version d'Odoo active dans
+        son fichier de `manifest/`, ou l'ôte de tous les fichiers.
+
+        Le geste écrit des fichiers de `manifest/` à committer et ne déplace
+        aucun clone. La passe à sec tourne d'abord et montre chaque fichier
+        touché ; rien ne s'écrit sans confirmation. Le gel prend effet à la
+        reconfiguration sur les commits gelés ; le dégel, à la
+        reconfiguration qui suit les branches.
+
+        Le gel demande d'abord s'il écrit aussi la base amont de chaque fork
+        (« --upstream »), non par défaut : elle passe par le réseau. La
+        réponse vaut pour la passe à sec ET pour l'écriture : la passe à sec
+        montre donc les bases que l'écriture posera. Chaque passe interroge
+        l'amont, la passe à sec ne laissant rien que l'écriture puisse
+        relire ; le second fetch ne rapatrie que ce qui a bougé depuis le
+        premier.
+
+        Rend le code de sortie du script : 1 quand aucun clone n'est gelable.
+        """
+        script = f"{PYTHON_ERPLIBRE} {FREEZE_SCRIPT}"
+        if unfreeze:
+            script += " --unfreeze"
+            print(f"🫗 {t('Unfreeze the versions')}")
+        else:
+            print(f"🧊 {t('Freeze the versions')}")
+            if click.confirm(
+                t("Also freeze the upstream base of each fork (network)?"),
+                default=False,
+            ):
+                script += " --upstream"
+                attente = t(
+                    "Querying each upstream, this takes a few seconds."
+                )
+                print(f"   {attente}")
+        cmd = f"{script} --dry-run"
+        print(f"  {t('Will execute:')} {cmd}")
+        status = self.execute.exec_command_live(
+            f"cd {RACINE} && {cmd}", source_erplibre=False
+        )
+        if status:
+            echec = t("Nothing was written; see the messages above.")
+            print(f"⚠  {echec} ({status})")
+            return status
+        if not click.confirm(
+            t("Write these changes to the manifest files?"), default=False
+        ):
+            print(f"↩️  {t('Cancelled: nothing was written.')}")
+            return 0
+        print(f"  {t('Will execute:')} {script}")
+        status = self.execute.exec_command_live(
+            f"cd {RACINE} && {script}", source_erplibre=False
+        )
+        if status:
+            print(f"⚠  {t('The manifest files were not written.')} ({status})")
+            return status
+        print(f"✅ {t('Manifest files written; commit them to share them.')}")
+        if unfreeze:
+            print(f"   {t('Apply with: Reconfigure and synchronize.')}")
+        else:
+            print(f"   {t('Apply with: Reconfigure on the frozen commits.')}")
+        return 0
+
+    def _git_repo_comparer(self):
+        """Compare deux gels, puis ouvre l'historique d'un projet sur demande.
+
+        Le rapport se calcule une fois, en mémoire : la boucle qui suit en
+        relit les lignes sans refaire la comparaison. Rend 0, ou 2 sur une
+        révision inconnue.
+        """
+        print(f"🔀 {t('Compare two freezes')}")
+        cas = self._git_repo_choisir_comparaison()
+        if not cas:
+            return 0
+        try:
+            rapport = git_freeze_diff.build(RACINE, *cas)
+        except ValueError as exc:
+            print(f"⚠  {exc}")
+            return 2
+        print("\n".join(git_freeze_diff.render_summary(rapport, menu=True)))
+        self._git_repo_parcourir_comparaison(rapport)
+        return 0
+
+    def _git_repo_choisir_comparaison(self):
+        """(gauche, droite) que l'on compare, ou None pour revenir."""
+        print(f"  [1] 💻 {t('Committed freeze → clones (real state)')}")
+        print(f"  [2] 📝 {t('Written freeze (manifest/) → clones')}")
+        print(
+            f"  [3] 🚧 {t('Committed freeze → written freeze, not committed')}"
+        )
+        print(f"  [4] ⏪ {t('Previous freeze → last freeze')}")
+        print(f"  [5] 🎯 {t('Two revisions of your choice')}")
+        print(
+            "  [6] 🧮"
+            f" {t('Matrix: the ERPLibre branches and tags side by side')}"
+        )
+        print(f"  [0] {t('Back')}")
+        choix = input("  : ").strip()
+        cas = {
+            "1": ("HEAD", git_freeze_diff.CLONES),
+            "2": (git_freeze_diff.WORKTREE, git_freeze_diff.CLONES),
+            "3": ("HEAD", git_freeze_diff.WORKTREE),
+        }
+        if choix in cas:
+            return cas[choix]
+        if choix == "4":
+            paire = git_freeze_diff.previous_freeze(RACINE)
+            if not paire:
+                print(f"⚠  {t('Fewer than two commits changed a freeze.')}")
+            return paire
+        if choix == "5":
+            return self._git_repo_saisir_revisions()
+        if choix == "6":
+            self._git_repo_matrice()
+            return None
+        if choix not in ("", "0"):
+            print(t("Command not found !"))
+        return None
+
+    def _git_repo_saisir_revisions(self):
+        """Demande les deux côtés : un numéro des listes affichées (commits
+        de gel, puis branches et tags d'ERPLibre qui portent un gel), une
+        révision d'ERPLibre, « worktree » ou « clones »."""
+        gels = git_freeze_diff.freeze_commits(RACINE)
+        refs, _ = git_freeze_diff.frozen_refs(RACINE)
+        choix = [sha for sha, _, _ in gels] + [c for _, c in refs]
+        if gels:
+            print(f"  {t('Commits that changed a freeze:')}")
+            for i, (sha, date, sujet) in enumerate(gels, 1):
+                print(f"   {i:>2}. {sha[:8]}  {date}  {sujet}")
+        else:
+            print(f"  {t('No commit changed a freeze yet.')}")
+        if refs:
+            print(f"  {t('ERPLibre branches and tags holding a freeze:')}")
+            for i, (noms, commit) in enumerate(refs, len(gels) + 1):
+                print(f"   {i:>2}. {commit[:8]}  {noms}")
+
+        def lire(question, defaut):
+            valeur = click.prompt(question, default=defaut).strip()
+            if valeur.isdecimal() and 1 <= int(valeur) <= len(choix):
+                return choix[int(valeur) - 1]
+            return valeur
+
+        aide = t("number, revision, worktree or clones")
+        gauche = lire(f"  {t('From')} ({aide})", "HEAD")
+        droite = lire(f"  {t('To')} ({aide})", git_freeze_diff.CLONES)
+        return gauche, droite
+
+    def _git_repo_matrice(self):
+        """Affiche la matrice des gels : les branches et tags d'ERPLibre qui
+        en portent un, le disque et les clones, ou les côtés saisis."""
+        defaut = ",".join(git_freeze_diff.default_matrix_sides(RACINE))
+        cotes = click.prompt(
+            f"  {t('Sides, separated by commas')}", default=defaut
+        )
+        try:
+            table = git_freeze_diff.matrix(
+                RACINE, [c.strip() for c in cotes.split(",") if c.strip()]
+            )
+        except ValueError as exc:
+            print(f"⚠  {exc}")
+            return 2
+        print("\n".join(git_freeze_diff.render_matrix(table)))
+        return 0
+
+    def _git_repo_geste_projet(self, rapport, prefixe, choix, groupe):
+        """Un geste sur les projets que `choix` désigne (un numéro, ou
+        « all ») : « s » le diffstat complet, « b » le graphe avec les
+        branches, rien l'historique dans tig.
+
+        Un tig quitté autrement que par « q » (Ctrl-C, une erreur) arrête la
+        suite : « a » se laisse interrompre.
+        """
+        lignes = git_freeze_diff.select_rows(rapport, choix)
+        if not lignes:
+            print(f"⚠  {t('No changed project with both commits here.')}")
+            return
+        if prefixe == "s":
+            details = git_freeze_diff.render_details(
+                rapport,
+                stat_count=0,
+                group_by=groupe,
+                numeros={int(choix)},
+                menu=True,
+            )
+            print("\n".join(details))
+            return
+        ouvrir = (
+            git_freeze_diff.open_graph
+            if prefixe == "b"
+            else git_freeze_diff.open_history
+        )
+        for ligne in lignes:
+            if ouvrir(RACINE, ligne):
+                break
+
+    def _git_repo_parcourir_comparaison(self, rapport):
+        """Les gestes offerts sur un rapport de comparaison.
+
+        tig hérite du terminal : il ne passe pas par `exec_command_live`,
+        dont le tube sur la sortie le priverait de son écran.
+        """
+        groupes = [g for g in git_freeze_diff.GROUPS if g != "none"]
+        groupe = groupes[0]
+        while True:
+            if not git_freeze_diff.changed_rows(rapport):
+                return
+            print()
+            print(f"  N   🐯 {t('tig on project N of the table')}")
+            print(f"  a   🐯 {t('tig on each project, one after another')}")
+            print("  l   📜 git log --oneline")
+            print(f"  d   📊 {t('Diffstat and groups')} ({groupe})")
+            print(f"  s N 📊 {t('Full diffstat of project N')}")
+            print(f"  b N 🌿 {t('Graph of project N with its branches')}")
+            print(f"  g   🗂  {t('Next grouping: file type, module, folder')}")
+            print(
+                f"  f   📥 {t('Refresh: branches, tags and missing commits')}"
+            )
+            print(f"  w   🌳 {t('Open an old commit in a git worktree')}")
+            print(f"  ⏎   {t('Back')}")
+            choix = input("  : ").strip().lower()
+            if choix in ("", "0"):
+                return
+            prefixe = choix[:1] if choix[:1] in ("s", "b") else ""
+            numero = choix[len(prefixe) :].strip()
+            if numero.isdecimal() or choix == "a":
+                self._git_repo_geste_projet(
+                    rapport, prefixe, "all" if choix == "a" else numero, groupe
+                )
+            elif choix == "l":
+                print("\n".join(git_freeze_diff.render_logs(rapport)))
+            elif choix == "d":
+                print(
+                    "\n".join(
+                        git_freeze_diff.render_details(
+                            rapport, group_by=groupe, menu=True
+                        )
+                    )
+                )
+            elif choix == "g":
+                groupe = groupes[(groupes.index(groupe) + 1) % len(groupes)]
+                print(f"  {t('Grouping:')} {groupe}")
+            elif choix == "f":
+                print(f"  📥 {t('Refreshing the clones, in parallel.')}")
+                restes = git_freeze_diff.fetch_missing(RACINE, rapport["rows"])
+                for chemin, shas in sorted(restes.items()):
+                    print(
+                        f"⚠  {t('Still missing:')} {chemin} {', '.join(shas)}"
+                    )
+                print(
+                    "\n".join(
+                        git_freeze_diff.render_summary(rapport, menu=True)
+                    )
+                )
+            elif choix == "w":
+                print("\n".join(git_freeze_diff.render_tip(rapport)))
+            else:
+                print(t("Command not found !"))
