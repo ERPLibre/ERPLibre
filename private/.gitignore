@@ -28,3 +28,7 @@ sms/
 # fabricant et modèle, points de montage, venvs. Ils décrivent UNE machine et
 # n'ont rien à faire dans un dépôt dont le distant est public.
 diagnostic/
+
+# Registre des instances Dolibarr : chemins, domaines et ports des instances
+# de CETTE machine.
+/dolibarr/instances.json
