@@ -132,6 +132,111 @@ dépôt, chez une autre organisation — et rejoue les commits que le fork porte
 en propre. Elle peut entrer en conflit et réécrit un historique, donc elle se
 constate avant de s'appliquer.
 
+**Tirer** est la mise à jour d'un checkout déployé qui porte des commits ou des
+modifications à lui : chaque dépôt intègre sa cible par les gestes de
+`git pull` (avance rapide, rebase ou fusion), après une branche de sauvegarde,
+et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
+Repo, et le module Odoo `erplibre_info`.
+
+### Tirer les dépôts
+
+Deux modes. **manifeste** (par défaut) tire la racine ERPLibre sur sa branche
+suivie, régénère `.repo/local_manifests/erplibre_manifest.xml` par
+`git_merge_repo_manifest.py` — gelé quand le manifeste local l'est déjà — puis
+chaque clone intègre la cible de sa nouvelle entrée, HEAD détachée comprise. Un
+clone détaché sans commit à lui — aucun qui manque à une référence de suivi —
+passe sur sa cible par `checkout --detach`, comme `repo sync` (`bascule`),
+quelle que soit la stratégie ; quand le manifeste mène un clone porteur de
+commits locaux sur une autre ligne amont, le rebase ne rejoue que ces commits.
+**branches** tire chaque clone sur la branche qu'il suit (`@{u}`), ou sur le
+remote et la branche que lui donne son entrée du manifeste ; une HEAD détachée
+est sautée. La racine est un dépôt comme les autres dans les deux modes.
+
+La stratégie vaut `rebase` (par défaut), `ff` (avance rapide seulement : un
+dépôt divergé reste tel quel) ou `merge`. Un dépôt en retard sur sa cible
+avance rapidement quelle que soit la stratégie.
+
+L'essai à sec ne fait que récupérer : aucune branche locale, aucune HEAD, aucun
+arbre de travail ne bouge. Pour chaque dépôt, il montre la cible, les commits
+entrants, ses commits à lui, si ses fichiers suivis sont modifiés (ils seront
+mis de côté, puis réappliqués), s'il est superficiel, les fichiers locaux
+ignorés que la cible se met à suivre (git les écraserait sans rien dire : le
+tirage les copie d'abord dans sa passe, et les remet quand le dépôt revient à
+son départ), puis le manifeste régénéré, les dépôts nouveaux et retirés, et les
+fichiers de dépendances Python qui changent. Un tag du manifeste se récupère
+sous `refs/repo_pull/tags/` : un tag local du même nom ne bouge jamais.
+
+Le tirage refait l'essai à sec et n'écrit rien si un dépôt, sa cible ou son
+HEAD a changé depuis celui qui a été montré. Avant de déplacer HEAD, il y pose
+la branche `<branche>_avant_pull_<AAAAMMJJTHHMM>` — une référence seulement. Un
+rebase ou une fusion en conflit est abandonné et le dépôt revient sur son
+commit de départ, stash réappliqué (`conflit_annule`) ; les autres continuent.
+Un `stash pop` en conflit laisse l'arbre sur le commit tiré et garde le stash,
+avec la commande qui le réapplique (`stash_garde`). Un arbre encore modifié
+après un `stash push` qui n'a rien gardé — un sous-module passé sur un autre
+commit — est refusé ; le contenu modifié dans un sous-module ne compte pas comme
+une modification. Rien n'est poussé. La passe s'inscrit sous
+`tasks/git_repo_pull/<horodatage>/`, après chaque dépôt.
+
+`--budget SECONDES` borne une passe : au-delà, aucun dépôt, aucun palier
+d'approfondissement, aucun clonage ni aucune installation ne commence plus
+(`saute_delai`), et la passe répond quand même. `erplibre_info` lui donne un
+budget sous le délai de son appel. Un appel tué malgré tout emporte son groupe
+de processus entier, et les sauvegardes de sa passe se relisent par leur
+horodatage ; le redémarrage attend alors un nouvel essai à sec.
+
+Un clone superficiel se récupère par `--shallow-since`, jamais `--depth`, qui
+raccourcirait l'historique de HEAD. La borne est la plus ancienne frontière de
+l'historique de HEAD moins une heure. Une frontière qu'une récupération pose
+dans l'historique de HEAD (un commit daté avant son parent) est retirée, et une
+frontière nouvelle de la cible plus récente que la borne — la fusion d'une
+vieille branche, qui cache HEAD — est repoussée par `--deepen=1`, quatre fois au
+plus : une telle avance rapide en reste une. Quand aucune base commune sûre
+n'apparaît, l'essai à sec le dit et le tirage n'approfondit ce clone que sur
+demande (réseau) : `--deepen` par paliers doublés, jusqu'à 1600 commits.
+
+Un dépôt du manifeste régénéré qui n'est pas encore cloné ne se clone que sur
+demande, par un `repo sync` restreint à son chemin : un simple `git clone`
+casserait le `repo sync` suivant. Il est refusé quand `.repo/project.list`
+nomme un projet que le manifeste abandonne, car `repo sync` effacerait son
+arbre. Un projet retiré du manifeste reste sur le disque, intact.
+
+Quand `poetry.lock` ou le `pyproject.toml` du couple actif change, le tirage
+propose `poetry install --no-root` dans l'environnement virtuel d'Odoo ; il se
+lance aussi plus tard, ou se saute avant un redémarrage. Un lien
+`pyproject.toml` ou `poetry.lock` redirigé est un nouveau couple Python/Odoo :
+il demande `make install`.
+
+Chaque sauvegarde se restaure (le dépôt y revient ; son arbre ne doit porter
+aucune modification suivie, être sur la même branche, ou détaché comme il
+l'était, et sur le commit où la passe l'a laissé : un commit fait après le
+tirage n'est jamais ôté, `head_deplacee`) ou se supprime, restaurée ou non.
+Restaurer la racine remet aussi le manifeste local que la passe avait remplacé.
+
+#### Tirer sans le menu
+
+`script/git/repo_pull.py` écrit un objet JSON, pour un appelant qui montre
+l'essai à sec et recueille le consentement, tel `erplibre_info`. `--dry-run`
+liste dans `attendus` les épingles `<chemin>=<sha cible>:<sha HEAD>` des dépôts
+qu'il tirerait ; `--apply` les reprend par `--expect`, et `--confirm` doit
+valoir la version d'Odoo active (code de sortie 2 sinon). Un plan qui a changé
+n'écrit rien (code de sortie 4). Les clones superficiels demandent
+`--approve-deepen` et les épingles d'`attendus_superficiel`, les nouveaux
+dépôts `--approve-clone` et un `--expect-clone` par chemin de `plan_nouveaux` ;
+`--approve-deps` lance `poetry install` à la fin. `--path` restreint la passe à
+un dépôt (`.` est la racine), `--pass` donne son horodatage et `--budget` son
+délai. Le code de sortie 5 dit qu'une autre passe tient le verrou du checkout.
+
+```bash
+.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --pretty
+.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --mode branche --strategy ff
+.venv.erplibre/bin/python script/git/repo_pull.py --apply --confirm 18.0 --expect odoo18.0/addons/OCA_web=TARGET_SHA:HEAD_SHA
+.venv.erplibre/bin/python script/git/repo_pull.py --list-backups
+.venv.erplibre/bin/python script/git/repo_pull.py --restore-backup odoo18.0/addons/OCA_web=18.0_avant_pull_20260101T0800 --confirm 18.0
+.venv.erplibre/bin/python script/git/repo_pull.py --delete-backup odoo18.0/addons/OCA_web=18.0_avant_pull_20260101T0800 --confirm 18.0
+.venv.erplibre/bin/python script/git/repo_pull.py --install-deps --confirm 18.0 --pass 20260101T0800
+```
+
 ### D'où descend un fork
 
 git-repo ne connaît que le remote qui sert à CLONER, et pour un fork c'est
@@ -177,7 +282,7 @@ tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne 
 
 ### Ajouter les remotes amont
 
-`Ajouter les remotes amont`, l'entrée 3 de TODO › Execute › Git › Repo, ou
+`Ajouter les remotes amont`, l'entrée 4 de TODO › Execute › Git › Repo, ou
 `--add-remotes`, ne fait que cela, sur chaque fork, sans diagnostic : poser le
 remote amont nommé, puis récupérer sa branche. L'entrée du menu passe chaque
 version d'Odoo du checkout, chaque arbre `odoo<V>/` qui a un manifeste, en
@@ -461,7 +566,7 @@ make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
 make repo_freeze_diff ARGS="--graph 1"
 ```
 
-Dans TODO › Git repo, l'entrée 14 propose les comparaisons courantes, le choix de deux révisions parmi les commits de
+Dans TODO › Git repo, l'entrée 15 propose les comparaisons courantes, le choix de deux révisions parmi les commits de
 gel et les branches et tags d'ERPLibre, et la matrice. Sur le rapport : un numéro ouvre tig sur ce projet, `a` sur
 chacun à la suite, `b N` le graphe avec les branches, `l` le journal, `d` et `s N` les diffstats, `g` le regroupement
 suivant, `f` le rafraîchissement, `w` la commande qui ouvre un ancien commit dans un worktree git à côté du clone, sans

@@ -19298,6 +19298,299 @@ TRANSLATIONS = {
         "fr": "Toujours absent :",
         "en": "Still missing:",
     },
+    # Tirer les dépôts (script/git/repo_pull.py)
+    "⬇️ Pull the repositories": {
+        "fr": "⬇️ Tirer les dépôts",
+        "en": "⬇️ Pull the repositories",
+    },
+    "Pull the repositories": {
+        "fr": "Tirer les dépôts",
+        "en": "Pull the repositories",
+    },
+    "Mode: 1 manifest, 2 branches": {
+        "fr": "Mode : 1 manifeste, 2 branches",
+        "en": "Mode: 1 manifest, 2 branches",
+    },
+    "Strategy (rebase, ff, merge)": {
+        "fr": "Stratégie (rebase, ff, merge)",
+        "en": "Strategy (rebase, ff, merge)",
+    },
+    "Querying each remote, this takes a few seconds.": {
+        "fr": "Interrogation de chaque remote, quelques secondes.",
+        "en": "Querying each remote, this takes a few seconds.",
+    },
+    "Nothing to pull: nothing to confirm.": {
+        "fr": "Rien à tirer : rien à confirmer.",
+        "en": "Nothing to pull: nothing to confirm.",
+    },
+    "Deepen the shallow clones (network)? (y/N): ": {
+        "fr": "Approfondir les clones superficiels (réseau) ? (o/N) : ",
+        "en": "Deepen the shallow clones (network)? (y/N): ",
+    },
+    "Clone the new repositories? (y/N): ": {
+        "fr": "Cloner les nouveaux dépôts ? (o/N) : ",
+        "en": "Clone the new repositories? (y/N): ",
+    },
+    "repositories will be pulled.": {
+        "fr": "dépôts seront tirés.",
+        "en": "repositories will be pulled.",
+    },
+    "A backup branch is created on each HEAD:": {
+        "fr": "Une branche de sauvegarde est posée sur chaque HEAD :",
+        "en": "A backup branch is created on each HEAD:",
+    },
+    "Stashed, then reapplied:": {
+        "fr": "Mis de côté, puis réappliqués :",
+        "en": "Stashed, then reapplied:",
+    },
+    "Pull the repositories? (y/N): ": {
+        "fr": "Tirer les dépôts ? (o/N) : ",
+        "en": "Pull the repositories? (y/N): ",
+    },
+    "The remote moved since the dry run: nothing was written.": {
+        "fr": "Le distant a bougé depuis l'essai à sec : rien n'a été écrit.",
+        "en": "The remote moved since the dry run: nothing was written.",
+    },
+    "Install the Python dependencies now (poetry install --no-root)? (y/N): ": {
+        "fr": "Installer les dépendances Python maintenant (poetry install --no-root) ? (o/N) : ",
+        "en": "Install the Python dependencies now (poetry install --no-root)? (y/N): ",
+    },
+    "To restore:": {
+        "fr": "Pour revenir :",
+        "en": "To restore:",
+    },
+    "To delete:": {
+        "fr": "Pour supprimer :",
+        "en": "To delete:",
+    },
+    "Incoming commits": {
+        "fr": "commits entrants",
+        "en": "Incoming commits",
+    },
+    "Regenerated manifest": {
+        "fr": "Manifeste régénéré",
+        "en": "Regenerated manifest",
+    },
+    "New repositories": {
+        "fr": "Nouveaux dépôts",
+        "en": "New repositories",
+    },
+    "Retired from the manifest (kept on disk)": {
+        "fr": "Retirés du manifeste (gardés sur le disque)",
+        "en": "Retired from the manifest (kept on disk)",
+    },
+    "Python dependencies changed": {
+        "fr": "Dépendances Python modifiées",
+        "en": "Python dependencies changed",
+    },
+    "The Python/Odoo couple changes: run make install.": {
+        "fr": "Le couple Python/Odoo change : lancer make install.",
+        "en": "The Python/Odoo couple changes: run make install.",
+    },
+    "Shallow clones: deepening downloads history (network).": {
+        "fr": "Clones superficiels : l'approfondissement télécharge de l'historique (réseau).",
+        "en": "Shallow clones: deepening downloads history (network).",
+    },
+    "ahead of the target": {
+        "fr": "en avance sur la cible",
+        "en": "ahead of the target",
+    },
+    "fast-forward possible": {
+        "fr": "avance rapide possible",
+        "en": "fast-forward possible",
+    },
+    "diverged": {
+        "fr": "divergé",
+        "en": "diverged",
+    },
+    "shallow: deepening needed": {
+        "fr": "superficiel : approfondissement requis",
+        "en": "shallow: deepening needed",
+    },
+    "detached HEAD: skipped": {
+        "fr": "HEAD détachée : sauté",
+        "en": "detached HEAD: skipped",
+    },
+    "no target": {
+        "fr": "sans cible",
+        "en": "no target",
+    },
+    "target missing": {
+        "fr": "cible absente",
+        "en": "target missing",
+    },
+    "fetch failed": {
+        "fr": "récupération échouée",
+        "en": "fetch failed",
+    },
+    "operation in progress: skipped": {
+        "fr": "opération en cours : sauté",
+        "en": "operation in progress: skipped",
+    },
+    "error": {
+        "fr": "erreur",
+        "en": "error",
+    },
+    "pulled": {
+        "fr": "tiré",
+        "en": "pulled",
+    },
+    "conflict: put back": {
+        "fr": "conflit : remis au départ",
+        "en": "conflict: put back",
+    },
+    "stash kept": {
+        "fr": "stash gardé",
+        "en": "stash kept",
+    },
+    "diverged: fast-forward refused": {
+        "fr": "divergé : avance rapide refusée",
+        "en": "diverged: fast-forward refused",
+    },
+    "shallow: not deepened": {
+        "fr": "superficiel : non approfondi",
+        "en": "shallow: not deepened",
+    },
+    "shallow: no base found": {
+        "fr": "superficiel : aucune base trouvée",
+        "en": "shallow: no base found",
+    },
+    "backup already exists": {
+        "fr": "la sauvegarde existe déjà",
+        "en": "backup already exists",
+    },
+    "restore failed: fix by hand": {
+        "fr": "retour échoué : à corriger à la main",
+        "en": "restore failed: fix by hand",
+    },
+    "cloned": {
+        "fr": "cloné",
+        "en": "cloned",
+    },
+    "clone failed": {
+        "fr": "clonage échoué",
+        "en": "clone failed",
+    },
+    "clone refused": {
+        "fr": "clonage refusé",
+        "en": "clone refused",
+    },
+    "path already occupied": {
+        "fr": "chemin déjà occupé",
+        "en": "path already occupied",
+    },
+    "A pass with this stamp already exists: retry in a minute.": {
+        "fr": "Une passe porte déjà cet horodatage : réessayer dans une minute.",
+        "en": "A pass with this stamp already exists: retry in a minute.",
+    },
+    "Another pull is running on this checkout.": {
+        "fr": "Un autre tirage tourne sur ce checkout.",
+        "en": "Another pull is running on this checkout.",
+    },
+    "Cloned by a repo sync restricted to their paths, only when asked.": {
+        "fr": "Clonés par un repo sync restreint à leurs chemins, seulement sur demande.",
+        "en": "Cloned by a repo sync restricted to their paths, only when asked.",
+    },
+    "Cloned by a restricted repo sync:": {
+        "fr": "Clonés par un repo sync restreint :",
+        "en": "Cloned by a restricted repo sync:",
+    },
+    "Ignored local files the target overwrites (copied first):": {
+        "fr": "Fichiers locaux ignorés que la cible écrase (copiés d'abord) :",
+        "en": "Ignored local files the target overwrites (copied first):",
+    },
+    "Manifest regeneration failed:": {
+        "fr": "La régénération du manifeste a échoué :",
+        "en": "Manifest regeneration failed:",
+    },
+    "Overwritten ignored files copied to": {
+        "fr": "Fichiers ignorés écrasés, copiés dans",
+        "en": "Overwritten ignored files copied to",
+    },
+    "The Python dependencies are installed.": {
+        "fr": "Les dépendances Python sont installées.",
+        "en": "The Python dependencies are installed.",
+    },
+    "The local manifest is regenerated and rewritten:": {
+        "fr": "Le manifeste local est régénéré et réécrit :",
+        "en": "The local manifest is regenerated and rewritten:",
+    },
+    "The regenerated manifest differs from the dry run: it was not written and no clone was integrated.": {
+        "fr": "Le manifeste régénéré diffère de l'essai à sec : il n'est pas écrit et aucun clone n'est intégré.",
+        "en": "The regenerated manifest differs from the dry run: it was not written and no clone was integrated.",
+    },
+    "The server can also restart without installing.": {
+        "fr": "Le serveur peut aussi redémarrer sans installer.",
+        "en": "The server can also restart without installing.",
+    },
+    "The stamp of the pass is not YYYYMMDDTHHMM.": {
+        "fr": "L'horodatage de la passe n'est pas AAAAMMJJTHHMM.",
+        "en": "The stamp of the pass is not YYYYMMDDTHHMM.",
+    },
+    "The time budget ran out: the steps not started are listed; run a new pull for them.": {
+        "fr": "Le délai est épuisé : les étapes non commencées sont listées ; lancer un nouveau tirage pour elles.",
+        "en": "The time budget ran out: the steps not started are listed; run a new pull for them.",
+    },
+    "The version typed does not match the active one.": {
+        "fr": "La version tapée n'est pas la version active.",
+        "en": "The version typed does not match the active one.",
+    },
+    "To install them later:": {
+        "fr": "Pour les installer plus tard :",
+        "en": "To install them later:",
+    },
+    "To retry:": {
+        "fr": "Pour réessayer :",
+        "en": "To retry:",
+    },
+    "entry added": {
+        "fr": "entrée ajoutée",
+        "en": "entry added",
+    },
+    "branches": {
+        "fr": "branches",
+        "en": "branches",
+    },
+    "entry removed": {
+        "fr": "entrée retirée",
+        "en": "entry removed",
+    },
+    "entry changed": {
+        "fr": "entrée changée",
+        "en": "entry changed",
+    },
+    "dirty": {
+        "fr": "modifié",
+        "en": "dirty",
+    },
+    "manifest": {
+        "fr": "manifeste",
+        "en": "manifest",
+    },
+    "not started: time budget exhausted": {
+        "fr": "non commencé : délai épuisé",
+        "en": "not started: time budget exhausted",
+    },
+    "poetry install failed.": {
+        "fr": "poetry install a échoué.",
+        "en": "poetry install failed.",
+    },
+    "poetry not found:": {
+        "fr": "poetry introuvable :",
+        "en": "poetry not found:",
+    },
+    "shallow": {
+        "fr": "superficiel",
+        "en": "shallow",
+    },
+    "stash": {
+        "fr": "stash",
+        "en": "stash",
+    },
+    "switch to the manifest target": {
+        "fr": "bascule sur la cible du manifeste",
+        "en": "switch to the manifest target",
+    },
 }
 
 

@@ -15,6 +15,7 @@ dispatch racontent la même histoire.
 """
 
 import ast
+import contextlib
 import re
 import unittest
 from pathlib import Path
@@ -583,6 +584,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
     EXPECTED = {
         "🔄 Synchronize the repositories": "_git_repo_sync",
         "🔁 Reconfigure and synchronize": "_git_repo_reconfigurer",
+        "⬇️ Pull the repositories": "_git_repo_tirer",
         "🌐 Add the upstream remotes": "_git_repo_ajouter_remotes",
         "🔍 Upgrade — dry run": "_git_repo_a_sec",
         "⬆️ Apply the upgrade": "_git_repo_appliquer",
@@ -598,12 +600,14 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
     def test_the_upstream_remotes_come_before_the_dry_run(self):
-        """« Ajouter les remotes amont » ouvre la section de la mise à
-        niveau : [3], la passe à sec suit en [4], la comparaison en [14]."""
+        """« Tirer les dépôts » ferme la section de la mise à jour en [3] ;
+        « Ajouter les remotes amont » ouvre celle de la mise à niveau en
+        [4], la passe à sec suit en [5], la comparaison en [15]."""
         rangs = {label: num for num, label in self.shown}
-        self.assertEqual(rangs["🌐 Add the upstream remotes"], 3)
-        self.assertEqual(rangs["🔍 Upgrade — dry run"], 4)
-        self.assertEqual(rangs["🔀 Compare two freezes"], 14)
+        self.assertEqual(rangs["⬇️ Pull the repositories"], 3)
+        self.assertEqual(rangs["🌐 Add the upstream remotes"], 4)
+        self.assertEqual(rangs["🔍 Upgrade — dry run"], 5)
+        self.assertEqual(rangs["🔀 Compare two freezes"], 15)
 
     def test_the_upstream_remotes_entry_reports_without_diagnosing(self):
         from unittest import mock
@@ -630,7 +634,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         ) as diagnostic, mock.patch(
             "builtins.print"
         ):
-            self.assertEqual(Menu()._git_repo_choix("3"), None)
+            self.assertEqual(Menu()._git_repo_choix("4"), None)
         ajouter.assert_called_once()
         rendu.assert_called_once()
         diagnostic.assert_not_called()
@@ -662,6 +666,258 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         )
         self.assertEqual(3, rendu.call_count)
         self.assertEqual(3, recuperes)
+
+
+class TestGitRepoPull(unittest.TestCase):
+    """« Tirer les dépôts » : l'essai à sec d'abord, chaque question à part,
+    et la passe seulement sur un oui. `repo_pull` est simulé."""
+
+    SHA_C = "c" * 40
+    SHA_H = "d" * 40
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.git import repo_pull
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.rp = repo_pull
+        self.menu = git_repo_menu
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        self.obj = Menu()
+
+    def donnees(self, plan=(), superficiel=(), nouveaux=(), sale=False):
+        depots = [
+            {
+                "chemin": p,
+                "sale": sale,
+                "sauvegarde_prefixe": "X.0_avant_pull_",
+            }
+            for p in list(plan) + list(superficiel)
+        ]
+        return {
+            "plan": list(plan),
+            "plan_superficiel": list(superficiel),
+            "plan_nouveaux": list(nouveaux),
+            "attendus": [f"{p}={self.SHA_C}:{self.SHA_H}" for p in plan],
+            "attendus_superficiel": [
+                f"{p}={self.SHA_C}:{self.SHA_H}" for p in superficiel
+            ],
+            "depots": depots,
+        }
+
+    def tirer(
+        self,
+        donnees,
+        reponses,
+        charge=None,
+        code=0,
+        installe=({}, 0),
+        verrou=None,
+    ):
+        """Lance l'entrée, `repo_pull` simulé ; `verrou` remplace celui du
+        checkout. Rend (passe, installer, input) ; les lignes affichées
+        sont dans `self.affiche`."""
+        charge = charge or {
+            "horodatage": "20990101T0800",
+            "dossier": "tasks/git_repo_pull/20990101T0800",
+            "resultats": [],
+            "dependances": {"a_installer": False},
+        }
+        m = self.mock
+        verrou = verrou or (lambda racine: contextlib.nullcontext())
+        with (
+            m.patch.object(self.rp, "verrou", side_effect=verrou),
+            m.patch.object(
+                self.rp, "diagnostic", return_value=(donnees, 0)
+            ) as self.diagnostic,
+            m.patch.object(self.rp, "render_diagnostic", return_value=""),
+            m.patch.object(self.rp, "render_passe", return_value=""),
+            m.patch.object(
+                self.rp, "passe", return_value=(charge, code)
+            ) as passe,
+            m.patch.object(
+                self.rp, "installer_dependances", return_value=installe
+            ) as installer,
+            m.patch.object(
+                self.menu.click, "prompt", side_effect=["1", "rebase"]
+            ) as self.prompt,
+            m.patch.object(
+                self.menu.repo_upgrade, "version_active", return_value="X.0"
+            ),
+            m.patch("builtins.input", side_effect=list(reponses)) as entree,
+            m.patch("builtins.print") as affiche,
+        ):
+            self.obj._git_repo_tirer()
+        self.affiche = "\n".join(
+            " ".join(str(x) for x in c.args) for c in affiche.call_args_list
+        )
+        return passe, installer, entree
+
+    def test_plan_vide_ne_demande_rien(self):
+        passe, _i, entree = self.tirer(self.donnees(), [])
+        passe.assert_not_called()
+        entree.assert_not_called()
+
+    def test_non_n_ecrit_rien(self):
+        passe, _i, entree = self.tirer(self.donnees(["x/a"]), ["n"])
+        passe.assert_not_called()
+        self.assertEqual(entree.call_count, 1)
+
+    def test_oui_passe_les_attendus_de_l_essai(self):
+        donnees = self.donnees(["x/a"])
+        passe, _i, _e = self.tirer(donnees, ["y"])
+        passe.assert_called_once()
+        kw = passe.call_args.kwargs
+        self.assertEqual(kw["attendus"], ["x/a"])
+        self.assertEqual(
+            kw["epingles"],
+            {"x/a": {"cible_sha": self.SHA_C, "head": self.SHA_H}},
+        )
+        self.assertFalse(kw["approfondir"])
+        self.assertFalse(kw["cloner"])
+        self.assertEqual(passe.call_args.args[2:4], ("manifeste", "rebase"))
+
+    def test_superficiel_et_nouveaux_demandes_a_part(self):
+        donnees = self.donnees(["x/a"], ["x/s"], ["x/n"])
+        passe, _i, entree = self.tirer(donnees, ["o", "oui", "yes"])
+        self.assertEqual(entree.call_count, 3)
+        kw = passe.call_args.kwargs
+        self.assertEqual(kw["attendus"], ["x/a", "x/s"])
+        self.assertTrue(kw["approfondir"])
+        self.assertTrue(kw["cloner"])
+        self.assertEqual(kw["attendus_clone"], ["x/n"])
+
+    def test_dependances_demandees_seulement_a_installer(self):
+        charge = {
+            "horodatage": "20990101T0800",
+            "dossier": None,
+            "resultats": [],
+            "dependances": {"a_installer": True, "commande": "poetry"},
+        }
+        _p, installer, entree = self.tirer(
+            self.donnees(["x/a"]), ["y", "y"], charge
+        )
+        self.assertEqual(entree.call_count, 2)
+        installer.assert_called_once_with(
+            self.menu.RACINE, "X.0", "20990101T0800", en_direct=True
+        )
+        _p, installer, entree = self.tirer(self.donnees(["x/a"]), ["y"])
+        self.assertEqual(entree.call_count, 1)
+        installer.assert_not_called()
+
+    def charge_a_installer(self):
+        return {
+            "horodatage": "20990101T0800",
+            "dossier": "tasks/git_repo_pull/20990101T0800",
+            "resultats": [],
+            "dependances": {"a_installer": True, "commande": "poetry"},
+        }
+
+    def test_installation_refusee_donne_la_commande_gardee(self):
+        self.tirer(
+            self.donnees(["x/a"]), ["y", "n"], self.charge_a_installer()
+        )
+        self.assertIn(
+            "script/git/repo_pull.py --install-deps --confirm X.0"
+            " --pass 20990101T0800",
+            self.affiche,
+        )
+        self.assertNotIn("bin/poetry install", self.affiche)
+
+    def test_installation_echouee_le_dit(self):
+        dossier = "tasks/git_repo_pull/20990101T0800"
+        absent = (
+            {
+                "error": "poetry not found: .venv.x/bin/poetry",
+                "code": None,
+                "dossier": dossier,
+            },
+            self.rp.EXIT_DEPS,
+        )
+        self.tirer(
+            self.donnees(["x/a"]),
+            ["y", "y"],
+            self.charge_a_installer(),
+            installe=absent,
+        )
+        self.assertIn(".venv.x/bin/poetry", self.affiche)
+        self.assertIn(str(self.rp.EXIT_DEPS), self.affiche)
+        self.assertNotIn("deps.log", self.affiche)
+        self.assertIn("--install-deps", self.affiche)
+        echec = (
+            {"error": "poetry install failed", "code": 1, "dossier": dossier},
+            self.rp.EXIT_DEPS,
+        )
+        self.tirer(
+            self.donnees(["x/a"]),
+            ["y", "y"],
+            self.charge_a_installer(),
+            installe=echec,
+        )
+        self.assertIn(f"{dossier}/deps.log", self.affiche)
+        self.assertIn("--install-deps", self.affiche)
+
+    def test_installation_reussie_le_dit(self):
+        self.tirer(
+            self.donnees(["x/a"]),
+            ["y", "y"],
+            self.charge_a_installer(),
+            installe=({"code": 0}, 0),
+        )
+        self.assertIn(
+            self.menu.t("The Python dependencies are installed."), self.affiche
+        )
+
+    def test_rien_a_tirer_apres_les_refus(self):
+        donnees = self.donnees([], ["x/s"], ["x/n"])
+        passe, _i, entree = self.tirer(donnees, ["n", "n"])
+        self.assertEqual(entree.call_count, 2)
+        passe.assert_not_called()
+
+    def test_clonage_seul_annonce(self):
+        donnees = self.donnees([], [], ["x/n"])
+        donnees["manifeste"] = {"changements": [{"chemin": "x/n"}]}
+        passe, _i, entree = self.tirer(donnees, ["y", "y"])
+        self.assertEqual(entree.call_count, 2)
+        passe.assert_called_once()
+        self.assertIn("x/n", self.affiche)
+        self.assertIn("erplibre_manifest.xml", self.affiche)
+
+    def test_essai_sous_le_verrou(self):
+        tenus = []
+
+        @contextlib.contextmanager
+        def verrou(racine):
+            tenus.append(racine)
+            yield
+
+        self.tirer(self.donnees(), [], verrou=verrou)
+        self.assertEqual(tenus, [self.menu.RACINE])
+        self.diagnostic.assert_called_once()
+
+    def test_verrou_pris_n_interroge_rien(self):
+        def verrou(racine):
+            raise self.rp.Occupe("pris")
+
+        passe, _i, entree = self.tirer(
+            self.donnees(["x/a"]), [], verrou=verrou
+        )
+        self.diagnostic.assert_not_called()
+        passe.assert_not_called()
+        self.assertIn(
+            self.menu.t("Another pull is running on this checkout."),
+            self.affiche,
+        )
+
+    def test_le_mode_est_un_choix(self):
+        self.tirer(self.donnees(), [])
+        _args, kw = self.prompt.call_args_list[0]
+        self.assertEqual(list(kw["type"].choices), ["1", "2"])
 
 
 class TestGitRepoFreezeEntries(unittest.TestCase):

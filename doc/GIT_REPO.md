@@ -131,6 +131,109 @@ at another organisation — and replays the commits the fork carries of its own.
 It can conflict and it rewrites history, so it is observed before it is
 applied.
 
+A **pull** is the update of a deployed checkout that carries commits or changes
+of its own: each repository integrates its target with `git pull`'s gestures
+(fast-forward, rebase or merge), after a backup branch, and only what its dry
+run showed. Entry 3 of TODO › Execute › Git › Repo, and the Odoo module
+`erplibre_info`.
+
+### Pull the repositories
+
+Two modes. **manifest** (the default) pulls the ERPLibre root on its tracked
+branch, regenerates `.repo/local_manifests/erplibre_manifest.xml` with
+`git_merge_repo_manifest.py` — frozen when the local manifest already is — then
+each clone integrates the target of its new entry, detached HEAD included. A
+detached clone with no commit of its own — none that a remote-tracking ref
+lacks — switches to its target with `checkout --detach`, as `repo sync` does
+(`bascule`), whatever the strategy; when the manifest moves a clone with local
+commits to another upstream line, the rebase replays only those commits.
+**branches** pulls each clone on the branch it tracks (`@{u}`), or on the remote
+and branch its manifest entry gives; a detached HEAD is skipped. The root is a
+repository like the others in both modes.
+
+The strategy is `rebase` (the default), `ff` (fast-forward only: a diverged
+repository is left as is) or `merge`. A repository behind its target
+fast-forwards whatever the strategy.
+
+The dry run only fetches: no local branch, HEAD or work tree moves. For each
+repository it shows the target, the incoming commits, the commits of its own,
+whether its tracked files are modified (they will be stashed, then reapplied),
+whether it is shallow, the ignored local files that the target starts tracking
+(git would overwrite them silently: the pull copies them into its pass first,
+and puts them back when the repository returns to its start), plus the
+regenerated manifest, the new and the retired repositories, and the Python
+dependency files that change. A tag of the manifest is fetched under
+`refs/repo_pull/tags/`, so a local tag of the same name never moves.
+
+The pull itself runs the dry run again and writes nothing if a repository, its
+target or its HEAD changed since the one shown. Before moving HEAD, it creates
+the branch `<branch>_avant_pull_<YYYYMMDDTHHMM>` on it — a reference only. A
+rebase or merge that conflicts is aborted and the repository goes back to its
+start commit, its stash reapplied (`conflit_annule`); the others go on. A
+`stash pop` that conflicts leaves the tree on the pulled commit and keeps the
+stash, with the command that applies it again (`stash_garde`). A tree that
+stays modified after a `stash push` that saved nothing — a submodule moved to
+another commit — is refused; the content changed inside a submodule does not
+count as modified. Nothing is pushed. The pass is recorded under
+`tasks/git_repo_pull/<stamp>/`, after each repository.
+
+`--budget SECONDS` bounds a pass: past it, no repository, deepening step, clone
+or install starts any more (`saute_delai`), and the pass still answers.
+`erplibre_info` gives it a budget below the timeout of its call. A call killed
+anyway takes its whole process group with it, and the backups of its pass are
+read back by their stamp; the restart then waits for a new dry run.
+
+A shallow clone is fetched with `--shallow-since`, never `--depth`, which would
+shorten the history of HEAD. The bound is the oldest boundary of HEAD's history
+minus an hour. A boundary that a fetch puts inside HEAD's history (a commit
+dated before its parent) is removed again, and a new boundary of the target
+newer than the bound — the merge of an old branch, which hides HEAD — is pushed
+back by `--deepen=1`, four times at most: such a fast-forward stays one. When
+no safe common base appears, the dry run says so and the pull deepens that
+clone only when asked (network): `--deepen` by doubling steps, up to 1600
+commits.
+
+A repository of the regenerated manifest that is not cloned yet is cloned only
+when asked, by a `repo sync` restricted to its path: a plain `git clone` would
+break the next `repo sync`. It is refused when `.repo/project.list` names a
+project the manifest drops, since `repo sync` would delete its work tree. A
+project retired from the manifest stays on disk, untouched.
+
+When `poetry.lock` or the `pyproject.toml` of the active couple changes, the
+pull offers `poetry install --no-root` in the Odoo virtual environment; it can
+also be run later, or skipped before a restart. A retargeted `pyproject.toml`
+or `poetry.lock` link is a new Python/Odoo couple: that takes `make install`.
+
+Each backup can be restored (the repository moves back to it; its tree must
+have no tracked change, and be on the same branch, or detached as it was, and
+at the commit where the pass left it: a commit made after the pull is never
+dropped, `head_deplacee`) or deleted, restored or not. Restoring the root also
+puts back the local manifest the pass replaced.
+
+#### Pull without the menu
+
+`script/git/repo_pull.py` prints one JSON object, for a caller that shows the
+dry run and collects consent, such as `erplibre_info`. `--dry-run` lists in
+`attendus` the `<path>=<target sha>:<HEAD sha>` pins of the repositories it
+would pull; `--apply` takes them back with `--expect`, and `--confirm` must be
+the active Odoo version (exit code 2 otherwise). A plan that changed writes
+nothing (exit code 4). Shallow clones need `--approve-deepen` and the pins of
+`attendus_superficiel`, new repositories `--approve-clone` and one
+`--expect-clone` per path of `plan_nouveaux`; `--approve-deps` runs
+`poetry install` at the end. `--path` restricts the pass to one repository
+(`.` is the root), `--pass` gives its stamp and `--budget` its time budget.
+Exit code 5 means another pass holds the lock of the checkout.
+
+```bash
+.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --pretty
+.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --mode branche --strategy ff
+.venv.erplibre/bin/python script/git/repo_pull.py --apply --confirm 18.0 --expect odoo18.0/addons/OCA_web=TARGET_SHA:HEAD_SHA
+.venv.erplibre/bin/python script/git/repo_pull.py --list-backups
+.venv.erplibre/bin/python script/git/repo_pull.py --restore-backup odoo18.0/addons/OCA_web=18.0_avant_pull_20260101T0800 --confirm 18.0
+.venv.erplibre/bin/python script/git/repo_pull.py --delete-backup odoo18.0/addons/OCA_web=18.0_avant_pull_20260101T0800 --confirm 18.0
+.venv.erplibre/bin/python script/git/repo_pull.py --install-deps --confirm 18.0 --pass 20260101T0800
+```
+
 ### Where a fork comes from
 
 git-repo only knows the remote used to CLONE, and for a fork that is the
@@ -175,7 +278,7 @@ opens each one in turn, stopping at a tig that does not exit with `q`.
 
 ### Add the upstream remotes
 
-`Add the upstream remotes`, entry 3 of TODO › Execute › Git › Repo, or
+`Add the upstream remotes`, entry 4 of TODO › Execute › Git › Repo, or
 `--add-remotes`, does only that, on every fork, without diagnosing: add the
 named upstream remote, then fetch its branch. The menu entry covers every Odoo
 version of the checkout, each `odoo<V>/` tree that has a manifest, in
@@ -450,7 +553,7 @@ make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
 make repo_freeze_diff ARGS="--graph 1"
 ```
 
-In TODO › Git repo, entry 14 offers the usual comparisons, a choice of two revisions among the freeze commits and the
+In TODO › Git repo, entry 15 offers the usual comparisons, a choice of two revisions among the freeze commits and the
 ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
 `b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
 `w` the command that opens an old commit in a git worktree beside the clone, without moving it.

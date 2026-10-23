@@ -273,10 +273,11 @@ def read_remotes(sources):
     return remotes
 
 
-def _bases(chemin, sha):
-    """Les bases de fusion de `sha` et de FETCH_HEAD, triées ; [] si aucune."""
+def _bases(chemin, sha, cible="FETCH_HEAD"):
+    """Les bases de fusion de `sha` et de `cible` (FETCH_HEAD par défaut),
+    triées ; [] si aucune."""
     out, _err, code = repo_upgrade.git(
-        ["merge-base", "--all", sha, "FETCH_HEAD"], chemin
+        ["merge-base", "--all", sha, cible], chemin
     )
     return sorted(out.split()) if code == 0 else []
 
@@ -323,16 +324,17 @@ def _frontieres(chemin):
         return None
 
 
-def _bases_sures(chemin, sha, bases):
+def _bases_sures(chemin, sha, bases, cible="FETCH_HEAD"):
     """Vrai si aucune frontière ne peut cacher une meilleure base.
 
     Une frontière coupe les parents d'un commit : derrière elle, sur la
     ligne principale amont, peut se trouver la vraie base, alors qu'un
     commit commun plus ancien reste joignable par le second parent d'une
     fusion. Les bases sont sûres quand aucun commit frontière n'est
-    joignable depuis `sha` ou FETCH_HEAD sans passer par elles, soit absent
-    de « rev-list sha FETCH_HEAD ^base… ». Sur un clone complet,
-    l'ensemble des frontières est vide et la condition tient d'office.
+    joignable depuis `sha` ou `cible` (FETCH_HEAD par défaut) sans passer
+    par elles, soit absent de « rev-list sha cible ^base… ». Sur un clone
+    complet, l'ensemble des frontières est vide et la condition tient
+    d'office.
     """
     frontieres = _frontieres(chemin)
     if frontieres is None:
@@ -340,7 +342,7 @@ def _bases_sures(chemin, sha, bases):
     if not frontieres:
         return True
     out, _err, code = repo_upgrade.git(
-        ["rev-list", sha, "FETCH_HEAD"] + [f"^{b}" for b in bases], chemin
+        ["rev-list", sha, cible] + [f"^{b}" for b in bases], chemin
     )
     if code:
         return False

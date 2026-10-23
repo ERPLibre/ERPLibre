@@ -213,6 +213,7 @@ class GitRepoMenuMixin:
             {"section": t("Update")},
             {"prompt_description": t("🔄 Synchronize the repositories")},
             {"prompt_description": t("🔁 Reconfigure and synchronize")},
+            {"prompt_description": t("⬇️ Pull the repositories")},
             {"section": t("Upgrade")},
             {"prompt_description": t("🌐 Add the upstream remotes")},
             {"prompt_description": t("🔍 Upgrade — dry run")},
@@ -244,28 +245,30 @@ class GitRepoMenuMixin:
         elif status == "2":
             self._git_repo_reconfigurer()
         elif status == "3":
-            self._git_repo_ajouter_remotes()
+            self._git_repo_tirer()
         elif status == "4":
-            self._git_repo_a_sec()
+            self._git_repo_ajouter_remotes()
         elif status == "5":
-            self._git_repo_appliquer()
+            self._git_repo_a_sec()
         elif status == "6":
-            self._git_repo_file_conflits()
+            self._git_repo_appliquer()
         elif status == "7":
-            self._git_repo_publier()
+            self._git_repo_file_conflits()
         elif status == "8":
-            self._git_repo_rapport()
+            self._git_repo_publier()
         elif status == "9":
-            self._git_repo_ecran()
+            self._git_repo_rapport()
         elif status == "10":
-            self._git_repo_etat_forks()
+            self._git_repo_ecran()
         elif status == "11":
-            self._git_repo_geler()
+            self._git_repo_etat_forks()
         elif status == "12":
-            self._git_repo_reconfigurer(freeze=True)
+            self._git_repo_geler()
         elif status == "13":
-            self._git_repo_geler(unfreeze=True)
+            self._git_repo_reconfigurer(freeze=True)
         elif status == "14":
+            self._git_repo_geler(unfreeze=True)
+        elif status == "15":
             self._git_repo_comparer()
         else:
             print(t("Command not found !"))
@@ -324,6 +327,190 @@ class GitRepoMenuMixin:
         else:
             print(f"✅ {t('Repositories reconfigured and synchronized.')}")
         return status
+
+    def _git_repo_tirer(self):
+        """Tire chaque dépôt : essai à sec, confirmation, passe épinglée.
+
+        Le mode « manifeste » tire la racine ERPLibre, régénère le manifeste
+        local et intègre la nouvelle cible de chaque clone ; le mode
+        « branche » tire la branche suivie de chaque clone. L'essai à sec ne
+        fait que récupérer, sous le verrou du checkout comme la passe ; la
+        passe le refait et n'écrit rien si un dépôt a bougé depuis (voir
+        `repo_pull.passe`). Approfondir un clone superficiel, cloner un
+        nouveau dépôt et installer les dépendances Python se demandent
+        chacun à part ; la réponse par défaut est non. Quand les réponses
+        ne laissent rien à tirer, rien n'est demandé de plus.
+
+        `repo_pull` s'importe ici et non en tête : `repo_state`, qu'il
+        importe, importe ce module.
+
+        Rend le nombre de dépôts avancés ou tirés.
+        """
+        from script.git import repo_pull
+
+        oui = ("o", "oui", "y", "yes")
+        version = repo_upgrade.version_active(RACINE) or "?"
+        choix = click.prompt(
+            t("Mode: 1 manifest, 2 branches"),
+            default="1",
+            type=click.Choice(["1", "2"]),
+        )
+        mode = "branche" if choix == "2" else "manifeste"
+        strategie = click.prompt(
+            t("Strategy (rebase, ff, merge)"),
+            default="rebase",
+            type=click.Choice(repo_pull.STRATEGIES),
+        )
+        print(f"   {t('Querying each remote, this takes a few seconds.')}")
+        try:
+            with repo_pull.verrou(RACINE):
+                donnees, code = repo_pull.diagnostic(RACINE, mode, strategie)
+        except repo_pull.Occupe:
+            print(f"⚠  {t('Another pull is running on this checkout.')}")
+            return 0
+        print()
+        print(repo_pull.render_diagnostic(donnees, colour=True))
+        if code or not (
+            donnees["plan"]
+            or donnees["plan_superficiel"]
+            or donnees["plan_nouveaux"]
+        ):
+            print(f"\n↩️  {t('Nothing to pull: nothing to confirm.')}")
+            return 0
+
+        approfondir = False
+        if donnees["plan_superficiel"]:
+            print()
+            avis = t("Shallow clones: deepening downloads history (network).")
+            print(f"⚠️  {avis}")
+            for chemin in donnees["plan_superficiel"]:
+                print(f"     {chemin}")
+            reponse = input(
+                f"💬 {t('Deepen the shallow clones (network)? (y/N): ')}"
+            )
+            approfondir = reponse.strip().lower() in oui
+        cloner = False
+        if donnees["plan_nouveaux"]:
+            reponse = input(f"💬 {t('Clone the new repositories? (y/N): ')}")
+            cloner = reponse.strip().lower() in oui
+
+        attendus = list(donnees["attendus"])
+        if approfondir:
+            attendus += donnees["attendus_superficiel"]
+        lus = [repo_apply.lire_attendu(x) for x in attendus]
+        if not lus and not cloner:
+            print(f"\n↩️  {t('Nothing to pull: nothing to confirm.')}")
+            return 0
+        par_chemin = {c["chemin"]: c for c in donnees["depots"]}
+        stash = [c for c, _e in lus if par_chemin.get(c, {}).get("sale")]
+        print()
+        print(f"⚠️  {len(lus)} {t('repositories will be pulled.')}")
+        if lus:
+            print(f"   {t('A backup branch is created on each HEAD:')}")
+        for chemin, _e in lus:
+            prefixe = par_chemin[chemin].get("sauvegarde_prefixe") or ""
+            print(f"     {chemin} → {prefixe}<…>")
+        if stash:
+            print(f"   {t('Stashed, then reapplied:')} {', '.join(stash)}")
+        if cloner:
+            print(f"   {t('Cloned by a restricted repo sync:')}")
+            for chemin in donnees["plan_nouveaux"]:
+                print(f"     {chemin}")
+        if (donnees.get("manifeste") or {}).get("changements"):
+            print(
+                f"   {t('The local manifest is regenerated and rewritten:')}"
+                f" {repo_pull.repo_state.MANIFESTE_LOCAL}"
+            )
+        print(f"   {t('Nothing is pushed.')}")
+        reponse = input(f"💬 {t('Pull the repositories? (y/N): ')}")
+        if reponse.strip().lower() not in oui:
+            print(f"↩️  {t('Cancelled: nothing was written.')}")
+            return 0
+
+        print()
+        charge, code = repo_pull.passe(
+            RACINE,
+            version,
+            mode,
+            strategie,
+            attendus=[c for c, _e in lus],
+            epingles={c: e for c, e in lus if e},
+            approfondir=approfondir,
+            cloner=cloner,
+            attendus_clone=donnees["plan_nouveaux"] if cloner else (),
+        )
+        if code == repo_pull.EXIT_PLAN_CHANGE:
+            avis = t(
+                "The remote moved since the dry run: nothing was written."
+            )
+            print(f"⚠  {avis}")
+            return 0
+        print(repo_pull.render_passe(charge, colour=True))
+        if charge.get("dossier"):
+            print(f"   {t('Pass recorded in')} {charge['dossier']}")
+
+        commande = ".venv.erplibre/bin/python script/git/repo_pull.py"
+        deps = charge.get("dependances") or {}
+        if deps.get("a_installer"):
+            question = t(
+                "Install the Python dependencies now"
+                " (poetry install --no-root)? (y/N): "
+            )
+            plus_tard = (
+                f"     {commande} --install-deps --confirm {version}"
+                + (
+                    f" --pass {charge['horodatage']}"
+                    if charge.get("horodatage")
+                    else ""
+                )
+            )
+            if input(f"💬 {question}").strip().lower() in oui:
+                resultat, code_deps = repo_pull.installer_dependances(
+                    RACINE, version, charge["horodatage"], en_direct=True
+                )
+                if code_deps:
+                    erreur = repo_pull.libelle_erreur(
+                        resultat.get("error") or str(code_deps)
+                    )
+                    print(
+                        f"⚠  {repo_upgrade.paint(erreur, 'broken', True)}"
+                        f" ({t('exit code')} {code_deps})"
+                    )
+                    if resultat.get("dossier") and resultat.get("code"):
+                        journal = os.path.join(resultat["dossier"], "deps.log")
+                        print(f"   {t('Log:')} {journal}")
+                    print(f"   {t('To retry:')}")
+                    print(plus_tard)
+                    print(
+                        f"   {t('The server can also restart without installing.')}"
+                    )
+                else:
+                    print(f"✅ {t('The Python dependencies are installed.')}")
+            else:
+                print(f"   {t('To install them later:')}")
+                print(plus_tard)
+
+        for res in charge.get("resultats") or []:
+            if not res.get("sauvegarde"):
+                continue
+            designation = f"{res['chemin']}={res['sauvegarde']}"
+            print(f"   {res['chemin']} — {t('To restore:')}")
+            print(
+                f"     {commande} --restore-backup {designation}"
+                f" --confirm {version}"
+            )
+            print(f"   {t('To delete:')}")
+            print(
+                f"     {commande} --delete-backup {designation}"
+                f" --confirm {version}"
+            )
+        return len(
+            [
+                r
+                for r in charge.get("resultats") or []
+                if r["etat"] in repo_pull.ETATS_DEPLACES
+            ]
+        )
 
     def _git_repo_ajouter_remotes(self):
         """Pose et récupère le remote amont nommé de chaque fork, sans

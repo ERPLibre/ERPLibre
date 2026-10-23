@@ -237,6 +237,12 @@ at another organisation — and replays the commits the fork carries of its own.
 It can conflict and it rewrites history, so it is observed before it is
 applied.
 
+A **pull** is the update of a deployed checkout that carries commits or changes
+of its own: each repository integrates its target with `git pull`'s gestures
+(fast-forward, rebase or merge), after a backup branch, and only what its dry
+run showed. Entry 3 of TODO › Execute › Git › Repo, and the Odoo module
+`erplibre_info`.
+
 <!-- [fr] -->
 ## Mise à jour ou mise à niveau
 
@@ -251,6 +257,203 @@ Une **mise à niveau** va chercher l'amont dont un fork DESCEND — un autre
 dépôt, chez une autre organisation — et rejoue les commits que le fork porte
 en propre. Elle peut entrer en conflit et réécrit un historique, donc elle se
 constate avant de s'appliquer.
+
+**Tirer** est la mise à jour d'un checkout déployé qui porte des commits ou des
+modifications à lui : chaque dépôt intègre sa cible par les gestes de
+`git pull` (avance rapide, rebase ou fusion), après une branche de sauvegarde,
+et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
+Repo, et le module Odoo `erplibre_info`.
+
+<!-- [en] -->
+### Pull the repositories
+
+Two modes. **manifest** (the default) pulls the ERPLibre root on its tracked
+branch, regenerates `.repo/local_manifests/erplibre_manifest.xml` with
+`git_merge_repo_manifest.py` — frozen when the local manifest already is — then
+each clone integrates the target of its new entry, detached HEAD included. A
+detached clone with no commit of its own — none that a remote-tracking ref
+lacks — switches to its target with `checkout --detach`, as `repo sync` does
+(`bascule`), whatever the strategy; when the manifest moves a clone with local
+commits to another upstream line, the rebase replays only those commits.
+**branches** pulls each clone on the branch it tracks (`@{u}`), or on the remote
+and branch its manifest entry gives; a detached HEAD is skipped. The root is a
+repository like the others in both modes.
+
+The strategy is `rebase` (the default), `ff` (fast-forward only: a diverged
+repository is left as is) or `merge`. A repository behind its target
+fast-forwards whatever the strategy.
+
+The dry run only fetches: no local branch, HEAD or work tree moves. For each
+repository it shows the target, the incoming commits, the commits of its own,
+whether its tracked files are modified (they will be stashed, then reapplied),
+whether it is shallow, the ignored local files that the target starts tracking
+(git would overwrite them silently: the pull copies them into its pass first,
+and puts them back when the repository returns to its start), plus the
+regenerated manifest, the new and the retired repositories, and the Python
+dependency files that change. A tag of the manifest is fetched under
+`refs/repo_pull/tags/`, so a local tag of the same name never moves.
+
+The pull itself runs the dry run again and writes nothing if a repository, its
+target or its HEAD changed since the one shown. Before moving HEAD, it creates
+the branch `<branch>_avant_pull_<YYYYMMDDTHHMM>` on it — a reference only. A
+rebase or merge that conflicts is aborted and the repository goes back to its
+start commit, its stash reapplied (`conflit_annule`); the others go on. A
+`stash pop` that conflicts leaves the tree on the pulled commit and keeps the
+stash, with the command that applies it again (`stash_garde`). A tree that
+stays modified after a `stash push` that saved nothing — a submodule moved to
+another commit — is refused; the content changed inside a submodule does not
+count as modified. Nothing is pushed. The pass is recorded under
+`tasks/git_repo_pull/<stamp>/`, after each repository.
+
+`--budget SECONDS` bounds a pass: past it, no repository, deepening step, clone
+or install starts any more (`saute_delai`), and the pass still answers.
+`erplibre_info` gives it a budget below the timeout of its call. A call killed
+anyway takes its whole process group with it, and the backups of its pass are
+read back by their stamp; the restart then waits for a new dry run.
+
+A shallow clone is fetched with `--shallow-since`, never `--depth`, which would
+shorten the history of HEAD. The bound is the oldest boundary of HEAD's history
+minus an hour. A boundary that a fetch puts inside HEAD's history (a commit
+dated before its parent) is removed again, and a new boundary of the target
+newer than the bound — the merge of an old branch, which hides HEAD — is pushed
+back by `--deepen=1`, four times at most: such a fast-forward stays one. When
+no safe common base appears, the dry run says so and the pull deepens that
+clone only when asked (network): `--deepen` by doubling steps, up to 1600
+commits.
+
+A repository of the regenerated manifest that is not cloned yet is cloned only
+when asked, by a `repo sync` restricted to its path: a plain `git clone` would
+break the next `repo sync`. It is refused when `.repo/project.list` names a
+project the manifest drops, since `repo sync` would delete its work tree. A
+project retired from the manifest stays on disk, untouched.
+
+When `poetry.lock` or the `pyproject.toml` of the active couple changes, the
+pull offers `poetry install --no-root` in the Odoo virtual environment; it can
+also be run later, or skipped before a restart. A retargeted `pyproject.toml`
+or `poetry.lock` link is a new Python/Odoo couple: that takes `make install`.
+
+Each backup can be restored (the repository moves back to it; its tree must
+have no tracked change, and be on the same branch, or detached as it was, and
+at the commit where the pass left it: a commit made after the pull is never
+dropped, `head_deplacee`) or deleted, restored or not. Restoring the root also
+puts back the local manifest the pass replaced.
+
+<!-- [fr] -->
+### Tirer les dépôts
+
+Deux modes. **manifeste** (par défaut) tire la racine ERPLibre sur sa branche
+suivie, régénère `.repo/local_manifests/erplibre_manifest.xml` par
+`git_merge_repo_manifest.py` — gelé quand le manifeste local l'est déjà — puis
+chaque clone intègre la cible de sa nouvelle entrée, HEAD détachée comprise. Un
+clone détaché sans commit à lui — aucun qui manque à une référence de suivi —
+passe sur sa cible par `checkout --detach`, comme `repo sync` (`bascule`),
+quelle que soit la stratégie ; quand le manifeste mène un clone porteur de
+commits locaux sur une autre ligne amont, le rebase ne rejoue que ces commits.
+**branches** tire chaque clone sur la branche qu'il suit (`@{u}`), ou sur le
+remote et la branche que lui donne son entrée du manifeste ; une HEAD détachée
+est sautée. La racine est un dépôt comme les autres dans les deux modes.
+
+La stratégie vaut `rebase` (par défaut), `ff` (avance rapide seulement : un
+dépôt divergé reste tel quel) ou `merge`. Un dépôt en retard sur sa cible
+avance rapidement quelle que soit la stratégie.
+
+L'essai à sec ne fait que récupérer : aucune branche locale, aucune HEAD, aucun
+arbre de travail ne bouge. Pour chaque dépôt, il montre la cible, les commits
+entrants, ses commits à lui, si ses fichiers suivis sont modifiés (ils seront
+mis de côté, puis réappliqués), s'il est superficiel, les fichiers locaux
+ignorés que la cible se met à suivre (git les écraserait sans rien dire : le
+tirage les copie d'abord dans sa passe, et les remet quand le dépôt revient à
+son départ), puis le manifeste régénéré, les dépôts nouveaux et retirés, et les
+fichiers de dépendances Python qui changent. Un tag du manifeste se récupère
+sous `refs/repo_pull/tags/` : un tag local du même nom ne bouge jamais.
+
+Le tirage refait l'essai à sec et n'écrit rien si un dépôt, sa cible ou son
+HEAD a changé depuis celui qui a été montré. Avant de déplacer HEAD, il y pose
+la branche `<branche>_avant_pull_<AAAAMMJJTHHMM>` — une référence seulement. Un
+rebase ou une fusion en conflit est abandonné et le dépôt revient sur son
+commit de départ, stash réappliqué (`conflit_annule`) ; les autres continuent.
+Un `stash pop` en conflit laisse l'arbre sur le commit tiré et garde le stash,
+avec la commande qui le réapplique (`stash_garde`). Un arbre encore modifié
+après un `stash push` qui n'a rien gardé — un sous-module passé sur un autre
+commit — est refusé ; le contenu modifié dans un sous-module ne compte pas comme
+une modification. Rien n'est poussé. La passe s'inscrit sous
+`tasks/git_repo_pull/<horodatage>/`, après chaque dépôt.
+
+`--budget SECONDES` borne une passe : au-delà, aucun dépôt, aucun palier
+d'approfondissement, aucun clonage ni aucune installation ne commence plus
+(`saute_delai`), et la passe répond quand même. `erplibre_info` lui donne un
+budget sous le délai de son appel. Un appel tué malgré tout emporte son groupe
+de processus entier, et les sauvegardes de sa passe se relisent par leur
+horodatage ; le redémarrage attend alors un nouvel essai à sec.
+
+Un clone superficiel se récupère par `--shallow-since`, jamais `--depth`, qui
+raccourcirait l'historique de HEAD. La borne est la plus ancienne frontière de
+l'historique de HEAD moins une heure. Une frontière qu'une récupération pose
+dans l'historique de HEAD (un commit daté avant son parent) est retirée, et une
+frontière nouvelle de la cible plus récente que la borne — la fusion d'une
+vieille branche, qui cache HEAD — est repoussée par `--deepen=1`, quatre fois au
+plus : une telle avance rapide en reste une. Quand aucune base commune sûre
+n'apparaît, l'essai à sec le dit et le tirage n'approfondit ce clone que sur
+demande (réseau) : `--deepen` par paliers doublés, jusqu'à 1600 commits.
+
+Un dépôt du manifeste régénéré qui n'est pas encore cloné ne se clone que sur
+demande, par un `repo sync` restreint à son chemin : un simple `git clone`
+casserait le `repo sync` suivant. Il est refusé quand `.repo/project.list`
+nomme un projet que le manifeste abandonne, car `repo sync` effacerait son
+arbre. Un projet retiré du manifeste reste sur le disque, intact.
+
+Quand `poetry.lock` ou le `pyproject.toml` du couple actif change, le tirage
+propose `poetry install --no-root` dans l'environnement virtuel d'Odoo ; il se
+lance aussi plus tard, ou se saute avant un redémarrage. Un lien
+`pyproject.toml` ou `poetry.lock` redirigé est un nouveau couple Python/Odoo :
+il demande `make install`.
+
+Chaque sauvegarde se restaure (le dépôt y revient ; son arbre ne doit porter
+aucune modification suivie, être sur la même branche, ou détaché comme il
+l'était, et sur le commit où la passe l'a laissé : un commit fait après le
+tirage n'est jamais ôté, `head_deplacee`) ou se supprime, restaurée ou non.
+Restaurer la racine remet aussi le manifeste local que la passe avait remplacé.
+
+<!-- [en] -->
+#### Pull without the menu
+
+`script/git/repo_pull.py` prints one JSON object, for a caller that shows the
+dry run and collects consent, such as `erplibre_info`. `--dry-run` lists in
+`attendus` the `<path>=<target sha>:<HEAD sha>` pins of the repositories it
+would pull; `--apply` takes them back with `--expect`, and `--confirm` must be
+the active Odoo version (exit code 2 otherwise). A plan that changed writes
+nothing (exit code 4). Shallow clones need `--approve-deepen` and the pins of
+`attendus_superficiel`, new repositories `--approve-clone` and one
+`--expect-clone` per path of `plan_nouveaux`; `--approve-deps` runs
+`poetry install` at the end. `--path` restricts the pass to one repository
+(`.` is the root), `--pass` gives its stamp and `--budget` its time budget.
+Exit code 5 means another pass holds the lock of the checkout.
+
+<!-- [fr] -->
+#### Tirer sans le menu
+
+`script/git/repo_pull.py` écrit un objet JSON, pour un appelant qui montre
+l'essai à sec et recueille le consentement, tel `erplibre_info`. `--dry-run`
+liste dans `attendus` les épingles `<chemin>=<sha cible>:<sha HEAD>` des dépôts
+qu'il tirerait ; `--apply` les reprend par `--expect`, et `--confirm` doit
+valoir la version d'Odoo active (code de sortie 2 sinon). Un plan qui a changé
+n'écrit rien (code de sortie 4). Les clones superficiels demandent
+`--approve-deepen` et les épingles d'`attendus_superficiel`, les nouveaux
+dépôts `--approve-clone` et un `--expect-clone` par chemin de `plan_nouveaux` ;
+`--approve-deps` lance `poetry install` à la fin. `--path` restreint la passe à
+un dépôt (`.` est la racine), `--pass` donne son horodatage et `--budget` son
+délai. Le code de sortie 5 dit qu'une autre passe tient le verrou du checkout.
+
+<!-- [common] -->
+```bash
+.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --pretty
+.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --mode branche --strategy ff
+.venv.erplibre/bin/python script/git/repo_pull.py --apply --confirm 18.0 --expect odoo18.0/addons/OCA_web=TARGET_SHA:HEAD_SHA
+.venv.erplibre/bin/python script/git/repo_pull.py --list-backups
+.venv.erplibre/bin/python script/git/repo_pull.py --restore-backup odoo18.0/addons/OCA_web=18.0_avant_pull_20260101T0800 --confirm 18.0
+.venv.erplibre/bin/python script/git/repo_pull.py --delete-backup odoo18.0/addons/OCA_web=18.0_avant_pull_20260101T0800 --confirm 18.0
+.venv.erplibre/bin/python script/git/repo_pull.py --install-deps --confirm 18.0 --pass 20260101T0800
+```
 
 <!-- [en] -->
 ### Where a fork comes from
@@ -323,7 +526,7 @@ opens each one in turn, stopping at a tig that does not exit with `q`.
 
 ### Add the upstream remotes
 
-`Add the upstream remotes`, entry 3 of TODO › Execute › Git › Repo, or
+`Add the upstream remotes`, entry 4 of TODO › Execute › Git › Repo, or
 `--add-remotes`, does only that, on every fork, without diagnosing: add the
 named upstream remote, then fetch its branch. The menu entry covers every Odoo
 version of the checkout, each `odoo<V>/` tree that has a manifest, in
@@ -432,7 +635,7 @@ tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne 
 
 ### Ajouter les remotes amont
 
-`Ajouter les remotes amont`, l'entrée 3 de TODO › Execute › Git › Repo, ou
+`Ajouter les remotes amont`, l'entrée 4 de TODO › Execute › Git › Repo, ou
 `--add-remotes`, ne fait que cela, sur chaque fork, sans diagnostic : poser le
 remote amont nommé, puis récupérer sa branche. L'entrée du menu passe chaque
 version d'Odoo du checkout, chaque arbre `odoo<V>/` qui a un manifeste, en
@@ -860,13 +1063,13 @@ make repo_freeze_diff ARGS="--graph 1"
 ```
 
 <!-- [en] -->
-In TODO › Git repo, entry 14 offers the usual comparisons, a choice of two revisions among the freeze commits and the
+In TODO › Git repo, entry 15 offers the usual comparisons, a choice of two revisions among the freeze commits and the
 ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
 `b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
 `w` the command that opens an old commit in a git worktree beside the clone, without moving it.
 
 <!-- [fr] -->
-Dans TODO › Git repo, l'entrée 14 propose les comparaisons courantes, le choix de deux révisions parmi les commits de
+Dans TODO › Git repo, l'entrée 15 propose les comparaisons courantes, le choix de deux révisions parmi les commits de
 gel et les branches et tags d'ERPLibre, et la matrice. Sur le rapport : un numéro ouvre tig sur ce projet, `a` sur
 chacun à la suite, `b N` le graphe avec les branches, `l` le journal, `d` et `s N` les diffstats, `g` le regroupement
 suivant, `f` le rafraîchissement, `w` la commande qui ouvre un ancien commit dans un worktree git à côté du clone, sans
