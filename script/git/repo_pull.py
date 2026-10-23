@@ -265,6 +265,11 @@ ENTREES_VIVES = (
     os.path.join("private", "default_git_manifest.csv"),
 )
 DOSSIER_MOBILE = os.path.join("mobile", "erplibre_home_mobile")
+DOSSIER_DOLIBARR = os.path.join("dolibarr", "dolibarr")
+# Les checkouts dont la seule présence ajoute un fragment à la fusion
+# (`git_merge_repo_manifest.default_input_paths`) : la prédiction les
+# recrée, vides, pour lire les mêmes fichiers que la racine.
+MARQUEURS_DE_FUSION = (DOSSIER_MOBILE, DOSSIER_DOLIBARR)
 
 
 class Occupe(Exception):
@@ -1129,7 +1134,8 @@ def racine_bougera(constat, strategie):
 
 def extraire_cible(racine, sha, destination):
     """Pose dans `destination` les dossiers « manifest » et « conf » du
-    commit `sha` de la racine, puis les entrées vives de la fusion.
+    commit `sha` de la racine, puis les entrées vives de la fusion et les
+    marqueurs de `MARQUEURS_DE_FUSION` que la racine porte.
     Rend None, ou le motif d'un échec."""
     archive = os.path.join(destination, "cible.tar")
     _out, err, code = git(
@@ -1147,8 +1153,9 @@ def extraire_cible(racine, sha, destination):
             cible = os.path.join(destination, relatif)
             os.makedirs(os.path.dirname(cible) or destination, exist_ok=True)
             shutil.copy2(source, cible)
-    if os.path.isdir(os.path.join(racine, DOSSIER_MOBILE)):
-        os.makedirs(os.path.join(destination, DOSSIER_MOBILE), exist_ok=True)
+    for marqueur in MARQUEURS_DE_FUSION:
+        if os.path.isdir(os.path.join(racine, marqueur)):
+            os.makedirs(os.path.join(destination, marqueur), exist_ok=True)
     return None
 
 

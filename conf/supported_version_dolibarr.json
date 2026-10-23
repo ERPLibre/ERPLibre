@@ -1,0 +1,8 @@
+{
+    "version": "24.0.1",
+    "branch": "24.0",
+    "docker_image": "docker.io/dolibarr/dolibarr:24.0.0",
+    "mariadb_image": "docker.io/library/mariadb:11.4",
+    "php_min": "7.2",
+    "php_max": "8.5"
+}
