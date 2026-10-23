@@ -20,6 +20,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
@@ -82,6 +83,8 @@ class Banc(unittest.TestCase):
             "code_root": str(self.checkout),
             "data_root": str(self.etat / "documents"),
             "state_dir": str(self.etat),
+            "port": 8081,
+            "url": "http://127.0.0.1:8081",
         }
         self.sys = Systeme()
 
@@ -203,6 +206,203 @@ class TestConteneur(Banc):
             argv[:7],
             ["podman", "exec", "-i", "-u", "www-data", "x-web", "php"],
         )
+
+
+FPM = "/usr/sbin/php-fpm8.2"
+
+
+class SystemeXdebug(Systeme):
+    """PHP-FPM joué : -m liste Xdebug s'il est chargé pour tout l'hôte, ou
+    par le .ini de l'instance quand le .so existe."""
+
+    def __init__(self):
+        super().__init__()
+        self.hote = False
+        self.so = True
+        self.installs = []
+        self.install_ok = True
+        self.install_allume_hote = False
+        self.install_fournit_so = True
+
+    def run(self, argv, env=None, stdin_path=None):
+        if argv[:2] == [FPM, "-m"]:
+            self.appels.append((list(argv), ""))
+            charge = self.hote
+            avert = ""
+            dossier = (env or {}).get("PHP_INI_SCAN_DIR", "").lstrip(":")
+            ini = Path(dossier, debug.XDEBUG_INI) if dossier else None
+            if ini and ini.exists() and "zend_extension" in ini.read_text():
+                if self.so:
+                    charge = True
+                else:
+                    # Ce que php-fpm écrit, sur la même sortie, sans le .so.
+                    avert = (
+                        "PHP Warning:  Failed loading Zend extension"
+                        " 'xdebug.so' (tried: /usr/lib/php/x/xdebug.so)\n"
+                    )
+            return 0, avert + "[PHP Modules]\nCore\n" + (
+                "\n[Zend Modules]\nXdebug\n" if charge else ""
+            )
+        return super().run(argv, env, stdin_path)
+
+    def interactive(self, argv):
+        self.installs.append(list(argv))
+        if not self.install_ok:
+            return 100
+        self.so = self.install_fournit_so
+        self.hote = self.hote or self.install_allume_hote
+        return 0
+
+
+class TestXdebug(Banc):
+    def setUp(self):
+        super().setUp()
+        self.sys = SystemeXdebug()
+        self.redemarrages = []
+        for cible, valeur in (
+            ("restart_fpm", lambda nom, racine: self.redemarrages.append(nom)),
+            ("_fpm_binary", lambda: FPM),
+            ("_family", lambda: "apt-get"),
+        ):
+            p = mock.patch.object(debug, cible, valeur)
+            p.start()
+            self.addCleanup(p.stop)
+        self.ini = self.etat / "run" / "php.d" / debug.XDEBUG_INI
+        self.launch = self.checkout / ".vscode" / "launch.json"
+
+    def test_xdebug_is_loaded_in_the_instance_pool_only(self):
+        code, sortie = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 0, sortie)
+        texte = self.ini.read_text()
+        for attendu in (
+            "zend_extension=xdebug.so",
+            "xdebug.mode=debug",
+            "xdebug.start_with_request=trigger",
+            "xdebug.client_port=9003",
+        ):
+            self.assertIn(attendu, texte)
+        self.assertEqual(self.redemarrages, ["erp"])
+        self.assertEqual(self.sys.installs, [])
+        config = json.loads(self.launch.read_text())["configurations"]
+        self.assertEqual(
+            config,
+            [
+                {
+                    "name": "Dolibarr erp (Xdebug)",
+                    "type": "php",
+                    "request": "launch",
+                    "port": 9003,
+                }
+            ],
+        )
+        self.assertTrue(
+            json.loads((self.etat / "debug.json").read_text())["xdebug"]
+        )
+        self.assertIn("PhpStorm", sortie)
+
+    def test_a_host_that_loads_it_already_gets_no_second_load(self):
+        self.sys.hote = True
+        code, sortie = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 0, sortie)
+        self.assertNotIn("zend_extension", self.ini.read_text())
+        self.assertIn("xdebug.mode=debug", self.ini.read_text())
+
+    def test_a_missing_xdebug_is_installed_then_not_loaded_twice(self):
+        # Le paquet Debian l'allume pour tout l'hôte dès l'installation.
+        self.sys.so = False
+        self.sys.install_allume_hote = True
+        code, sortie = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("php-xdebug", self.sys.installs[0])
+        self.assertNotIn("zend_extension", self.ini.read_text())
+        self.assertEqual(self.redemarrages, ["erp"])
+
+    def test_a_failed_install_leaves_nothing(self):
+        self.sys.so = False
+        self.sys.install_ok = False
+        code, _s = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 1)
+        self.assertFalse(self.ini.exists())
+        self.assertEqual(self.redemarrages, [])
+        etat = self.etat / "debug.json"
+        self.assertFalse(
+            etat.exists() and json.loads(etat.read_text()).get("xdebug")
+        )
+
+    def test_an_install_that_does_not_load_it_fails(self):
+        self.sys.so = False
+        self.sys.install_fournit_so = False
+        code, _s = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 1)
+        self.assertFalse(self.ini.exists())
+        self.assertEqual(len(self.sys.installs), 1)
+        self.assertEqual(self.redemarrages, [])
+
+    def test_xdebug_twice_restarts_once(self):
+        self.lancer("on", "--instance", "erp", "--xdebug")
+        code, _s = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.redemarrages, ["erp"])
+
+    def test_containers_and_productions_are_refused(self):
+        conteneur = {
+            "mode": "dev",
+            "runtime": "container",
+            "engine": "podman",
+            "containers": ["x-db", "x-web", "x-cron"],
+            "state_dir": str(self.etat),
+        }
+        prod = dict(self.entree, mode="prod", user="dolibarr_erp")
+        for entree, extra in ((conteneur, ()), (prod, ("--confirm", "erp"))):
+            code, _s = self.lancer(
+                "on", "--instance", "erp", "--xdebug", *extra, entree=entree
+            )
+            self.assertEqual(code, 2)
+        self.assertEqual(self.sys.appels, [])
+
+    def test_off_removes_it_and_keeps_the_ide_config(self):
+        self.lancer("on", "--instance", "erp", "--xdebug")
+        code, _s = self.lancer("off", "--instance", "erp")
+        self.assertEqual(code, 0)
+        self.assertFalse(self.ini.exists())
+        self.assertEqual(self.redemarrages, ["erp", "erp"])
+        self.assertTrue(self.launch.exists())
+
+    def test_xdebug_joins_a_profile_already_on(self):
+        self.lancer("on", "--instance", "erp")
+        code, _s = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 0)
+        self.assertTrue(self.ini.exists())
+        etat = json.loads((self.etat / "debug.json").read_text())
+        self.assertTrue(etat["xdebug"])
+        self.assertEqual(etat["constants"], AVANT)
+
+    def test_the_vscode_config_is_merged_and_never_doubled(self):
+        self.launch.parent.mkdir(parents=True)
+        self.launch.write_text(
+            json.dumps(
+                {"version": "0.2.0", "configurations": [{"name": "Autre"}]}
+            )
+        )
+        self.lancer("on", "--instance", "erp", "--xdebug")
+        self.lancer("off", "--instance", "erp")
+        self.lancer("on", "--instance", "erp", "--xdebug")
+        noms = [
+            c["name"]
+            for c in json.loads(self.launch.read_text())["configurations"]
+        ]
+        self.assertEqual(noms, ["Autre", "Dolibarr erp (Xdebug)"])
+
+    def test_a_launch_json_with_comments_is_left_alone(self):
+        self.launch.parent.mkdir(parents=True)
+        self.launch.write_text(
+            '{\n  // mes réglages\n  "configurations": []\n}\n'
+        )
+        avant = self.launch.read_text()
+        code, sortie = self.lancer("on", "--instance", "erp", "--xdebug")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.launch.read_text(), avant)
+        self.assertIn('"port": 9003', sortie)
 
 
 class TestJournal(unittest.TestCase):
