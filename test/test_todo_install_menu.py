@@ -6,8 +6,10 @@
 Le choix se pose AVANT l'étape système. « First system installation? »
 installe la pile de l'OS pour Odoo (update_env_version.py --install) ; posée
 en premier, elle l'installait aussi pour qui ne voulait qu'une autre
-technologie. Elle vient donc juste après le choix, pour les choix qui en ont
-besoin.
+technologie. Elle vient donc après le choix, pour les choix qui en ont
+besoin — et pour une version d'Odoo, après les menus de l'environnement et
+du type d'installation, qui offrent « 0: Back » : un retour ne doit rien
+laisser d'installé.
 
 Rien n'est installé ici : input() répond d'après une liste écrite d'avance,
 subprocess.run et exec_command_live sont remplacés par des enregistreurs.
@@ -88,18 +90,36 @@ class TestOrdreDesQuestions(Banc):
         self.assertNotIn(QUESTION_SYSTEME, questions[0])
         self.assertEqual(commandes, [])
 
-    def test_an_odoo_version_still_asks_the_system_question_after(self):
-        # La version, la question système, le développement, l'installation
-        # standard.
-        questions, commandes = self.jouer(["1", "y", "1", "1"])
-        self.assertNotIn(QUESTION_SYSTEME, questions[0])
-        self.assertIn(QUESTION_SYSTEME, questions[1])
+    def test_an_odoo_version_asks_the_system_question_last(self):
+        # La version, le développement, l'installation standard, puis la
+        # question système.
+        questions, commandes = self.jouer(["1", "1", "1", "y"])
+        self.assertEqual(len(questions), 4)
+        for question in questions[:3]:
+            self.assertNotIn(QUESTION_SYSTEME, question)
+        self.assertIn(QUESTION_SYSTEME, questions[3])
         self.assertIn(
             "./script/version/update_env_version.py --install", commandes
         )
         self.assertTrue(
             any("--install_dev" in c for c in commandes), commandes
         )
+
+    def test_back_from_the_environment_menu_installs_nothing(self):
+        """La version, puis « 0: Back » au choix de l'environnement."""
+        questions, commandes = self.jouer(["1", "0"])
+        self.assertEqual(len(questions), 2)
+        for question in questions:
+            self.assertNotIn(QUESTION_SYSTEME, question)
+        self.assertEqual(commandes, [])
+
+    def test_back_from_the_install_type_menu_installs_nothing(self):
+        """La version, le développement, puis « 0: Back » au type."""
+        questions, commandes = self.jouer(["1", "1", "0"])
+        self.assertEqual(len(questions), 3)
+        for question in questions:
+            self.assertNotIn(QUESTION_SYSTEME, question)
+        self.assertEqual(commandes, [])
 
     def test_erplibre_only_keeps_the_system_question(self):
         questions, commandes = self.jouer(["q", "n"])

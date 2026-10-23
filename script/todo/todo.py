@@ -427,7 +427,9 @@ class TODO(
     def _install_system_step(self):
         """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
         et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install :
-        une technologie qui installe ses propres paquets ne passe pas ici."""
+        une technologie qui installe ses propres paquets ne passe pas ici.
+        Pour une version d'Odoo, elle vient après la dernière question qui
+        offre « 0: Back » : un retour ne laisse rien d'installé."""
         print("Detect first installation from code source.")
 
         first_installation_input = (
@@ -558,7 +560,6 @@ class TODO(
         if odoo_version_input == "0":
             return
 
-        self._install_system_step()
         cmd_intern = install_commands.get(odoo_version_input)[2]
 
         # For numbered version selections, offer extra modules sub-menu
@@ -597,6 +598,8 @@ class TODO(
             if extra_input == "2":
                 cmd_intern = cmd_intern + " --with_extra"
 
+        # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
+        self._install_system_step()
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
