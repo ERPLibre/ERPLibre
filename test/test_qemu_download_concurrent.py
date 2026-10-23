@@ -14,19 +14,33 @@ après avoir tiré tout le fichier. Ces tests gardent :
   fois par installation ;
 - une erreur passagère (503, délai dépassé) réessayée sur le même miroir, en
   reprenant le .part là où il s'est arrêté ;
-- une erreur qui décrit le miroir (404) jamais réessayée.
+- une erreur qui décrit le miroir (404), l'URL ou le certificat jamais
+  réessayée ;
+- une image périmée qui reste lisible pendant sa reprise, et en place si
+  la reprise échoue ;
+- un `.lock` en lecture seule qui verrouille quand même ;
+- une commande manuelle qui ne reprend pas (« curl -C - ») une image
+  entière laissée en place par un remplacement échoué.
 
 Les fils d'exécution tiennent lieu de processus : flock oppose deux
 descripteurs ouverts séparément, même dans un seul processus.
 """
 
+import contextlib
+import fcntl
 import hashlib
+import http.client
 import http.server
+import io
+import os
+import socket
+import ssl
 import sys
 import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -181,6 +195,72 @@ class TestInstallationsSimultanees(unittest.TestCase):
         self.assertLessEqual(len(self.serveur.demandes), 6)
         self.assertFalse(self.dest.exists())
 
+    def test_l_image_perimee_reste_lisible_pendant_la_reprise(self):
+        """Une conversion lancée pendant la reprise trouve l'ancienne image
+        à son chemin : la nouvelle ne la remplace qu'une fois complète."""
+        ancienne = b"ancienne version de l'image"
+        self.dest.write_bytes(ancienne)
+        vu = []
+        vrai = d._download_one
+
+        def espion(url, tmp, timeout, depuis=0):
+            vu.append(self.dest.read_bytes() if self.dest.exists() else None)
+            vrai(url, tmp, timeout, depuis)
+
+        with mock.patch.object(d, "_download_one", side_effect=espion):
+            d.verify_sha256(
+                self.serveur.url,
+                self.dest,
+                False,
+                "arch",
+                (self.serveur.url,),
+            )
+        self.assertEqual([ancienne], vu)
+        self.assertEqual(CONTENU, self.dest.read_bytes())
+        self.assertFalse(self.dest.with_suffix(".qcow2.part").exists())
+
+    def test_une_reprise_qui_echoue_garde_l_image_perimee(self):
+        ancienne = b"ancienne version de l'image"
+        self.dest.write_bytes(ancienne)
+        absent = Serveur(pannes=[404])
+        self.addCleanup(absent.arrete)
+        with self.assertRaises(SystemExit):
+            d.verify_sha256(
+                self.serveur.url,
+                self.dest,
+                False,
+                "arch",
+                (absent.url,),
+            )
+        self.assertEqual(ancienne, self.dest.read_bytes())
+
+    @unittest.skipIf(
+        os.geteuid() == 0, "root ouvre en écriture un fichier en 0444"
+    )
+    def test_un_lock_en_lecture_seule_verrouille_quand_meme(self):
+        """Un .lock laissé par un autre compte, sans droit d'écriture, tient
+        le verrou : flock ne demande qu'un descripteur ouvert."""
+        lock = Path(f"{self.dest}.lock")
+        lock.touch()
+        lock.chmod(0o444)
+        with d.verrou_image(self.dest):
+            autre = os.open(lock, os.O_RDONLY)
+            try:
+                with self.assertRaises(BlockingIOError):
+                    fcntl.flock(autre, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(autre)
+
+    def test_sans_descripteur_le_verrou_avertit(self):
+        sortie = io.StringIO()
+        refus = PermissionError(13, "Permission denied")
+        with mock.patch.object(
+            d.os, "open", side_effect=refus
+        ), contextlib.redirect_stdout(sortie):
+            with d.verrou_image(self.dest):
+                pass
+        self.assertIn("SANS verrou", sortie.getvalue())
+
     def test_le_verrou_se_reprend_dans_le_meme_fil(self):
         """verify_sha256 retélécharge sous le verrou qu'il tient déjà."""
         with d.verrou_image(self.dest):
@@ -253,6 +333,72 @@ class TestErreursPassageres(unittest.TestCase):
         self.assertFalse(d.erreur_passagere(OSError(28, "disque plein")))
         self.assertTrue(d.erreur_passagere(TimeoutError("timed out")))
         self.assertTrue(d.erreur_passagere(ConnectionResetError()))
+
+    def test_une_erreur_d_url_ou_de_certificat_n_est_pas_passagere(self):
+        certificat = ssl.SSLCertVerificationError(
+            1, "certificate verify failed"
+        )
+        for exc in (
+            urllib.error.URLError(certificat),
+            urllib.error.URLError(ssl.SSLError(1, "wrong version number")),
+            certificat,
+            urllib.error.URLError("unknown url type: inconnu"),
+            urllib.error.URLError("no host given"),
+            http.client.InvalidURL("nonnumeric port"),
+        ):
+            with self.subTest(exc=exc):
+                self.assertFalse(d.erreur_passagere(exc))
+
+    def test_les_erreurs_reseau_restent_passageres(self):
+        for exc in (
+            urllib.error.URLError(TimeoutError("timed out")),
+            urllib.error.URLError(ConnectionRefusedError()),
+            urllib.error.URLError(ConnectionResetError()),
+            urllib.error.URLError(socket.gaierror(-3, "name resolution")),
+            urllib.error.URLError(ssl.SSLEOFError(8, "EOF")),
+            http.client.IncompleteRead(b"", 10),
+            http.client.RemoteDisconnected("closed"),
+            urllib.error.HTTPError("http://x.invalid/", 503, "", {}, None),
+        ):
+            with self.subTest(exc=exc):
+                self.assertTrue(d.erreur_passagere(exc))
+
+    def test_l_echec_propose_de_reprendre_le_fichier_partiel(self):
+        serveur = Serveur(pannes=[404])
+        self.addCleanup(serveur.arrete)
+        with self.assertRaises(SystemExit) as sortie:
+            d.download_image([serveur.url], self.dest, False, timeout=10)
+        self.assertIn(
+            f"sudo curl -fL -C - -o {self.dest}", str(sortie.exception)
+        )
+
+    def test_l_echec_d_un_remplacement_ne_propose_pas_de_reprise(self):
+        """L'ancienne image est entière à `dest` : « curl -C - » y
+        ajouterait la fin de la nouvelle. La commande proposée la réécrit."""
+        ancienne = b"ancienne version de l'image"
+        self.dest.write_bytes(ancienne)
+        serveur = Serveur(pannes=[404])
+        self.addCleanup(serveur.arrete)
+        with self.assertRaises(SystemExit) as sortie:
+            d.download_image(
+                [serveur.url], self.dest, False, timeout=10, remplace=True
+            )
+        message = str(sortie.exception)
+        self.assertNotIn("-C -", message)
+        self.assertIn(f"sudo curl -fL -o {self.dest}", message)
+        self.assertEqual(ancienne, self.dest.read_bytes())
+
+    def test_une_url_inconnue_passe_au_miroir_suivant_sans_attendre(self):
+        serveur = Serveur()
+        self.addCleanup(serveur.arrete)
+        d.download_image(
+            ["inconnu://miroir.invalid/image.qcow2", serveur.url],
+            self.dest,
+            False,
+            timeout=10,
+        )
+        self.assertEqual(CONTENU, self.dest.read_bytes())
+        self.sommeil.assert_not_called()
 
 
 if __name__ == "__main__":
