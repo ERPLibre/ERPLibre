@@ -38,6 +38,7 @@ script also runs on its own.
 | `package.py` | `check` a module against DoliStore's rules, `build` its zip |
 | `quality.py` | phpcs and PHPStan on a module, with Dolibarr's own rules |
 | `hooks_index.py` | Hooks, contexts and triggers at a version, and the diff between two |
+| `core.py` | Core changes: `status`, `start` a work branch, `check` against CONTRIBUTING, `patches` |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -84,6 +85,7 @@ chaque script se lance aussi seul.
 | `package.py` | `check` d'un module selon les règles de DoliStore, `build` de son zip |
 | `quality.py` | phpcs et PHPStan sur un module, avec les règles de Dolibarr |
 | `hooks_index.py` | Hooks, contextes et déclencheurs à une version, et le diff entre deux |
+| `core.py` | Modifier le cœur : `status`, `start` d'une branche, `check` selon CONTRIBUTING, `patches` |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -299,6 +301,8 @@ ne sont pas posés.
 ./script/dolibarr/quality.py --instance erp --name Zorglub [--only phpstan]
 ./script/dolibarr/hooks_index.py list --kind context --filter '^thirdparty'
 ./script/dolibarr/hooks_index.py diff --from 23.0.4       # to the pinned commit
+./script/dolibarr/core.py start --topic fix-invoice-total
+./script/dolibarr/core.py check && ./script/dolibarr/core.py patches
 ```
 
 <!-- [en] -->
@@ -345,6 +349,17 @@ ne sont pas posés.
   branch or commit is fetched once, at depth 1, into
   `~/.erplibre/dolibarr_index.git`, which borrows the checkout's objects:
   the checkout that Google Repo manages is never written.
+- `core.py` works on the pinned checkout and nothing leaves this machine:
+  no push, no pull request. `start` opens a work branch at the pinned
+  commit (`repo start`) and deepens the shallow history; it needs a git
+  identity, since `repo sync` silently resets a branch none of whose
+  commits carries it (`status` warns about it). `check` applies Dolibarr's
+  `CONTRIBUTING.md`: the author's `Signed-off-by` (DCO), a title keyword
+  (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC, in capitals for the ChangeLog),
+  neither `ChangeLog` nor a language other than en_US, one fix per pull
+  request on a stable branch. `patches` exports the series under
+  `private/dolibarr/patches/`. The `ERPLibre/dolibarr` fork does not exist
+  yet; `status` says when it answers.
 
 ## Pinned version
 
@@ -394,6 +409,18 @@ ne sont pas posés.
   commit se récupère une fois, à profondeur 1, dans
   `~/.erplibre/dolibarr_index.git`, qui emprunte les objets du checkout :
   celui que gère Google Repo n'est jamais écrit.
+- `core.py` travaille le checkout épinglé et rien ne quitte ce poste :
+  aucun push, aucune demande de fusion. `start` ouvre une branche de
+  travail au commit épinglé (`repo start`) et approfondit l'historique peu
+  profond ; il exige une identité git, car `repo sync` remet à zéro sans
+  rien dire une branche dont aucun commit ne la porte (`status` le
+  signale). `check` applique le `CONTRIBUTING.md` de Dolibarr : le
+  `Signed-off-by` de l'auteur (DCO), un mot-clé de titre (FIX, CLOSE, NEW,
+  PERF, DOC, QUAL, SEC, en capitales pour le ChangeLog), ni `ChangeLog` ni
+  langue autre qu'en_US, un seul correctif par demande sur une branche
+  stable. `patches` exporte la série sous `private/dolibarr/patches/`. Le
+  fork `ERPLibre/dolibarr` n'existe pas encore ; `status` dit quand il
+  répond.
 
 ## Version épinglée
 
