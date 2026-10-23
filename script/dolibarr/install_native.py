@@ -376,8 +376,27 @@ def step_php(ctx, runner):
     missing = [e for e in (driver,) + REQUIRED_EXTENSIONS if e not in loaded]
     if missing:
         raise StepError(t("PHP extensions missing: %s") % ", ".join(missing))
+    if "zend opcache" not in loaded:
+        _add_opcache(ctx, runner)
     return f"PHP {version}"
 
+
+def _add_opcache(ctx, runner):
+    """Installe OPcache là où php-fpm ne le tire pas (EL 9/10, Leap 16).
+
+    Facultatif : un refus ou un échec laisse PHP sans cache d'opcodes,
+    plus lent mais complet, et l'installation continue.
+    """
+    name = packages.opcache_package(ctx.family)
+    if not name:
+        return
+    try:
+        install_missing(ctx, runner, [[name]])
+    except StepError:
+        runner.out(
+            "      "
+            + t("OPcache stays off: PHP runs without its opcode cache.")
+        )
 
 
 def _service_active(runner, unit):
