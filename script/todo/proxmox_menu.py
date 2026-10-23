@@ -1177,6 +1177,7 @@ class ProxmoxMenuMixin:
         donc tout ici, une fois, terminal encore à nous.
         """
         from script.proxmox import proxmox_deploy as pve
+        from script.todo.deploy_form_lib import catalog_order
 
         print(f"\n{t('Loading (host, storage, bridges, VMs)...')}")
         native = self._native_arch()
@@ -1194,7 +1195,9 @@ class ProxmoxMenuMixin:
                 e["name"] = self._qemu_infra_name(
                     e["distro"], e["version"], e["arch"]
                 )
-            catalog[a] = entries
+            # Le même ordre que le formulaire QEMU/KVM : par système, puis par
+            # version comparée comme un nombre.
+            catalog[a] = catalog_order(entries)
 
         vms = self._pve_vms()
         _c, out = self._pve_show("pvesm status --content images", quiet=True)
