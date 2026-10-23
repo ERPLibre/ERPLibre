@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Monter une instance Dolibarr à la version épinglée.
 
-    ./script/dolibarr/upgrade.py --instance erp [--yes]
+    ./script/dolibarr/upgrade.py --instance erp
 
 La cible est l'épinglage (commit et version ; l'image pour un conteneur).
 Descendre est refusé. Même version et même commit : rien à faire. Même
@@ -23,7 +23,9 @@ tombée : la réussite se juge au premier code non nul, PUIS à
 MAIN_VERSION_LAST_UPGRADE, qui doit valoir la cible. Sinon, retour
 arrière : l'ancien code revient et la sauvegarde est restaurée, car un
 retour du code seul laisserait une base en avance que rien ne signale.
-Le registre ne change qu'après une montée réussie.
+Le registre ne change qu'après une montée réussie. La sortie complète de
+chaque commande (du HTML pour les scripts de Dolibarr) va dans
+private/dolibarr/upgrades/<instance>-<date>.log, en 0600.
 """
 
 import argparse
@@ -171,11 +173,36 @@ def _remove(path):
         pass
 
 
+def _plain(text):
+    """Le texte d'une sortie HTML de Dolibarr, sans balises, la fin seule."""
+    text = re.sub(r"<[^>]+>", " ", text or "")
+    return " ".join(text.split())[-300:]
+
+
 def _run(system, label, argv, env=None):
     code, out = system.run(argv, env=env)
     if code:
-        raise UpgradeError(f"{t(label)} — {out.strip()[-500:]}")
+        raise UpgradeError(f"{t(label)} — {_plain(out)}")
     return out
+
+
+class LoggedSystem:
+    """Le système, dont chaque commande est écrite dans `path` (0600) avec
+    sa sortie complète ; le reste passe tel quel."""
+
+    def __init__(self, system, path):
+        self.system, self.path = system, path
+
+    def __getattr__(self, name):
+        return getattr(self.system, name)
+
+    def run(self, argv, env=None, stdin_path=None):
+        code, out = self.system.run(argv, env=env, stdin_path=stdin_path)
+        os.makedirs(os.path.dirname(self.path), mode=0o700, exist_ok=True)
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            f.write(f"$ {' '.join(argv)}\n[{code}]\n{out}\n")
+        return code, out
 
 
 class NativeDev:
@@ -586,6 +613,10 @@ def _runtime(name, entry, pin, system, root):
 
 def upgrade(name, entry, pin, system, root, stamp):
     """Monte `name` à l'épinglage ; 0 (fait ou rien à faire) ou 1."""
+    log = os.path.join(
+        root, "private", "dolibarr", "upgrades", f"{name}-{stamp}.log"
+    )
+    system = LoggedSystem(system, log)
     try:
         work = _runtime(name, entry, pin, system, root)
     except UpgradeError as e:
@@ -617,6 +648,8 @@ def upgrade(name, entry, pin, system, root, stamp):
         work.run(from_v, target)
     except UpgradeError as e:
         print(t("Upgrade stopped: %s") % e)
+        if os.path.exists(log):
+            print(t("Full output: %s") % log)
         if backup_path:
             # Tout ce qui a été arrêté repart ; la base et les fichiers ne
             # reviennent de la sauvegarde que si le code a changé.
