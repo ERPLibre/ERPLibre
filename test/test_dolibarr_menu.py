@@ -43,6 +43,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Instance status": "_dolibarr_run",
         "Dolibarr - Instance logs": "_dolibarr_run",
         "Dolibarr - Update the pinned commit": "_dolibarr_pin",
+        "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
     }
 
 
@@ -127,6 +128,50 @@ class TestChoixDeLInstance(Banc):
         self.registre = {"aaa": dict(DEV), "zzz": dict(DEV)}
         lances, _s = self.lancer("status")
         self.assertEqual(lances, [f"{RUN} status"])
+
+
+DETECT = "./.venv.erplibre/bin/python -u script/dolibarr/detect.py"
+
+
+class TestDetection(unittest.TestCase):
+    def lancer(self, alias, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(
+                TODO, "_ssh_config_hosts", staticmethod(lambda: list(alias))
+            ),
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_detect()
+        return lances
+
+    def test_this_machine(self):
+        self.assertEqual(self.lancer([], ["1"]), [f"{DETECT} --local"])
+
+    def test_one_host_of_the_ssh_config(self):
+        lances = self.lancer(["hote-a", "hote-b"], ["4"])
+        self.assertEqual(lances, [f"{DETECT} --ssh hote-b"])
+
+    def test_every_host_of_the_ssh_config(self):
+        lances = self.lancer(["hote-a", "hote-b"], ["2"])
+        self.assertEqual(lances, [f"{DETECT} --ssh hote-a --ssh hote-b"])
+
+    def test_an_alias_is_quoted_for_the_shell(self):
+        lances = self.lancer(["a b"], ["3"])
+        self.assertEqual(lances, [f"{DETECT} --ssh 'a b'"])
+
+    def test_back_runs_nothing(self):
+        self.assertEqual(self.lancer(["hote-a"], ["0"]), [])
 
 
 PIN = "./.venv.erplibre/bin/python -u script/dolibarr/pin.py"
