@@ -24,6 +24,7 @@ from script.dolibarr import container_plan  # noqa: E402
 PIN = {
     "docker_image": "docker.io/dolibarr/dolibarr:24.0.0",
     "mariadb_image": "docker.io/library/mariadb:11.4",
+    "tools_image": "docker.io/library/composer:2",
 }
 SECRETS = "/srv/essai/erp/secrets"
 INIT = "/srv/essai/erp/init.d"

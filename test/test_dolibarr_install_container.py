@@ -134,6 +134,7 @@ class Banc(unittest.TestCase):
                     "branch": "24.0",
                     "docker_image": IMAGE,
                     "mariadb_image": MARIADB,
+                    "tools_image": "docker.io/library/composer:2",
                     "php_min": "7.2",
                     "php_max": "8.5",
                 }
