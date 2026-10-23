@@ -42,6 +42,8 @@ DETECT_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/detect.py"
 DOCTOR_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/doctor.py"
 # Sauvegarde d'une instance, sous private/dolibarr/backups/.
 BACKUP_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/backup.py"
+# Monter une instance à la version épinglée.
+UPGRADE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/upgrade.py"
 # Le parc : lister les instances, en retirer une.
 FLEET_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/fleet.py"
 SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
@@ -82,6 +84,7 @@ class DolibarrMenuMixin:
             {"prompt_description": t("Dolibarr - Instance logs")},
             {"section": t("Maintenance")},
             {"prompt_description": t("Dolibarr - Update the pinned commit")},
+            {"prompt_description": t("Dolibarr - Upgrade an instance")},
             {
                 "prompt_description": t(
                     "Dolibarr - Health, security and integrity"
@@ -117,19 +120,58 @@ class DolibarrMenuMixin:
             elif status == "6":
                 self._dolibarr_pin()
             elif status == "7":
-                self._dolibarr_doctor()
+                self._dolibarr_upgrade()
             elif status == "8":
-                self._dolibarr_backup()
+                self._dolibarr_doctor()
             elif status == "9":
-                self._dolibarr_restore()
+                self._dolibarr_backup()
             elif status == "10":
-                self._dolibarr_fleet_list()
+                self._dolibarr_restore()
             elif status == "11":
-                self._dolibarr_remove()
+                self._dolibarr_fleet_list()
             elif status == "12":
+                self._dolibarr_remove()
+            elif status == "13":
                 self._dolibarr_detect()
             else:
                 print(t("Command not found !"))
+
+    def _dolibarr_upgrade(self):
+        """upgrade.py sur l'instance choisie, après un oui : il sauvegarde
+        d'abord et revient en arrière seul en cas d'échec."""
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        names = sorted(known)
+        if not names:
+            print(t("No Dolibarr instance."))
+            return
+        name = (
+            names[0]
+            if len(names) == 1
+            else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
+        )
+        if name is None:
+            return
+        print(
+            t(
+                "The instance stops during the upgrade; a backup comes"
+                " first and a failure rolls back."
+            )
+        )
+        if not self._is_yes(
+            input(t("Upgrade %s to the pinned version? (y/N): ") % name)
+            .strip()
+            .lower()
+        ):
+            print(t("Cancelled."))
+            return
+        self.execute.exec_command_live(
+            f"{UPGRADE_CLI} --instance {shlex.quote(name)}",
+            source_erplibre=False,
+        )
 
     def _dolibarr_doctor(self):
         """doctor.py sur toutes les instances ; il dit lui-même ce qui va."""
