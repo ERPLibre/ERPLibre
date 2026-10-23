@@ -19668,6 +19668,23 @@ TRANSLATIONS = {
         "fr": "Le couple Python/Odoo change : lancer make install.",
         "en": "The Python/Odoo couple changes: run make install.",
     },
+    # Installation de paquets : rafraîchissement des index d'abord.
+    "This refresh is a full system upgrade, not only the package indexes.": {
+        "fr": "Ce rafraîchissement est une mise à jour complète du système, pas seulement des index de paquets.",
+        "en": "This refresh is a full system upgrade, not only the package indexes.",
+    },
+    "Upgrade the whole system first? (y/N): ": {
+        "fr": "Mettre d'abord tout le système à jour ? (o/N) : ",
+        "en": "Upgrade the whole system first? (y/N): ",
+    },
+    "Package indexes left as they are.": {
+        "fr": "Index de paquets laissés tels quels.",
+        "en": "Package indexes left as they are.",
+    },
+    "Refreshing the package indexes failed; nothing installed.": {
+        "fr": "Le rafraîchissement des index de paquets a échoué ; rien n'est installé.",
+        "en": "Refreshing the package indexes failed; nothing installed.",
+    },
     "Shallow clones: deepening downloads history (network).": {
         "fr": "Clones superficiels : l'approfondissement télécharge de l'historique (réseau).",
         "en": "Shallow clones: deepening downloads history (network).",

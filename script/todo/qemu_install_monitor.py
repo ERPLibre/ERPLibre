@@ -1498,18 +1498,18 @@ INSTALLABLE_BROWSERS = (
 )
 
 
-def browser_install_command(browser="w3m") -> list | None:
-    """Commande d'installation du navigateur CLI `browser`, ou None si aucun
-    gestionnaire de paquets connu.
+def browser_install_command(browser="w3m") -> list:
+    """Les étapes d'installation du navigateur CLI `browser`, dans l'ordre
+    (todo_install.install_steps : rafraîchissement des index d'abord), ou
+    une liste vide si aucun gestionnaire de paquets connu.
 
     Les navigateurs proposés portent le même nom de paquet dans les quatre
-    familles ; todo_install choisit la commande. Cette écriture-ci ne
-    connaissait pas zypper, et openSUSE ne pouvait donc en installer aucun."""
+    familles ; todo_install choisit les commandes, zypper compris."""
     # Importé ici et non en tête : l'import de todo_i18n de ce module est
     # protégé pour qu'il tourne en autonome, et todo_install en dépend.
     from script.todo import todo_install
 
-    return todo_install.install_command([browser])
+    return todo_install.install_steps([browser])
 
 
 def virsh_ip(name: str) -> str:
@@ -3817,20 +3817,23 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         browser = INSTALLABLE_BROWSERS[idx][0]
                 except ValueError:
                     pass
-                cmd = browser_install_command(browser)
-                if not cmd:
+                etapes = browser_install_command(browser)
+                if not etapes:
                     print(
                         "Gestionnaire de paquets inconnu : installez "
                         f"« {browser} » manuellement."
                     )
                     input("Entrée… ")
                     return None
-                printable = " ".join(cmd)
-                print(f"Commande : {printable}")
-                ans = input("Installer maintenant ? (o/N) : ").strip().lower()
-                if ans not in ("o", "oui", "y", "yes"):
+                from script.todo import todo_install
+
+                def oui(reponse):
+                    return reponse.strip().lower() in ("o", "oui", "y", "yes")
+
+                todo_install.show_steps(etapes, prefix="")
+                if not oui(input("Installer maintenant ? (o/N) : ")):
                     return None
-                rc = os.system(printable)
+                rc = todo_install.run_steps(os.system, etapes, oui, prefix="")
                 print(f"\nInstallation terminée (code {rc}).")
                 input("Entrée pour continuer… ")
             return cli_browser()

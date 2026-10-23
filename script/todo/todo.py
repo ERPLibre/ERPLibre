@@ -3342,13 +3342,14 @@ class TODO(
 
         Un refus de l'opérateur arrête là. Un paquet inconnu ou une
         installation en échec passent au recours amont, qui couvre les dépôts
-        où starship n'est pas empaqueté.
+        où starship n'est pas empaqueté. Les index se rafraîchissent avant
+        le paquet (todo_install.install_steps).
         """
-        cmd = todo_install.install_command(["starship"])
-        if cmd:
+        etapes = todo_install.install_steps(["starship"])
+        if etapes:
             status = todo_install.ask_and_install(
                 self.execute,
-                cmd,
+                etapes,
                 t("Install starship? (y/N): "),
                 self._is_yes,
             )

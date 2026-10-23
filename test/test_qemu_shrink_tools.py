@@ -35,12 +35,17 @@ FAMILIES = ("apt-get", "dnf", "pacman", "zypper")
 class _Exec:
     """Le lanceur de commandes, qui retient au lieu d'exécuter."""
 
-    def __init__(self, status=0):
+    def __init__(self, status=0, statuses=None):
+        """`statuses` donne un code par commande, dans l'ordre ; sans lui,
+        toutes rendent `status`."""
         self.ran = []
         self.status = status
+        self.statuses = list(statuses or ())
 
     def exec_command_live(self, cmd, source_erplibre=False):
         self.ran.append(cmd)
+        if self.statuses:
+            return self.statuses.pop(0)
         return self.status
 
 
@@ -71,14 +76,22 @@ class ShrinkToolsBase(unittest.TestCase):
         return which
 
     def _run(self, package_manager, missing, answer="y", installed_after=()):
+        """`answer` répond à chaque question ; une liste répond question par
+        question, dans l'ordre, et une question de trop fait échouer le
+        test."""
         which = self._which(package_manager, missing, installed_after)
         buf = io.StringIO()
+        reponses = None if isinstance(answer, str) else list(answer)
 
         # input() écrit son invite sur stdout comme le vrai : sans cela la
         # question n'apparaît nulle part et l'ORDRE des deux ne se voit pas.
         def demande(invite=""):
             print(invite, end="")
-            return answer
+            if reponses is None:
+                return answer
+            if not reponses:
+                raise AssertionError(f"question sans réponse : {invite!r}")
+            return reponses.pop(0)
 
         # `shutil` est UN seul objet module partagé : patcher son « which »
         # par n'importe quel importateur le patche pour todo_install aussi,
@@ -133,19 +146,42 @@ class TestPackageTable(ShrinkToolsBase):
 
 class TestInstallCommand(ShrinkToolsBase):
     def test_each_family_builds_its_own_command(self):
+        """Le rafraîchissement des index d'abord, quand la famille en a un ;
+        dnf rafraîchit ses métadonnées lui-même."""
         attendu = {
-            "apt-get": "sudo apt-get install -y gdisk",
-            "dnf": "sudo dnf install -y gdisk",
-            "pacman": "sudo pacman -S --needed --noconfirm gptfdisk",
-            "zypper": "sudo zypper --non-interactive install gptfdisk",
+            "apt-get": [
+                "sudo apt-get update",
+                "sudo apt-get install -y gdisk",
+            ],
+            "dnf": ["sudo dnf install -y gdisk"],
+            "pacman": [
+                "sudo pacman -Syu --noconfirm",
+                "sudo pacman -S --needed --noconfirm gptfdisk",
+            ],
+            "zypper": [
+                "sudo zypper --non-interactive refresh",
+                "sudo zypper --non-interactive install gptfdisk",
+            ],
         }
-        for family, cmd in attendu.items():
+        for family, cmds in attendu.items():
             self.setUp()
+            # pacman -Syu met à jour tout le système : il se confirme par une
+            # question à lui, après celle de l'installation.
+            reponses = ["y", "y"] if family == "pacman" else ["y"]
             ran, left, _ = self._run(
-                family, ["sgdisk"], installed_after=("sgdisk",)
+                family, ["sgdisk"], reponses, installed_after=("sgdisk",)
             )
-            self.assertEqual(ran, [cmd])
-            self.assertEqual(left, [])
+            self.assertEqual(ran, cmds, family)
+            self.assertEqual(left, [], family)
+
+    def test_a_refused_full_upgrade_still_installs(self):
+        """Refuser -Syu saute le rafraîchissement, pas l'installation."""
+        ran, left, out = self._run(
+            "pacman", ["sgdisk"], ["y", "n"], installed_after=("sgdisk",)
+        )
+        self.assertEqual(ran, ["sudo pacman -S --needed --noconfirm gptfdisk"])
+        self.assertEqual(left, [])
+        self.assertIn(t("Upgrade the whole system first? (y/N): "), out)
 
     def test_a_package_is_asked_for_once(self):
         """e2fsck, resize2fs et dumpe2fs sortent du même paquet."""
@@ -154,7 +190,10 @@ class TestInstallCommand(ShrinkToolsBase):
             ["e2fsck", "resize2fs", "dumpe2fs", "sgdisk"],
             installed_after=("e2fsck", "resize2fs", "dumpe2fs", "sgdisk"),
         )
-        self.assertEqual(ran, ["sudo apt-get install -y e2fsprogs gdisk"])
+        self.assertEqual(
+            ran,
+            ["sudo apt-get update", "sudo apt-get install -y e2fsprogs gdisk"],
+        )
 
     def test_the_command_is_shown_before_the_question(self):
         """On approuve ce qu'on a lu : la commande passe AVANT la question.
@@ -183,16 +222,31 @@ class TestGivingUp(ShrinkToolsBase):
     def test_the_list_is_re_read_from_disk_not_assumed(self):
         """Une installation qui ne pose rien doit rester un échec."""
         ran, left, _ = self._run("apt-get", ["sgdisk"], installed_after=())
-        self.assertEqual(len(ran), 1)
+        self.assertEqual(len(ran), 2)
+        self.assertEqual(ran[0], "sudo apt-get update")
         self.assertEqual(left, ["sgdisk"])
 
     def test_a_failing_install_is_reported_and_not_swallowed(self):
         """exec_command_live REND le code de sortie, il ne lève rien."""
-        self.todo.execute = _Exec(status=100)
+        self.todo.execute = _Exec(statuses=[0, 100])
         ran, left, out = self._run("apt-get", ["sgdisk"])
-        self.assertEqual(len(ran), 1)
+        self.assertEqual(
+            ran, ["sudo apt-get update", "sudo apt-get install -y gdisk"]
+        )
         self.assertEqual(left, ["sgdisk"])
         self.assertIn("100", out)
+
+    def test_a_failing_refresh_installs_nothing(self):
+        """Installer sur des index périmés échouerait plus loin, sans dire
+        pourquoi : le rafraîchissement en échec arrête tout."""
+        self.todo.execute = _Exec(status=100)
+        ran, left, out = self._run("apt-get", ["sgdisk"])
+        self.assertEqual(ran, ["sudo apt-get update"])
+        self.assertEqual(left, ["sgdisk"])
+        self.assertIn(
+            t("Refreshing the package indexes failed; nothing installed."),
+            out,
+        )
 
 
 class TestBackupSpace(unittest.TestCase):

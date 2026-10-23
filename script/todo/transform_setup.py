@@ -225,13 +225,14 @@ def ensure(fmt: str, prompt: bool = True, ask=input) -> bool:
     return create(ask=ask)
 
 
-def system_packages_cmd():
-    """La commande qui pose `mdbtools`, ou None si personne ne le connaît.
+def system_packages_steps():
+    """Les étapes qui posent `mdbtools` : le rafraîchissement des index
+    d'abord, puis l'installation. Liste vide si personne ne le connaît.
 
     Un simple passe-plat vers `todo_install`, qui décide déjà de la famille
     par l'ID de /etc/os-release avant le PATH. Écrire une cascade de plus
     serait refaire le défaut que ce module a supprimé.
     """
     if todo_install is None:  # pragma: no cover - hors dépôt
-        return None
-    return todo_install.install_command(PAQUETS_ACCESS)
+        return []
+    return todo_install.install_steps(PAQUETS_ACCESS)

@@ -531,18 +531,18 @@ def _command_columns(tree, paths):
 # --------------------------------------------------------------------------- #
 # Télémétrie SYSTÈME (vue F2)
 # --------------------------------------------------------------------------- #
-def sensors_install_command():
-    """Commande d'installation de lm-sensors, ou None si aucun gestionnaire
+def sensors_install_steps():
+    """Les étapes qui posent lm-sensors, dans l'ordre : le rafraîchissement
+    des index d'abord, puis l'installation. Liste vide si aucun gestionnaire
     de paquets connu.
 
     Le paquet change de nom : « lm-sensors » chez Debian, « lm_sensors »
-    ailleurs. Cette écriture-ci ne connaissait pas zypper, et openSUSE ne
-    pouvait donc pas l'installer."""
+    ailleurs, « sensors » chez openSUSE."""
     # Importé ici et non en tête : l'import de todo_i18n de ce module est
     # protégé pour qu'il tourne en autonome, et todo_install en dépend.
     from script.todo import todo_install
 
-    return todo_install.install_command(
+    return todo_install.install_steps(
         {
             "apt-get": ["lm-sensors"],
             "dnf": ["lm_sensors"],
@@ -550,6 +550,32 @@ def sensors_install_command():
             "zypper": ["sensors"],
         }
     )
+
+
+def install_sensors(etapes, run=os.system):
+    """Afficher les `etapes` de sensors_install_steps suivies de la
+    détection des capteurs, PUIS demander, puis tout lancer dans l'ordre.
+
+    Rend le code de run_steps, ou None sur un refus. La détection est la
+    dernière étape : run_steps s'arrête au premier code non nul, donc elle
+    ne tourne pas sur un paquet qui ne s'est pas installé. `run` reçoit la
+    commande en chaîne et rend son code de sortie. Les questions passent
+    par input(), celle d'une mise à jour complète du système comprise
+    (run_steps).
+    """
+    from script.todo import todo_install
+
+    etapes = list(etapes) + [["sudo", "sensors-detect", "--auto"]]
+    print(f"{t('Proposed install command:')}")
+    todo_install.show_steps(etapes)
+    if not _is_yes(input(t("Install lm-sensors now? (y/N): "))):
+        return None
+    return todo_install.run_steps(run, etapes, _is_yes)
+
+
+def _is_yes(reponse) -> bool:
+    """« Défaut non » : seule une réponse explicite accepte."""
+    return str(reponse or "").strip().lower() in ("o", "oui", "y", "yes")
 
 
 def _first_int(path):
@@ -1108,24 +1134,15 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             if read_temperature() is not None:
                 self.notify(t("Sensors already available."))
                 return
-            cmd = sensors_install_command()
-            if not cmd:
+            etapes = sensors_install_steps()
+            if not etapes:
                 self.notify(
                     t("Unknown package manager for lm-sensors."),
                     severity="warning",
                 )
                 return
-            printable = " ".join(cmd)
             with self.suspend():
-                print(f"{t('Proposed install command:')}")
-                print(f"  {printable}")
-                print("  sudo sensors-detect --auto")
-                ans = (
-                    input(t("Install lm-sensors now? (y/N): ")).strip().lower()
-                )
-                if ans in ("o", "oui", "y", "yes"):
-                    os.system(printable + " || true")
-                    os.system("sudo sensors-detect --auto || true")
+                install_sensors(etapes)
             # Rafraîchit IMMÉDIATEMENT la vue système : on ré-échantillonne
             # (température incluse) et on réécrit la case pour que le message
             # « installer » disparaisse si les capteurs sont désormais lisibles.
