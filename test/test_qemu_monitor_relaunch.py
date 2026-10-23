@@ -8,19 +8,26 @@ Ce que ces tests gardent :
 - la session conserve, VM par VM, ce qu'il faut rejouer : la commande
   distante, l'identité ssh, le début propre à la VM ;
 - la relance rejoue la MÊME commande, précédée d'une garde qui refuse de
-  partir si un make tourne encore dans la VM ;
+  partir tant que l'installation précédente tourne dans la VM — reconnue à
+  la marque que porte son shell distant, ou à un make ;
 - l'ancien journal est mis de côté (<journal>.N) : écrire à la suite
   laisserait l'ancien marqueur d'échec visible, et la ligne repasserait
   aussitôt en ❌ ;
 - l'état est relu sur le disque : une VM déjà relancée par un autre suivi
   ne l'est pas deux fois ;
 - une session hors ligne ou antérieure à la relance est refusée, avec la
-  raison.
+  raison ;
+- une relance faite par un autre suivi n'est adoptée qu'une fois son
+  entrée écrite dans le manifeste.
 
 _launch_one est remplacé : aucun processus n'est détaché.
 """
 
 import json
+import os
+import shlex
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -124,7 +131,10 @@ class TestRelaunchInstall(Base):
         (args, kw) = self.lanceur.appels[-1]
         self.assertEqual("10.0.0.1", args[0])
         self.assertTrue(args[1].endswith(COMMANDE))
-        self.assertTrue(args[1].startswith("if pgrep"))
+        garde = mon.RELAUNCH_GUARD.format(
+            msg=mon.t("An install is already running in this VM.")
+        )
+        self.assertTrue(args[1].startswith(garde))
         self.assertEqual("/cle", kw["identity"])
         self.assertFalse(kw["pve"])
         self.assertTrue(kw["installs"])
@@ -289,6 +299,93 @@ class TestLaGardeDansLaVm(unittest.TestCase):
         res = self.lance(make_tourne=False)
         self.assertEqual(0, res.returncode)
         self.assertIn("installe", res.stdout)
+
+
+class TestLaGardeReconnaitLInstallation(unittest.TestCase):
+    """RELAUNCH_GUARD sous bash, avec le VRAI pgrep pour la marque.
+
+    Le make est caché par une doublure : celui qui lance ces tests en est
+    un, et la garde le prendrait pour une installation."""
+
+    def setUp(self):
+        vrai = shutil.which("pgrep")
+        if not vrai:
+            self.skipTest("pgrep absent")
+        deja = subprocess.run(
+            ["pgrep", "-u", str(os.getuid()), "-f", mon.INSTALL_TAG],
+            capture_output=True,
+        )
+        if deja.returncode == 0:
+            self.skipTest("une installation marquée tourne sur ce poste")
+        coin = tempfile.TemporaryDirectory()
+        self.addCleanup(coin.cleanup)
+        faux = Path(coin.name, "pgrep")
+        faux.write_text(
+            "#!/bin/sh\n"
+            'case " $* " in *" -x make "*) exit 1;; esac\n'
+            f'exec {vrai} "$@"\n'
+        )
+        faux.chmod(0o755)
+        self.path = f"{coin.name}:/usr/bin:/bin"
+
+    def relance(self):
+        """Le shell de la relance, marqué comme _launch_one le marque."""
+        garde = mon.RELAUNCH_GUARD.format(msg="déjà en cours")
+        return subprocess.run(
+            ["bash", "-c", f": {mon.INSTALL_TAG}; {garde}echo installe"],
+            env={"PATH": self.path},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def test_une_installation_sans_make_arrete_la_relance(self):
+        """La première installation attend cloud-init, ou installe ses
+        paquets : aucun make ne tourne encore."""
+        # Son groupe entier part au nettoyage : le sleep, orphelin, tiendrait
+        # sinon la sortie du lanceur de tests ouverte.
+        premiere = subprocess.Popen(
+            ["bash", "-c", f": {mon.INSTALL_TAG}; sleep 30; true"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        self.addCleanup(premiere.wait)
+        self.addCleanup(os.killpg, premiere.pid, signal.SIGKILL)
+        res = self.relance()
+        self.assertEqual(75, res.returncode, res.stdout)
+        self.assertIn("déjà en cours", res.stdout)
+        self.assertNotIn("installe", res.stdout)
+
+    def test_le_shell_de_la_relance_ne_se_compte_pas(self):
+        res = self.relance()
+        self.assertEqual(0, res.returncode, res.stdout)
+        self.assertIn("installe", res.stdout)
+
+    def test_une_installation_finie_ne_bloque_plus(self):
+        premiere = subprocess.Popen(
+            ["bash", "-c", f": {mon.INSTALL_TAG}; true; true"]
+        )
+        premiere.wait()
+        self.assertEqual(0, self.relance().returncode)
+
+
+class TestLeLanceurMarqueLInstallation(unittest.TestCase):
+    def test_la_marque_ouvre_le_script_distant(self):
+        """En tête : pgrep ne compare qu'un préfixe de la ligne de
+        commande."""
+        vus = {}
+
+        class FauxPopen:
+            def __init__(self, argv, *a, **k):
+                vus["argv"] = argv
+
+        with mock.patch.object(mon.subprocess, "Popen", FauxPopen):
+            mon._launch_one("cible", "echo bonjour", "/dev/null", "vm-a")
+        self.assertIn(
+            shlex.quote(f": {mon.INSTALL_TAG}; echo bonjour"),
+            vus["argv"][-1],
+        )
 
 
 class TestLeSuivi(AsyncCase):
@@ -464,6 +561,34 @@ class TestLeSuivi(AsyncCase):
             await pilot.pause()
             self.assertNotIn("vm-a", app._final)
             self.assertNotEqual("❌ (1)", self.etat(app, "vm-a"))
+
+    async def test_un_journal_neuf_attend_son_entree_avant_l_adoption(self):
+        """Tick tombé entre la mise en place du journal et la réécriture du
+        manifeste : l'ancienne entrée n'est pas adoptée, la neuve l'est au
+        tick suivant, adresse comprise."""
+        app = self.manifeste({"vm-a": 1})
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            self.assertEqual("❌ (1)", self.etat(app, "vm-a"))
+            log = self.base / "vm-a.log"
+            os.replace(log, str(log) + ".1")
+            log.write_text("en-tête neuf\n")
+            await app._tick_table()
+            await pilot.pause()
+            self.assertIn("vm-a", app._final)
+            manifeste = json.loads(Path(self.chemin).read_text())
+            entree = manifeste["vms"][0]
+            entree.update(
+                ip="127.0.0.42",
+                started=time.time(),
+                relaunches=1,
+                previous_logs=[str(log) + ".1"],
+            )
+            Path(self.chemin).write_text(json.dumps(manifeste))
+            await app._tick_table()
+            await pilot.pause()
+            self.assertNotIn("vm-a", app._final)
+            self.assertEqual("127.0.0.42", app._vm_by_name("vm-a")["ip"])
 
     async def test_la_duree_globale_suit_l_horloge_de_la_session(self):
         """Une VM relancée tard ne ramène pas le total figé à sa seule
