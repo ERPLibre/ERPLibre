@@ -33,6 +33,7 @@ chaque script se lance aussi seul.
 | `package.py` | `check` d'un module selon les règles de DoliStore, `build` de son zip |
 | `quality.py` | phpcs et PHPStan sur un module, avec les règles de Dolibarr |
 | `hooks_index.py` | Hooks, contextes et déclencheurs à une version, et le diff entre deux |
+| `core.py` | Modifier le cœur : `status`, `start` d'une branche, `check` selon CONTRIBUTING, `patches` |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -161,6 +162,8 @@ ne sont pas posés.
 ./script/dolibarr/quality.py --instance erp --name Zorglub [--only phpstan]
 ./script/dolibarr/hooks_index.py list --kind context --filter '^thirdparty'
 ./script/dolibarr/hooks_index.py diff --from 23.0.4       # to the pinned commit
+./script/dolibarr/core.py start --topic fix-invoice-total
+./script/dolibarr/core.py check && ./script/dolibarr/core.py patches
 ```
 
 - `debug.py on` montre les fonctionnalités en développement
@@ -208,6 +211,18 @@ ne sont pas posés.
   commit se récupère une fois, à profondeur 1, dans
   `~/.erplibre/dolibarr_index.git`, qui emprunte les objets du checkout :
   celui que gère Google Repo n'est jamais écrit.
+- `core.py` travaille le checkout épinglé et rien ne quitte ce poste :
+  aucun push, aucune demande de fusion. `start` ouvre une branche de
+  travail au commit épinglé (`repo start`) et approfondit l'historique peu
+  profond ; il exige une identité git, car `repo sync` remet à zéro sans
+  rien dire une branche dont aucun commit ne la porte (`status` le
+  signale). `check` applique le `CONTRIBUTING.md` de Dolibarr : le
+  `Signed-off-by` de l'auteur (DCO), un mot-clé de titre (FIX, CLOSE, NEW,
+  PERF, DOC, QUAL, SEC, en capitales pour le ChangeLog), ni `ChangeLog` ni
+  langue autre qu'en_US, un seul correctif par demande sur une branche
+  stable. `patches` exporte la série sous `private/dolibarr/patches/`. Le
+  fork `ERPLibre/dolibarr` n'existe pas encore ; `status` dit quand il
+  répond.
 
 ## Version épinglée
 
