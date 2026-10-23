@@ -157,6 +157,22 @@ test_addons_helpdesk:
 	./.venv.erplibre/bin/coverage html
 	./.venv.erplibre/bin/coverage json
 
+# Module erplibre_website_dolibarr_import : moteur pur (secondes,
+# sans base), puis la suite Odoo complète sur une base jetable.
+WEBSITE_DOLIBARR_IMPORT = odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_website_dolibarr_import
+
+.PHONY: test_website_dolibarr_import_engine
+test_website_dolibarr_import_engine:
+	"$$(ls -d .venv.odoo18.0_python* | head -1)/bin/python" -m unittest discover \
+		-s $(WEBSITE_DOLIBARR_IMPORT)/dolibarr_site/tests -t $(WEBSITE_DOLIBARR_IMPORT)
+
+.PHONY: test_addons_website_dolibarr_import
+test_addons_website_dolibarr_import:
+	./odoo_bin.sh db --drop --database test_website_dolibarr_import
+	./test.sh -d test_website_dolibarr_import --db-filter test_website_dolibarr_import \
+		-i erplibre_website_dolibarr_import \
+		--test-tags /erplibre_website_dolibarr_import --http-port=8169
+
 .PHONY: test_addons_project_sale_link_specific_file
 test_addons_project_sale_link_specific_file:
 	./odoo_bin.sh db drop --if-exists test_addons_project_sale_link
