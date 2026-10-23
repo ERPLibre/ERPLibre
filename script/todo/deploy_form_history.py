@@ -527,6 +527,23 @@ class HistoryMixin:
         self._hist_label = label
         self._hist_settle()
 
+    def _hist_row(self, key, fn) -> None:
+        """Un geste sur UNE rangée : appelle `fn(index)` avec le rang que la
+        VM de clé `key` occupe dans le plan ACTUEL.
+
+        La clé est celle que porte le widget touché (`_el_key`), lue au
+        moment du geste ; le rang se calcule ici, au moment de jouer.
+        Pendant une restauration, le modèle est déjà celui de l'instantané
+        alors que l'écran montre encore les anciennes rangées : un rang pris
+        sur l'écran y désigne une autre VM. Le geste attend donc la fin de
+        la restauration, comme les autres, puis retrouve sa VM par sa clé.
+        Une VM absente du plan restauré n'est pas touchée."""
+        if key is None or self._hist_wait(lambda: self._hist_row(key, fn)):
+            return
+        ids = self._row_ids()
+        if key in ids:
+            fn(ids.index(key))
+
     def _hist_wait(self, fn) -> bool:
         """Pendant une restauration, met `fn` de côté et rend True : un
         geste joué sur un état à moitié remis — F5 déploierait le plan

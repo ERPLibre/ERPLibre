@@ -409,6 +409,11 @@ class PlanMixin:
     def _hist_wait(self, fn) -> bool:
         return False
 
+    def _hist_row(self, key, fn) -> None:
+        ids = self._row_ids()
+        if key in ids:
+            fn(ids.index(key))
+
     def action_select_all(self) -> None:
         self._hist_gesture(
             f"F6 {t('All')}", lambda: self._catalog().select_all()
