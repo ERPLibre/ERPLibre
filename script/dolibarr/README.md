@@ -10,8 +10,9 @@ From TODO:
 - **Install › Dolibarr** installs an instance;
 - **Execute › Dolibarr** groups the instance tools by section:
   - **Development instances**: install, start, stop, status and logs;
-  - **Maintenance**: move the pinned commit, check an instance's health,
-    security and integrity, back it up, restore a backup;
+  - **Maintenance**: move the pinned commit, upgrade an instance to it,
+    check an instance's health, security and integrity, back it up, restore
+    a backup;
   - **Inventory**: list the instances, remove one, find installations here
     or over SSH.
 
@@ -31,6 +32,7 @@ script also runs on its own.
 | `doctor.py` | Health, security and integrity of each registered instance |
 | `backup.py` | `create`, `list` and `restore` backups (restore: `restore.py`) |
 | `fleet.py` | `list` the instances, `remove` one |
+| `upgrade.py` | Upgrade an instance to the pinned version, rollback on failure |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -123,6 +125,7 @@ set.
 ./script/dolibarr/backup.py restore --instance erp --archive <file> --confirm erp
 ./script/dolibarr/fleet.py list
 ./script/dolibarr/fleet.py remove --instance erp --dry-run
+./script/dolibarr/upgrade.py --instance erp        # after pin.py update --apply
 ```
 
 - `detect.py` sends a read-only POSIX sh probe (one round trip, no
@@ -142,6 +145,13 @@ set.
   refused in a folder git could commit.
 - Removing an instance shows its plan first and asks for its name; a
   container's `custom/` stays.
+- `upgrade.py` brings an instance to the pinned version after `pin.py
+  update --apply`: backup first, one major version at a time, success
+  judged by `MAIN_VERSION_LAST_UPGRADE` and not by exit codes alone, and on
+  failure the old code (or image) and the backup come back. A new commit
+  of the same version is upgraded too: its schema can differ. The full
+  output of each upgrade goes to `private/dolibarr/upgrades/`, git-ignored,
+  and `doctor.py` warns when an instance is behind the pin.
 
 ## Pinned version
 
