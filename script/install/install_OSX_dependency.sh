@@ -21,9 +21,19 @@ else
   brew services start postgresql@15
 fi
 
+# postgresql@15 est une formule versionnée, donc « keg-only » : Homebrew ne
+# lie pas psql, createuser ni pg_isready dans le PATH. Son répertoire bin y
+# est ajouté pour la suite de ce script.
+PG_BIN="$(brew --prefix postgresql@15 2>/dev/null)/bin"
+if [ -d "${PG_BIN}" ]; then
+  PATH="${PG_BIN}:${PATH}"
+fi
+
 echo "\n---- Creating the ERPLibre PostgreSQL User  ----"
-sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
-sudo su - postgres -c "CREATE EXTENSION postgis;\nCREATE EXTENSION postgis_topology;" 2>/dev/null || true
+# PostGIS est posé comme paquet, comme sous Linux : son extension se crée dans
+# une base, pas à l'installation.
+. ./script/install/lib_postgres_role.sh
+el_postgres_role_local "${EL_USER}" || exit 1
 
 #--------------------------------------------------
 # Install Dependencies
