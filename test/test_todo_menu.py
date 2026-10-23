@@ -115,6 +115,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Security": "prompt_execute_security",
         "Docker / Podman": "prompt_execute_container",
         "System": "prompt_execute_system",
+        "Dolibarr": "prompt_execute_dolibarr",
     }
 
     def _entry_key(self, label):

@@ -428,6 +428,9 @@ class TODO(
 
 ── {t("System")} ──
 [22] {t("System - Diagnostic and disk space")}
+
+── {t("Dolibarr")} ──
+[23] {t("Dolibarr - Instances: install, run, follow")}
 {retour(t("Back"))}
 """
         while True:
@@ -521,6 +524,10 @@ class TODO(
                     return
             elif status == "22":
                 status = self.prompt_execute_system()
+                if status is not False:
+                    return
+            elif status == "23":
+                status = self.prompt_execute_dolibarr()
                 if status is not False:
                     return
             else:
@@ -1317,6 +1324,7 @@ class TODO(
         "_llm_search_remote": "Over SSH",
         "prompt_install": "Install",
         "prompt_install_update": "Update",
+        "prompt_execute_dolibarr": "Dolibarr",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
         "prompt_execute_config": "Config",
