@@ -19,7 +19,6 @@ import os
 import platform
 import shlex
 import shutil
-import socket
 
 from script.dolibarr import lib_dolibarr, web_config
 from script.todo import todo_install
@@ -456,13 +455,10 @@ class DolibarrMenuMixin:
         }
 
     def _dolibarr_port_is_free(self, port):
-        """Vrai si 127.0.0.1:`port` accepte un bind en ce moment."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("127.0.0.1", port))
-            except OSError:
-                return False
-        return True
+        """Vrai si un serveur peut écouter sur 127.0.0.1:`port`."""
+        from script.dolibarr import run
+
+        return run.port_is_free(port)
 
     def _dolibarr_python_ready(self):
         """Vrai si l'interpréteur des scripts d'outillage est là."""

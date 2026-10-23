@@ -17,6 +17,7 @@ démarré, envoyé, interrogé. Ce qui se garde :
 import contextlib
 import io
 import json
+import socket
 import sys
 import tempfile
 import unittest
@@ -80,6 +81,33 @@ class TestTitre(unittest.TestCase):
     def test_no_title_no_version(self):
         self.assertIsNone(run_mod.served_version("<title>Dolibarr</title>"))
         self.assertIsNone(run_mod.served_version(""))
+
+
+class TestPortLibre(unittest.TestCase):
+    """De vraies sockets sur 127.0.0.1, un port éphémère."""
+
+    def test_a_listening_port_is_taken(self):
+        with socket.socket() as serveur:
+            serveur.bind(("127.0.0.1", 0))
+            serveur.listen()
+            self.assertFalse(run_mod.port_is_free(serveur.getsockname()[1]))
+
+    def test_time_wait_left_by_a_closed_connection_does_not_take_it(self):
+        # Un status vient d'interroger le site, puis il s'arrête : ses
+        # connexions restent en TIME_WAIT. nginx, Apache et le relais de
+        # ports de Podman ouvrent tous leur écoute en SO_REUSEADDR, et ces
+        # TIME_WAIT-là laissent écouter de nouveau.
+        serveur = socket.socket()
+        serveur.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        serveur.bind(("127.0.0.1", 0))
+        serveur.listen()
+        port = serveur.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        conn, _adresse = serveur.accept()
+        conn.close()  # le serveur ferme d'abord : TIME_WAIT de son côté
+        client.close()
+        serveur.close()
+        self.assertTrue(run_mod.port_is_free(port))
 
 
 class Systeme:
