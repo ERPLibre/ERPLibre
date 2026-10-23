@@ -359,5 +359,116 @@ class TestFormatResult(unittest.TestCase):
         )
 
 
+class TestPousseeDuCommitGele(unittest.TestCase):
+    """Le serveur local sert le commit gelé, sur de vrais dépôts.
+
+    Le clone est détaché sur son commit gelé, le premier ; une branche
+    locale « 18.0 » existe déjà sur le second. L'extraire sortirait l'arbre
+    du gel, et le serveur servirait le second commit.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        environ = patch.dict(
+            os.environ,
+            {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"},
+        )
+        environ.start()
+        self.addCleanup(environ.stop)
+        self.racine = os.path.join(self.tmp.name, "racine")
+        self.clone = os.path.join(self.racine, "addons", "p")
+        self.serveur = os.path.join(self.tmp.name, "serveur")
+        os.makedirs(self.clone)
+        os.makedirs(self.serveur)
+        git(self.clone, "init", "-q", "-b", "principale")
+        git(self.clone, "commit", "-q", "--allow-empty", "-m", "gel")
+        self.gel = git(self.clone, "rev-parse", "HEAD").strip()
+        git(self.clone, "commit", "-q", "--allow-empty", "-m", "suite")
+        self.suite = git(self.clone, "rev-parse", "HEAD").strip()
+        git(self.clone, "branch", "18.0", self.suite)
+        git(self.clone, "checkout", "-q", "--detach", self.gel)
+        self.nu = os.path.join(self.serveur, "d.git")
+        git(self.tmp.name, "init", "-q", "--bare", self.nu)
+        git(self.clone, "remote", "add", "local", self.nu)
+
+    def _pousser(self, tout=False):
+        projet = {
+            "name": "d",
+            "path": "addons/p",
+            "revision": self.gel,
+            "branch": "18.0",
+        }
+        return asyncio.run(
+            server._push_single_repo(
+                self.racine,
+                self.serveur,
+                projet,
+                "local",
+                tout,
+                False,
+                asyncio.Semaphore(1),
+            )
+        )
+
+    def _etat(self):
+        return (
+            git(self.clone, "rev-parse", "HEAD").strip(),
+            git(self.clone, "rev-parse", "refs/heads/18.0").strip(),
+            git(self.nu, "rev-parse", "refs/heads/18.0").strip(),
+        )
+
+    def test_la_branche_ailleurs_n_est_pas_extraite(self):
+        with self.assertLogs(server._logger, "INFO"):
+            statut = self._pousser()
+        self.assertEqual(statut, ("pushed", False))
+        # Arbre et branche locale intacts ; le serveur sert le commit gelé.
+        self.assertEqual(self._etat(), (self.gel, self.suite, self.gel))
+        self.assertEqual(
+            git(self.nu, "symbolic-ref", "HEAD").strip(), "refs/heads/18.0"
+        )
+
+    def test_avec_all_le_commit_gele_l_emporte(self):
+        with self.assertLogs(server._logger, "INFO"):
+            statut = self._pousser(tout=True)
+        self.assertEqual(statut, ("pushed", False))
+        self.assertEqual(self._etat(), (self.gel, self.suite, self.gel))
+        self.assertEqual(
+            git(self.nu, "rev-parse", "refs/heads/principale").strip(),
+            self.suite,
+        )
+
+    def test_la_branche_sur_le_gel_est_extraite(self):
+        git(self.clone, "branch", "-f", "18.0", self.gel)
+        with self.assertLogs(server._logger, "INFO"):
+            statut = self._pousser()
+        self.assertEqual(statut, ("pushed", True))
+        self.assertEqual(
+            git(self.clone, "symbolic-ref", "--short", "HEAD").strip(), "18.0"
+        )
+        self.assertEqual(self._etat(), (self.gel, self.gel, self.gel))
+
+
+class TestRefspecsDePoussee(unittest.TestCase):
+    def test_branche_courante(self):
+        self.assertEqual(server._push_refspecs(False), [[]])
+        self.assertEqual(server._push_refspecs(True), [["--all"]])
+
+    def test_branche_extraite_nommee_sans_forcer(self):
+        self.assertEqual(
+            server._push_refspecs(False, "18.0"), [["HEAD:refs/heads/18.0"]]
+        )
+
+    def test_tete_detachee_poussee_sous_la_branche(self):
+        self.assertEqual(
+            server._push_refspecs(False, "18.0", True),
+            [["+HEAD:refs/heads/18.0"]],
+        )
+        self.assertEqual(
+            server._push_refspecs(True, "18.0", True),
+            [["--all"], ["+HEAD:refs/heads/18.0"]],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
