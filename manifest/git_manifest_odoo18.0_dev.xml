@@ -6,10 +6,12 @@
     <project
         name="OpenUpgrade.git"
         revision="18.0_dev"
+        freeze-revision="db19006241170f8494b841dce6e21a4b1931ec07"
         path="odoo18.0/OCA_OpenUpgrade"
         remote="ERPLibre_origin_OCA"
         fork-upstream-remote="OCA"
         fork-upstream="18.0"
+        fork-upstream-freeze-revision="425bdcfafcc5f3c02ee013ab9ba961de5a217177"
         clone-depth="10"
         groups="migration,odoo18.0"
     />
