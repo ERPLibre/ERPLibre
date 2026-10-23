@@ -26738,6 +26738,14 @@ TRANSLATIONS = {
         "fr": "Sortie complète : %s",
         "en": "Full output: %s",
     },
+    "Pin": {
+        "fr": "Épinglage",
+        "en": "Pin",
+    },
+    "at %s, pinned at %s: upgrade it": {
+        "fr": "à %s, épinglée à %s : montez-la",
+        "en": "at %s, pinned at %s: upgrade it",
+    },
 }
 
 
