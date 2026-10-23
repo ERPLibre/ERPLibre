@@ -41,3 +41,7 @@ diagnostic/
 # de la base et la clé d'instance. backup.py refuse un dossier que git pourrait
 # commiter.
 /dolibarr/backups/
+
+# Journaux des mises à niveau Dolibarr : la sortie entière des commandes, avec
+# les chemins et les erreurs de base d'une instance.
+/dolibarr/upgrades/
