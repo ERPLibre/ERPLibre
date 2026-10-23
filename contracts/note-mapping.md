@@ -35,6 +35,22 @@ per server (picker boxes Task / Opportunity).
 | `archived`             | `active`           | Create only: never written after, it would revive an opportunity marked lost |
 | `done`, `pinned`       | —                  | Not mapped (no won/lost, no stars) |
 
+## Note mobile → account.move (draft invoice)
+
+A note can also be drafted as a customer invoice or a vendor bill, one per
+server (picker box Draft invoice).
+
+| Note mobile field      | account.move field  | Notes |
+|------------------------|---------------------|-------|
+| *(target)*             | `move_type`         | `out_invoice` or `in_invoice`, create only |
+| *(target)*             | `partner_id`        | Partner chosen (name_search), optional on a draft, create only |
+| *(target)*             | `invoice_date`, `ref` | Typed in the picker, create only |
+| *(target)*             | `invoice_line_ids`  | Lines typed: label, quantity, unit price, optional product; create only |
+| *(target)*             | other required fields | Asked by the dynamic form (fields_get + default_get), create only |
+| *(target)*             | many2one to the task or lead | When a module adds one; else a message in each chatter |
+| `title`, entries       | `narration`         | Title in bold, the HTML, the marker; the only field written after |
+| `tags`, `done`, `pinned`, `archived` | —     | Not mapped |
+
 ## Note mobile → mail.activity
 
 A note can schedule several activities per server, each on a record chosen
