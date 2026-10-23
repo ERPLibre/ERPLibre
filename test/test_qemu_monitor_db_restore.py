@@ -12,7 +12,11 @@ Ce que ces tests gardent :
 - le dossier ERPLibre vient de l'unité (production sous /opt), avec
   ~/git/erplibre en repli ; sans dossier, rien n'est arrêté ni restauré ;
 - la mise à jour suit le même dossier ;
-- le bouton passe les options cochées, et rien ne part sans confirmation.
+- le bouton passe les options cochées, et rien ne part sans confirmation ;
+- rien ne part vers une VM dont l'identité n'est plus prouvée : ligne
+  effacée, domaine dont l'UUID a changé, adresse que libvirt ne confirme
+  pas, VMID qu'une VM Proxmox ne porte plus — avant la question comme
+  après le oui.
 
 Les commandes tournent pour de vrai sous bash, avec de faux systemctl,
 sudo, git et db_restore.py qui notent leurs appels.
@@ -206,43 +210,54 @@ class TestLaMiseAJourSuitLeMemeDossier(Bac):
         self.assertIn(f"install_locally.sh dans {prod}", journal)
 
 
-class TestLeBouton(AsyncCase):
+class Suivi(AsyncCase):
+    """Le suivi ouvert sur une VM, libvirt remplacé."""
+
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        base = Path(tmp.name)
+        self.base = Path(tmp.name)
+        # Ce que libvirt répond : l'adresse du domaine, son UUID.
+        self.adresse = "127.0.0.9"
+        self.uuid = "uuid-ancien"
         for cible, valeur in (
             ("read_domstats", lambda: ""),
             ("arm_balloon", lambda names: None),
             ("virsh_domstates", lambda: {}),
-            ("virsh_ip", lambda nom: ""),
+            ("virsh_ip", lambda nom: self.adresse),
+            ("local_uuid", lambda nom: self.uuid),
             ("_port_open", lambda ip, port=8069, timeout=0.5: False),
         ):
             patch = mock.patch.object(mon, cible, valeur)
             patch.start()
             self.addCleanup(patch.stop)
-        log = base / "vm-a.log"
+        self.app = self.ouvre()
+
+    def ouvre(self, **extra):
+        """Le suivi d'une session à une VM ; `extra` complète son entrée."""
+        log = self.base / "vm-a.log"
         log.write_text(f"x\n{mon.EXIT_MARKER} 0\n")
-        manifeste = base / "session.json"
+        entree = {
+            "name": "vm-a",
+            "ip": "127.0.0.9",
+            "log": str(log),
+            "ssh": "ssh erplibre@127.0.0.9",
+        }
+        entree.update(extra)
+        manifeste = self.base / "session.json"
         manifeste.write_text(
             json.dumps(
                 {
                     "branch": "develop",
                     "started": time.time(),
-                    "vms": [
-                        {
-                            "name": "vm-a",
-                            "ip": "127.0.0.9",
-                            "log": str(log),
-                            "ssh": "ssh erplibre@127.0.0.9",
-                        }
-                    ],
+                    "vms": [entree],
                 }
             )
         )
-        self.app = mon.run_monitor(str(manifeste), run_app=False)
+        return mon.run_monitor(str(manifeste), run_app=False)
 
-    async def bouton(self, pilote, oui):
+    async def demande(self, pilote):
+        """Ouvre les actions de la VM et appuie sur la restauration."""
         from textual.widgets import Checkbox
 
         app = self.app
@@ -253,11 +268,20 @@ class TestLeBouton(AsyncCase):
         app.screen.query_one("#a_dbrestore").press()
         await pilote.pause()
         await pilote.pause()
+
+    async def bouton(self, pilote, oui, pendant=None):
+        """`pendant` : ce qui change pendant que la question est ouverte."""
+        app = self.app
+        await self.demande(pilote)
         self.assertEqual("ConfirmScreen", type(app.screen).__name__)
+        if pendant:
+            pendant()
         app.screen.query_one("#c_yes" if oui else "#c_no").press()
         await pilote.pause()
         await pilote.pause()
 
+
+class TestLeBouton(Suivi):
     async def test_the_ticked_options_reach_the_command_after_yes(self):
         with mock.patch.object(type(self.app), "_run_in_vm") as lance:
             async with self.app.run_test(size=(150, 40)) as pilote:
@@ -267,12 +291,165 @@ class TestLeBouton(AsyncCase):
         vm, cmd, _titre = lance.call_args[0]
         self.assertEqual("vm-a", vm["name"])
         self.assertEqual(mon.db_restore_cmd(["ignore_cache"]), cmd)
+        self.assertEqual("", lance.call_args[1]["guard"])
 
     async def test_nothing_runs_without_yes(self):
         with mock.patch.object(type(self.app), "_run_in_vm") as lance:
             async with self.app.run_test(size=(150, 40)) as pilote:
                 await self.bouton(pilote, oui=False)
         lance.assert_not_called()
+
+
+class TestLIdentiteDeLaVm(Suivi):
+    """L'adresse en mémoire peut désigner une autre machine : la ligne, le
+    domaine et son adresse sont vérifiés avant la question et juste avant
+    de partir."""
+
+    async def refusee_avant_la_question(self, preparer=None):
+        with mock.patch.object(
+            type(self.app), "_run_in_vm"
+        ) as lance, mock.patch.object(type(self.app), "notify") as notify:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                if preparer:
+                    await pilote.pause()
+                    preparer()
+                await self.demande(pilote)
+                self.assertNotEqual(
+                    "ConfirmScreen", type(self.app.screen).__name__
+                )
+        lance.assert_not_called()
+        return notify.call_args[0][0]
+
+    async def refusee_apres_oui(self, pendant=None):
+        with mock.patch.object(
+            type(self.app), "_run_in_vm"
+        ) as lance, mock.patch.object(type(self.app), "notify") as notify:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await self.bouton(pilote, oui=True, pendant=pendant)
+        lance.assert_not_called()
+        return notify.call_args[0][0]
+
+    async def test_a_deleted_row_is_refused_before_the_question(self):
+        msg = await self.refusee_avant_la_question(
+            lambda: self.app._domstate.__setitem__("vm-a", "gone")
+        )
+        self.assertEqual(
+            mon.t("{name} was deleted: restore refused.").format(name="vm-a"),
+            msg,
+        )
+
+    async def test_a_reused_name_is_refused_before_the_question(self):
+        self.app = self.ouvre(uuid="uuid-ancien")
+        self.uuid = "uuid-autre"
+        msg = await self.refusee_avant_la_question()
+        self.assertEqual(
+            mon.t(
+                "The domain {name} is no longer the deployed VM"
+                " (deleted, or its name reused): restore refused."
+            ).format(name="vm-a"),
+            msg,
+        )
+
+    async def test_an_unreadable_virsh_refuses_a_known_uuid(self):
+        self.app = self.ouvre(uuid="uuid-ancien")
+        self.uuid = ""
+        await self.refusee_avant_la_question()
+
+    async def test_a_deletion_during_the_question_is_refused_after_yes(self):
+        await self.refusee_apres_oui(
+            lambda: self.app._domstate.__setitem__("vm-a", "gone")
+        )
+
+    async def test_a_domain_replaced_during_the_question_is_refused(self):
+        self.app = self.ouvre(uuid="uuid-ancien")
+
+        def remplace():
+            self.uuid = "uuid-autre"
+
+        await self.refusee_apres_oui(remplace)
+
+    async def test_an_address_libvirt_does_not_confirm_is_refused(self):
+        self.adresse = ""
+        msg = await self.refusee_apres_oui()
+        self.assertEqual(
+            mon.t(
+                "libvirt knows no address for {name} (VM stopped?):"
+                " restore refused."
+            ).format(name="vm-a"),
+            msg,
+        )
+
+    async def test_the_address_is_read_again_before_running(self):
+        self.app = self.ouvre(uuid="uuid-ancien")
+        self.adresse = "127.0.0.42"
+        with mock.patch.object(type(self.app), "_run_in_vm") as lance:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await self.bouton(pilote, oui=True)
+        vm = lance.call_args[0][0]
+        self.assertEqual("127.0.0.42", vm["ip"])
+
+    async def test_a_proxmox_vm_has_its_vmid_checked_by_its_host(self):
+        info = {"vmid": 101, "target": "root@hote.invalid", "addr": "10.9.9.9"}
+        self.app = self.ouvre(pve=info)
+        self.adresse = ""
+        with mock.patch.object(type(self.app), "_run_in_vm") as lance:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await self.bouton(pilote, oui=True)
+        garde = lance.call_args[1]["guard"]
+        self.assertEqual(
+            mon.pve_host_cmd(info, mon.pve_identity_guard(101, "vm-a")),
+            garde,
+        )
+
+
+class TestLaGardePasseAvantLeSsh(unittest.TestCase):
+    """_run_in_vm : une garde en échec empêche la connexion."""
+
+    def lance(self, garde):
+        app = None
+        with tempfile.TemporaryDirectory() as coin:
+            log = Path(coin, "vm-a.log")
+            log.write_text(f"x\n{mon.EXIT_MARKER} 0\n")
+            manifeste = Path(coin, "session.json")
+            manifeste.write_text(
+                json.dumps(
+                    {
+                        "branch": "d",
+                        "vms": [
+                            {
+                                "name": "vm-a",
+                                "ip": "127.0.0.9",
+                                "log": str(log),
+                            }
+                        ],
+                    }
+                )
+            )
+            app = mon.run_monitor(str(manifeste), run_app=False)
+        vu = []
+        with mock.patch.object(
+            app, "suspend", mock.MagicMock()
+        ), mock.patch.object(mon.os, "system", vu.append), mock.patch(
+            "builtins.input", lambda *a: ""
+        ), mock.patch(
+            "builtins.print"
+        ):
+            app._run_in_vm(app._vm_by_name("vm-a"), "echo x", "t", guard=garde)
+        return vu[0]
+
+    def test_the_guard_is_chained_before_ssh(self):
+        cmd = self.lance("false")
+        self.assertTrue(cmd.startswith("false && ssh "), cmd)
+
+    def test_a_failing_guard_never_reaches_ssh(self):
+        cmd = self.lance("false").replace("ssh ", "echo SSH ", 1)
+        res = subprocess.run(
+            ["bash", "-c", cmd], capture_output=True, text=True
+        )
+        self.assertNotIn("SSH", res.stdout)
+
+    def test_without_a_guard_ssh_comes_first(self):
+        self.assertTrue(self.lance("").startswith("ssh "))
 
 
 if __name__ == "__main__":
