@@ -77,6 +77,9 @@ FIELD_NAMES = {
     "f_branch": "ERPLibre branch",
     "f_profile_install": "Install profile",
     "f_key": "SSH public key path",
+    "f_storage": "Storage",
+    "f_bridge": "Bridge",
+    "f_vmid": "First VMID",
     "f_git_name": "Name for git",
     "f_git_email": "Email for git",
 }
@@ -399,6 +402,9 @@ class HistoryMixin:
     # Champs que le modèle porte déjà, et que `_hist_restore_radios`
     # presse lui-même.
     HIST_MODEL_WIDGETS = ("f_arch", "f_profile")
+    # Champs dont le texte n'agit qu'une fois validé : un brouillon n'est pas
+    # un état. Le formulaire en reporte la valeur appliquée à la restauration.
+    HIST_DRAFT_WIDGETS = ()
     _HIST_QUERY = (
         "#fields Input, #fields Checkbox, #fields Select, #fields RadioSet"
     )
@@ -426,12 +432,19 @@ class HistoryMixin:
 
         widgets = {}
         for widget in self.query(self._HIST_QUERY):
-            if not widget.id or widget.id in self.HIST_MODEL_WIDGETS:
+            if (
+                not widget.id
+                or widget.id in self.HIST_MODEL_WIDGETS
+                or widget.id in self.HIST_DRAFT_WIDGETS
+            ):
                 continue
-            widgets[widget.id] = (
-                widget.pressed_index
-                if isinstance(widget, RadioSet)
-                else widget.value
+            widgets[widget.id] = self._hist_widget(
+                widget.id,
+                (
+                    widget.pressed_index
+                    if isinstance(widget, RadioSet)
+                    else widget.value
+                ),
             )
         snap = {
             attr: copy.deepcopy(getattr(self, attr, None))
@@ -440,6 +453,12 @@ class HistoryMixin:
         snap["catalog"] = self._hist_catalog()
         snap["widgets"] = widgets
         return snap
+
+    def _hist_widget(self, wid, value):
+        """La valeur gardée pour un champ. Un formulaire la remplace quand un
+        choix déclenche une action plutôt qu'il ne règle quelque chose : le
+        rejouer relancerait l'action."""
+        return value
 
     def _hist_info(self):
         """Les noms et les choix que les widgets donnent d'eux-mêmes."""
@@ -538,6 +557,16 @@ class HistoryMixin:
             self._hist = History(snap, t("Form opened"), now)
             self._hist_last = snap
             return
+        # Un champ apparu depuis le dernier relevé — une case offerte en cours
+        # de route — n'est pas une modification : il rejoint la base.
+        connus = self._hist_last["widgets"]
+        nouveaux = {
+            k: v for k, v in snap["widgets"].items() if k not in connus
+        }
+        if nouveaux:
+            self._hist_last = dict(
+                self._hist_last, widgets={**connus, **nouveaux}
+            )
         if snap == self._hist_last:
             return
         parts = describe(self._hist_last, snap, self._hist_info())
@@ -610,6 +639,9 @@ class HistoryMixin:
                 return
             if self._hist_wait(lambda: choisi(entry_id)):
                 return
+            # Ce qui est arrivé pendant que la liste était ouverte — un pont
+            # créé par un fil — est relevé avant de partir ailleurs.
+            self._hist_settle()
             courant = self._hist.current["id"]
             atteinte = self._hist.jump(entry_id)
             if atteinte is None or atteinte["id"] == courant:
@@ -701,7 +733,20 @@ class HistoryMixin:
         # anciennes, encore là le temps de leur retrait : il est refait sur
         # les neuves.
         self._hist_sync_rows()
-        self._hist_last = snap
+        # Un champ monté APRÈS l'instantané — une case offerte en cours de
+        # route — n'y figure pas : il garde sa valeur, et la base de
+        # comparaison la reprend, sinon elle reviendrait comme un changement.
+        try:
+            reel = self._hist_snapshot()["widgets"]
+        except Exception:
+            reel = {}
+        self._hist_last = dict(
+            snap,
+            widgets={
+                **{k: v for k, v in reel.items() if k not in snap["widgets"]},
+                **snap["widgets"],
+            },
+        )
         self._hist_restoring = False
         if self._hist_pending:
             # Un changement fait pendant la restauration devient sa propre

@@ -24,6 +24,7 @@ import os
 import re
 
 from script.todo.deploy_form_extras import ExtrasMixin
+from script.todo.deploy_form_history import HistoryMixin
 from script.todo.deploy_form_lib import (
     CSS_BASE,
     FREE,
@@ -189,7 +190,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             f"{e['distro']} {e['version']}{star}  [{e['arch']}]  {e['name']}"
         )
 
-    class ProxmoxForm(ExtrasMixin, PlanMixin, App):
+    class ProxmoxForm(HistoryMixin, ExtrasMixin, PlanMixin, App):
         TITLE = t("Deploy one or more ERPLibre VMs on Proxmox VE!")
         BINDINGS = [
             ("f5", "deploy", t("Deploy")),
@@ -204,6 +205,14 @@ def run_proxmox_form(ctx, run_app: bool = True):
             # comme deux aides. Un champ de saisie qui a le focus l'avale, et
             # c'est pourquoi F1 existe à côté.
             Binding("?", "help", t("Help"), show=False),
+            # Les mêmes touches que le formulaire QEMU/KVM : « h » ouvre
+            # l'historique hors d'un champ de saisie, F2 de partout, et
+            # ctrl+z / ctrl+y, cachées du pied de page, reculent et avancent
+            # d'un pas.
+            ("h", "history", t("History")),
+            Binding("f2", "history", t("History"), show=False),
+            Binding("ctrl+z", "undo", t("Undo"), show=False),
+            Binding("ctrl+y", "redo", t("Redo"), show=False),
             ("escape", "cancel", t("Cancel")),
         ]
         # Le socle porte la mise en page et les modales ; ne reste ici que ce
@@ -243,7 +252,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._syncing = False
             # La liste des ponts GRANDIT : l'écran sait en créer un.
             self._ponts = list(ponts)
+            # Valeur du suivi avant que la coupure ne le force : posée ici
+            # pour que l'historique la garde dès l'ouverture.
+            self._suivi_avant = True
             self.extras_init(ctx, branches, profiles)
+            self.hist_init()
 
         # ---------------------------------------------------------------- #
         # L'écran
@@ -588,6 +601,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._reload_catalog()
             self._sync_install_deps()
             self._sync_offline()
+            # L'origine de l'historique : prise au premier silence, une fois
+            # passés les échos du montage.
+            self._hist_touch()
 
         # ---------------------------------------------------------------- #
         # Le plan
@@ -664,6 +680,110 @@ def run_proxmox_form(ctx, run_app: bool = True):
             )
             self._render_plan()
             self.render_extras()
+            # Tout changement du modèle passe par ici, y compris ceux qu'aucun
+            # message ne porte : le renommage, F4, les copies, le verrou.
+            self._hist_touch()
+
+        # ---------------------------------------------------------------- #
+        # L'historique : ce que la mixin attend de ce formulaire
+        # ---------------------------------------------------------------- #
+        def _hist_model_attrs(self):
+            return (
+                "arch",
+                "profile",
+                "custom",
+                "overrides",
+                "locked",
+                "copies",
+                "_suivi_avant",
+            )
+
+        # Le texte d'une valeur libre commune n'agit qu'à Entrée.
+        HIST_DRAFT_WIDGETS = tuple(i[1:] for _s, i in RES_FIELDS.values())
+
+        def _hist_catalog(self):
+            """Les cases cochées : la liste porte déjà les identités. Seules
+            celles du catalogue affiché comptent — une valeur étrangère
+            rendrait le tri impossible."""
+            cles = {entry_key(e) for e in self._entries()}
+            return tuple(
+                sorted(v for v in self._catalog().selected if v in cles)
+            )
+
+        def _hist_restore_catalog(self, snap):
+            liste = self._catalog()
+            cles = set(snap["catalog"])
+            entries = self._entries()
+            if {o.value for o in liste.options} != {
+                entry_key(e) for e in entries
+            }:
+                # Une autre architecture : la liste elle-même change.
+                liste.clear_options()
+                for e in entries:
+                    cle = entry_key(e)
+                    liste.add_option((entry_label(e), cle, cle in cles))
+                return
+            # Même liste : la reconstruire perdrait sa position de défilement.
+            liste.deselect_all()
+            for e in entries:
+                if entry_key(e) in cles:
+                    liste.select(entry_key(e))
+
+        def _hist_restore_radios(self, snap):
+            self._hist_put(
+                "f_arch",
+                arches.index(self.arch) if self.arch in arches else -1,
+            )
+            self._hist_put(
+                "f_profile",
+                ("1", "2", "3", "4", "custom").index(self.profile),
+            )
+
+        def _hist_widget(self, wid, value):
+            """« Créer un pont » n'est pas un pont : rejoué, il en créerait un
+            autre sur l'hôte. Le pont gardé reste le dernier relevé — celui
+            que la création remplacera, si elle aboutit."""
+            if wid == "f_bridge" and value == CREER_PONT:
+                avant = (self._hist_last or {}).get("widgets", {})
+                return avant.get("f_bridge", SELECT_NULL)
+            return value
+
+        def _hist_sync_derived(self, snap):
+            """Ce que les gestionnaires auraient posé en recevant ces
+            valeurs : les champs grisés, les saisies révélées."""
+            sur_mesure = self.profile == "custom"
+            for champ, (sel, inp) in RES_FIELDS.items():
+                liste = self.query_one(sel, Select)
+                liste.disabled = not sur_mesure
+                self._show_free(champ, sur_mesure and liste.value is FREE)
+                # La saisie libre dit la valeur APPLIQUÉE : ce qui était tapé
+                # sans Entrée n'est pas gardé.
+                if liste.value is FREE:
+                    valeur = self.custom.get(champ)
+                    self.query_one(inp, Input).value = (
+                        str(valeur) if valeur else ""
+                    )
+            self.query_one("#f_par", Select).disabled = self.query_one(
+                "#f_par_all", Checkbox
+            ).value
+            fuseau, saisie = self._widget("#f_tz_sel"), self._widget("#f_tz")
+            if fuseau is not None and saisie is not None:
+                saisie.display = fuseau.value is FREE
+                saisie.disabled = fuseau.value is not FREE
+            self._sync_install_deps()
+            # _sync_offline réécrit le suivi et sa mémoire depuis l'état
+            # qu'elle quitte : ceux de l'instantané l'emportent.
+            self._sync_offline()
+            self._suivi_avant = snap.get("_suivi_avant", True)
+            self._hist_put("f_monitor", snap["widgets"].get("f_monitor"))
+
+        def _hist_sync_rows(self):
+            self._sync_install_deps()
+            self._sync_free_inputs()
+
+        def _hist_rebuild(self):
+            self._recompute()
+            self._mount_rows()
 
         def _auto_name(self, index):
             """Le nom du catalogue, suffixé du bureau : ce que la VM
@@ -1073,6 +1193,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
             }
 
         def action_deploy(self) -> None:
+            # Pendant une restauration, self.vms est encore le plan d'avant.
+            if self._hist_wait(self.action_deploy):
+                return
             spec = build_spec(self.vms, noms_pris, self._form_values())
             if not spec["vms"]:
                 self.notify(t("Nothing to deploy."), severity="warning")
@@ -1106,6 +1229,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self.exit()
 
         def action_preview(self) -> None:
+            if self._hist_wait(self.action_preview):
+                return
             build = ctx.get("build_command")
             if not build:
                 return
@@ -1121,9 +1246,13 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if index is None:
                 return
             cle = self._row_key(index)
-            self.locked.discard(cle)
-            self.overrides.pop(cle, None)
-            self._refresh_after(remonter=True)
+
+            def remettre():
+                self.locked.discard(cle)
+                self.overrides.pop(cle, None)
+                self._refresh_after(remonter=True)
+
+            self._hist_gesture(f"F4 {t('Reset VM')}", remettre)
 
         def action_cancel(self) -> None:
             self.result = None

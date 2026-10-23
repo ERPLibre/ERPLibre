@@ -210,6 +210,29 @@ class TestLesDeuxEcrans(unittest.TestCase):
         self.assertEqual(touches["QEMU/KVM"], touches["Proxmox"])
         self.assertIn("select_main", touches["Proxmox"].values())
 
+    def test_both_screens_bind_the_same_history_keys(self):
+        # Les deux écrans partagent l'historique ; une touche qui ne
+        # marcherait que d'un côté se découvrirait au pire moment.
+        from script.todo.proxmox_deploy_form import run_proxmox_form
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        todo = todo_muet()
+        mod = todo._qemu_import_module()
+        touches = {}
+        for nom, app in (
+            ("QEMU/KVM", run_deploy_form(todo._qemu_form_context(mod), False)),
+            ("Proxmox", run_proxmox_form(contexte_proxmox(todo), False)),
+        ):
+            touches[nom] = {
+                touche: action
+                for touche, action in (liaison(b) for b in app.BINDINGS)
+                if action in ("history", "undo", "redo")
+            }
+        self.assertEqual(touches["QEMU/KVM"], touches["Proxmox"])
+        self.assertEqual(
+            {"history", "undo", "redo"}, set(touches["Proxmox"].values())
+        )
+
     def test_parallelism_follows_the_host_on_both_screens(self):
         # L'écran Proxmox plafonnait à quatre choix et en proposait UN, quel
         # que soit le nombre de cœurs de l'hôte.
