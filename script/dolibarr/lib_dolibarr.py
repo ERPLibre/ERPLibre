@@ -31,6 +31,7 @@ PIN_KEYS = (
     "branch",
     "docker_image",
     "mariadb_image",
+    "tools_image",
     "php_min",
     "php_max",
 )

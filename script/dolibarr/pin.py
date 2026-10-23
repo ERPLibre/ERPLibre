@@ -9,12 +9,13 @@
 show dit l'épinglage et la tête de sa branche en amont. update vise la tête
 de la branche (ou le commit d'un tag), lit la version à ce commit, et
 montre ce qui changerait ; --apply l'écrit. Le manifest (commit, branche)
-et conf/supported_version_dolibarr.json (version, branche, image) changent
-ensemble : read_pin refuse un couple qui ne s'accorde pas.
+et conf/supported_version_dolibarr.json (version, branche, images)
+changent ensemble : read_pin refuse un couple qui ne s'accorde pas.
 
-Les images sont épinglées par empreinte (dépôt:étiquette@sha256:…), lue au
-Hub à chaque update : une image reconstruite sous la même étiquette
-(correctifs de PHP, de MariaDB) déplace l'épinglage. L'étiquette de l'image
+Trois images, épinglées par empreinte (dépôt:étiquette@sha256:…) lue au
+Hub à chaque update : Dolibarr, MariaDB, et composer pour les outils
+qualité. Une image reconstruite sous la même étiquette (correctifs de PHP,
+de MariaDB) déplace l'épinglage. L'étiquette de l'image
 Dolibarr ne suit la version que si le Hub la publie : l'image officielle
 paraît souvent après la version. Un Hub injoignable garde les images.
 
@@ -215,8 +216,11 @@ def cmd_update(root, pin, net, branch, tag, apply):
             t("No %s image on Docker Hub yet: keeping %s.") % (version, image)
         )
     mariadb = refreshed_image(net, pin["mariadb_image"])
+    tools = refreshed_image(net, pin["tools_image"])
     images_same = (
-        image == pin["docker_image"] and mariadb == pin["mariadb_image"]
+        image == pin["docker_image"]
+        and mariadb == pin["mariadb_image"]
+        and tools == pin["tools_image"]
     )
     if same and images_same:
         print(t("Already pinned on %s.") % commit[:7])
@@ -235,6 +239,7 @@ def cmd_update(root, pin, net, branch, tag, apply):
     for old, new in (
         (pin["docker_image"], image),
         (pin["mariadb_image"], mariadb),
+        (pin["tools_image"], tools),
     ):
         if new != old:
             print(t("Image %s -> %s") % (old, new))
@@ -252,6 +257,7 @@ def cmd_update(root, pin, net, branch, tag, apply):
         branch=branch,
         docker_image=image,
         mariadb_image=mariadb,
+        tools_image=tools,
     )
     with open(manifest_path, "w", encoding="utf-8") as f:
         f.write(manifest)

@@ -47,6 +47,7 @@ PIN = {
     "branch": "24.0",
     "docker_image": "dolibarr/dolibarr:24.0.0",
     "mariadb_image": "mariadb:11.4",
+    "tools_image": "docker.io/library/composer:2",
     "php_min": "7.2",
     "php_max": "8.5",
 }
