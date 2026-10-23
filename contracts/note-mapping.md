@@ -149,21 +149,32 @@ Timestamps and text descriptions are preserved in the HTML description `<p>` lin
   task.
 - Pull and poll read the tasks linked on the server by id, whatever their
   project.
-- Every write still replaces `tag_ids` (command 6) and, on Odoo 17+, `state`
-  with the note's values: on a task others edit in a shared project, their
-  tags and a state other than in progress or done are overwritten by the
-  next push. Pull does not copy tags back yet.
+- A write sends only the fields changed in the app since the last exchange:
+  tags as added and removed (commands 4 and 3), so tags others set on a task
+  of a shared project stay, and `state` only when done changed, so a state
+  another user set (waiting, approved) stays. Pull copies tags back.
 - Multiple mobile clients: each independently stores the same `id` — fully supported.
 
 ## Conflict resolution
 
-| Condition | Resolution |
-|-----------|------------|
-| Odoo modified, note not pending for that server | Odoo wins — pull overwrites mobile |
-| Note pending (or in error) for that server | Mobile wins — pull skips the note, the next push overwrites the task |
-| Both modified since last sync | Mobile wins while its change is pending (v1, no merge) |
+Each link keeps a base: the note's and the record's values of each
+mirrored field (title, text, tags, date, done, archived, pinned, as the
+kind has them) at their last exchange. Pull, and each push before it
+writes, merge field by field:
+
+| Condition (per field, since the base) | Resolution |
+|---------------------------------------|------------|
+| Changed on the server only | The note takes the server's value |
+| Changed in the app only | The push sends it, alone |
+| Changed on both sides to the same value | Nothing to do |
+| Changed on both sides to different values | Conflict: nothing is sent to that server until the user keeps the app's or the server's version |
 | Pull changed a note linked on several servers | The other servers are queued, so they receive the new values |
-| Task deleted on the server | The link is marked deleted; nothing is recreated unless the user confirms |
+| Record deleted on the server | The link is marked deleted; nothing is recreated unless the user confirms |
+
+Text comes back as the record's paragraphs, replacing the note's text
+entries; media, date and position entries stay, and the lines the app
+writes from them, like the marker, are skipped. An activity's deadline
+comes back into the note's date, but is never written from it.
 
 ## Tag resolution
 
