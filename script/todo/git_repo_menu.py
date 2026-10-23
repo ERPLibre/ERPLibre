@@ -16,10 +16,11 @@ porte en propre. Elle peut entrer en conflit, elle réécrit l'historique, et
 elle se décide après avoir regardé.
 
 D'où la séparation des entrées, et d'où le fait que la mise à niveau se
-constate AVANT de s'appliquer : sa passe à sec amène l'amont dans FETCH_HEAD
-et prédit la fusion en mémoire, sans déplacer de référence ni toucher l'arbre
-de travail. Le constat coûte quelques secondes sur l'ensemble des forks, et
-se rejoue autant de fois qu'on veut.
+constate AVANT de s'appliquer : sa passe à sec récupère l'amont par son remote
+nommé, « <remote>/<branche> », et prédit la fusion en mémoire, sans créer ni
+déplacer de branche locale ni toucher l'arbre de travail. Le constat coûte
+quelques secondes sur l'ensemble des forks, et se rejoue autant de fois qu'on
+veut.
 
 Le GEL écrit le commit de chaque clone de la version d'Odoo active à côté
 de sa branche, dans ses fichiers de `manifest/` (`git_manifest_odoo<V>.xml`,
@@ -68,13 +69,35 @@ MANIFESTE_LOCAL = os.path.join(
 # du catalogue sont des phrases anglaises ; les états sont des identifiants
 # internes, et les passer tels quels à t() y ferait entrer du français.
 ETATS = {
-    "rebase": "rebased",
+    "rebase": "rebased (one)",
     "conflit": "conflicting",
     "ignore": "untouched",
     "branche_existante": "a dated branch already exists",
     "branche_refusee": "the branch could not be created",
     "rebase_deja_en_cours": "a rebase was already in progress",
+    "avance": "fast-forwarded (one)",
+    "avance_refusee": "the fast-forward was refused",
+    "rebase_refuse": "git refused to start the rebase",
+    "sale": "the work tree has uncommitted changes",
+    "distant_en_avance": "the fork branch has commits HEAD lacks",
+    "abandonne": "rebase aborted",
+    "revenu": "back to the state managed by repo",
+    "publie": "published (one)",
 }
+
+# Les libellés d'un décompte, au pluriel, quand ETATS nomme un seul dépôt.
+DECOMPTES = {
+    "rebase": "rebased",
+    "avance": "fast-forwarded",
+    "publie": "published",
+}
+
+
+def decompte(nombre, etat):
+    """« <nombre> <libellé> », au singulier d'`ETATS` pour un seul dépôt, au
+    pluriel de `DECOMPTES` sinon."""
+    libelle = ETATS[etat] if nombre == 1 else DECOMPTES[etat]
+    return f"{nombre} {t(libelle)}"
 
 
 def etat_manifeste_local(racine=RACINE):
@@ -153,6 +176,27 @@ def ligne_du_gel(sources, forks):
     return ligne
 
 
+def choix_numeros(saisie, candidats):
+    """Les éléments de `candidats` que `saisie` désigne, ou None.
+
+    « all » les rend tous ; sinon des numéros séparés par des virgules,
+    chacun entre 1 et len(candidats). Un numéro hors de ces bornes ou qui
+    n'est pas un entier rend None.
+    """
+    if saisie == "all":
+        return list(candidats)
+    choisis = []
+    for morceau in saisie.split(","):
+        try:
+            numero = int(morceau)
+        except ValueError:
+            return None
+        if not 1 <= numero <= len(candidats):
+            return None
+        choisis.append(candidats[numero - 1])
+    return choisis
+
+
 class GitRepoMenuMixin:
     def prompt_execute_git_repo(self):
         version = repo_upgrade.version_active(RACINE) or "?"
@@ -170,9 +214,11 @@ class GitRepoMenuMixin:
             {"prompt_description": t("🔄 Synchronize the repositories")},
             {"prompt_description": t("🔁 Reconfigure and synchronize")},
             {"section": t("Upgrade")},
+            {"prompt_description": t("🌐 Add the upstream remotes")},
             {"prompt_description": t("🔍 Upgrade — dry run")},
             {"prompt_description": t("⬆️ Apply the upgrade")},
             {"prompt_description": t("🧩 Conflict queue")},
+            {"prompt_description": t("📤 Publish the updated forks")},
             {"section": t("Observe")},
             {"prompt_description": t("📊 Report of the last pass")},
             {"prompt_description": t("🖥️ Browse the upgrade on screen")},
@@ -189,32 +235,40 @@ class GitRepoMenuMixin:
             print()
             if status == "0":
                 return False
-            elif status == "1":
-                self._git_repo_sync()
-            elif status == "2":
-                self._git_repo_reconfigurer()
-            elif status == "3":
-                self._git_repo_a_sec()
-            elif status == "4":
-                self._git_repo_appliquer()
-            elif status == "5":
-                self._git_repo_file_conflits()
-            elif status == "6":
-                self._git_repo_rapport()
-            elif status == "7":
-                self._git_repo_ecran()
-            elif status == "8":
-                self._git_repo_etat_forks()
-            elif status == "9":
-                self._git_repo_geler()
-            elif status == "10":
-                self._git_repo_reconfigurer(freeze=True)
-            elif status == "11":
-                self._git_repo_geler(unfreeze=True)
-            elif status == "12":
-                self._git_repo_comparer()
-            else:
-                print(t("Command not found !"))
+            self._git_repo_choix(status)
+
+    def _git_repo_choix(self, status):
+        """Lance l'entrée numéro `status` du menu, hors « 0 »."""
+        if status == "1":
+            self._git_repo_sync()
+        elif status == "2":
+            self._git_repo_reconfigurer()
+        elif status == "3":
+            self._git_repo_ajouter_remotes()
+        elif status == "4":
+            self._git_repo_a_sec()
+        elif status == "5":
+            self._git_repo_appliquer()
+        elif status == "6":
+            self._git_repo_file_conflits()
+        elif status == "7":
+            self._git_repo_publier()
+        elif status == "8":
+            self._git_repo_rapport()
+        elif status == "9":
+            self._git_repo_ecran()
+        elif status == "10":
+            self._git_repo_etat_forks()
+        elif status == "11":
+            self._git_repo_geler()
+        elif status == "12":
+            self._git_repo_reconfigurer(freeze=True)
+        elif status == "13":
+            self._git_repo_geler(unfreeze=True)
+        elif status == "14":
+            self._git_repo_comparer()
+        else:
+            print(t("Command not found !"))
 
     def _git_repo_sync(self):
         """Ramène chaque dépôt sur la révision de son manifeste local.
@@ -271,8 +325,34 @@ class GitRepoMenuMixin:
             print(f"✅ {t('Repositories reconfigured and synchronized.')}")
         return status
 
+    def _git_repo_ajouter_remotes(self):
+        """Pose et récupère le remote amont nommé de chaque fork, sans
+        diagnostic (voir `repo_upgrade.ajouter_remotes`).
+
+        Le remote porte le nom de « fork-upstream-remote » et ne suit que
+        la branche amont déclarée : elle se lit ensuite
+        « <remote>/<branche> », et sur un clone complet un « git fetch
+        <remote> » fait à la main la rafraîchit. Un clone superficiel ne se
+        rafraîchit que par la commande « fetch --depth » que le rapport
+        donne. Un remote homonyme à une autre URL n'est pas touché ; le
+        rapport donne la commande qui le corrige, et nomme les forks sautés.
+
+        Rend le nombre de forks dont l'amont est récupéré.
+        """
+        version = repo_upgrade.version_active(RACINE) or "?"
+        print(f"🌐 {t('Add the upstream remotes')} — Odoo {version}")
+        print(f"   {t('Querying each upstream, this takes a few seconds.')}")
+        lst = repo_upgrade.ajouter_remotes(version, racine=RACINE)
+        print()
+        print(repo_upgrade.render_remotes(lst, version, colour=True))
+        return len([x for x in lst if x["cible"]])
+
     def _git_repo_a_sec(self):
-        """Constate ce qu'une mise à niveau ferait, sans rien écrire.
+        """Constate ce qu'une mise à niveau ferait.
+
+        N'écrit que le remote amont nommé de chaque fork et sa branche de
+        suivi (voir `repo_upgrade.diagnostiquer`) : aucune branche locale,
+        aucun arbre de travail.
 
         Rend le nombre de dépôts qui demandent une décision, ce qui donne à
         l'appelant de quoi s'arrêter là quand il n'y a rien à faire.
@@ -294,16 +374,71 @@ class GitRepoMenuMixin:
         """D'où descend chaque fork, et l'amont répond-il encore.
 
         Interroge le réseau : c'est le seul moyen de distinguer une branche
-        amont déclarée d'une branche amont qui existe.
+        amont déclarée d'une branche amont qui existe. Les commits gelés de
+        chaque fork depuis sa base amont gelée se parcourent ensuite, eux
+        sans réseau.
         """
         version = repo_upgrade.version_active(RACINE) or "?"
         print(f"🔗 {t('Fork and upstream status')} — Odoo {version}")
         lst = repo_upgrade.etat_forks(version, verifier=True)
         print()
         print(repo_upgrade.render(lst, True, colour=True))
+        self._git_repo_parcourir_forks(lst)
         return len(
             [x for x in lst if x["etat"] in repo_upgrade.ETATS_A_CORRIGER]
         )
+
+    def _git_repo_parcourir_forks(self, forks):
+        """La table des forks qui portent un commit gelé ET une base amont
+        gelée, puis les gestes qui ouvrent « base..gel » dans tig.
+
+        La table se lit dans les clones, sans réseau. « N » ouvre la plage
+        du fork N (plusieurs numéros séparés par des virgules aussi), « a »
+        chacune de celles qui s'ouvrent ; un tig quitté autrement que par
+        « q » arrête la suite. Sans ligne ouvrable, rien n'est demandé.
+        """
+        lignes = repo_upgrade.nos_commits_geles(forks, RACINE)
+        if not lignes:
+            return
+        print()
+        print(f"  {t('Our frozen commits since the frozen upstream base:')}")
+        largeur = max(len(lg["chemin"] or "") for lg in lignes)
+        for numero, lg in enumerate(lignes, 1):
+            plage = f"{lg['base'][:12]}..{lg['gel'][:12]}"
+            if lg["motif"]:
+                fin = f"⚠ {lg['motif']}"
+            else:
+                fin = f"+{lg['nos']} {t('ours')}"
+            print(
+                f"  {numero:>3}  {lg['chemin'] or '':<{largeur}}"
+                f"  {plage}  {fin}"
+            )
+        if all(lg["motif"] for lg in lignes):
+            return
+        while True:
+            print()
+            print(f"  N   🐯 {t('tig on fork N: its commits since the base')}")
+            print(f"  a   🐯 {t('tig on each fork, one after another')}")
+            print(f"  ⏎   {t('Back')}")
+            choix = input("  : ").strip().lower()
+            if choix in ("", "0"):
+                return
+            if choix == "a":
+                choisis = [lg for lg in lignes if not lg["motif"]]
+            elif choix == "all":
+                choisis = None
+            else:
+                choisis = choix_numeros(choix, lignes)
+            if choisis is None:
+                print(t("Command not found !"))
+                continue
+            for lg in choisis:
+                if lg["motif"]:
+                    print(f"⚠  {lg['chemin']} — {lg['motif']}")
+                    continue
+                plage = f"{lg['base']}..{lg['gel']}"
+                if git_freeze_diff.open_range(lg["dossier"], plage):
+                    break
 
     def _git_repo_appliquer(self):
         """Constate, montre, fait retaper la version, puis applique.
@@ -313,7 +448,10 @@ class GitRepoMenuMixin:
         consentement, c'est un pari. La confirmation redemande la version
         plutôt qu'un « o » : recopier oblige à regarder.
 
-        Rend le nombre de dépôts rebasés.
+        Un fork sans commit propre, en retard sur l'amont, avance par
+        fast-forward au lieu d'être rebasé.
+
+        Rend le nombre de dépôts rebasés ou avancés.
         """
         version = repo_upgrade.version_active(RACINE) or "?"
         print(f"⬆️  {t('Apply the upgrade')} — Odoo {version}")
@@ -338,7 +476,12 @@ class GitRepoMenuMixin:
             branche = repo_apply.nom_branche(
                 x.get("revision") or "HEAD", horodatage
             )
-            print(f"     {x['chemin']} → {branche}")
+            avance = (
+                f" ({t('fast-forward')})"
+                if x["verdict"] == "en_retard"
+                else ""
+            )
+            print(f"     {x['chemin']} → {branche}{avance}")
         print(f"   {t('Nothing is pushed.')}")
         tape = input(
             f"💬 {t('Type the Odoo version to confirm (empty to cancel): ')}"
@@ -354,7 +497,9 @@ class GitRepoMenuMixin:
         )
         self._git_repo_resume_passe(resultats)
         print(f"   {t('Pass recorded in')} {dossier}")
-        return len([r for r in resultats if r["etat"] == "rebase"])
+        return len(
+            [r for r in resultats if r["etat"] in repo_apply.ETATS_PUBLIABLES]
+        )
 
     def _git_repo_resume_passe(self, resultats):
         """Une ligne par état, et la façon de reprendre ce qui a buté."""
@@ -363,25 +508,39 @@ class GitRepoMenuMixin:
             par_etat.setdefault(res["etat"], []).append(res)
         rebases = len(par_etat.get("rebase", []))
         conflits = par_etat.get("conflit", [])
-        print(
-            f"✅ {rebases} {t('rebased')} · {len(conflits)} {t('conflicting')}"
+        ligne = (
+            f"✅ {decompte(rebases, 'rebase')}"
+            f" · {len(conflits)} {t('conflicting')}"
         )
+        for etat in ("avance", "publie"):
+            if par_etat.get(etat):
+                ligne += f" · {decompte(len(par_etat[etat]), etat)}"
+        print(ligne)
         for etat, lst in sorted(par_etat.items()):
-            if etat in ("rebase", "ignore"):
+            if etat in ("rebase", "ignore", "avance", "publie"):
                 continue
             for res in lst:
-                print(
-                    f"   ⚠  {res['chemin']} :" f" {t(ETATS.get(etat, etat))}"
-                )
+                ligne = f"   ⚠  {res['chemin']} : {t(ETATS.get(etat, etat))}"
+                if res.get("restaure") is True:
+                    ligne += f" — {t('put back on its start commit')}"
+                print(ligne)
+                if res.get("restaure") is False:
+                    print(
+                        f"      {t('could not be put back on its start commit')}"
+                    )
+                    for x in (res.get("sortie") or "").splitlines()[-1:]:
+                        print(f"      {x}")
         if conflits:
             print(f"   {t('Work them through the conflict queue.')}")
 
     def _git_repo_rapport(self):
-        """Ce que la dernière passe a fait, relu depuis son enregistrement."""
+        """Ce que la dernière passe a fait, relu depuis son enregistrement
+        une fois réconcilié avec l'état réel des dépôts."""
         passe = repo_apply.lire_passe(racine=RACINE)
         if not passe:
             print(f"↩️  {t('No pass recorded yet.')}")
             return 0
+        self._git_repo_reconcilier(passe)
         print(
             f"📊 {t('Report of the last pass')} — Odoo {passe['version']}"
             f" — {passe['horodatage']}"
@@ -409,11 +568,14 @@ class GitRepoMenuMixin:
         La file se relit depuis l'enregistrement de passe ET depuis l'état
         réel des dépôts : un rebase repris à la main hors de ce menu doit
         disparaître de la file, et l'enregistrement seul ne le saurait pas.
+        La réconciliation (voir `_git_repo_reconcilier`) inscrit l'issue
+        d'un tel rebase dans la passe avant de dresser la file.
         """
         passe = repo_apply.lire_passe(racine=RACINE)
         if not passe:
             print(f"↩️  {t('No pass recorded yet.')}")
             return 0
+        self._git_repo_reconcilier(passe)
         while True:
             file_attente = [
                 res
@@ -444,15 +606,20 @@ class GitRepoMenuMixin:
             except (ValueError, IndexError):
                 print(t("Command not found !"))
                 continue
-            self._git_repo_resoudre(res)
+            self._git_repo_resoudre(res, passe["horodatage"])
 
-    def _git_repo_resoudre(self, res):
+    def _git_repo_resoudre(self, res, horodatage=None):
         """Les gestes offerts sur un dépôt en conflit.
 
         « Garder le nôtre » et « prendre l'amont » traversent
         `repo_apply`, qui porte l'inversion de « ours » et « theirs »
         propre au rebase. Les appeler d'ici avec le drapeau qui semble
         juste garderait l'inverse de ce que le libellé annonce.
+
+        Un geste qui quitte le rebase (le dernier « Continuer » ou
+        « Sauter », « Abandonner », « Revenir ») réécrit l'enregistrement
+        du dépôt dans la passe `horodatage` : la publication et le rapport
+        lisent cet état, et non un conflit qui n'existe plus.
         """
         chemin = os.path.join(RACINE, res["chemin"])
         while True:
@@ -494,23 +661,201 @@ class GitRepoMenuMixin:
                 if code:
                     print(f"  ⚠  {err.strip()[:200]}")
                 if not repo_apply.rebase_en_cours(chemin):
+                    self._git_repo_noter(horodatage, res, "rebase")
                     print(f"  ✅ {t('Rebase finished.')}")
                     return
             elif choix == "6":
                 repo_apply.sauter_le_commit(chemin)
                 if not repo_apply.rebase_en_cours(chemin):
+                    self._git_repo_noter(horodatage, res, "rebase")
                     print(f"  ✅ {t('Rebase finished.')}")
                     return
             elif choix == "7":
                 repo_apply.abandonner_rebase(chemin)
+                self._git_repo_noter(horodatage, res, "abandonne")
                 print(f"  ↩️  {t('Rebase aborted.')}")
                 return
             elif choix == "8":
                 repo_apply.revenir_a_repo(chemin, res.get("depart"))
+                self._git_repo_noter(horodatage, res, "revenu")
                 print(f"  ↩️  {t('Back to the state managed by repo.')}")
                 return
             else:
                 print(t("Command not found !"))
+
+    def _git_repo_reconcilier(self, passe):
+        """Aligne `passe` sur l'état réel des dépôts, voir
+        `repo_apply.reconcilier_passe`, et dit ce qui a changé ou non."""
+        for res, avant, apres in repo_apply.reconcilier_passe(
+            passe, racine=RACINE
+        ):
+            if apres:
+                print(
+                    f"   🔁 {res['chemin']}: {t(ETATS.get(avant, avant))}"
+                    f" → {t(ETATS.get(apres, apres))}"
+                )
+            else:
+                print(
+                    f"   ⚠  {res['chemin']}:"
+                    f" {t('no rebase in progress and no known outcome, record left as is')}"
+                )
+
+    def _git_repo_noter(self, horodatage, res, etat):
+        """Inscrit `etat` pour `res` dans la passe, quand elle est connue."""
+        if horodatage:
+            repo_apply.noter_resolution(horodatage, res, etat, racine=RACINE)
+
+    def _git_repo_publier(self):
+        """Pousse sur leur fork les branches datées de la dernière passe.
+
+        Chaque dépôt montre ce qui partirait — remote, branche, ancienne et
+        nouvelle pointe, forcé ou non — et rien ne part sans confirmation.
+        Avant un push forcé, une ancienne pointe qu'aucun tag ni aucune
+        autre branche ne retient reçoit d'abord un tag ou une branche, au
+        nom proposé et modifiable, poussé AVANT le push forcé. Un distant
+        dont la pointe suivie a quitté celle que la passe a relevée refuse
+        la publication du dépôt. Les dépôts publiés se regèlent ensuite sur
+        demande, par le gel du menu. La passe est d'abord réconciliée avec
+        l'état réel des dépôts (voir `_git_repo_reconcilier`) : un rebase
+        fini hors du menu y devient publiable.
+
+        Rend le nombre de dépôts publiés.
+        """
+        passe = repo_apply.lire_passe(racine=RACINE)
+        if not passe:
+            print(f"↩️  {t('No pass recorded yet.')}")
+            return 0
+        self._git_repo_reconcilier(passe)
+        candidats = [r for r in passe["resultats"] if repo_apply.publiable(r)]
+        print(f"📤 {t('Publish the updated forks')} — {passe['horodatage']}")
+        if not candidats:
+            print(f"↩️  {t('Nothing to publish in the last pass.')}")
+            return 0
+        for i, res in enumerate(candidats, 1):
+            print(
+                f"  [{i}] {res['chemin']}  [{res['branche']}]"
+                f" {t(ETATS.get(res['etat'], res['etat']))}"
+            )
+        choix = input(
+            f"💬 {t('Numbers to publish, separated by commas (all, empty to cancel): ')}"
+        ).strip()
+        if not choix:
+            print(f"↩️  {t('Cancelled: nothing was pushed.')}")
+            return 0
+        choisis = choix_numeros(choix, candidats)
+        if choisis is None:
+            print(t("Command not found !"))
+            return 0
+        publies = []
+        for res in choisis:
+            if self._git_repo_publier_un(passe, res):
+                publies.append(res["chemin"])
+        print(f"\n✅ {decompte(len(publies), 'publie')}")
+        if publies:
+            print(
+                f"   {t('The manifest still holds the old frozen commits.')}"
+            )
+            if click.confirm(
+                t("Freeze the versions again now?"), default=True
+            ):
+                self._git_repo_geler()
+            else:
+                print(f"   {t('Freeze the versions, then commit manifest/.')}")
+        return len(publies)
+
+    def _git_repo_publier_un(self, passe, res):
+        """Publie un dépôt de la passe. True une fois le push accepté."""
+        chemin = os.path.join(RACINE, res["chemin"])
+        plan = repo_apply.plan_publication(chemin, res)
+        print(f"\n▸ {res['chemin']}")
+        if not plan:
+            print(f"  ⚠  {t('The dated branch is missing: nothing to push.')}")
+            return False
+        if plan.get("refus"):
+            print(f"  ⚠  {plan['refus']}")
+            return False
+        if plan["a_retenir"] and not self._git_repo_retenir(
+            chemin, plan, passe
+        ):
+            return False
+        ancien = (plan["ancien"] or "—")[:12]
+        genre = t("forced (lease)") if plan["force"] else t("fast-forward")
+        print(f"  {t('Remote:')} {plan['remote']}")
+        print(f"  {t('Branch:')} {plan['branche']} → {plan['revision']}")
+        print(f"  {ancien} → {plan['nouveau'][:12]} · {genre}")
+        if not click.confirm(t("Push to the fork?"), default=False):
+            print(f"  ↩️  {t('Cancelled: the fork branch was not pushed.')}")
+            return False
+        _out, err, code = repo_apply.publier(chemin, plan)
+        if code:
+            print(f"  ⚠  {err.strip()[:400]}")
+            return False
+        repo_apply.mettre_a_jour_passe(
+            passe["horodatage"],
+            res["chemin"],
+            {"etat": "publie", "publie": plan["nouveau"]},
+            racine=RACINE,
+        )
+        print(f"  ✅ {t(ETATS['publie'])} {plan['nouveau'][:12]}")
+        return True
+
+    def _git_repo_retenir(self, chemin, plan, passe):
+        """Pose un tag ou une branche sur l'ancienne pointe, puis la pousse.
+
+        Le nom proposé se modifie avant la confirmation. Rend True quand
+        plus aucun commit n'est à retenir.
+        """
+        ancien = plan["ancien"]
+        print(
+            f"  ⚠  {ancien[:12]}"
+            f" {t('is retained by no tag or branch: the forced push would lose it.')}"
+        )
+        genre = click.prompt(
+            f"  {t('Keep it with a tag or a branch?')}",
+            type=click.Choice(["tag", "branch"]),
+            default="tag",
+        )
+        horodatage = passe["horodatage"]
+        if genre == "tag":
+            defaut = repo_apply.nom_par_defaut_tag(
+                repo_apply.version_erplibre(RACINE),
+                passe["version"],
+                repo_apply.tags(chemin),
+                horodatage,
+            )
+        else:
+            defaut = repo_apply.nom_par_defaut_branche(
+                plan["revision"], horodatage
+            )
+        nom = click.prompt(f"  {t('Name')}", default=defaut).strip()
+        question = (
+            f"{t('Push')} {genre} {nom} ({ancien[:12]}) → {plan['remote']}?"
+        )
+        if not nom or not click.confirm(question, default=False):
+            print(f"  ↩️  {t('Cancelled: nothing was pushed.')}")
+            return False
+        _out, err, code = repo_apply.retenir(
+            chemin,
+            ancien,
+            plan["remote"],
+            "tag" if genre == "tag" else "branche",
+            nom,
+        )
+        if code:
+            print(f"  ⚠  {err.strip()[:400]}")
+            return False
+        plan["a_retenir"] = repo_apply.a_retenir(
+            chemin,
+            ancien,
+            plan.get("gel"),
+            plan["nouveau"],
+            plan["remote"],
+            plan["revision"],
+        )
+        if plan["a_retenir"]:
+            print(f"  ⚠  {t('commits retained by no tag or branch')}")
+            return False
+        return True
 
     def _git_repo_ecran(self):
         """Ouvre l'écran de parcours. Lecture seule.

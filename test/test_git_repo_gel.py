@@ -482,7 +482,7 @@ class TestPlanFreeze(unittest.TestCase):
     def plan(self):
         self.inspectes = []
 
-        def inspect(path):
+        def inspect(path, _amont=None):
             self.inspectes.append(path)
             return self.ETATS[path]
 
@@ -517,6 +517,41 @@ class TestPlanFreeze(unittest.TestCase):
         self.assertNotIn("odooX/addons/R_double", self.inspectes)
         self.assertEqual(len(self.inspectes), 4)
 
+    def test_inspect_recoit_le_remote_amont_nomme(self):
+        """Seul « fork-upstream-remote » est transmis, et jamais quand il
+        porte le nom du remote du fork : ses refs prouveraient tout."""
+        vus = {}
+        defs = {
+            "a+x/a": [("m/un.xml", {"path": "x/a", "remote": "R_origin_U"})],
+            "b+x/b": [
+                (
+                    "m/un.xml",
+                    {
+                        "path": "x/b",
+                        "remote": "R_origin_U",
+                        "fork-upstream-remote": "U",
+                    },
+                )
+            ],
+            "c+x/c": [
+                (
+                    "m/un.xml",
+                    {
+                        "path": "x/c",
+                        "remote": "U",
+                        "fork-upstream-remote": "U",
+                    },
+                )
+            ],
+        }
+
+        def inspect(path, amont=None):
+            vus[path] = amont
+            return (SHA_A, None, False)
+
+        gel.plan_freeze(defs, inspect=inspect, workers=1)
+        self.assertEqual(vus, {"x/a": None, "x/b": "U", "x/c": None})
+
     def test_un_clone_modifie_est_gele_et_signale(self):
         par_fichier, _, sales = self.plan()
         self.assertEqual(sales, [CLE_BETA])
@@ -525,7 +560,7 @@ class TestPlanFreeze(unittest.TestCase):
     def test_hors_des_fichiers_ecrits_un_projet_est_ignore(self):
         par_fichier, refus, _ = gel.plan_freeze(
             self.definitions(),
-            inspect=lambda path: self.ETATS[path],
+            inspect=lambda path, _amont=None: self.ETATS[path],
             workers=2,
             ecrits=["m/deux.xml"],
         )
@@ -715,7 +750,9 @@ class TestDefaultInputPaths(unittest.TestCase):
             # `inspect` est lié à la définition de plan_freeze : patcher
             # inspect_clone ne l'atteint pas.
             return plan(
-                definitions, inspect=lambda path: (SHA_A, None, False), **kw
+                definitions,
+                inspect=lambda path, _amont=None: (SHA_A, None, False),
+                **kw,
             )
 
         with patch.object(gel, "new_path", self.dossier), patch.object(
@@ -961,6 +998,16 @@ class TestInspectClone(unittest.TestCase):
         self.assertEqual(
             gel.inspect_clone(self.clone)[1], "commit on no remote branch"
         )
+
+    def test_ref_du_remote_amont_ne_prouve_rien(self):
+        """La branche de suivi du remote amont nommé dit que l'AMONT a le
+        commit, pas le fork d'où git-repo le récupère."""
+        self.commit("deux")
+        _git(self.clone, "update-ref", "refs/remotes/U/principale", "HEAD")
+        self.assertEqual(
+            gel.inspect_clone(self.clone, "U")[1], "commit on no remote branch"
+        )
+        self.assertIsNone(gel.inspect_clone(self.clone)[1])
 
     def test_sous_dossier_d_un_depot_n_est_pas_un_clone(self):
         """Un dossier non cloné sous un autre dépôt ne rend pas le commit

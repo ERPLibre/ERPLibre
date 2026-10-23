@@ -149,17 +149,132 @@ amont diffère. `fork-upstream` nomme la branche amont ; son ABSENCE, alors que
 le remote est déclaré, dit que l'amont ne porte rien pour cette version
 d'Odoo — ce qui n'est pas la même chose qu'un amont inconnu.
 
-La passe à sec n'écrit rien : elle amène l'amont dans `FETCH_HEAD` et prédit
-la fusion en mémoire, sans déplacer de référence ni toucher l'arbre de travail.
+L'amont vit dans le clone sous un remote qui porte le nom de
+`fork-upstream-remote` — `OCA` ci-dessus, à `https://github.com/OCA/web.git` —
+si bien que sa branche se lit `OCA/18.0`, dans tig, dans `git log` et dans le
+reflog du rebase, et que sur un clone complet un simple `git fetch OCA` la rafraîchit à la main. La
+passe à sec pose ce remote quand il manque, récupère la branche amont dans sa
+branche de suivi `refs/remotes/OCA/18.0`, puis prédit la fusion en mémoire.
+Rien d'autre ne s'écrit : aucune branche locale n'est créée ni déplacée, HEAD
+et l'arbre de travail ne bougent pas.
 
 ```bash
 PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --diagnostic
 PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --add-remotes
 ```
 
 Quand le gel a écrit la base amont d'un fork (`fork-upstream-freeze-revision`, voir
 [Geler la base amont](#geler-la-base-amont)), la passe à sec compte aussi les commits amont depuis le gel, ou signale
 en rouge un amont réécrit depuis : la base gelée n'est plus dans son historique.
+
+`État des forks et de leurs amonts` (TODO › Execute › Git › Repo) liste ensuite, numérotés à partir de 1, les forks
+qui portent à la fois un commit gelé et une base amont gelée : `<base>..<gel>` et `+N à nous`, les commits du fork
+entre les deux, lus dans le clone sans réseau. Un fork non cloné, dont le clone n'a pas l'un des deux commits, ou
+dont l'historique superficiel ne relie plus la base au commit gelé, affiche son motif à la place ; rien n'est
+récupéré. `N` ouvre cette plage dans tig — `git log --oneline --graph` sans
+tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne sort pas par `q`.
+
+### Ajouter les remotes amont
+
+`Ajouter les remotes amont`, l'entrée 3 de TODO › Execute › Git › Repo, ou
+`--add-remotes`, ne fait que cela, sur chaque fork, sans diagnostic : poser le
+remote amont nommé, puis récupérer sa branche. Le remote est posé avec
+`--no-tags`, et chaque fetch le passe aussi : les tags de l'amont ne se mêlent
+jamais à ceux du clone. Il est posé avec `-t <branche>` : sa refspec ne suit
+que la branche amont déclarée, si bien que `git fetch OCA` amène `OCA/18.0` et
+non chaque branche de l'amont. Un remote de ce nom déjà là à la même URL, lue
+brute dans la configuration git sans réécriture `insteadOf`, sert tel quel,
+avec sa propre refspec ; l'écriture https et l'écriture ssh d'un même dépôt,
+`https://github.com/OCA/web.git` et `git@github.com:OCA/web.git`, comptent pour
+la même URL, si bien que `make repo_use_all_ssh` ne fait pas du remote une
+collision. Un remote qui vise un autre dépôt n'est jamais touché : le rapport montre l'URL en place
+et la commande qui la corrige, `git -C <chemin> remote set-url <remote> <url>`,
+et la passe à sec rend ce fork non comparable.
+
+Un clone superficiel — le fork du cœur d'Odoo, cloné avec `clone-depth` —
+reçoit le remote mais aucun fetch : y récupérer l'amont complet rapatrierait
+tout son historique. Le remote est marqué `skipFetchAll`, si bien que
+`git fetch --all`, et la récupération des commits manquants de la comparaison
+des gels, le laissent de côté. Le rapport donne la commande qui le récupère à
+la profondeur du manifeste, `git -C <chemin> fetch --depth=<clone-depth>
+<remote> <branche>` : sur ce clone, c'est le seul fetch du remote qui le garde
+superficiel, et un simple `git fetch OCA` rapatrierait tout l'historique de la
+branche. La passe à sec, elle, ne pose ni remote ni fetch sur un clone
+superficiel. Un fork dont l'amont est deviné, sans `fork-upstream-remote`, ou
+qui n'a pas de branche `fork-upstream`, ne reçoit rien et figure parmi les
+forks sautés avec son motif ; un amont deviné reste récupéré par l'URL dans la
+passe à sec, dans `FETCH_HEAD` seulement.
+
+Un remote posé dans le clone ne fait pas partie de l'état de git-repo : un
+`repo sync --force-sync` qui réécrit le répertoire git le perd, et la passe à
+sec suivante ou `Ajouter les remotes amont` le repose. Le gel ne compte pas les
+branches de suivi de ce remote comme la preuve que le fork porte un commit.
+
+### Appliquer la mise à niveau
+
+`Appliquer la mise à niveau` (TODO › Execute › Git › Repo) demande de taper la version d'Odoo pour confirmer, puis
+traite chaque fork que la passe à sec marque à rebaser, en conflit, absorbé par l'amont ou en retard sur l'amont. Rien
+n'est poussé. Chaque fork reçoit une branche datée `<branche>_maj_<AAAAMMJJ>`, créée sur HEAD, où :
+
+- un fork qui porte des commits en propre les rejoue sur la branche amont de son remote nommé : `rebase OCA/18.0`
+  (`FETCH_HEAD` pour un amont récupéré par l'URL), où git écarte de lui-même nos
+  commits que l'amont a déjà repris. Seulement quand l'amont a été réécrit depuis le gel — la base gelée n'est plus
+  dans son historique —, que le commit gelé est dans l'historique de HEAD et la base sous le commit gelé, seuls les
+  commits posés depuis la base se rejouent : `rebase --onto OCA/18.0 <base>`, pour que l'ancien amont ne se rejoue
+  pas comme nôtre. Une base que le fork a dépassée rejouerait comme nôtres les commits amont entre elle et HEAD : elle
+  revient au rebase ordinaire. Le mode retenu et sa raison s'inscrivent dans la passe ;
+- un fork sans commit propre, en retard sur l'amont, avance en fast-forward : `merge --ff-only OCA/18.0`.
+
+Deux refus précèdent toute écriture : un arbre de travail dont des fichiers suivis sont modifiés, sur lequel git
+refuserait le rebase, et une branche du fork dont la pointe connue du clone n'est pas un ancêtre de HEAD — le distant
+porte des commits que HEAD n'a pas, et publier le résultat les perdrait. Un rebase que git refuse de commencer est
+rapporté comme tel, et non comme un conflit, de même qu'un fast-forward refusé. L'un comme l'autre peut laisser l'arbre
+à moitié écrit — un checkout interrompu par un lien symbolique qu'un système de fichiers distant comme sshfs refuse, ou
+par un dossier sans droit d'écriture — : le dépôt est donc remis où la passe l'a pris, par `checkout -f` vers sa branche
+ou son commit de départ, les fichiers de l'amont apparus hors suivi depuis sont effacés et la branche datée est
+supprimée. Si ce retour échoue, la branche datée reste et le rapport affiche la commande à lancer à la main. Chaque passe s'enregistre sous `tasks/git_repo_upgrade/`, qui n'est pas
+versionné.
+
+#### File des conflits
+
+Un rebase arrêté sur un conflit est laissé en l'état : c'est là que la résolution se fait. La file des conflits liste
+les dépôts dont un rebase est en cours, lus dans les clones eux-mêmes : un rebase terminé à la main sort de la file.
+Sur chacun : ouvrir un shell, montrer le diff en conflit, garder le nôtre, prendre l'amont, continuer le rebase, sauter
+le commit, abandonner le rebase, ou revenir à l'état géré par repo. « Garder le nôtre » garde la version du fork, bien
+que git la nomme `theirs` pendant un rebase. Un geste qui termine le rebase inscrit son issue dans la passe, que la
+publication lit. Un rebase terminé hors du menu se relit en entrant dans la file, le rapport ou la publication : un
+dépôt dont la branche datée contient l'amont de la passe compte comme rebasé, où que soit HEAD, puisque c'est cette
+branche que la publication pousse ; un dépôt détaché sur son commit de départ comme revenu à repo ; tout autre est
+listé et laissé tel quel.
+
+#### Publier les forks mis à niveau
+
+`Publier les forks mis à niveau` pousse les branches datées de la dernière passe, rebasées ou avancées, sur la branche
+de leur fork. Une liste de numéros, ou `all`, les choisit ; chaque dépôt montre son remote, la branche datée et la
+branche du fork, l'ancienne et la nouvelle pointe, et si le push est forcé, et rien ne part sans confirmation.
+
+Chaque push porte `--force-with-lease` sur la pointe distante inscrite dans la passe, vide quand la branche n'existait
+pas au distant : un fast-forward n'est pas forcé, un historique réécrit l'est. Un distant qui a bougé depuis la passe
+refuse la publication : une pointe suivie qui a quitté celle inscrite l'arrête avant tout envoi, de même, avant un
+push forcé, la pointe que le distant annonce par `git ls-remote`, et git refuse le push si le distant lui-même a bougé ;
+la passe est à refaire. Avant un push forcé, l'ancienne pointe distante, et le commit
+gelé quand il en fait partie, doivent rester atteignables par un tag ou une autre branche que porte le remote du fork,
+lus par `git ls-remote` au moment de publier : une référence locale ou un suivi périmé ne dit pas ce que le distant
+garde. Sinon le menu demande un tag ou une branche, au nom proposé et modifiable —
+`ERPLibre/v<version>_odoo<version d'Odoo>`, suffixé de `_<AAAAMMJJ>` quand il est pris, ou
+`<branche>_avant_maj_<AAAAMMJJ>` — et le pousse AVANT le push forcé. Une branche ne fait que se créer, jamais se
+déplacer sur une branche existante. Une fois le push accepté, le clone est détaché sur le commit poussé, comme git-repo
+l'attend, et la branche datée reste.
+
+Le manifeste porte encore les anciens commits gelés : le menu propose de geler de nouveau sur-le-champ. Committer
+ensuite `manifest/` :
+
+```bash
+make repo_freeze UPSTREAM=1
+git add manifest/
+git commit -m "[UPD] manifest: freeze the forks rebased on upstream"
+```
 
 ### Geler les versions
 
@@ -342,7 +457,7 @@ make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
 make repo_freeze_diff ARGS="--graph 1"
 ```
 
-Dans TODO › Git repo, l'entrée 12 propose les comparaisons courantes, le choix de deux révisions parmi les commits de
+Dans TODO › Git repo, l'entrée 14 propose les comparaisons courantes, le choix de deux révisions parmi les commits de
 gel et les branches et tags d'ERPLibre, et la matrice. Sur le rapport : un numéro ouvre tig sur ce projet, `a` sur
 chacun à la suite, `b N` le graphe avec les branches, `l` le journal, `d` et `s N` les diffstats, `g` le regroupement
 suivant, `f` le rafraîchissement, `w` la commande qui ouvre un ancien commit dans un worktree git à côté du clone, sans

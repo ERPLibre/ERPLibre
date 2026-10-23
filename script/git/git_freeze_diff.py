@@ -697,7 +697,11 @@ def fetch_commits(chemin, shas):
     absents.
 
     Chaque distant du clone est essayé, d'abord sur le commit seul, puis en
-    entier : un serveur peut refuser un commit qu'il n'annonce pas.
+    entier : un serveur peut refuser un commit qu'il n'annonce pas. Un
+    distant marqué « remote.<nom>.skipFetchAll » est sauté, comme
+    « git fetch --all » le saute : c'est le remote amont qu'un clone
+    superficiel porte, et un fetch sans « --depth » y rapatrierait tout
+    l'historique amont.
     """
     if not is_clone(chemin):
         return list(shas)
@@ -706,6 +710,11 @@ def fetch_commits(chemin, shas):
         return []
     _, distants = _git(chemin, "remote")
     for distant in distants.splitlines():
+        _code, saute = _git(
+            chemin, "config", "--bool", f"remote.{distant}.skipFetchAll"
+        )
+        if saute == "true":
+            continue
         _git(chemin, "fetch", "--quiet", "--no-tags", distant, *manquants)
         manquants = [s for s in manquants if not has_commit(chemin, s)]
         if not manquants:
@@ -1675,8 +1684,18 @@ def open_history(racine, ligne):
     l'appelant continue d'attendre sa fin plutôt que de s'interrompre.
     Rend son code de sortie, négatif s'il a été tué par un signal.
     """
-    chemin = os.path.join(racine, ligne["path"])
-    plage = history_range(ligne)
+    return open_range(
+        os.path.join(racine, ligne["path"]), history_range(ligne)
+    )
+
+
+def open_range(chemin, plage):
+    """Ouvre la plage git `plage` du clone `chemin` : tig, ou
+    git log --oneline --graph à défaut.
+
+    Le programme hérite du terminal, comme dans `open_history`, et rend son
+    code de sortie, négatif s'il a été tué par un signal.
+    """
     if shutil.which("tig"):
         commande = ["tig", plage]
     else:

@@ -18538,9 +18538,89 @@ TRANSLATIONS = {
         "fr": "Contient du code",
         "en": "Contains code",
     },
-    "No state was written": {
-        "fr": "Aucun état n'a été écrit",
-        "en": "No state was written",
+    "Upstream remotes added:": {
+        "fr": "Remotes amont ajoutés :",
+        "en": "Upstream remotes added:",
+    },
+    "no local branch moved, no work tree touched": {
+        "fr": "aucune branche locale déplacée, aucun arbre de travail touché",
+        "en": "no local branch moved, no work tree touched",
+    },
+    "upstream remote points to another URL": {
+        "fr": "le remote amont vise une autre URL",
+        "en": "upstream remote points to another URL",
+    },
+    "the upstream remote could not be added": {
+        "fr": "le remote amont n'a pas pu être ajouté",
+        "en": "the upstream remote could not be added",
+    },
+    "no fork-upstream-remote attribute": {
+        "fr": "aucun attribut fork-upstream-remote",
+        "en": "no fork-upstream-remote attribute",
+    },
+    "upstream remote absent from the manifests": {
+        "fr": "remote amont absent des manifestes",
+        "en": "upstream remote absent from the manifests",
+    },
+    "no fork-upstream branch for this version": {
+        "fr": "aucune branche fork-upstream pour cette version",
+        "en": "no fork-upstream branch for this version",
+    },
+    "Upstream remotes": {
+        "fr": "Remotes amont",
+        "en": "Upstream remotes",
+    },
+    "Upstream fetched": {
+        "fr": "Amont récupéré",
+        "en": "Upstream fetched",
+    },
+    "Remote with another URL, left untouched": {
+        "fr": "Remote à une autre URL, laissé tel quel",
+        "en": "Remote with another URL, left untouched",
+    },
+    "Remote refused by git": {
+        "fr": "Remote refusé par git",
+        "en": "Remote refused by git",
+    },
+    "Remote set, upstream unreachable": {
+        "fr": "Remote posé, amont injoignable",
+        "en": "Remote set, upstream unreachable",
+    },
+    "Shallow clone: remote set, fetch skipped": {
+        "fr": "Clone superficiel : remote posé, fetch sauté",
+        "en": "Shallow clone: remote set, fetch skipped",
+    },
+    "only this command keeps the clone shallow": {
+        "fr": "seule cette commande garde le clone superficiel",
+        "en": "only this command keeps the clone shallow",
+    },
+    "Not cloned": {
+        "fr": "Non cloné",
+        "en": "Not cloned",
+    },
+    "Remote added and fetched": {
+        "fr": "Remote ajouté et récupéré",
+        "en": "Remote added and fetched",
+    },
+    "Remote already present, fetched": {
+        "fr": "Remote déjà présent, récupéré",
+        "en": "Remote already present, fetched",
+    },
+    "Skipped: upstream not declared": {
+        "fr": "Sautés : amont non déclaré",
+        "en": "Skipped: upstream not declared",
+    },
+    "add and fetch the named upstream remote of each fork (network)": {
+        "fr": "ajoute et récupère le remote amont nommé de chaque fork (réseau)",
+        "en": "add and fetch the named upstream remote of each fork (network)",
+    },
+    "🌐 Add the upstream remotes": {
+        "fr": "🌐 Ajouter les remotes amont",
+        "en": "🌐 Add the upstream remotes",
+    },
+    "Add the upstream remotes": {
+        "fr": "Ajouter les remotes amont",
+        "en": "Add the upstream remotes",
     },
     "missing from disk": {
         "fr": "absent du disque",
@@ -18665,6 +18745,18 @@ TRANSLATIONS = {
     "Querying each upstream, this takes a few seconds.": {
         "fr": "Interrogation de chaque amont, cela prend quelques secondes.",
         "en": "Querying each upstream, this takes a few seconds.",
+    },
+    "put back on its start commit": {
+        "fr": "remis sur son commit de départ",
+        "en": "put back on its start commit",
+    },
+    "could not be put back on its start commit": {
+        "fr": "n'a pas pu être remis sur son commit de départ",
+        "en": "could not be put back on its start commit",
+    },
+    "To run by hand:": {
+        "fr": "À lancer à la main :",
+        "en": "To run by hand:",
     },
     "⬆️ Apply the upgrade": {
         "fr": "⬆️ Appliquer la mise à niveau",
@@ -18801,6 +18893,138 @@ TRANSLATIONS = {
     "Back to the state managed by repo.": {
         "fr": "Retour à l'état géré par repo.",
         "en": "Back to the state managed by repo.",
+    },
+    "📤 Publish the updated forks": {
+        "fr": "📤 Publier les forks mis à niveau",
+        "en": "📤 Publish the updated forks",
+    },
+    "Publish the updated forks": {
+        "fr": "Publier les forks mis à niveau",
+        "en": "Publish the updated forks",
+    },
+    "Nothing to publish in the last pass.": {
+        "fr": "Rien à publier dans la dernière passe.",
+        "en": "Nothing to publish in the last pass.",
+    },
+    "Numbers to publish, separated by commas (all, empty to cancel): ": {
+        "fr": "Numéros à publier, séparés par des virgules (all, vide pour annuler) : ",
+        "en": "Numbers to publish, separated by commas (all, empty to cancel): ",
+    },
+    "Cancelled: nothing was pushed.": {
+        "fr": "Annulé : rien n'a été poussé.",
+        "en": "Cancelled: nothing was pushed.",
+    },
+    "Cancelled: the fork branch was not pushed.": {
+        "fr": "Annulé : la branche du fork n'a pas été poussée.",
+        "en": "Cancelled: the fork branch was not pushed.",
+    },
+    "The dated branch is missing: nothing to push.": {
+        "fr": "La branche datée est introuvable : rien à pousser.",
+        "en": "The dated branch is missing: nothing to push.",
+    },
+    "Remote:": {
+        "fr": "Remote :",
+        "en": "Remote:",
+    },
+    "Branch:": {
+        "fr": "Branche :",
+        "en": "Branch:",
+    },
+    "forced (lease)": {
+        "fr": "forcé (bail)",
+        "en": "forced (lease)",
+    },
+    "fast-forward": {
+        "fr": "fast-forward",
+        "en": "fast-forward",
+    },
+    "Push to the fork?": {
+        "fr": "Pousser sur le fork ?",
+        "en": "Push to the fork?",
+    },
+    "published": {
+        "fr": "publiés",
+        "en": "published",
+    },
+    "published (one)": {
+        "fr": "publié",
+        "en": "published",
+    },
+    "fast-forwarded (one)": {
+        "fr": "avancé en fast-forward",
+        "en": "fast-forwarded",
+    },
+    "rebased (one)": {
+        "fr": "rebasé",
+        "en": "rebased",
+    },
+    "fork remote unreachable": {
+        "fr": "remote du fork injoignable",
+        "en": "fork remote unreachable",
+    },
+    "remote moved since the pass: run the pass again": {
+        "fr": "le distant a bougé depuis la passe : refaites la passe",
+        "en": "remote moved since the pass: run the pass again",
+    },
+    "no rebase in progress and no known outcome, record left as is": {
+        "fr": "aucun rebase en cours ni issue reconnue, enregistrement laissé tel quel",
+        "en": "no rebase in progress and no known outcome, record left as is",
+    },
+    "The manifest still holds the old frozen commits.": {
+        "fr": "Le manifeste porte encore les anciens commits gelés.",
+        "en": "The manifest still holds the old frozen commits.",
+    },
+    "Freeze the versions again now?": {
+        "fr": "Geler à nouveau les versions maintenant ?",
+        "en": "Freeze the versions again now?",
+    },
+    "Freeze the versions, then commit manifest/.": {
+        "fr": "Gelez les versions, puis committez manifest/.",
+        "en": "Freeze the versions, then commit manifest/.",
+    },
+    "is retained by no tag or branch: the forced push would lose it.": {
+        "fr": "n'est retenu par aucun tag ni aucune branche : le push forcé le perdrait.",
+        "en": "is retained by no tag or branch: the forced push would lose it.",
+    },
+    "Keep it with a tag or a branch?": {
+        "fr": "Le garder par un tag ou par une branche ?",
+        "en": "Keep it with a tag or a branch?",
+    },
+    "Push": {
+        "fr": "Pousser",
+        "en": "Push",
+    },
+    "commits retained by no tag or branch": {
+        "fr": "commits retenus par aucun tag ni aucune branche",
+        "en": "commits retained by no tag or branch",
+    },
+    "fast-forwarded": {
+        "fr": "avancés en fast-forward",
+        "en": "fast-forwarded",
+    },
+    "the fast-forward was refused": {
+        "fr": "le fast-forward a été refusé",
+        "en": "the fast-forward was refused",
+    },
+    "git refused to start the rebase": {
+        "fr": "git a refusé de commencer le rebase",
+        "en": "git refused to start the rebase",
+    },
+    "the work tree has uncommitted changes": {
+        "fr": "l'arbre de travail porte des modifications non committées",
+        "en": "the work tree has uncommitted changes",
+    },
+    "the fork branch has commits HEAD lacks": {
+        "fr": "la branche du fork porte des commits absents de HEAD",
+        "en": "the fork branch has commits HEAD lacks",
+    },
+    "rebase aborted": {
+        "fr": "rebase abandonné",
+        "en": "rebase aborted",
+    },
+    "back to the state managed by repo": {
+        "fr": "revenu à l'état géré par repo",
+        "en": "back to the state managed by repo",
     },
     "🖥️ Browse the upgrade on screen": {
         "fr": "🖥️ Parcourir la mise à niveau à l'écran",
@@ -18977,6 +19201,46 @@ TRANSLATIONS = {
     "tig on each project, one after another": {
         "fr": "tig sur chaque projet, l'un après l'autre",
         "en": "tig on each project, one after another",
+    },
+    "Our frozen commits since the frozen upstream base:": {
+        "fr": "Nos commits gelés depuis la base amont gelée :",
+        "en": "Our frozen commits since the frozen upstream base:",
+    },
+    "ours": {
+        "fr": "à nous",
+        "en": "ours",
+    },
+    "not cloned": {
+        "fr": "non cloné",
+        "en": "not cloned",
+    },
+    "base absent from the clone: run the freeze with the upstream base": {
+        "fr": "base absente du clone : lancer le gel avec la base amont",
+        "en": "base absent from the clone: run the freeze with the upstream base",
+    },
+    "history cut between the base and the frozen commit (shallow clone)": {
+        "fr": "historique coupé entre la base et le commit gelé (clone superficiel)",
+        "en": "history cut between the base and the frozen commit (shallow clone)",
+    },
+    "the base is not an ancestor of the frozen commit": {
+        "fr": "la base n'est pas un ancêtre du commit gelé",
+        "en": "the base is not an ancestor of the frozen commit",
+    },
+    "frozen commit absent from the clone: synchronize the repositories": {
+        "fr": "commit gelé absent du clone : synchroniser les dépôts",
+        "en": "frozen commit absent from the clone: synchronize the repositories",
+    },
+    "git could not count the commits": {
+        "fr": "git n'a pas pu compter les commits",
+        "en": "git could not count the commits",
+    },
+    "tig on fork N: its commits since the base": {
+        "fr": "tig sur le fork N : ses commits depuis la base",
+        "en": "tig on fork N: its commits since the base",
+    },
+    "tig on each fork, one after another": {
+        "fr": "tig sur chaque fork, l'un après l'autre",
+        "en": "tig on each fork, one after another",
     },
     "Diffstat and groups": {
         "fr": "Diffstat et regroupements",

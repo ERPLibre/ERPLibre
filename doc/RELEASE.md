@@ -105,9 +105,14 @@ Freeze the repos versions of the active Odoo version: every project of `manifest
 branch. Check first what would change, then freeze and commit the manifest files. A clone whose commit is on no
 remote branch is skipped: push it first. [GIT_REPO.md](./GIT_REPO.md#freeze-the-versions) details what is skipped.
 
+To carry the upstream changes into the release, first upgrade the forks on their upstream and publish them
+([GIT_REPO.md](./GIT_REPO.md#apply-the-upgrade)): the freeze records the published commits. Freeze with `UPSTREAM=1`,
+so the release also records, in `fork-upstream-freeze-revision`, the upstream commit each fork rests on; it fetches
+every declared upstream over the network.
+
 ```bash
-.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
-make repo_freeze
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
 git add manifest/
 ```
 

@@ -115,7 +115,7 @@ def _git(path, *args):
     return res.returncode, res.stdout.strip()
 
 
-def inspect_clone(path):
+def inspect_clone(path, amont=None):
     """État d'un clone : (sha, motif de refus ou None, sale).
 
     Le refus vaut pour un chemin qui n'est pas un clone, et pour un commit
@@ -127,7 +127,9 @@ def inspect_clone(path):
     le checkout ERPLibre, lui-même un dépôt git, rendrait sinon le commit
     d'ERPLibre. Les références « refs/remotes/m/ » ne comptent pas : git-repo
     les pose sur la révision du manifeste, elles ne prouvent pas que le
-    distant a le commit.
+    distant a le commit. Celles de `amont`, le remote amont nommé d'un fork
+    (« fork-upstream-remote »), non plus : elles prouvent que l'amont a le
+    commit, pas que le fork, d'où git-repo le récupère, l'a.
     """
     if not path or not os.path.isdir(path):
         return None, "not cloned", False
@@ -145,11 +147,10 @@ def inspect_clone(path):
         "--format=%(refname)",
         "refs/remotes",
     )
-    distants = [
-        r
-        for r in contenants.splitlines()
-        if not r.startswith("refs/remotes/m/")
-    ]
+    exclus = ("refs/remotes/m/",)
+    if amont:
+        exclus += (f"refs/remotes/{amont}/",)
+    distants = [r for r in contenants.splitlines() if not r.startswith(exclus)]
     if code or not distants:
         return sha, "commit on no remote branch", False
     _, sale = _git(path, "status", "--porcelain", "--untracked-files=no")
@@ -221,6 +222,8 @@ def plan_freeze(definitions, inspect=inspect_clone, workers=8, ecrits=None):
     `ecrits`, quand il est donné, borne les fichiers à écrire : un projet
     qu'aucun d'eux ne définit est ignoré sans être listé, et un projet
     qu'ils définissent et qu'un autre fichier redéfinit est refusé.
+    `inspect` reçoit le chemin du clone et le remote amont nommé du projet
+    (« fork-upstream-remote »), ou None.
     """
     par_fichier = {}
     refus = []
@@ -234,15 +237,18 @@ def plan_freeze(definitions, inspect=inspect_clone, workers=8, ecrits=None):
             refus.append((cle, f"defined in several sources: {fichiers}"))
             continue
         fichier, attrs = defs[0]
-        candidats[cle] = (fichier, attrs.get("path"))
+        amont = attrs.get("fork-upstream-remote")
+        if amont == attrs.get("remote"):
+            amont = None
+        candidats[cle] = (fichier, attrs.get("path"), amont)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         etats = dict(
             zip(
                 candidats,
-                pool.map(lambda c: inspect(candidats[c][1]), candidats),
+                pool.map(lambda c: inspect(*candidats[c][1:]), candidats),
             )
         )
-    for cle, (fichier, _) in candidats.items():
+    for cle, (fichier, _, _) in candidats.items():
         sha, motif, sale = etats[cle]
         if motif:
             refus.append((cle, motif))

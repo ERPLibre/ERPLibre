@@ -106,9 +106,14 @@ branche. Vérifier d'abord ce qui changerait, puis geler et committer les fichie
 manifeste. Un clone dont le commit n'est sur aucune branche distante est écarté : le pousser d'abord.
 [GIT_REPO.fr.md](./GIT_REPO.fr.md#geler-les-versions) détaille ce qui est écarté.
 
+Pour porter les changements amont dans la publication, mettre d'abord les forks à niveau sur leur amont et les publier
+([GIT_REPO.fr.md](./GIT_REPO.fr.md#appliquer-la-mise-à-niveau)) : le gel retient les commits publiés. Geler avec
+`UPSTREAM=1`, pour que la publication retienne aussi, dans `fork-upstream-freeze-revision`, le commit amont sur lequel
+repose chaque fork ; il interroge chaque amont déclaré par le réseau.
+
 ```bash
-.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
-make repo_freeze
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run --upstream
+make repo_freeze UPSTREAM=1
 git add manifest/
 ```
 
