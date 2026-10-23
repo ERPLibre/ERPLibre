@@ -18684,6 +18684,147 @@ TRANSLATIONS = {
         "fr": "Ancien lanceur arrêté : {n}",
         "en": "Previous launcher stopped: {n}",
     },
+    # Écran des actions VM du suivi d'installation (touche a).
+    "Actions": {
+        "fr": "Actions",
+        "en": "Actions",
+    },
+    "System packages (apt/dnf/pacman/zypper)": {
+        "fr": "Paquets système (apt/dnf/pacman/zypper)",
+        "en": "System packages (apt/dnf/pacman/zypper)",
+    },
+    "Git repositories (ERPLibre + addons)": {
+        "fr": "Dépôts git (ERPLibre + addons)",
+        "en": "Git repositories (ERPLibre + addons)",
+    },
+    "Python dependencies (poetry)": {
+        "fr": "Dépendances Python (poetry)",
+        "en": "Python dependencies (poetry)",
+    },
+    "Run the update": {
+        "fr": "Lancer la mise à jour",
+        "en": "Run the update",
+    },
+    "Service": {
+        "fr": "Service",
+        "en": "Service",
+    },
+    "Restart Odoo": {
+        "fr": "Redémarrer Odoo",
+        "en": "Restart Odoo",
+    },
+    "Restarting Odoo": {
+        "fr": "Redémarrage d'Odoo",
+        "en": "Restarting Odoo",
+    },
+    "Odoo database": {
+        "fr": "Base de données",
+        "en": "Odoo database",
+    },
+    "Recreates « {db} » from the image of the version installed in the VM.": {
+        "fr": "Recrée « {db} » depuis l'image de la version installée dans la VM.",
+        "en": "Recreates « {db} » from the image of the version installed in the VM.",
+    },
+    "Neutralize: disables the crons": {
+        "fr": "Neutraliser : désactive les crons",
+        "en": "Neutralize: disables the crons",
+    },
+    "No _cache_ database: restores directly": {
+        "fr": "Sans base _cache_ : restaure directement",
+        "en": "No _cache_ database: restores directly",
+    },
+    "Restore the « {db} » database": {
+        "fr": "Restaurer la base « {db} »",
+        "en": "Restore the « {db} » database",
+    },
+    "Irreversible": {
+        "fr": "Irréversible",
+        "en": "Irreversible",
+    },
+    "Delete the VM and its disks": {
+        "fr": "Supprimer la VM et ses disques",
+        "en": "Delete the VM and its disks",
+    },
+    "No IP for this VM.": {
+        "fr": "Pas d'IP pour cette VM.",
+        "en": "No IP for this VM.",
+    },
+    "Nothing ticked.": {
+        "fr": "Rien de coché.",
+        "en": "Nothing ticked.",
+    },
+    "Database restore": {
+        "fr": "Restauration de la base",
+        "en": "Database restore",
+    },
+    "Restore « {db} » on {name}?": {
+        "fr": "Restaurer « {db} » sur {name} ?",
+        "en": "Restore « {db} » on {name}?",
+    },
+    "Overwrite {db}": {
+        "fr": "Écraser {db}",
+        "en": "Overwrite {db}",
+    },
+    "The « {db} » database, if it exists, is DROPPED": {
+        "fr": "La base « {db} », si elle existe, est SUPPRIMÉE",
+        "en": "The « {db} » database, if it exists, is DROPPED",
+    },
+    "then reloaded from the odoo<version>_base image of the": {
+        "fr": "puis rechargée depuis l'image odoo<version>_base du",
+        "en": "then reloaded from the odoo<version>_base image of the",
+    },
+    "image_db directory. Nothing can be recovered.": {
+        "fr": "répertoire image_db. Rien n'est récupérable.",
+        "en": "image_db directory. Nothing can be recovered.",
+    },
+    "The erplibre service is stopped during the operation,": {
+        "fr": "Le service erplibre est arrêté le temps de l'opération,",
+        "en": "The erplibre service is stopped during the operation,",
+    },
+    "then started again if it was running.": {
+        "fr": "puis relancé s'il tournait.",
+        "en": "then started again if it was running.",
+    },
+    "The restored database's crons stay disabled.": {
+        "fr": "Les crons de la base restaurée restent désactivés.",
+        "en": "The restored database's crons stay disabled.",
+    },
+    "Deletion": {
+        "fr": "Suppression",
+        "en": "Deletion",
+    },
+    "Delete {name}?": {
+        "fr": "Supprimer {name} ?",
+        "en": "Delete {name}?",
+    },
+    "Delete for good": {
+        "fr": "Supprimer définitivement",
+        "en": "Delete for good",
+    },
+    "The VM is stopped, its definition removed,": {
+        "fr": "La VM est arrêtée, sa définition retirée,",
+        "en": "The VM is stopped, its definition removed,",
+    },
+    "and its qcow2 disk ERASED. Nothing can be recovered.": {
+        "fr": "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
+        "en": "and its qcow2 disk ERASED. Nothing can be recovered.",
+    },
+    "On the Proxmox host {host}, VM {vmid} is stopped": {
+        "fr": "Sur l'hôte Proxmox {host}, la VM {vmid} est arrêtée",
+        "en": "On the Proxmox host {host}, VM {vmid} is stopped",
+    },
+    "then DESTROYED with its disks. Nothing can be recovered.": {
+        "fr": "puis DÉTRUITE avec ses disques. Rien n'est récupérable.",
+        "en": "then DESTROYED with its disks. Nothing can be recovered.",
+    },
+    "No file is touched here: the disk lives in the": {
+        "fr": "Aucun fichier n'est touché ici : le disque vit dans le",
+        "en": "No file is touched here: the disk lives in the",
+    },
+    "host's storage.": {
+        "fr": "stockage de l'hôte.",
+        "en": "host's storage.",
+    },
     # Rafraîchissement forcé du suivi d'installation (touche F5).
     "State and probes refreshed.": {
         "fr": "État et sondes relus.",

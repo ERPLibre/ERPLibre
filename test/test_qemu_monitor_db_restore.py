@@ -216,6 +216,45 @@ class TestLaRestauration(Bac):
         self.assertNotIn("crons", "\n".join(mon.db_restore_lines([])))
 
 
+class TestLesDeuxLangues(unittest.TestCase):
+    """L'écran des actions VM et ses confirmations suivent la langue choisie,
+    au moment où ils s'affichent."""
+
+    def langue(self, code):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = code
+
+    def test_the_confirmations_follow_the_language(self):
+        self.langue("en")
+        en = " ".join(
+            mon.db_restore_lines(["neutralize"])
+            + mon.delete_lines({"name": "vm-a"})
+        )
+        self.langue("fr")
+        fr = " ".join(
+            mon.db_restore_lines(["neutralize"])
+            + mon.delete_lines({"name": "vm-a"})
+        )
+        self.assertIn("DROPPED", en)
+        self.assertIn("ERASED", en)
+        self.assertIn("SUPPRIMÉE", fr)
+        self.assertIn("EFFACÉ", fr)
+        for texte in (en, fr):
+            self.assertIn(mon.DB_RESTORE_NAME, texte)
+            self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", texte)
+
+    def test_every_tick_box_label_is_translated(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for _cle, libelle in mon.UPDATE_PARTS + mon.DB_RESTORE_PARTS:
+            with self.subTest(libelle=libelle):
+                self.assertIn(libelle, TRANSLATIONS)
+
+
 class TestLaMiseAJourSuitLeMemeDossier(Bac):
     def test_git_and_python_run_in_the_production_directory(self):
         self.erplibre(self.home / "git" / "erplibre")

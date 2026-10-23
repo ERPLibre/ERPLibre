@@ -155,6 +155,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Modifié
 
+- L'écran des actions VM du suivi d'installation, ses confirmations et ses avis suivent la langue choisie au lieu de parler toujours français
 - Les formulaires de déploiement QEMU et Proxmox listent leur catalogue par ordre alphabétique de système, puis par version comparée comme un nombre — ubuntu 26.04 après 24.04, almalinux 10 après 9 —, puis par architecture. La liste en ligne de commande garde son ordre, ses numéros étant ceux qu'on retape
 - `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond
 - Le contrôle d'hygiène des commentaires lit le Go, et non les seuls `#` : `//` hors d'une chaîne, la chaîne brute entre accents graves, et les blocs `/* … */`

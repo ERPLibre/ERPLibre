@@ -2224,10 +2224,12 @@ COL_DEFAULT_WIDTHS = {
 # Parties d'une remise à jour, dans l'ordre où elles doivent tourner : les
 # paquets système d'abord (compilateurs et en-têtes), le code ensuite, les
 # dépendances Python en dernier — elles se compilent contre les deux premiers.
+# Les libellés sont des clés de traduction : t() les rend à l'affichage, dans
+# la langue choisie à ce moment-là, et non à l'import du module.
 UPDATE_PARTS = (
-    ("system", "Paquets systeme (apt/dnf/pacman/zypper)"),
-    ("git", "Depots git (ERPLibre + addons)"),
-    ("python", "Dependances Python (poetry)"),
+    ("system", "System packages (apt/dnf/pacman/zypper)"),
+    ("git", "Git repositories (ERPLibre + addons)"),
+    ("python", "Python dependencies (poetry)"),
 )
 EL_DIR = "~/git/erplibre"
 
@@ -2330,8 +2332,8 @@ DB_RESTORE_NAME = "test"
 # de crons dans une VM d'essai, et restaurer sans « _cache_ » épargne au
 # disque de la VM un double complet de la base.
 DB_RESTORE_PARTS = (
-    ("neutralize", "Neutraliser : désactive les crons"),
-    ("ignore_cache", "Sans base _cache_ : restaure directement"),
+    ("neutralize", "Neutralize: disables the crons"),
+    ("ignore_cache", "No _cache_ database: restores directly"),
 )
 
 
@@ -2389,16 +2391,18 @@ def db_restore_lines(parts) -> list:
     demander. L'image n'est pas nommée : son nom se calcule dans la VM, à
     partir d'une version que cet écran ne lit pas."""
     lignes = [
-        f"La base « {DB_RESTORE_NAME} », si elle existe, est SUPPRIMÉE",
-        "puis rechargée depuis l'image odoo<version>_base du",
-        "répertoire image_db. Rien n'est récupérable.",
+        t("The « {db} » database, if it exists, is DROPPED").format(
+            db=DB_RESTORE_NAME
+        ),
+        t("then reloaded from the odoo<version>_base image of the"),
+        t("image_db directory. Nothing can be recovered."),
         "",
-        "Le service erplibre est arrêté le temps de l'opération,",
-        "puis relancé s'il tournait.",
+        t("The erplibre service is stopped during the operation,"),
+        t("then started again if it was running."),
     ]
     if "neutralize" in parts:
         lignes.append("")
-        lignes.append("Les crons de la base restaurée restent désactivés.")
+        lignes.append(t("The restored database's crons stay disabled."))
     return lignes
 
 
@@ -2457,20 +2461,22 @@ def delete_lines(vm) -> list:
     info = vm.get("pve")
     if not info:
         return [
-            "La VM est arrêtée, sa définition retirée,",
-            "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
+            t("The VM is stopped, its definition removed,"),
+            t("and its qcow2 disk ERASED. Nothing can be recovered."),
             "",
             f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
         ]
     hote = info.get("target") or "?"
     return [
-        f"Sur l'hôte Proxmox {hote}, la VM {info.get('vmid')} est arrêtée",
-        "puis DÉTRUITE avec ses disques. Rien n'est récupérable.",
+        t("On the Proxmox host {host}, VM {vmid} is stopped").format(
+            host=hote, vmid=info.get("vmid")
+        ),
+        t("then DESTROYED with its disks. Nothing can be recovered."),
         "",
         f"  qm destroy {info.get('vmid')} --purge",
         "",
-        "Aucun fichier n'est touché ici : le disque vit dans le",
-        "stockage de l'hôte.",
+        t("No file is touched here: the disk lives in the"),
+        t("host's storage."),
     ]
 
 
@@ -2818,7 +2824,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         """Confirmation d'une action irréversible. Le bouton dangereux n'est
         PAS le défaut : il faut le viser, pas juste appuyer sur Entrée."""
 
-        BINDINGS = [("escape", "cancel", "Annuler")]
+        BINDINGS = [("escape", "cancel", t("Cancel"))]
 
         def __init__(self, title, lines, danger_label):
             super().__init__()
@@ -2832,7 +2838,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 for line in self._lines:
                     yield Static(line)
                 with Horizontal(id="confbtns"):
-                    yield Button("Annuler", variant="primary", id="c_no")
+                    yield Button(t("Cancel"), variant="primary", id="c_no")
                     yield Button(self._danger, variant="error", id="c_yes")
 
         def on_button_pressed(self, event) -> None:
@@ -2847,7 +2853,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         Plutôt que trois touches de plus dans un pied de page qui en compte
         déjà neuf : on voit ce qu'on va faire, et sur quelle machine."""
 
-        BINDINGS = [("escape", "cancel", "Fermer")]
+        BINDINGS = [("escape", "cancel", t("Close"))]
 
         def __init__(self, vm):
             super().__init__()
@@ -2856,34 +2862,39 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def compose(self) -> ComposeResult:
             with Vertical(id="actbox"):
                 yield Static(
-                    f"Actions — {self._vm['name']}  ({self._vm.get('ip') or '?'})",
+                    f"{t('Actions')} — {self._vm['name']}"
+                    f"  ({self._vm.get('ip') or '?'})",
                     id="acttitle",
                 )
-                yield Static("Remettre à jour", classes="actgroup")
+                yield Static(t("Update"), classes="actgroup")
                 for key, label in UPDATE_PARTS:
-                    yield Checkbox(label, value=True, id=f"u_{key}")
+                    yield Checkbox(t(label), value=True, id=f"u_{key}")
                 yield Button(
-                    "Lancer la mise à jour",
+                    t("Run the update"),
                     variant="primary",
                     id="a_update",
                 )
-                yield Static("Service", classes="actgroup")
-                yield Button("Redémarrer Odoo", id="a_restart")
-                yield Static("Base de données", classes="actgroup")
+                yield Static(t("Service"), classes="actgroup")
+                yield Button(t("Restart Odoo"), id="a_restart")
+                yield Static(t("Odoo database"), classes="actgroup")
                 yield Static(
-                    f"Recrée « {DB_RESTORE_NAME} » depuis l'image de la"
-                    " version installée dans la VM."
+                    t(
+                        "Recreates « {db} » from the image of the version"
+                        " installed in the VM."
+                    ).format(db=DB_RESTORE_NAME)
                 )
                 for key, label in DB_RESTORE_PARTS:
-                    yield Checkbox(label, value=True, id=f"d_{key}")
+                    yield Checkbox(t(label), value=True, id=f"d_{key}")
                 yield Button(
-                    f"Restaurer la base « {DB_RESTORE_NAME} »",
+                    t("Restore the « {db} » database").format(
+                        db=DB_RESTORE_NAME
+                    ),
                     variant="warning",
                     id="a_dbrestore",
                 )
-                yield Static("Irréversible", classes="actdanger")
+                yield Static(t("Irreversible"), classes="actdanger")
                 yield Button(
-                    "Supprimer la VM et ses disques",
+                    t("Delete the VM and its disks"),
                     variant="error",
                     id="a_delete",
                 )
@@ -3752,7 +3763,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             l'installation TERMINÉE."""
             vm = self._vm_by_name(self._selected)
             if not vm or not vm.get("ip"):
-                self.notify("Pas d'IP pour cette VM.", title="Web")
+                self.notify(t("No IP for this VM."), title="Web")
                 return
             browser = self._choose_browser()
             if not browser:
@@ -4053,7 +4064,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     self._run_update(vm, parts)
                 elif kind == "restart":
                     self._run_in_vm(
-                        vm, restart_odoo_cmd(), "Redemarrage d'Odoo"
+                        vm, restart_odoo_cmd(), t("Restarting Odoo")
                     )
                 elif kind == "dbrestore":
                     self._ask_db_restore(vm, parts)
@@ -4070,21 +4081,21 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             la rendrait illisible. La pause finale évite que l'écran reparte
             avant qu'on ait lu le résultat."""
             if not vm.get("ip"):
-                self.notify("Pas d'IP pour cette VM.", severity="error")
+                self.notify(t("No IP for this VM."), severity="error")
                 return
             with self.suspend():
                 print(f"\n=== {title} — {vm['name']} ===")
                 os.system(
                     f"{vm_ssh_prefix(vm, tty=True)} {shlex.quote(cmd)} || true"
                 )
-                input("\nEntrée pour revenir au suivi… ")
+                input(f"\n{t('Press Enter to return to the monitor')}… ")
 
         def _run_update(self, vm, parts) -> None:
             cmd = update_remote_cmd(parts)
             if not cmd:
-                self.notify("Rien de coché.", severity="warning")
+                self.notify(t("Nothing ticked."), severity="warning")
                 return
-            self._run_in_vm(vm, cmd, "Mise a jour")
+            self._run_in_vm(vm, cmd, t("Update"))
 
         def _ask_db_restore(self, vm, parts) -> None:
             """Restauration : une base du même nom est PERDUE.
@@ -4098,14 +4109,16 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if not yes:
                     return
                 self._run_in_vm(
-                    vm, db_restore_cmd(parts), "Restauration de la base"
+                    vm, db_restore_cmd(parts), t("Database restore")
                 )
 
             self.push_screen(
                 ConfirmScreen(
-                    f"Restaurer « {DB_RESTORE_NAME} » sur {vm['name']} ?",
+                    t("Restore « {db} » on {name}?").format(
+                        db=DB_RESTORE_NAME, name=vm["name"]
+                    ),
                     db_restore_lines(parts),
-                    f"Écraser {DB_RESTORE_NAME}",
+                    t("Overwrite {db}").format(db=DB_RESTORE_NAME),
                 ),
                 confirmed,
             )
@@ -4126,16 +4139,16 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     else delete_vm_cmd(vm["name"], True, vm.get("uuid") or "")
                 )
                 with self.suspend():
-                    print(f"\n=== Suppression — {vm['name']} ===")
+                    print(f"\n=== {t('Deletion')} — {vm['name']} ===")
                     print(f"→ {cmd}\n")
                     os.system(cmd + " || true")
-                    input("\nEntrée pour revenir au suivi… ")
+                    input(f"\n{t('Press Enter to return to the monitor')}… ")
 
             self.push_screen(
                 ConfirmScreen(
-                    f"Supprimer {vm['name']} ?",
+                    t("Delete {name}?").format(name=vm["name"]),
                     delete_lines(vm),
-                    "Supprimer définitivement",
+                    t("Delete for good"),
                 ),
                 confirmed,
             )
