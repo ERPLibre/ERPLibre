@@ -121,6 +121,7 @@ class Bac(unittest.TestCase):
         fin = subprocess.run(
             ["bash", "-c", cmd], env=env, capture_output=True, text=True
         )
+        self.sortie = fin.stdout
         return fin.returncode, self.journal.read_text().splitlines()
 
 
@@ -253,6 +254,36 @@ class TestLesDeuxLangues(unittest.TestCase):
         for _cle, libelle in mon.UPDATE_PARTS + mon.DB_RESTORE_PARTS:
             with self.subTest(libelle=libelle):
                 self.assertIn(libelle, TRANSLATIONS)
+
+
+class TestLesMessagesDansLaVM(Bac):
+    """Ce que les commandes affichent dans la VM suit la langue choisie, et
+    une traduction ne peut rien développer dans le shell."""
+
+    def setUp(self):
+        super().setUp()
+        self.erplibre(self.home / "git" / "erplibre")
+
+    def test_the_restore_speaks_english_with_its_variables(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        self.lance(mon.db_restore_cmd([]), rc=3)
+        self.assertIn("== Restoring test from odoo18.0_base ==", self.sortie)
+        self.assertIn("== Restore finished (code 3) ==", self.sortie)
+
+    def test_a_translation_expands_nothing(self):
+        texte = 'a "b" $HOME `id` \\c'
+        fin = subprocess.run(
+            ["bash", "-c", f'echo "{mon._dq(texte)}"'],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(texte, fin.stdout.rstrip("\n"))
 
 
 class TestLaMiseAJourSuitLeMemeDossier(Bac):

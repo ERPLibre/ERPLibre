@@ -18693,6 +18693,39 @@ TRANSLATIONS = {
         "fr": "Raccourcis et options",
         "en": "Shortcuts and options",
     },
+    # Messages des commandes que les actions VM lancent dans la VM.
+    "System packages": {
+        "fr": "Paquets système",
+        "en": "System packages",
+    },
+    "Unknown package manager": {
+        "fr": "Gestionnaire de paquets inconnu",
+        "en": "Unknown package manager",
+    },
+    "Git repositories": {
+        "fr": "Dépôts git",
+        "en": "Git repositories",
+    },
+    "Python dependencies": {
+        "fr": "Dépendances Python",
+        "en": "Python dependencies",
+    },
+    "Update finished": {
+        "fr": "Mise à jour terminée",
+        "en": "Update finished",
+    },
+    "No erplibre service: run ./run.sh in": {
+        "fr": "Pas de service erplibre : lancez ./run.sh dans",
+        "en": "No erplibre service: run ./run.sh in",
+    },
+    "Restoring {db} from {img}": {
+        "fr": "Restauration de {db} depuis {img}",
+        "en": "Restoring {db} from {img}",
+    },
+    "Restore finished (code {rc})": {
+        "fr": "Restauration terminée (code {rc})",
+        "en": "Restore finished (code {rc})",
+    },
     # Écran des actions VM du suivi d'installation (touche a).
     "Actions": {
         "fr": "Actions",

@@ -2245,6 +2245,14 @@ def el_dir_cd() -> str:
     )
 
 
+def _dq(texte) -> str:
+    """Texte à placer entre guillemets doubles dans une commande shell.
+
+    \\, ", $ et ` y sont échappés : une traduction ne peut rien y développer.
+    Une variable voulue — « $img », « $rc » — s'ajoute APRÈS, par format()."""
+    return re.sub(r'([\\"$`])', r"\\\1", texte)
+
+
 def update_remote_cmd(parts) -> str:
     """Commande exécutée DANS la VM pour remettre à jour ce qui est coché.
 
@@ -2257,7 +2265,7 @@ def update_remote_cmd(parts) -> str:
     out = ["set -u"]
     if "system" in chosen:
         out.append(
-            'echo "== Paquets systeme =="; '
+            f'echo "== {_dq(t("System packages"))} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
             "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq "
             "&& sudo DEBIAN_FRONTEND=noninteractive "
@@ -2276,11 +2284,11 @@ def update_remote_cmd(parts) -> str:
             "--auto-agree-with-licenses --allow-vendor-change;; "
             "*) sudo zypper --non-interactive up "
             "--auto-agree-with-licenses;; esac; "
-            'else echo "Gestionnaire de paquets inconnu"; fi; '
+            f'else echo "{_dq(t("Unknown package manager"))}"; fi; '
         )
     if "git" in chosen:
         out.append(
-            'echo "== Depots git =="; '
+            f'echo "== {_dq(t("Git repositories"))} =="; '
             + el_dir_cd()
             # --ff-only : une VM ne doit jamais fusionner toute seule. Un
             # historique divergent s'arrête ici, visiblement.
@@ -2291,12 +2299,12 @@ def update_remote_cmd(parts) -> str:
         )
     if "python" in chosen:
         out.append(
-            'echo "== Dependances Python =="; '
+            f'echo "== {_dq(t("Python dependencies"))} =="; '
             + el_dir_cd()
             # La phase « poetry » seule : ni venvs ni repo, juste les paquets.
             + "EL_PHASE=poetry ./script/install/install_locally.sh; "
         )
-    out.append('echo "== Mise a jour terminee =="')
+    out.append(f'echo "== {_dq(t("Update finished"))} =="')
     return "".join(out[:1]) + "; " + "".join(out[1:])
 
 
@@ -2309,8 +2317,8 @@ def restart_odoo_cmd() -> str:
         "if systemctl list-unit-files 2>/dev/null | grep -q '^erplibre'; then "
         "sudo systemctl restart erplibre.service "
         "&& sudo systemctl --no-pager --lines=15 status erplibre.service; "
-        "else echo 'Pas de service erplibre : lancez ./run.sh dans "
-        f"{EL_DIR}'; fi"
+        f'else echo "{_dq(t("No erplibre service: run ./run.sh in"))} '
+        f'{EL_DIR}"; fi'
     )
 
 
@@ -2360,7 +2368,11 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
     return (
         "set -u; " + el_dir_cd() + "ver=$(tr -d '[:space:]' < .odoo-version); "
         'img="odoo${ver}_base"; '
-        f'echo "== Restauration de {database} depuis $img =="; '
+        'echo "== '
+        + _dq(t("Restoring {db} from {img}")).format(
+            db=_dq(database), img="$img"
+        )
+        + ' =="; '
         "actif=non; "
         'relance() { if [ "$actif" = oui ]; then actif=fait; '
         "sudo systemctl start erplibre.service; fi; }; "
@@ -2372,7 +2384,9 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
         f"{opts}; "
         "rc=$?; "
         "relance; "
-        'echo "== Restauration terminee (code $rc) =="; '
+        'echo "== '
+        + _dq(t("Restore finished (code {rc})")).format(rc="$rc")
+        + ' =="; '
         "exit $rc"
     )
 
