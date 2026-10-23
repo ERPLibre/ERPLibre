@@ -352,6 +352,9 @@ class TODO(
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
 [16] {t("Docker / Podman - Container engines")}
+
+── {t("Dolibarr")} ──
+[17] {t("Dolibarr - Instances: install, run, follow")}
 [0] {t("Back")}
 """
         while True:
@@ -421,6 +424,10 @@ class TODO(
                     return
             elif status == "16":
                 status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "17":
+                status = self.prompt_execute_dolibarr()
                 if status is not False:
                     return
             else:
@@ -760,6 +767,7 @@ class TODO(
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
         "prompt_install": "Install",
+        "prompt_execute_dolibarr": "Dolibarr",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
         "prompt_execute_config": "Config",
