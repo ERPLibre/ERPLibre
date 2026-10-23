@@ -544,6 +544,11 @@
     }
   },
 
+  "attachments": {
+    "create": "ir.attachment create {name (file name), datas (base64), res_model, res_id, mimetype} for each photo, audio or video entry with a file not sent yet to that record, after each create or write of the note's task, opportunity or invoice (on it) and of each of its messages (on the message's record, then /mail/message/update_content with the message's attachment_ids plus the new ones). Activities take none.",
+    "limits": "Options › Odoo sync (localStorage options.sync.attachments): wifiOnly holds files on a mobile network until a push on Wi-Fi; maxMb leaves a larger file out (noted in note_links.params.attachmentsSkipped). note_links.params.attachments maps entry id → attachment id: each file goes once per record, a removed one stays on the server. A refusal stops the round, kept in params.attachmentError, and never fails the push."
+  },
+
   "companies": {
     "read": "/web/session/get_session_info (auth user): uid and user_companies (current_company, allowed_companies id → {id, name}); kept per server in sync_target_prefs (kind companies), the one last chosen in kind company.",
     "scope": "For a user of several companies, every call_kw to that server carries context allowed_company_ids = all of them (current first) unless the call names its own, so records of each company are read and written. A creation carries the company chosen in the picker first (outbox params.companyId), the one the record is created in. A user of one company gets no such context."
