@@ -114,5 +114,33 @@ class TestOrdreDeFusion(Banc):
                 )
 
 
+class TestProjetDolibarr(Banc):
+    def setUp(self):
+        super().setUp()
+        self.racine.ecrire(
+            "manifest/git_manifest_dolibarr.xml", manifest(PIN_A)
+        )
+        self.racine.liste(
+            "conf/git_manifest_dolibarr.csv",
+            "manifest/git_manifest_erplibre.xml",
+            "manifest/git_manifest_dolibarr.xml",
+        )
+
+    def test_it_stays_out_without_the_flag_or_a_checkout(self):
+        self.assertNotIn("dolibarr/dolibarr", self.racine.fusionner())
+
+    def test_the_flag_merges_it_with_its_pin_and_branch(self):
+        projet = self.racine.fusionner("--with_dolibarr")["dolibarr/dolibarr"]
+        self.assertEqual(projet.get("revision"), PIN_A)
+        self.assertEqual(projet.get("upstream"), "24.0")
+        self.assertEqual(projet.get("clone-depth"), "1")
+
+    def test_an_existing_checkout_keeps_it_in_the_merge(self):
+        # Sorti de la fusion, le prochain « repo sync » effacerait le
+        # checkout, conf.php compris : il y reste dès qu'il existe.
+        (self.racine.root / "dolibarr" / "dolibarr").mkdir(parents=True)
+        self.assertIn("dolibarr/dolibarr", self.racine.fusionner())
+
+
 if __name__ == "__main__":
     unittest.main()
