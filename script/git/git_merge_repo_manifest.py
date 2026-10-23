@@ -33,6 +33,9 @@ DEFAULT_PATH_MANIFEST_CONF = os.path.join("conf", "git_manifest.csv")
 DEFAULT_PATH_MANIFEST_MOBILE_CONF = os.path.join(
     "conf", "git_manifest_mobile.csv"
 )
+DEFAULT_PATH_MANIFEST_DOLIBARR_CONF = os.path.join(
+    "conf", "git_manifest_dolibarr.csv"
+)
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
@@ -41,6 +44,7 @@ DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(
     ".repo", "installed_odoo_version.txt"
 )
 MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
+DOLIBARR_PATH = os.path.join("dolibarr", "dolibarr")
 ODOO_VERSION_PATH = ".odoo-version"
 
 
@@ -80,6 +84,11 @@ def get_config(argv=None):
         help="Add mobile project manifest",
     )
     parser.add_argument(
+        "--with_dolibarr",
+        action="store_true",
+        help="Add the pinned Dolibarr project manifest",
+    )
+    parser.add_argument(
         "--with_extra",
         action="store_true",
         help=(
@@ -116,6 +125,7 @@ def main():
         input_paths = default_input_paths(
             with_OCA=config.with_OCA,
             with_mobile=config.with_mobile,
+            with_dolibarr=config.with_dolibarr,
             with_extra=config.with_extra,
             with_new_manifest=config.with_new_manifest,
         )
@@ -208,6 +218,7 @@ def main():
 def default_input_paths(
     with_OCA=False,
     with_mobile=False,
+    with_dolibarr=False,
     with_extra=False,
     with_new_manifest=False,
 ):
@@ -215,9 +226,9 @@ def default_input_paths(
 
     Sans `with_new_manifest`, les drapeaux se déduisent du checkout : la
     version d'Odoo active, les versions installées, l'application mobile,
-    les modules extra. Un fichier cité deux fois n'est gardé qu'à sa
-    PREMIÈRE place, et l'ordre est celui de la liste : lors de la fusion,
-    le dernier fichier qui définit un projet l'emporte.
+    le checkout Dolibarr, les modules extra. Un fichier cité deux fois
+    n'est gardé qu'à sa PREMIÈRE place, et l'ordre est celui de la liste :
+    lors de la fusion, le dernier fichier qui définit un projet l'emporte.
     """
     odoo_version = None
     if os.path.isfile(ODOO_VERSION_PATH):
@@ -230,6 +241,11 @@ def default_input_paths(
             with_OCA = True
         if os.path.isdir(MOBILE_PATH):
             with_mobile = True
+        # Un projet sorti de la fusion est effacé par le prochain « repo
+        # sync », fichiers ignorés compris : le checkout Dolibarr y reste
+        # donc dès qu'il existe.
+        if os.path.isdir(DOLIBARR_PATH):
+            with_dolibarr = True
         if odoo_version and get_version_extra(odoo_version.strip()):
             with_extra = True
 
@@ -278,6 +294,10 @@ def default_input_paths(
     if with_mobile:
         append_file_path_manifest(
             input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+        )
+    if with_dolibarr:
+        append_file_path_manifest(
+            input_paths, DEFAULT_PATH_MANIFEST_DOLIBARR_CONF
         )
     if with_extra and odoo_version:
         path_extra = os.path.join(

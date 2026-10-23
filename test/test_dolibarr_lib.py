@@ -159,6 +159,17 @@ class TestReadPin(unittest.TestCase):
         self.assertIn("version", str(ctx.exception))
 
 
+class TestLeVraiEpinglage(unittest.TestCase):
+    """Les fichiers du dépôt eux-mêmes : lisibles, et d'accord entre eux."""
+
+    def test_the_repository_pin_reads(self):
+        pin = lib_dolibarr.read_pin(RACINE)
+        self.assertRegex(pin["version"], r"^\d+\.\d+\.\d+$")
+        # La version affichée appartient à la branche suivie : 24.0.x sur 24.0.
+        self.assertTrue(pin["version"].startswith(pin["branch"] + "."), pin)
+        self.assertEqual(pin["path"], "dolibarr/dolibarr")
+
+
 class TestInstallLabel(unittest.TestCase):
     PIN = dict(PIN, commit=COMMIT, path="dolibarr/dolibarr")
 

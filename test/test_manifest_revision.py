@@ -25,6 +25,11 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parents[1]
 FRAGMENT = RACINE / "script/manifest/manifest_revision.sh"
 SCRIPTS = sorted((RACINE / "script/manifest").glob("update_manifest_*.sh"))
+# Un script qui passe la main à un autre script de manifeste par « exec »
+# n'appelle pas repo init lui-même : son délégué est vérifié à sa place.
+DELEGUE = re.compile(
+    r"^\s*exec \./script/manifest/update_manifest_\w+\.sh", re.M
+)
 
 
 def _git(depot, *args):
@@ -77,12 +82,20 @@ class TestManifestRevision(unittest.TestCase):
 
 
 class TestScriptsDeManifeste(unittest.TestCase):
-    def test_les_six_scripts_sont_vus(self):
-        self.assertEqual(len(SCRIPTS), 6, [s.name for s in SCRIPTS])
+    def test_les_sept_scripts_sont_vus(self):
+        self.assertEqual(len(SCRIPTS), 7, [s.name for s in SCRIPTS])
+
+    def test_seul_le_script_dolibarr_delegue(self):
+        delegues = [
+            s.name for s in SCRIPTS if DELEGUE.search(s.read_text("utf-8"))
+        ]
+        self.assertEqual(delegues, ["update_manifest_local_dolibarr.sh"])
 
     def test_aucun_sha_passe_a_repo_init(self):
         for script in SCRIPTS:
             texte = script.read_text(encoding="utf-8")
+            if DELEGUE.search(texte):
+                continue
             with self.subTest(script=script.name):
                 inits = re.findall(r"^[^#\n]*repo init .*$", texte, re.M)
                 self.assertTrue(inits)
