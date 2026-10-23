@@ -221,6 +221,51 @@
       "notes": "type, partner_id, expected_revenue and active are never written: they belong to the server once created (writing active would revive an opportunity marked lost). MissingError marks the link deleted; the server leaves the note's queue only when no other kind of the note is live there. Leads are not pulled back yet; a pulled task change queues the note's opportunity on the same server."
     },
 
+    "invoices.create": {
+      "description": "Draft a note's invoice (invoice.create row of sync_outbox, one per note and server; same marker in narration, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "account.move",
+          "method": "create",
+          "args": [
+            {
+              "move_type": "{outbox.params.moveType} — out_invoice or in_invoice",
+              "partner_id": "{outbox.params.partnerId} — omitted when none (allowed on a draft)",
+              "invoice_date": "{outbox.params.invoiceDate} — omitted: the server's",
+              "ref": "{outbox.params.ref} — omitted when empty",
+              "invoice_line_ids": [[0, 0, { "name": "{line.name}", "quantity": "{line.quantity}", "price_unit": "{line.priceUnit} — omitted when none typed: the server computes the product's", "product_id": "{line.productId} — omitted when none" }]],
+              "narration": "<p><b>{note.title}</b></p> + {note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "{extra field}": "{outbox.params.extra[field]} — each required field the form asked",
+              "{tie field}": "{note's task or opportunity id} — when account.move has a settable many2one to it"
+            }
+          ],
+          "kwargs": { "context": { "default_move_type": "{outbox.params.moveType}" } }
+        }
+      },
+      "response": "integer — account.move id → note_links (kind create)",
+      "notes": "Before create, a chosen partner is checked (partner_missing). The tie (outbox.params.linkKind task|lead) uses the note's live link of that kind on the server; the tie field is a many2one of account.move to its model, not readonly, without depends (capabilities.probe fields). Without one, after the create, a logged note is posted on the invoice and on the task or opportunity, each linking to the other (<a data-oe-model data-oe-id>); a failure there is kept in note_links.params (crossLinked false, crossError), the invoice staying created. An invoice tied to a task or opportunity whose creation is still in the outbox waits for it (not due, not sent, a tap reports it as incomplete; depends_on set when queued after it): the tie is set at creation only. An invoice found again by its marker, or adopted, gets each cross message only when its chatter lacks it (mail.message search_count on the anchor). Refused create: as notes.create, plus builtins.ValueError and TypeError (a malformed extra value). A datetime extra value is sent as YYYY-MM-DD HH:MM:SS in UTC. tags, done, pinned, archived are not mapped."
+    },
+
+    "invoices.update": {
+      "description": "Push changes to a note's linked invoice",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "account.move", "method": "write", "args": [["{note_links.res_id}"], { "narration": "{same as invoices.create}" }], "kwargs": {} } },
+      "notes": "narration only: type, partner, date, reference, lines and extra fields belong to accounting once drafted. MissingError: as notes.update."
+    },
+
+    "invoices.form": {
+      "description": "Required fields a new invoice of one type needs beyond the form's own",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "account.move", "method": "fields_get + default_get", "args": [], "kwargs": { "attributes": ["type", "string", "required", "readonly", "relation", "selection", "depends"], "context": { "default_move_type": "{moveType}" } } }
+      },
+      "response": "fields required, not readonly, with empty depends (not computed or related), absent from default_get and not the form's own (move_type, partner_id, invoice_date, ref, invoice_line_ids, line_ids, narration). char, text, integer, float, monetary, date, datetime, boolean, selection and many2one (name_search on its relation) are asked; other types are listed as unsupported. Kept per server and type in sync_target_prefs (kind invoice.form.{moveType}) for offline."
+    },
+
     "partners.search": {
       "description": "Client search for a new opportunity",
       "method": "POST",
@@ -526,7 +571,7 @@
     "sync_target_prefs": {
       "migration": "2026102203",
       "columns": ["id (config_id#kind)", "config_id", "kind (task.create, …)", "params_json", "updated_at"],
-      "notes": "Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice. Kind targets: the target kinds last checked in the picker for that server (task, lead), checked by default for a note with nothing there. A lead's client and revenue are not remembered."
+      "notes": "invoice.form.out_invoice / invoice.form.in_invoice: the extra required fields of invoices.form, kept for offline. Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice. Kind targets: the target kinds last checked in the picker for that server (task, lead), checked by default for a note with nothing there. A lead's client and revenue are not remembered."
     }
   }
 }
