@@ -264,6 +264,10 @@ added after the freeze or skipped by it, follows its branch, and the reconfigura
 projects of the files the freeze does not write are only counted. A `freeze-revision` found in one of those files is
 ignored and listed under a WARNING: `make repo_unfreeze` removes it.
 
+In TODO, `Installation` asks for the environment once an Odoo version is chosen, before the extra modules:
+`Development` follows the branches, `Production` installs on the frozen commits of that version. It shows how many
+projects are frozen, and falls back to development, saying so, when no manifest of that version carries a freeze.
+
 #### Follow the branches again
 
 A reconfiguration without the argument follows the branches, whether the files carry a freeze or not: the freeze

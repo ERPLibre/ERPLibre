@@ -268,6 +268,11 @@ que le commit. `freeze-revision` n'atteint jamais ce fichier, git-repo ne le con
 WARNING ; les projets des fichiers que le gel n'écrit pas sont seulement comptés. Un `freeze-revision` trouvé dans
 l'un de ces fichiers est ignoré et listé sous un WARNING : `make repo_unfreeze` le retire.
 
+Dans TODO, `Installation` demande l'environnement une fois la version d'Odoo choisie, avant les modules extra :
+`Développement` suit les branches, `Production` installe sur les commits gelés de cette version. Il affiche combien de
+projets sont gelés, et se rabat sur le développement, en le disant, quand aucun manifeste de cette version ne porte de
+gel.
+
 #### Suivre de nouveau les branches
 
 Une reconfiguration sans l'argument suit les branches, que les fichiers portent un gel ou non : le gel reste écrit,

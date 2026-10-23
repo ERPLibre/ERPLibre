@@ -106,9 +106,10 @@ def libelle_mode(etat):
     return t("follows the branches")
 
 
-def gel_des_sources(racine=RACINE):
-    """(gelés, total) des projets des fichiers que le gel écrit — ceux de la
-    version d'Odoo active —, ou None illisible.
+def gel_des_sources(racine=RACINE, odoo_version=None):
+    """(gelés, total) des projets des fichiers que le gel écrit — ceux de
+    `odoo_version` (« 18.0 »), par défaut de la version d'Odoo active —, ou
+    None illisible.
 
     Un projet est gelé quand l'un de ses fichiers lui donne
     « freeze-revision ». Les chemins des sources sont relatifs à la racine
@@ -119,7 +120,7 @@ def gel_des_sources(racine=RACINE):
     try:
         os.chdir(racine)
         definitions = git_freeze_manifest.read_sources(
-            git_freeze_manifest.freeze_sources()
+            git_freeze_manifest.freeze_sources(odoo_version)
         )
     except OSError:
         return None
