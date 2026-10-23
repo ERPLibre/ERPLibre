@@ -45,3 +45,7 @@ diagnostic/
 # Journaux des mises à niveau Dolibarr : la sortie entière des commandes, avec
 # les chemins et les erreurs de base d'une instance.
 /dolibarr/upgrades/
+
+# Clés DOLAPIKEY des instances Dolibarr : chacune ouvre l'API de son instance.
+# api.py refuse d'en écrire une que git pourrait commiter.
+/dolibarr/api/
