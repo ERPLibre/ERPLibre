@@ -212,13 +212,63 @@ def render_prod_nginx(
     certbot la garde en greffant son 443 sur le même bloc. Une requête
     HTTP/1.0 sans en-tête Host passe : $host y vaut le server_name.
     """
+    return _site(
+        instance, domain, tls, cert, key, _prod_app(instance, htdocs, socket)
+    )
+
+
+def _proxy_app(instance, port):
+    """Ce que sert le bloc final devant un conteneur : son Apache publié sur
+    127.0.0.1:`port`, avec l'adresse du client et le schéma d'origine.
+
+    X-Forwarded-For est ÉCRASÉ par l'adresse vue par nginx : Dolibarr en
+    prend la première, que $proxy_add_x_forwarded_for laisserait au
+    client. X-Forwarded-Proto rend isHTTPS() vrai : cookie de session
+    marqué Secure, sans $dolibarr_main_force_https, qui bouclerait."""
+    return f"""        client_max_body_size 64M;
+        access_log /var/log/nginx/erplibre-dolibarr-{instance}.access.log;
+        error_log /var/log/nginx/erplibre-dolibarr-{instance}.error.log;
+
+        location ^~ /install/ {{
+            deny all;
+        }}
+
+        location ~ /\\. {{
+            deny all;
+        }}
+
+        location / {{
+            proxy_pass http://127.0.0.1:{port};
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header Client-IP "";
+            proxy_set_header CF-Connecting-IP "";
+            proxy_read_timeout 600;
+        }}
+"""
+
+
+def render_prod_proxy(instance, domain, port, tls, cert=None, key=None):
+    """Hôte virtuel nginx devant le site d'une instance en conteneur.
+
+    Mêmes écoutes, même garde et mêmes modes TLS que render_prod_nginx ;
+    seul change ce que sert le bloc final.
+    """
+    if not 1024 <= port <= 65535:
+        raise ValueError(f"port {port} is privileged or out of range")
+    return _site(instance, domain, tls, cert, key, _proxy_app(instance, port))
+
+
+def _site(instance, domain, tls, cert, key, app):
+    """Les blocs server d'un site de production ; `app` est ce que sert le
+    bloc qui répond (HTTP pour none et certbot, 443 pour local)."""
     if tls not in TLS_MODES:
         raise ValueError(f"unknown TLS mode {tls!r}")
     if not valid_domain(domain):
         raise ValueError(f"invalid domain {domain!r}")
     # $host arrive en minuscules.
     domain = domain.lower()
-    app = _prod_app(instance, htdocs, socket)
     head = f"# ERPLibre — Dolibarr, instance {instance}\n"
     guard = f"""        server_name {domain};
         if ($host != "{domain}") {{
