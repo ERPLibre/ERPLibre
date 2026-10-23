@@ -15,7 +15,10 @@ From TODO:
 - **Install › Dolibarr** installs an instance;
 - **Execute › Dolibarr** groups the instance tools by section:
   - **Development instances**: install, start, stop, status and logs;
-  - **Maintenance**: move the pinned commit.
+  - **Maintenance**: move the pinned commit, check an instance's health,
+    security and integrity, back it up, restore a backup;
+  - **Inventory**: list the instances, remove one, find installations here
+    or over SSH.
 
 Each TODO entry runs a script of this directory with its parameters; every
 script also runs on its own.
@@ -29,10 +32,15 @@ script also runs on its own.
 | `native_prod.py` | Production steps, played by `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` of a development instance |
 | `pin.py` | `show` the pinned commit, `update` it (dry run unless `--apply`) |
+| `detect.py` | Find Dolibarr installations on this machine or over SSH |
+| `doctor.py` | Health, security and integrity of each registered instance |
+| `backup.py` | `create`, `list` and `restore` backups (restore: `restore.py`) |
+| `fleet.py` | `list` the instances, `remove` one |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
 | `container_plan.py` | Pure rendering of the Docker/Podman commands of an instance |
+| `integrity.py` | Installed code against the archive of its pinned commit |
 
 Supported families: Debian/Ubuntu (apt), Fedora/EL (dnf), Arch (pacman),
 openSUSE (zypper).
@@ -52,7 +60,11 @@ Depuis TODO :
 - **Exécution › Dolibarr** regroupe les outils des instances par section :
   - **Instances de développement** : installer, lancer, arrêter, état et
     journaux ;
-  - **Maintenance** : relever le commit épinglé.
+  - **Maintenance** : relever le commit épinglé, vérifier la santé, la
+    sécurité et l'intégrité d'une instance, la sauvegarder, restaurer une
+    sauvegarde ;
+  - **Inventaire** : lister les instances, en retirer une, trouver les
+    installations, locales ou par SSH.
 
 Chaque entrée de TODO lance un script de ce dossier avec ses paramètres ;
 chaque script se lance aussi seul.
@@ -66,10 +78,15 @@ chaque script se lance aussi seul.
 | `native_prod.py` | Étapes de production, jouées par `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` d'une instance de développement |
 | `pin.py` | `show` le commit épinglé, `update` le relève (à blanc sans `--apply`) |
+| `detect.py` | Trouver les installations Dolibarr, sur ce poste ou par SSH |
+| `doctor.py` | Santé, sécurité et intégrité de chaque instance inscrite |
+| `backup.py` | `create`, `list` et `restore` des sauvegardes (restauration : `restore.py`) |
+| `fleet.py` | `list` des instances, `remove` d'une instance |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
 | `container_plan.py` | Rendu pur des commandes Docker/Podman d'une instance |
+| `integrity.py` | Code installé contre l'archive de son commit épinglé |
 
 Familles prises en charge : Debian/Ubuntu (apt), Fedora/EL (dnf), Arch
 (pacman), openSUSE (zypper).
@@ -186,7 +203,7 @@ install stopped by an error resumes with the same passwords when run again.
 Known limit: SELinux in enforcing mode is refused until its contexts are
 set.
 
-## Pinned version
+## Operations
 
 <!-- [fr] -->
 La production exige systemd et un nom de domaine. Disposition d'une
@@ -217,6 +234,59 @@ mots de passe.
 
 Limite connue : SELinux en mode enforcing est refusé tant que ses contextes
 ne sont pas posés.
+
+## Exploitation
+
+<!-- [common] -->
+```bash
+./script/dolibarr/detect.py --local            # or --ssh host (repeatable)
+./script/dolibarr/doctor.py --all
+./script/dolibarr/backup.py create --instance erp
+./script/dolibarr/backup.py restore --instance erp --archive <file> --confirm erp
+./script/dolibarr/fleet.py list
+./script/dolibarr/fleet.py remove --instance erp --dry-run
+```
+
+<!-- [en] -->
+- `detect.py` sends a read-only POSIX sh probe (one round trip, no
+  privilege) and reports each installation and Dolibarr container, never a
+  password; reports go to `private/dolibarr/inventory/`.
+- `doctor.py` checks what each instance serves, its code (production: every
+  file against the pinned archive, where an added PHP file fails), its
+  `conf.php`, its install lock, its cron timer and PHP; it changes nothing.
+- A backup holds the database, `documents/`, `custom/` and `conf.php`, whose
+  instance key encrypts values in the database; 0600, under
+  `private/dolibarr/backups/`. Restoring asks for the instance name, takes a
+  safety backup first, refuses a backup newer than the code, and also
+  clones a backup into a freshly installed instance.
+- `private/` is versioned, but the backups, the inventory reports and the
+  instance registry (`instances.json`) under `private/dolibarr/` are
+  git-ignored: they hold one machine's secrets or describe it. A backup is
+  refused in a folder git could commit.
+- Removing an instance shows its plan first and asks for its name; a
+  container's `custom/` stays.
+
+## Pinned version
+
+<!-- [fr] -->
+- `detect.py` envoie une sonde POSIX sh en lecture seule (un aller-retour,
+  aucun privilège) et rapporte chaque installation et conteneur Dolibarr,
+  jamais un mot de passe ; rapports sous `private/dolibarr/inventory/`.
+- `doctor.py` vérifie ce que sert chaque instance, son code (en production,
+  chaque fichier contre l'archive épinglée : un PHP ajouté échoue), son
+  `conf.php`, son verrou, sa minuterie cron et PHP ; il ne change rien.
+- Une sauvegarde porte la base, `documents/`, `custom/` et `conf.php`, dont
+  la clé d'instance chiffre des valeurs en base ; 0600, sous
+  `private/dolibarr/backups/`. Restaurer demande le nom de l'instance,
+  prend d'abord une sauvegarde de sûreté, refuse une sauvegarde plus récente
+  que le code, et clone aussi une sauvegarde dans une instance neuve.
+- `private/` est versionné, mais les sauvegardes, les rapports d'inventaire
+  et le registre des instances (`instances.json`) sous `private/dolibarr/`
+  sont ignorés par git : ils portent les secrets d'une machine ou la
+  décrivent. Une sauvegarde est refusée dans un dossier que git pourrait
+  commiter.
+- Retirer une instance montre d'abord son plan et demande son nom ; le
+  `custom/` d'un conteneur reste.
 
 ## Version épinglée
 
