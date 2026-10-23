@@ -52,6 +52,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Remove an instance": "_dolibarr_remove",
         "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
         "Dolibarr - Debug profile": "_dolibarr_debug",
+        "Dolibarr - Modules: create, link, enable": "_dolibarr_module",
     }
 
 
@@ -372,6 +373,91 @@ class TestDeverminage(Banc):
             [f"{DEBUG} on --instance erp --confirm erp"],
         )
         self.assertEqual(self.lancer_debug(["1", "er"]), [])
+
+
+MODULE = "./.venv.erplibre/bin/python -u script/dolibarr/module.py"
+CONTENEUR = {"mode": "dev", "runtime": "container", "engine": "podman"}
+
+
+class TestModules(Banc):
+    def lancer_module(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+
+        def repondre(prompt=""):
+            try:
+                return next(suite)
+            except StopIteration:
+                raise AssertionError(
+                    f"question imprévue : {prompt!r}"
+                ) from None
+
+        with (
+            mock.patch.object(builtins, "input", repondre),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_module()
+        return lances
+
+    def test_create_takes_the_first_free_id_and_enables(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_module(["1", "Zorglub", "", "y"]),
+            [f"{MODULE} create --instance erp --name Zorglub --enable"],
+        )
+
+    def test_create_with_an_id(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_module(["1", "Zorglub", "500123", "n"]),
+            [f"{MODULE} create --instance erp --name Zorglub --id 500123"],
+        )
+
+    def test_an_id_that_is_not_a_number_runs_nothing(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(self.lancer_module(["1", "Zorglub", "5e5"]), [])
+
+    def test_link_a_native_instance_to_a_directory(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_module(["2", "/src/mon module"]),
+            [f"{MODULE} link --instance erp --path '/src/mon module'"],
+        )
+
+    def test_a_container_is_not_offered_link(self):
+        self.registre = {"erp": dict(CONTENEUR)}
+        self.assertEqual(
+            self.lancer_module(["2", "Stock"]),
+            [f"{MODULE} enable --instance erp --name Stock"],
+        )
+
+    def test_disable(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_module(["4", "Zorglub"]),
+            [f"{MODULE} disable --instance erp --name Zorglub"],
+        )
+
+    def test_productions_are_not_offered(self):
+        self.registre = {"prod": dict(DEV, mode="prod"), "erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_module(["3", "Zorglub"]),
+            [f"{MODULE} enable --instance erp --name Zorglub"],
+        )
+        self.registre = {"prod": dict(DEV, mode="prod")}
+        self.assertEqual(self.lancer_module([]), [])
+
+    def test_an_empty_name_runs_nothing(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(self.lancer_module(["1", ""]), [])
 
 
 class TestBilan(unittest.TestCase):

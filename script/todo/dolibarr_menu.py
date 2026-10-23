@@ -44,6 +44,8 @@ DOCTOR_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/doctor.py"
 BACKUP_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/backup.py"
 # Profil de déverminage d'une instance (DebugBar, Syslog 7, mode strict).
 DEBUG_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/debug.py"
+# Modules d'une instance de développement : créer, lier, activer.
+MODULE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/module.py"
 # Monter une instance à la version épinglée.
 UPGRADE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/upgrade.py"
 # Le parc : lister les instances, en retirer une.
@@ -104,6 +106,11 @@ class DolibarrMenuMixin:
             },
             {"section": t("Development tools")},
             {"prompt_description": t("Dolibarr - Debug profile")},
+            {
+                "prompt_description": t(
+                    "Dolibarr - Modules: create, link, enable"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -139,6 +146,8 @@ class DolibarrMenuMixin:
                 self._dolibarr_detect()
             elif status == "14":
                 self._dolibarr_debug()
+            elif status == "15":
+                self._dolibarr_module()
             else:
                 print(t("Command not found !"))
 
@@ -347,6 +356,67 @@ class DolibarrMenuMixin:
             args += ["--confirm", name]
         self.execute.exec_command_live(
             f"{DEBUG_CLI} {shlex.join(args)}", source_erplibre=False
+        )
+
+    def _dolibarr_module(self):
+        """module.py sur une instance de développement : une production ne
+        se développe pas, un conteneur ne se voit pas offrir le lien."""
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        names = sorted(n for n in known if known[n].get("mode") != "prod")
+        if not names:
+            print(t("No development instance."))
+            return
+        name = (
+            names[0]
+            if len(names) == 1
+            else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
+        )
+        if name is None:
+            return
+        options = [("create", t("Create from the ModuleBuilder template"))]
+        if known[name].get("runtime") != "container":
+            options.append(
+                ("link", t("Link a module kept in its own directory"))
+            )
+        options += [
+            ("enable", t("Enable a module")),
+            ("disable", t("Disable a module")),
+        ]
+        action = self._dolibarr_choose(t("Module:"), options)
+        if action is None:
+            return
+        args = [action, "--instance", name]
+        if action == "link":
+            path = input(t("Module directory: ")).strip()
+            if not path:
+                print(t("Cancelled."))
+                return
+            args += ["--path", path]
+        else:
+            module = input(t("Module name (letters and digits): ")).strip()
+            if not module:
+                print(t("Cancelled."))
+                return
+            args += ["--name", module]
+        if action == "create":
+            numero = input(
+                t("Module ID (Enter: first free from 500000): ")
+            ).strip()
+            if numero and not numero.isdigit():
+                print(t("A module ID is a number."))
+                return
+            if numero:
+                args += ["--id", numero]
+            if self._is_yes(
+                input(t("Enable it now? (y/N): ")).strip().lower()
+            ):
+                args.append("--enable")
+        self.execute.exec_command_live(
+            f"{MODULE_CLI} {shlex.join(args)}", source_erplibre=False
         )
 
     def _dolibarr_detect(self):
