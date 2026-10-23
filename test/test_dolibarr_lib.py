@@ -333,6 +333,15 @@ class TestAvailable(unittest.TestCase):
     def test_development_native_is_delivered(self):
         self.assertIn(("dev", "native"), lib_dolibarr.AVAILABLE)
 
+    def test_production_native_is_delivered(self):
+        # Éprouvée de bout en bout sur Debian 12 sous systemd.
+        self.assertIn(("prod", "native"), lib_dolibarr.AVAILABLE)
+
+    def test_the_container_is_not_offered_yet(self):
+        self.assertFalse(
+            [p for p in lib_dolibarr.AVAILABLE if p[1] == "container"]
+        )
+
     def test_every_pair_is_a_known_mode_and_runtime(self):
         for mode, runtime in lib_dolibarr.AVAILABLE:
             with self.subTest(mode=mode, runtime=runtime):
