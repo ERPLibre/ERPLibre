@@ -95,10 +95,11 @@ def port_is_free(port):
 class System:
     """Processus, ports et HTTP réels ; les tests en passent un factice."""
 
-    def spawn(self, argv, log):
+    def spawn(self, argv, log, env=None):
         with open(log, "ab") as out:
             proc = subprocess.Popen(
                 argv,
+                env=dict(os.environ, **env) if env else None,
                 stdin=subprocess.DEVNULL,
                 stdout=out,
                 stderr=subprocess.STDOUT,
@@ -169,6 +170,8 @@ class Instance:
         self.fpm_conf = os.path.join(self.run, "php-fpm.conf")
         self.nginx_conf = os.path.join(self.run, "nginx.conf")
         self.fpm_pid = os.path.join(self.run, "php-fpm.pid")
+        # Les .ini propres à l'instance (Xdebug de debug.py).
+        self.php_d = os.path.join(self.run, "php.d")
         self.nginx_pid = os.path.join(self.run, "nginx.pid")
         self.port = int(entry["port"])
         self.url = entry["url"]
@@ -210,6 +213,16 @@ def state(inst, system):
     return "stopped"
 
 
+def fpm_env(inst):
+    """PHP_INI_SCAN_DIR qui ajoute php.d/ de l'instance au dossier que PHP
+    lit déjà (« : » en tête garde celui-ci), ou None sans .ini."""
+    try:
+        found = any(f.endswith(".ini") for f in os.listdir(inst.php_d))
+    except OSError:
+        found = False
+    return {"PHP_INI_SCAN_DIR": f":{inst.php_d}"} if found else None
+
+
 def cmd_start(inst, system, fpm, nginx):
     if state(inst, system) == "unknown":
         print(t(STATE_LABELS["unknown"]))
@@ -224,7 +237,9 @@ def cmd_start(inst, system, fpm, nginx):
         print(t("Port %s is already taken.") % inst.port)
         return 1
     system.spawn(
-        [fpm, "-y", inst.fpm_conf], os.path.join(inst.run, "php-fpm.out")
+        [fpm, "-y", inst.fpm_conf],
+        os.path.join(inst.run, "php-fpm.out"),
+        fpm_env(inst),
     )
     # nginx se détache seul ; son code dit si la configuration tient.
     code, out = system.call(inst.nginx_argv(nginx))
