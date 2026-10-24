@@ -223,6 +223,11 @@ class PlanMixin:
             mark = "  ✎"
         else:
             mark = ""
+        # Un système qui refuse le profil Dolibarr de la rangée le dit ici :
+        # F5 refusera le plan, et la rangée en porte la raison.
+        refus = getattr(self, "_row_refusal", lambda _i: "")(index)
+        if refus:
+            mark += f"  ✗ {refus}"
         return (
             f"[b]{vm['name']}[/b]  {vm['distro']} {vm['version']} "
             f"[{vm['arch']}]  {row['disk_gb']}G{state}{mark}"
