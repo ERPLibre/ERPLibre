@@ -4047,6 +4047,42 @@ TRANSLATIONS = {
         "fr": "Lancer ce test long ?",
         "en": "Run this long test?",
     },
+    "This drops the databases and the cache of the mobile sync test.": {
+        "fr": "Cela supprime les bases et le cache du test de synchro mobile.",
+        "en": "This drops the databases and the cache of the mobile sync test.",
+    },
+    "Drop the mobile sync test databases?": {
+        "fr": "Supprimer les bases du test de synchro mobile ?",
+        "en": "Drop the mobile sync test databases?",
+    },
+    "This creates throwaway Odoo databases and servers, and installs a test app on the plugged phone.": {
+        "fr": "Cela crée des bases et des serveurs Odoo jetables, et installe une app de test sur le téléphone branché.",
+        "en": "This creates throwaway Odoo databases and servers, and installs a test app on the plugged phone.",
+    },
+    "Run the mobile sync test, phone included?": {
+        "fr": "Lancer le test de synchro mobile, téléphone compris ?",
+        "en": "Run the mobile sync test, phone included?",
+    },
+    "This creates throwaway Odoo databases and servers, for a few minutes.": {
+        "fr": "Cela crée des bases et des serveurs Odoo jetables, pour quelques minutes.",
+        "en": "This creates throwaway Odoo databases and servers, for a few minutes.",
+    },
+    "Run the mobile sync test?": {
+        "fr": "Lancer le test de synchro mobile ?",
+        "en": "Run the mobile sync test?",
+    },
+    "Mobile sync on Odoo 16-18: plan only (dry-run)": {
+        "fr": "Synchro mobile sur Odoo 16-18 : le plan seulement (dry-run)",
+        "en": "Mobile sync on Odoo 16-18: plan only (dry-run)",
+    },
+    "Mobile sync on Odoo 16-18: run it": {
+        "fr": "Synchro mobile sur Odoo 16-18 : la lancer",
+        "en": "Mobile sync on Odoo 16-18: run it",
+    },
+    "Mobile sync on Odoo 16-18 and the plugged phone: run it": {
+        "fr": "Synchro mobile sur Odoo 16-18 et le téléphone branché : la lancer",
+        "en": "Mobile sync on Odoo 16-18 and the plugged phone: run it",
+    },
     "Install the download cache shared by the QEMU VMs of this host": {
         "fr": "Installer le cache de téléchargement partagé par les VM QEMU de cet hôte",
         "en": "Install the download cache shared by the QEMU VMs of this host",
