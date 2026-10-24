@@ -324,10 +324,10 @@ class ProxmoxMenuMixin:
         print(f"  ✓ Proxmox VE {version}")
         # Le noyau DÉCIDE de ce qui marche : sans le noyau Proxmox, ni module
         # bridge ni table NAT — donc aucun pont à créer et aucune VM à
-        # démarrer. Vécu sur l'hôte d'essai, où ifupdown2 répondait
-        # « Another instance of this program is already running » au lieu de
-        # « Operation not supported ». On le dit ici, une fois, plutôt que de
-        # laisser chercher.
+        # démarrer. ifupdown2 peut alors répondre « Another instance of this
+        # program is already running » au lieu de « Operation not
+        # supported » : on le dit ici, une fois, plutôt que de laisser
+        # chercher.
         noyau = pve.parse_kernel(out)
         if noyau and "-pve" not in noyau:
             print(f"  ⚠ {t('Still on the distribution kernel:')} {noyau}")
@@ -688,9 +688,9 @@ class ProxmoxMenuMixin:
         Le même que le chemin qemu envoie : un bloc « users: » explicite, avec
         le nom du compte, son shell, son sudo et ses clés. « --ciuser » et
         « --sshkeys » de Proxmox s'en remettent au compte par DÉFAUT de
-        l'image, et une image qui en déclare un autre les ignore — mesuré sur
-        NixOS, dont le cloud.cfg nomme « nixos » : la VM démarrait avec ce
-        compte-là, sans la clé, donc injoignable.
+        l'image, et une image qui en déclare un autre les ignore — c'est le
+        cas de NixOS, dont le cloud.cfg nomme « nixos » : la VM démarre avec
+        ce compte-là, sans la clé, donc injoignable.
 
         Rend "" quand la clé publique est illisible : mieux vaut retomber sur
         la forme d'avant, qui pose au moins un compte, que d'écrire un
@@ -817,14 +817,15 @@ class ProxmoxMenuMixin:
     def _pve_depth_note(self, host, cpu):
         """(cpu borné, lignes à dire). Ce que la profondeur impose.
 
-        L'écran lisait la capacité de l'HÔTE et l'offrait en entier. Sur un
-        troisième étage à 14 cœurs, il a proposé 12 vCPU — et la VM n'a jamais
-        démarré : même RIP à trois relevés deux minutes d'écart, pas un octet
-        lu de plus. Le nombre n'était pas absurde pour la machine ; il l'était
-        pour sa profondeur.
+        La capacité de l'HÔTE ne dit pas ce qu'une VM imbriquée supporte : sur
+        un hôte au troisième étage ou plus profond, un invité LARGE ne démarre
+        jamais — son processeur virtuel reste figé au même point, sans lire un
+        octet de plus — là où deux vCPU démarrent. C'est le nombre de vCPU de
+        l'invité qui compte, et non leur part des cœurs de l'hôte : il n'est
+        pas absurde pour la machine, il l'est pour sa profondeur.
 
-        Un seul levier, le vCPU : la même VM gelait au MÊME octet avec 9 Go et
-        avec 2 Go, donc rogner la mémoire ne gagnerait rien et priverait
+        Un seul levier, le vCPU : la même VM gèle au MÊME point quelle que
+        soit sa mémoire, donc rogner la mémoire ne gagnerait rien et priverait
         l'étage suivant.
         """
         from script.proxmox import nesting
@@ -972,8 +973,8 @@ class ProxmoxMenuMixin:
         interne de son parent, et l'adresse de INTERNAL_CIDR y est celle
         de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
-        commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
-        la VM ne répondait plus, ni en ssh ni en ping."""
+        commande qui la configure : « ifup » ne rend jamais la main, et la
+        machine ne répond plus, ni en ssh ni en ping."""
         from script.proxmox import proxmox_deploy as pve
 
         _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
@@ -1243,7 +1244,7 @@ class ProxmoxMenuMixin:
             print(f"  {ligne}")
         # Le DNS de l'hôte, pour les VM en adresse fixe : sans lui elles
         # routent mais ne résolvent rien, et « apt update » échoue sans que
-        # rien ne l'explique. Mesuré sur la VM d'essai.
+        # rien ne l'explique.
         _c, resolv = self._pve_show(pve.RESOLV_CMD, quiet=True)
         serveurs_dns = pve.parse_nameservers(resolv)
 
@@ -1511,9 +1512,9 @@ class ProxmoxMenuMixin:
         debut = time.time()
 
         # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
-        # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
-        # téléchargeait 350 Mio d'image pour finir sur « net0: invalid format
-        # - missing key » — vécu sur l'hôte d'essai.
+        # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, des
+        # centaines de Mio d'image se téléchargeraient pour finir sur
+        # « net0: invalid format - missing key ».
         noms = [vm["name"] for vm in spec["vms"]]
         echec = {"added": [], "failed": noms, "no_ip": []} if session else None
         for valeur, message in (
@@ -1566,10 +1567,10 @@ class ProxmoxMenuMixin:
         if not travaux:
             return echec
         # Le journal AVANT de lancer : la vue de progression se referme et
-        # emporte tout ce qu'elle montrait. Rapporté — « il manque plein
-        # d'informations qu'il y avait avant, où est le fichier de log ? ».
-        # L'ancienne voie par questions imprimait chaque commande et sa
-        # sortie ; celle-ci les écrit, ce qui vaut mieux qu'un défilement.
+        # emporte tout ce qu'elle montrait. Chaque commande et sa sortie
+        # s'écrivent dans les journaux de ce répertoire, un fichier par VM,
+        # qui se relisent après coup là où un défilement se perd : son chemin
+        # s'affiche donc d'abord.
         journaux = self._pve_log_dir()
         print(f"\n  {t('Log:')} {journaux}")
         # Comment joindre chaque VM SANS dépendre de ~/.ssh/config, qui n'est
@@ -2076,8 +2077,8 @@ class ProxmoxMenuMixin:
         """Pose le guide de connexion et l'identité git DANS la VM.
 
         La voie libvirt les livre par le « write_files » de cloud-init ;
-        « qm set » n'offre pas cela, donc une VM Proxmox n'avait AUCUN guide —
-        quelle que soit sa distribution. Rapporté sur Arch.
+        « qm set » n'offre pas cela : sans ce passage, une VM Proxmox n'aurait
+        AUCUN guide, quelle que soit sa distribution.
 
         Même contenu, livrée par ssh une fois la VM debout : `guide_files` est
         la source unique, comme sa docstring le promet. Un seul appel, tous les
