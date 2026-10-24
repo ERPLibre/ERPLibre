@@ -307,5 +307,51 @@ class TestCommande(unittest.TestCase):
             )
 
 
+class TestServeursGardes(unittest.TestCase):
+    """Une course gardée laisse ses serveurs tourner : la course qui balaie
+    leurs bases les arrête d'abord, et seulement eux."""
+
+    def test_arrete_le_serveur_de_la_base_balayee_seulement(self):
+        with tempfile.TemporaryDirectory() as runs:
+            course = Path(runs) / "4242_20260101000000"
+            course.mkdir()
+            serveurs = [
+                SimpleNamespace(
+                    processus=SimpleNamespace(pid=pid),
+                    base=base,
+                    url="http://127.0.0.1:1",
+                )
+                for pid, base in (
+                    (11, "mobile_sync_run_a_16"),
+                    (12, "mobile_sync_run_a_17"),
+                    (13, "mobile_sync_run_a_18"),
+                )
+            ]
+            odoo.noter_gardes(course, serveurs)
+            vivants = {
+                11: f"odoo-bin -c {course}/odoo16.conf",
+                12: f"odoo-bin -c {course}/odoo17.conf",
+                13: "un autre programme qui a repris ce pid",
+            }
+            tues = []
+
+            def tuer(pid, sig):
+                tues.append((pid, sig))
+                vivants.pop(pid, None)
+
+            arretes = odoo.arreter_gardes(
+                {"mobile_sync_run_a_16", "mobile_sync_run_a_18"},
+                runs,
+                lire=lambda pid: vivants.get(pid, ""),
+                tuer=tuer,
+            )
+            self.assertEqual(arretes, [11])
+            self.assertEqual(tues, [(11, odoo.signal.SIGTERM)])
+            restants = json.loads((course / odoo.GARDES).read_text())
+            self.assertEqual(
+                [g["base"] for g in restants], ["mobile_sync_run_a_17"]
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
