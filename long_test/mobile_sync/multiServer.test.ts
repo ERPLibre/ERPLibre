@@ -52,6 +52,20 @@ describeMany(`Odoo ${TARGETS.map((t) => t.version).join(", ")} — plusieurs ser
 		expect(Object.values(await env.db.getNotePerServerStatus(id))).toEqual(TARGETS.map(() => "synced"));
 	});
 
+	it("porte dans le même tap de synchro un changement tiré du dernier serveur aux premiers", async () => {
+		const { env, id, taskIds } = await everywhere();
+		const last = TARGETS.length - 1;
+		await nextServerSecond();
+		await admins[last].write("project.task", [taskIds[last]], { name: "Renomme sur le dernier" });
+		// What the note screen's sync button runs: every server of the note, in turn
+		await env.sync.pushEach(id, env.configIds, async (configId) => {
+			await env.sync.pushNote(env.creds[env.configIds.indexOf(configId)], id, { userInitiated: true });
+			return true;
+		});
+		expect(await names(taskIds)).toEqual(TARGETS.map(() => "Renomme sur le dernier"));
+		expect(Object.values(await env.db.getNotePerServerStatus(id))).toEqual(TARGETS.map(() => "synced"));
+	});
+
 	it("laisse les autres serveurs à jour quand l'un est coupé, et le reprend à son retour", async () => {
 		const { env, id, taskIds } = await everywhere();
 		const current = (await env.db.getNoteById(id))!;
