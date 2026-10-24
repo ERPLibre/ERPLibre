@@ -21,6 +21,7 @@ démarre des serveurs. Le premier passage construit un gabarit par version
   ./long_test/mobile_sync.py --garder            # garder bases et serveurs
   ./long_test/mobile_sync.py --rebuild           # reconstruire les gabarits
   ./long_test/mobile_sync.py --detruire          # supprimer gabarits et cache
+  ./long_test/mobile_sync.py --appareil          # aussi sur le téléphone branché
 
 Codes de sortie : 0 tout passe, 1 des tests échouent, 2 un prérequis
 manque (le message dit lequel et quoi faire), 3 l'infrastructure (base,
@@ -40,6 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import mobile_sync_device as appareil  # noqa: E402
 import mobile_sync_odoo as odoo  # noqa: E402
 
 SCENARIOS = Path(__file__).resolve().parent / "mobile_sync"
@@ -70,6 +72,11 @@ def parser():
     )
     parseur.add_argument(
         "--detruire", action="store_true", help="supprimer gabarits et cache"
+    )
+    parseur.add_argument(
+        "--appareil",
+        action="store_true",
+        help="jouer aussi les scénarios de bout en bout sur le téléphone",
     )
     return parseur
 
@@ -122,6 +129,11 @@ def plan(versions, args):
         "  bases et serveurs "
         + ("gardés" if args.garder else "supprimés à la fin"),
     ]
+    if args.appareil:
+        lignes.append(
+            f"  téléphone : {appareil.PAQUET}, "
+            f"{len(appareil.SCENARIOS)} scénarios par version"
+        )
     return "\n".join(lignes)
 
 
@@ -150,6 +162,8 @@ def main(argv=None):
         return SORTIE_PREREQUIS
 
     problemes = odoo.verifier_mobile()
+    if args.appareil:
+        problemes += appareil.verifier_appareil()
     try:
         installees = odoo.versions_installees(demandees=versions)
     except odoo.PrerequisManquant as erreur:
@@ -209,22 +223,18 @@ def main(argv=None):
                     zip(versions, bases),
                 )
             )
+        liste = [
+            {
+                "version": s.version,
+                "url": s.url,
+                "database": s.base,
+                "admin": {"login": "admin", "password": "admin"},
+                "multi": {"login": "mc_user", "password": "mc_user"},
+            }
+            for s in serveurs
+        ]
         cibles = repertoire / "targets.json"
-        cibles.write_text(
-            json.dumps(
-                [
-                    {
-                        "version": s.version,
-                        "url": s.url,
-                        "database": s.base,
-                        "admin": {"login": "admin", "password": "admin"},
-                        "multi": {"login": "mc_user", "password": "mc_user"},
-                    }
-                    for s in serveurs
-                ],
-                indent=2,
-            )
-        )
+        cibles.write_text(json.dumps(liste, indent=2))
         for s in serveurs:
             print(f"Odoo {s.version} : {s.url} ({s.base})")
 
@@ -257,6 +267,12 @@ def main(argv=None):
         else:
             code, raison = verdict(*lire_rapport(rapport, versions))
             print(f"Bilan : {raison}. Traces : {repertoire}")
+        if args.appareil:
+            print("Sur le téléphone :")
+            total, echecs = appareil.lancer(liste, repertoire)
+            print(f"Appareil : {total - echecs}/{total} scénarios passés")
+            if echecs or total == 0:
+                code = SORTIE_TESTS
         return code
     except KeyboardInterrupt:
         print("Interrompu.")
