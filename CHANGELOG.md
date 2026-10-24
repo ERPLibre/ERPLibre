@@ -135,6 +135,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Execute › Stream Deck` is one submenu: the games, both installs (the Stream Deck one asks for the program, autostart, the restart after a game and the optional tools, each defaulting to the current setting, then prints its command), the service and its program, autostart, a status view, a diagnosis that names the command fixing each problem, both uninstalls, and the extension's reload and preferences
 - Two QEMU VM tools, `erplibre_home` and `erplibre_home_streamdeck`, run the installer after the GNOME desktop; the "ERPLibre Home (no Odoo)" install profile installs the base alone, with no Odoo service
 - `long_test/install_erplibre_home.py`, also in the long-test menu, creates one desktop VM per supported system, installs HEAD from a git bundle, and requires GetExtensionInfo to report the extension ACTIVE; five stages then install, partly and fully uninstall, and reinstall on the same VM, and each system's log names every check and its outcome
+- `long_test/mobile_sync.py`, also `make test_mobile_sync` and the long-test menu, runs the mobile app's sync code against throwaway Odoo 16, 17 and 18 (91 scenarios, about 30 seconds once the templates exist); `--appareil` also plays four sync screens on the plugged phone, in a separate test app that leaves the user's own untouched
 
 ## Changed
 

@@ -155,6 +155,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Execute › Stream Deck` is one submenu: the games, both installs (the Stream Deck one asks for the program, autostart, the restart after a game and the optional tools, each defaulting to the current setting, then prints its command), the service and its program, autostart, a status view, a diagnosis that names the command fixing each problem, both uninstalls, and the extension's reload and preferences
 - Two QEMU VM tools, `erplibre_home` and `erplibre_home_streamdeck`, run the installer after the GNOME desktop; the "ERPLibre Home (no Odoo)" install profile installs the base alone, with no Odoo service
 - `long_test/install_erplibre_home.py`, also in the long-test menu, creates one desktop VM per supported system, installs HEAD from a git bundle, and requires GetExtensionInfo to report the extension ACTIVE; five stages then install, partly and fully uninstall, and reinstall on the same VM, and each system's log names every check and its outcome
+- `long_test/mobile_sync.py`, also `make test_mobile_sync` and the long-test menu, runs the mobile app's sync code against throwaway Odoo 16, 17 and 18 (91 scenarios, about 30 seconds once the templates exist); `--appareil` also plays four sync screens on the plugged phone, in a separate test app that leaves the user's own untouched
 
 <!-- [fr] -->
 
@@ -286,6 +287,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Exécution › Stream Deck` est un sous-menu : les jeux, les deux installations (celle du Stream Deck demande le programme, le démarrage automatique, la relance après un jeu et les outils facultatifs, chacun proposé avec le réglage courant, puis affiche sa commande), le service et son programme, le démarrage automatique, un état, un diagnostic qui nomme la commande corrigeant chaque problème, les deux désinstallations, et le rechargement et les préférences de l'extension
 - Deux outils de VM QEMU, `erplibre_home` et `erplibre_home_streamdeck`, lancent l'installateur après le bureau GNOME ; le profil d'installation « ERPLibre Home (sans Odoo) » installe la base seule, sans service Odoo
 - `long_test/install_erplibre_home.py`, aussi dans le menu des tests longs, crée une VM de bureau par système supporté, y installe HEAD depuis un bundle git, et exige que GetExtensionInfo dise l'extension ACTIVE ; cinq étapes installent ensuite, désinstallent en partie puis en entier, et réinstallent sur la même VM, et le journal de chaque système nomme chaque contrôle et son issue
+- `long_test/mobile_sync.py`, aussi `make test_mobile_sync` et le menu des tests longs, fait tourner le code de synchro de l'app mobile contre des Odoo 16, 17 et 18 jetables (91 scénarios, une trentaine de secondes une fois les gabarits construits) ; `--appareil` joue aussi quatre écrans de synchro sur le téléphone branché, dans une app de test à part qui laisse celle de l'utilisateur intacte
 
 <!-- [en] -->
 ## Changed

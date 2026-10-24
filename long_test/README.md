@@ -327,6 +327,45 @@ sub-directory. It proves every check: a `── contrôle <name> : réussi` or
 `ÉCHEC` line per command and check, followed by each command it ran, and on
 a failure by that command's raw reply.
 
+## mobile_sync.py — does the mobile app sync with Odoo 16, 17 and 18?
+
+No VM here: throwaway Odoo databases and servers, and the phone when one is
+plugged in. The app's own sync code (`mobile/erplibre_home_mobile`, through
+its versioned test kit `src/testing/syncTestKit.ts`) runs under Vitest against
+real servers: tasks, conflicts, opportunities, invoices, activities, messages,
+proposed dates, two companies, files, a cut network or a lost answer, deleted
+records, one note on three servers. Each scenario checks the result in Odoo,
+and a proxy between the app and each server records what crossed the wire.
+
+```
+./long_test/mobile_sync.py                     # 16, 17 and 18
+./long_test/mobile_sync.py --versions 18       # one version
+./long_test/mobile_sync.py --filtre conflit    # tests whose name matches
+./long_test/mobile_sync.py --dry-run           # the plan, nothing created
+./long_test/mobile_sync.py --appareil          # also on the plugged phone
+./long_test/mobile_sync.py --garder            # keep databases and servers
+./long_test/mobile_sync.py --detruire          # drop templates and cache
+```
+
+It checks the mobile repository first — absent, without `node_modules`, Node
+older than 22, or a test kit of another API — and says what to do. The first
+run builds one template database per version (a few minutes); the next ones
+copy it, and the whole suite takes about 30 seconds. A report with no test,
+or no test for one version, fails: a path resolved wrong must not pass for a
+green run.
+
+`--appareil` plays four screens on the phone, against the same servers: the
+target picker, the banner of a date changed on the server, typing during a
+pull, and the dated note made from the calendar. They run in a separate app,
+`ca.erplibre.home.synctest`, built by `-PsyncTest` from a development bundle
+and cleared for each version; the user's own app is never touched. The phone
+must be unlocked, with USB debugging allowed. A failure keeps a screenshot in
+the run's directory, `cache/mobile_sync/runs/`.
+
+A run kept by `--garder` is stopped and swept by the next run, or by
+`--detruire`. Exit codes: 0 all green, 1 tests failed, 2 a prerequisite is
+missing, 3 the infrastructure failed.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
