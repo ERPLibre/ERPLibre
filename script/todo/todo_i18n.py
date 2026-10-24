@@ -20345,6 +20345,40 @@ TRANSLATIONS = {
         "fr": "Dolibarr s'installe en développement seulement : la production ne s'applique pas.",
         "en": "Dolibarr installs in development only: production does not apply.",
     },
+    "Dolibarr VM: no Odoo database to restore.": {
+        "fr": "VM Dolibarr : aucune base Odoo à restaurer.",
+        "en": "Dolibarr VM: no Odoo database to restore.",
+    },
+    "Dolibarr VM: the Python dependencies update is Odoo's; untick it.": {
+        "fr": "VM Dolibarr : la mise à jour des dépendances Python est celle d'Odoo ; décochez-la.",
+        "en": "Dolibarr VM: the Python dependencies update is Odoo's; untick it.",
+    },
+    "SSH tunnel closed (code %s): local port taken?": {
+        "fr": "Tunnel SSH fermé (code %s) : port local déjà pris ?",
+        "en": "SSH tunnel closed (code %s): local port taken?",
+    },
+    "Show the Dolibarr login and password": {
+        "fr": "Afficher l'identifiant et le mot de passe Dolibarr",
+        "en": "Show the Dolibarr login and password",
+    },
+    "Login:": {"fr": "Identifiant :", "en": "Login:"},
+    "Password:": {"fr": "Mot de passe :", "en": "Password:"},
+    "Dolibarr login": {
+        "fr": "Connexion Dolibarr",
+        "en": "Dolibarr login",
+    },
+    "No %s: the Dolibarr install has not finished.": {
+        "fr": "Pas de %s : l'installation de Dolibarr n'est pas terminée.",
+        "en": "No %s: the Dolibarr install has not finished.",
+    },
+    "Restart Dolibarr": {
+        "fr": "Redémarrer Dolibarr",
+        "en": "Restart Dolibarr",
+    },
+    "Dolibarr does not answer in the VM. Check it there:": {
+        "fr": "Dolibarr ne répond pas dans la VM. Vérifiez-le sur place :",
+        "en": "Dolibarr does not answer in the VM. Check it there:",
+    },
     # Dolibarr — épinglage (script/dolibarr/pin.py)
     "Already pinned on %s.": {
         "fr": "Déjà épinglé sur %s.",

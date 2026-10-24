@@ -32,6 +32,7 @@ import threading
 import time
 from pathlib import Path
 
+from script.todo import qemu_dolibarr as qd
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 
@@ -274,9 +275,8 @@ def _launch_one(
     # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
-    # lancement devient donc morte en cours de route, et l'attente échouait
-    # 20 minutes durant sur une VM parfaitement saine (vécu : bail .247 périmé
-    # pendant que la VM vivait en .248).
+    # lancement devient donc morte en cours de route, et l'attente échouerait
+    # vingt minutes durant sur une VM parfaitement saine.
     #
     # L'agent invité fait foi : il répond depuis l'intérieur, là où le bail
     # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
@@ -284,17 +284,17 @@ def _launch_one(
     # sans que personne ne la voie. Sans réponse, on garde l'adresse courante.
     # L'agent ne suffit PAS comme source unique : son paquet s'installe hors de
     # cloud-init pour ne pas retarder le démarrage, donc il arrive tard — et
-    # pendant tout ce temps la ré-résolution ne renvoyait rien et gardait
-    # l'adresse morte. C'est le défaut qui a fait échouer le premier correctif.
+    # pendant tout ce temps la ré-résolution ne renverrait rien et garderait
+    # l'adresse morte.
     #
     # Repli sur les baux : dnsmasq les garde tous les deux sans dire lequel est
     # vivant, on tranche donc en TESTANT le port 22 — le seul critère qui compte
     # ici, puisque c'est par là que l'installation passera. Le bail périmé ne
     # répond pas, le bon répond.
     # virsh SANS sudo d'abord. Ce script tourne détaché, sans tty : « sudo -n »
-    # y échoue dès que l'hôte exige une authentification interactive — vécu sur
-    # erplibre01 (« sudo-rs: interactive authentication is required »), et la
-    # ré-résolution restait alors muette sans laisser la moindre trace.
+    # y échoue sur un hôte qui exige une authentification sudo interactive
+    # (« sudo-rs: interactive authentication is required »), et la
+    # ré-résolution resterait alors muette sans laisser la moindre trace.
     # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
     # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
     # pour les hôtes où le groupe manque.
@@ -1901,6 +1901,109 @@ def parse_odoo_probe(text: str) -> set:
     }
 
 
+# Une VM Dolibarr se sonde par ssh, dans la VM, sur sa boucle locale : son
+# instance de dev n'écoute que sur 127.0.0.1. Une poignée de main ssh coûte
+# autant que la lecture d'un hôte Proxmox, d'où la même période tant que la
+# VM est rouge.
+DOLIBARR_PROBE_INTERVAL = PVE_STATS_INTERVAL
+
+
+def vm_ssh_argv(vm, *options) -> list:
+    """argv ssh pour entrer dans `vm` : les `options` d'abord, puis la clé
+    d'installation quand la VM en porte une, puis ce que vm_ssh_prefix
+    décide (options communes, rebond Proxmox, adresse). ssh garde la
+    PREMIÈRE valeur d'une option : celles de l'appelant l'emportent."""
+    argv = ["ssh", *options]
+    if (vm or {}).get("identity"):
+        argv += ["-i", vm["identity"]]
+    return argv + shlex.split(vm_ssh_prefix(vm))[1:]
+
+
+def dolibarr_probe_argv(vm) -> list:
+    """argv qui demande, DANS la VM, si Dolibarr répond sur son port."""
+    return vm_ssh_argv(
+        vm, "-n", "-o", "BatchMode=yes", "-o", "ConnectTimeout=4"
+    ) + [f"curl -fs -o /dev/null -m 5 http://127.0.0.1:{qd.PORT}/"]
+
+
+def dolibarr_alive(vm, run=subprocess.run) -> bool:
+    """Vrai si Dolibarr répond dans `vm`. Une VM injoignable, ou qui tarde
+    plus de dix secondes, compte comme non : la sonde tourne dans le fil du
+    tableau et ne doit pas le figer."""
+    try:
+        return (
+            run(
+                dolibarr_probe_argv(vm), capture_output=True, timeout=10
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def dolibarr_reading(vm, deja_vert, dernier, maintenant, sonde, installe):
+    """(vivant, sondé) de la colonne web d'une VM Dolibarr.
+
+    Rien avant la fin de l'installation : l'instance n'existe pas encore.
+    Ensuite, une sonde par période — celle d'Odoo une fois verte, celle des
+    lectures ssh tant qu'elle est rouge. (None, False) quand on ne sonde pas.
+    """
+    if not installe:
+        return None, False
+    periode = ODOO_RECHECK if deja_vert else DOLIBARR_PROBE_INTERVAL
+    if maintenant - dernier < periode:
+        return None, False
+    return bool(sonde(vm)), True
+
+
+def dolibarr_tunnel_argv(vm) -> list:
+    """argv du tunnel local vers l'instance Dolibarr de `vm`, qui n'écoute
+    que sur la boucle locale de la VM. Le port local pris, ssh sort aussitôt
+    au lieu d'ouvrir la page de ce qui l'occupe."""
+    return vm_ssh_argv(
+        vm,
+        "-N",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-L",
+        f"{qd.TUNNEL_PORT}:127.0.0.1:{qd.PORT}",
+    )
+
+
+def open_tunnel(argv, popen=subprocess.Popen, sleep=time.sleep, wait=2.0):
+    """(processus, "") d'un tunnel ssh vivant, ou (None, raison).
+
+    Le tunnel a `wait` secondes pour s'établir. Avec ExitOnForwardFailure,
+    un port local déjà pris le fait sortir : le navigateur montrerait alors
+    ce qui écoute sur ce port, d'où le refus plutôt qu'une page trompeuse.
+    """
+    try:
+        proc = popen(argv)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, str(exc)
+    sleep(wait)
+    code = proc.poll()
+    if code is not None:
+        return None, t("SSH tunnel closed (code %s): local port taken?") % code
+    return proc, ""
+
+
+def web_target(vm) -> tuple:
+    """(argv du tunnel ou None, URL) de la page web de `vm`.
+
+    Une VM Dolibarr passe toujours par un tunnel ssh vers sa boucle locale.
+    Une VM Odoo locale se joint directement sur 8069 ; derrière un hôte
+    Proxmox, par un tunnel à travers lui.
+    """
+    if qd.app_of(vm) == qd.APP_DOLIBARR:
+        return dolibarr_tunnel_argv(vm), f"http://127.0.0.1:{qd.TUNNEL_PORT}/"
+    port = 18069
+    argv = web_tunnel_argv((vm or {}).get("pve"), port)
+    if argv:
+        return argv, f"http://127.0.0.1:{port}"
+    return None, f"http://{(vm or {}).get('ip')}:8069"
+
+
 def parse_pvestats(text: str) -> dict:
     """Sortie de PVE_STATS_CMD -> {VMID: relevé}, même forme que domstats.
 
@@ -2282,6 +2385,31 @@ def update_remote_cmd(parts) -> str:
         )
     out.append('echo "== Mise a jour terminee =="')
     return "".join(out[:1]) + "; " + "".join(out[1:])
+
+
+def vm_action_refusal(vm, kind, parts) -> str:
+    """La raison de refuser l'action `kind` sur `vm`, ou une chaîne vide.
+
+    Une VM Dolibarr n'a ni base Odoo à restaurer ni dépendances Python
+    d'Odoo à mettre à jour ; la mise à jour du système et du dépôt git lui
+    sert, elle."""
+    if qd.app_of(vm) != qd.APP_DOLIBARR:
+        return ""
+    if kind == "dbrestore":
+        return t("Dolibarr VM: no Odoo database to restore.")
+    if kind == "update" and "python" in (parts or ()):
+        return t(
+            "Dolibarr VM: the Python dependencies update is Odoo's; untick it."
+        )
+    return ""
+
+
+def restart_cmd_for(vm) -> str:
+    """La commande qui relance l'application de `vm` : run.py pour une VM
+    Dolibarr, le service ERPLibre sinon."""
+    if qd.app_of(vm) == qd.APP_DOLIBARR:
+        return qd.restart_cmd(EL_DIR)
+    return restart_odoo_cmd()
 
 
 def restart_odoo_cmd() -> str:
@@ -2843,8 +2971,19 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     variant="primary",
                     id="a_update",
                 )
+                if qd.app_of(self._vm) == qd.APP_DOLIBARR:
+                    yield Static("Dolibarr", classes="actgroup")
+                    yield Button(
+                        t("Show the Dolibarr login and password"),
+                        id="a_doli_creds",
+                    )
                 yield Static("Service", classes="actgroup")
-                yield Button("Redémarrer Odoo", id="a_restart")
+                yield Button(
+                    t("Restart Dolibarr")
+                    if qd.app_of(self._vm) == qd.APP_DOLIBARR
+                    else "Redémarrer Odoo",
+                    id="a_restart",
+                )
                 yield Static("Base de données", classes="actgroup")
                 yield Static(
                     f"Recrée « {DB_RESTORE_NAME} » depuis l'image de la"
@@ -2874,6 +3013,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 self.dismiss(("update", parts))
             elif event.button.id == "a_restart":
                 self.dismiss(("restart", []))
+            elif event.button.id == "a_doli_creds":
+                self.dismiss(("dolibarr_creds", []))
             elif event.button.id == "a_dbrestore":
                 parts = [
                     k
@@ -3285,15 +3426,34 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 # Odoo up ? La réponse est RENDUE À CHAQUE TOUR pour les
                 # VM sondées, pas accumulée : la colonne doit pouvoir
                 # redescendre à « — ».
+                # Une VM Dolibarr se sonde par ssh, dans la VM, une fois
+                # l'installation finie : son instance n'écoute que sur sa
+                # boucle locale, le port 8069 ne dirait rien d'elle.
                 if self._domstate.get(name) != "gone":
-                    etat, sonde = odoo_reading(
-                        vm,
-                        (self._vmstats or {}).get(name) or {},
-                        name in self._odoo_up,
-                        self._odoo_revu.get(name, 0.0),
-                        maintenant,
-                        _port_open,
-                    )
+                    if qd.app_of(vm) == qd.APP_DOLIBARR:
+                        # Une VM en pause ou éteinte ne se sonde pas : sa
+                        # poignée de main ssh attendrait son délai entier et
+                        # retarderait le tableau de toutes les autres.
+                        fin = status.get(name) or self._final.get(name)
+                        etat, sonde = dolibarr_reading(
+                            vm,
+                            name in self._odoo_up,
+                            self._odoo_revu.get(name, 0.0),
+                            maintenant,
+                            dolibarr_alive,
+                            (fin or ("",))[0] == "done"
+                            and self._domstate.get(name, "running")
+                            == "running",
+                        )
+                    else:
+                        etat, sonde = odoo_reading(
+                            vm,
+                            (self._vmstats or {}).get(name) or {},
+                            name in self._odoo_up,
+                            self._odoo_revu.get(name, 0.0),
+                            maintenant,
+                            _port_open,
+                        )
                     if sonde:
                         self._odoo_revu[name] = maintenant
                     if etat is not None:
@@ -3733,22 +3893,19 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             browser = self._choose_browser()
             if not browser:
                 return
-            port = 18069
-            argv_tunnel = web_tunnel_argv(vm.get("pve"), port)
-            url = (
-                f"http://127.0.0.1:{port}"
-                if argv_tunnel
-                else f"http://{vm['ip']}:8069"
-            )
+            argv_tunnel, url = web_target(vm)
             with self.suspend():
                 proc = None
                 if argv_tunnel:
                     print("→ " + " ".join(shlex.quote(a) for a in argv_tunnel))
-                    try:
-                        proc = subprocess.Popen(argv_tunnel)
-                        time.sleep(2)
-                    except (OSError, subprocess.SubprocessError) as exc:
-                        print(f"   ⚠ {exc}")
+                    proc, erreur = open_tunnel(argv_tunnel)
+                    if erreur:
+                        print(f"   ⚠ {erreur}")
+                        try:
+                            input("Entrée pour revenir au suivi… ")
+                        except EOFError:
+                            pass
+                        return
                 print(f"→ {browser} {url}")
                 rc = os.system(f"{browser} {shlex.quote(url)}")
                 if proc:
@@ -3756,7 +3913,17 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 # Diagnostic : sinon le navigateur « clignote » et revient au
                 # TUI sans qu'on voie l'erreur (souvent Odoo pas démarré).
                 print(f"\n[{browser}] terminé (code {rc}).")
-                if rc != 0:
+                if rc != 0 and qd.app_of(vm) == qd.APP_DOLIBARR:
+                    print(
+                        t(
+                            "Dolibarr does not answer in the VM. Check it there:"
+                        )
+                    )
+                    print(
+                        f"   {vm_ssh_prefix(vm)} 'cd {EL_DIR} && python3"
+                        " script/dolibarr/run.py status'"
+                    )
+                elif rc != 0:
                     print(
                         "La page ne s'est peut-être pas affichée : Odoo n'est "
                         "pas démarré sur :8069, ou réseau/pare-feu. Vérifie que "
@@ -4025,11 +4192,23 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if not result:
                     return
                 kind, parts = result
-                if kind == "update":
+                refus = vm_action_refusal(vm, kind, parts)
+                if refus:
+                    self.notify(refus, title=vm["name"], severity="warning")
+                    return
+                if kind == "dolibarr_creds":
+                    self._run_in_vm(
+                        vm, qd.credentials_cmd(), t("Dolibarr login")
+                    )
+                elif kind == "update":
                     self._run_update(vm, parts)
                 elif kind == "restart":
                     self._run_in_vm(
-                        vm, restart_odoo_cmd(), "Redemarrage d'Odoo"
+                        vm,
+                        restart_cmd_for(vm),
+                        t("Restart Dolibarr")
+                        if qd.app_of(vm) == qd.APP_DOLIBARR
+                        else "Redemarrage d'Odoo",
                     )
                 elif kind == "dbrestore":
                     self._ask_db_restore(vm, parts)
