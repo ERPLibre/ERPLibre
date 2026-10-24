@@ -221,9 +221,14 @@ class LeMenu(unittest.TestCase):
         se lit sur le menu rendu plutôt qu'écrit ici en dur."""
         from unittest import mock as m
 
-        from script.todo.todo_i18n import set_lang
+        from script.todo import todo_i18n
 
-        set_lang("fr")
+        # PAS set_lang() : il persiste la langue dans env_var.sh, suivi par
+        # git et lu par les autres tests de la suite parallèle.
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "fr"
         todo = TODO()
         todo._menu_header = lambda: "x"
         lancees = []
