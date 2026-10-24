@@ -76,6 +76,10 @@ if not env["account.journal"].search(
 # L'administrateur, pas env.user : odoo-bin shell agit en superutilisateur
 env.ref("base.user_admin").tz = FUSEAU
 seconde = env["res.company"].create({"name": "MS Seconde societe"})
+# L'admin des vérifications voit aussi la seconde société. L'y ajouter
+# pendant la course laisse, sur un serveur à threads, des requêtes
+# concurrentes avec l'ancienne liste en cache : appels refusés.
+env.ref("base.user_admin").company_ids = [(4, seconde.id)]
 groupes = [
     env.ref(xmlid).id
     for xmlid in (

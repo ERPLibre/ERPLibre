@@ -25,8 +25,6 @@ eachVersion("multi-société", (target) => {
 		const { companies } = await env.sync.serverCompanies(env.creds[0], { online: true });
 		expect(companies).toHaveLength(2);
 		const second = companies[1];
-		// The admin of the run joins the second company, whose records its rules hide otherwise
-		await admin.write("res.users", [await admin.login()], { company_ids: [[4, second.id]] });
 		const both = { allowed_company_ids: companies.map((c) => c.id) };
 		const projectId = await admin.create("project.project", { name: unique("projet"), company_id: second.id }, both);
 
