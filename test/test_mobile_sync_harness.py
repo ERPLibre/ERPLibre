@@ -488,5 +488,25 @@ class TestServeursGardes(unittest.TestCase):
             )
 
 
+class TestDetruire(unittest.TestCase):
+    def test_a_blanc_liste_sans_rien_supprimer(self):
+        with mock.patch.object(
+            odoo, "bases_existantes", return_value={"mobile_sync_tpl_16"}
+        ), mock.patch.object(
+            odoo, "supprimer_base"
+        ) as supprimer, mock.patch.object(
+            odoo, "arreter_gardes"
+        ) as arreter, mock.patch.object(
+            mobile_sync.shutil, "rmtree"
+        ) as effacer, mock.patch(
+            "sys.stdout"
+        ):
+            code = mobile_sync.main(["--detruire", "--dry-run"])
+        self.assertEqual(code, mobile_sync.SORTIE_OK)
+        supprimer.assert_not_called()
+        arreter.assert_not_called()
+        effacer.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
