@@ -16,6 +16,7 @@ import subprocess
 import threading
 import time
 
+from script.todo import qemu_dolibarr as qd
 from script.todo import todo_prefs
 from script.todo.qemu_privilege import (
     needs_sudo,
@@ -105,6 +106,7 @@ class QemuDeployMixin:
             )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
+        prod = self._qemu_effective_prod(prod, final_cmd)
         # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
         # enregistre Odoo comme service systemd (enable + start). Pas pour
         # « ERPLibre seul », « mobile » ni « Déploiement ».
@@ -135,7 +137,7 @@ class QemuDeployMixin:
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
         # son échec soit celui de la VM.
         after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
-        # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
+        # APRÈS le make : sur un dépôt cloné mais pas installé,
         # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
         # échoue faute de venv, et il renonce. Le même appel sur un dépôt
         # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
@@ -148,7 +150,7 @@ class QemuDeployMixin:
             self._qemu_pycharm_project_cmd(prod)
             # Le venv du dépôt, comme le fait update_env_version.
             # pycharm_update() : le script importe xmltodict, absent du python
-            # système. Mesuré : « make pycharm_configure » s'arrêtait sur
+            # système : sans lui, « make pycharm_configure » s'arrête sur
             # « No module named 'xmltodict' ».
             + "./.venv.erplibre/bin/python "
             "./script/ide/pycharm_configuration.py --init || true; "
@@ -468,6 +470,15 @@ class QemuDeployMixin:
                     entry["notes"] = list(notes[name])
                 if (specs or {}).get(name):
                     entry["spec"] = specs[name]
+                # Une VM qui reçoit le profil Dolibarr le dit au suivi, qui
+                # sonde et ouvre alors Dolibarr au lieu d'Odoo. Sans clé, la
+                # VM reste Odoo, comme une entrée écrite avant elle.
+                if (
+                    branch_map.get(name, branch_def)
+                    and qd.profile_app(cmd_map.get(name, cmd_def))
+                    == qd.APP_DOLIBARR
+                ):
+                    entry["app"] = qd.APP_DOLIBARR
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
@@ -1285,10 +1296,17 @@ class QemuDeployMixin:
         parts += ["--lang", get_lang()]
         pose_erplibre = self._qemu_installs_erplibre(branch, install_cmd)
         if pose_erplibre:
-            parts += ["--erplibre-dir", self._qemu_guide_dir(prod)]
+            parts += [
+                "--erplibre-dir",
+                self._qemu_guide_dir(
+                    self._qemu_effective_prod(prod, install_cmd)
+                ),
+            ]
             target = self._qemu_make_target(install_cmd)
             if target:
                 parts += ["--erplibre-make", target]
+            if qd.profile_app(install_cmd) == qd.APP_DOLIBARR:
+                parts += ["--app", qd.APP_DOLIBARR]
         extra = 0
         if pose_erplibre:
             # ERPLibre dépasse le minimum : +5 Go de disque.
@@ -2287,8 +2305,12 @@ class QemuDeployMixin:
             label, cmd = self._qemu_pick_install_profile(
                 "proxmox"
                 if any(v.get("distro") == "proxmox" for v in vms)
-                else ""
+                else "",
+                systems=[v.get("distro") or "" for v in vms],
             )
+            if self._qemu_effective_prod(prod, cmd) != prod:
+                print(f"  {t(qd.PROD_NOTE)}")
+                prod = False
             monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )
@@ -2888,8 +2910,16 @@ class QemuDeployMixin:
 
         Séparée du déploiement lui-même : la spec entière doit tenir dans le
         bloc, et un « with » autour de deux cents lignes déjà indentées se
-        relit mal.
+        relit mal. Une spec que qemu_dolibarr refuse (VM Dolibarr sur un
+        système qui ne la reçoit pas, ou hors ligne) s'arrête avant toute
+        création, quelle que soit la voie qui l'a produite.
         """
+        refus = qd.install_refusals(spec)
+        if refus:
+            for ligne in refus:
+                print(f"\n❌ {ligne}")
+            print(t("Cancelled."))
+            return None
         if not self._qemu_ensure_spec_ssh_key(spec):
             return
         try:

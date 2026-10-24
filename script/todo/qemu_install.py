@@ -7,6 +7,7 @@ import re
 import shlex
 
 from script.todo import dev_tools
+from script.todo import qemu_dolibarr as qd
 from script.todo.todo_i18n import t
 
 
@@ -59,6 +60,7 @@ class QemuInstallMixin:
                 t("ERPLibre only (no Odoo)"),
                 "make install_os && ./script/install/install_erplibre.sh",
             ),
+            (t(qd.PROFILE_LABEL), qd.INSTALL_CMD),
             (
                 t("ERPLibre mobile (home)"),
                 "make install_os && ./mobile/install_and_run.sh",
@@ -122,12 +124,14 @@ class QemuInstallMixin:
             return True
         return install_cmd.strip() not in self._qemu_no_erplibre_cmds()
 
-    def _qemu_pick_install_profile(self, distro=""):
+    def _qemu_pick_install_profile(self, distro="", systems=()):
         """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
         finale exécutée dans ~/git/erplibre).
 
         Le profil qu'un système impose passe en tête, et devient donc le
-        défaut de la réponse vide.
+        défaut de la réponse vide. Le profil Dolibarr choisi alors qu'un des
+        `systems` le refuse affiche la raison par système et repose la
+        question ; la réponse vide ne mène jamais à Dolibarr.
         """
         profiles = self._qemu_install_profiles()
         impose = self._qemu_distro_profile(distro)
@@ -136,14 +140,30 @@ class QemuInstallMixin:
         print(f"\n{t('What to install on the VM(s)?')}")
         for i, (label, _cmd) in enumerate(profiles, 1):
             print(f"  [{i}] {label}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(profiles):
-                return profiles[idx]
-        except ValueError:
-            pass
-        return profiles[0]  # défaut : ERPLibre + Odoo 18
+        while True:
+            choix = profiles[0]  # défaut : ERPLibre + Odoo 18
+            sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
+            try:
+                idx = int(sel) - 1
+                if 0 <= idx < len(profiles):
+                    choix = profiles[idx]
+            except ValueError:
+                pass
+            if qd.profile_app(choix[1]) != qd.APP_DOLIBARR:
+                return choix
+            refus = [(s, qd.distro_refusal(s)) for s in systems]
+            refus = [(s, r) for s, r in refus if r]
+            if not refus:
+                return choix
+            for s, raison in refus:
+                print(f"  ✗ {s}: {raison}")
+
+    @staticmethod
+    def _qemu_effective_prod(prod, install_cmd):
+        """La production demandée, sauf pour le profil Dolibarr, qui
+        s'installe en développement dans ~/git/erplibre : décidé quand la
+        commande est bâtie, quelle que soit la case du formulaire."""
+        return bool(prod) and qd.profile_app(install_cmd) != qd.APP_DOLIBARR
 
     @staticmethod
     def _qemu_install_dir(prod):

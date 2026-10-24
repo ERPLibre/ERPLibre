@@ -21,6 +21,7 @@ import time
 
 import click
 
+from script.todo import qemu_dolibarr as qd
 from script.todo import todo_prefs
 from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
@@ -1158,9 +1159,18 @@ class ProxmoxMenuMixin:
         Le formulaire n'offre la case que dans ce cas ; une spec qui la porte
         quand même — invites textuelles, spec écrite à la main — coupe ce
         pont-ci, ce qui reste vrai pour les VM qui le traversent.
+
+        Une spec que qemu_dolibarr refuse s'arrête avant toute création,
+        comme en QEMU/KVM.
         """
         from script.todo.qemu_deploy import _SansInternetImpossible
 
+        refus = qd.install_refusals(spec)
+        if refus:
+            for ligne in refus:
+                print(f"\n❌ {ligne}")
+            print(t("Cancelled."))
+            return None
         try:
             with self._qemu_sans_internet(bool(spec.get("offline"))) as coupee:
                 return self._pve_deploy_spec(
@@ -2020,8 +2030,8 @@ class ProxmoxMenuMixin:
         """Pose le guide de connexion et l'identité git DANS la VM.
 
         La voie libvirt les livre par le « write_files » de cloud-init ;
-        « qm set » n'offre pas cela, donc une VM Proxmox n'avait AUCUN guide —
-        quelle que soit sa distribution. Rapporté sur Arch.
+        « qm set » n'offre pas cela : sans cette fonction, une VM Proxmox
+        n'aurait aucun guide, quelle que soit sa distribution.
 
         Même contenu, livrée par ssh une fois la VM debout : `guide_files` est
         la source unique, comme sa docstring le promet. Un seul appel, tous les
@@ -2063,6 +2073,7 @@ class ProxmoxMenuMixin:
             ),
             no_git_identity=False,
             user=spec.get("user") or "erplibre",
+            app=qd.profile_app(cmd_install),
         )
         try:
             fichiers = mod.guide_files(args)
@@ -2604,7 +2615,9 @@ class ProxmoxMenuMixin:
             input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
         ):
             branch = self._qemu_pick_branch()
-            label, cmd = self._qemu_pick_install_profile(distro)
+            label, cmd = self._qemu_pick_install_profile(
+                distro, systems=(distro,)
+            )
             print(f"  {label}")
             install = {"branch": branch, "cmd": cmd, "label": label}
         spec_finale = {

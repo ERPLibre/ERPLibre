@@ -2984,6 +2984,48 @@ def erplibre_guide(
     return tuple(rows)
 
 
+# Instance Dolibarr que pose le profil « Dolibarr » de todo.py, et son port
+# dans la VM ; les mêmes valeurs que script/todo/qemu_dolibarr.py.
+DOLIBARR_INSTANCE = "dolibarr"
+DOLIBARR_PORT = 8080
+
+
+def dolibarr_guide(el_dir: str) -> tuple[tuple[str, str, str], ...]:
+    """Commandes de l'instance Dolibarr de développement de la VM.
+
+    `el_dir` : clone ERPLibre de la VM, d'où l'installateur a posé
+    l'instance. Le mot de passe admin, généré dans la VM, n'est jamais
+    écrit dans le guide : il donne la commande qui le lit dans son fichier.
+    L'instance écoute sur 127.0.0.1 : on l'ouvre depuis l'hôte par le
+    tunnel du suivi.
+    """
+    return (
+        (f"cd {el_dir}", "aller au dépôt", "go to the checkout"),
+        (
+            "python3 script/dolibarr/run.py status",
+            "état de l'instance Dolibarr",
+            "Dolibarr instance state",
+        ),
+        (
+            "python3 script/dolibarr/run.py start --instance "
+            + DOLIBARR_INSTANCE,
+            "la relancer après un redémarrage de la VM",
+            "start it again after a VM reboot",
+        ),
+        (
+            "grep ADMIN_PASS ~/.local/share/ERPLibre/dolibarr/"
+            f"{DOLIBARR_INSTANCE}/secrets.env",
+            "le mot de passe de l'identifiant admin",
+            "the password of the admin login",
+        ),
+        (
+            f"http://127.0.0.1:{DOLIBARR_PORT}",
+            "écoute dans la VM seulement : touche w du suivi",
+            "listens in the VM only: monitor key w",
+        ),
+    )
+
+
 # Plancher de largeur de l'encadré. Au-dessus, il SUIT le contenu : un cadre
 # plus étroit que ce qu'il encadre serait pire qu'un cadre large. C'est au
 # contenu de rester sous 80 colonnes — un guide qui se replie sur un terminal
@@ -3070,11 +3112,14 @@ def build_motd(
     editor: str = "",
     desktop: bool = False,
     tools: tuple = (),
+    app: str = "odoo",
 ) -> str:
     """Texte du /etc/motd de la VM. Fonction PURE : aucun I/O, donc testable.
 
     La section ERPLibre n'apparaît qu'avec `el_dir` : une VM déployée sans
     installation ne doit pas annoncer un dépôt et un service qui n'existent pas.
+    Avec `app` « dolibarr », le bloc Dolibarr prend sa place : la VM n'a ni
+    Odoo ni service erplibre.
     Le bloc « Bureau » suit la même règle avec `desktop` : sur un serveur, ces
     deux commandes ne mèneraient à aucune unité.
     """
@@ -3099,7 +3144,11 @@ def build_motd(
     if mgr == "pacman" and el_dir:
         body.append("")
         body += motd_block("AUR — yay", AUR_GUIDE, lang, narrow)
-    if el_dir:
+    if el_dir and app == "dolibarr":
+        body.append("")
+        doli_rows = dolibarr_guide(el_dir)
+        body += motd_block("Dolibarr", doli_rows, lang, gloss_col(doli_rows))
+    elif el_dir:
         body.append("")
         el_rows = erplibre_guide(el_dir, el_make, editor)
         body += motd_block("ERPLibre", el_rows, lang, gloss_col(el_rows))
@@ -4024,6 +4073,7 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
                     for c in getattr(args, "vm_tools", "").split(",")
                     if c.strip()
                 ),
+                getattr(args, "app", "odoo"),
             ),
             "",
         )
@@ -5775,6 +5825,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Cible make qui a installé la VM (ex. install_odoo_18), reprise "
         "dans le guide pour la mettre à jour. Vide : le guide s'arrête à "
         "« git pull » plutôt que d'annoncer une cible qui n'est pas la bonne.",
+    )
+    g_cloud.add_argument(
+        "--app",
+        choices=("odoo", "dolibarr"),
+        default="odoo",
+        help="Application installée dans la VM : odoo (défaut) ou dolibarr, "
+        "dont le bloc remplace celui du service ERPLibre dans le guide.",
     )
     g_cloud.add_argument(
         "--git-name",

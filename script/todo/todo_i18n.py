@@ -20332,6 +20332,19 @@ TRANSLATIONS = {
         "fr": "Instance Dolibarr :",
         "en": "Dolibarr instance:",
     },
+    # Dolibarr VM (qemu_dolibarr.py, qemu_install_monitor.py)
+    "Dolibarr (development, MariaDB)": {
+        "fr": "Dolibarr (développement, MariaDB)",
+        "en": "Dolibarr (development, MariaDB)",
+    },
+    "Dolibarr is not deployed offline: its source is not in the download cache.": {
+        "fr": "Dolibarr ne se déploie pas hors ligne : sa source n'est pas dans le cache de téléchargement.",
+        "en": "Dolibarr is not deployed offline: its source is not in the download cache.",
+    },
+    "Dolibarr installs in development only: production does not apply.": {
+        "fr": "Dolibarr s'installe en développement seulement : la production ne s'applique pas.",
+        "en": "Dolibarr installs in development only: production does not apply.",
+    },
     # Dolibarr — épinglage (script/dolibarr/pin.py)
     "Already pinned on %s.": {
         "fr": "Déjà épinglé sur %s.",

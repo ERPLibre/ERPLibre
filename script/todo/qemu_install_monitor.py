@@ -559,6 +559,8 @@ def launch_installs(
         # secret.
         if vm.get("notes"):
             entree["notes"] = list(vm["notes"])
+        if vm.get("app"):
+            entree["app"] = vm["app"]
         if vm.get("spec"):
             entree["spec_file"] = _write_spec_file(
                 logdir / f"{vm['name']}.spec.json", vm["spec"]

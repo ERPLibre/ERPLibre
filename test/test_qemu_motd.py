@@ -741,5 +741,60 @@ class LaGloseSeReplieAuLieuDeDeborder(unittest.TestCase):
         self.assertEqual(dq.MOTD_MAX_WIDTH, TERM_WIDTH)
 
 
+class TestMotdDolibarrSection(unittest.TestCase):
+    def _motd(self, el_dir="~/git/erplibre", **kw):
+        return dq.build_motd(
+            "ubuntu", "24.04", "amd64", "en", el_dir, "", "", False, (), **kw
+        )
+
+    def test_dolibarr_replaces_the_erplibre_service_lines(self):
+        txt = self._motd(app="dolibarr")
+        self.assertNotIn("systemctl restart erplibre", txt)
+        self.assertIn("run.py start --instance dolibarr", txt)
+        self.assertIn(
+            "~/.local/share/ERPLibre/dolibarr/dolibarr/secrets.env", txt
+        )
+        self.assertIn("http://127.0.0.1:8080", txt)
+
+    def test_it_gives_the_command_that_reads_the_password(self):
+        txt = self._motd(app="dolibarr")
+        self.assertIn(
+            "grep ADMIN_PASS"
+            " ~/.local/share/ERPLibre/dolibarr/dolibarr/secrets.env",
+            txt,
+        )
+        self.assertIn("admin", txt)
+
+    def test_the_values_match_the_deploy_side(self):
+        from script.todo import qemu_dolibarr as qd
+
+        self.assertEqual(
+            (qd.INSTANCE, qd.PORT), (dq.DOLIBARR_INSTANCE, dq.DOLIBARR_PORT)
+        )
+
+    def test_never_wider_than_a_standard_terminal(self):
+        for lang in ("fr", "en"):
+            txt = dq.build_motd(
+                "ubuntu",
+                "24.04",
+                "amd64",
+                lang,
+                "~/git/erplibre",
+                "",
+                "",
+                False,
+                (),
+                app="dolibarr",
+            )
+            for line in txt.splitlines():
+                self.assertLessEqual(len(line), TERM_WIDTH, line)
+
+    def test_odoo_by_default(self):
+        self.assertIn("systemctl restart erplibre", self._motd())
+
+    def test_no_install_dir_no_section(self):
+        self.assertNotIn("Dolibarr", self._motd(el_dir="", app="dolibarr"))
+
+
 if __name__ == "__main__":
     unittest.main()
