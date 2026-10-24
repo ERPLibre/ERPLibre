@@ -492,6 +492,21 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
 `grdctl` 46 only takes it as an argument, and `pkexec`, which `grdctl
 --system` goes through, logs that command line in the VM's journal.
 
+### Dolibarr profile
+
+The install profile **Dolibarr (development, MariaDB)** puts Dolibarr in the
+VM instead of Odoo. The VM clones ERPLibre into `~/git/erplibre`, runs
+`script/dolibarr/install_native.py --mode dev` on MariaDB, then starts the
+instance with `script/dolibarr/run.py start`: no Odoo, no
+`erplibre.service`, no reboot. The instance listens on the VM's loopback
+only, on port 8080. The admin password is generated in the VM and stays
+there, in `~/.local/share/ERPLibre/dolibarr/dolibarr/secrets.env`.
+
+The profile installs development only, so Production does not apply to it.
+NixOS and a Proxmox VE system are refused before anything is created, with
+the reason (NixOS declares `services.dolibarr` instead), and so is an offline
+deployment: the Dolibarr source is not in the download cache.
+
 ## Main options
 
 - `--distro` — `ubuntu` (default), `debian`, `fedora`, `almalinux`,
@@ -523,6 +538,8 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
   section to the login guide; omitted, that section is left out.
 - `--erplibre-make` — the make target that installed the VM
   (e.g. `install_odoo_18`), shown in the guide as the way to update it.
+- `--app` — `odoo` (default) or `dolibarr`: the application installed in
+  the VM, whose block replaces the ERPLibre one in the login guide.
 - `--no-git-identity` — do not copy the host's `user.name`, `user.email`
   and `core.editor` into the VM's `~/.gitconfig`.
 
@@ -536,6 +553,11 @@ ERPLibre ones (edit the server, restart it, update modules, update Odoo,
 inspect the instance, open the TODO menu). It is written by cloud-init, so
 it is there from the first boot: before ERPLibre is installed, and still
 there if that installation fails, which is exactly when you log in by hand.
+
+On a VM of the Dolibarr profile (`--app dolibarr`), a Dolibarr block takes
+the place of the ERPLibre commands: the instance's status, how to start it
+again after a reboot, the command that reads the admin password in
+`secrets.env` — never the password itself — and the address it listens on.
 
 `--dry-run` prints the generated guide along with the rest of the user-data.
 The guide is not shown to `ssh host 'command'`, so it never pollutes an
@@ -742,6 +764,22 @@ GNOME Remote Desktop 47 et suivants lisent le mot de passe sur leur entrée
 standard. `grdctl` 46 ne le prend qu'en argument, et `pkexec`, par lequel
 passe `grdctl --system`, journalise cette ligne de commande dans la VM.
 
+### Profil Dolibarr
+
+Le profil d'installation **Dolibarr (développement, MariaDB)** met Dolibarr
+dans la VM à la place d'Odoo. La VM clone ERPLibre dans `~/git/erplibre`,
+lance `script/dolibarr/install_native.py --mode dev` sur MariaDB, puis
+démarre l'instance par `script/dolibarr/run.py start` : ni Odoo, ni
+`erplibre.service`, ni redémarrage. L'instance n'écoute que sur la boucle
+locale de la VM, sur le port 8080. Le mot de passe admin est généré dans la
+VM et y reste, dans `~/.local/share/ERPLibre/dolibarr/dolibarr/secrets.env`.
+
+Le profil n'installe que le développement : la production ne s'y applique
+pas. NixOS et un système Proxmox VE sont refusés avant que rien ne soit
+créé, raison donnée (NixOS déclare plutôt `services.dolibarr`), de même
+qu'un déploiement hors ligne : la source de Dolibarr n'est pas dans le cache
+de téléchargement.
+
 ## Principales options
 
 - `--distro` — `ubuntu` (défaut), `debian`, `fedora`, `almalinux`,
@@ -776,6 +814,8 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
   ERPLibre au guide de connexion ; omis, cette section est laissée de côté.
 - `--erplibre-make` — la cible make qui a installé la VM
   (ex. `install_odoo_18`), reprise dans le guide pour la mettre à jour.
+- `--app` — `odoo` (défaut) ou `dolibarr` : l'application installée dans la
+  VM, dont le bloc remplace celui d'ERPLibre dans le guide de connexion.
 - `--no-git-identity` — ne recopie pas les `user.name`, `user.email` et
   `core.editor` de l'hôte dans le `~/.gitconfig` de la VM.
 
@@ -789,6 +829,12 @@ distribution — `apt`, `dnf`, `zypper` ou `pacman` — et celles d'ERPLibre :
 Odoo, inspecter l'instance, ouvrir le menu TODO. Il est écrit par cloud-init,
 donc présent dès le premier démarrage : avant l'installation d'ERPLibre, et
 encore là si elle échoue — le moment où l'on se connecte justement à la main.
+
+Sur une VM du profil Dolibarr (`--app dolibarr`), un bloc Dolibarr prend la
+place des commandes ERPLibre : l'état de l'instance, comment la relancer
+après un redémarrage, la commande qui lit le mot de passe admin dans
+`secrets.env` — jamais le mot de passe lui-même — et l'adresse où elle
+écoute.
 
 `--dry-run` affiche le guide généré avec le reste du user-data. Il ne
 s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation

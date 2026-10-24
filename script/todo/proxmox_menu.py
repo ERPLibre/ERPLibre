@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import click
 
+from script.todo import qemu_dolibarr as qd
 from script.todo import qemu_privilege, todo_journal, todo_prefs
 from script.todo.deploy_form_lib import VM_LOGIN_READ_CMD, VM_USER_DEFAULT
 from script.todo.qemu_privilege import virsh_argv
@@ -1212,9 +1213,18 @@ class ProxmoxMenuMixin:
         Le formulaire n'offre la case que dans ce cas ; une spec qui la porte
         quand même — invites textuelles, spec écrite à la main — coupe ce
         pont-ci, ce qui reste vrai pour les VM qui le traversent.
+
+        Une spec que qemu_dolibarr refuse s'arrête avant toute création,
+        comme en QEMU/KVM.
         """
         from script.todo.qemu_deploy import _SansInternetImpossible
 
+        refus = qd.install_refusals(spec)
+        if refus:
+            for ligne in refus:
+                print(f"\n❌ {ligne}")
+            print(t("Cancelled."))
+            return None
         try:
             with self._qemu_sans_internet(bool(spec.get("offline"))) as coupee:
                 return self._pve_deploy_spec(
@@ -2188,6 +2198,7 @@ class ProxmoxMenuMixin:
             ),
             no_git_identity=False,
             user=spec.get("user") or VM_USER_DEFAULT,
+            app=qd.profile_app(cmd_install),
         )
         try:
             fichiers = mod.guide_files(args)
@@ -2841,7 +2852,9 @@ class ProxmoxMenuMixin:
             input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
         ):
             branch = self._qemu_pick_branch()
-            label, cmd = self._qemu_pick_install_profile(distro)
+            label, cmd = self._qemu_pick_install_profile(
+                distro, systems=(distro,)
+            )
             print(f"  {label}")
             install = {"branch": branch, "cmd": cmd, "label": label}
         spec_finale = {
