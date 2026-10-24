@@ -126,7 +126,10 @@ def plan(versions, args):
 
 
 def detruire():
-    for nom in sorted(odoo.bases_existantes()):
+    bases = sorted(odoo.bases_existantes())
+    for pid in odoo.arreter_gardes(set(bases)):
+        print(f"  serveur gardé arrêté : {pid}")
+    for nom in bases:
         odoo.supprimer_base(nom)
         print(f"  supprimée : {nom}")
     shutil.rmtree(odoo.CACHE, ignore_errors=True)
@@ -165,7 +168,10 @@ def main(argv=None):
     if args.dry_run:
         return SORTIE_OK
 
-    for nom in odoo.a_balayer(odoo.bases_existantes()):
+    balayees = odoo.a_balayer(odoo.bases_existantes())
+    for pid in odoo.arreter_gardes(set(balayees)):
+        print(f"Serveur gardé arrêté : {pid}")
+    for nom in balayees:
         odoo.supprimer_base(nom)
         print(f"Balayé : {nom}")
 
@@ -262,11 +268,15 @@ def main(argv=None):
     finally:
         garder = args.garder or (args.garder_si_echec and code != SORTIE_OK)
         if garder:
+            odoo.noter_gardes(repertoire, serveurs)
             print("Bases et serveurs gardés :")
             for s in serveurs:
                 print(
                     f"  Odoo {s.version} : {s.url}  base {s.base}  admin/admin, mc_user/mc_user"
                 )
+            print(
+                "  arrêtés et balayés par la prochaine course, ou par --detruire"
+            )
         else:
             for s in serveurs:
                 odoo.arreter_serveur(s)
