@@ -137,8 +137,15 @@ def plan(versions, args):
     return "\n".join(lignes)
 
 
-def detruire():
+def detruire(a_blanc=False):
+    """Supprime les bases mobile_sync_* et le cache ; a_blanc : les liste
+    seulement, ce que le menu montre avant de demander."""
     bases = sorted(odoo.bases_existantes())
+    if a_blanc:
+        for nom in bases:
+            print(f"  à supprimer : {nom}")
+        print(f"  à supprimer : {odoo.CACHE}")
+        return
     for pid in odoo.arreter_gardes(set(bases)):
         print(f"  serveur gardé arrêté : {pid}")
     for nom in bases:
@@ -153,7 +160,7 @@ def main(argv=None):
     sys.stdout.reconfigure(line_buffering=True)
     args = parser().parse_args(argv)
     if args.detruire:
-        detruire()
+        detruire(a_blanc=args.dry_run)
         return SORTIE_OK
     try:
         versions = odoo.lire_versions(args.versions)

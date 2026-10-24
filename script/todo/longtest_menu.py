@@ -20,13 +20,13 @@ import click
 
 from script.todo.todo_i18n import t
 
-# Les tests longs qui CRÉENT quelque chose, donc qui savent le défaire.
+# Les tests longs qui lancent une descente de VM.
 #
 # Seconde copie de `long_test/descente.py::SCRIPTS`, et elle l'est faute de
 # mieux : ce module-ci vit dans script/todo/ et lance les tests longs en
 # sous-processus, sans jamais importer long_test/ — qui traîne avec lui le
 # module Proxmox. Là-bas la liste sert au VERROU, ici au défaire.
-SCRIPTS_DEFAISABLES = (
+SCRIPTS_DESCENTE = (
     "deep_proxmox.py",
     "deep_qemu.py",
     "qemu_cache.py",
@@ -34,6 +34,11 @@ SCRIPTS_DEFAISABLES = (
     "install_erplibre_home.py",
     "usb_passthrough.py",
 )
+
+# Les tests longs qui CRÉENT quelque chose, donc qui savent le défaire : les
+# descentes, et la synchro mobile, qui crée des bases et des serveurs Odoo
+# mais aucune VM, et ne prend donc pas le verrou.
+SCRIPTS_DEFAISABLES = SCRIPTS_DESCENTE + ("mobile_sync.py",)
 
 # Le répertoire des tests longs, à la racine du dépôt.
 LONGTEST_DIR = "long_test"
@@ -51,12 +56,28 @@ class LongTestMenuMixin:
     _LONGTEST_SANS_EFFET = ("--dry-run", "--rapport")
 
     @staticmethod
-    def _longtest_question(args):
+    def _longtest_question(args, nom=""):
         """L'avertissement et la question qui vont avec ces arguments.
 
         Rend un couple de CLÉS de traduction, jamais du texte : l'invite est
-        bilingue comme le reste du menu.
+        bilingue comme le reste du menu. La synchro mobile a les siennes :
+        elle crée des bases et des serveurs Odoo, pas des VM.
         """
+        if nom == "mobile_sync.py":
+            if "--detruire" in (args or ""):
+                return (
+                    "This drops the databases and the cache of the mobile sync test.",
+                    "Drop the mobile sync test databases?",
+                )
+            if "--appareil" in (args or ""):
+                return (
+                    "This creates throwaway Odoo databases and servers, and installs a test app on the plugged phone.",
+                    "Run the mobile sync test, phone included?",
+                )
+            return (
+                "This creates throwaway Odoo databases and servers, for a few minutes.",
+                "Run the mobile sync test?",
+            )
         if "--detruire" in (args or ""):
             return (
                 "This destroys the machines of this test and their disks.",
@@ -95,7 +116,7 @@ class LongTestMenuMixin:
             # en effacer. La question doit dire LAQUELLE des deux on fait :
             # confirmer « lancer ce test long » devant une destruction fait
             # répondre oui à autre chose que ce qui va arriver.
-            avertissement, question = self._longtest_question(args)
+            avertissement, question = self._longtest_question(args, nom)
             print(f"  {t(avertissement)}")
             if not click.confirm(t(question)):
                 return
@@ -150,6 +171,17 @@ class LongTestMenuMixin:
                     "USB passthrough, emulated deck: run it"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Mobile sync on Odoo 16-18: plan only (dry-run)"
+                )
+            },
+            {"prompt_description": t("Mobile sync on Odoo 16-18: run it")},
+            {
+                "prompt_description": t(
+                    "Mobile sync on Odoo 16-18 and the plugged phone: run it"
+                )
+            },
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
         # Ses entrées sont donc traitées à part plutôt que pliées dans la
@@ -172,6 +204,14 @@ class LongTestMenuMixin:
             "13": "--dry-run",
             "14": "",
         }
+        # La synchro mobile : des bases et des serveurs Odoo, et le téléphone
+        # branché avec --appareil ; ni profondeur ni hôte de départ. 15 à 17,
+        # après le passage USB.
+        mobile_sync = {
+            "15": "--dry-run",
+            "16": "",
+            "17": "--appareil",
+        }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
             "1": ("deep_proxmox.py", True),
@@ -192,6 +232,9 @@ class LongTestMenuMixin:
                 return False
             if status in cache:
                 self._longtest_run("qemu_cache.py", cache[status])
+                continue
+            if status in mobile_sync:
+                self._longtest_run("mobile_sync.py", mobile_sync[status])
                 continue
             if status in erplibre_home:
                 self._longtest_run(
