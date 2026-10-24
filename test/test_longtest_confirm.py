@@ -147,5 +147,59 @@ class TestConfirmationDesTestsLongs(unittest.TestCase):
             )
 
 
+class TestSynchroMobile(unittest.TestCase):
+    """La synchro mobile crée des bases et des serveurs Odoo, pas des VM :
+    sa question le dit, et le menu la lance dans ses trois formes."""
+
+    def test_sa_question_ne_parle_pas_de_vm(self):
+        from script.todo.longtest_menu import LongTestMenuMixin as L
+
+        questions = [
+            L._longtest_question(args, "mobile_sync.py")
+            for args in ("", "--appareil", "--detruire")
+        ]
+        self.assertEqual(len(set(questions)), 3)
+        self.assertNotIn(L._longtest_question(""), questions)
+        for cle in sum(questions, ()):
+            self.assertIn(cle, todo_i18n.TRANSLATIONS)
+            self.assertNotIn("VM", cle)
+
+    def test_la_destruction_demande_de_supprimer(self):
+        todo, patch = menu()
+        with patch as confirm:
+            todo._longtest_run("mobile_sync.py", "--detruire")
+        self.assertIn("Supprimer", confirm.call_args.args[0])
+
+    def test_le_menu_lance_le_plan_la_course_et_le_telephone(self):
+        import contextlib
+        import io
+
+        todo = TODO.__new__(TODO)
+        vus = []
+        todo.fill_help_info = lambda choix: ""
+        todo._longtest_run = lambda nom, args="", demander=None: vus.append(
+            (nom, args)
+        )
+        with mock.patch(
+            "script.todo.longtest_menu.click.prompt",
+            side_effect=["13", "14", "15", "0"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()):
+                todo.prompt_execute_longtest()
+        self.assertEqual(
+            vus,
+            [
+                ("mobile_sync.py", "--dry-run"),
+                ("mobile_sync.py", ""),
+                ("mobile_sync.py", "--appareil"),
+            ],
+        )
+
+    def test_le_defaire_la_connait(self):
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
+        self.assertIn("mobile_sync.py", SCRIPTS_DEFAISABLES)
+
+
 if __name__ == "__main__":
     unittest.main()

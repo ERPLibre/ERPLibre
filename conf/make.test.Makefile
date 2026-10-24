@@ -41,6 +41,13 @@ test_unit_changed:
 test_unit_failed:
 	./script/test/run_unit_test.sh --failed
 
+# La synchro de l'app mobile contre des Odoo 16, 17 et 18 jetables, et le
+# téléphone branché avec APPAREIL=1 : voir long_test/README.md.
+#   make test_mobile_sync APPAREIL=1
+.PHONY: test_mobile_sync
+test_mobile_sync:
+	./long_test/mobile_sync.py $(if $(APPAREIL),--appareil)
+
 .PHONY: open_test_coverage
 open_test_coverage:
 	-$(BROWSER) htmlcov/index.html

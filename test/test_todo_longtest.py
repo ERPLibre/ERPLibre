@@ -1325,9 +1325,13 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         panne : un test long absent du VERROU laisse une autre descente
         détruire ses machines pendant qu'il tourne ; absent du DÉFAIRE, il
         laisse ses VM derrière lui, sans rien pour les reprendre."""
-        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+        from script.todo.longtest_menu import (
+            SCRIPTS_DEFAISABLES,
+            SCRIPTS_DESCENTE,
+        )
 
-        self.assertEqual(set(moteur.SCRIPTS), set(SCRIPTS_DEFAISABLES))
+        self.assertEqual(set(moteur.SCRIPTS), set(SCRIPTS_DESCENTE))
+        self.assertLessEqual(set(SCRIPTS_DESCENTE), set(SCRIPTS_DEFAISABLES))
         self.assertIn("install_nixos.py", moteur.SCRIPTS)
 
     def test_the_host_options_are_built_from_the_host_dict(self):
