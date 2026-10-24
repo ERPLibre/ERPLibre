@@ -24,6 +24,7 @@ Chaque accès aux widgets est gardé : un formulaire n'est pas tenu de poser
 tous les fragments, et lire un widget absent ne doit pas casser l'écran.
 """
 
+from script.todo import qemu_dolibarr as qd
 from script.todo.deploy_form_lib import FREE, t
 
 # « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
@@ -239,6 +240,11 @@ class ExtrasMixin:
             value=tab["defaults"].get("prod", False),
             id="f_prod",
         )
+        # Dit pourquoi la case se grise quand le profil commun est
+        # Dolibarr ; _sync_install_deps la montre et la cache.
+        note = Static(t(qd.PROD_NOTE), id="t_prod_note")
+        note.display = False
+        yield note
         if tab["app_stores"]:
             yield Static(
                 t("Application store:"), id="t_store", classes="grouptitle"
@@ -456,6 +462,32 @@ class ExtrasMixin:
             if impose:
                 return impose[1]
         return self._profile_cmd()
+
+    def _dolibarr_common(self) -> bool:
+        """Le profil commun d'en haut est-il celui de Dolibarr ?"""
+        return qd.profile_app(self._profile_cmd()) == qd.APP_DOLIBARR
+
+    def _prod_value(self) -> bool:
+        """La production que la spec reçoit : la coche, sauf quand la case
+        est grisée. La coche elle-même n'est jamais touchée, pour revenir
+        telle quelle avec un profil Odoo."""
+        widget = self._widget("#f_prod")
+        if widget is None:
+            return False
+        return bool(widget.value) and not widget.disabled
+
+    def _row_refusal(self, i) -> str:
+        """La raison pour laquelle la rangée `i` ne recevra pas Dolibarr, ou
+        une chaîne vide : seulement quand on installe, que sa commande,
+        propre ou commune, est celle de Dolibarr, et que son système la
+        refuse."""
+        if i >= len(getattr(self, "rows", ())) or not self._install_state()[0]:
+            return ""
+        vm = self.rows[i]["vm"]
+        cmd = vm.get("install_cmd") or self._row_default_cmd(i)
+        if qd.profile_app(cmd) != qd.APP_DOLIBARR:
+            return ""
+        return qd.distro_refusal(vm.get("distro", ""))
 
     def _row_profile_index(self, i) -> int:
         """Rang du profil que la rangée doit AFFICHER."""
@@ -687,16 +719,22 @@ class ExtrasMixin:
 
         Le type de VM et le suivi ne sont jamais grisés : le premier est
         l'autre moitié de la décision, le second regarde la VM arriver même
-        quand rien ne s'installe."""
+        quand rien ne s'installe. La production se grise aussi quand le
+        profil commun est Dolibarr, qui s'installe en développement, et une
+        ligne dit pourquoi ; sa coche reste telle quelle."""
         installe, quelque_chose = self._install_state()
+        dolibarr = installe and self._dolibarr_common()
         for cible, actif in (
             ("#f_branch", installe),
             ("#f_profile_install", installe),
-            ("#f_prod", quelque_chose),
+            ("#f_prod", quelque_chose and not dolibarr),
         ):
             widget = self._widget(cible)
             if widget is not None:
                 widget.disabled = not actif
+        note = self._widget("#t_prod_note")
+        if note is not None:
+            note.display = dolibarr
         # Le magasin, les outils et l'interpréteur Python ont leur PROPRE
         # raison de se griser (architecture, bureau, distribution) : ils
         # composent les deux dans « _render_* », qui a le dernier mot.

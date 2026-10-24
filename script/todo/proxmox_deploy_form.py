@@ -23,6 +23,7 @@ Le formulaire ne touche à rien : il rend une spec. C'est l'appelant
 import os
 import re
 
+from script.todo import qemu_dolibarr as qd
 from script.todo.deploy_form_extras import ExtrasMixin
 from script.todo.deploy_form_history import HistoryMixin
 from script.todo.deploy_form_lib import (
@@ -1021,6 +1022,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self._clear_overrides(
                     ("branch",) if ident == "f_branch" else ("install_cmd",)
                 )
+                if ident == "f_profile_install":
+                    self._sync_install_deps()
                 self._refresh_after(remonter=True)
                 return
             # Réglage commun : « libre… » révèle la saisie, une valeur
@@ -1143,7 +1146,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 "branch": self.query_one("#f_branch", Select).value,
                 # /opt et service confiné, comme en QEMU/KVM : le choix ne
                 # regarde pas l'hyperviseur, il regarde le système invité.
-                "prod": self.query_one("#f_prod", Checkbox).value,
+                "prod": self._prod_value(),
                 "label": label,
                 "cmd": cmd,
             }
@@ -1199,6 +1202,12 @@ def run_proxmox_form(ctx, run_app: bool = True):
             spec = build_spec(self.vms, noms_pris, self._form_values())
             if not spec["vms"]:
                 self.notify(t("Nothing to deploy."), severity="warning")
+                return
+            # Une VM Dolibarr sur un système qui la refuse, ou hors ligne :
+            # refusé sans passage outre, la rangée en porte la raison.
+            refus = qd.install_refusals(spec)
+            if refus:
+                self.notify(" — ".join(refus), severity="error", timeout=20)
                 return
             # Hors ligne : ce que le cache ne détient pas, aucune VM ne
             # pourra le lire, et une VM Proxmox échoue aussi loin de son

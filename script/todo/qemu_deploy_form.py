@@ -34,6 +34,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo import qemu_dolibarr as qd
 from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_history import HistoryMixin
 from script.todo.deploy_form_lib import (  # noqa: F401
@@ -1046,10 +1047,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                     return
                 # Poser « value= » au montage fait émettre un Changed que
                 # Textual délivre APRÈS coup : un verrou temporel ne l'attrape
-                # pas — mesuré, les trois champs de chaque VM se retrouvaient
-                # surchargés dès l'affichage et le profil x1..x4 devenait
-                # inopérant. On compare donc à ce que le modèle dit déjà : une
-                # valeur identique n'est pas une saisie, c'est l'écho.
+                # pas, et les trois champs de chaque VM se retrouveraient
+                # surchargés dès l'affichage, le profil x1..x4 inopérant. On
+                # compare donc à ce que le modèle dit déjà : une valeur
+                # identique n'est pas une saisie, c'est l'écho.
                 #
                 # Cas limite assumé : choisir explicitement la valeur que le
                 # profil donne déjà n'enregistre pas de surcharge. La VM
@@ -1084,6 +1085,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                     if event.select.id == "f_branch"
                     else ("install_cmd",)
                 )
+                if event.select.id == "f_profile_install":
+                    self._sync_install_deps()
                 self._recompute()
                 return
             field = SELECT_TO_FIELD.get(event.select.id)
@@ -1201,7 +1204,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 label, cmd = profiles[index if isinstance(index, int) else 0]
                 install = {
                     "branch": self.query_one("#f_branch", Select).value,
-                    "prod": self.query_one("#f_prod", Checkbox).value,
+                    "prod": self._prod_value(),
                     "label": label,
                     "cmd": cmd,
                     "monitor": monitor,
@@ -1325,6 +1328,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                     t("Nothing to create - every VM already exists."),
                     severity="warning",
                 )
+                return
+            # Une VM Dolibarr sur un système qui la refuse, ou hors ligne :
+            # refusé sans passage outre, la rangée en porte la raison.
+            refus = qd.install_refusals(spec)
+            if refus:
+                self.notify(" — ".join(refus), severity="error", timeout=20)
                 return
             # Hors ligne : ce que le cache ne détient pas, aucune VM ne
             # pourra le lire. Dit MAINTENANT, et non après une heure
