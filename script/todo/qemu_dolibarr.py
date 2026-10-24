@@ -11,6 +11,8 @@ lib_dolibarr.native_support ; les refus d'une spec avant toute création ;
 la commande qui relance l'instance dans l'invité.
 """
 
+import shlex
+
 from script.dolibarr import lib_dolibarr
 
 try:
@@ -27,6 +29,10 @@ INSTANCE = "dolibarr"
 # Port de l'instance de dev dans l'invité, sur 127.0.0.1 seulement ; le
 # suivi l'atteint par un tunnel SSH ouvert sur TUNNEL_PORT de l'hôte.
 PORT = 8080
+# Identifiant que pose install_native.py sans --admin-login, et le fichier
+# de l'invité qui garde le mot de passe généré.
+ADMIN_LOGIN = "admin"
+SECRETS_FILE = f"$HOME/.local/share/ERPLibre/dolibarr/{INSTANCE}/secrets.env"
 TUNNEL_PORT = 18080
 PYTHON = lib_dolibarr.PYTHON
 
@@ -82,6 +88,37 @@ def distro_refusal(distro):
     if ok:
         return ""
     return t("Native is not offered here: %s") % t(reason)
+
+
+def restart_cmd(el_dir):
+    """Relance l'instance depuis le clone `el_dir` de l'invité.
+
+    Sans clone, la commande échoue sans rien lancer. run.py start se
+    détache : l'instance survit à la fin de la session SSH.
+    """
+    return (
+        f"cd {el_dir} || exit 1; "
+        f"{PYTHON} script/dolibarr/run.py start --instance {INSTANCE}"
+    )
+
+
+def credentials_cmd():
+    """Commande de l'invité qui affiche l'identifiant et le mot de passe
+    admin, lus dans SECRETS_FILE ; sans ce fichier, le dit et sort en 1.
+    Le mot de passe n'apparaît qu'à l'écran de l'invité, jamais sur l'hôte.
+    """
+    login = shlex.quote(f"{t('Login:')} {ADMIN_LOGIN}")
+    mdp = shlex.quote(t("Password:"))
+    absent = shlex.quote(
+        t("No %s: the Dolibarr install has not finished.") % SECRETS_FILE
+    )
+    return (
+        f'f="{SECRETS_FILE}"; '
+        f'if [ ! -r "$f" ]; then echo {absent}; exit 1; fi; '
+        f"echo {login}; "
+        f"printf '%s ' {mdp}; "
+        "sed -n 's/^ADMIN_PASSWORD=//p' \"$f\""
+    )
 
 
 def install_refusals(spec):

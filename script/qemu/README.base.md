@@ -519,6 +519,13 @@ NixOS and a Proxmox VE system are refused before anything is created, with
 the reason (NixOS declares `services.dolibarr` instead), and so is an offline
 deployment: the Dolibarr source is not in the download cache.
 
+The install monitor checks such a VM over SSH, never on port 8069. `w` opens
+the instance through an SSH tunnel from local port 18080 to the VM's 8080,
+and opens no page when that local port is taken. The VM actions show the
+admin login and password, read in the VM, and restart the instance with
+`run.py start`; the Odoo database restore and the update of Odoo's Python
+dependencies are refused with a message.
+
 ## Main options
 
 - `--distro` — `ubuntu` (default), `debian`, `fedora`, `almalinux`,
@@ -810,6 +817,14 @@ pas. NixOS et un système Proxmox VE sont refusés avant que rien ne soit
 créé, raison donnée (NixOS déclare plutôt `services.dolibarr`), de même
 qu'un déploiement hors ligne : la source de Dolibarr n'est pas dans le cache
 de téléchargement.
+
+Le suivi d'installation interroge une telle VM par SSH, jamais sur le port
+8069. `w` ouvre l'instance par un tunnel SSH du port local 18080 vers le
+8080 de la VM, et n'ouvre aucune page quand ce port local est pris. Les
+actions de la VM montrent l'identifiant et le mot de passe admin, lus dans la
+VM, et relancent l'instance par `run.py start` ; la restauration d'une base
+Odoo et la mise à jour des dépendances Python d'Odoo sont refusées avec un
+message.
 
 ## Principales options
 
