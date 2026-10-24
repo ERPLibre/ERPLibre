@@ -424,7 +424,12 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-    def prompt_install(self):
+    def _install_system_step(self):
+        """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
+        et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install :
+        une technologie qui installe ses propres paquets ne passe pas ici.
+        Pour une version d'Odoo, elle vient après la dernière question qui
+        offre « 0: Back » : un retour ne laisse rien d'installé."""
         print("Detect first installation from code source.")
 
         first_installation_input = (
@@ -475,10 +480,42 @@ class TODO(
                     single_source_erplibre=False,
                     new_window=True,
                 )
-                print(
-                    "👹 WAIT and Close Pycharm when processing is done before continue"
-                    " this guide."
+                self._wait_pycharm_closed()
+
+    def _wait_pycharm_closed(self):
+        """Attend que PyCharm, ouvert pour indexer le projet, soit refermé.
+
+        PyCharm s'ouvre dans sa propre fenêtre, sans bloquer. Resté ouvert,
+        il analyse le projet pendant que l'installation y ajoute des
+        fichiers : il annule et reprend son analyse à chaque fois, et prend
+        le processeur dont l'installation a besoin. L'installation part
+        donc seulement une fois qu'aucun processus PyCharm ne tourne plus,
+        ce que « pgrep » vérifie après chaque Entrée. « c » passe outre :
+        un PyCharm sans lien avec ce projet peut tourner à côté.
+        """
+        while True:
+            reponse = (
+                input(
+                    "👹 WAIT until Pycharm has finished loading the project,"
+                    " close it, then press Enter to continue"
+                    " (c to continue anyway): "
                 )
+                .strip()
+                .lower()
+            )
+            if reponse == "c":
+                return
+            encore = subprocess.run(
+                ["pgrep", "-f", "-i", "pycharm"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if encore.returncode != 0:
+                return
+            print("⚠️  Pycharm is still running: close it before continuing.")
+
+    def prompt_install(self):
         # TODO detect last version supported
         # cmd_intern = "./script/install/install_erplibre.sh"
         key_i = 0
@@ -591,6 +628,8 @@ class TODO(
             if extra_input == "2":
                 cmd_intern = cmd_intern + " --with_extra"
 
+        # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
+        self._install_system_step()
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
