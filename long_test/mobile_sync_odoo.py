@@ -597,3 +597,68 @@ def arreter_serveur(serveur, delai=10):
         processus.wait()
     except ProcessLookupError:
         pass
+
+
+GARDES = "serveurs.json"
+
+
+def noter_gardes(repertoire, serveurs):
+    """Note, dans le répertoire de la course, les serveurs que --garder
+    laisse tourner : la course qui balaiera leurs bases les arrête d'abord."""
+    (Path(repertoire) / GARDES).write_text(
+        json.dumps(
+            [
+                {"pid": s.processus.pid, "base": s.base, "url": s.url}
+                for s in serveurs
+            ],
+            indent=2,
+        )
+    )
+
+
+def commande_de(pid):
+    """La ligne de commande du processus pid, vide s'il n'existe plus."""
+    try:
+        return (
+            Path(f"/proc/{pid}/cmdline")
+            .read_bytes()
+            .replace(b"\0", b" ")
+            .decode(errors="replace")
+        )
+    except OSError:
+        return ""
+
+
+def arreter_gardes(
+    bases, runs=None, lire=commande_de, tuer=os.killpg, delai=10
+):
+    """Arrête les serveurs gardés (noter_gardes) des bases à supprimer : une
+    base supprimée sous son serveur le laisse tourner sur son port, en
+    erreur. Seul un processus dont la ligne de commande nomme le répertoire
+    de la course est visé : un pid réutilisé depuis par un autre programme
+    n'est pas touché. Rend les pids arrêtés."""
+    runs = Path(runs) if runs else CACHE / "runs"
+    arretes = []
+    for fichier in sorted(runs.glob(f"*/{GARDES}")):
+        restants = []
+        for garde in json.loads(fichier.read_text()):
+            if garde["base"] not in bases:
+                restants.append(garde)
+                continue
+            if str(fichier.parent) not in lire(garde["pid"]):
+                continue
+            try:
+                tuer(garde["pid"], signal.SIGTERM)
+            except ProcessLookupError:
+                continue
+            fin = time.monotonic() + delai
+            while lire(garde["pid"]) and time.monotonic() < fin:
+                time.sleep(0.2)
+            if lire(garde["pid"]):
+                tuer(garde["pid"], signal.SIGKILL)
+            arretes.append(garde["pid"])
+        if restants:
+            fichier.write_text(json.dumps(restants, indent=2))
+        else:
+            fichier.unlink()
+    return arretes
