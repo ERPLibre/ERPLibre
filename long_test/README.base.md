@@ -332,6 +332,45 @@ sub-directory. It proves every check: a `── contrôle <name> : réussi` or
 `ÉCHEC` line per command and check, followed by each command it ran, and on
 a failure by that command's raw reply.
 
+## mobile_sync.py — does the mobile app sync with Odoo 16, 17 and 18?
+
+No VM here: throwaway Odoo databases and servers, and the phone when one is
+plugged in. The app's own sync code (`mobile/erplibre_home_mobile`, through
+its versioned test kit `src/testing/syncTestKit.ts`) runs under Vitest against
+real servers: tasks, conflicts, opportunities, invoices, activities, messages,
+proposed dates, two companies, files, a cut network or a lost answer, deleted
+records, one note on three servers. Each scenario checks the result in Odoo,
+and a proxy between the app and each server records what crossed the wire.
+
+```
+./long_test/mobile_sync.py                     # 16, 17 and 18
+./long_test/mobile_sync.py --versions 18       # one version
+./long_test/mobile_sync.py --filtre conflit    # tests whose name matches
+./long_test/mobile_sync.py --dry-run           # the plan, nothing created
+./long_test/mobile_sync.py --appareil          # also on the plugged phone
+./long_test/mobile_sync.py --garder            # keep databases and servers
+./long_test/mobile_sync.py --detruire          # drop templates and cache
+```
+
+It checks the mobile repository first — absent, without `node_modules`, Node
+older than 22, or a test kit of another API — and says what to do. The first
+run builds one template database per version (a few minutes); the next ones
+copy it, and the whole suite takes about 30 seconds. A report with no test,
+or no test for one version, fails: a path resolved wrong must not pass for a
+green run.
+
+`--appareil` plays four screens on the phone, against the same servers: the
+target picker, the banner of a date changed on the server, typing during a
+pull, and the dated note made from the calendar. They run in a separate app,
+`ca.erplibre.home.synctest`, built by `-PsyncTest` from a development bundle
+and cleared for each version; the user's own app is never touched. The phone
+must be unlocked, with USB debugging allowed. A failure keeps a screenshot in
+the run's directory, `cache/mobile_sync/runs/`.
+
+A run kept by `--garder` is stopped and swept by the next run, or by
+`--detruire`. Exit codes: 0 all green, 1 tests failed, 2 a prerequisite is
+missing, 3 the infrastructure failed.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
@@ -703,6 +742,47 @@ journal de chaque système — sortie de l'installateur, journal utilisateur,
 Il prouve chaque contrôle : une ligne `── contrôle <nom> : réussi` ou
 `ÉCHEC` par commande et par contrôle, suivie de chaque commande lancée, et,
 sur un échec, de la réponse brute de cette commande.
+
+## mobile_sync.py — l'app mobile se synchronise-t-elle avec Odoo 16, 17 et 18 ?
+
+Pas de VM ici : des bases et des serveurs Odoo jetables, et le téléphone
+quand il est branché. Le code de synchro de l'app (`mobile/erplibre_home_mobile`,
+par son kit de test versionné `src/testing/syncTestKit.ts`) tourne sous Vitest
+contre de vrais serveurs : tâches, conflits, opportunités, factures, activités,
+messages, dates proposées, deux sociétés, fichiers, réseau coupé ou réponse
+perdue, enregistrements supprimés, une note sur trois serveurs. Chaque scénario
+vérifie le résultat dans Odoo, et un proxy entre l'app et chaque serveur trace
+ce qui passe sur le fil.
+
+```
+./long_test/mobile_sync.py                     # 16, 17 et 18
+./long_test/mobile_sync.py --versions 18       # une seule version
+./long_test/mobile_sync.py --filtre conflit    # les tests dont le nom correspond
+./long_test/mobile_sync.py --dry-run           # le plan, rien de créé
+./long_test/mobile_sync.py --appareil          # aussi sur le téléphone branché
+./long_test/mobile_sync.py --garder            # garder bases et serveurs
+./long_test/mobile_sync.py --detruire          # supprimer gabarits et cache
+```
+
+Elle vérifie d'abord le dépôt mobile — absent, sans `node_modules`, Node
+antérieur à 22, ou kit de test d'une autre API — et dit quoi faire. Le premier
+passage construit un gabarit par version (quelques minutes) ; les suivants le
+copient, et la suite entière prend une trentaine de secondes. Un rapport sans
+test, ou sans test pour une version, échoue : un chemin mal résolu ne doit pas
+passer pour une course verte.
+
+`--appareil` joue quatre écrans sur le téléphone, contre les mêmes serveurs :
+le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
+pendant un pull, et la note datée créée depuis le calendrier. Ils tournent
+dans une app à part, `ca.erplibre.home.synctest`, construite par `-PsyncTest`
+depuis un paquet de développement et effacée à chaque version ; l'app de
+l'utilisateur n'est jamais touchée. Le téléphone doit être déverrouillé, le
+débogage USB autorisé. Un échec garde une capture d'écran dans le répertoire
+de la course, `cache/mobile_sync/runs/`.
+
+Une course gardée par `--garder` est arrêtée et balayée par la course
+suivante, ou par `--detruire`. Codes de sortie : 0 tout vert, 1 des tests
+échouent, 2 un prérequis manque, 3 l'infrastructure a échoué.
 
 ## Partir d'un hôte qu'on possède déjà
 
