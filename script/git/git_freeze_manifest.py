@@ -46,7 +46,11 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.git import manifest_freeze, repo_upgrade  # noqa: E402
+from script.git import (  # noqa: E402
+    command_echo,
+    manifest_freeze,
+    repo_upgrade,
+)
 
 # Les interrogations d'amont passent par le réseau : moins nombreuses en
 # parallèle que les inspections locales.
@@ -107,6 +111,7 @@ def get_config(argv=None):
 
 def _git(path, *args):
     """Lance git dans `path`. Rend (code, sortie sans blanc final)."""
+    command_echo.show(["git", "-C", path, *args])
     res = subprocess.run(
         ["git", "-C", path, *args],
         capture_output=True,

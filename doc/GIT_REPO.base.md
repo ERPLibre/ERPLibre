@@ -245,6 +245,14 @@ of its own: each repository integrates its target with `git pull`'s gestures
 run showed. Entry 3 of TODO › Execute › Git › Repo, and the Odoo module
 `erplibre_info`.
 
+Every git command these tools send, reads included, is printed before it
+runs, as `$ git -C <path> …` with the path relative to the ERPLibre root: the
+command to copy from the root. The lines go to standard error, so the JSON of
+`script/git/repo_state.py` on standard output stays intact. They are printed
+when standard error is a terminal, as in TODO; `ERPLIBRE_GIT_ECHO=1` forces
+them, `ERPLIBRE_GIT_ECHO=0` silences them. A URL loses its user and token
+before it is printed.
+
 <!-- [fr] -->
 ## Mise à jour ou mise à niveau
 
@@ -265,6 +273,15 @@ modifications à lui : chaque dépôt intègre sa cible par les gestes de
 `git pull` (avance rapide, rebase ou fusion), après une branche de sauvegarde,
 et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
 Repo, et le module Odoo `erplibre_info`.
+
+Chaque commande git que ces outils envoient, lectures comprises, s'affiche
+avant de partir, en `$ git -C <chemin> …` avec le chemin relatif à la racine
+ERPLibre : la commande à recopier depuis la racine. Les lignes vont sur la
+sortie d'erreur, si bien que le JSON de `script/git/repo_state.py` sur la
+sortie standard reste intact. Elles s'affichent quand la sortie d'erreur est
+un terminal, comme dans TODO ; `ERPLIBRE_GIT_ECHO=1` les force,
+`ERPLIBRE_GIT_ECHO=0` les coupe. Une URL perd son utilisateur et son jeton
+avant d'être affichée.
 
 <!-- [en] -->
 ### Pull the repositories

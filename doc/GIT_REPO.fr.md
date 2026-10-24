@@ -137,6 +137,15 @@ modifications à lui : chaque dépôt intègre sa cible par les gestes de
 et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
 Repo, et le module Odoo `erplibre_info`.
 
+Chaque commande git que ces outils envoient, lectures comprises, s'affiche
+avant de partir, en `$ git -C <chemin> …` avec le chemin relatif à la racine
+ERPLibre : la commande à recopier depuis la racine. Les lignes vont sur la
+sortie d'erreur, si bien que le JSON de `script/git/repo_state.py` sur la
+sortie standard reste intact. Elles s'affichent quand la sortie d'erreur est
+un terminal, comme dans TODO ; `ERPLIBRE_GIT_ECHO=1` les force,
+`ERPLIBRE_GIT_ECHO=0` les coupe. Une URL perd son utilisateur et son jeton
+avant d'être affichée.
+
 ### Tirer les dépôts
 
 Deux modes. **manifeste** (par défaut) tire la racine ERPLibre sur sa branche
