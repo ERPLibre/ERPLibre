@@ -384,6 +384,14 @@ créé, raison donnée (NixOS déclare plutôt `services.dolibarr`), de même
 qu'un déploiement hors ligne : la source de Dolibarr n'est pas dans le cache
 de téléchargement.
 
+Le suivi d'installation interroge une telle VM par SSH, jamais sur le port
+8069. `w` ouvre l'instance par un tunnel SSH du port local 18080 vers le
+8080 de la VM, et n'ouvre aucune page quand ce port local est pris. Les
+actions de la VM montrent l'identifiant et le mot de passe admin, lus dans la
+VM, et relancent l'instance par `run.py start` ; la restauration d'une base
+Odoo et la mise à jour des dépendances Python d'Odoo sont refusées avec un
+message.
+
 ## Principales options
 
 - `--distro` — `ubuntu` (défaut), `debian`, `fedora`, `almalinux`,
