@@ -44,6 +44,34 @@ except ImportError:
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
+# Le manifeste que git-repo lit, réécrit à chaque reconfiguration : un projet
+# dont la « revision » est un commit complet y est gelé.
+LOCAL_MANIFEST_PATH = os.path.join(
+    ".repo", "local_manifests", "erplibre_manifest.xml"
+)
+
+
+def local_manifest_frozen(path=LOCAL_MANIFEST_PATH):
+    """True si le manifeste local épingle au moins un projet sur un commit,
+    False s'il suit les branches, None s'il manque ou ne se lit pas.
+
+    Le mode du checkout se lit ici : c'est la dernière reconfiguration qui
+    l'a fixé, avec ou sans --freeze, et ce fichier en est la trace. La
+    bibliothèque standard suffit, ce script tournant avec le Python du
+    système."""
+    import re
+    import xml.etree.ElementTree as ET
+
+    try:
+        racine = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    sha = re.compile(r"[0-9a-f]{40}")
+    return any(
+        sha.fullmatch(p.get("revision") or "") for p in racine.iter("project")
+    )
+
+
 _logger = logging.getLogger(__name__)
 
 PROJECT_NAME = os.path.basename(os.getcwd())
@@ -445,6 +473,27 @@ class Update:
                 " installation required."
             )
             status = False
+        # Le mode que TODO a demandé (EL_FREEZE : 1 production, sur les
+        # commits gelés ; 0 développement, sur les branches) ne prend effet
+        # qu'au repo sync. Une version déjà installée sauterait ce sync, et
+        # les dépôts resteraient dans l'autre mode sans que rien ne le dise :
+        # un manifeste local qui ne reflète pas ce mode exige donc le sync.
+        # Sans manifeste local, seule une demande de gel l'exige.
+        demande = os.environ.get("EL_FREEZE")
+        if self.config.install_dev and demande in ("0", "1"):
+            gele = local_manifest_frozen()
+            voulu = demande == "1"
+            if (gele is None and voulu) or (
+                gele is not None and gele != voulu
+            ):
+                _logger.info(
+                    "The repositories follow "
+                    + ("the frozen commits" if gele else "their branches")
+                    + ", the installation asks for "
+                    + ("the frozen commits" if voulu else "the branches")
+                    + ": the repo sync is required."
+                )
+                status = False
         return status
 
     def update_environment(self):
