@@ -24,6 +24,7 @@ RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE / "long_test"))
 
 import mobile_sync  # noqa: E402
+import mobile_sync_device as appareil  # noqa: E402
 import mobile_sync_odoo as odoo  # noqa: E402
 
 KIT = "export const HARNESS_API = {api};\n"
@@ -304,6 +305,140 @@ class TestCommande(unittest.TestCase):
         ):
             self.assertEqual(
                 mobile_sync.main([]), mobile_sync.SORTIE_PREREQUIS
+            )
+
+
+def faux_adb(devices="SERIE\tdevice\n", fenetre="isKeyguardShowing=false"):
+    """Un faux subprocess.run qui répond à adb devices et dumpsys window."""
+
+    def executer(commande, **_):
+        sortie = ""
+        if commande[:2] == ["adb", "devices"]:
+            sortie = "List of devices attached\n" + devices
+        elif "dumpsys" in commande:
+            sortie = fenetre
+        return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+
+    return executer
+
+
+class TestAppareil(unittest.TestCase):
+    """Le téléphone d'abord : absent, verrouillé, non autorisé ou ambigu,
+    la commande s'arrête en disant quoi faire, sans rien installer."""
+
+    def setUp(self):
+        self.mobile = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.mobile))
+        (self.mobile / "android").mkdir()
+        (self.mobile / "android" / "gradlew").write_text("")
+        self.adb_present = lambda nom: "/usr/bin/adb"
+
+    def verifier(self, executer, which=None):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ANDROID_SERIAL", None)
+            return appareil.verifier_appareil(
+                self.mobile, executer, which or self.adb_present
+            )
+
+    def test_pret(self):
+        self.assertEqual(self.verifier(faux_adb()), [])
+
+    def test_adb_absent(self):
+        problemes = self.verifier(faux_adb(), which=lambda nom: None)
+        self.assertEqual(len(problemes), 1)
+        self.assertIn("platform-tools", problemes[0])
+
+    def test_verrouille(self):
+        problemes = self.verifier(faux_adb(fenetre="isKeyguardShowing=true"))
+        self.assertTrue(any("verrouillé" in p for p in problemes))
+
+    def test_aucun_non_autorise_ou_plusieurs(self):
+        self.assertTrue(
+            any(
+                "aucun téléphone" in p
+                for p in self.verifier(faux_adb(devices=""))
+            )
+        )
+        self.assertTrue(
+            any(
+                "débogage USB" in p
+                for p in self.verifier(faux_adb(devices="S\tunauthorized\n"))
+            )
+        )
+        self.assertTrue(
+            any(
+                "ANDROID_SERIAL" in p
+                for p in self.verifier(
+                    faux_adb(devices="A\tdevice\nB\tdevice\n")
+                )
+            )
+        )
+
+    def test_gradlew_absent(self):
+        (self.mobile / "android" / "gradlew").unlink()
+        self.assertTrue(any("gradlew" in p for p in self.verifier(faux_adb())))
+
+    def test_la_cle_de_l_apk_suit_le_code_non_commite(self):
+        def depot(diff):
+            return lambda commande, **_: SimpleNamespace(
+                stdout=diff if "diff" in commande else "abc\n", returncode=0
+            )
+
+        propre = appareil.cle_apk(self.mobile, depot(""))
+        self.assertEqual(propre, appareil.cle_apk(self.mobile, depot("")))
+        self.assertNotEqual(
+            propre, appareil.cle_apk(self.mobile, depot("+ une ligne"))
+        )
+
+
+class TestCommandeAppareil(unittest.TestCase):
+    def versions(self):
+        return {
+            v: odoo.VersionOdoo(
+                v, Path(f"/x/odoo{v}.0/odoo/odoo-bin"), Path("/x/py")
+            )
+            for v in odoo.VERSIONS
+        }
+
+    def test_dry_run_annonce_le_telephone_sans_rien_installer(self):
+        sortie = []
+        with mock.patch.object(
+            odoo, "verifier_mobile", return_value=[]
+        ), mock.patch.object(
+            odoo, "versions_installees", return_value=self.versions()
+        ), mock.patch.object(
+            odoo, "psql", return_value="1"
+        ), mock.patch.object(
+            appareil, "verifier_appareil", return_value=[]
+        ), mock.patch.object(
+            appareil, "lancer"
+        ) as lancer, mock.patch(
+            "builtins.print",
+            lambda *a, **k: sortie.append(" ".join(map(str, a))),
+        ), mock.patch(
+            "sys.stdout"
+        ):
+            code = mobile_sync.main(["--dry-run", "--appareil"])
+        self.assertEqual(code, mobile_sync.SORTIE_OK)
+        self.assertTrue(any(appareil.PAQUET in ligne for ligne in sortie))
+        lancer.assert_not_called()
+
+    def test_un_telephone_manquant_sort_en_2(self):
+        with mock.patch.object(
+            odoo, "verifier_mobile", return_value=[]
+        ), mock.patch.object(
+            odoo, "versions_installees", return_value=self.versions()
+        ), mock.patch.object(
+            odoo, "psql", return_value="1"
+        ), mock.patch.object(
+            appareil,
+            "verifier_appareil",
+            return_value=["écran du téléphone verrouillé"],
+        ), mock.patch(
+            "sys.stdout"
+        ):
+            self.assertEqual(
+                mobile_sync.main(["--appareil"]), mobile_sync.SORTIE_PREREQUIS
             )
 
 
