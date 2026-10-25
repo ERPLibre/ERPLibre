@@ -541,6 +541,165 @@
         "name": "string — filename"
       },
       "notes": "Upload only on WiFi option recommended for video files. Requires valid session cookie."
+    },
+    "chat.data": {
+      "description": "Load the Discuss store of the account: self partner, member channels with their last message, counters and the bus id they are as of",
+      "method": "POST",
+      "path": "/mail/data",
+      "request": {
+        "params": {
+          "init_messaging": {},
+          "channels_as_member": true
+        }
+      },
+      "response": "{Store: {discuss.channel[], mail.message[], res.partner[], discuss.channel.member[], inbox: {counter_bus_id}}} — read by the app's Store parser; unknown keys are ignored",
+      "notes": "Preceded by /web/session/get_session_info for the partner id, is_system and websocket_worker_version. Counters are authoritative as of Store.inbox.counter_bus_id; a bus notification older than that mark is not applied over them. A cached channel the answer no longer lists is dropped, unless pinned locally or holding a queued post. Odoo 18 only."
+    },
+    "chat.messages": {
+      "description": "One page of a channel's history",
+      "method": "POST",
+      "path": "/discuss/channel/messages",
+      "request": {
+        "params": {
+          "channel_id": "{discuss.channel id}",
+          "around": "{oldest loaded message id - 1, or last message id + 1 for the first page}",
+          "limit": "2 x the page size"
+        }
+      },
+      "response": "{data: Store} — messages above `around` are discarded by the app, those below are upserted",
+      "notes": "Only `around` is sent, never `before` or `after`: the answer is a window on both sides of it. A page shorter than the page size marks the history complete."
+    },
+    "chat.post": {
+      "description": "Post a message in a channel; queued in sync_outbox (kind chat.post) and made idempotent",
+      "method": "POST",
+      "path": "/mail/message/post",
+      "request": {
+        "params": {
+          "thread_model": "discuss.channel",
+          "thread_id": "{channel id}",
+          "post_data": {
+            "body": "{escaped text}<!-- erplibre-mobile:{client uuid} -->",
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_comment",
+            "erplibre_client_uuid": "{client uuid} — only when the erplibre_mobile_chat module is installed"
+          },
+          "context": {
+            "temporary_id": "{client uuid}"
+          }
+        }
+      },
+      "response": "{\"mail.message\": [{id, ...}], ...Store} — the id settles the pending bubble; an answer without an id is an error and the retry searches before posting",
+      "idempotency": "Every body ends with the hidden comment `<!-- erplibre-mobile:<uuid> -->`; with the module the uuid also travels in the field `erplibre_client_uuid` of mail.message. A send stamps createSentAt; a retry first waits out the quiet window (3 minutes), then runs mail.message search_read [model = discuss.channel, res_id = channel, author_id = the session partner, body ilike the marker] with limit 2, keeps the hits whose body holds the exact comment, and adopts the one found instead of posting again. Two hits block the op as ambiguous. Search by author, so another member's message that quotes the uuid is never taken for the post.",
+      "notes": "Posts of one channel go out in order: each op depends on the previous unfinished one, so a failed post holds the ones after it. AccessError, ValidationError, UserError, MissingError, NotFound and Forbidden mark the bubble failed and block the op; anything else retries (30 s doubled per attempt, 1 h max). After a post the channel is marked read for its author unless a newer message is known."
+    },
+    "chat.read": {
+      "description": "Mark a channel read up to its last known message; queued in sync_outbox (kind chat.read), one op per channel whose message id only rises",
+      "method": "POST",
+      "path": "/discuss/channel/mark_as_read",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "last_message_id": "{last known message id}"
+        }
+      },
+      "response": "null",
+      "notes": "When the channel has mentions, mail.message mark_all_as_read via /web/dataset/call_kw with args [[[model = discuss.channel], [res_id = channel id]]] follows. A refused error is swallowed: a channel the user cannot reach any more has nothing left to mark. With the option to send read receipts off, nothing is sent. Local counters change only when the server reports them back (/mail/data or the bus)."
+    },
+    "chat.typing": {
+      "description": "Typing indicator, never queued",
+      "method": "POST",
+      "path": "/discuss/channel/notify_typing",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "is_typing": "true | false"
+        }
+      },
+      "response": "null",
+      "notes": "Sent only online, with the option on and in a channel the user is a member of (Odoo would make them one). true at most once per 50 s while keystrokes continue; false 5 s after the last keystroke, or at once on an explicit stop, and only after a true. A failed call is dropped."
+    },
+    "chat.fetched": {
+      "description": "Tell a direct chat its messages were delivered to this device",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_fetched",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "null",
+      "notes": "Only for channels of type chat, after a read; a courtesy whose failure is ignored."
+    },
+    "chat.websocket": {
+      "description": "Odoo 18 bus over a websocket: messages, counters, typing and presence in real time",
+      "method": "GET (upgrade)",
+      "path": "/websocket?version={websocket_worker_version of the session, 18.0-7 if absent}",
+      "request": {
+        "headers": {
+          "Origin": "the server origin",
+          "Cookie": "session_id={session}"
+        },
+        "frames": [
+          {
+            "event_name": "subscribe",
+            "data": {
+              "channels": [
+                "odoo-presence-res.partner_{id} of each chat correspondent"
+              ],
+              "last": "{last bus id applied, 0 if none}"
+            }
+          },
+          {
+            "event_name": "update_presence",
+            "data": {
+              "inactivity_period": 0,
+              "im_status_ids_by_model": {}
+            }
+          }
+        ]
+      },
+      "response": "JSON arrays of notifications [{id, type, payload}] — each frame is applied, then its highest id saved",
+      "close_codes": {
+        "1000 OUTDATED_VERSION": "stop for good",
+        "4001": "re-authenticate, then reconnect",
+        "4002": "reconnect at once",
+        "other": "exponential backoff, 1 s doubled up to 120 s plus up to 30 s of jitter, reset after a connection open for 60 s"
+      },
+      "notes": "Member channels are implicit in the subscription. last=0 only replays about the last 50 s, so with no saved id a store loaded longer ago than that is reloaded first; a saved id seen more than 24 h ago is stale (the server's rows are gone) and also reloads, then subscribes from 0. A ws:// address follows the same rule as http://. Keepalive every 60 s is the transport's."
+    },
+    "chat.module": {
+      "description": "State of the optional erplibre_mobile_chat module; installed from the app by a system user",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "ir.module.module",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "name",
+                "=",
+                "erplibre_mobile_chat"
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "state"
+            ]
+          }
+        }
+      },
+      "response": "[{id, state}]",
+      "notes": "installed = mail.message holds the field erplibre_client_uuid in fields_get (readable by any user; cached) or a system user sees the row installed; available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone."
     }
   },
 
@@ -626,6 +785,94 @@
       "migration": "2026102203",
       "columns": ["id (config_id#kind)", "config_id", "kind (task.create, …)", "params_json", "updated_at"],
       "notes": "invoice.form.out_invoice / invoice.form.in_invoice: the extra required fields of invoices.form, kept for offline. Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice. Kind targets: the target kinds last checked in the picker for that server (task, lead), checked by default for a note with nothing there. A lead's client and revenue are not remembered."
+    },
+    "chat_channels": {
+      "migration": "2026102501",
+      "columns": [
+        "id (config_id#channel_id)",
+        "config_id",
+        "channel_id",
+        "channel_type (chat|group|channel)",
+        "name",
+        "description",
+        "last_interest_dt",
+        "unread_counter",
+        "needaction_counter",
+        "new_message_separator",
+        "seen_message_id",
+        "mute_until_dt",
+        "custom_notifications",
+        "is_member",
+        "local_pinned",
+        "last_message_id",
+        "oldest_loaded_id",
+        "history_complete",
+        "correspondent_partner_id",
+        "updated_at",
+        "unread_counter_bus_id",
+        "needaction_counter_bus_id"
+      ],
+      "notes": "One row per conversation. The two *_bus_id columns are the bus id each counter is as of: a bus notification with a lower id does not overwrite it. oldest_loaded_id and history_complete drive history paging (chat.messages); local_pinned keeps a conversation the server stopped listing. Index idx_chat_channels_cfg."
+    },
+    "chat_messages": {
+      "migration": "2026102501",
+      "columns": [
+        "id",
+        "config_id",
+        "channel_id",
+        "message_id (null while pending)",
+        "client_uuid",
+        "author_partner_id",
+        "body",
+        "date",
+        "message_type",
+        "status (pending|sent|failed)",
+        "outbox_op_id",
+        "write_date"
+      ],
+      "notes": "A queued post is stored as a pending row before any request, settled with its server id by chat.post. Indexes chat_messages_channel and idx_chat_messages_cfg (config_id, channel_id)."
+    },
+    "chat_members": {
+      "migration": "2026102501",
+      "columns": [
+        "id",
+        "config_id",
+        "channel_id",
+        "member_id",
+        "partner_id",
+        "seen_message_id",
+        "fetched_message_id",
+        "is_typing",
+        "typing_at"
+      ],
+      "notes": "discuss.channel.member rows: read and delivery marks of each member, and who is typing."
+    },
+    "chat_partners": {
+      "migration": "2026102501",
+      "columns": [
+        "id",
+        "config_id",
+        "partner_id",
+        "name",
+        "im_status"
+      ],
+      "notes": "Authors and correspondents named by the Store."
+    },
+    "chat_sources": {
+      "migration": "2026102501",
+      "columns": [
+        "config_id",
+        "self_partner_id",
+        "last_bus_id",
+        "bus_seen_at",
+        "ws_version",
+        "is_system",
+        "module_state (installed|available|absent|unknown)",
+        "inbox_counter",
+        "loaded_at",
+        "counter_bus_id"
+      ],
+      "notes": "One row per server: the session facts, the last bus id applied and when it was seen, the module state, and the bus id the inbox counter is as of."
     }
   }
 }
