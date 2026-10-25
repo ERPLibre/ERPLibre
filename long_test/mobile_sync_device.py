@@ -3,11 +3,12 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La synchronisation mobile de bout en bout, sur un téléphone branché.
 
-Quatre écrans que les tests d'intégration ne voient pas, joués sur l'app de
+Cinq écrans que les tests d'intégration ne voient pas, joués sur l'app de
 test (ca.erplibre.home.synctest, construite par -PsyncTest, à côté de l'app
 de l'utilisateur qu'elle ne touche pas) contre les Odoo de la course : le
 sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
-pendant un pull, et la note datée créée depuis le calendrier.
+pendant un pull, la note datée créée depuis le calendrier et, sur la 18
+seulement, le clavardage, dont le temps réel passe par le websocket natif.
 
 Le téléphone joint les serveurs par adb reverse (127.0.0.1 de l'appareil vers
 celui de l'hôte) ; la page se pilote par CDP (mobile_sync_cdp.py), les écrans
@@ -38,11 +39,13 @@ import mobile_sync_odoo as odoo  # noqa: E402
 from mobile_sync_cdp import Cdp, ErreurPage  # noqa: E402
 
 PAQUET = "ca.erplibre.home.synctest"
-DEVICE_HOOK_API = 1
+DEVICE_HOOK_API = 2
 APK_CACHE = odoo.CACHE / "apk"
 APK_PRODUIT = Path("android/app/build/outputs/apk/debug/app-debug.apk")
 # Ce que le pull compare : write_date, à la seconde
 SECONDE_SUIVANTE = 1.1
+# L'état de l'app selon Android, celui que suit appStateChange
+APP_ETAT = "window.Capacitor.Plugins.App.getState()"
 
 
 def adb(*args, executer=subprocess.run, check=True, binaire=False):
@@ -150,40 +153,68 @@ def construire_apk(mobile=odoo.MOBILE, executer=subprocess.run, journal=print):
 
 
 class Odoo:
-    """Le serveur d'une cible, vu par son admin, en JSON-RPC (/jsonrpc)."""
+    """Le serveur d'une cible, vu par un de ses comptes (compte : la clé de
+    la cible, "admin" par défaut), en JSON-RPC (/jsonrpc) ; route() poste
+    sur une route web comme le navigateur de ce compte."""
 
-    def __init__(self, cible):
+    def __init__(self, cible, compte="admin"):
         self.url = cible["url"]
         self.base = cible["database"]
-        self.mot_de_passe = cible["admin"]["password"]
+        self.login = cible[compte]["login"]
+        self.mot_de_passe = cible[compte]["password"]
+        self.session = ""
         self.uid = self.appel(
-            "common",
-            "login",
-            [self.base, cible["admin"]["login"], self.mot_de_passe],
+            "common", "login", [self.base, self.login, self.mot_de_passe]
         )
 
-    def appel(self, service, methode, args):
+    def poster(self, chemin, params, entetes=None):
+        """Le résultat JSON-RPC de params posté sur chemin, et la réponse
+        HTTP ; une erreur d'Odoo lève RuntimeError avec son message."""
         corps = json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "method": "call",
-                "params": {
-                    "service": service,
-                    "method": methode,
-                    "args": args,
-                },
-            }
+            {"jsonrpc": "2.0", "method": "call", "params": params}
         ).encode()
         requete = urllib.request.Request(
-            f"{self.url}/jsonrpc", corps, {"Content-Type": "application/json"}
+            f"{self.url}{chemin}",
+            corps,
+            {"Content-Type": "application/json", **(entetes or {})},
         )
-        reponse = json.load(urllib.request.urlopen(requete, timeout=60))
-        if "error" in reponse:
+        with urllib.request.urlopen(requete, timeout=60) as reponse:
+            contenu = json.load(reponse)
+        if "error" in contenu:
             raise RuntimeError(
-                reponse["error"].get("data", {}).get("message")
-                or reponse["error"]
+                contenu["error"].get("data", {}).get("message")
+                or contenu["error"]
             )
-        return reponse["result"]
+        return contenu["result"], reponse
+
+    def appel(self, service, methode, args):
+        return self.poster(
+            "/jsonrpc", {"service": service, "method": methode, "args": args}
+        )[0]
+
+    def route(self, chemin, params):
+        """params postés sur une route web (/mail/message/post) dans la
+        session de ce compte, ouverte au premier appel."""
+        if not self.session:
+            _, reponse = self.poster(
+                "/web/session/authenticate",
+                {
+                    "db": self.base,
+                    "login": self.login,
+                    "password": self.mot_de_passe,
+                },
+            )
+            self.session = next(
+                (
+                    c.split(";")[0]
+                    for c in reponse.headers.get_all("Set-Cookie") or ()
+                    if c.startswith("session_id=")
+                ),
+                "",
+            )
+            if not self.session:
+                raise RuntimeError(f"aucune session web pour {self.login}")
+        return self.poster(chemin, params, {"Cookie": self.session})[0]
 
     def executer(self, modele, methode, args, kwargs=None):
         return self.appel(
@@ -307,6 +338,30 @@ class Appareil:
                 f"hook de test d'API {api}, ce lanceur connaît l'API {DEVICE_HOOK_API}"
             )
 
+    def premier_plan(self):
+        """L'app de test passée en arrière-plan puis ramenée devant : la page
+        reçoit appStateChange inactif puis actif, comme un retour de
+        l'utilisateur. Le processus et sa page CDP restent les mêmes."""
+        adb(
+            "shell",
+            "input",
+            "keyevent",
+            "KEYCODE_HOME",
+            executer=self.executer,
+        )
+        self.cdp.attendre(f"{APP_ETAT}.then(s => !s.isActive)", delai=10)
+        adb(
+            "shell",
+            "monkey",
+            "-p",
+            PAQUET,
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1",
+            executer=self.executer,
+        )
+        self.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=10)
+
     def capture(self, chemin):
         Path(chemin).write_bytes(
             adb(
@@ -373,6 +428,8 @@ class Contexte:
     odoo: Odoo
     version: int
     config_id: str
+    cible: dict = field(default_factory=dict)
+    appareil: Appareil = None
     compteur: int = 0
 
     def unique(self, libelle):
@@ -454,6 +511,19 @@ class Contexte:
         self.cdp.attendre(
             f"document.querySelector({js(selecteur)}).checked", delai=5
         )
+
+    def marquer(self, selecteur, texte, ancetre):
+        """Un sélecteur de l'ancêtre ancetre du premier élément de selecteur
+        dont le texte est texte : cet ancêtre reçoit un attribut
+        data-ms-marque, que toucher() retrouve."""
+        self.compteur += 1
+        marque = str(self.compteur)
+        self.cdp.attendre(
+            f"(() => {{ const e = [...document.querySelectorAll({js(selecteur)})]"
+            f".find(e => e.innerText.trim() === {js(texte)}); if (!e) return false;"
+            f" e.closest({js(ancetre)}).dataset.msMarque = {js(marque)}; return true; }})()"
+        )
+        return f'[data-ms-marque="{marque}"]'
 
     def choisir(self, selecteur, valeur):
         self.cdp.evaluer(
@@ -605,12 +675,113 @@ def scenario_calendrier(ctx):
     }, activite
 
 
+# La tuile mène à la liste en 2 s au plus : la liste se rend depuis le cache
+TUILE_VERS_LISTE = 2.0
+CANAL_CHAT = "ms chat"
+
+
+def scenario_clavardage(ctx):
+    """Le clavardage : la tuile 💬 mène à la liste en TUILE_VERS_LISTE au
+    plus, le message tapé dans « ms chat » arrive une fois sur le serveur,
+    et la réponse de chat_user s'affiche dans la conversation par le
+    websocket natif. Rend la durée mesurée de la tuile à la liste."""
+    pair = Odoo(ctx.cible, "chat")
+    canaux = pair.executer(
+        "discuss.channel",
+        "search",
+        [[["name", "=", CANAL_CHAT], ["channel_type", "=", "group"]]],
+    )
+    assert canaux, f"aucun groupe « {CANAL_CHAT} » pour chat_user"
+    canal = canaux[0]
+    ctx.hook(f"chatLoad({js(ctx.config_id)})")
+    # Le temps réel démarre quand l'app devient active : la source ajoutée
+    # après le démarrage n'a son bus qu'au retour au premier plan
+    ctx.appareil.premier_plan()
+    ctx.ouvrir("/", ".home-action-card")
+    tuile = ctx.marquer(".home-action-card__icon", "💬", ".home-action-card")
+    debut = time.monotonic()
+    ctx.cdp.toucher(tuile)
+    ctx.cdp.attendre("!!document.querySelector('.chat-list__row')", pas=0.05)
+    duree = time.monotonic() - debut
+    assert duree <= TUILE_VERS_LISTE, f"tuile → liste : {duree:.2f} s"
+
+    ctx.cdp.toucher(
+        ctx.marquer(".chat-list__title", CANAL_CHAT, ".chat-list__row")
+    )
+    ctx.cdp.attendre(
+        f"location.pathname.endsWith('/{canal}')"
+        " && !!document.querySelector('.chat-thread__input')"
+    )
+    texte = ctx.unique("message")
+    ctx.cdp.toucher(".chat-thread__input")
+    # Un toucher par CDP ne donne pas toujours le focus, qu'insertText suit
+    ctx.cdp.evaluer("document.querySelector('.chat-thread__input').focus()")
+    ctx.cdp.taper(texte)
+    ctx.cdp.attendre(
+        f"document.querySelector('.chat-thread__input').value === {js(texte)}",
+        delai=5,
+    )
+    ctx.cdp.toucher(".chat-thread__send")
+
+    def recus(contenu):
+        return pair.executer(
+            "mail.message",
+            "search_count",
+            [
+                [
+                    ["model", "=", "discuss.channel"],
+                    ["res_id", "=", canal],
+                    ["message_type", "=", "comment"],
+                    ["body", "ilike", contenu],
+                ]
+            ],
+        )
+
+    # Marqué envoyé, le message a sa réponse du serveur et quitte l'outbox,
+    # qui ne le poste plus : le compte du serveur est alors définitif
+    ctx.cdp.attendre(
+        f"window.__erplibreTest.chatMessages({js(ctx.config_id)}, {canal})"
+        f".then(ms => ms.some(m => m.body.includes({js(texte)}) && m.status === 'sent'))",
+        delai=30,
+    )
+    assert recus(texte) == 1, f"{texte} reçu {recus(texte)} fois"
+
+    reponse = ctx.unique("reponse")
+    ctx.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=5)
+    pair.route(
+        "/mail/message/post",
+        {
+            "thread_model": "discuss.channel",
+            "thread_id": canal,
+            "post_data": {
+                "body": reponse,
+                "message_type": "comment",
+                "subtype_xmlid": "mail.mt_comment",
+            },
+        },
+    )
+    ctx.cdp.attendre(
+        "[...document.querySelectorAll('.chat-thread__body')]"
+        f".some(e => e.innerText.includes({js(reponse)}))",
+        delai=20,
+    )
+    return f"tuile → liste {duree:.2f} s"
+
+
+# (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
+# parle qu'à la 18
 SCENARIOS = (
-    ("sélecteur de cibles", scenario_selecteur),
-    ("bandeau de date", scenario_bandeau_date),
-    ("saisie pendant un pull", scenario_saisie_pendant_pull),
-    ("note datée du calendrier", scenario_calendrier),
+    ("sélecteur de cibles", scenario_selecteur, odoo.VERSIONS),
+    ("bandeau de date", scenario_bandeau_date, odoo.VERSIONS),
+    ("saisie pendant un pull", scenario_saisie_pendant_pull, odoo.VERSIONS),
+    ("note datée du calendrier", scenario_calendrier, odoo.VERSIONS),
+    ("clavardage", scenario_clavardage, (18,)),
 )
+
+
+def scenarios_de(version):
+    """Les scénarios (nom, fonction) que joue la version d'Odoo donnée."""
+    return [(nom, f) for nom, f, versions in SCENARIOS if version in versions]
 
 
 def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
@@ -624,7 +795,7 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
     try:
         appareil.preparer(apk)
         for cible in cibles:
-            for nom, scenario in SCENARIOS:
+            for nom, scenario in scenarios_de(cible["version"]):
                 total += 1
                 debut = time.monotonic()
                 try:
@@ -641,16 +812,19 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
                         )
                         + ")"
                     )
-                    scenario(
+                    detail = scenario(
                         Contexte(
                             appareil.cdp,
                             Odoo(cible),
                             cible["version"],
                             config_id,
+                            cible,
+                            appareil,
                         )
                     )
                     journal(
                         f"  ✓ Odoo {cible['version']} — {nom} ({time.monotonic() - debut:.0f} s)"
+                        + (f" : {detail}" if detail else "")
                     )
                 except (
                     AssertionError,
