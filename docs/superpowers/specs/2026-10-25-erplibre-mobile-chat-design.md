@@ -275,3 +275,10 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
   back needs an invitation); hiding a direct message asks nothing.
 - **Lot 2, removing a member** is offered only when Odoo 18 allows it for
   this user; otherwise the action is hidden.
+- **Lot 2, removing another member** is for administrators (Settings
+  group) only, through the ERPLibre module so the person is told and the
+  thread shows they left; everyone else can only leave.
+- **Lot 2, global mute** (« do not disturb » for the account) is in, as
+  Odoo: set in the chat options with the same durations; it takes every
+  conversation out of the count and hides the per-conversation mutes
+  while it is active.
