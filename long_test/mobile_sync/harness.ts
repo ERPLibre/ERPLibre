@@ -8,12 +8,12 @@
  * nothing of the app but its test kit.
  */
 import {
-	createSyncEnv, installLocalStorage, resetMocks, memoryAttachmentIO,
+	createSyncEnv, installLocalStorage, resetMocks, memoryAttachmentIO, nodeTransport,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import type { SyncEnv } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import { readFileSync } from "node:fs";
 
-export { memoryAttachmentIO };
+export { memoryAttachmentIO, nodeTransport };
 export type { SyncEnv };
 
 export interface Login {
@@ -70,14 +70,20 @@ export function eachVersionFrom(min: number, name: string, fn: (target: Target) 
 /**
  * The app as a user of one or more servers sees it: a new database with
  * their applications and the sync service, http allowed, no session yet.
+ * chatModule "ignore" makes chat posts take the marker path even where the
+ * server module is installed.
  */
-export async function appFor(targets: Target | Target[], as: "admin" | "multi" = "admin"): Promise<SyncEnv> {
+export async function appFor(
+	targets: Target | Target[],
+	as: "admin" | "multi" = "admin",
+	opts: { chatModule?: "auto" | "ignore" } = {},
+): Promise<SyncEnv> {
 	resetMocks();
 	installLocalStorage({ allowHttp: true });
 	const list = Array.isArray(targets) ? targets : [targets];
 	return createSyncEnv(list.map((t) => ({
 		url: t.url, username: t[as].login, password: t[as].password, database: t.database,
-	})));
+	})), opts);
 }
 
 let counter = 0;
@@ -100,4 +106,20 @@ export function note(id: string, title: string, paragraphs: string[] = [], extra
 /** Waits until the server's clock has moved to the next second: write_date reaches the app to the second. */
 export async function nextServerSecond(): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, 1100));
+}
+
+/**
+ * Polls probe every 100 ms until it returns a value other than undefined,
+ * null or false, and returns that value; fails after ms with what it waited
+ * for. For what reaches the app on its own (the bus), with no fixed sleep.
+ * The deadline runs on performance.now(), which a faked Date leaves alone.
+ */
+export async function until<T>(what: string, probe: () => Promise<T | undefined | null | false>, ms = 20000): Promise<T> {
+	const deadline = performance.now() + ms;
+	for (;;) {
+		const value = await probe();
+		if (value !== undefined && value !== null && value !== false) return value;
+		if (performance.now() > deadline) throw new Error(`still waiting after ${ms} ms: ${what}`);
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
 }
