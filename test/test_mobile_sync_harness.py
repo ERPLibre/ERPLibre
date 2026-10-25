@@ -504,6 +504,58 @@ class TestAppareil(unittest.TestCase):
         )
 
 
+class TestScenariosAppareil(unittest.TestCase):
+    """Le clavardage ne se joue que sur la 18, seule version que le chat de
+    l'app connaît ; les autres versions le sautent sans le compter."""
+
+    def test_api_du_hook_2(self):
+        self.assertEqual(appareil.DEVICE_HOOK_API, 2)
+
+    def test_clavardage_sur_la_18_seulement(self):
+        for version in (16, 17):
+            self.assertNotIn(
+                "clavardage",
+                [nom for nom, _ in appareil.scenarios_de(version)],
+            )
+        self.assertIn(
+            ("clavardage", appareil.scenario_clavardage),
+            appareil.scenarios_de(18),
+        )
+        self.assertEqual(len(appareil.scenarios_de(16)), 4)
+
+    def test_lancer_saute_sans_compter(self):
+        joues = []
+        scenarios = (
+            (
+                "note",
+                lambda ctx: joues.append(("note", ctx.version)),
+                (16, 18),
+            ),
+            ("chat", lambda ctx: joues.append(("chat", ctx.version)), (18,)),
+        )
+        cibles = [
+            {
+                "version": v,
+                "url": f"http://127.0.0.1:{8000 + v}",
+                "database": f"base_{v}",
+                "admin": {"login": "admin", "password": "admin"},
+            }
+            for v in (16, 18)
+        ]
+        with mock.patch.object(
+            appareil, "SCENARIOS", scenarios
+        ), mock.patch.object(
+            appareil, "construire_apk", return_value=Path("x.apk")
+        ), mock.patch.object(
+            appareil, "Appareil"
+        ), mock.patch.object(
+            appareil, "Odoo"
+        ):
+            total, echecs = appareil.lancer(cibles, "/x", journal=lambda _: 0)
+        self.assertEqual((total, echecs), (3, 0))
+        self.assertEqual(joues, [("note", 16), ("note", 18), ("chat", 18)])
+
+
 class TestCommandeAppareil(unittest.TestCase):
     def versions(self):
         return {

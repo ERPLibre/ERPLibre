@@ -372,9 +372,12 @@ copient, et la suite entière prend une trentaine de secondes. Un rapport sans
 test, ou sans test pour une version, échoue : un chemin mal résolu ne doit pas
 passer pour une course verte.
 
-`--appareil` joue quatre écrans sur le téléphone, contre les mêmes serveurs :
+`--appareil` joue cinq écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
-pendant un pull, et la note datée créée depuis le calendrier. Ils tournent
+pendant un pull, la note datée créée depuis le calendrier et, sur la 18
+seulement, le clavardage (la tuile ouvre la liste en 2 s au plus, un message
+tapé dans « ms chat » arrive une fois sur le serveur, la réponse de chat_user
+s'affiche par le websocket natif). Ils tournent
 dans une app à part, `ca.erplibre.home.synctest`, construite par `-PsyncTest`
 depuis un paquet de développement et effacée à chaque version ; l'app de
 l'utilisateur n'est jamais touchée. Le téléphone doit être déverrouillé, le
