@@ -211,6 +211,74 @@ class TestBasesEtServeurs(unittest.TestCase):
             odoo.cle_gabarit(version, executer=autre_revision), avant
         )
 
+    def test_le_chemin_des_addons_de_18_porte_ceux_d_erplibre(self):
+        v18 = odoo.VersionOdoo(
+            18, Path("/x/odoo18.0/odoo/odoo-bin"), Path("/x/py")
+        )
+        v17 = odoo.VersionOdoo(
+            17, Path("/x/odoo17.0/odoo/odoo-bin"), Path("/x/py")
+        )
+        self.assertIn(
+            "/x/odoo18.0/addons/ERPLibre_erplibre_addons",
+            v18.addons_path.split(","),
+        )
+        self.assertNotIn("ERPLibre_erplibre_addons", v17.addons_path)
+        self.assertIn("erplibre_mobile_chat", v18.modules)
+        self.assertNotIn("erplibre_mobile_chat", v17.modules)
+
+    def test_la_cle_de_18_suit_les_addons_erplibre(self):
+        with tempfile.TemporaryDirectory() as racine:
+            odoo_bin = Path(racine) / "odoo18.0" / "odoo" / "odoo-bin"
+            module = (
+                Path(racine)
+                / "odoo18.0"
+                / "addons"
+                / "ERPLibre_erplibre_addons"
+                / "erplibre_mobile_chat"
+            )
+            module.mkdir(parents=True)
+            (module / "a.py").write_text("un")
+            version = odoo.VersionOdoo(18, odoo_bin, Path("/x/py"))
+            tete = {"addons": "aaa"}
+
+            def executer(commande, **kw):
+                depot = commande[2]
+                sortie = tete["addons"] if "ERPLibre" in depot else "core"
+                return SimpleNamespace(stdout=sortie + "\n", returncode=0)
+
+            avant = odoo.cle_gabarit(version, executer=executer)
+            tete["addons"] = "bbb"
+            apres_tete = odoo.cle_gabarit(version, executer=executer)
+            (module / "a.py").write_text("deux")
+            apres_contenu = odoo.cle_gabarit(version, executer=executer)
+        self.assertNotEqual(avant, apres_tete)
+        self.assertNotEqual(apres_tete, apres_contenu)
+
+    def test_la_cle_de_16_et_17_ignore_les_addons_erplibre(self):
+        appels = []
+
+        def executer(commande, **kw):
+            appels.append(commande[2])
+            return SimpleNamespace(stdout="abc\n", returncode=0)
+
+        for numero in (16, 17):
+            version = odoo.VersionOdoo(
+                numero,
+                Path(f"/x/odoo{numero}.0/odoo/odoo-bin"),
+                Path("/x/py"),
+            )
+            odoo.cle_gabarit(version, executer=executer)
+        self.assertEqual(appels, ["/x/odoo16.0/odoo", "/x/odoo17.0/odoo"])
+
+    def test_la_post_installation_cree_l_utilisateur_et_le_canal_du_chat(self):
+        self.assertIn("chat_user", odoo.POST_INSTALLATION)
+        self.assertIn("VERSION >= 18", odoo.POST_INSTALLATION)
+        self.assertIn("ms chat", odoo.POST_INSTALLATION)
+        compile(odoo.POST_INSTALLATION, "post", "exec")
+
+    def test_harness_api_2(self):
+        self.assertEqual(odoo.HARNESS_API, 2)
+
 
 class TestRapport(unittest.TestCase):
     """Zéro test, ou zéro test pour une version, est un échec : un chemin

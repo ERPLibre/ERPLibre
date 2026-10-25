@@ -237,6 +237,11 @@ def main(argv=None):
                 "database": s.base,
                 "admin": {"login": "admin", "password": "admin"},
                 "multi": {"login": "mc_user", "password": "mc_user"},
+                **(
+                    {"chat": {"login": "chat_user", "password": "chat_user"}}
+                    if s.version >= 18
+                    else {}
+                ),
             }
             for s in serveurs
         ]
