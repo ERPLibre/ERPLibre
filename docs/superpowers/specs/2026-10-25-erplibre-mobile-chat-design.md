@@ -75,11 +75,15 @@ the store of conversations are reused by both.
   request context and the bus payload). An ERPLibre server module stores a
   client id on `mail.message` (and on a created conversation) and makes
   the post idempotent; it is also where later server features go. Without
-  the module, the app hides a marker in the message HTML (a `data-oe-*`
-  attribute the sanitizer keeps) and looks for it before resending. The
-  « Edit an application » screen shows whether the module is available
-  and whether it is installed, and offers to install it only when it is
-  available and not installed (and the user's rights allow it).
+  the module, the app hides a marker in the message HTML, an HTML comment
+  `<!-- erplibre-mobile:<uuid> -->` (the `mail.message.body` sanitizer
+  keeps comments and strips any `data-oe-*` attribute outside its
+  whitelist), and looks for it before resending. The « Edit an
+  application » screen shows whether the module is available and whether
+  it is installed, and offers to install it only when it is available and
+  not installed. Reading `ir.module.module` and installing need the
+  settings group (`is_system`): for anyone else the status says
+  « installed » or « unknown ».
 - **Storage:** text is always kept. Attachments download when opened and
   are cached. A purge removes cached attachments, periodically and on
   request; the space used is shown per conversation.
@@ -161,17 +165,29 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
 
 ## Constraints found in Odoo 18 and the app
 
-- **The websocket cannot be opened from the WebView.** `bus/websocket.py`
-  downgrades the connection to a public session when `Origin` does not
-  match the server's host and scheme, and the WebView's origin never does.
-  The realtime connection is native (a Capacitor plugin), sending the
-  server's own origin and the session cookie the app already holds. It is
-  the piece project 2 moves into a foreground service, so it lives outside
-  the screens.
-- `GET /websocket?version=<bus version>` is refused with `OUTDATED_VERSION`
-  when the version is missing or old; the client sends `subscribe` with the
-  last notification id it saw and `update_presence`. When the socket
-  cannot be held, `/websocket/peek_notifications` catches up.
+- **The websocket is native.** The WebView does not hold the Odoo session
+  (the app's requests go through the native `RawHttp` with an explicit
+  cookie), a WebView socket would carry its own origin (which
+  `bus/websocket.py` downgrades to a public session when
+  `ODOO_BUS_PUBLIC_SAMESITE_WS` is set), and project 2 needs the socket
+  outside the WebView anyway. The realtime connection is a Capacitor
+  plugin, sending the server's own origin and the session cookie the app
+  already holds; it lives outside the screens.
+- `GET /websocket?version=<bus version>` (`18.0-7`, given by
+  `websocket_worker_version` in the session info) closes with
+  `OUTDATED_VERSION` when a browser sends an old version; the client
+  sends `subscribe` with the last notification id it saw and
+  `update_presence`. Bus rows live 24 h: a longer gap reloads
+  `/mail/data`. When the socket cannot be held,
+  `/websocket/peek_notifications` catches up.
+- **History never clears mentions behind the user's back.**
+  `/discuss/channel/messages` marks the fetched messages done (clearing
+  channel mentions and inbox) unless `around` is given, so the app always
+  pages with `around`; reading is only ever the explicit
+  `mark_as_read`, plus `mail.message.mark_all_as_read` on the channel when
+  it has mentions, as the web client does.
+- **Typing joins a channel**: `notify_typing` makes the user a member, so
+  typing is sent only in conversations the user is a member of.
 - Initial data comes from `/mail/data` (`init_messaging`,
   `channels_as_member`) and the session's store data; messages from
   `/discuss/channel/messages` (before / after / around / limit). The store
