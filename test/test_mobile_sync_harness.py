@@ -11,6 +11,7 @@ serveurs, la clé des gabarits, et la lecture du rapport de Vitest, où zéro
 test est un échec et pas une réussite silencieuse.
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -271,10 +272,54 @@ class TestBasesEtServeurs(unittest.TestCase):
         self.assertEqual(appels, ["/x/odoo16.0/odoo", "/x/odoo17.0/odoo"])
 
     def test_la_post_installation_cree_l_utilisateur_et_le_canal_du_chat(self):
-        self.assertIn("chat_user", odoo.POST_INSTALLATION)
-        self.assertIn("VERSION >= 18", odoo.POST_INSTALLATION)
-        self.assertIn("ms chat", odoo.POST_INSTALLATION)
-        compile(odoo.POST_INSTALLATION, "post", "exec")
+        self.assertIn("chat_user", odoo.POST_INSTALLATION_CHAT)
+        self.assertIn("ms chat", odoo.POST_INSTALLATION_CHAT)
+        self.assertNotIn("chat_user", odoo.POST_INSTALLATION)
+        self.assertEqual(odoo.post_installation(17), odoo.POST_INSTALLATION)
+        self.assertIn(odoo.POST_INSTALLATION_CHAT, odoo.post_installation(18))
+        compile(odoo.post_installation(18), "post", "exec")
+
+    def test_cles_de_16_et_17_figees_et_18_suit_le_chat(self):
+        """Les clés de 16 et 17 ne voient jamais le bloc du chat : elles
+        valent le hachage du texte commun seul."""
+        executer = lambda *a, **k: SimpleNamespace(
+            stdout="abc\n", returncode=0
+        )
+        for numero in (16, 17):
+            version = odoo.VersionOdoo(
+                numero,
+                Path(f"/x/odoo{numero}.0/odoo/odoo-bin"),
+                Path("/x/py"),
+            )
+            attendu = hashlib.sha256(
+                "\n".join(
+                    [
+                        "abc",
+                        ",".join(version.modules),
+                        odoo.POST_INSTALLATION,
+                        odoo.FUSEAU,
+                    ]
+                ).encode()
+            ).hexdigest()[:16]
+            self.assertEqual(
+                odoo.cle_gabarit(version, executer=executer),
+                f"mobile_sync:{numero}:{attendu}",
+            )
+            with mock.patch.object(
+                odoo, "POST_INSTALLATION_CHAT", "# autre chat"
+            ):
+                self.assertEqual(
+                    odoo.cle_gabarit(version, executer=executer),
+                    f"mobile_sync:{numero}:{attendu}",
+                )
+        v18 = odoo.VersionOdoo(
+            18, Path("/x/odoo18.0/odoo/odoo-bin"), Path("/x/py")
+        )
+        avant = odoo.cle_gabarit(v18, executer=executer)
+        with mock.patch.object(odoo, "POST_INSTALLATION_CHAT", "# autre chat"):
+            self.assertNotEqual(
+                odoo.cle_gabarit(v18, executer=executer), avant
+            )
 
     def test_harness_api_2(self):
         self.assertEqual(odoo.HARNESS_API, 2)
