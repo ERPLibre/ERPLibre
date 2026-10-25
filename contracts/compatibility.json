@@ -35,6 +35,13 @@
       "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mobile_todo",
       "depends": ["project_todo", "base_geoengine"],
       "custom_fields_on_project_task": ["geo_task_point"]
+    },
+    "erplibre_mobile_chat": {
+      "description": "ERPLibre companion module — adds erplibre_client_uuid to mail.message so a chat post sent twice is stored once; optional, the app falls back to the marker comment in the message body",
+      "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mobile_chat",
+      "depends": ["mail"],
+      "optional": true,
+      "custom_fields_on_mail_message": ["erplibre_client_uuid"]
     }
   }
 }
