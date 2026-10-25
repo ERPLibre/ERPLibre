@@ -359,9 +359,12 @@ copy it, and the whole suite takes about 30 seconds. A report with no test,
 or no test for one version, fails: a path resolved wrong must not pass for a
 green run.
 
-`--appareil` plays four screens on the phone, against the same servers: the
+`--appareil` plays five screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
-pull, and the dated note made from the calendar. They run in a separate app,
+pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
+(the tile opens the list within 2 s, a message typed in « ms chat » reaches
+the server once, chat_user's reply shows through the native websocket). They
+run in a separate app,
 `ca.erplibre.home.synctest`, built by `-PsyncTest` from a development bundle
 and cleared for each version; the user's own app is never touched. The phone
 must be unlocked, with USB debugging allowed. A failure keeps a screenshot in
@@ -771,9 +774,12 @@ copient, et la suite entière prend une trentaine de secondes. Un rapport sans
 test, ou sans test pour une version, échoue : un chemin mal résolu ne doit pas
 passer pour une course verte.
 
-`--appareil` joue quatre écrans sur le téléphone, contre les mêmes serveurs :
+`--appareil` joue cinq écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
-pendant un pull, et la note datée créée depuis le calendrier. Ils tournent
+pendant un pull, la note datée créée depuis le calendrier et, sur la 18
+seulement, le clavardage (la tuile ouvre la liste en 2 s au plus, un message
+tapé dans « ms chat » arrive une fois sur le serveur, la réponse de chat_user
+s'affiche par le websocket natif). Ils tournent
 dans une app à part, `ca.erplibre.home.synctest`, construite par `-PsyncTest`
 depuis un paquet de développement et effacée à chaque version ; l'app de
 l'utilisateur n'est jamais touchée. Le téléphone doit être déverrouillé, le

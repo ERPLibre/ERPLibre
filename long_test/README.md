@@ -354,9 +354,12 @@ copy it, and the whole suite takes about 30 seconds. A report with no test,
 or no test for one version, fails: a path resolved wrong must not pass for a
 green run.
 
-`--appareil` plays four screens on the phone, against the same servers: the
+`--appareil` plays five screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
-pull, and the dated note made from the calendar. They run in a separate app,
+pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
+(the tile opens the list within 2 s, a message typed in « ms chat » reaches
+the server once, chat_user's reply shows through the native websocket). They
+run in a separate app,
 `ca.erplibre.home.synctest`, built by `-PsyncTest` from a development bundle
 and cleared for each version; the user's own app is never touched. The phone
 must be unlocked, with USB debugging allowed. A failure keeps a screenshot in
