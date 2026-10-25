@@ -156,6 +156,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Two QEMU VM tools, `erplibre_home` and `erplibre_home_streamdeck`, run the installer after the GNOME desktop; the "ERPLibre Home (no Odoo)" install profile installs the base alone, with no Odoo service
 - `long_test/install_erplibre_home.py`, also in the long-test menu, creates one desktop VM per supported system, installs HEAD from a git bundle, and requires GetExtensionInfo to report the extension ACTIVE; five stages then install, partly and fully uninstall, and reinstall on the same VM, and each system's log names every check and its outcome
 - `long_test/mobile_sync.py`, also `make test_mobile_sync` and the long-test menu, runs the mobile app's sync code against throwaway Odoo 16, 17 and 18 (91 scenarios, about 30 seconds once the templates exist); `--appareil` also plays four sync screens on the plugged phone, in a separate test app that leaves the user's own untouched
+- `long_test/mobile_sync.py` also tests the mobile chat on Odoo 18 (`--versions 18 --filtre chat`): a second user, `chat_user`, and the `erplibre_mobile_chat` module are in the 18 template, `chat.test.ts` and `chatRealtime.test.ts` check posts, a lost answer, the offline queue, history, read marks, the bus and typing against the real server, and `--appareil` adds a « clavardage » screen
+- `contracts/odoo-api.json` describes the chat routes, the websocket bus, the chat tables and the post idempotency rule; `contracts/compatibility.json` lists the optional `erplibre_mobile_chat` module, which stores a post sent twice once, the app falling back to a marker comment without it
 
 <!-- [fr] -->
 
@@ -288,6 +290,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Deux outils de VM QEMU, `erplibre_home` et `erplibre_home_streamdeck`, lancent l'installateur après le bureau GNOME ; le profil d'installation « ERPLibre Home (sans Odoo) » installe la base seule, sans service Odoo
 - `long_test/install_erplibre_home.py`, aussi dans le menu des tests longs, crée une VM de bureau par système supporté, y installe HEAD depuis un bundle git, et exige que GetExtensionInfo dise l'extension ACTIVE ; cinq étapes installent ensuite, désinstallent en partie puis en entier, et réinstallent sur la même VM, et le journal de chaque système nomme chaque contrôle et son issue
 - `long_test/mobile_sync.py`, aussi `make test_mobile_sync` et le menu des tests longs, fait tourner le code de synchro de l'app mobile contre des Odoo 16, 17 et 18 jetables (91 scénarios, une trentaine de secondes une fois les gabarits construits) ; `--appareil` joue aussi quatre écrans de synchro sur le téléphone branché, dans une app de test à part qui laisse celle de l'utilisateur intacte
+- `long_test/mobile_sync.py` teste aussi le clavardage mobile sur Odoo 18 (`--versions 18 --filtre chat`) : un second utilisateur, `chat_user`, et le module `erplibre_mobile_chat` sont dans le gabarit de la 18, `chat.test.ts` et `chatRealtime.test.ts` vérifient envois, réponse perdue, file hors ligne, historique, marques de lecture, bus et frappe contre le vrai serveur, et `--appareil` ajoute un écran « clavardage »
+- `contracts/odoo-api.json` décrit les routes du clavardage, le bus websocket, les tables du clavardage et la règle d'idempotence des envois ; `contracts/compatibility.json` liste le module facultatif `erplibre_mobile_chat`, qui stocke une fois un envoi fait deux fois, l'app se rabattant sur un commentaire marqueur sans lui
 
 <!-- [en] -->
 ## Changed

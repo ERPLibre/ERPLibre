@@ -354,6 +354,23 @@ copy it, and the whole suite takes about 30 seconds. A report with no test,
 or no test for one version, fails: a path resolved wrong must not pass for a
 green run.
 
+Chat is tested on Odoo 18 only, where Discuss and the websocket bus exist.
+The 18 template adds what those scenarios need: the `erplibre_mobile_chat`
+module from the ERPLibre addons, a second user, `chat_user`, and a group
+channel « ms chat » where he and the app's user talk, with no unread message
+for chat_user at the start. `chat.test.ts` covers the load and its counters,
+a post that reaches chat_user once, a lost answer with the module and with
+the marker alone, the offline queue keeping its order, history paging, and
+the read mark seen on the server. `chatRealtime.test.ts` covers the bus
+delivering a message and the typing of chat_user, the counters of the first
+connection, and a cut socket that delivers on reconnect. `--appareil` adds
+the « clavardage » screen. To run only these:
+
+```
+./long_test/mobile_sync.py --versions 18 --filtre chat
+./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
+```
+
 `--appareil` plays five screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
 pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
