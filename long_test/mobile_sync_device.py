@@ -338,30 +338,6 @@ class Appareil:
                 f"hook de test d'API {api}, ce lanceur connaît l'API {DEVICE_HOOK_API}"
             )
 
-    def premier_plan(self):
-        """L'app de test passée en arrière-plan puis ramenée devant : la page
-        reçoit appStateChange inactif puis actif, comme un retour de
-        l'utilisateur. Le processus et sa page CDP restent les mêmes."""
-        adb(
-            "shell",
-            "input",
-            "keyevent",
-            "KEYCODE_HOME",
-            executer=self.executer,
-        )
-        self.cdp.attendre(f"{APP_ETAT}.then(s => !s.isActive)", delai=10)
-        adb(
-            "shell",
-            "monkey",
-            "-p",
-            PAQUET,
-            "-c",
-            "android.intent.category.LAUNCHER",
-            "1",
-            executer=self.executer,
-        )
-        self.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=10)
-
     def capture(self, chemin):
         Path(chemin).write_bytes(
             adb(
@@ -677,14 +653,24 @@ def scenario_calendrier(ctx):
 
 # La tuile mène à la liste en 2 s au plus : la liste se rend depuis le cache
 TUILE_VERS_LISTE = 2.0
+# Et à la saisie dans la conversation en 2 s au plus, la liste traversée
+TUILE_VERS_SAISIE = 2.0
 CANAL_CHAT = "ms chat"
+# Vrai quand la zone de saisie de la conversation ouverte prend le focus
+SAISIE_PRETE = (
+    "(() => { const i = document.querySelector('.chat-thread__input');"
+    " if (!i) return false; i.focus(); return document.activeElement === i; })()"
+)
 
 
 def scenario_clavardage(ctx):
     """Le clavardage : la tuile 💬 mène à la liste en TUILE_VERS_LISTE au
-    plus, le message tapé dans « ms chat » arrive une fois sur le serveur,
-    et la réponse de chat_user s'affiche dans la conversation par le
-    websocket natif. Rend la durée mesurée de la tuile à la liste."""
+    plus, et à la saisie dans « ms chat », la conversation de l'échange, en
+    TUILE_VERS_SAISIE au plus ; le message tapé arrive une fois sur le
+    serveur, et la réponse de chat_user s'affiche dans la conversation par
+    le websocket natif. La source est ajoutée l'app ouverte : son bus part
+    de l'ajout même, sans retour au premier plan. Rend les deux durées
+    mesurées."""
     pair = Odoo(ctx.cible, "chat")
     canaux = pair.executer(
         "discuss.channel",
@@ -694,9 +680,6 @@ def scenario_clavardage(ctx):
     assert canaux, f"aucun groupe « {CANAL_CHAT} » pour chat_user"
     canal = canaux[0]
     ctx.hook(f"chatLoad({js(ctx.config_id)})")
-    # Le temps réel démarre quand l'app devient active : la source ajoutée
-    # après le démarrage n'a son bus qu'au retour au premier plan
-    ctx.appareil.premier_plan()
     ctx.ouvrir("/", ".home-action-card")
     tuile = ctx.marquer(".home-action-card__icon", "💬", ".home-action-card")
     debut = time.monotonic()
@@ -709,9 +692,11 @@ def scenario_clavardage(ctx):
         ctx.marquer(".chat-list__title", CANAL_CHAT, ".chat-list__row")
     )
     ctx.cdp.attendre(
-        f"location.pathname.endsWith('/{canal}')"
-        " && !!document.querySelector('.chat-thread__input')"
+        f"location.pathname.endsWith('/{canal}') && {SAISIE_PRETE}",
+        pas=0.05,
     )
+    saisie = time.monotonic() - debut
+    assert saisie <= TUILE_VERS_SAISIE, f"tuile → saisie : {saisie:.2f} s"
     texte = ctx.unique("message")
     ctx.cdp.toucher(".chat-thread__input")
     # Un toucher par CDP ne donne pas toujours le focus, qu'insertText suit
@@ -765,7 +750,7 @@ def scenario_clavardage(ctx):
         f".some(e => e.innerText.includes({js(reponse)}))",
         delai=20,
     )
-    return f"tuile → liste {duree:.2f} s"
+    return f"tuile → liste {duree:.2f} s, tuile → saisie {saisie:.2f} s"
 
 
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
