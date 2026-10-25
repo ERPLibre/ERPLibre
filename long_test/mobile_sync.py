@@ -132,7 +132,10 @@ def plan(versions, args):
     if args.appareil:
         lignes.append(
             f"  téléphone : {appareil.PAQUET}, "
-            f"{len(appareil.SCENARIOS)} scénarios par version"
+            + ", ".join(
+                f"{len(appareil.scenarios_de(v))} scénarios sur la {v}"
+                for v in versions
+            )
         )
     return "\n".join(lignes)
 
