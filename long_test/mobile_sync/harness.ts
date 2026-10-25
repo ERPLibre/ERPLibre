@@ -29,6 +29,8 @@ export interface Target {
 	admin: Login;
 	/** A user of two companies (see mobile_sync_odoo.POST_INSTALLATION). */
 	multi: Login;
+	/** A second internal user, the other end of the chat (Odoo 18 only). */
+	chat?: Login;
 }
 
 function readTargets(): Target[] {
@@ -46,6 +48,23 @@ export const TARGETS: Target[] = readTargets();
 /** The scenarios of fn, once per server of the run, in a block named « Odoo <version> ». */
 export function eachVersion(name: string, fn: (target: Target) => void): void {
 	describe.each(TARGETS)(`Odoo $version — ${name}`, (target: Target) => fn(target));
+}
+
+/**
+ * The scenarios of fn, once per server of the run whose major version is at
+ * least min, in a block named « Odoo <version> » (lire_rapport counts by that
+ * name). A run with no such server skips the block under a name that says why,
+ * so a 16/17-only run does not fail for lack of tests.
+ */
+export function eachVersionFrom(min: number, name: string, fn: (target: Target) => void): void {
+	const targets = TARGETS.filter((t) => t.version >= min);
+	if (targets.length === 0) {
+		describe.skip(`Odoo ${min}+ only — ${name}`, () => {
+			it("no server of this version in the run", () => {});
+		});
+		return;
+	}
+	describe.each(targets)(`Odoo $version — ${name}`, (target: Target) => fn(target));
 }
 
 /**

@@ -7,6 +7,7 @@ import type { Login, Target } from "./harness";
 
 export class OdooAdmin {
 	private uid: number | null = null;
+	private sessionCookie: string | null = null;
 
 	constructor(private target: Target, private user: Login = target.admin) {}
 
@@ -30,6 +31,39 @@ export class OdooAdmin {
 			if (!this.uid) throw new Error(`login refusé pour ${this.user.login} sur ${this.target.url}`);
 		}
 		return this.uid;
+	}
+
+	/** Opens a web session as this user, keeping its session_id cookie for jsonRoute. */
+	async sessionLogin(): Promise<void> {
+		const response = await fetch(`${this.target.url}/web/session/authenticate`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				jsonrpc: "2.0", method: "call",
+				params: { db: this.target.database, login: this.user.login, password: this.user.password },
+			}),
+		});
+		const body: any = await response.json();
+		if (body.error || !body.result?.uid) throw new Error(`session refusée pour ${this.user.login} sur ${this.target.url}`);
+		const cookie = response.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("session_id="));
+		if (!cookie) throw new Error("pas de cookie session_id");
+		this.sessionCookie = cookie;
+	}
+
+	/** POSTs JSON-RPC params to a route (/mail/message/post, ...) as this user's browser would. */
+	async jsonRoute(path: string, params: Record<string, any> = {}): Promise<any> {
+		if (!this.sessionCookie) throw new Error("sessionLogin() d'abord");
+		const response = await fetch(`${this.target.url}${path}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Cookie: this.sessionCookie },
+			body: JSON.stringify({ jsonrpc: "2.0", method: "call", params }),
+		});
+		const body: any = await response.json();
+		if (body.error) {
+			const data = body.error.data ?? {};
+			throw new Error(`${data.name ?? "Odoo"}: ${data.message ?? body.error.message}`);
+		}
+		return body.result;
 	}
 
 	/** model.method(*args, **kwargs) as this user. */
