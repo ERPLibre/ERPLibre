@@ -374,7 +374,8 @@ the « clavardage » screen. To run only these:
 `--appareil` plays five screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
 pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
-(the tile opens the list within 2 s, a message typed in « ms chat » reaches
+(the tile opens the list within 2 s, and the composer of « ms chat » within
+2 s too, a message typed there reaches
 the server once, chat_user's reply shows through the native websocket). They
 run in a separate app,
 `ca.erplibre.home.synctest`, built by `-PsyncTest` from a development bundle

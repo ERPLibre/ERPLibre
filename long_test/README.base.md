@@ -379,7 +379,8 @@ the « clavardage » screen. To run only these:
 `--appareil` plays five screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
 pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
-(the tile opens the list within 2 s, a message typed in « ms chat » reaches
+(the tile opens the list within 2 s, and the composer of « ms chat » within
+2 s too, a message typed there reaches
 the server once, chat_user's reply shows through the native websocket). They
 run in a separate app,
 `ca.erplibre.home.synctest`, built by `-PsyncTest` from a development bundle
@@ -812,8 +813,9 @@ un socket coupé qui livre à la reconnexion. `--appareil` ajoute l'écran
 `--appareil` joue cinq écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
 pendant un pull, la note datée créée depuis le calendrier et, sur la 18
-seulement, le clavardage (la tuile ouvre la liste en 2 s au plus, un message
-tapé dans « ms chat » arrive une fois sur le serveur, la réponse de chat_user
+seulement, le clavardage (la tuile ouvre la liste en 2 s au plus, et la zone
+de saisie de « ms chat » en 2 s aussi, un message qui y est tapé arrive une
+fois sur le serveur, la réponse de chat_user
 s'affiche par le websocket natif). Ils tournent
 dans une app à part, `ca.erplibre.home.synctest`, construite par `-PsyncTest`
 depuis un paquet de développement et effacée à chaque version ; l'app de
