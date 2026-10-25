@@ -58,8 +58,10 @@ the store of conversations are reused by both.
   counts its unread messages; a channel counts only its mentions (unread
   without mention shows it bold, but neither counts nor lifts it). The tile
   and the chips show a total in messages, inbox included, rather than the
-  browser's number of conversations. The server module (below) may add
-  counters later.
+  browser's number of conversations. A muted conversation is left out of
+  the total; muted means a mute date still ahead, as Odoo's
+  `Thread.isMuted`: « no_notif » only silences notifications and is not
+  muted. The server module (below) may add counters later.
 - **Offline:** the whole history the user has loaded stays on the phone.
   History loads progressively, on demand: scrolling back fetches older
   messages, and a conversation can be fetched in full on request.
@@ -84,6 +86,10 @@ the store of conversations are reused by both.
   not installed. Reading `ir.module.module` and installing need the
   settings group (`is_system`): for anyone else the status says
   « installed » or « unknown ».
+- **Deleting an application erases its chat from the phone:** its
+  conversations, messages and sync state, and its rows in the outbox. The
+  messages of that account not sent yet are announced first, by their
+  count in the deletion's confirmation.
 - **Storage:** text is always kept. Attachments download when opened and
   are cached. A purge removes cached attachments, periodically and on
   request; the space used is shown per conversation.
