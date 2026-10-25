@@ -107,34 +107,57 @@ env["res.users"].create(
         "groups_id": [(6, 0, groupes)],
     }
 )
-if VERSION >= 18:
-    # Le second utilisateur du chat et un canal de groupe où il parle avec
-    # l'administrateur. Le gabarit se construit une fois et les courses le
-    # copient : la création est idempotente.
-    utilisateur = env["res.users"].search([("login", "=", "chat_user")])
-    if not utilisateur:
-        utilisateur = env["res.users"].create(
+env.cr.commit()
+"""
+
+
+# La partie du chat, ajoutée pour la 18 seulement : les clés des gabarits de
+# la 16 et de la 17 ne la voient pas.
+POST_INSTALLATION_CHAT = """
+# Le second utilisateur du chat et un canal de groupe où il parle avec
+# l'administrateur. Le gabarit se construit une fois et les courses le
+# copient : la création est idempotente.
+admin = env.ref("base.user_admin")
+utilisateur = env["res.users"].search([("login", "=", "chat_user")])
+if not utilisateur:
+    utilisateur = env["res.users"].create(
+        {
+            "name": "MS Chat",
+            "login": "chat_user",
+            "password": "chat_user",
+            "tz": FUSEAU,
+            "groups_id": [(6, 0, [env.ref("base.group_user").id])],
+        }
+    )
+attendus = {admin.partner_id.id, utilisateur.partner_id.id}
+# Créé par l'administrateur : create() ajoute l'utilisateur courant, qui
+# serait sinon le superutilisateur du shell. Aucun message « a rejoint »
+# n'est posté : chat_user démarre sans non-lu.
+canal = env["discuss.channel"].search(
+    [("name", "=", "ms chat"), ("channel_type", "=", "group")], limit=1
+)
+if not canal:
+    canal = (
+        env["discuss.channel"]
+        .with_user(admin)
+        .create(
             {
-                "name": "MS Chat",
-                "login": "chat_user",
-                "password": "chat_user",
-                "tz": FUSEAU,
-                "groups_id": [(6, 0, [env.ref("base.group_user").id])],
+                "name": "ms chat",
+                "channel_type": "group",
+                "channel_partner_ids": [(4, utilisateur.partner_id.id)],
             }
         )
-    canal = env["discuss.channel"].search(
-        [("name", "=", "ms chat"), ("channel_type", "=", "group")], limit=1
+        .sudo()
     )
-    if not canal:
-        canal = env["discuss.channel"].create(
-            {"name": "ms chat", "channel_type": "group"}
-        )
-    canal.add_members(
-        partner_ids=[
-            env.ref("base.user_admin").partner_id.id,
-            utilisateur.partner_id.id,
-        ]
-    )
+canal.sudo().add_members(
+    partner_ids=list(attendus), post_joined_message=False
+)
+canal.sudo().channel_member_ids.filtered(
+    lambda m: m.partner_id.id not in attendus
+).unlink()
+presents = set(canal.sudo().channel_member_ids.mapped("partner_id").ids)
+if presents != attendus:
+    raise Exception("membres du canal ms chat : %s != %s" % (presents, attendus))
 env.cr.commit()
 """
 
@@ -384,6 +407,14 @@ def _empreinte_dossier(dossier):
     return condense.hexdigest()
 
 
+def post_installation(version):
+    """Le script de post-installation de la version : le commun, puis le
+    chat à partir de la 18."""
+    if version >= 18:
+        return POST_INSTALLATION + POST_INSTALLATION_CHAT
+    return POST_INSTALLATION
+
+
 def cle_gabarit(version_odoo, executer=subprocess.run):
     """La clé d'un gabarit : révision d'Odoo, modules, post-installation.
     Une seule de ces trois qui change, et le gabarit se reconstruit. En 18,
@@ -400,7 +431,7 @@ def cle_gabarit(version_odoo, executer=subprocess.run):
             [
                 revision,
                 ",".join(version_odoo.modules),
-                POST_INSTALLATION,
+                post_installation(version_odoo.version),
                 FUSEAU,
             ]
         ).encode()
@@ -520,7 +551,7 @@ def _installer_gabarit(version_odoo, base, executer):
         )
     script = (
         f"VERSION = {version_odoo.version}\nFUSEAU = {FUSEAU!r}\n"
-        + POST_INSTALLATION
+        + post_installation(version_odoo.version)
     )
     post = executer(
         [

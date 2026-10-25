@@ -90,7 +90,10 @@ export class FaultProxy {
 			remote.destroy();
 		};
 		socket.on("error", forget);
-		remote.on("error", forget);
+		remote.on("error", (error) => {
+			console.debug(`faultProxy: upgrade upstream error on ${req.url}: ${error.message}`);
+			forget();
+		});
 		socket.on("close", forget);
 		remote.on("close", forget);
 		remote.on("connect", () => {
