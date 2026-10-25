@@ -359,6 +359,23 @@ copy it, and the whole suite takes about 30 seconds. A report with no test,
 or no test for one version, fails: a path resolved wrong must not pass for a
 green run.
 
+Chat is tested on Odoo 18 only, where Discuss and the websocket bus exist.
+The 18 template adds what those scenarios need: the `erplibre_mobile_chat`
+module from the ERPLibre addons, a second user, `chat_user`, and a group
+channel « ms chat » where he and the app's user talk, with no unread message
+for chat_user at the start. `chat.test.ts` covers the load and its counters,
+a post that reaches chat_user once, a lost answer with the module and with
+the marker alone, the offline queue keeping its order, history paging, and
+the read mark seen on the server. `chatRealtime.test.ts` covers the bus
+delivering a message and the typing of chat_user, the counters of the first
+connection, and a cut socket that delivers on reconnect. `--appareil` adds
+the « clavardage » screen. To run only these:
+
+```
+./long_test/mobile_sync.py --versions 18 --filtre chat
+./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
+```
+
 `--appareil` plays five screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
 pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
@@ -773,6 +790,24 @@ passage construit un gabarit par version (quelques minutes) ; les suivants le
 copient, et la suite entière prend une trentaine de secondes. Un rapport sans
 test, ou sans test pour une version, échoue : un chemin mal résolu ne doit pas
 passer pour une course verte.
+
+Le clavardage n'est testé que sur la 18, où Discuss et le bus websocket
+existent. Le gabarit de la 18 ajoute ce dont ces scénarios ont besoin : le
+module `erplibre_mobile_chat` des addons d'ERPLibre, un second utilisateur,
+`chat_user`, et un canal de groupe « ms chat » où lui et l'utilisateur de
+l'app se parlent, sans message non lu pour chat_user au départ. `chat.test.ts`
+couvre le chargement et ses compteurs, un envoi qui arrive une fois chez
+chat_user, une réponse perdue avec le module et avec le seul marqueur, la file
+hors ligne qui garde son ordre, la pagination de l'historique et la marque de
+lecture vue sur le serveur. `chatRealtime.test.ts` couvre le bus qui livre un
+message et la frappe de chat_user, les compteurs de la première connexion, et
+un socket coupé qui livre à la reconnexion. `--appareil` ajoute l'écran
+« clavardage ». Pour ne lancer que ceux-là :
+
+```
+./long_test/mobile_sync.py --versions 18 --filtre chat
+./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
+```
 
 `--appareil` joue cinq écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie

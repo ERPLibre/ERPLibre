@@ -372,6 +372,24 @@ copient, et la suite entière prend une trentaine de secondes. Un rapport sans
 test, ou sans test pour une version, échoue : un chemin mal résolu ne doit pas
 passer pour une course verte.
 
+Le clavardage n'est testé que sur la 18, où Discuss et le bus websocket
+existent. Le gabarit de la 18 ajoute ce dont ces scénarios ont besoin : le
+module `erplibre_mobile_chat` des addons d'ERPLibre, un second utilisateur,
+`chat_user`, et un canal de groupe « ms chat » où lui et l'utilisateur de
+l'app se parlent, sans message non lu pour chat_user au départ. `chat.test.ts`
+couvre le chargement et ses compteurs, un envoi qui arrive une fois chez
+chat_user, une réponse perdue avec le module et avec le seul marqueur, la file
+hors ligne qui garde son ordre, la pagination de l'historique et la marque de
+lecture vue sur le serveur. `chatRealtime.test.ts` couvre le bus qui livre un
+message et la frappe de chat_user, les compteurs de la première connexion, et
+un socket coupé qui livre à la reconnexion. `--appareil` ajoute l'écran
+« clavardage ». Pour ne lancer que ceux-là :
+
+```
+./long_test/mobile_sync.py --versions 18 --filtre chat
+./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
+```
+
 `--appareil` joue cinq écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
 pendant un pull, la note datée créée depuis le calendrier et, sur la 18
