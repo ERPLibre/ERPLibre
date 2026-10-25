@@ -240,3 +240,24 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
   grouped by server).
 - Splitting each lot into commits, and the long-test layout in
   `long_test/` (reusing the mobile sync harness where it fits).
+
+## Details decided for later lots
+
+- **Lot 2, channel access group:** the creation form starts on Odoo's
+  default group, with a control to change it on the spot.
+- **Lot 2, who to write to:** the people the user has already chatted
+  with on that server, then a search for the others (`im_search`).
+- **Lot 3, attachment cache:** no automatic purge by default. A setting
+  turns it on, with a limit of 2 GB by default that the user can change.
+  A warning appears when the cache reaches 80 % of the limit.
+- **Lot 3, camera photos:** sent as the original by default. A setting
+  changes this, and the app asks before sending whether to compress.
+- **Lot 4, reactions:** a long press offers six emoji in one touch
+  (👍 ❤️ 😂 😮 😢 🙏 at first, then the user's most used), plus « … » for
+  the full picker.
+- **Lot 4, edit and delete:** as Odoo, with no time limit; an edited
+  message shows « (edited) » as in the browser.
+- **Lot 5, server search:** message text, conversation names, people,
+  and attachments by name.
+- **Lot 5, inbox item:** opens the app's note when the record is linked to
+  one, otherwise the record in the web view.
