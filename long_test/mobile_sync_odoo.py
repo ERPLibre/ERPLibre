@@ -47,8 +47,15 @@ VERSIONS = (16, 17, 18)
 MODULES = ("project", "crm", "account", "calendar")
 # Sans démo, le plan comptable générique est un module à part en 16 ; en 17
 # et 18, account le porte et la post-installation le charge.
-MODULES_EN_PLUS = {16: ("l10n_generic_coa",)}
-HARNESS_API = 1
+# Le module de chat vit dans le dépôt d'addons d'ERPLibre, présent sur le
+# chemin d'addons de la 18 seulement.
+MODULES_EN_PLUS = {
+    16: ("l10n_generic_coa",),
+    18: ("erplibre_mobile_chat",),
+}
+DEPOT_ADDONS_ERPLIBRE = "ERPLibre_erplibre_addons"
+MODULE_CHAT = "erplibre_mobile_chat"
+HARNESS_API = 2
 NODE_MINIMUM = 22
 # Le fuseau de l'administrateur des bases ET des tests : une date d'Odoo 16
 # (Date) se lit en jour local, et un écart des deux ferait glisser les jours.
@@ -100,6 +107,34 @@ env["res.users"].create(
         "groups_id": [(6, 0, groupes)],
     }
 )
+if VERSION >= 18:
+    # Le second utilisateur du chat et un canal de groupe où il parle avec
+    # l'administrateur. Le gabarit se construit une fois et les courses le
+    # copient : la création est idempotente.
+    utilisateur = env["res.users"].search([("login", "=", "chat_user")])
+    if not utilisateur:
+        utilisateur = env["res.users"].create(
+            {
+                "name": "MS Chat",
+                "login": "chat_user",
+                "password": "chat_user",
+                "tz": FUSEAU,
+                "groups_id": [(6, 0, [env.ref("base.group_user").id])],
+            }
+        )
+    canal = env["discuss.channel"].search(
+        [("name", "=", "ms chat"), ("channel_type", "=", "group")], limit=1
+    )
+    if not canal:
+        canal = env["discuss.channel"].create(
+            {"name": "ms chat", "channel_type": "group"}
+        )
+    canal.add_members(
+        partner_ids=[
+            env.ref("base.user_admin").partner_id.id,
+            utilisateur.partner_id.id,
+        ]
+    )
 env.cr.commit()
 """
 
@@ -119,7 +154,15 @@ class VersionOdoo:
     @property
     def addons_path(self):
         base = self.odoo_bin.parent
-        return f"{base / 'addons'},{base / 'odoo' / 'addons'}"
+        chemins = [str(base / "addons"), str(base / "odoo" / "addons")]
+        if self.version >= 18:
+            chemins.append(str(self.addons_erplibre))
+        return ",".join(chemins)
+
+    @property
+    def addons_erplibre(self):
+        """Le dépôt d'addons d'ERPLibre de cette version."""
+        return self.odoo_bin.parent.parent / "addons" / DEPOT_ADDONS_ERPLIBRE
 
     @property
     def gabarit(self):
@@ -320,15 +363,38 @@ def supprimer_base(nom, executer=subprocess.run):
 # ─── Gabarits ─────────────────────────────────────────────────────────────
 
 
-def cle_gabarit(version_odoo, executer=subprocess.run):
-    """La clé d'un gabarit : révision d'Odoo, modules, post-installation.
-    Une seule de ces trois qui change, et le gabarit se reconstruit."""
-    revision = executer(
-        ["git", "-C", str(version_odoo.odoo_bin.parent), "rev-parse", "HEAD"],
+def _revision(depot, executer):
+    """La révision HEAD du dépôt git `depot`."""
+    return executer(
+        ["git", "-C", str(depot), "rev-parse", "HEAD"],
         capture_output=True,
         text=True,
         check=False,
     ).stdout.strip()
+
+
+def _empreinte_dossier(dossier):
+    """Chemins triés et contenus d'un dossier : change dès qu'un fichier
+    change, y compris non commité. "" si le dossier n'existe pas."""
+    condense = hashlib.sha256()
+    for fichier in sorted(Path(dossier).rglob("*")):
+        if fichier.is_file() and "__pycache__" not in fichier.parts:
+            condense.update(str(fichier.relative_to(dossier)).encode())
+            condense.update(fichier.read_bytes())
+    return condense.hexdigest()
+
+
+def cle_gabarit(version_odoo, executer=subprocess.run):
+    """La clé d'un gabarit : révision d'Odoo, modules, post-installation.
+    Une seule de ces trois qui change, et le gabarit se reconstruit. En 18,
+    la révision du dépôt d'addons d'ERPLibre et le contenu du module de chat
+    en font partie."""
+    revision = _revision(version_odoo.odoo_bin.parent, executer)
+    if version_odoo.version >= 18:
+        revision += "\n" + _revision(version_odoo.addons_erplibre, executer)
+        revision += "\n" + _empreinte_dossier(
+            version_odoo.addons_erplibre / MODULE_CHAT
+        )
     empreinte = hashlib.sha256(
         "\n".join(
             [
