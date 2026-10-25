@@ -267,3 +267,11 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
   and attachments by name.
 - **Lot 5, inbox item:** opens the app's note when the record is linked to
   one, otherwise the record in the web view.
+- **Lot 2, mute durations:** Odoo's — 15 min, 1 h, 3 h, 8 h, 24 h, and
+  until turned back on.
+- **Lot 2, a group created without a name** shows its members' names, as
+  Odoo does, until someone renames it.
+- **Lot 2, leaving** a group or a channel asks for confirmation (coming
+  back needs an invitation); hiding a direct message asks nothing.
+- **Lot 2, removing a member** is offered only when Odoo 18 allows it for
+  this user; otherwise the action is hidden.
