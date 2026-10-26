@@ -37,13 +37,15 @@
       "custom_fields_on_project_task": ["geo_task_point"]
     },
     "erplibre_mobile_chat": {
-      "version": "18.0.1.1.0",
-      "description": "ERPLibre companion module — 1.0 adds erplibre_client_uuid to mail.message so a chat post sent twice is stored once; 1.1 adds it to discuss.channel so create_group and channel_create called twice with the same uuid by the same user make one conversation (advisory lock plus partial unique indexes), and the administrator-only erplibre_remove_member. Optional: without it the app falls back to the marker comment in the message body and to a fingerprint search for a lost create, and cannot remove a member; a 1.0 server is offered the upgrade",
+      "version": "18.0.1.2.0",
+      "description": "ERPLibre companion module — 1.0 adds erplibre_client_uuid to mail.message so a chat post sent twice is stored once; 1.1 adds it to discuss.channel so create_group and channel_create called twice with the same uuid by the same user make one conversation (advisory lock plus partial unique indexes), and the administrator-only erplibre_remove_member; 1.2 adds erplibre_client_uuid to ir.attachment and the route /erplibre_mobile_chat/attachment/upload (CSRF required, internal users only), which makes an attachment upload idempotent by client_uuid and keeps the original of an image. Optional: without it the app falls back to the marker comment in the message body and to a fingerprint search for a lost create, and cannot remove a member, and the upload of a file goes to Odoo's route, found again by search after a lost answer; a 1.0 server is offered the upgrade",
       "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mobile_chat",
       "depends": ["mail"],
       "optional": true,
       "custom_fields_on_mail_message": ["erplibre_client_uuid"],
       "custom_fields_on_discuss_channel": ["erplibre_client_uuid"],
+      "custom_fields_on_ir_attachment": ["erplibre_client_uuid"],
+      "routes": ["/erplibre_mobile_chat/attachment/upload"],
       "methods_on_discuss_channel": ["erplibre_remove_member"]
     }
   }
