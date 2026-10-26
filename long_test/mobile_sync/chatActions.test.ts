@@ -262,7 +262,8 @@ eachVersionFrom(18, "chat actions", (target) => {
 			expect(await env.chat.notices([src.configId])).toEqual([]);
 			expect(await edits()).toEqual([]);
 			expect((await cached(env, src.configId, group, messageId))!.body).toBe(body);
-			// The first sent twice (the replay re-read without the module, a conflict answer with it), the second once
+			// With the module the first is sent twice (the replay is answered by a conflict), the second once;
+			// without it the replay re-reads the body and sends nothing
 			expect(callsTo(route, mark).map((c) => bodyText(c.params!.body))).toEqual(
 				chatModule === "auto" ? [first, first, second] : [first, second]);
 		});
