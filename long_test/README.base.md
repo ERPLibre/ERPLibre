@@ -910,7 +910,7 @@ jointe et de micro sont au-dessus de la barre de navigation, un vrai appui
 enregistre un message vocal qui arrive en MP3, la photo d'un interlocuteur
 montre son aperçu et s'ouvre dans la visionneuse, et son message vocal se lit.
 La caméra et les sélecteurs du système sont des écrans du fabricant et restent
-hors de la course. La course sur appareil relève aussi la `lastUpdateTime` de
+hors de l'exécution. L'exécution sur appareil relève aussi la `lastUpdateTime` de
 l'app de l'utilisateur avant et après, et échoue si elle a changé ou ne se lit
 pas. Les contrôles du banc (les versions d'API du kit et du crochet d'appareil,
 la liste des scénarios) se lancent avec les tests unitaires de la plateforme ;
