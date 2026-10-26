@@ -78,7 +78,7 @@ export function attachmentScene(target: Target, live: () => { proxy: FaultProxy;
 
 	/** The server's attachments of that name. */
 	const named = (name: string) =>
-		live().peer.admin.searchRead("ir.attachment", [["name", "=", name]], ["id", "res_model", "res_id", "checksum"]);
+		live().peer.admin.searchRead("ir.attachment", [["name", "=", name]], ["id", "res_model", "res_id", "checksum", "file_size"]);
 
 	/** The app's cached message of clientUuid. */
 	const mine = async (env: SyncEnv, configId: string, channelId: number, clientUuid: string | null) =>
