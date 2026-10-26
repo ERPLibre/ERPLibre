@@ -3,13 +3,15 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La synchronisation mobile de bout en bout, sur un téléphone branché.
 
-Six écrans que les tests d'intégration ne voient pas, joués sur l'app de
+Sept écrans que les tests d'intégration ne voient pas, joués sur l'app de
 test (ca.erplibre.home.synctest, construite par -PsyncTest, à côté de l'app
 de l'utilisateur qu'elle ne touche pas) contre les Odoo de la course : le
 sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
 pendant un pull, la note datée créée depuis le calendrier et, sur la 18
-seulement, le clavardage et un groupe créé depuis le téléphone, dont le
-temps réel passe par le websocket natif.
+seulement, le clavardage, un groupe créé depuis le téléphone, dont le
+temps réel passe par le websocket natif, et les pièces jointes du
+clavardage (fichier, message vocal enregistré au micro, image et message
+vocal reçus).
 
 Le téléphone joint les serveurs par adb reverse (127.0.0.1 de l'appareil vers
 celui de l'hôte) ; la page se pilote par CDP (mobile_sync_cdp.py), les écrans
@@ -26,11 +28,13 @@ gardés d'une course :
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
 import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -40,7 +44,7 @@ import mobile_sync_odoo as odoo  # noqa: E402
 from mobile_sync_cdp import Cdp, ErreurPage  # noqa: E402
 
 PAQUET = "ca.erplibre.home.synctest"
-DEVICE_HOOK_API = 3
+DEVICE_HOOK_API = 4
 APK_CACHE = odoo.CACHE / "apk"
 APK_PRODUIT = Path("android/app/build/outputs/apk/debug/app-debug.apk")
 # Ce que le pull compare : write_date, à la seconde
@@ -158,8 +162,9 @@ def construire_apk(mobile=odoo.MOBILE, executer=subprocess.run, journal=print):
 
 class Odoo:
     """Le serveur d'une cible, vu par un de ses comptes (compte : la clé de
-    la cible, "admin" par défaut), en JSON-RPC (/jsonrpc) ; route() poste
-    sur une route web comme le navigateur de ce compte."""
+    la cible, "admin" par défaut), en JSON-RPC (/jsonrpc) ; route(),
+    telecharger() et televerser() passent par une session web comme le
+    navigateur de ce compte."""
 
     def __init__(self, cible, compte="admin"):
         self.url = cible["url"]
@@ -196,9 +201,9 @@ class Odoo:
             "/jsonrpc", {"service": service, "method": methode, "args": args}
         )[0]
 
-    def route(self, chemin, params):
-        """params postés sur une route web (/mail/message/post) dans la
-        session de ce compte, ouverte au premier appel."""
+    def ouvrir_session(self):
+        """La session web de ce compte, ouverte au premier appel : son
+        cookie (session_id=…)."""
         if not self.session:
             _, reponse = self.poster(
                 "/web/session/authenticate",
@@ -218,7 +223,68 @@ class Odoo:
             )
             if not self.session:
                 raise RuntimeError(f"aucune session web pour {self.login}")
-        return self.poster(chemin, params, {"Cookie": self.session})[0]
+        return self.session
+
+    def route(self, chemin, params):
+        """params postés sur une route web (/mail/message/post) dans la
+        session de ce compte."""
+        return self.poster(chemin, params, {"Cookie": self.ouvrir_session()})[
+            0
+        ]
+
+    def telecharger(self, chemin):
+        """Les octets de chemin (/web/content/<id>) lus dans la session de
+        ce compte."""
+        requete = urllib.request.Request(
+            f"{self.url}{chemin}", headers={"Cookie": self.ouvrir_session()}
+        )
+        with urllib.request.urlopen(requete, timeout=60) as reponse:
+            return reponse.read()
+
+    def televerser(self, canal, nom, octets, type_mime, voix=False):
+        """octets téléversés en pièce jointe en attente du canal, comme le
+        compositeur du client web : multipart sur /mail/attachment/upload,
+        avec la session de ce compte et le jeton CSRF de sa page de
+        connexion ; voice=true pour un message vocal. Rend l'id de la pièce
+        jointe et son jeton d'accès, pour attachment_tokens."""
+        page = self.telecharger("/web/login").decode()
+        trouve = re.search(
+            r"name=[\"']csrf_token[\"'][^>]*value=[\"']([^\"']+)"
+            r"|csrf_token\s*:\s*[\"']([^\"']+)",
+            page,
+        )
+        if not trouve:
+            raise RuntimeError("aucun jeton CSRF sur /web/login")
+        champs = {
+            "thread_id": str(canal),
+            "thread_model": "discuss.channel",
+            "is_pending": "true",
+            "csrf_token": trouve.group(1) or trouve.group(2),
+        }
+        if voix:
+            champs["voice"] = "true"
+        limite = f"ms-{uuid.uuid4().hex}"
+        corps = b"".join(
+            f'--{limite}\r\nContent-Disposition: form-data; name="{cle}"'
+            f"\r\n\r\n{valeur}\r\n".encode()
+            for cle, valeur in champs.items()
+        )
+        corps += (
+            f'--{limite}\r\nContent-Disposition: form-data; name="ufile";'
+            f' filename="{nom}"\r\nContent-Type: {type_mime}\r\n\r\n'
+        ).encode()
+        corps += octets + f"\r\n--{limite}--\r\n".encode()
+        requete = urllib.request.Request(
+            f"{self.url}/mail/attachment/upload",
+            corps,
+            {
+                "Content-Type": f"multipart/form-data; boundary={limite}",
+                "Cookie": self.ouvrir_session(),
+            },
+        )
+        with urllib.request.urlopen(requete, timeout=60) as reponse:
+            fiche = json.load(reponse)["data"]["ir.attachment"][0]
+        return fiche["id"], fiche.get("access_token") or False
 
     def executer(self, modele, methode, args, kwargs=None):
         return self.appel(
@@ -910,6 +976,247 @@ def scenario_groupe(ctx):
     return echanger(ctx, pair, canal)
 
 
+# L'image déposée sur le téléphone et envoyée par chat_user : un dégradé
+# inventé (voir fixtures/PROVENANCE.md)
+PHOTO = (
+    Path(__file__).resolve().parent
+    / "mobile_sync"
+    / "fixtures"
+    / "photo-2400x1600.jpg"
+)
+# Où le fichier est déposé, sous files/ de l'app (Directory.Data)
+DEPOT = "ms_test"
+# La durée d'un message vocal enregistré au micro du téléphone, en secondes
+VOIX = 3
+# La place des boutons 📎 et 🎤 de la saisie, en px CSS, comme PLACE_SAISIE :
+# par bouton, [haut de la barre de navigation moins bas du bouton (null si
+# la barre n'est pas affichée), bas de la partie visible moins bas du bouton]
+PLACE_BOUTONS = (
+    "(() => { const n = document.querySelector('nav#nav');"
+    " const vue = window.visualViewport;"
+    " const visible = vue ? vue.offsetTop + vue.height : innerHeight;"
+    " return ['.chat-thread__attach', '.chat-thread__mic'].map(s => {"
+    " const b = document.querySelector(s); if (!b) return null;"
+    " const bas = b.getBoundingClientRect().bottom;"
+    " return [n && n.getClientRects().length"
+    " ? Math.round(n.getBoundingClientRect().top - bas) : null,"
+    " Math.round(visible - bas)]; }); })()"
+)
+
+
+def deposer(ctx, source, chemin):
+    """source (un fichier de l'hôte) copié à chemin sous files/ de l'app de
+    test : poussé dans /data/local/tmp, copié par run-as (seule l'app lit
+    son dossier), puis effacé de /data/local/tmp."""
+    executer = ctx.appareil.executer
+    temporaire = f"/data/local/tmp/{uuid.uuid4().hex}"
+    adb("push", str(source), temporaire, executer=executer)
+    try:
+        dossier = chemin.rsplit("/", 1)[0]
+        adb(
+            "shell",
+            f"run-as {PAQUET} sh -c 'mkdir -p files/{dossier}"
+            f" && cp {temporaire} files/{chemin}'",
+            executer=executer,
+        )
+    finally:
+        adb("shell", "rm", "-f", temporaire, executer=executer, check=False)
+
+
+def attendre_envoye(ctx, canal, client_uuid, delai=60):
+    """Attend que le message de client_uuid soit marqué envoyé : il a sa
+    réponse du serveur et a quitté l'outbox ; rend son id sur le serveur."""
+    return ctx.cdp.attendre(
+        f"window.__erplibreTest.chatMessages({js(ctx.config_id)}, {canal})"
+        f".then(ms => {{ const m = ms.find(m => m.clientUuid === {js(client_uuid)});"
+        " return !!m && m.status === 'sent' && m.messageId; })",
+        delai=delai,
+    )
+
+
+def poster_avec(pair, canal, texte, pieces):
+    """Poste texte avec les pièces jointes (id, jeton) téléversées par pair."""
+    pair.route(
+        "/mail/message/post",
+        {
+            "thread_model": "discuss.channel",
+            "thread_id": canal,
+            "post_data": {
+                "body": texte,
+                "message_type": "comment",
+                "subtype_xmlid": "mail.mt_comment",
+                "attachment_ids": [ident for ident, _ in pieces],
+            },
+            "attachment_tokens": [jeton for _, jeton in pieces],
+        },
+    )
+
+
+def scenario_pieces_jointes(ctx):
+    """Les pièces jointes du clavardage, dans un groupe neuf avec chat_user.
+    Un fichier déposé dans le dossier de l'app part comme le compositeur
+    l'envoie après le sélecteur (chatSendFile) et arrive une fois, ses
+    octets intacts par le module. Les boutons 📎 et 🎤 se tiennent
+    au-dessus de la barre de navigation. Un toucher sur 🎤, VOIX secondes,
+    un second toucher : le serveur reçoit un MP3 (audio/mpeg) marqué
+    vocal, ce qui prouve que le worker d'encodage se charge dans l'APK.
+    L'image de chat_user s'affiche en aperçu et son toucher ouvre la
+    visionneuse ; le message vocal de chat_user joue par le lecteur du fil
+    (événement playing, position qui avance). La caméra et les sélecteurs
+    du système ne sont pas pilotés : leur interface est celle du
+    fabricant. Rend la taille des fichiers et la position de lecture."""
+    pair = Odoo(ctx.cible, "chat")
+    moi = ctx.odoo.lire("res.users", ctx.odoo.uid, ["partner_id"])[
+        "partner_id"
+    ][0]
+    nom = ctx.unique("pieces")
+    pair.executer(
+        "discuss.channel",
+        "create_group",
+        [],
+        {"partners_to": [moi], "name": nom},
+    )
+    canal = pair.executer("discuss.channel", "search", [[["name", "=", nom]]])[
+        0
+    ]
+    ctx.hook(f"chatLoad({js(ctx.config_id)})")
+
+    photo = PHOTO.read_bytes()
+    empreinte = hashlib.sha1(photo).hexdigest()
+    nom_photo = f"{ctx.unique('photo')}.jpg"
+    deposer(ctx, PHOTO, f"{DEPOT}/{nom_photo}")
+    envoi = ctx.hook(
+        f"chatSendFile({js(ctx.config_id)}, {canal},"
+        f" {js(f'{DEPOT}/{nom_photo}')}, {js(nom_photo)}, 'image/jpeg')"
+    )
+    message = attendre_envoye(ctx, canal, envoi)
+    pieces = ctx.odoo.executer(
+        "ir.attachment",
+        "search_read",
+        [[["name", "=", nom_photo]]],
+        {"fields": ["res_model", "res_id", "checksum", "file_size"]},
+    )
+    assert len(pieces) == 1, pieces
+    assert pieces[0]["res_model"] == "discuss.channel", pieces
+    assert pieces[0]["res_id"] == canal, pieces
+    assert pieces[0]["checksum"] == empreinte, pieces
+    lu = ctx.odoo.lire("mail.message", message, ["attachment_ids"])
+    assert lu["attachment_ids"] == [pieces[0]["id"]], lu
+
+    ctx.hook(
+        f"open('/chat/' + encodeURIComponent({js(ctx.config_id)}) + '/{canal}')"
+    )
+    ctx.cdp.attendre(
+        f"location.pathname.endsWith('/{canal}') && {SAISIE_PRETE}", delai=20
+    )
+    ctx.cdp.evaluer("document.activeElement && document.activeElement.blur()")
+    place_saisie(ctx)
+    for bouton, place in zip(("📎", "🎤"), ctx.cdp.evaluer(PLACE_BOUTONS)):
+        assert place, f"{bouton} absent de la saisie"
+        barre, visible = place
+        assert (
+            barre is None or barre >= 0
+        ), f"la barre couvre {bouton} : {place}"
+        assert visible >= 0, f"{bouton} sort de l'écran : {place}"
+
+    adb(
+        "shell",
+        "pm",
+        "grant",
+        PAQUET,
+        "android.permission.RECORD_AUDIO",
+        executer=ctx.appareil.executer,
+    )
+    ctx.toucher_pose(".chat-thread__mic")
+    ctx.cdp.attendre(
+        "!!document.querySelector('.chat-thread__mic--on')", delai=10
+    )
+    time.sleep(VOIX)
+    ctx.toucher_pose(".chat-thread__mic--on")
+    domaine = [
+        ["res_model", "=", "discuss.channel"],
+        ["res_id", "=", canal],
+        ["voice_ids", "!=", False],
+    ]
+    fin = time.monotonic() + 60
+    while not (
+        voix := ctx.odoo.executer(
+            "ir.attachment",
+            "search_read",
+            [domaine],
+            {"fields": ["name", "mimetype", "file_size", "voice_ids"]},
+        )
+    ):
+        if time.monotonic() > fin:
+            raise TimeoutError("aucun message vocal sur le serveur en 60 s")
+        time.sleep(POSE)
+    assert len(voix) == 1, voix
+    voix = voix[0]
+    assert voix["mimetype"] == "audio/mpeg", voix
+    assert re.fullmatch(
+        r"Voice-\d{4}-\d{2}-\d{2}-\d+\.mp3", voix["name"]
+    ), voix
+    assert voix["file_size"] > 0, voix
+
+    nom_image = f"{ctx.unique('image')}.jpg"
+    image = pair.televerser(canal, nom_image, photo, "image/jpeg")
+    poster_avec(pair, canal, ctx.unique("image"), [image])
+    tuile = f".chat-att__tile[aria-label={js(nom_image)}]"
+    ctx.cdp.attendre(f"!!document.querySelector({js(tuile)})", delai=30)
+    ctx.cdp.evaluer(
+        f"document.querySelector({js(tuile)}).scrollIntoView({{block: 'center'}})"
+    )
+    ctx.cdp.attendre(
+        f"(() => {{ const i = document.querySelector({js(tuile + ' .chat-att__img')});"
+        " return !!i && i.complete && i.naturalWidth > 0; })()",
+        delai=30,
+    )
+    assert ctx.hook(
+        f"chatAttachments({js(ctx.config_id)}, {canal})"
+        f".then(as => as.some(a => a.attachmentId === {image[0]} && !!a.thumbPath))"
+    ), "aperçu reçu sans fichier en cache"
+    ctx.toucher_pose(tuile)
+    ctx.cdp.attendre(
+        "(() => { const i = document.querySelector('.chat-viewer__img');"
+        " return !!i && i.complete && i.naturalWidth > 0; })()",
+        delai=30,
+    )
+    ctx.toucher_pose(".chat-viewer__close")
+    ctx.cdp.attendre("!document.querySelector('.chat-viewer')", delai=10)
+    # La photo envoyée reste sur le téléphone, l'original reçu s'y ajoute
+    espace = ctx.hook(f"chatSpace({js(ctx.config_id)})")
+    assert espace >= len(photo), f"espace du clavardage : {espace} o"
+
+    octets = pair.telecharger(f"/web/content/{voix['id']}?download=true")
+    recue = pair.televerser(
+        canal, voix["name"], octets, "audio/mpeg", voix=True
+    )
+    poster_avec(pair, canal, "", [recue])
+    lecteur = f'audio[data-key="a{recue[0]}"]'
+    ctx.cdp.attendre(f"!!document.querySelector({js(lecteur)})", delai=30)
+    # Les événements d'un média ne remontent pas : écoutés en capture
+    ctx.cdp.evaluer(
+        "window.__msJoue = []; document.addEventListener('playing',"
+        " e => window.__msJoue.push(e.target.dataset.key), true)"
+    )
+    bouton = f"[data-ms-lecture='a{recue[0]}']"
+    ctx.cdp.evaluer(
+        f"document.querySelector({js(lecteur)}).closest('.chat-att__voice')"
+        f".querySelector('.chat-att__play').dataset.msLecture = 'a{recue[0]}'"
+    )
+    ctx.toucher_pose(bouton)
+    ctx.cdp.attendre(f"window.__msJoue.includes('a{recue[0]}')", delai=30)
+    position = f"document.querySelector({js(lecteur)}).currentTime"
+    debut = ctx.cdp.evaluer(position)
+    time.sleep(1)
+    suite = ctx.cdp.evaluer(position)
+    assert suite > debut, f"lecture figée à {debut} puis {suite} s"
+    return (
+        f"photo {len(photo)} o intacte, voix {voix['file_size']} o,"
+        f" {espace} o en cache, lecture reçue à {suite:.1f} s"
+    )
+
+
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
 # parle qu'à la 18
 SCENARIOS = (
@@ -919,6 +1226,7 @@ SCENARIOS = (
     ("note datée du calendrier", scenario_calendrier, odoo.VERSIONS),
     ("clavardage", scenario_clavardage, (18,)),
     ("groupe créé du téléphone", scenario_groupe, (18,)),
+    ("pièces jointes du clavardage", scenario_pieces_jointes, (18,)),
 )
 
 

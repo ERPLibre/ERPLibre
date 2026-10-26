@@ -77,6 +77,26 @@ export class OdooAdmin {
 		return body.result;
 	}
 
+	/**
+	 * GET path (a file: /web/content/<id>, /web/image/<id>) with the Cookie
+	 * given (a session's, as `session_id=…`), no redirect followed: its
+	 * status and its bytes.
+	 */
+	async httpGet(path: string, cookie: string): Promise<{ status: number; bytes: Buffer }> {
+		const response = await fetch(`${this.target.url}${path}`, { headers: { Cookie: cookie }, redirect: "manual" });
+		return { status: response.status, bytes: Buffer.from(await response.arrayBuffer()) };
+	}
+
+	/** A system parameter (ir.config_parameter) as this user reads it, false when it is not set. */
+	getParam(key: string): Promise<string | false> {
+		return this.execute("ir.config_parameter", "get_param", [key]);
+	}
+
+	/** Sets a system parameter (admin only), false removing it; the value it had, false when unset. */
+	setParam(key: string, value: string | false): Promise<string | false> {
+		return this.execute("ir.config_parameter", "set_param", [key, value]);
+	}
+
 	/** model.method(*args, **kwargs) as this user. */
 	async execute(model: string, method: string, args: any[] = [], kwargs: Record<string, any> = {}): Promise<any> {
 		const uid = await this.login();

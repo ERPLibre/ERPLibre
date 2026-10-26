@@ -55,7 +55,7 @@ MODULES_EN_PLUS = {
 }
 DEPOT_ADDONS_ERPLIBRE = "ERPLibre_erplibre_addons"
 MODULE_CHAT = "erplibre_mobile_chat"
-HARNESS_API = 2
+HARNESS_API = 3
 NODE_MINIMUM = 22
 # Le fuseau de l'administrateur des bases ET des tests : une date d'Odoo 16
 # (Date) se lit en jour local, et un écart des deux ferait glisser les jours.
