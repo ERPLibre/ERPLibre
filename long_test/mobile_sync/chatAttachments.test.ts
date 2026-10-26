@@ -5,145 +5,42 @@
  * (chatModule "ignore"): an upload or a post whose answer is lost still
  * gives one attachment in one message; a voice message is a voice for
  * Odoo; a photo keeps its original bytes through the module and is reduced
- * by Odoo's route; the server's size limit refuses a file at staging, or
- * once at sending with the text still posted; « Wi-Fi only » holds an
- * upload off Wi-Fi; an upload in an expired session lands once after the
- * app logs in again; chat_user's image reaches the app as a preview and an
- * original equal to the server's bytes; and loading a conversation of
- * twenty attachments fetches none of their files.
+ * by Odoo's route; « Wi-Fi only » holds an upload off Wi-Fi; an upload in
+ * an expired session lands once after the app logs in again; chat_user's
+ * image reaches the app as a preview and an original equal to the server's
+ * bytes; and loading a conversation of twenty attachments fetches none of
+ * their files. The server's size limit has its own file,
+ * chatAttachmentsLimit.serial.test.ts.
  *
  * The quiet window (3 minutes) and the retry delays pass on a faked Date:
- * only the app's clock moves, the requests stay real. The upload limit
- * (web.max_file_upload_size) is lowered by two cases only and put back
- * after each; it bounds every request of the server, those of the files
- * running beside this one too, so it stays above any JSON request of the
- * run.
+ * only the app's clock moves, the requests stay real.
  */
-import { createHash } from "node:crypto";
-import { appFor, eachVersionFrom, fixture, setNetwork, setOnline, stageChatFile, stageChatVoice, unique, until } from "./harness";
-import type { SyncEnv } from "./harness";
+import { eachVersionFrom, fixture, setNetwork, stageChatVoice, unique } from "./harness";
 import { ChatPeer } from "./chatPeer";
 import { FaultProxy } from "./faultProxy";
 import type { RpcCall } from "./faultProxy";
-
-const QUIET_WINDOW_PASSED_MS = 4 * 60 * 1000;
-const MODULE_ROUTE = "/erplibre_mobile_chat/attachment/upload";
-const ODOO_ROUTE = "/mail/attachment/upload";
-const LIMIT_KEY = "web.max_file_upload_size";
-/** A parameter written only to clear Odoo's parameter cache again (see setLimit). */
-const CACHE_BUMP_KEY = "erplibre_mobile_sync.cache_bump";
-/** Odoo's limit when the parameter is unset (DEFAULT_MAX_CONTENT_LENGTH). */
-const ODOO_DEFAULT_LIMIT = 128 * 1024 * 1024;
-/** A limit far under the photo and above every JSON request of a case. */
-const LOW_LIMIT = 20000;
-const PHOTO = "photo-2400x1600.jpg";
-
-const ROUTES = [
-	{ label: "with the module", chatModule: "auto", route: MODULE_ROUTE },
-	{ label: "through Odoo's route", chatModule: "ignore", route: ODOO_ROUTE },
-] as const;
-
-const sha1 = (bytes: Uint8Array) => createHash("sha1").update(bytes).digest("hex");
-
-/** Width and height of a JPEG, from its first frame header (SOFn). */
-function jpegSize(bytes: Buffer): [number, number] {
-	let at = 2;
-	while (at + 9 < bytes.length) {
-		if (bytes[at] !== 0xff) throw new Error(`no JPEG marker at ${at}`);
-		const marker = bytes[at + 1];
-		if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
-			return [bytes.readUInt16BE(at + 7), bytes.readUInt16BE(at + 5)];
-		}
-		at += 2 + bytes.readUInt16BE(at + 2);
-	}
-	throw new Error("no JPEG frame header");
-}
-
-/** Invented bytes of a given size, unique to the run: no two files of a case share their content. */
-function filler(size: number): Uint8Array {
-	const line = Buffer.from(`${unique("bytes")}\n`);
-	const out = Buffer.alloc(size);
-	for (let i = 0; i < size; i += line.length) line.copy(out, i);
-	return out;
-}
+import {
+	attachmentScene, filler, jpegSize, MODULE_ROUTE, PHOTO, QUIET_WINDOW_PASSED_MS, ROUTES, sha1,
+} from "./chatAttachmentScene";
 
 eachVersionFrom(18, "chat attachments", (target) => {
 	let proxy: FaultProxy;
 	let peer: ChatPeer;
-	/** The upload limit as the run found it (false: unset, Odoo's default). */
-	let limitBefore: string | false;
-	let limitLowered = false;
-
-	/**
-	 * Sets the upload limit (false: unset) and waits until the server
-	 * applies it. Odoo clears its parameter cache before the write commits,
-	 * so a request served in between caches the old value until the next
-	 * clear: a second parameter's write and removal, made once the limit is
-	 * committed, clear it again; then the session info names the new limit.
-	 */
-	async function setLimit(value: string | false): Promise<void> {
-		await peer.admin.setParam(LIMIT_KEY, value);
-		await peer.admin.setParam(CACHE_BUMP_KEY, unique("bump"));
-		await peer.admin.setParam(CACHE_BUMP_KEY, false);
-		const expected = value === false ? ODOO_DEFAULT_LIMIT : Number(value);
-		await until(`the server's upload limit at ${expected}`, async () =>
-			(await peer.user.jsonRoute("/web/session/get_session_info")).max_file_upload_size === expected);
-	}
 
 	beforeAll(async () => {
 		proxy = await FaultProxy.start(target);
 		peer = await ChatPeer.open(target);
-		limitBefore = await peer.admin.getParam(LIMIT_KEY);
 	});
-	afterEach(async () => {
+	afterEach(() => {
 		proxy.down = false;
 		vi.useRealTimers();
-		if (limitLowered) {
-			await setLimit(limitBefore);
-			limitLowered = false;
-		}
 	});
 	afterAll(async () => {
-		if (peer && limitLowered) await setLimit(limitBefore);
 		await proxy.stop();
 	});
 
-	const later = (ms: number) => vi.setSystemTime(Date.now() + ms);
-	const uploadsOf = (route: string) => proxy.calls.filter((c) => c.path === route);
-	/** The file requests (/web/image, /web/content) the app made since the proxy recorded mark calls. */
-	const fileCallsSince = (mark: number) => proxy.calls.slice(mark).filter((c) => /^\/web\/(image|content)\b/.test(c.path));
-
-	async function lowerLimit(bytes: number): Promise<void> {
-		limitLowered = true;
-		await setLimit(String(bytes));
-	}
-
-	/** The app through the proxy, its chat source loaded. */
-	async function app(opts: { chatModule?: "auto" | "ignore" } = {}) {
-		const env = await appFor(proxy.via(target), "admin", opts);
-		const [src] = await env.chat.sources();
-		await env.chat.load(src);
-		return { env, src };
-	}
-
-	/** The file staged as the composer stages a pick; a refusal fails the case. */
-	async function staged(env: SyncEnv, src: any, name: string, bytes: Uint8Array, mimetype?: string) {
-		const file = await stageChatFile(env, src, { name, bytes, mimetype });
-		if ("refused" in file) throw new Error(`${name} refused at staging`);
-		return file;
-	}
-
-	const idle = (env: SyncEnv, configId: string) => env.chat.queue.whenIdle(configId);
-
-	/** The server's comments of the conversation holding text, with their attachment ids. */
-	const withText = async (channelId: number, text: string) =>
-		(await peer.comments(channelId, ["id", "body", "attachment_ids"])).filter((m) => m.body.includes(text));
-
-	const named = (name: string) =>
-		peer.admin.searchRead("ir.attachment", [["name", "=", name]], ["id", "res_model", "res_id", "checksum"]);
-
-	const mine = async (env: SyncEnv, configId: string, channelId: number, clientUuid: string | null) =>
-		(await env.chat.messages(configId, channelId)).find((m) => m.clientUuid === clientUuid)!;
+	const { later, uploadsOf, fileCallsSince, app, staged, idle, withText, named, mine } =
+		attachmentScene(target, () => ({ proxy, peer }));
 
 	for (const { label, chatModule, route } of ROUTES) {
 		it(`lost upload answer ${label}: one attachment in one message`, async () => {
@@ -248,48 +145,6 @@ eachVersionFrom(18, "chat attachments", (target) => {
 				expect(jpegSize(stored.bytes)).toEqual([1920, 1280]);
 			}
 		}
-	});
-
-	it("a file over a limit lowered before the app read it is refused at staging, no request", async () => {
-		await lowerLimit(LOW_LIMIT);
-		const { env, src } = await app();
-		expect(await env.chat.uploadLimit(src)).toBe(LOW_LIMIT);
-		const before = proxy.calls.length;
-		const refused = await stageChatFile(env, src, { name: `${unique("big")}.txt`, bytes: filler(LOW_LIMIT * 2) });
-		expect(refused).toEqual({ refused: "too_big", limit: LOW_LIMIT });
-		expect(proxy.calls.slice(before)).toEqual([]);
-	});
-
-	it("a limit lowered after the file was queued: one 413, a notice, the text posted, no retry", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
-		const group = await peer.group(unique("group"));
-		const { env, src } = await app();
-		const name = `${unique("big")}.txt`;
-		const file = await staged(env, src, name, filler(LOW_LIMIT * 2), "text/plain");
-		const text = unique("text");
-		setOnline(false);
-		const sent = await env.chat.send(src, group, text, [file]);
-		await lowerLimit(LOW_LIMIT);
-		setOnline(true);
-		await env.chat.flushAll();
-		await idle(env, src.configId);
-		const tried = () => uploadsOf(MODULE_ROUTE).filter((c) => c.files?.[0]?.filename === name);
-		expect(tried().map((c) => c.status)).toEqual([413]);
-		const found = await withText(group, text);
-		expect(found.map((m) => m.attachment_ids)).toEqual([[]]);
-		expect(await mine(env, src.configId, group, sent.clientUuid)).toMatchObject({ status: "sent", messageId: found[0].id });
-		expect(await env.chat.notices([src.configId])).toEqual([expect.objectContaining({
-			kind: "chat.file_refused", channelId: group, file: expect.objectContaining({ name, reason: "too_big" }),
-		})]);
-		expect(await named(name)).toEqual([]);
-
-		for (let i = 0; i < 2; i++) {
-			later(QUIET_WINDOW_PASSED_MS);
-			await env.chat.flushAll({ force: true });
-			await idle(env, src.configId);
-		}
-		expect(tried()).toHaveLength(1);
-		expect(await withText(group, text)).toHaveLength(1);
 	});
 
 	it("Wi-Fi only holds an upload on a mobile network, sent once on Wi-Fi", async () => {
