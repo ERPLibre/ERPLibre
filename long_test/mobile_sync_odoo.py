@@ -158,6 +158,11 @@ canal.sudo().channel_member_ids.filtered(
 presents = set(canal.sudo().channel_member_ids.mapped("partner_id").ids)
 if presents != attendus:
     raise Exception("membres du canal ms chat : %s != %s" % (presents, attendus))
+# Les réglages de chaque utilisateur interne existent d'avance : créés à la
+# demande (authentification, chat), deux requêtes simultanées qui les
+# créent toutes deux butent sur l'unicité de res.users.settings.
+for interne in env["res.users"].search([("share", "=", False)]):
+    env["res.users.settings"]._find_or_create_for_user(interne)
 env.cr.commit()
 """
 
