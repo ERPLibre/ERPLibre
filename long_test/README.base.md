@@ -368,20 +368,39 @@ a post that reaches chat_user once, a lost answer with the module and with
 the marker alone, the offline queue keeping its order, history paging, and
 the read mark seen on the server. `chatRealtime.test.ts` covers the bus
 delivering a message and the typing of chat_user, the counters of the first
-connection, and a cut socket that delivers on reconnect. `--appareil` adds
-the « clavardage » screen. To run only these:
+connection, and a cut socket that delivers on reconnect. `chatManage.test.ts`
+covers managing conversations against the real server, reading each result
+back from it: a direct message made once and reused, a group created offline
+then the app restarted with the create's answer lost (one group, its posts
+once and in order, with the module's uuid dedupe and without it, by
+fingerprint), the access groups of a new channel, a join, an invite, rename
+and description, a leave with a post still queued, a hidden direct message
+shown again when the other user writes, a mute and a global mute (one queued
+past its end unmutes), and a removal by the administrator told on the removed
+user's bus, which a non-administrator is refused. The scenario of a group that
+chat_user creates and fills runs as `mc_user`, the two-company user, whom no
+other file's conversation involves, so every `/mail/data` through its proxy
+is its own and the later messages must arrive by the bus with no reload.
+The template also creates the settings of every internal user ahead (two
+simultaneous first requests would otherwise both create them and hit the
+uniqueness of `res.users.settings`), and its module is the 1.1 that dedupes
+creates. `--appareil` adds the « clavardage » screen and a group created
+from the phone. To run only these:
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
 ./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
 ```
 
-`--appareil` plays five screens on the phone, against the same servers: the
+`--appareil` plays its screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
 pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
 (the tile opens the list within 2 s, and the composer of « ms chat » within
 2 s too, a message typed there reaches
-the server once, chat_user's reply shows through the native websocket). They
+the server once, chat_user's reply shows through the native websocket) and a
+group created from the phone with chat_user, which exists once on the server
+under its name, whose info screen lists chat_user among the members and in
+which messages go both ways. They
 run in a separate app,
 `ca.erplibre.home.synctest`, built by `-PsyncTest` from a development bundle
 and cleared for each version; the user's own app is never touched. The phone
@@ -802,21 +821,42 @@ chat_user, une réponse perdue avec le module et avec le seul marqueur, la file
 hors ligne qui garde son ordre, la pagination de l'historique et la marque de
 lecture vue sur le serveur. `chatRealtime.test.ts` couvre le bus qui livre un
 message et la frappe de chat_user, les compteurs de la première connexion, et
-un socket coupé qui livre à la reconnexion. `--appareil` ajoute l'écran
-« clavardage ». Pour ne lancer que ceux-là :
+un socket coupé qui livre à la reconnexion. `chatManage.test.ts` couvre la
+gestion des conversations contre le vrai serveur, chaque résultat relu sur
+lui : un message direct créé une fois et réutilisé, un groupe créé hors ligne
+puis l'app relancée, la réponse de la création perdue (un seul groupe, ses
+messages une fois et dans l'ordre, avec le dédoublonnage par uuid du module
+et sans lui, par empreinte), les groupes d'accès d'un nouveau canal, une
+adhésion, une invitation, le renommage et la description, un départ avec un
+message encore en file, un message direct masqué qui réapparaît quand l'autre
+utilisateur écrit, une sourdine et la sourdine globale (celle mise en file
+au-delà de sa fin la lève), et un retrait par l'administrateur annoncé sur le
+bus du retiré, qu'un non-administrateur se voit refuser. Le scénario d'un
+groupe que chat_user crée et remplit tourne sous `mc_user`, l'utilisateur à
+deux sociétés, qu'aucune conversation d'un autre fichier n'implique : tout
+`/mail/data` de son proxy est le sien et les messages suivants doivent
+arriver par le bus sans rechargement. Le gabarit crée aussi d'avance les
+réglages de chaque utilisateur interne (deux premières requêtes simultanées
+les créeraient toutes deux et buteraient sur l'unicité de
+`res.users.settings`), et son module est le 1.1 qui dédoublonne les
+créations. `--appareil` ajoute l'écran « clavardage » et un groupe créé
+depuis le téléphone. Pour ne lancer que ceux-là :
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
 ./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
 ```
 
-`--appareil` joue cinq écrans sur le téléphone, contre les mêmes serveurs :
+`--appareil` joue ses écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
 pendant un pull, la note datée créée depuis le calendrier et, sur la 18
 seulement, le clavardage (la tuile ouvre la liste en 2 s au plus, et la zone
 de saisie de « ms chat » en 2 s aussi, un message qui y est tapé arrive une
 fois sur le serveur, la réponse de chat_user
-s'affiche par le websocket natif). Ils tournent
+s'affiche par le websocket natif) et un groupe créé depuis le téléphone avec
+chat_user, qui existe une fois sur le serveur sous son nom, dont la fiche
+nomme chat_user parmi les membres et où les messages passent dans les deux
+sens. Ils tournent
 dans une app à part, `ca.erplibre.home.synctest`, construite par `-PsyncTest`
 depuis un paquet de développement et effacée à chaque version ; l'app de
 l'utilisateur n'est jamais touchée. Le téléphone doit être déverrouillé, le
