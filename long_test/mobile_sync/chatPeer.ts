@@ -5,8 +5,13 @@
  * the app's user (admin) reads, through execute_kw. A mention is a post
  * whose partner_ids name admin. Files go as the web client sends them:
  * uploaded pending through /mail/attachment/upload, then named by the post.
+ * Reactions, edits and deletes go through the web client's routes too
+ * (/mail/message/reaction, /mail/message/update_content), an edit's body
+ * built from its text as the browser composer builds it (the kit's
+ * composeBody).
  */
-import type { Target } from "./harness";
+import { composeBody, emojiConversions, EMPTY_MENTIONS } from "./harness";
+import type { Mentions, Target } from "./harness";
 import { OdooAdmin } from "./odooAdmin";
 
 const CHANNEL = "discuss.channel";
@@ -177,6 +182,67 @@ export class ChatPeer {
 		const message = await this.admin.read("mail.message", messageId, ["attachment_ids"]);
 		if (!message) throw new Error(`message ${messageId} not found`);
 		return this.admin.searchRead("ir.attachment", [["id", "in", message.attachment_ids]], ATTACHMENT_FIELDS, { order: "id asc" });
+	}
+
+	/** chat_user's own reaction content on the message, added or removed (never a toggle, as the browser sends it). */
+	react(messageId: number, content: string, action: "add" | "remove"): Promise<any> {
+		return this.user.jsonRoute("/mail/message/reaction", { message_id: messageId, content, action });
+	}
+
+	/**
+	 * chat_user's own message edited to text in the browser: the composer's
+	 * HTML for text and the people picked (mentions; the browser starts from
+	 * the message's recipients), its partner_ids, and the message's current
+	 * attachments sent back as the browser sends them, so none is removed.
+	 */
+	async edit(messageId: number, text: string, mentions: Mentions = EMPTY_MENTIONS): Promise<any> {
+		const composed = composeBody(text, mentions, await emojiConversions());
+		const { attachment_ids } = await this.admin.read("mail.message", messageId, ["attachment_ids"]);
+		return this.user.jsonRoute("/mail/message/update_content", {
+			message_id: messageId,
+			body: composed.body,
+			attachment_ids,
+			partner_ids: composed.partnerIds,
+		});
+	}
+
+	/** chat_user's own message deleted in the browser: the body, the files and the subject emptied. */
+	deleteMessage(messageId: number): Promise<any> {
+		return this.user.jsonRoute("/mail/message/update_content", {
+			message_id: messageId, body: "", attachment_ids: [], attachment_tokens: [], subject: "",
+		});
+	}
+
+	/** The message's reaction rows on the server (admin's view), oldest first: content and partner. */
+	async reactionsOf(messageId: number): Promise<{ content: string; partnerId: number | false }[]> {
+		const rows = await this.admin.searchRead(
+			"mail.message.reaction", [["message_id", "=", messageId]], ["content", "partner_id"], { order: "id asc" },
+		);
+		return rows.map((r) => ({ content: r.content, partnerId: r.partner_id ? r.partner_id[0] : false }));
+	}
+
+	/** The message's body as the server stores it ("" for an emptied one). */
+	async bodyOf(messageId: number): Promise<string> {
+		const message = await this.admin.read("mail.message", messageId, ["body"]);
+		if (!message) throw new Error(`message ${messageId} not found`);
+		return message.body || "";
+	}
+
+	/** The id of the message this one replies to on the server, false for none. */
+	async parentOf(messageId: number): Promise<number | false> {
+		const message = await this.admin.read("mail.message", messageId, ["parent_id"]);
+		if (!message) throw new Error(`message ${messageId} not found`);
+		return message.parent_id ? message.parent_id[0] : false;
+	}
+
+	/** chat_user's notification of the message (mail.notification), null when the message notifies them of nothing. */
+	async needaction(messageId: number): Promise<{ notification_type: string; is_read: boolean } | null> {
+		const [row] = await this.admin.searchRead(
+			"mail.notification",
+			[["mail_message_id", "=", messageId], ["res_partner_id", "=", this.partnerId]],
+			["notification_type", "is_read"],
+		);
+		return row ?? null;
 	}
 
 	typing(channelId: number, isTyping: boolean): Promise<void> {
