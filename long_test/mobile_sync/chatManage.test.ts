@@ -114,10 +114,11 @@ eachVersionFrom(18, "chat management", (target) => {
 	});
 
 	/**
-	 * A group with chat_user created offline and two texts written into it,
-	 * the app killed, then the network back with the create's answer lost:
-	 * after the quiet window the retry settles on the one group, and the
-	 * texts reach it once each, in order.
+	 * A group with chat_user created offline, two texts written into it, a
+	 * rename and a mute queued on it, the app killed, then the network back
+	 * with the create's answer lost: after the quiet window the retry
+	 * settles on the one group, the texts reach it once each, in order, and
+	 * the group ends with the name and the mute queued.
 	 */
 	async function offlineGroupThenRestart(chatModule: "auto" | "ignore") {
 		vi.useFakeTimers({ toFake: ["Date"] });
@@ -133,6 +134,10 @@ eachVersionFrom(18, "chat management", (target) => {
 			await first.env.chat.send(first.src, tempId, text);
 			later(1000);
 		}
+		// Managed while only the phone knows it: queued behind the create
+		const renamed = unique("renamed-group");
+		await first.env.chat.rename(first.src, tempId, renamed);
+		await first.env.chat.mute(first.src, tempId, -1);
 		expect(creates()).toBe(createsBefore);
 
 		const restarted = await restartSyncEnv(first.env);
@@ -146,9 +151,12 @@ eachVersionFrom(18, "chat management", (target) => {
 
 		later(QUIET_WINDOW_PASSED_MS);
 		await restarted.chat.flushAll();
-		const groups = await peer.admin.searchRead(CHANNEL, [["name", "=", name]], ["id", "channel_type", "channel_partner_ids", "erplibre_client_uuid"]);
+		// The fingerprint and the uuid found the group under its first name; the rename went after
+		expect(await named(name)).toEqual([]);
+		const groups = await peer.admin.searchRead(CHANNEL, [["name", "=", renamed]], ["id", "channel_type", "channel_partner_ids", "erplibre_client_uuid"]);
 		expect(groups).toHaveLength(1);
 		const [group] = groups;
+		expect((await peer.memberOf(group.id, peer.adminPartnerId, ["mute_until_dt"])).mute_until_dt).toBe("9999-12-31 23:59:59");
 		expect(group.channel_type).toBe("group");
 		expect([...group.channel_partner_ids].sort()).toEqual([peer.adminPartnerId, peer.partnerId].sort());
 		const bodies = (await peer.comments(group.id)).map((m) => m.body);
@@ -157,7 +165,9 @@ eachVersionFrom(18, "chat management", (target) => {
 
 		expect(await restarted.chat.realIdOf(src.configId, tempId)).toBe(group.id);
 		expect(await restarted.chat.repo.channel(src.configId, tempId)).toBeNull();
-		expect(await restarted.chat.repo.channel(src.configId, group.id)).toMatchObject({ isMember: true, createOpId: null });
+		expect(await restarted.chat.repo.channel(src.configId, group.id)).toMatchObject({
+			isMember: true, createOpId: null, name: renamed, muteUntilDt: "9999-12-31 23:59:59",
+		});
 		expect((await restarted.chat.messages(src.configId, group.id)).map((m) => m.status)).toEqual(["sent", "sent"]);
 		expect(await restarted.db.getOutboxOpsForConfig(src.configId)).toEqual([]);
 		return { group, creates: creates() - createsBefore };
