@@ -82,7 +82,18 @@ in `odoo18.0/odoo/addons/`.
 
 ### Task 0: Lot 3 carry-overs (D13)
 
-Carry-overs from the lot 3 final review, filled in by the controller.
+Carry-overs from the lot 3 final review (`tasks/chat/lot3-rereview-report.md`, « New Issues In Fix Diff »).
+
+**Files:** M `src/services/chat/chatOutbox.ts` (`twin` `:1158-1159`, `findUploaded` `:1762-1784`, `stopUploads`/the lane), `src/services/appService.ts:46-48`, the composer attach controller (staging limit), the preparing bubble in `chat_thread_component.ts`; E `contracts/odoo-api.json` (`chat.upload_find`); tests `chatOutbox.test.ts`, `chatService.test.ts`, `chatComposerAttach.test.ts`, `chatThreadComponent.test.ts`.
+
+- [ ] **Step 1: Failing tests:**
+  - `two same-named photos of different sizes in two conversations, both answers lost, each post keeps its own attachment` (no module) — N1: the photo in the wrong conversation.
+  - `a rename waits for no upload and no upload writes under the old id` (pause the account's upload lane from before `whenIdle` until `renameChatRows` is done) — N3.
+  - `a pick while the limit is unknown stages without the 128 MiB fallback and the late check refuses with the real limit` — N4.
+  - `the preparing bubble shows small thumbnails, not full-size originals` — N5.
+- [ ] **Step 2: Implement:** `twin` ignores size when both files are resizable image types (`RESIZABLE_IMAGE_TYPES`) — the match without size then has its twins ordered; pause/resume of the account's upload lane around the rename; stage with no limit while unknown; the preparing bubble uses the staged file through a downscaled `<img>` (decoding bounded, e.g. `decoding="async"` and a CSS box, or `ChatFile.toJpeg` to a thumbnail) — the lighter path that keeps memory bounded; correct the comment at `chatOutbox.ts:1762-1763`, the `chat.upload_find` contract note and `appService.ts:46-48`'s « nothing writes » claim (N6).
+- [ ] **Step 3:** `npm test`, `npm run build`; `./long_test/mobile_sync.py --versions 18 --filtre chat` green.
+- [ ] **Step 4: Commits:** M `[FIX] chat: same-named photos ordered, rename pauses uploads, late limit`; E `[UPD] contracts: chat upload search orders same-named photos`.
 
 ### Task 1: Server module 18.0.1.3.0 — guarded edit (D5)
 
