@@ -508,8 +508,8 @@ class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
 
-    def test_api_du_hook_2(self):
-        self.assertEqual(appareil.DEVICE_HOOK_API, 2)
+    def test_api_du_hook_3(self):
+        self.assertEqual(appareil.DEVICE_HOOK_API, 3)
 
     def test_clavardage_sur_la_18_seulement(self):
         for version in (16, 17):
@@ -517,10 +517,13 @@ class TestScenariosAppareil(unittest.TestCase):
                 "clavardage",
                 [nom for nom, _ in appareil.scenarios_de(version)],
             )
-        self.assertIn(
+        for scenario in (
             ("clavardage", appareil.scenario_clavardage),
-            appareil.scenarios_de(18),
-        )
+            ("groupe créé du téléphone", appareil.scenario_groupe),
+        ):
+            self.assertIn(scenario, appareil.scenarios_de(18))
+            for version in (16, 17):
+                self.assertNotIn(scenario, appareil.scenarios_de(version))
         self.assertEqual(len(appareil.scenarios_de(16)), 4)
 
     def test_lancer_saute_sans_compter(self):

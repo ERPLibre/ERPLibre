@@ -9,11 +9,12 @@
  */
 import {
 	createSyncEnv, installLocalStorage, resetMocks, memoryAttachmentIO, nodeTransport,
+	restartSyncEnv, setOnline, chatTitle,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import type { SyncEnv } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import { readFileSync } from "node:fs";
 
-export { memoryAttachmentIO, nodeTransport };
+export { memoryAttachmentIO, nodeTransport, restartSyncEnv, setOnline, chatTitle };
 export type { SyncEnv };
 
 export interface Login {
@@ -69,21 +70,25 @@ export function eachVersionFrom(min: number, name: string, fn: (target: Target) 
 
 /**
  * The app as a user of one or more servers sees it: a new database with
- * their applications and the sync service, http allowed, no session yet.
+ * their applications and the sync service, http allowed, no session yet,
+ * the network on. as names the user: admin, the two-company user, or the
+ * chat's second user (Odoo 18).
  * chatModule "ignore" makes chat posts take the marker path even where the
  * server module is installed.
  */
 export async function appFor(
 	targets: Target | Target[],
-	as: "admin" | "multi" = "admin",
+	as: "admin" | "multi" | "chat" = "admin",
 	opts: { chatModule?: "auto" | "ignore" } = {},
 ): Promise<SyncEnv> {
 	resetMocks();
 	installLocalStorage({ allowHttp: true });
 	const list = Array.isArray(targets) ? targets : [targets];
-	return createSyncEnv(list.map((t) => ({
-		url: t.url, username: t[as].login, password: t[as].password, database: t.database,
-	})), opts);
+	return createSyncEnv(list.map((t) => {
+		const user = t[as];
+		if (!user) throw new Error(`no ${as} user on Odoo ${t.version}`);
+		return { url: t.url, username: user.login, password: user.password, database: t.database };
+	}), opts);
 }
 
 let counter = 0;
