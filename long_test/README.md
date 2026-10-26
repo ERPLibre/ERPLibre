@@ -379,12 +379,46 @@ is its own and the later messages must arrive by the bus with no reload.
 Every template, the 16, 17 and 18 ones alike, creates the settings of every
 internal user ahead (two simultaneous first requests would otherwise both
 create them and hit the uniqueness of `res.users.settings`), and the 18 one's
-module is the 1.1 that dedupes creates. `--appareil` adds the « clavardage »
-screen and a group created from the phone. To run only these:
+module is the 1.2 that dedupes creates and uploads. `--appareil` adds the
+« clavardage » screen and a group created from the phone. To run only these:
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
 ./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
+```
+
+`chatAttachments.test.ts` covers the files of a message against the real
+server, each case read back from it. Where it says « on both routes », it
+runs once on the module's route and once with the module ignored, on
+Odoo's own. A lost upload answer leaves one attachment in one message (the
+module's route returns the first one for the same `client_uuid`, Odoo's is
+searched for and reused); a lost post answer with two files posts one message
+holding both; a voice file arrives as `audio/mpeg` with its voice metadata;
+and an expired session answers 404 once, then the upload goes through. The
+module's route keeps a photo's original (same checksum as the source file)
+where Odoo's reduces it to 1920 px. A limit lowered before the app reads it
+refuses the file at staging, and lowered after queueing refuses it with the
+server's 413: the text is posted without it and the user is told once. On a
+mobile network nothing leaves until Wi-Fi returns. A peer's image costs one
+preview request of 512 px at most and downloads its original only when
+opened, and a history of 20 attachments makes no file request at all. The
+cases that lower the server's upload limit bound every request of the shared
+server, so they live in `*.serial.test.ts` files, which run in a second pass,
+one file at a time, after the parallel pass; the two reports merge into one
+verdict. `--appareil` adds the « pièces jointes du clavardage » screen: a
+file sent from the composer reaches the server once with its original
+checksum, the attach and microphone buttons sit above the navigation bar, a
+real tap records a voice message that arrives as MP3, a peer's photo shows its
+preview and opens in the viewer, and a peer's voice message plays. The camera
+and the system pickers are the vendor's screens and stay outside the run. The
+device run also reads the `lastUpdateTime` of the user's own app before and
+after, and fails if it changed or cannot be read. The kit's harness checks
+(the API versions of the kit and of the device hook, the scenario list) run
+with the unit tests of the platform; the standard library's `test` package
+shadows `test/`, so the file is found by discovery:
+
+```
+.venv.erplibre/bin/python -m unittest discover -s test -p test_mobile_sync_harness.py
 ```
 
 `--appareil` plays its screens on the phone, against the same servers: the
