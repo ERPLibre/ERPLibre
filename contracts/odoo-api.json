@@ -695,7 +695,7 @@
       "method": "GET",
       "path": "/web/content/{attachment id}?unique={checksum}&download=true",
       "response": "the file, streamed by the native layer to its path under Directory.Data",
-      "notes": "Starts when the user opens the file (or taps to download), on mobile data after a size warning when the option asks for one. The route is auth=public: an expired session reads 404, handled as for chat.upload."
+      "notes": "Starts when the user opens the file (or taps to download). With « Wi-Fi only » on and the phone off Wi-Fi, the original (a voice message included) waits for Wi-Fi, and « download anyway » takes that one file now; previews never wait. The route is auth=public: an expired session reads 404, handled as for chat.upload."
     },
     "chat.attachment_delete_bus": {
       "description": "Bus notification that an attachment was deleted on the server",
