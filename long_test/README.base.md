@@ -384,7 +384,7 @@ is its own and the later messages must arrive by the bus with no reload.
 Every template, the 16, 17 and 18 ones alike, creates the settings of every
 internal user ahead (two simultaneous first requests would otherwise both
 create them and hit the uniqueness of `res.users.settings`), and the 18 one's
-module is the 1.2 that dedupes creates and uploads. `--appareil` adds the
+module is the 1.3, which dedupes creates and uploads and guards edits. `--appareil` adds the
 « clavardage » screen and a group created from the phone. To run only these:
 
 ```
@@ -425,6 +425,49 @@ shadows `test/`, so the file is found by discovery:
 ```
 .venv.erplibre/bin/python -m unittest discover -s test -p test_mobile_sync_harness.py
 ```
+
+`chatActions.test.ts` covers the actions on a message against the real
+server, each result read back from it. A reaction whose answer is lost leaves
+one row after the retry; one added then removed offline sends no request; and
+chat_user's reaction and edit reach the app by the bus with no reload. Where it
+says « on both routes », the edit runs once on the module's guarded route and
+once with the module ignored, on Odoo's: an edit of a message with two files
+changes the text and keeps both files; a late edit, made after chat_user edited
+or deleted the message in the browser, is refused with the app's text kept for
+« Reprendre » and the server's body untouched; a delete empties the body and
+removes the files, hidden in the app and for chat_user; a reply keeps its
+parent on the server, a reply whose parent chat_user deletes meanwhile is
+posted on it and quoted as deleted, and a reply to a message of another
+conversation is posted as a plain message. `chatWriting.test.ts` covers what
+the app writes: a mention of chat_user in a channel gives him a notification
+(only a partner with an email address and inbox notifications is notified of
+a channel mention, so the file gives him both for its run), `@everyone` puts
+every member in `partner_ids`, `#channel` is stored as Odoo's channel link,
+and a body that starts with a mention is stored in a `<span>`. The round trip
+takes every case of the composer goldens, posts it, and has chat_user's browser
+save it again: the body is stored as it was, the edited span aside.
+
+The goldens are produced by Odoo's own formatter, not written by hand.
+`long_test/mobile_sync_composer.py` opens a session on an Odoo 18 in a
+headless Chromium, loads Discuss, runs `prettifyMessageContent` of
+`@mail/utils/common/format` on each case of `composer-cases.json` (with the
+mentions `getMentionsFromText` keeps) and writes `composer-golden.json` next
+to it, in the mobile repository's `src/__tests__/fixtures/`. It refuses a
+server that is not an Odoo 18; the function runs in the page, so any Odoo 18
+gives the same bodies.
+
+```
+./long_test/mobile_sync_composer.py http://127.0.0.1:8069 admin admin --base my_database
+./long_test/mobile_sync.py --versions 18 --filtre chat
+```
+
+The « actions du clavardage » scenario of `--appareil` runs on Odoo 18 on the
+phone: a long press of 700 ms opens the message menu and the click that ends
+it chooses nothing, the native text selection of a bubble gives way to the
+menu, a tap on a suggestion keeps the keyboard open with the text field
+visible, a quote scrolls to its original, the « (modifié) » mark follows the
+text, and the composer stays within 16 px above the navigation bar in every
+chat scenario, the keyboard open or not.
 
 `--appareil` plays its screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
@@ -873,7 +916,7 @@ arriver par le bus sans rechargement. Chaque gabarit, ceux de la 16, de la
 17 et de la 18 pareillement, crée d'avance les réglages de chaque
 utilisateur interne (deux premières requêtes simultanées les créeraient
 toutes deux et buteraient sur l'unicité de `res.users.settings`), et le
-module de celui de la 18 est le 1.2 qui dédoublonne les créations et les
+module de celui de la 18 est le 1.3, qui dédoublonne les créations et les téléversements et garde les modifications. XX
 téléversements. `--appareil` ajoute l'écran « clavardage » et un groupe créé
 depuis le téléphone. Pour ne lancer que ceux-là :
 
@@ -920,6 +963,54 @@ découverte :
 ```
 .venv.erplibre/bin/python -m unittest discover -s test -p test_mobile_sync_harness.py
 ```
+
+`chatActions.test.ts` couvre les actions sur un message contre le vrai
+serveur, chaque résultat relu sur lui. Une réaction dont la réponse est perdue
+laisse une ligne après la reprise ; une réaction ajoutée puis retirée hors
+ligne n'envoie aucune requête ; et la réaction et la modification de chat_user
+arrivent à l'app par le bus sans rechargement. Là où il dit « sur les deux
+routes », la modification tourne une fois sur la route gardée du module et une
+fois en l'ignorant, sur celle d'Odoo : la modification d'un message à deux
+fichiers change le texte et garde les deux fichiers ; une modification tardive,
+faite après que chat_user a modifié ou supprimé le message dans le navigateur,
+est refusée, le texte de l'app gardé pour « Reprendre » et le corps du serveur
+intact ; une suppression vide le corps et retire les fichiers, masquée dans
+l'app et pour chat_user ; une réponse garde son parent sur le serveur, une
+réponse dont chat_user supprime le parent entre-temps est postée dessus et
+citée comme supprimée, et une réponse à un message d'une autre conversation
+est postée comme un message simple. `chatWriting.test.ts` couvre ce que l'app
+écrit : la mention de chat_user dans un canal lui donne une notification
+(seul un partenaire qui a un courriel et des notifications par boîte de
+réception est averti d'une mention de canal, le fichier lui donne donc les
+deux le temps de sa course), `@everyone` met chaque membre dans
+`partner_ids`, `#canal` est stocké comme le lien de canal d'Odoo, et un corps
+qui commence par une mention est stocké dans un `<span>`. L'aller-retour prend
+chaque cas des références du compositeur, l'envoie, et fait réenregistrer par
+le navigateur de chat_user : le corps reste stocké tel qu'il était, au span
+« modifié » près.
+
+Les références sont produites par le formateur d'Odoo lui-même, non écrites à
+la main. `long_test/mobile_sync_composer.py` ouvre une session sur un Odoo 18
+dans un Chromium sans écran, charge Discuss, fait tourner
+`prettifyMessageContent` de `@mail/utils/common/format` sur chaque cas de
+`composer-cases.json` (avec les mentions que retient `getMentionsFromText`) et
+écrit `composer-golden.json` à côté, dans `src/__tests__/fixtures/` du dépôt
+mobile. Il refuse un serveur qui n'est pas un Odoo 18 ; la fonction tourne dans
+la page, tout Odoo 18 donne donc les mêmes corps.
+
+```
+./long_test/mobile_sync_composer.py http://127.0.0.1:8069 admin admin --base ma_base
+./long_test/mobile_sync.py --versions 18 --filtre chat
+```
+
+Le scénario « actions du clavardage » de `--appareil` tourne sur la 18, sur le
+téléphone : un appui long de 700 ms ouvre le menu du message et le clic qui le
+termine ne choisit rien, la sélection native du texte d'une bulle cède la place
+au menu, un appui sur une suggestion garde le clavier ouvert avec le champ de
+saisie visible, une citation défile jusqu'à son original, la marque
+« (modifié) » suit le texte, et la zone de saisie reste à 16 px au plus
+au-dessus de la barre de navigation dans chaque scénario du clavardage, clavier
+ouvert ou non.
 
 `--appareil` joue ses écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
