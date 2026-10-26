@@ -10,12 +10,16 @@
 import {
 	createSyncEnv, installLocalStorage, resetMocks, memoryAttachmentIO, nodeTransport,
 	restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice,
+	composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
-import type { MemoryChatFiles, SyncEnv } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
+import type {
+	Mentions, MemoryChatFiles, MessageTarget, SyncEnv,
+} from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import { readFileSync } from "node:fs";
 
 export { memoryAttachmentIO, nodeTransport, restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice };
-export type { SyncEnv };
+export { composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS };
+export type { Mentions, MessageTarget, SyncEnv };
 
 export interface Login {
 	login: string;
