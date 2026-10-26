@@ -9,12 +9,12 @@
  */
 import {
 	createSyncEnv, installLocalStorage, resetMocks, memoryAttachmentIO, nodeTransport,
-	restartSyncEnv, setOnline, chatTitle,
+	restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
-import type { SyncEnv } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
+import type { MemoryChatFiles, SyncEnv } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import { readFileSync } from "node:fs";
 
-export { memoryAttachmentIO, nodeTransport, restartSyncEnv, setOnline, chatTitle };
+export { memoryAttachmentIO, nodeTransport, restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice };
 export type { SyncEnv };
 
 export interface Login {
@@ -73,13 +73,14 @@ export function eachVersionFrom(min: number, name: string, fn: (target: Target) 
  * their applications and the sync service, http allowed, no session yet,
  * the network on. as names the user: admin, the two-company user, or the
  * chat's second user (Odoo 18).
- * chatModule "ignore" makes chat posts take the marker path even where the
- * server module is installed.
+ * chatModule "ignore" makes chat posts take the marker path, and uploads
+ * Odoo's own route, even where the server module is installed. The chat's
+ * files are in memory (env.chatFiles; chatFiles to give them).
  */
 export async function appFor(
 	targets: Target | Target[],
 	as: "admin" | "multi" | "chat" = "admin",
-	opts: { chatModule?: "auto" | "ignore" } = {},
+	opts: { chatModule?: "auto" | "ignore"; chatFiles?: MemoryChatFiles } = {},
 ): Promise<SyncEnv> {
 	resetMocks();
 	installLocalStorage({ allowHttp: true });
@@ -89,6 +90,11 @@ export async function appFor(
 		if (!user) throw new Error(`no ${as} user on Odoo ${t.version}`);
 		return { url: t.url, username: user.login, password: user.password, database: t.database };
 	}), opts);
+}
+
+/** The bytes of a file of fixtures/ (see fixtures/PROVENANCE.md). */
+export function fixture(name: string): Buffer {
+	return readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
 }
 
 let counter = 0;
