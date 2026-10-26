@@ -25,10 +25,11 @@ class TestSetupOdooConfigConfDevops(unittest.TestCase):
         os.chdir(self._cwd)
         self._tmp.cleanup()
 
-    def _run(self, content):
+    def _run(self, content, *args):
         with open("config.conf", "w") as f:
             f.write(content)
-        with patch("sys.argv", ["setup_odoo_config_conf_devops.py"]):
+        argv = ["setup_odoo_config_conf_devops.py", *args]
+        with patch("sys.argv", argv):
             setup_odoo_config_conf_devops.main()
         parser = configparser.ConfigParser()
         parser.read("config.conf")
@@ -74,6 +75,45 @@ class TestSetupOdooConfigConfDevops(unittest.TestCase):
             "base,web,queue_job",
         )
         self.assertEqual(parser.get("queue_job", "channels"), "root:1")
+
+    def test_channel_added_to_existing(self):
+        parser = self._run(
+            "[options]\nworkers = 0\n\n[queue_job]\nchannels = root:2\n",
+            "--channel",
+            "root.ms_graph:1",
+        )
+        self.assertEqual(
+            parser.get("queue_job", "channels"), "root:2,root.ms_graph:1"
+        )
+
+    def test_channel_added_to_default(self):
+        parser = self._run(
+            "[options]\nworkers = 0\n", "--channel", "root.ms_graph:1"
+        )
+        self.assertEqual(
+            parser.get("queue_job", "channels"),
+            f"root:{os.cpu_count()},root.ms_graph:1",
+        )
+
+    def test_declared_channel_keeps_its_capacity(self):
+        parser = self._run(
+            "[options]\nworkers = 0\n\n"
+            "[queue_job]\nchannels = root:2,root.ms_graph:3\n",
+            "--channel",
+            "root.ms_graph:1",
+            "--channel",
+            "root.mail:1",
+        )
+        self.assertEqual(
+            parser.get("queue_job", "channels"),
+            "root:2,root.ms_graph:3,root.mail:1",
+        )
+
+    def test_invalid_channel_refused(self):
+        with self.assertRaises(SystemExit):
+            self._run("[options]\nworkers = 0\n", "--channel", "root.ms_graph")
+        with open("config.conf") as f:
+            self.assertNotIn("queue_job", f.read())
 
 
 if __name__ == "__main__":

@@ -23,20 +23,47 @@ def get_config():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
 DESCRIPTION
-    Force config.conf file to has workers 0 and support queue
+    Force config.conf file to has workers 0 and support queue; --channel
+    declares extra queue_job channels.
 
 SUGGESTION
     ./script/config/setup_odoo_config_conf_devops.py
+    ./script/config/setup_odoo_config_conf_devops.py --channel root.ms_graph:1
 """,
         epilog="""\
 """,
     )
+    parser.add_argument(
+        "--channel",
+        action="append",
+        default=[],
+        metavar="NAME:CAPACITY",
+        help="queue_job channel to declare, e.g. root.ms_graph:1; "
+        "repeatable. A channel already declared keeps its capacity.",
+    )
     args = parser.parse_args()
+    for channel in args.channel:
+        name, _sep, capacity = channel.partition(":")
+        if not name or not capacity.isdigit():
+            parser.error(f"--channel expects NAME:CAPACITY, got {channel!r}")
     return args
 
 
+def add_channels(channels, wanted):
+    """Return ``channels`` (queue_job syntax ``name:capacity,...``) with
+    each ``wanted`` channel appended unless a channel of that name is
+    already declared."""
+    declared = [item.strip() for item in channels.split(",") if item.strip()]
+    names = {item.partition(":")[0] for item in declared}
+    for channel in wanted:
+        if channel.partition(":")[0] not in names:
+            declared.append(channel)
+            names.add(channel.partition(":")[0])
+    return ",".join(declared)
+
+
 def main():
-    get_config()
+    config = get_config()
 
     # Edit ./config.conf, else /etc/odoo/odoo.conf, else nothing
     has_config_file = True
@@ -82,9 +109,12 @@ def main():
             config_parser.add_section("queue_job")
 
         if not queue_job_channels:
-            config_parser.set(
-                "queue_job", "channels", f"root:{os.cpu_count()}"
-            )
+            queue_job_channels = f"root:{os.cpu_count()}"
+        config_parser.set(
+            "queue_job",
+            "channels",
+            add_channels(queue_job_channels, config.channel),
+        )
 
         with open(config_path, "w") as configfile:
             config_parser.write(configfile)
