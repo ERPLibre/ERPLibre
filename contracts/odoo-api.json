@@ -637,6 +637,363 @@
       "response": "null",
       "notes": "Only for channels of type chat, after a read; a courtesy whose failure is ignored."
     },
+    "chat.create_dm": {
+      "description": "Open or create the direct message with one person; queued in sync_outbox (kind chat.create, mode dm)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_get",
+          "args": [],
+          "kwargs": {
+            "partners_to": [
+              "{partner id}"
+            ]
+          }
+        }
+      },
+      "response": "{Store} with the discuss.channel — its id replaces the temporary id the conversation was shown under",
+      "notes": "Odoo returns the existing chat, so a repeat is safe and no uuid is needed. The conversation is cached at once under a temporary negative channel id (the negative of the clock in ms), with placeholder members (self, then the person), and the pair is kept in chat_temp_ids when the real id arrives. Showing a hidden direct message again queues the same op on its real id and cancels a hide still waiting. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.create_group": {
+      "description": "Create a group of people; queued in sync_outbox (kind chat.create, mode group)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "create_group",
+          "args": [],
+          "kwargs": {
+            "partners_to": [
+              "{partner id}"
+            ],
+            "name": "{name, only when given}",
+            "context": {
+              "erplibre_client_uuid": "{op client uuid} — only with the module 1.1 (installed or outdated, option chat module mode auto)"
+            }
+          }
+        }
+      },
+      "response": "{Store} with the discuss.channel",
+      "idempotency": "With the module 1.1 the server creates one group per (create_uid, erplibre_client_uuid): an advisory transaction lock serialises two requests, a partial unique index guarantees, and the repeat gets the first group back. Without it, a send stamps createSentAt; a retry first waits out the quiet window (3 minutes), then searches discuss.channel [create_uid = uid, channel_type = group, create_date within createSentAt - 5 min and createSentAt + quiet window + 5 min, is_member, name = the op's name when it has one], drops the conversations another create of this phone already settled on, keeps those whose members are exactly the op's people plus self, and adopts the one found (read through /discuss/channel/info). Two matches block the op as ambiguous.",
+      "notes": "Cached at once under a temporary negative channel id with placeholder members, so a group without a name shows their names. A refusal marks the cached conversation create_failed (kept until dismissed) and cancels the op and what waits for it. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.create_channel": {
+      "description": "Create a channel restricted to an access group or open to everyone; queued in sync_outbox (kind chat.create, mode channel)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_create",
+          "args": [
+            "{name}",
+            "{res.groups id, or false for everyone}"
+          ],
+          "kwargs": {
+            "context": {
+              "erplibre_client_uuid": "{op client uuid} — only with the module 1.1"
+            }
+          }
+        }
+      },
+      "response": "{Store} with the discuss.channel",
+      "idempotency": "As chat.create_group: the module 1.1 dedupes by (create_uid, erplibre_client_uuid); without it the fingerprint search runs on channel_type = channel and the name, with no member check.",
+      "notes": "The access groups offered come from chat.access_groups. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.join": {
+      "description": "Join a public channel; queued in sync_outbox (kind chat.join)",
+      "method": "POST",
+      "path": "/discuss/channel/join",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}"
+        }
+      },
+      "response": "{Store} with the discuss.channel",
+      "notes": "Adds self only when missing, so a repeat is safe. The cached row (written from the channel's name when missing) turns member at once and carries the op as create_op_id, so posts written meanwhile wait for the join. A channel the user cannot reach gives the join up like a refused create."
+    },
+    "chat.invite": {
+      "description": "Add people to a group or channel; queued in sync_outbox (kind chat.invite)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "add_members",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {
+            "partner_ids": [
+              "{partner id}"
+            ]
+          }
+        }
+      },
+      "response": "null",
+      "notes": "Sent only for a member of a real conversation (a chat takes a new group instead). A conversation gone, created on the phone only, refused or no longer the user's gives the op up as vanished. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.rename": {
+      "description": "Rename a group or channel, or give a direct message the user's own label; queued in sync_outbox (kind chat.rename)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_rename | channel_set_custom_name",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {
+            "name": "{name}"
+          }
+        }
+      },
+      "response": "null",
+      "notes": "channel_set_custom_name for channel_type chat, channel_rename otherwise. A target state: a later rename of the same conversation replaces a waiting one, and the value sent is the last one written into the op. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.describe": {
+      "description": "Set the description of a channel; queued in sync_outbox (kind chat.describe)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_change_description",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {
+            "description": "{text}"
+          }
+        }
+      },
+      "response": "null",
+      "notes": "A target state, as chat.rename."
+    },
+    "chat.leave": {
+      "description": "Leave a conversation; queued in sync_outbox (kind chat.leave)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "action_unfollow",
+          "args": [
+            "{channel id}"
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "null",
+      "notes": "The conversation turns non-member at once. Posts, renames, invites and mutes still queued for it are dropped (a post's bubble fails), and a conversation left while its create is queued is left right after the create runs. A create given up while the user leaves does not block: the channel is flagged left_unsent and the leave runs. A refused leave clears left_unsent, so the next load shows the membership the server kept. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.hide": {
+      "description": "Hide a direct message (unpin it on the server); queued in sync_outbox (kind chat.hide)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_pin",
+          "args": [
+            "{channel id}"
+          ],
+          "kwargs": {
+            "pinned": false
+          }
+        }
+      },
+      "response": "null",
+      "notes": "The row stays cached as is_pinned = 0 and is not listed. A load keeps it hidden unless the server says it is pinned again; a new message, announced by the bus, shows it again. Showing it from the new conversation screen queues chat.create on its real id and cancels a hide still waiting."
+    },
+    "chat.mute": {
+      "description": "Mute a conversation for a duration, for good, or turn the mute off; queued in sync_outbox (kind chat.mute)",
+      "method": "POST",
+      "path": "/discuss/settings/mute",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "minutes": "{minutes | -1 for good | false for no mute}"
+        }
+      },
+      "response": "null",
+      "notes": "The op stores an absolute end (an ISO date, \"forever\" or null); the minutes are computed when the request leaves, rounded up, so a mute queued past its end sends false and unmutes. The offered durations are 15 min, 1 h, 3 h, 8 h, 24 h and for good. The route would join a non-member, so it is sent only for a member."
+    },
+    "chat.global_mute": {
+      "description": "Mute every conversation of the account, or turn it off; queued in sync_outbox (kind chat.global_mute)",
+      "method": "POST",
+      "path": "/discuss/settings/mute",
+      "request": {
+        "params": {
+          "minutes": "{minutes | -1 for good | false for no mute}"
+        }
+      },
+      "response": "null",
+      "notes": "As chat.mute without channel_id, set from Options › Chat per server. The state is read from Store.settings.mute_until_dt of /web/session/get_session_info (fresh at each load) and from the bus; chat_sources.global_mute_at keeps when the phone last wrote it, so a load that began earlier does not overwrite a newer change."
+    },
+    "chat.remove": {
+      "description": "Remove another member from a group or channel; queued in sync_outbox (kind chat.remove); administrators only",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "erplibre_remove_member",
+          "args": [
+            [
+              "{channel id}"
+            ],
+            "{partner id}"
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "null",
+      "notes": "A method of the erplibre_mobile_chat module 1.1: AccessError unless the caller is a system user, UserError for a chat or a person who is not a member. Goes through Odoo's own leave path, so the removed person receives discuss.channel/leave on the bus and the thread says they left. An older or missing module answers AttributeError: the op is given up as refused and the module state is probed again. Offered only to a system user on a server whose module is installed. The member row is dropped locally when the call succeeds."
+    },
+    "chat.members": {
+      "description": "Members of a conversation, page by page",
+      "method": "POST",
+      "path": "/discuss/channel/members",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "known_member_ids": [
+            "{cached member ids, ascending}"
+          ]
+        }
+      },
+      "response": "{Store} with discuss.channel.member and res.partner rows not in known_member_ids, at most 100, and the channel's member_count",
+      "notes": "Repeated until the cache holds member_count members or a page brings nobody new. The placeholder members written for a conversation created offline (negative ids) give way to the server's. Offline, or for a conversation only the phone knows, the cached members answer."
+    },
+    "chat.people": {
+      "description": "Internal users to start a conversation with, by name",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.partner",
+          "method": "im_search",
+          "args": [
+            "{term}",
+            20,
+            []
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "{Store} of res.partner rows (the caller is never returned), merged into chat_partners",
+      "notes": "Offline, or when the request never left, the cached partners whose name contains the term (case and accents ignored) answer instead, the correspondents of recent chats first."
+    },
+    "chat.joinable": {
+      "description": "Public channels the user can join",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "parent_channel_id",
+                "=",
+                false
+              ],
+              [
+                "channel_type",
+                "=",
+                "channel"
+              ],
+              [
+                "is_member",
+                "=",
+                false
+              ],
+              [
+                "name",
+                "ilike",
+                "{term}"
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "name",
+              "description",
+              "member_count",
+              "group_public_id"
+            ],
+            "limit": 50,
+            "order": "name"
+          }
+        }
+      },
+      "response": "[{id, name, description, member_count, group_public_id: [id, full name] | false}]",
+      "notes": "Not cached: the user is not a member, so none is a conversation yet. Offline: none, flagged offline."
+    },
+    "chat.invite_candidates": {
+      "description": "People who can be added to a channel",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.partner",
+          "method": "search_for_channel_invite",
+          "args": [
+            "{term}",
+            "{channel id}"
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "{count, data: Store} — count is the number of matches on the server, which may exceed the partners returned; the partners are merged into chat_partners",
+      "notes": "Name or email contains the term, not members yet, and in the channel's group when it has one. Offline: none, flagged offline."
+    },
+    "chat.access_groups": {
+      "description": "Access groups a new channel can be restricted to",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.groups",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "share",
+                "=",
+                false
+              ],
+              [
+                "users",
+                "in",
+                [
+                  "{uid}"
+                ]
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "full_name"
+            ]
+          }
+        }
+      },
+      "response": "[{id, full_name}]",
+      "notes": "The user's own non-portal groups by full name, then « everyone » (group id false) last. The default, the internal users group, comes from Store.internalUserGroupId (kept in chat_sources.internal_user_group_id) and is offered first even if the search does not list it. Offline: that default, when known, and everyone."
+    },
     "chat.websocket": {
       "description": "Odoo 18 bus over a websocket: messages, counters, typing and presence in real time",
       "method": "GET (upgrade)",
@@ -699,7 +1056,7 @@
         }
       },
       "response": "[{id, state}]",
-      "notes": "installed = mail.message holds the field erplibre_client_uuid in fields_get (readable by any user; cached) or a system user sees the row installed; available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone."
+      "notes": "installed = discuss.channel holds the field erplibre_client_uuid in fields_get (module 1.1; readable by any user; cached) or a system user sees the row installed; outdated = only mail.message holds it (module 1.0) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context for installed and outdated alike, and chat.remove needs the 1.1."
     }
   },
 
@@ -810,9 +1167,21 @@
         "correspondent_partner_id",
         "updated_at",
         "unread_counter_bus_id",
-        "needaction_counter_bus_id"
+        "needaction_counter_bus_id",
+        "is_pinned (migration 2026102601; 0 for a hidden direct message)",
+        "is_editable (2026102601)",
+        "custom_channel_name (2026102601)",
+        "member_count (2026102601)",
+        "group_public_id (2026102601)",
+        "authorized_group_full_name (2026102601)",
+        "create_uid (2026102601)",
+        "group_based_subscription (2026102601)",
+        "parent_channel_id (2026102601)",
+        "create_op_id (2026102601; the queued create or join the row waits for)",
+        "create_failed (migration 2026102602; a refused create, kept until dismissed)",
+        "left_unsent (migration 2026102603; left while texts were still queued)"
       ],
-      "notes": "One row per conversation. The two *_bus_id columns are the bus id each counter is as of: a bus notification with a lower id does not overwrite it. oldest_loaded_id and history_complete drive history paging (chat.messages); local_pinned keeps a conversation the server stopped listing. Index idx_chat_channels_cfg."
+      "notes": "One row per conversation. The two *_bus_id columns are the bus id each counter is as of: a bus notification with a lower id does not overwrite it. oldest_loaded_id and history_complete drive history paging (chat.messages); local_pinned keeps a conversation the server stopped listing. Index idx_chat_channels_cfg. A conversation created on the phone has a negative temporary id until chat.create settles it."
     },
     "chat_messages": {
       "migration": "2026102501",
@@ -843,7 +1212,8 @@
         "seen_message_id",
         "fetched_message_id",
         "is_typing",
-        "typing_at"
+        "typing_at",
+        "create_date (migration 2026102601)"
       ],
       "notes": "discuss.channel.member rows: read and delivery marks of each member, and who is typing."
     },
@@ -870,9 +1240,23 @@
         "module_state (installed|available|absent|unknown)",
         "inbox_counter",
         "loaded_at",
-        "counter_bus_id"
+        "counter_bus_id",
+        "internal_user_group_id (migration 2026102601)",
+        "global_mute_until (2026102601; end of the account-wide mute)",
+        "global_mute_at (2026102601; when the phone last wrote it)",
+        "is_internal_user (2026102601)"
       ],
-      "notes": "One row per server: the session facts, the last bus id applied and when it was seen, the module state, and the bus id the inbox counter is as of."
+      "notes": "One row per server: the session facts, the last bus id applied and when it was seen, the module state (installed|outdated|available|absent|unknown), the bus id the inbox counter is as of, the default access group of new channels and the account-wide mute."
+    },
+    "chat_temp_ids": {
+      "migration": "2026102602",
+      "columns": [
+        "id (config_id#temp_id)",
+        "config_id",
+        "temp_id",
+        "real_id"
+      ],
+      "notes": "The server id each conversation created on the phone was given, by its temporary id: a screen or route still naming the temporary id finds the conversation, and a fingerprint search never adopts a conversation another create already took."
     }
   }
 }
