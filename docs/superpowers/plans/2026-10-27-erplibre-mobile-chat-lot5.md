@@ -92,12 +92,14 @@ is a build copy, never edited. Odoo sources cited as `mail/…` live in
 
 ### Task 0: Lot 4 carry-overs (D13)
 
-Carry-overs from the lot 4 final review, filled in by the controller.
+Carry-overs from the lot 4 final review (`tasks/chat/lot4-rereview-report.md`, « New issues in the fix diff »).
 
-- [ ] **Step 1: Failing tests:** (controller)
-- [ ] **Step 2: Implement:** (controller)
+**Files:** M `src/services/chat/chatOutbox.ts` (`sentRuns` `findLastIndex` ~:1002, `queueDelete` ~:1312-1320), `src/components/chat/chat_thread_component.ts` (`onQuote` ~:1446-1470 with `refresh`'s deferred scroll ~:756-758), `src/__tests__/chatEmojiPickerMount.test.ts` (afterEach); E `long_test/mobile_sync/chatActions.test.ts:265`, `long_test/README.base.md:981`.
+
+- [ ] **Step 1: Failing tests:** `an edit works without Array.prototype.findLastIndex` (stub it away); `a quote tap that loads more history ends scrolled to the highlighted original` (the deferred keepPosition/scrollToBottomSoon do not interrupt it); `a refused delete does not restore the base of a reaction whose op had sentAt`; the picker mount tests clean up a leftover picker and restore the prototype spy in afterEach.
+- [ ] **Step 2: Implement:** a short backward loop instead of `findLastIndex`; the quote jump cancels or waits for the deferred refresh scroll (and takes the `_loadingOlder` lock so a double tap adds no extra pages); `queueDelete` keeps a sent reaction's shown state; correct the chatActions.test.ts:265 comment (the first edit is sent twice only with the module); README « notice » → « avis » (mmg).
 - [ ] **Step 3:** `npm test`, `npm run build`; `./long_test/mobile_sync.py --versions 18 --filtre chat` green.
-- [ ] **Step 4: Commits:** (controller)
+- [ ] **Step 4: Commits:** M `[FIX] chat: edit without findLastIndex, quote jump scroll, refused delete`; E `[UPD] doc: chat actions test comment and French README wording`.
 
 ### Task 1: Server module 18.0.1.4.0 — search route, idempotent star, record posts and uploads, level field (D1, D5, D8, D11)
 
