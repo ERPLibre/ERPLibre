@@ -300,3 +300,11 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
 - **Lot 3, photos without the ERPLibre module:** reduced by the server as
   in the browser (1920 px, Odoo's upload route), and the setting says so;
   with the module the original is kept and a resent upload cannot double.
+- **Lot 3, « Wi-Fi only » downloads:** every original waits for Wi-Fi,
+  voice messages included; a touch on a waiting file offers « download
+  anyway » on mobile data, for that file only. Previews never wait.
+- **Lot 3, a file refused at sending** (too big, missing from the phone):
+  the text and the other files leave, and a notice names the refused file
+  and why.
+- **Lot 3, « ask to compress »** applies to every photo sent, from the
+  camera or the gallery.
