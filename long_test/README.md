@@ -392,7 +392,7 @@ server, each case read back from it. Where it says « on both routes », it
 runs once on the module's route and once with the module ignored, on
 Odoo's own. A lost upload answer leaves one attachment in one message (the
 module's route returns the first one for the same `client_uuid`, Odoo's is
-searched for and reused); a lost post answer with two files posts one message
+searched for and reused, a photo it stored resized to another size included); a lost post answer with two files posts one message
 holding both; a voice file arrives as `audio/mpeg` with its voice metadata;
 and an expired session answers 404 once, then the upload goes through. The
 module's route keeps a photo's original (same checksum as the source file)
@@ -425,8 +425,8 @@ shadows `test/`, so the file is found by discovery:
 target picker, the banner of a date changed on the server, typing during a
 pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
 (the tile opens the list within 2 s, and the composer of « ms chat » within
-2 s too, a message typed there reaches
-the server once, chat_user's reply shows through the native websocket) and a
+2 s too, three messages typed there in a row reach the server once each,
+the keyboard staying open from one send to the next, chat_user's reply shows through the native websocket) and a
 group created from the phone with chat_user, which exists once on the server
 under its name, whose info screen lists chat_user among the members and in
 which messages go both ways. They

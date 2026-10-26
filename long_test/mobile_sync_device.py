@@ -889,12 +889,41 @@ def clavier_affiche(ctx):
     return "isVisible=true" in sortie
 
 
+# Envois de texte de suite dans echanger : le clavier reste ouvert entre eux
+ENVOIS_CLAVIER = 3
+# Vrai quand la zone de saisie de la conversation a le focus
+SAISIE_ACTIVE = (
+    "document.activeElement === document.querySelector('.chat-thread__input')"
+)
+
+
+def envoyer_texte(ctx, canal):
+    """Un texte unique tapé dans la saisie qui a le focus et envoyé par ➤ ;
+    rendu une fois marqué envoyé. Marqué envoyé, le message a sa réponse du
+    serveur et quitte l'outbox, qui ne le poste plus : le compte du serveur
+    est alors définitif."""
+    texte = ctx.unique("message")
+    ctx.cdp.taper(texte)
+    ctx.cdp.attendre(
+        f"document.querySelector('.chat-thread__input').value === {js(texte)}",
+        delai=5,
+    )
+    ctx.toucher_pose(".chat-thread__send")
+    ctx.cdp.attendre(
+        f"window.__erplibreTest.chatMessages({js(ctx.config_id)}, {canal})"
+        f".then(ms => ms.some(m => m.body.includes({js(texte)}) && m.status === 'sent'))",
+        delai=30,
+    )
+    return texte
+
+
 def echanger(ctx, pair, canal):
     """Dans la conversation canal ouverte : la saisie se tient au-dessus de
-    la barre de navigation, clavier fermé puis ouvert ; un message tapé et
-    envoyé arrive une fois sur le serveur, puis la réponse de pair
-    (chat_user) s'affiche dans le fil par le websocket natif. Rend la place
-    mesurée de la saisie."""
+    la barre de navigation, clavier fermé puis ouvert ; ENVOIS_CLAVIER
+    messages tapés et envoyés de suite arrivent chacun une fois sur le
+    serveur, le clavier restant ouvert et la saisie gardant le focus d'un
+    envoi à l'autre ; puis la réponse de pair (chat_user) s'affiche dans le
+    fil par le websocket natif. Rend la place mesurée de la saisie."""
     ctx.cdp.evaluer("document.activeElement && document.activeElement.blur()")
     ferme = place_saisie(ctx)
     # Touchée à l'endroit où elle s'affiche : un élément couvert ne la reçoit pas
@@ -913,15 +942,24 @@ def echanger(ctx, pair, canal):
         f" (bas visible à {ferme[1]} puis {ouvert[1]} px,"
         f" page de {ferme[2]} puis {ouvert[2]} px)"
     )
-    texte = ctx.unique("message")
     # Un toucher par CDP ne donne pas toujours le focus, qu'insertText suit
     ctx.cdp.evaluer("document.querySelector('.chat-thread__input').focus()")
-    ctx.cdp.taper(texte)
-    ctx.cdp.attendre(
-        f"document.querySelector('.chat-thread__input').value === {js(texte)}",
-        delai=5,
-    )
-    ctx.toucher_pose(".chat-thread__send")
+    textes = []
+    for rang in range(ENVOIS_CLAVIER):
+        if rang:
+            # Le clavier reste ouvert d'un envoi à l'autre, la saisie gardant
+            # le focus : rien ne le redonne ici
+            time.sleep(POSE)
+            assert clavier_affiche(ctx), f"clavier fermé après l'envoi {rang}"
+            assert ctx.cdp.evaluer(
+                SAISIE_ACTIVE
+            ), f"saisie sans focus après l'envoi {rang}"
+        textes.append(envoyer_texte(ctx, canal))
+    time.sleep(POSE)
+    assert clavier_affiche(
+        ctx
+    ), f"clavier fermé après l'envoi {ENVOIS_CLAVIER}"
+    mesure += f", clavier ouvert sur {ENVOIS_CLAVIER} envois"
 
     def recus(contenu):
         return pair.executer(
@@ -937,14 +975,8 @@ def echanger(ctx, pair, canal):
             ],
         )
 
-    # Marqué envoyé, le message a sa réponse du serveur et quitte l'outbox,
-    # qui ne le poste plus : le compte du serveur est alors définitif
-    ctx.cdp.attendre(
-        f"window.__erplibreTest.chatMessages({js(ctx.config_id)}, {canal})"
-        f".then(ms => ms.some(m => m.body.includes({js(texte)}) && m.status === 'sent'))",
-        delai=30,
-    )
-    assert recus(texte) == 1, f"{texte} reçu {recus(texte)} fois"
+    for envoye in textes:
+        assert recus(envoye) == 1, f"{envoye} reçu {recus(envoye)} fois"
 
     reponse = ctx.unique("reponse")
     ctx.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=5)
