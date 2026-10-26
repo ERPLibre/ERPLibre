@@ -45,6 +45,11 @@ import mobile_sync_device as appareil  # noqa: E402
 import mobile_sync_odoo as odoo  # noqa: E402
 
 SCENARIOS = Path(__file__).resolve().parent / "mobile_sync"
+# Les fichiers qui changent un réglage de tout le serveur (la limite de
+# téléversement borne chaque requête) : Vitest lance les autres fichiers
+# côte à côte contre les mêmes serveurs, ceux-ci tournent après eux, un à
+# la fois
+SERIE = ".serial.test."
 
 SORTIE_OK = 0
 SORTIE_TESTS = 1
@@ -79,6 +84,85 @@ def parser():
         help="jouer aussi les scénarios de bout en bout sur le téléphone",
     )
     return parseur
+
+
+def commandes_vitest(repertoire, filtre=""):
+    """Les deux passes de Vitest, (commande, rapport JSON) chacune : les
+    fichiers de SCENARIOS côte à côte, sauf ceux de SERIE ; puis ceux de
+    SERIE seuls, un fichier à la fois. filtre (vitest -t) vaut pour les
+    deux."""
+    commun = [
+        "--dir",
+        str(SCENARIOS),
+        "--testTimeout=60000",
+        "--hookTimeout=180000",
+        "--reporter=default",
+        "--reporter=json",
+        # Les journaux de l'application, seulement pour un test en échec
+        "--silent=passed-only",
+    ] + (["-t", filtre] if filtre else [])
+    passes = (
+        ("vitest.json", [], ["--exclude", f"**/*{SERIE}ts"]),
+        # Une passe sans fichier de SERIE n'échoue pas d'elle-même : le
+        # bilan fusionné des deux passes juge
+        (
+            "vitest.serial.json",
+            [SERIE],
+            ["--no-file-parallelism", "--passWithNoTests"],
+        ),
+    )
+    return [
+        (
+            [
+                "npx",
+                "vitest",
+                "run",
+                *filtres,
+                *commun,
+                *options,
+                f"--outputFile.json={Path(repertoire) / nom}",
+            ],
+            Path(repertoire) / nom,
+        )
+        for nom, filtres, options in passes
+    ]
+
+
+def jouer_vitest(
+    repertoire, cibles, filtre, versions, executer=subprocess.run
+):
+    """Les passes de commandes_vitest l'une après l'autre contre les
+    serveurs de cibles (targets.json), puis leur bilan fusionné : (code de
+    sortie, raison). Une passe sans rapport est un échec ; zéro test, ou
+    zéro test pour une version, sur l'ensemble des passes aussi
+    (verdict)."""
+    environnement = dict(
+        os.environ, TZ=odoo.FUSEAU, MOBILE_SYNC_TARGETS=str(cibles)
+    )
+    rapports = []
+    for commande, rapport in commandes_vitest(repertoire, filtre):
+        executer(commande, cwd=odoo.MOBILE, env=environnement, check=False)
+        rapports.append(rapport)
+    manquants = [r.name for r in rapports if not r.exists()]
+    if manquants:
+        return SORTIE_TESTS, (
+            f"Vitest n'a écrit aucun rapport : {', '.join(manquants)}"
+        )
+    return verdict(*lire_rapports(rapports, versions))
+
+
+def lire_rapports(chemins, versions):
+    """Le bilan de plusieurs rapports de Vitest (les passes d'une course),
+    additionnés comme lire_rapport les lit chacun."""
+    total = echecs = 0
+    par_version = {version: 0 for version in versions}
+    for chemin in chemins:
+        t, e, v = lire_rapport(chemin, versions)
+        total += t
+        echecs += e
+        for version, n in v.items():
+            par_version[version] += n
+    return total, echecs, par_version
 
 
 def lire_rapport(chemin, versions):
@@ -125,7 +209,8 @@ def plan(versions, args):
         f"  bases de course : {odoo.PREFIXE_COURSE}<pid>_<horodatage>_<version>",
         "  un serveur par version, ports libres, sans worker ni cron",
         f"  vitest run --dir {SCENARIOS}"
-        + (f" -t {args.filtre}" if args.filtre else ""),
+        + (f" -t {args.filtre}" if args.filtre else "")
+        + f", puis les fichiers *{SERIE}ts un à la fois",
         "  bases et serveurs "
         + ("gardés" if args.garder else "supprimés à la fin"),
     ]
@@ -253,35 +338,8 @@ def main(argv=None):
         for s in serveurs:
             print(f"Odoo {s.version} : {s.url} ({s.base})")
 
-        rapport = repertoire / "vitest.json"
-        commande = [
-            "npx",
-            "vitest",
-            "run",
-            "--dir",
-            str(SCENARIOS),
-            "--testTimeout=60000",
-            "--hookTimeout=180000",
-            "--reporter=default",
-            "--reporter=json",
-            f"--outputFile.json={rapport}",
-            # Les journaux de l'application, seulement pour un test en échec
-            "--silent=passed-only",
-        ]
-        if args.filtre:
-            commande += ["-t", args.filtre]
-        environnement = dict(
-            os.environ, TZ=odoo.FUSEAU, MOBILE_SYNC_TARGETS=str(cibles)
-        )
-        subprocess.run(
-            commande, cwd=odoo.MOBILE, env=environnement, check=False
-        )
-        if not rapport.exists():
-            print("Vitest n'a écrit aucun rapport.")
-            code = SORTIE_TESTS
-        else:
-            code, raison = verdict(*lire_rapport(rapport, versions))
-            print(f"Bilan : {raison}. Traces : {repertoire}")
+        code, raison = jouer_vitest(repertoire, cibles, args.filtre, versions)
+        print(f"Bilan : {raison}. Traces : {repertoire}")
         if args.appareil:
             print("Sur le téléphone :")
             total, echecs = appareil.lancer(liste, repertoire)
