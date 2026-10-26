@@ -100,7 +100,7 @@ the store of conversations are reused by both.
   links, URLs as links, emoji, line breaks. No bold or lists: a message
   edited later in the browser must come out the same.
 - **Attachments to send:** camera photo, gallery photos, any file, voice
-  message (hold to record, as Odoo 18's voice message).
+  message (as Odoo 18's: a tap starts, a tap stops, 60 s at most).
 - **Conversations:** create a group with people, create a channel (name and
   access group), join a public channel, manage members, rename and
   describe, leave, mute (for a time or for good, as Odoo 18).
@@ -282,11 +282,21 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
   Odoo: set in the chat options with the same durations; it takes every
   conversation out of the count and hides the per-conversation mutes
   while it is active.
-- **Lot 3, attachment size:** the server's limit (the Odoo setting,
-  25 MB by default), shown before sending; a file over it is refused with
-  a message that says so.
+- **Lot 3, attachment size:** the server's limit (`max_file_upload_size`
+  of the session, set by `web.max_file_upload_size`, 128 MiB by default;
+  it bounds the whole request), shown before sending; a file over it is
+  refused with a message that says so.
 - **Lot 3, Wi-Fi:** chat attachments follow the sync's existing « Wi-Fi
   only » attachment setting.
 - **Lot 5, inbox:** mentions and followed records; mark one or all as
   read; reply in the record's chatter from the app; « Starred » is a
   separate entry.
+- **Lot 3, voice message:** sent as MP3, as the browser does (the phone
+  converts its recording); a tap starts, a tap stops and sends, with
+  Odoo's 60 s limit and a timer that shows the time left.
+- **Lot 3, image previews:** a small preview loads by itself as soon as
+  the image is on screen, Wi-Fi or not; the original downloads when
+  opened and follows the « Wi-Fi only » setting.
+- **Lot 3, photos without the ERPLibre module:** reduced by the server as
+  in the browser (1920 px, Odoo's upload route), and the setting says so;
+  with the module the original is kept and a resent upload cannot double.
