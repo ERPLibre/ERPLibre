@@ -979,7 +979,7 @@ fois en l'ignorant, sur celle d'Odoo : la modification d'un message à deux
 fichiers change le texte et garde les deux fichiers ; une modification dont la
 réponse est perdue, son corps ouvert par une mention qu'Odoo stocke enveloppée,
 compte comme faite à sa reprise, et une correction faite entre-temps la suit
-sans notice ; une modification tardive, faite après que chat_user a modifié ou
+sans avis ; une modification tardive, faite après que chat_user a modifié ou
 supprimé le message dans le navigateur, est refusée, le texte de l'app gardé
 pour « Reprendre » et le corps du serveur intact ; une suppression vide le
 corps et retire les fichiers, masquée dans l'app et pour chat_user ; une
