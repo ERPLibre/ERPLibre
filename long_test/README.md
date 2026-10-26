@@ -376,10 +376,10 @@ user's bus, which a non-administrator is refused. The scenario of a group that
 chat_user creates and fills runs as `mc_user`, the two-company user, whom no
 other file's conversation involves, so every `/mail/data` through its proxy
 is its own and the later messages must arrive by the bus with no reload.
-The template also creates the settings of every internal user ahead (two
-simultaneous first requests would otherwise both create them and hit the
-uniqueness of `res.users.settings`), and its module is the 1.1 that dedupes
-creates. `--appareil` adds the « clavardage » screen and a group created
+Every template, the 16, 17 and 18 ones alike, creates the settings of every
+internal user ahead (two simultaneous first requests would otherwise both
+create them and hit the uniqueness of `res.users.settings`), and the 18 one's
+module is the 1.1 that dedupes creates. `--appareil` adds the « clavardage » screen and a group created
 from the phone. To run only these:
 
 ```
