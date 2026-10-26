@@ -324,3 +324,8 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
 - **Lot 5, a reply in a record's chatter** from the inbox goes as an
   internal note by default (no email to followers); « Envoyer comme
   message aux abonnés » stays available, after a confirmation.
+- **Lot 5, list order:** conversations pinned on the phone come first by
+  default; a setting puts the unread ones first instead.
+- **Lot 5, a reply in a record's chatter** holds everything a
+  conversation message holds: text, mentions, emoji and attachments
+  (photos, files, voice).
