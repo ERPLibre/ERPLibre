@@ -396,6 +396,109 @@ class TestRapport(unittest.TestCase):
         )
 
 
+class TestDeuxPasses(unittest.TestCase):
+    """Les fichiers *.serial.test.ts (un réglage de tout le serveur) ne
+    tournent pas côte à côte avec les autres : une seconde passe les joue
+    un à la fois, et le bilan fusionne les deux passes."""
+
+    def setUp(self):
+        self.repertoire = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.repertoire))
+
+    def test_la_seconde_passe_joue_les_fichiers_serie_un_a_la_fois(self):
+        (premiere, rapport_1), (seconde, rapport_2) = (
+            mobile_sync.commandes_vitest(self.repertoire, "chat")
+        )
+        self.assertEqual(premiere[:3], ["npx", "vitest", "run"])
+        self.assertIn("--exclude", premiere)
+        self.assertEqual(
+            premiere[premiere.index("--exclude") + 1], "**/*.serial.test.ts"
+        )
+        self.assertNotIn("--no-file-parallelism", premiere)
+        self.assertEqual(
+            seconde[:4], ["npx", "vitest", "run", ".serial.test."]
+        )
+        self.assertIn("--no-file-parallelism", seconde)
+        self.assertNotIn("--exclude", seconde)
+        for commande, rapport in ((premiere, rapport_1), (seconde, rapport_2)):
+            self.assertEqual(
+                commande[commande.index("--dir") + 1],
+                str(mobile_sync.SCENARIOS),
+            )
+            self.assertEqual(commande[commande.index("-t") + 1], "chat")
+            self.assertIn(f"--outputFile.json={rapport}", commande)
+        self.assertNotEqual(rapport_1, rapport_2)
+        sans_filtre = mobile_sync.commandes_vitest(self.repertoire)
+        self.assertTrue(all("-t" not in c for c, _ in sans_filtre))
+
+    def jouer(self, passes, versions=(16, 18)):
+        """jouer_vitest dont chaque passe écrit le rapport donné (une liste
+        de noms de tests, None : aucun rapport) ; rend aussi les commandes
+        lancées."""
+        lancees = []
+        contenus = iter(passes)
+
+        def executer(commande, **_):
+            lancees.append(commande)
+            noms = next(contenus)
+            if noms is None:
+                return
+            sortie = next(
+                c.split("=", 1)[1]
+                for c in commande
+                if c.startswith("--outputFile.json=")
+            )
+            Path(sortie).write_text(
+                json.dumps(
+                    {
+                        "numTotalTests": len(noms),
+                        "numFailedTests": 0,
+                        "numFailedTestSuites": 0,
+                        "testResults": [
+                            {
+                                "assertionResults": [
+                                    {"fullName": n} for n in noms
+                                ]
+                            }
+                        ],
+                    }
+                )
+            )
+
+        bilan = mobile_sync.jouer_vitest(
+            self.repertoire,
+            self.repertoire / "targets.json",
+            "",
+            list(versions),
+            executer=executer,
+        )
+        return bilan, lancees
+
+    def test_le_bilan_fusionne_les_deux_passes(self):
+        bilan, lancees = self.jouer(
+            [["Odoo 16 — a x"], ["Odoo 18 — limite x"]]
+        )
+        self.assertEqual(len(lancees), 2)
+        self.assertEqual(
+            bilan, (mobile_sync.SORTIE_OK, "2 tests, tous passés")
+        )
+
+    def test_zero_test_sur_les_deux_passes_echoue(self):
+        bilan, _ = self.jouer([[], []])
+        self.assertEqual(
+            bilan, (mobile_sync.SORTIE_TESTS, "aucun test n'a tourné")
+        )
+        sans_18, _ = self.jouer([["Odoo 16 — a x"], []])
+        self.assertEqual(
+            sans_18, (mobile_sync.SORTIE_TESTS, "aucun test pour Odoo 18")
+        )
+
+    def test_une_passe_sans_rapport_echoue(self):
+        bilan, _ = self.jouer([["Odoo 16 — a x", "Odoo 18 — a x"], None])
+        self.assertEqual(bilan[0], mobile_sync.SORTIE_TESTS)
+        self.assertIn("vitest.serial.json", bilan[1])
+
+
 class TestCommande(unittest.TestCase):
     def test_dry_run_ne_cree_rien(self):
         versions = {
@@ -442,18 +545,46 @@ class TestCommande(unittest.TestCase):
             )
 
 
-def faux_adb(devices="SERIE\tdevice\n", fenetre="isKeyguardShowing=false"):
-    """Un faux subprocess.run qui répond à adb devices et dumpsys window."""
+def faux_adb(
+    devices="SERIE\tdevice\n",
+    fenetre="isKeyguardShowing=false",
+    paquets=("",),
+):
+    """Un faux subprocess.run qui répond à adb devices, dumpsys window et
+    dumpsys package (les sorties de paquets l'une après l'autre, la
+    dernière ensuite)."""
+    restants = list(paquets)
 
     def executer(commande, **_):
         sortie = ""
         if commande[:2] == ["adb", "devices"]:
             sortie = "List of devices attached\n" + devices
+        elif "dumpsys" in commande and "package" in commande:
+            sortie = restants.pop(0) if len(restants) > 1 else restants[0]
         elif "dumpsys" in commande:
             sortie = fenetre
         return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
 
     return executer
+
+
+def dumpsys_paquet(maj="2026-01-02 03:04:05", autre=None):
+    """Une sortie de dumpsys package : la section de l'app de l'utilisateur,
+    sa lastUpdateTime (None : absente), puis une autre section qui porte
+    la sienne."""
+    lignes = [
+        "Packages:",
+        f"  Package [{appareil.APP_PERSO}] (abc123):",
+        "    firstInstallTime=2026-01-01 00:00:00",
+    ]
+    if maj:
+        lignes.append(f"    lastUpdateTime={maj}")
+    if autre:
+        lignes += [
+            "  Package [org.exemple.autre] (def456):",
+            f"    lastUpdateTime={autre}",
+        ]
+    return "\n".join(lignes) + "\n"
 
 
 class TestAppareil(unittest.TestCase):
@@ -525,6 +656,69 @@ class TestAppareil(unittest.TestCase):
         )
 
 
+class TestAppPerso(unittest.TestCase):
+    """L'app de l'utilisateur est relevée avant et après les scénarios : une
+    date changée ou illisible fait échouer la course."""
+
+    def test_lit_la_date_de_sa_seule_section(self):
+        self.assertEqual(
+            appareil.maj_app_perso(
+                faux_adb(paquets=[dumpsys_paquet(autre="2030-09-09 09:09:09")])
+            ),
+            "2026-01-02 03:04:05",
+        )
+
+    def test_absente_rend_none(self):
+        self.assertIsNone(
+            appareil.maj_app_perso(faux_adb(paquets=["Queries:\n"]))
+        )
+
+    def test_presente_sans_date_leve(self):
+        with self.assertRaises(RuntimeError):
+            appareil.maj_app_perso(
+                faux_adb(
+                    paquets=[dumpsys_paquet(maj=None, autre="2030-09-09")]
+                )
+            )
+
+    def lancer(self, paquets):
+        journal = []
+        with mock.patch.object(appareil, "SCENARIOS", ()), mock.patch.object(
+            appareil, "construire_apk", return_value=Path("x.apk")
+        ), mock.patch.object(appareil, "Appareil"):
+            bilan = appareil.lancer(
+                [{"version": 18, "url": "http://127.0.0.1:8018"}],
+                "/x",
+                executer=faux_adb(paquets=paquets),
+                journal=journal.append,
+            )
+        return bilan, journal
+
+    def test_inchangee_ne_compte_rien(self):
+        self.assertEqual(self.lancer([dumpsys_paquet()])[0], (0, 0))
+
+    def test_changee_compte_un_echec(self):
+        bilan, journal = self.lancer(
+            [dumpsys_paquet(), dumpsys_paquet(maj="2026-05-05 05:05:05")]
+        )
+        self.assertEqual(bilan, (0, 1))
+        self.assertTrue(any(appareil.APP_PERSO in ligne for ligne in journal))
+
+    def test_illisible_apres_compte_un_echec(self):
+        bilan, _ = self.lancer([dumpsys_paquet(), dumpsys_paquet(maj=None)])
+        self.assertEqual(bilan, (0, 1))
+
+    def test_illisible_avant_arrete_tout(self):
+        with mock.patch.object(appareil, "construire_apk") as construire:
+            with self.assertRaises(RuntimeError):
+                appareil.lancer(
+                    [],
+                    "/x",
+                    executer=faux_adb(paquets=[dumpsys_paquet(maj=None)]),
+                )
+        construire.assert_not_called()
+
+
 class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
@@ -576,7 +770,12 @@ class TestScenariosAppareil(unittest.TestCase):
         ), mock.patch.object(
             appareil, "Odoo"
         ):
-            total, echecs = appareil.lancer(cibles, "/x", journal=lambda _: 0)
+            total, echecs = appareil.lancer(
+                cibles,
+                "/x",
+                executer=faux_adb(paquets=[dumpsys_paquet()]),
+                journal=lambda _: 0,
+            )
         self.assertEqual((total, echecs), (3, 0))
         self.assertEqual(joues, [("note", 16), ("note", 18), ("chat", 18)])
 
