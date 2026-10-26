@@ -581,8 +581,10 @@
             "body": "{escaped text}<!-- erplibre-mobile:{client uuid} -->",
             "message_type": "comment",
             "subtype_xmlid": "mail.mt_comment",
-            "erplibre_client_uuid": "{client uuid} — only when the erplibre_mobile_chat module is installed"
+            "erplibre_client_uuid": "{client uuid} — only when the erplibre_mobile_chat module is installed",
+            "attachment_ids": "[attachment ids] — only when the message has files; the ids of the chat.upload answers, in pick order"
           },
+          "attachment_tokens": "[false, …] — only with attachment_ids, same length: an internal user's pending attachments carry no token",
           "context": {
             "temporary_id": "{client uuid}"
           }
@@ -590,7 +592,112 @@
       },
       "response": "{\"mail.message\": [{id, ...}], ...Store} — the id settles the pending bubble; an answer without an id is an error and the retry searches before posting",
       "idempotency": "Every body ends with the hidden comment `<!-- erplibre-mobile:<uuid> -->`; with the module the uuid also travels in the field `erplibre_client_uuid` of mail.message. A send stamps createSentAt; a retry first waits out the quiet window (3 minutes), then runs mail.message search_read [model = discuss.channel, res_id = channel, author_id = the session partner, body ilike the marker] with limit 2, keeps the hits whose body holds the exact comment, and adopts the one found instead of posting again. Two hits block the op as ambiguous. Search by author, so another member's message that quotes the uuid is never taken for the post.",
-      "notes": "Posts of one channel go out in order: each op depends on the previous unfinished one, so a failed post holds the ones after it. AccessError, ValidationError, UserError, MissingError, NotFound and Forbidden mark the bubble failed and block the op; anything else retries (30 s doubled per attempt, 1 h max). After a post the channel is marked read for its author unless a newer message is known."
+      "notes": "Posts of one channel go out in order: each op depends on the previous unfinished one, so a failed post holds the ones after it. AccessError, ValidationError, UserError, MissingError, NotFound and Forbidden mark the bubble failed and block the op; anything else retries (30 s doubled per attempt, 1 h max). After a post the channel is marked read for its author unless a newer message is known. With files: the post waits until every file of the message is uploaded; a refused file is left out; with no text and no file left the message fails. A refusal of the post, before any re-upload, asks the server which attachment ids it still holds (ir.attachment search_read on the ids) and uploads the missing ones again once."
+    },
+    "chat.upload": {
+      "description": "Upload one file of a message as a pending attachment of a channel (no message yet); queued in sync_outbox (kind chat.upload, one lane apart from the posts) and sent by the native layer as a streamed multipart request",
+      "method": "POST",
+      "path": "/erplibre_mobile_chat/attachment/upload (module 1.2) or /mail/attachment/upload (Odoo, otherwise)",
+      "content_type": "multipart/form-data",
+      "request_fields": {
+        "csrf_token": "{token of chat.csrf} — required by both routes",
+        "thread_model": "discuss.channel",
+        "thread_id": "{channel id}",
+        "is_pending": "true — the attachment is created on mail.compose.message / res_id 0 until a post claims it",
+        "voice": "true — only for a voice file; Odoo reads any value as true",
+        "client_uuid": "{local uuid of the file} — module route only",
+        "ufile": "<binary file content>"
+      },
+      "response": "{\"data\": Store} — the ir.attachment record is in data[\"ir.attachment\"]; {\"error\": text} is a refusal (not allowed to upload there)",
+      "idempotency": "On the module route a request repeating the client_uuid of the same user returns the attachment already created, without a second one and without replaying the voice metadata, even if the thread or the file differ (unique index on create_uid + erplibre_client_uuid, advisory lock per uuid). The module route also keeps the original of an image (image_no_postprocess), where Odoo's route reduces it on save. Only an internal user is served: the public user (expired session) and a portal user read 404; a missing client_uuid reads 400. On Odoo's route nothing makes the upload idempotent: a retry after a lost answer first searches (chat.upload_find), and a retry that finds nothing sends again.",
+      "notes": "The body is a one-shot stream: the transfer is never resent by the HTTP stack, a retry is the outbox's. A first 404, or a 400 whose text names the CSRF token, forgets the token and re-authenticates once (callWithAuth), then calls again with a new session and token; a second 404 refuses the file for good (not_found). 413 refuses it as too big. Any other 400 retries later: a retry overlapping the first request on the module route meets the unique index and answers 400, and the next retry finds the attachment. The size limit is session_info max_file_upload_size; a file fits when its size + 65536 bytes of envelope does not exceed it. A file is uploaded after its predecessor of the same post and before the post."
+    },
+    "chat.csrf": {
+      "description": "Read the CSRF token the upload routes require",
+      "method": "GET",
+      "path": "/web/login",
+      "request": "Cookie session_id only, no redirect parameter: the login page is rendered, with its token, even for a logged-in session",
+      "response": "HTML — the token is the value of the hidden input csrf_token, else the csrf_token of the layout's odoo object",
+      "notes": "No JSON route returns the token. It derives from the session id: one fetch per session, shared by concurrent requests, forgotten when the server refuses it, never reused for a new session. A 3xx answer (session gone, or a database selector) is SessionExpiredError and the call re-authenticates once; another non-2xx or a page without a token is an error to retry later."
+    },
+    "chat.upload_find": {
+      "description": "Look for the pending attachment of an upload whose answer was lost, on Odoo's route",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "ir.attachment",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "res_model",
+                "=",
+                "mail.compose.message"
+              ],
+              [
+                "res_id",
+                "=",
+                0
+              ],
+              [
+                "create_uid",
+                "=",
+                "{session uid}"
+              ],
+              [
+                "name",
+                "=",
+                "{file name}"
+              ],
+              [
+                "file_size",
+                "=",
+                "{size}"
+              ],
+              [
+                "create_date",
+                ">=",
+                "{upload sent at minus a clock skew}"
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "id",
+              "name",
+              "mimetype",
+              "file_size",
+              "checksum"
+            ],
+            "order": "id asc",
+            "limit": "1 + the number of attachment ids this phone already holds for the account"
+          }
+        }
+      },
+      "response": "[{id, name, mimetype, file_size, checksum}]",
+      "notes": "Runs before a repeated upload once the quiet window of the first send is over. The hits the phone already holds (state uploaded) are dropped, the oldest left is adopted. Not used on the module route, which answers the repeat itself."
+    },
+    "chat.attachment_preview": {
+      "description": "Download the preview of an image or video attachment",
+      "method": "GET",
+      "path": "/web/image/{attachment id}/512x512?unique={checksum}&download=true",
+      "response": "the image resized to 512x512 at most, written to the cache directory of the phone",
+      "notes": "Previews download whatever the network. `unique` busts Odoo's cache when the file changes; `download=true` turns an error into a 404 instead of a placeholder image. The session cookie is sent; a 404 reads as an expired session and re-authenticates once."
+    },
+    "chat.attachment_download": {
+      "description": "Download the original of an attachment, to the cache or to open it",
+      "method": "GET",
+      "path": "/web/content/{attachment id}?unique={checksum}&download=true",
+      "response": "the file, streamed by the native layer to its path under Directory.Data",
+      "notes": "Starts when the user opens the file (or taps to download), on mobile data after a size warning when the option asks for one. The route is auth=public: an expired session reads 404, handled as for chat.upload."
+    },
+    "chat.attachment_delete_bus": {
+      "description": "Bus notification that an attachment was deleted on the server",
+      "method": "WEBSOCKET",
+      "path": "/websocket (channel of the partner)",
+      "response": "{type: \"ir.attachment/delete\", payload: {id}}",
+      "notes": "The phone removes the row and its cached files, the thumbnail and the original, and refreshes the conversation."
     },
     "chat.read": {
       "description": "Mark a channel read up to its last known message; queued in sync_outbox (kind chat.read), one op per channel whose message id only rises",
@@ -1056,7 +1163,7 @@
         }
       },
       "response": "[{id, state}]",
-      "notes": "installed = discuss.channel holds the field erplibre_client_uuid in fields_get (module 1.1; readable by any user; cached) or a system user sees the row installed; outdated = only mail.message holds it (module 1.0) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1."
+      "notes": "installed = discuss.channel holds the field erplibre_client_uuid in fields_get (module 1.1; readable by any user; cached) or a system user sees the row installed; outdated = only mail.message holds it (module 1.0) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1. Module 1.2 is recognised by erplibre_client_uuid on ir.attachment (level 1.2, above 1.1 on discuss.channel and 1.0 on mail.message); it adds the idempotent upload route of chat.upload. Without it, files go to Odoo's route and a lost answer is found with chat.upload_find."
     }
   },
 
@@ -1244,7 +1351,9 @@
         "internal_user_group_id (migration 2026102601)",
         "global_mute_until (2026102601; end of the account-wide mute)",
         "global_mute_at (2026102601; when the phone last wrote it)",
-        "is_internal_user (2026102601)"
+        "is_internal_user (2026102601)",
+        "file_dir (2026102604; directory of the cached files of the server)",
+        "module_level (2026102604; 1.0|1.1|1.2, null without the module)"
       ],
       "notes": "One row per server: the session facts, the last bus id applied and when it was seen, the module state (installed|outdated|available|absent|unknown), the bus id the inbox counter is as of, the default access group of new channels and the account-wide mute."
     },
@@ -1257,6 +1366,45 @@
         "real_id"
       ],
       "notes": "The server id each conversation created on the phone was given, by its temporary id: a screen or route still naming the temporary id finds the conversation, and a fingerprint search never adopts a conversation another create already took."
+    },
+    "chat_attachments": {
+      "migration": "2026102604",
+      "columns": [
+        "id (config_id#a<attachment id> or config_id#l<local uuid>)",
+        "config_id",
+        "channel_id",
+        "message_id",
+        "attachment_id",
+        "local_uuid",
+        "post_client_uuid",
+        "seq",
+        "name",
+        "mimetype",
+        "size",
+        "checksum",
+        "voice",
+        "thumb_path",
+        "thumb_bytes",
+        "original_path",
+        "original_bytes",
+        "state (draft|queued|uploaded|posted|refused)",
+        "error",
+        "last_opened_at",
+        "created_at",
+        "origin (migration 2026102606; where a draft file was taken: camera, gallery, file, voice)"
+      ],
+      "notes": "One row per file of a message. The paths and byte counts describe the files cached on the phone; the purge (off by default, 2048 MB, a warning at 80 %) deletes the oldest-opened cached files and keeps the row."
+    },
+    "chat_drafts": {
+      "migration": "2026102605",
+      "columns": [
+        "id (config_id#channel_id)",
+        "config_id",
+        "channel_id",
+        "text",
+        "updated_at"
+      ],
+      "notes": "One draft text per conversation, kept across restarts. Its files are the conversation's chat_attachments rows in the draft state."
     }
   }
 }
