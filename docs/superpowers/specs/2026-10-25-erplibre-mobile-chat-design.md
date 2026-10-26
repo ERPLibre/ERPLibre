@@ -142,8 +142,8 @@ The user named four, all of them are acceptance criteria:
 - Calls and video (project 4); a call started in the browser may show as
   « call in progress » but cannot be joined.
 - Odoo 16 and 17, livechat, guests and portal users, chatter composition on
-  records (the inbox reads them; replying in a record's chatter is not
-  required).
+  records (the inbox reads them and replies in their chatter, lot 5; composing
+  in a record's chatter outside the inbox is not required).
 - iOS. Nothing in the design may depend on Android-only APIs without an
   abstraction, so iOS stays reachable.
 
@@ -317,3 +317,10 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
   overwriting: the ERPLibre module (1.3) checks that the message has not
   changed since; without it the app reads the message again just before
   sending. The refused text stays available with a notice.
+- **Lot 5, an inbox that stays empty:** Odoo sends notifications by email
+  by default, so most users' Odoo inbox never fills. The app's inbox says
+  why and offers « Recevoir mes notifications dans Odoo », which changes
+  the user's own Odoo preference (no more of those emails).
+- **Lot 5, a reply in a record's chatter** from the inbox goes as an
+  internal note by default (no email to followers); « Envoyer comme
+  message aux abonnés » stays available, after a confirmation.
