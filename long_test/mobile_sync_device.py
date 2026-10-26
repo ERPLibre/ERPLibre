@@ -44,6 +44,9 @@ import mobile_sync_odoo as odoo  # noqa: E402
 from mobile_sync_cdp import Cdp, ErreurPage  # noqa: E402
 
 PAQUET = "ca.erplibre.home.synctest"
+# L'app de l'utilisateur, à côté de l'app de test : une course ne la touche
+# jamais, et lancer() le vérifie
+APP_PERSO = "ca.erplibre.home"
 DEVICE_HOOK_API = 4
 APK_CACHE = odoo.CACHE / "apk"
 APK_PRODUIT = Path("android/app/build/outputs/apk/debug/app-debug.apk")
@@ -66,6 +69,35 @@ def adb(*args, executer=subprocess.run, check=True, binaire=False):
             f"adb {' '.join(args)} : {resultat.stderr or resultat.stdout}"
         )
     return resultat.stdout
+
+
+def maj_app_perso(executer=subprocess.run):
+    """La date de dernière mise à jour de APP_PERSO selon dumpsys package
+    (lastUpdateTime de sa section « Package [ca.erplibre.home] »), None
+    quand elle n'est pas installée. RuntimeError quand elle l'est sans date
+    lisible : sans elle, rien ne prouve qu'une course l'a laissée."""
+    sortie = adb(
+        "shell",
+        "dumpsys",
+        "package",
+        APP_PERSO,
+        executer=executer,
+        check=False,
+    )
+    debut = sortie.find(f"Package [{APP_PERSO}]")
+    if debut < 0:
+        return None
+    section = sortie[debut:]
+    suivante = section.find("Package [", 1)
+    if suivante > 0:
+        section = section[:suivante]
+    trouve = re.search(r"lastUpdateTime=([^\r\n]+)", section)
+    if not trouve:
+        raise RuntimeError(
+            f"{APP_PERSO} installée, mais dumpsys package ne donne pas sa"
+            " lastUpdateTime"
+        )
+    return trouve.group(1).strip()
 
 
 def verifier_appareil(
@@ -1237,7 +1269,12 @@ def scenarios_de(version):
 
 def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
     """Les scénarios sur le téléphone, pour chaque cible : (total, échecs).
-    Un échec garde une capture d'écran dans repertoire."""
+    Un échec garde une capture d'écran dans repertoire. L'app de
+    l'utilisateur (APP_PERSO) est relevée avant et après : une date de mise
+    à jour changée, ou devenue illisible, compte pour un échec de plus ;
+    illisible dès le départ, la course s'arrête avant de toucher le
+    téléphone (RuntimeError)."""
+    avant = maj_app_perso(executer)
     apk = construire_apk(executer=executer, journal=journal)
     appareil = Appareil(
         [int(c["url"].rsplit(":", 1)[1]) for c in cibles], executer
@@ -1300,6 +1337,13 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
                         journal(f"    capture : {capture}")
     finally:
         appareil.rendre()
+    try:
+        apres = maj_app_perso(executer)
+    except RuntimeError as erreur:
+        apres = f"illisible ({erreur})"
+    if apres != avant:
+        echecs += 1
+        journal(f"  ✗ {APP_PERSO} changée : {avant} avant, {apres} après")
     return total, echecs
 
 
