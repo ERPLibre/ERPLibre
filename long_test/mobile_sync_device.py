@@ -698,6 +698,20 @@ SAISIE_PRETE = (
     "(() => { const i = document.querySelector('.chat-thread__input');"
     " if (!i) return false; i.focus(); return document.activeElement === i; })()"
 )
+# La place de la zone de saisie, en px CSS : [haut de la barre de navigation
+# moins bas de la saisie (null si la barre n'est pas affichée), bas de la
+# partie visible de la page moins bas de la saisie, hauteur de la page].
+# Négatif, la barre ou le clavier couvre la saisie.
+PLACE_SAISIE = (
+    "(() => { const c = document.querySelector('.chat-thread__composer');"
+    " const n = document.querySelector('nav#nav'); if (!c) return null;"
+    " const bas = c.getBoundingClientRect().bottom;"
+    " const barre = n && n.getClientRects().length"
+    " ? Math.round(n.getBoundingClientRect().top - bas) : null;"
+    " const vue = window.visualViewport;"
+    " const visible = vue ? vue.offsetTop + vue.height : innerHeight;"
+    " return [barre, Math.round(visible - bas), innerHeight]; })()"
+)
 
 
 def scenario_clavardage(ctx):
@@ -734,16 +748,74 @@ def scenario_clavardage(ctx):
     )
     saisie = time.monotonic() - debut
     assert saisie <= TUILE_VERS_SAISIE, f"tuile → saisie : {saisie:.2f} s"
-    echanger(ctx, pair, canal)
-    return f"tuile → liste {duree:.2f} s, tuile → saisie {saisie:.2f} s"
+    mesure = echanger(ctx, pair, canal)
+    return (
+        f"tuile → liste {duree:.2f} s, tuile → saisie {saisie:.2f} s, {mesure}"
+    )
+
+
+def place_saisie(ctx, delai=10):
+    """PLACE_SAISIE une fois la page posée (trois relevés identiques, POSE
+    secondes d'écart), après avoir vérifié que ni la barre ni le bord de la
+    partie visible ne couvrent la saisie."""
+    fin = time.monotonic() + delai
+    releves = []
+    while True:
+        releves = (releves + [ctx.cdp.evaluer(PLACE_SAISIE)])[-3:]
+        if (
+            len(releves) == 3
+            and releves[-1]
+            and all(r == releves[-1] for r in releves)
+        ):
+            break
+        if time.monotonic() > fin:
+            raise TimeoutError(f"saisie jamais posée en {delai} s : {releves}")
+        time.sleep(POSE)
+    barre, visible, hauteur = releves[-1]
+    assert (
+        barre is None or barre >= 0
+    ), f"la barre couvre la saisie : {barre} px"
+    assert visible >= 0, f"la saisie sort de l'écran : {visible} px"
+    return barre, visible, hauteur
+
+
+def clavier_affiche(ctx):
+    """Vrai quand Android affiche la fenêtre du clavier."""
+    sortie = adb(
+        "shell",
+        "dumpsys",
+        "window",
+        "InputMethod",
+        executer=ctx.appareil.executer,
+    )
+    return "isVisible=true" in sortie
 
 
 def echanger(ctx, pair, canal):
-    """Dans la conversation canal ouverte : un message tapé et envoyé
-    arrive une fois sur le serveur, puis la réponse de pair (chat_user)
-    s'affiche dans le fil par le websocket natif."""
+    """Dans la conversation canal ouverte : la saisie se tient au-dessus de
+    la barre de navigation, clavier fermé puis ouvert ; un message tapé et
+    envoyé arrive une fois sur le serveur, puis la réponse de pair
+    (chat_user) s'affiche dans le fil par le websocket natif. Rend la place
+    mesurée de la saisie."""
+    ctx.cdp.evaluer("document.activeElement && document.activeElement.blur()")
+    ferme = place_saisie(ctx)
+    # Touchée à l'endroit où elle s'affiche : un élément couvert ne la reçoit pas
+    ctx.toucher_pose(".chat-thread__input")
+    fin = time.monotonic() + 10
+    while not clavier_affiche(ctx):
+        if time.monotonic() > fin:
+            raise TimeoutError("le clavier ne s'ouvre pas sur la saisie")
+        time.sleep(POSE)
+    # La page se réduit au-dessus du clavier : place_saisie vérifie la saisie
+    # dans la partie visible et au-dessus de la barre
+    ouvert = place_saisie(ctx)
+    mesure = (
+        f"saisie à {ferme[0]} px au-dessus de la barre clavier fermé,"
+        f" {ouvert[0] if ouvert[0] is not None else '—'} px clavier ouvert"
+        f" (bas visible à {ferme[1]} puis {ouvert[1]} px,"
+        f" page de {ferme[2]} puis {ouvert[2]} px)"
+    )
     texte = ctx.unique("message")
-    ctx.cdp.toucher(".chat-thread__input")
     # Un toucher par CDP ne donne pas toujours le focus, qu'insertText suit
     ctx.cdp.evaluer("document.querySelector('.chat-thread__input').focus()")
     ctx.cdp.taper(texte)
@@ -795,12 +867,14 @@ def echanger(ctx, pair, canal):
         f".some(e => e.innerText.includes({js(reponse)}))",
         delai=20,
     )
+    return mesure
 
 
 def scenario_groupe(ctx):
     """Un groupe créé depuis le téléphone avec chat_user : il existe une
     fois sur le serveur sous son nom, sa fiche nomme chat_user parmi les
-    membres, et l'échange s'y fait dans les deux sens (echanger)."""
+    membres, et l'échange s'y fait dans les deux sens (echanger). Rend la
+    place mesurée de la saisie."""
     pair = Odoo(ctx.cible, "chat")
     partenaire = pair.lire("res.users", pair.uid, ["partner_id"])[
         "partner_id"
@@ -833,7 +907,7 @@ def scenario_groupe(ctx):
     ctx.cdp.attendre(
         f"location.pathname.endsWith('/{canal}') && {SAISIE_PRETE}", delai=20
     )
-    echanger(ctx, pair, canal)
+    return echanger(ctx, pair, canal)
 
 
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
