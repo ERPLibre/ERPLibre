@@ -21,11 +21,14 @@ export class ChatPeer {
 		if (!target.chat) throw new Error(`no chat user on Odoo ${target.version}`);
 		const peer = new ChatPeer(new OdooAdmin(target, target.chat), new OdooAdmin(target));
 		await peer.user.sessionLogin();
-		const partnerOf = async (login: string) =>
-			(await peer.admin.searchRead("res.users", [["login", "=", login]], ["partner_id"]))[0].partner_id[0];
-		peer.partnerId = await partnerOf(target.chat.login);
-		peer.adminPartnerId = await partnerOf(target.admin.login);
+		peer.partnerId = await peer.partnerOf(target.chat.login);
+		peer.adminPartnerId = await peer.partnerOf(target.admin.login);
 		return peer;
+	}
+
+	/** The partner of the user whose login is given. */
+	async partnerOf(login: string): Promise<number> {
+		return (await this.admin.searchRead("res.users", [["login", "=", login]], ["partner_id"]))[0].partner_id[0];
 	}
 
 	private async idByName(name: string): Promise<number> {
@@ -34,9 +37,9 @@ export class ChatPeer {
 		return row.id;
 	}
 
-	/** A new group of chat_user and admin, named name; its id. */
-	async group(name: string): Promise<number> {
-		await this.user.execute(CHANNEL, "create_group", [], { partners_to: [this.adminPartnerId], name });
+	/** A new group of chat_user and `withPartner` (admin by default), named name; its id. */
+	async group(name: string, withPartner = this.adminPartnerId): Promise<number> {
+		await this.user.execute(CHANNEL, "create_group", [], { partners_to: [withPartner], name });
 		return this.idByName(name);
 	}
 

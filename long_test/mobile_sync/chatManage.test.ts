@@ -12,7 +12,7 @@
  * The quiet window (3 minutes) and a mute's end pass on a faked Date: only
  * the app's clock moves, the requests stay real. Scenarios that need the
  * bus run the app's realtime client and wait on its cache with a bounded
- * poll (until), never a fixed sleep.
+ * poll (until); a fixed pause only checks that a state reached still holds.
  */
 import { appFor, chatTitle, eachVersionFrom, nodeTransport, restartSyncEnv, setOnline, unique, until } from "./harness";
 import type { SyncEnv } from "./harness";
@@ -56,7 +56,7 @@ eachVersionFrom(18, "chat management", (target) => {
 	const later = (ms: number) => vi.setSystemTime(Date.now() + ms);
 
 	/** The app as `as` through the proxy, its chat source loaded. */
-	async function app(opts: { as?: "admin" | "chat"; chatModule?: "auto" | "ignore" } = {}) {
+	async function app(opts: { as?: "admin" | "multi" | "chat"; chatModule?: "auto" | "ignore" } = {}) {
 		const started = await appFor(proxy.via(target), opts.as ?? "admin", { chatModule: opts.chatModule });
 		env = started;
 		const [src] = await started.chat.sources();
@@ -65,8 +65,8 @@ eachVersionFrom(18, "chat management", (target) => {
 	}
 
 	/** app() with its bus started, once its websocket is asked for; delivered collects what the bus hands the chat. */
-	async function live() {
-		const { env: started, src } = await app();
+	async function live(as: "admin" | "multi" = "admin") {
+		const { env: started, src } = await app({ as });
 		const applyBus = vi.spyOn(started.chat, "applyBus");
 		const sockets = () => proxy.calls.filter((c) => c.path.startsWith("/websocket")).length;
 		const opened = sockets();
@@ -81,6 +81,10 @@ eachVersionFrom(18, "chat management", (target) => {
 		&& (n.message.payload?.data?.["mail.message"] ?? []).some((m: any) => m.id === messageId);
 
 	const server = (channelId: number, fields: string[]) => peer.admin.read(CHANNEL, channelId, fields);
+
+	/** The ids of the server's conversations named name, archived ones included. */
+	const named = async (name: string) =>
+		(await peer.admin.searchRead(CHANNEL, [["name", "=", name]], ["id"], { context: { active_test: false } })).map((c) => c.id);
 
 	const shown = async (e: SyncEnv, configId: string, channelId: number) =>
 		(await e.chat.conversations([configId])).find((c) => c.channelId === channelId) ?? null;
@@ -179,32 +183,42 @@ eachVersionFrom(18, "chat management", (target) => {
 		expect(groups.defaultId).toBe(internalGroupId);
 		expect(groups.groups.map((g) => g.id)).toEqual(expect.arrayContaining([internalGroupId, false]));
 
-		const internal = await env.chat.createChannel(src, unique("channel"), groups.defaultId);
+		const internalName = unique("channel");
+		const internal = await env.chat.createChannel(src, internalName, groups.defaultId);
 		expect(internal.channelId).toBeGreaterThan(0);
+		expect(await named(internalName)).toEqual([internal.channelId]);
 		const read = await server(internal.channelId, ["channel_type", "group_public_id", "create_uid", "channel_partner_ids"]);
 		expect(read.channel_type).toBe("channel");
 		expect(read.group_public_id[0]).toBe(internalGroupId);
 		expect(read.create_uid[0]).toBe(adminUid);
 		expect(read.channel_partner_ids).toEqual([peer.adminPartnerId]);
 
-		const everyone = await env.chat.createChannel(src, unique("everyone"), false);
+		const everyoneName = unique("everyone");
+		const everyone = await env.chat.createChannel(src, everyoneName, false);
+		expect(await named(everyoneName)).toEqual([everyone.channelId]);
 		expect((await server(everyone.channelId, ["group_public_id"])).group_public_id).toBe(false);
 		expect(await env.chat.repo.channel(src.configId, everyone.channelId)).toMatchObject({ channelType: "channel", isMember: true });
 	});
 
-	it("chat_user's new group reaches the app live, its messages by the bus", async () => {
-		const { env, src, delivered } = await live();
-		const group = await peer.group(unique("their-group"));
+	it("chat_user's new group reaches the app live, its messages by the bus, no reload each", async () => {
+		// The app is the two-company user here: no other file's conversation involves it, so
+		// every load through this file's proxy is this scenario's own
+		const multiPartnerId = await peer.partnerOf(target.multi.login);
+		const { env, src, delivered } = await live("multi");
+		const group = await peer.group(unique("their-group"), multiPartnerId);
 		await until("their group in the app", async () => (await env.chat.repo.channel(src.configId, group))?.isMember);
 
 		// A new_message reaches the socket only once it subscribed again with the group; the
-		// Store of the channel may land a frame before it. Loads are not counted: the files
-		// run side by side, and a group of another file reloads the account (unknown channel)
+		// Store of the channel may land a frame before it
+		const loads = () => proxy.calls.filter((c) => c.path === "/mail/data").length;
 		const lastIs = (id: number) => async () => (await env.chat.repo.channel(src.configId, group))?.lastMessageId === id;
-		for (const label of ["first", "second"]) {
+		let afterFirst = 0;
+		for (const label of ["first", "second", "third"]) {
 			const id = await peer.post(group, unique(label));
 			await until(`their ${label} message on the bus`, async () => delivered().some((n) => newMessage(n, id)));
 			await until(`their ${label} message`, lastIs(id));
+			if (label === "first") afterFirst = loads();
+			else expect(loads()).toBe(afterFirst);
 		}
 	});
 
@@ -216,6 +230,7 @@ eachVersionFrom(18, "chat management", (target) => {
 		expect(channels.map((c) => c.channelId)).toEqual([channel]);
 
 		expect(await env.chat.join(src, channel, name)).toEqual({ configId: src.configId, channelId: channel });
+		expect(await named(name)).toEqual([channel]);
 		expect(await peer.members(channel)).toContain(peer.adminPartnerId);
 		expect(await env.chat.repo.channel(src.configId, channel)).toMatchObject({ isMember: true, createOpId: null });
 		expect((await env.chat.people.joinableChannels(src, name)).channels).toEqual([]);
@@ -223,7 +238,9 @@ eachVersionFrom(18, "chat management", (target) => {
 
 	it("invite chat_user, rename, describe", async () => {
 		const { env, src } = await app();
-		const { channelId: channel } = await env.chat.createChannel(src, unique("channel"), internalGroupId);
+		const name = unique("channel");
+		const { channelId: channel } = await env.chat.createChannel(src, name, internalGroupId);
+		expect(await named(name)).toEqual([channel]);
 		const candidates = await env.chat.people.inviteCandidates(src, channel, "MS Chat");
 		expect(candidates.partners.map((p) => p.partnerId)).toContain(peer.partnerId);
 		await env.chat.invite(src, channel, [peer.partnerId]);
@@ -232,6 +249,8 @@ eachVersionFrom(18, "chat management", (target) => {
 		const renamed = unique("renamed");
 		await env.chat.rename(src, channel, renamed);
 		await env.chat.describe(src, channel, "What the channel is for");
+		expect(await named(renamed)).toEqual([channel]);
+		expect(await named(name)).toEqual([]);
 		expect(await server(channel, ["name", "description"])).toMatchObject({ name: renamed, description: "What the channel is for" });
 		// A channel keeps a name
 		await expect(env.chat.rename(src, channel, "  ")).rejects.toThrow();
@@ -244,7 +263,7 @@ eachVersionFrom(18, "chat management", (target) => {
 		const { channelId: group } = await env.chat.createGroup(src, [peer.partnerId], unique("named"));
 		const renamed = unique("renamed");
 		await env.chat.rename(src, group, renamed);
-		expect((await server(group, ["name"])).name).toBe(renamed);
+		expect(await named(renamed)).toEqual([group]);
 		expect(await chatTitle(env, src.configId, group)).toBe(renamed);
 
 		await env.chat.rename(src, group, "");
@@ -273,7 +292,7 @@ eachVersionFrom(18, "chat management", (target) => {
 		expect(comments.some((m) => m.body.includes(text))).toBe(false);
 		const left = (await peer.user.searchRead("mail.message",
 			[["model", "=", CHANNEL], ["res_id", "=", group], ["author_id", "=", peer.adminPartnerId]], ["body"]));
-		expect(left.some((m) => m.body.includes("left the channel"))).toBe(true);
+		expect(left.filter((m) => m.body.includes("left the channel"))).toHaveLength(1);
 		const mine = (await env.chat.messages(src.configId, group)).find((m) => m.clientUuid === sent.clientUuid);
 		expect(mine).toMatchObject({ status: "failed", messageId: null });
 		expect(await env.chat.repo.channel(src.configId, group)).toMatchObject({ isMember: false, leftUnsent: true });
@@ -284,10 +303,17 @@ eachVersionFrom(18, "chat management", (target) => {
 	it("hidden direct message shows again when chat_user writes", async () => {
 		const { env, src, delivered } = await live();
 		const { channelId: dm } = await env.chat.startDirect(src, peer.partnerId);
+		const unpins = () => delivered().filter((n) => n.message?.type === "discuss.channel/unpin" && n.message.payload?.id === dm).length;
+		const unpinsBefore = unpins();
 		await env.chat.hide(src, dm);
 		expect(await peer.memberOf(dm, peer.adminPartnerId, ["is_pinned"])).toMatchObject({ is_pinned: false });
-		// The bus may still bring the pin of the chat's own creation before the unpin that follows it
+		// A chat created moments before may still get the pin of its creation from the bus after
+		// the hide, and shows until the unpin that follows it, as in Odoo's web client, which
+		// applies the same frames in the same order. Once that unpin is applied it stays hidden
+		await until("the unpin on the bus", async () => unpins() > unpinsBefore);
 		await until("the direct message hidden in the app", async () => (await shown(env, src.configId, dm)) === null);
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+		expect(await shown(env, src.configId, dm)).toBeNull();
 
 		const id = await peer.post(dm, unique("again"));
 		await until("the message on the bus", async () => delivered().some((n) => newMessage(n, id)));
@@ -356,7 +382,7 @@ eachVersionFrom(18, "chat management", (target) => {
 		}
 		const left = await peer.admin.searchRead("mail.message",
 			[["model", "=", CHANNEL], ["res_id", "=", group], ["author_id", "=", peer.partnerId]], ["body"]);
-		expect(left.some((m) => m.body.includes("left the channel"))).toBe(true);
+		expect(left.filter((m) => m.body.includes("left the channel"))).toHaveLength(1);
 		expect((await env.chat.repo.members(src.configId, group)).map((m) => m.partnerId)).not.toContain(peer.partnerId);
 		expect(await env.db.getOutboxOpsForConfig(src.configId)).toEqual([]);
 	});
