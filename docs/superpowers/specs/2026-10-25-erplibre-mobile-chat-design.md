@@ -308,3 +308,12 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
   and why.
 - **Lot 3, « ask to compress »** applies to every photo sent, from the
   camera or the gallery.
+- **Lot 3, drafts:** each conversation keeps its draft — the text being
+  typed and the attachments not sent yet (photos just taken, voice
+  messages) — until it is sent or removed, across leaving the screen and
+  restarting the app.
+- **Lot 4, an edit that arrives late** (queued offline, the message
+  changed or was deleted in the browser meanwhile) is refused rather than
+  overwriting: the ERPLibre module (1.3) checks that the message has not
+  changed since; without it the app reads the message again just before
+  sending. The refused text stays available with a notice.
