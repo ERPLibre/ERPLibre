@@ -342,8 +342,8 @@ class TestBasesEtServeurs(unittest.TestCase):
                 odoo.cle_gabarit(v18, executer=executer), avant
             )
 
-    def test_harness_api_3(self):
-        self.assertEqual(odoo.HARNESS_API, 3)
+    def test_harness_api_4(self):
+        self.assertEqual(odoo.HARNESS_API, 4)
 
 
 class TestRapport(unittest.TestCase):
@@ -723,8 +723,8 @@ class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
 
-    def test_api_du_hook_4(self):
-        self.assertEqual(appareil.DEVICE_HOOK_API, 4)
+    def test_api_du_hook_5(self):
+        self.assertEqual(appareil.DEVICE_HOOK_API, 5)
 
     def test_clavardage_sur_la_18_seulement(self):
         for version in (16, 17):
@@ -736,6 +736,7 @@ class TestScenariosAppareil(unittest.TestCase):
             ("clavardage", appareil.scenario_clavardage),
             ("groupe créé du téléphone", appareil.scenario_groupe),
             ("pièces jointes du clavardage", appareil.scenario_pieces_jointes),
+            ("actions du clavardage", appareil.scenario_actions_clavardage),
         ):
             self.assertIn(scenario, appareil.scenarios_de(18))
             for version in (16, 17):
