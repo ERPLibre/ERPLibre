@@ -282,3 +282,11 @@ user's. Each lot queues its own actions offline through the lot 1 outbox.
   Odoo: set in the chat options with the same durations; it takes every
   conversation out of the count and hides the per-conversation mutes
   while it is active.
+- **Lot 3, attachment size:** the server's limit (the Odoo setting,
+  25 MB by default), shown before sending; a file over it is refused with
+  a message that says so.
+- **Lot 3, Wi-Fi:** chat attachments follow the sync's existing « Wi-Fi
+  only » attachment setting.
+- **Lot 5, inbox:** mentions and followed records; mark one or all as
+  read; reply in the record's chatter from the app; « Starred » is a
+  separate entry.
