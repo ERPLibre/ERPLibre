@@ -671,7 +671,7 @@
             ],
             "name": "{name, only when given}",
             "context": {
-              "erplibre_client_uuid": "{op client uuid} — only with the module 1.1 (installed or outdated, option chat module mode auto)"
+              "erplibre_client_uuid": "{op client uuid} — only when the module 1.1 is installed (state installed, option chat module mode auto); an outdated module (1.0) creates without it"
             }
           }
         }
@@ -694,7 +694,7 @@
           ],
           "kwargs": {
             "context": {
-              "erplibre_client_uuid": "{op client uuid} — only with the module 1.1"
+              "erplibre_client_uuid": "{op client uuid} — only when the module 1.1 is installed (state installed, option chat module mode auto)"
             }
           }
         }
@@ -1056,7 +1056,7 @@
         }
       },
       "response": "[{id, state}]",
-      "notes": "installed = discuss.channel holds the field erplibre_client_uuid in fields_get (module 1.1; readable by any user; cached) or a system user sees the row installed; outdated = only mail.message holds it (module 1.0) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context for installed and outdated alike, and chat.remove needs the 1.1."
+      "notes": "installed = discuss.channel holds the field erplibre_client_uuid in fields_get (module 1.1; readable by any user; cached) or a system user sees the row installed; outdated = only mail.message holds it (module 1.0) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1."
     }
   },
 
