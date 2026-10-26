@@ -3,12 +3,34 @@
  * posting through /mail/message/post and /discuss/channel/notify_typing, as
  * Odoo's web client does), and what the server holds of the conversations
  * the app's user (admin) reads, through execute_kw. A mention is a post
- * whose partner_ids name admin.
+ * whose partner_ids name admin. Files go as the web client sends them:
+ * uploaded pending through /mail/attachment/upload, then named by the post.
  */
 import type { Target } from "./harness";
 import { OdooAdmin } from "./odooAdmin";
 
 const CHANNEL = "discuss.channel";
+
+/** The CSRF token of a page Odoo renders (the login form's input, or the layout's `csrf_token: "…"`). */
+const CSRF = /name=["']csrf_token["'][^>]*value=["']([^"']+)["']|csrf_token\s*:\s*["']([^"']+)["']/;
+
+/** An attachment as the server holds it, as attachmentsOf reads it. */
+export interface ServerAttachment {
+	id: number;
+	name: string;
+	mimetype: string;
+	checksum: string;
+	file_size: number;
+	res_model: string;
+	res_id: number;
+	create_uid: [number, string];
+	voice_ids: number[];
+	erplibre_client_uuid: string | false;
+}
+
+const ATTACHMENT_FIELDS = [
+	"name", "mimetype", "checksum", "file_size", "res_model", "res_id", "create_uid", "voice_ids", "erplibre_client_uuid",
+];
 
 export class ChatPeer {
 	/** chat_user's partner and the app user's (admin) partner. */
@@ -93,8 +115,42 @@ export class ChatPeer {
 		return { notifications, close: () => ws.close() };
 	}
 
-	/** Posts text as chat_user, mentioning admin when asked; the new message's id. */
-	async post(channelId: number, text: string, opts: { mentionAdmin?: boolean } = {}): Promise<number> {
+	/**
+	 * Uploads bytes as chat_user's pending attachment of the conversation,
+	 * as the web client's composer does (multipart, its session and the
+	 * CSRF token of its login page; voice=true for a voice message): the
+	 * attachment's id and access token, for post().
+	 */
+	async upload(
+		channelId: number, filename: string, bytes: Uint8Array, opts: { voice?: boolean; mimetype?: string } = {},
+	): Promise<{ id: number; token: string | false }> {
+		const page = await this.user.httpGet("/web/login", this.user.cookie);
+		const found = CSRF.exec(page.bytes.toString("utf8"));
+		if (!found) throw new Error(`no csrf token on /web/login (HTTP ${page.status})`);
+		const form = new FormData();
+		form.append("thread_id", String(channelId));
+		form.append("thread_model", CHANNEL);
+		form.append("is_pending", "true");
+		form.append("csrf_token", found[1] ?? found[2]);
+		if (opts.voice) form.append("voice", "true");
+		form.append("ufile", new Blob([bytes], { type: opts.mimetype ?? "application/octet-stream" }), filename);
+		const response = await fetch(`${this.user.url}/mail/attachment/upload`, {
+			method: "POST", headers: { Cookie: this.user.cookie }, body: form,
+		});
+		const text = await response.text();
+		const record = response.ok ? JSON.parse(text)?.data?.["ir.attachment"]?.[0] : null;
+		if (typeof record?.id !== "number") throw new Error(`upload refused (HTTP ${response.status}): ${text.slice(0, 200)}`);
+		return { id: record.id, token: record.access_token ?? false };
+	}
+
+	/**
+	 * Posts text as chat_user, mentioning admin when asked, with the
+	 * attachments upload() gave; the new message's id.
+	 */
+	async post(
+		channelId: number, text: string, opts: { mentionAdmin?: boolean; attachments?: { id: number; token: string | false }[] } = {},
+	): Promise<number> {
+		const files = opts.attachments ?? [];
 		const result = await this.user.jsonRoute("/mail/message/post", {
 			thread_model: CHANNEL,
 			thread_id: channelId,
@@ -103,11 +159,24 @@ export class ChatPeer {
 				message_type: "comment",
 				subtype_xmlid: "mail.mt_comment",
 				...(opts.mentionAdmin ? { partner_ids: [this.adminPartnerId] } : {}),
+				...(files.length ? { attachment_ids: files.map((f) => f.id) } : {}),
 			},
+			...(files.length ? { attachment_tokens: files.map((f) => f.token) } : {}),
 		});
 		const id = result?.["mail.message"]?.[0]?.id;
 		if (typeof id !== "number") throw new Error("post answered no message id");
 		return id;
+	}
+
+	/**
+	 * The attachments of a message on the server, oldest first (a
+	 * many2many reads in ir.attachment's own order, so the order a post
+	 * named them in is not kept).
+	 */
+	async attachmentsOf(messageId: number): Promise<ServerAttachment[]> {
+		const message = await this.admin.read("mail.message", messageId, ["attachment_ids"]);
+		if (!message) throw new Error(`message ${messageId} not found`);
+		return this.admin.searchRead("ir.attachment", [["id", "in", message.attachment_ids]], ATTACHMENT_FIELDS, { order: "id asc" });
 	}
 
 	typing(channelId: number, isTyping: boolean): Promise<void> {
