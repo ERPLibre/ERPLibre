@@ -31,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mobile_sync_cdp import Cdp  # noqa: E402
+from mobile_sync_odoo import version_repondue  # noqa: E402
 
 FIXTURES = (
     Path(__file__).resolve().parent.parent
@@ -44,6 +45,9 @@ CAS = FIXTURES / "composer-cases.json"
 REFERENCE = FIXTURES / "composer-golden.json"
 
 MODULE_FORMAT = "@mail/utils/common/format"
+# Les références sont celles d'Odoo 18 : un autre serveur n'en écrit pas
+VERSION = 18
+SORTIE_VERSION = 2
 
 # Un cas dans la page : les choix de mentions de l'app (Mentions) mis à la
 # forme des enregistrements d'Odoo, filtrés par getMentionsFromText, puis
@@ -192,6 +196,13 @@ def references(cdp, url, cookie, cas):
 def main(argv=None):
     args = parser().parse_args(argv)
     url = args.url.rstrip("/")
+    majeure = version_repondue(url, delai=10)
+    if majeure != VERSION:
+        print(
+            f"{url} répond Odoo {majeure} et non {VERSION} :"
+            " aucune référence écrite"
+        )
+        return SORTIE_VERSION
     base = args.base or base_unique(url)
     cookie = session(url, base, args.login, args.password)
     cas = json.loads(CAS.read_text())
