@@ -279,6 +279,27 @@ class TestBasesEtServeurs(unittest.TestCase):
         self.assertIn(odoo.POST_INSTALLATION_CHAT, odoo.post_installation(18))
         compile(odoo.post_installation(18), "post", "exec")
 
+    def test_les_reglages_d_avance_dans_chaque_version(self):
+        """Les réglages de chaque utilisateur interne se créent dans le
+        commun, après mc_user et avant le commit : la 16 et la 17 les ont
+        aussi. La partie du chat crée ceux de chat_user, venu après."""
+        commun = odoo.POST_INSTALLATION
+        reglages = commun.index(
+            'env["res.users.settings"]._find_or_create_for_user(interne)'
+        )
+        self.assertGreater(reglages, commun.index('"login": "mc_user"'))
+        self.assertLess(reglages, commun.rindex("env.cr.commit()"))
+        chat = odoo.POST_INSTALLATION_CHAT
+        self.assertNotIn("_find_or_create_for_user(interne)", chat)
+        self.assertLess(
+            chat.index("_find_or_create_for_user(utilisateur)"),
+            chat.rindex("env.cr.commit()"),
+        )
+        for numero in odoo.VERSIONS:
+            script = odoo.post_installation(numero)
+            self.assertIn("_find_or_create_for_user(interne)", script)
+            compile(script, "post", "exec")
+
     def test_cles_de_16_et_17_figees_et_18_suit_le_chat(self):
         """Les clés de 16 et 17 ne voient jamais le bloc du chat : elles
         valent le hachage du texte commun seul."""
