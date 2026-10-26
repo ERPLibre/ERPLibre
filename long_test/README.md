@@ -379,8 +379,9 @@ is its own and the later messages must arrive by the bus with no reload.
 Every template, the 16, 17 and 18 ones alike, creates the settings of every
 internal user ahead (two simultaneous first requests would otherwise both
 create them and hit the uniqueness of `res.users.settings`), and the 18 one's
-module is the 1.3, which dedupes creates and uploads and guards edits. `--appareil` adds the
-« clavardage » screen and a group created from the phone. To run only these:
+module is the 1.3, which dedupes creates and uploads and guards edits.
+`--appareil` adds the « clavardage » screen and a group created from the
+phone. To run only these:
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
@@ -421,26 +422,29 @@ shadows `test/`, so the file is found by discovery:
 .venv.erplibre/bin/python -m unittest discover -s test -p test_mobile_sync_harness.py
 ```
 
-`chatActions.test.ts` covers the actions on a message against the real
-server, each result read back from it. A reaction whose answer is lost leaves
-one row after the retry; one added then removed offline sends no request; and
+`chatActions.test.ts` covers the actions on a message against the real server,
+each result read back from it. A reaction whose answer is lost leaves one row
+after the retry; one added then removed offline sends no request; and
 chat_user's reaction and edit reach the app by the bus with no reload. Where it
 says « on both routes », the edit runs once on the module's guarded route and
 once with the module ignored, on Odoo's: an edit of a message with two files
-changes the text and keeps both files; a late edit, made after chat_user edited
-or deleted the message in the browser, is refused with the app's text kept for
-« Reprendre » and the server's body untouched; a delete empties the body and
-removes the files, hidden in the app and for chat_user; a reply keeps its
-parent on the server, a reply whose parent chat_user deletes meanwhile is
-posted on it and quoted as deleted, and a reply to a message of another
-conversation is posted as a plain message. `chatWriting.test.ts` covers what
-the app writes: a mention of chat_user in a channel gives him a notification
-(only a partner with an email address and inbox notifications is notified of
-a channel mention, so the file gives him both for its run), `@everyone` puts
-every member in `partner_ids`, `#channel` is stored as Odoo's channel link,
-and a body that starts with a mention is stored in a `<span>`. The round trip
-takes every case of the composer goldens, posts it, and has chat_user's browser
-save it again: the body is stored as it was, the edited span aside.
+changes the text and keeps both files; an edit whose answer is lost, its body
+opening on a mention that Odoo stores wrapped, counts as done on its replay,
+and a correction made meanwhile follows it with no notice; a late edit, made
+after chat_user edited or deleted the message in the browser, is refused with
+the app's text kept for « Reprendre » and the server's body untouched; a delete
+empties the body and removes the files, hidden in the app and for chat_user; a
+reply keeps its parent on the server, a reply whose parent chat_user deletes
+meanwhile is posted on it and quoted as deleted, and a reply to a message of
+another conversation is posted as a plain message. `chatWriting.test.ts` covers
+what the app writes: a mention of chat_user in a channel gives him a
+notification (only a partner with an email address and inbox notifications is
+notified of a channel mention, so the file gives him both for its run),
+`@everyone` puts every member in `partner_ids`, `#channel` is stored as Odoo's
+channel link, and a body that starts with a mention is stored in a `<span>`.
+The round trip takes every case of the composer goldens, posts it, and has
+chat_user's browser save it again: the body is stored as it was, the edited
+span aside.
 
 The goldens are produced by Odoo's own formatter, not written by hand.
 `long_test/mobile_sync_composer.py` opens a session on an Odoo 18 in a
