@@ -400,9 +400,10 @@ arriver par le bus sans rechargement. Chaque gabarit, ceux de la 16, de la
 17 et de la 18 pareillement, crée d'avance les réglages de chaque
 utilisateur interne (deux premières requêtes simultanées les créeraient
 toutes deux et buteraient sur l'unicité de `res.users.settings`), et le
-module de celui de la 18 est le 1.3, qui dédoublonne les créations et les téléversements et garde les modifications. XX
-téléversements. `--appareil` ajoute l'écran « clavardage » et un groupe créé
-depuis le téléphone. Pour ne lancer que ceux-là :
+module de celui de la 18 est le 1.3, qui dédoublonne les créations et les
+téléversements et garde les modifications. `--appareil` ajoute l'écran
+« clavardage » et un groupe créé depuis le téléphone. Pour ne lancer que
+ceux-là :
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
@@ -448,30 +449,32 @@ découverte :
 .venv.erplibre/bin/python -m unittest discover -s test -p test_mobile_sync_harness.py
 ```
 
-`chatActions.test.ts` couvre les actions sur un message contre le vrai
-serveur, chaque résultat relu sur lui. Une réaction dont la réponse est perdue
-laisse une ligne après la reprise ; une réaction ajoutée puis retirée hors
-ligne n'envoie aucune requête ; et la réaction et la modification de chat_user
+`chatActions.test.ts` couvre les actions sur un message contre le vrai serveur,
+chaque résultat relu sur lui. Une réaction dont la réponse est perdue laisse
+une ligne après la reprise ; une réaction ajoutée puis retirée hors ligne
+n'envoie aucune requête ; et la réaction et la modification de chat_user
 arrivent à l'app par le bus sans rechargement. Là où il dit « sur les deux
 routes », la modification tourne une fois sur la route gardée du module et une
 fois en l'ignorant, sur celle d'Odoo : la modification d'un message à deux
-fichiers change le texte et garde les deux fichiers ; une modification tardive,
-faite après que chat_user a modifié ou supprimé le message dans le navigateur,
-est refusée, le texte de l'app gardé pour « Reprendre » et le corps du serveur
-intact ; une suppression vide le corps et retire les fichiers, masquée dans
-l'app et pour chat_user ; une réponse garde son parent sur le serveur, une
-réponse dont chat_user supprime le parent entre-temps est postée dessus et
-citée comme supprimée, et une réponse à un message d'une autre conversation
-est postée comme un message simple. `chatWriting.test.ts` couvre ce que l'app
-écrit : la mention de chat_user dans un canal lui donne une notification
-(seul un partenaire qui a un courriel et des notifications par boîte de
-réception est averti d'une mention de canal, le fichier lui donne donc les
-deux le temps de sa course), `@everyone` met chaque membre dans
-`partner_ids`, `#canal` est stocké comme le lien de canal d'Odoo, et un corps
-qui commence par une mention est stocké dans un `<span>`. L'aller-retour prend
-chaque cas des références du compositeur, l'envoie, et fait réenregistrer par
-le navigateur de chat_user : le corps reste stocké tel qu'il était, au span
-« modifié » près.
+fichiers change le texte et garde les deux fichiers ; une modification dont la
+réponse est perdue, son corps ouvert par une mention qu'Odoo stocke enveloppée,
+compte comme faite à sa reprise, et une correction faite entre-temps la suit
+sans notice ; une modification tardive, faite après que chat_user a modifié ou
+supprimé le message dans le navigateur, est refusée, le texte de l'app gardé
+pour « Reprendre » et le corps du serveur intact ; une suppression vide le
+corps et retire les fichiers, masquée dans l'app et pour chat_user ; une
+réponse garde son parent sur le serveur, une réponse dont chat_user supprime le
+parent entre-temps est postée dessus et citée comme supprimée, et une réponse à
+un message d'une autre conversation est postée comme un message simple.
+`chatWriting.test.ts` couvre ce que l'app écrit : la mention de chat_user dans
+un canal lui donne une notification (seul un partenaire qui a un courriel et
+des notifications par boîte de réception est averti d'une mention de canal, le
+fichier lui donne donc les deux le temps de sa course), `@everyone` met chaque
+membre dans `partner_ids`, `#canal` est stocké comme le lien de canal d'Odoo,
+et un corps qui commence par une mention est stocké dans un `<span>`.
+L'aller-retour prend chaque cas des références du composeur, l'envoie, et fait
+réenregistrer par le navigateur de chat_user : le corps reste stocké tel qu'il
+était, au span « modifié » près.
 
 Les références sont produites par le formateur d'Odoo lui-même, non écrites à
 la main. `long_test/mobile_sync_composer.py` ouvre une session sur un Odoo 18
