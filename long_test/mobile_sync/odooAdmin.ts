@@ -11,6 +11,11 @@ export class OdooAdmin {
 
 	constructor(private target: Target, private user: Login = target.admin) {}
 
+	/** The url of the server this session talks to. */
+	get url(): string {
+		return this.target.url;
+	}
+
 	private async call(service: string, method: string, args: any[]): Promise<any> {
 		const response = await fetch(`${this.target.url}/jsonrpc`, {
 			method: "POST",
@@ -48,6 +53,12 @@ export class OdooAdmin {
 		const cookie = response.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("session_id="));
 		if (!cookie) throw new Error("pas de cookie session_id");
 		this.sessionCookie = cookie;
+	}
+
+	/** The session_id cookie sessionLogin() keeps, as a Cookie header value. */
+	get cookie(): string {
+		if (!this.sessionCookie) throw new Error("sessionLogin() d'abord");
+		return this.sessionCookie;
 	}
 
 	/** POSTs JSON-RPC params to a route (/mail/message/post, ...) as this user's browser would. */
