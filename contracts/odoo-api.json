@@ -582,7 +582,10 @@
             "message_type": "comment",
             "subtype_xmlid": "mail.mt_comment",
             "erplibre_client_uuid": "{client uuid} — only when the erplibre_mobile_chat module is installed",
-            "attachment_ids": "[attachment ids] — only when the message has files; the ids of the chat.upload answers, in pick order"
+            "attachment_ids": "[attachment ids] — only when the message has files; the ids of the chat.upload answers, in pick order",
+            "partner_ids": "[partner ids] — only when the text mentions people (the partners picked in the composer whose @Name is still in the text)",
+            "special_mentions": "[\"everyone\"] — only when the text holds @everyone",
+            "parent_id": "{server id of the message answered} — only for a reply, read when the post is sent; a reply to a message still queued waits for its post"
           },
           "attachment_tokens": "[false, …] — only with attachment_ids, same length: an internal user's pending attachments carry no token",
           "context": {
@@ -590,9 +593,10 @@
           }
         }
       },
+      "body_rules": "The body is what the browser composer of Odoo 18 posts for the same text (prettifyMessageContent of mail/static/src/utils/common/format.js): the text escaped (& < > ' \" and the backtick), trimmed, a run of two line ends or more as two <br>, any other line end as one <br>, URLs as <a href target=\"_blank\" rel=\"noreferrer noopener\">, emoji shortcodes and emoticons converted as the picker does, the first @Name of a picked person as <a href=\"/odoo/res.partner/{id}\" class=\"o_mail_redirect\" data-oe-id=\"{id}\" data-oe-model=\"res.partner\" target=\"_blank\">@Name</a>, a picked channel as an o_channel_redirect link, @everyone as a special mention. A body that starts with a mention is stored by Odoo's sanitizer wrapped in <span> rather than <p>. Goldens produced by Odoo's own formatter in a headless browser pin the output byte for byte (long_test/mobile_sync_composer.py).",
       "response": "{\"mail.message\": [{id, ...}], ...Store} — the id settles the pending bubble; an answer without an id is an error and the retry searches before posting",
       "idempotency": "Every body ends with the hidden comment `<!-- erplibre-mobile:<uuid> -->`; with the module the uuid also travels in the field `erplibre_client_uuid` of mail.message. A send stamps createSentAt; a retry first waits out the quiet window (3 minutes), then runs mail.message search_read [model = discuss.channel, res_id = channel, author_id = the session partner, body ilike the marker] with limit 2, keeps the hits whose body holds the exact comment, and adopts the one found instead of posting again. Two hits block the op as ambiguous. Search by author, so another member's message that quotes the uuid is never taken for the post.",
-      "notes": "Posts of one channel go out in order: each op depends on the previous unfinished one, so a failed post holds the ones after it. AccessError, ValidationError, UserError, MissingError, NotFound and Forbidden mark the bubble failed and block the op; anything else retries (30 s doubled per attempt, 1 h max). After a post the channel is marked read for its author unless a newer message is known. With files: the post waits until every file of the message is uploaded; a refused file is left out; with no text and no file left the message fails. A refusal of the post, before any re-upload, asks the server which attachment ids it still holds (ir.attachment search_read on the ids) and uploads the missing ones again once."
+      "notes": "A reply whose parent the server drops answers parentMessage false: the message stays a plain message, no error; a post found again after a lost answer reads parent_id from the server. A channel mention (#) notifies only a partner with an email address and inbox notifications. Posts of one channel go out in order: each op depends on the previous unfinished one, so a failed post holds the ones after it. AccessError, ValidationError, UserError, MissingError, NotFound and Forbidden mark the bubble failed and block the op; anything else retries (30 s doubled per attempt, 1 h max). After a post the channel is marked read for its author unless a newer message is known. With files: the post waits until every file of the message is uploaded; a refused file is left out; with no text and no file left the message fails. A refusal of the post, before any re-upload, asks the server which attachment ids it still holds (ir.attachment search_read on the ids) and uploads the missing ones again once."
     },
     "chat.upload": {
       "description": "Upload one file of a message as a pending attachment of a channel (no message yet); queued in sync_outbox (kind chat.upload, one lane apart from the posts) and sent by the native layer as a streamed multipart request",
@@ -703,6 +707,90 @@
       "path": "/websocket (channel of the partner)",
       "response": "{type: \"ir.attachment/delete\", payload: {id}}",
       "notes": "The phone removes the row and its cached files, the thumbnail and the original, and refreshes the conversation."
+    },
+    "chat.reaction": {
+      "description": "Add or remove the user's reaction to a message; queued in sync_outbox (kind chat.reaction) as a target state per message and emoji",
+      "method": "POST",
+      "path": "/mail/message/reaction",
+      "request": {
+        "params": {
+          "message_id": "{server message id}",
+          "content": "{emoji, the exact string: U+2764 U+FE0F for the heart}",
+          "action": "add | remove — always explicit, never a toggle"
+        }
+      },
+      "response": "{\"mail.message\": [{id, reactions}], \"MessageReactions\": [{content, count, sequence, personas, message}], ...Store}. When reactions remain, reactions is [[\"ADD\", [{message, content}]]] and personas lists the whole group each time. When the last one is removed, reactions is [[\"DELETE\", {message, content}]]: the DELETE value is a single object, not a list, and the parser accepts both forms.",
+      "idempotency": "The route is idempotent per action: adding a reaction already held, or removing one not held, changes nothing. The outbox keeps one op per (message, emoji) holding the last wanted action and the state the server held when it was first queued (base); a state equal to base cancels the op before it is sent, so no request goes out. An op that may have been sent (sentAt) is never cancelled, a toggle back after a lost answer is sent. A reaction on a message still queued depends on its post and resolves the message by the post's client uuid.",
+      "notes": "A message that no longer exists (MissingError, NotFound) drops the op with a notice and shows the reaction as the server held it. Reactions create no notification. Deleting a message does not remove its reactions, which the thread hides with the message."
+    },
+    "chat.edit": {
+      "description": "Edit the body of the user's own message; queued in sync_outbox (kind chat.edit), refused rather than overwriting a message that changed",
+      "method": "POST",
+      "path": "/erplibre_mobile_chat/message/update_content (module 1.3) or /mail/message/update_content (Odoo, otherwise)",
+      "request": {
+        "params": {
+          "message_id": "{server message id}",
+          "body": "{the composer's HTML, as chat.post}",
+          "partner_ids": "[partner ids of the mentions in the body]",
+          "attachment_ids": "null — the attachments stay (both routes treat null as unchanged); [] removes them all",
+            "expected_fingerprint": "{sha256 hex of the UTF-8 body as Store returned it; empty or false reads as the empty string} — module route only"
+        }
+      },
+      "response": "Odoo's own answer (a Store holding the message). The module route answers {\"erplibre_conflict\": \"changed\" | \"deleted\", ...Store of the message as it is} and writes nothing when the fingerprint differs from the message's erplibre_body_fingerprint, or when an emptied message would receive a non-empty body (deleted).",
+      "idempotency": "A route is chosen by the module level 1.3 (field erplibre_body_fingerprint on mail.message, readable by any user). With it, the fingerprint of the body the edit was made against (baseBody) is sent and the route locks the row (SELECT … FOR UPDATE, after the access checks) before comparing, so two concurrent edits cannot both pass; the loser fails in serialization and Odoo replays the request. Without it, the app re-reads body and attachments just before Odoo's route and refuses an emptied message (deleted) or a body other than baseBody (changed). In both cases a server body that reads as the text this edit sends (the edited span, the paragraph and sanitizer wrapping ignored) counts as this edit already written, an answer lost: the op is done without a write.",
+      "notes": "Only an internal user is served by the module route; a non-numeric message_id, a missing or unreadable message or one the user may not edit reads 404 without taking the lock. A plain 404 of the module route probes the module and retries on the route the probe leaves. A refused edit keeps its text: the notice offers « Reprendre », which puts the text back in the composer (as a new message when the original was deleted). The edited message shows « (modifié) » from the span o-mail-Message-edited Odoo adds to the stored body. Editing a message still queued rewrites its post and sends no update. A mention added by an edit notifies no one (Odoo's behaviour)."
+    },
+    "chat.delete": {
+      "description": "Delete the user's own message, as Odoo's Discuss does: an edit that empties it; queued in sync_outbox (kind chat.delete)",
+      "method": "POST",
+      "path": "/mail/message/update_content",
+      "request": {
+        "params": {
+          "message_id": "{server message id}",
+          "body": "\"\"",
+          "attachment_ids": "[]",
+          "attachment_tokens": "[]",
+          "subject": "\"\""
+        }
+      },
+      "response": "Odoo's own answer; the message stays on the server with an empty body and no attachment, and the bus event mail.record/insert tells the other clients.",
+      "idempotency": "Replaying an emptying leaves the message empty. A delete meeting a message already empty, or a vanished one, counts as done. Deleting a message still queued cancels its post and its uploads.",
+      "notes": "The thread hides a message with no text and no file, and a reply quoting it shows « message d'origine supprimé ». Its reactions are kept by the server and hidden with it."
+    },
+    "chat.mention_suggestions": {
+      "description": "People and channels offered while typing @ or # in the composer",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "@": {
+            "model": "res.partner",
+            "method": "get_mention_suggestions_from_channel",
+            "kwargs": {
+              "channel_id": "{channel id}",
+              "search": "{term folded}",
+              "limit": 8
+            }
+          },
+          "#": {
+            "model": "discuss.channel",
+            "method": "get_mention_suggestions",
+            "kwargs": {
+              "search": "{term folded}",
+              "limit": 8
+            }
+          }
+        }
+      },
+      "response": "@: a Store of the matching members and users of the channel (res.partner records). #: a list of channel rows.",
+      "notes": "Online only: offline, or after a request that was not sent, the suggestions come from the cached members (and the people cache in a public channel). In a chat, a group and a restricted channel the @ list offers members only, as the browser does. Never blocks typing."
+    },
+    "chat.message_delete_bus": {
+      "description": "Bus notification that messages were deleted on the server",
+      "method": "WEBSOCKET",
+      "path": "/websocket (channel of the partner)",
+      "response": "{type: \"mail.message/delete\", payload: {message_ids: [ids]}}",
+      "notes": "Sent by mail.message.unlink to the partners it notified; a delete made in Discuss is an emptying edit and arrives as mail.record/insert instead. The phone removes the rows it holds and refreshes the conversation."
     },
     "chat.read": {
       "description": "Mark a channel read up to its last known message; queued in sync_outbox (kind chat.read), one op per channel whose message id only rises",
@@ -1168,7 +1256,7 @@
         }
       },
       "response": "[{id, state}]",
-      "notes": "installed = discuss.channel holds the field erplibre_client_uuid in fields_get (module 1.1; readable by any user; cached) or a system user sees the row installed; outdated = only mail.message holds it (module 1.0) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1. Module 1.2 is recognised by erplibre_client_uuid on ir.attachment (level 1.2, above 1.1 on discuss.channel and 1.0 on mail.message); it adds the idempotent upload route of chat.upload. Without it, files go to Odoo's route and a lost answer is found with chat.upload_find."
+      "notes": "installed = discuss.channel holds the field erplibre_client_uuid in fields_get (module 1.1; readable by any user; cached) or a system user sees the row installed; outdated = only mail.message holds it (module 1.0) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1. Module 1.2 is recognised by erplibre_client_uuid on ir.attachment (level 1.2, above 1.1 on discuss.channel and 1.0 on mail.message); it adds the idempotent upload route of chat.upload. Module 1.3 is recognised by erplibre_body_fingerprint on mail.message (level 1.3); it adds the guarded edit route of chat.edit. Without it, files go to Odoo's route and a lost answer is found with chat.upload_find."
     }
   },
 
@@ -1309,7 +1397,10 @@
         "message_type",
         "status (pending|sent|failed)",
         "outbox_op_id",
-        "write_date"
+        "write_date",
+        "parent_id (migration 2026102607; the server id of the message answered)",
+        "parent_client_uuid (2026102607; the answered message while it is still queued)",
+        "recipient_ids (2026102607; JSON list of the partners mentioned)"
       ],
       "notes": "A queued post is stored as a pending row before any request, settled with its server id by chat.post. Indexes chat_messages_channel and idx_chat_messages_cfg (config_id, channel_id)."
     },
@@ -1358,7 +1449,7 @@
         "global_mute_at (2026102601; when the phone last wrote it)",
         "is_internal_user (2026102601)",
         "file_dir (2026102604; directory of the cached files of the server)",
-        "module_level (2026102604; 1.0|1.1|1.2, null without the module)"
+        "module_level (2026102604; 1.0|1.1|1.2|1.3, null without the module)"
       ],
       "notes": "One row per server: the session facts, the last bus id applied and when it was seen, the module state (installed|outdated|available|absent|unknown), the bus id the inbox counter is as of, the default access group of new channels and the account-wide mute."
     },
@@ -1407,9 +1498,30 @@
         "config_id",
         "channel_id",
         "text",
-        "updated_at"
+        "updated_at",
+        "reply_to (migration 2026102608; JSON target of the message answered)",
+        "edit_of (2026102608; JSON target of the message being edited)",
+        "edit_text (2026102608; the edit's text)",
+        "mentions (2026102608; JSON people and channels picked in either text)"
       ],
-      "notes": "One draft text per conversation, kept across restarts. Its files are the conversation's chat_attachments rows in the draft state."
+      "notes": "One draft text per conversation, kept across restarts. The reply target, the edit in progress and the mention picks are kept with it. Its files are the conversation's chat_attachments rows in the draft state."
+    },
+    "chat_reactions": {
+      "migration": "2026102607",
+      "columns": [
+        "id (config_id#message_key#content)",
+        "config_id",
+        "channel_id",
+        "message_key (m{message id}, or u{client uuid} for a message still queued)",
+        "message_id",
+        "content",
+        "count",
+        "self_reacted",
+        "partner_ids (JSON list in the server's order)",
+        "guest_count",
+        "sequence"
+      ],
+      "notes": "One row per reaction group of a message; guests are only counted. Index chat_reactions_channel (config_id, channel_id). Migrations 2026102607 (reactions, chat_messages.parent_id, parent_client_uuid and recipient_ids) and 2026102608 (chat_drafts reply, edit and mentions) add columns only when PRAGMA table_info does not list them, so a fresh install and a second run change nothing."
     }
   }
 }
