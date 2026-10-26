@@ -47,7 +47,7 @@ PAQUET = "ca.erplibre.home.synctest"
 # L'app de l'utilisateur, à côté de l'app de test : une course ne la touche
 # jamais, et lancer() le vérifie
 APP_PERSO = "ca.erplibre.home"
-DEVICE_HOOK_API = 4
+DEVICE_HOOK_API = 5
 APK_CACHE = odoo.CACHE / "apk"
 APK_PRODUIT = Path("android/app/build/outputs/apk/debug/app-debug.apk")
 # Ce que le pull compare : write_date, à la seconde
@@ -509,6 +509,7 @@ class Contexte:
     cible: dict = field(default_factory=dict)
     appareil: Appareil = None
     compteur: int = 0
+    repertoire: Path = None
 
     def unique(self, libelle):
         self.compteur += 1
@@ -603,12 +604,39 @@ class Contexte:
         )
         return f'[data-ms-marque="{marque}"]'
 
+    def capturer(self, nom, voir=None):
+        """Une capture d'écran gardée dans le répertoire de la course,
+        appareil_<version>_<nom>.png, l'élément de voir d'abord amené au
+        milieu de l'écran ; son chemin."""
+        if voir:
+            self.cdp.evaluer(
+                f"document.querySelector({js(voir)})"
+                ".scrollIntoView({block: 'center'})"
+            )
+            time.sleep(POSE)
+        chemin = Path(self.repertoire) / f"appareil_{self.version}_{nom}.png"
+        self.appareil.capture(chemin)
+        return chemin
+
     def toucher_pose(self, selecteur, delai=10):
-        """Touche selecteur une fois l'écran posé : son centre au même
-        endroit trois relevés de suite, POSE secondes d'écart, et l'élément
-        lui-même sous ce point. Un clavier qui s'ouvre redimensionne la
-        page pendant son animation, et un doigt posé avant la fin tombe là
-        où le bouton n'est plus."""
+        """Touche selecteur une fois l'écran posé (poser)."""
+        self.poser(selecteur, delai)
+        self.cdp.toucher(selecteur)
+
+    def toucher_maintenir(self, selecteur, ms=700, delai=10):
+        """Un appui long sur selecteur une fois l'écran posé (poser) : le
+        doigt posé en son centre (Input.dispatchTouchEvent touchStart),
+        gardé ms millisecondes, puis levé (touchEnd). Les pointerdown et
+        pointerup qui en naissent sont ceux d'un vrai doigt."""
+        self.poser(selecteur, delai)
+        self.cdp.toucher(selecteur, ms / 1000)
+
+    def poser(self, selecteur, delai=10):
+        """Attend que selecteur soit posé : son centre au même endroit trois
+        relevés de suite, POSE secondes d'écart, et l'élément lui-même sous
+        ce point. Un clavier qui s'ouvre redimensionne la page pendant son
+        animation, et un doigt posé avant la fin tombe là où le bouton
+        n'est plus."""
         sonde = (
             f"(() => {{ const e = document.querySelector({js(selecteur)});"
             " if (!e) return null; e.scrollIntoView({block: 'center'});"
@@ -634,7 +662,6 @@ class Contexte:
                     f"{selecteur} jamais posé en {delai} s : {releves}"
                 )
             time.sleep(POSE)
-        self.cdp.toucher(selecteur)
 
     def choisir(self, selecteur, valeur):
         self.cdp.evaluer(
@@ -1281,6 +1308,343 @@ def scenario_pieces_jointes(ctx):
     )
 
 
+# La durée d'un appui long dans les scénarios, en ms : au-delà des 500 ms
+# où l'app ouvre le menu d'un message (LONG_PRESS_MS)
+APPUI_LONG = 700
+# Les messages de chat_user postés après l'original d'une réponse, de
+# LIGNES_REMPLISSAGE lignes chacun : l'original sort de l'écran, et un
+# toucher sur la citation doit défiler jusqu'à lui
+REMPLISSAGE = 6
+LIGNES_REMPLISSAGE = 6
+# Les clics vus pendant un appui long sur une bulle, par la classe de leur
+# cible (préfixée « bulle: » quand elle est dans une bulle) : vus par
+# window en capture, arrivés jusqu'à document (ceux que rien n'a avalés)
+CLICS = (
+    "(() => { window.__msClics = {vus: [], arrives: []};"
+    " const noter = (liste) => (e) => liste.push((e.target.closest"
+    " && e.target.closest('.chat-thread__bubble') ? 'bulle:' : '')"
+    " + String(e.target.className || e.target.nodeName));"
+    " window.addEventListener('click', noter(window.__msClics.vus), true);"
+    " document.addEventListener('click', noter(window.__msClics.arrives), false);"
+    " return true; })()"
+)
+# Les positions de défilement du fil, une par image pendant 1,5 s, et si
+# l'élément de sel a été mis en évidence pendant ce temps (la mise en
+# évidence dure moins que le relevé)
+DEFILEMENT = (
+    "(sel) => { const s = document.querySelector('.chat-thread__scroll');"
+    " window.__msDefile = []; window.__msEnEvidence = false;"
+    " const debut = performance.now();"
+    " const relever = () => { window.__msDefile.push(Math.round(s.scrollTop));"
+    " const e = document.querySelector(sel);"
+    " if (e && e.classList.contains('chat-thread__bubble--highlight'))"
+    " window.__msEnEvidence = true;"
+    " if (performance.now() - debut < 1500) requestAnimationFrame(relever); };"
+    " requestAnimationFrame(relever); return true; }"
+)
+# Vrai quand l'élément est dans la partie visible du fil
+DANS_LE_FIL = (
+    "(sel) => { const e = document.querySelector(sel);"
+    " const s = document.querySelector('.chat-thread__scroll');"
+    " if (!e || !s) return false; const r = e.getBoundingClientRect(),"
+    " v = s.getBoundingClientRect(); return r.bottom > v.top && r.top < v.bottom; }"
+)
+# La marque « (modifié) » sur la ligne du dernier texte de la bulle :
+# [texte de la marque, haut de la marque moins haut de la dernière ligne,
+# bas de la dernière ligne moins haut de la marque], en px CSS
+MARQUE_EN_LIGNE = (
+    "(sel) => { const b = document.querySelector(sel + ' .chat-thread__body');"
+    " const m = b && b.querySelector('.chat-msg__edited'); if (!m) return null;"
+    " const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); let t = null, n;"
+    " while ((n = w.nextNode())) if (n.textContent.trim() && !m.contains(n)) t = n;"
+    " if (!t) return null; const r = document.createRange(); r.selectNodeContents(t);"
+    " const lignes = r.getClientRects(); const l = lignes[lignes.length - 1];"
+    " const mr = m.getBoundingClientRect();"
+    " return [m.innerText.trim(), Math.round(mr.top - l.top), Math.round(l.bottom - mr.top)]; }"
+)
+# La règle :has du fil (la marque après un paragraphe se met sur sa ligne),
+# essayée sur un corps inventé posé un instant dans le fil : [le WebView
+# connaît :has, display du paragraphe]
+HAS_DU_FIL = (
+    "(() => { const s = document.querySelector('.chat-thread__scroll');"
+    " const b = document.createElement('div'); b.className = 'chat-thread__body';"
+    " b.innerHTML = '<p>texte inventé</p><em class=\"chat-msg__edited\"> (modifié)</em>';"
+    " s.appendChild(b); const d = getComputedStyle(b.querySelector('p')).display; b.remove();"
+    " return [CSS.supports('selector(p:has(+ em))'), d]; })()"
+)
+
+
+def reactions_serveur(odoo_, message):
+    """Les réactions du message sur le serveur, (contenu, partenaire), les
+    plus anciennes d'abord."""
+    return [
+        (r["content"], r["partner_id"] and r["partner_id"][0])
+        for r in odoo_.executer(
+            "mail.message.reaction",
+            "search_read",
+            [[["message_id", "=", message]]],
+            {"fields": ["content", "partner_id"], "order": "id asc"},
+        )
+    ]
+
+
+def attendre_serveur(quoi, sonde, delai=20):
+    """La première valeur vraie de sonde(), relue tous les POSE ;
+    TimeoutError après delai secondes, avec quoi et la dernière valeur."""
+    fin = time.monotonic() + delai
+    while True:
+        valeur = sonde()
+        if valeur:
+            return valeur
+        if time.monotonic() > fin:
+            raise TimeoutError(f"{quoi} : toujours {valeur!r} après {delai} s")
+        time.sleep(POSE)
+
+
+def ouvrir_menu(ctx, bulle):
+    """Le menu du message de bulle, ouvert par un appui long dessus : le
+    clic qui termine l'appui, qu'il tombe sur la bulle, sur le voile ou sur
+    un bouton du menu ouvert sous le doigt, n'arrive jusqu'au document
+    nulle part (le fil l'avale) et le menu reste ouvert. Rend les clics vus
+    pendant l'appui et le texte que le WebView a sélectionné."""
+    ctx.cdp.evaluer("window.getSelection().removeAllRanges(); " + CLICS)
+    ctx.toucher_maintenir(bulle, APPUI_LONG)
+    ctx.cdp.attendre("!!document.querySelector('.chat-menu')", delai=5)
+    time.sleep(POSE)
+    clics = ctx.cdp.evaluer("window.__msClics")
+    selection = ctx.cdp.evaluer("window.getSelection().toString()")
+    assert not clics["arrives"], f"clic de fin d'appui arrivé : {clics}"
+    assert ctx.cdp.evaluer(
+        "!!document.querySelector('.chat-menu')"
+    ), "le menu s'est refermé à la fin de l'appui"
+    return clics["vus"], selection
+
+
+def reagir_pouce(ctx, bulle, message, moi):
+    """👍 choisi dans le menu du message : la puce s'affiche, à soi, et le
+    serveur a la réaction de l'utilisateur de l'app."""
+    vus, selection = ouvrir_menu(ctx, bulle)
+    ctx.toucher_pose(
+        ctx.marquer(".chat-menu__emoji", "👍", ".chat-menu__emoji")
+    )
+    ctx.cdp.attendre("!document.querySelector('.chat-menu')", delai=5)
+    ctx.cdp.attendre(
+        f"!!document.querySelector({js(bulle + ' .chat-reactions__chip[aria-pressed=true]')})",
+        delai=10,
+    )
+    attendre_serveur(
+        "la réaction 👍 sur le serveur",
+        lambda: reactions_serveur(ctx.odoo, message) == [("👍", moi)],
+    )
+    return vus, selection
+
+
+def scenario_actions_clavardage(ctx):
+    """Les actions sur un message, dans un groupe neuf avec chat_user. Un
+    appui long sur la bulle de chat_user ouvre le menu, le clic qui le
+    termine avalé ; 👍 y met la puce et la réaction sur le serveur ; un
+    toucher sur la puce la retire, puis 👍 la remet. Répondre : une
+    suggestion @ touchée garde le clavier ouvert et la saisie visible, ➤
+    poste la réponse sur l'original (parent_id) avec la mention, et la
+    citation s'affiche ; un toucher sur la citation défile en douceur
+    jusqu'à l'original, sorti de l'écran, et le met en évidence. Modifier,
+    changer le texte, ➤ : « (modifié) » sur la ligne du texte dans la
+    bulle, et la marque dans le corps du serveur. Captures gardées dans le
+    répertoire de la course ; rend les relevés des vérifications."""
+    pair = Odoo(ctx.cible, "chat")
+    moi = ctx.odoo.lire("res.users", ctx.odoo.uid, ["partner_id"])[
+        "partner_id"
+    ][0]
+    partenaire = pair.lire("res.users", pair.uid, ["partner_id"])[
+        "partner_id"
+    ][0]
+    nom = ctx.unique("actions")
+    pair.executer(
+        "discuss.channel",
+        "create_group",
+        [],
+        {"partners_to": [moi], "name": nom},
+    )
+    canal = pair.executer("discuss.channel", "search", [[["name", "=", nom]]])[
+        0
+    ]
+
+    def poster(texte):
+        return pair.route(
+            "/mail/message/post",
+            {
+                "thread_model": "discuss.channel",
+                "thread_id": canal,
+                "post_data": {
+                    "body": texte,
+                    "message_type": "comment",
+                    "subtype_xmlid": "mail.mt_comment",
+                },
+            },
+        )["mail.message"][0]["id"]
+
+    original_texte = ctx.unique("original")
+    original = poster(original_texte)
+    for rang in range(REMPLISSAGE):
+        poster(
+            "<br>".join(
+                f"remplissage {rang} ligne {n}"
+                for n in range(LIGNES_REMPLISSAGE)
+            )
+        )
+    ctx.hook(f"chatLoad({js(ctx.config_id)})")
+    ctx.hook(
+        f"open('/chat/' + encodeURIComponent({js(ctx.config_id)}) + '/{canal}')"
+    )
+    ctx.cdp.attendre(
+        f"location.pathname.endsWith('/{canal}') && {SAISIE_PRETE}", delai=20
+    )
+    ctx.cdp.evaluer("document.activeElement && document.activeElement.blur()")
+    bulle = f'.chat-thread__bubble[data-key="m{original}"]'
+    ctx.cdp.attendre(f"!!document.querySelector({js(bulle)})", delai=30)
+
+    vus, selection = reagir_pouce(ctx, bulle, original, moi)
+    puce = bulle + " .chat-reactions__chip"
+    ctx.toucher_pose(puce)
+    ctx.cdp.attendre(f"!document.querySelector({js(puce)})", delai=10)
+    attendre_serveur(
+        "la réaction retirée du serveur",
+        lambda: reactions_serveur(ctx.odoo, original) == [],
+    )
+    reagir_pouce(ctx, bulle, original, moi)
+    reactions = ctx.hook(f"chatReactions({js(ctx.config_id)}, {canal})")
+    assert [
+        (r["content"], r["selfReacted"]) for r in reactions[f"m{original}"]
+    ] == [("👍", True)], reactions
+    ctx.capturer("actions_reaction", bulle)
+
+    ouvrir_menu(ctx, bulle)
+    ctx.toucher_pose(".chat-menu__reply")
+    ctx.cdp.attendre(
+        "!!document.querySelector('.chat-banner--reply')", delai=5
+    )
+    ctx.toucher_pose(".chat-thread__input")
+    fin = time.monotonic() + 10
+    while not clavier_affiche(ctx):
+        if time.monotonic() > fin:
+            raise TimeoutError("le clavier ne s'ouvre pas sur la saisie")
+        time.sleep(POSE)
+    ctx.cdp.evaluer("document.querySelector('.chat-thread__input').focus()")
+    ctx.cdp.taper("@MS")
+    ctx.toucher_pose(
+        ctx.marquer(".chat-suggest__name", "@MS Chat", ".chat-suggest__item")
+    )
+    ctx.cdp.attendre(
+        "document.querySelector('.chat-thread__input').value === '@MS Chat '",
+        delai=5,
+    )
+    time.sleep(POSE)
+    assert clavier_affiche(ctx), "clavier fermé par la suggestion"
+    assert ctx.cdp.evaluer(
+        SAISIE_ACTIVE
+    ), "saisie sans focus après la suggestion"
+    apres_suggestion = place_saisie(ctx)
+    reponse_texte = ctx.unique("reponse")
+    ctx.cdp.taper(reponse_texte)
+    ctx.toucher_pose(".chat-thread__send")
+    reponse = ctx.cdp.attendre(
+        f"window.__erplibreTest.chatMessages({js(ctx.config_id)}, {canal})"
+        f".then(ms => {{ const m = ms.find(m => m.body.includes({js(reponse_texte)}));"
+        " return !!m && m.status === 'sent' && m.messageId; })",
+        delai=30,
+    )
+    lue = ctx.odoo.lire("mail.message", reponse, ["parent_id", "partner_ids"])
+    assert lue["parent_id"] and lue["parent_id"][0] == original, lue
+    assert lue["partner_ids"] == [partenaire], lue
+    citation = (
+        f'.chat-thread__bubble[data-key="m{reponse}"] .chat-thread__quote'
+    )
+    ctx.cdp.attendre(
+        f"(() => {{ const q = document.querySelector({js(citation)});"
+        f" return !!q && q.innerText.includes({js(original_texte)}); }})()",
+        delai=10,
+    )
+    ctx.capturer("actions_reponse", citation)
+
+    ctx.cdp.evaluer("document.activeElement && document.activeElement.blur()")
+    ctx.cdp.evaluer(
+        "(() => { const s = document.querySelector('.chat-thread__scroll');"
+        " s.scrollTop = s.scrollHeight; })()"
+    )
+    ctx.poser(citation)
+    assert not ctx.cdp.evaluer(
+        f"({DANS_LE_FIL})({js(bulle)})"
+    ), "l'original est encore à l'écran : rien à défiler"
+    ctx.cdp.evaluer(f"({DEFILEMENT})({js(bulle)})")
+    ctx.cdp.toucher(citation)
+    time.sleep(1.7)
+    positions = ctx.cdp.evaluer("window.__msDefile")
+    intermediaires = [
+        p
+        for p in set(positions)
+        if min(positions[0], positions[-1])
+        < p
+        < max(positions[0], positions[-1])
+    ]
+    assert positions[0] != positions[-1], f"aucun défilement : {positions}"
+    assert len(intermediaires) >= 2, f"défilement d'un bond : {positions}"
+    assert ctx.cdp.evaluer(f"({DANS_LE_FIL})({js(bulle)})"), positions
+    assert ctx.cdp.evaluer(
+        "window.__msEnEvidence"
+    ), "l'original n'est pas mis en évidence"
+
+    bulle_reponse = f'.chat-thread__bubble[data-key="m{reponse}"]'
+    ouvrir_menu(ctx, bulle_reponse)
+    ctx.toucher_pose(".chat-menu__edit")
+    ctx.cdp.attendre(
+        "!!document.querySelector('.chat-banner--edit')"
+        f" && document.querySelector('.chat-thread__input').value.includes({js(reponse_texte)})",
+        delai=5,
+    )
+    # Court : la marque a la place de tenir sur la ligne du texte
+    modifie = f"modifié {uuid.uuid4().hex[:6]}"
+    ctx.cdp.evaluer(
+        "(() => { const i = document.querySelector('.chat-thread__input');"
+        " i.focus(); i.select(); })()"
+    )
+    ctx.cdp.taper(modifie)
+    ctx.cdp.attendre(
+        f"document.querySelector('.chat-thread__input').value === {js(modifie)}",
+        delai=5,
+    )
+    ctx.toucher_pose(".chat-thread__send")
+    corps = attendre_serveur(
+        "la modification sur le serveur",
+        lambda: (
+            lambda c: (
+                c if modifie in c and "o-mail-Message-edited" in c else None
+            )
+        )(ctx.odoo.lire("mail.message", reponse, ["body"])["body"] or ""),
+    )
+    en_ligne = ctx.cdp.attendre(
+        f"(() => {{ const b = document.querySelector({js(bulle_reponse + ' .chat-thread__body')});"
+        f" return !!b && b.innerText.includes({js(modifie)}) && ({MARQUE_EN_LIGNE})({js(bulle_reponse)}); }})()",
+        delai=20,
+    )
+    marque, ecart_haut, ecart_bas = en_ligne
+    assert marque == "(modifié)", en_ligne
+    assert (
+        ecart_haut > -4 and ecart_bas > 0
+    ), f"marque hors de la ligne : {en_ligne}"
+    has, affichage = ctx.cdp.evaluer(HAS_DU_FIL)
+    assert has and affichage == "inline", f":has : {has}, display {affichage}"
+    ctx.capturer("actions_modification", bulle_reponse)
+    return (
+        f"appui long : clics vus {vus or 'aucun'}, aucun arrivé,"
+        f" sélection native {selection!r} ;"
+        f" suggestion : clavier ouvert, saisie à {apres_suggestion[0]} px"
+        f" de la barre, {apres_suggestion[1]} px du bas visible ;"
+        f" citation : {len(set(positions))} positions de {positions[0]}"
+        f" à {positions[-1]} ; (modifié) à {ecart_haut} px du haut de la"
+        f" ligne ; :has {has}, display {affichage} ; corps {len(corps)} car."
+    )
+
+
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
 # parle qu'à la 18
 SCENARIOS = (
@@ -1291,6 +1655,7 @@ SCENARIOS = (
     ("clavardage", scenario_clavardage, (18,)),
     ("groupe créé du téléphone", scenario_groupe, (18,)),
     ("pièces jointes du clavardage", scenario_pieces_jointes, (18,)),
+    ("actions du clavardage", scenario_actions_clavardage, (18,)),
 )
 
 
@@ -1340,6 +1705,7 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
                             config_id,
                             cible,
                             appareil,
+                            repertoire=Path(repertoire),
                         )
                     )
                     journal(

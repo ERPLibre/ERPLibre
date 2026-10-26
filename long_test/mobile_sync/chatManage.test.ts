@@ -378,7 +378,9 @@ eachVersionFrom(18, "chat management", (target) => {
 
 	it("admin removes chat_user: told by the bus, the thread says they left", async () => {
 		const { env, src } = await app();
-		expect(await env.chat.features(src.configId)).toEqual({ canRemoveMembers: true, idempotentCreate: true, idempotentUpload: true });
+		expect(await env.chat.features(src.configId)).toEqual({
+			canRemoveMembers: true, idempotentCreate: true, idempotentUpload: true, guardedEdit: true,
+		});
 		const { channelId: group } = await env.chat.createGroup(src, [peer.partnerId], unique("group"));
 		const bus = await peer.listen();
 		try {
