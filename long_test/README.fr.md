@@ -400,13 +400,51 @@ arriver par le bus sans rechargement. Chaque gabarit, ceux de la 16, de la
 17 et de la 18 pareillement, crée d'avance les réglages de chaque
 utilisateur interne (deux premières requêtes simultanées les créeraient
 toutes deux et buteraient sur l'unicité de `res.users.settings`), et le
-module de celui de la 18 est le 1.1 qui dédoublonne les créations.
-`--appareil` ajoute l'écran « clavardage » et un groupe créé depuis le
-téléphone. Pour ne lancer que ceux-là :
+module de celui de la 18 est le 1.2 qui dédoublonne les créations et les
+téléversements. `--appareil` ajoute l'écran « clavardage » et un groupe créé
+depuis le téléphone. Pour ne lancer que ceux-là :
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
 ./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
+```
+
+`chatAttachments.test.ts` couvre les fichiers d'un message contre le vrai
+serveur, chaque cas relu sur lui. Là où il dit « sur les deux routes », il
+tourne une fois sur la route du module et une fois en l'ignorant, sur celle
+d'Odoo. Une réponse de téléversement perdue laisse une seule pièce jointe
+dans un seul message (la route du module rend la première pour le même
+`client_uuid`, celle d'Odoo est cherchée et réutilisée) ; une réponse d'envoi
+perdue avec deux fichiers poste un message qui les porte tous deux ; un
+fichier vocal arrive en `audio/mpeg` avec ses métadonnées vocales ; et une
+session expirée répond 404 une fois, puis le téléversement passe. La route du
+module garde l'original d'une photo (même somme de contrôle que le fichier
+source) là où celle d'Odoo le réduit à 1920 px. Une limite abaissée avant que
+l'app la lise refuse le fichier à la mise en place, et abaissée après la mise
+en file le refuse par le 413 du serveur : le texte est posté sans lui et
+l'utilisateur en est averti une fois. Sur un réseau mobile rien ne part avant
+le retour du Wi-Fi. L'image d'un interlocuteur coûte une requête d'aperçu de
+512 px au plus et télécharge son original seulement à l'ouverture, et un
+historique de 20 pièces jointes ne fait aucune requête de fichier. Les cas qui
+abaissent la limite de téléversement du serveur bornent chaque requête du
+serveur partagé : ils vivent dans des fichiers `*.serial.test.ts`, lancés dans
+une seconde passe, un fichier à la fois, après la passe parallèle ; les deux
+rapports donnent un seul bilan. `--appareil` ajoute l'écran « pièces jointes
+du clavardage » : un fichier envoyé depuis la zone de saisie arrive une fois
+sur le serveur avec sa somme de contrôle d'origine, les boutons de pièce
+jointe et de micro sont au-dessus de la barre de navigation, un vrai appui
+enregistre un message vocal qui arrive en MP3, la photo d'un interlocuteur
+montre son aperçu et s'ouvre dans la visionneuse, et son message vocal se lit.
+La caméra et les sélecteurs du système sont des écrans du fabricant et restent
+hors de la course. La course sur appareil relève aussi la `lastUpdateTime` de
+l'app de l'utilisateur avant et après, et échoue si elle a changé ou ne se lit
+pas. Les contrôles du banc (les versions d'API du kit et du crochet d'appareil,
+la liste des scénarios) se lancent avec les tests unitaires de la plateforme ;
+le paquet `test` de la bibliothèque standard masque `test/`, d'où la
+découverte :
+
+```
+.venv.erplibre/bin/python -m unittest discover -s test -p test_mobile_sync_harness.py
 ```
 
 `--appareil` joue ses écrans sur le téléphone, contre les mêmes serveurs :
