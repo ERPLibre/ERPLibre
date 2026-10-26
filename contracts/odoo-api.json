@@ -653,12 +653,17 @@
               [
                 "file_size",
                 "=",
-                "{size}"
+                "{size} — left out for png, jpeg, bmp and tiff"
               ],
               [
                 "create_date",
                 ">=",
                 "{upload sent at minus a clock skew}"
+              ],
+              [
+                "create_date",
+                "<=",
+                "{upload ended at, or now, plus a clock skew}"
               ]
             ]
           ],
@@ -676,7 +681,7 @@
         }
       },
       "response": "[{id, name, mimetype, file_size, checksum}]",
-      "notes": "Runs before a repeated upload once the quiet window of the first send is over. The hits the phone already holds (state uploaded) are dropped, the oldest left is adopted. Not used on the module route, which answers the repeat itself."
+      "notes": "Runs before a repeated upload once the quiet window of the first send is over. Odoo's route resizes and re-encodes png, jpeg, bmp and tiff past 1920 px (ir.attachment._postprocess_contents, base.image_autoresize_extensions), so their stored size is not the size sent and the size term is left out for them; two uploads of one name from this phone are never in doubt at once. The hits the phone already holds (state uploaded) are dropped, the oldest left is adopted. Not used on the module route, which answers the repeat itself."
     },
     "chat.attachment_preview": {
       "description": "Download the preview of an image or video attachment",

@@ -397,7 +397,7 @@ server, each case read back from it. Where it says « on both routes », it
 runs once on the module's route and once with the module ignored, on
 Odoo's own. A lost upload answer leaves one attachment in one message (the
 module's route returns the first one for the same `client_uuid`, Odoo's is
-searched for and reused); a lost post answer with two files posts one message
+searched for and reused, a photo it stored resized to another size included); a lost post answer with two files posts one message
 holding both; a voice file arrives as `audio/mpeg` with its voice metadata;
 and an expired session answers 404 once, then the upload goes through. The
 module's route keeps a photo's original (same checksum as the source file)
@@ -430,8 +430,8 @@ shadows `test/`, so the file is found by discovery:
 target picker, the banner of a date changed on the server, typing during a
 pull, the dated note made from the calendar, and, on Odoo 18 only, the chat
 (the tile opens the list within 2 s, and the composer of « ms chat » within
-2 s too, a message typed there reaches
-the server once, chat_user's reply shows through the native websocket) and a
+2 s too, three messages typed there in a row reach the server once each,
+the keyboard staying open from one send to the next, chat_user's reply shows through the native websocket) and a
 group created from the phone with chat_user, which exists once on the server
 under its name, whose info screen lists chat_user among the members and in
 which messages go both ways. They
@@ -887,7 +887,8 @@ serveur, chaque cas relu sur lui. Là où il dit « sur les deux routes », il
 tourne une fois sur la route du module et une fois en l'ignorant, sur celle
 d'Odoo. Une réponse de téléversement perdue laisse une seule pièce jointe
 dans un seul message (la route du module rend la première pour le même
-`client_uuid`, celle d'Odoo est cherchée et réutilisée) ; une réponse d'envoi
+`client_uuid`, celle d'Odoo est cherchée et réutilisée, y compris une photo
+qu'elle a stockée redimensionnée à une autre taille) ; une réponse d'envoi
 perdue avec deux fichiers poste un message qui les porte tous deux ; un
 fichier vocal arrive en `audio/mpeg` avec ses métadonnées vocales ; et une
 session expirée répond 404 une fois, puis le téléversement passe. La route du
@@ -924,8 +925,9 @@ découverte :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
 pendant un pull, la note datée créée depuis le calendrier et, sur la 18
 seulement, le clavardage (la tuile ouvre la liste en 2 s au plus, et la zone
-de saisie de « ms chat » en 2 s aussi, un message qui y est tapé arrive une
-fois sur le serveur, la réponse de chat_user
+de saisie de « ms chat » en 2 s aussi, trois messages qui y sont tapés de
+suite arrivent chacun une fois sur le serveur, le clavier restant ouvert d'un
+envoi à l'autre, la réponse de chat_user
 s'affiche par le websocket natif) et un groupe créé depuis le téléphone avec
 chat_user, qui existe une fois sur le serveur sous son nom, dont la fiche
 nomme chat_user parmi les membres et où les messages passent dans les deux

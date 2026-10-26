@@ -5,7 +5,8 @@
  * (chatModule "ignore"): an upload or a post whose answer is lost still
  * gives one attachment in one message; a voice message is a voice for
  * Odoo; a photo keeps its original bytes through the module and is reduced
- * by Odoo's route; « Wi-Fi only » holds an upload off Wi-Fi; an upload in
+ * by Odoo's route, where a photo whose upload answer is lost is still found
+ * again despite its new size; « Wi-Fi only » holds an upload off Wi-Fi; an upload in
  * an expired session lands once after the app logs in again; chat_user's
  * image reaches the app as a preview and an original equal to the server's
  * bytes; and loading a conversation of twenty attachments fetches none of
@@ -20,7 +21,7 @@ import { ChatPeer } from "./chatPeer";
 import { FaultProxy } from "./faultProxy";
 import type { RpcCall } from "./faultProxy";
 import {
-	attachmentScene, filler, jpegSize, MODULE_ROUTE, PHOTO, QUIET_WINDOW_PASSED_MS, ROUTES, sha1,
+	attachmentScene, filler, jpegSize, MODULE_ROUTE, ODOO_ROUTE, PHOTO, QUIET_WINDOW_PASSED_MS, ROUTES, sha1,
 } from "./chatAttachmentScene";
 
 eachVersionFrom(18, "chat attachments", (target) => {
@@ -145,6 +146,34 @@ eachVersionFrom(18, "chat attachments", (target) => {
 				expect(jpegSize(stored.bytes)).toEqual([1920, 1280]);
 			}
 		}
+	});
+
+	it("lost upload answer of a photo Odoo's route resizes: one attachment, one upload", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		const photo = fixture(PHOTO);
+		const group = await peer.group(unique("group"));
+		const { env, src } = await app({ chatModule: "ignore" });
+		const name = `${unique("resized")}.jpg`;
+		const text = unique("text");
+		const file = await staged(env, src, name, photo, "image/jpeg");
+		proxy.loseResponseOf((c) => c.path === ODOO_ROUTE);
+		const sent = await env.chat.send(src, group, text, [file]);
+		await idle(env, src.configId);
+		// Odoo stored the photo reduced to 1920 px: its size is not the size sent
+		const [stored] = await named(name);
+		expect(stored.file_size).not.toBe(photo.length);
+		expect(await withText(group, text)).toHaveLength(0);
+
+		later(QUIET_WINDOW_PASSED_MS);
+		await env.chat.flushAll();
+		await idle(env, src.configId);
+		const [att, ...more] = await named(name);
+		expect(more).toHaveLength(0);
+		expect(att).toMatchObject({ id: stored.id, res_model: "discuss.channel", res_id: group });
+		const found = await withText(group, text);
+		expect(found.map((m) => m.attachment_ids)).toEqual([[att.id]]);
+		expect(await mine(env, src.configId, group, sent.clientUuid)).toMatchObject({ status: "sent", messageId: found[0].id });
+		expect(uploadsOf(ODOO_ROUTE).filter((c) => c.files?.[0]?.filename === name)).toHaveLength(1);
 	});
 
 	it("Wi-Fi only holds an upload on a mobile network, sent once on Wi-Fi", async () => {
