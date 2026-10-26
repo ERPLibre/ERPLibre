@@ -879,10 +879,18 @@ def scenario_clavardage(ctx):
     )
 
 
+# L'écart le plus grand entre le bas de la saisie et le haut de la barre de
+# navigation, en px CSS : la marge du fil (0,5 rem, 8 px) et un peu de jeu.
+# Au-delà, une bande vide sépare la saisie de la barre : la cellule du fil
+# a défilé sous elle
+ECART_BARRE_MAX = 16
+
+
 def place_saisie(ctx, delai=10):
     """PLACE_SAISIE une fois la page posée (trois relevés identiques, POSE
     secondes d'écart), après avoir vérifié que ni la barre ni le bord de la
-    partie visible ne couvrent la saisie."""
+    partie visible ne couvrent la saisie, et que la saisie se tient au plus
+    ECART_BARRE_MAX px au-dessus de la barre."""
     fin = time.monotonic() + delai
     releves = []
     while True:
@@ -900,6 +908,9 @@ def place_saisie(ctx, delai=10):
     assert (
         barre is None or barre >= 0
     ), f"la barre couvre la saisie : {barre} px"
+    assert (
+        barre is None or barre <= ECART_BARRE_MAX
+    ), f"bande de {barre} px entre la saisie et la barre"
     assert visible >= 0, f"la saisie sort de l'écran : {visible} px"
     return barre, visible, hauteur
 
