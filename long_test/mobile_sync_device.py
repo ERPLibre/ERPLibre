@@ -3,12 +3,13 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La synchronisation mobile de bout en bout, sur un téléphone branché.
 
-Cinq écrans que les tests d'intégration ne voient pas, joués sur l'app de
+Six écrans que les tests d'intégration ne voient pas, joués sur l'app de
 test (ca.erplibre.home.synctest, construite par -PsyncTest, à côté de l'app
 de l'utilisateur qu'elle ne touche pas) contre les Odoo de la course : le
 sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
 pendant un pull, la note datée créée depuis le calendrier et, sur la 18
-seulement, le clavardage, dont le temps réel passe par le websocket natif.
+seulement, le clavardage et un groupe créé depuis le téléphone, dont le
+temps réel passe par le websocket natif.
 
 Le téléphone joint les serveurs par adb reverse (127.0.0.1 de l'appareil vers
 celui de l'hôte) ; la page se pilote par CDP (mobile_sync_cdp.py), les écrans
@@ -39,11 +40,14 @@ import mobile_sync_odoo as odoo  # noqa: E402
 from mobile_sync_cdp import Cdp, ErreurPage  # noqa: E402
 
 PAQUET = "ca.erplibre.home.synctest"
-DEVICE_HOOK_API = 2
+DEVICE_HOOK_API = 3
 APK_CACHE = odoo.CACHE / "apk"
 APK_PRODUIT = Path("android/app/build/outputs/apk/debug/app-debug.apk")
 # Ce que le pull compare : write_date, à la seconde
 SECONDE_SUIVANTE = 1.1
+# L'écart des relevés de toucher_pose : trois identiques couvrent
+# l'animation d'un clavier qui s'ouvre
+POSE = 0.3
 # L'état de l'app selon Android, celui que suit appStateChange
 APP_ETAT = "window.Capacitor.Plugins.App.getState()"
 
@@ -501,6 +505,39 @@ class Contexte:
         )
         return f'[data-ms-marque="{marque}"]'
 
+    def toucher_pose(self, selecteur, delai=10):
+        """Touche selecteur une fois l'écran posé : son centre au même
+        endroit trois relevés de suite, POSE secondes d'écart, et l'élément
+        lui-même sous ce point. Un clavier qui s'ouvre redimensionne la
+        page pendant son animation, et un doigt posé avant la fin tombe là
+        où le bouton n'est plus."""
+        sonde = (
+            f"(() => {{ const e = document.querySelector({js(selecteur)});"
+            " if (!e) return null; e.scrollIntoView({block: 'center'});"
+            " const r = e.getBoundingClientRect(); const x = r.x + r.width / 2,"
+            " y = r.y + r.height / 2; const sous = document.elementFromPoint(x, y);"
+            " return [Math.round(x), Math.round(y), innerHeight,"
+            " !!sous && (sous === e || e.contains(sous))]; })()"
+        )
+        fin = time.monotonic() + delai
+        releves = []
+        while True:
+            releves = (releves + [self.cdp.evaluer(sonde)])[-3:]
+            dernier = releves[-1]
+            if (
+                len(releves) == 3
+                and dernier
+                and dernier[3]
+                and all(r == dernier for r in releves)
+            ):
+                break
+            if time.monotonic() > fin:
+                raise TimeoutError(
+                    f"{selecteur} jamais posé en {delai} s : {releves}"
+                )
+            time.sleep(POSE)
+        self.cdp.toucher(selecteur)
+
     def choisir(self, selecteur, valeur):
         self.cdp.evaluer(
             f"(() => {{ const s = document.querySelector({js(selecteur)}); s.value = {js(str(valeur))};"
@@ -697,6 +734,14 @@ def scenario_clavardage(ctx):
     )
     saisie = time.monotonic() - debut
     assert saisie <= TUILE_VERS_SAISIE, f"tuile → saisie : {saisie:.2f} s"
+    echanger(ctx, pair, canal)
+    return f"tuile → liste {duree:.2f} s, tuile → saisie {saisie:.2f} s"
+
+
+def echanger(ctx, pair, canal):
+    """Dans la conversation canal ouverte : un message tapé et envoyé
+    arrive une fois sur le serveur, puis la réponse de pair (chat_user)
+    s'affiche dans le fil par le websocket natif."""
     texte = ctx.unique("message")
     ctx.cdp.toucher(".chat-thread__input")
     # Un toucher par CDP ne donne pas toujours le focus, qu'insertText suit
@@ -706,7 +751,7 @@ def scenario_clavardage(ctx):
         f"document.querySelector('.chat-thread__input').value === {js(texte)}",
         delai=5,
     )
-    ctx.cdp.toucher(".chat-thread__send")
+    ctx.toucher_pose(".chat-thread__send")
 
     def recus(contenu):
         return pair.executer(
@@ -750,7 +795,45 @@ def scenario_clavardage(ctx):
         f".some(e => e.innerText.includes({js(reponse)}))",
         delai=20,
     )
-    return f"tuile → liste {duree:.2f} s, tuile → saisie {saisie:.2f} s"
+
+
+def scenario_groupe(ctx):
+    """Un groupe créé depuis le téléphone avec chat_user : il existe une
+    fois sur le serveur sous son nom, sa fiche nomme chat_user parmi les
+    membres, et l'échange s'y fait dans les deux sens (echanger)."""
+    pair = Odoo(ctx.cible, "chat")
+    partenaire = pair.lire("res.users", pair.uid, ["partner_id"])[
+        "partner_id"
+    ][0]
+    nom = ctx.unique("groupe")
+    ctx.hook(f"chatLoad({js(ctx.config_id)})")
+    canal = ctx.hook(
+        f"chatNewGroup({js(ctx.config_id)}, {js([partenaire])}, {js(nom)})"
+    )
+    assert isinstance(canal, int) and canal > 0, f"groupe non créé : {canal}"
+    groupes = ctx.odoo.executer(
+        "discuss.channel",
+        "search_read",
+        [[["name", "=", nom]]],
+        {"fields": ["channel_type", "channel_partner_ids"]},
+    )
+    assert [g["id"] for g in groupes] == [canal], groupes
+    assert groupes[0]["channel_type"] == "group", groupes
+    assert partenaire in groupes[0]["channel_partner_ids"], groupes
+
+    ctx.hook(f"chatOpenInfo({js(ctx.config_id)}, {canal})")
+    ctx.cdp.attendre(
+        "[...document.querySelectorAll('.chat-info__member-name')]"
+        ".some(e => e.innerText.includes('MS Chat'))",
+        delai=20,
+    )
+    ctx.hook(
+        f"open('/chat/' + encodeURIComponent({js(ctx.config_id)}) + '/{canal}')"
+    )
+    ctx.cdp.attendre(
+        f"location.pathname.endsWith('/{canal}') && {SAISIE_PRETE}", delai=20
+    )
+    echanger(ctx, pair, canal)
 
 
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
@@ -761,6 +844,7 @@ SCENARIOS = (
     ("saisie pendant un pull", scenario_saisie_pendant_pull, odoo.VERSIONS),
     ("note datée du calendrier", scenario_calendrier, odoo.VERSIONS),
     ("clavardage", scenario_clavardage, (18,)),
+    ("groupe créé du téléphone", scenario_groupe, (18,)),
 )
 
 

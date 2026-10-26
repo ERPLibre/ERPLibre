@@ -40,12 +40,54 @@ export class ChatPeer {
 		return this.idByName(name);
 	}
 
-	/** A new channel (channel_type "channel") created by chat_user, admin invited; its id. */
-	async channel(name: string): Promise<number> {
+	/**
+	 * A new channel (channel_type "channel") created by chat_user, open to
+	 * internal users; admin invited unless invite is false; its id.
+	 */
+	async channel(name: string, opts: { invite?: boolean } = {}): Promise<number> {
 		await this.user.execute(CHANNEL, "channel_create", [name, null]);
 		const id = await this.idByName(name);
-		await this.user.execute(CHANNEL, "add_members", [[id]], { partner_ids: [this.adminPartnerId] });
+		if (opts.invite ?? true) await this.user.execute(CHANNEL, "add_members", [[id]], { partner_ids: [this.adminPartnerId] });
 		return id;
+	}
+
+	/** The partners of the conversation's members on the server, in member-id order. */
+	async members(channelId: number): Promise<number[]> {
+		const rows = await this.admin.searchRead(
+			"discuss.channel.member", [["channel_id", "=", channelId]], ["partner_id"], { order: "id asc" },
+		);
+		return rows.map((r) => r.partner_id[0]);
+	}
+
+	/** The member row of partnerId in the conversation (fields as asked), or null when not a member. */
+	async memberOf(channelId: number, partnerId: number, fields: string[]): Promise<any | null> {
+		const [row] = await this.admin.searchRead(
+			"discuss.channel.member", [["channel_id", "=", channelId], ["partner_id", "=", partnerId]], fields,
+		);
+		return row ?? null;
+	}
+
+	/**
+	 * chat_user's bus, as their browser opens it: a websocket straight to
+	 * Odoo in their web session, subscribed from last 0 (the server adds
+	 * their partner and member channels). notifications collects every
+	 * notification received; close() ends it.
+	 */
+	async listen(): Promise<{ notifications: any[]; close(): void }> {
+		const info = await this.user.jsonRoute("/web/session/get_session_info");
+		const base = new URL(this.user.url);
+		const url = `${base.origin.replace(/^http/, "ws")}/websocket?version=${encodeURIComponent(info.websocket_worker_version)}`;
+		const notifications: any[] = [];
+		const ws: WebSocket = new (WebSocket as any)(url, { headers: { Cookie: this.user.cookie, Origin: base.origin } });
+		await new Promise<void>((resolve, reject) => {
+			ws.onopen = () => resolve();
+			ws.onerror = () => reject(new Error("chat_user's websocket did not open"));
+		});
+		ws.onmessage = (event: MessageEvent) => {
+			if (typeof event.data === "string") notifications.push(...JSON.parse(event.data));
+		};
+		ws.send(JSON.stringify({ event_name: "subscribe", data: { channels: [], last: 0 } }));
+		return { notifications, close: () => ws.close() };
 	}
 
 	/** Posts text as chat_user, mentioning admin when asked; the new message's id. */
