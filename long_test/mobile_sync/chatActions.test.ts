@@ -232,6 +232,42 @@ eachVersionFrom(18, "chat actions", (target) => {
 		}
 	}
 
+	for (const { label, chatModule } of ROUTES) {
+		it(`edit whose answer is lost ${label}: the replay counts as done, an edit made meanwhile follows it`, async () => {
+			const group = await peer.group(unique("group"));
+			const { env, src } = await app({ chatModule });
+			const { messageId, clientUuid } = await posted(env, src, group, unique("first"));
+			const target = { messageId, clientUuid };
+			const route = chatModule === "auto" ? MODULE_EDIT_ROUTE : ODOO_EDIT_ROUTE;
+			const mark = proxy.calls.length;
+
+			// A body opening on a mention: Odoo stores it wrapped, the replay still reads it as its own text
+			const first = `@MS Chat ${unique("one")}`;
+			const picks = { partners: [{ id: peer.partnerId, name: "MS Chat" }], channels: [] };
+			proxy.loseResponseOf((c) => c.path === route);
+			await env.chat.editMessage(src, group, target, first, picks);
+			await idle(env, src.configId);
+			expect(bodyText(await peer.bodyOf(messageId))).toBe(first);
+			const edits = () => env.db.getOutboxOpsForConfig(src.configId)
+				.then((ops: any[]) => ops.filter((o) => o.kind === "chat.edit"));
+			expect((await edits()).map((o: any) => o.status)).toEqual(["failed"]);
+
+			// A correction while the first waits: queued behind it, not written into it
+			const second = unique("two");
+			await env.chat.editMessage(src, group, target, second, EMPTY_MENTIONS);
+			await env.chat.flushAll({ force: true });
+			await idle(env, src.configId);
+			const body = await peer.bodyOf(messageId);
+			expect(bodyText(body)).toBe(second);
+			expect(await env.chat.notices([src.configId])).toEqual([]);
+			expect(await edits()).toEqual([]);
+			expect((await cached(env, src.configId, group, messageId))!.body).toBe(body);
+			// The first sent twice (the replay re-read without the module, a conflict answer with it), the second once
+			expect(callsTo(route, mark).map((c) => bodyText(c.params!.body))).toEqual(
+				chatModule === "auto" ? [first, first, second] : [first, second]);
+		});
+	}
+
 	it("delete empties the body and removes the files: hidden in the app and for chat_user", async () => {
 		const group = await peer.group(unique("group"));
 		const { env, src } = await app();
