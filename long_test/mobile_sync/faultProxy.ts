@@ -1,11 +1,14 @@
 /**
  * A proxy between the app and one Odoo server: it relays every request and
- * records each JSON-RPC call, so a scenario checks what crossed the wire
- * (one create only, a write of the changed fields only), and it breaks the
+ * records each JSON-RPC call and each multipart form (an upload: its fields
+ * and its files' names and sizes), so a scenario checks what crossed the
+ * wire (one create only, a write of the changed fields only), and it breaks the
  * link on demand: down (every request cut, as a network gone), or the
  * response of one chosen call lost after Odoo ran it (the case a retry must
- * adopt instead of creating again). WebSocket upgrades (/websocket) are piped
- * as raw TCP to Odoo; down refuses them and cutSockets() drops the live ones.
+ * adopt instead of creating again). Redirects reach the app as they are, as
+ * the app's own transports follow none. WebSocket upgrades (/websocket) are
+ * piped as raw TCP to Odoo; down refuses them and cutSockets() drops the live
+ * ones.
  */
 import http from "node:http";
 import net from "node:net";
@@ -20,6 +23,44 @@ export interface RpcCall {
 	kwargs?: Record<string, any>;
 	/** The raw JSON-RPC params, for routes (/mail/message/post) that carry no model/method. */
 	params?: Record<string, any>;
+	/** The text fields of a multipart/form-data body, by name. */
+	form?: Record<string, string>;
+	/** The file parts of a multipart/form-data body, in their order. */
+	files?: { field: string; filename: string; size: number; contentType: string }[];
+	/** The status Odoo answered, once it did (a lost response included); absent for a request cut before Odoo. */
+	status?: number;
+}
+
+/**
+ * The parts of a multipart/form-data body: each part's headers end at the
+ * first blank line, its content at the CRLF before the next boundary line.
+ */
+function parseMultipart(body: Buffer, contentType: string): Pick<RpcCall, "form" | "files"> {
+	const boundary = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
+	const form: Record<string, string> = {};
+	const files: NonNullable<RpcCall["files"]> = [];
+	if (!boundary) return { form, files };
+	const delimiter = Buffer.from(`--${boundary[1] ?? boundary[2]}`);
+	let at = body.indexOf(delimiter);
+	while (at >= 0) {
+		const start = at + delimiter.length;
+		if (body.subarray(start, start + 2).toString() === "--") break;
+		const next = body.indexOf(delimiter, start);
+		if (next < 0) break;
+		const part = body.subarray(start + 2, next - 2);
+		const split = part.indexOf("\r\n\r\n");
+		const head = part.subarray(0, split).toString("utf8");
+		const content = part.subarray(split + 4);
+		const name = /name="([^"]*)"/i.exec(head)?.[1] ?? "";
+		const filename = /filename="([^"]*)"/i.exec(head)?.[1];
+		if (filename === undefined) form[name] = content.toString("utf8");
+		else {
+			const type = /content-type:\s*([^\r\n]+)/i.exec(head)?.[1]?.trim() ?? "";
+			files.push({ field: name, filename, size: content.length, contentType: type });
+		}
+		at = next;
+	}
+	return { form, files };
 }
 
 export class FaultProxy {
@@ -119,6 +160,8 @@ export class FaultProxy {
 			// Not JSON: recorded by its path only
 		}
 		const call: RpcCall = { path: req.url ?? "", model: params.model, method: params.method, args: params.args, kwargs: params.kwargs, params };
+		const contentType = req.headers["content-type"] ?? "";
+		if (/^multipart\/form-data/i.test(contentType)) Object.assign(call, parseMultipart(body, contentType));
 		this.calls.push(call);
 		if (this.down) {
 			req.socket.destroy();
@@ -132,21 +175,24 @@ export class FaultProxy {
 		let upstream: Response;
 		try {
 			upstream = await fetch(this.upstream + (req.url ?? ""), {
-				method: req.method, headers, body: req.method === "POST" ? body : undefined,
+				method: req.method, headers, body: req.method === "POST" ? body : undefined, redirect: "manual",
 			});
 		} catch {
 			req.socket.destroy();
 			return;
 		}
 		const payload = Buffer.from(await upstream.arrayBuffer());
+		call.status = upstream.status;
 		if (this.dropNext?.(call)) {
 			this.dropNext = null;
 			req.socket.destroy();
 			return;
 		}
 		const out: Record<string, string | string[]> = {};
-		const type = upstream.headers.get("content-type");
-		if (type) out["content-type"] = type;
+		for (const name of ["content-type", "location"]) {
+			const value = upstream.headers.get(name);
+			if (value) out[name] = value;
+		}
 		const cookies = upstream.headers.getSetCookie();
 		if (cookies.length) out["set-cookie"] = cookies;
 		res.writeHead(upstream.status, out);
