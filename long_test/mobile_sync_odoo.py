@@ -107,6 +107,12 @@ env["res.users"].create(
         "groups_id": [(6, 0, groupes)],
     }
 )
+# Les réglages de chaque utilisateur interne existent d'avance : créés à la
+# demande (authentification, chat), deux requêtes simultanées qui les
+# créent toutes deux butent sur l'unicité de res.users.settings. Le modèle
+# et _find_or_create_for_user sont dans mail en 16, dans base en 17 et 18.
+for interne in env["res.users"].search([("share", "=", False)]):
+    env["res.users.settings"]._find_or_create_for_user(interne)
 env.cr.commit()
 """
 
@@ -158,11 +164,8 @@ canal.sudo().channel_member_ids.filtered(
 presents = set(canal.sudo().channel_member_ids.mapped("partner_id").ids)
 if presents != attendus:
     raise Exception("membres du canal ms chat : %s != %s" % (presents, attendus))
-# Les réglages de chaque utilisateur interne existent d'avance : créés à la
-# demande (authentification, chat), deux requêtes simultanées qui les
-# créent toutes deux butent sur l'unicité de res.users.settings.
-for interne in env["res.users"].search([("share", "=", False)]):
-    env["res.users.settings"]._find_or_create_for_user(interne)
+# chat_user arrive après les réglages du commun : les siens d'avance aussi
+env["res.users.settings"]._find_or_create_for_user(utilisateur)
 env.cr.commit()
 """
 
