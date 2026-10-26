@@ -400,8 +400,9 @@ arriver par le bus sans rechargement. Chaque gabarit, ceux de la 16, de la
 17 et de la 18 pareillement, crée d'avance les réglages de chaque
 utilisateur interne (deux premières requêtes simultanées les créeraient
 toutes deux et buteraient sur l'unicité de `res.users.settings`), et le
-module de celui de la 18 est le 1.1 qui dédoublonne les créations. `--appareil` ajoute l'écran « clavardage » et un groupe créé
-depuis le téléphone. Pour ne lancer que ceux-là :
+module de celui de la 18 est le 1.1 qui dédoublonne les créations.
+`--appareil` ajoute l'écran « clavardage » et un groupe créé depuis le
+téléphone. Pour ne lancer que ceux-là :
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat

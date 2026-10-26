@@ -384,8 +384,8 @@ is its own and the later messages must arrive by the bus with no reload.
 Every template, the 16, 17 and 18 ones alike, creates the settings of every
 internal user ahead (two simultaneous first requests would otherwise both
 create them and hit the uniqueness of `res.users.settings`), and the 18 one's
-module is the 1.1 that dedupes creates. `--appareil` adds the « clavardage » screen and a group created
-from the phone. To run only these:
+module is the 1.1 that dedupes creates. `--appareil` adds the « clavardage »
+screen and a group created from the phone. To run only these:
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
@@ -839,8 +839,9 @@ arriver par le bus sans rechargement. Chaque gabarit, ceux de la 16, de la
 17 et de la 18 pareillement, crée d'avance les réglages de chaque
 utilisateur interne (deux premières requêtes simultanées les créeraient
 toutes deux et buteraient sur l'unicité de `res.users.settings`), et le
-module de celui de la 18 est le 1.1 qui dédoublonne les créations. `--appareil` ajoute l'écran « clavardage » et un groupe créé
-depuis le téléphone. Pour ne lancer que ceux-là :
+module de celui de la 18 est le 1.1 qui dédoublonne les créations.
+`--appareil` ajoute l'écran « clavardage » et un groupe créé depuis le
+téléphone. Pour ne lancer que ceux-là :
 
 ```
 ./long_test/mobile_sync.py --versions 18 --filtre chat
