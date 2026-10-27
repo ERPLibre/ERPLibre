@@ -510,16 +510,18 @@ mail stays in `mail.mail` in the `exception` state, counted and never
 delivered.
 
 The « recherche et boîte du clavardage » scenario of `--appareil` runs on
-Odoo 18 on the phone: a message is sent, edited and deleted, and the search
-index passes SQLite's integrity check after each (or the phone uses the LIKE
+Odoo 18 on the phone: a message is sent, edited and deleted, then the search
+index passes SQLite's integrity check once (or the phone uses the LIKE
 fallback); a search from the list opens the conversation at the hit,
 highlighted; a long press then Pin, confirmed in the native dialog, sets
-`pinned_at` on the server; Favourite stars it; the inbox of an email-notified
+`pinned_at` on the server; the star action stars it; the inbox of an email-notified
 user shows the explanation, the switch writes `inbox`, a mention of chat_user
 appears and « Marquer comme lu » reads it; a reply on a task with a photo
-posts it; and, in a group, the second bubble of a run of one author's messages
+posts it; in a group, the second bubble of a run of one author's messages
 shows neither name nor avatar, while the first shows the author's name and
-avatar (an author check on the rendered bubbles).
+avatar (an author check on the rendered bubbles); and an old hit, followed by
+more unread messages than the thread first renders, opens the conversation at
+it while the user's seen message on the server stays where it was.
 
 `--appareil` plays its screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a

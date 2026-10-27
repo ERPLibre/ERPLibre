@@ -515,16 +515,18 @@ mail stays in `mail.mail` in the `exception` state, counted and never
 delivered.
 
 The « recherche et boîte du clavardage » scenario of `--appareil` runs on
-Odoo 18 on the phone: a message is sent, edited and deleted, and the search
-index passes SQLite's integrity check after each (or the phone uses the LIKE
+Odoo 18 on the phone: a message is sent, edited and deleted, then the search
+index passes SQLite's integrity check once (or the phone uses the LIKE
 fallback); a search from the list opens the conversation at the hit,
 highlighted; a long press then Pin, confirmed in the native dialog, sets
-`pinned_at` on the server; Favourite stars it; the inbox of an email-notified
+`pinned_at` on the server; the star action stars it; the inbox of an email-notified
 user shows the explanation, the switch writes `inbox`, a mention of chat_user
 appears and « Marquer comme lu » reads it; a reply on a task with a photo
-posts it; and, in a group, the second bubble of a run of one author's messages
+posts it; in a group, the second bubble of a run of one author's messages
 shows neither name nor avatar, while the first shows the author's name and
-avatar (an author check on the rendered bubbles).
+avatar (an author check on the rendered bubbles); and an old hit, followed by
+more unread messages than the thread first renders, opens the conversation at
+it while the user's seen message on the server stays where it was.
 
 `--appareil` plays its screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
@@ -1119,17 +1121,19 @@ quitterait la machine, et un courriel envoyé est supprimé, donc aucun
 `exception`, compté et jamais livré.
 
 Le scénario « recherche et boîte du clavardage » de `--appareil` tourne sur la
-18, sur le téléphone : un message est envoyé, modifié et supprimé, et l'index de
-recherche passe le contrôle d'intégrité de SQLite après chacun (ou le téléphone
+18, sur le téléphone : un message est envoyé, modifié et supprimé, puis l'index
+de recherche passe une fois le contrôle d'intégrité de SQLite (ou le téléphone
 utilise le repli LIKE) ; une recherche depuis la liste ouvre la conversation au
 résultat, en surbrillance ; un appui long puis Épingler, confirmé dans la
 boîte de dialogue native, pose `pinned_at` sur le serveur ; Favori le met en
 favori ; la boîte d'un utilisateur notifié par courriel montre l'explication, le
 bouton écrit `inbox`, une mention de chat_user apparaît et « Marquer comme lu »
-la lit ; une réponse sur une tâche avec une photo l'envoie ; et, dans un groupe,
-la seconde bulle d'une suite de messages d'un même auteur ne montre ni nom ni
+la lit ; une réponse sur une tâche avec une photo l'envoie ; dans un groupe, la
+seconde bulle d'une suite de messages d'un même auteur ne montre ni nom ni
 avatar, alors que la première montre le nom et l'avatar de l'auteur (un contrôle
-de l'auteur sur les bulles affichées).
+de l'auteur sur les bulles affichées) ; et un vieux résultat, suivi de plus de
+messages non lus que le fil n'en rend d'abord, ouvre la conversation sur lui
+sans que le dernier message vu de l'utilisateur ne bouge sur le serveur.
 
 `--appareil` joue ses écrans sur le téléphone, contre les mêmes serveurs :
 le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
