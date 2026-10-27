@@ -601,12 +601,12 @@
     "chat.upload": {
       "description": "Upload one file of a message as a pending attachment of a channel (no message yet); queued in sync_outbox (kind chat.upload, one lane apart from the posts) and sent by the native layer as a streamed multipart request",
       "method": "POST",
-      "path": "/erplibre_mobile_chat/attachment/upload (module 1.2) or /mail/attachment/upload (Odoo, otherwise)",
+      "path": "/erplibre_mobile_chat/attachment/upload (module 1.2; on a record thread, 1.4) or /mail/attachment/upload (Odoo, otherwise)",
       "content_type": "multipart/form-data",
       "request_fields": {
         "csrf_token": "{token of chat.csrf} — required by both routes",
-        "thread_model": "discuss.channel",
-        "thread_id": "{channel id}",
+        "thread_model": "discuss.channel, or the record's model for a reply on a record (chat.record_post)",
+        "thread_id": "{channel id, or the record's id}",
         "is_pending": "true — the attachment is created on mail.compose.message / res_id 0 until a post claims it",
         "voice": "true — only for a voice file; Odoo reads any value as true",
         "client_uuid": "{local uuid of the file} — module route only",
@@ -614,7 +614,7 @@
       },
       "response": "{\"data\": Store} — the ir.attachment record is in data[\"ir.attachment\"]; {\"error\": text} is a refusal (not allowed to upload there)",
       "idempotency": "On the module route a request repeating the client_uuid of the same user returns the attachment already created, without a second one and without replaying the voice metadata, even if the thread or the file differ (unique index on create_uid + erplibre_client_uuid, advisory lock per uuid). The module route also keeps the original of an image (image_no_postprocess), where Odoo's route reduces it on save. Only an internal user is served: the public user (expired session) and a portal user read 404; a missing client_uuid reads 400. On Odoo's route nothing makes the upload idempotent: a retry after a lost answer first searches (chat.upload_find), and a retry that finds nothing sends again.",
-      "notes": "The body is a one-shot stream: the transfer is never resent by the HTTP stack, a retry is the outbox's. A first 404, or a 400 whose text names the CSRF token, forgets the token and re-authenticates once (callWithAuth), then calls again with a new session and token; a second 404 refuses the file for good (not_found). 413 refuses it as too big. Any other 400 retries later: a retry overlapping the first request on the module route meets the unique index and answers 400, and the next retry finds the attachment. The size limit is session_info max_file_upload_size; a file fits when its size + 65536 bytes of envelope does not exceed it. A file is uploaded after its predecessor of the same post and before the post."
+      "notes": "The body is a one-shot stream: the transfer is never resent by the HTTP stack, a retry is the outbox's. A first 404, or a 400 whose text names the CSRF token, forgets the token and re-authenticates once (callWithAuth), then calls again with a new session and token; a second 404 refuses the file for good (not_found). 413 refuses it as too big. Any other 400 retries later: a retry overlapping the first request on the module route meets the unique index and answers 400, and the next retry finds the attachment. The size limit is session_info max_file_upload_size; a file fits when its size + 65536 bytes of envelope does not exceed it. A file is uploaded after its predecessor of the same post and before the post. For a reply on a record (chat.record_post) the module route (1.4) accepts any non-abstract mail.thread model, and the post access of Odoo's own upload check applies (a model that is not a mail.thread reads 404); Odoo's route takes thread_model = the record's model and the record's id. A route refusal of a record file blocks its reply instead of posting without it."
     },
     "chat.csrf": {
       "description": "Read the CSRF token the upload routes require",
@@ -685,7 +685,7 @@
         }
       },
       "response": "[{id, name, mimetype, file_size, checksum}]",
-      "notes": "Runs before a repeated upload once the quiet window of the first send is over. Odoo's route resizes and re-encodes png, jpeg, bmp and tiff past 1920 px (ir.attachment._postprocess_contents, base.image_autoresize_extensions), so their stored size is not the size sent and the size term is left out for them. Uploads this search cannot tell apart (the same name, and the same size unless either one is png, jpeg, bmp or tiff) are ordered by the phone, one at a time: two of them are never in doubt at once. The hits the phone already holds (state uploaded) are dropped, the oldest left is adopted. Not used on the module route, which answers the repeat itself."
+      "notes": "Runs before a repeated upload once the quiet window of the first send is over. Odoo's route resizes and re-encodes png, jpeg, bmp and tiff past 1920 px (ir.attachment._postprocess_contents, base.image_autoresize_extensions), so their stored size is not the size sent and the size term is left out for them. Uploads this search cannot tell apart (the same name, and the same size unless either one is png, jpeg, bmp or tiff) are ordered by the phone, one at a time: two of them are never in doubt at once. The hits the phone already holds (state uploaded) are dropped, the oldest left is adopted. Not used on the module route, which answers the repeat itself. A file of a reply on a record is found by the same search: the pending attachment sits on mail.compose.message / 0 whatever the thread, so the criteria are unchanged."
     },
     "chat.attachment_preview": {
       "description": "Download the preview of an image or video attachment",
@@ -1231,6 +1231,145 @@
       },
       "notes": "Member channels are implicit in the subscription. last=0 only replays about the last 50 s, so with no saved id a store loaded longer ago than that is reloaded first; a saved id seen more than 24 h ago is stale (the server's rows are gone) and also reloads, then subscribes from 0. A ws:// address follows the same rule as http://. Keepalive every 60 s is the transport's."
     },
+    "chat.search": {
+      "description": "Search the user's conversations on the server for a term, over body, subject and attachment names; read only, paged by id descending with a count",
+      "method": "POST",
+      "path": "/erplibre_mobile_chat/message/search (module 1.4) or /web/dataset/call_kw search_read on mail.message (otherwise)",
+      "request": {
+        "params": {
+          "search_term": "{the term as typed, trimmed} — module route",
+          "before": "{smallest id of the page already shown, or null} — bounds the page to lower ids; count ignores it",
+          "limit": "{page size, 30 by default; clamped to 1..100; null reads as 30}"
+        }
+      },
+      "response": "Module route: {count, messages: [ids, newest first], data: Store}; a blank term answers {count: 0, messages: [], data: {}}. Fallback: the rows of search_read [id, body, date, author_id, res_id, attachment_ids] and a search_count of the same domain.",
+      "fallback_domain": "[model = discuss.channel, res_id in <the user's member channel ids>, message_type != user_notification, (body ilike <html term> | subject ilike <raw term> | attachment_ids.name ilike <raw term>)] with a limit of 30 and order id desc. The member ids are read fresh just before (search_read discuss.channel [is_member = true] [id]); with none, nothing is asked.",
+      "escaping": "The raw term (subject, file names) escapes backslash, % and _, then turns each space into %. The HTML term (body) first turns & < > into the entities Odoo stores (a quote is stored as is), then escapes like the raw term. The module applies the same two rules server side.",
+      "membership": "Only the channels the user is a member of are searched, as the user: a public channel the user has not joined and other people's private chats are never returned, an administrator included.",
+      "reads": "Neither route marks anything read. The app never calls /mail/thread/messages or /discuss/channel/messages without `around` for a search, because they mark their result read.",
+      "notes": "Only an internal user is served by the module route; a non-numeric before or limit reads 404. A plain 404 of the module route probes the module again and the search falls back, but any other error does not. Hits are shown from the answer and never written to chat_messages; only the authors' names reach chat_partners. The phone searches its own cache first (chat_messages.search_text, folded for case and accents; FTS5 trigram index chat_search_fts when the phone's SQLite has it, LIKE otherwise and for terms under 3 characters) and merges the server's hits in when online. A hit opens its conversation at the message, loading older pages with `around` until it is cached."
+    },
+    "chat.pin": {
+      "description": "Pin or unpin a message of a conversation, and list a conversation's pinned messages; the pin is queued in sync_outbox (kind chat.pin) as a target state per message",
+      "method": "POST",
+      "path": "/web/dataset/call_kw (discuss.channel set_message_pin) and /discuss/channel/pinned_messages",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "set_message_pin",
+          "args": [
+            "[[channel id]]"
+          ],
+          "kwargs": {
+            "message_id": "{server message id}",
+            "pinned": "true | false — always explicit, never a toggle"
+          }
+        },
+        "list": "/discuss/channel/pinned_messages {channel_id}"
+      },
+      "response": "set_message_pin: null (the bus carries pinned_at and the notice). pinned_messages: a Store whose mail.message rows carry pinned_at, in no meaningful order; the app rebuilds the order from pinned_at (newest first, the unread ones first).",
+      "idempotency": "set_message_pin is idempotent per target: pinning a pinned message or unpinning a free one changes nothing. The outbox keeps one op per message holding the last wanted value and the value the server held when it was first queued (base); a value equal to base cancels the op before it is sent. An op that may have been sent (sentAt) is never cancelled. A message emptied or gone before the send is given up as vanished, because Odoo would pin an emptied message.",
+      "pin_notice": "Pinning posts a notification message whose body holds a link <a data-oe-type=\"highlight\" data-oe-id=\"{message id}\"> to the pinned message and one <a data-oe-type=\"pin-menu\"> to the pinned list. The app shows it as a system line: the first link scrolls to the message (loading older pages when needed), the second opens « Messages épinglés ». A hit older than the loaded history is paged in with `around`.",
+      "notes": "Deleting or emptying a message clears its pinned_at on the server, so a delete queued behind a pin restores the pin's base. The app offers Pin on a sent comment of a writable conversation. Unpinned messages of a channel the answer does not list are unpinned in the cache. The pinned list of a conversation offline is the cached rows. Pinned conversations (« Épinglées d'abord ») are a different thing: local to the phone, table chat_on_top, never sent."
+    },
+    "chat.star": {
+      "description": "Star or unstar a message (favourite), and list the starred messages; queued in sync_outbox (kind chat.star) as a target state per message",
+      "method": "POST",
+      "path": "/web/dataset/call_kw erplibre_set_starred on mail.message (module 1.4) or toggle_message_starred (otherwise); list at /mail/starred/messages",
+      "request": {
+        "params": {
+          "model": "mail.message",
+          "method": "erplibre_set_starred | toggle_message_starred",
+          "args": [
+            "[[message id]]",
+            "{starred: true | false} — module method only"
+          ]
+        },
+        "list": "/mail/starred/messages {limit: 30, before: {smallest id shown}}"
+      },
+      "response": "erplibre_set_starred: a Store of the message with starred. toggle_message_starred: null. The list: {messages, data: Store} sorted by id, the Store carrying mail.thread mail.box/starred with the counter.",
+      "idempotency": "Odoo's toggle is not idempotent, so a toggle replayed after a lost answer would undo itself. With the module, erplibre_set_starred sets the wanted state, writes only when it differs, and sends the bus notification mail.message/toggle_star {message_ids, starred} only when something changed. Without it the app reads starred_partner_ids of the message (search_read, starred) before every attempt, including the retries, and sends the toggle only when the server's state differs from the target; nothing is awaited between that read and the toggle. The outbox keeps one op per message with the last target and the base; a target equal to base cancels it.",
+      "bus": "mail.message/toggle_star {message_ids, starred} moves the cached flags and the counter (init_messaging Store.starred.counter, kept in chat_sources.starred_counter) by the ids whose shown state changed. A delete that empties a message sends the mail.box/starred record with its counter and a DELETE of the message.",
+      "notes": "A message cached in neither the mailbox nor a conversation cannot be starred from the app. A message gone is given up as vanished. A page of the list unstars the cached rows it proves are no longer starred (the id range it covers, without a waiting star). Starred messages are listed in the « Favoris » box and searched locally with the inbox."
+    },
+    "chat.inbox": {
+      "description": "The inbox (channel mentions, followed records, assignments), its history, and marking items read",
+      "method": "POST",
+      "path": "/mail/inbox/messages, /mail/history/messages; set_message_done and mark_all_as_read via /web/dataset/call_kw",
+      "request": {
+        "params": {
+          "list": "{limit: 30, before: {smallest id shown}} on /mail/inbox/messages or /mail/history/messages",
+          "mark_one": "mail.message set_message_done [[message ids]]",
+          "mark_all": "mail.message mark_all_as_read [[[needaction, =, true], [id, <=, {largest id shown}]]]"
+        }
+      },
+      "response": "{messages, data: Store} with each message's thread (channel or record), record name, author, body, date; the inbox counter is Store.inbox.counter. set_message_done and mark_all_as_read answer null.",
+      "kinds": "channel mention (thread discuss.channel, opens the conversation at the message), followed record comment (a message on any other model, mentions of the user in a record included), assignment (message_type user_notification on a record; no reply is offered, as in the browser). The kind is derived from the thread model and message type.",
+      "idempotency": "Marking done is idempotent. The outbox keeps chat.inbox_done (union of ids) and chat.inbox_all (the larger bound), each remembering the rows it cleared so a refused op puts them back. Mark all is bounded by the largest id the user saw: a mention that arrives after the tap stays unread. A done item and its bus echo lower the count once. An op that was sent forgets the ids from the others and the account is loaded again, because set_message_done on an item already read sends no bus notification.",
+      "reading": "Opening an item marks nothing read. A mention opens its conversation at the message (/chat/<account>/<channel>?m=<id>); a record item opens the app's note when a live note link binds that record, else /mail/message/<id> in the web view (http policy kept). The inbox delivery of the bus that a load overtook is read from the first inbox page (read only), so a followed record's comment still appears.",
+      "notes": "Rows are cached in chat_mailbox with the flags needaction, starred and history; a page proves a range, so an unlisted row of that range moves to history unless an inbox op covers it. Offline the cache is shown. The history tab pages with before and is read only."
+    },
+    "chat.record_post": {
+      "description": "Reply in the chatter of a record (any mail.thread model) from the inbox; queued in sync_outbox (kind chat.record_post), with files, voice and mentions",
+      "method": "POST",
+      "path": "/mail/message/post",
+      "request": {
+        "params": {
+          "thread_model": "{the record's model}",
+          "thread_id": "{the record's id}",
+          "post_data": {
+            "body": "{escaped text}<!-- erplibre-mobile:{client uuid} -->, composed as chat.post",
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_note (internal note, the default) | mail.mt_comment (message to the followers, after a confirmation)",
+            "erplibre_client_uuid": "{client uuid} — only with module 1.4",
+            "attachment_ids": "[attachment ids] — only with files; the ids of the chat.upload answers on the record's thread",
+            "partner_ids": "[partner ids] — only with mentions",
+            "parent_id": "{message answered} — sent as the browser does; Odoo 18 drops it on a record thread, so it changes nothing server side",
+            "email_add_signature": "true — sent for a note and a message alike, as the browser"
+          },
+          "attachment_tokens": "[false, …] — only with attachment_ids",
+          "context": {
+            "temporary_id": "{client uuid}",
+            "mail_post_autofollow": "true only for a message"
+          }
+        }
+      },
+      "response": "{\"mail.message\": [{id, ...}], ...Store}; an answer without an id is an error and the retry searches before posting",
+      "idempotency": "With module 1.4 the uuid dedup of mail.thread.message_post covers every mail.thread model: a repeated erplibre_client_uuid of the same user on the same record returns the first message (advisory lock per uuid, post access checked on the hit), without a second message, notification or email. Without the module the marker search of chat.post runs on the record: mail.message search_read [model = {record model}, res_id = {record id}, author_id = the session partner, body ilike the marker], limit 2, after the quiet window. Replies on one record go out in order.",
+      "notes": "A note notifies no one by email and creates no mail.mail; a message does for each follower notified by email (verified by counting mail.mail in the long tests). The files of the reply travel on chat.upload with the record's thread_model and thread_id and are sent before the reply; a refused file blocks the reply with a notice. The text, the files and the mentions of a reply are kept as a draft per record (chat_drafts with thread_model and thread_id). A sent reply drops its rows and local copies."
+    },
+    "chat.notification_type": {
+      "description": "Read the user's own notification preference, and switch it to the Odoo inbox so the inbox box receives their notifications",
+      "method": "POST",
+      "path": "/web/session/get_session_info (read) and /web/dataset/call_kw res.users write (switch)",
+      "request": {
+        "params": {
+          "model": "res.users",
+          "method": "write",
+          "args": [
+            "[[session uid]]",
+            {
+              "notification_type": "inbox"
+            }
+          ]
+        }
+      },
+      "response": "read: storeData[\"res.partner\"] row of the session partner, field notification_preference (email | inbox), stored in chat_sources.notification_type. write: true.",
+      "self_write": "notification_type is in mail's SELF_WRITEABLE_FIELDS for res.users, so a user writes their own with no administrator right (base res.users.write runs the write under sudo for self-writeable keys). The inverse puts the user in the inbox notification group. Verified on a real Odoo 18 in the long tests. A portal user is refused by the SQL constraint (notification_type = email unless internal).",
+      "notes": "A user notified by email has an empty inbox: the inbox box explains it and offers « Recevoir mes notifications dans Odoo ». Online only. After the write the preference is read again and the notice goes away only if it reads inbox; any Odoo error (access, constraint) is a refusal that offers the user's preferences in the web view instead. Only new notifications arrive in the inbox; past emails do not."
+    },
+    "chat.avatar": {
+      "description": "Avatar of a message's author, shown on others' bubbles in groups and channels",
+      "method": "GET",
+      "path": "/web/image/res.partner/{partner id}/avatar_128?unique={write_date}&download=true",
+      "request": {
+        "headers": {
+          "Cookie": "session_id={session}"
+        }
+      },
+      "response": "The image (a photo, or Odoo's SVG placeholder for a partner without one)",
+      "notes": "The cache key is the partner's write_date, which the Store sends with avatar_128 for an author (chat_partners.write_date); a new key is a new file name. download=true makes an expired session answer 404 instead of a placeholder that would be cached; a 404 re-authenticates once. Fetched when the author is on screen, two at a time, Wi-Fi or not, newest first, cached on disk per account (chat/<account directory>/avatars/<partner id>_<key><extension>) with its bytes in chat_avatars; counted by the chat cache space and cleared with it; initials on a colour from the partner id show meanwhile, offline or on failure. Odoo's isSquashed rule decides which bubbles show it: a run of messages by the same partner, in the same thread, less than 5 minutes apart, after a message that is neither a notification nor emptied, and not a note, shows the avatar and name only on its first bubble. Never on own bubbles, in a direct chat or on system lines."
+    },
     "chat.module": {
       "description": "State of the optional erplibre_mobile_chat module; installed from the app by a system user",
       "method": "POST",
@@ -1256,7 +1395,7 @@
         }
       },
       "response": "[{id, state}]",
-      "notes": "The level is read from fields_get (readable by any user; cached), highest first: erplibre_body_fingerprint on mail.message = 1.3, erplibre_client_uuid on ir.attachment = 1.2, on discuss.channel = 1.1, on mail.message only = 1.0. installed = level 1.3, or a system user sees the row installed before the registry exposes any field; outdated = level 1.0 to 1.2 (an older module's row reads installed until upgraded, so the level decides) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1. Module 1.2 is recognised by erplibre_client_uuid on ir.attachment (level 1.2, above 1.1 on discuss.channel and 1.0 on mail.message); it adds the idempotent upload route of chat.upload. Module 1.3 is recognised by erplibre_body_fingerprint on mail.message (level 1.3); it adds the guarded edit route of chat.edit. Without it, files go to Odoo's route and a lost answer is found with chat.upload_find."
+      "notes": "The level is read from fields_get (readable by any user; cached), highest first: erplibre_body_fingerprint on mail.message = 1.3, erplibre_client_uuid on ir.attachment = 1.2, on discuss.channel = 1.1, on mail.message only = 1.0. installed = level 1.3, or a system user sees the row installed before the registry exposes any field; outdated = level 1.0 to 1.2 (an older module's row reads installed until upgraded, so the level decides) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1. Module 1.2 is recognised by erplibre_client_uuid on ir.attachment (level 1.2, above 1.1 on discuss.channel and 1.0 on mail.message); it adds the idempotent upload route of chat.upload. Module 1.3 is recognised by erplibre_body_fingerprint on mail.message (level 1.3); it adds the guarded edit route of chat.edit. Without it, files go to Odoo's route and a lost answer is found with chat.upload_find. Module 1.4 adds the field erplibre_chat_level on mail.message (a computed Selection whose last key is the level, \"1.4\"; readable by any internal user through fields_get, which is why it is the marker) and is the highest level: installed = level 1.4; levels 1.0 to 1.3 are outdated. It adds the search route of chat.search (serverSearch), erplibre_set_starred of chat.star (idempotentStar), the uuid dedup of mail.thread.message_post on every mail.thread model and the record thread on the upload route (idempotentRecordPost). Each of the three flags is true at 1.4 only; a server at 1.3 keeps the guarded edit and the fallbacks of those calls."
     }
   },
 
@@ -1400,9 +1539,13 @@
         "write_date",
         "parent_id (migration 2026102607; the server id of the message answered)",
         "parent_client_uuid (2026102607; the answered message while it is still queued)",
-        "recipient_ids (2026102607; JSON list of the partners mentioned)"
+        "recipient_ids (2026102607; JSON list of the partners mentioned)",
+        "search_text (migration 2026102701; the body as plain text folded for case and accents, filled lazily after start for rows cached before)",
+        "pinned_at (2026102701; Odoo's date of the pin, null when not pinned)",
+        "starred (2026102701; 1 when the user starred the message)",
+        "is_note (migration 2026102705; the message is an internal note, which Odoo's isSquashed never squashes)"
       ],
-      "notes": "A queued post is stored as a pending row before any request, settled with its server id by chat.post. Indexes chat_messages_channel and idx_chat_messages_cfg (config_id, channel_id)."
+      "notes": "A queued post is stored as a pending row before any request, settled with its server id by chat.post. Indexes chat_messages_channel and idx_chat_messages_cfg (config_id, channel_id). Migration 2026102701 adds search_text, pinned_at and starred and creates the chat_search_fts index (see that table); migration 2026102705 adds is_note. Columns are added only when PRAGMA table_info does not list them."
     },
     "chat_members": {
       "migration": "2026102501",
@@ -1427,7 +1570,8 @@
         "config_id",
         "partner_id",
         "name",
-        "im_status"
+        "im_status",
+        "write_date (migration 2026102705; the avatar cache key, kept only when the Store sends it)"
       ],
       "notes": "Authors and correspondents named by the Store."
     },
@@ -1449,7 +1593,9 @@
         "global_mute_at (2026102601; when the phone last wrote it)",
         "is_internal_user (2026102601)",
         "file_dir (2026102604; directory of the cached files of the server)",
-        "module_level (2026102604; 1.0|1.1|1.2|1.3, null without the module)"
+        "module_level (2026102604; 1.0|1.1|1.2|1.3|1.4, null without the module)",
+        "starred_counter (migration 2026102701; the starred messages counter)",
+        "notification_type (migration 2026102702; the user's notification_preference, email|inbox, null while unknown)"
       ],
       "notes": "One row per server: the session facts, the last bus id applied and when it was seen, the module state (installed|outdated|available|absent|unknown), the bus id the inbox counter is as of, the default access group of new channels and the account-wide mute."
     },
@@ -1487,7 +1633,9 @@
         "error",
         "last_opened_at",
         "created_at",
-        "origin (migration 2026102606; where a draft file was taken: camera, gallery, file, voice)"
+        "origin (migration 2026102606; where a draft file was taken: camera, gallery, file, voice)",
+        "thread_model (migration 2026102704; the record's model for a file of a reply on a record, null for a conversation)",
+        "thread_id (2026102704; the record's id)"
       ],
       "notes": "One row per file of a message. The paths and byte counts describe the files cached on the phone; the purge (off by default, 2048 MB, a warning at 80 %) deletes the oldest-opened cached files and keeps the row."
     },
@@ -1502,7 +1650,9 @@
         "reply_to (migration 2026102608; JSON target of the message answered)",
         "edit_of (2026102608; JSON target of the message being edited)",
         "edit_text (2026102608; the edit's text)",
-        "mentions (2026102608; JSON people and channels picked in either text)"
+        "mentions (2026102608; JSON people and channels picked in either text)",
+        "thread_model (migration 2026102704; set for the draft of a reply on a record, stored under config_id#r<model>#<id> with channel_id 0)",
+        "thread_id (2026102704)"
       ],
       "notes": "One draft text per conversation, kept across restarts. The reply target, the edit in progress and the mention picks are kept with it. Its files are the conversation's chat_attachments rows in the draft state."
     },
@@ -1522,6 +1672,41 @@
         "sequence"
       ],
       "notes": "One row per reaction group of a message; guests are only counted. Index chat_reactions_channel (config_id, channel_id). Migrations 2026102607 (reactions, chat_messages.parent_id, parent_client_uuid and recipient_ids) and 2026102608 (chat_drafts reply, edit and mentions) add columns only when PRAGMA table_info does not list them, so a fresh install and a second run change nothing."
+    },
+    "chat_mailbox": {
+      "migration": "2026102702",
+      "columns": [
+        "id (config_id#m<message id>)",
+        "config_id",
+        "message_id",
+        "thread_model",
+        "thread_id",
+        "record_name",
+        "author_partner_id",
+        "body",
+        "date",
+        "message_type",
+        "needaction (the message is in the inbox)",
+        "starred (the message is starred)",
+        "history (the message is in the history)",
+        "search_text (folded record name and body)"
+      ],
+      "notes": "One row per message the inbox, history and starred boxes show, of any model, a channel mention included. Indexes idx_chat_mailbox_needaction and idx_chat_mailbox_starred (config_id, flag). A message of an uncached thread gets a row only when a flag is set. The rows of a dropped channel stay, as Odoo keeps the mention history. Migration 2026102702 also adds chat_sources.notification_type."
+    },
+    "chat_on_top": {
+      "migration": "2026102703",
+      "columns": ["id (config_id#channel_id)", "config_id", "channel_id", "since"],
+      "notes": "The conversations the user keeps on top, local to the phone and never sent to the server (Odoo's is_pinned means shown in the sidebar, a different thing). Index idx_chat_on_top_config. Kept through a temporary id swap and a rename, removed when the server drops or the user leaves the conversation, and by dropping the account. The list order setting « Ordre de la liste » chooses between « Épinglées d'abord » (conversations on top first; the default) and « Non lues d'abord » (unread conversations first)."
+    },
+    "chat_search_fts": {
+      "migration": "2026102701",
+      "columns": ["search_text (external content of chat_messages, trigram tokenizer)"],
+      "notes": "An FTS5 virtual table over chat_messages.search_text, created only when the phone's SQLite has FTS5, kept by four triggers (before insert, after insert, after delete, after update of search_text; the before-insert one removes the old entry because INSERT OR REPLACE fires no delete trigger). Every part is dropped on any failure, so the engine reads fts5 only for a complete index, else the search runs LIKE. A trigram index finds no term under 3 characters, which take LIKE too."
+    },
+    "chat_avatars": {
+      "migration": "2026102705",
+      "columns": ["id (config_id#p<partner id>)", "config_id", "partner_id", "unique_key (the write_date the file was fetched with)", "path", "bytes", "fetched_at"],
+      "notes": "The cached avatar files of authors, one row per partner and account. Index idx_chat_avatars_config. Counted in the chat cache space and removed by « Retirer tous les fichiers téléchargés » and by dropping the account; a rename re-keys the rows."
     }
   }
 }
