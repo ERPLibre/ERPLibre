@@ -15,6 +15,8 @@ poser un drapeau `online = False`. Une boîte hors ligne reste lisible.
 from __future__ import annotations
 
 import contextlib
+import copy
+import dataclasses
 import imaplib
 import logging
 import threading
@@ -669,6 +671,212 @@ def append_attachment_path(current: str, new_path: str) -> str:
     return f"{current}; {new_path}"
 
 
+def browse_start_dir(raw_paths: str) -> str:
+    """Le dossier où ouvrir le sélecteur : celui du dernier chemin saisi
+    s'il existe, sinon le dossier personnel."""
+    import os
+
+    paths = parse_paths(raw_paths)
+    if paths:
+        candidate = os.path.dirname(os.path.expanduser(paths[-1]))
+        if candidate and os.path.isdir(candidate):
+            return candidate
+    return os.path.expanduser("~")
+
+
+def browse_one_path(app, start_dir: str) -> str | None:
+    """Ouvre le sélecteur de fichiers sur `start_dir` ; rend le chemin
+    choisi, ou None si l'utilisateur sort sans choisir.
+
+    `todo_file_browser` est bâti sur urwid, qui possède son propre
+    `urwid.MainLoop` : deux boucles ne tiennent pas le terminal en même
+    temps. `app.suspend()` rend le terminal à urwid le temps du `with`,
+    puis Textual le reprend et redessine.
+
+    L'IMPORT est fait DANS le `with` : `urwid.raw_display.Screen` fige son
+    `output=sys.stdout` à l'import du module. Importé avant `suspend()`, il
+    figerait le `sys.stdout` que `App.run()` redirige pendant toute la vie
+    de l'application, et non le vrai terminal (`get_cols_rows()` lève
+    alors sur un descripteur -1).
+
+    Une panne du sélecteur (terminal incompatible, `suspend()` refusé)
+    remonte à l'appelant, qui l'affiche dans sa propre ligne d'état.
+    """
+    chosen: dict = {}
+    with app.suspend():
+        from script.todo import todo_file_browser
+
+        def _on_selected(path: str) -> None:
+            chosen["path"] = path
+            todo_file_browser.exit_program()
+
+        browser = todo_file_browser.FileBrowser(start_dir, _on_selected)
+        browser.run_main_frame()
+    return chosen.get("path")
+
+
+# Messages en cache de la boîte de réception sur lesquels l'éditeur de
+# règle évalue son filtre pour l'aperçu.
+RULES_PREVIEW_MESSAGES = 200
+# Temps cumulé, en secondes, accordé aux expressions régulières de cet
+# aperçu, qui s'évalue dans le fil de l'interface.
+RULES_PREVIEW_REGEX_S = 2.0
+# Lignes du texte d'une réponse automatique montrées sous la file d'envoi.
+OUTBOX_PREVIEW_LINES = 20
+
+
+def format_epoch(epoch: int) -> str:
+    """Une époque en date et heure LOCALES, à la minute."""
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(int(epoch)))
+
+
+def rule_node_label(node) -> str:
+    """Libellé d'un nœud du filtre d'une règle : groupe ou condition.
+
+    Texte BRUT : la valeur d'une condition est saisie par l'utilisateur,
+    et l'appelant l'enveloppe dans `Text` avant de l'afficher. Une valeur
+    inconnue (fichier édité à la main) s'affiche sous sa clé.
+    """
+    from script.todo.mail.rules.model import Group
+
+    if isinstance(node, Group):
+        return t(f"mail_rules_group_{node.op}")
+    parts = [
+        t(f"mail_rules_field_{node.field}"),
+        t(f"mail_rules_op_{node.op}"),
+    ]
+    if node.op != "glob":
+        parts.append(f"({t(f'mail_rules_mode_{node.mode}')})")
+    parts.append(f'"{node.value}"')
+    return " ".join(parts)
+
+
+def rule_filter_summary(node) -> str:
+    """Le filtre entier sur une ligne : « ET — toutes (De …, NON (…)) ».
+
+    Un groupe ET vide se lit « Tous les messages », ce qu'il évalue.
+    """
+    from script.todo.mail.rules.model import Group
+
+    if not isinstance(node, Group):
+        return rule_node_label(node)
+    if not node.children and node.op == "all":
+        return t("mail_rules_match_all")
+    inner = ", ".join(rule_filter_summary(child) for child in node.children)
+    return f"{rule_node_label(node)} ({inner})"
+
+
+def _filter_uses_field(node, field: str) -> bool:
+    from script.todo.mail.rules.model import Group
+
+    if isinstance(node, Group):
+        return any(_filter_uses_field(child, field) for child in node.children)
+    return getattr(node, "field", None) == field
+
+
+def rules_arm_point(store):
+    """Le point d'armement d'une règle activée maintenant, ou None.
+
+    `Armed` sur l'UIDVALIDITY et l'UIDNEXT de la boîte de réception en
+    cache : la règle ne verra que ce qui arrive après. None quand la boîte
+    ou l'un de ces deux nombres est inconnu ; le moteur arme alors la règle
+    à sa passe suivante.
+    """
+    from script.todo.mail.rules.engine import find_inbox
+    from script.todo.mail.rules.model import Armed
+
+    try:
+        inbox = find_inbox(store)
+        fstate = store.folder_state(inbox) if inbox else None
+    except Exception:
+        return None
+    if (
+        not fstate
+        or not fstate.get("uidvalidity")
+        or not fstate.get("uidnext")
+    ):
+        return None
+    return Armed(
+        int(fstate["uidvalidity"]), int(fstate["uidnext"]), int(time.time())
+    )
+
+
+def rules_filter_preview(store, root) -> str:
+    """Combien des derniers messages en cache de la boîte de réception le
+    filtre `root` retient, en une ou deux lignes traduites.
+
+    Évaluation SANS corps : un message dont le verdict dépend du corps est
+    compté « inconnu », jamais retenu ni écarté. Le cache ne garde pas Cc :
+    un filtre qui teste À/Cc le dit. Une règle fautive (expression
+    régulière refusée, NON sans enfant) rend le texte de son erreur.
+    """
+    from script.todo.mail.rules.engine import find_inbox
+    from script.todo.mail.rules.filter import BodyUnavailable, evaluate
+    from script.todo.mail.rules.model import RuleError, message_view
+    from script.todo.mail.rules.regex_worker import time_budget
+
+    inbox = find_inbox(store)
+    fstate = store.folder_state(inbox) if inbox else None
+    metas = (
+        store.list_messages(fstate["id"], limit=RULES_PREVIEW_MESSAGES)
+        if fstate
+        else []
+    )
+    uidvalidity = (fstate or {}).get("uidvalidity") or 0
+    matches = unknown = 0
+    try:
+        # Le fil de l'interface attend au plus ce budget, quel que soit le
+        # nombre de messages qu'une expression régulière lente ralentit.
+        with time_budget(RULES_PREVIEW_REGEX_S):
+            for meta in metas:
+                try:
+                    if evaluate(root, message_view(meta, uidvalidity), None):
+                        matches += 1
+                except BodyUnavailable:
+                    unknown += 1
+    except RuleError as exc:
+        return f"{t('mail_rules_preview')} : {exc}"
+    text = f"{t('mail_rules_preview_matches')} {matches}/{len(metas)}"
+    if unknown:
+        text += f" · {t('mail_rules_preview_body_unknown')} {unknown}"
+    if _filter_uses_field(root, "to_cc"):
+        text += f"\n{t('mail_rules_preview_to_only')}"
+    return text
+
+
+def outbox_entry_preview(raw: bytes) -> tuple[list, list, list]:
+    """Ce qu'une entrée de la file enverra : (lignes, en ligne, jointes).
+
+    Les `OUTBOX_PREVIEW_LINES` premières lignes de la partie texte, puis les
+    noms des images citées par le HTML (`Content-Disposition: inline`) et
+    ceux des pièces jointes. Une partie illisible donne une liste vide
+    plutôt qu'une exception : l'aperçu ne bloque jamais la file.
+    """
+    import email
+    import email.policy
+
+    msg = email.message_from_bytes(raw or b"", policy=email.policy.default)
+    lines: list = []
+    try:
+        body = msg.get_body(preferencelist=("plain",))
+        if body is not None:
+            lines = body.get_content().splitlines()[:OUTBOX_PREVIEW_LINES]
+    except Exception:
+        lines = []
+    inline, attached = [], []
+    for part in msg.walk():
+        # Un message d'une seule partie EST son texte : rien à lister.
+        if part.is_multipart() or part is msg:
+            continue
+        disposition = part.get_content_disposition()
+        name = part.get_filename() or ""
+        if disposition == "attachment":
+            attached.append(name or part.get_content_type())
+        elif part.get_content_maintype() == "image":
+            inline.append(name or part.get_content_type())
+    return lines, inline, attached
+
+
 def edit_in_external_editor(
     text: str, editor: str | None = None, runner=None
 ) -> str:
@@ -731,7 +939,74 @@ def resolve_sent_folder(session) -> str:
     return session.account.sent_folder
 
 
-def flush_outbox(session, send_fn=None, connect_fn=None) -> tuple:
+def file_in_sent(session, msg, verrou=None) -> Exception | None:
+    """Dépose une copie de `msg` dans Envoyés, marquée lue. Rend l'erreur.
+
+    Le Cci ne ressort pas par cette porte : la copie part par IMAP, et sans
+    `without_bcc` il redeviendrait un en-tête lisible sur le serveur.
+    `verrou` protège la connexion IMAP de la session ; l'APPEND passe par
+    `avec_lien` quand la session en a un (reprise sur lien mort), par le
+    transport sinon. Ne lève jamais : un message déjà parti ne devient pas
+    un échec parce que son classement a raté, et l'appelant décide de ce
+    qu'il dit de l'erreur rendue.
+    """
+    from script.todo.mail.smtp_send import without_bcc
+
+    garde = verrou if verrou is not None else contextlib.nullcontext()
+    try:
+        sent_folder = resolve_sent_folder(session)
+
+        def deposer(transport):
+            transport.append(
+                sent_folder,
+                without_bcc(msg).as_bytes(),
+                ["\\Seen"],
+            )
+
+        reprise = getattr(session, "avec_lien", None)
+        with garde:
+            if reprise is None:
+                deposer(session.syncer.transport)
+            else:
+                reprise(deposer)
+    except Exception as exc:
+        return exc
+    return None
+
+
+def _flush_rules(session, rules_base):
+    """Les règles du compte pour la vidange : (règles par id, lisibles).
+
+    Fichier absent, cache éphémère ou fichier illisible : (None, False).
+    Les entrées automatiques restent alors en file, ni envoyées ni
+    supprimées ; elles expirent d'elles-mêmes.
+    """
+    from script.todo.mail.rules import storage
+    from script.todo.mail.rules.model import RuleError
+
+    base = rules_base
+    if base is None:
+        base = storage.base_of(session.store)
+    if base is None:
+        return None, False
+    name = session.account.name
+    try:
+        if not storage.rules_exist(name, base):
+            return None, False
+        return {rule.id: rule for rule in storage.load(name, base)}, True
+    except RuleError:
+        _logger.error("%s : règles illisibles, file automatique gardée", name)
+        return None, False
+
+
+def flush_outbox(
+    session,
+    send_fn=None,
+    connect_fn=None,
+    verrou=None,
+    now=None,
+    rules_base=None,
+) -> tuple:
     """Envoie ce qui attend. Rend (partis, retenus, échoués).
 
     Appelée à chaque passe de synchronisation : le retour du réseau est
@@ -739,9 +1014,39 @@ def flush_outbox(session, send_fn=None, connect_fn=None) -> tuple:
     y penser. Un message RETENU est sauté — c'est le sens de la retenue,
     et seul un geste la lève.
 
-    Ne lève jamais : un envoi qui échoue reste en file avec son erreur, et
-    n'empêche pas les suivants de partir.
+    Pour chaque entrée, dans l'ordre :
+    - une réservation (`outbox_claim`) l'enlève à toute autre vidange,
+      même d'un autre processus ; une entrée réservée ailleurs est en cours
+      d'envoi et n'est ni retirée ni envoyée ici ;
+    - passée son `expires_at`, elle est retirée et son journal passe
+      `expired`, retenue ou non ;
+    - automatique, elle n'est envoyée que si sa règle existe, est active
+      et garde l'empreinte de la mise en file ; sinon elle est retirée
+      (`rule_disabled`, `rule_changed`), et une entrée déjà `sent` au
+      journal est retirée sans renvoi ;
+    - retenue, relu dans la base et non dans l'instantané, elle reste et
+      sa réservation est rendue ;
+    - après un échec de connexion au serveur SMTP, les entrées suivantes
+      restent en file sans nouvel essai : chacune attendrait le même
+      délai de connexion ;
+    - envoyée, elle est retirée et classée dans Envoyés (`file_in_sent`,
+      sous `verrou`) ; un APPEND raté ne compte pas comme échec d'envoi ;
+    - refusée, l'erreur est gardée scellée ; après `max_attempts` refus
+      PERMANENTS (5xx), un message écrit à la main est retenu (jamais
+      détruit), une réponse automatique est retirée
+      (`attempts_exhausted`). Un échec transitoire n'est pas plafonné.
+
+    Les règles sont lues une fois, et seulement si la file porte une entrée
+    automatique ; fichier absent ou illisible : ces entrées restent telles
+    quelles. `rules_base` vaut par défaut `storage.base_of(session.store)`.
+    N'appelle jamais `deliver`, qui classerait une seconde copie. Ne lève
+    jamais pour une entrée : un envoi qui échoue n'empêche pas les suivants
+    de partir.
     """
+    import email
+    import email.policy
+
+    from script.todo.mail.rules.engine import smtp_failure_is_permanent
     from script.todo.mail.smtp_send import connect as smtp_connect
     from script.todo.mail.smtp_send import send as smtp_send_fn
 
@@ -749,25 +1054,85 @@ def flush_outbox(session, send_fn=None, connect_fn=None) -> tuple:
         return (0, 0, 0)
     send_fn = send_fn or smtp_send_fn
     connect_fn = connect_fn or smtp_connect
+    clock = now or time.time
+    store = session.store
+    name = session.account.name
+    entrees = store.outbox()
+    regles, lisibles = None, False
+    if any(e.get("kind", "manual") != "manual" for e in entrees):
+        regles, lisibles = _flush_rules(session, rules_base)
     partis = retenus = echoues = 0
-    for entree in session.store.outbox():
-        if entree["held"]:
+    injoignable = False
+    for entree in entrees:
+        ident = entree["id"]
+        manuelle = entree.get("kind", "manual") == "manual"
+        rule_id = entree.get("rule_id")
+        source = entree.get("source_key")
+        instant = int(clock())
+        if not store.outbox_claim(ident, instant):
+            continue
+
+        def clore(outcome, reason, ident=ident, rule_id=rule_id, src=source):
+            store.drop_queued(ident)
+            if rule_id:
+                store.rule_log_set_outcome(rule_id, src, outcome, reason)
+            _logger.info(
+                "%s : file %s retirée, %s/%s", name, ident, outcome, reason
+            )
+
+        expire = entree.get("expires_at")
+        if expire and instant > expire:
+            clore("expired", "expired")
+            continue
+        if not manuelle:
+            if not lisibles:
+                store.outbox_release(ident)
+                continue
+            if rule_id and store.rule_log_outcome(rule_id, source) == "sent":
+                store.drop_queued(ident)
+                continue
+            regle = regles.get(rule_id) if rule_id else None
+            if regle is None or not regle.enabled:
+                clore("expired", "rule_disabled")
+                continue
+            if store.rule_log_fingerprint(rule_id, source) != (
+                regle.fingerprint()
+            ):
+                clore("expired", "rule_changed")
+                continue
+        if store.outbox_held(ident):
+            store.outbox_release(ident)
             retenus += 1
             continue
-        brut = session.store.queued_raw(entree["id"])
+        if injoignable:
+            store.outbox_release(ident)
+            continue
+        brut = store.queued_raw(ident)
         if brut is None:
-            session.store.drop_queued(entree["id"])
+            store.drop_queued(ident)
             continue
         transport = None
+        # None avant la connexion, faux pendant, vrai après.
+        connecte = None
         try:
-            import email
-
-            message = email.message_from_bytes(brut)
+            message = email.message_from_bytes(
+                brut, policy=email.policy.default
+            )
+            connecte = False
             transport = connect_fn(session.account, session.current_secret())
+            connecte = True
             send_fn(session.account, message, transport)
         except Exception as exc:
-            session.store.record_send_failure(entree["id"], str(exc))
+            injoignable = injoignable or connecte is False
+            info = store.record_send_failure(
+                ident, str(exc), permanent=smtp_failure_is_permanent(exc)
+            )
             echoues += 1
+            if info["perm_attempts"] >= info["max_attempts"]:
+                if manuelle:
+                    store.set_held(ident, True)
+                else:
+                    clore("failed", "attempts_exhausted")
             continue
         finally:
             if transport is not None:
@@ -775,12 +1140,34 @@ def flush_outbox(session, send_fn=None, connect_fn=None) -> tuple:
                     transport.quit()
                 except Exception:
                     pass
-        session.store.drop_queued(entree["id"])
+        if rule_id:
+            store.rule_log_set_outcome(rule_id, source, "sent")
+        store.drop_queued(ident)
         partis += 1
+        erreur = file_in_sent(session, message, verrou)
+        if erreur is not None:
+            _logger.error(
+                "%s : file %s partie, APPEND vers Envoyés en échec (%s)",
+                name,
+                ident,
+                type(erreur).__name__,
+            )
     return (partis, retenus, echoues)
 
 
-def deliver(session, msg, send_fn=None, connect_fn=None, verrou=None) -> str:
+class DeliverOffline(Exception):
+    """`deliver(..., queue_offline=False)` sur une session hors ligne."""
+
+
+def deliver(
+    session,
+    msg,
+    send_fn=None,
+    connect_fn=None,
+    verrou=None,
+    *,
+    queue_offline=True,
+) -> str:
     """Envoie, puis dépose une copie dans Envoyés. Rend le texte de statut.
 
     L'ordre n'est pas négociable : l'APPEND vient APRÈS l'envoi, et son échec
@@ -788,22 +1175,27 @@ def deliver(session, msg, send_fn=None, connect_fn=None, verrou=None) -> str:
     pousserait l'utilisateur à l'envoyer deux fois.
 
     `verrou` est celui qui protège la connexion IMAP de la session. L'APPEND
-    passe par lui : sans cela il partagerait la socket avec une passe de
-    synchronisation en cours, et l'un des deux dialogues lirait la réponse
-    de l'autre. Facultatif pour un appelant qui monte sa session à la main
-    et n'a donc aucune passe concurrente à craindre.
+    et la relecture ciblée d'Envoyés passent par lui : sans cela ils
+    partageraient la socket avec une passe de synchronisation en cours, et
+    l'un des deux dialogues lirait la réponse de l'autre. Facultatif pour un
+    appelant qui monte sa session à la main et n'a donc aucune passe
+    concurrente à craindre. Comme il peut attendre une passe entière,
+    `deliver` ne s'appelle jamais depuis le fil de l'interface.
+
+    Hors ligne, le message part dans la file comme un envoi MANUEL ; avec
+    `queue_offline=False`, `deliver` lève `DeliverOffline` sans rien
+    écrire, pour un appelant qui met lui-même en file sous une autre
+    forme (réponse automatique : règle, échéance, journal).
     """
-    from script.todo.mail.smtp_send import (
-        SmtpError,
-        recipients,
-        without_bcc,
-    )
     from script.todo.mail.smtp_send import connect as smtp_connect
+    from script.todo.mail.smtp_send import recipients
     from script.todo.mail.smtp_send import send as smtp_send_fn
 
     garde = verrou if verrou is not None else contextlib.nullcontext()
 
     if not session.online:
+        if not queue_offline:
+            raise DeliverOffline()
         # Mise en file plutôt qu'un refus : le message est écrit, le perdre
         # parce que le réseau manque serait le pire des trois résultats
         # possibles. Il part au retour, sauf s'il est retenu.
@@ -827,30 +1219,13 @@ def deliver(session, msg, send_fn=None, connect_fn=None, verrou=None) -> str:
 
     status = f"{t('mail_sent_to')} {', '.join(served)}"
     sent_folder = resolve_sent_folder(session)
-    try:
-        # Le Cci ne doit pas ressortir par cette porte non plus : `send()`
-        # l'a déjà retiré avant l'envoi SMTP, mais la copie déposée ici part
-        # par IMAP — sans `without_bcc`, le Cci redeviendrait un en-tête
-        # lisible sur le serveur.
-        def deposer(transport):
-            transport.append(
-                sent_folder,
-                without_bcc(msg).as_bytes(),
-                ["\\Seen"],
-            )
-
-        # `avec_lien` quand la session en a une — la reprise sur lien mort
-        # vaut ici comme ailleurs. Une session montée à la main, comme dans
-        # les tests d'envoi, n'en a pas : on parle alors au transport.
-        reprise = getattr(session, "avec_lien", None)
-        with garde:
-            if reprise is None:
-                deposer(session.syncer.transport)
-            else:
-                reprise(deposer)
-    except Exception as exc:
-        _logger.exception(
-            "%s : APPEND vers %r a échoué", session.account.name, sent_folder
+    exc = file_in_sent(session, msg, verrou)
+    if exc is not None:
+        _logger.error(
+            "%s : APPEND vers %r a échoué",
+            session.account.name,
+            sent_folder,
+            exc_info=exc,
         )
         # En SUFFIXE, cet échec disparaissait en bout d'une ligne de statut
         # qui peut être longue (plusieurs destinataires) — sur la barre
@@ -858,12 +1233,13 @@ def deliver(session, msg, send_fn=None, connect_fn=None, verrou=None) -> str:
         # PRÉFIXE, en gras rouge, il reste visible même tronqué.
         status = f"[b red]⚠ {t('mail_sent_not_filed')} ({exc})[/] — {status}"
     else:
-        # Écriture locale immédiate (design, ligne 308) : une sync ciblée
-        # sur Envoyés seul, pour que le message apparaisse sans attendre la
-        # prochaine passe complète. `sync_one` ne lève jamais — voir sa
-        # docstring — donc un envoi déjà réussi ne peut pas se lire comme un
-        # échec parce que cette relecture aurait raté.
-        session.syncer.sync_one(sent_folder)
+        # Écriture locale immédiate : une sync ciblée sur Envoyés seul,
+        # pour que le message apparaisse sans attendre la prochaine passe
+        # complète. `sync_one` ne lève jamais — voir sa docstring — donc un
+        # envoi déjà réussi ne peut pas se lire comme un échec parce que
+        # cette relecture aurait raté.
+        with garde:
+            session.syncer.sync_one(sent_folder)
     return status
 
 
@@ -960,6 +1336,7 @@ def run_tui(
         from textual.screen import ModalScreen
         from textual.widgets import (
             Button,
+            Checkbox,
             DataTable,
             Footer,
             Header,
@@ -978,6 +1355,8 @@ def run_tui(
     from script.todo.mail import account_setup, stats, tui_text
     from script.todo.mail import accounts as mail_accounts
     from script.todo.mail.accounts import PRESETS
+    from script.todo.mail.rules import model as rules_model
+    from script.todo.mail.rules import storage as rules_storage
     from script.todo.mail.secrets import SecretStore
 
     class _SearchInput(Input):
@@ -1270,6 +1649,7 @@ def run_tui(
             Binding("g", "cycle_list_mode", t("mail_list_mode_binding")),
             Binding("F", "manage_folders", t("mail_folder_binding")),
             Binding("o", "show_outbox", t("mail_outbox_binding")),
+            Binding("e", "show_rules", t("mail_rules_binding")),
             Binding("v", "cycle_layout", t("mail_layout_binding")),
             Binding("plus", "grow_pane", t("mail_pane_grow_binding")),
             Binding("minus", "shrink_pane", t("mail_pane_shrink_binding")),
@@ -3190,12 +3570,13 @@ def run_tui(
             # socket imaplib d'un même compte, qui n'est pas sûr à
             # plusieurs fils. Deux comptes DIFFÉRENTS ont chacun leur socket
             # et leur cache verrouillé : ceux-là peuvent avancer ensemble.
+            paires = []
             with self._sync_lock:
                 vivantes = [s for s in sessions if s is not None and s.online]
                 if not vivantes:
                     pass
                 elif len(vivantes) == 1:
-                    self._sync_une(vivantes[0])
+                    paires.append((vivantes[0], self._sync_une(vivantes[0])))
                 else:
                     self.set_status(f"{t('mail_syncing')} {len(vivantes)}…")
                     with ThreadPoolExecutor(
@@ -3204,18 +3585,94 @@ def run_tui(
                         # Plafonné : un compte par fil est utile, trente
                         # connexions simultanées se font refuser par les
                         # fournisseurs et n'accélèrent rien.
-                        for futur in as_completed(
-                            [pool.submit(self._sync_une, s) for s in vivantes]
-                        ):
-                            futur.result()
-                if self._thread_id_differs():
-                    self.call_from_thread(self.reload_folders)
-                else:
-                    self.reload_folders()
+                        futurs = {
+                            pool.submit(self._sync_une, s): s for s in vivantes
+                        }
+                        rapports = {}
+                        for futur in as_completed(futurs):
+                            rapports[futurs[futur]] = futur.result()
+                    # Les règles passent ensuite dans l'ordre des comptes,
+                    # pas dans celui où leurs passes ont fini.
+                    paires = [(s, rapports.get(s)) for s in vivantes]
+            # Hors du verrou : `reload_folders` passe par la boucle de
+            # l'interface, qui peut elle-même attendre ce verrou.
+            if self._thread_id_differs():
+                self.call_from_thread(self.reload_folders)
+            else:
+                self.reload_folders()
+            # Les règles APRÈS la passe et hors du verrou : un envoi
+            # automatique reprend `_sync_lock` pour son APPEND, ce qui, depuis
+            # un fil du pool, attendrait le fil parent qui tient le verrou en
+            # attendant le pool. Ici, un seul fil, compte après compte.
+            self._run_rules([(s, r) for s, r in paires if r is not None])
 
-        def _sync_une(self, session) -> None:
-            """Une passe pour UN compte. Ne lève jamais : un compte qui
-            échoue ne doit pas emporter ceux qui avancent en parallèle."""
+        def _run_rules(self, paires) -> None:
+            """Une passe des règles par compte synchronisé, puis UNE ligne
+            de bilan ajoutée au statut. Ne lève jamais.
+
+            Fil de travail, `_sync_lock` relâché : le moteur le reprend pour
+            chacun de ses échanges IMAP et ne parle jamais à l'interface ;
+            le bilan n'est rendu qu'après le retour de toutes les passes.
+            Un compte sans règle active ne change ni le statut ni
+            `session_errors`.
+            """
+            if not paires:
+                return
+            try:
+                from script.todo.mail.rules import engine
+
+                rapports = [
+                    engine.run_pass(
+                        session, report=rapport, verrou=self._sync_lock
+                    )
+                    for session, rapport in paires
+                ]
+                for rapport in rapports:
+                    if not rapport.errors:
+                        continue
+                    if rapport.active_rules:
+                        self.session_errors.setdefault(
+                            rapport.account, []
+                        ).extend(rapport.errors)
+                    else:
+                        _logger.info(
+                            "règles %s : %s", rapport.account, rapport.status
+                        )
+                ligne = engine.summary_line(rapports)
+                if ligne:
+                    precedent = self._status_text()
+                    self.set_status(
+                        f"{precedent} — {ligne}" if precedent else ligne
+                    )
+                if sum(r.sent for r in rapports) > 0:
+                    if self._thread_id_differs():
+                        self.call_from_thread(self.refresh_current_folder)
+                    else:
+                        self.refresh_current_folder()
+            except Exception:
+                _logger.exception("passe des règles en échec")
+
+        def _status_text(self) -> str:
+            """Le texte de `#status`, lu sur le fil de l'interface."""
+
+            def lire() -> str:
+                try:
+                    return str(self.query_one("#status", Static).content)
+                except Exception:
+                    return ""
+
+            if self._thread_id_differs():
+                return self.call_from_thread(lire)
+            return lire()
+
+        def _sync_une(self, session):
+            """Une passe pour UN compte ; rend son `SyncReport`, ou None si
+            la passe a levé. Ne lève jamais : un compte qui échoue ne doit
+            pas emporter ceux qui avancent en parallèle.
+
+            La file part sans verrou : le fil parent tient déjà
+            `_sync_lock`, et le reprendre depuis un fil du pool
+            l'attendrait pour toujours."""
             self.set_status(f"{t('mail_syncing')} {session.account.name}…")
             # La file part AVANT la relecture : le retour du réseau est
             # exactement le moment où elle doit se vider, et un message
@@ -3243,7 +3700,7 @@ def run_tui(
                 # la passe entière qui a levé — y reste lisible, dans la
                 # même forme que les entrées de `report.errors`.
                 self.session_errors[session.account.name] = [str(exc)]
-                return
+                return None
             # La DERNIÈRE passe l'emporte, même vide : un compte qui se
             # remet à synchroniser proprement ne doit pas garder affichée
             # une erreur qui ne décrit plus l'état courant.
@@ -3265,6 +3722,7 @@ def run_tui(
                     f" {', '.join(report.purged)}"
                 )
             self.set_status(message)
+            return report
 
         def action_save_attachment(self) -> None:
             meta = self.current_meta()
@@ -3389,6 +3847,13 @@ def run_tui(
             draft = build_reply(
                 session.account, original, "", reply_all=reply_all
             )
+            # Les drapeaux voyagent avec la demande : le cache ne se lit pas
+            # par (dossier, UID), et `\Answered` s'ajoute à ceux déjà là.
+            meta = self.current_meta()
+            answer_of = None
+            if meta is not None:
+                _session, dossier = self.meta_origin(meta)
+                answer_of = (dossier, meta.uid, meta.flags or "")
             self.push_screen(
                 ComposeScreen(
                     session,
@@ -3401,9 +3866,31 @@ def run_tui(
                         ),
                         "in_reply_to": draft["In-Reply-To"],
                         "references": draft["References"],
+                        "answer_of": answer_of,
                     },
                 ),
                 self._after_compose,
+            )
+
+        def mark_answered(self, session, dossier, uid, flags) -> None:
+            """Pose `\\Answered` sur l'original d'une réponse MANUELLE partie.
+
+            Le cache d'abord, drapeaux existants conservés, puis le serveur
+            dans un fil, sous le verrou, par le même chemin que `s`/`u`. Une
+            réponse automatique ne passe jamais par ici : elle ne compte pas
+            comme une réponse dans les statistiques.
+            """
+            state = session.store.folder_state(dossier)
+            if state is not None:
+                drapeaux = set((flags or "").split()) | {"\\Answered"}
+                session.store.update_flags(
+                    state["id"], uid, " ".join(sorted(drapeaux))
+                )
+            self.run_worker(
+                lambda: self._porter_drapeau(
+                    [(session, dossier, uid)], "\\Answered", True
+                ),
+                thread=True,
             )
 
         def _open_with_original(self, forward: bool) -> None:
@@ -3460,6 +3947,13 @@ def run_tui(
             self.push_screen(
                 OutboxScreen(self.session_for(self.current_ref.account_name))
             )
+
+        def action_show_rules(self) -> None:
+            session = self._session_or_first()
+            if session is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            self.push_screen(RulesScreen(session))
 
         def action_manage_folders(self) -> None:
             if self.current_ref is None:
@@ -3607,7 +4101,16 @@ def run_tui(
 
         Chaque ligne porte à sa GAUCHE un bouton qui retient le message ou
         le relâche. Un message retenu ne part jamais seul : seul ce bouton
-        lève la retenue, jamais un délai qui expire.
+        lève la retenue. Une réponse automatique porte en plus son
+        échéance : passé `expires_at`, la vidange la retire de la file sans
+        l'envoyer, retenue ou non.
+
+        `#outbox_preview` montre ce que partira l'entrée automatique dont
+        le bouton a le focus (sans focus sur la file, la première
+        automatique) : destinataire et sujet, début du texte, images en
+        ligne et jointes, échéance. Le focus sur une entrée manuelle le
+        vide : un texte resté affiché se lirait comme le sien. Approuver le
+        premier envoi d'une règle, c'est relâcher une réponse qu'on a lue.
         """
 
         BINDINGS = [
@@ -3617,6 +4120,7 @@ def run_tui(
         CSS = """
         #outbox_list { height: 1fr; border: solid $panel; }
         #outbox_hint { height: auto; padding: 0 1; color: $text-muted; }
+        #outbox_preview { height: auto; max-height: 50%; padding: 0 1; }
         .outbox_row { height: auto; }
         .outbox_row Button { width: 12; }
         .outbox_row Static { width: 1fr; padding: 0 1; }
@@ -3625,11 +4129,14 @@ def run_tui(
         def __init__(self, session):
             super().__init__()
             self.session = session
+            # Entrées affichées, par identifiant de file.
+            self._entrees: dict = {}
 
         def compose(self):
             with Vertical():
                 yield Static("", id="outbox_hint")
                 yield VerticalScroll(id="outbox_list")
+                yield Static("", id="outbox_preview")
 
         def on_mount(self) -> None:
             self.reload_outbox()
@@ -3651,8 +4158,71 @@ def run_tui(
                     else f"{t('mail_outbox_count')} {len(entrees)}"
                 )
             )
+            self._entrees = {e["id"]: e for e in entrees}
             for entree in entrees:
                 zone.mount(self._ligne(entree))
+            visee = self._entree_du_focus()
+            if visee is None:
+                visee = next(
+                    (e for e in entrees if e["kind"] != "manual"), None
+                )
+            self._montrer_apercu(visee)
+
+        def _entree_du_focus(self):
+            ident = str(getattr(self.focused, "id", "") or "")
+            if not ident.startswith("hold_"):
+                return None
+            return self._entrees.get(int(ident.removeprefix("hold_")))
+
+        def on_descendant_focus(self, event) -> None:
+            entree = self._entree_du_focus()
+            if entree is not None:
+                self._montrer_apercu(entree)
+
+        def _montrer_apercu(self, entree) -> None:
+            """Remplit `#outbox_preview` pour une entrée automatique ; le
+            vide pour une entrée manuelle ou sans entrée."""
+            apercu = self.query_one("#outbox_preview", Static)
+            if entree is None or entree["kind"] == "manual":
+                apercu.update("")
+                return
+            texte = Text()
+            texte.append(t("mail_outbox_preview"), style="bold")
+            # `Text.append` : le destinataire et le sujet viennent du
+            # message reçu ; aucun n'est lu comme du balisage.
+            texte.append(
+                f"\n{entree.get('to') or ''} — {entree.get('subject') or ''}",
+                style="bold",
+            )
+            try:
+                lignes, en_ligne, jointes = outbox_entry_preview(
+                    self.session.store.queued_raw(entree["id"]) or b""
+                )
+            except Exception as exc:
+                texte.append(f"\n{t('mail_outbox_error')} {exc}")
+                apercu.update(texte)
+                return
+            # `Text.append` : le corps vient de la règle, les noms
+            # d'images du disque ; aucun n'est lu comme du balisage.
+            for ligne in lignes:
+                texte.append(f"\n{ligne}")
+            for nom in en_ligne:
+                texte.append(
+                    f"\n{nom} — {t('mail_rules_image_inline')}",
+                    style="dim",
+                )
+            for nom in jointes:
+                texte.append(
+                    f"\n{nom} — {t('mail_rules_image_attached')}",
+                    style="dim",
+                )
+            if entree.get("expires_at"):
+                texte.append(
+                    f"\n{t('mail_outbox_expires')}"
+                    f" {format_epoch(entree['expires_at'])}",
+                    style="dim",
+                )
+            apercu.update(texte)
 
         def _ligne(self, entree):
             libelle = (
@@ -3665,8 +4235,17 @@ def run_tui(
             # `Text` et non du balisage : destinataire et sujet viennent du
             # message, donc de qui l'a écrit.
             texte = Text()
+            automatique = entree.get("kind", "manual") != "manual"
+            if automatique:
+                texte.append(f"{t('mail_outbox_auto')} ", style="bold")
             texte.append(entree["subject"] or t("mail_no_subject"))
             texte.append(f"\n{entree['to']}", style="dim")
+            if automatique and entree.get("expires_at"):
+                texte.append(
+                    f"\n{t('mail_outbox_expires')}"
+                    f" {format_epoch(entree['expires_at'])}",
+                    style="dim",
+                )
             if entree["last_error"]:
                 texte.append(
                     f"\n{t('mail_outbox_last_error')} {entree['last_error']}"
@@ -4414,6 +4993,1359 @@ def run_tui(
         def action_close_stats(self) -> None:
             self.dismiss(None)
 
+    class RulesScreen(ModalScreen):
+        """Touche `e` : les règles du courrier entrant d'un compte.
+
+        Une ligne par règle, dans l'ordre où le moteur les applique ; la
+        clé de chaque ligne est l'`id` de la règle, et le curseur suit la
+        règle quand une touche la déplace ou la modifie. ÉDITER passe par
+        `on_data_table_row_selected` et non par une liaison `enter`, que
+        le `DataTable` focalisé consomme pour son propre `select_cursor`.
+
+        Chaque mutation (`rules_storage`) prend le verrou du compte, qu'une
+        passe du moteur peut tenir : elle tourne donc dans un fil de
+        travail, et `RulesBusy`/`RuleError` s'affichent dans
+        `#rules_status`, au-dessus de la modale, jamais sous elle. Une
+        seule mutation à la fois : une touche pressée pendant l'attente du
+        verrou est ignorée, l'interface reste vivante.
+
+        Les plafonds d'envois du compte (clé `caps` de `rules.json`) se
+        règlent sous la table. Un cache éphémère n'a pas de règles :
+        l'écran n'affiche que sa bannière.
+        """
+
+        BINDINGS = [
+            Binding("n", "new_rule", t("mail_rules_new")),
+            Binding("space", "toggle_rule", t("mail_rules_toggle")),
+            Binding("k", "move_up", t("mail_rules_up")),
+            Binding("j", "move_down", t("mail_rules_down")),
+            Binding("t", "toggle_stop", t("mail_rules_stop_toggle")),
+            Binding("x", "delete_rule", t("mail_rules_delete")),
+            Binding("l", "show_journal", t("mail_rules_journal")),
+            Binding("escape", "close_rules", t("mail_rules_close")),
+        ]
+
+        CSS = """
+        #rules_title { height: auto; padding: 0 1; text-style: bold; }
+        #rules_banner { height: auto; padding: 1; }
+        #rules_table { height: 1fr; border: solid $panel; }
+        #rules_caps { height: auto; }
+        #rules_caps Static { width: auto; padding: 1 1 0 1; }
+        #rules_caps Input { width: 12; }
+        #rules_caps Button { width: auto; }
+        #rules_hint { height: auto; padding: 0 1; color: $text-muted; }
+        #rules_status { height: auto; padding: 0 1; }
+        """
+
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+            self.account_name = session.account.name
+            store = getattr(session, "store", None)
+            # `base_of` est la seule source de la base ; None (cache
+            # éphémère, ou pas de cache) n'est jamais transmis à
+            # `rules_storage`, qui le lirait comme le dossier personnel.
+            self.base = (
+                rules_storage.base_of(store) if store is not None else None
+            )
+            self.rules: list = []
+            self._mutation_en_cours = False
+
+        def compose(self):
+            with Vertical(id="rules_screen"):
+                yield Static(
+                    Text(f"{t('mail_rules_title')} {self.account_name}"),
+                    id="rules_title",
+                )
+                if self.base is None:
+                    yield Static(self._banniere(), id="rules_banner")
+                else:
+                    yield DataTable(id="rules_table", cursor_type="row")
+                    with Horizontal(id="rules_caps"):
+                        yield Static(t("mail_rules_caps_per_pass"))
+                        yield Input(type="integer", id="caps_per_pass")
+                        yield Static(t("mail_rules_caps_per_hour"))
+                        yield Input(type="integer", id="caps_per_hour")
+                        yield Button(t("mail_rules_caps_save"), id="caps_save")
+                    yield Static("", id="rules_hint")
+                    yield Static("", id="rules_status")
+
+        def _banniere(self) -> Text:
+            """Pourquoi il n'y a pas de règles : cache éphémère, ou cache
+            que l'ouverture n'a pas pu lire (son erreur suit)."""
+            store = getattr(self.session, "store", None)
+            if getattr(store, "mode", None) == "ephemeral":
+                return Text(t("mail_rules_ephemeral"))
+            erreur = getattr(self.session, "error", "") or ""
+            return Text(f"{t('mail_rules_no_cache')} {erreur}".strip())
+
+        def on_mount(self) -> None:
+            if self.base is None:
+                return
+            table = self.query_one("#rules_table", DataTable)
+            table.add_columns(
+                t("mail_rules_col_order"),
+                t("mail_rules_col_active"),
+                t("mail_rules_col_name"),
+                t("mail_rules_col_kind"),
+                t("mail_rules_col_stop"),
+                t("mail_rules_col_last"),
+            )
+            self.query_one("#rules_hint", Static).update(
+                Text(self._hint_text())
+            )
+            self.reload_rules()
+            self._load_caps()
+            table.focus()
+
+        def _hint_text(self) -> str:
+            """Les liaisons de l'écran, engendrées depuis `BINDINGS` comme
+            l'aide `h` ; `enter` (édition par la table) s'y ajoute."""
+            parts = [
+                f"{self.app.get_key_display(binding)} {binding.description}"
+                for binding in Binding.make_bindings(self.BINDINGS)
+            ]
+            enter = Binding("enter", "", t("mail_rules_edit"))
+            parts.insert(
+                1, f"{self.app.get_key_display(enter)} {enter.description}"
+            )
+            return " · ".join(parts)
+
+        def _status(self, text, *, error: bool = False) -> None:
+            try:
+                status = self.query_one("#rules_status", Static)
+            except NoMatches:
+                return
+            status.update(Text(text, style="bold red" if error else ""))
+
+        def _current_rule_id(self):
+            table = self.query_one("#rules_table", DataTable)
+            if table.row_count == 0:
+                return None
+            try:
+                cle = table.coordinate_to_cell_key(table.cursor_coordinate)
+            except Exception:
+                return None
+            return cle.row_key.value
+
+        def _current_rule(self):
+            ident = self._current_rule_id()
+            return next((r for r in self.rules if r.id == ident), None)
+
+        def _last_result(self, rule_id: str):
+            """Date, issue et raison traduites de la dernière ligne du
+            journal de la règle ; « » si elle n'a encore rien journalisé."""
+            try:
+                lignes = self.session.store.rule_log_entries(rule_id, 1)
+            except Exception:
+                return Text("")
+            if not lignes:
+                return Text("")
+            ligne = lignes[0]
+            issue = t(f"mail_rules_outcome_{ligne['outcome']}")
+            raison = ligne["reason"]
+            if raison:
+                issue = f"{issue} ({t(f'mail_rules_reason_{raison}')})"
+            return Text(f"{format_epoch(ligne['at'])} {issue}")
+
+        def reload_rules(self, select_id=None) -> None:
+            """Relit `rules.json` et reconstruit la table, curseur posé sur
+            `select_id` (à défaut, sur la règle qu'il désignait)."""
+            table = self.query_one("#rules_table", DataTable)
+            visee = select_id or self._current_rule_id()
+            table.clear()
+            try:
+                self.rules = rules_storage.load(
+                    self.account_name, base=self.base
+                )
+            except rules_model.RuleError as exc:
+                self.rules = []
+                self._status(str(exc), error=True)
+                return
+            for rang, rule in enumerate(self.rules, start=1):
+                genre = rule.action.kind
+                # `Text` partout : nom et type viennent du fichier, que
+                # l'utilisateur écrit ; « [auto] » doit s'afficher tel quel.
+                table.add_row(
+                    str(rang),
+                    "☑" if rule.enabled else "☐",
+                    Text(rule.name or rule.id),
+                    Text(t(f"mail_rules_kind_{genre}")),
+                    "☑" if rule.stop_after else "☐",
+                    self._last_result(rule.id),
+                    key=rule.id,
+                )
+            self._status("" if self.rules else t("mail_rules_none"))
+            if visee and any(r.id == visee for r in self.rules):
+                table.move_cursor(row=table.get_row_index(visee))
+
+        def _load_caps(self) -> None:
+            try:
+                caps = rules_storage.load_caps(
+                    self.account_name, base=self.base
+                )
+            except rules_model.RuleError as exc:
+                caps = rules_storage.Caps()
+                self._status(str(exc), error=True)
+            self.query_one("#caps_per_pass", Input).value = str(caps.per_pass)
+            self.query_one("#caps_per_hour", Input).value = str(caps.per_hour)
+
+        def _mutate(self, fonction, rule_id=None, succes: str = "") -> None:
+            """Exécute `fonction` (une mutation de `rules_storage`) dans un
+            fil de travail, puis relit la table sur le fil de l'interface.
+
+            Sans effet si une mutation est déjà en cours : deux mutations
+            de front se disputeraient le curseur de la table.
+            """
+            if self.base is None or self._mutation_en_cours:
+                return
+            self._mutation_en_cours = True
+            self._status("")
+
+            def travail() -> None:
+                erreur = None
+                try:
+                    fonction()
+                except Exception as exc:
+                    erreur = str(exc) or type(exc).__name__
+                self.app.call_from_thread(
+                    self._apres_mutation, rule_id, erreur, succes
+                )
+
+            self.run_worker(travail, thread=True)
+
+        def _apres_mutation(self, rule_id, erreur, succes) -> None:
+            self._mutation_en_cours = False
+            try:
+                self.reload_rules(rule_id)
+            except NoMatches:
+                return
+            if erreur:
+                self._status(erreur, error=True)
+            elif succes:
+                self._status(succes)
+
+        def action_new_rule(self) -> None:
+            if self.base is None:
+                return
+            self.app.push_screen(
+                RuleEditorScreen(
+                    self.session,
+                    self.base,
+                    rules_model.new_rule("reply"),
+                    new=True,
+                ),
+                self._apres_edition,
+            )
+
+        def on_data_table_row_selected(self, event) -> None:
+            ident = event.row_key.value
+            rule = next((r for r in self.rules if r.id == ident), None)
+            if rule is None:
+                return
+            self.app.push_screen(
+                RuleEditorScreen(self.session, self.base, rule),
+                self._apres_edition,
+            )
+
+        def _apres_edition(self, rule_id) -> None:
+            if not rule_id:
+                return
+            self.reload_rules(rule_id)
+            self._status(t("mail_rules_saved"))
+
+        def action_toggle_rule(self) -> None:
+            rule = self._current_rule() if self.base else None
+            if rule is None:
+                return
+            activer = not rule.enabled
+            # Activer arme sur l'UIDNEXT connu : la règle ne répond pas à
+            # ce qui attendait déjà dans la boîte.
+            arme = rules_arm_point(self.session.store) if activer else None
+            nom, base = self.account_name, self.base
+            self._mutate(
+                lambda: rules_storage.set_enabled(
+                    nom, rule.id, activer, armed=arme, base=base
+                ),
+                rule.id,
+            )
+
+        def _move(self, delta: int) -> None:
+            rule = self._current_rule() if self.base else None
+            if rule is None:
+                return
+            nom, base = self.account_name, self.base
+            self._mutate(
+                lambda: rules_storage.move_rule(
+                    nom, rule.id, delta, base=base
+                ),
+                rule.id,
+            )
+
+        def action_move_up(self) -> None:
+            self._move(-1)
+
+        def action_move_down(self) -> None:
+            self._move(1)
+
+        def action_toggle_stop(self) -> None:
+            rule = self._current_rule() if self.base else None
+            if rule is None:
+                return
+            nom, base, ident = self.account_name, self.base, rule.id
+
+            def basculer() -> None:
+                # Relue dans le fil : la copie de la table peut dater, et
+                # `upsert_rule` garde l'armement du disque.
+                for fraiche in rules_storage.load(nom, base=base):
+                    if fraiche.id == ident:
+                        fraiche.stop_after = not fraiche.stop_after
+                        rules_storage.upsert_rule(nom, fraiche, base=base)
+                        return
+
+            self._mutate(basculer, ident)
+
+        def action_delete_rule(self) -> None:
+            rule = self._current_rule() if self.base else None
+            if rule is None:
+                return
+            nom, base = self.account_name, self.base
+
+            def confirme(accepte) -> None:
+                if accepte:
+                    self._mutate(
+                        lambda: rules_storage.delete_rule(
+                            nom, rule.id, base=base
+                        )
+                    )
+
+            self.app.push_screen(
+                ConfirmScreen(
+                    f"{t('mail_rules_delete_confirm')} {rule.name or rule.id}"
+                ),
+                confirme,
+            )
+
+        def action_show_journal(self) -> None:
+            if self.base is None:
+                return
+            self.app.push_screen(
+                RuleLogScreen(
+                    self.session.store,
+                    {rule.id: rule.name or rule.id for rule in self.rules},
+                )
+            )
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id != "caps_save":
+                return
+            try:
+                caps = rules_storage.Caps(
+                    per_pass=int(
+                        self.query_one("#caps_per_pass", Input).value
+                    ),
+                    per_hour=int(
+                        self.query_one("#caps_per_hour", Input).value
+                    ),
+                )
+            except ValueError:
+                self._status(f"{t('mail_rules_err_invalid')} caps", error=True)
+                return
+            nom, base = self.account_name, self.base
+            self._mutate(
+                lambda: rules_storage.save_caps(nom, caps, base=base),
+                self._current_rule_id(),
+                t("mail_rules_caps_saved"),
+            )
+
+        def action_close_rules(self) -> None:
+            self.dismiss(None)
+
+    class RuleLogScreen(ModalScreen):
+        """Touche `l` de la liste des règles : les dernières lignes du
+        journal, la plus récente d'abord.
+
+        Issue et raison sont traduites ; expéditeur et sujet viennent des
+        messages, donc de qui les a écrits, et passent en `Text`.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_journal", t("mail_rules_close")),
+        ]
+
+        CSS = """
+        #rules_log_table { height: 1fr; border: solid $panel; }
+        #rules_log_status { height: auto; padding: 0 1; }
+        """
+
+        LIGNES = 200
+
+        def __init__(self, store, names: dict):
+            super().__init__()
+            self.store = store
+            self.names = names
+
+        def compose(self):
+            with Vertical():
+                yield Static(t("mail_rules_journal"))
+                yield DataTable(id="rules_log_table", cursor_type="row")
+                yield Static("", id="rules_log_status")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#rules_log_table", DataTable)
+            table.add_columns(
+                t("mail_rules_col_date"),
+                t("mail_rules_col_name"),
+                t("mail_rules_col_outcome"),
+                t("mail_rules_col_reason"),
+                t("mail_rules_col_sender"),
+                t("mail_rules_col_subject"),
+            )
+            status = self.query_one("#rules_log_status", Static)
+            try:
+                lignes = self.store.rule_log_entries(None, self.LIGNES)
+            except Exception as exc:
+                status.update(Text(str(exc), style="bold red"))
+                return
+            for ligne in lignes:
+                raison = ligne["reason"]
+                table.add_row(
+                    format_epoch(ligne["at"]),
+                    Text(self.names.get(ligne["rule_id"], ligne["rule_id"])),
+                    Text(t(f"mail_rules_outcome_{ligne['outcome']}")),
+                    Text(t(f"mail_rules_reason_{raison}") if raison else ""),
+                    Text(ligne["sender"] or ""),
+                    Text(ligne["subject"] or ""),
+                )
+            if not lignes:
+                status.update(t("mail_rules_log_empty"))
+            table.focus()
+
+        def action_close_journal(self) -> None:
+            self.dismiss(None)
+
+    class RuleEditorScreen(ModalScreen):
+        """Créer ou modifier une règle : limites, filtre, réponse.
+
+        Le `Group` du modèle (`self.rule.filter`) est la SEULE source de
+        vérité du filtre : chaque nœud de `#rule_filter` porte en `data`
+        son chemin d'index (`()` = racine) ; après toute modification,
+        l'arbre est reconstruit depuis le modèle et le curseur replacé par
+        chemin. La cible des boutons est toujours `tree.cursor_node`.
+
+        Le champ des minutes est grisé tant que la limite est décochée ;
+        son état initial est posé à la composition, car `Checkbox`
+        n'émet pas `Changed` pour sa valeur de départ. Décocher avec une
+        valeur illisible y remet la dernière valeur valide : un champ grisé
+        ne porte jamais une erreur que l'utilisateur ne peut plus corriger.
+
+        `ctrl+s` valide puis écrit dans un fil (`upsert_rule`) ; une erreur
+        s'affiche dans `#rule_status` et l'écran reste ouvert. Pendant
+        l'écriture, `#rule_form` est grisé : aucun sous-écran ne s'ouvre
+        sur une règle déjà partie vers le disque, et aucune retouche ne
+        s'y perd. Rend l'`id` de la règle enregistrée, ou None.
+        """
+
+        BINDINGS = [
+            Binding("ctrl+s", "save_rule", t("mail_rules_save")),
+            Binding("escape", "cancel_rule", t("mail_rules_cancel")),
+        ]
+
+        CSS = """
+        #rule_form { height: 1fr; }
+        #rule_title { height: auto; padding: 0 1; text-style: bold; }
+        .rule_row { height: auto; }
+        .rule_row Static { width: auto; padding: 1 1 0 1; }
+        .rule_row Input { width: 14; }
+        #rule_filter { height: 12; border: solid $panel; }
+        .filter_buttons { height: auto; }
+        .filter_label { width: 24; padding: 1 1 0 1; }
+        .filter_buttons Button { width: auto; }
+        .filter_buttons Select { width: 28; }
+        #filter_preview { height: auto; padding: 0 1; color: $text-muted; }
+        #rule_status { height: auto; padding: 0 1; }
+        #rule_buttons { height: auto; }
+        #rule_buttons Button { width: auto; }
+        """
+
+        def __init__(self, session, base, rule, *, new: bool = False):
+            super().__init__()
+            self.session = session
+            self.base = base
+            self.new = new
+            # Copie : annuler ne doit rien laisser dans la liste appelante.
+            self.rule = copy.deepcopy(rule)
+            # Une règle neuve compte comme « désactivée » : l'activer à
+            # l'enregistrement l'arme sur l'UIDNEXT connu.
+            self.was_enabled = bool(rule.enabled) and not new
+            defaut = rules_model.KIND_DEFAULTS.get(
+                rule.action.kind, rules_model.KIND_DEFAULTS["reply"]
+            )["throttle_minutes"]
+            self._minutes_valides = (
+                rule.throttle_minutes
+                if self._minutes_ok(rule.throttle_minutes)
+                else defaut
+            )
+            self._enregistrement = False
+            # `id` écrit pendant qu'un autre écran couvrait celui-ci : la
+            # fermeture attend son retour au premier plan.
+            self._enregistre = None
+            self._focus_avant = None
+
+        @staticmethod
+        def _minutes_ok(value) -> bool:
+            try:
+                minutes = int(str(value).strip())
+            except ValueError:
+                return False
+            return 1 <= minutes <= rules_model.THROTTLE_MINUTES_MAX
+
+        @staticmethod
+        def _options_groupe():
+            return [
+                (t(f"mail_rules_group_{op}"), op)
+                for op in rules_model.GROUP_OPS
+            ]
+
+        def compose(self):
+            rule = self.rule
+            minutes = (
+                rule.throttle_minutes
+                if rule.throttle_enabled
+                else self._minutes_valides
+            )
+            racine = (
+                rule.filter.op
+                if rule.filter.op in rules_model.GROUP_OPS
+                else "all"
+            )
+            with VerticalScroll(id="rule_form"):
+                yield Static(
+                    t("mail_rules_new") if self.new else t("mail_rules_edit"),
+                    id="rule_title",
+                )
+                yield Input(
+                    value=rule.name,
+                    placeholder=t("mail_rules_name"),
+                    id="rule_name",
+                )
+                yield Checkbox(
+                    t("mail_rules_enabled"), rule.enabled, id="rule_enabled"
+                )
+                yield Checkbox(
+                    t("mail_rules_stop_after"),
+                    rule.stop_after,
+                    id="rule_stop",
+                )
+                with Horizontal(classes="rule_row"):
+                    yield Checkbox(
+                        t("mail_rules_throttle"),
+                        rule.throttle_enabled,
+                        id="rule_throttle",
+                    )
+                    yield Input(
+                        value=str(minutes),
+                        type="integer",
+                        disabled=not rule.throttle_enabled,
+                        id="rule_minutes",
+                    )
+                    yield Static(t("mail_rules_throttle_minutes"))
+                with Horizontal(classes="rule_row"):
+                    yield Static(t("mail_rules_max_age"))
+                    yield Input(
+                        value=str(rule.max_age_hours),
+                        type="integer",
+                        id="rule_max_age",
+                    )
+                with Horizontal(classes="rule_row"):
+                    yield Static(t("mail_rules_hold_first"))
+                    yield Input(
+                        value=str(rule.hold_first),
+                        type="integer",
+                        id="rule_hold_first",
+                    )
+                yield Static(t("mail_rules_filter"))
+                arbre = Tree(Text(""), data=(), id="rule_filter")
+                arbre.auto_expand = False
+                yield arbre
+                with Horizontal(classes="filter_buttons"):
+                    yield Static(
+                        t("mail_rules_new_group_op"), classes="filter_label"
+                    )
+                    yield Select(
+                        self._options_groupe(),
+                        value="all",
+                        allow_blank=False,
+                        id="new_group_op",
+                    )
+                    yield Button(
+                        t("mail_rules_add_condition"), id="add_condition"
+                    )
+                    yield Button(t("mail_rules_add_group"), id="add_group")
+                with Horizontal(classes="filter_buttons"):
+                    yield Static(
+                        t("mail_rules_group_op"), classes="filter_label"
+                    )
+                    yield Select(
+                        self._options_groupe(),
+                        value=racine,
+                        allow_blank=False,
+                        id="group_op",
+                    )
+                    yield Button(t("mail_rules_edit_node"), id="edit_node")
+                    yield Button(t("mail_rules_delete_node"), id="delete_node")
+                yield Static("", id="filter_preview")
+                yield Button(t("mail_rules_action_reply"), id="reply_form")
+                yield Static("", id="rule_status")
+                with Horizontal(id="rule_buttons"):
+                    yield Button(
+                        t("mail_rules_save"), id="rule_save", variant="primary"
+                    )
+                    yield Button(t("mail_rules_cancel"), id="rule_cancel")
+
+        def on_mount(self) -> None:
+            self._rebuild_tree(())
+            self._refresh_preview()
+            self.query_one("#rule_name", Input).focus()
+
+        # -- Filtre ---------------------------------------------------
+
+        def _node_at(self, path):
+            node = self.rule.filter
+            for index in path:
+                node = node.children[index]
+            return node
+
+        def _target_path(self) -> tuple:
+            """Le chemin du nœud sous le curseur ; la racine à défaut."""
+            node = self.query_one("#rule_filter", Tree).cursor_node
+            path = getattr(node, "data", None)
+            if not isinstance(path, tuple):
+                return ()
+            try:
+                self._node_at(path)
+            except (IndexError, AttributeError):
+                return ()
+            return path
+
+        def _target_group_path(self) -> tuple:
+            """Le groupe où ajouter : le nœud visé s'il est un groupe,
+            sinon le groupe qui contient la condition visée."""
+            path = self._target_path()
+            if isinstance(self._node_at(path), rules_model.Group):
+                return path
+            return path[:-1]
+
+        def _root_label(self) -> str:
+            racine = self.rule.filter
+            if not racine.children and racine.op == "all":
+                return t("mail_rules_match_all")
+            return rule_node_label(racine)
+
+        def _ajouter_enfants(self, tree_node, group, path) -> None:
+            for index, child in enumerate(group.children):
+                child_path = path + (index,)
+                # `Text` : la valeur d'une condition est saisie par
+                # l'utilisateur, « [x] y » doit s'afficher crochets compris.
+                label = Text(rule_node_label(child))
+                if isinstance(child, rules_model.Group):
+                    branche = tree_node.add(
+                        label, data=child_path, expand=True
+                    )
+                    self._ajouter_enfants(branche, child, child_path)
+                else:
+                    tree_node.add_leaf(label, data=child_path)
+
+        def _rebuild_tree(self, cursor_path) -> None:
+            """Reconstruit l'arbre depuis le modèle, curseur sur
+            `cursor_path` (sur la racine s'il n'existe plus)."""
+            tree = self.query_one("#rule_filter", Tree)
+            tree.clear()
+            tree.root.data = ()
+            tree.root.set_label(Text(self._root_label()))
+            self._ajouter_enfants(tree.root, self.rule.filter, ())
+            tree.root.expand()
+            cible, ligne = tree.root, 0
+            while True:
+                node = tree.get_node_at_line(ligne)
+                if node is None:
+                    break
+                if node.data == tuple(cursor_path):
+                    cible = node
+                    break
+                ligne += 1
+            tree.move_cursor(cible)
+            self._sync_controls()
+
+        def _sync_controls(self) -> None:
+            """Accorde boutons et `#group_op` au nœud sous le curseur."""
+            path = self._target_path()
+            node = self._node_at(path)
+            groupe = self._node_at(self._target_group_path())
+            plein = groupe.op == "not" and len(groupe.children) >= 1
+            self.query_one("#add_condition", Button).disabled = plein
+            self.query_one("#add_group", Button).disabled = plein
+            self.query_one("#edit_node", Button).disabled = not isinstance(
+                node, rules_model.Condition
+            )
+            selecteur = self.query_one("#group_op", Select)
+            if groupe.op in rules_model.GROUP_OPS:
+                # Sans `prevent`, le `Changed` de cette affectation
+                # arriverait après le déplacement du curseur et écrirait
+                # l'op sur le nœud suivant.
+                with selecteur.prevent(Select.Changed):
+                    selecteur.value = groupe.op
+            selecteur.disabled = not isinstance(node, rules_model.Group)
+
+        def on_tree_node_highlighted(self, event) -> None:
+            self._sync_controls()
+
+        def _after_tree_change(self, cursor_path) -> None:
+            self._rebuild_tree(cursor_path)
+            self._refresh_preview()
+
+        def _refresh_preview(self) -> None:
+            """Recalculé après chaque modification de l'arbre, jamais à la
+            frappe : l'évaluation lit 200 messages du cache."""
+            apercu = self.query_one("#filter_preview", Static)
+            try:
+                texte = rules_filter_preview(
+                    self.session.store, self.rule.filter
+                )
+            except Exception as exc:
+                texte = f"{t('mail_rules_preview')} : {exc}"
+            apercu.update(Text(texte))
+
+        def _insert(self, group_path, node) -> None:
+            if node is None:
+                return
+            groupe = self._node_at(group_path)
+            if groupe.op == "not" and groupe.children:
+                self._rule_status(t("mail_rules_err_not_one_child"))
+                return
+            groupe.children.append(node)
+            self._after_tree_change(
+                tuple(group_path) + (len(groupe.children) - 1,)
+            )
+
+        def _replace(self, path, node) -> None:
+            if node is None:
+                return
+            if not path:
+                return
+            self._node_at(path[:-1]).children[path[-1]] = node
+            self._after_tree_change(path)
+
+        def _delete_target(self) -> None:
+            path = self._target_path()
+            if not path:
+                self.rule.filter.children = []
+                self._after_tree_change(())
+                return
+            del self._node_at(path[:-1]).children[path[-1]]
+            self._after_tree_change(path[:-1])
+
+        def on_select_changed(self, event) -> None:
+            if event.select.id != "group_op":
+                return
+            path = self._target_path()
+            node = self._node_at(path)
+            if not isinstance(node, rules_model.Group):
+                return
+            valeur = event.value
+            if valeur not in rules_model.GROUP_OPS or valeur == node.op:
+                return
+            if valeur == "not" and len(node.children) > 1:
+                self._rule_status(t("mail_rules_err_not_one_child"))
+                with event.select.prevent(Select.Changed):
+                    event.select.value = node.op
+                return
+            node.op = valeur
+            self._rule_status("")
+            self._after_tree_change(path)
+
+        def on_button_pressed(self, event) -> None:
+            # Le grisé de `#rule_form` arrête la souris et le clavier, pas
+            # un `Button.press()` : la garde vaut pour tous les chemins.
+            if self._enregistrement:
+                return
+            ident = event.button.id
+            if ident == "add_condition":
+                group_path = self._target_group_path()
+                self.app.push_screen(
+                    ConditionScreen(),
+                    lambda cond: self._insert(group_path, cond),
+                )
+            elif ident == "add_group":
+                op = self.query_one("#new_group_op", Select).value
+                self._insert(
+                    self._target_group_path(), rules_model.Group(op=op)
+                )
+            elif ident == "edit_node":
+                path = self._target_path()
+                node = self._node_at(path)
+                if isinstance(node, rules_model.Condition):
+                    self.app.push_screen(
+                        ConditionScreen(copy.deepcopy(node)),
+                        lambda cond: self._replace(path, cond),
+                    )
+            elif ident == "delete_node":
+                self._delete_target()
+            elif ident == "reply_form":
+                self.app.push_screen(
+                    ReplyFormScreen(self.session, self.base, self.rule.action),
+                    self._apres_reponse,
+                )
+            elif ident == "rule_save":
+                self.action_save_rule()
+            elif ident == "rule_cancel":
+                self.action_cancel_rule()
+
+        def _apres_reponse(self, action) -> None:
+            if action is not None:
+                self.rule.action = action
+
+        # -- Limites --------------------------------------------------
+
+        def on_checkbox_changed(self, event) -> None:
+            if event.checkbox.id != "rule_throttle":
+                return
+            champ = self.query_one("#rule_minutes", Input)
+            if not event.value and not self._minutes_ok(champ.value):
+                champ.value = str(self._minutes_valides)
+            champ.disabled = not event.value
+
+        def on_input_changed(self, event) -> None:
+            if event.input.id == "rule_minutes" and self._minutes_ok(
+                event.value
+            ):
+                self._minutes_valides = int(event.value.strip())
+
+        def _entier(self, selector: str, cle: str) -> int:
+            try:
+                return int(self.query_one(selector, Input).value.strip())
+            except ValueError:
+                raise rules_model.RuleError(t(cle)) from None
+
+        def _rule_status(self, text: str) -> None:
+            self.query_one("#rule_status", Static).update(
+                Text(text, style="bold red")
+            )
+
+        # -- Enregistrer ----------------------------------------------
+
+        def action_save_rule(self) -> None:
+            if self._enregistrement:
+                return
+            try:
+                rule = dataclasses.replace(
+                    self.rule,
+                    name=self.query_one("#rule_name", Input).value.strip(),
+                    enabled=self.query_one("#rule_enabled", Checkbox).value,
+                    stop_after=self.query_one("#rule_stop", Checkbox).value,
+                    throttle_enabled=self.query_one(
+                        "#rule_throttle", Checkbox
+                    ).value,
+                    throttle_minutes=self._entier(
+                        "#rule_minutes", "mail_rules_err_minutes"
+                    ),
+                    max_age_hours=self._entier(
+                        "#rule_max_age", "mail_rules_err_max_age"
+                    ),
+                    hold_first=self._entier(
+                        "#rule_hold_first", "mail_rules_err_hold_first"
+                    ),
+                )
+                rules_model.validate(rule)
+            except rules_model.RuleError as exc:
+                self._rule_status(str(exc))
+                return
+            # Faux → vrai (ou règle neuve active) : armée sur l'UIDNEXT
+            # connu, sinon à la passe suivante. Sinon `upsert_rule` garde
+            # l'armement du disque, que le moteur a pu poser entre-temps.
+            rearm = None
+            if rule.enabled and not self.was_enabled:
+                rearm = rules_arm_point(self.session.store)
+            self._enregistrement = True
+            self._rule_status("")
+            self._focus_avant = self.focused
+            self.query_one("#rule_form").disabled = True
+            nom, base = self.session.account.name, self.base
+
+            def travail() -> None:
+                try:
+                    rules_storage.upsert_rule(
+                        nom, rule, rearm=rearm, base=base
+                    )
+                except Exception as exc:
+                    self.app.call_from_thread(self._echec, exc)
+                    return
+                self.app.call_from_thread(self._enregistree, rule.id)
+
+            self.run_worker(travail, thread=True)
+
+        def _echec(self, exc) -> None:
+            self._enregistrement = False
+            try:
+                self.query_one("#rule_form").disabled = False
+                self._rule_status(str(exc) or type(exc).__name__)
+            except NoMatches:
+                return
+            focus = self._focus_avant
+            if focus is not None and focus.is_attached:
+                focus.focus()
+
+        def _enregistree(self, rule_id: str) -> None:
+            if self.app.screen is self:
+                self.dismiss(rule_id)
+            else:
+                self._enregistre = rule_id
+
+        def on_screen_resume(self) -> None:
+            # Écriture finie sous un autre écran : sans cette fermeture,
+            # `_enregistrement` resterait vrai et l'écran ignorerait
+            # `escape` comme `ctrl+s` pour toujours.
+            if self._enregistre is not None:
+                self.dismiss(self._enregistre)
+
+        def action_cancel_rule(self) -> None:
+            # Pendant l'écriture, fermer laisserait croire à une annulation
+            # alors que la règle est peut-être déjà sur le disque.
+            if self._enregistrement:
+                return
+            self.dismiss(None)
+
+    class ConditionScreen(ModalScreen):
+        """Une condition du filtre : champ, comparaison, valeur, mode.
+
+        `ctrl+s` la valide SEULE (`validate_node`) avant de la rendre : un
+        glob sur le sujet ou une expression régulière refusée restent à
+        l'écran, l'erreur dans `#cond_status`. Le mode est grisé pour un
+        motif glob, qui l'ignore. Rend la `Condition`, ou None.
+        """
+
+        BINDINGS = [
+            Binding("ctrl+s", "save_condition", t("mail_rules_save")),
+            Binding("escape", "cancel_condition", t("mail_rules_cancel")),
+        ]
+
+        CSS = """
+        #cond_form { height: auto; padding: 1; }
+        #cond_status { height: auto; padding: 0 1; }
+        #cond_buttons { height: auto; }
+        #cond_buttons Button { width: auto; }
+        """
+
+        def __init__(self, condition=None):
+            super().__init__()
+            self.condition = condition or rules_model.Condition(
+                field="from", value=""
+            )
+
+        @staticmethod
+        def _valeur_sure(valeur, permises, defaut):
+            return valeur if valeur in permises else defaut
+
+        def compose(self):
+            cond = self.condition
+            with Vertical(id="cond_form"):
+                yield Select(
+                    [
+                        (t(f"mail_rules_field_{f}"), f)
+                        for f in rules_model.FIELDS
+                    ],
+                    value=self._valeur_sure(
+                        cond.field, rules_model.FIELDS, "from"
+                    ),
+                    allow_blank=False,
+                    id="cond_field",
+                )
+                yield Select(
+                    [(t(f"mail_rules_op_{o}"), o) for o in rules_model.OPS],
+                    value=self._valeur_sure(
+                        cond.op, rules_model.OPS, "contains"
+                    ),
+                    allow_blank=False,
+                    id="cond_op",
+                )
+                yield Input(value=cond.value, id="cond_value")
+                yield Select(
+                    [
+                        (t(f"mail_rules_mode_{m}"), m)
+                        for m in rules_model.MODES
+                    ],
+                    value=self._valeur_sure(
+                        cond.mode, rules_model.MODES, "substring_ci"
+                    ),
+                    allow_blank=False,
+                    disabled=cond.op == "glob",
+                    id="cond_mode",
+                )
+                yield Static("", id="cond_status")
+                with Horizontal(id="cond_buttons"):
+                    yield Button(
+                        t("mail_rules_save"), id="cond_save", variant="primary"
+                    )
+                    yield Button(t("mail_rules_cancel"), id="cond_cancel")
+
+        def on_mount(self) -> None:
+            self.query_one("#cond_value", Input).focus()
+
+        def on_select_changed(self, event) -> None:
+            if event.select.id == "cond_op":
+                self.query_one("#cond_mode", Select).disabled = (
+                    event.value == "glob"
+                )
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id == "cond_save":
+                self.action_save_condition()
+            elif event.button.id == "cond_cancel":
+                self.action_cancel_condition()
+
+        def action_save_condition(self) -> None:
+            cond = rules_model.Condition(
+                field=self.query_one("#cond_field", Select).value,
+                value=self.query_one("#cond_value", Input).value,
+                op=self.query_one("#cond_op", Select).value,
+                mode=self.query_one("#cond_mode", Select).value,
+            )
+            try:
+                rules_model.validate_node(cond)
+            except rules_model.RuleError as exc:
+                self.query_one("#cond_status", Static).update(
+                    Text(str(exc), style="bold red")
+                )
+                return
+            self.dismiss(cond)
+
+        def action_cancel_condition(self) -> None:
+            self.dismiss(None)
+
+    class ReplyFormScreen(ModalScreen):
+        """La réponse personnalisée d'une règle : format, sujet, corps,
+        images, et l'aperçu de ce qui partira.
+
+        Trois formats (`markdown`, `html`, `text`). Les images sont copiées
+        dans le dossier des médias du compte par `#add_images` (fil de
+        travail) ; la liste montre le nom STOCKÉ, que l'import peut avoir
+        renommé, et le rôle que lui donne `render_reply` : en ligne si le
+        corps HTML la cite par ce nom, pièce jointe sinon. `#browse_image`
+        ne fait qu'ajouter un chemin au champ. Rend une `Action`, ou None.
+
+        `ctrl+s` refuse, motif dans `#reply_status`, une réponse que
+        `render_reply` ne sait pas construire (image absente, modifiée,
+        trop lourde) et un champ de chemins encore rempli : une règle
+        enregistrée telle quelle échouerait à chaque message, ou perdrait
+        en silence l'image choisie mais jamais ajoutée.
+        """
+
+        BINDINGS = [
+            Binding("ctrl+s", "save_reply", t("mail_rules_save")),
+            Binding("escape", "cancel_reply", t("mail_rules_cancel")),
+        ]
+
+        CSS = """
+        #reply_scroll { height: 1fr; }
+        #reply_body { height: 10; }
+        #image_row { height: auto; }
+        #image_row Input { width: 1fr; }
+        #image_row Button { width: auto; }
+        #reply_images { height: auto; }
+        .reply_image_row { height: auto; }
+        .reply_image_row Static { width: 1fr; padding: 1 1 0 1; }
+        .reply_image_row Button { width: auto; }
+        #reply_preview { height: auto; padding: 0 1; border: solid $panel; }
+        #reply_status { height: auto; padding: 0 1; }
+        #reply_buttons { height: auto; }
+        #reply_buttons Button { width: auto; }
+        """
+
+        def __init__(self, session, base, action):
+            super().__init__()
+            self.session = session
+            self.base = base
+            self.action = copy.deepcopy(action)
+            # Octets des images déjà lus, par nom stocké.
+            self._media: dict = {}
+            # Erreurs de la dernière lecture des images : la vraie cause,
+            # que `render_reply` réduirait à « introuvable ».
+            self._erreurs_media: list = []
+            self._import_en_cours = False
+
+        def compose(self):
+            action = self.action
+            with VerticalScroll(id="reply_scroll"):
+                yield Static(t("mail_rules_action_reply"))
+                yield Static(t("mail_rules_format"))
+                yield Select(
+                    [
+                        (t(f"mail_rules_format_{f}"), f)
+                        for f in rules_model.FORMATS
+                    ],
+                    value=(
+                        action.format
+                        if action.format in rules_model.FORMATS
+                        else "markdown"
+                    ),
+                    allow_blank=False,
+                    id="reply_format",
+                )
+                yield Static(t("mail_rules_subject"))
+                yield Input(
+                    value=action.subject,
+                    placeholder="Auto: {subject}",
+                    id="reply_subject",
+                )
+                yield Static(t("mail_rules_body"))
+                yield TextArea(action.body, id="reply_body")
+                yield Static(t("mail_rules_images"))
+                with Horizontal(id="image_row"):
+                    yield Input(
+                        placeholder=t("mail_rules_image_paths"),
+                        id="image_paths",
+                    )
+                    yield Button(t("mail_rules_browse"), id="browse_image")
+                    yield Button(t("mail_rules_add_images"), id="add_images")
+                yield Vertical(id="reply_images")
+                yield Static(t("mail_rules_preview"))
+                yield Static("", id="reply_preview")
+                yield Static("", id="reply_status")
+                with Horizontal(id="reply_buttons"):
+                    yield Button(
+                        t("mail_rules_save"),
+                        id="reply_save",
+                        variant="primary",
+                    )
+                    yield Button(t("mail_rules_cancel"), id="reply_cancel")
+
+        def on_mount(self) -> None:
+            self._refresh_images()
+
+        def _current_action(self):
+            return rules_model.Action(
+                kind=self.action.kind,
+                format=self.query_one("#reply_format", Select).value,
+                subject=self.query_one("#reply_subject", Input).value,
+                body=self.query_one("#reply_body", TextArea).text,
+                images=list(self.action.images),
+                options=dict(self.action.options),
+            )
+
+        def _load_media(self) -> list:
+            """Lit les images pas encore lues ; rend les erreurs, aussi
+            gardées dans `_erreurs_media` pour les aperçus suivants."""
+            erreurs = []
+            nom = self.session.account.name
+            for ref in self.action.images:
+                if ref.file in self._media:
+                    continue
+                try:
+                    self._media[ref.file] = rules_storage.read_media(
+                        nom, ref, base=self.base
+                    )
+                except Exception as exc:
+                    erreurs.append(str(exc))
+            self._erreurs_media = erreurs
+            return erreurs
+
+        def _rendre_reponse(self):
+            from script.todo.mail.rules.markup import render_reply
+
+            domaine = self.session.account.email.rpartition("@")[2]
+            return render_reply(self._current_action(), self._media, domaine)
+
+        def _roles(self, rendu) -> dict:
+            """Rôle de chaque image : « pièce jointe » si elle part jointe,
+            « en ligne » sinon (citée, ou de même contenu qu'une citée)."""
+            jointes = {part.filename for part in rendu.attachments}
+            return {
+                ref.file: t(
+                    "mail_rules_image_attached"
+                    if ref.file in jointes
+                    else "mail_rules_image_inline"
+                )
+                for ref in self.action.images
+            }
+
+        def _refresh_images(self) -> None:
+            """Reconstruit l'aperçu, puis la liste des images.
+
+            Chaque libellé naît avec son rôle : `mount` n'attend pas, et
+            les lignes neuves n'existent pas encore quand l'aperçu cherche
+            les libellés à mettre à jour.
+            """
+            self._load_media()
+            roles = self._refresh_preview()
+            zone = self.query_one("#reply_images", Vertical)
+            zone.remove_children()
+            for index, ref in enumerate(self.action.images):
+                ligne = Horizontal(classes="reply_image_row")
+                ligne.compose_add_child(
+                    Static(
+                        Text(self._libelle(ref.file, roles)),
+                        classes="reply_image_label",
+                        name=ref.file,
+                    )
+                )
+                # Sans `id` : la liste est remontée à chaque changement, et
+                # deux boutons de même `id` se croiseraient le temps du
+                # retrait. L'index voyage dans `name`.
+                ligne.compose_add_child(
+                    Button(
+                        t("mail_rules_remove_image"),
+                        name=str(index),
+                        classes="remove_image",
+                    )
+                )
+                zone.mount(ligne)
+
+        @staticmethod
+        def _libelle(nom: str, roles: dict) -> str:
+            role = roles.get(nom, "")
+            return f"{nom} — {role}" if role else nom
+
+        def _refresh_preview(self) -> dict:
+            """Met à jour l'aperçu et les libellés montés ; rend le rôle de
+            chaque image, vide si la réponse ne se construit pas.
+
+            Une erreur de lecture d'image passe AVANT celle du rendu, qui
+            n'en est que la conséquence.
+            """
+            apercu = self.query_one("#reply_preview", Static)
+            erreurs = self._erreurs_media
+            try:
+                rendu = self._rendre_reponse()
+            except Exception as exc:
+                apercu.update(
+                    Text("\n".join(erreurs) or str(exc), style="bold red")
+                )
+                return {}
+            roles = self._roles(rendu)
+            for label in self.query(".reply_image_label").results(Static):
+                label.update(Text(self._libelle(label.name or "", roles)))
+            texte = Text(rendu.text)
+            for ref in self.action.images:
+                texte.append(
+                    f"\n{self._libelle(ref.file, roles)}", style="dim"
+                )
+            for erreur in erreurs:
+                texte.append(f"\n{erreur}", style="bold red")
+            apercu.update(texte)
+            return roles
+
+        def on_select_changed(self, event) -> None:
+            if event.select.id == "reply_format":
+                self._refresh_preview()
+
+        def on_text_area_changed(self, event) -> None:
+            self._refresh_preview()
+
+        def on_button_pressed(self, event) -> None:
+            bouton = event.button
+            if bouton.has_class("remove_image"):
+                index = int(bouton.name or -1)
+                if 0 <= index < len(self.action.images):
+                    del self.action.images[index]
+                    self._refresh_images()
+            elif bouton.id == "browse_image":
+                self._browse_image()
+            elif bouton.id == "add_images":
+                self._add_images()
+            elif bouton.id == "reply_save":
+                self.action_save_reply()
+            elif bouton.id == "reply_cancel":
+                self.action_cancel_reply()
+
+        def _status(self, text: str) -> None:
+            self.query_one("#reply_status", Static).update(
+                Text(text, style="bold red")
+            )
+
+        def _browse_image(self) -> None:
+            champ = self.query_one("#image_paths", Input)
+            try:
+                chemin = browse_one_path(
+                    self.app, browse_start_dir(champ.value)
+                )
+            except Exception as exc:
+                self._status(f"{t('mail_browse_failed')} {exc}")
+                return
+            if chemin:
+                champ.value = append_attachment_path(champ.value, chemin)
+
+        def _add_images(self) -> None:
+            """Copie chaque chemin du champ dans les médias du compte, dans
+            un fil ; les chemins refusés restent dans le champ."""
+            import os
+            from pathlib import Path
+
+            chemins = parse_paths(self.query_one("#image_paths", Input).value)
+            if not chemins or self._import_en_cours:
+                return
+            self._import_en_cours = True
+            nom, base = self.session.account.name, self.base
+
+            def travail() -> None:
+                refs, fautes, restes = [], [], []
+                for chemin in chemins:
+                    try:
+                        refs.append(
+                            rules_storage.import_media(
+                                nom,
+                                Path(os.path.expanduser(chemin)),
+                                base=base,
+                            )
+                        )
+                    except Exception as exc:
+                        fautes.append(str(exc) or type(exc).__name__)
+                        restes.append(chemin)
+                self.app.call_from_thread(
+                    self._images_ajoutees, refs, fautes, restes
+                )
+
+            self.run_worker(travail, thread=True)
+
+        def _images_ajoutees(self, refs, fautes, restes) -> None:
+            self._import_en_cours = False
+            for ref in refs:
+                # Même nom stocké : même fichier, empreinte peut-être
+                # renouvelée ; la référence est remplacée, pas doublée.
+                self.action.images = [
+                    r for r in self.action.images if r.file != ref.file
+                ]
+                self.action.images.append(ref)
+                self._media.pop(ref.file, None)
+            try:
+                self.query_one("#image_paths", Input).value = "; ".join(restes)
+            except NoMatches:
+                return
+            self._status("\n".join(fautes))
+            self._refresh_images()
+
+        def action_save_reply(self) -> None:
+            if self._import_en_cours:
+                return
+            if self.query_one("#image_paths", Input).value.strip():
+                self._status(t("mail_rules_err_images_pending"))
+                return
+            # Toutes relues : une image a pu changer sur le disque depuis
+            # sa première lecture, et l'empreinte se vérifie à la lecture.
+            self._media.clear()
+            erreurs = self._load_media()
+            try:
+                self._rendre_reponse()
+            except Exception as exc:
+                self._status("\n".join(erreurs) or str(exc))
+                self._refresh_preview()
+                return
+            self.dismiss(self._current_action())
+
+        def action_cancel_reply(self) -> None:
+            if self._import_en_cours:
+                return
+            self.dismiss(None)
+
     class HelpScreen(ModalScreen):
         """Touche `h` : les raccourcis du client, et le peu qu'une liste de
         touches ne peut pas dire.
@@ -4459,7 +6391,7 @@ def run_tui(
         #help_title { padding: 0 1; }
         #help_body { height: 1fr; padding: 0 1; }
         #help_notes { padding-top: 1; }
-        #help_close { padding: 1 1 0 1; }
+        #help_close { padding: 0 1; }
         """
 
         def compose(self):
@@ -4531,6 +6463,7 @@ def run_tui(
                     "mail_help_layouts",
                     "mail_help_sync",
                     "mail_help_files",
+                    "mail_rules_help",
                 )
             )
 
@@ -4600,6 +6533,10 @@ def run_tui(
             area.text = new_text
 
         def action_cancel(self) -> None:
+            # Pendant l'envoi, fermer l'écran n'arrêterait pas le message :
+            # l'annulation est ignorée tant que l'issue n'est pas connue.
+            if getattr(self, "_envoi_en_cours", False):
+                return
             self.dismiss(None)
 
         def on_button_pressed(self, event) -> None:
@@ -4608,49 +6545,24 @@ def run_tui(
             elif event.button.id == "browse_files":
                 self._browse_files()
 
-        def _browse_start_dir(self, raw_files: str) -> str:
-            import os
+        def on_screen_resume(self) -> None:
+            # Envoi réussi pendant qu'un autre écran couvrait celui-ci : il
+            # se ferme dès qu'il revient au premier plan, sans offrir un
+            # second `ctrl+s` sur un brouillon déjà parti.
+            envoye = getattr(self, "_envoye", None)
+            if envoye is not None:
+                self.dismiss(envoye)
 
-            paths = parse_paths(raw_files)
-            if paths:
-                candidate = os.path.dirname(os.path.expanduser(paths[-1]))
-                if candidate and os.path.isdir(candidate):
-                    return candidate
-            return os.path.expanduser("~")
+        def _browse_start_dir(self, raw_files: str) -> str:
+            return browse_start_dir(raw_files)
 
         def _browse_files(self) -> None:
-            # `todo_file_browser` est bâti sur urwid, qui possède son propre
-            # `urwid.MainLoop` — deux boucles ne peuvent pas tenir le
-            # terminal en même temps. `suspend()` rend le terminal à urwid
-            # le temps du `with`, puis Textual le reprend et redessine.
-            #
-            # L'IMPORT est fait DANS le `with`, pas avant, et ce n'est pas
-            # cosmétique : `urwid.raw_display.Screen.__init__` a pour
-            # défaut `output=sys.stdout`, résolu une seule fois, à
-            # l'IMPORT du module — donc à la première exécution de cette
-            # méthode dans le processus. Importer `todo_file_browser`
-            # AVANT `suspend()` fige ce défaut sur le `sys.stdout`
-            # qu'App.run() redirige pendant tout le cycle de vie de
-            # l'appli (`redirect_stdout(self._capture_stdout)`), et PAS le
-            # vrai terminal — `Screen.get_cols_rows()` plante alors sur un
-            # descripteur -1. Importer ici, une fois le terminal rendu
-            # par `suspend()`, fige le bon `sys.stdout` à la place.
+            # Le sélecteur suspend l'application : voir `browse_one_path`.
             files_input = self.query_one("#files", Input)
             initial = self._browse_start_dir(files_input.value)
-            chosen: dict = {}
 
             try:
-                with self.app.suspend():
-                    from script.todo import todo_file_browser
-
-                    def _on_selected(path: str) -> None:
-                        chosen["path"] = path
-                        todo_file_browser.exit_program()
-
-                    browser = todo_file_browser.FileBrowser(
-                        initial, _on_selected
-                    )
-                    browser.run_main_frame()
+                chemin = browse_one_path(self.app, initial)
             except Exception as exc:
                 # Un sélecteur qui échoue à s'ouvrir (terminal incompatible,
                 # `suspend()` non supporté, etc.) ne doit pas emporter le
@@ -4661,14 +6573,26 @@ def run_tui(
                 )
                 return
 
-            if "path" in chosen:
+            if chemin is not None:
                 files_input.value = append_attachment_path(
-                    files_input.value, chosen["path"]
+                    files_input.value, chemin
                 )
 
         def action_send(self) -> None:
+            """Construit le message ici, puis l'envoie dans un fil.
+
+            Les erreurs de saisie restent affichées sans fermer l'écran.
+            L'envoi, lui, attend `_sync_lock` le temps d'une passe en cours :
+            depuis le fil de l'interface, cette attente gèlerait
+            l'application pendant que la passe attend l'interface pour son
+            statut. Pendant l'envoi, le bouton est grisé, un second
+            `ctrl+s` et `escape` sont ignorés ; après un succès, ils le
+            restent.
+            """
             from script.todo.mail.smtp_send import build_message
 
+            if getattr(self, "_envoi_en_cours", False):
+                return
             status = self.query_one("#compose_status", Static)
             try:
                 paths = parse_paths(self.query_one("#files", Input).value)
@@ -4688,13 +6612,69 @@ def run_tui(
                     # dispatche vers `set_message_content`, qui n'a pas de
                     # paramètre `maintype` (vérifié à la tâche 7).
                     msg.add_attachment(forwarded, subtype="rfc822")
-                self.dismiss(
-                    deliver(self.session, msg, verrou=self.app._sync_lock)
-                )
             except Exception as exc:
                 # On ne ferme PAS l'écran : le brouillon reste à l'écran, avec
-                # l'erreur exacte du serveur, prêt à être corrigé et renvoyé.
+                # l'erreur exacte, prêt à être corrigé et renvoyé.
                 status.update(f"[b red]{exc}[/]")
+                return
+            self._envoi_en_cours = True
+            status.update("")
+            self._bouton_envoi(False)
+            session, app = self.session, self.app
+            verrou = app._sync_lock
+            answer_of = self.defaults.get("answer_of")
+
+            def envoyer() -> None:
+                etait_en_ligne = session.online
+                try:
+                    statut = deliver(session, msg, verrou=verrou)
+                except Exception as exc:
+                    app.call_from_thread(self._echec_envoi, exc)
+                    return
+                app.call_from_thread(
+                    self._apres_envoi,
+                    statut,
+                    answer_of if etait_en_ligne else None,
+                )
+
+            self.run_worker(envoyer, thread=True)
+
+        def _bouton_envoi(self, actif: bool) -> None:
+            try:
+                self.query_one("#send", Button).disabled = not actif
+            except Exception:
+                pass
+
+        def _echec_envoi(self, exc) -> None:
+            """Fil de l'interface : l'erreur du serveur, écran gardé."""
+            self._envoi_en_cours = False
+            self._bouton_envoi(True)
+            try:
+                self.query_one("#compose_status", Static).update(
+                    f"[b red]{exc}[/]"
+                )
+            except Exception:
+                self.app.set_status(f"[b red]{exc}[/]")
+
+        def _apres_envoi(self, statut, answer_of) -> None:
+            """Fil de l'interface : `\\Answered` sur l'original, puis
+            fermeture.
+
+            Hors ligne (`answer_of` None), le message est en file et rien
+            n'est posé. `_envoi_en_cours` reste vrai : le brouillon est
+            parti, aucun geste ne le renvoie. Couvert par un autre écran,
+            celui-ci se ferme à son retour (`on_screen_resume`).
+            """
+            if answer_of:
+                try:
+                    self.app.mark_answered(self.session, *answer_of)
+                except Exception:
+                    _logger.exception("\\Answered après une réponse")
+            if self.app.screen is self:
+                self.dismiss(statut)
+                return
+            self._envoye = statut
+            self.app.set_status(statut)
 
     class _OpenKdbxManager:
         """Un `KdbxManager` minimal, dont le mot de passe est déjà connu —

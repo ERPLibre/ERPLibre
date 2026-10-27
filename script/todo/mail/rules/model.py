@@ -1,0 +1,709 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Le modèle d'une règle : filtre, action, limites, et sa forme JSON.
+
+Une règle se lit d'un fichier que l'utilisateur peut éditer à la main, et
+qu'une version plus récente du client peut avoir écrit. La lecture est donc
+stricte sur la STRUCTURE (un type inattendu lève `RuleError`, jamais une
+valeur devinée) et prêteuse sur le reste : une clé inconnue de règle est
+gardée dans `Rule.extra`, une clé inconnue d'action dans `Action.options`,
+et les deux se réécrivent telles quelles. Une version de fichier plus
+récente que `SCHEMA_VERSION` est refusée sans rien écrire.
+
+La validation SÉMANTIQUE (`validate`) est séparée de la lecture : un
+fichier dont une règle est fautive reste lisible, donc réparable depuis
+l'écran des règles. Le filtre revérifie les expressions régulières au
+moment de les compiler (voir `regex_fault`).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import types
+import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
+from script.todo.todo_i18n import t
+
+SCHEMA_VERSION = 1
+FIELDS = ("from", "to_cc", "subject", "body")
+ADDRESS_FIELDS = ("from", "to_cc")
+OPS = ("glob", "contains")
+MODES = ("substring_ci", "case_sensitive", "exact", "word", "regex")
+GROUP_OPS = ("all", "any", "not")
+ACTION_KINDS = ("reply", "forward", "stats")
+# Les types que le moteur exécute ; les autres se chargent, s'affichent et
+# s'éditent, mais le moteur les ignore.
+EXECUTABLE_KINDS = ("reply",)
+FORMATS = ("markdown", "html", "text")
+IMAGE_MIMES = ("image/png", "image/jpeg", "image/gif", "image/webp")
+MAX_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_IMAGES_TOTAL_BYTES = 5 * 1024 * 1024
+MAX_DEPTH = 8
+MAX_NODES = 64
+MAX_VALUE_LEN = 500
+MAX_REGEX_LEN = 200
+# Longueur maximale du texte soumis à une expression régulière.
+REGEX_TEXT_MAX = 10_000
+OUTCOMES = (
+    "pending",
+    "sent",
+    "queued",
+    "held",
+    "skipped",
+    "failed",
+    "expired",
+)
+THROTTLE_MINUTES_MAX = 525_600
+MAX_AGE_HOURS_MAX = 720
+HOLD_FIRST_MAX = 10
+# Limite par défaut de chaque type d'action : une réponse personnelle ne
+# repart pas avant une semaine, un rapport avant un jour, et une
+# redirection n'est pas limitée.
+KIND_DEFAULTS = {
+    "reply": {"throttle_enabled": True, "throttle_minutes": 10080},
+    "stats": {"throttle_enabled": True, "throttle_minutes": 1440},
+    "forward": {"throttle_enabled": False, "throttle_minutes": 10080},
+}
+
+# Quantificateurs qui répètent sans borne ou par intervalle ; « ? » n'en
+# est pas un ici : il ne répète pas.
+_QUANTIFIERS = frozenset("+*{")
+
+# Clés de règle et d'action que le modèle connaît ; le reste est conservé.
+_RULE_KEYS = frozenset(
+    {
+        "id",
+        "name",
+        "enabled",
+        "order",
+        "stop_after",
+        "filter",
+        "action",
+        "throttle_enabled",
+        "throttle_minutes",
+        "max_age_hours",
+        "hold_first",
+        "armed",
+    }
+)
+_ACTION_KEYS = frozenset(
+    {"kind", "format", "subject", "body", "images", "options"}
+)
+
+
+class RuleError(Exception):
+    """Règle, fichier ou image refusés ; le message est déjà traduit."""
+
+
+class RulesBusy(RuleError):
+    """Le verrou des règles du compte n'a pas été obtenu à temps."""
+
+
+@dataclass
+class Condition:
+    field: str
+    value: str
+    op: str = "contains"
+    mode: str = "substring_ci"
+
+
+@dataclass
+class Group:
+    op: str = "all"
+    # list[Condition | Group]
+    children: list = field(default_factory=list)
+
+
+@dataclass
+class MediaRef:
+    """Une image de la réponse, copiée dans le dossier des médias.
+
+    `file` est un nom de base sans séparateur ; `sha256` l'empreinte
+    hexadécimale du contenu, revérifiée à chaque lecture ; `mime` l'un de
+    `IMAGE_MIMES`.
+    """
+
+    file: str
+    sha256: str
+    mime: str
+
+
+@dataclass
+class Action:
+    kind: str = "reply"
+    format: str = "markdown"
+    # Gabarit du sujet ; « {subject} » y est la seule variable.
+    subject: str = ""
+    body: str = ""
+    # list[MediaRef]
+    images: list = field(default_factory=list)
+    # Clés propres aux autres types d'action, conservées telles quelles.
+    options: dict = field(default_factory=dict)
+
+
+@dataclass
+class Armed:
+    """Point d'armement d'une règle dans la boîte de réception.
+
+    La règle n'agit que sur un message de même `uidvalidity`, d'UID au
+    moins `uidnext`, et reçu après `at` (époque) : rien de ce qui précède
+    son activation.
+    """
+
+    uidvalidity: int
+    uidnext: int
+    at: int
+
+
+@dataclass
+class Rule:
+    id: str
+    name: str
+    enabled: bool = True
+    order: int = 0
+    stop_after: bool = False
+    filter: Group = field(default_factory=Group)
+    action: Action = field(default_factory=Action)
+    throttle_enabled: bool = True
+    throttle_minutes: int = 10080
+    max_age_hours: int = 48
+    hold_first: int = 1
+    armed: Armed | None = None
+    # Clés inconnues du fichier, réécrites telles quelles.
+    extra: dict = field(default_factory=dict)
+
+    def fingerprint(self) -> str:
+        """Empreinte de ce que la règle teste et de ce qu'elle envoie.
+
+        Entrent le filtre, le type, le format, le sujet, le corps, les
+        images (avec leur `sha256` : une image remplacée sous le même nom
+        change l'empreinte) et les options. N'entrent ni le nom, ni
+        l'activation, ni l'ordre, ni les limites, ni l'armement : ils ne
+        changent pas le message qui part, donc ne remettent pas à zéro le
+        compteur des envois retenus.
+        """
+        canon = json.dumps(
+            {
+                "filter": node_to_dict(self.filter),
+                "action": _action_core(self.action),
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16]
+
+    def tests_body(self) -> bool:
+        """Vrai si une condition du filtre porte sur le corps du message.
+
+        Le moteur s'en sert pour savoir s'il peut avoir à télécharger un
+        corps ; le filtre, lui, ne le télécharge qu'à la première condition
+        `body` effectivement évaluée.
+        """
+        return any(
+            isinstance(node, Condition) and node.field == "body"
+            for node in _walk(self.filter)
+        )
+
+    def to_dict(self) -> dict:
+        data = {
+            "id": self.id,
+            "name": self.name,
+            "enabled": self.enabled,
+            "order": self.order,
+            "stop_after": self.stop_after,
+            "filter": node_to_dict(self.filter),
+            "action": _action_to_dict(self.action),
+            "throttle_enabled": self.throttle_enabled,
+            "throttle_minutes": self.throttle_minutes,
+            "max_age_hours": self.max_age_hours,
+            "hold_first": self.hold_first,
+            "armed": _armed_to_dict(self.armed),
+        }
+        for key, value in self.extra.items():
+            data.setdefault(key, value)
+        return data
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Rule:
+        """Relit une règle ; un type inattendu lève `RuleError`.
+
+        Un `id` absent est refusé plutôt que régénéré : le journal des
+        envois est indexé par `id`, et un identifiant neuf à chaque lecture
+        ferait répondre deux fois au même message.
+        """
+        if not isinstance(d, dict):
+            raise _bad_json(type(d).__name__)
+        rule_id = _typed(d, "id", str, None)
+        if not rule_id or not rule_id.strip():
+            raise _bad_json("id")
+        root = d.get("filter")
+        tree = Group() if root is None else node_from_dict(root)
+        if not isinstance(tree, Group):
+            raise _bad_json("filter")
+        return cls(
+            id=rule_id,
+            name=_typed(d, "name", str, ""),
+            enabled=_typed(d, "enabled", bool, True),
+            order=_typed(d, "order", int, 0),
+            stop_after=_typed(d, "stop_after", bool, False),
+            filter=tree,
+            action=_action_from_dict(d.get("action")),
+            throttle_enabled=_typed(d, "throttle_enabled", bool, True),
+            throttle_minutes=_typed(d, "throttle_minutes", int, 10080),
+            max_age_hours=_typed(d, "max_age_hours", int, 48),
+            hold_first=_typed(d, "hold_first", int, 1),
+            armed=_armed_from_dict(d.get("armed")),
+            extra={k: v for k, v in d.items() if k not in _RULE_KEYS},
+        )
+
+
+@dataclass(frozen=True)
+class MessageView:
+    """Ce que le filtre et les garde-fous voient d'un message.
+
+    `internaldate` est la date de réception du serveur (0 = inconnue).
+    `extra` porte les en-têtes supplémentaires, clés en minuscules,
+    plusieurs occurrences jointes par « \\n » dans l'ordre du message.
+    """
+
+    uid: int
+    uidvalidity: int
+    internaldate: int
+    msgid: str
+    frm: str
+    to: str
+    cc: str
+    subject: str
+    in_reply_to: str = ""
+    references: str = ""
+    extra: Mapping[str, str] = field(default_factory=dict)
+
+
+def message_view(header, uidvalidity: int) -> MessageView:
+    """Vue d'un en-tête de synchronisation OU d'une ligne du cache.
+
+    Lecture par `getattr` : une ligne du cache n'a ni Cc ni en-têtes
+    supplémentaires, et porte sa date de réception sous `received_at` et
+    non `internaldate`. Les champs absents prennent une chaîne vide, un
+    dictionnaire vide ou 0.
+    """
+    extra = getattr(header, "extra", None) or {}
+    internaldate = getattr(header, "internaldate", 0) or getattr(
+        header, "received_at", 0
+    )
+    return MessageView(
+        uid=int(header.uid),
+        uidvalidity=int(uidvalidity),
+        internaldate=int(internaldate or 0),
+        msgid=getattr(header, "msgid", "") or "",
+        frm=getattr(header, "frm", "") or "",
+        to=getattr(header, "to", "") or "",
+        cc=getattr(header, "cc", "") or "",
+        subject=getattr(header, "subject", "") or "",
+        in_reply_to=getattr(header, "in_reply_to", "") or "",
+        references=getattr(header, "references", "") or "",
+        extra=types.MappingProxyType(
+            {str(k).lower(): str(v) for k, v in extra.items()}
+        ),
+    )
+
+
+def new_rule(kind: str = "reply", name: str = "") -> Rule:
+    """Règle neuve, désarmée, d'identifiant neuf, aux limites de son type."""
+    defaults = KIND_DEFAULTS.get(kind)
+    if defaults is None:
+        raise _fault(t("mail_rules_err_kind"), repr(kind))
+    return Rule(
+        id=uuid.uuid4().hex[:12],
+        name=name,
+        action=Action(kind=kind),
+        throttle_enabled=defaults["throttle_enabled"],
+        throttle_minutes=defaults["throttle_minutes"],
+    )
+
+
+# -- Arbre du filtre ---------------------------------------------------
+
+
+def node_to_dict(node) -> dict:
+    if isinstance(node, Group):
+        return {
+            "type": "group",
+            "op": node.op,
+            "children": [node_to_dict(child) for child in node.children],
+        }
+    return {
+        "type": "condition",
+        "field": node.field,
+        "op": node.op,
+        "value": node.value,
+        "mode": node.mode,
+    }
+
+
+def node_from_dict(d: dict, depth: int = 0):
+    """Relit un nœud ; la profondeur est bornée dès la lecture.
+
+    La borne protège la récursion elle-même : un fichier édité à la main
+    qui imbrique mille groupes est refusé avant de saturer la pile.
+    """
+    if depth > MAX_DEPTH:
+        raise _fault(t("mail_rules_err_too_deep"))
+    if not isinstance(d, dict):
+        raise _bad_json(type(d).__name__)
+    kind = d.get("type")
+    if kind == "group":
+        children = d.get("children", [])
+        if not isinstance(children, list):
+            raise _bad_json("children")
+        return Group(
+            op=_typed(d, "op", str, "all"),
+            children=[node_from_dict(c, depth + 1) for c in children],
+        )
+    if kind == "condition":
+        return Condition(
+            field=_typed(d, "field", str, None),
+            value=_typed(d, "value", str, None),
+            op=_typed(d, "op", str, "contains"),
+            mode=_typed(d, "mode", str, "substring_ci"),
+        )
+    raise _bad_json(repr(kind))
+
+
+def regex_fault(pattern: str) -> str | None:
+    """Ce qui interdit `pattern` comme expression régulière, ou None.
+
+    Rend un détail lisible : l'erreur de compilation, la longueur
+    dépassée, ou le fragment qui imbrique deux quantificateurs.
+    """
+    if len(pattern) > MAX_REGEX_LEN:
+        return f"> {MAX_REGEX_LEN}"
+    try:
+        re.compile(pattern)
+    except re.error as exc:
+        return str(exc)
+    nested = nested_quantifier(pattern)
+    if nested is not None:
+        return repr(nested)
+    return None
+
+
+def nested_quantifier(pattern: str) -> str | None:
+    """Le premier groupe quantifié qui contient un quantificateur, ou None.
+
+    « (a+)+ », « (a*)* », « ((a+))+ », « ((a)+)+ », « (?:(?:a+))* » sont
+    rendus : `re` n'a pas de délai, et le retour arrière catastrophique
+    d'un tel motif sur un sujet écrit par un tiers bloquerait une passe qui
+    tient le verrou du compte. Un groupe hérite du quantificateur de
+    n'importe quel sous-groupe, à toute profondeur. Une alternance simple
+    comme « (x|y)+ » passe. Les caractères échappés (« \\( », « \\+ ») et
+    le contenu d'une classe « […] » ne comptent ni comme parenthèse ni comme
+    quantificateur ; les blancs entre « ) » et le quantificateur sont
+    sautés (mode verbeux « (?x) »).
+    """
+    stack: list[list] = []  # [début du groupe, contient un quantificateur]
+    index, size = 0, len(pattern)
+    while index < size:
+        char = pattern[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == "[":
+            index = _class_end(pattern, index)
+            continue
+        if char == "(":
+            stack.append([index, False])
+        elif char == ")" and stack:
+            start, inner = stack.pop()
+            after = index + 1
+            while after < size and pattern[after].isspace():
+                after += 1
+            repeated = after < size and pattern[after] in _QUANTIFIERS
+            if inner and repeated:
+                return pattern[start : after + 1]
+            if stack and (inner or repeated):
+                stack[-1][1] = True
+        elif (char in _QUANTIFIERS or char == "}") and stack:
+            stack[-1][1] = True
+        index += 1
+    return None
+
+
+def _class_end(pattern: str, index: int) -> int:
+    """L'indice qui suit la classe « […] » ouverte à `index`.
+
+    Un « ] » en tête de classe (après un « ^ » éventuel) est littéral.
+    """
+    index += 1
+    if index < len(pattern) and pattern[index] == "^":
+        index += 1
+    if index < len(pattern) and pattern[index] == "]":
+        index += 1
+    while index < len(pattern) and pattern[index] != "]":
+        if pattern[index] == "\\":
+            index += 1
+        index += 1
+    return index + 1
+
+
+def validate_node(node, depth: int = 0) -> None:
+    """Refuse la première faute d'une condition ou d'un sous-arbre.
+
+    Sert à l'éditeur de condition, qui valide un nœud seul avant de le
+    rendre, et à `validate` pour le filtre entier.
+    """
+    if _validate_node(node, depth) > MAX_NODES:
+        raise _fault(t("mail_rules_err_too_deep"))
+
+
+def _validate_node(node, depth: int) -> int:
+    """Valide `node` et rend le nombre de nœuds de son sous-arbre."""
+    if depth > MAX_DEPTH:
+        raise _fault(t("mail_rules_err_too_deep"))
+    if isinstance(node, Group):
+        if node.op not in GROUP_OPS:
+            raise _fault(t("mail_rules_err_op"), repr(node.op))
+        if node.op == "not" and len(node.children) != 1:
+            raise _fault(t("mail_rules_err_not_one_child"))
+        count = 1
+        for child in node.children:
+            count += _validate_node(child, depth + 1)
+            if count > MAX_NODES:
+                raise _fault(t("mail_rules_err_too_deep"))
+        return count
+    if not isinstance(node, Condition):
+        raise _fault(t("mail_rules_err_field"), type(node).__name__)
+    _validate_condition(node)
+    return 1
+
+
+def _validate_condition(cond: Condition) -> None:
+    if cond.field not in FIELDS:
+        raise _fault(t("mail_rules_err_field"), repr(cond.field))
+    if cond.op not in OPS:
+        raise _fault(t("mail_rules_err_op"), repr(cond.op))
+    if cond.mode not in MODES:
+        raise _fault(t("mail_rules_err_mode"), repr(cond.mode))
+    if cond.op == "glob" and cond.field not in ADDRESS_FIELDS:
+        raise _fault(t("mail_rules_err_glob_field"))
+    if not isinstance(cond.value, str) or not cond.value.strip():
+        raise _fault(t("mail_rules_err_empty_value"))
+    if len(cond.value) > MAX_VALUE_LEN:
+        raise _fault(t("mail_rules_err_value_too_long"))
+    # Le mode est ignoré par un motif glob : seule une condition
+    # « contient » compile une expression régulière.
+    if cond.op == "contains" and cond.mode == "regex":
+        detail = regex_fault(cond.value)
+        if detail is not None:
+            raise _fault(t("mail_rules_err_regex"), detail)
+
+
+def validate(rule: Rule) -> None:
+    """Refuse la première faute de la règle, par `RuleError` traduite.
+
+    La limite en minutes est vérifiée même case décochée : la valeur est
+    gardée pour le jour où la case est recochée. La retenue des premiers
+    envois ne se désactive pas : `hold_first` vaut au moins 1.
+    """
+    if not isinstance(rule.filter, Group):
+        raise _fault(t("mail_rules_err_field"), "filter")
+    validate_node(rule.filter)
+    if not _int_between(rule.throttle_minutes, 1, THROTTLE_MINUTES_MAX):
+        raise _fault(t("mail_rules_err_minutes"))
+    if not _int_between(rule.max_age_hours, 1, MAX_AGE_HOURS_MAX):
+        raise _fault(t("mail_rules_err_max_age"))
+    if not _int_between(rule.hold_first, 1, HOLD_FIRST_MAX):
+        raise _fault(t("mail_rules_err_hold_first"))
+    action = rule.action
+    if action.kind not in ACTION_KINDS:
+        raise _fault(t("mail_rules_err_kind"), repr(action.kind))
+    if action.format not in FORMATS:
+        raise _fault(t("mail_rules_err_format"), repr(action.format))
+    for ref in action.images:
+        if ref.mime not in IMAGE_MIMES:
+            raise _fault(t("mail_rules_err_image_type"), str(ref.mime))
+        if not is_safe_media_name(ref.file):
+            raise _fault(t("mail_rules_err_image_missing"), repr(ref.file))
+
+
+def is_safe_media_name(name) -> bool:
+    """Vrai pour un nom de base qui reste DANS le dossier des médias.
+
+    Refuse le vide, tout séparateur, « .. » et un nom qui commence par un
+    point : joint au dossier des médias, un tel nom en sortirait ou
+    viserait un fichier caché.
+    """
+    return (
+        isinstance(name, str)
+        and bool(name)
+        and "/" not in name
+        and "\\" not in name
+        and "\0" not in name
+        and ".." not in name
+        and not name.startswith(".")
+    )
+
+
+# -- Fichier entier ----------------------------------------------------
+
+
+def rules_to_dict(account_name: str, rules: list[Rule]) -> dict:
+    return {
+        "version": SCHEMA_VERSION,
+        "account": account_name,
+        "rules": [rule.to_dict() for rule in rules],
+    }
+
+
+def rules_from_dict(data: dict) -> list[Rule]:
+    """Relit le fichier entier ; une version future lève `RuleError`.
+
+    Une version absente vaut 1. Deux règles de même `id` sont refusées :
+    elles partageraient leur journal, donc leur limite et leur retenue.
+    """
+    if not isinstance(data, dict):
+        raise _bad_json(type(data).__name__)
+    version = data.get("version", SCHEMA_VERSION)
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise _bad_json("version")
+    if version > SCHEMA_VERSION:
+        raise RuleError(f"{t('mail_rules_err_future_version')} {version}")
+    raw_rules = data.get("rules", [])
+    if not isinstance(raw_rules, list):
+        raise _bad_json("rules")
+    rules = [Rule.from_dict(item) for item in raw_rules]
+    seen = set()
+    for rule in rules:
+        if rule.id in seen:
+            raise RuleError(f"{t('mail_rules_err_invalid')} {rule.id!r}")
+        seen.add(rule.id)
+    return rules
+
+
+# -- Aides privées -----------------------------------------------------
+
+
+def _fault(message: str, detail: str = "") -> RuleError:
+    """`RuleError` préfixée de « Règle invalide : », détail facultatif."""
+    text = f"{t('mail_rules_err_invalid')} {message}"
+    return RuleError(f"{text} {detail}" if detail else text)
+
+
+def _bad_json(detail: str) -> RuleError:
+    return RuleError(f"{t('mail_rules_err_bad_json')} {detail}")
+
+
+def _typed(d: dict, key: str, kind: type, default):
+    """`d[key]` s'il est du type `kind`, `default` s'il manque.
+
+    Un `default` None rend la clé obligatoire. Un booléen n'est pas
+    accepté comme entier : `True` lu comme 1 minute passerait la
+    validation sans que personne ne l'ait voulu.
+    """
+    if key not in d:
+        if default is None:
+            raise _bad_json(key)
+        return default
+    value = d[key]
+    if kind is int and isinstance(value, bool):
+        raise _bad_json(key)
+    if not isinstance(value, kind):
+        raise _bad_json(key)
+    return value
+
+
+def _int_between(value, low: int, high: int) -> bool:
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and low <= value <= high
+    )
+
+
+def _walk(node):
+    yield node
+    if isinstance(node, Group):
+        for child in node.children:
+            yield from _walk(child)
+
+
+def _image_to_dict(ref: MediaRef) -> dict:
+    return {"file": ref.file, "sha256": ref.sha256, "mime": ref.mime}
+
+
+def _action_core(action: Action) -> dict:
+    return {
+        "kind": action.kind,
+        "format": action.format,
+        "subject": action.subject,
+        "body": action.body,
+        "images": [_image_to_dict(ref) for ref in action.images],
+        "options": dict(action.options),
+    }
+
+
+def _action_to_dict(action: Action) -> dict:
+    return _action_core(action)
+
+
+def _action_from_dict(d) -> Action:
+    if d is None:
+        return Action()
+    if not isinstance(d, dict):
+        raise _bad_json("action")
+    images = d.get("images", [])
+    if not isinstance(images, list):
+        raise _bad_json("images")
+    options = d.get("options", {})
+    if not isinstance(options, dict):
+        raise _bad_json("options")
+    options = dict(options)
+    for key, value in d.items():
+        if key not in _ACTION_KEYS:
+            options.setdefault(key, value)
+    return Action(
+        kind=_typed(d, "kind", str, "reply"),
+        format=_typed(d, "format", str, "markdown"),
+        subject=_typed(d, "subject", str, ""),
+        body=_typed(d, "body", str, ""),
+        images=[_image_from_dict(item) for item in images],
+        options=options,
+    )
+
+
+def _image_from_dict(d) -> MediaRef:
+    if not isinstance(d, dict):
+        raise _bad_json("images")
+    return MediaRef(
+        file=_typed(d, "file", str, None),
+        sha256=_typed(d, "sha256", str, None),
+        mime=_typed(d, "mime", str, None),
+    )
+
+
+def _armed_to_dict(armed: Armed | None):
+    if armed is None:
+        return None
+    return {
+        "uidvalidity": armed.uidvalidity,
+        "uidnext": armed.uidnext,
+        "at": armed.at,
+    }
+
+
+def _armed_from_dict(d) -> Armed | None:
+    if d is None:
+        return None
+    if not isinstance(d, dict):
+        raise _bad_json("armed")
+    return Armed(
+        uidvalidity=_typed(d, "uidvalidity", int, None),
+        uidnext=_typed(d, "uidnext", int, None),
+        at=_typed(d, "at", int, None),
+    )

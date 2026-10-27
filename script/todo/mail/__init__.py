@@ -6,6 +6,9 @@
 Le paquet est découpé par responsabilité : `crypto` scelle, `secrets` garde
 les mots de passe, `accounts` décrit les comptes, `store` cache localement,
 `imap_sync` synchronise, `smtp_send` envoie, `tui` affiche, `menu` branche le
-tout sur le CLI. Aucun de ces modules n'importe `todo.py` ; c'est `todo.py`
-qui importe `menu`.
+tout sur le CLI. Le sous-paquet `rules` applique les règles du courrier
+entrant (filtre, garde-fous, réponse automatique) après chaque
+synchronisation ; `tui` (touche `e`) et `menu` (entrée [6]) les éditent.
+Aucun de ces modules n'importe `todo.py` ; c'est `todo.py` qui importe
+`menu`.
 """

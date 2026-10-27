@@ -1,0 +1,621 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
+import time
+import unittest
+
+from script.todo.mail.imap_transport import decode_header_value
+from script.todo.mail.rules import guards
+from script.todo.mail.rules.filter import BodyUnavailable
+from script.todo.mail.rules.guards import (
+    ENGINE_REASONS,
+    REASONS,
+    SEND,
+    SILENT_REASONS,
+    GuardContext,
+    authentication_passes,
+    decide,
+    header_values,
+    reply_target,
+    stats_target,
+)
+from script.todo.mail.rules.model import (
+    Armed,
+    Condition,
+    Group,
+    MessageView,
+    new_rule,
+)
+
+SECOND = "bruno.filtre@example.net"
+THIRD = "denis.tri@example.org"
+
+NOW = 1_793_000_000
+UIDV = 1_700_000_001
+OWN = "boite.regles@example.org"
+HUMAN = "carole.regle@example.org"
+OTHER_ACCOUNT = "relais.auto@example.com"
+
+
+def view(extra=None, **kwargs) -> MessageView:
+    base = {
+        "uid": 4600,
+        "uidvalidity": UIDV,
+        "internaldate": NOW - 60,
+        "msgid": "<m1@example.org>",
+        "frm": f"Carole <{HUMAN}>",
+        "to": OWN,
+        "cc": "",
+        "subject": "Demande de devis",
+        "extra": {k.lower(): v for k, v in (extra or {}).items()},
+    }
+    base.update(kwargs)
+    return MessageView(**base)
+
+
+def armed_rule(**kwargs):
+    rule = new_rule("reply", "Absence")
+    rule.armed = Armed(uidvalidity=UIDV, uidnext=4500, at=NOW - 3600)
+    for key, value in kwargs.items():
+        setattr(rule, key, value)
+    return rule
+
+
+def ctx(logged=False, last_send=None, **kwargs) -> GuardContext:
+    calls = []
+
+    def last_send_at(sender, target):
+        calls.append((sender, target))
+        if callable(last_send):
+            return last_send(sender, target)
+        return last_send
+
+    context = GuardContext(
+        now=NOW,
+        own_addresses=frozenset({OWN}),
+        other_account_addresses=frozenset({OTHER_ACCOUNT}),
+        is_logged=lambda: logged,
+        last_send_at=last_send_at,
+    )
+    context.calls = calls
+    for key, value in kwargs.items():
+        setattr(context, key, value)
+    return context
+
+
+class TestOneCasePerReason(unittest.TestCase):
+    """Un message qui déclenche chaque code de `REASONS`."""
+
+    def reason(self, message=None, rule=None, context=None, body=None):
+        return decide(
+            rule or armed_rule(), message or view(), context or ctx(), body
+        ).reason
+
+    def test_plain_message_is_sent(self):
+        self.assertEqual(self.reason(), SEND)
+
+    def test_not_armed_without_arming(self):
+        self.assertEqual(self.reason(rule=armed_rule(armed=None)), "not_armed")
+
+    def test_not_armed_for_uid_below_uidnext(self):
+        self.assertEqual(self.reason(view(uid=4499)), "not_armed")
+
+    def test_not_armed_for_other_uidvalidity(self):
+        self.assertEqual(self.reason(view(uidvalidity=UIDV + 1)), "not_armed")
+
+    def test_not_armed_for_reception_before_arming(self):
+        self.assertEqual(
+            self.reason(view(internaldate=NOW - 7200)), "not_armed"
+        )
+
+    def test_duplicate(self):
+        self.assertEqual(self.reason(context=ctx(logged=True)), "duplicate")
+
+    def test_too_old_at_48_hours_and_one_second(self):
+        rule = armed_rule()
+        rule.armed = Armed(UIDV, 4500, 0)
+        message = view(internaldate=NOW - 48 * 3600 - 1)
+        self.assertEqual(self.reason(message, rule), "too_old")
+        message = view(internaldate=NOW - 48 * 3600)
+        self.assertEqual(self.reason(message, rule), SEND)
+
+    def test_too_old_for_unknown_reception_date(self):
+        self.assertEqual(self.reason(view(internaldate=0)), "too_old")
+
+    def test_bad_date_for_reception_in_the_future(self):
+        self.assertEqual(
+            self.reason(view(internaldate=NOW + 3600)), "bad_date"
+        )
+
+    def test_no_match(self):
+        rule = armed_rule()
+        rule.filter = Group(children=[Condition("subject", "facture")])
+        self.assertEqual(self.reason(rule=rule), "no_match")
+
+    def test_auto_submitted(self):
+        message = view({"Auto-Submitted": "auto-replied"})
+        self.assertEqual(self.reason(message), "auto_submitted")
+
+    def test_auto_submitted_no_passes(self):
+        message = view({"Auto-Submitted": "No ; comment"})
+        self.assertEqual(self.reason(message), SEND)
+
+    def test_precedence(self):
+        self.assertEqual(
+            self.reason(view({"Precedence": "Bulk"})), "precedence"
+        )
+
+    def test_list(self):
+        message = view({"List-Id": "<liste-annonces.example.net>"})
+        self.assertEqual(self.reason(message), "list")
+        message = view(
+            {"List-Unsubscribe": "<mailto:liste-annonces@example.net>"}
+        )
+        self.assertEqual(self.reason(message), "list")
+
+    def test_auto_response_suppress(self):
+        message = view({"X-Auto-Response-Suppress": "DR, OOF"})
+        self.assertEqual(self.reason(message), "auto_response_suppress")
+
+    def test_x_loop(self):
+        message = view({"X-Loop": f"erplibre-rules {OTHER_ACCOUNT}"})
+        self.assertEqual(self.reason(message), "x_loop")
+
+    def test_spam(self):
+        self.assertEqual(self.reason(view({"X-Spam-Flag": "YES"})), "spam")
+
+    def test_null_sender(self):
+        self.assertEqual(
+            self.reason(view({"Return-Path": "<>"})), "null_sender"
+        )
+
+    def test_no_target(self):
+        self.assertEqual(self.reason(view(frm="Inconnu")), "no_target")
+
+    def test_robot_sender(self):
+        for sender in (
+            "mailer-daemon@example.net",
+            "no-reply@example.net",
+            "liste-annonces-bounces@example.net",
+        ):
+            with self.subTest(sender=sender):
+                self.assertEqual(self.reason(view(frm=sender)), "robot_sender")
+
+    def test_robot_sender_by_return_path(self):
+        message = view({"Return-Path": "<bounces+x@example.net>"})
+        self.assertEqual(self.reason(message), "robot_sender")
+
+    def test_self(self):
+        self.assertEqual(self.reason(view(frm=OWN.upper())), "self")
+
+    def test_other_account_by_from_alone(self):
+        message = view(
+            {"Return-Path": f"<{HUMAN}>"}, frm=f"Relais <{OTHER_ACCOUNT}>"
+        )
+        self.assertEqual(self.reason(message), "other_account")
+
+    def test_not_addressed(self):
+        message = view(
+            to="liste-annonces@example.net", cc="denis.tri@example.org"
+        )
+        self.assertEqual(self.reason(message), "not_addressed")
+
+    def test_addressed_through_cc(self):
+        message = view(to="denis.tri@example.org", cc=OWN)
+        self.assertEqual(self.reason(message), SEND)
+
+    def test_auth_fail(self):
+        results = "mx.example.org; dmarc=fail header.from=example.org"
+        message = view({"Authentication-Results": results})
+        self.assertEqual(self.reason(message), "auth_fail")
+
+    def test_spf_fail_without_dkim_pass(self):
+        fail = "mx.example.org; spf=fail smtp.mailfrom=example.org; dkim=none"
+        self.assertEqual(
+            self.reason(view({"Authentication-Results": fail})), "auth_fail"
+        )
+        rescued = "mx.example.org; spf=fail; dkim=pass header.d=example.org"
+        self.assertEqual(
+            self.reason(view({"Authentication-Results": rescued})), SEND
+        )
+
+    def test_auth_fail_only_reads_the_first_header(self):
+        results = "mx.example.org; dmarc=pass\nmx.example.org; dmarc=fail"
+        message = view({"Authentication-Results": results})
+        self.assertEqual(self.reason(message), SEND)
+
+    def test_auth_fail_ignores_comments(self):
+        results = "mx.example.org; spf=pass (dmarc=fail est un commentaire)"
+        message = view({"Authentication-Results": results})
+        self.assertEqual(self.reason(message), SEND)
+
+    def test_absent_authentication_results_has_no_effect(self):
+        self.assertEqual(self.reason(view()), SEND)
+
+    def test_throttled(self):
+        self.assertEqual(
+            self.reason(context=ctx(last_send=NOW - 60)), "throttled"
+        )
+
+    def test_every_reason_is_covered_here(self):
+        names = {name for name in dir(self) if name.startswith("test_")}
+        for reason in REASONS:
+            with self.subTest(reason=reason):
+                self.assertTrue(any(reason in name for name in names))
+
+
+class TestPriority(unittest.TestCase):
+    """Le premier garde-fou de la liste l'emporte."""
+
+    def test_auto_submitted_before_list(self):
+        message = view(
+            {
+                "List-Id": "<liste-annonces.example.net>",
+                "Auto-Submitted": "auto-generated",
+            }
+        )
+        self.assertEqual(
+            decide(armed_rule(), message, ctx(), None).reason, "auto_submitted"
+        )
+
+    def test_not_armed_before_duplicate(self):
+        decision = decide(
+            armed_rule(armed=None), view(), ctx(logged=True), None
+        )
+        self.assertEqual(decision.reason, "not_armed")
+
+    def test_no_match_before_header_guards(self):
+        rule = armed_rule()
+        rule.filter = Group(children=[Condition("subject", "facture")])
+        decision = decide(rule, view({"Precedence": "bulk"}), ctx(), None)
+        self.assertEqual(decision.reason, "no_match")
+
+
+class TestEveryOccurrence(unittest.TestCase):
+    """Chaque occurrence d'un en-tête répété est testée à part."""
+
+    def reason(self, extra):
+        return decide(armed_rule(), view(extra), ctx(), None).reason
+
+    def test_precedence_bulk_then_list(self):
+        self.assertEqual(
+            self.reason({"Precedence": "bulk\nlist"}), "precedence"
+        )
+
+    def test_auto_submitted_no_then_auto_replied(self):
+        self.assertEqual(
+            self.reason({"Auto-Submitted": "no\nauto-replied"}),
+            "auto_submitted",
+        )
+
+    def test_spam_flag_no_then_yes(self):
+        self.assertEqual(self.reason({"X-Spam-Flag": "NO\nYES"}), "spam")
+
+    def test_header_values_splits_and_drops_blanks(self):
+        message = view({"Precedence": "bulk\n\n list "})
+        self.assertEqual(
+            header_values(message, "PRECEDENCE"), ["bulk", "list"]
+        )
+
+    def test_only_the_first_return_path_counts(self):
+        message = view({"Return-Path": f"<{HUMAN}>\n<>"})
+        self.assertEqual(reply_target(message), HUMAN)
+        self.assertEqual(self.reason({"Return-Path": f"<{HUMAN}>\n<>"}), SEND)
+        self.assertEqual(
+            self.reason({"Return-Path": f"<>\n<{HUMAN}>"}), "null_sender"
+        )
+
+
+class TestReplyTarget(unittest.TestCase):
+    """L'adresse de réponse : Return-Path, sinon From, jamais Reply-To."""
+
+    def test_prefers_return_path(self):
+        message = view({"Return-Path": "<bruno.filtre@example.net>"})
+        self.assertEqual(reply_target(message), "bruno.filtre@example.net")
+
+    def test_ignores_reply_to(self):
+        message = view({"Reply-To": "denis.tri@example.org"})
+        self.assertEqual(reply_target(message), HUMAN)
+
+    def test_raw_keeps_the_received_form(self):
+        message = view(frm="Bruno <Bruno.Filtre@XN--FILTR-FSA.example.net>")
+        self.assertEqual(
+            reply_target(message, raw=True),
+            "Bruno.Filtre@XN--FILTR-FSA.example.net",
+        )
+        self.assertEqual(
+            reply_target(message), "bruno.filtre@filtré.example.net"
+        )
+
+    def test_decision_target_addr_keeps_the_idna_form(self):
+        message = view(frm="bruno.filtre@xn--filtr-fsa.example.net")
+        decision = decide(armed_rule(), message, ctx(), None)
+        self.assertEqual(decision.reason, SEND)
+        self.assertEqual(
+            decision.target_addr, "bruno.filtre@xn--filtr-fsa.example.net"
+        )
+        self.assertEqual(decision.target, "bruno.filtre@filtré.example.net")
+        self.assertEqual(decision.sender, "bruno.filtre@filtré.example.net")
+
+
+class TestThrottle(unittest.TestCase):
+    """Limite d'envoi par règle et par expéditeur, horloge injectée."""
+
+    def decide_with(self, last_send, **rule_kwargs):
+        rule = armed_rule(throttle_minutes=10, **rule_kwargs)
+        return decide(rule, view(), ctx(last_send=last_send), None).reason
+
+    def test_no_previous_send(self):
+        self.assertEqual(self.decide_with(None), SEND)
+
+    def test_send_five_minutes_ago_with_ten_minute_limit(self):
+        self.assertEqual(self.decide_with(NOW - 5 * 60), "throttled")
+
+    def test_send_eleven_minutes_ago(self):
+        self.assertEqual(self.decide_with(NOW - 11 * 60), SEND)
+
+    def test_unchecked_box_ignores_a_send_one_minute_ago(self):
+        self.assertEqual(
+            self.decide_with(NOW - 60, throttle_enabled=False), SEND
+        )
+
+    def test_queries_with_normalized_sender_and_target(self):
+        context = ctx(last_send=None)
+        message = view({"Return-Path": "<Bruno.Filtre@Example.NET>"})
+        decide(armed_rule(), message, context, None)
+        self.assertEqual(context.calls, [(HUMAN, "bruno.filtre@example.net")])
+
+    def test_changing_batv_return_path_is_throttled_by_from(self):
+        sent = {}
+
+        def last_send(sender, target):
+            hits = [sent[k] for k in (sender, target) if k in sent]
+            return max(hits) if hits else None
+
+        rule = armed_rule(throttle_minutes=10)
+        for index, token in enumerate(("a1b2c3", "d4e5f6")):
+            message = view(
+                {"Return-Path": f"<prvs={token}={HUMAN}>"}, uid=4600 + index
+            )
+            decision = decide(rule, message, ctx(last_send=last_send), None)
+            if index == 0:
+                self.assertEqual(decision.reason, SEND)
+                sent[decision.sender] = NOW
+                sent[decision.target] = NOW
+            else:
+                self.assertNotEqual(decision.target, f"prvs=a1b2c3={HUMAN}")
+                self.assertEqual(decision.reason, "throttled")
+
+
+class TestDecisionFields(unittest.TestCase):
+    def test_matched_true_for_a_rejection_after_the_filter(self):
+        decision = decide(
+            armed_rule(), view({"Precedence": "bulk"}), ctx(), None
+        )
+        self.assertTrue(decision.matched)
+        self.assertTrue(decision.logged)
+
+    def test_matched_false_for_no_match(self):
+        rule = armed_rule()
+        rule.filter = Group(children=[Condition("subject", "facture")])
+        decision = decide(rule, view(), ctx(), None)
+        self.assertFalse(decision.matched)
+        self.assertFalse(decision.logged)
+
+    def test_silent_reasons_are_not_logged(self):
+        decision = decide(armed_rule(armed=None), view(), ctx(), None)
+        self.assertIn(decision.reason, SILENT_REASONS)
+        self.assertFalse(decision.logged)
+
+    def test_too_old_is_logged_but_not_matched(self):
+        decision = decide(armed_rule(), view(internaldate=0), ctx(), None)
+        self.assertTrue(decision.logged)
+        self.assertFalse(decision.matched)
+
+    def test_send_is_matched(self):
+        decision = decide(armed_rule(), view(), ctx(), None)
+        self.assertEqual(decision.reason, SEND)
+        self.assertTrue(decision.matched)
+
+    def test_body_unavailable_passes_through(self):
+        rule = armed_rule()
+        rule.filter = Group(children=[Condition("body", "urgent")])
+        with self.assertRaises(BodyUnavailable):
+            decide(rule, view(), ctx(), None)
+
+
+class TestAuthenticationPasses(unittest.TestCase):
+    """Contrôle de l'authentification, réutilisable par les statistiques."""
+
+    def check(self, results, frm=HUMAN, domain="example.org"):
+        message = view({"Authentication-Results": results}, frm=frm)
+        return authentication_passes(message, domain)
+
+    def test_dmarc_pass_with_aligned_header_from(self):
+        self.assertTrue(
+            self.check("mx.example.org; dmarc=pass header.from=example.org")
+        )
+
+    def test_dmarc_pass_for_another_domain_is_false(self):
+        self.assertFalse(
+            self.check("mx.example.org; dmarc=pass header.from=example.net")
+        )
+
+    def test_dkim_pass_on_a_subdomain_is_aligned(self):
+        self.assertTrue(
+            self.check("mx.example.org; dkim=pass header.d=mail.example.org")
+        )
+
+    def test_spf_pass_with_aligned_mailfrom(self):
+        self.assertTrue(
+            self.check(
+                "mx.example.org; spf=pass smtp.mailfrom=carole.regle@example.org"
+            )
+        )
+
+    def test_second_forged_header_is_ignored(self):
+        results = (
+            "mx.example.org; dmarc=fail header.from=example.org\n"
+            "mx.example.org; dmarc=pass header.from=example.org"
+        )
+        self.assertFalse(self.check(results))
+
+    def test_domain_must_be_the_from_domain(self):
+        self.assertFalse(
+            self.check(
+                "mx.example.org; dmarc=pass header.from=example.net",
+                domain="example.net",
+            )
+        )
+
+    def test_absent_header_is_false(self):
+        self.assertFalse(authentication_passes(view(), "example.org"))
+
+
+class TestStatsTarget(unittest.TestCase):
+    def test_single_address(self):
+        self.assertEqual(stats_target(view()), HUMAN)
+
+    def test_two_addresses_in_from(self):
+        message = view(frm=f"{HUMAN}, bruno.filtre@example.net")
+        self.assertEqual(stats_target(message), "")
+
+
+class TestForgedOrUnreadableFrom(unittest.TestCase):
+    """Un From dont l'adresse n'est pas sûre n'obtient aucune réponse.
+
+    Les en-têtes arrivent DÉCODÉS RFC 2047 : un libellé encodé y devient
+    une adresse que l'expéditeur a choisie.
+    """
+
+    # Le tiers suivi d'une virgule, caché dans un libellé encodé.
+    ENCODED_LIST = f"=?utf-8?q?denis.tri=40example.org=2C?= <{SECOND}>"
+    # Le tiers entre chevrons, caché de même, sans virgule.
+    ENCODED_ANGLE = f"=?utf-8?q?=3Cdenis.tri=40example.org=3E?= <{SECOND}>"
+
+    def decide(self, message, rule=None):
+        return decide(rule or armed_rule(), message, ctx(), None)
+
+    def test_encoded_display_name_does_not_redirect_the_reply(self):
+        for raw in (self.ENCODED_LIST, self.ENCODED_ANGLE):
+            with self.subTest(raw=raw):
+                decision = self.decide(view(frm=decode_header_value(raw)))
+                self.assertEqual(decision.reason, "no_target")
+                self.assertEqual(decision.target, "")
+                self.assertEqual(decision.target_addr, "")
+                self.assertEqual(decision.sender, "")
+
+    def test_encoded_display_name_does_not_satisfy_an_allow_list(self):
+        rule = armed_rule(
+            filter=Group(
+                children=[
+                    Condition(field="from", value="*@example.net", op="glob")
+                ]
+            )
+        )
+        message = view(
+            {"Return-Path": f"<{THIRD}>"},
+            frm=decode_header_value(f"=?utf-8?q?{SECOND}=2C?= <{THIRD}>"),
+        )
+        decision = self.decide(message, rule)
+        self.assertTrue(decision.matched)
+        self.assertEqual(decision.reason, "no_target")
+
+    def test_unparseable_from_does_not_answer_an_excluded_sender(self):
+        rule = armed_rule(
+            filter=Group(
+                op="not",
+                children=[
+                    Condition(field="from", value="*@example.net", op="glob")
+                ],
+            )
+        )
+        message = view(
+            {"Return-Path": f"<{SECOND}>"}, frm=f"Bruno [F] <{SECOND}>"
+        )
+        decision = self.decide(message, rule)
+        self.assertEqual(decision.reason, "no_target")
+        self.assertEqual(decision.sender, "")
+
+    def test_two_mailboxes_in_from_give_no_target(self):
+        message = view({"Return-Path": f"<{HUMAN}>"}, frm=f"{HUMAN}, {SECOND}")
+        self.assertEqual(self.decide(message).reason, "no_target")
+
+    def test_address_repeated_as_display_name_is_sent(self):
+        for frm in (f'"{HUMAN}" <{HUMAN}>', f'"{HUMAN.upper()}" <{HUMAN}>'):
+            with self.subTest(frm=frm):
+                decision = self.decide(view(frm=frm))
+                self.assertEqual(decision.reason, SEND)
+                self.assertEqual(decision.target, HUMAN)
+
+    def test_reply_target_ignores_an_ambiguous_from(self):
+        message = view(frm=decode_header_value(self.ENCODED_LIST))
+        self.assertEqual(reply_target(message), "")
+        self.assertEqual(reply_target(message, raw=True), "")
+
+    def test_stats_target_ignores_an_ambiguous_from(self):
+        message = view(frm=decode_header_value(self.ENCODED_LIST))
+        self.assertEqual(stats_target(message), "")
+
+
+class TestHostileHeaderSize(unittest.TestCase):
+    """Un en-tête d'environ 100 Ko tient sous la limite d'un serveur de
+    courrier courant : son analyse reste linéaire, avant tout filtre."""
+
+    LONG = 200_000
+    BUDGET_S = 3.0
+
+    def chrono(self, fonction, *args):
+        debut = time.monotonic()
+        resultat = fonction(*args)
+        self.assertLess(time.monotonic() - debut, self.BUDGET_S)
+        return resultat
+
+    def test_a_huge_display_name_is_decided_quickly(self):
+        message = view(frm="a" * self.LONG + f" <{HUMAN}>")
+        decision = self.chrono(decide, armed_rule(), message, ctx(), None)
+        self.assertEqual((decision.sender, decision.target), (HUMAN, HUMAN))
+
+    def test_a_huge_authentication_results_is_parsed_quickly(self):
+        message = view({"Authentication-Results": "mx; " + "a" * self.LONG})
+        self.assertEqual(self.chrono(guards._auth_results, message), [])
+
+    def test_deeply_nested_comments_are_stripped_in_one_pass(self):
+        texte = "(" * self.LONG + ")" * self.LONG + " dkim=fail"
+        self.assertEqual(
+            self.chrono(guards._strip_comments, texte).split(), ["dkim=fail"]
+        )
+
+    def test_comment_stripping_keeps_an_unclosed_parenthesis(self):
+        """Ce qui suit une parenthèse jamais refermée reste analysé : un
+        « fail » qui s'y trouve compte."""
+        self.assertEqual(guards._strip_comments("a(b(c)d)e"), "a e")
+        self.assertEqual(guards._strip_comments("x(a(b)c"), "x(a c")
+        self.assertEqual(guards._strip_comments("a)b"), "a)b")
+        resultats = "mx.example.org; spf=pass (x; dkim=fail"
+        message = view({"Authentication-Results": resultats})
+        self.assertIn(
+            ("dkim", "fail"), [r[:2] for r in guards._auth_results(message)]
+        )
+
+    def test_reply_target_without_return_path_matches_decide(self):
+        message = view(frm=f"Carole <{HUMAN.upper()}>")
+        decision = decide(armed_rule(), message, ctx(), None)
+        self.assertEqual(decision.target, reply_target(message))
+        self.assertEqual(decision.target_addr, reply_target(message, raw=True))
+
+
+class TestReasonLists(unittest.TestCase):
+    def test_engine_reasons_and_reasons_are_disjoint(self):
+        self.assertEqual(set(ENGINE_REASONS) & set(REASONS), set())
+
+    def test_silent_reasons_belong_to_reasons(self):
+        self.assertLessEqual(SILENT_REASONS, set(REASONS))
+
+    def test_send_is_not_a_reason(self):
+        self.assertNotIn(guards.SEND, REASONS + ENGINE_REASONS)
+
+
+if __name__ == "__main__":
+    unittest.main()
