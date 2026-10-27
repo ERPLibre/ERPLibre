@@ -10,10 +10,10 @@
  * the followers that emails the one notified by email; a reply whose
  * upload answer then post answer are lost posts once with one attachment,
  * on the module's routes and on Odoo's. With the app's bus open, two
- * comments on a followed task and a mention reach its inbox with no page
- * read. A user notified by email, made by the file, switches to the inbox
- * from the app. Every outcome is read
- * back from the server.
+ * comments on a followed task and a mention reach its inbox with no
+ * conversation page read and nothing marked read. A user notified by
+ * email, made by the file, switches to the inbox from the app. Every
+ * outcome is read back from the server.
  *
  * The tests run in order: the first fills the inbox the next three read
  * and mark. inbox_user is this file's alone; the follower notified by
@@ -33,6 +33,8 @@ import { PHOTO, QUIET_WINDOW_PASSED_MS, ROUTES } from "./chatAttachmentScene";
 
 const CHANNEL = "discuss.channel";
 const TASK = "project.task";
+/** The routes that read a conversation's page, or a thread's page and mark it read. */
+const PAGE_ROUTES = ["/discuss/channel/messages", "/mail/thread/messages"];
 
 eachVersionFrom(18, "chat inbox", (target) => {
 	let proxy: FaultProxy;
@@ -245,18 +247,22 @@ eachVersionFrom(18, "chat inbox", (target) => {
 		});
 	}
 
-	it("two comments on a followed task and a mention reach the inbox by the bus, without a page read", async () => {
+	it("two comments on a followed task and a mention reach the inbox while the app listens, no conversation page read", async () => {
 		const { env, src } = await app();
 		const sockets = () => proxy.calls.filter((c) => c.path.startsWith("/websocket")).length;
 		const opened = sockets();
 		await env.chat.startRealtime(() => nodeTransport());
 		await until("the app's websocket", async () => sockets() > opened);
+		const since = proxy.calls.length;
 		const { task, comment } = await commentedTask();
 		const second = await peer.postOnRecord(TASK, task, unique("comment"), "mail.mt_comment");
 		const mention = await peer.mention(msChat, inboxPartner, `@MS Boite ${unique("live")}`);
 		for (const id of [mention, comment, second]) {
 			await until(`inbox item ${id} by the bus`, async () => (await env.chat.repo.mailboxItem(src.configId, id))?.needaction);
 		}
+		// The inbox page may be read again (ChatService.applyBus, a replayed delivery): that route marks nothing read
+		const paths = proxy.calls.slice(since).map((c) => c.path);
+		expect(paths.filter((p) => PAGE_ROUTES.some((r) => p.startsWith(r)))).toEqual([]);
 	});
 
 	it("a user notified by email sees why, switches to the inbox, and the server reads inbox", async () => {
