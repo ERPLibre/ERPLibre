@@ -1904,6 +1904,14 @@ def scenario_recherche_boite(ctx):
                 "pinned_at"
             ],
         )
+        # L'avis d'épingle arrive par le bus sous le message et fait
+        # défiler le fil : l'appui suivant attend qu'il soit affiché, sans
+        # quoi il tombe sur le lien « Voir tous les messages épinglés »
+        ctx.cdp.attendre(
+            "[...document.querySelectorAll('.chat-thread__bubble--system')]"
+            f".some(b => Number(b.dataset.key.slice(1)) > {trouve})",
+            delai=30,
+        )
         ouvrir_menu(ctx, bulle)
         ctx.toucher_pose(".chat-menu__star")
         attendre_serveur(
