@@ -2113,9 +2113,9 @@ def scenario_recherche_boite(ctx):
         ctx.cdp.evaluer(f"({EN_EVIDENCE})({js(bulle_vieux)})")
         ctx.toucher_pose(resultat)
         ctx.cdp.attendre("window.__msVu", delai=30)
-        assert ctx.cdp.evaluer(
-            f"({DANS_LE_FIL})({js(bulle_vieux)})"
-        ), "le fil ne s'ouvre pas sur le vieux résultat"
+        # La mise en évidence part avec le défilement doux vers le message :
+        # de loin, il n'est dans le fil qu'à la fin de ce défilement
+        ctx.cdp.attendre(f"({DANS_LE_FIL})({js(bulle_vieux)})", delai=10)
         ctx.capturer("recherche_vieux", bulle_vieux)
         fin = time.monotonic() + LECTURE_DELAI
         while time.monotonic() < fin:
