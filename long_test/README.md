@@ -379,7 +379,9 @@ is its own and the later messages must arrive by the bus with no reload.
 Every template, the 16, 17 and 18 ones alike, creates the settings of every
 internal user ahead (two simultaneous first requests would otherwise both
 create them and hit the uniqueness of `res.users.settings`), and the 18 one's
-module is the 1.3, which dedupes creates and uploads and guards edits.
+module is the 1.4, which dedupes creates and uploads, guards edits, searches the
+member channels, sets a star instead of toggling it and dedupes the posts of
+every record.
 `--appareil` adds the « clavardage » screen and a group created from the
 phone. To run only these:
 
@@ -467,6 +469,57 @@ menu, a tap on a suggestion keeps the keyboard open with the text field
 visible, a quote scrolls to its original, the « (modifié) » mark follows the
 text, and the composer stays within 16 px above the navigation bar in every
 chat scenario, the keyboard open or not.
+
+`chatFinding.test.ts` covers finding things against the real server, as the
+app's user. Where it says « the module and the module ignored », the search
+runs on the module's route and on the `search_read` fallback. A server search
+sees only the channels the user is a member of, never a public channel not
+joined and never chat_user's private chat with someone else, and marks nothing
+read; a term holding `&` or `%` finds the same messages on the module, on the
+fallback and on the phone's own search; opening a hit older than the loaded
+history pages older messages with `around` only and marks nothing read; a pin
+whose answer is lost leaves `pinned_at` set and one pin notice; chat_user's pin
+reaches the pinned list; a star whose answer is lost is starred once after the
+retry, on the module and with it ignored; and a star made in the user's browser
+since the load, then starred on the phone, stays starred.
+
+`chatInbox.test.ts` covers the inbox against the real server, as `inbox_user`,
+a user the template seeds for it: internal, a project user, with
+`notification_type` written explicitly to `inbox` (the group alone leaves a new
+user on email), a member of « ms chat », and with an email address, because a
+channel mention notifies only a partner that has one. His tests run in order.
+A mention, a comment on a followed task and an assignment fill the three kinds
+of item; a server search for the mentioned word leaves the mention unread; one
+item marked read is `is_read` on the server; mark all tapped offline while
+chat_user mentions again leaves the newer mention unread; a reply as a note
+with a photo is one note holding the photo and sends no email, a reply as a
+message is one comment and one email to the follower notified by email (counted
+as `mail.mail`), and a reply whose upload answer, then post answer, are lost
+posts one message with one attachment, on the module and with it ignored; two
+comments and a mention reach the open inbox by the bus, with no
+conversation page read; and a user notified by email is told why the inbox is
+empty, switches to the inbox, and the server reads `inbox`. The follower
+notified by email is a user the file creates, because another file switches
+chat_user's preference for the whole run.
+
+The test servers' SMTP points at a closed local port of the machine. Odoo
+sends notification emails right after the commit, and the host may run a mail
+server of its own: without this, a test mail would leave the machine, and a
+sent mail is deleted, so there would be no `mail.mail` to count. With it, the
+mail stays in `mail.mail` in the `exception` state, counted and never
+delivered.
+
+The « recherche et boîte du clavardage » scenario of `--appareil` runs on
+Odoo 18 on the phone: a message is sent, edited and deleted, and the search
+index passes SQLite's integrity check after each (or the phone uses the LIKE
+fallback); a search from the list opens the conversation at the hit,
+highlighted; a long press then Pin, confirmed in the native dialog, sets
+`pinned_at` on the server; Favourite stars it; the inbox of an email-notified
+user shows the explanation, the switch writes `inbox`, a mention of chat_user
+appears and « Marquer comme lu » reads it; a reply on a task with a photo
+posts it; and, in a group, the second bubble of a run of one author's messages
+shows neither name nor avatar, while the first shows the author's name and
+avatar (an author check on the rendered bubbles).
 
 `--appareil` plays its screens on the phone, against the same servers: the
 target picker, the banner of a date changed on the server, typing during a
