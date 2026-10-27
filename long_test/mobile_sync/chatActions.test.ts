@@ -17,7 +17,7 @@
 import {
 	appFor, bodyText, eachVersionFrom, EMPTY_MENTIONS, isEmptyMessage, nodeTransport, setOnline, unique, until,
 } from "./harness";
-import type { MessageTarget, SyncEnv } from "./harness";
+import type { Login, MessageTarget, SyncEnv } from "./harness";
 import { ChatPeer } from "./chatPeer";
 import { FaultProxy } from "./faultProxy";
 import { attachmentScene, filler, ROUTES } from "./chatAttachmentScene";
@@ -50,7 +50,7 @@ eachVersionFrom(18, "chat actions", (target) => {
 	const { idle, staged, mine } = attachmentScene(target, () => ({ proxy, peer }));
 
 	/** The app as `as` through the proxy, its chat source loaded. */
-	async function app(opts: { as?: "admin" | "chat"; chatModule?: "auto" | "ignore" } = {}) {
+	async function app(opts: { as?: "admin" | "chat" | Login; chatModule?: "auto" | "ignore" } = {}) {
 		const started = await appFor(proxy.via(target), opts.as ?? "admin", { chatModule: opts.chatModule });
 		env = started;
 		const [src] = await started.chat.sources();
@@ -122,8 +122,13 @@ eachVersionFrom(18, "chat actions", (target) => {
 	});
 
 	it("chat_user's reaction and edit reach the app by the bus, without a reload", async () => {
-		const group = await peer.group(unique("group"));
-		const { env, src } = await app();
+		// A user of this test alone: admin's bus also carries the conversations the other files open with
+		// admin meanwhile, and one of them would reload the account inside the window checked below
+		const login = unique("bus");
+		const uid = await peer.admin.create("res.users", { name: "MS Bus", login, password: login });
+		const { partner_id: [partner] } = await peer.admin.read("res.users", uid, ["partner_id"]);
+		const group = await peer.group(unique("group"), partner);
+		const { env, src } = await app({ as: { login, password: login } });
 		const applyBus = vi.spyOn(env.chat, "applyBus");
 		const delivered = () => applyBus.mock.calls.flatMap(([, notifications]) => notifications);
 		const sockets = () => proxy.calls.filter((c) => c.path.startsWith("/websocket")).length;

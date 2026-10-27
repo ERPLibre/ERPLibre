@@ -3,15 +3,17 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La synchronisation mobile de bout en bout, sur un téléphone branché.
 
-Sept écrans que les tests d'intégration ne voient pas, joués sur l'app de
+Neuf écrans que les tests d'intégration ne voient pas, joués sur l'app de
 test (ca.erplibre.home.synctest, construite par -PsyncTest, à côté de l'app
 de l'utilisateur qu'elle ne touche pas) contre les Odoo de la course : le
 sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
 pendant un pull, la note datée créée depuis le calendrier et, sur la 18
 seulement, le clavardage, un groupe créé depuis le téléphone, dont le
-temps réel passe par le websocket natif, et les pièces jointes du
-clavardage (fichier, message vocal enregistré au micro, image et message
-vocal reçus).
+temps réel passe par le websocket natif, les pièces jointes du clavardage
+(fichier, message vocal enregistré au micro, image et message vocal
+reçus), les actions sur un message, et la recherche et la boîte de
+réception du clavardage (épingle, favori, avis des notifications par
+courriel, réponse dans le fil d'une tâche).
 
 Le téléphone joint les serveurs par adb reverse (127.0.0.1 de l'appareil vers
 celui de l'hôte) ; la page se pilote par CDP (mobile_sync_cdp.py), les écrans
@@ -35,6 +37,7 @@ import sys
 import time
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,7 +50,7 @@ PAQUET = "ca.erplibre.home.synctest"
 # L'app de l'utilisateur, à côté de l'app de test : une course ne la touche
 # jamais, et lancer() le vérifie
 APP_PERSO = "ca.erplibre.home"
-DEVICE_HOOK_API = 5
+DEVICE_HOOK_API = 6
 APK_CACHE = odoo.CACHE / "apk"
 APK_PRODUIT = Path("android/app/build/outputs/apk/debug/app-debug.apk")
 # Ce que le pull compare : write_date, à la seconde
@@ -1656,6 +1659,373 @@ def scenario_actions_clavardage(ctx):
     )
 
 
+# Vrai quand le message de sel est mis en évidence pendant les 15 s qui
+# suivent : relevé à chaque image, la page gardée d'un écran à l'autre
+EN_EVIDENCE = (
+    "(sel) => { window.__msVu = false; const debut = performance.now();"
+    " const relever = () => { const e = document.querySelector(sel);"
+    " if (e && e.classList.contains('chat-thread__bubble--highlight'))"
+    " { window.__msVu = true; return; }"
+    " if (performance.now() - debut < 15000) requestAnimationFrame(relever); };"
+    " requestAnimationFrame(relever); return true; }"
+)
+# Le bouton positif d'une AlertDialog d'Android (Dialog.confirm de Capacitor)
+BOUTON_POSITIF = "android:id/button1"
+CONTENU_UI = "/data/local/tmp/ms_ui.xml"
+
+
+def marquer_contenant(ctx, selecteur, texte):
+    """Un sélecteur du premier élément de selecteur dont le texte contient
+    texte : il reçoit un attribut data-ms-marque, que toucher() retrouve."""
+    ctx.compteur += 1
+    marque = str(ctx.compteur)
+    ctx.cdp.attendre(
+        f"(() => {{ const e = [...document.querySelectorAll({js(selecteur)})]"
+        f".find(e => e.innerText.includes({js(texte)})); if (!e) return false;"
+        f" e.dataset.msMarque = {js(marque)}; return true; }})()",
+        delai=30,
+    )
+    return f'[data-ms-marque="{marque}"]'
+
+
+def toucher_dialogue(ctx, libelle, delai=10):
+    """Touche le bouton positif d'une boîte de dialogue native, une fois
+    affichée avec le libellé libelle : Dialog.confirm de Capacitor ouvre
+    une AlertDialog d'Android, hors du WebView. La fenêtre est relevée par
+    uiautomator, le centre du bouton touché par input tap."""
+    executer = ctx.appareil.executer
+    fin = time.monotonic() + delai
+    vu = None
+    try:
+        while True:
+            adb(
+                "shell",
+                "uiautomator",
+                "dump",
+                CONTENU_UI,
+                executer=executer,
+                check=False,
+            )
+            contenu = adb("shell", "cat", CONTENU_UI, executer=executer)
+            debut = contenu.find("<?xml")
+            noeuds = []
+            if debut >= 0:
+                try:
+                    noeuds = list(ET.fromstring(contenu[debut:]).iter("node"))
+                except ET.ParseError:
+                    noeuds = []
+            bouton = next(
+                (n for n in noeuds if n.get("resource-id") == BOUTON_POSITIF),
+                None,
+            )
+            vu = bouton.get("text") if bouton is not None else None
+            if vu and vu.strip().casefold() == libelle.casefold():
+                x1, y1, x2, y2 = map(
+                    int, re.findall(r"\d+", bouton.get("bounds"))
+                )
+                adb(
+                    "shell",
+                    "input",
+                    "tap",
+                    str((x1 + x2) // 2),
+                    str((y1 + y2) // 2),
+                    executer=executer,
+                )
+                return
+            if time.monotonic() > fin:
+                raise TimeoutError(
+                    f"boîte de dialogue « {libelle} » absente en {delai} s"
+                    f" (bouton positif : {vu!r})"
+                )
+            time.sleep(POSE)
+    finally:
+        adb("shell", "rm", "-f", CONTENU_UI, executer=executer, check=False)
+
+
+def place_au_clavier(ctx, champ):
+    """place_saisie clavier fermé, puis clavier ouvert par un toucher sur
+    champ : rend les deux relevés."""
+    ctx.cdp.evaluer("document.activeElement && document.activeElement.blur()")
+    ferme = place_saisie(ctx)
+    ctx.toucher_pose(champ)
+    fin = time.monotonic() + 10
+    while not clavier_affiche(ctx):
+        if time.monotonic() > fin:
+            raise TimeoutError(f"le clavier ne s'ouvre pas sur {champ}")
+        time.sleep(POSE)
+    return ferme, place_saisie(ctx)
+
+
+def ecart(releve):
+    """La place d'une saisie (place_au_clavier) en texte : px au-dessus de
+    la barre, clavier fermé puis ouvert."""
+    ferme, ouvert = releve
+    return (
+        f"{ferme[0]} px fermé,"
+        f" {ouvert[0] if ouvert[0] is not None else '—'} px ouvert"
+    )
+
+
+def notification_de(odoo_, message, partenaire):
+    """La notification du message pour le partenaire (is_read), None
+    quand il n'en a pas."""
+    lignes = odoo_.executer(
+        "mail.notification",
+        "search_read",
+        [
+            [
+                ["mail_message_id", "=", message],
+                ["res_partner_id", "=", partenaire],
+            ]
+        ],
+        {"fields": ["is_read"]},
+    )
+    return lignes[0] if lignes else None
+
+
+def scenario_recherche_boite(ctx):
+    """La recherche et la boîte de réception du clavardage, dans « ms chat »
+    et sur des tâches que l'administrateur suit. L'index de recherche FTS5
+    reste cohérent après un message envoyé (sa ligne remplacée par celle du
+    serveur), modifié et supprimé : son contrôle d'intégrité répond « ok ».
+    Le mot que chat_user poste se trouve dans la recherche de la liste, et
+    un toucher sur le résultat ouvre le fil sur le message, mis en
+    évidence. Un appui long : Épingler, confirmé dans la boîte de dialogue
+    native, puis Favori, chacun lu sur le serveur. La boîte de réception
+    affiche l'avis des notifications par courriel ; « Recevoir mes
+    notifications dans Odoo » passe l'administrateur à inbox, puis une
+    mention de chat_user y arrive et « Marquer comme lu » la marque lue sur
+    le serveur. Deux commentaires de chat_user sur une tâche : la réponse
+    ouverte sur l'un, fermée, ouverte sur l'autre, puis un retour Android
+    ferme la réponse et laisse la boîte à l'écran. Répondre, la photo
+    gardée en brouillon, un texte, ➤ : une note avec la photo sur la tâche.
+    Les saisies du fil et de la réponse se tiennent au plus ECART_BARRE_MAX
+    px au-dessus de la barre, clavier fermé et ouvert. L'administrateur
+    revient à email à la fin, quoi qu'il arrive. Rend le moteur de
+    recherche, l'intégrité de l'index et les places mesurées."""
+    pair = Odoo(ctx.cible, "chat")
+    moi = ctx.odoo.lire("res.users", ctx.odoo.uid, ["partner_id"])[
+        "partner_id"
+    ][0]
+    canaux = pair.executer(
+        "discuss.channel",
+        "search",
+        [[["name", "=", CANAL_CHAT], ["channel_type", "=", "group"]]],
+    )
+    assert canaux, f"aucun groupe « {CANAL_CHAT} » pour chat_user"
+    canal = canaux[0]
+
+    def poster(modele, ident, texte, partenaires=()):
+        return pair.route(
+            "/mail/message/post",
+            {
+                "thread_model": modele,
+                "thread_id": ident,
+                "post_data": {
+                    "body": texte,
+                    "message_type": "comment",
+                    "subtype_xmlid": "mail.mt_comment",
+                    "partner_ids": list(partenaires),
+                },
+            },
+        )["mail.message"][0]["id"]
+
+    def corps(message):
+        return ctx.odoo.lire("mail.message", message, ["body"])["body"] or ""
+
+    try:
+        ctx.hook(f"chatLoad({js(ctx.config_id)})")
+        moteur = ctx.hook("chatSearchEngine()")
+        texte = ctx.unique("index")
+        envoi = ctx.hook(
+            f"chatSend({js(ctx.config_id)}, {canal}, {js(texte)})"
+        )
+        mien = attendre_envoye(ctx, canal, envoi)
+        modifie = ctx.unique("index-modifie")
+        ctx.hook(
+            f"chatEdit({js(ctx.config_id)}, {canal}, {mien}, {js(modifie)})"
+        )
+        attendre_serveur(
+            "la modification sur le serveur", lambda: modifie in corps(mien)
+        )
+        ctx.hook(f"chatDelete({js(ctx.config_id)}, {canal}, {mien})")
+        # Un message modifié puis supprimé garde la marque vide de sa
+        # modification : seul le texte s'en va
+        attendre_serveur(
+            "la suppression sur le serveur",
+            lambda: modifie not in corps(mien),
+        )
+        integrite = ctx.hook("chatSearchIntegrity()")
+        assert integrite == (
+            "ok" if moteur == "fts5" else "like"
+        ), f"index {moteur} : {integrite}"
+
+        mot = ctx.unique("mot")
+        trouve = poster("discuss.channel", canal, f"{mot} à trouver")
+        ctx.cdp.attendre(
+            f"window.__erplibreTest.chatMessages({js(ctx.config_id)}, {canal})"
+            f".then(ms => ms.some(m => m.messageId === {trouve}))",
+            delai=30,
+        )
+        ctx.ouvrir("/chat", ".chat-list__search")
+        ctx.toucher_pose(".chat-list__search")
+        ctx.cdp.evaluer("document.querySelector('.chat-list__search').focus()")
+        ctx.cdp.taper(mot)
+        resultat = marquer_contenant(ctx, ".chat-search__hit", mot)
+        ctx.capturer("recherche_resultat", resultat)
+        bulle = f'.chat-thread__bubble[data-key="m{trouve}"]'
+        ctx.cdp.evaluer(f"({EN_EVIDENCE})({js(bulle)})")
+        ctx.toucher_pose(resultat)
+        ctx.cdp.attendre(
+            f"location.pathname.endsWith('/{canal}')"
+            f" && !!document.querySelector({js(bulle)})",
+            delai=20,
+        )
+        ctx.cdp.attendre("window.__msVu", delai=15)
+        assert ctx.cdp.evaluer(
+            f"({DANS_LE_FIL})({js(bulle)})"
+        ), "le fil ne s'ouvre pas sur le message trouvé"
+        ctx.capturer("recherche_fil", bulle)
+        place_fil = place_au_clavier(ctx, ".chat-thread__input")
+        ctx.cdp.evaluer(
+            "document.activeElement && document.activeElement.blur()"
+        )
+
+        ouvrir_menu(ctx, bulle)
+        ctx.toucher_pose(".chat-menu__pin")
+        toucher_dialogue(ctx, "Épingler")
+        attendre_serveur(
+            "l'épingle sur le serveur",
+            lambda: ctx.odoo.lire("mail.message", trouve, ["pinned_at"])[
+                "pinned_at"
+            ],
+        )
+        ouvrir_menu(ctx, bulle)
+        ctx.toucher_pose(".chat-menu__star")
+        attendre_serveur(
+            "le favori sur le serveur",
+            lambda: moi
+            in ctx.odoo.lire("mail.message", trouve, ["starred_partner_ids"])[
+                "starred_partner_ids"
+            ],
+        )
+
+        ctx.ouvrir("/chat/inbox", ".chat-mailbox__notice")
+        ctx.capturer("boite_avis", ".chat-mailbox__notice")
+        ctx.toucher_pose(".chat-mailbox__switch")
+        attendre_serveur(
+            "admin notifié dans Odoo",
+            lambda: ctx.odoo.lire(
+                "res.users", ctx.odoo.uid, ["notification_type"]
+            )["notification_type"]
+            == "inbox",
+        )
+        ctx.cdp.attendre(
+            "!document.querySelector('.chat-mailbox__notice')", delai=10
+        )
+        assert (
+            ctx.hook(f"chatNotificationType({js(ctx.config_id)})") == "inbox"
+        )
+
+        rappel = ctx.unique("mention")
+        mention = poster("discuss.channel", canal, rappel, [moi])
+        assert notification_de(ctx.odoo, mention, moi), "mention sans avis"
+        item = marquer_contenant(ctx, ".chat-mailbox__item", rappel)
+        ctx.toucher_pose(f"{item} .chat-mailbox__mark")
+        attendre_serveur(
+            "la mention lue sur le serveur",
+            lambda: notification_de(ctx.odoo, mention, moi)["is_read"],
+        )
+
+        # Dans un projet : une tâche privée n'est lisible que de ses assignés
+        projet = ctx.odoo.creer(
+            "project.project", {"name": ctx.unique("projet")}
+        )
+        tache = ctx.odoo.creer(
+            "project.task", {"name": ctx.unique("tache"), "project_id": projet}
+        )
+        premier = ctx.unique("commentaire")
+        poster("project.task", tache, premier)
+        second = ctx.unique("commentaire")
+        commentaire = poster("project.task", tache, second)
+        un = marquer_contenant(ctx, ".chat-mailbox__item", premier)
+        autre = marquer_contenant(ctx, ".chat-mailbox__item", second)
+        ctx.toucher_pose(f"{un} .chat-mailbox__reply")
+        ctx.cdp.attendre("!!document.querySelector('.chat-reply')", delai=5)
+        ctx.toucher_pose(".chat-reply__close")
+        ctx.cdp.attendre("!document.querySelector('.chat-reply')", delai=5)
+        ctx.toucher_pose(f"{autre} .chat-mailbox__reply")
+        ctx.cdp.attendre("!!document.querySelector('.chat-reply')", delai=5)
+        adb("shell", "input", "keyevent", "4", executer=ctx.appareil.executer)
+        ctx.cdp.attendre("!document.querySelector('.chat-reply')", delai=5)
+        time.sleep(POSE)
+        assert ctx.cdp.evaluer(
+            "location.pathname === '/chat/inbox'"
+            " && !!document.querySelector('.chat-mailbox')"
+        ), "le retour a quitté la boîte de réception"
+
+        nom_photo = f"{ctx.unique('photo')}.jpg"
+        deposer(ctx, PHOTO, f"{DEPOT}/{nom_photo}")
+        ctx.hook(
+            f"chatRecordDraftFile({js(ctx.config_id)}, {commentaire},"
+            f" {js(f'{DEPOT}/{nom_photo}')}, {js(nom_photo)}, 'image/jpeg')"
+        )
+        ctx.toucher_pose(f"{autre} .chat-mailbox__reply")
+        ctx.cdp.attendre(
+            "!!document.querySelector('.chat-reply .chat-attach__chip')",
+            delai=10,
+        )
+        place_reponse = place_au_clavier(ctx, ".chat-reply__input")
+        reponse = ctx.unique("reponse")
+        ctx.cdp.evaluer("document.querySelector('.chat-reply__input').focus()")
+        ctx.cdp.taper(reponse)
+        ctx.cdp.attendre(
+            f"document.querySelector('.chat-reply__input').value === {js(reponse)}",
+            delai=5,
+        )
+        ctx.capturer("boite_reponse", ".chat-reply")
+        ctx.toucher_pose(".chat-reply .chat-thread__send")
+        note = ctx.odoo.executer(
+            "ir.model.data",
+            "search_read",
+            [[["module", "=", "mail"], ["name", "=", "mt_note"]]],
+            {"fields": ["res_id"]},
+        )[0]["res_id"]
+        recue = attendre_serveur(
+            "la réponse sur la tâche",
+            lambda: ctx.odoo.executer(
+                "mail.message",
+                "search_read",
+                [
+                    [
+                        ["model", "=", "project.task"],
+                        ["res_id", "=", tache],
+                        ["body", "ilike", reponse],
+                    ]
+                ],
+                {"fields": ["subtype_id", "attachment_ids"]},
+            ),
+            delai=60,
+        )
+        assert len(recue) == 1, recue
+        assert recue[0]["subtype_id"][0] == note, recue
+        pieces = ctx.odoo.executer(
+            "ir.attachment",
+            "read",
+            [recue[0]["attachment_ids"]],
+            {"fields": ["name"]},
+        )
+        assert [p["name"] for p in pieces] == [nom_photo], pieces
+    finally:
+        ctx.odoo.ecrire(
+            "res.users", ctx.odoo.uid, {"notification_type": "email"}
+        )
+    return (
+        f"moteur {moteur}, intégrité {integrite} ; saisie du fil"
+        f" {ecart(place_fil)}, de la réponse {ecart(place_reponse)}"
+    )
+
+
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
 # parle qu'à la 18
 SCENARIOS = (
@@ -1667,6 +2037,11 @@ SCENARIOS = (
     ("groupe créé du téléphone", scenario_groupe, (18,)),
     ("pièces jointes du clavardage", scenario_pieces_jointes, (18,)),
     ("actions du clavardage", scenario_actions_clavardage, (18,)),
+    (
+        "recherche et boîte du clavardage",
+        scenario_recherche_boite,
+        (18,),
+    ),
 )
 
 
