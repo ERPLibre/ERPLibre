@@ -8,7 +8,8 @@
  * Reactions, edits and deletes go through the web client's routes too
  * (/mail/message/reaction, /mail/message/update_content), an edit's body
  * built from its text as the browser composer builds it (the kit's
- * composeBody).
+ * composeBody). Records are read and set up as admin: their chatter, their
+ * followers, assignments, stars, notifications and outgoing emails.
  */
 import { composeBody, emojiConversions, EMPTY_MENTIONS } from "./harness";
 import type { Mentions, Target } from "./harness";
@@ -79,6 +80,16 @@ export class ChatPeer {
 		const id = await this.idByName(name);
 		if (opts.invite ?? true) await this.user.execute(CHANNEL, "add_members", [[id]], { partner_ids: [this.adminPartnerId] });
 		return id;
+	}
+
+	/** chat_user's direct chat with `withPartner` (channel_get, as the browser opens it); its id. */
+	async chat(withPartner: number): Promise<number> {
+		await this.user.execute(CHANNEL, "channel_get", [], { partners_to: [withPartner] });
+		const [row] = await this.user.searchRead(
+			CHANNEL, [["channel_type", "=", "chat"], ["channel_partner_ids", "in", [withPartner]]], ["id"],
+		);
+		if (!row) throw new Error(`no chat of chat_user with partner ${withPartner}`);
+		return row.id;
 	}
 
 	/** The partners of the conversation's members on the server, in member-id order. */
@@ -171,6 +182,106 @@ export class ChatPeer {
 		const id = result?.["mail.message"]?.[0]?.id;
 		if (typeof id !== "number") throw new Error("post answered no message id");
 		return id;
+	}
+
+	/** Posts text as chat_user in the conversation, naming partnerId in partner_ids: a mention of them; the message's id. */
+	async mention(channelId: number, partnerId: number, text: string): Promise<number> {
+		const result = await this.user.jsonRoute("/mail/message/post", {
+			thread_model: CHANNEL,
+			thread_id: channelId,
+			post_data: { body: text, message_type: "comment", subtype_xmlid: "mail.mt_comment", partner_ids: [partnerId] },
+		});
+		const id = result?.["mail.message"]?.[0]?.id;
+		if (typeof id !== "number") throw new Error("mention answered no message id");
+		return id;
+	}
+
+	/**
+	 * Posts text as chat_user in a record's chatter, as the browser's
+	 * chatter does: a message to the followers (mail.mt_comment) or an
+	 * internal note (mail.mt_note); the message's id.
+	 */
+	async postOnRecord(model: string, resId: number, text: string, subtype: "mail.mt_comment" | "mail.mt_note"): Promise<number> {
+		const result = await this.user.jsonRoute("/mail/message/post", {
+			thread_model: model,
+			thread_id: resId,
+			post_data: { body: text, message_type: "comment", subtype_xmlid: subtype },
+		});
+		const id = result?.["mail.message"]?.[0]?.id;
+		if (typeof id !== "number") throw new Error("record post answered no message id");
+		return id;
+	}
+
+	/** partnerId (chat_user by default) made a follower of the record, by admin (message_subscribe). */
+	async follow(model: string, resId: number, partnerId = this.partnerId): Promise<void> {
+		await this.admin.execute(model, "message_subscribe", [[resId]], { partner_ids: [partnerId] });
+	}
+
+	/** chat_user pins the message in the conversation, or unpins it (set_message_pin, as the browser). */
+	async pin(channelId: number, messageId: number, pinned: boolean): Promise<void> {
+		await this.user.execute(CHANNEL, "set_message_pin", [[channelId]], { message_id: messageId, pinned });
+	}
+
+	/** Whether the user of `login` holds the message starred (its partner in starred_partner_ids). */
+	async starredBy(login: string, messageId: number): Promise<boolean> {
+		const message = await this.admin.read("mail.message", messageId, ["starred_partner_ids"]);
+		if (!message) throw new Error(`message ${messageId} not found`);
+		return message.starred_partner_ids.includes(await this.partnerOf(login));
+	}
+
+	/** The notification of the message for the user of `login` (mail.notification), null when there is none. */
+	async needactionOf(login: string, messageId: number): Promise<{ notification_type: string; is_read: boolean } | null> {
+		const [row] = await this.admin.searchRead(
+			"mail.notification",
+			[["mail_message_id", "=", messageId], ["res_partner_id", "=", await this.partnerOf(login)]],
+			["notification_type", "is_read"],
+		);
+		return row ?? null;
+	}
+
+	/** The outgoing emails (mail.mail, sent or not) whose recipients hold partnerId. */
+	mailCountFor(partnerId: number): Promise<number> {
+		return this.admin.execute("mail.mail", "search_count", [[["recipient_ids", "in", [partnerId]]]]);
+	}
+
+	/** The notification_type of the user of `login` on the server: "email" or "inbox". */
+	async notificationTypeOf(login: string): Promise<string> {
+		const [row] = await this.admin.searchRead("res.users", [["login", "=", login]], ["notification_type"]);
+		if (!row) throw new Error(`user ${login} not found`);
+		return row.notification_type;
+	}
+
+	/** The task assigned to the user of `login` too, by admin: Odoo notifies them of the assignment. */
+	async assignTask(taskId: number, login: string): Promise<void> {
+		const [user] = await this.admin.searchRead("res.users", [["login", "=", login]], ["id"]);
+		if (!user) throw new Error(`user ${login} not found`);
+		await this.admin.write("project.task", [taskId], { user_ids: [[4, user.id]] });
+	}
+
+	/**
+	 * The messages of a record on the server (admin's view), oldest first:
+	 * body, message type, subtype as its xml id (mail.mt_note,
+	 * mail.mt_comment; "" for another) and attachment ids.
+	 */
+	async messagesOf(model: string, resId: number): Promise<{
+		id: number; body: string; messageType: string; subtype: string; attachmentIds: number[];
+	}[]> {
+		const subtypes = await this.admin.searchRead(
+			"ir.model.data", [["module", "=", "mail"], ["model", "=", "mail.message.subtype"], ["name", "in", ["mt_note", "mt_comment"]]],
+			["name", "res_id"],
+		);
+		const xmlid = new Map(subtypes.map((d) => [d.res_id as number, `mail.${d.name}`]));
+		const rows = await this.admin.searchRead(
+			"mail.message", [["model", "=", model], ["res_id", "=", resId]],
+			["body", "message_type", "subtype_id", "attachment_ids"], { order: "id asc" },
+		);
+		return rows.map((r) => ({
+			id: r.id,
+			body: r.body || "",
+			messageType: r.message_type,
+			subtype: r.subtype_id ? xmlid.get(r.subtype_id[0]) ?? "" : "",
+			attachmentIds: r.attachment_ids,
+		}));
 	}
 
 	/**

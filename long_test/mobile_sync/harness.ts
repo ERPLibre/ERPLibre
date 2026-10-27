@@ -11,15 +11,17 @@ import {
 	createSyncEnv, installLocalStorage, resetMocks, memoryAttachmentIO, nodeTransport,
 	restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice,
 	composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS,
+	foldText, htmlTerm, mailboxKindOf, noteForRecord,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import type {
-	Mentions, MemoryChatFiles, MessageTarget, SyncEnv,
+	ChatMailboxItem, Mentions, MemoryChatFiles, MessageTarget, SearchResults, SyncEnv,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import { readFileSync } from "node:fs";
 
 export { memoryAttachmentIO, nodeTransport, restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice };
 export { composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS };
-export type { Mentions, MessageTarget, SyncEnv };
+export { foldText, htmlTerm, mailboxKindOf, noteForRecord };
+export type { ChatMailboxItem, Mentions, MessageTarget, SearchResults, SyncEnv };
 
 export interface Login {
 	login: string;
@@ -36,6 +38,12 @@ export interface Target {
 	multi: Login;
 	/** A second internal user, the other end of the chat (Odoo 18 only). */
 	chat?: Login;
+	/**
+	 * An internal user notified in Odoo's inbox, with an email address and
+	 * project's user rights, a member of « ms chat » (Odoo 18 only): the
+	 * app's user of chatInbox.test.ts alone.
+	 */
+	inbox?: Login;
 }
 
 function readTargets(): Target[] {
@@ -75,22 +83,23 @@ export function eachVersionFrom(min: number, name: string, fn: (target: Target) 
 /**
  * The app as a user of one or more servers sees it: a new database with
  * their applications and the sync service, http allowed, no session yet,
- * the network on. as names the user: admin, the two-company user, or the
- * chat's second user (Odoo 18).
+ * the network on. as names the user: admin, the two-company user, the
+ * chat's second user or the inbox's user (Odoo 18), or any other Login of
+ * the servers (a user a test created).
  * chatModule "ignore" makes chat posts take the marker path, and uploads
  * Odoo's own route, even where the server module is installed. The chat's
  * files are in memory (env.chatFiles; chatFiles to give them).
  */
 export async function appFor(
 	targets: Target | Target[],
-	as: "admin" | "multi" | "chat" = "admin",
+	as: "admin" | "multi" | "chat" | "inbox" | Login = "admin",
 	opts: { chatModule?: "auto" | "ignore"; chatFiles?: MemoryChatFiles } = {},
 ): Promise<SyncEnv> {
 	resetMocks();
 	installLocalStorage({ allowHttp: true });
 	const list = Array.isArray(targets) ? targets : [targets];
 	return createSyncEnv(list.map((t) => {
-		const user = t[as];
+		const user = typeof as === "string" ? t[as] : as;
 		if (!user) throw new Error(`no ${as} user on Odoo ${t.version}`);
 		return { url: t.url, username: user.login, password: user.password, database: t.database };
 	}), opts);
