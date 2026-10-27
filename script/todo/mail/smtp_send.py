@@ -15,6 +15,8 @@ en production on laisse la stdlib les produire.
 from __future__ import annotations
 
 import mimetypes
+import re
+from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formatdate, getaddresses, make_msgid
 from pathlib import Path
@@ -35,7 +37,53 @@ class SmtpAuthError(Exception):
 
 
 class SmtpError(Exception):
-    """Message impossible à construire, ou serveur qui refuse."""
+    """Message impossible à construire, ou serveur qui refuse.
+
+    `code` porte le code de réponse SMTP quand le serveur en a rendu un
+    (voir `smtp_code`), `None` sinon : erreur de construction, panne réseau.
+    """
+
+    def __init__(self, message: str = "", code: int | None = None):
+        super().__init__(message)
+        self.code = code
+
+    @property
+    def permanent(self) -> bool:
+        """Vrai pour un refus 5xx, qu'un nouvel essai ne changerait pas.
+
+        Un code 4xx ou absent est transitoire : le message se réessaie.
+        """
+        return self.code is not None and 500 <= self.code < 600
+
+
+# Code SMTP en tête du texte d'une exception qui n'en porte pas en attribut
+# (un double de test, ou une couche qui ne garde que le message du serveur).
+_LEADING_CODE = re.compile(r"^\s*([245]\d\d)\b")
+
+
+def smtp_code(exc: BaseException) -> int | None:
+    """Le code de réponse SMTP que porte `exc`, ou `None`.
+
+    `SMTPRecipientsRefused` rend le PLUS PETIT code de ses destinataires :
+    le refus n'est permanent que si TOUS les destinataires le sont, et un
+    seul 4xx suffit à justifier un nouvel essai. `SMTPResponseException`
+    (et ses dérivées : `SMTPDataError`, `SMTPSenderRefused`…) rend
+    `smtp_code`. À défaut, un code en tête de `str(exc)` est retenu.
+    """
+    import smtplib
+
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        codes = [
+            entry[0]
+            for entry in (exc.recipients or {}).values()
+            if isinstance(entry, tuple) and entry and isinstance(entry[0], int)
+        ]
+        return min(codes) if codes else None
+    if isinstance(exc, smtplib.SMTPResponseException):
+        if isinstance(exc.smtp_code, int):
+            return exc.smtp_code
+    match = _LEADING_CODE.match(str(exc))
+    return int(match.group(1)) if match else None
 
 
 def _as_list(value) -> list[str]:
@@ -64,12 +112,35 @@ def build_message(
     references: str | None = None,
     date: str | None = None,
     msgid: str | None = None,
+    html: str | None = None,
+    inline_images: list[InlineImage] | None = None,
+    attachment_parts: list[AttachmentPart] | None = None,
+    reply_to: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> EmailMessage:
+    """Un message prêt à partir.
+
+    Structure MIME : `text/plain` seul ; avec `html`, une
+    `multipart/alternative` (texte puis HTML) ; avec `inline_images`, le HTML
+    devient une `multipart/related` qui porte les images citées par `cid:` ;
+    toute pièce jointe (`attachment_parts` en octets, puis `attachments` en
+    chemins) enveloppe le tout dans une `multipart/mixed`.
+
+    `headers` ajoute des en-têtes libres : ceux de `FORBIDDEN_EXTRA_HEADERS`,
+    tout `Content-*`, un nom répété et tout saut de ligne (dans `headers`
+    comme dans `reply_to`) sont refusés par `SmtpError`, avant toute
+    construction.
+    """
     to_list = _as_list(to)
     cc_list = _as_list(cc)
     bcc_list = _as_list(bcc)
     if not (to_list or cc_list or bcc_list):
         raise SmtpError(t("mail_err_message_needs_recipient"))
+    if inline_images and not html:
+        raise SmtpError(t("mail_err_inline_needs_html"))
+    if reply_to and _has_line_break(str(reply_to)):
+        raise SmtpError(t("mail_err_header_newline"))
+    extra = _checked_headers(headers, reply_to=bool(reply_to))
 
     msg = EmailMessage()
     msg["From"] = account.from_header()
@@ -86,16 +157,90 @@ def build_message(
         msg["In-Reply-To"] = in_reply_to
     if references:
         msg["References"] = references
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    for name, value in extra:
+        msg[name] = value
     msg.set_content(body)
+    if html:
+        msg.add_alternative(html, subtype="html")
+        if inline_images:
+            # `add_related` transforme la partie HTML elle-même en
+            # `multipart/related` : les images restent à côté du HTML qui
+            # les cite, et non à côté du texte brut.
+            html_part = msg.get_body(("html",))
+            for image in inline_images:
+                html_part.add_related(
+                    image.data,
+                    image.maintype,
+                    image.subtype,
+                    cid=f"<{image.cid}>",
+                    filename=image.filename,
+                    disposition="inline",
+                )
 
     # Le Cci ne va PAS dans les en-têtes : il ne vit que dans l'enveloppe
     # SMTP, que `recipients()` reconstitue.
     if bcc_list:
         msg["X-ERPLibre-Bcc"] = ", ".join(bcc_list)
 
+    for part in attachment_parts or []:
+        msg.add_attachment(
+            part.data,
+            maintype=part.maintype,
+            subtype=part.subtype,
+            filename=part.filename,
+        )
     for path in attachments or []:
         _attach_file(msg, Path(path))
     return msg
+
+
+# Caractères que `str.splitlines` traite comme une fin de ligne. La
+# bibliothèque `email` découpe les valeurs d'en-tête avec `splitlines` et
+# lève `ValueError` dès qu'il y a plus d'une ligne : tester « \r » et « \n »
+# seuls laisserait passer « \x0b », « \x85 » ou « \u2028 ».
+_LINE_BREAKS = "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
+
+
+def _has_line_break(text: str) -> bool:
+    return any(c in text for c in _LINE_BREAKS)
+
+
+def _checked_headers(headers, reply_to: bool = False) -> list[tuple[str, str]]:
+    """Les en-têtes libres de `build_message`, validés, dans leur ordre.
+
+    Refuse par `SmtpError` un saut de ligne (au sens de `_LINE_BREAKS`)
+    dans un nom ou une valeur : il injecterait un en-tête de plus. Refuse
+    par `mail_err_header_forbidden` suivi du nom :
+    - un nom réservé par `FORBIDDEN_EXTRA_HEADERS` (comparé en minuscules) ;
+    - tout nom en `Content-*` : `set_content` efface ces en-têtes de la
+      racine, ils disparaîtraient sans erreur ;
+    - `Reply-To` quand `reply_to` est vrai, et un nom présent deux fois
+      sans égard à la casse : un en-tête unique posé deux fois fait lever
+      `ValueError` à la bibliothèque `email` ;
+    - un nom hors des caractères qu'admet un nom de champ (ASCII
+      imprimable sans « : ») : « To: x » comme nom produirait une ligne
+      lue comme un `To`.
+    """
+    out = []
+    seen = {"reply-to"} if reply_to else set()
+    for name, value in (headers or {}).items():
+        name, value = str(name), str(value)
+        if _has_line_break(name) or _has_line_break(value):
+            raise SmtpError(t("mail_err_header_newline"))
+        lower = name.lower()
+        if (
+            not name
+            or lower in FORBIDDEN_EXTRA_HEADERS
+            or lower.startswith("content-")
+            or lower in seen
+            or any(not 33 <= ord(c) <= 126 or c == ":" for c in name)
+        ):
+            raise SmtpError(f"{t('mail_err_header_forbidden')} {name}")
+        seen.add(lower)
+        out.append((name, value))
+    return out
 
 
 def _attach_file(msg: EmailMessage, path: Path) -> None:
@@ -300,8 +445,11 @@ def send(account, msg, transport: SmtpTransport) -> list[str]:
     except Exception as exc:
         # Le serveur peut refuser pour mille raisons (auth, quota,
         # destinataire rejeté) : une seule erreur de haut niveau, avec le
-        # texte du serveur conservé pour l'utilisateur.
-        raise SmtpError(f"{t('mail_err_send_refused')} {exc}") from exc
+        # texte du serveur conservé pour l'utilisateur, et son code pour
+        # distinguer un refus permanent d'un échec à réessayer.
+        raise SmtpError(
+            f"{t('mail_err_send_refused')} {exc}", code=smtp_code(exc)
+        ) from exc
     return to_addrs
 
 
@@ -320,3 +468,169 @@ def without_bcc(msg):
     clone = copy.deepcopy(msg)
     del clone["X-ERPLibre-Bcc"]
     return clone
+
+
+# -- Contrats de la réponse automatique -------------------------------------
+# Types et constantes partagés par la construction des messages et le moteur
+# de règles. `build_message` et `build_auto_reply` les consomment.
+
+
+@dataclass(frozen=True)
+class InlineImage:
+    """Image affichée DANS le corps HTML, référencée par `cid:`.
+
+    `cid` est sans chevrons : la construction pose l'en-tête `Content-ID`
+    sous la forme `<cid>`, et le HTML la cite en `cid:<valeur>` sans eux.
+    `maintype` vaut toujours « image » ; `subtype` est l'un de « png »,
+    « jpeg », « gif », « webp ».
+    """
+
+    cid: str
+    data: bytes
+    maintype: str
+    subtype: str
+    filename: str
+
+
+@dataclass(frozen=True)
+class AttachmentPart:
+    """Pièce jointe fournie en octets, et non par un chemin sur le disque.
+
+    Le moteur de règles lit lui-même ses images (contrôle d'empreinte) : il
+    passe les octets plutôt qu'un chemin que `build_message` relirait.
+    """
+
+    data: bytes
+    maintype: str
+    subtype: str
+    filename: str
+
+
+# En-têtes que `headers=` ne peut ni poser ni remplacer : ils portent
+# l'adressage, l'enfilage ou la structure MIME, que `build_message` construit
+# lui-même. Comparés en minuscules.
+FORBIDDEN_EXTRA_HEADERS = frozenset(
+    h.lower()
+    for h in (
+        "From",
+        "To",
+        "Cc",
+        "Bcc",
+        "Subject",
+        "Date",
+        "Message-ID",
+        "In-Reply-To",
+        "References",
+        "X-ERPLibre-Bcc",
+        "Content-Type",
+        "MIME-Version",
+        "Content-Transfer-Encoding",
+        "Content-Disposition",
+    )
+)
+# Valeurs d'`Auto-Submitted` (RFC 3834) : une réponse à un message reçu, ou
+# un message engendré sans message déclencheur.
+AUTO_SUBMITTED_REPLIED = "auto-replied"
+AUTO_SUBMITTED_GENERATED = "auto-generated"
+# Marqueur posé dans `X-Loop` de chaque envoi automatique ; un message reçu
+# qui le porte n'obtient jamais de réponse automatique.
+X_LOOP_MARKER = "erplibre-rules"
+# Préfixe du sujet d'une réponse automatique sans gabarit.
+AUTO_SUBJECT_PREFIX = "Auto:"
+
+
+def auto_reply_subject(original_subject: str, template: str = "") -> str:
+    """Le sujet d'une réponse automatique, sur une seule ligne.
+
+    Sans gabarit, ou avec un gabarit fait de blancs seulement :
+    `AUTO_SUBJECT_PREFIX` suivi du sujet reçu, sans doubler
+    un préfixe déjà présent (comparé sans casse). Avec gabarit : la SEULE
+    variable `{subject}` y est remplacée par `str.replace`, jamais
+    `str.format` — le sujet vient d'un tiers, et ses accolades restent du
+    texte. Les retours à la ligne et blancs répétés se réduisent à une
+    espace.
+    """
+    subject = " ".join((original_subject or "").split())
+    if template and template.strip():
+        result = template.replace("{subject}", subject)
+    elif subject.lower().startswith(AUTO_SUBJECT_PREFIX.lower()):
+        result = subject
+    else:
+        result = f"{AUTO_SUBJECT_PREFIX} {subject}"
+    return " ".join(result.split())
+
+
+def build_auto_reply(
+    account,
+    to: str,
+    subject: str,
+    body: str,
+    *,
+    in_reply_to: str = "",
+    references: str = "",
+    html: str | None = None,
+    inline_images: list[InlineImage] | None = None,
+    attachment_parts: list[AttachmentPart] | None = None,
+    auto_submitted: str = AUTO_SUBMITTED_REPLIED,
+    date: str | None = None,
+    msgid: str | None = None,
+) -> EmailMessage:
+    """Une réponse automatique à un message reçu, conforme à la RFC 3834.
+
+    Porte `Auto-Submitted`, `X-Auto-Response-Suppress: All` et `X-Loop`
+    (`X_LOOP_MARKER` suivi de l'adresse du compte), que les répondeurs
+    respectueux lisent pour ne pas répondre à leur tour. Ne cite JAMAIS le
+    message d'origine : son texte, écrit par un tiers, ne repart pas vers
+    une adresse que rien n'a vérifiée.
+
+    `in_reply_to`, `references` et `subject` viennent d'un tiers et sont
+    DÉPLIÉS d'abord : un en-tête plié garde son CRLF, et `EmailMessage`
+    lève `ValueError` sur une valeur qui en contient. Des deux premiers, seuls
+    restent les identifiants que retient `_msgid_tokens`. `subject` est pris
+    tel quel par ailleurs (l'appelant passe `auto_reply_subject(...)`). `to`
+    est l'adresse telle que reçue, jamais sa forme IDNA normalisée, que
+    `smtplib` refuse sans SMTPUTF8 ; vide, il fait lever `SmtpError` comme
+    un message sans destinataire.
+    """
+    irt = " ".join(_msgid_tokens(in_reply_to))
+    refs = " ".join(_msgid_tokens(references) + ([irt] if irt else []))
+    return build_message(
+        account,
+        [to] if (to or "").strip() else [],
+        " ".join((subject or "").split()),
+        body,
+        in_reply_to=irt or None,
+        references=refs or None,
+        date=date,
+        msgid=msgid,
+        html=html,
+        inline_images=inline_images,
+        attachment_parts=attachment_parts,
+        headers={
+            "Auto-Submitted": auto_submitted,
+            "X-Auto-Response-Suppress": "All",
+            "X-Loop": f"{X_LOOP_MARKER} {account.email}",
+        },
+    )
+
+
+# Longueur au-delà de laquelle un identifiant de message est écarté : une
+# ligne d'en-tête ne dépasse pas 998 caractères (RFC 5322), et le pliage ne
+# coupe pas à l'intérieur d'un identifiant.
+MAX_MSGID_LEN = 900
+
+
+def _msgid_tokens(value: str) -> list[str]:
+    """Les identifiants de `value` qu'un en-tête d'enfilage peut porter.
+
+    Découpe sur les blancs (ce qui déplie un en-tête plié) et ne garde que
+    les jetons en ASCII imprimable d'au plus `MAX_MSGID_LEN` caractères :
+    un caractère non ASCII dans `In-Reply-To` ou `References` fait échouer
+    `as_bytes()` bien après la construction, et un jeton trop long produit
+    une ligne que le serveur peut refuser.
+    """
+    return [
+        tok
+        for tok in (value or "").split()
+        if len(tok) <= MAX_MSGID_LEN and all(33 <= ord(c) <= 126 for c in tok)
+    ]

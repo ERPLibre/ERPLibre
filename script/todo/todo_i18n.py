@@ -14974,6 +14974,583 @@ TRANSLATIONS = {
         "en": "no recipient: nothing was sent",
     },
     "mail_err_send_refused": {"fr": "envoi refusé :", "en": "send refused:"},
+    "mail_err_inline_needs_html": {
+        "fr": "Une image en ligne exige un corps HTML.",
+        "en": "An inline image requires an HTML body.",
+    },
+    "mail_err_header_forbidden": {
+        "fr": "En-tête réservé :",
+        "en": "Reserved header:",
+    },
+    "mail_err_header_newline": {
+        "fr": "Saut de ligne interdit dans un en-tête.",
+        "en": "Line break not allowed in a header.",
+    },
+    # -- Règles de courriel entrant : moteur (préfixe mail_rules_) ---------
+    # Clés du modèle, du stockage, des garde-fous et du moteur de règles.
+    # Les libellés des écrans de règles vivent dans un bloc distinct.
+    # Les clés mail_rules_reason_<code> et mail_rules_outcome_<valeur> se
+    # construisent par f-string au site d'appel : le balayage littéral de
+    # TestMailKeysAreTranslated ne les voit pas, un test dédié vérifie
+    # qu'il en existe une par code de guards.REASONS (hors SILENT_REASONS),
+    # de guards.ENGINE_REASONS, plus « gone » et « catchup_overflow », et
+    # une par valeur de model.OUTCOMES.
+    "mail_rules_err_bad_json": {
+        "fr": "Fichier de règles illisible :",
+        "en": "Unreadable rules file:",
+    },
+    "mail_rules_err_future_version": {
+        "fr": "Fichier de règles d'une version plus récente :",
+        "en": "Rules file from a newer version:",
+    },
+    "mail_rules_err_invalid": {
+        "fr": "Règle invalide :",
+        "en": "Invalid rule:",
+    },
+    "mail_rules_err_field": {"fr": "champ inconnu", "en": "unknown field"},
+    "mail_rules_err_op": {
+        "fr": "opération inconnue",
+        "en": "unknown operation",
+    },
+    "mail_rules_err_mode": {
+        "fr": "mode de comparaison inconnu",
+        "en": "unknown match mode",
+    },
+    "mail_rules_err_glob_field": {
+        "fr": "le motif ne s'applique qu'à De et À/Cc",
+        "en": "the pattern applies only to From and To/Cc",
+    },
+    "mail_rules_err_empty_value": {"fr": "valeur vide", "en": "empty value"},
+    "mail_rules_err_value_too_long": {
+        "fr": "valeur trop longue",
+        "en": "value too long",
+    },
+    "mail_rules_err_regex": {
+        "fr": "expression régulière invalide :",
+        "en": "invalid regular expression:",
+    },
+    "mail_rules_err_regex_timeout": {
+        "fr": "expression régulière trop lente sur ce message",
+        "en": "regular expression too slow on this message",
+    },
+    "mail_rules_err_not_one_child": {
+        "fr": "un groupe NON contient exactement une condition",
+        "en": "a NOT group holds exactly one condition",
+    },
+    "mail_rules_err_too_deep": {
+        "fr": "filtre trop profond ou trop grand",
+        "en": "filter too deep or too large",
+    },
+    "mail_rules_err_minutes": {
+        "fr": "minutes : entier de 1 à 525600",
+        "en": "minutes: integer from 1 to 525600",
+    },
+    "mail_rules_err_max_age": {
+        "fr": "âge maximal : entier de 1 à 720 heures",
+        "en": "maximum age: integer from 1 to 720 hours",
+    },
+    "mail_rules_err_hold_first": {
+        "fr": "envois retenus : entier de 1 à 10",
+        "en": "held sends: integer from 1 to 10",
+    },
+    "mail_rules_err_kind": {
+        "fr": "type d'action inconnu",
+        "en": "unknown action type",
+    },
+    "mail_rules_err_format": {"fr": "format inconnu", "en": "unknown format"},
+    "mail_rules_err_image_type": {
+        "fr": "type d'image refusé :",
+        "en": "image type refused:",
+    },
+    "mail_rules_err_image_size": {
+        "fr": "image trop lourde :",
+        "en": "image too large:",
+    },
+    "mail_rules_err_image_missing": {
+        "fr": "image introuvable :",
+        "en": "image not found:",
+    },
+    "mail_rules_err_images_pending": {
+        "fr": (
+            "Chemins d'images pas encore ajoutés : « Ajouter les images »"
+            " ou videz le champ."
+        ),
+        "en": (
+            "Image paths not added yet: press 'Add the images' or clear"
+            " the field."
+        ),
+    },
+    "mail_rules_err_image_changed": {
+        "fr": "image modifiée depuis son ajout :",
+        "en": "image changed since it was added:",
+    },
+    "mail_rules_busy": {
+        "fr": "Règles occupées par une autre passe, réessayez.",
+        "en": "Rules are busy with another pass, try again.",
+    },
+    "mail_rules_status_sent": {
+        "fr": "réponses automatiques envoyées :",
+        "en": "automatic replies sent:",
+    },
+    "mail_rules_status_held": {
+        "fr": "en attente d'approbation (o) :",
+        "en": "awaiting approval (o):",
+    },
+    "mail_rules_status_queued": {"fr": "en file :", "en": "queued:"},
+    "mail_rules_status_failed": {"fr": "échecs :", "en": "failed:"},
+    "mail_rules_cap_warning": {
+        "fr": (
+            "Plafond d'envois automatiques atteint ; le reste est retenu (o)."
+        ),
+        "en": "Automatic send cap reached; the rest is held (o).",
+    },
+    "mail_rules_catchup_warning": {
+        "fr": (
+            "Trop de messages à rattraper ; les plus anciens sont ignorés."
+        ),
+        "en": "Too many messages to catch up; the oldest are skipped.",
+    },
+    "mail_rules_ephemeral": {
+        "fr": "Règles désactivées en cache éphémère.",
+        "en": "Rules are disabled with an ephemeral cache.",
+    },
+    "mail_rules_no_cache": {
+        "fr": "Règles indisponibles : le cache du compte n'a pas pu s'ouvrir.",
+        "en": "Rules unavailable: the account cache could not be opened.",
+    },
+    "mail_rules_locked": {
+        "fr": "Règles : une autre passe est en cours.",
+        "en": "Rules: another pass is running.",
+    },
+    "mail_rules_rearmed": {
+        "fr": "Boîte de réception renumérotée : règles réarmées.",
+        "en": "Inbox renumbered: rules re-armed.",
+    },
+    "mail_rules_offline": {
+        "fr": "Règles : hors ligne, réponses en file.",
+        "en": "Rules: offline, replies queued.",
+    },
+    "mail_rules_no_inbox": {
+        "fr": "Règles : boîte de réception introuvable.",
+        "en": "Rules: inbox not found.",
+    },
+    "mail_rules_error": {
+        "fr": "Règles : la passe a échoué (voir l).",
+        "en": "Rules: the pass failed (see l).",
+    },
+    "mail_rules_cache_rebuilt": {
+        "fr": (
+            "Cache recréé : les réponses automatiques attendent votre"
+            " approbation (o)."
+        ),
+        "en": "Cache rebuilt: automatic replies await your approval (o).",
+    },
+    # Raisons journalisées par les garde-fous (guards.REASONS hors
+    # SILENT_REASONS), dans l'ordre d'évaluation.
+    "mail_rules_reason_too_old": {"fr": "trop vieux", "en": "too old"},
+    "mail_rules_reason_bad_date": {
+        "fr": "date de réception dans le futur",
+        "en": "receive date in the future",
+    },
+    "mail_rules_reason_auto_submitted": {
+        "fr": "message automatique",
+        "en": "automatic message",
+    },
+    "mail_rules_reason_precedence": {
+        "fr": "envoi de masse",
+        "en": "bulk mail",
+    },
+    "mail_rules_reason_list": {
+        "fr": "liste de diffusion",
+        "en": "mailing list",
+    },
+    "mail_rules_reason_auto_response_suppress": {
+        "fr": "réponses automatiques refusées par l'expéditeur",
+        "en": "automatic replies refused by the sender",
+    },
+    "mail_rules_reason_x_loop": {
+        "fr": "boucle détectée",
+        "en": "loop detected",
+    },
+    "mail_rules_reason_spam": {"fr": "pourriel", "en": "spam"},
+    "mail_rules_reason_null_sender": {
+        "fr": "expéditeur vide",
+        "en": "null sender",
+    },
+    "mail_rules_reason_no_target": {
+        "fr": "aucune adresse de réponse",
+        "en": "no reply address",
+    },
+    "mail_rules_reason_robot_sender": {
+        "fr": "expéditeur automate",
+        "en": "robot sender",
+    },
+    "mail_rules_reason_self": {
+        "fr": "envoyé par ce compte",
+        "en": "sent by this account",
+    },
+    "mail_rules_reason_other_account": {
+        "fr": "autre compte configuré",
+        "en": "another configured account",
+    },
+    "mail_rules_reason_not_addressed": {
+        "fr": "non adressé à ce compte",
+        "en": "not addressed to this account",
+    },
+    "mail_rules_reason_auth_fail": {
+        "fr": "authentification en échec",
+        "en": "authentication failed",
+    },
+    "mail_rules_reason_throttled": {"fr": "limité", "en": "throttled"},
+    # Raisons posées par le moteur et la vidange de la file
+    # (guards.ENGINE_REASONS), puis « gone » et « catchup_overflow », que
+    # le moteur compte sans les journaliser.
+    "mail_rules_reason_pass_cap": {
+        "fr": "plafond de la passe atteint",
+        "en": "pass cap reached",
+    },
+    "mail_rules_reason_hour_cap": {
+        "fr": "plafond horaire atteint",
+        "en": "hourly cap reached",
+    },
+    "mail_rules_reason_hold_first": {
+        "fr": "premier envoi à approuver",
+        "en": "first send awaiting approval",
+    },
+    "mail_rules_reason_cache_rebuilt": {
+        "fr": "cache recréé",
+        "en": "cache rebuilt",
+    },
+    "mail_rules_reason_offline": {"fr": "hors ligne", "en": "offline"},
+    "mail_rules_reason_smtp_transient": {
+        "fr": "refus temporaire du serveur",
+        "en": "temporary server refusal",
+    },
+    "mail_rules_reason_smtp_permanent": {
+        "fr": "refus définitif du serveur",
+        "en": "permanent server refusal",
+    },
+    "mail_rules_reason_rule_disabled": {
+        "fr": "règle désactivée",
+        "en": "rule disabled",
+    },
+    "mail_rules_reason_rule_changed": {
+        "fr": "règle modifiée depuis",
+        "en": "rule changed since",
+    },
+    "mail_rules_reason_expired": {"fr": "expiré", "en": "expired"},
+    "mail_rules_reason_attempts_exhausted": {
+        "fr": "essais épuisés",
+        "en": "attempts exhausted",
+    },
+    "mail_rules_reason_media": {
+        "fr": "image illisible",
+        "en": "unreadable image",
+    },
+    "mail_rules_reason_build_error": {
+        "fr": "message impossible à construire",
+        "en": "message could not be built",
+    },
+    "mail_rules_reason_regex_timeout": {
+        "fr": "expression régulière trop lente",
+        "en": "regular expression too slow",
+    },
+    "mail_rules_reason_body_unavailable": {
+        "fr": "corps illisible",
+        "en": "unreadable body",
+    },
+    "mail_rules_reason_gone": {
+        "fr": "disparu du serveur",
+        "en": "gone from the server",
+    },
+    "mail_rules_reason_catchup_overflow": {
+        "fr": "rattrapage dépassé",
+        "en": "catch-up limit exceeded",
+    },
+    # Issues d'une entrée du journal (model.OUTCOMES).
+    "mail_rules_outcome_pending": {"fr": "en cours", "en": "pending"},
+    "mail_rules_outcome_sent": {"fr": "envoyé", "en": "sent"},
+    "mail_rules_outcome_queued": {"fr": "en file", "en": "queued"},
+    "mail_rules_outcome_held": {"fr": "retenu", "en": "held"},
+    "mail_rules_outcome_skipped": {"fr": "ignoré", "en": "skipped"},
+    "mail_rules_outcome_failed": {"fr": "échec", "en": "failed"},
+    "mail_rules_outcome_expired": {"fr": "expiré", "en": "expired"},
+    # -- Règles de courriel entrant : écrans (préfixe mail_rules_) --------
+    # Touche e du client, éditeurs de règle, de condition et de réponse,
+    # aperçu de la file d'envoi, et entrée [6] du menu Courriel. Les
+    # libellés mail_rules_{field,op,mode,group,kind,format}_<valeur> se
+    # construisent par f-string : test_mail_tui_rules vérifie qu'il en
+    # existe un par valeur de model.FIELDS, OPS, MODES, GROUP_OPS,
+    # ACTION_KINDS et FORMATS.
+    "mail_rules_binding": {"fr": "Règles", "en": "Rules"},
+    "mail_rules_title": {
+        "fr": "Règles du courrier entrant —",
+        "en": "Incoming mail rules —",
+    },
+    "mail_rules_none": {
+        "fr": "Aucune règle : n en crée une.",
+        "en": "No rules: n creates one.",
+    },
+    "mail_rules_new": {"fr": "Nouvelle règle", "en": "New rule"},
+    "mail_rules_edit": {"fr": "Modifier la règle", "en": "Edit the rule"},
+    "mail_rules_toggle": {
+        "fr": "Activer / désactiver",
+        "en": "Enable / disable",
+    },
+    "mail_rules_up": {"fr": "Monter", "en": "Move up"},
+    "mail_rules_down": {"fr": "Descendre", "en": "Move down"},
+    "mail_rules_stop_toggle": {
+        "fr": "Arrêter ici oui / non",
+        "en": "Stop here on / off",
+    },
+    "mail_rules_delete": {"fr": "Supprimer", "en": "Delete"},
+    "mail_rules_delete_confirm": {
+        "fr": "Supprimer la règle :",
+        "en": "Delete the rule:",
+    },
+    "mail_rules_journal": {
+        "fr": "Journal des règles",
+        "en": "Rules log",
+    },
+    "mail_rules_close": {"fr": "Fermer", "en": "Close"},
+    "mail_rules_col_order": {"fr": "Ordre", "en": "Order"},
+    "mail_rules_col_active": {"fr": "Active", "en": "On"},
+    "mail_rules_col_name": {"fr": "Règle", "en": "Rule"},
+    "mail_rules_col_kind": {"fr": "Type", "en": "Type"},
+    "mail_rules_col_stop": {"fr": "Arrêter ici", "en": "Stop here"},
+    "mail_rules_col_last": {
+        "fr": "Dernier résultat",
+        "en": "Last result",
+    },
+    "mail_rules_col_date": {"fr": "Date", "en": "Date"},
+    "mail_rules_col_outcome": {"fr": "Résultat", "en": "Result"},
+    "mail_rules_col_reason": {"fr": "Raison", "en": "Reason"},
+    "mail_rules_col_sender": {"fr": "Expéditeur", "en": "Sender"},
+    "mail_rules_col_subject": {"fr": "Sujet", "en": "Subject"},
+    "mail_rules_log_empty": {
+        "fr": "Le journal des règles est vide.",
+        "en": "The rules log is empty.",
+    },
+    "mail_rules_name": {"fr": "Nom de la règle", "en": "Rule name"},
+    "mail_rules_enabled": {"fr": "Règle active", "en": "Rule enabled"},
+    "mail_rules_stop_after": {
+        "fr": "Arrêter ici : les règles suivantes ne s'appliquent pas",
+        "en": "Stop here: the following rules do not apply",
+    },
+    "mail_rules_throttle": {
+        "fr": "Ne pas renvoyer si message reçu à l'intérieur de",
+        "en": "Do not send again if a message arrives within",
+    },
+    "mail_rules_throttle_minutes": {"fr": "minutes", "en": "minutes"},
+    "mail_rules_max_age": {
+        "fr": "Ignorer un message reçu il y a plus de (heures)",
+        "en": "Skip a message received more than (hours) ago",
+    },
+    "mail_rules_hold_first": {
+        "fr": "Premiers envois retenus pour approbation (o)",
+        "en": "First sends held for approval (o)",
+    },
+    "mail_rules_filter": {
+        "fr": "Filtre (le curseur désigne le nœud visé)",
+        "en": "Filter (the cursor marks the target node)",
+    },
+    "mail_rules_match_all": {
+        "fr": "Tous les messages",
+        "en": "All messages",
+    },
+    "mail_rules_add_condition": {"fr": "+ Condition", "en": "+ Condition"},
+    "mail_rules_add_group": {"fr": "+ Groupe", "en": "+ Group"},
+    "mail_rules_edit_node": {"fr": "Modifier", "en": "Edit"},
+    "mail_rules_delete_node": {"fr": "Retirer", "en": "Remove"},
+    "mail_rules_new_group_op": {
+        "fr": "Nouveau groupe :",
+        "en": "New group:",
+    },
+    "mail_rules_group_op": {
+        "fr": "Groupe visé :",
+        "en": "Target group:",
+    },
+    "mail_rules_group_all": {"fr": "ET — toutes", "en": "AND — all"},
+    "mail_rules_group_any": {
+        "fr": "OU — au moins une",
+        "en": "OR — at least one",
+    },
+    "mail_rules_group_not": {"fr": "NON", "en": "NOT"},
+    "mail_rules_field_from": {"fr": "De", "en": "From"},
+    "mail_rules_field_to_cc": {"fr": "À/Cc", "en": "To/Cc"},
+    "mail_rules_field_subject": {"fr": "Sujet", "en": "Subject"},
+    "mail_rules_field_body": {"fr": "Corps", "en": "Body"},
+    "mail_rules_op_glob": {
+        "fr": "correspond au motif",
+        "en": "matches the pattern",
+    },
+    "mail_rules_op_contains": {"fr": "contient", "en": "contains"},
+    "mail_rules_mode_substring_ci": {
+        "fr": "sans casse ni accents",
+        "en": "ignoring case and accents",
+    },
+    "mail_rules_mode_case_sensitive": {
+        "fr": "sensible à la casse",
+        "en": "case sensitive",
+    },
+    "mail_rules_mode_exact": {"fr": "texte exact", "en": "exact text"},
+    "mail_rules_mode_word": {"fr": "mot entier", "en": "whole word"},
+    "mail_rules_mode_regex": {
+        "fr": "expression régulière",
+        "en": "regular expression",
+    },
+    "mail_rules_kind_reply": {
+        "fr": "Réponse personnalisée",
+        "en": "Custom reply",
+    },
+    "mail_rules_kind_forward": {"fr": "Redirection", "en": "Forward"},
+    "mail_rules_kind_stats": {
+        "fr": "Rapport de statistiques",
+        "en": "Statistics report",
+    },
+    "mail_rules_action_reply": {
+        "fr": "Réponse personnalisée…",
+        "en": "Custom reply…",
+    },
+    "mail_rules_format": {"fr": "Format", "en": "Format"},
+    "mail_rules_format_markdown": {
+        "fr": "Markdown (HTML et texte)",
+        "en": "Markdown (HTML and text)",
+    },
+    "mail_rules_format_html": {
+        "fr": "HTML écrit à la main",
+        "en": "Hand-written HTML",
+    },
+    "mail_rules_format_text": {
+        "fr": "Texte, images en pièces jointes",
+        "en": "Text, images attached",
+    },
+    "mail_rules_subject": {
+        "fr": "Sujet ({subject} = sujet reçu ; vide = « Auto: » + sujet)",
+        "en": (
+            "Subject ({subject} = received subject; empty = Auto: + subject)"
+        ),
+    },
+    "mail_rules_body": {"fr": "Corps de la réponse", "en": "Reply body"},
+    "mail_rules_images": {"fr": "Images", "en": "Images"},
+    "mail_rules_image_paths": {
+        "fr": "Chemins des images (séparés par des points-virgules)",
+        "en": "Image paths (separated by semicolons)",
+    },
+    "mail_rules_image_inline": {"fr": "en ligne", "en": "inline"},
+    "mail_rules_image_attached": {
+        "fr": "pièce jointe",
+        "en": "attachment",
+    },
+    "mail_rules_preview": {"fr": "Aperçu", "en": "Preview"},
+    "mail_rules_preview_matches": {
+        "fr": "Aperçu : messages en cache de la boîte de réception retenus :",
+        "en": "Preview: cached inbox messages matched:",
+    },
+    "mail_rules_preview_body_unknown": {
+        "fr": "inconnus (corps hors cache) :",
+        "en": "unknown (body not cached):",
+    },
+    "mail_rules_preview_to_only": {
+        "fr": "Aperçu : À seulement, le cache ne garde pas Cc",
+        "en": "Preview: To only, the cache does not keep Cc",
+    },
+    "mail_rules_help": {
+        "fr": (
+            "Règles du courrier entrant : e ouvre la liste des règles du"
+            " compte. Dans la liste, n crée une règle, Entrée la modifie,"
+            " Espace l'active ou la désactive, k et j la déplacent, t bascule"
+            " « arrêter ici », x la supprime et l le journal des envois. Le"
+            " premier envoi d'une règle attend votre approbation dans la"
+            " file d'envoi (o)."
+        ),
+        "en": (
+            "Incoming mail rules: e opens the account's rule list. In the"
+            " list, n creates a rule, Enter edits it, Space enables or"
+            " disables it, k and j move it, t toggles stop here, x deletes"
+            " it and l shows the send log. A rule's first send awaits your"
+            " approval in the outbox (o)."
+        ),
+    },
+    "mail_rules_add_images": {
+        "fr": "Ajouter les images",
+        "en": "Add the images",
+    },
+    "mail_rules_browse": {"fr": "Parcourir…", "en": "Browse…"},
+    "mail_rules_remove_image": {"fr": "Retirer", "en": "Remove"},
+    "mail_rules_save": {"fr": "Enregistrer", "en": "Save"},
+    "mail_rules_cancel": {"fr": "Annuler", "en": "Cancel"},
+    "mail_rules_saved": {"fr": "Règle enregistrée.", "en": "Rule saved."},
+    "mail_rules_caps_per_pass": {
+        "fr": "Plafond par passe",
+        "en": "Cap per pass",
+    },
+    "mail_rules_caps_per_hour": {
+        "fr": "Plafond par heure",
+        "en": "Cap per hour",
+    },
+    "mail_rules_caps_save": {
+        "fr": "Enregistrer les plafonds",
+        "en": "Save the caps",
+    },
+    "mail_rules_caps_saved": {
+        "fr": "Plafonds enregistrés.",
+        "en": "Caps saved.",
+    },
+    "mail_rules_menu": {
+        "fr": "Règles du courrier entrant",
+        "en": "Incoming mail rules",
+    },
+    "mail_rules_menu_list": {"fr": "Lister les règles", "en": "List rules"},
+    "mail_rules_menu_toggle": {
+        "fr": "Activer / désactiver une règle",
+        "en": "Enable / disable a rule",
+    },
+    "mail_rules_menu_move": {
+        "fr": "Monter / descendre une règle",
+        "en": "Move a rule up / down",
+    },
+    "mail_rules_menu_delete": {
+        "fr": "Supprimer une règle",
+        "en": "Delete a rule",
+    },
+    "mail_rules_menu_journal": {
+        "fr": "Journal des envois automatiques",
+        "en": "Automatic sends log",
+    },
+    "mail_rules_menu_edit_in_tui": {
+        "fr": (
+            "Créer ou modifier une règle : touche e du client courriel"
+            " (menu [1])."
+        ),
+        "en": "Create or edit a rule: key e in the mail client (menu [1]).",
+    },
+    "mail_rules_menu_pick_account": {
+        "fr": "Compte dont gérer les règles : ",
+        "en": "Account whose rules to manage: ",
+    },
+    "mail_rules_menu_pick_rule": {
+        "fr": "Numéro de la règle",
+        "en": "Rule number",
+    },
+    "mail_rules_menu_direction": {
+        "fr": "[1] monter  [2] descendre",
+        "en": "[1] up  [2] down",
+    },
+    "mail_rules_menu_confirm": {
+        "fr": "Confirmer (o/n)",
+        "en": "Confirm (y/n)",
+    },
+    "mail_rules_menu_unknown_rule": {
+        "fr": "Aucune règle à ce numéro.",
+        "en": "No rule at that number.",
+    },
+    "mail_outbox_preview": {
+        "fr": "Aperçu de la réponse automatique :",
+        "en": "Automatic reply preview:",
+    },
+    "mail_outbox_auto": {"fr": "[auto]", "en": "[auto]"},
+    "mail_outbox_expires": {"fr": "expire le", "en": "expires"},
     # QEMU — outils de développement des VM graphiques
     "Python IDE, ERPLibre project pre-configured": {
         "fr": "IDE Python, projet ERPLibre pré-configuré",

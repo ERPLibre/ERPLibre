@@ -14,6 +14,7 @@ import getpass
 import logging
 import os
 import shutil
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -37,6 +38,22 @@ _DEFAULT_KDBX_PATH = account_setup.DEFAULT_KDBX_PATH
 # second `FileHandler` si l'utilisateur rouvre le menu courriel plusieurs
 # fois dans le même processus `todo`.
 _LOG_CONFIGURED = False
+
+
+def _printable(text) -> str:
+    """`text` sans caractère de contrôle ni de format, ESC compris.
+
+    Sujets et libellés arrivent décodés RFC 2047 : un « =1B » encodé y
+    devient une vraie séquence d'échappement, que le terminal exécuterait
+    (presse-papiers, curseur, lignes réécrites). Un blanc de contrôle
+    (tabulation, saut de ligne) devient une espace ; le reste disparaît.
+    """
+    return "".join(
+        (" " if char.isspace() else "")
+        if unicodedata.category(char) in ("Cc", "Cf")
+        else char
+        for char in str(text or "")
+    )
 
 
 def mail_log_path() -> Path:
@@ -130,6 +147,7 @@ def prompt_execute_mail(todo) -> None:
 [3] {t("mail_sync_now")}
 [4] {t("mail_cache_menu")}
 [5] {t("mail_stats_menu")}
+[6] {t("mail_rules_menu")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -145,8 +163,175 @@ def prompt_execute_mail(todo) -> None:
             prompt_mail_cache(todo)
         elif status == "5":
             _show_stats(todo)
+        elif status == "6":
+            prompt_mail_rules(todo)
         else:
             print(t("Command not found !"))
+
+
+# Lignes du journal des règles imprimées par le menu, les plus récentes.
+RULES_MENU_LOG_LINES = 50
+
+
+def prompt_mail_rules(todo, *, base=None) -> None:
+    """Menu [6] : lister, activer, déplacer, supprimer les règles d'un
+    compte, et lire leur journal, sans ouvrir le TUI.
+
+    La création et l'édition passent par le TUI (touche `e`) : un arbre
+    de filtre ne se saisit pas ligne à ligne. La base des règles vient du
+    cache du compte (`storage.base_of`) ; un cache éphémère n'a pas de
+    règles, et le menu le dit sans rien toucher. Activer une règle depuis
+    le menu ne l'arme pas : le moteur l'arme à sa passe suivante, et elle
+    ne voit que ce qui arrive après.
+    """
+    from script.todo.mail.rules import storage
+    from script.todo.mail.rules.model import RuleError
+
+    account, _ = _pick_account("mail_rules_menu_pick_account")
+    if account is None:
+        return
+    rules_base = storage.base_of(
+        Store(account, mode=resolve_mode(account), base=base)
+    )
+    if rules_base is None:
+        print(t("mail_rules_ephemeral"))
+        return
+    print(t("mail_rules_menu_edit_in_tui"))
+    while True:
+        help_info = f"""{todo._menu_header()}
+[1] {t("mail_rules_menu_list")}
+[2] {t("mail_rules_menu_toggle")}
+[3] {t("mail_rules_menu_move")}
+[4] {t("mail_rules_menu_delete")}
+[5] {t("mail_rules_menu_journal")}
+[0] {t("Back")}"""
+        status = click.prompt(help_info)
+        print()
+        if status == "0":
+            return
+        try:
+            if status == "1":
+                _list_rules(account.name, rules_base)
+            elif status in ("2", "3", "4"):
+                _change_rule(account.name, rules_base, status)
+            elif status == "5":
+                _show_rules_log(todo, account, rules_base, base)
+            else:
+                print(t("Command not found !"))
+        except RuleError as exc:
+            # `RulesBusy` comprise : une passe tient le verrou du compte.
+            print(exc)
+
+
+def _list_rules(account_name: str, rules_base) -> list:
+    """Imprime les règles dans l'ordre d'application ; les rend."""
+    from script.todo.mail.rules import storage
+    from script.todo.mail.tui import rule_filter_summary
+
+    rules = storage.load(account_name, base=rules_base)
+    if not rules:
+        print(t("mail_rules_none"))
+    for rang, rule in enumerate(rules, start=1):
+        actif = "☑" if rule.enabled else "☐"
+        arret = f" — {t('mail_rules_col_stop')}" if rule.stop_after else ""
+        print(
+            f"  [{rang}] {actif} {_printable(rule.name or rule.id)}"
+            f" — {t(f'mail_rules_kind_{rule.action.kind}')}{arret}"
+        )
+        print(f"        {_printable(rule_filter_summary(rule.filter))}")
+    return rules
+
+
+def _change_rule(account_name: str, rules_base, choice: str) -> None:
+    """[2] bascule l'activation, [3] déplace, [4] supprime (confirmée)."""
+    from script.todo.mail.rules import storage
+
+    rules = _list_rules(account_name, rules_base)
+    if not rules:
+        return
+    numero = str(click.prompt(t("mail_rules_menu_pick_rule"))).strip()
+    try:
+        index = int(numero) - 1
+    except ValueError:
+        index = -1
+    if not 0 <= index < len(rules):
+        print(t("mail_rules_menu_unknown_rule"))
+        return
+    rule = rules[index]
+    if choice == "2":
+        storage.set_enabled(
+            account_name,
+            rule.id,
+            not rule.enabled,
+            armed=None,
+            base=rules_base,
+        )
+    elif choice == "3":
+        sens = str(click.prompt(t("mail_rules_menu_direction"))).strip()
+        if sens not in ("1", "2"):
+            print(t("Command not found !"))
+            return
+        storage.move_rule(
+            account_name, rule.id, -1 if sens == "1" else 1, base=rules_base
+        )
+    else:
+        print(f"{t('mail_rules_delete_confirm')} {rule.name or rule.id}")
+        reponse = str(click.prompt(t("mail_rules_menu_confirm")))
+        if reponse.strip().lower() not in ("o", "y"):
+            return
+        storage.delete_rule(account_name, rule.id, base=rules_base)
+    _list_rules(account_name, rules_base)
+
+
+def _show_rules_log(todo, account, base_rules, base=None) -> None:
+    """Le journal des règles du compte, les lignes les plus récentes.
+
+    Le coffre n'est ouvert que si le cache est chiffré, comme pour les
+    statistiques : un cache en clair se lit sans saisie de mot de passe.
+    """
+    import time
+
+    from script.todo.mail.rules import storage
+    from script.todo.mail.rules.model import RuleError
+
+    try:
+        noms = {
+            rule.id: rule.name or rule.id
+            for rule in storage.load(account.name, base=base_rules)
+        }
+    except RuleError:
+        noms = {}
+    mode = resolve_mode(account)
+    magasin = Store(
+        account,
+        mode=mode,
+        secrets=secret_store_for(todo) if mode != "clear" else None,
+        base=base,
+    )
+    try:
+        magasin.open()
+        lignes = magasin.rule_log_entries(None, RULES_MENU_LOG_LINES)
+    except Exception as exc:
+        print(f"  {t('mail_rules_error')} {exc}")
+        return
+    finally:
+        try:
+            magasin.close()
+        except Exception:
+            pass
+    if not lignes:
+        print(t("mail_rules_log_empty"))
+    for ligne in lignes:
+        quand = time.strftime("%Y-%m-%d %H:%M", time.localtime(ligne["at"]))
+        raison = ligne["reason"]
+        texte = t(f"mail_rules_outcome_{ligne['outcome']}")
+        if raison:
+            texte += f" ({t(f'mail_rules_reason_{raison}')})"
+        nom = noms.get(ligne["rule_id"], ligne["rule_id"])
+        print(
+            f"  {quand}  {_printable(nom)}  {texte}"
+            f"  {_printable(ligne['sender'])}  {_printable(ligne['subject'])}"
+        )
 
 
 def _show_stats(todo, *, base=None) -> None:
@@ -199,7 +384,7 @@ def _show_stats(todo, *, base=None) -> None:
             print(f"  {etiquette}  {nombre:>5}  {barre}")
         print(f"  {t('mail_stats_senders')}")
         for adresse, nombre in rapport.senders[:5]:
-            print(f"    {nombre:>5}  {adresse}")
+            print(f"    {nombre:>5}  {_printable(adresse)}")
         if rapport.reply_count:
             print(
                 f"  {t('mail_stats_reply')} "
@@ -258,11 +443,12 @@ def _sync_now(todo) -> None:
         config_get=_config_get(todo),
     )
 
-    def une(session) -> str:
-        """Une passe pour un compte, rendue en texte. Ne lève jamais : un
-        compte qui échoue ne doit pas emporter ceux qui avancent avec lui."""
+    def une(session) -> tuple:
+        """Une passe pour un compte : (texte, rapport ou None). Ne lève
+        jamais : un compte qui échoue ne doit pas emporter ceux qui avancent
+        avec lui."""
         if not session.online:
-            return f"{session.account.name} : {session.error}"
+            return f"{session.account.name} : {session.error}", None
         lignes = []
         # La file part AVANT la relecture, comme dans le TUI : une commande
         # qui promet de synchroniser doit envoyer ce qui attend, sinon un
@@ -284,7 +470,7 @@ def _sync_now(todo) -> None:
             report = session.sync()
         except Exception as exc:
             lignes.append(f"{session.account.name} : {exc}")
-            return "\n".join(lignes)
+            return "\n".join(lignes), None
         lignes.append(
             f"{session.account.name} : {report.new_messages}"
             f" {t('mail_new_messages')}"
@@ -295,26 +481,60 @@ def _sync_now(todo) -> None:
                 f"  {t('mail_folders_resynced')}"
                 f" {', '.join(report.purged)}"
             )
-        return "\n".join(lignes)
+        return "\n".join(lignes), report
 
     try:
         # Chaque compte a son socket et son cache verrouillé : les faire
         # avancer ensemble transforme une attente réseau en série en une
         # seule attente. Le rendu reste groupé PAR COMPTE — un entrelacement
         # de lignes venues de plusieurs comptes serait illisible.
+        # Chaque bilan s'imprime dès que lui et ceux qui le précèdent sont
+        # prêts : un compte injoignable ne masque pas les autres jusqu'à
+        # l'échéance de sa connexion. Les règles passent après le pool.
         vivantes = list(sessions)
+        rapports = []
+
+        def imprimer(resultats) -> None:
+            for session, (texte, rapport) in zip(
+                vivantes, resultats, strict=True
+            ):
+                print(texte)
+                rapports.append((session, rapport))
+
         if len(vivantes) <= 1:
-            for session in vivantes:
-                print(une(session))
+            imprimer(une(session) for session in vivantes)
         else:
             with ThreadPoolExecutor(
                 max_workers=min(SYNC_PARALLELE, len(vivantes))
             ) as pool:
-                for texte in pool.map(une, vivantes):
-                    print(texte)
+                imprimer(pool.map(une, vivantes))
+        _run_rules(rapports, accounts)
     finally:
         for session in sessions:
             session.close()
+
+
+def _run_rules(paires, accounts) -> None:
+    """Une passe des règles par compte synchronisé, en série, après le pool.
+
+    Aucun autre fil n'utilise alors les liens : pas de verrou. La ligne de
+    bilan suit la même règle de mutisme que dans le TUI ; un compte sans
+    règle active n'imprime rien.
+    """
+    from script.todo.mail.rules import engine
+
+    for session, rapport in paires:
+        if rapport is None:
+            continue
+        bilan = engine.run_pass(
+            session, report=rapport, all_accounts=accounts, verrou=None
+        )
+        ligne = engine.summary_line([bilan])
+        if ligne:
+            print(ligne)
+        if bilan.active_rules:
+            for erreur in bilan.errors:
+                print(f"  {_printable(erreur)}")
 
 
 def prompt_mail_accounts(todo) -> None:
