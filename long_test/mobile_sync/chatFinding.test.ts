@@ -13,7 +13,9 @@
  *
  * Retry delays are skipped by a forced flush; nothing here changes a
  * server-wide setting or a shared user's settings, so the file runs with
- * the others.
+ * the others. The app runs as admin, whose bus also carries what the other
+ * files do as admin while they run: a test here that counted admin's bus
+ * deliveries would race them.
  */
 import { appFor, composeBody, eachVersionFrom, emojiConversions, EMPTY_MENTIONS, setOnline, unique } from "./harness";
 import type { MessageTarget, SyncEnv } from "./harness";

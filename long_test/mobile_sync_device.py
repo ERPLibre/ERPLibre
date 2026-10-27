@@ -1791,7 +1791,10 @@ def scenario_recherche_boite(ctx):
     Le mot que chat_user poste se trouve dans la recherche de la liste, et
     un toucher sur le résultat ouvre le fil sur le message, mis en
     évidence. Un appui long : Épingler, confirmé dans la boîte de dialogue
-    native, puis Favori, chacun lu sur le serveur. La boîte de réception
+    native, puis Favori, chacun lu sur le serveur. Après un message de
+    l'administrateur, deux de chat_user à la suite : la première bulle
+    porte son nom et son avatar, l'image chargée, la seconde seulement le
+    retrait. La boîte de réception
     affiche l'avis des notifications par courriel ; « Recevoir mes
     notifications dans Odoo » passe l'administrateur à inbox, puis une
     mention de chat_user y arrive et « Marquer comme lu » la marque lue sur
@@ -1799,8 +1802,9 @@ def scenario_recherche_boite(ctx):
     ouverte sur l'un, fermée, ouverte sur l'autre, puis un retour Android
     ferme la réponse et laisse la boîte à l'écran. Répondre, la photo
     gardée en brouillon, un texte, ➤ : une note avec la photo sur la tâche.
-    Les saisies du fil et de la réponse se tiennent au plus ECART_BARRE_MAX
-    px au-dessus de la barre, clavier fermé et ouvert. L'administrateur
+    Les saisies du fil, avant et après les auteurs, et de la réponse se
+    tiennent au plus ECART_BARRE_MAX px au-dessus de la barre, clavier
+    fermé et ouvert. L'administrateur
     revient à email à la fin, quoi qu'il arrive. Rend le moteur de
     recherche, l'intégrité de l'index et les places mesurées."""
     pair = Odoo(ctx.cible, "chat")
@@ -1908,6 +1912,46 @@ def scenario_recherche_boite(ctx):
             in ctx.odoo.lire("mail.message", trouve, ["starred_partner_ids"])[
                 "starred_partner_ids"
             ],
+        )
+
+        # Le message de l'administrateur coupe toute suite d'avant : la
+        # première bulle de chat_user ouvre la sienne
+        coupe = ctx.hook(
+            f"chatSend({js(ctx.config_id)}, {canal}, {js(ctx.unique('coupe'))})"
+        )
+        attendre_envoye(ctx, canal, coupe)
+        tete = poster("discuss.channel", canal, ctx.unique("auteur"))
+        suite = poster("discuss.channel", canal, ctx.unique("auteur"))
+        bulle_tete = f'.chat-thread__bubble[data-key="m{tete}"]'
+        bulle_suite = f'.chat-thread__bubble[data-key="m{suite}"]'
+        ctx.cdp.attendre(
+            f"!!document.querySelector({js(bulle_suite)})", delai=30
+        )
+        ctx.cdp.evaluer(
+            f"document.querySelector({js(bulle_tete)})"
+            ".scrollIntoView({block: 'center'})"
+        )
+        image = f"{bulle_tete} .chat-thread__author-img"
+        ctx.cdp.attendre(
+            f"(() => {{ const i = document.querySelector({js(image)});"
+            " return !!i && i.complete && i.naturalWidth > 0; })()",
+            delai=30,
+        )
+        nom = ctx.cdp.evaluer(
+            f"document.querySelector({js(bulle_tete + ' .chat-thread__author-name')})"
+            ".textContent"
+        )
+        attendu = pair.lire("res.users", pair.uid, ["name"])["name"]
+        assert nom == attendu, f"auteur affiché {nom!r}, attendu {attendu!r}"
+        assert ctx.cdp.evaluer(
+            f"(() => {{ const b = document.querySelector({js(bulle_suite)});"
+            " return b.classList.contains('chat-thread__bubble--indent')"
+            " && !b.querySelector('.chat-thread__author-name'); })()"
+        ), "la seconde bulle de la suite porte un auteur"
+        ctx.capturer("auteurs", bulle_tete)
+        place_auteurs = place_au_clavier(ctx, ".chat-thread__input")
+        ctx.cdp.evaluer(
+            "document.activeElement && document.activeElement.blur()"
         )
 
         ctx.ouvrir("/chat/inbox", ".chat-mailbox__notice")
@@ -2022,7 +2066,8 @@ def scenario_recherche_boite(ctx):
         )
     return (
         f"moteur {moteur}, intégrité {integrite} ; saisie du fil"
-        f" {ecart(place_fil)}, de la réponse {ecart(place_reponse)}"
+        f" {ecart(place_fil)}, avec les auteurs {ecart(place_auteurs)},"
+        f" de la réponse {ecart(place_reponse)}"
     )
 
 
