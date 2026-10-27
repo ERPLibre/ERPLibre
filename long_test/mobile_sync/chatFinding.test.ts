@@ -9,7 +9,9 @@
  * chat_user's pin reaches the pinned panel; a star whose answer is lost
  * ends starred on both routes, and a star made in admin's browser since
  * the load stays starred when the phone stars it (the re-read without the
- * module). Every outcome is read back from the server.
+ * module). Every outcome is read back from the server. The other people's
+ * chat searched is chat_user's with a user the file makes, so no other
+ * file's user is touched.
  *
  * Retry delays are skipped by a forced flush; nothing here changes a
  * server-wide setting or a shared user's settings, so the file runs with
@@ -34,13 +36,16 @@ const ABOVE_THE_HIT = 40;
 eachVersionFrom(18, "chat finding", (target) => {
 	let proxy: FaultProxy;
 	let peer: ChatPeer;
-	let inboxPartner: number;
+	/** The partner of a user the file makes, chat_user's other end in a chat admin is not in. */
+	let thirdPartner: number;
 	let env: SyncEnv | null = null;
 
 	beforeAll(async () => {
 		proxy = await FaultProxy.start(target);
 		peer = await ChatPeer.open(target);
-		inboxPartner = await peer.partnerOf(target.inbox!.login);
+		const login = unique("third");
+		const uid = await peer.admin.create("res.users", { name: "MS Tiers", login, password: login });
+		thirdPartner = (await peer.admin.read("res.users", uid, ["partner_id"])).partner_id[0];
 	});
 	afterAll(async () => {
 		await proxy.stop();
@@ -80,8 +85,8 @@ eachVersionFrom(18, "chat finding", (target) => {
 			const mine = await postText(group, `${word} in the group`);
 			const open = await peer.channel(unique("public"), { invite: false });
 			await postText(open, `${word} in a public channel`);
-			const chat = await peer.chat(inboxPartner);
-			await postText(chat, `${word} between chat_user and inbox_user`);
+			const chat = await peer.chat(thirdPartner);
+			await postText(chat, `${word} between chat_user and a third user`);
 			expect(await peer.members(open)).not.toContain(peer.adminPartnerId);
 
 			const { env, src } = await app({ chatModule });
