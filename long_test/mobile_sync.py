@@ -326,7 +326,16 @@ def main(argv=None):
                 "admin": {"login": "admin", "password": "admin"},
                 "multi": {"login": "mc_user", "password": "mc_user"},
                 **(
-                    {"chat": {"login": "chat_user", "password": "chat_user"}}
+                    {
+                        "chat": {
+                            "login": "chat_user",
+                            "password": "chat_user",
+                        },
+                        "inbox": {
+                            "login": "inbox_user",
+                            "password": "inbox_user",
+                        },
+                    }
                     if s.version >= 18
                     else {}
                 ),
