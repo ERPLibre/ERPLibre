@@ -263,6 +263,10 @@ eachVersionFrom(18, "chat inbox", (target) => {
 		// The inbox page may be read again (ChatService.applyBus, a replayed delivery): that route marks nothing read
 		const paths = proxy.calls.slice(since).map((c) => c.path);
 		expect(paths.filter((p) => PAGE_ROUTES.some((r) => p.startsWith(r)))).toEqual([]);
+		// Nothing marked read on the server
+		for (const id of [mention, comment, second]) {
+			expect(await peer.needactionOf(inbox.login, id)).toMatchObject({ is_read: false });
+		}
 	});
 
 	it("a user notified by email sees why, switches to the inbox, and the server reads inbox", async () => {

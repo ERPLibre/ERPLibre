@@ -41,7 +41,8 @@ export interface Target {
 	/**
 	 * An internal user notified in Odoo's inbox, with an email address and
 	 * project's user rights, a member of « ms chat » (Odoo 18 only): the
-	 * app's user of chatInbox.test.ts alone.
+	 * app's user of chatInbox.test.ts: no other file signs in as it,
+	 * mentions it or opens a chat with it.
 	 */
 	inbox?: Login;
 }
