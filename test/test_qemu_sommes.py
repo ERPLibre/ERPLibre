@@ -209,7 +209,7 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
             image.write_bytes(sur_disque)
             appels = []
 
-            def faux_telechargement(urls_, dest, dry_run, timeout=None):
+            def faux_telechargement(urls_, dest, dry_run, timeout=None, **_):
                 appels.append(tuple(urls_))
                 Path(dest).write_bytes(pose)
 

@@ -122,6 +122,7 @@ sys.path.append(
 )
 
 from script.git import (  # noqa: E402
+    command_echo,
     git_freeze_manifest,
     manifest_freeze,
     repo_apply,
@@ -318,6 +319,7 @@ def lancer(argv, delai, cwd, env, en_direct=False):
     un délai expiré, le code 124.
     """
     sortie = None if en_direct else subprocess.PIPE
+    command_echo.show(argv, cwd)
     try:
         proc = subprocess.Popen(
             argv,

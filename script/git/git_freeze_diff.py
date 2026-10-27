@@ -36,7 +36,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.git import manifest_freeze  # noqa: E402
+from script.git import command_echo, manifest_freeze  # noqa: E402
 
 WORKTREE = "worktree"
 CLONES = "clones"
@@ -71,6 +71,7 @@ def _git(path, *args):
 
     Le blanc de TÊTE est gardé : la première ligne d'un diffstat en porte un.
     """
+    command_echo.show(["git", "-C", path, *args])
     res = subprocess.run(
         ["git", "-C", path, *args],
         capture_output=True,
@@ -1535,6 +1536,7 @@ def open_graph(racine, ligne):
 def _attendre(commande, chemin):
     """Lance `commande` dans `chemin` sur le terminal, et attend sa fin
     même si un Ctrl-C l'interrompt. Rend son code de sortie."""
+    command_echo.show(commande, chemin)
     processus = subprocess.Popen(commande, cwd=chemin)
     while True:
         try:

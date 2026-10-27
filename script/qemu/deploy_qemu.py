@@ -63,6 +63,7 @@ import secrets
 import shlex
 import shutil
 import socket
+import ssl
 import stat as stat_mod
 import subprocess
 import sys
@@ -616,7 +617,9 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
+            with urllib.request.urlopen(  # noqa: S310
+                index, timeout=30
+            ) as resp:
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -1586,9 +1589,12 @@ def verrou_image(dest: Path):
     Le verrou est un `flock` sur `<dest>.lock`, à côté de l'image : il tombe
     avec le descripteur, donc aussi à la mort du processus, et le fichier
     vide qui reste ne se supprime pas — l'effacer pendant qu'un autre le tient
-    rouvrirait la course. Un fichier impossible à créer, ou un système de
-    fichiers sans flock, laisse passer sans verrou : l'écriture de l'image
-    elle-même dira alors ce qui ne va pas.
+    rouvrirait la course. flock ne demande aucun droit d'écriture : un
+    `.lock` laissé en 0644 par un autre compte — root, souvent — s'ouvre en
+    lecture seule et verrouille tout autant. Un fichier ni ouvrable ni
+    créable laisse passer sans verrou, avec un avertissement, comme un
+    système de fichiers sans flock : l'écriture de l'image elle-même dira
+    alors ce qui ne va pas.
     """
     cle = (threading.get_ident(), str(dest))
     if cle in _VERROUS_TENUS:
@@ -1598,11 +1604,21 @@ def verrou_image(dest: Path):
         finally:
             _VERROUS_TENUS[cle] -= 1
         return
+    chemin = f"{dest}.lock"
     try:
-        fd = os.open(f"{dest}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(chemin, os.O_RDWR | os.O_CREAT, 0o644)
     except OSError:
-        yield
-        return
+        try:
+            fd = os.open(chemin, os.O_RDONLY)
+        except OSError as exc:
+            print(
+                f"  ⚠ verrou {chemin} inaccessible ({exc.strerror or exc}) :"
+                " suite SANS verrou, une installation simultanée sur la même"
+                " image pourrait la télécharger en même temps.",
+                flush=True,
+            )
+            yield
+            return
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1629,16 +1645,30 @@ def erreur_passagere(exc: BaseException) -> bool:
 
     Oui pour ce que le réseau fait subir sans que le miroir y soit pour
     rien : délai dépassé, connexion refusée ou coupée, nom qui ne se résout
-    pas, réponse HTTP mal formée, et les codes de HTTP_PASSAGERS. Non pour un
-    code HTTP qui décrit le miroir (404, 403...), et non pour une erreur
-    LOCALE — disque plein, droits — qu'aucune attente ne corrige.
+    pas, réponse HTTP mal formée ou tronquée, et les codes de HTTP_PASSAGERS.
+    Non pour un code HTTP qui décrit le miroir (404, 403...), et non pour une
+    erreur LOCALE — disque plein, droits — qu'aucune attente ne corrige.
+
+    Non encore pour ce qui tient à l'URL ou au certificat : une URLError dont
+    la raison est un texte vient d'urllib lui-même (« unknown url type »,
+    « no host given ») et ne décrit aucun échange réseau ; une InvalidURL non
+    plus ; un certificat refusé le sera au prochain essai. Seule exception
+    côté TLS : SSLEOFError et SSLZeroReturnError disent une connexion fermée
+    en pleine session, une coupure comme une autre. La règle TLS s'applique à
+    l'erreur ssl levée seule comme à celle qu'une URLError enveloppe.
     """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code in HTTP_PASSAGERS
+    if isinstance(exc, http.client.InvalidURL):
+        return False
+    raison = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    if isinstance(raison, ssl.SSLError):
+        return isinstance(raison, (ssl.SSLEOFError, ssl.SSLZeroReturnError))
+    if isinstance(exc, urllib.error.URLError):
+        return not isinstance(raison, str)
     return isinstance(
         exc,
         (
-            urllib.error.URLError,
             TimeoutError,
             ConnectionError,
             http.client.HTTPException,
@@ -1707,16 +1737,27 @@ def _download_one(url: str, tmp: Path, timeout: int, depuis: int = 0) -> None:
 
 
 def download_image(
-    urls, dest: Path, dry_run: bool, timeout: int = DOWNLOAD_TIMEOUT
+    urls,
+    dest: Path,
+    dry_run: bool,
+    timeout: int = DOWNLOAD_TIMEOUT,
+    *,
+    remplace: bool = False,
 ) -> None:
     """Télécharge l'image (essaie chaque miroir dans l'ordre) si absente du
     cache. Échoue proprement — jamais de blocage infini — grâce au timeout.
 
     Le téléchargement se fait sous verrou_image : des installations lancées
-    ensemble ne tirent l'image qu'une fois, les autres la trouvent en place."""
+    ensemble ne tirent l'image qu'une fois, les autres la trouvent en place.
+
+    `remplace` retélécharge une image PRÉSENTE : le transfert va au `.part`,
+    renommé par-dessus l'ancienne une fois complet. Le chemin `dest` existe
+    donc pendant tout le transfert, et un échec y laisse l'ancienne image.
+    L'appelant tient alors déjà le verrou, et juge lui-même de l'image
+    présente : aucune revue « déjà là » ne l'en dispense."""
     if isinstance(urls, str):
         urls = [urls]
-    if dest.exists() and dest.stat().st_size > 0:
+    if not remplace and dest.exists() and dest.stat().st_size > 0:
         size_mb = dest.stat().st_size / 1024 / 1024
         print(
             f"  Image déjà présente ({size_mb:.0f} Mo), téléchargement"
@@ -1740,13 +1781,13 @@ def download_image(
         # Revue SOUS le verrou : l'installation qui le tenait vient peut-être
         # de poser l'image. Le .part, lui, n'est jamais visé par deux
         # processus à la fois.
-        if dest.exists() and dest.stat().st_size > 0:
+        if not remplace and dest.exists() and dest.stat().st_size > 0:
             print(
                 f"  Image posée entre-temps par une autre installation : {dest}",
                 flush=True,
             )
             return
-        _telecharge_miroirs(urls, dest, timeout)
+        _telecharge_miroirs(urls, dest, timeout, remplace=remplace)
 
 
 def _motif(exc: BaseException) -> str:
@@ -1758,7 +1799,9 @@ def _motif(exc: BaseException) -> str:
     return str(exc) or type(exc).__name__
 
 
-def _telecharge_miroirs(urls, dest: Path, timeout: int) -> None:
+def _telecharge_miroirs(
+    urls, dest: Path, timeout: int, *, remplace: bool = False
+) -> None:
     """Essaie chaque miroir de `urls` dans l'ordre jusqu'à poser `dest`.
 
     Appelée sous verrou_image. Sur chaque miroir, REPRISES_MAX essais : une
@@ -1766,7 +1809,8 @@ def _telecharge_miroirs(urls, dest: Path, timeout: int) -> None:
     erreur passagère (erreur_passagere) attend PAUSE_RESEAU s fois le rang de
     l'essai, puis reprend aussi là où le .part s'est arrêté. Un échec qui
     décrit le miroir — 404 en tête — passe au suivant sans insister. Quitte
-    le processus (sys.exit) quand aucun miroir n'a abouti."""
+    le processus (sys.exit) quand aucun miroir n'a abouti ; `remplace` (voir
+    download_image) n'y change que la commande manuelle proposée."""
     tmp = dest.with_suffix(dest.suffix + ".part")
     errors = []
     had_404 = False
@@ -1825,15 +1869,26 @@ def _telecharge_miroirs(urls, dest: Path, timeout: int) -> None:
         " fournissez un chemin d'image local en argument positionnel."
     )
     # Chemin visé + commande prête à copier pour reprendre le téléchargement
-    # manuellement (reprise si un .part existe), puis relancer le déploiement
-    # (l'image complète en cache sera réutilisée). curl -C - reprend, -f
-    # échoue proprement sur une erreur HTTP.
-    resume = (
-        f"\n  Destination : {dest}"
-        f"\n  Reprendre le téléchargement manuellement :"
-        f"\n    sudo curl -fL -C - -o {dest} \\\n      {urls[0]}"
-        "\n  puis relancez le déploiement (l'image en cache sera réutilisée)."
-    )
+    # manuellement, puis relancer le déploiement (l'image complète en cache
+    # sera réutilisée). curl -C - reprend un fichier partiel, -f échoue
+    # proprement sur une erreur HTTP. En mode `remplace`, `dest` porte
+    # encore l'ancienne image ENTIÈRE : -C - y ajouterait la fin de la
+    # nouvelle, d'où un curl sans -C -, qui réécrit le fichier depuis zéro.
+    if remplace:
+        resume = (
+            f"\n  Destination : {dest} (ancienne image laissée en place)"
+            f"\n  La remplacer manuellement :"
+            f"\n    sudo curl -fL -o {dest} \\\n      {urls[0]}"
+            "\n  puis relancez le déploiement (l'image sera revérifiée)."
+        )
+    else:
+        resume = (
+            f"\n  Destination : {dest}"
+            f"\n  Reprendre le téléchargement manuellement :"
+            f"\n    sudo curl -fL -C - -o {dest} \\\n      {urls[0]}"
+            "\n  puis relancez le déploiement (l'image en cache sera"
+            " réutilisée)."
+        )
     sys.exit(
         "\nÉchec du téléchargement depuis tous les miroirs :\n  "
         + "\n  ".join(errors)
@@ -2017,18 +2072,21 @@ def verify_sha256(
                 h.update(chunk)
         return h.hexdigest()
 
-    # Empreinte, suppression et reprise forment UN bloc sous verrou_image :
-    # des installations lancées ensemble sur une image périmée la jugeraient
-    # chacune à reprendre, et chacune effacerait celle que la précédente
+    # Empreinte et reprise forment UN bloc sous verrou_image : des
+    # installations lancées ensemble sur une image périmée la jugeraient
+    # chacune à reprendre, et chacune remplacerait celle que la précédente
     # vient de poser. Sous le verrou, la première la reprend ; les suivantes
     # en calculent l'empreinte après elle, et la trouvent conforme.
     with verrou_image(image):
-        # Absente ici, l'image a été effacée par une installation dont la
-        # reprise a échoué pendant que celle-ci attendait le verrou : elle
-        # retente le téléchargement à son tour plutôt que de lever sur un
-        # fichier manquant. Ces octets-là sont frais : un écart les condamne
-        # sans seconde reprise, sinon chaque installation en attente tirerait
-        # l'image deux fois de suite avant d'échouer comme la première.
+        # Absente ici, l'image a été effacée par une installation dont les
+        # octets RETÉLÉCHARGÉS ne correspondaient toujours pas à la somme,
+        # pendant que celle-ci attendait le verrou — une reprise qui échoue
+        # en cours de transfert, elle, laisse l'ancienne image en place.
+        # L'installation retente le téléchargement à son tour plutôt que de
+        # lever sur un fichier manquant. Ces octets-là sont frais : un écart
+        # les condamne sans seconde reprise, sinon chaque installation en
+        # attente tirerait l'image deux fois de suite avant d'échouer comme
+        # la première.
         frais = not image.exists()
         if frais:
             download_image(list(urls) or [url], image, dry_run)
@@ -2040,10 +2098,14 @@ def verify_sha256(
         # une simple péremption. L'image est reprise UNE fois ; un second
         # écart, lui, porte sur des octets fraîchement téléchargés et arrête
         # tout.
+        #
+        # La reprise REMPLACE l'image sans l'effacer d'abord : une autre
+        # installation qui la convertit (prepare_disk, sans verrou) lirait
+        # sinon un chemin absent pendant tout le transfert. Le renommage
+        # final laisse à un lecteur déjà ouvert l'ancien inode entier.
         if obtenu != expected and urls and not frais:
             print(f"  Somme {algo} NON conforme : image reprise une fois.")
-            image.unlink(missing_ok=True)
-            download_image(list(urls), image, dry_run)
+            download_image(list(urls), image, dry_run, remplace=True)
             obtenu = empreinte()
         if obtenu != expected:
             image.unlink(

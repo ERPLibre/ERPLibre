@@ -48,6 +48,15 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 EXIT_MARKER = "__ERPLIBRE_EXIT__"
 
+# Marque de la commande d'installation exécutée DANS la VM. _launch_one la
+# pose en tête du script distant, sous la forme « : <marque>; » — « : » ne
+# fait rien. sshd exécute ce script par « <shell> -c <script> » : la marque
+# est donc dans la ligne de commande du shell distant, de l'attente de
+# cloud-init jusqu'au dernier make, et dans celle de chaque sous-shell qu'il
+# fork. En TÊTE, parce que pgrep ne compare qu'un préfixe borné d'une ligne
+# de commande longue de plusieurs Kio.
+INSTALL_TAG = "__ERPLIBRE_INSTALL__"
+
 # Installations qui posent un NOYAU : elles ne valent rien avant un
 # redémarrage, et le script ne peut pas survivre au sien. La table dit quoi
 # attendre APRÈS — un motif à trouver dans « uname -r », donc une preuve et
@@ -292,9 +301,9 @@ def _launch_one(
     # ici, puisque c'est par là que l'installation passera. Le bail périmé ne
     # répond pas, le bon répond.
     # virsh SANS sudo d'abord. Ce script tourne détaché, sans tty : « sudo -n »
-    # y échoue dès que l'hôte exige une authentification interactive — vécu sur
-    # erplibre01 (« sudo-rs: interactive authentication is required »), et la
-    # ré-résolution restait alors muette sans laisser la moindre trace.
+    # y échoue sur un hôte qui exige une authentification sudo interactive
+    # (« sudo-rs: interactive authentication is required »), et la
+    # ré-résolution reste alors muette sans laisser la moindre trace.
     # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
     # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
     # pour les hôtes où le groupe manque.
@@ -375,7 +384,10 @@ def _launch_one(
         f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
         f"else echo {shlex.quote('== ' + msg_giveup + ' ==')} >> {log_q}; fi; "
         f'echo "   → $ip" >> {log_q}; '
-        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" {shlex.quote(remote_cmd)} '
+        # Marquée en TÊTE (voir INSTALL_TAG) : c'est ce qui fait reconnaître
+        # cette installation par RELAUNCH_GUARD, dans la VM.
+        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" '
+        f"{shlex.quote(f': {INSTALL_TAG}; ' + remote_cmd)} "
         f">> {log_q} 2>&1; rc=$?; "
         + (_reboot_steps(log_q, reboot) if reboot else "")
         + f'echo "{EXIT_MARKER} $rc" >> {log_q}'
@@ -666,9 +678,28 @@ def _rewrite_session(session: str, mutate) -> dict:
 # 255 dit que ssh a perdu la connexion, pas que l'installation s'est
 # arrêtée : lancée sans pty, elle continue dans la VM. Deux installations
 # dans le même dépôt se marcheraient dessus ; la relance refuse donc de
-# partir tant qu'un make de l'utilisateur tourne. Code 75 (EX_TEMPFAIL) :
+# partir tant que l'installation précédente tourne. Code 75 (EX_TEMPFAIL) :
 # réessayer plus tard est la bonne réponse.
+#
+# L'installation se reconnaît à INSTALL_TAG dans la ligne de commande d'un
+# processus de l'utilisateur : son shell distant la porte du premier
+# instant, attente de cloud-init, apt/dnf et clone compris, là où aucun make
+# ne tourne encore. Le shell de la relance la porte aussi, puisqu'il passe
+# par _launch_one : « $$ » est écarté, et avec lui tout processus dont il
+# est le parent — le sous-shell de « $(pgrep …) », qui porte la même ligne
+# tant qu'il n'a pas exécuté pgrep. Un pid disparu entre-temps n'a plus de
+# /proc/<pid>/stat et ne compte pas. Le parent se lit après la DERNIÈRE
+# « ) » de stat, le nom du processus pouvant en contenir. Le make reste
+# cherché : une installation lancée avant la marque n'a qu'elle, et un shell
+# qui exécute sa dernière commande à sa place disparaît de la liste. Rien
+# n'est tué ni écrit : la garde ne fait que lire.
 RELAUNCH_GUARD = (
+    "moi=$$; "
+    f'for p in $(pgrep -u "$(id -u)" -f {INSTALL_TAG} 2>/dev/null); do '
+    '[ "$p" = "$moi" ] && continue; '
+    "pp=$(sed 's/.*) //' /proc/$p/stat 2>/dev/null | cut -d' ' -f2); "
+    '{{ [ -z "$pp" ] || [ "$pp" = "$moi" ]; }} && continue; '
+    'echo "{msg}"; exit 75; done; '
     'if pgrep -u "$(id -u)" -x make >/dev/null 2>&1; then '
     'echo "{msg}"; exit 75; fi; '
 )
@@ -783,7 +814,7 @@ def relaunch_install(session: str, name: str, ip: str = "") -> dict:
                 _log_header(en_tete, manifest.get("branch") or "", when)
             )
             garde = RELAUNCH_GUARD.format(
-                msg=t("An install is already running in this VM (make).")
+                msg=t("An install is already running in this VM.")
             )
             _launch_one(
                 vm["ip"],
@@ -1498,18 +1529,18 @@ INSTALLABLE_BROWSERS = (
 )
 
 
-def browser_install_command(browser="w3m") -> list | None:
-    """Commande d'installation du navigateur CLI `browser`, ou None si aucun
-    gestionnaire de paquets connu.
+def browser_install_command(browser="w3m") -> list:
+    """Les étapes d'installation du navigateur CLI `browser`, dans l'ordre
+    (todo_install.install_steps : rafraîchissement des index d'abord), ou
+    une liste vide si aucun gestionnaire de paquets connu.
 
     Les navigateurs proposés portent le même nom de paquet dans les quatre
-    familles ; todo_install choisit la commande. Cette écriture-ci ne
-    connaissait pas zypper, et openSUSE ne pouvait donc en installer aucun."""
+    familles ; todo_install choisit les commandes, zypper compris."""
     # Importé ici et non en tête : l'import de todo_i18n de ce module est
     # protégé pour qu'il tourne en autonome, et todo_install en dépend.
     from script.todo import todo_install
 
-    return todo_install.install_command([browser])
+    return todo_install.install_steps([browser])
 
 
 def virsh_ip(name: str) -> str:
@@ -2534,7 +2565,11 @@ def stop_launchers(log_path: str) -> int:
     reconnaît à sa ligne de commande, qui porte le chemin du journal et le
     marqueur de fin ; « setsid -f » en a fait un chef de session, et tout son
     groupe (ssh compris) part avec lui. Lu dans /proc plutôt que par
-    « pkill -f », qui se trouverait lui-même."""
+    « pkill -f », qui se trouverait lui-même.
+
+    Un lanceur arrêté n'écrit plus son marqueur de fin, et un journal sans
+    marqueur se lit « en cours » pour toujours : le marqueur est posé à sa
+    place, avec le code d'un SIGTERM (143)."""
     arretes = 0
     for proc in Path("/proc").glob("[0-9]*"):
         try:
@@ -2552,6 +2587,12 @@ def stop_launchers(log_path: str) -> int:
             arretes += 1
         except (OSError, ProcessLookupError):
             continue
+    if arretes:
+        try:
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(f"\n{EXIT_MARKER} {128 + signal.SIGTERM}\n")
+        except OSError:
+            pass
     return arretes
 
 
@@ -3817,20 +3858,23 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         browser = INSTALLABLE_BROWSERS[idx][0]
                 except ValueError:
                     pass
-                cmd = browser_install_command(browser)
-                if not cmd:
+                etapes = browser_install_command(browser)
+                if not etapes:
                     print(
                         "Gestionnaire de paquets inconnu : installez "
                         f"« {browser} » manuellement."
                     )
                     input("Entrée… ")
                     return None
-                printable = " ".join(cmd)
-                print(f"Commande : {printable}")
-                ans = input("Installer maintenant ? (o/N) : ").strip().lower()
-                if ans not in ("o", "oui", "y", "yes"):
+                from script.todo import todo_install
+
+                def oui(reponse):
+                    return reponse.strip().lower() in ("o", "oui", "y", "yes")
+
+                todo_install.show_steps(etapes, prefix="")
+                if not oui(input("Installer maintenant ? (o/N) : ")):
                     return None
-                rc = os.system(printable)
+                rc = todo_install.run_steps(os.system, etapes, oui, prefix="")
                 print(f"\nInstallation terminée (code {rc}).")
                 input("Entrée pour continuer… ")
             return cli_browser()
@@ -4036,19 +4080,25 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
 
             self.push_screen(VmActionsScreen(vm), chosen)
 
-        def _run_in_vm(self, vm, cmd, title) -> None:
+        def _run_in_vm(self, vm, cmd, title, guard="") -> None:
             """Exécute une commande DANS la VM, terminal rendu.
 
             « suspend() » comme pour SSH et la console : sudo peut demander son
             mot de passe et la sortie est longue ; la garder derrière Textual
             la rendrait illisible. La pause finale évite que l'écran reparte
-            avant qu'on ait lu le résultat."""
+            avant qu'on ait lu le résultat.
+
+            `guard` : commande shell exécutée AVANT le ssh, liée par « && » :
+            son échec empêche la connexion, et sa sortie dit pourquoi."""
             if not vm.get("ip"):
                 self.notify("Pas d'IP pour cette VM.", severity="error")
                 return
+            avant = f"{guard} && " if guard else ""
             with self.suspend():
                 print(f"\n=== {title} — {vm['name']} ===")
-                os.system(f"{vm_ssh_prefix(vm)} {shlex.quote(cmd)} || true")
+                os.system(
+                    f"{avant}{vm_ssh_prefix(vm)} {shlex.quote(cmd)} || true"
+                )
                 input("\nEntrée pour revenir au suivi… ")
 
         def _run_update(self, vm, parts) -> None:
@@ -4058,19 +4108,88 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 return
             self._run_in_vm(vm, cmd, "Mise a jour")
 
+        def _db_restore_refusal(self, vm, resolve=False) -> str:
+            """Pourquoi la restauration ne peut pas viser `vm`, ou "".
+
+            Le ssh part vers l'adresse EN MÉMOIRE, et le suivi se rouvre sur
+            un manifeste qui peut avoir des semaines : une adresse rendue par
+            une VM effacée est reprise par une autre machine, qui accepterait
+            la connexion — et y perdrait sa base. Refusé donc : une ligne
+            « effacée », et une VM locale dont l'UUID gardé n'est plus celui
+            du domaine de ce nom (nom repris, ou virsh illisible : rien ne
+            prouve alors l'identité). Sans UUID gardé, seule la ligne compte,
+            comme pour la suppression.
+
+            `resolve` : relit aussi l'adresse de la VM locale chez libvirt et
+            la met en mémoire, ou refuse si libvirt ne lui en connaît aucune
+            — une VM éteinte n'a plus d'adresse à elle, et la mémoire garde
+            celle d'avant. Une VM Proxmox n'a pas de bail ici : son garde
+            d'identité s'exécute sur son hôte (voir _ask_db_restore)."""
+            nom = vm["name"]
+            if self._domstate.get(nom) == "gone":
+                return t("{name} was deleted: restore refused.").format(
+                    name=nom
+                )
+            if vm.get("pve"):
+                return ""
+            if vm.get("uuid") and local_uuid(nom) != vm["uuid"]:
+                return t(
+                    "The domain {name} is no longer the deployed VM"
+                    " (deleted, or its name reused): restore refused."
+                ).format(name=nom)
+            if resolve:
+                ip = virsh_ip(nom)
+                if not ip:
+                    return t(
+                        "libvirt knows no address for {name} (VM stopped?):"
+                        " restore refused."
+                    ).format(name=nom)
+                if ip != vm.get("ip"):
+                    vm["ip"] = ip
+                    vm["ssh"] = f"ssh erplibre@{ip}"
+                    self._refresh_ssh()
+            return ""
+
         def _ask_db_restore(self, vm, parts) -> None:
             """Restauration : une base du même nom est PERDUE.
 
             Même garde que la suppression d'une VM, et pour la même raison :
             db_restore.py supprime la base cible avant de la recharger, sans
             jamais le demander. Le bouton dangereux de ConfirmScreen n'est pas
-            le défaut, une Entrée réflexe ne déclenche donc rien."""
+            le défaut, une Entrée réflexe ne déclenche donc rien.
+
+            L'identité de la VM est vérifiée deux fois : avant la question,
+            puis juste avant de partir — la question peut rester ouverte
+            longtemps (voir _db_restore_refusal). Une VM Proxmox fait vérifier
+            son VMID par son hôte dans la même commande que le ssh."""
+            refus = self._db_restore_refusal(vm)
+            if refus:
+                self.notify(refus, severity="error")
+                return
 
             def confirmed(yes):
                 if not yes:
                     return
+                refus = self._db_restore_refusal(vm, resolve=True)
+                if refus:
+                    self.notify(refus, severity="error")
+                    return
+                info = vm.get("pve")
+                garde = (
+                    pve_host_cmd(
+                        info,
+                        pve_identity_guard(
+                            int(info.get("vmid") or 0), vm["name"]
+                        ),
+                    )
+                    if info
+                    else ""
+                )
                 self._run_in_vm(
-                    vm, db_restore_cmd(parts), "Restauration de la base"
+                    vm,
+                    db_restore_cmd(parts),
+                    "Restauration de la base",
+                    guard=garde,
                 )
 
             self.push_screen(
@@ -4178,7 +4297,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         + t(
                             "255: ssh lost the connection; the install may"
                             " still run in the VM. The relaunch refuses to"
-                            " start while a make runs there."
+                            " start while it still runs there."
                         )
                     )
             lignes.append(
@@ -4300,6 +4419,13 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             def confirmed(yes):
                 if not yes:
                     return
+                # Redit APRÈS la question : elle a pu rester ouverte pendant
+                # qu'une relance adoptée, un ajout ou une coupure changeaient
+                # l'état que le premier contrôle avait vu.
+                refus = self._recreate_refusal(vm)
+                if refus:
+                    self.notify(refus, severity="warning")
+                    return
                 try:
                     claim_recreate(manifest_path, vm["name"])
                 except RelaunchRefused as exc:
@@ -4321,15 +4447,20 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             )
 
         def _delete_for_recreate(self, vm) -> bool:
-            """Terminal rendu : ticket sudo, arrêt de l'ancien lanceur,
-            effacement de la VM (recreate_delete_cmd), puis ménage des
+            """Terminal rendu : ticket sudo, effacement de la VM
+            (recreate_delete_cmd), arrêt de l'ancien lanceur, puis ménage des
             exceptions du cache. Rend True si l'effacement a réussi,
             condition de la création qui suit.
 
             Un ticket sudo refusé arrête tout : sans lui, virsh serait
             illisible et la commande refuserait de toute façon, mais autant
             le dire tout de suite. Ce ticket est celui que le thread de
-            création entretient ensuite."""
+            création entretient ensuite.
+
+            Le lanceur n'est arrêté qu'une fois l'effacement fait : c'est
+            recreate_delete_cmd qui décide s'il a lieu, et un refus laisse la
+            VM — et son installation — telles quelles. Arrêté avant la
+            création, il ne peut plus atteindre la VM neuve."""
             nom = vm["name"]
             try:
                 with self.suspend():
@@ -4338,6 +4469,12 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     if os.geteuid() != 0:
                         ok = subprocess.run(["sudo", "-v"]).returncode == 0
                     if ok:
+                        cmd = recreate_delete_cmd(nom, vm.get("uuid") or "")
+                        print(f"→ {cmd}\n")
+                        ok = (
+                            subprocess.run(["bash", "-c", cmd]).returncode == 0
+                        )
+                    if ok:
                         arretes = stop_launchers(vm["log"])
                         if arretes:
                             print(
@@ -4345,11 +4482,6 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                                     n=arretes
                                 )
                             )
-                        cmd = recreate_delete_cmd(nom, vm.get("uuid") or "")
-                        print(f"→ {cmd}\n")
-                        ok = (
-                            subprocess.run(["bash", "-c", cmd]).returncode == 0
-                        )
                     if not ok:
                         print(
                             "\n"
@@ -4380,7 +4512,18 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             remplacé depuis : une relance ou une recréation faite par un
             autre suivi ouvert sur la même session. L'entrée relue dans le
             manifeste donne le nouveau début, la nouvelle adresse et le
-            nouvel UUID de la VM."""
+            nouvel UUID de la VM.
+
+            Le journal neuf arrive AVANT l'entrée : relaunch_install le met
+            en place puis réécrit le manifeste, launch_installs (recréation)
+            lance d'abord, et un tick peut tomber entre les deux. L'entrée
+            n'est adoptée que si elle est NEUVE — son « started » n'est plus
+            celui de la ligne, l'un et l'autre le réécrivant à chaque
+            lancement ; sinon la ligne reste telle quelle et le tick suivant
+            relit le manifeste, l'inode du journal différant toujours de
+            celui qu'elle a mémorisé. Adopter l'ancienne entrée mémoriserait
+            le nouvel inode à la fin de l'installation, avec l'ancien UUID
+            et l'ancienne adresse, et plus rien ne la ferait relire."""
             for nom in [
                 n
                 for n, (etat, _c, _e) in self._final.items()
@@ -4399,8 +4542,13 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 except (OSError, ValueError):
                     continue
                 entree = next(
-                    (v for v in lu.get("vms", []) if v.get("name") == nom), {}
+                    (v for v in lu.get("vms", []) if v.get("name") == nom),
+                    None,
                 )
+                if entree is None or entree.get("started") == vm.get(
+                    "started"
+                ):
+                    continue
                 self._reset_row(nom, entree)
 
         def _reset_row(self, nom, entree) -> None:

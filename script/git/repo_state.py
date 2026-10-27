@@ -89,7 +89,12 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
-from script.git import manifest_freeze, repo_stats, repo_upgrade  # noqa: E402
+from script.git import (  # noqa: E402
+    command_echo,
+    manifest_freeze,
+    repo_stats,
+    repo_upgrade,
+)
 from script.todo import git_repo_menu  # noqa: E402
 
 SCHEMA = 1
@@ -165,6 +170,7 @@ def git(args, cwd, delai=DELAI, entree=None, env=None):
     environ["GIT_OPTIONAL_LOCKS"] = "0"
     if env:
         environ.update(env)
+    command_echo.show(["git", *OPTIONS_GIT, *args], cwd)
     try:
         done = subprocess.run(
             ["git", *OPTIONS_GIT, *args],

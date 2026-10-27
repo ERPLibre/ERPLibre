@@ -22,7 +22,7 @@ allowed-tools:
 - Branch commits: !`git log --oneline $(git merge-base HEAD master)..HEAD`
 - Files touched: !`git diff --stat $(git merge-base HEAD master)..HEAD`
 - Working tree: !`git status --porcelain`
-- Changelog head: !`sed -n '24,45p' CHANGELOG.base.md`
+- Changelog head: !`sed -n '24,45p' "$(git rev-parse --show-toplevel)/CHANGELOG.base.md" 2>/dev/null || echo "(no CHANGELOG.base.md at the root of this repository)"`
 
 ## Task
 

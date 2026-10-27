@@ -1480,15 +1480,17 @@ class QemuManageMixin:
                 browser = INSTALLABLE_BROWSERS[idx][0]
         except ValueError:
             pass
-        cmd = browser_install_command(browser)
-        if not cmd:
+        etapes = browser_install_command(browser)
+        if not etapes:
             print(t("Unknown package manager; install it manually."))
             return None
-        printable = " ".join(cmd)
-        print(f"{t('Command:')} {printable}")
-        if not self._is_yes(input(t("Install now? (y/N): "))):
-            return None
-        os.system(printable)
+        todo_install.ask_and_install(
+            self.execute,
+            etapes,
+            t("Install now? (y/N): "),
+            self._is_yes,
+            prefix="",
+        )
         return browser if shutil.which(browser) else None
 
     # ------------------------------------------------------------------ #
@@ -1975,7 +1977,7 @@ class QemuManageMixin:
             )
         status = todo_install.ask_and_install(
             self.execute,
-            todo_install.install_command(paquets),
+            todo_install.install_steps(paquets),
             t("Install them? (y/N): "),
             self._is_yes,
         )

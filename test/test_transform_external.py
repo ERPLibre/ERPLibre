@@ -3284,7 +3284,7 @@ class TestEntreeInstallation(unittest.TestCase):
     def test_l_outil_present_est_ANNONCE(self):
         self._remplacer("requetes_access_lisibles", lambda: True)
         self._remplacer(
-            "system_packages_cmd", lambda: ["ne-doit-pas-etre-appele"]
+            "system_packages_steps", lambda: [["ne-doit-pas-etre-appele"]]
         )
         self.menu._transform_install_env()
         rendu = self.sortie.getvalue()
@@ -3296,13 +3296,53 @@ class TestEntreeInstallation(unittest.TestCase):
     def test_sans_outil_ni_paquet_connu_l_entree_dit_QUOI_FAIRE(self):
         """Le constat seul laissait l'opérateur sans suite."""
         self._remplacer("requetes_access_lisibles", lambda: False)
-        self._remplacer("system_packages_cmd", lambda: None)
+        self._remplacer("system_packages_steps", lambda: [])
         self.menu._transform_install_env()
         rendu = self.sortie.getvalue()
         self.assertIn("mdb-queries", rendu)
         self.assertIn(
             todo_i18n.t("Install it by hand to read Access saved queries."),
             rendu,
+        )
+
+    def _installer(self, *codes):
+        """L'entrée sous apt-get, l'outil absent, l'opérateur d'accord. Rend
+        les commandes lancées ; `codes` donne leur code de sortie, dans
+        l'ordre."""
+        from script.todo import todo_install
+
+        self._remplacer("requetes_access_lisibles", lambda: False)
+        famille = todo_install.family
+        todo_install.family = lambda: "apt-get"
+        self.addCleanup(setattr, todo_install, "family", famille)
+        lances, codes = [], list(codes)
+
+        class _Execute:
+            def exec_command_live(self, cmd, **kw):
+                lances.append(cmd)
+                return codes.pop(0) if codes else 0
+
+        self.menu.execute = _Execute()
+        entrees = _Entrees("y")
+        vrai = builtins.input
+        builtins.input = entrees
+        self.addCleanup(setattr, builtins, "input", vrai)
+        self.menu._transform_install_env()
+        return lances
+
+    def test_les_index_se_rafraichissent_AVANT_mdbtools(self):
+        self.assertEqual(
+            self._installer(),
+            ["sudo apt-get update", "sudo apt-get install -y mdbtools"],
+        )
+
+    def test_un_rafraichissement_en_echec_n_installe_rien(self):
+        self.assertEqual(self._installer(100), ["sudo apt-get update"])
+        self.assertIn(
+            todo_i18n.t(
+                "Refreshing the package indexes failed; nothing installed."
+            ),
+            self.sortie.getvalue(),
         )
 
 
@@ -6294,13 +6334,13 @@ class TestEnvironnement(unittest.TestCase):
         """Aucune cascade apt/dnf/pacman/zypper de plus ici.
 
         Et pas d'entrée `pacman` : mdbtools n'est pas dans les dépôts
-        officiels d'Arch, seulement l'AUR. `install_command` doit alors
-        rendre None plutôt qu'une commande qui échoue APRÈS le mot de
-        passe sudo.
+        officiels d'Arch, seulement l'AUR. `install_steps` doit alors
+        rendre une liste vide plutôt qu'une commande qui échoue APRÈS le
+        mot de passe sudo.
         """
         self.assertNotIn("pacman", transform_setup.PAQUETS_ACCESS)
-        commande = transform_setup.system_packages_cmd()
-        self.assertTrue(commande is None or "mdbtools" in commande)
+        etapes = transform_setup.system_packages_steps()
+        self.assertTrue(etapes == [] or "mdbtools" in etapes[-1])
 
     def test_creation_refusee_n_installe_rien(self):
         lances = []

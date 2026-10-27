@@ -15,6 +15,8 @@ ce que Proxmox a de propre :
   l'hôte : une annulation ne la fait pas passer pour un changement ;
 - une valeur libre commune ne s'applique qu'à Entrée ;
 - F4 rend aussi le verrou, sous son propre nom ;
+- F4 et les boutons d'une rangée, reçus pendant une restauration, visent la
+  VM qu'on voyait, et non celle qui prend son rang dans le plan restauré ;
 - une restauration remet les surcharges et l'état grisé des ressources ;
 - F5 pendant une restauration attend qu'elle soit finie ;
 - F7 coche les versions par défaut par leur identité, et l'historique le
@@ -27,6 +29,7 @@ ce que Proxmox a de propre :
 import contextlib
 import sys
 import threading
+import types
 import unittest
 
 sys.argv = ["todo.py"]
@@ -358,6 +361,54 @@ class TestFormulaireProxmox(AsyncCase):
             await pilote.press("ctrl+z")
             await self.calme(pilote)
             self.assertIn(cle, app.locked)
+
+    async def deux_figees_puis_la_premiere_retiree(self, pilote):
+        """Deux VM figées, puis la première décochée : la seconde passe au
+        rang 0. Une annulation la remettra au rang 1. Rend leurs clés."""
+        app = self.app
+        self.coche(0, 1)
+        await self.calme(pilote)
+        a, b = app._row_key(0), app._row_key(1)
+        await pilote.click("#l0")
+        await self.calme(pilote)
+        await pilote.click("#l1")
+        await self.calme(pilote)
+        app._hist_settle()
+        liste = app._catalog()
+        liste.deselect(liste.get_option_at_index(0).value)
+        await self.calme(pilote)
+        app._hist_settle()
+        self.assertEqual((b,), app._row_ids())
+        return a, b
+
+    async def test_f4_during_a_restore_resets_the_vm_that_was_shown(self):
+        app = self.ecran()
+        async with app.run_test(size=(200, 60)) as pilote:
+            await self.ouvert(pilote)
+            a, b = await self.deux_figees_puis_la_premiere_retiree(pilote)
+            app.query_one("#v0_ram").focus()
+            await self.calme(pilote)
+            self.assertEqual("v0_ram", app.focused.id)
+            app.action_undo()
+            app.action_clear_vm()
+            await self.calme(pilote)
+            self.assertEqual((a, b), app._row_ids())
+            self.assertEqual(({a}, [a]), (app.locked, list(app.overrides)))
+            self.assertTrue(app._hist.entries[-1]["label"].startswith("F4"))
+
+    async def test_a_row_button_during_a_restore_acts_on_the_vm_shown(self):
+        app = self.ecran()
+        async with app.run_test(size=(200, 60)) as pilote:
+            await self.ouvert(pilote)
+            a, b = await self.deux_figees_puis_la_premiere_retiree(pilote)
+            bouton = app.query_one("#l0")
+            app.action_undo()
+            app.on_button_pressed(types.SimpleNamespace(button=bouton))
+            await self.calme(pilote)
+            await pilote.pause(SETTLE_DELAY + 0.3)
+            self.assertEqual((a, b), app._row_ids())
+            self.assertEqual({a}, app.locked)
+            self.assertEqual(len(app._hist.entries) - 1, app._hist.cursor)
 
     async def test_f5_during_a_restore_deploys_the_restored_plan(self):
         app = self.ecran()

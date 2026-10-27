@@ -18524,9 +18524,9 @@ TRANSLATIONS = {
         "fr": "Relance {n} ; journal précédent : {path}",
         "en": "Relaunch {n}; previous log: {path}",
     },
-    "An install is already running in this VM (make).": {
-        "fr": "Une installation tourne déjà dans cette VM (make).",
-        "en": "An install is already running in this VM (make).",
+    "An install is already running in this VM.": {
+        "fr": "Une installation tourne déjà dans cette VM.",
+        "en": "An install is already running in this VM.",
     },
     (
         "An offline deployment holds the cut: the relaunch would run without "
@@ -18543,17 +18543,51 @@ TRANSLATIONS = {
     },
     (
         "255: ssh lost the connection; the install may still run in the VM. "
-        "The relaunch refuses to start while a make runs there."
+        "The relaunch refuses to start while it still runs there."
     ): {
         "fr": (
             "255 : ssh a perdu la connexion ; l'installation tourne peut-être "
-            "encore dans la VM. La relance refuse de partir tant qu'un make y "
+            "encore dans la VM. La relance refuse de partir tant qu'elle y "
             "tourne."
         ),
         "en": (
             "255: ssh lost the connection; the install may still run in the "
-            "VM. The relaunch refuses to start while a make runs there."
+            "VM. The relaunch refuses to start while it still runs there."
         ),
+    },
+    (
+        "The domain {name} is no longer the deployed VM (deleted, or its name "
+        "reused): relaunch refused."
+    ): {
+        "fr": (
+            "Le domaine {name} n'est plus la VM déployée (effacée, ou son nom "
+            "repris) : relance refusée."
+        ),
+        "en": (
+            "The domain {name} is no longer the deployed VM (deleted, or its "
+            "name reused): relaunch refused."
+        ),
+    },
+    "{name} was deleted: restore refused.": {
+        "fr": "{name} a été effacée : restauration refusée.",
+        "en": "{name} was deleted: restore refused.",
+    },
+    (
+        "The domain {name} is no longer the deployed VM (deleted, or its name "
+        "reused): restore refused."
+    ): {
+        "fr": (
+            "Le domaine {name} n'est plus la VM déployée (effacée, ou son nom "
+            "repris) : restauration refusée."
+        ),
+        "en": (
+            "The domain {name} is no longer the deployed VM (deleted, or its "
+            "name reused): restore refused."
+        ),
+    },
+    "libvirt knows no address for {name} (VM stopped?): restore refused.": {
+        "fr": "libvirt ne connaît aucune adresse à {name} (VM arrêtée ?) : restauration refusée.",
+        "en": "libvirt knows no address for {name} (VM stopped?): restore refused.",
     },
     (
         "Each current log is kept as <log>.N; the relaunch writes a new one, "
@@ -19667,6 +19701,23 @@ TRANSLATIONS = {
     "The Python/Odoo couple changes: run make install.": {
         "fr": "Le couple Python/Odoo change : lancer make install.",
         "en": "The Python/Odoo couple changes: run make install.",
+    },
+    # Installation de paquets : rafraîchissement des index d'abord.
+    "This refresh is a full system upgrade, not only the package indexes.": {
+        "fr": "Ce rafraîchissement est une mise à jour complète du système, pas seulement des index de paquets.",
+        "en": "This refresh is a full system upgrade, not only the package indexes.",
+    },
+    "Upgrade the whole system first? (y/N): ": {
+        "fr": "Mettre d'abord tout le système à jour ? (o/N) : ",
+        "en": "Upgrade the whole system first? (y/N): ",
+    },
+    "Package indexes left as they are.": {
+        "fr": "Index de paquets laissés tels quels.",
+        "en": "Package indexes left as they are.",
+    },
+    "Refreshing the package indexes failed; nothing installed.": {
+        "fr": "Le rafraîchissement des index de paquets a échoué ; rien n'est installé.",
+        "en": "Refreshing the package indexes failed; nothing installed.",
     },
     "Shallow clones: deepening downloads history (network).": {
         "fr": "Clones superficiels : l'approfondissement télécharge de l'historique (réseau).",

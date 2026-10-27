@@ -4,7 +4,6 @@
 """Menu QEMU/KVM : atteindre une VM \u2014 SSH, tunnels, consoles, \u00e9mulateur.\n\nTout ce qui relie l'humain \u00e0 une machine d\u00e9j\u00e0 d\u00e9ploy\u00e9e : ~/.ssh/config et ses\nProxyJump, la d\u00e9couverte des VM imbriqu\u00e9es, les tunnels de bureau distant, la\nconsole s\u00e9rie et graphique (virt-viewer), et l'\u00e9mulateur Android d'une VM\ngraphique avec son tunnel adb.\n\nS\u00e9par\u00e9 du reste parce que c'est le seul bloc qui parle de R\u00c9SEAU et de\nsessions interactives, jamais de cr\u00e9ation ni de destruction de VM."""
 
 import os
-import shlex
 import shutil
 import socket
 import subprocess
@@ -37,9 +36,9 @@ class QemuAccessMixin:
     # alors de distinguer « pas de QEMU ici » de « QEMU présent, aucune VM ».
     # Sonde exécutée à DISTANCE, dans une session SSH non interactive.
     #
-    # « sudo virsh » y échoue dès que l'hôte demande un mot de passe — vécu sur
-    # erplibre01 (sudo-rs) — et la sonde répondait alors « pas de QEMU » sur une
-    # machine qui en fait tourner. On essaie donc virsh SANS sudo d'abord, via
+    # « sudo virsh » y échoue dès que l'hôte demande un mot de passe (sudo-rs
+    # compris), et la sonde répondrait alors « pas de QEMU » sur une machine
+    # qui en fait tourner. On essaie donc virsh SANS sudo d'abord, via
     # qemu:///system : appartenir au groupe libvirt suffit, sans tty.
     #
     # « --connect qemu:///system » est indispensable dans ce cas : sans lui, un
@@ -313,7 +312,7 @@ class QemuAccessMixin:
     # « -no-snapshot-save » : sans lui, un émulateur tué par pkill — ce que ce
     # menu propose lui-même — laisse un instantané en cours, et le lancement
     # SUIVANT meurt sur « A snapshot operation is pending and timeout has
-    # expired ». Vécu, et le message ne dit pas quoi faire.
+    # expired », un message qui ne dit pas quoi faire.
     # « -gpu » reste sur swangle par DÉFAUT, même quand la VM a la 3D : un
     # « -gpu host » qui échoue ne rend pas la main, l'émulateur reste pendu, et
     # ce n'est pas un défaut à imposer sans l'avoir mesuré sur la machine.
@@ -334,8 +333,7 @@ class QemuAccessMixin:
 
         Deux sur le même AVD, et le second s'arrête sur « Running multiple
         emulators with the same AVD is an experimental feature ». Le savoir
-        AVANT de lancer évite de lire cette phrase sans la comprendre — vécu,
-        deux fois."""
+        AVANT de lancer évite de lire cette phrase sans la comprendre."""
         try:
             res = subprocess.run(
                 ["ssh"]
@@ -474,9 +472,9 @@ class QemuAccessMixin:
             print(f"  ⚠ {t('Could not start it:')} {res.stderr.strip()[:200]}")
             return
         # « setsid » détache : le code de retour ne dit RIEN de l'émulateur.
-        # Le menu annonçait « Démarré » pendant que le journal de la VM disait
-        # « not found » — mesuré sur une VM sans SDK. On attend donc de voir le
-        # processus, et à défaut on rapporte le journal.
+        # Sur une VM sans SDK, le lancement « réussit » et le journal de la VM
+        # dit « not found ». On attend donc de voir le processus, et à défaut
+        # on rapporte le journal.
         for _ in range(5):
             if self._qemu_emulator_running(target, src) > 0:
                 break
@@ -609,20 +607,29 @@ class QemuAccessMixin:
         sans demander — la seule installation du CLI dans ce cas.
 
         virt-viewer porte le même nom de paquet dans les quatre familles, ce
-        qui est rare : seule la commande change, et todo_install la connaît."""
+        qui est rare : seule la commande change, et todo_install la connaît.
+
+        Les index se rafraîchissent d'abord. Sous Arch ce rafraîchissement
+        est une mise à jour complète du système : celle-là seule se confirme,
+        par todo_install.run_steps, défaut Non."""
         if shutil.which("virt-viewer"):
             return True
         print(f"\n  {t('virt-viewer is missing here; installing it.')}")
-        cmd = todo_install.install_command(["virt-viewer"])
-        if not cmd:
+        etapes = todo_install.install_steps(["virt-viewer"])
+        if not etapes:
             print(f"  ⚠ {t('no known package manager here.')}")
             conseil = todo_install.conseil_sans_gestionnaire()
             if conseil:
                 print(f"    {conseil}")
             return False
-        lisible = shlex.join(cmd)
-        print(f"  {t('Will execute:')} {lisible}")
-        self.execute.exec_command_live(lisible, source_erplibre=False)
+        todo_install.show_steps(etapes)
+        # Le code rendu ne décide pas : le PATH relu ci-dessous le fait, et
+        # run_steps a déjà dit un rafraîchissement en échec.
+        todo_install.run_steps(
+            lambda c: self.execute.exec_command_live(c, source_erplibre=False),
+            etapes,
+            self._is_yes,
+        )
         if shutil.which("virt-viewer"):
             print("  ✅ virt-viewer")
             return True

@@ -424,7 +424,12 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-    def prompt_install(self):
+    def _install_system_step(self):
+        """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
+        et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install :
+        une technologie qui installe ses propres paquets ne passe pas ici.
+        Pour une version d'Odoo, elle vient après la dernière question qui
+        offre « 0: Back » : un retour ne laisse rien d'installé."""
         print("Detect first installation from code source.")
 
         first_installation_input = (
@@ -475,10 +480,42 @@ class TODO(
                     single_source_erplibre=False,
                     new_window=True,
                 )
-                print(
-                    "👹 WAIT and Close Pycharm when processing is done before continue"
-                    " this guide."
+                self._wait_pycharm_closed()
+
+    def _wait_pycharm_closed(self):
+        """Attend que PyCharm, ouvert pour indexer le projet, soit refermé.
+
+        PyCharm s'ouvre dans sa propre fenêtre, sans bloquer. Resté ouvert,
+        il analyse le projet pendant que l'installation y ajoute des
+        fichiers : il annule et reprend son analyse à chaque fois, et prend
+        le processeur dont l'installation a besoin. L'installation part
+        donc seulement une fois qu'aucun processus PyCharm ne tourne plus,
+        ce que « pgrep » vérifie après chaque Entrée. « c » passe outre :
+        un PyCharm sans lien avec ce projet peut tourner à côté.
+        """
+        while True:
+            reponse = (
+                input(
+                    "👹 WAIT until Pycharm has finished loading the project,"
+                    " close it, then press Enter to continue"
+                    " (c to continue anyway): "
                 )
+                .strip()
+                .lower()
+            )
+            if reponse == "c":
+                return
+            encore = subprocess.run(
+                ["pgrep", "-f", "-i", "pycharm"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if encore.returncode != 0:
+                return
+            print("⚠️  Pycharm is still running: close it before continuing.")
+
+    def prompt_install(self):
         # TODO detect last version supported
         # cmd_intern = "./script/install/install_erplibre.sh"
         key_i = 0
@@ -591,6 +628,8 @@ class TODO(
             if extra_input == "2":
                 cmd_intern = cmd_intern + " --with_extra"
 
+        # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
+        self._install_system_step()
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
@@ -1941,16 +1980,20 @@ class TODO(
         import getpass
 
         print(f"\n{t('Deploy a hardened Asterisk VoIP server (no FreePBX)')}")
-        print(t(
-            "No web admin panel is installed: it is the main attack surface"
-            " of a PBX. Anonymous SIP is refused and the dial plan accepts"
-            " North American numbers only."
-        ))
+        print(
+            t(
+                "No web admin panel is installed: it is the main attack surface"
+                " of a PBX. Anonymous SIP is refused and the dial plan accepts"
+                " North American numbers only."
+            )
+        )
 
         script_path = os.path.realpath(
             os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                "..", "install", "install_asterisk.sh",
+                "..",
+                "install",
+                "install_asterisk.sh",
             )
         )
         if not os.path.isfile(script_path):
@@ -1968,9 +2011,10 @@ class TODO(
             ).strip()
             if not hote:
                 break
-            nom = input(
-                t("Line name (default: line%s): ") % rang
-            ).strip() or f"line{rang}"
+            nom = (
+                input(t("Line name (default: line%s): ") % rang).strip()
+                or f"line{rang}"
+            )
             util = input(t("SIP trunk username: ")).strip()
             # getpass et non input : le mot de passe ne doit rester ni a
             # l'ecran ni dans l'historique du terminal.
@@ -1986,12 +2030,17 @@ class TODO(
             lignes.append((nom, hote, util, mdp))
 
         if not lignes:
-            print(t(
-                "No trunk: the server will install but cannot call out."
-                " That is deliberate — a mute PBX beats an open one."
-            ))
+            print(
+                t(
+                    "No trunk: the server will install but cannot call out."
+                    " That is deliberate — a mute PBX beats an open one."
+                )
+            )
         else:
-            print(t("Lines to configure: %s") % ", ".join(n for n, _, _, _ in lignes))
+            print(
+                t("Lines to configure: %s")
+                % ", ".join(n for n, _, _, _ in lignes)
+            )
 
         # Les mots de passe voyagent par l'environnement du sous-processus,
         # jamais dans la commande : elle est affichee, journalisee, et reste
@@ -3336,13 +3385,14 @@ class TODO(
 
         Un refus de l'opérateur arrête là. Un paquet inconnu ou une
         installation en échec passent au recours amont, qui couvre les dépôts
-        où starship n'est pas empaqueté.
+        où starship n'est pas empaqueté. Les index se rafraîchissent avant
+        le paquet (todo_install.install_steps).
         """
-        cmd = todo_install.install_command(["starship"])
-        if cmd:
+        etapes = todo_install.install_steps(["starship"])
+        if etapes:
             status = todo_install.ask_and_install(
                 self.execute,
-                cmd,
+                etapes,
                 t("Install starship? (y/N): "),
                 self._is_yes,
             )
@@ -6453,9 +6503,7 @@ class TODO(
         # reseau local — la passerelle en Wi-Fi ne joint alors rien, et
         # chaque reconstruction ordinaire remplace l'APK qui le tolerait.
         print(t("mobile_lan_cleartext_warning"))
-        do_lan_cleartext = self._is_yes(
-            input(t("mobile_lan_cleartext_ask"))
-        )
+        do_lan_cleartext = self._is_yes(input(t("mobile_lan_cleartext_ask")))
         commande = "./mobile/compile_and_run.sh"
         if do_lan_cleartext:
             commande += " --lan-cleartext"

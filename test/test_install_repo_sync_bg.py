@@ -215,5 +215,91 @@ class TestValidateEnvironmentOdooSources(unittest.TestCase):
             self.assertTrue(self.update.validate_environment())
 
 
+def _manifeste_local(revision):
+    """Écrit un manifeste local à un projet, sur `revision`."""
+    os.makedirs(os.path.join(".repo", "local_manifests"), exist_ok=True)
+    with open(
+        os.path.join(".repo", "local_manifests", "erplibre_manifest.xml"), "w"
+    ) as f:
+        f.write(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<manifest>\n'
+            f'  <project name="p" path="p" revision="{revision}"/>\n'
+            "</manifest>\n"
+        )
+
+
+class TestValidateEnvironmentFreezeMode(unittest.TestCase):
+    """Le mode demandé par TODO (EL_FREEZE) contre celui du manifeste local.
+
+    Une version installée et complète sautait le repo sync : choisir la
+    production laissait les dépôts sur leurs branches."""
+
+    SHA = "1234567890abcdef1234567890abcdef12345678"
+
+    def setUp(self):
+        # Le même checkout que TestValidateEnvironmentOdooSources, complet :
+        # son setUp sans hériter de ses tests.
+        TestValidateEnvironmentOdooSources.setUp(self)
+        TestValidateEnvironmentOdooSources._odoo_bin(self)
+
+    def _valide(self, el_freeze):
+        env = {} if el_freeze is None else {"EL_FREEZE": el_freeze}
+        with patch.dict(os.environ, env, clear=False):
+            if el_freeze is None:
+                os.environ.pop("EL_FREEZE", None)
+            return self.update.validate_environment()
+
+    def test_production_on_branches_requires_the_sync(self):
+        _manifeste_local("18.0")
+        self.assertFalse(self._valide("1"))
+
+    def test_development_on_frozen_commits_requires_the_sync(self):
+        _manifeste_local(self.SHA)
+        self.assertFalse(self._valide("0"))
+
+    def test_the_mode_already_in_place_needs_nothing(self):
+        _manifeste_local(self.SHA)
+        self.assertTrue(self._valide("1"))
+        _manifeste_local("18.0")
+        self.assertTrue(self._valide("0"))
+
+    def test_production_without_local_manifest_requires_the_sync(self):
+        self.assertFalse(self._valide("1"))
+        self.assertTrue(self._valide("0"))
+
+    def test_no_choice_from_todo_changes_nothing(self):
+        _manifeste_local("18.0")
+        self.assertTrue(self._valide(None))
+
+    def test_a_switch_is_not_concerned(self):
+        _manifeste_local("18.0")
+        self.update.config.install_dev = False
+        self.assertTrue(self._valide("1"))
+
+
+class TestLocalManifestFrozen(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        cwd = os.getcwd()
+        os.chdir(self.tmp)
+        self.addCleanup(os.chdir, cwd)
+
+    def test_reads_the_mode(self):
+        from script.version.update_env_version import local_manifest_frozen
+
+        self.assertIsNone(local_manifest_frozen())
+        _manifeste_local("18.0")
+        self.assertFalse(local_manifest_frozen())
+        _manifeste_local("1234567890abcdef1234567890abcdef12345678")
+        self.assertTrue(local_manifest_frozen())
+        with open(
+            os.path.join(".repo", "local_manifests", "erplibre_manifest.xml"),
+            "w",
+        ) as f:
+            f.write("<manifest>")
+        self.assertIsNone(local_manifest_frozen())
+
+
 if __name__ == "__main__":
     unittest.main()

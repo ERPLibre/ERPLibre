@@ -836,9 +836,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
             plan = self.query_one("#plan", VerticalScroll)
             plan.remove_children()
             cartes = []
+            cles = []
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
                 cle = self._row_key(i)
+                cles.append(cle)
                 item = self._plan_entries()[i]
                 rangee = Horizontal(
                     Button("+", id=f"p{i}", classes="vmcopy"),
@@ -880,16 +882,19 @@ def run_proxmox_form(ctx, run_app: bool = True):
                     )
                 )
 
-            # Marque de génération sur CHAQUE widget : « walk_children() » ne
-            # voit rien avant le montage, les enfants attendent dans
-            # « _pending_children ».
-            def marquer(node):
+            # Marque de génération sur CHAQUE widget, avec la clé de sa VM :
+            # un geste désigne sa rangée par cette clé, son rang pouvant
+            # nommer une autre VM pendant une restauration.
+            # « walk_children() » ne voit rien avant le montage, les enfants
+            # attendent dans « _pending_children ».
+            def marquer(node, cle):
                 node._el_gen = self._gen
+                node._el_key = cle
                 for child in getattr(node, "_pending_children", None) or []:
-                    marquer(child)
+                    marquer(child, cle)
 
-            for carte in cartes:
-                marquer(carte)
+            for carte, cle in zip(cartes, cles):
+                marquer(carte, cle)
             plan.mount_all(cartes)
             self._shown_ids = self._row_ids()
             self.call_after_refresh(self._after_mount_rows)
@@ -1117,15 +1122,17 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 # « pose-moi les questions à l'ancienne ».
                 self.result = {}
                 self.exit()
-            elif ident.startswith("p") and ident[1:].isdigit():
-                self._add_copy(int(ident[1:]), 1)
-            elif ident.startswith("m") and ident[1:].isdigit():
-                self._add_copy(int(ident[1:]), -1)
-            elif ident.startswith("r") and ident[1:].isdigit():
-                self._rename(int(ident[1:]))
-            elif ident.startswith("l") and ident[1:].isdigit():
-                index = int(ident[1:])
-                self._set_lock(index, self._row_key(index) not in self.locked)
+            elif ident[:1] in ("p", "m", "r", "l") and ident[1:].isdigit():
+                # La VM visée est celle que porte le bouton, pas son rang :
+                # voir `_hist_row`.
+                cle = getattr(event.button, "_el_key", None)
+                geste = {
+                    "p": lambda i: self._add_copy(i, 1),
+                    "m": lambda i: self._add_copy(i, -1),
+                    "r": self._rename,
+                    "l": lambda i: self._set_lock(i, cle not in self.locked),
+                }[ident[0]]
+                self._hist_row(cle, geste)
 
         # ---------------------------------------------------------------- #
         # Les actions
@@ -1241,13 +1248,19 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self.push_screen(preview_screen()(lignes))
 
         def action_clear_vm(self) -> None:
-            """Rend au réglage commun la VM sous le curseur (et son verrou)."""
-            index = self._focused_row()
-            if index is None:
+            """Rend au réglage commun la VM sous le curseur (et son verrou).
+
+            La VM est désignée par la clé que porte le widget, lue à la
+            frappe, et retrouvée dans le plan au moment de jouer : un F4 reçu
+            pendant une restauration vise la VM qu'on voyait, pas celle qui
+            prend son rang dans le plan restauré."""
+            if self._focused_row() is None:
                 return
-            cle = self._row_key(index)
+            cle = getattr(self.focused, "_el_key", None)
 
             def remettre():
+                if cle not in self._row_ids():
+                    return
                 self.locked.discard(cle)
                 self.overrides.pop(cle, None)
                 self._refresh_after(remonter=True)

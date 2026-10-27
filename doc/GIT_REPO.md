@@ -136,6 +136,14 @@ of its own: each repository integrates its target with `git pull`'s gestures
 run showed. Entry 3 of TODO › Execute › Git › Repo, and the Odoo module
 `erplibre_info`.
 
+Every git command these tools send, reads included, is printed before it
+runs, as `$ git -C <path> …` with the path relative to the ERPLibre root: the
+command to copy from the root. The lines go to standard error, so the JSON of
+`script/git/repo_state.py` on standard output stays intact. They are printed
+when standard error is a terminal, as in TODO; `ERPLIBRE_GIT_ECHO=1` forces
+them, `ERPLIBRE_GIT_ECHO=0` silences them. A URL loses its user and token
+before it is printed.
+
 ### Pull the repositories
 
 Two modes. **manifest** (the default) pulls the ERPLibre root on its tracked

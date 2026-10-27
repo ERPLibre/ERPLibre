@@ -809,10 +809,12 @@ def run_deploy_form(ctx, run_app: bool = True):
             plan = self.query_one("#plan", VerticalScroll)
             plan.remove_children()
             widgets = []
+            keys = []
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
                 item = self._plan_entries()[i]
                 key = entry_key(item)
+                keys.append(key)
                 row = Horizontal(
                     # « + » ajoute un exemplaire de CETTE entrée ; « - » ne
                     # s'affiche que sur une copie, pour qu'on ne puisse pas
@@ -863,16 +865,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                     )
                 )
 
-            # Marque de génération, posée sur CHAQUE widget de rangée.
+            # Marque de génération, posée sur CHAQUE widget de rangée, avec la
+            # clé de sa VM : un geste désigne sa rangée par cette clé, son
+            # rang pouvant nommer une autre VM pendant une restauration.
             # « walk_children() » ne voit RIEN avant le montage : les enfants
             # passés au constructeur attendent dans « _pending_children ».
-            def mark(node):
+            def mark(node, key):
                 node._el_gen = self._gen
+                node._el_key = key
                 for child in getattr(node, "_pending_children", None) or []:
-                    mark(child)
+                    mark(child, key)
 
-            for card in widgets:
-                mark(card)
+            for card, key in zip(widgets, keys):
+                mark(card, key)
             # Le montage vient APRÈS le marquage, jamais avant : « mount_all »
             # consomme « _pending_children » et le vide. Marquer ensuite était
             # une COURSE — gagnée sur une machine, perdue sur une autre. Perdue,
@@ -1128,22 +1133,21 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._recompute()
 
         def on_button_pressed(self, event) -> None:
-            match = re.match(r"([pm])(\d+)$", event.button.id or "")
+            # La VM visée est celle que porte le bouton, pas son rang : voir
+            # `_hist_row`.
+            key = getattr(event.button, "_el_key", None)
+            match = re.match(r"([pm])\d+$", event.button.id or "")
             if match:
-                self._add_copy(
-                    int(match.group(2)), 1 if match.group(1) == "p" else -1
+                delta = 1 if match.group(1) == "p" else -1
+                self._hist_row(key, lambda i: self._add_copy(i, delta))
+                return
+            if re.match(r"r\d+$", event.button.id or ""):
+                self._hist_row(key, self._rename)
+                return
+            if re.match(r"l\d+$", event.button.id or ""):
+                self._hist_row(
+                    key, lambda i: self._set_lock(i, key not in self.locked)
                 )
-                return
-            match = re.match(r"r(\d+)$", event.button.id or "")
-            if match:
-                self._rename(int(match.group(1)))
-                return
-            match = re.match(r"l(\d+)$", event.button.id or "")
-            if match:
-                index = int(match.group(1))
-                key = self._row_key(index)
-                if key is not None:
-                    self._set_lock(index, key not in self.locked)
 
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
@@ -1164,16 +1168,20 @@ def run_deploy_form(ctx, run_app: bool = True):
         # -- actions ---------------------------------------------------- #
         def action_clear_vm(self) -> None:
             """Rend au profil commun la VM dont un widget a le focus. Sans
-            cette sortie, un réglage posé par erreur ne se défaisait qu'en
-            rouvrant le formulaire."""
-            index = self._focused_row()
-            if index is None:
+            cette sortie, un réglage posé par erreur ne se défait qu'en
+            rouvrant le formulaire.
+
+            La VM est désignée par la clé que porte le widget, lue à la
+            frappe, et retrouvée dans le plan au moment de jouer : un F4 reçu
+            pendant une restauration vise la VM qu'on voyait, pas celle qui
+            prend son rang dans le plan restauré."""
+            if self._focused_row() is None:
                 return
-            key = self._row_key(index)
-            if key is None or key not in self.overrides:
-                return
+            key = getattr(self.focused, "_el_key", None)
 
             def remettre():
+                if key not in self._row_ids() or key not in self.overrides:
+                    return
                 self.overrides.pop(key, None)
                 # Les widgets de la rangée portent encore l'ancienne valeur :
                 # on les remonte pour qu'ils disent la vérité.

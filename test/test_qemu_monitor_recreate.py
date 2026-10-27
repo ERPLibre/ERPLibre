@@ -11,8 +11,12 @@ Ce que ces tests gardent :
 - recréer REMPLACE l'entrée du même nom, à sa place, au lieu de la refuser
   comme un doublon ; l'ancien journal est mis de côté ;
 - le suivi remet la ligne à zéro avec la nouvelle entrée (UUID compris) ;
+- une recréation faite par un autre suivi n'est adoptée qu'une fois son
+  entrée neuve écrite dans le manifeste ;
 - les refus : VM Proxmox, spec absente, installation en cours, effacement
-  refusé.
+  refusé — redits après le oui ;
+- l'ancien lanceur n'est arrêté qu'une fois l'effacement fait, et son
+  journal reçoit le marqueur de fin qu'il n'écrira plus.
 
 _launch_one est remplacé : aucun processus n'est détaché, aucune VM créée.
 """
@@ -301,6 +305,25 @@ class TestLeSuivi(AsyncCase):
         await app._tick_table()
         await pilot.pause()
 
+    def recree_ailleurs(self, entree=True):
+        """Ce qu'un autre suivi laisse en recréant la VM : le journal mis de
+        côté et un neuf en place, puis — si `entree` — l'entrée neuve dans
+        le manifeste, comme launch_installs(replace) les écrit, dans cet
+        ordre."""
+        log = self.base / "vm-a.log"
+        os.replace(log, str(log) + ".1")
+        log.write_text("en-tête neuf\n")
+        if not entree:
+            return
+        manifeste = json.loads(Path(self.chemin).read_text())
+        manifeste["vms"][0].update(
+            uuid="uuid-neuf",
+            started=time.time() + 1,
+            previous_logs=[str(log) + ".1"],
+            recreations=1,
+        )
+        Path(self.chemin).write_text(json.dumps(manifeste))
+
     async def refus(self, app, pilot):
         await self.ouvre(app, pilot)
         with mock.patch.object(app, "notify") as notify:
@@ -368,12 +391,55 @@ class TestLeSuivi(AsyncCase):
         async with app.run_test(size=(150, 30)) as pilot:
             await self.ouvre(app, pilot)
             self.assertEqual("done", app._final["vm-a"][0])
-            log = self.base / "vm-a.log"
-            os.replace(log, str(log) + ".1")
-            log.write_text("en-tête neuf\n")
+            self.recree_ailleurs()
             await app._tick_table()
             await pilot.pause()
             self.assertNotIn("vm-a", app._final)
+            self.assertEqual("uuid-neuf", app._vm_by_name("vm-a")["uuid"])
+
+    async def test_un_journal_neuf_attend_son_entree_avant_l_adoption(self):
+        """Tick tombé entre le journal neuf et l'entrée neuve : l'ancienne
+        n'est pas adoptée, et la neuve l'est au tick suivant."""
+        app = self.app(code=0, todo=FauxTodo())
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            self.recree_ailleurs(entree=False)
+            await app._tick_table()
+            await pilot.pause()
+            self.assertEqual("done", app._final["vm-a"][0])
+            self.assertEqual("uuid-ancien", app._vm_by_name("vm-a")["uuid"])
+            manifeste = json.loads(Path(self.chemin).read_text())
+            manifeste["vms"][0].update(uuid="uuid-neuf", started=time.time())
+            Path(self.chemin).write_text(json.dumps(manifeste))
+            await app._tick_table()
+            await pilot.pause()
+            self.assertNotIn("vm-a", app._final)
+            self.assertEqual("uuid-neuf", app._vm_by_name("vm-a")["uuid"])
+
+    async def test_un_refus_venu_pendant_la_question_n_efface_rien(self):
+        """La question reste ouverte ; un ajout part entre-temps. Le oui ne
+        pose aucune marque et n'efface rien."""
+        todo = FauxTodo({"added": [], "failed": [], "no_ip": []})
+        app = self.app(todo=todo)
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            with mock.patch.object(
+                app, "_delete_for_recreate", return_value=True
+            ) as efface, mock.patch.object(app, "notify") as notify:
+                await pilot.press("n")
+                await pilot.pause()
+                self.assertEqual("ConfirmScreen", type(app.screen).__name__)
+                app._adding = True
+                await pilot.click("#c_yes")
+                await pilot.pause()
+            efface.assert_not_called()
+            self.assertEqual([], todo.appels)
+            self.assertEqual(
+                mon.t("VMs are already being added."),
+                notify.call_args[0][0],
+            )
+            entree = json.loads(Path(self.chemin).read_text())["vms"][0]
+            self.assertNotIn("recreating", entree)
 
     async def test_un_effacement_refuse_ne_recree_rien(self):
         todo = FauxTodo({"added": [], "failed": [], "no_ip": []})
@@ -470,9 +536,7 @@ class TestLeSuivi(AsyncCase):
             app._domstate["vm-a"] = "gone"
             await app._tick_table()
             self.assertEqual("deleted", app._final["vm-a"][0])
-            log = self.base / "vm-a.log"
-            os.replace(log, str(log) + ".1")
-            log.write_text("en-tête neuf\n")
+            self.recree_ailleurs()
             app._domstate.pop("vm-a")
             await app._tick_table()
             await pilot.pause()
@@ -603,6 +667,30 @@ class TestLAncienLanceurEstArrete(unittest.TestCase):
 
     def test_un_autre_journal_n_est_pas_touche(self):
         self.assertEqual(0, mon.stop_launchers("/nulle/part/inexistant.log"))
+        self.assertFalse(Path("/nulle/part/inexistant.log").exists())
+
+    def test_le_journal_d_un_lanceur_arrete_se_termine(self):
+        """Le lanceur tué n'écrit plus son marqueur : sans celui qu'on pose
+        à sa place, le journal se lirait « en cours » pour toujours."""
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as coin:
+            log = str(Path(coin, "vm-a.log"))
+            Path(log).write_text("== en attente de la VM ==\n")
+            subprocess.run(
+                [
+                    "setsid",
+                    "-f",
+                    "bash",
+                    "-c",
+                    f"sleep 60; true # {log} {mon.EXIT_MARKER}",
+                ],
+                check=True,
+            )
+            time.sleep(0.3)
+            self.assertEqual(("running", None), mon.read_status(log))
+            self.assertEqual(1, mon.stop_launchers(log))
+            self.assertEqual(("failed", 143), mon.read_status(log))
 
 
 class TestLaMarqueDeRecreation(unittest.TestCase):
@@ -672,7 +760,17 @@ class TestLaMarqueDeRecreation(unittest.TestCase):
 class TestLEffacementAvantRecreation(AsyncCase):
     """_delete_for_recreate, terminal « rendu » par une doublure."""
 
+    def arrete(self, log):
+        """Doublure de stop_launchers : note le journal visé, et si la
+        commande d'effacement (« bash -c ») était déjà passée à cet
+        instant."""
+        efface = any(c[0] == "bash" for c in self.commandes)
+        self.arretes.append((log, efface))
+        return 0
+
     def setUp(self):
+        self.arretes = []
+        self.commandes = []
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.base = Path(tmp.name)
@@ -681,7 +779,7 @@ class TestLEffacementAvantRecreation(AsyncCase):
             ("arm_balloon", lambda names: None),
             ("virsh_domstates", lambda: {}),
             ("_port_open", lambda ip, port=8069, timeout=0.5: False),
-            ("stop_launchers", lambda log: 0),
+            ("stop_launchers", self.arrete),
             # Le relevé d'adresse de fond passe par « sudo virsh » : sous
             # charge, il tombait dans les commandes comptées ici.
             ("virsh_ip", lambda nom: ""),
@@ -711,7 +809,7 @@ class TestLEffacementAvantRecreation(AsyncCase):
             execute = None
 
         app = mon.run_monitor(self.chemin, run_app=False, todo=Todo())
-        commandes = []
+        commandes = self.commandes
 
         def run(argv, **kw):
             commandes.append(argv)
@@ -751,6 +849,19 @@ class TestLEffacementAvantRecreation(AsyncCase):
     async def test_un_refus_de_la_commande_arrete_la_recreation(self):
         ok, _ = await self.efface(rc_bash=1)
         self.assertFalse(ok)
+
+    async def test_un_effacement_refuse_laisse_le_lanceur_vivre(self):
+        """La VM reste : son installation aussi, et son journal garde un
+        lanceur qui finira par y écrire son marqueur."""
+        await self.efface(rc_bash=1)
+        self.assertEqual([], self.arretes)
+
+    async def test_le_lanceur_s_arrete_une_fois_l_effacement_fait(self):
+        """L'arrêt vient APRÈS la commande d'effacement : arrêté avant, le
+        lanceur serait tué même quand l'effacement est refusé."""
+        ok, _ = await self.efface()
+        self.assertTrue(ok)
+        self.assertEqual([(self.vm["log"], True)], self.arretes)
 
 
 if __name__ == "__main__":

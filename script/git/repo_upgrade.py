@@ -64,7 +64,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
-from script.git import manifest_freeze, repo_stats  # noqa: E402
+from script.git import command_echo, manifest_freeze, repo_stats  # noqa: E402
 
 try:
     from script.todo.todo_i18n import t
@@ -252,6 +252,7 @@ def branches(url, delai=DELAI_RESEAU):
     """
     if not url:
         return None
+    command_echo.show(["git", "ls-remote", "--heads", url])
     try:
         done = subprocess.run(
             ["git", "ls-remote", "--heads", url],
@@ -370,6 +371,7 @@ def git(args, cwd, delai=DELAI_GIT):
     sans amont joignable doit produire un constat, pas interrompre la passe
     des quinze autres.
     """
+    command_echo.show(["git"] + list(args), cwd)
     try:
         done = subprocess.run(
             ["git"] + list(args),
