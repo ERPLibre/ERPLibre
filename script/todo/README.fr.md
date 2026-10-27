@@ -6,7 +6,11 @@ Pour un nouveau projet, copiez todo_example.json vers private/todo/todo_override
 
 Le paquet `mail/` est le client courriel accessible depuis
 `Assistant > Courriel` : plusieurs comptes IMAP/SMTP, un cache local, et un
-TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md).
+TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md). Son
+sous-paquet `mail/rules/` porte les règles du courrier entrant — modèle,
+filtre, garde-fous, rendu de la réponse, stockage et le moteur qui tourne
+après chaque passe de synchronisation (voir « Règles du courrier entrant »
+dans ce guide).
 
 ## Où vit le code
 

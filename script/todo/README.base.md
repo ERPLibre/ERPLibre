@@ -11,7 +11,10 @@ For a new project, copy todo_example.json to private/todo/todo_override.json | p
 
 The `mail/` package is the mail client reachable from `Assistant > Mail`:
 several IMAP/SMTP accounts, a local cache, and a Textual TUI. See
-[../../doc/EMAIL.md](../../doc/EMAIL.md).
+[../../doc/EMAIL.md](../../doc/EMAIL.md). Its `mail/rules/` subpackage holds
+the incoming mail rules — model, filter, safeguards, reply rendering,
+storage and the engine that runs after each sync pass (see "Incoming mail
+rules" in that guide).
 
 ## Where the code lives
 
@@ -55,7 +58,11 @@ Pour un nouveau projet, copiez todo_example.json vers private/todo/todo_override
 
 Le paquet `mail/` est le client courriel accessible depuis
 `Assistant > Courriel` : plusieurs comptes IMAP/SMTP, un cache local, et un
-TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md).
+TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md). Son
+sous-paquet `mail/rules/` porte les règles du courrier entrant — modèle,
+filtre, garde-fous, rendu de la réponse, stockage et le moteur qui tourne
+après chaque passe de synchronisation (voir « Règles du courrier entrant »
+dans ce guide).
 
 ## Où vit le code
 

@@ -193,6 +193,7 @@ preview pane on the right, with a status line at the bottom.
 | `f` | forward |
 | `w` | save an attachment to `~/Téléchargements` (created if missing) |
 | `o` | open the outbox: what is waiting to leave (see "The outbox") |
+| `e` | open the incoming mail rules of the current account (see "Incoming mail rules") |
 | `Shift+F` | open the folder screen: create, rename, delete (see "Managing folders") |
 | `i` | open the statistics screen (see "Statistics") |
 | `n` | add an account without leaving the client |
@@ -237,6 +238,12 @@ queued, it will leave when the network is back" (see "The outbox"). Once
 sent, a copy is filed into the account's Sent folder over IMAP; if that
 filing step fails, the status line says so, but the message has already
 left — it is not resent.
+
+The send runs in the background: the Send button greys out and the form
+stays open until the server has answered, while the rest of the client
+stays responsive. A reply (`a` or `Shift+A`) sent while the account is online also
+marks the original `\Answered`, in the cache and on the server, as other
+clients do. A reply that waits in the outbox does not, nor does a forward.
 
 ## Synchronization
 
@@ -310,6 +317,9 @@ rule lets a client collapse: only the `Message-ID` ties the two together.
 | `~/.erplibre/mail/<account>/cache.db` | that account's SQLite cache (mode 0600, parent directory 0700) |
 | `~/.erplibre/mail/<account>/<folder>/<uid>.eml` (or `.eml.enc` when sealed) | one file per downloaded message body |
 | `/dev/shm/erplibre-mail-<pid>/<account>/` | an `ephemeral` account's cache while the process is alive; removed when it exits (a sweep at every startup also clears directories left behind by a killed process) |
+| `~/.erplibre/mail/.rules/<account>/rules.json` | that account's incoming mail rules and send caps, **in clear text** even with an encrypted cache (mode 0600; see "Incoming mail rules") |
+| `~/.erplibre/mail/.rules/<account>/state.json`, `lock` | where the rules engine stopped in the inbox, and the lock that keeps two passes from running at once |
+| `~/.erplibre/mail/.rules/<account>/media/` | the copies of the images a reply carries (directory 0700, files 0600) |
 
 ## Troubleshooting
 
@@ -437,18 +447,290 @@ each time it runs.
 per message, oldest first — subject, recipients, and, once a send has
 failed, why it failed and how many attempts it has taken. Each line carries
 a button on its **left** that holds the message or releases it. A held
-message never leaves on its own; only that button lifts the hold, never a
-delay that expires. `Escape` closes the screen.
+message never leaves on its own; only that button lifts the hold. `Escape`
+closes the screen. Automatic replies queued by a rule are marked `[auto]`
+and carry an expiry; the pane under the list previews the one whose button
+has focus (see "Incoming mail rules").
 
 A send that fails keeps the message in the queue and does not block those
-behind it. Nothing gives up: the next pass tries again and the counter
-climbs, however final the refusal. Holding the message is the only way to
-stop those attempts — the screen deletes nothing.
+behind it. A temporary refusal (a `4xx` code, a network error) is retried
+at every pass, without limit. A permanent refusal (`5xx`) is retried up to
+three times; after the third, a message written by hand is **held**, never
+deleted, with its last error still shown under `o`. Holding a message
+stops its attempts sooner — the screen deletes nothing. When the SMTP
+server cannot be reached at all, the rest of the queue waits for the next
+pass instead of each message waiting out the same connection timeout.
+
+A message that leaves from the queue is filed into the account's Sent
+folder, like one sent directly. If that filing fails, the failure is
+logged; the message has left and is not resent.
 
 Queued messages are sealed with the same key as the rest of the cache: an
 encrypted cache that left its outgoing mail in the open would protect
 everything except what was just written. The reason a send failed is sealed
 with them: a server that refuses a message names the recipient it refuses.
+
+## Incoming mail rules
+
+A rule answers incoming mail on its own: when a new message in the inbox
+matches its filter, the client sends the rule's reply to the sender. Each
+account has its own ordered list of rules. This version runs one kind of
+action, the **custom reply**; forwarding and a statistics report come later
+(see "What the client does not do yet").
+
+### When rules run
+
+Rules run right after the sync pass of an online account: at launch, on
+`r` / `Shift+R`, on the `mail_refresh_sec` timer (300 s by default), and on
+`Mail > [3] Synchronise now` from the CLI menu. Nothing runs while both the
+client and the menu are closed, so with the TUI open a message gets its
+answer within `mail_refresh_sec`. Only the inbox is read: on a server that
+files by label, the same message also sits in "All mail", and reading both
+would answer it twice.
+
+A rule acts only on what arrives **after** it is enabled. Enabling it
+records the inbox position and the time — the rule is *armed* — and
+everything older is left alone, so turning on a rule never answers a
+backlog. Disabling then enabling it again arms it afresh. A message moved
+into the inbox from another folder counts as an arrival, but one received
+before the rule was armed, or longer ago than the rule's maximum age, is
+still left alone, and no message is ever answered twice by the same rule;
+most of the rest — list mail, a copy received in Bcc — is stopped by a
+safeguard below.
+
+An account with an `ephemeral` cache runs no rules: the log that
+guarantees "at most once" would not outlive the process. When the server
+renumbers the inbox (a new `UIDVALIDITY`), every enabled rule is armed again
+at the current position and the status line says *Inbox renumbered: rules
+re-armed.*
+
+### The rule list
+
+`e` opens the rule list of the current account: order, on/off, name, type,
+"stop here", and the rule's last result.
+
+| Key | Action |
+|---|---|
+| `n` | new rule |
+| `Enter` | edit the rule under the cursor |
+| `Space` | enable / disable it |
+| `k` / `j` | move it up / down |
+| `t` | toggle "stop here" |
+| `x` | delete it (asks first) |
+| `l` | the rules log: the latest 200 decisions — date, rule, result, reason, sender, subject |
+| `Escape` | close |
+
+Under the table, *Cap per pass* and *Cap per hour* set the account's send
+caps (see "Safeguards"), saved by their own button.
+
+Rules apply in order, and **all** of them apply: a message that matches two
+rules gets two replies. A rule with "stop here" ends the list for that
+message as soon as its filter matched — even when a safeguard kept its
+reply from leaving.
+
+The editor holds the name, "Rule enabled", "Stop here", the throttle (see
+"Safeguards"), the maximum age in hours (48 by default, 1 to 720), the
+number of first sends held for approval (1 by default, 1 to 10), the
+filter, and a *Custom reply…* button. `Ctrl+S` saves, `Escape` cancels; a
+field that does not validate keeps the window open with the reason on its
+status line.
+
+### Filters
+
+A filter is a tree. A group is **AND — all**, **OR — at least one** or
+**NOT** (exactly one child); a condition tests one field. The root is an
+AND group, and an empty root matches every message. `+ Condition` and
+`+ Group` add inside the group under the cursor (or beside the condition
+under it), `Edit` opens the condition, `Remove` takes the node out.
+
+| Field | Tested on |
+|---|---|
+| From | the sender's address |
+| To/Cc | every address in To and Cc |
+| Subject | the subject |
+| Body | the message text, downloaded only when a rule reaches this condition |
+
+From and To/Cc are tested on the addresses alone, never on the display
+name, which anyone can write. Two operations:
+
+- **matches the pattern** — From and To/Cc only: a shell-style pattern
+  compared with the whole address, never case sensitive. `*@example.net`
+  matches `bruno.filtre@example.net`.
+- **contains**, in one of five modes: *ignoring case and accents* (the
+  default: `Désabonnement` contains `desabonnement`), *case sensitive*,
+  *exact text* (equal apart from spacing), *whole word*, or *regular
+  expression* (Python syntax, case sensitive unless the pattern starts with
+  `(?i)`, at most 200 characters, tried on the first 10 000 characters;
+  nested repetitions such as `(a+)+` are refused, as they can stall a pass).
+  Each search gets one second: a pattern that takes longer on a message
+  marks the rule as failed for that message ("regular expression too
+  slow" in the log) and never counts as a non-match.
+
+A filter holds at most 8 levels and 64 nodes, and a value at most 500
+characters. The body is fetched with `BODY.PEEK`, so the message stays
+unread; an account that is offline at that moment leaves the message for
+its next online pass.
+
+Under the tree, a preview counts how many of the last 200 cached inbox
+messages the filter would retain. It never downloads a body: the messages
+it cannot decide without one are counted as unknown. The cache keeps no Cc,
+so a To/Cc condition is previewed on To alone.
+
+Example — a rule that answers the partners of one domain, except their
+mailing list:
+
+```
+AND — all
+├── From matches the pattern *@example.net
+└── NOT
+    └── From contains (exact text) liste-annonces@example.net
+```
+
+A message from `bruno.filtre@example.net` gets the reply; one from
+`carole.regle@example.org` does not match. The list exclusion is belt and
+braces: a message from `liste-annonces@example.net` carries `List-Id` and
+would be stopped by a safeguard anyway.
+
+### The reply
+
+*Custom reply…* opens the reply form: a format, a subject, a body, images,
+and a preview recomputed as you type.
+
+| Format | Sent as |
+|---|---|
+| Markdown (HTML and text) | the source as the text part, converted to HTML for the HTML part; raw HTML in the source is not passed through |
+| Hand-written HTML | your HTML, plus a text part drawn from it |
+| Text, images attached | text only; every image goes as an attachment |
+
+Images (PNG, JPEG, GIF, WebP; 2 MiB each, 5 MiB together) are **copied**
+into the rules folder when added, by path or with *Browse…* then *Add the
+images*: moving or editing the original later changes nothing, and a
+stored copy altered afterwards is refused instead of sent. In both HTML
+formats, an image the body names — `![Logo](logo.png)` or
+`<img src="logo.png">` — goes inline; a listed image the body does not name
+goes as an attachment, so none is lost.
+
+An empty subject gives `Auto:` followed by the received subject; otherwise
+the subject is your text, with `{subject}` replaced by the received
+subject.
+
+The reply quotes nothing. It goes to the envelope sender (`Return-Path`),
+or to the From address when there is none — never to `Reply-To`, which the
+sender's message sets freely. It carries `Auto-Submitted: auto-replied`,
+`X-Auto-Response-Suppress: All` and an `X-Loop` marker, so that other
+responders stay silent, plus `In-Reply-To` and `References`, so that it
+joins the conversation. A copy is filed into Sent; the original is not
+marked answered.
+
+### Safeguards
+
+Before a reply leaves, the rule's checks run in this order, and the first
+that applies stops it. A message that is not armed for the rule, already
+handled by it, or not matched by its filter is passed over silently;
+every other stop is written to the rules log (`l`) under the reason shown.
+
+| Reason in the log | The message… |
+|---|---|
+| too old | was received by the server longer ago than the rule's maximum age — measured on the server's reception date (`INTERNALDATE`), never on the `Date` header the sender writes |
+| receive date in the future | carries a reception date more than 10 minutes ahead |
+| automatic message | carries `Auto-Submitted` with any value but `no` |
+| bulk mail | carries `Precedence: bulk`, `list`, `junk` or `auto_reply` |
+| mailing list | carries `List-Id` or `List-Unsubscribe` |
+| automatic replies refused by the sender | carries `X-Auto-Response-Suppress` with `All`, `OOF` or `AutoReply` |
+| loop detected | carries the `X-Loop` marker of an ERPLibre client — another of your accounts included |
+| spam | carries `X-Spam-Flag: yes` |
+| null sender | has an empty envelope sender (`Return-Path: <>`), as a bounce does |
+| no reply address | has no address to answer, or a From that names more than one |
+| robot sender | comes from `mailer-daemon`, `postmaster`, `no-reply`, a bounce address… |
+| sent by this account | comes from this account's own address |
+| another configured account | comes from another account configured in the client |
+| not addressed to this account | names this account in neither To nor Cc — a Bcc copy, a list, an alias |
+| authentication failed | is marked `dmarc=fail`, or `spf=fail` without `dkim=pass`, by the receiving server's `Authentication-Results`: answering would send our reply to whoever was impersonated |
+| throttled | comes from a sender this rule answered recently (below) |
+
+**Do not send again if a message arrives within N minutes.** When the box
+is ticked, a message is not answered if this rule's last send to the same
+sender — the same From address, or the same reply address — is less than
+N minutes old. It is measured from the last **send**, not from the last
+message received, and a reply waiting in the outbox counts as a send. The
+box is ticked by default with 10080 minutes (7 days); unticked, every
+message gets its reply, the other safeguards aside. With 60 minutes:
+`carole.regle@example.org` writes at 9:00 and is answered at 9:00; she
+writes again at 9:40 — *throttled*, 40 minutes after the last send; she
+writes at 10:05 — answered, 65 minutes after the last send. The 9:40
+message did not restart the clock.
+
+**Caps.** Whatever the rules say, an account sends at most **20** automatic
+replies per pass and **60** per sliding hour, all rules together. Beyond
+that, replies are held in the outbox and the status line warns
+*Automatic send cap reached; the rest is held (o).* Both caps are set
+under the rule list, or by the `caps` key of `rules.json`
+(`{"per_pass": 20, "per_hour": 60}`, whole numbers of at least 1). The
+hourly cap is what bounds a short timer: with `mail_refresh_sec` at 30 s,
+the cap per pass alone would let 2 400 replies an hour through.
+
+**Holding the first send.** Until a rule has really sent its first
+replies — one by default, up to 10 — each new reply waits **held** in the
+outbox. `o` previews it: recipient and subject, the first 20 lines of
+text, the inline and attached images, and its expiry. *Release* lets it
+leave at the next sync pass. Changing the rule's filter or its reply
+(format, subject, body, images) starts the count again, and a reply still
+waiting from before the change is dropped rather than sent; renaming,
+reordering or changing its limits does not.
+
+**When the cache is rebuilt**, the log that throttles and counts goes with
+it. Replies are then held for approval until the longest throttle of the
+enabled rules has run out, and the status line says *Cache rebuilt:
+automatic replies await your approval (o).*
+
+### When a reply cannot leave
+
+| Situation | What happens |
+|---|---|
+| account offline | the reply is queued and leaves at the next online pass |
+| temporary server refusal | queued; the rest of the pass's replies are queued too, without trying the server again |
+| permanent server refusal | logged as failed, not retried |
+| queued for 24 h | dropped from the queue (*expired*), held or not |
+| rule deleted or disabled meanwhile | dropped (*rule disabled*) |
+| rule's filter or reply changed meanwhile | dropped (*rule changed since*) |
+| three permanent refusals from the queue | dropped (*attempts exhausted*) |
+| image unreadable, message impossible to build | logged as failed, not retried |
+
+The log `l` of the main screen lists, per rule, what failed; the rules log
+gives each message's result and reason. `~/.erplibre/mail.log` never
+carries an address or a subject.
+
+After a pass that did something, one line is appended to the status line,
+per account with enabled rules — for instance `perso : automatic replies
+sent: 2, awaiting approval (o): 1`. A pass that found nothing to do adds
+nothing.
+
+One pass at a time handles an account, whatever the process — TUI or menu.
+Another one waits up to 30 s, then gives up with *Rules: another pass is
+running.*; the next pass picks up where it stopped. A pass catches up at
+most 200 messages; older ones are skipped with a warning.
+
+### From the CLI menu
+
+`Mail > [6] Incoming mail rules` asks for an account, then offers `[1]`
+list the rules (with a summary of each filter), `[2]` enable / disable one,
+`[3]` move one up or down, `[4]` delete one (asks first), `[5]` the latest
+50 lines of the rules log, `[0]` back. Creating and editing a rule go through `e`
+in the TUI: a filter tree is not typed line by line. A rule enabled from the
+menu is armed at its next pass.
+
+### Where rules live
+
+`~/.erplibre/mail/.rules/<account>/rules.json` holds the rules and the
+caps, mode 0600, **in clear text even when the cache is encrypted** — the
+same exposure as `accounts.json`. It carries the filter values (the
+addresses and words you filter on) and the body of the reply. The images
+are copied beside it under `media/`; `state.json` records where the engine
+stopped in the inbox. The rules log itself lives in the account's
+`cache.db`, sealed with it. Keys this version does not know are kept when
+the file is rewritten, and a rule of a kind it does not run yet — forward,
+statistics report — is shown and left alone; a file of a newer format
+version is refused and left untouched.
 
 ## Managing folders
 
@@ -849,6 +1131,16 @@ stands and the next pass tries again.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
+- **Rules only reply** — a rule cannot yet forward a message nor send a
+  statistics report; a rule of either kind is kept and shown, never run.
+- **No headless service** — rules run only while the TUI is open or when
+  `Mail > [3] Synchronise now` runs; with both closed, nothing is answered.
+- **No `\Answered` from the outbox** — a manual reply marks the original
+  answered only when it leaves at once; one that waited in the outbox does
+  not.
+- **No aliases** — an account knows its own address and login only, so a
+  message received through an alias is logged *not addressed to this
+  account* and gets no automatic reply.
 
 The design spec is not tracked in this tree; recover it from history with
 `git log --all -- "docs/superpowers/specs/*"` if you need what the remaining
