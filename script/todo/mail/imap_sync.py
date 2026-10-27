@@ -78,6 +78,26 @@ class HeaderInfo:
     # détenteur du sel.
     in_reply_to: str = ""
     references: str = ""
+    # v6 — tous avec défaut : un double de test qui ne les connaît pas
+    # construit encore un `HeaderInfo` valide.
+    cc: str = ""
+    # L'INTERNALDATE du serveur, en secondes UTC ; 0 si inconnue. C'est la
+    # date de RÉCEPTION, que l'expéditeur ne choisit pas, contrairement à
+    # l'en-tête `Date`.
+    internaldate: int = 0
+    # Les en-têtes de `imap_transport.EXTRA_HEADERS` présents, clés en
+    # minuscules. Plusieurs occurrences sont jointes par "\n" dans l'ordre
+    # du message — la première est la plus haute, celle que le dernier MTA
+    # a ajoutée — et chacune est dépliée : "\n" n'y sert que de
+    # séparateur. Gardés en mémoire seulement, jamais dans le cache.
+    extra: dict = field(default_factory=dict)
+
+
+# Le plafond des en-têtes d'INBOX qu'un rapport transporte. Une première
+# synchronisation, ou une UIDVALIDITY changée, rend toute la boîte « neuve » :
+# sans plafond, le rapport garderait en mémoire des dizaines de milliers
+# d'en-têtes que personne ne traitera.
+INBOX_REPORT_MAX = 500
 
 
 @dataclass
@@ -86,6 +106,57 @@ class SyncReport:
     new_messages: int = 0
     purged: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    # Le nom IMAP de la boîte de réception vue par la passe, "" sinon.
+    inbox_folder: str = ""
+    # Les `HeaderInfo` des UID nouveaux d'INBOX, UID croissants, au plus
+    # `INBOX_REPORT_MAX` : les plus hauts sont gardés.
+    inbox: list = field(default_factory=list)
+    # Vrai quand des UID nouveaux d'INBOX ont été écartés par le plafond.
+    inbox_truncated: bool = False
+
+
+def is_inbox(folder: FolderInfo) -> bool:
+    """Vrai pour la boîte de réception : par son rôle, ou par son nom.
+
+    Le nom compte aussi parce qu'un `FolderInfo` peut arriver sans rôle —
+    celui que fabrique `sync_one`, ou celui d'un transport qui ne lit pas
+    les attributs de LIST. RFC 3501 rend « INBOX » insensible à la casse.
+    """
+    return folder.role == "inbox" or (folder.name or "").upper() == "INBOX"
+
+
+def _garder_les_plus_hauts(report: SyncReport) -> None:
+    """Trie `report.inbox` par UID et le ramène à `INBOX_REPORT_MAX`.
+
+    Appelée après chaque lot plutôt qu'en fin de dossier seulement : la
+    mémoire reste bornée pendant la passe, pour le même résultat.
+    """
+    report.inbox.sort(key=lambda h: h.uid)
+    if len(report.inbox) > INBOX_REPORT_MAX:
+        del report.inbox[: len(report.inbox) - INBOX_REPORT_MAX]
+        report.inbox_truncated = True
+
+
+def _meta(h) -> MessageMeta:
+    """Un `HeaderInfo` → la ligne de cache correspondante.
+
+    `getattr` pour `internaldate` : un transport de test peut rendre un
+    objet qui ne porte que les champs d'avant la v6.
+    """
+    return MessageMeta(
+        uid=h.uid,
+        date=h.date,
+        size=h.size,
+        flags=h.flags,
+        msgid=h.msgid,
+        frm=h.frm,
+        to=h.to,
+        subject=h.subject,
+        snippet="",
+        in_reply_to=h.in_reply_to,
+        references=h.references,
+        received_at=getattr(h, "internaldate", 0) or 0,
+    )
 
 
 class ImapTransport(Protocol):
@@ -291,6 +362,14 @@ class Syncer:
             total.new_messages += rapport.new_messages
             total.purged.extend(rapport.purged)
             total.errors.extend(rapport.errors)
+            # Une seule boîte de réception par compte, donc un seul lot la
+            # porte : concaténer ne mélange rien.
+            total.inbox.extend(rapport.inbox)
+            if not total.inbox_folder:
+                total.inbox_folder = rapport.inbox_folder
+            total.inbox_truncated = (
+                total.inbox_truncated or rapport.inbox_truncated
+            )
         return total
 
     def sync_one(self, folder_name: str) -> SyncReport:
@@ -308,10 +387,16 @@ class Syncer:
         Ne lève jamais, à l'image de `sync()` par dossier : cette sync est
         un confort, pas une garantie — un envoi déjà réussi ne doit jamais
         se lire comme un échec parce que cette relecture a raté.
+
+        `report.inbox` reste vide même pour INBOX : ce qu'une relecture
+        ciblée découvre n'est pas une arrivée que la passe complète aurait
+        annoncée.
         """
         report = SyncReport()
         try:
-            self._sync_folder(FolderInfo(name=folder_name), report, None)
+            self._sync_folder(
+                FolderInfo(name=folder_name), report, None, rapporter=False
+            )
         except Exception as exc:
             _logger.exception(
                 "sync ciblée du dossier %r a échoué", folder_name
@@ -321,8 +406,19 @@ class Syncer:
         return report
 
     def _sync_folder(
-        self, folder: FolderInfo, report: SyncReport, progress
+        self,
+        folder: FolderInfo,
+        report: SyncReport,
+        progress,
+        rapporter: bool = True,
     ) -> None:
+        """Une passe sur un dossier.
+
+        Quand `rapporter` est vrai et que le dossier est la boîte de
+        réception, les en-têtes des UID nouveaux vont AUSSI dans
+        `report.inbox` : c'est ce que lisent les règles de courriel entrant,
+        sans refaire de FETCH.
+        """
         fid = self.store.upsert_folder(
             folder.name, folder.display, folder.role
         )
@@ -348,28 +444,16 @@ class Syncer:
 
         last_uid = state.get("last_uid") or 0
         uids = self.transport.search_uids(last_uid + 1)
+        boite = rapporter and is_inbox(folder)
+        if boite:
+            report.inbox_folder = folder.name
         done = 0
         for batch in _chunks(uids, self.BATCH):
             headers = self.transport.fetch_headers(batch)
-            self.store.upsert_messages(
-                fid,
-                [
-                    MessageMeta(
-                        uid=h.uid,
-                        date=h.date,
-                        size=h.size,
-                        flags=h.flags,
-                        msgid=h.msgid,
-                        frm=h.frm,
-                        to=h.to,
-                        subject=h.subject,
-                        snippet="",
-                        in_reply_to=h.in_reply_to,
-                        references=h.references,
-                    )
-                    for h in headers
-                ],
-            )
+            self.store.upsert_messages(fid, [_meta(h) for h in headers])
+            if boite:
+                report.inbox.extend(headers)
+                _garder_les_plus_hauts(report)
             report.new_messages += len(headers)
             done += len(batch)
             if progress:
@@ -401,6 +485,9 @@ class Syncer:
 
         Le dossier est sélectionné d'abord : un FETCH sans SELECT porte sur
         le dossier précédent, ou sur rien.
+
+        N'alimente aucun `SyncReport` : un message retrouvé par recherche
+        n'est pas une arrivée.
         """
         if not uids:
             return 0
@@ -412,25 +499,7 @@ class Syncer:
         ajoutes = 0
         for batch in _chunks(manquants, self.BATCH):
             headers = self.transport.fetch_headers(batch)
-            self.store.upsert_messages(
-                fid,
-                [
-                    MessageMeta(
-                        uid=h.uid,
-                        date=h.date,
-                        size=h.size,
-                        flags=h.flags,
-                        msgid=h.msgid,
-                        frm=h.frm,
-                        to=h.to,
-                        subject=h.subject,
-                        snippet="",
-                        in_reply_to=h.in_reply_to,
-                        references=h.references,
-                    )
-                    for h in headers
-                ],
-            )
+            self.store.upsert_messages(fid, [_meta(h) for h in headers])
             ajoutes += len(headers)
         return ajoutes
 

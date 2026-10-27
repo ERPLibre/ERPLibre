@@ -33,9 +33,20 @@ from pathlib import Path
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 EPHEMERAL_PREFIX = "erplibre-mail-"
 VALID_MODES = ("clear", "encrypted", "ephemeral")
+
+# Les issues du journal des règles qui comptent comme un ENVOI pour la limite
+# par expéditeur : un message en file ou retenu partira, ou attend qu'on
+# l'approuve, et répondre de nouveau entre-temps ferait deux réponses.
+RULE_LOG_SEND_OUTCOMES = ("pending", "sent", "queued", "held")
+# Les issues définitives : `rule_log_set_outcome` ne les modifie plus.
+RULE_LOG_TERMINAL = ("sent", "skipped", "failed", "expired")
+OUTBOX_MAX_ATTEMPTS = 3
+# Une réservation de la file plus vieille que ce délai, en secondes, est
+# celle d'un processus mort en plein envoi : une autre vidange la reprend.
+OUTBOX_CLAIM_STALE_S = 600
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -54,6 +65,8 @@ CREATE TABLE IF NOT EXISTS folders (
   unseen      INTEGER NOT NULL DEFAULT 0,
   synced_at   INTEGER
 );
+-- v6 : `received_at` est l'INTERNALDATE du serveur, `seen_at` le moment où
+-- le cache a VU le message passer à lu ; NULL quand il est inconnu.
 CREATE TABLE IF NOT EXISTS messages (
   id             INTEGER PRIMARY KEY,
   folder_id      INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
@@ -74,6 +87,8 @@ CREATE TABLE IF NOT EXISTS messages (
   -- relier les messages entre eux.
   in_reply_to_hash TEXT,
   references_hashes TEXT,
+  received_at    INTEGER,
+  seen_at        INTEGER,
   UNIQUE(folder_id, uid)
 );
 CREATE INDEX IF NOT EXISTS idx_msg_date ON messages(folder_id, date DESC);
@@ -87,6 +102,11 @@ CREATE INDEX IF NOT EXISTS idx_msg_date ON messages(folder_id, date DESC);
 -- Aucun commentaire DANS la parenthèse : SQLite reconstruit le `CREATE` pour
 -- un `ALTER TABLE … DROP COLUMN`, et une ligne `--` restée à l'intérieur le
 -- fait échouer sur « incomplete input ».
+-- v6 : `kind` distingue l'envoi manuel de la réponse d'une règle
+-- (`rule_id`, `source_key` = clé du message d'origine dans `rule_log`).
+-- `expires_at` borne l'attente d'une réponse automatique, `max_attempts` et
+-- `perm_attempts` comptent les refus définitifs, `claimed_at` réserve une
+-- entrée à la vidange qui l'envoie.
 CREATE TABLE IF NOT EXISTS outbox (
   id            INTEGER PRIMARY KEY,
   created_at    INTEGER NOT NULL,
@@ -95,9 +115,69 @@ CREATE TABLE IF NOT EXISTS outbox (
   sealed_subject BLOB,
   held          INTEGER NOT NULL DEFAULT 0,
   attempts      INTEGER NOT NULL DEFAULT 0,
-  sealed_error  BLOB
+  sealed_error  BLOB,
+  kind          TEXT NOT NULL DEFAULT 'manual',
+  rule_id       TEXT,
+  source_key    TEXT,
+  expires_at    INTEGER,
+  max_attempts  INTEGER NOT NULL DEFAULT 3,
+  perm_attempts INTEGER NOT NULL DEFAULT 0,
+  claimed_at    INTEGER
+);
+-- v6 : journal des règles, une ligne par (règle, message). Écrit AVANT
+-- l'envoi : UNIQUE(rule_id, msg_key) rend l'envoi « au plus une fois »
+-- entre processus. Expéditeur et sujet scellés, clés hachées.
+CREATE TABLE IF NOT EXISTS rule_log (
+  id             INTEGER PRIMARY KEY,
+  rule_id        TEXT NOT NULL,
+  msg_key        TEXT NOT NULL,
+  sender_hash    TEXT,
+  target_hash    TEXT,
+  fingerprint    TEXT,
+  at             INTEGER NOT NULL,
+  received_at    INTEGER,
+  outcome        TEXT NOT NULL,
+  reason         TEXT,
+  queue_id       INTEGER,
+  sealed_sender  BLOB,
+  sealed_subject BLOB,
+  UNIQUE(rule_id, msg_key)
+);
+CREATE INDEX IF NOT EXISTS idx_rule_log_sender
+  ON rule_log(rule_id, sender_hash, at);
+CREATE INDEX IF NOT EXISTS idx_rule_log_target
+  ON rule_log(rule_id, target_hash, at);
+CREATE INDEX IF NOT EXISTS idx_rule_log_at ON rule_log(at);
+-- v6 : empreintes des Message-ID que les règles ont émis ; les
+-- statistiques de réponse excluent ces envois.
+CREATE TABLE IF NOT EXISTS auto_sent (
+  msgid_hash TEXT PRIMARY KEY,
+  rule_id    TEXT,
+  at         INTEGER NOT NULL
 );
 """
+
+# Les colonnes ajoutées à `messages` depuis sa forme d'origine, dans l'ordre
+# où elles sont apparues, avec leur type.
+MESSAGES_ADDED_COLUMNS = {
+    "in_reply_to_hash": "TEXT",
+    "references_hashes": "TEXT",
+    "received_at": "INTEGER",
+    "seen_at": "INTEGER",
+}
+
+# Les colonnes ajoutées à `outbox` par la v6, avec leur définition. SQLite
+# accepte `NOT NULL` à l'`ADD COLUMN` quand un `DEFAULT` non nul
+# l'accompagne : les lignes existantes reçoivent la valeur par défaut.
+OUTBOX_V6_COLUMNS = {
+    "kind": "TEXT NOT NULL DEFAULT 'manual'",
+    "rule_id": "TEXT",
+    "source_key": "TEXT",
+    "expires_at": "INTEGER",
+    "max_attempts": "INTEGER NOT NULL DEFAULT 3",
+    "perm_attempts": "INTEGER NOT NULL DEFAULT 0",
+    "claimed_at": "INTEGER",
+}
 
 
 def _ensure_columns(conn) -> list[str]:
@@ -114,9 +194,9 @@ def _ensure_columns(conn) -> list[str]:
         row["name"] for row in conn.execute("PRAGMA table_info(messages)")
     }
     ajoutees = []
-    for nom in ("in_reply_to_hash", "references_hashes"):
+    for nom, genre in MESSAGES_ADDED_COLUMNS.items():
         if nom not in presentes:
-            conn.execute(f"ALTER TABLE messages ADD COLUMN {nom} TEXT")
+            conn.execute(f"ALTER TABLE messages ADD COLUMN {nom} {genre}")
             ajoutees.append(nom)
     # Après l'ALTER, jamais avant : sur un cache d'avant la v2 la colonne
     # n'existe pas encore quand `executescript(SCHEMA)` tourne, et un index
@@ -130,7 +210,10 @@ def _ensure_columns(conn) -> list[str]:
 
 
 def _ensure_outbox_columns(conn) -> None:
-    """Fait passer la file d'attente de la v4 à la v5.
+    """Fait passer la file d'attente de la v4 à la v6.
+
+    Les colonnes de la v6 s'ajoutent si elles manquent, lues dans `PRAGMA
+    table_info` comme pour `messages`.
 
     La v4 gardait `last_error` en clair. La migration ne peut pas sceller ce
     texte — il est déjà écrit en clair sur le disque, et le sceller n'en
@@ -143,6 +226,9 @@ def _ensure_outbox_columns(conn) -> None:
     }
     if "sealed_error" not in presentes:
         conn.execute("ALTER TABLE outbox ADD COLUMN sealed_error BLOB")
+    for nom, definition in OUTBOX_V6_COLUMNS.items():
+        if nom not in presentes:
+            conn.execute(f"ALTER TABLE outbox ADD COLUMN {nom} {definition}")
     if "last_error" in presentes:
         conn.execute("UPDATE outbox SET last_error = NULL")
 
@@ -200,6 +286,12 @@ class MessageMeta:
     # assemble.
     folder: str = ""
     account: str = ""
+    # v6. `received_at` est l'INTERNALDATE du serveur, fourni par la
+    # synchronisation ; 0 = inconnu, stocké NULL. `seen_at` est rempli à la
+    # RELECTURE seulement : c'est le cache qui le pose quand il voit le
+    # message passer à lu.
+    received_at: int = 0
+    seen_at: int = 0
 
 
 def _fts_query(texte: str) -> str:
@@ -725,6 +817,7 @@ class Store:
     @_locked
     def upsert_messages(self, folder_id: int, metas: list[MessageMeta]) -> int:
         db = self._db()
+        maintenant = int(time.time())
         rows = [
             (
                 folder_id,
@@ -740,16 +833,23 @@ class Store:
                 self._seal(m.snippet),
                 self._hash_or_none(m.in_reply_to),
                 self._references_hashes(m.references),
+                int(getattr(m, "received_at", 0) or 0),
+                maintenant,
             )
             for m in metas
         ]
         self._indexer(db, folder_id, metas)
+        # `seen_at` reste NULL à l'insertion : un message déjà lu à son
+        # arrivée dans le cache l'a été ailleurs, à un moment inconnu.
+        # À la mise à jour, il suit la transition de `\Seen` comme dans
+        # `update_flags`. Les expressions de `DO UPDATE` lisent toutes la
+        # ligne d'AVANT la mise à jour : `messages.flags` y est l'ancien.
         db.executemany(
             "INSERT INTO messages(folder_id, uid, date, size, flags,"
             " msgid_hash, sealed_msgid, sealed_from, sealed_to,"
             " sealed_subject, sealed_snippet,"
-            " in_reply_to_hash, references_hashes)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " in_reply_to_hash, references_hashes, received_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULLIF(?, 0))"
             " ON CONFLICT(folder_id, uid) DO UPDATE SET"
             "   date = excluded.date, size = excluded.size,"
             "   flags = excluded.flags, msgid_hash = excluded.msgid_hash,"
@@ -762,7 +862,18 @@ class Store:
             # un message déjà en cache : c'est le seul chemin par lequel
             # les messages d'avant la v2 les obtiendront.
             "   in_reply_to_hash = excluded.in_reply_to_hash,"
-            "   references_hashes = excluded.references_hashes",
+            "   references_hashes = excluded.references_hashes,"
+            # Une resynchronisation sans INTERNALDATE garde celle déjà
+            # connue plutôt que de l'effacer.
+            "   received_at = COALESCE(NULLIF(excluded.received_at, 0),"
+            "     messages.received_at),"
+            "   seen_at = CASE"
+            "     WHEN messages.flags NOT LIKE '%\\Seen%' ESCAPE '\\'"
+            "      AND excluded.flags LIKE '%\\Seen%' ESCAPE '\\'"
+            "     THEN ?"
+            "     WHEN excluded.flags NOT LIKE '%\\Seen%' ESCAPE '\\'"
+            "     THEN NULL"
+            "     ELSE messages.seen_at END",
             rows,
         )
         self._indexer_apres(db, folder_id, metas)
@@ -782,24 +893,123 @@ class Store:
         db.commit()
         return len(rows)
 
-    # -- File d'attente d'envoi (v4) ------------------------------------
+    # -- File d'attente d'envoi (v4, v6) --------------------------------
 
-    @_locked
-    def queue_message(self, raw: bytes, recipients: str, subject: str) -> int:
-        """Met un message en attente. Rend son identifiant."""
-        db = self._db()
+    def _inserer_file(
+        self,
+        db,
+        raw: bytes,
+        recipients: str,
+        subject: str,
+        *,
+        held: bool,
+        kind: str,
+        rule_id: str | None,
+        source_key: str | None,
+        expires_at: int | None,
+        max_attempts: int,
+    ) -> int:
+        """INSERT d'une entrée de file, SANS commit : l'appelant décide de
+        la transaction qui l'englobe."""
         curseur = db.execute(
             "INSERT INTO outbox(created_at, sealed_raw, sealed_to,"
-            " sealed_subject) VALUES(?,?,?,?)",
+            " sealed_subject, held, kind, rule_id, source_key, expires_at,"
+            " max_attempts) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 int(time.time()),
                 self._crypto.seal(raw),
                 self._seal(recipients),
                 self._seal(subject),
+                1 if held else 0,
+                kind,
+                rule_id,
+                source_key,
+                expires_at,
+                int(max_attempts),
             ),
         )
-        db.commit()
         return curseur.lastrowid
+
+    @_locked
+    def queue_message(
+        self,
+        raw: bytes,
+        recipients: str,
+        subject: str,
+        *,
+        held: bool = False,
+        kind: str = "manual",
+        rule_id: str | None = None,
+        source_key: str | None = None,
+        expires_at: int | None = None,
+        max_attempts: int = OUTBOX_MAX_ATTEMPTS,
+    ) -> int:
+        """Met un message en attente. Rend son identifiant.
+
+        Les arguments v6 sont des mots-clés seulement : un appel d'avant la
+        v6, à trois arguments, met en file un envoi manuel comme avant.
+        """
+        db = self._db()
+        queue_id = self._inserer_file(
+            db,
+            raw,
+            recipients,
+            subject,
+            held=held,
+            kind=kind,
+            rule_id=rule_id,
+            source_key=source_key,
+            expires_at=expires_at,
+            max_attempts=max_attempts,
+        )
+        db.commit()
+        return queue_id
+
+    @_locked
+    def queue_auto(
+        self,
+        raw: bytes,
+        recipients: str,
+        subject: str,
+        *,
+        held: bool,
+        rule_id: str,
+        source_key: str,
+        expires_at: int,
+        outcome: str,
+        reason: str,
+    ) -> int:
+        """Met en file la réponse d'une règle ET l'inscrit au journal, dans
+        UNE transaction. Rend l'identifiant de file.
+
+        Une vidange, même dans un autre processus, ne voit donc jamais
+        l'entrée de file avant que la ligne `rule_log` de `source_key` ne la
+        nomme. Le journal n'avance que (voir `rule_log_set_outcome`) : une
+        ligne déjà terminale garde son issue, l'entrée de file existe quand
+        même.
+        """
+        db = self._db()
+        try:
+            queue_id = self._inserer_file(
+                db,
+                raw,
+                recipients,
+                subject,
+                held=held,
+                kind="auto_reply",
+                rule_id=rule_id,
+                source_key=source_key,
+                expires_at=expires_at,
+                max_attempts=OUTBOX_MAX_ATTEMPTS,
+            )
+            self._avancer_issue(
+                db, rule_id, source_key, outcome, reason, queue_id
+            )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return queue_id
 
     @_locked
     def outbox(self) -> list[dict]:
@@ -813,6 +1023,13 @@ class Store:
                 "held": bool(r["held"]),
                 "attempts": r["attempts"],
                 "last_error": self._open(r["sealed_error"]),
+                "kind": r["kind"] or "manual",
+                "rule_id": r["rule_id"],
+                "source_key": r["source_key"],
+                "expires_at": r["expires_at"],
+                "max_attempts": r["max_attempts"],
+                "perm_attempts": r["perm_attempts"],
+                "claimed_at": r["claimed_at"],
             }
             for r in self._db().execute(
                 "SELECT * FROM outbox ORDER BY created_at, id"
@@ -849,21 +1066,470 @@ class Store:
         db.commit()
 
     @_locked
-    def record_send_failure(self, queue_id: int, message: str) -> None:
-        """Compte l'échec et garde SON texte, scellé.
+    def outbox_claim(
+        self, queue_id: int, now: int, stale_s: int = OUTBOX_CLAIM_STALE_S
+    ) -> bool:
+        """Réserve une entrée pour l'envoyer. Vrai si la réservation est à
+        nous.
+
+        Un seul UPDATE conditionnel : SQLite le rend atomique entre
+        processus qui partagent `cache.db`, donc deux vidanges concurrentes
+        n'envoient jamais la même entrée. Une réservation plus vieille que
+        `stale_s` secondes est celle d'un processus mort en plein envoi, et
+        se reprend.
+        """
+        db = self._db()
+        curseur = db.execute(
+            "UPDATE outbox SET claimed_at = ? WHERE id = ?"
+            " AND (claimed_at IS NULL OR claimed_at < ?)",
+            (int(now), queue_id, int(now) - int(stale_s)),
+        )
+        db.commit()
+        return curseur.rowcount == 1
+
+    @_locked
+    def outbox_held(self, queue_id: int) -> bool:
+        """Vrai si l'entrée est retenue, lu dans la base à l'instant.
+
+        Une retenue posée pendant une vidange (écran `o`, autre processus)
+        n'est pas dans l'instantané qu'elle parcourt. Entrée absente :
+        faux.
+        """
+        ligne = (
+            self._db()
+            .execute("SELECT held FROM outbox WHERE id = ?", (queue_id,))
+            .fetchone()
+        )
+        return bool(ligne and ligne[0])
+
+    @_locked
+    def outbox_release(self, queue_id: int) -> None:
+        """Rend une entrée réservée à la file, sans compter d'échec."""
+        db = self._db()
+        db.execute(
+            "UPDATE outbox SET claimed_at = NULL WHERE id = ?", (queue_id,)
+        )
+        db.commit()
+
+    @_locked
+    def record_send_failure(
+        self, queue_id: int, message: str, *, permanent: bool = False
+    ) -> dict:
+        """Compte l'échec, garde SON texte scellé, et libère la réservation.
 
         Un compteur seul dirait qu'on a essayé cinq fois sans jamais dire
         pourquoi ça échoue, ce qui n'aide personne à corriger. Le texte vient
         du serveur et cite couramment le destinataire : il est scellé comme
         les autres colonnes de la ligne.
+
+        `permanent` compte aussi le refus dans `perm_attempts`, que la
+        vidange compare à `max_attempts`. Rend les trois compteurs après la
+        mise à jour ; une entrée absente les rend à zéro.
         """
         db = self._db()
         db.execute(
-            "UPDATE outbox SET attempts = attempts + 1, sealed_error = ?"
+            "UPDATE outbox SET attempts = attempts + 1, sealed_error = ?,"
+            " perm_attempts = perm_attempts + ?, claimed_at = NULL"
             " WHERE id = ?",
-            (self._seal(message[:500]), queue_id),
+            (
+                self._seal((message or "")[:500]),
+                1 if permanent else 0,
+                queue_id,
+            ),
         )
         db.commit()
+        ligne = db.execute(
+            "SELECT attempts, perm_attempts, max_attempts FROM outbox"
+            " WHERE id = ?",
+            (queue_id,),
+        ).fetchone()
+        if ligne is None:
+            return {
+                "attempts": 0,
+                "perm_attempts": 0,
+                "max_attempts": OUTBOX_MAX_ATTEMPTS,
+            }
+        return {
+            "attempts": ligne["attempts"],
+            "perm_attempts": ligne["perm_attempts"],
+            "max_attempts": ligne["max_attempts"],
+        }
+
+    # -- Empreintes (v6) ------------------------------------------------
+
+    def address_hash(self, address: str) -> str:
+        """L'empreinte salée d'une adresse, insensible à la casse ; "" pour
+        une adresse vide.
+
+        Préfixée par « addr: » : une adresse et un Message-ID qui
+        s'écriraient pareil ne donnent pas la même empreinte.
+        """
+        adresse = (address or "").strip().lower()
+        return self._msgid_hash("addr:" + adresse) if adresse else ""
+
+    def message_key(self, msgid: str, uidvalidity: int, uid: int) -> str:
+        """La clé d'un message dans le journal des règles.
+
+        Avec un Message-ID, c'est son empreinte, égale à
+        `messages.msgid_hash`. Sans, c'est celle de
+        « ␠uid:<uidvalidity>:<uid> » : l'empreinte de la chaîne vide serait
+        commune à TOUS les messages sans Message-ID, et le premier journalisé
+        ferait passer les autres pour des doublons.
+
+        L'espace de tête rend les deux espaces de clés disjoints : un
+        Message-ID passe par `strip()`, il ne commence donc jamais par un
+        blanc. Sans lui, un tiers qui écrit `Message-ID: uid:1:7` occuperait
+        d'avance la clé du message sans Message-ID d'UIDVALIDITY 1, UID 7.
+        """
+        msgid = (msgid or "").strip()
+        if msgid:
+            return self._msgid_hash(msgid)
+        return self._msgid_hash(f" uid:{int(uidvalidity)}:{int(uid)}")
+
+    # -- Lecture pour le moteur de règles (v6) ---------------------------
+
+    @_locked
+    def uids_between(
+        self, folder_id: int, after_uid: int, upto_uid: int
+    ) -> list[int]:
+        """Les UID en cache tels que `after_uid < uid <= upto_uid`,
+        croissants."""
+        return [
+            r[0]
+            for r in self._db().execute(
+                "SELECT uid FROM messages WHERE folder_id = ?"
+                " AND uid > ? AND uid <= ? ORDER BY uid",
+                (folder_id, int(after_uid), int(upto_uid)),
+            )
+        ]
+
+    # -- Journal des règles (v6) ----------------------------------------
+
+    @_locked
+    def rule_log_claim(
+        self,
+        rule_id: str,
+        msg_key: str,
+        *,
+        outcome: str,
+        at: int,
+        reason: str | None = None,
+        sender_hash: str | None = None,
+        target_hash: str | None = None,
+        fingerprint: str | None = None,
+        received_at: int | None = None,
+        sender: str = "",
+        subject: str = "",
+        queue_id: int | None = None,
+    ) -> bool:
+        """Inscrit (règle, message) au journal. Vrai si la ligne vient
+        d'être créée.
+
+        `INSERT OR IGNORE` sur `UNIQUE(rule_id, msg_key)` : de deux
+        processus qui traitent le même message, un seul obtient `True`, et
+        c'est lui seul qui envoie. Expéditeur et sujet sont scellés.
+        """
+        db = self._db()
+        curseur = db.execute(
+            "INSERT OR IGNORE INTO rule_log(rule_id, msg_key, sender_hash,"
+            " target_hash, fingerprint, at, received_at, outcome, reason,"
+            " queue_id, sealed_sender, sealed_subject)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                rule_id,
+                msg_key,
+                sender_hash,
+                target_hash,
+                fingerprint,
+                int(at),
+                received_at or None,
+                outcome,
+                reason,
+                queue_id,
+                self._seal(sender),
+                self._seal(subject),
+            ),
+        )
+        db.commit()
+        return curseur.rowcount == 1
+
+    @_locked
+    def rule_log_seen(self, rule_id: str, msg_key: str) -> bool:
+        """Vrai si (règle, message) est déjà au journal, quelle que soit
+        l'issue."""
+        return (
+            self._db()
+            .execute(
+                "SELECT 1 FROM rule_log WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            )
+            .fetchone()
+            is not None
+        )
+
+    def _avancer_issue(
+        self, db, rule_id, msg_key, outcome, reason, queue_id
+    ) -> bool:
+        """L'UPDATE de `rule_log_set_outcome`, SANS commit.
+
+        `reason` remplace la raison précédente : elle explique la nouvelle
+        issue, pas l'ancienne. `queue_id` absent garde celui déjà inscrit,
+        pour que le lien vers la file survive au passage à `sent`.
+        """
+        terminales = ",".join("?" for _ in RULE_LOG_TERMINAL)
+        curseur = db.execute(
+            "UPDATE rule_log SET outcome = ?, reason = ?,"
+            " queue_id = COALESCE(?, queue_id)"
+            " WHERE rule_id = ? AND msg_key = ?"
+            f" AND outcome NOT IN ({terminales})",
+            (outcome, reason, queue_id, rule_id, msg_key, *RULE_LOG_TERMINAL),
+        )
+        return curseur.rowcount > 0
+
+    @_locked
+    def rule_log_set_outcome(
+        self,
+        rule_id: str,
+        msg_key: str,
+        outcome: str,
+        reason: str | None = None,
+        queue_id: int | None = None,
+    ) -> bool:
+        """Fait AVANCER l'issue d'une ligne. Vrai si une ligne a changé.
+
+        Une issue de `RULE_LOG_TERMINAL` n'est jamais réécrite : une vidange
+        concurrente peut avoir envoyé l'entrée de file avant que le moteur
+        n'écrive `queued`, et rétrograder `sent` ferait croire à un envoi
+        encore à faire.
+        """
+        db = self._db()
+        change = self._avancer_issue(
+            db, rule_id, msg_key, outcome, reason, queue_id
+        )
+        db.commit()
+        return change
+
+    @_locked
+    def rule_log_outcome(self, rule_id: str, msg_key: str) -> str | None:
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT outcome FROM rule_log WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            )
+            .fetchone()
+        )
+        return ligne[0] if ligne else None
+
+    @_locked
+    def rule_log_fingerprint(self, rule_id: str, msg_key: str) -> str | None:
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT fingerprint FROM rule_log"
+                " WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            )
+            .fetchone()
+        )
+        return ligne[0] if ligne else None
+
+    @_locked
+    def rule_log_last_send(
+        self,
+        rule_id: str,
+        sender_hash: str,
+        target_hash: str | None = None,
+    ) -> int | None:
+        """Le moment du dernier envoi de CETTE règle vers cet expéditeur OU
+        cette cible ; `None` s'il n'y en a pas.
+
+        Compte comme envoi toute issue de `RULE_LOG_SEND_OUTCOMES`. Le From
+        est la clé principale : une adresse d'enveloppe qui change à chaque
+        message (VERP, BATV, SRS) ne contourne donc pas la limite. Une
+        empreinte vide ou `None` ne correspond à aucune ligne.
+        """
+        envois = ",".join("?" for _ in RULE_LOG_SEND_OUTCOMES)
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT MAX(at) FROM rule_log WHERE rule_id = ?"
+                " AND (sender_hash = ? OR target_hash = ?)"
+                f" AND outcome IN ({envois})",
+                (
+                    rule_id,
+                    sender_hash or None,
+                    target_hash or None,
+                    *RULE_LOG_SEND_OUTCOMES,
+                ),
+            )
+            .fetchone()
+        )
+        return ligne[0] if ligne and ligne[0] is not None else None
+
+    @_locked
+    def rule_log_sent_count(self, rule_id: str, fingerprint: str) -> int:
+        """Combien de réponses de cette règle, sous cette empreinte, sont
+        réellement parties.
+
+        Une règle modifiée change d'empreinte : son compteur repart de zéro.
+        """
+        return (
+            self._db()
+            .execute(
+                "SELECT COUNT(*) FROM rule_log WHERE rule_id = ?"
+                " AND fingerprint = ? AND outcome = 'sent'",
+                (rule_id, fingerprint),
+            )
+            .fetchone()[0]
+        )
+
+    @_locked
+    def rule_log_recent_sends(self, since: int) -> int:
+        """Combien de réponses automatiques du compte, toutes règles
+        confondues, sont parties ou attendent en file, décidées à `since`
+        ou après.
+
+        Compte les issues `sent` et `queued` ; `at` est l'époque de la
+        décision, inchangée quand l'issue avance. Une réponse retenue n'y
+        entre pas tant qu'elle n'est pas partie : c'est le plafond glissant
+        par heure qui la retient.
+        """
+        return (
+            self._db()
+            .execute(
+                "SELECT COUNT(*) FROM rule_log WHERE at >= ?"
+                " AND outcome IN ('sent', 'queued')",
+                (int(since),),
+            )
+            .fetchone()[0]
+        )
+
+    @_locked
+    def rule_log_entries(
+        self, rule_id: str | None = None, limit: int = 200
+    ) -> list[dict]:
+        """Les lignes du journal, les plus récentes d'abord, expéditeur et
+        sujet ouverts."""
+        clause, params = "", []
+        if rule_id is not None:
+            clause = " WHERE rule_id = ?"
+            params.append(rule_id)
+        params.append(int(limit))
+        return [
+            {
+                "rule_id": r["rule_id"],
+                "at": r["at"],
+                "received_at": r["received_at"],
+                "outcome": r["outcome"],
+                "reason": r["reason"],
+                "sender": self._open(r["sealed_sender"]),
+                "subject": self._open(r["sealed_subject"]),
+                "queue_id": r["queue_id"],
+            }
+            for r in self._db().execute(
+                f"SELECT * FROM rule_log{clause} ORDER BY at DESC, id DESC"
+                " LIMIT ?",
+                params,
+            )
+        ]
+
+    # -- Envois automatiques (v6) ---------------------------------------
+
+    @_locked
+    def mark_auto_sent(self, msgid: str, rule_id: str, at: int) -> None:
+        """Retient l'empreinte du Message-ID d'une réponse automatique.
+
+        Un Message-ID vide n'est pas retenu : son empreinte serait celle de
+        tous les messages sans Message-ID, qui sortiraient alors tous des
+        statistiques.
+        """
+        msgid = (msgid or "").strip()
+        if not msgid:
+            return
+        db = self._db()
+        db.execute(
+            "INSERT OR IGNORE INTO auto_sent(msgid_hash, rule_id, at)"
+            " VALUES(?,?,?)",
+            (self._msgid_hash(msgid), rule_id, int(at)),
+        )
+        db.commit()
+
+    @_locked
+    def is_auto_sent(self, msgid_hash: str) -> bool:
+        return (
+            self._db()
+            .execute(
+                "SELECT 1 FROM auto_sent WHERE msgid_hash = ?", (msgid_hash,)
+            )
+            .fetchone()
+            is not None
+        )
+
+    # -- Époque du cache (v6) -------------------------------------------
+
+    @_locked
+    def cache_epoch(self) -> str:
+        """Un jeton tiré une fois par fichier `cache.db` et par clé, puis
+        stable.
+
+        Le journal des règles vit dans ce fichier : un cache recréé le perd,
+        et reçoit une époque neuve qui permet de le constater. `purge_all`
+        garde `meta`, donc l'époque.
+
+        Une clé changée sur un `cache.db` conservé vaut un cache recréé :
+        chaque `msg_key` et chaque empreinte d'adresse est salée par la clé,
+        donc l'ancien journal ne correspond plus à rien et la limite de
+        débit le lirait vide. `cache_epoch_check` lie l'époque au sel ; s'il
+        ne correspond plus, l'époque est retirée, et les lignes de
+        `rule_log` et `auto_sent` écrites sous l'ancienne clé partent :
+        illisibles, elles feraient lever `rule_log_entries`.
+
+        Le tirage se fait sous `BEGIN IMMEDIATE` avec relecture : deux
+        processus qui la tirent en même temps lisent la même.
+        """
+        db = self._db()
+        controle = self._msgid_hash("cache_epoch")
+
+        def lire() -> dict:
+            return {
+                r[0]: r[1]
+                for r in db.execute(
+                    "SELECT key, value FROM meta"
+                    " WHERE key IN ('cache_epoch', 'cache_epoch_check')"
+                )
+            }
+
+        valeurs = lire()
+        if (
+            valeurs.get("cache_epoch")
+            and valeurs.get("cache_epoch_check") == controle
+        ):
+            return valeurs["cache_epoch"]
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
+        try:
+            valeurs = lire()
+            if (
+                valeurs.get("cache_epoch")
+                and valeurs.get("cache_epoch_check") == controle
+            ):
+                db.commit()
+                return valeurs["cache_epoch"]
+            if valeurs.get("cache_epoch_check"):
+                # Contrôle présent mais différent : la clé a changé.
+                db.execute("DELETE FROM rule_log")
+                db.execute("DELETE FROM auto_sent")
+            epoque = os.urandom(8).hex()
+            db.executemany(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
+                (("cache_epoch", epoque), ("cache_epoch_check", controle)),
+            )
+            db.commit()
+            return epoque
+        except BaseException:
+            db.rollback()
+            raise
 
     # -- Statistiques (phase 3) -----------------------------------------
 
@@ -1037,11 +1703,17 @@ class Store:
         contre `msgid_hash` de l'original. Un délai négatif est écarté —
         une date d'en-tête peut mentir, et une réponse antérieure à son
         original n'est pas une réponse rapide, c'est une donnée fausse.
+
+        Une réponse automatique (`auto_sent`) n'est pas une réponse : sa
+        copie dans Envoyés porte `In-Reply-To` comme une autre, et ses
+        quelques secondes de délai fausseraient le nombre et la médiane.
         """
         clauses = [
             "reponse.in_reply_to_hash IS NOT NULL",
             "reponse.date > 0",
             "original.date > 0",
+            "NOT EXISTS (SELECT 1 FROM auto_sent"
+            " WHERE auto_sent.msgid_hash = reponse.msgid_hash)",
         ]
         params: list = []
         if folder_id is not None:
@@ -1258,6 +1930,17 @@ class Store:
             (flags, folder_id, uid),
         )
         if etait_non_lu != est_non_lu:
+            # `seen_at` suit la même transition : posé au passage à lu,
+            # effacé au retour à non-lu, inchangé sinon.
+            db.execute(
+                "UPDATE messages SET seen_at = ?"
+                " WHERE folder_id = ? AND uid = ?",
+                (
+                    None if est_non_lu else int(time.time()),
+                    folder_id,
+                    uid,
+                ),
+            )
             db.execute(
                 "UPDATE folders SET unseen ="
                 " MAX(0, COALESCE(unseen, 0) + ?) WHERE id = ?",
@@ -1287,9 +1970,9 @@ class Store:
             return 0
         db.execute(
             "UPDATE messages SET flags ="
-            " TRIM(COALESCE(flags, '') || ' \\Seen')"
+            " TRIM(COALESCE(flags, '') || ' \\Seen'), seen_at = ?"
             " WHERE folder_id = ? AND flags NOT LIKE '%\\Seen%' ESCAPE '\\'",
-            (folder_id,),
+            (int(time.time()), folder_id),
         )
         # Le dossier n'a plus un seul non-lu : le compteur de l'arbre le dit
         # sans attendre la passe de synchronisation suivante.
@@ -1318,6 +2001,11 @@ class Store:
             or "",
             folder=(row["folder_name"] if "folder_name" in row.keys() else "")
             or "",
+            received_at=(
+                row["received_at"] if "received_at" in row.keys() else 0
+            )
+            or 0,
+            seen_at=(row["seen_at"] if "seen_at" in row.keys() else 0) or 0,
         )
 
     @_locked

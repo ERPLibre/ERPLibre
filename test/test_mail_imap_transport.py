@@ -2,11 +2,15 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import calendar
+import os
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.imap_transport import (
+    EXTRA_HEADERS,
     HEADER_FIELDS,
     ImapError,
     ImaplibTransport,
@@ -305,6 +309,19 @@ class TestThreadHeaders(unittest.TestCase):
         self.assertEqual(len(infos), 1)
         self.assertEqual(infos[0].uid, 7)
 
+    def test_a_raw_8bit_message_id_does_not_lose_the_message(self):
+        """Le Message-ID suit la même garde : un `Header` y lèverait aussi,
+        et le curseur du dossier n'avancerait plus jamais."""
+        entetes = (
+            b"From: carole.regle@example.org\r\nSubject: Devis\r\n"
+            b"Message-ID: <\xff@example.org>\r\n\r\n"
+        )
+        infos = parse_fetch_headers(self._data(entetes))
+        self.assertEqual(len(infos), 1)
+        self.assertEqual(infos[0].uid, 7)
+        self.assertIsInstance(infos[0].msgid, str)
+        self.assertTrue(infos[0].msgid.endswith("@example.org>"))
+
 
 class TestTransport(unittest.TestCase):
     def setUp(self):
@@ -489,6 +506,196 @@ class TestConnect(unittest.TestCase):
         with patch("imaplib.IMAP4_SSL", side_effect=OSError("injoignable")):
             with self.assertRaises(ImapError):
                 connect(self._account("ssl"), "hunter2")
+
+
+class TestRulesHeaders(unittest.TestCase):
+    """v6 : INTERNALDATE, `Cc` et les en-têtes que lisent les garde-fous des
+    règles de courriel entrant."""
+
+    BASE = (
+        b"From: carole.regle@example.org\r\n"
+        b"To: boite.regles@example.org\r\n"
+        b"Subject: Absence\r\n"
+        b"Message-ID: <v6@example.org>\r\n"
+    )
+    RECU = b"06-Aug-2026 10:00:00 +0000"
+    RECU_EPOCH = calendar.timegm((2026, 8, 6, 10, 0, 0))
+
+    def _avant(self, entetes: bytes, date: bytes = RECU, uid: int = 7):
+        """INTERNALDATE dans le préfixe, AVANT le littéral."""
+        return [
+            (
+                b'1 (UID %d FLAGS () INTERNALDATE "%s" RFC822.SIZE 100 '
+                b"BODY[HEADER.FIELDS (X)] {%d}" % (uid, date, len(entetes)),
+                entetes,
+            ),
+            b")",
+        ]
+
+    def _info(self, entetes: bytes):
+        return parse_fetch_headers(self._avant(entetes + b"\r\n"))[0]
+
+    def test_internaldate_before_the_literal(self):
+        info = self._info(self.BASE)
+        self.assertEqual(info.internaldate, self.RECU_EPOCH)
+
+    def test_internaldate_after_the_literal(self):
+        """L'attribut peut SUIVRE le littéral : il se lit alors dans
+        l'entrée suivante, comme UID et FLAGS."""
+        entetes = self.BASE + b"\r\n"
+        data = [
+            (
+                b"2 (BODY[HEADER.FIELDS (X)] {%d}" % len(entetes),
+                entetes,
+            ),
+            b' UID 8 INTERNALDATE "06-Aug-2026 10:00:00 +0000")',
+        ]
+        info = parse_fetch_headers(data)[0]
+        self.assertEqual((info.uid, info.internaldate), (8, self.RECU_EPOCH))
+
+    def test_internaldate_with_an_offset_is_converted_to_utc(self):
+        data = self._avant(self.BASE + b"\r\n", b"06-Aug-2026 06:00:00 -0400")
+        self.assertEqual(
+            parse_fetch_headers(data)[0].internaldate, self.RECU_EPOCH
+        )
+
+    def test_unreadable_internaldate_is_zero_without_losing_the_message(self):
+        data = self._avant(self.BASE + b"\r\n", b"31-Foo-2026 99:00:00 +0000")
+        infos = parse_fetch_headers(data)
+        self.assertEqual(len(infos), 1)
+        self.assertEqual((infos[0].uid, infos[0].internaldate), (7, 0))
+        self.assertEqual(infos[0].subject, "Absence")
+
+    def test_missing_internaldate_is_zero(self):
+        entetes = self.BASE + b"\r\n"
+        data = [
+            (
+                b"1 (UID 9 FLAGS () BODY[HEADER.FIELDS (X)] {%d}"
+                % len(entetes),
+                entetes,
+            ),
+            b")",
+        ]
+        self.assertEqual(parse_fetch_headers(data)[0].internaldate, 0)
+
+    def test_cc_is_decoded(self):
+        info = self._info(
+            self.BASE + b"Cc: =?utf-8?q?Bruno_Filtr=C3=A9?="
+            b" <bruno.filtre@example.net>\r\n"
+        )
+        self.assertEqual(info.cc, "Bruno Filtré <bruno.filtre@example.net>")
+
+    def test_missing_cc_is_empty(self):
+        self.assertEqual(self._info(self.BASE).cc, "")
+
+    def test_two_x_loop_are_joined_in_message_order(self):
+        info = self._info(
+            self.BASE + b"X-Loop: erplibre-rules boite.regles@example.org\r\n"
+            b"X-Loop: liste-annonces@example.net\r\n"
+        )
+        self.assertEqual(
+            info.extra["x-loop"],
+            "erplibre-rules boite.regles@example.org\n"
+            "liste-annonces@example.net",
+        )
+
+    def test_a_folded_header_is_unfolded_without_cr_or_lf(self):
+        info = self._info(
+            self.BASE + b"Authentication-Results: mx.example.org;\r\n"
+            b"\tspf=pass smtp.mailfrom=example.org;\r\n"
+            b"  dmarc=pass header.from=example.org\r\n"
+        )
+        valeur = info.extra["authentication-results"]
+        self.assertEqual(
+            valeur,
+            "mx.example.org; spf=pass smtp.mailfrom=example.org;"
+            " dmarc=pass header.from=example.org",
+        )
+        self.assertNotIn("\r", valeur)
+        self.assertNotIn("\n", valeur)
+
+    def test_an_absent_header_has_no_key(self):
+        info = self._info(self.BASE + b"Auto-Submitted: auto-replied\r\n")
+        self.assertEqual(info.extra, {"auto-submitted": "auto-replied"})
+        self.assertNotIn("list-id", info.extra)
+
+    def test_every_extra_header_reaches_the_dict_in_lower_case(self):
+        lignes = b"".join(
+            nom.encode() + b": valeur\r\n" for nom in EXTRA_HEADERS
+        )
+        info = self._info(self.BASE + lignes)
+        self.assertEqual(
+            sorted(info.extra), sorted(n.lower() for n in EXTRA_HEADERS)
+        )
+
+    def test_extra_values_are_not_rfc2047_decoded(self):
+        """Ce sont des jetons machine, comparés tels quels."""
+        info = self._info(self.BASE + b"X-Spam-Flag: =?utf-8?q?YES?=\r\n")
+        self.assertEqual(info.extra["x-spam-flag"], "=?utf-8?q?YES?=")
+
+    def test_header_fields_ask_for_cc_and_every_extra_header(self):
+        """Sans ces noms dans la requête, le serveur ne renverrait jamais
+        les en-têtes que les garde-fous lisent."""
+        demandes = HEADER_FIELDS.split()
+        self.assertIn("CC", demandes)
+        for nom in EXTRA_HEADERS:
+            self.assertIn(nom.upper(), demandes)
+
+    def test_fetch_headers_asks_for_internaldate(self):
+        client = MagicMock()
+        client.uid.return_value = ("OK", [])
+        ImaplibTransport(client).fetch_headers([1, 2])
+        spec = client.uid.call_args[0][2]
+        self.assertIn("INTERNALDATE", spec)
+        self.assertIn(f"BODY.PEEK[HEADER.FIELDS ({HEADER_FIELDS})]", spec)
+
+
+@unittest.skipUnless(
+    os.path.exists("/usr/share/zoneinfo/America/Montreal"),
+    "base de fuseaux horaires absente",
+)
+class TestInternaldateAcrossTheRepeatedHour(unittest.TestCase):
+    """Au passage à l'heure normale, 01:30 locale existe deux fois. La
+    conversion passe par un temps LOCAL ; elle reste exacte parce que
+    `Internaldate2tuple` pose `tm_isdst` et que `mktime` le respecte."""
+
+    def setUp(self):
+        ancien = os.environ.get("TZ")
+
+        def restaurer():
+            if ancien is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = ancien
+            time.tzset()
+
+        self.addCleanup(restaurer)
+        os.environ["TZ"] = "America/Montreal"
+        time.tzset()
+
+    def _epoch(self, date: bytes) -> int:
+        entetes = b"Subject: heure\r\n\r\n"
+        data = [
+            (
+                b'1 (UID 1 INTERNALDATE "%s" BODY[HEADER.FIELDS (X)] {%d}'
+                % (date, len(entetes)),
+                entetes,
+            ),
+            b")",
+        ]
+        return parse_fetch_headers(data)[0].internaldate
+
+    def test_the_first_pass_of_the_hour_is_exact(self):
+        self.assertEqual(
+            self._epoch(b"01-Nov-2026 01:30:00 -0400"),
+            calendar.timegm((2026, 11, 1, 5, 30, 0)),
+        )
+
+    def test_the_second_pass_of_the_hour_is_exact(self):
+        self.assertEqual(
+            self._epoch(b"01-Nov-2026 01:30:00 -0500"),
+            calendar.timegm((2026, 11, 1, 6, 30, 0)),
+        )
 
 
 if __name__ == "__main__":
