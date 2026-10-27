@@ -55,7 +55,7 @@ MODULES_EN_PLUS = {
 }
 DEPOT_ADDONS_ERPLIBRE = "ERPLibre_erplibre_addons"
 MODULE_CHAT = "erplibre_mobile_chat"
-HARNESS_API = 4
+HARNESS_API = 5
 NODE_MINIMUM = 22
 # Le fuseau de l'administrateur des bases ET des tests : une date d'Odoo 16
 # (Date) se lit en jour local, et un écart des deux ferait glisser les jours.
@@ -121,7 +121,7 @@ env.cr.commit()
 # la 16 et de la 17 ne la voient pas.
 POST_INSTALLATION_CHAT = """
 # Le second utilisateur du chat et un canal de groupe où il parle avec
-# l'administrateur. Le gabarit se construit une fois et les courses le
+# l'administrateur et inbox_user. Le gabarit se construit une fois et les courses le
 # copient : la création est idempotente.
 admin = env.ref("base.user_admin")
 utilisateur = env["res.users"].search([("login", "=", "chat_user")])
@@ -135,7 +135,44 @@ if not utilisateur:
             "groups_id": [(6, 0, [env.ref("base.group_user").id])],
         }
     )
-attendus = {admin.partner_id.id, utilisateur.partner_id.id}
+# Le destinataire de la boîte de réception : un utilisateur interne notifié
+# dans Odoo, avec une adresse (une mention de canal ne notifie qu'un
+# partenaire qui en a une), utilisateur de project pour répondre sur une
+# tâche. Un seul fichier de tests le prend : ses réglages ne bougent sous
+# aucun autre.
+boite = env["res.users"].search([("login", "=", "inbox_user")])
+if not boite:
+    boite = env["res.users"].create(
+        {
+            "name": "MS Boite",
+            "login": "inbox_user",
+            "password": "inbox_user",
+            "email": "ms-inbox@example.com",
+            "tz": FUSEAU,
+            # Le groupe seul ne la change pas à la création : écrite, elle
+            # met l'utilisateur dans le groupe (inverse)
+            "notification_type": "inbox",
+            "groups_id": [
+                (
+                    6,
+                    0,
+                    [
+                        env.ref("base.group_user").id,
+                        env.ref("project.group_project_user").id,
+                        env.ref("mail.group_mail_notification_type_inbox").id,
+                    ],
+                )
+            ],
+        }
+    )
+inbox = env.ref("mail.group_mail_notification_type_inbox")
+if boite.notification_type != "inbox" or inbox not in boite.groups_id:
+    raise Exception("inbox_user : notification %s" % boite.notification_type)
+attendus = {
+    admin.partner_id.id,
+    utilisateur.partner_id.id,
+    boite.partner_id.id,
+}
 # Créé par l'administrateur : create() ajoute l'utilisateur courant, qui
 # serait sinon le superutilisateur du shell. Aucun message « a rejoint »
 # n'est posté : chat_user démarre sans non-lu.
@@ -164,8 +201,10 @@ canal.sudo().channel_member_ids.filtered(
 presents = set(canal.sudo().channel_member_ids.mapped("partner_id").ids)
 if presents != attendus:
     raise Exception("membres du canal ms chat : %s != %s" % (presents, attendus))
-# chat_user arrive après les réglages du commun : les siens d'avance aussi
+# chat_user et inbox_user arrivent après les réglages du commun : les leurs
+# d'avance aussi
 env["res.users.settings"]._find_or_create_for_user(utilisateur)
+env["res.users.settings"]._find_or_create_for_user(boite)
 env.cr.commit()
 """
 
@@ -456,10 +495,19 @@ def cle_posee(nom, executer=subprocess.run):
     )
 
 
-def config_odoo(version_odoo, base, port, port_gevent, repertoire):
+def config_odoo(
+    version_odoo, base, port, port_gevent, repertoire, port_smtp=None
+):
     """Le fichier de configuration d'un serveur de test : un seul processus
     sans cron (rien ne touche les données des tests dans leur dos), sur
-    127.0.0.1, sa base seule, le cœur d'Odoo seul dans l'addons_path."""
+    127.0.0.1, sa base seule, le cœur d'Odoo seul dans l'addons_path.
+
+    Le SMTP vise 127.0.0.1:port_smtp, un port où rien n'écoute (port_libre
+    par défaut) : un courriel qu'Odoo envoie après le commit échoue aussitôt
+    et son mail.mail reste, en exception, au lieu de partir par un serveur
+    de courriel de l'hôte et d'être supprimé une fois envoyé."""
+    if port_smtp is None:
+        port_smtp = port_libre()
     return "\n".join(
         [
             "[options]",
@@ -472,6 +520,8 @@ def config_odoo(version_odoo, base, port, port_gevent, repertoire):
             f"http_port = {port}",
             f"gevent_port = {port_gevent}",
             f"longpolling_port = {port_gevent}",
+            "smtp_server = 127.0.0.1",
+            f"smtp_port = {port_smtp}",
             "workers = 0",
             "max_cron_threads = 0",
             "list_db = False",

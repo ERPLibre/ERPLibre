@@ -14,6 +14,7 @@ test est un échec et pas une réussite silencieuse.
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -190,6 +191,22 @@ class TestBasesEtServeurs(unittest.TestCase):
         ):
             self.assertIn(attendu, texte)
 
+    def test_le_smtp_d_un_serveur_ne_mene_nulle_part(self):
+        """Un courriel d'Odoo échoue aussitôt au lieu de partir : le SMTP
+        vise 127.0.0.1, sur le port donné ou sur un port libre."""
+        version = odoo.VersionOdoo(
+            18, Path("/x/odoo18.0/odoo/odoo-bin"), Path("/x/py")
+        )
+        texte = odoo.config_odoo(
+            version, "base", 8123, 8124, Path("/tmp/run"), port_smtp=8125
+        )
+        self.assertIn("smtp_server = 127.0.0.1", texte)
+        self.assertIn("smtp_port = 8125", texte)
+        defaut = odoo.config_odoo(version, "base", 8123, 8124, Path("/r"))
+        port = int(re.search(r"smtp_port = (\d+)", defaut).group(1))
+        self.assertGreater(port, 0)
+        self.assertNotIn(port, (8123, 8124))
+
     def test_la_cle_du_gabarit_suit_la_post_installation(self):
         version = odoo.VersionOdoo(
             18, Path("/x/odoo18.0/odoo/odoo-bin"), Path("/x/py")
@@ -273,6 +290,11 @@ class TestBasesEtServeurs(unittest.TestCase):
 
     def test_la_post_installation_cree_l_utilisateur_et_le_canal_du_chat(self):
         self.assertIn("chat_user", odoo.POST_INSTALLATION_CHAT)
+        self.assertIn("inbox_user", odoo.POST_INSTALLATION_CHAT)
+        self.assertIn(
+            "mail.group_mail_notification_type_inbox",
+            odoo.POST_INSTALLATION_CHAT,
+        )
         self.assertIn("ms chat", odoo.POST_INSTALLATION_CHAT)
         self.assertNotIn("chat_user", odoo.POST_INSTALLATION)
         self.assertEqual(odoo.post_installation(17), odoo.POST_INSTALLATION)
@@ -342,8 +364,8 @@ class TestBasesEtServeurs(unittest.TestCase):
                 odoo.cle_gabarit(v18, executer=executer), avant
             )
 
-    def test_harness_api_4(self):
-        self.assertEqual(odoo.HARNESS_API, 4)
+    def test_harness_api_5(self):
+        self.assertEqual(odoo.HARNESS_API, 5)
 
 
 class TestRapport(unittest.TestCase):
@@ -723,8 +745,8 @@ class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
 
-    def test_api_du_hook_5(self):
-        self.assertEqual(appareil.DEVICE_HOOK_API, 5)
+    def test_api_du_hook_6(self):
+        self.assertEqual(appareil.DEVICE_HOOK_API, 6)
 
     def test_clavardage_sur_la_18_seulement(self):
         for version in (16, 17):
@@ -737,6 +759,10 @@ class TestScenariosAppareil(unittest.TestCase):
             ("groupe créé du téléphone", appareil.scenario_groupe),
             ("pièces jointes du clavardage", appareil.scenario_pieces_jointes),
             ("actions du clavardage", appareil.scenario_actions_clavardage),
+            (
+                "recherche et boîte du clavardage",
+                appareil.scenario_recherche_boite,
+            ),
         ):
             self.assertIn(scenario, appareil.scenarios_de(18))
             for version in (16, 17):
