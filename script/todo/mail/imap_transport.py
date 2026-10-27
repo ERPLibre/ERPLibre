@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import email
 import email.utils
+import imaplib
 import re
+import time
 from email.header import decode_header
 from email.parser import BytesHeaderParser
 
@@ -25,7 +27,25 @@ from script.todo.mail.charset import decode_bytes
 from script.todo.mail.imap_sync import FolderInfo, HeaderInfo, SelectInfo
 from script.todo.todo_i18n import t
 
-HEADER_FIELDS = "FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES"
+# Les en-têtes que lisent les garde-fous des règles de courriel entrant
+# (RFC 3834, listes, boucles, pourriels, authentification). Ils restent en
+# mémoire dans `HeaderInfo.extra` : le cache ne les stocke pas.
+EXTRA_HEADERS = (
+    "Auto-Submitted",
+    "Precedence",
+    "List-Id",
+    "List-Unsubscribe",
+    "Return-Path",
+    "Reply-To",
+    "X-Auto-Response-Suppress",
+    "X-Loop",
+    "Authentication-Results",
+    "X-Spam-Flag",
+)
+HEADER_FIELDS = (
+    "FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES "
+    + " ".join(h.upper() for h in EXTRA_HEADERS)
+)
 
 SPECIAL_USE = {
     "\\Sent": "sent",
@@ -39,6 +59,7 @@ SPECIAL_USE = {
 _UID_RE = re.compile(rb"UID\s+(\d+)")
 _SIZE_RE = re.compile(rb"RFC822\.SIZE\s+(\d+)")
 _FLAGS_RE = re.compile(rb"FLAGS\s+\(([^)]*)\)")
+_INTERNALDATE_RE = re.compile(rb'INTERNALDATE\s+"([^"]+)"')
 _LIST_RE = re.compile(rb'^\(([^)]*)\)\s+("[^"]*"|NIL)\s+(.*)$')
 
 
@@ -129,6 +150,51 @@ def parse_list_line(line: bytes) -> FolderInfo:
     )
 
 
+def internaldate_epoch(meta: bytes) -> int:
+    """L'INTERNALDATE d'une ligne FETCH, en secondes UTC ; 0 si absente ou
+    illisible.
+
+    `imaplib.Internaldate2tuple` lit le nom du mois sans passer par la
+    locale, ce que `strptime("%b")` ne garantit pas. Il rend un temps LOCAL
+    qui porte son `tm_isdst`, et `time.mktime` le respecte : l'aller-retour
+    reste exact jusque dans l'heure qui se répète au passage à l'heure
+    normale.
+    """
+    match = _INTERNALDATE_RE.search(meta)
+    if not match:
+        return 0
+    try:
+        tt = imaplib.Internaldate2tuple(
+            b'INTERNALDATE "' + match.group(1) + b'"'
+        )
+        return int(time.mktime(tt)) if tt is not None else 0
+    except Exception:
+        # Un mois inconnu lève KeyError, un champ hors bornes ValueError ou
+        # OverflowError. Une date de réception illisible ne vaut pas la
+        # perte du message : 0 dit « inconnue », et les garde-fous la
+        # traitent comme telle.
+        return 0
+
+
+def extra_headers(msg) -> dict:
+    """Les en-têtes d'`EXTRA_HEADERS` présents, clés en minuscules.
+
+    Chaque occurrence est dépliée — une valeur pliée porte un CRLF — puis
+    les occurrences sont jointes par un saut de ligne, dans l'ordre du
+    message : la première est la plus haute, celle du dernier MTA. Les
+    valeurs ne sont pas décodées RFC 2047 : ce sont des jetons machine, et
+    `str()` absorbe la forme `Header` que prend un en-tête 8 bits.
+    """
+    out = {}
+    for nom in EXTRA_HEADERS:
+        valeurs = msg.get_all(nom)
+        if valeurs:
+            out[nom.lower()] = "\n".join(
+                " ".join(str(v).split()) for v in valeurs
+            )
+    return out
+
+
 def parse_fetch_headers(data: list) -> list[HeaderInfo]:
     """Réponse FETCH d'en-têtes → une liste de `HeaderInfo`."""
     parser = BytesHeaderParser()
@@ -193,12 +259,15 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
                     if flags_match
                     else ""
                 ),
-                msgid=(msg.get("Message-ID") or "").strip(),
+                msgid=entete("Message-ID"),
                 frm=decode_header_value(msg.get("From")),
                 to=decode_header_value(msg.get("To")),
                 subject=decode_header_value(msg.get("Subject")),
                 in_reply_to=entete("In-Reply-To"),
                 references=entete("References"),
+                cc=decode_header_value(msg.get("Cc")),
+                internaldate=internaldate_epoch(meta),
+                extra=extra_headers(msg),
             )
         )
     return out
@@ -307,7 +376,10 @@ class ImaplibTransport:
     def fetch_headers(self, uids: list[int]) -> list[HeaderInfo]:
         if not uids:
             return []
-        spec = f"(UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS ({HEADER_FIELDS})])"
+        spec = (
+            "(UID FLAGS INTERNALDATE RFC822.SIZE"
+            f" BODY.PEEK[HEADER.FIELDS ({HEADER_FIELDS})])"
+        )
         data = self._ok(
             self.client.uid("FETCH", ",".join(str(u) for u in uids), spec),
             "FETCH HEADERS",

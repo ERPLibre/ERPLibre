@@ -475,9 +475,24 @@ class SandboxMailbox:
 
     # -- écriture par le test -------------------------------------------
 
-    def deliver(self, raw: bytes, flags=(), uid: int | None = None):
+    def deliver(
+        self,
+        raw: bytes,
+        flags=(),
+        uid: int | None = None,
+        internal_date: bytes | None = None,
+    ):
+        """Range un message comme si le serveur venait de le recevoir.
+
+        `internal_date` est l'INTERNALDATE servie au FETCH, au format IMAP
+        (`b"06-Aug-2026 10:00:00 +0000"`) ; absente, `SandboxMessage` pose
+        sa date fixe.
+        """
         message = SandboxMessage(
-            uid if uid is not None else self.getUIDNext(), raw, flags
+            uid if uid is not None else self.getUIDNext(),
+            raw,
+            flags,
+            internal_date=internal_date,
         )
         self.messages.append(message)
         return message
