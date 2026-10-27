@@ -821,6 +821,12 @@ TUILE_VERS_LISTE = 2.0
 # Et à la saisie dans la conversation en 2 s au plus, la liste traversée
 TUILE_VERS_SAISIE = 2.0
 CANAL_CHAT = "ms chat"
+# Les messages que le fil rend à l'ouverture (THREAD_WINDOW de l'app) : un
+# message plus ancien que ce nombre est hors de la première fenêtre
+FENETRE_FIL = 100
+# Le temps qu'une lecture partie du téléphone met au plus à atteindre le
+# serveur : la lecture enregistrée y reste inchangée pendant ce délai
+LECTURE_DELAI = 10
 # Vrai quand la zone de saisie de la conversation ouverte prend le focus
 SAISIE_PRETE = (
     "(() => { const i = document.querySelector('.chat-thread__input');"
@@ -1783,6 +1789,18 @@ def notification_de(odoo_, message, partenaire):
     return lignes[0] if lignes else None
 
 
+def vu_de(odoo_, canal, partenaire):
+    """Le dernier message que le partenaire a vu dans le canal
+    (seen_message_id de son membre), 0 quand il n'en a vu aucun."""
+    membre = odoo_.executer(
+        "discuss.channel.member",
+        "search_read",
+        [[["channel_id", "=", canal], ["partner_id", "=", partenaire]]],
+        {"fields": ["seen_message_id"]},
+    )[0]
+    return membre["seen_message_id"][0] if membre["seen_message_id"] else 0
+
+
 def scenario_recherche_boite(ctx):
     """La recherche et la boîte de réception du clavardage, dans « ms chat »
     et sur des tâches que l'administrateur suit. L'index de recherche FTS5
@@ -1804,7 +1822,10 @@ def scenario_recherche_boite(ctx):
     gardée en brouillon, un texte, ➤ : une note avec la photo sur la tâche.
     Les saisies du fil, avant et après les auteurs, et de la réponse se
     tiennent au plus ECART_BARRE_MAX px au-dessus de la barre, clavier
-    fermé et ouvert. L'administrateur
+    fermé et ouvert. Un vieux résultat, suivi de plus de FENETRE_FIL
+    messages non lus de chat_user, ouvre le fil sur lui sans rien marquer
+    lu : la lecture de l'administrateur sur le serveur ne bouge pas
+    pendant LECTURE_DELAI s. L'administrateur
     revient à email à la fin, quoi qu'il arrive. Rend le moteur de
     recherche, l'intégrité de l'index et les places mesurées."""
     pair = Odoo(ctx.cible, "chat")
@@ -2068,6 +2089,42 @@ def scenario_recherche_boite(ctx):
             {"fields": ["name"]},
         )
         assert [p["name"] for p in pieces] == [nom_photo], pieces
+
+        # Un vieux résultat, hors de la première fenêtre du fil, dans une
+        # conversation aux messages non lus : l'ouvrir ne lit rien, ni
+        # pendant que le fil va vers lui ni une fois qu'il y est
+        vieux_mot = ctx.unique("vieux")
+        vieux = poster("discuss.channel", canal, f"{vieux_mot} plus haut")
+        for _ in range(FENETRE_FIL + 10):
+            dernier = poster("discuss.channel", canal, ctx.unique("suite"))
+        ctx.cdp.attendre(
+            f"window.__erplibreTest.chatMessages({js(ctx.config_id)}, {canal})"
+            f".then(ms => ms.some(m => m.messageId === {dernier}))",
+            delai=60,
+        )
+        vu_avant = vu_de(ctx.odoo, canal, moi)
+        assert vu_avant < vieux, f"lu jusqu'à {vu_avant} avant l'ouverture"
+        ctx.ouvrir("/chat", ".chat-list__search")
+        ctx.toucher_pose(".chat-list__search")
+        ctx.cdp.evaluer("document.querySelector('.chat-list__search').focus()")
+        ctx.cdp.taper(vieux_mot)
+        resultat = marquer_contenant(ctx, ".chat-search__hit", vieux_mot)
+        bulle_vieux = f'.chat-thread__bubble[data-key="m{vieux}"]'
+        ctx.cdp.evaluer(f"({EN_EVIDENCE})({js(bulle_vieux)})")
+        ctx.toucher_pose(resultat)
+        ctx.cdp.attendre("window.__msVu", delai=30)
+        assert ctx.cdp.evaluer(
+            f"({DANS_LE_FIL})({js(bulle_vieux)})"
+        ), "le fil ne s'ouvre pas sur le vieux résultat"
+        ctx.capturer("recherche_vieux", bulle_vieux)
+        fin = time.monotonic() + LECTURE_DELAI
+        while time.monotonic() < fin:
+            vu = vu_de(ctx.odoo, canal, moi)
+            assert vu == vu_avant, (
+                f"le vieux résultat a marqué lu jusqu'à {vu} (avant :"
+                f" {vu_avant})"
+            )
+            time.sleep(POSE)
     finally:
         ctx.odoo.ecrire(
             "res.users", ctx.odoo.uid, {"notification_type": "email"}
