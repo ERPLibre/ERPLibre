@@ -14,10 +14,17 @@ en production on laisse la stdlib les produire.
 
 from __future__ import annotations
 
+import email
+import email.errors
+import email.policy
+import html
+import logging
 import mimetypes
 import re
+import unicodedata
 from dataclasses import dataclass
-from email.message import EmailMessage
+from email.message import EmailMessage, MIMEPart
+from email.parser import BytesHeaderParser
 from email.utils import formatdate, getaddresses, make_msgid
 from pathlib import Path
 from typing import Protocol
@@ -26,6 +33,8 @@ from script.todo.mail.charset import decode_bytes
 from script.todo.todo_i18n import t
 
 MAX_QUOTE_LINES = 200
+
+_logger = logging.getLogger(__name__)
 
 
 class SmtpAuthError(Exception):
@@ -374,6 +383,10 @@ class SmtpTransport(Protocol):
         self, msg, from_addr: str, to_addrs: list[str]
     ) -> None: ...
 
+    def send_raw(
+        self, raw: bytes, from_addr: str, to_addrs: list[str]
+    ) -> None: ...
+
     def quit(self) -> None: ...
 
 
@@ -383,6 +396,27 @@ class SmtplibTransport:
 
     def send_message(self, msg, from_addr: str, to_addrs: list[str]) -> None:
         self.client.send_message(msg, from_addr=from_addr, to_addrs=to_addrs)
+
+    def send_raw(
+        self, raw: bytes, from_addr: str, to_addrs: list[str]
+    ) -> None:
+        """Remet `raw` octet pour octet par `sendmail`, après `to_crlf`.
+
+        Jamais `send_message`, qui re-sérialise le message (en-têtes
+        repliés, signature DKIM cassée) et lève `ValueError` sur un message
+        qui porte deux `Resent-Date`. `smtplib` ne normalise pas les fins
+        de ligne d'octets : `to_crlf` les rend toutes CRLF, sans quoi un
+        CR nu échapperait au doublement des points en début de ligne.
+        `BODY=8BITMIME` n'est demandé que si les octets en ont un ≥ 0x80
+        et que le serveur l'annonce ; SMTPUTF8 ne l'est jamais.
+        """
+        data = to_crlf(raw)
+        options = []
+        if not data.isascii():
+            self.client.ehlo_or_helo_if_needed()
+            if self.client.has_extn("8bitmime"):
+                options = ["BODY=8BITMIME"]
+        self.client.sendmail(from_addr, to_addrs, data, mail_options=options)
 
     def quit(self) -> None:
         try:
@@ -435,13 +469,22 @@ def connect(account, secret: str) -> SmtplibTransport:
 
 
 def send(account, msg, transport: SmtpTransport) -> list[str]:
-    """Remet le message. Rend les destinataires servis, lève `SmtpError` sinon."""
-    to_addrs = recipients(msg)
+    """Remet le message. Rend les destinataires servis, lève `SmtpError` sinon.
+
+    Un `RawOutgoing` part par `transport.send_raw` à son enveloppe telle
+    quelle : elle ne passe jamais par `recipients()`, et ses octets ne
+    sont pas relus. Tout autre message part par `send_message` aux
+    destinataires de `recipients()`, sans le Cci interne.
+    """
+    raw = isinstance(msg, RawOutgoing)
+    to_addrs = list(msg.envelope) if raw else recipients(msg)
     if not to_addrs:
         raise SmtpError(t("mail_err_no_recipient_nothing_sent"))
-    outgoing = without_bcc(msg)
     try:
-        transport.send_message(outgoing, account.email, to_addrs)
+        if raw:
+            transport.send_raw(msg.raw, account.email, to_addrs)
+        else:
+            transport.send_message(without_bcc(msg), account.email, to_addrs)
     except Exception as exc:
         # Le serveur peut refuser pour mille raisons (auth, quota,
         # destinataire rejeté) : une seule erreur de haut niveau, avec le
@@ -634,3 +677,623 @@ def _msgid_tokens(value: str) -> list[str]:
         for tok in (value or "").split()
         if len(tok) <= MAX_MSGID_LEN and all(33 <= ord(c) <= 126 for c in tok)
     ]
+
+
+# -- Transfert et redirection d'un message reçu ------------------------------
+
+# Préfixe du sujet d'un transfert ; comparé sans casse.
+FORWARD_SUBJECT_PREFIX = "Fwd:"
+# Champs retirés des octets d'une redirection et de l'original joint d'un
+# transfert : le Cci (d'origine ou d'une redirection antérieure) resterait
+# sinon lisible par les destinations, `X-ERPLibre-Bcc` est le Cci interne
+# que `recipients()` change en destinataire d'enveloppe, et Return-Path est
+# reposé par le serveur de remise final.
+REDIRECT_DROPPED_FIELDS = frozenset(
+    {"bcc", "resent-bcc", "return-path", "x-erplibre-bcc"}
+)
+# Destinataire visible d'un transfert : un groupe vide ; les destinations
+# vont dans le Cci interne.
+UNDISCLOSED_RECIPIENTS = "undisclosed-recipients:;"
+# Types dont on ne modifie pas le texte, où qu'ils soient dans le message :
+# la signature doit rester vérifiable, le transfert part donc en pièce
+# jointe.
+_SEALED_TYPES = frozenset(
+    {
+        "multipart/signed",
+        "multipart/encrypted",
+        "application/pkcs7-mime",
+        "application/x-pkcs7-mime",
+    }
+)
+# Marque d'un texte signé ou chiffré par PGP en ligne : le recoder
+# casserait la signature.
+_INLINE_PGP = "-----BEGIN PGP "
+# Exceptions d'une modification ou d'une sérialisation qui font replier un
+# transfert dans le corps sur un transfert en pièce jointe.
+_INLINE_FAILURES = (
+    LookupError,
+    UnicodeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    email.errors.MessageError,
+)
+
+# Partie locale admise : dot-atom (RFC 5322), ASCII seul.
+_ATEXT = r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+"
+_LOCAL_RE = re.compile(rf"{_ATEXT}(?:\.{_ATEXT})*")
+_LABEL_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+_LOCAL_MAX = 64
+_DOMAIN_MAX = 253
+_ADDRESS_MAX = 254
+_BODY_TAG_RE = re.compile(r"<body\b[^>]*>", re.IGNORECASE)
+_EOL_RE = re.compile(rb"\r\n|\r|\n")
+# Caractères que le codec `idna` (IDNA 2003) transforme là où IDNA 2008
+# les encode : « ß » et « ẞ » deviennent « ss », « ς » devient « σ »,
+# ZWNJ et ZWJ disparaissent. Le domaine converti en serait un autre.
+_IDNA_DEVIATIONS = frozenset("\u00df\u1e9e\u03c2\u200c\u200d")
+_FOLD_RE = re.compile(r"(?:\r\n|\r|\n)[ \t]*")
+
+
+def smtp_address(text: str) -> str:
+    """La forme d'envoi d'une adresse saisie : partie locale telle quelle,
+    domaine IDNA (ACE) en minuscules, ASCII seul.
+
+    Admis : une partie locale dot-atom ASCII d'au plus 64 caractères, puis
+    un domaine (Unicode accepté) que le codec `idna` convertit et sait
+    relire, d'au moins deux labels `[a-z0-9]` (tiret intérieur admis),
+    d'au plus 253 caractères, dont le dernier label n'est pas entièrement
+    numérique ; l'adresse entière fait au plus 254 caractères. Refusés par
+    `SmtpError` (`mail_rules_err_fwd_address` suivi du repr de `text`) :
+    partie locale entre guillemets ou non ASCII (SMTPUTF8 n'est pas pris
+    en charge), littéral IP, blanc, virgule, chevrons, `xn--` invalide,
+    domaine qui porte un caractère que IDNA 2003 et IDNA 2008 convertissent
+    différemment (« ß », « ς », ZWNJ, ZWJ) : l'adresse envoyée ne serait
+    pas celle saisie.
+    """
+    erreur = SmtpError(f"{t('mail_rules_err_fwd_address')} {text!r}")
+    if not isinstance(text, str):
+        raise erreur
+    local, arobase, domaine = text.rpartition("@")
+    if not arobase or len(local) > _LOCAL_MAX:
+        raise erreur
+    if not _LOCAL_RE.fullmatch(local):
+        raise erreur
+    if _IDNA_DEVIATIONS.intersection(unicodedata.normalize("NFC", domaine)):
+        raise erreur
+    try:
+        ace = domaine.encode("idna").decode("ascii").lower()
+        ace.encode("ascii").decode("idna")
+    except (UnicodeError, ValueError):
+        raise erreur from None
+    labels = ace.split(".")
+    if (
+        len(ace) > _DOMAIN_MAX
+        or len(labels) < 2
+        or not all(_LABEL_RE.fullmatch(label) for label in labels)
+        or labels[-1].isdigit()
+    ):
+        raise erreur
+    adresse = f"{local}@{ace}"
+    if len(adresse) > _ADDRESS_MAX:
+        raise erreur
+    return adresse
+
+
+def parse_envelope(text: str) -> tuple[str, ...]:
+    """Les adresses d'une enveloppe stockée « a, b », dans leur ordre.
+
+    Coupe sur « , », ignore les morceaux vides, passe chaque adresse par
+    `smtp_address` (qui lève `SmtpError` sur une adresse refusée) et
+    dédoublonne sans égard à la casse. Aucune adresse : `SmtpError`
+    (`mail_err_no_recipient_nothing_sent`).
+    """
+    morceaux = [m.strip() for m in (text or "").split(",")]
+    adresses = _unique_targets(m for m in morceaux if m)
+    if not adresses:
+        raise SmtpError(t("mail_err_no_recipient_nothing_sent"))
+    return tuple(adresses)
+
+
+def _unique_targets(addresses) -> list[str]:
+    """Les formes d'envoi de `addresses`, sans doublon (casse ignorée)."""
+    vues, sortie = set(), []
+    for adresse in addresses:
+        forme = smtp_address(adresse)
+        if forme.lower() not in vues:
+            vues.add(forme.lower())
+            sortie.append(forme)
+    return sortie
+
+
+def _target_list(to) -> list[str]:
+    """Les destinations d'un transfert ou d'une redirection, en forme
+    d'envoi et sans doublon ; aucune : `SmtpError`."""
+    cibles = _unique_targets(_as_list(to))
+    if not cibles:
+        raise SmtpError(t("mail_err_message_needs_recipient"))
+    return cibles
+
+
+@dataclass(frozen=True)
+class RawOutgoing:
+    """Un message remis octet pour octet à une enveloppe explicite.
+
+    `envelope` porte les destinataires SMTP (forme d'envoi) ; aucun en-tête
+    du message ne les complète. `subject` est le sujet décodé, pour la file
+    et l'écran.
+    """
+
+    raw: bytes
+    envelope: tuple[str, ...]
+    subject: str = ""
+
+    def as_bytes(self) -> bytes:
+        return self.raw
+
+
+def _clean_text(value) -> str:
+    """`value` décodé RFC 2047, sur une ligne : chaque caractère de
+    contrôle (catégorie Cc, tabulation comprise) ou de format (Cf) devient
+    une espace, puis les blancs se réduisent à une espace."""
+    from script.todo.mail.imap_transport import decode_header_value
+
+    texte = decode_header_value(str(value or ""))
+    texte = "".join(
+        " " if unicodedata.category(c) in ("Cc", "Cf") else c for c in texte
+    )
+    return " ".join(texte.split())
+
+
+def forward_subject(original_subject: str, prefix: str = "") -> str:
+    """Le sujet d'un transfert, sur une ligne.
+
+    Le sujet d'origine est décodé et nettoyé (`_clean_text` : aucun
+    caractère de contrôle ne survit, même encodé), puis préfixé de
+    `FORWARD_SUBJECT_PREFIX` s'il ne commence pas déjà par lui (casse
+    ignorée). `prefix` non vide (essai) précède le tout, séparé d'une
+    espace.
+    """
+    sujet = _clean_text(original_subject)
+    if not sujet.lower().startswith(FORWARD_SUBJECT_PREFIX.lower()):
+        sujet = f"{FORWARD_SUBJECT_PREFIX} {sujet}".rstrip()
+    prefix = " ".join((prefix or "").split())
+    return f"{prefix} {sujet}" if prefix else sujet
+
+
+def _header_value(message, name: str) -> str:
+    """La première valeur de `name` dans `message`, ou "" ; un en-tête que
+    la bibliothèque ne sait pas analyser compte comme absent."""
+    try:
+        valeur = message.get(name)
+    except _INLINE_FAILURES:
+        return ""
+    return "" if valeur is None else str(valeur)
+
+
+def forwarded_fields(original) -> list[tuple[str, str]]:
+    """Le bloc d'en-têtes d'origine : [(libellé traduit, valeur)].
+
+    De, Date, À, Cc (omis si vide) et Sujet, dans cet ordre, libellés dans
+    la langue de l'interface. Valeurs décodées RFC 2047, dépliées,
+    nettoyées par `_clean_text`. `original` est un `EmailMessage`
+    (`policy.default`) ou un `Message` compat32.
+    """
+    champs = []
+    for cle, nom in (
+        ("mail_rules_fwd_from", "From"),
+        ("mail_rules_fwd_date", "Date"),
+        ("mail_rules_fwd_to", "To"),
+        ("mail_rules_fwd_cc", "Cc"),
+        ("mail_rules_fwd_subject", "Subject"),
+    ):
+        valeur = _clean_text(_header_value(original, nom))
+        if nom == "Cc" and not valeur:
+            continue
+        champs.append((t(cle), valeur))
+    return champs
+
+
+def forward_text_block(intro: str, fields) -> str:
+    """Le texte placé en tête d'un transfert.
+
+    L'intro, si elle n'est pas blanche (sans ses blancs de fin, suivie
+    d'une ligne vide), puis la ligne séparatrice, une ligne « libellé
+    valeur » par champ et une ligne vide.
+    """
+    lignes = []
+    intro = (intro or "").replace("\r\n", "\n").replace("\r", "\n")
+    if intro.strip():
+        lignes += [intro.rstrip(), ""]
+    lignes.append(t("mail_rules_fwd_separator"))
+    lignes += [f"{libelle} {valeur}" for libelle, valeur in fields]
+    lignes.append("")
+    return "\n".join(lignes) + "\n"
+
+
+def forward_html_block(intro: str, fields) -> str:
+    """Le même bloc en HTML : un `<div>` qui porte l'intro (échappée, un
+    `<br>` par saut de ligne) dans un `<p>`, puis un `<p>` du séparateur
+    et des champs, un par ligne, valeurs échappées."""
+    intro = (intro or "").replace("\r\n", "\n").replace("\r", "\n")
+    morceaux = ["<div>"]
+    if intro.strip():
+        morceaux.append(
+            "<p>" + html.escape(intro.rstrip()).replace("\n", "<br>") + "</p>"
+        )
+    lignes = [html.escape(t("mail_rules_fwd_separator"))] + [
+        f"{html.escape(libelle)} {html.escape(valeur)}"
+        for libelle, valeur in fields
+    ]
+    morceaux.append("<p>" + "<br>".join(lignes) + "</p>")
+    morceaux.append("</div>")
+    return "".join(morceaux)
+
+
+def _with_html_block(document: str, block: str) -> str:
+    """`document` avec `block` inséré juste après la première balise
+    `<body…>`, ou en tête faute de balise."""
+    trouve = _BODY_TAG_RE.search(document)
+    if trouve is None:
+        return block + document
+    return document[: trouve.end()] + block + document[trouve.end() :]
+
+
+def strip_header_fields(raw: bytes, names) -> bytes:
+    """`raw` sans les champs d'en-tête dont le nom est dans `names`.
+
+    Les noms se comparent en minuscules, espaces avant « : » ignorées ; un
+    champ retiré part avec ses lignes de suite (qui commencent par un
+    blanc). Seule la section d'en-têtes, jusqu'à la première ligne vide
+    (`\r\n` ou `\n`), est lue : le corps est rendu tel quel, même s'il
+    contient « Bcc: ». Sans ligne vide, tout `raw` est la section
+    d'en-têtes. Aucun autre octet ne change ; le parcours est linéaire.
+    Seul LF coupe une ligne : un CR nu ne sépare rien, d'où un passage
+    préalable par `to_crlf` pour des octets qui seront envoyés.
+    """
+    retires = {str(n).lower() for n in names}
+    sortie = []
+    debut = 0
+    retirer = False
+    taille = len(raw)
+    while debut < taille:
+        fin = raw.find(b"\n", debut)
+        fin = taille if fin < 0 else fin + 1
+        ligne = raw[debut:fin]
+        if ligne in (b"\n", b"\r\n"):
+            sortie.append(raw[debut:])
+            break
+        if ligne[:1] in (b" ", b"\t"):
+            if not retirer:
+                sortie.append(ligne)
+        else:
+            nom, deux_points, _ = ligne.partition(b":")
+            retirer = bool(deux_points) and (
+                nom.strip().decode("latin-1").lower() in retires
+            )
+            if not retirer:
+                sortie.append(ligne)
+        debut = fin
+    return b"".join(sortie)
+
+
+def to_crlf(raw: bytes) -> bytes:
+    """`raw` dont chaque fin de ligne (CRLF, CR nu, LF nu) devient CRLF.
+
+    Idempotent. Après lui, il ne reste ni CR ni LF nu : `smtplib` ne
+    normalise pas des octets, et ne double un point de début de ligne
+    qu'après un LF.
+    """
+    return _EOL_RE.sub(b"\r\n", raw)
+
+
+def original_x_loops(src) -> list[str]:
+    """Les valeurs des `X-Loop` de la racine de `src`, dans leur ordre.
+
+    Les valeurs sont lues telles que reçues (`raw_items`), puis dépliées :
+    une fin de ligne et les blancs qui la suivent deviennent une espace.
+    Une valeur vide, qui garde un caractère de contrôle autre que la
+    tabulation, un saut de ligne Unicode ou un octet non UTF-8 est
+    laissée : elle ne pourrait pas être reposée telle quelle.
+    """
+    sortie = []
+    for nom, valeur in src.raw_items():
+        if nom.lower() != "x-loop":
+            continue
+        texte = _FOLD_RE.sub(" ", str(valeur)).strip()
+        if not texte or _has_line_break(texte):
+            continue
+        try:
+            # Un octet non UTF-8 de l'en-tête reçu survit en substitut
+            # (surrogate), que l'en-tête reposé ne saurait pas encoder.
+            texte.encode("utf-8")
+        except UnicodeError:
+            continue
+        if any(unicodedata.category(c) == "Cc" and c != "\t" for c in texte):
+            continue
+        sortie.append(texte)
+    return sortie
+
+
+def _forward_headers(account) -> dict[str, str]:
+    # X-Loop part à part : il peut se répéter, `headers=` refuse un nom
+    # répété.
+    return {
+        "Auto-Submitted": AUTO_SUBMITTED_GENERATED,
+        "X-Auto-Response-Suppress": "All",
+    }
+
+
+def _check_reply_to(reply_to: str) -> None:
+    if reply_to and _has_line_break(str(reply_to)):
+        raise SmtpError(t("mail_err_header_newline"))
+
+
+def _check_raw(raw: bytes) -> None:
+    """Refuse par `SmtpError` (`mail_rules_err_fwd_unreadable`) des octets
+    vides ou sans aucune ligne d'en-tête lisible."""
+    if not raw:
+        raise SmtpError(t("mail_rules_err_fwd_unreadable"))
+    try:
+        entetes = BytesHeaderParser().parsebytes(raw)
+    except Exception:
+        entetes = None
+    if entetes is None or not entetes.keys():
+        raise SmtpError(t("mail_rules_err_fwd_unreadable"))
+
+
+def _serialized(msg) -> EmailMessage:
+    """`msg`, une fois `as_bytes()` réussi ; un échec devient une erreur de
+    construction (`mail_rules_err_fwd_unreadable`), jamais un envoi raté
+    puis réessayé."""
+    try:
+        msg.as_bytes()
+    except Exception as exc:
+        raise SmtpError(t("mail_rules_err_fwd_unreadable")) from exc
+    return msg
+
+
+class _InlineFallback(Exception):
+    """Le message ne se transfère pas dans le corps ; le texte nomme la
+    raison, sans rien du contenu."""
+
+
+def build_forward_inline(
+    account,
+    raw: bytes,
+    to,
+    *,
+    intro: str = "",
+    reply_to: str = "",
+    subject_prefix: str = "",
+    date: str | None = None,
+    msgid: str | None = None,
+) -> EmailMessage:
+    """Transfert de `raw` dans le corps, à `to` en Cci interne.
+
+    La structure MIME d'origine (alternatives, images liées, pièces
+    jointes) est gardée ; seules la première partie `text/plain` et la
+    première `text/html` que rend `get_body` reçoivent en tête l'intro et
+    le bloc d'en-têtes d'origine (en HTML : juste après `<body…>`). Le
+    message analysé est modifié SUR PLACE : une racine à une seule partie
+    recopiée dans un message neuf perdrait l'association à son charset.
+
+    Les en-têtes de la racine sont tous remplacés : From du compte, `To:
+    undisclosed-recipients:;`, sujet `forward_subject`, Date et Message-ID
+    neufs, `Reply-To` s'il est donné, `Auto-Submitted: auto-generated`,
+    `X-Auto-Response-Suppress: All`, les `X-Loop` d'origine puis le nôtre,
+    les destinations dans `X-ERPLibre-Bcc` ; seuls les `Content-*` et
+    `MIME-Version` de la racine sont reposés tels quels. Ni `In-Reply-To`
+    ni `References` : un transfert n'est pas une réponse.
+
+    Repli sur `build_forward_attached`, journalisé sans contenu : une
+    partie signée ou chiffrée n'importe où dans le message, du PGP en
+    ligne, ni texte ni HTML, ou une modification ou une sérialisation qui
+    échoue. Lève `SmtpError` sur une destination refusée ou absente, un
+    `reply_to` qui porte un saut de ligne, ou des octets illisibles.
+    """
+    cibles = _target_list(to)
+    _check_reply_to(reply_to)
+    _check_raw(raw)
+    options = dict(
+        intro=intro,
+        reply_to=reply_to,
+        subject_prefix=subject_prefix,
+        date=date,
+        msgid=msgid,
+    )
+    try:
+        return _inline_message(account, raw, cibles, **options)
+    except _InlineFallback as exc:
+        raison = str(exc)
+    except _INLINE_FAILURES as exc:
+        raison = type(exc).__name__
+    _logger.info("transfert : repli en pièce jointe (%s)", raison)
+    return build_forward_attached(account, raw, cibles, **options)
+
+
+def _inline_message(
+    account, raw, cibles, *, intro, reply_to, subject_prefix, date, msgid
+):
+    """Le transfert dans le corps. Lève `_InlineFallback` pour un message
+    qui ne s'y prête pas, ou l'une des `_INLINE_FAILURES` si la
+    modification ou la sérialisation échoue."""
+    src = email.message_from_bytes(
+        raw, _class=EmailMessage, policy=email.policy.default
+    )
+    if any(p.get_content_type() in _SEALED_TYPES for p in src.walk()):
+        raise _InlineFallback("sealed")
+    texte = src.get_body(("plain",))
+    page = src.get_body(("html",))
+    if texte is None and page is None:
+        raise _InlineFallback("no_text")
+    champs = forwarded_fields(src)
+    boucles = original_x_loops(src)
+    sujet = _header_value(src, "Subject")
+    contenus = {}
+    for partie in (texte, page):
+        if partie is not None:
+            contenus[id(partie)] = decode_bytes(
+                partie.get_payload(decode=True) or b"",
+                partie.get_content_charset(),
+            )
+    if any(_INLINE_PGP in c for c in contenus.values()):
+        raise _InlineFallback("inline_pgp")
+    if texte is not None:
+        _set_text(
+            src,
+            texte,
+            forward_text_block(intro, champs) + contenus[id(texte)],
+            "plain",
+        )
+    if page is not None:
+        _set_text(
+            src,
+            page,
+            _with_html_block(
+                contenus[id(page)], forward_html_block(intro, champs)
+            ),
+            "html",
+        )
+    gardes = [
+        (nom, valeur)
+        for nom, valeur in src.raw_items()
+        if nom.lower().startswith("content-") or nom.lower() == "mime-version"
+    ]
+    for nom in set(src.keys()):
+        del src[nom]
+    src["From"] = account.from_header()
+    src["To"] = UNDISCLOSED_RECIPIENTS
+    src["Subject"] = forward_subject(sujet, subject_prefix)
+    src["Date"] = date or formatdate(localtime=True)
+    src["Message-ID"] = msgid or make_msgid(
+        domain=account.email.split("@")[-1]
+    )
+    if reply_to:
+        src["Reply-To"] = reply_to
+    for nom, valeur in _forward_headers(account).items():
+        src[nom] = valeur
+    for boucle in boucles:
+        src["X-Loop"] = boucle
+    src["X-Loop"] = f"{X_LOOP_MARKER} {account.email}"
+    src["X-ERPLibre-Bcc"] = ", ".join(cibles)
+    for nom, valeur in gardes:
+        src.set_raw(nom, valeur)
+    if not any(nom.lower() == "mime-version" for nom, _ in gardes):
+        src["MIME-Version"] = "1.0"
+    src.as_bytes()
+    return src
+
+
+def _set_text(src, partie, contenu: str, subtype: str) -> None:
+    """Remplace le contenu de `partie` par `contenu` en UTF-8.
+
+    Une sous-partie passe par `MIMEPart.set_content`, qui ne lui ajoute
+    pas de `MIME-Version` ; la racine par sa propre méthode.
+    """
+    if partie is src:
+        src.set_content(contenu, subtype=subtype, charset="utf-8")
+    else:
+        MIMEPart.set_content(partie, contenu, subtype=subtype, charset="utf-8")
+
+
+def build_forward_attached(
+    account,
+    raw: bytes,
+    to,
+    *,
+    intro: str = "",
+    reply_to: str = "",
+    subject_prefix: str = "",
+    date: str | None = None,
+    msgid: str | None = None,
+) -> EmailMessage:
+    """Transfert de `raw` en pièce jointe `message/rfc822`, à `to` en Cci
+    interne.
+
+    Un message neuf : texte = intro + bloc d'en-têtes d'origine, mêmes
+    en-têtes que `build_forward_inline`, puis l'original joint sous le nom
+    `message.eml`. L'original joint est lu sur les octets privés des champs
+    de `REDIRECT_DROPPED_FIELDS`, retirés après passage en CRLF : aucun Cci
+    ne se lit dans la pièce jointe.
+    Ses en-têtes longs peuvent être repliés par le générateur. Lève
+    `SmtpError` sur une destination refusée ou absente, un `reply_to` qui
+    porte un saut de ligne, ou des octets illisibles.
+    """
+    cibles = _target_list(to)
+    _check_reply_to(reply_to)
+    _check_raw(raw)
+    try:
+        inner = email.message_from_bytes(
+            strip_header_fields(to_crlf(raw), REDIRECT_DROPPED_FIELDS),
+            _class=EmailMessage,
+        )
+        champs = forwarded_fields(inner)
+        boucles = original_x_loops(inner)
+        sujet = _header_value(inner, "Subject")
+    except _INLINE_FAILURES as exc:
+        raise SmtpError(t("mail_rules_err_fwd_unreadable")) from exc
+    msg = build_message(
+        account,
+        [],
+        forward_subject(sujet, subject_prefix),
+        forward_text_block(intro, champs),
+        bcc=cibles,
+        reply_to=reply_to or None,
+        headers=_forward_headers(account),
+        date=date,
+        msgid=msgid,
+    )
+    msg["To"] = UNDISCLOSED_RECIPIENTS
+    for boucle in boucles:
+        msg["X-Loop"] = boucle
+    msg["X-Loop"] = f"{X_LOOP_MARKER} {account.email}"
+    try:
+        # Sans `maintype` : voir le commentaire de `build_forward`.
+        msg.add_attachment(inner, subtype="rfc822", filename="message.eml")
+    except _INLINE_FAILURES as exc:
+        raise SmtpError(t("mail_rules_err_fwd_unreadable")) from exc
+    return _serialized(msg)
+
+
+def build_redirect(
+    account,
+    raw: bytes,
+    to,
+    *,
+    date: str | None = None,
+    msgid: str | None = None,
+) -> RawOutgoing:
+    """Vraie redirection de `raw` à l'enveloppe `to`.
+
+    Sortie : un bloc de trois champs `Resent-From` (le compte),
+    `Resent-Date`, `Resent-Message-ID`, dans cet ordre, puis les octets
+    d'origine passés en CRLF (`to_crlf`), dont seuls les champs de
+    `REDIRECT_DROPPED_FIELDS` sont ensuite retirés : un CR nu coupe donc
+    les lignes pour le retrait comme pour le serveur qui les reçoit.
+    Aucun autre octet ne change : ni sujet, ni `X-Loop`, ni
+    `Auto-Submitted`, ni corps. Un bloc `Resent-*` déjà présent reste sous
+    le nôtre. Pas de `Resent-To` : il montrerait
+    la liste des destinations à chacune. Le sujet rendu est celui
+    d'origine, décodé et nettoyé, pour la file et l'écran.
+
+    Lève `SmtpError` sur une destination refusée ou absente, et sur des
+    octets vides ou sans ligne d'en-tête lisible.
+    """
+    cibles = _target_list(to)
+    _check_raw(raw)
+    bloc = EmailMessage(policy=email.policy.SMTP)
+    bloc["Resent-From"] = account.from_header()
+    bloc["Resent-Date"] = date or formatdate(localtime=True)
+    bloc["Resent-Message-ID"] = msgid or make_msgid(
+        domain=account.email.split("@")[-1]
+    )
+    entete = bloc.as_bytes()
+    if entete.endswith(b"\r\n\r\n"):
+        entete = entete[:-2]
+    sujet = BytesHeaderParser().parsebytes(raw).get("Subject", "")
+    return RawOutgoing(
+        entete + strip_header_fields(to_crlf(raw), REDIRECT_DROPPED_FIELDS),
+        tuple(cibles),
+        _clean_text(sujet),
+    )

@@ -650,6 +650,125 @@ class TestQueueV6(StoreCase):
         )
         self.assertEqual(self.store.rule_log_outcome(REGLE, "k1"), "sent")
 
+    def mettre_auto(self, cle, **kw):
+        self.reclamer(cle=cle, outcome="pending")
+        return self.store.queue_auto(
+            b"brut",
+            HUMAIN,
+            "Fwd: Devis",
+            held=False,
+            rule_id=REGLE,
+            source_key=cle,
+            expires_at=9000,
+            outcome="queued",
+            reason="offline",
+            **kw,
+        )
+
+    def test_queue_auto_records_the_kind(self):
+        self.mettre_auto("k1")
+        self.mettre_auto("k2", kind="auto_forward")
+        self.mettre_auto("k3", kind="auto_redirect")
+        self.assertEqual(
+            [e["kind"] for e in self.store.outbox()],
+            ["auto_reply", "auto_forward", "auto_redirect"],
+        )
+
+    def test_a_queued_redirect_gives_no_recipient_to_a_naive_reader(self):
+        """Un code qui ignore `auto_redirect` lit les octets scellés comme
+        un message : il n'y trouve aucun destinataire, donc rien ne part
+        vers les To/Cc de l'original. `queued_raw` rend les octets mis en
+        file."""
+        import email
+
+        from script.todo.mail.smtp_send import recipients
+
+        brut = (
+            b"Resent-From: boite.regles@example.org\r\n"
+            b"From: bruno.filtre@example.net\r\n"
+            b"To: boite.regles@example.org\r\n"
+            b"Cc: temoin.cci@example.com\r\n"
+            b"Subject: Devis\r\n\r\nBonjour.\r\n"
+        )
+        self.reclamer(cle="k1", outcome="pending")
+        ident = self.store.queue_auto(
+            brut,
+            "carole.regle@example.org",
+            "Devis",
+            held=True,
+            rule_id=REGLE,
+            source_key="k1",
+            expires_at=9000,
+            outcome="held",
+            reason="hold_first",
+            kind="auto_redirect",
+        )
+        self.assertEqual(self.store.queued_raw(ident), brut)
+        [scelle] = (
+            self.store._db()
+            .execute("SELECT sealed_raw FROM outbox WHERE id = ?", (ident,))
+            .fetchone()
+        )
+        naif = email.message_from_bytes(self.store._crypto.open(scelle))
+        self.assertEqual(naif.keys(), [])
+        self.assertEqual(recipients(naif), [])
+
+    def test_queue_auto_refuses_an_unknown_kind(self):
+        """Refusé avant toute écriture : ni file, ni journal avancé."""
+        for kind in ("manual", "auto_later", ""):
+            with self.subTest(kind=kind):
+                with self.assertRaises(ValueError):
+                    self.mettre_auto("k1", kind=kind)
+        self.assertEqual(self.store.outbox(), [])
+        self.assertEqual(self.store.rule_log_outcome(REGLE, "k1"), "pending")
+
+    def test_outbox_listing_does_not_read_the_raw_bytes(self):
+        """La liste se relit à chaque passe : une file de transferts lourds
+        n'y fait lire aucun octet scellé."""
+        self.store.queue_message(b"brut", HUMAIN, "Devis")
+        requetes = []
+        db = self.store._db()
+        db.set_trace_callback(requetes.append)
+        try:
+            [entree] = self.store.outbox()
+        finally:
+            db.set_trace_callback(None)
+        self.assertEqual(entree["to"], HUMAIN)
+        lues = [r for r in requetes if "outbox" in r.lower()]
+        self.assertTrue(lues)
+        for requete in lues:
+            self.assertNotIn("sealed_raw", requete)
+            self.assertNotIn("*", requete)
+
+
+class TestIsRuleSend(StoreCase):
+    def test_is_rule_send_ignores_messages_marked_by_the_sync(self):
+        self.store.mark_auto_sent("<tiers@example.net>", "", 100)
+        self.store.mark_auto_sent("<regle@example.org>", REGLE, 100)
+        self.assertFalse(self.store.is_rule_send("<tiers@example.net>"))
+        self.assertTrue(self.store.is_rule_send(" <regle@example.org> "))
+        self.assertFalse(self.store.is_rule_send("<inconnu@example.org>"))
+
+    def test_is_rule_send_with_an_empty_message_id_is_false(self):
+        self.store.mark_auto_sent("<regle@example.org>", REGLE, 100)
+        for msgid in ("", "  ", None):
+            with self.subTest(msgid=msgid):
+                self.assertFalse(self.store.is_rule_send(msgid))
+                self.assertFalse(
+                    self.store.is_rule_send(msgid, rule_ids=[REGLE])
+                )
+
+    def test_is_rule_send_can_be_limited_to_some_rules(self):
+        self.store.mark_auto_sent("<regle@example.org>", REGLE, 100)
+        msgid = "<regle@example.org>"
+        self.assertTrue(self.store.is_rule_send(msgid, rule_ids=[REGLE]))
+        self.assertTrue(
+            self.store.is_rule_send(msgid, rule_ids=("autre", REGLE))
+        )
+        self.assertFalse(self.store.is_rule_send(msgid, rule_ids=["autre"]))
+        self.assertFalse(self.store.is_rule_send(msgid, rule_ids=[]))
+        self.assertFalse(self.store.is_rule_send(msgid, rule_ids=set()))
+
 
 class TestOutboxClaim(StoreCase):
     def setUp(self):

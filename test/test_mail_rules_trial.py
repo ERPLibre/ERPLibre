@@ -8,6 +8,7 @@ Même socle que `test_mail_rules_stats_engine` : cache clair, IMAP en
 mémoire avec `Sent`, horloge injectée, fuseau UTC.
 """
 
+import dataclasses
 import json
 import unittest
 from unittest import mock
@@ -24,6 +25,7 @@ from script.todo.mail.rules import engine, storage
 from script.todo.mail.rules.filter import BodyUnavailable
 from script.todo.mail.rules.guards import SEND
 from script.todo.mail.rules.model import (
+    FORWARD_MAX_BYTES,
     Armed,
     Condition,
     Group,
@@ -127,12 +129,20 @@ class TestSimulate(TrialCase):
         self.assertFalse(sim.rule_enabled)
         self.assertIsNotNone(sim.rendered)
 
-    def test_simulate_forward_is_not_executable(self):
+    def test_simulate_forward_is_executable(self):
         rule = new_rule("forward", "Renvoi")
-        sim = self.simuler(rule, self.entete(ARME))
-        self.assertFalse(sim.executable)
-        self.assertEqual(sim.error, t("mail_rules_trial_kind"))
+        rule.action.options["targets"] = [BRUNO]
+        header = self.entete(ARME)
+        chargeur = engine.make_raw_loader(
+            self.session, "INBOX", ARME, size=header.size
+        )
+        sim = self.simuler(rule, header, raw_loader=chargeur)
+        self.assertTrue(sim.executable)
+        self.assertEqual(sim.error, "")
         self.assertIsNone(sim.rendered)
+        self.assertEqual(sim.forward.targets, (BRUNO,))
+        self.assertIsNotNone(sim.forward.outgoing)
+        self.assertTrue(sim.sendable)
 
     def test_simulate_with_a_missing_image_reports_the_error(self):
         rule = self.regle()
@@ -322,8 +332,18 @@ class TestSendTrial(TrialCase):
         self.assertEqual(self.store.outbox(), [])
 
     def test_send_trial_without_a_rendering_is_refused(self):
+        """Une redirection d'un message au-delà du plafond : rien n'est
+        lu, rien ne peut partir."""
         rule = new_rule("forward", "Renvoi")
-        sim = self.simuler(rule, self.entete(ARME))
+        rule.action.options["targets"] = [BRUNO]
+        header = dataclasses.replace(
+            self.entete(ARME), size=FORWARD_MAX_BYTES + 1
+        )
+        chargeur = engine.make_raw_loader(
+            self.session, "INBOX", ARME, size=header.size
+        )
+        sim = self.simuler(rule, header, raw_loader=chargeur)
+        self.assertFalse(sim.sendable)
         with self.assertRaises(RuleError) as pris:
             engine.send_trial(
                 self.session, rule, sim, deliver_fn=self.espion_essai

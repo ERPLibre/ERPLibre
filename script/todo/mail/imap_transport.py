@@ -28,8 +28,11 @@ from script.todo.mail.imap_sync import FolderInfo, HeaderInfo, SelectInfo
 from script.todo.todo_i18n import t
 
 # Les en-têtes que lisent les garde-fous des règles de courriel entrant
-# (RFC 3834, listes, boucles, pourriels, authentification). Ils restent en
-# mémoire dans `HeaderInfo.extra` : le cache ne les stocke pas.
+# (RFC 3834, listes, boucles, pourriels, authentification). `Resent-From`
+# reconnaît une redirection revenue chez nous (boucle de redirection) ;
+# `Content-Type` de tête reconnaît un rapport de remise (`multipart/report`,
+# `message/delivery-status`). Ils restent en mémoire dans
+# `HeaderInfo.extra` : le cache ne les stocke pas.
 EXTRA_HEADERS = (
     "Auto-Submitted",
     "Precedence",
@@ -41,6 +44,8 @@ EXTRA_HEADERS = (
     "X-Loop",
     "Authentication-Results",
     "X-Spam-Flag",
+    "Content-Type",
+    "Resent-From",
 )
 HEADER_FIELDS = (
     "FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES "

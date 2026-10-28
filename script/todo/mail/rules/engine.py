@@ -21,6 +21,14 @@ Garanties :
 - un message dont le traitement lève est journalisé en échec et ne bloque
   ni le curseur ni les messages suivants.
 
+Une règle `forward` relaie le message au lieu d'y répondre. Ses octets
+complets ne sont lus (BODY.PEEK[], qui ne marque pas lu) que lorsqu'elle a
+décidé d'envoyer, une fois par message pour toutes les règles, et jamais
+au-delà de `FORWARD_MAX_BYTES`. Un transfert part à ses destinations en
+Cci interne ; une redirection (`smtp_send.RawOutgoing`) part à une
+enveloppe explicite qui survit à la file, n'est pas classée dans Envoyés
+et n'entre pas dans `auto_sent` : son Message-ID est celui de l'original.
+
 Fils : chaque échange IMAP passe sous `verrou` (le `_sync_lock` du TUI),
 pris échange par échange ; le moteur n'appelle jamais l'interface. Le
 journal applicatif ne reçoit ni adresse, ni sujet, ni texte d'une erreur
@@ -41,6 +49,7 @@ from typing import Any, Protocol
 
 from script.todo.mail.rules import filter as rules_filter
 from script.todo.mail.rules import guards, markup, storage
+from script.todo.mail.rules import model as rules_model
 from script.todo.mail.rules import report as rules_report
 from script.todo.mail.rules.filter import (
     BODY_TEXT_MAX,
@@ -50,6 +59,7 @@ from script.todo.mail.rules.filter import (
 from script.todo.mail.rules.lock import LOCK_WAIT_S, file_lock
 from script.todo.mail.rules.model import (
     EXECUTABLE_KINDS,
+    FORWARD_MAX_BYTES,
     Armed,
     RuleError,
     TemplateError,
@@ -57,6 +67,11 @@ from script.todo.mail.rules.model import (
 )
 from script.todo.mail.rules.regex_worker import RegexTimeout
 from script.todo.mail.rules.storage import EngineState
+from script.todo.mail.smtp_send import (
+    RawOutgoing,
+    SmtpError,
+    smtp_address,
+)
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -75,6 +90,11 @@ CATCHUP_BATCH = 200
 # Rapports de statistiques envoyés au plus par règle sur 24 heures
 # glissantes ; au-delà, la demande est ignorée, sans file ni retenue.
 STATS_DAILY_MAX = 20
+# Entrées de file au plus par règle `forward` au-delà desquelles un envoi
+# que les plafonds retiendraient est écarté SANS télécharger le message :
+# chaque transfert retenu garde une copie entière de l'original (jusqu'à
+# `FORWARD_MAX_BYTES`), là où une réponse retenue pèse quelques Kio.
+FORWARD_CAP_HELD_MAX = 20
 DAY_S = 86400
 
 STATUSES = (
@@ -181,7 +201,7 @@ def account_addresses(account) -> frozenset:
     )
 
 
-def _other_addresses(account, all_accounts) -> frozenset:
+def other_account_addresses(account, all_accounts=None) -> frozenset:
     """Les adresses des AUTRES comptes configurés, moins les nôtres.
 
     `all_accounts=None` lit `accounts.json` ; illisible, aucune.
@@ -309,6 +329,177 @@ def make_body_loader(
         return text
 
     return load
+
+
+class MessageTooBig(Exception):
+    """Le message dépasse `FORWARD_MAX_BYTES` ; `size` en octets."""
+
+    def __init__(self, size: int) -> None:
+        super().__init__(size)
+        self.size = int(size)
+
+
+def make_raw_loader(
+    session,
+    folder: str,
+    uid: int,
+    verrou=None,
+    *,
+    size: int = 0,
+    max_bytes: int = FORWARD_MAX_BYTES,
+) -> Callable[[], bytes]:
+    """Un chargeur paresseux et mémorisé des OCTETS complets d'un message.
+
+    `size` (RFC822.SIZE, 0 si inconnue) plus grand que `max_bytes` lève
+    `MessageTooBig(size)` sans aucun échange. Hors ligne :
+    `BodyUnavailable(online=False)`, rien n'est mémorisé. En ligne,
+    `session.syncer.fetch_body` (le cache d'abord, sinon BODY.PEEK[], qui ne
+    marque pas lu, puis écriture dans le cache) passe sous `verrou` par
+    `session.avec_lien` : un chargeur de corps du même message lit ensuite
+    le cache, sans second FETCH. Son échec est mémorisé, et chaque appel
+    suivant lève `BodyUnavailable(online=True)`. Des octets reçus plus longs
+    que `max_bytes` lèvent `MessageTooBig(len)`, mémorisé aussi.
+    """
+    garde = verrou if verrou is not None else contextlib.nullcontext()
+    memo = {}
+
+    def load() -> bytes:
+        if "raw" in memo:
+            return memo["raw"]
+        if "too_big" in memo:
+            raise MessageTooBig(memo["too_big"])
+        if "error" in memo:
+            raise BodyUnavailable(online=True)
+        if size and size > max_bytes:
+            memo["too_big"] = size
+            raise MessageTooBig(size)
+        if not session.online:
+            raise BodyUnavailable(online=False)
+        try:
+            with garde:
+                raw = session.avec_lien(
+                    lambda _t: session.syncer.fetch_body(folder, uid)
+                )
+            if raw is None:
+                raise ConnectionError("no link")
+            raw = bytes(raw)
+        except Exception as exc:
+            memo["error"] = type(exc).__name__
+            raise BodyUnavailable(online=True) from exc
+        if len(raw) > max_bytes:
+            memo["too_big"] = len(raw)
+            raise MessageTooBig(len(raw))
+        memo["raw"] = raw
+        return raw
+
+    return load
+
+
+def forward_message(
+    account,
+    opts,
+    raw: bytes,
+    targets,
+    *,
+    intro: str = "",
+    reply_to: str = "",
+    subject_prefix: str = "",
+    date: str | None = None,
+    msgid: str | None = None,
+):
+    """Le message d'une règle `forward` selon `opts.mode` (une
+    `model.ForwardOptions`).
+
+    `redirect` rend un `smtp_send.RawOutgoing` (octets d'origine sous un
+    bloc `Resent-*`, enveloppe = `targets`) ; `intro`, `reply_to` et
+    `subject_prefix` y sont ignorés. `attachment` et `inline` rendent un
+    `EmailMessage` adressé à `targets` en Cci interne. Lève `SmtpError`
+    sur une destination refusée ou des octets illisibles.
+    """
+    from script.todo.mail import smtp_send
+
+    if opts.mode == "redirect":
+        return smtp_send.build_redirect(
+            account, raw, targets, date=date, msgid=msgid
+        )
+    build = (
+        smtp_send.build_forward_attached
+        if opts.mode == "attachment"
+        else smtp_send.build_forward_inline
+    )
+    return build(
+        account,
+        raw,
+        targets,
+        intro=intro,
+        reply_to=reply_to,
+        subject_prefix=subject_prefix,
+        date=date,
+        msgid=msgid,
+    )
+
+
+def forward_reply_to(view, own, others) -> str:
+    """Le `Reply-To` d'un transfert, en forme d'envoi.
+
+    Les adresses de la PREMIÈRE occurrence de `Reply-To` de l'original,
+    chacune passée par `smtp_address` (refusée : ignorée), moins celles de
+    `own` et de `others` (adresses normalisées), sans doublon, jointes par
+    « , ». S'il n'en reste aucune, l'adresse de From ; « » si elle n'est
+    pas admise non plus. Une notification `noreply` dont le `Reply-To`
+    désigne le demandeur reste ainsi joignable par la destination qui
+    répond.
+    """
+    from email.utils import getaddresses
+
+    first = (view.extra.get("reply-to") or "").split("\n", 1)[0]
+    kept: list[str] = []
+    for _name, address in getaddresses([first]):
+        try:
+            form = smtp_address(address.strip())
+        except SmtpError:
+            continue
+        norm = normalize_address(form)
+        if norm in own or norm in others:
+            continue
+        if all(normalize_address(k) != norm for k in kept):
+            kept.append(form)
+    if kept:
+        return ", ".join(kept)
+    try:
+        return smtp_address(rules_filter.sole_address(view.frm, raw=True))
+    except SmtpError:
+        return ""
+
+
+def _first_msgid(value: str) -> str:
+    """Le premier identifiant d'un en-tête d'enfilage, ou « »."""
+    from script.todo.mail.smtp_send import _msgid_tokens
+
+    tokens = _msgid_tokens(value)
+    return tokens[0] if tokens else ""
+
+
+def _own_send_check(store, view, forward_ids) -> Callable[[], bool]:
+    """Le contrôle `GuardContext.is_own_send` d'un message : son
+    Message-ID est l'un de nos envois de règle, quel qu'en soit le type,
+    ou le premier identifiant de son `In-Reply-To` est un envoi d'une
+    règle de `forward_ids`."""
+
+    def check() -> bool:
+        if store.is_rule_send(view.msgid):
+            return True
+        return store.is_rule_send(
+            _first_msgid(view.in_reply_to), rule_ids=forward_ids
+        )
+
+    return check
+
+
+def _forward_ids(rules) -> frozenset:
+    """Les identifiants des règles `forward` de `rules`, actives ou non :
+    les envois d'une règle désactivée restent les nôtres."""
+    return frozenset(r.id for r in rules if r.action.kind == "forward")
 
 
 def fetch_inbox_header(session, uid: int, *, uidvalidity: int, verrou=None):
@@ -502,6 +693,7 @@ class _Pass:
         # Relues SOUS verrou : une règle désactivée ou modifiée depuis le
         # pré-contrôle n'agit pas avec l'ancienne version.
         rules = storage.load(name, base)
+        self.forward_ids = _forward_ids(rules)
         self.actives = self._actives(rules)
         self.result.active_rules = len(self.actives)
         if not self.actives:
@@ -592,7 +784,7 @@ class _Pass:
         storage.save_state(name, st, base=base, lock_held=True)
 
         self.own = account_addresses(self.account)
-        self.others = _other_addresses(self.account, self.all_accounts)
+        self.others = other_account_addresses(self.account, self.all_accounts)
         self.domain = (getattr(self.account, "email", "") or "").rpartition(
             "@"
         )[2]
@@ -730,9 +922,14 @@ class _Pass:
             )
             return
         loader = self._body_loader(view.uid)
+        # Paresseux : rien n'est lu tant qu'aucune règle `forward` ne
+        # décide d'envoyer, puis une seule fois pour toutes.
+        raw = make_raw_loader(
+            self.session, self.inbox, view.uid, self.verrou, size=view.size
+        )
         for rule in self.actives:
             try:
-                stop = self._apply(rule, view, msg_key, loader)
+                stop = self._apply(rule, view, msg_key, loader, raw)
             except _Hole:
                 raise
             except RegexTimeout as exc:
@@ -753,7 +950,7 @@ class _Pass:
         (`make_body_loader`)."""
         return make_body_loader(self.session, self.inbox, uid, self.verrou)
 
-    def _context(self, rule, msg_key) -> guards.GuardContext:
+    def _context(self, rule, msg_key, view) -> guards.GuardContext:
         store = self.store
 
         def last_send_at(sender, target):
@@ -770,6 +967,7 @@ class _Pass:
             is_logged=lambda: store.rule_log_seen(rule.id, msg_key),
             last_send_at=last_send_at,
             auth_serv_id=self.report.auth_serv_id,
+            is_own_send=_own_send_check(store, view, self.forward_ids),
         )
 
     def _claim(self, rule, view, msg_key, d, outcome, reason) -> bool:
@@ -790,10 +988,17 @@ class _Pass:
             fingerprint=rule.fingerprint(),
         )
 
-    def _apply(self, rule, view, msg_key, loader) -> bool:
-        """Une règle sur un message. Rend vrai pour « arrêter ici »."""
+    def _apply(self, rule, view, msg_key, loader, raw=None) -> bool:
+        """Une règle sur un message. Rend vrai pour « arrêter ici ».
+
+        `raw` est le chargeur des octets complets du message
+        (`make_raw_loader`), partagé entre les règles ; seule une règle
+        `forward` qui va envoyer l'appelle.
+        """
         try:
-            d = guards.decide(rule, view, self._context(rule, msg_key), loader)
+            d = guards.decide(
+                rule, view, self._context(rule, msg_key, view), loader
+            )
         except BodyUnavailable as exc:
             if not exc.online:
                 raise _Hole() from exc
@@ -805,9 +1010,18 @@ class _Pass:
                 "règles %s : règle %s, body_unavailable", self.name, rule.id
             )
             return False
+        except RegexTimeout:
+            raise
+        except RuleError as exc:
+            # Options illisibles, lues après le filtre : il a apparié, et
+            # « arrêter ici » vaut comme pour un échec de construction.
+            self._fail(rule, view, msg_key, "build_error", exc)
+            return rule.stop_after
         if d.reason == guards.SEND:
             try:
-                self._send(rule, view, msg_key, d)
+                self._send(rule, view, msg_key, d, raw)
+            except _Hole:
+                raise
             except Exception as exc:
                 # Le filtre a apparié : « arrêter ici » vaut même quand la
                 # réponse n'a pas pu être construite.
@@ -955,18 +1169,26 @@ class _Pass:
             return None
         return subject, rendered
 
-    def _send(self, rule, view, msg_key, d) -> None:
-        """Construit la réponse, la réserve au journal, puis choisit sa
-        sortie : écartée (plafond quotidien d'un rapport), retenue, file ou
-        envoi direct."""
+    def _send(self, rule, view, msg_key, d, raw_loader=None) -> None:
+        """Construit le message (réponse ou redirection), puis le confie à
+        `_dispatch`. Rien ne part si la construction a déjà journalisé un
+        échec ou un écart."""
+        if rule.action.kind == "forward":
+            msg = self._build_forward(rule, view, msg_key, d, raw_loader)
+        else:
+            msg = self._build_reply(rule, view, msg_key, d)
+        if msg is not None:
+            self._dispatch(rule, view, msg_key, d, msg)
+
+    def _build_reply(self, rule, view, msg_key, d):
+        """La réponse rendue, ou None après avoir journalisé l'échec."""
         from script.todo.mail import smtp_send
 
-        store, now = self.store, self.now()
-        built = self._render(rule, view, msg_key, d, now)
+        built = self._render(rule, view, msg_key, d, self.now())
         if built is None:
-            return
+            return None
         subject, rendered = built
-        msg = smtp_send.build_auto_reply(
+        return smtp_send.build_auto_reply(
             self.account,
             d.target_addr,
             subject,
@@ -977,11 +1199,89 @@ class _Pass:
             inline_images=rendered.inline,
             attachment_parts=rendered.attachments,
         )
+
+    def _build_forward(self, rule, view, msg_key, d, raw_loader):
+        """Le transfert ou la redirection, ou None après avoir journalisé.
+
+        Plafond atteint alors que la règle a déjà `FORWARD_CAP_HELD_MAX`
+        entrées en file : `skipped/pass_cap` ou `skipped/hour_cap`, sans
+        FETCH. Octets indisponibles hors ligne : `_Hole`, le message sera
+        repris. FETCH en échec : `failed/body_unavailable`. Message plus
+        gros que `FORWARD_MAX_BYTES` une fois lu : `skipped/too_big`. Une
+        `SmtpError` de construction traverse jusqu'à `_apply`
+        (`build_error`).
+        """
+        opts = rules_model.forward_options(rule.action)
+        if self._forward_cap_full(rule, view, msg_key, d):
+            return None
+        try:
+            if raw_loader is None:
+                raise BodyUnavailable(online=True)
+            raw = raw_loader()
+        except BodyUnavailable as exc:
+            if not exc.online:
+                raise _Hole() from exc
+            if self._claim(
+                rule, view, msg_key, d, "failed", "body_unavailable"
+            ):
+                self.result.failed += 1
+            _logger.error(
+                "règles %s : règle %s, body_unavailable", self.name, rule.id
+            )
+            return None
+        except MessageTooBig:
+            if self._claim(rule, view, msg_key, d, "skipped", "too_big"):
+                self.result.skipped["too_big"] += 1
+            _logger.info("règles %s : règle %s, too_big", self.name, rule.id)
+            return None
+        return forward_message(
+            self.account,
+            opts,
+            raw,
+            list(d.targets),
+            intro=rule.action.body,
+            reply_to=forward_reply_to(view, self.own, self.others),
+        )
+
+    def _forward_cap_full(self, rule, view, msg_key, d) -> bool:
+        """Vrai, après avoir journalisé l'écart, quand un plafond
+        retiendrait ce transfert et que la règle a déjà
+        `FORWARD_CAP_HELD_MAX` entrées en file. Appelé avant le
+        téléchargement : au-delà de la borne, aucun octet n'est lu."""
+        hold = hold_reason(
+            self.store,
+            rule,
+            now=self.now(),
+            hold_until=self.state.hold_until,
+            sends_this_pass=self.sends_this_pass,
+            max_per_pass=self.max_per_pass,
+            max_per_hour=self.max_per_hour,
+        )
+        if hold not in ("pass_cap", "hour_cap"):
+            return False
+        if self.store.outbox_rule_count(rule.id) < FORWARD_CAP_HELD_MAX:
+            return False
+        if self._claim(rule, view, msg_key, d, "skipped", hold):
+            self.result.skipped[hold] += 1
+        self.result.warn(t("mail_rules_cap_warning"))
+        _logger.info("règles %s : règle %s, %s", self.name, rule.id, hold)
+        return True
+
+    def _dispatch(self, rule, view, msg_key, d, msg) -> None:
+        """Réserve le message au journal, puis choisit sa sortie : écarté
+        (plafond quotidien d'un rapport), retenu, file ou envoi direct.
+
+        Le Message-ID d'un message construit par nous entre dans
+        `auto_sent` avant l'envoi ; celui d'une redirection est celui de
+        l'original et n'y entre pas.
+        """
+        store, now = self.store, self.now()
         if not self._claim(rule, view, msg_key, d, "pending", None):
             # Un autre processus a réservé ce message pour cette règle.
             self.result.skipped["duplicate"] += 1
             return
-        store.mark_auto_sent(msg["Message-ID"] or "", rule.id, now)
+        if not isinstance(msg, RawOutgoing):
+            store.mark_auto_sent(msg["Message-ID"] or "", rule.id, now)
 
         hold = hold_reason(
             store,
@@ -1066,13 +1366,29 @@ class _Pass:
         _logger.info("règles %s : règle %s, sent", self.name, rule.id)
 
     def _queue(self, rule, msg_key, msg, now, outcome, reason) -> None:
-        """Met la réponse en file ET avance le journal, en une transaction."""
+        """Met le message en file ET avance le journal, en une transaction.
+
+        Une redirection y garde son enveloppe dans les destinataires de
+        l'entrée (`auto_redirect`) ; un transfert (`auto_forward`) et une
+        réponse (`auto_reply`) portent la leur dans leurs en-têtes.
+        """
         from script.todo.mail.smtp_send import recipients
 
+        if isinstance(msg, RawOutgoing):
+            to_text, subject = ", ".join(msg.envelope), msg.subject
+            kind = "auto_redirect"
+        else:
+            to_text, subject = ", ".join(recipients(msg)), msg["Subject"]
+            kind = (
+                "auto_forward"
+                if rule.action.kind == "forward"
+                else "auto_reply"
+            )
         queue_id = self.store.queue_auto(
             msg.as_bytes(),
-            ", ".join(recipients(msg)),
-            msg["Subject"] or "",
+            to_text,
+            subject or "",
+            kind=kind,
             held=outcome == "held",
             rule_id=rule.id,
             source_key=msg_key,
@@ -1098,6 +1414,31 @@ class _Pass:
 
 
 @dataclass
+class ForwardPreview:
+    """Ce qu'une règle `forward` enverrait pour un message.
+
+    `mode` : celui des options. `targets` / `removed` : comme
+    `guards.Decision`, calculés quel que soit le verdict. `size` : octets
+    du message (RFC822.SIZE, sinon longueur lue ; 0 inconnue). `outgoing` :
+    le message construit (`EmailMessage` ou `smtp_send.RawOutgoing`),
+    adressé aux destinations retenues, ou à l'adresse du compte quand
+    aucune n'est retenue (`preview_self`). `reply_to` : le `Reply-To` d'un
+    transfert (`forward_reply_to`). `raw` : les octets lus, gardés pour
+    `send_trial`. `error` : pourquoi rien n'a été construit (« » sinon).
+    """
+
+    mode: str
+    targets: tuple = ()
+    removed: tuple = ()
+    size: int = 0
+    outgoing: object | None = None
+    preview_self: bool = False
+    reply_to: str = ""
+    raw: bytes | None = field(default=None, repr=False)
+    error: str = ""
+
+
+@dataclass
 class Simulation:
     """Ce qu'une règle ferait d'un message, calculé par `simulate`.
 
@@ -1113,7 +1454,10 @@ class Simulation:
     le verdict de `guards.stats_authenticated` pour une règle `stats`,
     None sinon. `hold` est le code de `hold_reason` quand le verdict réel
     est d'envoyer ; `auth_serv_unset` est vrai pour une règle `stats` dont
-    les réglages n'exigent aucun identifiant de serveur.
+    les réglages n'exigent aucun identifiant de serveur. `forward` est
+    l'aperçu d'une règle `forward` (`ForwardPreview`), qui n'a jamais de
+    `rendered`. `kind` est le type de l'action de la règle essayée.
+    `sendable` dit si l'essai peut être envoyé à soi-même.
     """
 
     rule_enabled: bool
@@ -1131,6 +1475,21 @@ class Simulation:
     authenticated: bool | None
     hold: str = ""
     auth_serv_unset: bool = False
+    forward: ForwardPreview | None = None
+    kind: str = ""
+
+    @property
+    def sendable(self) -> bool:
+        """Vrai si `send_trial` a de quoi envoyer : une réponse rendue, ou
+        les octets d'un message à relayer sans erreur de construction."""
+        if self.rendered is not None:
+            return True
+        preview = self.forward
+        return (
+            preview is not None
+            and preview.raw is not None
+            and not preview.error
+        )
 
 
 def simulate(
@@ -1145,6 +1504,7 @@ def simulate(
     rules_base=None,
     report_settings=None,
     now: Callable[[], float] = time.time,
+    raw_loader=None,
 ) -> Simulation:
     """Ce que la règle ferait de ce message, sans rien écrire ni envoyer.
 
@@ -1152,8 +1512,10 @@ def simulate(
     instantané du rapport ne sont écrits, et le verrou du compte n'est pas
     pris. `header` est un `HeaderInfo` (en-têtes complets) ou une ligne du
     cache (`headers_complete` faux). `report_settings` remplace les
-    réglages du rapport lus du disque. Ne lève jamais : une exception
-    devient `error`.
+    réglages du rapport lus du disque. `raw_loader` rend les octets
+    complets du message (`make_raw_loader`) pour l'aperçu d'une règle
+    `forward` ; None, l'aperçu dit que le message est indisponible. Ne lève
+    jamais : une exception devient `error`.
     """
     sim = Simulation(
         rule_enabled=bool(rule.enabled),
@@ -1169,6 +1531,7 @@ def simulate(
         headers_complete=headers_complete,
         auth_serv_id="",
         authenticated=None,
+        kind=rule.action.kind,
     )
     try:
         _simulate(
@@ -1182,6 +1545,7 @@ def simulate(
             rules_base=rules_base,
             report_settings=report_settings,
             instant=int(now()),
+            raw_loader=raw_loader,
         )
     except Exception as exc:
         sim.rendered = None
@@ -1202,6 +1566,7 @@ def _simulate(
     rules_base,
     report_settings,
     instant: int,
+    raw_loader=None,
 ) -> None:
     """Remplit `sim` ; voir `simulate`."""
     from script.todo.mail import smtp_send
@@ -1247,10 +1612,13 @@ def _simulate(
     ctx = guards.GuardContext(
         now=instant,
         own_addresses=account_addresses(account),
-        other_account_addresses=_other_addresses(account, all_accounts),
+        other_account_addresses=other_account_addresses(account, all_accounts),
         is_logged=lambda: store.rule_log_seen(rule.id, msg_key),
         last_send_at=last_send_at,
         auth_serv_id=settings.auth_serv_id,
+        is_own_send=_own_send_check(
+            store, view, _trial_forward_ids(name, base, rule)
+        ),
     )
     try:
         sim.reason = guards.decide(rule, view, ctx, loader).reason
@@ -1295,6 +1663,16 @@ def _simulate(
         return
     if sim.error:
         return
+    if rule.action.kind == "forward":
+        try:
+            opts = rules_model.forward_options(rule.action)
+        except RuleError as exc:
+            sim.error = str(exc)
+            return
+        sim.forward = _forward_preview(
+            account, rule, opts, view, ctx, raw_loader
+        )
+        return
     domain = (getattr(account, "email", "") or "").rpartition("@")[2]
     try:
         media = {
@@ -1327,6 +1705,61 @@ def _simulate(
     sim.subject, sim.rendered = subject, rendered
 
 
+def _trial_forward_ids(name: str, base, rule) -> frozenset:
+    """Les règles `forward` du compte, plus la règle essayée si elle en est
+    une et n'est pas encore enregistrée ; un fichier illisible n'en donne
+    que celle-ci."""
+    try:
+        rules = list(storage.load(name, base))
+    except RuleError:
+        rules = []
+    return _forward_ids(rules + [rule])
+
+
+def _forward_preview(account, rule, opts, view, ctx, raw_loader):
+    """L'aperçu d'une règle `forward` pour un message (`ForwardPreview`).
+
+    Rien n'est lu au-delà de `FORWARD_MAX_BYTES` ; sans destination
+    retenue, le message est construit adressé au compte lui-même.
+    """
+    preview = ForwardPreview(mode=opts.mode)
+    preview.targets, preview.removed = guards.forward_targets(rule, view, ctx)
+    preview.size = view.size
+    preview.reply_to = forward_reply_to(
+        view, ctx.own_addresses, ctx.other_account_addresses
+    )
+    if view.size > FORWARD_MAX_BYTES:
+        preview.error = t("mail_rules_reason_too_big")
+        return preview
+    if raw_loader is None:
+        preview.error = t("mail_rules_reason_body_unavailable")
+        return preview
+    try:
+        raw = raw_loader()
+    except BodyUnavailable:
+        preview.error = t("mail_rules_reason_body_unavailable")
+        return preview
+    except MessageTooBig as exc:
+        preview.size = exc.size
+        preview.error = t("mail_rules_reason_too_big")
+        return preview
+    preview.raw = raw
+    preview.size = preview.size or len(raw)
+    preview.preview_self = not preview.targets
+    try:
+        preview.outgoing = forward_message(
+            account,
+            opts,
+            raw,
+            list(preview.targets) or [account.email],
+            intro=rule.action.body,
+            reply_to=preview.reply_to,
+        )
+    except SmtpError as exc:
+        preview.error = str(exc)
+    return preview
+
+
 def send_trial(
     session,
     rule,
@@ -1346,24 +1779,52 @@ def send_trial(
     journal des règles, aucun plafond ni limite, aucune file : hors ligne,
     `RuleError`. Une réponse non rendue lève `RuleError` ; les autres
     exceptions de `deliver` traversent.
+
+    Règle `forward` : les octets lus par l'essai repartent vers le compte
+    SEULEMENT. Un transfert garde le `Reply-To` de l'aperçu, prend le
+    préfixe d'essai et entre dans `auto_sent` ; une redirection part
+    inchangée sous son bloc `Resent-*`, sans rien dans `auto_sent` (son
+    Message-ID est celui de l'original), et sera écartée au retour
+    (`resent_loop`).
     """
     from script.todo.mail import smtp_send
     from script.todo.mail.tui import DeliverOffline
 
-    rendered = sim.rendered
-    if rendered is None:
-        raise RuleError(t("mail_rules_trial_unavailable"))
     account = session.account
-    msg = smtp_send.build_auto_reply(
-        account,
-        account.email,
-        f"{t('mail_rules_trial_subject_prefix')} {sim.subject}",
-        rendered.text,
-        html=rendered.html,
-        inline_images=rendered.inline,
-        attachment_parts=rendered.attachments,
-    )
-    session.store.mark_auto_sent(msg["Message-ID"] or "", rule.id, int(now()))
+    prefix = t("mail_rules_trial_subject_prefix")
+    if rule.action.kind == "forward":
+        preview = sim.forward
+        if preview is None or preview.raw is None or preview.error:
+            raise RuleError(t("mail_rules_trial_unavailable"))
+        try:
+            msg = forward_message(
+                account,
+                rules_model.forward_options(rule.action),
+                preview.raw,
+                [account.email],
+                intro=rule.action.body,
+                reply_to=preview.reply_to,
+                subject_prefix=prefix,
+            )
+        except SmtpError as exc:
+            raise RuleError(str(exc)) from exc
+    else:
+        rendered = sim.rendered
+        if rendered is None:
+            raise RuleError(t("mail_rules_trial_unavailable"))
+        msg = smtp_send.build_auto_reply(
+            account,
+            account.email,
+            f"{prefix} {sim.subject}",
+            rendered.text,
+            html=rendered.html,
+            inline_images=rendered.inline,
+            attachment_parts=rendered.attachments,
+        )
+    if not isinstance(msg, RawOutgoing):
+        session.store.mark_auto_sent(
+            msg["Message-ID"] or "", rule.id, int(now())
+        )
     if deliver_fn is None:
         # Importé à l'appel : un remplacement de `tui.deliver` s'applique.
         from script.todo.mail.tui import deliver as deliver_fn

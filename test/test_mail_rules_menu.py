@@ -32,6 +32,7 @@ from script.todo.todo_i18n import t
 
 OWN = "boite.regles@example.org"
 CAROLE = "carole.regle@example.org"
+DENIS = "denis.tri@example.org"
 T0 = 1_780_000_000
 
 
@@ -151,6 +152,37 @@ class TestListAndChange(RulesMenuCase):
         self.assertIn(t("mail_rules_kind_reply"), sortie)
         self.assertIn('"*@example.net"', sortie)
         self.assertIn(t("mail_rules_match_all"), sortie)
+
+    def test_the_list_shows_forward_destinations(self):
+        rule = new_rule("forward", "Vers l'équipe")
+        rule.action.options.update(
+            {"targets": [CAROLE, DENIS], "mode": "redirect"}
+        )
+        storage.upsert_rule("perso", rule, base=self.base)
+        self.regles("Absence")
+        sortie = self.lancer("1", "0")
+        self.assertIn(t("mail_rules_kind_forward"), sortie)
+        self.assertIn(
+            f"        → {t('mail_rules_fwd_mode_redirect')} : "
+            f"{CAROLE}, {DENIS}",
+            sortie,
+        )
+        # Une seule ligne de destinations : celle de la règle forward.
+        self.assertEqual(sortie.count("→"), 1)
+
+    def test_toggle_works_for_a_forward_rule(self):
+        rule = new_rule("forward", "Renvoi")
+        rule.action.options["targets"] = [CAROLE]
+        storage.upsert_rule(
+            "perso", rule, rearm=Armed(7, 40, T0), base=self.base
+        )
+        self.lancer("2", "1", "0")
+        regle = storage.load("perso", base=self.base)[0]
+        self.assertFalse(regle.enabled)
+        self.assertIsNone(regle.armed)
+        self.assertEqual(regle.action.options["targets"], [CAROLE])
+        self.lancer("2", "1", "0")
+        self.assertTrue(storage.load("perso", base=self.base)[0].enabled)
 
     def test_an_empty_list_says_so(self):
         sortie = self.lancer("1", "0")
@@ -398,6 +430,43 @@ class TestTrial(RulesMenuCase):
         self.assertTrue(
             msg["Subject"].startswith(t("mail_rules_trial_subject_prefix"))
         )
+        self.assertIn(f"{t('mail_rules_trial_sent')} parti", sortie)
+
+    def test_menu_trial_of_a_forward_rule_prints_the_destinations(self):
+        store = self.magasin()
+        try:
+            store.write_body(
+                "INBOX",
+                1,
+                (
+                    f"From: {CAROLE}\r\nTo: {OWN}\r\nSubject: Devis\r\n"
+                    "Message-ID: <1@example.org>\r\n\r\nCorps du devis.\r\n"
+                ).encode(),
+            )
+        finally:
+            store.close()
+        rule = new_rule("forward", "Renvoi")
+        rule.action.options["targets"] = [DENIS, CAROLE]
+        storage.upsert_rule("perso", rule, base=self.base)
+        with mock.patch(
+            "script.todo.mail.tui.deliver", return_value="parti"
+        ) as espion:
+            sortie = self.lancer("7", "2", "1", "o", "0")
+        self.assertIn(
+            f"{t('mail_rules_trial_fwd_mode')} "
+            f"{t('mail_rules_fwd_mode_inline')}",
+            sortie,
+        )
+        self.assertIn(f"{t('mail_rules_trial_fwd_targets')} {DENIS}", sortie)
+        self.assertIn(
+            f"{t('mail_rules_trial_fwd_removed')} {CAROLE} — "
+            f"{t('mail_rules_fwd_removed_sender')}",
+            sortie,
+        )
+        self.assertIn("Corps du devis.", sortie)
+        self.assertNotIn(f"{t('mail_rules_trial_target')} ", sortie)
+        espion.assert_called_once()
+        self.assertEqual(espion.call_args[0][1]["X-ERPLibre-Bcc"], OWN)
         self.assertIn(f"{t('mail_rules_trial_sent')} parti", sortie)
 
     def test_an_unknown_message_number_sends_nothing(self):

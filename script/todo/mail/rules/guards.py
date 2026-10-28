@@ -1,12 +1,27 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Garde-fous d'une réponse automatique : fonction de décision ordonnée.
+"""Garde-fous d'un envoi automatique : fonction de décision ordonnée.
 
 `decide` passe les contrôles de `REASONS` dans l'ordre et s'arrête au
 premier qui s'applique ; aucun ne s'applique, la décision est `SEND`. Les
 fonctions sont pures : le journal et la limite d'envoi se consultent par
 les callables de `GuardContext`, jamais par un accès direct au cache.
+
+Une règle `forward` (redirection) ne répond pas à l'expéditeur : elle
+relaie son message vers d'autres adresses. Transférer une infolettre ou
+une alerte est un usage normal, donc les contrôles « listes et robots »
+d'une réponse (`auto_submitted`, `precedence`, `list`,
+`auto_response_suppress`, `robot_sender`, `not_addressed`) ne s'y
+appliquent que si sa case `skip_lists` est cochée. Les contrôles
+anti-boucle s'y appliquent TOUJOURS : notre propre envoi de règle ou une
+réponse à l'un de nos transferts (`own_message`), une redirection faite
+par ce compte et revenue (`resent_loop`, qui vaut pour tous les types), un
+rapport de remise (`delivery_report`), une réponse automatique d'une
+destination (`auto_reply`), `x_loop`, `null_sender`. Un message trop gros
+(`too_big`) n'est pas relayé, et une destination égale à l'expéditeur
+d'origine, à ce compte ou à un autre compte configuré est retirée pour ce
+message ; s'il n'en reste aucune, `no_forward_target`.
 
 Chaque en-tête supplémentaire peut paraître plusieurs fois dans un
 message ; CHAQUE occurrence est testée à part (« bulk » puis « list » ne
@@ -28,9 +43,17 @@ from script.todo.mail.rules.filter import (
     normalize_address,
     sole_address,
 )
-from script.todo.mail.rules.model import MessageView, Rule
-from script.todo.mail.smtp_send import X_LOOP_MARKER
+from script.todo.mail.rules.model import (
+    FORWARD_MAX_BYTES,
+    FORWARD_MAX_TARGETS,
+    MessageView,
+    Rule,
+    RuleError,
+    forward_options,
+)
+from script.todo.mail.smtp_send import X_LOOP_MARKER, SmtpError, smtp_address
 from script.todo.mail.tui_text import fold
+from script.todo.todo_i18n import t
 
 SILENT_REASONS = frozenset({"not_armed", "duplicate", "no_match"})
 # Ordre d'évaluation : le premier code qui s'applique l'emporte.
@@ -40,6 +63,10 @@ REASONS = (
     "too_old",
     "bad_date",
     "no_match",
+    "own_message",
+    "resent_loop",
+    "delivery_report",
+    "auto_reply",
     "auto_submitted",
     "precedence",
     "list",
@@ -55,6 +82,8 @@ REASONS = (
     "auth_fail",
     "unauthenticated",
     "throttled",
+    "too_big",
+    "no_forward_target",
 )
 # Codes posés par le moteur et la vidange de la file ; le moteur n'en
 # journalise aucun autre.
@@ -86,6 +115,20 @@ ROBOT_LOCALPARTS = re.compile(
     r"bounces?([-+].*)?|.*[-+]bounces?)$",
     re.I,
 )
+# Raisons du retrait d'une destination de redirection pour un message :
+# l'expéditeur d'origine, ce compte, un autre compte configuré.
+FORWARD_REMOVAL_CODES = ("sender", "self", "other_account")
+# Types de tête d'un rapport de remise ou de non-remise (RFC 3462, 3464,
+# 6533).
+DELIVERY_REPORT_TYPES = frozenset(
+    {
+        "multipart/report",
+        "message/delivery-status",
+        "message/global-delivery-status",
+    }
+)
+# Parties locales des robots de remise.
+_REPORT_LOCALPARTS = frozenset({"mailer-daemon", "postmaster"})
 
 # Une chaîne entre guillemets (RFC 5322), barre oblique inverse comprise.
 _QUOTED = r'"(?:[^"\\]|\\[\s\S])*"'
@@ -101,6 +144,10 @@ _PROPERTY_RE = re.compile(
 )
 
 
+def _never() -> bool:
+    return False
+
+
 @dataclass
 class GuardContext:
     """Ce que les garde-fous consultent hors du message.
@@ -111,6 +158,9 @@ class GuardContext:
     de CETTE règle vers cet expéditeur OU cette cible, ou None.
     `auth_serv_id`, s'il n'est pas vide, est l'identifiant de serveur
     qu'une règle `stats` exige du premier `Authentication-Results`.
+    `is_own_send()` dit si le message (son Message-ID, ou le premier
+    identifiant de son `In-Reply-To`) est l'un de nos envois de règle ;
+    seule une règle `forward` le consulte.
     """
 
     now: int
@@ -119,6 +169,7 @@ class GuardContext:
     is_logged: Callable[[], bool]
     last_send_at: Callable[[str, str], int | None]
     auth_serv_id: str = ""
+    is_own_send: Callable[[], bool] = _never
 
 
 @dataclass(frozen=True)
@@ -132,6 +183,9 @@ class Decision:
     comparaisons ; `target_addr` la même telle que reçue, pour l'envoi
     SMTP. `logged` est faux pour `SILENT_REASONS` et
     vrai pour tout autre code, `SEND` compris : un envoi est journalisé.
+    Pour une règle `forward` qui va jusqu'au choix des destinations,
+    `targets` porte les destinations retenues (forme d'envoi) et `removed`
+    les retirées, en paires (adresse, code de `FORWARD_REMOVAL_CODES`).
     """
 
     reason: str
@@ -140,6 +194,8 @@ class Decision:
     target: str
     target_addr: str
     logged: bool
+    targets: tuple = ()
+    removed: tuple = ()
 
 
 def header_values(view: MessageView, name: str) -> list[str]:
@@ -393,13 +449,14 @@ def response_addresses(rule: Rule, view: MessageView) -> tuple[str, str, str]:
     """(expéditeur normalisé, cible normalisée, cible sous sa forme reçue).
 
     Règle `stats` : la cible est l'adresse de From, que l'authentification
-    vérifie et à laquelle se rapporte le délai du demandeur. Autre règle :
-    Return-Path, sinon From, jamais Reply-To. N'évalue ni le filtre ni les
-    garde-fous.
+    vérifie et à laquelle se rapporte le délai du demandeur. Règle
+    `forward` : la cible est aussi From, l'expéditeur du message relayé, et
+    la limite par expéditeur porte sur lui. Règle `reply` : Return-Path,
+    sinon From, jamais Reply-To. N'évalue ni le filtre ni les garde-fous.
     """
     sender_addr = sole_address(view.frm, raw=True)
     sender = normalize_address(sender_addr) if sender_addr else ""
-    if rule.action.kind == "stats":
+    if rule.action.kind in ("stats", "forward"):
         return sender, sender, sender_addr
     if _first_occurrence(view, "Return-Path") is None:
         # Même cible que `reply_target`, sans relire From une seconde fois.
@@ -411,8 +468,116 @@ def _localpart(address: str) -> str:
     return address.rpartition("@")[0]
 
 
-def _check_headers(view: MessageView) -> str | None:
-    """Contrôles 6 à 11 : en-têtes qui signalent un envoi automatique."""
+def resent_from_us(view: MessageView, ctx: GuardContext) -> bool:
+    """Vrai si une occurrence de `Resent-From` porte une adresse de CE
+    compte (`ctx.own_addresses`) : une redirection faite par lui et
+    revenue. Les adresses des autres comptes configurés n'y entrent pas :
+    chacun reconnaît son propre bloc au retour."""
+    for value in header_values(view, "Resent-From"):
+        if any(a in ctx.own_addresses for a in addr_specs(value)):
+            return True
+    return False
+
+
+def is_auto_reply(view: MessageView) -> bool:
+    """Vrai pour une réponse automatique (absence, accusé de réception) :
+    une occurrence d'`Auto-Submitted` dont le premier jeton (avant « ; »,
+    sans casse) est `auto-replied`, ou une `Precedence` égale à
+    `auto_reply`. `auto-generated` n'en est pas une."""
+    for value in header_values(view, "Auto-Submitted"):
+        if fold(value.split(";", 1)[0]).strip() == "auto-replied":
+            return True
+    return any(
+        fold(value).strip() == "auto_reply"
+        for value in header_values(view, "Precedence")
+    )
+
+
+def is_delivery_report(view: MessageView) -> bool:
+    """Vrai pour un rapport de remise ou de non-remise : type de tête (le
+    premier `Content-Type`, avant « ; », sans casse) dans
+    `DELIVERY_REPORT_TYPES`, ou partie locale d'une adresse de From ou du
+    premier Return-Path dans `_REPORT_LOCALPARTS`."""
+    content_type = _first_occurrence(view, "Content-Type") or ""
+    if fold(content_type.split(";", 1)[0]).strip() in DELIVERY_REPORT_TYPES:
+        return True
+    addresses = addr_specs(view.frm)
+    return_path = _first_occurrence(view, "Return-Path")
+    if return_path:
+        addresses += addr_specs(return_path)[:1]
+    return any(_localpart(a) in _REPORT_LOCALPARTS for a in addresses)
+
+
+def forward_targets(
+    rule: Rule, view: MessageView, ctx: GuardContext
+) -> tuple[tuple, tuple]:
+    """(retenues, retirées) d'une règle `forward` pour ce message.
+
+    Dans l'ordre des options, chaque destination est retirée si sa forme
+    normalisée est l'adresse de From ou celle du premier Return-Path
+    (`sender`), une adresse de ce compte (`self`) ou d'un autre compte
+    configuré (`other_account`) ; sinon elle est retenue, en forme
+    d'envoi. Les retirées sont des paires (adresse, code). Lève
+    `RuleError` sur des options illisibles (`model.forward_options`).
+    """
+    senders = {sole_address(view.frm)}
+    return_path = _first_occurrence(view, "Return-Path")
+    if return_path:
+        senders.update(addr_specs(return_path)[:1])
+    senders.discard("")
+    kept, removed = [], []
+    for target in forward_options(rule.action).targets:
+        norm = normalize_address(target)
+        if norm in senders:
+            removed.append((target, "sender"))
+        elif norm in ctx.own_addresses:
+            removed.append((target, "self"))
+        elif norm in ctx.other_account_addresses:
+            removed.append((target, "other_account"))
+        else:
+            kept.append(target)
+    return tuple(kept), tuple(removed)
+
+
+def check_forward_target(
+    text: str,
+    *,
+    own: frozenset,
+    others: frozenset,
+    current=(),
+) -> str:
+    """La forme d'envoi d'une destination saisie, ou `RuleError`.
+
+    Refus, chacun son message suivi de l'adresse ou de la borne : adresse
+    que `smtp_address` refuse (`mail_rules_err_fwd_address`), adresse de
+    ce compte (`mail_rules_err_fwd_self`) ou d'un autre compte
+    (`mail_rules_err_fwd_other_account`), déjà dans `current` sans égard à
+    la casse (`mail_rules_err_fwd_duplicate`), `current` déjà plein
+    (`mail_rules_err_fwd_too_many`). `own` et `others` sont des adresses
+    normalisées (`normalize_address`) ; `text` n'est pas débarrassé de ses
+    blancs.
+    """
+    try:
+        form = smtp_address(text)
+    except SmtpError as exc:
+        raise RuleError(str(exc)) from None
+    norm = normalize_address(form)
+    if norm in own:
+        raise RuleError(f"{t('mail_rules_err_fwd_self')} {form}")
+    if norm in others:
+        raise RuleError(f"{t('mail_rules_err_fwd_other_account')} {form}")
+    if form.lower() in {str(item).lower() for item in current}:
+        raise RuleError(f"{t('mail_rules_err_fwd_duplicate')} {form}")
+    if len(current) >= FORWARD_MAX_TARGETS:
+        raise RuleError(
+            f"{t('mail_rules_err_fwd_too_many')} {FORWARD_MAX_TARGETS}"
+        )
+    return form
+
+
+def _list_headers(view: MessageView) -> str | None:
+    """Les en-têtes des listes et des envois automatiques, dans l'ordre
+    `auto_submitted`, `precedence`, `list`, `auto_response_suppress`."""
     for value in header_values(view, "Auto-Submitted"):
         if fold(value.split(";", 1)[0]).strip() != "no":
             return "auto_submitted"
@@ -425,6 +590,19 @@ def _check_headers(view: MessageView) -> str | None:
         tokens = {fold(token).strip() for token in value.split(",")}
         if tokens & SUPPRESS_TOKENS:
             return "auto_response_suppress"
+    return None
+
+
+def _check_headers(view: MessageView, *, lists: bool = True) -> str | None:
+    """Contrôles des en-têtes qui signalent un envoi automatique.
+
+    `lists` faux saute ceux des listes et des robots (`_list_headers`) ;
+    `x_loop` et `spam` s'appliquent toujours.
+    """
+    if lists:
+        reason = _list_headers(view)
+        if reason is not None:
+            return reason
     marker = X_LOOP_MARKER.lower()
     for value in header_values(view, "X-Loop"):
         if marker in value.lower():
@@ -441,16 +619,19 @@ def _check_addresses(
     sender: str,
     target: str,
     extra: tuple = (),
+    *,
+    lists: bool = True,
 ) -> str | None:
-    """Contrôles 12 à 17 : à qui la réponse partirait.
+    """Contrôles des adresses : à qui l'envoi partirait.
 
     Un From non vide dont aucune adresse sûre ne se tire (illisible,
     plusieurs boîtes, libellé qui porte une autre adresse) donne
     `no_target` même si Return-Path fournit une cible : sous un NON, un
     From illisible ne vaut aucune valeur et rendrait vraie une condition
     écrite pour l'exclure, et les contrôles 14 à 16 ne verraient pas
-    l'expéditeur. Les adresses de `extra` passent aussi les contrôles 14
-    à 16 (robot, nous-mêmes, autre compte), sans être une cible.
+    l'expéditeur. Les adresses de `extra` passent aussi les contrôles de
+    robot, de nous-mêmes et d'autre compte, sans être une cible. `lists`
+    faux saute `robot_sender` et `not_addressed`.
     """
     return_path = _first_occurrence(view, "Return-Path")
     if return_path is not None and not addr_specs(return_path):
@@ -458,12 +639,14 @@ def _check_addresses(
     if not target or (view.frm.strip() and not sender):
         return "no_target"
     people = [address for address in (target, sender, *extra) if address]
-    if any(ROBOT_LOCALPARTS.match(_localpart(a)) for a in people):
+    if lists and any(ROBOT_LOCALPARTS.match(_localpart(a)) for a in people):
         return "robot_sender"
     if any(address in ctx.own_addresses for address in people):
         return "self"
     if any(address in ctx.other_account_addresses for address in people):
         return "other_account"
+    if not lists:
+        return None
     recipients = addr_specs(view.to) + addr_specs(view.cc)
     if not any(address in ctx.own_addresses for address in recipients):
         return "not_addressed"
@@ -504,16 +687,25 @@ def decide(
     adresse, passe tout de même les contrôles de robot, de nous-mêmes et
     d'autre compte. Elle exige en plus un expéditeur authentifié
     (`stats_authenticated`), contrôlé après `auth_fail`.
+
+    Une règle `forward` cible aussi From, avec le même contrôle de son
+    Return-Path. Ses options sont lues après le filtre : des options
+    illisibles lèvent `RuleError`, que le moteur journalise comme un échec
+    de construction. Les contrôles anti-boucle viennent juste après le
+    filtre ; la taille et le choix des destinations, en dernier.
     """
     sender, target, target_addr = response_addresses(rule, view)
     is_stats = rule.action.kind == "stats"
+    is_forward = rule.action.kind == "forward"
     extra = ()
-    if is_stats:
+    if is_stats or is_forward:
         envelope = reply_target(view)
         if _first_occurrence(view, "Return-Path") is not None and envelope:
             extra = (envelope,)
 
-    def verdict(reason: str, matched: bool) -> Decision:
+    def verdict(
+        reason: str, matched: bool, targets=(), removed=()
+    ) -> Decision:
         return Decision(
             reason=reason,
             matched=matched,
@@ -521,6 +713,8 @@ def decide(
             target=target,
             target_addr=target_addr,
             logged=reason not in SILENT_REASONS,
+            targets=tuple(targets),
+            removed=tuple(removed),
         )
 
     if _not_armed(rule, view):
@@ -534,8 +728,17 @@ def decide(
         return verdict("bad_date", False)
     if not rules_filter.evaluate(rule.filter, view, body_loader):
         return verdict("no_match", False)
-    reason = _check_headers(view) or _check_addresses(
-        view, ctx, sender, target, extra
+    if is_forward and ctx.is_own_send():
+        return verdict("own_message", True)
+    if resent_from_us(view, ctx):
+        return verdict("resent_loop", True)
+    if is_forward and is_delivery_report(view):
+        return verdict("delivery_report", True)
+    if is_forward and is_auto_reply(view):
+        return verdict("auto_reply", True)
+    lists = not is_forward or forward_options(rule.action).skip_lists
+    reason = _check_headers(view, lists=lists) or _check_addresses(
+        view, ctx, sender, target, extra, lists=lists
     )
     if reason is None and _auth_fails(view):
         reason = "auth_fail"
@@ -547,4 +750,11 @@ def decide(
         reason = "unauthenticated"
     if reason is None and _throttled(rule, ctx, sender, target):
         reason = "throttled"
+    if reason is None and is_forward:
+        if view.size > FORWARD_MAX_BYTES:
+            return verdict("too_big", True)
+        kept, removed = forward_targets(rule, view, ctx)
+        return verdict(
+            SEND if kept else "no_forward_target", True, kept, removed
+        )
     return verdict(reason or SEND, True)

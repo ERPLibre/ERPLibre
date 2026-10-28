@@ -851,8 +851,11 @@ def outbox_entry_preview(raw: bytes) -> tuple[list, list, list]:
 
     Les `OUTBOX_PREVIEW_LINES` premières lignes de la partie texte, puis les
     noms des images citées par le HTML (`Content-Disposition: inline`) et
-    ceux des pièces jointes. Une partie illisible donne une liste vide
-    plutôt qu'une exception : l'aperçu ne bloque jamais la file.
+    ceux des pièces jointes. Un message joint (`message/rfc822`, ou tout
+    type `message/*` qui contient des parties) compte pour UNE pièce
+    jointe, sous son nom : ses propres parties ne sont pas listées. Une
+    partie illisible donne une liste vide plutôt qu'une exception :
+    l'aperçu ne bloque jamais la file.
     """
     import email
     import email.policy
@@ -866,9 +869,19 @@ def outbox_entry_preview(raw: bytes) -> tuple[list, list, list]:
     except Exception:
         lines = []
     inline, attached = [], []
-    for part in msg.walk():
+    pile = [msg]
+    while pile:
+        part = pile.pop()
+        joint = part is not msg and part.get_content_maintype() == "message"
+        if part.is_multipart() and not joint:
+            # Ordre du message : la pile rend la première partie d'abord.
+            pile.extend(reversed(part.get_payload()))
+            continue
         # Un message d'une seule partie EST son texte : rien à lister.
-        if part.is_multipart() or part is msg:
+        if part is msg:
+            continue
+        if joint:
+            attached.append(part.get_filename() or part.get_content_type())
             continue
         disposition = part.get_content_disposition()
         name = part.get_filename() or ""
@@ -877,6 +890,85 @@ def outbox_entry_preview(raw: bytes) -> tuple[list, list, list]:
         elif part.get_content_maintype() == "image":
             inline.append(name or part.get_content_type())
     return lines, inline, attached
+
+
+def _one_line(value) -> str:
+    """`value` sur une ligne : caractères de contrôle et de format remplacés
+    par une espace, blancs réduits."""
+    import unicodedata
+
+    texte = "".join(
+        " " if unicodedata.category(c) in ("Cc", "Cf") else c
+        for c in str(value or "")
+    )
+    return " ".join(texte.split())
+
+
+def forward_preview_headers(outgoing) -> list[tuple[str, str]]:
+    """Les en-têtes montrés par l'essai d'une règle forward : (nom, valeur).
+
+    Transfert (`EmailMessage`) : From, To, Reply-To, Subject,
+    Auto-Submitted, puis « Bcc » = destinations lues dans `X-ERPLibre-Bcc`,
+    seul endroit où l'essai les montre parmi les en-têtes. Redirection
+    (`smtp_send.RawOutgoing`) : Resent-From et Resent-Date du bloc posé en
+    tête, puis From, To, Subject de l'original, lus par `BytesHeaderParser`
+    sur la section d'en-têtes. Valeurs décodées, sur une ligne ; un
+    en-tête absent ou illisible n'est pas listé.
+    """
+    import email.parser
+    import email.policy
+
+    from script.todo.mail.smtp_send import RawOutgoing
+
+    if isinstance(outgoing, RawOutgoing):
+        msg = email.parser.BytesHeaderParser(
+            policy=email.policy.default
+        ).parsebytes(outgoing.raw or b"")
+        names = [
+            ("Resent-From", "Resent-From"),
+            ("Resent-Date", "Resent-Date"),
+            ("From", "From"),
+            ("To", "To"),
+            ("Subject", "Subject"),
+        ]
+    else:
+        msg = outgoing
+        names = [
+            ("From", "From"),
+            ("To", "To"),
+            ("Reply-To", "Reply-To"),
+            ("Subject", "Subject"),
+            ("Auto-Submitted", "Auto-Submitted"),
+            ("Bcc", "X-ERPLibre-Bcc"),
+        ]
+    headers = []
+    for label, name in names:
+        try:
+            value = msg.get(name)
+        except Exception:
+            continue
+        if value is None:
+            continue
+        value = _one_line(value)
+        if value:
+            headers.append((label, value))
+    return headers
+
+
+def rule_forward_summary(rule) -> str:
+    """« mode : destinations » d'une règle forward, « » pour un autre
+    type ; des options illisibles rendent le texte de leur `RuleError`."""
+    from script.todo.mail.rules import model
+
+    if rule.action.kind != "forward":
+        return ""
+    try:
+        opts = model.forward_options(rule.action)
+    except model.RuleError as exc:
+        return str(exc)
+    return (
+        f"{t(f'mail_rules_fwd_mode_{opts.mode}')} : {', '.join(opts.targets)}"
+    )
 
 
 def trial_simulation(
@@ -896,10 +988,14 @@ def trial_simulation(
     renumérotée depuis `uidvalidity`, ou si la relecture échoue, la ligne
     du cache sert d'en-têtes (sans Cc ni en-têtes supplémentaires, la
     simulation le dit) et le corps vient du cache, `BodyUnavailable` à
-    défaut. Rend une `engine.Simulation` ; ne lève pas.
+    défaut. Les octets complets d'une règle forward suivent le même
+    chemin : `engine.make_raw_loader` en ligne (taille annoncée vérifiée
+    avant tout téléchargement), le cache sinon, `MessageTooBig` au-delà de
+    `FORWARD_MAX_BYTES`. Rend une `engine.Simulation` ; ne lève pas.
     """
     from script.todo.mail.rules import engine
     from script.todo.mail.rules.filter import BODY_TEXT_MAX, BodyUnavailable
+    from script.todo.mail.rules.model import FORWARD_MAX_BYTES
 
     header = engine.fetch_inbox_header(
         session, meta.uid, uidvalidity=uidvalidity, verrou=verrou
@@ -907,6 +1003,13 @@ def trial_simulation(
     if header is not None:
         loader = engine.make_body_loader(
             session, folder, meta.uid, verrou=verrou
+        )
+        raw_loader = engine.make_raw_loader(
+            session,
+            folder,
+            meta.uid,
+            verrou=verrou,
+            size=int(getattr(header, "size", 0) or 0),
         )
     else:
         store = session.store
@@ -919,6 +1022,14 @@ def trial_simulation(
                 raise BodyUnavailable(online=False)
             return extract_body(raw)[0][:BODY_TEXT_MAX]
 
+        def raw_loader() -> bytes:
+            raw = store.read_body(folder, meta.uid)
+            if raw is None:
+                raise BodyUnavailable(online=False)
+            if len(raw) > FORWARD_MAX_BYTES:
+                raise engine.MessageTooBig(len(raw))
+            return bytes(raw)
+
     return engine.simulate(
         session,
         rule,
@@ -927,23 +1038,101 @@ def trial_simulation(
         body_loader=loader,
         headers_complete=header is not None,
         rules_base=rules_base,
+        raw_loader=raw_loader,
     )
+
+
+def _forward_trial_lines(preview) -> list[tuple[str, str]]:
+    """La section de l'essai d'une règle forward (`engine.ForwardPreview`),
+    à la place de la ligne du destinataire : mode, destinations retenues
+    et retirées avec leur raison, taille, puis le message qui partirait
+    (en-têtes, début du texte, pièces), et l'erreur de construction."""
+    from script.todo.mail.smtp_send import RawOutgoing
+
+    lines: list[tuple[str, str]] = [
+        (
+            f"{t('mail_rules_trial_fwd_mode')} "
+            f"{t(f'mail_rules_fwd_mode_{preview.mode}')}",
+            "",
+        )
+    ]
+    if preview.targets:
+        lines.append(
+            (
+                f"{t('mail_rules_trial_fwd_targets')} "
+                f"{', '.join(preview.targets)}",
+                "",
+            )
+        )
+    else:
+        lines.append((t("mail_rules_trial_fwd_no_target"), ""))
+    for address, code in preview.removed:
+        lines.append(
+            (
+                f"  {t('mail_rules_trial_fwd_removed')} {address} — "
+                f"{t(f'mail_rules_fwd_removed_{code}')}",
+                "dim",
+            )
+        )
+    if preview.size > 0:
+        lines.append((f"{t('mail_rules_trial_fwd_size')} {preview.size}", ""))
+    outgoing = preview.outgoing
+    if outgoing is not None:
+        lines.append(("", ""))
+        lines.append((t("mail_rules_trial_fwd_headers"), "bold"))
+        if preview.preview_self:
+            lines.append((t("mail_rules_trial_fwd_preview_self"), "dim"))
+        lines.extend(
+            (f"{nom}: {valeur}", "")
+            for nom, valeur in forward_preview_headers(outgoing)
+        )
+        if isinstance(outgoing, RawOutgoing):
+            lines.append((t("mail_rules_trial_fwd_unchanged"), "dim"))
+        lines.append(("", ""))
+        try:
+            texte, en_ligne, jointes = outbox_entry_preview(
+                outgoing.as_bytes()
+            )
+        except Exception as exc:
+            lines.append((str(exc) or type(exc).__name__, "bold red"))
+        else:
+            lines.extend((ligne, "") for ligne in texte)
+            lines.extend(
+                (f"  {nom} — {t('mail_rules_image_inline')}", "dim")
+                for nom in en_ligne
+            )
+            lines.extend(
+                (f"  {nom} — {t('mail_rules_image_attached')}", "dim")
+                for nom in jointes
+            )
+    if preview.error:
+        lines.append((preview.error, "bold red"))
+    return lines
 
 
 def rule_trial_lines(sim) -> list[tuple[str, str]]:
     """L'essai d'une règle ligne par ligne : (texte, style).
 
-    `sim` est une `engine.Simulation`. Le style (« », « bold », « dim »,
-    « yellow », « bold red ») ne sert qu'à l'écran ; le menu imprime le
-    texte seul. Le texte est BRUT : sujet, adresses, valeurs du filtre et
+    `sim` est une `engine.Simulation`. Pour une règle forward, le verdict
+    d'envoi se lit « transférerait » et la ligne du destinataire laisse la
+    place à la section de `_forward_trial_lines`, ou à rien quand l'aperçu
+    manque : l'expéditeur n'est jamais une destination. Le style (« »,
+    « bold », « dim », « yellow », « bold red ») ne sert qu'à l'écran ; le
+    menu imprime le texte seul. Le texte est BRUT : sujet, adresses, valeurs du filtre et
     corps viennent des messages ou de la règle, et l'appelant les affiche
     sans les interpréter.
     """
     from script.todo.mail.rules.guards import SEND
 
+    relais = sim.forward is not None or sim.kind == "forward"
+
     def verdict(code: str) -> str:
         if code == SEND:
+            if relais:
+                return t("mail_rules_trial_would_forward")
             return t("mail_rules_trial_would_send")
+        if relais and code == "no_target":
+            return t("mail_rules_trial_fwd_no_sender")
         return t(f"mail_rules_reason_{code}")
 
     lines: list[tuple[str, str]] = []
@@ -1002,7 +1191,13 @@ def rule_trial_lines(sim) -> list[tuple[str, str]]:
             lines.append((t("mail_rules_trial_not_authenticated"), "yellow"))
         if sim.auth_serv_unset:
             lines.append((t("mail_stats_report_auth_serv_unset"), "dim"))
-    if sim.target:
+    if sim.forward is not None:
+        lines.extend(_forward_trial_lines(sim.forward))
+    elif relais:
+        # Sans aperçu, aucune destination n'est connue : pas de ligne,
+        # `sim.error` dit pourquoi.
+        pass
+    elif sim.target:
         lines.append((f"{t('mail_rules_trial_target')} {sim.target}", ""))
     else:
         lines.append((t("mail_rules_trial_no_target"), ""))
@@ -1181,11 +1376,24 @@ def flush_outbox(
       restent en file sans nouvel essai : chacune attendrait le même
       délai de connexion ;
     - envoyée, elle est retirée et classée dans Envoyés (`file_in_sent`,
-      sous `verrou`) ; un APPEND raté ne compte pas comme échec d'envoi ;
+      sous `verrou`), sauf une redirection ; un APPEND raté ne compte pas
+      comme échec d'envoi ;
     - refusée, l'erreur est gardée scellée ; après `max_attempts` refus
       PERMANENTS (5xx), un message écrit à la main est retenu (jamais
       détruit), une réponse automatique est retirée
       (`attempts_exhausted`). Un échec transitoire n'est pas plafonné.
+
+    Selon son type (`kind`) :
+    - `manual` : envoi écrit à la main, enveloppe lue dans ses octets ;
+    - `auto_reply` : réponse d'une règle, enveloppe lue dans ses octets ;
+    - `auto_forward` : transfert d'une règle, même chemin qu'une réponse
+      (destinations dans le Cci interne des octets) ;
+    - `auto_redirect` : redirection d'une règle, remise telle quelle
+      (`RawOutgoing`) à l'enveloppe relue dans `sealed_to` par
+      `parse_envelope` ; illisible, l'entrée est retirée
+      (`failed/build_error`) sans connexion ; jamais classée dans Envoyés ;
+    - tout autre type (cache écrit par un code plus récent) est retiré
+      (`failed/build_error`) sans connexion, jamais envoyé.
 
     Les règles sont lues une fois, et seulement si la file porte une entrée
     automatique ; fichier absent ou illisible : ces entrées restent telles
@@ -1198,8 +1406,14 @@ def flush_outbox(
     import email.policy
 
     from script.todo.mail.rules.engine import smtp_failure_is_permanent
+    from script.todo.mail.smtp_send import (
+        RawOutgoing,
+        SmtpError,
+        parse_envelope,
+    )
     from script.todo.mail.smtp_send import connect as smtp_connect
     from script.todo.mail.smtp_send import send as smtp_send_fn
+    from script.todo.mail.store import OUTBOX_AUTO_KINDS
 
     if not session.online:
         return (0, 0, 0)
@@ -1216,7 +1430,8 @@ def flush_outbox(
     injoignable = False
     for entree in entrees:
         ident = entree["id"]
-        manuelle = entree.get("kind", "manual") == "manual"
+        kind = entree.get("kind", "manual")
+        manuelle = kind == "manual"
         rule_id = entree.get("rule_id")
         source = entree.get("source_key")
         instant = int(clock())
@@ -1231,6 +1446,9 @@ def flush_outbox(
                 "%s : file %s retirée, %s/%s", name, ident, outcome, reason
             )
 
+        if kind not in ("manual",) + OUTBOX_AUTO_KINDS:
+            clore("failed", "build_error")
+            continue
         expire = entree.get("expires_at")
         if expire and instant > expire:
             clore("expired", "expired")
@@ -1255,6 +1473,13 @@ def flush_outbox(
             store.outbox_release(ident)
             retenus += 1
             continue
+        enveloppe = None
+        if kind == "auto_redirect":
+            try:
+                enveloppe = parse_envelope(entree.get("to") or "")
+            except SmtpError:
+                clore("failed", "build_error")
+                continue
         if injoignable:
             store.outbox_release(ident)
             continue
@@ -1266,9 +1491,14 @@ def flush_outbox(
         # None avant la connexion, faux pendant, vrai après.
         connecte = None
         try:
-            message = email.message_from_bytes(
-                brut, policy=email.policy.default
-            )
+            if enveloppe is not None:
+                message = RawOutgoing(
+                    brut, enveloppe, entree.get("subject") or ""
+                )
+            else:
+                message = email.message_from_bytes(
+                    brut, policy=email.policy.default
+                )
             connecte = False
             transport = connect_fn(session.account, session.current_secret())
             connecte = True
@@ -1295,6 +1525,8 @@ def flush_outbox(
             store.rule_log_set_outcome(rule_id, source, "sent")
         store.drop_queued(ident)
         partis += 1
+        if enveloppe is not None:
+            continue
         erreur = file_in_sent(session, message, verrou)
         if erreur is not None:
             _logger.error(
@@ -1337,15 +1569,21 @@ def deliver(
     `queue_offline=False`, `deliver` lève `DeliverOffline` sans rien
     écrire, pour un appelant qui met lui-même en file sous une autre
     forme (réponse automatique : règle, échéance, journal).
+
+    Un `RawOutgoing` (redirection) lève `DeliverOffline` hors ligne quel
+    que soit `queue_offline` : une entrée manuelle perdrait son enveloppe.
+    En ligne, il part à son enveloppe et n'est NI classé dans Envoyés NI
+    suivi d'une relecture d'Envoyés : sa copie porterait le From d'un tiers.
     """
+    from script.todo.mail.smtp_send import RawOutgoing, recipients
     from script.todo.mail.smtp_send import connect as smtp_connect
-    from script.todo.mail.smtp_send import recipients
     from script.todo.mail.smtp_send import send as smtp_send_fn
 
     garde = verrou if verrou is not None else contextlib.nullcontext()
 
+    brut = isinstance(msg, RawOutgoing)
     if not session.online:
-        if not queue_offline:
+        if not queue_offline or brut:
             raise DeliverOffline()
         # Mise en file plutôt qu'un refus : le message est écrit, le perdre
         # parce que le réseau manque serait le pire des trois résultats
@@ -1369,6 +1607,8 @@ def deliver(
             transport.quit()
 
     status = f"{t('mail_sent_to')} {', '.join(served)}"
+    if brut:
+        return status
     sent_folder = resolve_sent_folder(session)
     exc = file_in_sent(session, msg, verrou)
     if exc is not None:
@@ -1507,6 +1747,7 @@ def run_tui(
     from script.todo.mail import accounts as mail_accounts
     from script.todo.mail.accounts import PRESETS
     from script.todo.mail.rules import engine as rules_engine
+    from script.todo.mail.rules import guards as rules_guards
     from script.todo.mail.rules import model as rules_model
     from script.todo.mail.rules import report as rules_report
     from script.todo.mail.rules import storage as rules_storage
@@ -4287,6 +4528,14 @@ def run_tui(
         ligne et jointes, échéance. Le focus sur une entrée manuelle le
         vide : un texte resté affiché se lirait comme le sien. Approuver le
         premier envoi d'une règle, c'est relâcher une réponse qu'on a lue.
+        Un transfert ou une redirection d'une règle le dit sous l'en-tête ;
+        le message d'origine joint ou redirigé y est listé comme le reste.
+
+        Une entrée de transfert peut peser des dizaines de Mio : ses octets
+        sont déchiffrés et analysés dans un fil, jamais sur celui de
+        l'interface. L'en-tête et l'échéance s'affichent aussitôt, le texte
+        à son arrivée ; un aperçu arrivé après un changement de focus est
+        ignoré.
         """
 
         BINDINGS = [
@@ -4307,6 +4556,9 @@ def run_tui(
             self.session = session
             # Entrées affichées, par identifiant de file.
             self._entrees: dict = {}
+            # Numéro du dernier aperçu demandé : un résultat plus ancien,
+            # arrivé en retard, n'écrase pas le plus récent.
+            self._generation = 0
 
         def compose(self):
             with Vertical():
@@ -4357,11 +4609,45 @@ def run_tui(
 
         def _montrer_apercu(self, entree) -> None:
             """Remplit `#outbox_preview` pour une entrée automatique ; le
-            vide pour une entrée manuelle ou sans entrée."""
+            vide pour une entrée manuelle ou sans entrée.
+
+            L'en-tête (destinataires, sujet, type d'envoi) et l'échéance
+            s'affichent tout de suite ; les octets de l'entrée sont lus et
+            analysés dans un fil, puis remplacent la ligne d'attente.
+            """
             apercu = self.query_one("#outbox_preview", Static)
+            self._generation += 1
+            generation = self._generation
             if entree is None or entree["kind"] == "manual":
                 apercu.update("")
                 return
+            texte = self._tete_apercu(entree)
+            texte.append(f"\n{t('mail_rules_outbox_loading')}", style="dim")
+            texte.append_text(self._pied_apercu(entree))
+            apercu.update(texte)
+            store, ident = self.session.store, entree["id"]
+
+            def travail() -> None:
+                try:
+                    resultat = outbox_entry_preview(
+                        store.queued_raw(ident) or b""
+                    )
+                    erreur = ""
+                except Exception as exc:
+                    resultat, erreur = None, str(exc) or type(exc).__name__
+                self.app.call_from_thread(
+                    self._apercu_pret, generation, entree, resultat, erreur
+                )
+
+            self.run_worker(
+                travail,
+                thread=True,
+                exclusive=True,
+                group="outbox_preview",
+            )
+
+        @staticmethod
+        def _tete_apercu(entree) -> "Text":
             texte = Text()
             texte.append(t("mail_outbox_preview"), style="bold")
             # `Text.append` : le destinataire et le sujet viennent du
@@ -4370,34 +4656,56 @@ def run_tui(
                 f"\n{entree.get('to') or ''} — {entree.get('subject') or ''}",
                 style="bold",
             )
-            try:
-                lignes, en_ligne, jointes = outbox_entry_preview(
-                    self.session.store.queued_raw(entree["id"]) or b""
-                )
-            except Exception as exc:
-                texte.append(f"\n{t('mail_outbox_error')} {exc}")
-                apercu.update(texte)
-                return
-            # `Text.append` : le corps vient de la règle, les noms
-            # d'images du disque ; aucun n'est lu comme du balisage.
-            for ligne in lignes:
-                texte.append(f"\n{ligne}")
-            for nom in en_ligne:
-                texte.append(
-                    f"\n{nom} — {t('mail_rules_image_inline')}",
-                    style="dim",
-                )
-            for nom in jointes:
-                texte.append(
-                    f"\n{nom} — {t('mail_rules_image_attached')}",
-                    style="dim",
-                )
+            genre = {
+                "auto_forward": "mail_rules_outbox_forward",
+                "auto_redirect": "mail_rules_outbox_redirect",
+            }.get(entree.get("kind"))
+            if genre:
+                texte.append(f"\n{t(genre)}", style="dim")
+            return texte
+
+        @staticmethod
+        def _pied_apercu(entree) -> "Text":
+            texte = Text()
             if entree.get("expires_at"):
                 texte.append(
                     f"\n{t('mail_outbox_expires')}"
                     f" {format_epoch(entree['expires_at'])}",
                     style="dim",
                 )
+            return texte
+
+        def _apercu_pret(self, generation, entree, resultat, erreur) -> None:
+            """Affiche l'aperçu lu par le fil, s'il est encore le dernier
+            demandé : un résultat en retard n'écrase pas celui d'une
+            entrée choisie depuis."""
+            if generation != self._generation:
+                return
+            try:
+                apercu = self.query_one("#outbox_preview", Static)
+            except NoMatches:
+                return
+            texte = self._tete_apercu(entree)
+            if resultat is None:
+                texte.append(f"\n{t('mail_outbox_error')} {erreur}")
+            else:
+                lignes, en_ligne, jointes = resultat
+                # `Text.append` : le corps vient de la règle ou du message
+                # d'origine, les noms des pièces aussi ; aucun n'est lu
+                # comme du balisage.
+                for ligne in lignes:
+                    texte.append(f"\n{ligne}")
+                for nom in en_ligne:
+                    texte.append(
+                        f"\n{nom} — {t('mail_rules_image_inline')}",
+                        style="dim",
+                    )
+                for nom in jointes:
+                    texte.append(
+                        f"\n{nom} — {t('mail_rules_image_attached')}",
+                        style="dim",
+                    )
+            texte.append_text(self._pied_apercu(entree))
             apercu.update(texte)
 
         def _ligne(self, entree):
@@ -6001,9 +6309,10 @@ def run_tui(
         résultat (`rule_trial_lines`) s'affiche en `Text`. Une boîte de
         réception inconnue du cache, ou sans UIDVALIDITY, ne liste rien.
 
-        `#trial_send` envoie la réponse simulée à l'adresse du compte
-        (`engine.send_trial`, dans un fil) ; il reste grisé tant qu'aucune
-        réponse n'est rendue, et pendant l'envoi.
+        `#trial_send` envoie la réponse simulée, ou le transfert ou la
+        redirection d'une règle forward, à l'adresse du compte SEULEMENT
+        (`engine.send_trial`, dans un fil) ; il reste grisé tant que rien
+        n'est envoyable (`Simulation.sendable`), et pendant l'envoi.
         """
 
         BINDINGS = [
@@ -6132,7 +6441,7 @@ def run_tui(
             try:
                 self.query_one("#trial_result", Static).update(texte)
                 self.query_one("#trial_send", Button).disabled = (
-                    sim.rendered is None or self._envoi
+                    not sim.sendable or self._envoi
                 )
             except NoMatches:
                 return
@@ -6141,7 +6450,7 @@ def run_tui(
             if event.button.id != "trial_send":
                 return
             sim = self.sim
-            if sim is None or sim.rendered is None or self._envoi:
+            if sim is None or not sim.sendable or self._envoi:
                 return
             self._envoi = True
             event.button.disabled = True
@@ -6165,7 +6474,7 @@ def run_tui(
             self._envoi = False
             try:
                 self.query_one("#trial_send", Button).disabled = (
-                    self.sim is None or self.sim.rendered is None
+                    self.sim is None or not self.sim.sendable
                 )
             except NoMatches:
                 return
@@ -6192,11 +6501,16 @@ def run_tui(
         valeur illisible y remet la dernière valeur valide : un champ grisé
         ne porte jamais une erreur que l'utilisateur ne peut plus corriger.
 
-        `#rule_kind` choisit le type d'action (`reply` ou `stats` ; une
-        redirection existante s'affiche grisée). Changer de type fait
-        suivre la limite et le corps restés à la valeur par défaut de
-        l'ancien type ; une règle NEUVE passée à `stats` prend le format
-        des réglages du rapport.
+        `#rule_kind` choisit le type d'action parmi `reply`, `stats` et
+        `forward` (un type inconnu, venu d'un fichier édité à la main,
+        s'affiche grisé). Changer de type fait suivre la limite et le corps
+        restés à la valeur par défaut de l'ancien type ; une règle NEUVE
+        passée à `stats` prend le format des réglages du rapport ; passer à
+        `forward` complète les options qui lui manquent. `#reply_form`
+        ouvre `ForwardFormScreen` pour une règle forward,
+        `ReplyFormScreen` sinon. Rien n'est perdu tant que l'éditeur reste
+        ouvert : ce que le type ne lit pas n'est retiré qu'à
+        l'enregistrement (`clean_action`).
 
         `ctrl+s` valide puis écrit dans un fil (`upsert_rule`) ; une erreur
         s'affiche dans `#rule_status` et l'écran reste ouvert. Pendant
@@ -6267,9 +6581,9 @@ def run_tui(
                 for op in rules_model.GROUP_OPS
             ]
 
-        # Types qu'on peut choisir ; une redirection existante s'ajoute,
-        # grisée, pour rester affichée telle qu'elle est.
-        TYPES = ("reply", "stats")
+        # Types qu'on peut choisir ; un type inconnu s'ajoute, grisé, pour
+        # rester affiché tel qu'il est.
+        TYPES = ("reply", "stats", "forward")
 
         def _options_type(self):
             types = list(self.TYPES)
@@ -6531,6 +6845,8 @@ def run_tui(
         def _cle_bouton_reponse(kind: str) -> str:
             if kind == "stats":
                 return "mail_rules_action_stats"
+            if kind == "forward":
+                return "mail_rules_action_forward"
             return "mail_rules_action_reply"
 
         def _changer_type(self, nouveau) -> None:
@@ -6541,6 +6857,8 @@ def run_tui(
             l'ancien type prend celui du nouveau, un corps écrit à la main
             est gardé. Une règle NEUVE passée à `stats` prend le format des
             réglages du rapport, et le corps par défaut si le sien est vide.
+            Passer à `forward` pose les options par défaut qui manquent ;
+            celles déjà présentes sont gardées.
             """
             action = self.rule.action
             ancien = action.kind
@@ -6566,6 +6884,9 @@ def run_tui(
                     pass
                 if not action.body:
                     action.body = t("mail_stats_default_body")
+            if nouveau == "forward":
+                for cle, valeur in rules_model.forward_defaults().items():
+                    action.options.setdefault(cle, valeur)
             action.kind = nouveau
             self.query_one("#reply_form", Button).label = t(
                 self._cle_bouton_reponse(nouveau)
@@ -6621,8 +6942,13 @@ def run_tui(
             elif ident == "delete_node":
                 self._delete_target()
             elif ident == "reply_form":
+                formulaire = (
+                    ForwardFormScreen
+                    if self.rule.action.kind == "forward"
+                    else ReplyFormScreen
+                )
                 self.app.push_screen(
-                    ReplyFormScreen(self.session, self.base, self.rule.action),
+                    formulaire(self.session, self.base, self.rule.action),
                     self._apres_reponse,
                 )
             elif ident == "rule_save":
@@ -6684,6 +7010,7 @@ def run_tui(
                     hold_first=self._entier(
                         "#rule_hold_first", "mail_rules_err_hold_first"
                     ),
+                    action=rules_model.clean_action(self.rule.action),
                 )
                 rules_model.validate(rule)
             except rules_model.RuleError as exc:
@@ -7297,6 +7624,258 @@ def run_tui(
         def action_cancel_reply(self) -> None:
             if self._import_en_cours:
                 return
+            self.dismiss(None)
+
+    class ForwardFormScreen(ModalScreen):
+        """La redirection d'une règle : mode, destinations, texte
+        d'introduction, et la case « Ignorer listes et robots ».
+
+        Chaque destination passe à l'ajout par
+        `check_forward_target` des garde-fous (syntaxe, adresse de ce compte ou
+        d'un autre compte configuré, doublon, plafond), chaque refus avec
+        son motif dans `#fwd_status`, le champ gardé ; acceptée, elle est
+        listée dans sa forme d'envoi. L'avertissement SPF/DMARC n'est
+        affiché qu'en vraie redirection, où l'introduction, que ce mode
+        n'envoie pas, est grisée sans être effacée.
+
+        `ctrl+s` refuse une adresse saisie mais pas ajoutée, puis contrôle
+        l'action par `model.validate` sur une règle neutre ; une erreur
+        laisse l'écran ouvert. Les options lues sont FUSIONNÉES dans celles
+        de l'action : une clé que ce formulaire ne connaît pas est gardée.
+        Rien n'est écrit sur le disque : l'éditeur de règle enregistre.
+        Rend une `Action` (copie modifiée), ou None.
+        """
+
+        BINDINGS = [
+            Binding("ctrl+s", "save_forward", t("mail_rules_save")),
+            Binding("escape", "cancel_forward", t("mail_rules_cancel")),
+        ]
+
+        CSS = """
+        #fwd_scroll { height: 1fr; }
+        #fwd_title { height: auto; padding: 0 1; text-style: bold; }
+        #fwd_mode { width: 50; }
+        #fwd_redirect_warning { height: auto; padding: 0 1; }
+        #fwd_targets { height: auto; }
+        .fwd_target_item { height: auto; }
+        .fwd_target_item Static { width: 1fr; padding: 1 1 0 1; }
+        .fwd_target_item Button { width: auto; }
+        #fwd_target_entry { height: auto; }
+        #fwd_target_entry Input { width: 1fr; }
+        #fwd_target_entry Button { width: auto; }
+        #fwd_intro { height: 8; }
+        #fwd_status { height: auto; padding: 0 1; }
+        #fwd_buttons { height: auto; }
+        #fwd_buttons Button { width: auto; }
+        """
+
+        def __init__(self, session, base, action):
+            super().__init__()
+            self.session = session
+            self.base = base
+            self.action = copy.deepcopy(action)
+            self.own = rules_engine.account_addresses(session.account)
+            try:
+                self.others = rules_engine.other_account_addresses(
+                    session.account
+                )
+            except Exception:
+                self.others = frozenset()
+            # Options illisibles (fichier édité à la main) : relues au plus
+            # près, l'erreur montrée à l'ouverture ; l'enregistrement les
+            # contrôle de nouveau.
+            self._erreur_options = ""
+            try:
+                opts = rules_model.forward_options(self.action)
+                cibles = list(opts.targets)
+                mode, ignorer = opts.mode, opts.skip_lists
+            except rules_model.RuleError as exc:
+                self._erreur_options = str(exc)
+                brutes = self.action.options or {}
+                lues = brutes.get("targets")
+                cibles = [
+                    c
+                    for c in (lues if isinstance(lues, list) else [])
+                    if isinstance(c, str)
+                ]
+                mode = brutes.get("mode")
+                ignorer = brutes.get("skip_lists") is True
+            if mode not in rules_model.FORWARD_MODES:
+                mode = "inline"
+            self.targets: list = cibles
+            self._mode_initial = mode
+            self._ignorer_initial = bool(ignorer)
+
+        def compose(self):
+            with VerticalScroll(id="fwd_scroll"):
+                yield Static(t("mail_rules_action_forward"), id="fwd_title")
+                yield Static(t("mail_rules_fwd_mode"))
+                yield Select(
+                    [
+                        (t(f"mail_rules_fwd_mode_{m}"), m)
+                        for m in rules_model.FORWARD_MODES
+                    ],
+                    value=self._mode_initial,
+                    allow_blank=False,
+                    id="fwd_mode",
+                )
+                yield Static(
+                    Text(
+                        t("mail_rules_fwd_redirect_warning"),
+                        style="bold yellow",
+                    ),
+                    id="fwd_redirect_warning",
+                )
+                yield Static(t("mail_rules_fwd_targets"))
+                yield Vertical(id="fwd_targets")
+                with Horizontal(id="fwd_target_entry"):
+                    yield Input(
+                        placeholder=t("mail_rules_fwd_target_placeholder"),
+                        id="fwd_target_input",
+                    )
+                    yield Button(
+                        t("mail_rules_fwd_target_add"), id="fwd_target_add"
+                    )
+                yield Static(t("mail_rules_fwd_intro"))
+                yield TextArea(self.action.body or "", id="fwd_intro")
+                yield Checkbox(
+                    t("mail_rules_fwd_skip_lists"),
+                    self._ignorer_initial,
+                    id="fwd_skip_lists",
+                )
+                yield Static("", id="fwd_status")
+                with Horizontal(id="fwd_buttons"):
+                    yield Button(
+                        t("mail_rules_save"), id="fwd_save", variant="primary"
+                    )
+                    yield Button(t("mail_rules_cancel"), id="fwd_cancel")
+
+        def on_mount(self) -> None:
+            self._refresh_targets()
+            self._accorder_mode()
+            if self._erreur_options:
+                self._status(self._erreur_options)
+            self.query_one("#fwd_target_input", Input).focus()
+
+        def _mode(self) -> str:
+            valeur = self.query_one("#fwd_mode", Select).value
+            return valeur if valeur in rules_model.FORWARD_MODES else "inline"
+
+        def _accorder_mode(self) -> None:
+            """Avertissement visible et introduction grisée en vraie
+            redirection seulement ; le texte de l'introduction reste."""
+            redirection = self._mode() == "redirect"
+            self.query_one(
+                "#fwd_redirect_warning", Static
+            ).display = redirection
+            self.query_one("#fwd_intro", TextArea).disabled = redirection
+
+        def _refresh_targets(self) -> None:
+            zone = self.query_one("#fwd_targets", Vertical)
+            zone.remove_children()
+            for index, cible in enumerate(self.targets):
+                ligne = Horizontal(classes="fwd_target_item")
+                # `Text` : l'adresse est saisie, ou lue d'un fichier.
+                ligne.compose_add_child(Static(Text(cible)))
+                # Sans `id` : la liste est remontée à chaque changement, et
+                # deux boutons de même `id` se croiseraient le temps du
+                # retrait. L'index voyage dans `name`.
+                ligne.compose_add_child(
+                    Button(
+                        t("mail_rules_fwd_target_remove"),
+                        name=str(index),
+                        classes="remove_target",
+                    )
+                )
+                zone.mount(ligne)
+
+        def _status(self, text: str) -> None:
+            self.query_one("#fwd_status", Static).update(
+                Text(text, style="bold red")
+            )
+
+        def _ajouter(self) -> None:
+            champ = self.query_one("#fwd_target_input", Input)
+            texte = champ.value.strip()
+            if not texte:
+                return
+            try:
+                forme = rules_guards.check_forward_target(
+                    texte,
+                    own=self.own,
+                    others=self.others,
+                    current=self.targets,
+                )
+            except rules_model.RuleError as exc:
+                self._status(str(exc))
+                return
+            self.targets.append(forme)
+            champ.value = ""
+            self._status("")
+            self._refresh_targets()
+
+        def on_input_submitted(self, event) -> None:
+            if event.input.id == "fwd_target_input":
+                self._ajouter()
+
+        def on_select_changed(self, event) -> None:
+            if event.select.id == "fwd_mode":
+                self._accorder_mode()
+
+        def on_button_pressed(self, event) -> None:
+            bouton = event.button
+            if bouton.has_class("remove_target"):
+                try:
+                    index = int(bouton.name or -1)
+                except ValueError:
+                    return
+                if 0 <= index < len(self.targets):
+                    del self.targets[index]
+                    self._refresh_targets()
+            elif bouton.id == "fwd_target_add":
+                self._ajouter()
+            elif bouton.id == "fwd_save":
+                self.action_save_forward()
+            elif bouton.id == "fwd_cancel":
+                self.action_cancel_forward()
+
+        def _current_action(self):
+            options = dict(self.action.options or {})
+            options.update(
+                {
+                    "targets": list(self.targets),
+                    "mode": self._mode(),
+                    "skip_lists": bool(
+                        self.query_one("#fwd_skip_lists", Checkbox).value
+                    ),
+                }
+            )
+            return dataclasses.replace(
+                self.action,
+                body=self.query_one("#fwd_intro", TextArea).text,
+                options=options,
+            )
+
+        def action_save_forward(self) -> None:
+            if self.query_one("#fwd_target_input", Input).value.strip():
+                self._status(t("mail_rules_err_fwd_pending"))
+                return
+            action = self._current_action()
+            # Contrôlée nettoyée, comme l'éditeur l'enregistrera : des
+            # images héritées d'une réponse ne bloquent pas le formulaire,
+            # qui ne sait pas les retirer.
+            neutre = dataclasses.replace(
+                rules_model.new_rule("forward"),
+                action=rules_model.clean_action(action),
+            )
+            try:
+                rules_model.validate(neutre)
+            except rules_model.RuleError as exc:
+                self._status(str(exc))
+                return
+            self.dismiss(action)
+
+        def action_cancel_forward(self) -> None:
             self.dismiss(None)
 
     class HelpScreen(ModalScreen):
