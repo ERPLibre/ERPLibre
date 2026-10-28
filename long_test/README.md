@@ -542,6 +542,38 @@ A run kept by `--garder` is stopped and swept by the next run, or by
 `--detruire`. Exit codes: 0 all green, 1 tests failed, 2 a prerequisite is
 missing, 3 the infrastructure failed.
 
+### The chat push tests — notifications while the app is closed
+
+The run starts its own `ntfy serve`, on `127.0.0.1` and a free port, with a
+temporary `server.yml`, access file and cache under the run directory; it never
+touches the ntfy of the machine (every `ntfy` call carries `--config`, placed
+before the subcommand for `user` and `token`). The phone's access is created
+the way the `TODO › Deploy › Prepare ntfy for ERPLibre mobile` menu creates it:
+anonymous write-only on `up*`, a read-only user on its prefix, a token. The
+ntfy stops with the run (kept with the servers by `--garder`).
+
+`--filtre push` plays the tests whose name matches: the four push shapes
+decrypted from the ntfy cache, a muted conversation that is not pushed, a token
+that reads only its own prefix, the unregistration when an account is removed,
+the move to a new topic when a new link comes, and, alone in a serial file, the
+VAPID keys drawn again, which the next load heals.
+
+With `--appareil`, the notifications scenario runs on the phone, on Odoo 18,
+against that ntfy sent to the phone by `adb reverse`: at level 1 the app is
+connected and shows one permanent notification; a message from another user
+rings within a few seconds under its conversation's tag, with its text in clear
+and, in the lock-screen version, only « Nouveau message — <server> » or no
+lock-screen version at all, whichever Android's setting calls for; the
+process killed (`am crash`, since SELinux refuses `run-as kill` on Android 11),
+the service comes back and the next message stacks in the same notification;
+tapping it opens the conversation; in the foreground nothing shows; with
+« Never shown » the text is not in the notification; with the ntfy removed, the
+Odoo-direct summary reads « 2 nouveaux messages » and nothing is marked read on
+the server. The scenario never locks the phone: the lock-screen form is read
+from `dumpsys notification --noredact`. It restores what it changes: the
+`stay_on_while_plugged_in` setting, the battery-optimisation entry of the test
+app and the `adb reverse` ports.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
