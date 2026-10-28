@@ -94,3 +94,6 @@ nbconvert>=7.17.2
 # Ignore because need installation system
 # pymysql
 # Don't forget to install selenium script/selenium/requirements.txt
+# Le QR de ntfy_mobile.render_qr (pur Python), importé à l'appel : sans lui la
+# commande affiche le lien et la ligne d'installation.
+segno
