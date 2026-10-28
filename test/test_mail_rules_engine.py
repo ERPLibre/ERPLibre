@@ -28,7 +28,7 @@ from script.todo.mail.imap_transport import ImapError
 from script.todo.mail.rules import engine, storage
 from script.todo.mail.rules.lock import file_lock
 from script.todo.mail.rules.model import Armed, Condition, Group, new_rule
-from script.todo.mail.smtp_send import SmtpError
+from script.todo.mail.smtp_send import SmtpError, recipients
 from script.todo.mail.store import Store
 from script.todo.mail.tui import Session, flush_outbox
 from script.todo.todo_i18n import t
@@ -730,14 +730,18 @@ class TestRulesLifecycle(EngineCase):
         bilan = engine.run_pass(session, now=self.horloge)
         self.assertEqual(bilan.status, "ephemeral")
 
-    def test_forward_rules_are_ignored(self):
+    def test_forward_rules_are_run(self):
         rule = new_rule("forward", "forward")
+        rule.action.options["targets"] = [DENIS]
         storage.upsert_rule(
             "perso", rule, rearm=Armed(1, 1, T0 - HOUR), base=self.base
         )
+        self.deja_approuvee(rule)
         self.imap.recevoir(1)
-        self.assertEqual(self.passe().status, "no_rules")
-        self.assertEqual(self.envois, [])
+        bilan = self.passe()
+        self.assertEqual((bilan.status, bilan.sent), ("ok", 1))
+        self.assertEqual(len(self.envois), 1)
+        self.assertEqual(recipients(self.envois[0]), [DENIS])
 
     def test_a_renumbered_inbox_rearms_and_sends_nothing(self):
         rule = self.regle()

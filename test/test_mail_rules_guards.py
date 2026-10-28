@@ -16,6 +16,7 @@ from script.todo.mail.rules.guards import (
     GuardContext,
     authentication_passes,
     authserv_id,
+    check_forward_target,
     decide,
     header_values,
     reply_target,
@@ -24,12 +25,15 @@ from script.todo.mail.rules.guards import (
     stats_target,
 )
 from script.todo.mail.rules.model import (
+    FORWARD_MAX_BYTES,
     Armed,
     Condition,
     Group,
     MessageView,
+    RuleError,
     new_rule,
 )
+from script.todo.todo_i18n import t
 
 SECOND = "bruno.filtre@example.net"
 THIRD = "denis.tri@example.org"
@@ -73,6 +77,14 @@ def stats_rule(**kwargs):
     rule.armed = Armed(uidvalidity=UIDV, uidnext=4500, at=NOW - 3600)
     for key, value in kwargs.items():
         setattr(rule, key, value)
+    return rule
+
+
+def forward_rule(targets=(HUMAN,), **options):
+    """Une règle de redirection armée vers `targets`, options complétées."""
+    rule = new_rule("forward", "Renvoi")
+    rule.armed = Armed(uidvalidity=UIDV, uidnext=4500, at=NOW - 3600)
+    rule.action.options.update(targets=list(targets), **options)
     return rule
 
 
@@ -260,11 +272,282 @@ class TestOneCasePerReason(unittest.TestCase):
             self.reason(context=ctx(last_send=NOW - 60)), "throttled"
         )
 
+    def forward(self, message=None, context=None, **options):
+        """Le verdict d'une redirection de Bruno vers Carole."""
+        message = message or view(frm=SECOND)
+        return self.reason(message, forward_rule(**options), context)
+
+    def test_own_message_by_message_id_and_by_in_reply_to(self):
+        self.assertEqual(
+            self.forward(context=ctx(is_own_send=lambda: True)),
+            "own_message",
+        )
+        # Une règle de réponse ne consulte pas ce contrôle.
+        self.assertEqual(
+            self.reason(context=ctx(is_own_send=lambda: True)), SEND
+        )
+
+    def test_resent_loop(self):
+        message = view({"Resent-From": f"Boîte <{OWN}>"}, frm=SECOND)
+        self.assertEqual(self.reason(message), "resent_loop")
+        self.assertEqual(self.forward(message), "resent_loop")
+
+    def test_delivery_report_by_content_type_and_sender(self):
+        for message in (
+            view(
+                {"Content-Type": 'Multipart/Report; report-type="x"'},
+                frm=SECOND,
+            ),
+            view({"Content-Type": "message/delivery-status"}, frm=SECOND),
+            view(frm="MAILER-DAEMON@example.net"),
+            view({"Return-Path": "<postmaster@example.net>"}, frm=SECOND),
+        ):
+            with self.subTest(message=message.extra or message.frm):
+                self.assertEqual(self.forward(message), "delivery_report")
+
+    def test_auto_reply(self):
+        for extra in (
+            {"Auto-Submitted": "Auto-Replied; owner-email=x"},
+            {"Precedence": "auto_reply"},
+        ):
+            with self.subTest(extra=extra):
+                message = view(extra, frm=SECOND)
+                self.assertEqual(self.forward(message), "auto_reply")
+
+    def test_too_big(self):
+        message = view(frm=SECOND, size=FORWARD_MAX_BYTES + 1)
+        self.assertEqual(self.forward(message), "too_big")
+        message = view(frm=SECOND, size=FORWARD_MAX_BYTES)
+        self.assertEqual(self.forward(message), SEND)
+
+    def test_no_forward_target(self):
+        message = view(frm=SECOND)
+        self.assertEqual(
+            self.forward(message, targets=[SECOND]), "no_forward_target"
+        )
+
     def test_every_reason_is_covered_here(self):
         names = {name for name in dir(self) if name.startswith("test_")}
         for reason in REASONS:
             with self.subTest(reason=reason):
                 self.assertTrue(any(reason in name for name in names))
+
+
+class TestForwardGuard(unittest.TestCase):
+    """Une redirection de Bruno vers Carole : ce qui est sauté par défaut,
+    ce qui reste, et le choix des destinations."""
+
+    def decision(self, message=None, context=None, **options):
+        return decide(
+            forward_rule(**options),
+            message or view(frm=SECOND),
+            context or ctx(),
+            None,
+        )
+
+    def reason(self, message=None, context=None, **options):
+        return self.decision(message, context, **options).reason
+
+    def test_a_list_message_is_forwarded_by_default(self):
+        message = view(
+            {
+                "List-Id": "<annonces.example.net>",
+                "Precedence": "bulk",
+                "X-Auto-Response-Suppress": "All",
+                "Return-Path": "<liste-annonces-bounces@example.net>",
+            },
+            frm="liste-annonces@example.net",
+            to="liste-annonces@example.net",
+        )
+        self.assertEqual(self.reason(message), SEND)
+
+    def test_skip_lists_restores_the_list_and_robot_checks(self):
+        cas = (
+            ({"Auto-Submitted": "auto-generated"}, SECOND, "auto_submitted"),
+            ({"Precedence": "bulk"}, SECOND, "precedence"),
+            ({"List-Id": "<annonces.example.net>"}, SECOND, "list"),
+            (
+                {"X-Auto-Response-Suppress": "OOF"},
+                SECOND,
+                "auto_response_suppress",
+            ),
+            ({}, "noreply@example.net", "robot_sender"),
+            (
+                {"Return-Path": "<liste-annonces-bounces@example.net>"},
+                SECOND,
+                "robot_sender",
+            ),
+        )
+        for extra, frm, attendu in cas:
+            with self.subTest(attendu=attendu, frm=frm):
+                message = view(extra, frm=frm)
+                self.assertEqual(self.reason(message), SEND)
+                self.assertEqual(
+                    self.reason(message, skip_lists=True), attendu
+                )
+
+    def test_not_addressed_is_ignored_by_default(self):
+        message = view(frm=SECOND, to="liste-annonces@example.net")
+        self.assertEqual(self.reason(message), SEND)
+        self.assertEqual(
+            self.reason(message, skip_lists=True), "not_addressed"
+        )
+
+    def test_x_loop_spam_and_null_sender_always_apply(self):
+        cas = (
+            ({"X-Loop": f"erplibre-rules {OTHER_ACCOUNT}"}, "x_loop"),
+            ({"X-Spam-Flag": "YES"}, "spam"),
+            ({"Return-Path": "<>"}, "null_sender"),
+        )
+        for extra, attendu in cas:
+            for skip in (False, True):
+                with self.subTest(attendu=attendu, skip_lists=skip):
+                    message = view(extra, frm=SECOND)
+                    self.assertEqual(
+                        self.reason(message, skip_lists=skip), attendu
+                    )
+
+    def test_resent_from_us_stops_every_kind(self):
+        message = view({"Resent-From": OWN}, frm=SECOND)
+        for rule in (armed_rule(), stats_rule(), forward_rule()):
+            with self.subTest(kind=rule.action.kind):
+                self.assertEqual(
+                    decide(rule, message, ctx(), None).reason, "resent_loop"
+                )
+
+    def test_a_resent_from_another_account_is_not_a_resent_loop(self):
+        """Une redirection manuelle depuis un autre compte configuré : la
+        règle de réponse répond comme avant."""
+        message = view({"Resent-From": f"Relais <{OTHER_ACCOUNT}>"})
+        self.assertEqual(
+            decide(armed_rule(), message, ctx(), None).reason, SEND
+        )
+
+    def test_an_auto_reply_is_never_forwarded(self):
+        for extra in (
+            {"Auto-Submitted": "auto-replied"},
+            {"Precedence": "auto_reply"},
+        ):
+            for skip in (False, True):
+                with self.subTest(extra=extra, skip_lists=skip):
+                    message = view(extra, frm=SECOND)
+                    self.assertEqual(
+                        self.reason(message, skip_lists=skip), "auto_reply"
+                    )
+
+    def test_an_auto_generated_message_is_still_forwarded(self):
+        message = view({"Auto-Submitted": "auto-generated"}, frm=SECOND)
+        self.assertEqual(self.reason(message), SEND)
+
+    def test_mailer_daemon_is_a_delivery_report_without_skip_lists(self):
+        message = view(frm="mailer-daemon@example.net")
+        self.assertEqual(self.reason(message), "delivery_report")
+
+    def test_sender_and_return_path_are_removed_from_targets(self):
+        message = view(
+            {"Return-Path": f"<{THIRD.upper()}>"}, frm=f"Bruno <{SECOND}>"
+        )
+        d = self.decision(message, targets=[SECOND, HUMAN, THIRD])
+        self.assertEqual(d.reason, SEND)
+        self.assertEqual(d.targets, (HUMAN,))
+        self.assertEqual(d.removed, ((SECOND, "sender"), (THIRD, "sender")))
+        d = self.decision(message, targets=[SECOND])
+        self.assertEqual(
+            (d.reason, d.targets, d.removed),
+            ("no_forward_target", (), ((SECOND, "sender"),)),
+        )
+
+    def test_own_and_other_account_targets_are_removed(self):
+        """Seul un `rules.json` édité à la main peut les porter."""
+        d = self.decision(targets=[OWN, HUMAN, OTHER_ACCOUNT])
+        self.assertEqual(d.targets, (HUMAN,))
+        self.assertEqual(
+            d.removed, ((OWN, "self"), (OTHER_ACCOUNT, "other_account"))
+        )
+
+    def test_idna_targets_are_compared_in_their_normal_form(self):
+        message = view(frm="bruno.filtre@filtré.example.net")
+        d = self.decision(
+            message, targets=["bruno.filtre@xn--filtr-fsa.example.net", HUMAN]
+        )
+        self.assertEqual(d.targets, (HUMAN,))
+        self.assertEqual(
+            d.removed,
+            (("bruno.filtre@xn--filtr-fsa.example.net", "sender"),),
+        )
+
+    def test_unauthenticated_never_applies_to_forward(self):
+        self.assertEqual(self.reason(), SEND)
+        self.assertEqual(self.reason(skip_lists=True), SEND)
+
+    def test_auth_fail_applies_to_forward(self):
+        results = "mx.example.org; dmarc=fail header.from=example.net"
+        message = view({"Authentication-Results": results}, frm=SECOND)
+        self.assertEqual(self.reason(message), "auth_fail")
+
+    def test_the_throttle_keys_on_the_sender(self):
+        context = ctx(last_send=NOW - 60)
+        rule = forward_rule()
+        rule.throttle_enabled = True
+        message = view({"Return-Path": "<prvs=1=x@example.net>"}, frm=SECOND)
+        self.assertEqual(
+            decide(rule, message, context, None).reason, "throttled"
+        )
+        self.assertEqual(context.calls, [(SECOND, SECOND)])
+        rule.throttle_enabled = False
+        self.assertEqual(decide(rule, message, context, None).reason, SEND)
+
+    def test_a_noreply_sender_is_forwarded_by_default(self):
+        message = view(
+            {"Reply-To": SECOND}, frm="Service <noreply@example.net>"
+        )
+        self.assertEqual(self.reason(message), SEND)
+
+    def test_response_addresses_of_a_forward_is_the_sender(self):
+        message = view({"Return-Path": f"<{THIRD}>"}, frm=f"Bruno <{SECOND}>")
+        self.assertEqual(
+            response_addresses(forward_rule(), message),
+            (SECOND, SECOND, SECOND),
+        )
+
+    def test_unreadable_options_raise_after_the_filter(self):
+        rule = forward_rule()
+        rule.action.options["mode"] = "copie"
+        with self.assertRaises(RuleError):
+            decide(rule, view(frm=SECOND), ctx(), None)
+        # Avant le filtre, rien n'est lu.
+        rule.filter = Group(children=[Condition("subject", "facture")])
+        self.assertEqual(
+            decide(rule, view(frm=SECOND), ctx(), None).reason, "no_match"
+        )
+
+    def test_check_forward_target_reports_each_refusal(self):
+        own = frozenset({OWN})
+        others = frozenset({OTHER_ACCOUNT})
+        self.assertEqual(
+            check_forward_target(
+                "bruno.filtre@Filtré.Example.NET", own=own, others=others
+            ),
+            "bruno.filtre@xn--filtr-fsa.example.net",
+        )
+        plein = [f"carole.regle+{i}@example.org" for i in range(10)]
+        cas = (
+            ("pas une adresse", (), "mail_rules_err_fwd_address"),
+            (OWN.upper(), (), "mail_rules_err_fwd_self"),
+            (OTHER_ACCOUNT, (), "mail_rules_err_fwd_other_account"),
+            (HUMAN.upper(), [HUMAN], "mail_rules_err_fwd_duplicate"),
+            (SECOND, plein, "mail_rules_err_fwd_too_many"),
+        )
+        for texte, courant, cle in cas:
+            with self.subTest(cle=cle):
+                with self.assertRaises(RuleError) as pris:
+                    check_forward_target(
+                        texte, own=own, others=others, current=courant
+                    )
+                self.assertTrue(str(pris.exception).startswith(t(cle)))
+        with self.assertRaises(RuleError) as pris:
+            check_forward_target(SECOND, own=own, others=others, current=plein)
+        self.assertIn("10", str(pris.exception))
 
 
 class TestStatsGuard(unittest.TestCase):

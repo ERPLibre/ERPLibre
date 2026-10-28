@@ -44,6 +44,15 @@ RULE_LOG_SEND_OUTCOMES = ("pending", "sent", "queued", "held")
 # Les issues définitives : `rule_log_set_outcome` ne les modifie plus.
 RULE_LOG_TERMINAL = ("sent", "skipped", "failed", "expired")
 OUTBOX_MAX_ATTEMPTS = 3
+# Types d'une entrée automatique de la file ; `auto_redirect` porte son
+# enveloppe dans `sealed_to`.
+OUTBOX_AUTO_KINDS = ("auto_reply", "auto_forward", "auto_redirect")
+# Préfixe des octets scellés d'une `auto_redirect` : une ligne vide. Un code
+# qui lit l'entrée comme un message (sans connaître ce type) n'y trouve
+# alors aucun en-tête, donc aucun destinataire, et n'envoie rien ; sans lui,
+# il enverrait l'original aux To/Cc d'origine au lieu de l'enveloppe.
+# `queued_raw` le retire.
+OUTBOX_REDIRECT_GUARD = b"\r\n"
 # Une réservation de la file plus vieille que ce délai, en secondes, est
 # celle d'un processus mort en plein envoi : une autre vidange la reprend.
 OUTBOX_CLAIM_STALE_S = 600
@@ -107,6 +116,9 @@ CREATE INDEX IF NOT EXISTS idx_msg_date ON messages(folder_id, date DESC);
 -- `expires_at` borne l'attente d'une réponse automatique, `max_attempts` et
 -- `perm_attempts` comptent les refus définitifs, `claimed_at` réserve une
 -- entrée à la vidange qui l'envoie.
+-- `kind` vaut `manual`, ou l'un des types automatiques : `auto_reply`
+-- (réponse), `auto_forward` (transfert, enveloppe dans les octets),
+-- `auto_redirect` (redirection, enveloppe dans `sealed_to`).
 CREATE TABLE IF NOT EXISTS outbox (
   id            INTEGER PRIMARY KEY,
   created_at    INTEGER NOT NULL,
@@ -930,7 +942,10 @@ class Store:
         max_attempts: int,
     ) -> int:
         """INSERT d'une entrée de file, SANS commit : l'appelant décide de
-        la transaction qui l'englobe."""
+        la transaction qui l'englobe. Les octets d'une `auto_redirect` sont
+        scellés précédés d'`OUTBOX_REDIRECT_GUARD`."""
+        if kind == "auto_redirect":
+            raw = OUTBOX_REDIRECT_GUARD + raw
         curseur = db.execute(
             "INSERT INTO outbox(created_at, sealed_raw, sealed_to,"
             " sealed_subject, held, kind, rule_id, source_key, expires_at,"
@@ -998,8 +1013,9 @@ class Store:
         expires_at: int,
         outcome: str,
         reason: str,
+        kind: str = "auto_reply",
     ) -> int:
-        """Met en file la réponse d'une règle ET l'inscrit au journal, dans
+        """Met en file l'envoi d'une règle ET l'inscrit au journal, dans
         UNE transaction. Rend l'identifiant de file.
 
         Une vidange, même dans un autre processus, ne voit donc jamais
@@ -1007,7 +1023,14 @@ class Store:
         nomme. Le journal n'avance que (voir `rule_log_set_outcome`) : une
         ligne déjà terminale garde son issue, l'entrée de file existe quand
         même.
+
+        `kind` est l'un d'`OUTBOX_AUTO_KINDS`, sinon `ValueError` avant
+        toute écriture. Pour `auto_redirect`, `recipients` EST l'enveloppe :
+        les adresses d'envoi jointes par « , », que la vidange relit ; les
+        autres types la portent dans leurs octets.
         """
+        if kind not in OUTBOX_AUTO_KINDS:
+            raise ValueError(kind)
         db = self._db()
         try:
             queue_id = self._inserer_file(
@@ -1016,7 +1039,7 @@ class Store:
                 recipients,
                 subject,
                 held=held,
-                kind="auto_reply",
+                kind=kind,
                 rule_id=rule_id,
                 source_key=source_key,
                 expires_at=expires_at,
@@ -1033,7 +1056,13 @@ class Store:
 
     @_locked
     def outbox(self) -> list[dict]:
-        """La file, du plus ancien au plus récent — l'ordre d'envoi."""
+        """La file, du plus ancien au plus récent — l'ordre d'envoi.
+
+        Les octets scellés ne sont pas lus : la liste se relit à chaque
+        passe et à chaque rafraîchissement d'écran, et une entrée peut
+        peser des dizaines de Mio. Ceux d'une entrée se lisent par
+        `queued_raw`.
+        """
         return [
             {
                 "id": r["id"],
@@ -1052,18 +1081,33 @@ class Store:
                 "claimed_at": r["claimed_at"],
             }
             for r in self._db().execute(
-                "SELECT * FROM outbox ORDER BY created_at, id"
+                "SELECT id, created_at, sealed_to, sealed_subject, held,"
+                " attempts, sealed_error, kind, rule_id, source_key,"
+                " expires_at, max_attempts, perm_attempts, claimed_at"
+                " FROM outbox ORDER BY created_at, id"
             )
         ]
 
     @_locked
     def queued_raw(self, queue_id: int) -> bytes | None:
+        """Les octets d'une entrée, tels que mis en file ; None si elle
+        n'existe plus. Le préfixe d'une `auto_redirect` est retiré."""
         ligne = (
             self._db()
-            .execute("SELECT sealed_raw FROM outbox WHERE id = ?", (queue_id,))
+            .execute(
+                "SELECT sealed_raw, kind FROM outbox WHERE id = ?",
+                (queue_id,),
+            )
             .fetchone()
         )
-        return self._crypto.open(bytes(ligne[0])) if ligne else None
+        if not ligne:
+            return None
+        raw = self._crypto.open(bytes(ligne[0]))
+        if ligne[1] == "auto_redirect" and raw.startswith(
+            OUTBOX_REDIRECT_GUARD
+        ):
+            raw = raw[len(OUTBOX_REDIRECT_GUARD) :]
+        return raw
 
     @_locked
     def set_held(self, queue_id: int, held: bool) -> None:
@@ -1405,6 +1449,18 @@ class Store:
         )
 
     @_locked
+    def outbox_rule_count(self, rule_id: str) -> int:
+        """Le nombre d'entrées de la file mises par la règle `rule_id`,
+        retenues ou non. Aucun octet scellé n'est lu."""
+        return (
+            self._db()
+            .execute(
+                "SELECT COUNT(*) FROM outbox WHERE rule_id = ?", (rule_id,)
+            )
+            .fetchone()[0]
+        )
+
+    @_locked
     def rule_log_recent_sends(self, since: int) -> int:
         """Combien de réponses automatiques du compte, toutes règles
         confondues, sont parties ou attendent en file, décidées à `since`
@@ -1522,6 +1578,31 @@ class Store:
             .fetchone()
             is not None
         )
+
+    @_locked
+    def is_rule_send(self, msgid: str, rule_ids=None) -> bool:
+        """Vrai si `msgid` est le Message-ID d'un envoi d'une règle.
+
+        Les messages automatiques de tiers, inscrits dans `auto_sent` par la
+        synchronisation avec un `rule_id` vide, n'en sont pas. `rule_ids`,
+        s'il est fourni, restreint aux envois de ces règles ; vide, rien ne
+        correspond.
+        """
+        msgid = (msgid or "").strip()
+        if not msgid:
+            return False
+        sql = (
+            "SELECT 1 FROM auto_sent WHERE msgid_hash = ?"
+            " AND rule_id IS NOT NULL AND rule_id <> ''"
+        )
+        params = [self._msgid_hash(msgid)]
+        if rule_ids is not None:
+            ids = [str(r) for r in rule_ids]
+            if not ids:
+                return False
+            sql += f" AND rule_id IN ({', '.join('?' for _ in ids)})"
+            params.extend(ids)
+        return self._db().execute(sql, params).fetchone() is not None
 
     # -- Époque du cache (v6) -------------------------------------------
 

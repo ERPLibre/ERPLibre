@@ -641,6 +641,29 @@ class TestRulesHeaders(unittest.TestCase):
         for nom in EXTRA_HEADERS:
             self.assertIn(nom.upper(), demandes)
 
+    def test_content_type_and_resent_from_are_extra_headers(self):
+        """Une redirection revenue et un rapport de remise se reconnaissent
+        sans télécharger le corps."""
+        self.assertIn("Content-Type", EXTRA_HEADERS)
+        self.assertIn("Resent-From", EXTRA_HEADERS)
+        demandes = HEADER_FIELDS.split()
+        self.assertIn("CONTENT-TYPE", demandes)
+        self.assertIn("RESENT-FROM", demandes)
+        info = self._info(
+            self.BASE + b"Content-Type: multipart/report;\r\n"
+            b" report-type=delivery-status; boundary=x\r\n"
+            b"Resent-From: boite.regles@example.org\r\n"
+            b"Resent-From: relais.auto@example.com\r\n"
+        )
+        self.assertEqual(
+            info.extra["content-type"],
+            "multipart/report; report-type=delivery-status; boundary=x",
+        )
+        self.assertEqual(
+            info.extra["resent-from"],
+            "boite.regles@example.org\nrelais.auto@example.com",
+        )
+
     def test_fetch_headers_asks_for_internaldate(self):
         client = MagicMock()
         client.uid.return_value = ("OK", [])

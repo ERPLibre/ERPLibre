@@ -226,6 +226,13 @@ class TestNewRule(unittest.TestCase):
         rule = new_rule("forward")
         self.assertFalse(rule.throttle_enabled)
         self.assertEqual(rule.throttle_minutes, 10080)
+        self.assertEqual(rule.action.format, "text")
+        self.assertEqual(rule.action.body, "")
+        self.assertEqual(
+            rule.action.options,
+            {"targets": [], "mode": "inline", "skip_lists": False},
+        )
+        self.assertIn("forward", model.EXECUTABLE_KINDS)
 
     def test_ids_are_fresh_and_twelve_hex_characters(self):
         first, second = new_rule(), new_rule()
@@ -233,13 +240,171 @@ class TestNewRule(unittest.TestCase):
         self.assertRegex(first.id, r"^[0-9a-f]{12}$")
 
     def test_new_rule_is_valid(self):
-        for kind in model.ACTION_KINDS:
+        for kind in ("reply", "stats"):
             with self.subTest(kind=kind):
                 validate(new_rule(kind, "Absence"))
+
+    def test_a_new_forward_rule_needs_a_target(self):
+        with self.assertRaises(RuleError) as pris:
+            validate(new_rule("forward", "Renvoi"))
+        self.assertIn(t("mail_rules_err_fwd_no_target"), str(pris.exception))
 
     def test_unknown_kind_is_refused(self):
         with self.assertRaises(RuleError):
             new_rule("delete")
+
+
+def forward_rule(**options):
+    """Une règle `forward` dont les options sont complétées par `options`."""
+    rule = new_rule("forward", "Renvoi")
+    rule.action.options.update(options)
+    return rule
+
+
+class TestForwardOptions(unittest.TestCase):
+    """Les options d'une action `forward`, relues, contrôlées, nettoyées."""
+
+    def test_forward_options_deduplicate_and_canonicalize(self):
+        action = Action(
+            kind="forward",
+            options={
+                "targets": [
+                    "Carole.Regle@EXAMPLE.org",
+                    "carole.regle@example.org",
+                    "bruno.filtre@filtré.example.net",
+                    "bruno.filtre@xn--filtr-fsa.example.net",
+                    "denis.tri@example.org",
+                ],
+                "mode": "redirect",
+                "skip_lists": True,
+            },
+        )
+        opts = model.forward_options(action)
+        self.assertEqual(
+            opts.targets,
+            (
+                "Carole.Regle@example.org",
+                "bruno.filtre@xn--filtr-fsa.example.net",
+                "denis.tri@example.org",
+            ),
+        )
+        self.assertEqual((opts.mode, opts.skip_lists), ("redirect", True))
+        # Clés absentes : valeurs par défaut.
+        vide = model.forward_options(Action(kind="forward"))
+        self.assertEqual(
+            (vide.targets, vide.mode, vide.skip_lists), ((), "inline", False)
+        )
+
+    def test_forward_options_reject_wrong_types(self):
+        for cle, valeur in (
+            ("targets", "carole.regle@example.org"),
+            ("targets", ["carole.regle@example.org", 3]),
+            ("mode", 1),
+            ("skip_lists", "oui"),
+            ("skip_lists", 0),
+        ):
+            with self.subTest(cle=cle, valeur=valeur):
+                action = Action(kind="forward", options={cle: valeur})
+                with self.assertRaises(RuleError) as pris:
+                    model.forward_options(action)
+                self.assertIn(f"options.{cle}", str(pris.exception))
+        action = Action(kind="forward", options={"mode": "copie"})
+        with self.assertRaises(RuleError) as pris:
+            model.forward_options(action)
+        self.assertIn(t("mail_rules_err_fwd_mode"), str(pris.exception))
+        action = Action(
+            kind="forward", options={"targets": ["carole regle@example.org"]}
+        )
+        with self.assertRaises(RuleError) as pris:
+            model.forward_options(action)
+        self.assertIn(t("mail_rules_err_fwd_address"), str(pris.exception))
+
+    def test_forward_validation_bounds(self):
+        validate(forward_rule(targets=["carole.regle@example.org"]))
+        onze = [f"carole.regle+{i}@example.org" for i in range(11)]
+        image = MediaRef("logo.png", "0" * 64, "image/png")
+        cas = (
+            (forward_rule(), "mail_rules_err_fwd_no_target"),
+            (forward_rule(targets=onze), "mail_rules_err_fwd_too_many"),
+            (
+                forward_rule(targets=onze[:1], mode="copie"),
+                "mail_rules_err_fwd_mode",
+            ),
+        )
+        for rule, cle in cas:
+            with self.subTest(cle=cle):
+                with self.assertRaises(RuleError) as pris:
+                    validate(rule)
+                self.assertIn(t(cle), str(pris.exception))
+        dix = forward_rule(targets=onze[:10])
+        validate(dix)
+        long = forward_rule(targets=onze[:1])
+        long.action.body = "x" * model.FORWARD_INTRO_MAX
+        validate(long)
+        long.action.body += "x"
+        with self.assertRaises(RuleError) as pris:
+            validate(long)
+        self.assertIn(
+            t("mail_rules_err_fwd_intro_too_long"), str(pris.exception)
+        )
+        illustree = forward_rule(targets=onze[:1])
+        illustree.action.images = [image]
+        with self.assertRaises(RuleError) as pris:
+            validate(illustree)
+        self.assertIn(t("mail_rules_err_fwd_images"), str(pris.exception))
+
+    def test_clean_action_strips_what_the_kind_ignores(self):
+        image = MediaRef("logo.png", "0" * 64, "image/png")
+        options = {
+            "targets": ["carole.regle@example.org"],
+            "mode": "attachment",
+            "skip_lists": True,
+            "future": 1,
+        }
+        renvoi = Action(
+            kind="forward",
+            format="html",
+            subject="Sujet",
+            body="Intro",
+            images=[image],
+            options=dict(options),
+        )
+        propre = model.clean_action(renvoi)
+        self.assertEqual(
+            (propre.format, propre.subject, propre.images, propre.body),
+            ("text", "", [], "Intro"),
+        )
+        self.assertEqual(propre.options, options)
+        self.assertEqual(renvoi.images, [image])
+        reponse = Action(
+            kind="reply", body="Absent.", images=[image], options=options
+        )
+        propre = model.clean_action(reponse)
+        self.assertEqual(propre.options, {"future": 1})
+        self.assertEqual((propre.images, propre.body), ([image], "Absent."))
+        self.assertIn("targets", reponse.options)
+
+    def test_fingerprint_changes_with_targets_mode_and_skip_lists(self):
+        base = forward_rule(targets=["carole.regle@example.org"])
+        empreinte = base.fingerprint()
+        for cle, valeur in (
+            ("targets", ["denis.tri@example.org"]),
+            ("mode", "redirect"),
+            ("skip_lists", True),
+        ):
+            with self.subTest(cle=cle):
+                autre = copy.deepcopy(base)
+                autre.action.options[cle] = valeur
+                self.assertNotEqual(autre.fingerprint(), empreinte)
+
+    def test_a_forward_rule_round_trips_through_json(self):
+        rule = forward_rule(
+            targets=["carole.regle@example.org", "denis.tri@example.org"],
+            mode="attachment",
+        )
+        relue = Rule.from_dict(json.loads(json.dumps(rule.to_dict())))
+        self.assertEqual(relue.action.options, rule.action.options)
+        self.assertEqual(relue.fingerprint(), rule.fingerprint())
 
 
 class TestTemplates(unittest.TestCase):
@@ -461,6 +626,13 @@ class TestValidateNode(unittest.TestCase):
 
 class TestMessageView(unittest.TestCase):
     """Une vue naît d'un en-tête de synchro comme d'une ligne du cache."""
+
+    def test_message_view_reads_the_size(self):
+        for taille, attendu in ((4096, 4096), (None, 0), ("x", 0), (-5, 0)):
+            with self.subTest(taille=taille):
+                header = SimpleNamespace(uid=1, size=taille)
+                self.assertEqual(message_view(header, 1).size, attendu)
+        self.assertEqual(message_view(SimpleNamespace(uid=1), 1).size, 0)
 
     def test_header_with_every_field(self):
         header = SimpleNamespace(

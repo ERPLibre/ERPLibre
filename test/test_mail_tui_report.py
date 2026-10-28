@@ -28,6 +28,7 @@ from script.todo.mail.rules.model import (
     Armed,
     Condition,
     Group,
+    MediaRef,
     new_rule,
 )
 from script.todo.mail.store import MessageMeta, Store
@@ -441,10 +442,12 @@ class TestRuleEditorKind(ReportCase):
             storage.load("perso", base=self.base)[0].action.kind, "stats"
         )
 
-    async def test_a_forward_rule_shows_its_kind_greyed(self):
+    async def test_a_forward_rule_shows_its_kind_selectable(self):
         from textual.widgets import Select
 
-        self.stored(new_rule("forward", "Renvoi"))
+        renvoi = new_rule("forward", "Renvoi")
+        renvoi.action.options["targets"] = [BRUNO]
+        self.stored(renvoi)
         app = self._app()
         async with app.run_test(size=self.SIZE) as pilot:
             await self.open_rules(app, pilot)
@@ -452,7 +455,7 @@ class TestRuleEditorKind(ReportCase):
             await pilot.pause()
             choix = self.q(app, "#rule_kind", Select)
             self.assertEqual(choix.value, "forward")
-            self.assertTrue(choix.disabled)
+            self.assertFalse(choix.disabled)
 
 
 class TestStatsForm(ReportCase):
@@ -604,7 +607,10 @@ class TestTrial(ReportCase):
     async def test_the_trial_send_is_disabled_without_a_rendering(self):
         from textual.widgets import Button
 
-        self.regle("forward")
+        absente = MediaRef("absent.png", "0" * 64, "image/png")
+        self.regle(
+            action=Action(kind="reply", body="Absent.", images=[absente])
+        )
         with mock.patch("script.todo.mail.tui.deliver") as espion:
             app = self._app()
             async with app.run_test(size=self.SIZE) as pilot:
@@ -612,7 +618,7 @@ class TestTrial(ReportCase):
                 await self.choose_message(app, pilot, 10)
                 self.assertTrue(self.q(app, "#trial_send", Button).disabled)
                 self.assertIn(
-                    t("mail_rules_trial_kind"),
+                    t("mail_rules_err_image_missing"),
                     self.text_of(app, "#trial_result"),
                 )
                 await self.press(app, pilot, "#trial_send")

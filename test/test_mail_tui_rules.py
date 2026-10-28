@@ -1175,7 +1175,7 @@ class TestOutboxPreview(RulesCase):
         app = self._app()
         async with app.run_test(size=self.SIZE) as pilot:
             await pilot.press("o")
-            await pilot.pause()
+            await self.settle(app, pilot)
             self.assertEqual(type(app.screen).__name__, "OutboxScreen")
             apercu = self.text_of(app, "#outbox_preview")
             self.assertIn(t("mail_outbox_preview"), apercu)
@@ -1204,11 +1204,11 @@ class TestOutboxPreview(RulesCase):
             await pilot.press("o")
             await pilot.pause()
             self.q(app, f"#hold_{auto}", Button).focus()
-            await pilot.pause()
+            await self.settle(app, pilot)
             apercu = self.text_of(app, "#outbox_preview")
             self.assertIn(f"{CAROLE} — Auto: Devis", apercu)
             self.q(app, f"#hold_{manuel}", Button).focus()
-            await pilot.pause()
+            await self.settle(app, pilot)
             self.assertEqual(self.text_of(app, "#outbox_preview"), "")
 
     async def test_a_manual_entry_has_no_preview(self):
@@ -1219,7 +1219,7 @@ class TestOutboxPreview(RulesCase):
         app = self._app()
         async with app.run_test(size=self.SIZE) as pilot:
             await pilot.press("o")
-            await pilot.pause()
+            await self.settle(app, pilot)
             self.assertEqual(self.text_of(app, "#outbox_preview"), "")
 
 

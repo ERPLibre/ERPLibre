@@ -231,9 +231,13 @@ def prompt_mail_rules(todo, *, base=None) -> None:
 
 
 def _list_rules(account_name: str, rules_base) -> list:
-    """Imprime les règles dans l'ordre d'application ; les rend."""
+    """Imprime les règles dans l'ordre d'application ; les rend.
+
+    Sous le filtre d'une règle forward, une ligne donne son mode et ses
+    destinations.
+    """
     from script.todo.mail.rules import storage
-    from script.todo.mail.tui import rule_filter_summary
+    from script.todo.mail.tui import rule_filter_summary, rule_forward_summary
 
     rules = storage.load(account_name, base=rules_base)
     if not rules:
@@ -246,6 +250,8 @@ def _list_rules(account_name: str, rules_base) -> list:
             f" — {t(f'mail_rules_kind_{rule.action.kind}')}{arret}"
         )
         print(f"        {_printable(rule_filter_summary(rule.filter))}")
+        if rule.action.kind == "forward":
+            print(f"        → {_printable(rule_forward_summary(rule))}")
     return rules
 
 
@@ -440,7 +446,8 @@ TRIAL_MENU_MESSAGES = 20
 def _trial(todo, account, rules_base, base=None) -> None:
     """[7] Essai d'une règle sur un message récent de la boîte de
     réception : ce que la règle en ferait, puis, sur « o », un envoi
-    d'essai à l'adresse du compte.
+    d'essai (réponse, transfert ou redirection) à l'adresse du compte
+    seulement.
 
     La session s'ouvre comme celle du TUI (en ligne si possible : en-têtes
     complets) et se ferme toujours. Tout ce qui vient d'un message passe
@@ -515,7 +522,7 @@ def _trial(todo, account, rules_base, base=None) -> None:
         print()
         for ligne, _style in tui.rule_trial_lines(sim):
             print(_printable(ligne))
-        if sim.rendered is None:
+        if not sim.sendable:
             return
         reponse = str(click.prompt(t("mail_rules_menu_trial_send_ask")))
         if reponse.strip().lower() not in ("o", "y"):

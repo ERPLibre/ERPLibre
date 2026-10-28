@@ -19,6 +19,7 @@ moment de les compiler (voir `regex_fault`).
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
@@ -27,6 +28,7 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from script.todo.mail.smtp_send import SmtpError, smtp_address
 from script.todo.todo_i18n import t
 
 SCHEMA_VERSION = 1
@@ -36,9 +38,9 @@ OPS = ("glob", "contains")
 MODES = ("substring_ci", "case_sensitive", "exact", "word", "regex")
 GROUP_OPS = ("all", "any", "not")
 ACTION_KINDS = ("reply", "forward", "stats")
-# Les types que le moteur exécute ; les autres se chargent, s'affichent et
-# s'éditent, mais le moteur les ignore.
-EXECUTABLE_KINDS = ("reply", "stats")
+# Les types que le moteur exécute ; un type hors de cette liste se charge
+# et s'affiche, mais le moteur l'ignore.
+EXECUTABLE_KINDS = ("reply", "stats", "forward")
 FORMATS = ("markdown", "html", "text")
 IMAGE_MIMES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
@@ -69,6 +71,16 @@ KIND_DEFAULTS = {
     "stats": {"throttle_enabled": True, "throttle_minutes": 1440},
     "forward": {"throttle_enabled": False, "throttle_minutes": 10080},
 }
+# Modes d'une redirection : transfert dans le corps, transfert en pièce
+# jointe, ou remise des octets d'origine à une enveloppe explicite.
+FORWARD_MODES = ("inline", "attachment", "redirect")
+FORWARD_MAX_TARGETS = 10
+FORWARD_INTRO_MAX = 2000
+# Taille maximale, en octets, d'un message transféré ou redirigé.
+FORWARD_MAX_BYTES = 25 * 1024 * 1024
+# Clés propres à une action `forward` dans `Action.options` ; une action
+# d'un autre type les perd à l'enregistrement (`clean_action`).
+FORWARD_OPTION_KEYS = ("targets", "mode", "skip_lists")
 
 # Variables du gabarit d'une réponse à statistiques. Un BLOC est un
 # paragraphe entier (titre, tableau, phrases) ; un SCALAIRE est une valeur
@@ -305,6 +317,8 @@ class MessageView:
     `internaldate` est la date de réception du serveur (0 = inconnue).
     `extra` porte les en-têtes supplémentaires, clés en minuscules,
     plusieurs occurrences jointes par « \\n » dans l'ordre du message.
+    `size` est la taille annoncée par le serveur (RFC822.SIZE), en octets ;
+    0 si elle est inconnue.
     """
 
     uid: int
@@ -318,6 +332,7 @@ class MessageView:
     in_reply_to: str = ""
     references: str = ""
     extra: Mapping[str, str] = field(default_factory=dict)
+    size: int = 0
 
 
 def message_view(header, uidvalidity: int) -> MessageView:
@@ -326,7 +341,7 @@ def message_view(header, uidvalidity: int) -> MessageView:
     Lecture par `getattr` : une ligne du cache n'a ni Cc ni en-têtes
     supplémentaires, et porte sa date de réception sous `received_at` et
     non `internaldate`. Les champs absents prennent une chaîne vide, un
-    dictionnaire vide ou 0.
+    dictionnaire vide ou 0 ; une taille illisible vaut 0 (inconnue).
     """
     extra = getattr(header, "extra", None) or {}
     internaldate = getattr(header, "internaldate", 0) or getattr(
@@ -346,7 +361,17 @@ def message_view(header, uidvalidity: int) -> MessageView:
         extra=types.MappingProxyType(
             {str(k).lower(): str(v) for k, v in extra.items()}
         ),
+        size=_size_of(header),
     )
+
+
+def _size_of(header) -> int:
+    """La taille portée par `header`, entier positif, ou 0."""
+    try:
+        size = int(getattr(header, "size", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(size, 0)
 
 
 def new_rule(kind: str = "reply", name: str = "") -> Rule:
@@ -358,6 +383,9 @@ def new_rule(kind: str = "reply", name: str = "") -> Rule:
     if kind == "stats":
         action.body = t("mail_stats_default_body")
         action.format = "markdown"
+    elif kind == "forward":
+        action.format = "text"
+        action.options = forward_defaults()
     return Rule(
         id=uuid.uuid4().hex[:12],
         name=name,
@@ -569,9 +597,115 @@ def validate(rule: Rule) -> None:
             raise _fault(t("mail_rules_err_image_type"), str(ref.mime))
         if not is_safe_media_name(ref.file):
             raise _fault(t("mail_rules_err_image_missing"), repr(ref.file))
+    if action.kind == "forward":
+        _validate_forward(action)
     fault = template_fault(action)
     if fault is not None:
         raise TemplateError(fault)
+
+
+# -- Action « forward » ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ForwardOptions:
+    """Les options d'une action `forward`, relues et contrôlées.
+
+    `targets` : formes d'envoi (`smtp_send.smtp_address`), sans doublon,
+    dans l'ordre du fichier. `mode` : l'un de `FORWARD_MODES`.
+    `skip_lists` : vrai si les garde-fous « listes et robots » d'une
+    réponse s'appliquent aussi à la redirection.
+    """
+
+    targets: tuple[str, ...]
+    mode: str
+    skip_lists: bool
+
+
+def forward_defaults() -> dict:
+    """Les options d'une action `forward` neuve : aucune destination,
+    transfert dans le corps, listes et robots transférés."""
+    return {"targets": [], "mode": "inline", "skip_lists": False}
+
+
+def forward_options(action: Action) -> ForwardOptions:
+    """Relit les options d'une action `forward`.
+
+    Une clé absente prend la valeur de `forward_defaults()`. Lève
+    `RuleError` (préfixée « Règle invalide : ») pour un type faux
+    (`options.targets` qui n'est pas une liste de chaînes, `options.mode`
+    qui n'est pas une chaîne, `options.skip_lists` qui n'est pas un
+    booléen), un mode hors de `FORWARD_MODES`, ou une adresse que
+    `smtp_address` refuse. Les destinations sont rendues en forme d'envoi
+    et dédoublonnées sans égard à la casse ; leur nombre n'est PAS
+    contrôlé ici (`validate` le fait).
+    """
+    options = action.options if isinstance(action.options, dict) else {}
+    defaults = forward_defaults()
+    targets = options.get("targets", defaults["targets"])
+    if not isinstance(targets, list) or not all(
+        isinstance(item, str) for item in targets
+    ):
+        raise _fault("options.targets")
+    mode = options.get("mode", defaults["mode"])
+    if not isinstance(mode, str):
+        raise _fault("options.mode")
+    skip_lists = options.get("skip_lists", defaults["skip_lists"])
+    if not isinstance(skip_lists, bool):
+        raise _fault("options.skip_lists")
+    if mode not in FORWARD_MODES:
+        raise _fault(t("mail_rules_err_fwd_mode"), repr(mode))
+    forms: list[str] = []
+    seen: set[str] = set()
+    for target in targets:
+        try:
+            form = smtp_address(target)
+        except SmtpError:
+            raise _fault(
+                t("mail_rules_err_fwd_address"), repr(target)
+            ) from None
+        if form.lower() not in seen:
+            seen.add(form.lower())
+            forms.append(form)
+    return ForwardOptions(tuple(forms), mode, skip_lists)
+
+
+def clean_action(action: Action) -> Action:
+    """Une copie de `action` débarrassée de ce que son type ignore.
+
+    Une action `forward` perd ses images, son sujet et prend le format
+    `text` (l'intro est du texte brut) ; une action d'un autre type perd
+    les clés de `FORWARD_OPTION_KEYS` de ses options. Les autres options
+    sont gardées telles quelles.
+    """
+    options = dict(action.options)
+    if action.kind == "forward":
+        return dataclasses.replace(
+            action, format="text", subject="", images=[], options=options
+        )
+    for key in FORWARD_OPTION_KEYS:
+        options.pop(key, None)
+    return dataclasses.replace(
+        action, images=list(action.images), options=options
+    )
+
+
+def _validate_forward(action: Action) -> None:
+    """Refuse la première faute d'une action `forward` : options, aucune
+    destination, trop de destinations, une image, une intro trop longue."""
+    options = forward_options(action)
+    if not options.targets:
+        raise _fault(t("mail_rules_err_fwd_no_target"))
+    if len(options.targets) > FORWARD_MAX_TARGETS:
+        raise _fault(
+            t("mail_rules_err_fwd_too_many"), str(FORWARD_MAX_TARGETS)
+        )
+    if action.images:
+        raise _fault(t("mail_rules_err_fwd_images"))
+    if len(action.body or "") > FORWARD_INTRO_MAX:
+        raise _fault(
+            t("mail_rules_err_fwd_intro_too_long"), str(FORWARD_INTRO_MAX)
+        )
 
 
 def template_names(text: str) -> list[str]:

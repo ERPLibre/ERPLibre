@@ -15106,6 +15106,198 @@ TRANSLATIONS = {
         "fr": "conversion du SVG en PNG échouée :",
         "en": "SVG to PNG conversion failed:",
     },
+    # -- Règles : construction d'un transfert ou d'une redirection --------
+    # Libellés du bloc d'en-têtes d'origine placé en tête d'un transfert, et
+    # erreurs de construction.
+    "mail_rules_fwd_separator": {
+        "fr": "---------- Message transféré ----------",
+        "en": "---------- Forwarded message ----------",
+    },
+    "mail_rules_fwd_from": {"fr": "De :", "en": "From:"},
+    "mail_rules_fwd_date": {"fr": "Date :", "en": "Date:"},
+    "mail_rules_fwd_to": {"fr": "À :", "en": "To:"},
+    "mail_rules_fwd_cc": {"fr": "Cc :", "en": "Cc:"},
+    "mail_rules_fwd_subject": {"fr": "Sujet :", "en": "Subject:"},
+    "mail_rules_err_fwd_address": {
+        "fr": "adresse de destination invalide :",
+        "en": "invalid destination address:",
+    },
+    "mail_rules_err_fwd_unreadable": {
+        "fr": "Message d'origine illisible : impossible de le transférer.",
+        "en": "Original message unreadable: it cannot be forwarded.",
+    },
+    # -- Règles : redirection, garde-fous et destinations ----------------
+    # Raisons propres à la redirection (journal, essai), erreurs de ses
+    # options, et raisons du retrait d'une destination pour un message.
+    "mail_rules_reason_own_message": {
+        "fr": "notre propre envoi automatique, ou une réponse à l'un d'eux",
+        "en": "our own automatic message, or a reply to one",
+    },
+    "mail_rules_reason_resent_loop": {
+        "fr": "déjà redirigé par ce compte",
+        "en": "already redirected by this account",
+    },
+    "mail_rules_reason_delivery_report": {
+        "fr": "rapport de remise ou de non-remise",
+        "en": "delivery or non-delivery report",
+    },
+    "mail_rules_reason_auto_reply": {
+        "fr": "réponse automatique (absence, accusé de réception)",
+        "en": "automatic reply (out of office, acknowledgement)",
+    },
+    "mail_rules_reason_too_big": {
+        "fr": "message trop gros pour être transféré",
+        "en": "message too large to forward",
+    },
+    "mail_rules_reason_no_forward_target": {
+        "fr": "aucune destination restante",
+        "en": "no destination left",
+    },
+    "mail_rules_err_fwd_mode": {
+        "fr": "mode de redirection inconnu :",
+        "en": "unknown forward mode:",
+    },
+    "mail_rules_err_fwd_no_target": {
+        "fr": "au moins une adresse de destination est requise",
+        "en": "at least one destination address is required",
+    },
+    "mail_rules_err_fwd_too_many": {
+        "fr": "trop d'adresses de destination ; maximum :",
+        "en": "too many destination addresses; maximum:",
+    },
+    "mail_rules_err_fwd_intro_too_long": {
+        "fr": "texte d'introduction trop long ; maximum :",
+        "en": "introduction text too long; maximum:",
+    },
+    "mail_rules_err_fwd_images": {
+        "fr": "une redirection ne porte pas d'images",
+        "en": "a forward carries no images",
+    },
+    "mail_rules_err_fwd_self": {
+        "fr": "c'est l'adresse de ce compte :",
+        "en": "this is this account's address:",
+    },
+    "mail_rules_err_fwd_other_account": {
+        "fr": "c'est l'adresse d'un autre compte configuré :",
+        "en": "this is the address of another configured account:",
+    },
+    "mail_rules_err_fwd_duplicate": {
+        "fr": "adresse déjà dans la liste :",
+        "en": "address already in the list:",
+    },
+    "mail_rules_fwd_removed_sender": {
+        "fr": "expéditeur d'origine",
+        "en": "original sender",
+    },
+    "mail_rules_fwd_removed_self": {
+        "fr": "adresse de ce compte",
+        "en": "this account's address",
+    },
+    "mail_rules_fwd_removed_other_account": {
+        "fr": "adresse d'un autre compte configuré",
+        "en": "another configured account's address",
+    },
+    # -- Règles : formulaire de redirection, essai et file ---------------
+    # Formulaire d'une règle forward, section de l'essai qui montre ce qui
+    # partirait, et aperçu d'une entrée de la file.
+    "mail_rules_action_forward": {"fr": "Redirection…", "en": "Forward…"},
+    "mail_rules_trial_would_forward": {
+        "fr": "transférerait",
+        "en": "would forward",
+    },
+    "mail_rules_trial_fwd_no_sender": {
+        "fr": "expéditeur sans adresse utilisable",
+        "en": "sender without a usable address",
+    },
+    "mail_rules_fwd_mode": {"fr": "Mode", "en": "Mode"},
+    "mail_rules_fwd_mode_inline": {
+        "fr": "Transfert dans le corps du message",
+        "en": "Forward inline",
+    },
+    "mail_rules_fwd_mode_attachment": {
+        "fr": "Transfert en pièce jointe",
+        "en": "Forward as attachment",
+    },
+    "mail_rules_fwd_mode_redirect": {
+        "fr": "Vraie redirection (message inchangé)",
+        "en": "True redirect (message unchanged)",
+    },
+    "mail_rules_fwd_redirect_warning": {
+        "fr": (
+            "Attention : en vraie redirection, le message part avec"
+            " l'adresse De de son expéditeur. La politique SPF/DMARC de son"
+            " domaine peut le faire rejeter chez le destinataire, et"
+            " certains serveurs d'envoi refusent une adresse De qui n'est"
+            " pas la vôtre. Le transfert est conseillé."
+        ),
+        "en": (
+            "Warning: a true redirect leaves with the sender's From"
+            " address. The SPF/DMARC policy of that domain may get it"
+            " rejected by the recipient, and some sending servers refuse a"
+            " From address that is not yours. Forwarding is recommended."
+        ),
+    },
+    "mail_rules_fwd_targets": {"fr": "Destinations", "en": "Destinations"},
+    "mail_rules_fwd_target_placeholder": {
+        "fr": "nom@example.org",
+        "en": "name@example.org",
+    },
+    "mail_rules_fwd_target_add": {"fr": "Ajouter", "en": "Add"},
+    "mail_rules_fwd_target_remove": {"fr": "Retirer", "en": "Remove"},
+    "mail_rules_fwd_intro": {
+        "fr": "Texte d'introduction (facultatif, transfert seulement)",
+        "en": "Introduction text (optional, forwarding only)",
+    },
+    "mail_rules_fwd_skip_lists": {
+        "fr": "Ignorer listes et robots",
+        "en": "Skip lists and robots",
+    },
+    "mail_rules_err_fwd_pending": {
+        "fr": (
+            "Adresse saisie mais pas ajoutée : « Ajouter » ou videz le champ."
+        ),
+        "en": "Address typed but not added: press Add or clear the field.",
+    },
+    "mail_rules_trial_fwd_mode": {"fr": "Mode :", "en": "Mode:"},
+    "mail_rules_trial_fwd_targets": {
+        "fr": "Destinations retenues :",
+        "en": "Destinations kept:",
+    },
+    "mail_rules_trial_fwd_no_target": {
+        "fr": "Destinations retenues : aucune",
+        "en": "Destinations kept: none",
+    },
+    "mail_rules_trial_fwd_removed": {"fr": "Retirée :", "en": "Removed:"},
+    "mail_rules_trial_fwd_size": {
+        "fr": "Taille du message (octets) :",
+        "en": "Message size (bytes):",
+    },
+    "mail_rules_trial_fwd_headers": {
+        "fr": "Message qui partirait :",
+        "en": "Message that would leave:",
+    },
+    "mail_rules_trial_fwd_preview_self": {
+        "fr": (
+            "Aperçu adressé à vous-même : aucune destination n'est retenue."
+        ),
+        "en": "Preview addressed to yourself: no destination is kept.",
+    },
+    "mail_rules_trial_fwd_unchanged": {
+        "fr": "Le reste du message part octet pour octet.",
+        "en": "The rest of the message leaves byte for byte.",
+    },
+    "mail_rules_outbox_forward": {
+        "fr": "transfert d'une règle",
+        "en": "forward by a rule",
+    },
+    "mail_rules_outbox_loading": {
+        "fr": "Lecture de l'entrée…",
+        "en": "Reading the entry…",
+    },
+    "mail_rules_outbox_redirect": {
+        "fr": "redirection d'une règle, message d'origine inchangé",
+        "en": "redirect by a rule, original message unchanged",
+    },
     "mail_rules_busy": {
         "fr": "Règles occupées par une autre passe, réessayez.",
         "en": "Rules are busy with another pass, try again.",
@@ -15122,9 +15314,13 @@ TRANSLATIONS = {
     "mail_rules_status_failed": {"fr": "échecs :", "en": "failed:"},
     "mail_rules_cap_warning": {
         "fr": (
-            "Plafond d'envois automatiques atteint ; le reste est retenu (o)."
+            "Plafond d'envois automatiques atteint ; le reste est retenu (o)"
+            " ou ignoré (journal l)."
         ),
-        "en": "Automatic send cap reached; the rest is held (o).",
+        "en": (
+            "Automatic send cap reached; the rest is held (o) or skipped"
+            " (log l)."
+        ),
     },
     "mail_rules_catchup_warning": {
         "fr": (

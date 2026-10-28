@@ -17,17 +17,53 @@ from pathlib import Path
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.rules import storage
 from script.todo.mail.rules.model import Armed, new_rule
-from script.todo.mail.smtp_send import SmtpError, build_message
+from script.todo.mail.smtp_send import (
+    RawOutgoing,
+    SmtpError,
+    build_forward_attached,
+    build_message,
+    build_redirect,
+)
 from script.todo.mail.store import Store
 from script.todo.mail.tui import Session, deliver, flush_outbox
 
 OWN = "boite.regles@example.org"
 CAROLE = "carole.regle@example.org"
 DENIS = "denis.tri@example.org"
+TEMOIN = "temoin.cci@example.com"
 T0 = 1_790_000_000
+# Un original reçu dont les destinataires visibles et cachés ne sont pas
+# les destinations d'une redirection.
+ORIGINAL = (
+    b"From: bruno.filtre@example.net\r\n"
+    b"To: temoin.cci@example.com\r\n"
+    b"Cc: temoin.cci@example.com\r\n"
+    b"Bcc: temoin.cci@example.com\r\n"
+    b"Subject: Devis\r\n"
+    b"Message-ID: <orig@example.net>\r\n"
+    b"\r\n"
+    b"Bonjour.\r\n"
+)
 
 
 class FauxSmtp:
+    def quit(self):
+        pass
+
+
+class SmtpEspion:
+    """Un transport SMTP qui enregistre ses deux chemins d'envoi."""
+
+    def __init__(self):
+        self.raw_calls = []
+        self.message_calls = []
+
+    def send_raw(self, raw, from_addr, to_addrs):
+        self.raw_calls.append((raw, list(to_addrs)))
+
+    def send_message(self, msg, from_addr, to_addrs):
+        self.message_calls.append((msg.as_bytes(), list(to_addrs)))
+
     def quit(self):
         pass
 
@@ -379,6 +415,149 @@ class TestUnreachableServer(OutboxV6Case):
             return [CAROLE]
 
         self.assertEqual(self.vider(envoyer), (1, 0, 1))
+
+
+class TestRedirectEntries(OutboxV6Case):
+    def setUp(self):
+        super().setUp()
+        self.smtp = SmtpEspion()
+        self.connexions = 0
+
+    def connecter(self, account, secret):
+        self.connexions += 1
+        return self.smtp
+
+    def vider_reel(self):
+        """La vidange avec le vrai `send`, sur un transport espion."""
+        return flush_outbox(
+            self.en_ligne(), connect_fn=self.connecter, now=lambda: T0
+        )
+
+    def en_file(self, rule, raw, recipients, kind, subject="Devis"):
+        cle = f"cle-{len(self.store.outbox())}"
+        self.store.rule_log_claim(
+            rule.id,
+            cle,
+            outcome="pending",
+            at=T0,
+            fingerprint=rule.fingerprint(),
+        )
+        ident = self.store.queue_auto(
+            raw,
+            recipients,
+            subject,
+            held=False,
+            rule_id=rule.id,
+            source_key=cle,
+            expires_at=T0 + 86400,
+            outcome="queued",
+            reason="offline",
+            kind=kind,
+        )
+        return ident, cle
+
+    def redirection(self, rule, cibles=(CAROLE, DENIS)):
+        sortie = build_redirect(self.account, ORIGINAL, list(cibles))
+        return self.en_file(
+            rule,
+            sortie.raw,
+            ", ".join(sortie.envelope),
+            "auto_redirect",
+        )
+
+    def test_a_queued_redirect_keeps_its_envelope(self):
+        rule = self.regle()
+        _ident, cle = self.redirection(rule)
+        self.assertEqual(self.vider_reel(), (1, 0, 0))
+        self.assertEqual(self.smtp.message_calls, [])
+        [(octets, rcpt)] = self.smtp.raw_calls
+        self.assertEqual(rcpt, [CAROLE, DENIS])
+        self.assertTrue(octets.startswith(b"Resent-From: "))
+        self.assertNotIn(b"Bcc:", octets)
+        self.assertEqual(self.store.rule_log_outcome(rule.id, cle), "sent")
+
+    def test_a_sent_redirect_is_not_filed_in_sent(self):
+        rule = self.regle()
+        self.redirection(rule)
+        self.assertEqual(self.vider_reel(), (1, 0, 0))
+        self.assertEqual(self.syncer.transport.appended, [])
+        self.assertEqual(self.store.outbox(), [])
+
+    def test_a_forward_entry_is_filed_in_sent(self):
+        rule = self.regle()
+        msg = build_forward_attached(self.account, ORIGINAL, [CAROLE, DENIS])
+        self.en_file(rule, msg.as_bytes(), "", "auto_forward")
+        self.assertEqual(self.vider_reel(), (1, 0, 0))
+        [(dossier, brut, _drapeaux)] = self.syncer.transport.appended
+        self.assertEqual(dossier, self.account.sent_folder)
+        self.assertNotIn(b"X-ERPLibre-Bcc", brut)
+
+    def test_an_unreadable_envelope_drops_the_entry_as_failed(self):
+        rule = self.regle()
+        sortie = build_redirect(self.account, ORIGINAL, [CAROLE])
+        for texte in ("", "pas une adresse", f"{CAROLE}, <{DENIS}>"):
+            with self.subTest(texte=texte):
+                _ident, cle = self.en_file(
+                    rule, sortie.raw, texte, "auto_redirect"
+                )
+                self.assertEqual(self.vider_reel(), (0, 0, 0))
+                self.assertEqual(self.connexions, 0)
+                self.assertEqual(self.store.outbox(), [])
+                self.assertEqual(
+                    self.store.rule_log_outcome(rule.id, cle), "failed"
+                )
+
+    def test_an_unknown_kind_is_never_sent(self):
+        """Une entrée écrite par un code plus récent n'est jamais envoyée
+        par le chemin générique, qui lirait l'enveloppe dans ses octets."""
+        rule = self.regle()
+        ident, cle = self.en_file(rule, ORIGINAL, CAROLE, "auto_forward")
+        db = self.store._db()
+        db.execute(
+            "UPDATE outbox SET kind = 'auto_later' WHERE id = ?", (ident,)
+        )
+        db.commit()
+        self.assertEqual(self.vider_reel(), (0, 0, 0))
+        self.assertEqual(self.connexions, 0)
+        self.assertEqual(self.store.outbox(), [])
+        self.assertEqual(self.store.rule_log_outcome(rule.id, cle), "failed")
+        [ligne] = self.store.rule_log_entries(rule.id)
+        self.assertEqual(ligne["reason"], "build_error")
+
+    def test_a_queued_forward_keeps_its_hidden_envelope(self):
+        rule = self.regle()
+        msg = build_forward_attached(self.account, ORIGINAL, [CAROLE, DENIS])
+        self.en_file(rule, msg.as_bytes(), "", "auto_forward")
+        self.assertEqual(self.vider_reel(), (1, 0, 0))
+        self.assertEqual(self.smtp.raw_calls, [])
+        [(octets, rcpt)] = self.smtp.message_calls
+        self.assertEqual(rcpt, [CAROLE, DENIS])
+        self.assertNotIn(b"X-ERPLibre-Bcc", octets)
+        self.assertNotIn(b"\nBcc:", octets)
+        self.assertNotIn(TEMOIN, rcpt)
+
+
+class TestDeliverRaw(OutboxV6Case):
+    def test_deliver_sends_raw_without_filing(self):
+        smtp = SmtpEspion()
+        sortie = build_redirect(self.account, ORIGINAL, [CAROLE, DENIS])
+        statut = deliver(self.en_ligne(), sortie, connect_fn=lambda a, p: smtp)
+        self.assertIn(CAROLE, statut)
+        self.assertIn(DENIS, statut)
+        self.assertEqual([r for _o, r in smtp.raw_calls], [[CAROLE, DENIS]])
+        self.assertEqual(self.syncer.transport.appended, [])
+
+    def test_deliver_raw_offline_raises_even_when_queueing_is_allowed(self):
+        from script.todo.mail.tui import DeliverOffline
+
+        sortie = RawOutgoing(b"Subject: x\r\n\r\ny\r\n", (CAROLE,), "x")
+        for queue_offline in (True, False):
+            with self.subTest(queue_offline=queue_offline):
+                with self.assertRaises(DeliverOffline):
+                    deliver(
+                        self.hors_ligne(), sortie, queue_offline=queue_offline
+                    )
+        self.assertEqual(self.store.outbox(), [])
 
 
 if __name__ == "__main__":
