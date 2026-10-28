@@ -1154,6 +1154,16 @@ formats, an image the body names — `![Logo](logo.png)` or
 `<img src="logo.png">` — goes inline; a listed image the body does not name
 goes as an attachment, so none is lost.
 
+An SVG image (`.svg`, `.svgz`) is **converted to PNG** when added and stored
+under the same name ending in `.png`: the SVG itself is never kept nor sent,
+since common mail clients do not show it inline and it may carry script. The
+PNG keeps the drawing's own width, reduced to 1200 px at most (600 px when
+the drawing gives none), and needs a converter — `rsvg-convert`, the Python
+module `cairosvg`, `inkscape` or ImageMagick, tried in that order; without
+one, the form says to install `librsvg2-bin`. An SVG that points to an
+outside file or resource — an `href` or `url()` other than `#…` or
+`data:`, an `@import`, an external entity — is refused.
+
 An empty subject gives `Auto:` followed by the received subject; otherwise
 the subject is your text, with `{subject}` replaced by the received
 subject.
@@ -1661,6 +1671,17 @@ lieu d'être envoyée. Dans les deux formats HTML, une image que le corps
 nomme — `![Logo](logo.png)` ou `<img src="logo.png">` — part en ligne ;
 une image listée que le corps ne nomme pas part en pièce jointe : aucune
 ne se perd.
+
+Une image SVG (`.svg`, `.svgz`) est **convertie en PNG** à l'ajout et rangée
+sous le même nom terminé par `.png` : le SVG lui-même n'est ni gardé ni
+envoyé, les clients courriel courants ne l'affichant pas en ligne et un SVG
+pouvant porter du script. Le PNG garde la largeur propre du dessin, ramenée
+à 1200 px au plus (600 px quand le dessin n'en donne pas), et demande un
+convertisseur — `rsvg-convert`, le module Python `cairosvg`, `inkscape` ou
+ImageMagick, essayés dans cet ordre ; sans aucun, le formulaire dit
+d'installer `librsvg2-bin`. Un SVG qui renvoie à un fichier ou à une
+ressource externe — un `href` ou un `url()` autre que `#…` ou `data:`, un
+`@import`, une entité externe — est refusé.
 
 Un sujet vide donne `Auto:` suivi du sujet reçu ; sinon le sujet est votre
 texte, où `{subject}` est remplacé par le sujet reçu.

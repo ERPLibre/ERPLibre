@@ -40,6 +40,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from script.todo.mail.rules import svg
 from script.todo.mail.rules.lock import file_lock
 from script.todo.mail.rules.model import (
     FORMATS,
@@ -810,34 +811,37 @@ def import_media(
     """Copie une image dans le dossier des médias du compte.
 
     Refuse un type hors `IMAGE_MIMES` (deviné par l'extension) et une
-    image de plus de `MAX_IMAGE_BYTES`. Le nom est assaini ; un fichier de
+    image de plus de `MAX_IMAGE_BYTES`. Un SVG (`.svg`, `.svgz`) est
+    converti en PNG par `svg.svg_to_png` et rangé sous son nom en `.png` :
+    le SVG lui-même n'est jamais copié. Le nom est assaini ; un fichier de
     même nom au contenu différent fait essayer `-2`, `-3`… ; un fichier de
     même contenu est réutilisé tel quel. La copie naît en 0600 par
     `O_EXCL` : deux imports concurrents n'écrasent jamais le fichier
     l'un de l'autre.
     """
     src = Path(src)
-    mime = mimetypes.guess_type(src.name)[0]
-    if mime not in IMAGE_MIMES:
-        raise RuleError(
-            f"{t('mail_rules_err_image_type')} {mime or src.suffix or src.name}"
-        )
-    try:
-        with open(src, "rb") as handle:
-            data = handle.read(MAX_IMAGE_BYTES + 1)
-    except FileNotFoundError as exc:
-        raise RuleError(
-            f"{t('mail_rules_err_image_missing')} {src.name}"
-        ) from exc
-    except OSError as exc:
-        raise RuleError(
-            f"{t('mail_rules_err_image_missing')} {src.name}"
-        ) from exc
-    if len(data) > MAX_IMAGE_BYTES:
-        raise RuleError(f"{t('mail_rules_err_image_size')} {src.name}")
+    if svg.is_svg_name(src.name):
+        data = svg.svg_to_png(src)
+        mime, stored_name = "image/png", svg.png_name(src.name)
+    else:
+        mime, stored_name = mimetypes.guess_type(src.name)[0], src.name
+        if mime not in IMAGE_MIMES:
+            raise RuleError(
+                f"{t('mail_rules_err_image_type')}"
+                f" {mime or src.suffix or src.name}"
+            )
+        try:
+            with open(src, "rb") as handle:
+                data = handle.read(MAX_IMAGE_BYTES + 1)
+        except OSError as exc:
+            raise RuleError(
+                f"{t('mail_rules_err_image_missing')} {src.name}"
+            ) from exc
+        if len(data) > MAX_IMAGE_BYTES:
+            raise RuleError(f"{t('mail_rules_err_image_size')} {src.name}")
     digest = hashlib.sha256(data).hexdigest()
     folder = media_dir(account_name, base)
-    for name in _candidates(_safe_media_name(src.name, mime)):
+    for name in _candidates(_safe_media_name(stored_name, mime)):
         dest = folder / name
         if dest.exists() or dest.is_symlink():
             if _file_sha256(dest) == digest:

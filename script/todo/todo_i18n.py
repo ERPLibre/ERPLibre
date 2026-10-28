@@ -15084,6 +15084,28 @@ TRANSLATIONS = {
         "fr": "image modifiée depuis son ajout :",
         "en": "image changed since it was added:",
     },
+    "mail_rules_err_svg_no_converter": {
+        "fr": (
+            "image SVG : aucun convertisseur en PNG (rsvg-convert, cairosvg,"
+            " inkscape ou ImageMagick) ; pour en installer un :"
+        ),
+        "en": (
+            "SVG image: no PNG converter (rsvg-convert, cairosvg, inkscape"
+            " or ImageMagick); to install one:"
+        ),
+    },
+    "mail_rules_err_svg_invalid": {
+        "fr": "fichier qui n'est pas une image SVG :",
+        "en": "file is not an SVG image:",
+    },
+    "mail_rules_err_svg_external": {
+        "fr": "image SVG qui renvoie à un fichier ou une ressource externe :",
+        "en": "SVG image refers to an external file or resource:",
+    },
+    "mail_rules_err_svg_failed": {
+        "fr": "conversion du SVG en PNG échouée :",
+        "en": "SVG to PNG conversion failed:",
+    },
     "mail_rules_busy": {
         "fr": "Règles occupées par une autre passe, réessayez.",
         "en": "Rules are busy with another pass, try again.",
@@ -15442,8 +15464,14 @@ TRANSLATIONS = {
     "mail_rules_body": {"fr": "Corps de la réponse", "en": "Reply body"},
     "mail_rules_images": {"fr": "Images", "en": "Images"},
     "mail_rules_image_paths": {
-        "fr": "Chemins des images (séparés par des points-virgules)",
-        "en": "Image paths (separated by semicolons)",
+        "fr": (
+            "Chemins des images PNG, JPEG, GIF, WebP ou SVG (séparés par"
+            " des points-virgules)"
+        ),
+        "en": (
+            "Paths of PNG, JPEG, GIF, WebP or SVG images (separated by"
+            " semicolons)"
+        ),
     },
     "mail_rules_image_inline": {"fr": "en ligne", "en": "inline"},
     "mail_rules_image_attached": {
