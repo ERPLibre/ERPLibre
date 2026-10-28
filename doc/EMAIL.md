@@ -620,6 +620,16 @@ formats, an image the body names — `![Logo](logo.png)` or
 `<img src="logo.png">` — goes inline; a listed image the body does not name
 goes as an attachment, so none is lost.
 
+An SVG image (`.svg`, `.svgz`) is **converted to PNG** when added and stored
+under the same name ending in `.png`: the SVG itself is never kept nor sent,
+since common mail clients do not show it inline and it may carry script. The
+PNG keeps the drawing's own width, reduced to 1200 px at most (600 px when
+the drawing gives none), and needs a converter — `rsvg-convert`, the Python
+module `cairosvg`, `inkscape` or ImageMagick, tried in that order; without
+one, the form says to install `librsvg2-bin`. An SVG that points to an
+outside file or resource — an `href` or `url()` other than `#…` or
+`data:`, an `@import`, an external entity — is refused.
+
 An empty subject gives `Auto:` followed by the received subject; otherwise
 the subject is your text, with `{subject}` replaced by the received
 subject.

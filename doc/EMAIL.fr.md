@@ -665,6 +665,17 @@ nomme — `![Logo](logo.png)` ou `<img src="logo.png">` — part en ligne ;
 une image listée que le corps ne nomme pas part en pièce jointe : aucune
 ne se perd.
 
+Une image SVG (`.svg`, `.svgz`) est **convertie en PNG** à l'ajout et rangée
+sous le même nom terminé par `.png` : le SVG lui-même n'est ni gardé ni
+envoyé, les clients courriel courants ne l'affichant pas en ligne et un SVG
+pouvant porter du script. Le PNG garde la largeur propre du dessin, ramenée
+à 1200 px au plus (600 px quand le dessin n'en donne pas), et demande un
+convertisseur — `rsvg-convert`, le module Python `cairosvg`, `inkscape` ou
+ImageMagick, essayés dans cet ordre ; sans aucun, le formulaire dit
+d'installer `librsvg2-bin`. Un SVG qui renvoie à un fichier ou à une
+ressource externe — un `href` ou un `url()` autre que `#…` ou `data:`, un
+`@import`, une entité externe — est refusé.
+
 Un sujet vide donne `Auto:` suivi du sujet reçu ; sinon le sujet est votre
 texte, où `{subject}` est remplacé par le sujet reçu.
 

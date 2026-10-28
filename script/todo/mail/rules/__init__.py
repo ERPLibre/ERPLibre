@@ -6,10 +6,12 @@
 Le paquet est découpé par responsabilité : `model` décrit une règle et la
 (dé)sérialise, `filter` évalue l'arbre de conditions sur un message,
 `guards` décide si une réponse automatique part, `markup` rend le corps de la
-réponse, `storage` garde les règles, l'état et les images sur le disque, et
-`lock` exclut deux passes concurrentes sur un même compte.
+réponse, `storage` garde les règles, l'état et les images sur le disque,
+`svg` convertit en PNG une image SVG au moment de son ajout, et `lock`
+exclut deux passes concurrentes sur un même compte.
 
 Ces modules sont purs au sens du réseau : aucun n'ouvre de connexion IMAP ni
-SMTP, et seul `storage` touche au disque. L'orchestration, qui les assemble
-avec le cache et les transports, vit dans `engine`.
+SMTP, et seuls `storage` et `svg`, qu'il appelle, touchent au disque.
+L'orchestration, qui les assemble avec le cache et les transports, vit dans
+`engine`.
 """

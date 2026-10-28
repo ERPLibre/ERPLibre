@@ -11,6 +11,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 from script.todo.mail.rules import storage
 from script.todo.mail.rules.lock import file_lock
@@ -527,11 +528,16 @@ class TestMedia(StorageCase):
         self.assertEqual(mode_of(path), 0o600)
         self.assertEqual(storage.read_media("perso", ref, base=self.base), PNG)
 
-    def test_svg_is_refused(self):
-        with self.assertRaises(RuleError):
-            storage.import_media(
-                "perso", self.image("logo.svg", b"<svg/>"), base=self.base
-            )
+    def test_svg_without_converter_is_refused_and_never_stored(self):
+        with mock.patch.object(
+            storage.svg, "available_converters", return_value=[]
+        ):
+            with self.assertRaises(RuleError):
+                storage.import_media(
+                    "perso", self.image("logo.svg", b"<svg/>"), base=self.base
+                )
+        folder = storage.media_dir("perso", self.base)
+        self.assertEqual(os.listdir(folder), [])
 
     def test_three_mebibytes_is_refused(self):
         big = self.image("grand.png", b"\x00" * (3 * 1024 * 1024))
