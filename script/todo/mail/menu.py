@@ -175,7 +175,8 @@ RULES_MENU_LOG_LINES = 50
 
 def prompt_mail_rules(todo, *, base=None) -> None:
     """Menu [6] : lister, activer, déplacer, supprimer les règles d'un
-    compte, et lire leur journal, sans ouvrir le TUI.
+    compte, lire leur journal, régler le rapport de statistiques et
+    essayer une règle sur un message, sans ouvrir le TUI.
 
     La création et l'édition passent par le TUI (touche `e`) : un arbre
     de filtre ne se saisit pas ligne à ligne. La base des règles vient du
@@ -204,6 +205,8 @@ def prompt_mail_rules(todo, *, base=None) -> None:
 [3] {t("mail_rules_menu_move")}
 [4] {t("mail_rules_menu_delete")}
 [5] {t("mail_rules_menu_journal")}
+[6] {t("mail_rules_menu_report")}
+[7] {t("mail_rules_menu_trial")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -216,6 +219,10 @@ def prompt_mail_rules(todo, *, base=None) -> None:
                 _change_rule(account.name, rules_base, status)
             elif status == "5":
                 _show_rules_log(todo, account, rules_base, base)
+            elif status == "6":
+                _report_settings(todo, account, rules_base, base)
+            elif status == "7":
+                _trial(todo, account, rules_base, base)
             else:
                 print(t("Command not found !"))
         except RuleError as exc:
@@ -332,6 +339,195 @@ def _show_rules_log(todo, account, base_rules, base=None) -> None:
             f"  {quand}  {_printable(nom)}  {texte}"
             f"  {_printable(ligne['sender'])}  {_printable(ligne['subject'])}"
         )
+
+
+def _open_store(todo, account, base=None) -> Store:
+    """Le cache du compte, ouvert ; le coffre n'est demandé que pour un
+    cache chiffré."""
+    mode = resolve_mode(account)
+    magasin = Store(
+        account,
+        mode=mode,
+        secrets=secret_store_for(todo) if mode != "clear" else None,
+        base=base,
+    )
+    magasin.open()
+    return magasin
+
+
+def _report_settings(todo, account, rules_base, base=None) -> None:
+    """[6] Les paramètres du rapport : chaque champ demandé, valeur
+    actuelle par défaut, puis l'aperçu texte du bloc « {{rapport}} »
+    sans demandeur. Une valeur refusée est imprimée et rien n'est écrit.
+    """
+    import dataclasses
+    import time
+
+    from script.todo.mail.rules import report, storage
+    from script.todo.mail.rules.model import FORMATS, RuleError
+
+    try:
+        actuels = storage.load_report(account.name, base=rules_base)
+    except RuleError as exc:
+        print(exc)
+        actuels = storage.ReportSettings()
+    print(f"{t('mail_stats_report_tz')} {time.strftime('%Z (UTC%z)')}")
+    saisie = {}
+    # « - » tient la place d'une chaîne vide : `click.prompt` rend la
+    # valeur par défaut sur une saisie vide, qui ne pourrait donc jamais
+    # effacer un identifiant ou une langue déjà réglés.
+    for champ, cle, choix in (
+        ("days", "mail_stats_report_days", ""),
+        ("weeks", "mail_stats_report_weeks", ""),
+        ("delay_window_days", "mail_stats_report_window", ""),
+        ("format", "mail_stats_report_format", "/".join(FORMATS)),
+        ("lang", "mail_stats_report_lang", "-/fr/en"),
+        ("auth_serv_id", "mail_stats_report_auth_serv", "-"),
+    ):
+        actuel = getattr(actuels, champ)
+        invite = f"{t(cle)} ({choix})" if choix else t(cle)
+        valeur = str(
+            click.prompt(invite, default="-" if actuel == "" else actuel)
+        ).strip()
+        if isinstance(actuel, str) and valeur == "-":
+            valeur = ""
+        if isinstance(actuel, int):
+            try:
+                valeur = int(valeur)
+            except ValueError:
+                # Laissé en texte : `report_from_dict` le refuse en
+                # nommant le champ.
+                pass
+        saisie[champ] = valeur
+    try:
+        reglages = storage.report_from_dict(
+            {**dataclasses.asdict(actuels), **saisie}
+        )
+        storage.save_report(account.name, reglages, base=rules_base)
+    except RuleError as exc:
+        print(exc)
+        return
+    print(t("mail_stats_report_saved"))
+    if not reglages.auth_serv_id:
+        print(t("mail_stats_report_auth_serv_unset"))
+    try:
+        magasin = _open_store(todo, account, base)
+    except Exception as exc:
+        print(f"  {t('mail_stats_error')} {exc}")
+        return
+    try:
+        donnees = report.build_data(
+            magasin, reglages, now=int(time.time()), sender=None
+        )
+        texte = report.values(donnees)["rapport"][0]
+    except Exception as exc:
+        print(f"  {t('mail_stats_error')} {exc}")
+        return
+    finally:
+        try:
+            magasin.close()
+        except Exception:
+            pass
+    print()
+    for ligne in texte.splitlines():
+        print(_printable(ligne))
+
+
+# Messages récents de la boîte de réception proposés par l'essai du menu.
+TRIAL_MENU_MESSAGES = 20
+
+
+def _trial(todo, account, rules_base, base=None) -> None:
+    """[7] Essai d'une règle sur un message récent de la boîte de
+    réception : ce que la règle en ferait, puis, sur « o », un envoi
+    d'essai à l'adresse du compte.
+
+    La session s'ouvre comme celle du TUI (en ligne si possible : en-têtes
+    complets) et se ferme toujours. Tout ce qui vient d'un message passe
+    par `_printable`.
+    """
+    import time
+
+    from script.todo.mail import tui
+    from script.todo.mail.rules import engine
+
+    rules = _list_rules(account.name, rules_base)
+    if not rules:
+        return
+    numero = str(click.prompt(t("mail_rules_menu_pick_rule"))).strip()
+    try:
+        index = int(numero) - 1
+    except ValueError:
+        index = -1
+    if not 0 <= index < len(rules):
+        print(t("mail_rules_menu_unknown_rule"))
+        return
+    rule = rules[index]
+    session = tui.open_session(
+        account,
+        secret_store_for(todo),
+        base=base,
+        config_get=_config_get(todo),
+    )
+    try:
+        store = session.store
+        if store is None:
+            print(f"{t('mail_rules_no_cache')} {session.error}".strip())
+            return
+        inbox = engine.find_inbox(store)
+        etat = store.folder_state(inbox) if inbox else None
+        if not etat or not etat.get("uidvalidity"):
+            print(t("mail_rules_no_inbox"))
+            return
+        metas = store.list_messages(etat["id"], limit=TRIAL_MENU_MESSAGES)
+        if not metas:
+            print(t("mail_rules_trial_none"))
+            return
+        for rang, meta in enumerate(metas, start=1):
+            quand = time.strftime(
+                "%Y-%m-%d %H:%M",
+                time.localtime(
+                    getattr(meta, "received_at", 0) or meta.date or 0
+                ),
+            )
+            print(
+                f"  [{rang}] {quand}  {_printable(meta.frm)}"
+                f"  {_printable(meta.subject)}"
+            )
+        choix = str(
+            click.prompt(t("mail_rules_menu_trial_pick_message"))
+        ).strip()
+        try:
+            rang = int(choix) - 1
+        except ValueError:
+            rang = -1
+        if not 0 <= rang < len(metas):
+            print(t("Command not found !"))
+            return
+        sim = tui.trial_simulation(
+            session,
+            rule,
+            metas[rang],
+            folder=inbox,
+            uidvalidity=int(etat["uidvalidity"]),
+            rules_base=rules_base,
+        )
+        print()
+        for ligne, _style in tui.rule_trial_lines(sim):
+            print(_printable(ligne))
+        if sim.rendered is None:
+            return
+        reponse = str(click.prompt(t("mail_rules_menu_trial_send_ask")))
+        if reponse.strip().lower() not in ("o", "y"):
+            return
+        try:
+            statut = engine.send_trial(session, rule, sim)
+        except Exception as exc:
+            print(exc)
+            return
+        print(f"{t('mail_rules_trial_sent')} {_printable(statut)}")
+    finally:
+        session.close()
 
 
 def _show_stats(todo, *, base=None) -> None:
@@ -478,8 +674,7 @@ def _sync_now(todo) -> None:
         lignes += [f"  {e}" for e in report.errors]
         if report.purged:
             lignes.append(
-                f"  {t('mail_folders_resynced')}"
-                f" {', '.join(report.purged)}"
+                f"  {t('mail_folders_resynced')} {', '.join(report.purged)}"
             )
         return "\n".join(lignes), report
 

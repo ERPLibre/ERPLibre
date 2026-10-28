@@ -294,6 +294,26 @@ class MessageMeta:
     seen_at: int = 0
 
 
+@dataclass(frozen=True)
+class ActivityRow:
+    """Un message de la boîte de réception vu par les statistiques
+    d'activité : la première copie de son Message-ID.
+
+    `received_at` > 0 (réception, ou date d'en-tête à défaut) ; `answered`
+    est vrai pour `\\Answered` ou s'il existe une réponse non automatique
+    dans Envoyés ; `first_reply_at` est la plus ancienne de ces réponses
+    STRICTEMENT postérieure à la réception, ou None ; `sender` est
+    l'adresse normalisée de From (`filter.sole_address`) quand elle est
+    demandée, sinon « ».
+    """
+
+    received_at: int
+    seen: bool
+    answered: bool
+    first_reply_at: int | None
+    sender: str = ""
+
+
 def _fts_query(texte: str) -> str:
     """Une saisie libre → une requête FTS5 sûre.
 
@@ -1406,6 +1426,24 @@ class Store:
         )
 
     @_locked
+    def rule_log_rule_sends(self, rule_id: str, since: int) -> int:
+        """Les décisions d'envoi de CETTE règle à `since` ou après, issues
+        `sent`, `queued` et `held`.
+
+        Une réponse retenue compte : elle est décidée, et partira si
+        quelqu'un la libère.
+        """
+        return (
+            self._db()
+            .execute(
+                "SELECT COUNT(*) FROM rule_log WHERE rule_id = ? AND at >= ?"
+                " AND outcome IN ('sent', 'queued', 'held')",
+                (rule_id, int(since)),
+            )
+            .fetchone()[0]
+        )
+
+    @_locked
     def rule_log_entries(
         self, rule_id: str | None = None, limit: int = 200
     ) -> list[dict]:
@@ -1452,6 +1490,25 @@ class Store:
             "INSERT OR IGNORE INTO auto_sent(msgid_hash, rule_id, at)"
             " VALUES(?,?,?)",
             (self._msgid_hash(msgid), rule_id, int(at)),
+        )
+        db.commit()
+
+    @_locked
+    def mark_auto_sent_many(self, items: list[tuple[str, str, int]]) -> None:
+        """`mark_auto_sent` pour chaque (msgid, rule_id, at), en une
+        transaction ; un Message-ID vide est ignoré."""
+        rows = [
+            (self._msgid_hash(msgid.strip()), rule_id, int(at))
+            for msgid, rule_id, at in items
+            if (msgid or "").strip()
+        ]
+        if not rows:
+            return
+        db = self._db()
+        db.executemany(
+            "INSERT OR IGNORE INTO auto_sent(msgid_hash, rule_id, at)"
+            " VALUES(?,?,?)",
+            rows,
         )
         db.commit()
 
@@ -1734,6 +1791,118 @@ class Store:
             params,
         )
         return [delai for (delai,) in lignes if delai > 0]
+
+    @_locked
+    def activity_folders(self) -> tuple[list[int], list[int]]:
+        """(ids des boîtes de réception, ids des dossiers Envoyés).
+
+        Boîte de réception : rôle `inbox`, ou nom « INBOX » sans égard à la
+        casse. Envoyés : rôle `sent`, ou nom égal au dossier d'envoi du
+        compte.
+        """
+        sent_name = getattr(self.account, "sent_folder", "") or ""
+        inbox, sent = [], []
+        for row in self._db().execute(
+            "SELECT id, name, role FROM folders ORDER BY id"
+        ):
+            name = row["name"] or ""
+            if row["role"] == "inbox" or name.upper() == "INBOX":
+                inbox.append(row["id"])
+            if row["role"] == "sent" or (sent_name and name == sent_name):
+                sent.append(row["id"])
+        return inbox, sent
+
+    @_locked
+    def stats_activity(
+        self, since: int, until: int, *, with_sender: bool = False
+    ) -> list[ActivityRow]:
+        """Les messages d'INBOX reçus dans [since, until), réception
+        croissante.
+
+        Réception = INTERNALDATE, à défaut la date d'en-tête ; un message
+        sans l'une ni l'autre n'est pas rendu. Un Message-ID n'est compté
+        qu'une fois, à sa PREMIÈRE copie d'INBOX (réception la plus
+        ancienne, puis `id`), le rang étant pris sur toute la boîte et non
+        sur la fenêtre : une copie ultérieure n'est ni reçue ni répondue.
+        Les messages sans Message-ID partagent tous l'empreinte de « » et
+        sont chacun leur propre première copie. Les messages dont
+        l'empreinte est dans `auto_sent` sont écartés, comme les réponses
+        automatiques classées dans Envoyés.
+
+        Sans `with_sender`, aucune colonne scellée n'est lue.
+        """
+        inbox, sent = self.activity_folders()
+        if not inbox:
+            return []
+        received = "COALESCE(o.received_at, NULLIF(o.date, 0))"
+        reply_date = "COALESCE(NULLIF(r.date, 0), r.received_at)"
+        not_auto = (
+            "NOT EXISTS (SELECT 1 FROM auto_sent a"
+            " WHERE a.msgid_hash = {}.msgid_hash)"
+        )
+        inbox_marks = ",".join("?" * len(inbox))
+        if sent:
+            sent_marks = ",".join("?" * len(sent))
+            replies = (
+                "EXISTS (SELECT 1 FROM messages r"
+                " WHERE r.in_reply_to_hash = c.empreinte"
+                f" AND r.folder_id IN ({sent_marks})"
+                f" AND {not_auto.format('r')}) AS repondu,"
+                f" (SELECT MIN({reply_date}) FROM messages r"
+                " WHERE r.in_reply_to_hash = c.empreinte"
+                f" AND r.folder_id IN ({sent_marks})"
+                f" AND {reply_date} > c.recu"
+                f" AND {not_auto.format('r')}) AS premiere"
+            )
+        else:
+            replies = "0 AS repondu, NULL AS premiere"
+        # La colonne scellée de From n'entre dans la requête que si
+        # l'expéditeur est demandé : l'écran des statistiques n'en a pas
+        # besoin et ne doit rien desceller.
+        inner_sender = ", o.sealed_from AS sealed_from" if with_sender else ""
+        outer_sender = ", c.sealed_from AS sealed_from" if with_sender else ""
+        sql = (
+            "SELECT c.recu AS recu, c.flags AS flags, "
+            f"{replies}{outer_sender}"
+            f" FROM (SELECT {received} AS recu, o.flags AS flags,"
+            " o.msgid_hash AS empreinte,"
+            " ROW_NUMBER() OVER ("
+            " PARTITION BY CASE WHEN o.msgid_hash = ? THEN 'id:' || o.id"
+            " ELSE o.msgid_hash END"
+            f" ORDER BY {received}, o.id) AS rang{inner_sender}"
+            " FROM messages o"
+            f" WHERE o.folder_id IN ({inbox_marks})"
+            f" AND {received} IS NOT NULL"
+            f" AND {not_auto.format('o')}) c"
+            " WHERE c.rang = 1 AND c.recu >= ? AND c.recu < ?"
+            " ORDER BY c.recu"
+        )
+        # Les « ? » se lient dans l'ordre du TEXTE : les deux sous-requêtes
+        # de réponse précèdent la sous-requête des originaux.
+        params = [*sent, *sent] if sent else []
+        params += [self._msgid_hash(""), *inbox, int(since), int(until)]
+        if with_sender:
+            from script.todo.mail.rules.filter import sole_address
+        out = []
+        for row in self._db().execute(sql, params):
+            tokens = (row["flags"] or "").split()
+            sender = ""
+            if with_sender:
+                sender = sole_address(self._open(row["sealed_from"]))
+            out.append(
+                ActivityRow(
+                    received_at=int(row["recu"]),
+                    seen="\\Seen" in tokens,
+                    answered="\\Answered" in tokens or bool(row["repondu"]),
+                    first_reply_at=(
+                        int(row["premiere"])
+                        if row["premiere"] is not None
+                        else None
+                    ),
+                    sender=sender,
+                )
+            )
+        return out
 
     def _fts_present(self, db) -> bool:
         """Vrai si l'index plein texte existe dans CE cache.

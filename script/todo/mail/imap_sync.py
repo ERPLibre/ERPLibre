@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from script.todo.mail.charset import decode_bytes
+from script.todo.mail.smtp_send import X_LOOP_MARKER
 from script.todo.mail.store import MessageMeta
 
 SNIPPET_LEN = 200
@@ -135,6 +136,39 @@ def _garder_les_plus_hauts(report: SyncReport) -> None:
     if len(report.inbox) > INBOX_REPORT_MAX:
         del report.inbox[: len(report.inbox) - INBOX_REPORT_MAX]
         report.inbox_truncated = True
+
+
+def is_automatic(extra: dict) -> bool:
+    """Vrai si les en-têtes supplémentaires d'un message le disent
+    automatique : une occurrence d'Auto-Submitted dont le premier jeton
+    n'est pas « no », ou un X-Loop qui porte la marque des règles.
+
+    `extra` a la forme de `HeaderInfo.extra` : clés en minuscules,
+    occurrences jointes par « \\n ».
+    """
+    extra = extra or {}
+    for line in (extra.get("auto-submitted") or "").split("\n"):
+        if line.strip() and line.split(";", 1)[0].strip().lower() != "no":
+            return True
+    loop = extra.get("x-loop") or ""
+    return X_LOOP_MARKER.lower() in loop.lower()
+
+
+def _mark_automatic(store, headers: list) -> None:
+    """Inscrit dans `auto_sent` les messages automatiques d'un lot.
+
+    Tous les dossiers passent ici : une réponse automatique classée dans
+    Envoyés n'est pas une réponse, un message automatique reçu n'est pas
+    une demande, et le cache le sait même après une reconstruction ou
+    depuis un autre poste. Un en-tête sans `extra` ne marque rien.
+    """
+    items = [
+        (h.msgid, "", getattr(h, "internaldate", 0) or int(time.time()))
+        for h in headers
+        if is_automatic(getattr(h, "extra", None))
+    ]
+    if items:
+        store.mark_auto_sent_many(items)
 
 
 def _meta(h) -> MessageMeta:
@@ -451,6 +485,7 @@ class Syncer:
         for batch in _chunks(uids, self.BATCH):
             headers = self.transport.fetch_headers(batch)
             self.store.upsert_messages(fid, [_meta(h) for h in headers])
+            _mark_automatic(self.store, headers)
             if boite:
                 report.inbox.extend(headers)
                 _garder_les_plus_hauts(report)
@@ -500,6 +535,7 @@ class Syncer:
         for batch in _chunks(manquants, self.BATCH):
             headers = self.transport.fetch_headers(batch)
             self.store.upsert_messages(fid, [_meta(h) for h in headers])
+            _mark_automatic(self.store, headers)
             ajoutes += len(headers)
         return ajoutes
 

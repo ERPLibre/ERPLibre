@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import dataclasses
 import logging
 import time
 from collections.abc import Callable
@@ -38,7 +39,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from script.todo.mail.rules import filter as rules_filter
 from script.todo.mail.rules import guards, markup, storage
+from script.todo.mail.rules import report as rules_report
 from script.todo.mail.rules.filter import (
     BODY_TEXT_MAX,
     BodyUnavailable,
@@ -49,6 +52,7 @@ from script.todo.mail.rules.model import (
     EXECUTABLE_KINDS,
     Armed,
     RuleError,
+    TemplateError,
     message_view,
 )
 from script.todo.mail.rules.regex_worker import RegexTimeout
@@ -68,6 +72,10 @@ OUTBOX_AUTO_TTL_S = 24 * 3600
 CATCHUP_MAX = 200
 # Taille des lots du FETCH de rattrapage, celle de `Syncer.BATCH`.
 CATCHUP_BATCH = 200
+# Rapports de statistiques envoyés au plus par règle sur 24 heures
+# glissantes ; au-delà, la demande est ignorée, sans file ni retenue.
+STATS_DAILY_MAX = 20
+DAY_S = 86400
 
 STATUSES = (
     "ok",
@@ -227,6 +235,115 @@ def summary_line(reports) -> str:
     return " · ".join(parts)
 
 
+def hold_reason(
+    store,
+    rule,
+    *,
+    now: int,
+    hold_until: int,
+    sends_this_pass: int,
+    max_per_pass: int,
+    max_per_hour: int,
+) -> str | None:
+    """Le code qui retiendrait (ou écarterait) un envoi décidé, ou None.
+
+    Lecture seule. Dans l'ordre : `stats_cap` (règle `stats` qui a déjà
+    `STATS_DAILY_MAX` envois sur 24 heures : la demande est écartée), puis
+    les retenues `pass_cap`, `hour_cap`, `cache_rebuilt` (avant
+    `hold_until`) et `hold_first` (moins de `rule.hold_first` envois
+    approuvés sous l'empreinte actuelle de la règle).
+    """
+    if (
+        rule.action.kind == "stats"
+        and store.rule_log_rule_sends(rule.id, now - DAY_S) >= STATS_DAILY_MAX
+    ):
+        return "stats_cap"
+    if sends_this_pass >= max_per_pass:
+        return "pass_cap"
+    if store.rule_log_recent_sends(now - HOUR_S) >= max_per_hour:
+        return "hour_cap"
+    if now < hold_until:
+        return "cache_rebuilt"
+    if (
+        store.rule_log_sent_count(rule.id, rule.fingerprint())
+        < rule.hold_first
+    ):
+        return "hold_first"
+    return None
+
+
+def make_body_loader(
+    session, folder: str, uid: int, verrou=None
+) -> Callable[[], str]:
+    """Un chargeur de corps paresseux et mémorisé pour un message.
+
+    Hors ligne : `BodyUnavailable(online=False)`. En ligne, le FETCH
+    (BODY.PEEK, qui ne marque pas lu) passe sous `verrou` ; son échec est
+    mémorisé, et chaque appel suivant lève `BodyUnavailable(online=True)`.
+    Le texte rendu est tronqué à `BODY_TEXT_MAX`.
+    """
+    garde = verrou if verrou is not None else contextlib.nullcontext()
+    memo = {}
+
+    def load() -> str:
+        if "text" in memo:
+            return memo["text"]
+        if "error" in memo:
+            raise BodyUnavailable(online=True)
+        if not session.online:
+            raise BodyUnavailable(online=False)
+        from script.todo.mail.tui_text import extract_body
+
+        try:
+            with garde:
+                raw = session.avec_lien(
+                    lambda _t: session.syncer.fetch_body(folder, uid)
+                )
+            if raw is None:
+                raise ConnectionError("no link")
+            text = extract_body(raw)[0][:BODY_TEXT_MAX]
+        except Exception as exc:
+            memo["error"] = type(exc).__name__
+            raise BodyUnavailable(online=True) from exc
+        memo["text"] = text
+        return text
+
+    return load
+
+
+def fetch_inbox_header(session, uid: int, *, uidvalidity: int, verrou=None):
+    """Les en-têtes complets d'un message d'INBOX (`HeaderInfo`, en-têtes
+    supplémentaires compris), ou None hors ligne, sans boîte de réception
+    en cache, pour un message absent ou un échec. Ne lève jamais.
+
+    `uid` vient du cache, valable sous `uidvalidity` : si le serveur
+    annonce une autre UIDVALIDITY, la boîte a été renumérotée, ce numéro
+    peut désigner un autre message, et rien n'est relu (None).
+    """
+    try:
+        if not session.online:
+            return None
+        inbox = find_inbox(session.store)
+        if inbox is None:
+            return None
+
+        def fetch(transport):
+            if transport.select(inbox).uidvalidity != uidvalidity:
+                _logger.info("essai : UIDVALIDITY changée, en-têtes non relus")
+                return []
+            return transport.fetch_headers([uid])
+
+        garde = verrou if verrou is not None else contextlib.nullcontext()
+        with garde:
+            headers = session.avec_lien(fetch)
+        for header in headers or ():
+            if header.uid == uid:
+                return header
+    except Exception as exc:
+        _logger.error("essai : en-têtes illisibles (%s)", type(exc).__name__)
+    return None
+
+
 class _Hole(Exception):
     """Le message ne peut pas être évalué maintenant : il reste un trou."""
 
@@ -323,6 +440,12 @@ class _Pass:
         # réponses suivantes vont en file sans retenter le serveur, chaque
         # tentative pouvant attendre le délai de connexion verrou tenu.
         self.smtp_down = False
+        # Réglages du rapport, lus sous verrou seulement si une règle
+        # `stats` est active ; la partie boîte et la table des demandeurs
+        # sont calculées au premier rapport de la passe, puis gardées.
+        self.report = storage.ReportSettings()
+        self._mailbox = None
+        self._requesters = None
 
     # -- déroulé -------------------------------------------------------
 
@@ -389,6 +512,22 @@ class _Pass:
             self.max_per_pass = caps.per_pass
         if self.max_per_hour is None:
             self.max_per_hour = caps.per_hour
+        if any(r.action.kind == "stats" for r in self.actives):
+            try:
+                self.report = storage.load_report(name, base)
+            except RuleError as exc:
+                # Des réglages illisibles ne concernent que les rapports :
+                # les règles `stats` sont écartées de cette passe, les
+                # autres continuent.
+                text = f"{t('mail_stats_report_invalid')} {exc}"
+                self.result.warn(text)
+                self.result.errors.append(text)
+                self.actives = [
+                    r for r in self.actives if r.action.kind != "stats"
+                ]
+                if not self.actives:
+                    self.result.status = "no_rules"
+                    return
 
         inbox = find_inbox(store)
         fstate = store.folder_state(inbox) if inbox else None
@@ -610,39 +749,9 @@ class _Pass:
                 break
 
     def _body_loader(self, uid: int):
-        """Un chargeur de corps paresseux, mémorisé et partagé entre règles.
-
-        Hors ligne : `BodyUnavailable(online=False)`. En ligne, le FETCH
-        (BODY.PEEK, qui ne marque pas lu) passe sous verrou ; son échec est
-        mémorisé, et chaque appel suivant lève `BodyUnavailable(online=True)`.
-        """
-        memo = {}
-
-        def load() -> str:
-            if "text" in memo:
-                return memo["text"]
-            if "error" in memo:
-                raise BodyUnavailable(online=True)
-            if not self.session.online:
-                raise BodyUnavailable(online=False)
-            from script.todo.mail.tui_text import extract_body
-
-            inbox = self.inbox
-            try:
-                with self.garde:
-                    raw = self.session.avec_lien(
-                        lambda _t: self.session.syncer.fetch_body(inbox, uid)
-                    )
-                if raw is None:
-                    raise ConnectionError("no link")
-                text = extract_body(raw)[0][:BODY_TEXT_MAX]
-            except Exception as exc:
-                memo["error"] = type(exc).__name__
-                raise BodyUnavailable(online=True) from exc
-            memo["text"] = text
-            return text
-
-        return load
+        """Le chargeur de corps du message, partagé entre les règles
+        (`make_body_loader`)."""
+        return make_body_loader(self.session, self.inbox, uid, self.verrou)
 
     def _context(self, rule, msg_key) -> guards.GuardContext:
         store = self.store
@@ -660,6 +769,7 @@ class _Pass:
             other_account_addresses=self.others,
             is_logged=lambda: store.rule_log_seen(rule.id, msg_key),
             last_send_at=last_send_at,
+            auth_serv_id=self.report.auth_serv_id,
         )
 
     def _claim(self, rule, view, msg_key, d, outcome, reason) -> bool:
@@ -750,26 +860,116 @@ class _Pass:
             raise cached
         return cached
 
-    def _send(self, rule, view, msg_key, d) -> None:
-        """Construit la réponse, la réserve au journal, puis choisit sa
-        sortie : retenue, file ou envoi direct."""
+    def _daily_mailbox(self, now: int):
+        """La partie boîte du rapport du jour : relue de l'instantané s'il
+        correspond au jour local et aux réglages, sinon calculée puis
+        écrite. Toutes les demandes d'un même jour voient ainsi les mêmes
+        chiffres.
+
+        L'écriture de l'instantané est facultative : un échec (disque
+        plein, dossier en lecture seule) laisse un avertissement à la
+        passe et rend quand même les chiffres calculés.
+        """
+        key = rules_report.snapshot_key(self.report, now)
+        mailbox = rules_report.mailbox_from_dict(
+            storage.load_report_snapshot(self.name, self.base), key
+        )
+        if mailbox is None:
+            mailbox = rules_report.collect_mailbox(
+                self.store, self.report, now=now
+            )
+            try:
+                storage.save_report_snapshot(
+                    self.name,
+                    rules_report.mailbox_to_dict(mailbox, key),
+                    base=self.base,
+                    lock_held=True,
+                )
+            except (OSError, RuleError) as exc:
+                _logger.error(
+                    "règles %s : instantané du rapport non écrit (%s)",
+                    self.name,
+                    type(exc).__name__,
+                )
+                self.result.warn(t("mail_stats_snapshot_unsaved"))
+        return mailbox
+
+    def _report_data(self, d, now: int):
+        """Les données du rapport pour le demandeur de la décision `d`.
+
+        La partie boîte et la table des demandeurs sont lues une fois par
+        passe ; une panne du cache ou de l'instantané lève, et `_apply` la
+        journalise `build_error`.
+        """
+        if self._mailbox is None:
+            self._mailbox = self._daily_mailbox(now)
+        if self._requesters is None:
+            self._requesters = rules_report.requester_index(
+                self.store, self.report, now=now
+            )
+        return rules_report.ReportData(
+            self._mailbox,
+            rules_report.collect_requester(
+                self.store,
+                self.report,
+                now=now,
+                sender=d.sender,
+                index=self._requesters,
+            ),
+            self.report.lang,
+        )
+
+    def _render(self, rule, view, msg_key, d, now: int):
+        """(sujet, rendu) de la réponse, ou None après avoir journalisé
+        l'échec : faute de gabarit en `build_error`, image en `media`."""
         from script.todo.mail import smtp_send
 
-        store, now = self.store, self.now()
+        data = None
+        if rule.action.kind == "stats":
+            data = self._report_data(d, now)
         try:
-            rendered = markup.render_reply(
-                rule.action, self._media(rule), self.domain
-            )
+            if data is not None:
+                subject = rules_report.render_subject(
+                    view.subject, rule.action.subject, data
+                )
+                rendered = rules_report.render_stats_reply(
+                    rule.action, self._media(rule), self.domain, data
+                )
+            else:
+                subject = smtp_send.auto_reply_subject(
+                    view.subject, rule.action.subject
+                )
+                rendered = markup.render_reply(
+                    rule.action, self._media(rule), self.domain
+                )
+        except TemplateError as exc:
+            # Avant `RuleError`, dont elle est une sous-classe.
+            self._fail(rule, view, msg_key, "build_error", exc)
+            self.result.warn(str(exc))
+            return None
         except RuleError as exc:
             if self._claim(rule, view, msg_key, d, "failed", "media"):
                 self.result.failed += 1
             self.result.warn(str(exc))
             _logger.error("règles %s : règle %s, media", self.name, rule.id)
+            return None
+        return subject, rendered
+
+    def _send(self, rule, view, msg_key, d) -> None:
+        """Construit la réponse, la réserve au journal, puis choisit sa
+        sortie : écartée (plafond quotidien d'un rapport), retenue, file ou
+        envoi direct."""
+        from script.todo.mail import smtp_send
+
+        store, now = self.store, self.now()
+        built = self._render(rule, view, msg_key, d, now)
+        if built is None:
             return
+        subject, rendered = built
         msg = smtp_send.build_auto_reply(
             self.account,
             d.target_addr,
-            smtp_send.auto_reply_subject(view.subject, rule.action.subject),
+            subject,
             rendered.text,
             in_reply_to=view.msgid,
             references=view.references,
@@ -777,22 +977,28 @@ class _Pass:
             inline_images=rendered.inline,
             attachment_parts=rendered.attachments,
         )
-        fingerprint = rule.fingerprint()
         if not self._claim(rule, view, msg_key, d, "pending", None):
             # Un autre processus a réservé ce message pour cette règle.
             self.result.skipped["duplicate"] += 1
             return
         store.mark_auto_sent(msg["Message-ID"] or "", rule.id, now)
 
-        hold = None
-        if self.sends_this_pass >= self.max_per_pass:
-            hold = "pass_cap"
-        elif store.rule_log_recent_sends(now - HOUR_S) >= self.max_per_hour:
-            hold = "hour_cap"
-        elif now < self.state.hold_until:
-            hold = "cache_rebuilt"
-        elif store.rule_log_sent_count(rule.id, fingerprint) < rule.hold_first:
-            hold = "hold_first"
+        hold = hold_reason(
+            store,
+            rule,
+            now=now,
+            hold_until=self.state.hold_until,
+            sends_this_pass=self.sends_this_pass,
+            max_per_pass=self.max_per_pass,
+            max_per_hour=self.max_per_hour,
+        )
+        if hold == "stats_cap":
+            # Ni file ni retenue : une demande libérée plus tard partirait
+            # avec des chiffres périmés.
+            store.rule_log_set_outcome(rule.id, msg_key, "skipped", hold)
+            self.result.skipped[hold] += 1
+            _logger.info("règles %s : règle %s, stats_cap", self.name, rule.id)
+            return
         if hold is not None:
             if hold in ("pass_cap", "hour_cap"):
                 self.result.warn(t("mail_rules_cap_warning"))
@@ -886,3 +1092,282 @@ class _Pass:
             outcome,
             reason,
         )
+
+
+# -- Essai d'une règle -------------------------------------------------
+
+
+@dataclass
+class Simulation:
+    """Ce qu'une règle ferait d'un message, calculé par `simulate`.
+
+    `filter_lines` explique chaque nœud du filtre (`filter.ExplainLine`) ;
+    `matched` est le verdict de sa racine (None : corps indisponible).
+    `reason` est le verdict RÉEL des garde-fous (`guards.SEND` ou un code,
+    `body_unavailable` compris), `reason_if_new` celui d'un message neuf
+    reçu à l'instant, règle armée et jamais journalisée. `target` est
+    l'adresse telle qu'elle partirait (« » s'il n'y en a pas). `rendered`
+    est la réponse rendue (`markup.RenderedReply`), None si rien n'a pu
+    l'être, et `error` dit alors pourquoi. `auth_serv_id` est l'identifiant
+    lu du premier `Authentication-Results` (« » : aucun) ; `authenticated`
+    le verdict de `guards.stats_authenticated` pour une règle `stats`,
+    None sinon. `hold` est le code de `hold_reason` quand le verdict réel
+    est d'envoyer ; `auth_serv_unset` est vrai pour une règle `stats` dont
+    les réglages n'exigent aucun identifiant de serveur.
+    """
+
+    rule_enabled: bool
+    executable: bool
+    filter_lines: list
+    matched: bool | None
+    reason: str
+    reason_if_new: str
+    target: str
+    subject: str
+    rendered: object | None
+    error: str
+    headers_complete: bool
+    auth_serv_id: str
+    authenticated: bool | None
+    hold: str = ""
+    auth_serv_unset: bool = False
+
+
+def simulate(
+    session,
+    rule,
+    header,
+    *,
+    uidvalidity: int,
+    body_loader=None,
+    headers_complete: bool = True,
+    all_accounts=None,
+    rules_base=None,
+    report_settings=None,
+    now: Callable[[], float] = time.time,
+) -> Simulation:
+    """Ce que la règle ferait de ce message, sans rien écrire ni envoyer.
+
+    Ni journal, ni `state.json`, ni `rules.json`, ni `auto_sent`, ni
+    instantané du rapport ne sont écrits, et le verrou du compte n'est pas
+    pris. `header` est un `HeaderInfo` (en-têtes complets) ou une ligne du
+    cache (`headers_complete` faux). `report_settings` remplace les
+    réglages du rapport lus du disque. Ne lève jamais : une exception
+    devient `error`.
+    """
+    sim = Simulation(
+        rule_enabled=bool(rule.enabled),
+        executable=rule.action.kind in EXECUTABLE_KINDS,
+        filter_lines=[],
+        matched=None,
+        reason="",
+        reason_if_new="",
+        target="",
+        subject="",
+        rendered=None,
+        error="",
+        headers_complete=headers_complete,
+        auth_serv_id="",
+        authenticated=None,
+    )
+    try:
+        _simulate(
+            sim,
+            session,
+            rule,
+            header,
+            uidvalidity=int(uidvalidity),
+            body_loader=body_loader,
+            all_accounts=all_accounts,
+            rules_base=rules_base,
+            report_settings=report_settings,
+            instant=int(now()),
+        )
+    except Exception as exc:
+        sim.rendered = None
+        if not sim.error:
+            sim.error = str(exc) or type(exc).__name__
+    return sim
+
+
+def _simulate(
+    sim: Simulation,
+    session,
+    rule,
+    header,
+    *,
+    uidvalidity: int,
+    body_loader,
+    all_accounts,
+    rules_base,
+    report_settings,
+    instant: int,
+) -> None:
+    """Remplit `sim` ; voir `simulate`."""
+    from script.todo.mail import smtp_send
+
+    store, account = session.store, session.account
+    name = getattr(account, "name", "") or ""
+    base = rules_base if rules_base is not None else storage.base_of(store)
+    if base is None:
+        sim.error = t("mail_rules_ephemeral")
+        return
+    is_stats = rule.action.kind == "stats"
+    view = message_view(header, uidvalidity)
+    msg_key = store.message_key(view.msgid, uidvalidity, view.uid)
+    settings = report_settings
+    if settings is None:
+        settings = storage.ReportSettings()
+        if is_stats:
+            try:
+                settings = storage.load_report(name, base)
+            except RuleError as exc:
+                sim.error = str(exc)
+    sim.auth_serv_id = guards.authserv_id(view)
+    if is_stats:
+        sim.authenticated = guards.stats_authenticated(
+            view, settings.auth_serv_id
+        )
+        sim.auth_serv_unset = not settings.auth_serv_id
+    sender, _target, target_addr = guards.response_addresses(rule, view)
+    sim.target = target_addr
+
+    # Un seul chargement du corps pour l'explication et les deux verdicts.
+    loader = rules_filter._BodyOnce(body_loader)
+    sim.filter_lines = rules_filter.explain(rule.filter, view, loader)
+    sim.matched = sim.filter_lines[0].result if sim.filter_lines else None
+
+    def last_send_at(from_norm, target_norm):
+        return store.rule_log_last_send(
+            rule.id,
+            store.address_hash(from_norm),
+            store.address_hash(target_norm) or None,
+        )
+
+    ctx = guards.GuardContext(
+        now=instant,
+        own_addresses=account_addresses(account),
+        other_account_addresses=_other_addresses(account, all_accounts),
+        is_logged=lambda: store.rule_log_seen(rule.id, msg_key),
+        last_send_at=last_send_at,
+        auth_serv_id=settings.auth_serv_id,
+    )
+    try:
+        sim.reason = guards.decide(rule, view, ctx, loader).reason
+    except BodyUnavailable:
+        sim.reason = "body_unavailable"
+    # Le même message reçu à l'instant, par une règle armée avant lui et
+    # qui ne l'a jamais vu ; la limite par expéditeur reste celle du journal.
+    try:
+        sim.reason_if_new = guards.decide(
+            dataclasses.replace(rule, armed=Armed(uidvalidity, 0, 0)),
+            dataclasses.replace(view, internaldate=instant),
+            dataclasses.replace(ctx, is_logged=lambda: False),
+            loader,
+        ).reason
+    except BodyUnavailable:
+        sim.reason_if_new = "body_unavailable"
+
+    if sim.reason == guards.SEND:
+        try:
+            caps = storage.load_caps(name, base)
+        except RuleError:
+            caps = storage.Caps()
+        try:
+            hold_until = storage.load_state(name, base).hold_until
+        except RuleError:
+            hold_until = 0
+        sim.hold = (
+            hold_reason(
+                store,
+                rule,
+                now=instant,
+                hold_until=hold_until,
+                sends_this_pass=0,
+                max_per_pass=caps.per_pass,
+                max_per_hour=caps.per_hour,
+            )
+            or ""
+        )
+
+    if not sim.executable:
+        sim.error = t("mail_rules_trial_kind")
+        return
+    if sim.error:
+        return
+    domain = (getattr(account, "email", "") or "").rpartition("@")[2]
+    try:
+        media = {
+            ref.file: storage.read_media(name, ref, base=base)
+            for ref in rule.action.images
+        }
+        if is_stats:
+            # L'instantané du jour s'il existe, sinon un calcul non écrit.
+            mailbox = rules_report.mailbox_from_dict(
+                storage.load_report_snapshot(name, base),
+                rules_report.snapshot_key(settings, instant),
+            )
+            data = rules_report.build_data(
+                store, settings, now=instant, sender=sender, mailbox=mailbox
+            )
+            subject = rules_report.render_subject(
+                view.subject, rule.action.subject, data
+            )
+            rendered = rules_report.render_stats_reply(
+                rule.action, media, domain, data
+            )
+        else:
+            subject = smtp_send.auto_reply_subject(
+                view.subject, rule.action.subject
+            )
+            rendered = markup.render_reply(rule.action, media, domain)
+    except RuleError as exc:
+        sim.error = str(exc)
+        return
+    sim.subject, sim.rendered = subject, rendered
+
+
+def send_trial(
+    session,
+    rule,
+    sim: Simulation,
+    *,
+    verrou=None,
+    deliver_fn=None,
+    now: Callable[[], float] = time.time,
+) -> str:
+    """Envoie la réponse simulée à l'adresse du compte ; rend le statut de
+    `deliver`.
+
+    Le sujet porte le préfixe d'essai ; ni `In-Reply-To` ni `References` :
+    l'essai n'entre pas dans le fil d'un tiers. Le Message-ID est inscrit
+    dans `auto_sent` AVANT l'envoi, ce qui garde la copie classée dans
+    Envoyés et sa réception dans INBOX hors des statistiques. Rien au
+    journal des règles, aucun plafond ni limite, aucune file : hors ligne,
+    `RuleError`. Une réponse non rendue lève `RuleError` ; les autres
+    exceptions de `deliver` traversent.
+    """
+    from script.todo.mail import smtp_send
+    from script.todo.mail.tui import DeliverOffline
+
+    rendered = sim.rendered
+    if rendered is None:
+        raise RuleError(t("mail_rules_trial_unavailable"))
+    account = session.account
+    msg = smtp_send.build_auto_reply(
+        account,
+        account.email,
+        f"{t('mail_rules_trial_subject_prefix')} {sim.subject}",
+        rendered.text,
+        html=rendered.html,
+        inline_images=rendered.inline,
+        attachment_parts=rendered.attachments,
+    )
+    session.store.mark_auto_sent(msg["Message-ID"] or "", rule.id, int(now()))
+    if deliver_fn is None:
+        # Importé à l'appel : un remplacement de `tui.deliver` s'applique.
+        from script.todo.mail.tui import deliver as deliver_fn
+    try:
+        return deliver_fn(session, msg, verrou=verrou, queue_offline=False)
+    except DeliverOffline as exc:
+        raise RuleError(t("mail_rules_trial_offline")) from exc

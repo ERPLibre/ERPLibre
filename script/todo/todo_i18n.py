@@ -15201,6 +15201,10 @@ TRANSLATIONS = {
         "fr": "authentification en échec",
         "en": "authentication failed",
     },
+    "mail_rules_reason_unauthenticated": {
+        "fr": "expéditeur non authentifié",
+        "en": "sender not authenticated",
+    },
     "mail_rules_reason_throttled": {"fr": "limité", "en": "throttled"},
     # Raisons posées par le moteur et la vidange de la file
     # (guards.ENGINE_REASONS), puis « gone » et « catchup_overflow », que
@@ -15254,6 +15258,10 @@ TRANSLATIONS = {
     "mail_rules_reason_regex_timeout": {
         "fr": "expression régulière trop lente",
         "en": "regular expression too slow",
+    },
+    "mail_rules_reason_stats_cap": {
+        "fr": "plafond quotidien du rapport atteint",
+        "en": "daily report cap reached",
     },
     "mail_rules_reason_body_unavailable": {
         "fr": "corps illisible",
@@ -15460,16 +15468,18 @@ TRANSLATIONS = {
             "Règles du courrier entrant : e ouvre la liste des règles du"
             " compte. Dans la liste, n crée une règle, Entrée la modifie,"
             " Espace l'active ou la désactive, k et j la déplacent, t bascule"
-            " « arrêter ici », x la supprime et l le journal des envois. Le"
-            " premier envoi d'une règle attend votre approbation dans la"
-            " file d'envoi (o)."
+            " « arrêter ici », x la supprime, s l'essaie sur un message"
+            " récent et l montre le journal des envois. Le premier envoi"
+            " d'une règle attend votre approbation dans la file d'envoi (o)."
+            " I règle le rapport de statistiques."
         ),
         "en": (
             "Incoming mail rules: e opens the account's rule list. In the"
             " list, n creates a rule, Enter edits it, Space enables or"
             " disables it, k and j move it, t toggles stop here, x deletes"
-            " it and l shows the send log. A rule's first send awaits your"
-            " approval in the outbox (o)."
+            " it, s tries it on a recent message and l shows the send log."
+            " A rule's first send awaits your approval in the outbox (o)."
+            " I sets up the statistics report."
         ),
     },
     "mail_rules_add_images": {
@@ -15551,6 +15561,407 @@ TRANSLATIONS = {
     },
     "mail_outbox_auto": {"fr": "[auto]", "en": "[auto]"},
     "mail_outbox_expires": {"fr": "expire le", "en": "expires"},
+    # -- Rapport de statistiques : gabarit et rendu ----------------------
+    # Libellés du rapport que rend une règle stats (rules/report.py, lus
+    # par `_label` dans la langue du rapport), fautes de gabarit, et une
+    # description par variable (mail_stats_var_<nom>, construite par
+    # f-string : test_mail_rules_i18n vérifie qu'il en existe une par nom
+    # de model.STATS_VARIABLES). « {n} » et « {tz} » sont remplacés par
+    # `str.replace`.
+    "mail_rules_err_template_var": {
+        "fr": "variable inconnue dans le gabarit :",
+        "en": "unknown template variable:",
+    },
+    "mail_rules_err_template_block_subject": {
+        "fr": "un bloc de rapport ne va pas dans le sujet :",
+        "en": "a report block cannot go in the subject:",
+    },
+    "mail_rules_err_template_block_tag": {
+        "fr": "un bloc de rapport ne va pas dans une balise HTML :",
+        "en": "a report block cannot go inside an HTML tag:",
+    },
+    "mail_rules_err_template_reply_var": {
+        "fr": "variable de rapport dans une réponse personnalisée :",
+        "en": "report variable in a custom reply:",
+    },
+    "mail_stats_default_body": {
+        "fr": (
+            "Bonjour,\n\nMerci pour votre message. Voici l'activité récente"
+            " de cette boîte de courriel.\n\n{{rapport}}\n"
+        ),
+        "en": (
+            "Hello,\n\nThank you for your message. Here is the recent"
+            " activity of this mailbox.\n\n{{rapport}}\n"
+        ),
+    },
+    "mail_stats_report_days_title": {
+        "fr": "Activité des {n} derniers jours",
+        "en": "Activity over the last {n} days",
+    },
+    "mail_stats_report_weeks_title": {
+        "fr": "Par semaine ISO ({n} dernières)",
+        "en": "By ISO week (last {n})",
+    },
+    "mail_stats_report_col_day": {"fr": "Jour", "en": "Day"},
+    "mail_stats_report_col_week": {"fr": "Semaine", "en": "Week"},
+    "mail_stats_report_col_week_start": {"fr": "Du", "en": "From"},
+    "mail_stats_report_col_received": {"fr": "Reçus", "en": "Received"},
+    "mail_stats_report_col_seen": {"fr": "Lus", "en": "Read"},
+    "mail_stats_report_col_answered": {"fr": "Répondus", "en": "Answered"},
+    "mail_stats_report_total": {"fr": "Total", "en": "Total"},
+    "mail_stats_report_mailbox_delay": {
+        "fr": "Délai moyen de réponse de la boîte ({n} derniers jours) :",
+        "en": "Mailbox average reply delay (last {n} days):",
+    },
+    "mail_stats_report_mailbox_none": {
+        "fr": "Aucune réponse enregistrée sur les {n} derniers jours.",
+        "en": "No reply recorded over the last {n} days.",
+    },
+    "mail_stats_report_mailbox_few": {
+        "fr": (
+            "Trop peu de réponses sur les {n} derniers jours pour une moyenne."
+        ),
+        "en": "Too few replies over the last {n} days for an average.",
+    },
+    "mail_stats_report_requester_delay": {
+        "fr": "Votre délai moyen de réponse ({n} derniers jours) :",
+        "en": "Your average reply delay (last {n} days):",
+    },
+    "mail_stats_report_based_on": {
+        "fr": "(sur {n} délais connus)",
+        "en": "(over {n} known delays)",
+    },
+    "mail_stats_report_requester_none": {
+        "fr": (
+            "Aucun de vos messages des {n} derniers jours n'a encore reçu"
+            " de réponse."
+        ),
+        "en": (
+            "None of your messages from the last {n} days has been"
+            " answered yet."
+        ),
+    },
+    "mail_stats_report_generated": {"fr": "Rapport du", "en": "Report of"},
+    "mail_stats_report_local_time": {
+        "fr": "Jours et semaines en heure locale ({tz}).",
+        "en": "Days and weeks in local time ({tz}).",
+    },
+    "mail_stats_report_unit_day": {"fr": "j", "en": "d"},
+    "mail_stats_var_rapport": {
+        "fr": "rapport complet : tableaux, délais, date",
+        "en": "full report: tables, delays, date",
+    },
+    "mail_stats_var_rapport_jours": {
+        "fr": "tableau par jour, avec son titre",
+        "en": "daily table, with its title",
+    },
+    "mail_stats_var_rapport_semaines": {
+        "fr": "tableau par semaine ISO, avec son titre",
+        "en": "ISO weekly table, with its title",
+    },
+    "mail_stats_var_recus_total": {
+        "fr": "messages reçus sur la période",
+        "en": "messages received over the period",
+    },
+    "mail_stats_var_lus_total": {
+        "fr": "messages lus parmi les reçus",
+        "en": "read messages among those received",
+    },
+    "mail_stats_var_repondus_total": {
+        "fr": "messages répondus parmi les reçus",
+        "en": "answered messages among those received",
+    },
+    "mail_stats_var_delai_moyen": {
+        "fr": "délai moyen de réponse aux messages du demandeur",
+        "en": "average reply delay to the requester's messages",
+    },
+    "mail_stats_var_delai_moyen_boite": {
+        "fr": "délai moyen de réponse de la boîte",
+        "en": "mailbox average reply delay",
+    },
+    "mail_stats_var_demandeur_recus": {
+        "fr": "messages du demandeur reçus dans la fenêtre",
+        "en": "requester's messages received in the window",
+    },
+    "mail_stats_var_demandeur_repondus": {
+        "fr": "messages du demandeur qui ont reçu une réponse",
+        "en": "requester's messages that were answered",
+    },
+    "mail_stats_var_jours": {
+        "fr": "nombre de jours du tableau",
+        "en": "number of days in the table",
+    },
+    "mail_stats_var_semaines": {
+        "fr": "nombre de semaines du tableau",
+        "en": "number of weeks in the table",
+    },
+    "mail_stats_var_fenetre_jours": {
+        "fr": "fenêtre des délais, en jours",
+        "en": "delay window, in days",
+    },
+    "mail_stats_var_periode_debut": {
+        "fr": "premier jour de la période",
+        "en": "first day of the period",
+    },
+    "mail_stats_var_periode_fin": {
+        "fr": "dernier jour de la période (hier)",
+        "en": "last day of the period (yesterday)",
+    },
+    "mail_stats_var_date_rapport": {
+        "fr": "date et heure du rapport",
+        "en": "report date and time",
+    },
+    # Moteur des règles : rapport de statistiques et essai d'une règle.
+    "mail_stats_report_invalid": {
+        "fr": (
+            "Réglages du rapport invalides, règles de statistiques"
+            " ignorées :"
+        ),
+        "en": "Invalid report settings, statistics rules skipped:",
+    },
+    "mail_stats_snapshot_unsaved": {
+        "fr": (
+            "Instantané du rapport non enregistré : les chiffres du jour"
+            " sont recalculés à la prochaine passe."
+        ),
+        "en": (
+            "Report snapshot not saved: the day's figures are computed"
+            " again on the next pass."
+        ),
+    },
+    "mail_rules_trial_subject_prefix": {"fr": "[Essai]", "en": "[Trial]"},
+    "mail_rules_trial_offline": {
+        "fr": "Hors ligne : l'essai ne part qu'en ligne.",
+        "en": "Offline: a trial is sent online only.",
+    },
+    "mail_rules_trial_unavailable": {
+        "fr": "Rien à envoyer : la réponse n'a pas pu être construite.",
+        "en": "Nothing to send: the reply could not be built.",
+    },
+    "mail_rules_trial_kind": {
+        "fr": "Ce type d'action n'est pas encore exécuté.",
+        "en": "This action type does not run yet.",
+    },
+    # -- Interface : fenêtre du rapport, formulaire stats, essai ---------
+    # Fenêtre `I` (paramètres du rapport), type d'action de l'éditeur,
+    # variables du formulaire d'une règle stats, écran d'essai (`s` dans
+    # la liste des règles), section d'activité de `i`, menu [6].
+    "mail_stats_report_binding": {
+        "fr": "Paramètres du rapport",
+        "en": "Report settings",
+    },
+    "mail_stats_report_title": {
+        "fr": "Rapport de statistiques du compte",
+        "en": "Statistics report of account",
+    },
+    "mail_stats_report_days": {
+        "fr": "Jours du tableau (1 à 31)",
+        "en": "Days in the table (1 to 31)",
+    },
+    "mail_stats_report_weeks": {
+        "fr": "Semaines ISO (0 à 8)",
+        "en": "ISO weeks (0 to 8)",
+    },
+    "mail_stats_report_window": {
+        "fr": "Fenêtre des délais, en jours (1 à 365)",
+        "en": "Delay window, in days (1 to 365)",
+    },
+    "mail_stats_report_format": {
+        "fr": "Format des nouvelles règles de statistiques",
+        "en": "Format of new statistics rules",
+    },
+    "mail_stats_report_lang": {
+        "fr": "Langue du rapport",
+        "en": "Report language",
+    },
+    "mail_stats_report_lang_ui": {
+        "fr": "Langue de l'interface",
+        "en": "Interface language",
+    },
+    "mail_stats_report_lang_fr": {"fr": "Français", "en": "French"},
+    "mail_stats_report_lang_en": {"fr": "Anglais", "en": "English"},
+    "mail_stats_report_auth_serv": {
+        "fr": (
+            "Identifiant du serveur d'authentification exigé"
+            " (vide = non vérifié)"
+        ),
+        "en": "Required authentication server identifier (empty = unchecked)",
+    },
+    "mail_stats_report_tz": {
+        "fr": "Fuseau horaire (celui du processus) :",
+        "en": "Time zone (the process's):",
+    },
+    "mail_stats_report_requester": {
+        "fr": "Demandeur de l'aperçu (adresse, facultatif)",
+        "en": "Preview requester (address, optional)",
+    },
+    "mail_stats_report_refresh": {
+        "fr": "Recalculer l'aperçu",
+        "en": "Refresh the preview",
+    },
+    "mail_stats_report_saved": {
+        "fr": "Réglages du rapport enregistrés.",
+        "en": "Report settings saved.",
+    },
+    "mail_stats_report_auth_serv_unset": {
+        "fr": (
+            "Identifiant du serveur non réglé : tout premier"
+            " Authentication-Results est cru."
+        ),
+        "en": (
+            "Server identifier not set: any first Authentication-Results"
+            " is trusted."
+        ),
+    },
+    "mail_stats_activity_title": {
+        "fr": (
+            "Boîte de réception, {n} derniers jours clos (sans égard à la"
+            " période ni au dossier choisis)"
+        ),
+        "en": (
+            "Inbox, last {n} complete days (regardless of the chosen"
+            " period and folder)"
+        ),
+    },
+    "mail_rules_kind": {"fr": "Type d'action", "en": "Action type"},
+    "mail_rules_action_stats": {
+        "fr": "Rapport de statistiques…",
+        "en": "Statistics report…",
+    },
+    "mail_rules_stats_variables": {
+        "fr": "Variables du gabarit :",
+        "en": "Template variables:",
+    },
+    "mail_rules_stats_insert": {
+        "fr": "Insérer la variable",
+        "en": "Insert the variable",
+    },
+    "mail_rules_stats_preview_note": {
+        "fr": (
+            "Aperçu sur les vraies statistiques de la boîte, sans"
+            " demandeur : le délai propre à un demandeur se voit dans"
+            " l'essai (s, dans la liste des règles)."
+        ),
+        "en": (
+            "Preview on the mailbox's real statistics, without a"
+            " requester: a requester's own delay shows in the trial"
+            " (s, in the rule list)."
+        ),
+    },
+    "mail_rules_reason_not_armed": {
+        "fr": "règle pas encore armée pour ce message",
+        "en": "rule not yet armed for this message",
+    },
+    "mail_rules_reason_duplicate": {
+        "fr": "message déjà traité par la règle",
+        "en": "message already handled by the rule",
+    },
+    "mail_rules_reason_no_match": {
+        "fr": "ne correspond pas au filtre",
+        "en": "does not match the filter",
+    },
+    "mail_rules_trial": {"fr": "Essai", "en": "Trial"},
+    "mail_rules_trial_title": {
+        "fr": "Essai de la règle",
+        "en": "Trial of rule",
+    },
+    "mail_rules_trial_pick": {
+        "fr": "Choisissez un message récent de la boîte de réception (Entrée).",
+        "en": "Pick a recent inbox message (Enter).",
+    },
+    "mail_rules_trial_none": {
+        "fr": "Aucun message en cache dans la boîte de réception.",
+        "en": "No cached message in the inbox.",
+    },
+    "mail_rules_trial_disabled": {
+        "fr": "Règle désactivée : le moteur ne l'applique pas.",
+        "en": "Rule disabled: the engine does not apply it.",
+    },
+    "mail_rules_trial_filter": {"fr": "Filtre :", "en": "Filter:"},
+    "mail_rules_trial_match": {
+        "fr": "Le message correspond au filtre.",
+        "en": "The message matches the filter.",
+    },
+    "mail_rules_trial_no_match": {
+        "fr": "Le message ne correspond pas au filtre.",
+        "en": "The message does not match the filter.",
+    },
+    "mail_rules_trial_unknown": {
+        "fr": "Correspondance inconnue : corps du message indisponible.",
+        "en": "Match unknown: message body unavailable.",
+    },
+    "mail_rules_trial_verdict": {"fr": "Verdict :", "en": "Verdict:"},
+    "mail_rules_trial_would_send": {
+        "fr": "répondrait",
+        "en": "would reply",
+    },
+    "mail_rules_trial_verdict_if_new": {
+        "fr": "Pour un message neuf :",
+        "en": "For a new message:",
+    },
+    "mail_rules_trial_target": {"fr": "Destinataire :", "en": "Recipient:"},
+    "mail_rules_trial_no_target": {
+        "fr": "Destinataire : aucun",
+        "en": "Recipient: none",
+    },
+    "mail_rules_trial_subject": {"fr": "Sujet :", "en": "Subject:"},
+    "mail_rules_trial_authserv": {
+        "fr": "Serveur d'authentification lu :",
+        "en": "Authentication server read:",
+    },
+    "mail_rules_trial_authenticated": {
+        "fr": "Expéditeur authentifié.",
+        "en": "Sender authenticated.",
+    },
+    "mail_rules_trial_not_authenticated": {
+        "fr": "Expéditeur NON authentifié.",
+        "en": "Sender NOT authenticated.",
+    },
+    "mail_rules_trial_headers_partial": {
+        "fr": (
+            "En-têtes du cache seulement (ni Cc, ni Authentication-Results,"
+            " ni List-Id) : verdict partiel."
+        ),
+        "en": (
+            "Cached headers only (no Cc, Authentication-Results or"
+            " List-Id): partial verdict."
+        ),
+    },
+    "mail_rules_trial_held": {
+        "fr": (
+            "Serait RETENU pour relecture, à libérer dans la file d'envoi"
+            " (o) :"
+        ),
+        "en": "Would be HELD for review, release it from the outbox (o):",
+    },
+    "mail_rules_trial_no_authserv": {
+        "fr": (
+            "Aucun identifiant de serveur : vérification impossible avec"
+            " ce serveur."
+        ),
+        "en": "No server identifier: cannot be checked with this server.",
+    },
+    "mail_rules_trial_send": {
+        "fr": "Envoyer un essai à moi-même",
+        "en": "Send a trial to myself",
+    },
+    "mail_rules_trial_sent": {"fr": "Essai envoyé :", "en": "Trial sent:"},
+    "mail_rules_menu_report": {
+        "fr": "Paramètres du rapport de statistiques",
+        "en": "Statistics report settings",
+    },
+    "mail_rules_menu_trial": {
+        "fr": "Essayer une règle sur un message",
+        "en": "Try a rule on a message",
+    },
+    "mail_rules_menu_trial_pick_message": {
+        "fr": "Numéro du message",
+        "en": "Message number",
+    },
+    "mail_rules_menu_trial_send_ask": {
+        "fr": "Envoyer un essai à vous-même ? (o/n)",
+        "en": "Send a trial to yourself? (y/n)",
+    },
     # QEMU — outils de développement des VM graphiques
     "Python IDE, ERPLibre project pre-configured": {
         "fr": "IDE Python, projet ERPLibre pré-configuré",

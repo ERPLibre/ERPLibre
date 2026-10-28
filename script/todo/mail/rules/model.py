@@ -38,7 +38,7 @@ GROUP_OPS = ("all", "any", "not")
 ACTION_KINDS = ("reply", "forward", "stats")
 # Les types que le moteur exécute ; les autres se chargent, s'affichent et
 # s'éditent, mais le moteur les ignore.
-EXECUTABLE_KINDS = ("reply",)
+EXECUTABLE_KINDS = ("reply", "stats")
 FORMATS = ("markdown", "html", "text")
 IMAGE_MIMES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
@@ -69,6 +69,35 @@ KIND_DEFAULTS = {
     "stats": {"throttle_enabled": True, "throttle_minutes": 1440},
     "forward": {"throttle_enabled": False, "throttle_minutes": 10080},
 }
+
+# Variables du gabarit d'une réponse à statistiques. Un BLOC est un
+# paragraphe entier (titre, tableau, phrases) ; un SCALAIRE est une valeur
+# courte, la seule forme admise dans le sujet.
+STATS_BLOCK_VARIABLES = ("rapport", "rapport_jours", "rapport_semaines")
+STATS_SCALAR_VARIABLES = (
+    "recus_total",
+    "lus_total",
+    "repondus_total",
+    "delai_moyen",
+    "delai_moyen_boite",
+    "demandeur_recus",
+    "demandeur_repondus",
+    "jours",
+    "semaines",
+    "fenetre_jours",
+    "periode_debut",
+    "periode_fin",
+    "date_rapport",
+)
+STATS_VARIABLES = STATS_BLOCK_VARIABLES + STATS_SCALAR_VARIABLES
+# « {{nom}} » ; le nom est comparé sans ses blancs de bord, casse comprise.
+# Un « {{ » sans « }} » n'est pas une variable et reste du texte.
+TEMPLATE_VAR_RE = re.compile(r"\{\{([^{}]*)\}\}")
+# Une variable de bloc à l'intérieur d'une balise HTML, attribut compris :
+# un tableau n'a pas de sens dans `title="…"`.
+BLOCK_IN_TAG_RE = re.compile(
+    r"<[^>]*\{\{\s*(?:rapport|rapport_jours|rapport_semaines)\s*\}\}"
+)
 
 # Quantificateurs qui répètent sans borne ou par intervalle ; « ? » n'en
 # est pas un ici : il ne répète pas.
@@ -104,6 +133,11 @@ class RulesBusy(RuleError):
     """Le verrou des règles du compte n'a pas été obtenu à temps."""
 
 
+class TemplateError(RuleError):
+    """Une faute de gabarit (variable inconnue, bloc mal placé), distincte
+    d'une faute d'image : le moteur la journalise `build_error`."""
+
+
 @dataclass
 class Condition:
     field: str
@@ -137,7 +171,8 @@ class MediaRef:
 class Action:
     kind: str = "reply"
     format: str = "markdown"
-    # Gabarit du sujet ; « {subject} » y est la seule variable.
+    # Gabarit du sujet ; « {subject} » y désigne le sujet reçu, et une
+    # règle `stats` y admet aussi les variables scalaires « {{nom}} ».
     subject: str = ""
     body: str = ""
     # list[MediaRef]
@@ -319,10 +354,14 @@ def new_rule(kind: str = "reply", name: str = "") -> Rule:
     defaults = KIND_DEFAULTS.get(kind)
     if defaults is None:
         raise _fault(t("mail_rules_err_kind"), repr(kind))
+    action = Action(kind=kind)
+    if kind == "stats":
+        action.body = t("mail_stats_default_body")
+        action.format = "markdown"
     return Rule(
         id=uuid.uuid4().hex[:12],
         name=name,
-        action=Action(kind=kind),
+        action=action,
         throttle_enabled=defaults["throttle_enabled"],
         throttle_minutes=defaults["throttle_minutes"],
     )
@@ -530,6 +569,69 @@ def validate(rule: Rule) -> None:
             raise _fault(t("mail_rules_err_image_type"), str(ref.mime))
         if not is_safe_media_name(ref.file):
             raise _fault(t("mail_rules_err_image_missing"), repr(ref.file))
+    fault = template_fault(action)
+    if fault is not None:
+        raise TemplateError(fault)
+
+
+def template_names(text: str) -> list[str]:
+    """Les noms cités par « {{…}} », sans leurs blancs de bord, sans
+    doublon, dans l'ordre du texte."""
+    names: list[str] = []
+    for match in TEMPLATE_VAR_RE.finditer(text or ""):
+        name = match.group(1).strip()
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def template_fault(action: Action) -> str | None:
+    """Le texte d'erreur traduit (préfixé « Règle invalide : ») d'un
+    gabarit fautif, ou None.
+
+    Règle `stats` : le corps d'abord (nom inconnu, bloc dans une balise
+    d'un corps HTML), puis le sujet (bloc, puis nom inconnu). Règle
+    `reply` : seul un nom de variable de rapport est refusé, tout autre
+    « {{…}} » y est du texte. Autre type : None.
+    """
+    if action.kind == "stats":
+        for name in template_names(action.body):
+            if name not in STATS_VARIABLES:
+                return _fault_text(
+                    t("mail_rules_err_template_var"), "{{" + name + "}}"
+                )
+        if action.format == "html":
+            match = BLOCK_IN_TAG_RE.search(action.body or "")
+            if match is not None:
+                return _fault_text(
+                    t("mail_rules_err_template_block_tag"),
+                    "{{" + _block_name(match.group(0)) + "}}",
+                )
+        for name in template_names(action.subject):
+            if name in STATS_BLOCK_VARIABLES:
+                return _fault_text(
+                    t("mail_rules_err_template_block_subject"),
+                    "{{" + name + "}}",
+                )
+            if name not in STATS_VARIABLES:
+                return _fault_text(
+                    t("mail_rules_err_template_var"), "{{" + name + "}}"
+                )
+        return None
+    if action.kind == "reply":
+        for text in (action.body, action.subject):
+            for name in template_names(text):
+                if name in STATS_VARIABLES:
+                    return _fault_text(
+                        t("mail_rules_err_template_reply_var"),
+                        "{{" + name + "}}",
+                    )
+    return None
+
+
+def _block_name(fragment: str) -> str:
+    """Le nom de la variable de bloc qui termine `fragment`."""
+    return template_names(fragment)[-1]
 
 
 def is_safe_media_name(name) -> bool:
@@ -589,10 +691,15 @@ def rules_from_dict(data: dict) -> list[Rule]:
 # -- Aides privées -----------------------------------------------------
 
 
+def _fault_text(message: str, detail: str = "") -> str:
+    """Le texte préfixé de « Règle invalide : », détail facultatif."""
+    text = f"{t('mail_rules_err_invalid')} {message}"
+    return f"{text} {detail}" if detail else text
+
+
 def _fault(message: str, detail: str = "") -> RuleError:
     """`RuleError` préfixée de « Règle invalide : », détail facultatif."""
-    text = f"{t('mail_rules_err_invalid')} {message}"
-    return RuleError(f"{text} {detail}" if detail else text)
+    return RuleError(_fault_text(message, detail))
 
 
 def _bad_json(detail: str) -> RuleError:

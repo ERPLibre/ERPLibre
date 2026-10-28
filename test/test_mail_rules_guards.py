@@ -15,9 +15,12 @@ from script.todo.mail.rules.guards import (
     SILENT_REASONS,
     GuardContext,
     authentication_passes,
+    authserv_id,
     decide,
     header_values,
     reply_target,
+    response_addresses,
+    stats_authenticated,
     stats_target,
 )
 from script.todo.mail.rules.model import (
@@ -36,6 +39,8 @@ UIDV = 1_700_000_001
 OWN = "boite.regles@example.org"
 HUMAN = "carole.regle@example.org"
 OTHER_ACCOUNT = "relais.auto@example.com"
+ROUTER_RETURN = "retour.envoi@example.net"
+DMARC_PASS = "mx.example.org; dmarc=pass header.from=example.org"
 
 
 def view(extra=None, **kwargs) -> MessageView:
@@ -56,6 +61,15 @@ def view(extra=None, **kwargs) -> MessageView:
 
 def armed_rule(**kwargs):
     rule = new_rule("reply", "Absence")
+    rule.armed = Armed(uidvalidity=UIDV, uidnext=4500, at=NOW - 3600)
+    for key, value in kwargs.items():
+        setattr(rule, key, value)
+    return rule
+
+
+def stats_rule(**kwargs):
+    """Une règle de rapport armée, aux limites de son type."""
+    rule = new_rule("stats", "Rapport")
     rule.armed = Armed(uidvalidity=UIDV, uidnext=4500, at=NOW - 3600)
     for key, value in kwargs.items():
         setattr(rule, key, value)
@@ -233,6 +247,14 @@ class TestOneCasePerReason(unittest.TestCase):
     def test_absent_authentication_results_has_no_effect(self):
         self.assertEqual(self.reason(view()), SEND)
 
+    def test_unauthenticated_stats_without_authentication_results(self):
+        self.assertEqual(self.reason(rule=stats_rule()), "unauthenticated")
+
+    def test_unauthenticated_stats_with_dmarc_pass_for_another_domain(self):
+        results = "mx.example.org; dmarc=pass header.from=example.net"
+        message = view({"Authentication-Results": results})
+        self.assertEqual(self.reason(message, stats_rule()), "unauthenticated")
+
     def test_throttled(self):
         self.assertEqual(
             self.reason(context=ctx(last_send=NOW - 60)), "throttled"
@@ -243,6 +265,222 @@ class TestOneCasePerReason(unittest.TestCase):
         for reason in REASONS:
             with self.subTest(reason=reason):
                 self.assertTrue(any(reason in name for name in names))
+
+
+class TestStatsGuard(unittest.TestCase):
+    """Une règle `stats` répond à From, et seulement s'il est authentifié."""
+
+    def decision(self, extra=None, rule=None, context=None, **fields):
+        message = view(extra, **fields)
+        return decide(rule or stats_rule(), message, context or ctx(), None)
+
+    def reason(self, extra=None, **kwargs):
+        return self.decision(extra, **kwargs).reason
+
+    def test_dmarc_pass_lets_a_stats_rule_send(self):
+        self.assertEqual(
+            self.reason({"Authentication-Results": DMARC_PASS}), SEND
+        )
+
+    def test_aligned_spf_pass_alone_is_enough(self):
+        results = f"mx.example.org; spf=pass smtp.mailfrom={HUMAN}"
+        self.assertEqual(
+            self.reason({"Authentication-Results": results}), SEND
+        )
+
+    def test_aligned_dkim_pass_alone_is_enough(self):
+        results = "mx.example.org; dkim=pass header.d=example.org"
+        self.assertEqual(
+            self.reason({"Authentication-Results": results}), SEND
+        )
+
+    def test_a_second_authentication_results_is_ignored(self):
+        results = f"mx.example.org; spf=none\n{DMARC_PASS}"
+        self.assertEqual(
+            self.reason({"Authentication-Results": results}),
+            "unauthenticated",
+        )
+
+    def test_the_configured_authserv_id_must_match(self):
+        wanted = ctx(auth_serv_id="mx.example.org")
+        foreign = "mx.example.net; dmarc=pass header.from=example.org"
+        self.assertEqual(
+            self.reason({"Authentication-Results": foreign}, context=wanted),
+            "unauthenticated",
+        )
+        self.assertEqual(
+            self.reason(
+                {"Authentication-Results": DMARC_PASS}, context=wanted
+            ),
+            SEND,
+        )
+        shouted = "MX.Example.ORG; dmarc=pass header.from=example.org"
+        self.assertEqual(
+            self.reason({"Authentication-Results": shouted}, context=wanted),
+            SEND,
+        )
+
+    def test_authserv_id_ignores_comments_and_version(self):
+        results = (
+            "mx.example.org (relais de réception) 1;"
+            " dmarc=pass header.from=example.org"
+        )
+        message = view({"Authentication-Results": results})
+        self.assertEqual(authserv_id(message), "mx.example.org")
+        self.assertTrue(stats_authenticated(message, "mx.example.org"))
+        self.assertFalse(stats_authenticated(message, "mx.example.net"))
+
+    def test_stats_target_is_from_not_return_path(self):
+        decision = self.decision(
+            {
+                "Return-Path": f"<{ROUTER_RETURN}>",
+                "Authentication-Results": DMARC_PASS,
+            }
+        )
+        self.assertEqual(decision.reason, SEND)
+        self.assertEqual(decision.target, HUMAN)
+        self.assertEqual(decision.target_addr, HUMAN)
+
+    def test_stats_ignores_reply_to(self):
+        decision = self.decision(
+            {"Reply-To": THIRD, "Authentication-Results": DMARC_PASS}
+        )
+        self.assertEqual(decision.reason, SEND)
+        self.assertEqual(decision.target_addr, HUMAN)
+
+    def test_dmarc_fail_is_still_auth_fail(self):
+        results = "mx.example.org; dmarc=fail header.from=example.org"
+        self.assertEqual(
+            self.reason({"Authentication-Results": results}), "auth_fail"
+        )
+
+    def test_a_quoted_envelope_sender_cannot_forge_a_result(self):
+        """Le « ; » d'une adresse d'enveloppe entre guillemets ne coupe pas
+        l'en-tête : le « spf=pass » qu'elle porte reste dans la valeur."""
+        results = (
+            "mx.example.net; spf=softfail"
+            ' smtp.mailfrom="a;spf=pass smtp.mailfrom=b"@example.org;'
+            " dkim=none; dmarc=none header.from=example.org"
+        )
+        message = view({"Authentication-Results": results})
+        self.assertFalse(stats_authenticated(message))
+        self.assertFalse(stats_authenticated(message, "mx.example.net"))
+        self.assertFalse(guards._auth_fails(message))
+        self.assertEqual(
+            [r[:2] for r in guards._auth_results(message)],
+            [("spf", "softfail"), ("dkim", "none"), ("dmarc", "none")],
+        )
+        self.assertEqual(
+            guards._auth_results(message)[0][2]["smtp.mailfrom"],
+            "a;spf=pass smtp.mailfrom=b@example.org",
+        )
+        self.assertEqual(
+            self.reason({"Authentication-Results": results}),
+            "unauthenticated",
+        )
+
+    def test_a_quoted_local_part_keeps_the_domain_after_the_last_at(self):
+        """Une partie locale entre guillemets qui porte « @ » n'aligne pas
+        son contenu : seul le domaine qui suit le dernier « @ » compte."""
+        forged = (
+            'mx.example.org; spf=pass smtp.mailfrom="x@example.org"'
+            "@example.net"
+        )
+        self.assertEqual(
+            self.reason({"Authentication-Results": forged}),
+            "unauthenticated",
+        )
+        genuine = (
+            'mx.example.org; spf=pass smtp.mailfrom="carole;regle"@example.org'
+        )
+        self.assertEqual(
+            self.reason({"Authentication-Results": genuine}), SEND
+        )
+
+    def test_a_property_repeated_inside_a_value_keeps_the_first(self):
+        """Une clé glissée dans une valeur après celle du serveur ne la
+        remplace pas."""
+        results = (
+            "mx.example.org; spf=pass smtp.mailfrom=a"
+            " smtp.mailfrom=b@example.org"
+        )
+        self.assertEqual(
+            self.reason({"Authentication-Results": results}),
+            "unauthenticated",
+        )
+
+    def test_an_unclosed_quote_reads_as_a_failure(self):
+        """Une chaîne entre guillemets jamais refermée rend l'en-tête
+        illisible : rien n'y est authentifié, et la réponse est écartée
+        comme pour un échec."""
+        results = (
+            'mx.example.org; spf=pass smtp.mailfrom="a@example.org;'
+            " dmarc=fail header.from=example.org"
+        )
+        message = view({"Authentication-Results": results})
+        self.assertIsNone(guards._auth_results(message))
+        self.assertTrue(guards._auth_fails(message))
+        self.assertFalse(stats_authenticated(message))
+
+    def test_a_parenthesis_inside_quotes_opens_no_comment(self):
+        results = (
+            'mx.example.org; spf=softfail smtp.mailfrom="(x"@example.net;'
+            " dmarc=fail header.from=example.org; dkim=none (absente)"
+        )
+        message = view({"Authentication-Results": results})
+        self.assertTrue(guards._auth_fails(message))
+
+    def test_a_reply_rule_does_not_need_authentication(self):
+        self.assertEqual(self.reason(rule=armed_rule()), SEND)
+
+    def test_null_return_path_still_stops_a_stats_rule(self):
+        extra = {"Return-Path": "<>", "Authentication-Results": DMARC_PASS}
+        self.assertEqual(self.reason(extra), "null_sender")
+
+    def test_stats_stops_on_a_robot_return_path(self):
+        extra = {
+            "Return-Path": "<liste-annonces-bounces@example.net>",
+            "Authentication-Results": DMARC_PASS,
+        }
+        self.assertEqual(self.reason(extra), "robot_sender")
+
+    def test_stats_stops_on_a_return_path_to_ourselves(self):
+        extra = {
+            "Return-Path": f"<{OWN}>",
+            "Authentication-Results": DMARC_PASS,
+        }
+        self.assertEqual(self.reason(extra), "self")
+
+    def test_authserv_id_is_empty_when_the_header_starts_with_a_result(self):
+        results = (
+            "spf=pass smtp.mailfrom=example.org;"
+            " dkim=pass header.d=example.org"
+        )
+        message = view({"Authentication-Results": results})
+        self.assertEqual(authserv_id(message), "")
+        self.assertTrue(stats_authenticated(message))
+        self.assertFalse(stats_authenticated(message, "mx.example.org"))
+        self.assertEqual(
+            self.reason(
+                {"Authentication-Results": results},
+                context=ctx(auth_serv_id="mx.example.org"),
+            ),
+            "unauthenticated",
+        )
+
+    def test_response_addresses_for_reply_and_stats(self):
+        message = view({"Return-Path": f"<{ROUTER_RETURN}>"})
+        self.assertEqual(
+            response_addresses(armed_rule(), message),
+            (HUMAN, ROUTER_RETURN, ROUTER_RETURN),
+        )
+        self.assertEqual(
+            response_addresses(stats_rule(), message), (HUMAN, HUMAN, HUMAN)
+        )
+        bare = view()
+        self.assertEqual(
+            response_addresses(armed_rule(), bare), (HUMAN, HUMAN, HUMAN)
+        )
 
 
 class TestPriority(unittest.TestCase):
