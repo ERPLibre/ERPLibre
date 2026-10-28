@@ -3370,6 +3370,163 @@ TRANSLATIONS = {
         "fr": "Script d'installation NTFY introuvable : ",
         "en": "NTFY install script not found: ",
     },
+    # NTFY for ERPLibre mobile
+    "Deploy - Prepare ntfy for ERPLibre mobile": {
+        "fr": "📱 Déployer - Préparer ntfy pour ERPLibre mobile",
+        "en": "📱 Deploy - Prepare ntfy for ERPLibre mobile",
+    },
+    "Run on this machine or over ssh?": {
+        "fr": "Sur cette machine ou par ssh ?",
+        "en": "Run on this machine or over ssh?",
+    },
+    "This machine": {
+        "fr": "Cette machine",
+        "en": "This machine",
+    },
+    "Over ssh": {
+        "fr": "Par ssh",
+        "en": "Over ssh",
+    },
+    "Prepare a phone": {
+        "fr": "Préparer un téléphone",
+        "en": "Prepare a phone",
+    },
+    "List the prepared phones": {
+        "fr": "Lister les téléphones préparés",
+        "en": "List the prepared phones",
+    },
+    "Revoke a phone": {
+        "fr": "Révoquer un téléphone",
+        "en": "Revoke a phone",
+    },
+    "ntfy configuration file": {
+        "fr": "Fichier de configuration de ntfy",
+        "en": "ntfy configuration file",
+    },
+    "The ntfy configuration could not be read.": {
+        "fr": "La configuration de ntfy n'a pas pu être lue.",
+        "en": "The ntfy configuration could not be read.",
+    },
+    "The owner of the ntfy auth file is unknown.": {
+        "fr": "Le propriétaire du fichier d'authentification de ntfy est inconnu.",
+        "en": "The owner of the ntfy auth file is unknown.",
+    },
+    "ntfy_mobile_no_auth_file": {
+        "fr": "Le serveur ntfy n'a pas de fichier d'authentification (auth-file) : les accès par téléphone ne peuvent pas être créés.",
+        "en": "The ntfy server has no auth-file: phone access cannot be created.",
+    },
+    "ntfy_mobile_not_deny_all": {
+        "fr": "Le serveur ntfy n'est pas en refus par défaut (auth-default-access: deny-all) : n'importe qui lirait les sujets.",
+        "en": "The ntfy server is not deny-by-default (auth-default-access: deny-all): anyone could read the topics.",
+    },
+    "ntfy_mobile_subscriber_rate_limiting": {
+        "fr": "La limitation par abonné (visitor-subscriber-rate-limiting) est active : elle fait perdre des notifications à un téléphone qui se reconnecte.",
+        "en": "Subscriber rate limiting (visitor-subscriber-rate-limiting) is on: it drops notifications for a phone that reconnects.",
+    },
+    "Fix this with: Deploy - Install NTFY notification server.": {
+        "fr": "À corriger par : Déployer - Installer le serveur de notifications NTFY.",
+        "en": "Fix this with: Deploy - Install NTFY notification server.",
+    },
+    "Odoo server source addresses to exempt from rate limits, comma separated": {
+        "fr": "Adresses sources du serveur Odoo à exempter des limites, séparées par des virgules",
+        "en": "Odoo server source addresses to exempt from rate limits, comma separated",
+    },
+    "No address exempted: a busy Odoo server hits HTTP 429 and loses pushes.": {
+        "fr": "Aucune adresse exemptée : un serveur Odoo occupé reçoit des HTTP 429 et perd des notifications.",
+        "en": "No address exempted: a busy Odoo server hits HTTP 429 and loses pushes.",
+    },
+    "Proposed changes to the ntfy configuration:": {
+        "fr": "Changements proposés à la configuration de ntfy :",
+        "en": "Proposed changes to the ntfy configuration:",
+    },
+    "Write this configuration (a backup copy is kept)? (y/N): ": {
+        "fr": "Écrire cette configuration (une copie de sauvegarde est gardée) ? (y/N) : ",
+        "en": "Write this configuration (a backup copy is kept)? (y/N): ",
+    },
+    "Configuration left unchanged, not applied:": {
+        "fr": "Configuration laissée telle quelle, non appliqué :",
+        "en": "Configuration left unchanged, not applied:",
+    },
+    "Configuration written.": {
+        "fr": "Configuration écrite.",
+        "en": "Configuration written.",
+    },
+    "The configuration could not be written.": {
+        "fr": "La configuration n'a pas pu être écrite.",
+        "en": "The configuration could not be written.",
+    },
+    "Restart ntfy now to apply it? (y/N): ": {
+        "fr": "Redémarrer ntfy maintenant pour l'appliquer ? (y/N) : ",
+        "en": "Restart ntfy now to apply it? (y/N): ",
+    },
+    "Not restarted: the change applies at the next ntfy restart.": {
+        "fr": "Non redémarré : le changement s'appliquera au prochain redémarrage de ntfy.",
+        "en": "Not restarted: the change applies at the next ntfy restart.",
+    },
+    "ntfy restarted and active.": {
+        "fr": "ntfy redémarré et actif.",
+        "en": "ntfy restarted and active.",
+    },
+    "ntfy is not active after the restart:": {
+        "fr": "ntfy n'est pas actif après le redémarrage :",
+        "en": "ntfy is not active after the restart:",
+    },
+    "Phone name (e.g. Alice's phone): ": {
+        "fr": "Nom du téléphone (ex. : téléphone d'Alice) : ",
+        "en": "Phone name (e.g. Alice's phone): ",
+    },
+    "This name has no usable character.": {
+        "fr": "Ce nom ne contient aucun caractère utilisable.",
+        "en": "This name has no usable character.",
+    },
+    "The phone access could not be created.": {
+        "fr": "L'accès du téléphone n'a pas pu être créé.",
+        "en": "The phone access could not be created.",
+    },
+    "URL the phone reaches ntfy at": {
+        "fr": "URL par laquelle le téléphone joint ntfy",
+        "en": "URL the phone reaches ntfy at",
+    },
+    "URL the Odoo server publishes to (Enter: same)": {
+        "fr": "URL par laquelle le serveur Odoo publie (Entrée : la même)",
+        "en": "URL the Odoo server publishes to (Enter: same)",
+    },
+    "Phone access ready:": {
+        "fr": "Accès du téléphone prêt :",
+        "en": "Phone access ready:",
+    },
+    "Scan this code with the ERPLibre mobile app:": {
+        "fr": "Scannez ce code avec l'application ERPLibre mobile :",
+        "en": "Scan this code with the ERPLibre mobile app:",
+    },
+    "QR code unavailable, install it with:": {
+        "fr": "Code QR indisponible, l'installer par :",
+        "en": "QR code unavailable, install it with:",
+    },
+    "This link gives access to the notifications of this phone: do not share it.": {
+        "fr": "Ce lien donne accès aux notifications de ce téléphone : ne le partagez pas.",
+        "en": "This link gives access to the notifications of this phone: do not share it.",
+    },
+    "No phone prepared.": {
+        "fr": "Aucun téléphone préparé.",
+        "en": "No phone prepared.",
+    },
+    "Phone to revoke (number): ": {
+        "fr": "Téléphone à révoquer (numéro) : ",
+        "en": "Phone to revoke (number): ",
+    },
+    "Revoke the access of this phone? (y/N): ": {
+        "fr": "Révoquer l'accès de ce téléphone ? (y/N) : ",
+        "en": "Revoke the access of this phone? (y/N): ",
+    },
+    "Access revoked.": {
+        "fr": "Accès révoqué.",
+        "en": "Access revoked.",
+    },
+    "The revocation failed.": {
+        "fr": "La révocation a échoué.",
+        "en": "The revocation failed.",
+    },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
         "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
