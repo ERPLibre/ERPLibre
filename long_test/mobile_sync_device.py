@@ -371,17 +371,26 @@ class Appareil:
     notifications_accordees: bool = False
     exemption_posee: bool = False
 
+    def garder_allume(self):
+        """L'écran gardé allumé tant que le téléphone est branché (svc
+        power stayon usb), le réglage d'avant noté une fois pour rendre().
+        Posé avant la construction de l'APK : un écran qui s'éteint pendant
+        ces minutes verrouille un téléphone à code, que rien ici ne
+        déverrouille."""
+        if not self.reste_allume:
+            self.reste_allume = adb(
+                "shell",
+                "settings",
+                "get",
+                "global",
+                "stay_on_while_plugged_in",
+                executer=self.executer,
+            ).strip()
+        adb("shell", "svc", "power", "stayon", "usb", executer=self.executer)
+
     def preparer(self, apk):
         adb("install", "-r", str(apk), executer=self.executer)
-        self.reste_allume = adb(
-            "shell",
-            "settings",
-            "get",
-            "global",
-            "stay_on_while_plugged_in",
-            executer=self.executer,
-        ).strip()
-        adb("shell", "svc", "power", "stayon", "usb", executer=self.executer)
+        self.garder_allume()
         for port in self.ports:
             adb(
                 "reverse", f"tcp:{port}", f"tcp:{port}", executer=self.executer
@@ -2407,6 +2416,20 @@ def service_vivant(executer):
     return "ChatPushService" in services
 
 
+def tuer_processus(executer, pid):
+    """La mort du processus de l'app de test, comme Android le tue faute
+    de mémoire : SIGKILL par run-as quand la politique SELinux de l'appareil
+    laisse run-as signaler l'app, sinon `am crash` sur son pid (une mort de
+    la VM, sans boîte de dialogue pour une app à l'arrière-plan). Rend la
+    manière employée."""
+    try:
+        adb("shell", "run-as", PAQUET, "kill", "-9", pid, executer=executer)
+        return "SIGKILL"
+    except RuntimeError:
+        adb("shell", "am", "crash", pid, executer=executer)
+        return "am crash"
+
+
 def scenario_notifications(ctx):
     """Les notifications du clavardage, l'app fermée, par le ntfy de la
     course renvoyé au téléphone (adb reverse) : le lien appliqué au
@@ -2501,7 +2524,7 @@ def scenario_notifications(ctx):
 
     # 3. Le processus tué : le service revient, le message suivant s'empile
     pid = adb("shell", "pidof", PAQUET, executer=executer).strip()
-    adb("shell", "run-as", PAQUET, "kill", "-9", pid, executer=executer)
+    maniere = tuer_processus(executer, pid)
     debut = time.monotonic()
     while (
         adb("shell", "pidof", PAQUET, executer=executer, check=False).strip()
@@ -2588,9 +2611,15 @@ def scenario_notifications(ctx):
         [[["model", "=", "discuss.channel"], ["res_id", "=", canal]]],
         {"limit": 1, "order": "id desc"},
     )[0]
+    # Le fil s'ouvre sur le premier non-lu ; il se lit une fois en bas, comme
+    # quand un doigt le fait défiler
     fin = time.monotonic() + 20
     while vu_de(ctx.odoo, canal, moi) != dernier:
         assert time.monotonic() < fin, "la conversation ouverte reste non lue"
+        ctx.cdp.evaluer(
+            "(() => { const e = document.querySelector('.chat-thread__scroll');"
+            " if (e) e.scrollTop = e.scrollHeight; })()"
+        )
         time.sleep(0.5)
     ctx.hook(f"chatPushRemove({config})")
     accueil(ctx)
@@ -2631,7 +2660,8 @@ def scenario_notifications(ctx):
     ), "sommaire a lu la boîte de réception"
     return (
         f"poussée → notification {delai_2:.1f} s, service revenu en"
-        f" {retour:.1f} s ({'tâche forcée' if force else 'START_STICKY'}),"
+        f" {retour:.1f} s après {maniere}"
+        f" ({'tâche forcée' if force else 'START_STICKY'}),"
         f" empilée en {delai_3:.1f} s, « jamais affiché » en {delai_6:.1f} s"
     )
 
@@ -2687,10 +2717,11 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
     illisible dès le départ, la course s'arrête avant de toucher le
     téléphone (RuntimeError)."""
     avant = maj_app_perso(executer)
-    apk = construire_apk(executer=executer, journal=journal)
     appareil = Appareil(ports_de(cibles), executer)
     total = echecs = 0
     try:
+        appareil.garder_allume()
+        apk = construire_apk(executer=executer, journal=journal)
         appareil.preparer(apk)
         for cible in cibles:
             for nom, scenario in scenarios_de(cible["version"]):

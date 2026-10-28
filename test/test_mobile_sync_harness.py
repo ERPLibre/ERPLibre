@@ -1197,6 +1197,24 @@ class TestAppareilNotifications(unittest.TestCase):
             commandes,
         )
 
+    def test_l_ecran_reste_allume_des_avant_la_construction(self):
+        ordre = []
+        telephone = mock.MagicMock()
+        telephone.garder_allume.side_effect = lambda: ordre.append("allume")
+        telephone.rendre.side_effect = lambda: ordre.append("rendre")
+        with mock.patch.object(appareil, "SCENARIOS", ()), mock.patch.object(
+            appareil,
+            "construire_apk",
+            side_effect=lambda **_: ordre.append("apk") or Path("x.apk"),
+        ), mock.patch.object(appareil, "Appareil", return_value=telephone):
+            appareil.lancer(
+                [{"version": 18, "url": "http://127.0.0.1:8018"}],
+                "/x",
+                executer=faux_adb(paquets=[dumpsys_paquet()]),
+                journal=lambda _: 0,
+            )
+        self.assertEqual(ordre, ["allume", "apk", "rendre"])
+
     def test_le_port_du_ntfy_est_renvoye(self):
         cibles = [
             {"version": 18, "url": "http://127.0.0.1:8018"},
