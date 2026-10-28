@@ -13,7 +13,9 @@ crée (`ntfy_mobile.access_script`) : anonyme en écriture seule sur `up*`,
 un utilisateur en lecture seule sur son préfixe, son jeton.
 
 Chaque appel de la CLI porte `--config` : sans lui elle lit
-`/etc/ntfy/server.yml`, celui de l'utilisateur, que rien ici ne nomme.
+`/etc/ntfy/server.yml`, celui de l'utilisateur, que rien ici ne nomme. Et
+chacun tourne sans les variables `NTFY_*` de l'appelant, que la CLI fait
+passer avant `--config` (`ntfy_mobile.ntfy_free_env`).
 """
 
 import os
@@ -112,7 +114,10 @@ def demarrer_ntfy(
 ):
     """Démarre le ntfy de la course sous repertoire/ntfy/, attend qu'il
     réponde, puis crée l'accès de deux téléphones (creer_acces).
-    RuntimeError, le serveur arrêté, quand l'une des étapes échoue."""
+    RuntimeError, le serveur arrêté, quand l'une des étapes échoue ; une
+    interruption (Ctrl-C, SIGTERM changé en KeyboardInterrupt par la
+    course) l'arrête aussi avant de remonter : lancé dans sa propre
+    session et pas encore noté avec les serveurs, il survivrait sinon."""
     dossier = Path(repertoire) / "ntfy"
     dossier.mkdir(parents=True, exist_ok=True)
     port = odoo.port_libre()
@@ -124,17 +129,17 @@ def demarrer_ntfy(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
+        env=ntfy_mobile.ntfy_free_env(),
     )
-    fin = time.monotonic() + attente
-    while not sain(ntfy.url):
-        if ntfy.processus.poll() is not None or time.monotonic() > fin:
-            arreter_ntfy(ntfy)
-            raise RuntimeError(f"ntfy ne répond pas sur {ntfy.url}")
-        time.sleep(0.2)
     try:
+        fin = time.monotonic() + attente
+        while not sain(ntfy.url):
+            if ntfy.processus.poll() is not None or time.monotonic() > fin:
+                raise RuntimeError(f"ntfy ne répond pas sur {ntfy.url}")
+            time.sleep(0.2)
         premier = creer_acces(ntfy, UTILISATEUR, executer)
         ntfy.autre = creer_acces(ntfy, UTILISATEUR_AUTRE, executer)
-    except RuntimeError:
+    except BaseException:
         arreter_ntfy(ntfy)
         raise
     ntfy.token, ntfy.prefix, ntfy.link = (
@@ -157,6 +162,7 @@ def creer_acces(ntfy, utilisateur, executer=subprocess.run):
         stderr=subprocess.STDOUT,
         text=True,
         check=False,
+        env=ntfy_mobile.ntfy_free_env(),
     )
     jeton = ntfy_mobile.parse_token(resultat.stdout or "")
     if resultat.returncode != 0 or not jeton:
