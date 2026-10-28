@@ -27,6 +27,7 @@ sys.path.insert(0, str(RACINE / "long_test"))
 
 import mobile_sync  # noqa: E402
 import mobile_sync_device as appareil  # noqa: E402
+import mobile_sync_ntfy as harness_ntfy  # noqa: E402
 import mobile_sync_odoo as odoo  # noqa: E402
 
 KIT = "export const HARNESS_API = {api};\n"
@@ -364,8 +365,8 @@ class TestBasesEtServeurs(unittest.TestCase):
                 odoo.cle_gabarit(v18, executer=executer), avant
             )
 
-    def test_harness_api_5(self):
-        self.assertEqual(odoo.HARNESS_API, 5)
+    def test_harness_api_6(self):
+        self.assertEqual(odoo.HARNESS_API, 6)
 
 
 class TestRapport(unittest.TestCase):
@@ -745,8 +746,8 @@ class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
 
-    def test_api_du_hook_6(self):
-        self.assertEqual(appareil.DEVICE_HOOK_API, 6)
+    def test_api_du_hook_7(self):
+        self.assertEqual(appareil.DEVICE_HOOK_API, 7)
 
     def test_clavardage_sur_la_18_seulement(self):
         for version in (16, 17):
@@ -762,6 +763,10 @@ class TestScenariosAppareil(unittest.TestCase):
             (
                 "recherche et boîte du clavardage",
                 appareil.scenario_recherche_boite,
+            ),
+            (
+                "notifications du clavardage, app fermée",
+                appareil.scenario_notifications,
             ),
         ):
             self.assertIn(scenario, appareil.scenarios_de(18))
@@ -922,6 +927,286 @@ class TestDetruire(unittest.TestCase):
         supprimer.assert_not_called()
         arreter.assert_not_called()
         effacer.assert_not_called()
+
+
+class TestNtfy(unittest.TestCase):
+    """Le ntfy de la course est le sien : sur 127.0.0.1, un port libre, sa
+    configuration et ses fichiers sous le répertoire de la course, et
+    chaque appel de la CLI porte --config. Celui de l'utilisateur (port
+    8080, /etc/ntfy, /var/lib/ntfy) n'est jamais nommé."""
+
+    def setUp(self):
+        self.repertoire = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.repertoire))
+
+    def demarrer(self):
+        """demarrer_ntfy sur de faux processus : rend le ntfy et les
+        commandes lancées (Popen, puis subprocess.run)."""
+        lancees = []
+
+        def lancer(commande, **_):
+            lancees.append(("serve", commande))
+            return SimpleNamespace(pid=4321, poll=lambda: None)
+
+        def executer(commande, **_):
+            lancees.append(("script", commande))
+            return SimpleNamespace(
+                stdout="token tk_inventeinventeinvente created for user"
+                " erm_course, never expires\n",
+                returncode=0,
+            )
+
+        ntfy = harness_ntfy.demarrer_ntfy(
+            self.repertoire,
+            lancer=lancer,
+            executer=executer,
+            sain=lambda url: True,
+        )
+        return ntfy, lancees
+
+    def test_ntfy_config_is_local_and_temporary(self):
+        ntfy, _ = self.demarrer()
+        texte = ntfy.config.read_text()
+        self.assertEqual(ntfy.config.parent, self.repertoire / "ntfy")
+        cles = harness_ntfy.ntfy_mobile.read_yml_keys(texte)
+        self.assertEqual(cles["listen-http"], f"127.0.0.1:{ntfy.port}")
+        self.assertNotEqual(ntfy.port, 8080)
+        self.assertEqual(ntfy.url, f"http://127.0.0.1:{ntfy.port}")
+        self.assertEqual(cles["base-url"], ntfy.url)
+        self.assertEqual(cles["auth-default-access"], "deny-all")
+        self.assertEqual(cles["cache-duration"], "12h")
+        self.assertEqual(
+            cles["visitor-request-limit-exempt-hosts"], "127.0.0.1"
+        )
+        for cle in ("cache-file", "auth-file"):
+            self.assertTrue(
+                Path(cles[cle]).is_relative_to(self.repertoire / "ntfy"), cle
+            )
+        for interdit in ("/etc/ntfy", "/var/lib/ntfy", ":8080"):
+            self.assertNotIn(interdit, texte)
+        self.assertEqual(harness_ntfy.ntfy_mobile.config_problems(cles), [])
+
+    def test_every_ntfy_call_has_config(self):
+        ntfy, lancees = self.demarrer()
+        sortes = [sorte for sorte, _ in lancees]
+        self.assertEqual(sortes, ["serve", "script", "script"])
+        serve = lancees[0][1]
+        self.assertEqual(serve[:2], ["ntfy", "serve"])
+        self.assertEqual(serve[serve.index("--config") + 1], str(ntfy.config))
+        for _, script in lancees[1:]:
+            self.assertEqual(script[:2], ["sh", "-c"])
+            appels = [
+                ligne
+                for ligne in script[2].splitlines()
+                if re.search(r"\bntfy\b", ligne)
+            ]
+            self.assertTrue(appels)
+            for ligne in appels:
+                self.assertIn(f"--config {ntfy.config}", ligne)
+        self.assertIn(f"{ntfy.prefix}*", lancees[1][1][2])
+        self.assertIn(f"{ntfy.autre.prefix}*", lancees[2][1][2])
+        self.assertIn(ntfy.autre.prefix, ntfy.autre.link)
+        self.assertEqual(ntfy.token, "tk_inventeinventeinvente")
+        self.assertRegex(ntfy.prefix, r"^up[a-z0-9]{8}$")
+        self.assertIn(f"prefix={ntfy.prefix}", ntfy.link)
+        self.assertIn("cache=43200", ntfy.link)
+        self.assertIn("odoo=http%3A%2F%2F127.0.0.1%3A", ntfy.link)
+
+    def test_un_jeton_absent_arrete_le_ntfy(self):
+        arretes = []
+
+        def lancer(commande, **_):
+            return SimpleNamespace(pid=4321, poll=lambda: None)
+
+        with mock.patch.object(
+            harness_ntfy, "arreter_ntfy", lambda n: arretes.append(n)
+        ), self.assertRaises(RuntimeError):
+            harness_ntfy.demarrer_ntfy(
+                self.repertoire,
+                lancer=lancer,
+                executer=lambda *a, **k: SimpleNamespace(
+                    stdout="", returncode=1
+                ),
+                sain=lambda url: True,
+            )
+        self.assertEqual(len(arretes), 1)
+
+    def test_ntfy_absent_skips_with_a_plan_line(self):
+        self.assertFalse(harness_ntfy.ntfy_disponible(lambda nom: None))
+        self.assertTrue(
+            harness_ntfy.ntfy_disponible(lambda nom: "/usr/bin/ntfy")
+        )
+        args = mobile_sync.parser().parse_args([])
+        self.assertIn(
+            "  ntfy : absent, tests de notification sautés",
+            mobile_sync.plan([18], args, ntfy=False).splitlines(),
+        )
+        self.assertNotIn("ntfy", mobile_sync.plan([16], args, ntfy=False))
+        serveurs = [
+            SimpleNamespace(version=v, url=f"http://127.0.0.1:{v}", base=b)
+            for v, b in ((17, "b17"), (18, "b18"))
+        ]
+        sans = mobile_sync.cibles(serveurs, None)
+        self.assertTrue(all("ntfy" not in c for c in sans))
+        ntfy = SimpleNamespace(
+            url="http://127.0.0.1:40001",
+            token="tk_inventeinventeinvente",
+            prefix="upab12cd34",
+            link="erplibre-ntfy:setup?v=1",
+            config=self.repertoire / "ntfy" / "server.yml",
+            autre=SimpleNamespace(
+                token="tk_autreautreautre",
+                prefix="upab12cd35",
+                link="erplibre-ntfy:setup?v=1&prefix=upab12cd35",
+            ),
+        )
+        avec = mobile_sync.cibles(serveurs, ntfy)
+        self.assertNotIn("ntfy", avec[0])
+        self.assertEqual(
+            avec[1]["ntfy"],
+            {
+                "url": ntfy.url,
+                "token": ntfy.token,
+                "prefix": ntfy.prefix,
+                "link": ntfy.link,
+                "config": str(ntfy.config),
+                "other": {
+                    "token": "tk_autreautreautre",
+                    "prefix": "upab12cd35",
+                    "link": "erplibre-ntfy:setup?v=1&prefix=upab12cd35",
+                },
+            },
+        )
+
+    def test_garde_avec_les_serveurs_et_arrete_par_le_balayage(self):
+        course = self.repertoire / "4242_20260101000000"
+        course.mkdir()
+        serveurs = [
+            SimpleNamespace(
+                processus=SimpleNamespace(pid=13),
+                base="mobile_sync_run_a_18",
+                url="http://127.0.0.1:1",
+            )
+        ]
+        ntfy = SimpleNamespace(
+            processus=SimpleNamespace(pid=14), url="http://127.0.0.1:2"
+        )
+        odoo.noter_gardes(course, serveurs, ntfy)
+        vivants = {
+            13: f"odoo-bin -c {course}/odoo18.conf",
+            14: f"ntfy serve --config {course}/ntfy/server.yml",
+        }
+        tues = []
+
+        def tuer(pid, sig):
+            tues.append(pid)
+            vivants.pop(pid, None)
+
+        arretes = odoo.arreter_gardes(
+            {"mobile_sync_run_a_18"},
+            self.repertoire,
+            lire=lambda pid: vivants.get(pid, ""),
+            tuer=tuer,
+        )
+        self.assertEqual(sorted(arretes), [13, 14])
+
+
+class TestAppareilNotifications(unittest.TestCase):
+    """Le scénario des notifications accorde la permission et l'exemption
+    de batterie à l'app de test seule ; rendre() les défait, et renvoie
+    le port du ntfy de la course comme ceux des serveurs."""
+
+    sdk = "33"
+
+    def test_rendre_defait_permission_et_exemption(self):
+        commandes = []
+
+        def executer(commande, **_):
+            commandes.append(commande[1:])
+            sortie = ""
+            if "whitelist" in commande and len(commande) == 5:
+                sortie = "system,com.android.shell,1000\n"
+            elif "getprop" in commande:
+                sortie = self.sdk + "\n"
+            return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+
+        telephone = appareil.Appareil([8018, 40001], executer)
+        telephone.autoriser_notifications()
+        telephone.exempter_batterie()
+        telephone.rendre()
+        attendues = [
+            ["shell", "pm", "grant", appareil.PAQUET, appareil.NOTIFIER],
+            [
+                "shell",
+                "dumpsys",
+                "deviceidle",
+                "whitelist",
+                f"+{appareil.PAQUET}",
+            ],
+            ["shell", "pm", "revoke", appareil.PAQUET, appareil.NOTIFIER],
+            [
+                "shell",
+                "dumpsys",
+                "deviceidle",
+                "whitelist",
+                f"-{appareil.PAQUET}",
+            ],
+        ]
+        for attendue in attendues:
+            self.assertIn(attendue, commandes)
+        self.assertLess(
+            commandes.index(attendues[0]), commandes.index(attendues[2])
+        )
+        for commande in commandes:
+            self.assertNotIn(appareil.APP_PERSO, commande)
+
+    def test_avant_android_13_rien_n_est_accorde(self):
+        commandes = []
+
+        def executer(commande, **_):
+            commandes.append(commande[1:])
+            sortie = "30\n" if "getprop" in commande else ""
+            return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+
+        telephone = appareil.Appareil([8018], executer)
+        telephone.autoriser_notifications()
+        telephone.rendre()
+        self.assertFalse(any("grant" in c or "revoke" in c for c in commandes))
+
+    def test_une_exemption_deja_la_reste(self):
+        commandes = []
+
+        def executer(commande, **_):
+            commandes.append(commande[1:])
+            sortie = ""
+            if "whitelist" in commande and len(commande) == 5:
+                sortie = f"user,{appareil.PAQUET},10234\n"
+            return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+
+        telephone = appareil.Appareil([8018], executer)
+        telephone.exempter_batterie()
+        telephone.rendre()
+        self.assertNotIn(
+            [
+                "shell",
+                "dumpsys",
+                "deviceidle",
+                "whitelist",
+                f"-{appareil.PAQUET}",
+            ],
+            commandes,
+        )
+
+    def test_le_port_du_ntfy_est_renvoye(self):
+        cibles = [
+            {"version": 18, "url": "http://127.0.0.1:8018"},
+            {
+                "version": 18,
+                "url": "http://127.0.0.1:8019",
+                "ntfy": {"url": "http://127.0.0.1:40001"},
+            },
+        ]
+        self.assertEqual(appareil.ports_de(cibles), [8018, 8019, 40001])
 
 
 if __name__ == "__main__":
