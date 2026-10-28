@@ -10,6 +10,7 @@ n'atteignent jamais l'analyseur de balisage.
 """
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -271,6 +272,96 @@ class TestMenuEntry(unittest.TestCase):
         ):
             menu.prompt_execute_mail(MagicMock())
         mock_stats.assert_called_once()
+
+
+class TestInboxActivity(StatsScreenCase):
+    """La section d'activité en tête de l'écran : reçus, lus et répondus
+    par jour clos de la boîte de réception."""
+
+    def remplir_hier(self):
+        from script.todo.mail.rules import report
+
+        maintenant = int(time.time())
+        hier = report.day_starts(maintenant, 1)[0] + 12 * 3600
+        self.store.upsert_messages(
+            self.inbox,
+            [
+                MessageMeta(
+                    uid=uid,
+                    date=hier + uid,
+                    size=10,
+                    flags=flags,
+                    msgid=f"<a{uid}@example.org>",
+                    frm="carole.regle@example.org",
+                    to="boite.regles@example.org",
+                    subject="s",
+                    snippet="",
+                    received_at=hier + uid,
+                )
+                for uid, flags in (
+                    (1, "\\Seen \\Answered"),
+                    (2, "\\Seen"),
+                    (3, ""),
+                )
+            ],
+        )
+        return time.strftime("%Y-%m-%d", time.localtime(hier))
+
+    async def test_the_screen_shows_read_and_answered_per_day(self):
+        from script.todo.todo_i18n import t
+
+        jour = self.remplir_hier()
+        app = await self._app()
+        async with app.run_test(size=(120, 60)) as pilot:
+            await self._ouvrir(pilot, app)
+            corps = self._corps(app)
+        titre = t("mail_stats_activity_title").replace("{n}", "7")
+        self.assertIn(titre, corps)
+        for cle in (
+            "mail_stats_report_col_received",
+            "mail_stats_report_col_seen",
+            "mail_stats_report_col_answered",
+        ):
+            self.assertIn(t(cle), corps)
+        ligne = next(
+            ligne.split() for ligne in corps.splitlines() if jour in ligne
+        )
+        self.assertEqual(ligne, [jour, "3", "2", "1"])
+        # En tête : avant le total de la vue d'ensemble.
+        self.assertLess(corps.index(titre), corps.index(t("mail_stats_total")))
+
+    async def test_the_activity_section_opens_no_sealed_column(self):
+        from unittest import mock
+
+        self.remplir_hier()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            with mock.patch.object(
+                Store, "_open", side_effect=AssertionError("scellé")
+            ) as ouvrir:
+                activite = app.screen._calculer_activite()
+            ouvrir.assert_not_called()
+        jours, tableau = activite
+        self.assertEqual(jours, 7)
+        self.assertNotIn("carole.regle@example.org", tableau)
+
+    async def test_the_section_follows_the_report_settings(self):
+        from script.todo.mail.rules import storage
+        from script.todo.todo_i18n import t
+
+        storage.save_report(
+            "perso",
+            storage.ReportSettings(days=3),
+            base=storage.base_of(self.store),
+        )
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            self.assertIn(
+                t("mail_stats_activity_title").replace("{n}", "3"),
+                self._corps(app),
+            )
 
 
 class TestScrolling(StatsScreenCase):

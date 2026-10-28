@@ -9,8 +9,10 @@ from unittest import mock
 from script.todo.mail.rules import model, regex_worker
 from script.todo.mail.rules.filter import (
     BodyUnavailable,
+    ExplainLine,
     addr_specs,
     evaluate,
+    explain,
     match_condition,
     normalize_address,
     normalize_pattern,
@@ -282,6 +284,83 @@ class TestBody(unittest.TestCase):
 
     def test_body_unavailable_defaults_to_offline(self):
         self.assertFalse(BodyUnavailable().online)
+
+
+class TestExplain(unittest.TestCase):
+    """L'explication d'un filtre : chaque nœud, sans court-circuit."""
+
+    def test_explain_lists_every_node_in_order(self):
+        devis, facture = cond(value="devis"), cond(value="facture")
+        inner = Group("not", [facture])
+        tree = Group("all", [devis, inner])
+        lines = explain(tree, view(), None)
+        self.assertEqual(
+            lines,
+            [
+                ExplainLine(0, tree, True),
+                ExplainLine(1, devis, True),
+                ExplainLine(1, inner, True),
+                ExplainLine(2, facture, False),
+            ],
+        )
+
+    def test_explain_does_not_short_circuit(self):
+        loader = Loader("urgent")
+        tree = Group("all", [cond(value="facture"), cond("body", "urgent")])
+        lines = explain(tree, view(), loader)
+        self.assertEqual([line.result for line in lines], [False, False, True])
+        self.assertEqual(loader.calls, 1)
+
+    def test_explain_marks_an_unavailable_body_unknown(self):
+        body = cond("body", "urgent")
+        cases = (
+            (Group("all", [cond(value="devis"), body]), None),
+            (Group("all", [cond(value="facture"), body]), False),
+            (Group("any", [cond(value="devis"), body]), True),
+            (Group("any", [cond(value="facture"), body]), None),
+            (Group("not", [body]), None),
+        )
+        for tree, expected in cases:
+            with self.subTest(op=tree.op, expected=expected):
+                loader = Loader(error=BodyUnavailable(online=False))
+                lines = explain(tree, view(), loader)
+                self.assertEqual(lines[0].result, expected)
+                self.assertIsNone(lines[-1].result)
+                self.assertLessEqual(loader.calls, 1)
+
+    def test_explain_agrees_with_evaluate(self):
+        trees = (
+            Group(),
+            Group("any"),
+            cond(value="devis"),
+            Group("not", [cond(value="devis")]),
+            Group(
+                "all",
+                [
+                    cond("from", "*@example.org", op="glob"),
+                    Group(
+                        "any",
+                        [
+                            cond(value="facture"),
+                            Group("not", [cond(value="désabonnement")]),
+                        ],
+                    ),
+                ],
+            ),
+            Group("any", [cond("body", "urgent"), cond(value="facture")]),
+        )
+        messages = (
+            view(),
+            view(subject="Désabonnement"),
+            view(frm="bruno.filtre@example.net"),
+        )
+        for index, tree in enumerate(trees):
+            for message in messages:
+                with self.subTest(tree=index, subject=message.subject):
+                    expected = evaluate(tree, message, Loader("urgent"))
+                    lines = explain(tree, message, Loader("urgent"))
+                    self.assertEqual(lines[0].result, expected)
+                    self.assertIs(lines[0].node, tree)
 
 
 class TestRegexTimeBudget(unittest.TestCase):

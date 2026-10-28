@@ -443,5 +443,99 @@ class TestFetchBody(SyncCase):
         self.assertIn("Bonjour", snippet)
 
 
+class TestAutomaticMessages(SyncCase):
+    """Les messages automatiques, reconnus à la synchronisation par leurs
+    en-têtes, sortent des statistiques d'activité."""
+
+    def poser(self, folder, uid, *, frm, extra=None, in_reply_to="", at=0):
+        f = self.imap.folders.setdefault(
+            folder, {"uidvalidity": 1, "messages": {}, "bodies": {}}
+        )
+        f["messages"][uid] = HeaderInfo(
+            uid=uid,
+            date=at,
+            size=10,
+            flags="",
+            msgid=f"<{folder}{uid}@example.org>",
+            frm=frm,
+            to="boite.regles@example.org",
+            subject="Sujet",
+            in_reply_to=in_reply_to,
+            internaldate=at,
+            extra=extra or {},
+        )
+        f["bodies"][uid] = b"corps"
+
+    def test_is_automatic_cases(self):
+        from script.todo.mail.imap_sync import is_automatic
+        from script.todo.mail.smtp_send import X_LOOP_MARKER
+
+        cases = {
+            "auto-replied": ({"auto-submitted": "auto-replied"}, True),
+            "auto-generated; x": (
+                {"auto-submitted": "auto-generated; x"},
+                True,
+            ),
+            "no": ({"auto-submitted": "no"}, False),
+            "No": ({"auto-submitted": "No"}, False),
+            "no then auto": ({"auto-submitted": "no\nauto-replied"}, True),
+            "our x-loop": (
+                {"x-loop": f"{X_LOOP_MARKER} boite.regles@example.org"},
+                True,
+            ),
+            "foreign x-loop": (
+                {"x-loop": "liste-annonces@example.net"},
+                False,
+            ),
+            "empty": ({}, False),
+        }
+        for label, (extra, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertIs(is_automatic(extra), expected)
+
+    def test_auto_replies_are_recognised_after_a_cache_rebuild(self):
+        t0 = 1_790_000_000
+        self.poser("INBOX", 1, frm="carole.regle@example.org", at=t0)
+        self.poser(
+            "Sent",
+            1,
+            frm="boite.regles@example.org",
+            extra={"auto-submitted": "auto-replied"},
+            in_reply_to="<INBOX1@example.org>",
+            at=t0 + 60,
+        )
+        self.syncer.sync()
+        hash_reponse = self.store._msgid_hash("<Sent1@example.org>")
+        self.assertTrue(self.store.is_auto_sent(hash_reponse))
+        rows = self.store.stats_activity(t0 - 1, t0 + 3600)
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0].answered)
+        self.assertIsNone(rows[0].first_reply_at)
+
+    def test_an_automatic_message_from_a_third_party_is_not_received(self):
+        t0 = 1_790_000_000
+        self.poser("INBOX", 1, frm="carole.regle@example.org", at=t0)
+        self.poser(
+            "INBOX",
+            2,
+            frm="service.repondeur@example.com",
+            extra={"auto-submitted": "auto-replied"},
+            at=t0 + 1,
+        )
+        self.syncer.sync()
+        rows = self.store.stats_activity(t0 - 1, t0 + 3600)
+        self.assertEqual([r.received_at for r in rows], [t0])
+
+    def test_a_header_without_extra_marks_nothing(self):
+        self.imap.add("INBOX", 1)
+        self.syncer.sync()
+        count = (
+            self.store._db()
+            .execute("SELECT COUNT(*) FROM auto_sent")
+            .fetchone()[0]
+        )
+        self.assertEqual(count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

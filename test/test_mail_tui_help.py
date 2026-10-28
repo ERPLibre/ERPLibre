@@ -240,7 +240,7 @@ class TestHelpIsGeneratedFromBindings(HelpCase):
         app = await self._mounted_app()
         # Fenêtre haute : l'aide défile (voir `TestHelpFitsASmallWindow`),
         # or ce test-ci veut voir TOUTES les lignes à la fois.
-        async with app.run_test(size=(100, 45)) as pilot:
+        async with app.run_test(size=(100, 50)) as pilot:
             await app.workers.wait_for_complete()
             await pilot.press("h")
             await pilot.pause()
@@ -272,7 +272,7 @@ class TestHelpIsGeneratedFromBindings(HelpCase):
         replie sur une deuxième ligne.
         """
         app = await self._mounted_app()
-        async with app.run_test(size=(100, 45)) as pilot:
+        async with app.run_test(size=(100, 50)) as pilot:
             await app.workers.wait_for_complete()
             await pilot.press("h")
             await pilot.pause()
@@ -288,7 +288,7 @@ class TestHelpIsGeneratedFromBindings(HelpCase):
         from script.todo.todo_i18n import t
 
         app = await self._mounted_app()
-        async with app.run_test(size=(100, 45)) as pilot:
+        async with app.run_test(size=(100, 50)) as pilot:
             await app.workers.wait_for_complete()
             await pilot.press("h")
             await pilot.pause()
@@ -304,7 +304,7 @@ class TestHelpIsGeneratedFromBindings(HelpCase):
         que l'utilisateur presse.
         """
         app = await self._mounted_app()
-        async with app.run_test(size=(100, 45)) as pilot:
+        async with app.run_test(size=(100, 50)) as pilot:
             await app.workers.wait_for_complete()
             await pilot.press("h")
             await pilot.pause()
@@ -329,7 +329,7 @@ class TestHelpIsGeneratedFromBindings(HelpCase):
         les afficherait pareil enverrait l'utilisateur presser la mauvaise.
         """
         app = await self._mounted_app()
-        async with app.run_test(size=(100, 45)) as pilot:
+        async with app.run_test(size=(100, 50)) as pilot:
             await app.workers.wait_for_complete()
             await pilot.press("h")
             await pilot.pause()
@@ -625,7 +625,7 @@ class TestBindingDescriptionsAreTranslated(HelpCase):
         from script.todo.todo_i18n import t
 
         app = await self._mounted_app(lang="en")
-        async with app.run_test(size=(100, 45)) as pilot:
+        async with app.run_test(size=(100, 50)) as pilot:
             await app.workers.wait_for_complete()
             await pilot.press("h")
             await pilot.pause()

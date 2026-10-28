@@ -368,6 +368,128 @@ class TestRules(StorageCase):
         self.assertEqual(path.read_bytes(), before)
 
 
+class TestReport(StorageCase):
+    """Les réglages du rapport (clé racine « report ») et son instantané."""
+
+    def path(self):
+        return storage.rules_path("perso", self.base)
+
+    def test_report_defaults_without_key(self):
+        self.assertEqual(
+            storage.load_report("perso", base=self.base),
+            storage.ReportSettings(),
+        )
+        self.add()
+        self.assertEqual(
+            storage.load_report("perso", base=self.base),
+            storage.ReportSettings(),
+        )
+        partial = storage.report_from_dict({"days": 3})
+        self.assertEqual(partial.days, 3)
+        self.assertEqual(partial.weeks, storage.DEFAULT_REPORT_WEEKS)
+
+    def test_report_bounds_are_enforced(self):
+        refused = {
+            "days": [0, 32, True, "7", 7.0],
+            "weeks": [-1, 9, False],
+            "delay_window_days": [0, 366, None],
+            "format": ["pdf", 1],
+            "lang": ["de", None],
+            "auth_serv_id": ["a b", "a;b", "é", "x" * 256, 3],
+        }
+        for name, values in refused.items():
+            for value in values:
+                with self.subTest(field=name, value=value):
+                    with self.assertRaises(RuleError) as caught:
+                        storage.report_from_dict({name: value})
+                    self.assertIn(f"report.{name}", str(caught.exception))
+        accepted = storage.report_from_dict(
+            {
+                "days": 31,
+                "weeks": 0,
+                "delay_window_days": 365,
+                "format": "html",
+                "lang": "en",
+                "auth_serv_id": "mx.example.org",
+            }
+        )
+        self.assertEqual(accepted.weeks, 0)
+        with self.assertRaises(RuleError):
+            storage.report_from_dict(["days"])
+
+    def test_save_report_keeps_rules_caps_and_unknown_subkeys(self):
+        rule = self.add()
+        data = json.loads(self.path().read_text())
+        data["caps"] = {"per_pass": 5, "per_hour": 30}
+        data["report"] = {"days": 3, "futur": "gardé"}
+        data["autre"] = [1]
+        self.path().write_text(json.dumps(data))
+        settings = storage.ReportSettings(
+            days=10, weeks=2, lang="fr", auth_serv_id="mx.example.org"
+        )
+        storage.save_report("perso", settings, base=self.base)
+        data = json.loads(self.path().read_text())
+        self.assertEqual(data["caps"], {"per_pass": 5, "per_hour": 30})
+        self.assertEqual(data["autre"], [1])
+        self.assertEqual(data["report"]["futur"], "gardé")
+        self.assertEqual(data["report"]["days"], 10)
+        self.assertEqual(
+            storage.load_report("perso", base=self.base), settings
+        )
+        self.assertEqual(
+            [r.id for r in storage.load("perso", base=self.base)], [rule.id]
+        )
+        before = self.path().read_bytes()
+        with self.assertRaises(RuleError):
+            storage.save_report(
+                "perso", storage.ReportSettings(days=0), base=self.base
+            )
+        self.assertEqual(self.path().read_bytes(), before)
+
+    def test_rule_mutation_keeps_report(self):
+        rule = self.add()
+        settings = storage.ReportSettings(days=12)
+        storage.save_report("perso", settings, base=self.base)
+        storage.upsert_rule("perso", rule, base=self.base)
+        storage.set_enabled(
+            "perso", rule.id, False, armed=None, base=self.base
+        )
+        storage.save_caps("perso", storage.Caps(4, 8), base=self.base)
+        self.assertEqual(
+            storage.load_report("perso", base=self.base), settings
+        )
+
+    def test_report_future_version_is_refused(self):
+        self.add()
+        data = json.loads(self.path().read_text())
+        data["version"] = 99
+        self.path().write_text(json.dumps(data))
+        with self.assertRaises(RuleError):
+            storage.load_report("perso", base=self.base)
+        with self.assertRaises(RuleError):
+            storage.save_report(
+                "perso", storage.ReportSettings(), base=self.base
+            )
+
+    def test_report_snapshot_is_private_and_unreadable_gives_none(self):
+        self.assertIsNone(
+            storage.load_report_snapshot("perso", base=self.base)
+        )
+        content = {"key": {"day": "2026-10-28"}, "mailbox": {"days": []}}
+        storage.save_report_snapshot("perso", content, base=self.base)
+        path = storage.account_dir("perso", self.base) / "report_snapshot.json"
+        self.assertEqual(mode_of(path), 0o600)
+        self.assertEqual(
+            storage.load_report_snapshot("perso", base=self.base), content
+        )
+        for broken in ("{pas du json", "[1, 2]", "\udcff"):
+            with self.subTest(broken=broken):
+                path.write_text(broken, errors="surrogateescape")
+                self.assertIsNone(
+                    storage.load_report_snapshot("perso", base=self.base)
+                )
+
+
 class TestState(StorageCase):
     def test_state_round_trip(self):
         state = EngineState(

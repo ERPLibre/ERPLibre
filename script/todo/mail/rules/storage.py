@@ -7,6 +7,8 @@ Disposition, sous la même base que le cache (`base_of`) :
 
     <base>/.rules/<compte>/rules.json   règles (0600)
     <base>/.rules/<compte>/state.json   curseur du moteur (0600)
+    <base>/.rules/<compte>/report_snapshot.json
+                                        partie boîte du rapport du jour (0600)
     <base>/.rules/<compte>/lock         verrou des mutations et des passes
     <base>/.rules/<compte>/media/       images copiées (0700, fichiers 0600)
 
@@ -40,6 +42,7 @@ from pathlib import Path
 
 from script.todo.mail.rules.lock import file_lock
 from script.todo.mail.rules.model import (
+    FORMATS,
     IMAGE_MIMES,
     MAX_IMAGE_BYTES,
     SCHEMA_VERSION,
@@ -70,6 +73,21 @@ _MEDIA_DIR = "media"
 DEFAULT_CAP_PER_PASS = 20
 DEFAULT_CAP_PER_HOUR = 60
 _CAPS_KEY = "caps"
+# Réglages du rapport de statistiques (clé racine « report ») : bornes et
+# défauts. `weeks` = 0 retire le tableau hebdomadaire ; sa borne haute
+# limite la part du rapport qui repose sur des drapeaux que la
+# synchronisation ne relit plus.
+DEFAULT_REPORT_DAYS = 7
+REPORT_DAYS_MAX = 31
+DEFAULT_REPORT_WEEKS = 4
+REPORT_WEEKS_MAX = 8
+DEFAULT_DELAY_WINDOW_DAYS = 30
+DELAY_WINDOW_DAYS_MAX = 365
+# "" : la langue de l'interface.
+REPORT_LANGS = ("", "fr", "en")
+AUTH_SERV_ID_MAX = 255
+_REPORT_KEY = "report"
+_SNAPSHOT_FILE = "report_snapshot.json"
 _UNSAFE_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]")
 _DOTS_RE = re.compile(r"\.{2,}")
 
@@ -104,6 +122,25 @@ class Caps:
 
     per_pass: int = DEFAULT_CAP_PER_PASS
     per_hour: int = DEFAULT_CAP_PER_HOUR
+
+
+@dataclass
+class ReportSettings:
+    """Réglages du rapport de statistiques d'un compte.
+
+    `days` jours clos et `weeks` semaines ISO complètes dans les tableaux ;
+    `delay_window_days` jours pour les délais de réponse ; `format` celui
+    des nouvelles règles stats ; `lang` la langue des libellés du rapport
+    (« » : celle de l'interface) ; `auth_serv_id` l'identifiant exigé du
+    premier Authentication-Results (« » : non vérifié).
+    """
+
+    days: int = DEFAULT_REPORT_DAYS
+    weeks: int = DEFAULT_REPORT_WEEKS
+    delay_window_days: int = DEFAULT_DELAY_WINDOW_DAYS
+    format: str = "markdown"
+    lang: str = ""
+    auth_serv_id: str = ""
 
 
 # -- Chemins -----------------------------------------------------------
@@ -519,6 +556,148 @@ def save_caps(
     with _mutation(account_name, base, lock_held, wait):
         rules = _read_rules(account_name, base)
         _write_rules(account_name, base, rules, root={_CAPS_KEY: data})
+
+
+# -- Réglages du rapport -----------------------------------------------
+
+# (minimum, maximum) des réglages entiers.
+_REPORT_INT_BOUNDS = {
+    "days": (1, REPORT_DAYS_MAX),
+    "weeks": (0, REPORT_WEEKS_MAX),
+    "delay_window_days": (1, DELAY_WINDOW_DAYS_MAX),
+}
+
+
+def _report_fault(name: str) -> RuleError:
+    return RuleError(f"{t('mail_rules_err_invalid')} {_REPORT_KEY}.{name}")
+
+
+def _valid_auth_serv_id(value) -> bool:
+    """Chaîne d'au plus `AUTH_SERV_ID_MAX` caractères ASCII imprimables
+    33..126, sans « ; » ; vide admis."""
+    return (
+        isinstance(value, str)
+        and len(value) <= AUTH_SERV_ID_MAX
+        and all(33 <= ord(char) <= 126 and char != ";" for char in value)
+    )
+
+
+def report_from_dict(raw) -> ReportSettings:
+    """Les réglages de la clé « report » ; absente (None) : les défauts.
+
+    Chaque sous-clé absente prend son défaut ; une valeur hors bornes, ou
+    d'un autre type (un booléen n'est pas un entier), lève `RuleError`
+    qui nomme le champ. Les sous-clés inconnues sont ignorées.
+    """
+    if raw is None:
+        return ReportSettings()
+    if not isinstance(raw, dict):
+        raise RuleError(f"{t('mail_rules_err_invalid')} {_REPORT_KEY}")
+    values = {}
+    for field in dataclasses.fields(ReportSettings):
+        value = raw.get(field.name, field.default)
+        bounds = _REPORT_INT_BOUNDS.get(field.name)
+        if bounds is not None:
+            low, high = bounds
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not low <= value <= high
+            ):
+                raise _report_fault(field.name)
+        elif field.name == "format":
+            if value not in FORMATS:
+                raise _report_fault(field.name)
+        elif field.name == "lang":
+            if value not in REPORT_LANGS:
+                raise _report_fault(field.name)
+        elif not _valid_auth_serv_id(value):
+            raise _report_fault(field.name)
+        values[field.name] = value
+    return ReportSettings(**values)
+
+
+def _rules_root_data(account_name: str, base: Path | None):
+    """Le contenu de `rules.json` (dict) ou None s'il n'existe pas.
+
+    Une racine qui n'est pas un objet, ou une version future, lève
+    `RuleError`.
+    """
+    data = _read_json(_account_root(account_name, base) / _RULES_FILE)
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        raise RuleError(f"{t('mail_rules_err_bad_json')} {_REPORT_KEY}")
+    version = data.get("version", SCHEMA_VERSION)
+    if isinstance(version, int) and version > SCHEMA_VERSION:
+        raise RuleError(f"{t('mail_rules_err_future_version')} {version}")
+    return data
+
+
+def load_report(account_name: str, base: Path | None = None) -> ReportSettings:
+    """Les réglages du rapport ; fichier absent ou sans « report » :
+    défauts.
+
+    JSON illisible, version future ou valeur invalide : `RuleError`.
+    """
+    data = _rules_root_data(account_name, base)
+    if data is None:
+        return ReportSettings()
+    return report_from_dict(data.get(_REPORT_KEY))
+
+
+def save_report(
+    account_name: str,
+    settings: ReportSettings,
+    *,
+    base: Path | None = None,
+    lock_held: bool = False,
+    wait: float = UI_LOCK_WAIT_S,
+) -> None:
+    """Écrit les réglages du rapport dans `rules.json`, sous verrou.
+
+    Les valeurs sont vérifiées d'abord (`RuleError`, rien n'est écrit).
+    Les sous-clés de « report » que ce module ne connaît pas sont gardées ;
+    les règles et les autres clés racine restent telles quelles.
+    """
+    known = dataclasses.asdict(settings)
+    report_from_dict(known)
+    with _mutation(account_name, base, lock_held, wait):
+        rules = _read_rules(account_name, base)
+        current = _read_json(_account_root(account_name, base) / _RULES_FILE)
+        merged = {}
+        if isinstance(current, dict) and isinstance(
+            current.get(_REPORT_KEY), dict
+        ):
+            merged.update(current[_REPORT_KEY])
+        merged.update(known)
+        _write_rules(account_name, base, rules, root={_REPORT_KEY: merged})
+
+
+def load_report_snapshot(
+    account_name: str, base: Path | None = None
+) -> dict | None:
+    """Le contenu de l'instantané du rapport, ou None s'il est absent ou
+    illisible ; ne lève jamais : un instantané abîmé se recalcule."""
+    try:
+        path = _account_root(account_name, base) / _SNAPSHOT_FILE
+        data = _read_json(path)
+    except (RuleError, OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def save_report_snapshot(
+    account_name: str,
+    data: dict,
+    *,
+    base: Path | None = None,
+    lock_held: bool = False,
+) -> None:
+    """Remplace l'instantané du rapport (0600, écriture atomique), sous le
+    verrou du compte sauf `lock_held`."""
+    with _mutation(account_name, base, lock_held, UI_LOCK_WAIT_S):
+        _write_json(account_dir(account_name, base) / _SNAPSHOT_FILE, data)
 
 
 # -- État du moteur ----------------------------------------------------

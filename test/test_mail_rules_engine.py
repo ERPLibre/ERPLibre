@@ -730,12 +730,11 @@ class TestRulesLifecycle(EngineCase):
         bilan = engine.run_pass(session, now=self.horloge)
         self.assertEqual(bilan.status, "ephemeral")
 
-    def test_stats_and_forward_rules_are_ignored(self):
-        for kind in ("stats", "forward"):
-            rule = new_rule(kind, kind)
-            storage.upsert_rule(
-                "perso", rule, rearm=Armed(1, 1, T0 - HOUR), base=self.base
-            )
+    def test_forward_rules_are_ignored(self):
+        rule = new_rule("forward", "forward")
+        storage.upsert_rule(
+            "perso", rule, rearm=Armed(1, 1, T0 - HOUR), base=self.base
+        )
         self.imap.recevoir(1)
         self.assertEqual(self.passe().status, "no_rules")
         self.assertEqual(self.envois, [])

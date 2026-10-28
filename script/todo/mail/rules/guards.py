@@ -53,6 +53,7 @@ REASONS = (
     "other_account",
     "not_addressed",
     "auth_fail",
+    "unauthenticated",
     "throttled",
 )
 # Codes posés par le moteur et la vidange de la file ; le moteur n'en
@@ -73,6 +74,7 @@ ENGINE_REASONS = (
     "build_error",
     "body_unavailable",
     "regex_timeout",
+    "stats_cap",
 )
 SEND = "send"
 # Avance tolérée d'une date de réception sur l'horloge locale, en secondes.
@@ -85,9 +87,18 @@ ROBOT_LOCALPARTS = re.compile(
     re.I,
 )
 
-# « clé=valeur » d'un résultat ; le regard arrière limite les essais au
-# début d'un mot, pour un temps linéaire sur un en-tête choisi par un tiers.
-_PROPERTY_RE = re.compile(r"(?<![a-z0-9_.-])([a-z0-9_.-]+)\s*=\s*(\S+)")
+# Une chaîne entre guillemets (RFC 5322), barre oblique inverse comprise.
+_QUOTED = r'"(?:[^"\\]|\\[\s\S])*"'
+# « clé=valeur » d'un résultat, la valeur étant un jeton, une chaîne entre
+# guillemets ou un mélange des deux (« "a;b"@domaine »). Une chaîne
+# entre guillemets isolée est consommée par la première branche, sans
+# groupe : aucune clé n'est lue à l'intérieur. Le regard arrière limite les
+# essais au début d'un mot, pour un temps linéaire sur un en-tête choisi
+# par un tiers.
+_PROPERTY_RE = re.compile(
+    rf"{_QUOTED}|(?<![a-z0-9_.-])([a-z0-9_.-]+)\s*=\s*"
+    rf'((?:{_QUOTED}|[^\s";])+)'
+)
 
 
 @dataclass
@@ -98,6 +109,8 @@ class GuardContext:
     `is_logged()` dit si le journal a déjà une ligne pour (règle, message).
     `last_send_at(from_norm, target_norm)` rend l'époque du dernier envoi
     de CETTE règle vers cet expéditeur OU cette cible, ou None.
+    `auth_serv_id`, s'il n'est pas vide, est l'identifiant de serveur
+    qu'une règle `stats` exige du premier `Authentication-Results`.
     """
 
     now: int
@@ -105,6 +118,7 @@ class GuardContext:
     other_account_addresses: frozenset
     is_logged: Callable[[], bool]
     last_send_at: Callable[[str, str], int | None]
+    auth_serv_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -172,47 +186,128 @@ def _strip_comments(text: str) -> str:
     Les commentaires imbriqués partent avec leur parent, en un seul
     parcours : « spf=pass (… dkim=fail …) » ne dit rien de DKIM. Une
     parenthèse ouvrante jamais refermée reste, avec ce qui la suit : le
-    texte reste analysé, et un résultat « fail » qu'il porte compte.
+    texte reste analysé, et un résultat « fail » qu'il porte compte. Une
+    parenthèse entre guillemets est un caractère ordinaire, un guillemet
+    dans un commentaire aussi ; « \\ » protège le caractère qui suit dans
+    l'un comme dans l'autre.
     """
     out: list[str] = []
     opened: list[int] = []
+    quoted = False
+    escaped = False
     for char in text:
-        if char == "(":
+        if escaped:
+            escaped = False
+            out.append(char)
+        elif char == "\\" and (quoted or opened):
+            escaped = True
+            out.append(char)
+        elif quoted:
+            quoted = char != '"'
+            out.append(char)
+        elif char == "(":
             opened.append(len(out))
             out.append(char)
         elif char == ")" and opened:
             del out[opened.pop() :]
             out.append(" ")
         else:
+            quoted = char == '"' and not opened
             out.append(char)
     return "".join(out)
 
 
-def _auth_results(view: MessageView) -> list[tuple[str, str, dict]]:
+def _split_resinfo(text: str) -> list[str] | None:
+    """`text` coupé à chaque « ; » hors d'une chaîne entre guillemets.
+
+    Rend None quand une chaîne entre guillemets reste ouverte : le texte
+    n'a alors aucune découpe sûre.
+    """
+    parts: list[str] = []
+    start = 0
+    quoted = False
+    escaped = False
+    for index, char in enumerate(text):
+        if escaped:
+            escaped = False
+        elif quoted:
+            if char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char == ";":
+            parts.append(text[start:index])
+            start = index + 1
+    if quoted:
+        return None
+    parts.append(text[start:])
+    return parts
+
+
+def _unquote(value: str) -> str:
+    """`value` sans ses guillemets ni ses barres d'échappement :
+    « "a;b"@domaine » devient « a;b@domaine »."""
+    out: list[str] = []
+    quoted = False
+    escaped = False
+    for char in value:
+        if escaped:
+            escaped = False
+            out.append(char)
+        elif quoted and char == "\\":
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def _auth_results(view: MessageView) -> list[tuple[str, str, dict]] | None:
     """Les résultats du PREMIER `Authentication-Results`.
 
     Chaque élément est (méthode, résultat, propriétés), en minuscules ;
     l'identifiant du serveur, qui précède le premier « ; », est ignoré.
+    Le découpage respecte les chaînes entre guillemets : une adresse
+    d'enveloppe « "a;spf=pass …"@domaine » reste UNE valeur, celle de la
+    propriété qui la porte, sans guillemets. Une propriété répétée garde
+    sa première valeur : ce que l'expéditeur glisse dans une valeur vient
+    après la clé écrite par le serveur. Rend None quand une chaîne entre
+    guillemets reste ouverte : l'en-tête est alors illisible.
     """
     first = _first_occurrence(view, "Authentication-Results")
     if not first:
         return []
-    text = _strip_comments(first.lower())
+    segments = _split_resinfo(_strip_comments(first.lower()))
+    if segments is None:
+        return None
     results = []
-    for segment in text.split(";"):
-        pairs = _PROPERTY_RE.findall(segment)
+    for segment in segments:
+        pairs = [
+            (match.group(1), _unquote(match.group(2)))
+            for match in _PROPERTY_RE.finditer(segment)
+            if match.group(1) is not None
+        ]
         if not pairs:
             continue
         method, result = pairs[0]
         if "." in method:
             continue
-        props = {key: value.strip('"') for key, value in pairs[1:]}
-        results.append((method, result.strip('"'), props))
+        props: dict = {}
+        for key, value in pairs[1:]:
+            props.setdefault(key, value)
+        results.append((method, result, props))
     return results
 
 
 def _auth_fails(view: MessageView) -> bool:
+    """Vrai si le premier `Authentication-Results` rapporte un échec, ou
+    s'il est illisible (chaîne entre guillemets jamais refermée)."""
     results = _auth_results(view)
+    if results is None:
+        return True
     verdicts = {(method, result) for method, result, _props in results}
     if ("dmarc", "fail") in verdicts:
         return True
@@ -234,13 +329,14 @@ def authentication_passes(view: MessageView, domain: str) -> bool:
     `dmarc=pass` avec `header.from` égal à `domain` ; `dkim=pass` avec
     `header.d` aligné (égal, ou sous-domaine) ; `spf=pass` avec
     `smtp.mailfrom` aligné. Les en-têtes suivants sont ignorés : ils
-    peuvent venir de l'expéditeur.
+    peuvent venir de l'expéditeur ; un en-tête illisible n'authentifie
+    rien.
     """
     target = stats_target(view)
     domain = _domain_of(domain or "")
     if not target or not domain or _domain_of(target) != domain:
         return False
-    for method, result, props in _auth_results(view):
+    for method, result, props in _auth_results(view) or ():
         if result != "pass":
             continue
         if method == "dmarc":
@@ -254,6 +350,61 @@ def authentication_passes(view: MessageView, domain: str) -> bool:
             if _aligned(mailfrom, domain):
                 return True
     return False
+
+
+def authserv_id(view: MessageView) -> str:
+    """L'identifiant du serveur du PREMIER `Authentication-Results`.
+
+    C'est le texte qui précède le premier « ; », commentaires et jeton de
+    version retirés, en minuscules. Rend « » sans en-tête, et « » quand ce
+    texte porte un « = » : l'en-tête s'ouvre alors sur un résultat
+    (« spf=pass … »), sans identifiant.
+    """
+    first = _first_occurrence(view, "Authentication-Results")
+    if not first:
+        return ""
+    head = _strip_comments(first.split(";", 1)[0]).lower()
+    if "=" in head:
+        return ""
+    tokens = head.split()
+    return tokens[0] if tokens else ""
+
+
+def stats_authenticated(view: MessageView, auth_serv_id: str = "") -> bool:
+    """Vrai si le From d'une demande de rapport est authentifié.
+
+    From doit porter une seule adresse sans ambiguïté ; si `auth_serv_id`
+    est réglé, l'identifiant du premier `Authentication-Results` doit lui
+    être égal sans égard à la casse ; puis `authentication_passes` doit
+    authentifier le domaine du From. L'identifiant ne protège que si le
+    serveur de réception retire les en-têtes entrants qui portent le sien :
+    sinon l'expéditeur peut l'écrire lui-même.
+    """
+    sender = stats_target(view)
+    if not sender:
+        return False
+    wanted = (auth_serv_id or "").strip().lower()
+    if wanted and authserv_id(view) != wanted:
+        return False
+    return authentication_passes(view, sender.rpartition("@")[2])
+
+
+def response_addresses(rule: Rule, view: MessageView) -> tuple[str, str, str]:
+    """(expéditeur normalisé, cible normalisée, cible sous sa forme reçue).
+
+    Règle `stats` : la cible est l'adresse de From, que l'authentification
+    vérifie et à laquelle se rapporte le délai du demandeur. Autre règle :
+    Return-Path, sinon From, jamais Reply-To. N'évalue ni le filtre ni les
+    garde-fous.
+    """
+    sender_addr = sole_address(view.frm, raw=True)
+    sender = normalize_address(sender_addr) if sender_addr else ""
+    if rule.action.kind == "stats":
+        return sender, sender, sender_addr
+    if _first_occurrence(view, "Return-Path") is None:
+        # Même cible que `reply_target`, sans relire From une seconde fois.
+        return sender, sender, sender_addr
+    return sender, reply_target(view), reply_target(view, raw=True)
 
 
 def _localpart(address: str) -> str:
@@ -285,7 +436,11 @@ def _check_headers(view: MessageView) -> str | None:
 
 
 def _check_addresses(
-    view: MessageView, ctx: GuardContext, sender: str, target: str
+    view: MessageView,
+    ctx: GuardContext,
+    sender: str,
+    target: str,
+    extra: tuple = (),
 ) -> str | None:
     """Contrôles 12 à 17 : à qui la réponse partirait.
 
@@ -294,14 +449,15 @@ def _check_addresses(
     `no_target` même si Return-Path fournit une cible : sous un NON, un
     From illisible ne vaut aucune valeur et rendrait vraie une condition
     écrite pour l'exclure, et les contrôles 14 à 16 ne verraient pas
-    l'expéditeur.
+    l'expéditeur. Les adresses de `extra` passent aussi les contrôles 14
+    à 16 (robot, nous-mêmes, autre compte), sans être une cible.
     """
     return_path = _first_occurrence(view, "Return-Path")
     if return_path is not None and not addr_specs(return_path):
         return "null_sender"
     if not target or (view.frm.strip() and not sender):
         return "no_target"
-    people = [address for address in (target, sender) if address]
+    people = [address for address in (target, sender, *extra) if address]
     if any(ROBOT_LOCALPARTS.match(_localpart(a)) for a in people):
         return "robot_sender"
     if any(address in ctx.own_addresses for address in people):
@@ -343,15 +499,19 @@ def decide(
     l'en-tête Date que l'expéditeur choisit ; une date inconnue est trop
     vieille. `filter.BodyUnavailable` traverse : le moteur décide si le
     message devient un trou ou un échec.
+
+    Une règle `stats` répond à From ; son Return-Path, s'il porte une
+    adresse, passe tout de même les contrôles de robot, de nous-mêmes et
+    d'autre compte. Elle exige en plus un expéditeur authentifié
+    (`stats_authenticated`), contrôlé après `auth_fail`.
     """
-    sender_addr = sole_address(view.frm, raw=True)
-    sender = normalize_address(sender_addr) if sender_addr else ""
-    if _first_occurrence(view, "Return-Path") is None:
-        # Même cible que `reply_target`, sans relire From une seconde fois.
-        target, target_addr = sender, sender_addr
-    else:
-        target = reply_target(view)
-        target_addr = reply_target(view, raw=True)
+    sender, target, target_addr = response_addresses(rule, view)
+    is_stats = rule.action.kind == "stats"
+    extra = ()
+    if is_stats:
+        envelope = reply_target(view)
+        if _first_occurrence(view, "Return-Path") is not None and envelope:
+            extra = (envelope,)
 
     def verdict(reason: str, matched: bool) -> Decision:
         return Decision(
@@ -375,10 +535,16 @@ def decide(
     if not rules_filter.evaluate(rule.filter, view, body_loader):
         return verdict("no_match", False)
     reason = _check_headers(view) or _check_addresses(
-        view, ctx, sender, target
+        view, ctx, sender, target, extra
     )
     if reason is None and _auth_fails(view):
         reason = "auth_fail"
+    if (
+        reason is None
+        and is_stats
+        and not stats_authenticated(view, ctx.auth_serv_id)
+    ):
+        reason = "unauthenticated"
     if reason is None and _throttled(rule, ctx, sender, target):
         reason = "throttled"
     return verdict(reason or SEND, True)

@@ -22,6 +22,7 @@ import fnmatch
 import functools
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from script.todo.mail.rules.model import (
     REGEX_TEXT_MAX,
@@ -290,3 +291,69 @@ def evaluate(
     `BodyUnavailable`.
     """
     return _evaluate(node, view, _BodyOnce(body_loader))
+
+
+@dataclass(frozen=True)
+class ExplainLine:
+    """Un nœud de l'arbre et son verdict : vrai, faux, ou None quand le
+    corps nécessaire est indisponible. `depth` vaut 0 pour la racine."""
+
+    depth: int
+    node: object
+    result: bool | None
+
+
+def _combine(op: str, results: list) -> bool | None:
+    """Le verdict d'un groupe à trois valeurs : un faux suffit à `all`,
+    un vrai à `any` ; sinon un enfant inconnu rend le groupe inconnu."""
+    if op == "all":
+        if False in results:
+            return False
+        return None if None in results else True
+    if op == "any":
+        if True in results:
+            return True
+        return None if None in results else False
+    if len(results) != 1:
+        raise RuleError(t("mail_rules_err_not_one_child"))
+    return None if results[0] is None else not results[0]
+
+
+def _explain(node, depth: int, view, body, out: list) -> bool | None:
+    if isinstance(node, Condition):
+        try:
+            result = match_condition(
+                node, field_values(view, node.field, body)
+            )
+        except BodyUnavailable:
+            result = None
+        out.append(ExplainLine(depth, node, result))
+        return result
+    if not isinstance(node, Group):
+        raise RuleError(f"{t('mail_rules_err_field')} {type(node).__name__}")
+    if node.op not in ("all", "any", "not"):
+        raise RuleError(f"{t('mail_rules_err_op')} {node.op!r}")
+    index = len(out)
+    out.append(None)
+    results = [
+        _explain(child, depth + 1, view, body, out) for child in node.children
+    ]
+    result = _combine(node.op, results)
+    out[index] = ExplainLine(depth, node, result)
+    return result
+
+
+def explain(
+    root: Group, view: MessageView, body_loader: Callable[[], str] | None
+) -> list[ExplainLine]:
+    """Chaque nœud de l'arbre, en ordre préfixe, avec son verdict, SANS
+    court-circuit : chaque condition est évaluée, pour que l'on voie
+    laquelle a décidé.
+
+    Même appariement qu'`evaluate` ; le corps est chargé une fois. Une
+    condition `body` sans corps connu vaut None, et un groupe en dépend
+    selon `_combine`. `RegexTimeout` et `RuleError` traversent.
+    """
+    out: list = []
+    _explain(root, 0, view, _BodyOnce(body_loader), out)
+    return out

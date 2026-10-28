@@ -22,6 +22,7 @@ from script.todo.mail.rules.model import (
     validate_node,
 )
 from script.todo.mail.store import MessageMeta
+from script.todo.todo_i18n import t
 
 SAMPLE = {
     "version": 1,
@@ -239,6 +240,73 @@ class TestNewRule(unittest.TestCase):
     def test_unknown_kind_is_refused(self):
         with self.assertRaises(RuleError):
             new_rule("delete")
+
+
+class TestTemplates(unittest.TestCase):
+    """Les variables « {{nom}} » d'une règle stats, et leur refus ailleurs."""
+
+    def test_stats_rule_starts_with_the_default_template(self):
+        rule = new_rule("stats")
+        self.assertEqual(rule.action.body, t("mail_stats_default_body"))
+        self.assertIn("{{rapport}}", rule.action.body)
+        self.assertEqual(rule.action.format, "markdown")
+        self.assertEqual(new_rule("reply").action.body, "")
+
+    def test_unknown_template_variable_is_refused(self):
+        rule = new_rule("stats")
+        rule.action.body = "{{ jours }} {{rapport}} {{Jours}}"
+        with self.assertRaises(model.TemplateError) as caught:
+            validate(rule)
+        self.assertIn("{{Jours}}", str(caught.exception))
+        self.assertIn(t("mail_rules_err_template_var"), str(caught.exception))
+        rule.action.subject = "{{inconnue}}"
+        rule.action.body = "{{rapport}}"
+        with self.assertRaises(model.TemplateError):
+            validate(rule)
+
+    def test_block_variable_in_subject_is_refused(self):
+        rule = new_rule("stats")
+        rule.action.subject = "Rapport {{ rapport_jours }}"
+        with self.assertRaises(model.TemplateError) as caught:
+            validate(rule)
+        self.assertIn(
+            t("mail_rules_err_template_block_subject"), str(caught.exception)
+        )
+        rule.action.subject = "{{jours}} jours : {subject}"
+        validate(rule)
+
+    def test_block_variable_inside_an_html_tag_is_refused(self):
+        rule = new_rule("stats")
+        rule.action.format = "html"
+        rule.action.body = '<p title="{{ rapport }}">x</p>'
+        with self.assertRaises(model.TemplateError) as caught:
+            validate(rule)
+        self.assertIn("{{rapport}}", str(caught.exception))
+        rule.action.format = "markdown"
+        validate(rule)
+
+    def test_reply_rule_body_braces_are_not_checked(self):
+        rule = new_rule("reply")
+        rule.action.body = "{{prenom}} {{ autre chose }} {{"
+        rule.action.subject = "{{x}} {subject}"
+        validate(rule)
+
+    def test_reply_rule_refuses_a_report_variable(self):
+        for where in ("body", "subject"):
+            with self.subTest(where=where):
+                rule = new_rule("reply")
+                setattr(rule.action, where, "Voir {{ recus_total }}")
+                with self.assertRaises(model.TemplateError) as caught:
+                    validate(rule)
+                self.assertIn(
+                    t("mail_rules_err_template_reply_var"),
+                    str(caught.exception),
+                )
+
+    def test_template_names_are_stripped_unique_and_ordered(self):
+        self.assertEqual(
+            model.template_names("{{ b }}{{a}}{{b}} {{ c"), ["b", "a"]
+        )
 
 
 class TestValidate(unittest.TestCase):

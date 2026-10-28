@@ -723,6 +723,8 @@ RULES_PREVIEW_MESSAGES = 200
 RULES_PREVIEW_REGEX_S = 2.0
 # Lignes du texte d'une réponse automatique montrées sous la file d'envoi.
 OUTBOX_PREVIEW_LINES = 20
+# Messages récents de la boîte de réception proposés à l'essai d'une règle.
+TRIAL_MESSAGES = 50
 
 
 def format_epoch(epoch: int) -> str:
@@ -875,6 +877,155 @@ def outbox_entry_preview(raw: bytes) -> tuple[list, list, list]:
         elif part.get_content_maintype() == "image":
             inline.append(name or part.get_content_type())
     return lines, inline, attached
+
+
+def trial_simulation(
+    session,
+    rule,
+    meta,
+    *,
+    folder: str,
+    uidvalidity: int,
+    rules_base,
+    verrou=None,
+):
+    """Ce que `rule` ferait du message d'INBOX `meta` (ligne du cache).
+
+    En ligne, les en-têtes complets sont relus du serveur et le corps
+    arrive par FETCH, sous `verrou`. Hors ligne, si la boîte a été
+    renumérotée depuis `uidvalidity`, ou si la relecture échoue, la ligne
+    du cache sert d'en-têtes (sans Cc ni en-têtes supplémentaires, la
+    simulation le dit) et le corps vient du cache, `BodyUnavailable` à
+    défaut. Rend une `engine.Simulation` ; ne lève pas.
+    """
+    from script.todo.mail.rules import engine
+    from script.todo.mail.rules.filter import BODY_TEXT_MAX, BodyUnavailable
+
+    header = engine.fetch_inbox_header(
+        session, meta.uid, uidvalidity=uidvalidity, verrou=verrou
+    )
+    if header is not None:
+        loader = engine.make_body_loader(
+            session, folder, meta.uid, verrou=verrou
+        )
+    else:
+        store = session.store
+
+        def loader() -> str:
+            from script.todo.mail.tui_text import extract_body
+
+            raw = store.read_body(folder, meta.uid)
+            if raw is None:
+                raise BodyUnavailable(online=False)
+            return extract_body(raw)[0][:BODY_TEXT_MAX]
+
+    return engine.simulate(
+        session,
+        rule,
+        header if header is not None else meta,
+        uidvalidity=uidvalidity,
+        body_loader=loader,
+        headers_complete=header is not None,
+        rules_base=rules_base,
+    )
+
+
+def rule_trial_lines(sim) -> list[tuple[str, str]]:
+    """L'essai d'une règle ligne par ligne : (texte, style).
+
+    `sim` est une `engine.Simulation`. Le style (« », « bold », « dim »,
+    « yellow », « bold red ») ne sert qu'à l'écran ; le menu imprime le
+    texte seul. Le texte est BRUT : sujet, adresses, valeurs du filtre et
+    corps viennent des messages ou de la règle, et l'appelant les affiche
+    sans les interpréter.
+    """
+    from script.todo.mail.rules.guards import SEND
+
+    def verdict(code: str) -> str:
+        if code == SEND:
+            return t("mail_rules_trial_would_send")
+        return t(f"mail_rules_reason_{code}")
+
+    lines: list[tuple[str, str]] = []
+    if not sim.rule_enabled:
+        lines.append((t("mail_rules_trial_disabled"), "yellow"))
+    if sim.filter_lines:
+        lines.append((t("mail_rules_trial_filter"), "bold"))
+        for line in sim.filter_lines:
+            mark = {True: "✓", False: "✗"}.get(line.result, "?")
+            lines.append(
+                (
+                    f"{'  ' * (line.depth + 1)}{mark} "
+                    f"{rule_node_label(line.node)}",
+                    "",
+                )
+            )
+        cle = {
+            True: "mail_rules_trial_match",
+            False: "mail_rules_trial_no_match",
+        }.get(sim.matched, "mail_rules_trial_unknown")
+        lines.append((t(cle), ""))
+    # Le plafond quotidien d'un rapport écarte la demande, sans file ni
+    # retenue : c'est le verdict, et rien n'est à libérer.
+    capped = sim.hold == "stats_cap"
+    if sim.reason:
+        code = "stats_cap" if capped and sim.reason == SEND else sim.reason
+        lines.append(
+            (f"{t('mail_rules_trial_verdict')} {verdict(code)}", "bold")
+        )
+    if sim.reason_if_new and sim.reason_if_new != sim.reason:
+        lines.append(
+            (
+                f"{t('mail_rules_trial_verdict_if_new')} "
+                f"{verdict(sim.reason_if_new)}",
+                "",
+            )
+        )
+    if sim.hold and not capped:
+        lines.append(
+            (
+                f"{t('mail_rules_trial_held')} "
+                f"{t(f'mail_rules_reason_{sim.hold}')}",
+                "yellow",
+            )
+        )
+    if sim.authenticated is not None:
+        if sim.auth_serv_id:
+            lines.append(
+                (f"{t('mail_rules_trial_authserv')} {sim.auth_serv_id}", "")
+            )
+        else:
+            lines.append((t("mail_rules_trial_no_authserv"), "dim"))
+        if sim.authenticated:
+            lines.append((t("mail_rules_trial_authenticated"), ""))
+        else:
+            lines.append((t("mail_rules_trial_not_authenticated"), "yellow"))
+        if sim.auth_serv_unset:
+            lines.append((t("mail_stats_report_auth_serv_unset"), "dim"))
+    if sim.target:
+        lines.append((f"{t('mail_rules_trial_target')} {sim.target}", ""))
+    else:
+        lines.append((t("mail_rules_trial_no_target"), ""))
+    rendu = sim.rendered
+    if rendu is not None:
+        lines.append((f"{t('mail_rules_trial_subject')} {sim.subject}", ""))
+        lines.append(("", ""))
+        lines.extend((ligne, "") for ligne in rendu.text.splitlines())
+        images = [
+            (part.filename, "mail_rules_image_inline") for part in rendu.inline
+        ] + [
+            (part.filename, "mail_rules_image_attached")
+            for part in rendu.attachments
+        ]
+        if images:
+            lines.append(("", ""))
+            lines.append((t("mail_rules_images"), "bold"))
+            lines.extend((f"  {nom} — {t(cle)}", "dim") for nom, cle in images)
+    if sim.error:
+        lines.append((sim.error, "bold red"))
+    if not sim.headers_complete:
+        lines.append((t("mail_rules_trial_headers_partial"), "dim"))
+    return lines
 
 
 def edit_in_external_editor(
@@ -1355,8 +1506,11 @@ def run_tui(
     from script.todo.mail import account_setup, stats, tui_text
     from script.todo.mail import accounts as mail_accounts
     from script.todo.mail.accounts import PRESETS
+    from script.todo.mail.rules import engine as rules_engine
     from script.todo.mail.rules import model as rules_model
+    from script.todo.mail.rules import report as rules_report
     from script.todo.mail.rules import storage as rules_storage
+    from script.todo.mail.rules.filter import normalize_address, sole_address
     from script.todo.mail.secrets import SecretStore
 
     class _SearchInput(Input):
@@ -1646,6 +1800,9 @@ def run_tui(
             Binding("n", "add_account", t("mail_add_account_binding")),
             Binding("l", "show_log", t("mail_log_binding")),
             Binding("i", "show_stats", t("mail_stats_binding")),
+            Binding(
+                "I", "show_report_settings", t("mail_stats_report_binding")
+            ),
             Binding("g", "cycle_list_mode", t("mail_list_mode_binding")),
             Binding("F", "manage_folders", t("mail_folder_binding")),
             Binding("o", "show_outbox", t("mail_outbox_binding")),
@@ -3955,6 +4112,25 @@ def run_tui(
                 return
             self.push_screen(RulesScreen(session))
 
+        def action_show_report_settings(self) -> None:
+            """Touche `I` : les paramètres du rapport du compte ouvert ;
+            l'expéditeur du message sous le curseur préremplit le
+            demandeur de l'aperçu."""
+            session = self._session_or_first()
+            if session is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            demandeur = ""
+            try:
+                meta = self.current_meta()
+            except NoMatches:
+                meta = None
+            if meta is not None:
+                demandeur = sole_address(meta.frm or "")
+            self.push_screen(
+                ReportSettingsScreen(session, requester=demandeur)
+            )
+
         def action_manage_folders(self) -> None:
             if self.current_ref is None:
                 self.set_status(t("mail_stats_no_account"))
@@ -4704,6 +4880,10 @@ def run_tui(
             # moment de la requête : une borne calculée à l'ouverture
             # vieillirait sur un écran laissé ouvert.
             self.periode_jours = 0
+            # Section d'activité : (jours, tableau texte) ou texte
+            # d'erreur, calculée au premier affichage puis gardée : elle ne
+            # dépend ni de la période ni de la portée choisies.
+            self._activite = None
 
         # (valeur, clé i18n). L'ordre est celui de la liste déroulante.
         PAS = (
@@ -4790,6 +4970,8 @@ def run_tui(
                 )
                 return
             self.bucket = apercu.bucket
+            if self._activite is None:
+                self._activite = self._calculer_activite()
             portee = (
                 self.folder_name
                 if self.restreint and self.folder_name
@@ -4815,6 +4997,7 @@ def run_tui(
             def titre(cle):
                 sortie.append(f"\n{t(cle)}\n", style="bold")
 
+            sortie.append_text(self._rendu_activite())
             sortie.append(
                 f"{t('mail_stats_total')} {apercu.total}"
                 f"   {tui_text.format_size(apercu.total_size)}"
@@ -4848,6 +5031,55 @@ def run_tui(
                 )
 
             sortie.append_text(self._rendu_details())
+            return sortie
+
+        def _calculer_activite(self):
+            """Reçus, lus et répondus par jour clos de la boîte de
+            réception, sur les jours des réglages du rapport du compte.
+
+            Du SQL seul (`collect_mailbox`), sans colonne scellée : la
+            section s'affiche avec la vue d'ensemble. Des réglages
+            illisibles, ou un cache sans base de règles, donnent les
+            réglages par défaut. Rend (jours, tableau) ou un texte
+            d'erreur.
+            """
+            reglages = rules_storage.ReportSettings()
+            base = rules_storage.base_of(self.store)
+            if base is not None:
+                try:
+                    reglages = rules_storage.load_report(
+                        self.store.account.name, base=base
+                    )
+                except rules_model.RuleError:
+                    reglages = rules_storage.ReportSettings()
+            try:
+                boite = rules_report.collect_mailbox(
+                    self.store, reglages, now=int(time.time())
+                )
+            except Exception as exc:
+                return f"{t('mail_stats_error')} {exc}"
+            return (
+                len(boite.days),
+                rules_report.text_table(boite.days, "day", ""),
+            )
+
+        def _rendu_activite(self) -> "Text":
+            sortie = Text()
+            activite = self._activite
+            if isinstance(activite, str):
+                sortie.append(f"{activite}\n\n", style="dim")
+                return sortie
+            if activite is None:
+                return sortie
+            jours, tableau = activite
+            sortie.append(
+                t("mail_stats_activity_title").replace("{n}", str(jours))
+                + "\n",
+                style="bold",
+            )
+            for ligne in tableau.splitlines():
+                sortie.append(f"  {ligne}\n")
+            sortie.append("\n")
             return sortie
 
         def _rendu_details(self) -> "Text":
@@ -4993,6 +5225,333 @@ def run_tui(
         def action_close_stats(self) -> None:
             self.dismiss(None)
 
+    class ReportSettingsScreen(ModalScreen):
+        """Touche `I` : les paramètres du rapport de statistiques d'un
+        compte (clé `report` de `rules.json`) et l'aperçu du bloc
+        `{{rapport}}` sur la boîte réelle.
+
+        L'aperçu lit les réglages DES CHAMPS, enregistrés ou non, et
+        calcule en direct, sans instantané, dans un fil de travail : il
+        parcourt jusqu'à un an de la boîte de réception. Un demandeur saisi
+        y ajoute la ligne de son propre délai. Le texte affiché est la
+        valeur TEXTE du bloc, en `Text`. Un champ invalide met l'erreur en
+        statut et ne calcule rien.
+
+        `ctrl+s` écrit dans un fil (`save_report`, sous le verrou du
+        compte) ; l'écran reste ouvert. Le fuseau est celui du processus,
+        affiché et non modifiable. Un cache éphémère ou non ouvert n'a pas
+        de réglages : l'écran n'affiche que sa bannière.
+        """
+
+        BINDINGS = [
+            Binding("ctrl+s", "save_report", t("mail_rules_save")),
+            Binding("escape", "close_report", t("mail_rules_close")),
+        ]
+
+        CSS = """
+        #report_screen { height: 1fr; }
+        #report_title { height: auto; padding: 0 1; text-style: bold; }
+        #report_banner { height: auto; padding: 1; }
+        .report_row { height: auto; }
+        .report_row Static { width: 44; padding: 1 1 0 1; }
+        .report_row Input { width: 1fr; }
+        .report_row Select { width: 1fr; }
+        #report_auth_warn { height: auto; padding: 0 1; color: $text-muted; }
+        #report_tz { height: auto; padding: 0 1; }
+        #report_preview { height: auto; padding: 0 1; border: solid $panel; }
+        #report_status { height: auto; padding: 0 1; }
+        #report_buttons { height: auto; }
+        #report_buttons Button { width: auto; }
+        """
+
+        # Valeur du `Select` de langue → langue des réglages. « ui » tient
+        # la place de « » : un `Select` refuse une valeur fausse au sens
+        # booléen.
+        LANGUES = (
+            ("ui", "", "mail_stats_report_lang_ui"),
+            ("fr", "fr", "mail_stats_report_lang_fr"),
+            ("en", "en", "mail_stats_report_lang_en"),
+        )
+
+        def __init__(self, session, requester: str = ""):
+            super().__init__()
+            self.session = session
+            self.account_name = session.account.name
+            store = getattr(session, "store", None)
+            self.base = (
+                rules_storage.base_of(store) if store is not None else None
+            )
+            self.requester = requester or ""
+            # Numéro du dernier aperçu demandé : un résultat plus ancien,
+            # arrivé en retard, n'écrase pas le plus récent.
+            self._generation = 0
+            self._ecriture = False
+
+        def _ligne(self, cle: str, widget):
+            ligne = Horizontal(classes="report_row")
+            ligne.compose_add_child(Static(t(cle)))
+            ligne.compose_add_child(widget)
+            return ligne
+
+        def compose(self):
+            with VerticalScroll(id="report_screen"):
+                yield Static(
+                    Text(
+                        f"{t('mail_stats_report_title')} {self.account_name}"
+                    ),
+                    id="report_title",
+                )
+                if self.base is None:
+                    yield Static(self._banniere(), id="report_banner")
+                    return
+                yield self._ligne(
+                    "mail_stats_report_days",
+                    Input(type="integer", id="report_days"),
+                )
+                yield self._ligne(
+                    "mail_stats_report_weeks",
+                    Input(type="integer", id="report_weeks"),
+                )
+                yield self._ligne(
+                    "mail_stats_report_window",
+                    Input(type="integer", id="report_window"),
+                )
+                yield self._ligne(
+                    "mail_stats_report_format",
+                    Select(
+                        [
+                            (t(f"mail_rules_format_{f}"), f)
+                            for f in rules_model.FORMATS
+                        ],
+                        value="markdown",
+                        allow_blank=False,
+                        id="report_format",
+                    ),
+                )
+                yield self._ligne(
+                    "mail_stats_report_lang",
+                    Select(
+                        [(t(cle), valeur) for valeur, _, cle in self.LANGUES],
+                        value="ui",
+                        allow_blank=False,
+                        id="report_lang",
+                    ),
+                )
+                yield self._ligne(
+                    "mail_stats_report_auth_serv",
+                    Input(id="report_auth_serv"),
+                )
+                yield Static("", id="report_auth_warn")
+                yield Static(
+                    Text(
+                        f"{t('mail_stats_report_tz')} "
+                        f"{time.strftime('%Z (UTC%z)')}"
+                    ),
+                    id="report_tz",
+                )
+                yield self._ligne(
+                    "mail_stats_report_requester",
+                    Input(value=self.requester, id="report_requester"),
+                )
+                yield Button(
+                    t("mail_stats_report_refresh"), id="report_refresh"
+                )
+                yield Static("", id="report_preview")
+                yield Static("", id="report_status")
+                with Horizontal(id="report_buttons"):
+                    yield Button(
+                        t("mail_rules_save"),
+                        id="report_save",
+                        variant="primary",
+                    )
+                    yield Button(t("mail_rules_cancel"), id="report_cancel")
+
+        def _banniere(self) -> Text:
+            store = getattr(self.session, "store", None)
+            if getattr(store, "mode", None) == "ephemeral":
+                return Text(t("mail_rules_ephemeral"))
+            erreur = getattr(self.session, "error", "") or ""
+            return Text(f"{t('mail_rules_no_cache')} {erreur}".strip())
+
+        def on_mount(self) -> None:
+            if self.base is None:
+                return
+            erreur = ""
+            try:
+                reglages = rules_storage.load_report(
+                    self.account_name, base=self.base
+                )
+            except rules_model.RuleError as exc:
+                reglages = rules_storage.ReportSettings()
+                erreur = str(exc)
+            self.query_one("#report_days", Input).value = str(reglages.days)
+            self.query_one("#report_weeks", Input).value = str(reglages.weeks)
+            self.query_one("#report_window", Input).value = str(
+                reglages.delay_window_days
+            )
+            self.query_one("#report_format", Select).value = reglages.format
+            self.query_one("#report_lang", Select).value = next(
+                valeur
+                for valeur, langue, _ in self.LANGUES
+                if langue == reglages.lang
+            )
+            self.query_one(
+                "#report_auth_serv", Input
+            ).value = reglages.auth_serv_id
+            self._avertir_auth_serv()
+            self._apercu()
+            if erreur:
+                self._status(erreur, error=True)
+            self.query_one("#report_days", Input).focus()
+
+        def _status(self, text: str, *, error: bool = False) -> None:
+            try:
+                status = self.query_one("#report_status", Static)
+            except NoMatches:
+                return
+            status.update(Text(text, style="bold red" if error else ""))
+
+        def _avertir_auth_serv(self) -> None:
+            vide = not self.query_one("#report_auth_serv", Input).value.strip()
+            self.query_one("#report_auth_warn", Static).update(
+                Text(t("mail_stats_report_auth_serv_unset") if vide else "")
+            )
+
+        def on_input_changed(self, event) -> None:
+            if event.input.id == "report_auth_serv":
+                self._avertir_auth_serv()
+
+        def _reglages(self):
+            """Les réglages lus des champs ; `RuleError` (nommant le
+            champ) si l'un est hors bornes ou n'est pas un entier."""
+
+            def entier(selecteur: str):
+                texte = self.query_one(selecteur, Input).value.strip()
+                try:
+                    return int(texte)
+                except ValueError:
+                    # Laissé en texte : `report_from_dict` le refuse en
+                    # nommant le champ.
+                    return texte
+
+            choix = self.query_one("#report_lang", Select).value
+            langue = next(
+                (lg for valeur, lg, _ in self.LANGUES if valeur == choix), ""
+            )
+            return rules_storage.report_from_dict(
+                {
+                    "days": entier("#report_days"),
+                    "weeks": entier("#report_weeks"),
+                    "delay_window_days": entier("#report_window"),
+                    "format": self.query_one("#report_format", Select).value,
+                    "lang": langue,
+                    "auth_serv_id": self.query_one(
+                        "#report_auth_serv", Input
+                    ).value.strip(),
+                }
+            )
+
+        def _apercu(self) -> None:
+            """Recalcule l'aperçu dans un fil, sur les réglages des
+            champs."""
+            if self.base is None:
+                return
+            try:
+                reglages = self._reglages()
+            except rules_model.RuleError as exc:
+                self._status(str(exc), error=True)
+                return
+            self._status("")
+            self._generation += 1
+            generation = self._generation
+            demandeur = normalize_address(
+                self.query_one("#report_requester", Input).value.strip()
+            )
+            self.query_one("#report_preview", Static).update(
+                Text(t("mail_stats_computing"), style="dim")
+            )
+            store = self.session.store
+
+            def travail() -> None:
+                try:
+                    donnees = rules_report.build_data(
+                        store,
+                        reglages,
+                        now=int(time.time()),
+                        sender=demandeur or None,
+                    )
+                    texte, erreur = (
+                        rules_report.values(donnees)["rapport"][0],
+                        "",
+                    )
+                except Exception as exc:
+                    texte, erreur = "", str(exc) or type(exc).__name__
+                self.app.call_from_thread(
+                    self._apercu_pret, generation, texte, erreur
+                )
+
+            self.run_worker(travail, thread=True)
+
+        def _apercu_pret(self, generation: int, texte: str, erreur: str):
+            if generation != self._generation:
+                return
+            try:
+                apercu = self.query_one("#report_preview", Static)
+            except NoMatches:
+                return
+            if erreur:
+                apercu.update(
+                    Text(f"{t('mail_stats_error')} {erreur}", style="bold red")
+                )
+            else:
+                apercu.update(Text(texte))
+
+        def action_save_report(self) -> None:
+            if self.base is None or self._ecriture:
+                return
+            try:
+                reglages = self._reglages()
+            except rules_model.RuleError as exc:
+                self._status(str(exc), error=True)
+                return
+            self._ecriture = True
+            self._status("")
+            self.query_one("#report_save", Button).disabled = True
+            nom, base = self.account_name, self.base
+
+            def travail() -> None:
+                erreur = ""
+                try:
+                    rules_storage.save_report(nom, reglages, base=base)
+                except Exception as exc:
+                    erreur = str(exc) or type(exc).__name__
+                self.app.call_from_thread(self._enregistre, erreur)
+
+            self.run_worker(travail, thread=True)
+
+        def _enregistre(self, erreur: str) -> None:
+            self._ecriture = False
+            try:
+                self.query_one("#report_save", Button).disabled = False
+            except NoMatches:
+                return
+            if erreur:
+                self._status(erreur, error=True)
+            else:
+                self._status(t("mail_stats_report_saved"))
+
+        def on_button_pressed(self, event) -> None:
+            ident = event.button.id
+            if ident == "report_refresh":
+                self._apercu()
+            elif ident == "report_save":
+                self.action_save_report()
+            elif ident == "report_cancel":
+                self.action_close_report()
+
+        def action_close_report(self) -> None:
+            self.dismiss(None)
+
     class RulesScreen(ModalScreen):
         """Touche `e` : les règles du courrier entrant d'un compte.
 
@@ -5009,6 +5568,7 @@ def run_tui(
         seule mutation à la fois : une touche pressée pendant l'attente du
         verrou est ignorée, l'interface reste vivante.
 
+        `s` ouvre l'essai de la règle sous le curseur (`TrialScreen`).
         Les plafonds d'envois du compte (clé `caps` de `rules.json`) se
         règlent sous la table. Un cache éphémère n'a pas de règles :
         l'écran n'affiche que sa bannière.
@@ -5021,6 +5581,7 @@ def run_tui(
             Binding("j", "move_down", t("mail_rules_down")),
             Binding("t", "toggle_stop", t("mail_rules_stop_toggle")),
             Binding("x", "delete_rule", t("mail_rules_delete")),
+            Binding("s", "trial_rule", t("mail_rules_trial")),
             Binding("l", "show_journal", t("mail_rules_journal")),
             Binding("escape", "close_rules", t("mail_rules_close")),
         ]
@@ -5326,6 +5887,12 @@ def run_tui(
                 confirme,
             )
 
+        def action_trial_rule(self) -> None:
+            rule = self._current_rule() if self.base else None
+            if rule is None:
+                return
+            self.app.push_screen(TrialScreen(self.session, self.base, rule))
+
         def action_show_journal(self) -> None:
             if self.base is None:
                 return
@@ -5424,6 +5991,192 @@ def run_tui(
         def action_close_journal(self) -> None:
             self.dismiss(None)
 
+    class TrialScreen(ModalScreen):
+        """Touche `s` de la liste des règles : ce que la règle ferait d'un
+        message récent de la boîte de réception, sans rien écrire.
+
+        La table liste les `TRIAL_MESSAGES` messages les plus récents
+        d'INBOX en cache (clé = UID). Choisir une ligne lance
+        `trial_simulation` dans un fil (en-têtes complets en ligne) ; le
+        résultat (`rule_trial_lines`) s'affiche en `Text`. Une boîte de
+        réception inconnue du cache, ou sans UIDVALIDITY, ne liste rien.
+
+        `#trial_send` envoie la réponse simulée à l'adresse du compte
+        (`engine.send_trial`, dans un fil) ; il reste grisé tant qu'aucune
+        réponse n'est rendue, et pendant l'envoi.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_trial", t("mail_rules_close")),
+        ]
+
+        CSS = """
+        #trial_title { height: auto; padding: 0 1; text-style: bold; }
+        #trial_pick { height: auto; padding: 0 1; color: $text-muted; }
+        #trial_messages { height: 12; border: solid $panel; }
+        #trial_scroll { height: 1fr; border: solid $panel; }
+        #trial_result { height: auto; padding: 0 1; }
+        #trial_status { height: auto; padding: 0 1; }
+        #trial_send { width: auto; }
+        """
+
+        def __init__(self, session, base, rule):
+            super().__init__()
+            self.session = session
+            self.base = base
+            self.rule = copy.deepcopy(rule)
+            self.folder = None
+            self.uidvalidity = 0
+            self.metas: dict = {}
+            self.sim = None
+            # Numéro de la dernière simulation demandée : un résultat plus
+            # ancien, arrivé en retard, n'écrase pas le plus récent.
+            self._generation = 0
+            self._envoi = False
+
+        def compose(self):
+            with Vertical(id="trial_screen"):
+                yield Static(
+                    Text(
+                        f"{t('mail_rules_trial_title')} "
+                        f"{self.rule.name or self.rule.id}"
+                    ),
+                    id="trial_title",
+                )
+                yield Static(t("mail_rules_trial_pick"), id="trial_pick")
+                yield DataTable(id="trial_messages", cursor_type="row")
+                with VerticalScroll(id="trial_scroll"):
+                    yield Static("", id="trial_result")
+                yield Static("", id="trial_status")
+                yield Button(
+                    t("mail_rules_trial_send"), id="trial_send", disabled=True
+                )
+
+        def on_mount(self) -> None:
+            table = self.query_one("#trial_messages", DataTable)
+            table.add_columns(
+                t("mail_rules_col_date"),
+                t("mail_rules_col_sender"),
+                t("mail_rules_col_subject"),
+            )
+            store = self.session.store
+            inbox = rules_engine.find_inbox(store)
+            etat = store.folder_state(inbox) if inbox else None
+            if not etat or not etat.get("uidvalidity"):
+                self._status(t("mail_rules_no_inbox"))
+                return
+            self.folder = inbox
+            self.uidvalidity = int(etat["uidvalidity"])
+            metas = store.list_messages(etat["id"], limit=TRIAL_MESSAGES)
+            for meta in metas:
+                cle = str(meta.uid)
+                self.metas[cle] = meta
+                # `Text` : expéditeur et sujet viennent de n'importe qui.
+                table.add_row(
+                    format_epoch(
+                        getattr(meta, "received_at", 0) or meta.date or 0
+                    ),
+                    Text(meta.frm or ""),
+                    Text(meta.subject or ""),
+                    key=cle,
+                )
+            if not metas:
+                self._status(t("mail_rules_trial_none"))
+                return
+            table.focus()
+
+        def _status(self, text: str, *, error: bool = False) -> None:
+            try:
+                status = self.query_one("#trial_status", Static)
+            except NoMatches:
+                return
+            status.update(Text(text, style="bold red" if error else ""))
+
+        def on_data_table_row_selected(self, event) -> None:
+            meta = self.metas.get(event.row_key.value)
+            if meta is None:
+                return
+            self._generation += 1
+            generation = self._generation
+            self.sim = None
+            self.query_one("#trial_send", Button).disabled = True
+            self.query_one("#trial_result", Static).update(
+                Text(t("mail_stats_computing"), style="dim")
+            )
+            self._status("")
+            session, rule, base = self.session, self.rule, self.base
+            folder, uidvalidity = self.folder, self.uidvalidity
+            verrou = getattr(self.app, "_sync_lock", None)
+
+            def travail() -> None:
+                sim = trial_simulation(
+                    session,
+                    rule,
+                    meta,
+                    folder=folder,
+                    uidvalidity=uidvalidity,
+                    rules_base=base,
+                    verrou=verrou,
+                )
+                self.app.call_from_thread(self._resultat, generation, sim)
+
+            self.run_worker(travail, thread=True)
+
+        def _resultat(self, generation: int, sim) -> None:
+            if generation != self._generation:
+                return
+            self.sim = sim
+            texte = Text()
+            for ligne, style in rule_trial_lines(sim):
+                texte.append(f"{ligne}\n", style=style or None)
+            try:
+                self.query_one("#trial_result", Static).update(texte)
+                self.query_one("#trial_send", Button).disabled = (
+                    sim.rendered is None or self._envoi
+                )
+            except NoMatches:
+                return
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id != "trial_send":
+                return
+            sim = self.sim
+            if sim is None or sim.rendered is None or self._envoi:
+                return
+            self._envoi = True
+            event.button.disabled = True
+            self._status("")
+            session, rule = self.session, self.rule
+            verrou = getattr(self.app, "_sync_lock", None)
+
+            def travail() -> None:
+                statut, erreur = "", ""
+                try:
+                    statut = rules_engine.send_trial(
+                        session, rule, sim, verrou=verrou
+                    )
+                except Exception as exc:
+                    erreur = str(exc) or type(exc).__name__
+                self.app.call_from_thread(self._envoye, statut, erreur)
+
+            self.run_worker(travail, thread=True)
+
+        def _envoye(self, statut, erreur: str) -> None:
+            self._envoi = False
+            try:
+                self.query_one("#trial_send", Button).disabled = (
+                    self.sim is None or self.sim.rendered is None
+                )
+            except NoMatches:
+                return
+            if erreur:
+                self._status(erreur, error=True)
+            else:
+                self._status(f"{t('mail_rules_trial_sent')} {statut or ''}")
+
+        def action_close_trial(self) -> None:
+            self.dismiss(None)
+
     class RuleEditorScreen(ModalScreen):
         """Créer ou modifier une règle : limites, filtre, réponse.
 
@@ -5438,6 +6191,12 @@ def run_tui(
         n'émet pas `Changed` pour sa valeur de départ. Décocher avec une
         valeur illisible y remet la dernière valeur valide : un champ grisé
         ne porte jamais une erreur que l'utilisateur ne peut plus corriger.
+
+        `#rule_kind` choisit le type d'action (`reply` ou `stats` ; une
+        redirection existante s'affiche grisée). Changer de type fait
+        suivre la limite et le corps restés à la valeur par défaut de
+        l'ancien type ; une règle NEUVE passée à `stats` prend le format
+        des réglages du rapport.
 
         `ctrl+s` valide puis écrit dans un fil (`upsert_rule`) ; une erreur
         s'affiche dans `#rule_status` et l'écran reste ouvert. Pendant
@@ -5457,6 +6216,7 @@ def run_tui(
         .rule_row { height: auto; }
         .rule_row Static { width: auto; padding: 1 1 0 1; }
         .rule_row Input { width: 14; }
+        #rule_kind { width: 40; }
         #rule_filter { height: 12; border: solid $panel; }
         .filter_buttons { height: auto; }
         .filter_label { width: 24; padding: 1 1 0 1; }
@@ -5507,6 +6267,16 @@ def run_tui(
                 for op in rules_model.GROUP_OPS
             ]
 
+        # Types qu'on peut choisir ; une redirection existante s'ajoute,
+        # grisée, pour rester affichée telle qu'elle est.
+        TYPES = ("reply", "stats")
+
+        def _options_type(self):
+            types = list(self.TYPES)
+            if self.rule.action.kind not in types:
+                types.append(self.rule.action.kind)
+            return [(t(f"mail_rules_kind_{k}"), k) for k in types]
+
         def compose(self):
             rule = self.rule
             minutes = (
@@ -5524,6 +6294,15 @@ def run_tui(
                     t("mail_rules_new") if self.new else t("mail_rules_edit"),
                     id="rule_title",
                 )
+                with Horizontal(classes="rule_row"):
+                    yield Static(t("mail_rules_kind"))
+                    yield Select(
+                        self._options_type(),
+                        value=rule.action.kind,
+                        allow_blank=False,
+                        disabled=rule.action.kind not in self.TYPES,
+                        id="rule_kind",
+                    )
                 yield Input(
                     value=rule.name,
                     placeholder=t("mail_rules_name"),
@@ -5595,7 +6374,10 @@ def run_tui(
                     yield Button(t("mail_rules_edit_node"), id="edit_node")
                     yield Button(t("mail_rules_delete_node"), id="delete_node")
                 yield Static("", id="filter_preview")
-                yield Button(t("mail_rules_action_reply"), id="reply_form")
+                yield Button(
+                    t(self._cle_bouton_reponse(rule.action.kind)),
+                    id="reply_form",
+                )
                 yield Static("", id="rule_status")
                 with Horizontal(id="rule_buttons"):
                     yield Button(
@@ -5745,7 +6527,54 @@ def run_tui(
             del self._node_at(path[:-1]).children[path[-1]]
             self._after_tree_change(path[:-1])
 
+        @staticmethod
+        def _cle_bouton_reponse(kind: str) -> str:
+            if kind == "stats":
+                return "mail_rules_action_stats"
+            return "mail_rules_action_reply"
+
+        def _changer_type(self, nouveau) -> None:
+            """Passe la règle au type `nouveau`.
+
+            La limite affichée, si elle vaut le défaut de l'ancien type,
+            prend celui du nouveau ; un corps resté au corps par défaut de
+            l'ancien type prend celui du nouveau, un corps écrit à la main
+            est gardé. Une règle NEUVE passée à `stats` prend le format des
+            réglages du rapport, et le corps par défaut si le sien est vide.
+            """
+            action = self.rule.action
+            ancien = action.kind
+            if nouveau == ancien or nouveau not in self.TYPES:
+                return
+            defaut_ancien = rules_model.KIND_DEFAULTS[ancien]
+            defaut_nouveau = rules_model.KIND_DEFAULTS[nouveau]
+            champ = self.query_one("#rule_minutes", Input)
+            if champ.value.strip() == str(defaut_ancien["throttle_minutes"]):
+                champ.value = str(defaut_nouveau["throttle_minutes"])
+                self._minutes_valides = defaut_nouveau["throttle_minutes"]
+            case = self.query_one("#rule_throttle", Checkbox)
+            if case.value == defaut_ancien["throttle_enabled"]:
+                case.value = defaut_nouveau["throttle_enabled"]
+            if action.body == rules_model.new_rule(ancien).action.body:
+                action.body = rules_model.new_rule(nouveau).action.body
+            if self.new and nouveau == "stats":
+                try:
+                    action.format = rules_storage.load_report(
+                        self.session.account.name, base=self.base
+                    ).format
+                except rules_model.RuleError:
+                    pass
+                if not action.body:
+                    action.body = t("mail_stats_default_body")
+            action.kind = nouveau
+            self.query_one("#reply_form", Button).label = t(
+                self._cle_bouton_reponse(nouveau)
+            )
+
         def on_select_changed(self, event) -> None:
+            if event.select.id == "rule_kind":
+                self._changer_type(event.value)
+                return
             if event.select.id != "group_op":
                 return
             path = self._target_path()
@@ -6033,11 +6862,18 @@ def run_tui(
         corps HTML la cite par ce nom, pièce jointe sinon. `#browse_image`
         ne fait qu'ajouter un chemin au champ. Rend une `Action`, ou None.
 
-        `ctrl+s` refuse, motif dans `#reply_status`, une réponse que
-        `render_reply` ne sait pas construire (image absente, modifiée,
-        trop lourde) et un champ de chemins encore rempli : une règle
-        enregistrée telle quelle échouerait à chaque message, ou perdrait
-        en silence l'image choisie mais jamais ajoutée.
+        `ctrl+s` refuse, motif dans `#reply_status`, un gabarit fautif
+        (`template_fault`), une réponse que `render_reply` ne sait pas
+        construire (image absente, modifiée, trop lourde) et un champ de
+        chemins encore rempli : une règle enregistrée telle quelle
+        échouerait à chaque message, ou perdrait en silence l'image
+        choisie mais jamais ajoutée.
+
+        Pour une règle `stats`, le corps est un gabarit : `#stats_vars`
+        liste les variables, `#stats_var_insert` insère celle de
+        `#stats_var_pick` au curseur du corps. L'aperçu rend le gabarit
+        sur les vraies statistiques de la boîte, sans demandeur ; ces
+        données se calculent une fois, dans un fil, à l'ouverture.
         """
 
         BINDINGS = [
@@ -6055,6 +6891,11 @@ def run_tui(
         .reply_image_row { height: auto; }
         .reply_image_row Static { width: 1fr; padding: 1 1 0 1; }
         .reply_image_row Button { width: auto; }
+        #stats_vars { height: auto; padding: 0 1; color: $text-muted; }
+        #stats_var_row { height: auto; }
+        #stats_var_row Select { width: 40; }
+        #stats_var_row Button { width: auto; }
+        #stats_preview_note { height: auto; padding: 0 1; color: $text-muted; }
         #reply_preview { height: auto; padding: 0 1; border: solid $panel; }
         #reply_status { height: auto; padding: 0 1; }
         #reply_buttons { height: auto; }
@@ -6072,11 +6913,24 @@ def run_tui(
             # que `render_reply` réduirait à « introuvable ».
             self._erreurs_media: list = []
             self._import_en_cours = False
+            self._stats = self.action.kind == "stats"
+            # Données du rapport pour l'aperçu d'une règle stats : None tant
+            # que le fil ne les a pas rendues ; `_erreur_donnees` dit
+            # pourquoi elles manquent.
+            self._donnees = None
+            self._erreur_donnees = ""
 
         def compose(self):
             action = self.action
             with VerticalScroll(id="reply_scroll"):
-                yield Static(t("mail_rules_action_reply"))
+                yield Static(
+                    t(
+                        "mail_rules_action_stats"
+                        if self._stats
+                        else "mail_rules_action_reply"
+                    ),
+                    id="reply_title",
+                )
                 yield Static(t("mail_rules_format"))
                 yield Select(
                     [
@@ -6099,6 +6953,22 @@ def run_tui(
                 )
                 yield Static(t("mail_rules_body"))
                 yield TextArea(action.body, id="reply_body")
+                if self._stats:
+                    yield Static(self._texte_variables(), id="stats_vars")
+                    with Horizontal(id="stats_var_row"):
+                        yield Select(
+                            [
+                                ("{{" + nom + "}}", nom)
+                                for nom in rules_model.STATS_VARIABLES
+                            ],
+                            value=rules_model.STATS_VARIABLES[0],
+                            allow_blank=False,
+                            id="stats_var_pick",
+                        )
+                        yield Button(
+                            t("mail_rules_stats_insert"),
+                            id="stats_var_insert",
+                        )
                 yield Static(t("mail_rules_images"))
                 with Horizontal(id="image_row"):
                     yield Input(
@@ -6109,6 +6979,11 @@ def run_tui(
                     yield Button(t("mail_rules_add_images"), id="add_images")
                 yield Vertical(id="reply_images")
                 yield Static(t("mail_rules_preview"))
+                if self._stats:
+                    yield Static(
+                        t("mail_rules_stats_preview_note"),
+                        id="stats_preview_note",
+                    )
                 yield Static("", id="reply_preview")
                 yield Static("", id="reply_status")
                 with Horizontal(id="reply_buttons"):
@@ -6121,6 +6996,50 @@ def run_tui(
 
         def on_mount(self) -> None:
             self._refresh_images()
+            if self._stats:
+                self.run_worker(self._calculer_donnees, thread=True)
+
+        @staticmethod
+        def _texte_variables() -> "Text":
+            lignes = [t("mail_rules_stats_variables")]
+            lignes.extend(
+                "{{" + nom + "}} — " + t(f"mail_stats_var_{nom}")
+                for nom in rules_model.STATS_VARIABLES
+            )
+            return Text("\n".join(lignes))
+
+        def _calculer_donnees(self) -> None:
+            """Les statistiques de la boîte, sans demandeur, pour l'aperçu.
+
+            Les réglages viennent du rapport du compte (défauts s'ils sont
+            illisibles) ; le calcul est direct, sans instantané.
+            """
+            nom, base = self.session.account.name, self.base
+            try:
+                try:
+                    reglages = rules_storage.load_report(nom, base=base)
+                except rules_model.RuleError:
+                    reglages = rules_storage.ReportSettings()
+                donnees = rules_report.build_data(
+                    self.session.store,
+                    reglages,
+                    now=int(time.time()),
+                    sender=None,
+                )
+            except Exception as exc:
+                self.app.call_from_thread(
+                    self._donnees_pretes, None, str(exc) or type(exc).__name__
+                )
+                return
+            self.app.call_from_thread(self._donnees_pretes, donnees, "")
+
+        def _donnees_pretes(self, donnees, erreur: str) -> None:
+            self._donnees = donnees
+            self._erreur_donnees = erreur
+            try:
+                self._refresh_preview()
+            except NoMatches:
+                return
 
         def _current_action(self):
             return rules_model.Action(
@@ -6150,10 +7069,23 @@ def run_tui(
             return erreurs
 
         def _rendre_reponse(self):
+            """La réponse rendue. Règle `stats` : gabarit contrôlé d'abord
+            (`TemplateError`), puis rendu sur les données du rapport ; tant
+            qu'elles manquent, le corps est rendu sans substitution, ce qui
+            suffit aux rôles des images."""
             from script.todo.mail.rules.markup import render_reply
 
+            action = self._current_action()
             domaine = self.session.account.email.rpartition("@")[2]
-            return render_reply(self._current_action(), self._media, domaine)
+            if self._stats:
+                faute = rules_model.template_fault(action)
+                if faute is not None:
+                    raise rules_model.TemplateError(faute)
+                if self._donnees is not None:
+                    return rules_report.render_stats_reply(
+                        action, self._media, domaine, self._donnees
+                    )
+            return render_reply(action, self._media, domaine)
 
         def _roles(self, rendu) -> dict:
             """Rôle de chaque image : « pièce jointe » si elle part jointe,
@@ -6224,7 +7156,13 @@ def run_tui(
             roles = self._roles(rendu)
             for label in self.query(".reply_image_label").results(Static):
                 label.update(Text(self._libelle(label.name or "", roles)))
-            texte = Text(rendu.text)
+            if self._stats and self._donnees is None:
+                texte = Text(
+                    self._erreur_donnees or t("mail_stats_computing"),
+                    style="bold red" if self._erreur_donnees else "dim",
+                )
+            else:
+                texte = Text(rendu.text)
             for ref in self.action.images:
                 texte.append(
                     f"\n{self._libelle(ref.file, roles)}", style="dim"
@@ -6250,6 +7188,8 @@ def run_tui(
                     self._refresh_images()
             elif bouton.id == "browse_image":
                 self._browse_image()
+            elif bouton.id == "stats_var_insert":
+                self._inserer_variable()
             elif bouton.id == "add_images":
                 self._add_images()
             elif bouton.id == "reply_save":
@@ -6261,6 +7201,15 @@ def run_tui(
             self.query_one("#reply_status", Static).update(
                 Text(text, style="bold red")
             )
+
+        def _inserer_variable(self) -> None:
+            """Insère « {{nom}} » de `#stats_var_pick` au curseur du corps."""
+            nom = self.query_one("#stats_var_pick", Select).value
+            if nom not in rules_model.STATS_VARIABLES:
+                return
+            corps = self.query_one("#reply_body", TextArea)
+            corps.insert("{{" + nom + "}}")
+            corps.focus()
 
         def _browse_image(self) -> None:
             champ = self.query_one("#image_paths", Input)
@@ -6328,6 +7277,10 @@ def run_tui(
                 return
             if self.query_one("#image_paths", Input).value.strip():
                 self._status(t("mail_rules_err_images_pending"))
+                return
+            faute = rules_model.template_fault(self._current_action())
+            if faute is not None:
+                self._status(faute)
                 return
             # Toutes relues : une image a pu changer sur le disque depuis
             # sa première lecture, et l'empreinte se vérifie à la lecture.

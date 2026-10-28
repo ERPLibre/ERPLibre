@@ -223,7 +223,11 @@ class TestOpening(RulesCase):
         async with app.run_test(size=self.SIZE) as pilot:
             await self.open_rules(app, pilot)
             hint = self.text_of(app, "#rules_hint")
-            for key in ("mail_rules_new", "mail_rules_journal"):
+            for key in (
+                "mail_rules_new",
+                "mail_rules_trial",
+                "mail_rules_journal",
+            ):
                 self.assertIn(t(key), hint)
 
     async def test_an_ephemeral_account_shows_the_banner_only(self):

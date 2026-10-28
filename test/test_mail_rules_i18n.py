@@ -12,7 +12,8 @@ from script.todo.mail.rules.guards import (
     REASONS,
     SILENT_REASONS,
 )
-from script.todo.mail.rules.model import OUTCOMES
+from script.todo.mail.rules.model import OUTCOMES, STATS_VARIABLES
+from script.todo.mail.rules.report import REPORT_KEYS
 from script.todo.todo_i18n import TRANSLATIONS
 
 # Codes que le moteur journalise sans qu'ils figurent dans les listes de
@@ -48,6 +49,17 @@ class TestRulesKeysAreTranslated(unittest.TestCase):
 
     def test_every_outcome_has_a_label(self):
         self.assert_declared({f"mail_rules_outcome_{o}" for o in OUTCOMES})
+
+    def test_every_report_label_exists_in_both_languages(self):
+        keys = set(REPORT_KEYS)
+        keys |= {f"mail_stats_var_{name}" for name in STATS_VARIABLES}
+        keys |= {"mail_stats_default_body"}
+        self.assert_declared(keys)
+        for key in sorted(keys):
+            with self.subTest(key=key):
+                entry = TRANSLATIONS[key]
+                self.assertTrue(entry.get("fr"))
+                self.assertTrue(entry.get("en"))
 
     def test_labels_exist_in_both_languages(self):
         codes = (set(REASONS) - SILENT_REASONS) | set(ENGINE_REASONS)

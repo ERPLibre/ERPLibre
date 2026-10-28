@@ -20,12 +20,14 @@ from script.todo.mail import menu
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.rules import storage
 from script.todo.mail.rules.model import (
+    Action,
     Armed,
     Condition,
     Group,
     new_rule,
 )
-from script.todo.mail.store import Store
+from script.todo.mail.store import MessageMeta, Store
+from script.todo.mail.tui import Session
 from script.todo.todo_i18n import t
 
 OWN = "boite.regles@example.org"
@@ -88,6 +90,10 @@ class RulesMenuCase(unittest.TestCase):
             menu.prompt_mail_rules(FauxTodo(), base=self.base)
         self.invite = invite
         return sortie.getvalue()
+
+    def menu(self) -> str:
+        """Le texte du menu des règles, tel que `click.prompt` l'a reçu."""
+        return self.invite.call_args_list[0][0][0]
 
 
 class TestMenuEntry(RulesMenuCase):
@@ -269,6 +275,145 @@ class TestJournal(RulesMenuCase):
         with mock.patch.object(menu, "secret_store_for") as coffre:
             self.lancer("5", "0")
         coffre.assert_not_called()
+
+
+class TestReportSettings(RulesMenuCase):
+    def test_menu_report_settings_saves_and_prints_a_preview(self):
+        self.regles("Absence")
+        sortie = self.lancer(
+            "6", "10", "2", "30", "text", "en", "mx.example.org", "0"
+        )
+        reglages = storage.load_report("perso", base=self.base)
+        self.assertEqual(
+            reglages,
+            storage.ReportSettings(
+                days=10,
+                weeks=2,
+                delay_window_days=30,
+                format="text",
+                lang="en",
+                auth_serv_id="mx.example.org",
+            ),
+        )
+        self.assertEqual(self.ordre(), ["Absence"])
+        self.assertIn(t("mail_stats_report_saved"), sortie)
+        self.assertIn(t("mail_stats_report_tz"), sortie)
+        # Aperçu dans la langue du rapport, sur dix jours.
+        self.assertIn("Activity over the last 10 days", sortie)
+        self.assertIn(f"[6] {t('mail_rules_menu_report')}", self.menu())
+
+    def test_a_dash_clears_a_string_setting(self):
+        storage.save_report(
+            "perso",
+            storage.ReportSettings(lang="fr", auth_serv_id="mx.example.org"),
+            base=self.base,
+        )
+        sortie = self.lancer("6", "7", "4", "30", "markdown", "-", "-", "0")
+        reglages = storage.load_report("perso", base=self.base)
+        self.assertEqual((reglages.lang, reglages.auth_serv_id), ("", ""))
+        self.assertIn(t("mail_stats_report_auth_serv_unset"), sortie)
+
+    def test_menu_report_refuses_a_bad_value(self):
+        for reponses in (
+            ("40", "4", "30", "markdown", "-", "-"),
+            ("x", "4", "30", "markdown", "-", "-"),
+            ("7", "4", "30", "pdf", "-", "-"),
+        ):
+            with self.subTest(reponses=reponses):
+                sortie = self.lancer("6", *reponses, "0")
+                self.assertIn(t("mail_rules_err_invalid"), sortie)
+                self.assertNotIn(t("mail_stats_report_saved"), sortie)
+        self.assertFalse(storage.rules_path("perso", self.base).exists())
+
+
+class TestTrial(RulesMenuCase):
+    def setUp(self):
+        super().setUp()
+        store = self.magasin()
+        try:
+            inbox = store.upsert_folder("INBOX", "Boîte", "inbox")
+            store.set_folder_state("INBOX", uidvalidity=7, uidnext=42)
+            store.upsert_messages(
+                inbox,
+                [
+                    MessageMeta(
+                        uid=1,
+                        date=T0,
+                        size=100,
+                        flags="",
+                        msgid="<1@example.org>",
+                        frm=CAROLE,
+                        to=OWN,
+                        subject="Devis\x1b[2J",
+                        snippet="",
+                        received_at=T0,
+                    )
+                ],
+            )
+        finally:
+            store.close()
+        rule = new_rule("reply", "Absence")
+        rule.action = Action(kind="reply", body="Bonjour, absent.")
+        storage.upsert_rule("perso", rule, base=self.base)
+        patcheurs = (
+            mock.patch.object(menu, "secret_store_for", lambda _todo: None),
+            mock.patch(
+                "script.todo.mail.tui.open_session",
+                side_effect=lambda *a, **k: Session(
+                    self.account, self.magasin(), None, password="x"
+                ),
+            ),
+        )
+        for patcheur in patcheurs:
+            patcheur.start()
+            self.addCleanup(patcheur.stop)
+
+    def magasin(self):
+        store = Store(self.account, mode="clear", base=self.base)
+        store.open()
+        return store
+
+    def test_menu_trial_prints_the_simulation(self):
+        sortie = self.lancer("7", "1", "1", "n", "0")
+        self.assertIn(f"[7] {t('mail_rules_menu_trial')}", self.menu())
+        self.assertIn(t("mail_rules_trial_filter"), sortie)
+        self.assertIn(t("mail_rules_trial_verdict"), sortie)
+        self.assertIn(f"{t('mail_rules_trial_target')} {CAROLE}", sortie)
+        self.assertIn("Bonjour, absent.", sortie)
+        self.assertIn(t("mail_rules_trial_headers_partial"), sortie)
+        # Le sujet d'un tiers n'écrit rien au terminal.
+        self.assertNotIn("\x1b", sortie)
+        self.assertIn("Devis[2J", sortie)
+
+    def test_menu_trial_sends_only_after_yes(self):
+        with mock.patch(
+            "script.todo.mail.tui.deliver", return_value="parti"
+        ) as espion:
+            self.lancer("7", "1", "1", "n", "0")
+            espion.assert_not_called()
+            sortie = self.lancer("7", "1", "1", "o", "0")
+        espion.assert_called_once()
+        msg = espion.call_args[0][1]
+        self.assertEqual(msg["To"], OWN)
+        self.assertTrue(
+            msg["Subject"].startswith(t("mail_rules_trial_subject_prefix"))
+        )
+        self.assertIn(f"{t('mail_rules_trial_sent')} parti", sortie)
+
+    def test_an_unknown_message_number_sends_nothing(self):
+        with mock.patch("script.todo.mail.tui.deliver") as espion:
+            sortie = self.lancer("7", "1", "9", "0")
+        espion.assert_not_called()
+        self.assertIn(t("Command not found !"), sortie)
+
+    def test_without_inbox_the_trial_says_so(self):
+        store = self.magasin()
+        try:
+            store.set_folder_state("INBOX", uidvalidity=None)
+        finally:
+            store.close()
+        sortie = self.lancer("7", "1", "0")
+        self.assertIn(t("mail_rules_no_inbox"), sortie)
 
 
 if __name__ == "__main__":
