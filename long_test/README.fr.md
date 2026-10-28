@@ -581,6 +581,41 @@ Une course gardée par `--garder` est arrêtée et balayée par la course
 suivante, ou par `--detruire`. Codes de sortie : 0 tout vert, 1 des tests
 échouent, 2 un prérequis manque, 3 l'infrastructure a échoué.
 
+### Les tests du push du clavardage — notifications app fermée
+
+La course démarre son propre `ntfy serve`, sur `127.0.0.1` et un port libre,
+avec un `server.yml`, un fichier d'accès et un cache temporaires sous le
+répertoire de la course ; elle ne touche jamais au ntfy de la machine (chaque
+appel `ntfy` porte `--config`, placé avant la sous-commande pour `user` et
+`token`). L'accès du téléphone se crée comme le menu `TODO › Déployer ›
+Préparer ntfy pour ERPLibre mobile` le crée : anonyme en écriture seule sur
+`up*`, un utilisateur en lecture seule sur son préfixe, un jeton. Le ntfy
+s'arrête avec la course (gardé avec les serveurs par `--garder`).
+
+`--filtre push` joue les tests dont le nom correspond : les quatre formes de
+push déchiffrées depuis le cache de ntfy, une conversation en sourdine qui n'est
+pas poussée, un jeton qui ne lit que son préfixe, le désenregistrement quand un
+compte est retiré, le passage à un nouveau sujet quand un nouveau lien arrive
+et, seul dans un fichier en série, les clés VAPID retirées au sort, que le
+chargement suivant guérit.
+
+Avec `--appareil`, le scénario des notifications tourne sur le téléphone, sur
+Odoo 18, contre ce ntfy renvoyé au téléphone par `adb reverse` : au niveau 1
+l'app est connectée et montre une notification permanente ; un message d'un
+autre utilisateur sonne en quelques secondes sous l'étiquette de sa
+conversation, son texte en clair et, pour l'écran verrouillé, seulement
+« Nouveau message — <serveur> » ou aucune version d'écran verrouillé, selon le
+réglage d'Android ; le processus tué (`am crash`, car SELinux refuse
+`run-as kill` sur Android 11), le service revient et le message suivant
+s'empile dans la même notification ; la toucher ouvre la conversation ; au
+premier plan rien ne s'affiche ; avec « Jamais affiché » le texte n'est pas dans
+la notification ; le ntfy retiré, le sommaire direct d'Odoo dit « 2 nouveaux
+messages » et rien n'est marqué lu sur le serveur. Le scénario ne verrouille
+jamais le téléphone : la forme de l'écran verrouillé se lit dans
+`dumpsys notification --noredact`. Il remet en état ce qu'il change : le
+réglage `stay_on_while_plugged_in`, l'entrée d'optimisation de la batterie de
+l'app de test et les ports `adb reverse`.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un
