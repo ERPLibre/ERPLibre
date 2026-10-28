@@ -233,7 +233,8 @@ class Odoo:
                 contenu["error"].get("data", {}).get("message")
                 or contenu["error"]
             )
-        return contenu["result"], reponse
+        # Une route qui ne rend rien répond sans clé result
+        return contenu.get("result"), reponse
 
     def appel(self, service, methode, args):
         return self.poster(
@@ -2382,6 +2383,85 @@ def toucher_notification(ctx, texte, delai=10):
         adb("shell", "rm", "-f", CONTENU_UI, executer=executer, check=False)
 
 
+def masque_verrouille(executer):
+    """Vrai quand Android masque le contenu sensible des notifications sur
+    l'écran verrouillé (lock_screen_show_notifications ou
+    lock_screen_allow_private_notifications à 0) ; un réglage illisible
+    compte comme montré, comme l'app le compte."""
+
+    def reglage(nom):
+        valeur = adb(
+            "shell", "settings", "get", "secure", nom, executer=executer
+        ).strip()
+        return int(valeur) if valeur.lstrip("-").isdigit() else None
+
+    return 0 in (
+        reglage("lock_screen_show_notifications"),
+        reglage("lock_screen_allow_private_notifications"),
+    )
+
+
+def tout_lire(odoo_, partenaire):
+    """Tout le non-lu du partenaire marqué lu sur le serveur, comme le
+    client web le marque : chaque conversation dont il est membre lue
+    jusqu'à son dernier message (/discuss/channel/mark_as_read), puis sa
+    boîte de réception (mark_all_as_read)."""
+    membres = odoo_.executer(
+        "discuss.channel.member",
+        "search_read",
+        [[["partner_id", "=", partenaire]]],
+        {"fields": ["channel_id"]},
+    )
+    for membre in membres:
+        canal = membre["channel_id"][0]
+        dernier = odoo_.executer(
+            "mail.message",
+            "search",
+            [[["model", "=", "discuss.channel"], ["res_id", "=", canal]]],
+            {"limit": 1, "order": "id desc"},
+        )
+        if dernier:
+            odoo_.route(
+                "/discuss/channel/mark_as_read",
+                {"channel_id": canal, "last_message_id": dernier[0]},
+            )
+    odoo_.executer("mail.message", "mark_all_as_read", [], {"domain": []})
+
+
+def tache_forcee(ctx, delai=30):
+    """Un passage de la tâche périodique forcé (cmd jobscheduler run -f),
+    attendu jusqu'à ce que le compte ait été relevé de nouveau (son
+    lastCheckAt dans la santé du moteur)."""
+
+    def releve():
+        comptes = ctx.hook("chatPushStatus()")["accounts"]
+        return max(
+            (
+                c["lastCheckAt"]
+                for c in comptes
+                if c["configId"] == ctx.config_id
+            ),
+            default=0,
+        )
+
+    avant = releve()
+    adb(
+        "shell",
+        "cmd",
+        "jobscheduler",
+        "run",
+        "-f",
+        PAQUET,
+        str(TACHE_PERIODIQUE),
+        executer=ctx.appareil.executer,
+    )
+    fin = time.monotonic() + delai
+    while releve() <= avant:
+        if time.monotonic() > fin:
+            raise TimeoutError(f"la tâche forcée ne relève pas en {delai} s")
+        time.sleep(0.5)
+
+
 def premier_plan(ctx):
     """L'app de test ramenée au premier plan (son lanceur)."""
     adb(
@@ -2436,8 +2516,9 @@ def scenario_notifications(ctx):
     niveau 1, le ntfy est « connecté » et une seule notification permanente
     s'affiche. App à l'arrière-plan, un message de chat_user arrive en
     POUSSEE_DELAI au plus sous le tag de sa conversation, dans le canal du
-    serveur, privé, sa version publique « Nouveau message — <libellé> »,
-    son texte en clair dans la notification. Le processus tué, le service
+    serveur, son texte en clair dans la notification et jamais sur l'écran
+    verrouillé (PRIVATE avec « Nouveau message — <libellé> », ou SECRET,
+    selon le réglage d'Android). Le processus tué, le service
     revient (START_STICKY, sinon la tâche forcée) et le message suivant
     s'empile dans la même notification. Touchée dans le volet, elle ouvre
     la conversation et s'efface. App au premier plan, rien ne s'affiche ;
@@ -2518,8 +2599,20 @@ def scenario_notifications(ctx):
         ctx, tag, lambda n: premier in n["bloc"], delai=POUSSEE_DELAI
     )
     assert notif["canal"] == canal_android, notif["canal"]
-    assert notif["vis"] == "PRIVATE", notif["vis"]
-    assert "publicVersion=" in notif["bloc"], "aucune version publique"
+    # « Masqué si verrouillé » : jamais le texte sur l'écran verrouillé.
+    # PRIVATE, sa seule version publique « Nouveau message — <libellé> »,
+    # là où Android masque le contenu sensible ; SECRET, rien sur l'écran
+    # verrouillé, là où Android le montrerait. Vérifié par dumpsys, jamais
+    # en verrouillant le téléphone
+    bloc = notif["bloc"]
+    if masque_verrouille(executer):
+        assert notif["vis"] == "PRIVATE", notif["vis"]
+        assert "publicVersion=" in bloc, "aucune version publique"
+        publique = bloc[bloc.find("publicVersion=") :].split("\n", 1)[0]
+        assert premier not in publique, "texte dans la version publique"
+    else:
+        assert notif["vis"] == "SECRET", notif["vis"]
+        assert "publicVersion=" not in bloc, "version publique d'un SECRET"
     ctx.capturer("notification_recue")
 
     # 3. Le processus tué : le service revient, le message suivant s'empile
@@ -2623,6 +2716,10 @@ def scenario_notifications(ctx):
         time.sleep(0.5)
     ctx.hook(f"chatPushRemove({config})")
     accueil(ctx)
+    # Le sommaire compte tout le non-lu du compte, celui des scénarios
+    # d'avant compris : lu sur le serveur, puis relevé une fois, il part de 0
+    tout_lire(ctx.odoo, moi)
+    tache_forcee(ctx)
     vu_avant = vu_de(ctx.odoo, canal, moi)
     attente_avant = ctx.odoo.executer(
         "mail.notification",
@@ -2631,16 +2728,7 @@ def scenario_notifications(ctx):
     )
     for rang in (1, 2):
         poster(ctx.unique(f"sommaire-{rang}"))
-    adb(
-        "shell",
-        "cmd",
-        "jobscheduler",
-        "run",
-        "-f",
-        PAQUET,
-        str(TACHE_PERIODIQUE),
-        executer=executer,
-    )
+    tache_forcee(ctx)
     titre = f"2 nouveaux messages — {libelle}"
     notif, _ = attendre_notification(
         ctx,
