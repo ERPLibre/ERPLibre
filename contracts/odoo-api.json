@@ -1396,6 +1396,80 @@
       },
       "response": "[{id, state}]",
       "notes": "The level is read from fields_get (readable by any user; cached), highest first: erplibre_chat_level on mail.message = 1.4, erplibre_body_fingerprint on mail.message = 1.3, erplibre_client_uuid on ir.attachment = 1.2, on discuss.channel = 1.1, on mail.message only = 1.0. installed = level 1.4, or a system user sees the row installed before the registry exposes any field; outdated = level 1.0 to 1.3 (an older module's row reads installed until upgraded, so the level decides) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1. Module 1.2 is recognised by erplibre_client_uuid on ir.attachment (level 1.2, above 1.1 on discuss.channel and 1.0 on mail.message); it adds the idempotent upload route of chat.upload. Module 1.3 is recognised by erplibre_body_fingerprint on mail.message (level 1.3); it adds the guarded edit route of chat.edit. Without it, files go to Odoo's route and a lost answer is found with chat.upload_find. Module 1.4 adds the field erplibre_chat_level on mail.message (a computed Selection whose last key is the level, \"1.4\"; readable by any internal user through fields_get, which is why it is the marker) and is the highest level: installed = level 1.4; levels 1.0 to 1.3 are outdated. It adds the search route of chat.search (serverSearch), erplibre_set_starred of chat.star (idempotentStar), the uuid dedup of mail.thread.message_post on every mail.thread model and the record thread on the upload route (idempotentRecordPost). Each of the three flags is true at 1.4 only; a server at 1.3 keeps the guarded edit and the fallbacks of those calls."
+    },
+    "chat.push.register": {
+      "description": "Registration of the phone's Web Push subscription with Odoo 18, so that Odoo publishes chat pushes to the account's secret ntfy topic; run once per account per foreground session, through call_kw on mail.push.device as the account's user",
+      "method": "POST",
+      "path": "/web/dataset/call_kw/mail.push.device/{method}",
+      "request": {
+        "calls": [
+          {
+            "method": "get_web_push_vapid_public_key",
+            "kwargs": {},
+            "returns": "the VAPID public key of the server (65 bytes, base64url); drawn on first use"
+          },
+          {
+            "method": "register_devices",
+            "kwargs": {
+              "endpoint": "{ntfy url as Odoo reaches it}/{topic} — the topic is the account's secret (prefix up<10 chars> + 22 random)",
+              "keys": {
+                "p256dh": "{subscription public key}",
+                "auth": "{subscription auth secret}"
+              },
+              "vapid_public_key": "{the key just read}",
+              "expirationTime": null
+            }
+          },
+          {
+            "method": "unregister_devices",
+            "kwargs": {
+              "endpoint": "{endpoint}"
+            }
+          }
+        ]
+      },
+      "response": "register_devices and unregister_devices answer nothing the app reads; a JSON-RPC error marks the registration refused for the session, a network failure offline (retried next session)",
+      "notes": "A known endpoint is never updated: register_devices called again with the endpoint Odoo holds changes nothing, and a different p256dh or auth for it is ignored, so keys never change for a topic and new keys come with a new topic, hence a new endpoint. When Odoo's VAPID keys are drawn again the rows it held under the old key are wiped, and the same call then creates a new row; the app sends the key it just read, so the registration is renewed by the next session. unregister_devices deletes the row of the endpoint without checking that it belongs to the calling partner, so the secret topic is the only credential; the app unregisters the endpoints it replaced, and the native side unregisters when the user revokes the phone. The private key of the subscription and the ntfy token stay in native code; only the public key and the auth secret reach JS and the database (chat_push). Odoo 18 only; works with erplibre_mobile_chat 1.4 or without the module."
+    },
+    "chat.push.payload": {
+      "description": "What Odoo publishes to the ntfy topic and what the phone reads: an RFC 8291 (aes128gcm) Web Push body, base64 in the ntfy message, decrypted on the phone with the subscription keys",
+      "method": "POST (Odoo to ntfy, anonymous, VAPID header)",
+      "path": "{ntfy url}/{topic}",
+      "response": {
+        "chat": "{title: \"{author}\", options: {icon: \"/web/image/res.partner/{author partner}/avatar_128\", data: {model: \"discuss.channel\", res_id, action: \"mail.action_discuss\"}, body: \"{text}\"}} — a direct chat; the title is the author's name",
+        "group": "same shape; the title is \"{conversation} - {author}\"",
+        "channel_mention": "same shape; the title is \"#{channel} - {author}\", pushed only for a message that mentions the user",
+        "record_comment": "{title: \"{author}: {record name}\", options: {icon, data: {model: \"{record model}\", res_id}, body}} — a comment on a followed record: data holds no action"
+      },
+      "notes": "The payload carries no message id and no channel type: the phone tells the shapes apart by data.model and the title, and de-duplicates by the ntfy message id (SeenIds), then asks nothing more of Odoo. Odoo encodes the JSON with ensure_ascii and the body is html2plaintext of the message (a space stays after a mention link). Odoo expects ntfy to answer 201 and ntfy answers 200: without erplibre_mobile_chat 1.5 each successful push logs an Odoo warning that carries the endpoint, which is the secret topic, so an Odoo log is as sensitive as the topic (module 1.5, lot 2, fixes it). Odoo publishes synchronously inside the request that posts the message and only when fewer than 5 devices are among the recipients: a device whose ntfy accepts the connection and never answers costs up to 5 s more per device, a closed port fails at once. Odoo never retries a push. Whether a message rings follows Odoo's own notification rules (all, mentions, nothing, per conversation); the phone-side filter can only be stricter."
+    },
+    "chat.push.summary": {
+      "description": "The unread summary the phone computes itself when it has no push to read (an account without ntfy, or a phone silent longer than the ntfy cache); one notification per server",
+      "method": "POST",
+      "path": "/web/session/get_session_info then /mail/data",
+      "request": {
+        "routes": [
+          "/web/session/get_session_info (the self partner and the account-wide mute)",
+          "/mail/data with params {init_messaging: {}, channels_as_member: true}"
+        ]
+      },
+      "response": "counted as the app's own list: a chat or group counts its unread messages, a channel only the ones that mention the user, a muted conversation counts nothing, the inbox counter is added once minus the mentions the channels already count",
+      "notes": "Both routes are read-only and nothing marks anything read: the summary \"{n} nouveaux messages — {server}\" stays until the user opens the app. The call carries the session cookie copied to native code (encrypted with a Keystore key; never the password); an expired session shows \"open the app\" instead. An account with ntfy is checked through ntfy at levels 3 and 4, an account without ntfy every 15 minutes at levels 1 to 4."
+    },
+    "chat.push.ntfy": {
+      "description": "What the phone asks of the user's ntfy server: one read-only token per phone, one secret topic per Odoo account",
+      "method": "GET (phone), POST (Odoo)",
+      "path": "{ntfy url}/{topic}/json[?poll=1&since=...]",
+      "request": {
+        "access": {
+          "up*": "anonymous write-only: Odoo publishes without an account",
+          "<prefix>*": "the phone's user, read-only, with its token (Authorization: Bearer); the prefix is up + 10 chars, one per phone",
+          "other": "no access"
+        },
+        "read": "a streaming GET of /{topic}/json, or poll=1 with since={last ntfy message id} for a check at an interval"
+      },
+      "response": "ntfy message events whose message is the Web Push body in base64 (encoding: base64)",
+      "notes": "A token reads only its own prefix: another phone's topic answers 403, as does an anonymous read. The phone de-duplicates by ntfy message id (since plus SeenIds), so a stream and a poll over the same messages ring once. ntfy keeps messages for its cache duration (set up with the link); a phone silent longer gets the Odoo-direct summary of chat.push.summary instead. keepalive-interval is never written. The setup link erplibre-ntfy:setup?v=1&... carries the ntfy url, the token, the prefix, the cache duration and, when Odoo reaches ntfy at another address than the phone does, a second url. Tables: migration 2026102801 creates chat_push (see sqlite_tables_added)."
     }
   },
 
@@ -1707,6 +1781,11 @@
       "migration": "2026102705",
       "columns": ["id (config_id#p<partner id>)", "config_id", "partner_id", "unique_key (the write_date the file was fetched with)", "path", "bytes", "fetched_at"],
       "notes": "The cached avatar files of authors, one row per partner and account. Index idx_chat_avatars_config. Counted in the chat cache space and removed by « Retirer tous les fichiers téléchargés » and by dropping the account; a rename re-keys the rows."
+    },
+    "chat_push": {
+      "migration": "2026102801",
+      "columns": ["config_id (primary key)", "ntfy_url", "odoo_ntfy_url (only when Odoo reaches ntfy at another address)", "prefix", "topic", "endpoint (odoo_ntfy_url or ntfy_url, then /topic)", "p256dh", "auth", "vapid_key", "registered_at", "stale_endpoints (JSON array of endpoints to unregister)", "lock_screen (hidden_locked | never | always; default hidden_locked)"],
+      "notes": "The closed-app notifications of each account, empty until a link is applied. The private key of the subscription and the ntfy token are not here: they stay in native code, encrypted with a Keystore key. Dropped with the account."
     }
   }
 }
