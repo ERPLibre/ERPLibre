@@ -1031,6 +1031,61 @@ class TestNtfy(unittest.TestCase):
             )
         self.assertEqual(len(arretes), 1)
 
+    def test_ntfy_calls_drop_the_ntfy_variables(self):
+        """NTFY_* passe avant --config dans la CLI : un shell qui exporte
+        NTFY_AUTH_FILE ferait écrire l'accès de la course ailleurs."""
+        envs = []
+
+        def lancer(commande, **kw):
+            envs.append(kw.get("env"))
+            return SimpleNamespace(pid=4321, poll=lambda: None)
+
+        def executer(commande, **kw):
+            envs.append(kw.get("env"))
+            return SimpleNamespace(
+                stdout="token tk_inventeinventeinvente created\n",
+                returncode=0,
+            )
+
+        exporte = {"NTFY_AUTH_FILE": "/tmp/autre.db", "NTFY_TOKEN": "tk_x"}
+        with mock.patch.dict(os.environ, exporte):
+            harness_ntfy.demarrer_ntfy(
+                self.repertoire,
+                lancer=lancer,
+                executer=executer,
+                sain=lambda url: True,
+            )
+        self.assertEqual(len(envs), 3)
+        for env in envs:
+            self.assertIsNotNone(env)
+            self.assertFalse([k for k in env if k.startswith("NTFY_")])
+            self.assertEqual(env.get("PATH"), os.environ.get("PATH"))
+
+    def test_une_interruption_au_demarrage_arrete_le_ntfy(self):
+        """Ctrl-C (ou SIGTERM, que la course change en KeyboardInterrupt)
+        pendant l'attente ou la création des accès : le ntfy, dans sa propre
+        session et pas encore noté, est arrêté."""
+
+        def lancer(commande, **_):
+            return SimpleNamespace(pid=4321, poll=lambda: None)
+
+        def interrompu(*_a, **_k):
+            raise KeyboardInterrupt
+
+        for sain, executer in (
+            (interrompu, None),
+            (lambda url: True, interrompu),
+        ):
+            arretes = []
+            options = {"executer": executer} if executer else {}
+            with mock.patch.object(
+                harness_ntfy, "arreter_ntfy", lambda n: arretes.append(n)
+            ), self.assertRaises(KeyboardInterrupt):
+                harness_ntfy.demarrer_ntfy(
+                    self.repertoire, lancer=lancer, sain=sain, **options
+                )
+            self.assertEqual(len(arretes), 1)
+
     def test_ntfy_absent_skips_with_a_plan_line(self):
         self.assertFalse(harness_ntfy.ntfy_disponible(lambda nom: None))
         self.assertTrue(
