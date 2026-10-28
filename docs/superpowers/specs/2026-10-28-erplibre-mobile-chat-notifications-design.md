@@ -73,6 +73,13 @@ Two things set it apart from a plain push integration:
   a new server: « Nouveau message — <server> » on the locked screen, author
   and text once unlocked), never shown (always « Nouveau message », even
   unlocked), always shown.
+  « Hidden when locked » is guaranteed, by the user's decision: when Android
+  hides sensitive content on the lock screen, the notification shows
+  « Nouveau message — <server> » there; when Android shows all content, or the
+  app cannot read that setting, the notification does not appear on the lock
+  screen at all and shows normally once unlocked. The decision is taken at
+  each post: a notification drawn while Android hid content keeps that form if
+  the user later changes the Android setting, until it is posted again.
 - **Five levels, from the most reactive to the most economical:**
   1. realtime (permanent connection);
   2. realtime on Wi-Fi or while charging, otherwise every 15 minutes;
