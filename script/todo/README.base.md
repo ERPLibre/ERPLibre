@@ -13,8 +13,12 @@ The `mail/` package is the mail client reachable from `Assistant > Mail`:
 several IMAP/SMTP accounts, a local cache, and a Textual TUI. See
 [../../doc/EMAIL.md](../../doc/EMAIL.md). Its `mail/rules/` subpackage holds
 the incoming mail rules — model, filter, safeguards, reply rendering,
-storage and the engine that runs after each sync pass (see "Incoming mail
-rules" in that guide).
+the statistics report (`report.py`), storage and the engine that runs after
+each sync pass (see "Incoming mail rules" in that guide). From the menu,
+`Mail > [6] Incoming mail rules` lists and orders the rules; its `[6]` sets
+the statistics report of an account and prints a preview, its `[7]` tries a
+rule on a recent inbox message and can send the trial to the account
+itself.
 
 ## Where the code lives
 
@@ -60,9 +64,13 @@ Le paquet `mail/` est le client courriel accessible depuis
 `Assistant > Courriel` : plusieurs comptes IMAP/SMTP, un cache local, et un
 TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md). Son
 sous-paquet `mail/rules/` porte les règles du courrier entrant — modèle,
-filtre, garde-fous, rendu de la réponse, stockage et le moteur qui tourne
-après chaque passe de synchronisation (voir « Règles du courrier entrant »
-dans ce guide).
+filtre, garde-fous, rendu de la réponse, rapport de statistiques
+(`report.py`), stockage et le moteur qui tourne après chaque passe de
+synchronisation (voir « Règles du courrier entrant » dans ce guide). Depuis
+le menu, `Courriel > [6] Règles du courrier entrant` liste et ordonne les
+règles ; son `[6]` règle le rapport de statistiques d'un compte et en
+imprime un aperçu, son `[7]` essaie une règle sur un message récent de la
+boîte de réception et peut envoyer l'essai au compte lui-même.
 
 ## Où vit le code
 

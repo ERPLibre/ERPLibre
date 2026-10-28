@@ -196,6 +196,7 @@ preview pane on the right, with a status line at the bottom.
 | `e` | open the incoming mail rules of the current account (see "Incoming mail rules") |
 | `Shift+F` | open the folder screen: create, rename, delete (see "Managing folders") |
 | `i` | open the statistics screen (see "Statistics") |
+| `Shift+I` | open the statistics report settings of the current account (see "The statistics report") |
 | `n` | add an account without leaving the client |
 | `l` | show the tail of `~/.erplibre/mail.log` and this session's sync errors |
 | `q` | quit |
@@ -474,9 +475,12 @@ with them: a server that refuses a message names the recipient it refuses.
 
 A rule answers incoming mail on its own: when a new message in the inbox
 matches its filter, the client sends the rule's reply to the sender. Each
-account has its own ordered list of rules. This version runs one kind of
-action, the **custom reply**; forwarding and a statistics report come later
-(see "What the client does not do yet").
+account has its own ordered list of rules. This version runs two kinds of
+action: the **custom reply**, and the **statistics report** — a custom
+reply whose text carries figures computed on the mailbox (see "The
+statistics report"). Forwarding comes later (see "What the client does not
+do yet"). Any rule can be tried on a recent message before it answers a
+real one (see "Testing a rule").
 
 ### When rules run
 
@@ -517,6 +521,7 @@ re-armed.*
 | `k` / `j` | move it up / down |
 | `t` | toggle "stop here" |
 | `x` | delete it (asks first) |
+| `s` | try it on a recent inbox message (see "Testing a rule") |
 | `l` | the rules log: the latest 200 decisions — date, rule, result, reason, sender, subject |
 | `Escape` | close |
 
@@ -528,12 +533,17 @@ rules gets two replies. A rule with "stop here" ends the list for that
 message as soon as its filter matched — even when a safeguard kept its
 reply from leaving.
 
-The editor holds the name, "Rule enabled", "Stop here", the throttle (see
-"Safeguards"), the maximum age in hours (48 by default, 1 to 720), the
-number of first sends held for approval (1 by default, 1 to 10), the
-filter, and a *Custom reply…* button. `Ctrl+S` saves, `Escape` cancels; a
-field that does not validate keeps the window open with the reason on its
-status line.
+The editor holds the action type (*Custom reply* or *Statistics report*),
+the name, "Rule enabled", "Stop here", the throttle (see "Safeguards"), the
+maximum age in hours (48 by default, 1 to 720), the number of first sends
+held for approval (1 by default, 1 to 10), the filter, and a button that
+opens the reply form — *Custom reply…* or *Statistics report…* depending on
+the type. Changing the type brings the throttle to the new type's default
+when it still held the old one's, and a body still equal to the old type's
+default text becomes the new type's; a body written by hand is kept. A rule
+of a type this version does not run shows its type greyed out. `Ctrl+S`
+saves, `Escape` cancels; a field that does not validate keeps the window
+open with the reason on its status line.
 
 ### Filters
 
@@ -622,6 +632,176 @@ responders stay silent, plus `In-Reply-To` and `References`, so that it
 joins the conversation. A copy is filed into Sent; the original is not
 marked answered.
 
+### The statistics report
+
+A rule of type *Statistics report* answers with a custom reply whose body
+is a **template**: the text you write, in the same three formats and with
+the same images, where `{{name}}` is replaced by a figure computed on this
+account's inbox. It tells a correspondent how busy the mailbox is and how
+long a reply usually takes. *Statistics report…* opens the reply form
+with, under the body, the list of variables, a drop-down and *Insert the
+variable*, which writes `{{name}}` at the cursor. The preview is computed
+on the mailbox's real figures but without a requester: the requester's own
+delay shows `—` there, and the trial (`s`) shows it for a real sender. A
+new statistics rule starts with a short body ending on `{{rapport}}`.
+
+| Variable | Replaced by |
+|---|---|
+| `{{rapport}}` | the whole report: daily table, weekly table, mailbox delay, the requester's delay, date and time zone |
+| `{{rapport_jours}}` | the daily table, with its title |
+| `{{rapport_semaines}}` | the ISO weekly table, with its title; empty when the report has no weeks |
+| `{{recus_total}}` | messages received over the period of the daily table |
+| `{{lus_total}}` | among them, those read |
+| `{{repondus_total}}` | among them, those answered |
+| `{{delai_moyen}}` | the average reply delay to the requester's own messages |
+| `{{delai_moyen_boite}}` | the mailbox's average reply delay, rounded |
+| `{{demandeur_recus}}` | the requester's messages received in the delay window |
+| `{{demandeur_repondus}}` | among them, those answered |
+| `{{jours}}`, `{{semaines}}`, `{{fenetre_jours}}` | the number of days, of weeks, and of days of the delay window |
+| `{{periode_debut}}`, `{{periode_fin}}` | the first and last day of the period (`YYYY-MM-DD`; the last is yesterday) |
+| `{{date_rapport}}` | the report's date, time and UTC offset |
+
+The names are written as shown — in French, case sensitive, spaces inside
+the braces allowed (`{{ rapport }}`). The first three are **blocks** —
+paragraphs and tables — and go on a line of their own; the others are
+short values. A missing value shows `—`. In hand-written HTML a block
+cannot sit inside a tag, and the subject takes short values only; otherwise
+the subject works as for a custom reply (`{subject}`, `Auto:` when empty).
+An unknown name is refused when the rule is saved, and a `rules.json`
+edited by hand that names one fails at send time with *message could not
+be built*. A custom reply, in turn, refuses these names: the figures go out
+only through a statistics rule and its safeguards.
+
+`{{rapport}}` in English (the report's language is set by `I`, see below):
+
+```
+Activity over the last 7 days
+
+Day         Received  Read  Answered
+2026-10-21         3     3         2
+2026-10-22         5     4         3
+2026-10-23         2     2         1
+2026-10-24         0     0         0
+2026-10-25         1     1         0
+2026-10-26         6     5         4
+2026-10-27         4     3         2
+Total             21    18        12
+
+By ISO week (last 4)
+
+Week      From        Received  Read  Answered
+2026-W40  2026-09-28        18    17        11
+2026-W41  2026-10-05        22    20        14
+2026-W42  2026-10-12        15    15         9
+2026-W43  2026-10-19        19    16        12
+Total                       74    68        46
+
+Mailbox average reply delay (last 30 days): 2 h 30 min
+
+Your average reply delay (last 30 days): 12 h 35 min (over 2 known delays)
+
+Report of 2026-10-28 09:12 +0000
+Days and weeks in local time (UTC+00:00).
+```
+
+In the HTML formats the tables are HTML tables; in Markdown the text part
+carries them as above.
+
+**What is counted.**
+
+- **Received** — inbox messages, dated by the server's reception date
+  (`INTERNALDATE`); a message cached before that date was recorded falls
+  back on its `Date` header.
+- **Read** — among the messages received that day or week, those that
+  carry `\Seen` *now*. The three columns of a row speak of the same
+  messages: read and answered never exceed received. Since days are closed
+  and the figures frozen for the day (below), "read" is no read receipt.
+- **Answered** — the message carries `\Answered`, or a reply to it sits in
+  a Sent folder (the one the server marks `\Sent`, or the account's Sent
+  folder by name). Without a Sent folder, only `\Answered` counts and no
+  delay is known.
+- **Delay** — from the reception of a message to its first reply dated
+  after it (the reply's `Date` header). The mailbox's average covers the
+  messages received over the last *window* closed days; below **5** known
+  delays the report says there are too few for an average, and above it
+  the average is rounded — to 5 minutes under an hour, to 15 minutes under
+  a day, to the hour beyond. The requester's delay covers their own
+  messages over the last *window* days, exact and with no threshold.
+- **Periods** — the daily table holds the last *N* **closed** days, up to
+  yesterday; today never shows. The weekly table holds the last *M*
+  complete ISO weeks, Monday to Sunday, labelled `YYYY-Www` with the date
+  of their Monday; the current week is left out, and 1 January 2027
+  belongs to `2026-W53`. The totals are those of the daily table. Days and
+  weeks follow the time zone of the process (the `TZ` variable), which the
+  report states.
+- **Excluded everywhere** — automatic messages: the sync recognises
+  `Auto-Submitted` (any value but `no`) and the `X-Loop` marker of an
+  ERPLibre client in every folder, so our own automatic replies stay out
+  even after the cache is rebuilt, and so do a third party's. A message
+  whose `Message-ID` already arrived counts once: the first copy only, and
+  a later copy inherits neither the answer nor the delay.
+
+**Frozen for the day.** The mailbox part — tables, totals, mailbox delay —
+is computed at most once per local day and per set of settings, then read
+back from `report_snapshot.json`: every request of a day sees the same
+figures, even if a message was read in between. The requester's part is
+computed at each reply. The previews (`I`, the form, `i`) compute live.
+
+**Known limits.** The sync re-reads `\Seen` and `\Answered` only for the 500
+most recent messages of each folder: beyond them, read and answered by flag
+are those of the first download, which is why the weekly table stops at 8
+weeks. A message received one day shows, in that day's "read" column, its
+state at the first request of the next day: a sender learns at best, once a
+day, whether their message had been read by then. Small volumes give daily
+counts of 0 or 1; they describe the mailbox, as intended.
+
+**Who receives it, and when.** The report goes to the **From** address —
+the one authentication vouches for and the one the requester's delay
+concerns — never to `Return-Path` nor to `Reply-To`. A `Return-Path`
+address is still checked like the sender: a robot, this account or another
+configured account there stops the reply, and `Return-Path: <>` is a null
+sender. The report carries aggregates and the requester's own delay only:
+no address, name nor subject of another message.
+
+On top of the safeguards of every rule, a statistics report requires an
+**authenticated sender**. The **first** `Authentication-Results` header —
+the one the receiving server adds on top — must carry `dmarc=pass` with
+`header.from` equal to the From domain, or `dkim=pass` with `header.d`, or
+`spf=pass` with `smtp.mailfrom`, equal to that domain or one of its
+subdomains. Otherwise the message is logged *sender not authenticated* and
+gets nothing. If your receiving server does not add that header at all,
+the first one comes from the sender, who can write anything: set the
+**server identifier** (`I`, below) to the name your server writes before
+its first `;` (for example `mx.example.org`), and the first header must
+then name it. This only protects when your server **removes** incoming
+`Authentication-Results` that carry its identifier (RFC 8601, section 5);
+otherwise a forger writes that identifier, which is public. Some servers
+open the header on a result (`spf=pass …`) instead of an identifier: with
+them a set identifier never matches, and the trial says so.
+
+The throttle of a statistics rule is ticked with **1440 minutes** (one day)
+by default. Each statistics rule also sends at most **20** reports per
+sliding 24 hours: beyond, a request is logged *daily report cap reached*,
+nothing is queued, and the account's hourly cap is left untouched. The
+account caps and the first-send approval apply as to any rule: the first
+real report waits **held** in the outbox (`o`), with the figures of the
+moment it was built.
+
+**Report settings — `I`.** In the client, `I` opens the report settings of
+the current account: days in the daily table (1 to 31, 7 by default), ISO
+weeks (0 to 8, 4 by default; 0 drops the weekly table), the delay window in
+days (1 to 365, 30 by default), the format given to new statistics rules,
+the report's language (the interface's, French or English — the labels of
+the report only, your text stays as written), and the server identifier.
+The time zone is shown, not set. Below, a preview of `{{rapport}}` on the
+real mailbox, for the requester written in its field — prefilled with the
+sender of the selected message, empty for none — recomputed by *Refresh
+the preview* from the fields as typed, before any save. `Ctrl+S` saves,
+`Escape` closes. While the server identifier is empty, the window warns
+that any first `Authentication-Results` is trusted. The settings live under
+the `report` key of `rules.json`; if that key cannot be read, the
+statistics rules are skipped with a warning and the custom replies go on.
+
 ### Safeguards
 
 Before a reply leaves, the rule's checks run in this order, and the first
@@ -646,6 +826,7 @@ every other stop is written to the rules log (`l`) under the reason shown.
 | another configured account | comes from another account configured in the client |
 | not addressed to this account | names this account in neither To nor Cc — a Bcc copy, a list, an alias |
 | authentication failed | is marked `dmarc=fail`, or `spf=fail` without `dkim=pass`, by the receiving server's `Authentication-Results`: answering would send our reply to whoever was impersonated |
+| sender not authenticated | statistics report only: carries no first `Authentication-Results` that vouches for the From domain (see "The statistics report") |
 | throttled | comes from a sender this rule answered recently (below) |
 
 **Do not send again if a message arrives within N minutes.** When the box
@@ -710,27 +891,83 @@ Another one waits up to 30 s, then gives up with *Rules: another pass is
 running.*; the next pass picks up where it stopped. A pass catches up at
 most 200 messages; older ones are skipped with a warning.
 
+### Testing a rule
+
+`s` in the rule list tries the rule under the cursor without waiting for a
+real message. It lists the 50 most recent inbox messages of the cache;
+`Enter` on one shows what the rule would do with it, and writes nothing.
+Online, the message's full headers (`Authentication-Results`,
+`Return-Path`, `List-Id`…) are fetched from the server, and its body with
+`BODY.PEEK`, so it stays unread. Offline, the trial works on the cached
+row — without Cc nor those headers — says the verdict is partial, and
+reads the body from the cache when it is there; without it, a Body
+condition stays unknown. It does the same online when the server has
+renumbered the inbox since the last sync: a cached number could then name
+another message.
+
+The result shows, in order: a warning when the rule is disabled; the filter
+tree with each node's outcome (✓, ✗, `?` when the body is missing) and
+whether the message matches; the **verdict** — *would reply*, or the reason
+a real pass would give (too old, already handled, sent by this account…);
+and, when it differs, the verdict **for a new message**, as if this one had
+just arrived after the rule was armed — arming, age and "already handled"
+aside, the other safeguards, the throttle included, still apply. When a
+reply would be decided, the trial also says whether the engine would
+**hold** it, and why: until a rule has really sent its first replies, each
+new one is held for review — the first real report always is — and is
+released from the outbox (`o`). A statistics report past its daily cap
+is not held but skipped: the verdict then reads *daily report cap
+reached*, and nothing would reach the outbox. For a statistics report, it
+shows the server identifier read in the first `Authentication-Results` (or
+that the server writes none), whether the sender is authenticated, and a
+warning while no identifier is set. Then the recipient, the subject, the text of
+the reply, its images and their role, or the error that stops the reply
+from being built.
+
+**Send a trial to myself** sends that reply to the account's own address,
+its subject prefixed with `[Trial]`, as soon as the reply could be built —
+whatever the verdict, since one usually tests with a message of one's own,
+which a real pass stops as *sent by this account*. It carries the same
+automatic-reply headers but no `In-Reply-To` nor `References`, so it never
+joins a third party's conversation. It writes nothing to the rules log,
+counts towards no throttle nor cap, does not go through the outbox — offline
+it is refused and nothing is queued — and marks nothing answered. It is
+recorded as an automatic message, so its copy in Sent and its arrival in
+the inbox stay out of the statistics. When it arrives, the next pass logs
+it *automatic message* for every rule whose filter matches it: that line in
+the rules log comes from the trial, not from a stranger. A rule of a type
+this version does not run says so and sends nothing.
+
 ### From the CLI menu
 
 `Mail > [6] Incoming mail rules` asks for an account, then offers `[1]`
 list the rules (with a summary of each filter), `[2]` enable / disable one,
 `[3]` move one up or down, `[4]` delete one (asks first), `[5]` the latest
-50 lines of the rules log, `[0]` back. Creating and editing a rule go through `e`
-in the TUI: a filter tree is not typed line by line. A rule enabled from the
-menu is armed at its next pass.
+50 lines of the rules log, `[6]` the statistics report settings, `[7]` try
+a rule on a message, `[0]` back. `[6]` prints the time zone, asks each
+setting with its current value as default — `-` empties the language or
+the server identifier — saves them, then prints `{{rapport}}` computed on
+the cache, without a requester. `[7]` asks for a rule, opens the account
+like `[3] Synchronise now` — online when it can, for the full headers —,
+lists the 20 most recent inbox messages, prints for the chosen one what the
+`s` screen shows, then offers to send the trial to yourself. Creating and
+editing a rule go through `e` in the TUI: a filter tree is not typed line
+by line. A rule enabled from the menu is armed at its next pass.
 
 ### Where rules live
 
-`~/.erplibre/mail/.rules/<account>/rules.json` holds the rules and the
-caps, mode 0600, **in clear text even when the cache is encrypted** — the
-same exposure as `accounts.json`. It carries the filter values (the
-addresses and words you filter on) and the body of the reply. The images
-are copied beside it under `media/`; `state.json` records where the engine
-stopped in the inbox. The rules log itself lives in the account's
+`~/.erplibre/mail/.rules/<account>/rules.json` holds the rules, the caps
+and the report settings (`report` key), mode 0600, **in clear text even
+when the cache is encrypted** — the same exposure as `accounts.json`. It
+carries the filter values (the addresses and words you filter on) and the
+body of the reply. The images are copied beside it under `media/`;
+`state.json` records where the engine stopped in the inbox, and
+`report_snapshot.json` (0600) the mailbox part of the day's report — counts
+and a delay, no address. The rules log itself lives in the account's
 `cache.db`, sealed with it. Keys this version does not know are kept when
-the file is rewritten, and a rule of a kind it does not run yet — forward,
-statistics report — is shown and left alone; a file of a newer format
-version is refused and left untouched.
+the file is rewritten, and a rule of a kind it does not run yet — forward —
+is shown and left alone; a file of a newer format version is refused and
+left untouched.
 
 ## Managing folders
 
@@ -1044,6 +1281,14 @@ scope — so that no more than 180 bars are drawn: ten years of archives are
 read by month, twenty by year rather than as seven thousand daily bars. Only the most recent slices are listed — the totals above them
 count every slice of the period, and the screen says how many it left out.
 
+At the top of the screen, an **activity** section gives the inbox's daily
+table of the statistics report: received, read and answered for each of the
+last *N* closed days, *N* being the days of the report settings (`I`, 7 by
+default), with their total. It counts exactly as the report does (see "The
+statistics report") and ignores the step, the period and the scope chosen
+below, which its title says. It is computed once when the screen opens, in
+SQL alone, without opening a sealed column.
+
 Two figures are honest about what they cannot know:
 
 - **Messages with no readable date** are excluded from the histogram and
@@ -1131,8 +1376,8 @@ stands and the next pass tries again.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **Rules only reply** — a rule cannot yet forward a message nor send a
-  statistics report; a rule of either kind is kept and shown, never run.
+- **Rules do not forward** — a rule cannot yet forward a message; a
+  forward rule is kept and shown, never run.
 - **No headless service** — rules run only while the TUI is open or when
   `Mail > [3] Synchronise now` runs; with both closed, nothing is answered.
 - **No `\Answered` from the outbox** — a manual reply marks the original

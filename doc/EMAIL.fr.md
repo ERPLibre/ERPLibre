@@ -208,6 +208,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `e` | ouvre les règles du courrier entrant du compte courant (voir « Règles du courrier entrant ») |
 | `Shift+F` | ouvre l'écran des dossiers : créer, renommer, supprimer (voir « Gérer les dossiers ») |
 | `i` | ouvre l'écran de statistiques (voir « Statistiques ») |
+| `Shift+I` | ouvre les paramètres du rapport de statistiques du compte courant (voir « Le rapport de statistiques ») |
 | `n` | ajouter un compte sans quitter le client |
 | `l` | affiche la fin de `~/.erplibre/mail.log` et les erreurs de synchronisation de la session |
 | `q` | quitter |
@@ -511,9 +512,12 @@ qui refuse un message cite le destinataire qu'il refuse.
 Une règle répond seule au courrier entrant : quand un nouveau message de la
 boîte de réception correspond à son filtre, le client envoie la réponse de
 la règle à l'expéditeur. Chaque compte a sa liste ordonnée de règles. Cette
-version exécute un type d'action, la **réponse personnalisée** ; la
-redirection et le rapport de statistiques viendront ensuite (voir « Ce que
-le client ne fait pas encore »).
+version exécute deux types d'action : la **réponse personnalisée**, et le
+**rapport de statistiques** — une réponse personnalisée dont le texte porte
+des chiffres calculés sur la boîte (voir « Le rapport de statistiques »).
+La redirection viendra ensuite (voir « Ce que le client ne fait pas
+encore »). Toute règle s'essaie sur un message récent avant de répondre à
+un vrai (voir « Tester une règle »).
 
 ### Quand les règles tournent
 
@@ -556,6 +560,7 @@ statut affiche *Boîte de réception renumérotée : règles réarmées.*
 | `k` / `j` | la monter / la descendre |
 | `t` | basculer « arrêter ici » |
 | `x` | la supprimer (demande confirmation) |
+| `s` | l'essayer sur un message récent de la boîte de réception (voir « Tester une règle ») |
 | `l` | le journal des règles : les 200 dernières décisions — date, règle, résultat, raison, expéditeur, sujet |
 | `Échap` | fermer |
 
@@ -568,12 +573,18 @@ message qui correspond à deux règles reçoit deux réponses. Une règle
 « arrêter ici » clôt la liste pour ce message dès que son filtre a
 correspondu — même si un garde-fou a empêché sa réponse de partir.
 
-L'éditeur porte le nom, « Règle active », « Arrêter ici », la limite (voir
+L'éditeur porte le type d'action (*Réponse personnalisée* ou *Rapport de
+statistiques*), le nom, « Règle active », « Arrêter ici », la limite (voir
 « Garde-fous »), l'âge maximal en heures (48 par défaut, de 1 à 720), le
 nombre de premiers envois retenus pour approbation (1 par défaut, de 1 à
-10), le filtre, et un bouton *Réponse personnalisée…*. `Ctrl+S`
-enregistre, `Échap` annule ; un champ qui ne se valide pas garde la fenêtre
-ouverte, la raison sur sa ligne d'état.
+10), le filtre, et un bouton qui ouvre le formulaire de réponse —
+*Réponse personnalisée…* ou *Rapport de statistiques…* selon le type.
+Changer de type ramène la limite au défaut du nouveau type quand elle
+valait encore celui de l'ancien, et un corps resté égal au texte par
+défaut de l'ancien type prend celui du nouveau ; un corps écrit à la main
+est gardé. Une règle d'un type que cette version n'exécute pas montre son
+type grisé. `Ctrl+S` enregistre, `Échap` annule ; un champ qui ne se
+valide pas garde la fenêtre ouverte, la raison sur sa ligne d'état.
 
 ### Filtres
 
@@ -665,6 +676,190 @@ marqueur `X-Loop`, pour que les autres répondeurs se taisent, ainsi
 qu'`In-Reply-To` et `References`, pour rejoindre la conversation. Une copie
 est classée dans Envoyés ; l'original n'est pas marqué répondu.
 
+### Le rapport de statistiques
+
+Une règle de type *Rapport de statistiques* répond par une réponse
+personnalisée dont le corps est un **gabarit** : le texte que vous écrivez,
+dans les trois mêmes formats et avec les mêmes images, où `{{nom}}` est
+remplacé par un chiffre calculé sur la boîte de réception du compte. Il dit
+à un correspondant combien la boîte est chargée et en combien de temps une
+réponse arrive d'ordinaire. *Rapport de statistiques…* ouvre le formulaire
+de réponse avec, sous le corps, la liste des variables, une liste
+déroulante et *Insérer la variable*, qui écrit `{{nom}}` au curseur.
+L'aperçu se calcule sur les vrais chiffres de la boîte mais sans
+demandeur : le délai propre au demandeur y vaut `—`, et l'essai (`s`) le
+montre pour un vrai expéditeur. Une règle de statistiques neuve commence
+par un court corps qui se termine par `{{rapport}}`.
+
+| Variable | Remplacée par |
+|---|---|
+| `{{rapport}}` | le rapport entier : tableau par jour, tableau par semaine, délai de la boîte, délai du demandeur, date et fuseau |
+| `{{rapport_jours}}` | le tableau par jour, avec son titre |
+| `{{rapport_semaines}}` | le tableau par semaine ISO, avec son titre ; vide quand le rapport n'a pas de semaines |
+| `{{recus_total}}` | les messages reçus sur la période du tableau par jour |
+| `{{lus_total}}` | parmi eux, ceux qui sont lus |
+| `{{repondus_total}}` | parmi eux, ceux qui sont répondus |
+| `{{delai_moyen}}` | le délai moyen de réponse aux propres messages du demandeur |
+| `{{delai_moyen_boite}}` | le délai moyen de réponse de la boîte, arrondi |
+| `{{demandeur_recus}}` | les messages du demandeur reçus dans la fenêtre des délais |
+| `{{demandeur_repondus}}` | parmi eux, ceux qui sont répondus |
+| `{{jours}}`, `{{semaines}}`, `{{fenetre_jours}}` | le nombre de jours, de semaines, et de jours de la fenêtre des délais |
+| `{{periode_debut}}`, `{{periode_fin}}` | le premier et le dernier jour de la période (`AAAA-MM-JJ` ; le dernier est hier) |
+| `{{date_rapport}}` | la date, l'heure et le décalage UTC du rapport |
+
+Les noms s'écrivent tels quels — sensibles à la casse, blancs admis entre
+les accolades (`{{ rapport }}`). Les trois premiers sont des **blocs** —
+paragraphes et tableaux — et vont sur une ligne à eux ; les autres sont des
+valeurs courtes. Une valeur manquante s'affiche `—`. En HTML écrit à la
+main, un bloc ne va pas dans une balise, et le sujet n'accepte que les
+valeurs courtes ; pour le reste, le sujet se comporte comme celui d'une
+réponse personnalisée (`{subject}`, `Auto:` quand il est vide). Un nom
+inconnu est refusé à l'enregistrement de la règle, et un `rules.json`
+modifié à la main qui en cite un échoue à l'envoi avec *message impossible
+à construire*. Une réponse personnalisée, elle, refuse ces noms : les
+chiffres ne sortent que par une règle de statistiques et ses garde-fous.
+
+`{{rapport}}` en français (la langue du rapport se règle par `I`, plus
+bas) :
+
+```
+Activité des 7 derniers jours
+
+Jour        Reçus  Lus  Répondus
+2026-10-21      3    3         2
+2026-10-22      5    4         3
+2026-10-23      2    2         1
+2026-10-24      0    0         0
+2026-10-25      1    1         0
+2026-10-26      6    5         4
+2026-10-27      4    3         2
+Total          21   18        12
+
+Par semaine ISO (4 dernières)
+
+Semaine   Du          Reçus  Lus  Répondus
+2026-W40  2026-09-28     18   17        11
+2026-W41  2026-10-05     22   20        14
+2026-W42  2026-10-12     15   15         9
+2026-W43  2026-10-19     19   16        12
+Total                    74   68        46
+
+Délai moyen de réponse de la boîte (30 derniers jours) : 2 h 30 min
+
+Votre délai moyen de réponse (30 derniers jours) : 12 h 35 min (sur 2 délais connus)
+
+Rapport du 2026-10-28 09:12 +0000
+Jours et semaines en heure locale (UTC+00:00).
+```
+
+Dans les formats HTML, les tableaux sont des tableaux HTML ; en Markdown,
+la partie texte les porte comme ci-dessus.
+
+**Ce qui est compté.**
+
+- **Reçus** — les messages de la boîte de réception, datés par la date de
+  réception du serveur (`INTERNALDATE`) ; un message mis en cache avant
+  que cette date soit enregistrée se rabat sur son en-tête `Date`.
+- **Lus** — parmi les messages reçus ce jour-là ou cette semaine-là, ceux
+  qui portent `\Seen` *maintenant*. Les trois colonnes d'une ligne parlent
+  des mêmes messages : lus et répondus ne dépassent jamais reçus. Les jours
+  étant clos et les chiffres figés pour la journée (plus bas), « lus » n'est
+  pas un accusé de lecture.
+- **Répondus** — le message porte `\Answered`, ou une réponse à ce message
+  se trouve dans un dossier Envoyés (celui que le serveur marque `\Sent`,
+  ou le dossier Envoyés du compte par son nom). Sans dossier Envoyés, seul
+  `\Answered` compte et aucun délai n'est connu.
+- **Délai** — de la réception d'un message à sa première réponse datée
+  après elle (en-tête `Date` de la réponse). La moyenne de la boîte porte
+  sur les messages reçus pendant les *fenêtre* derniers jours clos ; sous
+  **5** délais connus, le rapport dit qu'il y en a trop peu pour une
+  moyenne, et au-delà la moyenne est arrondie — à 5 minutes sous une heure,
+  à 15 minutes sous un jour, à l'heure au-delà. Le délai du demandeur porte
+  sur ses propres messages des *fenêtre* derniers jours, exact et sans
+  seuil.
+- **Périodes** — le tableau par jour porte les *N* derniers jours **clos**,
+  jusqu'à hier ; aujourd'hui n'y figure jamais. Le tableau par semaine
+  porte les *M* dernières semaines ISO complètes, du lundi au dimanche,
+  libellées `AAAA-Wss` avec la date de leur lundi ; la semaine courante en
+  est exclue, et le 1er janvier 2027 appartient à `2026-W53`. Les totaux
+  sont ceux du tableau par jour. Jours et semaines suivent le fuseau du
+  processus (variable `TZ`), que le rapport indique.
+- **Exclus partout** — les messages automatiques : la synchronisation
+  reconnaît `Auto-Submitted` (toute valeur autre que `no`) et le marqueur
+  `X-Loop` d'un client ERPLibre dans tous les dossiers, si bien que nos
+  propres réponses automatiques restent dehors même après une recréation
+  du cache, comme celles d'un tiers. Un message dont le `Message-ID` est
+  déjà arrivé compte une fois : la première copie seulement, et une copie
+  ultérieure n'hérite ni de la réponse ni du délai.
+
+**Figé pour la journée.** La partie boîte — tableaux, totaux, délai de la
+boîte — est calculée au plus une fois par jour local et par jeu de
+réglages, puis relue de `report_snapshot.json` : toutes les demandes d'une
+journée voient les mêmes chiffres, même si un message a été lu entre-temps.
+La partie du demandeur est calculée à chaque réponse. Les aperçus (`I`, le
+formulaire, `i`) calculent en direct.
+
+**Limites connues.** La synchronisation ne relit `\Seen` et `\Answered` que
+pour les 500 messages les plus récents de chaque dossier : au-delà, lus et
+répondus par drapeau sont ceux du premier téléchargement, d'où le tableau
+par semaine borné à 8 semaines. Un message reçu un jour montre, dans la
+colonne « lus » de ce jour, son état à la première demande du lendemain :
+un expéditeur apprend au mieux, une fois par jour, si son message avait été
+lu à ce moment. De petits volumes donnent des comptes quotidiens de 0 ou
+1 ; ils décrivent la boîte, comme voulu.
+
+**Qui le reçoit, et quand.** Le rapport part vers l'adresse **De** — celle
+que l'authentification garantit et celle que concerne le délai du
+demandeur —, jamais vers `Return-Path` ni vers `Reply-To`. Une adresse de
+`Return-Path` est tout de même contrôlée comme l'expéditeur : un automate,
+ce compte ou un autre compte configuré à cet endroit arrête la réponse, et
+`Return-Path: <>` est un expéditeur vide. Le rapport ne porte que des
+agrégats et le délai propre au demandeur : ni adresse, ni nom, ni sujet
+d'un autre message.
+
+En plus des garde-fous de toute règle, un rapport de statistiques exige un
+**expéditeur authentifié**. Le **premier** en-tête `Authentication-Results`
+— celui que le serveur de réception ajoute au-dessus — doit porter
+`dmarc=pass` avec `header.from` égal au domaine du De, ou `dkim=pass` avec
+`header.d`, ou `spf=pass` avec `smtp.mailfrom`, égal à ce domaine ou à l'un
+de ses sous-domaines. Sinon, le message est journalisé *expéditeur non
+authentifié* et ne reçoit rien. Si votre serveur de réception n'ajoute pas
+du tout cet en-tête, le premier vient de l'expéditeur, qui peut y écrire ce
+qu'il veut : réglez l'**identifiant du serveur** (`I`, plus bas) sur le nom
+que votre serveur écrit avant son premier `;` (par exemple
+`mx.example.org`), et le premier en-tête devra alors le nommer. Cela ne
+protège que si votre serveur **retire** les `Authentication-Results`
+entrants qui portent son identifiant (RFC 8601, section 5) ; sinon un
+faussaire écrit cet identifiant, qui est public. Certains serveurs ouvrent
+l'en-tête sur un résultat (`spf=pass …`) plutôt que sur un identifiant :
+avec eux, un identifiant réglé ne correspond jamais, et l'essai le dit.
+
+La limite d'une règle de statistiques est cochée par défaut avec **1440
+minutes** (un jour). Chaque règle de statistiques envoie en plus au plus
+**20** rapports par 24 heures glissantes : au-delà, une demande est
+journalisée *plafond quotidien du rapport atteint*, rien n'est mis en file,
+et le plafond horaire du compte n'est pas entamé. Les plafonds du compte et
+l'approbation du premier envoi valent comme pour toute règle : le premier
+rapport réel attend **retenu** dans la file d'envoi (`o`), avec les
+chiffres du moment où il a été construit.
+
+**Paramètres du rapport — `I`.** Dans le client, `I` ouvre les paramètres
+du rapport du compte courant : jours du tableau par jour (de 1 à 31, 7 par
+défaut), semaines ISO (de 0 à 8, 4 par défaut ; 0 retire le tableau par
+semaine), fenêtre des délais en jours (de 1 à 365, 30 par défaut), format
+donné aux nouvelles règles de statistiques, langue du rapport (celle de
+l'interface, français ou anglais — les libellés du rapport seulement, votre
+texte reste tel quel) et identifiant du serveur. Le fuseau est affiché,
+non réglable. Dessous, un aperçu de `{{rapport}}` sur la vraie boîte, pour
+le demandeur écrit dans son champ — prérempli avec l'expéditeur du message
+sélectionné, vide à défaut —, recalculé par *Recalculer l'aperçu* à partir
+des champs tels que saisis, avant tout enregistrement. `Ctrl+S`
+enregistre, `Échap` ferme. Tant que l'identifiant du serveur est vide, la
+fenêtre avertit que tout premier `Authentication-Results` est cru. Les
+réglages vivent sous la clé `report` de `rules.json` ; si cette clé est
+illisible, les règles de statistiques sont écartées avec un avertissement
+et les réponses personnalisées continuent.
+
 ### Garde-fous
 
 Avant qu'une réponse parte, les contrôles de la règle s'exécutent dans cet
@@ -690,6 +885,7 @@ sous la raison indiquée.
 | autre compte configuré | vient d'un autre compte configuré dans le client |
 | non adressé à ce compte | ne nomme ce compte ni dans À ni dans Cc — une copie en Cci, une liste, un alias |
 | authentification en échec | est marqué `dmarc=fail`, ou `spf=fail` sans `dkim=pass`, par l'`Authentication-Results` du serveur de réception : répondre enverrait notre réponse à la personne dont l'adresse a été usurpée |
+| expéditeur non authentifié | rapport de statistiques seulement : ne porte aucun premier `Authentication-Results` qui authentifie le domaine du De (voir « Le rapport de statistiques ») |
 | limité | vient d'un expéditeur auquel cette règle a répondu récemment (ci-dessous) |
 
 **Ne pas renvoyer si message reçu à l'intérieur de N minutes.** Case
@@ -758,28 +954,91 @@ une autre passe est en cours.* ; la passe suivante reprend où elle s'était
 arrêtée. Une passe rattrape au plus 200 messages ; les plus anciens sont
 ignorés, avec un avertissement.
 
+### Tester une règle
+
+`s` dans la liste des règles essaie la règle sous le curseur sans attendre
+un vrai message. Il liste les 50 messages les plus récents de la boîte de
+réception en cache ; `Entrée` sur l'un d'eux montre ce que la règle en
+ferait, sans rien écrire. En ligne, les en-têtes complets du message
+(`Authentication-Results`, `Return-Path`, `List-Id`…) sont lus sur le
+serveur, et son corps par `BODY.PEEK` : il reste non lu. Hors ligne,
+l'essai travaille sur la ligne du cache — sans Cc ni ces en-têtes —, dit
+que le verdict est partiel, et lit le corps dans le cache quand il s'y
+trouve ; sans lui, une condition sur le Corps reste inconnue. Il fait de
+même en ligne quand le serveur a renuméroté la boîte de réception depuis la
+dernière synchronisation : un numéro du cache pourrait alors désigner un
+autre message.
+
+Le résultat montre, dans l'ordre : un avertissement quand la règle est
+désactivée ; l'arbre du filtre avec l'issue de chaque nœud (✓, ✗, `?` quand
+le corps manque) et si le message correspond ; le **verdict** —
+*répondrait*, ou la raison que donnerait une vraie passe (trop vieux, déjà
+traité, envoyé par ce compte…) ; et, s'il diffère, le verdict **pour un
+message neuf**, comme si celui-ci venait d'arriver après l'armement de la
+règle — armement, âge et « déjà traité » mis à part, les autres garde-fous,
+limite comprise, s'appliquent toujours. Quand une réponse serait décidée,
+l'essai dit aussi si le moteur la **retiendrait**, et pourquoi : tant
+qu'une règle n'a pas réellement envoyé ses premières réponses, chaque
+nouvelle est retenue pour relecture — le premier rapport réel l'est
+toujours — et se libère dans la file d'envoi (`o`). Un rapport de
+statistiques qui a atteint son plafond quotidien n'est pas retenu mais
+écarté : le verdict dit alors *plafond quotidien du rapport atteint*, et
+rien n'arriverait dans la file d'envoi. Pour un rapport de
+statistiques, il montre l'identifiant de serveur lu dans le premier
+`Authentication-Results` (ou que le serveur n'en écrit pas), si
+l'expéditeur est authentifié, et un avertissement tant qu'aucun
+identifiant n'est réglé. Puis le destinataire, le sujet, le texte de la
+réponse, ses images et leur rôle, ou l'erreur qui empêche de la construire.
+
+**Envoyer un essai à moi-même** envoie cette réponse à l'adresse même du
+compte, sujet préfixé de `[Essai]`, dès que la réponse a pu être construite
+— quel que soit le verdict, car on essaie d'ordinaire avec un message à
+soi, qu'une vraie passe arrête en *envoyé par ce compte*. Il porte les
+mêmes en-têtes de réponse automatique mais ni `In-Reply-To` ni
+`References` : il n'entre jamais dans la conversation d'un tiers. Il
+n'écrit rien au journal des règles, ne compte dans aucune limite ni aucun
+plafond, ne passe pas par la file d'envoi — hors ligne il est refusé et
+rien n'est mis en file — et ne marque rien répondu. Il est inscrit comme
+message automatique : sa copie dans Envoyés et son arrivée dans la boîte
+de réception restent hors des statistiques. À son arrivée, la passe
+suivante le journalise *message automatique* pour chaque règle dont le
+filtre le retient : cette ligne du journal vient de l'essai, pas d'un
+inconnu. Une règle d'un type que cette version n'exécute pas le dit et
+n'envoie rien.
+
 ### Depuis le menu CLI
 
 `Courriel > [6] Règles du courrier entrant` demande un compte, puis propose
 `[1]` lister les règles (avec un résumé de chaque filtre), `[2]` en
 activer / désactiver une, `[3]` en monter ou descendre une, `[4]` en
 supprimer une (demande confirmation), `[5]` les 50 dernières lignes du
-journal des règles, `[0]` retour. Créer et modifier une règle passent par `e`
-dans le TUI : un arbre de filtre ne se saisit pas ligne à ligne. Une règle
-activée depuis le menu est armée à sa passe suivante.
+journal des règles, `[6]` les paramètres du rapport de statistiques, `[7]`
+essayer une règle sur un message, `[0]` retour. `[6]` imprime le fuseau,
+demande chaque réglage avec sa valeur actuelle pour défaut — `-` vide la
+langue ou l'identifiant du serveur —, les enregistre, puis imprime
+`{{rapport}}` calculé sur le cache, sans demandeur. `[7]` demande une
+règle, ouvre le compte comme `[3] Synchroniser maintenant` — en ligne
+quand il le peut, pour les en-têtes complets —, liste les 20 messages les
+plus récents de la boîte de réception, imprime pour celui qu'on choisit ce
+que montre l'écran `s`, puis propose d'envoyer l'essai à vous-même. Créer
+et modifier une règle passent par `e` dans le TUI : un arbre de filtre ne
+se saisit pas ligne à ligne. Une règle activée depuis le menu est armée à
+sa passe suivante.
 
 ### Où vivent les règles
 
-`~/.erplibre/mail/.rules/<compte>/rules.json` porte les règles et les
-plafonds, en mode 0600, **en clair même quand le cache est chiffré** — la
-même exposition qu'`accounts.json`. Il contient les valeurs des filtres (les
-adresses et les mots sur lesquels on filtre) et le corps de la réponse. Les
-images sont copiées à côté, sous `media/` ; `state.json` retient où le
-moteur s'est arrêté dans la boîte de réception. Le journal des règles, lui,
-vit dans le `cache.db` du compte, scellé avec lui. Les clés que cette
-version ne connaît pas sont gardées quand le fichier est réécrit, et une
-règle d'un type qu'elle n'exécute pas encore — redirection, rapport de
-statistiques — est affichée et laissée telle quelle ; un fichier d'une
+`~/.erplibre/mail/.rules/<compte>/rules.json` porte les règles, les
+plafonds et les paramètres du rapport (clé `report`), en mode 0600, **en
+clair même quand le cache est chiffré** — la même exposition
+qu'`accounts.json`. Il contient les valeurs des filtres (les adresses et
+les mots sur lesquels on filtre) et le corps de la réponse. Les images sont
+copiées à côté, sous `media/` ; `state.json` retient où le moteur s'est
+arrêté dans la boîte de réception, et `report_snapshot.json` (0600) la
+partie boîte du rapport du jour — des comptes et un délai, aucune adresse.
+Le journal des règles, lui, vit dans le `cache.db` du compte, scellé avec
+lui. Les clés que cette version ne connaît pas sont gardées quand le
+fichier est réécrit, et une règle d'un type qu'elle n'exécute pas encore —
+redirection — est affichée et laissée telle quelle ; un fichier d'une
 version de format plus récente est refusé et laissé intact.
 
 ## Gérer les dossiers
@@ -1111,6 +1370,15 @@ barres quotidiennes. Seules les tranches les
 plus récentes sont listées — les totaux au-dessus, eux, comptent toutes les
 tranches de la période, et l'écran annonce combien il en a laissées.
 
+En tête de l'écran, une section d'**activité** donne le tableau par jour de
+la boîte de réception du rapport de statistiques : reçus, lus et répondus
+pour chacun des *N* derniers jours clos, *N* étant les jours des paramètres
+du rapport (`I`, 7 par défaut), avec leur total. Elle compte exactement
+comme le rapport (voir « Le rapport de statistiques ») et ignore le pas, la
+période et la portée choisis plus bas, ce que dit son titre. Elle est
+calculée une fois à l'ouverture de l'écran, en SQL seul, sans ouvrir de
+colonne scellée.
+
 Deux chiffres disent honnêtement ce qu'ils ignorent :
 
 - **Les messages sans date lisible** sont exclus de l'histogramme et comptés
@@ -1205,9 +1473,9 @@ jeton en place vaut toujours et la passe suivante réessaie.
   navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
   un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
-- **Les règles ne font que répondre** — une règle ne sait pas encore
-  rediriger un message ni envoyer un rapport de statistiques ; une règle
-  de l'un de ces types est gardée et affichée, jamais exécutée.
+- **Les règles ne redirigent pas** — une règle ne sait pas encore
+  rediriger un message ; une règle de redirection est gardée et affichée,
+  jamais exécutée.
 - **Pas de service sans interface** — les règles ne tournent que TUI
   ouvert ou pendant `Courriel > [3] Synchroniser maintenant` ; les deux
   fermés, rien ne reçoit de réponse.

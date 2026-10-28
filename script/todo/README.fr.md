@@ -8,9 +8,13 @@ Le paquet `mail/` est le client courriel accessible depuis
 `Assistant > Courriel` : plusieurs comptes IMAP/SMTP, un cache local, et un
 TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md). Son
 sous-paquet `mail/rules/` porte les règles du courrier entrant — modèle,
-filtre, garde-fous, rendu de la réponse, stockage et le moteur qui tourne
-après chaque passe de synchronisation (voir « Règles du courrier entrant »
-dans ce guide).
+filtre, garde-fous, rendu de la réponse, rapport de statistiques
+(`report.py`), stockage et le moteur qui tourne après chaque passe de
+synchronisation (voir « Règles du courrier entrant » dans ce guide). Depuis
+le menu, `Courriel > [6] Règles du courrier entrant` liste et ordonne les
+règles ; son `[6]` règle le rapport de statistiques d'un compte et en
+imprime un aperçu, son `[7]` essaie une règle sur un message récent de la
+boîte de réception et peut envoyer l'essai au compte lui-même.
 
 ## Où vit le code
 
