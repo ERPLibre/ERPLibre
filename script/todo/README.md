@@ -8,12 +8,14 @@ The `mail/` package is the mail client reachable from `Assistant > Mail`:
 several IMAP/SMTP accounts, a local cache, and a Textual TUI. See
 [../../doc/EMAIL.md](../../doc/EMAIL.md). Its `mail/rules/` subpackage holds
 the incoming mail rules — model, filter, safeguards, reply rendering,
-the statistics report (`report.py`), storage and the engine that runs after
-each sync pass (see "Incoming mail rules" in that guide). From the menu,
-`Mail > [6] Incoming mail rules` lists and orders the rules; its `[6]` sets
-the statistics report of an account and prints a preview, its `[7]` tries a
-rule on a recent inbox message and can send the trial to the account
-itself.
+the statistics report (`report.py`), forwarding (inline, as an attachment,
+or a true redirect under `Resent-*`, to one or more destinations), storage
+and the engine that runs after each sync pass (see "Incoming mail rules" in
+that guide). From the menu, `Mail > [6] Incoming mail rules` lists the
+rules — a forward rule with its mode and destinations under its filter —
+and orders them; its `[6]` sets the statistics report of an account and
+prints a preview, its `[7]` tries a rule on a recent inbox message and can
+send the trial to the account itself.
 
 ## Where the code lives
 
