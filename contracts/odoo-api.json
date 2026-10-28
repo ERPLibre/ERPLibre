@@ -1411,7 +1411,7 @@
           {
             "method": "register_devices",
             "kwargs": {
-              "endpoint": "{ntfy url as Odoo reaches it}/{topic} — the topic is the account's secret (prefix up<10 chars> + 22 random)",
+              "endpoint": "{ntfy url as Odoo reaches it}/{topic} — the topic is the account's secret (prefix up + 8 chars, 10 in all, + 22 random)",
               "keys": {
                 "p256dh": "{subscription public key}",
                 "auth": "{subscription auth secret}"
@@ -1429,7 +1429,7 @@
         ]
       },
       "response": "register_devices and unregister_devices answer nothing the app reads; a JSON-RPC error marks the registration refused for the session, a network failure offline (retried next session)",
-      "notes": "A known endpoint is never updated: register_devices called again with the endpoint Odoo holds changes nothing, and a different p256dh or auth for it is ignored, so keys never change for a topic and new keys come with a new topic, hence a new endpoint. When Odoo's VAPID keys are drawn again the rows it held under the old key are wiped, and the same call then creates a new row; the app sends the key it just read, so the registration is renewed by the next session. unregister_devices deletes the row of the endpoint without checking that it belongs to the calling partner, so the secret topic is the only credential; the app unregisters the endpoints it replaced, and the native side unregisters when the user revokes the phone. The private key of the subscription and the ntfy token stay in native code; only the public key and the auth secret reach JS and the database (chat_push). Odoo 18 only; works with erplibre_mobile_chat 1.4 or without the module."
+      "notes": "A known endpoint is never updated: register_devices called again with the endpoint Odoo holds changes nothing, and a different p256dh or auth for it is ignored, so keys never change for a topic and new keys come with a new topic, hence a new endpoint. When Odoo's VAPID keys are drawn again the rows it held under the old key are wiped, and the same call then creates a new row; the app sends the key it just read, so the registration is renewed by the next session. unregister_devices deletes the row of the endpoint without checking that it belongs to the calling partner, so the secret topic is the only credential; the app unregisters the endpoints it replaced, and native code unregisters those of an account removed while Odoo could not be told. Revoking the phone in todo.py deletes its ntfy user, so its token stops reading; Odoo keeps its devices and goes on publishing to their topics until the app removes the account or applies a new link. The private key of the subscription and the ntfy token stay in native code; only the public key and the auth secret reach JS and the database (chat_push). Odoo 18 only; works with erplibre_mobile_chat 1.4 or without the module."
     },
     "chat.push.payload": {
       "description": "What Odoo publishes to the ntfy topic and what the phone reads: an RFC 8291 (aes128gcm) Web Push body, base64 in the ntfy message, decrypted on the phone with the subscription keys",
@@ -1441,7 +1441,7 @@
         "channel_mention": "same shape; the title is \"#{channel} - {author}\", pushed only for a message that mentions the user",
         "record_comment": "{title: \"{author}: {record name}\", options: {icon, data: {model: \"{record model}\", res_id}, body}} — a comment on a followed record: data holds no action"
       },
-      "notes": "The payload carries no message id and no channel type: the phone tells the shapes apart by data.model and the title, and de-duplicates by the ntfy message id (SeenIds), then asks nothing more of Odoo. Odoo encodes the JSON with ensure_ascii and the body is html2plaintext of the message (a space stays after a mention link). Odoo expects ntfy to answer 201 and ntfy answers 200: without erplibre_mobile_chat 1.5 each successful push logs an Odoo warning that carries the endpoint, which is the secret topic, so an Odoo log is as sensitive as the topic (module 1.5, lot 2, fixes it). Odoo publishes synchronously inside the request that posts the message and only when fewer than 5 devices are among the recipients: a device whose ntfy accepts the connection and never answers costs up to 5 s more per device, a closed port fails at once. Odoo never retries a push. Whether a message is pushed follows Odoo's own notification rules (all, mentions, nothing, per conversation)."
+      "notes": "The payload carries no message id and no channel type: the phone tells the shapes apart by data.model and the title, and de-duplicates by the ntfy message id (SeenIds), then asks nothing more of Odoo. Odoo encodes the JSON with ensure_ascii and the body is html2plaintext of the message (a space stays after a mention link). Odoo expects ntfy to answer 201 and ntfy answers 200: without erplibre_mobile_chat 1.5 each successful push logs an Odoo warning that carries the endpoint, which is the secret topic, so an Odoo log is as sensitive as the topic (module 1.5, lot 2, fixes it). Odoo publishes synchronously inside the request that posts the message and only when fewer than 5 devices are among the recipients: a device whose ntfy accepts the connection and never answers costs up to 5 s more per device, a closed port fails at once. Odoo never retries a push. Whether a message is pushed follows Odoo's own notification rules: the general setting (all, mentions, nothing) and a conversation's mute; chat and group pushes ignore a conversation's own notification setting, only a mute stops them."
     },
     "chat.push.summary": {
       "description": "The unread summary the phone computes itself when it has no push to read (an account without ntfy, or a phone silent longer than the ntfy cache); one notification per server",
@@ -1463,7 +1463,7 @@
       "request": {
         "access": {
           "up*": "anonymous write-only: Odoo publishes without an account",
-          "<prefix>*": "the phone's user, read-only, with its token (Authorization: Bearer); the prefix is up + 10 chars, one per phone",
+          "<prefix>*": "the phone's user, read-only, with its token (Authorization: Bearer); the prefix is up + 8 chars (10 in all), one per phone",
           "other": "no access"
         },
         "read": "a streaming GET of /{topic}/json, or poll=1 with since={last ntfy message id} for a check at an interval"
