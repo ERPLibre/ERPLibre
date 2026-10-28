@@ -98,7 +98,7 @@ eachVersionFrom(18, "chat realtime", (target) => {
 			.toBe((await peer.adminMember(group)).message_unread_counter);
 	});
 
-	it("socket cut then reconnect delivers missed messages", async () => {
+	it("socket cut then reconnect delivers missed messages", { timeout: 150000 }, async () => {
 		// No jitter: the reconnect comes after the backoff's first step (1 s)
 		random = vi.spyOn(Math, "random").mockReturnValue(0);
 		const group = await peer.group(unique("group"));
@@ -114,8 +114,15 @@ eachVersionFrom(18, "chat realtime", (target) => {
 		const missed = [await peer.post(group, unique("missed-1")), await peer.post(group, unique("missed-2"))];
 		proxy.down = false;
 
-		// Frames apply in order: the last one applied, the one before it is too
-		await until("the missed messages after the reconnect", lastIs(env, src.configId, group, missed[1]), 30000);
+		// The first connection replays the bus from 0, and each message of a conversation the app does not
+		// hold in it reloads the account: a reload brings the conversation's last message ahead of the bus,
+		// so the wait is on both missed messages in the cache, not on the last one
+		const cachedIds = async () => (await env.chat.messages(src.configId, group)).map((m) => m.messageId);
+		await until("the missed messages after the reconnect", async () => {
+			const ids = await cachedIds();
+			return missed.every((id) => ids.includes(id));
+		}, 90000);
+		expect(await lastIs(env, src.configId, group, missed[1])()).toBe(true);
 		expect(sockets()).toBeGreaterThan(opened);
 		for (const id of missed) expect(delivered().some((n) => newMessage(n, id))).toBe(true);
 		const ids = (await env.chat.messages(src.configId, group)).map((m) => m.messageId);
