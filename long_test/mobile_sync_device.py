@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
@@ -50,7 +51,10 @@ PAQUET = "ca.erplibre.home.synctest"
 # L'app de l'utilisateur, à côté de l'app de test : une course ne la touche
 # jamais, et lancer() le vérifie
 APP_PERSO = "ca.erplibre.home"
-DEVICE_HOOK_API = 6
+DEVICE_HOOK_API = 7
+# La permission des notifications (Android 13+), accordée à l'app de test
+# par le scénario des notifications et retirée par rendre()
+NOTIFIER = "android.permission.POST_NOTIFICATIONS"
 APK_CACHE = odoo.CACHE / "apk"
 APK_PRODUIT = Path("android/app/build/outputs/apk/debug/app-debug.apk")
 # Ce que le pull compare : write_date, à la seconde
@@ -364,6 +368,8 @@ class Appareil:
     reste_allume: str = ""
     cdp: Cdp = None
     poses: list = field(default_factory=list)
+    notifications_accordees: bool = False
+    exemption_posee: bool = False
 
     def preparer(self, apk):
         adb("install", "-r", str(apk), executer=self.executer)
@@ -399,6 +405,19 @@ class Appareil:
             "1",
             executer=self.executer,
         )
+        self.joindre()
+
+    def joindre(self):
+        """La page de l'app de test qui tourne, jointe par CDP (son pid
+        relu : une app relancée par Android en a un autre), son hook prêt ;
+        une API de hook inconnue arrête la course."""
+        if self.cdp:
+            try:
+                self.cdp.fermer()
+            except OSError:
+                # La page d'un processus mort : sa prise est déjà fermée
+                pass
+            self.cdp = None
         pid = ""
         fin = time.monotonic() + 30
         while not pid and time.monotonic() < fin:
@@ -443,6 +462,45 @@ class Appareil:
                 f"hook de test d'API {api}, ce lanceur connaît l'API {DEVICE_HOOK_API}"
             )
 
+    def autoriser_notifications(self):
+        """POST_NOTIFICATIONS accordée à l'app de test (pm clear la retire :
+        à refaire après chaque relancer()). Avant Android 13 (API 33) la
+        permission n'existe pas et les notifications sont permises : rien
+        n'est accordé."""
+        sdk = adb(
+            "shell",
+            "getprop",
+            "ro.build.version.sdk",
+            executer=self.executer,
+        ).strip()
+        if not sdk.isdigit() or int(sdk) < 33:
+            return
+        adb("shell", "pm", "grant", PAQUET, NOTIFIER, executer=self.executer)
+        self.notifications_accordees = True
+
+    def exempter_batterie(self):
+        """L'app de test dans la liste d'exemption de l'optimisation de
+        batterie (deviceidle) ; rendre() l'en retire, sauf si elle y était
+        déjà avant la course."""
+        liste = adb(
+            "shell",
+            "dumpsys",
+            "deviceidle",
+            "whitelist",
+            executer=self.executer,
+        )
+        if re.search(rf",{re.escape(PAQUET)},", liste):
+            return
+        adb(
+            "shell",
+            "dumpsys",
+            "deviceidle",
+            "whitelist",
+            f"+{PAQUET}",
+            executer=self.executer,
+        )
+        self.exemption_posee = True
+
     def capture(self, chemin):
         Path(chemin).write_bytes(
             adb(
@@ -465,6 +523,28 @@ class Appareil:
             executer=self.executer,
             check=False,
         )
+        if self.notifications_accordees:
+            adb(
+                "shell",
+                "pm",
+                "revoke",
+                PAQUET,
+                NOTIFIER,
+                executer=self.executer,
+                check=False,
+            )
+            self.notifications_accordees = False
+        if self.exemption_posee:
+            adb(
+                "shell",
+                "dumpsys",
+                "deviceidle",
+                "whitelist",
+                f"-{PAQUET}",
+                executer=self.executer,
+                check=False,
+            )
+            self.exemption_posee = False
         for port in self.poses:
             adb(
                 "reverse",
@@ -2136,6 +2216,426 @@ def scenario_recherche_boite(ctx):
     )
 
 
+# ─── Notifications du clavardage, app fermée ──────────────────────────────────
+
+# Le délai le plus long d'un message posté à sa notification, app fermée
+POUSSEE_DELAI = 15
+# Le temps que se donne le service pour revenir de lui-même (START_STICKY)
+# après la mort du processus, avant que la tâche périodique soit forcée
+RETOUR_COLLANT = 20
+# Le temps total du retour du service, la tâche forcée comprise
+RETOUR_DELAI = 60
+# Le temps laissé à une notification qui ne doit pas venir, une fois le
+# message arrivé sur le ntfy
+SILENCE = 5
+TACHE_PERIODIQUE = 4823
+ID_PERMANENTE = 9101
+RECORD = re.compile(
+    r"NotificationRecord\(0x[0-9a-f]+: pkg=(?P<pkg>\S+) user=\S+"
+    r" id=(?P<id>-?\d+) tag=(?P<tag>.*?) importance=\d+ key=.*?:"
+    r" Notification\(channel=(?P<canal>\S+) .*?flags=(?P<flags>0x[0-9a-f]+)"
+    r" .*?vis=(?P<vis>[A-Z]+)"
+)
+
+
+def notifications(executer, paquet=PAQUET):
+    """Les notifications affichées du paquet selon dumpsys notification
+    --noredact (textes en clair) : une par NotificationRecord, avec son
+    tag, son id, son canal, ses drapeaux (int), sa visibilité et le texte
+    de son bloc (extras compris)."""
+    sortie = adb(
+        "shell", "dumpsys", "notification", "--noredact", executer=executer
+    )
+    debuts = [m.start() for m in re.finditer(r"NotificationRecord\(", sortie)]
+    trouvees = []
+    for i, debut in enumerate(debuts):
+        fin = debuts[i + 1] if i + 1 < len(debuts) else len(sortie)
+        bloc = sortie[debut:fin]
+        entete = RECORD.match(bloc)
+        if not entete or entete["pkg"] != paquet:
+            continue
+        trouvees.append(
+            {
+                "tag": None if entete["tag"] == "null" else entete["tag"],
+                "id": int(entete["id"]),
+                "canal": entete["canal"],
+                "flags": int(entete["flags"], 16),
+                "vis": entete["vis"],
+                "bloc": bloc,
+            }
+        )
+    return trouvees
+
+
+def extra(notification, nom):
+    """La valeur String d'un extra du bloc (android.title, android.text),
+    None quand il n'y est pas."""
+    trouve = re.search(
+        rf"^\s*{re.escape(nom)}=String \((.*)\)\s*$",
+        notification["bloc"],
+        re.MULTILINE,
+    )
+    return trouve.group(1) if trouve else None
+
+
+def attendre_notification(ctx, tag, condition=lambda n: True, delai=15):
+    """La notification de tag une fois affichée et condition vraie pour
+    elle, et le temps écoulé ; TimeoutError après delai secondes."""
+    debut = time.monotonic()
+    while True:
+        for n in notifications(ctx.appareil.executer):
+            if n["tag"] == tag and condition(n):
+                return n, time.monotonic() - debut
+        if time.monotonic() - debut > delai:
+            raise TimeoutError(f"aucune notification {tag} en {delai} s")
+        time.sleep(0.5)
+
+
+def empreinte(config_id):
+    """Les 12 premiers chiffres hexadécimaux du SHA-256 du config id : ce
+    qui nomme les canaux d'un serveur (chat.<h>, inbox.<h>)."""
+    return hashlib.sha256(config_id.encode()).hexdigest()[:12]
+
+
+def messages_ntfy(ntfy, sujet):
+    """Le nombre de messages que le ntfy de la course tient sur sujet, lu
+    avec le jeton du téléphone."""
+    requete = urllib.request.Request(
+        f"{ntfy['url']}/{sujet}/json?poll=1&since=all",
+        headers={"Authorization": f"Bearer {ntfy['token']}"},
+    )
+    with urllib.request.urlopen(requete, timeout=15) as reponse:
+        lignes = reponse.read().decode().splitlines()
+    return sum(1 for ligne in lignes if '"event":"message"' in ligne)
+
+
+def accueil(ctx):
+    """L'écran d'accueil d'Android : l'app passe à l'arrière-plan."""
+    adb(
+        "shell",
+        "input",
+        "keyevent",
+        "KEYCODE_HOME",
+        executer=ctx.appareil.executer,
+    )
+    ctx.cdp.attendre(f"{APP_ETAT}.then(s => !s.isActive)", delai=10)
+
+
+def toucher_notification(ctx, texte, delai=10):
+    """Le volet ouvert (cmd statusbar expand-notifications), la ligne
+    de notification qui affiche texte touchée en son centre, relevée par
+    uiautomator."""
+    executer = ctx.appareil.executer
+    adb("shell", "cmd", "statusbar", "expand-notifications", executer=executer)
+    fin = time.monotonic() + delai
+    try:
+        while True:
+            adb(
+                "shell",
+                "uiautomator",
+                "dump",
+                CONTENU_UI,
+                executer=executer,
+                check=False,
+            )
+            contenu = adb(
+                "shell", "cat", CONTENU_UI, executer=executer, check=False
+            )
+            debut = contenu.find("<?xml")
+            noeuds = []
+            if debut >= 0:
+                try:
+                    noeuds = list(ET.fromstring(contenu[debut:]).iter("node"))
+                except ET.ParseError:
+                    noeuds = []
+            noeud = next(
+                (n for n in noeuds if texte in (n.get("text") or "")), None
+            )
+            if noeud is not None:
+                x1, y1, x2, y2 = map(
+                    int, re.findall(r"\d+", noeud.get("bounds"))
+                )
+                adb(
+                    "shell",
+                    "input",
+                    "tap",
+                    str((x1 + x2) // 2),
+                    str((y1 + y2) // 2),
+                    executer=executer,
+                )
+                return
+            if time.monotonic() > fin:
+                raise TimeoutError(
+                    f"aucune notification « {texte} » dans le volet"
+                )
+            time.sleep(POSE)
+    finally:
+        adb("shell", "rm", "-f", CONTENU_UI, executer=executer, check=False)
+
+
+def premier_plan(ctx):
+    """L'app de test ramenée au premier plan (son lanceur)."""
+    adb(
+        "shell",
+        "monkey",
+        "-p",
+        PAQUET,
+        "-c",
+        "android.intent.category.LAUNCHER",
+        "1",
+        executer=ctx.appareil.executer,
+    )
+    ctx.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=10)
+
+
+def service_vivant(executer):
+    """Vrai quand le processus de l'app de test tourne avec son service
+    permanent démarré."""
+    if not adb(
+        "shell", "pidof", PAQUET, executer=executer, check=False
+    ).strip():
+        return False
+    services = adb(
+        "shell",
+        "dumpsys",
+        "activity",
+        "services",
+        PAQUET,
+        executer=executer,
+        check=False,
+    )
+    return "ChatPushService" in services
+
+
+def scenario_notifications(ctx):
+    """Les notifications du clavardage, l'app fermée, par le ntfy de la
+    course renvoyé au téléphone (adb reverse) : le lien appliqué au
+    niveau 1, le ntfy est « connecté » et une seule notification permanente
+    s'affiche. App à l'arrière-plan, un message de chat_user arrive en
+    POUSSEE_DELAI au plus sous le tag de sa conversation, dans le canal du
+    serveur, privé, sa version publique « Nouveau message — <libellé> »,
+    son texte en clair dans la notification. Le processus tué, le service
+    revient (START_STICKY, sinon la tâche forcée) et le message suivant
+    s'empile dans la même notification. Touchée dans le volet, elle ouvre
+    la conversation et s'efface. App au premier plan, rien ne s'affiche ;
+    « Jamais affiché », titre et texte ne disent que « Nouveau message ».
+    Le ntfy retiré, la tâche forcée affiche le sommaire direct d'Odoo
+    « 2 nouveaux messages — <libellé> », sans rien marquer lu sur le
+    serveur. Rend le délai mesuré de chaque poussée."""
+    ntfy = ctx.cible.get("ntfy")
+    assert ntfy, "aucun ntfy dans la course (commande ntfy absente)"
+    executer = ctx.appareil.executer
+    pair = Odoo(ctx.cible, "chat")
+    moi = ctx.odoo.lire("res.users", ctx.odoo.uid, ["partner_id"])[
+        "partner_id"
+    ][0]
+    pair.executer("discuss.channel", "channel_get", [], {"partners_to": [moi]})
+    canal = pair.executer(
+        "discuss.channel",
+        "search",
+        [
+            [
+                ["channel_type", "=", "chat"],
+                ["channel_partner_ids", "in", [moi]],
+            ]
+        ],
+    )[0]
+
+    def poster(texte):
+        pair.route(
+            "/mail/message/post",
+            {
+                "thread_model": "discuss.channel",
+                "thread_id": canal,
+                "post_data": {
+                    "body": texte,
+                    "message_type": "comment",
+                    "subtype_xmlid": "mail.mt_comment",
+                },
+            },
+        )
+
+    ctx.appareil.autoriser_notifications()
+    ctx.appareil.exempter_batterie()
+    config = js(ctx.config_id)
+    libelle = next(
+        s["label"]
+        for s in ctx.hook("chatSources()")
+        if s["configId"] == ctx.config_id
+    )
+    tag = f"chat:{ctx.config_id}:{canal}"
+    canal_android = f"chat.{empreinte(ctx.config_id)}"
+
+    # 1. Le lien, le niveau 1, le ntfy connecté, une notification permanente
+    ctx.hook(f"chatLoad({config})")
+    applique = ctx.hook(f"chatPushApply({config}, {js(ntfy['link'])})")
+    assert applique["ok"], f"lien refusé : {applique['reason']}"
+    assert applique["registered"] == [ctx.config_id], applique
+    ctx.hook("chatPushLevel(1)")
+    ctx.cdp.attendre(
+        "window.__erplibreTest.chatPushStatus().then(h => h.ntfys.some("
+        f"n => n.url === {js(ntfy['url'])} && n.state === 'connected'))",
+        delai=30,
+    )
+    sujet = ctx.hook(f"chatPushRow({config})")["topic"]
+    fin = time.monotonic() + 10
+    while True:
+        permanentes = [n for n in notifications(executer) if n["flags"] & 0x2]
+        if len(permanentes) == 1 or time.monotonic() > fin:
+            break
+        time.sleep(0.5)
+    assert [n["id"] for n in permanentes] == [ID_PERMANENTE], permanentes
+    assert permanentes[0]["canal"] == "erplibre_permanent", permanentes
+
+    # 2. App à l'arrière-plan : la poussée chiffrée, déchiffrée et affichée
+    accueil(ctx)
+    premier = ctx.unique("poussee")
+    poster(premier)
+    notif, delai_2 = attendre_notification(
+        ctx, tag, lambda n: premier in n["bloc"], delai=POUSSEE_DELAI
+    )
+    assert notif["canal"] == canal_android, notif["canal"]
+    assert notif["vis"] == "PRIVATE", notif["vis"]
+    assert "publicVersion=" in notif["bloc"], "aucune version publique"
+    ctx.capturer("notification_recue")
+
+    # 3. Le processus tué : le service revient, le message suivant s'empile
+    pid = adb("shell", "pidof", PAQUET, executer=executer).strip()
+    adb("shell", "run-as", PAQUET, "kill", "-9", pid, executer=executer)
+    debut = time.monotonic()
+    while (
+        adb("shell", "pidof", PAQUET, executer=executer, check=False).strip()
+        == pid
+    ):
+        time.sleep(0.2)
+    force = False
+    while not service_vivant(executer):
+        ecoule = time.monotonic() - debut
+        if ecoule > RETOUR_DELAI:
+            raise TimeoutError(
+                f"service absent {RETOUR_DELAI} s après la mort"
+            )
+        if not force and ecoule > RETOUR_COLLANT:
+            adb(
+                "shell",
+                "cmd",
+                "jobscheduler",
+                "run",
+                "-f",
+                PAQUET,
+                str(TACHE_PERIODIQUE),
+                executer=executer,
+            )
+            force = True
+        time.sleep(0.5)
+    retour = time.monotonic() - debut
+    second = ctx.unique("empilee")
+    poster(second)
+    _, delai_3 = attendre_notification(
+        ctx,
+        tag,
+        lambda n: premier in n["bloc"] and second in n["bloc"],
+        delai=30,
+    )
+
+    # 4. Touchée dans le volet : la conversation s'ouvre, la notification part
+    toucher_notification(ctx, second)
+    ctx.appareil.joindre()
+    ctx.cdp = ctx.appareil.cdp
+    chemin = f"/chat/{urllib.parse.quote(ctx.config_id, safe='')}/{canal}"
+    ctx.cdp.attendre(f"location.pathname === {js(chemin)}", delai=30)
+    fin = time.monotonic() + 10
+    while any(n["tag"] == tag for n in notifications(executer)):
+        assert time.monotonic() < fin, "notification restée après le toucher"
+        time.sleep(0.5)
+    ctx.capturer("conversation_ouverte")
+
+    # 5. App au premier plan, sur la liste : rien ne s'affiche
+    ctx.ouvrir("/chat", ".chat-list__row")
+    ctx.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=5)
+    avant = messages_ntfy(ntfy, sujet)
+    troisieme = ctx.unique("premier-plan")
+    poster(troisieme)
+    fin = time.monotonic() + POUSSEE_DELAI
+    while messages_ntfy(ntfy, sujet) == avant:
+        assert time.monotonic() < fin, "le message n'atteint pas le ntfy"
+        time.sleep(0.5)
+    time.sleep(SILENCE)
+    assert not any(
+        n["tag"] == tag for n in notifications(executer)
+    ), "notification affichée l'app au premier plan"
+
+    # 6. « Jamais affiché » : rien du message, ni titre ni texte
+    ctx.hook(f"chatPushLockScreen({config}, 'never')")
+    accueil(ctx)
+    quatrieme = ctx.unique("jamais")
+    poster(quatrieme)
+    notif, delai_6 = attendre_notification(ctx, tag, delai=POUSSEE_DELAI)
+    assert extra(notif, "android.title") == "Nouveau message", notif["bloc"]
+    assert extra(notif, "android.text") == "Nouveau message", notif["bloc"]
+    assert quatrieme not in notif["bloc"], "texte du message affiché"
+    assert notif["vis"] == "PUBLIC", notif["vis"]
+
+    # 7. Le ntfy retiré : le sommaire direct d'Odoo, rien marqué lu
+    premier_plan(ctx)
+    ctx.ouvrir(
+        f"/chat/{urllib.parse.quote(ctx.config_id, safe='')}/{canal}",
+        ".chat-thread__input",
+    )
+    dernier = pair.executer(
+        "mail.message",
+        "search",
+        [[["model", "=", "discuss.channel"], ["res_id", "=", canal]]],
+        {"limit": 1, "order": "id desc"},
+    )[0]
+    fin = time.monotonic() + 20
+    while vu_de(ctx.odoo, canal, moi) != dernier:
+        assert time.monotonic() < fin, "la conversation ouverte reste non lue"
+        time.sleep(0.5)
+    ctx.hook(f"chatPushRemove({config})")
+    accueil(ctx)
+    vu_avant = vu_de(ctx.odoo, canal, moi)
+    attente_avant = ctx.odoo.executer(
+        "mail.notification",
+        "search_count",
+        [[["res_partner_id", "=", moi], ["is_read", "=", False]]],
+    )
+    for rang in (1, 2):
+        poster(ctx.unique(f"sommaire-{rang}"))
+    adb(
+        "shell",
+        "cmd",
+        "jobscheduler",
+        "run",
+        "-f",
+        PAQUET,
+        str(TACHE_PERIODIQUE),
+        executer=executer,
+    )
+    titre = f"2 nouveaux messages — {libelle}"
+    notif, _ = attendre_notification(
+        ctx,
+        f"summary:{ctx.config_id}",
+        lambda n: extra(n, "android.title") == titre,
+        delai=60,
+    )
+    ctx.capturer("sommaire_odoo")
+    assert vu_de(ctx.odoo, canal, moi) == vu_avant, "sommaire marqué lu"
+    assert (
+        ctx.odoo.executer(
+            "mail.notification",
+            "search_count",
+            [[["res_partner_id", "=", moi], ["is_read", "=", False]]],
+        )
+        == attente_avant
+    ), "sommaire a lu la boîte de réception"
+    return (
+        f"poussée → notification {delai_2:.1f} s, service revenu en"
+        f" {retour:.1f} s ({'tâche forcée' if force else 'START_STICKY'}),"
+        f" empilée en {delai_3:.1f} s, « jamais affiché » en {delai_6:.1f} s"
+    )
+
+
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
 # parle qu'à la 18
 SCENARIOS = (
@@ -2152,12 +2652,31 @@ SCENARIOS = (
         scenario_recherche_boite,
         (18,),
     ),
+    (
+        "notifications du clavardage, app fermée",
+        scenario_notifications,
+        (18,),
+    ),
 )
 
 
 def scenarios_de(version):
     """Les scénarios (nom, fonction) que joue la version d'Odoo donnée."""
     return [(nom, f) for nom, f, versions in SCENARIOS if version in versions]
+
+
+def ports_de(cibles):
+    """Les ports à renvoyer vers l'hôte : celui de chaque serveur, puis celui
+    du ntfy de la course quand une cible en porte un ; chacun une fois."""
+    urls = [c["url"] for c in cibles] + [
+        c["ntfy"]["url"] for c in cibles if c.get("ntfy")
+    ]
+    ports = []
+    for url in urls:
+        port = int(url.rsplit(":", 1)[1])
+        if port not in ports:
+            ports.append(port)
+    return ports
 
 
 def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
@@ -2169,9 +2688,7 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
     téléphone (RuntimeError)."""
     avant = maj_app_perso(executer)
     apk = construire_apk(executer=executer, journal=journal)
-    appareil = Appareil(
-        [int(c["url"].rsplit(":", 1)[1]) for c in cibles], executer
-    )
+    appareil = Appareil(ports_de(cibles), executer)
     total = echecs = 0
     try:
         appareil.preparer(apk)

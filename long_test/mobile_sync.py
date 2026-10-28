@@ -42,6 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import mobile_sync_device as appareil  # noqa: E402
+import mobile_sync_ntfy as ntfy_course  # noqa: E402
 import mobile_sync_odoo as odoo  # noqa: E402
 
 SCENARIOS = Path(__file__).resolve().parent / "mobile_sync"
@@ -196,7 +197,9 @@ def verdict(total, echecs, par_version):
     return SORTIE_OK, f"{total} tests, tous passés"
 
 
-def plan(versions, args):
+def plan(versions, args, ntfy=True):
+    """Le plan d'une course ; ntfy dit si la commande ntfy est là pour les
+    tests de notification (la 18 seulement)."""
     lignes = [
         "Plan :",
         f"  dépôt mobile : {odoo.MOBILE}",
@@ -214,6 +217,12 @@ def plan(versions, args):
         "  bases et serveurs "
         + ("gardés" if args.garder else "supprimés à la fin"),
     ]
+    if 18 in versions:
+        lignes.append(
+            "  ntfy : jetable, sur 127.0.0.1 et un port libre, sous la course"
+            if ntfy
+            else "  ntfy : absent, tests de notification sautés"
+        )
     if args.appareil:
         lignes.append(
             f"  téléphone : {appareil.PAQUET}, "
@@ -223,6 +232,41 @@ def plan(versions, args):
             )
         )
     return "\n".join(lignes)
+
+
+def cibles(serveurs, ntfy=None):
+    """Les serveurs de la course comme targets.json les donne aux tests :
+    url, base, comptes ; sur la 18, les comptes du clavardage et, quand la
+    course a son ntfy, l'accès d'un téléphone à ce ntfy (url, jeton,
+    préfixe, lien de configuration, chemin de son server.yml) et celui
+    d'un second téléphone (other)."""
+    liste = []
+    for s in serveurs:
+        cible = {
+            "version": s.version,
+            "url": s.url,
+            "database": s.base,
+            "admin": {"login": "admin", "password": "admin"},
+            "multi": {"login": "mc_user", "password": "mc_user"},
+        }
+        if s.version >= 18:
+            cible["chat"] = {"login": "chat_user", "password": "chat_user"}
+            cible["inbox"] = {"login": "inbox_user", "password": "inbox_user"}
+            if ntfy is not None:
+                cible["ntfy"] = {
+                    "url": ntfy.url,
+                    "token": ntfy.token,
+                    "prefix": ntfy.prefix,
+                    "link": ntfy.link,
+                    "config": str(ntfy.config),
+                    "other": {
+                        "token": ntfy.autre.token,
+                        "prefix": ntfy.autre.prefix,
+                        "link": ntfy.autre.link,
+                    },
+                }
+        liste.append(cible)
+    return liste
 
 
 def detruire(a_blanc=False):
@@ -273,7 +317,8 @@ def main(argv=None):
             print(f"  - {probleme}")
         return SORTIE_PREREQUIS
 
-    print(plan(versions, args))
+    avec_ntfy = 18 in versions and ntfy_course.ntfy_disponible()
+    print(plan(versions, args, ntfy=avec_ntfy))
     if args.dry_run:
         return SORTIE_OK
 
@@ -289,6 +334,7 @@ def main(argv=None):
     repertoire.mkdir(parents=True, exist_ok=True)
     serveurs = []
     bases = []
+    ntfy = None
     code = SORTIE_INFRA
 
     def arreter(*_):
@@ -318,36 +364,19 @@ def main(argv=None):
                     zip(versions, bases),
                 )
             )
-        liste = [
-            {
-                "version": s.version,
-                "url": s.url,
-                "database": s.base,
-                "admin": {"login": "admin", "password": "admin"},
-                "multi": {"login": "mc_user", "password": "mc_user"},
-                **(
-                    {
-                        "chat": {
-                            "login": "chat_user",
-                            "password": "chat_user",
-                        },
-                        "inbox": {
-                            "login": "inbox_user",
-                            "password": "inbox_user",
-                        },
-                    }
-                    if s.version >= 18
-                    else {}
-                ),
-            }
-            for s in serveurs
-        ]
-        cibles = repertoire / "targets.json"
-        cibles.write_text(json.dumps(liste, indent=2))
+        if avec_ntfy:
+            ntfy = ntfy_course.demarrer_ntfy(repertoire)
+        liste = cibles(serveurs, ntfy)
+        chemin_cibles = repertoire / "targets.json"
+        chemin_cibles.write_text(json.dumps(liste, indent=2))
         for s in serveurs:
             print(f"Odoo {s.version} : {s.url} ({s.base})")
+        if ntfy:
+            print(f"ntfy : {ntfy.url} ({ntfy.config})")
 
-        code, raison = jouer_vitest(repertoire, cibles, args.filtre, versions)
+        code, raison = jouer_vitest(
+            repertoire, chemin_cibles, args.filtre, versions
+        )
         print(f"Bilan : {raison}. Traces : {repertoire}")
         if args.appareil:
             print("Sur le téléphone :")
@@ -366,16 +395,20 @@ def main(argv=None):
     finally:
         garder = args.garder or (args.garder_si_echec and code != SORTIE_OK)
         if garder:
-            odoo.noter_gardes(repertoire, serveurs)
+            odoo.noter_gardes(repertoire, serveurs, ntfy)
             print("Bases et serveurs gardés :")
             for s in serveurs:
                 print(
                     f"  Odoo {s.version} : {s.url}  base {s.base}  admin/admin, mc_user/mc_user"
                 )
+            if ntfy:
+                print(f"  ntfy : {ntfy.url}  ({ntfy.config})")
             print(
                 "  arrêtés et balayés par la prochaine course, ou par --detruire"
             )
         else:
+            if ntfy:
+                ntfy_course.arreter_ntfy(ntfy)
             for s in serveurs:
                 odoo.arreter_serveur(s)
             for base in bases:
