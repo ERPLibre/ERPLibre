@@ -40,7 +40,7 @@ YML_LOCAL_URL = YML_EXEMPT.replace(
     "http://ntfy.exemple.test", "http://localhost"
 )
 ACCESS_LIST = (
-    "user erm_alice (role: user, tier: none)\n"
+    "user erm_tablette (role: user, tier: none)\n"
     "- read-only access to topic upab12cd34*\n"
     "user erm_bruno (role: user, tier: none)\n"
     "user * (role: anonymous, tier: none)\n"
@@ -51,10 +51,16 @@ class FakeHost:
     """Note (script, sudo_user) et répond selon le contenu du script."""
 
     def __init__(
-        self, yml=YML_EXEMPT, owner="ntfy", states=("active",), token_out=None
+        self,
+        yml=YML_EXEMPT,
+        owner="ntfy",
+        states=("active",),
+        token_out=None,
+        unit="loaded",
     ):
         self.yml = yml
         self.owner = owner
+        self.unit = unit
         self.states = list(states)
         self.token_out = (
             f"token {TOKEN} created for user erm_alice\n"
@@ -87,7 +93,10 @@ class FakeHost:
         kind = self.kind(script)
         if kind == "inspect":
             b64 = base64.b64encode(self.yml.encode()).decode()
-            return 0, f"@@OWNER {self.owner}\n@@YML {b64}\n@@HEALTH ?\n"
+            return 0, (
+                f"@@OWNER {self.owner}\n@@YML {b64}\n@@HEALTH ?\n"
+                f"@@UNIT {self.unit}\n"
+            )
         if kind == "restart":
             return 0, f"@@ACTIVE {self.states.pop(0)}\n"
         if kind == "recheck":
@@ -279,6 +288,32 @@ class TestPrepare(MenuCase):
         self.assertNotIn("access", host.kinds())
         self.assertIn("failed", out)
 
+    def test_restart_failed_prints_backup_and_restore(self):
+        host = FakeHost(yml=YML, states=("failed",))
+        out = self.drive("_ntfy_mobile_prepare", host, ["", "", "y", "y"])
+        backup = re.search(r"/etc/ntfy/server\.yml\.bak-\d{14}", out)
+        self.assertIsNotNone(backup, out)
+        self.assertIn(
+            f"cp -p {backup.group(0)} /etc/ntfy/server.yml"
+            " && systemctl restart ntfy",
+            out,
+        )
+
+    def test_no_ntfy_unit_says_so_before_writing(self):
+        host = FakeHost(yml=YML, unit="not-found")
+        out = self.drive(
+            "_ntfy_mobile_prepare", host, ["", "", "y", "Alice", "", ""]
+        )
+        warning = t("No systemd service named ntfy here:")
+        self.assertIn(warning, out)
+        self.assertLess(
+            out.index(warning),
+            out.index(t("Proposed changes to the ntfy configuration:")),
+        )
+        self.assertIn("write", host.kinds())
+        self.assertNotIn("restart", host.kinds())
+        self.assertIn("access", host.kinds())
+
     def test_restart_stuck_activating_gives_up(self):
         host = FakeHost(yml=YML, states=("activating",) * 7)
         self.drive("_ntfy_mobile_prepare", host, ["", "", "y", "y"])
@@ -347,6 +382,51 @@ class TestPrepare(MenuCase):
         self.assertIn("url=http%3A%2F%2Fp.exemple.test&", out)
         self.assertIn("odoo=http%3A%2F%2Fo.exemple.test", out)
 
+    def test_blank_or_same_odoo_url_leaves_it_out_of_the_link(self):
+        for urls in (
+            ["", ""],
+            ["http://p.exemple.test", "http://p.exemple.test"],
+        ):
+            out = self.drive(
+                "_ntfy_mobile_prepare", FakeHost(), ["", "", "Alice", *urls]
+            )
+            self.assertIn("erplibre-ntfy:", out)
+            self.assertNotIn("odoo=", out)
+
+    def test_a_name_taken_asks_for_another(self):
+        host = FakeHost()
+        # « Brúno » se replie sur erm_bruno, déjà préparé
+        out = self.drive(
+            "_ntfy_mobile_prepare",
+            host,
+            ["", "", "Brúno", "1", "Alice", "", ""],
+        )
+        self.assertIn(t("A phone is already prepared under this name:"), out)
+        self.assertLess(
+            host.kinds().index("list"), host.kinds().index("access")
+        )
+        self.assertIn("erm_alice", host.script_of("access"))
+        self.assertNotIn("erm_bruno", host.script_of("access"))
+        self.assertNotIn("revoke", host.kinds())
+
+    def test_a_name_taken_can_be_revoked_and_prepared_again(self):
+        host = FakeHost()
+        self.drive(
+            "_ntfy_mobile_prepare", host, ["", "", "Bruno", "2", "", ""]
+        )
+        kinds = host.kinds()
+        self.assertLess(kinds.index("revoke"), kinds.index("access"))
+        self.assertIn("erm_bruno", host.script_of("revoke"))
+        self.assertEqual(host.user_of("revoke"), "ntfy")
+        self.assertIn("erm_bruno", host.script_of("access"))
+
+    def test_a_name_taken_and_no_choice_prepares_nothing(self):
+        host = FakeHost()
+        out = self.drive("_ntfy_mobile_prepare", host, ["", "", "Bruno", ""])
+        self.assertNotIn("access", host.kinds())
+        self.assertNotIn("revoke", host.kinds())
+        self.assertNotIn("erplibre-ntfy:", out)
+
     def test_prepare_without_segno_prints_install_hint(self):
         host = FakeHost()
         out = self.drive(
@@ -392,6 +472,22 @@ class TestHost(MenuCase):
             shlex.split(argv[3]), ["sudo", "-u", "ntfy", "sh", "-c", script]
         )
 
+    def test_ssh_default_url_uses_the_real_host_not_the_alias(self):
+        target = ("bureau", "me", "ntfy.exemple.test", "bureau", True)
+        with (
+            mock.patch("builtins.input", side_effect=["2", "", ""]),
+            mock.patch.object(
+                self.todo, "_ask_ssh_target", return_value=target
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            host = self.todo._ntfy_mobile_host()
+            urls = self.todo._ntfy_mobile_ask_urls(
+                host, nm.read_yml_keys(YML_LOCAL_URL)
+            )
+        self.assertEqual(host.argv("true", None)[2], "bureau")
+        self.assertEqual(urls, ("http://ntfy.exemple.test:8080", None))
+
     def test_ssh_cancelled_gives_none(self):
         with (
             mock.patch("builtins.input", side_effect=["2"]),
@@ -412,7 +508,7 @@ class TestListRevoke(MenuCase):
     def test_list_prints_phone_users_only(self):
         host = FakeHost()
         out = self.drive("_ntfy_mobile_list", host, [""])
-        self.assertIn("erm_alice", out)
+        self.assertIn("erm_tablette", out)
         self.assertIn("erm_bruno", out)
         self.assertNotIn("anonymous", out)
         self.assertEqual(host.user_of("list"), "ntfy")
