@@ -10,7 +10,7 @@ exécutés par `LocalHost` ou `SshHost`.
 
 Chaque appel `ntfy` d'un script porte `--config <fichier>` : sans lui la CLI
 lit `/etc/ntfy/server.yml`. Pour `ntfy user` et `ntfy token`, `--config`
-précède le sous-commande ; `ntfy access` l'accepte avant ses arguments.
+précède la sous-commande ; `ntfy access` l'accepte avant ses arguments.
 """
 
 import base64
@@ -263,6 +263,7 @@ def write_yml_script(config, new_text, stamp):
     return "\n".join(
         [
             "set -e",
+            "umask 077",
             f"cp -p {cfg} {backup}",
             f"printf %s {shlex.quote(payload)} | base64 -d > {tmp}",
             f"chown --reference={cfg} {tmp}",
@@ -330,6 +331,7 @@ def _tee_run(argv, env=None):
         captured += chunk
         buffer = getattr(sys.stdout, "buffer", None)
         if buffer is not None:
+            sys.stdout.flush()
             buffer.write(chunk)
             buffer.flush()
         else:
