@@ -449,9 +449,11 @@ per message, oldest first — subject, recipients, and, once a send has
 failed, why it failed and how many attempts it has taken. Each line carries
 a button on its **left** that holds the message or releases it. A held
 message never leaves on its own; only that button lifts the hold. `Escape`
-closes the screen. Automatic replies queued by a rule are marked `[auto]`
-and carry an expiry; the pane under the list previews the one whose button
-has focus (see "Incoming mail rules").
+closes the screen. Automatic messages queued by a rule — replies,
+reports, forwards and redirects — are marked `[auto]` and carry an expiry;
+the pane under the list previews the one whose button has focus, read in
+the background so that a large forward never freezes the screen, and names
+a forward or a redirect as such (see "Incoming mail rules").
 
 A send that fails keeps the message in the queue and does not block those
 behind it. A temporary refusal (a `4xx` code, a network error) is retried
@@ -463,8 +465,9 @@ server cannot be reached at all, the rest of the queue waits for the next
 pass instead of each message waiting out the same connection timeout.
 
 A message that leaves from the queue is filed into the account's Sent
-folder, like one sent directly. If that filing fails, the failure is
-logged; the message has left and is not resent.
+folder, like one sent directly — except a rule's redirect, which is never
+filed (see "Forwarding"). If that filing fails, the failure is logged; the
+message has left and is not resent.
 
 Queued messages are sealed with the same key as the rest of the cache: an
 encrypted cache that left its outgoing mail in the open would protect
@@ -475,12 +478,13 @@ with them: a server that refuses a message names the recipient it refuses.
 
 A rule answers incoming mail on its own: when a new message in the inbox
 matches its filter, the client sends the rule's reply to the sender. Each
-account has its own ordered list of rules. This version runs two kinds of
-action: the **custom reply**, and the **statistics report** — a custom
+account has its own ordered list of rules. This version runs three kinds
+of action: the **custom reply**, the **statistics report** — a custom
 reply whose text carries figures computed on the mailbox (see "The
-statistics report"). Forwarding comes later (see "What the client does not
-do yet"). Any rule can be tried on a recent message before it answers a
-real one (see "Testing a rule").
+statistics report") — and **forwarding**, which relays the message to other
+addresses instead of answering its sender (see "Forwarding"). Any rule can
+be tried on a recent message before it acts on a real one (see "Testing a
+rule").
 
 ### When rules run
 
@@ -533,15 +537,19 @@ rules gets two replies. A rule with "stop here" ends the list for that
 message as soon as its filter matched — even when a safeguard kept its
 reply from leaving.
 
-The editor holds the action type (*Custom reply* or *Statistics report*),
-the name, "Rule enabled", "Stop here", the throttle (see "Safeguards"), the
-maximum age in hours (48 by default, 1 to 720), the number of first sends
-held for approval (1 by default, 1 to 10), the filter, and a button that
-opens the reply form — *Custom reply…* or *Statistics report…* depending on
-the type. Changing the type brings the throttle to the new type's default
-when it still held the old one's, and a body still equal to the old type's
-default text becomes the new type's; a body written by hand is kept. A rule
-of a type this version does not run shows its type greyed out. `Ctrl+S`
+The editor holds the action type (*Custom reply*, *Statistics report* or
+*Forward*), the name, "Rule enabled", "Stop here", the throttle (see
+"Safeguards"), the maximum age in hours (48 by default, 1 to 720), the
+number of first sends held for approval (1 by default, 1 to 10), the
+filter, and a button that opens the action's form — *Custom reply…*,
+*Statistics report…* or *Forward…* depending on the type. Changing the type
+brings the throttle to the new type's default when it still held the old
+one's, and a body still equal to the old type's default text becomes the
+new type's; a body written by hand is kept, and becomes a forward's
+introduction. What a type does not use — a forward's destinations, a
+reply's images — stays while the editor is open and is dropped when the
+rule is saved. A rule of a type this version does not know shows its type
+greyed out. `Ctrl+S`
 saves, `Escape` cancels; a field that does not validate keeps the window
 open with the reason on its status line.
 
@@ -812,6 +820,110 @@ that any first `Authentication-Results` is trusted. The settings live under
 the `report` key of `rules.json`; if that key cannot be read, the
 statistics rules are skipped with a warning and the custom replies go on.
 
+### Forwarding
+
+A rule of type *Forward* relays a matching message to one or more other
+addresses instead of answering its sender. *Forward…* in the editor opens
+its form: the mode, the destinations, an optional introduction text and the
+*Skip lists and robots* box. `Ctrl+S` returns to the editor, which saves
+the rule.
+
+| Mode | What leaves |
+|---|---|
+| Forward inline (the default) | a new message from this account whose text opens on your introduction and a block of the original's headers — From, Date, To, Cc, Subject — followed by the original text; the original's structure (alternatives, inline images, attachments) is kept |
+| Forward as attachment | a new message from this account carrying your introduction, the same block of headers, and the original attached whole as `message.eml` |
+| True redirect (message unchanged) | the original message itself, byte for byte, under one `Resent-From` / `Resent-Date` / `Resent-Message-ID` block that names this account |
+
+Forwarding is the recommended mode: the message leaves under this account's
+own address, which its server vouches for. A signed or encrypted message
+(S/MIME, PGP), or one whose text cannot be rewritten, goes as an attachment
+even in inline mode, so that its signature stays verifiable. A true
+redirect keeps the sender's From: the original DKIM signature can survive,
+since nothing it covers changes, but the sender's SPF fails from our
+server, and their DMARC policy passes only if that signature does. A
+recipient may then reject the message, and some sending servers refuse a
+From that is not the authenticated account. The form shows this warning
+while the redirect mode is chosen, and greys out the introduction, which a
+redirect does not carry.
+
+**Destinations.** One to ten addresses, added one at a time by *Add* or
+`Enter` and taken out by *Remove*. Each is checked as it is added: a plain
+address (`carole.regle@example.org`; a quoted or non-ASCII local part is
+refused), not this account, not another account configured in the client,
+not already listed. A domain with accents is kept in its ASCII form:
+`bruno.filtre@filtré.example.net` becomes
+`bruno.filtre@xn--filtr-fsa.example.net`. An address typed but not added
+keeps the form open. For each message, a destination equal to the original
+sender — its From or its `Return-Path` — is dropped, since that person
+already has the message; when none is left, the message is logged *no
+destination left* and nothing leaves.
+
+The destinations never see one another, and the original sender does not
+learn them through "reply all". A forward is one message addressed to
+`undisclosed-recipients:;`, the destinations in its envelope alone; a
+redirect carries no `Resent-To`. The To, Cc and Bcc of the original never
+enter the envelope.
+
+**Headers.** A forward is a new message. Its From is this account, its
+subject `Fwd: ` followed by the original subject (left as is when it
+already starts so), and its `Reply-To` that of the original — or the
+original sender when there is none: a destination who answers reaches the
+person who wrote, and a `noreply@example.net` notification reaches the
+requester its `Reply-To` names. It carries `Auto-Submitted:
+auto-generated`, `X-Auto-Response-Suppress: All` and our `X-Loop` marker,
+keeps the original's own `X-Loop` lines so that a third party's loop
+detection still works, and has neither `In-Reply-To` nor `References`: it
+is not a reply. A redirect removes from the original only `Bcc`,
+`Resent-Bcc`, `Return-Path` and `X-ERPLibre-Bcc` — the client's internal
+Bcc field, through which a sender would otherwise choose a recipient — and
+changes nothing else but line endings, which leave as CRLF, the form SMTP
+requires. A `Resent-*` block already present stays, under ours.
+
+**Size.** A message larger than **25 MiB** is not relayed (*message too
+large to forward*). The size the server announces is checked before any
+download. The whole message is then fetched by `BODY.PEEK[]`, so it stays
+unread, and only for a rule that is about to send it.
+
+**Lists and robots.** Forwarding newsletters, alerts and list mail is the
+usual purpose of a forward rule, so by default the safeguards that keep a
+reply away from automatic, bulk, list and robot mail, and from mail not
+addressed to the account, do not apply to it. Ticking *Skip lists and
+robots* brings them back, as for a reply. The loop safeguards apply
+whatever the box: our own automatic messages and replies to our forwards,
+a redirect made by this account that came back, delivery reports,
+automatic replies (out of office, acknowledgement), the `X-Loop` marker,
+the null sender. So do *authentication failed* — a message probably forged
+is not relayed — and *sent by this account*. A forward never requires an
+authenticated sender.
+
+**Throttle and residual loop.** "Do not send again" is unticked by default
+for a forward: every matching message is relayed. Ticked, it counts from
+the last forward of a message from the same sender. Two destinations that
+each forward the message back to this account as a new message of their own
+are served to each other through it: each return drops its own sender but
+reaches the other. The caps bound that loop, and ticking the throttle cuts
+it. A destination that redirects the message back is stopped (*already
+redirected by this account*), and so is its automatic reply.
+
+**Copies in Sent.** A forward is filed into Sent like an automatic reply.
+The copy shows `To: undisclosed-recipients:;` — the destinations are read
+in the rule — and stays out of the statistics. A redirect is not filed: its
+copy would carry a third party's From and the original's `In-Reply-To`, and
+the statistics would count it as an answer. The rules log keeps the trace
+of both.
+
+**What a forward rule is not.** It does not replace your mail server's
+redirection of a whole mailbox. It runs only while the client or the menu
+runs. Beyond 20 sends per pass or 60 per hour (the account's caps, a budget
+**shared** with replies and reports), forwards enter the outbox **held**,
+wait for a gesture under `o`, and expire after 24 h: mail can then never
+leave, with no error visible outside the outbox and the rules log. Each
+forward filed into Sent doubles the space the message takes (up to 25 MiB
+per message), and an IMAP quota that fills up bounces incoming mail. A
+server that accepts some destinations and refuses others reports a
+success: the refused ones are lost, and the log says *sent*. To send
+everything on, use your mail server's redirection.
+
 ### Safeguards
 
 Before a reply leaves, the rule's checks run in this order, and the first
@@ -823,6 +935,10 @@ every other stop is written to the rules log (`l`) under the reason shown.
 |---|---|
 | too old | was received by the server longer ago than the rule's maximum age — measured on the server's reception date (`INTERNALDATE`), never on the `Date` header the sender writes |
 | receive date in the future | carries a reception date more than 10 minutes ahead |
+| our own automatic message, or a reply to one | forward only: is a message one of this account's rules sent, or answers (`In-Reply-To`) a message a forward rule sent |
+| already redirected by this account | carries a `Resent-From` with this account's address: a redirect made from this account that came back. Every type of rule — so a message redirected by hand from this account and returned is left alone too |
+| delivery or non-delivery report | forward only: is a delivery report (`multipart/report`, `message/delivery-status`), or comes from `mailer-daemon` or `postmaster` |
+| automatic reply (out of office, acknowledgement) | forward only, whatever *Skip lists and robots*: carries `Auto-Submitted: auto-replied` or `Precedence: auto_reply` |
 | automatic message | carries `Auto-Submitted` with any value but `no` |
 | bulk mail | carries `Precedence: bulk`, `list`, `junk` or `auto_reply` |
 | mailing list | carries `List-Id` or `List-Unsubscribe` |
@@ -838,6 +954,15 @@ every other stop is written to the rules log (`l`) under the reason shown.
 | authentication failed | is marked `dmarc=fail`, or `spf=fail` without `dkim=pass`, by the receiving server's `Authentication-Results`: answering would send our reply to whoever was impersonated |
 | sender not authenticated | statistics report only: carries no first `Authentication-Results` that vouches for the From domain (see "The statistics report") |
 | throttled | comes from a sender this rule answered recently (below) |
+| message too large to forward | forward only: is larger than 25 MiB (see "Forwarding") |
+| no destination left | forward only: every destination of the rule was, for this message, the original sender, this account or another configured account |
+
+A forward rule skips *automatic message*, *bulk mail*, *mailing list*,
+*automatic replies refused by the sender*, *robot sender* and *not
+addressed to this account* unless its *Skip lists and robots* box is
+ticked, and never checks *sender not authenticated*. The other rows apply
+to it as to a reply; the first four rows added for it apply whatever the
+box.
 
 **Do not send again if a message arrives within N minutes.** When the box
 is ticked, a message is not answered if this rule's last send to the same
@@ -852,12 +977,16 @@ writes at 10:05 — answered, 65 minutes after the last send. The 9:40
 message did not restart the clock.
 
 **Caps.** Whatever the rules say, an account sends at most **20** automatic
-replies per pass and **60** per sliding hour, all rules together. Beyond
-that, replies are held in the outbox and the status line warns
-*Automatic send cap reached; the rest is held (o).* Both caps are set
-under the rule list, or by the `caps` key of `rules.json`
-(`{"per_pass": 20, "per_hour": 60}`, whole numbers of at least 1). The
-hourly cap is what bounds a short timer: with `mail_refresh_sec` at 30 s,
+messages per pass and **60** per sliding hour, all rules together —
+replies, reports and forwards share that budget. Beyond that, they are held
+in the outbox and the status line warns
+*Automatic send cap reached; the rest is held (o) or skipped (log l).* A held forward keeps
+a full copy of the original, so a forward rule that already has **20**
+entries in the outbox holds no more: further messages are logged *pass cap
+reached* or *hourly cap reached* without being downloaded, and are not
+forwarded. Both caps are set under the rule list, or by the `caps` key of
+`rules.json` (`{"per_pass": 20, "per_hour": 60}`, whole numbers of at
+least 1). The hourly cap is what bounds a short timer: with `mail_refresh_sec` at 30 s,
 the cap per pass alone would let 2 400 replies an hour through.
 
 **Holding the first send.** Until a rule has really sent its first
@@ -865,8 +994,9 @@ replies — one by default, up to 10 — each new reply waits **held** in the
 outbox. `o` previews it: recipient and subject, the first 20 lines of
 text, the inline and attached images, and its expiry. *Release* lets it
 leave at the next sync pass. Changing the rule's filter or its reply
-(format, subject, body, images) starts the count again, and a reply still
-waiting from before the change is dropped rather than sent; renaming,
+(format, subject, body, images) — for a forward, its destinations, its mode
+or its *Skip lists and robots* box — starts the count again, and a message
+still waiting from before the change is dropped rather than sent; renaming,
 reordering or changing its limits does not.
 
 **When the cache is rebuilt**, the log that throttles and counts goes with
@@ -886,6 +1016,14 @@ automatic replies await your approval (o).*
 | rule's filter or reply changed meanwhile | dropped (*rule changed since*) |
 | three permanent refusals from the queue | dropped (*attempts exhausted*) |
 | image unreadable, message impossible to build | logged as failed, not retried |
+| message to forward: account offline when it must be downloaded | left for the next online pass |
+| message to forward: download refused by the server | logged as failed (*unreadable body*), not retried |
+| message to forward: larger than 25 MiB once downloaded | skipped (*message too large to forward*) |
+
+A forward or a redirect waits in the outbox like a reply, sealed with its
+destinations: a queued redirect keeps its envelope and leaves to those
+destinations only. The preview under `o` names the kind of entry — *forward
+by a rule*, or *redirect by a rule, original message unchanged*.
 
 The log `l` of the main screen lists, per rule, what failed; the rules log
 gives each message's result and reason. `~/.erplibre/mail.log` never
@@ -917,7 +1055,8 @@ another message.
 
 The result shows, in order: a warning when the rule is disabled; the filter
 tree with each node's outcome (✓, ✗, `?` when the body is missing) and
-whether the message matches; the **verdict** — *would reply*, or the reason
+whether the message matches; the **verdict** — *would reply* (*would
+forward* for a forward rule), or the reason
 a real pass would give (too old, already handled, sent by this account…);
 and, when it differs, the verdict **for a new message**, as if this one had
 just arrived after the rule was armed — arming, age and "already handled"
@@ -946,12 +1085,35 @@ recorded as an automatic message, so its copy in Sent and its arrival in
 the inbox stay out of the statistics. When it arrives, the next pass logs
 it *automatic message* for every rule whose filter matches it: that line in
 the rules log comes from the trial, not from a stranger. A rule of a type
-this version does not run says so and sends nothing.
+this version does not know says so and sends nothing.
+
+**A forward rule** needs the whole message: online it is fetched by
+`BODY.PEEK[]` and stays unread; offline it is read from the cache when it is
+there. In place of the recipient, the trial shows the mode; the
+destinations kept, or *Destinations kept: none*; each destination removed
+for this message, with its reason (*original sender*, *this account's
+address*, *another configured account's address*); the message's size in
+bytes; then *Message that would leave*: for a forward, its From, To,
+Reply-To, Subject and Auto-Submitted, and the destinations as Bcc; for a
+redirect, `Resent-From` and `Resent-Date`, then the original From, To and
+Subject, and *The rest of the message leaves byte for byte.* The text,
+attachments and images of the message follow. With no destination kept,
+the preview is built addressed to yourself, and says so.
+
+**Send a trial to myself** then sends that same forward — same
+`Reply-To`, subject prefixed with `[Trial]` — or that same redirect,
+subject unchanged, to the account's own address and to no destination.
+When it comes back, every rule stops it: a forward is logged *our own
+automatic message, or a reply to one* by a forward rule and *automatic
+message* by a reply or a report; a redirect is stopped by every rule as
+*already redirected by this account* — or passed over in silence by a rule
+that already handled the original, whose `Message-ID` it carries.
 
 ### From the CLI menu
 
 `Mail > [6] Incoming mail rules` asks for an account, then offers `[1]`
-list the rules (with a summary of each filter), `[2]` enable / disable one,
+list the rules (with a summary of each filter, and under a forward rule a
+line `→ mode : destinations`), `[2]` enable / disable one,
 `[3]` move one up or down, `[4]` delete one (asks first), `[5]` the latest
 50 lines of the rules log, `[6]` the statistics report settings, `[7]` try
 a rule on a message, `[0]` back. `[6]` prints the time zone, asks each
@@ -975,9 +1137,28 @@ body of the reply. The images are copied beside it under `media/`;
 `report_snapshot.json` (0600) the mailbox part of the day's report — counts
 and a delay, no address. The rules log itself lives in the account's
 `cache.db`, sealed with it. Keys this version does not know are kept when
-the file is rewritten, and a rule of a kind it does not run yet — forward —
-is shown and left alone; a file of a newer format version is refused and
-left untouched.
+the file is rewritten; a file of a newer format version is refused and left
+untouched.
+
+A forward rule keeps its introduction in `body`, its format at `text`, its
+subject empty and no image; the destinations — in their sending form,
+an accented domain in ASCII — the mode (`inline`, `attachment` or
+`redirect`) and the box sit under `options`:
+
+```json
+"action": {
+  "kind": "forward",
+  "format": "text",
+  "subject": "",
+  "body": "Message received on the rules mailbox.",
+  "images": [],
+  "options": {
+    "targets": ["carole.regle@example.org", "denis.tri@example.org"],
+    "mode": "inline",
+    "skip_lists": false
+  }
+}
+```
 
 ## Managing folders
 
@@ -1386,8 +1567,6 @@ stands and the next pass tries again.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **Rules do not forward** — a rule cannot yet forward a message; a
-  forward rule is kept and shown, never run.
 - **No headless service** — rules run only while the TUI is open or when
   `Mail > [3] Synchronise now` runs; with both closed, nothing is answered.
 - **No `\Answered` from the outbox** — a manual reply marks the original
@@ -1396,6 +1575,9 @@ stands and the next pass tries again.
 - **No aliases** — an account knows its own address and login only, so a
   message received through an alias is logged *not addressed to this
   account* and gets no automatic reply.
+- **No SMTPUTF8** — a forward destination must have an ASCII local part
+  (the domain may carry accents), and a redirected original whose headers
+  carry raw UTF-8 leaves as is: a strict server may refuse it.
 
 The design spec is not tracked in this tree; recover it from history with
 `git log --all -- "docs/superpowers/specs/*"` if you need what the remaining

@@ -483,10 +483,12 @@ ligne par message, du plus ancien au plus récent — objet, destinataires et,
 dès qu'un envoi a échoué, pourquoi il a échoué et combien de tentatives il a
 coûtées. Chaque ligne porte à sa **gauche** un bouton qui retient le message
 ou le relâche. Un message retenu ne part jamais seul ; seul ce bouton lève
-la retenue. `Échap` ferme l'écran. Les réponses automatiques mises en file
-par une règle sont marquées `[auto]` et portent une échéance ; le volet
-sous la liste montre l'aperçu de celle dont le bouton a le focus (voir
-« Règles du courrier entrant »).
+la retenue. `Échap` ferme l'écran. Les messages automatiques mis en file
+par une règle — réponses, rapports, transferts et redirections — sont
+marqués `[auto]` et portent une échéance ; le volet sous la liste montre
+l'aperçu de celui dont le bouton a le focus, lu en arrière-plan pour qu'un
+gros transfert ne fige jamais l'écran, et nomme un transfert ou une
+redirection comme tels (voir « Règles du courrier entrant »).
 
 Un envoi qui échoue laisse le message en file et n'arrête pas ceux qui le
 suivent. Un refus temporaire (code `4xx`, erreur réseau) est retenté à
@@ -499,8 +501,9 @@ passe suivante au lieu que chaque message attende à son tour le même délai
 de connexion.
 
 Un message qui part de la file est classé dans le dossier Envoyés du
-compte, comme un envoi direct. Si ce classement échoue, l'échec est
-journalisé ; le message est parti et n'est pas renvoyé.
+compte, comme un envoi direct — sauf la redirection d'une règle, qui n'y
+est jamais classée (voir « La redirection »). Si ce classement échoue,
+l'échec est journalisé ; le message est parti et n'est pas renvoyé.
 
 Les messages en attente sont scellés par la même clé que le reste du cache :
 un cache chiffré qui laisserait ses envois en clair protégerait tout sauf ce
@@ -512,12 +515,13 @@ qui refuse un message cite le destinataire qu'il refuse.
 Une règle répond seule au courrier entrant : quand un nouveau message de la
 boîte de réception correspond à son filtre, le client envoie la réponse de
 la règle à l'expéditeur. Chaque compte a sa liste ordonnée de règles. Cette
-version exécute deux types d'action : la **réponse personnalisée**, et le
+version exécute trois types d'action : la **réponse personnalisée**, le
 **rapport de statistiques** — une réponse personnalisée dont le texte porte
-des chiffres calculés sur la boîte (voir « Le rapport de statistiques »).
-La redirection viendra ensuite (voir « Ce que le client ne fait pas
-encore »). Toute règle s'essaie sur un message récent avant de répondre à
-un vrai (voir « Tester une règle »).
+des chiffres calculés sur la boîte (voir « Le rapport de statistiques ») —
+et la **redirection**, qui relaie le message vers d'autres adresses au lieu
+de répondre à son expéditeur (voir « La redirection »). Toute règle
+s'essaie sur un message récent avant d'agir sur un vrai (voir « Tester une
+règle »).
 
 ### Quand les règles tournent
 
@@ -573,17 +577,20 @@ message qui correspond à deux règles reçoit deux réponses. Une règle
 « arrêter ici » clôt la liste pour ce message dès que son filtre a
 correspondu — même si un garde-fou a empêché sa réponse de partir.
 
-L'éditeur porte le type d'action (*Réponse personnalisée* ou *Rapport de
-statistiques*), le nom, « Règle active », « Arrêter ici », la limite (voir
-« Garde-fous »), l'âge maximal en heures (48 par défaut, de 1 à 720), le
-nombre de premiers envois retenus pour approbation (1 par défaut, de 1 à
-10), le filtre, et un bouton qui ouvre le formulaire de réponse —
-*Réponse personnalisée…* ou *Rapport de statistiques…* selon le type.
-Changer de type ramène la limite au défaut du nouveau type quand elle
-valait encore celui de l'ancien, et un corps resté égal au texte par
-défaut de l'ancien type prend celui du nouveau ; un corps écrit à la main
-est gardé. Une règle d'un type que cette version n'exécute pas montre son
-type grisé. `Ctrl+S` enregistre, `Échap` annule ; un champ qui ne se
+L'éditeur porte le type d'action (*Réponse personnalisée*, *Rapport de
+statistiques* ou *Redirection*), le nom, « Règle active », « Arrêter ici »,
+la limite (voir « Garde-fous »), l'âge maximal en heures (48 par défaut, de
+1 à 720), le nombre de premiers envois retenus pour approbation (1 par
+défaut, de 1 à 10), le filtre, et un bouton qui ouvre le formulaire de
+l'action — *Réponse personnalisée…*, *Rapport de statistiques…* ou
+*Redirection…* selon le type. Changer de type ramène la limite au défaut
+du nouveau type quand elle valait encore celui de l'ancien, et un corps
+resté égal au texte par défaut de l'ancien type prend celui du nouveau ; un
+corps écrit à la main est gardé, et devient l'introduction d'une
+redirection. Ce qu'un type n'emploie pas — les destinations d'une
+redirection, les images d'une réponse — reste tant que l'éditeur est
+ouvert et part à l'enregistrement de la règle. Une règle d'un type que
+cette version ne connaît pas montre son type grisé. `Ctrl+S` enregistre, `Échap` annule ; un champ qui ne se
 valide pas garde la fenêtre ouverte, la raison sur sa ligne d'état.
 
 ### Filtres
@@ -871,6 +878,116 @@ réglages vivent sous la clé `report` de `rules.json` ; si cette clé est
 illisible, les règles de statistiques sont écartées avec un avertissement
 et les réponses personnalisées continuent.
 
+### La redirection
+
+Une règle de type *Redirection* relaie un message retenu vers une ou
+plusieurs autres adresses au lieu de répondre à son expéditeur.
+*Redirection…* dans l'éditeur ouvre son formulaire : le mode, les
+destinations, un texte d'introduction facultatif et la case *Ignorer
+listes et robots*. `Ctrl+S` revient à l'éditeur, qui enregistre la règle.
+
+| Mode | Ce qui part |
+|---|---|
+| Transfert dans le corps du message (le défaut) | un nouveau message de ce compte dont le texte s'ouvre sur votre introduction et un bloc des en-têtes de l'original — De, Date, À, Cc, Sujet —, suivis du texte d'origine ; la structure de l'original (alternatives, images en ligne, pièces jointes) est gardée |
+| Transfert en pièce jointe | un nouveau message de ce compte qui porte votre introduction, le même bloc d'en-têtes, et l'original joint en entier sous `message.eml` |
+| Vraie redirection (message inchangé) | le message d'origine lui-même, octet pour octet, sous un bloc `Resent-From` / `Resent-Date` / `Resent-Message-ID` qui nomme ce compte |
+
+Le transfert est le mode conseillé : le message part sous l'adresse même de
+ce compte, que son serveur garantit. Un message signé ou chiffré (S/MIME,
+PGP), ou dont le texte ne peut pas être réécrit, part en pièce jointe même
+en mode « dans le corps », pour que sa signature reste vérifiable. Une
+vraie redirection garde le De de l'expéditeur : la signature DKIM d'origine
+peut survivre, rien de ce qu'elle couvre ne changeant, mais le SPF de
+l'expéditeur échoue depuis notre serveur, et sa politique DMARC ne passe que
+si cette signature passe. Le destinataire peut alors rejeter le message, et
+certains serveurs d'envoi refusent un De qui n'est pas le compte
+authentifié. Le formulaire affiche cet avertissement tant que le mode
+redirection est choisi, et grise l'introduction, qu'une redirection ne
+porte pas.
+
+**Destinations.** De une à dix adresses, ajoutées une à une par *Ajouter*
+ou `Entrée` et retirées par *Retirer*. Chacune est contrôlée à l'ajout :
+une adresse simple (`carole.regle@example.org` ; une partie locale entre
+guillemets ou non ASCII est refusée), pas ce compte, pas un autre compte
+configuré dans le client, pas déjà dans la liste. Un domaine accentué est
+gardé sous sa forme ASCII : `bruno.filtre@filtré.example.net` devient
+`bruno.filtre@xn--filtr-fsa.example.net`. Une adresse saisie mais pas
+ajoutée garde le formulaire ouvert. Pour chaque message, une destination
+égale à l'expéditeur d'origine — son De ou son `Return-Path` — est retirée,
+cette personne ayant déjà le message ; quand il n'en reste aucune, le
+message est journalisé *aucune destination restante* et rien ne part.
+
+Les destinations ne se voient jamais entre elles, et l'expéditeur d'origine
+ne les apprend pas par « répondre à tous ». Un transfert est un seul
+message adressé à `undisclosed-recipients:;`, les destinations dans son
+enveloppe seulement ; une redirection ne porte pas de `Resent-To`. Les À,
+Cc et Cci de l'original n'entrent jamais dans l'enveloppe.
+
+**En-têtes.** Un transfert est un nouveau message. Son De est ce compte,
+son sujet `Fwd: ` suivi du sujet d'origine (laissé tel quel s'il commence
+déjà ainsi), et son `Reply-To` celui de l'original — ou l'expéditeur
+d'origine à défaut : une destination qui répond joint la personne qui a
+écrit, et une notification de `noreply@example.net` joint le demandeur que
+nomme son `Reply-To`. Il porte `Auto-Submitted: auto-generated`,
+`X-Auto-Response-Suppress: All` et notre marqueur `X-Loop`, garde les
+lignes `X-Loop` propres à l'original pour que la détection de boucle d'un
+tiers fonctionne encore, et n'a ni `In-Reply-To` ni `References` : ce n'est
+pas une réponse. Une redirection ne retire de l'original que `Bcc`,
+`Resent-Bcc`, `Return-Path` et `X-ERPLibre-Bcc` — le champ Cci interne du
+client, par lequel un expéditeur choisirait sinon un destinataire — et ne
+change rien d'autre que les fins de ligne, qui partent en CRLF, la forme
+qu'exige SMTP. Un bloc `Resent-*` déjà présent reste, sous le nôtre.
+
+**Taille.** Un message de plus de **25 Mio** n'est pas relayé (*message
+trop gros pour être transféré*). La taille qu'annonce le serveur est
+contrôlée avant tout téléchargement. Le message entier est ensuite lu par
+`BODY.PEEK[]`, il reste donc non lu, et seulement pour une règle sur le
+point de l'envoyer.
+
+**Listes et robots.** Transférer infolettres, alertes et courrier de liste
+est l'usage ordinaire d'une règle de redirection : par défaut, les
+garde-fous qui tiennent une réponse à l'écart du courrier automatique, de
+masse, de liste et d'automate, et du courrier non adressé au compte, ne s'y
+appliquent pas. Cocher *Ignorer listes et robots* les rétablit, comme pour
+une réponse. Les garde-fous anti-boucle s'appliquent quelle que soit la
+case : nos propres envois automatiques et les réponses à nos transferts,
+une redirection faite par ce compte et revenue, les rapports de remise, les
+réponses automatiques (absence, accusé de réception), le marqueur `X-Loop`,
+l'expéditeur vide. De même *authentification en échec* — un message
+probablement usurpé n'est pas relayé — et *envoyé par ce compte*. Une
+redirection n'exige jamais d'expéditeur authentifié.
+
+**Limite et boucle résiduelle.** « Ne pas renvoyer » est décochée par
+défaut pour une redirection : chaque message retenu est relayé. Cochée,
+elle compte depuis le dernier transfert d'un message du même expéditeur.
+Deux destinations qui renvoient chacune le message à ce compte sous la
+forme d'un message neuf à elles se le servent l'une à l'autre par son
+intermédiaire : chaque retour retire son propre expéditeur mais atteint
+l'autre. Les plafonds bornent cette boucle, et cocher la limite la coupe.
+Une destination qui redirige le message en retour est arrêtée (*déjà
+redirigé par ce compte*), de même que sa réponse automatique.
+
+**Copies dans Envoyés.** Un transfert est classé dans Envoyés comme une
+réponse automatique. La copie montre `To: undisclosed-recipients:;` — les
+destinations se lisent dans la règle — et reste hors des statistiques. Une
+redirection n'est pas classée : sa copie porterait le De d'un tiers et
+l'`In-Reply-To` de l'original, et les statistiques la compteraient comme
+une réponse. Le journal des règles garde la trace des deux.
+
+**Ce qu'une règle de redirection n'est pas.** Elle ne remplace pas la
+redirection de toute une boîte par votre serveur de courrier. Elle ne
+tourne que pendant que le client ou le menu tourne. Au-delà de 20 envois
+par passe ou de 60 par heure (les plafonds du compte, un budget **partagé**
+avec les réponses et les rapports), les transferts entrent **retenus** dans
+la file d'envoi, attendent un geste sous `o`, et expirent après 24 h : du
+courrier peut alors ne jamais partir, sans erreur visible hors la file et
+le journal. Chaque transfert classé dans Envoyés double l'espace qu'occupe
+le message (jusqu'à 25 Mio par message), et un quota IMAP plein fait
+rebondir le courrier entrant. Un serveur qui accepte certaines destinations
+et en refuse d'autres annonce un succès : les refusées sont perdues, et le
+journal dit *envoyé*. Pour tout faire suivre, la redirection de votre
+serveur de courrier est conseillée.
+
 ### Garde-fous
 
 Avant qu'une réponse parte, les contrôles de la règle s'exécutent dans cet
@@ -883,6 +1000,10 @@ sous la raison indiquée.
 |---|---|
 | trop vieux | a été reçu par le serveur depuis plus longtemps que l'âge maximal de la règle — mesuré sur la date de réception du serveur (`INTERNALDATE`), jamais sur l'en-tête `Date` qu'écrit l'expéditeur |
 | date de réception dans le futur | porte une date de réception de plus de 10 minutes en avance |
+| notre propre envoi automatique, ou une réponse à l'un d'eux | redirection seulement : est un message qu'une règle de ce compte a envoyé, ou répond (`In-Reply-To`) à un message qu'une règle de redirection a envoyé |
+| déjà redirigé par ce compte | porte un `Resent-From` à l'adresse de ce compte : une redirection faite depuis ce compte et revenue. Tout type de règle — un message redirigé à la main depuis ce compte et revenu est donc lui aussi laissé tel quel |
+| rapport de remise ou de non-remise | redirection seulement : est un rapport de remise (`multipart/report`, `message/delivery-status`), ou vient de `mailer-daemon` ou de `postmaster` |
+| réponse automatique (absence, accusé de réception) | redirection seulement, quelle que soit *Ignorer listes et robots* : porte `Auto-Submitted: auto-replied` ou `Precedence: auto_reply` |
 | message automatique | porte `Auto-Submitted` avec toute valeur autre que `no` |
 | envoi de masse | porte `Precedence: bulk`, `list`, `junk` ou `auto_reply` |
 | liste de diffusion | porte `List-Id` ou `List-Unsubscribe` |
@@ -898,6 +1019,16 @@ sous la raison indiquée.
 | authentification en échec | est marqué `dmarc=fail`, ou `spf=fail` sans `dkim=pass`, par l'`Authentication-Results` du serveur de réception : répondre enverrait notre réponse à la personne dont l'adresse a été usurpée |
 | expéditeur non authentifié | rapport de statistiques seulement : ne porte aucun premier `Authentication-Results` qui authentifie le domaine du De (voir « Le rapport de statistiques ») |
 | limité | vient d'un expéditeur auquel cette règle a répondu récemment (ci-dessous) |
+| message trop gros pour être transféré | redirection seulement : dépasse 25 Mio (voir « La redirection ») |
+| aucune destination restante | redirection seulement : chaque destination de la règle était, pour ce message, l'expéditeur d'origine, ce compte ou un autre compte configuré |
+
+Une règle de redirection saute *message automatique*, *envoi de masse*,
+*liste de diffusion*, *réponses automatiques refusées par l'expéditeur*,
+*expéditeur automate* et *non adressé à ce compte* tant que sa case
+*Ignorer listes et robots* n'est pas cochée, et ne contrôle jamais
+*expéditeur non authentifié*. Les autres lignes s'y appliquent comme à une
+réponse ; les quatre premières lignes ajoutées pour elle s'appliquent
+quelle que soit la case.
 
 **Ne pas renvoyer si message reçu à l'intérieur de N minutes.** Case
 cochée, un message ne reçoit pas de réponse si le dernier envoi de cette
@@ -912,11 +1043,15 @@ dernier envoi ; elle écrit à 10 h 05 — réponse, 65 minutes après le dernie
 envoi. Le message de 9 h 40 n'a pas relancé le décompte.
 
 **Plafonds.** Quoi que disent les règles, un compte envoie au plus **20**
-réponses automatiques par passe et **60** par heure glissante, toutes
-règles confondues. Au-delà, les réponses sont retenues dans la file
-d'envoi et la ligne de statut avertit *Plafond d'envois automatiques
-atteint ; le reste est retenu (o).* Les deux plafonds se règlent sous la
-liste des règles, ou par la clé `caps` de `rules.json`
+messages automatiques par passe et **60** par heure glissante, toutes
+règles confondues — réponses, rapports et transferts se partagent ce
+budget. Au-delà, ils sont retenus dans la file d'envoi et la ligne de statut avertit *Plafond d'envois automatiques
+atteint ; le reste est retenu (o) ou ignoré (journal l).* Un transfert retenu garde une copie
+entière de l'original : une règle de redirection qui a déjà **20** entrées
+dans la file n'en retient plus, et les messages suivants sont journalisés
+*plafond de la passe atteint* ou *plafond horaire atteint* sans être
+téléchargés, ni transférés. Les deux plafonds se règlent sous la liste
+des règles, ou par la clé `caps` de `rules.json`
 (`{"per_pass": 20, "per_hour": 60}`, entiers d'au moins 1). C'est le
 plafond horaire qui borne un minuteur court : avec `mail_refresh_sec` à
 30 s, le seul plafond par passe laisserait passer 2 400 réponses par heure.
@@ -927,8 +1062,10 @@ réponse attend **retenue** dans la file d'envoi. `o` en montre l'aperçu :
 destinataire et sujet, les 20 premières lignes du texte, les images en
 ligne et jointes, et son échéance. *Relâcher* la laisse partir à la passe
 de synchronisation suivante. Modifier le filtre de la règle ou sa réponse
-(format, sujet, corps, images) relance le décompte, et une réponse qui
-attendait depuis avant la modification est retirée au lieu d'être envoyée ;
+(format, sujet, corps, images) — pour une redirection, ses destinations, son
+mode ou sa case *Ignorer listes et robots* — relance le décompte, et un
+message qui attendait depuis avant la modification est retiré au lieu
+d'être envoyé ;
 renommer la règle, la déplacer ou changer ses limites ne le relance pas.
 
 **Quand le cache est recréé**, le journal qui limite et qui compte part
@@ -949,6 +1086,15 @@ approbation (o).*
 | filtre ou réponse de la règle modifiés entre-temps | retirée (*règle modifiée depuis*) |
 | trois refus définitifs depuis la file | retirée (*essais épuisés*) |
 | image illisible, message impossible à construire | journalisée en échec, pas retentée |
+| message à transférer : compte hors ligne quand il faut le télécharger | laissé à la prochaine passe en ligne |
+| message à transférer : téléchargement refusé par le serveur | journalisé en échec (*corps illisible*), pas retenté |
+| message à transférer : plus de 25 Mio une fois téléchargé | écarté (*message trop gros pour être transféré*) |
+
+Un transfert ou une redirection attend dans la file d'envoi comme une
+réponse, scellé avec ses destinations : une redirection en file garde son
+enveloppe et ne part que vers ces destinations. L'aperçu sous `o` nomme le
+type d'entrée — *transfert d'une règle*, ou *redirection d'une règle,
+message d'origine inchangé*.
 
 Le journal `l` de l'écran principal dit, par règle, ce qui a échoué ; le
 journal des règles donne le résultat et la raison de chaque message.
@@ -983,7 +1129,8 @@ autre message.
 Le résultat montre, dans l'ordre : un avertissement quand la règle est
 désactivée ; l'arbre du filtre avec l'issue de chaque nœud (✓, ✗, `?` quand
 le corps manque) et si le message correspond ; le **verdict** —
-*répondrait*, ou la raison que donnerait une vraie passe (trop vieux, déjà
+*répondrait* (*transférerait* pour une règle de redirection), ou la
+raison que donnerait une vraie passe (trop vieux, déjà
 traité, envoyé par ce compte…) ; et, s'il diffère, le verdict **pour un
 message neuf**, comme si celui-ci venait d'arriver après l'armement de la
 règle — armement, âge et « déjà traité » mis à part, les autres garde-fous,
@@ -1014,13 +1161,38 @@ message automatique : sa copie dans Envoyés et son arrivée dans la boîte
 de réception restent hors des statistiques. À son arrivée, la passe
 suivante le journalise *message automatique* pour chaque règle dont le
 filtre le retient : cette ligne du journal vient de l'essai, pas d'un
-inconnu. Une règle d'un type que cette version n'exécute pas le dit et
+inconnu. Une règle d'un type que cette version ne connaît pas le dit et
 n'envoie rien.
+
+**Une règle de redirection** a besoin du message entier : en ligne, il est
+lu par `BODY.PEEK[]` et reste non lu ; hors ligne, il est lu dans le cache
+quand il s'y trouve. À la place du destinataire, l'essai montre le mode ;
+les destinations retenues, ou *Destinations retenues : aucune* ; chaque
+destination retirée pour ce message, avec sa raison (*expéditeur
+d'origine*, *adresse de ce compte*, *adresse d'un autre compte configuré*) ;
+la taille du message en octets ; puis *Message qui partirait* : pour un
+transfert, ses De, À, Reply-To, Sujet et Auto-Submitted, et les
+destinations en Cci ; pour une redirection, `Resent-From` et
+`Resent-Date`, puis les De, À et Sujet d'origine, et *Le reste du message
+part octet pour octet.* Suivent le texte, les pièces jointes et les images
+du message. Sans destination retenue, l'aperçu est construit adressé à
+vous-même, et le dit.
+
+**Envoyer un essai à moi-même** envoie alors ce même transfert — même
+`Reply-To`, sujet préfixé de `[Essai]` — ou cette même redirection, sujet
+inchangé, à l'adresse même du compte et à aucune destination. À son
+retour, toute règle l'arrête : un transfert est journalisé *notre propre
+envoi automatique, ou une réponse à l'un d'eux* par une règle de
+redirection et *message automatique* par une réponse ou un rapport ; une
+redirection est arrêtée par toute règle en *déjà redirigé par ce compte* —
+ou passée en silence par une règle qui a déjà traité l'original, dont elle
+porte le `Message-ID`.
 
 ### Depuis le menu CLI
 
 `Courriel > [6] Règles du courrier entrant` demande un compte, puis propose
-`[1]` lister les règles (avec un résumé de chaque filtre), `[2]` en
+`[1]` lister les règles (avec un résumé de chaque filtre, et sous une règle
+de redirection une ligne `→ mode : destinations`), `[2]` en
 activer / désactiver une, `[3]` en monter ou descendre une, `[4]` en
 supprimer une (demande confirmation), `[5]` les 50 dernières lignes du
 journal des règles, `[6]` les paramètres du rapport de statistiques, `[7]`
@@ -1048,9 +1220,28 @@ arrêté dans la boîte de réception, et `report_snapshot.json` (0600) la
 partie boîte du rapport du jour — des comptes et un délai, aucune adresse.
 Le journal des règles, lui, vit dans le `cache.db` du compte, scellé avec
 lui. Les clés que cette version ne connaît pas sont gardées quand le
-fichier est réécrit, et une règle d'un type qu'elle n'exécute pas encore —
-redirection — est affichée et laissée telle quelle ; un fichier d'une
-version de format plus récente est refusé et laissé intact.
+fichier est réécrit ; un fichier d'une version de format plus récente est
+refusé et laissé intact.
+
+Une règle de redirection garde son introduction dans `body`, son format à
+`text`, son sujet vide et aucune image ; les destinations — sous leur forme
+d'envoi, un domaine accentué en ASCII —, le mode (`inline`, `attachment` ou
+`redirect`) et la case vont sous `options` :
+
+```json
+"action": {
+  "kind": "forward",
+  "format": "text",
+  "subject": "",
+  "body": "Message reçu sur la boîte des règles.",
+  "images": [],
+  "options": {
+    "targets": ["carole.regle@example.org", "denis.tri@example.org"],
+    "mode": "inline",
+    "skip_lists": false
+  }
+}
+```
 
 ## Gérer les dossiers
 
@@ -1484,9 +1675,6 @@ jeton en place vaut toujours et la passe suivante réessaie.
   navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
   un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
-- **Les règles ne redirigent pas** — une règle ne sait pas encore
-  rediriger un message ; une règle de redirection est gardée et affichée,
-  jamais exécutée.
 - **Pas de service sans interface** — les règles ne tournent que TUI
   ouvert ou pendant `Courriel > [3] Synchroniser maintenant` ; les deux
   fermés, rien ne reçoit de réponse.
@@ -1496,6 +1684,10 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **Pas d'alias** — un compte ne connaît que sa propre adresse et son
   identifiant, donc un message reçu par un alias est journalisé *non
   adressé à ce compte* et ne reçoit pas de réponse automatique.
+- **Pas de SMTPUTF8** — une destination de redirection doit avoir une
+  partie locale ASCII (le domaine peut porter des accents), et un original
+  redirigé dont les en-têtes portent de l'UTF-8 brut part tel quel : un
+  serveur strict peut le refuser.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez
