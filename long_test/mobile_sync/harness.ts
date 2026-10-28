@@ -12,20 +12,42 @@ import {
 	restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice,
 	composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS,
 	foldText, htmlTerm, mailboxKindOf, noteForRecord,
+	parseNtfyLink, decryptWebPush, pollNtfy,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import type {
 	ChatMailboxItem, Mentions, MemoryChatFiles, MessageTarget, SearchResults, SyncEnv,
+	NtfyLink, NtfyMessage, PushNodeNative,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import { readFileSync } from "node:fs";
 
 export { memoryAttachmentIO, nodeTransport, restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice };
 export { composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS };
 export { foldText, htmlTerm, mailboxKindOf, noteForRecord };
+export { parseNtfyLink, decryptWebPush, pollNtfy };
 export type { ChatMailboxItem, Mentions, MessageTarget, SearchResults, SyncEnv };
+export type { NtfyLink, NtfyMessage, PushNodeNative };
 
 export interface Login {
 	login: string;
 	password: string;
+}
+
+/** A phone's access to the run's ntfy: its read-only token, its topic prefix and the setup link carrying both. */
+export interface NtfyAccess {
+	token: string;
+	prefix: string;
+	link: string;
+}
+
+/**
+ * The run's own ntfy (long_test/mobile_sync_ntfy.py): 127.0.0.1 on a free
+ * port, its server.yml under the run directory (config), a phone's access
+ * and a second phone's (other). Its links name the same url for Odoo.
+ */
+export interface TargetNtfy extends NtfyAccess {
+	url: string;
+	config: string;
+	other: NtfyAccess;
 }
 
 /** One Odoo server of the run: its major version, url, database and users. */
@@ -45,6 +67,8 @@ export interface Target {
 	 * mentions it or opens a chat with it.
 	 */
 	inbox?: Login;
+	/** The run's ntfy (Odoo 18, when the ntfy command is installed). */
+	ntfy?: TargetNtfy;
 }
 
 function readTargets(): Target[] {

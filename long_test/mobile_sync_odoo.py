@@ -55,7 +55,7 @@ MODULES_EN_PLUS = {
 }
 DEPOT_ADDONS_ERPLIBRE = "ERPLibre_erplibre_addons"
 MODULE_CHAT = "erplibre_mobile_chat"
-HARNESS_API = 5
+HARNESS_API = 6
 NODE_MINIMUM = 22
 # Le fuseau de l'administrateur des bases ET des tests : une date d'Odoo 16
 # (Date) se lit en jour local, et un écart des deux ferait glisser les jours.
@@ -757,18 +757,24 @@ def arreter_serveur(serveur, delai=10):
 GARDES = "serveurs.json"
 
 
-def noter_gardes(repertoire, serveurs):
+def noter_gardes(repertoire, serveurs, ntfy=None):
     """Note, dans le répertoire de la course, les serveurs que --garder
-    laisse tourner : la course qui balaiera leurs bases les arrête d'abord."""
-    (Path(repertoire) / GARDES).write_text(
-        json.dumps(
-            [
-                {"pid": s.processus.pid, "base": s.base, "url": s.url}
-                for s in serveurs
-            ],
-            indent=2,
+    laisse tourner : la course qui balaiera leurs bases les arrête d'abord.
+    Le ntfy de la course, quand il y en a un, est noté sous la base du
+    dernier serveur : il s'arrête avec elle."""
+    gardes = [
+        {"pid": s.processus.pid, "base": s.base, "url": s.url}
+        for s in serveurs
+    ]
+    if ntfy is not None and serveurs:
+        gardes.append(
+            {
+                "pid": ntfy.processus.pid,
+                "base": serveurs[-1].base,
+                "url": ntfy.url,
+            }
         )
-    )
+    (Path(repertoire) / GARDES).write_text(json.dumps(gardes, indent=2))
 
 
 def commande_de(pid):

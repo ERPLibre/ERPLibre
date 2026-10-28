@@ -17,6 +17,9 @@ import { OdooAdmin } from "./odooAdmin";
 
 const CHANNEL = "discuss.channel";
 
+/** A system parameter of the tests' own, written then removed to clear Odoo's get_param cache. */
+const CACHE_FLUSH = "erplibre_mobile_sync.cache_bump";
+
 /** The CSRF token of a page Odoo renders (the login form's input, or the layout's `csrf_token: "…"`). */
 const CSRF = /name=["']csrf_token["'][^>]*value=["']([^"']+)["']|csrf_token\s*:\s*["']([^"']+)["']/;
 
@@ -43,11 +46,11 @@ export class ChatPeer {
 	partnerId = 0;
 	adminPartnerId = 0;
 
-	private constructor(readonly user: OdooAdmin, readonly admin: OdooAdmin) {}
+	private constructor(readonly user: OdooAdmin, readonly admin: OdooAdmin, private target: Target) {}
 
 	static async open(target: Target): Promise<ChatPeer> {
 		if (!target.chat) throw new Error(`no chat user on Odoo ${target.version}`);
-		const peer = new ChatPeer(new OdooAdmin(target, target.chat), new OdooAdmin(target));
+		const peer = new ChatPeer(new OdooAdmin(target, target.chat), new OdooAdmin(target), target);
 		await peer.user.sessionLogin();
 		peer.partnerId = await peer.partnerOf(target.chat.login);
 		peer.adminPartnerId = await peer.partnerOf(target.admin.login);
@@ -378,6 +381,75 @@ export class ChatPeer {
 			["message_unread_counter", "seen_message_id"],
 		);
 		return { ...row, seen_message_id: row.seen_message_id ? row.seen_message_id[0] : false };
+	}
+
+	/**
+	 * Posts text as inbox_user in a record's chatter (a message to the
+	 * followers), as their browser does; the message's id. chat_user
+	 * cannot post on records it does not reach: inbox_user has project's
+	 * user rights.
+	 */
+	async postOnRecordAsInbox(model: string, resId: number, text: string): Promise<number> {
+		if (!this.target.inbox) throw new Error(`no inbox user on Odoo ${this.target.version}`);
+		const inbox = new OdooAdmin(this.target, this.target.inbox);
+		await inbox.sessionLogin();
+		const result = await inbox.jsonRoute("/mail/message/post", {
+			thread_model: model,
+			thread_id: resId,
+			post_data: { body: text, message_type: "comment", subtype_xmlid: "mail.mt_comment" },
+		});
+		const id = result?.["mail.message"]?.[0]?.id;
+		if (typeof id !== "number") throw new Error("record post answered no message id");
+		return id;
+	}
+
+	/** The Web Push devices Odoo holds for this endpoint (admin's search_count on mail.push.device). */
+	pushDevices(endpoint: string): Promise<number> {
+		return this.admin.execute("mail.push.device", "search_count", [[["endpoint", "=", endpoint]]]);
+	}
+
+	/** Every Web Push device whose endpoint starts with url, unlinked by admin; how many there were. */
+	async dropPushDevices(url: string): Promise<number> {
+		const rows = await this.admin.searchRead("mail.push.device", [["endpoint", "=like", `${url}/%`]], ["id"]);
+		if (rows.length) await this.admin.unlink("mail.push.device", rows.map((r) => r.id));
+		return rows.length;
+	}
+
+	/**
+	 * Odoo's VAPID key pair removed (admin unlinks the two
+	 * mail.web_push_vapid_* parameters), as on a restored or neutralised
+	 * database: Odoo pushes nothing until get_web_push_vapid_public_key
+	 * draws new keys, which also drops every device. get_param is cached
+	 * per server: a request that reads the keys while the unlink runs (any
+	 * push to a recipient with a device does) caches them again from its
+	 * older snapshot, so the wipe is repeated, the cache cleared by writing
+	 * a parameter of its own, until get_param answers false for both.
+	 */
+	async wipeVapid(): Promise<void> {
+		const keys = ["mail.web_push_vapid_private_key", "mail.web_push_vapid_public_key"];
+		for (let attempt = 0; ; attempt++) {
+			const rows = await this.admin.searchRead("ir.config_parameter", [["key", "in", keys]], ["id"]);
+			if (rows.length) await this.admin.unlink("ir.config_parameter", rows.map((r) => r.id));
+			const left = await Promise.all(keys.map((k) => this.admin.getParam(k)));
+			if (left.every((v) => v === false)) return;
+			if (attempt >= 10) throw new Error("the VAPID keys stay readable after their removal");
+			await this.admin.setParam(CACHE_FLUSH, "1");
+			await this.admin.setParam(CACHE_FLUSH, false);
+		}
+	}
+
+	/** The last message the user of `login` has seen in the conversation (seen_message_id of their member), 0 for none. */
+	async seenOf(login: string, channelId: number): Promise<number> {
+		const row = await this.memberOf(channelId, await this.partnerOf(login), ["seen_message_id"]);
+		if (!row) throw new Error(`${login} is not a member of ${channelId}`);
+		return row.seen_message_id ? row.seen_message_id[0] : 0;
+	}
+
+	/** The unread inbox notifications of the user of `login` (mail.notification of their partner, not read). */
+	async needactionCount(login: string): Promise<number> {
+		return this.admin.execute("mail.notification", "search_count", [
+			[["res_partner_id", "=", await this.partnerOf(login)], ["is_read", "=", false]],
+		]);
 	}
 
 	/** Admin's mentions still to read in the conversation (message_needaction_counter). */
