@@ -69,7 +69,9 @@ class NtfyMobileMenuMixin:
         choice = input(t("Your choice (1/2): ")).strip()
         if choice == "2":
             chosen = self._ask_ssh_target()
-            return nm.SshHost(chosen[0]) if chosen else None
+            return (
+                nm.SshHost(chosen[0], hostname=chosen[2]) if chosen else None
+            )
         return nm.LocalHost()
 
     def _ntfy_mobile_lan_address(self):
@@ -85,7 +87,8 @@ class NtfyMobileMenuMixin:
             sock.close()
 
     def _ntfy_mobile_inspect(self, host):
-        """(config, texte, clés, propriétaire) ou None, message affiché.
+        """(config, texte, clés, propriétaire, service) ou None, message
+        affiché. Service : l'état systemd du service `ntfy` (UNIT).
 
         Lit le `server.yml` en root : root lit tous les fichiers.
         """
@@ -104,7 +107,7 @@ class NtfyMobileMenuMixin:
             return None
         keys = nm.read_yml_keys(text)
         owner = markers.get("OWNER", "?")
-        return config, text, keys, owner
+        return config, text, keys, owner, markers.get("UNIT", "?")
 
     def _ntfy_mobile_owner_known(self, owner):
         if owner and owner != "?":
@@ -134,7 +137,7 @@ class NtfyMobileMenuMixin:
         inspected = self._ntfy_mobile_inspect(host)
         if inspected is None:
             return
-        config, text, keys, owner = inspected
+        config, text, keys, owner, unit = inspected
 
         problems = nm.config_problems(keys)
         blocking = [p for p in problems if p != RATE_LIMITING_PROBLEM]
@@ -152,15 +155,12 @@ class NtfyMobileMenuMixin:
             return
 
         if not self._ntfy_mobile_apply_config(
-            host, config, text, problems, owner
+            host, config, text, problems, unit
         ):
             return
 
-        label = input(t("Phone name (e.g. Alice's phone): ")).strip()
-        try:
-            user = nm.phone_user(label)
-        except ValueError:
-            print(f"✗ {t('This name has no usable character.')}")
+        user = self._ntfy_mobile_ask_user(host, config, owner)
+        if user is None:
             return
         prefix = nm.random_prefix()
         _code, out = host.run(
@@ -190,8 +190,55 @@ class NtfyMobileMenuMixin:
             f"\n⚠ {t('This link gives access to the notifications of this phone: do not share it.')}"
         )
 
-    def _ntfy_mobile_apply_config(self, host, config, text, problems, owner):
-        """Propose les ajustements du `server.yml` ; Faux pour arrêter."""
+    def _ntfy_mobile_ask_user(self, host, config, owner):
+        """Utilisateur ntfy du nouveau téléphone, ou None si l'on renonce.
+
+        Un nom déjà préparé (deux libellés peuvent se replier sur le même)
+        n'est jamais repris en silence : on en choisit un autre, ou on
+        révoque l'ancien téléphone avant de le recréer.
+        """
+        code, out = host.run(nm.list_script(config), sudo_user=owner)
+        if code != 0:
+            print(f"✗ {t('The prepared phones could not be read.')}")
+            return None
+        taken = nm.phone_users(out)
+        while True:
+            label = input(t("Phone name (e.g. Alice's phone): ")).strip()
+            try:
+                user = nm.phone_user(label)
+            except ValueError:
+                print(f"✗ {t('This name has no usable character.')}")
+                return None
+            if user not in taken:
+                return user
+            print(
+                f"⚠ {t('A phone is already prepared under this name:')}"
+                f" {user}"
+            )
+            print(f"[1] {t('Choose another name')}")
+            print(f"[2] {t('Revoke it and prepare it again')}")
+            choice = input(t("Your choice (1/2, Enter: cancel): ")).strip()
+            if choice == "1":
+                continue
+            if choice != "2":
+                return None
+            code, _out = host.run(
+                nm.revoke_script(config, user), sudo_user=owner
+            )
+            if code != 0:
+                print(f"✗ {t('The revocation failed.')}")
+                return None
+            print(f"✓ {t('Access revoked.')}")
+            return user
+
+    def _ntfy_mobile_apply_config(self, host, config, text, problems, unit):
+        """Propose les ajustements du `server.yml` ; Faux pour arrêter.
+
+        Sans service systemd nommé `ntfy` (unit `not-found`), on le dit
+        avant d'écrire et on ne propose pas de redémarrage. Un redémarrage
+        qui échoue affiche la copie de sauvegarde et la commande qui la
+        remet.
+        """
         ssh = isinstance(host, nm.SshHost)
         default = "" if ssh else "127.0.0.1"
         shown = default or SKIP
@@ -213,6 +260,12 @@ class NtfyMobileMenuMixin:
         if new == text:
             return True
 
+        no_unit = unit == "not-found"
+        if no_unit:
+            print(
+                f"⚠ {t('No systemd service named ntfy here:')}"
+                f" {t('restart ntfy yourself once the configuration is written.')}"
+            )
         print(f"\n{t('Proposed changes to the ntfy configuration:')}")
         print(nm.unified_diff(text, new, config))
         if not _yes(
@@ -237,6 +290,8 @@ class NtfyMobileMenuMixin:
             print(f"✗ {t('The configuration could not be written.')}")
             return False
         print(f"✓ {t('Configuration written.')}")
+        if no_unit:
+            return True
         if not _yes(t("Restart ntfy now to apply it? (y/N): ")):
             print(
                 f"⚠ {t('Not restarted: the change applies at the next ntfy restart.')}"
@@ -244,17 +299,30 @@ class NtfyMobileMenuMixin:
             return True
         _code, out = host.run(nm.restart_script(), sudo_user=None)
         state = nm.parse_markers(out).get("ACTIVE", "")
-        return self._ntfy_mobile_wait_active(host, state)
+        if self._ntfy_mobile_wait_active(host, state):
+            return True
+        print(f"{t('Backup of the configuration:')} {config}.bak-{stamp}")
+        print(
+            f"{t('To put it back, run as root:')}"
+            f" {nm.restore_command(config, stamp)}"
+        )
+        return False
 
     def _ntfy_mobile_ask_urls(self, host, keys):
-        """(URL côté téléphone, URL côté Odoo)."""
+        """(URL côté téléphone, URL côté Odoo ou None).
+
+        L'URL côté Odoo est None quand elle est vide ou égale à celle du
+        téléphone : le lien ne porte alors pas `odoo=`. Par ssh, l'URL
+        proposée prend l'hôte réel, pas l'alias de `~/.ssh/config`.
+        """
         port = keys.get("listen-http", "").rsplit(":", 1)[-1] or "80"
         base = keys.get("base-url", "")
         base_host = urllib.parse.urlsplit(base).hostname or ""
         if base and base_host not in LOCAL_URL_HOSTS:
             default = base
         elif isinstance(host, nm.SshHost):
-            default = f"http://{host.target.rsplit('@', 1)[-1]}:{port}"
+            remote = host.hostname or host.target.rsplit("@", 1)[-1]
+            default = f"http://{remote}:{port}"
         else:
             default = f"http://{self._ntfy_mobile_lan_address()}:{port}"
         phone_url = input(
@@ -265,14 +333,14 @@ class NtfyMobileMenuMixin:
             f"{t('URL the Odoo server publishes to (Enter: same)')}"
             f" [{phone_url}]: "
         ).strip()
-        return phone_url, odoo_url or phone_url
+        return phone_url, None if odoo_url in ("", phone_url) else odoo_url
 
     def _ntfy_mobile_phones(self, host):
         """(config, owner, [utilisateurs]) ou None."""
         inspected = self._ntfy_mobile_inspect(host)
         if inspected is None:
             return None
-        config, _text, _keys, owner = inspected
+        config, _text, _keys, owner, _unit = inspected
         if not self._ntfy_mobile_owner_known(owner):
             return None
         _code, out = host.run(nm.list_script(config), sudo_user=owner)

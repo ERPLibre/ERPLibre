@@ -163,6 +163,8 @@ def access_script(config, user, prefix, label="erplibre-mobile"):
     Anonyme : écriture seule sur `up*` (le serveur Odoo publie sans
     identité). Le téléphone : lecture seule sur `<prefix>*`, mot de passe
     aléatoire jeté, jeton sans expiration. Le jeton est la dernière sortie.
+    `user` ne doit pas exister : ntfy refuse un nom pris et `set -e` arrête
+    le script, plutôt que de fusionner deux téléphones sous un compte.
     """
     cfg = shlex.quote(config)
     usr = shlex.quote(user)
@@ -172,7 +174,7 @@ def access_script(config, user, prefix, label="erplibre-mobile"):
             f"ntfy access --config {cfg} everyone {shlex.quote('up*')}"
             " write-only",
             'NTFY_PASSWORD="$(head -c 32 /dev/urandom | base64)"'
-            f" ntfy user --config {cfg} add --ignore-exists {usr}",
+            f" ntfy user --config {cfg} add {usr}",
             f"ntfy access --config {cfg} {usr}"
             f" {shlex.quote(prefix + '*')} read-only",
             f"ntfy token --config {cfg} add"
@@ -183,9 +185,12 @@ def access_script(config, user, prefix, label="erplibre-mobile"):
 
 
 def inspect_script(config):
-    """Script qui imprime version, propriétaire, `server.yml` et santé.
+    """Script qui imprime version, propriétaire, `server.yml`, santé et
+    service.
 
-    Une ligne `@@NOM valeur` par fait ; `parse_markers` les relit.
+    Une ligne `@@NOM valeur` par fait ; `parse_markers` les relit. UNIT est
+    l'état de chargement systemd du service `ntfy` : `loaded`, `not-found`
+    quand aucun service ne porte ce nom, `?` sans systemd.
     """
     cfg = shlex.quote(config)
     return "\n".join(
@@ -206,6 +211,8 @@ def inspect_script(config):
             ' || wget -qO- -T 3 "$U" 2>/dev/null || echo ?)"',
             "fi",
             'echo "@@HEALTH $(printf %s "$H" | tr -d \'\\n\')"',
+            'echo "@@UNIT $(systemctl show -p LoadState --value ntfy'
+            ' 2>/dev/null || echo ?)"',
             "",
         ]
     )
@@ -283,6 +290,14 @@ def restart_script():
     )
 
 
+def restore_command(config, stamp):
+    """Commande root qui remet la copie `<config>.bak-<stamp>` et relance
+    ntfy, à afficher quand le redémarrage échoue."""
+    cfg = shlex.quote(config)
+    backup = shlex.quote(f"{config}.bak-{stamp}")
+    return f"cp -p {backup} {cfg} && systemctl restart ntfy"
+
+
 def build_link(phone_url, token, prefix, cache_s, odoo_url=None):
     """Lien de configuration `erplibre-ntfy:setup?v=1&…`, valeurs encodées."""
     fields = [
@@ -310,6 +325,14 @@ def render_qr(link):
     out = io.StringIO()
     segno.make(link, error="m").terminal(out=out, compact=True)
     return out.getvalue()
+
+
+def ntfy_free_env(environ=None):
+    """L'environnement (`os.environ` par défaut) sans les variables
+    `NTFY_*` : la CLI les fait passer avant `--config`, et `NTFY_AUTH_FILE`
+    viserait un autre fichier d'accès que celui de la configuration."""
+    source = os.environ if environ is None else environ
+    return {k: v for k, v in source.items() if not k.startswith("NTFY_")}
 
 
 def _tee_run(argv, env=None):
@@ -357,14 +380,19 @@ class LocalHost:
         return argv + ["sh", "-c", script]
 
     def run(self, script, sudo_user):
-        return _tee_run(self.argv(script, sudo_user))
+        return _tee_run(self.argv(script, sudo_user), env=ntfy_free_env())
 
 
 class SshHost:
-    """Exécute un script `sh` sous sudo sur `target`, par `ssh -t`."""
+    """Exécute un script `sh` sous sudo sur `target`, par `ssh -t`.
 
-    def __init__(self, target):
+    `target` est ce qu'on passe à ssh (un alias de `~/.ssh/config` compris) ;
+    `hostname`, l'hôte réel qu'il désigne, quand on le connaît.
+    """
+
+    def __init__(self, target, hostname=None):
         self.target = target
+        self.hostname = hostname
 
     def argv(self, script, sudo_user):
         remote = ["sudo"]
