@@ -181,6 +181,7 @@ from script.todo.install_update_menu import InstallUpdateMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
+from script.todo.ntfy_mobile_menu import NtfyMobileMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.python_menu import PythonMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -281,6 +282,7 @@ class TODO(
     QemuUsbMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
+    NtfyMobileMenuMixin,
     TransformMenuMixin,
     VpnMenuMixin,
     PythonMenuMixin,
@@ -1368,6 +1370,7 @@ class TODO(
         "prompt_execute_deploy": "Deploy",
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu_cache": "QEMU cache",
+        "prompt_execute_ntfy_mobile": "ntfy mobile",
         "_cache_service": "Service",
         "_cache_tests": "Tests",
         "_cache_age": "Age and cleanup",
@@ -1932,6 +1935,11 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "Deploy - Prepare ntfy for ERPLibre mobile"
+                )
+            },
+            {
+                "prompt_description": t(
                     "QEMU cache - Download mirror for local VMs"
                 )
             },
@@ -1971,10 +1979,12 @@ class TODO(
             elif status == "8":
                 self._deploy_ntfy_server()
             elif status == "9":
-                self.prompt_execute_qemu_cache()
+                self.prompt_execute_ntfy_mobile()
             elif status == "10":
-                self._deploy_asterisk_server()
+                self.prompt_execute_qemu_cache()
             elif status == "11":
+                self._deploy_asterisk_server()
+            elif status == "12":
                 self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))

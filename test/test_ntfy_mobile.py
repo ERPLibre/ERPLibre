@@ -10,6 +10,7 @@ import contextlib
 import io
 import os
 import re
+import shlex
 import sys
 import unittest
 from unittest import mock
@@ -184,13 +185,11 @@ class TestAccessScript(unittest.TestCase):
 
     def test_access_script_quotes_values(self):
         script = self.script(label="x'; touch /tmp/pwned; '")
-        for line in script.splitlines():
-            if "--label" in line:
-                import shlex
-
-                words = shlex.split(line)
-                self.assertIn("--label=x'; touch /tmp/pwned; '", words)
-                self.assertEqual(words[-1], "erm_alice")
+        lines = [ln for ln in script.splitlines() if "--label" in ln]
+        self.assertEqual(len(lines), 1)
+        words = shlex.split(lines[0])
+        self.assertIn("--label=x'; touch /tmp/pwned; '", words)
+        self.assertEqual(words[-1], "erm_alice")
 
     def test_other_scripts_carry_config(self):
         for script in (
@@ -210,6 +209,11 @@ class TestAccessScript(unittest.TestCase):
         write = nm.write_yml_script("/c.yml", "a: 1\n", "20260101")
         self.assertIn("/c.yml.bak-20260101", write)
         self.assertIn("base64 -d", write)
+        lines = write.splitlines()
+        self.assertLess(
+            lines.index("umask 077"),
+            min(i for i, ln in enumerate(lines) if "base64 -d" in ln),
+        )
         self.assertIn("systemctl restart ntfy", nm.restart_script())
 
     def test_phone_users(self):
