@@ -181,7 +181,11 @@ class TestAccessScript(unittest.TestCase):
         self.assertNotIn("keepalive", script)
         self.assertIn("write-only", script)
         self.assertIn("'upab12cd34*' read-only", script)
-        self.assertIn("--ignore-exists", script)
+
+    def test_access_script_never_reuses_an_existing_user(self):
+        # Une recréation silencieuse fusionnerait deux téléphones : l'ajout
+        # d'un nom déjà pris échoue, et `set -e` arrête le script.
+        self.assertNotIn("--ignore-exists", self.script())
 
     def test_access_script_quotes_values(self):
         script = self.script(label="x'; touch /tmp/pwned; '")
@@ -204,7 +208,7 @@ class TestAccessScript(unittest.TestCase):
 
     def test_inspect_and_write_scripts(self):
         inspect = nm.inspect_script("/c.yml")
-        for marker in ("@@VERSION", "@@OWNER", "@@YML", "@@HEALTH"):
+        for marker in ("@@VERSION", "@@OWNER", "@@YML", "@@HEALTH", "@@UNIT"):
             self.assertIn(marker, inspect)
         write = nm.write_yml_script("/c.yml", "a: 1\n", "20260101")
         self.assertIn("/c.yml.bak-20260101", write)
@@ -293,6 +297,34 @@ class TestRunners(unittest.TestCase):
         ssh = nm.SshHost("alice@ntfy.exemple.test").argv("echo 'a b'", "ntfy")
         self.assertEqual(ssh[:3], ["ssh", "-t", "alice@ntfy.exemple.test"])
         self.assertEqual(ssh[3], "sudo -u ntfy sh -c 'echo '\"'\"'a b'\"'\"''")
+
+    def test_local_runner_drops_ntfy_variables(self):
+        # NTFY_* passe avant --config dans la CLI : un shell qui exporte
+        # NTFY_AUTH_FILE viserait un autre fichier d'accès.
+        env = {"PATH": "/usr/bin", "NTFY_AUTH_FILE": "/tmp/autre.db"}
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(
+            nm, "_tee_run", return_value=(0, "")
+        ) as run:
+            nm.LocalHost(sudo=()).run("true", None)
+        passed = run.call_args.kwargs["env"]
+        self.assertEqual(passed.get("PATH"), "/usr/bin")
+        self.assertFalse([k for k in passed if k.startswith("NTFY_")])
+
+    def test_restore_command_names_the_backup(self):
+        command = nm.restore_command("/etc/ntfy/server.yml", "20260101")
+        self.assertEqual(
+            shlex.split(command),
+            [
+                "cp",
+                "-p",
+                "/etc/ntfy/server.yml.bak-20260101",
+                "/etc/ntfy/server.yml",
+                "&&",
+                "systemctl",
+                "restart",
+                "ntfy",
+            ],
+        )
 
 
 class TestStdlibOnly(unittest.TestCase):

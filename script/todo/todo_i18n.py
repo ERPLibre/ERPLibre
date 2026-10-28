@@ -3515,6 +3515,42 @@ TRANSLATIONS = {
         "fr": "Téléphone à révoquer (numéro) : ",
         "en": "Phone to revoke (number): ",
     },
+    "The prepared phones could not be read.": {
+        "fr": "Les téléphones préparés n'ont pas pu être lus.",
+        "en": "The prepared phones could not be read.",
+    },
+    "A phone is already prepared under this name:": {
+        "fr": "Un téléphone est déjà préparé sous ce nom :",
+        "en": "A phone is already prepared under this name:",
+    },
+    "Choose another name": {
+        "fr": "Choisir un autre nom",
+        "en": "Choose another name",
+    },
+    "Revoke it and prepare it again": {
+        "fr": "Le révoquer et le préparer de nouveau",
+        "en": "Revoke it and prepare it again",
+    },
+    "Your choice (1/2, Enter: cancel): ": {
+        "fr": "Votre choix (1/2, Entrée : annuler) : ",
+        "en": "Your choice (1/2, Enter: cancel): ",
+    },
+    "No systemd service named ntfy here:": {
+        "fr": "Aucun service systemd nommé ntfy ici :",
+        "en": "No systemd service named ntfy here:",
+    },
+    "restart ntfy yourself once the configuration is written.": {
+        "fr": "redémarrez ntfy vous-même une fois la configuration écrite.",
+        "en": "restart ntfy yourself once the configuration is written.",
+    },
+    "Backup of the configuration:": {
+        "fr": "Copie de sauvegarde de la configuration :",
+        "en": "Backup of the configuration:",
+    },
+    "To put it back, run as root:": {
+        "fr": "Pour la remettre, lancez en root :",
+        "en": "To put it back, run as root:",
+    },
     "Revoke the access of this phone? (y/N): ": {
         "fr": "Révoquer l'accès de ce téléphone ? (y/N) : ",
         "en": "Revoke the access of this phone? (y/N): ",
