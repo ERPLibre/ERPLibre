@@ -606,6 +606,143 @@ class TestGit(unittest.TestCase):
         self.assertIn("timeout", err)
 
 
+class TestLienGit(unittest.TestCase):
+    """Un clone sous un autre dépôt dont le « .git » ne se lit pas : git
+    répond pour le parent, le message dit pourquoi."""
+
+    def setUp(self):
+        self.racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.racine, True)
+        _git(self.racine, "init", "-q")
+        _git(
+            self.racine,
+            "-c",
+            "user.name=T",
+            "-c",
+            "user.email=t@exemple.invalid",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "x",
+        )
+        self.clone = os.path.join(self.racine, WEB17)
+        os.makedirs(self.clone)
+        self.cible = os.path.join(
+            self.racine, ".repo", "projects", "R_web.git"
+        )
+        os.symlink(self.cible, os.path.join(self.clone, ".git"))
+
+    def test_lien_casse(self):
+        _tete, _branche, erreur = repo_state.lire_tete(self.clone)
+        self.assertIn("broken .git link", erreur)
+        self.assertIn("R_web.git", erreur)
+
+    @unittest.skipIf(os.geteuid() == 0, "root lit tout")
+    def test_cible_illisible(self):
+        os.makedirs(self.cible)
+        os.chmod(self.cible, 0)
+        self.addCleanup(os.chmod, self.cible, 0o755)
+        _tete, _branche, erreur = repo_state.lire_tete(self.clone)
+        self.assertIn(".git not readable", erreur)
+
+    @unittest.skipIf(os.geteuid() == 0, "root lit tout")
+    def test_conseil_sous_repo(self):
+        os.makedirs(self.cible)
+        os.chmod(self.cible, 0)
+        self.addCleanup(os.chmod, self.cible, 0o755)
+        repo = os.path.join(os.path.realpath(self.racine), ".repo")
+        with patch.object(repo_state, "dans_un_conteneur", return_value=True):
+            conseil = repo_state.permissions_manquantes(
+                self.racine, [self.clone]
+            )
+        self.assertEqual(conseil["path"], repo)
+        self.assertEqual(conseil["command"], f"chmod -R go+rX {repo}")
+        self.assertEqual(conseil["container"], repo_state.socket.gethostname())
+        self.assertEqual(conseil["count"], 1)
+
+    def test_conseil_absent_quand_tout_se_lit(self):
+        os.makedirs(self.cible)
+        self.assertIsNone(
+            repo_state.permissions_manquantes(self.racine, [self.clone])
+        )
+
+    def test_autre_cas_nomme_le_depot_qui_repond(self):
+        os.makedirs(self.cible)
+        _tete, _branche, erreur = repo_state.lire_tete(self.clone)
+        self.assertIn("not the root of a git repository", erreur)
+        self.assertIn(
+            os.path.realpath(self.racine),
+            os.path.realpath(erreur.rsplit(" ", 1)[1]),
+        )
+
+
+RACINE_LIT_TOUT = os.geteuid() == 0
+
+
+class TestPermissions(Checkout):
+    """Un « .git » que ce compte ne lit pas : « permissions » nomme le
+    compte, le propriétaire et la commande à lancer en root."""
+
+    def setUp(self):
+        super().setUp()
+        p = patch.object(repo_state, "dans_un_conteneur", return_value=False)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def illisible(self, chemin):
+        git_dir = os.path.join(self.racine, chemin, ".git")
+        os.chmod(git_dir, 0)
+        self.addCleanup(os.chmod, git_dir, 0o755)
+
+    def test_rien_a_signaler(self):
+        _code, d = self.lancer()
+        self.assertIsNone(d["permissions"])
+        _code, d = self.lancer("cross-version", WEB18)
+        self.assertIsNone(d["permissions"])
+
+    @unittest.skipIf(RACINE_LIT_TOUT, "root lit tout")
+    def test_snapshot(self):
+        self.illisible("odoo18.0/addons/R_ahead")
+        _code, d = self.lancer()
+        ahead = self.depots(d)["odoo18.0/addons/R_ahead"]
+        self.assertEqual(ahead["state"], "erreur")
+        self.assertIn(".git not readable", ahead["error"])
+        racine = os.path.realpath(self.racine)
+        moi = repo_state._nom_compte(os.geteuid())
+        self.assertEqual(
+            d["permissions"],
+            {
+                "account": moi,
+                "owner": moi,
+                "count": 1,
+                "path": racine,
+                "command": f"chmod -R go+rX {racine}",
+                "container": None,
+            },
+        )
+
+    def test_l_empreinte_ignore_le_conseil(self):
+        _code, d = self.lancer()
+        avec = dict(d, permissions={"count": 3})
+        self.assertEqual(repo_state.empreinte(avec), d["fingerprint"])
+
+    @unittest.skipIf(RACINE_LIT_TOUT, "root lit tout")
+    def test_cross_version_sur_le_depot(self):
+        self.illisible(WEB18)
+        code, d = self.lancer("cross-version", WEB18)
+        self.assertEqual(code, repo_state.EXIT_CIBLE)
+        self.assertIn(".git not readable", d["error"])
+        self.assertEqual(d["permissions"]["count"], 1)
+
+    @unittest.skipIf(RACINE_LIT_TOUT, "root lit tout")
+    def test_cross_version_sur_l_autre_version(self):
+        self.illisible(WEB17)
+        _code, d = self.lancer("cross-version", WEB18)
+        self.assertIsNone(d["error"])
+        self.assertEqual(d["permissions"]["count"], 1)
+
+
 class TestBetween(Checkout):
     def test_plage(self):
         code, d = self.lancer(
