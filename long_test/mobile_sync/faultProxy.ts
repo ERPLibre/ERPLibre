@@ -172,16 +172,14 @@ export class FaultProxy {
 			const value = req.headers[name];
 			if (typeof value === "string") headers[name] = value;
 		}
-		let upstream: Response;
+		let upstream: { status: number; headers: http.IncomingHttpHeaders; payload: Buffer };
 		try {
-			upstream = await fetch(this.upstream + (req.url ?? ""), {
-				method: req.method, headers, body: req.method === "POST" ? body : undefined, redirect: "manual",
-			});
+			upstream = await this.forward(req.method ?? "GET", req.url ?? "", headers, req.method === "POST" ? body : null);
 		} catch {
 			req.socket.destroy();
 			return;
 		}
-		const payload = Buffer.from(await upstream.arrayBuffer());
+		const payload = upstream.payload;
 		call.status = upstream.status;
 		if (this.dropNext?.(call)) {
 			this.dropNext = null;
@@ -190,12 +188,35 @@ export class FaultProxy {
 		}
 		const out: Record<string, string | string[]> = {};
 		for (const name of ["content-type", "location"]) {
-			const value = upstream.headers.get(name);
-			if (value) out[name] = value;
+			const value = upstream.headers[name];
+			if (typeof value === "string") out[name] = value;
 		}
-		const cookies = upstream.headers.getSetCookie();
+		const cookies = upstream.headers["set-cookie"] ?? [];
 		if (cookies.length) out["set-cookie"] = cookies;
 		res.writeHead(upstream.status, out);
 		res.end(payload);
+	}
+
+	/**
+	 * The request sent to Odoo on a connection of its own, closed after
+	 * the answer (agent false, no keep-alive): a request is never written
+	 * on an idle connection the server is closing, which would fail it
+	 * before Odoo read it. Rejects when the connection fails.
+	 */
+	private forward(
+		method: string, path: string, headers: Record<string, string>, body: Buffer | null,
+	): Promise<{ status: number; headers: http.IncomingHttpHeaders; payload: Buffer }> {
+		return new Promise((resolve, reject) => {
+			const request = http.request(this.upstream + path, {
+				method, agent: false, headers: { ...headers, ...(body ? { "content-length": String(body.length) } : {}) },
+			}, (response) => {
+				const parts: Buffer[] = [];
+				response.on("data", (chunk: Buffer) => parts.push(chunk));
+				response.on("end", () => resolve({ status: response.statusCode ?? 502, headers: response.headers, payload: Buffer.concat(parts) }));
+				response.on("error", reject);
+			});
+			request.on("error", reject);
+			request.end(body ?? undefined);
+		});
 	}
 }
