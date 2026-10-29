@@ -742,6 +742,127 @@ class TestAppPerso(unittest.TestCase):
         construire.assert_not_called()
 
 
+def volet_xml(nous=True):
+    """Un relevé uiautomator du volet, inventé : la notification d'une
+    autre app d'abord, dépliée, avec son « Répondre » et son champ de
+    réponse ouvert ; puis, quand nous est vrai, celle de l'app de test,
+    avec les siens. Le cadre d'une rangée est à SystemUI, son contenu à
+    l'app qui l'a postée, le champ de réponse et son envoi à SystemUI."""
+    ui = "com.android.systemui"
+    autre = "org.exemple.messagerie"
+
+    def rangee(paquet, haut, textes):
+        lignes = "".join(
+            f'<node text="{t}" package="{paquet}" class="android.widget.TextView"'
+            f' clickable="false" focused="false" enabled="true"'
+            f' content-desc="" resource-id=""'
+            f' bounds="[0,{haut + 10 * i}][800,{haut + 10 * i + 10}]"/>'
+            for i, t in enumerate(textes)
+        )
+        return (
+            f'<node package="{ui}" class="android.widget.FrameLayout"'
+            f' text="" content-desc="" resource-id="" clickable="true"'
+            f' focused="false" enabled="true" bounds="[0,{haut}][1000,{haut + 300}]">'
+            f'<node package="{paquet}" class="android.widget.LinearLayout"'
+            f' text="" content-desc="" resource-id="" clickable="false"'
+            f' focused="false" enabled="true" bounds="[0,{haut}][1000,{haut + 200}]">'
+            f"{lignes}"
+            f'<node text="Répondre" package="{paquet}" class="android.widget.Button"'
+            f' content-desc="" resource-id="" clickable="true" focused="false"'
+            f' enabled="true" bounds="[0,{haut + 100}][400,{haut + 200}]"/>'
+            "</node>"
+            f'<node text="" package="{ui}" class="android.widget.EditText"'
+            f' content-desc="" resource-id="" clickable="true" focused="true"'
+            f' enabled="true" bounds="[0,{haut + 200}][900,{haut + 300}]"/>'
+            f'<node text="" package="{ui}" class="android.widget.ImageButton"'
+            f' content-desc="Envoyer" resource-id="{appareil.ENVOI_REPONSE}"'
+            f' clickable="true" focused="false" enabled="true"'
+            f' bounds="[900,{haut + 200}][1000,{haut + 300}]"/>'
+            "</node>"
+        )
+
+    contenu = rangee(autre, 0, ["Alice Martin", "On se voit demain ?"])
+    if nous:
+        contenu += rangee(
+            appareil.PAQUET, 1000, ["MS Chat", "ms-test-message-attendu"]
+        )
+    return (
+        "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>"
+        f'<hierarchy rotation="0"><node package="com.android.systemui"'
+        ' class="android.widget.FrameLayout" text="" content-desc=""'
+        ' resource-id="" clickable="false" focused="false" enabled="true"'
+        f' bounds="[0,0][1000,2000]">{contenu}</node></hierarchy>'
+    )
+
+
+def faux_volet(xml):
+    """Un faux subprocess.run qui rend xml au cat du relevé et note les
+    touchers (input tap x y) et les textes tapés (input text)."""
+    touchers = []
+    textes = []
+
+    def executer(commande, **_):
+        sortie = ""
+        if commande[-2:] == ["cat", appareil.CONTENU_UI]:
+            sortie = xml
+        elif commande[2:4] == ["input", "tap"]:
+            touchers.append((int(commande[4]), int(commande[5])))
+        elif commande[2:4] == ["input", "text"]:
+            textes.append(commande[4])
+        return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+
+    return executer, touchers, textes
+
+
+class TestVoletPortee(unittest.TestCase):
+    """Les touchers du volet ne quittent jamais la notification de l'app
+    de test : le « Répondre », le champ et l'envoi d'une autre app,
+    même dépliée au-dessus, ne sont jamais touchés."""
+
+    def setUp(self):
+        attente = mock.patch.object(appareil.time, "sleep")
+        attente.start()
+        self.addCleanup(attente.stop)
+
+    def ctx(self, executer):
+        return SimpleNamespace(appareil=SimpleNamespace(executer=executer))
+
+    def test_le_bouton_est_celui_de_notre_notification(self):
+        executer, touchers, _ = faux_volet(volet_xml())
+        appareil.toucher_action(
+            self.ctx(executer), "Répondre", "ms-test-message-attendu"
+        )
+        self.assertEqual(touchers, [(200, 1150)])
+
+    def test_le_champ_et_l_envoi_sont_ceux_de_notre_notification(self):
+        executer, touchers, textes = faux_volet(volet_xml())
+        appareil.repondre_du_volet(
+            self.ctx(executer), "motsinventes", "ms-test-message-attendu"
+        )
+        self.assertEqual(touchers, [(200, 1150), (450, 1250), (950, 1250)])
+        self.assertEqual(textes, ["motsinventes"])
+
+    def test_sans_notre_notification_rien_n_est_touche(self):
+        executer, touchers, textes = faux_volet(volet_xml(nous=False))
+        with self.assertRaises(TimeoutError):
+            appareil.repondre_du_volet(
+                self.ctx(executer),
+                "motsinventes",
+                "ms-test-message-attendu",
+                delai=0,
+            )
+        self.assertEqual(touchers, [])
+        self.assertEqual(textes, [])
+
+    def test_un_texte_d_une_autre_app_ne_designe_pas_notre_rangee(self):
+        executer, touchers, _ = faux_volet(volet_xml(nous=False))
+        with self.assertRaises(TimeoutError):
+            appareil.toucher_action(
+                self.ctx(executer), "Répondre", "On se voit demain ?", delai=0
+            )
+        self.assertEqual(touchers, [])
+
+
 class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
