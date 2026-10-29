@@ -12,7 +12,7 @@ import {
 	restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice,
 	composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS,
 	foldText, htmlTerm, mailboxKindOf, noteForRecord,
-	parseNtfyLink, decryptWebPush, pollNtfy,
+	parseNtfyLink, decryptWebPush, pollNtfy, chatMarker,
 } from "../../mobile/erplibre_home_mobile/src/testing/syncTestKit";
 import type {
 	ChatMailboxItem, Mentions, MemoryChatFiles, MessageTarget, SearchResults, SyncEnv,
@@ -23,7 +23,7 @@ import { readFileSync } from "node:fs";
 export { memoryAttachmentIO, nodeTransport, restartSyncEnv, setOnline, setNetwork, chatTitle, stageChatFile, stageChatVoice };
 export { composeBody, bodyText, emojiConversions, isEmptyMessage, EMPTY_MENTIONS };
 export { foldText, htmlTerm, mailboxKindOf, noteForRecord };
-export { parseNtfyLink, decryptWebPush, pollNtfy };
+export { parseNtfyLink, decryptWebPush, pollNtfy, chatMarker };
 export type { ChatMailboxItem, Mentions, MessageTarget, SearchResults, SyncEnv };
 export type { NtfyLink, NtfyMessage, PushNodeNative };
 
@@ -69,6 +69,8 @@ export interface Target {
 	inbox?: Login;
 	/** The run's ntfy (Odoo 18, when the ntfy command is installed). */
 	ntfy?: TargetNtfy;
+	/** The server's log file (log_level warn), absent from a targets.json written before it was given. */
+	log?: string;
 }
 
 function readTargets(): Target[] {
