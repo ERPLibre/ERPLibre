@@ -2812,8 +2812,15 @@ def actions_de(notification):
     return titres
 
 
-def noeuds_ui(executer):
-    """Les nœuds de l'écran selon uiautomator dump, vide quand le relevé
+# Les paquets que porte la rangée d'une notification de l'app de test : son
+# contenu est à l'app, son cadre, le champ de réponse et son envoi à SystemUI
+PAQUETS_RANGEE = (PAQUET, "com.android.systemui")
+# Le libellé du chevron qui déplie une notification repliée
+DEPLIER = ("Développer", "Expand")
+
+
+def arbre_ui(executer):
+    """La racine du relevé uiautomator de l'écran, None quand le relevé
     échoue (une animation en cours)."""
     adb(
         "shell",
@@ -2831,38 +2838,11 @@ def noeuds_ui(executer):
         adb("shell", "rm", "-f", CONTENU_UI, executer=executer, check=False)
     debut = contenu.find("<?xml")
     if debut < 0:
-        return []
+        return None
     try:
-        return list(ET.fromstring(contenu[debut:]).iter("node"))
+        return ET.fromstring(contenu[debut:])
     except ET.ParseError:
-        return []
-
-
-def toucher_noeud(executer, quoi, choisir, delai=10):
-    """Touche en son centre le premier nœud de l'écran pour lequel
-    choisir(nœud) est vrai, relevé par uiautomator jusqu'à delai
-    secondes ; TimeoutError nommant quoi sinon."""
-    fin = time.monotonic() + delai
-    while True:
-        noeud = next((n for n in noeuds_ui(executer) if choisir(n)), None)
-        if noeud is not None:
-            x1, y1, x2, y2 = map(int, re.findall(r"\d+", noeud.get("bounds")))
-            adb(
-                "shell",
-                "input",
-                "tap",
-                str((x1 + x2) // 2),
-                str((y1 + y2) // 2),
-                executer=executer,
-            )
-            return
-        if time.monotonic() > fin:
-            raise TimeoutError(f"{quoi} absent de l'écran en {delai} s")
-        time.sleep(POSE)
-
-
-# Le libellé du chevron qui déplie une notification repliée
-DEPLIER = ("Développer", "Expand")
+        return None
 
 
 def bornes(noeud):
@@ -2870,23 +2850,39 @@ def bornes(noeud):
     return tuple(map(int, re.findall(r"\d+", noeud.get("bounds"))))
 
 
-def deplier(executer, ligne):
-    """Déplie la notification dont une ligne affiche ligne : son chevron
-    « Développer » est le plus bas de ceux qui commencent au-dessus de
-    cette ligne. Vrai quand il a été touché."""
-    noeuds = noeuds_ui(executer)
-    texte = next((n for n in noeuds if ligne in (n.get("text") or "")), None)
+def rangee(racine, ligne):
+    """La rangée de la notification de l'app de test qui affiche ligne :
+    depuis le nœud de PAQUET dont le texte porte ligne, le plus haut
+    ancêtre dont aucun nœud n'est d'une autre app que PAQUETS_RANGEE.
+    None quand aucun nœud de PAQUET ne porte ligne : le texte d'une
+    autre app ne désigne jamais une rangée."""
+    if racine is None:
+        return None
+    texte = next(
+        (
+            n
+            for n in racine.iter("node")
+            if n.get("package") == PAQUET and ligne in (n.get("text") or "")
+        ),
+        None,
+    )
     if texte is None:
-        return False
-    haut = bornes(texte)[1]
-    chevrons = [
-        n
-        for n in noeuds
-        if n.get("content-desc") in DEPLIER and bornes(n)[1] <= haut
-    ]
-    if not chevrons:
-        return False
-    x1, y1, x2, y2 = bornes(max(chevrons, key=lambda n: bornes(n)[1]))
+        return None
+    parents = {enfant: parent for parent in racine.iter() for enfant in parent}
+    haut = texte
+    while parents.get(haut) is not None and parents[haut].tag == "node":
+        parent = parents[haut]
+        if any(
+            n.get("package") not in PAQUETS_RANGEE for n in parent.iter("node")
+        ):
+            break
+        haut = parent
+    return haut
+
+
+def toucher(executer, noeud):
+    """Un toucher au centre du nœud."""
+    x1, y1, x2, y2 = bornes(noeud)
     adb(
         "shell",
         "input",
@@ -2895,21 +2891,74 @@ def deplier(executer, ligne):
         str((y1 + y2) // 2),
         executer=executer,
     )
+
+
+def toucher_dans(executer, quoi, ligne, choisir, delai=10):
+    """Touche le premier nœud pour lequel choisir(nœud) est vrai dans la
+    rangée de la notification de l'app de test qui affiche ligne
+    (rangee), relevée par uiautomator jusqu'à delai secondes ;
+    TimeoutError nommant quoi sinon. Rien hors de cette rangée n'est
+    jamais touché : la notification d'une autre app, même dépliée
+    au-dessus, garde son « Répondre », son champ et son envoi."""
+    fin = time.monotonic() + delai
+    while True:
+        haut = rangee(arbre_ui(executer), ligne)
+        noeud = (
+            next((n for n in haut.iter("node") if choisir(n)), None)
+            if haut is not None
+            else None
+        )
+        if noeud is not None:
+            toucher(executer, noeud)
+            return
+        if time.monotonic() > fin:
+            raise TimeoutError(
+                f"{quoi} absent de la notification « {ligne} » en {delai} s"
+            )
+        time.sleep(POSE)
+
+
+def deplier(executer, ligne):
+    """Déplie la notification de l'app de test qui affiche ligne : le
+    chevron « Développer » de sa rangée le plus bas de ceux qui commencent
+    au-dessus de cette ligne. Vrai quand il a été touché."""
+    racine = arbre_ui(executer)
+    haut = rangee(racine, ligne)
+    if haut is None:
+        return False
+    texte = next(
+        n
+        for n in haut.iter("node")
+        if n.get("package") == PAQUET and ligne in (n.get("text") or "")
+    )
+    chevrons = [
+        n
+        for n in haut.iter("node")
+        if n.get("content-desc") in DEPLIER
+        and bornes(n)[1] <= bornes(texte)[1]
+    ]
+    if not chevrons:
+        return False
+    toucher(executer, max(chevrons, key=lambda n: bornes(n)[1]))
     return True
 
 
 def toucher_action(ctx, titre, ligne, delai=20):
     """Le bouton d'action titre (sans égard à la casse : Android peut
-    l'afficher en capitales) de la notification dont une ligne affiche
-    ligne, touché à ses bornes. Seule la première notification du volet
-    s'affiche dépliée, ses boutons visibles : une autre (le débogage USB
-    passé au-dessus) est dépliée par son chevron. Chaque relevé rouvre le
-    volet, refermé d'abord à partir du second : un volet que l'action
-    d'avant referme en s'animant ignore une ouverture demandée pendant
-    l'animation."""
+    l'afficher en capitales) de la notification de l'app de test qui
+    affiche ligne, touché à ses bornes (toucher_dans : jamais hors de sa
+    rangée). Seule la première notification du volet s'affiche dépliée,
+    ses boutons visibles : une autre (le débogage USB passé au-dessus) est
+    dépliée par son chevron. Chaque relevé rouvre le volet, refermé
+    d'abord à partir du second : un volet que l'action d'avant referme en
+    s'animant ignore une ouverture demandée pendant l'animation."""
     executer = ctx.appareil.executer
     fin = time.monotonic() + delai
     essai = 0
+    bouton = (
+        lambda n: (n.get("text") or "").casefold() == titre.casefold()
+        and n.get("clickable") == "true"
+    )
     while True:
         if essai:
             adb("shell", "cmd", "statusbar", "collapse", executer=executer)
@@ -2923,49 +2972,51 @@ def toucher_action(ctx, titre, ligne, delai=20):
         )
         time.sleep(POSE)
         essai += 1
-        bouton = (
-            lambda n: (n.get("text") or "").casefold() == titre.casefold()
-            and n.get("clickable") == "true"
-        )
         try:
-            toucher_noeud(executer, titre, bouton, delai=POSE)
+            toucher_dans(executer, titre, ligne, bouton, delai=0)
             return
         except TimeoutError:
             pass
         if deplier(executer, ligne):
             time.sleep(POSE)
             try:
-                toucher_noeud(executer, titre, bouton, delai=POSE)
+                toucher_dans(executer, titre, ligne, bouton, delai=0)
                 return
             except TimeoutError:
                 pass
         if time.monotonic() > fin:
             raise TimeoutError(
-                f"le bouton « {titre} » absent du volet en {delai} s"
-                f" ({essai} ouvertures)"
+                f"le bouton « {titre} » absent de la notification"
+                f" « {ligne} » en {delai} s ({essai} ouvertures)"
             )
 
 
-def repondre_du_volet(ctx, mots, ligne):
-    """« Répondre » de la notification qui affiche ligne touché, mots
-    tapés dans le champ de la réponse (input text, ASCII sans espace),
-    puis son bouton d'envoi touché ; l'instant de l'envoi
-    (time.monotonic)."""
+def repondre_du_volet(ctx, mots, ligne, delai=20):
+    """« Répondre » de la notification de l'app de test qui affiche ligne
+    touché, mots tapés dans le champ de la réponse de cette même rangée
+    (input text, ASCII sans espace), puis son bouton d'envoi touché ;
+    l'instant de l'envoi (time.monotonic). Le champ et l'envoi d'une
+    autre app ne sont jamais touchés, et sans la rangée attendue rien
+    n'est tapé."""
     executer = ctx.appareil.executer
-    toucher_action(ctx, "Répondre", ligne)
+    toucher_action(ctx, "Répondre", ligne, delai=delai)
     # Le champ prend le focus en s'ouvrant : input text écrit dans le champ focalisé
-    toucher_noeud(
+    toucher_dans(
         executer,
         "le champ de la réponse",
+        ligne,
         lambda n: n.get("class") == "android.widget.EditText"
         and n.get("focused") == "true",
+        delai=delai,
     )
     adb("shell", "input", "text", mots, executer=executer)
-    toucher_noeud(
+    toucher_dans(
         executer,
         "le bouton d'envoi de la réponse",
+        ligne,
         lambda n: n.get("resource-id") == ENVOI_REPONSE
         and n.get("enabled") == "true",
+        delai=delai,
     )
     return time.monotonic()
 
