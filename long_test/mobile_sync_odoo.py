@@ -55,7 +55,7 @@ MODULES_EN_PLUS = {
 }
 DEPOT_ADDONS_ERPLIBRE = "ERPLibre_erplibre_addons"
 MODULE_CHAT = "erplibre_mobile_chat"
-HARNESS_API = 6
+HARNESS_API = 7
 NODE_MINIMUM = 22
 # Le fuseau de l'administrateur des bases ET des tests : une date d'Odoo 16
 # (Date) se lit en jour local, et un écart des deux ferait glisser les jours.
@@ -205,6 +205,10 @@ if presents != attendus:
 # d'avance aussi
 env["res.users.settings"]._find_or_create_for_user(utilisateur)
 env["res.users.settings"]._find_or_create_for_user(boite)
+# Les clés VAPID tirées d'avance : deux requêtes qui les tirent en même
+# temps sur une base qui n'en a pas créent toutes deux le paramètre, et la
+# seconde bute sur l'unicité de sa clé
+env["mail.push.device"].get_web_push_vapid_public_key()
 env.cr.commit()
 """
 

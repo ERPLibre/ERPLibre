@@ -45,7 +45,7 @@ eachVersionFrom(18, "chat push", (target: Target) => {
 			title: chatName,
 			options: { body: text, data: { model: "discuss.channel", res_id: chat, action: "mail.action_discuss" } },
 		});
-		expect((await scene.payloads(keys)).filter((p) => p.payload.options.body.includes(text))).toHaveLength(1);
+		expect((await scene.payloads(keys)).filter((p) => p.payload.options?.body.includes(text))).toHaveLength(1);
 	});
 
 	it("a channel mention, a group message and a record comment each have their payload", async () => {
@@ -68,7 +68,7 @@ eachVersionFrom(18, "chat push", (target: Target) => {
 		const unmentioned = unique("sans mention");
 		await peer.post(channel, unmentioned);
 		const onRecord = unique("le client a confirmé la date");
-		await peer.postOnRecordAsInbox("project.task", task, onRecord);
+		const recordMessage = await peer.postOnRecordAsInbox("project.task", task, onRecord);
 
 		const [g] = await scene.pushed(keys, inGroup);
 		expect(g.payload).toMatchObject({
@@ -82,9 +82,12 @@ eachVersionFrom(18, "chat push", (target: Target) => {
 		});
 		const [r] = await scene.pushed(keys, onRecord);
 		expect(r.payload.title).toBe(`${inboxName}: ${taskName}`);
-		expect(r.payload.options.body).toBe(onRecord);
-		expect(r.payload.options.data).toEqual({ model: "project.task", res_id: task });
-		expect((await scene.payloads(keys)).some((p) => p.payload.options.body.includes(unmentioned))).toBe(false);
+		expect(r.payload.options!.body).toBe(onRecord);
+		// The app marks its device on module 1.5: its push names the message, no channel type off a channel
+		expect(r.payload.options!.data).toEqual({
+			model: "project.task", res_id: task, erplibre: { v: 1, message_id: recordMessage, channel_type: null },
+		});
+		expect((await scene.payloads(keys)).some((p) => p.payload.options?.body.includes(unmentioned))).toBe(false);
 	});
 
 	it("a muted conversation is not pushed", async () => {
@@ -100,7 +103,7 @@ eachVersionFrom(18, "chat push", (target: Target) => {
 		const shown = unique("témoin");
 		await peer.post(marker, shown);
 		await scene.pushed(keys, shown);
-		expect((await scene.payloads(keys)).some((p) => p.payload.options.body.includes(silent))).toBe(false);
+		expect((await scene.payloads(keys)).some((p) => p.payload.options?.body.includes(silent))).toBe(false);
 	});
 
 	it("the phone token reads only its prefix", async () => {
@@ -139,7 +142,7 @@ eachVersionFrom(18, "chat push", (target: Target) => {
 		const witness = unique("témoin du retrait");
 		await peer.post(await peer.chat(peer.adminPartnerId), witness);
 		await scene.pushed(markerKeys, witness);
-		expect((await scene.payloads(keys)).some((p) => p.payload.options.body.includes(after))).toBe(false);
+		expect((await scene.payloads(keys)).some((p) => p.payload.options?.body.includes(after))).toBe(false);
 	});
 
 	it("a new link for the same ntfy moves the account to a new topic", async () => {
