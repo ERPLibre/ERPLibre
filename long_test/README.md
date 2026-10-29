@@ -595,10 +595,11 @@ the notification says « Nouveau message » only, with the same buttons; with th
 phone's session copy broken the reply is handed to the app, which posts it once
 when the handoff notification is tapped; a device the module does not know gets
 Odoo's payload without a message id and « Mute 1 h » as the third button. Every
-tap is bound to the test app's own notification row, and lands only where two
-screen dumps in a row, the second taken just before the tap, place it at the
-same bounds, so another app's notification on the shade is never touched or
-typed into, even when one is posted between the dump and the tap.
+tap is bound to the test app's own notification row, so another app's
+notification on the shade is never touched or typed into. A tap also waits
+for two screen dumps in a row, the second taken just before it, that agree on
+the row and the node; a post after the second dump can still move a row, and
+the row and package scoping then keeps the tap inside the test app.
 
 ## Starting from a host you already have
 

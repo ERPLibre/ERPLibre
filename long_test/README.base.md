@@ -600,10 +600,11 @@ the notification says « Nouveau message » only, with the same buttons; with th
 phone's session copy broken the reply is handed to the app, which posts it once
 when the handoff notification is tapped; a device the module does not know gets
 Odoo's payload without a message id and « Mute 1 h » as the third button. Every
-tap is bound to the test app's own notification row, and lands only where two
-screen dumps in a row, the second taken just before the tap, place it at the
-same bounds, so another app's notification on the shade is never touched or
-typed into, even when one is posted between the dump and the tap.
+tap is bound to the test app's own notification row, so another app's
+notification on the shade is never touched or typed into. A tap also waits
+for two screen dumps in a row, the second taken just before it, that agree on
+the row and the node; a post after the second dump can still move a row, and
+the row and package scoping then keeps the tap inside the test app.
 
 ## Starting from a host you already have
 
@@ -1274,11 +1275,12 @@ la notification ; avec « Jamais affiché » la notification dit seulement
 cassée, la réponse est confiée à l'app, qui la publie une fois quand on touche
 la notification de reprise ; un appareil que le module ne connaît pas reçoit la
 charge d'Odoo sans identifiant de message et « Muet 1 h » en troisième bouton.
-Chaque toucher est borné à la ligne de notification de l'app de test, et ne
-part que là où deux relevés de l'écran de suite, le second pris juste avant le
-toucher, la placent aux mêmes bornes : la notification d'une autre app sur le
-volet n'est jamais touchée ni saisie, même postée entre le relevé et le
-toucher.
+Chaque toucher est borné à la ligne de notification de l'app de test : la
+notification d'une autre app sur le volet n'est jamais touchée ni saisie. Un
+toucher attend aussi deux relevés de l'écran de suite, le second pris juste
+avant lui, qui s'accordent sur la ligne et le nœud ; une publication après le
+second relevé peut encore déplacer une ligne, et la portée par ligne et par
+paquet garde alors le toucher dans l'app de test.
 
 ## Partir d'un hôte qu'on possède déjà
 
