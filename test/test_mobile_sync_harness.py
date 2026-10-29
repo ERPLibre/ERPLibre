@@ -768,11 +768,13 @@ def noeud(paquet, haut, bas, enfants="", **attributs):
     )
 
 
-def rangee_xml(paquet, haut, textes, reponse=None, bouton=True, rid=RANGEE):
+def rangee_xml(
+    paquet, haut, textes, reponse=None, bouton=True, rid=RANGEE, focus=True
+):
     """La rangée d'une notification : cadre SystemUI (rid), contenu de
     paquet (textes, « Répondre » quand bouton), puis, quand reponse n'est
-    pas None, le champ de réponse focalisé (texte reponse) et son envoi,
-    à SystemUI."""
+    pas None, le champ de réponse (texte reponse, focalisé quand focus)
+    et son envoi, à SystemUI."""
     contenu = "".join(
         noeud(paquet, haut + 10 * i, haut + 10 * i + 10, text=t)
         for i, t in enumerate(textes)
@@ -795,7 +797,7 @@ def rangee_xml(paquet, haut, textes, reponse=None, bouton=True, rid=RANGEE):
             text=reponse,
             **{"class": "android.widget.EditText"},
             clickable="true",
-            focused="true",
+            focused="true" if focus else "false",
             x=(0, 900),
         ) + noeud(
             UI,
@@ -886,7 +888,7 @@ class TestVoletPortee(unittest.TestCase):
 
     def test_le_champ_et_l_envoi_sont_ceux_de_notre_notification(self):
         executer, touchers, textes = faux_volet(
-            avec_champ(rangee_xml(AUTRE, 0, ["Alice Martin"], ""))
+            avec_champ(rangee_xml(AUTRE, 0, ["Alice Martin"], "", focus=False))
         )
         appareil.repondre_du_volet(self.ctx(executer), "motsinventes", MESSAGE)
         self.assertEqual(touchers, [(200, 1150), (950, 1250)])
@@ -905,7 +907,7 @@ class TestVoletPortee(unittest.TestCase):
                 300,
                 text="",
                 **{"class": "android.widget.EditText"},
-                focused="true",
+                focused="false",
                 x=(0, 900),
             )
             + noeud(
@@ -972,6 +974,71 @@ class TestVoletPortee(unittest.TestCase):
                 self.ctx(executer), "Répondre", MESSAGE, delai=0
             )
         self.assertEqual(touchers, [])
+
+    def test_un_second_champ_focalise_hors_rangee_empeche_la_saisie(self):
+        ailleurs = noeud(
+            AUTRE,
+            2500,
+            2600,
+            **{"class": "android.widget.EditText"},
+            focused="true",
+        )
+        executer, touchers, textes = faux_volet(avec_champ(apres=(ailleurs,)))
+        with self.assertRaises(TimeoutError):
+            appareil.repondre_du_volet(
+                self.ctx(executer), "motsinventes", MESSAGE, delai=0
+            )
+        self.assertEqual(textes, [])
+        self.assertNotIn((950, 1250), touchers)
+
+    def test_des_mots_tapes_ailleurs_nomment_le_paquet_sans_y_toucher(self):
+        def releve(tapes):
+            # Notre champ reste vide, les mots arrivent dans un nœud d'une autre app
+            ailleurs = noeud(
+                AUTRE, 2500, 2600, text=tapes[-1] if tapes else ""
+            )
+            return volet(notre(reponse=""), ailleurs)
+
+        executer, touchers, _ = faux_volet(releve)
+        with self.assertRaises(TimeoutError) as echec:
+            appareil.repondre_du_volet(
+                self.ctx(executer), "motsinventes", MESSAGE, delai=0
+            )
+        self.assertIn(AUTRE, str(echec.exception))
+        self.assertEqual(touchers, [(200, 1150)])
+
+    def test_deux_de_nos_rangees_portant_la_ligne_ne_designent_rien(self):
+        racine = appareil.ET.fromstring(
+            volet(notre(haut=400), notre(haut=1000)).split("?>", 1)[1]
+        )
+        self.assertIsNone(appareil.rangee(racine, MESSAGE))
+
+    def test_titre_et_texte_portant_la_ligne_sont_une_seule_rangee(self):
+        racine = appareil.ET.fromstring(
+            volet(
+                notre(haut=1000, textes=("Nouveau message", "Nouveau message"))
+            ).split("?>", 1)[1]
+        )
+        choisie = appareil.rangee(racine, "Nouveau message")
+        self.assertIsNotNone(choisie)
+        self.assertEqual(choisie.get("bounds"), "[0,1000][1000,1300]")
+
+    def test_le_bouton_d_une_boite_de_dialogue_est_celui_de_l_app(self):
+        def bouton(paquet, haut):
+            return noeud(
+                paquet,
+                haut,
+                haut + 100,
+                text="Supprimer",
+                resource_id=appareil.BOUTON_POSITIF,
+                clickable="true",
+            )
+
+        executer, touchers, _ = faux_volet(
+            lambda _: volet(bouton(AUTRE, 100), bouton(appareil.PAQUET, 1500))
+        )
+        appareil.toucher_dialogue(self.ctx(executer), "Supprimer")
+        self.assertEqual(touchers, [(500, 1550)])
 
     def test_le_toucher_d_une_notification_vise_la_notre(self):
         executer, touchers, _ = faux_volet(
