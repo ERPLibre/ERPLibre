@@ -91,9 +91,18 @@ Two things set it apart from a plain push integration:
   when Android's battery saver turns on or the battery drops under thresholds
   the user sets, and comes back down to the chosen level when charging.
 - **Actions in the notification:** reply, mark as read, mute 1 h, react 👍.
+  Android shows at most three buttons: « Répondre » and « Marquer lu » are
+  always offered; the third is « 👍 » when the newest message has a message id
+  (module 1.5), otherwise « Muet 1 h ». Every lock-screen mode offers them,
+  « Never shown » included (the text stays hidden). Inbox notifications get no
+  actions.
 - **Native code may keep an encrypted copy of each account's Odoo session**
   (Android Keystore), never the password. An action whose session has expired
-  opens the app, which signs in again and sends it.
+  is handed to the app through one notification per server, « Ouvrez l'app
+  pour terminer une action — {serveur} » (Android forbids opening the app from
+  a background action); the app signs in again and sends it, once, at its next
+  start. An action that cannot even be recorded shows « Action non envoyée —
+  {serveur} ».
 - **Read elsewhere:** the ERPLibre module (next level, 1.5) sends a silent
   « read » push to the app's devices so the phone removes its notification at
   once; without the module, the notification goes at the next check or when
@@ -267,7 +276,7 @@ Facts from the recon (`tasks/chat/p2-recon-odoo.md`, `p2-recon-ntfy.md`,
    Odoo-direct summary (accounts without ntfy, silence longer than the ntfy
    cache), the service's health
    shown in the app (« the phone is not listening » never silent).
-2. **Actions and module 1.5.** Reply, mark read, mute 1 h, 👍 from native
+2. **Actions and module 1.5 (done).** Reply, mark read, mute 1 h, 👍 from native
    code with the mirrored session, never twice (same idempotency as the
    app's outbox); expired session hands the action to the app. Module 1.5:
    message id and channel type in Odoo's payload, app devices recognised,
