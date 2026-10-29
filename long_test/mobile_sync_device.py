@@ -1791,61 +1791,42 @@ def toucher_dialogue(ctx, libelle, delai=10):
     """Touche le bouton positif d'une boîte de dialogue native, une fois
     affichée avec le libellé libelle : Dialog.confirm de Capacitor ouvre
     une AlertDialog d'Android, hors du WebView. La fenêtre est relevée par
-    uiautomator, le centre du bouton touché par input tap."""
+    uiautomator, le centre du bouton touché par input tap quand un second
+    relevé, pris juste avant le toucher, le garde aux mêmes bornes."""
     executer = ctx.appareil.executer
     fin = time.monotonic() + delai
-    vu = None
-    try:
-        while True:
-            adb(
-                "shell",
-                "uiautomator",
-                "dump",
-                CONTENU_UI,
-                executer=executer,
-                check=False,
-            )
-            contenu = adb("shell", "cat", CONTENU_UI, executer=executer)
-            debut = contenu.find("<?xml")
-            noeuds = []
-            if debut >= 0:
-                try:
-                    noeuds = list(ET.fromstring(contenu[debut:]).iter("node"))
-                except ET.ParseError:
-                    noeuds = []
-            # Le bouton de la boîte de l'app de test : jamais celui d'une
-            # boîte d'une autre app affichée au même moment
-            bouton = next(
-                (
-                    n
-                    for n in noeuds
-                    if n.get("resource-id") == BOUTON_POSITIF
-                    and n.get("package") == PAQUET
-                ),
-                None,
-            )
-            vu = bouton.get("text") if bouton is not None else None
-            if vu and vu.strip().casefold() == libelle.casefold():
-                x1, y1, x2, y2 = map(
-                    int, re.findall(r"\d+", bouton.get("bounds"))
-                )
-                adb(
-                    "shell",
-                    "input",
-                    "tap",
-                    str((x1 + x2) // 2),
-                    str((y1 + y2) // 2),
-                    executer=executer,
-                )
+
+    def bouton_de(racine):
+        # Le bouton de la boîte de l'app de test : jamais celui d'une
+        # boîte d'une autre app affichée au même moment
+        if racine is None:
+            return None
+        return next(
+            (
+                n
+                for n in racine.iter("node")
+                if n.get("resource-id") == BOUTON_POSITIF
+                and n.get("package") == PAQUET
+            ),
+            None,
+        )
+
+    while True:
+        bouton = bouton_de(arbre_ui(executer))
+        vu = bouton.get("text") if bouton is not None else None
+        if vu and vu.strip().casefold() == libelle.casefold():
+            encore = bouton_de(arbre_ui(executer))
+            if encore is not None and encore.get("bounds") == bouton.get(
+                "bounds"
+            ):
+                toucher(executer, encore)
                 return
-            if time.monotonic() > fin:
-                raise TimeoutError(
-                    f"boîte de dialogue « {libelle} » absente en {delai} s"
-                    f" (bouton positif : {vu!r})"
-                )
-            time.sleep(POSE)
-    finally:
-        adb("shell", "rm", "-f", CONTENU_UI, executer=executer, check=False)
+        if time.monotonic() > fin:
+            raise TimeoutError(
+                f"boîte de dialogue « {libelle} » absente en {delai} s"
+                f" (bouton positif : {vu!r})"
+            )
+        time.sleep(POSE)
 
 
 def place_au_clavier(ctx, champ):
@@ -2881,10 +2862,58 @@ def dans_rangee(racine, ligne, choisir):
     haut = rangee(racine, ligne)
     if haut is None:
         return None
+    return premier_dedans(haut, choisir)
+
+
+def premier_dedans(haut, choisir):
+    """Le premier nœud de la rangée haut pour lequel choisir(nœud) est
+    vrai et dont les bornes tiennent dans les siennes, ou None."""
     return next(
         (n for n in haut.iter("node") if choisir(n) and dedans(n, haut)),
         None,
     )
+
+
+def toucher_stable(executer, ligne, designer):
+    """Touche le nœud que designer(rangée) désigne dans la rangée de la
+    notification de l'app de test qui affiche ligne, seulement quand deux
+    relevés de suite, le second pris juste avant le toucher, le désignent
+    aux mêmes bornes dans une rangée aux mêmes bornes : une notification
+    republiée ou arrivée entre deux relevés déplace les rangées, et des
+    coordonnées d'un relevé ancien tomberaient sur une autre. Vrai quand
+    il a été touché."""
+    designes = []
+    for _ in range(2):
+        haut = rangee(arbre_ui(executer), ligne)
+        noeud = None if haut is None else designer(haut)
+        if noeud is None:
+            return False
+        designes.append((bornes(haut), bornes(noeud), noeud))
+    if designes[0][:2] != designes[1][:2]:
+        return False
+    toucher(executer, designes[1][2])
+    return True
+
+
+def remettre_en_etat(echec, quoi, remise):
+    """Lance remise, la remise en état quoi de la fin d'un scénario. Sans
+    échec du scénario (echec None), son erreur remonte ; après un échec,
+    elle s'ajoute en note à echec, qui reste l'erreur qui remonte :
+    lignes_echec la journalise après lui."""
+    try:
+        remise()
+    except Exception as erreur:
+        if echec is None:
+            raise
+        echec.add_note(f"puis {quoi} : {type(erreur).__name__} {erreur}")
+
+
+def lignes_echec(titre, erreur):
+    """Les lignes de journal d'un scénario en échec : l'erreur, puis ses
+    notes (remettre_en_etat)."""
+    return [f"  ✗ {titre} : {type(erreur).__name__} {erreur}"] + [
+        f"    {note}" for note in getattr(erreur, "__notes__", ())
+    ]
 
 
 def toucher(executer, noeud):
@@ -2906,12 +2935,14 @@ def toucher_dans(executer, quoi, ligne, choisir, delai=10):
     (dans_rangee), relevée par uiautomator jusqu'à delai secondes ;
     TimeoutError nommant quoi sinon. Rien hors de cette rangée n'est
     jamais touché : la notification d'une autre app, même dépliée
-    au-dessus, garde son « Répondre », son champ et son envoi."""
+    au-dessus, garde son « Répondre », son champ et son envoi. Le toucher
+    suit deux relevés qui s'accordent (toucher_stable) ; un volet qui bouge
+    entre eux n'est pas touché."""
     fin = time.monotonic() + delai
     while True:
-        noeud = dans_rangee(arbre_ui(executer), ligne, choisir)
-        if noeud is not None:
-            toucher(executer, noeud)
+        if toucher_stable(
+            executer, ligne, lambda haut: premier_dedans(haut, choisir)
+        ):
             return
         if time.monotonic() > fin:
             raise TimeoutError(
@@ -2923,22 +2954,21 @@ def toucher_dans(executer, quoi, ligne, choisir, delai=10):
 def deplier(executer, ligne):
     """Déplie la notification de l'app de test qui affiche ligne : le
     chevron « Développer » de sa rangée le plus bas de ceux qui commencent
-    au-dessus de cette ligne. Vrai quand il a été touché."""
-    haut = rangee(arbre_ui(executer), ligne)
-    if haut is None:
-        return False
-    texte = next(n for n in haut.iter("node") if porte(n, ligne))
-    chevrons = [
-        n
-        for n in haut.iter("node")
-        if n.get("content-desc") in DEPLIER
-        and bornes(n)[1] <= bornes(texte)[1]
-        and dedans(n, haut)
-    ]
-    if not chevrons:
-        return False
-    toucher(executer, max(chevrons, key=lambda n: bornes(n)[1]))
-    return True
+    au-dessus de cette ligne, touché après deux relevés qui s'accordent
+    (toucher_stable). Vrai quand il a été touché."""
+
+    def chevron(haut):
+        texte = next(n for n in haut.iter("node") if porte(n, ligne))
+        chevrons = [
+            n
+            for n in haut.iter("node")
+            if n.get("content-desc") in DEPLIER
+            and bornes(n)[1] <= bornes(texte)[1]
+            and dedans(n, haut)
+        ]
+        return max(chevrons, key=lambda n: bornes(n)[1]) if chevrons else None
+
+    return toucher_stable(executer, ligne, chevron)
 
 
 def toucher_action(ctx, titre, ligne, delai=20):
@@ -3251,6 +3281,7 @@ def scenario_actions_notifications(ctx):
     config = js(ctx.config_id)
     tag = f"chat:{ctx.config_id}:{canal}"
     reprise = f"handoff:{ctx.config_id}"
+    echec = None
     try:
         # 1. Le lien, le niveau 1, le ntfy connecté, l'appareil marqué
         ctx.hook(f"chatLoad({config})")
@@ -3477,6 +3508,9 @@ def scenario_actions_notifications(ctx):
         )
         assert actions_de(notif) == ACTIONS_SANS_ID, actions_de(notif)
         assert ecran_allume(executer), "écran éteint pendant le scénario"
+    except BaseException as erreur:
+        echec = erreur
+        raise
     finally:
         adb(
             "shell",
@@ -3486,7 +3520,9 @@ def scenario_actions_notifications(ctx):
             executer=executer,
             check=False,
         )
-        sourdine(0)
+        remettre_en_etat(
+            echec, "la conversation remise en son", lambda: sourdine(0)
+        )
     return (
         f"poussée → notification {delai_2:.1f} s après {maniere},"
         f" envoi de la réponse → message dans Odoo {delai_reponse:.1f} s,"
@@ -3605,9 +3641,10 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
                         appareil.capture(capture)
                     except RuntimeError:
                         capture = None
-                    journal(
-                        f"  ✗ Odoo {cible['version']} — {nom} : {type(erreur).__name__} {erreur}"
-                    )
+                    for ligne in lignes_echec(
+                        f"Odoo {cible['version']} — {nom}", erreur
+                    ):
+                        journal(ligne)
                     if capture:
                         journal(f"    capture : {capture}")
     finally:
