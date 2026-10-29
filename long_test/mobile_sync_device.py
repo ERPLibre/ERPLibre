@@ -29,6 +29,7 @@ gardés d'une course :
   ./long_test/mobile_sync_device.py cache/mobile_sync/runs/<course>/targets.json
 """
 
+import calendar
 import hashlib
 import json
 import os
@@ -2512,6 +2513,21 @@ def tuer_processus(executer, pid):
         return "am crash"
 
 
+def oublier_appareils(odoo_, ntfy):
+    """Les appareils Web Push que le serveur tient sur le ntfy de la course
+    supprimés : chaque scénario de notification en enregistre un nouveau
+    (pm clear tire un nouveau sujet), et à 5 appareils d'un destinataire
+    Odoo passe par une file que seule une tâche planifiée vide (les
+    serveurs de la course n'en ont pas) : plus rien ne serait poussé."""
+    anciens = odoo_.executer(
+        "mail.push.device",
+        "search",
+        [[["endpoint", "=like", f"{ntfy['url']}/%"]]],
+    )
+    if anciens:
+        odoo_.executer("mail.push.device", "unlink", [anciens])
+
+
 def scenario_notifications(ctx):
     """Les notifications du clavardage, l'app fermée, par le ntfy de la
     course renvoyé au téléphone (adb reverse) : le lien appliqué au
@@ -2531,6 +2547,7 @@ def scenario_notifications(ctx):
     ntfy = ctx.cible.get("ntfy")
     assert ntfy, "aucun ntfy dans la course (commande ntfy absente)"
     executer = ctx.appareil.executer
+    oublier_appareils(ctx.odoo, ntfy)
     pair = Odoo(ctx.cible, "chat")
     moi = ctx.odoo.lire("res.users", ctx.odoo.uid, ["partner_id"])[
         "partner_id"
@@ -2613,8 +2630,13 @@ def scenario_notifications(ctx):
         publique = bloc[bloc.find("publicVersion=") :].split("\n", 1)[0]
         assert premier not in publique, "texte dans la version publique"
     else:
+        # SECRET : rien sur l'écran verrouillé. La version publique reste
+        # portée, pour qu'un nouvel affichage puisse revenir à PRIVATE ;
+        # elle ne dit jamais le texte
         assert notif["vis"] == "SECRET", notif["vis"]
-        assert "publicVersion=" not in bloc, "version publique d'un SECRET"
+        if "publicVersion=" in bloc:
+            publique = bloc[bloc.find("publicVersion=") :].split("\n", 1)[0]
+            assert premier not in publique, "texte dans la version publique"
     ctx.capturer("notification_recue")
 
     # 3. Le processus tué : le service revient, le message suivant s'empile
@@ -2696,6 +2718,9 @@ def scenario_notifications(ctx):
 
     # 7. Le ntfy retiré : le sommaire direct d'Odoo, rien marqué lu
     premier_plan(ctx)
+    # Un chargement, rangé derrière celui du retour au premier plan : le fil
+    # s'ouvre sur un cache qui tient le message reçu l'app à l'arrière-plan
+    ctx.hook(f"chatLoad({config})")
     ctx.ouvrir(
         f"/chat/{urllib.parse.quote(ctx.config_id, safe='')}/{canal}",
         ".chat-thread__input",
@@ -2775,10 +2800,16 @@ def actions_de(notification):
     debut = bloc.find("actions={")
     if debut < 0:
         return []
-    return [
-        m["titre"]
-        for m in ACTION.finditer(bloc[debut : bloc.find("}", debut)])
-    ]
+    titres = []
+    # Une ligne par action, son PendingIntent{…} compris ; le bloc se
+    # ferme sur une ligne qui ne porte que « } »
+    for ligne in bloc[debut:].splitlines()[1:]:
+        if ligne.strip() == "}":
+            break
+        trouve = ACTION.match(ligne)
+        if trouve:
+            titres.append(trouve["titre"])
+    return titres
 
 
 def noeuds_ui(executer):
@@ -2936,6 +2967,7 @@ def scenario_actions_notifications(ctx):
     ntfy = ctx.cible.get("ntfy")
     assert ntfy, "aucun ntfy dans la course (commande ntfy absente)"
     executer = ctx.appareil.executer
+    oublier_appareils(ctx.odoo, ntfy)
     pair = Odoo(ctx.cible, "chat")
     moi = ctx.odoo.lire("res.users", ctx.odoo.uid, ["partner_id"])[
         "partner_id"
@@ -3088,9 +3120,8 @@ def scenario_actions_notifications(ctx):
             )[0]["mute_until_dt"],
             ACTION_DELAI,
         )
-        fin_epoch = (
-            time.mktime(time.strptime(fin_muet, "%Y-%m-%d %H:%M:%S"))
-            - time.timezone
+        fin_epoch = calendar.timegm(
+            time.strptime(fin_muet, "%Y-%m-%d %H:%M:%S")
         )
         assert abs(fin_epoch - (touche + 3600)) < 120, fin_muet
         partie("la notification après « Muet 1 h »")
@@ -3130,9 +3161,21 @@ def scenario_actions_notifications(ctx):
         delai_lecture = time.monotonic() - lu
 
         # 7b. « Jamais affiché » : « Nouveau message » et quatre actions
-        premier_plan(ctx)
+        # La page est morte avec le processus : l'app relancée, sa page
+        # jointe à nouveau
+        adb(
+            "shell",
+            "monkey",
+            "-p",
+            PAQUET,
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1",
+            executer=executer,
+        )
         ctx.appareil.joindre()
         ctx.cdp = ctx.appareil.cdp
+        ctx.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=30)
         ctx.hook(f"chatPushLockScreen({config}, 'never')")
         accueil(ctx)
         cache = ctx.unique("jamais")
