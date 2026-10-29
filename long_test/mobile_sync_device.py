@@ -2336,54 +2336,17 @@ def accueil(ctx):
 
 def toucher_notification(ctx, texte, delai=10):
     """Le volet ouvert (cmd statusbar expand-notifications), la ligne
-    de notification qui affiche texte touchée en son centre, relevée par
-    uiautomator."""
+    de la notification de l'app de test qui affiche texte touchée en son
+    centre (toucher_dans : jamais une notification d'une autre app)."""
     executer = ctx.appareil.executer
     adb("shell", "cmd", "statusbar", "expand-notifications", executer=executer)
-    fin = time.monotonic() + delai
-    try:
-        while True:
-            adb(
-                "shell",
-                "uiautomator",
-                "dump",
-                CONTENU_UI,
-                executer=executer,
-                check=False,
-            )
-            contenu = adb(
-                "shell", "cat", CONTENU_UI, executer=executer, check=False
-            )
-            debut = contenu.find("<?xml")
-            noeuds = []
-            if debut >= 0:
-                try:
-                    noeuds = list(ET.fromstring(contenu[debut:]).iter("node"))
-                except ET.ParseError:
-                    noeuds = []
-            noeud = next(
-                (n for n in noeuds if texte in (n.get("text") or "")), None
-            )
-            if noeud is not None:
-                x1, y1, x2, y2 = map(
-                    int, re.findall(r"\d+", noeud.get("bounds"))
-                )
-                adb(
-                    "shell",
-                    "input",
-                    "tap",
-                    str((x1 + x2) // 2),
-                    str((y1 + y2) // 2),
-                    executer=executer,
-                )
-                return
-            if time.monotonic() > fin:
-                raise TimeoutError(
-                    f"aucune notification « {texte} » dans le volet"
-                )
-            time.sleep(POSE)
-    finally:
-        adb("shell", "rm", "-f", CONTENU_UI, executer=executer, check=False)
+    toucher_dans(
+        executer,
+        f"la ligne « {texte} »",
+        texte,
+        lambda n: porte(n, texte),
+        delai=delai,
+    )
 
 
 def masque_verrouille(executer):
@@ -2815,6 +2778,10 @@ def actions_de(notification):
 # Les paquets que porte la rangée d'une notification de l'app de test : son
 # contenu est à l'app, son cadre, le champ de réponse et son envoi à SystemUI
 PAQUETS_RANGEE = (PAQUET, "com.android.systemui")
+# La vue de SystemUI qui porte une notification du volet (AOSP,
+# ExpandableNotificationRow) : ses boutons, son champ de réponse et son
+# envoi sont dedans
+RANGEE_NOTIFICATION = "com.android.systemui:id/expandableNotificationRow"
 # Le libellé du chevron qui déplie une notification repliée
 DEPLIER = ("Développer", "Expand")
 
@@ -2850,34 +2817,67 @@ def bornes(noeud):
     return tuple(map(int, re.findall(r"\d+", noeud.get("bounds"))))
 
 
+def porte(noeud, ligne):
+    """Vrai quand le nœud est de PAQUET et que son texte porte ligne."""
+    return noeud.get("package") == PAQUET and ligne in (
+        noeud.get("text") or ""
+    )
+
+
 def rangee(racine, ligne):
-    """La rangée de la notification de l'app de test qui affiche ligne :
-    depuis le nœud de PAQUET dont le texte porte ligne, le plus haut
-    ancêtre dont aucun nœud n'est d'une autre app que PAQUETS_RANGEE.
-    None quand aucun nœud de PAQUET ne porte ligne : le texte d'une
-    autre app ne désigne jamais une rangée."""
+    """La rangée (expandableNotificationRow de SystemUI) de la
+    notification de l'app de test qui affiche ligne, ou None. Depuis
+    chaque nœud de PAQUET dont le texte porte ligne, la rangée est son
+    plus proche ancêtre RANGEE_NOTIFICATION ; elle n'est retenue que si
+    aucun de ses nœuds n'est d'un autre paquet que PAQUETS_RANGEE. Une
+    seule rangée doit porter ligne : deux (deux notifications de l'app
+    qui l'affichent) ou aucune, et rien n'est désigné. Le titre et le
+    texte d'une même notification peuvent porter ligne tous deux (« Nouveau
+    message » d'un serveur « Jamais affiché ») : c'est une rangée."""
     if racine is None:
         return None
-    texte = next(
-        (
-            n
-            for n in racine.iter("node")
-            if n.get("package") == PAQUET and ligne in (n.get("text") or "")
-        ),
+    parents = {enfant: parent for parent in racine.iter() for enfant in parent}
+    rangees = []
+    for texte in racine.iter("node"):
+        if not porte(texte, ligne):
+            continue
+        haut = parents.get(texte)
+        while (
+            haut is not None
+            and haut.tag == "node"
+            and haut.get("resource-id") != RANGEE_NOTIFICATION
+        ):
+            haut = parents.get(haut)
+        if haut is None or haut.tag != "node":
+            return None
+        if haut not in rangees:
+            rangees.append(haut)
+    if len(rangees) != 1:
+        return None
+    seule = rangees[0]
+    if any(n.get("package") not in PAQUETS_RANGEE for n in seule.iter("node")):
+        return None
+    return seule
+
+
+def dedans(noeud, cadre):
+    """Vrai quand les bornes du nœud tiennent dans celles du cadre."""
+    x1, y1, x2, y2 = bornes(noeud)
+    c1, d1, c2, d2 = bornes(cadre)
+    return c1 <= x1 and d1 <= y1 and x2 <= c2 and y2 <= d2
+
+
+def dans_rangee(racine, ligne, choisir):
+    """Le premier nœud de la rangée de ligne (rangee) pour lequel
+    choisir(nœud) est vrai et dont les bornes tiennent dans celles de la
+    rangée ; None sinon."""
+    haut = rangee(racine, ligne)
+    if haut is None:
+        return None
+    return next(
+        (n for n in haut.iter("node") if choisir(n) and dedans(n, haut)),
         None,
     )
-    if texte is None:
-        return None
-    parents = {enfant: parent for parent in racine.iter() for enfant in parent}
-    haut = texte
-    while parents.get(haut) is not None and parents[haut].tag == "node":
-        parent = parents[haut]
-        if any(
-            n.get("package") not in PAQUETS_RANGEE for n in parent.iter("node")
-        ):
-            break
-        haut = parent
-    return haut
 
 
 def toucher(executer, noeud):
@@ -2896,18 +2896,13 @@ def toucher(executer, noeud):
 def toucher_dans(executer, quoi, ligne, choisir, delai=10):
     """Touche le premier nœud pour lequel choisir(nœud) est vrai dans la
     rangée de la notification de l'app de test qui affiche ligne
-    (rangee), relevée par uiautomator jusqu'à delai secondes ;
+    (dans_rangee), relevée par uiautomator jusqu'à delai secondes ;
     TimeoutError nommant quoi sinon. Rien hors de cette rangée n'est
     jamais touché : la notification d'une autre app, même dépliée
     au-dessus, garde son « Répondre », son champ et son envoi."""
     fin = time.monotonic() + delai
     while True:
-        haut = rangee(arbre_ui(executer), ligne)
-        noeud = (
-            next((n for n in haut.iter("node") if choisir(n)), None)
-            if haut is not None
-            else None
-        )
+        noeud = dans_rangee(arbre_ui(executer), ligne, choisir)
         if noeud is not None:
             toucher(executer, noeud)
             return
@@ -2922,20 +2917,16 @@ def deplier(executer, ligne):
     """Déplie la notification de l'app de test qui affiche ligne : le
     chevron « Développer » de sa rangée le plus bas de ceux qui commencent
     au-dessus de cette ligne. Vrai quand il a été touché."""
-    racine = arbre_ui(executer)
-    haut = rangee(racine, ligne)
+    haut = rangee(arbre_ui(executer), ligne)
     if haut is None:
         return False
-    texte = next(
-        n
-        for n in haut.iter("node")
-        if n.get("package") == PAQUET and ligne in (n.get("text") or "")
-    )
+    texte = next(n for n in haut.iter("node") if porte(n, ligne))
     chevrons = [
         n
         for n in haut.iter("node")
         if n.get("content-desc") in DEPLIER
         and bornes(n)[1] <= bornes(texte)[1]
+        and dedans(n, haut)
     ]
     if not chevrons:
         return False
@@ -2991,25 +2982,50 @@ def toucher_action(ctx, titre, ligne, delai=20):
             )
 
 
+def champ_focalise(noeud):
+    """Vrai pour le champ de réponse qui a le focus."""
+    return (
+        noeud.get("class") == "android.widget.EditText"
+        and noeud.get("focused") == "true"
+    )
+
+
+def attendre_dans(executer, quoi, ligne, choisir, delai):
+    """Le nœud de la rangée de ligne pour lequel choisir est vrai
+    (dans_rangee), relevé jusqu'à delai secondes ; TimeoutError nommant
+    quoi sinon."""
+    fin = time.monotonic() + delai
+    while True:
+        noeud = dans_rangee(arbre_ui(executer), ligne, choisir)
+        if noeud is not None:
+            return noeud
+        if time.monotonic() > fin:
+            raise TimeoutError(
+                f"{quoi} absent de la notification « {ligne} » en {delai} s"
+            )
+        time.sleep(POSE)
+
+
 def repondre_du_volet(ctx, mots, ligne, delai=20):
     """« Répondre » de la notification de l'app de test qui affiche ligne
-    touché, mots tapés dans le champ de la réponse de cette même rangée
-    (input text, ASCII sans espace), puis son bouton d'envoi touché ;
-    l'instant de l'envoi (time.monotonic). Le champ et l'envoi d'une
-    autre app ne sont jamais touchés, et sans la rangée attendue rien
-    n'est tapé."""
+    touché, mots tapés (input text, ASCII sans espace) une fois relevé
+    que le champ focalisé est celui de cette rangée, puis, le champ de la
+    rangée relu et portant mots, son bouton d'envoi touché ; l'instant de
+    l'envoi (time.monotonic). Un champ focalisé hors de la rangée : rien
+    n'est tapé ; un champ qui ne porte pas mots : rien n'est envoyé."""
     executer = ctx.appareil.executer
     toucher_action(ctx, "Répondre", ligne, delai=delai)
-    # Le champ prend le focus en s'ouvrant : input text écrit dans le champ focalisé
-    toucher_dans(
-        executer,
-        "le champ de la réponse",
-        ligne,
-        lambda n: n.get("class") == "android.widget.EditText"
-        and n.get("focused") == "true",
-        delai=delai,
+    attendre_dans(
+        executer, "le champ de la réponse", ligne, champ_focalise, delai
     )
     adb("shell", "input", "text", mots, executer=executer)
+    attendre_dans(
+        executer,
+        f"le champ portant « {mots} »",
+        ligne,
+        lambda n: champ_focalise(n) and n.get("text") == mots,
+        delai,
+    )
     toucher_dans(
         executer,
         "le bouton d'envoi de la réponse",
@@ -3355,7 +3371,9 @@ def scenario_actions_notifications(ctx):
         attendre_notification(ctx, reprise, delai=ACTION_DELAI)
         assert not miens(mots_confies), "réponse postée par une session morte"
         capturer("actions_reprise")
-        toucher_notification(ctx, "Ouvrez l")
+        # « Ouvrez l'app pour terminer … » : la notification de reprise,
+        # pas celle d'état d'une session expirée (« … pour reprendre … »)
+        toucher_notification(ctx, "pour terminer")
         ctx.appareil.joindre()
         ctx.cdp = ctx.appareil.cdp
         attendre_serveur(
