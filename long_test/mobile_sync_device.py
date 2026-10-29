@@ -2718,9 +2718,6 @@ def scenario_notifications(ctx):
 
     # 7. Le ntfy retiré : le sommaire direct d'Odoo, rien marqué lu
     premier_plan(ctx)
-    # Un chargement, rangé derrière celui du retour au premier plan : le fil
-    # s'ouvre sur un cache qui tient le message reçu l'app à l'arrière-plan
-    ctx.hook(f"chatLoad({config})")
     ctx.ouvrir(
         f"/chat/{urllib.parse.quote(ctx.config_id, safe='')}/{canal}",
         ".chat-thread__input",
@@ -2787,8 +2784,11 @@ def scenario_notifications(ctx):
 ACTION_DELAI = 15
 # Le temps laissé à un second envoi d'une réponse qui ne doit pas venir
 DOUBLON_DELAI = 60
-# Les quatre actions d'une notification de conversation, module 1.5
-ACTIONS_CLAVARDAGE = ["Répondre", "Marquer lu", "Muet 1 h", "👍"]
+# Les trois boutons qu'Android dessine sur une notification de
+# conversation : « 👍 » en troisième quand le dernier message a un id
+# (module 1.5), « Muet 1 h » sinon
+ACTIONS_CLAVARDAGE = ["Répondre", "Marquer lu", "👍"]
+ACTIONS_SANS_ID = ["Répondre", "Marquer lu", "Muet 1 h"]
 ACTION = re.compile(r'^\s*\[\d+\] "(?P<titre>.*)" -> ', re.MULTILINE)
 ENVOI_REPONSE = "com.android.systemui:id/remote_input_send"
 
@@ -2861,25 +2861,98 @@ def toucher_noeud(executer, quoi, choisir, delai=10):
         time.sleep(POSE)
 
 
-def toucher_action(ctx, titre):
-    """Le volet ouvert, le bouton d'action titre (sans égard à la casse :
-    Android peut l'afficher en capitales) touché à ses bornes."""
-    executer = ctx.appareil.executer
-    adb("shell", "cmd", "statusbar", "expand-notifications", executer=executer)
-    toucher_noeud(
-        executer,
-        f"le bouton « {titre} »",
-        lambda n: (n.get("text") or "").casefold() == titre.casefold()
-        and n.get("clickable") == "true",
+# Le libellé du chevron qui déplie une notification repliée
+DEPLIER = ("Développer", "Expand")
+
+
+def bornes(noeud):
+    """Les bornes (x1, y1, x2, y2) d'un nœud de uiautomator."""
+    return tuple(map(int, re.findall(r"\d+", noeud.get("bounds"))))
+
+
+def deplier(executer, ligne):
+    """Déplie la notification dont une ligne affiche ligne : son chevron
+    « Développer » est le plus bas de ceux qui commencent au-dessus de
+    cette ligne. Vrai quand il a été touché."""
+    noeuds = noeuds_ui(executer)
+    texte = next((n for n in noeuds if ligne in (n.get("text") or "")), None)
+    if texte is None:
+        return False
+    haut = bornes(texte)[1]
+    chevrons = [
+        n
+        for n in noeuds
+        if n.get("content-desc") in DEPLIER and bornes(n)[1] <= haut
+    ]
+    if not chevrons:
+        return False
+    x1, y1, x2, y2 = bornes(max(chevrons, key=lambda n: bornes(n)[1]))
+    adb(
+        "shell",
+        "input",
+        "tap",
+        str((x1 + x2) // 2),
+        str((y1 + y2) // 2),
+        executer=executer,
     )
+    return True
 
 
-def repondre_du_volet(ctx, mots):
-    """« Répondre » touché, mots tapés dans le champ de la réponse
-    (input text, ASCII sans espace), puis son bouton d'envoi touché ;
-    l'instant de l'envoi (time.monotonic)."""
+def toucher_action(ctx, titre, ligne, delai=20):
+    """Le bouton d'action titre (sans égard à la casse : Android peut
+    l'afficher en capitales) de la notification dont une ligne affiche
+    ligne, touché à ses bornes. Seule la première notification du volet
+    s'affiche dépliée, ses boutons visibles : une autre (le débogage USB
+    passé au-dessus) est dépliée par son chevron. Chaque relevé rouvre le
+    volet, refermé d'abord à partir du second : un volet que l'action
+    d'avant referme en s'animant ignore une ouverture demandée pendant
+    l'animation."""
     executer = ctx.appareil.executer
-    toucher_action(ctx, "Répondre")
+    fin = time.monotonic() + delai
+    essai = 0
+    while True:
+        if essai:
+            adb("shell", "cmd", "statusbar", "collapse", executer=executer)
+            time.sleep(POSE)
+        adb(
+            "shell",
+            "cmd",
+            "statusbar",
+            "expand-notifications",
+            executer=executer,
+        )
+        time.sleep(POSE)
+        essai += 1
+        bouton = (
+            lambda n: (n.get("text") or "").casefold() == titre.casefold()
+            and n.get("clickable") == "true"
+        )
+        try:
+            toucher_noeud(executer, titre, bouton, delai=POSE)
+            return
+        except TimeoutError:
+            pass
+        if deplier(executer, ligne):
+            time.sleep(POSE)
+            try:
+                toucher_noeud(executer, titre, bouton, delai=POSE)
+                return
+            except TimeoutError:
+                pass
+        if time.monotonic() > fin:
+            raise TimeoutError(
+                f"le bouton « {titre} » absent du volet en {delai} s"
+                f" ({essai} ouvertures)"
+            )
+
+
+def repondre_du_volet(ctx, mots, ligne):
+    """« Répondre » de la notification qui affiche ligne touché, mots
+    tapés dans le champ de la réponse (input text, ASCII sans espace),
+    puis son bouton d'envoi touché ; l'instant de l'envoi
+    (time.monotonic)."""
+    executer = ctx.appareil.executer
+    toucher_action(ctx, "Répondre", ligne)
     # Le champ prend le focus en s'ouvrant : input text écrit dans le champ focalisé
     toucher_noeud(
         executer,
@@ -2910,12 +2983,17 @@ def attendre_retour_service(ctx, pid):
     de son service permanent (START_STICKY, sinon la tâche périodique
     forcée après RETOUR_COLLANT) ; (secondes, forcée)."""
     executer = ctx.appareil.executer
-    debut = time.monotonic()
+    # Le compte part de la mort : `am crash` peut laisser le processus
+    # vivre jusqu'à une minute avant qu'Android le tue
+    fin = time.monotonic() + RETOUR_DELAI
     while (
         adb("shell", "pidof", PAQUET, executer=executer, check=False).strip()
         == pid
     ):
+        if time.monotonic() > fin:
+            raise TimeoutError(f"processus {pid} vivant {RETOUR_DELAI} s")
         time.sleep(0.2)
+    debut = time.monotonic()
     force = False
     while not service_vivant(executer):
         ecoule = time.monotonic() - debut
@@ -2953,17 +3031,19 @@ def scenario_actions_notifications(ctx):
     """Les actions d'une notification de conversation, l'app tuée, le
     module 1.5 sur le serveur de la course : le lien appliqué au niveau 1,
     l'appareil marqué comme celui de l'app. Le processus tué, un message
-    de chat_user s'affiche avec ses quatre actions. « Répondre », tapé
+    de chat_user s'affiche avec ses trois boutons. « Répondre », tapé
     dans le volet, poste une seule fois la réponse, et la poussée de
     lecture de l'auteur efface la notification ; « Marquer lu » lit la
-    conversation jusqu'au message ; « Muet 1 h » la met en sourdine pour
-    une heure ; « 👍 » réagit au message et la notification reste, sans
-    « 👍 ». Une lecture dans le navigateur efface la notification.
-    « Jamais affiché », la notification ne dit que « Nouveau message »,
-    avec ses quatre actions, et la réponse part quand même. La copie de
-    session du natif cassée, la réponse est confiée à l'app : la
-    notification de reprise s'affiche, touchée elle ouvre l'app, qui
-    poste la réponse une fois. Rend les délais mesurés."""
+    conversation jusqu'au message ; « 👍 » réagit au message et la
+    notification reste, « Muet 1 h » à la place de « 👍 » ; « Muet 1 h »
+    la met en sourdine pour une heure. Une lecture dans le navigateur
+    efface la notification. « Jamais affiché », la notification ne dit
+    que « Nouveau message », avec les mêmes boutons, et la réponse part
+    quand même. La copie de session du natif cassée, la réponse est
+    confiée à l'app : la notification de reprise s'affiche, touchée elle
+    ouvre l'app, qui poste la réponse une fois. L'appareil démarqué, une
+    poussée sans id de message offre « Muet 1 h » en troisième. Rend les
+    délais mesurés."""
     ntfy = ctx.cible.get("ntfy")
     assert ntfy, "aucun ntfy dans la course (commande ntfy absente)"
     executer = ctx.appareil.executer
@@ -3068,7 +3148,7 @@ def scenario_actions_notifications(ctx):
             ),
         )
 
-        # 2. App tuée : le message s'affiche avec ses quatre actions
+        # 2. App tuée : le message s'affiche avec ses trois boutons
         accueil(ctx)
         maniere = tuer_app(ctx)
         ctx.cdp = None
@@ -3082,7 +3162,7 @@ def scenario_actions_notifications(ctx):
 
         # 3. « Répondre » : une seule réponse, la notification effacée
         mots = f"reponse{int(time.time())}a"
-        envoi = repondre_du_volet(ctx, mots)
+        envoi = repondre_du_volet(ctx, mots, premier)
         capturer("actions_reponse_envoyee")
         attendre_serveur(
             "la réponse sur le serveur", lambda: miens(mots), ACTION_DELAI
@@ -3096,7 +3176,7 @@ def scenario_actions_notifications(ctx):
         lire = ctx.unique("a-lire")
         ident = poster(lire)
         attendre_notification(ctx, tag, lambda n: lire in n["bloc"])
-        toucher_action(ctx, "Marquer lu")
+        toucher_action(ctx, "Marquer lu", lire)
         attendre_serveur(
             "la conversation lue",
             lambda: vu_de(ctx.odoo, canal, moi) == ident,
@@ -3104,12 +3184,30 @@ def scenario_actions_notifications(ctx):
         )
         partie("la notification après « Marquer lu »")
 
-        # 5. « Muet 1 h » : la sourdine d'une heure, puis levée
-        muet = ctx.unique("muet")
-        poster(muet)
-        attendre_notification(ctx, tag, lambda n: muet in n["bloc"])
+        # 5. « 👍 » : une réaction d'admin, « Muet 1 h » à la place de « 👍 »
+        pouce = ctx.unique("pouce")
+        ident = poster(pouce)
+        attendre_notification(
+            ctx,
+            tag,
+            lambda n: pouce in n["bloc"]
+            and actions_de(n) == ACTIONS_CLAVARDAGE,
+        )
+        toucher_action(ctx, "👍", pouce)
+        attendre_serveur(
+            "le 👍 sur le serveur",
+            lambda: reactions_serveur(ctx.odoo, ident) == [("👍", moi)],
+            ACTION_DELAI,
+        )
+        notif, _ = attendre_notification(
+            ctx, tag, lambda n: "👍" not in actions_de(n), ACTION_DELAI
+        )
+        assert actions_de(notif) == ACTIONS_SANS_ID, actions_de(notif)
+
+        # 6. « Muet 1 h », offert une fois le 👍 donné : la sourdine d'une
+        # heure, puis levée
         touche = time.time()
-        toucher_action(ctx, "Muet 1 h")
+        toucher_action(ctx, "Muet 1 h", pouce)
         fin_muet = attendre_serveur(
             "la sourdine",
             lambda: ctx.odoo.executer(
@@ -3127,26 +3225,6 @@ def scenario_actions_notifications(ctx):
         partie("la notification après « Muet 1 h »")
         sourdine(0)
 
-        # 6. « 👍 » : une réaction d'admin, la notification sans « 👍 »
-        pouce = ctx.unique("pouce")
-        ident = poster(pouce)
-        attendre_notification(
-            ctx,
-            tag,
-            lambda n: pouce in n["bloc"]
-            and actions_de(n) == ACTIONS_CLAVARDAGE,
-        )
-        toucher_action(ctx, "👍")
-        attendre_serveur(
-            "le 👍 sur le serveur",
-            lambda: reactions_serveur(ctx.odoo, ident) == [("👍", moi)],
-            ACTION_DELAI,
-        )
-        notif, _ = attendre_notification(
-            ctx, tag, lambda n: "👍" not in actions_de(n), ACTION_DELAI
-        )
-        assert actions_de(notif) == ACTIONS_CLAVARDAGE[:3], actions_de(notif)
-
         # 7. Lu dans le navigateur : la notification part
         dernier = ctx.unique("lu-ailleurs")
         ident = poster(dernier)
@@ -3160,7 +3238,7 @@ def scenario_actions_notifications(ctx):
         partie("la notification après la lecture au navigateur")
         delai_lecture = time.monotonic() - lu
 
-        # 7b. « Jamais affiché » : « Nouveau message » et quatre actions
+        # 7b. « Jamais affiché » : « Nouveau message » et les mêmes boutons
         # La page est morte avec le processus : l'app relancée, sa page
         # jointe à nouveau
         adb(
@@ -3188,7 +3266,7 @@ def scenario_actions_notifications(ctx):
         assert cache not in notif["bloc"], "texte du message affiché"
         assert actions_de(notif) == ACTIONS_CLAVARDAGE, actions_de(notif)
         mots_caches = f"cachee{int(time.time())}b"
-        repondre_du_volet(ctx, mots_caches)
+        repondre_du_volet(ctx, mots_caches, "Nouveau message")
         capturer("actions_jamais_affiche")
         attendre_serveur(
             "la réponse « jamais affiché »",
@@ -3207,7 +3285,11 @@ def scenario_actions_notifications(ctx):
         premier_plan(ctx)
         ctx.hook(f"chatPushLockScreen({config}, 'hidden_locked')")
 
-        # 8. Session du natif cassée : la réponse confiée à l'app
+        # 8. Session du natif cassée : la réponse confiée à l'app. Le retour
+        # au premier plan recopie la vraie session au natif après son
+        # chargement : un chargement de plus, rangé derrière, puis la copie
+        # cassée, une fois le travail des notifications en file achevé
+        ctx.hook(f"chatLoad({config})")
         ctx.hook(f"chatPushBreakSession({config})")
         accueil(ctx)
         tuer_app(ctx)
@@ -3218,7 +3300,7 @@ def scenario_actions_notifications(ctx):
             ctx, tag, lambda n: confie in n["bloc"], delai=POUSSEE_DELAI
         )
         mots_confies = f"confiee{int(time.time())}c"
-        repondre_du_volet(ctx, mots_confies)
+        repondre_du_volet(ctx, mots_confies, confie)
         attendre_notification(ctx, reprise, delai=ACTION_DELAI)
         assert not miens(mots_confies), "réponse postée par une session morte"
         capturer("actions_reprise")
@@ -3246,6 +3328,28 @@ def scenario_actions_notifications(ctx):
         assert (
             len(miens(mots_confies)) == 1
         ), "réponse confiée postée deux fois"
+
+        # 9. Un appareil que le module ne connaît pas : les poussées
+        # d'Odoo, sans id de message, offrent « Muet 1 h » en troisième
+        ctx.odoo.executer(
+            "mail.push.device",
+            "write",
+            [
+                ctx.odoo.executer(
+                    "mail.push.device",
+                    "search",
+                    [[["endpoint", "=", point]]],
+                ),
+                {"erplibre_app": False},
+            ],
+        )
+        accueil(ctx)
+        sans_module = ctx.unique("sans-module")
+        poster(sans_module)
+        notif, _ = attendre_notification(
+            ctx, tag, lambda n: sans_module in n["bloc"], POUSSEE_DELAI
+        )
+        assert actions_de(notif) == ACTIONS_SANS_ID, actions_de(notif)
         assert ecran_allume(executer), "écran éteint pendant le scénario"
     finally:
         adb(
