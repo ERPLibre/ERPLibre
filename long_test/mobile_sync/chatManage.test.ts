@@ -380,7 +380,7 @@ eachVersionFrom(18, "chat management", (target) => {
 		const { env, src } = await app();
 		expect(await env.chat.features(src.configId)).toEqual({
 			canRemoveMembers: true, idempotentCreate: true, idempotentUpload: true, guardedEdit: true,
-			serverSearch: true, idempotentStar: true, idempotentRecordPost: true,
+			serverSearch: true, idempotentStar: true, idempotentRecordPost: true, appPush: true,
 		});
 		const { channelId: group } = await env.chat.createGroup(src, [peer.partnerId], unique("group"));
 		const bus = await peer.listen();
