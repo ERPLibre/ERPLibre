@@ -1813,8 +1813,15 @@ def toucher_dialogue(ctx, libelle, delai=10):
                     noeuds = list(ET.fromstring(contenu[debut:]).iter("node"))
                 except ET.ParseError:
                     noeuds = []
+            # Le bouton de la boîte de l'app de test : jamais celui d'une
+            # boîte d'une autre app affichée au même moment
             bouton = next(
-                (n for n in noeuds if n.get("resource-id") == BOUTON_POSITIF),
+                (
+                    n
+                    for n in noeuds
+                    if n.get("resource-id") == BOUTON_POSITIF
+                    and n.get("package") == PAQUET
+                ),
                 None,
             )
             vu = bouton.get("text") if bouton is not None else None
@@ -3006,26 +3013,76 @@ def attendre_dans(executer, quoi, ligne, choisir, delai):
         time.sleep(POSE)
 
 
+def champ_seul_dans_rangee(executer, ligne, delai):
+    """Attend, jusqu'à delai secondes, un relevé où le seul champ focalisé
+    de tout l'écran est celui de la rangée de ligne ; TimeoutError sinon,
+    avant que rien ne soit tapé."""
+    fin = time.monotonic() + delai
+    while True:
+        racine = arbre_ui(executer)
+        focalises = (
+            [n for n in racine.iter("node") if champ_focalise(n)]
+            if racine is not None
+            else []
+        )
+        notre = dans_rangee(racine, ligne, champ_focalise)
+        if len(focalises) == 1 and notre is focalises[0]:
+            return
+        if time.monotonic() > fin:
+            raise TimeoutError(
+                f"{len(focalises)} champ(s) focalisé(s), le champ de la"
+                f" notification « {ligne} » pas seul : rien n'est tapé"
+            )
+        time.sleep(POSE)
+
+
+def mots_ailleurs(executer, ligne, mots):
+    """Les paquets des nœuds hors de la rangée de ligne dont le texte
+    porte mots, relevés une fois : où une saisie a pu atterrir. Rien n'y
+    est touché."""
+    racine = arbre_ui(executer)
+    if racine is None:
+        return []
+    haut = rangee(racine, ligne)
+    dedans_rangee = set(haut.iter("node")) if haut is not None else set()
+    return sorted(
+        {
+            n.get("package")
+            for n in racine.iter("node")
+            if n not in dedans_rangee and mots in (n.get("text") or "")
+        }
+    )
+
+
 def repondre_du_volet(ctx, mots, ligne, delai=20):
     """« Répondre » de la notification de l'app de test qui affiche ligne
     touché, mots tapés (input text, ASCII sans espace) une fois relevé
-    que le champ focalisé est celui de cette rangée, puis, le champ de la
-    rangée relu et portant mots, son bouton d'envoi touché ; l'instant de
-    l'envoi (time.monotonic). Un champ focalisé hors de la rangée : rien
-    n'est tapé ; un champ qui ne porte pas mots : rien n'est envoyé."""
+    que le seul champ focalisé de l'écran est celui de cette rangée,
+    puis, le champ de la rangée relu et portant mots, son bouton d'envoi
+    touché ; l'instant de l'envoi (time.monotonic). Un autre champ
+    focalisé : rien n'est tapé. Un champ qui ne porte pas mots : rien
+    n'est envoyé, et l'échec nomme le paquet d'un nœud hors de la rangée
+    qui porterait les mots, sans jamais y toucher."""
     executer = ctx.appareil.executer
     toucher_action(ctx, "Répondre", ligne, delai=delai)
-    attendre_dans(
-        executer, "le champ de la réponse", ligne, champ_focalise, delai
-    )
+    champ_seul_dans_rangee(executer, ligne, delai)
     adb("shell", "input", "text", mots, executer=executer)
-    attendre_dans(
-        executer,
-        f"le champ portant « {mots} »",
-        ligne,
-        lambda n: champ_focalise(n) and n.get("text") == mots,
-        delai,
-    )
+    try:
+        attendre_dans(
+            executer,
+            f"le champ portant « {mots} »",
+            ligne,
+            lambda n: champ_focalise(n) and n.get("text") == mots,
+            delai,
+        )
+    except TimeoutError as echec:
+        ailleurs = mots_ailleurs(executer, ligne, mots)
+        if ailleurs:
+            raise TimeoutError(
+                f"mots tapés hors de la notification « {ligne} », dans"
+                f" {', '.join(ailleurs)} : rien n'est envoyé"
+            ) from echec
+        raise
     toucher_dans(
         executer,
         "le bouton d'envoi de la réponse",
