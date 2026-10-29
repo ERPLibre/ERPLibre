@@ -12,7 +12,7 @@
  * followers, assignments, stars, notifications and outgoing emails.
  */
 import { composeBody, emojiConversions, EMPTY_MENTIONS } from "./harness";
-import type { Mentions, Target } from "./harness";
+import type { Login, Mentions, Target } from "./harness";
 import { OdooAdmin } from "./odooAdmin";
 
 const CHANNEL = "discuss.channel";
@@ -118,20 +118,158 @@ export class ChatPeer {
 	 * notification received; close() ends it.
 	 */
 	async listen(): Promise<{ notifications: any[]; close(): void }> {
-		const info = await this.user.jsonRoute("/web/session/get_session_info");
-		const base = new URL(this.user.url);
+		const { ws, notifications } = await this.openBus(this.user);
+		return { notifications, close: () => ws.close() };
+	}
+
+	/**
+	 * A bus websocket straight to Odoo in the web session of session (its
+	 * sessionLogin done), as a browser opens it (the server's Origin),
+	 * subscribed from last 0; notifications collects what it receives.
+	 */
+	private async openBus(session: OdooAdmin): Promise<{ ws: WebSocket; notifications: any[] }> {
+		const info = await session.jsonRoute("/web/session/get_session_info");
+		const base = new URL(session.url);
 		const url = `${base.origin.replace(/^http/, "ws")}/websocket?version=${encodeURIComponent(info.websocket_worker_version)}`;
 		const notifications: any[] = [];
-		const ws: WebSocket = new (WebSocket as any)(url, { headers: { Cookie: this.user.cookie, Origin: base.origin } });
+		const ws: WebSocket = new (WebSocket as any)(url, { headers: { Cookie: session.cookie, Origin: base.origin } });
 		await new Promise<void>((resolve, reject) => {
 			ws.onopen = () => resolve();
-			ws.onerror = () => reject(new Error("chat_user's websocket did not open"));
+			ws.onerror = () => reject(new Error("the browser's websocket did not open"));
 		});
 		ws.onmessage = (event: MessageEvent) => {
 			if (typeof event.data === "string") notifications.push(...JSON.parse(event.data));
 		};
 		ws.send(JSON.stringify({ event_name: "subscribe", data: { channels: [], last: 0 } }));
-		return { notifications, close: () => ws.close() };
+		return { ws, notifications };
+	}
+
+	/**
+	 * A browser of the user of login: a web session of its own
+	 * (/web/session/authenticate) and its bus websocket, as listen() opens
+	 * chat_user's. markRead reads the conversation up to lastId as the web
+	 * client does (/discuss/channel/mark_as_read); presence sends the bus's
+	 * update_presence with that inactivity (ms) and resolves once Odoo
+	 * wrote it (the browser poll of the user's bus.presence moved);
+	 * setMessageDone marks an inbox message done (set_message_done); post
+	 * posts text in the conversation as the user (/mail/message/post), the
+	 * new message's id; close() ends the websocket.
+	 */
+	async browserSession(login: Login): Promise<{
+		markRead(channelId: number, lastId: number): Promise<void>;
+		post(channelId: number, text: string): Promise<number>;
+		presence(inactivityMs: number): Promise<void>;
+		setMessageDone(messageId: number): Promise<void>;
+		close(): void;
+	}> {
+		const browser = new OdooAdmin(this.target, login);
+		await browser.sessionLogin();
+		const { ws } = await this.openBus(browser);
+		return {
+			markRead: async (channelId, lastId) => {
+				await browser.jsonRoute("/discuss/channel/mark_as_read", { channel_id: channelId, last_message_id: lastId });
+			},
+			presence: async (inactivityMs) => {
+				const before = (await this.browserPresenceOf(login.login)).poll;
+				// The poll is written to the second: a send in the second of the last one moves nothing
+				await new Promise((resolve) => setTimeout(resolve, 1100));
+				ws.send(JSON.stringify({
+					event_name: "update_presence",
+					data: { inactivity_period: inactivityMs, im_status_ids_by_model: {} },
+				}));
+				const deadline = performance.now() + 10000;
+				while ((await this.browserPresenceOf(login.login)).poll === before) {
+					if (performance.now() > deadline) throw new Error(`no browser presence written for ${login.login}`);
+					await new Promise((resolve) => setTimeout(resolve, 100));
+				}
+			},
+			post: async (channelId, text) => {
+				const result = await browser.jsonRoute("/mail/message/post", {
+					thread_model: CHANNEL,
+					thread_id: channelId,
+					post_data: { body: text, message_type: "comment", subtype_xmlid: "mail.mt_comment" },
+				});
+				const id = result?.["mail.message"]?.[0]?.id;
+				if (typeof id !== "number") throw new Error("post answered no message id");
+				return id;
+			},
+			setMessageDone: async (messageId) => {
+				await browser.jsonRoute("/web/dataset/call_kw/mail.message/set_message_done", {
+					model: "mail.message", method: "set_message_done", args: [[messageId]], kwargs: {},
+				});
+			},
+			close: () => ws.close(),
+		};
+	}
+
+	/**
+	 * The presence of the user of login (bus.presence, admin's read): the
+	 * browser poll and activity the module keeps, and Odoo's own last poll
+	 * (every bus, the app's included); false when unset.
+	 */
+	async browserPresenceOf(login: string): Promise<{ poll: string | false; presence: string | false; lastPoll: string | false }> {
+		const [user] = await this.admin.searchRead("res.users", [["login", "=", login]], ["id"]);
+		const [row] = await this.admin.searchRead(
+			"bus.presence", [["user_id", "=", user.id]], ["erplibre_browser_poll", "erplibre_browser_presence", "last_poll"],
+		);
+		return {
+			poll: row?.erplibre_browser_poll ?? false,
+			presence: row?.erplibre_browser_presence ?? false,
+			lastPoll: row?.last_poll ?? false,
+		};
+	}
+
+	/**
+	 * The device of endpoint marked quiet while a browser is online (quiet
+	 * true) or not, through the module's route in the web session of
+	 * session (the app's own: the mark keeps the hash of the session that
+	 * calls it, which tells the app's bus from a browser). Throws unless
+	 * Odoo answers ok.
+	 */
+	async markDeviceQuiet(session: { sessionId: string }, endpoint: string, quiet: boolean): Promise<void> {
+		const response = await fetch(`${this.target.url}/erplibre_mobile_chat/push/device`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Cookie: `session_id=${session.sessionId}` },
+			body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: { endpoint, quiet_while_online: quiet } }),
+		});
+		const body: any = await response.json();
+		if (body.error || body.result?.ok !== true) throw new Error(`device not marked: ${JSON.stringify(body.error ?? body.result)}`);
+	}
+
+	/** The device of endpoint as the module holds it: its id and marks; null when Odoo holds none. */
+	async appDevice(endpoint: string): Promise<{ id: number; app: boolean; quiet: boolean } | null> {
+		const [row] = await this.admin.searchRead(
+			"mail.push.device", [["endpoint", "=", endpoint]], ["erplibre_app", "erplibre_quiet_while_online"],
+		);
+		return row ? { id: row.id, app: row.erplibre_app, quiet: row.erplibre_quiet_while_online } : null;
+	}
+
+	/**
+	 * A new internal user named name, its login and password both login
+	 * (unique to the run, the caller's), with project's user rights and
+	 * notified in Odoo's inbox when inbox is true (Odoo creates its
+	 * settings with it). Its Login and partner.
+	 */
+	async createUser(name: string, login: string, opts: { inbox?: boolean } = {}): Promise<{ login: Login; partnerId: number }> {
+		const xmlids = ["base.group_user", ...(opts.inbox ? ["project.group_project_user", "mail.group_mail_notification_type_inbox"] : [])];
+		const groups: number[] = [];
+		for (const xmlid of xmlids) {
+			const [module, name] = xmlid.split(".");
+			const [row] = await this.admin.searchRead("ir.model.data", [["module", "=", module], ["name", "=", name]], ["res_id"]);
+			groups.push(row.res_id);
+		}
+		const userId = await this.admin.create("res.users", {
+			name, login, password: login, groups_id: [[6, 0, groups]], ...(opts.inbox ? { notification_type: "inbox" } : {}),
+		});
+		if (!userId) throw new Error(`user ${login} not created`);
+		return { login: { login, password: login }, partnerId: await this.partnerOf(login) };
+	}
+
+	/** The mute end of the member of the user of login in the conversation (mute_until_dt, UTC), false when not muted. */
+	async muteOf(login: string, channelId: number): Promise<string | false> {
+		const row = await this.memberOf(channelId, await this.partnerOf(login), ["mute_until_dt"]);
+		if (!row) throw new Error(`${login} is not a member of ${channelId}`);
+		return row.mute_until_dt;
 	}
 
 	/**
@@ -408,9 +546,10 @@ export class ChatPeer {
 		return this.admin.execute("mail.push.device", "search_count", [[["endpoint", "=", endpoint]]]);
 	}
 
-	/** Every Web Push device whose endpoint starts with url, unlinked by admin; how many there were. */
-	async dropPushDevices(url: string): Promise<number> {
-		const rows = await this.admin.searchRead("mail.push.device", [["endpoint", "=like", `${url}/%`]], ["id"]);
+	/** The Web Push devices of these endpoints, unlinked by admin; how many there were. */
+	async dropPushDevicesOf(endpoints: string[]): Promise<number> {
+		if (endpoints.length === 0) return 0;
+		const rows = await this.admin.searchRead("mail.push.device", [["endpoint", "in", endpoints]], ["id"]);
 		if (rows.length) await this.admin.unlink("mail.push.device", rows.map((r) => r.id));
 		return rows.length;
 	}

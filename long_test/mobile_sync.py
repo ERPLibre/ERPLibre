@@ -236,7 +236,7 @@ def plan(versions, args, ntfy=True):
 
 def cibles(serveurs, ntfy=None):
     """Les serveurs de la course comme targets.json les donne aux tests :
-    url, base, comptes ; sur la 18, les comptes du clavardage et, quand la
+    url, base, comptes, fichier journal du serveur (log) ; sur la 18, les comptes du clavardage et, quand la
     course a son ntfy, l'accès d'un téléphone à ce ntfy (url, jeton,
     préfixe, lien de configuration, chemin de son server.yml) et celui
     d'un second téléphone (other)."""
@@ -248,6 +248,7 @@ def cibles(serveurs, ntfy=None):
             "database": s.base,
             "admin": {"login": "admin", "password": "admin"},
             "multi": {"login": "mc_user", "password": "mc_user"},
+            "log": str(s.journal),
         }
         if s.version >= 18:
             cible["chat"] = {"login": "chat_user", "password": "chat_user"}

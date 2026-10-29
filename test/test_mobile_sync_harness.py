@@ -365,8 +365,8 @@ class TestBasesEtServeurs(unittest.TestCase):
                 odoo.cle_gabarit(v18, executer=executer), avant
             )
 
-    def test_harness_api_6(self):
-        self.assertEqual(odoo.HARNESS_API, 6)
+    def test_harness_api_7(self):
+        self.assertEqual(odoo.HARNESS_API, 7)
 
 
 class TestRapport(unittest.TestCase):
@@ -746,8 +746,8 @@ class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
 
-    def test_api_du_hook_7(self):
-        self.assertEqual(appareil.DEVICE_HOOK_API, 7)
+    def test_api_du_hook_8(self):
+        self.assertEqual(appareil.DEVICE_HOOK_API, 8)
 
     def test_clavardage_sur_la_18_seulement(self):
         for version in (16, 17):
@@ -767,6 +767,10 @@ class TestScenariosAppareil(unittest.TestCase):
             (
                 "notifications du clavardage, app fermée",
                 appareil.scenario_notifications,
+            ),
+            (
+                "actions du clavardage, app tuée",
+                appareil.scenario_actions_notifications,
             ),
         ):
             self.assertIn(scenario, appareil.scenarios_de(18))
@@ -1098,11 +1102,20 @@ class TestNtfy(unittest.TestCase):
         )
         self.assertNotIn("ntfy", mobile_sync.plan([16], args, ntfy=False))
         serveurs = [
-            SimpleNamespace(version=v, url=f"http://127.0.0.1:{v}", base=b)
+            SimpleNamespace(
+                version=v,
+                url=f"http://127.0.0.1:{v}",
+                base=b,
+                journal=self.repertoire / f"odoo{v}.log",
+            )
             for v, b in ((17, "b17"), (18, "b18"))
         ]
         sans = mobile_sync.cibles(serveurs, None)
         self.assertTrue(all("ntfy" not in c for c in sans))
+        self.assertEqual(
+            [c["log"] for c in sans],
+            [str(self.repertoire / f"odoo{v}.log") for v in (17, 18)],
+        )
         ntfy = SimpleNamespace(
             url="http://127.0.0.1:40001",
             token="tk_inventeinventeinvente",
