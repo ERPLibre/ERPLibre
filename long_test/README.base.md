@@ -600,8 +600,10 @@ the notification says « Nouveau message » only, with the same buttons; with th
 phone's session copy broken the reply is handed to the app, which posts it once
 when the handoff notification is tapped; a device the module does not know gets
 Odoo's payload without a message id and « Mute 1 h » as the third button. Every
-tap is bound to the test app's own notification row, so another app's
-notification on the shade is never touched or typed into.
+tap is bound to the test app's own notification row, and lands only where two
+screen dumps in a row, the second taken just before the tap, place it at the
+same bounds, so another app's notification on the shade is never touched or
+typed into, even when one is posted between the dump and the tap.
 
 ## Starting from a host you already have
 
@@ -1272,8 +1274,11 @@ la notification ; avec « Jamais affiché » la notification dit seulement
 cassée, la réponse est confiée à l'app, qui la publie une fois quand on touche
 la notification de reprise ; un appareil que le module ne connaît pas reçoit la
 charge d'Odoo sans identifiant de message et « Muet 1 h » en troisième bouton.
-Chaque toucher est borné à la ligne de notification de l'app de test : la
-notification d'une autre app sur le volet n'est jamais touchée ni saisie.
+Chaque toucher est borné à la ligne de notification de l'app de test, et ne
+part que là où deux relevés de l'écran de suite, le second pris juste avant le
+toucher, la placent aux mêmes bornes : la notification d'une autre app sur le
+volet n'est jamais touchée ni saisie, même postée entre le relevé et le
+toucher.
 
 ## Partir d'un hôte qu'on possède déjà
 

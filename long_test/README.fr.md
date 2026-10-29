@@ -641,8 +641,11 @@ la notification ; avec « Jamais affiché » la notification dit seulement
 cassée, la réponse est confiée à l'app, qui la publie une fois quand on touche
 la notification de reprise ; un appareil que le module ne connaît pas reçoit la
 charge d'Odoo sans identifiant de message et « Muet 1 h » en troisième bouton.
-Chaque toucher est borné à la ligne de notification de l'app de test : la
-notification d'une autre app sur le volet n'est jamais touchée ni saisie.
+Chaque toucher est borné à la ligne de notification de l'app de test, et ne
+part que là où deux relevés de l'écran de suite, le second pris juste avant le
+toucher, la placent aux mêmes bornes : la notification d'une autre app sur le
+volet n'est jamais touchée ni saisie, même postée entre le relevé et le
+toucher.
 
 ## Partir d'un hôte qu'on possède déjà
 

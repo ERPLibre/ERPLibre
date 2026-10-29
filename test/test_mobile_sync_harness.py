@@ -924,6 +924,42 @@ class TestVoletPortee(unittest.TestCase):
         appareil.repondre_du_volet(self.ctx(executer), "motsinventes", MESSAGE)
         self.assertEqual(touchers, [(200, 1150), (950, 1250)])
 
+    def test_un_volet_decale_avant_le_toucher_n_est_pas_touche(self):
+        # Entre le premier relevé et le toucher, une notification d'une autre
+        # app s'est posée à la place de la nôtre, descendue de 400
+        releves = []
+
+        def releve(_):
+            releves.append(None)
+            if len(releves) == 1:
+                return volet(notre(haut=1000))
+            return volet(
+                rangee_xml(AUTRE, 1000, ["Alice Martin"], ""), notre(haut=1400)
+            )
+
+        executer, touchers, _ = faux_volet(releve)
+        appareil.toucher_action(self.ctx(executer), "Répondre", MESSAGE)
+        self.assertEqual(touchers, [(200, 1550)])
+
+    def test_un_volet_qui_bouge_a_chaque_releve_n_est_jamais_touche(self):
+        releves = []
+
+        def releve(_):
+            releves.append(None)
+            return volet(notre(haut=1000 + 400 * (len(releves) % 2)))
+
+        executer, touchers, _ = faux_volet(releve)
+        with self.assertRaises(TimeoutError):
+            appareil.toucher_dans(
+                executer,
+                "Répondre",
+                MESSAGE,
+                lambda n: n.get("text") == "Répondre",
+                delai=0,
+            )
+        self.assertGreaterEqual(len(releves), 2)
+        self.assertEqual(touchers, [])
+
     def test_deux_de_nos_notifications_chacune_sa_rangee(self):
         autre_conversation = notre(
             haut=400, textes=("MS Chat", "ms-test-autre")
@@ -1040,6 +1076,29 @@ class TestVoletPortee(unittest.TestCase):
         appareil.toucher_dialogue(self.ctx(executer), "Supprimer")
         self.assertEqual(touchers, [(500, 1550)])
 
+    def test_le_bouton_d_une_boite_qui_bouge_est_touche_a_sa_place_stable(
+        self,
+    ):
+        releves = []
+
+        def releve(_):
+            releves.append(None)
+            haut = 1500 if len(releves) == 1 else 1800
+            return volet(
+                noeud(
+                    appareil.PAQUET,
+                    haut,
+                    haut + 100,
+                    text="Supprimer",
+                    resource_id=appareil.BOUTON_POSITIF,
+                    clickable="true",
+                )
+            )
+
+        executer, touchers, _ = faux_volet(releve)
+        appareil.toucher_dialogue(self.ctx(executer), "Supprimer")
+        self.assertEqual(touchers, [(500, 1850)])
+
     def test_le_toucher_d_une_notification_vise_la_notre(self):
         executer, touchers, _ = faux_volet(
             lambda _: volet(
@@ -1049,6 +1108,43 @@ class TestVoletPortee(unittest.TestCase):
         )
         appareil.toucher_notification(self.ctx(executer), "Ouvrez l")
         self.assertEqual(touchers, [(500, 1005)])
+
+
+class TestRemiseEnEtat(unittest.TestCase):
+    """La remise en état de fin de scénario (la conversation remise en
+    son) ne masque jamais l'échec du scénario : il remonte, et l'échec de
+    la remise suit dans le journal."""
+
+    def test_apres_un_echec_la_remise_qui_echoue_le_suit(self):
+        echec = AssertionError("étape 5 : notification absente")
+
+        def remise():
+            raise RuntimeError("Odoo injoignable")
+
+        appareil.remettre_en_etat(echec, "la remise en son", remise)
+        lignes = appareil.lignes_echec("Odoo 18 — actions", echec)
+        self.assertEqual(
+            lignes[0],
+            "  ✗ Odoo 18 — actions : AssertionError étape 5 : notification"
+            " absente",
+        )
+        self.assertIn("la remise en son", lignes[1])
+        self.assertIn("RuntimeError Odoo injoignable", lignes[1])
+
+    def test_sans_echec_la_remise_qui_echoue_remonte(self):
+        def remise():
+            raise RuntimeError("Odoo injoignable")
+
+        with self.assertRaises(RuntimeError):
+            appareil.remettre_en_etat(None, "la remise en son", remise)
+
+    def test_une_remise_reussie_ne_note_rien(self):
+        echec = AssertionError("étape 5")
+        appareil.remettre_en_etat(echec, "la remise en son", lambda: None)
+        self.assertEqual(
+            appareil.lignes_echec("Odoo 18 — actions", echec),
+            ["  ✗ Odoo 18 — actions : AssertionError étape 5"],
+        )
 
 
 class TestScenariosAppareil(unittest.TestCase):
