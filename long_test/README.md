@@ -558,6 +558,17 @@ that reads only its own prefix, the unregistration when an account is removed,
 the move to a new topic when a new link comes, and, alone in a serial file, the
 VAPID keys drawn again, which the next load heals.
 
+Two more files play the second lot of the notifications. `chatPushModule.test.ts`
+plays module 1.5: a device marked through `/erplibre_mobile_chat/push/device`
+gets the message id and the channel type, an unmarked one gets Odoo's own
+payload, a read in the browser or the author's own post sends a « read » push
+to the app's devices only, an inbox read sends `inbox_done` with the record,
+and a device marked quiet hears nothing while a browser is online.
+`chatPushActions.test.ts` plays what the app does with an action the phone
+handed over: a reply is posted once, or not at all when Odoo already holds it,
+a read marks the conversation read with read receipts off, a mute lasts the
+hour that is left, and a reply's answer shows the message in the cache.
+
 With `--appareil`, the notifications scenario runs on the phone, on Odoo 18,
 against that ntfy sent to the phone by `adb reverse`: at level 1 the app is
 connected and shows one permanent notification; a message from another user
@@ -573,6 +584,19 @@ the server. The scenario never locks the phone: the lock-screen form is read
 from `dumpsys notification --noredact`. It restores what it changes: the
 `stay_on_while_plugged_in` setting, the battery-optimisation entry of the test
 app and the `adb reverse` ports.
+
+A second device scenario, « chat actions, app killed », runs with the module
+on the run's Odoo: the app killed, a message shows with three buttons;
+« Reply », typed in the shade, posts once and the author's read push clears the
+notification; « Mark read » reads the conversation up to the message; « 👍 »
+reacts and the notification stays, « Mute 1 h » taking its place and muting for
+an hour; a read in the browser clears the notification; with « Never shown »
+the notification says « Nouveau message » only, with the same buttons; with the
+phone's session copy broken the reply is handed to the app, which posts it once
+when the handoff notification is tapped; a device the module does not know gets
+Odoo's payload without a message id and « Mute 1 h » as the third button. Every
+tap is bound to the test app's own notification row, so another app's
+notification on the shade is never touched or typed into.
 
 ## Starting from a host you already have
 

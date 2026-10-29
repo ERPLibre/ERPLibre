@@ -599,6 +599,20 @@ compte est retiré, le passage à un nouveau sujet quand un nouveau lien arrive
 et, seul dans un fichier en série, les clés VAPID retirées au sort, que le
 chargement suivant guérit.
 
+Deux autres fichiers jouent le deuxième lot des notifications.
+`chatPushModule.test.ts` joue le module 1.5 : un appareil marqué par
+`/erplibre_mobile_chat/push/device` reçoit l'identifiant du message et le type
+de canal, un appareil non marqué reçoit la charge propre d'Odoo, une lecture
+dans le navigateur ou la publication de l'auteur envoie un push « lu » aux
+seuls appareils de l'app, une lecture de la boîte de réception envoie
+`inbox_done` avec l'enregistrement, et un appareil marqué silencieux n'entend
+rien tant qu'un navigateur est en ligne. `chatPushActions.test.ts` joue ce que
+l'app fait d'une action que le téléphone lui a confiée : une réponse est
+publiée une fois, ou pas du tout quand Odoo la détient déjà, une lecture
+marque la conversation lue avec les accusés de lecture désactivés, une sourdine
+dure l'heure qui reste, et la réponse d'une réponse montre le message dans le
+cache.
+
 Avec `--appareil`, le scénario des notifications tourne sur le téléphone, sur
 Odoo 18, contre ce ntfy renvoyé au téléphone par `adb reverse` : au niveau 1
 l'app est connectée et montre une notification permanente ; un message d'un
@@ -615,6 +629,20 @@ jamais le téléphone : la forme de l'écran verrouillé se lit dans
 `dumpsys notification --noredact`. Il remet en état ce qu'il change : le
 réglage `stay_on_while_plugged_in`, l'entrée d'optimisation de la batterie de
 l'app de test et les ports `adb reverse`.
+
+Un second scénario d'appareil, « actions du clavardage, app tuée », tourne avec
+le module sur l'Odoo de la course : l'app tuée, un message s'affiche avec trois
+boutons ; « Répondre », saisi dans le volet, publie une fois et le push de
+lecture de l'auteur efface la notification ; « Marquer lu » lit la conversation
+jusqu'au message ; « 👍 » réagit et la notification reste, « Muet 1 h » prenant
+sa place pour une sourdine d'une heure ; une lecture dans le navigateur efface
+la notification ; avec « Jamais affiché » la notification dit seulement
+« Nouveau message », avec les mêmes boutons ; la copie de session du téléphone
+cassée, la réponse est confiée à l'app, qui la publie une fois quand on touche
+la notification de reprise ; un appareil que le module ne connaît pas reçoit la
+charge d'Odoo sans identifiant de message et « Muet 1 h » en troisième bouton.
+Chaque toucher est borné à la ligne de notification de l'app de test : la
+notification d'une autre app sur le volet n'est jamais touchée ni saisie.
 
 ## Partir d'un hôte qu'on possède déjà
 
