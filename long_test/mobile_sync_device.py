@@ -87,8 +87,45 @@ APP_ETAT = "window.Capacitor.Plugins.App.getState()"
 ECRAN_BATTERIE_REELLE = 30 * 60 * 1000
 # L'état relevé par noter_batterie(), écrit avant que rien ne touche à la
 # batterie : une course tuée avant rendre_batterie() le laisse, et la course
-# suivante sous --batterie-reelle le rend dans preparer() avant tout le reste
+# suivante sous --batterie-reelle le rend dans preparer() avant tout le reste.
+# Un objet JSON {numéro de série: relevé} : seul le relevé du téléphone
+# branché lui est rendu
 BATTERIE_NOTEE = odoo.CACHE / "batterie_notee.json"
+# Les champs d'un relevé de batterie
+CHAMPS_BATTERIE = ("low_power", "screen_off_timeout")
+# La clé d'un relevé dont le téléphone est inconnu : un fichier écrit avant
+# le classement par numéro de série porte ses champs à la racine, et se lit
+# sous cette clé, qu'aucun numéro de série d'adb ne prend
+SERIE_INCONNUE = "?"
+
+
+def lire_releves():
+    """Les relevés de BATTERIE_NOTEE, {numéro de série: relevé} ; un relevé
+    aux champs à la racine (format d'avant) sous SERIE_INCONNUE ; {} sans
+    fichier. ValueError (ou OSError) quand le fichier ne se lit pas ou
+    qu'un relevé n'a pas ses CHAMPS_BATTERIE."""
+    if not BATTERIE_NOTEE.exists():
+        return {}
+    releves = json.loads(BATTERIE_NOTEE.read_text())
+    if not isinstance(releves, dict):
+        raise ValueError("un objet JSON attendu")
+    if set(CHAMPS_BATTERIE) <= releves.keys():
+        releves = {SERIE_INCONNUE: releves}
+    for releve in releves.values():
+        if not isinstance(releve, dict) or not set(CHAMPS_BATTERIE) <= (
+            releve.keys()
+        ):
+            raise ValueError("low_power et screen_off_timeout attendus")
+    return releves
+
+
+def ecrire_releves(releves):
+    """releves écrits dans BATTERIE_NOTEE ; vide, le fichier est effacé."""
+    if not releves:
+        BATTERIE_NOTEE.unlink(missing_ok=True)
+        return
+    BATTERIE_NOTEE.parent.mkdir(parents=True, exist_ok=True)
+    BATTERIE_NOTEE.write_text(json.dumps(releves))
 
 
 def adb(*args, executer=subprocess.run, check=True, binaire=False):
@@ -427,7 +464,8 @@ class Appareil:
     écran gardé allumé, app de test installée. rendre() défait tout ce que
     preparer() a posé, l'app de l'utilisateur jamais touchée.
     batterie_reelle (--batterie-reelle) fait rendre par preparer() l'état
-    de batterie qu'une course tuée a laissé dans BATTERIE_NOTEE."""
+    de batterie qu'une course tuée a laissé pour ce téléphone dans
+    BATTERIE_NOTEE."""
 
     ports: list
     executer: object = subprocess.run
@@ -439,8 +477,10 @@ class Appareil:
     notifications_accordees: bool = False
     exemption_posee: bool = False
     # L'état de la batterie que noter_batterie() a relevé (low_power,
-    # screen_off_timeout), None quand rien n'est à rendre
+    # screen_off_timeout), None quand rien n'est à rendre, et sa clé dans
+    # BATTERIE_NOTEE (le numéro de série, ou SERIE_INCONNUE)
     batterie_notee: dict = None
+    cle_notee: str = ""
     # Les remises de rendre_batterie() qu'adb a refusées, chacune la
     # commande à relancer à la main et son code ; lancer() les compte
     remises_manquees: list = field(default_factory=list)
@@ -465,15 +505,15 @@ class Appareil:
     def preparer(self, apk):
         """Installe l'app de test, garde l'écran allumé et renvoie les
         ports. Sous --batterie-reelle, rend d'abord l'état de batterie
-        laissé dans BATTERIE_NOTEE ; sans l'option, le fichier reste et une
-        ligne le nomme."""
+        laissé pour ce téléphone dans BATTERIE_NOTEE ; sans l'option, le
+        fichier reste et une ligne le nomme."""
         if self.batterie_reelle:
             self.rendre_batterie_laissee()
         elif BATTERIE_NOTEE.exists():
             print(
                 f"  ⚠ {BATTERIE_NOTEE} : état de batterie d'une course"
                 " --batterie-reelle non rendu ; la prochaine course"
-                " --batterie-reelle le rend"
+                " --batterie-reelle sur le même téléphone le rend"
             )
         adb("install", "-r", str(apk), executer=self.executer)
         self.garder_allume()
@@ -596,24 +636,56 @@ class Appareil:
         )
         self.exemption_posee = True
 
+    def serie(self):
+        """Le numéro de série du téléphone branché (adb get-serialno, qui
+        suit ANDROID_SERIAL), "" quand adb ne le donne pas."""
+        serie = adb(
+            "get-serialno", executer=self.executer, check=False
+        ).strip()
+        return "" if serie == "unknown" else serie
+
+    def nombre_branches(self):
+        """Le nombre de téléphones prêts (état « device » d'adb devices)."""
+        lignes = adb("devices", executer=self.executer, check=False)
+        return sum(
+            1
+            for ligne in lignes.splitlines()[1:]
+            if ligne.split("\t")[1:2] == ["device"]
+        )
+
     def noter_batterie(self):
         """Relève low_power (global) et screen_off_timeout (system) pour
-        rendre_batterie(), les écrit dans BATTERIE_NOTEE, puis porte le
-        délai d'extinction de l'écran à ECRAN_BATTERIE_REELLE. Seule
-        l'étape de --batterie-reelle l'appelle, avant de toucher à la
-        batterie."""
+        rendre_batterie(), les écrit dans BATTERIE_NOTEE sous le numéro de
+        série du téléphone (les relevés des autres clés restent), puis
+        porte le délai d'extinction de l'écran à ECRAN_BATTERIE_REELLE.
+        RuntimeError, rien d'écrit ni de touché, quand le numéro de série
+        ne se lit pas. Seule l'étape de --batterie-reelle l'appelle, avant
+        de toucher à la batterie."""
+        serie = self.serie()
+        if not serie:
+            raise RuntimeError(
+                "numéro de série du téléphone illisible (adb get-serialno) :"
+                " batterie non touchée"
+            )
 
         def lire(espace, nom):
             return adb(
                 "shell", "settings", "get", espace, nom, executer=self.executer
             ).strip()
 
+        try:
+            releves = lire_releves()
+        except (OSError, ValueError) as erreur:
+            raise RuntimeError(
+                f"{BATTERIE_NOTEE} illisible ({erreur}) : batterie non touchée"
+            )
         self.batterie_notee = {
             "low_power": lire("global", "low_power"),
             "screen_off_timeout": lire("system", "screen_off_timeout"),
         }
-        BATTERIE_NOTEE.parent.mkdir(parents=True, exist_ok=True)
-        BATTERIE_NOTEE.write_text(json.dumps(self.batterie_notee))
+        self.cle_notee = serie
+        releves[serie] = self.batterie_notee
+        ecrire_releves(releves)
         adb(
             "shell",
             "settings",
@@ -631,9 +703,11 @@ class Appareil:
         (dumpsys battery reset), puis le délai d'extinction de l'écran.
         Une valeur absente au relevé (« null ») est effacée. Chaque remise
         joue même quand une autre échoue ; celle qu'adb refuse s'ajoute à
-        remises_manquees, et BATTERIE_NOTEE reste alors pour la course
-        suivante. Remise complète, BATTERIE_NOTEE est effacé. Rien quand
-        rien n'est relevé ; une fois rendu, l'état n'est plus rejoué."""
+        remises_manquees, et le relevé reste alors dans BATTERIE_NOTEE pour
+        la course suivante. Remise complète, la clé cle_notee en est
+        retirée, et le fichier effacé quand il ne garde plus rien. Rien
+        quand rien n'est relevé ; une fois rendu, l'état n'est plus
+        rejoué."""
         if self.batterie_notee is None:
             return
         notee, self.batterie_notee = self.batterie_notee, None
@@ -661,21 +735,27 @@ class Appareil:
         remettre("system", "screen_off_timeout", notee["screen_off_timeout"])
         self.remises_manquees += manquees
         if not manquees:
-            BATTERIE_NOTEE.unlink(missing_ok=True)
+            try:
+                releves = lire_releves()
+            except (OSError, ValueError):
+                # Un fichier changé depuis le relevé : laissé tel quel, il
+                # se dit illisible à la prochaine course --batterie-reelle
+                return
+            releves.pop(self.cle_notee, None)
+            ecrire_releves(releves)
 
     def rendre_batterie_laissee(self):
-        """L'état que BATTERIE_NOTEE garde d'une course tuée ou mal rendue,
-        rendu par rendre_batterie(), qui efface le fichier. RuntimeError
-        quand une remise échoue ou que le fichier est illisible (alors
-        dumpsys battery reset seul est tenté) : le relevé suivant
-        prendrait l'état laissé pour celui d'origine. Rien sans fichier."""
-        if not BATTERIE_NOTEE.exists():
-            return
+        """Le relevé que BATTERIE_NOTEE garde d'une course tuée ou mal
+        rendue pour le téléphone branché, rendu par rendre_batterie(), qui
+        retire sa clé. Un relevé sans numéro de série (SERIE_INCONNUE) est
+        rendu seulement quand un seul téléphone est branché, et une ligne
+        le dit ; sinon il reste, nommé. Les relevés des autres téléphones
+        restent, nommés. RuntimeError quand une remise échoue ou que le
+        fichier est illisible (alors dumpsys battery reset seul est
+        tenté) : le relevé suivant prendrait l'état laissé pour celui
+        d'origine. Rien sans fichier."""
         try:
-            notee = json.loads(BATTERIE_NOTEE.read_text())
-            champs = {"low_power", "screen_off_timeout"}
-            if not isinstance(notee, dict) or not champs <= notee.keys():
-                raise ValueError("low_power et screen_off_timeout attendus")
+            releves = lire_releves()
         except (OSError, ValueError) as erreur:
             adb(
                 "shell",
@@ -690,16 +770,46 @@ class Appareil:
                 " Android ; vérifier à la main low_power et"
                 " screen_off_timeout, puis effacer le fichier"
             )
+        if not releves:
+            return
+        serie = self.serie()
+        cle = serie if serie and serie in releves else None
+        if cle is None and SERIE_INCONNUE in releves:
+            if self.nombre_branches() == 1:
+                cle = SERIE_INCONNUE
+                print(
+                    "  relevé de batterie sans numéro de série dans"
+                    f" {BATTERIE_NOTEE} : un seul téléphone branché, rendu"
+                    f" à celui-ci ({serie or 'numéro illisible'})"
+                )
+            else:
+                print(
+                    "  ⚠ relevé de batterie sans numéro de série gardé dans"
+                    f" {BATTERIE_NOTEE} : plusieurs téléphones branchés, rien"
+                    " ne dit auquel il appartient ; ne brancher que ce"
+                    " téléphone-là pour qu'une course --batterie-reelle le"
+                    " rende"
+                )
+        autres = [k for k in releves if k not in (cle, SERIE_INCONNUE)]
+        if autres:
+            print(
+                f"  relevé de batterie d'un autre téléphone gardé dans"
+                f" {BATTERIE_NOTEE} ({', '.join(autres)}) : rendu quand ce"
+                " téléphone sera branché sous --batterie-reelle"
+            )
+        if cle is None:
+            return
         avant = len(self.remises_manquees)
-        self.batterie_notee = notee
+        self.batterie_notee = releves[cle]
+        self.cle_notee = cle
         self.rendre_batterie()
         manquees = self.remises_manquees[avant:]
         if manquees:
             raise RuntimeError(
                 "état de batterie d'une course précédente non rendu ("
                 + ", ".join(manquees)
-                + ") : relancer ces commandes à la main, puis effacer"
-                f" {BATTERIE_NOTEE}"
+                + ") : relancer ces commandes à la main, puis retirer son"
+                f" relevé de {BATTERIE_NOTEE}"
             )
 
     def capture(self, chemin):
