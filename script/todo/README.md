@@ -17,6 +17,17 @@ and orders them; its `[6]` sets the statistics report of an account and
 prints a preview, its `[7]` tries a rule on a recent inbox message and can
 send the trial to the account itself.
 
+The rules also run without the client. `mail/rules/run.py` is the headless
+command — `.venv.erplibre/bin/python -m script.todo.mail.rules.run
+[--compte NAME] [--quiet]`, one pass per account, one exit code per kind of
+failure —, `mail/service.py` writes, installs and reads the systemd user
+units that start it on a timer (`Mail > [6] > [8]`), and
+`mail/credential.py` encrypts the vault master password for it with
+`systemd-creds --user`. `kdbx_write.py` holds the lock and the atomic write
+of the KDBX vault, shared by the mail client, the service and the VPN, so
+that two processes never lose each other's writes. See "Running without
+the client" in the mail guide.
+
 ## Where the code lives
 
 `todo.py` carries the menus and the general helpers. Everything around a

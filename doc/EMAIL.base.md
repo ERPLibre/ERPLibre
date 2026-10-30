@@ -676,6 +676,11 @@ réduire : seul le `Message-ID` relie les deux.
 | `~/.erplibre/mail/.rules/<account>/rules.json` | that account's incoming mail rules and send caps, **in clear text** even with an encrypted cache (mode 0600; see "Incoming mail rules") |
 | `~/.erplibre/mail/.rules/<account>/state.json`, `lock` | where the rules engine stopped in the inbox, and the lock that keeps two passes from running at once |
 | `~/.erplibre/mail/.rules/<account>/media/` | the copies of the images a reply carries (directory 0700, files 0600) |
+| `~/.erplibre/mail/.service.lock`, `.service_state.json` | the headless service's lock, held for a whole pass, and the last state each account reported, so that `--quiet` writes a lasting state only when it changes (mode 0600) |
+| `~/.erplibre/locks/kdbx-<hash>.lock` | the lock every write into the KDBX vault takes (directory 0700; see "Running without the client") |
+| `~/.config/systemd/user/erplibre-mail-rules.service`, `.timer` | the headless service's units, written by `Mail > [6] > [8] > [1]` |
+| `~/.config/credstore.encrypted/erplibre-mail-kdbx` | the vault master password encrypted for the service by `systemd-creds --user` (mode 0600), written by `Mail > [6] > [8] > [2]` |
+| `~/.erplibre/mail.log` | the mail package's log, with the full text of the errors the service's journal leaves out |
 
 <!-- [fr] -->
 ## Où sont les fichiers
@@ -689,6 +694,11 @@ réduire : seul le `Message-ID` relie les deux.
 | `~/.erplibre/mail/.rules/<compte>/rules.json` | les règles du courrier entrant de ce compte et ses plafonds d'envoi, **en clair** même avec un cache chiffré (mode 0600 ; voir « Règles du courrier entrant ») |
 | `~/.erplibre/mail/.rules/<compte>/state.json`, `lock` | l'endroit de la boîte de réception où le moteur des règles s'est arrêté, et le verrou qui empêche deux passes simultanées |
 | `~/.erplibre/mail/.rules/<compte>/media/` | les copies des images que porte une réponse (dossier 0700, fichiers 0600) |
+| `~/.erplibre/mail/.service.lock`, `.service_state.json` | le verrou du service sans interface, tenu toute une passe, et le dernier état rendu par chaque compte, pour que `--quiet` n'écrive un état qui dure qu'à son changement (mode 0600) |
+| `~/.erplibre/locks/kdbx-<hash>.lock` | le verrou que prend toute écriture dans le coffre KDBX (dossier 0700 ; voir « Tourner sans le client ») |
+| `~/.config/systemd/user/erplibre-mail-rules.service`, `.timer` | les unités du service sans interface, écrites par `Courriel > [6] > [8] > [1]` |
+| `~/.config/credstore.encrypted/erplibre-mail-kdbx` | le mot de passe maître du coffre chiffré pour le service par `systemd-creds --user` (mode 0600), écrit par `Courriel > [6] > [8] > [2]` |
+| `~/.erplibre/mail.log` | le journal du paquet courriel, avec le texte complet des erreurs que le journal du service omet |
 
 <!-- [en] -->
 ## Troubleshooting
@@ -1047,10 +1057,12 @@ rule").
 ### When rules run
 
 Rules run right after the sync pass of an online account: at launch, on
-`r` / `Shift+R`, on the `mail_refresh_sec` timer (300 s by default), and on
-`Mail > [3] Synchronise now` from the CLI menu. Nothing runs while both the
-client and the menu are closed, so with the TUI open a message gets its
-answer within `mail_refresh_sec`. Only the inbox is read: on a server that
+`r` / `Shift+R`, on the `mail_refresh_sec` timer (300 s by default), on
+`Mail > [3] Synchronise now` from the CLI menu, and every few minutes from
+the headless service once it is installed (see "Running without the
+client"). Without that service, nothing runs while both the client and the
+menu are closed; with the TUI open a message gets its answer within
+`mail_refresh_sec`. Only the inbox is read: on a server that
 files by label, the same message also sits in "All mail", and reading both
 would answer it twice.
 
@@ -1089,6 +1101,10 @@ re-armed.*
 
 Under the table, *Cap per pass* and *Cap per hour* set the account's send
 caps (see "Safeguards"), saved by their own button.
+Below them a line gives the state of the headless service — not
+installed, active every N min with the next pass, last exit, whether the
+vault password is in place (see "Running without the client"). It is read
+in the background: the screen never waits on `systemctl`.
 
 Rules apply in order, and **all** of them apply: a message that matches two
 rules gets two replies. A rule with "stop here" ends the list for that
@@ -1679,7 +1695,8 @@ list the rules (with a summary of each filter, and under a forward rule a
 line `→ mode : destinations`), `[2]` enable / disable one,
 `[3]` move one up or down, `[4]` delete one (asks first), `[5]` the latest
 50 lines of the rules log, `[6]` the statistics report settings, `[7]` try
-a rule on a message, `[0]` back. `[6]` prints the time zone, asks each
+a rule on a message, `[8]` the headless service (see "Running without the
+client"), `[0]` back. `[6]` prints the time zone, asks each
 setting with its current value as default — `-` empties the language or
 the server identifier — saves them, then prints `{{rapport}}` computed on
 the cache, without a requester. `[7]` asks for a rule, opens the account
@@ -1688,6 +1705,181 @@ lists the 20 most recent inbox messages, prints for the chosen one what the
 `s` screen shows, then offers to send the trial to yourself. Creating and
 editing a rule go through `e` in the TUI: a filter tree is not typed line
 by line. A rule enabled from the menu is armed at its next pass.
+
+### Running without the client
+
+The rules can also run with the client and the menu closed: a systemd
+**user** timer starts a pass every few minutes. For each account, a pass
+does what the TUI does around its sync — it syncs the inbox and the Sent
+folder, empties the outbox, then runs the rules. Only those two folders are
+synced: the inbox feeds the rules, Sent feeds the "answered" counts of the
+statistics report and receives the copy of what leaves; the other folders
+wait for the TUI or `Mail > [3]`. An account with no enabled rule is
+skipped whole, outbox included, without opening the vault or the network;
+so is a disabled account. An account with an `ephemeral` cache is skipped
+with a line every time, since its rules cannot run. Accounts are handled
+one after the other.
+
+**Installing.** `Mail > [6] Incoming mail rules`, any account, then
+`[8] Headless service (systemd)` — the same screen whatever the account.
+It starts with the state of the service, then offers `[1]` install or
+update, `[2]` the vault password for the service, `[3]` run a pass now,
+`[4]` uninstall, `[0]` back. `[1]` asks the minutes between two passes —
+1 to 1440, 5 by default, the installed value when there is one — then
+writes `erplibre-mail-rules.service` and `erplibre-mail-rules.timer` into
+`~/.config/systemd/user/` (the configuration directory of the systemd user
+manager, as `systemctl --user` reports it) and enables the timer. A first
+pass leaves at once, then one every N minutes, give or take 30 s. Running
+`[1]` again changes the interval or rewrites units the state line calls
+outdated. `[3]` asks systemd for one pass now and does not wait for it.
+
+**The vault password.** The service has no terminal to type the KDBX
+master password on. `[2]` asks it once, hidden — it refuses without a
+terminal, where the password would be echoed —, checks that it opens the
+vault, and has `systemd-creds --user encrypt` (systemd 256 or later)
+encrypt it into `~/.config/credstore.encrypted/erplibre-mail-kdbx`
+(file 0600, directory 0700). The clear password goes through a pipe, never
+onto the disk nor a command line; the file is decrypted once right away to
+prove the service will read it, and removed if it does not. At each pass
+systemd decrypts it into a directory private to the process, erased when
+the pass ends. Without that file, nor `kdbx.password` (below), a pass
+whose accounts need the vault stops on one line, *Vault locked: no master
+password for the service*, before any network.
+
+What this protects, and what it does not. The encryption guards against an
+**offline** theft — a copied disk, a backup. It does not guard against a
+program running under your account: any of them can run `systemd-creds
+--user decrypt` without being asked anything, and the password it gets
+opens the **whole** vault — VPN, Odoo, every other secret, not only mail.
+`[2]` says so and asks `(y/N)` before the password is typed. A vault kept
+for the mail secrets alone limits that exposure; the service reads the
+`kdbx.path` of the checkout it runs from.
+
+The encrypted file is bound to this machine and this user: machine-id,
+host key, TPM2 when there is one, user name and UID. After a restore onto
+another machine, a reinstall, a cleared TPM or a renamed user, systemd
+cannot decrypt it and the unit fails before the command starts, with exit
+243: redo `[8] > [2]`.
+
+Two other ways reach the vault. Where `systemd-creds --user` is missing,
+`[2]` says so and writes nothing; the service then reads `kdbx.password`
+from `private/todo/todo_override_private.json` — **in clear text**, not
+recommended. An account whose `secret_ref` points at the system keyring is
+read only when a Secret Service keyring answers on the session bus with its
+default collection present and **unlocked**: the service never unlocks it
+and never creates it, since either would pop up a window on the desktop
+every N minutes. KWallet is refused for the same reason. Otherwise the pass
+stops on *Vault locked:* and the reason.
+
+**One checkout, one machine.** The service runs the code of the checkout it
+was installed from, **as it is on disk**, uncommitted changes included, and
+reads that checkout's private configuration and vault — while the mail base
+`~/.erplibre/mail` is shared. Do not install it from a development
+checkout: a half-written change to the rules would run against real
+mailboxes every N minutes. `[1]` from another checkout shows both paths and
+asks `(y/N)` before pointing the service at the new one. A moved or deleted
+checkout makes systemd fail before the command starts — exit 200 when the
+folder is missing, 203 when the venv interpreter is —: reinstall with
+`[8] > [1]`. Install the service on **one machine per account**: the locks
+and the rules log are local to a machine, so two machines carrying the same
+rules would answer every message twice.
+
+**Linger.** Without it, the systemd user manager — and the timer with
+it — runs only while you have a session open. `[1]` reads it with
+`loginctl show-user` and, when it is off, offers `(y/N)` to run
+`loginctl enable-linger`: the manager then starts at boot and the service
+runs with no session open. Outside a local session (over SSH), polkit
+refuses without asking; run `sudo loginctl enable-linger <user>` instead.
+Nothing is changed without that question, and never from the TUI.
+
+**The log.** `journalctl --user -u erplibre-mail-rules`. The timer runs
+the command with `--quiet`: an account with nothing new and no problem
+writes nothing, and a state that lasts — a laptop offline, a send held for
+approval, the client holding the account — is written only when it
+changes; the exit code still says it at every pass. A pass by hand, from
+the root of the checkout:
+
+```bash
+.venv.erplibre/bin/python -m script.todo.mail.rules.run [--compte NAME]
+```
+
+writes one line per account (`--account` is the same as `--compte`). A
+line carries the account name and counts — new messages, replies sent,
+held — never an address, a subject, a secret nor the text of a server or
+rule error: only the kind of failure, the error's class name and, when the
+server gave one, its IMAP response code in brackets such as
+`[AUTHENTICATIONFAILED]`. A rule warning that would quote a file name or
+a setting (missing image, unreadable report settings) is counted, not
+quoted. The full text goes to `~/.erplibre/mail.log`.
+
+A pass by hand does not read the encrypted password of `[2]`: systemd
+hands it only to the service it starts. By hand, the vault opens only
+through `kdbx.password` in the configuration or the system keyring;
+otherwise the pass stops at "Vault locked" and says so. To test the
+encrypted password, use `[3]` (start a pass now), then
+`journalctl --user -u erplibre-mail-rules`.
+
+| Code | Meaning |
+|---|---|
+| 0 | pass done, or nothing to do |
+| 1 | unexpected error — a bug; the trace is in `~/.erplibre/mail.log` |
+| 2 | argument refused, unknown account |
+| 3 | vault locked: no master password, password refused, secret missing, system keyring unreachable or locked |
+| 4 | network: server unreachable, link cut, folder not synced |
+| 5 | rule error: `rules.json` unreadable, or the engine's pass failed |
+| 6 | already running: another pass, the client or the menu holds the account, or the cache is busy |
+| 7 | authentication refused: the server refuses the password or the token |
+| 8 | `accounts.json` or a cache unreadable |
+
+With several accounts, the code returned is the first present in the order
+1, 8, 3, 7, 5, 4, 6, 0: what needs a person comes before what heals by
+itself. `6` is the normal state while the client is open, so the unit
+counts it as a success; every other non-zero code marks it failed
+(`systemctl --user --failed`), and the timer starts it again all the same.
+The state line also names three codes systemd returns before the command
+runs: 200 (checkout folder missing), 203 (venv interpreter missing), 243
+(encrypted password unreadable on this machine).
+
+**With the client open.** No message is ever handled twice. A pass takes a
+service lock for its whole length — a second one that starts meanwhile
+stops at once, *a pass is already running* —, and the engine takes the
+same per-account lock as the TUI and the menu, waiting 5 s at most: an
+account the client holds is *already running* and waits for the next pass.
+The sync and the outbox that come first are safe between processes on
+their own. A cache the client is writing to is waited on 5 s, then counted
+as busy. The client is not slowed down: the service runs at `Nice=10` with
+a low disk priority.
+
+**The vault lock.** Every write into the KDBX — a refreshed OAuth token, a
+new account, the key of an encrypted cache, a VPN entry — takes a lock
+under `~/.erplibre/locks/`, reads the vault again from disk, applies its
+change, and replaces the file atomically through a temporary
+`.<name>.<random>.tmp.kdbx` beside it (mode 0600; a vault that is a
+symbolic link is written through the link). The client, the menu, the VPN
+and the service therefore never lose each other's writes. An OAuth refresh
+takes a second lock, per token, so two processes never spend the same
+refresh token. A lock not obtained within 10 s gives *KeePass vault busy in
+another process; try again.* KeePassXC does not take this lock: editing the
+vault there while the client or the service writes to it is not covered.
+
+**Hardening.** The unit keeps only the protections that need no mount
+namespace: `NoNewPrivileges=`, `RestrictSUIDSGID=`, `RestrictRealtime=`,
+`RestrictNamespaces=`, `LockPersonality=`, `SystemCallArchitectures=native`
+and `UMask=0077`. `ProtectSystem=`, `ProtectHome=` and `PrivateTmp=` are
+left out: under a user manager they need unprivileged user namespaces, which
+some distributions restrict, and the unit would then fail to start
+(`226/NAMESPACE`). Its disk priority is `best-effort` level 7, not
+`idle`: under disk contention `idle` starves the service's writes while it
+holds locks the client is waiting on. `LimitCORE=0` — and the command sets
+the same limit when run by hand —: the process holds the master password,
+the open vault and the account secrets, and a core dump would keep them on
+disk.
+
+**Uninstalling.** With nothing installed and no encrypted password,
+`[8] > [4]` says so and asks nothing. Otherwise it asks `(y/N)`, then,
+when the encrypted password exists, whether to remove it too `(Y/n)` — it
+is removed unless you answer no —, stops and disables the timer, removes both units, and, when linger is on,
+offers `(y/N)` to turn it off: other services may depend on it.
 
 ### Where rules live
 
@@ -1741,10 +1933,11 @@ règle »).
 
 Les règles tournent juste après la passe de synchronisation d'un compte en
 ligne : au lancement, par `r` / `Shift+R`, au minuteur `mail_refresh_sec`
-(300 s par défaut), et par `Courriel > [3] Synchroniser maintenant` depuis
-le menu CLI. Rien ne tourne quand le client et le menu sont tous deux
-fermés : le TUI ouvert, un message reçoit sa réponse en moins de
-`mail_refresh_sec`. Seule la boîte de réception est lue : sur un serveur
+(300 s par défaut), par `Courriel > [3] Synchroniser maintenant` depuis
+le menu CLI, et toutes les quelques minutes par le service sans interface
+une fois installé (voir « Tourner sans le client »). Sans ce service, rien
+ne tourne quand le client et le menu sont tous deux fermés ; le TUI
+ouvert, un message reçoit sa réponse en moins de `mail_refresh_sec`. Seule la boîte de réception est lue : sur un serveur
 qui range par étiquettes, le même message est aussi dans « Tous les
 messages », et lire les deux y répondrait deux fois.
 
@@ -1785,6 +1978,10 @@ statut affiche *Boîte de réception renumérotée : règles réarmées.*
 Sous la table, *Plafond par passe* et *Plafond par heure* règlent les
 plafonds d'envoi du compte (voir « Garde-fous »), enregistrés par leur
 propre bouton.
+En dessous, une ligne donne l'état du service sans interface — non
+installé, actif toutes les N min avec la prochaine passe, dernière sortie,
+mot de passe du coffre en place ou non (voir « Tourner sans le client »).
+Elle se lit en arrière-plan : l'écran n'attend jamais `systemctl`.
 
 Les règles s'appliquent dans l'ordre, et **toutes** s'appliquent : un
 message qui correspond à deux règles reçoit deux réponses. Une règle
@@ -2416,7 +2613,8 @@ de redirection une ligne `→ mode : destinations`), `[2]` en
 activer / désactiver une, `[3]` en monter ou descendre une, `[4]` en
 supprimer une (demande confirmation), `[5]` les 50 dernières lignes du
 journal des règles, `[6]` les paramètres du rapport de statistiques, `[7]`
-essayer une règle sur un message, `[0]` retour. `[6]` imprime le fuseau,
+essayer une règle sur un message, `[8]` le service sans interface (voir
+« Tourner sans le client »), `[0]` retour. `[6]` imprime le fuseau,
 demande chaque réglage avec sa valeur actuelle pour défaut — `-` vide la
 langue ou l'identifiant du serveur —, les enregistre, puis imprime
 `{{rapport}}` calculé sur le cache, sans demandeur. `[7]` demande une
@@ -2427,6 +2625,193 @@ que montre l'écran `s`, puis propose d'envoyer l'essai à vous-même. Créer
 et modifier une règle passent par `e` dans le TUI : un arbre de filtre ne
 se saisit pas ligne à ligne. Une règle activée depuis le menu est armée à
 sa passe suivante.
+
+### Tourner sans le client
+
+Les règles tournent aussi le client et le menu fermés : une minuterie
+systemd **utilisateur** lance une passe toutes les quelques minutes. Pour
+chaque compte, une passe fait ce que fait le TUI autour de sa
+synchronisation — elle synchronise la boîte de réception et le dossier
+Envoyés, vide la file d'envoi, puis fait tourner les règles. Seuls ces deux
+dossiers sont synchronisés : la boîte de réception nourrit les règles,
+Envoyés nourrit les comptes « répondu » du rapport de statistiques et reçoit
+la copie de ce qui part ; les autres dossiers attendent le TUI ou
+`Courriel > [3]`. Un compte sans règle active est sauté en entier, file
+comprise, sans ouvrir le coffre ni le réseau ; un compte désactivé aussi.
+Un compte en cache `ephemeral` est sauté avec une ligne à chaque fois : ses
+règles ne peuvent pas tourner. Les comptes sont traités l'un après l'autre.
+
+**Installer.** `Courriel > [6] Règles du courrier entrant`, n'importe quel
+compte, puis `[8] Service sans interface (systemd)` — le même écran quel que
+soit le compte. Il s'ouvre sur l'état du service, puis propose `[1]`
+installer ou mettre à jour, `[2]` le mot de passe du coffre pour le
+service, `[3]` lancer une passe maintenant, `[4]` désinstaller, `[0]`
+retour. `[1]` demande les minutes entre deux passes — 1 à 1440, 5 par
+défaut, la valeur installée s'il y en a une —, puis écrit
+`erplibre-mail-rules.service` et `erplibre-mail-rules.timer` dans
+`~/.config/systemd/user/` (le dossier de configuration du gestionnaire
+systemd de l'utilisateur, tel que `systemctl --user` le donne) et active la
+minuterie. Une première passe part aussitôt, puis une toutes les N minutes,
+à 30 s près. Relancer `[1]` change l'intervalle ou réécrit les unités que
+la ligne d'état dit à mettre à jour. `[3]` demande une passe à systemd tout
+de suite, sans l'attendre.
+
+**Le mot de passe du coffre.** Le service n'a pas de terminal où taper le
+mot de passe maître du KDBX. `[2]` le demande une fois, masqué — il refuse
+sans terminal, où le mot de passe s'afficherait —, vérifie qu'il ouvre le
+coffre, et le fait chiffrer par `systemd-creds --user encrypt` (systemd 256
+ou plus) dans `~/.config/credstore.encrypted/erplibre-mail-kdbx` (fichier
+0600, dossier 0700). Le clair passe par un tube, jamais sur le disque ni
+sur une ligne de commande ; le fichier est aussitôt déchiffré une fois pour
+prouver que le service le lira, et retiré s'il ne se relit pas. À chaque
+passe, systemd le déchiffre dans un dossier privé au processus, effacé à la
+fin de la passe. Sans ce fichier, ni `kdbx.password` (plus bas), une passe
+dont les comptes ont besoin du coffre s'arrête sur une ligne, *Coffre
+verrouillé : aucun mot de passe maître pour le service*, avant tout réseau.
+
+Ce que cela protège, et ce que cela ne protège pas. Le chiffrement protège
+d'un vol **hors ligne** — un disque copié, une sauvegarde. Il ne protège
+pas d'un programme lancé sous votre compte : n'importe lequel peut lancer
+`systemd-creds --user decrypt` sans rien se voir demander, et le mot de
+passe qu'il obtient ouvre le coffre **entier** — VPN, Odoo, tous les autres
+secrets, pas seulement le courriel. `[2]` le dit et demande `(o/N)` avant
+la saisie. Un coffre réservé aux seuls secrets du courriel limite cette
+exposition ; le service lit le `kdbx.path` du dépôt depuis lequel il tourne.
+
+Le fichier chiffré est lié à cette machine et à cet utilisateur :
+machine-id, clé de l'hôte, TPM2 s'il y en a un, nom d'utilisateur et UID.
+Après une restauration sur une autre machine, une réinstallation, un TPM
+effacé ou un utilisateur renommé, systemd ne sait plus le déchiffrer et
+l'unité échoue avant que la commande ne démarre, en sortie 243 : refaire
+`[8] > [2]`.
+
+Deux autres voies mènent au coffre. Là où `systemd-creds --user` manque,
+`[2]` le dit et n'écrit rien ; le service lit alors `kdbx.password` dans
+`private/todo/todo_override_private.json` — **en clair**, déconseillé. Un
+compte dont le `secret_ref` désigne le trousseau système n'est lu que si
+un trousseau Secret Service répond sur le bus de session, avec sa
+collection par défaut présente et **déverrouillée** : le service ne la
+déverrouille jamais et ne la crée jamais, car l'un comme l'autre ferait
+surgir une fenêtre sur le bureau toutes les N minutes. KWallet est refusé
+pour la même raison. Sinon, la passe s'arrête sur *Coffre verrouillé :* et
+la raison.
+
+**Un dépôt, une machine.** Le service exécute le code du dépôt depuis
+lequel il a été installé, **tel qu'il est sur le disque**, modifications en
+cours comprises, et lit la configuration privée et le coffre de ce dépôt —
+alors que la base `~/.erplibre/mail` est partagée. Ne l'installez pas
+depuis un dépôt de développement : une modification à moitié écrite des
+règles tournerait contre de vraies boîtes toutes les N minutes. `[1]`
+lancé depuis un autre dépôt montre les deux chemins et demande `(o/N)`
+avant de faire pointer le service vers le nouveau. Un dépôt déplacé ou
+effacé fait échouer systemd avant que la commande ne démarre — sortie 200
+quand le dossier manque, 203 quand c'est l'interpréteur du venv — :
+réinstaller par `[8] > [1]`. Installez le service sur **une seule machine
+par compte** : les verrous et le journal des règles sont locaux à une
+machine, deux machines aux mêmes règles répondraient donc deux fois à
+chaque message.
+
+**Linger.** Sans lui, le gestionnaire systemd de l'utilisateur — et la
+minuterie avec lui — ne tourne que pendant une session ouverte. `[1]` le
+lit par `loginctl show-user` et, s'il est inactif, propose `(o/N)` de
+lancer `loginctl enable-linger` : le gestionnaire démarre alors avec la
+machine et le service tourne sans session ouverte. Hors d'une session
+locale (par SSH), polkit refuse sans rien demander ; lancez alors
+`sudo loginctl enable-linger <utilisateur>`. Rien ne change sans cette
+question, et jamais depuis le TUI.
+
+**Le journal.** `journalctl --user -u erplibre-mail-rules`. La minuterie
+lance la commande avec `--quiet` : un compte sans nouveauté ni problème
+n'écrit rien, et un état qui dure — portable hors ligne, envoi retenu en
+attente d'approbation, client qui tient le compte — n'est écrit qu'à son
+changement ; le code de sortie le dit quand même à chaque passe. Une passe
+à la main, depuis la racine du dépôt :
+
+```bash
+.venv.erplibre/bin/python -m script.todo.mail.rules.run [--compte NOM]
+```
+
+écrit une ligne par compte (`--account` vaut `--compte`). Une ligne porte le
+nom du compte et des comptes — nouveaux messages, réponses envoyées,
+retenues —, jamais une adresse, un sujet, un secret ni le texte d'une
+erreur de serveur ou de règle : seulement le genre de la panne, le nom de
+la classe de l'erreur et, quand le serveur en a donné un, son code de
+réponse IMAP entre crochets, comme `[AUTHENTICATIONFAILED]`. Un
+avertissement de règle qui citerait un nom de fichier ou un réglage (image
+absente, réglages du rapport illisibles) est compté, pas cité. Le texte
+complet va dans `~/.erplibre/mail.log`.
+
+Une passe à la main ne lit pas le mot de passe chiffré de `[2]` : systemd
+ne le remet qu'au service qu'il lance. À la main, le coffre ne s'ouvre que
+par `kdbx.password` de la configuration ou par le trousseau système ;
+sinon la passe s'arrête sur « Coffre verrouillé » et le dit. Pour tester
+le mot de passe chiffré : `[3]` (lancer une passe maintenant), puis
+`journalctl --user -u erplibre-mail-rules`.
+
+| Code | Sens |
+|---|---|
+| 0 | passe faite, ou rien à faire |
+| 1 | erreur imprévue — un bogue ; la trace est dans `~/.erplibre/mail.log` |
+| 2 | argument refusé, compte inconnu |
+| 3 | coffre verrouillé : aucun mot de passe maître, mot de passe refusé, secret absent, trousseau système injoignable ou verrouillé |
+| 4 | réseau : serveur injoignable, lien coupé, dossier non synchronisé |
+| 5 | erreur de règle : `rules.json` illisible, ou passe du moteur en échec |
+| 6 | déjà en cours : une autre passe, le client ou le menu tient le compte, ou le cache est occupé |
+| 7 | authentification refusée : le serveur refuse le mot de passe ou le jeton |
+| 8 | `accounts.json` ou un cache illisible |
+
+Avec plusieurs comptes, le code rendu est le premier présent dans l'ordre
+1, 8, 3, 7, 5, 4, 6, 0 : ce qui demande une personne passe devant ce qui se
+répare seul. `6` est l'état normal quand le client est ouvert : l'unité le
+compte comme un succès ; tout autre code non nul la marque en échec
+(`systemctl --user --failed`), et la minuterie la relance quand même. La
+ligne d'état nomme aussi trois codes que systemd rend avant que la commande
+ne tourne : 200 (dossier du dépôt introuvable), 203 (interpréteur du venv
+introuvable), 243 (mot de passe chiffré illisible sur cette machine).
+
+**Avec le client ouvert.** Aucun message n'est jamais traité deux fois. Une
+passe prend un verrou du service pour toute sa durée — une deuxième qui
+démarre entre-temps s'arrête aussitôt, *une passe est déjà en cours* —, et
+le moteur prend le même verrou de compte que le TUI et le menu, en
+attendant 5 s au plus : un compte que le client tient est *déjà en cours*
+et attend la passe suivante. La synchronisation et la file d'envoi qui
+précèdent sont sûres entre processus par elles-mêmes. Un cache dans lequel
+le client écrit est attendu 5 s, puis compté comme occupé. Le client n'est
+pas ralenti : le service tourne à `Nice=10` avec une priorité disque basse.
+
+**Le verrou du coffre.** Toute écriture dans le KDBX — un jeton OAuth
+rafraîchi, un nouveau compte, la clé d'un cache chiffré, une entrée du
+VPN — prend un verrou sous `~/.erplibre/locks/`, relit le coffre sur le
+disque, applique sa modification, et remplace le fichier atomiquement par
+un temporaire `.<nom>.<aléa>.tmp.kdbx` voisin (mode 0600 ; un coffre qui
+est un lien symbolique est écrit à travers le lien). Le client, le menu, le
+VPN et le service ne perdent donc jamais les écritures les uns des autres.
+Un rafraîchissement OAuth prend un second verrou, propre au jeton : deux
+processus ne dépensent jamais le même jeton de rafraîchissement. Un verrou
+non obtenu en 10 s donne *Coffre KeePass occupé par un autre processus ;
+réessayez.* KeePassXC ne prend pas ce verrou : modifier le coffre dans
+KeePassXC pendant que le client ou le service y écrit n'est pas couvert.
+
+**Durcissement.** L'unité ne garde que les protections qui se passent d'un
+espace de noms de montage : `NoNewPrivileges=`, `RestrictSUIDSGID=`,
+`RestrictRealtime=`, `RestrictNamespaces=`, `LockPersonality=`,
+`SystemCallArchitectures=native` et `UMask=0077`. `ProtectSystem=`,
+`ProtectHome=` et `PrivateTmp=` sont écartés : sous un gestionnaire
+utilisateur, ils exigent des espaces de noms utilisateur non privilégiés,
+que certaines distributions restreignent, et l'unité échouerait alors au
+démarrage (`226/NAMESPACE`). Sa priorité disque est `best-effort` niveau 7,
+pas `idle` : sous contention du disque, `idle` affame les écritures du
+service pendant qu'il tient des verrous que le client attend.
+`LimitCORE=0` — et la commande pose la même limite quand elle est lancée à
+la main — : le processus tient le mot de passe maître, le coffre ouvert et
+les secrets des comptes, et un fichier core les garderait sur le disque.
+
+**Désinstaller.** Sans rien d'installé ni de mot de passe chiffré,
+`[8] > [4]` le dit sans rien demander. Sinon il demande `(o/N)`, puis, si
+le mot de passe chiffré existe, s'il faut le retirer aussi `(O/n)` — il
+est retiré sauf si vous répondez non —, arrête et désactive la minuterie, retire les deux unités, et, si le
+linger est actif, propose `(o/N)` de le retirer : d'autres services
+peuvent en dépendre.
 
 ### Où vivent les règles
 
@@ -3325,8 +3710,8 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **No headless service** — rules run only while the TUI is open or when
-  `Mail > [3] Synchronise now` runs; with both closed, nothing is answered.
+- **No full sync from the headless service** — it syncs the inbox and Sent
+  only; the other folders wait for the TUI or `Mail > [3] Synchronise now`.
 - **No `\Answered` from the outbox** — a manual reply marks the original
   answered only when it leaves at once; one that waited in the outbox does
   not.
@@ -3348,9 +3733,9 @@ phases add.
   navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
   un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
-- **Pas de service sans interface** — les règles ne tournent que TUI
-  ouvert ou pendant `Courriel > [3] Synchroniser maintenant` ; les deux
-  fermés, rien ne reçoit de réponse.
+- **Pas de synchronisation complète par le service sans interface** — il
+  ne synchronise que la boîte de réception et Envoyés ; les autres dossiers
+  attendent le TUI ou `Courriel > [3] Synchroniser maintenant`.
 - **Pas de `\Answered` depuis la file d'envoi** — une réponse manuelle ne
   marque l'original répondu que si elle part aussitôt ; celle qui a attendu
   dans la file d'envoi ne le fait pas.

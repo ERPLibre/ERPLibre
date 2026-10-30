@@ -19,6 +19,18 @@ ordonne ; son `[6]` règle le rapport de statistiques d'un compte et en
 imprime un aperçu, son `[7]` essaie une règle sur un message récent de la
 boîte de réception et peut envoyer l'essai au compte lui-même.
 
+Les règles tournent aussi sans le client. `mail/rules/run.py` est la
+commande sans interface — `.venv.erplibre/bin/python -m
+script.todo.mail.rules.run [--compte NOM] [--quiet]`, une passe par compte,
+un code de sortie par genre de panne —, `mail/service.py` écrit, installe et
+lit les unités systemd utilisateur qui la lancent sur minuterie
+(`Courriel > [6] > [8]`), et `mail/credential.py` chiffre pour elle le mot
+de passe maître du coffre par `systemd-creds --user`. `kdbx_write.py` porte
+le verrou et l'écriture atomique du coffre KDBX, partagés par le client
+courriel, le service et le VPN, pour que deux processus ne perdent jamais
+les écritures l'un de l'autre. Voir « Tourner sans le client » dans le
+guide du courriel.
+
 ## Où vit le code
 
 `todo.py` porte les menus et les aides générales. Tout ce qui tourne autour
