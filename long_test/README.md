@@ -343,6 +343,7 @@ and a proxy between the app and each server records what crossed the wire.
 ./long_test/mobile_sync.py --filtre conflit    # tests whose name matches
 ./long_test/mobile_sync.py --dry-run           # the plan, nothing created
 ./long_test/mobile_sync.py --appareil          # also on the plugged phone
+./long_test/mobile_sync.py --appareil --toucher-volet  # empty test phone only
 ./long_test/mobile_sync.py --garder            # keep databases and servers
 ./long_test/mobile_sync.py --detruire          # drop templates and cache
 ```
@@ -577,7 +578,7 @@ and, in the lock-screen version, only « Nouveau message — <server> » or no
 lock-screen version at all, whichever Android's setting calls for; the
 process killed (`am crash`, since SELinux refuses `run-as kill` on Android 11),
 the service comes back and the next message stacks in the same notification;
-tapping it opens the conversation; in the foreground nothing shows; with
+opening it the way a tap does opens the conversation and clears it; in the foreground nothing shows; with
 « Never shown » the text is not in the notification; with the ntfy removed, the
 Odoo-direct summary reads « 2 nouveaux messages » and nothing is marked read on
 the server. The scenario never locks the phone: the lock-screen form is read
@@ -587,19 +588,37 @@ app and the `adb reverse` ports.
 
 A second device scenario, « chat actions, app killed », runs with the module
 on the run's Odoo: the app killed, a message shows with three buttons;
-« Reply », typed in the shade, posts once and the author's read push clears the
-notification; « Mark read » reads the conversation up to the message; « 👍 »
+« Reply » posts once and the author's read push clears the notification; « Mark read » reads the conversation up to the message; « 👍 »
 reacts and the notification stays, « Mute 1 h » taking its place and muting for
 an hour; a read in the browser clears the notification; with « Never shown »
 the notification says « Nouveau message » only, with the same buttons; with the
 phone's session copy broken the reply is handed to the app, which posts it once
-when the handoff notification is tapped; a device the module does not know gets
-Odoo's payload without a message id and « Mute 1 h » as the third button. Every
-tap is bound to the test app's own notification row, so another app's
-notification on the shade is never touched or typed into. A tap also waits
-for two screen dumps in a row, the second taken just before it, that agree on
-the row and the node; a post after the second dump can still move a row, and
-the row and package scoping then keeps the tap inside the test app.
+when the handoff notification is opened; a device the module does not know gets
+Odoo's payload without a message id and « Mute 1 h » as the third button.
+
+By default these two scenarios never touch the notification shade, so they can
+run on a phone that also carries the user's own apps. A notification's buttons
+are read from `dumpsys notification --noredact` (« Reply », « Mark read », then
+« 👍 » or « Mute 1 h »), and each action is fired at the test app through its
+test door: a receiver packaged only in the `-PsyncTest` build, reachable only
+with the `DUMP` permission that the adb shell holds and no app does. The door
+looks up the test app's own notification by its tag and sends the very
+PendingIntent a finger would send (the reply text filled in as its
+RemoteInput result, the content intent for an open), so the app's receivers
+and the server see a real action; what is not exercised is the gesture itself,
+SystemUI drawing and handling the tap.
+
+`--toucher-volet` puts the finger back, for an empty test phone only: buttons,
+reply field and send are tapped in the shade with `input tap` and the reply
+typed with `input text`. On Android 11 every node of a shade dump belongs to
+SystemUI, so the package says nothing about the app: the row is tied to the
+test app by the app name in its header (or in its group's header),
+« ERPLibre (test) », together with the line it must show — the run's unique
+token in most steps; exactly one such row must carry both, or nothing is
+tapped. A tap waits for two screen dumps in a row, the second taken just before
+it, that agree on the row and the node; a post after the second dump can still
+move a row, which is why this mode is kept for a phone with nothing else on its
+shade.
 
 ## Starting from a host you already have
 

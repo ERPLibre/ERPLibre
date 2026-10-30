@@ -348,6 +348,7 @@ and a proxy between the app and each server records what crossed the wire.
 ./long_test/mobile_sync.py --filtre conflit    # tests whose name matches
 ./long_test/mobile_sync.py --dry-run           # the plan, nothing created
 ./long_test/mobile_sync.py --appareil          # also on the plugged phone
+./long_test/mobile_sync.py --appareil --toucher-volet  # empty test phone only
 ./long_test/mobile_sync.py --garder            # keep databases and servers
 ./long_test/mobile_sync.py --detruire          # drop templates and cache
 ```
@@ -582,7 +583,7 @@ and, in the lock-screen version, only « Nouveau message — <server> » or no
 lock-screen version at all, whichever Android's setting calls for; the
 process killed (`am crash`, since SELinux refuses `run-as kill` on Android 11),
 the service comes back and the next message stacks in the same notification;
-tapping it opens the conversation; in the foreground nothing shows; with
+opening it the way a tap does opens the conversation and clears it; in the foreground nothing shows; with
 « Never shown » the text is not in the notification; with the ntfy removed, the
 Odoo-direct summary reads « 2 nouveaux messages » and nothing is marked read on
 the server. The scenario never locks the phone: the lock-screen form is read
@@ -592,19 +593,37 @@ app and the `adb reverse` ports.
 
 A second device scenario, « chat actions, app killed », runs with the module
 on the run's Odoo: the app killed, a message shows with three buttons;
-« Reply », typed in the shade, posts once and the author's read push clears the
-notification; « Mark read » reads the conversation up to the message; « 👍 »
+« Reply » posts once and the author's read push clears the notification; « Mark read » reads the conversation up to the message; « 👍 »
 reacts and the notification stays, « Mute 1 h » taking its place and muting for
 an hour; a read in the browser clears the notification; with « Never shown »
 the notification says « Nouveau message » only, with the same buttons; with the
 phone's session copy broken the reply is handed to the app, which posts it once
-when the handoff notification is tapped; a device the module does not know gets
-Odoo's payload without a message id and « Mute 1 h » as the third button. Every
-tap is bound to the test app's own notification row, so another app's
-notification on the shade is never touched or typed into. A tap also waits
-for two screen dumps in a row, the second taken just before it, that agree on
-the row and the node; a post after the second dump can still move a row, and
-the row and package scoping then keeps the tap inside the test app.
+when the handoff notification is opened; a device the module does not know gets
+Odoo's payload without a message id and « Mute 1 h » as the third button.
+
+By default these two scenarios never touch the notification shade, so they can
+run on a phone that also carries the user's own apps. A notification's buttons
+are read from `dumpsys notification --noredact` (« Reply », « Mark read », then
+« 👍 » or « Mute 1 h »), and each action is fired at the test app through its
+test door: a receiver packaged only in the `-PsyncTest` build, reachable only
+with the `DUMP` permission that the adb shell holds and no app does. The door
+looks up the test app's own notification by its tag and sends the very
+PendingIntent a finger would send (the reply text filled in as its
+RemoteInput result, the content intent for an open), so the app's receivers
+and the server see a real action; what is not exercised is the gesture itself,
+SystemUI drawing and handling the tap.
+
+`--toucher-volet` puts the finger back, for an empty test phone only: buttons,
+reply field and send are tapped in the shade with `input tap` and the reply
+typed with `input text`. On Android 11 every node of a shade dump belongs to
+SystemUI, so the package says nothing about the app: the row is tied to the
+test app by the app name in its header (or in its group's header),
+« ERPLibre (test) », together with the line it must show — the run's unique
+token in most steps; exactly one such row must carry both, or nothing is
+tapped. A tap waits for two screen dumps in a row, the second taken just before
+it, that agree on the row and the node; a post after the second dump can still
+move a row, which is why this mode is kept for a phone with nothing else on its
+shade.
 
 ## Starting from a host you already have
 
@@ -995,6 +1014,7 @@ ce qui passe sur le fil.
 ./long_test/mobile_sync.py --filtre conflit    # les tests dont le nom correspond
 ./long_test/mobile_sync.py --dry-run           # le plan, rien de créé
 ./long_test/mobile_sync.py --appareil          # aussi sur le téléphone branché
+./long_test/mobile_sync.py --appareil --toucher-volet  # téléphone de test vide seulement
 ./long_test/mobile_sync.py --garder            # garder bases et serveurs
 ./long_test/mobile_sync.py --detruire          # supprimer gabarits et cache
 ```
@@ -1255,7 +1275,8 @@ conversation, son texte en clair et, pour l'écran verrouillé, seulement
 « Nouveau message — <serveur> » ou aucune version d'écran verrouillé, selon le
 réglage d'Android ; le processus tué (`am crash`, car SELinux refuse
 `run-as kill` sur Android 11), le service revient et le message suivant
-s'empile dans la même notification ; la toucher ouvre la conversation ; au
+s'empile dans la même notification ; l'ouvrir comme le fait un toucher ouvre
+la conversation et l'efface ; au
 premier plan rien ne s'affiche ; avec « Jamais affiché » le texte n'est pas dans
 la notification ; le ntfy retiré, le sommaire direct d'Odoo dit « 2 nouveaux
 messages » et rien n'est marqué lu sur le serveur. Le scénario ne verrouille
@@ -1266,21 +1287,40 @@ l'app de test et les ports `adb reverse`.
 
 Un second scénario d'appareil, « actions du clavardage, app tuée », tourne avec
 le module sur l'Odoo de la course : l'app tuée, un message s'affiche avec trois
-boutons ; « Répondre », saisi dans le volet, publie une fois et le push de
-lecture de l'auteur efface la notification ; « Marquer lu » lit la conversation
+boutons ; « Répondre » publie une fois et le push de lecture de l'auteur efface
+la notification ; « Marquer lu » lit la conversation
 jusqu'au message ; « 👍 » réagit et la notification reste, « Muet 1 h » prenant
 sa place pour une sourdine d'une heure ; une lecture dans le navigateur efface
 la notification ; avec « Jamais affiché » la notification dit seulement
 « Nouveau message », avec les mêmes boutons ; la copie de session du téléphone
-cassée, la réponse est confiée à l'app, qui la publie une fois quand on touche
+cassée, la réponse est confiée à l'app, qui la publie une fois quand on ouvre
 la notification de reprise ; un appareil que le module ne connaît pas reçoit la
 charge d'Odoo sans identifiant de message et « Muet 1 h » en troisième bouton.
-Chaque toucher est borné à la ligne de notification de l'app de test : la
-notification d'une autre app sur le volet n'est jamais touchée ni saisie. Un
-toucher attend aussi deux relevés de l'écran de suite, le second pris juste
-avant lui, qui s'accordent sur la ligne et le nœud ; une publication après le
-second relevé peut encore déplacer une ligne, et la portée par ligne et par
-paquet garde alors le toucher dans l'app de test.
+
+Par défaut, ces deux scénarios ne touchent jamais au volet des notifications :
+ils peuvent tourner sur un téléphone qui porte aussi les apps de son
+utilisateur. Les boutons d'une notification se lisent dans
+`dumpsys notification --noredact` (« Répondre », « Marquer lu », puis « 👍 » ou
+« Muet 1 h »), et chaque action est envoyée à l'app de test par sa porte de
+test : un récepteur que seule la construction `-PsyncTest` contient, joignable
+seulement avec la permission `DUMP`, que le shell adb tient et qu'aucune app ne
+reçoit. La porte retrouve la notification de l'app de test par son étiquette et
+envoie la PendingIntent même qu'enverrait un doigt (le texte de la réponse en
+résultat de son RemoteInput, l'intention de contenu pour une ouverture) : les
+récepteurs de l'app et le serveur voient une vraie action ; ce qui n'est pas
+exercé, c'est le geste lui-même, SystemUI qui dessine et reçoit le toucher.
+
+`--toucher-volet` remet le doigt, sur un téléphone de test vide seulement :
+boutons, champ de réponse et envoi sont touchés dans le volet par `input tap`
+et la réponse tapée par `input text`. Sur Android 11, chaque nœud d'un relevé
+du volet appartient à SystemUI : le paquet ne dit rien de l'app, et la ligne se
+lie à l'app de test par le nom d'app de son en-tête (ou de celui de son
+groupe), « ERPLibre (test) », avec la ligne qu'elle doit afficher — le jeton
+unique de la course dans la plupart des étapes ; une seule ligne doit porter
+les deux, sinon rien n'est touché. Un toucher attend deux relevés de l'écran de
+suite, le second pris juste avant lui, qui s'accordent sur la ligne et le
+nœud ; une publication après le second relevé peut encore déplacer une ligne,
+d'où ce mode réservé à un téléphone dont le volet ne porte rien d'autre.
 
 ## Partir d'un hôte qu'on possède déjà
 
