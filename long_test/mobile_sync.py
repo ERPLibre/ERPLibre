@@ -300,20 +300,43 @@ def cibles(serveurs, ntfy=None):
 
 def detruire(a_blanc=False):
     """Supprime les bases mobile_sync_* et le cache ; a_blanc : les liste
-    seulement, ce que le menu montre avant de demander."""
+    seulement, ce que le menu montre avant de demander. Le relevé de
+    batterie d'une course --batterie-reelle tuée (appareil.BATTERIE_NOTEE,
+    à la racine du cache) reste, nommé : lui seul permet de rendre au
+    téléphone l'état d'avant cette course."""
     bases = sorted(odoo.bases_existantes())
+    notee = appareil.BATTERIE_NOTEE
+    garde = (
+        f"  gardé : {notee} (état de batterie d'une course"
+        " --batterie-reelle non rendu, que la prochaine rend)"
+        if notee.exists()
+        else ""
+    )
     if a_blanc:
         for nom in bases:
             print(f"  à supprimer : {nom}")
         print(f"  à supprimer : {odoo.CACHE}")
+        if garde:
+            print(garde)
         return
     for pid in odoo.arreter_gardes(set(bases)):
         print(f"  serveur gardé arrêté : {pid}")
     for nom in bases:
         odoo.supprimer_base(nom)
         print(f"  supprimée : {nom}")
-    shutil.rmtree(odoo.CACHE, ignore_errors=True)
-    print(f"  supprimé : {odoo.CACHE}")
+    if not garde:
+        shutil.rmtree(odoo.CACHE, ignore_errors=True)
+        print(f"  supprimé : {odoo.CACHE}")
+        return
+    for chemin in odoo.CACHE.iterdir():
+        if chemin == notee:
+            continue
+        if chemin.is_dir() and not chemin.is_symlink():
+            shutil.rmtree(chemin, ignore_errors=True)
+        else:
+            chemin.unlink(missing_ok=True)
+    print(f"  supprimé : {odoo.CACHE}, sauf le relevé de batterie")
+    print(garde)
 
 
 def main(argv=None):

@@ -463,8 +463,18 @@ class Appareil:
         adb("shell", "svc", "power", "stayon", "usb", executer=self.executer)
 
     def preparer(self, apk):
+        """Installe l'app de test, garde l'écran allumé et renvoie les
+        ports. Sous --batterie-reelle, rend d'abord l'état de batterie
+        laissé dans BATTERIE_NOTEE ; sans l'option, le fichier reste et une
+        ligne le nomme."""
         if self.batterie_reelle:
             self.rendre_batterie_laissee()
+        elif BATTERIE_NOTEE.exists():
+            print(
+                f"  ⚠ {BATTERIE_NOTEE} : état de batterie d'une course"
+                " --batterie-reelle non rendu ; la prochaine course"
+                " --batterie-reelle le rend"
+            )
         adb("install", "-r", str(apk), executer=self.executer)
         self.garder_allume()
         for port in self.ports:
@@ -4140,8 +4150,9 @@ def scenario_preferences_notifications(ctx):
     un navigateur d'admin ouvert, imité par la cadence de présence du
     client web corrigé par le module (NavigateurOuvert) : un message lu au
     navigateur dans les 5 s ne s'affiche jamais, un message non lu
-    s'affiche entre 9 et 15 s ; le navigateur fermé depuis plus de 65 s,
-    un message s'affiche en 3 s ; « Sonner tout de suite », en 3 s. Les
+    s'affiche entre 9 et 15 s ; « Sonner tout de suite », le navigateur
+    toujours ouvert, en 3 s ; de nouveau « Attendre 10 s », le navigateur
+    fermé depuis plus de 65 s, un message s'affiche en 3 s. Les
     heures calmes couvrant l'instant, la notification s'affiche sans
     alerter (FLAG_ONLY_ALERT_ONCE, alerte du seul résumé) ; hors fenêtre,
     elle alerte (GROUP_ALERT_ALL). La montée par la porte de test (sorte
@@ -4370,6 +4381,7 @@ def scenario_preferences_notifications(ctx):
                 {"inactivity_period": 0, "im_status_ids_by_model": {}},
             )
         ).ouvrir()
+        echec_navigateur = None
         try:
             lu = ctx.unique("lu-au-navigateur")
             # Le message et sa lecture font chacun une poussée sur le
@@ -4405,8 +4417,36 @@ def scenario_preferences_notifications(ctx):
             assert (
                 RETENUE_MIN <= retenue <= RETENUE_MAX
             ), f"message non lu affiché à {retenue:.1f} s"
+
+            # « Sonner tout de suite », le navigateur toujours ouvert : la
+            # poussée part sans retenue malgré la présence, là où
+            # « Attendre 10 s » retiendrait ; sans navigateur en ligne, les
+            # deux modes sonnent pareil. Le mode revient ensuite à
+            # « Attendre 10 s » pour le cas du navigateur fermé
+            ctx.hook("chatPushBrowserMode('ring')")
+            marque("ring")
+            tout_de_suite = ctx.unique("tout-de-suite")
+            debut = time.monotonic()
+            poster(pair, canal_modele, chat, tout_de_suite)
+            attendre_notification(
+                ctx,
+                tag_de(chat),
+                lambda n: tout_de_suite in n["bloc"],
+                SONNER_DELAI,
+            )
+            sonne = time.monotonic() - debut
+            ctx.hook("chatPushBrowserMode('wait')")
+            marque("wait")
+        except BaseException as erreur:
+            echec_navigateur = erreur
+            raise
         finally:
-            dernier = navigateur.fermer()
+            # L'erreur d'un envoi du fil, que fermer() lève, suit en note
+            # l'échec du bloc, qui reste l'erreur qui remonte
+            remettre_en_etat(
+                echec_navigateur, "le navigateur fermé", navigateur.fermer
+            )
+        dernier = navigateur.dernier
 
         # Le navigateur fermé : plus aucun envoi, et le module le tient
         # pour fermé quand le dernier date de plus de DISCONNECTION_TIMER ;
@@ -4419,19 +4459,6 @@ def scenario_preferences_notifications(ctx):
             ctx, tag_de(chat), lambda n: ferme in n["bloc"], SONNER_DELAI
         )
         sans_navigateur = time.monotonic() - debut
-
-        ctx.hook("chatPushBrowserMode('ring')")
-        marque("ring")
-        tout_de_suite = ctx.unique("tout-de-suite")
-        debut = time.monotonic()
-        poster(pair, canal_modele, chat, tout_de_suite)
-        attendre_notification(
-            ctx,
-            tag_de(chat),
-            lambda n: tout_de_suite in n["bloc"],
-            SONNER_DELAI,
-        )
-        sonne = time.monotonic() - debut
 
         # 4. Les heures calmes couvrant l'instant (heure locale du
         # téléphone) : la notification s'affiche sans alerter ; hors
