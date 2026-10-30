@@ -435,6 +435,50 @@ class TestAllocateUdp(FakeCase):
         with self.assertRaises(ValueError):
             tc.allocate("127.0.0.1", 3478, "sctp", USER, KEY)
 
+    def test_open_relay_is_a_failure_and_is_released(self):
+        def open_relay(_data, txid, _attrs):
+            return message(0x0103, txid, [(0x0016, xor_v4(RELAYED, txid))])
+
+        def released(_data, txid, _attrs):
+            return message(0x0104, txid, [(0x000D, struct.pack("!I", 0))])
+
+        server = self.fake([open_relay, released])
+        result = tc.allocate(
+            "127.0.0.1", server.port, "udp", USER, b"\0" * 16, timeout=3
+        )
+        self.assertEqual(result, tc.Allocation(False, None, "no-auth"))
+        self.assertEqual(
+            [r[0] for r in self.requests(server)], [ALLOCATE, REFRESH]
+        )
+        self.assertEqual(
+            self.requests(server)[1][2][0x000D], struct.pack("!I", 0)
+        )
+
+    def test_authenticated_success_without_integrity_is_refused(self):
+        def unsigned(_data, txid, _attrs):
+            return message(0x0103, txid, [(0x0016, xor_v4(RELAYED, txid))])
+
+        server = self.fake([unauthorized, unsigned, refreshed])
+        result = tc.allocate(
+            "127.0.0.1", server.port, "udp", USER, KEY, timeout=3
+        )
+        self.assertEqual(result, tc.Allocation(False, None, "integrity"))
+
+    def test_success_signed_with_another_key_is_refused(self):
+        def signed_elsewhere(_data, txid, _attrs):
+            return message(
+                0x0103,
+                txid,
+                [(0x0016, xor_v4(RELAYED, txid))],
+                key=b"\x01" * 16,
+            )
+
+        server = self.fake([unauthorized, signed_elsewhere, refreshed])
+        result = tc.allocate(
+            "127.0.0.1", server.port, "udp", USER, KEY, timeout=3
+        )
+        self.assertEqual(result, tc.Allocation(False, None, "integrity"))
+
 
 class TestAllocateStream(FakeCase):
     def test_tcp_framing_success(self):

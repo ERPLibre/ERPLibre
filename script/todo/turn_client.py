@@ -30,9 +30,10 @@ tient dans UN budget `timeout`, retransmissions et Refresh compris.
 Les messages reçus sont validés : magic cookie, longueur, FINGERPRINT s'il
 est présent, transaction attendue. En UDP, un datagramme qui ne passe pas
 est ignoré comme du bruit ; sur un flux, il termine l'échange en
-« malformed ». La MESSAGE-INTEGRITY d'un succès authentifié est vérifiée :
-une réponse qui ne la porte pas juste vient d'un serveur qui ne connaît pas
-la clé.
+« malformed ». Le succès authentifié doit porter une MESSAGE-INTEGRITY juste
+sous la clé : absente ou fausse, elle vient d'un serveur qui ne connaît pas
+la clé, et l'allocation échoue en « integrity ». Un succès dès le premier
+Allocate, sans authentification, est un relais ouvert : échec en « no-auth ».
 """
 
 import base64
@@ -95,7 +96,9 @@ class Allocation:
     - « closed » : le serveur a coupé le flux en cours d'échange ;
     - « unreachable » : nom introuvable ou réseau injoignable ;
     - « malformed » : réponse qui n'est pas un message STUN valide ;
-    - « integrity » : succès dont la MESSAGE-INTEGRITY ne se vérifie pas.
+    - « integrity » : succès authentifié dont la MESSAGE-INTEGRITY manque
+      ou ne se vérifie pas sous la clé ;
+    - « no-auth » : le serveur alloue sans authentification (relais ouvert).
     """
 
     ok: bool
@@ -439,10 +442,10 @@ def _allocate_on(link, username, key):
     transport = attribute(REQUESTED_TRANSPORT, _TRANSPORT_UDP)
     first, _raw = link.exchange(ALLOCATE_REQUEST, transport, None)
     if first.is_success:
-        # Serveur sans authentification : rien à signer.
-        relayed = _relayed(first)
+        # Relais ouvert : n'importe qui alloue sans identifiants. C'est un
+        # échec du contrôle ; l'allocation obtenue est libérée quand même.
         _release(link, b"", None)
-        return Allocation(True, relayed, None)
+        return Allocation(False, None, "no-auth")
     realm, nonce = first.attr(REALM), first.attr(NONCE)
     if _error_code(first) != 401 or realm is None or nonce is None:
         return Allocation(False, None, _error_text(first))
@@ -461,9 +464,8 @@ def _allocate_on(link, username, key):
         break
     if reply.is_error:
         return Allocation(False, None, _error_text(reply))
-    if reply.attr(MESSAGE_INTEGRITY) is not None and not integrity_ok(
-        raw, key
-    ):
+    if not integrity_ok(raw, key):
+        _release(link, auth, key)
         return Allocation(False, None, "integrity")
     relayed = _relayed(reply)
     _release(link, auth, key)
