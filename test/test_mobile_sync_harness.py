@@ -31,6 +31,7 @@ RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE / "long_test"))
 
 import mobile_sync  # noqa: E402
+import mobile_sync_cdp as cdp  # noqa: E402
 import mobile_sync_device as appareil  # noqa: E402
 import mobile_sync_ntfy as harness_ntfy  # noqa: E402
 import mobile_sync_odoo as odoo  # noqa: E402
@@ -616,6 +617,66 @@ def dumpsys_paquet(maj="2026-01-02 03:04:05", autre=None):
             f"    lastUpdateTime={autre}",
         ]
     return "\n".join(lignes) + "\n"
+
+
+class TestCdp(unittest.TestCase):
+    """Une page qui ne répond plus dans le délai du WebView est un
+    TimeoutError : lancer le compte comme l'échec d'un scénario et joue
+    les suivants, au lieu d'arrêter toute la course."""
+
+    def page_muette(self):
+        page = cdp.Cdp.__new__(cdp.Cdp)
+        page.suivant = 0
+        page.delai = 120
+        page.ws = mock.Mock()
+        page.ws.recv.side_effect = cdp.websocket.WebSocketTimeoutException(
+            "Connection timed out"
+        )
+        return page
+
+    def test_une_page_muette_est_un_timeouterror(self):
+        with self.assertRaises(TimeoutError) as attrape:
+            self.page_muette().evaluer("window.__erplibreTest.attendre()")
+        self.assertIn("Runtime.evaluate", str(attrape.exception))
+        self.assertIn("120 s", str(attrape.exception))
+
+    def test_lancer_compte_la_page_muette_et_joue_la_suite(self):
+        joues = []
+        page = self.page_muette()
+
+        def muet(ctx):
+            joues.append("muet")
+            page.evaluer("window.__erplibreTest.attendre()")
+
+        def suivant(ctx):
+            joues.append("suivant")
+
+        repertoire = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(repertoire))
+        faux = mock.MagicMock(remises_manquees=[])
+        cible = {
+            "version": "18",
+            "url": "http://odoo.exemple.test:8069",
+            "admin": {"login": "admin", "password": "admin"},
+            "database": "base",
+        }
+        with mock.patch.object(
+            appareil, "Appareil", return_value=faux
+        ), mock.patch.object(appareil, "Odoo"), mock.patch.object(
+            appareil, "construire_apk", return_value="app.apk"
+        ), mock.patch.object(
+            appareil, "maj_app_perso", return_value="2026-01-02 03:04:05"
+        ), mock.patch.object(
+            appareil,
+            "scenarios_de",
+            return_value=[("muet", muet), ("suivant", suivant)],
+        ):
+            total, echecs = appareil.lancer(
+                [cible], repertoire, journal=lambda ligne: None
+            )
+        self.assertEqual(joues, ["muet", "suivant"])
+        self.assertEqual((total, echecs), (2, 1))
+        faux.rendre.assert_called_once_with()
 
 
 class TestAppareil(unittest.TestCase):
