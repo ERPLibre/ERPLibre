@@ -676,6 +676,41 @@ class TestBinding(FakeCase):
         self.assertLess(time.monotonic() - start, 1.8)
 
 
+class TestErrorVocabulary(unittest.TestCase):
+    def test_vocabulary_is_closed_and_listed(self):
+        self.assertEqual(
+            tc.ERRORS,
+            (
+                "timeout",
+                "refused",
+                "tls",
+                "closed",
+                "unreachable",
+                "malformed",
+                "integrity",
+                "no-auth",
+            ),
+        )
+
+    def test_every_literal_error_of_the_module_is_listed(self):
+        """Toute chaîne littérale passée en `error` d'une Allocation
+        appartient à `ERRORS`."""
+        with open(os.path.join(REPO, "script", "todo", "turn_client.py")) as f:
+            tree = ast.parse(f.read())
+        seen = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and getattr(node.func, "id", None) == "Allocation"
+                and len(node.args) == 3
+                and isinstance(node.args[2], ast.Constant)
+                and isinstance(node.args[2].value, str)
+            ):
+                seen.add(node.args[2].value)
+        self.assertTrue(seen)
+        self.assertLessEqual(seen, set(tc.ERRORS))
+
+
 class TestStdlibOnly(unittest.TestCase):
     def test_module_imports_only_stdlib(self):
         with open(os.path.join(REPO, "script", "todo", "turn_client.py")) as f:
