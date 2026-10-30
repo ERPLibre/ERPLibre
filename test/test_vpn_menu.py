@@ -60,6 +60,9 @@ class MenuBase(unittest.TestCase):
         with open(base, "w") as fh:
             json.dump({"vpn": [], "kdbx": {"path": "", "password": ""}}, fh)
         self.patches = [
+            # Le verrou d'écriture du coffre vit sous ~/.erplibre/locks :
+            # le dossier personnel est celui du test.
+            patch.dict(os.environ, {"HOME": self.tmp.name}),
             patch("script.config.config_file.CONFIG_FILE", base),
             patch(
                 "script.config.config_file.CONFIG_OVERRIDE_FILE",

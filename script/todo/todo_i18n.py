@@ -16233,6 +16233,430 @@ TRANSLATIONS = {
         "fr": "Envoyer un essai à vous-même ? (o/n)",
         "en": "Send a trial to yourself? (y/n)",
     },
+    # Courriel : service sans interface (commande, coffre, familles de panne)
+    "mail_service_cli_description": {
+        "fr": "Une passe des règles du courrier entrant, sans interface.",
+        "en": "One pass of the incoming mail rules, without an interface.",
+    },
+    "mail_service_cli_account_help": {
+        "fr": "ne traiter que ce compte",
+        "en": "process only this account",
+    },
+    "mail_service_cli_quiet_help": {
+        "fr": "taire les comptes sans nouveauté",
+        "en": "stay silent for accounts with nothing new",
+    },
+    "mail_service_already_running": {
+        "fr": "Service des règles : une passe est déjà en cours.",
+        "en": "Rules service: a pass is already running.",
+    },
+    "mail_service_accounts_unreadable": {
+        "fr": "Comptes illisibles :",
+        "en": "Accounts unreadable:",
+    },
+    "mail_service_no_account": {
+        "fr": "Aucun compte configuré : rien à faire.",
+        "en": "No account configured: nothing to do.",
+    },
+    "mail_service_unknown_account": {
+        "fr": "Compte inconnu :",
+        "en": "Unknown account:",
+    },
+    "mail_service_no_active_rules": {
+        "fr": "Aucune règle active : rien à faire.",
+        "en": "No active rule: nothing to do.",
+    },
+    "mail_service_account_disabled": {
+        "fr": "ignoré (compte désactivé)",
+        "en": "skipped (account disabled)",
+    },
+    "mail_service_account_ephemeral": {
+        "fr": "ignoré (cache éphémère : règles désactivées)",
+        "en": "skipped (ephemeral cache: rules disabled)",
+    },
+    "mail_service_rules_unreadable": {
+        "fr": "règles illisibles (voir ~/.erplibre/mail.log)",
+        "en": "rules unreadable (see ~/.erplibre/mail.log)",
+    },
+    "mail_service_vault_locked": {
+        "fr": "Coffre verrouillé :",
+        "en": "Vault locked:",
+    },
+    "mail_service_vault_no_password": {
+        "fr": "aucun mot de passe maître pour le service (Courriel [6] › [8] › [2]).",
+        "en": "no master password for the service (Mail [6] › [8] › [2]).",
+    },
+    "mail_service_vault_no_password_by_hand": {
+        "fr": "lancée hors du service, la passe ne lit pas le mot de passe chiffré ; testez-le par Courriel [6] › [8] › [3], puis journalctl --user -u erplibre-mail-rules.",
+        "en": "run outside the service, the pass does not read the encrypted password; test it with Mail [6] › [8] › [3], then journalctl --user -u erplibre-mail-rules.",
+    },
+    "mail_service_vault_wrong_password": {
+        "fr": "mot de passe maître refusé (à refaire : Courriel [6] › [8] › [2]).",
+        "en": "master password refused (redo: Mail [6] › [8] › [2]).",
+    },
+    "mail_service_vault_not_configured": {
+        "fr": "aucun coffre KeePass configuré.",
+        "en": "no KeePass vault configured.",
+    },
+    "mail_service_vault_unreadable": {
+        "fr": "coffre KeePass illisible.",
+        "en": "KeePass vault unreadable.",
+    },
+    "mail_service_vault_no_pykeepass": {
+        "fr": "pykeepass absent du venv.",
+        "en": "pykeepass missing from the venv.",
+    },
+    "mail_service_kind_vault": {"fr": "coffre :", "en": "vault:"},
+    "mail_service_kind_auth": {
+        "fr": "authentification refusée :",
+        "en": "authentication refused:",
+    },
+    "mail_service_kind_network": {"fr": "réseau :", "en": "network:"},
+    "mail_service_kind_busy": {
+        "fr": "cache occupé par le client :",
+        "en": "cache busy in the client:",
+    },
+    "mail_service_kind_cache": {
+        "fr": "cache illisible :",
+        "en": "cache unreadable:",
+    },
+    "mail_service_kind_config": {
+        "fr": "configuration :",
+        "en": "configuration:",
+    },
+    "mail_service_kind_other": {"fr": "erreur :", "en": "error:"},
+    "mail_service_outbox_error": {
+        "fr": "file : erreur (voir le journal)",
+        "en": "outbox: error (see the log)",
+    },
+    "mail_service_folder_errors": {
+        "fr": "dossiers en erreur :",
+        "en": "folders in error:",
+    },
+    "mail_service_busy": {
+        "fr": "déjà en cours (le client tient le verrou du compte)",
+        "en": "already running (the client holds the account lock)",
+    },
+    "mail_service_rule_error": {
+        "fr": "erreur de règle (voir ~/.erplibre/mail.log)",
+        "en": "rule error (see ~/.erplibre/mail.log)",
+    },
+    "mail_service_rule_warnings": {
+        "fr": "avertissements de règle (voir ~/.erplibre/mail.log) :",
+        "en": "rule warnings (see ~/.erplibre/mail.log):",
+    },
+    "mail_service_unexpected": {
+        "fr": "Erreur imprévue :",
+        "en": "Unexpected error:",
+    },
+    "mail_service_keyring_no_bus": {
+        "fr": "trousseau système injoignable (pas de session D-Bus).",
+        "en": "system keyring unreachable (no D-Bus session).",
+    },
+    "mail_service_keyring_locked": {
+        "fr": "trousseau système verrouillé ; il n'est jamais déverrouillé par le service.",
+        "en": "system keyring locked; the service never unlocks it.",
+    },
+    "mail_service_keyring_unsafe": {
+        "fr": "trousseau système sans chiffrement, refusé.",
+        "en": "system keyring does not encrypt, refused.",
+    },
+    "mail_service_keyring_timeout": {
+        "fr": "le trousseau système ne répond pas.",
+        "en": "the system keyring does not answer.",
+    },
+    "mail_service_keyring_unsupported": {
+        "fr": "ce trousseau système ouvrirait une fenêtre : seul Secret Service est accepté par le service.",
+        "en": "this system keyring would open a window: the service accepts Secret Service only.",
+    },
+    "mail_service_keyring_no_collection": {
+        "fr": "trousseau système sans collection par défaut ; le service n'en crée pas.",
+        "en": "system keyring has no default collection; the service does not create one.",
+    },
+    "mail_err_kdbx_busy": {
+        "fr": "Coffre KeePass occupé par un autre processus ; réessayez.",
+        "en": "KeePass vault busy in another process; try again.",
+    },
+    "mail_service_creds_wrong": {
+        "fr": "Mot de passe refusé par le coffre : rien n'est écrit.",
+        "en": "Password refused by the vault: nothing written.",
+    },
+    "mail_service_creds_failed": {
+        "fr": "Chiffrement refusé par systemd-creds :",
+        "en": "Encryption refused by systemd-creds:",
+    },
+    "mail_service_creds_verify_failed": {
+        "fr": "Le mot de passe chiffré ne se relit pas : retiré.",
+        "en": "The encrypted password does not read back: removed.",
+    },
+    "mail_service_creds_no_kdbx": {
+        "fr": "Aucun coffre KeePass configuré : rien à chiffrer.",
+        "en": "No KeePass vault configured: nothing to encrypt.",
+    },
+    "mail_service_creds_unsupported": {
+        "fr": "systemd-creds ne chiffre pas pour l'utilisateur ici (systemd 256 ou plus).",
+        "en": "systemd-creds cannot encrypt for the user here (systemd 256 or later).",
+    },
+    "mail_service_creds_unsupported_hint": {
+        "fr": "Le service lira alors le trousseau système, ou kdbx.password de la configuration privée (en clair).",
+        "en": "The service will then read the system keyring, or kdbx.password from the private configuration (in clear).",
+    },
+    "mail_service_creds_ask": {
+        "fr": "Mot de passe maître du coffre, pour le service :",
+        "en": "Vault master password, for the service:",
+    },
+    "mail_service_creds_written": {
+        "fr": "Mot de passe chiffré pour le service :",
+        "en": "Password encrypted for the service:",
+    },
+    "mail_service_creds_cancelled": {
+        "fr": "Annulé.",
+        "en": "Cancelled.",
+    },
+    "mail_service_creds_no_tty": {
+        "fr": "Saisie refusée : aucun terminal, le mot de passe s'afficherait.",
+        "en": "Input refused: no terminal, the password would be shown.",
+    },
+    "mail_service_creds_scope_warning": {
+        "fr": "Tout programme lancé sous votre compte pourra déchiffrer ce mot de passe sans rien demander, et il ouvre le coffre ENTIER. Un coffre réservé au courriel limite ce risque.",
+        "en": "Every program running under your account can decrypt this password without asking, and it opens the WHOLE vault. A vault kept for mail only limits this.",
+    },
+    "mail_service_creds_scope_ask": {
+        "fr": "Chiffrer quand même le mot de passe maître pour le service ? (o/N)",
+        "en": "Encrypt the master password for the service anyway? (y/N)",
+    },
+    "mail_service_creds_delete_ask": {
+        "fr": "Retirer aussi le mot de passe chiffré du service ? (O/n)",
+        "en": "Also remove the service's encrypted password? (Y/n)",
+    },
+    "mail_rules_menu_service": {
+        "fr": "Service sans interface (systemd)",
+        "en": "Headless service (systemd)",
+    },
+    "mail_service_menu_install": {
+        "fr": "Installer ou mettre à jour",
+        "en": "Install or update",
+    },
+    "mail_service_menu_credential": {
+        "fr": "Mot de passe du coffre pour le service",
+        "en": "Vault password for the service",
+    },
+    "mail_service_menu_start": {
+        "fr": "Lancer une passe maintenant",
+        "en": "Run a pass now",
+    },
+    "mail_service_menu_uninstall": {
+        "fr": "Désinstaller",
+        "en": "Uninstall",
+    },
+    "mail_service_ask_interval": {
+        "fr": "Minutes entre deux passes (1 à 1440)",
+        "en": "Minutes between two passes (1 to 1440)",
+    },
+    "mail_service_interval_refused": {
+        "fr": "Intervalle refusé : un entier de 1 à 1440 minutes.",
+        "en": "Interval refused: a whole number from 1 to 1440 minutes.",
+    },
+    "mail_service_installed": {
+        "fr": "Service installé ; une passe toutes les",
+        "en": "Service installed; one pass every",
+    },
+    "mail_service_install_failed": {
+        "fr": "systemctl a refusé :",
+        "en": "systemctl refused:",
+    },
+    "mail_service_no_systemd": {
+        "fr": "systemd utilisateur injoignable (systemctl --user) : rien n'est installé.",
+        "en": "User systemd unreachable (systemctl --user): nothing installed.",
+    },
+    "mail_service_no_systemd_uninstall": {
+        "fr": "systemd utilisateur injoignable (systemctl --user) : rien n'est retiré ; relancez Courriel [6] › [8] › [4] depuis une session locale.",
+        "en": "User systemd unreachable (systemctl --user): nothing removed; run Mail [6] › [8] › [4] again from a local session.",
+    },
+    "mail_service_reload_failed_removed": {
+        "fr": "Unités retirées, mais systemd utilisateur ne s'est pas rechargé (systemctl --user daemon-reload) ; la minuterie déjà chargée peut tourner jusqu'à la prochaine session :",
+        "en": "Units removed, but user systemd did not reload (systemctl --user daemon-reload); the timer already loaded may run until the next session:",
+    },
+    "mail_service_reload_failed_update": {
+        "fr": "Unités réécrites, mais systemd utilisateur ne les a pas rechargées (systemctl --user daemon-reload) ; elles le seront à la prochaine session :",
+        "en": "Units rewritten, but user systemd did not reload them (systemctl --user daemon-reload); they will be at the next session:",
+    },
+    "mail_service_no_venv": {
+        "fr": "Interpréteur du venv introuvable :",
+        "en": "Venv interpreter not found:",
+    },
+    "mail_service_path_refused": {
+        "fr": "Chemin inutilisable dans une unité systemd :",
+        "en": "Path unusable in a systemd unit:",
+    },
+    "mail_service_needs_credential": {
+        "fr": "Sans mot de passe du coffre ([2]), chaque passe s'arrêtera sur « coffre verrouillé ».",
+        "en": "Without the vault password ([2]), every pass stops at \"vault locked\".",
+    },
+    "mail_service_journal_hint": {
+        "fr": "Journal : journalctl --user -u erplibre-mail-rules",
+        "en": "Log: journalctl --user -u erplibre-mail-rules",
+    },
+    "mail_service_started": {
+        "fr": "Passe lancée ; journal : journalctl --user -u erplibre-mail-rules",
+        "en": "Pass started; log: journalctl --user -u erplibre-mail-rules",
+    },
+    "mail_service_uninstall_ask": {
+        "fr": "Désinstaller le service ? (o/N)",
+        "en": "Uninstall the service? (y/N)",
+    },
+    "mail_service_uninstalled": {
+        "fr": "Service désinstallé.",
+        "en": "Service uninstalled.",
+    },
+    "mail_service_not_installed": {
+        "fr": "Le service n'est pas installé.",
+        "en": "The service is not installed.",
+    },
+    "mail_service_linger_off": {
+        "fr": "Sans « linger », le service ne tourne que pendant une session ouverte.",
+        "en": "Without \"linger\", the service runs only while a session is open.",
+    },
+    "mail_service_linger_ask": {
+        "fr": "Activer le linger maintenant (loginctl enable-linger) ? (o/N)",
+        "en": "Enable linger now (loginctl enable-linger)? (y/N)",
+    },
+    "mail_service_linger_on": {
+        "fr": "Linger actif : le service tourne aussi sans session ouverte.",
+        "en": "Linger on: the service also runs with no session open.",
+    },
+    "mail_service_linger_failed": {
+        "fr": "loginctl a refusé le linger.",
+        "en": "loginctl refused linger.",
+    },
+    "mail_service_linger_hint": {
+        "fr": "Depuis une session locale, ou : sudo loginctl enable-linger <utilisateur>",
+        "en": "From a local session, or: sudo loginctl enable-linger <user>",
+    },
+    "mail_service_linger_disable_ask": {
+        "fr": "Retirer aussi le linger (loginctl disable-linger) ? D'autres services peuvent en dépendre. (o/N)",
+        "en": "Also disable linger (loginctl disable-linger)? Other services may depend on it. (y/N)",
+    },
+    "mail_service_linger_disabled": {
+        "fr": "Linger retiré.",
+        "en": "Linger disabled.",
+    },
+    "mail_service_one_host_warning": {
+        "fr": "Installez le service sur UNE seule machine par compte : deux machines aux mêmes règles répondraient deux fois.",
+        "en": "Install the service on ONE machine per account: two machines with the same rules would reply twice.",
+    },
+    "mail_service_dev_checkout_warning": {
+        "fr": "Le service exécute le code de ce dépôt tel qu'il est sur le disque, modifications en cours comprises.",
+        "en": "The service runs this checkout's code as it is on disk, including uncommitted changes.",
+    },
+    "mail_service_other_repo": {
+        "fr": "Le service est installé depuis un autre dépôt :",
+        "en": "The service is installed from another checkout:",
+    },
+    "mail_service_other_repo_ask": {
+        "fr": "Le faire pointer vers ce dépôt-ci ? (o/N)",
+        "en": "Point it at this checkout instead? (y/N)",
+    },
+    "mail_service_status_title": {
+        "fr": "Service :",
+        "en": "Service:",
+    },
+    "mail_service_status_reading": {
+        "fr": "Service : lecture de l'état…",
+        "en": "Service: reading its state…",
+    },
+    "mail_service_status_not_installed": {
+        "fr": "non installé (menu Courriel [6] › [8])",
+        "en": "not installed (Mail menu [6] › [8])",
+    },
+    "mail_service_status_installed_off": {
+        "fr": "installé, minuterie arrêtée",
+        "en": "installed, timer stopped",
+    },
+    "mail_service_status_active": {
+        "fr": "actif, toutes les {n} min",
+        "en": "active, every {n} min",
+    },
+    "mail_service_status_next": {
+        "fr": "prochaine passe vers",
+        "en": "next pass around",
+    },
+    "mail_service_status_last_exit": {
+        "fr": "dernière sortie :",
+        "en": "last exit:",
+    },
+    "mail_service_status_outdated": {
+        "fr": "unité à mettre à jour",
+        "en": "unit needs updating",
+    },
+    "mail_service_status_other_repo": {
+        "fr": "installé depuis un autre dépôt",
+        "en": "installed from another checkout",
+    },
+    "mail_service_status_repo_missing": {
+        "fr": "dépôt ou venv installé introuvable : réinstaller [8] › [1]",
+        "en": "installed checkout or venv missing: reinstall [8] › [1]",
+    },
+    "mail_service_status_unknown": {
+        "fr": "état illisible",
+        "en": "state unreadable",
+    },
+    "mail_service_status_credential_yes": {
+        "fr": "mot de passe du coffre chiffré",
+        "en": "vault password encrypted",
+    },
+    "mail_service_status_credential_no": {
+        "fr": "pas de mot de passe du coffre",
+        "en": "no vault password",
+    },
+    "mail_service_exit_0": {
+        "fr": "ok",
+        "en": "ok",
+    },
+    "mail_service_exit_1": {
+        "fr": "erreur imprévue",
+        "en": "unexpected error",
+    },
+    "mail_service_exit_2": {
+        "fr": "usage",
+        "en": "usage",
+    },
+    "mail_service_exit_3": {
+        "fr": "coffre verrouillé",
+        "en": "vault locked",
+    },
+    "mail_service_exit_4": {
+        "fr": "réseau",
+        "en": "network",
+    },
+    "mail_service_exit_5": {
+        "fr": "erreur de règle",
+        "en": "rule error",
+    },
+    "mail_service_exit_6": {
+        "fr": "déjà en cours",
+        "en": "already running",
+    },
+    "mail_service_exit_7": {
+        "fr": "authentification refusée",
+        "en": "authentication refused",
+    },
+    "mail_service_exit_8": {
+        "fr": "configuration ou cache illisible",
+        "en": "configuration or cache unreadable",
+    },
+    "mail_service_exit_200": {
+        "fr": "dossier du dépôt introuvable : réinstaller (Courriel [6] › [8] › [1])",
+        "en": "checkout folder not found: reinstall (Mail [6] › [8] › [1])",
+    },
+    "mail_service_exit_203": {
+        "fr": "interpréteur du venv introuvable : réinstaller (Courriel [6] › [8] › [1])",
+        "en": "venv interpreter not found: reinstall (Mail [6] › [8] › [1])",
+    },
+    "mail_service_exit_243": {
+        "fr": "mot de passe chiffré illisible sur cette machine : refaire Courriel [6] › [8] › [2]",
+        "en": "encrypted password unreadable on this machine: redo Mail [6] › [8] › [2]",
+    },
     # QEMU — outils de développement des VM graphiques
     "Python IDE, ERPLibre project pre-configured": {
         "fr": "IDE Python, projet ERPLibre pré-configuré",

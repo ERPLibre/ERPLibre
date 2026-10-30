@@ -1054,6 +1054,60 @@ class TestSummaryLine(unittest.TestCase):
         self.assertIn(t("mail_rules_locked"), ligne)
         self.assertIn(f"{t('mail_rules_status_held')} 1", ligne)
 
+    def test_summary_items_match_summary_line(self):
+        rapports = [
+            engine.EngineReport(account="muet", active_rules=1),
+            engine.EngineReport(account="sans", status="error"),
+            engine.EngineReport(
+                account="perso", active_rules=2, sent=1, queued=2, failed=3
+            ),
+            engine.EngineReport(
+                account="boite-regles",
+                active_rules=1,
+                held=1,
+                status="locked",
+                warnings=["avertissement"],
+            ),
+            engine.EngineReport(
+                account="hors", active_rules=1, status="offline"
+            ),
+            engine.EngineReport(
+                account="erreur", active_rules=1, status="error"
+            ),
+        ]
+        attendu = " · ".join(
+            f"{r.account} : " + ", ".join(engine.summary_items(r))
+            for r in rapports
+            if engine.summary_items(r)
+        )
+        self.assertEqual(engine.summary_line(rapports), attendu)
+        self.assertEqual(engine.summary_items(rapports[0]), [])
+        self.assertEqual(engine.summary_items(rapports[1]), [])
+        self.assertEqual(
+            engine.summary_items(rapports[3]),
+            [
+                f"{t('mail_rules_status_sent')} 0",
+                f"{t('mail_rules_status_held')} 1",
+                t("mail_rules_locked"),
+                "avertissement",
+            ],
+        )
+
+    def test_without_status_only_locked_and_error_lose_their_text(self):
+        for statut, cle, garde in (
+            ("locked", "mail_rules_locked", False),
+            ("error", "mail_rules_error", False),
+            ("offline", "mail_rules_offline", True),
+            ("rearmed", "mail_rules_rearmed", True),
+            ("no_inbox", "mail_rules_no_inbox", True),
+        ):
+            rapport = engine.EngineReport(
+                account="perso", active_rules=1, status=statut, sent=1
+            )
+            elements = engine.summary_items(rapport, with_status=False)
+            self.assertEqual(t(cle) in elements, garde, statut)
+            self.assertIn(t(cle), engine.summary_items(rapport))
+
 
 class TestNeverRaises(unittest.TestCase):
     def test_a_session_without_store_is_without_rules(self):

@@ -6,15 +6,24 @@ import os
 import stat
 import sys
 import tempfile
+import threading
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from script.todo import kdbx_write
+from script.todo.kdbx_manager import KdbxManager
+from script.todo.mail import secrets as mail_secrets
+from script.todo.mail.rules.lock import file_lock
 from script.todo.mail.secrets import (
     SecretError,
     SecretStore,
     create_kdbx,
+    keyring_headless_problem,
     keyring_is_safe,
 )
+from script.todo.todo_i18n import t
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Argon2 remplacé pour tout le module : voir argon2_rapide.py.
@@ -130,6 +139,10 @@ class TestCreateKdbxPermissions(unittest.TestCase):
 class TestKdbxRoundtrip(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        # Le verrou d'écriture du coffre vit sous ~/.erplibre/locks.
+        maison = patch.dict(os.environ, {"HOME": self.tmp.name})
+        maison.start()
+        self.addCleanup(maison.stop)
         self.path = os.path.join(self.tmp.name, "test.kdbx")
         create_kdbx(self.path, "motdepasse")
         from pykeepass import PyKeePass
@@ -236,6 +249,303 @@ class TestRefParsing(unittest.TestCase):
     def test_no_backend_available_raises(self):
         with self.assertRaises(SecretError):
             self.store.set("keyring:perso", "x")
+
+
+class FakeConfig(dict):
+    """La configuration réduite à un dict ; une clé absente rend None."""
+
+    def get_config_value(self, keys):
+        valeur = self
+        for cle in keys:
+            valeur = valeur.get(cle) if isinstance(valeur, dict) else None
+        return valeur
+
+
+class TestLockedWrites(unittest.TestCase):
+    """Écritures du kdbx sous verrou, relecture comprise."""
+
+    REF = "kdbx:ERPLibre/Mail/perso"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dossier = Path(tmp.name)
+        maison = patch.dict(os.environ, {"HOME": tmp.name})
+        maison.start()
+        self.addCleanup(maison.stop)
+        self.path = self.dossier / "coffre.kdbx"
+        create_kdbx(str(self.path), "maitre-essai")
+
+    def magasin(self):
+        """Un SecretStore au coffre ouvert d'avance, comme le client."""
+        manager = KdbxManager(
+            FakeConfig(
+                {"kdbx": {"path": str(self.path), "password": "maitre-essai"}}
+            ),
+            interactive=False,
+        )
+        self.assertIsNotNone(manager.get_kdbx())
+        return SecretStore(kdbx_manager=manager, use_keyring=False)
+
+    def identite(self):
+        info = self.path.stat()
+        return info.st_ino, info.st_mtime_ns
+
+    def test_update_writes_the_new_value(self):
+        store = self.magasin()
+        vus = []
+
+        def change(courant):
+            vus.append(courant)
+            return "neuf"
+
+        self.assertEqual(store.update(self.REF, change), "neuf")
+        self.assertEqual(vus, [None])
+        self.assertEqual(self.magasin().get(self.REF), "neuf")
+
+    def test_update_returning_none_writes_nothing(self):
+        store = self.magasin()
+        store.set(self.REF, "garde")
+        avant = self.identite()
+        self.assertEqual(store.update(self.REF, lambda courant: None), "garde")
+        self.assertEqual(
+            store.update(self.REF, lambda courant: courant), "garde"
+        )
+        self.assertEqual(self.identite(), avant)
+        with self.assertRaises(ValueError):
+            store.update(self.REF, mock_raise(ValueError("refus")))
+        self.assertEqual(self.identite(), avant)
+
+    def test_update_sees_a_value_written_by_another_handle(self):
+        ancien = self.magasin()
+        self.magasin().set(self.REF, "ailleurs")
+        garde = ancien.update(self.REF, lambda courant: f"{courant}-suite")
+        self.assertEqual(garde, "ailleurs-suite")
+        self.assertEqual(self.magasin().get(self.REF), "ailleurs-suite")
+
+    def test_a_busy_vault_is_a_secret_error(self):
+        store = self.magasin()
+        verrou = kdbx_write.lock_path_for(self.path)
+        with (
+            patch.object(kdbx_write, "KDBX_LOCK_WAIT_S", 0.1),
+            file_lock(verrou, wait=0) as tenu,
+        ):
+            self.assertTrue(tenu)
+            with self.assertRaises(SecretError) as ctx:
+                store.set(self.REF, "x")
+        self.assertEqual(str(ctx.exception), t("mail_err_kdbx_busy"))
+        self.assertIsInstance(ctx.exception.__cause__, kdbx_write.KdbxBusy)
+        self.assertIsNone(self.magasin().get(self.REF))
+
+    def test_a_fresh_get_rereads_only_a_changed_file(self):
+        store = self.magasin()
+        kp = store._kdbx()
+        with patch.object(kp, "reload", wraps=kp.reload) as relu:
+            self.assertIsNone(store.get(self.REF, fresh=True))
+            self.assertEqual(relu.call_count, 0)
+            self.magasin().set(self.REF, "tourne")
+            self.assertIsNone(store.get(self.REF))
+            self.assertEqual(store.get(self.REF, fresh=True), "tourne")
+            self.assertEqual(relu.call_count, 1)
+            self.assertEqual(store.get(self.REF, fresh=True), "tourne")
+            self.assertEqual(relu.call_count, 1)
+
+    def test_a_fresh_get_from_another_thread_waits_for_a_write(self):
+        """Une lecture fraîche d'un autre fil ne relit pas la base entre
+        la relecture et l'enregistrement d'une écriture : la valeur
+        écrite reste celle que rend la lecture fraîche suivante."""
+        autre = "kdbx:ERPLibre/Mail/autre"
+        store = self.magasin()
+        kp = store._kdbx()
+        self.magasin().set(self.REF, "b-1")
+        dans_le_bloc = threading.Event()
+        relues = []
+        vraie_relecture = kp.reload
+
+        def relire():
+            relues.append(dans_le_bloc.is_set())
+            vraie_relecture()
+
+        def change(courant):
+            dans_le_bloc.set()
+            # L'état d'un fil qui a comparé les identités juste avant la
+            # relecture de l'écriture : il croit devoir relire.
+            kdbx_write.note_loaded(kp, (0, 0))
+            lecteur = threading.Thread(
+                target=store.get, args=(autre,), kwargs={"fresh": True}
+            )
+            lecteur.start()
+            lecteur.join(0.3)
+            fils.append(lecteur)
+            dans_le_bloc.clear()
+            return "b-2"
+
+        fils = []
+        with patch.object(kp, "reload", side_effect=relire):
+            self.assertEqual(store.update(self.REF, change), "b-2")
+            fils[0].join(5)
+        self.assertFalse(fils[0].is_alive())
+        self.assertNotIn(True, relues)
+        self.assertEqual(self.magasin().get(self.REF), "b-2")
+        self.assertEqual(store.get(self.REF, fresh=True), "b-2")
+
+    def test_a_vault_opened_elsewhere_is_reread_once(self):
+        from pykeepass import PyKeePass
+
+        kp = PyKeePass(str(self.path), password="maitre-essai")
+        store = SecretStore(
+            kdbx_manager=SimpleNamespace(get_kdbx=lambda: kp),
+            use_keyring=False,
+        )
+        self.magasin().set(self.REF, "ecrit-apres")
+        self.assertIsNone(store.get(self.REF))
+        self.assertEqual(store.get(self.REF, fresh=True), "ecrit-apres")
+
+
+def mock_raise(exc):
+    def lever(*args, **kwargs):
+        raise exc
+
+    return lever
+
+
+def _backend(module="keyring.backends.SecretService", name="Keyring", **attrs):
+    cls = type(name, (), dict(attrs))
+    cls.__module__ = module
+    cls.__qualname__ = name
+    return cls()
+
+
+class _NotFound(Exception):
+    pass
+
+
+def _interdit(nom):
+    def lever(*args, **kwargs):
+        raise AssertionError(f"{nom} appelé")
+
+    return lever
+
+
+class FakeCollection:
+    def __init__(self, locked=False):
+        self.locked = locked
+
+    def is_locked(self):
+        return self.locked
+
+    unlock = staticmethod(_interdit("unlock"))
+
+
+class TestKeyringProbe(unittest.TestCase):
+    """La sonde du trousseau pour le service : rien n'est déverrouillé ni
+    créé, et un bus muet ne fige pas l'appelant. Le bus, `keyring` et
+    `secretstorage` sont des doubles."""
+
+    ENV = {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/nulle-part/bus"}
+
+    def setUp(self):
+        self.ouvertures = []
+        self.collections = []
+        self.collection = FakeCollection()
+        self.connexion = MagicMock()
+
+        def dbus_init():
+            self.ouvertures.append(True)
+            return self.connexion
+
+        def collection(conn, *chemin):
+            self.collections.append(chemin)
+            if isinstance(self.collection, Exception):
+                raise self.collection
+            return self.collection
+
+        self.faux = SimpleNamespace(
+            dbus_init=dbus_init,
+            Collection=collection,
+            ItemNotFoundException=_NotFound,
+            get_default_collection=_interdit("get_default_collection"),
+            create_collection=_interdit("create_collection"),
+        )
+        rustine = patch.dict(sys.modules, {"secretstorage": self.faux})
+        rustine.start()
+        self.addCleanup(rustine.stop)
+        self.backend = _backend()
+        anneau = patch("keyring.get_keyring", side_effect=lambda: self.backend)
+        anneau.start()
+        self.addCleanup(anneau.stop)
+
+    def sonder(self, env=None, **kwargs):
+        return keyring_headless_problem(
+            self.ENV if env is None else env, **kwargs
+        )
+
+    def test_an_open_secret_service_collection_is_usable(self):
+        self.assertEqual(self.sonder(), "")
+        self.assertEqual(self.collections, [()])
+        self.connexion.close.assert_called_once_with()
+
+    def test_keyring_without_bus_is_refused(self):
+        with patch.object(
+            mail_secrets,
+            "_user_bus_socket",
+            return_value=Path("/nulle-part/bus"),
+        ):
+            self.assertEqual(self.sonder({}), "mail_service_keyring_no_bus")
+        self.assertEqual(self.ouvertures, [])
+
+    def test_a_locked_keyring_is_refused_without_unlocking(self):
+        self.collection = FakeCollection(locked=True)
+        self.assertEqual(self.sonder(), "mail_service_keyring_locked")
+
+    def test_a_silent_keyring_times_out(self):
+        relache = threading.Event()
+        self.addCleanup(relache.set)
+        self.faux.dbus_init = lambda: relache.wait(5) and self.connexion
+        self.assertEqual(
+            self.sonder(timeout=0.1), "mail_service_keyring_timeout"
+        )
+
+    def test_an_unsafe_keyring_is_refused(self):
+        self.backend = _backend("keyrings.alt.file", "PlaintextKeyring")
+        self.assertEqual(self.sonder(), "mail_service_keyring_unsafe")
+        self.assertEqual(self.ouvertures, [])
+
+    def test_a_missing_default_collection_is_refused_without_creating_it(
+        self,
+    ):
+        self.collection = _NotFound("absente")
+        self.assertEqual(self.sonder(), "mail_service_keyring_no_collection")
+
+    def test_the_preferred_collection_is_the_one_probed(self):
+        chemin = "/org/freedesktop/secrets/collection/courriel"
+        self.backend = _backend(preferred_collection=chemin)
+        self.assertEqual(self.sonder(), "")
+        self.assertEqual(self.collections, [(chemin,)])
+
+    def test_a_kwallet_backend_is_refused_without_dbus(self):
+        self.backend = _backend("keyring.backends.kwallet", "DBusKeyring")
+        self.faux.dbus_init = _interdit("dbus_init")
+        self.assertEqual(self.sonder(), "mail_service_keyring_unsupported")
+
+    def test_a_broken_bus_is_no_bus(self):
+        self.faux.dbus_init = mock_raise(OSError("refusé"))
+        self.assertEqual(self.sonder(), "mail_service_keyring_no_bus")
+
+    def test_the_keyring_guard_refuses_a_read_once_locked(self):
+        store = SecretStore(kdbx_manager=None, use_keyring=True)
+        store.keyring_guard = lambda: "mail_service_keyring_locked"
+        with (
+            patch("keyring.get_password", side_effect=_interdit("backend")),
+            patch.object(
+                mail_secrets, "keyring_is_safe", _interdit("keyring_is_safe")
+            ),
+        ):
+            with self.assertRaises(SecretError) as ctx:
+                store.get("keyring:perso")
+            with self.assertRaises(SecretError):
+                store.set("keyring:perso", "x")
+        self.assertEqual(str(ctx.exception), t("mail_service_keyring_locked"))
 
 
 if __name__ == "__main__":

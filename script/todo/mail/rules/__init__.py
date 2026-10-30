@@ -13,5 +13,7 @@ exclut deux passes concurrentes sur un même compte.
 Ces modules sont purs au sens du réseau : aucun n'ouvre de connexion IMAP ni
 SMTP, et seuls `storage` et `svg`, qu'il appelle, touchent au disque.
 L'orchestration, qui les assemble avec le cache et les transports, vit dans
-`engine`.
+`engine`. `run` est la commande sans interface qui lance une passe de
+`engine` sur chaque compte, pour le service systemd ou à la main :
+`python -m script.todo.mail.rules.run`.
 """

@@ -10,11 +10,15 @@ dépendance est volontaire — `mail` ne doit jamais importer `todo`.
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import logging
 import os
+import resource
 import shutil
+import sys
 import unicodedata
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -176,7 +180,8 @@ RULES_MENU_LOG_LINES = 50
 def prompt_mail_rules(todo, *, base=None) -> None:
     """Menu [6] : lister, activer, déplacer, supprimer les règles d'un
     compte, lire leur journal, régler le rapport de statistiques et
-    essayer une règle sur un message, sans ouvrir le TUI.
+    essayer une règle sur un message, sans ouvrir le TUI. L'entrée [8]
+    gère le service sans interface, commun à tous les comptes.
 
     La création et l'édition passent par le TUI (touche `e`) : un arbre
     de filtre ne se saisit pas ligne à ligne. La base des règles vient du
@@ -207,6 +212,7 @@ def prompt_mail_rules(todo, *, base=None) -> None:
 [5] {t("mail_rules_menu_journal")}
 [6] {t("mail_rules_menu_report")}
 [7] {t("mail_rules_menu_trial")}
+[8] {t("mail_rules_menu_service")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -223,11 +229,258 @@ def prompt_mail_rules(todo, *, base=None) -> None:
                 _report_settings(todo, account, rules_base, base)
             elif status == "7":
                 _trial(todo, account, rules_base, base)
+            elif status == "8":
+                _service_menu(todo)
             else:
                 print(t("Command not found !"))
         except RuleError as exc:
             # `RulesBusy` comprise : une passe tient le verrou du compte.
             print(exc)
+
+
+# Réponses qui valent « oui » aux questions (o/N) du service.
+_YES = ("o", "oui", "y", "yes")
+# Réponses qui gardent le credential à la désinstallation (O/n).
+_NO = ("n", "non", "no")
+
+
+def _ask_yes(key: str) -> bool:
+    """Pose la question `key` ; vrai seulement sur une réponse de `_YES`
+    (le défaut est non)."""
+    return input(f"{t(key)} ").strip().lower() in _YES
+
+
+def _service_menu(
+    todo,
+    *,
+    run=None,
+    getpass_fn=None,
+    isatty=lambda: sys.stdin.isatty(),
+) -> None:
+    """Entrée [8] du menu [6] : installer, alimenter, lancer ou retirer le
+    service systemd des règles, commun à tous les comptes.
+
+    `run` (signature de `subprocess.run`) est transmis à chaque appel
+    système ; None vaut `subprocess.run`, résolu à l'appel. Le mot de
+    passe maître n'est ni imprimé, ni passé à `click.prompt`.
+    """
+    from script.todo.mail import service
+
+    while True:
+        print(service.status_text(service.status(run=run)))
+        help_info = f"""{todo._menu_header()}
+[1] {t("mail_service_menu_install")}
+[2] {t("mail_service_menu_credential")}
+[3] {t("mail_service_menu_start")}
+[4] {t("mail_service_menu_uninstall")}
+[0] {t("Back")}"""
+        status = click.prompt(help_info)
+        print()
+        if status == "0":
+            return
+        if status == "1":
+            _service_install(todo, run)
+        elif status == "2":
+            _service_credential(
+                todo, run=run, getpass_fn=getpass_fn, isatty=isatty
+            )
+        elif status == "3":
+            code, sortie = service.start_now(run=run)
+            if code == 0:
+                print(t("mail_service_started"))
+            else:
+                print(f"{t('mail_service_install_failed')} {sortie}")
+        elif status == "4":
+            _service_uninstall(run)
+        else:
+            print(t("Command not found !"))
+
+
+def _service_install(todo, run) -> None:
+    """[8] › [1] : installe ou met à jour les unités, puis avertit
+    (un poste par compte, code du dépôt tel quel, credential, linger).
+
+    L'avertissement du credential manque quand le credential existe, et
+    quand la configuration porte un `kdbx.password` non vide : le service
+    ouvre alors le coffre sans credential.
+    """
+    from script.todo.mail import credential, service
+
+    ici = service.repo_root()
+    installe = service.installed_repo(run=run)
+    if installe and os.path.realpath(installe) != os.path.realpath(ici):
+        print(t("mail_service_other_repo"))
+        print(f"  {_printable(installe)}")
+        print(f"  {_printable(ici)}")
+        if not _ask_yes("mail_service_other_repo_ask"):
+            print(t("mail_service_creds_cancelled"))
+            return
+    intervalle = click.prompt(
+        t("mail_service_ask_interval"),
+        type=click.IntRange(service.INTERVAL_MIN, service.INTERVAL_MAX),
+        default=service.installed_interval(run=run)
+        or service.INTERVAL_DEFAULT_MIN,
+    )
+    try:
+        service.install(intervalle, run=run)
+    except service.ServiceError as exc:
+        print(exc)
+        return
+    print(f"{t('mail_service_installed')} {intervalle} min")
+    print(t("mail_service_one_host_warning"))
+    print(t("mail_service_dev_checkout_warning"))
+    print(t("mail_service_journal_hint"))
+    if (
+        not _configured_kdbx_password(todo)
+        and service.accounts_need_credential(_load_accounts())
+        and not credential.credential_path(run=run).exists()
+    ):
+        print(t("mail_service_needs_credential"))
+    if service.linger_enabled(run=run) is False:
+        print(t("mail_service_linger_off"))
+        if _ask_yes("mail_service_linger_ask"):
+            if service.enable_linger(run=run):
+                print(t("mail_service_linger_on"))
+            else:
+                print(t("mail_service_linger_failed"))
+                print(t("mail_service_linger_hint"))
+
+
+def _configured_kdbx(todo) -> str:
+    """Le `kdbx.path` de la configuration, "" s'il manque."""
+    config = getattr(todo, "config_file", None)
+    if config is None:
+        return ""
+    try:
+        valeur = config.get_config_value(["kdbx", "path"])
+    except Exception:
+        # `get_config_value` lève `TypeError` sur une clé absente.
+        return ""
+    return valeur if isinstance(valeur, str) else ""
+
+
+def _configured_kdbx_password(todo) -> bool:
+    """Vrai si la configuration porte un `kdbx` avec un chemin et un
+    `kdbx.password` non vide : le repli du service sans credential."""
+    if not _configured_kdbx(todo):
+        return False
+    try:
+        valeur = todo.config_file.get_config_value(["kdbx", "password"])
+    except Exception:
+        # `get_config_value` lève `TypeError` sur une clé absente.
+        return False
+    return isinstance(valeur, str) and bool(valeur)
+
+
+def _service_credential(todo, *, run, getpass_fn, isatty) -> None:
+    """[8] › [2] : chiffre le mot de passe maître du kdbx pour le service.
+
+    Refuse sans kdbx, sans `systemd-creds --user`, sans terminal (getpass
+    lirait le mot de passe EN ÉCHO) et sur tout autre « oui » que
+    `_YES` à l'avertissement de portée. Pendant la saisie et le
+    chiffrement, la limite DOUCE des fichiers core est à 0 : un plantage
+    ne laisse pas le mot de passe sur le disque. Elle est rendue ensuite,
+    les outils que le menu lance après n'en héritent pas.
+    """
+    from script.todo.mail import credential
+
+    kdbx_path = _configured_kdbx(todo)
+    if not kdbx_path:
+        print(t("mail_service_creds_no_kdbx"))
+        return
+    if not credential.user_scope_supported(run=run):
+        print(t("mail_service_creds_unsupported"))
+        print(t("mail_service_creds_unsupported_hint"))
+        return
+    if not isatty():
+        print(t("mail_service_creds_no_tty"))
+        return
+    print(t("mail_service_creds_scope_warning"))
+    if not _ask_yes("mail_service_creds_scope_ask"):
+        print(t("mail_service_creds_cancelled"))
+        return
+    lire = getpass_fn if getpass_fn is not None else getpass.getpass
+    soft, hard = resource.getrlimit(resource.RLIMIT_CORE)
+    resource.setrlimit(resource.RLIMIT_CORE, (0, hard))
+    try:
+        _encrypt_for_service(kdbx_path, run=run, lire=lire)
+    finally:
+        with contextlib.suppress(ValueError, OSError):
+            resource.setrlimit(resource.RLIMIT_CORE, (soft, hard))
+
+
+def _encrypt_for_service(kdbx_path: str, *, run, lire) -> None:
+    from script.todo.mail import credential
+
+    password = None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", getpass.GetPassWarning)
+            try:
+                password = lire(t("mail_service_creds_ask"))
+            except getpass.GetPassWarning:
+                print(t("mail_service_creds_no_tty"))
+                return
+        if not password:
+            print(t("mail_service_creds_cancelled"))
+            return
+        dest = credential.setup_credential(
+            password,
+            kdbx_path=kdbx_path,
+            dest=credential.credential_path(run=run),
+            run=run,
+        )
+    except EOFError:
+        print(t("mail_service_creds_cancelled"))
+        return
+    except credential.CredentialError as exc:
+        print(exc)
+        return
+    except OSError as exc:
+        # Le credstore n'a pas pu s'écrire : le nom du type suffit, le
+        # texte de l'exception nommerait le chemin du dossier personnel.
+        print(f"{t('mail_service_creds_failed')} {type(exc).__name__}")
+        return
+    finally:
+        password = None
+    print(f"{t('mail_service_creds_written')} {dest}")
+
+
+def _service_uninstall(run) -> None:
+    """[8] › [4] : retire les unités et, sauf refus explicite, le
+    credential ; propose ensuite de retirer un linger actif.
+
+    Rien d'installé ni de credential : le menu le dit sans rien demander.
+    La question du credential n'est posée que s'il existe.
+    """
+    from script.todo.mail import service
+
+    unites, cred = service.installed_parts(run=run)
+    if not unites and not cred:
+        print(t("mail_service_not_installed"))
+        return
+    if not _ask_yes("mail_service_uninstall_ask"):
+        print(t("mail_service_creds_cancelled"))
+        return
+    retirer = False
+    if cred:
+        garder = input(f"{t('mail_service_creds_delete_ask')} ")
+        retirer = garder.strip().lower() not in _NO
+    try:
+        fait = service.uninstall(remove_credential=retirer, run=run)
+    except service.ServiceError as exc:
+        print(exc)
+        return
+    if not fait:
+        print(t("mail_service_not_installed"))
+        return
+    print(t("mail_service_uninstalled"))
+    if service.linger_enabled(run=run) is True:
+        if _ask_yes("mail_service_linger_disable_ask"):
+            if service.disable_linger(run=run):
+                print(t("mail_service_linger_disabled"))
+            else:
+                print(t("mail_service_linger_failed"))
 
 
 def _list_rules(account_name: str, rules_base) -> list:

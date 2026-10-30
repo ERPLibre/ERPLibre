@@ -537,5 +537,36 @@ class TestAutomaticMessages(SyncCase):
         self.assertEqual(count, 0)
 
 
+class TestOnly(SyncCase):
+    def test_only_limits_the_pass_to_the_selected_folders(self):
+        self.imap.add("INBOX", 1)
+        self.imap.add("Sent", 1)
+        self.imap.add("Archive", 1)
+        choisis = []
+        select = self.imap.select
+
+        def suivre(folder):
+            choisis.append(folder)
+            return select(folder)
+
+        self.imap.select = suivre
+        report = self.syncer.sync(only=lambda f: f.name != "Archive")
+        self.assertEqual(report.folders, 2)
+        self.assertNotIn("Archive", choisis)
+        self.assertEqual(
+            {f["name"] for f in self.store.folders()}, {"INBOX", "Sent"}
+        )
+
+    def test_a_folder_left_out_keeps_its_cache(self):
+        self.imap.add("INBOX", 1)
+        self.imap.add("Archive", 1)
+        self.syncer.sync()
+        self.imap.add("Archive", 2)
+        report = self.syncer.sync(only=lambda f: f.name == "INBOX")
+        self.assertEqual(report.new_messages, 0)
+        archive = self.store.list_messages(self.folder_id("Archive"))
+        self.assertEqual([m.uid for m in archive], [1])
+
+
 if __name__ == "__main__":
     unittest.main()

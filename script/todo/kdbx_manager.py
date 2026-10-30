@@ -4,6 +4,7 @@
 
 import getpass
 import logging
+import os
 
 from script.todo.todo_i18n import t
 
@@ -24,14 +25,62 @@ except ModuleNotFoundError:
     filedialog = None
 
 
+def _open_vault(opener, path, password):
+    """Ouvre le coffre par `opener` (la classe `PyKeePass`) et retient
+    l'identité du fichier lu.
+
+    L'identité est prise AVANT la lecture : un fichier remplacé pendant
+    qu'on le lit diffère de celle retenue, et la prochaine lecture
+    fraîche (`SecretStore.get(fresh=True)`) le relit au lieu de le manquer.
+    """
+    from script.todo import kdbx_write
+
+    identity = kdbx_write.file_identity(path)
+    kp = opener(path, password=password)
+    kdbx_write.note_loaded(kp, identity)
+    return kp
+
+
 class KdbxManager:
-    def __init__(self, config_file) -> None:
+    """Ouvre le coffre KeePass désigné par la configuration, une fois.
+
+    `interactive=True` (le CLI) : sélecteur de fichier si aucun chemin
+    n'est configuré, saisie du mot de passe au terminal, messages imprimés.
+    `interactive=False` (le service sans interface) : rien n'est demandé ni
+    imprimé ; le mot de passe vient de `password`, sinon de `kdbx.password`
+    dans la configuration. Un échec est mémorisé dans `last_error` et les
+    appels suivants rendent None sans rouvrir le fichier ni redériver la
+    clé.
+    """
+
+    # Valeurs de `last_error`, "" tant que rien n'a échoué.
+    ERRORS = (
+        "not_configured",
+        "no_pykeepass",
+        "no_password",
+        "wrong_password",
+        "unreadable",
+    )
+
+    def __init__(
+        self,
+        config_file,
+        *,
+        password: str | None = None,
+        interactive: bool = True,
+    ) -> None:
         self._config_file = config_file
         self._kdbx = None
+        self._password = password
+        self._interactive = interactive
+        self._failed = False
+        self.last_error = ""
 
     def get_kdbx(self, attempts: int = 3):
         if self._kdbx:
             return self._kdbx
+        if not self._interactive:
+            return self._get_kdbx_headless()
 
         kdbx_file_path = self._config_file.get_config_value(["kdbx", "path"])
         if not kdbx_file_path:
@@ -66,7 +115,9 @@ class KdbxManager:
             # redemander, mais il peut être faux — le dire au lieu de
             # laisser remonter une trace de la bibliothèque.
             try:
-                self._kdbx = PyKeePass(kdbx_file_path, password=kdbx_password)
+                self._kdbx = _open_vault(
+                    PyKeePass, kdbx_file_path, kdbx_password
+                )
             except CredentialsError:
                 print(t("kdbx_wrong_password"))
                 return None
@@ -97,13 +148,58 @@ class KdbxManager:
                 print(t("kdbx_give_up"))
                 return None
             try:
-                self._kdbx = PyKeePass(kdbx_file_path, password=password)
+                self._kdbx = _open_vault(PyKeePass, kdbx_file_path, password)
             except CredentialsError:
                 print(t("kdbx_wrong_password"))
                 continue
             return self._kdbx
         print(t("kdbx_give_up"))
         return None
+
+    def _config_value(self, keys: list):
+        """La valeur de configuration sous `keys`, None si elle manque.
+
+        `ConfigFile.get_config_value` lève `TypeError` sur une clé absente
+        de premier niveau : ici une absence est une réponse, pas une panne.
+        """
+        try:
+            return self._config_file.get_config_value(keys)
+        except Exception:
+            return None
+
+    def _fail(self, reason: str):
+        self._failed = True
+        self.last_error = reason
+        return None
+
+    def _get_kdbx_headless(self):
+        """Ouverture sans terminal ni fenêtre ; None et `last_error` posé
+        sur échec, mémorisé pour les appels suivants."""
+        if self._failed:
+            return None
+        path = self._config_value(["kdbx", "path"])
+        path = os.path.expanduser(path) if isinstance(path, str) else ""
+        if not path:
+            return self._fail("not_configured")
+        try:
+            from pykeepass import PyKeePass
+            from pykeepass.exceptions import CredentialsError
+        except ModuleNotFoundError:
+            return self._fail("no_pykeepass")
+        password = self._password or self._config_value(["kdbx", "password"])
+        if not password or not isinstance(password, str):
+            return self._fail("no_password")
+        try:
+            self._kdbx = _open_vault(PyKeePass, path, password)
+        except CredentialsError:
+            return self._fail("wrong_password")
+        except Exception as exc:
+            # Le type seulement : le texte d'une erreur de lecture peut
+            # citer le chemin du coffre.
+            _logger.info("coffre illisible (%s)", type(exc).__name__)
+            return self._fail("unreadable")
+        self.last_error = ""
+        return self._kdbx
 
     def adopt(self, kdbx) -> None:
         """Prend pour la session une base DÉJÀ ouverte.

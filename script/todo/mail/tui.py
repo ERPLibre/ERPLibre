@@ -299,11 +299,18 @@ class Session:
         secrets=None,
         config_get=None,
         connect_fn=None,
+        error_kind: str = "",
+        exc=None,
     ):
         self.account = account
         self.store = store
         self.syncer = syncer
         self.error = error
+        # La famille de la panne d'ouverture (`errors.KINDS`, "" sans
+        # panne) et l'exception d'origine : le service en tire son code de
+        # sortie et une ligne de journal sans le texte du serveur.
+        self.error_kind = error_kind
+        self.exc = exc
         self.password = password
         # Gardés pour pouvoir REDEMANDER le secret : un jeton d'accès vit
         # une heure, et une session peut durer plus longtemps.
@@ -403,13 +410,20 @@ class Session:
         )
         return action(self.syncer.transport)
 
-    def sync(self, progress=None):
-        """Une passe, avec la même reprise que tout le reste."""
+    def sync(self, progress=None, only=None):
+        """Une passe, avec la même reprise que tout le reste.
+
+        `only` restreint la passe aux dossiers qu'il retient (voir
+        `Syncer.sync`) ; il n'est transmis que s'il est donné, pour qu'un
+        synchroniseur réduit sans ce paramètre serve encore à une passe
+        complète.
+        """
         if self.syncer is None:
             return None
-        return self.avec_lien(
-            lambda _transport: self.syncer.sync(progress=progress)
-        )
+        options = {"progress": progress}
+        if only is not None:
+            options["only"] = only
+        return self.avec_lien(lambda _transport: self.syncer.sync(**options))
 
     def close(self) -> None:
         if self.syncer is not None:
@@ -435,6 +449,9 @@ def open_session(
     autres ni ré-enregistrer les gestionnaires de signaux (voir
     `_register_ephemeral_cleanup`).
     """
+    from script.todo.mail import errors
+    from script.todo.mail.secrets import MissingSecret
+
     if connect_fn is None:
         from script.todo.mail.imap_transport import connect as connect_fn
 
@@ -446,9 +463,18 @@ def open_session(
         # doivent pas empêcher les AUTRES comptes de s'ouvrir. On garde la
         # session, sans cache, avec son erreur affichable — c'est le même
         # principe que pour une panne réseau, appliqué au disque.
-        return Session(account, None, None, str(exc), "")
+        return Session(
+            account,
+            None,
+            None,
+            str(exc),
+            "",
+            error_kind=errors.classify(exc),
+            exc=exc,
+        )
 
     syncer, error, password = None, "", ""
+    error_kind, origine = "", None
     try:
         # Le secret dépend du genre du compte : mot de passe, ou jeton
         # d'accès rafraîchi au besoin. Le rafraîchissement a lieu ICI, dans
@@ -459,7 +485,7 @@ def open_session(
 
         password = secret_for(account, secrets, config_get=config_get)
         if not password:
-            raise ValueError(t("mail_no_password_stored"))
+            raise MissingSecret(t("mail_no_password_stored"))
         syncer = Syncer(
             store,
             connect_fn(account, password),
@@ -467,6 +493,7 @@ def open_session(
         )
     except Exception as exc:
         error = str(exc)
+        error_kind, origine = errors.classify(exc), exc
     session = Session(
         account,
         store,
@@ -476,6 +503,8 @@ def open_session(
         secrets=secrets,
         config_get=config_get,
         connect_fn=connect_fn,
+        error_kind=error_kind,
+        exc=origine,
     )
     if syncer is not None:
         # Le secret DÉJÀ obtenu, pas un rafraîchissement : cette fabrique
@@ -2086,6 +2115,11 @@ def run_tui(
         # trois dispositions et pour toute disposition ajoutée plus tard —
         # le plancher ne dépend d'aucune d'elles.
         CSS += _PANE_MIN_CSS
+
+        # Source de l'état du service des règles (`RulesScreen`) : une
+        # fonction sans argument qui rend un `service.ServiceStatus` ;
+        # None vaut `service.status`, qui interroge systemctl.
+        service_status_fn = None
 
         BINDINGS = [
             # `h` EN PREMIER : le pied d'écran affiche ces liaisons dans
@@ -6080,8 +6114,10 @@ def run_tui(
 
         `s` ouvre l'essai de la règle sous le curseur (`TrialScreen`).
         Les plafonds d'envois du compte (clé `caps` de `rules.json`) se
-        règlent sous la table. Un cache éphémère n'a pas de règles :
-        l'écran n'affiche que sa bannière.
+        règlent sous la table, et l'état du service sans interface
+        (`service.status_text`) s'affiche dessous, lu dans un fil : le
+        TUI montre le service, il ne l'installe pas. Un cache éphémère
+        n'a pas de règles : l'écran n'affiche que sa bannière.
         """
 
         BINDINGS = [
@@ -6104,6 +6140,7 @@ def run_tui(
         #rules_caps Static { width: auto; padding: 1 1 0 1; }
         #rules_caps Input { width: 12; }
         #rules_caps Button { width: auto; }
+        #rules_service { height: auto; padding: 0 1; color: $text-muted; }
         #rules_hint { height: auto; padding: 0 1; color: $text-muted; }
         #rules_status { height: auto; padding: 0 1; }
         """
@@ -6138,6 +6175,9 @@ def run_tui(
                         yield Static(t("mail_rules_caps_per_hour"))
                         yield Input(type="integer", id="caps_per_hour")
                         yield Button(t("mail_rules_caps_save"), id="caps_save")
+                    yield Static(
+                        t("mail_service_status_reading"), id="rules_service"
+                    )
                     yield Static("", id="rules_hint")
                     yield Static("", id="rules_status")
 
@@ -6168,6 +6208,41 @@ def run_tui(
             self.reload_rules()
             self._load_caps()
             table.focus()
+            self.run_worker(
+                self._lire_service,
+                thread=True,
+                group="rules_service",
+                exclusive=True,
+            )
+
+        def _lire_service(self) -> None:
+            """Fil de travail : l'état du service systemd, mis en une
+            ligne sous la table. systemctl peut tarder (bus lent, délai
+            par appel) : l'écran reste utilisable pendant la lecture, et
+            un écran ou une application fermés entre-temps ne reçoivent
+            rien."""
+            from script.todo.mail import service
+
+            fn = getattr(self.app, "service_status_fn", None) or service.status
+            try:
+                texte = service.status_text(fn())
+            except Exception:
+                _logger.exception("état du service illisible")
+                texte = (
+                    f"{t('mail_service_status_title')}"
+                    f" {t('mail_service_status_unknown')}"
+                )
+            try:
+                self.app.call_from_thread(self._afficher_service, texte)
+            except (RuntimeError, NoMatches):
+                pass
+
+        def _afficher_service(self, texte: str) -> None:
+            try:
+                ligne = self.query_one("#rules_service", Static)
+            except NoMatches:
+                return
+            ligne.update(Text(texte))
 
         def _hint_text(self) -> str:
             """Les liaisons de l'écran, engendrées depuis `BINDINGS` comme

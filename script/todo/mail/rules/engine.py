@@ -229,30 +229,42 @@ def summary_line(reports) -> str:
     et que la passe n'a rien envoyé, mis en file, retenu ni fait échouer,
     sans avertissement.
     """
-    parts = []
-    for report in reports:
-        if report.active_rules == 0:
-            continue
-        busy = report.sent or report.queued or report.held or report.failed
-        if (
-            report.status in _QUIET_STATUSES
-            and not busy
-            and not report.warnings
-        ):
-            continue
-        items = [f"{t('mail_rules_status_sent')} {report.sent}"]
-        if report.held:
-            items.append(f"{t('mail_rules_status_held')} {report.held}")
-        if report.queued:
-            items.append(f"{t('mail_rules_status_queued')} {report.queued}")
-        if report.failed:
-            items.append(f"{t('mail_rules_status_failed')} {report.failed}")
-        status_key = _STATUS_KEYS.get(report.status)
-        if status_key:
-            items.append(t(status_key))
-        items.extend(report.warnings)
-        parts.append(f"{report.account} : " + ", ".join(items))
-    return " · ".join(parts)
+    return " · ".join(
+        f"{report.account} : " + ", ".join(items)
+        for report in reports
+        if (items := summary_items(report))
+    )
+
+
+# Statuts dont `summary_items(..., with_status=False)` tait le texte :
+# l'appelant écrit le sien à la place.
+_OWN_STATUS_TEXT = frozenset({"locked", "error"})
+
+
+def summary_items(report: EngineReport, *, with_status: bool = True) -> list:
+    """Les éléments du bilan d'un compte, sans son nom ; [] s'il est muet.
+
+    Même règle de mutisme que `summary_line`. `with_status=False` omet le
+    texte des statuts `locked` et `error` seulement ; `offline`, `rearmed`
+    et `no_inbox` restent.
+    """
+    if report.active_rules == 0:
+        return []
+    busy = report.sent or report.queued or report.held or report.failed
+    if report.status in _QUIET_STATUSES and not busy and not report.warnings:
+        return []
+    items = [f"{t('mail_rules_status_sent')} {report.sent}"]
+    if report.held:
+        items.append(f"{t('mail_rules_status_held')} {report.held}")
+    if report.queued:
+        items.append(f"{t('mail_rules_status_queued')} {report.queued}")
+    if report.failed:
+        items.append(f"{t('mail_rules_status_failed')} {report.failed}")
+    status_key = _STATUS_KEYS.get(report.status)
+    if status_key and (with_status or report.status not in _OWN_STATUS_TEXT):
+        items.append(t(status_key))
+    items.extend(report.warnings)
+    return items
 
 
 def hold_reason(
