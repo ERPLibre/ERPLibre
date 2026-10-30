@@ -36,13 +36,15 @@ YML = (
 )
 
 
-def installer_server_yml():
+INSTALLER = os.path.join(REPO, "script", "install", "install_ntfy.sh")
+
+
+def installer_server_yml(tls_block="# no tls"):
     """Le `server.yml` que `install_ntfy.sh` écrit, variables résolues."""
-    path = os.path.join(REPO, "script", "install", "install_ntfy.sh")
-    with open(path) as handle:
+    with open(INSTALLER) as handle:
         text = handle.read()
     body = text.split("<<YAML\n", 1)[1].split("\nYAML\n", 1)[0]
-    body = body.replace("${TLS_BLOCK}", "# no tls")
+    body = body.replace("${TLS_BLOCK}", tls_block)
     body = body.replace("${DEFAULT_ACCESS}", "deny-all")
     return re.sub(r"\$\{[A-Z_]+\}", "/x", body)
 
@@ -82,6 +84,19 @@ class TestServerConfig(unittest.TestCase):
         )
         installer = nm.read_yml_keys(installer_server_yml())
         self.assertEqual(nm.config_problems(installer), [])
+
+    def test_installer_https_block_read_back(self):
+        # Le bloc TLS s'insère dans le heredoc à la place de ${TLS_BLOCK} :
+        # ses clés restent lisibles au premier niveau par read_yml_keys.
+        block = (
+            'listen-https: ":8443"\ncert-file: "/etc/ntfy/tls/ntfy.crt"\n'
+            'key-file: "/etc/ntfy/tls/ntfy.key"'
+        )
+        keys = nm.read_yml_keys(installer_server_yml(block))
+        self.assertEqual(keys["listen-https"], ":8443")
+        self.assertEqual(keys["cert-file"], "/etc/ntfy/tls/ntfy.crt")
+        self.assertEqual(keys["listen-http"], ":/x")
+        self.assertEqual(nm.config_problems(keys), [])
 
     def test_read_yml_keys(self):
         keys = nm.read_yml_keys(YML + "other: plain # note\n  nested: 1\n")
@@ -174,6 +189,21 @@ class TestAccessScript(unittest.TestCase):
         self.assertIn("ntfy user --config", script)
         self.assertIn("ntfy token --config", script)
         self.assertTrue(script.startswith("set -e\n"))
+
+    def test_installer_user_calls_have_config(self):
+        # L'installateur crée le compte administrateur avec la même CLI :
+        # sans --config, elle viserait /etc/ntfy/server.yml et ses NTFY_*.
+        with open(INSTALLER) as handle:
+            text = handle.read()
+        pattern = r"\bntfy\s+(?:--config\s+\S+\s+)?(user|token|access)\b"
+        calls = [
+            line
+            for line in text.splitlines()
+            if not line.lstrip().startswith("#") and re.search(pattern, line)
+        ]
+        self.assertGreaterEqual(len(calls), 2, calls)
+        for line in calls:
+            self.assertRegex(line, CONFIG_CALL)
 
     def test_access_script_never_sets_expiry_or_keepalive(self):
         script = self.script()
