@@ -2627,6 +2627,23 @@ def premier_plan(ctx):
     ctx.cdp.attendre(f"{APP_ETAT}.then(s => s.isActive)", delai=10)
 
 
+def au_premier_plan(ctx, appel, puis=None):
+    """window.__erplibreTest.<appel> joué l'app de test au premier plan,
+    puis puis() quand il est donné (une attente côté serveur de ce que
+    l'appel envoie), l'app renvoyée à l'accueil avant de rendre la valeur
+    de l'appel. À l'arrière-plan, le WebView fige sa page au bout d'une
+    minute environ : une évaluation CDP synchrone y tourne encore, mais la
+    réponse d'un appel natif, un minuteur ou l'envoi d'une file n'y
+    arrivent qu'au retour au premier plan. Un message posté ensuite
+    arrive l'app fermée."""
+    premier_plan(ctx)
+    valeur = ctx.hook(appel)
+    if puis:
+        puis()
+    accueil(ctx)
+    return valeur
+
+
 def service_vivant(executer):
     """Vrai quand le processus de l'app de test tourne avec son service
     permanent démarré."""
@@ -4160,8 +4177,10 @@ def etape_batterie_reelle(ctx):
 
 
 def scenario_preferences_notifications(ctx):
-    """Les préférences des notifications du clavardage, l'app à
-    l'arrière-plan, le module 1.6 sur le serveur de la course : le lien
+    """Les préférences des notifications du clavardage, chaque message
+    reçu l'app à l'arrière-plan, chaque réglage fait au premier plan
+    (au_premier_plan : la page du WebView se fige à l'arrière-plan), le
+    module 1.6 sur le serveur de la course : le lien
     appliqué au niveau 1, l'appareil marqué « wait » en charge utile v 2.
     « Rien de ce serveur » n'affiche pas un message de chat_user ;
     « Mentions et messages directs » n'affiche pas un message simple d'un
@@ -4328,9 +4347,9 @@ def scenario_preferences_notifications(ctx):
             "la notification permanente", lambda: permanentes(executer), 10
         )
 
-        # 2. Le filtre du téléphone
-        accueil(ctx)
-        ctx.hook(f"chatPushFilter({config}, 'none', true, false)")
+        # 2. Le filtre du téléphone, chaque réglage au premier plan, chaque
+        # message posté l'app à l'accueil
+        au_premier_plan(ctx, f"chatPushFilter({config}, 'none', true, false)")
         rien = ctx.unique("rien")
         avant = messages_ntfy(ntfy, sujet)
         poster(pair, canal_modele, chat, rien)
@@ -4338,12 +4357,17 @@ def scenario_preferences_notifications(ctx):
 
         # Le canal à « Tous les messages » depuis l'app : Odoo pousse alors
         # un message simple, que le filtre seul retient
-        ctx.hook(f"chatNotify({config}, {canal}, 'all')")
-        attendre_serveur(
-            "le canal à « Tous les messages » sur le serveur",
-            lambda: reglage_canal() == "all",
+        au_premier_plan(
+            ctx,
+            f"chatNotify({config}, {canal}, 'all')",
+            puis=lambda: attendre_serveur(
+                "le canal à « Tous les messages » sur le serveur",
+                lambda: reglage_canal() == "all",
+            ),
         )
-        ctx.hook(f"chatPushFilter({config}, 'mentions_dm', true, false)")
+        au_premier_plan(
+            ctx, f"chatPushFilter({config}, 'mentions_dm', true, false)"
+        )
         simple = ctx.unique("canal-simple")
         avant = messages_ntfy(ntfy, sujet)
         poster(pair, canal_modele, canal, simple)
@@ -4362,12 +4386,16 @@ def scenario_preferences_notifications(ctx):
             POUSSEE_DELAI,
         )
 
-        ctx.hook(f"chatPushFilter({config}, 'mentions_dm', false, false)")
+        au_premier_plan(
+            ctx, f"chatPushFilter({config}, 'mentions_dm', false, false)"
+        )
         fiche = ctx.unique("fiche")
         avant = messages_ntfy(ntfy, sujet)
         poster(boite, "project.task", tache, fiche)
         jamais_affichee(fiche, avant)
-        ctx.hook(f"chatPushFilter({config}, 'mentions_dm', false, true)")
+        au_premier_plan(
+            ctx, f"chatPushFilter({config}, 'mentions_dm', false, true)"
+        )
         fiche_mention = ctx.unique("fiche-mention")
         poster(boite, "project.task", tache, fiche_mention, [moi])
         attendre_notification(
@@ -4380,7 +4408,7 @@ def scenario_preferences_notifications(ctx):
         avant = messages_ntfy(ntfy, sujet)
         poster(boite, "project.task", tache, fiche_simple)
         jamais_affichee(fiche_simple, avant)
-        ctx.hook(f"chatPushFilter({config}, 'all', true, false)")
+        au_premier_plan(ctx, f"chatPushFilter({config}, 'all', true, false)")
 
         # 3. « Attendre 10 s », un navigateur d'admin ouvert : une session
         # web à lui, qui n'est pas celle de l'app, envoie ce qu'envoie le
@@ -4390,8 +4418,9 @@ def scenario_preferences_notifications(ctx):
         # route HTTP du bus, qui mène au même _update_bus_presence que
         # l'événement update_presence du websocket du client, et qui exige
         # une session marquée par peek_notifications (is_first_poll)
-        ctx.hook("chatPushBrowserMode('wait')")
-        marque("wait")
+        au_premier_plan(
+            ctx, "chatPushBrowserMode('wait')", puis=lambda: marque("wait")
+        )
         session_web = Odoo(ctx.cible)
         session_web.route(
             "/websocket/peek_notifications",
@@ -4445,8 +4474,11 @@ def scenario_preferences_notifications(ctx):
             # « Attendre 10 s » retiendrait ; sans navigateur en ligne, les
             # deux modes sonnent pareil. Le mode revient ensuite à
             # « Attendre 10 s » pour le cas du navigateur fermé
-            ctx.hook("chatPushBrowserMode('ring')")
-            marque("ring")
+            au_premier_plan(
+                ctx,
+                "chatPushBrowserMode('ring')",
+                puis=lambda: marque("ring"),
+            )
             tout_de_suite = ctx.unique("tout-de-suite")
             debut = time.monotonic()
             poster(pair, canal_modele, chat, tout_de_suite)
@@ -4457,8 +4489,11 @@ def scenario_preferences_notifications(ctx):
                 SONNER_DELAI,
             )
             sonne = time.monotonic() - debut
-            ctx.hook("chatPushBrowserMode('wait')")
-            marque("wait")
+            au_premier_plan(
+                ctx,
+                "chatPushBrowserMode('wait')",
+                puis=lambda: marque("wait"),
+            )
         except BaseException as erreur:
             echec_navigateur = erreur
             raise
@@ -4494,7 +4529,7 @@ def scenario_preferences_notifications(ctx):
             "from": (minute - 5) % 1440,
             "to": (minute + 60) % 1440,
         }
-        ctx.hook(f"chatPushQuietHours({config}, {js(calme)})")
+        au_premier_plan(ctx, f"chatPushQuietHours({config}, {js(calme)})")
         groupe_calme = nouveau_groupe()
         texte_calme = ctx.unique("calme")
         poster(pair, canal_modele, groupe_calme, texte_calme)
@@ -4508,7 +4543,9 @@ def scenario_preferences_notifications(ctx):
         assert (
             alerte_de_groupe(notif) == ALERTE_RESUME
         ), f"groupAlertBehavior {alerte_de_groupe(notif)}"
-        ctx.hook(f"chatPushQuietHours({config}, {js({**calme, 'on': False})})")
+        au_premier_plan(
+            ctx, f"chatPushQuietHours({config}, {js({**calme, 'on': False})})"
+        )
         groupe_sonore = nouveau_groupe()
         texte_sonore = ctx.unique("sonore")
         poster(pair, canal_modele, groupe_sonore, texte_sonore)
@@ -4526,7 +4563,10 @@ def scenario_preferences_notifications(ctx):
         ), f"groupAlertBehavior {alerte_de_groupe(notif)}"
 
         # 5. La montée par la porte de test : le téléphone reste sur l'USB,
-        # la porte ne change que ce que l'app lit
+        # la porte ne change que ce que l'app lit. L'app est au premier
+        # plan, où la santé du moteur se lit par la page ; le niveau se
+        # décide en natif, au premier plan comme à l'arrière-plan
+        premier_plan(ctx)
         debut = time.monotonic()
         puissance_de_test(executer, pct=12, plugged=False)
         attendre_niveau(ctx, 3, "below_two")
@@ -4547,7 +4587,6 @@ def scenario_preferences_notifications(ctx):
         assert not tache_en_attente(
             executer, TACHE_MONTEE
         ), f"tâche {TACHE_MONTEE} planifiée sur l'USB"
-        premier_plan(ctx)
         ctx.ouvrir("/options", "#chat-notifications")
         if not ctx.cdp.evaluer(
             "!!document.querySelector('#options-chat-notifications__body')"

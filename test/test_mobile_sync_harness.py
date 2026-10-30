@@ -2478,8 +2478,88 @@ class TestScenariosAppareil(unittest.TestCase):
         apres = source[source.index("time.sleep(BOUCLE_FENETRE)") :]
         self.assertIn(
             "assert not tache_en_attente(",
-            apres[: apres.index("premier_plan(ctx)")],
+            apres[: apres.index("ctx.ouvrir(")],
         )
+
+    def test_la_page_n_est_appelee_qu_au_premier_plan(self):
+        """La page du WebView se fige à l'arrière-plan : une évaluation
+        synchrone y tourne encore, mais ni la réponse d'un appel natif ni
+        un minuteur n'y arrivent. Entre accueil (ou au_premier_plan, qui
+        finit à l'accueil) et le premier_plan suivant, le scénario
+        n'attend donc rien de la page : ni ctx.hook, ni ctx.cdp.attendre,
+        ni ctx.ouvrir, ni attendre_niveau ou tache_forcee. Chaque hook qui
+        change un réglage passe ainsi par au_premier_plan."""
+        source = textwrap.dedent(
+            inspect.getsource(appareil.scenario_preferences_notifications)
+        )
+        appels = []
+        ignores = set()
+        for noeud in ast.walk(ast.parse(source)):
+            if isinstance(noeud, ast.Call):
+                appels.append(noeud)
+                if ast.unparse(noeud.func) == "au_premier_plan":
+                    ignores |= {
+                        id(n)
+                        for n in ast.walk(noeud)
+                        if n is not noeud and isinstance(n, ast.Call)
+                    }
+        appels.sort(key=lambda n: (n.lineno, n.col_offset))
+        attendent = {
+            "ctx.hook",
+            "ctx.cdp.attendre",
+            "ctx.ouvrir",
+            "attendre_niveau",
+            "tache_forcee",
+        }
+        arriere = False
+        fautes = []
+        aides = 0
+        for appel in appels:
+            if id(appel) in ignores:
+                continue
+            nom = ast.unparse(appel.func)
+            if nom in ("accueil", "au_premier_plan"):
+                arriere = True
+                aides += nom == "au_premier_plan"
+            elif nom == "premier_plan":
+                arriere = False
+            elif arriere and nom in attendent:
+                fautes.append(f"ligne {appel.lineno} : {ast.unparse(appel)}")
+        self.assertEqual(fautes, [])
+        self.assertGreaterEqual(aides, 1)
+
+    def test_au_premier_plan_appelle_puis_renvoie_a_l_accueil(self):
+        """Le hook, puis l'attente donnée, se jouent l'app au premier plan ;
+        l'app retourne à l'accueil avant que la valeur du hook ne soit
+        rendue."""
+        suite = []
+        ctx = SimpleNamespace(
+            hook=lambda appel: suite.append(("hook", appel)) or "valeur"
+        )
+        with mock.patch.object(
+            appareil, "premier_plan", lambda c: suite.append("premier_plan")
+        ), mock.patch.object(
+            appareil, "accueil", lambda c: suite.append("accueil")
+        ):
+            rendu = appareil.au_premier_plan(
+                ctx, "chatPushLevel(1)", puis=lambda: suite.append("puis")
+            )
+            self.assertEqual(rendu, "valeur")
+            self.assertEqual(
+                suite,
+                [
+                    "premier_plan",
+                    ("hook", "chatPushLevel(1)"),
+                    "puis",
+                    "accueil",
+                ],
+            )
+            suite.clear()
+            appareil.au_premier_plan(ctx, "chatPushStatus()")
+            self.assertEqual(
+                suite,
+                ["premier_plan", ("hook", "chatPushStatus()"), "accueil"],
+            )
 
 
 class TestNavigateurOuvert(unittest.TestCase):
