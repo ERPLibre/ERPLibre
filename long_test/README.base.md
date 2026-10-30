@@ -583,7 +583,11 @@ reach the app by the bus, a channel set to mentions in the app pushes no plain
 post while a group ignores that setting, the browser mode set in the app marks
 the device (mode and payload v 2), a call of the route in its 1.5 form marks
 quiet and keeps payload v 1, and the payload v 2 says whether the recipient is
-mentioned (a mention, `@everyone`) and whether a browser of theirs is active.
+mentioned (a mention, `@everyone`) and whether a browser of theirs is active:
+a browser whose last presence is over 65 s old is not, even with its websocket
+still open. The test browser sends the bus's `update_presence`, the event Odoo
+18's web client sends on connect and, under module 1.6's client patch, every
+60 s.
 
 With `--appareil`, the notifications scenario runs on the phone, on Odoo 18,
 against that ntfy sent to the phone by `adb reverse`: at level 1 the app is
@@ -618,15 +622,20 @@ message; that « Mentions et messages directs » hides a plain post of a channel
 the app set to « Tous les messages » and shows a mention and a group message;
 that with the inbox off a record comment does not show, except the one that
 mentions the user once the record-mentions switch is on; that under
-« Attendre 10 s », with a browser of the user active, a message read in the
-browser within 5 s never shows and an unread one shows between 9 and 15 s,
-and under « Sonner tout de suite » within 3 s; that inside quiet hours the
-notification shows without alerting, and alerts outside them. It then climbs
-through the test door: 12 % on battery gives level 3, reason `below_two`, the
-permanent notification gone, the climb job never running in a loop (the phone
-stays on USB power) and the « En ce moment » line in the options, captured;
-plugged in, level 1 and the service back; battery saver at 80 %, level 3,
-reason `saver`.
+« Attendre 10 s », with a browser of the user open, a message read in the
+browser within 5 s never shows and an unread one shows between 9 and 15 s;
+that once the browser is closed and silent for more than 65 s a message shows
+within 3 s; that under « Sonner tout de suite » it shows within 3 s; that
+inside quiet hours the notification shows without alerting, and alerts
+outside them (`GROUP_ALERT_ALL`). The open browser is imitated by what module
+1.6's client patch sends: one presence on opening, then one every 60 s from a
+thread while it stays open, through the bus's HTTP route that leads to the
+same server code as the web client's websocket event. It then climbs through
+the test door: 12 % on battery gives level 3, reason `below_two`, the
+permanent notification gone, the climb job never running in a loop nor
+scheduled (the phone stays on USB power) and the « En ce moment » line in the
+options, captured; plugged in, level 1 and the service back; battery saver at
+80 %, level 3, reason `saver`.
 
 Battery and power are simulated by default: the door takes a broadcast of kind
 `power` (`plugged`, `saver`, `pct`, or `clear`) and writes a power state that
@@ -639,7 +648,14 @@ raises the timeout (unplugged, the phone is no longer kept awake by USB), then
 `dumpsys battery unplug` and level 12 (level 3, `below_two`, the climb job
 pending) and the battery saver at 80 % (level 3, `saver`). It restores, success
 or failure and in this order, the power mode and `low_power` to the recorded
-values, the battery (`dumpsys battery reset`) and the timeout.
+values, the battery (`dumpsys battery reset`) and the timeout; plugged back,
+the permanent service must come back through the climb job, which is then no
+longer scheduled. The recorded values are written to
+`cache/mobile_sync/batterie_notee.json` before anything is touched: a run
+killed before its restore leaves the file, and the next `--batterie-reelle`
+run restores from it first, then deletes it, or stops when a restore fails.
+Every restore runs even when another fails; a failed one is printed with the
+command to rerun by hand and counts as one more failure.
 
 By default these three scenarios never touch the notification shade, so they can
 run on a phone that also carries the user's own apps. A notification's buttons
@@ -1320,7 +1336,11 @@ l'app ne pousse pas une publication simple alors qu'un groupe ignore ce
 réglage, le mode du navigateur fixé dans l'app marque l'appareil (mode et
 charge v 2), un appel de la route sous sa forme 1.5 marque silencieux et garde
 la charge v 1, et la charge v 2 dit si le destinataire est mentionné (une
-mention, `@everyone`) et si un de ses navigateurs est actif.
+mention, `@everyone`) et si un de ses navigateurs est actif : un navigateur
+dont la dernière présence a plus de 65 s ne l'est pas, même son websocket
+encore ouvert. Le navigateur du test envoie l'`update_presence` du bus,
+l'événement que le client web d'Odoo 18 envoie à la connexion et, sous le
+correctif client du module 1.6, toutes les 60 s.
 
 Avec `--appareil`, le scénario des notifications tourne sur le téléphone, sur
 Odoo 18, contre ce ntfy renvoyé au téléphone par `adb reverse` : au niveau 1
@@ -1360,15 +1380,21 @@ publication simple d'un canal que l'app a mis à « Tous les messages » et
 affiche une mention et un message de groupe ; que, la boîte de réception
 désactivée, un commentaire d'enregistrement ne s'affiche pas, sauf celui qui
 mentionne l'utilisateur une fois l'option des mentions d'enregistrement
-cochée ; qu'avec « Attendre 10 s » et un navigateur de l'utilisateur actif, un
-message lu dans le navigateur en moins de 5 s ne s'affiche jamais et un
-message non lu s'affiche entre 9 et 15 s, et avec « Sonner tout de suite » en
-3 s ; que pendant les heures calmes la notification s'affiche sans alerter, et
-alerte hors de la fenêtre. Il monte ensuite par la porte de test : 12 % sur
-batterie donne le niveau 3, raison `below_two`, la notification permanente
-retirée, la tâche de montée jamais en boucle (le téléphone reste sur l'USB)
-et la ligne « En ce moment » dans les options, capturée ; branché, le niveau 1
-et le service revenu ; l'économiseur à 80 %, le niveau 3, raison `saver`.
+cochée ; qu'avec « Attendre 10 s » et un navigateur de l'utilisateur ouvert,
+un message lu dans le navigateur en moins de 5 s ne s'affiche jamais et un
+message non lu s'affiche entre 9 et 15 s ; qu'une fois le navigateur fermé et
+muet depuis plus de 65 s, un message s'affiche en 3 s ; qu'avec « Sonner tout
+de suite » il s'affiche en 3 s ; que pendant les heures calmes la
+notification s'affiche sans alerter, et alerte hors de la fenêtre
+(`GROUP_ALERT_ALL`). Le navigateur ouvert est imité par ce qu'envoie le
+correctif client du module 1.6 : une présence à l'ouverture, puis une toutes
+les 60 s depuis un fil tant qu'il reste ouvert, par la route HTTP du bus, qui
+mène au même code serveur que l'événement du websocket du client web. Il
+monte ensuite par la porte de test : 12 % sur batterie donne le niveau 3,
+raison `below_two`, la notification permanente retirée, la tâche de montée
+jamais en boucle ni planifiée (le téléphone reste sur l'USB) et la ligne
+« En ce moment » dans les options, capturée ; branché, le niveau 1 et le
+service revenu ; l'économiseur à 80 %, le niveau 3, raison `saver`.
 
 La batterie et l'alimentation sont simulées par défaut : la porte reçoit une
 diffusion de sorte `power` (`plugged`, `saver`, `pct`, ou `clear`) et écrit un
@@ -1383,7 +1409,14 @@ l'écran, allonge ce délai (débranché, l'USB ne garde plus le téléphone
 `below_two`, la tâche de montée en attente) et l'économiseur à 80 % (niveau 3,
 `saver`). Elle rend, réussite ou échec et dans cet ordre, le mode d'économie
 et `low_power` aux valeurs relevées, la batterie (`dumpsys battery reset`) et
-le délai.
+le délai ; rebranché, le service permanent doit revenir par la tâche de
+montée, qui n'est plus planifiée ensuite. Les valeurs relevées sont écrites
+dans `cache/mobile_sync/batterie_notee.json` avant que rien ne soit touché :
+une course tuée avant sa remise laisse le fichier, et la course
+`--batterie-reelle` suivante le rend d'abord, puis l'efface, ou s'arrête
+quand une remise échoue. Chaque remise joue même quand une autre échoue ;
+celle qui échoue est affichée avec la commande à relancer à la main et compte
+pour un échec de plus.
 
 Par défaut, ces trois scénarios ne touchent jamais au volet des notifications :
 ils peuvent tourner sur un téléphone qui porte aussi les apps de son

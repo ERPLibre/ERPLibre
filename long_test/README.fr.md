@@ -623,7 +623,11 @@ l'app ne pousse pas une publication simple alors qu'un groupe ignore ce
 réglage, le mode du navigateur fixé dans l'app marque l'appareil (mode et
 charge v 2), un appel de la route sous sa forme 1.5 marque silencieux et garde
 la charge v 1, et la charge v 2 dit si le destinataire est mentionné (une
-mention, `@everyone`) et si un de ses navigateurs est actif.
+mention, `@everyone`) et si un de ses navigateurs est actif : un navigateur
+dont la dernière présence a plus de 65 s ne l'est pas, même son websocket
+encore ouvert. Le navigateur du test envoie l'`update_presence` du bus,
+l'événement que le client web d'Odoo 18 envoie à la connexion et, sous le
+correctif client du module 1.6, toutes les 60 s.
 
 Avec `--appareil`, le scénario des notifications tourne sur le téléphone, sur
 Odoo 18, contre ce ntfy renvoyé au téléphone par `adb reverse` : au niveau 1
@@ -663,15 +667,21 @@ publication simple d'un canal que l'app a mis à « Tous les messages » et
 affiche une mention et un message de groupe ; que, la boîte de réception
 désactivée, un commentaire d'enregistrement ne s'affiche pas, sauf celui qui
 mentionne l'utilisateur une fois l'option des mentions d'enregistrement
-cochée ; qu'avec « Attendre 10 s » et un navigateur de l'utilisateur actif, un
-message lu dans le navigateur en moins de 5 s ne s'affiche jamais et un
-message non lu s'affiche entre 9 et 15 s, et avec « Sonner tout de suite » en
-3 s ; que pendant les heures calmes la notification s'affiche sans alerter, et
-alerte hors de la fenêtre. Il monte ensuite par la porte de test : 12 % sur
-batterie donne le niveau 3, raison `below_two`, la notification permanente
-retirée, la tâche de montée jamais en boucle (le téléphone reste sur l'USB)
-et la ligne « En ce moment » dans les options, capturée ; branché, le niveau 1
-et le service revenu ; l'économiseur à 80 %, le niveau 3, raison `saver`.
+cochée ; qu'avec « Attendre 10 s » et un navigateur de l'utilisateur ouvert,
+un message lu dans le navigateur en moins de 5 s ne s'affiche jamais et un
+message non lu s'affiche entre 9 et 15 s ; qu'une fois le navigateur fermé et
+muet depuis plus de 65 s, un message s'affiche en 3 s ; qu'avec « Sonner tout
+de suite » il s'affiche en 3 s ; que pendant les heures calmes la
+notification s'affiche sans alerter, et alerte hors de la fenêtre
+(`GROUP_ALERT_ALL`). Le navigateur ouvert est imité par ce qu'envoie le
+correctif client du module 1.6 : une présence à l'ouverture, puis une toutes
+les 60 s depuis un fil tant qu'il reste ouvert, par la route HTTP du bus, qui
+mène au même code serveur que l'événement du websocket du client web. Il
+monte ensuite par la porte de test : 12 % sur batterie donne le niveau 3,
+raison `below_two`, la notification permanente retirée, la tâche de montée
+jamais en boucle ni planifiée (le téléphone reste sur l'USB) et la ligne
+« En ce moment » dans les options, capturée ; branché, le niveau 1 et le
+service revenu ; l'économiseur à 80 %, le niveau 3, raison `saver`.
 
 La batterie et l'alimentation sont simulées par défaut : la porte reçoit une
 diffusion de sorte `power` (`plugged`, `saver`, `pct`, ou `clear`) et écrit un
@@ -686,7 +696,14 @@ l'écran, allonge ce délai (débranché, l'USB ne garde plus le téléphone
 `below_two`, la tâche de montée en attente) et l'économiseur à 80 % (niveau 3,
 `saver`). Elle rend, réussite ou échec et dans cet ordre, le mode d'économie
 et `low_power` aux valeurs relevées, la batterie (`dumpsys battery reset`) et
-le délai.
+le délai ; rebranché, le service permanent doit revenir par la tâche de
+montée, qui n'est plus planifiée ensuite. Les valeurs relevées sont écrites
+dans `cache/mobile_sync/batterie_notee.json` avant que rien ne soit touché :
+une course tuée avant sa remise laisse le fichier, et la course
+`--batterie-reelle` suivante le rend d'abord, puis l'efface, ou s'arrête
+quand une remise échoue. Chaque remise joue même quand une autre échoue ;
+celle qui échoue est affichée avec la commande à relancer à la main et compte
+pour un échec de plus.
 
 Par défaut, ces trois scénarios ne touchent jamais au volet des notifications :
 ils peuvent tourner sur un téléphone qui porte aussi les apps de son
