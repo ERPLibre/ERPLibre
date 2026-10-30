@@ -749,8 +749,9 @@ class Appareil:
         rendue pour le téléphone branché, rendu par rendre_batterie(), qui
         retire sa clé. Un relevé sans numéro de série (SERIE_INCONNUE) est
         rendu seulement quand un seul téléphone est branché, et une ligne
-        le dit ; sinon il reste, nommé. Les relevés des autres téléphones
-        restent, nommés. RuntimeError quand une remise échoue ou que le
+        le dit ; sinon il reste, nommé, y compris quand le téléphone
+        branché a son propre relevé, seul rendu alors. Les relevés des
+        autres téléphones restent, nommés. RuntimeError quand une remise échoue ou que le
         fichier est illisible (alors dumpsys battery reset seul est
         tenté) : le relevé suivant prendrait l'état laissé pour celui
         d'origine. Rien sans fichier."""
@@ -790,6 +791,14 @@ class Appareil:
                     " téléphone-là pour qu'une course --batterie-reelle le"
                     " rende"
                 )
+        elif cle is not None and SERIE_INCONNUE in releves:
+            print(
+                "  ⚠ relevé de batterie sans numéro de série gardé dans"
+                f" {BATTERIE_NOTEE} : ce téléphone ({cle}) a le sien, rien"
+                " ne dit auquel appartient l'autre ; ne brancher que ce"
+                " téléphone-là pour qu'une course --batterie-reelle le"
+                " rende, ou le retirer du fichier"
+            )
         autres = [k for k in releves if k not in (cle, SERIE_INCONNUE)]
         if autres:
             print(
