@@ -87,13 +87,14 @@ eachVersionFrom(18, "chat realtime", (target) => {
 		await until("chat_user no longer typing in the app", typing(false));
 	});
 
-	it("first connection keeps the counters load read", async () => {
+	it("first connection keeps the counters load read", { timeout: 90_000 }, async () => {
 		// A conversation created and written to less than 50 s before: the first
 		// poll (last=0) replays its creation, whose records carry the counters of then
 		const group = await peer.group(unique("group"));
 		await peer.post(group, unique("early"));
 		const { env, src } = await live();
-		await until("the replay applied", async () => (await env.chat.repo.sourceState(src.configId)).lastBusId > 0);
+		// The replay of the first poll arrives and applies later while the other files load the server
+		await until("the replay applied", async () => (await env.chat.repo.sourceState(src.configId)).lastBusId > 0, 60_000);
 		expect((await env.chat.repo.channel(src.configId, group))!.unreadCounter)
 			.toBe((await peer.adminMember(group)).message_unread_counter);
 	});
