@@ -624,8 +624,9 @@ that with the inbox off a record comment does not show, except the one that
 mentions the user once the record-mentions switch is on; that under
 « Attendre 10 s », with a browser of the user open, a message read in the
 browser within 5 s never shows and an unread one shows between 9 and 15 s;
-that once the browser is closed and silent for more than 65 s a message shows
-within 3 s; that under « Sonner tout de suite » it shows within 3 s; that
+that under « Sonner tout de suite », with the browser still open, a message
+shows within 3 s; that back under « Attendre 10 s », once the browser is
+closed and silent for more than 65 s, a message shows within 3 s; that
 inside quiet hours the notification shows without alerting, and alerts
 outside them (`GROUP_ALERT_ALL`). The open browser is imitated by what module
 1.6's client patch sends: one presence on opening, then one every 60 s from a
@@ -654,6 +655,8 @@ longer scheduled. The recorded values are written to
 `cache/mobile_sync/batterie_notee.json` before anything is touched: a run
 killed before its restore leaves the file, and the next `--batterie-reelle`
 run restores from it first, then deletes it, or stops when a restore fails.
+`--detruire` keeps the file and names it, in its dry run too; a run without
+`--batterie-reelle` leaves it and prints one line naming it.
 Every restore runs even when another fails; a failed one is printed with the
 command to rerun by hand and counts as one more failure.
 
@@ -1382,9 +1385,10 @@ désactivée, un commentaire d'enregistrement ne s'affiche pas, sauf celui qui
 mentionne l'utilisateur une fois l'option des mentions d'enregistrement
 cochée ; qu'avec « Attendre 10 s » et un navigateur de l'utilisateur ouvert,
 un message lu dans le navigateur en moins de 5 s ne s'affiche jamais et un
-message non lu s'affiche entre 9 et 15 s ; qu'une fois le navigateur fermé et
-muet depuis plus de 65 s, un message s'affiche en 3 s ; qu'avec « Sonner tout
-de suite » il s'affiche en 3 s ; que pendant les heures calmes la
+message non lu s'affiche entre 9 et 15 s ; qu'avec « Sonner tout de suite »,
+le navigateur toujours ouvert, un message s'affiche en 3 s ; que, revenu à
+« Attendre 10 s », une fois le navigateur fermé et muet depuis plus de 65 s,
+un message s'affiche en 3 s ; que pendant les heures calmes la
 notification s'affiche sans alerter, et alerte hors de la fenêtre
 (`GROUP_ALERT_ALL`). Le navigateur ouvert est imité par ce qu'envoie le
 correctif client du module 1.6 : une présence à l'ouverture, puis une toutes
@@ -1414,7 +1418,9 @@ montée, qui n'est plus planifiée ensuite. Les valeurs relevées sont écrites
 dans `cache/mobile_sync/batterie_notee.json` avant que rien ne soit touché :
 une course tuée avant sa remise laisse le fichier, et la course
 `--batterie-reelle` suivante le rend d'abord, puis l'efface, ou s'arrête
-quand une remise échoue. Chaque remise joue même quand une autre échoue ;
+quand une remise échoue. `--detruire` garde le fichier et le nomme, à blanc
+aussi ; une course sans `--batterie-reelle` le laisse et affiche une ligne
+qui le nomme. Chaque remise joue même quand une autre échoue ;
 celle qui échoue est affichée avec la commande à relancer à la main et compte
 pour un échec de plus.
 

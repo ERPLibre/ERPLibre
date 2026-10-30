@@ -619,8 +619,9 @@ that with the inbox off a record comment does not show, except the one that
 mentions the user once the record-mentions switch is on; that under
 « Attendre 10 s », with a browser of the user open, a message read in the
 browser within 5 s never shows and an unread one shows between 9 and 15 s;
-that once the browser is closed and silent for more than 65 s a message shows
-within 3 s; that under « Sonner tout de suite » it shows within 3 s; that
+that under « Sonner tout de suite », with the browser still open, a message
+shows within 3 s; that back under « Attendre 10 s », once the browser is
+closed and silent for more than 65 s, a message shows within 3 s; that
 inside quiet hours the notification shows without alerting, and alerts
 outside them (`GROUP_ALERT_ALL`). The open browser is imitated by what module
 1.6's client patch sends: one presence on opening, then one every 60 s from a
@@ -649,6 +650,8 @@ longer scheduled. The recorded values are written to
 `cache/mobile_sync/batterie_notee.json` before anything is touched: a run
 killed before its restore leaves the file, and the next `--batterie-reelle`
 run restores from it first, then deletes it, or stops when a restore fails.
+`--detruire` keeps the file and names it, in its dry run too; a run without
+`--batterie-reelle` leaves it and prints one line naming it.
 Every restore runs even when another fails; a failed one is printed with the
 command to rerun by hand and counts as one more failure.
 

@@ -14,6 +14,7 @@ test est un échec et pas une réussite silencieuse.
 import ast
 import hashlib
 import inspect
+import io
 import json
 import os
 import re
@@ -1979,9 +1980,29 @@ class TestBatterieReelle(unittest.TestCase):
             json.dumps({"low_power": "0", "screen_off_timeout": "45000"})
         )
         executer, commandes = faux_telephone_batterie()
-        appareil.Appareil([8018], executer).preparer(Path("x.apk"))
+        with mock.patch("sys.stdout", new_callable=io.StringIO):
+            appareil.Appareil([8018], executer).preparer(Path("x.apk"))
         self.assertFalse(any(touche_batterie(c) for c in commandes))
         self.assertTrue(self.notee.exists())
+
+    def test_preparer_sans_l_option_nomme_le_releve_laisse(self):
+        """Une course par défaut ne rend pas le relevé d'une course
+        --batterie-reelle tuée, mais le nomme : sans cette ligne, le
+        téléphone garde sans le dire l'état de batterie de cette course."""
+        self.notee.write_text(
+            json.dumps({"low_power": "0", "screen_off_timeout": "45000"})
+        )
+        executer, _ = faux_telephone_batterie()
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as sortie:
+            appareil.Appareil([8018], executer).preparer(Path("x.apk"))
+        self.assertIn(str(self.notee), sortie.getvalue())
+        self.assertIn("--batterie-reelle", sortie.getvalue())
+
+    def test_preparer_sans_releve_n_affiche_rien(self):
+        executer, _ = faux_telephone_batterie()
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as sortie:
+            appareil.Appareil([8018], executer).preparer(Path("x.apk"))
+        self.assertEqual(sortie.getvalue(), "")
 
     def test_preparer_s_arrete_quand_le_releve_ne_se_rend_pas(self):
         self.notee.write_text(
@@ -2274,11 +2295,8 @@ class TestScenariosAppareil(unittest.TestCase):
         self.assertNotIn("repli", source)
         self.assertEqual(source.count("/websocket/update_bus_presence"), 1)
         self.assertIn("NavigateurOuvert(", source)
-        cas = source[
-            source.index(".fermer()") : source.index(
-                "chatPushBrowserMode('ring')"
-            )
-        ]
+        cas = source[source.index("navigateur.fermer") : source.index("# 4.")]
+        self.assertNotIn("chatPushBrowserMode('ring')", cas)
         self.assertIn("NAVIGATEUR_FERME", cas)
         self.assertLess(cas.index("time.sleep("), cas.index("poster("))
         self.assertIn("SONNER_DELAI", cas[cas.index("poster(") :])
@@ -2286,6 +2304,53 @@ class TestScenariosAppareil(unittest.TestCase):
             source.index("chatPushBrowserMode('wait')"),
             source.index("NavigateurOuvert("),
         )
+
+    def test_sonner_tout_de_suite_se_joue_le_navigateur_ouvert(self):
+        """Sans navigateur en ligne, « Attendre 10 s » sonne aussi tout de
+        suite : seul un message posté sous « Sonner tout de suite », le
+        navigateur ouvert, prouve que ce mode ne retient pas. Le mode
+        revient à « Attendre 10 s » avant la fermeture, pour le cas du
+        navigateur fermé."""
+        source = inspect.getsource(appareil.scenario_preferences_notifications)
+        ouvert = source[
+            source.index("NavigateurOuvert(") : source.index(
+                "navigateur.fermer"
+            )
+        ]
+        sonner = ouvert.index("chatPushBrowserMode('ring')")
+        apres = ouvert[sonner:]
+        self.assertLess(apres.index('marque("ring")'), apres.index("poster("))
+        self.assertIn("SONNER_DELAI", apres[apres.index("poster(") :])
+        self.assertIn("chatPushBrowserMode('wait')", apres)
+        self.assertIn('marque("wait")', apres)
+        self.assertEqual(source.count("chatPushBrowserMode('ring')"), 1)
+
+    def test_l_erreur_du_scenario_gagne_sur_celle_du_navigateur(self):
+        """Le navigateur se ferme par remettre_en_etat, avec l'échec du bloc
+        du navigateur ouvert : l'erreur d'un envoi du fil devient une note
+        de cet échec, et ne remonte seule que quand le bloc a réussi."""
+        source = textwrap.dedent(
+            inspect.getsource(appareil.scenario_preferences_notifications)
+        )
+        (essai,) = [
+            n
+            for n in ast.walk(ast.parse(source))
+            if isinstance(n, ast.Try)
+            and "navigateur.fermer"
+            in "".join(ast.unparse(f) for f in n.finalbody)
+        ]
+        (fin,) = essai.finalbody
+        appel = fin.value if isinstance(fin, ast.Expr) else None
+        self.assertIsInstance(appel, ast.Call)
+        self.assertEqual(ast.unparse(appel.func), "remettre_en_etat")
+        self.assertEqual(ast.unparse(appel.args[2]), "navigateur.fermer")
+        (garde,) = essai.handlers
+        self.assertEqual(ast.unparse(garde.type), "BaseException")
+        self.assertIn(
+            f"{ast.unparse(appel.args[0])} = {garde.name}",
+            "".join(ast.unparse(n) for n in garde.body),
+        )
+        self.assertIsInstance(garde.body[-1], ast.Raise)
 
     def test_les_heures_calmes_hors_fenetre_exigent_l_alerte_de_tous(self):
         source = inspect.getsource(appareil.scenario_preferences_notifications)
@@ -2461,6 +2526,40 @@ class TestDetruire(unittest.TestCase):
         supprimer.assert_not_called()
         arreter.assert_not_called()
         effacer.assert_not_called()
+
+    def detruire_dans(self, a_blanc=False):
+        """mobile_sync.detruire(a_blanc) sur un cache
+        temporaire qui porte un APK et le relevé de batterie d'une course
+        --batterie-reelle tuée, sans base : rend le cache, le relevé et la
+        sortie."""
+        cache = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(cache, True))
+        (cache / "apk").mkdir()
+        (cache / "apk" / "synctest_cle.apk").write_text("apk")
+        notee = cache / "batterie_notee.json"
+        notee.write_text("{}")
+        with mock.patch.object(odoo, "CACHE", cache), mock.patch.object(
+            appareil, "BATTERIE_NOTEE", notee
+        ), mock.patch.object(
+            odoo, "bases_existantes", return_value=set()
+        ), mock.patch.object(
+            odoo, "arreter_gardes", return_value=[]
+        ), mock.patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as sortie:
+            mobile_sync.detruire(a_blanc=a_blanc)
+        return cache, notee, sortie.getvalue()
+
+    def test_le_releve_de_batterie_survit_et_est_nomme(self):
+        cache, notee, sortie = self.detruire_dans()
+        self.assertTrue(notee.exists())
+        self.assertFalse((cache / "apk").exists())
+        self.assertIn(f"gardé : {notee}", sortie)
+
+    def test_a_blanc_nomme_le_releve_garde(self):
+        cache, notee, sortie = self.detruire_dans(a_blanc=True)
+        self.assertTrue((cache / "apk").exists())
+        self.assertIn(f"gardé : {notee}", sortie)
 
 
 class TestNtfy(unittest.TestCase):

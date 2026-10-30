@@ -669,9 +669,10 @@ désactivée, un commentaire d'enregistrement ne s'affiche pas, sauf celui qui
 mentionne l'utilisateur une fois l'option des mentions d'enregistrement
 cochée ; qu'avec « Attendre 10 s » et un navigateur de l'utilisateur ouvert,
 un message lu dans le navigateur en moins de 5 s ne s'affiche jamais et un
-message non lu s'affiche entre 9 et 15 s ; qu'une fois le navigateur fermé et
-muet depuis plus de 65 s, un message s'affiche en 3 s ; qu'avec « Sonner tout
-de suite » il s'affiche en 3 s ; que pendant les heures calmes la
+message non lu s'affiche entre 9 et 15 s ; qu'avec « Sonner tout de suite »,
+le navigateur toujours ouvert, un message s'affiche en 3 s ; que, revenu à
+« Attendre 10 s », une fois le navigateur fermé et muet depuis plus de 65 s,
+un message s'affiche en 3 s ; que pendant les heures calmes la
 notification s'affiche sans alerter, et alerte hors de la fenêtre
 (`GROUP_ALERT_ALL`). Le navigateur ouvert est imité par ce qu'envoie le
 correctif client du module 1.6 : une présence à l'ouverture, puis une toutes
@@ -701,7 +702,9 @@ montée, qui n'est plus planifiée ensuite. Les valeurs relevées sont écrites
 dans `cache/mobile_sync/batterie_notee.json` avant que rien ne soit touché :
 une course tuée avant sa remise laisse le fichier, et la course
 `--batterie-reelle` suivante le rend d'abord, puis l'efface, ou s'arrête
-quand une remise échoue. Chaque remise joue même quand une autre échoue ;
+quand une remise échoue. `--detruire` garde le fichier et le nomme, à blanc
+aussi ; une course sans `--batterie-reelle` le laisse et affiche une ligne
+qui le nomme. Chaque remise joue même quand une autre échoue ;
 celle qui échoue est affichée avec la commande à relancer à la main et compte
 pour un échec de plus.
 
