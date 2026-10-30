@@ -4072,8 +4072,12 @@ PRESENCE_CADENCE = 60
 # dernier envoi plus vieux que DISCONNECTION_TIMER (65 s), plus une marge
 NAVIGATEUR_FERME = 70
 # La ligne des options des notifications quand la porte simule 12 % sur
-# batterie, seuils par défaut (30 et 15)
-LIGNE_MONTEE = "En ce moment : niveau 3 (batterie sous 15 %)"
+# batterie, seuils par défaut (30 et 15) : le seuil franchi, puis le point
+# où la montée se relâche, CLIMB_RELEASE_MARGIN (5) points plus haut
+LIGNE_MONTEE = (
+    "En ce moment : niveau 3"
+    " (batterie passée sous 15 %, jusqu'à 20 % ou au branchement)"
+)
 
 
 class NavigateurOuvert:
