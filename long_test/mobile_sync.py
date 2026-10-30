@@ -38,6 +38,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -170,49 +171,80 @@ def jouer_vitest(
     return verdict(*lire_rapports(rapports, versions))
 
 
+# Le bilan d'un ou plusieurs rapports de Vitest : total des tests, tests en
+# échec, tests par version, et les fichiers en échec qui n'ont aucun test en
+# échec, chacun « nom (première ligne de son erreur) »
+Bilan = namedtuple("Bilan", "total echecs par_version suites")
+
+
 def lire_rapports(chemins, versions):
-    """Le bilan de plusieurs rapports de Vitest (les passes d'une course),
+    """Le Bilan de plusieurs rapports de Vitest (les passes d'une course),
     additionnés comme lire_rapport les lit chacun."""
     total = echecs = 0
     par_version = {version: 0 for version in versions}
+    suites = []
     for chemin in chemins:
-        t, e, v = lire_rapport(chemin, versions)
-        total += t
-        echecs += e
-        for version, n in v.items():
+        bilan = lire_rapport(chemin, versions)
+        total += bilan.total
+        echecs += bilan.echecs
+        suites += bilan.suites
+        for version, n in bilan.par_version.items():
             par_version[version] += n
-    return total, echecs, par_version
+    return Bilan(total, echecs, par_version, suites)
 
 
 def lire_rapport(chemin, versions):
-    """Le bilan du rapport JSON de Vitest : (total, échecs, par version).
-    Un test se range sous sa version par le nom de son bloc (« Odoo 17 »)."""
+    """Le Bilan du rapport JSON de Vitest. Un test se range sous sa version
+    par le nom de son bloc (« Odoo 17 »). echecs compte les tests en échec
+    seuls : numFailedTestSuites compte aussi chaque bloc et chaque fichier
+    qui contient un test en échec. Un fichier « failed » sans test
+    « failed » (il ne charge pas, un hook de fichier échoue) va dans
+    suites, nommé par son nom de fichier et la première ligne de son
+    erreur."""
     rapport = json.loads(Path(chemin).read_text())
     par_version = {version: 0 for version in versions}
+    suites = []
     for fichier in rapport.get("testResults", []):
-        for test in fichier.get("assertionResults", []):
+        tests = fichier.get("assertionResults", [])
+        for test in tests:
             for version in versions:
                 if f"Odoo {version}" in (test.get("fullName") or ""):
                     par_version[version] += 1
-    return (
+        if fichier.get("status") == "failed" and not any(
+            t.get("status") == "failed" for t in tests
+        ):
+            nom = Path(fichier.get("name") or "?").name
+            message = (fichier.get("message") or "").strip().splitlines()
+            suites.append(f"{nom} ({message[0][:160]})" if message else nom)
+    return Bilan(
         rapport.get("numTotalTests", 0),
-        rapport.get("numFailedTests", 0)
-        + rapport.get("numFailedTestSuites", 0),
+        rapport.get("numFailedTests", 0),
         par_version,
+        suites,
     )
 
 
-def verdict(total, echecs, par_version):
-    """Le code de sortie d'un rapport, et pourquoi : un rapport sans test,
-    ou une version sans test, est un échec, pas une réussite silencieuse."""
-    if total == 0:
-        return SORTIE_TESTS, "aucun test n'a tourné"
+def verdict(total, echecs, par_version, suites=()):
+    """Le code de sortie d'un bilan, et pourquoi : un rapport sans test,
+    ou une version sans test, est un échec, pas une réussite silencieuse ;
+    un fichier en échec hors des tests (suites) aussi, nommé à la suite de
+    la raison."""
     vides = [str(v) for v, n in par_version.items() if n == 0]
-    if vides:
-        return SORTIE_TESTS, f"aucun test pour Odoo {', '.join(vides)}"
-    if echecs:
-        return SORTIE_TESTS, f"{echecs} échec(s) sur {total} tests"
-    return SORTIE_OK, f"{total} tests, tous passés"
+    if total == 0:
+        raison = "aucun test n'a tourné"
+    elif vides:
+        raison = f"aucun test pour Odoo {', '.join(vides)}"
+    elif echecs:
+        raison = f"{echecs} échec(s) sur {total} tests"
+    elif suites:
+        raison = f"aucun test en échec sur {total} tests"
+    else:
+        return SORTIE_OK, f"{total} tests, tous passés"
+    if suites:
+        raison += (
+            f" ; fichier(s) en échec hors des tests : {', '.join(suites)}"
+        )
+    return SORTIE_TESTS, raison
 
 
 def plan(versions, args, ntfy=True):
