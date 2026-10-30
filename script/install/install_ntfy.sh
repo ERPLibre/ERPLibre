@@ -8,6 +8,29 @@
 #   sudo NTFY_PORT=8080 NTFY_BASE_URL=http://ntfy.exemple.org:8080 \
 #        bash install_ntfy.sh
 #
+# Variables d'entree (toutes facultatives) :
+#   NTFY_PORT            port http (8080), sur toutes les interfaces
+#   NTFY_BASE_URL        URL publique (http://localhost:$NTFY_PORT)
+#   NTFY_CERT_FILE, NTFY_KEY_FILE
+#                        certificat et cle : ajoutent l'ecoute https
+#   NTFY_HTTPS_PORT      port https quand un certificat est fourni (8443)
+#   NTFY_PUBLIC=1        acces anonyme en lecture et ecriture (voir plus bas)
+#   NTFY_ADMIN_USER      compte administrateur cree au besoin (erplibre)
+#   NTFY_GARDER_CONFIG=1 garde une configuration en place sans controle
+#                        d'acces
+#   NTFY_NON_INTERACTIVE=1
+#                        aucune question : ni assistant AUR, ni question de
+#                        dpkg sur un fichier de configuration modifie. C'est
+#                        le mode d'un lancement a distance, ou rien ne
+#                        repond au terminal.
+#
+# Sortie lisible par un programme :
+#   @@ADMIN_PASSWORD <mot de passe>
+#                        seulement quand le compte administrateur vient
+#                        d'etre cree ; affiche une fois, ecrit nulle part
+#   @@ACTIVE ntfy <etat> derniere ligne : l'etat systemd du service
+# Le code de sortie est non nul des que le service n'est pas « active ».
+#
 # Securite — les defauts de ce script, et pourquoi :
 #
 #   L'acces est REFUSE par defaut (auth-default-access: deny-all). Le defaut
@@ -31,6 +54,7 @@ NTFY_BASE_URL="${NTFY_BASE_URL:-http://localhost:${NTFY_PORT}}"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/ntfy"
 CACHE_DIR="/var/cache/ntfy"
+SYSTEMD_UNIT="/etc/systemd/system/ntfy.service"
 # La base des comptes vit SOUS /var/lib et non sous /etc : le service tourne
 # sous le compte « ntfy », et /etc/ntfy appartient a root. ntfy y creerait sa
 # base au premier demarrage, n'y arriverait pas, et sortirait en erreur — un
@@ -41,7 +65,9 @@ AUTH_FILE="${DATA_DIR}/user.db"
 NTFY_PUBLIC="${NTFY_PUBLIC:-0}"
 NTFY_CERT_FILE="${NTFY_CERT_FILE:-}"
 NTFY_KEY_FILE="${NTFY_KEY_FILE:-}"
+NTFY_HTTPS_PORT="${NTFY_HTTPS_PORT:-}"
 NTFY_ADMIN_USER="${NTFY_ADMIN_USER:-erplibre}"
+NTFY_NON_INTERACTIVE="${NTFY_NON_INTERACTIVE:-0}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,6 +75,10 @@ NTFY_ADMIN_USER="${NTFY_ADMIN_USER:-erplibre}"
 
 log()  { echo "[NTFY] $*"; }
 die()  { echo "[NTFY] ERROR: $*" >&2; exit 1; }
+
+non_interactive() {
+    [ "${NTFY_NON_INTERACTIVE:-0}" = "1" ]
+}
 
 check_root() {
     if [ "$EUID" -ne 0 ]; then
@@ -122,7 +152,15 @@ install_deb() {
     fi
 
     log "Installing .deb package..."
-    dpkg -i "${tmp}/${deb_file}" || apt-get install -f -y
+    if non_interactive; then
+        # Un fichier de configuration modifie sur place fait poser a dpkg une
+        # question sur le terminal ; ces options gardent celui en place.
+        DEBIAN_FRONTEND=noninteractive dpkg --force-confdef --force-confold \
+            -i "${tmp}/${deb_file}" \
+            || DEBIAN_FRONTEND=noninteractive apt-get install -f -y
+    else
+        dpkg -i "${tmp}/${deb_file}" || apt-get install -f -y
+    fi
     rm -rf "$tmp"
 }
 
@@ -158,8 +196,31 @@ install_binary() {
     create_systemd_service
 }
 
-install_arch_aur() {
+install_arch() {
     local aur_pkg="ntfy"
+
+    # Le paquet des depots officiels passe avant tout : pacman l'installe et
+    # le met a jour sans assistant ni compte utilisateur.
+    if pacman -Si ntfy >/dev/null 2>&1; then
+        log "Installing ntfy from the Arch repositories (pacman)..."
+        pacman -S --noconfirm ntfy
+        # Le service est demarre par son nom : un paquet sans unite en
+        # recoit une, qui lance le binaire du paquet.
+        if ! systemctl cat ntfy.service >/dev/null 2>&1; then
+            create_systemd_service "$(command -v ntfy || echo /usr/bin/ntfy)"
+        fi
+        return
+    fi
+
+    # Un assistant AUR construit en tant qu'utilisateur et peut poser des
+    # questions : sans personne au terminal, c'est le binaire officiel.
+    if non_interactive; then
+        log "ntfy absent des depots, mode non interactif : binaire officiel."
+        local version
+        version=$(get_latest_version)
+        install_binary "$version"
+        return
+    fi
 
     if command -v yay &>/dev/null; then
         log "Installing via yay (AUR)..."
@@ -175,15 +236,21 @@ install_arch_aur() {
     fi
 }
 
+# Ecrit l'unite systemd de ntfy. $1 : le binaire lance (defaut
+# $INSTALL_DIR/ntfy). ProtectSystem=strict met tout le systeme en lecture
+# seule pour le service, sauf ReadWritePaths : le cache ET la base des comptes
+# (DATA_DIR, ou vit user.db) doivent y figurer, et exister au demarrage —
+# configure_ntfy les cree avant enable_service.
 create_systemd_service() {
-    cat > /etc/systemd/system/ntfy.service <<'SYSTEMD'
+    local binary="${1:-${INSTALL_DIR}/ntfy}"
+    cat > "${SYSTEMD_UNIT}" <<SYSTEMD
 [Unit]
 Description=ntfy push notification server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/ntfy serve
+ExecStart=${binary} serve
 Restart=on-failure
 RestartSec=5
 User=ntfy
@@ -191,7 +258,7 @@ Group=ntfy
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/cache/ntfy /etc/ntfy
+ReadWritePaths=${CACHE_DIR} ${DATA_DIR} ${CONFIG_DIR}
 
 [Install]
 WantedBy=multi-user.target
@@ -219,11 +286,12 @@ configure_ntfy() {
     fi
 
     # Une configuration deja en place est RESPECTEE — elle peut porter des
-    # reglages d'exploitation que ce script ignore. Mais la respecter sans
-    # regarder ce qu'elle dit a laisse tourner la configuration permissive
-    # d'une distribution : lecture ET ecriture anonymes sur tous les sujets,
-    # sur toutes les interfaces, alors que ce script annonce le contraire.
-    # Une posture annoncee et non appliquee est pire que pas de script.
+    # reglages d'exploitation que ce script ignore — mais seulement si elle
+    # declare son controle d'acces. Celle d'une distribution n'en declare
+    # aucun : lecture ET ecriture anonymes sur tous les sujets, sur toutes
+    # les interfaces, alors que ce script annonce le contraire. Une posture
+    # annoncee et non appliquee est pire que pas de script. Les reglages
+    # d'une configuration gardee (port, certificat) ne sont pas modifies ici.
     if [ -f "${CONFIG_DIR}/server.yml" ]; then
         if grep -qE '^[[:space:]]*auth-default-access:' "${CONFIG_DIR}/server.yml"; then
             log "Config already exists at ${CONFIG_DIR}/server.yml — skipping."
@@ -248,11 +316,21 @@ configure_ntfy() {
     fi
 
     if [ -n "${NTFY_CERT_FILE}" ] && [ -n "${NTFY_KEY_FILE}" ]; then
+        # 8443 par defaut et non 443 : 443 est le port de nginx sur un hote
+        # de production, et un port sous 1024 exige CAP_NET_BIND_SERVICE,
+        # que l'unite des paquets ne donne pas toujours.
+        local https_port="${NTFY_HTTPS_PORT:-8443}"
+        case "${https_port}" in
+            ''|*[!0-9]*) die "NTFY_HTTPS_PORT invalide : ${https_port}" ;;
+        esac
+        if [ "${https_port}" -lt 1 ] || [ "${https_port}" -gt 65535 ]; then
+            die "NTFY_HTTPS_PORT hors limites : ${https_port}"
+        fi
         [ -f "${NTFY_CERT_FILE}" ] || die "Certificat introuvable : ${NTFY_CERT_FILE}"
         [ -f "${NTFY_KEY_FILE}" ]  || die "Cle introuvable : ${NTFY_KEY_FILE}"
-        TLS_BLOCK=$(printf 'listen-https: ":443"\ncert-file: "%s"\nkey-file: "%s"' \
-            "${NTFY_CERT_FILE}" "${NTFY_KEY_FILE}")
-        log "TLS active."
+        TLS_BLOCK=$(printf 'listen-https: ":%s"\ncert-file: "%s"\nkey-file: "%s"' \
+            "${https_port}" "${NTFY_CERT_FILE}" "${NTFY_KEY_FILE}")
+        log "TLS active sur le port ${https_port}."
     else
         TLS_BLOCK="# Pas de TLS : aucun certificat fourni (NTFY_CERT_FILE / NTFY_KEY_FILE)."
         log "AVERTISSEMENT : aucun TLS. Le trafic circule en clair."
@@ -301,20 +379,66 @@ YAML
 # Enable & start service
 # ---------------------------------------------------------------------------
 
+# Un echec ici n'arrete pas le script : service_state dit ensuite l'etat
+# reel, et main le rend en derniere ligne et en code de sortie.
 enable_service() {
     log "Enabling and starting ntfy service..."
-    systemctl daemon-reload
-    systemctl enable ntfy
-    systemctl restart ntfy
+    systemctl daemon-reload || log "AVERTISSEMENT : systemctl daemon-reload a echoue."
+    systemctl enable ntfy || log "AVERTISSEMENT : systemctl enable ntfy a echoue."
+    systemctl restart ntfy || log "AVERTISSEMENT : systemctl restart ntfy a echoue."
     sleep 1
-    systemctl is-active ntfy --quiet && log "ntfy is running." \
-        || log "Warning: ntfy may not have started. Run: systemctl status ntfy"
+}
+
+# Imprime l'etat systemd de ntfy (active, failed, inactive...). Un etat
+# transitoire (activating, reloading) est relu chaque seconde, dix fois au
+# plus : un service qui plante et que systemd relance reste « activating »
+# et finit rendu tel quel, donc en echec.
+service_state() {
+    local state tries=0
+    while :; do
+        state=$(systemctl is-active ntfy 2>/dev/null) || true
+        case "${state}" in
+            activating|reloading) ;;
+            *) break ;;
+        esac
+        tries=$((tries + 1))
+        if [ "${tries}" -ge 10 ]; then
+            break
+        fi
+        sleep 1
+    done
+    echo "${state:-unknown}"
 }
 
 
 # ---------------------------------------------------------------------------
 # Compte administrateur
 # ---------------------------------------------------------------------------
+
+# Lance une commande sans aucune variable NTFY_* exportee : la CLI ntfy les
+# lit AVANT --config, et celles qui pilotent ce script (NTFY_BASE_URL,
+# NTFY_CERT_FILE...) ou un NTFY_AUTH_FILE herite viseraient un autre fichier.
+# Une affectation NOM=valeur passee en tete des arguments est remise par env
+# apres le retrait : c'est ainsi que NTFY_PASSWORD atteint « user add ».
+ntfy_cli() {
+    local args=() var
+    for var in $(compgen -e); do
+        case "${var}" in
+            NTFY_*) args+=(-u "${var}") ;;
+        esac
+    done
+    env "${args[@]}" "$@"
+}
+
+# Imprime le chemin de auth-file lu dans la configuration en place (une
+# configuration gardee peut le placer ailleurs), AUTH_FILE a defaut.
+config_auth_file() {
+    local file
+    file=$(sed -nE "s/^auth-file:[[:space:]]*[\"']?([^\"'#]*).*/\1/p" \
+        "${CONFIG_DIR}/server.yml" 2>/dev/null | head -n 1 \
+        | sed 's/[[:space:]]*$//')
+    echo "${file:-${AUTH_FILE}}"
+}
 
 ensure_admin_user() {
     # `deny-all` sans compte rend le serveur inutilisable : personne ne peut
@@ -323,32 +447,47 @@ ensure_admin_user() {
     if [ "${NTFY_PUBLIC}" = "1" ]; then
         return
     fi
-    if ntfy user list 2>/dev/null | grep -q "^user ${NTFY_ADMIN_USER}"; then
+    local config="${CONFIG_DIR}/server.yml"
+    local motdepasse auth_file f
+
+    # « user list » ecrit sur la sortie d'erreur.
+    if ntfy_cli ntfy user --config "${config}" list 2>&1 \
+            | grep -q "^user ${NTFY_ADMIN_USER} "; then
         log "Compte ${NTFY_ADMIN_USER} deja present, mot de passe inchange."
-        return
+    else
+        motdepasse=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
+        if ntfy_cli NTFY_PASSWORD="${motdepasse}" \
+                ntfy user --config "${config}" add --role=admin \
+                "${NTFY_ADMIN_USER}" >/dev/null 2>&1; then
+            # Affiche UNE seule fois, sur la ligne @@ADMIN_PASSWORD que le
+            # menu de todo.py relit, et jamais ecrit dans un fichier : un mot
+            # de passe laisse sur disque par un installateur y reste.
+            echo
+            echo "=================================================================="
+            echo "  COMPTE ADMINISTRATEUR NTFY : ${NTFY_ADMIN_USER}"
+            echo "  Mot de passe sur la ligne suivante, affiche une seule fois,"
+            echo "  ecrit nulle part :"
+            echo "@@ADMIN_PASSWORD ${motdepasse}"
+            echo "  Pour le changer :"
+            echo "    ntfy user --config ${config} change-pass ${NTFY_ADMIN_USER}"
+            echo "=================================================================="
+            echo
+        else
+            log "AVERTISSEMENT : creation du compte impossible."
+            log "  A faire a la main : ntfy user --config ${config} add --role=admin ${NTFY_ADMIN_USER}"
+        fi
     fi
 
-    local motdepasse
-    motdepasse=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
-    if ! NTFY_PASSWORD="${motdepasse}" ntfy user add --role=admin \
-            "${NTFY_ADMIN_USER}" >/dev/null 2>&1; then
-        log "AVERTISSEMENT : creation du compte impossible."
-        log "  A faire a la main : ntfy user add --role=admin ${NTFY_ADMIN_USER}"
-        return
+    # La CLI tourne en root : la base qu'elle cree ou ouvre (et ses fichiers
+    # -wal / -shm) revient au compte du service, qui doit pouvoir y ecrire.
+    auth_file=$(config_auth_file)
+    if id ntfy &>/dev/null; then
+        for f in "${auth_file}" "${auth_file}-wal" "${auth_file}-shm"; do
+            if [ -e "${f}" ]; then
+                chown ntfy:ntfy "${f}"
+            fi
+        done
     fi
-
-    # Affiche UNE seule fois, et jamais ecrit dans un fichier : un mot de
-    # passe laisse sur disque par un script d'installation y reste des annees.
-    echo
-    echo "=================================================================="
-    echo "  COMPTE ADMINISTRATEUR NTFY — note-le maintenant"
-    echo "=================================================================="
-    echo "  utilisateur : ${NTFY_ADMIN_USER}"
-    echo "  mot de passe : ${motdepasse}"
-    echo "=================================================================="
-    echo "  Il n'est affiche qu'ici et n'est ecrit nulle part."
-    echo "  Pour le changer : ntfy user change-pass ${NTFY_ADMIN_USER}"
-    echo
 }
 
 # ---------------------------------------------------------------------------
@@ -358,16 +497,13 @@ ensure_admin_user() {
 main() {
     check_root
     detect_os
+    if non_interactive; then
+        export DEBIAN_FRONTEND=noninteractive
+    fi
 
-    if command -v ntfy &>/dev/null && ntfy version &>/dev/null 2>&1; then
-        log "ntfy is already installed: $(ntfy version 2>/dev/null | head -1)"
+    if command -v ntfy &>/dev/null && ntfy --version &>/dev/null; then
+        log "ntfy is already installed: $(ntfy --version 2>/dev/null | head -1)"
         log "Reconfiguring and restarting..."
-        configure_ntfy
-        # Le compte AVANT le demarrage : « deny-all » sans cle donne un
-        # serveur que personne ne peut ni lire ni alimenter, et le compte se
-        # cree a travers la meme configuration que le service va lire.
-        ensure_admin_user
-        enable_service
     elif is_ubuntu_like; then
         log "Using Ubuntu/Debian install path..."
         apt-get update -qq
@@ -376,21 +512,9 @@ main() {
         version=$(get_latest_version)
         log "Installing ntfy v${version}..."
         install_deb "$version"
-        configure_ntfy
-        # Le compte AVANT le demarrage : « deny-all » sans cle donne un
-        # serveur que personne ne peut ni lire ni alimenter, et le compte se
-        # cree a travers la meme configuration que le service va lire.
-        ensure_admin_user
-        enable_service
     elif is_arch_like; then
         log "Using Arch Linux install path..."
-        install_arch_aur
-        configure_ntfy
-        # Le compte AVANT le demarrage : « deny-all » sans cle donne un
-        # serveur que personne ne peut ni lire ni alimenter, et le compte se
-        # cree a travers la meme configuration que le service va lire.
-        ensure_admin_user
-        enable_service
+        install_arch
     else
         log "Unknown OS '${OS}', attempting generic binary install..."
         apt-get install -y --no-install-recommends curl ca-certificates 2>/dev/null \
@@ -399,30 +523,36 @@ main() {
         local version
         version=$(get_latest_version)
         install_binary "$version"
-        configure_ntfy
-        # Le compte AVANT le demarrage : « deny-all » sans cle donne un
-        # serveur que personne ne peut ni lire ni alimenter, et le compte se
-        # cree a travers la meme configuration que le service va lire.
-        ensure_admin_user
-        enable_service
     fi
 
-    local ip
-    ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+    configure_ntfy
+    # Le compte AVANT le demarrage : « deny-all » sans cle donne un serveur
+    # que personne ne peut ni lire ni alimenter, et le compte se cree a
+    # travers la meme configuration que le service va lire.
+    ensure_admin_user
+    enable_service
+
+    local state ip
+    state=$(service_state)
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    ip="${ip:-127.0.0.1}"
 
     echo ""
     echo "======================================================="
-    if systemctl is-active ntfy --quiet; then
+    if [ "${state}" = "active" ]; then
         echo " NTFY push notification server installed successfully!"
     else
         # Annoncer un succes que le service dement envoie chercher la panne
         # partout sauf la ou elle est.
-        echo " NTFY INSTALLE MAIS NON DEMARRE — voir :"
+        echo " NTFY INSTALLE MAIS NON DEMARRE (${state}) — voir :"
         echo "   systemctl status ntfy; journalctl -u ntfy -n 30"
     fi
     echo "======================================================="
     echo " Local URL  : http://localhost:${NTFY_PORT}"
     echo " Network URL: http://${ip}:${NTFY_PORT}"
+    if [ -n "${NTFY_CERT_FILE}" ] && [ -n "${NTFY_KEY_FILE}" ]; then
+        echo " HTTPS URL  : https://${ip}:${NTFY_HTTPS_PORT:-8443}"
+    fi
     echo " Config     : ${CONFIG_DIR}/server.yml"
     echo "-------------------------------------------------------"
     echo " Test (send a notification):"
@@ -433,6 +563,9 @@ main() {
     echo "   2. Add server: http://${ip}:${NTFY_PORT}"
     echo "   3. Subscribe to topic: my-topic"
     echo "======================================================="
+    # Derniere ligne et code de sortie : l'appelant distant ne lit que ca.
+    echo "@@ACTIVE ntfy ${state}"
+    [ "${state}" = "active" ]
 }
 
 main "$@"
