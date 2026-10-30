@@ -15,7 +15,9 @@ reçus), les actions sur un message, et la recherche et la boîte de
 réception du clavardage (épingle, favori, avis des notifications par
 courriel, réponse dans le fil d'une tâche), et ses notifications l'app
 fermée, puis leurs actions l'app tuée (répondre, marquer lu, sourdine,
-👍, reprise par l'app d'une action que le natif ne peut finir).
+👍, reprise par l'app d'une action que le natif ne peut finir), et leurs
+préférences (filtre du téléphone, retenue d'un navigateur actif, heures
+calmes, montée du niveau sur batterie).
 
 Le téléphone joint les serveurs par adb reverse (127.0.0.1 de l'appareil vers
 celui de l'hôte) ; la page se pilote par CDP (mobile_sync_cdp.py), les écrans
@@ -24,7 +26,10 @@ seule une construction de développement contient. Le volet des
 notifications n'est pas touché : les boutons d'une notification se lisent
 dans dumpsys notification et leurs actions passent par la porte de test de
 l'app (ChatTestDoor, -PsyncTest seulement, réservée au shell adb). Le doigt
-n'y va qu'avec --toucher-volet, sur un téléphone de test vide. Pour chaque
+n'y va qu'avec --toucher-volet, sur un téléphone de test vide. La
+batterie et l'alimentation du téléphone entier ne changent qu'avec
+--batterie-reelle, sur un téléphone de test vide aussi : par défaut, la
+porte de test simule l'alimentation que l'app lit. Pour chaque
 version, l'app repart de zéro (pm clear) avec la seule application de ce
 serveur.
 
@@ -33,6 +38,7 @@ gardés d'une course :
 
   ./long_test/mobile_sync_device.py cache/mobile_sync/runs/<course>/targets.json
   ./long_test/mobile_sync_device.py <targets.json> --toucher-volet
+  ./long_test/mobile_sync_device.py <targets.json> --batterie-reelle
 """
 
 import calendar
@@ -61,7 +67,7 @@ PAQUET = "ca.erplibre.home.synctest"
 # L'app de l'utilisateur, à côté de l'app de test : une course ne la touche
 # jamais, et lancer() le vérifie
 APP_PERSO = "ca.erplibre.home"
-DEVICE_HOOK_API = 8
+DEVICE_HOOK_API = 9
 # La permission des notifications (Android 13+), accordée à l'app de test
 # par le scénario des notifications et retirée par rendre()
 NOTIFIER = "android.permission.POST_NOTIFICATIONS"
@@ -74,6 +80,10 @@ SECONDE_SUIVANTE = 1.1
 POSE = 0.3
 # L'état de l'app selon Android, celui que suit appStateChange
 APP_ETAT = "window.Capacitor.Plugins.App.getState()"
+# Le délai d'extinction de l'écran (ms) pendant l'étape de --batterie-reelle :
+# débranché par dumpsys battery unplug, le téléphone n'est plus gardé allumé
+# par svc power stayon usb, et un écran éteint verrouille un téléphone à code
+ECRAN_BATTERIE_REELLE = 30 * 60 * 1000
 
 
 def adb(*args, executer=subprocess.run, check=True, binaire=False):
@@ -123,11 +133,27 @@ def maj_app_perso(executer=subprocess.run):
     return trouve.group(1).strip()
 
 
+def app_perso_installee(executer=subprocess.run):
+    """Vrai quand pm list packages montre APP_PERSO elle-même (le filtre de
+    pm retient aussi les noms qui la contiennent, l'app de test
+    comprise)."""
+    sortie = adb(
+        "shell", "pm", "list", "packages", APP_PERSO, executer=executer
+    )
+    return f"package:{APP_PERSO}" in (
+        ligne.strip() for ligne in sortie.splitlines()
+    )
+
+
 def verifier_appareil(
-    mobile=odoo.MOBILE, executer=subprocess.run, which=shutil.which
+    mobile=odoo.MOBILE,
+    executer=subprocess.run,
+    which=shutil.which,
+    batterie_reelle=False,
 ):
     """Ce qui empêche de jouer les scénarios sur le téléphone, chacun avec
-    la correction à faire ; vide quand tout est prêt."""
+    la correction à faire ; vide quand tout est prêt. batterie_reelle
+    (--batterie-reelle) exige un téléphone sans APP_PERSO."""
     if not which("adb"):
         return [
             "adb absent : installer les platform-tools Android (paquet adb)"
@@ -158,6 +184,11 @@ def verifier_appareil(
         ):
             problemes.append(
                 "écran du téléphone verrouillé : le déverrouiller"
+            )
+        if batterie_reelle and app_perso_installee(executer):
+            problemes.append(
+                f"--batterie-reelle sur un téléphone qui porte {APP_PERSO} :"
+                " le lancer sans l'option, ou sur un téléphone de test vide"
             )
     if not (Path(mobile) / "android" / "gradlew").exists():
         problemes.append(
@@ -387,6 +418,9 @@ class Appareil:
     poses: list = field(default_factory=list)
     notifications_accordees: bool = False
     exemption_posee: bool = False
+    # L'état de la batterie que noter_batterie() a relevé (low_power,
+    # screen_off_timeout), None quand rien n'est à rendre
+    batterie_notee: dict = None
 
     def garder_allume(self):
         """L'écran gardé allumé tant que le téléphone est branché (svc
@@ -527,6 +561,70 @@ class Appareil:
         )
         self.exemption_posee = True
 
+    def noter_batterie(self):
+        """Relève low_power (global) et screen_off_timeout (system) pour
+        rendre_batterie(), puis porte le délai d'extinction de l'écran à
+        ECRAN_BATTERIE_REELLE. Seule l'étape de --batterie-reelle l'appelle,
+        avant de toucher à la batterie."""
+
+        def lire(espace, nom):
+            return adb(
+                "shell", "settings", "get", espace, nom, executer=self.executer
+            ).strip()
+
+        self.batterie_notee = {
+            "low_power": lire("global", "low_power"),
+            "screen_off_timeout": lire("system", "screen_off_timeout"),
+        }
+        adb(
+            "shell",
+            "settings",
+            "put",
+            "system",
+            "screen_off_timeout",
+            str(ECRAN_BATTERIE_REELLE),
+            executer=self.executer,
+        )
+
+    def rendre_batterie(self):
+        """L'état relevé par noter_batterie() rendu, dans cet ordre : le
+        mode d'économie (cmd power set-mode) et low_power aux valeurs
+        relevées, jamais forcés à « off », la batterie rendue à Android
+        (dumpsys battery reset), puis le délai d'extinction de l'écran.
+        Une valeur absente au relevé (« null ») est effacée. Rien quand
+        rien n'est relevé ; une fois rendu, l'état n'est plus rejoué."""
+        if self.batterie_notee is None:
+            return
+        notee, self.batterie_notee = self.batterie_notee, None
+
+        def remettre(espace, nom, valeur):
+            if valeur in ("", "null"):
+                commande = ("settings", "delete", espace, nom)
+            else:
+                commande = ("settings", "put", espace, nom, valeur)
+            adb("shell", *commande, executer=self.executer, check=False)
+
+        mode = "1" if notee["low_power"] == "1" else "0"
+        adb(
+            "shell",
+            "cmd",
+            "power",
+            "set-mode",
+            mode,
+            executer=self.executer,
+            check=False,
+        )
+        remettre("global", "low_power", notee["low_power"])
+        adb(
+            "shell",
+            "dumpsys",
+            "battery",
+            "reset",
+            executer=self.executer,
+            check=False,
+        )
+        remettre("system", "screen_off_timeout", notee["screen_off_timeout"])
+
     def capture(self, chemin):
         Path(chemin).write_bytes(
             adb(
@@ -541,6 +639,7 @@ class Appareil:
     def rendre(self):
         if self.cdp:
             self.cdp.fermer()
+        self.rendre_batterie()
         adb(
             "shell",
             "am",
@@ -622,6 +721,10 @@ class Contexte:
     # Vrai seulement sur un téléphone de test vide (--toucher-volet) : les
     # scénarios des notifications touchent alors le volet du doigt
     toucher_volet: bool = False
+    # Vrai seulement sur un téléphone de test vide (--batterie-reelle) : la
+    # batterie et l'alimentation du téléphone entier changent le temps
+    # d'une étape, rendues ensuite
+    batterie_reelle: bool = False
 
     def unique(self, libelle):
         self.compteur += 1
@@ -3721,6 +3824,561 @@ def scenario_actions_notifications(ctx):
     )
 
 
+# ─── Préférences du clavardage, app fermée ────────────────────────────────────
+
+# La tâche ponctuelle de la montée sur batterie (ChatClimbJob) : elle exige
+# le secteur, et l'app ne la planifie que débranchée pour de vrai
+TACHE_MONTEE = 4825
+# Le temps d'observation d'une notification qui ne doit pas venir : la
+# retenue « Attendre 10 s » et sa marge
+SANS_NOTIFICATION = 15
+# L'instant de la lecture au navigateur après la poussée, sous la fenêtre de
+# 5 s que la retenue de 10 s laisse sûre
+LECTURE_NAVIGATEUR = 2
+LECTURE_MAX = 5
+# Les bornes, depuis la poussée, d'un message retenu puis affiché faute de
+# lecture : la retenue (10 s) moins la latence de la poussée, plus sa marge
+RETENUE_MIN = 9
+RETENUE_MAX = 15
+# Le délai d'un message sonné tout de suite (« Sonner tout de suite »)
+SONNER_DELAI = 3
+# Le relevé de la tâche de montée : son nombre de démarrages ne bouge pas
+# pendant ce temps, le téléphone restant sur l'USB
+BOUCLE_FENETRE = 10
+# Ce que Shown.silent pose sur une notification (setOnlyAlertOnce et
+# setSilent de NotificationCompat) : le drapeau FLAG_ONLY_ALERT_ONCE et
+# l'alerte de groupe GROUP_ALERT_SUMMARY ; GROUP_ALERT_ALL (0) sinon
+ALERTE_UNE_FOIS = 0x8
+ALERTE_RESUME = 1
+# La ligne des options des notifications quand la porte simule 12 % sur
+# batterie, seuils par défaut (30 et 15)
+LIGNE_MONTEE = "En ce moment : niveau 3 (batterie sous 15 %)"
+
+
+def puissance_de_test(executer, **extras):
+    """L'état d'alimentation simulé par la porte de test (sorte power, sans
+    tag), dans l'ordre des extras : plugged et saver (booléens, --ez), pct
+    (entier, --ei), ou clear=True seul, qui retire la simulation. La porte
+    rend « sent » ; RuntimeError avec sa réponse sinon (« refused » pour
+    des extras mal formés)."""
+    commande = [
+        "shell",
+        "am",
+        "broadcast",
+        "-n",
+        PORTE,
+        "-a",
+        PORTE_ACTION,
+        "--es",
+        "kind",
+        "power",
+    ]
+    for nom, valeur in extras.items():
+        if isinstance(valeur, bool):
+            commande += ["--ez", nom, "true" if valeur else "false"]
+        else:
+            commande += ["--ei", nom, str(valeur)]
+    sortie = adb(*commande, executer=executer)
+    if 'data="sent"' not in sortie:
+        bilan = next(
+            (
+                ligne.strip()
+                for ligne in sortie.splitlines()
+                if ligne.startswith("Broadcast completed")
+            ),
+            "aucune réponse de la porte",
+        )
+        raise RuntimeError(f"porte de test, power {extras} : {bilan}")
+
+
+def jobscheduler(executer, paquet=PAQUET):
+    """La sortie de dumpsys jobscheduler restreinte au paquet."""
+    return adb("shell", "dumpsys", "jobscheduler", paquet, executer=executer)
+
+
+def demarrages_tache(executer, ident):
+    """Les démarrages de la tâche ident de l'app de test que garde
+    l'historique de dumpsys jobscheduler (lignes « START: #<uid>/<id> »,
+    « START-P » pour une tâche relancée)."""
+    return len(
+        re.findall(rf"\bSTART(?:-P)?: #\S+/{ident}\b", jobscheduler(executer))
+    )
+
+
+def tache_en_attente(executer, ident):
+    """Vrai quand la tâche ident de l'app de test est planifiée (une ligne
+    « JOB #<uid>/<id>: » des tâches enregistrées)."""
+    return bool(re.search(rf"\bJOB #\S+/{ident}:", jobscheduler(executer)))
+
+
+def alerte_de_groupe(notification):
+    """La valeur de groupAlertBehavior du bloc de la notification (int),
+    None quand le bloc ne la porte pas."""
+    trouve = re.search(r"groupAlertBehavior=(\d+)", notification["bloc"])
+    return int(trouve.group(1)) if trouve else None
+
+
+def permanentes(executer):
+    """Les notifications permanentes (FLAG_ONGOING_EVENT) de l'app de
+    test."""
+    return [n for n in notifications(executer) if n["flags"] & 0x2]
+
+
+def attendre_niveau(ctx, niveau, raison, delai=15):
+    """La santé du moteur une fois son niveau effectif à niveau et sa
+    raison de montée à raison (None : aucune) ; TimeoutError sinon."""
+
+    def sonde():
+        sante = ctx.hook("chatPushStatus()")
+        juste = (
+            sante["effectiveLevel"] == niveau
+            and sante["climbReason"] == raison
+        )
+        return sante if juste else None
+
+    return attendre_serveur(
+        f"le niveau effectif {niveau} ({raison or 'sans montée'})",
+        sonde,
+        delai,
+    )
+
+
+def etape_batterie_reelle(ctx):
+    """L'étape de --batterie-reelle, sur un téléphone de test vide : l'état
+    de la batterie relevé d'abord (noter_batterie, qui porte aussi le délai
+    d'extinction de l'écran), le téléphone débranché pour Android (Android
+    refuse l'économiseur sur secteur), la batterie à 12 % : niveau 3,
+    raison below_two, et la tâche de montée planifiée, puisque rien ne
+    branche le téléphone ; à 80 % sous l'économiseur : niveau 3, raison
+    saver. L'état relevé est rendu à la fin, réussite ou échec
+    (rendre_batterie). Rend le détail mesuré."""
+    executer = ctx.appareil.executer
+    ctx.appareil.noter_batterie()
+    try:
+        debut = time.monotonic()
+        adb("shell", "dumpsys", "battery", "unplug", executer=executer)
+        adb(
+            "shell",
+            "dumpsys",
+            "battery",
+            "set",
+            "level",
+            "12",
+            executer=executer,
+        )
+        attendre_niveau(ctx, 3, "below_two", delai=30)
+        monte = time.monotonic() - debut
+        attendre_serveur(
+            f"la tâche {TACHE_MONTEE} planifiée, débranché",
+            lambda: tache_en_attente(executer, TACHE_MONTEE),
+            15,
+        )
+        adb(
+            "shell",
+            "dumpsys",
+            "battery",
+            "set",
+            "level",
+            "80",
+            executer=executer,
+        )
+        adb("shell", "cmd", "power", "set-mode", "1", executer=executer)
+        attendre_niveau(ctx, 3, "saver", delai=30)
+        assert ecran_allume(executer), "écran éteint, débranché"
+    finally:
+        ctx.appareil.rendre_batterie()
+    attendre_niveau(ctx, 1, None, delai=30)
+    return f", batterie réelle à 12 % → niveau 3 en {monte:.1f} s"
+
+
+def scenario_preferences_notifications(ctx):
+    """Les préférences des notifications du clavardage, l'app à
+    l'arrière-plan, le module 1.6 sur le serveur de la course : le lien
+    appliqué au niveau 1, l'appareil marqué « wait » en charge utile v 2.
+    « Rien de ce serveur » n'affiche pas un message de chat_user ;
+    « Mentions et messages directs » n'affiche pas un message simple d'un
+    canal mis à « Tous les messages » depuis l'app, et affiche une
+    mention et un message de groupe ; la boîte de réception coupée,
+    un commentaire d'enregistrement ne s'affiche pas, sauf, l'option
+    des mentions ouverte, celui qui mentionne admin. « Attendre 10 s »,
+    un navigateur d'admin actif : un message lu au navigateur dans les 5 s
+    ne s'affiche jamais, un message non lu s'affiche entre 9 et 15 s ;
+    « Sonner tout de suite », en 3 s. Les heures calmes couvrant l'instant,
+    la notification s'affiche sans alerter (FLAG_ONLY_ALERT_ONCE, alerte du
+    seul résumé) ; hors fenêtre, elle alerte. La montée par la porte de
+    test (sorte power) : 12 % sur batterie, niveau 3 below_two, la
+    notification permanente retirée, la tâche de montée jamais en boucle
+    (le téléphone reste sur l'USB), la ligne « En ce moment » dans les
+    options, capturée ; branché, niveau 1 et le service revenu ;
+    l'économiseur à 80 %, niveau 3 saver. La batterie réelle ne change
+    que sous --batterie-reelle (etape_batterie_reelle). La simulation de
+    la porte est retirée au début et à la fin. Rend les délais mesurés."""
+    ntfy = ctx.cible.get("ntfy")
+    assert ntfy, "aucun ntfy dans la course (commande ntfy absente)"
+    executer = ctx.appareil.executer
+    oublier_appareils(ctx.odoo, ntfy)
+    pair = Odoo(ctx.cible, "chat")
+    boite = Odoo(ctx.cible, "inbox")
+    moi = ctx.odoo.lire("res.users", ctx.odoo.uid, ["partner_id"])[
+        "partner_id"
+    ][0]
+    canal_modele = "discuss.channel"
+
+    def par_nom(nom):
+        return pair.executer(canal_modele, "search", [[["name", "=", nom]]])[0]
+
+    def nouveau_groupe():
+        nom = ctx.unique("groupe")
+        pair.executer(
+            canal_modele,
+            "create_group",
+            [],
+            {"partners_to": [moi], "name": nom},
+        )
+        return par_nom(nom)
+
+    pair.executer(canal_modele, "channel_get", [], {"partners_to": [moi]})
+    chat = pair.executer(
+        canal_modele,
+        "search",
+        [
+            [
+                ["channel_type", "=", "chat"],
+                ["channel_partner_ids", "in", [moi]],
+            ]
+        ],
+    )[0]
+    nom_canal = ctx.unique("canal")
+    pair.executer(canal_modele, "channel_create", [nom_canal, None])
+    canal = par_nom(nom_canal)
+    pair.executer(
+        canal_modele, "add_members", [[canal]], {"partner_ids": [moi]}
+    )
+    groupe = nouveau_groupe()
+    projet = ctx.odoo.creer(
+        "project.project",
+        {"name": ctx.unique("projet"), "privacy_visibility": "employees"},
+    )
+    tache = ctx.odoo.creer(
+        "project.task", {"name": ctx.unique("tache"), "project_id": projet}
+    )
+    ctx.odoo.executer(
+        "project.task", "message_subscribe", [[tache]], {"partner_ids": [moi]}
+    )
+
+    def poster(auteur, modele, ident, texte, mentions=()):
+        donnees = {
+            "body": texte,
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_comment",
+        }
+        if mentions:
+            donnees["partner_ids"] = list(mentions)
+        reponse = auteur.route(
+            "/mail/message/post",
+            {"thread_model": modele, "thread_id": ident, "post_data": donnees},
+        )
+        return reponse["mail.message"][0]["id"]
+
+    def affichee(texte):
+        return next(
+            (n for n in notifications(executer) if texte in n["bloc"]), None
+        )
+
+    def jamais_affichee(texte, avant):
+        """La poussée arrivée sur le ntfy (le compte de ses messages passé
+        avant), puis aucune notification de l'app de test portant texte
+        pendant SANS_NOTIFICATION secondes."""
+        attendre_serveur(
+            f"la poussée de « {texte} » sur le ntfy",
+            lambda: messages_ntfy(ntfy, sujet) > avant,
+            POUSSEE_DELAI,
+        )
+        fin = time.monotonic() + SANS_NOTIFICATION
+        while time.monotonic() < fin:
+            assert affichee(texte) is None, f"« {texte} » affiché"
+            time.sleep(0.5)
+
+    def tag_de(ident):
+        return f"chat:{ctx.config_id}:{ident}"
+
+    def marque(mode):
+        """Attend que le serveur tienne l'appareil de l'app marqué mode, en
+        charge utile v 2."""
+
+        def marques():
+            lignes = ctx.odoo.executer(
+                "mail.push.device",
+                "search_read",
+                [[["endpoint", "=", point], ["erplibre_app", "=", True]]],
+                {"fields": ["erplibre_browser_mode", "erplibre_payload_v"]},
+            )
+            return [
+                (ligne["erplibre_browser_mode"], ligne["erplibre_payload_v"])
+                for ligne in lignes
+            ]
+
+        attendre_serveur(
+            f"l'appareil marqué « {mode} » en charge utile v 2",
+            lambda: marques() == [(mode, 2)],
+        )
+
+    def reglage_canal():
+        return ctx.odoo.executer(
+            "discuss.channel.member",
+            "search_read",
+            [[["channel_id", "=", canal], ["partner_id", "=", moi]]],
+            {"fields": ["custom_notifications"]},
+        )[0]["custom_notifications"]
+
+    ctx.appareil.autoriser_notifications()
+    ctx.appareil.exempter_batterie()
+    config = js(ctx.config_id)
+    echec = None
+    reel = ""
+    puissance_de_test(executer, clear=True)
+    try:
+        # 1. Le lien, le niveau 1, le ntfy connecté, l'appareil marqué
+        # « wait » (le réglage par défaut de l'app) en charge utile v 2
+        ctx.hook(f"chatLoad({config})")
+        applique = ctx.hook(f"chatPushApply({config}, {js(ntfy['link'])})")
+        assert applique["ok"], f"lien refusé : {applique['reason']}"
+        ctx.hook("chatPushLevel(1)")
+        ctx.cdp.attendre(
+            "window.__erplibreTest.chatPushStatus().then(h => h.ntfys.some("
+            f"n => n.url === {js(ntfy['url'])} && n.state === 'connected'))",
+            delai=30,
+        )
+        ligne = ctx.hook(f"chatPushRow({config})")
+        sujet, point = ligne["topic"], ligne["endpoint"]
+        marque("wait")
+        attendre_serveur(
+            "la notification permanente", lambda: permanentes(executer), 10
+        )
+
+        # 2. Le filtre du téléphone
+        accueil(ctx)
+        ctx.hook(f"chatPushFilter({config}, 'none', true, false)")
+        rien = ctx.unique("rien")
+        avant = messages_ntfy(ntfy, sujet)
+        poster(pair, canal_modele, chat, rien)
+        jamais_affichee(rien, avant)
+
+        # Le canal à « Tous les messages » depuis l'app : Odoo pousse alors
+        # un message simple, que le filtre seul retient
+        ctx.hook(f"chatNotify({config}, {canal}, 'all')")
+        attendre_serveur(
+            "le canal à « Tous les messages » sur le serveur",
+            lambda: reglage_canal() == "all",
+        )
+        ctx.hook(f"chatPushFilter({config}, 'mentions_dm', true, false)")
+        simple = ctx.unique("canal-simple")
+        avant = messages_ntfy(ntfy, sujet)
+        poster(pair, canal_modele, canal, simple)
+        jamais_affichee(simple, avant)
+        mention = ctx.unique("canal-mention")
+        poster(pair, canal_modele, canal, mention, [moi])
+        attendre_notification(
+            ctx, tag_de(canal), lambda n: mention in n["bloc"], POUSSEE_DELAI
+        )
+        en_groupe = ctx.unique("groupe")
+        poster(pair, canal_modele, groupe, en_groupe)
+        attendre_notification(
+            ctx,
+            tag_de(groupe),
+            lambda n: en_groupe in n["bloc"],
+            POUSSEE_DELAI,
+        )
+
+        ctx.hook(f"chatPushFilter({config}, 'mentions_dm', false, false)")
+        fiche = ctx.unique("fiche")
+        avant = messages_ntfy(ntfy, sujet)
+        poster(boite, "project.task", tache, fiche)
+        jamais_affichee(fiche, avant)
+        ctx.hook(f"chatPushFilter({config}, 'mentions_dm', false, true)")
+        fiche_mention = ctx.unique("fiche-mention")
+        poster(boite, "project.task", tache, fiche_mention, [moi])
+        attendre_notification(
+            ctx,
+            f"inbox:{ctx.config_id}:project.task:{tache}",
+            lambda n: fiche_mention in n["bloc"],
+            POUSSEE_DELAI,
+        )
+        fiche_simple = ctx.unique("fiche-simple")
+        avant = messages_ntfy(ntfy, sujet)
+        poster(boite, "project.task", tache, fiche_simple)
+        jamais_affichee(fiche_simple, avant)
+        ctx.hook(f"chatPushFilter({config}, 'all', true, false)")
+
+        # 3. « Attendre 10 s », un navigateur d'admin actif : une session web
+        # à lui, qui n'est pas celle de l'app, signale sa présence comme le
+        # repli HTTP du bus du client web ; elle compte 65 s, d'où un
+        # signal avant chaque message
+        ctx.hook("chatPushBrowserMode('wait')")
+        marque("wait")
+        navigateur = Odoo(ctx.cible)
+        navigateur.route(
+            "/websocket/peek_notifications",
+            {"channels": [], "last": 0, "is_first_poll": True},
+        )
+
+        def actif():
+            navigateur.route(
+                "/websocket/update_bus_presence",
+                {"inactivity_period": 0, "im_status_ids_by_model": {}},
+            )
+
+        actif()
+        lu = ctx.unique("lu-au-navigateur")
+        debut = time.monotonic()
+        ident = poster(pair, canal_modele, chat, lu)
+        time.sleep(LECTURE_NAVIGATEUR)
+        navigateur.route(
+            "/discuss/channel/mark_as_read",
+            {"channel_id": chat, "last_message_id": ident},
+        )
+        lecture = time.monotonic() - debut
+        assert (
+            lecture < LECTURE_MAX
+        ), f"lecture au navigateur à {lecture:.1f} s"
+        while time.monotonic() < debut + SANS_NOTIFICATION:
+            assert affichee(lu) is None, "message lu au navigateur affiché"
+            time.sleep(0.5)
+
+        actif()
+        retenu = ctx.unique("retenu")
+        debut = time.monotonic()
+        poster(pair, canal_modele, chat, retenu)
+        attendre_notification(
+            ctx, tag_de(chat), lambda n: retenu in n["bloc"], RETENUE_MAX
+        )
+        retenue = time.monotonic() - debut
+        assert (
+            RETENUE_MIN <= retenue <= RETENUE_MAX
+        ), f"message non lu affiché à {retenue:.1f} s"
+
+        ctx.hook("chatPushBrowserMode('ring')")
+        marque("ring")
+        actif()
+        tout_de_suite = ctx.unique("tout-de-suite")
+        debut = time.monotonic()
+        poster(pair, canal_modele, chat, tout_de_suite)
+        attendre_notification(
+            ctx,
+            tag_de(chat),
+            lambda n: tout_de_suite in n["bloc"],
+            SONNER_DELAI,
+        )
+        sonne = time.monotonic() - debut
+
+        # 4. Les heures calmes couvrant l'instant (heure locale du
+        # téléphone) : la notification s'affiche sans alerter ; hors
+        # fenêtre, une conversation neuve alerte
+        minute = ctx.cdp.evaluer(
+            "(() => { const d = new Date();"
+            " return d.getHours() * 60 + d.getMinutes(); })()"
+        )
+        calme = {
+            "on": True,
+            "from": (minute - 5) % 1440,
+            "to": (minute + 60) % 1440,
+        }
+        ctx.hook(f"chatPushQuietHours({config}, {js(calme)})")
+        groupe_calme = nouveau_groupe()
+        texte_calme = ctx.unique("calme")
+        poster(pair, canal_modele, groupe_calme, texte_calme)
+        notif, _ = attendre_notification(
+            ctx,
+            tag_de(groupe_calme),
+            lambda n: texte_calme in n["bloc"],
+            POUSSEE_DELAI,
+        )
+        assert notif["flags"] & ALERTE_UNE_FOIS, f"flags {notif['flags']:#x}"
+        assert (
+            alerte_de_groupe(notif) == ALERTE_RESUME
+        ), f"groupAlertBehavior {alerte_de_groupe(notif)}"
+        ctx.hook(f"chatPushQuietHours({config}, {js({**calme, 'on': False})})")
+        groupe_sonore = nouveau_groupe()
+        texte_sonore = ctx.unique("sonore")
+        poster(pair, canal_modele, groupe_sonore, texte_sonore)
+        notif, _ = attendre_notification(
+            ctx,
+            tag_de(groupe_sonore),
+            lambda n: texte_sonore in n["bloc"],
+            POUSSEE_DELAI,
+        )
+        assert (
+            not notif["flags"] & ALERTE_UNE_FOIS
+        ), f"flags {notif['flags']:#x}"
+        assert (
+            alerte_de_groupe(notif) != ALERTE_RESUME
+        ), f"groupAlertBehavior {alerte_de_groupe(notif)}"
+
+        # 5. La montée par la porte de test : le téléphone reste sur l'USB,
+        # la porte ne change que ce que l'app lit
+        debut = time.monotonic()
+        puissance_de_test(executer, pct=12, plugged=False)
+        attendre_niveau(ctx, 3, "below_two")
+        monte = time.monotonic() - debut
+        attendre_serveur(
+            "la notification permanente retirée",
+            lambda: not permanentes(executer),
+            10,
+        )
+        demarrages = demarrages_tache(executer, TACHE_MONTEE)
+        time.sleep(BOUCLE_FENETRE)
+        assert (
+            demarrages_tache(executer, TACHE_MONTEE) == demarrages
+        ), f"la tâche {TACHE_MONTEE} tourne en boucle"
+        premier_plan(ctx)
+        ctx.ouvrir("/options", "#chat-notifications")
+        if not ctx.cdp.evaluer(
+            "!!document.querySelector('#options-chat-notifications__body')"
+        ):
+            ctx.toucher_pose("#chat-notifications .options-sync__header")
+        ctx.cdp.attendre(
+            "(() => { const e = document.querySelector("
+            "'#options-chat-notifications__body');"
+            f" return !!e && e.innerText.includes({js(LIGNE_MONTEE)}); }})()",
+            delai=20,
+        )
+        ctx.capturer(
+            "preferences_niveau_monte",
+            voir="#options-chat-notifications__body [role=status]",
+        )
+        puissance_de_test(executer, plugged=True)
+        attendre_niveau(ctx, 1, None)
+        attendre_serveur(
+            "le service permanent revenu",
+            lambda: service_vivant(executer),
+            RETOUR_DELAI,
+        )
+        puissance_de_test(executer, saver=True, plugged=False, pct=80)
+        attendre_niveau(ctx, 3, "saver")
+        puissance_de_test(executer, clear=True)
+        attendre_niveau(ctx, 1, None)
+
+        # 6. La batterie réelle, sur un téléphone de test vide seulement
+        if ctx.batterie_reelle:
+            reel = etape_batterie_reelle(ctx)
+        assert ecran_allume(executer), "écran éteint pendant le scénario"
+    except BaseException as erreur:
+        echec = erreur
+        raise
+    finally:
+        remettre_en_etat(
+            echec,
+            "l'alimentation simulée retirée",
+            lambda: puissance_de_test(executer, clear=True),
+        )
+    return (
+        f"retenu sans lecture → notification {retenue:.1f} s, lu au"
+        f" navigateur à {lecture:.1f} s → rien en {SANS_NOTIFICATION} s,"
+        f" « Sonner tout de suite » {sonne:.1f} s, montée par la porte →"
+        f" niveau 3 en {monte:.1f} s" + reel
+    )
+
+
 # (nom, scénario, versions d'Odoo qui le jouent) : le chat de l'app ne
 # parle qu'à la 18
 SCENARIOS = (
@@ -3745,6 +4403,11 @@ SCENARIOS = (
     (
         "actions du clavardage, app tuée",
         scenario_actions_notifications,
+        (18,),
+    ),
+    (
+        "préférences du clavardage, app fermée",
+        scenario_preferences_notifications,
         (18,),
     ),
 )
@@ -3775,15 +4438,24 @@ def lancer(
     executer=subprocess.run,
     journal=print,
     toucher_volet=False,
+    batterie_reelle=False,
 ):
     """Les scénarios sur le téléphone, pour chaque cible : (total, échecs).
     toucher_volet (--toucher-volet, téléphone de test vide) fait toucher le
     volet des notifications du doigt ; sinon la porte de test agit.
+    batterie_reelle (--batterie-reelle) laisse un scénario changer la
+    batterie et l'alimentation du téléphone entier ; un téléphone qui porte
+    APP_PERSO le refuse avant que rien ne le touche (RuntimeError).
     Un échec garde une capture d'écran dans repertoire. L'app de
     l'utilisateur (APP_PERSO) est relevée avant et après : une date de mise
     à jour changée, ou devenue illisible, compte pour un échec de plus ;
     illisible dès le départ, la course s'arrête avant de toucher le
     téléphone (RuntimeError)."""
+    if batterie_reelle and app_perso_installee(executer):
+        raise RuntimeError(
+            f"--batterie-reelle refusé : {APP_PERSO} est installée, ce"
+            " téléphone n'est pas un téléphone de test vide"
+        )
     avant = maj_app_perso(executer)
     appareil = Appareil(ports_de(cibles), executer)
     total = echecs = 0
@@ -3819,6 +4491,7 @@ def lancer(
                             appareil,
                             repertoire=Path(repertoire),
                             toucher_volet=toucher_volet,
+                            batterie_reelle=batterie_reelle,
                         )
                     )
                     journal(
@@ -3863,11 +4536,14 @@ def main(argv=None):
     sys.stdout.reconfigure(line_buffering=True)
     argv = sys.argv[1:] if argv is None else argv
     toucher_volet = "--toucher-volet" in argv
-    argv = [a for a in argv if a != "--toucher-volet"]
+    batterie_reelle = "--batterie-reelle" in argv
+    argv = [
+        a for a in argv if a not in ("--toucher-volet", "--batterie-reelle")
+    ]
     if len(argv) != 1:
         print(__doc__)
         return 2
-    problemes = verifier_appareil()
+    problemes = verifier_appareil(batterie_reelle=batterie_reelle)
     if problemes:
         print("Prérequis manquants :")
         for probleme in problemes:
@@ -3878,6 +4554,7 @@ def main(argv=None):
         json.loads(chemin.read_text()),
         chemin.parent,
         toucher_volet=toucher_volet,
+        batterie_reelle=batterie_reelle,
     )
     print(f"Appareil : {total - echecs}/{total} scénarios passés")
     return 0 if total and not echecs else 1

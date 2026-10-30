@@ -17,6 +17,12 @@ import { OdooAdmin } from "./odooAdmin";
 
 const CHANNEL = "discuss.channel";
 
+/** Odoo's notification setting as /discuss/settings/custom_notifications takes it: false is the default (mentions). */
+export type OdooNotifySetting = "all" | "mentions" | "no_notif" | false;
+
+/** What a device does while a browser of its user is active, as module 1.6 holds it (erplibre_browser_mode). */
+export type DeviceMode = "ring" | "wait" | "quiet";
+
 /** A system parameter of the tests' own, written then removed to clear Odoo's get_param cache. */
 const CACHE_FLUSH = "erplibre_mobile_sync.cache_bump";
 
@@ -76,12 +82,14 @@ export class ChatPeer {
 
 	/**
 	 * A new channel (channel_type "channel") created by chat_user, open to
-	 * internal users; admin invited unless invite is false; its id.
+	 * internal users; admin invited unless invite is false, and the
+	 * partners of partners invited too; its id.
 	 */
-	async channel(name: string, opts: { invite?: boolean } = {}): Promise<number> {
+	async channel(name: string, opts: { invite?: boolean; partners?: number[] } = {}): Promise<number> {
 		await this.user.execute(CHANNEL, "channel_create", [name, null]);
 		const id = await this.idByName(name);
-		if (opts.invite ?? true) await this.user.execute(CHANNEL, "add_members", [[id]], { partner_ids: [this.adminPartnerId] });
+		const invited = [...((opts.invite ?? true) ? [this.adminPartnerId] : []), ...(opts.partners ?? [])];
+		if (invited.length) await this.user.execute(CHANNEL, "add_members", [[id]], { partner_ids: invited });
 		return id;
 	}
 
@@ -220,28 +228,82 @@ export class ChatPeer {
 	}
 
 	/**
-	 * The device of endpoint marked quiet while a browser is online (quiet
-	 * true) or not, through the module's route in the web session of
-	 * session (the app's own: the mark keeps the hash of the session that
-	 * calls it, which tells the app's bus from a browser). Throws unless
-	 * Odoo answers ok.
+	 * The device of endpoint marked through the module's route
+	 * (/erplibre_mobile_chat/push/device) with params, in the web session
+	 * of session (the app's own: the mark keeps the hash of the session
+	 * that calls it, which tells the app's bus from a browser). Throws
+	 * unless Odoo answers ok.
 	 */
-	async markDeviceQuiet(session: { sessionId: string }, endpoint: string, quiet: boolean): Promise<void> {
+	private async markDevice(session: { sessionId: string }, endpoint: string, params: Record<string, unknown>): Promise<void> {
 		const response = await fetch(`${this.target.url}/erplibre_mobile_chat/push/device`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Cookie: `session_id=${session.sessionId}` },
-			body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: { endpoint, quiet_while_online: quiet } }),
+			body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: { endpoint, ...params } }),
 		});
 		const body: any = await response.json();
 		if (body.error || body.result?.ok !== true) throw new Error(`device not marked: ${JSON.stringify(body.error ?? body.result)}`);
 	}
 
-	/** The device of endpoint as the module holds it: its id and marks; null when Odoo holds none. */
-	async appDevice(endpoint: string): Promise<{ id: number; app: boolean; quiet: boolean } | null> {
+	/**
+	 * The device of endpoint marked as a 1.5 app marks it (markDevice):
+	 * quiet_while_online alone, which module 1.6 takes as mode quiet (true)
+	 * or ring (false) with the payload v 1.
+	 */
+	markDeviceQuiet(session: { sessionId: string }, endpoint: string, quiet: boolean): Promise<void> {
+		return this.markDevice(session, endpoint, { quiet_while_online: quiet });
+	}
+
+	/** The device of endpoint marked as a 1.6 app marks it (markDevice): browser_mode, which brings the payload v 2. */
+	markDeviceMode(session: { sessionId: string }, endpoint: string, mode: DeviceMode): Promise<void> {
+		return this.markDevice(session, endpoint, { browser_mode: mode });
+	}
+
+	/**
+	 * The device of endpoint as the module holds it: its id, whether an app
+	 * marked it, its browser mode and the version of the payload it gets
+	 * (module 1.6); null when Odoo holds none.
+	 */
+	async appDevice(endpoint: string): Promise<{ id: number; app: boolean; mode: DeviceMode; payloadV: number } | null> {
 		const [row] = await this.admin.searchRead(
-			"mail.push.device", [["endpoint", "=", endpoint]], ["erplibre_app", "erplibre_quiet_while_online"],
+			"mail.push.device", [["endpoint", "=", endpoint]], ["erplibre_app", "erplibre_browser_mode", "erplibre_payload_v"],
 		);
-		return row ? { id: row.id, app: row.erplibre_app, quiet: row.erplibre_quiet_while_online } : null;
+		return row ? { id: row.id, app: row.erplibre_app, mode: row.erplibre_browser_mode, payloadV: row.erplibre_payload_v } : null;
+	}
+
+	/** The general channel setting of the user of login (res.users.settings.channel_notifications; false: Odoo's default, mentions). */
+	async generalNotifyOf(login: string): Promise<OdooNotifySetting> {
+		const [user] = await this.admin.searchRead("res.users", [["login", "=", login]], ["id"]);
+		if (!user) throw new Error(`user ${login} not found`);
+		const [row] = await this.admin.searchRead("res.users.settings", [["user_id", "=", user.id]], ["channel_notifications"]);
+		return row?.channel_notifications ?? false;
+	}
+
+	/**
+	 * The general channel setting of the user whose web session is given,
+	 * set as their browser's settings do (/discuss/settings/custom_notifications
+	 * without a channel). Odoo refuses "mentions" there: false is its value.
+	 */
+	async setGeneralNotify(session: OdooAdmin, value: Exclude<OdooNotifySetting, "mentions">): Promise<void> {
+		await session.jsonRoute("/discuss/settings/custom_notifications", { custom_notifications: value });
+	}
+
+	/** The setting of the member of the user of login in the conversation (custom_notifications; false: the general one applies). */
+	async customNotifyOf(login: string, channelId: number): Promise<OdooNotifySetting> {
+		const row = await this.memberOf(channelId, await this.partnerOf(login), ["custom_notifications"]);
+		if (!row) throw new Error(`${login} is not a member of ${channelId}`);
+		return row.custom_notifications;
+	}
+
+	/** The setting of the conversation for the user whose web session is given, set as their browser does (same route, with the channel). */
+	async setChannelNotify(session: OdooAdmin, channelId: number, value: OdooNotifySetting): Promise<void> {
+		await session.jsonRoute("/discuss/settings/custom_notifications", { custom_notifications: value, channel_id: channelId });
+	}
+
+	/** A web session of the user of login, as their browser holds one (sessionLogin done), for the setters above. */
+	async webSession(login: Login): Promise<OdooAdmin> {
+		const session = new OdooAdmin(this.target, login);
+		await session.sessionLogin();
+		return session;
 	}
 
 	/**
@@ -301,11 +363,14 @@ export class ChatPeer {
 	}
 
 	/**
-	 * Posts text as chat_user, mentioning admin when asked, with the
+	 * Posts text as chat_user, mentioning admin when asked, everyone (the
+	 * composer's @everyone: special_mentions) when asked, with the
 	 * attachments upload() gave; the new message's id.
 	 */
 	async post(
-		channelId: number, text: string, opts: { mentionAdmin?: boolean; attachments?: { id: number; token: string | false }[] } = {},
+		channelId: number,
+		text: string,
+		opts: { mentionAdmin?: boolean; everyone?: boolean; attachments?: { id: number; token: string | false }[] } = {},
 	): Promise<number> {
 		const files = opts.attachments ?? [];
 		const result = await this.user.jsonRoute("/mail/message/post", {
@@ -316,6 +381,7 @@ export class ChatPeer {
 				message_type: "comment",
 				subtype_xmlid: "mail.mt_comment",
 				...(opts.mentionAdmin ? { partner_ids: [this.adminPartnerId] } : {}),
+				...(opts.everyone ? { special_mentions: ["everyone"] } : {}),
 				...(files.length ? { attachment_ids: files.map((f) => f.id) } : {}),
 			},
 			...(files.length ? { attachment_tokens: files.map((f) => f.token) } : {}),
