@@ -28,6 +28,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 from script.todo import turn_client as tc
 
@@ -488,6 +489,48 @@ class TestAllocateUdp(FakeCase):
             "127.0.0.1", server.port, "udp", USER, KEY, timeout=3
         )
         self.assertEqual(result, tc.Allocation(False, None, "integrity"))
+
+
+class TestResolution(unittest.TestCase):
+    """La résolution du nom compte dans le budget : un résolveur muet ne
+    doit pas retenir l'appel au-delà de `timeout`."""
+
+    def stalled_resolver(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def getaddrinfo(*_args, **_kwargs):
+            release.wait(10)
+            raise socket.gaierror("résolveur muet")
+
+        patcher = mock.patch.object(tc.socket, "getaddrinfo", getaddrinfo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_allocate_stalled_resolver_is_a_timeout_within_the_budget(self):
+        self.stalled_resolver()
+        start = time.monotonic()
+        result = tc.allocate(
+            "turn.exemple.test", 3478, "udp", USER, KEY, timeout=0.5
+        )
+        self.assertLess(time.monotonic() - start, 1.5)
+        self.assertEqual(result, tc.Allocation(False, None, "timeout"))
+
+    def test_binding_stalled_resolver_is_none_within_the_budget(self):
+        self.stalled_resolver()
+        start = time.monotonic()
+        self.assertIsNone(tc.binding("turn.exemple.test", 3478, timeout=0.5))
+        self.assertLess(time.monotonic() - start, 1.5)
+
+    def test_unknown_name_is_unreachable(self):
+        def getaddrinfo(*_args, **_kwargs):
+            raise socket.gaierror("nom inconnu")
+
+        with mock.patch.object(tc.socket, "getaddrinfo", getaddrinfo):
+            result = tc.allocate(
+                "turn.exemple.test", 3478, "udp", USER, KEY, timeout=2
+            )
+        self.assertEqual(result, tc.Allocation(False, None, "unreachable"))
 
 
 class TestAllocateStream(FakeCase):
