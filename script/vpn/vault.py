@@ -269,8 +269,22 @@ class VpnVault:
         Seules les clés PRÉSENTES dans `values` sont touchées : le menu
         laisse passer un champ pour le garder tel quel. Une chaîne vide,
         elle, efface — c'est une décision, pas un oubli.
+
+        L'écriture passe par `kdbx_write.writing` : verrou partagé avec le
+        courriel et le service, relecture du disque, puis écriture
+        atomique en 0600. L'entrée est cherchée APRÈS la relecture.
         """
-        kdbx = self._open()
+        from script.todo import kdbx_write
+
+        try:
+            with kdbx_write.writing(self._open()) as write:
+                self._write_entry(write.kp, title, values)
+        except kdbx_write.KdbxBusy as exc:
+            raise VaultError(str(exc)) from exc
+        # Filet pour un coffre enregistré hors de `writing`.
+        self.protect()
+
+    def _write_entry(self, kdbx, title: str, values: dict) -> None:
         entry = kdbx.find_entries_by_title(title, first=True)
         if entry is None:
             entry = kdbx.add_entry(
@@ -288,10 +302,6 @@ class VpnVault:
             if field in ("username", "password"):
                 continue
             entry.set_custom_property(field, value or "", protect=True)
-        kdbx.save()
-        # Sans ceci, l'enregistrement qu'on vient de faire aurait rendu le
-        # coffre lisible par toute la machine.
-        self.protect()
 
     def _group(self, kdbx):
         group = kdbx.find_groups(name=VAULT_GROUP, first=True)

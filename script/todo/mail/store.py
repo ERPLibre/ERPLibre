@@ -56,6 +56,12 @@ OUTBOX_REDIRECT_GUARD = b"\r\n"
 # Une réservation de la file plus vieille que ce délai, en secondes, est
 # celle d'un processus mort en plein envoi : une autre vidange la reprend.
 OUTBOX_CLAIM_STALE_S = 600
+# Attente, en secondes, d'une base tenue en écriture par un autre processus
+# (le client et le service partagent `cache.db`) avant `database is locked`.
+# Valeur par défaut de `sqlite3`, rendue explicite : aucun écrivain public
+# ne garde de transaction ouverte, l'attente réelle se compte donc en
+# millisecondes.
+STORE_BUSY_TIMEOUT_S = 5.0
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -546,7 +552,11 @@ class Store:
             # `check_same_thread=False` parce que le TUI synchronise dans un
             # thread de travail : sans ça, la première passe lèverait
             # ProgrammingError. La sûreté vient du verrou, pas de ce drapeau.
-            conn = sqlite3.connect(db_path, check_same_thread=False)
+            conn = sqlite3.connect(
+                db_path,
+                check_same_thread=False,
+                timeout=STORE_BUSY_TIMEOUT_S,
+            )
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA foreign_keys = ON")
             conn.executescript(SCHEMA)
@@ -660,12 +670,26 @@ class Store:
                 f" {t('mail_err_mode_requires_key_no_vault')}"
             )
         ref = self.account.cache_key_ref()
+        # Chemin rapide : une clé présente se lit sans verrou ni relecture
+        # du coffre, qui coûteraient une dérivation de clé par compte.
         stored = self._secrets.get(ref)
         if stored is None:
-            self._key = new_key()
-            self._secrets.set(ref, base64.b64encode(self._key).decode())
-        else:
-            self._key = base64.b64decode(stored)
+            update = getattr(self._secrets, "update", None)
+            if callable(update):
+                # Créée SOUS le verrou du coffre, si elle manque encore
+                # après relecture : deux processus qui ouvrent ensemble un
+                # cache neuf gardent la même clé, au lieu d'en tirer deux
+                # dont l'une chiffrerait des messages illisibles ensuite.
+                stored = update(
+                    ref,
+                    lambda current: (
+                        current or base64.b64encode(new_key()).decode()
+                    ),
+                )
+            else:
+                stored = base64.b64encode(new_key()).decode()
+                self._secrets.set(ref, stored)
+        self._key = base64.b64decode(stored)
         return self._key
 
     # -- Scellement -----------------------------------------------------

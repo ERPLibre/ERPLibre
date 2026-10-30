@@ -22,19 +22,22 @@ configuration de celui qui déploie. Un champ vide est donc l'état NORMAL
 d'une installation neuve, et le message le dit plutôt que de laisser le
 fournisseur répondre « invalid_client ».
 """
+
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import http.server
+import inspect
 import json
 import os
 import secrets
 import time
-import webbrowser
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 from dataclasses import dataclass
 
 from script.todo.todo_i18n import t
@@ -405,25 +408,98 @@ def secret_for(account, secrets, *, config_get=None, refresh_fn=None) -> str:
     Un jeton périmé se rafraîchit ici, et le jeu neuf est rangé au coffre
     AUSSITÔT : sans cette écriture, chaque ouverture de session rafraîchirait
     de nouveau, et le fournisseur compte ces échanges.
+
+    Le rafraîchissement d'une référence `kdbx:` se fait sous un verrou
+    propre à la référence, partagé entre processus, et part du jeu RELU sur
+    le disque : un processus dont la base en mémoire est ancienne
+    rafraîchirait sinon avec un jeton de rafraîchissement qu'un autre a
+    déjà fait tourner, et un fournisseur qui détecte la réutilisation
+    refuse, voire révoque toute la famille de jetons.
     """
     if getattr(account, "auth", "login") != "oauth":
         return secrets.get(account.secret_ref) or ""
 
-    jeu = TokenSet.from_json(secrets.get(account.refresh_token_ref()))
+    ref = account.refresh_token_ref()
+    jeu = TokenSet.from_json(secrets.get(ref))
     if not jeu.refresh_token:
         raise RefreshRefused(t("mail_err_no_refresh_token"))
     if not jeu.is_stale():
         return jeu.access_token
 
     reglages = settings_for(account, config_get)
-    neuf = (refresh_fn or refresh)(
-        jeu,
-        token_url=reglages["token_url"],
-        client_id=reglages["client_id"],
-        client_secret=reglages.get("client_secret", ""),
-    )
-    secrets.set(account.refresh_token_ref(), neuf.to_json())
-    return neuf.access_token
+
+    def echanger(tokens: TokenSet) -> TokenSet:
+        return (refresh_fn or refresh)(
+            tokens,
+            token_url=reglages["token_url"],
+            client_id=reglages["client_id"],
+            client_secret=reglages.get("client_secret", ""),
+        )
+
+    if not _relit_et_fusionne(secrets):
+        neuf = echanger(jeu)
+        secrets.set(ref, neuf.to_json())
+        return neuf.access_token
+
+    verrou = contextlib.nullcontext()
+    if ref.startswith("kdbx:"):
+        # Le trousseau n'offre pas de verrou entre processus : seule une
+        # référence du kdbx en a un.
+        from script.todo import kdbx_write
+
+        verrou = kdbx_write.refresh_lock(ref)
+    with verrou:
+        return _rafraichir(ref, secrets, echanger)
+
+
+def _relit_et_fusionne(secrets) -> bool:
+    """Vrai si `secrets` sait relire le disque (`get(..., fresh=)`) et
+    écrire d'un seul tenant (`update`) ; faux pour un coffre minimal, qui
+    garde la lecture simple puis `set`."""
+    if not callable(getattr(secrets, "update", None)):
+        return False
+    try:
+        parametres = inspect.signature(secrets.get).parameters
+    except (TypeError, ValueError):
+        return False
+    return "fresh" in parametres
+
+
+def _rafraichir(ref: str, secrets, echanger) -> str:
+    """Le rafraîchissement, verrou de la référence tenu.
+
+    Le jeu relu sur le disque n'est plus périmé : un autre processus a
+    rafraîchi, son jeton d'accès sert, sans réseau. Un refus du
+    fournisseur alors que le coffre porte désormais un AUTRE jeton de
+    rafraîchissement (écrit hors verrou, par un éditeur ou le trousseau)
+    donne UN nouvel essai avec celui-là. L'écriture fusionne : un jeu
+    frais au jeton de rafraîchissement différent, écrit entre-temps, est
+    gardé plutôt qu'écrasé.
+    """
+    jeu = TokenSet.from_json(secrets.get(ref, fresh=True))
+    if not jeu.refresh_token:
+        raise RefreshRefused(t("mail_err_no_refresh_token"))
+    if not jeu.is_stale():
+        return jeu.access_token
+    try:
+        neuf = echanger(jeu)
+    except RefreshRefused:
+        relu = TokenSet.from_json(secrets.get(ref, fresh=True))
+        if not relu.refresh_token or relu.refresh_token == jeu.refresh_token:
+            raise
+        if not relu.is_stale():
+            return relu.access_token
+        jeu = relu
+        neuf = echanger(jeu)
+
+    def fusion(courant):
+        actuel = TokenSet.from_json(courant)
+        if actuel.refresh_token != jeu.refresh_token and not actuel.is_stale():
+            return None
+        return neuf.to_json()
+
+    garde = secrets.update(ref, fusion)
+    return TokenSet.from_json(garde).access_token
 
 
 def refresh(

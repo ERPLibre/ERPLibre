@@ -274,14 +274,22 @@ class Syncer:
         # une erreur claire : le serveur refuse la connexion suivante.
         self.parallele = max(1, int(parallele or 1))
 
-    def sync(self, progress=None) -> SyncReport:
+    def sync(self, progress=None, only=None) -> SyncReport:
         """Une passe sur tous les dossiers du compte.
 
         `progress(dossier, faits, total)` est appelé depuis PLUSIEURS fils
         dès qu'un second lien sert : ce qu'on lui passe doit supporter
         d'être appelé de front.
+
+        `only`, un prédicat sur `FolderInfo`, restreint la passe aux
+        dossiers qu'il retient, après le retrait des vues redondantes. Un
+        dossier écarté n'est ni sélectionné ni retiré du cache : il garde
+        ce qu'une passe complète y a laissé.
         """
-        lots = self._lots(self._a_synchroniser())
+        dossiers = self._a_synchroniser()
+        if only is not None:
+            dossiers = [d for d in dossiers if only(d)]
+        lots = self._lots(dossiers)
         if len(lots) == 1:
             return self._sync_lot(lots[0], progress)
         return self._sync_parallele(lots, progress)

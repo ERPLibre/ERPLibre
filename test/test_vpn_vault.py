@@ -68,6 +68,9 @@ class VpnVaultRoundTrip(unittest.TestCase):
             )
         self.private = os.path.join(self.tmp.name, "private.json")
         self.patches = [
+            # Le verrou d'écriture du coffre vit sous ~/.erplibre/locks :
+            # le dossier personnel est celui du test.
+            patch.dict(os.environ, {"HOME": self.tmp.name}),
             patch("script.config.config_file.CONFIG_FILE", self.base),
             patch(
                 "script.config.config_file.CONFIG_OVERRIDE_FILE",
@@ -165,6 +168,32 @@ class VpnVaultRoundTrip(unittest.TestCase):
     def test_stored_master_password_is_reported(self):
         self.assertTrue(self.vault.master_password_is_stored())
 
+    def test_write_rereads_and_keeps_0600(self):
+        """Le coffre ouvert d'avance par le menu ne fait pas perdre une
+        entrée qu'un autre processus a écrite depuis, et sort en 0600
+        quel que soit l'umask."""
+        from pykeepass import PyKeePass
+
+        self.vault.read(TITLE, fields=("psk",))
+        autre = PyKeePass(self.kdbx_path, password=MASTER)
+        autre.add_entry(autre.root_group, "Courriel", "", "s")
+        autre.save()
+        os.chmod(self.kdbx_path, 0o600)
+        ancien = os.umask(0o022)
+        try:
+            # `protect` neutralisé : le mode vient de l'écriture elle-même.
+            with patch.object(self.vault, "protect", return_value=False):
+                self.vault.write(TITLE, {"password": "ppp", "psk": PSK})
+        finally:
+            os.umask(ancien)
+        relu = PyKeePass(self.kdbx_path, password=MASTER)
+        self.assertIsNotNone(
+            relu.find_entries_by_title("Courriel", first=True)
+        )
+        self.assertIsNotNone(relu.find_entries_by_title(TITLE, first=True))
+        mode = stat.S_IMODE(os.stat(self.kdbx_path).st_mode)
+        self.assertEqual(mode, 0o600, oct(mode))
+
 
 @unittest.skipUnless(create_database, "pykeepass n'est pas installé")
 class VpnVaultBootstrap(unittest.TestCase):
@@ -175,6 +204,9 @@ class VpnVaultBootstrap(unittest.TestCase):
             json.dump({"kdbx": {"path": "", "password": ""}}, fh)
         self.private = os.path.join(self.tmp.name, "private.json")
         self.patches = [
+            # Le verrou d'écriture du coffre vit sous ~/.erplibre/locks :
+            # le dossier personnel est celui du test.
+            patch.dict(os.environ, {"HOME": self.tmp.name}),
             patch("script.config.config_file.CONFIG_FILE", self.base),
             patch(
                 "script.config.config_file.CONFIG_OVERRIDE_FILE",
@@ -301,6 +333,9 @@ class VaultToTunnel(unittest.TestCase):
                 fh,
             )
         self.patches = [
+            # Le verrou d'écriture du coffre vit sous ~/.erplibre/locks :
+            # le dossier personnel est celui du test.
+            patch.dict(os.environ, {"HOME": self.tmp.name}),
             patch("script.config.config_file.CONFIG_FILE", self.base),
             patch(
                 "script.config.config_file.CONFIG_OVERRIDE_FILE",

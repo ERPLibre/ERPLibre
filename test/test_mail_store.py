@@ -3,9 +3,16 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Argon2 remplacé pour tout le module : voir argon2_rapide.py.
+from argon2_rapide import setUpModule  # noqa: E402,F401
 
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.crypto import CryptoError, new_key
@@ -881,6 +888,94 @@ class TestTheUnreadCountIsMaintained(StoreCase):
         self.store.forget_message(self.fid, 1)
         self.store.forget_message(self.fid, 3)
         self.assertEqual(self._unseen(), 0)
+
+
+class TestNoOpenTransaction(StoreCase):
+    """Le client et le service partagent `cache.db` : un écrivain qui
+    laisse sa transaction ouverte ferait attendre l'autre processus
+    `STORE_BUSY_TIMEOUT_S` entières."""
+
+    def assert_closed(self, geste):
+        self.assertFalse(self.store._conn.in_transaction, geste)
+
+    def test_no_public_writer_leaves_a_transaction_open(self):
+        from script.todo.mail.store import STORE_BUSY_TIMEOUT_S
+
+        self.assertEqual(STORE_BUSY_TIMEOUT_S, 5.0)
+        dossier = self.store.upsert_folder("INBOX", role="inbox")
+        self.assert_closed("upsert_folder")
+        self.store.upsert_messages(dossier, [meta(1), meta(2)])
+        self.assert_closed("upsert_messages")
+        self.store.set_folder_state("INBOX", last_uid=2, uidvalidity=7)
+        self.assert_closed("set_folder_state")
+        self.store.update_flags(dossier, 1, "\\Seen")
+        self.assert_closed("update_flags")
+        ident = self.store.queue_message(b"Subject: x\r\n\r\ncorps", "", "x")
+        self.assert_closed("queue_message")
+        self.assertTrue(self.store.outbox_claim(ident, 1000))
+        self.assert_closed("outbox_claim")
+        self.store.rule_log_claim("regle", "cle", outcome="pending", at=1000)
+        self.assert_closed("rule_log_claim")
+
+
+class TestKeyInSharedVault(unittest.TestCase):
+    """La clé d'un cache chiffré dans un vrai kdbx, ouvert par deux
+    processus à la fois (deux bases ouvertes avant toute clé)."""
+
+    def setUp(self):
+        from script.todo.mail.secrets import create_kdbx
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dossier = Path(tmp.name)
+        maison = mock.patch.dict(os.environ, {"HOME": tmp.name})
+        maison.start()
+        self.addCleanup(maison.stop)
+        self.kdbx = self.dossier / "coffre.kdbx"
+        create_kdbx(str(self.kdbx), "maitre-essai")
+        self.account = account_from_preset(
+            "perso", "boite.regles@example.org", "generic"
+        )
+
+    def magasin(self):
+        from pykeepass import PyKeePass
+
+        from script.todo.mail.secrets import SecretStore
+
+        kp = PyKeePass(str(self.kdbx), password="maitre-essai")
+        return SecretStore(
+            kdbx_manager=SimpleNamespace(get_kdbx=lambda: kp),
+            use_keyring=False,
+        )
+
+    def store(self, secrets, base):
+        store = Store(
+            self.account, mode="encrypted", secrets=secrets, base=base
+        )
+        store.open()
+        self.addCleanup(store.close)
+        return store
+
+    def test_two_stores_opening_a_new_encrypted_cache_share_one_key(self):
+        premier_coffre, second_coffre = self.magasin(), self.magasin()
+        premier = self.store(premier_coffre, self.dossier / "a")
+        second = self.store(second_coffre, self.dossier / "b")
+        self.assertIsNotNone(premier._key)
+        self.assertEqual(premier._key, second._key)
+        import base64
+
+        garde = self.magasin().get(self.account.cache_key_ref())
+        self.assertEqual(base64.b64decode(garde), premier._key)
+
+    def test_an_existing_cache_key_is_read_without_the_write_lock(self):
+        from script.todo import kdbx_write
+
+        cle = self.store(self.magasin(), self.dossier / "a")._key
+        with mock.patch.object(
+            kdbx_write, "writing", side_effect=AssertionError("verrou pris")
+        ):
+            relu = self.store(self.magasin(), self.dossier / "b")
+        self.assertEqual(relu._key, cle)
 
 
 if __name__ == "__main__":

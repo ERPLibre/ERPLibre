@@ -10,6 +10,12 @@ règlent par affectation directe, les boutons par `Button.press()`, et les
 écritures, qui tournent dans des fils de travail, s'attendent par
 `app.workers.wait_for_complete()`. Aucun test ne passe par
 `browse_one_path`, qui suspend l'application.
+
+L'état du service sans interface vient de `MailApp.service_status_fn`,
+remplacé par un état vide : aucun test n'interroge le systemd de la
+machine. En filet, `subprocess.run` et `subprocess.Popen` sont remplacés
+par des doubles qui notent l'appel et lèvent ; `tearDown` vérifie qu'aucun
+n'a été appelé.
 """
 
 import json
@@ -18,6 +24,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.rules import storage
@@ -34,6 +41,7 @@ from script.todo.mail.rules.model import (
     Group,
     new_rule,
 )
+from script.todo.mail.service import ServiceStatus
 from script.todo.mail.smtp_send import build_message
 from script.todo.mail.store import MessageMeta, Store
 from script.todo.mail.tui import MailboxRef, Session
@@ -60,6 +68,13 @@ class RulesCase(unittest.IsolatedAsyncioTestCase):
         self.home = tempfile.TemporaryDirectory()
         self.ancien_home = os.environ.get("HOME")
         os.environ["HOME"] = self.home.name
+        self.appels_systeme = []
+        for nom in ("run", "Popen"):
+            filet = mock.patch(
+                f"subprocess.{nom}", side_effect=self._appel_systeme
+            )
+            filet.start()
+            self.addCleanup(filet.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.base = Path(self.tmp.name)
         self.account = account_from_preset("perso", OWN, "generic")
@@ -89,6 +104,10 @@ class RulesCase(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    def _appel_systeme(self, *args, **kwargs):
+        self.appels_systeme.append(args[0] if args else kwargs.get("args"))
+        raise AssertionError(f"programme lancé par un test TUI : {args!r}")
+
     def tearDown(self):
         self.store.close()
         self.tmp.cleanup()
@@ -97,6 +116,7 @@ class RulesCase(unittest.IsolatedAsyncioTestCase):
         else:
             os.environ["HOME"] = self.ancien_home
         self.home.cleanup()
+        self.assertEqual(self.appels_systeme, [])
 
     def _app(self, store=None):
         import textual.app
@@ -126,6 +146,7 @@ class RulesCase(unittest.IsolatedAsyncioTestCase):
         finally:
             textual.app.App.__init__ = orig
         app = captured[-1]
+        app.service_status_fn = lambda: ServiceStatus()
         app.current_ref = MailboxRef(
             account_name="perso",
             folder_name="INBOX",
@@ -273,6 +294,112 @@ class TestOpening(RulesCase):
             self.assertNotIn(t("mail_rules_ephemeral"), banniere)
             with self.assertRaises(NoMatches):
                 app.screen.query_one("#rules_table")
+
+
+class TestServiceLine(RulesCase):
+    """La ligne d'état du service sans interface, sous la table."""
+
+    async def test_the_rules_screen_shows_the_service_state(self):
+        from script.todo.mail import service
+
+        app = self._app()
+        # Sans source propre à l'application, l'écran lit `service.status`.
+        app.service_status_fn = None
+        with mock.patch.object(
+            service, "status", return_value=ServiceStatus()
+        ) as lecture:
+            async with app.run_test(size=self.SIZE) as pilot:
+                await self.open_rules(app, pilot)
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                ligne = self.text_of(app, "#rules_service")
+        lecture.assert_called_once_with()
+        self.assertIn(t("mail_service_status_not_installed"), ligne)
+        self.assertTrue(ligne.startswith(t("mail_service_status_title")))
+
+    async def test_a_slow_service_state_does_not_block_the_screen(self):
+        import threading
+
+        relache = threading.Event()
+        self.addCleanup(relache.set)
+
+        def lente():
+            relache.wait(10)
+            return ServiceStatus(installed=True, active=True, interval_min=7)
+
+        app = self._app()
+        app.service_status_fn = lente
+        async with app.run_test(size=self.SIZE) as pilot:
+            try:
+                await self.open_rules(app, pilot)
+                self.assertEqual(
+                    self.text_of(app, "#rules_service"),
+                    t("mail_service_status_reading"),
+                )
+                # Une touche de l'écran agit pendant la lecture.
+                await pilot.press("l")
+                await pilot.pause()
+                self.assertEqual(type(app.screen).__name__, "RuleLogScreen")
+                await pilot.press("escape")
+                await pilot.pause()
+                self.assertEqual(type(app.screen).__name__, "RulesScreen")
+            finally:
+                relache.set()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            ligne = self.text_of(app, "#rules_service")
+        self.assertIn(t("mail_service_status_active").format(n=7), ligne)
+
+    async def test_an_ephemeral_account_has_no_service_line(self):
+        from textual.css.query import NoMatches
+
+        appels = []
+        store = Store(self.account, mode="ephemeral", base=self.base)
+        store.open()
+        self.addCleanup(store.close)
+        app = self._app(store)
+        app.service_status_fn = lambda: appels.append(1) or ServiceStatus()
+        async with app.run_test(size=self.SIZE) as pilot:
+            await self.open_rules(app, pilot)
+            await app.workers.wait_for_complete()
+            with self.assertRaises(NoMatches):
+                app.screen.query_one("#rules_service")
+        self.assertEqual(appels, [])
+
+    async def test_a_failing_state_reader_shows_unknown(self):
+        def cassee():
+            raise RuntimeError("bus muet")
+
+        app = self._app()
+        app.service_status_fn = cassee
+        with self.assertLogs("script.todo.mail.tui", "ERROR"):
+            async with app.run_test(size=self.SIZE) as pilot:
+                await self.open_rules(app, pilot)
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                ligne = self.text_of(app, "#rules_service")
+        self.assertIn(t("mail_service_status_unknown"), ligne)
+        self.assertNotIn("bus muet", ligne)
+
+    async def test_no_tui_test_reaches_systemctl(self):
+        import subprocess
+
+        from script.todo.mail import credential, service
+
+        # Le filet du socle couvre les modules qui lancent systemctl.
+        for module in (service, credential):
+            with self.assertRaises(AssertionError):
+                module.subprocess.run(["systemctl", "--user", "show"])
+            with self.assertRaises(AssertionError):
+                module.subprocess.Popen(["systemctl", "--user", "show"])
+        self.assertIs(service.subprocess, subprocess)
+        self.appels_systeme.clear()
+        app = self._app()
+        async with app.run_test(size=self.SIZE) as pilot:
+            await self.open_rules(app, pilot)
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        self.assertEqual(self.appels_systeme, [])
 
 
 class TestFilterEditor(RulesCase):

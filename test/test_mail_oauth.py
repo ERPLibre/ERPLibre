@@ -16,9 +16,21 @@ client doit les distinguer, parce que le remède diffère à chaque fois :
 Les tests parlent à un faux point de jeton sur 127.0.0.1 : rien ne sort de
 la machine, et les pannes sont commandées plutôt qu'attendues.
 """
-import json
-import unittest
 
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import textwrap
+import time
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
+
+# Argon2 remplacé pour tout le module : voir argon2_rapide.py.
+from argon2_rapide import setUpModule  # noqa: F401
 from oauth_fake_server import (
     ACCESS_TOKEN,
     Cut,
@@ -610,8 +622,10 @@ class LiveSessionCase(unittest.TestCase):
         flush_outbox(
             en_ligne,
             send_fn=lambda a, m, t: ["a@y.ca"],
-            connect_fn=lambda a, secret: vus.append(secret)
-            or type("T", (), {"quit": lambda self: None})(),
+            connect_fn=lambda a, secret: (
+                vus.append(secret)
+                or type("T", (), {"quit": lambda self: None})()
+            ),
         )
         self.assertEqual(vus, ["tout-neuf"])
 
@@ -720,6 +734,215 @@ class ReconnectCase(unittest.TestCase):
         )
         self.assertEqual(session.sync(), "rapport")
         self.assertEqual(vus, [])
+
+
+REPO = Path(__file__).resolve().parents[1]
+TEST_DIR = Path(__file__).resolve().parent
+MAITRE = "maitre-essai"
+
+
+class LockedRefreshCase(unittest.TestCase):
+    """Le rafraîchissement d'un jeton rangé dans un vrai kdbx, partagé
+    entre plusieurs bases ouvertes ou processus.
+
+    Chaque ouverture prend la base telle qu'elle est sur le disque à cet
+    instant : une base ouverte d'avance est celle d'un client resté
+    ouvert pendant qu'un autre processus écrivait.
+    """
+
+    def setUp(self):
+        from script.todo.mail.accounts import account_from_preset
+        from script.todo.mail.secrets import create_kdbx
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dossier = Path(tmp.name)
+        maison = mock.patch.dict(os.environ, {"HOME": tmp.name})
+        maison.start()
+        self.addCleanup(maison.stop)
+        self.path = self.dossier / "coffre.kdbx"
+        create_kdbx(str(self.path), MAITRE)
+        self.compte = account_from_preset(
+            "perso", "boite.regles@example.org", "gmail", auth="oauth"
+        )
+        self.ref = self.compte.refresh_token_ref()
+        self.ranger(TokenSet(refresh_token="r1"))
+
+    def magasin(self):
+        from pykeepass import PyKeePass
+
+        from script.todo.mail.secrets import SecretStore
+
+        kp = PyKeePass(str(self.path), password=MAITRE)
+        return SecretStore(
+            kdbx_manager=SimpleNamespace(get_kdbx=lambda: kp),
+            use_keyring=False,
+        )
+
+    def ranger(self, jeu):
+        self.magasin().set(self.ref, jeu.to_json())
+
+    def lire(self):
+        return TokenSet.from_json(self.magasin().get(self.ref))
+
+    @staticmethod
+    def frais(rafraichir, acces):
+        return TokenSet(
+            refresh_token=rafraichir,
+            access_token=acces,
+            expires_at=time.time() + 3600,
+        )
+
+    def test_a_concurrent_refresh_keeps_the_newer_token(self):
+        from script.todo.mail.oauth import secret_for
+
+        def refresh_fn(jeu, **kwargs):
+            self.ranger(self.frais("r-autre", "a-autre"))
+            return self.frais("r2", "a2")
+
+        acces = secret_for(self.compte, self.magasin(), refresh_fn=refresh_fn)
+        self.assertEqual(acces, "a-autre")
+        self.assertEqual(self.lire().refresh_token, "r-autre")
+
+    def test_a_refresh_is_written_under_the_lock(self):
+        from script.todo import kdbx_write
+        from script.todo.mail.oauth import secret_for
+        from script.todo.mail.rules.lock import file_lock
+
+        verrou = kdbx_write.refresh_lock_path(self.ref)
+        tenus = []
+
+        def libre():
+            with file_lock(verrou, wait=0) as obtenu:
+                return obtenu
+
+        def refresh_fn(jeu, **kwargs):
+            tenus.append(("réseau", not libre()))
+            return self.frais("r2", "a2")
+
+        store = self.magasin()
+        ecrire = store.update
+
+        def update(ref, change):
+            tenus.append(("écriture", not libre()))
+            return ecrire(ref, change)
+
+        store.update = update
+        self.assertTrue(libre())
+        acces = secret_for(self.compte, store, refresh_fn=refresh_fn)
+        self.assertEqual(acces, "a2")
+        self.assertEqual(tenus, [("réseau", True), ("écriture", True)])
+        self.assertTrue(libre())
+        self.assertEqual(self.lire().refresh_token, "r2")
+
+    def test_a_stale_handle_uses_the_token_another_process_rotated(self):
+        from script.todo.mail.oauth import secret_for
+
+        client = self.magasin()
+        self.assertEqual(
+            TokenSet.from_json(client.get(self.ref)).refresh_token, "r1"
+        )
+        self.ranger(self.frais("r2", "a-tourne"))
+        refresh_fn = mock.Mock(side_effect=AssertionError("réseau"))
+        acces = secret_for(self.compte, client, refresh_fn=refresh_fn)
+        self.assertEqual(acces, "a-tourne")
+        refresh_fn.assert_not_called()
+
+    def test_a_refused_refresh_retries_once_with_a_rotated_token(self):
+        from script.todo.mail.oauth import secret_for
+
+        envoyes = []
+
+        def refresh_fn(jeu, **kwargs):
+            envoyes.append(jeu.refresh_token)
+            if jeu.refresh_token == "r1":
+                # Un éditeur hors verrou range un autre jeton, encore
+                # périmé, pendant que le fournisseur refuse l'ancien.
+                self.ranger(TokenSet(refresh_token="r-edite"))
+                raise RefreshRefused("invalid_grant")
+            return self.frais("r3", "a3")
+
+        acces = secret_for(self.compte, self.magasin(), refresh_fn=refresh_fn)
+        self.assertEqual(acces, "a3")
+        self.assertEqual(envoyes, ["r1", "r-edite"])
+        self.assertEqual(self.lire().refresh_token, "r3")
+
+    def test_a_refusal_without_rotation_is_not_retried(self):
+        from script.todo.mail.oauth import secret_for
+
+        refresh_fn = mock.Mock(side_effect=RefreshRefused("invalid_grant"))
+        with self.assertRaises(RefreshRefused):
+            secret_for(self.compte, self.magasin(), refresh_fn=refresh_fn)
+        self.assertEqual(refresh_fn.call_count, 1)
+        self.assertEqual(self.lire().refresh_token, "r1")
+
+    SCRIPT = textwrap.dedent(
+        """
+        import os, sys, time
+        sys.path.insert(0, {test_dir!r})
+        import argon2_rapide
+        argon2_rapide.setUpModule()
+        from types import SimpleNamespace
+        from pykeepass import PyKeePass
+        from script.todo.mail.accounts import account_from_preset
+        from script.todo.mail.oauth import TokenSet, secret_for
+        from script.todo.mail.secrets import SecretStore
+
+        kp = PyKeePass({path!r}, password={maitre!r})
+        store = SecretStore(
+            kdbx_manager=SimpleNamespace(get_kdbx=lambda: kp),
+            use_keyring=False,
+        )
+        compte = account_from_preset(
+            "perso", "boite.regles@example.org", "gmail", auth="oauth"
+        )
+
+        def refresh_fn(jeu, **kwargs):
+            time.sleep(0.5)
+            open(os.path.join({temoins!r}, str(os.getpid())), "w").close()
+            return TokenSet(
+                refresh_token="r2",
+                access_token="a2",
+                expires_at=time.time() + 3600,
+            )
+
+        while not os.path.exists({depart!r}):
+            time.sleep(0.01)
+        print(secret_for(compte, store, refresh_fn=refresh_fn))
+        """
+    )
+
+    def test_two_processes_refresh_only_once(self):
+        temoins = self.dossier / "temoins"
+        temoins.mkdir()
+        depart = self.dossier / "depart"
+        script = self.SCRIPT.format(
+            test_dir=str(TEST_DIR),
+            path=str(self.path),
+            maitre=MAITRE,
+            temoins=str(temoins),
+            depart=str(depart),
+        )
+        env = dict(os.environ, PYTHONPATH=str(REPO), HOME=str(self.dossier))
+        processus = [
+            subprocess.Popen(
+                [sys.executable, "-c", script],
+                cwd=str(REPO),
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for _ in range(2)
+        ]
+        time.sleep(0.5)
+        depart.write_text("go")
+        for proc in processus:
+            sortie, erreur = proc.communicate(timeout=60)
+            self.assertEqual(proc.returncode, 0, erreur)
+            self.assertEqual(sortie.strip(), "a2")
+        self.assertEqual(len(os.listdir(temoins)), 1)
+        self.assertEqual(self.lire().refresh_token, "r2")
 
 
 if __name__ == "__main__":

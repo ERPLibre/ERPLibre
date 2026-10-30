@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Ouverture du coffre KeePass depuis le CLI.
+"""Ouverture du coffre KeePass depuis le CLI, puis sans interface.
 
-Signalé à l'usage : une mauvaise saisie affichait une trace `construct` de
-quarante lignes, puis `pykeepass.exceptions.CredentialsError`, et tuait le
-CLI — `make: *** Error 1`. L'invite disait par ailleurs `enter_password`,
-la clé i18n brute, sans nommer ce qu'elle demandait.
+Un mot de passe refusé est le cas NORMAL de cette fonction : elle le dit
+sans laisser remonter `pykeepass.exceptions.CredentialsError`, laisse
+recommencer, et laisse partir. L'invite nomme le coffre qu'elle ouvre.
 
-Un mot de passe refusé est le cas NORMAL de cette fonction : elle doit le
-dire, laisser recommencer, et laisser partir.
+Sans interface (`interactive=False`), rien n'est demandé ni imprimé : la
+raison d'un échec se lit dans `last_error`, et l'échec est mémorisé.
 """
 
 import os
@@ -132,6 +131,125 @@ class TestRecoveryAndSuccess(KdbxCase):
             resultat = self._manager("mauvais").get_kdbx()
         self.assertIsNone(resultat)
         self.assertIn("KeePass", "\n".join(vues))
+
+
+class FakeConfig(dict):
+    """La configuration réduite à un dict ; une clé absente de premier
+    niveau lève `TypeError`, comme `ConfigFile.get_config_value`."""
+
+    def get_config_value(self, keys):
+        if keys[0] not in self:
+            raise TypeError("argument of type 'NoneType' is not iterable")
+        valeur = self[keys[0]]
+        for cle in keys[1:]:
+            valeur = valeur.get(cle) if isinstance(valeur, dict) else None
+        return valeur
+
+
+class TestNonInteractive(unittest.TestCase):
+    """Le service sans interface : rien n'est demandé ni imprimé."""
+
+    MAITRE = "maitre-essai"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.chemin = os.path.join(tmp.name, "coffre.kdbx")
+        create_database(self.chemin, password=self.MAITRE)
+        demande = MagicMock(side_effect=AssertionError("terminal demandé"))
+        fenetre = MagicMock()
+        fenetre.Tk.side_effect = AssertionError("fenêtre ouverte")
+        dit = MagicMock(side_effect=AssertionError("print appelé"))
+        for cible, double in (
+            ("getpass.getpass", demande),
+            ("script.todo.kdbx_manager.tk", fenetre),
+            ("builtins.print", dit),
+        ):
+            rustine = patch(cible, double)
+            rustine.start()
+            self.addCleanup(rustine.stop)
+
+    def manager(self, config, password=None):
+        return KdbxManager(config, password=password, interactive=False)
+
+    def test_never_asks_a_terminal_nor_a_file_dialog(self):
+        for config in (
+            FakeConfig(),
+            FakeConfig({"kdbx": {"path": ""}}),
+            FakeConfig({"kdbx": {"path": self.chemin}}),
+            FakeConfig({"kdbx": {"path": self.chemin, "password": "faux"}}),
+        ):
+            self.assertIsNone(self.manager(config).get_kdbx())
+
+    def test_the_given_password_opens_the_vault(self):
+        config = FakeConfig({"kdbx": {"path": self.chemin}})
+        manager = self.manager(config, password=self.MAITRE)
+        self.assertIsNotNone(manager.get_kdbx())
+        self.assertEqual(manager.last_error, "")
+
+    def test_the_configured_password_is_the_fallback(self):
+        config = FakeConfig(
+            {"kdbx": {"path": self.chemin, "password": self.MAITRE}}
+        )
+        self.assertIsNotNone(self.manager(config).get_kdbx())
+        # Le mot de passe donné passe devant celui de la configuration.
+        faux = FakeConfig({"kdbx": {"path": self.chemin, "password": "x"}})
+        self.assertIsNotNone(
+            self.manager(faux, password=self.MAITRE).get_kdbx()
+        )
+
+    def test_no_password_is_reported_not_raised(self):
+        manager = self.manager(FakeConfig({"kdbx": {"path": self.chemin}}))
+        self.assertIsNone(manager.get_kdbx())
+        self.assertEqual(manager.last_error, "no_password")
+
+    def test_a_wrong_password_is_tried_once_then_remembered(self):
+        from pykeepass import PyKeePass
+
+        appels = []
+
+        def compte(*args, **kwargs):
+            appels.append(1)
+            return PyKeePass(*args, **kwargs)
+
+        manager = self.manager(
+            FakeConfig({"kdbx": {"path": self.chemin}}), password="faux"
+        )
+        with patch("pykeepass.PyKeePass", side_effect=compte):
+            self.assertIsNone(manager.get_kdbx())
+            self.assertIsNone(manager.get_kdbx())
+            self.assertIsNone(manager.get_kdbx())
+        self.assertEqual(len(appels), 1)
+        self.assertEqual(manager.last_error, "wrong_password")
+
+    def test_a_missing_path_is_reported(self):
+        for config in (FakeConfig(), FakeConfig({"kdbx": {"path": ""}})):
+            manager = self.manager(config, password=self.MAITRE)
+            self.assertIsNone(manager.get_kdbx())
+            self.assertEqual(manager.last_error, "not_configured")
+        absent = os.path.join(os.path.dirname(self.chemin), "absent.kdbx")
+        manager = self.manager(
+            FakeConfig({"kdbx": {"path": absent}}), password=self.MAITRE
+        )
+        self.assertIsNone(manager.get_kdbx())
+        self.assertEqual(manager.last_error, "unreadable")
+
+    def test_a_tilde_path_is_expanded(self):
+        dossier = os.path.dirname(self.chemin)
+        with patch.dict(os.environ, {"HOME": dossier}):
+            manager = self.manager(
+                FakeConfig({"kdbx": {"path": "~/coffre.kdbx"}}),
+                password=self.MAITRE,
+            )
+            self.assertIsNotNone(manager.get_kdbx())
+
+    def test_a_missing_pykeepass_is_reported(self):
+        manager = self.manager(
+            FakeConfig({"kdbx": {"path": self.chemin}}), password=self.MAITRE
+        )
+        with patch.dict("sys.modules", {"pykeepass": None}):
+            self.assertIsNone(manager.get_kdbx())
+        self.assertEqual(manager.last_error, "no_pykeepass")
 
 
 if __name__ == "__main__":

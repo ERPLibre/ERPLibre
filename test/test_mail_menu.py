@@ -541,6 +541,10 @@ class TestCacheSizeAndPurge(unittest.TestCase):
         secrets.set.side_effect = lambda ref, value: vault.__setitem__(
             ref, value
         )
+        # Une clé de cache absente se crée par `update`, comme le coffre.
+        secrets.update.side_effect = lambda ref, change: vault.setdefault(
+            ref, change(vault.get(ref))
+        )
 
         with (
             patch.object(menu, "_load_accounts", return_value=[account]),

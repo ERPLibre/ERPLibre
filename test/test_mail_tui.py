@@ -136,6 +136,50 @@ class TestOpenSessions(SessionCase):
             s.close()
 
 
+class TestOpenSessionFailureKind(SessionCase):
+    """La famille de la panne d'ouverture, pour le service sans
+    interface ; le texte affiché par le client reste le même."""
+
+    def ouvrir(self, secrets, connect_fn):
+        from script.todo.mail.tui import open_session
+
+        session = open_session(
+            self.accounts[0], secrets, base=self.base, connect_fn=connect_fn
+        )
+        self.addCleanup(session.close)
+        return session
+
+    def test_open_session_records_the_failure_kind(self):
+        from script.todo.mail.secrets import MissingSecret
+        from script.todo.todo_i18n import t
+
+        class NoSecret:
+            def get(self, ref):
+                return None
+
+        session = self.ouvrir(NoSecret(), lambda a, p: FakeTransport())
+        self.assertEqual(session.error_kind, "vault")
+        self.assertIsInstance(session.exc, MissingSecret)
+        self.assertEqual(session.error, t("mail_no_password_stored"))
+
+        session = self.ouvrir(FakeSecrets(), FailingConnect("refus"))
+        self.assertEqual(session.error_kind, "network")
+        self.assertIsInstance(session.exc, OSError)
+        self.assertEqual(session.error, "refus")
+
+        session = self.ouvrir(FakeSecrets(), lambda a, p: FakeTransport())
+        self.assertEqual((session.error_kind, session.exc), ("", None))
+
+    def test_an_unreadable_cache_is_a_cache_failure(self):
+        racine = self.base / "perso"
+        racine.mkdir()
+        (racine / "cache.db").write_bytes(b"ceci n'est pas une base" * 100)
+        session = self.ouvrir(FakeSecrets(), lambda a, p: FakeTransport())
+        self.assertIsNone(session.store)
+        self.assertEqual(session.error_kind, "cache")
+        self.assertIsNotNone(session.exc)
+
+
 class TestEphemeralCleanupOnSignals(SessionCase):
     """`atexit` ne s'exécute pas sur un signal : sans un gestionnaire
     `SIGINT`/`SIGTERM` dédié, un cache éphémère survivrait à un `kill` ou un
