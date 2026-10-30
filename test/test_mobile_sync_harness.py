@@ -1439,6 +1439,19 @@ class TestPorteDeTest(unittest.TestCase):
         self.assertIn("no-notification", str(echec.exception))
         self.assertNotIn("motsinventes", str(echec.exception))
 
+    def test_un_echec_d_adb_ne_cite_pas_le_texte_de_la_reponse(self):
+        def executer(argv, **_):
+            return mock.Mock(returncode=1, stdout="", stderr="adb: failed")
+
+        with self.assertRaises(RuntimeError) as echec:
+            appareil.adb(
+                "shell", "am", "broadcast", "--es", "text", "motsinventes",
+                executer=executer,
+            )
+        self.assertIn("failed", str(echec.exception))
+        self.assertIn("broadcast", str(echec.exception))
+        self.assertNotIn("motsinventes", str(echec.exception))
+
     def test_toucher_volet_garde_les_vrais_touchers(self):
         executer, commandes = faux_telephone()
         appareil.agir(
@@ -1463,6 +1476,10 @@ class TestPorteDeTest(unittest.TestCase):
                 "repondre_du_volet(",
                 "toucher_notification(",
                 "toucher_dans(",
+                "arbre_ui(",
+                "deplier(",
+                "toucher_stable(",
+                "statusbar expand",
                 '"input"',
             ):
                 self.assertNotIn(interdit, source, scenario.__name__)

@@ -606,12 +606,16 @@ run on a phone that also carries the user's own apps. A notification's buttons
 are read from `dumpsys notification --noredact` (« Reply », « Mark read », then
 « 👍 » or « Mute 1 h »), and each action is fired at the test app through its
 test door: a receiver packaged only in the `-PsyncTest` build, reachable only
-with the `DUMP` permission that the adb shell holds and no app does. The door
+with the `DUMP` permission that the adb shell holds and that an app has only
+if it was granted through `adb shell pm grant`. The door
 looks up the test app's own notification by its tag and sends the very
 PendingIntent a finger would send (the reply text filled in as its
 RemoteInput result, the content intent for an open), so the app's receivers
 and the server see a real action; what is not exercised is the gesture itself,
-SystemUI drawing and handling the tap.
+SystemUI drawing and handling the tap, nor the lock-screen authentication
+gating of the buttons (`setAuthenticationRequired`). An open goes through
+`contentIntent.send()`, which relies on Android 11 background-start rules;
+Android 14+ requires the sender's opt-in, to revisit for another test phone.
 
 `--toucher-volet` puts the finger back, for an empty test phone only: buttons,
 reply field and send are tapped in the shade with `input tap` and the reply
@@ -1303,12 +1307,17 @@ utilisateur. Les boutons d'une notification se lisent dans
 `dumpsys notification --noredact` (« Répondre », « Marquer lu », puis « 👍 » ou
 « Muet 1 h »), et chaque action est envoyée à l'app de test par sa porte de
 test : un récepteur que seule la construction `-PsyncTest` contient, joignable
-seulement avec la permission `DUMP`, que le shell adb tient et qu'aucune app ne
-reçoit. La porte retrouve la notification de l'app de test par son étiquette et
+seulement avec la permission `DUMP`, que le shell adb tient et qu'une app n'a
+que si elle l'a reçue par `adb shell pm grant`. La porte retrouve la notification de l'app de test par son étiquette et
 envoie la PendingIntent même qu'enverrait un doigt (le texte de la réponse en
 résultat de son RemoteInput, l'intention de contenu pour une ouverture) : les
 récepteurs de l'app et le serveur voient une vraie action ; ce qui n'est pas
-exercé, c'est le geste lui-même, SystemUI qui dessine et reçoit le toucher.
+exercé, c'est le geste lui-même, SystemUI qui dessine et reçoit le toucher, ni
+l'authentification de l'écran verrouillé qui conditionne les boutons
+(`setAuthenticationRequired`). Une ouverture passe par
+`contentIntent.send()`, qui s'appuie sur les règles de démarrage en
+arrière-plan d'Android 11 ; Android 14+ exige l'accord de l'expéditeur, à
+revoir pour un autre téléphone de test.
 
 `--toucher-volet` remet le doigt, sur un téléphone de test vide seulement :
 boutons, champ de réponse et envoi sont touchés dans le volet par `input tap`
