@@ -435,6 +435,16 @@ class TestAllocateUdp(FakeCase):
         with self.assertRaises(ValueError):
             tc.allocate("127.0.0.1", 3478, "sctp", USER, KEY)
 
+    def test_short_relayed_address_is_malformed(self):
+        def short_relayed(_data, txid, _attrs):
+            return message(0x0103, txid, [(0x0016, b"\0\x01")], key=KEY)
+
+        server = self.fake([unauthorized, short_relayed])
+        result = tc.allocate(
+            "127.0.0.1", server.port, "udp", USER, KEY, timeout=3
+        )
+        self.assertEqual(result, tc.Allocation(False, None, "malformed"))
+
     def test_open_relay_is_a_failure_and_is_released(self):
         def open_relay(_data, txid, _attrs):
             return message(0x0103, txid, [(0x0016, xor_v4(RELAYED, txid))])
@@ -599,6 +609,22 @@ class TestBinding(FakeCase):
         self.assertEqual(
             tc.binding("127.0.0.1", server.port, "tcp", timeout=3), MAPPED
         )
+
+    def test_short_mapped_address_is_none(self):
+        def short(_data, txid, _attrs):
+            return message(0x0101, txid, [(0x0020, b"\0")])
+
+        def short_plain(_data, txid, _attrs):
+            return message(0x0101, txid, [(0x0001, b"\0\x01")])
+
+        for answer in (short, short_plain):
+            server = self.fake([answer])
+            self.assertIsNone(tc.binding("127.0.0.1", server.port, timeout=2))
+
+    def test_address_decoders_reject_short_values(self):
+        for value in (b"", b"\0", b"\0\x01", b"\0\x01\0"):
+            with self.assertRaises(ValueError):
+                tc.xor_address(value, bytes(12))
 
     def test_no_answer_is_none(self):
         server = self.fake([])
