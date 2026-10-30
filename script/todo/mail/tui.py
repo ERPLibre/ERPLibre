@@ -1352,6 +1352,7 @@ def flush_outbox(
     verrou=None,
     now=None,
     rules_base=None,
+    only_ids=None,
 ) -> tuple:
     """Envoie ce qui attend. Rend (partis, retenus, échoués).
 
@@ -1359,6 +1360,11 @@ def flush_outbox(
     exactement le moment où la file doit se vider, sans que personne ait à
     y penser. Un message RETENU est sauté — c'est le sens de la retenue,
     et seul un geste la lève.
+
+    `only_ids` limite la vidange aux entrées dont l'identifiant y figure,
+    par le même chemin que les autres : le relâchement d'une entrée dans
+    l'écran `o` l'envoie ainsi tout de suite, sans attendre la passe
+    suivante ni doubler un envoi qu'une passe a déjà réservé.
 
     Pour chaque entrée, dans l'ordre :
     - une réservation (`outbox_claim`) l'enlève à toute autre vidange,
@@ -1423,6 +1429,9 @@ def flush_outbox(
     store = session.store
     name = session.account.name
     entrees = store.outbox()
+    if only_ids is not None:
+        voulues = set(only_ids)
+        entrees = [e for e in entrees if e["id"] in voulues]
     regles, lisibles = None, False
     if any(e.get("kind", "manual") != "manual" for e in entrees):
         regles, lisibles = _flush_rules(session, rules_base)
@@ -1536,6 +1545,120 @@ def flush_outbox(
                 type(erreur).__name__,
             )
     return (partis, retenus, echoues)
+
+
+def _released_gone_text(store, entree) -> str:
+    """Le statut d'une entrée relâchée sortie de la file sans que cet envoi
+    la fasse partir. `entree` est sa dernière lecture, ou None.
+
+    Une vidange concurrente a pu la réserver et l'envoyer : le journal de
+    sa règle, passé à `sent`, le dit, et le statut nomme les
+    destinataires. Un journal `expired` dit une échéance passée ou une
+    règle modifiée ou désactivée. Sans règle ni journal, rien ne distingue
+    un envoi d'un retrait : le texte dit seulement que l'entrée n'est plus
+    en file.
+    """
+    rule_id = (entree or {}).get("rule_id")
+    if rule_id:
+        issue = store.rule_log_outcome(rule_id, entree.get("source_key"))
+        if issue == "sent":
+            return f"{t('mail_sent_to')} {entree.get('to') or ''}".rstrip()
+        if issue == "expired":
+            return t("mail_outbox_release_dropped")
+    return t("mail_outbox_release_gone")
+
+
+def send_released(
+    session,
+    queue_id,
+    verrou=None,
+    send_fn=None,
+    connect_fn=None,
+    entree=None,
+) -> str:
+    """Envoie aussitôt l'entrée `queue_id` qu'on vient de relâcher. Rend
+    le texte de statut, qui dit aussi une entrée retenue de nouveau avant
+    de partir.
+
+    `entree` est la lecture de l'entrée faite au relâchement : si elle a
+    quitté la file avant la relecture d'ici, sa règle et sa clé source
+    disent encore ce qu'il en est advenu.
+
+    Passe par `flush_outbox` limitée à cette entrée : réservation,
+    échéance, contrôles de la règle, journal, classement dans Envoyés
+    sont les siens. Une vidange concurrente qui a déjà réservé l'entrée
+    l'envoie seule ; celle-ci n'envoie rien. Hors ligne ou après un échec
+    transitoire, l'entrée reste en file et part à une passe suivante.
+
+    Peut attendre `verrou` le temps d'une passe entière : fil de travail
+    seulement, jamais celui de l'interface. Ne lève pas pour un échec
+    d'envoi, qui se lit dans le texte rendu.
+    """
+    store = session.store
+
+    def lire():
+        return next((e for e in store.outbox() if e["id"] == queue_id), None)
+
+    avant = lire()
+    if avant is None:
+        return _released_gone_text(store, entree)
+    if not session.online:
+        return t("mail_outbox_release_offline")
+    partis, _, echoues = flush_outbox(
+        session,
+        send_fn=send_fn,
+        connect_fn=connect_fn,
+        verrou=verrou,
+        only_ids=[queue_id],
+    )
+    apres = lire()
+    if partis:
+        return f"{t('mail_sent_to')} {avant.get('to') or ''}"
+    if echoues:
+        if apres is None:
+            return t("mail_outbox_release_failed_dropped")
+        return (
+            f"{t('mail_outbox_release_failed')} {apres.get('last_error') or ''}"
+        ).rstrip()
+    if apres is None:
+        return _released_gone_text(store, avant)
+    if apres.get("held"):
+        return t("mail_outbox_release_held")
+    return t("mail_outbox_release_waiting")
+
+
+def held_auto_counts(sessions, now=None) -> list:
+    """Les comptes dont la file porte des envois automatiques retenus :
+    [(nom du compte, nombre)], dans l'ordre des sessions.
+
+    Une échéance passée n'est pas comptée (`now`, par défaut l'heure
+    courante). Une session sans cache lisible est sautée, sans lever.
+    """
+    instant = int(time.time() if now is None else now)
+    comptes = []
+    for session in sessions:
+        store = getattr(session, "store", None)
+        if store is None:
+            continue
+        try:
+            nombre = store.outbox_auto_held_count(now=instant)
+        except Exception:
+            _logger.exception("file de %s illisible", session.account.name)
+            continue
+        if nombre:
+            comptes.append((session.account.name, nombre))
+    return comptes
+
+
+def held_auto_text(count: int) -> str:
+    """« N envoi(s) automatique(s) attend(ent) votre approbation »,
+    accordé au nombre."""
+    cle = (
+        "mail_outbox_held_auto_one"
+        if count == 1
+        else "mail_outbox_held_auto_many"
+    )
+    return t(cle).format(n=count)
 
 
 class DeliverOffline(Exception):
@@ -2100,6 +2223,9 @@ def run_tui(
             # (elle ne s'applique pas aux workers de type thread) — ce verrou
             # sérialise donc les accès réseau à sa place.
             self._sync_lock = threading.RLock()
+            # Dernière annonce des envois retenus mise en tête du statut :
+            # la suivante la remplace au lieu de s'y ajouter.
+            self._annonce_retenues = ""
             # État d'un glissement de barre de partage EN COURS (souris,
             # tâche 25) ; `None` hors glissement. Vit sur l'App — pas sur la
             # barre elle-même (`_PaneSplitter`) — puisque c'est ici que
@@ -2168,6 +2294,7 @@ def run_tui(
                 " ", t("mail_from"), t("mail_subject"), t("mail_date")
             )
             self.reload_folders()
+            self._annoncer_retenues()
             self.run_worker(self.sync_all_worker, thread=True)
             interval = todo_prefs.get("mail_refresh_sec", 300)
             if interval:
@@ -4003,6 +4130,46 @@ def run_tui(
             # un fil du pool, attendrait le fil parent qui tient le verrou en
             # attendant le pool. Ici, un seul fil, compte après compte.
             self._run_rules([(s, r) for s, r in paires if r is not None])
+            self._annoncer_retenues()
+
+        def _annoncer_retenues(self) -> None:
+            """Met en tête du statut les envois automatiques retenus qui
+            attendent qu'on les relâche (touche `o`). Ne lève jamais.
+
+            En TÊTE et après le bilan des règles : la ligne de statut n'a
+            qu'une ligne de haut, et sa fin est ce qui se perd. Rappelée
+            après chaque passe, l'annonce revient tant qu'une entrée reste
+            retenue ; celle d'un appel précédent, encore en tête du statut,
+            est remplacée et non redoublée. Quand plus rien n'est retenu,
+            cette annonce est retirée de la tête du statut.
+            """
+            try:
+                comptes = held_auto_counts(self.sessions)
+                ancienne = self._annonce_retenues
+                if not comptes and not ancienne:
+                    return
+                precedent = self._status_text()
+                en_tete = bool(ancienne) and precedent.startswith(ancienne)
+                if en_tete:
+                    precedent = precedent[len(ancienne) :].removeprefix(" — ")
+                if not comptes:
+                    self._annonce_retenues = ""
+                    if en_tete:
+                        self.set_status(precedent)
+                    return
+                annonce = (
+                    " · ".join(
+                        f"{nom} : {held_auto_text(nombre)}"
+                        for nom, nombre in comptes
+                    )
+                    + " (o)"
+                )
+                self._annonce_retenues = annonce
+                self.set_status(
+                    f"{annonce} — {precedent}" if precedent else annonce
+                )
+            except Exception:
+                _logger.exception("annonce des envois retenus en échec")
 
         def _run_rules(self, paires) -> None:
             """Une passe des règles par compte synchronisé, puis UNE ligne
@@ -4750,8 +4917,43 @@ def run_tui(
             if entree is None:
                 self.reload_outbox()
                 return
-            self.session.store.set_held(queue_id, not entree["held"])
+            relachee = entree["held"]
+            self.session.store.set_held(queue_id, not relachee)
             self.reload_outbox()
+            if relachee:
+                self._envoyer(queue_id, entree)
+
+        def _envoyer(self, queue_id: int, entree=None) -> None:
+            """Envoie l'entrée relâchée dans un fil de travail de
+            l'application, puis rafraîchit la file et le statut.
+
+            Le fil appartient à l'application et non à l'écran : fermer
+            l'écran pendant l'envoi ne l'interrompt pas, et le statut dit
+            quand même ce qu'il est advenu. Une retenue posée avant la
+            réservation de l'entrée l'empêche de partir.
+            """
+            app, session = self.app, self.session
+            verrou = getattr(app, "_sync_lock", None)
+            app.set_status(t("mail_outbox_sending"))
+
+            def travail() -> None:
+                try:
+                    statut = send_released(
+                        session, queue_id, verrou=verrou, entree=entree
+                    )
+                except Exception as exc:
+                    _logger.exception("envoi de la file %s", queue_id)
+                    statut = f"{t('mail_outbox_release_failed')} {exc}"
+                app.call_from_thread(self._envoi_fini, statut)
+
+            app.run_worker(travail, thread=True, group="outbox_send")
+
+        def _envoi_fini(self, statut: str) -> None:
+            """Fil de l'interface : le statut de l'envoi, puis la file
+            relue si l'écran est encore ouvert."""
+            self.app.set_status(statut)
+            if self in self.app.screen_stack:
+                self.reload_outbox()
 
         def action_close_outbox(self) -> None:
             self.dismiss(None)

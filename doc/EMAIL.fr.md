@@ -483,12 +483,23 @@ ligne par message, du plus ancien au plus récent — objet, destinataires et,
 dès qu'un envoi a échoué, pourquoi il a échoué et combien de tentatives il a
 coûtées. Chaque ligne porte à sa **gauche** un bouton qui retient le message
 ou le relâche. Un message retenu ne part jamais seul ; seul ce bouton lève
-la retenue. `Échap` ferme l'écran. Les messages automatiques mis en file
+la retenue, et *Relâcher* envoie le message aussitôt, en arrière-plan, sans
+attendre la passe suivante : la ligne de statut dit alors *Envoyé à…*, ou
+pourquoi il n'est pas parti. Hors ligne, ou après un refus temporaire, le
+message reste en file, relâché, et part à une passe suivante ; un message
+qu'une passe en cours envoie déjà n'est pas envoyé une seconde fois.
+`Échap` ferme l'écran. Les messages automatiques mis en file
 par une règle — réponses, rapports, transferts et redirections — sont
 marqués `[auto]` et portent une échéance ; le volet sous la liste montre
 l'aperçu de celui dont le bouton a le focus, lu en arrière-plan pour qu'un
 gros transfert ne fige jamais l'écran, et nomme un transfert ou une
 redirection comme tels (voir « Règles du courrier entrant »).
+
+Tant que des messages automatiques attendent retenus, la ligne de statut
+s'ouvre sur eux après chaque passe et au lancement — *perso : 1 envoi
+automatique attend votre approbation (o)* — jusqu'à ce qu'il n'en reste
+plus ; `Courriel > [3] Synchroniser maintenant` imprime la même ligne sous
+le compte.
 
 Un envoi qui échoue laisse le message en file et n'arrête pas ceux qui le
 suivent. Un refus temporaire (code `4xx`, erreur réseau) est retenté à
@@ -1060,8 +1071,11 @@ plafond horaire qui borne un minuteur court : avec `mail_refresh_sec` à
 ses premières réponses — une par défaut, jusqu'à 10 —, chaque nouvelle
 réponse attend **retenue** dans la file d'envoi. `o` en montre l'aperçu :
 destinataire et sujet, les 20 premières lignes du texte, les images en
-ligne et jointes, et son échéance. *Relâcher* la laisse partir à la passe
-de synchronisation suivante. Modifier le filtre de la règle ou sa réponse
+ligne et jointes, et son échéance. *Relâcher* l'envoie aussitôt ; hors
+ligne, elle part à la passe de synchronisation suivante. Tant qu'une
+réponse attend, la ligne de statut l'annonce après chaque passe : une
+réponse retenue ne passe pas inaperçue. Modifier le filtre de la règle ou
+sa réponse
 (format, sujet, corps, images) — pour une redirection, ses destinations, son
 mode ou sa case *Ignorer listes et robots* — relance le décompte, et un
 message qui attendait depuis avant la modification est retiré au lieu
@@ -1138,7 +1152,10 @@ limite comprise, s'appliquent toujours. Quand une réponse serait décidée,
 l'essai dit aussi si le moteur la **retiendrait**, et pourquoi : tant
 qu'une règle n'a pas réellement envoyé ses premières réponses, chaque
 nouvelle est retenue pour relecture — le premier rapport réel l'est
-toujours — et se libère dans la file d'envoi (`o`). Un rapport de
+toujours — et se libère dans la file d'envoi (`o`), qui l'envoie aussitôt.
+Quand un vrai message fait retenir une telle réponse, la ligne de statut le
+dit après la passe : *1 envoi automatique attend votre approbation (o)*.
+Un rapport de
 statistiques qui a atteint son plafond quotidien n'est pas retenu mais
 écarté : le verdict dit alors *plafond quotidien du rapport atteint*, et
 rien n'arriverait dans la file d'envoi. Pour un rapport de

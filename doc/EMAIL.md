@@ -448,12 +448,22 @@ each time it runs.
 per message, oldest first — subject, recipients, and, once a send has
 failed, why it failed and how many attempts it has taken. Each line carries
 a button on its **left** that holds the message or releases it. A held
-message never leaves on its own; only that button lifts the hold. `Escape`
-closes the screen. Automatic messages queued by a rule — replies,
+message never leaves on its own; only that button lifts the hold, and
+*Release* sends the message at once, in the background, without waiting for
+the next pass: the status line then says *Sent to…*, or why it did not
+leave. Offline, or after a temporary refusal, the message stays in the
+queue, released, and leaves at a later pass; a message that a running pass
+is already sending is not sent a second time. `Escape` closes the screen.
+Automatic messages queued by a rule — replies,
 reports, forwards and redirects — are marked `[auto]` and carry an expiry;
 the pane under the list previews the one whose button has focus, read in
 the background so that a large forward never freezes the screen, and names
 a forward or a redirect as such (see "Incoming mail rules").
+
+While automatic messages wait held, the status line opens with them after
+every pass and at launch — *perso : 1 automatic send awaits your approval
+(o)* — until none is left; `Mail > [3] Synchronise now` prints the same line
+under the account.
 
 A send that fails keeps the message in the queue and does not block those
 behind it. A temporary refusal (a `4xx` code, a network error) is retried
@@ -992,8 +1002,10 @@ the cap per pass alone would let 2 400 replies an hour through.
 **Holding the first send.** Until a rule has really sent its first
 replies — one by default, up to 10 — each new reply waits **held** in the
 outbox. `o` previews it: recipient and subject, the first 20 lines of
-text, the inline and attached images, and its expiry. *Release* lets it
-leave at the next sync pass. Changing the rule's filter or its reply
+text, the inline and attached images, and its expiry. *Release* sends it
+at once; offline, it leaves at the next sync pass. As long as one waits,
+the status line announces it after every pass, so a held reply is not
+missed. Changing the rule's filter or its reply
 (format, subject, body, images) — for a forward, its destinations, its mode
 or its *Skip lists and robots* box — starts the count again, and a message
 still waiting from before the change is dropped rather than sent; renaming,
@@ -1064,7 +1076,10 @@ aside, the other safeguards, the throttle included, still apply. When a
 reply would be decided, the trial also says whether the engine would
 **hold** it, and why: until a rule has really sent its first replies, each
 new one is held for review — the first real report always is — and is
-released from the outbox (`o`). A statistics report past its daily cap
+released from the outbox (`o`), which sends it at once. When a real
+message gets such a reply held, the status line says so after the pass:
+*1 automatic send awaits your approval (o)*. A statistics report past its
+daily cap
 is not held but skipped: the verdict then reads *daily report cap
 reached*, and nothing would reach the outbox. For a statistics report, it
 shows the server identifier read in the first `Authentication-Results` (or

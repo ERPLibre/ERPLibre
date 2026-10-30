@@ -932,12 +932,22 @@ each time it runs.
 per message, oldest first — subject, recipients, and, once a send has
 failed, why it failed and how many attempts it has taken. Each line carries
 a button on its **left** that holds the message or releases it. A held
-message never leaves on its own; only that button lifts the hold. `Escape`
-closes the screen. Automatic messages queued by a rule — replies,
+message never leaves on its own; only that button lifts the hold, and
+*Release* sends the message at once, in the background, without waiting for
+the next pass: the status line then says *Sent to…*, or why it did not
+leave. Offline, or after a temporary refusal, the message stays in the
+queue, released, and leaves at a later pass; a message that a running pass
+is already sending is not sent a second time. `Escape` closes the screen.
+Automatic messages queued by a rule — replies,
 reports, forwards and redirects — are marked `[auto]` and carry an expiry;
 the pane under the list previews the one whose button has focus, read in
 the background so that a large forward never freezes the screen, and names
 a forward or a redirect as such (see "Incoming mail rules").
+
+While automatic messages wait held, the status line opens with them after
+every pass and at launch — *perso : 1 automatic send awaits your approval
+(o)* — until none is left; `Mail > [3] Synchronise now` prints the same line
+under the account.
 
 A send that fails keeps the message in the queue and does not block those
 behind it. A temporary refusal (a `4xx` code, a network error) is retried
@@ -983,12 +993,23 @@ ligne par message, du plus ancien au plus récent — objet, destinataires et,
 dès qu'un envoi a échoué, pourquoi il a échoué et combien de tentatives il a
 coûtées. Chaque ligne porte à sa **gauche** un bouton qui retient le message
 ou le relâche. Un message retenu ne part jamais seul ; seul ce bouton lève
-la retenue. `Échap` ferme l'écran. Les messages automatiques mis en file
+la retenue, et *Relâcher* envoie le message aussitôt, en arrière-plan, sans
+attendre la passe suivante : la ligne de statut dit alors *Envoyé à…*, ou
+pourquoi il n'est pas parti. Hors ligne, ou après un refus temporaire, le
+message reste en file, relâché, et part à une passe suivante ; un message
+qu'une passe en cours envoie déjà n'est pas envoyé une seconde fois.
+`Échap` ferme l'écran. Les messages automatiques mis en file
 par une règle — réponses, rapports, transferts et redirections — sont
 marqués `[auto]` et portent une échéance ; le volet sous la liste montre
 l'aperçu de celui dont le bouton a le focus, lu en arrière-plan pour qu'un
 gros transfert ne fige jamais l'écran, et nomme un transfert ou une
 redirection comme tels (voir « Règles du courrier entrant »).
+
+Tant que des messages automatiques attendent retenus, la ligne de statut
+s'ouvre sur eux après chaque passe et au lancement — *perso : 1 envoi
+automatique attend votre approbation (o)* — jusqu'à ce qu'il n'en reste
+plus ; `Courriel > [3] Synchroniser maintenant` imprime la même ligne sous
+le compte.
 
 Un envoi qui échoue laisse le message en file et n'arrête pas ceux qui le
 suivent. Un refus temporaire (code `4xx`, erreur réseau) est retenté à
@@ -1529,8 +1550,10 @@ the cap per pass alone would let 2 400 replies an hour through.
 **Holding the first send.** Until a rule has really sent its first
 replies — one by default, up to 10 — each new reply waits **held** in the
 outbox. `o` previews it: recipient and subject, the first 20 lines of
-text, the inline and attached images, and its expiry. *Release* lets it
-leave at the next sync pass. Changing the rule's filter or its reply
+text, the inline and attached images, and its expiry. *Release* sends it
+at once; offline, it leaves at the next sync pass. As long as one waits,
+the status line announces it after every pass, so a held reply is not
+missed. Changing the rule's filter or its reply
 (format, subject, body, images) — for a forward, its destinations, its mode
 or its *Skip lists and robots* box — starts the count again, and a message
 still waiting from before the change is dropped rather than sent; renaming,
@@ -1601,7 +1624,10 @@ aside, the other safeguards, the throttle included, still apply. When a
 reply would be decided, the trial also says whether the engine would
 **hold** it, and why: until a rule has really sent its first replies, each
 new one is held for review — the first real report always is — and is
-released from the outbox (`o`). A statistics report past its daily cap
+released from the outbox (`o`), which sends it at once. When a real
+message gets such a reply held, the status line says so after the pass:
+*1 automatic send awaits your approval (o)*. A statistics report past its
+daily cap
 is not held but skipped: the verdict then reads *daily report cap
 reached*, and nothing would reach the outbox. For a statistics report, it
 shows the server identifier read in the first `Authentication-Results` (or
@@ -2248,8 +2274,11 @@ plafond horaire qui borne un minuteur court : avec `mail_refresh_sec` à
 ses premières réponses — une par défaut, jusqu'à 10 —, chaque nouvelle
 réponse attend **retenue** dans la file d'envoi. `o` en montre l'aperçu :
 destinataire et sujet, les 20 premières lignes du texte, les images en
-ligne et jointes, et son échéance. *Relâcher* la laisse partir à la passe
-de synchronisation suivante. Modifier le filtre de la règle ou sa réponse
+ligne et jointes, et son échéance. *Relâcher* l'envoie aussitôt ; hors
+ligne, elle part à la passe de synchronisation suivante. Tant qu'une
+réponse attend, la ligne de statut l'annonce après chaque passe : une
+réponse retenue ne passe pas inaperçue. Modifier le filtre de la règle ou
+sa réponse
 (format, sujet, corps, images) — pour une redirection, ses destinations, son
 mode ou sa case *Ignorer listes et robots* — relance le décompte, et un
 message qui attendait depuis avant la modification est retiré au lieu
@@ -2326,7 +2355,10 @@ limite comprise, s'appliquent toujours. Quand une réponse serait décidée,
 l'essai dit aussi si le moteur la **retiendrait**, et pourquoi : tant
 qu'une règle n'a pas réellement envoyé ses premières réponses, chaque
 nouvelle est retenue pour relecture — le premier rapport réel l'est
-toujours — et se libère dans la file d'envoi (`o`). Un rapport de
+toujours — et se libère dans la file d'envoi (`o`), qui l'envoie aussitôt.
+Quand un vrai message fait retenir une telle réponse, la ligne de statut le
+dit après la passe : *1 envoi automatique attend votre approbation (o)*.
+Un rapport de
 statistiques qui a atteint son plafond quotidien n'est pas retenu mais
 écarté : le verdict dit alors *plafond quotidien du rapport atteint*, et
 rien n'arriverait dans la file d'envoi. Pour un rapport de
