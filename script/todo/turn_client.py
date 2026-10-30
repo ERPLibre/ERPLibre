@@ -79,6 +79,20 @@ FINGERPRINT = 0x8028
 _TRANSPORT_UDP = bytes([17, 0, 0, 0])
 TRANSPORTS = ("udp", "tcp", "tls")
 
+# Valeurs de `Allocation.error` autres qu'un code TURN « <code> <raison> » ;
+# la docstring d'`Allocation` dit ce que chacune signifie. Un appelant qui
+# traduit les erreurs couvre cette liste, et affiche le code TURN tel quel.
+ERRORS = (
+    "timeout",
+    "refused",
+    "tls",
+    "closed",
+    "unreachable",
+    "malformed",
+    "integrity",
+    "no-auth",
+)
+
 # Retransmission UDP : premier délai, et attente maximale du Refresh final.
 _RTO = 0.5
 _REFRESH_WAIT = 2.0
@@ -88,7 +102,8 @@ _REFRESH_WAIT = 2.0
 class Allocation:
     """Résultat de `allocate()`.
 
-    `error` vaut None sur un succès, sinon :
+    `error` vaut None sur un succès, sinon un code TURN ou une valeur de
+    `ERRORS` :
     - « <code> <raison> » : l'erreur TURN rendue par le serveur
       (« 401 Unauthorized », « 403 Forbidden »…) ;
     - « timeout » : aucune réponse dans le budget ;
