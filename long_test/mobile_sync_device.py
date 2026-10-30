@@ -2460,17 +2460,33 @@ def service_vivant(executer):
     return "ChatPushService" in services
 
 
+# Android tient pour répété un plantage à moins de 60 s du précédent
+# (ProcessList.MIN_CRASH_INTERVAL) et affiche alors « … plante
+# continuellement », qui garde le processus en vie jusqu'à ce qu'on la
+# ferme : deux morts par am crash sont espacées d'au moins PLANTAGE_ESPACE
+# secondes, d'un scénario au suivant compris (pm clear n'efface pas le
+# compte d'Android)
+PLANTAGE_ESPACE = 65
+# L'instant (time.monotonic) du dernier am crash de la course, None avant
+DERNIER_PLANTAGE = [None]
+
+
 def tuer_processus(executer, pid):
     """La mort du processus de l'app de test, comme Android le tue faute
     de mémoire : SIGKILL par run-as quand la politique SELinux de l'appareil
     laisse run-as signaler l'app, sinon `am crash` sur son pid (une mort de
-    la VM, sans boîte de dialogue pour une app à l'arrière-plan). Rend la
-    manière employée."""
+    la VM, sans boîte de dialogue pour une app à l'arrière-plan), à
+    PLANTAGE_ESPACE au moins du précédent. Rend la manière employée."""
     try:
         adb("shell", "run-as", PAQUET, "kill", "-9", pid, executer=executer)
         return "SIGKILL"
     except RuntimeError:
+        if DERNIER_PLANTAGE[0] is not None:
+            reste = DERNIER_PLANTAGE[0] + PLANTAGE_ESPACE - time.monotonic()
+            if reste > 0:
+                time.sleep(reste)
         adb("shell", "am", "crash", pid, executer=executer)
+        DERNIER_PLANTAGE[0] = time.monotonic()
         return "am crash"
 
 

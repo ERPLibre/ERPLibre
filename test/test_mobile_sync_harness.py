@@ -1507,6 +1507,66 @@ class TestPorteDeTest(unittest.TestCase):
         )
 
 
+class TestMortEspacee(unittest.TestCase):
+    """Android tient pour répété un plantage à moins de 60 s du précédent
+    et affiche alors « … plante continuellement », qui garde le processus
+    en vie : deux morts par am crash sont espacées d'au moins
+    PLANTAGE_ESPACE, les scénarios qui se suivent compris."""
+
+    def executer(self, commandes):
+        def executer(commande, **_):
+            commandes.append(commande)
+            # run-as refusé, comme SELinux le refuse sur Android 11
+            code = 1 if "run-as" in commande else 0
+            return SimpleNamespace(stdout="", stderr="refusé", returncode=code)
+
+        return executer
+
+    def test_un_second_plantage_attend_la_fin_de_l_intervalle(self):
+        horloge = [1000.0]
+        attentes = []
+
+        def dormir(secondes):
+            attentes.append(secondes)
+            horloge[0] += secondes
+
+        commandes = []
+        with mock.patch.object(
+            appareil.time, "monotonic", lambda: horloge[0]
+        ), mock.patch.object(
+            appareil.time, "sleep", dormir
+        ), mock.patch.object(
+            appareil, "DERNIER_PLANTAGE", [None]
+        ):
+            executer = self.executer(commandes)
+            self.assertEqual(
+                appareil.tuer_processus(executer, "111"), "am crash"
+            )
+            horloge[0] += 25
+            appareil.tuer_processus(executer, "222")
+        self.assertEqual(attentes, [appareil.PLANTAGE_ESPACE - 25])
+        self.assertGreater(appareil.PLANTAGE_ESPACE, 60)
+        self.assertEqual(
+            [c[4] for c in commandes if c[2:3] == ["am"]], ["111", "222"]
+        )
+
+    def test_un_plantage_loin_du_precedent_n_attend_pas(self):
+        horloge = [1000.0]
+        attentes = []
+        with mock.patch.object(
+            appareil.time, "monotonic", lambda: horloge[0]
+        ), mock.patch.object(
+            appareil.time, "sleep", attentes.append
+        ), mock.patch.object(
+            appareil, "DERNIER_PLANTAGE", [None]
+        ):
+            executer = self.executer([])
+            appareil.tuer_processus(executer, "111")
+            horloge[0] += 200
+            appareil.tuer_processus(executer, "222")
+        self.assertEqual(attentes, [])
+
+
 class TestRemiseEnEtat(unittest.TestCase):
     """La remise en état de fin de scénario (la conversation remise en
     son) ne masque jamais l'échec du scénario : il remonte, et l'échec de
