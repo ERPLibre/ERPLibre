@@ -2211,6 +2211,36 @@ class TestBatterieReelle(unittest.TestCase):
             {appareil.SERIE_INCONNUE: ancien},
         )
 
+    def test_un_releve_sans_numero_est_nomme_a_cote_du_releve_du_telephone(
+        self,
+    ):
+        """Le téléphone branché seul a son propre relevé : celui-ci est
+        rendu, et le relevé sans numéro de série, qui peut appartenir à un
+        autre téléphone, n'est pas rendu mais nommé par une ligne ⚠."""
+        ancien = {"low_power": "1", "screen_off_timeout": "45000"}
+        self.notee.write_text(
+            json.dumps(
+                {
+                    appareil.SERIE_INCONNUE: ancien,
+                    SERIE: {"low_power": "0", "screen_off_timeout": "60000"},
+                }
+            )
+        )
+        executer, commandes = faux_telephone_batterie()
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as sortie:
+            appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+                Path("x.apk")
+            )
+        self.assertIn(["shell", "cmd", "power", "set-mode", "0"], commandes)
+        self.assertNotIn(["shell", "cmd", "power", "set-mode", "1"], commandes)
+        self.assertEqual(
+            json.loads(self.notee.read_text()),
+            {appareil.SERIE_INCONNUE: ancien},
+        )
+        self.assertIn("⚠", sortie.getvalue())
+        self.assertIn("sans numéro de série", sortie.getvalue())
+        self.assertIn(str(self.notee), sortie.getvalue())
+
     def test_une_remise_echouee_garde_la_cle_du_telephone(self):
         self.notee.write_text(
             json.dumps(
