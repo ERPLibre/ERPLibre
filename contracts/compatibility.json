@@ -41,12 +41,12 @@
       "description": "ERPLibre companion module of the mobile chat, optional: what each level adds is in levels, what the app does without it in without",
       "levels": {
         "1.0": "erplibre_client_uuid on mail.message: a chat post sent twice is stored once",
-        "1.1": "erplibre_client_uuid on discuss.channel: a create called twice with one uuid makes one conversation; erplibre_remove_member, administrators only",
+        "1.1": "erplibre_client_uuid on discuss.channel: a create called twice with one uuid by one user makes one conversation; erplibre_remove_member, administrators only",
         "1.2": "erplibre_client_uuid on ir.attachment and /erplibre_mobile_chat/attachment/upload: an upload idempotent by uuid that keeps an image's original",
         "1.3": "erplibre_body_fingerprint on mail.message and /erplibre_mobile_chat/message/update_content: an edit written only over the body the app read, else erplibre_conflict",
-        "1.4": "/erplibre_mobile_chat/message/search; erplibre_set_starred; uuid dedup on every mail.thread model; upload open to record threads; erplibre_chat_level, whose last Selection key is the module level (fields_get)",
+        "1.4": "/erplibre_mobile_chat/message/search (member channels, by body, subject and attachment name, paged, with a count); erplibre_set_starred; uuid dedup on every mail.thread model; upload open to record threads; erplibre_chat_level, whose last Selection key is the module level (fields_get)",
         "1.5": "/erplibre_mobile_chat/push/device marks the app's devices: pushes with message id and channel type, sent after commit, no endpoint logged; silent read and inbox_done pushes; quiet while a browser is online (administrator-only fields of bus.presence)",
-        "1.6": "erplibre_browser_mode (ring, wait, quiet) and erplibre_payload_v on mail.push.device; payload v 2 adds mentioned (@everyone included) and browser_online (polled within 65 s, active within 5 minutes); a quiet device gets no message push while a browser is active"
+        "1.6": "erplibre_browser_mode (ring, wait, quiet) and erplibre_payload_v on mail.push.device; payload v 2 adds mentioned (@everyone included) and browser_online (polled within 65 s, active within 5 minutes); a quiet device gets no message push while a browser is active; read and inbox_done pushes stay payload v 1; the upgrade from 1.5 gives quiet to the devices marked erplibre_quiet_while_online, ring to the others"
       },
       "without": {
         "module": "a lost post or create is found by a marker comment or a fingerprint search, uploads use Odoo's route, no member removal; closed-app notifications through ntfy work",
@@ -65,6 +65,12 @@
       "custom_fields_on_ir_attachment": ["erplibre_client_uuid"],
       "custom_computed_fields_on_mail_message": ["erplibre_chat_level"],
       "routes": ["/erplibre_mobile_chat/attachment/upload", "/erplibre_mobile_chat/message/update_content", "/erplibre_mobile_chat/message/search", "/erplibre_mobile_chat/push/device"],
+      "route_access": {
+        "/erplibre_mobile_chat/attachment/upload": "HTTP POST with the CSRF token, as Odoo's own upload route; internal users only, others get NotFound; client_uuid required",
+        "/erplibre_mobile_chat/message/update_content": "JSON, internal users only, others get NotFound",
+        "/erplibre_mobile_chat/message/search": "JSON, read-only, internal users only, others get NotFound",
+        "/erplibre_mobile_chat/push/device": "JSON: endpoint, then browser_mode (an app 1.6: the device gets payload v 2) or quiet_while_online (the 1.5 alias, quiet or ring: payload v 1); Odoo 18 ignores an argument it does not know"
+      },
       "methods_on_discuss_channel": ["erplibre_remove_member"],
       "methods_on_mail_message": ["erplibre_set_starred"]
     }
