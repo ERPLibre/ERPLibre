@@ -23,9 +23,13 @@ class ErreurPage(RuntimeError):
 
 
 class Cdp:
-    """Une connexion à la page de l'app ; evaluer() attend les promesses."""
+    """Une connexion à la page de l'app ; evaluer() attend les promesses.
+    Une réponse qui n'arrive pas en delai secondes lève TimeoutError : une
+    page figée est l'échec d'un scénario, que le lanceur compte avant de
+    jouer les suivants."""
 
     def __init__(self, port, delai=120):
+        self.delai = delai
         pages = json.load(
             urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=10)
         )
@@ -45,7 +49,14 @@ class Cdp:
             )
         )
         while True:
-            message = json.loads(self.ws.recv())
+            try:
+                brut = self.ws.recv()
+            except websocket.WebSocketTimeoutException as erreur:
+                raise TimeoutError(
+                    f"{methode} : aucune réponse de la page en"
+                    f" {self.delai} s"
+                ) from erreur
+            message = json.loads(brut)
             if message.get("id") != self.suivant:
                 continue
             if "error" in message:
