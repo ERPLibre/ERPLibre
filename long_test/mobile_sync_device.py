@@ -82,8 +82,14 @@ def adb(*args, executer=subprocess.run, check=True, binaire=False):
         ["adb", *args], capture_output=True, text=not binaire, check=False
     )
     if check and resultat.returncode != 0:
+        # La valeur qui suit « text » (extra de la porte, ou input text) est
+        # le texte d'une réponse : le message d'échec ne la cite jamais
+        montrees = [
+            "<texte>" if i and args[i - 1] == "text" else a
+            for i, a in enumerate(args)
+        ]
         raise RuntimeError(
-            f"adb {' '.join(args)} : {resultat.stderr or resultat.stdout}"
+            f"adb {' '.join(montrees)} : {resultat.stderr or resultat.stdout}"
         )
     return resultat.stdout
 
