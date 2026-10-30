@@ -106,14 +106,15 @@ eachVersionFrom(18, "chat realtime", (target) => {
 		const { env, src, delivered } = await live();
 		const first = await peer.post(group, unique("before"));
 		await until("the first message", lastIs(env, src.configId, group, first));
-		// The first poll's replay, as in the case above, can be applied more than 20 s after live() returns
-		await until("its bus id saved", async () => (await env.chat.repo.sourceState(src.configId)).lastBusId > 0, 60_000);
+		await until("its bus id saved", async () => (await env.chat.repo.sourceState(src.configId)).lastBusId > 0);
 		const opened = sockets();
 
 		proxy.down = true;
 		proxy.cutSockets();
 		// Two of them: a reload brings only a conversation's last message, the bus catch-up brings both
 		const missed = [await peer.post(group, unique("missed-1")), await peer.post(group, unique("missed-2"))];
+		// The first reconnect is refused, as on a network still gone: the bus must try again once it is back
+		await until("a reconnect refused while down", async () => sockets() > opened);
 		proxy.down = false;
 
 		// The first connection replays the bus from 0, and each message of a conversation the app does not
@@ -125,7 +126,7 @@ eachVersionFrom(18, "chat realtime", (target) => {
 			return missed.every((id) => ids.includes(id));
 		}, 90000);
 		expect(await lastIs(env, src.configId, group, missed[1])()).toBe(true);
-		expect(sockets()).toBeGreaterThan(opened);
+		expect(sockets()).toBeGreaterThan(opened + 1);
 		for (const id of missed) expect(delivered().some((n) => newMessage(n, id))).toBe(true);
 		const ids = (await env.chat.messages(src.configId, group)).map((m) => m.messageId);
 		for (const id of [first, ...missed]) expect(ids.filter((x) => x === id)).toHaveLength(1);
