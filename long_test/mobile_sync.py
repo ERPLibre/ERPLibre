@@ -23,6 +23,7 @@ démarre des serveurs. Le premier passage construit un gabarit par version
   ./long_test/mobile_sync.py --detruire          # supprimer gabarits et cache
   ./long_test/mobile_sync.py --appareil          # aussi sur le téléphone branché
   ./long_test/mobile_sync.py --appareil --toucher-volet  # téléphone de test vide
+  ./long_test/mobile_sync.py --appareil --batterie-reelle  # téléphone de test vide
 
 Codes de sortie : 0 tout passe, 1 des tests échouent, 2 un prérequis
 manque (le message dit lequel et quoi faire), 3 l'infrastructure (base,
@@ -91,6 +92,15 @@ def parser():
         help="téléphone de test vide seulement : les scénarios des"
         " notifications touchent le volet du doigt (par défaut, la porte de"
         " test de l'app agit et rien ne touche le volet)",
+    )
+    parseur.add_argument(
+        "--batterie-reelle",
+        action="store_true",
+        help="téléphone de test vide seulement : le scénario des préférences"
+        " change la batterie et l'alimentation du téléphone entier (dumpsys"
+        " battery, économiseur), rendues à la fin ; refusé quand l'app de"
+        " l'utilisateur est installée (par défaut, la porte de test simule"
+        " l'alimentation)",
     )
     return parseur
 
@@ -243,6 +253,11 @@ def plan(versions, args, ntfy=True):
                 if args.toucher_volet
                 else ", notifications par la porte de test, volet non touché"
             )
+            + (
+                ", batterie réelle du téléphone changée puis rendue"
+                if args.batterie_reelle
+                else ""
+            )
         )
     return "\n".join(lignes)
 
@@ -316,7 +331,9 @@ def main(argv=None):
 
     problemes = odoo.verifier_mobile()
     if args.appareil:
-        problemes += appareil.verifier_appareil()
+        problemes += appareil.verifier_appareil(
+            batterie_reelle=args.batterie_reelle
+        )
     try:
         installees = odoo.versions_installees(demandees=versions)
     except odoo.PrerequisManquant as erreur:
@@ -395,7 +412,10 @@ def main(argv=None):
         if args.appareil:
             print("Sur le téléphone :")
             total, echecs = appareil.lancer(
-                liste, repertoire, toucher_volet=args.toucher_volet
+                liste,
+                repertoire,
+                toucher_volet=args.toucher_volet,
+                batterie_reelle=args.batterie_reelle,
             )
             print(f"Appareil : {total - echecs}/{total} scénarios passés")
             if echecs or total == 0:

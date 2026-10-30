@@ -1,12 +1,14 @@
 /**
- * Module erplibre_mobile_chat 1.5 against a real Odoo 18 and the run's own
- * ntfy (PushScene): a device the app marks gets the message id and the
- * channel type in Odoo's payload, sent after commit and accepted on ntfy's
- * 200; a device the module does not know (the app with chatModule
- * "ignore") gets Odoo's own payload; a read in a browser, the author's own
- * post and an inbox item done send a control push to the marked device
- * only; a device marked quiet is not pushed while a browser of its user is
- * online, and the app's own bus never counts as one.
+ * Module erplibre_mobile_chat 1.6 against a real Odoo 18 and the run's own
+ * ntfy (PushScene): a device the app marks gets the message id, the
+ * channel type and whether admin is mentioned in Odoo's payload (v 2),
+ * sent after commit and accepted on ntfy's 200; a device the module does
+ * not know (the app with chatModule "ignore") gets Odoo's own payload; a
+ * read in a browser, the author's own post and an inbox item done send a
+ * control push to the marked device only; a device marked quiet is not
+ * pushed while a browser of its user is active, and the app's own bus
+ * never counts as one. The settings the app changes, and the 1.5 route,
+ * are in chatPushPrefs.test.ts.
  *
  * The inbox and quiet cases sign the app in as a user of their own (a
  * browser presence and an inbox are per user, and other files run beside
@@ -20,12 +22,12 @@ import { PushScene } from "./chatPushScene";
 
 /** The time left to a push or a log line that must not come, once what comes before it arrived. */
 const SILENCE_MS = 5000;
-/** A browser activity older than the module's away timer (30 min). */
-const AWAY_MS = 31 * 60_000;
+/** A browser activity older than the module's activity window (BROWSER_ACTIVE_S, 5 min). */
+const AWAY_MS = 6 * 60_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-eachVersionFrom(18, "chat push, module 1.5", (target: Target) => {
+eachVersionFrom(18, "chat push, module 1.6", (target: Target) => {
 	if (!target.ntfy) {
 		describe.skip("ntfy absent: notification tests skipped", () => {
 			it("the ntfy command is not installed", () => {});
@@ -43,7 +45,7 @@ eachVersionFrom(18, "chat push, module 1.5", (target: Target) => {
 	});
 	afterEach(() => scene.end());
 
-	it("a marked device gets the message id and channel type", async () => {
+	it("a marked device gets the message id, the channel type and the mention", async () => {
 		const { env, src } = await scene.markedApp();
 		const keys = env.pushNative.keysOf(src.configId);
 		const chat = await peer.chat(peer.adminPartnerId);
@@ -55,24 +57,25 @@ eachVersionFrom(18, "chat push, module 1.5", (target: Target) => {
 		const chatId = await peer.post(chat, inChat);
 		const groupId = await peer.post(group, inGroup);
 		const channelId = await peer.mention(channel, peer.adminPartnerId, inChannel);
-		for (const [text, resId, messageId, type] of [
-			[inChat, chat, chatId, "chat"],
-			[inGroup, group, groupId, "group"],
-			[inChannel, channel, channelId, "channel"],
+		for (const [text, resId, messageId, type, mentioned] of [
+			[inChat, chat, chatId, "chat", false],
+			[inGroup, group, groupId, "group", false],
+			[inChannel, channel, channelId, "channel", true],
 		] as const) {
 			const [one] = await scene.pushed(keys, text);
+			// A browser of admin may be active in another file: browser_online is checked on a user of its own (chatPushPrefs)
 			expect(one.payload.options!.data).toEqual({
 				model: "discuss.channel",
 				res_id: resId,
 				action: "mail.action_discuss",
-				erplibre: { v: 1, message_id: messageId, channel_type: type },
+				erplibre: { v: 2, message_id: messageId, channel_type: type, mentioned, browser_online: expect.any(Boolean) },
 			});
 		}
 	});
 
 	it("an unmarked device gets Odoo's own payload", async () => {
 		const { env, src, row } = await scene.linked("phone", { chatModule: "ignore" });
-		expect(await peer.appDevice(row.endpoint!)).toMatchObject({ app: false, quiet: false });
+		expect(await peer.appDevice(row.endpoint!)).toMatchObject({ app: false, mode: "ring" });
 		const keys = env.pushNative.keysOf(src.configId);
 		const chat = await peer.chat(peer.adminPartnerId);
 		const text = unique("sans le module");
@@ -170,14 +173,14 @@ eachVersionFrom(18, "chat push, module 1.5", (target: Target) => {
 		expect(done).toEqual({ v: 1, type: "inbox_done", threads: [["project.task", task]] });
 	});
 
-	it("quiet while a browser is online", async () => {
+	it("quiet while a browser is active", async () => {
 		const login = unique("discret");
 		const user = await peer.createUser(`MS ${login}`, login);
 		const { env, src, row, device } = await scene.markedApp("phone", { as: user.login });
 		const keys = env.pushNative.keysOf(src.configId);
 		// The app's own session marks it: the device keeps the hash of the app's bus
-		await peer.markDeviceQuiet(env.pushNative.sessions.get(src.configId)!, row.endpoint!, true);
-		expect(await peer.appDevice(row.endpoint!)).toEqual({ id: device.id, app: true, quiet: true });
+		await peer.markDeviceMode(env.pushNative.sessions.get(src.configId)!, row.endpoint!, "quiet");
+		expect(await peer.appDevice(row.endpoint!)).toEqual({ id: device.id, app: true, mode: "quiet", payloadV: 2 });
 		const chat = await peer.chat(user.partnerId);
 
 		const browser = await peer.browserSession(user.login);

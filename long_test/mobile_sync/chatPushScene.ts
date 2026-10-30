@@ -19,8 +19,10 @@ import type { ChatPeer } from "./chatPeer";
 
 /**
  * Odoo's decrypted push. A message push has the notification's title and
- * options (module 1.5 adds options.data.erplibre for a marked device); a
- * control push of the module (read, inbox_done) has only erplibre.
+ * options (the module adds options.data.erplibre for a marked device: v 1
+ * for a device marked as a 1.5 app marks it, v 2 with mentioned and
+ * browser_online for one marked with a browser mode); a control push of
+ * the module (read, inbox_done) has only erplibre, always v 1.
  */
 export interface Payload {
 	title?: string;
@@ -31,7 +33,7 @@ export interface Payload {
 			model: string;
 			res_id: number;
 			action?: string;
-			erplibre?: { v: number; message_id: number; channel_type: string | null };
+			erplibre?: { v: number; message_id: number; channel_type: string | null; mentioned?: boolean; browser_online?: boolean };
 		};
 	};
 	erplibre?: { v: number; type: string; channel_id?: number; last_message_id?: number; threads?: [string, number][] | null };
@@ -102,7 +104,7 @@ export class PushScene {
 	/**
 	 * linked() with the module in use (chatModule "auto"), once Odoo holds
 	 * the device marked as the app's (the app marks it after registering,
-	 * module 1.5); the device's id is in device.
+	 * with its browser mode on module 1.6); the device's id is in device.
 	 */
 	async markedApp(access: "phone" | "other" = "phone", opts: Pick<AppOptions, "as"> = {}) {
 		const linked = await this.linked(access, { ...opts, chatModule: "auto" });
