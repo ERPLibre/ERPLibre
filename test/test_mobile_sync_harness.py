@@ -2212,6 +2212,60 @@ class TestMortEspacee(unittest.TestCase):
         self.assertEqual(attentes, [])
 
 
+JOBSCHEDULER_TOUS = """Registered 3 jobs:
+  JOB #u0a888/4825: 1a2b3c ca.exemple.autre/.Tache
+  JOB #u0a777/4822: 4d5e6f ca.erplibre.home.synctest/.Tache
+  JOB #u0a888/4823: 7a8b9c ca.exemple.autre/.Autre
+  Job history:
+       -1m2s START: #u0a777/4825 ca.erplibre.home.synctest/.Tache
+       -1m1s  STOP: #u0a777/4825 ca.erplibre.home.synctest/.Tache
+         -50s START-P: #u0a777/4825 ca.erplibre.home.synctest/.Tache
+         -40s START: #u0a888/4825 ca.exemple.autre/.Tache
+"""
+
+
+def faux_jobscheduler(sortie=JOBSCHEDULER_TOUS, uid="10777"):
+    """Un faux subprocess.run : pm list packages -U rend le uid de l'app
+    de test, dumpsys jobscheduler rend sortie (les tâches de tous les
+    paquets, comme sur Android 11 malgré le nom du paquet passé)."""
+
+    def executer(commande, **_):
+        if commande[2:5] == ["pm", "list", "packages"]:
+            sortie_pm = f"package:{appareil.PAQUET} uid:{uid}\n"
+            return SimpleNamespace(stdout=sortie_pm, stderr="", returncode=0)
+        if commande[2:4] == ["dumpsys", "jobscheduler"]:
+            return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+        return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    return executer
+
+
+class TestTachesPlanifiees(unittest.TestCase):
+    """dumpsys jobscheduler <paquet> liste les tâches enregistrées de
+    tous les paquets : seules comptent les lignes du uid de l'app de
+    test, lu de pm list packages -U."""
+
+    def test_le_uid_de_dumpsys_vient_de_pm(self):
+        self.assertEqual(
+            appareil.uid_dumpsys(faux_jobscheduler(uid="10777")), "u0a777"
+        )
+
+    def test_un_uid_illisible_arrete(self):
+        with self.assertRaises(RuntimeError):
+            appareil.uid_dumpsys(faux_jobscheduler(uid="x"))
+
+    def test_la_tache_d_un_autre_paquet_n_est_pas_en_attente(self):
+        executer = faux_jobscheduler()
+        self.assertFalse(appareil.tache_en_attente(executer, 4825))
+        self.assertFalse(appareil.tache_en_attente(executer, 4823))
+        self.assertTrue(appareil.tache_en_attente(executer, 4822))
+
+    def test_seuls_les_demarrages_de_l_app_de_test_comptent(self):
+        self.assertEqual(
+            appareil.demarrages_tache(faux_jobscheduler(), 4825), 2
+        )
+
+
 class TestRemiseEnEtat(unittest.TestCase):
     """La remise en état de fin de scénario (la conversation remise en
     son) ne masque jamais l'échec du scénario : il remonte, et l'échec de

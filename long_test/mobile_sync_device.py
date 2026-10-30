@@ -4020,23 +4020,45 @@ def puissance_de_test(executer, **extras):
 
 
 def jobscheduler(executer, paquet=PAQUET):
-    """La sortie de dumpsys jobscheduler restreinte au paquet."""
+    """La sortie de dumpsys jobscheduler paquet. Android 11 n'y restreint
+    au paquet que l'historique : les tâches enregistrées sont celles de
+    tous les paquets, d'où le uid (uid_dumpsys) dans chaque motif."""
     return adb("shell", "dumpsys", "jobscheduler", paquet, executer=executer)
+
+
+def uid_dumpsys(executer, paquet=PAQUET):
+    """Le uid du paquet tel que dumpsys l'écrit (« u0a<appid - 10000> »,
+    utilisateur 0), lu de pm list packages -U ; RuntimeError quand pm ne
+    le donne pas."""
+    sortie = adb(
+        "shell", "pm", "list", "packages", "-U", paquet, executer=executer
+    )
+    trouve = re.search(
+        rf"^package:{re.escape(paquet)} uid:(\d+)\s*$", sortie, re.MULTILINE
+    )
+    if not trouve:
+        raise RuntimeError(f"uid de {paquet} illisible dans pm list packages")
+    return f"u0a{int(trouve.group(1)) - 10000}"
 
 
 def demarrages_tache(executer, ident):
     """Les démarrages de la tâche ident de l'app de test que garde
     l'historique de dumpsys jobscheduler (lignes « START: #<uid>/<id> »,
-    « START-P » pour une tâche relancée)."""
+    « START-P » pour une tâche relancée), au uid de l'app de test."""
+    uid = re.escape(uid_dumpsys(executer))
     return len(
-        re.findall(rf"\bSTART(?:-P)?: #\S+/{ident}\b", jobscheduler(executer))
+        re.findall(
+            rf"\bSTART(?:-P)?: #{uid}/{ident}\b", jobscheduler(executer)
+        )
     )
 
 
 def tache_en_attente(executer, ident):
     """Vrai quand la tâche ident de l'app de test est planifiée (une ligne
-    « JOB #<uid>/<id>: » des tâches enregistrées)."""
-    return bool(re.search(rf"\bJOB #\S+/{ident}:", jobscheduler(executer)))
+    « JOB #<uid>/<id>: » des tâches enregistrées, au uid de l'app de
+    test : une autre app peut porter le même numéro de tâche)."""
+    uid = re.escape(uid_dumpsys(executer))
+    return bool(re.search(rf"\bJOB #{uid}/{ident}:", jobscheduler(executer)))
 
 
 def alerte_de_groupe(notification):
