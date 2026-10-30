@@ -23,6 +23,10 @@ export type OdooNotifySetting = "all" | "mentions" | "no_notif" | false;
 /** What a device does while a browser of its user is active, as module 1.6 holds it (erplibre_browser_mode). */
 export type DeviceMode = "ring" | "wait" | "quiet";
 
+/** The tries of createUser in all, and the error text of Odoo's serialization failure it tries again on. */
+const CREATE_USER_ATTEMPTS = 3;
+const SERIALIZATION_FAILURE = /could not serialize|SerializationFailure|concurrent update/;
+
 /** A system parameter of the tests' own, written then removed to clear Odoo's get_param cache. */
 const CACHE_FLUSH = "erplibre_mobile_sync.cache_bump";
 
@@ -157,8 +161,11 @@ export class ChatPeer {
 	 * (/web/session/authenticate) and its bus websocket, as listen() opens
 	 * chat_user's. markRead reads the conversation up to lastId as the web
 	 * client does (/discuss/channel/mark_as_read); presence sends the bus's
-	 * update_presence with that inactivity (ms) and resolves once Odoo
-	 * wrote it (the browser poll of the user's bus.presence moved);
+	 * update_presence with that inactivity (ms), the event the web client
+	 * sends on connect and, under module 1.6's client patch, every 60 s;
+	 * the module counts the browser online while the last one is under
+	 * 65 s old. It resolves once
+	 * Odoo wrote it (the browser poll of the user's bus.presence moved);
 	 * setMessageDone marks an inbox message done (set_message_done); post
 	 * posts text in the conversation as the user (/mail/message/post), the
 	 * new message's id; close() ends the websocket.
@@ -310,7 +317,12 @@ export class ChatPeer {
 	 * A new internal user named name, its login and password both login
 	 * (unique to the run, the caller's), with project's user rights and
 	 * notified in Odoo's inbox when inbox is true (Odoo creates its
-	 * settings with it). Its Login and partner.
+	 * settings with it). Its Login and partner. A creation that meets
+	 * Odoo's serialization failure (users created by files running beside
+	 * this one, after Odoo's own retries) is tried again, up to
+	 * CREATE_USER_ATTEMPTS in all, 1 s then 2 s later; before each new
+	 * try the login is searched, since a failed answer may follow a
+	 * commit.
 	 */
 	async createUser(name: string, login: string, opts: { inbox?: boolean } = {}): Promise<{ login: Login; partnerId: number }> {
 		const xmlids = ["base.group_user", ...(opts.inbox ? ["project.group_project_user", "mail.group_mail_notification_type_inbox"] : [])];
@@ -320,10 +332,21 @@ export class ChatPeer {
 			const [row] = await this.admin.searchRead("ir.model.data", [["module", "=", module], ["name", "=", name]], ["res_id"]);
 			groups.push(row.res_id);
 		}
-		const userId = await this.admin.create("res.users", {
+		const values = {
 			name, login, password: login, groups_id: [[6, 0, groups]], ...(opts.inbox ? { notification_type: "inbox" } : {}),
-		});
-		if (!userId) throw new Error(`user ${login} not created`);
+		};
+		for (let attempt = 1; ; attempt++) {
+			try {
+				const userId = await this.admin.create("res.users", values);
+				if (!userId) throw new Error(`user ${login} not created`);
+				break;
+			} catch (error) {
+				if (attempt >= CREATE_USER_ATTEMPTS || !SERIALIZATION_FAILURE.test(String(error))) throw error;
+				await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+				const [found] = await this.admin.searchRead("res.users", [["login", "=", login]], ["id"]);
+				if (found) break;
+			}
+		}
 		return { login: { login, password: login }, partnerId: await this.partnerOf(login) };
 	}
 
