@@ -340,7 +340,8 @@ def detruire(a_blanc=False):
     notee = appareil.BATTERIE_NOTEE
     garde = (
         f"  gardé : {notee} (état de batterie d'une course"
-        " --batterie-reelle non rendu, que la prochaine rend)"
+        " --batterie-reelle non rendu, que la prochaine rend au même"
+        " téléphone)"
         if notee.exists()
         else ""
     )

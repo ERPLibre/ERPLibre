@@ -1863,13 +1863,24 @@ def sous_l_option(ancetres):
     )
 
 
+# Des numéros de série inventés : le téléphone branché, puis un autre
+SERIE = "SERIE-ESSAI-A"
+AUTRE_SERIE = "SERIE-ESSAI-B"
+
+
 def faux_telephone_batterie(
-    low_power="0", ecran="30000", paquets="", echouent=()
+    low_power="0",
+    ecran="30000",
+    paquets="",
+    echouent=(),
+    serie=SERIE,
+    branches=(SERIE,),
 ):
     """Un faux subprocess.run qui note chaque commande adb : settings get
     rend low_power (global low_power) ou ecran (system
-    screen_off_timeout), pm list packages rend paquets ; une commande dont
-    le texte contient un des morceaux de echouent rend le code 1."""
+    screen_off_timeout), pm list packages rend paquets, get-serialno rend
+    serie, devices liste branches prêts ; une commande dont le texte
+    contient un des morceaux de echouent rend le code 1."""
     commandes = []
 
     def executer(commande, **_):
@@ -1877,7 +1888,13 @@ def faux_telephone_batterie(
         if any(morceau in " ".join(commande) for morceau in echouent):
             return SimpleNamespace(stdout="", stderr="échec", returncode=1)
         sortie = ""
-        if commande[2:5] == ["settings", "get", "global"]:
+        if commande[1:] == ["get-serialno"]:
+            sortie = serie + "\n"
+        elif commande[1:] == ["devices"]:
+            sortie = "List of devices attached\n" + "".join(
+                f"{b}\tdevice\n" for b in branches
+            )
+        elif commande[2:5] == ["settings", "get", "global"]:
             sortie = low_power + "\n"
         elif commande[2:5] == ["settings", "get", "system"]:
             sortie = ecran + "\n"
@@ -2066,8 +2083,146 @@ class TestBatterieReelle(unittest.TestCase):
         self.assertEqual(vus, [True])
         self.assertEqual(
             json.loads(self.notee.read_text()),
-            {"low_power": "1", "screen_off_timeout": "45000"},
+            {SERIE: {"low_power": "1", "screen_off_timeout": "45000"}},
         )
+
+    def test_le_releve_garde_ceux_des_autres_telephones(self):
+        """Le relevé est rangé sous le numéro de série du téléphone : celui
+        d'un autre téléphone, laissé par une course tuée, reste intact,
+        et la remise complète n'efface que la clé de ce téléphone."""
+        autre = {"low_power": "1", "screen_off_timeout": "60000"}
+        self.notee.write_text(json.dumps({AUTRE_SERIE: autre}))
+        executer, _ = faux_telephone_batterie(low_power="0", ecran="45000")
+        telephone = appareil.Appareil([8018], executer)
+        telephone.noter_batterie()
+        self.assertEqual(
+            json.loads(self.notee.read_text()),
+            {
+                AUTRE_SERIE: autre,
+                SERIE: {"low_power": "0", "screen_off_timeout": "45000"},
+            },
+        )
+        telephone.rendre()
+        self.assertEqual(
+            json.loads(self.notee.read_text()), {AUTRE_SERIE: autre}
+        )
+
+    def test_noter_refuse_un_numero_de_serie_illisible(self):
+        """Sans numéro de série, le relevé ne saurait à quel téléphone il
+        appartient : rien n'est écrit ni touché."""
+        for illisible in ("", "unknown"):
+            executer, commandes = faux_telephone_batterie(serie=illisible)
+            with self.assertRaises(RuntimeError) as refus:
+                appareil.Appareil([8018], executer).noter_batterie()
+            self.assertIn("get-serialno", str(refus.exception))
+            self.assertFalse(any("put" in c for c in commandes))
+            self.assertFalse(self.notee.exists())
+
+    def test_preparer_rend_seulement_le_releve_du_telephone_branche(self):
+        autre = {"low_power": "1", "screen_off_timeout": "60000"}
+        self.notee.write_text(
+            json.dumps(
+                {
+                    AUTRE_SERIE: autre,
+                    SERIE: {"low_power": "0", "screen_off_timeout": "45000"},
+                }
+            )
+        )
+        executer, commandes = faux_telephone_batterie()
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as sortie:
+            appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+                Path("x.apk")
+            )
+        avant = commandes[: commandes.index(["install", "-r", "x.apk"])]
+        self.assertIn(
+            ["shell", "settings", "put", "global", "low_power", "0"], avant
+        )
+        self.assertIn(
+            [
+                "shell",
+                "settings",
+                "put",
+                "system",
+                "screen_off_timeout",
+                "45000",
+            ],
+            avant,
+        )
+        self.assertNotIn(["shell", "cmd", "power", "set-mode", "1"], avant)
+        self.assertEqual(
+            json.loads(self.notee.read_text()), {AUTRE_SERIE: autre}
+        )
+        self.assertIn(AUTRE_SERIE, sortie.getvalue())
+
+    def test_preparer_laisse_le_releve_d_un_autre_telephone(self):
+        contenu = json.dumps(
+            {AUTRE_SERIE: {"low_power": "1", "screen_off_timeout": "60000"}}
+        )
+        self.notee.write_text(contenu)
+        executer, commandes = faux_telephone_batterie()
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as sortie:
+            appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+                Path("x.apk")
+            )
+        self.assertFalse(any(touche_batterie(c) for c in commandes))
+        self.assertEqual(self.notee.read_text(), contenu)
+        self.assertIn(AUTRE_SERIE, sortie.getvalue())
+
+    def test_un_releve_sans_numero_est_rendu_au_seul_telephone_branche(self):
+        """Un relevé écrit avant le classement par numéro de série
+        (low_power et screen_off_timeout à la racine) n'est rendu que
+        quand un seul téléphone est branché, et une ligne le dit."""
+        self.notee.write_text(
+            json.dumps({"low_power": "1", "screen_off_timeout": "45000"})
+        )
+        executer, commandes = faux_telephone_batterie()
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as sortie:
+            appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+                Path("x.apk")
+            )
+        self.assertIn(["shell", "cmd", "power", "set-mode", "1"], commandes)
+        self.assertFalse(self.notee.exists())
+        self.assertIn("sans numéro de série", sortie.getvalue())
+        self.assertIn(SERIE, sortie.getvalue())
+
+    def test_un_releve_sans_numero_reste_quand_plusieurs_sont_branches(self):
+        """Plusieurs téléphones branchés : rien ne dit à lequel appartient
+        un relevé sans numéro de série. Il n'est pas rendu, une ligne le
+        nomme, et le relevé de la course le garde sous une clé à part."""
+        ancien = {"low_power": "1", "screen_off_timeout": "45000"}
+        self.notee.write_text(json.dumps(ancien))
+        executer, commandes = faux_telephone_batterie(
+            branches=(SERIE, AUTRE_SERIE)
+        )
+        telephone = appareil.Appareil([8018], executer, batterie_reelle=True)
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as sortie:
+            telephone.preparer(Path("x.apk"))
+        self.assertFalse(any(touche_batterie(c) for c in commandes))
+        self.assertEqual(json.loads(self.notee.read_text()), ancien)
+        self.assertIn("sans numéro de série", sortie.getvalue())
+        self.assertIn(str(self.notee), sortie.getvalue())
+        telephone.noter_batterie()
+        releves = json.loads(self.notee.read_text())
+        self.assertEqual(releves[appareil.SERIE_INCONNUE], ancien)
+        self.assertIn(SERIE, releves)
+        telephone.rendre()
+        self.assertEqual(
+            json.loads(self.notee.read_text()),
+            {appareil.SERIE_INCONNUE: ancien},
+        )
+
+    def test_une_remise_echouee_garde_la_cle_du_telephone(self):
+        self.notee.write_text(
+            json.dumps(
+                {SERIE: {"low_power": "0", "screen_off_timeout": "45000"}}
+            )
+        )
+        executer, _ = faux_telephone_batterie(echouent=("battery reset",))
+        with self.assertRaises(RuntimeError):
+            appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+                Path("x.apk")
+            )
+        self.assertIn(SERIE, json.loads(self.notee.read_text()))
 
     def test_une_remise_complete_efface_le_releve(self):
         executer, _ = faux_telephone_batterie()
@@ -2875,7 +3030,11 @@ class TestDetruire(unittest.TestCase):
         (cache / "apk").mkdir()
         (cache / "apk" / "synctest_cle.apk").write_text("apk")
         notee = cache / "batterie_notee.json"
-        notee.write_text("{}")
+        notee.write_text(
+            json.dumps(
+                {SERIE: {"low_power": "0", "screen_off_timeout": "45000"}}
+            )
+        )
         with mock.patch.object(odoo, "CACHE", cache), mock.patch.object(
             appareil, "BATTERIE_NOTEE", notee
         ), mock.patch.object(
