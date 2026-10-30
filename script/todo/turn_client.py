@@ -25,7 +25,8 @@ utilisateur / mot de passe dont on tire la même clé.
 Transports : « udp » (retransmission dès 0,5 s, doublée à chaque essai,
 RFC 5389 §7.2.1), « tcp » et « tls » (un message STUN se délimite seul par
 la longueur de son en-tête : 20 octets puis le corps). Toute l'allocation
-tient dans UN budget `timeout`, retransmissions et Refresh compris.
+tient dans UN budget `timeout`, résolution du nom, retransmissions et
+Refresh compris.
 
 Les messages reçus sont validés : magic cookie, longueur, FINGERPRINT s'il
 est présent, transaction attendue. En UDP, un datagramme qui ne passe pas
@@ -44,6 +45,7 @@ import os
 import socket
 import ssl
 import struct
+import threading
 import time
 from dataclasses import dataclass
 
@@ -288,6 +290,32 @@ def _error_code(msg):
     return (value[2] & 0x07) * 100 + value[3]
 
 
+def _resolve(host, port, kind, deadline):
+    """Première adresse de `getaddrinfo`, bornée par `deadline`.
+
+    `getaddrinfo` n'a pas de délai propre : il attend celui du résolveur,
+    tentatives comprises. Il tourne donc dans un fil démon dont l'attente
+    s'arrête au budget ; TimeoutError si le résolveur n'a pas répondu, le
+    fil s'achève seul quand il répond. Les erreurs du résolveur
+    (`socket.gaierror`, un OSError) remontent telles quelles."""
+    outcome = {}
+
+    def run():
+        try:
+            outcome["info"] = socket.getaddrinfo(host, port, type=kind)
+        except OSError as exc:
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    if worker.is_alive():
+        raise TimeoutError("résolution hors budget")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["info"][0]
+
+
 class _Link:
     """Une connexion vers le serveur, ouverte pour toute l'allocation : en
     UDP, l'allocation appartient au quintuplet, le Refresh doit donc partir
@@ -300,9 +328,7 @@ class _Link:
         self.transport = transport
         self.deadline = deadline
         kind = socket.SOCK_DGRAM if transport == "udp" else socket.SOCK_STREAM
-        family, _t, _p, _c, address = socket.getaddrinfo(
-            host, port, type=kind
-        )[0]
+        family, _t, _p, _c, address = _resolve(host, port, kind, deadline)
         self.sock = socket.socket(family, kind)
         try:
             self.sock.settimeout(self._remaining(deadline))
