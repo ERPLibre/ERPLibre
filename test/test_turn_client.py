@@ -532,6 +532,33 @@ class TestResolution(unittest.TestCase):
             )
         self.assertEqual(result, tc.Allocation(False, None, "unreachable"))
 
+    # Noms que l'encodage IDNA refuse avant toute requête DNS : un label
+    # vide, un label de plus de 63 caractères. Aucun réseau n'est touché.
+    INVALID_NAMES = ("turn..exemple.test", "a" * 64 + ".exemple.test")
+
+    def test_allocate_invalid_name_is_malformed(self):
+        for name in self.INVALID_NAMES:
+            with self.subTest(name=name):
+                result = tc.allocate(name, 3478, "udp", USER, KEY, timeout=1)
+                self.assertEqual(
+                    result, tc.Allocation(False, None, "malformed")
+                )
+
+    def test_binding_invalid_name_is_none(self):
+        for name in self.INVALID_NAMES:
+            with self.subTest(name=name):
+                self.assertIsNone(tc.binding(name, 3478, timeout=1))
+
+    def test_unexpected_resolver_error_reaches_the_caller(self):
+        # Une exception hors OSError et ValueError n'est pas avalée par le
+        # fil : elle remonte à l'appelant au lieu d'un KeyError.
+        def getaddrinfo(*_args, **_kwargs):
+            raise LookupError("inattendue")
+
+        with mock.patch.object(tc.socket, "getaddrinfo", getaddrinfo):
+            with self.assertRaises(LookupError):
+                tc.binding("turn.exemple.test", 3478, timeout=1)
+
 
 class TestAllocateStream(FakeCase):
     def test_tcp_framing_success(self):

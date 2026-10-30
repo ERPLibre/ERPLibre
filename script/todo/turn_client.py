@@ -311,14 +311,17 @@ def _resolve(host, port, kind, deadline):
     `getaddrinfo` n'a pas de délai propre : il attend celui du résolveur,
     tentatives comprises. Il tourne donc dans un fil démon dont l'attente
     s'arrête au budget ; TimeoutError si le résolveur n'a pas répondu, le
-    fil s'achève seul quand il répond. Les erreurs du résolveur
-    (`socket.gaierror`, un OSError) remontent telles quelles."""
+    fil s'achève seul quand il répond. Toute exception du fil remonte telle
+    quelle chez l'appelant : `socket.gaierror` (un OSError) pour un nom que
+    le résolveur ne connaît pas, UnicodeError (un ValueError) pour un nom
+    que l'encodage IDNA refuse avant toute requête, label vide ou de plus
+    de 63 caractères."""
     outcome = {}
 
     def run():
         try:
             outcome["info"] = socket.getaddrinfo(host, port, type=kind)
-        except OSError as exc:
+        except Exception as exc:  # relancée dans le fil appelant
             outcome["error"] = exc
 
     worker = threading.Thread(target=run, daemon=True)
