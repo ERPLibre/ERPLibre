@@ -683,6 +683,24 @@ class TestAppareil(unittest.TestCase):
         vide = faux_adb(installes=f"package:{appareil.PAQUET}\n")
         self.assertEqual(self.verifier(vide, batterie_reelle=True), [])
 
+    def test_batterie_reelle_refuse_quand_les_paquets_sont_illisibles(self):
+        base = faux_adb(installes=f"package:{appareil.PAQUET}\n")
+
+        def executer(commande, **k):
+            if commande[2:4] == ["pm", "list"]:
+                return SimpleNamespace(stdout="", stderr="échec", returncode=1)
+            return base(commande, **k)
+
+        self.assertEqual(self.verifier(executer), [])
+        problemes = self.verifier(executer, batterie_reelle=True)
+        self.assertTrue(
+            any(
+                "--batterie-reelle" in p and appareil.APP_PERSO in p
+                for p in problemes
+            ),
+            problemes,
+        )
+
     def test_gradlew_absent(self):
         (self.mobile / "android" / "gradlew").unlink()
         self.assertTrue(any("gradlew" in p for p in self.verifier(faux_adb())))
@@ -1640,14 +1658,19 @@ def sous_l_option(ancetres):
     )
 
 
-def faux_telephone_batterie(low_power="0", ecran="30000", paquets=""):
+def faux_telephone_batterie(
+    low_power="0", ecran="30000", paquets="", echouent=()
+):
     """Un faux subprocess.run qui note chaque commande adb : settings get
     rend low_power (global low_power) ou ecran (system
-    screen_off_timeout), pm list packages rend paquets."""
+    screen_off_timeout), pm list packages rend paquets ; une commande dont
+    le texte contient un des morceaux de echouent rend le code 1."""
     commandes = []
 
     def executer(commande, **_):
         commandes.append(commande[1:])
+        if any(morceau in " ".join(commande) for morceau in echouent):
+            return SimpleNamespace(stdout="", stderr="échec", returncode=1)
         sortie = ""
         if commande[2:5] == ["settings", "get", "global"]:
             sortie = low_power + "\n"
@@ -1675,6 +1698,14 @@ class TestBatterieReelle(unittest.TestCase):
     un téléphone qui porte l'app de l'utilisateur, et rendre() remet l'état
     noté, dans l'ordre (mode d'économie et low_power, batterie, délai de
     l'écran). Par défaut, la porte de test simule seule l'alimentation."""
+
+    def setUp(self):
+        dossier = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(dossier))
+        self.notee = dossier / "batterie_notee.json"
+        relais = mock.patch.object(appareil, "BATTERIE_NOTEE", self.notee)
+        relais.start()
+        self.addCleanup(relais.stop)
 
     def test_le_scenario_ne_touche_la_batterie_que_sous_l_option(self):
         source = inspect.getsource(appareil.scenario_preferences_notifications)
@@ -1813,6 +1844,183 @@ class TestBatterieReelle(unittest.TestCase):
         self.assertIn(
             ["shell", "settings", "delete", "system", "screen_off_timeout"],
             commandes,
+        )
+
+    def test_le_releve_est_ecrit_avant_de_toucher_au_telephone(self):
+        executer, commandes = faux_telephone_batterie(
+            low_power="1", ecran="45000"
+        )
+        vus = []
+
+        def temoin(commande, **k):
+            if "put" in commande:
+                vus.append(self.notee.exists())
+            return executer(commande, **k)
+
+        appareil.Appareil([8018], temoin).noter_batterie()
+        self.assertEqual(vus, [True])
+        self.assertEqual(
+            json.loads(self.notee.read_text()),
+            {"low_power": "1", "screen_off_timeout": "45000"},
+        )
+
+    def test_une_remise_complete_efface_le_releve(self):
+        executer, _ = faux_telephone_batterie()
+        telephone = appareil.Appareil([8018], executer)
+        telephone.noter_batterie()
+        telephone.rendre()
+        self.assertFalse(self.notee.exists())
+        self.assertEqual(telephone.remises_manquees, [])
+
+    def test_une_remise_echouee_est_nommee_et_le_releve_garde(self):
+        executer, commandes = faux_telephone_batterie(
+            echouent=("battery reset",)
+        )
+        telephone = appareil.Appareil([8018], executer)
+        telephone.noter_batterie()
+        debut = len(commandes)
+        telephone.rendre()
+        # Les remises suivantes jouent quand même
+        self.assertIn(
+            [
+                "shell",
+                "settings",
+                "put",
+                "system",
+                "screen_off_timeout",
+                "30000",
+            ],
+            commandes[debut:],
+        )
+        self.assertEqual(
+            telephone.remises_manquees,
+            ["adb shell dumpsys battery reset (code 1)"],
+        )
+        self.assertTrue(self.notee.exists())
+
+    def test_lancer_compte_une_remise_incomplete_comme_un_echec(self):
+        journal = []
+        executer, _ = faux_telephone_batterie()
+        with mock.patch.object(appareil, "SCENARIOS", ()), mock.patch.object(
+            appareil, "construire_apk", return_value=Path("x.apk")
+        ), mock.patch.object(
+            appareil, "Appareil"
+        ) as classe, mock.patch.object(
+            appareil, "maj_app_perso", return_value=None
+        ):
+            classe.return_value.remises_manquees = [
+                "adb shell dumpsys battery reset (code 1)",
+                "adb shell settings delete global low_power (code 1)",
+            ]
+            bilan = appareil.lancer(
+                [], "/x", executer=executer, journal=journal.append
+            )
+        self.assertEqual(bilan, (0, 1))
+        manquees = [l for l in journal if "remise incomplète" in l]
+        self.assertEqual(len(manquees), 2)
+        self.assertIn("adb shell dumpsys battery reset", manquees[0])
+
+    def test_lancer_passe_l_option_a_l_appareil(self):
+        executer, _ = faux_telephone_batterie(
+            paquets=f"package:{appareil.PAQUET}\n"
+        )
+        for option in (False, True):
+            with mock.patch.object(
+                appareil, "SCENARIOS", ()
+            ), mock.patch.object(
+                appareil, "construire_apk", return_value=Path("x.apk")
+            ), mock.patch.object(
+                appareil, "Appareil"
+            ) as classe:
+                appareil.lancer(
+                    [],
+                    "/x",
+                    executer=executer,
+                    journal=lambda _: 0,
+                    batterie_reelle=option,
+                )
+            self.assertEqual(
+                classe.call_args.kwargs.get("batterie_reelle"), option
+            )
+
+    def test_preparer_rend_d_abord_le_releve_d_une_course_tuee(self):
+        self.notee.write_text(
+            json.dumps({"low_power": "0", "screen_off_timeout": "45000"})
+        )
+        executer, commandes = faux_telephone_batterie()
+        appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+            Path("x.apk")
+        )
+        installe = commandes.index(["install", "-r", "x.apk"])
+        avant = commandes[:installe]
+        self.assertEqual(
+            [c for c in avant if touche_batterie(c)],
+            [
+                ["shell", "cmd", "power", "set-mode", "0"],
+                ["shell", "settings", "put", "global", "low_power", "0"],
+                ["shell", "dumpsys", "battery", "reset"],
+            ],
+        )
+        self.assertIn(
+            [
+                "shell",
+                "settings",
+                "put",
+                "system",
+                "screen_off_timeout",
+                "45000",
+            ],
+            avant,
+        )
+        self.assertFalse(self.notee.exists())
+
+    def test_preparer_sans_l_option_laisse_le_releve(self):
+        self.notee.write_text(
+            json.dumps({"low_power": "0", "screen_off_timeout": "45000"})
+        )
+        executer, commandes = faux_telephone_batterie()
+        appareil.Appareil([8018], executer).preparer(Path("x.apk"))
+        self.assertFalse(any(touche_batterie(c) for c in commandes))
+        self.assertTrue(self.notee.exists())
+
+    def test_preparer_s_arrete_quand_le_releve_ne_se_rend_pas(self):
+        self.notee.write_text(
+            json.dumps({"low_power": "0", "screen_off_timeout": "45000"})
+        )
+        executer, commandes = faux_telephone_batterie(
+            echouent=("battery reset",)
+        )
+        with self.assertRaises(RuntimeError) as refus:
+            appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+                Path("x.apk")
+            )
+        self.assertIn("dumpsys battery reset", str(refus.exception))
+        self.assertNotIn(["install", "-r", "x.apk"], commandes)
+        self.assertTrue(self.notee.exists())
+
+    def test_preparer_s_arrete_sur_un_releve_illisible(self):
+        self.notee.write_text("{pas du json")
+        executer, commandes = faux_telephone_batterie()
+        with self.assertRaises(RuntimeError) as refus:
+            appareil.Appareil([8018], executer, batterie_reelle=True).preparer(
+                Path("x.apk")
+            )
+        self.assertIn(str(self.notee), str(refus.exception))
+        self.assertIn(["shell", "dumpsys", "battery", "reset"], commandes)
+        self.assertNotIn(["install", "-r", "x.apk"], commandes)
+
+    def test_l_etape_reelle_attend_le_service_rendu_par_la_tache(self):
+        source = textwrap.dedent(
+            inspect.getsource(appareil.etape_batterie_reelle)
+        )
+        apres = source[source.index("rendre_batterie()") :]
+        self.assertLess(
+            apres.index("attendre_niveau(ctx, 1, None"),
+            apres.index("service_vivant(executer)"),
+        )
+        self.assertLess(
+            apres.index("service_vivant(executer)"),
+            apres.index("not tache_en_attente("),
         )
 
     def test_rendre_sans_batterie_reelle_ne_touche_pas_la_batterie(self):
@@ -2053,6 +2261,89 @@ class TestScenariosAppareil(unittest.TestCase):
             cas.index("while "),
             cas.index("messages_ntfy(ntfy, sujet) >= avant + 2"),
         )
+
+    def test_le_navigateur_imite_le_client_corrige_sans_signal_par_message(
+        self,
+    ):
+        """Un signal à l'ouverture et la cadence du correctif, jamais un
+        signal avant chaque message ; puis, le navigateur fermé et aucun
+        signal depuis NAVIGATEUR_FERME s, un message sonne tout de suite
+        sous « Attendre 10 s »."""
+        source = inspect.getsource(appareil.scenario_preferences_notifications)
+        self.assertNotIn("actif()", source)
+        self.assertNotIn("repli", source)
+        self.assertEqual(source.count("/websocket/update_bus_presence"), 1)
+        self.assertIn("NavigateurOuvert(", source)
+        cas = source[
+            source.index(".fermer()") : source.index(
+                "chatPushBrowserMode('ring')"
+            )
+        ]
+        self.assertIn("NAVIGATEUR_FERME", cas)
+        self.assertLess(cas.index("time.sleep("), cas.index("poster("))
+        self.assertIn("SONNER_DELAI", cas[cas.index("poster(") :])
+        self.assertLess(
+            source.index("chatPushBrowserMode('wait')"),
+            source.index("NavigateurOuvert("),
+        )
+
+    def test_les_heures_calmes_hors_fenetre_exigent_l_alerte_de_tous(self):
+        source = inspect.getsource(appareil.scenario_preferences_notifications)
+        self.assertNotIn("!= ALERTE_RESUME", source)
+        self.assertIn("alerte_de_groupe(notif) == ALERTE_TOUTES", source)
+        self.assertEqual(appareil.ALERTE_TOUTES, 0)
+
+    def test_la_tache_de_montee_n_est_pas_planifiee_sur_l_usb(self):
+        source = inspect.getsource(appareil.scenario_preferences_notifications)
+        apres = source[source.index("time.sleep(BOUCLE_FENETRE)") :]
+        self.assertIn(
+            "assert not tache_en_attente(",
+            apres[: apres.index("premier_plan(ctx)")],
+        )
+
+
+class TestNavigateurOuvert(unittest.TestCase):
+    """Le navigateur que le scénario des préférences imite envoie ce que le
+    client corrigé par le module envoie : un signal de présence à
+    l'ouverture, puis un à chaque cadence tant qu'il reste ouvert, aucun
+    une fois fermé."""
+
+    def test_un_signal_a_l_ouverture_puis_un_par_cadence(self):
+        signaux = []
+        navigateur = appareil.NavigateurOuvert(
+            lambda: signaux.append(__import__("time").monotonic()),
+            cadence=0.05,
+        )
+        navigateur.ouvrir()
+        self.assertEqual(len(signaux), 1)
+        __import__("time").sleep(0.18)
+        dernier = navigateur.fermer()
+        self.assertGreaterEqual(len(signaux), 3)
+        # L'instant noté suit la fin du dernier envoi
+        self.assertGreaterEqual(dernier, signaux[-1])
+        self.assertLess(dernier - signaux[-1], 0.04)
+        compte = len(signaux)
+        __import__("time").sleep(0.12)
+        self.assertEqual(len(signaux), compte)
+
+    def test_un_signal_refuse_ressort_a_la_fermeture(self):
+        appels = []
+
+        def signaler():
+            appels.append(1)
+            if len(appels) > 1:
+                raise RuntimeError("signal refusé")
+
+        navigateur = appareil.NavigateurOuvert(signaler, cadence=0.02)
+        navigateur.ouvrir()
+        __import__("time").sleep(0.1)
+        with self.assertRaises(RuntimeError):
+            navigateur.fermer()
+        self.assertEqual(len(appels), 2)
+
+    def test_la_cadence_est_celle_du_correctif_du_module(self):
+        self.assertEqual(appareil.PRESENCE_CADENCE, 60)
+        self.assertGreater(appareil.NAVIGATEUR_FERME, 65)
 
 
 class TestCommandeAppareil(unittest.TestCase):
