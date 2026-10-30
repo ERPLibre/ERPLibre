@@ -50,6 +50,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -84,6 +85,10 @@ APP_ETAT = "window.Capacitor.Plugins.App.getState()"
 # débranché par dumpsys battery unplug, le téléphone n'est plus gardé allumé
 # par svc power stayon usb, et un écran éteint verrouille un téléphone à code
 ECRAN_BATTERIE_REELLE = 30 * 60 * 1000
+# L'état relevé par noter_batterie(), écrit avant que rien ne touche à la
+# batterie : une course tuée avant rendre_batterie() le laisse, et la course
+# suivante sous --batterie-reelle le rend dans preparer() avant tout le reste
+BATTERIE_NOTEE = odoo.CACHE / "batterie_notee.json"
 
 
 def adb(*args, executer=subprocess.run, check=True, binaire=False):
@@ -185,11 +190,23 @@ def verifier_appareil(
             problemes.append(
                 "écran du téléphone verrouillé : le déverrouiller"
             )
-        if batterie_reelle and app_perso_installee(executer):
-            problemes.append(
-                f"--batterie-reelle sur un téléphone qui porte {APP_PERSO} :"
-                " le lancer sans l'option, ou sur un téléphone de test vide"
-            )
+        if batterie_reelle:
+            # Une liste illisible refuse l'option : une sortie vide se
+            # lirait « APP_PERSO absente »
+            try:
+                installee = app_perso_installee(executer)
+            except RuntimeError:
+                problemes.append(
+                    "--batterie-reelle : impossible de vérifier l'absence de"
+                    f" {APP_PERSO} (pm list packages a échoué)"
+                )
+            else:
+                if installee:
+                    problemes.append(
+                        "--batterie-reelle sur un téléphone qui porte"
+                        f" {APP_PERSO} : le lancer sans l'option, ou sur un"
+                        " téléphone de test vide"
+                    )
     if not (Path(mobile) / "android" / "gradlew").exists():
         problemes.append(
             f"{mobile}/android/gradlew absent : lancer « npx cap add android » dans le dépôt mobile"
@@ -408,10 +425,13 @@ class Odoo:
 class Appareil:
     """Le téléphone pendant une course : ports renvoyés vers les serveurs,
     écran gardé allumé, app de test installée. rendre() défait tout ce que
-    preparer() a posé, l'app de l'utilisateur jamais touchée."""
+    preparer() a posé, l'app de l'utilisateur jamais touchée.
+    batterie_reelle (--batterie-reelle) fait rendre par preparer() l'état
+    de batterie qu'une course tuée a laissé dans BATTERIE_NOTEE."""
 
     ports: list
     executer: object = subprocess.run
+    batterie_reelle: bool = False
     port_devtools: int = 0
     reste_allume: str = ""
     cdp: Cdp = None
@@ -421,6 +441,9 @@ class Appareil:
     # L'état de la batterie que noter_batterie() a relevé (low_power,
     # screen_off_timeout), None quand rien n'est à rendre
     batterie_notee: dict = None
+    # Les remises de rendre_batterie() qu'adb a refusées, chacune la
+    # commande à relancer à la main et son code ; lancer() les compte
+    remises_manquees: list = field(default_factory=list)
 
     def garder_allume(self):
         """L'écran gardé allumé tant que le téléphone est branché (svc
@@ -440,6 +463,8 @@ class Appareil:
         adb("shell", "svc", "power", "stayon", "usb", executer=self.executer)
 
     def preparer(self, apk):
+        if self.batterie_reelle:
+            self.rendre_batterie_laissee()
         adb("install", "-r", str(apk), executer=self.executer)
         self.garder_allume()
         for port in self.ports:
@@ -563,9 +588,10 @@ class Appareil:
 
     def noter_batterie(self):
         """Relève low_power (global) et screen_off_timeout (system) pour
-        rendre_batterie(), puis porte le délai d'extinction de l'écran à
-        ECRAN_BATTERIE_REELLE. Seule l'étape de --batterie-reelle l'appelle,
-        avant de toucher à la batterie."""
+        rendre_batterie(), les écrit dans BATTERIE_NOTEE, puis porte le
+        délai d'extinction de l'écran à ECRAN_BATTERIE_REELLE. Seule
+        l'étape de --batterie-reelle l'appelle, avant de toucher à la
+        batterie."""
 
         def lire(espace, nom):
             return adb(
@@ -576,6 +602,8 @@ class Appareil:
             "low_power": lire("global", "low_power"),
             "screen_off_timeout": lire("system", "screen_off_timeout"),
         }
+        BATTERIE_NOTEE.parent.mkdir(parents=True, exist_ok=True)
+        BATTERIE_NOTEE.write_text(json.dumps(self.batterie_notee))
         adb(
             "shell",
             "settings",
@@ -591,39 +619,78 @@ class Appareil:
         mode d'économie (cmd power set-mode) et low_power aux valeurs
         relevées, jamais forcés à « off », la batterie rendue à Android
         (dumpsys battery reset), puis le délai d'extinction de l'écran.
-        Une valeur absente au relevé (« null ») est effacée. Rien quand
+        Une valeur absente au relevé (« null ») est effacée. Chaque remise
+        joue même quand une autre échoue ; celle qu'adb refuse s'ajoute à
+        remises_manquees, et BATTERIE_NOTEE reste alors pour la course
+        suivante. Remise complète, BATTERIE_NOTEE est effacé. Rien quand
         rien n'est relevé ; une fois rendu, l'état n'est plus rejoué."""
         if self.batterie_notee is None:
             return
         notee, self.batterie_notee = self.batterie_notee, None
+        manquees = []
+
+        def essayer(*args):
+            resultat = self.executer(
+                ["adb", *args], capture_output=True, text=True, check=False
+            )
+            if resultat.returncode != 0:
+                manquees.append(
+                    f"adb {shlex.join(args)} (code {resultat.returncode})"
+                )
 
         def remettre(espace, nom, valeur):
             if valeur in ("", "null"):
-                commande = ("settings", "delete", espace, nom)
+                essayer("shell", "settings", "delete", espace, nom)
             else:
-                commande = ("settings", "put", espace, nom, valeur)
-            adb("shell", *commande, executer=self.executer, check=False)
+                essayer("shell", "settings", "put", espace, nom, valeur)
 
         mode = "1" if notee["low_power"] == "1" else "0"
-        adb(
-            "shell",
-            "cmd",
-            "power",
-            "set-mode",
-            mode,
-            executer=self.executer,
-            check=False,
-        )
+        essayer("shell", "cmd", "power", "set-mode", mode)
         remettre("global", "low_power", notee["low_power"])
-        adb(
-            "shell",
-            "dumpsys",
-            "battery",
-            "reset",
-            executer=self.executer,
-            check=False,
-        )
+        essayer("shell", "dumpsys", "battery", "reset")
         remettre("system", "screen_off_timeout", notee["screen_off_timeout"])
+        self.remises_manquees += manquees
+        if not manquees:
+            BATTERIE_NOTEE.unlink(missing_ok=True)
+
+    def rendre_batterie_laissee(self):
+        """L'état que BATTERIE_NOTEE garde d'une course tuée ou mal rendue,
+        rendu par rendre_batterie(), qui efface le fichier. RuntimeError
+        quand une remise échoue ou que le fichier est illisible (alors
+        dumpsys battery reset seul est tenté) : le relevé suivant
+        prendrait l'état laissé pour celui d'origine. Rien sans fichier."""
+        if not BATTERIE_NOTEE.exists():
+            return
+        try:
+            notee = json.loads(BATTERIE_NOTEE.read_text())
+            champs = {"low_power", "screen_off_timeout"}
+            if not isinstance(notee, dict) or not champs <= notee.keys():
+                raise ValueError("low_power et screen_off_timeout attendus")
+        except (OSError, ValueError) as erreur:
+            adb(
+                "shell",
+                "dumpsys",
+                "battery",
+                "reset",
+                executer=self.executer,
+                check=False,
+            )
+            raise RuntimeError(
+                f"{BATTERIE_NOTEE} illisible ({erreur}) : batterie rendue à"
+                " Android ; vérifier à la main low_power et"
+                " screen_off_timeout, puis effacer le fichier"
+            )
+        avant = len(self.remises_manquees)
+        self.batterie_notee = notee
+        self.rendre_batterie()
+        manquees = self.remises_manquees[avant:]
+        if manquees:
+            raise RuntimeError(
+                "état de batterie d'une course précédente non rendu ("
+                + ", ".join(manquees)
+                + ") : relancer ces commandes à la main, puis effacer"
+                f" {BATTERIE_NOTEE}"
+            )
 
     def capture(self, chemin):
         Path(chemin).write_bytes(
@@ -3850,9 +3917,60 @@ BOUCLE_FENETRE = 10
 # l'alerte de groupe GROUP_ALERT_SUMMARY ; GROUP_ALERT_ALL (0) sinon
 ALERTE_UNE_FOIS = 0x8
 ALERTE_RESUME = 1
+ALERTE_TOUTES = 0
+# La cadence de présence d'un navigateur ouvert : le correctif du client web
+# du module (static/src/im_status_service_patch.js) renvoie update_presence
+# toutes les UPDATE_BUS_PRESENCE_DELAY (60 s)
+PRESENCE_CADENCE = 60
+# Le silence après lequel le module tient un navigateur pour fermé : son
+# dernier envoi plus vieux que DISCONNECTION_TIMER (65 s), plus une marge
+NAVIGATEUR_FERME = 70
 # La ligne des options des notifications quand la porte simule 12 % sur
 # batterie, seuils par défaut (30 et 15)
 LIGNE_MONTEE = "En ce moment : niveau 3 (batterie sous 15 %)"
+
+
+class NavigateurOuvert:
+    """Un navigateur de l'utilisateur, imité par ce qu'il envoie : signaler
+    (sans argument) joue un envoi de présence ; ouvrir() en fait un tout de
+    suite, puis un toutes les cadence secondes sur un fil à part, jusqu'à
+    fermer(). fermer() arrête les envois, rend l'instant (time.monotonic)
+    du dernier, et relève l'erreur qu'un envoi du fil a levée : après
+    elle, le fil n'envoie plus rien."""
+
+    def __init__(self, signaler, cadence=PRESENCE_CADENCE):
+        self.signaler = signaler
+        self.cadence = cadence
+        self.dernier = None
+        self.erreur = None
+        self._fin = threading.Event()
+        self._fil = None
+
+    def _signal(self):
+        self.signaler()
+        self.dernier = time.monotonic()
+
+    def _battre(self):
+        while not self._fin.wait(self.cadence):
+            try:
+                self._signal()
+            except Exception as erreur:  # relevée par fermer()
+                self.erreur = erreur
+                return
+
+    def ouvrir(self):
+        self._signal()
+        self._fil = threading.Thread(target=self._battre, daemon=True)
+        self._fil.start()
+        return self
+
+    def fermer(self):
+        self._fin.set()
+        if self._fil:
+            self._fil.join()
+        if self.erreur:
+            raise self.erreur
+        return self.dernier
 
 
 def puissance_de_test(executer, **extras):
@@ -3951,7 +4069,9 @@ def etape_batterie_reelle(ctx):
     raison below_two, et la tâche de montée planifiée, puisque rien ne
     branche le téléphone ; à 80 % sous l'économiseur : niveau 3, raison
     saver. L'état relevé est rendu à la fin, réussite ou échec
-    (rendre_batterie). Rend le détail mesuré."""
+    (rendre_batterie) ; rebranché, le service permanent revient par la
+    tâche de montée, qui n'est plus planifiée ensuite. Rend le détail
+    mesuré."""
     executer = ctx.appareil.executer
     ctx.appareil.noter_batterie()
     try:
@@ -3988,7 +4108,23 @@ def etape_batterie_reelle(ctx):
     finally:
         ctx.appareil.rendre_batterie()
     attendre_niveau(ctx, 1, None, delai=30)
-    return f", batterie réelle à 12 % → niveau 3 en {monte:.1f} s"
+    # Le niveau 1 se lit dès la batterie rendue, service absent ou non
+    # (PushLevelPolicy.withoutService garde le niveau) : le service revenu
+    # prouve que la tâche de montée, qui exige le secteur, a tourné
+    debut = time.monotonic()
+    attendre_serveur(
+        f"le service permanent revenu par la tâche {TACHE_MONTEE}",
+        lambda: service_vivant(executer),
+        RETOUR_DELAI,
+    )
+    revenu = time.monotonic() - debut
+    assert not tache_en_attente(
+        executer, TACHE_MONTEE
+    ), f"tâche {TACHE_MONTEE} encore planifiée, branché"
+    return (
+        f", batterie réelle à 12 % → niveau 3 en {monte:.1f} s, branché →"
+        f" service revenu en {revenu:.1f} s"
+    )
 
 
 def scenario_preferences_notifications(ctx):
@@ -4001,13 +4137,16 @@ def scenario_preferences_notifications(ctx):
     mention et un message de groupe ; la boîte de réception coupée,
     un commentaire d'enregistrement ne s'affiche pas, sauf, l'option
     des mentions ouverte, celui qui mentionne admin. « Attendre 10 s »,
-    un navigateur d'admin actif : un message lu au navigateur dans les 5 s
-    ne s'affiche jamais, un message non lu s'affiche entre 9 et 15 s ;
-    « Sonner tout de suite », en 3 s. Les heures calmes couvrant l'instant,
-    la notification s'affiche sans alerter (FLAG_ONLY_ALERT_ONCE, alerte du
-    seul résumé) ; hors fenêtre, elle alerte. La montée par la porte de
-    test (sorte power) : 12 % sur batterie, niveau 3 below_two, la
-    notification permanente retirée, la tâche de montée jamais en boucle
+    un navigateur d'admin ouvert, imité par la cadence de présence du
+    client web corrigé par le module (NavigateurOuvert) : un message lu au
+    navigateur dans les 5 s ne s'affiche jamais, un message non lu
+    s'affiche entre 9 et 15 s ; le navigateur fermé depuis plus de 65 s,
+    un message s'affiche en 3 s ; « Sonner tout de suite », en 3 s. Les
+    heures calmes couvrant l'instant, la notification s'affiche sans
+    alerter (FLAG_ONLY_ALERT_ONCE, alerte du seul résumé) ; hors fenêtre,
+    elle alerte (GROUP_ALERT_ALL). La montée par la porte de test (sorte
+    power) : 12 % sur batterie, niveau 3 below_two, la notification
+    permanente retirée, la tâche de montée jamais en boucle ni planifiée
     (le téléphone reste sur l'USB), la ligne « En ce moment » dans les
     options, capturée ; branché, niveau 1 et le service revenu ;
     l'économiseur à 80 %, niveau 3 saver. La batterie réelle ne change
@@ -4210,63 +4349,79 @@ def scenario_preferences_notifications(ctx):
         jamais_affichee(fiche_simple, avant)
         ctx.hook(f"chatPushFilter({config}, 'all', true, false)")
 
-        # 3. « Attendre 10 s », un navigateur d'admin actif : une session web
-        # à lui, qui n'est pas celle de l'app, signale sa présence comme le
-        # repli HTTP du bus du client web ; elle compte 65 s, d'où un
-        # signal avant chaque message
+        # 3. « Attendre 10 s », un navigateur d'admin ouvert : une session
+        # web à lui, qui n'est pas celle de l'app, envoie ce qu'envoie le
+        # client web corrigé par le module 1.6 (NavigateurOuvert) : une
+        # présence à l'ouverture, puis toutes les PRESENCE_CADENCE s, avec
+        # une activité à l'instant (inactivity_period 0). Elle passe par la
+        # route HTTP du bus, qui mène au même _update_bus_presence que
+        # l'événement update_presence du websocket du client, et qui exige
+        # une session marquée par peek_notifications (is_first_poll)
         ctx.hook("chatPushBrowserMode('wait')")
         marque("wait")
-        navigateur = Odoo(ctx.cible)
-        navigateur.route(
+        session_web = Odoo(ctx.cible)
+        session_web.route(
             "/websocket/peek_notifications",
             {"channels": [], "last": 0, "is_first_poll": True},
         )
-
-        def actif():
-            navigateur.route(
+        navigateur = NavigateurOuvert(
+            lambda: session_web.route(
                 "/websocket/update_bus_presence",
                 {"inactivity_period": 0, "im_status_ids_by_model": {}},
             )
+        ).ouvrir()
+        try:
+            lu = ctx.unique("lu-au-navigateur")
+            # Le message et sa lecture font chacun une poussée sur le
+            # sujet : sans les deux sur le ntfy, « rien d'affiché » ne
+            # distingue pas la retenue abandonnée à la lecture d'une
+            # poussée jamais envoyée
+            avant = messages_ntfy(ntfy, sujet)
+            debut = time.monotonic()
+            ident = poster(pair, canal_modele, chat, lu)
+            time.sleep(LECTURE_NAVIGATEUR)
+            session_web.route(
+                "/discuss/channel/mark_as_read",
+                {"channel_id": chat, "last_message_id": ident},
+            )
+            lecture = time.monotonic() - debut
+            assert (
+                lecture < LECTURE_MAX
+            ), f"lecture au navigateur à {lecture:.1f} s"
+            while time.monotonic() < debut + SANS_NOTIFICATION:
+                assert affichee(lu) is None, "message lu au navigateur affiché"
+                time.sleep(0.5)
+            assert (
+                messages_ntfy(ntfy, sujet) >= avant + 2
+            ), "message lu au navigateur ou sa lecture absent du ntfy"
 
-        actif()
-        lu = ctx.unique("lu-au-navigateur")
-        # Le message et sa lecture font chacun une poussée sur le sujet :
-        # sans les deux sur le ntfy, « rien d'affiché » ne distingue pas la
-        # retenue abandonnée à la lecture d'une poussée jamais envoyée
-        avant = messages_ntfy(ntfy, sujet)
-        debut = time.monotonic()
-        ident = poster(pair, canal_modele, chat, lu)
-        time.sleep(LECTURE_NAVIGATEUR)
-        navigateur.route(
-            "/discuss/channel/mark_as_read",
-            {"channel_id": chat, "last_message_id": ident},
-        )
-        lecture = time.monotonic() - debut
-        assert (
-            lecture < LECTURE_MAX
-        ), f"lecture au navigateur à {lecture:.1f} s"
-        while time.monotonic() < debut + SANS_NOTIFICATION:
-            assert affichee(lu) is None, "message lu au navigateur affiché"
-            time.sleep(0.5)
-        assert (
-            messages_ntfy(ntfy, sujet) >= avant + 2
-        ), "message lu au navigateur ou sa lecture absent du ntfy"
+            retenu = ctx.unique("retenu")
+            debut = time.monotonic()
+            poster(pair, canal_modele, chat, retenu)
+            attendre_notification(
+                ctx, tag_de(chat), lambda n: retenu in n["bloc"], RETENUE_MAX
+            )
+            retenue = time.monotonic() - debut
+            assert (
+                RETENUE_MIN <= retenue <= RETENUE_MAX
+            ), f"message non lu affiché à {retenue:.1f} s"
+        finally:
+            dernier = navigateur.fermer()
 
-        actif()
-        retenu = ctx.unique("retenu")
+        # Le navigateur fermé : plus aucun envoi, et le module le tient
+        # pour fermé quand le dernier date de plus de DISCONNECTION_TIMER ;
+        # « Attendre 10 s » sonne alors tout de suite
+        time.sleep(max(0.0, dernier + NAVIGATEUR_FERME - time.monotonic()))
+        ferme = ctx.unique("navigateur-ferme")
         debut = time.monotonic()
-        poster(pair, canal_modele, chat, retenu)
+        poster(pair, canal_modele, chat, ferme)
         attendre_notification(
-            ctx, tag_de(chat), lambda n: retenu in n["bloc"], RETENUE_MAX
+            ctx, tag_de(chat), lambda n: ferme in n["bloc"], SONNER_DELAI
         )
-        retenue = time.monotonic() - debut
-        assert (
-            RETENUE_MIN <= retenue <= RETENUE_MAX
-        ), f"message non lu affiché à {retenue:.1f} s"
+        sans_navigateur = time.monotonic() - debut
 
         ctx.hook("chatPushBrowserMode('ring')")
         marque("ring")
-        actif()
         tout_de_suite = ctx.unique("tout-de-suite")
         debut = time.monotonic()
         poster(pair, canal_modele, chat, tout_de_suite)
@@ -4318,7 +4473,7 @@ def scenario_preferences_notifications(ctx):
             not notif["flags"] & ALERTE_UNE_FOIS
         ), f"flags {notif['flags']:#x}"
         assert (
-            alerte_de_groupe(notif) != ALERTE_RESUME
+            alerte_de_groupe(notif) == ALERTE_TOUTES
         ), f"groupAlertBehavior {alerte_de_groupe(notif)}"
 
         # 5. La montée par la porte de test : le téléphone reste sur l'USB,
@@ -4337,6 +4492,12 @@ def scenario_preferences_notifications(ctx):
         assert (
             demarrages_tache(executer, TACHE_MONTEE) == demarrages
         ), f"la tâche {TACHE_MONTEE} tourne en boucle"
+        # Le compte de démarrages ne prouve rien si l'historique de cet
+        # Android ne porte pas la forme « START: » : la tâche, décidée sur
+        # le vrai branchement, n'est de plus jamais planifiée sur l'USB
+        assert not tache_en_attente(
+            executer, TACHE_MONTEE
+        ), f"tâche {TACHE_MONTEE} planifiée sur l'USB"
         premier_plan(ctx)
         ctx.ouvrir("/options", "#chat-notifications")
         if not ctx.cdp.evaluer(
@@ -4381,7 +4542,9 @@ def scenario_preferences_notifications(ctx):
     return (
         f"retenu sans lecture → notification {retenue:.1f} s, lu au"
         f" navigateur à {lecture:.1f} s → rien en {SANS_NOTIFICATION} s,"
-        f" « Sonner tout de suite » {sonne:.1f} s, montée par la porte →"
+        f" navigateur fermé depuis {NAVIGATEUR_FERME} s → notification"
+        f" {sans_navigateur:.1f} s, « Sonner tout de suite » {sonne:.1f} s,"
+        " montée par la porte →"
         f" niveau 3 en {monte:.1f} s" + reel
     )
 
@@ -4453,18 +4616,21 @@ def lancer(
     batterie_reelle (--batterie-reelle) laisse un scénario changer la
     batterie et l'alimentation du téléphone entier ; un téléphone qui porte
     APP_PERSO le refuse avant que rien ne le touche (RuntimeError).
-    Un échec garde une capture d'écran dans repertoire. L'app de
-    l'utilisateur (APP_PERSO) est relevée avant et après : une date de mise
-    à jour changée, ou devenue illisible, compte pour un échec de plus ;
-    illisible dès le départ, la course s'arrête avant de toucher le
-    téléphone (RuntimeError)."""
+    Une remise de la batterie qu'adb refuse compte pour un échec de plus,
+    sa commande nommée. Un échec garde une capture d'écran dans
+    repertoire. L'app de l'utilisateur (APP_PERSO) est relevée avant et
+    après : une date de mise à jour changée, ou devenue illisible, compte
+    pour un échec de plus ; illisible dès le départ, la course s'arrête
+    avant de toucher le téléphone (RuntimeError)."""
     if batterie_reelle and app_perso_installee(executer):
         raise RuntimeError(
             f"--batterie-reelle refusé : {APP_PERSO} est installée, ce"
             " téléphone n'est pas un téléphone de test vide"
         )
     avant = maj_app_perso(executer)
-    appareil = Appareil(ports_de(cibles), executer)
+    appareil = Appareil(
+        ports_de(cibles), executer, batterie_reelle=batterie_reelle
+    )
     total = echecs = 0
     try:
         appareil.garder_allume()
@@ -4529,6 +4695,13 @@ def lancer(
                         journal(f"    capture : {capture}")
     finally:
         appareil.rendre()
+    # Une remise refusée par adb laisse le téléphone de test hors de son
+    # état : un échec de plus, chaque commande à relancer nommée
+    manquees = list(appareil.remises_manquees)
+    for commande in manquees:
+        journal(f"  ✗ remise incomplète : {commande}, à relancer à la main")
+    if manquees:
+        echecs += 1
     try:
         apres = maj_app_perso(executer)
     except RuntimeError as erreur:
