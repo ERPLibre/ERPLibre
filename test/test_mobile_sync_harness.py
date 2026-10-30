@@ -11,6 +11,7 @@ serveurs, la clé des gabarits, et la lecture du rapport de Vitest, où zéro
 test est un échec et pas une réussite silencieuse.
 """
 
+import ast
 import hashlib
 import inspect
 import json
@@ -19,6 +20,7 @@ import re
 import shlex
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -367,8 +369,8 @@ class TestBasesEtServeurs(unittest.TestCase):
                 odoo.cle_gabarit(v18, executer=executer), avant
             )
 
-    def test_harness_api_7(self):
-        self.assertEqual(odoo.HARNESS_API, 7)
+    def test_harness_api_8(self):
+        self.assertEqual(odoo.HARNESS_API, 8)
 
 
 class TestRapport(unittest.TestCase):
@@ -574,16 +576,19 @@ def faux_adb(
     devices="SERIE\tdevice\n",
     fenetre="isKeyguardShowing=false",
     paquets=("",),
+    installes="",
 ):
-    """Un faux subprocess.run qui répond à adb devices, dumpsys window et
+    """Un faux subprocess.run qui répond à adb devices, dumpsys window,
     dumpsys package (les sorties de paquets l'une après l'autre, la
-    dernière ensuite)."""
+    dernière ensuite) et pm list packages (installes)."""
     restants = list(paquets)
 
     def executer(commande, **_):
         sortie = ""
         if commande[:2] == ["adb", "devices"]:
             sortie = "List of devices attached\n" + devices
+        elif commande[2:4] == ["pm", "list"]:
+            sortie = installes
         elif "dumpsys" in commande and "package" in commande:
             sortie = restants.pop(0) if len(restants) > 1 else restants[0]
         elif "dumpsys" in commande:
@@ -623,11 +628,14 @@ class TestAppareil(unittest.TestCase):
         (self.mobile / "android" / "gradlew").write_text("")
         self.adb_present = lambda nom: "/usr/bin/adb"
 
-    def verifier(self, executer, which=None):
+    def verifier(self, executer, which=None, batterie_reelle=False):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ANDROID_SERIAL", None)
             return appareil.verifier_appareil(
-                self.mobile, executer, which or self.adb_present
+                self.mobile,
+                executer,
+                which or self.adb_present,
+                batterie_reelle=batterie_reelle,
             )
 
     def test_pret(self):
@@ -663,6 +671,17 @@ class TestAppareil(unittest.TestCase):
                 )
             )
         )
+
+    def test_batterie_reelle_exige_un_telephone_sans_l_app_perso(self):
+        perso = faux_adb(
+            installes=f"package:{appareil.APP_PERSO}\n"
+            f"package:{appareil.PAQUET}\n"
+        )
+        self.assertEqual(self.verifier(perso), [])
+        problemes = self.verifier(perso, batterie_reelle=True)
+        self.assertTrue(any(appareil.APP_PERSO in p for p in problemes))
+        vide = faux_adb(installes=f"package:{appareil.PAQUET}\n")
+        self.assertEqual(self.verifier(vide, batterie_reelle=True), [])
 
     def test_gradlew_absent(self):
         (self.mobile / "android" / "gradlew").unlink()
@@ -1445,12 +1464,80 @@ class TestPorteDeTest(unittest.TestCase):
 
         with self.assertRaises(RuntimeError) as echec:
             appareil.adb(
-                "shell", "am", "broadcast", "--es", "text", "motsinventes",
+                "shell",
+                "am",
+                "broadcast",
+                "--es",
+                "text",
+                "motsinventes",
                 executer=executer,
             )
         self.assertIn("failed", str(echec.exception))
         self.assertIn("broadcast", str(echec.exception))
         self.assertNotIn("motsinventes", str(echec.exception))
+
+    def test_l_alimentation_passe_par_la_porte_sans_tag(self):
+        executer, commandes = faux_telephone()
+        appareil.puissance_de_test(executer, pct=12, plugged=False)
+        appareil.puissance_de_test(executer, saver=True, plugged=False, pct=80)
+        appareil.puissance_de_test(executer, clear=True)
+        self.assertEqual(
+            [p[4:] for p in portes(commandes)],
+            [
+                [
+                    "-n",
+                    appareil.PORTE,
+                    "-a",
+                    appareil.PORTE_ACTION,
+                    "--es",
+                    "kind",
+                    "power",
+                    "--ei",
+                    "pct",
+                    "12",
+                    "--ez",
+                    "plugged",
+                    "false",
+                ],
+                [
+                    "-n",
+                    appareil.PORTE,
+                    "-a",
+                    appareil.PORTE_ACTION,
+                    "--es",
+                    "kind",
+                    "power",
+                    "--ez",
+                    "saver",
+                    "true",
+                    "--ez",
+                    "plugged",
+                    "false",
+                    "--ei",
+                    "pct",
+                    "80",
+                ],
+                [
+                    "-n",
+                    appareil.PORTE,
+                    "-a",
+                    appareil.PORTE_ACTION,
+                    "--es",
+                    "kind",
+                    "power",
+                    "--ez",
+                    "clear",
+                    "true",
+                ],
+            ],
+        )
+        self.assertEqual(touchers_volet(commandes), [])
+
+    def test_une_alimentation_refusee_par_la_porte_echoue(self):
+        executer, _ = faux_telephone(porte='data="refused"')
+        with self.assertRaises(RuntimeError) as echec:
+            appareil.puissance_de_test(executer, pct=101)
+        self.assertIn("refused", str(echec.exception))
 
     def test_toucher_volet_garde_les_vrais_touchers(self):
         executer, commandes = faux_telephone()
@@ -1463,12 +1550,14 @@ class TestPorteDeTest(unittest.TestCase):
         )
 
     def test_les_scenarios_n_atteignent_le_volet_que_par_le_mode(self):
-        # Les deux scénarios des notifications passent par agir, repondre
-        # et ouvrir_notification, qui choisissent la porte ou le doigt : ils
-        # ne touchent ni ne tapent rien d'eux-mêmes
+        # Les scénarios des notifications passent par agir, repondre et
+        # ouvrir_notification, qui choisissent la porte ou le doigt : ils ne
+        # touchent ni ne tapent rien d'eux-mêmes
         for scenario in (
             appareil.scenario_notifications,
             appareil.scenario_actions_notifications,
+            appareil.scenario_preferences_notifications,
+            appareil.etape_batterie_reelle,
         ):
             source = inspect.getsource(scenario)
             for interdit in (
@@ -1521,6 +1610,255 @@ class TestPorteDeTest(unittest.TestCase):
             mobile_sync.parser()
             .parse_args(["--appareil", "--toucher-volet"])
             .toucher_volet
+        )
+
+
+def appels_vers(noeud, nom):
+    """Les appels à la fonction nom sous le nœud ast, et la chaîne de
+    leurs ancêtres (du plus proche au plus lointain)."""
+    trouves = []
+
+    def visiter(n, ancetres):
+        if (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == nom
+        ):
+            trouves.append(ancetres)
+        for enfant in ast.iter_child_nodes(n):
+            visiter(enfant, [n] + ancetres)
+
+    visiter(noeud, [])
+    return trouves
+
+
+def sous_l_option(ancetres):
+    """Vrai quand un des ancêtres est un « if ctx.batterie_reelle: »."""
+    return any(
+        isinstance(a, ast.If) and ast.unparse(a.test) == "ctx.batterie_reelle"
+        for a in ancetres
+    )
+
+
+def faux_telephone_batterie(low_power="0", ecran="30000", paquets=""):
+    """Un faux subprocess.run qui note chaque commande adb : settings get
+    rend low_power (global low_power) ou ecran (system
+    screen_off_timeout), pm list packages rend paquets."""
+    commandes = []
+
+    def executer(commande, **_):
+        commandes.append(commande[1:])
+        sortie = ""
+        if commande[2:5] == ["settings", "get", "global"]:
+            sortie = low_power + "\n"
+        elif commande[2:5] == ["settings", "get", "system"]:
+            sortie = ecran + "\n"
+        elif commande[2:4] == ["pm", "list"]:
+            sortie = paquets
+        return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+
+    return executer, commandes
+
+
+def touche_batterie(commande):
+    """Vrai quand la commande adb change ou lit l'état de la batterie ou
+    de l'alimentation du téléphone entier."""
+    texte = " ".join(commande)
+    return any(
+        mot in texte for mot in ("dumpsys battery", "cmd power", "low_power")
+    )
+
+
+class TestBatterieReelle(unittest.TestCase):
+    """La batterie et l'alimentation du téléphone entier ne changent que
+    sous --batterie-reelle, sur un téléphone de test vide : l'option refuse
+    un téléphone qui porte l'app de l'utilisateur, et rendre() remet l'état
+    noté, dans l'ordre (mode d'économie et low_power, batterie, délai de
+    l'écran). Par défaut, la porte de test simule seule l'alimentation."""
+
+    def test_le_scenario_ne_touche_la_batterie_que_sous_l_option(self):
+        source = inspect.getsource(appareil.scenario_preferences_notifications)
+        for interdit in (
+            "dumpsys battery",
+            '"battery"',
+            "cmd power",
+            '"set-mode"',
+            "low_power",
+        ):
+            self.assertNotIn(interdit, source)
+        arbre = ast.parse(textwrap.dedent(source))
+        appels = appels_vers(arbre, "etape_batterie_reelle")
+        self.assertTrue(appels)
+        for ancetres in appels:
+            self.assertTrue(sous_l_option(ancetres))
+
+    def test_l_etape_reelle_note_avant_de_toucher_et_rend_a_la_fin(self):
+        source = textwrap.dedent(
+            inspect.getsource(appareil.etape_batterie_reelle)
+        )
+        self.assertLess(
+            source.index("noter_batterie()"), source.index("battery")
+        )
+        arbre = ast.parse(source)
+        (essai,) = [n for n in ast.walk(arbre) if isinstance(n, ast.Try)]
+        self.assertIn(
+            "rendre_batterie()",
+            "".join(ast.unparse(n) for n in essai.finalbody),
+        )
+
+    def test_batterie_reelle_refuse_un_telephone_portant_l_app_perso(self):
+        executer, commandes = faux_telephone_batterie(
+            paquets=f"package:{appareil.APP_PERSO}\n"
+            f"package:{appareil.PAQUET}\n"
+        )
+        with mock.patch.object(appareil, "construire_apk") as construire:
+            with self.assertRaises(RuntimeError) as refus:
+                appareil.lancer(
+                    [], "/x", executer=executer, batterie_reelle=True
+                )
+        self.assertIn(appareil.APP_PERSO, str(refus.exception))
+        construire.assert_not_called()
+        self.assertEqual(
+            commandes,
+            [["shell", "pm", "list", "packages", appareil.APP_PERSO]],
+        )
+
+    def test_batterie_reelle_accepte_un_telephone_de_test_vide(self):
+        executer, _ = faux_telephone_batterie(
+            paquets=f"package:{appareil.PAQUET}\n"
+        )
+        with mock.patch.object(appareil, "SCENARIOS", ()), mock.patch.object(
+            appareil, "construire_apk", return_value=Path("x.apk")
+        ) as construire, mock.patch.object(appareil, "Appareil"):
+            appareil.lancer(
+                [],
+                "/x",
+                executer=executer,
+                journal=lambda _: 0,
+                batterie_reelle=True,
+            )
+        construire.assert_called_once()
+
+    def test_sans_l_option_rien_ne_lit_les_paquets(self):
+        executer, commandes = faux_telephone_batterie(
+            paquets=f"package:{appareil.APP_PERSO}\n"
+        )
+        with mock.patch.object(appareil, "SCENARIOS", ()), mock.patch.object(
+            appareil, "construire_apk", return_value=Path("x.apk")
+        ), mock.patch.object(appareil, "Appareil"):
+            appareil.lancer([], "/x", executer=executer, journal=lambda _: 0)
+        self.assertNotIn(
+            ["shell", "pm", "list", "packages", appareil.APP_PERSO],
+            commandes,
+        )
+
+    def test_rendre_remet_batterie_et_alimentation_apres_batterie_reelle(
+        self,
+    ):
+        executer, commandes = faux_telephone_batterie(
+            low_power="1", ecran="45000"
+        )
+        telephone = appareil.Appareil([8018], executer)
+        telephone.noter_batterie()
+        self.assertEqual(
+            commandes[-1],
+            [
+                "shell",
+                "settings",
+                "put",
+                "system",
+                "screen_off_timeout",
+                str(appareil.ECRAN_BATTERIE_REELLE),
+            ],
+        )
+        debut = len(commandes)
+        telephone.rendre()
+        remise = [c for c in commandes[debut:] if touche_batterie(c)] + [
+            c for c in commandes[debut:] if "screen_off_timeout" in c
+        ]
+        self.assertEqual(
+            remise,
+            [
+                ["shell", "cmd", "power", "set-mode", "1"],
+                ["shell", "settings", "put", "global", "low_power", "1"],
+                ["shell", "dumpsys", "battery", "reset"],
+                [
+                    "shell",
+                    "settings",
+                    "put",
+                    "system",
+                    "screen_off_timeout",
+                    "45000",
+                ],
+            ],
+        )
+        ordre = [commandes.index(c) for c in remise]
+        self.assertEqual(ordre, sorted(ordre))
+        # Une seconde remise ne rejoue rien : l'état noté est rendu
+        debut = len(commandes)
+        telephone.rendre()
+        self.assertFalse(any(touche_batterie(c) for c in commandes[debut:]))
+
+    def test_une_valeur_absente_est_rendue_absente(self):
+        executer, commandes = faux_telephone_batterie(
+            low_power="null", ecran="null"
+        )
+        telephone = appareil.Appareil([8018], executer)
+        telephone.noter_batterie()
+        telephone.rendre()
+        self.assertIn(["shell", "cmd", "power", "set-mode", "0"], commandes)
+        self.assertIn(
+            ["shell", "settings", "delete", "global", "low_power"], commandes
+        )
+        self.assertIn(
+            ["shell", "settings", "delete", "system", "screen_off_timeout"],
+            commandes,
+        )
+
+    def test_rendre_sans_batterie_reelle_ne_touche_pas_la_batterie(self):
+        executer, commandes = faux_telephone_batterie()
+        appareil.Appareil([8018], executer).rendre()
+        self.assertFalse(any(touche_batterie(c) for c in commandes))
+        self.assertFalse(any("screen_off_timeout" in c for c in commandes))
+
+    def test_l_option_suit_jusqu_au_scenario(self):
+        vus = []
+        cibles = [
+            {
+                "version": 18,
+                "url": "http://127.0.0.1:8018",
+                "database": "base_18",
+                "admin": {"login": "admin", "password": "admin"},
+            }
+        ]
+        executer, _ = faux_telephone_batterie()
+        for option in (False, True):
+            with mock.patch.object(
+                appareil,
+                "SCENARIOS",
+                (("n", lambda ctx: vus.append(ctx.batterie_reelle), (18,)),),
+            ), mock.patch.object(
+                appareil, "construire_apk", return_value=Path("x.apk")
+            ), mock.patch.object(
+                appareil, "Appareil"
+            ), mock.patch.object(
+                appareil, "Odoo"
+            ):
+                appareil.lancer(
+                    cibles,
+                    "/x",
+                    executer=executer,
+                    journal=lambda _: 0,
+                    batterie_reelle=option,
+                )
+        self.assertEqual(vus, [False, True])
+        self.assertFalse(
+            mobile_sync.parser().parse_args(["--appareil"]).batterie_reelle
+        )
+        self.assertTrue(
+            mobile_sync.parser()
+            .parse_args(["--appareil", "--batterie-reelle"])
+            .batterie_reelle
         )
 
 
@@ -1625,8 +1963,8 @@ class TestScenariosAppareil(unittest.TestCase):
     """Le clavardage ne se joue que sur la 18, seule version que le chat de
     l'app connaît ; les autres versions le sautent sans le compter."""
 
-    def test_api_du_hook_8(self):
-        self.assertEqual(appareil.DEVICE_HOOK_API, 8)
+    def test_api_du_hook_9(self):
+        self.assertEqual(appareil.DEVICE_HOOK_API, 9)
 
     def test_clavardage_sur_la_18_seulement(self):
         for version in (16, 17):
@@ -1650,6 +1988,10 @@ class TestScenariosAppareil(unittest.TestCase):
             (
                 "actions du clavardage, app tuée",
                 appareil.scenario_actions_notifications,
+            ),
+            (
+                "préférences du clavardage, app fermée",
+                appareil.scenario_preferences_notifications,
             ),
         ):
             self.assertIn(scenario, appareil.scenarios_de(18))

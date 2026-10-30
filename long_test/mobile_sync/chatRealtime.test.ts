@@ -106,7 +106,8 @@ eachVersionFrom(18, "chat realtime", (target) => {
 		const { env, src, delivered } = await live();
 		const first = await peer.post(group, unique("before"));
 		await until("the first message", lastIs(env, src.configId, group, first));
-		await until("its bus id saved", async () => (await env.chat.repo.sourceState(src.configId)).lastBusId > 0);
+		// The first poll's replay, as in the case above, can be applied more than 20 s after live() returns
+		await until("its bus id saved", async () => (await env.chat.repo.sourceState(src.configId)).lastBusId > 0, 60_000);
 		const opened = sockets();
 
 		proxy.down = true;

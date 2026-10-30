@@ -83,9 +83,12 @@ eachVersionFrom(18, "chat push", (target: Target) => {
 		const [r] = await scene.pushed(keys, onRecord);
 		expect(r.payload.title).toBe(`${inboxName}: ${taskName}`);
 		expect(r.payload.options!.body).toBe(onRecord);
-		// The app marks its device on module 1.5: its push names the message, no channel type off a channel
+		// The app marks its device with its browser mode on module 1.6: its push names the message, no channel type off
+		// a channel, no mention; a browser of admin may be active in another file
 		expect(r.payload.options!.data).toEqual({
-			model: "project.task", res_id: task, erplibre: { v: 1, message_id: recordMessage, channel_type: null },
+			model: "project.task",
+			res_id: task,
+			erplibre: { v: 2, message_id: recordMessage, channel_type: null, mentioned: false, browser_online: expect.any(Boolean) },
 		});
 		expect((await scene.payloads(keys)).some((p) => p.payload.options?.body.includes(unmentioned))).toBe(false);
 	});
