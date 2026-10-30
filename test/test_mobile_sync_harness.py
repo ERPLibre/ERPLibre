@@ -2934,6 +2934,45 @@ class TestNavigateurOuvert(unittest.TestCase):
         self.assertGreater(appareil.NAVIGATEUR_FERME, 65)
 
 
+class TestLigneMontee(unittest.TestCase):
+    """LIGNE_MONTEE est la ligne que l'écran des options compose pour un
+    niveau 3 monté sous le seuil de 15 % : les gabarits français de l'app
+    (chat.push_effective, chat.push_effective_below) remplis du niveau, du
+    seuil et du point de relâche (seuil plus CLIMB_RELEASE_MARGIN). Sans le
+    dépôt mobile, il n'y a rien à comparer."""
+
+    def test_la_ligne_attendue_est_celle_que_l_app_affiche(self):
+        fr = odoo.MOBILE / "src" / "i18n" / "fr.ts"
+        reglages = (
+            odoo.MOBILE / "src" / "services" / "chat" / "chatSettings.ts"
+        )
+        if not (fr.is_file() and reglages.is_file()):
+            self.skipTest("dépôt mobile absent")
+        texte = fr.read_text(encoding="utf-8")
+
+        def gabarit(cle):
+            trouve = re.search(rf'"{re.escape(cle)}":\s*"([^"]*)"', texte)
+            self.assertIsNotNone(trouve, cle)
+            return trouve.group(1)
+
+        marge = re.search(
+            r"export const CLIMB_RELEASE_MARGIN = (\d+);",
+            reglages.read_text(encoding="utf-8"),
+        )
+        self.assertIsNotNone(marge)
+        pourquoi = (
+            gabarit("chat.push_effective_below")
+            .replace("{pct}", "15")
+            .replace("{release}", str(15 + int(marge.group(1))))
+        )
+        ligne = (
+            gabarit("chat.push_effective")
+            .replace("{level}", "3")
+            .replace("{why}", pourquoi)
+        )
+        self.assertEqual(appareil.LIGNE_MONTEE, ligne)
+
+
 class TestCommandeAppareil(unittest.TestCase):
     def versions(self):
         return {
