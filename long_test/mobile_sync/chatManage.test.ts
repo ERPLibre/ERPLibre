@@ -15,7 +15,7 @@
  * poll (until); a fixed pause only checks that a state reached still holds.
  */
 import { appFor, chatTitle, eachVersionFrom, nodeTransport, restartSyncEnv, setOnline, unique, until } from "./harness";
-import type { SyncEnv } from "./harness";
+import type { Login, SyncEnv } from "./harness";
 import { ChatPeer } from "./chatPeer";
 import { FaultProxy } from "./faultProxy";
 
@@ -24,6 +24,11 @@ const QUIET_WINDOW_PASSED_MS = 4 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 /** How far a server's mute end may stand from the one computed here: the request's own delay. */
 const MUTE_SLACK_MS = 2 * MINUTE_MS;
+/**
+ * Past the second of a conversation's last interest: Odoo stamps whole seconds and keeps a
+ * member pinned while that interest is not older than the unpin.
+ */
+const NEXT_SECOND_MS = 1100;
 
 /** Epoch ms of an Odoo "YYYY-MM-DD HH:MM:SS" UTC datetime. */
 const utcMs = (dt: string) => Date.parse(dt.replace(" ", "T") + "Z");
@@ -56,7 +61,7 @@ eachVersionFrom(18, "chat management", (target) => {
 	const later = (ms: number) => vi.setSystemTime(Date.now() + ms);
 
 	/** The app as `as` through the proxy, its chat source loaded. */
-	async function app(opts: { as?: "admin" | "multi" | "chat"; chatModule?: "auto" | "ignore" } = {}) {
+	async function app(opts: { as?: "admin" | "multi" | "chat" | Login; chatModule?: "auto" | "ignore" } = {}) {
 		const started = await appFor(proxy.via(target), opts.as ?? "admin", { chatModule: opts.chatModule });
 		env = started;
 		const [src] = await started.chat.sources();
@@ -65,7 +70,7 @@ eachVersionFrom(18, "chat management", (target) => {
 	}
 
 	/** app() with its bus started, once its websocket is asked for; delivered collects what the bus hands the chat. */
-	async function live(as: "admin" | "multi" = "admin") {
+	async function live(as: "admin" | "multi" | Login = "admin") {
 		const { env: started, src } = await app({ as });
 		const applyBus = vi.spyOn(started.chat, "applyBus");
 		const sockets = () => proxy.calls.filter((c) => c.path.startsWith("/websocket")).length;
@@ -311,12 +316,19 @@ eachVersionFrom(18, "chat management", (target) => {
 	});
 
 	it("hidden direct message shows again when chat_user writes", async () => {
-		const { env, src, delivered } = await live();
+		// The app runs as a user of its own: any post in a direct message pins it again, and the
+		// files run alongside post in admin's. The hide comes after the second of the direct
+		// message's last interest, set by its channel_get
+		const login = unique("cache");
+		const user = await peer.createUser(`MS ${login}`, login);
+		const { env, src, delivered } = await live(user.login);
 		const { channelId: dm } = await env.chat.startDirect(src, peer.partnerId);
+		const interestAt = Date.now();
 		const unpins = () => delivered().filter((n) => n.message?.type === "discuss.channel/unpin" && n.message.payload?.id === dm).length;
 		const unpinsBefore = unpins();
+		await new Promise((resolve) => setTimeout(resolve, Math.max(0, interestAt + NEXT_SECOND_MS - Date.now())));
 		await env.chat.hide(src, dm);
-		expect(await peer.memberOf(dm, peer.adminPartnerId, ["is_pinned"])).toMatchObject({ is_pinned: false });
+		expect(await peer.memberOf(dm, user.partnerId, ["is_pinned"])).toMatchObject({ is_pinned: false });
 		// A chat created moments before may still get the pin of its creation from the bus after
 		// the hide, and shows until the unpin that follows it, as in Odoo's web client, which
 		// applies the same frames in the same order. Once that unpin is applied it stays hidden
@@ -328,7 +340,7 @@ eachVersionFrom(18, "chat management", (target) => {
 		const id = await peer.post(dm, unique("again"));
 		await until("the message on the bus", async () => delivered().some((n) => newMessage(n, id)));
 		await until("the direct message shown again", async () => (await shown(env, src.configId, dm))?.lastMessageId === id);
-		expect(await peer.memberOf(dm, peer.adminPartnerId, ["is_pinned"])).toMatchObject({ is_pinned: true });
+		expect(await peer.memberOf(dm, user.partnerId, ["is_pinned"])).toMatchObject({ is_pinned: true });
 	});
 
 	it("mute an hour, then a mute queued past its end unmutes", async () => {
