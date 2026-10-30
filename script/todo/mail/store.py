@@ -1167,6 +1167,25 @@ class Store:
         return bool(ligne and ligne[0])
 
     @_locked
+    def outbox_auto_held_count(self, now: int | None = None) -> int:
+        """Le nombre d'entrées AUTOMATIQUES retenues de la file : celles
+        qui attendent qu'on les relâche. Aucun octet scellé n'est lu.
+
+        Avec `now`, une entrée dont l'échéance est passée n'est pas
+        comptée : la vidange suivante la retire sans l'envoyer, il n'y a
+        plus rien à approuver.
+        """
+        types = ", ".join("?" for _ in OUTBOX_AUTO_KINDS)
+        requete = (
+            f"SELECT COUNT(*) FROM outbox WHERE held = 1 AND kind IN ({types})"
+        )
+        valeurs: list = list(OUTBOX_AUTO_KINDS)
+        if now is not None:
+            requete += " AND (expires_at IS NULL OR expires_at >= ?)"
+            valeurs.append(int(now))
+        return self._db().execute(requete, valeurs).fetchone()[0]
+
+    @_locked
     def outbox_release(self, queue_id: int) -> None:
         """Rend une entrée réservée à la file, sans compter d'échec."""
         db = self._db()

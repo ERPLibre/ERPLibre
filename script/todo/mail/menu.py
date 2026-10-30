@@ -633,6 +633,8 @@ def _sync_now(todo) -> None:
     from script.todo.mail.tui import (
         SYNC_PARALLELE,
         flush_outbox,
+        held_auto_counts,
+        held_auto_text,
         open_sessions,
     )
 
@@ -711,6 +713,13 @@ def _sync_now(todo) -> None:
             ) as pool:
                 imprimer(pool.map(une, vivantes))
         _run_rules(rapports, accounts)
+        # Après les règles, qui viennent peut-être d'en retenir : un envoi
+        # automatique retenu ne part qu'une fois relâché dans le client.
+        for nom, nombre in held_auto_counts(vivantes):
+            print(
+                f"{nom} : {held_auto_text(nombre)}"
+                f" — {t('mail_outbox_held_auto_menu_hint')}"
+            )
     finally:
         for session in sessions:
             session.close()

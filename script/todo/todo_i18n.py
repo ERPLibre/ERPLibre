@@ -13931,6 +13931,53 @@ TRANSLATIONS = {
     },
     "mail_outbox_flushed": {"fr": "File : envoyés", "en": "Outbox: sent"},
     "mail_outbox_failed": {"fr": "échecs", "en": "failures"},
+    "mail_outbox_sending": {
+        "fr": "Envoi du message relâché…",
+        "en": "Sending the released message…",
+    },
+    "mail_outbox_release_offline": {
+        "fr": "hors ligne : relâché, il partira au retour du réseau",
+        "en": "offline: released, it will leave when the network is back",
+    },
+    "mail_outbox_release_failed": {
+        "fr": "échec de l'envoi, le message reste en file :",
+        "en": "send failed, the message stays in the outbox:",
+    },
+    "mail_outbox_release_failed_dropped": {
+        "fr": "envoi refusé pour de bon : retiré de la file",
+        "en": "send refused for good: removed from the outbox",
+    },
+    "mail_outbox_release_dropped": {
+        "fr": "retiré de la file sans envoi : échéance passée, règle"
+        " modifiée ou désactivée",
+        "en": "removed from the outbox without sending: expired, rule"
+        " changed or disabled",
+    },
+    "mail_outbox_release_gone": {
+        "fr": "le message n'est plus dans la file d'envoi",
+        "en": "the message is no longer in the outbox",
+    },
+    "mail_outbox_release_waiting": {
+        "fr": "relâché : il partira avec la synchronisation en cours ou la"
+        " suivante",
+        "en": "released: it will leave with the current or the next sync",
+    },
+    "mail_outbox_release_held": {
+        "fr": "retenu de nouveau : rien n'est parti",
+        "en": "held again: nothing was sent",
+    },
+    "mail_outbox_held_auto_one": {
+        "fr": "{n} envoi automatique attend votre approbation",
+        "en": "{n} automatic send awaits your approval",
+    },
+    "mail_outbox_held_auto_many": {
+        "fr": "{n} envois automatiques attendent votre approbation",
+        "en": "{n} automatic sends await your approval",
+    },
+    "mail_outbox_held_auto_menu_hint": {
+        "fr": "à relâcher dans la file d'envoi du client, touche o",
+        "en": "to release in the client's outbox, key o",
+    },
     "mail_folder_binding": {"fr": "Dossiers", "en": "Folders"},
     "mail_folder_close": {"fr": "Fermer", "en": "Close"},
     "mail_folder_create": {"fr": "Créer", "en": "Create"},
