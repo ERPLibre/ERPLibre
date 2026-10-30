@@ -4230,6 +4230,10 @@ def scenario_preferences_notifications(ctx):
 
         actif()
         lu = ctx.unique("lu-au-navigateur")
+        # Le message et sa lecture font chacun une poussée sur le sujet :
+        # sans les deux sur le ntfy, « rien d'affiché » ne distingue pas la
+        # retenue abandonnée à la lecture d'une poussée jamais envoyée
+        avant = messages_ntfy(ntfy, sujet)
         debut = time.monotonic()
         ident = poster(pair, canal_modele, chat, lu)
         time.sleep(LECTURE_NAVIGATEUR)
@@ -4244,6 +4248,9 @@ def scenario_preferences_notifications(ctx):
         while time.monotonic() < debut + SANS_NOTIFICATION:
             assert affichee(lu) is None, "message lu au navigateur affiché"
             time.sleep(0.5)
+        assert (
+            messages_ntfy(ntfy, sujet) >= avant + 2
+        ), "message lu au navigateur ou sa lecture absent du ntfy"
 
         actif()
         retenu = ctx.unique("retenu")

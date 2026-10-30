@@ -2036,6 +2036,24 @@ class TestScenariosAppareil(unittest.TestCase):
         self.assertEqual((total, echecs), (3, 0))
         self.assertEqual(joues, [("note", 16), ("note", 18), ("chat", 18)])
 
+    def test_le_message_lu_au_navigateur_est_bien_pousse(self):
+        """« Rien d'affiché » ne prouve la retenue que si la poussée du
+        message et celle de sa lecture ont atteint le ntfy : le compte est
+        lu avant le message, et vérifié grandi de deux à la fin de la
+        fenêtre, sans retarder la lecture."""
+        source = inspect.getsource(appareil.scenario_preferences_notifications)
+        cas = source[
+            source.index('ctx.unique("lu-au-navigateur")') : source.index(
+                'ctx.unique("retenu")'
+            )
+        ]
+        compte = cas.index("avant = messages_ntfy(ntfy, sujet)")
+        self.assertLess(compte, cas.index("poster("))
+        self.assertLess(
+            cas.index("while "),
+            cas.index("messages_ntfy(ntfy, sujet) >= avant + 2"),
+        )
+
 
 class TestCommandeAppareil(unittest.TestCase):
     def versions(self):
