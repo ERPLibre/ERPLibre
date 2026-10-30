@@ -22,6 +22,7 @@ démarre des serveurs. Le premier passage construit un gabarit par version
   ./long_test/mobile_sync.py --rebuild           # reconstruire les gabarits
   ./long_test/mobile_sync.py --detruire          # supprimer gabarits et cache
   ./long_test/mobile_sync.py --appareil          # aussi sur le téléphone branché
+  ./long_test/mobile_sync.py --appareil --toucher-volet  # téléphone de test vide
 
 Codes de sortie : 0 tout passe, 1 des tests échouent, 2 un prérequis
 manque (le message dit lequel et quoi faire), 3 l'infrastructure (base,
@@ -83,6 +84,13 @@ def parser():
         "--appareil",
         action="store_true",
         help="jouer aussi les scénarios de bout en bout sur le téléphone",
+    )
+    parseur.add_argument(
+        "--toucher-volet",
+        action="store_true",
+        help="téléphone de test vide seulement : les scénarios des"
+        " notifications touchent le volet du doigt (par défaut, la porte de"
+        " test de l'app agit et rien ne touche le volet)",
     )
     return parseur
 
@@ -229,6 +237,11 @@ def plan(versions, args, ntfy=True):
             + ", ".join(
                 f"{len(appareil.scenarios_de(v))} scénarios sur la {v}"
                 for v in versions
+            )
+            + (
+                ", volet des notifications touché du doigt"
+                if args.toucher_volet
+                else ", notifications par la porte de test, volet non touché"
             )
         )
     return "\n".join(lignes)
@@ -381,7 +394,9 @@ def main(argv=None):
         print(f"Bilan : {raison}. Traces : {repertoire}")
         if args.appareil:
             print("Sur le téléphone :")
-            total, echecs = appareil.lancer(liste, repertoire)
+            total, echecs = appareil.lancer(
+                liste, repertoire, toucher_volet=args.toucher_volet
+            )
             print(f"Appareil : {total - echecs}/{total} scénarios passés")
             if echecs or total == 0:
                 code = SORTIE_TESTS
