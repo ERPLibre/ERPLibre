@@ -344,6 +344,7 @@ and a proxy between the app and each server records what crossed the wire.
 ./long_test/mobile_sync.py --dry-run           # the plan, nothing created
 ./long_test/mobile_sync.py --appareil          # also on the plugged phone
 ./long_test/mobile_sync.py --appareil --toucher-volet  # empty test phone only
+./long_test/mobile_sync.py --appareil --batterie-reelle  # empty test phone only
 ./long_test/mobile_sync.py --garder            # keep databases and servers
 ./long_test/mobile_sync.py --detruire          # drop templates and cache
 ```
@@ -570,6 +571,15 @@ handed over: a reply is posted once, or not at all when Odoo already holds it,
 a read marks the conversation read with read receipts off, a mute lasts the
 hour that is left, and a reply's answer shows the message in the cache.
 
+`chatPushPrefs.test.ts` plays the third lot, module 1.6 on the run's Odoo:
+the general channel setting set in the app reaches Odoo (« mentions » stored
+as false), the general setting and a channel's setting changed in the browser
+reach the app by the bus, a channel set to mentions in the app pushes no plain
+post while a group ignores that setting, the browser mode set in the app marks
+the device (mode and payload v 2), a call of the route in its 1.5 form marks
+quiet and keeps payload v 1, and the payload v 2 says whether the recipient is
+mentioned (a mention, `@everyone`) and whether a browser of theirs is active.
+
 With `--appareil`, the notifications scenario runs on the phone, on Odoo 18,
 against that ntfy sent to the phone by `adb reverse`: at level 1 the app is
 connected and shows one permanent notification; a message from another user
@@ -596,7 +606,37 @@ phone's session copy broken the reply is handed to the app, which posts it once
 when the handoff notification is opened; a device the module does not know gets
 Odoo's payload without a message id and « Mute 1 h » as the third button.
 
-By default these two scenarios never touch the notification shade, so they can
+A third device scenario, « préférences du clavardage, app fermée », runs with
+module 1.6, the app in the background at level 1 and its device marked
+« wait » with payload v 2. It checks that « Rien de ce serveur » shows no
+message; that « Mentions et messages directs » hides a plain post of a channel
+the app set to « Tous les messages » and shows a mention and a group message;
+that with the inbox off a record comment does not show, except the one that
+mentions the user once the record-mentions switch is on; that under
+« Attendre 10 s », with a browser of the user active, a message read in the
+browser within 5 s never shows and an unread one shows between 9 and 15 s,
+and under « Sonner tout de suite » within 3 s; that inside quiet hours the
+notification shows without alerting, and alerts outside them. It then climbs
+through the test door: 12 % on battery gives level 3, reason `below_two`, the
+permanent notification gone, the climb job never running in a loop (the phone
+stays on USB power) and the « En ce moment » line in the options, captured;
+plugged in, level 1 and the service back; battery saver at 80 %, level 3,
+reason `saver`.
+
+Battery and power are simulated by default: the door takes a broadcast of kind
+`power` (`plugged`, `saver`, `pct`, or `clear`) and writes a power state that
+only the `-PsyncTest` build reads in place of Android's; the scenario clears it
+at its start and at its end, since a killed run would leave it otherwise.
+Nothing changes battery or power for the whole phone. `--batterie-reelle`
+adds the real step, for an empty test phone only: it refuses to start when the
+user's own app is installed, records `low_power` and the screen-off timeout,
+raises the timeout (unplugged, the phone is no longer kept awake by USB), then
+`dumpsys battery unplug` and level 12 (level 3, `below_two`, the climb job
+pending) and the battery saver at 80 % (level 3, `saver`). It restores, success
+or failure and in this order, the power mode and `low_power` to the recorded
+values, the battery (`dumpsys battery reset`) and the timeout.
+
+By default these three scenarios never touch the notification shade, so they can
 run on a phone that also carries the user's own apps. A notification's buttons
 are read from `dumpsys notification --noredact` (« Reply », « Mark read », then
 « 👍 » or « Mute 1 h »), and each action is fired at the test app through its

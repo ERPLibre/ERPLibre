@@ -123,9 +123,11 @@ Two things set it apart from a plain push integration:
   connection each.
 - **« Marquer lu » is an explicit gesture:** it marks the conversation read
   in Odoo even when the app's automatic read receipts are off.
-- **Quiet hours:** Android's Do Not Disturb is the default answer; per-server
-  quiet hours may be offered as an optional setting on the phone, off by
-  default.
+- **Quiet hours:** Android's Do Not Disturb stays the system-wide answer; the
+  phone also offers quiet hours per server, optional and off by default: one
+  daily window per server (22:00 to 07:00 once turned on), which may cross
+  midnight. Inside it, chat, inbox and summary notifications are posted
+  silently, without sound or vibration, and never dropped.
 - **Levels 1 and 2 ask for the battery optimisation exemption** when chosen;
   refused, the app says what it costs and offers level 3.
 - **Google Play later.** The app is installed by APK today, but nothing in
@@ -156,22 +158,38 @@ Two things set it apart from a plain push integration:
 - **One notification per conversation**, messages stacked (MessagingStyle);
   one Android channel per server for chat and one for its inbox, so sound and
   vibration are tuned in Android per server.
-- **Battery thresholds by default:** one level more under 30 %, two under
-  15 %; battery saver on means level 3 at least. Charging returns to the
-  chosen level.
+- **Battery thresholds by default:** a switch, « Économiser
+  automatiquement », on by default; one level more under 30 % and two levels
+  more under 15 %, each threshold picked from none, 10, 15, 20, 30, 40, 50 %.
+  Each threshold follows its own label: under the second the level climbs two
+  even when the first is none or lower. The climb never climbs past 4:
+  notifications stop only at a level 5 the user chose. Battery saver on means
+  level 3 at least, even with the switch off (the switch governs the
+  thresholds only). Plugged in returns to the chosen level at any percentage.
 - **The permanent notification** exists only at levels 1 and 2, at minimal
   priority. The user sees at most one permanent notification from the app,
   even with the SMS gateway running.
 - **While the app is in the foreground,** no system notification: project 1's
   in-app indicator is enough.
 - **Tokens never expire**; the `todo.py` command also revokes a phone.
-- **Phone-side filter choices per server:** everything Odoo pushes; mentions
-  and direct messages only; nothing from this server; plus a switch for the
-  inbox (records and activities).
-- **Browser-active choices:** ring at once; wait a few seconds (10 s by
-  default) and drop the notification if the « read » push arrives meanwhile;
-  ask the module not to push to the phone while a browser of the user is
-  online. Default: wait 10 s (falls back to ring at once without the module).
+- **Phone-side filter choices per server:** everything Odoo pushes (the
+  default); mentions and direct messages only, where chats and groups always
+  ring and a channel only when the user is mentioned (`@everyone` included);
+  nothing from this server. Without module 1.6 the push carries no mention
+  flag and the filter fails open: every channel message passes, which the
+  options call « filtre approximatif sans le module 1.6 ». Plus a switch for
+  the inbox (records and activities), on by default. Off is absolute, record
+  mentions included, unless a separate per-server switch, « Sonner quand même
+  si on me mentionne dans un enregistrement » (off by default, module 1.6),
+  lets a record @mention ring (the user's decision, lot 3 plan L13).
+- **Browser-active choices:** one setting for the whole phone, applied to
+  each server with the module: ring at once; wait 10 s and drop the
+  notification if the « read » push arrives meanwhile; ask the module not to
+  push to the phone while a browser of the user is active. A browser is
+  active when the user was active in it, connected, within 5 minutes (the
+  module's own threshold; the status Odoo displays is unchanged). Default:
+  wait 10 s. With module 1.5 « wait » rings at once and « do not send » uses
+  Odoo's 30-minute away delay; without the module every push rings.
 
 ## Constraints found in Odoo 18, ntfy 2.34 and the app
 
@@ -282,10 +300,12 @@ Facts from the recon (`tasks/chat/p2-recon-odoo.md`, `p2-recon-ntfy.md`,
    message id and channel type in Odoo's payload, app devices recognised,
    « read » push after commit to app devices only, 200 accepted from them,
    optional no-push while a browser is online.
-3. **Preferences and battery.** Odoo's settings read and changed from the
-   app, the phone-side filter, the browser-active setting, automatic climbing
-   (battery saver, thresholds, charging), optional quiet hours, the Google
-   Play justifications written down.
+3. **Preferences and battery, module 1.6 (done).** Odoo's settings read and
+   changed from the app, the phone-side filter, the browser-active setting,
+   automatic climbing (battery saver, thresholds, charging), optional quiet
+   hours, the Google Play justifications written down. Module 1.6: the
+   device's browser mode, and per recipient « mentioned » and « browser
+   online » in the app devices' payload (v 2).
 
 Each lot ends with unit tests, long tests on Odoo 18 against a real ntfy
 started by the harness, and a device scenario on the test app only.
