@@ -93,7 +93,7 @@ eachVersionFrom(18, "chat realtime", (target) => {
 		const group = await peer.group(unique("group"));
 		await peer.post(group, unique("early"));
 		const { env, src } = await live();
-		// The replay of the first poll arrives and applies later while the other files load the server
+		// The test files run in parallel: the first poll's replay can be applied more than 20 s after live() returns
 		await until("the replay applied", async () => (await env.chat.repo.sourceState(src.configId)).lastBusId > 0, 60_000);
 		expect((await env.chat.repo.channel(src.configId, group))!.unreadCounter)
 			.toBe((await peer.adminMember(group)).message_unread_counter);
