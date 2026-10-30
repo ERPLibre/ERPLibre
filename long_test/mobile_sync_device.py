@@ -20,13 +20,19 @@ fermée, puis leurs actions l'app tuée (répondre, marquer lu, sourdine,
 Le téléphone joint les serveurs par adb reverse (127.0.0.1 de l'appareil vers
 celui de l'hôte) ; la page se pilote par CDP (mobile_sync_cdp.py), les écrans
 par de vrais touchers, et la mise en place par window.__erplibreTest, que
-seule une construction de développement contient. Pour chaque version, l'app
-repart de zéro (pm clear) avec la seule application de ce serveur.
+seule une construction de développement contient. Le volet des
+notifications n'est pas touché : les boutons d'une notification se lisent
+dans dumpsys notification et leurs actions passent par la porte de test de
+l'app (ChatTestDoor, -PsyncTest seulement, réservée au shell adb). Le doigt
+n'y va qu'avec --toucher-volet, sur un téléphone de test vide. Pour chaque
+version, l'app repart de zéro (pm clear) avec la seule application de ce
+serveur.
 
 Lancé par ./long_test/mobile_sync.py --appareil, ou seul contre les serveurs
 gardés d'une course :
 
   ./long_test/mobile_sync_device.py cache/mobile_sync/runs/<course>/targets.json
+  ./long_test/mobile_sync_device.py <targets.json> --toucher-volet
 """
 
 import calendar
@@ -34,6 +40,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -606,6 +613,9 @@ class Contexte:
     appareil: Appareil = None
     compteur: int = 0
     repertoire: Path = None
+    # Vrai seulement sur un téléphone de test vide (--toucher-volet) : les
+    # scénarios des notifications touchent alors le volet du doigt
+    toucher_volet: bool = False
 
     def unique(self, libelle):
         self.compteur += 1
@@ -2489,8 +2499,9 @@ def scenario_notifications(ctx):
     verrouillé (PRIVATE avec « Nouveau message — <libellé> », ou SECRET,
     selon le réglage d'Android). Le processus tué, le service
     revient (START_STICKY, sinon la tâche forcée) et le message suivant
-    s'empile dans la même notification. Touchée dans le volet, elle ouvre
-    la conversation et s'efface. App au premier plan, rien ne s'affiche ;
+    s'empile dans la même notification. Ouverte (ouvrir_notification : la
+    porte de test, ou le doigt avec --toucher-volet), elle ouvre la
+    conversation et s'efface. App au premier plan, rien ne s'affiche ;
     « Jamais affiché », titre et texte ne disent que « Nouveau message ».
     Le ntfy retiré, la tâche forcée affiche le sommaire direct d'Odoo
     « 2 nouveaux messages — <libellé> », sans rien marquer lu sur le
@@ -2629,8 +2640,9 @@ def scenario_notifications(ctx):
         delai=30,
     )
 
-    # 4. Touchée dans le volet : la conversation s'ouvre, la notification part
-    toucher_notification(ctx, second)
+    # 4. Ouverte comme par son toucher : la conversation s'ouvre, la
+    # notification part
+    ouvrir_notification(ctx, second, tag)
     ctx.appareil.joindre()
     ctx.cdp = ctx.appareil.cdp
     chemin = f"/chat/{urllib.parse.quote(ctx.config_id, safe='')}/{canal}"
@@ -2763,13 +2775,16 @@ def actions_de(notification):
     return titres
 
 
-# Les paquets que porte la rangée d'une notification de l'app de test : son
-# contenu est à l'app, son cadre, le champ de réponse et son envoi à SystemUI
-PAQUETS_RANGEE = (PAQUET, "com.android.systemui")
-# La vue de SystemUI qui porte une notification du volet (AOSP,
-# ExpandableNotificationRow) : ses boutons, son champ de réponse et son
-# envoi sont dedans
-RANGEE_NOTIFICATION = "com.android.systemui:id/expandableNotificationRow"
+# Le relevé du volet d'Android 11 : chaque nœud y est à SystemUI, contenu
+# des notifications compris. Une rangée est un enfant du conteneur du volet,
+# ou du conteneur d'un groupe ; le nom de son app est dans son en-tête, ou
+# dans celui de son groupe
+CONTENEUR_VOLET = "com.android.systemui:id/notification_stack_scroller"
+GROUPE_VOLET = "com.android.systemui:id/notification_children_container"
+NOM_APPLI = "android:id/app_name_text"
+# Le nom de l'app de test au haut de ses notifications (son libellé,
+# -PsyncTest)
+ENTETE_TEST = "ERPLibre (test)"
 # Le libellé du chevron qui déplie une notification repliée
 DEPLIER = ("Développer", "Expand")
 
@@ -2806,46 +2821,76 @@ def bornes(noeud):
 
 
 def porte(noeud, ligne):
-    """Vrai quand le nœud est de PAQUET et que son texte porte ligne."""
-    return noeud.get("package") == PAQUET and ligne in (
-        noeud.get("text") or ""
-    )
+    """Vrai quand le texte du nœud porte ligne."""
+    return ligne in (noeud.get("text") or "")
+
+
+def rangees_du_volet(racine):
+    """Les rangées de notification du relevé : chaque FrameLayout sans id
+    enfant de CONTENEUR_VOLET ou de GROUPE_VOLET (les en-têtes de section
+    et le pied du volet en sont aussi, sans nom d'app), et le dictionnaire
+    enfant → parent du relevé."""
+    parents = {enfant: parent for parent in racine.iter() for enfant in parent}
+    rangees = {
+        enfant
+        for conteneur in racine.iter("node")
+        if conteneur.get("resource-id") in (CONTENEUR_VOLET, GROUPE_VOLET)
+        for enfant in conteneur
+        if enfant.get("class") == "android.widget.FrameLayout"
+        and not enfant.get("resource-id")
+    }
+    return rangees, parents
+
+
+def nom_appli(haut, parents):
+    """Le nom d'app qu'affiche la rangée haut : le premier NOM_APPLI
+    qu'elle porte, sinon, pour un enfant de groupe, celui de l'en-tête de
+    son groupe ; None sans l'un ni l'autre."""
+    for source in (haut, parents.get(haut)):
+        if source is None:
+            continue
+        if source is not haut and source.get("resource-id") != GROUPE_VOLET:
+            continue
+        nom = next(
+            (
+                n.get("text")
+                for n in source.iter("node")
+                if n.get("resource-id") == NOM_APPLI
+            ),
+            None,
+        )
+        if nom is not None:
+            return nom
+    return None
 
 
 def rangee(racine, ligne):
-    """La rangée (expandableNotificationRow de SystemUI) de la
-    notification de l'app de test qui affiche ligne, ou None. Depuis
-    chaque nœud de PAQUET dont le texte porte ligne, la rangée est son
-    plus proche ancêtre RANGEE_NOTIFICATION ; elle n'est retenue que si
-    aucun de ses nœuds n'est d'un autre paquet que PAQUETS_RANGEE. Une
-    seule rangée doit porter ligne : deux (deux notifications de l'app
-    qui l'affichent) ou aucune, et rien n'est désigné. Le titre et le
-    texte d'une même notification peuvent porter ligne tous deux (« Nouveau
-    message » d'un serveur « Jamais affiché ») : c'est une rangée."""
+    """La rangée de la notification de l'app de test qui affiche ligne, ou
+    None. Sur Android 11 chaque nœud du volet est à SystemUI : le paquet ne
+    dit rien de l'app, la rangée se lie par son nom d'app. Depuis chaque
+    nœud dont le texte porte ligne, la rangée est sa plus proche ancêtre
+    de rangees_du_volet ; seules comptent celles dont nom_appli est
+    ENTETE_TEST, et une seule doit porter ligne : deux (deux notifications
+    de l'app qui l'affichent) ou aucune, et rien n'est désigné. Un nœud
+    portant ligne hors de toute rangée et rien n'est désigné non plus. Le
+    titre et le texte d'une même notification peuvent porter ligne tous
+    deux (« Nouveau message » d'un serveur « Jamais affiché ») : c'est
+    une rangée."""
     if racine is None:
         return None
-    parents = {enfant: parent for parent in racine.iter() for enfant in parent}
+    lignes_volet, parents = rangees_du_volet(racine)
     rangees = []
     for texte in racine.iter("node"):
         if not porte(texte, ligne):
             continue
         haut = parents.get(texte)
-        while (
-            haut is not None
-            and haut.tag == "node"
-            and haut.get("resource-id") != RANGEE_NOTIFICATION
-        ):
+        while haut is not None and haut not in lignes_volet:
             haut = parents.get(haut)
-        if haut is None or haut.tag != "node":
+        if haut is None:
             return None
-        if haut not in rangees:
+        if nom_appli(haut, parents) == ENTETE_TEST and haut not in rangees:
             rangees.append(haut)
-    if len(rangees) != 1:
-        return None
-    seule = rangees[0]
-    if any(n.get("package") not in PAQUETS_RANGEE for n in seule.iter("node")):
-        return None
-    return seule
+    return rangees[0] if len(rangees) == 1 else None
 
 
 def dedans(noeud, cadre):
@@ -3067,17 +3112,27 @@ def champ_seul_dans_rangee(executer, ligne, delai):
 
 
 def mots_ailleurs(executer, ligne, mots):
-    """Les paquets des nœuds hors de la rangée de ligne dont le texte
-    porte mots, relevés une fois : où une saisie a pu atterrir. Rien n'y
-    est touché."""
+    """Où une saisie a pu atterrir, relevé une fois : pour chaque nœud
+    hors de la rangée de ligne dont le texte porte mots, le nom d'app de
+    sa rangée du volet, ou son paquet hors de toute rangée. Rien n'y est
+    touché."""
     racine = arbre_ui(executer)
     if racine is None:
         return []
     haut = rangee(racine, ligne)
     dedans_rangee = set(haut.iter("node")) if haut is not None else set()
+    lignes_volet, parents = rangees_du_volet(racine)
+
+    def lieu(noeud):
+        rangee_de = parents.get(noeud)
+        while rangee_de is not None and rangee_de not in lignes_volet:
+            rangee_de = parents.get(rangee_de)
+        nom = None if rangee_de is None else nom_appli(rangee_de, parents)
+        return nom or noeud.get("package")
+
     return sorted(
         {
-            n.get("package")
+            lieu(n)
             for n in racine.iter("node")
             if n not in dedans_rangee and mots in (n.get("text") or "")
         }
@@ -3181,12 +3236,126 @@ def tuer_app(ctx):
     return maniere
 
 
+# La porte de test de l'app (ChatTestDoor, src/synctest/ du dépôt mobile,
+# construction -PsyncTest seulement) : un récepteur que seul le détenteur
+# de DUMP atteint, le shell adb ; il envoie la vraie PendingIntent d'une
+# notification de l'app, sans rien toucher au volet
+PORTE = f"{PAQUET}/ca.erplibre.home.chatpush.ChatTestDoor"
+PORTE_ACTION = "ca.erplibre.home.chatpush.TEST_DOOR"
+# La sorte de la porte pour chaque bouton d'une notification de conversation
+SORTES = {
+    "Répondre": "reply",
+    "Marquer lu": "read",
+    "Muet 1 h": "mute",
+    "👍": "react",
+}
+
+
+def porte_de_test(executer, tag, sorte, texte=None):
+    """La sorte (reply, read, mute, react, open) envoyée à la notification
+    de l'app de test sous tag par la porte de test (am broadcast ordonné,
+    composant explicite) ; texte, la réponse de reply. Pour open, la porte
+    reçoit le droit d'ouvrir un écran depuis l'arrière-plan, celui que le
+    toucher d'une notification donne à l'app. RuntimeError quand la porte
+    n'a rien envoyé, avec la raison qu'elle rend, jamais le texte."""
+    commande = ["shell", "am", "broadcast"]
+    if sorte == "open":
+        commande.append("--allow-background-activity-starts")
+    commande += [
+        "-n",
+        PORTE,
+        "-a",
+        PORTE_ACTION,
+        "--es",
+        "tag",
+        shlex.quote(tag),
+        "--es",
+        "kind",
+        sorte,
+    ]
+    if texte is not None:
+        commande += ["--es", "text", shlex.quote(texte)]
+    sortie = adb(*commande, executer=executer)
+    if 'data="sent"' not in sortie:
+        bilan = next(
+            (
+                ligne.strip()
+                for ligne in sortie.splitlines()
+                if ligne.startswith("Broadcast completed")
+            ),
+            "aucune réponse de la porte",
+        )
+        raise RuntimeError(f"porte de test, {sorte} sur {tag} : {bilan}")
+
+
+def attendre_bouton(ctx, tag, ligne, titre, delai):
+    """La notification de tag qui porte ligne et, quand titre est donné,
+    offre le bouton titre, lue dans dumpsys notification jusqu'à delai
+    secondes ; TimeoutError nommant ce qui manque sinon."""
+    debut = time.monotonic()
+    while True:
+        for n in notifications(ctx.appareil.executer):
+            if (
+                n["tag"] == tag
+                and ligne in n["bloc"]
+                and (titre is None or titre in actions_de(n))
+            ):
+                return n
+        if time.monotonic() - debut >= delai:
+            quoi = f"le bouton « {titre} »" if titre else "la notification"
+            raise TimeoutError(
+                f"{quoi} absent de la notification {tag} portant"
+                f" « {ligne} » (dumpsys) en {delai} s"
+            )
+        time.sleep(0.5)
+
+
+def agir(ctx, titre, ligne, tag, delai=20):
+    """Le bouton titre de la notification de l'app de test sous tag qui
+    affiche ligne. Par défaut, le bouton lu dans dumpsys notification puis
+    son action envoyée par la porte de test : rien ne touche le volet.
+    Avec ctx.toucher_volet (téléphone de test vide), le vrai toucher du
+    volet (toucher_action)."""
+    if ctx.toucher_volet:
+        toucher_action(ctx, titre, ligne, delai=delai)
+        return
+    attendre_bouton(ctx, tag, ligne, titre, delai)
+    porte_de_test(ctx.appareil.executer, tag, SORTES[titre])
+
+
+def repondre(ctx, mots, ligne, tag, delai=20):
+    """« Répondre » de la notification de l'app de test sous tag qui
+    affiche ligne, avec mots ; l'instant de l'envoi (time.monotonic). Par
+    défaut, le bouton lu dans dumpsys notification puis la réponse envoyée
+    par la porte de test, mots en résultat de son RemoteInput. Avec
+    ctx.toucher_volet, le doigt dans le volet (repondre_du_volet)."""
+    if ctx.toucher_volet:
+        return repondre_du_volet(ctx, mots, ligne, delai=delai)
+    attendre_bouton(ctx, tag, ligne, "Répondre", delai)
+    porte_de_test(ctx.appareil.executer, tag, "reply", mots)
+    return time.monotonic()
+
+
+def ouvrir_notification(ctx, ligne, tag, delai=10):
+    """La notification de l'app de test sous tag qui affiche ligne,
+    ouverte comme par son toucher. Par défaut, lue dans dumpsys
+    notification puis son contentIntent envoyé par la porte de test. Avec
+    ctx.toucher_volet, touchée dans le volet (toucher_notification)."""
+    if ctx.toucher_volet:
+        toucher_notification(ctx, ligne, delai=delai)
+        return
+    attendre_bouton(ctx, tag, ligne, None, delai)
+    porte_de_test(ctx.appareil.executer, tag, "open")
+
+
 def scenario_actions_notifications(ctx):
     """Les actions d'une notification de conversation, l'app tuée, le
     module 1.5 sur le serveur de la course : le lien appliqué au niveau 1,
     l'appareil marqué comme celui de l'app. Le processus tué, un message
-    de chat_user s'affiche avec ses trois boutons. « Répondre », tapé
-    dans le volet, poste une seule fois la réponse, et la poussée de
+    de chat_user s'affiche avec ses trois boutons, lus dans dumpsys. Les
+    boutons agissent par agir, repondre et ouvrir_notification : la porte
+    de test par défaut, le doigt dans le volet avec --toucher-volet.
+    « Répondre » poste une seule fois la réponse, et la poussée de
     lecture de l'auteur efface la notification ; « Marquer lu » lit la
     conversation jusqu'au message ; « 👍 » réagit au message et la
     notification reste, « Muet 1 h » à la place de « 👍 » ; « Muet 1 h »
@@ -3194,7 +3363,7 @@ def scenario_actions_notifications(ctx):
     efface la notification. « Jamais affiché », la notification ne dit
     que « Nouveau message », avec les mêmes boutons, et la réponse part
     quand même. La copie de session du natif cassée, la réponse est
-    confiée à l'app : la notification de reprise s'affiche, touchée elle
+    confiée à l'app : la notification de reprise s'affiche, ouverte elle
     ouvre l'app, qui poste la réponse une fois. L'appareil démarqué, une
     poussée sans id de message offre « Muet 1 h » en troisième. Rend les
     délais mesurés."""
@@ -3317,7 +3486,7 @@ def scenario_actions_notifications(ctx):
 
         # 3. « Répondre » : une seule réponse, la notification effacée
         mots = f"reponse{int(time.time())}a"
-        envoi = repondre_du_volet(ctx, mots, premier)
+        envoi = repondre(ctx, mots, premier, tag)
         capturer("actions_reponse_envoyee")
         attendre_serveur(
             "la réponse sur le serveur", lambda: miens(mots), ACTION_DELAI
@@ -3331,7 +3500,7 @@ def scenario_actions_notifications(ctx):
         lire = ctx.unique("a-lire")
         ident = poster(lire)
         attendre_notification(ctx, tag, lambda n: lire in n["bloc"])
-        toucher_action(ctx, "Marquer lu", lire)
+        agir(ctx, "Marquer lu", lire, tag)
         attendre_serveur(
             "la conversation lue",
             lambda: vu_de(ctx.odoo, canal, moi) == ident,
@@ -3348,7 +3517,7 @@ def scenario_actions_notifications(ctx):
             lambda n: pouce in n["bloc"]
             and actions_de(n) == ACTIONS_CLAVARDAGE,
         )
-        toucher_action(ctx, "👍", pouce)
+        agir(ctx, "👍", pouce, tag)
         attendre_serveur(
             "le 👍 sur le serveur",
             lambda: reactions_serveur(ctx.odoo, ident) == [("👍", moi)],
@@ -3362,7 +3531,7 @@ def scenario_actions_notifications(ctx):
         # 6. « Muet 1 h », offert une fois le 👍 donné : la sourdine d'une
         # heure, puis levée
         touche = time.time()
-        toucher_action(ctx, "Muet 1 h", pouce)
+        agir(ctx, "Muet 1 h", pouce, tag)
         fin_muet = attendre_serveur(
             "la sourdine",
             lambda: ctx.odoo.executer(
@@ -3421,7 +3590,7 @@ def scenario_actions_notifications(ctx):
         assert cache not in notif["bloc"], "texte du message affiché"
         assert actions_de(notif) == ACTIONS_CLAVARDAGE, actions_de(notif)
         mots_caches = f"cachee{int(time.time())}b"
-        repondre_du_volet(ctx, mots_caches, "Nouveau message")
+        repondre(ctx, mots_caches, "Nouveau message", tag)
         capturer("actions_jamais_affiche")
         attendre_serveur(
             "la réponse « jamais affiché »",
@@ -3455,13 +3624,13 @@ def scenario_actions_notifications(ctx):
             ctx, tag, lambda n: confie in n["bloc"], delai=POUSSEE_DELAI
         )
         mots_confies = f"confiee{int(time.time())}c"
-        repondre_du_volet(ctx, mots_confies, confie)
+        repondre(ctx, mots_confies, confie, tag)
         attendre_notification(ctx, reprise, delai=ACTION_DELAI)
         assert not miens(mots_confies), "réponse postée par une session morte"
         capturer("actions_reprise")
         # « Ouvrez l'app pour terminer … » : la notification de reprise,
         # pas celle d'état d'une session expirée (« … pour reprendre … »)
-        toucher_notification(ctx, "pour terminer")
+        ouvrir_notification(ctx, "pour terminer", reprise)
         ctx.appareil.joindre()
         ctx.cdp = ctx.appareil.cdp
         attendre_serveur(
@@ -3578,8 +3747,16 @@ def ports_de(cibles):
     return ports
 
 
-def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
+def lancer(
+    cibles,
+    repertoire,
+    executer=subprocess.run,
+    journal=print,
+    toucher_volet=False,
+):
     """Les scénarios sur le téléphone, pour chaque cible : (total, échecs).
+    toucher_volet (--toucher-volet, téléphone de test vide) fait toucher le
+    volet des notifications du doigt ; sinon la porte de test agit.
     Un échec garde une capture d'écran dans repertoire. L'app de
     l'utilisateur (APP_PERSO) est relevée avant et après : une date de mise
     à jour changée, ou devenue illisible, compte pour un échec de plus ;
@@ -3619,6 +3796,7 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
                             cible,
                             appareil,
                             repertoire=Path(repertoire),
+                            toucher_volet=toucher_volet,
                         )
                     )
                     journal(
@@ -3662,6 +3840,8 @@ def lancer(cibles, repertoire, executer=subprocess.run, journal=print):
 def main(argv=None):
     sys.stdout.reconfigure(line_buffering=True)
     argv = sys.argv[1:] if argv is None else argv
+    toucher_volet = "--toucher-volet" in argv
+    argv = [a for a in argv if a != "--toucher-volet"]
     if len(argv) != 1:
         print(__doc__)
         return 2
@@ -3672,7 +3852,11 @@ def main(argv=None):
             print(f"  - {probleme}")
         return 2
     chemin = Path(argv[0])
-    total, echecs = lancer(json.loads(chemin.read_text()), chemin.parent)
+    total, echecs = lancer(
+        json.loads(chemin.read_text()),
+        chemin.parent,
+        toucher_volet=toucher_volet,
+    )
     print(f"Appareil : {total - echecs}/{total} scénarios passés")
     return 0 if total and not echecs else 1
 

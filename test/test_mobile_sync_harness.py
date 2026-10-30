@@ -12,9 +12,11 @@ test est un échec et pas une réussite silencieuse.
 """
 
 import hashlib
+import inspect
 import json
 import os
 import re
+import shlex
 import sys
 import tempfile
 import unittest
@@ -743,8 +745,8 @@ class TestAppPerso(unittest.TestCase):
 
 
 UI = "com.android.systemui"
-AUTRE = "org.exemple.messagerie"
-RANGEE = "com.android.systemui:id/expandableNotificationRow"
+# Le nom d'une autre app au haut de sa notification, inventé
+AUTRE = "Messagerie Exemple"
 
 
 def noeud(paquet, haut, bas, enfants="", **attributs):
@@ -768,25 +770,51 @@ def noeud(paquet, haut, bas, enfants="", **attributs):
     )
 
 
+def en_tete(appli, haut):
+    """L'en-tête d'une notification (android:id/notification_header) et
+    le nom d'appli qu'il affiche (android:id/app_name_text)."""
+    return noeud(
+        UI,
+        haut,
+        haut + 10,
+        noeud(
+            UI,
+            haut,
+            haut + 10,
+            text=appli,
+            resource_id=appareil.NOM_APPLI,
+            x=(100, 400),
+        ),
+        resource_id="android:id/notification_header",
+        **{"class": "android.view.ViewGroup"},
+    )
+
+
 def rangee_xml(
-    paquet, haut, textes, reponse=None, bouton=True, rid=RANGEE, focus=True
+    appli, haut, textes, reponse=None, bouton=True, focus=True, entete=True
 ):
-    """La rangée d'une notification : cadre SystemUI (rid), contenu de
-    paquet (textes, « Répondre » quand bouton), puis, quand reponse n'est
-    pas None, le champ de réponse (texte reponse, focalisé quand focus)
-    et son envoi, à SystemUI."""
+    """La rangée d'une notification comme Android 11 la relève, chaque
+    nœud à SystemUI : un FrameLayout sans id, enfant du conteneur du
+    volet, son cadre expanded puis status_bar_latest_event_content ; dedans
+    l'en-tête au nom appli (sans lui quand entete est faux : un enfant de
+    groupe), les textes, « Répondre » quand bouton, puis, quand reponse
+    n'est pas None, le champ de réponse (texte reponse, focalisé quand
+    focus) et son envoi."""
     contenu = "".join(
-        noeud(paquet, haut + 10 * i, haut + 10 * i + 10, text=t)
+        noeud(UI, haut + 10 * i, haut + 10 * i + 10, text=t)
         for i, t in enumerate(textes)
     )
+    if entete:
+        contenu += en_tete(appli, haut + 50)
     if bouton:
         contenu += noeud(
-            paquet,
+            UI,
             haut + 100,
             haut + 200,
             text="Répondre",
             clickable="true",
             x=(0, 400),
+            **{"class": "android.widget.Button"},
         )
     champ = ""
     if reponse is not None:
@@ -807,22 +835,63 @@ def rangee_xml(
             clickable="true",
             x=(900, 1000),
         )
-    return noeud(
+    cadre = noeud(
         UI,
         haut,
         haut + 300,
-        noeud(paquet, haut, haut + 200, contenu) + champ,
-        resource_id=rid,
+        noeud(
+            UI,
+            haut,
+            haut + 200,
+            contenu,
+            resource_id="android:id/status_bar_latest_event_content",
+        )
+        + champ,
+        resource_id="com.android.systemui:id/expanded",
+    )
+    return noeud(UI, haut, haut + 300, cadre, clickable="true")
+
+
+def groupe_xml(appli, haut, *enfants):
+    """Un groupe de notifications d'une app : sa rangée, enfant du
+    conteneur du volet, porte le conteneur notification_children_container,
+    qui porte l'en-tête au nom appli puis les rangées enfants (rangee_xml
+    sans en-tête)."""
+    return noeud(
+        UI,
+        haut,
+        2900,
+        noeud(
+            UI,
+            haut,
+            2900,
+            en_tete(appli, haut + 5) + "".join(enfants),
+            resource_id=appareil.GROUPE_VOLET,
+            **{"class": "android.view.ViewGroup"},
+        ),
         clickable="true",
     )
 
 
 def volet(*rangees):
-    """Un relevé du volet : les rangées dans un même conteneur SystemUI."""
+    """Un relevé du volet : les rangées dans son conteneur
+    (notification_stack_scroller), sous la racine de SystemUI."""
     return (
         "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>"
         '<hierarchy rotation="0">'
-        + noeud(UI, 0, 3000, "".join(rangees))
+        + noeud(
+            UI,
+            0,
+            3000,
+            noeud(
+                UI,
+                0,
+                3000,
+                "".join(rangees),
+                resource_id=appareil.CONTENEUR_VOLET,
+                **{"class": "android.widget.ScrollView"},
+            ),
+        )
         + "</hierarchy>"
     )
 
@@ -831,7 +900,9 @@ MESSAGE = "ms-test-message-attendu"
 
 
 def notre(haut=1000, reponse=None, textes=("MS Chat", MESSAGE), **options):
-    return rangee_xml(appareil.PAQUET, haut, list(textes), reponse, **options)
+    return rangee_xml(
+        appareil.ENTETE_TEST, haut, list(textes), reponse, **options
+    )
 
 
 def faux_volet(releve):
@@ -918,7 +989,6 @@ class TestVoletPortee(unittest.TestCase):
                 clickable="true",
                 x=(900, 1000),
             ),
-            resource_id=RANGEE,
         )
         executer, touchers, textes = faux_volet(avec_champ(etrangere))
         appareil.repondre_du_volet(self.ctx(executer), "motsinventes", MESSAGE)
@@ -992,9 +1062,26 @@ class TestVoletPortee(unittest.TestCase):
         self.assertEqual(textes, [])
 
     def test_hors_d_une_rangee_de_notification_rien_n_est_touche(self):
-        executer, touchers, _ = faux_volet(
-            lambda _: volet(notre(rid="com.android.systemui:id/autre"))
+        # Notre contenu relevé hors du conteneur du volet (une autre vue de
+        # SystemUI) : il n'est dans aucune rangée
+        hors_volet = (
+            "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>"
+            '<hierarchy rotation="0">'
+            + noeud(
+                UI,
+                0,
+                3000,
+                noeud(
+                    UI,
+                    0,
+                    3000,
+                    notre(),
+                    resource_id="com.android.systemui:id/qs_frame",
+                ),
+            )
+            + "</hierarchy>"
         )
+        executer, touchers, _ = faux_volet(lambda _: hors_volet)
         with self.assertRaises(TimeoutError):
             appareil.toucher_action(
                 self.ctx(executer), "Répondre", MESSAGE, delai=0
@@ -1013,7 +1100,7 @@ class TestVoletPortee(unittest.TestCase):
 
     def test_un_second_champ_focalise_hors_rangee_empeche_la_saisie(self):
         ailleurs = noeud(
-            AUTRE,
+            UI,
             2500,
             2600,
             **{"class": "android.widget.EditText"},
@@ -1027,11 +1114,17 @@ class TestVoletPortee(unittest.TestCase):
         self.assertEqual(textes, [])
         self.assertNotIn((950, 1250), touchers)
 
-    def test_des_mots_tapes_ailleurs_nomment_le_paquet_sans_y_toucher(self):
+    def test_des_mots_tapes_ailleurs_nomment_l_app_sans_y_toucher(self):
         def releve(tapes):
-            # Notre champ reste vide, les mots arrivent dans un nœud d'une autre app
-            ailleurs = noeud(
-                AUTRE, 2500, 2600, text=tapes[-1] if tapes else ""
+            # Notre champ reste vide, les mots arrivent dans le champ de la
+            # notification d'une autre app
+            ailleurs = rangee_xml(
+                AUTRE,
+                2000,
+                ["Alice Martin"],
+                tapes[-1] if tapes else "",
+                bouton=False,
+                focus=False,
             )
             return volet(notre(reponse=""), ailleurs)
 
@@ -1059,6 +1152,48 @@ class TestVoletPortee(unittest.TestCase):
         self.assertIsNotNone(choisie)
         self.assertEqual(choisie.get("bounds"), "[0,1000][1000,1300]")
 
+    def test_un_enfant_de_notre_groupe_est_notre_rangee(self):
+        # Groupée, notre notification n'a pas d'en-tête : celui du groupe
+        # dit l'app
+        executer, touchers, _ = faux_volet(
+            lambda _: volet(
+                groupe_xml(
+                    appareil.ENTETE_TEST,
+                    700,
+                    rangee_xml(None, 1000, ["MS Chat", MESSAGE], entete=False),
+                )
+            )
+        )
+        appareil.toucher_action(self.ctx(executer), "Répondre", MESSAGE)
+        self.assertEqual(touchers, [(200, 1150)])
+
+    def test_un_enfant_du_groupe_d_une_autre_app_n_est_pas_touche(self):
+        executer, touchers, _ = faux_volet(
+            lambda _: volet(
+                groupe_xml(
+                    AUTRE,
+                    700,
+                    rangee_xml(None, 1000, ["MS Chat", MESSAGE], entete=False),
+                )
+            )
+        )
+        with self.assertRaises(TimeoutError):
+            appareil.toucher_action(
+                self.ctx(executer), "Répondre", MESSAGE, delai=0
+            )
+        self.assertEqual(touchers, [])
+
+    def test_une_autre_app_affichant_le_jeton_laisse_notre_rangee(self):
+        # Une autre app reprend le jeton de la course dans sa notification :
+        # seule la rangée au nom de l'app de test porte les deux
+        executer, touchers, _ = faux_volet(
+            lambda _: volet(
+                rangee_xml(AUTRE, 0, ["Alice Martin", MESSAGE]), notre()
+            )
+        )
+        appareil.toucher_action(self.ctx(executer), "Répondre", MESSAGE)
+        self.assertEqual(touchers, [(200, 1150)])
+
     def test_le_bouton_d_une_boite_de_dialogue_est_celui_de_l_app(self):
         def bouton(paquet, haut):
             return noeud(
@@ -1071,7 +1206,10 @@ class TestVoletPortee(unittest.TestCase):
             )
 
         executer, touchers, _ = faux_volet(
-            lambda _: volet(bouton(AUTRE, 100), bouton(appareil.PAQUET, 1500))
+            lambda _: volet(
+                bouton("org.exemple.messagerie", 100),
+                bouton(appareil.PAQUET, 1500),
+            )
         )
         appareil.toucher_dialogue(self.ctx(executer), "Supprimer")
         self.assertEqual(touchers, [(500, 1550)])
@@ -1108,6 +1246,265 @@ class TestVoletPortee(unittest.TestCase):
         )
         appareil.toucher_notification(self.ctx(executer), "Ouvrez l")
         self.assertEqual(touchers, [(500, 1005)])
+
+
+# Le tag d'une conversation : son configId (url|identifiant|base) porte
+# des caractères que le shell du téléphone interprète
+TAG = "chat:http://odoo.exemple.test:8069|admin|base_exemple:7"
+
+
+def dumpsys_notification(
+    tag=TAG, textes=(MESSAGE,), actions=("Répondre", "Marquer lu", "👍")
+):
+    """Une sortie inventée de dumpsys notification --noredact, de la forme
+    d'Android 11 : la notification de l'app de test sous tag, ses textes
+    dans ses extras et ses boutons dans actions={…}, après celle d'une
+    autre app."""
+    lignes = [
+        "Current Notification Manager state:",
+        "  Notification List:",
+        "    NotificationRecord(0x0badcafe: pkg=org.exemple.messagerie"
+        " user=UserHandle{0} id=3 tag=null importance=3"
+        " key=0|org.exemple.messagerie|3|null|10111: Notification("
+        "channel=general pri=0 contentView=null vibrate=null sound=null"
+        " defaults=0x0 flags=0x10 color=0x00000000 vis=PRIVATE))",
+        "      android.title=String (Alice Martin)",
+        "      actions={",
+        '        [0] "Répondre" -> PendingIntent{1: PendingIntentRecord{2'
+        " org.exemple.messagerie broadcastIntent}}",
+        "      }",
+        f"    NotificationRecord(0x0decade0: pkg={appareil.PAQUET}"
+        f" user=UserHandle{{0}} id=0 tag={tag} importance=4"
+        f" key=0|{appareil.PAQUET}|0|{tag}|10234: Notification("
+        "channel=chat.0123456789ab pri=1 contentView=null vibrate=null"
+        " sound=null defaults=0x0 flags=0x18 color=0x00000000 vis=PRIVATE))",
+    ]
+    lignes += [f"      android.text=String ({t})" for t in textes]
+    lignes.append("      actions={")
+    lignes += [
+        f'        [{i}] "{a}" -> PendingIntent{{{i}: PendingIntentRecord{{9'
+        f" {appareil.PAQUET} broadcastIntent}}}}"
+        for i, a in enumerate(actions)
+    ]
+    lignes.append("      }")
+    return "\n".join(lignes) + "\n"
+
+
+def faux_telephone(notification=None, porte='data="sent"'):
+    """Un faux subprocess.run qui note chaque commande adb : dumpsys
+    notification rend notification (dumpsys_notification() par défaut),
+    am broadcast la réponse de la porte (porte), un relevé uiautomator le
+    volet avec notre notification."""
+    commandes = []
+    notification = notification or dumpsys_notification()
+
+    def executer(commande, **_):
+        commandes.append(commande)
+        sortie = ""
+        if commande[2:4] == ["dumpsys", "notification"]:
+            sortie = notification
+        elif commande[2:4] == ["am", "broadcast"]:
+            sortie = (
+                "Broadcasting: Intent { act=x flg=0x400000 cmp=y"
+                " (has extras) }\n"
+                f"Broadcast completed: result=0, {porte}\n"
+            )
+        elif commande[-2:] == ["cat", appareil.CONTENU_UI]:
+            sortie = volet(notre(reponse=""))
+        return SimpleNamespace(stdout=sortie, stderr="", returncode=0)
+
+    return executer, commandes
+
+
+def touchers_volet(commandes):
+    """Les commandes qui agissent par l'écran : input (tap, text, swipe,
+    keyevent) et les relevés uiautomator."""
+    return [
+        c
+        for c in commandes
+        if c[1:2] == ["shell"] and c[2:3] in (["input"], ["uiautomator"])
+    ]
+
+
+def portes(commandes):
+    return [c for c in commandes if c[2:4] == ["am", "broadcast"]]
+
+
+class TestPorteDeTest(unittest.TestCase):
+    """Par défaut, les scénarios des notifications ne touchent jamais au
+    volet : les boutons se lisent dans dumpsys notification, les actions
+    passent par la porte de test de l'app (am broadcast vers ChatTestDoor,
+    construction -PsyncTest seulement). --toucher-volet garde les vrais
+    touchers."""
+
+    def setUp(self):
+        attente = mock.patch.object(appareil.time, "sleep")
+        attente.start()
+        self.addCleanup(attente.stop)
+
+    def ctx(self, executer, toucher_volet=False):
+        return SimpleNamespace(
+            appareil=SimpleNamespace(executer=executer),
+            toucher_volet=toucher_volet,
+        )
+
+    def test_une_action_passe_par_la_porte_sans_toucher_l_ecran(self):
+        executer, commandes = faux_telephone()
+        appareil.agir(self.ctx(executer), "Marquer lu", MESSAGE, TAG)
+        self.assertEqual(touchers_volet(commandes), [])
+        (porte,) = portes(commandes)
+        self.assertEqual(
+            porte,
+            [
+                "adb",
+                "shell",
+                "am",
+                "broadcast",
+                "-n",
+                "ca.erplibre.home.synctest/"
+                "ca.erplibre.home.chatpush.ChatTestDoor",
+                "-a",
+                "ca.erplibre.home.chatpush.TEST_DOOR",
+                "--es",
+                "tag",
+                shlex.quote(TAG),
+                "--es",
+                "kind",
+                "read",
+            ],
+        )
+
+    def test_chaque_bouton_a_sa_sorte(self):
+        for titre, sorte in (
+            ("Marquer lu", "read"),
+            ("👍", "react"),
+            ("Muet 1 h", "mute"),
+        ):
+            executer, commandes = faux_telephone(
+                dumpsys_notification(actions=("Répondre", "Marquer lu", titre))
+            )
+            appareil.agir(self.ctx(executer), titre, MESSAGE, TAG)
+            self.assertEqual(portes(commandes)[0][-1], sorte)
+            self.assertEqual(touchers_volet(commandes), [])
+
+    def test_la_reponse_porte_ses_mots_par_la_porte(self):
+        executer, commandes = faux_telephone()
+        envoi = appareil.repondre(
+            self.ctx(executer), "motsinventes", MESSAGE, TAG
+        )
+        self.assertIsInstance(envoi, float)
+        self.assertEqual(touchers_volet(commandes), [])
+        (porte,) = portes(commandes)
+        self.assertEqual(
+            porte[-6:],
+            ["--es", "kind", "reply", "--es", "text", "motsinventes"],
+        )
+
+    def test_l_ouverture_est_le_toucher_de_la_notification(self):
+        executer, commandes = faux_telephone()
+        appareil.ouvrir_notification(self.ctx(executer), MESSAGE, TAG)
+        self.assertEqual(touchers_volet(commandes), [])
+        (porte,) = portes(commandes)
+        # Le toucher d'une notification permet à l'app d'ouvrir un écran
+        # depuis l'arrière-plan : la porte reçoit le même droit
+        self.assertIn("--allow-background-activity-starts", porte)
+        self.assertEqual(porte[-3:], ["--es", "kind", "open"])
+
+    def test_un_bouton_absent_de_dumpsys_n_ouvre_pas_la_porte(self):
+        executer, commandes = faux_telephone(
+            dumpsys_notification(actions=("Répondre", "Marquer lu", "👍"))
+        )
+        with self.assertRaises(TimeoutError) as echec:
+            appareil.agir(
+                self.ctx(executer), "Muet 1 h", MESSAGE, TAG, delai=0
+            )
+        self.assertIn("Muet 1 h", str(echec.exception))
+        self.assertEqual(portes(commandes), [])
+        self.assertEqual(touchers_volet(commandes), [])
+
+    def test_une_notification_sans_la_ligne_n_ouvre_pas_la_porte(self):
+        executer, commandes = faux_telephone(
+            dumpsys_notification(textes=("ms-test-autre",))
+        )
+        with self.assertRaises(TimeoutError):
+            appareil.repondre(
+                self.ctx(executer), "motsinventes", MESSAGE, TAG, delai=0
+            )
+        self.assertEqual(portes(commandes), [])
+
+    def test_une_porte_qui_n_envoie_rien_echoue_sans_les_mots(self):
+        executer, _ = faux_telephone(porte='data="no-notification"')
+        with self.assertRaises(RuntimeError) as echec:
+            appareil.repondre(self.ctx(executer), "motsinventes", MESSAGE, TAG)
+        self.assertIn("no-notification", str(echec.exception))
+        self.assertNotIn("motsinventes", str(echec.exception))
+
+    def test_toucher_volet_garde_les_vrais_touchers(self):
+        executer, commandes = faux_telephone()
+        appareil.agir(
+            self.ctx(executer, toucher_volet=True), "Répondre", MESSAGE, TAG
+        )
+        self.assertEqual(portes(commandes), [])
+        self.assertIn(
+            ["adb", "shell", "input", "tap", "200", "1150"], commandes
+        )
+
+    def test_les_scenarios_n_atteignent_le_volet_que_par_le_mode(self):
+        # Les deux scénarios des notifications passent par agir, repondre
+        # et ouvrir_notification, qui choisissent la porte ou le doigt : ils
+        # ne touchent ni ne tapent rien d'eux-mêmes
+        for scenario in (
+            appareil.scenario_notifications,
+            appareil.scenario_actions_notifications,
+        ):
+            source = inspect.getsource(scenario)
+            for interdit in (
+                "toucher_action(",
+                "repondre_du_volet(",
+                "toucher_notification(",
+                "toucher_dans(",
+                '"input"',
+            ):
+                self.assertNotIn(interdit, source, scenario.__name__)
+
+    def test_le_mode_suit_l_option_jusqu_au_scenario(self):
+        vus = []
+        cibles = [
+            {
+                "version": 18,
+                "url": "http://127.0.0.1:8018",
+                "database": "base_18",
+                "admin": {"login": "admin", "password": "admin"},
+            }
+        ]
+        for option in (False, True):
+            with mock.patch.object(
+                appareil,
+                "SCENARIOS",
+                (("n", lambda ctx: vus.append(ctx.toucher_volet), (18,)),),
+            ), mock.patch.object(
+                appareil, "construire_apk", return_value=Path("x.apk")
+            ), mock.patch.object(
+                appareil, "Appareil"
+            ), mock.patch.object(
+                appareil, "Odoo"
+            ):
+                appareil.lancer(
+                    cibles,
+                    "/x",
+                    executer=faux_adb(paquets=[dumpsys_paquet()]),
+                    journal=lambda _: 0,
+                    toucher_volet=option,
+                )
+        self.assertEqual(vus, [False, True])
+        self.assertFalse(
+            mobile_sync.parser().parse_args(["--appareil"]).toucher_volet
+        )
+        self.assertTrue(
+            mobile_sync.parser()
+            .parse_args(["--appareil", "--toucher-volet"])
+            .toucher_volet
+        )
 
 
 class TestRemiseEnEtat(unittest.TestCase):
