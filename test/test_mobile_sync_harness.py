@@ -400,7 +400,7 @@ class TestRapport(unittest.TestCase):
         bilan = mobile_sync.lire_rapport(
             self.rapport(["Odoo 16 — a x", "Odoo 18 — a x"]), [16, 18]
         )
-        self.assertEqual(bilan, (2, 0, {16: 1, 18: 1}))
+        self.assertEqual(bilan, (2, 0, {16: 1, 18: 1}, []))
         self.assertEqual(mobile_sync.verdict(*bilan)[0], mobile_sync.SORTIE_OK)
 
     def test_aucun_test_ou_une_version_vide_echoue(self):
@@ -423,6 +423,149 @@ class TestRapport(unittest.TestCase):
         self.assertEqual(
             mobile_sync.verdict(*bilan)[0], mobile_sync.SORTIE_TESTS
         )
+
+
+class TestBilanDesEchecs(unittest.TestCase):
+    """Le bilan compte les TESTS en échec. Vitest compte aussi en échec
+    chaque bloc et chaque fichier qui contient un test en échec
+    (numFailedTestSuites) : additionnés, un test en échec se lirait
+    « 3 échec(s) ». Un fichier en échec sans test en échec (il ne charge
+    pas, un hook de fichier échoue) est nommé à part, avec son erreur."""
+
+    def rapport(self, fichiers, echecs_suites):
+        """Un rapport de Vitest : fichiers, une liste de (nom, statut,
+        message, [(fullName, statut du test)]) ; numFailedTests compte les
+        tests « failed », numFailedTestSuites vaut echecs_suites."""
+        tests = [t for _, _, _, liste in fichiers for t in liste]
+        donnees = {
+            "numTotalTests": len(tests),
+            "numFailedTests": sum(1 for _, st in tests if st == "failed"),
+            "numFailedTestSuites": echecs_suites,
+            "testResults": [
+                {
+                    "name": nom,
+                    "status": statut,
+                    "message": message,
+                    "assertionResults": [
+                        {"fullName": n, "status": st} for n, st in liste
+                    ],
+                }
+                for nom, statut, message, liste in fichiers
+            ],
+        }
+        fichier = tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False
+        )
+        json.dump(donnees, fichier)
+        fichier.close()
+        self.addCleanup(os.unlink, fichier.name)
+        return fichier.name
+
+    def test_un_test_en_echec_compte_un_echec(self):
+        # Le test, son bloc « Odoo 16 » et son fichier : trois suites
+        chemin = self.rapport(
+            [
+                (
+                    "/x/long_test/mobile_sync/a.test.ts",
+                    "failed",
+                    "",
+                    [("Odoo 16 a x", "failed"), ("Odoo 16 a y", "passed")],
+                )
+            ],
+            echecs_suites=3,
+        )
+        bilan = mobile_sync.lire_rapport(chemin, [16])
+        self.assertEqual(bilan.echecs, 1)
+        self.assertEqual(bilan.suites, [])
+        self.assertEqual(
+            mobile_sync.verdict(*bilan),
+            (mobile_sync.SORTIE_TESTS, "1 échec(s) sur 2 tests"),
+        )
+
+    def test_un_fichier_qui_ne_charge_pas_est_nomme_a_part(self):
+        chemin = self.rapport(
+            [
+                (
+                    "/x/long_test/mobile_sync/a.test.ts",
+                    "passed",
+                    "",
+                    [("Odoo 16 a x", "passed")],
+                ),
+                (
+                    "/x/long_test/mobile_sync/b.test.ts",
+                    "failed",
+                    "Cannot find module './absent'\n    at b.test.ts:3",
+                    [],
+                ),
+            ],
+            echecs_suites=1,
+        )
+        bilan = mobile_sync.lire_rapport(chemin, [16])
+        self.assertEqual(bilan.echecs, 0)
+        self.assertEqual(
+            bilan.suites, ["b.test.ts (Cannot find module './absent')"]
+        )
+        code, raison = mobile_sync.verdict(*bilan)
+        self.assertEqual(code, mobile_sync.SORTIE_TESTS)
+        self.assertEqual(
+            raison,
+            "aucun test en échec sur 1 tests ; fichier(s) en échec hors des"
+            " tests : b.test.ts (Cannot find module './absent')",
+        )
+
+    def test_un_fichier_avec_un_test_en_echec_n_est_pas_nomme_a_part(self):
+        chemin = self.rapport(
+            [
+                (
+                    "/x/a.test.ts",
+                    "failed",
+                    "afterAll a échoué",
+                    [("Odoo 16 a x", "failed")],
+                ),
+                ("/x/b.test.ts", "failed", "SyntaxError: x", []),
+            ],
+            echecs_suites=4,
+        )
+        bilan = mobile_sync.lire_rapport(chemin, [16])
+        self.assertEqual(
+            mobile_sync.verdict(*bilan)[1],
+            "1 échec(s) sur 1 tests ; fichier(s) en échec hors des tests :"
+            " b.test.ts (SyntaxError: x)",
+        )
+
+    def test_rien_n_a_tourne_nomme_le_fichier_qui_ne_charge_pas(self):
+        chemin = self.rapport(
+            [("/x/b.test.ts", "failed", "SyntaxError: x", [])],
+            echecs_suites=1,
+        )
+        self.assertEqual(
+            mobile_sync.verdict(*mobile_sync.lire_rapport(chemin, [16])),
+            (
+                mobile_sync.SORTIE_TESTS,
+                "aucun test n'a tourné ; fichier(s) en échec hors des tests"
+                " : b.test.ts (SyntaxError: x)",
+            ),
+        )
+
+    def test_les_passes_fusionnees_gardent_les_fichiers_en_echec(self):
+        premiere = self.rapport(
+            [("/x/a.test.ts", "failed", "", [("Odoo 16 a x", "failed")])],
+            echecs_suites=3,
+        )
+        seconde = self.rapport(
+            [
+                ("/x/c.serial.test.ts", "failed", "boom", []),
+                (
+                    "/x/d.serial.test.ts",
+                    "passed",
+                    "",
+                    [("Odoo 16 d", "passed")],
+                ),
+            ],
+            echecs_suites=1,
+        )
+        bilan = mobile_sync.lire_rapports([premiere, seconde], [16])
+        self.assertEqual(bilan, (2, 1, {16: 2}, ["c.serial.test.ts (boom)"]))
 
 
 class TestDeuxPasses(unittest.TestCase):
