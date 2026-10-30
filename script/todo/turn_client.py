@@ -232,11 +232,21 @@ def integrity_ok(data: bytes, key: bytes) -> bool:
     return False
 
 
+def _family_port(value):
+    """(famille, port) des 4 premiers octets d'un attribut d'adresse ;
+    ValueError si la valeur est plus courte, comme pour toute autre forme
+    invalide, pour que l'appelant n'ait qu'une exception à attraper."""
+    if len(value) < 4:
+        raise ValueError("attribut d'adresse tronqué")
+    return value[1], struct.unpack("!H", value[2:4])[0]
+
+
 def xor_address(value: bytes, txid: bytes) -> tuple[str, int]:
     """Adresse d'un XOR-MAPPED-ADDRESS ou XOR-RELAYED-ADDRESS : le port est
     masqué par les 16 bits hauts du magic cookie, l'adresse par le cookie
-    (IPv4) ou le cookie suivi de la transaction (IPv6)."""
-    family, port = value[1], struct.unpack("!H", value[2:4])[0]
+    (IPv4) ou le cookie suivi de la transaction (IPv6). ValueError si la
+    valeur est tronquée ou d'une famille inconnue."""
+    family, port = _family_port(value)
     mask = struct.pack("!I", MAGIC_COOKIE) + txid
     if family == 0x01 and len(value) >= 8:
         raw = bytes(a ^ b for a, b in zip(value[4:8], mask[:4], strict=True))
@@ -253,7 +263,7 @@ def xor_address(value: bytes, txid: bytes) -> tuple[str, int]:
 
 def _plain_address(value):
     """Adresse d'un MAPPED-ADDRESS (non masquée, serveurs RFC 3489)."""
-    family, port = value[1], struct.unpack("!H", value[2:4])[0]
+    family, port = _family_port(value)
     if family == 0x01 and len(value) >= 8:
         return socket.inet_ntop(socket.AF_INET, value[4:8]), port
     if family == 0x02 and len(value) >= 20:
