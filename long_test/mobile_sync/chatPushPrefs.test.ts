@@ -10,7 +10,8 @@
  * (mode and payload v 2); the 1.5 route marks quiet and keeps the payload
  * v 1. The payload v 2 says whether the recipient is mentioned (a mention,
  * @everyone) and whether a browser of theirs is active (poll and activity
- * recent).
+ * recent): a browser whose last presence is over 65 s old is not, its
+ * websocket open or not.
  *
  * Settings, presence and admin's chat with chat_user are shared with the
  * other files, which run beside this one as admin: every case but the
@@ -25,6 +26,12 @@ import { PushScene } from "./chatPushScene";
 
 /** A browser activity older than the module's activity window (BROWSER_ACTIVE_S, 5 min). */
 const INACTIVE_MS = 6 * 60_000;
+/**
+ * A silence after which the module holds a browser closed: its last
+ * presence older than Odoo's DISCONNECTION_TIMER (65 s), plus a margin. A
+ * browser under module 1.6's client patch sends one every 60 s while open.
+ */
+const BROWSER_CLOSED_MS = 70_000;
 
 eachVersionFrom(18, "chat push preferences", (target: Target) => {
 	if (!target.ntfy) {
@@ -111,7 +118,7 @@ eachVersionFrom(18, "chat push preferences", (target: Target) => {
 		const { env, src } = await scene.markedApp("phone", { as: user.login });
 		const keys = env.pushNative.keysOf(src.configId);
 		// The app offers mute only for a group; the browser can still write the setting
-		await expect(env.chat.setNotify(src.configId, group, "no_notif")).rejects.toThrow();
+		await expect(env.chat.setNotify(src.configId, group, "no_notif")).rejects.toThrow(/Only a channel takes Odoo's notification setting/);
 		await peer.setChannelNotify(await peer.webSession(user.login), group, "no_notif");
 		expect(await peer.customNotifyOf(user.login.login, group)).toBe("no_notif");
 		const text = unique("groupe malgré le réglage");
@@ -186,4 +193,29 @@ eachVersionFrom(18, "chat push preferences", (target: Target) => {
 			browser.close();
 		}
 	});
+
+	it("a browser silent past 65 s is not online", async () => {
+		const { env, src, row } = await scene.markedApp("phone", { as: user.login });
+		const keys = env.pushNative.keysOf(src.configId);
+		expect(await peer.appDevice(row.endpoint!)).toMatchObject({ mode: "wait", payloadV: 2 });
+		const chat = await peer.chat(user.partnerId);
+		const onlineOf = async (text: string) => (await scene.pushed(keys, text))[0].payload.options!.data.erplibre.browser_online;
+
+		// The websocket stays open with no presence sent: only the age of the last one tells a closed browser
+		const browser = await peer.browserSession(user.login);
+		try {
+			await browser.presence(0);
+			const sent = performance.now();
+			const open = unique("navigateur ouvert");
+			await peer.post(chat, open);
+			expect(await onlineOf(open)).toBe(true);
+
+			await new Promise((resolve) => setTimeout(resolve, Math.max(0, sent + BROWSER_CLOSED_MS - performance.now())));
+			const closed = unique("navigateur muet");
+			await peer.post(chat, closed);
+			expect(await onlineOf(closed)).toBe(false);
+		} finally {
+			browser.close();
+		}
+	}, BROWSER_CLOSED_MS + 60_000);
 });
