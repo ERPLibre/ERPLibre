@@ -2652,10 +2652,21 @@ def _uninstall_records(state):
     return records
 
 
+# États dpkg qu'une opération coupée (ssh perdu pendant apt) laisse au
+# paquet : il est encore sur l'hôte et se purge, mais apt-get refuse toute
+# action tant que « dpkg --configure -a » n'a pas tourné, comme le font
+# install_coturn.sh et install_ntfy.sh avant d'installer.
+_DPKG_INTERRUPTED = (
+    "half-installed|unpacked|half-configured|triggers-awaited|triggers-pending"
+)
+
+
 def _uninstall_helpers():
     """Fonctions `sh` du script : famille du système (os-release, mêmes
     listes qu'`os_family`), paquet présent et purge, remise en place de ce
-    qui a été mis de côté."""
+    qui a été mis de côté. Sur Debian, un paquet dans un état de
+    _DPKG_INTERRUPTED compte comme présent, et sa purge passe d'abord par
+    « dpkg --configure -a » ; « config-files » ne compte pas."""
     debian = "|".join(sorted(_DEBIAN_IDS))
     arch = "|".join(sorted(_ARCH_IDS))
     held = " ".join(f"{name}:{path}" for name, path in _HELD)
@@ -2666,17 +2677,25 @@ def _uninstall_helpers():
         f' do case "$i" in {debian}) echo debian; break ;;'
         f" {arch}) echo arch; break ;; esac; done)",
         "fi",
+        "dpkg_status() {",
+        "  S=$(dpkg-query -W -f='${Status}' \"$1\" 2>/dev/null) || S=",
+        '  echo "${S##* }"',
+        "}",
         "pkg_installed() {",
         '  case "$FAMILY" in',
-        "    debian) dpkg-query -W -f='${Status}' \"$1\" 2>/dev/null"
-        " | grep -q ' installed$' ;;",
+        '    debian) case "$(dpkg_status "$1")" in'
+        f" installed|{_DPKG_INTERRUPTED}) return 0 ;; esac; return 1 ;;",
         '    arch) pacman -Qq "$1" >/dev/null 2>&1 ;;',
         "    *) return 1 ;;",
         "  esac",
         "}",
         "pkg_purge() {",
         '  case "$FAMILY" in',
-        '    debian) DEBIAN_FRONTEND=noninteractive apt-get purge -y "$1"'
+        f'    debian) case "$(dpkg_status "$1")" in {_DPKG_INTERRUPTED})',
+        "      DEBIAN_FRONTEND=noninteractive dpkg --configure -a"
+        " --force-confdef --force-confold </dev/null ;;",
+        "    esac",
+        '    DEBIAN_FRONTEND=noninteractive apt-get purge -y "$1"'
         " </dev/null ;;",
         '    arch) pacman -Rn --noconfirm "$1" </dev/null ;;',
         "    *) return 1 ;;",
