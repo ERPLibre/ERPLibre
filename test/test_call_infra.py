@@ -293,6 +293,12 @@ def write(path, text, mode=0o755):
     os.chmod(path, mode)
 
 
+# ufw traduit ses messages : un bouchon qui ne parle anglais que sous la
+# locale C, LANGUAGE vide (gettext le lit avant LC_ALL).
+IN_C = '[ "${LC_ALL:-}" = C ] && [ -z "${LANGUAGE:-}" ]'
+FRENCH = dict(LANG="fr_CA.UTF-8", LC_ALL="fr_CA.UTF-8", LANGUAGE="fr_CA:fr")
+
+
 # Colonnes de `ss -Hlntup` : proto, état, files, local, distante, processus.
 SS_OUTPUT = (
     "tcp   LISTEN 0      4096         0.0.0.0:8080       0.0.0.0:*    "
@@ -356,10 +362,16 @@ class TestProbeScript(unittest.TestCase):
                 )
                 % COTURN_UNIT,
             )
-            write(os.path.join(stubs, "ufw"), "#!/bin/sh\necho '%s'\n" % ufw)
+            write(
+                os.path.join(stubs, "ufw"),
+                "#!/bin/sh\nif %s; then echo '%s'; else echo 'État : traduit';"
+                " fi\n" % (IN_C, ufw),
+            )
             for name in ("nft", "iptables"):
                 write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
-            env = dict(os.environ, PATH=stubs + ":" + os.environ["PATH"])
+            env = dict(
+                os.environ, PATH=stubs + ":" + os.environ["PATH"], **FRENCH
+            )
             done = subprocess.run(
                 ["sh", "-c", ci.probe_script(root=root)],
                 capture_output=True,
@@ -2014,6 +2026,23 @@ class TestFirewallRun(unittest.TestCase):
         self.assertIn("FIREWALL_ABSENT udp 49152:49252 coturn", markers)
         self.assertIn("FIREWALL_FOREIGN tcp 8080 ntfy", markers)
 
+    def test_ufw_reply_read_in_english_whatever_the_locale(self):
+        write(
+            os.path.join(self.stubs, "ufw"),
+            "#!/bin/sh\n"
+            'case "$1 $2" in\n'
+            '  "show added") cat "$ADDED" ;;\n'
+            '  "allow "*) if %s; then echo "Skipping adding existing rule";'
+            ' else echo "Saut de la règle existante"; fi ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac\n" % IN_C,
+        )
+        script = ci.firewall_script(
+            "ufw", self.RULES[:1], "allow", root=self.root
+        )
+        done = self.run_script(script, **FRENCH)
+        self.assertIn("FIREWALL_FOREIGN udp 3478 coturn", self.markers(done))
+
     def pending_firewall(self):
         path = os.path.join(self.root, ci.PENDING_DIR.lstrip("/"), "firewall")
         if not os.path.exists(path):
@@ -2597,10 +2626,11 @@ class TestCheckRemoteRun(unittest.TestCase):
                 os.path.join(stubs, "ufw"),
                 "#!/bin/sh\n"
                 'case "$1 $2" in\n'
-                "  'status ') echo 'Status: active' ;;\n"
+                "  'status ') if %s; then echo 'Status: active';"
+                " else echo 'État : actif'; fi ;;\n"
                 "  'show added') cat <<'EOF'\n%sEOF\n;;\n"
                 "  *) exit 1 ;;\n"
-                "esac\n" % added,
+                "esac\n" % (IN_C, added),
             )
             write(os.path.join(stubs, "nft"), "#!/bin/sh\nexit 1\n")
             before = snapshot(root)
@@ -2612,6 +2642,7 @@ class TestCheckRemoteRun(unittest.TestCase):
                     os.environ,
                     PATH=stubs + ":" + os.environ["PATH"],
                     LOG=log,
+                    **FRENCH,
                 ),
                 timeout=30,
             )
