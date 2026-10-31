@@ -136,6 +136,10 @@ class HostFacts:
     `nft_chains` : (famille, table, chaîne) de chaque chaîne de base
     nftables accrochée à « input » en politique drop ; l'outil n'ajoute ses
     règles que quand il y en a exactement une.
+
+    `firewall_pending` : ((ufw|nftables, Rule), ...) des règles que
+    `firewall_script` a posées ou gardées et qu'aucun état écrit ne
+    consigne encore (fiche `PENDING_DIR/firewall`).
     """
 
     family: str | None
@@ -150,6 +154,7 @@ class HostFacts:
     firewall: str
     state: dict | None
     nft_chains: tuple[tuple[str, str, str], ...] = ()
+    firewall_pending: tuple = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -232,8 +237,9 @@ def probe_script(root=""):
     trouvée, `@@FILE <chemin> <base64>` par configuration
     présente, `@@PENDING <service> <base64>`, `@@FIREWALL`, `@@NFT_INPUT
     <famille> <table> <chaîne>` par chaîne input en drop (nftables
-    seulement), `@@STATE <base64>`, puis `@@END` : sans lui, la sortie est
-    tronquée.
+    seulement), `@@STATE <base64>`, `@@FIREWALL_PENDING <ufw|nftables>
+    <proto> <port> <service>` par règle posée que l'état ne consigne pas
+    encore, puis `@@END` : sans lui, la sortie est tronquée.
     """
     files = " ".join(
         [
@@ -325,6 +331,8 @@ def probe_script(root=""):
             "fi",
             f'S="$R{STATE_PATH}"',
             'if [ -f "$S" ]; then echo "@@STATE $(base64 -w0 < "$S")"; fi',
+            f'FP="$R{PENDING_DIR}/firewall"',
+            'if [ -f "$FP" ]; then sed "s/^/@@FIREWALL_PENDING /" "$FP"; fi',
             'echo "@@END"',
             "",
         ]
@@ -419,6 +427,7 @@ def parse_probe(output):
     os_id, os_version, id_like = "unknown", "", ""
     systemd, hostname, firewall, state = False, "", "unknown", None
     addresses, ports, files, pending, chains = [], [], {}, {}, []
+    firewall_pending = []
     coturn_marker, ntfy_marker, complete, enabled = [], [], False, {}
     for name, value in marker_lines(output):
         if name == "OS":
@@ -468,6 +477,10 @@ def parse_probe(output):
                 chains.append(chain)
         elif name == "STATE":
             state = _decode_json(value)
+        elif name == "FIREWALL_PENDING":
+            entry = _pending_rule(value)
+            if entry is not None and entry not in firewall_pending:
+                firewall_pending.append(entry)
         elif name == "END":
             complete = True
     if not complete:
@@ -502,7 +515,22 @@ def parse_probe(output):
         firewall=firewall,
         state=state,
         nft_chains=tuple(chains),
+        firewall_pending=tuple(firewall_pending),
     )
+
+
+def _pending_rule(value):
+    """(ufw|nftables, Rule) d'une ligne « kind proto port service » de la
+    fiche du pare-feu, None hors format ou sur le port de ssh."""
+    parts = value.split()
+    if len(parts) != 4 or parts[0] not in ("ufw", "nftables"):
+        return None
+    found = Rule(*parts[1:])
+    try:
+        _check_rule(found)
+    except ValueError:
+        return None
+    return parts[0], found
 
 
 # --- Configurations ---------------------------------------------------------
@@ -1597,6 +1625,25 @@ def _marker(name, rule):
     return f"@@FIREWALL_{name} {rule.proto} {rule.port} {rule.service}"
 
 
+def _rule_words(rule):
+    return f"{rule.proto} {rule.port} {rule.service}"
+
+
+def _record_lines(kind):
+    """Fonction `rec <ADDED|KEPT> <proto> <port> <service>` d'un script
+    d'ajout : imprime la ligne `@@FIREWALL_*` et inscrit la règle dans la
+    fiche `PENDING_DIR/firewall`, dans le passage root même qui la pose.
+    Un état écrit plus tard (`state_write_script`) la consigne et vide la
+    fiche ; s'il échoue, la sonde suivante la relit. Une fiche qui ne
+    s'écrit pas fait échouer le script."""
+    return [
+        f'FWP="$R"{shlex.quote(PENDING_DIR)}/firewall',
+        'rec() { echo "@@FIREWALL_$1 $2 $3 $4"; mkdir -p "${FWP%/*}"'
+        f' && printf \'%s %s %s %s\\n\' {kind} "$2" "$3" "$4"'
+        ' >> "$FWP" || RC=1; }',
+    ]
+
+
 def _script_head(root):
     return [
         "set -u",
@@ -1616,7 +1663,7 @@ def _script_tail():
     return ['echo "@@END"', 'exit "$RC"', ""]
 
 
-def _ufw_script(rules, action):
+def _ufw_script(rules, action, root=""):
     """ufw : la règle de l'outil est la ligne exacte `ufw allow <spec>
     comment 'erplibre-call <service>'` de `ufw show added`. Toute autre
     ligne qui porte « <spec> » appartient à l'administrateur, quelle que
@@ -1630,9 +1677,9 @@ def _ufw_script(rules, action):
         ' || { echo "@@FIREWALL_FAILED show"; echo "@@END"; exit 1; }'
     )
     if action == "allow":
-        lines = _script_head("") + [show]
+        lines = _script_head(root) + _record_lines("ufw") + [show]
     else:
-        lines = _script_head("") + _when_present("ufw", show, '"$D/added"')
+        lines = _script_head(root) + _when_present("ufw", show, '"$D/added"')
     for rule in rules:
         spec = _ufw_spec(rule)
         mine = shlex.quote(f"ufw allow {spec} comment {_comment(rule)!r}")
@@ -1645,13 +1692,13 @@ def _ufw_script(rules, action):
             command = f"ufw allow {spec} comment {shlex.quote(_comment(rule))}"
             lines += [
                 'case "$L" in',
-                f'  mine) echo "{_marker("KEPT", rule)}" ;;',
+                f"  mine) rec KEPT {_rule_words(rule)} ;;",
                 f'  other) echo "{_marker("FOREIGN", rule)}" ;;',
                 f"  *) if O=$({command} 2>&1); then",
                 '    case "$O" in',
                 f'      *Skipping*|*updated*) echo "{_marker("FOREIGN", rule)}"'
                 " ;;",
-                f'      *) echo "{_marker("ADDED", rule)}" ;;',
+                f"      *) rec ADDED {_rule_words(rule)} ;;",
                 "    esac",
                 f'  else echo "{_marker("FAILED", rule)}"; RC=1; fi ;;',
                 "esac",
@@ -1733,7 +1780,7 @@ def _nft_allow(rules):
             f'printf "insert rule %s %s %s %s\\n" "$F" "$T" "$C" {body}'
             ' >> "$D/lines"',
             f'if [ -n "$({_nft_find(rule)})" ]; then',
-            f'  echo "{_marker("KEPT", rule)}"',
+            f"  rec KEPT {_rule_words(rule)}",
             "else",
             f'  printf "insert rule %s %s %s %s\\n" "$F" "$T" "$C" {body}'
             ' >> "$D/add.nft"',
@@ -1744,7 +1791,8 @@ def _nft_allow(rules):
     lines += [
         'if [ -s "$D/add.nft" ]; then',
         '  if nft -f "$D/add.nft"; then',
-        "    sed 's/^/@@/' \"$D/added\"",
+        '    while read -r M P Q S; do rec "${M#FIREWALL_}" "$P" "$Q" "$S";'
+        ' done < "$D/added"',
         "  else",
         "    sed 's/^/@@/; s/@@FIREWALL_ADDED/@@FIREWALL_FAILED/'"
         ' "$D/added"',
@@ -1842,23 +1890,28 @@ def firewall_script(kind, rules, action, root=""):
     <service>` ; puis `@@FIREWALL_PERSISTED yes` ou
     `@@FIREWALL_RUNTIME_ONLY`, `@@FIREWALL_MANUAL <n>` quand nftables n'a
     pas exactement une chaîne input en drop, et `@@END`. Code non nul
-    après un échec. `firewall_record` lit cette sortie. `root` préfixe les
-    fichiers de l'hôte (tests).
+    après un échec. `firewall_record` lit cette sortie. Un ajout inscrit
+    aussi chaque règle ADDED ou KEPT dans la fiche `PENDING_DIR/firewall`
+    (`_record_lines`). `root` préfixe les fichiers de l'hôte (tests).
     """
     rules = _check_kind(kind, rules, action)
     if kind in ("none", "unknown") or not rules:
         return ""
     if kind == "ufw":
-        return _ufw_script(rules, action)
-    body = _nft_allow(rules) if action == "allow" else _nft_delete(rules)
+        return _ufw_script(rules, action, root)
+    if action == "allow":
+        body = _record_lines("nftables") + _nft_allow(rules)
+    else:
+        body = _nft_delete(rules)
     return "\n".join(_script_head(root) + body + _script_tail())
 
 
-def firewall_record(kind, output, previous=None):
+def firewall_record(kind, output, previous=None, pending=()):
     """`state["firewall"]` après un passage de `firewall_script` :
     `{"kind", "rules": [[proto, port, service], ...], "persisted"}`.
 
-    Partant des règles de `previous` (du même `kind`), les ADDED et KEPT
+    Partant des règles de `previous` (du même `kind`) et de celles de
+    `pending` (`HostFacts.firewall_pending`) du même `kind`, les ADDED et KEPT
     s'ajoutent, les REMOVED et ABSENT partent ; FOREIGN et FAILED ne sont
     pas consignées : l'outil ne retirera que ce qu'il a posé. `persisted`
     suit `@@FIREWALL_PERSISTED` / `@@FIREWALL_RUNTIME_ONLY`, sinon reste
@@ -1868,6 +1921,7 @@ def firewall_record(kind, output, previous=None):
         raise ValueError(f"firewall kind: {kind!r}")
     same = isinstance(previous, dict) and previous.get("kind") == kind
     rules = set(rules_from_state({"firewall": previous}) if same else ())
+    rules |= {found for found_kind, found in pending if found_kind == kind}
     persisted = bool(same and previous.get("persisted"))
     for name, value in marker_lines(output or ""):
         if name == "FIREWALL_PERSISTED":
@@ -1895,6 +1949,37 @@ def firewall_record(kind, output, previous=None):
     }
 
 
+def merge_pending_firewall(state, pending):
+    """Copie de `state` dont « firewall » porte aussi les règles de
+    `pending` : la désinstallation retire ce qu'un passage a posé sans
+    pouvoir le consigner. Le type est celui de l'état, sinon celui de la
+    fiche. `state` tel quel quand il n'est pas un dict ou sans fiche."""
+    if not isinstance(state, dict) or not pending:
+        return state
+    record = state.get("firewall")
+    kind = record.get("kind") if isinstance(record, dict) else None
+    if kind not in ("ufw", "nftables"):
+        kind = pending[0][0]
+    return with_firewall(state, firewall_record(kind, "", record, pending))
+
+
+def firewall_missing(facts, answers):
+    """Vrai quand une relance doit encore proposer le pare-feu : une règle
+    posée attend d'être consignée, ou une règle voulue que le pare-feu actif
+    sait recevoir n'est pas consignée pour lui."""
+    if facts.firewall_pending:
+        return True
+    rules = firewall_rules(answers)
+    chain = facts.nft_chains[0] if len(facts.nft_chains) == 1 else None
+    if not firewall_preview(facts.firewall, rules, chain):
+        return False
+    state = facts.state if isinstance(facts.state, dict) else {}
+    record = state.get("firewall")
+    same = isinstance(record, dict) and record.get("kind") == facts.firewall
+    recorded = set(rules_from_state(state)) if same else set()
+    return any(rule not in recorded for rule in rules)
+
+
 def with_firewall(state, record):
     """Copie de `state` qui porte `record` sous « firewall »."""
     updated = copy.deepcopy(state) if isinstance(state, dict) else {}
@@ -1904,8 +1989,10 @@ def with_firewall(state, record):
 
 def state_write_script(state, root=""):
     """Script `sh`, lancé en root, qui remplace l'état de l'hôte par
-    `state` (après `with_firewall`) : `.new` en 0600 puis renommage.
-    Dernière ligne `@@SAVED yes`, ou `@@FAILED state` et `@@SAVED no`."""
+    `state` (après `with_firewall`) : `.new` en 0600 puis renommage, puis
+    la fiche `PENDING_DIR/firewall` retirée : l'appelant y a pris les
+    règles (`firewall_record`, argument `pending`). Dernière ligne
+    `@@SAVED yes`, ou `@@FAILED state` et `@@SAVED no`."""
     lines = [
         "set -u",
         f"R={shlex.quote(root)}",
@@ -1914,6 +2001,7 @@ def state_write_script(state, root=""):
         'fail() { echo "@@FAILED $1"; echo "@@SAVED no"; exit 1; }',
         f'mkdir -p "$R"{shlex.quote(CALL_DIR)} || fail state',
         *_state_write_lines(state),
+        f'rm -f "$R"{shlex.quote(PENDING_DIR)}/firewall',
         'echo "@@SAVED yes"',
         "",
     ]
@@ -2823,6 +2911,7 @@ def uninstall_script(state, remove_data, stamp, root=""):
             f' echo "@@PENDING_LEFT {svc}"; fi'
             for svc in others
         ],
+        '  rm -f "$PENDING/firewall"',
         '  rmdir "$PENDING" 2>/dev/null',
         '  for E in "$CALL"/*; do',
         '    case "${E##*/}" in',
