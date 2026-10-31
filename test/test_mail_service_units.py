@@ -710,6 +710,68 @@ class TestStatus(UnitsCase):
             f" {t('mail_service_status_credential_no')}",
         )
 
+    def test_the_vault_password_state_names_its_source(self):
+        """Credential chiffré, `kdbx.password` en clair, ou aucun : la
+        ligne nomme la source que lirait le service, jamais sa valeur."""
+        secret = "repli-en-clair-essai"
+        avec = SimpleNamespace(
+            get_config_value=lambda keys: {
+                ("kdbx", "path"): "private/essai.kdbx",
+                ("kdbx", "password"): secret,
+            }.get(tuple(keys))
+        )
+        st = service.status(run=self.systemd, config_file=avec)
+        self.assertFalse(st.credential)
+        self.assertTrue(st.config_password)
+        texte = service.status_text(st)
+        self.assertIn(t("mail_service_status_credential_config"), texte)
+        self.assertNotIn(t("mail_service_status_credential_no"), texte)
+        self.assertNotIn(secret, texte)
+        self.assertNotIn(secret, repr(st))
+        # Le credential prime : c'est lui que systemd dépose.
+        self.poser_credential()
+        texte = service.status_text(
+            service.status(run=self.systemd, config_file=avec)
+        )
+        self.assertIn(t("mail_service_status_credential_yes"), texte)
+        self.assertNotIn(t("mail_service_status_credential_config"), texte)
+
+    def test_a_config_without_usable_password_counts_as_none(self):
+        def lecteur(valeurs):
+            def lire(keys):
+                if tuple(keys) not in valeurs:
+                    raise TypeError("clé absente")
+                return valeurs[tuple(keys)]
+
+            return SimpleNamespace(get_config_value=lire)
+
+        for config in (
+            None,
+            lecteur({}),
+            lecteur({("kdbx", "path"): "private/essai.kdbx"}),
+            lecteur(
+                {
+                    ("kdbx", "path"): "private/essai.kdbx",
+                    ("kdbx", "password"): "",
+                }
+            ),
+            # Un mot de passe sans coffre ne sert pas au service.
+            lecteur({("kdbx", "path"): "", ("kdbx", "password"): "x"}),
+            lecteur(
+                {
+                    ("kdbx", "path"): "private/essai.kdbx",
+                    ("kdbx", "password"): 7,
+                }
+            ),
+        ):
+            with self.subTest(config=config):
+                st = service.status(run=self.systemd, config_file=config)
+                self.assertFalse(st.config_password)
+                self.assertIn(
+                    t("mail_service_status_credential_no"),
+                    service.status_text(st),
+                )
+
     def test_an_exit_code_without_label_shows_its_number(self):
         st = ServiceStatus(installed=True, last_exit=137, credential=True)
         self.assertIn(
