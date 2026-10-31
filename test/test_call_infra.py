@@ -4078,6 +4078,33 @@ class TestProduction(unittest.TestCase):
             ci.coturn_config(ans), TestCoturnConfig.installer_config(self, env)
         )
 
+    def test_coturn_turns_443_parity_with_the_installer(self):
+        # Ce que `_coturn_block` exporte pour turns_443 (TURN_TLS_PORT reste
+        # le port configuré, TURN_ALT_TLS_PORT=443 le remplace) donne au
+        # caractère près le texte de `coturn_config`.
+        ans = coturn_only(
+            turns_443=True,
+            tls="supplied",
+            acme=None,
+            cert_pem=WILD_CERT,
+            key_pem=WILD_KEY,
+        )
+        plan = ci.plan_install(base_facts(), ans, NOW)
+        block = "\n".join(ci._coturn_block(plan))
+        self.assertIn("  TURN_TLS_PORT=%d\n" % ans.turns_port, block)
+        self.assertIn("  TURN_ALT_TLS_PORT=443\n", block)
+        lo, hi = ci.relay_range(ans)
+        env = (
+            "TURN_REALM=%s\nTURN_PORT=%d\nTURN_TLS_PORT=%d\nTURN_MIN_PORT=%d\n"
+            "TURN_MAX_PORT=%d\nTURN_CERT_FILE=/x.crt\nTURN_KEY_FILE=/x.key\n"
+            "TURN_EXTERNAL_IP=\nTURN_ALLOW_PRIVATE=\nTURN_ALT_TLS_PORT=443\n"
+            % (ans.public_name, ans.turn_port, ans.turns_port, lo, hi)
+        ) + installer_ranges_block()
+        self.assertEqual(
+            ci.coturn_config(ans), TestCoturnConfig.installer_config(self, env)
+        )
+        self.assertIn("tls-listening-port=443\n", ci.coturn_config(ans))
+
     def test_coturn_block_follows_the_mode(self):
         prod = ci.plan_install(base_facts(), production(), NOW)
         block = "\n".join(ci._coturn_block(prod))
