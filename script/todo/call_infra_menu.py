@@ -10,10 +10,10 @@ en root sur cette machine ou par ssh. Un refus (`call_infra.Refusal`) et une
 ligne du verdict (`CheckLine`) portent une clé i18n et ses valeurs, rendues
 ici par `t(clé).format(**valeurs)`.
 
-Secrets : le mot de passe du compte de contrôle de coturn naît ici et ne
-voyage que dans le corps du script ; la ligne `@@CHECK_KEY` de la
-vérification est masquée à l'écran ; le mot de passe administrateur de ntfy
-n'est affiché qu'une fois, après l'installation.
+Secrets : le mot de passe du compte de contrôle de coturn naît sur l'hôte,
+dans son installateur ; la ligne `@@CHECK_KEY` de la vérification est
+masquée à l'écran ; le mot de passe administrateur de ntfy n'est affiché
+qu'une fois, après l'installation.
 """
 
 import codecs
@@ -21,7 +21,6 @@ import contextlib
 import dataclasses
 import datetime
 import os
-import secrets
 import sys
 import time
 
@@ -305,12 +304,9 @@ class CallInfraMenuMixin:
             print(t("Nothing installed."))
             return
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        password = (
-            secrets.token_urlsafe(24) if "coturn" in answers.services else None
-        )
         result = self._call_infra_run(
             host,
-            ci.install_script(plan, stamp, password),
+            ci.install_script(plan, stamp),
             hide=(ADMIN_PASSWORD_LINE,),
         )
         if result is None or not self._call_infra_installed(*result):

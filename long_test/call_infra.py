@@ -370,11 +370,8 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
         return res
     res["etape"] = "install"
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    # Le mot de passe du compte de contrôle naît ici comme dans le menu,
-    # et ne voyage que dans le corps du script.
-    password = secrets.token_urlsafe(24)
     code, sortie = executer(
-        cible, ci.install_script(plan, stamp, password), log, DELAI_INSTALL
+        cible, ci.install_script(plan, stamp), log, DELAI_INSTALL
     )
     sauve = [v.strip() for n, v in ci.marker_lines(sortie) if n == "SAVED"]
     if code != 0 or sauve[-1:] != ["yes"]:
