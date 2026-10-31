@@ -5,13 +5,15 @@
 
 sudo n'explique jamais ce qu'il sert à faire : son invite tombe entre deux
 lignes de journal, et on la subit sans savoir si elle porte sur libvirt, sur
-un paquet ou sur un fichier. Appartenir au groupe libvirt ne suffit pas à
-s'en passer, et la raison n'est pas libvirt : le déploiement écrit le disque
-et le seed dans le pool de libvirt, un répertoire de root où le groupe ne
-donne aucun droit d'écriture.
+un paquet ou sur un fichier. Le déploiement ne le demande plus qu'à la
+commande qui exige root : virsh et virt-install passent par la socket que le
+groupe libvirt ouvre, et le disque comme le seed s'écrivent dans un pool par
+l'API des volumes. Un répertoire de root HORS pool reste un motif.
 
 Ce que ces tests gardent :
 
+- sudo ne précède que les commandes qui l'exigent : `privileged` pour root,
+  `libvirt` seulement quand la socket refuse ; « sudo -n » sans terminal ;
 - la raison est CONSTATÉE, jamais supposée : l'écriture d'un répertoire se
   teste, elle ne se déduit pas de son mode — une ACL peut l'accorder là où
   « drwxr-xr-x root root » semble la refuser ;
@@ -107,6 +109,38 @@ class LesFaits(unittest.TestCase):
         self.assertEqual(1, len(ecritures))
         self.assertEqual(chemin, ecritures[0][0])
 
+    @unittest.skipUnless(PAS_ROOT, "root écrit partout")
+    def test_a_closed_directory_that_is_a_pool_is_no_reason(self):
+        """Le déploiement y écrit par l'API des volumes : la socket ouverte
+        au groupe suffit, et l'annoncer comme motif serait faux."""
+        with tempfile.TemporaryDirectory() as chemin:
+            os.chmod(chemin, 0o500)
+            try:
+                with (
+                    mock.patch.object(DQ, "libvirt_ready", return_value=True),
+                    mock.patch.object(DQ, "pool_for_dir", return_value="iso"),
+                ):
+                    faits = DQ.sudo_facts(Path(chemin), Path(chemin))
+            finally:
+                os.chmod(chemin, 0o700)
+        self.assertEqual([("socket", ("ok",))], faits)
+
+    @unittest.skipUnless(PAS_ROOT, "root écrit partout")
+    def test_a_pool_behind_a_silent_socket_stays_a_reason(self):
+        """Sans la socket, l'API des volumes n'est pas joignable non plus :
+        le répertoire redevient un motif."""
+        with tempfile.TemporaryDirectory() as chemin:
+            os.chmod(chemin, 0o500)
+            try:
+                with (
+                    mock.patch.object(DQ, "libvirt_ready", return_value=False),
+                    mock.patch.object(DQ, "pool_for_dir", return_value="iso"),
+                ):
+                    faits = DQ.sudo_facts(Path(chemin), Path(chemin))
+            finally:
+                os.chmod(chemin, 0o700)
+        self.assertEqual(1, len([1 for cle, _v in faits if cle == "ecriture"]))
+
     def test_a_missing_virsh_does_not_accuse_the_group(self):
         """Sans virsh il n'y a rien à joindre : dire « la socket ne répond
         pas » ferait chercher un droit là où il manque un paquet."""
@@ -145,20 +179,33 @@ class LeRenduDuScript(unittest.TestCase):
 
 
 class LAnnonceAvantLInvite(unittest.TestCase):
-    def _lancer(self, appels=2):
+    def _lancer(self, appels=2, terminal=True):
         runner = DQ.Runner(use_sudo=True, dry_run=True)
-        with mock.patch.object(
-            DQ,
-            "sudo_facts",
-            return_value=[
-                ("ecriture", ("/var/lib/libvirt/images", "root:root", "drwx")),
-                ("socket", ("ok",)),
-            ],
+        with (
+            mock.patch.object(
+                DQ,
+                "sudo_facts",
+                return_value=[
+                    (
+                        "ecriture",
+                        ("/var/lib/libvirt/images", "root:root", "drwx"),
+                    ),
+                    ("socket", ("ok",)),
+                ],
+            ),
+            mock.patch.object(DQ, "terminal_present", return_value=terminal),
         ):
             with redirect_stdout(io.StringIO()) as sortie:
                 for _ in range(appels):
                     runner.run(["qemu-img", "resize", "x"], privileged=True)
         return sortie.getvalue()
+
+    def test_without_a_terminal_sudo_never_prompts(self):
+        """Personne ne tapera le mot de passe : « sudo -n » échoue tout de
+        suite au lieu d'attendre, et l'annonce ne promet pas d'invite."""
+        texte = self._lancer(appels=1, terminal=False)
+        self.assertIn("sudo -n qemu-img", texte)
+        self.assertNotIn("sudo va demander", texte)
 
     def test_the_reason_comes_before_the_command(self):
         """Après l'invite, l'explication n'explique plus rien : le mot de
@@ -178,6 +225,51 @@ class LAnnonceAvantLInvite(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as sortie:
             runner.run(["qemu-img", "resize", "x"], privileged=True)
         self.assertNotIn("sudo", sortie.getvalue())
+
+
+class LesDeuxFamilles(unittest.TestCase):
+    """sudo précède la commande qui l'exige, et elle seule."""
+
+    def _ligne(self, runner, **kw):
+        with (
+            mock.patch.object(DQ, "terminal_present", return_value=True),
+            mock.patch.object(DQ, "sudo_facts", return_value=[]),
+            redirect_stdout(io.StringIO()) as sortie,
+        ):
+            runner.run(["virsh", "-c", DQ.LIBVIRT_URI, "list"], **kw)
+        return sortie.getvalue().strip().splitlines()[-1]
+
+    def test_libvirt_goes_without_sudo_when_the_socket_answers(self):
+        runner = DQ.Runner(use_sudo=True, dry_run=True, libvirt_sudo=False)
+        self.assertNotIn("sudo", self._ligne(runner, libvirt=True))
+
+    def test_libvirt_gets_sudo_when_the_socket_refuses(self):
+        runner = DQ.Runner(use_sudo=True, dry_run=True, libvirt_sudo=True)
+        self.assertIn("sudo virsh", self._ligne(runner, libvirt=True))
+
+    def test_root_commands_still_get_sudo(self):
+        runner = DQ.Runner(use_sudo=True, dry_run=True, libvirt_sudo=False)
+        self.assertIn("sudo virsh", self._ligne(runner, privileged=True))
+
+    def test_no_sudo_wins_over_both(self):
+        """--no-sudo, et root : jamais de préfixe, quelle que soit la
+        famille."""
+        runner = DQ.Runner(use_sudo=False, dry_run=True)
+        with mock.patch.object(DQ, "libvirt_needs_sudo", return_value=True):
+            self.assertNotIn("sudo", self._ligne(runner, libvirt=True))
+
+    def test_a_plain_command_gets_nothing(self):
+        runner = DQ.Runner(use_sudo=True, dry_run=True, libvirt_sudo=True)
+        self.assertNotIn("sudo", self._ligne(runner))
+
+    def test_a_refused_sudo_n_says_what_to_do(self):
+        """« sudo -n » sans droit rend 1 comme la commande : la phrase nomme
+        la commande et les deux issues."""
+        texte = DQ.sudo_n_hint(["sudo", "-n", "systemctl", "start", "x"])
+        self.assertIn("terminal", texte)
+        self.assertIn("systemctl start x", texte)
+        self.assertEqual("", DQ.sudo_n_hint(["sudo", "systemctl"]))
+        self.assertEqual("", DQ.sudo_n_hint(["virsh", "list"]))
 
 
 class LeRenduDuMenu(unittest.TestCase):

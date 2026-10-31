@@ -18,8 +18,14 @@ les specs minimales. Il :
 ## Prérequis
 
 - Un hôte disposant de KVM (bare-metal ou virtualisation imbriquée activée).
-- Les droits `sudo` (le déploiement écrit dans `/var/lib/libvirt/images` et
-  pilote libvirt).
+- L'appartenance au groupe `libvirt`, ACTIVE dans la session
+  (`virsh -c qemu:///system list` répond sans sudo). Le script se lance
+  alors SANS sudo : il écrit le disque, le seed et le cache d'images de
+  `/var/lib/libvirt/images` par l'API des volumes de libvirt (pools
+  `default` et `iso`), et seule une commande qui exige vraiment root —
+  installer un paquet, démarrer un service — demande sudo, pour elle seule.
+  Un répertoire hors pool où l'utilisateur n'écrit pas reçoit sudo sur ses
+  seules commandes d'écriture.
 
 ## Installation
 
@@ -54,27 +60,27 @@ Forme la plus simple — l'image est téléchargée automatiquement (chemin déd
 de `--version`, mis en cache dans `/var/lib/libvirt/images/iso`) :
 
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
 Télécharger (et vérifier) une image sans créer de VM :
 
 ```bash
-sudo ./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
+./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
 ```
 
 Déployer avec un mot de passe interactif au lieu d'une clé SSH :
 
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 --ask-password
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 --ask-password
 ```
 
 VM plus grande (8 Go RAM, 8 vCPU, disque 120 Go), en écrasant un disque
 existant :
 
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --memory 8192 --vcpus 8 --disk-size 120G --ask-password --force
 ```
 
@@ -89,7 +95,7 @@ Déploiement non interactif (accepte automatiquement l'installation des
 dépendances) :
 
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
@@ -606,7 +612,7 @@ nmcli con down "Wired connection 1" ; nmcli con up br0
 Rattachez ensuite la VM au pont — **soit à la création** :
 
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name <nom-vm> --version 24.04 \
+./script/qemu/deploy_qemu.py --name <nom-vm> --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub --network bridge=br0,model=virtio -y --force
 ```
 

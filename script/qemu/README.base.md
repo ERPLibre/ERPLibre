@@ -40,8 +40,14 @@ les specs minimales. Il :
 ## Prerequisites
 
 - A host with KVM available (bare-metal or nested virtualization enabled).
-- `sudo` rights (the deployment writes to `/var/lib/libvirt/images` and drives
-  libvirt).
+- Membership of the `libvirt` group, ACTIVE in the session
+  (`virsh -c qemu:///system list` answers without sudo). The script is then
+  run WITHOUT sudo: it writes the disk, the seed and the image cache of
+  `/var/lib/libvirt/images` through libvirt's volume API (pools `default`
+  and `iso`), and only a command that truly needs root — installing a
+  package, starting a service — asks for sudo, by itself. A directory that
+  is not a libvirt pool and that the user cannot write gets sudo on its
+  writing commands only.
 
 ## Installation
 
@@ -58,8 +64,14 @@ To install everything manually on Ubuntu/Debian (recommended full KVM stack):
 ## Prérequis
 
 - Un hôte disposant de KVM (bare-metal ou virtualisation imbriquée activée).
-- Les droits `sudo` (le déploiement écrit dans `/var/lib/libvirt/images` et
-  pilote libvirt).
+- L'appartenance au groupe `libvirt`, ACTIVE dans la session
+  (`virsh -c qemu:///system list` répond sans sudo). Le script se lance
+  alors SANS sudo : il écrit le disque, le seed et le cache d'images de
+  `/var/lib/libvirt/images` par l'API des volumes de libvirt (pools
+  `default` et `iso`), et seule une commande qui exige vraiment root —
+  installer un paquet, démarrer un service — demande sudo, pour elle seule.
+  Un répertoire hors pool où l'utilisateur n'écrit pas reçoit sudo sur ses
+  seules commandes d'écriture.
 
 ## Installation
 
@@ -110,7 +122,7 @@ de `--version`, mis en cache dans `/var/lib/libvirt/images/iso`) :
 
 <!-- [common] -->
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
@@ -122,7 +134,7 @@ Télécharger (et vérifier) une image sans créer de VM :
 
 <!-- [common] -->
 ```bash
-sudo ./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
+./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
 ```
 
 <!-- [en] -->
@@ -133,7 +145,7 @@ Déployer avec un mot de passe interactif au lieu d'une clé SSH :
 
 <!-- [common] -->
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 --ask-password
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 --ask-password
 ```
 
 <!-- [en] -->
@@ -145,7 +157,7 @@ existant :
 
 <!-- [common] -->
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --memory 8192 --vcpus 8 --disk-size 120G --ask-password --force
 ```
 
@@ -170,7 +182,7 @@ dépendances) :
 
 <!-- [common] -->
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
@@ -1117,7 +1129,7 @@ Rattachez ensuite la VM au pont — **soit à la création** :
 
 <!-- [common] -->
 ```bash
-sudo ./script/qemu/deploy_qemu.py --name <nom-vm> --version 24.04 \
+./script/qemu/deploy_qemu.py --name <nom-vm> --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub --network bridge=br0,model=virtio -y --force
 ```
 
