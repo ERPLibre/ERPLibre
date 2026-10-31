@@ -17,18 +17,22 @@ import ast
 import base64
 import dataclasses
 import datetime
+import http.server
 import json
 import os
 import re
 import shlex
+import ssl
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 from script.todo import call_infra as ci
 from script.todo import ntfy_mobile as nm
+from script.todo import turn_client as tc
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COTURN_INSTALLER = os.path.join(REPO, "script", "install", "install_coturn.sh")
@@ -129,7 +133,7 @@ class Certificates:
     directory = None
 
     @classmethod
-    def make(cls, name, subject, san):
+    def make(cls, name, subject, san, days=30):
         if cls.directory is None:
             cls.directory = tempfile.TemporaryDirectory()
         crt = os.path.join(cls.directory.name, name + ".crt")
@@ -147,7 +151,7 @@ class Certificates:
             "-out",
             crt,
             "-days",
-            "30",
+            str(days),
             "-subj",
             "/CN=" + subject,
         ]
@@ -1861,6 +1865,1097 @@ class TestFirewallRun(unittest.TestCase):
         facts = ci.parse_probe(done.stdout)
         self.assertEqual(facts.firewall, "unknown")
         self.assertEqual(facts.nft_chains, ())
+
+
+# --- Vérification et désinstallation ----------------------------------------
+
+CHECK_KEY = "0123456789abcdef0123456789abcdef"
+RELAYED = ("192.0.2.10", 50000)
+HOST = "192.0.2.10"
+
+
+def installed_state(ans=None, facts=None, firewall=None):
+    """L'état qu'écrit une installation réussie de `ans`."""
+    plan = ci.plan_install(facts or base_facts(), ans or answers(), NOW)
+    state = ci.written_state(plan, STAMP)
+    if firewall is not None:
+        state = ci.with_firewall(state, firewall)
+    return state
+
+
+def ufw_record(*specs):
+    """`state["firewall"]` d'un ufw où l'outil a posé `specs`
+    (« udp 3478 coturn »)."""
+    output = "".join(f"@@FIREWALL_ADDED {s}\n" for s in specs) + "@@END\n"
+    return ci.firewall_record("ufw", output)
+
+
+HTTP_RULES = (
+    "udp 3478 coturn",
+    "tcp 3478 coturn",
+    "udp 49152:49252 coturn",
+    "tcp 8080 ntfy",
+)
+
+
+def remote_output(state, active=None, key=CHECK_KEY, rules=(), certs=None):
+    """Sortie de `check_remote_script` sur un hôte inventé."""
+    lines = [""]
+    if state is not None:
+        lines.append("@@STATE " + b64(json.dumps(state)))
+    for svc, value in (active or {}).items():
+        lines.append(f"@@ACTIVE {svc} {value}")
+    if key:
+        lines.append("@@CHECK_KEY " + key)
+    lines += ["@@FIREWALL_RULE " + r for r in rules]
+    for svc, pem in (certs or {}).items():
+        lines.append(f"@@CERT {svc} {b64(pem)}")
+    lines.append("@@END")
+    return "\n".join(lines) + "\n"
+
+
+class FakeAllocate:
+    """`turn_client.allocate` qui note ses appels et répond par transport."""
+
+    def __init__(self, **results):
+        self.results = results
+        self.calls = []
+
+    def __call__(
+        self,
+        host,
+        port,
+        transport,
+        username,
+        key,
+        timeout=5.0,
+        cafile=None,
+        server_name=None,
+    ):
+        self.calls.append(
+            dict(
+                host=host,
+                port=port,
+                transport=transport,
+                username=username,
+                key=key,
+                cafile=cafile,
+                server_name=server_name,
+            )
+        )
+        return self.results.get(transport, tc.Allocation(True, RELAYED, None))
+
+
+class FakeGet:
+    """`https_get` qui note ses appels ; `result` est rendu ou levé."""
+
+    def __init__(self, result=(200, '{"healthy":true}\n')):
+        self.result = result
+        self.calls = []
+
+    def __call__(
+        self, address, port, path, tls, server_name=None, cafile=None, **kw
+    ):
+        self.calls.append(
+            dict(
+                address=address,
+                port=port,
+                path=path,
+                tls=tls,
+                server_name=server_name,
+                cafile=cafile,
+            )
+        )
+        if isinstance(self.result, BaseException):
+            raise self.result
+        return self.result
+
+
+def by_name(lines):
+    return {line.name: line for line in lines}
+
+
+class TestCheck(unittest.TestCase):
+    def check(
+        self,
+        state,
+        active=None,
+        key=CHECK_KEY,
+        rules=(),
+        certs=None,
+        allocate=None,
+        get=None,
+        cafile=None,
+        now=None,
+    ):
+        if active is None:
+            active = {"coturn": "active", "ntfy": "active"}
+        facts = ci.parse_check_remote(
+            remote_output(state, active, key, rules, certs)
+        )
+        self.allocate = allocate or FakeAllocate()
+        self.get = get or FakeGet()
+        return ci.check_local(
+            facts,
+            HOST,
+            cafile,
+            allocate=self.allocate,
+            https_get=self.get,
+            now=now or NOW,
+        )
+
+    def http_state(self):
+        return installed_state(firewall=ufw_record(*HTTP_RULES))
+
+    def test_everything_answers_in_http(self):
+        lines = self.check(
+            self.http_state(), rules=["ufw " + r for r in HTTP_RULES]
+        )
+        self.assertEqual(
+            [line.name for line in lines],
+            [
+                "turn-udp",
+                "turn-tcp",
+                "ntfy-health",
+                "firewall",
+                "service-coturn",
+                "service-ntfy",
+            ],
+        )
+        for line in lines:
+            self.assertIs(line.ok, True, line)
+        self.assertEqual(
+            by_name(lines)["turn-udp"].values, {"relayed": "192.0.2.10:50000"}
+        )
+        self.assertEqual(
+            [(c["transport"], c["port"]) for c in self.allocate.calls],
+            [("udp", 3478), ("tcp", 3478)],
+        )
+        for call in self.allocate.calls:
+            self.assertEqual(call["host"], HOST)
+            self.assertEqual(call["username"], "erplibre-check")
+            self.assertEqual(call["key"], bytes.fromhex(CHECK_KEY))
+            self.assertIsNone(call["cafile"])
+        self.assertEqual(
+            self.get.calls,
+            [
+                dict(
+                    address=HOST,
+                    port=8080,
+                    path="/v1/health",
+                    tls=False,
+                    server_name="turn.exemple.test",
+                    cafile=None,
+                )
+            ],
+        )
+
+    def test_turn_refused_credentials_and_timeout(self):
+        allocate = FakeAllocate(
+            udp=tc.Allocation(False, None, "401 Unauthorized"),
+            tcp=tc.Allocation(False, None, "timeout"),
+        )
+        lines = by_name(self.check(self.http_state(), allocate=allocate))
+        self.assertIs(lines["turn-udp"].ok, False)
+        self.assertEqual(
+            lines["turn-udp"].detail, "call_infra_check_turn_error"
+        )
+        self.assertEqual(
+            lines["turn-udp"].values, {"error": "401 Unauthorized"}
+        )
+        self.assertIs(lines["turn-tcp"].ok, False)
+        self.assertEqual(lines["turn-tcp"].values, {"error": "timeout"})
+
+    def test_an_open_relay_is_a_failure_that_says_so(self):
+        allocate = FakeAllocate(udp=tc.Allocation(False, None, "no-auth"))
+        line = by_name(self.check(self.http_state(), allocate=allocate))[
+            "turn-udp"
+        ]
+        self.assertIs(line.ok, False)
+        self.assertEqual(line.detail, "call_infra_check_open_relay")
+
+    def test_no_check_key_means_turn_not_checked(self):
+        lines = by_name(self.check(self.http_state(), key=None))
+        for name in ("turn-udp", "turn-tcp"):
+            self.assertIsNone(lines[name].ok)
+            self.assertEqual(lines[name].detail, "call_infra_check_no_key")
+        self.assertEqual(self.allocate.calls, [])
+
+    def test_supplied_certificate(self):
+        state = installed_state(supplied())
+        lines = self.check(
+            state,
+            certs={"coturn": TURN_CERT, "ntfy": TURN_CERT},
+            cafile="/ca/exemple.pem",
+        )
+        names = [line.name for line in lines]
+        self.assertEqual(
+            names[:5],
+            ["turn-udp", "turn-tcp", "turn-tls", "ntfy-health", "cert-expiry"],
+        )
+        tls = self.allocate.calls[2]
+        self.assertEqual(
+            (tls["transport"], tls["port"], tls["cafile"], tls["server_name"]),
+            ("tls", 5349, "/ca/exemple.pem", "turn.exemple.test"),
+        )
+        self.assertEqual(self.get.calls[0]["port"], 8443)
+        self.assertIs(self.get.calls[0]["tls"], True)
+        self.assertEqual(self.get.calls[0]["cafile"], "/ca/exemple.pem")
+        expiry = by_name(lines)["cert-expiry"]
+        self.assertIs(expiry.ok, True)
+        self.assertIn(expiry.values["days"], (29, 30))
+
+    def test_unverified_certificate_is_not_checked(self):
+        error = ssl.SSLCertVerificationError("self-signed certificate")
+        state = installed_state(supplied())
+        lines = by_name(
+            self.check(
+                state,
+                certs={"coturn": TURN_CERT, "ntfy": TURN_CERT},
+                get=FakeGet(error),
+                allocate=FakeAllocate(tls=tc.Allocation(False, None, "tls")),
+            )
+        )
+        self.assertIsNone(lines["ntfy-health"].ok)
+        self.assertEqual(
+            lines["ntfy-health"].detail, "call_infra_check_cert_unverified"
+        )
+        # Sans autorité fournie, un échec TLS ne prouve pas une panne.
+        self.assertIsNone(lines["turn-tls"].ok)
+
+    def test_tls_failure_with_the_supplied_authority_is_a_failure(self):
+        state = installed_state(supplied())
+        line = by_name(
+            self.check(
+                state,
+                certs={"coturn": TURN_CERT, "ntfy": TURN_CERT},
+                cafile="/ca/exemple.pem",
+                allocate=FakeAllocate(tls=tc.Allocation(False, None, "tls")),
+            )
+        )["turn-tls"]
+        self.assertIs(line.ok, False)
+
+    def test_certificate_with_ten_days_left(self):
+        cert, key = Certificates.make(
+            "soon", "turn.exemple.test", "DNS:turn.exemple.test", days=10
+        )
+        state = installed_state(supplied(cert_pem=cert, key_pem=key))
+        line = by_name(
+            self.check(state, certs={"coturn": cert, "ntfy": cert})
+        )["cert-expiry"]
+        self.assertIs(line.ok, False)
+        self.assertEqual(line.detail, "call_infra_check_cert_days")
+        self.assertIn(line.values["days"], (9, 10))
+
+    def test_the_earliest_certificate_counts(self):
+        cert, key = Certificates.make(
+            "soon2", "turn.exemple.test", "DNS:turn.exemple.test", days=10
+        )
+        state = installed_state(supplied())
+        line = by_name(
+            self.check(state, certs={"coturn": TURN_CERT, "ntfy": cert})
+        )["cert-expiry"]
+        self.assertIs(line.ok, False)
+
+    def test_certificate_missing_on_the_host(self):
+        state = installed_state(supplied())
+        line = by_name(self.check(state, certs={"coturn": TURN_CERT}))[
+            "cert-expiry"
+        ]
+        self.assertIs(line.ok, False)
+        self.assertEqual(line.detail, "call_infra_check_cert_missing")
+
+    def test_unhealthy_ntfy(self):
+        lines = by_name(
+            self.check(self.http_state(), get=FakeGet((503, "busy")))
+        )
+        self.assertIs(lines["ntfy-health"].ok, False)
+        self.assertEqual(lines["ntfy-health"].values, {"status": 503})
+        lines = by_name(
+            self.check(
+                self.http_state(), get=FakeGet(ConnectionRefusedError())
+            )
+        )
+        self.assertIs(lines["ntfy-health"].ok, False)
+        self.assertEqual(
+            lines["ntfy-health"].detail, "call_infra_check_http_error"
+        )
+
+    def test_a_recorded_rule_gone_from_the_firewall(self):
+        present = ["ufw " + r for r in HTTP_RULES[:-1]]
+        # Une règle de l'outil dans un AUTRE pare-feu ne compte pas.
+        present.append("nftables tcp 8080 ntfy")
+        line = by_name(self.check(self.http_state(), rules=present))[
+            "firewall"
+        ]
+        self.assertIs(line.ok, False)
+        self.assertEqual(line.detail, "call_infra_check_firewall_missing")
+        self.assertEqual(line.values, {"rules": "8080/tcp"})
+
+    def test_no_firewall_rule_recorded_is_not_checked(self):
+        state = installed_state(firewall=ci.firewall_record("none", ""))
+        line = by_name(self.check(state))["firewall"]
+        self.assertIsNone(line.ok)
+        self.assertEqual(line.values, {"kind": "none"})
+        line = by_name(self.check(installed_state()))["firewall"]
+        self.assertIsNone(line.ok)
+
+    def test_nftables_range_is_read_back(self):
+        record = ci.firewall_record(
+            "nftables", "@@FIREWALL_ADDED udp 49152:49252 coturn\n"
+        )
+        state = installed_state(firewall=record)
+        line = by_name(
+            self.check(state, rules=["nftables udp 49152-49252 coturn"])
+        )["firewall"]
+        self.assertIs(line.ok, True)
+
+    def test_inactive_service(self):
+        lines = by_name(
+            self.check(
+                self.http_state(),
+                active={"coturn": "active", "ntfy": "failed"},
+            )
+        )
+        self.assertIs(lines["service-coturn"].ok, True)
+        self.assertIs(lines["service-ntfy"].ok, False)
+        self.assertEqual(lines["service-ntfy"].values, {"state": "failed"})
+
+    def test_only_the_recorded_services_are_checked(self):
+        state = installed_state(answers(services=frozenset({"ntfy"})))
+        names = [line.name for line in self.check(state)]
+        self.assertEqual(names, ["ntfy-health", "firewall", "service-ntfy"])
+        self.assertEqual(self.allocate.calls, [])
+
+    def test_no_state_on_the_host(self):
+        lines = self.check(None)
+        self.assertEqual(
+            lines, [ci.CheckLine("state", False, "call_infra_check_no_state")]
+        )
+
+    def test_truncated_output_is_refused(self):
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.parse_check_remote("@@STATE e30=\n")
+        self.assertEqual(caught.exception.key, "call_infra_probe_incomplete")
+
+    def test_parse_ignores_what_it_cannot_trust(self):
+        facts = ci.parse_check_remote(
+            "@@CHECK_KEY pas-hexa\n"
+            "@@CHECK_KEY " + CHECK_KEY + "\n"
+            "@@FIREWALL_RULE ufw tcp 22 ntfy\n"
+            "@@FIREWALL_RULE ufw tcp 8080; ntfy\n"
+            "@@FIREWALL_RULE ufw tcp 8080 ntfy\n"
+            "@@END\n"
+        )
+        self.assertEqual(facts["check_key"], CHECK_KEY)
+        self.assertEqual(
+            facts["firewall_rules"], [("ufw", rule("tcp", "8080", "ntfy"))]
+        )
+        self.assertIsNone(facts["state"])
+
+    def test_remote_script_writes_nothing(self):
+        script = ci.check_remote_script()
+        # Les motifs de `sed -n -E` décrivent les lignes de règles lues ;
+        # ils citent « ufw allow » sans le lancer, et finissent par « /p ».
+        quoted = r"""'(?:[^']|'"'"')*'"""
+        patterns = re.findall(r"sed -n -E (" + quoted + ")", script)
+        self.assertEqual(len(patterns), 2)
+        for pattern in patterns:
+            self.assertTrue(pattern.endswith("/p'"), pattern)
+        script = re.sub(r"sed -n -E " + quoted, "sed", script)
+        stripped = re.sub(r"[0-9]?>(/dev/null|&1)", "", script)
+        self.assertNotIn(">", stripped)
+        for word in (
+            "rm ",
+            "mv ",
+            "cp ",
+            "tee ",
+            "chmod ",
+            "chown ",
+            "turnadmin",
+            "ufw allow",
+            "ufw delete",
+            "nft add",
+            "nft insert",
+            "nft delete",
+            "systemctl restart",
+            "systemctl start",
+            "systemctl stop",
+            "insert into",
+            "delete from",
+        ):
+            self.assertNotIn(word, script.lower() if " " in word else script)
+        self.assertIn(
+            "select hmackey from turnusers_lt where name='erplibre-check'",
+            script,
+        )
+        self.assertIn("-readonly", script)
+
+    def test_every_detail_key_is_listed(self):
+        with open(os.path.join(REPO, "script", "todo", "call_infra.py")) as f:
+            found = set(re.findall(r'"(call_infra_check_[a-z_]+)"', f.read()))
+        self.assertEqual(found, set(ci.CHECK_KEYS))
+
+
+class TestCheckRemoteRun(unittest.TestCase):
+    """`check_remote_script` joué dans une racine temporaire."""
+
+    def test_reads_state_units_key_rules_and_certificates(self):
+        state = installed_state(
+            supplied(), firewall=ufw_record("udp 3478 coturn", "tcp 8443 ntfy")
+        )
+        added = (
+            "Added user rules (see 'ufw status' for running firewall):\n"
+            "ufw allow 22/tcp\n"
+            "ufw allow 3478/udp comment 'erplibre-call coturn'\n"
+            "ufw allow 49152:49252/udp comment 'erplibre-call coturn'\n"
+            "ufw allow 8443/tcp comment 'erplibre-call ntfy'\n"
+            "ufw deny 5349/tcp comment 'erplibre-call coturn' log\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "root")
+            stubs = os.path.join(tmp, "stubs")
+            log = os.path.join(tmp, "log")
+            write(root + ci.STATE_PATH, json.dumps(state), 0o600)
+            write(root + "/etc/erplibre-call/tls/turn.crt", TURN_CERT, 0o640)
+            write(root + "/etc/ntfy/tls/ntfy.crt", TURN_CERT, 0o644)
+            write(root + ci.COTURN_DB, "base", 0o640)
+            write(
+                os.path.join(stubs, "systemctl"),
+                "#!/bin/sh\n"
+                'case "$1 $2" in\n'
+                "  'cat coturn'|'cat ntfy') exit 0 ;;\n"
+                "  'is-active coturn') echo active ;;\n"
+                "  'is-active ntfy') echo failed; exit 3 ;;\n"
+                "  'show -p') echo turnserver ;;\n"
+                "  *) exit 3 ;;\n"
+                "esac\n",
+            )
+            write(
+                os.path.join(stubs, "runuser"),
+                '#!/bin/sh\necho "runuser $*" >> "$LOG"\n'
+                'while [ "$1" != -- ]; do shift; done; shift; exec "$@"\n',
+            )
+            write(
+                os.path.join(stubs, "sqlite3"),
+                '#!/bin/sh\necho "sqlite3 $*" >> "$LOG"\n'
+                "echo %s\n" % CHECK_KEY,
+            )
+            write(
+                os.path.join(stubs, "ufw"),
+                "#!/bin/sh\n"
+                'case "$1 $2" in\n'
+                "  'status ') echo 'Status: active' ;;\n"
+                "  'show added') cat <<'EOF'\n%sEOF\n;;\n"
+                "  *) exit 1 ;;\n"
+                "esac\n" % added,
+            )
+            write(os.path.join(stubs, "nft"), "#!/bin/sh\nexit 1\n")
+            before = snapshot(root)
+            done = subprocess.run(
+                ["sh", "-c", ci.check_remote_script(root=root)],
+                capture_output=True,
+                text=True,
+                env=dict(
+                    os.environ,
+                    PATH=stubs + ":" + os.environ["PATH"],
+                    LOG=log,
+                ),
+                timeout=30,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(snapshot(root), before)
+            with open(log) as handle:
+                calls = handle.read()
+        facts = ci.parse_check_remote(done.stdout)
+        self.assertEqual(facts["state"], state)
+        self.assertEqual(
+            facts["active"], {"coturn": "active", "ntfy": "failed"}
+        )
+        self.assertEqual(facts["check_key"], CHECK_KEY)
+        self.assertEqual(
+            facts["firewall_rules"],
+            [
+                ("ufw", rule("udp", "3478", "coturn")),
+                ("ufw", rule("udp", "49152:49252", "coturn")),
+                ("ufw", rule("tcp", "8443", "ntfy")),
+            ],
+        )
+        self.assertEqual(
+            facts["certs"], {"coturn": TURN_CERT, "ntfy": TURN_CERT}
+        )
+        self.assertIn("runuser -u turnserver -- sqlite3 -readonly", calls)
+        self.assertIn(root + ci.COTURN_DB, calls)
+
+    def test_nftables_rules_of_the_tool_only(self):
+        handles = (
+            "table inet filter {\n"
+            "\tchain input {\n"
+            "\t\ttype filter hook input priority filter; policy drop;\n"
+            '\t\tudp dport 3478 accept comment "erplibre-call coturn"\n'
+            '\t\tudp dport 49152-49252 accept comment "erplibre-call coturn"\n'
+            "\t\ttcp dport 8080 accept\n"
+            '\t\ttcp dport 8443 accept comment "autre chose"\n'
+            "\t}\n}\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            stubs = os.path.join(tmp, "stubs")
+            write(
+                os.path.join(stubs, "nft"),
+                "#!/bin/sh\ncat <<'EOF'\n%sEOF\n" % handles,
+            )
+            for name in ("ufw", "systemctl"):
+                write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
+            done = subprocess.run(
+                ["sh", "-c", ci.check_remote_script(root=tmp)],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, PATH=stubs + ":" + os.environ["PATH"]),
+                timeout=30,
+            )
+        facts = ci.parse_check_remote(done.stdout)
+        self.assertEqual(
+            facts["firewall_rules"],
+            [
+                ("nftables", rule("udp", "3478", "coturn")),
+                ("nftables", rule("udp", "49152:49252", "coturn")),
+            ],
+        )
+        self.assertIsNone(facts["state"])
+        self.assertIsNone(facts["check_key"])
+        self.assertEqual(
+            facts["active"], {"coturn": "absent", "ntfy": "absent"}
+        )
+
+
+class _QuietServer(http.server.ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        pass
+
+
+class _Health(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b'{"healthy":true}\n' if self.path == "/v1/health" else b""
+        self.send_response(200 if body else 404)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+class TestHttpsGet(unittest.TestCase):
+    """`https_get` contre un vrai serveur sur 127.0.0.1, port libre."""
+
+    def serve(self, tls):
+        server = _QuietServer(("127.0.0.1", 0), _Health)
+        if tls:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            directory = Certificates.directory.name
+            context.load_cert_chain(
+                os.path.join(directory, "turn.crt"),
+                os.path.join(directory, "turn.key"),
+            )
+            server.socket = context.wrap_socket(
+                server.socket, server_side=True
+            )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server.server_address[1]
+
+    def test_http(self):
+        port = self.serve(tls=False)
+        status, body = ci.https_get("127.0.0.1", port, "/v1/health", False)
+        self.assertEqual((status, json.loads(body)), (200, {"healthy": True}))
+
+    def test_https_verified_under_the_public_name(self):
+        port = self.serve(tls=True)
+        cafile = os.path.join(Certificates.directory.name, "turn.crt")
+        status, _ = ci.https_get(
+            "127.0.0.1",
+            port,
+            "/v1/health",
+            True,
+            server_name="turn.exemple.test",
+            cafile=cafile,
+            timeout=5,
+        )
+        self.assertEqual(status, 200)
+        with self.assertRaises(ssl.SSLCertVerificationError):
+            ci.https_get(
+                "127.0.0.1",
+                port,
+                "/v1/health",
+                True,
+                server_name="turn.exemple.test",
+                timeout=5,
+            )
+
+    def test_check_local_with_the_real_client(self):
+        port = self.serve(tls=False)
+        state = installed_state(
+            answers(services=frozenset({"ntfy"}), ntfy_port=port)
+        )
+        facts = ci.parse_check_remote(remote_output(state, {"ntfy": "active"}))
+        line = by_name(ci.check_local(facts, "127.0.0.1", None))["ntfy-health"]
+        self.assertIs(line.ok, True, line)
+
+
+def snapshot(root):
+    """{chemin relatif: contenu} de tout ce qui vit sous `root`."""
+    found = {}
+    for base, dirs, files in os.walk(root):
+        for name in dirs:
+            found[os.path.relpath(os.path.join(base, name), root) + "/"] = ""
+        for name in files:
+            path = os.path.join(base, name)
+            with open(path, "rb") as handle:
+                found[os.path.relpath(path, root)] = handle.read()
+    return found
+
+
+STUB_UNINSTALL_SYSTEMCTL = r"""#!/bin/sh
+echo "systemctl $*" >> "$LOG"
+case "$1" in
+  cat) case " ${UNITS:-} " in *" $2 "*) exit 0 ;; *) exit 1 ;; esac ;;
+  try-restart) exit "${RESTART_RC:-0}" ;;
+esac
+exit 0
+"""
+STUB_DPKG_QUERY = r"""#!/bin/sh
+for p; do :; done
+case " ${PKGS:-} " in *" $p "*) echo "install ok installed" ;; *) exit 1 ;; esac
+"""
+# La purge de ntfy peut emporter ses dossiers (script postrm du paquet) :
+# POSTRM=1 le simule.
+STUB_APT_GET = r"""#!/bin/sh
+echo "apt-get $*" >> "$LOG"
+if [ "${POSTRM:-}" = 1 ] && [ "$2 $3" = "-y ntfy" ]; then
+  rm -rf "$ROOT/var/lib/ntfy" "$ROOT/etc/ntfy"
+fi
+exit "${APT_RC:-0}"
+"""
+STUB_PACMAN = r"""#!/bin/sh
+echo "pacman $*" >> "$LOG"
+case "$1" in
+  -Qq) case " ${PKGS:-} " in *" $2 "*) exit 0 ;; *) exit 1 ;; esac ;;
+esac
+exit 0
+"""
+STUB_UFW = r"""#!/bin/sh
+echo "ufw $*" >> "$LOG"
+case "$1 $2" in
+  "show added") cat "$ADDED" ;;
+  "delete allow") echo "Rule deleted"; exit "${UFW_DELETE_RC:-0}" ;;
+  *) exit 1 ;;
+esac
+"""
+NTFY_FOREIGN = (
+    'base-url: "http://ancien.exemple.test:8080"\n'
+    'listen-http: ":8080"\n'
+    'auth-file: "/var/lib/ntfy/user.db"\n'
+    'auth-default-access: "deny-all"\n'
+)
+
+
+class TestUninstall(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = self.tmp.name
+        self.root = os.path.join(base, "root")
+        self.stubs = os.path.join(base, "stubs")
+        self.scratch = os.path.join(base, "scratch")
+        self.log = os.path.join(base, "log")
+        self.added = os.path.join(base, "added")
+        os.makedirs(self.scratch)
+        write(self.added, "", 0o644)
+        write(
+            self.path("/etc/os-release"),
+            'ID=debian\nVERSION_ID="13"\n',
+            0o644,
+        )
+        for name, text in (
+            ("systemctl", STUB_UNINSTALL_SYSTEMCTL),
+            ("dpkg-query", STUB_DPKG_QUERY),
+            ("apt-get", STUB_APT_GET),
+            ("pacman", STUB_PACMAN),
+            ("ufw", STUB_UFW),
+        ):
+            write(os.path.join(self.stubs, name), text)
+
+    def path(self, host_path):
+        return self.root + host_path
+
+    def run_script(self, script, **env):
+        full = dict(
+            os.environ,
+            PATH=self.stubs + ":" + os.environ["PATH"],
+            LOG=self.log,
+            ROOT=self.root,
+            ADDED=self.added,
+            TMPDIR=self.scratch,
+        )
+        full.update(env)
+        return subprocess.run(
+            ["sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=full,
+            timeout=60,
+        )
+
+    def uninstall(self, state, remove_data=False, **env):
+        script = ci.uninstall_script(state, remove_data, STAMP, root=self.root)
+        return self.run_script(script, **env)
+
+    def calls(self):
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log) as handle:
+            return handle.read().splitlines()
+
+    def markers(self, done):
+        return [
+            f"{name} {value}".strip()
+            for name, value in ci.marker_lines(done.stdout)
+        ]
+
+    def place_state(self, state):
+        write(self.path(ci.STATE_PATH), json.dumps(state), 0o600)
+
+    def tool_installed_ntfy(self, ans=None):
+        """Un ntfy posé par l'outil : paquet, configuration, base des
+        comptes, certificat."""
+        ans = ans or answers(services=frozenset({"ntfy"}))
+        state = installed_state(ans)
+        self.place_state(state)
+        write(self.path(ci.NTFY_CONFIG), ci.ntfy_config(ans), 0o644)
+        write(self.path("/var/lib/ntfy/user.db"), "comptes", 0o640)
+        write(self.path("/var/cache/ntfy/cache.db"), "cache", 0o640)
+        if ans.tls == "supplied":
+            write(self.path("/etc/ntfy/tls/ntfy.crt"), TURN_CERT, 0o644)
+            write(self.path("/etc/ntfy/tls/ntfy.key"), TURN_KEY, 0o640)
+        return state
+
+    # Review Focus 5 : sans état, rien ne change.
+    def test_no_state_prints_nothing_and_changes_nothing(self):
+        write(self.path("/etc/turnserver.conf"), "listening-port=3478\n")
+        before = snapshot(self.root)
+        done = self.uninstall(None, remove_data=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.markers(done), ["NOTHING"])
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(snapshot(self.root), before)
+        self.assertEqual(os.listdir(self.scratch), [])
+
+    def test_no_state_reports_an_interrupted_install(self):
+        write(self.path("/etc/erplibre-call/pending/coturn.json"), "{}", 0o600)
+        before = snapshot(self.root)
+        done = self.uninstall(None)
+        self.assertEqual(self.markers(done), ["PENDING coturn", "NOTHING"])
+        self.assertEqual(snapshot(self.root), before)
+
+    def test_adopted_ntfy_is_restored_and_its_package_left(self):
+        facts = base_facts(
+            ntfy=service(ci.NTFY_CONFIG, NTFY_FOREIGN, unit="ntfy"),
+            busy_ports=(("tcp", 8080, "ntfy"),),
+        )
+        ans = answers(services=frozenset({"ntfy"}))
+        state = installed_state(ans, facts=facts)
+        backup = ci.NTFY_CONFIG + ".bak-" + STAMP
+        self.assertEqual(state["services"]["ntfy"]["backup"], backup)
+        script = ci.uninstall_script(state, True, STAMP)
+        self.assertIn(backup, script)
+        self.assertNotIn("pkg_purge ntfy", script)
+
+        self.place_state(state)
+        write(self.path(backup), NTFY_FOREIGN, 0o640)
+        write(self.path(ci.NTFY_CONFIG), ci.ntfy_config(ans), 0o644)
+        write(self.path("/var/lib/ntfy/user.db"), "comptes", 0o640)
+        done = self.uninstall(
+            state, remove_data=True, UNITS="ntfy", PKGS="ntfy"
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), NTFY_FOREIGN)
+        self.assertEqual(
+            stat.S_IMODE(os.stat(self.path(ci.NTFY_CONFIG)).st_mode), 0o640
+        )
+        self.assertFalse(os.path.exists(self.path(backup)))
+        # Les comptes et jetons d'avant l'outil restent, même avec
+        # remove_data : ils ne sont pas à lui.
+        self.assertTrue(os.path.exists(self.path("/var/lib/ntfy/user.db")))
+        calls = self.calls()
+        self.assertFalse([c for c in calls if c.startswith("apt-get")])
+        self.assertIn("systemctl try-restart ntfy", calls)
+        self.assertNotIn("systemctl disable --now ntfy", calls)
+        self.assertIn(
+            f"RESTORED {ci.NTFY_CONFIG} {backup}", self.markers(done)
+        )
+        self.assertFalse(os.path.exists(self.path(ci.CALL_DIR)))
+
+    def test_remove_data_false_keeps_the_ntfy_user_database(self):
+        state = self.tool_installed_ntfy(
+            supplied(services=frozenset({"ntfy"}))
+        )
+        done = self.uninstall(state, UNITS="ntfy", PKGS="ntfy", POSTRM="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path("/var/lib/ntfy/user.db")) as handle:
+            self.assertEqual(handle.read(), "comptes")
+        self.assertTrue(os.path.exists(self.path("/etc/ntfy/tls/ntfy.key")))
+        self.assertFalse(os.path.exists(self.path(ci.NTFY_CONFIG)))
+        self.assertFalse(os.path.exists(self.path("/var/cache/ntfy")))
+        self.assertIn("apt-get purge -y ntfy", self.calls())
+        markers = self.markers(done)
+        self.assertIn("KEPT /var/lib/ntfy/user.db", markers)
+        self.assertEqual(markers[-1], "DONE yes")
+        # Le dossier de mise de côté ne survit pas au passage.
+        self.assertEqual(
+            [n for n in os.listdir(self.path("/var/lib")) if "hold" in n], []
+        )
+
+    def test_remove_data_true_removes_everything_the_tool_added(self):
+        ans = supplied()
+        record = ufw_record("udp 3478 coturn", "tcp 8443 ntfy")
+        state = installed_state(ans, firewall=record)
+        self.place_state(state)
+        write(self.path("/etc/turnserver.conf"), ci.coturn_config(ans))
+        write(self.path("/etc/erplibre-call/coturn.applied"), "x", 0o600)
+        write(self.path("/etc/erplibre-call/tls/turn.crt"), TURN_CERT)
+        write(self.path("/etc/erplibre-call/tls/turn.key"), TURN_KEY)
+        write(self.path("/var/lib/erplibre-call/turndb"), "db", 0o640)
+        write(self.path(ci.NTFY_CONFIG), ci.ntfy_config(ans), 0o644)
+        write(self.path("/var/lib/ntfy/user.db"), "comptes", 0o640)
+        write(self.path("/etc/ntfy/tls/ntfy.crt"), TURN_CERT, 0o644)
+        write(self.path("/etc/ntfy/tls/ntfy.key"), TURN_KEY, 0o640)
+        write(
+            self.added,
+            "ufw allow 22/tcp\n"
+            "ufw allow 3478/udp comment 'erplibre-call coturn'\n"
+            "ufw allow 8443/tcp comment 'erplibre-call ntfy'\n",
+            0o644,
+        )
+        done = self.uninstall(
+            state, remove_data=True, UNITS="coturn ntfy", PKGS="coturn ntfy"
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        for path in (
+            ci.CALL_DIR,
+            "/var/lib/erplibre-call",
+            "/var/lib/ntfy",
+            "/etc/ntfy",
+            "/etc/turnserver.conf",
+        ):
+            self.assertFalse(os.path.exists(self.path(path)), path)
+        calls = self.calls()
+        for call in (
+            "systemctl disable --now coturn",
+            "systemctl disable --now ntfy",
+            "apt-get purge -y coturn",
+            "apt-get purge -y ntfy",
+            "ufw delete allow 3478/udp",
+            "ufw delete allow 8443/tcp",
+        ):
+            self.assertIn(call, calls)
+        self.assertNotIn("ufw delete allow 22/tcp", calls)
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_REMOVED udp 3478 coturn", markers)
+        self.assertNotIn("END", markers)
+        self.assertEqual(markers[-2:], ["REMOVED state", "DONE yes"])
+
+    def test_tool_binary_and_unit_of_ntfy_are_removed(self):
+        state = self.tool_installed_ntfy()
+        write(
+            self.path("/etc/systemd/system/ntfy.service"),
+            "[Unit]\nDescription=ntfy push notification server\n"
+            "[Service]\nExecStart=/usr/local/bin/ntfy serve\n",
+            0o644,
+        )
+        write(self.path("/usr/local/bin/ntfy"), "binaire")
+        write(self.path("/usr/local/bin/autre"), "binaire")
+        done = self.uninstall(state, UNITS="ntfy")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(
+            os.path.exists(self.path("/etc/systemd/system/ntfy.service"))
+        )
+        self.assertFalse(os.path.exists(self.path("/usr/local/bin/ntfy")))
+        self.assertTrue(os.path.exists(self.path("/usr/local/bin/autre")))
+        self.assertIn("systemctl daemon-reload", self.calls())
+        self.assertFalse([c for c in self.calls() if "purge" in c])
+
+    def test_a_unit_written_by_someone_else_stays(self):
+        state = self.tool_installed_ntfy()
+        unit = (
+            "[Unit]\nDescription=ntfy local\n"
+            "[Service]\nExecStart=/usr/local/bin/ntfy serve\n"
+        )
+        write(self.path("/etc/systemd/system/ntfy.service"), unit, 0o644)
+        write(self.path("/usr/local/bin/ntfy"), "binaire")
+        self.uninstall(state, UNITS="ntfy")
+        self.assertTrue(
+            os.path.exists(self.path("/etc/systemd/system/ntfy.service"))
+        )
+        self.assertTrue(os.path.exists(self.path("/usr/local/bin/ntfy")))
+
+    def test_arch_removes_with_pacman(self):
+        write(self.path("/etc/os-release"), "ID=arch\n", 0o644)
+        ans = answers(services=frozenset({"coturn"}))
+        state = installed_state(ans, facts=base_facts(family="arch"))
+        self.place_state(state)
+        done = self.uninstall(state, UNITS="turnserver", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        self.assertIn("pacman -Rn --noconfirm coturn", calls)
+        self.assertIn("systemctl disable --now turnserver", calls)
+        self.assertFalse([c for c in calls if c.startswith("apt-get")])
+
+    # Review Focus 5 : une coupure ou un échec garde l'état ; la relance
+    # termine ; une désinstallation de plus ne trouve rien.
+    def test_failure_keeps_the_state_and_a_rerun_converges(self):
+        state = self.tool_installed_ntfy()
+        pending = self.path("/etc/erplibre-call/pending/ntfy.json")
+        write(pending, "{}", 0o600)
+        done = self.uninstall(state, UNITS="ntfy", PKGS="ntfy", APT_RC="1")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("FAILED package-ntfy", self.markers(done))
+        self.assertEqual(self.markers(done)[-1], "DONE no")
+        self.assertTrue(os.path.exists(self.path(ci.STATE_PATH)))
+        self.assertTrue(os.path.exists(pending))
+        # La base des comptes revient même quand la purge a échoué.
+        self.assertTrue(os.path.exists(self.path("/var/lib/ntfy/user.db")))
+
+        done = self.uninstall(state, UNITS="ntfy", PKGS="ntfy")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+
+        before = snapshot(self.root)
+        open(self.log, "w").close()
+        done = self.uninstall(None)
+        self.assertEqual(self.markers(done), ["NOTHING"])
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(snapshot(self.root), before)
+
+    def test_a_firewall_rule_that_stays_keeps_the_state(self):
+        state = installed_state(
+            answers(services=frozenset({"coturn"})),
+            firewall=ufw_record("udp 3478 coturn"),
+        )
+        self.place_state(state)
+        write(
+            self.added,
+            "ufw allow 3478/udp comment 'erplibre-call coturn'\n",
+            0o644,
+        )
+        done = self.uninstall(state, UFW_DELETE_RC="1")
+        self.assertNotEqual(done.returncode, 0)
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_FAILED udp 3478 coturn", markers)
+        self.assertIn("FAILED firewall", markers)
+        self.assertTrue(os.path.exists(self.path(ci.STATE_PATH)))
+
+    @unittest.skipIf(os.geteuid() == 0, "root passe outre les droits")
+    def test_state_stays_while_the_directory_cannot_be_emptied(self):
+        state = installed_state(answers(services=frozenset({"coturn"})))
+        self.place_state(state)
+        stuck = self.path("/etc/erplibre-call/autre")
+        write(os.path.join(stuck, "fichier"), "x", 0o600)
+        os.chmod(stuck, 0o500)
+        self.addCleanup(os.chmod, stuck, 0o700)
+        done = self.uninstall(state)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("FAILED call-dir", self.markers(done))
+        self.assertTrue(os.path.exists(self.path(ci.STATE_PATH)))
+
+    def test_data_set_aside_by_a_cut_run_comes_back(self):
+        state = self.tool_installed_ntfy()
+        hold = self.path("/var/lib/erplibre-call.hold-20261029-090000")
+        os.makedirs(hold)
+        os.rename(self.path("/var/lib/ntfy"), hold + "/ntfy-data")
+        done = self.uninstall(state, UNITS="ntfy")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path("/var/lib/ntfy/user.db")) as handle:
+            self.assertEqual(handle.read(), "comptes")
+        self.assertFalse(os.path.exists(hold))
+
+    def test_adopted_backup_missing_is_said_and_not_fatal(self):
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        facts = base_facts(
+            coturn=service("/etc/turnserver.conf", original),
+            busy_ports=(("udp", 3478, "turnserver"),),
+        )
+        ans = answers(services=frozenset({"coturn"}))
+        state = installed_state(ans, facts=facts)
+        self.place_state(state)
+        write(self.path("/etc/turnserver.conf"), ci.coturn_config(ans))
+        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        backup = "/etc/turnserver.conf.bak-" + STAMP
+        self.assertIn(f"BACKUP_MISSING coturn {backup}", self.markers(done))
+        # La configuration en place n'est pas retirée : le service tourne.
+        self.assertTrue(os.path.exists(self.path("/etc/turnserver.conf")))
+        self.assertFalse([c for c in self.calls() if "purge" in c])
+
+    def test_pending_record_of_a_service_not_in_the_state_is_kept(self):
+        state = installed_state(answers(services=frozenset({"coturn"})))
+        self.place_state(state)
+        pending = self.path("/etc/erplibre-call/pending/ntfy.json")
+        write(pending, "{}", 0o600)
+        write(self.path("/etc/erplibre-call/pending/coturn.json"), "{}", 0o600)
+        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("PENDING_LEFT ntfy", self.markers(done))
+        self.assertTrue(os.path.exists(pending))
+        self.assertFalse(
+            os.path.exists(self.path("/etc/erplibre-call/pending/coturn.json"))
+        )
+        self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+
+    def test_kept_tls_directory_of_coturn(self):
+        ans = supplied(services=frozenset({"coturn"}))
+        state = installed_state(ans)
+        self.place_state(state)
+        write(self.path("/etc/erplibre-call/tls/turn.key"), TURN_KEY)
+        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertTrue(
+            os.path.exists(self.path("/etc/erplibre-call/tls/turn.key"))
+        )
+        self.assertEqual(os.listdir(self.path(ci.CALL_DIR)), ["tls"])
+
+    def test_values_read_from_the_state_are_checked(self):
+        good = installed_state(supplied())
+        cases = {
+            "unit": ("coturn", "unit", "coturn; reboot"),
+            "config": ("coturn", "config", "etc/turnserver.conf"),
+            "dots": ("coturn", "config", "/etc/../root/x"),
+            "backup": ("coturn", "backup", "/tmp/autre.bak-1"),
+            "tls": ("ntfy", "tls_files", ["/root/.ssh/id_ed25519"]),
+            "record": ("ntfy", None, "pas un dict"),
+        }
+        for label, (svc, key, value) in cases.items():
+            with self.subTest(label):
+                state = json.loads(json.dumps(good))
+                if key is None:
+                    state["services"][svc] = value
+                else:
+                    state["services"][svc][key] = value
+                with self.assertRaises(ci.Refusal) as caught:
+                    ci.uninstall_script(state, False, STAMP)
+                self.assertEqual(
+                    caught.exception.key, "call_infra_state_invalid"
+                )
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.uninstall_script(dict(good, version=99), False, STAMP)
+        self.assertEqual(caught.exception.key, "call_infra_state_version")
+
+    def test_bad_stamp(self):
+        with self.assertRaises(ValueError):
+            ci.uninstall_script(None, False, "a b")
 
 
 class TestStdlibOnly(unittest.TestCase):

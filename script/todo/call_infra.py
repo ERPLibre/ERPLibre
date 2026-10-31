@@ -3,9 +3,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 """Infrastructure d'appel (coturn, ntfy) : sonde d'un hôte, plan
-d'installation, script d'installation, état de l'hôte.
+d'installation, script d'installation, état de l'hôte, vérification et
+désinstallation.
 
-Fonctions pures, stdlib seule (plus `ntfy_mobile`, stdlib seule aussi) :
+Fonctions pures, stdlib seule (plus `ntfy_mobile` et `turn_client`, stdlib
+seule aussi) :
 le menu de `todo.py` les appelle, les scripts `sh` qu'elles construisent
 sont exécutés en root par `ntfy_mobile.LocalHost` ou `SshHost`, et leur
 sortie est relue par des lignes `@@NOM valeur`.
@@ -20,6 +22,11 @@ Déroulé :
 3. `install_script(plan, stamp, check_password)` rend le script qui sauve
    les configurations adoptées, lance les installateurs et n'écrit l'état
    qu'une fois chaque service vu actif.
+4. `check_remote_script()` lit l'hôte sans rien écrire ; `check_local()`
+   en tire le verdict depuis la machine qui lance `todo.py` : allocations
+   TURN réelles, santé de ntfy, certificat, pare-feu, unités.
+5. `uninstall_script(state, remove_data, stamp)` défait ce que l'état
+   consigne et n'efface l'état qu'en dernier, une fois tout réussi.
 
 L'état (`STATE_PATH`, root 0600) est le seul registre de ce que l'outil a
 fait sur l'hôte ; il ne porte aucun secret. Avant de toucher à un service,
@@ -37,6 +44,7 @@ import dataclasses
 import datetime
 import gzip
 import hashlib
+import http.client
 import ipaddress
 import json
 import os
@@ -47,6 +55,7 @@ import subprocess
 import tempfile
 
 from script.todo import ntfy_mobile as nm
+from script.todo import turn_client
 
 STATE_PATH = "/etc/erplibre-call/state.json"
 STATE_VERSION = 1
@@ -1796,6 +1805,881 @@ def state_write_script(state, root=""):
         f'mkdir -p "$R"{shlex.quote(CALL_DIR)} || fail state',
         *_state_write_lines(state),
         'echo "@@SAVED yes"',
+        "",
+    ]
+    return "\n".join(lines)
+
+
+# --- Vérification -----------------------------------------------------------
+
+CHECK_USER = "erplibre-check"
+# Un certificat qui expire dans moins de jours que ceci est signalé.
+CERT_WARN_DAYS = 14
+TLS_CERTS = {
+    "coturn": f"{COTURN_TLS_DIR}/turn.crt",
+    "ntfy": f"{NTFY_TLS_DIR}/ntfy.crt",
+}
+_HEX_KEY = re.compile(r"^[0-9a-f]{32}$")
+
+# Clés i18n que porte `CheckLine.detail` ; chacune a sa traduction dans
+# todo_i18n.py, avec les champs de `CheckLine.values` entre accolades.
+CHECK_KEYS = (
+    "call_infra_check_no_state",
+    "call_infra_check_active",
+    "call_infra_check_relayed",
+    "call_infra_check_open_relay",
+    "call_infra_check_turn_error",
+    "call_infra_check_no_key",
+    "call_infra_check_healthy",
+    "call_infra_check_unhealthy",
+    "call_infra_check_http_error",
+    "call_infra_check_cert_unverified",
+    "call_infra_check_cert_days",
+    "call_infra_check_cert_missing",
+    "call_infra_check_cert_unreadable",
+    "call_infra_check_firewall_none",
+    "call_infra_check_firewall_ok",
+    "call_infra_check_firewall_missing",
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class CheckLine:
+    """Une ligne du verdict de `check_local`.
+
+    `ok` : True, False, ou None quand la chose n'a pas pu être vérifiée,
+    la raison dans `detail`. `detail` est une clé de CHECK_KEYS, `values`
+    les champs de son message (`t(detail).format(**values)`).
+    """
+
+    name: str
+    ok: bool | None
+    detail: str
+    values: dict = dataclasses.field(default_factory=dict)
+
+
+# `ufw show added` : la ligne exacte qu'écrit `_ufw_script` pour une règle
+# de l'outil. Imprime « @@FIREWALL_RULE ufw <proto> <port> <service> ».
+_CHECK_UFW_SED = (
+    r"s/^ufw allow ([0-9]+(:[0-9]+)?)\/(tcp|udp) comment"
+    f" '{FIREWALL_COMMENT} ({'|'.join(SERVICES)})'$"
+    r"/@@FIREWALL_RULE ufw \3 \1 \4/p"
+)
+# `nft list ruleset` : une règle de l'outil, telle que `_nft_rule` la pose
+# (une plage s'y écrit avec « - »).
+_CHECK_NFT_SED = (
+    r"s/.*[[:space:]](tcp|udp) dport ([0-9]+(-[0-9]+)?) accept comment"
+    f' "{FIREWALL_COMMENT} ({"|".join(SERVICES)})".*'
+    r"/@@FIREWALL_RULE nftables \1 \2 \4/p"
+)
+
+
+def check_remote_script(root=""):
+    """Script `sh` en lecture seule, lancé en root, qui imprime ce que la
+    vérification lit sur l'hôte.
+
+    Lignes : `@@STATE <base64>` (l'état, s'il existe), `@@ACTIVE <service>
+    <état systemd>` (« absent » sans unité), `@@CHECK_KEY <hex>` (la clé
+    long terme du compte de contrôle, lue dans la base de coturn par
+    `sqlite3 -readonly` sous le compte du service : root n'ouvre aucun
+    fichier de ce dossier, qui appartient à ce compte), `@@CERT <service>
+    <base64>` par certificat installé, `@@FIREWALL_RULE <ufw|nftables>
+    <proto> <port> <service>` par règle de l'outil présente dans un pare-feu
+    actif, puis `@@END`. `root` préfixe chaque chemin lu (tests).
+    """
+    query = f"select hmackey from turnusers_lt where name='{CHECK_USER}'"
+    certs = " ".join(f"{svc}:{path}" for svc, path in TLS_CERTS.items())
+    return "\n".join(
+        [
+            f"R={shlex.quote(root)}",
+            "echo",
+            f'S="$R"{shlex.quote(STATE_PATH)}',
+            'if [ -f "$S" ]; then echo "@@STATE $(base64 -w0 < "$S")"; fi',
+            "CU=-",
+            "for u in " + " ".join(COTURN_UNITS.values()) + "; do",
+            '  if systemctl cat "$u" >/dev/null 2>&1; then CU=$u; break; fi',
+            "done",
+            'if [ "$CU" != - ]; then',
+            '  A=$(systemctl is-active "$CU" 2>/dev/null)',
+            '  echo "@@ACTIVE coturn ${A:-unknown}"',
+            "else",
+            '  echo "@@ACTIVE coturn absent"',
+            "fi",
+            f"if systemctl cat {NTFY_UNIT} >/dev/null 2>&1; then",
+            f"  A=$(systemctl is-active {NTFY_UNIT} 2>/dev/null)",
+            '  echo "@@ACTIVE ntfy ${A:-unknown}"',
+            "else",
+            '  echo "@@ACTIVE ntfy absent"',
+            "fi",
+            f'DB="$R"{shlex.quote(COTURN_DB)}',
+            'if [ "$CU" != - ] && [ -f "$DB" ]'
+            " && command -v sqlite3 >/dev/null 2>&1; then",
+            '  U=$(systemctl show -p User --value "$CU" 2>/dev/null)',
+            '  runuser -u "${U:-turnserver}" -- sqlite3 -readonly'
+            f' -init /dev/null "$DB" "{query}" 2>/dev/null'
+            " | sed 's/^/@@CHECK_KEY /'",
+            "fi",
+            f"for c in {certs}; do",
+            '  f="$R${c#*:}"',
+            '  if [ -f "$f" ]; then'
+            ' echo "@@CERT ${c%%:*} $(base64 -w0 < "$f")"; fi',
+            "done",
+            "if command -v ufw >/dev/null 2>&1"
+            " && ufw status 2>/dev/null | grep -q '^Status: active'; then",
+            "  ufw show added 2>/dev/null"
+            f" | sed -n -E {shlex.quote(_CHECK_UFW_SED)}",
+            "fi",
+            "if command -v nft >/dev/null 2>&1; then",
+            "  nft list ruleset 2>/dev/null"
+            f" | sed -n -E {shlex.quote(_CHECK_NFT_SED)}",
+            "fi",
+            'echo "@@END"',
+            "",
+        ]
+    )
+
+
+def parse_check_remote(output):
+    """Dict de la sortie de `check_remote_script` : `state` (dict ou None),
+    `active` {service: état}, `check_key` (32 chiffres hexa ou None),
+    `firewall_rules` [(ufw|nftables, Rule)], `certs` {service: PEM}.
+
+    Une règle hors format ou sur le port de ssh est écartée, comme dans
+    `rules_from_state`. Refusal `call_infra_probe_incomplete` sans `@@END`.
+    """
+    state, active, key, rules, certs = None, {}, None, [], {}
+    complete = False
+    for name, value in marker_lines(output):
+        if name == "STATE":
+            state = _decode_json(value)
+        elif name == "ACTIVE":
+            svc, _, current = value.partition(" ")
+            if svc in SERVICES:
+                active[svc] = current.strip() or "unknown"
+        elif name == "CHECK_KEY":
+            candidate = value.strip().lower()
+            if key is None and _HEX_KEY.match(candidate):
+                key = candidate
+        elif name == "FIREWALL_RULE":
+            parts = value.split()
+            if len(parts) != 4 or parts[0] not in ("ufw", "nftables"):
+                continue
+            found = Rule(parts[1], parts[2].replace("-", ":"), parts[3])
+            try:
+                _check_rule(found)
+            except ValueError:
+                continue
+            if (parts[0], found) not in rules:
+                rules.append((parts[0], found))
+        elif name == "CERT":
+            svc, _, encoded = value.partition(" ")
+            text = _decode(encoded)
+            if svc in SERVICES and text:
+                certs[svc] = text
+        elif name == "END":
+            complete = True
+    if not complete:
+        raise Refusal("call_infra_probe_incomplete")
+    return {
+        "state": state,
+        "active": active,
+        "check_key": key,
+        "firewall_rules": rules,
+        "certs": certs,
+    }
+
+
+class _NamedHTTPS(http.client.HTTPConnection):
+    """Connexion https vers `host` dont le certificat est vérifié sous
+    `server_name` : l'adresse jointe et le nom attendu diffèrent quand on
+    vérifie un hôte par son adresse."""
+
+    def __init__(self, host, port, server_name, context, timeout):
+        super().__init__(host, port, timeout=timeout)
+        self.server_name = server_name
+        self.tls_context = context
+
+    def connect(self):
+        super().connect()
+        self.sock = self.tls_context.wrap_socket(
+            self.sock, server_hostname=self.server_name
+        )
+
+
+def https_get(
+    address, port, path, tls, server_name=None, cafile=None, timeout=5.0
+):
+    """(statut, corps) d'un GET sur `address`:`port`, en https si `tls`.
+
+    Le certificat est vérifié sous `server_name` (sinon `address`) contre
+    `cafile`, sinon contre les autorités du système ; un certificat que
+    rien ne garantit lève ssl.SSLCertVerificationError. Les autres échecs
+    lèvent OSError ou http.client.HTTPException. Corps lu sur 64 Kio au
+    plus."""
+    name = server_name or address
+    if tls:
+        context = ssl.create_default_context(cafile=cafile)
+        connection = _NamedHTTPS(address, port, name, context, timeout)
+    else:
+        connection = http.client.HTTPConnection(address, port, timeout=timeout)
+    try:
+        connection.request(
+            "GET", path, headers={"Host": f"{_url_host(name)}:{port}"}
+        )
+        response = connection.getresponse()
+        body = response.read(65536).decode("utf-8", "replace")
+        return response.status, body
+    finally:
+        connection.close()
+
+
+def _int(value, default):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _turn_lines(settings, key, address, cafile, allocate, timeout):
+    """Une allocation réelle par transport, sous le compte de contrôle.
+    Sans autorité fournie, un échec TLS ne distingue pas un certificat que
+    le système ne connaît pas d'une panne : la ligne vaut None."""
+    turn_port = _int(settings.get("turn_port"), 3478)
+    transports = [("udp", turn_port), ("tcp", turn_port)]
+    if settings.get("tls") == "supplied":
+        transports.append(("tls", _int(settings.get("turns_port"), 5349)))
+    if not key:
+        return [
+            CheckLine(f"turn-{transport}", None, "call_infra_check_no_key")
+            for transport, _ in transports
+        ]
+    lines = []
+    for transport, port in transports:
+        extra = {}
+        if transport == "tls":
+            extra = dict(
+                cafile=cafile,
+                server_name=settings.get("public_name") or address,
+            )
+        result = allocate(
+            address,
+            port,
+            transport,
+            CHECK_USER,
+            bytes.fromhex(key),
+            timeout=timeout,
+            **extra,
+        )
+        name = f"turn-{transport}"
+        if result.ok:
+            host, relayed_port = result.relayed or ("?", 0)
+            relayed = f"{_url_host(host)}:{relayed_port}"
+            lines.append(
+                CheckLine(
+                    name,
+                    True,
+                    "call_infra_check_relayed",
+                    {"relayed": relayed},
+                )
+            )
+        elif result.error == "no-auth":
+            lines.append(CheckLine(name, False, "call_infra_check_open_relay"))
+        elif result.error == "tls" and transport == "tls" and not cafile:
+            lines.append(
+                CheckLine(name, None, "call_infra_check_cert_unverified")
+            )
+        else:
+            lines.append(
+                CheckLine(
+                    name,
+                    False,
+                    "call_infra_check_turn_error",
+                    {"error": result.error},
+                )
+            )
+    return lines
+
+
+def _ntfy_line(settings, address, cafile, https_get, timeout):
+    tls = settings.get("tls") == "supplied"
+    port = _int(
+        settings.get("port"), NTFY_HTTPS_PORT if tls else NTFY_HTTP_PORT
+    )
+    name = "ntfy-health"
+    try:
+        status, body = https_get(
+            address,
+            port,
+            "/v1/health",
+            tls,
+            server_name=settings.get("public_name") or address,
+            cafile=cafile if tls else None,
+            timeout=timeout,
+        )
+    except ssl.SSLCertVerificationError:
+        return CheckLine(name, None, "call_infra_check_cert_unverified")
+    except (OSError, http.client.HTTPException, ValueError) as exc:
+        error = str(exc) or type(exc).__name__
+        return CheckLine(
+            name, False, "call_infra_check_http_error", {"error": error}
+        )
+    try:
+        healthy = json.loads(body).get("healthy") is True
+    except (ValueError, AttributeError):
+        healthy = False
+    if status == 200 and healthy:
+        return CheckLine(name, True, "call_infra_check_healthy")
+    return CheckLine(
+        name, False, "call_infra_check_unhealthy", {"status": status}
+    )
+
+
+def _expiry_line(services, certs, now):
+    """Le certificat installé qui expire le premier, parmi ceux des
+    services en https ; sous CERT_WARN_DAYS jours, la ligne échoue."""
+    name = "cert-expiry"
+    earliest = None
+    for svc in services:
+        pem = certs.get(svc)
+        if not pem:
+            return CheckLine(
+                name, False, "call_infra_check_cert_missing", {"service": svc}
+            )
+        try:
+            not_after = _certificate_facts(pem)[0]
+        except Refusal as refusal:
+            return CheckLine(
+                name,
+                False,
+                "call_infra_check_cert_unreadable",
+                {"reason": refusal.values.get("reason", "")},
+            )
+        earliest = not_after if earliest is None else min(earliest, not_after)
+    days = (earliest - now).days
+    return CheckLine(
+        name,
+        days >= CERT_WARN_DAYS,
+        "call_infra_check_cert_days",
+        {"days": days, "date": earliest.strftime("%Y-%m-%d")},
+    )
+
+
+def _firewall_line(state, present):
+    """Les règles consignées comparées à celles de l'outil que le pare-feu
+    consigné porte encore ; une règle du même port dans un autre pare-feu
+    ne compte pas."""
+    record = state.get("firewall")
+    kind = record.get("kind") if isinstance(record, dict) else "none"
+    kind = kind if kind in FIREWALLS else "unknown"
+    recorded = rules_from_state(state)
+    if kind not in ("ufw", "nftables") or not recorded:
+        return CheckLine(
+            "firewall", None, "call_infra_check_firewall_none", {"kind": kind}
+        )
+    have = {found for found_kind, found in present if found_kind == kind}
+    missing = [r for r in recorded if r not in have]
+    if missing:
+        text = ", ".join(_ufw_spec(r) for r in missing)
+        return CheckLine(
+            "firewall",
+            False,
+            "call_infra_check_firewall_missing",
+            {"rules": text},
+        )
+    return CheckLine(
+        "firewall",
+        True,
+        "call_infra_check_firewall_ok",
+        {"count": len(recorded)},
+    )
+
+
+def check_local(
+    facts_remote,
+    address,
+    cafile,
+    allocate=turn_client.allocate,
+    https_get=https_get,
+    now=None,
+    timeout=5.0,
+):
+    """Vérification depuis la machine qui lance `todo.py`.
+
+    `facts_remote` vient de `parse_check_remote` ; `address` est le nom ou
+    l'adresse par où l'hôte est joint ; `cafile` l'autorité d'un certificat
+    fourni (None : celles du système). Lignes, pour les services consignés
+    dans l'état : `turn-udp`, `turn-tcp`, `turn-tls` (avec un certificat ;
+    allocations réelles sous le compte de contrôle), `ntfy-health`
+    (`/v1/health`), `cert-expiry` (avec un certificat), `firewall`, puis
+    `service-<service>`. Sans état : une seule ligne `state` en échec.
+    """
+    state = facts_remote.get("state")
+    services = state.get("services") if isinstance(state, dict) else None
+    records = {
+        svc: services[svc]
+        for svc in SERVICES
+        if isinstance(services, dict) and isinstance(services.get(svc), dict)
+    }
+    if not records:
+        return [CheckLine("state", False, "call_infra_check_no_state")]
+    if now is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=datetime.timezone.utc)
+    settings = {
+        svc: (
+            record.get("settings")
+            if isinstance(record.get("settings"), dict)
+            else {}
+        )
+        for svc, record in records.items()
+    }
+    lines = []
+    if "coturn" in records:
+        lines += _turn_lines(
+            settings["coturn"],
+            facts_remote.get("check_key"),
+            address,
+            cafile,
+            allocate,
+            timeout,
+        )
+    if "ntfy" in records:
+        lines.append(
+            _ntfy_line(settings["ntfy"], address, cafile, https_get, timeout)
+        )
+    with_tls = [s for s in records if settings[s].get("tls") == "supplied"]
+    if with_tls:
+        lines.append(
+            _expiry_line(with_tls, facts_remote.get("certs") or {}, now)
+        )
+    lines.append(
+        _firewall_line(state, facts_remote.get("firewall_rules") or [])
+    )
+    active = facts_remote.get("active") or {}
+    for svc in records:
+        current = active.get(svc, "unknown")
+        lines.append(
+            CheckLine(
+                f"service-{svc}",
+                current == "active",
+                "call_infra_check_active",
+                {"state": current},
+            )
+        )
+    return lines
+
+
+# --- Désinstallation --------------------------------------------------------
+
+PACKAGES = {"coturn": "coturn", "ntfy": "ntfy"}
+COTURN_DATA_DIR = os.path.dirname(COTURN_DB)
+NTFY_DATA_DIR = os.path.dirname(NTFY_AUTH_FILE)
+NTFY_CACHE_DIR = "/var/cache/ntfy"
+# L'unité et le binaire que pose install_ntfy.sh quand aucun paquet ne
+# fournit ntfy ; sa ligne Description signe l'unité.
+NTFY_TOOL_UNIT = "/etc/systemd/system/ntfy.service"
+NTFY_TOOL_BINARY = "/usr/local/bin/ntfy"
+NTFY_TOOL_DESCRIPTION = "Description=ntfy push notification server"
+# La purge du paquet ntfy peut emporter ses dossiers (script postrm) : ce
+# que l'outil garde y est mis de côté, sous HOLD_PREFIX<tampon>, le temps
+# de la purge, puis remis. Une désinstallation coupée entre les deux le
+# laisse là ; la suivante le remet en premier.
+HOLD_PREFIX = "/var/lib/erplibre-call.hold-"
+_HELD = (("ntfy-data", NTFY_DATA_DIR), ("ntfy-tls", NTFY_TLS_DIR))
+_UNITS = {"coturn": tuple(COTURN_UNITS.values()), "ntfy": (NTFY_UNIT,)}
+_TLS_FILES = {
+    "coturn": {f"{COTURN_TLS_DIR}/turn.crt", f"{COTURN_TLS_DIR}/turn.key"},
+    "ntfy": {f"{NTFY_TLS_DIR}/ntfy.crt", f"{NTFY_TLS_DIR}/ntfy.key"},
+}
+_HOST_PATH = re.compile(r"^(/[A-Za-z0-9._@+-]+)+$")
+
+
+def _safe_path(path):
+    """Chemin absolu fait de caractères sûrs, sans « . » ni « .. » : il
+    vient de l'état de l'hôte et finit dans un script lancé en root."""
+    return (
+        isinstance(path, str)
+        and bool(_HOST_PATH.match(path))
+        and not any(part in (".", "..") for part in path.split("/"))
+    )
+
+
+def _uninstall_records(state):
+    """[(service, fiche)] des services consignés, chaque valeur vérifiée :
+    unité connue, chemins sûrs, copie `<config>.bak-<tampon>`, fichiers TLS
+    de ceux que l'outil pose. Refusal `call_infra_state_invalid` sinon."""
+    services = state.get("services", {})
+    if not isinstance(services, dict):
+        raise Refusal("call_infra_state_invalid", service="services")
+    records = []
+    for svc in SERVICES:
+        if svc not in services:
+            continue
+        record = services[svc]
+        invalid = Refusal("call_infra_state_invalid", service=svc)
+        if not isinstance(record, dict):
+            raise invalid
+        config, backup = record.get("config"), record.get("backup")
+        tls_files = record.get("tls_files") or []
+        if record.get("unit") not in _UNITS[svc] or not _safe_path(config):
+            raise invalid
+        if backup is not None and not (
+            isinstance(backup, str)
+            and backup.startswith(config + ".bak-")
+            and _STAMP.match(backup[len(config) + 5 :])
+        ):
+            raise invalid
+        if not isinstance(tls_files, list) or not set(tls_files) <= (
+            _TLS_FILES[svc]
+        ):
+            raise invalid
+        records.append(
+            (
+                svc,
+                {
+                    "unit": record["unit"],
+                    "config": config,
+                    "installed_by_tool": bool(record.get("installed_by_tool")),
+                    "adopted": bool(record.get("adopted")),
+                    "backup": backup,
+                    "tls_files": sorted(tls_files),
+                },
+            )
+        )
+    return records
+
+
+def _uninstall_helpers():
+    """Fonctions `sh` du script : famille du système (os-release, mêmes
+    listes qu'`os_family`), paquet présent et purge, remise en place de ce
+    qui a été mis de côté."""
+    debian = "|".join(sorted(_DEBIAN_IDS))
+    arch = "|".join(sorted(_ARCH_IDS))
+    held = " ".join(f"{name}:{path}" for name, path in _HELD)
+    return [
+        "FAMILY=",
+        'if [ -r "$R/etc/os-release" ]; then',
+        '  FAMILY=$(. "$R/etc/os-release"; for i in "${ID:-}" ${ID_LIKE:-};'
+        f' do case "$i" in {debian}) echo debian; break ;;'
+        f" {arch}) echo arch; break ;; esac; done)",
+        "fi",
+        "pkg_installed() {",
+        '  case "$FAMILY" in',
+        "    debian) dpkg-query -W -f='${Status}' \"$1\" 2>/dev/null"
+        " | grep -q ' installed$' ;;",
+        '    arch) pacman -Qq "$1" >/dev/null 2>&1 ;;',
+        "    *) return 1 ;;",
+        "  esac",
+        "}",
+        "pkg_purge() {",
+        '  case "$FAMILY" in',
+        '    debian) DEBIAN_FRONTEND=noninteractive apt-get purge -y "$1"'
+        " </dev/null ;;",
+        '    arch) pacman -Rn --noconfirm "$1" </dev/null ;;',
+        "    *) return 1 ;;",
+        "  esac",
+        "}",
+        "held_back() {",
+        f"  for E in {held}; do",
+        '    N=${E%%:*}; P="$R${E#*:}"',
+        '    [ -e "$1/$N" ] || continue',
+        '    if [ -d "$P" ]; then rmdir "$P" 2>/dev/null; fi',
+        '    if [ -e "$P" ]; then failed "hold-$N"; continue; fi',
+        '    mkdir -p "$(dirname "$P")" && mv "$1/$N" "$P"'
+        ' || failed "hold-$N"',
+        "  done",
+        '  rmdir "$1" 2>/dev/null',
+        "}",
+    ]
+
+
+def _is_managed_test(path):
+    """Test `sh` vrai quand le fichier de l'hôte porte MARKER en tête."""
+    host = _host(path)
+    return (
+        f'[ -f {host} ] && [ "$(head -n 1 {host})" = {shlex.quote(MARKER)} ]'
+    )
+
+
+def _stop_lines(svc, unit):
+    quoted = shlex.quote(unit)
+    return [
+        f"if systemctl cat {quoted} >/dev/null 2>&1; then",
+        f"  if systemctl disable --now {quoted} >/dev/null 2>&1; then"
+        f' echo "@@REMOVED unit {unit}";',
+        f"  else failed stop-{svc}; fi",
+        "fi",
+    ]
+
+
+def _remove_managed_lines(svc, config):
+    return [
+        f"if {_is_managed_test(config)}; then",
+        f'  if rm -f {_host(config)}; then echo "@@REMOVED config {config}";'
+        f" else failed config-{svc}; fi",
+        "fi",
+    ]
+
+
+def _ntfy_tool_files_lines():
+    """L'unité qu'install_ntfy.sh a écrite (sa Description), et le binaire
+    qu'elle lance s'il est celui qu'il a posé ; une unité d'une autre main
+    reste."""
+    unit, binary = _host(NTFY_TOOL_UNIT), _host(NTFY_TOOL_BINARY)
+    return [
+        f"if [ -f {unit} ] && grep -qxF"
+        f" {shlex.quote(NTFY_TOOL_DESCRIPTION)} {unit}; then",
+        "  B=$(sed -n -E 's/^ExecStart=([^[:space:]]+) serve.*/\\1/p'"
+        f" {unit} | head -n 1)",
+        f"  if rm -f {unit}; then"
+        f' echo "@@REMOVED unit-file {NTFY_TOOL_UNIT}";'
+        " else failed unit-file-ntfy; fi",
+        "  systemctl daemon-reload >/dev/null 2>&1",
+        f'  if [ "$B" = {NTFY_TOOL_BINARY} ] && [ -f {binary} ]; then',
+        f"    if rm -f {binary}; then"
+        f' echo "@@REMOVED binary {NTFY_TOOL_BINARY}";'
+        " else failed binary-ntfy; fi",
+        "  fi",
+        "fi",
+    ]
+
+
+def _restore_lines(svc, record):
+    """Copie remise par `mv` (droits et propriétaire de l'original) ; une
+    copie disparue alors que la configuration de l'outil est en place se
+    dit (`@@BACKUP_MISSING`) et laisse le service tel que l'outil l'a
+    configuré (KEEP_<service>=1), sans bloquer le reste."""
+    config, backup = record["config"], record["backup"]
+    unit = shlex.quote(record["unit"])
+    lines = []
+    if backup:
+        lines += [
+            f"if [ -f {_host(backup)} ]; then",
+            f"  if mv -f {_host(backup)} {_host(config)}; then"
+            f' echo "@@RESTORED {config} {backup}";',
+            f"  else failed restore-{svc}; fi",
+            f"elif {_is_managed_test(config)}; then",
+        ]
+    else:
+        lines.append(f"if {_is_managed_test(config)}; then")
+    lines += [
+        f'  echo "@@BACKUP_MISSING {svc} {backup or "-"}"; KEEP_{svc}=1',
+        "fi",
+        f'if [ "$KEEP_{svc}" = 0 ]; then',
+        f"  systemctl try-restart {unit} >/dev/null 2>&1"
+        f' || echo "@@RESTART_FAILED {svc}"',
+        "fi",
+    ]
+    return lines
+
+
+def _service_uninstall_lines(svc, record, remove_data, stamp):
+    """Lignes `sh` d'un service. Posé par l'outil : arrêt, purge du
+    paquet, fichiers et configuration retirés. Adopté : configuration
+    d'origine remise et service relancé, paquet laissé. Paquet déjà là sans
+    configuration : arrêt et configuration de l'outil retirée. Puis ses
+    fichiers TLS et ses données, retirés ou gardés selon `remove_data`."""
+    installed = record["installed_by_tool"]
+    hold = svc == "ntfy" and installed and not remove_data
+    package = PACKAGES[svc]
+    lines = [f"# {svc}", f"KEEP_{svc}=0"]
+    if installed:
+        lines += _stop_lines(svc, record["unit"])
+        purge = [
+            f"if pkg_installed {package}; then",
+            f"  if pkg_purge {package}; then"
+            f' echo "@@REMOVED package {package}";'
+            f" else failed package-{svc}; fi",
+            "fi",
+        ]
+        if hold:
+            target = f'"$R"{shlex.quote(HOLD_PREFIX + stamp)}'
+            lines += [f"H={target}", 'HOLD=1; mkdir -p "$H" || HOLD=0']
+            for name, path in _HELD:
+                lines.append(
+                    f"if [ -e {_host(path)} ]; then"
+                    f' mv {_host(path)} "$H/{name}" || HOLD=0; fi'
+                )
+            # Rien ne se purge tant que les données ne sont pas à l'abri.
+            lines += ['if [ "$HOLD" = 1 ]; then']
+            lines += ["  " + line for line in purge]
+            lines += [f"else failed hold-{svc}; fi"]
+        else:
+            lines += purge
+        if svc == "ntfy":
+            lines += _ntfy_tool_files_lines()
+        lines += _remove_managed_lines(svc, record["config"])
+        if svc == "ntfy":
+            cache = _host(NTFY_CACHE_DIR)
+            lines.append(
+                f"if [ -e {cache} ]; then rm -rf {cache}"
+                f' && echo "@@REMOVED data {NTFY_CACHE_DIR}"'
+                " || failed cache-ntfy; fi"
+            )
+            if hold:
+                lines.append('held_back "$H"')
+            else:
+                data = _host(NTFY_DATA_DIR)
+                lines.append(
+                    f"if [ -e {data} ]; then rm -rf {data}"
+                    f' && echo "@@REMOVED data {NTFY_DATA_DIR}"'
+                    " || failed data-ntfy; fi"
+                )
+    elif record["adopted"]:
+        lines += _restore_lines(svc, record)
+    else:
+        lines += _stop_lines(svc, record["unit"])
+        lines += _remove_managed_lines(svc, record["config"])
+    lines.append(f'if [ "$KEEP_{svc}" = 0 ]; then')
+    for path in record["tls_files"]:
+        host = _host(path)
+        if remove_data:
+            lines.append(
+                f"  if [ -e {host} ]; then rm -f {host}"
+                f' && echo "@@REMOVED tls {path}" || failed tls-{svc}; fi'
+            )
+        else:
+            lines.append(f'  if [ -e {host} ]; then echo "@@KEPT {path}"; fi')
+    if svc == "coturn":
+        data = _host(COTURN_DATA_DIR)
+        lines.append(
+            f"  if [ -e {data} ]; then rm -rf {data}"
+            f' && echo "@@REMOVED data {COTURN_DATA_DIR}"'
+            " || failed data-coturn; fi"
+        )
+    else:
+        auth = _host(NTFY_AUTH_FILE)
+        lines += [
+            f'  if [ -e {auth} ]; then echo "@@KEPT {NTFY_AUTH_FILE}"; fi',
+            f"  rmdir {_host(NTFY_TLS_DIR)} 2>/dev/null",
+            f"  rmdir {_host(os.path.dirname(NTFY_CONFIG))} 2>/dev/null",
+        ]
+    lines += ["  :", "fi"]
+    return lines
+
+
+def uninstall_script(state, remove_data, stamp, root=""):
+    """Script `sh` de désinstallation, lancé en root sur l'hôte.
+
+    Sans état (`state` None) : `@@PENDING <service>` pour chaque fiche
+    d'une installation interrompue, puis `@@NOTHING` ; rien ne change.
+
+    Avec un état, dans l'ordre : ce qu'une désinstallation coupée a laissé
+    de côté revient ; les règles consignées partent du pare-feu
+    (`firewall_script` « delete », ses lignes `@@FIREWALL_*` relayées) ;
+    chaque service consigné est traité par `_service_uninstall_lines` ;
+    puis, SEULEMENT si aucune étape n'a échoué, `/etc/erplibre-call` est
+    retiré, sauf `tls/` (gardé sans `remove_data`) et les fiches des
+    services que l'état ne consigne pas (`@@PENDING_LEFT <service>`), l'état
+    en dernier (`@@REMOVED state`). Chaque retrait imprime `@@REMOVED
+    <quoi> <chemin ou nom>`, chaque chose gardée `@@KEPT <chemin>`, une
+    configuration remise `@@RESTORED <config> <copie>`, un échec `@@FAILED
+    <étape>`. Dernière ligne `@@DONE yes`, ou `@@DONE no` et un code non
+    nul : l'état reste, et la relance reprend là où elle s'est arrêtée,
+    chaque étape étant sans effet une fois faite.
+
+    La base des comptes de ntfy n'est retirée, avec `remove_data`, que si
+    l'outil a posé ntfy : celle d'un ntfy adopté porte les comptes et
+    jetons d'avant lui. Refusal `call_infra_state_version` ou
+    `call_infra_state_invalid` pour un état qu'on ne peut pas suivre.
+    `root` préfixe chaque chemin de l'hôte (tests).
+    """
+    if not _STAMP.match(stamp or ""):
+        raise ValueError(f"stamp: {stamp!r}")
+    head = [
+        "set -u",
+        f"R={shlex.quote(root)}",
+        f'CALL="$R"{shlex.quote(CALL_DIR)}',
+        f'STATE="$R"{shlex.quote(STATE_PATH)}',
+        f'PENDING="$R"{shlex.quote(PENDING_DIR)}',
+    ]
+    if not isinstance(state, dict):
+        return "\n".join(
+            head
+            + [
+                "for s in " + " ".join(SERVICES) + "; do",
+                '  if [ -f "$PENDING/$s.json" ]; then echo "@@PENDING $s"; fi',
+                "done",
+                'echo "@@NOTHING"',
+                "",
+            ]
+        )
+    if state.get("version") != STATE_VERSION:
+        raise Refusal(
+            "call_infra_state_version",
+            found=state.get("version"),
+            expected=STATE_VERSION,
+        )
+    records = _uninstall_records(state)
+    record = state.get("firewall")
+    kind = record.get("kind") if isinstance(record, dict) else None
+    rules = rules_from_state(state)
+    firewall = (
+        firewall_script(kind, rules, "delete", root=root)
+        if kind in FIREWALLS
+        else ""
+    )
+    lines = head + [
+        "umask 077",
+        "OK=1",
+        'failed() { echo "@@FAILED $1"; OK=0; }',
+        'D=$(mktemp -d) || { echo "@@FAILED workdir"; echo "@@DONE no";'
+        " exit 1; }",
+        "trap 'rm -rf \"$D\"' EXIT",
+        "trap 'exit 129' HUP INT TERM",
+        *_uninstall_helpers(),
+        f'for H in "$R"{shlex.quote(HOLD_PREFIX)}*; do',
+        '  if [ -d "$H" ]; then held_back "$H"; fi',
+        "done",
+    ]
+    if firewall:
+        lines += [
+            "# pare-feu",
+            _decode_to(_b64(firewall), '"$D/firewall.sh"')
+            + " || failed firewall",
+            'sh "$D/firewall.sh" > "$D/firewall.out"; FRC=$?',
+            "grep -v '^@@END$' \"$D/firewall.out\"",
+            '[ "$FRC" = 0 ] || failed firewall',
+        ]
+    for svc, svc_record in records:
+        lines += _service_uninstall_lines(svc, svc_record, remove_data, stamp)
+    recorded = [svc for svc, _ in records]
+    others = [svc for svc in SERVICES if svc not in recorded]
+    tls = '"$CALL/tls"'
+    lines += [
+        'if [ "$OK" = 1 ]; then',
+        *[f'  rm -f "$PENDING/{svc}.json"' for svc in recorded],
+        *[
+            f'  if [ -f "$PENDING/{svc}.json" ]; then'
+            f' echo "@@PENDING_LEFT {svc}"; fi'
+            for svc in others
+        ],
+        '  rmdir "$PENDING" 2>/dev/null',
+        '  for E in "$CALL"/*; do',
+        '    case "${E##*/}" in',
+        "      tls|pending|state.json|\\*) ;;",
+        '      *) rm -rf "$E" || failed call-dir ;;',
+        "    esac",
+        "  done",
+    ]
+    if remove_data:
+        lines.append(
+            f"  if [ -e {tls} ]; then rm -rf {tls}"
+            f' && echo "@@REMOVED tls {COTURN_TLS_DIR}" || failed tls; fi'
+        )
+    else:
+        lines.append(
+            f'  if [ -e {tls} ]; then echo "@@KEPT {COTURN_TLS_DIR}"; fi'
+        )
+    lines += [
+        '  if [ "$OK" = 1 ]; then',
+        '    rm -f "$STATE" && echo "@@REMOVED state" || failed state',
+        "  fi",
+        '  rmdir "$CALL" 2>/dev/null',
+        "fi",
+        'if [ "$OK" = 1 ]; then echo "@@DONE yes"; else echo "@@DONE no";'
+        " exit 1; fi",
         "",
     ]
     return "\n".join(lines)
