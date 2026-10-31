@@ -480,16 +480,23 @@ def resent_from_us(view: MessageView, ctx: GuardContext) -> bool:
     return False
 
 
+def _first_token(value: str) -> str:
+    """Le premier jeton d'un en-tête structuré, sans casse : ce qui précède
+    « ; », une fois chaque commentaire « (…) » ôté et les blancs autour
+    retirés. « auto-replied (vacation) » rend « auto-replied »."""
+    return fold(_strip_comments(value).split(";", 1)[0]).strip()
+
+
 def is_auto_reply(view: MessageView) -> bool:
     """Vrai pour une réponse automatique (absence, accusé de réception) :
-    une occurrence d'`Auto-Submitted` dont le premier jeton (avant « ; »,
-    sans casse) est `auto-replied`, ou une `Precedence` égale à
-    `auto_reply`. `auto-generated` n'en est pas une."""
+    une occurrence d'`Auto-Submitted` dont le premier jeton
+    (`_first_token`) est `auto-replied`, ou une `Precedence` dont le jeton
+    est `auto_reply`. `auto-generated` n'en est pas une."""
     for value in header_values(view, "Auto-Submitted"):
-        if fold(value.split(";", 1)[0]).strip() == "auto-replied":
+        if _first_token(value) == "auto-replied":
             return True
     return any(
-        fold(value).strip() == "auto_reply"
+        _first_token(value) == "auto_reply"
         for value in header_values(view, "Precedence")
     )
 
@@ -580,10 +587,10 @@ def _list_headers(view: MessageView) -> str | None:
     """Les en-têtes des listes et des envois automatiques, dans l'ordre
     `auto_submitted`, `precedence`, `list`, `auto_response_suppress`."""
     for value in header_values(view, "Auto-Submitted"):
-        if fold(value.split(";", 1)[0]).strip() != "no":
+        if _first_token(value) != "no":
             return "auto_submitted"
     for value in header_values(view, "Precedence"):
-        if fold(value) in BULK_PRECEDENCE:
+        if _first_token(value) in BULK_PRECEDENCE:
             return "precedence"
     if "list-id" in view.extra or "list-unsubscribe" in view.extra:
         return "list"
