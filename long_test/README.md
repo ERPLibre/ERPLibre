@@ -728,20 +728,61 @@ Arch covers the http path without a firewall: the menu's pacman
 preparation, both services in http, the check (`turn-udp`, `turn-tcp`,
 `ntfy-health`), the uninstall and its ports, then a second uninstall.
 
+These are the development scenario (`--scenario dev`). The production
+scenario (`--scenario prod`) runs on each system, on a new VM of the same
+name:
+
+1. the VM, ssh and cloud-init (Arch: the pacman preparation; Debian: ufw
+   enabled after `ufw allow 22/tcp`);
+2. an invented authority (`local_cert`) issues a certificate for
+   `ntfy.call.exemple.test`, `turn.call.exemple.test` and the VM address,
+   then a second one with another serial number;
+3. the tool installs both services in production with the first
+   certificate as a supplied one, behind an nginx it installs (Arch: its
+   include line adopted in `nginx.conf`), and adds its firewall rules;
+4. the check from this machine with the authority: `turn-udp`,
+   `turn-tcp`, `turn-tls` (name `turn.call.exemple.test`),
+   `private-denied`, `ntfy-health` through nginx on 443 (name
+   `ntfy.call.exemple.test`), `cert-expiry`, `cert-issuer`, `firewall`
+   (Debian) and both services must be green;
+5. the product's deploy hook run by hand with `RENEWED_LINEAGE`, the
+   second certificate placed as a fake lineage in
+   `/etc/letsencrypt/live/erplibre-call/`. No ACME authority reaches a VM
+   under an invented name, so the install keeps a supplied certificate,
+   under which the hook leaves coturn alone and reloads nginx. The test
+   then marks coturn as Let's Encrypt in the state, the record a Let's
+   Encrypt install writes: the hook copies the lineage and coturn serves
+   the new serial number with the same `MainPID` (SIGUSR2, no restart).
+   The first certificate goes back the same way, then the state is
+   restored and the fake lineage removed. nginx keeps serving the
+   supplied certificate: its site reads that file, not the lineage. Every
+   serial number is read from the two certificates;
+6. the check again, then a second install with the same answers changes
+   nothing;
+7. the uninstall, data included: no nginx site, link or include line, no
+   hook, no `/etc/erplibre-call`, nginx purged (the tool installed it), no
+   coturn unit, the ports closed from this machine; a second uninstall
+   finds nothing to do.
+
 ```
-./long_test/call_infra.py                  # Debian, then Arch
+./long_test/call_infra.py                  # Debian, then Arch, dev then prod
 ./long_test/call_infra.py --distro arch    # one system
+./long_test/call_infra.py --scenario prod  # one scenario
 ./long_test/call_infra.py --dry-run        # the plan, nothing created
-./long_test/call_infra.py --garder         # keep the VMs
+./long_test/call_infra.py --garder --scenario dev   # keep the VMs
 ./long_test/call_infra.py --detruire       # undo the last run
 ```
 
 The VM names are fixed: a VM kept by `--garder` makes the next run refuse
-until `--detruire`. Each system's log is a `.log` in the run's
-sub-directory; the secrets the scripts print (ntfy's admin password, the
-check account key, the phone's ntfy token) are masked there. The report
-gives a verdict per system, `OK` or `ECHEC(<first failed step>)`, with each
-step and the check lines.
+until `--detruire`. Both scenarios of a system use the same name, so
+`--garder` needs a single scenario.
+
+Each run's log is a `<scenario>-<system>.log` in the run's sub-directory;
+the secrets the scripts print (ntfy's admin password, the check account
+key, the phone's ntfy token) are masked there. The report gives a verdict
+per system and scenario, `OK` or `ECHEC(<first failed step>)`, with each
+step, the check lines and, for the hook, the expected and served serial
+numbers.
 
 ## Starting from a host you already have
 

@@ -786,21 +786,63 @@ les deux services en http, la vérification (`turn-udp`, `turn-tcp`,
 `ntfy-health`), la désinstallation et ses ports, puis une seconde
 désinstallation.
 
+C'est le scénario de développement (`--scenario dev`). Le scénario de
+production (`--scenario prod`) tourne sur chaque système, sur une VM neuve
+du même nom :
+
+1. la VM, ssh et cloud-init (Arch : la préparation pacman ; Debian : ufw
+   activé après `ufw allow 22/tcp`) ;
+2. une autorité inventée (`local_cert`) émet un certificat pour
+   `ntfy.call.exemple.test`, `turn.call.exemple.test` et l'adresse de la
+   VM, puis un second, d'un autre numéro de série ;
+3. l'outil installe les deux services en production avec le premier
+   certificat comme certificat fourni, derrière un nginx qu'il installe
+   (Arch : sa ligne include adoptée dans `nginx.conf`), et ajoute ses
+   règles de pare-feu ;
+4. la vérification depuis cette machine avec l'autorité : `turn-udp`,
+   `turn-tcp`, `turn-tls` (nom `turn.call.exemple.test`),
+   `private-denied`, `ntfy-health` par nginx sur 443 (nom
+   `ntfy.call.exemple.test`), `cert-expiry`, `cert-issuer`, `firewall`
+   (Debian) et les deux services doivent être verts ;
+5. le crochet de déploiement du produit lancé à la main avec
+   `RENEWED_LINEAGE`, le second certificat posé en fausse lignée dans
+   `/etc/letsencrypt/live/erplibre-call/`. Aucune autorité ACME ne joint
+   une VM sous un nom inventé : l'installation garde donc un certificat
+   fourni, sous lequel le crochet laisse coturn tranquille et recharge
+   nginx. Le test inscrit ensuite coturn sous Let's Encrypt dans l'état,
+   la fiche qu'écrit une installation Let's Encrypt : le crochet copie la
+   lignée et coturn sert le nouveau numéro de série avec le même
+   `MainPID` (SIGUSR2, sans redémarrage). Le premier certificat revient
+   par le même chemin, puis l'état est remis et la fausse lignée retirée.
+   nginx sert toujours le certificat fourni : son site lit ce fichier, pas
+   la lignée. Chaque numéro de série est lu des deux certificats ;
+6. la vérification de nouveau, puis une seconde installation aux mêmes
+   réponses ne change rien ;
+7. la désinstallation, données comprises : plus de site, de lien ni de
+   ligne include de nginx, plus de crochet, plus de `/etc/erplibre-call`,
+   nginx purgé (l'outil l'avait installé), plus d'unité coturn, les ports
+   fermés vus d'ici ; une seconde désinstallation ne trouve rien à faire.
+
 ```
-./long_test/call_infra.py                  # Debian, puis Arch
+./long_test/call_infra.py                  # Debian, puis Arch, dev puis prod
 ./long_test/call_infra.py --distro arch    # un seul système
+./long_test/call_infra.py --scenario prod  # un seul scénario
 ./long_test/call_infra.py --dry-run        # le plan, rien de créé
-./long_test/call_infra.py --garder         # garder les VM
+./long_test/call_infra.py --garder --scenario dev   # garder les VM
 ./long_test/call_infra.py --detruire       # défaire la dernière course
 ```
 
 Les noms des VM sont fixes : une VM gardée par `--garder` fait refuser la
-course suivante jusqu'au `--detruire`. Le journal de chaque système est un
-`.log` dans le sous-dossier de la course ; les secrets qu'impriment les
-scripts (le mot de passe administrateur de ntfy, la clé du compte de
-contrôle, le jeton ntfy du téléphone) y sont masqués. Le rapport donne un
-verdict par système, `OK` ou `ECHEC(<première étape en échec>)`, avec
-chaque étape et les lignes de la vérification.
+course suivante jusqu'au `--detruire`. Les deux scénarios d'un système
+prennent le même nom : `--garder` demande donc un seul scénario.
+
+Le journal de chaque course est un `<scénario>-<système>.log` dans le
+sous-dossier de la course ; les secrets qu'impriment les scripts (le mot de
+passe administrateur de ntfy, la clé du compte de contrôle, le jeton ntfy
+du téléphone) y sont masqués. Le rapport donne un verdict par système et
+par scénario, `OK` ou `ECHEC(<première étape en échec>)`, avec chaque
+étape, les lignes de la vérification et, pour le crochet, les numéros de
+série attendus et servis.
 
 ## Partir d'un hôte qu'on possède déjà
 
