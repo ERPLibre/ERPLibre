@@ -178,6 +178,7 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
         retelecharge=None,
         publie=b"publie",
         urls=("https://m/i",),
+        depot=None,
     ):
         """Rend (sorti, nombre de téléchargements, contenu final).
 
@@ -209,7 +210,10 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
             image.write_bytes(sur_disque)
             appels = []
 
-            def faux_telechargement(urls_, dest, dry_run, timeout=None, **_):
+            def faux_telechargement(
+                urls_, dest, dry_run, timeout=None, depot=None, **_
+            ):
+                self.depot_recu = depot
                 appels.append(tuple(urls_))
                 Path(dest).write_bytes(pose)
 
@@ -221,7 +225,9 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
                 mock.patch.object(DQ, "download_image", faux_telechargement),
             ):
                 try:
-                    DQ.verify_sha256(self.URL, image, False, "ubuntu", urls)
+                    DQ.verify_sha256(
+                        self.URL, image, False, "ubuntu", urls, depot=depot
+                    )
                 except SystemExit:
                     sorti = True
             final = image.read_bytes() if image.exists() else b""
@@ -250,6 +256,25 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
         self.assertTrue(sorti)
         self.assertEqual(0, n)
         self.assertEqual(b"", final)
+
+    def test_un_cache_en_pool_est_vide_par_son_depot(self):
+        """Le cache par défaut est un pool libvirt où l'utilisateur n'écrit
+        pas : seul le Depot qui a publié l'image sait la retirer (vol-delete),
+        et la reprise doit republier par lui."""
+        retraits = []
+
+        class FauxDepot:
+            def delete(self, chemin):
+                retraits.append(chemin.name)
+                chemin.unlink(missing_ok=True)
+
+        depot = FauxDepot()
+        sorti, n, final = self.jouer(b"vieille", b"faux-aussi", depot=depot)
+        self.assertTrue(sorti)
+        # La reprise remplace l'image sans la retirer d'abord : seul le
+        # retrait final, après le second écart, passe par le Depot.
+        self.assertEqual([self.NOM], retraits)
+        self.assertIs(depot, self.depot_recu)
 
     def test_une_image_conforme_ne_declenche_rien(self):
         sorti, n, final = self.jouer(b"publie", b"publie")
