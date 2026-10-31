@@ -318,7 +318,7 @@ COTURN_UNIT = (
 class TestProbeScript(unittest.TestCase):
     """La sonde jouée pour de vrai, racine et commandes en bouchons."""
 
-    def run_probe(self, ufw="Status: active", state=None):
+    def run_probe(self, ufw="Status: active", state=None, added=""):
         with tempfile.TemporaryDirectory() as tmp:
             root = os.path.join(tmp, "root")
             stubs = os.path.join(tmp, "stubs")
@@ -364,8 +364,11 @@ class TestProbeScript(unittest.TestCase):
             )
             write(
                 os.path.join(stubs, "ufw"),
-                "#!/bin/sh\nif %s; then echo '%s'; else echo 'État : traduit';"
-                " fi\n" % (IN_C, ufw),
+                "#!/bin/sh\n"
+                "if [ \"$1 $2\" = 'show added' ]; then cat <<'EOF'\n"
+                "%sEOF\nexit 0; fi\n"
+                "if %s; then echo '%s'; else echo 'État : traduit';"
+                " fi\n" % (added, IN_C, ufw),
             )
             for name in ("nft", "iptables"):
                 write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
@@ -407,6 +410,19 @@ class TestProbeScript(unittest.TestCase):
         self.assertIsNone(facts.ntfy)
         self.assertEqual(facts.firewall, "ufw")
         self.assertEqual(facts.state, state)
+
+    def test_probe_lists_the_ufw_rules_of_an_active_ufw(self):
+        added = (
+            "Added user rules (see 'ufw status' for running firewall):\n"
+            "ufw allow 22/tcp\n"
+            "ufw limit 3478/udp\n"
+        )
+        facts = ci.parse_probe(self.run_probe(added=added).stdout)
+        self.assertEqual(
+            facts.ufw_added, ("ufw allow 22/tcp", "ufw limit 3478/udp")
+        )
+        idle = self.run_probe(ufw="Status: inactive", added=added)
+        self.assertEqual(ci.parse_probe(idle.stdout).ufw_added, ())
 
     def test_inactive_ufw_and_no_nft_is_none(self):
         done = self.run_probe(ufw="Status: inactive")
@@ -1819,6 +1835,44 @@ class TestPendingFirewall(unittest.TestCase):
                 dataclasses.replace(bare, firewall="nftables"), ans
             )
         )
+
+    def test_a_port_the_admin_already_opens_is_not_missing(self):
+        # Une règle de l'administrateur couvre le port (FOREIGN) : jamais
+        # consignée, elle ne fait pas reposer la question à chaque relance.
+        ans = answers()
+        rules = ci.firewall_rules(ans)
+        theirs = tuple(
+            f"ufw {action} {r.port}/{r.proto}"
+            for action, r in zip(("allow", "limit", "deny") * 9, rules)
+        )
+        bare = base_facts(
+            firewall="ufw", state=installed_state(ans), ufw_added=theirs
+        )
+        self.assertFalse(ci.firewall_missing(bare, ans))
+        self.assertEqual(ci.rules_from_state(bare.state), ())
+        # Une seule règle non couverte suffit à proposer le pare-feu.
+        self.assertTrue(
+            ci.firewall_missing(
+                dataclasses.replace(bare, ufw_added=theirs[1:]), ans
+            )
+        )
+        # La ligne exacte de l'outil, non consignée, reste à consigner.
+        ours = tuple(ci.firewall_preview("ufw", rules))
+        self.assertTrue(
+            ci.firewall_missing(dataclasses.replace(bare, ufw_added=ours), ans)
+        )
+        # Un port voisin ne couvre pas le nôtre.
+        near = tuple(f"ufw allow {r.port}0/{r.proto}" for r in rules)
+        self.assertTrue(
+            ci.firewall_missing(dataclasses.replace(bare, ufw_added=near), ans)
+        )
+        # Les lignes de ufw ne comptent que pour ufw.
+        nft = dataclasses.replace(
+            bare,
+            firewall="nftables",
+            nft_chains=(("inet", "filter", "input"),),
+        )
+        self.assertTrue(ci.firewall_missing(nft, ans))
 
 
 class TestAdminAdded(unittest.TestCase):
