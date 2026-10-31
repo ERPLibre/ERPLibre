@@ -8,8 +8,9 @@
 # lignee, avec RENEWED_LINEAGE=/etc/letsencrypt/live/<nom>.
 #
 # Pour la lignee « erplibre-call » seulement, une autre ne change rien :
-#   1. coturn inscrit dans l'etat et TLS_DIR present : fullchain.pem et
-#      privkey.pem deviennent turn.crt et turn.key (voir copy_pair) ;
+#   1. coturn inscrit dans l'etat avec un certificat Let's Encrypt
+#      (settings.tls) et TLS_DIR present : fullchain.pem et privkey.pem
+#      deviennent turn.crt et turn.key (voir copy_pair) ;
 #      coturn actif recoit SIGUSR2, qui lui fait relire certificat et cle
 #      sans couper les allocations en cours (aucun redemarrage) ; puis
 #      APPLIED_FILE recoit l'empreinte qu'install_coturn.sh calcule, pour
@@ -50,7 +51,9 @@ applied_digest() {
 }
 
 # coturn_record : imprime « <unite> <configuration> » de coturn lus dans
-# STATE_FILE, rien quand l'etat n'existe pas ou ne nomme pas coturn. Code
+# STATE_FILE, rien quand l'etat n'existe pas ou ne nomme pas coturn,
+# « not-letsencrypt » quand coturn sert un autre certificat (fourni, ou
+# aucun) : la paire en place n'est pas celle de la lignee. Code
 # non nul pour un etat illisible, ou une unite ou un chemin hors de ce que
 # l'outil ecrit : les deux finissent dans des commandes lancees en root.
 # python3 est la, certbot en depend.
@@ -68,8 +71,13 @@ try:
     if record is None:
         sys.exit(0)
     unit, config = record.get("unit"), record.get("config")
+    settings = record.get("settings") or {}
+    tls = settings.get("tls")
 except (OSError, ValueError, AttributeError):
     sys.exit(2)
+if tls != "letsencrypt":
+    print("not-letsencrypt")
+    sys.exit(0)
 safe = (
     isinstance(config, str)
     and re.fullmatch(r"(/[A-Za-z0-9._@+-]+)+", config)
@@ -139,6 +147,10 @@ coturn_renew() {
     fi
     if [ -z "$record" ]; then
         hook "coturn-skip not-in-state"
+        return 0
+    fi
+    if [ "$record" = not-letsencrypt ]; then
+        hook "coturn-skip not-letsencrypt"
         return 0
     fi
     if [ -L "$TLS_DIR" ]; then
