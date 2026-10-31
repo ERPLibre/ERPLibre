@@ -296,6 +296,18 @@ class TestArguments(ServiceCase):
         self.assertIn("--compte", aide.getvalue())
         self.assertIn("--quiet", aide.getvalue())
 
+    def test_help_names_the_account_argument_in_the_interface_language(self):
+        from script.todo import todo_i18n
+
+        ancienne = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", ancienne)
+        for langue, nom in (("en", "NAME"), ("fr", "NOM")):
+            todo_i18n._current_lang = langue
+            with self.subTest(langue=langue):
+                with contextlib.redirect_stdout(io.StringIO()) as aide:
+                    run.main(["--help"], deps=self.deps())
+                self.assertIn(f"--compte {nom}", aide.getvalue())
+
 
 class TestLocksAndVault(ServiceCase):
     def test_a_held_service_lock_exits_busy_at_once(self):
@@ -371,6 +383,30 @@ class TestLocksAndVault(ServiceCase):
         )
         code, sortie = self.lancer(env={}, config_file=config)
         self.assertNotIn(t("mail_service_vault_locked"), sortie)
+
+    def test_a_refused_config_password_does_not_send_to_the_credential(self):
+        """Sans credential lu, le mot de passe refusé vient de
+        `kdbx.password` : le message le nomme et ne renvoie pas à
+        [8] › [2], par la main comme dans l'unité sans credential."""
+        self.comptes(self.compte("perso"))
+        self.regle("perso")
+        self.coffre({"kdbx:ERPLibre/Mail/perso": SECRET_IMAP})
+        config = FakeConfig(
+            {"kdbx": {"path": str(self.kdbx), "password": "perime"}}
+        )
+        vide = self.home / "creds-vide"
+        vide.mkdir()
+        for env in ({}, {"CREDENTIALS_DIRECTORY": str(vide)}):
+            with self.subTest(env=bool(env)):
+                code, sortie = self.lancer(env=env, config_file=config)
+                self.assertEqual(code, run.EXIT_VAULT)
+                self.assertEqual(
+                    sortie,
+                    f"{t('mail_service_vault_locked')}"
+                    f" {t('mail_service_vault_wrong_password_config')}\n",
+                )
+                self.assertNotIn("[7] › [2]", sortie)
+                self.assertEqual(self.connexions, [])
 
     def test_main_drops_core_dumps(self):
         self.comptes(self.compte("perso"))
@@ -661,6 +697,34 @@ class TestRuleWarnings(ServiceCase):
         self.assertIn(f"{t('mail_service_rule_warnings')} 2", sortie)
         self.assertIn("vacances-inventees", "\n".join(journal.output))
         self.assertIn("valeur-inventee", "\n".join(journal.output))
+
+    def test_a_failed_catch_up_is_told_without_the_tui_key(self):
+        """Le rattrapage en échec : le journal dit le sien, sans renvoyer
+        à la touche « l » du TUI, et le code est celui d'une panne de
+        lien, comme un dossier en erreur."""
+        self.comptes(self.compte("perso"))
+        self.regle("perso")
+        self.coffre({"kdbx:ERPLibre/Mail/perso": SECRET_IMAP})
+
+        def passe(session, **kwargs):
+            return engine.EngineReport(
+                account=session.account.name,
+                active_rules=1,
+                warnings=[t("mail_rules_error")],
+            )
+
+        with mock.patch.object(engine, "run_pass", side_effect=passe):
+            code, sortie = self.lancer()
+        self.assertEqual(code, run.EXIT_NETWORK)
+        self.assertIn(t("mail_service_catchup_failed"), sortie)
+        self.assertNotIn(t("mail_rules_error"), sortie)
+        # Répété à l'identique avec --quiet : tu, comme un dossier en
+        # erreur qui dure.
+        with mock.patch.object(engine, "run_pass", side_effect=passe):
+            code, sortie = self.lancer("--quiet")
+            code, sortie = self.lancer("--quiet")
+        self.assertEqual(code, run.EXIT_NETWORK)
+        self.assertEqual(sortie, "")
 
 
 class TestKeyring(ServiceCase):

@@ -402,6 +402,20 @@ class TestCredential(ServiceMenuCase):
         self.assertNotIn(t("mail_service_creds_written"), sortie)
         self.assertNotIn(MAITRE, sortie)
 
+    def test_a_credstore_write_failure_does_not_blame_systemd_creds(self):
+        """Un OSError ne vient que de l'écriture du credstore : le message
+        nomme le dossier, pas `systemd-creds`, et pas le chemin."""
+        self.doubles["setup_credential"].side_effect = PermissionError(
+            13, "refusé", str(self.home / "credstore.encrypted")
+        )
+        sortie = self.lancer(["2", "0"], ["o"])
+        self.assertIn(
+            f"{t('mail_service_creds_write_failed')} PermissionError", sortie
+        )
+        self.assertNotIn(t("mail_service_creds_failed"), sortie)
+        self.assertNotIn(str(self.home), sortie)
+        self.assertNotIn(t("mail_service_creds_written"), sortie)
+
     def test_without_a_kdbx_nothing_is_asked(self):
         sortie = self.lancer(["2", "0"], config=False)
         self.assertIn(t("mail_service_creds_no_kdbx"), sortie)
