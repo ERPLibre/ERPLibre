@@ -10,6 +10,7 @@ controle est ecrit pour de vrai dans une base SQLite temporaire, par un
 `sqlite3` bouchon qui execute la requete avec le module sqlite3 de Python,
 puis relu et compare a la cle que calcule `turn_client`.
 """
+import hashlib
 import os
 import re
 import shutil
@@ -31,7 +32,7 @@ REALM = "turn.exemple.test"
 MOT_DE_PASSE = "Pz7-controle-invente-41"
 CONSTANTES = ("MARKER", "CALL_DIR", "TLS_DIR", "DB_DIR", "DB_FILE",
               "CHECK_USER", "OS_RELEASE", "DEBIAN_CONF", "ARCH_CONF",
-              "DEFAULT_FILE")
+              "DEFAULT_FILE", "APPLIED_FILE")
 TABLES_COTURN = {"turnusers_lt", "turn_secret", "allowed_peer_ip",
                  "denied_peer_ip", "turn_origin_to_realm",
                  "turn_realm_option", "oauth_key", "admin_user"}
@@ -633,6 +634,46 @@ class TestCertificat(unittest.TestCase):
             self.assertEqual(appels, [])
 
 
+class TestTampon(unittest.TestCase):
+    """`applied_digest` : l'empreinte de ce que coturn charge, configuration
+    et, avec un certificat, certificat et cle servis."""
+
+    def _empreinte(self, dossier, avec):
+        tls = os.path.join(dossier, "tls")
+        os.makedirs(tls, exist_ok=True)
+        conf = os.path.join(dossier, "turnserver.conf")
+        with open(conf, "w") as flux:
+            flux.write("# erplibre-call: managed\n")
+        variables = ("TURN_CERT_FILE=%s/c.pem\nTURN_KEY_FILE=%s/k.pem\n"
+                     % (dossier, dossier)) if avec else ""
+        enveloppe = (ENTETE + constantes(TLS_DIR=tls) + ENTREES + variables
+                     + fonctions("has_cert", "applied_digest")
+                     + "applied_digest %s\n" % conf)
+        return jouer(enveloppe), tls
+
+    def test_sans_certificat_la_configuration_seule(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _ = self._empreinte(dossier, avec=False)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(len(fait.stdout.splitlines()), 1)
+            self.assertIn("turnserver.conf", fait.stdout)
+
+    def test_un_certificat_renouvele_change_l_empreinte(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            avant, tls = None, None
+            for contenu in ("ancien", "nouveau"):
+                tls = os.path.join(dossier, "tls")
+                os.makedirs(tls, exist_ok=True)
+                for nom in ("turn.crt", "turn.key"):
+                    with open(os.path.join(tls, nom), "w") as flux:
+                        flux.write(contenu + nom)
+                fait, _ = self._empreinte(dossier, avec=True)
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                self.assertEqual(len(fait.stdout.splitlines()), 3)
+                self.assertNotEqual(fait.stdout, avant)
+                avant = fait.stdout
+
+
 class TestSource(unittest.TestCase):
     def test_le_mot_de_passe_n_est_jamais_affiche(self):
         """Aucune ligne n'imprime la valeur de TURN_CHECK_PASSWORD ; le seul
@@ -670,19 +711,28 @@ class TestMain(unittest.TestCase):
     marqueurs, code de sortie."""
 
     def _jouer(self, etats, famille="debian", conf=None, garder="",
-               change=1, unite=""):
+               change=1, unite="", tampon=None):
+        """`tampon` : None, aucun tampon ; "juste", le tampon de la
+        configuration presente ; sinon le texte du tampon."""
         with tempfile.TemporaryDirectory() as dossier:
             journal = os.path.join(dossier, "appels")
             chemin = os.path.join(dossier, "turnserver.conf")
+            applique = os.path.join(dossier, "coturn.applied")
             if conf is not None:
                 with open(chemin, "w") as flux:
                     flux.write(conf)
+            if tampon is not None:
+                if tampon == "juste":
+                    tampon = self.empreinte(chemin)
+                with open(applique, "w") as flux:
+                    flux.write(tampon + "\n")
             with open(os.path.join(dossier, "etats"), "w") as flux:
                 flux.write("\n".join(etats) + "\n")
             with open(os.path.join(dossier, "unite"), "w") as flux:
                 flux.write(unite.replace("@D@", dossier))
             enveloppe = (
-                ENTETE + constantes(DEBIAN_CONF=chemin, ARCH_CONF=chemin)
+                ENTETE + constantes(DEBIAN_CONF=chemin, ARCH_CONF=chemin,
+                                    CALL_DIR=dossier, APPLIED_FILE=applique)
                 + ENTREES + "TURN_GARDER_CONFIG=%s\n" % garder
                 + "export TURN_CHECK_PASSWORD\n"
                 "J=%s\nE=%s/etats\nU=%s/unite\n" % (journal, dossier, dossier)
@@ -691,7 +741,9 @@ class TestMain(unittest.TestCase):
                 + "install_packages() { echo install >> $J; }\n"
                 "install_certificate() { echo certificat >> $J; }\n"
                 "write_config() { echo \"write $1\" >> $J;"
+                " [ -e \"$1\" ] || echo '# erplibre-call: managed' > \"$1\";"
                 " CONFIG_CHANGED=%d; }\n" % change
+                + "install() { echo \"install $*\" >> $J; }\n"
                 + "enable_default() { echo default >> $J; }\n"
                 "prepare_database() { echo base >> $J; }\n"
                 "ensure_check_user() { echo check >> $J;"
@@ -706,18 +758,24 @@ class TestMain(unittest.TestCase):
                 "    e=$(head -n 1 $E); [ \"$(wc -l < $E)\" -gt 1 ]"
                 " && sed -i 1d $E\n"
                 "    echo \"$e\"; [ \"$e\" = active ];;\n"
-                "  *) echo \"systemctl $*\" >> $J;;\n"
+                "  *) echo \"systemctl $*\" >> $J;\n"
+                "     [ ! -e \"$APPLIED_FILE\" ] || echo \"tampon pendant $1\""
+                " >> $J;;\n"
                 "  esac\n"
                 "}\n"
             ) + fonctions(
                 "valid_port", "has_cert", "check_inputs", "family",
                 "unit_name", "unit_text", "service_user", "config_path",
-                "config_is_foreign", "enable_service", "service_state",
-                "main") + "main\n"
+                "config_is_foreign", "applied_digest", "record_applied",
+                "enable_service", "service_state", "main") + "main\n"
             fait = jouer(enveloppe)
             # Le dossier disparait au retour : le contenu est lu avant.
             self.conf_apres = (open(chemin).read() if os.path.exists(chemin)
                                else None)
+            self.tampon_apres = (open(applique).read()
+                                 if os.path.exists(applique) else None)
+            self.empreinte_apres = (self.empreinte(chemin)
+                                    if os.path.exists(chemin) else None)
             return fait, lignes(journal), chemin
 
     def test_service_en_echec_code_non_nul_et_marqueurs(self):
@@ -768,12 +826,62 @@ class TestMain(unittest.TestCase):
             ["active"], conf="# erplibre-call: managed\nlisten=1\n")
         self.assertEqual(fait.returncode, 0, fait.stderr)
 
+    @staticmethod
+    def empreinte(chemin):
+        """La ligne que `sha256sum <chemin>` imprime."""
+        with open(chemin, "rb") as flux:
+            return "%s  %s" % (hashlib.sha256(flux.read()).hexdigest(),
+                               chemin)
+
     def test_configuration_inchangee_pas_de_redemarrage(self):
-        """Redemarrer coturn coupe les appels en cours."""
-        fait, appels, _ = self._jouer(["active"], change=0)
+        """Redemarrer coturn coupe les appels en cours : une configuration
+        inchangee, que le tampon dit deja chargee, ne redemarre rien."""
+        fait, appels, _ = self._jouer(
+            ["active"], change=0, conf="# erplibre-call: managed\n",
+            tampon="juste")
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertNotIn("systemctl restart coturn", appels)
         self.assertIn("systemctl start coturn", appels)
+
+    def test_configuration_inchangee_sans_tampon_redemarre(self):
+        """Un passage interrompu apres write_config laisse sur disque la
+        configuration geree, mais coturn tourne encore sur l'ancienne : sans
+        tampon, la relance redemarre."""
+        fait, appels, _ = self._jouer(
+            ["active"], change=0, conf="# erplibre-call: managed\n")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("systemctl restart coturn", appels)
+        self.assertEqual(self.tampon_apres, self.empreinte_apres + "\n")
+
+    def test_configuration_inchangee_tampon_perime_redemarre(self):
+        fait, appels, _ = self._jouer(
+            ["active"], change=0, conf="# erplibre-call: managed\n",
+            tampon="0" * 64 + "  /ailleurs/turnserver.conf")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("systemctl restart coturn", appels)
+        self.assertEqual(self.tampon_apres, self.empreinte_apres + "\n")
+
+    def test_tampon_retire_avant_le_redemarrage(self):
+        """Un passage coupe pendant le redemarrage ne laisse aucun tampon qui
+        dirait la nouvelle configuration chargee."""
+        _, appels, _ = self._jouer(
+            ["active"], conf="# erplibre-call: managed\n", tampon="juste")
+        self.assertIn("systemctl restart coturn", appels)
+        self.assertNotIn("tampon pendant restart", appels)
+
+    def test_redemarrage_en_echec_aucun_tampon(self):
+        fait, appels, _ = self._jouer(
+            ["failed"], change=0, conf="# erplibre-call: managed\n",
+            tampon="0" * 64 + "  /ailleurs/turnserver.conf")
+        self.assertNotEqual(fait.returncode, 0)
+        self.assertIn("systemctl restart coturn", appels)
+        self.assertIsNone(self.tampon_apres)
+
+    def test_configuration_changee_tampon_ecrit(self):
+        fait, appels, _ = self._jouer(["active"])
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("systemctl restart coturn", appels)
+        self.assertEqual(self.tampon_apres, self.empreinte_apres + "\n")
 
     def test_arch_unite_et_compte_lus_du_paquet(self):
         unite = ("[Service]\nUser=turnsrv-invente\nExecStart=/usr/bin/"
