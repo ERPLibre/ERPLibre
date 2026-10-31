@@ -45,6 +45,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import secrets
 import shlex
 import socket
@@ -106,6 +107,9 @@ DELAI_PORT = 3
 # l'administrateur de ntfy, la clé du compte de contrôle de coturn. Ce sont
 # celles que le menu masque à l'écran ; ici elles sont masquées au journal.
 SECRETS = (cim.ADMIN_PASSWORD_LINE, cim.CHECK_KEY_LINE)
+# Un jeton d'accès de ntfy, que `ntfy token add` imprime au milieu d'une
+# ligne : il ouvre les sujets du téléphone tant que la VM vit.
+JETON = re.compile(r"tk_[A-Za-z0-9]+")
 
 # Les lignes de `check_local` qui doivent être vertes, par système.
 CONTROLES = {
@@ -216,13 +220,14 @@ def argv_creation(distro, nom, cle_pub="", drapeaux=()):
 
 def masquer(texte):
     """`texte` où chaque ligne qui commence par un des SECRETS devient
-    « <préfixe> *** ». Le reste passe tel quel."""
+    « <préfixe> *** », et chaque jeton de ntfy (JETON) « tk_*** ». Le reste
+    passe tel quel."""
     lignes = []
     for ligne in texte.splitlines(keepends=True):
         nu = ligne.rstrip("\r\n")
         prefixe = next((p for p in SECRETS if nu.startswith(p)), None)
         if prefixe is None:
-            lignes.append(ligne)
+            lignes.append(JETON.sub("tk_***", ligne))
         else:
             fin = ligne[len(nu) :]
             lignes.append(f"{prefixe} ***{fin}")

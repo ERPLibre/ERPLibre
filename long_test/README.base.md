@@ -743,9 +743,10 @@ preparation, both services in http, the check (`turn-udp`, `turn-tcp`,
 
 The VM names are fixed: a VM kept by `--garder` makes the next run refuse
 until `--detruire`. Each system's log is a `.log` in the run's
-sub-directory; the lines that carry a secret (ntfy's admin password, the
-check account key) are masked there. The report gives a verdict per system,
-`OK` or `ECHEC(<first failed step>)`, with each step and the check lines.
+sub-directory; the secrets the scripts print (ntfy's admin password, the
+check account key, the phone's ntfy token) are masked there. The report
+gives a verdict per system, `OK` or `ECHEC(<first failed step>)`, with each
+step and the check lines.
 
 ## Starting from a host you already have
 
@@ -1571,11 +1572,11 @@ désinstallation.
 
 Les noms des VM sont fixes : une VM gardée par `--garder` fait refuser la
 course suivante jusqu'au `--detruire`. Le journal de chaque système est un
-`.log` dans le sous-dossier de la course ; les lignes qui portent un secret
-(le mot de passe administrateur de ntfy, la clé du compte de contrôle) y
-sont masquées. Le rapport donne un verdict par système, `OK` ou
-`ECHEC(<première étape en échec>)`, avec chaque étape et les lignes de la
-vérification.
+`.log` dans le sous-dossier de la course ; les secrets qu'impriment les
+scripts (le mot de passe administrateur de ntfy, la clé du compte de
+contrôle, le jeton ntfy du téléphone) y sont masqués. Le rapport donne un
+verdict par système, `OK` ou `ECHEC(<première étape en échec>)`, avec
+chaque étape et les lignes de la vérification.
 
 ## Partir d'un hôte qu'on possède déjà
 

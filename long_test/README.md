@@ -738,9 +738,10 @@ preparation, both services in http, the check (`turn-udp`, `turn-tcp`,
 
 The VM names are fixed: a VM kept by `--garder` makes the next run refuse
 until `--detruire`. Each system's log is a `.log` in the run's
-sub-directory; the lines that carry a secret (ntfy's admin password, the
-check account key) are masked there. The report gives a verdict per system,
-`OK` or `ECHEC(<first failed step>)`, with each step and the check lines.
+sub-directory; the secrets the scripts print (ntfy's admin password, the
+check account key, the phone's ntfy token) are masked there. The report
+gives a verdict per system, `OK` or `ECHEC(<first failed step>)`, with each
+step and the check lines.
 
 ## Starting from a host you already have
 

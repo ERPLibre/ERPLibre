@@ -796,11 +796,11 @@ désinstallation.
 
 Les noms des VM sont fixes : une VM gardée par `--garder` fait refuser la
 course suivante jusqu'au `--detruire`. Le journal de chaque système est un
-`.log` dans le sous-dossier de la course ; les lignes qui portent un secret
-(le mot de passe administrateur de ntfy, la clé du compte de contrôle) y
-sont masquées. Le rapport donne un verdict par système, `OK` ou
-`ECHEC(<première étape en échec>)`, avec chaque étape et les lignes de la
-vérification.
+`.log` dans le sous-dossier de la course ; les secrets qu'impriment les
+scripts (le mot de passe administrateur de ntfy, la clé du compte de
+contrôle, le jeton ntfy du téléphone) y sont masqués. Le rapport donne un
+verdict par système, `OK` ou `ECHEC(<première étape en échec>)`, avec
+chaque étape et les lignes de la vérification.
 
 ## Partir d'un hôte qu'on possède déjà
 
