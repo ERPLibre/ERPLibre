@@ -451,6 +451,11 @@ class TestConversion(SvgCase):
             "<rect style=\"fill:url( 'file:///racine/motif.png')\"/>",
             "<style>@import 'https://example.net/a.css';</style>",
             '<a href="https://example.com/">lien</a>',
+            '<image sodipodi:absref="/racine/secret.png" href="#a"/>',
+            '<image absref="/racine/secret.png"/>',
+            '<image href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="/>',
+            '<image href="data:,"/>',
+            '<image href="data:text/html,&lt;p&gt;"/>',
         )
         for body in bodies:
             with self.subTest(body=body):
@@ -479,7 +484,10 @@ class TestConversion(SvgCase):
             '<defs><linearGradient id="g"/></defs>'
             '<rect fill="url(#g)" style="stroke: url( \'#g\')"/>'
             '<use xlink:href="#g"/>'
-            '<image href=" data:image/png;base64,iVBORw0KGgo="/></svg>'
+            '<image href=" data:image/png;base64,iVBORw0KGgo="/>'
+            '<image href="data:image/jpeg;base64,/9j/"/>'
+            "<style>@font-face{src:url(data:font/woff2;base64,d09G)}</style>"
+            "</svg>"
         )
         self.assertFalse(svg.external_reference(text))
         self.fake("rsvg-convert")

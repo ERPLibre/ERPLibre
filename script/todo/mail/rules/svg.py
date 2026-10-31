@@ -18,9 +18,12 @@ fichier, que seul `MAX_SVG_BYTES` borne avant le convertisseur.
 
 Un SVG qui renvoie à une ressource externe est refusé : un attribut `href`
 ou une fonction CSS `url()` dont la valeur n'est ni une ancre `#…` ni un
-`data:`, un `@import`, une entité `SYSTEM` ou `PUBLIC`. Inkscape et
-ImageMagick suivent un `file://` ou un pseudo-protocole et en recopient le
-contenu dans le PNG, que la règle envoie ensuite à des tiers.
+`data:` d'image matricielle ou de police, un attribut `absref`, un
+`@import`, une entité `SYSTEM` ou `PUBLIC`. Inkscape et ImageMagick suivent
+un `file://` ou un pseudo-protocole et en recopient le contenu dans le PNG,
+que la règle envoie ensuite à des tiers ; Inkscape lit aussi le chemin de
+`sodipodi:absref`, et tous deux affichent un SVG imbriqué en `data:` sans
+que ses propres références soient examinées.
 
 La conversion passe par le premier convertisseur de
 `available_converters()`, lancé par `subprocess` avec une liste
@@ -106,11 +109,22 @@ _LENGTH_RE = re.compile(
     r"\s*((?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"
     r"\s*(?:(px|pt|pc|mm|cm|in)\s*)?\Z"
 )
-# Points d'entrée d'une référence : un attribut `href` (préfixe d'espace
-# de noms admis, en limite de nom), `url(`, `@import`, une entité.
+# Points d'entrée d'une référence : un attribut `href` ou `absref`
+# (préfixe d'espace de noms admis, en limite de nom), `url(`, `@import`,
+# une entité. `sodipodi:absref` est un chemin absolu qu'Inkscape charge
+# quand `href` manque ou ne se résout pas : sa valeur passe le même
+# contrôle que celle d'un `href`.
 _REFERENCE_RE = re.compile(
-    r"(?<![\w.:-])(?:[A-Za-z_][\w.-]*:)?href\s*=|url\(|@import|<!ENTITY\s",
+    r"(?<![\w.:-])(?:[A-Za-z_][\w.-]*:)?(?:href|absref)\s*=|url\(|@import"
+    r"|<!ENTITY\s",
     re.IGNORECASE,
+)
+# Valeurs `data:` admises : une image matricielle ou une police, qui ne
+# renvoient à rien. Un document imbriqué (`image/svg+xml`, `text/html`…)
+# porterait ses propres références, que rien n'examine ; un `data:` sans
+# type ne dit pas ce qu'il contient.
+_SAFE_DATA_RE = re.compile(
+    r"data:\s*(?:image/(?:png|jpeg|jpg|gif|webp)|font/[\w.+-]+)\s*[;,]"
 )
 # Suite d'une déclaration `<!ENTITY` qui la rend externe ; entité de
 # paramètre (`%`) comprise.
@@ -400,8 +414,9 @@ def svg_root_attrs(text: str) -> dict | None:
 def external_reference(text: str) -> bool:
     """Vrai si le texte d'un SVG renvoie à une ressource externe : un
     attribut `href` ou une fonction `url()` dont la valeur n'est ni une
-    ancre `#…` ni un `data:`, un `@import`, une entité `SYSTEM` ou
-    `PUBLIC`.
+    ancre `#…` ni un `data:` d'image matricielle ou de police
+    (`_SAFE_DATA_RE`), un attribut `absref` de même, un `@import`, une
+    entité `SYSTEM` ou `PUBLIC`.
 
     La règle est large : un lien `<a href>` ou un `url(` cité dans un
     texte suffit aussi. Une valeur qu'un convertisseur ne peut de toute
@@ -418,7 +433,7 @@ def external_reference(text: str) -> bool:
             continue
         value = text[match.end() : match.end() + _REFERENCE_LOOKAHEAD]
         value = value.lstrip().lstrip("\"'").lstrip().lower()
-        if not value.startswith(("#", "data:")):
+        if not value.startswith("#") and not _SAFE_DATA_RE.match(value):
             return True
     return False
 
