@@ -27,7 +27,10 @@ NTFY = "ntfy.exemple.test"
 TURN = "turn.exemple.test"
 PORT = "2586"
 LIGNEE = "/etc/letsencrypt/live/erplibre-call"
-ACME = "/var/lib/erplibre-call/acme"
+# Hors de /var/lib/erplibre-call, que l'installateur coturn ferme en 0750 :
+# nginx doit traverser chaque parent du dossier du defi.
+ACME = "/var/lib/erplibre-call-acme"
+COTURN_DIR = "/var/lib/erplibre-call"
 INCLUDE = "include /etc/nginx/erplibre-call.d/*.conf;"
 
 # nginx.conf du paquet Debian 13 (le bloc mail commente en moins).
@@ -758,12 +761,13 @@ class TestRefus(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dossier:
             hote = Hote(dossier)
             avec_lignee(hote)
-            ferme = hote.chemin("/var/lib/erplibre-call")
+            ferme = hote.chemin(COTURN_DIR)
             os.makedirs(ferme)
             os.chmod(ferme, 0o750)
-            fait = hote.jouer(**entrees())
+            fait = hote.jouer(**entrees(
+                NGINX_ACME_ROOT=COTURN_DIR + "/acme"))
             self.assertNotEqual(fait.returncode, 0, fait.stdout)
-            self.assertIn("/var/lib/erplibre-call", fait.stderr)
+            self.assertIn(COTURN_DIR, fait.stderr)
             self.assertFalse(os.path.lexists(hote.chemin(SITE_DEBIAN)))
             self.assertEqual(stat.S_IMODE(os.stat(ferme).st_mode), 0o750)
 
@@ -773,10 +777,27 @@ class TestRefus(unittest.TestCase):
             avec_lignee(hote)
             fait = hote.jouer(**entrees())
             self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
-            for chemin in ("/var", "/var/lib", "/var/lib/erplibre-call",
-                           ACME):
+            for chemin in ("/var", "/var/lib", ACME):
                 mode = stat.S_IMODE(os.stat(hote.chemin(chemin)).st_mode)
                 self.assertEqual(mode & 0o005, 0o005, chemin)
+
+    def test_racine_acme_par_defaut_hors_du_dossier_coturn(self):
+        """Sur un hote qui porte aussi coturn, son dossier est deja ferme
+        en 0750 : la racine par defaut est ailleurs et reste lisible."""
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            avec_lignee(hote)
+            ferme = hote.chemin(COTURN_DIR)
+            os.makedirs(ferme)
+            os.chmod(ferme, 0o750)
+            valeurs = entrees()
+            del valeurs["NGINX_ACME_ROOT"]
+            fait = hote.jouer(**valeurs)
+            self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
+            with open(hote.chemin(SITE_DEBIAN)) as fichier:
+                self.assertIn("root %s;" % ACME, fichier.read())
+            self.assertTrue(os.path.isdir(hote.chemin(ACME)))
+            self.assertEqual(stat.S_IMODE(os.stat(ferme).st_mode), 0o750)
 
 
 class TestPaquet(unittest.TestCase):

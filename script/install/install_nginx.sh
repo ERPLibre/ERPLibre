@@ -26,7 +26,7 @@
 #   NGINX_KEY_FILE       la lignee live/erplibre-call de certbot, ou
 #                        /etc/erplibre-call/tls/site.{crt,key} pour un
 #                        certificat fourni
-#   NGINX_ACME_ROOT      dossier du defi ACME (/var/lib/erplibre-call/acme) ;
+#   NGINX_ACME_ROOT      dossier du defi ACME (/var/lib/erplibre-call-acme) ;
 #                        vide : aucune location ACME (certificat fourni)
 #   NGINX_INSTALL=1      installe nginx quand il est absent ; sans lui, un
 #                        nginx absent arrete le script
@@ -86,7 +86,10 @@ NGINX_UPSTREAM_PORT="${NGINX_UPSTREAM_PORT:-}"
 NGINX_CERT_FILE="${NGINX_CERT_FILE:-}"
 NGINX_KEY_FILE="${NGINX_KEY_FILE:-}"
 # Sans « : » : une valeur vide, donnee expres, retire la location ACME.
-NGINX_ACME_ROOT="${NGINX_ACME_ROOT-/var/lib/erplibre-call/acme}"
+# Hors de /var/lib/erplibre-call, que l'installateur coturn remet en 0750 a
+# chaque passage : nginx ne traverserait pas ce dossier (voir
+# check_acme_root).
+NGINX_ACME_ROOT="${NGINX_ACME_ROOT-/var/lib/erplibre-call-acme}"
 NGINX_INSTALL="${NGINX_INSTALL:-}"
 NGINX_ADOPT_INCLUDE="${NGINX_ADOPT_INCLUDE:-}"
 

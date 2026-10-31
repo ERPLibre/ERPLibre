@@ -63,7 +63,9 @@ recorded in a later root run — fixed in Task 6 here).
   - Let's Encrypt: a staging run first (`certbot certonly --dry-run`, same
     arguments), then the real issuance; email asked (empty → `--register-unsafely-without-email`
     with a warning on screen); challenge HTTP-01 (webroot through nginx at
-    `/var/lib/erplibre-call/acme`, or `--standalone` on 80) or DNS-01
+    `/var/lib/erplibre-call-acme`, outside `/var/lib/erplibre-call` which
+    the coturn installer keeps 0750 so nginx could not traverse it; or
+    `--standalone` on 80) or DNS-01
     (`--dns-<plugin> --dns-<plugin>-credentials <file>`); never the
     `--nginx` plugin (it edits configs);
   - DNS plugins offered: `cloudflare`, `digitalocean`, `dnsimple`,
@@ -84,8 +86,8 @@ recorded in a later root run — fixed in Task 6 here).
   change is followed by `nginx -t`, and a failing test restores our files
   to their previous content before anything reloads; reload, never restart.
 - Uninstall (spec): removes the nginx site and include line it added, the
-  deploy hook, the renewal timer it added, the DNS credentials; keeps the
-  certificates unless « yes » (kept: the lineage's renewal file is moved to
+  ACME directory `/var/lib/erplibre-call-acme`, the deploy hook, the
+  renewal timer it added, the DNS credentials; keeps the certificates unless « yes » (kept: the lineage's renewal file is moved to
   `<file>.erplibre-hold` so the timer stops renewing it; a reinstall moves
   it back); purges nginx/certbot packages only if the tool installed them
   and no other nginx site is enabled.
@@ -278,7 +280,7 @@ recorded in a later root run — fixed in Task 6 here).
   `NGINX_UPSTREAM_PORT`, `NGINX_CERT_FILE`/`NGINX_KEY_FILE` (paths on the
   host: the lineage `live/erplibre-call/` or `/etc/erplibre-call/tls/site.{crt,key}`
   root 0600 for a supplied certificate), `NGINX_ACME_ROOT`
-  (`/var/lib/erplibre-call/acme`), `NGINX_INSTALL=1` (install the package
+  (`/var/lib/erplibre-call-acme`), `NGINX_INSTALL=1` (install the package
   when absent), `NGINX_ADOPT_INCLUDE=1` (Arch: the caller agreed to the
   include line). Functions: `family`, `layout` (`debian` when
   `sites-enabled` is included, `confd` when `conf.d/*.conf` is included,
@@ -332,7 +334,7 @@ recorded in a later root run — fixed in Task 6 here).
   (exit ≠ 0), `@@CERTBOT_INSTALLED 1` when it installed the package.
   Never `--nginx`, never prints the credentials file.
 - [ ] **Step 1: Failing tests** (stubs; certbot stub logs its argv to a
-  file): webroot args `--webroot -w /var/lib/erplibre-call/acme`; dns args
+  file): webroot args `--webroot -w /var/lib/erplibre-call-acme`; dns args
   `--dns-ovh --dns-ovh-credentials /etc/erplibre-call/dns/ovh.ini`; first
   call carries `--dry-run`, second does not; dry run failing → only one
   certbot call and `@@CERTBOT failed` with the stub's last stderr line
@@ -363,8 +365,9 @@ recorded in a later root run — fixed in Task 6 here).
   - `install_script` production order, each step stopping the script on
     failure before the state: coturn and ntfy installers (ntfy on loopback;
     coturn without certificate on a Let's Encrypt first run, `no-tls`);
-    `install_nginx.sh` stage `acme` (when nginx is used); DNS credentials
-    placed; `install_certbot.sh`; hook installed and run once with
+    `install_nginx.sh` stage `acme` (when nginx is used;
+    `NGINX_ACME_ROOT=/var/lib/erplibre-call-acme`, certbot's `-w`); DNS
+    credentials placed; `install_certbot.sh`; hook installed and run once with
     `RENEWED_LINEAGE=/etc/letsencrypt/live/erplibre-call` (which gives
     coturn its certificate and the TLS port); `install_nginx.sh` stage
     `full`; then the `@@ACTIVE` checks and the state (with `nginx`,
@@ -405,7 +408,8 @@ recorded in a later root run — fixed in Task 6 here).
     10.0.0.1 refused → `ok True`; granted → `ok False`, « relais ouvert vers
     le réseau privé »). New keys in `CHECK_KEYS`.
   - uninstall per Global Constraints: nginx site and link or include line
-    (restored from backup), hook, added timer, DNS credentials, lineage
+    (restored from backup), ACME directory `/var/lib/erplibre-call-acme`,
+    hook, added timer, DNS credentials, lineage
     held (or `certbot delete --cert-name erplibre-call` with
     `remove_data`), packages purged only when installed by the tool and no
     other site is enabled; nginx reloaded after `nginx -t`.
