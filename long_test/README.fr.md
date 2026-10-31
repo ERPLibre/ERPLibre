@@ -744,6 +744,63 @@ suite, le second pris juste avant lui, qui s'accordent sur la ligne et le
 nœud ; une publication après le second relevé peut encore déplacer une ligne,
 d'où ce mode réservé à un téléphone dont le volet ne porte rien d'autre.
 
+## call_infra.py — coturn et ntfy s'installent-ils, se vérifient-ils et se désinstallent-ils sur de vraies machines ?
+
+Une VM par système, l'une après l'autre : `long-call-infra-debian` (Debian
+13) et `long-call-infra-arch` (Arch, l'image du jour), créées par
+`deploy_qemu.py` avec les drapeaux du cache de téléchargement. Chaque étape
+du produit est celle du menu `Déployer › Infrastructure d'appel`, sans ses
+questions : les réponses sont écrites dans le script, et la sonde, le plan,
+le script d'installation, le pare-feu, l'état de l'hôte, la vérification et
+la désinstallation viennent tous de `script/todo/call_infra.py`. Chaque
+étape du produit part dans sa propre session ssh, comme le menu lance
+chaque script par un appel à part.
+
+Debian couvre l'adoption et le pare-feu :
+
+1. ufw est installé, `22/tcp` autorisé, puis ufw activé ;
+2. ntfy est d'abord posé à l'ancienne, `install_ntfy.sh` lancé seul (une
+   configuration sans la marque de l'outil), et un compte de téléphone est
+   ajouté par `access_script` ;
+3. l'outil installe les deux services en mode développement, avec un
+   certificat d'une autorité locale (`local_cert`) pour l'adresse de la VM,
+   et ajoute ses règles de pare-feu : ntfy est ADOPTÉ ;
+4. la vérification, depuis cette machine : `turn-udp`, `turn-tcp`,
+   `turn-tls` (allocations réelles), `ntfy-health` (vérifié contre
+   l'autorité locale), `firewall` et les deux services doivent être verts,
+   et le compte du téléphone est toujours listé ;
+5. une seconde installation aux mêmes réponses ne change rien ;
+6. un secret REST est ajouté à la base de coturn par `turnadmin -s`, puis
+   une allocation REST et une sous le compte de contrôle sont tentées : le
+   résultat est rapporté `melange-ok` ou `melange-refuse`, en information,
+   jamais en échec ;
+7. la désinstallation, données comprises : plus d'unité coturn, plus de
+   `/etc/erplibre-call`, plus de règle ufw `erplibre-call`, le `server.yml`
+   adopté remis tel qu'il était, ntfy toujours actif avec son compte de
+   téléphone, et les ports de l'outil fermés vus d'ici ; une seconde
+   désinstallation ne trouve rien à faire.
+
+Arch couvre le chemin http sans pare-feu : la préparation pacman du menu,
+les deux services en http, la vérification (`turn-udp`, `turn-tcp`,
+`ntfy-health`), la désinstallation et ses ports, puis une seconde
+désinstallation.
+
+```
+./long_test/call_infra.py                  # Debian, puis Arch
+./long_test/call_infra.py --distro arch    # un seul système
+./long_test/call_infra.py --dry-run        # le plan, rien de créé
+./long_test/call_infra.py --garder         # garder les VM
+./long_test/call_infra.py --detruire       # défaire la dernière course
+```
+
+Les noms des VM sont fixes : une VM gardée par `--garder` fait refuser la
+course suivante jusqu'au `--detruire`. Le journal de chaque système est un
+`.log` dans le sous-dossier de la course ; les lignes qui portent un secret
+(le mot de passe administrateur de ntfy, la clé du compte de contrôle) y
+sont masquées. Le rapport donne un verdict par système, `OK` ou
+`ECHEC(<première étape en échec>)`, avec chaque étape et les lignes de la
+vérification.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un

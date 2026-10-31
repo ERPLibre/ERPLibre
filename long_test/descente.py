@@ -44,6 +44,7 @@ SCRIPTS = (
     "install_nixos.py",
     "install_erplibre_home.py",
     "qemu_cache.py",
+    "call_infra.py",
 )
 
 # L'autorité du cache de téléchargement, telle que le service l'écrit sur
@@ -371,12 +372,10 @@ class Descente:
         session longue.
 
         `parent` : si l'hôte qui HÉBERGE la machine attendue cesse de
-        répondre, on abandonne tout de suite. Constaté : l'étage 1 a redémarré
-        pendant l'installation de l'étage 4, ce qui a éteint les étages 2, 3 et
-        4 d'un coup ; la descente a attendu son délai entier — quarante
-        minutes — un ssh qui ne pouvait plus aboutir, puis a rendu « jamais
-        joignable en ssh ». Le diagnostic était faux : la machine n'était pas
-        lente, sa MAISON n'existait plus.
+        répondre, on abandonne tout de suite. Un parent qui redémarre éteint
+        tous les étages qu'il porte : attendre l'enfant jusqu'au bout du
+        délai rendrait « jamais joignable en ssh » pour une machine qui
+        n'est pas lente, mais dont l'hôte n'existe plus.
         """
         if self.dry_run:
             return 0
@@ -673,9 +672,9 @@ class Descente:
                     self.etages.append(etage)
                     return self.rapport(interrompu=True)
 
-            # En dry-run, aucune étape n'a été mesurée : les marquer
-            # « atteintes » produisait un rapport indiscernable d'une vraie
-            # réussite, JSON compris, et un code de sortie 0.
+            # En dry-run, aucune étape n'est mesurée : les marquer
+            # « atteintes » rendrait un rapport indiscernable d'une vraie
+            # réussite, JSON compris, avec un code de sortie 0.
             etage["etape"] = "plan" if self.dry_run else "termine"
             etage["ok"] = not self.dry_run
             etage["secondes"] = int(time.time() - debut)
@@ -947,8 +946,8 @@ def profondeur_de(cible):
     """La profondeur d'imbrication de `cible`, d'après sa chaîne de rebonds.
 
     C'est la seule mesure dont on dispose de l'extérieur, et elle est exacte
-    pour les hôtes que nous avons déployés : c'est nous qui écrivons ces
-    entrées, un ProxyJump par étage.
+    pour les hôtes que ce dépôt déploie : il écrit lui-même ces entrées, un
+    ProxyJump par étage.
     """
     try:
         from script.todo.todo import TODO

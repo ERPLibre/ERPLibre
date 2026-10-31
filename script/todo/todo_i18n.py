@@ -7329,6 +7329,25 @@ TRANSLATIONS = {
         "fr": "ERPLibre Home sur chaque distribution : le lancer",
         "en": "ERPLibre Home on every distribution: run it",
     },
+    "Call infrastructure on throwaway VMs: plan only (dry-run)": {
+        "fr": "Infrastructure d'appel sur des VM jetables : le plan seulement"
+        " (à blanc)",
+        "en": "Call infrastructure on throwaway VMs: plan only (dry-run)",
+    },
+    "Call infrastructure on throwaway VMs: run it": {
+        "fr": "Infrastructure d'appel sur des VM jetables : le lancer",
+        "en": "Call infrastructure on throwaway VMs: run it",
+    },
+    "This creates a Debian VM and an Arch VM and installs coturn and ntfy on them.": {
+        "fr": "Cela crée une VM Debian et une VM Arch, et y installe coturn"
+        " et ntfy.",
+        "en": "This creates a Debian VM and an Arch VM and installs coturn"
+        " and ntfy on them.",
+    },
+    "Run the call infrastructure test?": {
+        "fr": "Lancer le test de l'infrastructure d'appel ?",
+        "en": "Run the call infrastructure test?",
+    },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",
         "en": "Nested QEMU depth: run it",
