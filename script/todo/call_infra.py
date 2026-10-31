@@ -3591,10 +3591,26 @@ def state_write_script(state, root=""):
 CHECK_USER = "erplibre-check"
 # Un certificat qui expire dans moins de jours que ceci est signalé.
 CERT_WARN_DAYS = 14
+# Certificats que la vérification lit sur l'hôte, par étiquette : ceux des
+# services, celui que nginx sert pour un certificat fourni (`site`) et la
+# feuille de la lignée de certbot (`lineage`).
 TLS_CERTS = {
     "coturn": f"{COTURN_TLS_DIR}/turn.crt",
     "ntfy": f"{NTFY_TLS_DIR}/ntfy.crt",
+    "site": SITE_CERT,
+    "lineage": f"{LINEAGE_DIR}/cert.pem",
 }
+# Minuteurs de renouvellement que l'installation de certbot active ou pose :
+# ceux des paquets (Debian et Ubuntu, Arch), puis celui de l'outil quand le
+# paquet n'en livre aucun.
+CERTBOT_OWN_TIMER = "erplibre-call-certbot.timer"
+CERTBOT_TIMERS = ("certbot.timer", "certbot-renew.timer", CERTBOT_OWN_TIMER)
+# Pair d'une plage privée (RFC 1918) vers lequel la vérification demande
+# une permission : coturn de production doit la refuser.
+PRIVATE_PROBE_PEER = "10.0.0.1"
+# Mot que Let's Encrypt met dans le nom des émetteurs de son serveur de
+# test : un certificat qu'aucun client ne reconnaît.
+STAGING_ISSUER = "(STAGING)"
 _HEX_KEY = re.compile(r"^[0-9a-f]{32}$")
 
 # Clés i18n que porte `CheckLine.detail` ; chacune a sa traduction dans
@@ -3613,6 +3629,15 @@ CHECK_KEYS = (
     "call_infra_check_cert_days",
     "call_infra_check_cert_missing",
     "call_infra_check_cert_unreadable",
+    "call_infra_check_cert_issuer",
+    "call_infra_check_cert_staging",
+    "call_infra_check_renewal_ok",
+    "call_infra_check_renewal_no_hook",
+    "call_infra_check_renewal_held",
+    "call_infra_check_renewal_timer",
+    "call_infra_check_private_denied",
+    "call_infra_check_private_open",
+    "call_infra_check_private_unknown",
     "call_infra_check_firewall_none",
     "call_infra_check_firewall_ok",
     "call_infra_check_firewall_missing",
@@ -3658,10 +3683,15 @@ def check_remote_script(root=""):
     <état systemd>` (« absent » sans unité), `@@CHECK_KEY <hex>` (la clé
     long terme du compte de contrôle, lue dans la base de coturn par
     `sqlite3 -readonly` sous le compte du service : root n'ouvre aucun
-    fichier de ce dossier, qui appartient à ce compte), `@@CERT <service>
-    <base64>` par certificat installé, `@@FIREWALL_RULE <ufw|nftables>
-    <proto> <port> <service>` par règle de l'outil présente dans un pare-feu
-    actif, puis `@@END`. `root` préfixe chaque chemin lu (tests).
+    fichier de ce dossier, qui appartient à ce compte), `@@CERT <étiquette>
+    <base64>` par certificat de TLS_CERTS présent, `@@HOOK <exec|present>`
+    quand le crochet de déploiement existe (exécutable ou non),
+    `@@RENEWAL <active|held>` selon le fichier de renouvellement de la
+    lignée (en place, ou mis de côté), `@@TIMER <unité> <état systemd>` par
+    minuteur de CERTBOT_TIMERS que systemd connaît, `@@FIREWALL_RULE
+    <ufw|nftables> <proto> <port> <service>` par règle de l'outil présente
+    dans un pare-feu actif, puis `@@END`. `root` préfixe chaque chemin lu
+    (tests).
 
     La ligne `@@CHECK_KEY` porte un secret : qui la lit s'authentifie
     auprès du relais sous le compte de contrôle. La sortie se capture sans
@@ -3705,6 +3735,19 @@ def check_remote_script(root=""):
             '  if [ -f "$f" ]; then'
             ' echo "@@CERT ${c%%:*} $(base64 -w0 < "$f")"; fi',
             "done",
+            f'H="$R"{shlex.quote(HOOK_PATH)}',
+            'if [ -f "$H" ] && [ -x "$H" ]; then echo "@@HOOK exec";'
+            ' elif [ -e "$H" ]; then echo "@@HOOK present"; fi',
+            f'if [ -f "$R"{shlex.quote(RENEWAL_FILE)} ]; then'
+            ' echo "@@RENEWAL active";'
+            f' elif [ -f "$R"{shlex.quote(RENEWAL_HOLD)} ]; then'
+            ' echo "@@RENEWAL held"; fi',
+            "for u in " + " ".join(CERTBOT_TIMERS) + "; do",
+            '  if systemctl cat "$u" >/dev/null 2>&1; then',
+            '    A=$(systemctl is-active "$u" 2>/dev/null)',
+            '    echo "@@TIMER $u ${A:-unknown}"',
+            "  fi",
+            "done",
             "if command -v ufw >/dev/null 2>&1"
             " && ufw status 2>/dev/null | grep -q '^Status: active'; then",
             "  ufw show added 2>/dev/null"
@@ -3723,12 +3766,17 @@ def check_remote_script(root=""):
 def parse_check_remote(output):
     """Dict de la sortie de `check_remote_script` : `state` (dict ou None),
     `active` {service: état}, `check_key` (32 chiffres hexa ou None),
-    `firewall_rules` [(ufw|nftables, Rule)], `certs` {service: PEM}.
+    `firewall_rules` [(ufw|nftables, Rule)], `certs` {étiquette de
+    TLS_CERTS: PEM}, `hook` (« exec », « present » ou None), `renewal`
+    (« active », « held » ou None), `timers` {minuteur de CERTBOT_TIMERS:
+    état}. Une valeur hors de ces formes est écartée.
 
     Une règle hors format ou sur le port de ssh est écartée, comme dans
     `rules_from_state`. Refusal `call_infra_probe_incomplete` sans `@@END`.
     """
     state, active, key, rules, certs = None, {}, None, [], {}
+    hook = renewal = None
+    timers = {}
     complete = False
     for name, value in marker_lines(output):
         if name == "STATE":
@@ -3753,10 +3801,24 @@ def parse_check_remote(output):
             if (parts[0], found) not in rules:
                 rules.append((parts[0], found))
         elif name == "CERT":
-            svc, _, encoded = value.partition(" ")
+            label, _, encoded = value.partition(" ")
             text = _decode(encoded)
-            if svc in SERVICES and text:
-                certs[svc] = text
+            if label in TLS_CERTS and text:
+                certs[label] = text
+        elif name == "HOOK":
+            if value.strip() in ("exec", "present"):
+                hook = value.strip()
+        elif name == "RENEWAL":
+            if value.strip() in ("active", "held"):
+                renewal = value.strip()
+        elif name == "TIMER":
+            parts = value.split()
+            if (
+                len(parts) == 2
+                and parts[0] in CERTBOT_TIMERS
+                and _UNIT_STATE.match(parts[1])
+            ):
+                timers[parts[0]] = parts[1]
         elif name == "END":
             complete = True
     if not complete:
@@ -3767,6 +3829,9 @@ def parse_check_remote(output):
         "check_key": key,
         "firewall_rules": rules,
         "certs": certs,
+        "hook": hook,
+        "renewal": renewal,
+        "timers": timers,
     }
 
 
@@ -3822,25 +3887,39 @@ def _int(value, default):
 
 
 def _turn_lines(settings, key, address, cafile, allocate, timeout):
-    """Une allocation réelle par transport, sous le compte de contrôle.
-    Sans autorité fournie, un échec TLS ne distingue pas un certificat que
-    le système ne connaît pas d'une panne : la ligne vaut None."""
+    """Une allocation réelle par transport, sous le compte de contrôle ;
+    TLS dès qu'un certificat existe (fourni ou de Let's Encrypt), sur 443
+    quand coturn y sert TLS. Le nom attendu dans le certificat est celui de
+    TURN en production, le nom public sinon. Un certificat de Let's Encrypt
+    se vérifie contre les autorités du système ; un certificat fourni,
+    contre `cafile`. Sans autorité fournie, un échec TLS sur un certificat
+    fourni ne distingue pas une autorité que le système ne connaît pas
+    d'une panne : la ligne vaut None."""
+    tls = settings.get("tls")
     turn_port = _int(settings.get("turn_port"), 3478)
     transports = [("udp", turn_port), ("tcp", turn_port)]
-    if settings.get("tls") == "supplied":
-        transports.append(("tls", _int(settings.get("turns_port"), 5349)))
+    if tls in ("supplied", "letsencrypt"):
+        tls_port = (
+            TURNS_ALT_PORT
+            if settings.get("turns_443")
+            else _int(settings.get("turns_port"), 5349)
+        )
+        transports.append(("tls", tls_port))
     if not key:
         return [
             CheckLine(f"turn-{transport}", None, "call_infra_check_no_key")
             for transport, _ in transports
         ]
+    authority = cafile if tls == "supplied" else None
     lines = []
     for transport, port in transports:
         extra = {}
         if transport == "tls":
             extra = dict(
-                cafile=cafile,
-                server_name=settings.get("public_name") or address,
+                cafile=authority,
+                server_name=settings.get("turn_name")
+                or settings.get("public_name")
+                or address,
             )
         result = allocate(
             address,
@@ -3865,10 +3944,20 @@ def _turn_lines(settings, key, address, cafile, allocate, timeout):
             )
         elif result.error == "no-auth":
             lines.append(CheckLine(name, False, "call_infra_check_open_relay"))
-        elif result.error == "tls" and transport == "tls" and not cafile:
-            lines.append(
-                CheckLine(name, None, "call_infra_check_cert_unverified")
-            )
+        elif result.error == "tls" and transport == "tls" and not authority:
+            if tls == "supplied":
+                lines.append(
+                    CheckLine(name, None, "call_infra_check_cert_unverified")
+                )
+            else:
+                lines.append(
+                    CheckLine(
+                        name,
+                        False,
+                        "call_infra_check_turn_error",
+                        {"error": result.error},
+                    )
+                )
         else:
             lines.append(
                 CheckLine(
@@ -3881,11 +3970,50 @@ def _turn_lines(settings, key, address, cafile, allocate, timeout):
     return lines
 
 
-def _ntfy_line(settings, address, cafile, https_get, timeout):
-    tls = settings.get("tls") == "supplied"
-    port = _int(
-        settings.get("port"), NTFY_HTTPS_PORT if tls else NTFY_HTTP_PORT
+def _private_line(settings, key, address, permission, timeout):
+    """Production : une permission demandée vers PRIVATE_PROBE_PEER depuis
+    une allocation du compte de contrôle. coturn la refuse (403) quand ses
+    plages privées sont refusées ; accordée, n'importe quel détenteur
+    d'identifiants relaie vers le réseau de l'hôte. Une allocation en échec
+    ne dit rien des plages : None, la cause dans `error`."""
+    name = "private-denied"
+    if not key:
+        return CheckLine(name, None, "call_infra_check_no_key")
+    result = permission(
+        address,
+        _int(settings.get("turn_port"), 3478),
+        "udp",
+        CHECK_USER,
+        bytes.fromhex(key),
+        PRIVATE_PROBE_PEER,
+        timeout=timeout,
     )
+    peer = {"peer": PRIVATE_PROBE_PEER}
+    if result.ok:
+        return CheckLine(name, False, "call_infra_check_private_open", peer)
+    if (result.error or "").startswith("403"):
+        return CheckLine(name, True, "call_infra_check_private_denied", peer)
+    return CheckLine(
+        name, None, "call_infra_check_private_unknown", {"error": result.error}
+    )
+
+
+def _ntfy_line(settings, address, cafile, https_get, timeout, production):
+    """`/v1/health` de ntfy : en production par nginx, en https sur 443 sous
+    le nom de ntfy ; sinon sur le port de ntfy, en https avec un
+    certificat fourni. Un échec de vérification ne vaut None que pour un
+    certificat fourni sans autorité donnée."""
+    tls_mode = settings.get("tls")
+    if production:
+        tls, port = True, HTTPS_PORT
+        server_name = settings.get("ntfy_name") or settings.get("public_name")
+    else:
+        tls = tls_mode == "supplied"
+        port = _int(
+            settings.get("port"), NTFY_HTTPS_PORT if tls else NTFY_HTTP_PORT
+        )
+        server_name = settings.get("public_name")
+    authority = cafile if tls and tls_mode == "supplied" else None
     name = "ntfy-health"
     try:
         status, body = https_get(
@@ -3893,12 +4021,17 @@ def _ntfy_line(settings, address, cafile, https_get, timeout):
             port,
             "/v1/health",
             tls,
-            server_name=settings.get("public_name") or address,
-            cafile=cafile if tls else None,
+            server_name=server_name or address,
+            cafile=authority,
             timeout=timeout,
         )
-    except ssl.SSLCertVerificationError:
-        return CheckLine(name, None, "call_infra_check_cert_unverified")
+    except ssl.SSLCertVerificationError as exc:
+        if tls_mode == "supplied" and not authority:
+            return CheckLine(name, None, "call_infra_check_cert_unverified")
+        error = str(exc) or type(exc).__name__
+        return CheckLine(
+            name, False, "call_infra_check_http_error", {"error": error}
+        )
     except (OSError, http.client.HTTPException, ValueError) as exc:
         error = str(exc) or type(exc).__name__
         return CheckLine(
@@ -3915,16 +4048,40 @@ def _ntfy_line(settings, address, cafile, https_get, timeout):
     )
 
 
-def _expiry_line(services, certs, now):
-    """Le certificat installé qui expire le premier, parmi ceux des
-    services en https ; sous CERT_WARN_DAYS jours, la ligne échoue."""
+def _cert_labels(settings, production):
+    """Étiquettes de TLS_CERTS des certificats que voient les clients :
+    celui de coturn dès qu'il a TLS ; pour ntfy, le sien en développement
+    avec un certificat fourni, en production celui que sert nginx (la
+    copie `site` d'un certificat fourni, ou la lignée de Let's Encrypt)."""
+    labels = []
+    coturn = settings.get("coturn")
+    if coturn is not None and coturn.get("tls") in ("supplied", "letsencrypt"):
+        labels.append("coturn")
+    ntfy = settings.get("ntfy")
+    if ntfy is not None:
+        tls = ntfy.get("tls")
+        if production and tls == "supplied":
+            labels.append("site")
+        elif production and tls == "letsencrypt":
+            labels.append("lineage")
+        elif tls == "supplied":
+            labels.append("ntfy")
+    return labels
+
+
+def _expiry_line(labels, certs, now):
+    """Le certificat installé qui expire le premier, parmi `labels` ; sous
+    CERT_WARN_DAYS jours, la ligne échoue."""
     name = "cert-expiry"
     earliest = None
-    for svc in services:
-        pem = certs.get(svc)
+    for label in labels:
+        pem = certs.get(label)
         if not pem:
             return CheckLine(
-                name, False, "call_infra_check_cert_missing", {"service": svc}
+                name,
+                False,
+                "call_infra_check_cert_missing",
+                {"service": label},
             )
         try:
             not_after = _certificate_facts(pem)[0]
@@ -3942,6 +4099,130 @@ def _expiry_line(services, certs, now):
         days >= CERT_WARN_DAYS,
         "call_infra_check_cert_days",
         {"days": days, "date": earliest.strftime("%Y-%m-%d")},
+    )
+
+
+def _certificate_issuer(cert_pem):
+    """(nom commun de l'émetteur, texte de l'émetteur) du premier
+    certificat de `cert_pem`, lus par la commande openssl ; le nom commun
+    vaut le texte entier quand l'émetteur n'en a pas. Refusal
+    `call_infra_cert_unreadable` sinon."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "cert.pem")
+        with open(path, "w") as handle:
+            handle.write(cert_pem)
+        try:
+            done = subprocess.run(
+                [
+                    "openssl",
+                    "x509",
+                    "-noout",
+                    "-issuer",
+                    "-nameopt",
+                    "multiline,utf8",
+                    "-in",
+                    path,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            reason = getattr(exc, "stderr", None) or str(exc)
+            raise Refusal(
+                "call_infra_cert_unreadable", reason=reason.strip()
+            ) from None
+    fields = []
+    for line in done.stdout.splitlines()[1:]:
+        key, sep, value = line.partition("=")
+        if sep:
+            fields.append((key.strip(), value.strip()))
+    text = ", ".join(value for _key, value in fields)
+    common = [value for key, value in fields if key == "commonName"]
+    return (common[0] if common else text), text
+
+
+def _issuer_line(labels, certs):
+    """L'émetteur des certificats lisibles de `labels` (None sans aucun) ;
+    un émetteur du serveur de test de Let's Encrypt (STAGING_ISSUER) fait
+    échouer la ligne : aucun navigateur ni téléphone ne le reconnaît."""
+    issuers = []
+    for label in labels:
+        pem = certs.get(label)
+        if not pem:
+            continue
+        try:
+            found = _certificate_issuer(pem)
+        except Refusal:
+            continue
+        if found not in issuers:
+            issuers.append(found)
+    if not issuers:
+        return None
+    staging = [common for common, text in issuers if STAGING_ISSUER in text]
+    if staging:
+        return CheckLine(
+            "cert-issuer",
+            False,
+            "call_infra_check_cert_staging",
+            {"issuer": staging[0]},
+        )
+    names = []
+    for common, _text in issuers:
+        if common not in names:
+            names.append(common)
+    return CheckLine(
+        "cert-issuer",
+        True,
+        "call_infra_check_cert_issuer",
+        {"issuer": ", ".join(names)},
+    )
+
+
+def _renewal_line(state, facts_remote):
+    """Let's Encrypt : le renouvellement passe par le crochet de
+    déploiement (présent et exécutable), le fichier de renouvellement de
+    la lignée en place (pas mis de côté) et un minuteur actif, celui que
+    l'état consigne, sinon n'importe lequel de CERTBOT_TIMERS."""
+    name = "renewal"
+    if facts_remote.get("hook") != "exec":
+        return CheckLine(
+            name,
+            False,
+            "call_infra_check_renewal_no_hook",
+            {"path": HOOK_PATH},
+        )
+    if facts_remote.get("renewal") != "active":
+        return CheckLine(
+            name,
+            False,
+            "call_infra_check_renewal_held",
+            {"path": RENEWAL_FILE},
+        )
+    timers = facts_remote.get("timers") or {}
+    record = state.get("certbot")
+    timer = record.get("timer") if isinstance(record, dict) else None
+    if _timer_record(timer):
+        unit = timer["unit"]
+        current = timers.get(unit, "absent")
+    else:
+        active = [u for u in CERTBOT_TIMERS if timers.get(u) == "active"]
+        unit, current = (
+            (active[0], "active")
+            if active
+            else next(
+                iter(timers.items()), (", ".join(CERTBOT_TIMERS), "absent")
+            )
+        )
+    if current != "active":
+        return CheckLine(
+            name,
+            False,
+            "call_infra_check_renewal_timer",
+            {"timer": unit, "state": current},
+        )
+    return CheckLine(
+        name, True, "call_infra_check_renewal_ok", {"timer": unit}
     )
 
 
@@ -3983,16 +4264,20 @@ def check_local(
     https_get=https_get,
     now=None,
     timeout=5.0,
+    permission=turn_client.permission,
 ):
     """Vérification depuis la machine qui lance `todo.py`.
 
     `facts_remote` vient de `parse_check_remote` ; `address` est le nom ou
     l'adresse par où l'hôte est joint ; `cafile` l'autorité d'un certificat
-    fourni (None : celles du système). Lignes, pour les services consignés
-    dans l'état : `turn-udp`, `turn-tcp`, `turn-tls` (avec un certificat ;
-    allocations réelles sous le compte de contrôle), `ntfy-health`
-    (`/v1/health`), `cert-expiry` (avec un certificat), `firewall`, puis
-    `service-<service>`. Sans état : une seule ligne `state` en échec.
+    fourni (None : celles du système, qui vérifient Let's Encrypt). Lignes,
+    pour les services consignés dans l'état : `turn-udp`, `turn-tcp`,
+    `turn-tls` (avec un certificat ; allocations réelles sous le compte de
+    contrôle), `private-denied` (production : `_private_line`),
+    `ntfy-health` (`/v1/health`, par nginx sur 443 en production),
+    `cert-expiry` et `cert-issuer` (avec un certificat), `renewal` (Let's
+    Encrypt), `firewall`, puis `service-<service>`. Sans état : une seule
+    ligne `state` en échec.
     """
     state = facts_remote.get("state")
     services = state.get("services") if isinstance(state, dict) else None
@@ -4007,6 +4292,7 @@ def check_local(
         now = datetime.datetime.now(datetime.timezone.utc)
     elif now.tzinfo is None:
         now = now.replace(tzinfo=datetime.timezone.utc)
+    production = state.get("mode") == "production"
     settings = {
         svc: (
             record.get("settings")
@@ -4015,25 +4301,38 @@ def check_local(
         )
         for svc, record in records.items()
     }
+    key = facts_remote.get("check_key")
     lines = []
     if "coturn" in records:
         lines += _turn_lines(
-            settings["coturn"],
-            facts_remote.get("check_key"),
-            address,
-            cafile,
-            allocate,
-            timeout,
+            settings["coturn"], key, address, cafile, allocate, timeout
         )
+        if production:
+            lines.append(
+                _private_line(
+                    settings["coturn"], key, address, permission, timeout
+                )
+            )
     if "ntfy" in records:
         lines.append(
-            _ntfy_line(settings["ntfy"], address, cafile, https_get, timeout)
+            _ntfy_line(
+                settings["ntfy"],
+                address,
+                cafile,
+                https_get,
+                timeout,
+                production,
+            )
         )
-    with_tls = [s for s in records if settings[s].get("tls") == "supplied"]
-    if with_tls:
-        lines.append(
-            _expiry_line(with_tls, facts_remote.get("certs") or {}, now)
-        )
+    labels = _cert_labels(settings, production)
+    certs = facts_remote.get("certs") or {}
+    if labels:
+        lines.append(_expiry_line(labels, certs, now))
+        issuer = _issuer_line(labels, certs)
+        if issuer is not None:
+            lines.append(issuer)
+    if any(s.get("tls") == "letsencrypt" for s in settings.values()):
+        lines.append(_renewal_line(state, facts_remote))
     lines.append(
         _firewall_line(state, facts_remote.get("firewall_rules") or [])
     )
@@ -4089,7 +4388,8 @@ def _safe_path(path):
 def _uninstall_records(state):
     """[(service, fiche)] des services consignés, chaque valeur vérifiée :
     unité connue, chemins sûrs, copie `<config>.bak-<tampon>`, fichiers TLS
-    de ceux que l'outil pose. Refusal `call_infra_state_invalid` sinon."""
+    de ceux que l'outil pose, complément d'unité de coturn (COTURN_DROPIN
+    de son unité). Refusal `call_infra_state_invalid` sinon."""
     services = state.get("services", {})
     if not isinstance(services, dict):
         raise Refusal("call_infra_state_invalid", service="services")
@@ -4121,6 +4421,11 @@ def _uninstall_records(state):
             for path in tls_files
         ):
             raise invalid
+        dropin = record.get("dropin") if svc == "coturn" else None
+        if dropin is not None and dropin != COTURN_DROPIN.format(
+            unit=record["unit"]
+        ):
+            raise invalid
         records.append(
             (
                 svc,
@@ -4134,6 +4439,7 @@ def _uninstall_records(state):
                     "was_enabled": was_enabled,
                     "admin_added": record.get("admin_added") is True,
                     "tls_files": sorted(tls_files),
+                    "dropin": dropin,
                 },
             )
         )
@@ -4275,7 +4581,7 @@ def _admin_removal_lines():
     ]
 
 
-def _restore_lines(svc, record):
+def _restore_lines(svc, record, before_restart=()):
     """Copie remise par `mv` (droits et propriétaire de l'original) ; une
     copie disparue alors que la configuration de l'outil est en place se
     dit (`@@BACKUP_MISSING`) et laisse le service tel que l'outil l'a
@@ -4285,7 +4591,8 @@ def _restore_lines(svc, record):
     L'unité retrouve ce qu'elle était avant l'outil, dont l'installateur
     l'a activée et démarrée : arrêtée si elle ne tournait pas, désactivée
     si `is-enabled` disait « disabled », relancée sinon (et pour un état
-    qui ne le consigne pas)."""
+    qui ne le consigne pas). `before_restart` (lignes `sh`) passe juste
+    avant, la configuration remise."""
     config, backup = record["config"], record["backup"]
     unit = shlex.quote(record["unit"])
     lines = []
@@ -4306,6 +4613,7 @@ def _restore_lines(svc, record):
         f" KEEP_{svc}=1; KEPT=1",
         "fi",
         f'if [ "$KEEP_{svc}" = 0 ]; then',
+        *["  " + line for line in before_restart],
     ]
     if record.get("was_active") is False:
         lines.append(
@@ -4349,14 +4657,18 @@ def _service_uninstall_lines(svc, record, remove_data, stamp):
     d'origine remise quand l'outil l'avait aussi adoptée. Adopté :
     configuration d'origine remise, unité rendue à son état d'avant
     l'outil, paquet laissé. Paquet déjà là sans configuration : arrêt et
-    configuration de l'outil retirée. Puis ses fichiers TLS et ses
-    données, retirés ou gardés selon `remove_data`."""
+    configuration de l'outil retirée. Le complément d'unité de coturn
+    (`_dropin_lines`) part une fois le service arrêté, ou avant que
+    l'unité adoptée ne reparte. Puis ses fichiers TLS et ses données,
+    retirés ou gardés selon `remove_data`."""
     installed = record["installed_by_tool"]
     hold = svc == "ntfy" and installed and not remove_data
     package = PACKAGES[svc]
+    dropin = _dropin_lines(record["dropin"]) if record.get("dropin") else []
     lines = [f"# {svc}", f"KEEP_{svc}=0"]
     if installed:
         lines += _stop_lines(svc, record["unit"])
+        lines += dropin
         purge = [
             f"if pkg_installed {package}; then",
             f"  if pkg_purge {package}; then"
@@ -4400,9 +4712,10 @@ def _service_uninstall_lines(svc, record, remove_data, stamp):
                     " || failed data-ntfy; fi"
                 )
     elif record["adopted"]:
-        lines += _restore_lines(svc, record)
+        lines += _restore_lines(svc, record, before_restart=dropin)
     else:
         lines += _stop_lines(svc, record["unit"])
+        lines += dropin
         lines += _remove_managed_lines(svc, record["config"])
     lines.append(f'if [ "$KEEP_{svc}" = 0 ]; then')
     for path in record["tls_files"]:
@@ -4432,16 +4745,518 @@ def _service_uninstall_lines(svc, record, remove_data, stamp):
     return lines
 
 
+# Ligne include qu'install_nginx.sh ajoute à nginx.conf (disposition
+# arch-include), reconnue telle que `ensure_include` l'écrit, à l'espace
+# près.
+_NGINX_INCLUDE_LINE_ERE = (
+    r"^[[:space:]]*include[[:space:]]+"
+    + NGINX_INCLUDE_DIR.replace(".", r"\.")
+    + r"/\*\.conf[[:space:]]*;[[:space:]]*$"
+)
+# Copie de nginx.conf d'avant la ligne include : `<nginx.conf>.bak-<date>`,
+# suivie de « .<pid> » quand la date était déjà prise.
+_NGINX_BACKUP_SUFFIX = re.compile(r"^[0-9]+(\.[0-9]+)?$")
+# Paquets de greffons DNS que l'installation de certbot peut poser.
+_DNS_PLUGIN_PACKAGES = frozenset(
+    pattern.format(plugin)
+    for pattern in DNS_PACKAGES.values()
+    for plugin in DNS_PLUGINS
+)
+# Unités du minuteur que l'outil écrit quand le paquet n'en livre aucun.
+_CERTBOT_OWN_UNITS = tuple(
+    f"/etc/systemd/system/{CERTBOT_OWN_TIMER[: -len('.timer')]}{suffix}"
+    for suffix in (".service", ".timer")
+)
+# Paquets que la purge d'un nginx posé par l'outil retire : Debian sépare
+# la configuration (nginx-common) du binaire.
+_NGINX_PACKAGES = ("nginx", "nginx-common")
+
+
+def _production_records(state):
+    """Fiches « nginx », « certbot » et « hook » de l'état, chaque valeur
+    vérifiée : chemins exactement ceux de l'outil (site, lien et nginx.conf
+    déduits de la disposition), copie `nginx.conf.bak-<date>`, paquets de
+    greffons connus, minuteur de CERTBOT_TIMERS, identifiants sous DNS_DIR.
+    Une fiche absente vaut None. Refusal `call_infra_state_invalid` sinon,
+    `service` nommant la fiche."""
+    found = {"nginx": None, "certbot": None, "hook": False}
+    nginx = state.get("nginx")
+    if nginx is not None:
+        invalid = Refusal("call_infra_state_invalid", service="nginx")
+        if not isinstance(nginx, dict):
+            raise invalid
+        layout = nginx.get("layout")
+        if layout not in NGINX_LAYOUTS:
+            raise invalid
+        site, link, include = _nginx_paths(layout)
+        backup = nginx.get("backup")
+        tls_files = nginx.get("tls_files") or []
+        if (
+            (nginx.get("site"), nginx.get("link"), nginx.get("include"))
+            != (site, link, include)
+            or nginx.get("acme_root") not in (None, ACME_ROOT)
+            or not (
+                backup is None
+                or (
+                    isinstance(backup, str)
+                    and backup.startswith(NGINX_CONF + ".bak-")
+                    and _NGINX_BACKUP_SUFFIX.match(
+                        backup[len(NGINX_CONF) + 5 :]
+                    )
+                )
+            )
+            or not isinstance(tls_files, list)
+            or not all(
+                isinstance(path, str) and path in (SITE_CERT, SITE_KEY)
+                for path in tls_files
+            )
+        ):
+            raise invalid
+        found["nginx"] = {
+            "installed_by_tool": nginx.get("installed_by_tool") is True,
+            "site": site,
+            "link": link,
+            "include": include,
+            "backup": backup,
+            "tls_files": sorted(tls_files),
+        }
+    certbot = state.get("certbot")
+    if certbot is not None:
+        invalid = Refusal("call_infra_state_invalid", service="certbot")
+        if not isinstance(certbot, dict):
+            raise invalid
+        plugins = certbot.get("plugins_installed") or []
+        timer = certbot.get("timer")
+        credentials = certbot.get("dns_credentials")
+        expected = {
+            "cert_name": CERT_NAME,
+            "lineage": LINEAGE_DIR,
+            "renewal": RENEWAL_FILE,
+        }
+        if (
+            any(
+                certbot.get(key, value) != value
+                for key, value in expected.items()
+            )
+            or not isinstance(plugins, list)
+            or not all(p in _DNS_PLUGIN_PACKAGES for p in plugins)
+            or not (
+                timer is None
+                or (_timer_record(timer) and timer["unit"] in CERTBOT_TIMERS)
+            )
+            or credentials
+            not in (None, *(f"{DNS_DIR}/{p}.ini" for p in DNS_PLUGINS))
+        ):
+            raise invalid
+        found["certbot"] = {
+            "installed_by_tool": certbot.get("installed_by_tool") is True,
+            "plugins": list(dict.fromkeys(plugins)),
+            "timer": timer["unit"] if timer and timer["added"] else None,
+        }
+    hook = state.get("hook")
+    if hook is not None:
+        if not isinstance(hook, dict) or hook.get("path") != HOOK_PATH:
+            raise Refusal("call_infra_state_invalid", service="hook")
+        found["hook"] = True
+    return found
+
+
+def _dropin_lines(path):
+    """Le complément d'unité de coturn que l'outil a posé (MARKER en tête)
+    part, son dossier s'il est vide, puis systemd relit les unités ; un
+    complément d'une autre main reste."""
+    host = _host(path)
+    return [
+        f"if {_is_managed_test(path)}; then",
+        f'  if rm -f {host}; then echo "@@REMOVED dropin {path}";'
+        " else failed dropin-coturn; fi",
+        f"  rmdir {_host(os.path.dirname(path))} 2>/dev/null",
+        "  systemctl daemon-reload >/dev/null 2>&1",
+        "fi",
+    ]
+
+
+def _hook_lines():
+    host = _host(HOOK_PATH)
+    return [
+        "# crochet de déploiement",
+        f"if [ -e {host} ] || [ -L {host} ]; then",
+        f'  if rm -f {host}; then echo "@@REMOVED hook {HOOK_PATH}";'
+        " else failed hook; fi",
+        "fi",
+    ]
+
+
+def _foreign_lineage_lines():
+    """FOREIGN=1 quand certbot renouvelle une autre lignée que celle de
+    l'outil : son minuteur, son paquet et ses greffons restent alors."""
+    return [
+        "FOREIGN=0",
+        f'for f in "$R"{shlex.quote(os.path.dirname(RENEWAL_FILE))}/*.conf;'
+        " do",
+        '  [ -f "$f" ] || continue',
+        f'  [ "$f" = "$R"{shlex.quote(RENEWAL_FILE)} ] || FOREIGN=1',
+        "done",
+    ]
+
+
+def _timer_lines(unit):
+    """Le minuteur que l'outil a activé ou posé (`@@CERTBOT_TIMER <unité>
+    added`) s'arrête ; ses unités propres partent. Une autre lignée garde
+    le minuteur."""
+    quoted = shlex.quote(unit)
+    lines = [
+        "# minuteur de renouvellement",
+        'if [ "$FOREIGN" = 1 ]; then',
+        f'  echo "@@KEPT timer {unit}"',
+        "else",
+        f"  if systemctl cat {quoted} >/dev/null 2>&1; then",
+        f"    if systemctl disable --now {quoted} >/dev/null 2>&1; then"
+        f' echo "@@REMOVED timer {unit}";',
+        "    else failed timer; fi",
+        "  fi",
+    ]
+    if unit == CERTBOT_OWN_TIMER:
+        for path in _CERTBOT_OWN_UNITS:
+            lines += [
+                f"  if {_is_managed_test(path)}; then",
+                f"    if rm -f {_host(path)}; then"
+                f' echo "@@REMOVED unit-file {path}";'
+                " else failed timer; fi",
+                "  fi",
+            ]
+        lines.append("  systemctl daemon-reload >/dev/null 2>&1")
+    lines.append("fi")
+    return lines
+
+
+def _nginx_remove_lines(record):
+    """Le site de l'outil (MARKER en tête), son lien dans sites-enabled et
+    la ligne include de nginx.conf partent ; chacun est d'abord copié dans
+    `$D/nginx` pour que `_nginx_restore_lines` le remette. NGX=1 quand
+    quelque chose a changé. Un fichier au même nom sans MARKER reste."""
+    site = record["site"]
+    lines = [
+        "# nginx",
+        'NGX=0; NOK=1; NB="$D/nginx"',
+        'mkdir -p "$NB" || failed nginx-workdir',
+        f"if [ ! -L {_host(site)} ] && {_is_managed_test(site)}; then",
+        f'  if cp -p {_host(site)} "$NB/site" && rm -f {_host(site)}; then',
+        f'    echo "@@REMOVED nginx-site {site}"; NGX=1',
+        "  else failed nginx-site; fi",
+        "fi",
+    ]
+    if record["link"]:
+        link = _host(record["link"])
+        lines += [
+            f'if [ -L {link} ] && [ "$(readlink {link})" = {shlex.quote(site)} ];'
+            " then",
+            f'  if rm -f {link}; then echo "@@REMOVED nginx-link'
+            f' {record["link"]}"; NGX=1;',
+            "  else failed nginx-link; fi",
+            "fi",
+        ]
+    if record["include"]:
+        conf = _host(record["include"])
+        ere = shlex.quote(_NGINX_INCLUDE_LINE_ERE)
+        lines += [
+            f"if [ -f {conf} ] && [ ! -L {conf} ] && grep -qE {ere} {conf};"
+            " then",
+            f'  T=$(mktemp "$(dirname {conf})/.nginx.conf.XXXXXX")' " || T=",
+            f'  if [ -n "$T" ] && cp -p {conf} "$NB/conf"'
+            f' && grep -vE {ere} {conf} > "$T"'
+            f' && chmod --reference={conf} "$T"'
+            f' && chown --reference={conf} "$T"'
+            f' && mv -f "$T" {conf}; then',
+            f'    echo "@@REMOVED nginx-include {record["include"]}"; NGX=1',
+            '  else [ -z "$T" ] || rm -f "$T"; failed nginx-include; fi',
+            "fi",
+            f"rmdir {_host(NGINX_INCLUDE_DIR)} 2>/dev/null",
+        ]
+    return lines
+
+
+def _nginx_restore_lines(record):
+    """Les copies de `$D/nginx` remises : site, lien, nginx.conf."""
+    lines = [
+        f'  if [ -f "$NB/site" ]; then mkdir -p'
+        f" {_host(os.path.dirname(record['site']))}"
+        f' && mv -f "$NB/site" {_host(record["site"])}; fi',
+    ]
+    if record["link"]:
+        link = _host(record["link"])
+        lines.append(
+            f"  if [ ! -e {link} ] && [ ! -L {link} ]; then"
+            f" ln -s {shlex.quote(record['site'])} {link}; fi"
+        )
+    if record["include"]:
+        lines.append(
+            f'  if [ -f "$NB/conf" ]; then'
+            f' mv -f "$NB/conf" {_host(record["include"])}; fi'
+        )
+    return lines
+
+
+def _nginx_backup_lines(record):
+    """Après le retrait de la ligne include, nginx.conf est remis par sa
+    copie d'avant l'outil quand il lui est identique (droits et
+    propriétaire d'origine) ; une copie qui diffère dit que l'administrateur
+    a changé nginx.conf depuis : elle reste, ses changements aussi."""
+    backup = record["backup"]
+    if not (record["include"] and backup):
+        return []
+    conf, saved = _host(record["include"]), _host(backup)
+    return [
+        f"  if [ -f {saved} ] && cmp -s {conf} {saved}; then",
+        f"    if mv -f {saved} {conf}; then"
+        f' echo "@@RESTORED {record["include"]} {backup}";',
+        "    else failed nginx-backup; fi",
+        f'  elif [ -f {saved} ]; then echo "@@KEPT {backup}"; fi',
+    ]
+
+
+def _nginx_other_sites_lines():
+    """NGP reste à 1 quand nginx n'a plus que ce que son paquet livre :
+    aucun fichier dans sites-enabled hormis le lien `default` du paquet,
+    aucun conf.d/*.conf, rien dans erplibre-call.d, et aucun fichier de
+    configuration du paquet modifié (`dpkg -V`, `pacman -Qii`), qu'une
+    purge emporterait. Chaque raison de garder nginx s'imprime, puis
+    `@@KEPT package nginx`."""
+    default = "/etc/nginx/sites-enabled/default"
+    places = (
+        '"$R"/etc/nginx/sites-enabled/* "$R"/etc/nginx/conf.d/*.conf'
+        f' "$R"{NGINX_INCLUDE_DIR}/*'
+    )
+    return [
+        f"  for f in {places}; do",
+        '    [ -e "$f" ] || [ -L "$f" ] || continue',
+        f'    if [ "$f" = "$R"{shlex.quote(default)} ]; then',
+        '      case "$(readlink "$f")" in',
+        "        /etc/nginx/sites-available/default|../sites-available/default)"
+        " continue ;;",
+        "      esac",
+        "    fi",
+        '    NGP=0; echo "@@NGINX_OTHER_SITE ${f#"$R"}"',
+        "  done",
+        '  case "$FAMILY" in',
+        "    debian) M=$(dpkg -V " + " ".join(_NGINX_PACKAGES) + " 2>/dev/null"
+        " | awk '$NF ~ /^\\/etc\\/nginx\\// { print $NF; exit }') ;;",
+        "    arch) M=$(pacman -Qii nginx 2>/dev/null"
+        ' | awk \'$1 == "MODIFIED" && $NF ~ /^\\/etc\\/nginx\\//'
+        " { print $NF; exit }') ;;",
+        "    *) M= ;;",
+        "  esac",
+        '  if [ -n "$M" ]; then NGP=0; echo "@@NGINX_MODIFIED $M"; fi',
+        '  if [ "$NGP" = 0 ] && pkg_installed nginx; then'
+        ' echo "@@KEPT package nginx"; fi',
+    ]
+
+
+def _nginx_finish_lines(record, remove_data):
+    """Après le retrait : purge du paquet quand l'outil l'a posé et que
+    rien d'autre n'y vit (NGP=1, `_nginx_other_sites_lines`), sans test ni
+    rechargement ; sinon, si un fichier a changé, « nginx -t » puis
+    rechargement de nginx s'il tourne. Un test en échec remet les fichiers
+    de l'outil (`_nginx_restore_lines`), ne recharge rien, imprime
+    `@@NGINX_TEST_FAILED <ligne>` et met NOK à 0 : le dossier du défi et la
+    lignée, que le site remis lit, restent. Puis les copies du certificat
+    fourni lues par nginx, gardées ou retirées selon `remove_data`."""
+    lines = ["NGP=0"]
+    if record["installed_by_tool"]:
+        lines += ['if [ "$OK" = 1 ]; then', "  NGP=1"]
+        lines += _nginx_other_sites_lines()
+        lines.append("fi")
+    lines += [
+        'if [ "$NGP" = 1 ]; then',
+        *_nginx_backup_lines(record),
+        "  if systemctl cat nginx >/dev/null 2>&1; then",
+        "    systemctl disable --now nginx >/dev/null 2>&1"
+        " || failed stop-nginx",
+        "  fi",
+    ]
+    for package in _NGINX_PACKAGES:
+        lines += [
+            f"  if pkg_installed {package}; then",
+            f"    if pkg_purge {package}; then"
+            f' echo "@@REMOVED package {package}";'
+            " else failed package-nginx; fi",
+            "  fi",
+        ]
+    lines += [
+        'elif [ "$NGX" = 1 ] && command -v nginx >/dev/null 2>&1; then',
+        "  if NT=$(nginx -t 2>&1); then",
+        *["  " + line for line in _nginx_backup_lines(record)],
+        "    if systemctl is-active --quiet nginx; then",
+        "      systemctl reload nginx >/dev/null 2>&1"
+        ' && echo "@@RELOADED nginx" || failed nginx-reload',
+        "    fi",
+        "  else",
+        "    E=$(printf '%s\\n' \"$NT\" | grep -m 1 -F '[emerg]')"
+        " || E=$(printf '%s\\n' \"$NT\" | tail -n 1)",
+        '    echo "@@NGINX_TEST_FAILED $E"',
+        *["  " + line for line in _nginx_restore_lines(record)],
+        "    NOK=0; failed nginx-test",
+        "  fi",
+    ]
+    if _nginx_backup_lines(record):
+        lines += ['elif [ "$NGX" = 1 ]; then', *_nginx_backup_lines(record)]
+    lines.append("fi")
+    for path in record["tls_files"]:
+        host = _host(path)
+        if remove_data:
+            lines.append(
+                f"if [ -e {host} ]; then rm -f {host}"
+                f' && echo "@@REMOVED tls {path}" || failed tls-nginx; fi'
+            )
+        else:
+            lines.append(f'if [ -e {host} ]; then echo "@@KEPT {path}"; fi')
+    return lines
+
+
+def _lineage_lines(remove_data):
+    """La lignée de l'outil. Gardée : son fichier de renouvellement est mis
+    de côté (RENEWAL_HOLD), « certbot renew » l'ignore et une
+    réinstallation le remet. Avec `remove_data` et NOK à 1 : un fichier mis
+    de côté revient, puis « certbot delete » retire la lignée ; sans
+    certbot sur l'hôte, ses dossiers partent à la main. Un échec remet le
+    fichier de côté."""
+    live, renewal = _host(LINEAGE_DIR), _host(RENEWAL_FILE)
+    hold = _host(RENEWAL_HOLD)
+    if not remove_data:
+        return [
+            "# certificat gardé",
+            f"if [ -e {renewal} ]; then",
+            f'  if mv -f {renewal} {hold}; then echo "@@HELD {RENEWAL_FILE}";'
+            " else failed hold-renewal; fi",
+            "fi",
+            f'if [ -e {live} ]; then echo "@@KEPT {LINEAGE_DIR}"; fi',
+        ]
+    archive = _host(LINEAGE_DIR.replace("/live/", "/archive/"))
+    config = (
+        f'"$R"{shlex.quote(os.path.dirname(os.path.dirname(LINEAGE_DIR)))}'
+    )
+    return [
+        "# certificat retiré",
+        'if [ "$NOK" = 1 ]; then',
+        "  UH=0",
+        f"  if [ ! -e {renewal} ] && [ -e {hold} ]; then",
+        f"    mv -f {hold} {renewal} && UH=1",
+        "  fi",
+        f"  if [ -e {renewal} ] || [ -e {live} ]; then",
+        "    if command -v certbot >/dev/null 2>&1; then",
+        f"      certbot delete --cert-name {CERT_NAME} --non-interactive"
+        f' --config-dir {config} > "$D/certbot.out" 2>&1; CRC=$?',
+        "    else",
+        f"      rm -rf {live} {archive} {renewal}; CRC=$?",
+        "    fi",
+        '    if [ "$CRC" = 0 ]; then',
+        f'      rm -f {hold}; echo "@@REMOVED certificate {CERT_NAME}"',
+        "    else",
+        '      tail -n 1 "$D/certbot.out" 2>/dev/null >&2',
+        f'      [ "$UH" = 0 ] || mv -f {renewal} {hold}',
+        "      failed certbot-delete",
+        "    fi",
+        "  fi",
+        "fi",
+    ]
+
+
+def _dns_lines():
+    """Les identifiants DNS sous DNS_DIR partent, quoi qu'il arrive aux
+    autres étapes : ce sont des clés d'API."""
+    return [
+        "# identifiants DNS",
+        f'for f in "$R"{shlex.quote(DNS_DIR)}/*.ini; do',
+        '  [ -e "$f" ] || continue',
+        '  if rm -f "$f"; then echo "@@REMOVED dns ${f#"$R"}";'
+        " else failed dns; fi",
+        "done",
+        f"rmdir {_host(DNS_DIR)} 2>/dev/null",
+    ]
+
+
+def _certbot_package_lines(record, remove_data):
+    """Paquets que l'outil a posés : ses greffons DNS quand certbot ne
+    renouvelle aucune autre lignée, certbot en plus quand la lignée de
+    l'outil a quitté le disque (`remove_data`, « certbot delete » réussi) ;
+    gardés, ils se disent."""
+    lines = []
+    for package in record["plugins"]:
+        lines += [
+            f"if pkg_installed {package}; then",
+            '  if [ "$FOREIGN" = 1 ]; then'
+            f' echo "@@KEPT package {package}";',
+            f"  elif pkg_purge {package}; then"
+            f' echo "@@REMOVED package {package}";',
+            "  else failed package-certbot; fi",
+            "fi",
+        ]
+    if record["installed_by_tool"] and remove_data:
+        gone = " && ".join(
+            f"[ ! -e {_host(path)} ]"
+            for path in (LINEAGE_DIR, RENEWAL_FILE, RENEWAL_HOLD)
+        )
+        lines += [
+            "if pkg_installed certbot; then",
+            f'  if [ "$FOREIGN" = 0 ] && {gone}; then',
+            "    if pkg_purge certbot; then"
+            ' echo "@@REMOVED package certbot";',
+            "    else failed package-certbot; fi",
+            '  else echo "@@KEPT package certbot"; fi',
+            "fi",
+        ]
+    elif record["installed_by_tool"]:
+        lines.append(
+            'if pkg_installed certbot; then echo "@@KEPT package certbot"; fi'
+        )
+    return lines
+
+
+def _production_uninstall_lines(prod, remove_data):
+    """Lignes `sh` des fiches de production, après les services : minuteur
+    ajouté, site nginx, dossier du défi ACME, lignée, identifiants DNS,
+    paquets. Le crochet part avant les services (`_hook_lines`)."""
+    lines = []
+    certbot, nginx = prod["certbot"], prod["nginx"]
+    if certbot:
+        lines += _foreign_lineage_lines()
+        if certbot["timer"]:
+            lines += _timer_lines(certbot["timer"])
+    if nginx:
+        lines += _nginx_remove_lines(nginx)
+        lines += _nginx_finish_lines(nginx, remove_data)
+    else:
+        lines.append("NOK=1")
+    if nginx or certbot:
+        acme = _host(ACME_ROOT)
+        lines += [
+            f'if [ "$NOK" = 1 ] && [ -e {acme} ]; then',
+            f'  if rm -rf {acme}; then echo "@@REMOVED acme {ACME_ROOT}";'
+            " else failed acme; fi",
+            "fi",
+        ]
+    if certbot:
+        lines += _lineage_lines(remove_data)
+        lines += _dns_lines()
+        lines += _certbot_package_lines(certbot, remove_data)
+    return lines
+
+
 def uninstall_script(state, remove_data, stamp, root=""):
     """Script `sh` de désinstallation, lancé en root sur l'hôte.
 
-    Sans état (`state` None) : `@@PENDING <service>` pour chaque fiche
-    d'une installation interrompue, puis `@@NOTHING` ; rien ne change.
+    Sans état (`state` None) : `@@PENDING <nom>` pour chaque fiche d'une
+    installation interrompue (PENDING_NAMES), puis `@@NOTHING` ; rien ne
+    change.
 
     Avec un état, dans l'ordre : ce qu'une désinstallation coupée a laissé
     de côté revient ; les règles consignées partent du pare-feu
     (`firewall_script` « delete », ses lignes `@@FIREWALL_*` relayées) ;
-    chaque service consigné est traité par `_service_uninstall_lines` ;
+    le crochet de déploiement de certbot part (`_hook_lines`) ; chaque
+    service consigné est traité par `_service_uninstall_lines` ; les fiches
+    de production par `_production_uninstall_lines` (minuteur ajouté, site
+    nginx et ligne include, dossier du défi ACME, lignée gardée ou retirée,
+    identifiants DNS, paquets posés par l'outil) ;
     puis, SEULEMENT si aucune étape n'a échoué, `/etc/erplibre-call` est
     retiré, sauf `tls/` (gardé sans `remove_data`) et les fiches des
     services que l'état ne consigne pas (`@@PENDING_LEFT <service>`), l'état
@@ -4458,8 +5273,10 @@ def uninstall_script(state, remove_data, stamp, root=""):
     La base des comptes de ntfy n'est retirée, avec `remove_data`, que si
     l'outil a posé ntfy : celle d'un ntfy adopté porte les comptes et
     jetons d'avant lui ; seul le compte que l'installateur y a ajouté
-    (`admin_added`) en part (`@@REMOVED account <nom>`). Refusal `call_infra_state_version` ou
-    `call_infra_state_invalid` pour un état qu'on ne peut pas suivre.
+    (`admin_added`) en part (`@@REMOVED account <nom>`). De même, la lignée
+    de Let's Encrypt n'est retirée qu'avec `remove_data` ; gardée, elle est
+    mise de côté (`@@HELD <fichier>`). Refusal `call_infra_state_version`
+    ou `call_infra_state_invalid` pour un état qu'on ne peut pas suivre.
     `root` préfixe chaque chemin de l'hôte (tests).
     """
     if not _STAMP.match(stamp or ""):
@@ -4475,7 +5292,7 @@ def uninstall_script(state, remove_data, stamp, root=""):
         return "\n".join(
             head
             + [
-                "for s in " + " ".join(SERVICES) + "; do",
+                "for s in " + " ".join(PENDING_NAMES) + "; do",
                 '  if [ -f "$PENDING/$s.json" ]; then echo "@@PENDING $s"; fi',
                 "done",
                 'echo "@@NOTHING"',
@@ -4489,6 +5306,7 @@ def uninstall_script(state, remove_data, stamp, root=""):
             expected=STATE_VERSION,
         )
     records = _uninstall_records(state)
+    prod = _production_records(state)
     record = state.get("firewall")
     kind = record.get("kind") if isinstance(record, dict) else None
     rules = rules_from_state(state)
@@ -4520,10 +5338,14 @@ def uninstall_script(state, remove_data, stamp, root=""):
             "grep -v '^@@END$' \"$D/firewall.out\"",
             '[ "$FRC" = 0 ] || failed firewall',
         ]
+    if prod["hook"] or prod["certbot"]:
+        lines += _hook_lines()
     for svc, svc_record in records:
         lines += _service_uninstall_lines(svc, svc_record, remove_data, stamp)
+    lines += _production_uninstall_lines(prod, remove_data)
     recorded = [svc for svc, _ in records]
-    others = [svc for svc in SERVICES if svc not in recorded]
+    recorded += [name for name in ("nginx", "certbot") if prod[name]]
+    others = [name for name in PENDING_NAMES if name not in recorded]
     tls = '"$CALL/tls"'
     # Un service gardé (KEPT) est encore configuré par l'outil : l'état,
     # ses fiches et `tls/`, que sa configuration nomme, restent.

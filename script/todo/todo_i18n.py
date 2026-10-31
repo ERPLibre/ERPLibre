@@ -4071,6 +4071,44 @@ TRANSLATIONS = {
         "fr": "certificat illisible : {reason}",
         "en": "unreadable certificate: {reason}",
     },
+    "call_infra_check_cert_issuer": {
+        "fr": "émis par {issuer}",
+        "en": "issued by {issuer}",
+    },
+    "call_infra_check_cert_staging": {
+        "fr": "certificat de TEST de Let's Encrypt ({issuer}) : aucun client"
+        " ne le reconnaît",
+        "en": "Let's Encrypt TEST certificate ({issuer}): no client"
+        " trusts it",
+    },
+    "call_infra_check_renewal_ok": {
+        "fr": "crochet en place, minuteur {timer} actif",
+        "en": "hook in place, timer {timer} active",
+    },
+    "call_infra_check_renewal_no_hook": {
+        "fr": "crochet de déploiement absent ou non exécutable : {path}",
+        "en": "deploy hook missing or not executable: {path}",
+    },
+    "call_infra_check_renewal_held": {
+        "fr": "fichier de renouvellement absent ou mis de côté : {path}",
+        "en": "renewal file missing or held: {path}",
+    },
+    "call_infra_check_renewal_timer": {
+        "fr": "minuteur {timer} : {state}",
+        "en": "timer {timer}: {state}",
+    },
+    "call_infra_check_private_denied": {
+        "fr": "relais refusé vers le réseau privé ({peer})",
+        "en": "relay refused toward the private network ({peer})",
+    },
+    "call_infra_check_private_open": {
+        "fr": "relais ouvert vers le réseau privé ({peer})",
+        "en": "relay open toward the private network ({peer})",
+    },
+    "call_infra_check_private_unknown": {
+        "fr": "plages privées non vérifiées : {error}",
+        "en": "private ranges not checked: {error}",
+    },
     "call_infra_check_firewall_none": {
         "fr": "aucune règle consignée ({kind})",
         "en": "no rule recorded ({kind})",
