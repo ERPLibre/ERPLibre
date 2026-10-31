@@ -1160,10 +1160,13 @@ def state_answers(state):
     names = [s for s in SERVICES if isinstance(services.get(s), dict)]
     if not names:
         return None
+    # Des réglages qui ne sont pas un dict (état abîmé) comptent pour
+    # absents : les valeurs par défaut les remplacent.
     coturn, ntfy = (
-        (services[s].get("settings") or {}) if s in names else {}
-        for s in SERVICES
+        services[s].get("settings") if s in names else {} for s in SERVICES
     )
+    coturn = coturn if isinstance(coturn, dict) else {}
+    ntfy = ntfy if isinstance(ntfy, dict) else {}
     first = coturn or ntfy
     try:
         return Answers(
@@ -2587,8 +2590,9 @@ def _uninstall_records(state):
             )
         ):
             raise invalid
-        if not isinstance(tls_files, list) or not set(tls_files) <= (
-            _TLS_FILES[svc]
+        if not isinstance(tls_files, list) or not all(
+            isinstance(path, str) and path in _TLS_FILES[svc]
+            for path in tls_files
         ):
             raise invalid
         records.append(
