@@ -242,6 +242,11 @@ packages_present() {
 
 # --force-confold : un fichier de configuration modifie ferait poser une
 # question a dpkg sur le terminal, sans reponse au bout d'un ssh.
+# Une operation dpkg coupee (ssh perdu pendant apt) laisse des paquets
+# deballes ou a moitie configures, et apt-get refuse alors toute
+# installation tant que « dpkg --configure -a » n'a pas tourne : il passe
+# d'abord, et ne fait rien quand rien n'est en attente. Un paquet a moitie
+# deballe est ensuite reinstalle par apt-get.
 install_packages() {
     if packages_present; then
         log "coturn et sqlite3 deja installes."
@@ -250,6 +255,7 @@ install_packages() {
     case "$FAMILY" in
         debian)
             export DEBIAN_FRONTEND=noninteractive
+            dpkg --configure -a --force-confdef --force-confold
             apt-get update -qq
             apt-get install -y --no-install-recommends \
                 -o Dpkg::Options::=--force-confdef \
