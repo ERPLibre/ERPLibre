@@ -1062,7 +1062,8 @@ def _host(path):
 
 def _installer_payload(svc):
     """Installateur lu sur le disque, compressé (mtime 0 : même texte, même
-    charge) puis en base64 : le script entier tient dans un argument."""
+    charge) puis en base64 : le script entier tient encore dans un argument
+    de `sh -c`, la forme où le test long le passe."""
     with open(INSTALLERS[svc], "rb") as handle:
         return _b64(gzip.compress(handle.read(), mtime=0))
 
@@ -1070,7 +1071,9 @@ def _installer_payload(svc):
 def _decode_to(payload, target, gunzip=False):
     """Ligne `sh` qui écrit le base64 `payload` dans `target` (déjà cité
     pour le shell). `printf` est intégré au shell : la charge ne passe dans
-    l'argv d'aucun programme."""
+    l'argv d'aucun programme que le script lance. Le texte du script, lui,
+    ne reste hors de tout argv que lancé depuis un fichier, comme le font
+    `ntfy_mobile.LocalHost` et `SshHost` pour un script root."""
     unzip = " | gzip -dc" if gunzip else ""
     return f"printf %s {shlex.quote(payload)} | base64 -d{unzip} > {target}"
 
