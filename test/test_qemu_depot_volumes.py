@@ -322,6 +322,9 @@ class LeCacheDImages(unittest.TestCase):
                 def staging(self, d):
                     return etape
 
+                def publication_interrompue(self, d):
+                    return False
+
                 def publish(self, src, d):
                     publies.append((src.read_bytes(), d))
 
@@ -382,6 +385,192 @@ class LAperçuNeDemandeRien(unittest.TestCase):
     def test_an_installer_preview_runs_no_sudo(self):
         """La voie s390x lit le réseau pour choisir une adresse fixe."""
         self.assertEqual([], self._sudo_lances("--arch", "s390x"))
+
+
+class UnePublicationInterrompue(unittest.TestCase):
+    """vol-create réserve le volume sous son nom FINAL avant que vol-upload
+    ne le remplisse. Un envoi coupé ne doit jamais laisser derrière lui un
+    fichier que le passage suivant prendrait pour une image complète."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        patch = mock.patch.dict(
+            DQ.os.environ, {"XDG_CACHE_HOME": str(self.tmp / "xdg")}
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+        DQ._POOLS_RAFRAICHIS.clear()
+        self.lances = []
+        self.echoue = set()
+
+    def _faux_run(self, cmd, *a, check=False, **k):
+        self.lances.append(list(cmd))
+        verbe = next((v for v in cmd if v.startswith("vol-")), "")
+        code = 1 if verbe in self.echoue else 0
+        if verbe == "vol-create" and not code:
+            # libvirtd réserve le fichier sous son nom final.
+            self.dest.parent.mkdir(parents=True, exist_ok=True)
+            self.dest.write_bytes(b"\0" * 64)
+        if code and check:
+            raise subprocess.CalledProcessError(code, cmd)
+        return subprocess.CompletedProcess(cmd, code, "", None)
+
+    def _publier(self, dest):
+        self.dest = dest
+        runner = DQ.Runner(use_sudo=True, dry_run=False, libvirt_sudo=False)
+        src = self.tmp / "img.part"
+        src.write_bytes(b"QFI\xfb" + b"x" * 64)
+        with (
+            mock.patch.object(DQ, "_inscriptible", return_value=False),
+            mock.patch.object(DQ, "pool_for_dir", return_value="iso"),
+            mock.patch.object(DQ.subprocess, "run", self._faux_run),
+            redirect_stdout(io.StringIO()),
+        ):
+            depot = DQ.Depot(dest.parent, runner)
+            with self.assertRaises(SystemExit):
+                depot.publish(src, dest)
+        return depot
+
+    def verbes(self):
+        return [
+            next((v for v in c if v.startswith(("vol-", "pool-"))), c[0])
+            for c in self.lances
+        ]
+
+    def test_a_failed_upload_deletes_the_reserved_volume(self):
+        self.echoue = {"vol-upload"}
+        dest = self.tmp / "pool" / "img.qcow2"
+        depot = self._publier(dest)
+        self.assertEqual(
+            ["pool-refresh", "vol-create", "vol-upload", "vol-delete"],
+            self.verbes(),
+        )
+        self.assertFalse(depot.publication_interrompue(dest))
+
+    def test_a_volume_left_behind_is_known_as_interrupted(self):
+        """Ni le retrait ni un SIGKILL ne passent : le témoin, posé chez
+        l'utilisateur avant vol-create, reste et désigne le volume."""
+        self.echoue = {"vol-upload", "vol-delete"}
+        dest = self.tmp / "pool" / "img.qcow2"
+        depot = self._publier(dest)
+        self.assertTrue(dest.exists())
+        self.assertTrue(depot.publication_interrompue(dest))
+
+    def test_the_next_download_replaces_an_interrupted_image(self):
+        import http.server
+
+        contenu = b"QFI\xfb" + b"y" * 100
+
+        class Poignee(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(contenu)))
+                self.end_headers()
+                self.wfile.write(contenu)
+
+        httpd = http.server.HTTPServer(("127.0.0.1", 0), Poignee)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.shutdown)
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/img.qcow2"
+        dest = self.tmp / "pool" / "img.qcow2"
+        dest.parent.mkdir()
+        dest.write_bytes(b"\0" * 64)
+        gestes = []
+
+        class FauxDepot:
+            mode = "volume"
+
+            def staging(self, d):
+                return DQ.staging_dir() / (d.name + ".part")
+
+            def publication_interrompue(self, d):
+                return True
+
+            def delete(self, d):
+                gestes.append("delete")
+                d.unlink()
+
+            def publish(self, src, d):
+                gestes.append(("publish", src.read_bytes()))
+
+        with redirect_stdout(io.StringIO()) as sortie:
+            DQ.download_image([url], dest, False, timeout=10, depot=FauxDepot())
+        self.assertEqual(["delete", ("publish", contenu)], gestes)
+        self.assertNotIn("déjà présente", sortie.getvalue())
+
+    def test_a_failed_publication_drops_the_staging_file(self):
+        """Le fichier d'étape pèse la taille de l'image : il ne reste pas
+        après un échec, que le passage suivant retéléchargera de zéro."""
+        import http.server
+
+        class Poignee(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", "8")
+                self.end_headers()
+                self.wfile.write(b"QFI\xfbabcd")
+
+        httpd = http.server.HTTPServer(("127.0.0.1", 0), Poignee)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.shutdown)
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/img.qcow2"
+        etape = self.tmp / "moi" / "img.qcow2.part"
+
+        class FauxDepot:
+            mode = "volume"
+
+            def staging(self, d):
+                return etape
+
+            def publication_interrompue(self, d):
+                return False
+
+            def publish(self, src, d):
+                sys.exit("vol-upload coupé")
+
+        with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            DQ.download_image(
+                [url], self.tmp / "pool" / "img.qcow2", False, depot=FauxDepot()
+            )
+        self.assertFalse(etape.exists())
+
+    def test_the_manual_resume_hint_needs_no_root_outside_direct(self):
+        """En voie volume, le cache n'est pas inscriptible : l'indice vise un
+        fichier de l'utilisateur, passé ensuite en argument, jamais
+        « sudo curl » dans le répertoire du pool."""
+
+        class FauxDepot:
+            mode = "volume"
+
+            def staging(self, d):
+                return DQ.staging_dir() / (d.name + ".part")
+
+            def publication_interrompue(self, d):
+                return False
+
+        dest = self.tmp / "pool" / "img.qcow2"
+        with (
+            redirect_stdout(io.StringIO()),
+            self.assertRaises(SystemExit) as fin,
+        ):
+            DQ.download_image(
+                ["http://127.0.0.1:9/img.qcow2"],
+                dest,
+                False,
+                timeout=2,
+                depot=FauxDepot(),
+            )
+        message = str(fin.exception.code)
+        self.assertNotIn("sudo", message)
+        self.assertIn(str(DQ.staging_dir() / "img.qcow2"), message)
 
 
 class LAdresse(unittest.TestCase):
