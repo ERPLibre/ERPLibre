@@ -56,6 +56,10 @@ OUTBOX_REDIRECT_GUARD = b"\r\n"
 # Une réservation de la file plus vieille que ce délai, en secondes, est
 # celle d'un processus mort en plein envoi : une autre vidange la reprend.
 OUTBOX_CLAIM_STALE_S = 600
+# Intervalle, en secondes, auquel un envoi en cours rafraîchit sa
+# réservation (`outbox_claim_refresh`) : bien en deçà de
+# `OUTBOX_CLAIM_STALE_S`, un envoi lent, vivant, n'est jamais repris.
+OUTBOX_CLAIM_REFRESH_S = 60
 # Attente, en secondes, d'une base tenue en écriture par un autre processus
 # (le client et le service partagent `cache.db`) avant `database is locked`.
 # Valeur par défaut de `sqlite3`, rendue explicite : aucun écrivain public
@@ -1184,6 +1188,23 @@ class Store:
             "UPDATE outbox SET claimed_at = ? WHERE id = ?"
             " AND (claimed_at IS NULL OR claimed_at < ?)",
             (int(now), queue_id, int(now) - int(stale_s)),
+        )
+        db.commit()
+        return curseur.rowcount == 1
+
+    @_locked
+    def outbox_claim_refresh(self, queue_id: int, now: int) -> bool:
+        """Rajeunit une réservation encore posée ; vrai si elle l'était.
+
+        Appelé pendant l'envoi de l'entrée : un DATA long (gros transfert,
+        lien lent) dépasse `OUTBOX_CLAIM_STALE_S`, et une autre vidange
+        reprendrait sinon une entrée encore en cours d'envoi.
+        """
+        db = self._db()
+        curseur = db.execute(
+            "UPDATE outbox SET claimed_at = ?"
+            " WHERE id = ? AND claimed_at IS NOT NULL",
+            (int(now), queue_id),
         )
         db.commit()
         return curseur.rowcount == 1
