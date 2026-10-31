@@ -1903,6 +1903,10 @@ def check_remote_script(root=""):
     <base64>` par certificat installé, `@@FIREWALL_RULE <ufw|nftables>
     <proto> <port> <service>` par règle de l'outil présente dans un pare-feu
     actif, puis `@@END`. `root` préfixe chaque chemin lu (tests).
+
+    La ligne `@@CHECK_KEY` porte un secret : qui la lit s'authentifie
+    auprès du relais sous le compte de contrôle. La sortie se capture sans
+    être recopiée à l'écran.
     """
     query = f"select hmackey from turnusers_lt where name='{CHECK_USER}'"
     certs = " ".join(f"{svc}:{path}" for svc, path in TLS_CERTS.items())
