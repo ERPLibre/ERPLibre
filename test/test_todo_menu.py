@@ -1784,6 +1784,46 @@ class TestPremiereEntreeJoignable(unittest.TestCase):
         self.assertNotIn("int_cmd = int(status) - 1", corps)
 
 
+class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Deploy, dont les entrées de ntfy sont passées dans le
+    sous-menu « Infrastructure d'appel » : tout ce qui les suivait a été
+    renuméroté d'un rang."""
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_deploy(self):"
+    END = "def prompt_execute_deploy_ssh(self):"
+
+    EXPECTED = {
+        "Clone ERPLibre locally": "_deploy_clone_erplibre",
+        "Configure sshfs": "_configure_sshfs",
+        "SSH port forwarding": "_deploy_port_forward",
+        "Configure a SOCKS proxy": "_deploy_socks_proxy",
+        "SSH (remote host)": "prompt_execute_deploy_ssh",
+        "QEMU/KVM - Deploy": "prompt_execute_qemu",
+        "Proxmox VE - Deploy": "prompt_execute_proxmox",
+        "Deploy - Call infrastructure": "prompt_execute_call_infra",
+        "QEMU cache - Download mirror": "prompt_execute_qemu_cache",
+        "Deploy - Install Asterisk": "_deploy_asterisk_server",
+        "VPN - Tunnels": "prompt_execute_vpn",
+    }
+
+
+class TestCallInfraMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le sous-menu « Infrastructure d'appel », dans call_infra_menu.py."""
+
+    SOURCE = TODO_DIR / "call_infra_menu.py"
+    ENTRY = "def prompt_execute_call_infra(self):"
+    END = "def _call_infra_host(self):"
+    MINIMUM = 3
+
+    EXPECTED = {
+        "Call infra - Install on a host": "_call_infra_install",
+        "Call infra - Prepare ntfy": "prompt_execute_ntfy_mobile",
+        "Call infra - Check": "_call_infra_check",
+        "Call infra - Uninstall": "_call_infra_uninstall",
+    }
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 

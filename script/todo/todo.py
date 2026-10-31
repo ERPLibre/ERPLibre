@@ -137,6 +137,7 @@ from script.execute import execute
 from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
 from script.todo import erplibre_home_service as service
 from script.todo.assistant_menu import AssistantMenuMixin
+from script.todo.call_infra_menu import CallInfraMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
@@ -223,6 +224,7 @@ class TODO(
     ProxmoxMenuMixin,
     LongTestMenuMixin,
     NtfyMobileMenuMixin,
+    CallInfraMenuMixin,
     TransformMenuMixin,
     VpnMenuMixin,
     AssistantMenuMixin,
@@ -849,6 +851,7 @@ class TODO(
         "prompt_execute_deploy": "Deploy",
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu_cache": "QEMU cache",
+        "prompt_execute_call_infra": "Call infrastructure",
         "prompt_execute_ntfy_mobile": "ntfy mobile",
         "_cache_service": "Service",
         "_cache_tests": "Tests",
@@ -1255,16 +1258,7 @@ class TODO(
                     "Proxmox VE - Deploy a VM on a remote host"
                 )
             },
-            {
-                "prompt_description": t(
-                    "Deploy - Install NTFY notification server"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Deploy - Prepare ntfy for ERPLibre mobile"
-                )
-            },
+            {"prompt_description": t("Deploy - Call infrastructure")},
             {
                 "prompt_description": t(
                     "QEMU cache - Download mirror for local VMs"
@@ -1304,14 +1298,12 @@ class TODO(
             elif status == "7":
                 self.prompt_execute_proxmox()
             elif status == "8":
-                self._deploy_ntfy_server()
+                self.prompt_execute_call_infra()
             elif status == "9":
-                self.prompt_execute_ntfy_mobile()
-            elif status == "10":
                 self.prompt_execute_qemu_cache()
-            elif status == "11":
+            elif status == "10":
                 self._deploy_asterisk_server()
-            elif status == "12":
+            elif status == "11":
                 self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
@@ -2338,50 +2330,6 @@ class TODO(
                 os.environ.pop("AST_TRUNKS", None)
             else:
                 os.environ["AST_TRUNKS"] = precedent
-
-    def _deploy_ntfy_server(self):
-        print(
-            f"\n{t('Deploy a local NTFY push notification server (Ubuntu/Arch)')}"
-        )
-        port = input(t("NTFY server port (default: 8080): ")).strip() or "8080"
-        import socket
-
-        hostname = socket.gethostname()
-        try:
-            local_ip = socket.gethostbyname(hostname)
-        except Exception:
-            local_ip = "127.0.0.1"
-
-        default_url = f"http://{local_ip}:{port}"
-        base_url = (
-            input(f"{t('NTFY base URL')} (default: {default_url}): ").strip()
-            or default_url
-        )
-
-        script_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "..",
-            "install",
-            "install_ntfy.sh",
-        )
-        script_path = os.path.realpath(script_path)
-
-        if not os.path.isfile(script_path):
-            print(f"{t('NTFY install script not found: ')}{script_path}")
-            return
-
-        print(f"\n{t('Installing NTFY server (requires sudo)...')}")
-        cmd = (
-            f"sudo NTFY_PORT={port}"
-            f" NTFY_BASE_URL={base_url}"
-            f" bash {script_path}"
-        )
-        print(f"{t('Will execute:')} {cmd}\n")
-        try:
-            self.execute.exec_command_live(cmd, source_erplibre=False)
-            print(f"\n{t('NTFY server installed and started successfully!')}")
-        except Exception as e:
-            print(f"{t('Error installing NTFY server: ')}{e}")
 
     def _deploy_qemu_cache(self):
         """Pose le miroir de téléchargement partagé par les VM QEMU de l'hôte.

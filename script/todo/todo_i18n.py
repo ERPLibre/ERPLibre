@@ -2188,7 +2188,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
-    # NTFY section
     # Services VoIP : erplibre_sip_go et Asterisk
     'voip_announce_other': {
         "fr": 'Un autre fichier...',
@@ -3450,38 +3449,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'installation d'Asterisk : ",
         "en": "Error installing Asterisk: ",
     },
-    "Deploy - Install NTFY notification server": {
-        "fr": "🔔 Déployer - Installer le serveur de notifications NTFY",
-        "en": "🔔 Deploy - Install NTFY notification server",
-    },
-    "Deploy a local NTFY push notification server (Ubuntu/Arch)": {
-        "fr": "Déployer un serveur local de notifications NTFY (Ubuntu/Arch)",
-        "en": "Deploy a local NTFY push notification server (Ubuntu/Arch)",
-    },
-    "NTFY server port (default: 8080): ": {
-        "fr": "Port du serveur NTFY (défaut : 8080) : ",
-        "en": "NTFY server port (default: 8080): ",
-    },
-    "NTFY base URL": {
-        "fr": "URL de base NTFY",
-        "en": "NTFY base URL",
-    },
-    "Installing NTFY server (requires sudo)...": {
-        "fr": "Installation du serveur NTFY (sudo requis)...",
-        "en": "Installing NTFY server (requires sudo)...",
-    },
-    "NTFY server installed and started successfully!": {
-        "fr": "Serveur NTFY installé et démarré avec succès!",
-        "en": "NTFY server installed and started successfully!",
-    },
-    "Error installing NTFY server: ": {
-        "fr": "Erreur lors de l'installation du serveur NTFY : ",
-        "en": "Error installing NTFY server: ",
-    },
-    "NTFY install script not found: ": {
-        "fr": "Script d'installation NTFY introuvable : ",
-        "en": "NTFY install script not found: ",
-    },
     # NTFY for ERPLibre mobile
     "Deploy - Prepare ntfy for ERPLibre mobile": {
         "fr": "📱 Déployer - Préparer ntfy pour ERPLibre mobile",
@@ -3535,9 +3502,9 @@ TRANSLATIONS = {
         "fr": "La limitation par abonné (visitor-subscriber-rate-limiting) est active : elle fait perdre des notifications à un téléphone qui se reconnecte.",
         "en": "Subscriber rate limiting (visitor-subscriber-rate-limiting) is on: it drops notifications for a phone that reconnects.",
     },
-    "Fix this with: Deploy - Install NTFY notification server.": {
-        "fr": "À corriger par : Déployer - Installer le serveur de notifications NTFY.",
-        "en": "Fix this with: Deploy - Install NTFY notification server.",
+    "Fix this with: Deploy - Call infrastructure - Install on a host (coturn, ntfy).": {
+        "fr": "À corriger par : Déployer - Infrastructure d'appel - Installer sur un hôte (coturn, ntfy).",
+        "en": "Fix this with: Deploy - Call infrastructure - Install on a host (coturn, ntfy).",
     },
     "Odoo server source addresses to exempt from rate limits, comma separated": {
         "fr": "Adresses sources du serveur Odoo à exempter des limites, séparées par des virgules",
@@ -3674,6 +3641,419 @@ TRANSLATIONS = {
     "The revocation failed.": {
         "fr": "La révocation a échoué.",
         "en": "The revocation failed.",
+    },
+    # Call infrastructure
+    "Deploy - Call infrastructure": {
+        "fr": "📞 Déployer - Infrastructure d'appel",
+        "en": "📞 Deploy - Call infrastructure",
+    },
+    "Call infra - Install on a host (coturn, ntfy)": {
+        "fr": "Installer sur un hôte (coturn, ntfy)",
+        "en": "Install on a host (coturn, ntfy)",
+    },
+    "Call infra - Prepare ntfy for ERPLibre mobile": {
+        "fr": "Préparer ntfy pour ERPLibre mobile",
+        "en": "Prepare ntfy for ERPLibre mobile",
+    },
+    "Call infra - Check": {
+        "fr": "Vérifier",
+        "en": "Check",
+    },
+    "Call infra - Uninstall": {
+        "fr": "Désinstaller",
+        "en": "Uninstall",
+    },
+    "call_infra_local_ntfy_adopted": {
+        "fr": "Un ntfy est déjà installé sur cette machine (port 8080 par défaut) : il sera ADOPTÉ, pas remplacé. Sa configuration est montrée en diff et sauvée avant tout changement ; ses utilisateurs et jetons restent.",
+        "en": "A ntfy is already installed on this machine (port 8080 by default): it will be ADOPTED, not replaced. Its configuration is shown as a diff and backed up before any change; its users and tokens stay.",
+    },
+    "call_infra_sudo_refused": {
+        "fr": "sudo refusé sur l'hôte (mot de passe erroné, ou demandé sans terminal) : rien n'est touché.",
+        "en": "sudo refused on the host (wrong password, or asked without a terminal): nothing is touched.",
+    },
+    "Services to install:": {
+        "fr": "Services à installer :",
+        "en": "Services to install:",
+    },
+    "coturn and ntfy": {
+        "fr": "coturn et ntfy",
+        "en": "coturn and ntfy",
+    },
+    "coturn only": {
+        "fr": "coturn seulement",
+        "en": "coturn only",
+    },
+    "ntfy only": {
+        "fr": "ntfy seulement",
+        "en": "ntfy only",
+    },
+    "Your choice (1/2)": {
+        "fr": "Votre choix (1/2)",
+        "en": "Your choice (1/2)",
+    },
+    "Your choice (1/2/3)": {
+        "fr": "Votre choix (1/2/3)",
+        "en": "Your choice (1/2/3)",
+    },
+    "Certificate:": {
+        "fr": "Certificat :",
+        "en": "Certificate:",
+    },
+    "call_infra_tls_none": {
+        "fr": "Aucun : http et TURN sans TLS, réseau local seulement",
+        "en": "None: http and TURN without TLS, local network only",
+    },
+    "Supplied: certificate and key files of this machine": {
+        "fr": "Fourni : fichiers du certificat et de la clé, sur cette machine",
+        "en": "Supplied: certificate and key files of this machine",
+    },
+    "Certificate file (PEM)": {
+        "fr": "Fichier du certificat (PEM)",
+        "en": "Certificate file (PEM)",
+    },
+    "Private key file (PEM)": {
+        "fr": "Fichier de la clé privée (PEM)",
+        "en": "Private key file (PEM)",
+    },
+    "A file is required.": {
+        "fr": "Un fichier est requis.",
+        "en": "A file is required.",
+    },
+    "The file could not be read:": {
+        "fr": "Le fichier n'a pas pu être lu :",
+        "en": "The file could not be read:",
+    },
+    "Public name of the host (name or address)": {
+        "fr": "Nom public de l'hôte (nom ou adresse)",
+        "en": "Public name of the host (name or address)",
+    },
+    "TURN port (udp and tcp)": {
+        "fr": "Port TURN (udp et tcp)",
+        "en": "TURN port (udp and tcp)",
+    },
+    "TURNS port (tcp, TLS)": {
+        "fr": "Port TURNS (tcp, TLS)",
+        "en": "TURNS port (tcp, TLS)",
+    },
+    "Media relay port range (udp)": {
+        "fr": "Plage de ports des relais média (udp)",
+        "en": "Media relay port range (udp)",
+    },
+    "ntfy port (tcp)": {
+        "fr": "Port de ntfy (tcp)",
+        "en": "ntfy port (tcp)",
+    },
+    "Not a number:": {
+        "fr": "Pas un nombre :",
+        "en": "Not a number:",
+    },
+    "Not a port range:": {
+        "fr": "Pas une plage de ports (début-fin) :",
+        "en": "Not a port range (low-high):",
+    },
+    "Summary": {
+        "fr": "Résumé",
+        "en": "Summary",
+    },
+    "Services:": {
+        "fr": "Services :",
+        "en": "Services:",
+    },
+    "Mode:": {
+        "fr": "Mode :",
+        "en": "Mode:",
+    },
+    "development": {
+        "fr": "développement",
+        "en": "development",
+    },
+    "TLS:": {
+        "fr": "TLS :",
+        "en": "TLS:",
+    },
+    "supplied certificate": {
+        "fr": "certificat fourni",
+        "en": "supplied certificate",
+    },
+    "Public name:": {
+        "fr": "Nom public :",
+        "en": "Public name:",
+    },
+    "Ports:": {
+        "fr": "Ports :",
+        "en": "Ports:",
+    },
+    "call_infra_private_ranges_allowed": {
+        "fr": "Développement : coturn relaie aussi vers les adresses privées (réseau local) ; la production les refusera.",
+        "en": "Development: coturn also relays to private addresses (local network); production will deny them.",
+    },
+    "call_infra_adopted": {
+        "fr": "{service} a déjà une configuration écrite par quelqu'un d'autre ({config}) : elle est sauvée (copie .bak-<date>) puis ADOPTÉE, et la désinstallation la remettra.",
+        "en": "{service} already has a configuration written by someone else ({config}): it is backed up (.bak-<date> copy) then ADOPTED, and uninstalling puts it back.",
+    },
+    "Changes to": {
+        "fr": "Changements à",
+        "en": "Changes to",
+    },
+    "Nothing installed.": {
+        "fr": "Rien d'installé.",
+        "en": "Nothing installed.",
+    },
+    "call_infra_nothing_to_change": {
+        "fr": "Rien à changer : l'hôte tourne déjà avec ces réglages.",
+        "en": "Nothing to change: the host already runs with these settings.",
+    },
+    "call_infra_admin_password": {
+        "fr": "Compte administrateur de ntfy créé ; son mot de passe, affiché une seule fois et écrit nulle part :",
+        "en": "ntfy administrator account created; its password, shown once and written nowhere:",
+    },
+    "Step failed:": {
+        "fr": "Étape en échec :",
+        "en": "Step failed:",
+    },
+    "call_infra_install_failed": {
+        "fr": "L'installation n'a pas abouti : l'état de l'hôte n'est pas écrit. Relancez-la : elle reprend là où elle s'est arrêtée.",
+        "en": "The install did not complete: the host state is not written. Run it again: it resumes where it stopped.",
+    },
+    "call_infra_installed": {
+        "fr": "Installé : l'état de l'hôte est écrit.",
+        "en": "Installed: the host state is written.",
+    },
+    "Firewall": {
+        "fr": "Pare-feu",
+        "en": "Firewall",
+    },
+    "call_infra_firewall_preview": {
+        "fr": "règles à ajouter ; rien d'autre n'est changé, et la règle de ssh n'est jamais touchée :",
+        "en": "rules to add; nothing else is changed, and the ssh rule is never touched:",
+    },
+    "Add these rules? (y/N): ": {
+        "fr": "Ajouter ces règles ? (o/N) : ",
+        "en": "Add these rules? (y/N): ",
+    },
+    "No firewall rule added.": {
+        "fr": "Aucune règle de pare-feu ajoutée.",
+        "en": "No firewall rule added.",
+    },
+    "call_infra_firewall_manual": {
+        "fr": "nftables : pas exactement une chaîne d'entrée en refus par défaut, aucune règle n'est ajoutée ; ouvrez vous-même les ports du résumé.",
+        "en": "nftables: not exactly one default-drop input chain, no rule is added; open the ports of the summary yourself.",
+    },
+    "call_infra_firewall_failed": {
+        "fr": "Des règles n'ont pas pu être ajoutées : seules celles en place sont consignées.",
+        "en": "Some rules could not be added: only those in place are recorded.",
+    },
+    "call_infra_firewall_none": {
+        "fr": "Aucun pare-feu actif sur l'hôte (ni ufw, ni nftables en refus par défaut) : aucune règle à ajouter.",
+        "en": "No active firewall on the host (neither ufw nor a default-drop nftables): no rule to add.",
+    },
+    "call_infra_firewall_unknown": {
+        "fr": "Pare-feu non reconnu (firewalld, iptables...) : aucune règle n'est ajoutée ; ouvrez vous-même les ports du résumé.",
+        "en": "Unrecognised firewall (firewalld, iptables...): no rule is added; open the ports of the summary yourself.",
+    },
+    "call_infra_cloud_firewall": {
+        "fr": "Le pare-feu du fournisseur infonuagique, s'il y en a un, ne se voit pas d'ici : ouvrez-y aussi les ports du résumé.",
+        "en": "The cloud provider's firewall, if any, cannot be seen from here: open the ports of the summary there too.",
+    },
+    "call_infra_state_not_saved": {
+        "fr": "Les règles du pare-feu n'ont pas pu être consignées dans l'état de l'hôte : la désinstallation ne les retirera pas.",
+        "en": "The firewall rules could not be recorded in the host state: uninstalling will not remove them.",
+    },
+    "Address that reaches the host from this machine": {
+        "fr": "Adresse qui joint l'hôte depuis cette machine",
+        "en": "Address that reaches the host from this machine",
+    },
+    "call_infra_ask_cafile": {
+        "fr": "Autorité du certificat à vérifier (fichier de cette machine ; Entrée : celles du système)",
+        "en": "Certificate authority to verify against (file on this machine; Enter: the system ones)",
+    },
+    "TURN over UDP": {
+        "fr": "TURN sur UDP",
+        "en": "TURN over UDP",
+    },
+    "TURN over TCP": {
+        "fr": "TURN sur TCP",
+        "en": "TURN over TCP",
+    },
+    "TURN over TLS": {
+        "fr": "TURN sur TLS",
+        "en": "TURN over TLS",
+    },
+    "ntfy health": {
+        "fr": "Santé de ntfy",
+        "en": "ntfy health",
+    },
+    "Certificate expiry": {
+        "fr": "Expiration du certificat",
+        "en": "Certificate expiry",
+    },
+    "Firewall rules": {
+        "fr": "Règles du pare-feu",
+        "en": "Firewall rules",
+    },
+    "Host state": {
+        "fr": "État de l'hôte",
+        "en": "Host state",
+    },
+    "Service": {
+        "fr": "Service",
+        "en": "Service",
+    },
+    "Nothing to uninstall.": {
+        "fr": "Rien à désinstaller.",
+        "en": "Nothing to uninstall.",
+    },
+    "call_infra_pending_left": {
+        "fr": "{service} : une installation interrompue a laissé sa fiche sur l'hôte ; relancez l'installation pour la terminer.",
+        "en": "{service}: an interrupted install left its record on the host; run the install again to finish it.",
+    },
+    "Recorded on the host:": {
+        "fr": "Consigné sur l'hôte :",
+        "en": "Recorded on the host:",
+    },
+    "call_infra_uninstall_restores": {
+        "fr": "configuration d'origine remise ({backup} → {config}) ; le paquet reste",
+        "en": "original configuration put back ({backup} → {config}); the package stays",
+    },
+    "call_infra_uninstall_purges": {
+        "fr": "arrêté et retiré, paquet compris",
+        "en": "stopped and removed, package included",
+    },
+    "call_infra_uninstall_keeps_package": {
+        "fr": "arrêté, configuration de l'outil retirée ; le paquet, là avant l'outil, reste",
+        "en": "stopped, the tool's configuration removed; the package, there before the tool, stays",
+    },
+    "Firewall rules removed:": {
+        "fr": "Règles du pare-feu retirées :",
+        "en": "Firewall rules removed:",
+    },
+    "call_infra_ask_remove_data": {
+        "fr": "Supprimer aussi les certificats et la base des comptes de ntfy ? (o/N) : ",
+        "en": "Also remove the certificates and ntfy's account database? (y/N): ",
+    },
+    "Uninstall now? (y/N): ": {
+        "fr": "Désinstaller maintenant ? (o/N) : ",
+        "en": "Uninstall now? (y/N): ",
+    },
+    "call_infra_uninstalled": {
+        "fr": "Désinstallé : l'état de l'hôte est retiré.",
+        "en": "Uninstalled: the host state is removed.",
+    },
+    "call_infra_backup_missing": {
+        "fr": "{service} : la copie d'origine {backup} est absente ; le service reste tel que l'outil l'a configuré. Remettez votre configuration d'origine, puis relancez la désinstallation.",
+        "en": "{service}: the original copy {backup} is missing; the service stays as the tool configured it. Put your original configuration back, then run the uninstall again.",
+    },
+    "call_infra_uninstall_failed": {
+        "fr": "La désinstallation n'a pas abouti : l'état de l'hôte reste. Relancez-la : chaque étape déjà faite est sautée.",
+        "en": "The uninstall did not complete: the host state stays. Run it again: every step already done is skipped.",
+    },
+    "call_infra_unsupported_os": {
+        "fr": "Système « {os} » non pris en charge : {supported} seulement.",
+        "en": "Unsupported system \"{os}\": {supported} only.",
+    },
+    "call_infra_no_systemd": {
+        "fr": "systemd absent sur l'hôte : l'installation par paquets et services systemd l'exige.",
+        "en": "No systemd on the host: the install by packages and systemd services needs it.",
+    },
+    "call_infra_state_version": {
+        "fr": "L'état de l'hôte est de la version {found}, cet outil lit la version {expected} : rien n'est touché.",
+        "en": "The host state is version {found}, this tool reads version {expected}: nothing is touched.",
+    },
+    "call_infra_state_invalid": {
+        "fr": "L'état de l'hôte porte une fiche {service} qu'on ne peut pas suivre : rien n'est touché.",
+        "en": "The host state holds a {service} record that cannot be followed: nothing is touched.",
+    },
+    "call_infra_bad_value": {
+        "fr": "Valeur refusée pour {name} : {value}",
+        "en": "Value refused for {name}: {value}",
+    },
+    "call_infra_port_busy": {
+        "fr": "Le port {port}/{proto} est déjà pris sur l'hôte par « {process} » : libérez-le ou choisissez un autre port.",
+        "en": "Port {port}/{proto} is already taken on the host by \"{process}\": free it or choose another port.",
+    },
+    "call_infra_cert_unreadable": {
+        "fr": "Certificat illisible : {reason}",
+        "en": "Unreadable certificate: {reason}",
+    },
+    "call_infra_cert_key_mismatch": {
+        "fr": "Le certificat et la clé fournis ne vont pas ensemble.",
+        "en": "The supplied certificate and key do not match.",
+    },
+    "call_infra_cert_expired": {
+        "fr": "Le certificat fourni a expiré le {date}.",
+        "en": "The supplied certificate expired on {date}.",
+    },
+    "call_infra_cert_name_missing": {
+        "fr": "Le certificat ne couvre pas le nom public « {name} » (il couvre : {names}).",
+        "en": "The certificate does not cover the public name \"{name}\" (it covers: {names}).",
+    },
+    "call_infra_probe_incomplete": {
+        "fr": "La lecture de l'hôte est incomplète (connexion coupée, sudo refusé ?) : rien n'est touché.",
+        "en": "Reading the host came back incomplete (connection cut, sudo refused?): nothing is touched.",
+    },
+    "call_infra_check_no_state": {
+        "fr": "aucun état sur l'hôte : rien d'installé par l'outil",
+        "en": "no state on the host: nothing installed by the tool",
+    },
+    "call_infra_check_active": {
+        "fr": "{state}",
+        "en": "{state}",
+    },
+    "call_infra_check_relayed": {
+        "fr": "relais {relayed}",
+        "en": "relay {relayed}",
+    },
+    "call_infra_check_open_relay": {
+        "fr": "relais OUVERT : alloue sans authentification",
+        "en": "OPEN relay: allocates without authentication",
+    },
+    "call_infra_check_turn_error": {
+        "fr": "{error}",
+        "en": "{error}",
+    },
+    "call_infra_check_no_key": {
+        "fr": "compte de contrôle introuvable dans la base de coturn",
+        "en": "check account not found in coturn's database",
+    },
+    "call_infra_check_healthy": {
+        "fr": "répond",
+        "en": "answers",
+    },
+    "call_infra_check_unhealthy": {
+        "fr": "statut {status}",
+        "en": "status {status}",
+    },
+    "call_infra_check_http_error": {
+        "fr": "{error}",
+        "en": "{error}",
+    },
+    "call_infra_check_cert_unverified": {
+        "fr": "certificat non vérifié",
+        "en": "certificate not verified",
+    },
+    "call_infra_check_cert_days": {
+        "fr": "{days} jours (jusqu'au {date})",
+        "en": "{days} days (until {date})",
+    },
+    "call_infra_check_cert_missing": {
+        "fr": "certificat absent ({service})",
+        "en": "certificate missing ({service})",
+    },
+    "call_infra_check_cert_unreadable": {
+        "fr": "certificat illisible : {reason}",
+        "en": "unreadable certificate: {reason}",
+    },
+    "call_infra_check_firewall_none": {
+        "fr": "aucune règle consignée ({kind})",
+        "en": "no rule recorded ({kind})",
+    },
+    "call_infra_check_firewall_ok": {
+        "fr": "{count} règles en place",
+        "en": "{count} rules in place",
+    },
+    "call_infra_check_firewall_missing": {
+        "fr": "manquantes : {rules}",
+        "en": "missing: {rules}",
     },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
