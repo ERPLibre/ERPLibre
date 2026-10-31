@@ -904,8 +904,8 @@ class TestInstallScriptText(unittest.TestCase):
             self.assertIn("@@ACTIVE %s " % svc, script)
 
     def test_fits_in_one_argument(self):
-        # Le script voyage en UN argument de « sh -c » : Linux borne un
-        # argument à 128 Kio (MAX_ARG_STRLEN), guillemets de ssh compris.
+        # Le test long passe le script en UN argument de « sh -c » : Linux
+        # borne un argument à 128 Kio (MAX_ARG_STRLEN), guillemets compris.
         plan = ci.plan_install(base_facts(), supplied(), NOW)
         script = ci.install_script(plan, STAMP)
         self.assertLess(len(shlex.quote(script).encode()), 128 * 1024 - 4096)

@@ -15,6 +15,7 @@ précède la sous-commande ; `ntfy access` l'accepte avant ses arguments.
 
 import base64
 import codecs
+import contextlib
 import difflib
 import io
 import os
@@ -23,6 +24,7 @@ import secrets
 import shlex
 import subprocess
 import sys
+import tempfile
 import unicodedata
 import urllib.parse
 
@@ -364,10 +366,40 @@ def _tee_run(argv, env=None):
     return proc.wait(), captured.decode("utf-8", "replace")
 
 
+@contextlib.contextmanager
+def _staged_file(script):
+    """Chemin d'un fichier temporaire 0600 qui porte `script`, effacé en
+    sortie, même sur une interruption."""
+    fd, path = tempfile.mkstemp(prefix="erplibre-", suffix=".sh")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(script)
+        yield path
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(path)
+
+
+# Dépôt du script sur l'hôte, sous le compte de connexion : un dossier
+# `mktemp -d` (0700) reçoit le script lu sur l'entrée standard, puis son
+# chemin est imprimé.
+_STAGE = 'umask 077; d=$(mktemp -d) && cat > "$d/s" && echo "$d"'
+# Lancement du script déposé, `$1` étant son dossier : sudo le lit comme un
+# fichier, puis le compte de connexion retire le dossier, que sudo ait
+# réussi ou non ; le code rendu reste celui de sudo.
+_STAGED_RUN = 'sudo sh "$1/s"; rc=$?; rm -rf "$1"; exit $rc'
+_STAGED_DIR = re.compile(r"^/[A-Za-z0-9._/-]+$")
+
+
 class LocalHost:
     """Exécute un script `sh` sur cette machine, sous sudo.
 
-    `sudo=()` lance `sh -c` sous l'utilisateur courant (tests, banc).
+    Un script lancé en root (`sudo_user` None) passe par un fichier 0600
+    de l'utilisateur courant, que root lit : l'argv, que `ps` montre à tout
+    compte local, ne porte que son chemin, jamais le texte ni les secrets
+    qu'il transporte. Sous un autre compte, qui ne lirait pas ce fichier,
+    le script passe par `sh -c` (`argv`). `sudo=()` lance sous
+    l'utilisateur courant (tests, banc).
     """
 
     def __init__(self, sudo=("sudo",)):
@@ -379,8 +411,15 @@ class LocalHost:
             argv += ["-u", sudo_user]
         return argv + ["sh", "-c", script]
 
+    def staged_argv(self, path):
+        return list(self.sudo) + ["sh", path]
+
     def run(self, script, sudo_user):
-        return _tee_run(self.argv(script, sudo_user), env=ntfy_free_env())
+        env = ntfy_free_env()
+        if sudo_user:
+            return _tee_run(self.argv(script, sudo_user), env=env)
+        with _staged_file(script) as path:
+            return _tee_run(self.staged_argv(path), env=env)
 
 
 class SshHost:
@@ -388,6 +427,15 @@ class SshHost:
 
     `target` est ce qu'on passe à ssh (un alias de `~/.ssh/config` compris) ;
     `hostname`, l'hôte réel qu'il désigne, quand on le connaît.
+
+    Un script lancé en root voyage en deux connexions : `ssh -T` le dépose
+    sur l'hôte par l'entrée standard, dans un dossier 0700 du compte de
+    connexion (`_STAGE`), puis `ssh -t` le fait lire par sudo, dont l'invite
+    garde le terminal (`_STAGED_RUN`). Aucun argv, ni ici ni sur l'hôte, ne
+    porte son texte. Un échec du dépôt rend le code 255, celui d'une
+    connexion ssh ratée, et rien n'est lancé. Une connexion coupée pendant
+    le lancement laisse le dossier, lisible du seul compte de connexion.
+    Sous un autre compte que root, le script passe par `sh -c` (`argv`).
     """
 
     def __init__(self, target, hostname=None):
@@ -401,7 +449,28 @@ class SshHost:
         remote += ["sh", "-c", shlex.quote(script)]
         return ["ssh", "-t", self.target, " ".join(remote)]
 
+    def stage_argv(self):
+        return ["ssh", "-T", self.target, "sh -c " + shlex.quote(_STAGE)]
+
+    def staged_argv(self, directory):
+        remote = (
+            f"sh -c {shlex.quote(_STAGED_RUN)} sh {shlex.quote(directory)}"
+        )
+        return ["ssh", "-t", self.target, remote]
+
     def run(self, script, sudo_user):
         # La sortie des outils reste en anglais quelle que soit la locale.
         env = dict(os.environ, LC_ALL="C", LANG="C")
-        return _tee_run(self.argv(script, sudo_user), env=env)
+        if sudo_user:
+            return _tee_run(self.argv(script, sudo_user), env=env)
+        done = subprocess.run(
+            self.stage_argv(),
+            input=script.encode("utf-8"),
+            stdout=subprocess.PIPE,
+            env=env,
+        )
+        lines = done.stdout.decode("utf-8", "replace").strip().splitlines()
+        directory = lines[-1] if lines else ""
+        if done.returncode != 0 or not _STAGED_DIR.match(directory):
+            return 255, done.stdout.decode("utf-8", "replace")
+        return _tee_run(self.staged_argv(directory), env=env)
