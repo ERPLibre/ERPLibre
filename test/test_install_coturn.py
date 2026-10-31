@@ -72,6 +72,10 @@ def constantes(**remplacements):
         if ligne is None:
             raise AssertionError("constante absente : %s" % nom)
         sortie.append(ligne.group(0))
+    tableau = re.search(r"^DENIED_PEER_RANGES=\(\n.*?^\)\n", texte, re.M | re.S)
+    if tableau is None:
+        raise AssertionError("tableau absent : DENIED_PEER_RANGES")
+    sortie.append(tableau.group(0))
     for nom, valeur in remplacements.items():
         sortie.append('%s="%s"\n' % (nom, valeur))
     return "".join(sortie)
@@ -81,7 +85,25 @@ ENTREES = (
     "TURN_REALM=%s\nTURN_PORT=3478\nTURN_TLS_PORT=5349\n"
     "TURN_MIN_PORT=49152\nTURN_MAX_PORT=49252\nTURN_CERT_FILE=\n"
     "TURN_KEY_FILE=\nTURN_EXTERNAL_IP=\nTURN_CHECK_PASSWORD='%s'\n"
-    "TURN_GARDER_CONFIG=\n" % (REALM, MOT_DE_PASSE))
+    "TURN_GARDER_CONFIG=\nTURN_ALLOW_PRIVATE=\n" % (REALM, MOT_DE_PASSE))
+
+# Les plages qu'un relais ne doit pas joindre par defaut, au format de
+# denied-peer-ip (adresse, ou premiere-derniere).
+PLAGES_REFUSEES = (
+    "0.0.0.0-0.255.255.255",
+    "10.0.0.0-10.255.255.255",
+    "100.64.0.0-100.127.255.255",
+    "127.0.0.0-127.255.255.255",
+    "169.254.0.0-169.254.255.255",
+    "172.16.0.0-172.31.255.255",
+    "192.168.0.0-192.168.255.255",
+    "::",
+    "::1",
+    "::ffff:0.0.0.0-::ffff:255.255.255.255",
+    "64:ff9b::-64:ff9b::ffff:ffff",
+    "fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+)
 
 ENTETE = (
     "set -euo pipefail\n"
@@ -198,8 +220,28 @@ class TestConfiguration(unittest.TestCase):
             fait, texte, _, _, _ = self._ecrire(variables)
             self.assertEqual(fait.returncode, 0, fait.stderr)
             for interdit in ("user=", "static-auth-secret", "use-auth-secret",
-                             "denied-peer-ip", MOT_DE_PASSE):
+                             MOT_DE_PASSE):
                 self.assertNotIn(interdit, texte)
+
+    def test_plages_privees_refusees_par_defaut(self):
+        """Sans accord explicite, le relais ne sert pas de passerelle vers
+        le reseau local de l'hote, sa boucle locale ni ses voisins."""
+        fait, texte, _, _, _ = self._ecrire()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        refusees = [ligne.split("=", 1)[1] for ligne in texte.splitlines()
+                    if ligne.startswith("denied-peer-ip=")]
+        self.assertEqual(refusees, list(PLAGES_REFUSEES))
+
+    def test_plages_privees_permises_seulement_sur_demande(self):
+        fait, texte, _, _, _ = self._ecrire("TURN_ALLOW_PRIVATE=1")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertNotIn("denied-peer-ip", texte)
+        for valeur in ("0", ""):
+            with self.subTest(valeur=valeur):
+                fait, texte, _, _, _ = self._ecrire(
+                    "TURN_ALLOW_PRIVATE=%s" % valeur)
+                self.assertIn("denied-peer-ip=10.0.0.0-10.255.255.255",
+                              texte.splitlines())
 
     def test_avec_certificat(self):
         fait, texte, _, _, _ = self._ecrire(
@@ -270,7 +312,8 @@ class TestEntrees(unittest.TestCase):
                 "TURN_CERT_FILE=@D@/c.pem",
                 "TURN_KEY_FILE=@D@/k.pem",
                 "TURN_CERT_FILE=@D@/absent.pem\nTURN_KEY_FILE=@D@/k.pem",
-                "TURN_EXTERNAL_IP='198.51.100.7\nuser=x'"):
+                "TURN_EXTERNAL_IP='198.51.100.7\nuser=x'",
+                "TURN_ALLOW_PRIVATE=oui"):
             with self.subTest(variables=variables):
                 fait = self._verifier(variables, fichiers=True)
                 self.assertNotEqual(fait.returncode, 0, fait.stdout)
@@ -750,7 +793,7 @@ class TestMain(unittest.TestCase):
     marqueurs, code de sortie."""
 
     def _jouer(self, etats, famille="debian", conf=None, garder="",
-               change=1, unite="", tampon=None, lien=None):
+               change=1, unite="", tampon=None, lien=None, variables=""):
         """`tampon` : None, aucun tampon ; "juste", le tampon de la
         configuration presente ; sinon le texte du tampon. `lien` : la
         configuration est un lien vers ce chemin."""
@@ -775,7 +818,7 @@ class TestMain(unittest.TestCase):
             enveloppe = (
                 ENTETE + constantes(DEBIAN_CONF=chemin, ARCH_CONF=chemin,
                                     CALL_DIR=dossier, APPLIED_FILE=applique)
-                + ENTREES + "TURN_GARDER_CONFIG=%s\n" % garder
+                + ENTREES + "TURN_GARDER_CONFIG=%s\n" % garder + variables
                 + "export TURN_CHECK_PASSWORD\n"
                 "J=%s\nE=%s/etats\nU=%s/unite\n" % (journal, dossier, dossier)
                 + "check_root() { :; }\n"
@@ -936,6 +979,13 @@ class TestMain(unittest.TestCase):
         self.assertTrue([s for s in sortie if s.startswith("@@CONFIG ")
                          and s.endswith("/arch.conf")], sortie)
         self.assertIn("systemctl restart turnserver", appels)
+
+    def test_plages_privees_permises_annoncees(self):
+        fait, _, _ = self._jouer(["active"], variables="TURN_ALLOW_PRIVATE=1\n")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("TURN_ALLOW_PRIVATE=1", fait.stdout)
+        refait, _, _ = self._jouer(["active"])
+        self.assertNotIn("TURN_ALLOW_PRIVATE", refait.stdout)
 
     def test_configuration_en_lien_refusee_avant_installation(self):
         with tempfile.TemporaryDirectory() as ailleurs:

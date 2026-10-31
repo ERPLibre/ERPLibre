@@ -768,10 +768,13 @@ class TestCoturnConfig(unittest.TestCase):
                 return handle.read()
 
     def env(self, ans, cert):
+        # coturn_config décrit un plan de développement : les plages
+        # privées y restent permises, l'installateur reçoit
+        # TURN_ALLOW_PRIVATE=1.
         return (
             "TURN_REALM=%s\nTURN_PORT=%d\nTURN_TLS_PORT=%d\nTURN_MIN_PORT=%d\n"
             "TURN_MAX_PORT=%d\nTURN_CERT_FILE=%s\nTURN_KEY_FILE=%s\n"
-            "TURN_EXTERNAL_IP=%s\n"
+            "TURN_EXTERNAL_IP=%s\nTURN_ALLOW_PRIVATE=1\n"
             % (
                 ans.public_name,
                 ans.turn_port,
