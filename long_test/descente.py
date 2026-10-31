@@ -33,6 +33,7 @@ sys.path.insert(0, RACINE)
 
 from script.proxmox import nesting  # noqa: E402
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
+from script.todo import qemu_privilege  # noqa: E402
 
 # Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
 # descentes de piles différentes se disputeraient la RAM, le disque et
@@ -70,6 +71,22 @@ def drapeaux_cache():
     if os.path.isfile(CACHE_CA):
         return ["--cache-ca", CACHE_CA]
     return ["--cache-bypass"]
+
+
+def virsh_local(*args, invite=False):
+    """Argv d'un virsh sur qemu:///system de CETTE machine.
+
+    Sans sudo quand la socket répond à l'utilisateur — le groupe libvirt
+    actif dans la session suffit à lire, détruire et retirer un domaine.
+    Sinon sudo, et « -n » sauf si `invite` ET qu'un terminal est là : une
+    lecture ne doit jamais attendre un mot de passe, et sans terminal
+    personne ne le tapera. L'URI est toujours explicite : implicite, un
+    utilisateur viserait qemu:///session, où aucun de ces domaines n'existe.
+    """
+    argv = qemu_privilege.virsh_argv(*args)
+    if argv[0] == "sudo" and not (invite and sys.stdin.isatty()):
+        argv.insert(1, "-n")
+    return argv
 
 
 # Une étape bloquée ne doit pas bloquer le test : chaque appel est borné, et le
@@ -474,12 +491,9 @@ class Descente:
     def creer_etage1(self, res):
         """Une VM locale, par la CLI QEMU/KVM. Le seul étage sur du métal."""
         nom = self.nom_etage(1)
-        # SOUS SUDO, comme le menu le fait : le dossier des images
-        # appartient à root en 755 sur une installation ordinaire de libvirt,
-        # et la CLI s'arrête à l'étape 1 sur « Permission refusée » avant
-        # d'avoir rien créé. Jamais à blanc — un essai qui n'écrit rien n'a
-        # aucune raison de demander un mot de passe.
-        argv = ([] if self.dry_run else ["sudo"]) + [
+        # SANS sudo : la CLI écrit le disque et le seed par l'API des volumes
+        # de libvirt, et ne préfixe de sudo que la commande qui exige root.
+        argv = [
             os.path.join(RACINE, ".venv.erplibre/bin/python"),
             os.path.join(RACINE, "script/qemu/deploy_qemu.py"),
             "--distro",
@@ -506,9 +520,8 @@ class Descente:
             return None
         # L'entrée ~/.ssh/config, que la CLI n'écrit PAS. Sans elle,
         # « ssh deep-pve-1 » rend « Name or service not known » et la descente
-        # attendait son plein délai avant de conclure « jamais joignable » —
-        # sur une VM qui répondait parfaitement à son adresse. Vécu au premier
-        # lancement réel.
+        # attend son plein délai avant de conclure « jamais joignable » — sur
+        # une VM qui répond parfaitement à son adresse.
         from script.todo.todo import TODO
 
         todo = TODO.__new__(TODO)
@@ -533,7 +546,7 @@ class Descente:
         """
         try:
             res = subprocess.run(
-                ["sudo", "-n", "virsh", "domuuid", nom],
+                virsh_local("domuuid", nom),
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -1208,7 +1221,7 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
     # faisait — `nom_etage(1)` — et le repli désignait la machine numéro 1 de
     # la pile, quelle que soit celle dont parlait le rapport.
     existe = subprocess.run(
-        ["sudo", "-n", "virsh", "dominfo", nom],
+        virsh_local("dominfo", nom),
         capture_output=True,
         text=True,
         env=dict(os.environ, LC_ALL="C"),
@@ -1257,18 +1270,18 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
             f"    [à blanc] virsh undefine {nom} --remove-all-storage", journal
         )
         return True
+    # « --remove-all-storage » retire les VOLUMES du domaine — disque dans
+    # son pool, seed dans le sien — et laisse l'image de base du cache, qui
+    # n'est pas un disque du domaine.
     subprocess.run(
-        ["sudo", "virsh", "destroy", nom], capture_output=True, text=True
+        virsh_local("destroy", nom, invite=True),
+        capture_output=True,
+        text=True,
     )
     res = subprocess.run(
-        [
-            "sudo",
-            "virsh",
-            "undefine",
-            nom,
-            "--nvram",
-            "--remove-all-storage",
-        ],
+        virsh_local(
+            "undefine", nom, "--nvram", "--remove-all-storage", invite=True
+        ),
         capture_output=True,
         text=True,
     )
