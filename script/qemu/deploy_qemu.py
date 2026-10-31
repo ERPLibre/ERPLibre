@@ -910,26 +910,31 @@ def libvirt_sudo_reset() -> None:
 
 
 def system_path(path: str = "") -> str:
-    """PATH sans les répertoires d'un venv.
+    """PATH sans les répertoires d'un venv ni ceux de l'utilisateur.
 
     Le « bin » d'un venv, en tête du PATH quand ce script y est lancé,
     contient un « python3 ». virt-install, amorcé par
     « #!/usr/bin/env python3 », y prendrait cet interpréteur, où PyGObject
-    n'existe pas, et mourrait sur « No module named 'gi' ». Sous sudo, le
+    n'existe pas, et mourrait sur « No module named 'gi' ». Le HOME porte
+    les mêmes interpréteurs (~/.local/bin, ~/.pyenv/shims) : tout ce qui
+    est sous lui part aussi, comme les entrées relatives. Sous sudo, le
     « secure_path » faisait ce ménage ; sans sudo, il est à faire ici.
     """
     path = path or os.environ.get("PATH", "")
     venv = os.path.normpath(
         os.environ.get("VIRTUAL_ENV", "") or "/nonexistent"
     )
+    maison = os.path.normpath(os.path.expanduser("~"))
+    # Un HOME à la racine engloberait tout : il ne filtre alors rien.
+    exclus = [venv] + ([maison] if maison != os.sep else [])
     gardees = []
     for entree in path.split(os.pathsep):
-        if not entree:
+        if not entree or not os.path.isabs(entree):
             continue
         propre = os.path.normpath(entree)
-        if propre.startswith(venv + os.sep) or any(
-            part.startswith(".venv") for part in propre.split(os.sep)
-        ):
+        if any(
+            propre == ex or propre.startswith(ex + os.sep) for ex in exclus
+        ) or any(part.startswith(".venv") for part in propre.split(os.sep)):
             continue
         gardees.append(entree)
     return os.pathsep.join(gardees) or "/usr/local/bin:/usr/bin:/bin"
