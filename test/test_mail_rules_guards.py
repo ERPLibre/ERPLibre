@@ -456,6 +456,23 @@ class TestForwardGuard(unittest.TestCase):
                         self.reason(message, skip_lists=skip), "auto_reply"
                     )
 
+    def test_an_auto_reply_with_a_comment_is_never_forwarded(self):
+        """Un commentaire RFC 5322 après le jeton (« (vacation) », forme
+        d'un répondeur Sieve répandu), collé ou imbriqué, ne masque pas la
+        réponse automatique."""
+        for extra in (
+            {"Auto-Submitted": "auto-replied (vacation)"},
+            {"Auto-Submitted": "auto-replied(vacation)"},
+            {"Auto-Submitted": "(robot) auto-replied (a (b) c); x=y"},
+            {"Precedence": "auto_reply (absence)"},
+        ):
+            for skip in (False, True):
+                with self.subTest(extra=extra, skip_lists=skip):
+                    message = view(extra, frm=SECOND)
+                    self.assertEqual(
+                        self.reason(message, skip_lists=skip), "auto_reply"
+                    )
+
     def test_an_auto_generated_message_is_still_forwarded(self):
         message = view({"Auto-Submitted": "auto-generated"}, frm=SECOND)
         self.assertEqual(self.reason(message), SEND)
@@ -823,6 +840,12 @@ class TestEveryOccurrence(unittest.TestCase):
     def test_precedence_bulk_then_list(self):
         self.assertEqual(
             self.reason({"Precedence": "bulk\nlist"}), "precedence"
+        )
+
+    def test_a_commented_no_or_bulk_is_read_by_its_token(self):
+        self.assertEqual(self.reason({"Auto-Submitted": "no (humain)"}), SEND)
+        self.assertEqual(
+            self.reason({"Precedence": "bulk (lettre)"}), "precedence"
         )
 
     def test_auto_submitted_no_then_auto_replied(self):
