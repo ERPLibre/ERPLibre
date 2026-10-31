@@ -1960,7 +1960,8 @@ def plan_install(facts, answers, now):
         record["settings"] = settings
         record["tls_files"] = tls_files
         if svc == "coturn" and is_production(answers):
-            # La désinstallation retire ce complément d'unité (ruling L2-4).
+            # Complément d'unité qui laisse coturn servir TLS sur 443 ; la
+            # désinstallation le retire.
             record["dropin"] = (
                 COTURN_DROPIN.format(unit=unit) if answers.turns_443 else None
             )
