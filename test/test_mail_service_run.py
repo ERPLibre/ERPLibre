@@ -364,7 +364,7 @@ class TestLocksAndVault(ServiceCase):
             f"{t('mail_service_vault_locked')}"
             f" {t('mail_service_vault_no_password_by_hand')}\n",
         )
-        self.assertNotIn("[8] › [2]", sortie)
+        self.assertNotIn("[7] › [2]", sortie)
         # Hors du service, `kdbx.password` ouvre le coffre comme avant.
         config = FakeConfig(
             {"kdbx": {"path": str(self.kdbx), "password": MAITRE}}

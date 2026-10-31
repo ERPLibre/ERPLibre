@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menu Courriel [6] › [8] : le service sans interface, sur des doubles.
+"""Menu Courriel [7] (ou [6] › [8]) : le service sans interface, sur des doubles.
 
 `click.prompt` et `input` sont pilotés par `side_effect`, `getpass` par
 un paramètre. Les fonctions de `service` et de `credential` qui touchent
@@ -190,6 +190,29 @@ class TestEntry(ServiceMenuCase):
             f"[8] {t('mail_rules_menu_service')}",
             invite.call_args_list[0].args[0],
         )
+
+    def test_the_mail_menu_opens_the_service_without_any_account(self):
+        """Sans compte, le choix d'un compte du menu des règles s'arrête
+        avant [8] : l'entrée [7] du menu Courriel ouvre le service quand
+        même, pour le désinstaller."""
+        sortie = io.StringIO()
+        with (
+            mock.patch.object(menu, "_configure_mail_logging"),
+            mock.patch.object(menu, "_load_accounts", lambda: []),
+            mock.patch.object(menu, "_service_menu") as sous_menu,
+            mock.patch.object(
+                menu.click, "prompt", side_effect=["7", "0"]
+            ) as invite,
+            contextlib.redirect_stdout(sortie),
+        ):
+            todo = FauxTodo()
+            menu.prompt_execute_mail(todo)
+        sous_menu.assert_called_once_with(todo)
+        self.assertIn(
+            f"[7] {t('mail_rules_menu_service')}",
+            invite.call_args_list[0].args[0],
+        )
+        self.assertNotIn(t("mail_no_account"), sortie.getvalue())
 
     def test_the_menu_shows_the_state_then_its_entries(self):
         sortie = self.lancer(["0"])
