@@ -2966,6 +2966,67 @@ class TestUninstall(unittest.TestCase):
         self.assertIn("systemctl try-restart coturn", self.calls())
         self.assertNotIn("apt-get purge -y coturn", self.calls())
 
+    def path_without(self, *names):
+        """PATH fait d'un dossier de liens vers les bouchons puis les
+        commandes du PATH courant, sauf `names` : ces commandes y manquent,
+        quoi que la machine des tests ait d'installé."""
+        farm = os.path.join(self.tmp.name, "farm")
+        os.makedirs(farm)
+        folders = [self.stubs] + os.environ["PATH"].split(os.pathsep)
+        for folder in folders:
+            if not os.path.isdir(folder):
+                continue
+            for name in os.listdir(folder):
+                target = os.path.join(folder, name)
+                link = os.path.join(farm, name)
+                if (
+                    name in names
+                    or os.path.lexists(link)
+                    or os.path.isdir(target)
+                    or not os.access(target, os.X_OK)
+                ):
+                    continue
+                os.symlink(target, link)
+        return farm
+
+    # Le pare-feu consigné a été désinstallé depuis : aucune de ses
+    # règles ne peut rester, la désinstallation se termine.
+    def test_firewall_tool_gone_reports_its_rules_absent(self):
+        rule = ci.Rule("udp", "3478", "coturn")
+        nft_line = "insert rule inet filter input " + ci._nft_rule(rule)
+        records = {
+            "ufw": ufw_record("udp 3478 coturn", "tcp 3478 coturn"),
+            "nftables": ci.firewall_record(
+                "nftables",
+                "@@FIREWALL_CHAIN inet filter input\n"
+                "@@FIREWALL_ADDED udp 3478 coturn\n"
+                "@@FIREWALL_ADDED tcp 3478 coturn\n"
+                "@@FIREWALL_PERSISTED yes\n@@END\n",
+            ),
+        }
+        bare = self.path_without("ufw", "nft")
+        for kind, record in records.items():
+            with self.subTest(kind):
+                state = installed_state(
+                    answers(services=frozenset({"coturn"})), firewall=record
+                )
+                self.place_state(state)
+                persist = self.path(ci.NFT_PERSIST_FILE)
+                write(persist, ci.MARKER + "\n" + nft_line + "\n", 0o644)
+                done = self.uninstall(state, PATH=bare)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                markers = self.markers(done)
+                self.assertIn("FIREWALL_ABSENT udp 3478 coturn", markers)
+                self.assertIn("FIREWALL_ABSENT tcp 3478 coturn", markers)
+                self.assertEqual(markers[-1], "DONE yes")
+                self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+                # Les lignes de l'outil partent aussi du fichier chargé au
+                # démarrage, nft absent ou non.
+                self.assertEqual(os.path.exists(persist), kind == "ufw")
+                self.assertFalse(
+                    [c for c in self.calls() if c.startswith(("ufw", "nft"))]
+                )
+
     def test_pending_record_of_a_service_not_in_the_state_is_kept(self):
         state = installed_state(answers(services=frozenset({"coturn"})))
         self.place_state(state)
