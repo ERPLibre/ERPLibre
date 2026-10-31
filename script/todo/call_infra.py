@@ -317,7 +317,11 @@ class InstallPlan:
     (ntfy ; celle de coturn est écrite par son installateur).
     `lineage_unchanged` : la lignée certbot de l'hôte porte déjà exactement
     les noms du certificat et n'est pas mise de côté : certbot passe sans
-    essai à blanc (CERTBOT_SKIP_STAGING=1)."""
+    essai à blanc (CERTBOT_SKIP_STAGING=1).
+    `nginx_include` : install_nginx.sh ajoute sa ligne include à nginx.conf
+    (disposition arch-include sans elle) ; le script lui en donne l'accord
+    (NGINX_ADOPT_INCLUDE=1), et `diffs` montre la ligne quand nginx.conf
+    est déjà sur l'hôte."""
 
     answers: Answers
     adopt: tuple[str, ...]
@@ -326,6 +330,7 @@ class InstallPlan:
     new_state: dict
     configs: dict = dataclasses.field(default_factory=dict)
     lineage_unchanged: bool = False
+    nginx_include: bool = False
 
 
 # --- Sonde ------------------------------------------------------------------
@@ -1740,6 +1745,31 @@ def _nginx_record(facts, answers, prior):
     }
 
 
+def _nginx_include_added(facts, record):
+    """Vrai quand install_nginx.sh ajoutera sa ligne include à nginx.conf :
+    disposition arch-include sans la ligne. nginx absent, la disposition
+    du record est celle du paquet que ce passage installe."""
+    return record["layout"] == "arch-include" and not (
+        (facts.nginx or {}).get("include")
+    )
+
+
+def _include_diff():
+    """Le changement d'`ensure_include` (install_nginx.sh) à nginx.conf,
+    montré avant le oui : une ligne à la fin du bloc http {}. La sonde ne
+    lit pas nginx.conf, d'où un bloc sans numéros de ligne ;
+    install_nginx.sh imprime le diff exact et garde la copie d'avant."""
+    return (
+        f"--- {NGINX_CONF}\n"
+        f"+++ {NGINX_CONF}\n"
+        "@@ http { } @@\n"
+        " http {\n"
+        "     ...\n"
+        f"+    include {NGINX_INCLUDE_DIR}/*.conf;\n"
+        " }\n"
+    )
+
+
 def _certbot_record(facts, answers, prior):
     """Fiche « certbot » de l'état : origine du paquet, paquets de greffons
     DNS que l'outil a installés (union des passages), minuteur de
@@ -1929,9 +1959,14 @@ def plan_install(facts, answers, now):
     )
     # Une fiche d'un passage précédent que ce plan n'utilise pas reste
     # telle quelle : la désinstallation défait encore ce qu'elle consigne.
+    include = False
     if is_production(answers):
         if answers.nginx is not None:
             new_state["nginx"] = _nginx_record(facts, answers, prior)
+            include = _nginx_include_added(facts, new_state["nginx"])
+            if include and _nginx_present(facts):
+                diffs.append((NGINX_CONF, _include_diff()))
+            unchanged = unchanged and not include
         if answers.tls == "letsencrypt":
             new_state["certbot"] = _certbot_record(facts, answers, prior)
             new_state["hook"] = {"path": HOOK_PATH, "installed_by_tool": True}
@@ -1946,6 +1981,7 @@ def plan_install(facts, answers, now):
         lineage_unchanged=(
             answers.tls == "letsencrypt" and _lineage_unchanged(facts, answers)
         ),
+        nginx_include=include,
     )
 
 
@@ -2659,9 +2695,11 @@ def _nginx_variables(plan):
     )
     if answers.nginx == "install" or record["installed_by_tool"]:
         variables["NGINX_INSTALL"] = 1
-    # Sur Arch, la ligne include ajoutée à nginx.conf est l'adoption que le
-    # plan annonce ; install_nginx.sh garde la copie d'avant.
-    variables["NGINX_ADOPT_INCLUDE"] = 1
+    # Sans cet accord, install_nginx.sh montre la ligne include et s'arrête :
+    # il n'est donné que pour la ligne que le plan a annoncée
+    # (`nginx_include`). install_nginx.sh garde la copie d'avant.
+    if plan.nginx_include:
+        variables["NGINX_ADOPT_INCLUDE"] = 1
     return variables
 
 
