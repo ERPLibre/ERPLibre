@@ -3988,8 +3988,28 @@ TRANSLATIONS = {
         "en": "The supplied certificate expired on {date}.",
     },
     "call_infra_cert_name_missing": {
-        "fr": "Le certificat ne couvre pas le nom public « {name} » (il couvre : {names}).",
-        "en": "The certificate does not cover the public name \"{name}\" (it covers: {names}).",
+        "fr": "Le certificat ne couvre pas le nom « {name} » (il couvre : {names}).",
+        "en": "The certificate does not cover the name \"{name}\" (it covers: {names}).",
+    },
+    "call_infra_prod_needs_tls": {
+        "fr": "La production exige un certificat : Let's Encrypt ou un certificat fourni.",
+        "en": "Production needs a certificate: Let's Encrypt or a supplied one.",
+    },
+    "call_infra_prod_needs_nginx": {
+        "fr": "En production, ntfy passe par nginx : choisissez un nginx existant ou à installer.",
+        "en": "In production, ntfy runs behind nginx: choose an existing nginx or one to install.",
+    },
+    "call_infra_acme_method": {
+        "fr": "Le défi Let's Encrypt « {method} » ne convient pas ici : certbot seul exige le port 80 libre de nginx, le webroot exige nginx.",
+        "en": "The Let's Encrypt challenge \"{method}\" does not fit here: standalone certbot needs port 80 free of nginx, webroot needs nginx.",
+    },
+    "call_infra_dns_plugin": {
+        "fr": "Défi DNS : greffon « {plugin} » inconnu ou fichier d'identifiants vide.",
+        "en": "DNS challenge: unknown plugin \"{plugin}\" or empty credentials file.",
+    },
+    "call_infra_turns_443": {
+        "fr": "Le port 443 est pris par « {holder} » : coturn garde TLS sur le port {port}.",
+        "en": "Port 443 is taken by \"{holder}\": coturn keeps TLS on port {port}.",
     },
     "call_infra_probe_incomplete": {
         "fr": "La lecture de l'hôte est incomplète (connexion coupée, sudo refusé ?) : rien n'est touché.",
