@@ -383,6 +383,17 @@ class TestInstall(MenuCase):
         self.assertIn(t("call_infra_sudo_refused"), out)
         self.assertIn(t("call_infra_state_not_saved"), out)
 
+    def test_the_probe_never_echoes_a_host_config(self):
+        text = "listening-port=3478\nstatic-auth-secret=Inventesecret123\n"
+        host = FakeHost(
+            coturn="coturn active /etc/turnserver.conf",
+            files={"/etc/turnserver.conf": text},
+            ports=(("udp", 3478, "turnserver"),),
+        )
+        out = self.drive("_call_infra_install", host, DEFAULTS + ["n"])
+        self.assertNotIn(b64(text), out)
+        self.assertNotIn("Inventesecret123", out)
+
     def test_fedora_is_refused_before_any_question(self):
         host = FakeHost(os_line="fedora 41")
         out = self.drive("_call_infra_install", host, [])

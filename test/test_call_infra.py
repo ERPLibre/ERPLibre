@@ -641,6 +641,48 @@ class TestPlan(unittest.TestCase):
             written["backup"], "/etc/turnserver.conf.bak-" + STAMP
         )
 
+    def test_the_adoption_diff_hides_secret_values(self):
+        # Le diff s'affiche : une valeur secrète d'une configuration
+        # étrangère n'y paraît qu'en « *** ». Valeurs inventées.
+        coturn = (
+            "listening-port=3478\n"
+            "static-auth-secret=Inventesecret123\n"
+            "user=alice:Inventemotdepasse\n"
+            "cli-password Inventecli\n"
+            "realm=ancien.exemple.test\n"
+        )
+        ntfy = (
+            'listen-http: ":8080"\n'
+            'smtp-sender-pass: "Inventesmtp"\n'
+            'web-push-private-key: "Inventepush"\n'
+            "auth-users:\n"
+            '  - "phil:$2a$10$Inventehash:admin"\n'
+            'auth-default-access: "deny-all"\n'
+        )
+        facts = base_facts(
+            coturn=service("/etc/turnserver.conf", coturn),
+            ntfy=service(ci.NTFY_CONFIG, ntfy, unit="ntfy"),
+            busy_ports=(("udp", 3478, "turnserver"), ("tcp", 8080, "ntfy")),
+        )
+        plan = ci.plan_install(facts, answers(), NOW)
+        shown = "".join(diff for _path, diff in plan.diffs)
+        for secret in (
+            "Inventesecret123",
+            "Inventemotdepasse",
+            "Inventecli",
+            "Inventesmtp",
+            "Inventepush",
+            "Inventehash",
+        ):
+            self.assertNotIn(secret, shown)
+        self.assertIn("-static-auth-secret=***", shown)
+        self.assertIn("-user=alice:***", shown)
+        self.assertIn('smtp-sender-pass: "***"', shown)
+        # Le reste du diff est intact, et ce que l'outil écrit garde les
+        # vraies valeurs.
+        self.assertIn("-realm=ancien.exemple.test", shown)
+        self.assertIn("Inventesmtp", plan.configs["ntfy"])
+
     def test_second_plan_on_the_produced_state_has_nothing_to_do(self):
         facts, ans = self.adopted_coturn()
         first = ci.plan_install(facts, ans, NOW)
