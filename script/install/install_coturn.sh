@@ -29,6 +29,12 @@
 #                         en garde une copie et a fait accepter le
 #                         changement. Sans lui, elle arrete le script avant
 #                         toute installation.
+#   TURN_ALLOW_PRIVATE=1  le relais peut joindre les plages privees (reseau
+#                         local, boucle locale, lien local) : un usage de
+#                         developpement sur un reseau local. Sans lui, ces
+#                         plages sont refusees (denied-peer-ip), et le
+#                         relais ne sert pas de passerelle vers les voisins
+#                         de l'hote. Le script annonce quand il les permet.
 #
 # Les comptes vivent dans la base SQLite de coturn (userdb), jamais dans
 # turnserver.conf : coturn la relit a chaque allocation, un compte ajoute ou
@@ -73,6 +79,29 @@ TURN_KEY_FILE="${TURN_KEY_FILE:-}"
 TURN_EXTERNAL_IP="${TURN_EXTERNAL_IP:-}"
 TURN_CHECK_PASSWORD="${TURN_CHECK_PASSWORD:-}"
 TURN_GARDER_CONFIG="${TURN_GARDER_CONFIG:-}"
+TURN_ALLOW_PRIVATE="${TURN_ALLOW_PRIVATE:-}"
+
+# Plages refusees aux relais sans TURN_ALLOW_PRIVATE=1, au format de
+# denied-peer-ip (adresse seule, ou premiere-derniere). Aux plages privees
+# (RFC 1918, CGNAT 100.64/10, ULA fc00::/7), a la boucle locale et au lien
+# local s'ajoutent les formes qui y menent autrement : 0.0.0.0/8 et « :: »
+# joignent la machine elle-meme, ::ffff:0:0/96 et 64:ff9b::/96 portent une
+# adresse IPv4, privee comprise, dans une adresse IPv6.
+DENIED_PEER_RANGES=(
+    0.0.0.0-0.255.255.255
+    10.0.0.0-10.255.255.255
+    100.64.0.0-100.127.255.255
+    127.0.0.0-127.255.255.255
+    169.254.0.0-169.254.255.255
+    172.16.0.0-172.31.255.255
+    192.168.0.0-192.168.255.255
+    ::
+    ::1
+    ::ffff:0.0.0.0-::ffff:255.255.255.255
+    64:ff9b::-64:ff9b::ffff:ffff
+    fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+    fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+)
 
 log() { echo "[COTURN] $*"; }
 die() { echo "[COTURN] ERREUR : $*" >&2; exit 1; }
@@ -122,6 +151,10 @@ check_inputs() {
     if [ -n "$TURN_EXTERNAL_IP" ] && ! [[ "$TURN_EXTERNAL_IP" =~ ^[0-9A-Fa-f:./]+$ ]]; then
         die "TURN_EXTERNAL_IP invalide : ${TURN_EXTERNAL_IP}"
     fi
+    case "$TURN_ALLOW_PRIVATE" in
+        ''|0|1) ;;
+        *) die "TURN_ALLOW_PRIVATE invalide : ${TURN_ALLOW_PRIVATE} (1, 0 ou vide)." ;;
+    esac
 }
 
 # Lit ID et ID_LIKE dans un sous-shell : les autres variables d'os-release
@@ -263,7 +296,9 @@ refuse_linked_config() {
 # fichier a moitie ecrit). Le voisin vient de mktemp : un nom neuf, cree en
 # exclusif et 0600, qu'aucun lien pose d'avance ne peut detourner vers un
 # autre fichier. CONFIG_CHANGED passe a 1 quand le contenu change.
-# Sans certificat, no-tls et no-dtls : aucun port TLS n'ecoute. Les quatre
+# Sans certificat, no-tls et no-dtls : aucun port TLS n'ecoute. Sans
+# TURN_ALLOW_PRIVATE=1, une ligne denied-peer-ip par plage de
+# DENIED_PEER_RANGES. Les quatre
 # dernieres lignes sont celles du fichier livre par Debian, qu'il remplace :
 # journal systeme, et pas de reponses STUN plus grosses que les requetes
 # (amplification).
@@ -293,6 +328,9 @@ write_config() {
         echo "userdb=${DB_FILE}"
         echo "no-cli"
         echo "no-multicast-peers"
+        if [ "$TURN_ALLOW_PRIVATE" != 1 ]; then
+            printf 'denied-peer-ip=%s\n' "${DENIED_PEER_RANGES[@]}"
+        fi
         if [ -n "$TURN_EXTERNAL_IP" ]; then
             echo "external-ip=${TURN_EXTERNAL_IP}"
         fi
@@ -453,6 +491,9 @@ main() {
 
     CONFIG_CHANGED=0
     install_certificate
+    if [ "$TURN_ALLOW_PRIVATE" = 1 ]; then
+        log "TURN_ALLOW_PRIVATE=1 : plages privees permises aux relais (reseau local, developpement)."
+    fi
     write_config "$conf"
     enable_default
     # Le compte AVANT le demarrage : le service lit une base deja prete.
