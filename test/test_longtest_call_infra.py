@@ -531,7 +531,7 @@ class LesBriques(unittest.TestCase):
             "ci.parse_probe",
             "ci.plan_install",
             "ci.install_script",
-            "ci.written_state",
+            "ci.installed_state",
             "ci.firewall_preview",
             "ci.firewall_script",
             "ci.firewall_record",

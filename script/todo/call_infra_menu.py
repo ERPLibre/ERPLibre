@@ -333,7 +333,8 @@ class CallInfraMenuMixin:
         )
         if result is None or not self._call_infra_installed(*result):
             return
-        state = ci.mark_admin_added(ci.written_state(plan, stamp), result[1])
+        # L'état que le passage root vient d'écrire, que le pare-feu complète.
+        state = ci.installed_state(plan, stamp, result[1])
         record = self._call_infra_firewall(
             host, facts, answers, state.get("firewall")
         )

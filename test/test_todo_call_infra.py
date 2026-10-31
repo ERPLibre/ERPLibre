@@ -49,11 +49,28 @@ def b64(text):
 # La ligne de `_state_write_lines` qui pose l'état : la doublure en relit
 # le base64, comme l'hôte l'écrirait.
 STATE_LINE = re.compile(r'printf %s (\S+) \| base64 -d > "\$STATE\.new"')
+# Quand l'état prend des valeurs à la sortie des installateurs, il passe
+# par un gabarit : la variante qui porte `admin_added` vient en premier, et
+# chaque "__RUN_<nom>__" vaut la valeur de plan `J_<nom>` (aucun marqueur
+# d'installateur dans la sortie de la doublure).
+TEMPLATE_LINE = re.compile(r'printf %s (\S+) \| base64 -d > "\$D/state\.tpl"')
+RUN_VALUE = re.compile(r"^\s*J_(\w+)=(.*)$", re.M)
 
 
-def state_of(script):
-    payload = shlex.split(STATE_LINE.search(script).group(1))[0]
-    return json.loads(base64.b64decode(payload))
+def state_of(script, admin_added=False):
+    found = STATE_LINE.search(script)
+    if found:
+        payload = shlex.split(found.group(1))[0]
+        return json.loads(base64.b64decode(payload))
+    variants = TEMPLATE_LINE.findall(script)
+    chosen = variants[0] if admin_added and len(variants) > 1 else variants[-1]
+    text = base64.b64decode(shlex.split(chosen)[0]).decode("utf-8")
+    defaults = {}
+    for name, value in RUN_VALUE.findall(script):
+        defaults.setdefault(name, shlex.split(value)[0])
+    for name, value in defaults.items():
+        text = text.replace(f'"__RUN_{name}__"', value)
+    return json.loads(text)
 
 
 class FakeHost:
@@ -178,7 +195,7 @@ class FakeHost:
                 out = f"@@ADMIN_PASSWORD {self.admin_password}\n" + out
             if not self.install_ok:
                 return 1, out + "@@ACTIVE ntfy failed\n@@SAVED no\n"
-            self.state = state_of(script)
+            self.state = state_of(script, bool(self.admin_password))
             return 0, out + "@@SAVED yes\n"
         if kind == "state":
             if self.state_code:

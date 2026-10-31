@@ -3797,6 +3797,54 @@ def coturn_only(**changes):
     return production(**values)
 
 
+def nginx_facts(state="active", layout="debian", names=(), include=False):
+    return {
+        "state": state,
+        "layout": layout,
+        "include": include,
+        "names": tuple(names),
+        "pending": None,
+    }
+
+
+def certbot_facts(lineage=None, held=False, plugins=(), version="4.0.0"):
+    return {
+        "version": version,
+        "lineage": tuple(lineage) if lineage is not None else None,
+        "held": held,
+        "plugins": tuple(plugins),
+        "pending": None,
+    }
+
+
+def production_installed(ans, **changes):
+    """Les faits d'un hôte où une installation de production de `ans` a
+    réussi : services actifs sur leur configuration, nginx actif quand il
+    sert, lignée certbot aux noms du certificat avec Let's Encrypt."""
+    first = ci.plan_install(base_facts(), ans, NOW)
+    ports = [("udp", 3478, "turnserver"), ("tcp", 3478, "turnserver")]
+    ntfy = None
+    if "ntfy" in ans.services:
+        ntfy = service(ci.NTFY_CONFIG, ci.ntfy_config(ans), unit="ntfy")
+        ports.append(("tcp", 8080, "ntfy"))
+    nginx = certbot = None
+    if ans.nginx:
+        ports += [("tcp", 80, "nginx"), ("tcp", 443, "nginx")]
+        nginx = nginx_facts()
+    if ans.tls == "letsencrypt":
+        certbot = certbot_facts(lineage=ci.certificate_names(ans))
+    values = dict(
+        coturn=service("/etc/turnserver.conf", ci.coturn_config(ans)),
+        ntfy=ntfy,
+        busy_ports=tuple(ports),
+        state=ci.written_state(first, STAMP),
+        nginx=nginx,
+        certbot=certbot,
+    )
+    values.update(changes)
+    return base_facts(**values)
+
+
 def installer_ranges_block():
     """Le tableau DENIED_PEER_RANGES d'install_coturn.sh, tel quel."""
     with open(COTURN_INSTALLER) as handle:
@@ -4447,20 +4495,7 @@ class TestProduction(unittest.TestCase):
                 )
 
     def installed(self, ans):
-        first = ci.plan_install(base_facts(), ans, NOW)
-        ports = [("udp", 3478, "turnserver"), ("tcp", 3478, "turnserver")]
-        ntfy = None
-        if "ntfy" in ans.services:
-            ntfy = service(ci.NTFY_CONFIG, ci.ntfy_config(ans), unit="ntfy")
-            ports.append(("tcp", 8080, "ntfy"))
-        if ans.nginx:
-            ports += [("tcp", 80, "nginx"), ("tcp", 443, "nginx")]
-        return base_facts(
-            coturn=service("/etc/turnserver.conf", ci.coturn_config(ans)),
-            ntfy=ntfy,
-            busy_ports=tuple(ports),
-            state=ci.written_state(first, STAMP),
-        )
+        return production_installed(ans)
 
     def test_rerun_with_the_same_production_answers(self):
         for ans in (
@@ -4486,6 +4521,1023 @@ class TestProduction(unittest.TestCase):
                 facts, dataclasses.replace(prod, nginx="existing"), NOW
             ).nothing_to_do
         )
+
+
+NGINX_PROBE = DEBIAN_PROBE.replace(
+    "@@FIREWALL none\n",
+    "@@NGINX active debian\n"
+    "@@NGINX_NAME _ /etc/nginx/sites-enabled/default\n"
+    "@@NGINX_NAME ntfy.exemple.test /etc/nginx/sites-enabled/x\n"
+    "@@NGINX_NAME *.exemple.test /etc/nginx/sites-enabled/joker\n"
+    "@@CERTBOT 4.0.0\n"
+    "@@CERTBOT_PLUGIN cloudflare\n"
+    "@@LINEAGE erplibre-call turn.exemple.test ntfy.exemple.test\n"
+    "@@HELD erplibre-call\n"
+    "@@FIREWALL none\n",
+)
+
+
+class TestProductionProbe(unittest.TestCase):
+    """Sonde de production : nginx (état, disposition, noms des sites
+    étrangers), certbot (version, greffons DNS, lignée, fichier mis de
+    côté) et leur refus avant toute installation."""
+
+    def test_parse_nginx_and_certbot_lines(self):
+        facts = ci.parse_probe(NGINX_PROBE)
+        self.assertEqual(
+            facts.nginx,
+            nginx_facts(
+                names=(
+                    ("_", "/etc/nginx/sites-enabled/default"),
+                    ("ntfy.exemple.test", "/etc/nginx/sites-enabled/x"),
+                    ("*.exemple.test", "/etc/nginx/sites-enabled/joker"),
+                )
+            ),
+        )
+        self.assertEqual(
+            facts.certbot,
+            certbot_facts(
+                lineage=("turn.exemple.test", "ntfy.exemple.test"),
+                held=True,
+                plugins=("cloudflare",),
+            ),
+        )
+
+    def test_a_lot_1_probe_has_neither(self):
+        facts = ci.parse_probe(DEBIAN_PROBE)
+        self.assertIsNone(facts.nginx)
+        self.assertIsNone(facts.certbot)
+
+    def test_absent_nginx_and_certbot(self):
+        text = DEBIAN_PROBE.replace(
+            "@@FIREWALL none\n",
+            "@@NGINX absent -\n@@CERTBOT absent\n@@FIREWALL none\n",
+        )
+        facts = ci.parse_probe(text)
+        self.assertIsNone(facts.nginx)
+        self.assertIsNone(facts.certbot)
+
+    def test_pending_nginx_and_certbot(self):
+        nginx = {"installed_by_tool": True}
+        certbot = {"installed_by_tool": True, "plugins_installed": []}
+        text = DEBIAN_PROBE.replace(
+            "@@FIREWALL none\n",
+            "@@NGINX active debian\n@@CERTBOT 4.0.0\n"
+            f"@@PENDING nginx {b64(json.dumps(nginx))}\n"
+            f"@@PENDING certbot {b64(json.dumps(certbot))}\n"
+            "@@FIREWALL none\n",
+        )
+        facts = ci.parse_probe(text)
+        self.assertEqual(facts.nginx["pending"], nginx)
+        self.assertEqual(facts.certbot["pending"], certbot)
+        # Une fiche sans nginx sur l'hôte (passage coupé avant son paquet).
+        bare = text.replace("@@NGINX active debian\n", "@@NGINX absent -\n")
+        self.assertEqual(ci.parse_probe(bare).nginx["state"], "absent")
+
+    def test_name_served_by_a_foreign_site_is_refused(self):
+        # Review Focus 4 : le nom est pris, le fichier est nommé.
+        facts = ci.parse_probe(NGINX_PROBE)
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.plan_install(facts, production(nginx="existing"), NOW)
+        self.assertEqual(caught.exception.key, "call_infra_nginx_name_taken")
+        self.assertEqual(
+            caught.exception.values,
+            {
+                "name": "ntfy.exemple.test",
+                "file": "/etc/nginx/sites-enabled/x",
+            },
+        )
+        self.assertIn("call_infra_nginx_name_taken", ci_i18n_keys())
+
+    def test_name_match_ignores_case_and_covers_the_turn_name(self):
+        text = NGINX_PROBE.replace(
+            "ntfy.exemple.test /etc/nginx/sites-enabled/x",
+            "TURN.Exemple.test /etc/nginx/sites-enabled/y",
+        )
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.plan_install(ci.parse_probe(text), production(), NOW)
+        self.assertEqual(caught.exception.values["name"], "turn.exemple.test")
+        self.assertEqual(
+            caught.exception.values["file"], "/etc/nginx/sites-enabled/y"
+        )
+
+    def test_wildcards_and_the_catch_all_name_are_not_taken(self):
+        # nginx préfère un nom exact à un joker et à « _ » : rien à refuser.
+        text = NGINX_PROBE.replace(
+            "@@NGINX_NAME ntfy.exemple.test /etc/nginx/sites-enabled/x\n", ""
+        )
+        plan = ci.plan_install(ci.parse_probe(text), production(), NOW)
+        self.assertFalse(plan.nothing_to_do)
+
+    def test_nginx_and_certbot_ports_are_not_busy_for_themselves(self):
+        self.assertEqual(ci.PROCESSES["nginx"], "nginx")
+        self.assertEqual(ci.PROCESSES["certbot"], "certbot")
+        facts = base_facts(
+            busy_ports=(("tcp", 80, "nginx"), ("tcp", 443, "nginx")),
+            nginx=nginx_facts(),
+        )
+        ci.plan_install(facts, production(nginx="existing"), NOW)
+        facts = base_facts(busy_ports=(("tcp", 80, "certbot"),))
+        ci.plan_install(facts, coturn_only(), NOW)
+
+    def sandbox(self, nginx_conf, files=None, links=None):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = os.path.join(tmp.name, "root")
+        stubs = os.path.join(tmp.name, "stubs")
+        write(
+            os.path.join(root, "etc/os-release"),
+            'ID=debian\nVERSION_ID="13"\n',
+            0o644,
+        )
+        os.makedirs(os.path.join(root, "run/systemd/system"))
+        if nginx_conf is not None:
+            write(
+                os.path.join(root, "etc/nginx/nginx.conf"), nginx_conf, 0o644
+            )
+        for path, text in (files or {}).items():
+            write(os.path.join(root, path.lstrip("/")), text, 0o644)
+        for path, target in (links or {}).items():
+            os.symlink(target, os.path.join(root, path.lstrip("/")))
+        write(
+            os.path.join(stubs, "systemctl"),
+            "#!/bin/sh\n"
+            'case "$1 $2" in\n'
+            "  'is-active nginx') echo active ;;\n"
+            "  *) exit 3 ;;\n"
+            "esac\n",
+        )
+        write(
+            os.path.join(stubs, "certbot"),
+            "#!/bin/sh\n"
+            'case "$1" in\n'
+            "  --version) echo 'certbot 4.0.0' ;;\n"
+            "  certificates) cat <<'EOF'\n"
+            "Found the following certs:\n"
+            "  Certificate Name: erplibre-call\n"
+            "    Domains: ntfy.exemple.test turn.exemple.test\n"
+            "    Expiry Date: 2027-01-29 10:00:00+00:00 (VALID: 89 days)\n"
+            "EOF\n"
+            "  ;;\n"
+            "  *) exit 2 ;;\n"
+            "esac\n",
+        )
+        write(
+            os.path.join(stubs, "dpkg-query"),
+            "#!/bin/sh\n"
+            "echo 'install ok installed python3-certbot-dns-cloudflare'\n"
+            "echo 'deinstall ok config-files python3-certbot-dns-ovh'\n",
+        )
+        write(os.path.join(stubs, "nginx"), "#!/bin/sh\nexit 0\n")
+        write(os.path.join(stubs, "uname"), "#!/bin/sh\necho hote\n")
+        for name in ("ss", "ip", "ufw", "nft", "iptables", "pacman"):
+            write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
+        env = dict(os.environ, PATH=stubs + ":" + os.environ["PATH"])
+        done = subprocess.run(
+            ["sh", "-c", ci.probe_script(root=root)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return root, ci.parse_probe(done.stdout)
+
+    DEBIAN_NGINX_CONF = (
+        "http {\n"
+        "    include /etc/nginx/conf.d/*.conf;\n"
+        "    include /etc/nginx/sites-enabled/*;\n"
+        "}\n"
+    )
+
+    def test_probe_reads_nginx_and_certbot_on_the_host(self):
+        ours = ci.MARKER + "\nserver { server_name ntfy.exemple.test; }\n"
+        _root, facts = self.sandbox(
+            self.DEBIAN_NGINX_CONF,
+            {
+                "/etc/nginx/sites-enabled/x": (
+                    "server {\n"
+                    "  listen 80;\n"
+                    "  server_name ntfy.exemple.test # server_name faux\n"
+                    "      www.exemple.test;\n"
+                    "  proxy_ssl_server_name on;\n"
+                    "}\n"
+                ),
+                "/etc/nginx/sites-available/erplibre-call-ntfy.conf": ours,
+                "/etc/nginx/conf.d/autre.conf": (
+                    "server { server_name autre.exemple.test; }\n"
+                ),
+                "/etc/letsencrypt/live/erplibre-call/cert.pem": "x\n",
+                "/etc/letsencrypt/renewal/erplibre-call.conf.erplibre-hold": (
+                    "x\n"
+                ),
+            },
+            # Le lien de l'outil dans sites-enabled n'est pas un site
+            # étranger.
+            links={
+                "/etc/nginx/sites-enabled/erplibre-call-ntfy.conf": (
+                    "../sites-available/erplibre-call-ntfy.conf"
+                )
+            },
+        )
+        self.assertEqual(facts.nginx["state"], "active")
+        self.assertEqual(facts.nginx["layout"], "debian")
+        self.assertFalse(facts.nginx["include"])
+        self.assertEqual(
+            set(facts.nginx["names"]),
+            {
+                ("ntfy.exemple.test", "/etc/nginx/sites-enabled/x"),
+                ("www.exemple.test", "/etc/nginx/sites-enabled/x"),
+                ("autre.exemple.test", "/etc/nginx/conf.d/autre.conf"),
+            },
+        )
+        self.assertEqual(facts.certbot["version"], "4.0.0")
+        self.assertEqual(
+            facts.certbot["lineage"],
+            ("ntfy.exemple.test", "turn.exemple.test"),
+        )
+        self.assertTrue(facts.certbot["held"])
+        self.assertEqual(facts.certbot["plugins"], ("cloudflare",))
+
+    def test_probe_skips_the_tool_site(self):
+        ours = ci.MARKER + "\nserver { server_name ntfy.exemple.test; }\n"
+        _root, facts = self.sandbox(
+            self.DEBIAN_NGINX_CONF,
+            {"/etc/nginx/sites-enabled/erplibre-call-ntfy.conf": ours},
+        )
+        self.assertEqual(facts.nginx["names"], ())
+
+    def test_probe_arch_layouts(self):
+        bare = "http {\n    server { server_name localhost; }\n}\n"
+        _root, facts = self.sandbox(bare)
+        self.assertEqual(facts.nginx["layout"], "arch-include")
+        self.assertFalse(facts.nginx["include"])
+        self.assertEqual(
+            facts.nginx["names"], (("localhost", "/etc/nginx/nginx.conf"),)
+        )
+        ours = "http {\n    include /etc/nginx/erplibre-call.d/*.conf;\n}\n"
+        _root, facts = self.sandbox(ours)
+        self.assertEqual(facts.nginx["layout"], "arch-include")
+        self.assertTrue(facts.nginx["include"])
+        confd = "http {\n    include conf.d/*.conf;\n}\n"
+        self.assertEqual(self.sandbox(confd)[1].nginx["layout"], "confd")
+
+    def test_probe_without_nginx_conf_says_absent(self):
+        _root, facts = self.sandbox(None)
+        self.assertIsNone(facts.nginx)
+
+
+def ci_i18n_keys():
+    from script.todo import todo_i18n
+
+    return set(todo_i18n.TRANSLATIONS)
+
+
+# Bouchon des installateurs de production : note l'ordre des appels (avec
+# l'étape de nginx), leur environnement (un fichier par appel), imprime la
+# sortie préparée pour cet appel et rend le code demandé.
+STUB_BASH_PROD = r"""#!/bin/sh
+name=$(basename "$1" .sh)
+tag=$name${NGINX_STAGE:+-$NGINX_STAGE}
+echo "$tag" >> "$LOG/order"
+cp "$1" "$LOG/$tag.payload"
+n=0
+while [ -e "$LOG/$tag.$n.env" ]; do n=$((n + 1)); done
+env | grep -E '^(TURN|NTFY|NGINX|CERTBOT|RENEWED|ERPLIBRE)_' | sort \
+    > "$LOG/$tag.$n.env"
+[ -n "${TURN_CERT_FILE:-}" ] && cat "$TURN_CERT_FILE" > "$LOG/$tag.$n.cert"
+[ -f "$OUT/$tag" ] && cat "$OUT/$tag"
+v=$(echo "$tag" | tr -- '-.' '__')
+eval "exit \${RC_$v:-0}"
+"""
+
+LINEAGE = "/etc/letsencrypt/live/erplibre-call"
+RENEWAL = "/etc/letsencrypt/renewal/erplibre-call.conf"
+CREDENTIALS = "dns_cloudflare_api_token = Inventejeton0123456789abcdef\n"
+CERTBOT_ISSUED = (
+    "@@CERTBOT staging-ok\n"
+    "@@CERTBOT_TIMER certbot.timer present\n"
+    f"@@CERTBOT issued {LINEAGE}\n"
+)
+
+
+class TestProductionInstall(unittest.TestCase):
+    """Script d'installation de production joué dans une racine
+    temporaire : ordre nginx (acme), certbot, crochet, nginx (full), état ;
+    arrêt avant l'état à chaque échec ; état consigné par ce passage même."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = os.path.join(tmp.name, "root")
+        self.log = os.path.join(tmp.name, "log")
+        self.out = os.path.join(tmp.name, "out")
+        self.stubs = os.path.join(tmp.name, "stubs")
+        self.scratch = os.path.join(tmp.name, "scratch")
+        for path in (self.root, self.log, self.out, self.scratch):
+            os.makedirs(path)
+        write(os.path.join(self.stubs, "bash"), STUB_BASH_PROD)
+        write(os.path.join(self.stubs, "systemctl"), STUB_SYSTEMCTL)
+        for name in ("chown", "useradd"):
+            write(
+                os.path.join(self.stubs, name),
+                '#!/bin/sh\necho "%s $*" >> "$LOG/calls"\n' % name,
+            )
+        write(os.path.join(self.stubs, "id"), "#!/bin/sh\nexit 0\n")
+
+    def path(self, host_path):
+        return self.root + host_path
+
+    def read(self, path):
+        with open(path) as handle:
+            return handle.read()
+
+    def run_script(self, plan, outputs=None, **env):
+        for tag, text in (outputs or {}).items():
+            write(os.path.join(self.out, tag), text, 0o644)
+        script = ci.install_script(plan, STAMP, root=self.root)
+        full = dict(
+            os.environ,
+            PATH=self.stubs + ":" + os.environ["PATH"],
+            LOG=self.log,
+            OUT=self.out,
+            TMPDIR=self.scratch,
+        )
+        full.update(env)
+        return subprocess.run(
+            ["sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=full,
+            timeout=60,
+            start_new_session=True,
+        )
+
+    def order(self):
+        path = os.path.join(self.log, "order")
+        return self.read(path).split() if os.path.exists(path) else []
+
+    def env_of(self, tag, n=0):
+        return dict(
+            line.split("=", 1)
+            for line in self.read(
+                os.path.join(self.log, f"{tag}.{n}.env")
+            ).splitlines()
+        )
+
+    def state(self):
+        return json.loads(self.read(self.path(ci.STATE_PATH)))
+
+    def assert_no_state(self, done):
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+        self.assertEqual(ci.marker_lines(done.stdout)[-1], ("SAVED", "no"))
+
+    def lineage_on_disk(self):
+        write(self.path(LINEAGE + "/fullchain.pem"), "chaine\n", 0o644)
+        write(self.path(LINEAGE + "/privkey.pem"), "cle\n", 0o600)
+
+    # --- Ordre ---------------------------------------------------------
+
+    def test_script_order_acme_certbot_hook_full_state(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        script = ci.install_script(plan, STAMP)
+        acme = script.index("NS=acme")
+        certbot = script.index('exec bash "$D/install_certbot.sh"')
+        guard = script.index("step_rc certbot || fail certbot")
+        hook = script.index("RENEWED_LINEAGE=")
+        full = script.index("NGINX_STAGE=full")
+        state = script.index('> "$STATE.new"')
+        self.assertLess(acme, certbot)
+        self.assertLess(certbot, guard)
+        self.assertLess(guard, hook)
+        self.assertLess(hook, full)
+        self.assertLess(full, state)
+        self.assertEqual(script.count('> "$STATE.new"'), 1)
+        self.assertIn("NGINX_ACME_ROOT=/var/lib/erplibre-call-acme", script)
+        self.assertIn("CERTBOT_WEBROOT=/var/lib/erplibre-call-acme", script)
+
+    def test_first_run_order_on_the_host(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            self.order(),
+            [
+                "install_coturn",
+                "install_ntfy",
+                "install_nginx-acme",
+                "install_certbot",
+                "erplibre-call",
+                "install_coturn",
+                "install_nginx-full",
+            ],
+        )
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("ACTIVE", "nginx active"), markers)
+        self.assertEqual(markers[-1], ("SAVED", "yes"))
+        self.assertEqual(os.listdir(self.scratch), [])
+
+    def test_installer_environments(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        acme = self.env_of("install_nginx-acme")
+        self.assertEqual(
+            acme["NGINX_NAMES"], "turn.exemple.test ntfy.exemple.test"
+        )
+        self.assertEqual(acme["NGINX_NTFY_NAME"], "ntfy.exemple.test")
+        self.assertEqual(acme["NGINX_ACME_ROOT"], ci.ACME_ROOT)
+        self.assertEqual(acme["NGINX_INSTALL"], "1")
+        self.assertEqual(acme["NGINX_ADOPT_INCLUDE"], "1")
+        certbot = self.env_of("install_certbot")
+        self.assertEqual(
+            certbot["CERTBOT_NAMES"], "turn.exemple.test ntfy.exemple.test"
+        )
+        self.assertEqual(certbot["CERTBOT_METHOD"], "webroot")
+        self.assertEqual(certbot["CERTBOT_WEBROOT"], ci.ACME_ROOT)
+        self.assertEqual(certbot["CERTBOT_EMAIL"], "admin@exemple.test")
+        self.assertNotIn("CERTBOT_SKIP_STAGING", certbot)
+        full = self.env_of("install_nginx-full")
+        self.assertEqual(full["NGINX_CERT_FILE"], LINEAGE + "/fullchain.pem")
+        self.assertEqual(full["NGINX_KEY_FILE"], LINEAGE + "/privkey.pem")
+        self.assertEqual(full["NGINX_UPSTREAM_PORT"], "8080")
+        hook = self.env_of("erplibre-call")
+        self.assertEqual(hook["RENEWED_LINEAGE"], self.path(LINEAGE))
+        self.assertEqual(hook["ERPLIBRE_CALL_ROOT"], self.root)
+        # Aucun `export` nu, qui imprimerait l'environnement du script.
+        script = ci.install_script(plan, STAMP)
+        self.assertNotRegex(script, r"(?m)^\s*export\s*$")
+        self.assertNotIn("export PATH", done.stdout)
+
+    def test_hook_installed_from_the_product_file(self):
+        with open(ci.HOOK_SOURCE) as handle:
+            self.assertEqual(ci.deploy_hook_text(), handle.read())
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        hook = self.path(ci.HOOK_PATH)
+        self.assertEqual(self.read(hook), ci.deploy_hook_text())
+        self.assertEqual(stat.S_IMODE(os.stat(hook).st_mode), 0o755)
+        self.assertEqual(
+            ci.HOOK_PATH, "/etc/letsencrypt/renewal-hooks/deploy/erplibre-call"
+        )
+
+    # --- coturn et la lignée --------------------------------------------
+
+    def test_first_run_coturn_without_then_with_the_certificate(self):
+        # Ruling L2-4 : pas de TURN_ALT_TLS_PORT tant qu'aucun certificat
+        # n'existe ; coturn reprend la lignée après la délivrance. Le
+        # crochet ne le peut pas : aucun état ne nomme encore coturn.
+        plan = ci.plan_install(base_facts(), coturn_only(turns_443=True), NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            self.order(),
+            [
+                "install_coturn",
+                "install_certbot",
+                "erplibre-call",
+                "install_coturn",
+            ],
+        )
+        first = self.env_of("install_coturn", 0)
+        self.assertNotIn("TURN_CERT_FILE", first)
+        self.assertNotIn("TURN_ALT_TLS_PORT", first)
+        second = self.env_of("install_coturn", 1)
+        self.assertEqual(
+            second["TURN_CERT_FILE"], self.path(LINEAGE + "/fullchain.pem")
+        )
+        self.assertEqual(
+            second["TURN_KEY_FILE"], self.path(LINEAGE + "/privkey.pem")
+        )
+        self.assertEqual(second["TURN_ALT_TLS_PORT"], "443")
+        self.assertNotIn("TURN_ALLOW_PRIVATE", second)
+        self.assertEqual(
+            self.env_of("install_certbot")["CERTBOT_METHOD"], "standalone"
+        )
+
+    def test_lineage_already_there_coturn_runs_once_with_it(self):
+        self.lineage_on_disk()
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(
+            plan,
+            {"install_certbot": CERTBOT_ISSUED.replace("issued", "unchanged")},
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        # Le site complet sert déjà le défi : 443 ne tombe pas le temps de
+        # certbot.
+        self.assertEqual(
+            self.order(),
+            [
+                "install_coturn",
+                "install_ntfy",
+                "install_nginx-full",
+                "install_certbot",
+                "erplibre-call",
+                "install_nginx-full",
+            ],
+        )
+        coturn = self.env_of("install_coturn")
+        self.assertEqual(
+            coturn["TURN_CERT_FILE"], self.path(LINEAGE + "/fullchain.pem")
+        )
+        self.assertEqual(
+            self.read(os.path.join(self.log, "install_coturn.0.cert")),
+            "chaine\n",
+        )
+
+    def test_reinstall_with_a_reissued_lineage_hands_it_to_coturn(self):
+        # Pas d'état encore : le crochet ne connaît pas coturn, qui reprend
+        # la nouvelle lignée par son installateur.
+        self.lineage_on_disk()
+        plan = ci.plan_install(base_facts(), coturn_only(), NOW)
+        skipped = "@@HOOK coturn-skip not-in-state\n"
+        done = self.run_script(
+            plan, {"install_certbot": CERTBOT_ISSUED, "erplibre-call": skipped}
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.order().count("install_coturn"), 2)
+        self.assertEqual(
+            self.env_of("install_coturn", 1)["TURN_CERT_FILE"],
+            self.path(LINEAGE + "/fullchain.pem"),
+        )
+
+    def test_hook_that_handed_the_lineage_spares_coturn_a_restart(self):
+        # Relance : le crochet a copié la lignée et signalé coturn (SIGUSR2)
+        # ; aucun second passage de l'installateur, qui le redémarrerait.
+        self.lineage_on_disk()
+        plan = ci.plan_install(base_facts(), coturn_only(), NOW)
+        handed = "@@HOOK signal coturn\n@@HOOK applied\n"
+        done = self.run_script(
+            plan, {"install_certbot": CERTBOT_ISSUED, "erplibre-call": handed}
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.order().count("install_coturn"), 1)
+
+    # --- Échecs ---------------------------------------------------------
+
+    def test_certbot_failure_stops_before_the_state(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(
+            plan,
+            {"install_certbot": "@@CERTBOT failed Detail: refus du serveur\n"},
+            RC_install_certbot="1",
+        )
+        self.assert_no_state(done)
+        self.assertEqual(self.order()[-1], "install_certbot")
+        self.assertIn(("FAILED", "certbot"), ci.marker_lines(done.stdout))
+        self.assertTrue(
+            os.path.exists(self.path(ci.PENDING_DIR + "/certbot.json"))
+        )
+        self.assertTrue(
+            os.path.exists(self.path(ci.PENDING_DIR + "/nginx.json"))
+        )
+
+    def test_each_step_failure_stops_before_the_state(self):
+        cases = {
+            "RC_install_coturn": "install_coturn",
+            "RC_install_ntfy": "install_ntfy",
+            "RC_install_nginx_acme": "install_nginx-acme",
+            "RC_erplibre_call": "erplibre-call",
+            "RC_install_nginx_full": "install_nginx-full",
+        }
+        for variable, last in cases.items():
+            with self.subTest(variable=variable):
+                self.tearDown_root()
+                plan = ci.plan_install(base_facts(), production(), NOW)
+                done = self.run_script(
+                    plan,
+                    {"install_certbot": CERTBOT_ISSUED},
+                    **{variable: "1"},
+                )
+                self.assert_no_state(done)
+                self.assertEqual(self.order()[-1], last)
+
+    def tearDown_root(self):
+        for path in (self.root, self.log):
+            subprocess.run(["rm", "-rf", path], check=True)
+            os.makedirs(path)
+
+    def test_inactive_nginx_leaves_no_state(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(
+            plan, {"install_certbot": CERTBOT_ISSUED}, ACTIVE_nginx="failed"
+        )
+        self.assert_no_state(done)
+        self.assertIn(("ACTIVE", "nginx failed"), ci.marker_lines(done.stdout))
+
+    def test_renewal_file_held_again_when_a_later_step_fails(self):
+        # Task 5 : install_certbot.sh remet le fichier mis de côté ; un
+        # échec après lui (crochet, nginx full, unité inactive) le remet de
+        # côté, faute d'état qui consigne Let's Encrypt.
+        unheld = f"@@CERTBOT_UNHELD {RENEWAL}\n" + CERTBOT_ISSUED
+        for env in ({"RC_erplibre_call": "1"}, {"ACTIVE_nginx": "failed"}):
+            with self.subTest(env=env):
+                self.tearDown_root()
+                write(self.path(RENEWAL), "renouvellement\n", 0o644)
+                plan = ci.plan_install(base_facts(), production(), NOW)
+                done = self.run_script(
+                    plan, {"install_certbot": unheld}, **env
+                )
+                self.assert_no_state(done)
+                self.assertFalse(os.path.exists(self.path(RENEWAL)))
+                self.assertEqual(
+                    self.read(self.path(RENEWAL + ".erplibre-hold")),
+                    "renouvellement\n",
+                )
+                self.assertIn(
+                    ("CERTBOT_REHELD", RENEWAL), ci.marker_lines(done.stdout)
+                )
+
+    def test_renewal_file_left_alone_when_certbot_held_it_itself(self):
+        write(self.path(RENEWAL + ".erplibre-hold"), "garde\n", 0o644)
+        out = (
+            f"@@CERTBOT_UNHELD {RENEWAL}\n@@CERTBOT_REHELD {RENEWAL}\n"
+            "@@CERTBOT failed Detail: refus\n"
+        )
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(
+            plan, {"install_certbot": out}, RC_install_certbot="1"
+        )
+        self.assert_no_state(done)
+        self.assertEqual(
+            [
+                v
+                for n, v in ci.marker_lines(done.stdout)
+                if n == "CERTBOT_REHELD"
+            ],
+            [RENEWAL],
+        )
+
+    # --- DNS, certificat fourni -----------------------------------------
+
+    def dns_answers(self, **changes):
+        values = dict(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        values.update(changes)
+        return coturn_only(**values)
+
+    def test_dns_credentials_only_in_base64(self):
+        plan = ci.plan_install(base_facts(), self.dns_answers(), NOW)
+        script = ci.install_script(plan, STAMP)
+        self.assertNotIn("Inventejeton0123456789abcdef", script)
+        self.assertNotIn("dns_cloudflare_api_token", script)
+        self.assertIn(b64(CREDENTIALS), script)
+        self.assertNotIn(
+            "Inventejeton", json.dumps(ci.written_state(plan, STAMP))
+        )
+
+    def test_dns_credentials_placed_root_0600(self):
+        plan = ci.plan_install(base_facts(), self.dns_answers(), NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        path = self.path("/etc/erplibre-call/dns/cloudflare.ini")
+        self.assertEqual(self.read(path), CREDENTIALS)
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        self.assertEqual(
+            stat.S_IMODE(os.stat(os.path.dirname(path)).st_mode), 0o700
+        )
+        certbot = self.env_of("install_certbot")
+        self.assertEqual(certbot["CERTBOT_METHOD"], "dns")
+        self.assertEqual(certbot["CERTBOT_DNS_PLUGIN"], "cloudflare")
+        self.assertEqual(
+            certbot["CERTBOT_DNS_CREDENTIALS"],
+            "/etc/erplibre-call/dns/cloudflare.ini",
+        )
+        self.assertNotIn("install_nginx", " ".join(self.order()))
+        record = self.state()["certbot"]
+        self.assertEqual(
+            record["dns_credentials"], "/etc/erplibre-call/dns/cloudflare.ini"
+        )
+        self.assertEqual(record["plugin"], "cloudflare")
+
+    def supplied_production(self):
+        return production(
+            tls="supplied", acme=None, cert_pem=WILD_CERT, key_pem=WILD_KEY
+        )
+
+    def test_supplied_production_skips_certbot_and_hook(self):
+        plan = ci.plan_install(base_facts(), self.supplied_production(), NOW)
+        script = ci.install_script(plan, STAMP)
+        self.assertNotIn("install_certbot", script)
+        self.assertNotIn("RENEWED_LINEAGE", script)
+        self.assertNotIn(ci.HOOK_PATH, script)
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            self.order(),
+            ["install_coturn", "install_ntfy", "install_nginx-full"],
+        )
+        for name, text in (("site.crt", WILD_CERT), ("site.key", WILD_KEY)):
+            path = self.path("/etc/erplibre-call/tls/" + name)
+            self.assertEqual(self.read(path), text)
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        full = self.env_of("install_nginx-full")
+        self.assertEqual(
+            full["NGINX_CERT_FILE"], "/etc/erplibre-call/tls/site.crt"
+        )
+        self.assertEqual(
+            full["NGINX_KEY_FILE"], "/etc/erplibre-call/tls/site.key"
+        )
+        self.assertEqual(full["NGINX_ACME_ROOT"], "")
+        # coturn reçoit le même certificat, qu'il copie en turn.{crt,key}.
+        self.assertEqual(
+            self.read(os.path.join(self.log, "install_coturn.0.cert")),
+            WILD_CERT,
+        )
+        state = self.state()
+        self.assertNotIn("certbot", state)
+        self.assertNotIn("hook", state)
+        self.assertEqual(
+            state["nginx"]["tls_files"],
+            [
+                "/etc/erplibre-call/tls/site.crt",
+                "/etc/erplibre-call/tls/site.key",
+            ],
+        )
+
+    # --- État -----------------------------------------------------------
+
+    def test_state_records_what_the_installers_reported(self):
+        facts = base_facts(family="arch", os_id="arch")
+        ans = production(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        plan = ci.plan_install(facts, ans, NOW)
+        nginx_out = (
+            "@@NGINX_INSTALLED 1\n"
+            "@@NGINX_LAYOUT arch-include\n"
+            "@@NGINX_INCLUDE /etc/nginx/nginx.conf\n"
+            "@@NGINX_BACKUP /etc/nginx/nginx.conf.bak-20261031101500\n"
+            "@@NGINX_SITE /etc/nginx/erplibre-call.d/erplibre-call-ntfy.conf\n"
+            "@@NGINX active\n"
+        )
+        certbot_out = (
+            "@@CERTBOT_INSTALLED 1\n"
+            "@@CERTBOT_PLUGIN_INSTALLED certbot-dns-cloudflare\n"
+            "@@CERTBOT staging-ok\n"
+            "@@CERTBOT_TIMER certbot-renew.timer added\n"
+            f"@@CERTBOT issued {LINEAGE}\n"
+        )
+        done = self.run_script(
+            plan,
+            {"install_nginx-full": nginx_out, "install_certbot": certbot_out},
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        state = self.state()
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+        nginx = state["nginx"]
+        self.assertTrue(nginx["installed_by_tool"])
+        self.assertEqual(nginx["layout"], "arch-include")
+        self.assertEqual(
+            nginx["site"], "/etc/nginx/erplibre-call.d/erplibre-call-ntfy.conf"
+        )
+        self.assertIsNone(nginx["link"])
+        self.assertEqual(nginx["include"], "/etc/nginx/nginx.conf")
+        self.assertEqual(
+            nginx["backup"], "/etc/nginx/nginx.conf.bak-20261031101500"
+        )
+        certbot = state["certbot"]
+        self.assertTrue(certbot["installed_by_tool"])
+        self.assertEqual(
+            certbot["plugins_installed"], ["certbot-dns-cloudflare"]
+        )
+        self.assertEqual(
+            certbot["timer"], {"unit": "certbot-renew.timer", "added": True}
+        )
+        self.assertEqual(certbot["method"], "dns")
+        self.assertEqual(
+            certbot["names"], ["turn.exemple.test", "ntfy.exemple.test"]
+        )
+        self.assertEqual(certbot["lineage"], LINEAGE)
+        self.assertEqual(
+            state["hook"], {"path": ci.HOOK_PATH, "installed_by_tool": True}
+        )
+        self.assertFalse(
+            os.path.exists(self.path(ci.PENDING_DIR + "/nginx.json"))
+        )
+        self.assertFalse(
+            os.path.exists(self.path(ci.PENDING_DIR + "/certbot.json"))
+        )
+
+    def test_state_keeps_plan_values_without_markers(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        state = self.state()
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+        nginx = state["nginx"]
+        self.assertEqual(nginx["layout"], "debian")
+        self.assertEqual(
+            nginx["link"], "/etc/nginx/sites-enabled/erplibre-call-ntfy.conf"
+        )
+        self.assertIsNone(nginx["include"])
+        self.assertIsNone(nginx["backup"])
+        self.assertEqual(
+            state["certbot"]["timer"],
+            {"unit": "certbot.timer", "added": False},
+        )
+
+    def test_layout_reported_by_the_installer_wins(self):
+        # Le plan prévoit « debian » sur un nginx absent de la sonde ; un
+        # paquet amont de nginx n'inclut que conf.d, ce qu'imprime
+        # install_nginx.sh.
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        self.assertEqual(plan.new_state["nginx"]["layout"], "debian")
+        out = (
+            "@@NGINX_INSTALLED 1\n@@NGINX_LAYOUT confd\n"
+            "@@NGINX_SITE /etc/nginx/conf.d/erplibre-call-ntfy.conf\n"
+        )
+        done = self.run_script(
+            plan,
+            {"install_nginx-acme": out, "install_certbot": CERTBOT_ISSUED},
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        state = self.state()
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+        self.assertEqual(state["nginx"]["layout"], "confd")
+        self.assertEqual(
+            state["nginx"]["site"], "/etc/nginx/conf.d/erplibre-call-ntfy.conf"
+        )
+        self.assertIsNone(state["nginx"]["link"])
+
+    def test_a_marker_outside_its_form_is_ignored(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        out = (
+            "@@NGINX_LAYOUT ailleurs\n"
+            "@@NGINX_BACKUP /etc/nginx/x;rm -rf /\n"
+        )
+        cert = CERTBOT_ISSUED.replace("certbot.timer present", "x|y added")
+        done = self.run_script(
+            plan, {"install_nginx-full": out, "install_certbot": cert}
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        state = self.state()
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+        self.assertEqual(state["nginx"]["layout"], "debian")
+        self.assertIsNone(state["nginx"]["backup"])
+        self.assertIsNone(state["certbot"]["timer"])
+
+    def test_pending_origin_survives_a_failed_run(self):
+        # Un premier passage installe nginx puis certbot échoue : la relance
+        # voit nginx présent, la fiche dit qu'il vient de l'outil.
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        self.run_script(plan, RC_install_certbot="1")
+        pending = json.loads(
+            self.read(self.path(ci.PENDING_DIR + "/nginx.json"))
+        )
+        self.assertEqual(pending, {"installed_by_tool": True})
+        facts = base_facts(
+            nginx=dict(nginx_facts(), pending=pending),
+            busy_ports=(("tcp", 80, "nginx"),),
+        )
+        again = ci.plan_install(facts, production(nginx="existing"), NOW)
+        self.assertTrue(again.new_state["nginx"]["installed_by_tool"])
+        certbot = json.loads(
+            self.read(self.path(ci.PENDING_DIR + "/certbot.json"))
+        )
+        self.assertEqual(
+            certbot, {"installed_by_tool": True, "plugins_installed": []}
+        )
+
+    def test_plugin_origin_from_the_probe(self):
+        ans = production(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        fresh = ci.plan_install(base_facts(), ans, NOW).new_state["certbot"]
+        self.assertTrue(fresh["installed_by_tool"])
+        self.assertEqual(
+            fresh["plugins_installed"], ["python3-certbot-dns-cloudflare"]
+        )
+        there = base_facts(certbot=certbot_facts(plugins=("cloudflare",)))
+        record = ci.plan_install(there, ans, NOW).new_state["certbot"]
+        self.assertFalse(record["installed_by_tool"])
+        self.assertEqual(record["plugins_installed"], [])
+
+    def test_admin_added_written_by_the_install_run(self):
+        # Lot 1 P4 : l'état de ce passage porte admin_added, sans attendre
+        # un second passage root.
+        foreign = 'listen-http: ":8080"\n'
+        write(self.path(ci.NTFY_CONFIG), foreign, 0o644)
+        facts = base_facts(
+            ntfy=service(ci.NTFY_CONFIG, foreign, unit="ntfy"),
+            busy_ports=(("tcp", 8080, "ntfy"),),
+        )
+        plan = ci.plan_install(
+            facts, answers(services=frozenset({"ntfy"})), NOW
+        )
+        self.assertEqual(plan.adopt, ("ntfy",))
+        done = self.run_script(
+            plan, {"install_ntfy": "@@ADMIN_PASSWORD Ab1\n"}
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        state = self.state()
+        self.assertIs(state["services"]["ntfy"]["admin_added"], True)
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+        self.assertEqual(
+            state,
+            ci.mark_admin_added(ci.written_state(plan, STAMP), done.stdout),
+        )
+        # Le mot de passe reste sur la sortie, nulle part sur le disque.
+        self.assertIn("@@ADMIN_PASSWORD Ab1", done.stdout)
+        self.assertNotIn("Ab1", self.read(self.path(ci.STATE_PATH)))
+
+    def test_no_admin_added_without_the_password_line(self):
+        foreign = 'listen-http: ":8080"\n'
+        write(self.path(ci.NTFY_CONFIG), foreign, 0o644)
+        facts = base_facts(
+            ntfy=service(ci.NTFY_CONFIG, foreign, unit="ntfy"),
+            busy_ports=(("tcp", 8080, "ntfy"),),
+        )
+        plan = ci.plan_install(
+            facts, answers(services=frozenset({"ntfy"})), NOW
+        )
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        state = self.state()
+        self.assertNotIn("admin_added", state["services"]["ntfy"])
+        self.assertEqual(state, ci.written_state(plan, STAMP))
+
+    def test_dropin_recorded_with_turns_443(self):
+        record = ci.plan_install(
+            base_facts(), coturn_only(turns_443=True), NOW
+        ).new_state["services"]["coturn"]
+        self.assertEqual(
+            record["dropin"],
+            "/etc/systemd/system/coturn.service.d/erplibre-call.conf",
+        )
+        arch = base_facts(family="arch", os_id="arch")
+        record = ci.plan_install(
+            arch, coturn_only(turns_443=True), NOW
+        ).new_state["services"]["coturn"]
+        self.assertEqual(
+            record["dropin"],
+            "/etc/systemd/system/turnserver.service.d/erplibre-call.conf",
+        )
+        record = ci.plan_install(base_facts(), coturn_only(), NOW).new_state[
+            "services"
+        ]["coturn"]
+        self.assertIsNone(record["dropin"])
+
+    # --- Relance --------------------------------------------------------
+
+    def test_rerun_with_an_unchanged_lineage(self):
+        ans = production()
+        facts = production_installed(ans)
+        ans = dataclasses.replace(ans, nginx="existing")
+        self.assertTrue(ci.plan_install(facts, ans, NOW).nothing_to_do)
+        changed = dataclasses.replace(ans, ntfy_web=True)
+        plan = ci.plan_install(facts, changed, NOW)
+        self.assertFalse(plan.nothing_to_do)
+        self.assertIn("CERTBOT_SKIP_STAGING=1", ci.install_script(plan, STAMP))
+
+    def test_rerun_with_another_lineage_runs_staging(self):
+        ans = production()
+        others = {
+            "names": certbot_facts(lineage=("turn.exemple.test",)),
+            "held": certbot_facts(
+                lineage=("turn.exemple.test", "ntfy.exemple.test"), held=True
+            ),
+            "none": certbot_facts(),
+        }
+        for name, certbot in others.items():
+            with self.subTest(name):
+                facts = production_installed(ans, certbot=certbot)
+                plan = ci.plan_install(
+                    facts, dataclasses.replace(ans, nginx="existing"), NOW
+                )
+                self.assertFalse(plan.nothing_to_do)
+                self.assertNotIn(
+                    "CERTBOT_SKIP_STAGING", ci.install_script(plan, STAMP)
+                )
+
+    def test_rerun_needs_an_active_nginx(self):
+        ans = production()
+        facts = production_installed(ans, nginx=nginx_facts(state="inactive"))
+        plan = ci.plan_install(
+            facts, dataclasses.replace(ans, nginx="existing"), NOW
+        )
+        self.assertFalse(plan.nothing_to_do)
+
+    def test_development_ntfy_drops_the_production_keys(self):
+        # Carry to T6 : de la production au développement, behind-proxy et
+        # web-root partent.
+        prod = ci.ntfy_config(production())
+        dev = ci.ntfy_config(answers(), existing=prod)
+        keys = nm.read_yml_keys(dev)
+        self.assertNotIn("behind-proxy", keys)
+        self.assertNotIn("web-root", keys)
+
+    def test_fits_in_one_argument(self):
+        ans = production(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        script = ci.install_script(
+            ci.plan_install(base_facts(), ans, NOW), STAMP
+        )
+        self.assertLess(len(shlex.quote(script).encode()), 128 * 1024 - 4096)
 
 
 class TestStdlibOnly(unittest.TestCase):

@@ -4007,6 +4007,10 @@ TRANSLATIONS = {
         "fr": "Défi DNS : greffon « {plugin} » inconnu ou fichier d'identifiants vide.",
         "en": "DNS challenge: unknown plugin \"{plugin}\" or empty credentials file.",
     },
+    "call_infra_nginx_name_taken": {
+        "fr": "nginx sert déjà « {name} » dans {file}, un site que l'outil n'a pas écrit : rien n'est touché. Retirez ce nom de ce site ou choisissez-en un autre.",
+        "en": "nginx already serves \"{name}\" in {file}, a site the tool did not write: nothing is touched. Remove that name from the site or choose another one.",
+    },
     "call_infra_turns_443": {
         "fr": "Le port 443 est pris par « {holder} » : coturn garde TLS sur le port {port}.",
         "en": "Port 443 is taken by \"{holder}\": coturn keeps TLS on port {port}.",
