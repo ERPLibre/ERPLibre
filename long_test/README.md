@@ -556,7 +556,8 @@ The run starts its own `ntfy serve`, on `127.0.0.1` and a free port, with a
 temporary `server.yml`, access file and cache under the run directory; it never
 touches the ntfy of the machine (every `ntfy` call carries `--config`, placed
 before the subcommand for `user` and `token`). The phone's access is created
-the way the `TODO › Deploy › Prepare ntfy for ERPLibre mobile` menu creates it:
+the way this menu creates it:
+`TODO › Deploy › Call infrastructure › Prepare ntfy for ERPLibre mobile`,
 anonymous write-only on `up*`, a read-only user on its prefix, a token. The
 ntfy stops with the run (kept with the servers by `--garder`).
 

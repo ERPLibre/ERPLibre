@@ -561,7 +561,8 @@ The run starts its own `ntfy serve`, on `127.0.0.1` and a free port, with a
 temporary `server.yml`, access file and cache under the run directory; it never
 touches the ntfy of the machine (every `ntfy` call carries `--config`, placed
 before the subcommand for `user` and `token`). The phone's access is created
-the way the `TODO › Deploy › Prepare ntfy for ERPLibre mobile` menu creates it:
+the way this menu creates it:
+`TODO › Deploy › Call infrastructure › Prepare ntfy for ERPLibre mobile`,
 anonymous write-only on `up*`, a read-only user on its prefix, a token. The
 ntfy stops with the run (kept with the servers by `--garder`).
 
@@ -1369,10 +1370,11 @@ La course démarre son propre `ntfy serve`, sur `127.0.0.1` et un port libre,
 avec un `server.yml`, un fichier d'accès et un cache temporaires sous le
 répertoire de la course ; elle ne touche jamais au ntfy de la machine (chaque
 appel `ntfy` porte `--config`, placé avant la sous-commande pour `user` et
-`token`). L'accès du téléphone se crée comme le menu `TODO › Déployer ›
-Préparer ntfy pour ERPLibre mobile` le crée : anonyme en écriture seule sur
-`up*`, un utilisateur en lecture seule sur son préfixe, un jeton. Le ntfy
-s'arrête avec la course (gardé avec les serveurs par `--garder`).
+`token`). L'accès du téléphone se crée comme ce menu le crée :
+`TODO › Déployer › Infrastructure d'appel › Préparer ntfy pour ERPLibre mobile`,
+anonyme en écriture seule sur `up*`, un utilisateur en lecture seule sur son
+préfixe, un jeton. Le ntfy s'arrête avec la course (gardé avec les serveurs par
+`--garder`).
 
 `--filtre push` joue les tests dont le nom correspond : les quatre formes de
 push déchiffrées depuis le cache de ntfy, une conversation en sourdine qui n'est
