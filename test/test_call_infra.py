@@ -1190,6 +1190,604 @@ class TestStateAnswers(unittest.TestCase):
         self.assertEqual(back.public_name, "turn.exemple.test")
 
 
+# Jeux de règles nftables inventés, au format de `nft list ruleset`.
+NFT_ONE_DROP = """table inet filter {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		tcp dport 22 accept
+	}
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+	}
+	chain output {
+		type filter hook output priority filter; policy accept;
+	}
+}
+"""
+NFT_TWO_DROPS = """table ip filter {
+	chain INPUT {
+		type filter hook input priority filter; policy drop;
+		tcp dport 22 accept
+	}
+}
+table ip6 filter {
+	chain INPUT {
+		type filter hook input priority filter; policy drop;
+	}
+}
+"""
+NFT_BRIDGE_DROP = (
+    NFT_ONE_DROP
+    + """table bridge pont {
+	chain entree {
+		type filter hook input priority filter; policy drop;
+	}
+}
+"""
+)
+# `nft -a list ruleset` : la règle de l'outil (handle 7) à côté de celles de
+# l'administrateur (ssh, 8080 sans commentaire) et d'une règle de l'outil
+# sur un autre port (34780), que rien ne doit toucher.
+NFT_HANDLES = """table inet filter { # handle 1
+	chain input { # handle 2
+		type filter hook input priority filter; policy drop;
+		udp dport 3478 accept comment "erplibre-call coturn" # handle 7
+		ct state established,related accept # handle 4
+		tcp dport 22 accept # handle 5
+		udp dport 34780 accept comment "erplibre-call coturn" # handle 8
+		tcp dport 8080 accept # handle 9
+	}
+}
+"""
+NFT_INCLUDE = 'flush ruleset\ninclude "/etc/nftables.d/*.nft"\n'
+
+UFW_ADDED = (
+    "Added user rules (see 'ufw status' for running firewall):\n"
+    "ufw allow 22/tcp\n"
+    "ufw allow 8080/tcp\n"
+    "ufw allow 3478/udp comment 'erplibre-call coturn'\n"
+)
+
+
+def rule(proto, port, svc):
+    return ci.Rule(proto=proto, port=port, service=svc)
+
+
+class TestFirewall(unittest.TestCase):
+    """Règles d'ouverture, aperçu, scripts ufw et nftables (texte), notes
+    et état du pare-feu."""
+
+    HTTP_RULES = (
+        rule("udp", "3478", "coturn"),
+        rule("tcp", "3478", "coturn"),
+        rule("udp", "49152:49252", "coturn"),
+        rule("tcp", "8080", "ntfy"),
+    )
+
+    def test_rules_dev_http_have_no_turns_port(self):
+        rules = ci.firewall_rules(answers())
+        self.assertEqual(rules, self.HTTP_RULES)
+        self.assertNotIn("5349", [r.port for r in rules])
+
+    def test_rules_dev_supplied_open_turns(self):
+        rules = ci.firewall_rules(supplied())
+        self.assertEqual(
+            rules,
+            (
+                rule("udp", "3478", "coturn"),
+                rule("tcp", "3478", "coturn"),
+                rule("tcp", "5349", "coturn"),
+                rule("udp", "49152:49252", "coturn"),
+                rule("tcp", "8443", "ntfy"),
+            ),
+        )
+
+    def test_rules_follow_the_chosen_services_and_ports(self):
+        only_ntfy = answers(services=frozenset({"ntfy"}), ntfy_port=9090)
+        self.assertEqual(
+            ci.firewall_rules(only_ntfy), (rule("tcp", "9090", "ntfy"),)
+        )
+        same = answers(
+            services=frozenset({"coturn"}), min_port=50000, max_port=50000
+        )
+        self.assertIn(rule("udp", "50000", "coturn"), ci.firewall_rules(same))
+
+    def test_no_rule_on_the_ssh_port(self):
+        for changes in (
+            {"min_port": 10, "max_port": 30},
+            {"turn_port": 22},
+            {"services": frozenset({"ntfy"}), "ntfy_port": 22},
+        ):
+            with self.subTest(changes=changes):
+                ans = answers(**changes)
+                with self.assertRaises(ci.Refusal) as caught:
+                    ci.firewall_rules(ans)
+                self.assertEqual(caught.exception.key, "call_infra_bad_value")
+                with self.assertRaises(ci.Refusal):
+                    ci.plan_install(base_facts(busy_ports=()), ans, NOW)
+        for bad in (rule("tcp", "22", "ntfy"), rule("udp", "1:100", "coturn")):
+            for kind in ("ufw", "nftables"):
+                with self.subTest(rule=bad, kind=kind):
+                    with self.assertRaises(ValueError):
+                        ci.firewall_script(kind, [bad], "allow")
+
+    def test_rules_from_the_state_are_checked(self):
+        state = {
+            "firewall": {
+                "kind": "ufw",
+                "rules": [
+                    ["udp", "3478", "coturn"],
+                    ["tcp", "3478; reboot", "coturn"],
+                    ["tcp", "22", "ntfy"],
+                    ["icmp", "8", "ntfy"],
+                    ["tcp", "8080", "autre"],
+                    ["udp", "49252:49152", "coturn"],
+                    "x",
+                    ["tcp", "8080"],
+                ],
+                "persisted": True,
+            }
+        }
+        self.assertEqual(
+            ci.rules_from_state(state), (rule("udp", "3478", "coturn"),)
+        )
+        self.assertEqual(ci.rules_from_state({}), ())
+        self.assertEqual(ci.rules_from_state(None), ())
+        with self.assertRaises(ValueError):
+            ci.firewall_script(
+                "ufw", [rule("tcp", "3478; reboot", "coturn")], "allow"
+            )
+
+    def test_ufw_preview_is_exact(self):
+        self.assertEqual(
+            ci.firewall_preview("ufw", self.HTTP_RULES),
+            [
+                "ufw allow 3478/udp comment 'erplibre-call coturn'",
+                "ufw allow 3478/tcp comment 'erplibre-call coturn'",
+                "ufw allow 49152:49252/udp comment 'erplibre-call coturn'",
+                "ufw allow 8080/tcp comment 'erplibre-call ntfy'",
+            ],
+        )
+
+    def test_nftables_preview_names_the_chain(self):
+        self.assertEqual(
+            ci.firewall_preview(
+                "nftables", self.HTTP_RULES[2:], ("inet", "filter", "input")
+            ),
+            [
+                "nft insert rule inet filter input udp dport 49152-49252"
+                ' accept comment "erplibre-call coturn"',
+                "nft insert rule inet filter input tcp dport 8080"
+                ' accept comment "erplibre-call ntfy"',
+            ],
+        )
+        self.assertEqual(ci.firewall_preview("nftables", self.HTTP_RULES), [])
+        for kind in ("none", "unknown"):
+            self.assertEqual(ci.firewall_preview(kind, self.HTTP_RULES), [])
+
+    def test_nftables_script_never_flushes_nor_opens_ssh(self):
+        rules = ci.firewall_rules(supplied())
+        for action in ("allow", "delete"):
+            script = ci.firewall_script("nftables", rules, action)
+            with self.subTest(action=action):
+                self.assertNotIn("flush", script)
+                self.assertNotIn("policy accept", script)
+                self.assertNotIn("policy", script.replace("policy drop", ""))
+                self.assertNotIn("22", script)
+        allow = ci.firewall_script("nftables", rules, "allow")
+        self.assertIn("@@FIREWALL_MANUAL", allow)
+
+    def test_ufw_script_never_enables(self):
+        rules = ci.firewall_rules(supplied())
+        for action in ("allow", "delete"):
+            script = ci.firewall_script("ufw", rules, action)
+            with self.subTest(action=action):
+                self.assertNotIn("enable", script)
+                self.assertNotIn("default", script)
+                self.assertNotIn("22", script)
+                self.assertNotIn("reset", script)
+
+    def test_no_firewall_gives_an_empty_script_and_no_rule(self):
+        rules = ci.firewall_rules(answers())
+        for kind in ("none", "unknown"):
+            with self.subTest(kind=kind):
+                self.assertEqual(ci.firewall_script(kind, rules, "allow"), "")
+                self.assertEqual(ci.firewall_script(kind, rules, "delete"), "")
+                record = ci.firewall_record(kind, "")
+                self.assertEqual(
+                    record, {"kind": kind, "rules": [], "persisted": False}
+                )
+                state = ci.with_firewall({"version": 1}, record)
+                self.assertEqual(ci.rules_from_state(state), ())
+
+    def test_bad_kind_or_action(self):
+        with self.assertRaises(ValueError):
+            ci.firewall_script("firewalld", self.HTTP_RULES, "allow")
+        with self.assertRaises(ValueError):
+            ci.firewall_script("ufw", self.HTTP_RULES, "enable")
+        with self.assertRaises(ValueError):
+            ci.firewall_preview("iptables", self.HTTP_RULES)
+
+    def test_cloud_reminder_for_every_kind(self):
+        for kind in ci.FIREWALLS:
+            with self.subTest(kind=kind):
+                notes = ci.firewall_notes(kind)
+                self.assertIn("call_infra_cloud_firewall", notes)
+        self.assertIn("call_infra_firewall_none", ci.firewall_notes("none"))
+        self.assertIn(
+            "call_infra_firewall_unknown", ci.firewall_notes("unknown")
+        )
+        self.assertEqual(
+            ci.firewall_notes("ufw"), ["call_infra_cloud_firewall"]
+        )
+
+    def test_record_keeps_only_the_tool_rules(self):
+        output = (
+            "@@FIREWALL_ADDED udp 3478 coturn\n"
+            "@@FIREWALL_KEPT tcp 3478 coturn\n"
+            "@@FIREWALL_FOREIGN tcp 8080 ntfy\n"
+            "@@FIREWALL_FAILED udp 49152:49252 coturn\n"
+            "@@FIREWALL_PERSISTED yes\n"
+            "@@END\n"
+        )
+        self.assertEqual(
+            ci.firewall_record("ufw", output),
+            {
+                "kind": "ufw",
+                "rules": [
+                    ["tcp", "3478", "coturn"],
+                    ["udp", "3478", "coturn"],
+                ],
+                "persisted": True,
+            },
+        )
+
+    def test_record_merges_with_the_previous_one(self):
+        previous = {
+            "kind": "nftables",
+            "rules": [["tcp", "8080", "ntfy"]],
+            "persisted": True,
+        }
+        added = ci.firewall_record(
+            "nftables",
+            "@@FIREWALL_CHAIN inet filter input\n"
+            "@@FIREWALL_ADDED udp 3478 coturn\n"
+            "@@FIREWALL_RUNTIME_ONLY\n@@END\n",
+            previous,
+        )
+        self.assertEqual(
+            added["rules"],
+            [["tcp", "8080", "ntfy"], ["udp", "3478", "coturn"]],
+        )
+        self.assertFalse(added["persisted"])
+        removed = ci.firewall_record(
+            "nftables",
+            "@@FIREWALL_REMOVED tcp 8080 ntfy\n"
+            "@@FIREWALL_ABSENT udp 3478 coturn\n@@END\n",
+            added,
+        )
+        self.assertEqual(removed["rules"], [])
+        manual = ci.firewall_record(
+            "nftables", "@@FIREWALL_MANUAL 2\n@@END\n", previous
+        )
+        self.assertEqual(manual, previous)
+        other_kind = ci.firewall_record(
+            "ufw", "@@FIREWALL_ADDED udp 3478 coturn\n@@END\n", previous
+        )
+        self.assertEqual(other_kind["rules"], [["udp", "3478", "coturn"]])
+
+    def test_firewall_survives_a_rerun_of_the_plan(self):
+        record = ci.firewall_record(
+            "ufw", "@@FIREWALL_ADDED udp 3478 coturn\n@@END\n"
+        )
+        state = ci.with_firewall(
+            ci.plan_install(base_facts(), answers(), NOW).new_state, record
+        )
+        again = ci.plan_install(base_facts(state=state), answers(), NOW)
+        self.assertEqual(again.new_state["firewall"], record)
+
+    def test_parse_probe_reads_the_nftables_chains(self):
+        probe = DEBIAN_PROBE.replace(
+            "@@FIREWALL none\n",
+            "@@FIREWALL nftables\n@@NFT_INPUT inet filter input\n"
+            "@@NFT_INPUT ip filter IN PUT\n",
+        )
+        facts = ci.parse_probe(probe)
+        self.assertEqual(facts.firewall, "nftables")
+        self.assertEqual(facts.nft_chains, (("inet", "filter", "input"),))
+        self.assertEqual(ci.parse_probe(DEBIAN_PROBE).nft_chains, ())
+
+
+class TestFirewallRun(unittest.TestCase):
+    """Scripts du pare-feu joués pour de vrai : `nft` et `ufw` sont des
+    bouchons qui notent leurs appels, la racine est un dossier temporaire."""
+
+    RULES = (
+        rule("udp", "3478", "coturn"),
+        rule("udp", "49152:49252", "coturn"),
+        rule("tcp", "8080", "ntfy"),
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = self.tmp.name
+        self.root = os.path.join(base, "root")
+        self.stubs = os.path.join(base, "stubs")
+        self.log = os.path.join(base, "log")
+        os.makedirs(self.root)
+        write(
+            os.path.join(self.stubs, "nft"),
+            "#!/bin/sh\n"
+            'echo "$*" >> "$LOG"\n'
+            'case "$*" in\n'
+            '  "list ruleset") cat "$RULESET" ;;\n'
+            '  "-a list ruleset") cat "$HANDLES" ;;\n'
+            '  "-f "*) cat "$2" >> "$LOG.f"; exit "${NFT_F_RC:-0}" ;;\n'
+            '  "-c -f "*) exit "${NFT_C_RC:-0}" ;;\n'
+            '  "delete rule "*) exit 0 ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac\n",
+        )
+        write(
+            os.path.join(self.stubs, "ufw"),
+            "#!/bin/sh\n"
+            'echo "$*" >> "$LOG"\n'
+            'case "$1 $2" in\n'
+            '  "show added") cat "$ADDED" ;;\n'
+            '  "allow "*) echo "Rule added" ;;\n'
+            '  "delete allow") echo "Rule deleted" ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac\n",
+        )
+
+    def run_script(self, script, ruleset="", handles="", added="", **env):
+        files = {}
+        for name, text in (
+            ("RULESET", ruleset),
+            ("HANDLES", handles),
+            ("ADDED", added),
+        ):
+            files[name] = os.path.join(self.tmp.name, name.lower())
+            write(files[name], text, 0o644)
+        full = dict(
+            os.environ,
+            PATH=self.stubs + ":" + os.environ["PATH"],
+            LOG=self.log,
+            TMPDIR=self.tmp.name,
+            **files,
+            **env,
+        )
+        return subprocess.run(
+            ["sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=full,
+            timeout=30,
+        )
+
+    def calls(self):
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log) as handle:
+            return handle.read().splitlines()
+
+    def applied(self):
+        path = self.log + ".f"
+        if not os.path.exists(path):
+            return ""
+        with open(path) as handle:
+            return handle.read()
+
+    def markers(self, done):
+        return [
+            f"{name} {value}".strip()
+            for name, value in ci.marker_lines(done.stdout)
+        ]
+
+    def nft(self, action="allow"):
+        return ci.firewall_script(
+            "nftables", self.RULES, action, root=self.root
+        )
+
+    def test_two_drop_input_chains_change_nothing(self):
+        done = self.run_script(self.nft(), ruleset=NFT_TWO_DROPS)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("FIREWALL_MANUAL 2", self.markers(done))
+        self.assertEqual(self.calls(), ["list ruleset"])
+        self.assertEqual(self.applied(), "")
+        record = ci.firewall_record("nftables", done.stdout)
+        self.assertEqual(record["rules"], [])
+
+    def test_no_drop_input_chain_changes_nothing(self):
+        ruleset = NFT_ONE_DROP.replace(
+            "hook input priority filter; policy drop",
+            "hook input priority filter; policy accept",
+        )
+        done = self.run_script(self.nft(), ruleset=ruleset)
+        self.assertIn("FIREWALL_MANUAL 0", self.markers(done))
+        self.assertEqual(self.calls(), ["list ruleset"])
+
+    def test_an_unexpected_chain_name_changes_nothing(self):
+        ruleset = NFT_ONE_DROP.replace("table inet filter", "table inet f;x")
+        done = self.run_script(self.nft(), ruleset=ruleset)
+        self.assertIn("FIREWALL_MANUAL 1", self.markers(done))
+        self.assertEqual(self.calls(), ["list ruleset"])
+
+    def test_a_bridge_chain_is_not_an_input_chain(self):
+        done = self.run_script(self.nft(), ruleset=NFT_BRIDGE_DROP)
+        self.assertIn("FIREWALL_CHAIN inet filter input", self.markers(done))
+
+    def test_rules_inserted_in_the_drop_chain_runtime_only(self):
+        done = self.run_script(self.nft(), ruleset=NFT_ONE_DROP)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(
+            self.applied().splitlines(),
+            [
+                "insert rule inet filter input udp dport 3478 accept"
+                ' comment "erplibre-call coturn"',
+                "insert rule inet filter input udp dport 49152-49252 accept"
+                ' comment "erplibre-call coturn"',
+                "insert rule inet filter input tcp dport 8080 accept"
+                ' comment "erplibre-call ntfy"',
+            ],
+        )
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_ADDED udp 49152:49252 coturn", markers)
+        self.assertIn("FIREWALL_RUNTIME_ONLY", markers)
+        self.assertEqual(markers[-1], "END")
+        self.assertNotIn("delete", " ".join(self.calls()))
+        self.assertFalse(
+            os.path.exists(os.path.join(self.root, "etc/nftables.d"))
+        )
+        record = ci.firewall_record("nftables", done.stdout)
+        self.assertEqual(len(record["rules"]), 3)
+        self.assertFalse(record["persisted"])
+
+    def test_a_failed_insert_records_nothing(self):
+        done = self.run_script(self.nft(), ruleset=NFT_ONE_DROP, NFT_F_RC="1")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("FIREWALL_FAILED tcp 8080 ntfy", self.markers(done))
+        self.assertEqual(
+            ci.firewall_record("nftables", done.stdout)["rules"], []
+        )
+
+    def test_rules_already_there_are_kept_not_doubled(self):
+        done = self.run_script(
+            self.nft(), ruleset=NFT_ONE_DROP, handles=NFT_HANDLES
+        )
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_KEPT udp 3478 coturn", markers)
+        self.assertIn("FIREWALL_ADDED tcp 8080 ntfy", markers)
+        self.assertNotIn("dport 3478 ", self.applied())
+
+    def test_persisted_when_the_conf_includes_the_directory(self):
+        write(os.path.join(self.root, "etc/nftables.conf"), NFT_INCLUDE, 0o644)
+        done = self.run_script(self.nft(), ruleset=NFT_ONE_DROP)
+        self.assertIn("FIREWALL_PERSISTED yes", self.markers(done))
+        path = os.path.join(self.root, "etc/nftables.d/erplibre-call.nft")
+        with open(path) as handle:
+            lines = handle.read().splitlines()
+        self.assertEqual(lines[0], ci.MARKER)
+        self.assertEqual(lines[1:], self.applied().splitlines())
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o644)
+        self.assertIn(
+            "-c -f " + os.path.join(self.root, "etc/nftables.conf"),
+            self.calls(),
+        )
+        self.assertTrue(
+            ci.firewall_record("nftables", done.stdout)["persisted"]
+        )
+        # Une relance n'ajoute aucune ligne au fichier.
+        again = self.run_script(
+            self.nft(), ruleset=NFT_ONE_DROP, handles=NFT_HANDLES
+        )
+        self.assertIn("FIREWALL_PERSISTED yes", self.markers(again))
+        with open(path) as handle:
+            self.assertEqual(handle.read().splitlines(), lines)
+
+    def test_a_conf_that_no_longer_loads_is_not_persisted(self):
+        write(os.path.join(self.root, "etc/nftables.conf"), NFT_INCLUDE, 0o644)
+        done = self.run_script(self.nft(), ruleset=NFT_ONE_DROP, NFT_C_RC="1")
+        self.assertIn("FIREWALL_RUNTIME_ONLY check", self.markers(done))
+        self.assertFalse(
+            os.path.exists(
+                os.path.join(self.root, "etc/nftables.d/erplibre-call.nft")
+            )
+        )
+
+    def test_a_conf_without_the_include_is_not_persisted(self):
+        write(
+            os.path.join(self.root, "etc/nftables.conf"),
+            'include "/etc/nftables.d/*.conf"\n',
+            0o644,
+        )
+        done = self.run_script(self.nft(), ruleset=NFT_ONE_DROP)
+        self.assertIn("FIREWALL_RUNTIME_ONLY", self.markers(done))
+        self.assertNotIn("-c -f", " ".join(self.calls()))
+
+    def test_delete_by_handle_of_the_tool_rule_only(self):
+        path = os.path.join(self.root, "etc/nftables.d/erplibre-call.nft")
+        mine = (
+            "insert rule inet filter input udp dport 3478 accept"
+            ' comment "erplibre-call coturn"'
+        )
+        write(path, ci.MARKER + "\n" + mine + "\n", 0o644)
+        done = self.run_script(self.nft("delete"), handles=NFT_HANDLES)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        deletes = [c for c in self.calls() if c.startswith("delete")]
+        self.assertEqual(deletes, ["delete rule inet filter input handle 7"])
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_REMOVED udp 3478 coturn", markers)
+        self.assertIn("FIREWALL_ABSENT tcp 8080 ntfy", markers)
+        self.assertFalse(os.path.exists(path))
+        self.assertNotIn("list ruleset", self.calls())
+
+    def test_delete_keeps_the_other_persisted_lines(self):
+        path = os.path.join(self.root, "etc/nftables.d/erplibre-call.nft")
+        other = (
+            "insert rule inet filter input tcp dport 9443 accept"
+            ' comment "erplibre-call ntfy"'
+        )
+        write(path, ci.MARKER + "\n" + other + "\n", 0o644)
+        self.run_script(self.nft("delete"), handles=NFT_HANDLES)
+        with open(path) as handle:
+            self.assertEqual(handle.read(), ci.MARKER + "\n" + other + "\n")
+
+    def test_ufw_allow_skips_a_rule_the_user_already_has(self):
+        script = ci.firewall_script("ufw", self.RULES, "allow")
+        done = self.run_script(script, added=UFW_ADDED)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(
+            self.calls(),
+            [
+                "show added",
+                "allow 49152:49252/udp comment erplibre-call coturn",
+            ],
+        )
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_KEPT udp 3478 coturn", markers)
+        self.assertIn("FIREWALL_ADDED udp 49152:49252 coturn", markers)
+        self.assertIn("FIREWALL_FOREIGN tcp 8080 ntfy", markers)
+        self.assertEqual(
+            ci.firewall_record("ufw", done.stdout)["rules"],
+            [["udp", "3478", "coturn"], ["udp", "49152:49252", "coturn"]],
+        )
+
+    def test_ufw_delete_only_removes_the_tool_rules(self):
+        script = ci.firewall_script("ufw", self.RULES, "delete")
+        done = self.run_script(script, added=UFW_ADDED)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.calls(), ["show added", "delete allow 3478/udp"])
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_REMOVED udp 3478 coturn", markers)
+        self.assertIn("FIREWALL_ABSENT udp 49152:49252 coturn", markers)
+        self.assertIn("FIREWALL_FOREIGN tcp 8080 ntfy", markers)
+
+    def test_state_write_script(self):
+        state = {"version": 1, "firewall": {"kind": "ufw", "rules": []}}
+        write(os.path.join(self.stubs, "chown"), "#!/bin/sh\nexit 0\n")
+        done = self.run_script(ci.state_write_script(state, root=self.root))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("SAVED yes", self.markers(done))
+        path = os.path.join(self.root, ci.STATE_PATH.lstrip("/"))
+        with open(path) as handle:
+            self.assertEqual(json.load(handle), state)
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        self.assertFalse(os.path.exists(path + ".new"))
+
+    def test_probe_lists_the_drop_input_chains(self):
+        script = ci.probe_script(root=self.root)
+        for name in ("systemctl", "ss", "ip", "iptables"):
+            write(os.path.join(self.stubs, name), "#!/bin/sh\nexit 1\n")
+        write(os.path.join(self.stubs, "ufw"), "#!/bin/sh\nexit 1\n")
+        done = self.run_script(script, ruleset=NFT_BRIDGE_DROP)
+        facts = ci.parse_probe(done.stdout)
+        self.assertEqual(facts.firewall, "nftables")
+        self.assertEqual(facts.nft_chains, (("inet", "filter", "input"),))
+
+
 class TestStdlibOnly(unittest.TestCase):
     ALLOWED_SIBLINGS = {"script.todo.ntfy_mobile", "script.todo.turn_client"}
 
