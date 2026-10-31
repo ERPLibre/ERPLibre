@@ -17,6 +17,11 @@ serveur. `allocate()` déroule une allocation TURN complète (RFC 5766) :
    de durée 0 libère l'allocation tout de suite au lieu de la laisser
    expirer sur le serveur. Ce Refresh ne change pas le verdict.
 
+`permission()` insère, entre l'étape 3 et le Refresh, un CreatePermission
+(RFC 5766 §9) vers un pair donné : coturn le refuse en 403 quand le pair
+tombe dans ses plages `denied-peer-ip`, ce qui prouve qu'un relais ne joint
+pas le réseau privé de l'hôte.
+
 La clé est `long_term_key(utilisateur, realm, mot_de_passe)` : le realm doit
 donc être connu de l'appelant, c'est celui que l'installeur a écrit. Pour
 des identifiants temporaires, `rest_credentials()` donne le couple
@@ -41,6 +46,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import ipaddress
 import os
 import socket
 import ssl
@@ -56,6 +62,7 @@ _HEADER = struct.Struct("!HHI")
 BINDING_REQUEST = 0x0001
 ALLOCATE_REQUEST = 0x0003
 REFRESH_REQUEST = 0x0004
+CREATE_PERMISSION_REQUEST = 0x0008
 
 # Bits de classe du type de message (RFC 5389 §6) : 0b00 requête,
 # 0b10 succès, 0b11 erreur.
@@ -68,6 +75,7 @@ USERNAME = 0x0006
 MESSAGE_INTEGRITY = 0x0008
 ERROR_CODE = 0x0009
 LIFETIME = 0x000D
+XOR_PEER_ADDRESS = 0x0012
 REALM = 0x0014
 NONCE = 0x0015
 XOR_RELAYED_ADDRESS = 0x0016
@@ -101,6 +109,9 @@ _REFRESH_WAIT = 2.0
 @dataclass(frozen=True)
 class Allocation:
     """Résultat de `allocate()`.
+
+    Rendu aussi par `permission()`, dont le succès dit que le pair est
+    accordé ; `relayed` vaut alors l'adresse relayée de l'allocation.
 
     `error` vaut None sur un succès, sinon un code TURN ou une valeur de
     `ERRORS` :
@@ -278,6 +289,18 @@ def xor_address(value: bytes, txid: bytes) -> tuple[str, int]:
     raise ValueError("famille d'adresse inconnue")
 
 
+def xor_peer(host: str, port: int, txid: bytes) -> bytes:
+    """Valeur d'un XOR-PEER-ADDRESS pour `host` (IPv4 ou IPv6 littérale),
+    masquée comme `xor_address` la démasque. ValueError pour une valeur
+    qui n'est pas une adresse IP."""
+    address = ipaddress.ip_address(host)
+    mask = struct.pack("!I", MAGIC_COOKIE) + txid
+    raw = address.packed
+    masked = bytes(a ^ b for a, b in zip(raw, mask[: len(raw)], strict=True))
+    family = 0x01 if address.version == 4 else 0x02
+    return struct.pack("!BBH", 0, family, port ^ (MAGIC_COOKIE >> 16)) + masked
+
+
 def _plain_address(value):
     """Adresse d'un MAPPED-ADDRESS (non masquée, serveurs RFC 3489)."""
     family, port = _family_port(value)
@@ -375,9 +398,13 @@ class _Link:
 
     def exchange(self, kind, attributes, key, deadline=None):
         """Envoie une requête et rend (réponse décodée, octets bruts) de la
-        même transaction."""
+        même transaction. `attributes` est déjà encodé, ou une fonction de
+        l'identifiant de transaction quand un attribut en dépend
+        (XOR-PEER-ADDRESS d'un pair IPv6)."""
         deadline = min(deadline or self.deadline, self.deadline)
         txid = os.urandom(12)
+        if callable(attributes):
+            attributes = attributes(txid)
         request = seal(kind, txid, attributes, key)
         if self.transport == "udp":
             return self._exchange_udp(request, txid, deadline)
@@ -472,12 +499,47 @@ def allocate(
     attendu dans le certificat, `host` par défaut. ValueError pour un
     transport inconnu ; tout le reste finit dans `Allocation.error`."""
     _check_transport(transport)
+    target = (host, port, transport, cafile, server_name)
+    return _run(target, username, key, timeout, None)
+
+
+def permission(
+    host: str,
+    port: int,
+    transport: str,
+    username: str,
+    key: bytes,
+    peer: str,
+    timeout: float = 5.0,
+    cafile: str | None = None,
+    server_name: str | None = None,
+) -> Allocation:
+    """Allocation comme `allocate()`, puis CreatePermission vers `peer`
+    (adresse IP littérale) avant la libération, dans le même budget.
+
+    Succès : le serveur accorde le pair. Le refus du serveur rend son code,
+    « 403 Forbidden » pour un pair de ses plages `denied-peer-ip` ; un
+    accord sans MESSAGE-INTEGRITY juste sous la clé rend « integrity ».
+    Une allocation en échec rend son erreur sans rien demander de plus.
+    ValueError pour un transport inconnu ou un pair qui n'est pas une
+    adresse IP."""
+    _check_transport(transport)
+    ipaddress.ip_address(peer)
+    target = (host, port, transport, cafile, server_name)
+    return _run(target, username, key, timeout, peer)
+
+
+def _run(target, username, key, timeout, peer):
+    """Allocation (et permission vers `peer` quand il est donné) vers
+    `target` = (hôte, port, transport, cafile, server_name), chaque échec
+    réseau ou TLS traduit en une valeur d'`ERRORS`."""
+    host, port, transport, cafile, server_name = target
     deadline = time.monotonic() + timeout
     try:
         with _Link(
             host, port, transport, deadline, cafile, server_name
         ) as link:
-            return _allocate_on(link, username, key)
+            return _allocate_on(link, username, key, peer)
     except ssl.SSLError:
         return Allocation(False, None, "tls")
     except TimeoutError:
@@ -492,7 +554,10 @@ def allocate(
         return Allocation(False, None, "unreachable")
 
 
-def _allocate_on(link, username, key):
+def _allocate_on(link, username, key, peer=None):
+    """Allocation authentifiée sur `link`, puis, avec `peer`, le
+    CreatePermission de `_permit` ; l'allocation obtenue est toujours
+    libérée avant de rendre le verdict."""
     transport = attribute(REQUESTED_TRANSPORT, _TRANSPORT_UDP)
     first, _raw = link.exchange(ALLOCATE_REQUEST, transport, None)
     if first.is_success:
@@ -522,7 +587,27 @@ def _allocate_on(link, username, key):
         _release(link, auth, key)
         return Allocation(False, None, "integrity")
     relayed = _relayed(reply)
+    result = Allocation(True, relayed, None)
+    if peer is not None:
+        result = _permit(link, auth, key, peer, relayed)
     _release(link, auth, key)
+    return result
+
+
+def _permit(link, auth, key, peer, relayed):
+    """CreatePermission vers `peer` sous les identifiants de l'allocation
+    (`auth` : USERNAME, REALM, NONCE). Le port d'un XOR-PEER-ADDRESS est
+    ignoré par le serveur (RFC 5766 §9.1) : 0."""
+    reply, raw = link.exchange(
+        CREATE_PERMISSION_REQUEST,
+        lambda txid: attribute(XOR_PEER_ADDRESS, xor_peer(peer, 0, txid))
+        + auth,
+        key,
+    )
+    if reply.is_error:
+        return Allocation(False, None, _error_text(reply))
+    if not integrity_ok(raw, key):
+        return Allocation(False, None, "integrity")
     return Allocation(True, relayed, None)
 
 
