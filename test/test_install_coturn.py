@@ -303,7 +303,6 @@ class TestEntrees(unittest.TestCase):
     def test_refus(self):
         for variables in (
                 "TURN_REALM=",
-                "TURN_CHECK_PASSWORD=",
                 "TURN_REALM='turn.exemple.test\nuser=x'",
                 "TURN_REALM=\"o'brien.exemple.test\"",
                 "TURN_PORT=abc",
@@ -318,6 +317,13 @@ class TestEntrees(unittest.TestCase):
                 fait = self._verifier(variables, fichiers=True)
                 self.assertNotEqual(fait.returncode, 0, fait.stdout)
                 self.assertNotIn("OK", fait.stdout)
+
+    def test_sans_mot_de_passe_accepte(self):
+        """Le mot de passe de controle naît sur l'hote : l'appelant n'en
+        donne aucun."""
+        fait = self._verifier("TURN_CHECK_PASSWORD=")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("OK", fait.stdout)
 
     def test_certificat_et_cle_presents_acceptes(self):
         fait = self._verifier(
@@ -541,7 +547,8 @@ class TestCompteDeControle(unittest.TestCase):
             "runuser": BOUCHON_RUNUSER,
             "turnadmin": BOUCHON_JOURNAL % {"nom": "turnadmin"},
         }
-        for nom in ("md5sum", "cut", "sha256sum", "openssl"):
+        for nom in ("md5sum", "cut", "sha256sum", "openssl", "head",
+                    "base64", "tr"):
             vrai = shutil.which(nom)
             if vrai:
                 ecrits[nom] = BOUCHON_RELAIS % {"nom": nom, "vrai": vrai}
@@ -620,6 +627,54 @@ class TestCompteDeControle(unittest.TestCase):
             for sortie in (fait.stdout, fait.stderr):
                 self.assertNotIn(MOT_DE_PASSE, sortie)
                 self.assertNotIn(cle, sortie)
+
+    def test_sans_mot_de_passe_une_cle_nee_sur_l_hote(self):
+        """Aucun secret ne voyage vers l'hote : la cle vient d'un mot de
+        passe tire de /dev/urandom, que rien n'affiche ni ne passe en
+        argument."""
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, base, argv = self._poser(dossier, mot_de_passe="")
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            rangs = self._rangs(base)
+            self.assertEqual(len(rangs), 1, rangs)
+            realm, nom, cle = rangs[0]
+            self.assertEqual((realm, nom), (REALM, "erplibre-check"))
+            self.assertRegex(cle, r"^[0-9a-f]{32}$")
+            self.assertNotEqual(cle, turn_client.long_term_key(
+                "erplibre-check", REALM, "").hex())
+            for ligne in argv + [fait.stdout, fait.stderr]:
+                self.assertNotIn(cle, ligne)
+
+    def test_sans_mot_de_passe_la_cle_en_place_est_gardee(self):
+        """Une relance ne change pas un compte qui marche."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _, base, _ = self._poser(dossier, mot_de_passe="")
+            avant = self._rangs(base)
+            fait, _, _ = self._poser(dossier, mot_de_passe="")
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(self._rangs(base), avant)
+
+    def test_sans_mot_de_passe_un_realm_change_une_cle_neuve(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            _, base, _ = self._poser(dossier, mot_de_passe="")
+            (_, _, avant), = self._rangs(base)
+            fait, _, _ = self._poser(dossier, realm="autre.exemple.test",
+                                     mot_de_passe="")
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            rangs = self._rangs(base)
+            self.assertEqual([r[:2] for r in rangs],
+                             [("autre.exemple.test", "erplibre-check")])
+            self.assertNotEqual(rangs[0][2], avant)
+
+    def test_un_mot_de_passe_donne_remplace_la_cle_nee_sur_l_hote(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            self._poser(dossier, mot_de_passe="")
+            fait, base, _ = self._poser(dossier)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            attendue = turn_client.long_term_key(
+                "erplibre-check", REALM, MOT_DE_PASSE).hex()
+            self.assertEqual(self._rangs(base),
+                             [(REALM, "erplibre-check", attendue)])
 
     def test_la_base_est_ecrite_par_le_compte_de_service(self):
         """Le dossier de la base appartient a coturn : root n'y ouvre aucun
@@ -760,7 +815,7 @@ class TestSource(unittest.TestCase):
     def test_le_mot_de_passe_n_est_jamais_affiche(self):
         """Aucune ligne n'imprime la valeur de TURN_CHECK_PASSWORD ; le seul
         printf qui l'etend alimente md5sum par un tube."""
-        etendu = re.compile(r"\$\{?TURN_CHECK_PASSWORD")
+        etendu = re.compile(r"\$\{?(TURN_CHECK_PASSWORD|password)\b")
         for numero, ligne in enumerate(source().splitlines(), 1):
             code = ligne.split("#", 1)[0]
             # Chaque commande de la ligne, separee par || && ; ou | : nommer
