@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.argv = ["todo.py"]
@@ -312,14 +313,10 @@ class LeVerrouEtLeMenu(unittest.TestCase):
                 self.assertTrue(TRANSLATIONS[cle].get("en"))
 
 
-class LaCreationDeLaVmEstPrivilegiee(unittest.TestCase):
-    """Le dossier des images appartient à root en 755 sur une installation
-    ordinaire de libvirt.
-
-    Sans sudo, la CLI s'arrête à l'étape 1 sur « Permission refusée » avant
-    d'avoir rien créé : le test ne peut pas tourner du tout, pas même échouer
-    utilement. Le menu — le chemin du produit — passe sudo dès que ce n'est
-    pas un essai à blanc, et c'est cette forme qui est reprise ici.
+class LaCreationDeLaVmSePasseDeSudo(unittest.TestCase):
+    """La CLI écrit le disque et le seed par l'API des volumes de libvirt :
+    le groupe libvirt actif suffit, et le test la lance SANS sudo. Seule une
+    commande qui exige root le demande, depuis la CLI, pour elle seule.
     """
 
     def _module(self):
@@ -328,27 +325,50 @@ class LaCreationDeLaVmEstPrivilegiee(unittest.TestCase):
 
         return install_nixos
 
-    def test_the_real_run_asks_for_privilege(self):
+    def _lancer(self, codes):
+        """Rend les argv lancés ; `codes` : le code rendu à chaque appel."""
         mod = self._module()
-        vu = {}
+        vus = []
+        codes = list(codes)
 
         class Fini:
-            returncode = 1
+            stdout = "uuid-essai\n"
+
+            def __init__(self, code):
+                self.returncode = code
 
         def faux_run(argv, **kw):
-            vu["argv"] = argv
-            return Fini()
+            vus.append(list(argv))
+            return Fini(codes.pop(0) if codes else 0)
 
         vrai = mod.subprocess.run
         self.addCleanup(setattr, mod.subprocess, "run", vrai)
         mod.subprocess.run = faux_run
-        mod.creer_vm("essai", None, dry_run=False)
-        self.assertEqual("sudo", vu["argv"][0])
-        self.assertIn("deploy_qemu.py", " ".join(vu["argv"]))
+        from script.todo import qemu_privilege
+
+        with mock.patch.object(
+            qemu_privilege, "needs_sudo", return_value=False
+        ):
+            rendu = mod.creer_vm("essai", None, dry_run=False)
+        return vus, rendu
+
+    def test_the_real_run_launches_the_cli_without_sudo(self):
+        vus, _rendu = self._lancer([1])
+        self.assertNotIn("sudo", vus[0])
+        self.assertTrue(vus[0][0].endswith("python"), vus[0][0])
+        self.assertIn("deploy_qemu.py", " ".join(vus[0]))
+
+    def test_the_uuid_is_read_on_the_system_uri_without_sudo(self):
+        """Sans l'URI, un utilisateur lirait qemu:///session, où la VM
+        n'existe pas : l'UUID manquerait sans erreur."""
+        vus, rendu = self._lancer([0, 0])
+        self.assertEqual(
+            ["virsh", "--connect", "qemu:///system", "domuuid", "essai"],
+            vus[1],
+        )
+        self.assertEqual(("essai", "uuid-essai"), rendu)
 
     def test_the_dry_run_asks_for_none(self):
-        """Un essai qui n'écrit rien n'a aucune raison de demander un mot de
-        passe, et le menu ne le demande pas non plus."""
         mod = self._module()
         vu = []
         vrai = mod.dire
@@ -361,10 +381,16 @@ class LaCreationDeLaVmEstPrivilegiee(unittest.TestCase):
         self.assertNotIn("sudo", ligne)
 
     def test_its_sibling_does_the_same(self):
-        """descente.py crée l'étage 1 de la même façon, et l'oubli y était
-        le même : un correctif posé d'un seul côté laisse l'autre au mur."""
-        src = (RACINE / "long_test/descente.py").read_text(encoding="utf-8")
-        self.assertIn('([] if self.dry_run else ["sudo"]) + [', src)
+        """descente.py crée l'étage 1 de la même façon : un correctif posé
+        d'un seul côté laisse l'autre au mur."""
+        import inspect
+
+        self._module()
+        import descente
+
+        src = inspect.getsource(descente.Descente.creer_etage1)
+        self.assertNotIn('"sudo"', src)
+        self.assertIn("deploy_qemu.py", src)
 
 
 class LaSondeEnvfsNommeSesChemins(unittest.TestCase):

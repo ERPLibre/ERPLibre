@@ -58,6 +58,7 @@ from descente import (  # noqa: E402
     cle_publique,
     detruire_etage1,
     dire,
+    virsh_local,
 )
 
 # Le catalogue des systèmes vient du DÉPLOIEMENT et n'est pas recopié ici :
@@ -649,7 +650,7 @@ def deployer(
     """
     vcpus, memoire, disque = GABARIT.get(charge, GABARIT["minimum"])
     cmd = (
-        f"sudo python3 {shlex.quote(CLI)} --distro {distro}"
+        f"python3 {shlex.quote(CLI)} --distro {distro}"
         f" --version {version} --name {nom}"
         f" --vcpus {vcpus} --memory {memoire} --disk-size {disque}"
         f" --ssh-key {shlex.quote(cle_publique())}"
@@ -705,7 +706,7 @@ def eteindre(nom, journal, dry_run=False):
     pour qui voudrait l'inspecter, et « --detruire » la retrouve par son nom.
     Un échec d'extinction est dit et n'arrête rien : la mesure est déjà faite.
     """
-    cmd = f"sudo -n virsh -c qemu:///system destroy {shlex.quote(nom)}"
+    cmd = shlex.join(virsh_local("destroy", nom))
     if dry_run:
         dire(f"  [à blanc] {cmd}", journal)
         return

@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
@@ -868,12 +869,21 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         self.addCleanup(
             setattr, moteur.Descente, "uuid_libvirt", self.vrai_uuid
         )
+        # La socket répond sans sudo : la forme d'argv ne dépend plus du
+        # poste qui lance le test.
+        patch = mock.patch.object(
+            moteur.qemu_privilege, "needs_sudo", return_value=False
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
         self.lances = []
+        self.argvs = []
 
     def _virsh(self, dominfo=0, erreur="error: failed to get domain 'x'"):
         import types
 
         def faux(argv, **kw):
+            self.argvs.append(list(argv))
             self.lances.append(" ".join(argv[2:]))
             code = dominfo if "dominfo" in argv else 0
             return types.SimpleNamespace(
@@ -915,6 +925,48 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             ),
             self.lances,
         )
+
+    def test_no_sudo_when_the_socket_answers(self):
+        """Le groupe libvirt actif suffit à lire, détruire et retirer : aucun
+        argv ne porte sudo, et chacun vise qemu:///system explicitement —
+        implicite, l'utilisateur interrogerait qemu:///session, vide."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        self.assertTrue(self.argvs)
+        for argv in self.argvs:
+            self.assertNotIn("sudo", argv)
+            self.assertEqual(
+                argv[:3], ["virsh", "--connect", "qemu:///system"]
+            )
+
+    def test_sudo_only_when_the_socket_refuses(self):
+        """Sans la socket, sudo revient — « -n » sur la lecture, qui ne doit
+        jamais attendre de mot de passe, et sur tout geste sans terminal."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with (
+            mock.patch.object(
+                moteur.qemu_privilege, "needs_sudo", return_value=True
+            ),
+            mock.patch.object(
+                moteur.sys, "stdin", mock.Mock(isatty=lambda: True)
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        par_verbe = {
+            argv[argv.index("qemu:///system") + 1]: argv[:2]
+            for argv in self.argvs
+        }
+        self.assertEqual(par_verbe["dominfo"], ["sudo", "-n"])
+        self.assertEqual(par_verbe["destroy"], ["sudo", "virsh"])
+        self.assertEqual(par_verbe["undefine"], ["sudo", "virsh"])
 
     def test_an_old_report_without_a_uuid_says_so(self):
         """On procède alors par le nom, faute de mieux — mais on le DIT,
@@ -2037,10 +2089,12 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
             }.get(nom, "")
         )
         self._rapport(self.ALPHA, self.BETA)
-        code, texte = self._lancer()
-        effaces = [
-            argv[3] for argv in lances if argv[1:3] == ["virsh", "undefine"]
-        ]
+        with mock.patch.object(
+            moteur.qemu_privilege, "needs_sudo", return_value=False
+        ):
+            code, texte = self._lancer()
+        undefine = ["virsh", "--connect", "qemu:///system", "undefine"]
+        effaces = [argv[4] for argv in lances if argv[:4] == undefine]
         self.assertEqual(effaces, ["essai-sd-alpha", "essai-sd-beta"])
         self.assertEqual(code, 0)
         self.assertIn("2 / 2 défait(s)", texte)
