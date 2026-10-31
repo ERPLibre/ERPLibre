@@ -2791,8 +2791,8 @@ def install_script(plan, stamp, root=""):
     Production : un échec de coturn ou de ntfy arrête le script avant
     nginx et certbot. Avec Let's Encrypt, coturn démarre sans TLS tant que
     la lignée n'existe pas, puis la reprend après certbot ; un échec après
-    certbot remet de côté le fichier de renouvellement qu'il avait remis
-    (`rehold`).
+    certbot, ou une coupure (HUP, INT, TERM), remet de côté le fichier de
+    renouvellement qu'il avait remis (`rehold`).
 
     Le mot de passe du compte de contrôle de coturn n'y figure pas :
     l'installateur le tire sur l'hôte. Le certificat, la clé et les
@@ -2820,7 +2820,9 @@ def install_script(plan, stamp, root=""):
         f'fail() {{ echo "@@FAILED $1";{rehold} echo "@@SAVED no"; exit 1; }}',
         "D=$(mktemp -d) || fail workdir",
         "trap 'rm -rf \"$D\"' EXIT",
-        "trap 'exit 129' HUP INT TERM",
+        # Une coupure laisse le même trou qu'un échec ; le piège EXIT, qui
+        # retire $D, passe après `rehold` qui y lit run.m.
+        f"trap '{'rehold; ' if certbot else ''}exit 129' HUP INT TERM",
         *_capture_lines(),
         *(_rehold_lines() if certbot else []),
         # Le dossier reste traversable : coturn y lit son certificat.
