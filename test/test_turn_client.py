@@ -491,6 +491,119 @@ class TestAllocateUdp(FakeCase):
         self.assertEqual(result, tc.Allocation(False, None, "integrity"))
 
 
+CREATE_PERMISSION = 0x0008
+PRIVATE_PEER = "10.0.0.1"
+
+
+def unxor_peer(value, txid):
+    """(adresse, port) d'un XOR-PEER-ADDRESS reçu, démasqué ici sans les
+    fonctions du module : port par les 16 bits hauts du cookie, adresse
+    par le cookie (IPv4) ou le cookie suivi de la transaction (IPv6)."""
+    family, xport = struct.unpack("!xBH", value[:4])
+    mask = struct.pack("!I", MAGIC) + txid
+    size = 4 if family == 1 else 16
+    raw = bytes(a ^ b for a, b in zip(value[4 : 4 + size], mask[:size]))
+    kind = socket.AF_INET if family == 1 else socket.AF_INET6
+    return socket.inet_ntop(kind, raw), xport ^ (MAGIC >> 16)
+
+
+def permission_answer(code=None, peer=PRIVATE_PEER, signed=True):
+    """Réponse du faux serveur à CreatePermission : vérifie la requête
+    (méthode, pair attendu, identifiants, intégrité), puis refuse avec
+    `code` ou accorde (succès signé sous KEY quand `signed`)."""
+
+    def answer(data, txid, attrs):
+        assert struct.unpack("!H", data[:2])[0] == CREATE_PERMISSION
+        assert unxor_peer(attrs[0x0012], txid)[0] == peer
+        assert attrs[0x0006] == USER.encode()
+        assert attrs[0x0014] == REALM and attrs[0x0015] == NONCE
+        assert 0x0019 not in attrs, "pas de REQUESTED-TRANSPORT"
+        if not integrity_ok(data, KEY):
+            return message(0x0118, txid, [error_attr(400, b"Bad Request")])
+        if code is not None:
+            return message(0x0118, txid, [error_attr(code, b"Forbidden")])
+        return message(0x0108, txid, [], key=KEY if signed else None)
+
+    return answer
+
+
+class TestPermission(FakeCase):
+    """`permission()` : Allocate authentifié, puis CreatePermission vers un
+    pair ; coturn répond 403 pour un pair de ses plages refusées."""
+
+    def test_refused_peer_is_a_403_failure_and_the_allocation_released(
+        self,
+    ):
+        server = self.fake(
+            [unauthorized, allocated, permission_answer(403), refreshed]
+        )
+        result = tc.permission(
+            "127.0.0.1", server.port, "udp", USER, KEY, PRIVATE_PEER, timeout=3
+        )
+        self.assertFalse(result.ok)
+        self.assertIsNone(result.relayed)
+        self.assertTrue(result.error.startswith("403"), result.error)
+        self.assertEqual(
+            [r[0] for r in self.requests(server)],
+            [ALLOCATE, ALLOCATE, CREATE_PERMISSION, REFRESH],
+        )
+
+    def test_granted_peer_is_a_success_with_the_relayed_address(self):
+        server = self.fake(
+            [unauthorized, allocated, permission_answer(), refreshed]
+        )
+        result = tc.permission(
+            "127.0.0.1", server.port, "udp", USER, KEY, PRIVATE_PEER, timeout=3
+        )
+        self.assertEqual(result, tc.Allocation(True, RELAYED, None))
+        self.assertEqual(self.requests(server)[3][0], REFRESH)
+
+    def test_ipv6_peer_is_masked_with_the_transaction(self):
+        server = self.fake(
+            [unauthorized, allocated, permission_answer(peer="fd00::1")],
+        )
+        result = tc.permission(
+            "127.0.0.1", server.port, "udp", USER, KEY, "fd00::1", timeout=2
+        )
+        self.assertTrue(result.ok, result)
+
+    def test_unsigned_grant_is_an_integrity_failure(self):
+        server = self.fake(
+            [unauthorized, allocated, permission_answer(signed=False)]
+        )
+        result = tc.permission(
+            "127.0.0.1", server.port, "udp", USER, KEY, PRIVATE_PEER, timeout=2
+        )
+        self.assertEqual(result, tc.Allocation(False, None, "integrity"))
+
+    def test_failed_allocation_sends_no_permission(self):
+        server = self.fake([unauthorized, unauthorized])
+        result = tc.permission(
+            "127.0.0.1", server.port, "udp", USER, KEY, PRIVATE_PEER, timeout=2
+        )
+        self.assertFalse(result.ok)
+        self.assertTrue(result.error.startswith("401"), result.error)
+        self.assertNotIn(
+            CREATE_PERMISSION, [r[0] for r in self.requests(server)]
+        )
+
+    def test_tcp_framing(self):
+        server = self.fake(
+            [unauthorized, allocated, permission_answer(403), refreshed],
+            transport="tcp",
+        )
+        result = tc.permission(
+            "127.0.0.1", server.port, "tcp", USER, KEY, PRIVATE_PEER, timeout=3
+        )
+        self.assertEqual(result, tc.Allocation(False, None, "403 Forbidden"))
+
+    def test_a_peer_that_is_not_an_address_is_refused(self):
+        with self.assertRaises(ValueError):
+            tc.permission("127.0.0.1", 3478, "udp", USER, KEY, "pair.test")
+        with self.assertRaises(ValueError):
+            tc.permission("127.0.0.1", 3478, "sctp", USER, KEY, PRIVATE_PEER)
+
+
 class TestResolution(unittest.TestCase):
     """La résolution du nom compte dans le budget : un résolveur muet ne
     doit pas retenir l'appel au-delà de `timeout`."""
