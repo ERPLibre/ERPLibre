@@ -11,8 +11,10 @@ vidanges concurrentes n'envoient jamais deux fois la même entrée.
 """
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.rules import storage
@@ -153,6 +155,61 @@ class OutboxV6Case(unittest.TestCase):
             reason="hold_first" if held else "offline",
         )
         return ident, cle
+
+
+class TestSlowSendKeepsItsClaim(OutboxV6Case):
+    def test_a_send_longer_than_the_stale_delay_is_not_taken_over(self):
+        """Un envoi encore en cours au-delà d'`OUTBOX_CLAIM_STALE_S` : sa
+        réservation est rafraîchie, et une seconde vidange, d'un autre
+        processus, ne renvoie pas la même entrée."""
+        from script.todo.mail import store as store_mod
+        from script.todo.mail.store import OUTBOX_CLAIM_STALE_S
+
+        rule = self.regle()
+        ident, _cle = self.automatique(rule)
+        autre = Store(self.account, mode="clear", base=self.base)
+        autre.open()
+        self.addCleanup(autre.close)
+        horloge = [T0]
+        rafraichi = threading.Event()
+        vrai = self.store.outbox_claim_refresh
+
+        def rafraichir(queue_id, now):
+            resultat = vrai(queue_id, now)
+            if now > T0:
+                rafraichi.set()
+            return resultat
+
+        vus = []
+
+        def envoi_lent(account, msg, transport):
+            horloge[0] = T0 + OUTBOX_CLAIM_STALE_S + 1
+            self.assertTrue(rafraichi.wait(5))
+            vus.append(autre.outbox_claim(ident, horloge[0]))
+            vus.append(
+                flush_outbox(
+                    self.en_ligne(autre),
+                    send_fn=self.envoyer,
+                    connect_fn=lambda a, p: FauxSmtp(),
+                    now=lambda: horloge[0],
+                )
+            )
+            return [CAROLE]
+
+        with (
+            mock.patch.object(store_mod, "OUTBOX_CLAIM_REFRESH_S", 0.01),
+            mock.patch.object(self.store, "outbox_claim_refresh", rafraichir),
+        ):
+            bilan = flush_outbox(
+                self.en_ligne(),
+                send_fn=envoi_lent,
+                connect_fn=lambda a, p: FauxSmtp(),
+                now=lambda: horloge[0],
+            )
+        self.assertEqual(bilan, (1, 0, 0))
+        self.assertEqual(vus, [False, (0, 0, 0)])
+        self.assertEqual(self.envois, [])
+        self.assertEqual(self.store.outbox(), [])
 
 
 class TestDeferredSendIsFiled(OutboxV6Case):

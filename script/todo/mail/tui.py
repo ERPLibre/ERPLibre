@@ -1391,6 +1391,41 @@ def _flush_caps(session, rules_base):
         return storage.Caps()
 
 
+@contextlib.contextmanager
+def _claim_kept(store, queue_id: int, clock):
+    """Rafraîchit la réservation de `queue_id` toutes les
+    `OUTBOX_CLAIM_REFRESH_S` secondes, dans un fil, tant que le bloc
+    s'exécute.
+
+    Un envoi n'a pas de durée bornée (DATA d'un gros message sur un lien
+    lent) ; sans ce battement, sa réservation passerait pour celle d'un
+    processus mort et une autre vidange renverrait l'entrée. Un échec du
+    rafraîchissement (base occupée) est tu : le suivant réessaie.
+    """
+    from script.todo.mail import store as store_mod
+
+    fin = threading.Event()
+
+    def battre():
+        while not fin.wait(store_mod.OUTBOX_CLAIM_REFRESH_S):
+            try:
+                store.outbox_claim_refresh(queue_id, int(clock()))
+            except Exception as exc:
+                _logger.info(
+                    "file %s : réservation non rafraîchie (%s)",
+                    queue_id,
+                    type(exc).__name__,
+                )
+
+    fil = threading.Thread(target=battre, daemon=True)
+    fil.start()
+    try:
+        yield
+    finally:
+        fin.set()
+        fil.join()
+
+
 def flush_outbox(
     session,
     send_fn=None,
@@ -1415,7 +1450,9 @@ def flush_outbox(
     Pour chaque entrée, dans l'ordre :
     - une réservation (`outbox_claim`) l'enlève à toute autre vidange,
       même d'un autre processus ; une entrée réservée ailleurs est en cours
-      d'envoi et n'est ni retirée ni envoyée ici ;
+      d'envoi et n'est ni retirée ni envoyée ici ; pendant l'envoi,
+      `_claim_kept` rafraîchit la réservation, qui ne passe donc jamais
+      pour celle d'un processus mort tant que l'envoi dure ;
     - passée son `expires_at`, elle est retirée et son journal passe
       `expired`, retenue ou non ;
     - automatique, elle n'est envoyée que si sa règle existe, est active
@@ -1581,7 +1618,8 @@ def flush_outbox(
             connecte = False
             transport = connect_fn(session.account, session.current_secret())
             connecte = True
-            send_fn(session.account, message, transport)
+            with _claim_kept(store, ident, clock):
+                send_fn(session.account, message, transport)
         except Exception as exc:
             injoignable = injoignable or connecte is False
             info = store.record_send_failure(
