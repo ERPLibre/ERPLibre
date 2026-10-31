@@ -521,8 +521,10 @@ def ntfy_base_url(answers):
 
 def coturn_config(answers):
     """Le `turnserver.conf` qu'`install_coturn.sh` (`write_config`) écrit
-    pour ces réponses, au caractère près : il sert au diff montré avant
-    d'adopter et à reconnaître une configuration déjà à jour."""
+    pour ces réponses dans un plan de développement (TURN_ALLOW_PRIVATE=1,
+    aucune ligne `denied-peer-ip`), au caractère près : il sert au diff
+    montré avant d'adopter et à reconnaître une configuration déjà à
+    jour."""
     lines = [
         MARKER,
         "# Comptes dans userdb, pas ici. Ecrit par install_coturn.sh.",
@@ -1113,6 +1115,12 @@ def _coturn_block(plan, check_password):
         "TURN_MAX_PORT": answers.max_port,
     }
     raw = {}
+    # Un plan de développement relaie aussi vers les plages privées (réseau
+    # local, boucle locale) : sans TURN_ALLOW_PRIVATE=1, l'installateur les
+    # refuse, et la configuration écrite ne serait plus celle que
+    # `coturn_config` décrit.
+    if plan.new_state.get("mode") == "development":
+        variables["TURN_ALLOW_PRIVATE"] = "1"
     if answers.external_ip:
         variables["TURN_EXTERNAL_IP"] = answers.external_ip
     if answers.tls == "supplied":
