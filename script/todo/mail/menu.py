@@ -152,6 +152,7 @@ def prompt_execute_mail(todo) -> None:
 [4] {t("mail_cache_menu")}
 [5] {t("mail_stats_menu")}
 [6] {t("mail_rules_menu")}
+[7] {t("mail_rules_menu_service")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -169,6 +170,11 @@ def prompt_execute_mail(todo) -> None:
             _show_stats(todo)
         elif status == "6":
             prompt_mail_rules(todo)
+        elif status == "7":
+            # Hors du choix d'un compte : le service est commun à tous, et
+            # reste à désinstaller quand il n'y a plus de compte ou que
+            # tous ont un cache éphémère.
+            _service_menu(todo)
         else:
             print(t("Command not found !"))
 
@@ -181,7 +187,8 @@ def prompt_mail_rules(todo, *, base=None) -> None:
     """Menu [6] : lister, activer, déplacer, supprimer les règles d'un
     compte, lire leur journal, régler le rapport de statistiques et
     essayer une règle sur un message, sans ouvrir le TUI. L'entrée [8]
-    gère le service sans interface, commun à tous les comptes.
+    gère le service sans interface, commun à tous les comptes, comme
+    l'entrée [7] de `prompt_execute_mail`.
 
     La création et l'édition passent par le TUI (touche `e`) : un arbre
     de filtre ne se saisit pas ligne à ligne. La base des règles vient du

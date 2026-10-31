@@ -16291,16 +16291,16 @@ TRANSLATIONS = {
         "en": "Vault locked:",
     },
     "mail_service_vault_no_password": {
-        "fr": "aucun mot de passe maître pour le service (Courriel [6] › [8] › [2]).",
-        "en": "no master password for the service (Mail [6] › [8] › [2]).",
+        "fr": "aucun mot de passe maître pour le service (Courriel [7] › [2]).",
+        "en": "no master password for the service (Mail [7] › [2]).",
     },
     "mail_service_vault_no_password_by_hand": {
-        "fr": "lancée hors du service, la passe ne lit pas le mot de passe chiffré ; testez-le par Courriel [6] › [8] › [3], puis journalctl --user -u erplibre-mail-rules.",
-        "en": "run outside the service, the pass does not read the encrypted password; test it with Mail [6] › [8] › [3], then journalctl --user -u erplibre-mail-rules.",
+        "fr": "lancée hors du service, la passe ne lit pas le mot de passe chiffré ; testez-le par Courriel [7] › [3], puis journalctl --user -u erplibre-mail-rules.",
+        "en": "run outside the service, the pass does not read the encrypted password; test it with Mail [7] › [3], then journalctl --user -u erplibre-mail-rules.",
     },
     "mail_service_vault_wrong_password": {
-        "fr": "mot de passe maître refusé (à refaire : Courriel [6] › [8] › [2]).",
-        "en": "master password refused (redo: Mail [6] › [8] › [2]).",
+        "fr": "mot de passe maître refusé (à refaire : Courriel [7] › [2]).",
+        "en": "master password refused (redo: Mail [7] › [2]).",
     },
     "mail_service_vault_not_configured": {
         "fr": "aucun coffre KeePass configuré.",
@@ -16478,8 +16478,8 @@ TRANSLATIONS = {
         "en": "User systemd unreachable (systemctl --user): nothing installed.",
     },
     "mail_service_no_systemd_uninstall": {
-        "fr": "systemd utilisateur injoignable (systemctl --user) : rien n'est retiré ; relancez Courriel [6] › [8] › [4] depuis une session locale.",
-        "en": "User systemd unreachable (systemctl --user): nothing removed; run Mail [6] › [8] › [4] again from a local session.",
+        "fr": "systemd utilisateur injoignable (systemctl --user) : rien n'est retiré ; relancez Courriel [7] › [4] depuis une session locale.",
+        "en": "User systemd unreachable (systemctl --user): nothing removed; run Mail [7] › [4] again from a local session.",
     },
     "mail_service_reload_failed_removed": {
         "fr": "Unités retirées, mais systemd utilisateur ne s'est pas rechargé (systemctl --user daemon-reload) ; la minuterie déjà chargée peut tourner jusqu'à la prochaine session :",
@@ -16574,8 +16574,8 @@ TRANSLATIONS = {
         "en": "Service: reading its state…",
     },
     "mail_service_status_not_installed": {
-        "fr": "non installé (menu Courriel [6] › [8])",
-        "en": "not installed (Mail menu [6] › [8])",
+        "fr": "non installé (menu Courriel [7])",
+        "en": "not installed (Mail menu [7])",
     },
     "mail_service_status_installed_off": {
         "fr": "installé, minuterie arrêtée",
@@ -16658,16 +16658,16 @@ TRANSLATIONS = {
         "en": "configuration or cache unreadable",
     },
     "mail_service_exit_200": {
-        "fr": "dossier du dépôt introuvable : réinstaller (Courriel [6] › [8] › [1])",
-        "en": "checkout folder not found: reinstall (Mail [6] › [8] › [1])",
+        "fr": "dossier du dépôt introuvable : réinstaller (Courriel [7] › [1])",
+        "en": "checkout folder not found: reinstall (Mail [7] › [1])",
     },
     "mail_service_exit_203": {
-        "fr": "interpréteur du venv introuvable : réinstaller (Courriel [6] › [8] › [1])",
-        "en": "venv interpreter not found: reinstall (Mail [6] › [8] › [1])",
+        "fr": "interpréteur du venv introuvable : réinstaller (Courriel [7] › [1])",
+        "en": "venv interpreter not found: reinstall (Mail [7] › [1])",
     },
     "mail_service_exit_243": {
-        "fr": "mot de passe chiffré illisible sur cette machine : refaire Courriel [6] › [8] › [2]",
-        "en": "encrypted password unreadable on this machine: redo Mail [6] › [8] › [2]",
+        "fr": "mot de passe chiffré illisible sur cette machine : refaire Courriel [7] › [2]",
+        "en": "encrypted password unreadable on this machine: redo Mail [7] › [2]",
     },
     # QEMU — outils de développement des VM graphiques
     "Python IDE, ERPLibre project pre-configured": {
