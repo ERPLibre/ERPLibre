@@ -190,12 +190,17 @@ _ADDR_AWK = '{ sub(/\\/.*/, "", $4); print "@@ADDR " $4 }'
 # « chain <nom> { » une chaîne ; la ligne « type ... hook input ... policy
 # drop; » fait d'elle une chaîne de base qui rejette ce qu'elle n'accepte
 # pas. Le pont (« bridge ») a aussi un crochet input, qui ne voit pas le
-# trafic destiné à l'hôte : seuls ip, ip6 et inet comptent.
+# trafic destiné à l'hôte : seuls ip, ip6 et inet comptent. Imprime
+# « famille table chaîne », suivi d'un 4e champ « iptables » pour une
+# chaîne « INPUT » en ip ou ip6 : c'est celle qu'iptables-nft crée, dans
+# une table qu'iptables-persistent recharge en entier, ce qui effacerait
+# une règle nft native.
 _NFT_CHAINS_AWK = (
     '/^table / { f = $2; t = $3; c = "" }'
     " /^[ \\t]*chain / { c = $2 }"
     " /hook input/ && /policy drop/"
-    ' { if (f == "ip" || f == "ip6" || f == "inet") print f, t, c }'
+    ' { if (f == "ip" || f == "ip6" || f == "inet")'
+    ' print f, t, c ((f != "inet" && c == "INPUT") ? " iptables" : "") }'
 )
 _EXEC_CONF_SED = (
     "s/^ExecStart=.*[[:space:]](-c|--conf-file)[[:space:]=]+"
@@ -276,24 +281,27 @@ def probe_script(root=""):
             ' echo "@@PENDING $s $(base64 -w0 < "$f")"; fi',
             "done",
             # Un pare-feu que l'outil ne sait pas compléter sans risque
-            # (firewalld, iptables seul en DROP) se dit « unknown ».
+            # (firewalld, iptables en DROP, y compris par iptables-nft) se
+            # dit « unknown ».
+            "NI=",
+            "command -v nft >/dev/null 2>&1 && NI=$(nft list ruleset"
+            f" 2>/dev/null | awk {shlex.quote(_NFT_CHAINS_AWK)})",
             "FW=none",
             "if command -v ufw >/dev/null 2>&1"
             " && ufw status 2>/dev/null | grep -q '^Status: active'; then",
             "  FW=ufw",
             "elif systemctl is-active --quiet firewalld 2>/dev/null; then",
             "  FW=unknown",
-            "elif command -v nft >/dev/null 2>&1 && nft list ruleset"
-            " 2>/dev/null | grep -q 'hook input.*policy drop'; then",
-            "  FW=nftables",
+            'elif [ -n "$NI" ]; then',
+            '  if printf "%s\\n" "$NI" | awk \'$4 != "" { x = 1 }'
+            " END { exit !x }'; then FW=unknown; else FW=nftables; fi",
             "elif command -v iptables >/dev/null 2>&1 && iptables -S INPUT"
             " 2>/dev/null | grep -q '^-P INPUT DROP'; then",
             "  FW=unknown",
             "fi",
             'echo "@@FIREWALL $FW"',
             'if [ "$FW" = nftables ]; then',
-            f"  nft list ruleset 2>/dev/null | awk {shlex.quote(_NFT_CHAINS_AWK)}"
-            " | sed 's/^/@@NFT_INPUT /'",
+            '  printf "%s\\n" "$NI" | sed \'s/^/@@NFT_INPUT /\'',
             "fi",
             f'S="$R{STATE_PATH}"',
             'if [ -f "$S" ]; then echo "@@STATE $(base64 -w0 < "$S")"; fi',
@@ -1586,8 +1594,9 @@ def _nft_allow(rules):
         "N=$(awk 'END { print NR }' \"$D/chains\")",
         "USABLE=0",
         'if [ "$N" = 1 ]; then',
-        '  read -r F T C < "$D/chains"',
+        '  read -r F T C X < "$D/chains"',
         "  USABLE=1",
+        '  [ -n "$X" ] && USABLE=0',
         '  case "$F" in ip|ip6|inet) ;; *) USABLE=0 ;; esac',
         '  case "$T" in ""|*[!A-Za-z0-9_.-]*) USABLE=0 ;; esac',
         '  case "$C" in ""|*[!A-Za-z0-9_.-]*) USABLE=0 ;; esac',
