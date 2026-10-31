@@ -32,6 +32,7 @@ from script.todo.mail.smtp_send import (
     build_auto_reply,
     build_message,
     connect,
+    recipients,
     send,
     smtp_code,
 )
@@ -403,6 +404,26 @@ class TestBuildAutoReply(unittest.TestCase):
                 self.assertEqual(
                     str(ctx.exception), t("mail_err_message_needs_recipient")
                 )
+
+    def test_an_envelope_other_than_the_target_is_refused(self):
+        """L'enveloppe relue dans To doit être la cible, telle quelle : un
+        mot encodé décodé en une autre adresse, ou un domaine qui n'en
+        donne aucune, lève à la construction, pas à l'envoi."""
+        for to in (
+            "=?utf-8?q?carole.regle?=@example.org",
+            "carole@example.net.",
+        ):
+            with self.subTest(to=to):
+                with self.assertRaises(SmtpError) as ctx:
+                    build_auto_reply(self.acc, to, "Auto: Devis", "corps")
+                self.assertEqual(
+                    str(ctx.exception), t("mail_err_reply_envelope_mismatch")
+                )
+                self.assertFalse(ctx.exception.permanent)
+        msg = build_auto_reply(
+            self.acc, "Carole.Regle@Example.ORG", "Auto: Devis", "corps"
+        )
+        self.assertEqual(recipients(msg), ["Carole.Regle@Example.ORG"])
 
     def test_non_ascii_message_ids_are_dropped(self):
         # Gardés, ils feraient échouer `as_bytes()` bien après la

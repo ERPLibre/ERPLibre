@@ -15008,6 +15008,10 @@ TRANSLATIONS = {
         "fr": "refusée :",
         "en": "refused:",
     },
+    "mail_err_reply_envelope_mismatch": {
+        "fr": "réponse non construite : l'adresse cible ne se relit pas telle quelle dans l'en-tête To.",
+        "en": "reply not built: the target address does not read back unchanged in the To header.",
+    },
     "mail_err_message_needs_recipient": {
         "fr": "un message doit avoir au moins un destinataire",
         "en": "a message must have at least one recipient",

@@ -50,18 +50,30 @@ class SmtpError(Exception):
 
     `code` porte le code de réponse SMTP quand le serveur en a rendu un
     (voir `smtp_code`), `None` sinon : erreur de construction, panne réseau.
+    `permanent` force le verdict quand il ne dépend pas d'un code : un
+    message sans destinataire ne partira à aucun nouvel essai.
     """
 
-    def __init__(self, message: str = "", code: int | None = None):
+    def __init__(
+        self,
+        message: str = "",
+        code: int | None = None,
+        *,
+        permanent: bool | None = None,
+    ):
         super().__init__(message)
         self.code = code
+        self._permanent = permanent
 
     @property
     def permanent(self) -> bool:
         """Vrai pour un refus 5xx, qu'un nouvel essai ne changerait pas.
 
-        Un code 4xx ou absent est transitoire : le message se réessaie.
+        Un code 4xx ou absent est transitoire : le message se réessaie,
+        sauf verdict forcé à la construction.
         """
+        if self._permanent is not None:
+            return self._permanent
         return self.code is not None and 500 <= self.code < 600
 
 
@@ -513,7 +525,11 @@ def send(account, msg, transport: SmtpTransport) -> list[str]:
     raw = isinstance(msg, RawOutgoing)
     to_addrs = list(msg.envelope) if raw else recipients(msg)
     if not to_addrs:
-        raise SmtpError(t("mail_err_no_recipient_nothing_sent"))
+        # Permanent : sans destinataire, aucun essai ne part, et une
+        # erreur transitoire mettrait en file le reste d'une passe.
+        raise SmtpError(
+            t("mail_err_no_recipient_nothing_sent"), permanent=True
+        )
     try:
         if raw:
             transport.send_raw(msg.raw, account.email, to_addrs)
@@ -667,11 +683,15 @@ def build_auto_reply(
     tel quel par ailleurs (l'appelant passe `auto_reply_subject(...)`). `to`
     est l'adresse telle que reçue, jamais sa forme IDNA normalisée, que
     `smtplib` refuse sans SMTPUTF8 ; vide, il fait lever `SmtpError` comme
-    un message sans destinataire.
+    un message sans destinataire. Une réponse dont l'enveloppe
+    (`recipients`) n'est pas exactement `to` lève aussi `SmtpError` :
+    l'analyse de l'en-tête To ne choisit jamais une autre cible que celle
+    que l'appelant a contrôlée, et une enveloppe vide ne passe pas pour
+    une panne du serveur.
     """
     irt = " ".join(_msgid_tokens(in_reply_to))
     refs = " ".join(_msgid_tokens(references) + ([irt] if irt else []))
-    return build_message(
+    msg = build_message(
         account,
         [to] if (to or "").strip() else [],
         " ".join((subject or "").split()),
@@ -689,6 +709,10 @@ def build_auto_reply(
             "X-Loop": f"{X_LOOP_MARKER} {account.email}",
         },
     )
+    envelope = [addr.lower() for addr in recipients(msg)]
+    if envelope != [(to or "").strip().lower()]:
+        raise SmtpError(t("mail_err_reply_envelope_mismatch"))
+    return msg
 
 
 # Longueur au-delà de laquelle un identifiant de message est écarté : une
