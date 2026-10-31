@@ -33,6 +33,7 @@ SCRIPTS_DESCENTE = (
     "install_nixos.py",
     "install_erplibre_home.py",
     "usb_passthrough.py",
+    "call_infra.py",
 )
 
 # Les tests longs qui CRÉENT quelque chose, donc qui savent le défaire : les
@@ -77,6 +78,11 @@ class LongTestMenuMixin:
             return (
                 "This creates throwaway Odoo databases and servers, for a few minutes.",
                 "Run the mobile sync test?",
+            )
+        if nom == "call_infra.py" and "--detruire" not in (args or ""):
+            return (
+                "This creates a Debian VM and an Arch VM and installs coturn and ntfy on them.",
+                "Run the call infrastructure test?",
             )
         if "--detruire" in (args or ""):
             return (
@@ -182,6 +188,16 @@ class LongTestMenuMixin:
                     "Mobile sync on Odoo 16-18 and the plugged phone: run it"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Call infrastructure on throwaway VMs: plan only (dry-run)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Call infrastructure on throwaway VMs: run it"
+                )
+            },
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
         # Ses entrées sont donc traitées à part plutôt que pliées dans la
@@ -212,6 +228,12 @@ class LongTestMenuMixin:
             "16": "",
             "17": "--appareil",
         }
+        # L'infrastructure d'appel : une VM Debian puis une VM Arch, ni
+        # profondeur ni hôte de départ. 18 et 19, après la synchro mobile.
+        call_infra = {
+            "18": "--dry-run",
+            "19": "",
+        }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
             "1": ("deep_proxmox.py", True),
@@ -235,6 +257,9 @@ class LongTestMenuMixin:
                 continue
             if status in mobile_sync:
                 self._longtest_run("mobile_sync.py", mobile_sync[status])
+                continue
+            if status in call_infra:
+                self._longtest_run("call_infra.py", call_infra[status])
                 continue
             if status in erplibre_home:
                 self._longtest_run(
@@ -361,12 +386,13 @@ class LongTestMenuMixin:
         }
 
     def _longtest_depth(self):
-        """Profondeur demandée. Trois par défaut, parce que trois marche.
+        """Profondeur demandée, trois par défaut : une réponse vide ou qui
+        n'est pas un entier positif vaut trois.
 
-        Mesuré sur cette machine : les trois premiers étages prennent 280, 495
-        et 1 064 secondes — une demi-heure. Le quatrième a demandé 7 h 18
-        d'installation et 4 h 20 d'amorçage, et les suivants se comptent en
-        jours. Dix par défaut promettait ce qu'aucune machine ne tient.
+        Les trois premiers étages tiennent en une demi-heure ; le quatrième
+        se compte en heures d'installation et d'amorçage, les suivants en
+        jours. Un défaut plus profond promettrait ce qu'aucune machine ne
+        tient.
         """
         brut = input(f"{t('Depth (default 3): ')}").strip()
         return int(brut) if brut.isdigit() and int(brut) > 0 else 3
