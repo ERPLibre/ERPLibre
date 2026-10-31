@@ -1165,6 +1165,15 @@ def _ntfy_block(plan):
         "NTFY_BASE_URL": ntfy_base_url(answers),
         "NTFY_NON_INTERACTIVE": 1,
     }
+    # Le compte « ntfy » doit traverser le dossier pour lire server.yml ;
+    # sans lui, ntfy démarre sur ses valeurs par défaut, sans contrôle
+    # d'accès. Créé ici en 0755 malgré l'umask 077 du script ; un dossier
+    # déjà là garde ses droits, et ni dpkg ni pacman ne les changent.
+    lines.append(
+        f"[ -d {_host(os.path.dirname(NTFY_CONFIG))} ]"
+        f" || install -d -m 0755 {_host(os.path.dirname(NTFY_CONFIG))}"
+        " || fail ntfy-config"
+    )
     if answers.tls == "supplied":
         tls_dir = _host(NTFY_TLS_DIR)
         # Le groupe « ntfy » doit exister avant le paquet pour que la clé
@@ -1199,7 +1208,6 @@ def _ntfy_block(plan):
     # déclare son contrôle d'accès, install_ntfy.sh la garde telle quelle.
     # Un fichier en place garde son propriétaire et ses droits.
     lines += [
-        f"mkdir -p {_host(os.path.dirname(NTFY_CONFIG))} || fail ntfy-config",
         _decode_to(_b64(plan.configs["ntfy"]), new) + " || fail ntfy-config",
         f"if [ -f {config} ]; then",
         f"  chown --reference={config} {new}"
