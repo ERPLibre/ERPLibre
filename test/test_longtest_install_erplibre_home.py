@@ -1663,9 +1663,10 @@ class LeBureauInstalleParLaCourse(unittest.TestCase):
 
 class LeRenouvellementDeSudo(unittest.TestCase):
     """Interactif devant un terminal, jamais sans : une course sans
-    terminal n'attend pas un mot de passe que personne ne tape."""
+    terminal n'attend pas un mot de passe que personne ne tape. Et rien du
+    tout quand libvirt répond sans sudo : le défaire n'en a pas besoin."""
 
-    def _argv(self, terminal, code=0):
+    def _argv(self, terminal, code=0, besoin=True):
         from unittest import mock
 
         vus = []
@@ -1679,6 +1680,9 @@ class LeRenouvellementDeSudo(unittest.TestCase):
             mock.patch.object(
                 sd.sys, "stdin", mock.Mock(isatty=lambda: terminal)
             ),
+            mock.patch.object(
+                sd.qemu_privilege, "needs_sudo", return_value=besoin
+            ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             rendu = sd.rafraichir_sudo(None)
@@ -1691,6 +1695,36 @@ class LeRenouvellementDeSudo(unittest.TestCase):
         self.assertEqual(
             self._argv(False, code=1), ([["sudo", "-n", "-v"]], False)
         )
+
+    def test_nothing_to_renew_when_libvirt_answers_without_sudo(self):
+        self.assertEqual(self._argv(True, besoin=False), ([], True))
+
+
+class LaCreationSansSudo(unittest.TestCase):
+    """La CLI est lancée telle quelle : elle écrit par l'API des volumes de
+    libvirt et ne demande sudo que pour la commande qui exige root."""
+
+    def test_the_real_run_launches_the_cli_without_sudo(self):
+        from unittest import mock
+
+        vus = []
+
+        def run(argv, **k):
+            vus.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0)
+
+        with (
+            mock.patch.object(sd.subprocess, "run", run),
+            mock.patch.object(
+                sd.Descente, "uuid_libvirt", staticmethod(lambda nom: "")
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            rendu = sd.creer_vm("long-sd-x", sd.MATRICE[0], None, False)
+        self.assertEqual(("long-sd-x", "", True), rendu)
+        self.assertEqual(1, len(vus))
+        self.assertNotIn("sudo", vus[0])
+        self.assertIn("deploy_qemu.py", " ".join(vus[0]))
 
 
 class VMSimulee:

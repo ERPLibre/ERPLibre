@@ -568,6 +568,35 @@ class TestUneVmMesureeEstEteinte(unittest.TestCase):
             QC.eteindre("vm-essai", None, dry_run=True)
         ex.assert_not_called()
 
+    def test_eteindre_passe_par_la_socket_sans_sudo(self):
+        """Le groupe libvirt suffit à éteindre : sudo n'y vient que si la
+        socket refuse, et l'URI est explicite."""
+        from unittest import mock
+
+        with (
+            mock.patch.object(QC, "dire") as dit,
+            mock.patch(
+                "descente.qemu_privilege.needs_sudo", return_value=False
+            ),
+        ):
+            QC.eteindre("vm-essai", None, dry_run=True)
+        annonce = " ".join(str(a) for c in dit.call_args_list for a in c.args)
+        self.assertIn(
+            "virsh --connect qemu:///system destroy vm-essai", annonce
+        )
+        self.assertNotIn("sudo", annonce)
+
+    def test_la_creation_ne_demande_pas_sudo(self):
+        """deploy_qemu ne préfixe de sudo que la commande qui l'exige : ici,
+        l'exception nftables du témoin « --cache-bypass », et rien d'autre."""
+        from unittest import mock
+
+        with mock.patch.object(QC, "dire") as dit:
+            QC.deployer("vm-essai", None, dry_run=True)
+        annonce = " ".join(str(a) for c in dit.call_args_list for a in c.args)
+        self.assertIn("deploy_qemu.py", annonce)
+        self.assertNotIn("sudo", annonce)
+
 
 if __name__ == "__main__":
     unittest.main()

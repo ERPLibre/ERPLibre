@@ -315,12 +315,18 @@ unique, so it tells which stage stopped.
 ./long_test/install_erplibre_home.py --detruire      # undo the last run
 ```
 
-A real run needs `sudo` for its whole duration: each VM is created by
-`sudo deploy_qemu.py`, and destroyed through `sudo -n virsh`. Either allow
-`virsh` and `deploy_qemu.py` without a password, or keep a sudo session
-alive for the run. Only one VM lives at a time: when a VM survives its
-destroy, even after `sudo -v`, the run stops, marks the remaining systems
-`FAILED(previous-vm-still-up)` and exits 1; `--detruire` undoes it.
+A real run needs no `sudo`, provided the `libvirt` group is ACTIVE in the
+session (`virsh -c qemu:///system list` answers without sudo; after
+`usermod -aG libvirt`, open a new session) and the `default` and `iso`
+pools are active. Each VM is created by `deploy_qemu.py`, which writes the
+disk, the seed and the image cache through libvirt's volume API, and
+destroyed through `virsh --connect qemu:///system`. Only a command that
+truly needs root asks for sudo, by itself: a missing package or service,
+or the nftables exception of a `--cache-bypass` VM. Without the socket,
+every `virsh` goes through sudo. Only one VM lives at a time:
+when a VM survives its destroy, even after `sudo -v` when sudo is needed,
+the run stops, marks the remaining systems `FAILED(previous-vm-still-up)`
+and exits 1; `--detruire` undoes it.
 `--garder` keeps every VM running, 4 GiB each: pair it with `--only`.
 
 The report lists one line per system, with the GNOME version expected and
@@ -1041,13 +1047,19 @@ chaque nom est unique, il dit donc quelle étape s'est arrêtée.
 ./long_test/install_erplibre_home.py --detruire      # défaire la dernière course
 ```
 
-Une course réelle a besoin de `sudo` du début à la fin : chaque VM est
-créée par `sudo deploy_qemu.py`, et détruite par `sudo -n virsh`. Soit
-`virsh` et `deploy_qemu.py` sont permis sans mot de passe, soit une session
-sudo reste ouverte toute la course. Une seule VM vit à la fois : quand une
-VM survit à son défaire, même après `sudo -v`, la course s'arrête, marque
-les systèmes restants `FAILED(previous-vm-still-up)` et rend 1 ;
-`--detruire` la défait. `--garder` laisse chaque VM tourner, 4 Gio chacune :
+Une course réelle n'a pas besoin de `sudo`, à condition que le groupe
+`libvirt` soit ACTIF dans la session (`virsh -c qemu:///system list` répond
+sans sudo ; après `usermod -aG libvirt`, rouvrir une session) et que les
+pools `default` et `iso` soient actifs. Chaque VM est créée par
+`deploy_qemu.py`, qui écrit le disque, le seed et le cache d'images par
+l'API des volumes de libvirt, et détruite par
+`virsh --connect qemu:///system`. Seule une commande qui exige vraiment
+root demande sudo, pour elle seule : un paquet ou un service manquant, ou
+l'exception nftables d'une VM `--cache-bypass`. Sans la socket, chaque
+`virsh` passe par sudo. Une seule VM vit à la fois : quand
+une VM survit à son défaire, même après `sudo -v` quand sudo est requis, la
+course s'arrête, marque les systèmes restants
+`FAILED(previous-vm-still-up)` et rend 1 ; `--detruire` la défait. `--garder` laisse chaque VM tourner, 4 Gio chacune :
 l'associer à `--only`.
 
 Le rapport porte une ligne par système, avec la version de GNOME attendue et

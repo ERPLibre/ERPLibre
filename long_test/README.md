@@ -310,12 +310,18 @@ unique, so it tells which stage stopped.
 ./long_test/install_erplibre_home.py --detruire      # undo the last run
 ```
 
-A real run needs `sudo` for its whole duration: each VM is created by
-`sudo deploy_qemu.py`, and destroyed through `sudo -n virsh`. Either allow
-`virsh` and `deploy_qemu.py` without a password, or keep a sudo session
-alive for the run. Only one VM lives at a time: when a VM survives its
-destroy, even after `sudo -v`, the run stops, marks the remaining systems
-`FAILED(previous-vm-still-up)` and exits 1; `--detruire` undoes it.
+A real run needs no `sudo`, provided the `libvirt` group is ACTIVE in the
+session (`virsh -c qemu:///system list` answers without sudo; after
+`usermod -aG libvirt`, open a new session) and the `default` and `iso`
+pools are active. Each VM is created by `deploy_qemu.py`, which writes the
+disk, the seed and the image cache through libvirt's volume API, and
+destroyed through `virsh --connect qemu:///system`. Only a command that
+truly needs root asks for sudo, by itself: a missing package or service,
+or the nftables exception of a `--cache-bypass` VM. Without the socket,
+every `virsh` goes through sudo. Only one VM lives at a time:
+when a VM survives its destroy, even after `sudo -v` when sudo is needed,
+the run stops, marks the remaining systems `FAILED(previous-vm-still-up)`
+and exits 1; `--detruire` undoes it.
 `--garder` keeps every VM running, 4 GiB each: pair it with `--only`.
 
 The report lists one line per system, with the GNOME version expected and

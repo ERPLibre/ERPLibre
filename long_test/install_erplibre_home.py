@@ -62,6 +62,7 @@ from descente import (  # noqa: E402
     drapeaux_cache,
     retirer_alias,
 )
+from script.todo import qemu_privilege  # noqa: E402
 
 # Les listes que gsettings affiche se lisent par le lecteur que partagent
 # les outils de l'extension.
@@ -1025,7 +1026,7 @@ def commande_bureau():
 
 
 def creer_vm(nom, entree, journal, dry_run):
-    """La VM, par la CLI du dépôt, sous sudo hors essai à blanc.
+    """La VM, par la CLI du dépôt, sans sudo.
 
     Rend (nom, uuid, ok). Une création qui échoue après avoir défini le
     domaine rend quand même son nom et son UUID, avec ok faux : la VM existe,
@@ -1041,9 +1042,7 @@ def creer_vm(nom, entree, journal, dry_run):
             journal,
         )
         return None, "", False
-    argv = ([] if dry_run else ["sudo"]) + argv_creation(
-        entree, nom, cle_publique(), drapeaux_cache()
-    )
+    argv = argv_creation(entree, nom, cle_publique(), drapeaux_cache())
     if dry_run:
         dire("      " + " ".join(shlex.quote(a) for a in argv), journal)
         return nom, "", True
@@ -1652,10 +1651,13 @@ def mener_un(course, entree):
 def rafraichir_sudo(journal):
     """Renouvelle le jeton de sudo. Rend vrai s'il est valide.
 
-    « sudo -v » devant un terminal, qui peut demander le mot de passe ;
-    « sudo -n -v » sinon, qui échoue au lieu d'attendre un mot de passe que
-    personne ne tapera.
+    Rien à renouveler quand qemu:///system répond sans sudo : le défaire
+    n'en demande alors pas. Sinon « sudo -v » devant un terminal, qui peut
+    demander le mot de passe ; « sudo -n -v » sans, qui échoue au lieu
+    d'attendre un mot de passe que personne ne tapera.
     """
+    if not qemu_privilege.needs_sudo():
+        return True
     terminal = sys.stdin is not None and sys.stdin.isatty()
     argv = ["sudo", "-v"] if terminal else ["sudo", "-n", "-v"]
     try:
@@ -1871,9 +1873,9 @@ def mener(argv):
         dire(f"  {marque} {cle(entree)} : {ligne['verdict']}{etape}", journal)
         if args.garder:
             continue
-        # En cours de course, jamais detruire() : il demande « OUI ». Le
-        # défaire lit libvirt par « sudo -n » : un jeton expiré le fait
-        # échouer, d'où une seconde passe, jeton renouvelé.
+        # En cours de course, jamais detruire() : il demande « OUI ». Quand
+        # libvirt exige sudo, le défaire le lit par « sudo -n » : un jeton
+        # expiré le fait échouer, d'où une seconde passe, jeton renouvelé.
         for passe in range(2):
             if passe:
                 if not course.rapport["etages"]:
