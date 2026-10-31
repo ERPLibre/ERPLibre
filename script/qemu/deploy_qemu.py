@@ -15,33 +15,33 @@ Exemples
     # Le plus simple : image téléchargée automatiquement (chemin déduit de
     # --distro/--version, mis en cache dans /var/lib/libvirt/images/iso) et
     # outils manquants installés après confirmation.
-    sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \\
+    ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \\
         --ssh-key ~/.ssh/id_ed25519.pub
 
     # Debian 12 / Fedora 44 (mêmes options, --distro change la source d'image)
-    sudo ./script/qemu/deploy_qemu.py --distro debian --version 12 \\
+    ./script/qemu/deploy_qemu.py --distro debian --version 12 \\
         --name deb12 --ssh-key ~/.ssh/id_ed25519.pub
-    sudo ./script/qemu/deploy_qemu.py --distro fedora --version 44 \\
+    ./script/qemu/deploy_qemu.py --distro fedora --version 44 \\
         --name fed44 --ssh-key ~/.ssh/id_ed25519.pub
 
     # Voir tout le catalogue (distros, versions, specs minimales)
     ./script/qemu/deploy_qemu.py --list-images
 
     # Télécharger (et vérifier) une image, sans créer de VM
-    sudo ./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
+    ./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
 
     # Déploiement minimal en fournissant explicitement le chemin d'image
-    sudo ./qemu-deploy.py /var/lib/libvirt/images/iso/noble.img \\
+    ./qemu-deploy.py /var/lib/libvirt/images/iso/noble.img \\
         --name test-vm --ssh-key ~/.ssh/id_ed25519.pub
 
     # Reproduction fidèle des notes (8 Go RAM, 8 vCPU, mot de passe demandé)
-    sudo ./qemu-deploy.py /var/lib/libvirt/images/iso/noble.img \\
+    ./qemu-deploy.py /var/lib/libvirt/images/iso/noble.img \\
         --name test-vm --memory 8192 --vcpus 8 --disk-size 120G --ask-password
 
     # Voir ce qui serait fait, sans rien exécuter
     ./qemu-deploy.py /var/lib/libvirt/images/iso/noble.img --name test-vm --dry-run
 
-    sudo ./script/qemu/deploy_qemu.py /var/lib/libvirt/images/iso/noble.img --name test-vm --memory 8192 --vcpus 8 --disk-size 120G --ask-password --force
+    ./script/qemu/deploy_qemu.py /var/lib/libvirt/images/iso/noble.img --name test-vm --memory 8192 --vcpus 8 --disk-size 120G --ask-password --force
 """
 
 from __future__ import annotations
@@ -77,6 +77,7 @@ import urllib.request
 import warnings
 import zlib
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 # --------------------------------------------------------------------------- #
 # Registre des distributions : version -> (code, --osinfo, RAM min Mo, disque).
@@ -660,8 +661,9 @@ FEDORA_SECONDARY_MASTER = (
 )
 
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
-# --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
-# façon sous sudo (virt-install). Surchargez avec --image-dir au besoin.
+# --seed-dir). Il appartient à root : quand il est la cible d'un pool libvirt,
+# le déploiement y écrit par l'API des volumes, sans root (voir Depot).
+# Surchargez avec --image-dir au besoin.
 # Le pool par défaut de libvirt, et son sous-répertoire de cache d'images.
 # Nommés ici et non dans argparse : sudo_facts() doit constater les droits du
 # répertoire que le déploiement utilisera VRAIMENT, et deux écritures du même
@@ -844,9 +846,7 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(  # noqa: S310
-                index, timeout=30
-            ) as resp:
+            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -1055,21 +1055,27 @@ def sudo_facts(disk_dir: Path | None = None, image_dir: Path | None = None):
     """
     faits = []
     vus = set()
+    # Trois valeurs et non deux : « absent » quand virsh n'est pas là. Rendre
+    # « non » y ferait accuser le groupe libvirt d'un défaut qui n'est pas le
+    # sien — il n'y a simplement rien à joindre encore.
+    if shutil.which("virsh") is None:
+        socket_etat = "absent"
+    else:
+        socket_etat = "ok" if libvirt_ready(False) else "non"
     for chemin in (
         disk_dir or DEFAULT_DISK_DIR,
         image_dir or DEFAULT_IMAGE_DIR,
     ):
         bloque = repertoire_a_root(Path(chemin))
+        # Un répertoire de root qui est la cible d'un pool libvirt n'est pas
+        # un motif : le déploiement y écrit par l'API des volumes (Depot), et
+        # la socket ouverte au groupe suffit.
+        if bloque and socket_etat == "ok" and pool_for_dir(Path(chemin)):
+            continue
         if bloque and bloque[0] not in vus:
             vus.add(bloque[0])
             faits.append(("ecriture", bloque))
-    # Trois valeurs et non deux : « absent » quand virsh n'est pas là. Rendre
-    # « non » y ferait accuser le groupe libvirt d'un défaut qui n'est pas le
-    # sien — il n'y a simplement rien à joindre encore.
-    if shutil.which("virsh") is None:
-        faits.append(("socket", ("absent",)))
-    else:
-        faits.append(("socket", ("ok" if libvirt_ready(False) else "non",)))
+    faits.append(("socket", (socket_etat,)))
     return faits
 
 
@@ -1144,15 +1150,116 @@ def detach_from_terminal(cmd: list[str]) -> tuple[list[str], int | None]:
 
 
 # --------------------------------------------------------------------------- #
-class Runner:
-    """Exécute (ou affiche, en dry-run) les commandes, avec sudo au besoin."""
+def terminal_present() -> bool:
+    """Un humain peut-il répondre à une invite de mot de passe ?"""
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
 
-    def __init__(self, use_sudo: bool, dry_run: bool) -> None:
+
+def sudo_argv() -> list[str]:
+    """Le préfixe d'une commande qui exige root.
+
+    « sudo » devant un terminal : il peut demander le mot de passe, et c'est
+    LA commande qui en a besoin qui le demande. « sudo -n » sinon : sans
+    personne pour taper, une invite bloquerait jusqu'au délai de l'appelant ;
+    -n échoue tout de suite, et Runner.run dit alors quoi faire.
+    """
+    return ["sudo"] if terminal_present() else ["sudo", "-n"]
+
+
+# Réponse du sondage de la socket, gardée pour le processus. Même question que
+# script/todo/qemu_privilege.needs_sudo(), recopiée ici parce que ce fichier
+# est aussi déposé SEUL sur des hôtes distants (long_test/deep_qemu.py) et ne
+# peut rien importer du dépôt.
+_LIBVIRT_SUDO: bool | None = None
+
+
+def libvirt_needs_sudo() -> bool:
+    """Faut-il sudo pour joindre qemu:///system ? Tranché en ESSAYANT.
+
+    Faux pour root, et faux sans virsh — rien à préfixer, la commande
+    échouera sur « introuvable » plutôt que sur une invite inutile. Sinon,
+    vrai seulement si la socket ne répond pas à l'utilisateur : le groupe
+    libvirt ACTIF dans la session suffit à tout ce que fait virsh ici.
+    """
+    global _LIBVIRT_SUDO
+    if _LIBVIRT_SUDO is None:
+        _LIBVIRT_SUDO = (
+            os.geteuid() != 0
+            and shutil.which("virsh") is not None
+            and not libvirt_ready(False)
+        )
+    return _LIBVIRT_SUDO
+
+
+def libvirt_sudo_reset() -> None:
+    """Oublie le sondage. À appeler quand le démon vient d'être démarré."""
+    global _LIBVIRT_SUDO
+    _LIBVIRT_SUDO = None
+
+
+def system_path(path: str = "") -> str:
+    """PATH sans les répertoires d'un venv.
+
+    Le « bin » d'un venv, en tête du PATH quand ce script y est lancé,
+    contient un « python3 ». virt-install, amorcé par
+    « #!/usr/bin/env python3 », y prendrait cet interpréteur, où PyGObject
+    n'existe pas, et mourrait sur « No module named 'gi' ». Sous sudo, le
+    « secure_path » faisait ce ménage ; sans sudo, il est à faire ici.
+    """
+    path = path or os.environ.get("PATH", "")
+    venv = os.path.normpath(
+        os.environ.get("VIRTUAL_ENV", "") or "/nonexistent"
+    )
+    gardees = []
+    for entree in path.split(os.pathsep):
+        if not entree:
+            continue
+        propre = os.path.normpath(entree)
+        if propre.startswith(venv + os.sep) or any(
+            part.startswith(".venv") for part in propre.split(os.sep)
+        ):
+            continue
+        gardees.append(entree)
+    return os.pathsep.join(gardees) or "/usr/local/bin:/usr/bin:/bin"
+
+
+class Runner:
+    """Exécute (ou affiche, en dry-run) les commandes, avec sudo au besoin.
+
+    Deux familles de commandes, deux règles :
+
+    - `libvirt=True` (virsh, virt-install) : sudo seulement si la socket
+      qemu:///system ne répond pas sans lui — voir libvirt_needs_sudo().
+    - `privileged=True` (paquets, service, groupe, nftables, écriture dans un
+      répertoire de root qui n'est pas un pool libvirt) : sudo, demandé par
+      cette commande-là et aucune autre.
+
+    `use_sudo` dit si sudo est PERMIS : faux pour root et sous --no-sudo.
+    `libvirt_sudo` force la décision de la première famille (tests).
+    """
+
+    def __init__(
+        self,
+        use_sudo: bool,
+        dry_run: bool,
+        libvirt_sudo: bool | None = None,
+    ) -> None:
         self.use_sudo = use_sudo
         self.dry_run = dry_run
+        self._libvirt_sudo = libvirt_sudo
         # L'explication n'est due qu'UNE fois : sudo garde sa réponse quelques
         # minutes, et la répéter à chaque étape noierait le journal.
         self._sudo_dit = False
+
+    @property
+    def libvirt_sudo(self) -> bool:
+        """Les commandes libvirt doivent-elles passer par sudo ?"""
+        if self._libvirt_sudo is not None:
+            return self._libvirt_sudo
+        return self.use_sudo and libvirt_needs_sudo()
 
     def _annoncer_sudo(self) -> None:
         """Dit pourquoi root, AVANT que sudo ne réclame le mot de passe.
@@ -1160,12 +1267,16 @@ class Runner:
         Avant et non après : sudo n'explique jamais ce qu'il sert à faire, et
         un mot de passe tapé sans savoir ce qu'il autorise est donné à
         l'aveugle. Les raisons sont constatées sur la machine, pas affirmées —
-        voir sudo_facts().
+        voir sudo_facts(). Sans terminal, aucune invite ne viendra : -n
+        échoue ou passe, et l'annonce le dit.
         """
         if self._sudo_dit:
             return
         self._sudo_dit = True
-        print("\n🔑 sudo va demander votre mot de passe, pour :")
+        if terminal_present():
+            print("\n🔑 sudo va demander votre mot de passe, pour :")
+        else:
+            print("\n🔑 sudo -n (sans terminal, aucun mot de passe), pour :")
         for ligne in sudo_lignes(sudo_facts()):
             print(f"     {ligne}")
 
@@ -1174,6 +1285,7 @@ class Runner:
         cmd: list[str],
         *,
         privileged: bool = False,
+        libvirt: bool = False,
         check: bool = True,
         capture: bool = False,
     ):
@@ -1184,9 +1296,13 @@ class Runner:
         seul l'appel qui SAIT réessayer autrement doit le demander.
         """
         cmd, stdin = detach_from_terminal(cmd)
-        if privileged and self.use_sudo:
+        if libvirt:
+            avec_sudo = self.libvirt_sudo
+        else:
+            avec_sudo = privileged and self.use_sudo
+        if avec_sudo:
             self._annoncer_sudo()
-            cmd = ["sudo", *cmd]
+            cmd = [*sudo_argv(), *cmd]
         printable = " ".join(cmd)
         if self.dry_run:
             print(f"  [dry-run] {printable}")
@@ -1211,13 +1327,206 @@ class Runner:
             # Sortie propre plutôt qu'une trace Python illisible.
             sys.exit(
                 f"\nÉchec de la commande (code {exc.returncode}) :\n"
-                f"  {printable}"
+                f"  {printable}" + sudo_n_hint(cmd)
             )
+
+
+def sudo_n_hint(cmd: list[str]) -> str:
+    """Ce qu'il faut faire quand « sudo -n » a pu être la cause de l'échec.
+
+    -n ne distingue pas son refus de l'échec de la commande par le code de
+    retour : la phrase nomme donc la commande et les deux issues, sans
+    affirmer laquelle s'est produite.
+    """
+    if cmd[:2] != ["sudo", "-n"]:
+        return ""
+    return (
+        "\n  Cette commande exige root et aucun terminal n'était là pour le"
+        " mot de passe.\n  Relancez depuis un terminal, ou autorisez-la sans"
+        f" mot de passe (sudoers) : {' '.join(cmd[2:])}"
+    )
 
 
 def need_tool(name: str) -> None:
     if shutil.which(name) is None:
         sys.exit(f"Erreur : outil requis introuvable dans le PATH : {name!r}")
+
+
+# --------------------------------------------------------------------------- #
+# Écriture dans les répertoires du déploiement
+# --------------------------------------------------------------------------- #
+# Cible de pool déjà résolue, par répertoire : chaque Depot la demande, et
+# deux virsh par pool à chaque fois se verraient dans le journal.
+_POOLS: dict[str, str] = {}
+# Pools déjà rafraîchis par ce processus.
+_POOLS_RAFRAICHIS: set[str] = set()
+
+
+def pool_for_dir(directory: Path, use_sudo: bool = False) -> str:
+    """Le nom du pool libvirt ACTIF dont la cible est `directory`, ou "".
+
+    Un pool ne couvre que son propre répertoire, pas ses sous-répertoires :
+    /var/lib/libvirt/images/iso n'est servi que par un pool qui le vise
+    lui-même. La comparaison porte sur les chemins résolus.
+    """
+    cible = os.path.realpath(str(directory))
+    if cible in _POOLS:
+        return _POOLS[cible]
+    trouve = ""
+    for nom in virsh_out(["pool-list", "--name"], use_sudo).split():
+        xml = virsh_out(["pool-dumpxml", nom], use_sudo)
+        m = re.search(r"<target>.*?<path>([^<]+)</path>", xml, re.DOTALL)
+        if m and os.path.realpath(m.group(1).strip()) == cible:
+            trouve = nom
+            break
+    _POOLS[cible] = trouve
+    return trouve
+
+
+def refresh_pool(runner: Runner, pool: str) -> None:
+    """Fait relire son répertoire à un pool, une fois par processus.
+
+    Un fichier posé hors libvirt (par root, par un ancien passage sous sudo)
+    n'est pas un volume tant que le pool ne l'a pas relu : vol-delete et
+    vol-create-from le disent alors introuvable.
+    """
+    if pool in _POOLS_RAFRAICHIS:
+        return
+    _POOLS_RAFRAICHIS.add(pool)
+    runner.run(
+        ["virsh", "-c", LIBVIRT_URI, "pool-refresh", pool],
+        libvirt=True,
+        check=False,
+    )
+
+
+def image_format(chemin: Path) -> str:
+    """« qcow2 » si le fichier en porte la signature, « raw » sinon."""
+    try:
+        with open(chemin, "rb") as fh:
+            return "qcow2" if fh.read(4) == b"QFI\xfb" else "raw"
+    except OSError:
+        return "raw"
+
+
+def _inscriptible(directory: Path) -> bool:
+    """L'utilisateur peut-il écrire dans `directory`, ou le créer ?
+
+    Un répertoire absent se juge sur son premier ancêtre existant : c'est là
+    que mkdir écrira.
+    """
+    chemin = Path(directory)
+    while not chemin.exists() and chemin != chemin.parent:
+        chemin = chemin.parent
+    return os.access(chemin, os.W_OK)
+
+
+def staging_dir() -> Path:
+    """Répertoire de l'utilisateur où un fichier se prépare avant publication."""
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".cache"
+    )
+    return Path(base) / "erplibre" / "qemu-staging"
+
+
+def volume_xml(nom: str, capacite: str, fmt: str, mode: str = "") -> str:
+    """XML d'un volume libvirt. `capacite` : « 8G », « 512M » ou des octets.
+
+    Les unités de libvirt (K, M, G, T) sont des puissances de 1024, comme
+    celles de qemu-img : « 8G » vaut la même taille des deux côtés.
+    `mode` vide garde le défaut de libvirt, 0600.
+    """
+    m = re.fullmatch(r"(\d+)([KMGT]?)i?B?", str(capacite).strip(), re.I)
+    valeur, unite = (m.group(1), m.group(2).upper()) if m else ("0", "")
+    droits = f"<permissions><mode>{mode}</mode></permissions>" if mode else ""
+    return (
+        f"<volume><name>{xml_escape(nom)}</name>"
+        f"<capacity unit='{unite or 'bytes'}'>{valeur}</capacity>"
+        f"<target><format type='{fmt}'/>{droits}</target></volume>"
+    )
+
+
+class Depot:
+    """Écrire dans un répertoire du déploiement avec le moins de droits.
+
+    Trois voies, choisies une fois par répertoire :
+
+    - « direct » : le répertoire, ou son premier ancêtre existant, est
+      inscriptible — root, ou un --disk-dir/--image-dir de l'utilisateur.
+      Python et les outils y écrivent eux-mêmes.
+    - « volume » : le répertoire est la cible d'un pool libvirt actif.
+      libvirtd, qui tourne en root, écrit pour l'appelant par l'API des
+      volumes : la socket qemu:///system suffit, aucun sudo.
+    - « root » : ni l'un ni l'autre. Seule la commande qui écrit reçoit sudo.
+
+    Un fichier publié par la voie volume reste un fichier ordinaire : il se
+    LIT directement (exists, stat, somme), seule l'écriture passe par virsh.
+    """
+
+    def __init__(self, directory: Path, runner: Runner) -> None:
+        self.directory = Path(directory)
+        self.runner = runner
+        self.pool = ""
+        if _inscriptible(self.directory):
+            self.mode = "direct"
+            return
+        self.pool = pool_for_dir(self.directory, runner.libvirt_sudo)
+        self.mode = "volume" if self.pool else "root"
+        if self.pool:
+            refresh_pool(runner, self.pool)
+
+    def virsh(self, *args: str, check: bool = True):
+        """Lance un virsh sur qemu:///system, sudo seulement si la socket
+        l'exige."""
+        return self.runner.run(
+            ["virsh", "-c", LIBVIRT_URI, *args], libvirt=True, check=check
+        )
+
+    def staging(self, dest: Path) -> Path:
+        """Où préparer `dest` avant de le publier.
+
+        À côté de la destination en voie directe : le renommage final y est
+        atomique. Ailleurs, dans un répertoire de l'utilisateur, le seul où
+        il peut écrire sans droit.
+        """
+        if self.mode == "direct":
+            return dest.with_suffix(dest.suffix + ".part")
+        return staging_dir() / (dest.name + ".part")
+
+    def publish(self, src: Path, dest: Path) -> None:
+        """Copie `src` sur `dest`, lisible par tous (0644). `src` reste.
+
+        Une destination existante est remplacée. En voie volume, le format
+        inscrit au volume est celui du CONTENU (qcow2 ou raw) : vol-upload
+        copie les octets tels quels, et vol-create-from convertit ensuite
+        selon ce format déclaré — un qcow2 déclaré raw donnerait un disque
+        illisible.
+        """
+        if self.mode == "volume":
+            taille = src.stat().st_size if src.exists() else 0
+            fmt = image_format(src)
+            self.delete(dest)
+            with fichier_xml_temporaire(
+                volume_xml(dest.name, str(taille), fmt, mode="0644"),
+                prefixe="erplibre-vol-",
+            ) as xml:
+                self.virsh("vol-create", self.pool, xml)
+            self.virsh("vol-upload", "--pool", self.pool, dest.name, str(src))
+            return
+        self.runner.run(
+            ["install", "-D", "-m", "0644", str(src), str(dest)],
+            privileged=self.mode == "root",
+        )
+
+    def delete(self, dest: Path) -> None:
+        """Retire `dest` s'il existe."""
+        if self.mode == "volume":
+            if dest.exists():
+                self.virsh("vol-delete", "--pool", self.pool, dest.name)
+        elif self.mode == "root":
+            self.runner.run(["rm", "-f", str(dest)], privileged=True)
+        elif not self.runner.dry_run:
+            dest.unlink(missing_ok=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -1501,7 +1810,7 @@ def libvirt_ready(use_sudo: bool) -> bool:
     """Vrai si l'hyperviseur qemu:///system répond (démon libvirt démarré)."""
     if shutil.which("virsh") is None:
         return False
-    cmd = (["sudo"] if use_sudo else []) + [
+    cmd = (sudo_argv() if use_sudo else []) + [
         "virsh",
         "-c",
         "qemu:///system",
@@ -1516,7 +1825,7 @@ def libvirt_ready(use_sudo: bool) -> bool:
 
 def ensure_libvirt_service(runner: Runner) -> None:
     """S'assure que le démon libvirt tourne ; sinon le démarre puis vérifie."""
-    if libvirt_ready(runner.use_sudo):
+    if libvirt_ready(runner.libvirt_sudo):
         return
     if shutil.which("systemctl"):
         print(
@@ -1532,9 +1841,12 @@ def ensure_libvirt_service(runner: Runner) -> None:
             privileged=True,
             check=False,
         )
+    # Le sondage d'avant a vu un démon arrêté, et a donc conclu « sudo » :
+    # le refaire maintenant qu'il tourne rend la réponse du groupe.
+    libvirt_sudo_reset()
     # Le socket peut mettre un instant à apparaître.
     for _ in range(10):
-        if libvirt_ready(runner.use_sudo):
+        if libvirt_ready(runner.libvirt_sudo):
             return
         time.sleep(1)
     sys.exit(
@@ -1722,13 +2034,13 @@ def setup_host(
         return
 
     print("\n== Vérification ==")
-    ok = libvirt_ready(runner.use_sudo)
+    ok = libvirt_ready(runner.libvirt_sudo)
     print(f"  hyperviseur qemu:///system : {'OK' if ok else 'INJOIGNABLE'}")
-    active, autostart = network_state("default", runner.use_sudo)
+    active, autostart = network_state("default", runner.libvirt_sudo)
     # Le sous-réseau est dit ICI parce que c'est de lui que les VM tireront
     # leur adresse : déplacé, il n'est plus celui que la documentation de
     # libvirt fait attendre.
-    cidr = network_cidr("default", runner.use_sudo)
+    cidr = network_cidr("default", runner.libvirt_sudo)
     print(
         f"  réseau libvirt « default »  : "
         f"{'actif' if active else 'INACTIF'}"
@@ -1800,7 +2112,7 @@ def ensure_tools(
     need_daemon = daemon_missing() or force_daemon
 
     # Tout est là et l'hyperviseur répond : rien à faire.
-    if not missing and not need_daemon and libvirt_ready(runner.use_sudo):
+    if not missing and not need_daemon and libvirt_ready(runner.libvirt_sudo):
         return
 
     pm = detect_pkg_manager()
@@ -2198,7 +2510,7 @@ _VERROUS_TENUS: dict[tuple[int, str], int] = {}
 
 
 @contextlib.contextmanager
-def verrou_image(dest: Path):
+def verrou_image(dest: Path, dry_run: bool = False):
     """Tient le verrou exclusif de l'image `dest` le temps du bloc.
 
     Plusieurs installations lancées ensemble visent la MÊME image en cache.
@@ -2214,10 +2526,18 @@ def verrou_image(dest: Path):
     rouvrirait la course. flock ne demande aucun droit d'écriture : un
     `.lock` laissé en 0644 par un autre compte — root, souvent — s'ouvre en
     lecture seule et verrouille tout autant. Un fichier ni ouvrable ni
-    créable laisse passer sans verrou, avec un avertissement, comme un
-    système de fichiers sans flock : l'écriture de l'image elle-même dira
-    alors ce qui ne va pas.
+    créable se remplace par `<nom>.lock` dans staging_dir() : un cache qui
+    est un pool libvirt n'accepte aucun fichier de l'utilisateur, et ce
+    verrou-là exclut au moins les installations du même compte. En voie
+    volume, vol-create réserve l'image à pleine taille AVANT que vol-upload
+    ne la remplisse : sans verrou, une installation lancée à cet instant la
+    verrait complète et vérifierait des octets à moitié écrits. Aucun des
+    deux ouvrable : suite sans verrou, avec un avertissement, comme sur un
+    système de fichiers sans flock. `dry_run` ne verrouille rien.
     """
+    if dry_run:
+        yield
+        return
     cle = (threading.get_ident(), str(dest))
     if cle in _VERROUS_TENUS:
         _VERROUS_TENUS[cle] += 1
@@ -2227,20 +2547,16 @@ def verrou_image(dest: Path):
             _VERROUS_TENUS[cle] -= 1
         return
     chemin = f"{dest}.lock"
-    try:
-        fd = os.open(chemin, os.O_RDWR | os.O_CREAT, 0o644)
-    except OSError:
-        try:
-            fd = os.open(chemin, os.O_RDONLY)
-        except OSError as exc:
-            print(
-                f"  ⚠ verrou {chemin} inaccessible ({exc.strerror or exc}) :"
-                " suite SANS verrou, une installation simultanée sur la même"
-                " image pourrait la télécharger en même temps.",
-                flush=True,
-            )
-            yield
-            return
+    fd = _ouvre_verrou(chemin, staging_dir() / f"{dest.name}.lock")
+    if fd is None:
+        print(
+            f"  ⚠ verrou {chemin} inaccessible : suite SANS verrou, une"
+            " installation simultanée sur la même image pourrait la"
+            " télécharger en même temps.",
+            flush=True,
+        )
+        yield
+        return
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -2260,6 +2576,25 @@ def verrou_image(dest: Path):
             del _VERROUS_TENUS[cle]
     finally:
         os.close(fd)
+
+
+def _ouvre_verrou(chemin: str, repli: Path) -> int | None:
+    """Descripteur du fichier de verrou : `chemin` en écriture (créé au
+    besoin), sinon en lecture seule s'il existe, sinon `repli` créé dans un
+    répertoire de l'utilisateur. None quand aucun ne s'ouvre."""
+    try:
+        return os.open(chemin, os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError:
+        pass
+    try:
+        return os.open(chemin, os.O_RDONLY)
+    except OSError:
+        pass
+    try:
+        repli.parent.mkdir(parents=True, exist_ok=True)
+        return os.open(repli, os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError:
+        return None
 
 
 def erreur_passagere(exc: BaseException) -> bool:
@@ -2376,6 +2711,7 @@ def download_image(
     remplace: bool = False,
     controle=None,
     runner: Runner | None = None,
+    depot: Depot | None = None,
 ) -> bool:
     """Télécharge l'image (essaie chaque miroir dans l'ordre) si absente du
     cache. Échoue proprement — jamais de blocage infini — grâce au timeout.
@@ -2394,10 +2730,14 @@ def download_image(
     ou ancienne image — et la fonction rend False sans essayer d'autre miroir.
     Elle rend True dans tous les autres cas où elle revient.
 
-    Un répertoire de cache où cet utilisateur n'écrit pas — root:root 0755,
-    le cas par défaut — passe par `runner` et sudo pour les seuls gestes qui
-    demandent ce droit : voir FichierPartiel. Sans sudo possible, le refus se
-    dit AVANT le moindre octet tiré, et non comme une panne de réseau."""
+    Un cache qui est un pool libvirt (`depot` en voie volume) reçoit l'image
+    par vol-upload, sans root : le transfert va dans `depot.staging(dest)`,
+    et l'ancien volume n'est retiré qu'au moment de publier le nouveau,
+    transfert achevé et jugé. Un autre répertoire de cache où cet
+    utilisateur n'écrit pas — root:root 0755, le cas par défaut — passe par
+    `runner` et sudo pour les seuls gestes qui demandent ce droit : voir
+    FichierPartiel. Sans sudo possible, le refus se dit AVANT le moindre
+    octet tiré, et non comme une panne de réseau."""
     if isinstance(urls, str):
         urls = [urls]
     if not remplace and image_en_cache(dest):
@@ -2412,15 +2752,19 @@ def download_image(
         print(f"  [dry-run] téléchargement {urls[0]} -> {dest}", flush=True)
         return True
 
+    volume = depot is not None and depot.mode == "volume"
+    cible = depot.staging(dest).parent if volume else dest.parent
     try:
-        dest.parent.mkdir(parents=True, exist_ok=True)
+        cible.mkdir(parents=True, exist_ok=True)
     except PermissionError:
         sys.exit(
-            f"\nPermission refusée pour écrire dans {dest.parent}.\n"
+            f"\nPermission refusée pour écrire dans {cible}.\n"
             "  Relancez avec sudo, ou choisissez --image-dir vers un dossier"
             " accessible en écriture."
         )
-    if not os.access(dest.parent, os.W_OK):
+    # En voie volume, libvirtd écrit pour l'appelant : ni sudo, ni verrou
+    # posé à côté de l'image (verrou_image se replie dans staging_dir()).
+    if not volume and not os.access(dest.parent, os.W_OK):
         _exige_sudo(dest, runner, remplace)
         # Le verrou se crée ici avec le même droit que le reste : sans lui,
         # deux installations sans droit d'écriture viseraient ensemble le
@@ -2446,6 +2790,7 @@ def download_image(
             remplace=remplace,
             controle=controle,
             runner=runner,
+            depot=depot,
         )
 
 
@@ -2484,13 +2829,27 @@ class FichierPartiel:
     sudo fait le reste — le chown vers le propriétaire du répertoire, puis le
     mv, atomique lui aussi. Le `.part` d'un autre compte s'efface alors avec
     ce même droit avant d'être recréé. Tout se trace par Runner : la commande
-    s'affiche, et la raison de sudo se dit avant l'invite."""
+    s'affiche, et la raison de sudo se dit avant l'invite.
 
-    def __init__(self, dest: Path, runner: Runner | None = None) -> None:
+    Cache qui est un pool libvirt (`depot` en voie volume) : le transfert
+    s'écrit dans `depot.staging(dest)`, un répertoire de l'utilisateur, et
+    se pose par `depot.publish` — vol-create puis vol-upload, sans root."""
+
+    def __init__(
+        self,
+        dest: Path,
+        runner: Runner | None = None,
+        depot: Depot | None = None,
+    ) -> None:
         self.dest = dest
         self.chemin = dest.with_suffix(dest.suffix + ".part")
         self.runner = None
-        if os.access(dest.parent, os.W_OK):
+        self.depot = None
+        if depot is not None and depot.mode == "volume":
+            self.depot = depot
+            self.chemin = depot.staging(dest)
+            self.chemin.unlink(missing_ok=True)
+        elif os.access(dest.parent, os.W_OK):
             self._prend_direct()
         else:
             self.runner = runner
@@ -2530,6 +2889,11 @@ class FichierPartiel:
             )
             self.chemin = Path(nom)
 
+    @property
+    def direct(self) -> bool:
+        """Vrai quand cet utilisateur écrit lui-même l'image à sa place."""
+        return self.runner is None and self.depot is None
+
     def vide(self) -> None:
         """Ramène le transfert à zéro octet : un nouveau miroir ne reprend
         jamais les octets d'un autre."""
@@ -2542,7 +2906,12 @@ class FichierPartiel:
         return self.chemin.stat().st_size if self.chemin.exists() else 0
 
     def pose(self) -> None:
-        """Renomme le fichier complet par-dessus `dest`."""
+        """Renomme le fichier complet par-dessus `dest` ; en voie volume, le
+        publie par vol-upload puis retire la copie de l'utilisateur."""
+        if self.depot is not None:
+            self.depot.publish(self.chemin, self.dest)
+            self.chemin.unlink(missing_ok=True)
+            return
         if self.runner is None:
             self.chemin.replace(self.dest)
             return
@@ -2576,8 +2945,10 @@ def _telecharge_miroirs(
     remplace: bool = False,
     controle=None,
     runner: Runner | None = None,
+    depot: Depot | None = None,
 ) -> bool:
-    """Essaie chaque miroir de `urls` dans l'ordre jusqu'à poser `dest`.
+    """Essaie chaque miroir de `urls` dans l'ordre jusqu'à poser `dest`, par
+    `depot` en voie volume (voir download_image).
 
     Appelée sous verrou_image. Sur chaque miroir, REPRISES_MAX essais : une
     coupure en cours de transfert se reprend aussitôt par « Range », une
@@ -2587,7 +2958,7 @@ def _telecharge_miroirs(
     le processus (sys.exit) quand aucun miroir n'a abouti ; `remplace` (voir
     download_image) n'y change que la commande manuelle proposée. Rend False
     quand `controle` refuse le fichier complet, True quand il est posé."""
-    part = FichierPartiel(dest, runner)
+    part = FichierPartiel(dest, runner, depot)
     errors = []
     had_404 = False
     for i, url in enumerate(urls, 1):
@@ -2659,18 +3030,20 @@ def _telecharge_miroirs(
     # proprement sur une erreur HTTP. En mode `remplace`, `dest` porte
     # encore l'ancienne image ENTIÈRE : -C - y ajouterait la fin de la
     # nouvelle, d'où un curl sans -C -, qui réécrit le fichier depuis zéro.
+    # sudo seulement quand l'utilisateur n'écrit pas dans le cache.
+    sudo = "" if part.direct else "sudo "
     if remplace:
         resume = (
             f"\n  Destination : {dest} (ancienne image laissée en place)"
             f"\n  La remplacer manuellement :"
-            f"\n    sudo curl -fL -o {dest} \\\n      {urls[0]}"
+            f"\n    {sudo}curl -fL -o {dest} \\\n      {urls[0]}"
             "\n  puis relancez le déploiement (l'image sera revérifiée)."
         )
     else:
         resume = (
             f"\n  Destination : {dest}"
             f"\n  Reprendre le téléchargement manuellement :"
-            f"\n    sudo curl -fL -C - -o {dest} \\\n      {urls[0]}"
+            f"\n    {sudo}curl -fL -C - -o {dest} \\\n      {urls[0]}"
             "\n  puis relancez le déploiement (l'image en cache sera"
             " réutilisée)."
         )
@@ -2819,8 +3192,12 @@ def verify_sha256(
     urls: tuple[str, ...] = (),
     runner: Runner | None = None,
     frais: bool = False,
+    depot: Depot | None = None,
 ) -> None:
     """Vérifie l'empreinte via les sommes que la distribution publie.
+
+    `depot` : celui qui a publié l'image, et qui seul peut la retirer d'un
+    cache où l'utilisateur n'écrit pas. Sans lui, suppression directe.
 
     UN ÉCHEC DE RÉCUPÉRATION N'ARRÊTE PAS le déploiement, un écart si. Les
     deux ne disent pas la même chose : un fichier de sommes injoignable est
@@ -2885,6 +3262,7 @@ def verify_sha256(
             remplace=remplace,
             controle=controle,
             runner=runner,
+            depot=depot,
         )
 
     def ecart(titre: str, obtenu: str, suite: str) -> None:
@@ -2948,9 +3326,14 @@ def verify_sha256(
         if obtenu != expected:
             # Des octets frais, ou une image sans miroir à qui la redemander,
             # partent : laissés en cache, ils resserviraient tels quels au
-            # prochain essai, et sans un mot sous --no-verify.
+            # prochain essai, et sans un mot sous --no-verify. Un cache où
+            # l'utilisateur n'écrit pas se vide par `depot`, seul à pouvoir
+            # y retirer l'image : vol-delete, ou rm sous sudo.
             try:
-                image.unlink(missing_ok=True)
+                if depot is not None and depot.mode != "direct":
+                    depot.delete(image)
+                else:
+                    image.unlink(missing_ok=True)
                 sort = f"Image supprimée : {image}"
             except OSError as exc:
                 sort = (
@@ -4662,7 +5045,7 @@ def macs_deja_prises(runner: Runner) -> set[str]:
     """
     code, sortie = runner.run(
         ["virsh", "-c", LIBVIRT_URI, "list", "--all", "--name"],
-        privileged=True,
+        libvirt=True,
         check=False,
         capture=True,
     )
@@ -4675,7 +5058,7 @@ def macs_deja_prises(runner: Runner) -> set[str]:
             continue
         code, xml = runner.run(
             ["virsh", "-c", LIBVIRT_URI, "domiflist", nom],
-            privileged=True,
+            libvirt=True,
             check=False,
             capture=True,
         )
@@ -5297,8 +5680,13 @@ def build_seed(
     seed_dest: Path,
     runner: Runner,
     network_config: str | None = NETWORK_CONFIG,
+    depot: Depot | None = None,
 ) -> None:
     """Génère le seed.iso (cidata) et le copie vers seed_dest.
+
+    L'ISO se construit dans un répertoire temporaire de l'utilisateur, puis
+    `depot` le publie — par vol-upload quand seed_dest est dans un pool
+    libvirt. Un seed existant est remplacé.
 
     `network_config` à None n'écrit PAS de document réseau dans le seed, et
     c'est un réglage à part entière : cloud-init produit alors son repli,
@@ -5356,22 +5744,72 @@ def build_seed(
                 ]
             )
 
-        (
-            seed_dest.parent.mkdir(parents=True, exist_ok=True)
-            if not runner.dry_run
-            else None
+        (depot or Depot(seed_dest.parent, runner)).publish(
+            local_iso, seed_dest
         )
-        runner.run(["cp", str(local_iso), str(seed_dest)], privileged=True)
 
 
 def prepare_disk(
-    image: Path, disk: Path, size: str, runner: Runner, force: bool
+    image: Path,
+    disk: Path,
+    size: str,
+    runner: Runner,
+    force: bool,
+    depot: Depot | None = None,
 ) -> None:
-    """Convertit l'image cloud en qcow2 de travail puis redimensionne."""
-    if disk.exists() and not force:
-        sys.exit(
-            f"Le disque {disk} existe déjà. Utilisez --force pour l'écraser."
-        )
+    """Copie l'image cloud en un qcow2 de travail, puis le redimensionne.
+
+    Une COPIE complète et non un overlay : l'image du cache est remplacée
+    quand « latest » avance, et une VM adossée à elle perdrait son disque de
+    fond.
+
+    Voie volume : l'image est elle-même un volume (pool du cache) et libvirt
+    copie de pool à pool (vol-create-from), puis agrandit (vol-resize) — la
+    capacité écrite dans l'XML n'est pas appliquée par vol-create-from. Une
+    image hors pool est convertie et agrandie dans un répertoire de
+    l'utilisateur, puis téléversée. Ailleurs, qemu-img écrit lui-même, sous
+    sudo seulement en voie root.
+    """
+    depot = depot or Depot(disk.parent, runner)
+    if disk.exists():
+        if not force:
+            sys.exit(
+                f"Le disque {disk} existe déjà. Utilisez --force pour"
+                " l'écraser."
+            )
+        depot.delete(disk)
+    if depot.mode == "volume":
+        source = pool_for_dir(image.parent, runner.libvirt_sudo)
+        if source:
+            refresh_pool(runner, source)
+            with fichier_xml_temporaire(
+                volume_xml(disk.name, size, "qcow2"), prefixe="erplibre-vol-"
+            ) as xml:
+                depot.virsh(
+                    "vol-create-from",
+                    depot.pool,
+                    xml,
+                    "--inputpool",
+                    source,
+                    image.name,
+                )
+            depot.virsh("vol-resize", "--pool", depot.pool, disk.name, size)
+            return
+        tmp = depot.staging(disk)
+        if not runner.dry_run:
+            tmp.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            runner.run(
+                ["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2"]
+                + [str(image), str(tmp)]
+            )
+            runner.run(["qemu-img", "resize", str(tmp), size])
+            depot.publish(tmp, disk)
+        finally:
+            if not runner.dry_run:
+                tmp.unlink(missing_ok=True)
+        return
+    root = depot.mode == "root"
     runner.run(
         [
             "qemu-img",
@@ -5383,9 +5821,9 @@ def prepare_disk(
             str(image),
             str(disk),
         ],
-        privileged=True,
+        privileged=root,
     )
-    runner.run(["qemu-img", "resize", str(disk), size], privileged=True)
+    runner.run(["qemu-img", "resize", str(disk), size], privileged=root)
 
 
 def _ip_taken(ip: str) -> bool:
@@ -5444,9 +5882,13 @@ def static_net_plan(
     """
     if not net:
         return None
-    cmd = ["virsh", "-c", LIBVIRT_URI, "net-dumpxml", net]
-    if use_sudo:
-        cmd.insert(0, "sudo")
+    cmd = (sudo_argv() if use_sudo else []) + [
+        "virsh",
+        "-c",
+        LIBVIRT_URI,
+        "net-dumpxml",
+        net,
+    ]
     try:
         xml = subprocess.run(
             cmd, capture_output=True, text=True, timeout=20
@@ -5459,9 +5901,13 @@ def static_net_plan(
     gateway, netmask = m.group(1), m.group(2)
     base = gateway.rsplit(".", 1)[0]
     taken = {gateway}
-    lease_cmd = ["virsh", "-c", LIBVIRT_URI, "net-dhcp-leases", net]
-    if use_sudo:
-        lease_cmd.insert(0, "sudo")
+    lease_cmd = (sudo_argv() if use_sudo else []) + [
+        "virsh",
+        "-c",
+        LIBVIRT_URI,
+        "net-dhcp-leases",
+        net,
+    ]
     try:
         out = subprocess.run(
             lease_cmd, capture_output=True, text=True, timeout=20
@@ -5696,6 +6142,7 @@ def build_installer_initrd(
     out: Path,
     runner: Runner,
     guide: list[tuple[str, str, str, str]] | None = None,
+    depot: Depot | None = None,
 ) -> None:
     """Glisse le preseed DANS l'initrd de l'installateur.
 
@@ -5767,23 +6214,47 @@ def build_installer_initrd(
             check=True,
             capture_output=True,
         )
-        out.parent.mkdir(parents=True, exist_ok=True)
-        with open(plain, "rb") as src, gzip.open(out, "wb") as dst:
+        # Recompressé dans le répertoire de travail, puis publié : le cache
+        # peut être un pool libvirt où l'utilisateur n'écrit pas.
+        pret = work / "initrd.gz"
+        with open(plain, "rb") as src, gzip.open(pret, "wb") as dst:
             shutil.copyfileobj(src, dst)
+        (depot or Depot(out.parent, runner)).publish(pret, out)
     print(f"  preseed embarqué dans {out} ({out.stat().st_size} octets)")
 
 
 def create_blank_disk(
-    disk: Path, size: str, runner: Runner, force: bool
+    disk: Path,
+    size: str,
+    runner: Runner,
+    force: bool,
+    depot: Depot | None = None,
 ) -> None:
-    """Disque VIERGE : l'installateur écrit tout, il n'y a rien à convertir."""
-    if disk.exists() and not force:
-        sys.exit(
-            f"Le disque {disk} existe déjà. Utilisez --force pour l'écraser."
+    """Disque VIERGE : l'installateur écrit tout, il n'y a rien à convertir.
+
+    Dans un pool libvirt, « vol-create-as » le crée sans root.
+    """
+    depot = depot or Depot(disk.parent, runner)
+    if disk.exists():
+        if not force:
+            sys.exit(
+                f"Le disque {disk} existe déjà. Utilisez --force pour"
+                " l'écraser."
+            )
+        depot.delete(disk)
+    if depot.mode == "volume":
+        depot.virsh(
+            "vol-create-as",
+            depot.pool,
+            disk.name,
+            size,
+            "--format",
+            "qcow2",
         )
+        return
     runner.run(
         ["qemu-img", "create", "-f", "qcow2", str(disk), size],
-        privileged=True,
+        privileged=depot.mode == "root",
     )
 
 
@@ -5810,7 +6281,12 @@ def c_locale_env() -> dict[str, str]:
 
 def virsh_out(args: list[str], use_sudo: bool, timeout: int = 20) -> str:
     """La sortie d'un virsh, en anglais, ou '' s'il n'a rien pu dire."""
-    cmd = (["sudo"] if use_sudo else []) + ["virsh", "-c", LIBVIRT_URI, *args]
+    cmd = (sudo_argv() if use_sudo else []) + [
+        "virsh",
+        "-c",
+        LIBVIRT_URI,
+        *args,
+    ]
     try:
         res = subprocess.run(
             cmd,
@@ -6042,7 +6518,7 @@ def define_network_xml(xml: str, runner: Runner) -> None:
     with fichier_xml_temporaire(xml) as chemin:
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-define", chemin],
-            privileged=True,
+            libvirt=True,
             check=False,
         )
 
@@ -6055,14 +6531,14 @@ def move_network(name: str, cidr: str, collision: str, runner: Runner) -> str:
     remplacé depuis le démarrage. C'est ce qui permet d'armer l'autostart
     avant le redémarrage sans armer une collision.
     """
-    xml = virsh_out(["net-dumpxml", name], runner.use_sudo)
+    xml = virsh_out(["net-dumpxml", name], runner.libvirt_sudo)
     if not xml:
         print(f"  ⚠ réseau « {name} » illisible : rien n'est déplacé.")
         return ""
     ancien = cidr.rsplit(".", 1)[0].rsplit("/", 1)[0]
     libre = free_subnet(
         host_networks(exclure_ponts=[bridge_from_network_xml(xml)])
-        + libvirt_networks_cidrs(name, runner.use_sudo)
+        + libvirt_networks_cidrs(name, runner.libvirt_sudo)
     )
     if not libre:
         print("  ⚠ aucun /24 libre en 192.168.x : rien n'est déplacé.")
@@ -6108,20 +6584,20 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         print("  [dry-run] sous-réseau déplacé s'il entre en collision")
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-start", name],
-            privileged=True,
+            libvirt=True,
             check=False,
         )
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-autostart", name],
-            privileged=True,
+            libvirt=True,
             check=False,
         )
         return
-    active, autostart = network_state(name, runner.use_sudo)
-    cidr = network_cidr(name, runner.use_sudo)
+    active, autostart = network_state(name, runner.libvirt_sudo)
+    cidr = network_cidr(name, runner.libvirt_sudo)
     # Son propre pont ne compte pas : un réseau démarré porte et route son /24
     # là, et se verrait sinon en collision avec lui-même sur toute machine.
-    pont = network_bridge(name, runner.use_sudo)
+    pont = network_bridge(name, runner.libvirt_sudo)
     collision = network_collision(cidr, host_networks(exclure_ponts=[pont]))
 
     if collision:
@@ -6137,13 +6613,13 @@ def ensure_network(name: str | None, runner: Runner) -> None:
             )
             runner.run(
                 ["virsh", "-c", LIBVIRT_URI, "net-destroy", name],
-                privileged=True,
+                libvirt=True,
                 check=False,
             )
             active = False
         libre = move_network(name, cidr, collision, runner)
         if libre:
-            cidr = network_cidr(name, runner.use_sudo)
+            cidr = network_cidr(name, runner.libvirt_sudo)
             collision = network_collision(
                 cidr, host_networks(exclure_ponts=[pont])
             )
@@ -6156,10 +6632,10 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         print(f"  Configuration du réseau libvirt '{name}'…")
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-start", name],
-            privileged=True,
+            libvirt=True,
             check=False,
         )
-        active, autostart = network_state(name, runner.use_sudo)
+        active, autostart = network_state(name, runner.libvirt_sudo)
 
     if collision:
         # Rien n'a pu le rendre sûr : le désarmer est la seule chose qui
@@ -6179,7 +6655,7 @@ def ensure_network(name: str | None, runner: Runner) -> None:
                     "--disable",
                     name,
                 ],
-                privileged=True,
+                libvirt=True,
                 check=False,
             )
         return
@@ -6187,7 +6663,7 @@ def ensure_network(name: str | None, runner: Runner) -> None:
     if not autostart:
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-autostart", name],
-            privileged=True,
+            libvirt=True,
             check=False,
         )
 
@@ -6411,19 +6887,23 @@ def virt_install(
         os.makedirs(cache_dir, mode=0o700, exist_ok=True)
     except OSError:
         pass
+    # PATH assaini : virt-install est un script Python du système, et le venv
+    # en tête du PATH lui donnerait un interpréteur sans PyGObject — voir
+    # system_path().
     log_env = [
         "env",
+        f"PATH={system_path()}",
         f"XDG_CACHE_HOME={cache_dir}",
         f"HOME={cache_dir}",
     ]
     if not gpu_args:
-        runner.run(log_env + cmd, privileged=True)
+        runner.run(log_env + cmd, libvirt=True)
         return
     # La 3D est le SEUL argument dont l'échec se rattrape : le nœud de rendu
     # existe, mais QEMU n'arrive pas à y démarrer EGL. Rien ne permet de le
     # savoir avant d'essayer, donc on essaie, et on retire la 3D si c'est
     # elle qui a fait tomber le domaine.
-    code, sortie = runner.run(log_env + cmd, privileged=True, capture=True)
+    code, sortie = runner.run(log_env + cmd, libvirt=True, capture=True)
     if code == 0:
         return
     if not egl_failed(sortie):
@@ -6455,10 +6935,10 @@ def virt_install(
     # refuse le nom, et la VM resterait celle qui ne démarre pas.
     runner.run(
         ["virsh", "--connect", LIBVIRT_URI, "undefine", args.name, "--nvram"],
-        privileged=True,
+        libvirt=True,
         check=False,
     )
-    runner.run(log_env + cmd_sans_3d, privileged=True)
+    runner.run(log_env + cmd_sans_3d, libvirt=True)
 
 
 def watch_and_restart(name: str, runner: Runner) -> None:
@@ -6478,7 +6958,9 @@ def watch_and_restart(name: str, runner: Runner) -> None:
     if runner.dry_run:
         print(f"[dry-run] veilleur de redémarrage pour {name}")
         return
-    sudo = "sudo " if runner.use_sudo else ""
+    # Le veilleur survit au processus et ne dispose d'aucun terminal : un
+    # sudo y serait « -n », jamais une invite.
+    sudo = "sudo -n " if runner.libvirt_sudo else ""
     # 6 h de garde : bien au-delà d'une installation émulée, et le veilleur
     # meurt de lui-même si quelque chose a mal tourné.
     script = (
@@ -6501,7 +6983,7 @@ def watch_and_restart(name: str, runner: Runner) -> None:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"  ⚠ veilleur non lancé ({exc}) ; démarrer à la main :")
-        print(f"      sudo virsh start {name}")
+        print(f"      virsh -c {LIBVIRT_URI} start {name}")
         return
     print(
         f"  Veilleur lancé : {name} sera rallumée dès que l'installateur"
@@ -6525,8 +7007,12 @@ def wait_for_ip(name: str, use_sudo: bool, timeout: int) -> str | None:
     on renvoie une IP JOIGNABLE (sshd up), sinon la plus récente, jamais
     aveuglément la 1re (souvent le bail précoce périmé, « No route to host »).
     """
-    base = (["sudo"] if use_sudo else []) + [
+    # L'URI est imposée : sans elle, un utilisateur non root interroge
+    # qemu:///session, où le domaine n'existe pas, et n'obtient jamais rien.
+    base = (sudo_argv() if use_sudo else []) + [
         "virsh",
+        "-c",
+        LIBVIRT_URI,
         "domifaddr",
         name,
         "--source",
@@ -7100,21 +7586,30 @@ def main() -> None:
             f"({args.distro} {args.version} / {code}) =="
         )
         print(f"  Destination : {args.image_path}")
-        frais = not image_en_cache(args.image_path)
-        download_image(urls, args.image_path, args.dry_run, runner=runner)
-        verify_pinned_sha256(
-            args.distro, args.image_path, args.dry_run, tuple(urls)
-        )
-        if do_verify:
-            verify_sha256(
-                url,
+        image_depot = Depot(args.image_path.parent, runner)
+        with verrou_image(args.image_path, args.dry_run):
+            frais = not image_en_cache(args.image_path)
+            download_image(
+                urls,
                 args.image_path,
                 args.dry_run,
-                args.distro,
-                tuple(urls),
                 runner=runner,
-                frais=frais,
+                depot=image_depot,
             )
+            verify_pinned_sha256(
+                args.distro, args.image_path, args.dry_run, tuple(urls)
+            )
+            if do_verify:
+                verify_sha256(
+                    url,
+                    args.image_path,
+                    args.dry_run,
+                    args.distro,
+                    tuple(urls),
+                    runner=runner,
+                    frais=frais,
+                    depot=image_depot,
+                )
         print("\nTerminé (téléchargement seul).")
         return
 
@@ -7165,6 +7660,13 @@ def main() -> None:
                 "nettement plus lents que l'architecture native."
             )
 
+    # Un Depot par répertoire, décidé APRÈS ensure_tools : la voie volume
+    # demande virsh. Le seed et le cache partagent d'ordinaire le même
+    # répertoire, et le même pool.
+    image_depot = Depot(args.image_path.parent, runner)
+    disk_depot = Depot(args.disk_dir, runner)
+    seed_depot = Depot(args.seed_dir, runner)
+
     installer: tuple[Path, Path] | None = None
     if uses_installer(args.distro, args.arch):
         # Voie debian-installer : aucune image cloud n'existe pour cette
@@ -7187,25 +7689,27 @@ def main() -> None:
             )
             args.memory = INSTALLER_MIN_RAM
         print(f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x ==")
-        download_image(
-            [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
-            kernel,
-            args.dry_run,
-            runner=runner,
-        )
-        download_image(
-            [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
-            initrd_src,
-            args.dry_run,
-            runner=runner,
-        )
+        for fichier, cible in (
+            ("kernel.debian", kernel),
+            ("initrd.debian", initrd_src),
+        ):
+            with verrou_image(cible, args.dry_run):
+                download_image(
+                    [INSTALLER_URL.format(code=code, fichier=fichier)],
+                    cible,
+                    args.dry_run,
+                    runner=runner,
+                    depot=image_depot,
+                )
 
         print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
-        create_blank_disk(disk, args.disk_size, runner, args.force)
+        create_blank_disk(
+            disk, args.disk_size, runner, args.force, depot=disk_depot
+        )
 
         print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
         static = static_net_plan(
-            network_name(args.network), not args.dry_run, args.name
+            network_name(args.network), runner.libvirt_sudo, args.name
         )
         if static:
             print(
@@ -7225,30 +7729,48 @@ def main() -> None:
             initrd,
             runner,
             guide=guide_files(args) + installer_cache_files(args),
+            depot=image_depot,
         )
         installer = (kernel, initrd)
     else:
         print(
             f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
         )
-        frais = not image_en_cache(args.image_path)
-        download_image(urls, args.image_path, args.dry_run, runner=runner)
-        verify_pinned_sha256(
-            args.distro, args.image_path, args.dry_run, tuple(urls)
-        )
-        if do_verify:
-            verify_sha256(
-                url,
+        with verrou_image(args.image_path, args.dry_run):
+            frais = not image_en_cache(args.image_path)
+            download_image(
+                urls,
                 args.image_path,
                 args.dry_run,
-                args.distro,
-                tuple(urls),
                 runner=runner,
-                frais=frais,
+                depot=image_depot,
             )
+            verify_pinned_sha256(
+                args.distro, args.image_path, args.dry_run, tuple(urls)
+            )
+            if do_verify:
+                verify_sha256(
+                    url,
+                    args.image_path,
+                    args.dry_run,
+                    args.distro,
+                    tuple(urls),
+                    runner=runner,
+                    frais=frais,
+                    depot=image_depot,
+                )
 
-        print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
-        prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
+            print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
+            # Sous le verrou : la copie lit l'image que la vérification
+            # d'un autre déploiement pourrait retirer.
+            prepare_disk(
+                args.image_path,
+                disk,
+                args.disk_size,
+                runner,
+                args.force,
+                depot=disk_depot,
+            )
 
         print(f"\n== 4/5 Seed cloud-init {seed} ==")
         cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
@@ -7258,6 +7780,7 @@ def main() -> None:
             seed,
             runner,
             network_config_for(args.distro),
+            depot=seed_depot,
         )
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
@@ -7312,7 +7835,7 @@ def main() -> None:
         return
 
     print(f"\n  Attente de l'IP (bail DHCP, max {args.ip_timeout} s)…")
-    ip = wait_for_ip(args.name, runner.use_sudo, args.ip_timeout)
+    ip = wait_for_ip(args.name, runner.libvirt_sudo, args.ip_timeout)
     if ip:
         print(f"  IP : {ip}")
         print("  Connexion SSH :")

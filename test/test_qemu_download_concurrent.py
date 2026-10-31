@@ -372,8 +372,9 @@ class TestErreursPassageres(unittest.TestCase):
         self.addCleanup(serveur.arrete)
         with self.assertRaises(SystemExit) as sortie:
             d.download_image([serveur.url], self.dest, False, timeout=10)
+        # Un cache où l'utilisateur écrit se reprend sans sudo.
         self.assertIn(
-            f"sudo curl -fL -C - -o {self.dest}", str(sortie.exception)
+            f"\n    curl -fL -C - -o {self.dest}", str(sortie.exception)
         )
 
     def test_l_echec_d_un_remplacement_ne_propose_pas_de_reprise(self):
@@ -389,7 +390,7 @@ class TestErreursPassageres(unittest.TestCase):
             )
         message = str(sortie.exception)
         self.assertNotIn("-C -", message)
-        self.assertIn(f"sudo curl -fL -o {self.dest}", message)
+        self.assertIn(f"\n    curl -fL -o {self.dest}", message)
         self.assertEqual(ancienne, self.dest.read_bytes())
 
     def test_une_url_inconnue_passe_au_miroir_suivant_sans_attendre(self):

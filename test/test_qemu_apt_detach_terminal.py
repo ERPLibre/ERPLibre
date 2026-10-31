@@ -85,7 +85,8 @@ class DetachFromTerminal(unittest.TestCase):
         self.assertIs(subprocess.DEVNULL, kw["stdin"])
 
     def test_apt_get_under_sudo_keeps_sudo_first(self):
-        argv, kw, _ = self._lancer(["apt-get", "update"], use_sudo=True)
+        with mock.patch.object(DQ, "terminal_present", return_value=True):
+            argv, kw, _ = self._lancer(["apt-get", "update"], use_sudo=True)
         self.assertEqual(["sudo", "apt-get", *DQ.APT_NO_PTY], argv[:4])
         self.assertEqual("update", argv[-1])
         self.assertIs(subprocess.DEVNULL, kw["stdin"])

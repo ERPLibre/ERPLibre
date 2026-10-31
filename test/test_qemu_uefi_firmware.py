@@ -75,7 +75,15 @@ class VirtInstallBoot(unittest.TestCase):
             dry_run = False
             use_sudo = False
 
-            def run(self, cmd, *, privileged=False, check=True, capture=False):
+            def run(
+                self,
+                cmd,
+                *,
+                privileged=False,
+                libvirt=False,
+                check=True,
+                capture=False,
+            ):
                 lances.append(list(cmd))
                 return (0, "") if capture else None
 

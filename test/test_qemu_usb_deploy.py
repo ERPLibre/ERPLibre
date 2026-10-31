@@ -238,7 +238,15 @@ class LaCommande(unittest.TestCase):
             dry_run = False
             use_sudo = False
 
-            def run(self, cmd, *, privileged=False, check=True, capture=False):
+            def run(
+                self,
+                cmd,
+                *,
+                privileged=False,
+                libvirt=False,
+                check=True,
+                capture=False,
+            ):
                 lances.append(list(cmd))
                 if capture:
                     return sortie or (0, "")
@@ -329,7 +337,15 @@ class LaCommande(unittest.TestCase):
             dry_run = False
             use_sudo = False
 
-            def run(self, cmd, *, privileged=False, check=True, capture=False):
+            def run(
+                self,
+                cmd,
+                *,
+                privileged=False,
+                libvirt=False,
+                check=True,
+                capture=False,
+            ):
                 lances.append(list(cmd))
                 return (1, SORTIE_EGL) if capture else None
 
