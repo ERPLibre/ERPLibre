@@ -120,6 +120,10 @@ class HostFacts:
     existe, donc le paquet est là), `active` (état systemd), `config`,
     `config_text` (vide sans fichier), `managed` (première ligne MARKER),
     `pending` (fiche laissée par une installation interrompue, ou None).
+
+    `nft_chains` : (famille, table, chaîne) de chaque chaîne de base
+    nftables accrochée à « input » en politique drop ; l'outil n'ajoute ses
+    règles que quand il y en a exactement une.
     """
 
     family: str | None
@@ -133,6 +137,7 @@ class HostFacts:
     ntfy: dict | None
     firewall: str
     state: dict | None
+    nft_chains: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -181,6 +186,17 @@ _SS_AWK = (
     ' print "@@PORT " $1 " " a " " p }'
 )
 _ADDR_AWK = '{ sub(/\\/.*/, "", $4); print "@@ADDR " $4 }'
+# `nft list ruleset` : « table <famille> <nom> { » ouvre une table,
+# « chain <nom> { » une chaîne ; la ligne « type ... hook input ... policy
+# drop; » fait d'elle une chaîne de base qui rejette ce qu'elle n'accepte
+# pas. Le pont (« bridge ») a aussi un crochet input, qui ne voit pas le
+# trafic destiné à l'hôte : seuls ip, ip6 et inet comptent.
+_NFT_CHAINS_AWK = (
+    '/^table / { f = $2; t = $3; c = "" }'
+    " /^[ \\t]*chain / { c = $2 }"
+    " /hook input/ && /policy drop/"
+    ' { if (f == "ip" || f == "ip6" || f == "inet") print f, t, c }'
+)
 _EXEC_CONF_SED = (
     "s/^ExecStart=.*[[:space:]](-c|--conf-file)[[:space:]=]+"
     "([^[:space:]]+).*/\\2/p"
@@ -196,8 +212,10 @@ def probe_script(root=""):
     `@@PORT <proto> <port> <processus>` par port en écoute, `@@COTURN
     <unité> <état> <config de l'unité>` et `@@NTFY <unité> <état> <config>`
     (« - » pour absent), `@@FILE <chemin> <base64>` par configuration
-    présente, `@@PENDING <service> <base64>`, `@@FIREWALL`, `@@STATE
-    <base64>`, puis `@@END` : sans lui, la sortie est tronquée.
+    présente, `@@PENDING <service> <base64>`, `@@FIREWALL`, `@@NFT_INPUT
+    <famille> <table> <chaîne>` par chaîne input en drop (nftables
+    seulement), `@@STATE <base64>`, puis `@@END` : sans lui, la sortie est
+    tronquée.
     """
     files = " ".join(
         [
@@ -273,6 +291,10 @@ def probe_script(root=""):
             "  FW=unknown",
             "fi",
             'echo "@@FIREWALL $FW"',
+            'if [ "$FW" = nftables ]; then',
+            f"  nft list ruleset 2>/dev/null | awk {shlex.quote(_NFT_CHAINS_AWK)}"
+            " | sed 's/^/@@NFT_INPUT /'",
+            "fi",
             f'S="$R{STATE_PATH}"',
             'if [ -f "$S" ]; then echo "@@STATE $(base64 -w0 < "$S")"; fi',
             'echo "@@END"',
@@ -365,7 +387,7 @@ def parse_probe(output):
     """
     os_id, os_version, id_like = "unknown", "", ""
     systemd, hostname, firewall, state = False, "", "unknown", None
-    addresses, ports, files, pending = [], [], {}, {}
+    addresses, ports, files, pending, chains = [], [], {}, {}, []
     coturn_marker, ntfy_marker, complete = [], [], False
     for name, value in marker_lines(output):
         if name == "OS":
@@ -405,6 +427,10 @@ def parse_probe(output):
         elif name == "FIREWALL":
             kind = value.strip()
             firewall = kind if kind in FIREWALLS else "unknown"
+        elif name == "NFT_INPUT":
+            chain = tuple(value.split())
+            if _valid_chain(chain) and chain not in chains:
+                chains.append(chain)
         elif name == "STATE":
             state = _decode_json(value)
         elif name == "END":
@@ -434,6 +460,7 @@ def parse_probe(output):
         ntfy=ntfy,
         firewall=firewall,
         state=state,
+        nft_chains=tuple(chains),
     )
 
 
@@ -637,6 +664,7 @@ def _check_answers(answers):
             name="external_ip",
             value=answers.external_ip,
         )
+    firewall_rules(answers)
     seen = {}
     for proto, port, svc in needed_ports(answers):
         if (proto, port) in seen:
@@ -1162,6 +1190,20 @@ def _ntfy_block(plan):
     return lines
 
 
+def _state_write_lines(state):
+    """Lignes `sh` qui écrivent `state` dans "$STATE" : `.new` en root
+    0600 puis renommage, l'ancien état reste entier jusqu'au `mv`. Une
+    fonction `fail` doit exister."""
+    return [
+        _decode_to(
+            _b64(json.dumps(state, indent=2, sort_keys=True)), '"$STATE.new"'
+        )
+        + " || fail state",
+        'chown root:root "$STATE.new"; chmod 0600 "$STATE.new"',
+        'mv -f "$STATE.new" "$STATE" || fail state',
+    ]
+
+
 def install_script(plan, stamp, check_password, root=""):
     """Script `sh` d'installation, lancé en root sur l'hôte.
 
@@ -1235,23 +1277,511 @@ def install_script(plan, stamp, check_password, root=""):
             f'echo "@@ACTIVE {svc} ${{A:-unknown}}"',
             '[ "$A" = active ] || OK=0',
         ]
+    lines.append('if [ "$OK" = 1 ]; then')
+    lines += ["  " + line for line in _state_write_lines(state)]
     lines += [
-        'if [ "$OK" = 1 ]; then',
-        "  "
-        + _decode_to(
-            _b64(json.dumps(state, indent=2, sort_keys=True)), '"$STATE.new"'
-        )
-        + " || fail state",
-        '  chown root:root "$STATE.new"; chmod 0600 "$STATE.new"',
-        '  mv -f "$STATE.new" "$STATE" || fail state',
-    ]
-    lines += [f'  rm -f "$PENDING/{svc}.json"' for svc in services]
-    lines += [
+        *[f'  rm -f "$PENDING/{svc}.json"' for svc in services],
         '  echo "@@SAVED yes"',
         "else",
         '  echo "@@SAVED no"',
         "  exit 1",
         "fi",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+# --- Pare-feu ---------------------------------------------------------------
+
+# Port de ssh : aucune règle ne le couvre, ni à l'ouverture ni au retrait ;
+# retirer « 22/tcp » de ufw enlèverait la règle de l'administrateur.
+SSH_PORT = 22
+FIREWALL_COMMENT = "erplibre-call"
+NFT_PERSIST_DIR = "/etc/nftables.d"
+NFT_PERSIST_FILE = "/etc/nftables.d/erplibre-call.nft"
+NFT_CONF = "/etc/nftables.conf"
+FIREWALL_ACTIONS = ("allow", "delete")
+
+_RULE_PORT = re.compile(r"^([0-9]{1,5})(?::([0-9]{1,5}))?$")
+_NFT_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+# Inclusion qui charge NFT_PERSIST_FILE au démarrage : « * » ou « *.nft ».
+_NFT_INCLUDE_ERE = (
+    '^[[:space:]]*include[[:space:]]+"/etc/nftables\\.d/\\*(\\.nft)?"'
+)
+# `nft -a list ruleset` : chaque règle finit par « # handle <n> ». Imprime
+# « famille table chaîne handle » des règles qui contiennent `m` (protocole,
+# port, espace) et `k` (le commentaire de l'outil pour ce service).
+_NFT_HANDLES_AWK = (
+    "/^table / { f = $2; t = $3 }"
+    " /^[ \\t]*chain / { c = $2 }"
+    " index($0, m) && index($0, k) && match($0, /# handle [0-9]+$/)"
+    " { print f, t, c, substr($0, RSTART + 9) }"
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class Rule:
+    """Une ouverture : `proto` « tcp » ou « udp », `port` « 3478 » ou une
+    plage « 49152:49252 », `service` celui qui l'écoute."""
+
+    proto: str
+    port: str
+    service: str
+
+
+def _port_bounds(port):
+    """(bas, haut) de « 3478 » ou « 49152:49252 », None hors format."""
+    match = _RULE_PORT.match(port if isinstance(port, str) else "")
+    if not match:
+        return None
+    low = int(match.group(1))
+    high = int(match.group(2) or low)
+    if not 1 <= low <= high <= 65535:
+        return None
+    return low, high
+
+
+def _covers_ssh(port):
+    low, high = _port_bounds(port)
+    return low <= SSH_PORT <= high
+
+
+def _check_rule(rule):
+    """ValueError pour une règle hors format ou qui couvre le port de ssh :
+    les règles relues de l'état viennent de l'hôte et finissent dans un
+    script lancé en root."""
+    if (
+        not isinstance(rule, Rule)
+        or rule.proto not in ("tcp", "udp")
+        or rule.service not in SERVICES
+        or _port_bounds(rule.port) is None
+    ):
+        raise ValueError(f"firewall rule: {rule!r}")
+    if _covers_ssh(rule.port):
+        raise ValueError(f"firewall rule covers ssh: {rule!r}")
+
+
+def _span(low, high):
+    return str(low) if low == high else f"{low}:{high}"
+
+
+def firewall_rules(answers):
+    """Les ouvertures des services choisis : coturn TURN en udp et tcp,
+    TURNS en tcp avec un certificat, la plage des relais en udp ; ntfy son
+    port en tcp. Son port http interne, sur 127.0.0.1 avec un certificat,
+    n'est pas ouvert. Refusal `call_infra_bad_value` pour une règle qui
+    couvrirait le port de ssh."""
+    rules = []
+    if "coturn" in answers.services:
+        turn = str(answers.turn_port)
+        rules += [Rule("udp", turn, "coturn"), Rule("tcp", turn, "coturn")]
+        if answers.tls == "supplied":
+            rules.append(Rule("tcp", str(answers.turns_port), "coturn"))
+        rules.append(
+            Rule("udp", _span(answers.min_port, answers.max_port), "coturn")
+        )
+    if "ntfy" in answers.services:
+        rules.append(Rule("tcp", str(ntfy_port(answers)), "ntfy"))
+    for rule in rules:
+        bounds = _port_bounds(rule.port)
+        if bounds is None or bounds[0] <= SSH_PORT <= bounds[1]:
+            raise Refusal(
+                "call_infra_bad_value",
+                name="port",
+                value=f"{rule.port}/{rule.proto}",
+            )
+    return tuple(rules)
+
+
+def rules_from_state(state):
+    """Les règles consignées dans `state["firewall"]`, celles hors format
+    ou sur le port de ssh écartées."""
+    firewall = state.get("firewall") if isinstance(state, dict) else None
+    entries = firewall.get("rules") if isinstance(firewall, dict) else None
+    rules = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, list) or len(entry) != 3:
+            continue
+        rule = Rule(*entry)
+        try:
+            _check_rule(rule)
+        except ValueError:
+            continue
+        if rule not in rules:
+            rules.append(rule)
+    return tuple(rules)
+
+
+def _comment(rule):
+    return f"{FIREWALL_COMMENT} {rule.service}"
+
+
+def _ufw_spec(rule):
+    return f"{rule.port}/{rule.proto}"
+
+
+def _nft_match(rule):
+    """« udp dport 3478 » : nft écrit une plage avec « - »."""
+    return f"{rule.proto} dport {rule.port.replace(':', '-')}"
+
+
+def _nft_rule(rule):
+    return f'{_nft_match(rule)} accept comment "{_comment(rule)}"'
+
+
+def _valid_chain(chain):
+    return (
+        isinstance(chain, tuple)
+        and len(chain) == 3
+        and chain[0] in ("ip", "ip6", "inet")
+        and all(_NFT_NAME.match(part) for part in chain[1:])
+    )
+
+
+def _check_kind(kind, rules, action="allow"):
+    if kind not in FIREWALLS:
+        raise ValueError(f"firewall kind: {kind!r}")
+    if action not in FIREWALL_ACTIONS:
+        raise ValueError(f"firewall action: {action!r}")
+    rules = tuple(rules)
+    for rule in rules:
+        _check_rule(rule)
+    return rules
+
+
+def firewall_preview(kind, rules, chain=None):
+    """Les commandes montrées avant le oui, telles que le script les passe.
+
+    ufw : `ufw allow <port>/<proto> comment 'erplibre-call <service>'`.
+    nftables : `nft insert rule <famille> <table> <chaîne> ...` dans
+    `chain`, la seule chaîne input en drop (`HostFacts.nft_chains`) ; sans
+    elle, liste vide, comme pour « none » et « unknown » : rien ne sera
+    ajouté.
+    """
+    rules = _check_kind(kind, rules)
+    if kind == "ufw":
+        return [
+            f"ufw allow {_ufw_spec(r)} comment '{_comment(r)}'" for r in rules
+        ]
+    if kind == "nftables" and chain is not None and _valid_chain(chain):
+        target = " ".join(chain)
+        return [f"nft insert rule {target} {_nft_rule(r)}" for r in rules]
+    return []
+
+
+def firewall_notes(kind):
+    """Clés i18n à montrer avec l'aperçu. Le pare-feu du fournisseur
+    infonuagique, que la sonde ne voit pas, est rappelé pour tout `kind`."""
+    if kind not in FIREWALLS:
+        raise ValueError(f"firewall kind: {kind!r}")
+    notes = []
+    if kind == "none":
+        notes.append("call_infra_firewall_none")
+    elif kind == "unknown":
+        notes.append("call_infra_firewall_unknown")
+    notes.append("call_infra_cloud_firewall")
+    return notes
+
+
+def _marker(name, rule):
+    return f"@@FIREWALL_{name} {rule.proto} {rule.port} {rule.service}"
+
+
+def _script_head(root):
+    return [
+        "set -u",
+        # Les messages de ufw se lisent en anglais (« Skipping »).
+        "LC_ALL=C; export LC_ALL",
+        f"R={shlex.quote(root)}",
+        "umask 077",
+        "RC=0",
+        'D=$(mktemp -d) || { echo "@@FIREWALL_FAILED workdir"; echo "@@END";'
+        " exit 1; }",
+        "trap 'rm -rf \"$D\"' EXIT",
+        "trap 'exit 129' HUP INT TERM",
+    ]
+
+
+def _script_tail():
+    return ['echo "@@END"', 'exit "$RC"', ""]
+
+
+def _ufw_script(rules, action):
+    """ufw : une règle déjà là (`ufw show added`) sans le commentaire de
+    l'outil appartient à l'administrateur ; elle n'est ni ajoutée ni
+    consignée (FOREIGN), et donc jamais retirée. ufw garde ses règles d'un
+    démarrage à l'autre."""
+    lines = _script_head("") + [
+        'ufw show added > "$D/added" 2>/dev/null'
+        ' || { echo "@@FIREWALL_FAILED show"; echo "@@END"; exit 1; }',
+    ]
+    for rule in rules:
+        spec = _ufw_spec(rule)
+        mine = f"*{shlex.quote(f'comment {_comment(rule)!r}')}*"
+        pattern = shlex.quote(f"^ufw allow {spec}( |$)")
+        lines.append(f'L=$(grep -E {pattern} "$D/added")')
+        if action == "allow":
+            command = f"ufw allow {spec} comment {shlex.quote(_comment(rule))}"
+            lines += [
+                'if [ -n "$L" ]; then',
+                '  case "$L" in',
+                f'    {mine}) echo "{_marker("KEPT", rule)}" ;;',
+                f'    *) echo "{_marker("FOREIGN", rule)}" ;;',
+                "  esac",
+                f"elif O=$({command} 2>&1); then",
+                '  case "$O" in',
+                f'    *Skipping*) echo "{_marker("FOREIGN", rule)}" ;;',
+                f'    *) echo "{_marker("ADDED", rule)}" ;;',
+                "  esac",
+                "else",
+                f'  echo "{_marker("FAILED", rule)}"; RC=1',
+                "fi",
+            ]
+        else:
+            lines += [
+                'case "$L" in',
+                f'  "") echo "{_marker("ABSENT", rule)}" ;;',
+                f"  {mine})",
+                f"    if ufw delete allow {spec} </dev/null >/dev/null; then"
+                f' echo "{_marker("REMOVED", rule)}";',
+                f'    else echo "{_marker("FAILED", rule)}"; RC=1; fi ;;',
+                f'  *) echo "{_marker("FOREIGN", rule)}" ;;',
+                "esac",
+            ]
+    if action == "allow":
+        lines.append('[ "$RC" = 0 ] && echo "@@FIREWALL_PERSISTED yes"')
+    return "\n".join(lines + _script_tail())
+
+
+def _nft_find(rule):
+    """Commande `sh` qui imprime « famille table chaîne handle » de chaque
+    règle de l'outil pour `rule` dans "$D/handles"."""
+    return (
+        f"awk -v m={shlex.quote(_nft_match(rule) + ' ')}"
+        f" -v k={shlex.quote(f'comment {chr(34)}{_comment(rule)}{chr(34)}')}"
+        f' {shlex.quote(_NFT_HANDLES_AWK)} "$D/handles"'
+    )
+
+
+def _nft_allow(rules):
+    """nftables : les règles sont insérées en tête de LA chaîne de base
+    input en drop, d'une seule transaction (`nft -f`) ; zéro ou plusieurs
+    chaînes, ou un nom inattendu : `@@FIREWALL_MANUAL <n>` et rien ne
+    change. Une règle de l'outil déjà présente est gardée (KEPT).
+
+    Persistance : seulement quand NFT_CONF inclut NFT_PERSIST_DIR ; le
+    fichier reçoit les mêmes lignes, puis `nft -c -f NFT_CONF` vérifie que
+    la configuration se charge encore. Sinon, ou si la vérification
+    échoue (fichier remis comme avant) : `@@FIREWALL_RUNTIME_ONLY`."""
+    conf, persist = _host(NFT_CONF), _host(NFT_PERSIST_FILE)
+    lines = [
+        'nft list ruleset > "$D/ruleset" 2>/dev/null'
+        ' || { echo "@@FIREWALL_FAILED list"; echo "@@END"; exit 1; }',
+        f'awk {shlex.quote(_NFT_CHAINS_AWK)} "$D/ruleset" > "$D/chains"',
+        "N=$(awk 'END { print NR }' \"$D/chains\")",
+        "USABLE=0",
+        'if [ "$N" = 1 ]; then',
+        '  read -r F T C < "$D/chains"',
+        "  USABLE=1",
+        '  case "$F" in ip|ip6|inet) ;; *) USABLE=0 ;; esac',
+        '  case "$T" in ""|*[!A-Za-z0-9_.-]*) USABLE=0 ;; esac',
+        '  case "$C" in ""|*[!A-Za-z0-9_.-]*) USABLE=0 ;; esac',
+        "fi",
+        'if [ "$USABLE" != 1 ]; then',
+        '  echo "@@FIREWALL_MANUAL $N"; echo "@@END"; exit 0',
+        "fi",
+        'echo "@@FIREWALL_CHAIN $F $T $C"',
+        'nft -a list ruleset > "$D/handles" 2>/dev/null'
+        ' || { echo "@@FIREWALL_FAILED list"; echo "@@END"; exit 1; }',
+        ': > "$D/add.nft"; : > "$D/added"; : > "$D/lines"',
+    ]
+    for rule in rules:
+        body = shlex.quote(_nft_rule(rule))
+        lines += [
+            f'printf "insert rule %s %s %s %s\\n" "$F" "$T" "$C" {body}'
+            ' >> "$D/lines"',
+            f'if [ -n "$({_nft_find(rule)})" ]; then',
+            f'  echo "{_marker("KEPT", rule)}"',
+            "else",
+            f'  printf "insert rule %s %s %s %s\\n" "$F" "$T" "$C" {body}'
+            ' >> "$D/add.nft"',
+            f"  echo {shlex.quote(_marker('ADDED', rule)[2:])}"
+            ' >> "$D/added"',
+            "fi",
+        ]
+    lines += [
+        'if [ -s "$D/add.nft" ]; then',
+        '  if nft -f "$D/add.nft"; then',
+        "    sed 's/^/@@/' \"$D/added\"",
+        "  else",
+        "    sed 's/^/@@/; s/@@FIREWALL_ADDED/@@FIREWALL_FAILED/'"
+        ' "$D/added"',
+        "    RC=1",
+        "  fi",
+        "fi",
+        'if [ "$RC" = 0 ]; then',
+        f"  if [ -f {conf} ] && grep -Eq {shlex.quote(_NFT_INCLUDE_ERE)}"
+        f" {conf}; then",
+        f'    if [ -f {persist} ]; then cp {persist} "$D/persist";'
+        f' cp -p {persist} "$D/previous";',
+        f'    else echo {shlex.quote(MARKER)} > "$D/persist"; fi',
+        "    while IFS= read -r LINE; do",
+        '      grep -qxF "$LINE" "$D/persist"'
+        ' || printf "%s\\n" "$LINE" >> "$D/persist"',
+        '    done < "$D/lines"',
+        f"    if mkdir -p {_host(NFT_PERSIST_DIR)}"
+        f' && cp "$D/persist" {_host(NFT_PERSIST_FILE + ".new")}'
+        f" && chmod 0644 {_host(NFT_PERSIST_FILE + '.new')}"
+        f" && mv -f {_host(NFT_PERSIST_FILE + '.new')} {persist}"
+        f" && nft -c -f {conf} >/dev/null 2>&1; then",
+        '      echo "@@FIREWALL_PERSISTED yes"',
+        "    else",
+        f"      rm -f {_host(NFT_PERSIST_FILE + '.new')}",
+        '      if [ -f "$D/previous" ]; then'
+        f' cp -p "$D/previous" {persist}; else rm -f {persist}; fi',
+        '      echo "@@FIREWALL_RUNTIME_ONLY check"',
+        "    fi",
+        "  else",
+        '    echo "@@FIREWALL_RUNTIME_ONLY"',
+        "  fi",
+        "fi",
+    ]
+    return lines
+
+
+def _nft_delete(rules):
+    """nftables : chaque règle de l'outil est retrouvée par son commentaire
+    dans tout le jeu (`nft -a list ruleset`), puis retirée par son handle ;
+    une règle sans ce commentaire n'est jamais touchée. Ses lignes partent
+    aussi de NFT_PERSIST_FILE, effacé quand il n'en reste aucune."""
+    persist = _host(NFT_PERSIST_FILE)
+    lines = [
+        'nft -a list ruleset > "$D/handles" 2>/dev/null'
+        ' || { echo "@@FIREWALL_FAILED list"; echo "@@END"; exit 1; }',
+        "set --",
+    ]
+    for rule in rules:
+        lines += [
+            f'{_nft_find(rule)} > "$D/found"',
+            'if [ ! -s "$D/found" ]; then',
+            f'  echo "{_marker("ABSENT", rule)}"',
+            "else",
+            "  GONE=1",
+            "  while read -r F T C H; do",
+            '    case "$F" in ip|ip6|inet) ;; *) GONE=0; continue ;; esac',
+            '    case "$T" in ""|*[!A-Za-z0-9_.-]*) GONE=0; continue ;; esac',
+            '    case "$C" in ""|*[!A-Za-z0-9_.-]*) GONE=0; continue ;; esac',
+            '    case "$H" in ""|*[!0-9]*) GONE=0; continue ;; esac',
+            '    nft delete rule "$F" "$T" "$C" handle "$H" || GONE=0',
+            '  done < "$D/found"',
+            '  if [ "$GONE" = 1 ]; then',
+            f'    echo "{_marker("REMOVED", rule)}"',
+            "  else",
+            f'    echo "{_marker("FAILED", rule)}"; RC=1',
+            "  fi",
+            "fi",
+            f'set -- "$@" -e {shlex.quote(_nft_rule(rule))}',
+        ]
+    lines += [
+        f"if [ -f {persist} ]; then",
+        f'  grep -vF "$@" {persist} > "$D/persist"',
+        "  if grep -q '^insert rule' \"$D/persist\"; then",
+        f'    chmod 0644 "$D/persist" && cp "$D/persist"'
+        f" {_host(NFT_PERSIST_FILE + '.new')}"
+        f" && mv -f {_host(NFT_PERSIST_FILE + '.new')} {persist} || RC=1",
+        "  else",
+        f"    rm -f {persist} || RC=1",
+        "  fi",
+        "fi",
+    ]
+    return lines
+
+
+def firewall_script(kind, rules, action, root=""):
+    """Script `sh`, lancé en root, qui ajoute (`allow`) ou retire
+    (`delete`) `rules` du pare-feu actif ; "" pour « none » et « unknown »
+    ou sans règle.
+
+    Il n'active jamais un pare-feu, ne change aucune politique, ne vide
+    rien et ne touche aucune règle qu'il n'a pas posée : chacune porte le
+    commentaire « erplibre-call <service> ». Une ligne par règle :
+    `@@FIREWALL_ADDED|KEPT|FOREIGN|REMOVED|ABSENT|FAILED <proto> <port>
+    <service>` ; puis `@@FIREWALL_PERSISTED yes` ou
+    `@@FIREWALL_RUNTIME_ONLY`, `@@FIREWALL_MANUAL <n>` quand nftables n'a
+    pas exactement une chaîne input en drop, et `@@END`. Code non nul
+    après un échec. `firewall_record` lit cette sortie. `root` préfixe les
+    fichiers de l'hôte (tests).
+    """
+    rules = _check_kind(kind, rules, action)
+    if kind in ("none", "unknown") or not rules:
+        return ""
+    if kind == "ufw":
+        return _ufw_script(rules, action)
+    body = _nft_allow(rules) if action == "allow" else _nft_delete(rules)
+    return "\n".join(_script_head(root) + body + _script_tail())
+
+
+def firewall_record(kind, output, previous=None):
+    """`state["firewall"]` après un passage de `firewall_script` :
+    `{"kind", "rules": [[proto, port, service], ...], "persisted"}`.
+
+    Partant des règles de `previous` (du même `kind`), les ADDED et KEPT
+    s'ajoutent, les REMOVED et ABSENT partent ; FOREIGN et FAILED ne sont
+    pas consignées : l'outil ne retirera que ce qu'il a posé. `persisted`
+    suit `@@FIREWALL_PERSISTED` / `@@FIREWALL_RUNTIME_ONLY`, sinon reste
+    celui de `previous`.
+    """
+    if kind not in FIREWALLS:
+        raise ValueError(f"firewall kind: {kind!r}")
+    same = isinstance(previous, dict) and previous.get("kind") == kind
+    rules = set(rules_from_state({"firewall": previous}) if same else ())
+    persisted = bool(same and previous.get("persisted"))
+    for name, value in marker_lines(output or ""):
+        if name == "FIREWALL_PERSISTED":
+            persisted = True
+        elif name == "FIREWALL_RUNTIME_ONLY":
+            persisted = False
+        elif name.startswith("FIREWALL_"):
+            parts = value.split()
+            if len(parts) != 3:
+                continue
+            rule = Rule(*parts)
+            try:
+                _check_rule(rule)
+            except ValueError:
+                continue
+            if name in ("FIREWALL_ADDED", "FIREWALL_KEPT"):
+                rules.add(rule)
+            elif name in ("FIREWALL_REMOVED", "FIREWALL_ABSENT"):
+                rules.discard(rule)
+    ordered = sorted(rules, key=lambda r: (r.proto, r.port, r.service))
+    return {
+        "kind": kind,
+        "rules": [[r.proto, r.port, r.service] for r in ordered],
+        "persisted": persisted if ordered else False,
+    }
+
+
+def with_firewall(state, record):
+    """Copie de `state` qui porte `record` sous « firewall »."""
+    updated = copy.deepcopy(state) if isinstance(state, dict) else {}
+    updated["firewall"] = copy.deepcopy(record)
+    return updated
+
+
+def state_write_script(state, root=""):
+    """Script `sh`, lancé en root, qui remplace l'état de l'hôte par
+    `state` (après `with_firewall`) : `.new` en 0600 puis renommage.
+    Dernière ligne `@@SAVED yes`, ou `@@FAILED state` et `@@SAVED no`."""
+    lines = [
+        "set -u",
+        f"R={shlex.quote(root)}",
+        f'STATE="$R"{shlex.quote(STATE_PATH)}',
+        "umask 077",
+        'fail() { echo "@@FAILED $1"; echo "@@SAVED no"; exit 1; }',
+        f'mkdir -p "$R"{shlex.quote(CALL_DIR)} || fail state',
+        *_state_write_lines(state),
+        'echo "@@SAVED yes"',
         "",
     ]
     return "\n".join(lines)
