@@ -326,13 +326,22 @@ esac
 exit 0
 """
 
-    # runuser -u <compte> -- <commande>... : note l'argv, lance la commande.
+    # runuser -u <compte> -- <commande>... : note l'argv et l'entree
+    # standard, lance la commande.
     BOUCHON_RUNUSER = ('#!/bin/sh\necho "runuser $*" >> "$BAC/argv.log"\n'
+                       'readlink /proc/self/fd/0 >> "$BAC/stdin.log"\n'
                        'while [ "$1" != "--" ]; do shift; done\nshift\n'
                        'exec "$@"\n')
+    # setsid -w <commande>... : note l'argv, lance la commande.
+    BOUCHON_SETSID = ('#!/bin/sh\necho "setsid $*" >> "$BAC/argv.log"\n'
+                      '[ "$1" = -w ] && shift\nexec "$@"\n')
+    # Ce que l'enveloppe et le bouchon ntfy appellent, sans setsid.
+    OUTILS = ("grep", "sed", "head", "base64", "tr", "readlink")
 
-    def _jouer(self, deja_present=False, public="0", compte=True):
-        """`compte` : le compte « ntfy » existe sur l'hote."""
+    def _jouer(self, deja_present=False, public="0", compte=True,
+               setsid=True):
+        """`compte` : le compte « ntfy » existe sur l'hote. `setsid` faux :
+        PATH ne porte que les bouchons et OUTILS, setsid en est absent."""
         dossier = tempfile.mkdtemp()
         self.addCleanup(subprocess.run, ["rm", "-rf", dossier])
         os.makedirs(os.path.join(dossier, "bin"))
@@ -352,6 +361,18 @@ exit 0
         with open(bouchon_runuser, "w") as flux:
             flux.write(self.BOUCHON_RUNUSER)
         os.chmod(bouchon_runuser, stat.S_IRWXU)
+        chemin = os.environ.get("PATH", "")
+        if setsid:
+            bouchon_setsid = os.path.join(dossier, "bin", "setsid")
+            with open(bouchon_setsid, "w") as flux:
+                flux.write(self.BOUCHON_SETSID)
+            os.chmod(bouchon_setsid, stat.S_IRWXU)
+        else:
+            os.makedirs(os.path.join(dossier, "outils"))
+            for outil in self.OUTILS + ("sh", "bash"):
+                os.symlink(shutil.which(outil),
+                           os.path.join(dossier, "outils", outil))
+            chemin = os.path.join(dossier, "outils")
         if deja_present:
             open(os.path.join(dossier, "admin"), "w").close()
             open(os.path.join(dossier, "lib", "user.db"), "w").close()
@@ -374,8 +395,7 @@ exit 0
             "ensure_admin_user") + "\nensure_admin_user\n"
         env = {
             "BAC": dossier,
-            "PATH": os.path.join(dossier, "bin") + os.pathsep
-            + os.environ.get("PATH", ""),
+            "PATH": os.path.join(dossier, "bin") + os.pathsep + chemin,
             # Ce que l'appelant de l'installateur exporte : la CLI ntfy le
             # lirait AVANT --config.
             "NTFY_BASE_URL": "http://ntfy.exemple.test:8080",
@@ -383,6 +403,7 @@ exit 0
         }
         fait = jouer(enveloppe, env)
         self.argv = lignes(os.path.join(dossier, "argv.log"))
+        self.stdin = lignes(os.path.join(dossier, "stdin.log"))
         return (fait, lignes(os.path.join(dossier, "ntfy.log")),
                 lignes(os.path.join(dossier, "chown.log")), dossier)
 
@@ -439,6 +460,31 @@ exit 0
             self.assertTrue(appel.startswith("runuser -u ntfy -- ntfy user "),
                             appel)
         self.assertEqual(chowns, [])
+
+    def test_la_cli_du_compte_quitte_le_terminal_de_root(self):
+        """Un processus du compte « ntfy » laisse sur le terminal de root
+        pourrait y injecter des frappes (TIOCSTI) : il part dans une session
+        a lui, sans terminal de controle, l'entree sur /dev/null."""
+        fait, _, _, _ = self._jouer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        sessions = [a for a in self.argv if a.startswith("setsid ")]
+        self.assertEqual(len(sessions), 2, self.argv)
+        for appel in sessions:
+            self.assertTrue(
+                appel.startswith("setsid -w runuser -u ntfy -- ntfy user "),
+                appel)
+        self.assertEqual(self.stdin, ["/dev/null"] * 2)
+
+    def test_sans_setsid_runuser_ouvre_son_propre_terminal(self):
+        fait, journal, _, _ = self._jouer(setsid=False)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        sous_compte = [a for a in self.argv if a.startswith("runuser ")]
+        self.assertEqual(len(sous_compte), 2, self.argv)
+        for appel in sous_compte:
+            self.assertTrue(
+                appel.startswith("runuser --pty -u ntfy -- ntfy user "), appel)
+        self.assertEqual(self.stdin, ["/dev/null"] * 2)
+        self.assertIn("ENV NTFY_PASSWORD", " ".join(journal))
 
     def test_compte_present_aucun_mot_de_passe_ni_chown(self):
         fait, journal, chowns, _ = self._jouer(deja_present=True)
