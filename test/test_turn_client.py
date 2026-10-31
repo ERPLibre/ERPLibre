@@ -552,12 +552,20 @@ class TestResolution(unittest.TestCase):
     def test_unexpected_resolver_error_reaches_the_caller(self):
         # Une exception hors OSError et ValueError n'est pas avalée par le
         # fil : elle remonte à l'appelant au lieu d'un KeyError.
+        # Le type est hors de LookupError, dont KeyError descend : un
+        # KeyError ne peut pas passer pour l'exception attendue.
+        class Unexpected(RuntimeError):
+            pass
+
+        raised = Unexpected("inattendue")
+
         def getaddrinfo(*_args, **_kwargs):
-            raise LookupError("inattendue")
+            raise raised
 
         with mock.patch.object(tc.socket, "getaddrinfo", getaddrinfo):
-            with self.assertRaises(LookupError):
+            with self.assertRaises(Unexpected) as caught:
                 tc.binding("turn.exemple.test", 3478, timeout=1)
+        self.assertIs(caught.exception, raised)
 
 
 class TestAllocateStream(FakeCase):
