@@ -551,21 +551,25 @@ def attendre_ssh(cible, journal, delai=DELAI_SSH):
     return False
 
 
-def plan_tient(journal):
-    """L'hôte peut-il porter une VM ? Le dire avant de la créer."""
+def plan_tient(journal, nombre=1):
+    """L'hôte peut-il porter `nombre` VM debout ensemble ? Le dire avant
+    d'en créer une. Chaque VM compte sa mémoire et son disque écrit ; les
+    marges ne comptent qu'une fois, pour l'hôte."""
     coeurs, ram, disque = capacite_hote()
     dire(
         f"  machine locale : {coeurs} cœurs, {ram} Mo disponibles,"
         f" {disque} Go de disque",
         journal,
     )
+    ram_voulue = nombre * MEMOIRE_MO + MARGE_RAM_MO
+    disque_voulu = nombre * DISQUE_ECRIT_GO + MARGE_DISQUE_GO
     manque = []
-    if ram < MEMOIRE_MO + MARGE_RAM_MO:
-        manque.append(f"RAM (il en faut {MEMOIRE_MO + MARGE_RAM_MO} Mo)")
-    if disque < DISQUE_ECRIT_GO + MARGE_DISQUE_GO:
+    if ram < ram_voulue:
+        manque.append(f"RAM (il en faut {ram_voulue} Mo pour {nombre} VM)")
+    if disque < disque_voulu:
         manque.append(
-            f"disque (il en faut {DISQUE_ECRIT_GO + MARGE_DISQUE_GO} Go"
-            f" libres ; le disque virtuel fait {DISQUE_GO} Go, creux)"
+            f"disque (il en faut {disque_voulu} Go libres pour {nombre} VM ;"
+            f" chaque disque virtuel fait {DISQUE_GO} Go, creux)"
         )
     if manque:
         dire(f"  ✗ pas assez de {' ni de '.join(manque)}", journal)
@@ -1013,7 +1017,10 @@ def mener(argv):
         dire(f"  rapport : {course.chemin}", journal)
         return 0
 
-    if not plan_tient(journal):
+    # `--garder` laisse chaque VM debout jusqu'à la fin de la course : la
+    # place se compte pour toutes. Sans lui, une VM est défaite avant la
+    # suivante, et une survivante arrête la course plus bas.
+    if not plan_tient(journal, len(systemes) if args.garder else 1):
         return 1
     os.makedirs(course.dossier, exist_ok=True)
     course.ecrire()
@@ -1025,8 +1032,8 @@ def mener(argv):
         dire(f"  {marque} {distro} : {ligne['verdict']}", journal)
         if args.garder:
             continue
-        # Une VM encore en vie arrête la course : plan_tient n'a compté la
-        # place que d'une seule.
+        # Une VM encore en vie arrête la course : sans `--garder`,
+        # plan_tient n'a compté la place que d'une seule.
         if not defaire_vm(course):
             dire(
                 "  ✗ VM toujours en vie : la course s'arrête,"
