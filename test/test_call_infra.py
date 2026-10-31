@@ -683,6 +683,35 @@ class TestPlan(unittest.TestCase):
         self.assertIn("-realm=ancien.exemple.test", shown)
         self.assertIn("Inventesmtp", plan.configs["ntfy"])
 
+    def test_secret_lists_are_hidden_in_flow_form(self):
+        # Valeurs inventées : une liste YAML entre crochets, sur une ligne
+        # ou sur plusieurs, perd ses éléments comme la liste en tirets.
+        text = (
+            'auth-users: ["phil:$2a$10$Inventeflux:admin"]\n'
+            "auth-users: [\n"
+            '  "anne:$2b$12$Inventeplusieurs:user",\n'
+            "]\n"
+            "auth-tokens: [\n"
+            '  "anne:tk_Inventejeton:telephone",\n'
+            "]\n"
+            'listen-http: ":8080"\n'
+        )
+        shown = ci.redact_secrets(text)
+        for secret in ("Inventeflux", "Inventeplusieurs", "Inventejeton"):
+            self.assertNotIn(secret, shown)
+        self.assertIn("auth-users: [***]\n", shown)
+        self.assertIn('listen-http: ":8080"\n', shown)
+
+    def test_a_bcrypt_hash_is_hidden_wherever_it_sits(self):
+        text = (
+            '# ancien compte : "phil:$2y$10$Inventecommentaire:admin"\n'
+            "comptes: phil:$2a$10$Inventeautre\n"
+        )
+        shown = ci.redact_secrets(text)
+        self.assertNotIn("Inventecommentaire", shown)
+        self.assertNotIn("Inventeautre", shown)
+        self.assertIn("# ancien compte : ", shown)
+
     def test_second_plan_on_the_produced_state_has_nothing_to_do(self):
         facts, ans = self.adopted_coturn()
         first = ci.plan_install(facts, ans, NOW)
