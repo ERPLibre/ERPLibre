@@ -4955,7 +4955,8 @@ class TestProductionInstall(unittest.TestCase):
         self.assertEqual(acme["NGINX_NTFY_NAME"], "ntfy.exemple.test")
         self.assertEqual(acme["NGINX_ACME_ROOT"], ci.ACME_ROOT)
         self.assertEqual(acme["NGINX_INSTALL"], "1")
-        self.assertEqual(acme["NGINX_ADOPT_INCLUDE"], "1")
+        # Le paquet Debian inclut sites-enabled : nginx.conf ne change pas.
+        self.assertNotIn("NGINX_ADOPT_INCLUDE", acme)
         certbot = self.env_of("install_certbot")
         self.assertEqual(
             certbot["CERTBOT_NAMES"], "turn.exemple.test ntfy.exemple.test"
@@ -4975,6 +4976,60 @@ class TestProductionInstall(unittest.TestCase):
         script = ci.install_script(plan, STAMP)
         self.assertNotRegex(script, r"(?m)^\s*export\s*$")
         self.assertNotIn("export PATH", done.stdout)
+
+    # --- Ligne include de nginx.conf -------------------------------------
+
+    INCLUDE_LINE = "+    include /etc/nginx/erplibre-call.d/*.conf;"
+
+    def existing_nginx(self, **nginx):
+        return base_facts(
+            busy_ports=(("tcp", 22, "sshd"), ("tcp", 80, "nginx")),
+            nginx=nginx_facts(**nginx),
+        )
+
+    def test_include_line_is_announced_before_it_is_accepted(self):
+        # Un nginx.conf qui n'inclut aucun dossier de sites reçoit une
+        # ligne : le résumé la montre avant le oui, le script l'accepte.
+        facts = self.existing_nginx(layout="arch-include")
+        plan = ci.plan_install(facts, production(nginx="existing"), NOW)
+        shown = dict(plan.diffs)
+        self.assertIn(ci.NGINX_CONF, shown)
+        self.assertIn(self.INCLUDE_LINE, shown[ci.NGINX_CONF].splitlines())
+        self.assertIn("NGINX_ADOPT_INCLUDE=1", ci.install_script(plan, STAMP))
+
+    def test_no_include_consent_when_nginx_conf_does_not_change(self):
+        for nginx in (
+            {"layout": "arch-include", "include": True},
+            {"layout": "debian"},
+            {"layout": "confd"},
+        ):
+            with self.subTest(nginx=nginx):
+                facts = self.existing_nginx(**nginx)
+                plan = ci.plan_install(
+                    facts, production(nginx="existing"), NOW
+                )
+                self.assertNotIn(ci.NGINX_CONF, dict(plan.diffs))
+                self.assertNotIn(
+                    "NGINX_ADOPT_INCLUDE", ci.install_script(plan, STAMP)
+                )
+
+    def test_nginx_installed_on_arch_takes_the_include_line(self):
+        # Le nginx.conf est celui du paquet que ce passage installe :
+        # aucun fichier de l'administrateur à montrer.
+        facts = base_facts(family="arch", os_id="arch")
+        plan = ci.plan_install(facts, production(), NOW)
+        self.assertNotIn(ci.NGINX_CONF, dict(plan.diffs))
+        self.assertIn("NGINX_ADOPT_INCLUDE=1", ci.install_script(plan, STAMP))
+
+    def test_missing_include_line_is_never_nothing_to_do(self):
+        ans = production()
+        there = nginx_facts(layout="arch-include", include=True)
+        facts = production_installed(ans, nginx=there)
+        ans = dataclasses.replace(ans, nginx="existing")
+        self.assertTrue(ci.plan_install(facts, ans, NOW).nothing_to_do)
+        gone = nginx_facts(layout="arch-include")
+        facts = production_installed(ans, nginx=gone)
+        self.assertFalse(ci.plan_install(facts, ans, NOW).nothing_to_do)
 
     def test_hook_installed_from_the_product_file(self):
         with open(ci.HOOK_SOURCE) as handle:
