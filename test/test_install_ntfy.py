@@ -206,6 +206,64 @@ class TestUniteSystemd(unittest.TestCase):
                       self._unite("/usr/bin/ntfy"))
 
 
+class TestUniteRelue(unittest.TestCase):
+    """`refresh_systemd_service` : sur un hote deja installe, l'unite que ce
+    script a ecrite autrefois est reecrite ; une autre n'est pas touchee."""
+
+    ANCIENNE = (
+        "[Unit]\nDescription=ntfy push notification server\n"
+        "After=network.target\n\n[Service]\nType=simple\n"
+        "ExecStart=/opt/ntfy/bin/ntfy serve\nUser=ntfy\nGroup=ntfy\n"
+        "ProtectSystem=strict\n"
+        "ReadWritePaths=/var/cache/ntfy /etc/ntfy\n\n"
+        "[Install]\nWantedBy=multi-user.target\n"
+    )
+
+    def _jouer(self, contenu):
+        """Rend (texte de l'unite apres coup ou None, CompletedProcess)."""
+        with tempfile.TemporaryDirectory() as dossier:
+            unite = os.path.join(dossier, "ntfy.service")
+            if contenu is not None:
+                with open(unite, "w", encoding="utf-8") as flux:
+                    flux.write(contenu)
+            enveloppe = (
+                "set -e\n"
+                "log() { :; }\n"
+                "id() { return 0; }\n"
+                "SYSTEMD_UNIT=%s\n" % unite
+            ) + constantes() + extraire_fonction(
+                "create_systemd_service") + extraire_fonction(
+                "refresh_systemd_service") + "\nrefresh_systemd_service\n"
+            fait = jouer(enveloppe)
+            texte = None
+            if os.path.exists(unite):
+                with open(unite, encoding="utf-8") as flux:
+                    texte = flux.read()
+            return texte, fait
+
+    def test_l_ancienne_unite_recoit_la_base_des_comptes(self):
+        texte, fait = self._jouer(self.ANCIENNE)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        chemins = re.search(r"^ReadWritePaths=(.*)$", texte, re.M).group(1)
+        self.assertIn("/var/lib/ntfy", chemins.split())
+        # Le binaire qu'elle lancait est garde.
+        self.assertIn("ExecStart=/opt/ntfy/bin/ntfy serve", texte)
+
+    def test_une_unite_d_une_autre_main_n_est_pas_touchee(self):
+        autre = self.ANCIENNE.replace(
+            "Description=ntfy push notification server",
+            "Description=ntfy, reglee a la main")
+        texte, fait = self._jouer(autre)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(texte, autre)
+
+    def test_sans_unite_rien_n_est_cree(self):
+        # Celle d'un paquet vit ailleurs ; en ecrire une la masquerait.
+        texte, fait = self._jouer(None)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIsNone(texte)
+
+
 class TestCompteAdministrateur(unittest.TestCase):
     """`ensure_admin_user` : la CLI, son environnement, la base des comptes."""
 
@@ -428,6 +486,7 @@ class TestMain(unittest.TestCase):
                 "ntfy() { return 0; }\n"
                 "configure_ntfy() { echo configure >> $J; }\n"
                 "ensure_admin_user() { echo admin >> $J; }\n"
+                "refresh_systemd_service() { echo refresh >> $J; }\n"
                 "sleep() { :; }\n"
                 "hostname() { echo 192.0.2.10; }\n"
                 "systemctl() {\n"
@@ -454,6 +513,14 @@ class TestMain(unittest.TestCase):
         self.assertEqual(fait.stdout.splitlines()[-1], "@@ACTIVE ntfy failed")
         # Le compte est cree avant le premier demarrage du service.
         self.assertLess(appels.index("admin"),
+                        appels.index("systemctl restart ntfy"))
+
+    def test_deja_installe_l_unite_est_relue_avant_le_redemarrage(self):
+        # Une unite ecrite par une version anterieure du script ne peut
+        # ecrire user.db ; sans relecture, chaque relance finit en echec.
+        _, appels = self._jouer(["active"])
+        self.assertIn("refresh", appels)
+        self.assertLess(appels.index("refresh"),
                         appels.index("systemctl restart ntfy"))
 
     def test_service_actif_code_nul_et_marqueur(self):

@@ -272,6 +272,23 @@ SYSTEMD
     log "Systemd service created."
 }
 
+# Reecrit $SYSTEMD_UNIT quand c'est ce script qui l'a ecrite (sa ligne
+# Description), en gardant le binaire de son ExecStart. Une relance sur un
+# hote deja installe ne repasse pas par l'installation : sans cela, une unite
+# d'une version anterieure, dont ReadWritePaths omet DATA_DIR, laisse le
+# service incapable d'ecrire user.db a chaque relance. Une unite absente
+# n'est pas creee (celle d'un paquet vit ailleurs et serait masquee), une
+# unite d'une autre main n'est pas touchee.
+refresh_systemd_service() {
+    [ -f "${SYSTEMD_UNIT}" ] || return 0
+    grep -qx 'Description=ntfy push notification server' "${SYSTEMD_UNIT}" \
+        || return 0
+    local binary
+    binary=$(sed -nE 's/^ExecStart=([^[:space:]]+) serve.*/\1/p' \
+        "${SYSTEMD_UNIT}" | head -n 1)
+    create_systemd_service "${binary:-${INSTALL_DIR}/ntfy}"
+}
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -517,6 +534,7 @@ main() {
     if command -v ntfy &>/dev/null && ntfy --version &>/dev/null; then
         log "ntfy is already installed: $(ntfy --version 2>/dev/null | head -1)"
         log "Reconfiguring and restarting..."
+        refresh_systemd_service
     elif is_ubuntu_like; then
         log "Using Ubuntu/Debian install path..."
         apt-get update -qq
