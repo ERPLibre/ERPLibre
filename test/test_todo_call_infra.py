@@ -19,6 +19,7 @@ import json
 import re
 import shlex
 import os
+import socket
 import string
 import subprocess
 import sys
@@ -97,6 +98,7 @@ class FakeHost:
         uninstall_code=0,
         firewall_pending=(),
         state_code=0,
+        probe_extra=(),
     ):
         self.os_line = os_line
         self.systemd = systemd
@@ -115,6 +117,8 @@ class FakeHost:
         self.uninstall_code = uninstall_code
         self.firewall_pending = list(firewall_pending)
         self.state_code = state_code
+        # Lignes de sonde de production (`@@NGINX ...`, `@@CERTBOT ...`).
+        self.probe_extra = list(probe_extra)
         self.calls = []
 
     @staticmethod
@@ -157,6 +161,7 @@ class FakeHost:
                 for path, text in self.files.items()
             ],
             f"@@FIREWALL {self.firewall}",
+            *self.probe_extra,
         ]
         if self.state is not None:
             lines.append(f"@@STATE {b64(json.dumps(self.state))}")
@@ -265,13 +270,33 @@ class MenuCase(unittest.TestCase):
         from script.todo.todo import TODO
 
         self.todo = TODO()
+        # {nom: [adresses]} que la résolution doublure rend ; un nom absent
+        # ne résout pas. Aucune requête DNS ne part des tests.
+        self.dns = {}
+        self.prompts = []
+
+    def resolve(self, name, port):
+        if name not in self.dns:
+            raise socket.gaierror(socket.EAI_NONAME, "Name not known")
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))
+            for address in self.dns[name]
+        ]
+
+    def reply(self, pending, prompt=""):
+        self.prompts.append(prompt)
+        return pending.pop(0)
 
     def drive(self, method, host, replies, lines=None):
-        """Lance `method` avec `replies` pour input() ; rend la sortie."""
+        """Lance `method` avec `replies` pour input() ; rend la sortie.
+        Les invites passées à input() sont gardées dans `self.prompts`."""
         pending = list(replies)
         out = io.StringIO()
         self.check_local = mock.Mock(return_value=lines or LINES)
         with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch.object(cim, "_resolve", self.resolve)
+            )
             stack.enter_context(contextlib.redirect_stdout(out))
             stack.enter_context(
                 mock.patch.object(
@@ -280,7 +305,8 @@ class MenuCase(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch(
-                    "builtins.input", side_effect=lambda *_: pending.pop(0)
+                    "builtins.input",
+                    side_effect=lambda *a: self.reply(pending, *a),
                 )
             )
             stack.enter_context(
@@ -291,9 +317,10 @@ class MenuCase(unittest.TestCase):
         return out.getvalue()
 
 
-# Réponses d'une installation acceptée telle que proposée : services, TLS,
-# nom public, port TURN, plage des relais, port de ntfy, oui.
-DEFAULTS = ["", "", "", "", "", ""]
+# Réponses d'une installation acceptée telle que proposée : services, mode
+# (développement), TLS, nom public, port TURN, plage des relais, port de
+# ntfy.
+DEFAULTS = ["", "", "", "", "", "", ""]
 
 
 class TestInstall(MenuCase):
@@ -448,7 +475,7 @@ class TestInstall(MenuCase):
             files={"/etc/turnserver.conf": FOREIGN_COTURN},
             ports=(("udp", 3478, "turnserver"),),
         )
-        replies = ["2", "", "", "", "", "n"]
+        replies = ["2", "", "", "", "", "", "n"]
         out = self.drive("_call_infra_install", host, replies)
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn("-realm=ancien.exemple.test", out)
@@ -547,14 +574,14 @@ class TestInstall(MenuCase):
 
     def test_an_unreadable_certificate_stops_before_installing(self):
         host = FakeHost()
-        replies = ["", "2", "/nonexistent/exemple.crt"]
+        replies = ["", "", "2", "/nonexistent/exemple.crt"]
         out = self.drive("_call_infra_install", host, replies)
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn("/nonexistent/exemple.crt", out)
 
     def test_a_port_that_is_not_a_number_stops(self):
         host = FakeHost()
-        out = self.drive("_call_infra_install", host, ["", "", "", "abc"])
+        out = self.drive("_call_infra_install", host, ["", "", "", "", "abc"])
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn("abc", out)
 
@@ -565,6 +592,366 @@ class TestInstall(MenuCase):
         self.drive("_call_infra_install", ssh, DEFAULTS + ["o", ""])
         settings = host.state["services"]["ntfy"]["settings"]
         self.assertEqual(settings["public_name"], "turn.exemple.test")
+
+
+DOMAIN = "exemple.test"
+NTFY_NAME, TURN_NAME = "ntfy.exemple.test", "turn.exemple.test"
+EMAIL = "admin@exemple.test"
+DNS_SECRET = "dns_cloudflare_api_token = Jeton-invente-0123456789\n"
+
+
+def production_answers(**changes):
+    values = dict(
+        mode="production",
+        public_name=DOMAIN,
+        ntfy_name=NTFY_NAME,
+        turn_name=TURN_NAME,
+        tls="letsencrypt",
+        acme="http-nginx",
+        nginx="install",
+        email=EMAIL,
+    )
+    values.update(changes)
+    return answers(**values)
+
+
+class ProductionCase(MenuCase):
+    def setUp(self):
+        super().setUp()
+        self.dns = {NTFY_NAME: ["192.0.2.10"], TURN_NAME: ["192.0.2.10"]}
+
+    def planned(self, host, replies):
+        """(sortie, réponses passées à `plan_install`) ; None sans plan."""
+        with mock.patch.object(
+            ci, "plan_install", wraps=ci.plan_install
+        ) as built:
+            out = self.drive("_call_infra_install", host, replies)
+        if not built.called:
+            return out, None
+        return out, built.call_args.args[1]
+
+
+# Production, les deux services, Let's Encrypt par HTTP : services, mode,
+# domaine, nom de ntfy, nom de TURN, certificat, défi, courriel, interface
+# web de ntfy, port TURN, port TURNS, plage des relais, port de ntfy.
+PROD_BOTH = ["", "2", DOMAIN, "", "", "", "", EMAIL, "", "", "", "", ""]
+# coturn seul, Let's Encrypt par certbot seul sur 80 : services, mode,
+# domaine, nom de TURN, certificat, défi, voie du défi HTTP, courriel, port
+# TURN, 443 (question posée : ni nginx ni 443 pris), port TURNS, plage.
+PROD_COTURN = ["2", "2", DOMAIN, "", "", "", "", EMAIL, "", "", "", ""]
+
+
+class TestProductionInstall(ProductionCase):
+    def test_lets_encrypt_through_an_installed_nginx(self):
+        host = FakeHost()
+        out = self.drive("_call_infra_install", host, PROD_BOTH + ["o", ""])
+        self.assertEqual(host.kinds(), ["probe", "install", "state", "check"])
+        script = host.script_of("install")
+        self.assertIn(ci._installer_payload("nginx"), script)
+        self.assertIn(ci._installer_payload("certbot"), script)
+        self.assertEqual(host.state["mode"], "production")
+        coturn = host.state["services"]["coturn"]["settings"]
+        ntfy = host.state["services"]["ntfy"]["settings"]
+        self.assertEqual(coturn["turn_name"], TURN_NAME)
+        self.assertEqual(ntfy["ntfy_name"], NTFY_NAME)
+        self.assertEqual(ntfy["acme"], "http-nginx")
+        self.assertIs(ntfy["web"], False)
+        self.assertIsNone(coturn["external_ip"])
+        self.assertIs(host.state["nginx"]["installed_by_tool"], True)
+        self.assertEqual(host.state["certbot"]["email"], EMAIL)
+        # Le résumé : mode, noms, source du certificat, défi, règles.
+        self.assertIn(f"{t('Mode:')} {t('production')}", out)
+        self.assertIn(NTFY_NAME, out)
+        self.assertIn(t("call_infra_cert_letsencrypt"), out)
+        self.assertIn(t("call_infra_challenge_http_nginx"), out)
+        self.assertIn(t("call_infra_nginx_install"), out)
+        self.assertIn("80/tcp nginx", out)
+        self.assertIn("443/tcp nginx", out)
+        self.assertIn(t("call_infra_private_ranges_denied"), out)
+        self.assertNotIn(t("call_infra_private_ranges_allowed"), out)
+        self.assertNotIn(t("call_infra_email_none"), out)
+        # La plage proposée est celle de la production, pas celle du
+        # développement.
+        self.assertTrue(
+            any(
+                f"[{ci.PROD_MIN_PORT}-{ci.PROD_MAX_PORT}]" in p
+                for p in self.prompts
+            )
+        )
+        # Les noms sont sur l'hôte : aucun avertissement DNS.
+        self.assertNotIn(t("call_infra_dns_le_fails"), out)
+        for name in (NTFY_NAME, TURN_NAME):
+            self.assertNotIn(
+                t("call_infra_dns_elsewhere").format(
+                    name=name, found="192.0.2.10"
+                ),
+                out,
+            )
+        # En production, le domaine peut ne pas joindre l'hôte : la
+        # vérification vise le nom de TURN.
+        _remote, address, cafile = self.check_local.call_args.args
+        self.assertEqual((address, cafile), (TURN_NAME, None))
+
+    def test_dns_challenge_never_prints_the_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "cloudflare.ini")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(DNS_SECRET)
+            replies = ["", "2", DOMAIN, "", "", "", "2", "1", path, ""]
+            replies += ["", "", "", "", ""]
+            host = FakeHost()
+            out = self.drive("_call_infra_install", host, replies + ["o", ""])
+        self.assertNotIn("Jeton-invente", out)
+        self.assertNotIn(b64(DNS_SECRET), out)
+        self.assertIn(b64(DNS_SECRET), host.script_of("install"))
+        certbot = host.state["certbot"]
+        self.assertEqual(certbot["plugin"], "cloudflare")
+        self.assertEqual(
+            certbot["dns_credentials"], f"{ci.DNS_DIR}/cloudflare.ini"
+        )
+        self.assertNotIn("Jeton-invente", json.dumps(host.state))
+        # Debian n'empaquette que trois greffons : seuls ceux-là sont
+        # offerts.
+        self.assertIn("[1] cloudflare", out)
+        self.assertIn("[3] rfc2136", out)
+        self.assertNotIn("ovh", out)
+        # Courriel vide : permis, et dit.
+        self.assertIn(t("call_infra_email_none"), out)
+        self.assertEqual(certbot["email"], "")
+
+    def test_arch_offers_every_dns_plugin(self):
+        host = FakeHost(os_line="arch -")
+        replies = ["", "2", DOMAIN, "", "", "", "2", "99"]
+        out = self.drive("_call_infra_install", host, replies)
+        self.assertEqual(host.kinds(), ["probe"])
+        for number, plugin in enumerate(ci.DNS_PLUGINS, 1):
+            self.assertIn(f"[{number}] {plugin}", out)
+        self.assertIn(t("Invalid selection!"), out)
+
+    def test_an_unreadable_credentials_file_stops(self):
+        host = FakeHost()
+        replies = ["", "2", DOMAIN, "", "", "", "2", "1"]
+        out = self.drive(
+            "_call_infra_install", host, replies + ["/nonexistent/x.ini"]
+        )
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn("/nonexistent/x.ini", out)
+
+    def test_nat_proposes_the_public_ip_and_the_plan_carries_it(self):
+        self.dns = {TURN_NAME: ["203.0.113.7"]}
+        host = FakeHost()
+        out = self.drive(
+            "_call_infra_install", host, PROD_COTURN + ["", "o", ""]
+        )
+        self.assertEqual(host.kinds(), ["probe", "install", "state", "check"])
+        self.assertIn(
+            t("call_infra_turn_name_nat").format(
+                name=TURN_NAME, address="203.0.113.7"
+            ),
+            out,
+        )
+        self.assertTrue(any("203.0.113.7" in p for p in self.prompts))
+        coturn = host.state["services"]["coturn"]["settings"]
+        self.assertEqual(coturn["external_ip"], "203.0.113.7")
+        script = host.script_of("install")
+        self.assertIn(ci._installer_payload("certbot"), script)
+        self.assertNotIn(ci._installer_payload("nginx"), script)
+        self.assertIn("80/tcp certbot", out)
+        self.assertIn(t("call_infra_challenge_http_standalone"), out)
+        # Le nom résout vers l'IP publique confirmée : pas d'avertissement.
+        self.assertNotIn(t("call_infra_dns_le_fails"), out)
+
+    def test_a_typed_public_ip_wins_and_a_name_elsewhere_is_warned(self):
+        self.dns = {TURN_NAME: ["203.0.113.7"]}
+        out, ans = self.planned(FakeHost(), PROD_COTURN + ["203.0.113.8", "n"])
+        self.assertEqual(ans.external_ip, "203.0.113.8")
+        self.assertIn(
+            t("call_infra_dns_elsewhere").format(
+                name=TURN_NAME, found="203.0.113.7"
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_dns_le_fails"), out)
+        self.assertIn(t("Nothing installed."), out)
+
+    def test_an_unresolved_turn_name_needs_a_typed_ip(self):
+        self.dns = {}
+        host = FakeHost()
+        out, ans = self.planned(host, PROD_COTURN + [""])
+        self.assertIsNone(ans)
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(
+            t("call_infra_turn_name_unresolved").format(name=TURN_NAME), out
+        )
+        self.assertIn(t("call_infra_public_ip_required"), out)
+        out, ans = self.planned(FakeHost(), PROD_COTURN + ["203.0.113.9", "n"])
+        self.assertEqual(ans.external_ip, "203.0.113.9")
+        self.assertIn(
+            t("call_infra_dns_unresolved").format(name=TURN_NAME), out
+        )
+
+    def test_nginx_already_on_80_answers_the_challenge(self):
+        host = FakeHost(
+            probe_extra=["@@NGINX active debian"],
+            ports=(("tcp", 22, "sshd"), ("tcp", 80, "nginx")),
+        )
+        # Ni la voie du défi HTTP ni 443 ne sont demandés : nginx sert.
+        replies = ["2", "2", DOMAIN, "", "", "", EMAIL, "", "", "", "n"]
+        out, ans = self.planned(host, replies)
+        self.assertEqual((ans.acme, ans.nginx), ("http-nginx", "existing"))
+        self.assertIs(ans.turns_443, False)
+        self.assertIn(t("call_infra_nginx_serves_challenge"), out)
+        self.assertIn(
+            t("call_infra_nginx_existing").format(layout="debian"), out
+        )
+
+    def test_nginx_installed_for_the_challenge_on_a_coturn_host(self):
+        replies = ["2", "2", DOMAIN, "", "", "", "2", EMAIL, "", "", "", "n"]
+        out, ans = self.planned(FakeHost(), replies)
+        self.assertEqual((ans.acme, ans.nginx), ("http-nginx", "install"))
+        self.assertIn(t("call_infra_nginx_install"), out)
+
+    def test_443_is_asked_without_nginx_when_it_is_free(self):
+        replies = list(PROD_COTURN)
+        replies[9:11] = ["o"]
+        out, ans = self.planned(FakeHost(), replies + ["n"])
+        self.assertIs(ans.turns_443, True)
+        self.assertTrue(
+            any(
+                t("call_infra_ask_turns_443").format(port=5349) in p
+                for p in self.prompts
+            )
+        )
+        self.assertIn("443/tcp coturn", out)
+
+    def test_443_held_by_another_process_is_not_asked(self):
+        host = FakeHost(ports=(("tcp", 22, "sshd"), ("tcp", 443, "caddy")))
+        replies = list(PROD_COTURN)
+        del replies[9]
+        _out, ans = self.planned(host, replies + ["n"])
+        self.assertIs(ans.turns_443, False)
+        self.assertFalse(
+            any(
+                t("call_infra_ask_turns_443").format(port=5349) in p
+                for p in self.prompts
+            )
+        )
+
+    def test_a_domain_that_is_an_address_is_refused(self):
+        for typed in ("192.0.2.10", "2001:db8::1", "hote-exemple"):
+            with self.subTest(typed=typed):
+                host = FakeHost()
+                out = self.drive("_call_infra_install", host, ["", "2", typed])
+                self.assertEqual(host.kinds(), ["probe"])
+                self.assertIn(t("call_infra_domain_needed"), out)
+
+    def test_an_address_is_never_proposed_as_the_domain(self):
+        # Sans ssh ni état, le nom proposé est l'adresse de l'hôte : rien
+        # n'est proposé, et une réponse vide est refusée.
+        host = FakeHost()
+        out = self.drive("_call_infra_install", host, ["", "2", ""])
+        self.assertNotIn("[192.0.2.10]", self.prompts[2])
+        self.assertIn(t("call_infra_domain_needed"), out)
+
+    def test_the_ssh_host_name_is_proposed_as_the_domain(self):
+        host = FakeHost()
+        ssh = nm.SshHost("alias-exemple", hostname="vps.exemple.test")
+        ssh.run = host.run
+        self.drive("_call_infra_install", ssh, ["", "2", "", "", "", "9"])
+        self.assertIn("[vps.exemple.test]", self.prompts[2])
+        self.assertIn("[ntfy.vps.exemple.test]", self.prompts[3])
+
+    def test_names_are_proposed_from_the_domain_and_editable(self):
+        replies = list(PROD_BOTH)
+        replies[3] = "push.exemple.test"
+        _out, ans = self.planned(FakeHost(), replies + ["n"])
+        self.assertEqual(ans.ntfy_name, "push.exemple.test")
+        self.assertEqual(ans.turn_name, TURN_NAME)
+        self.assertEqual(ans.public_name, DOMAIN)
+        self.assertTrue(any(f"[{NTFY_NAME}]" in p for p in self.prompts))
+
+    def test_a_rerun_is_prefilled_from_the_production_state(self):
+        host = FakeHost()
+        self.drive("_call_infra_install", host, PROD_BOTH + ["o", ""])
+        self.prompts = []
+        replies = [""] * 13
+        out, ans = self.planned(host, replies + ["n"])
+        self.assertEqual(ans.mode, "production")
+        self.assertEqual(
+            (ans.public_name, ans.ntfy_name, ans.turn_name),
+            (DOMAIN, NTFY_NAME, TURN_NAME),
+        )
+        self.assertEqual((ans.tls, ans.acme), ("letsencrypt", "http-nginx"))
+        self.assertEqual(ans.email, EMAIL)
+        self.assertEqual(
+            (ans.min_port, ans.max_port), (ci.PROD_MIN_PORT, ci.PROD_MAX_PORT)
+        )
+
+    def test_a_dash_clears_the_recorded_email(self):
+        host = FakeHost()
+        self.drive("_call_infra_install", host, PROD_BOTH + ["o", ""])
+        replies = [""] * 13
+        replies[7] = "-"
+        out, ans = self.planned(host, replies + ["n"])
+        self.assertEqual(ans.email, "")
+        self.assertIn(t("call_infra_email_none"), out)
+
+    def test_the_development_branch_carries_no_production_answer(self):
+        host = FakeHost()
+        self.drive("_call_infra_install", host, PROD_BOTH + ["o", ""])
+        replies = ["", "1", "", "192.0.2.10", "", "", "", "n"]
+        out, ans = self.planned(host, replies)
+        self.assertEqual(ans.mode, "development")
+        self.assertEqual(
+            ans, answers(public_name="192.0.2.10", ntfy_port=8080)
+        )
+        self.assertIn(f"{t('Mode:')} {t('development')}", out)
+
+
+class TestProductionScreens(ProductionCase):
+    def test_new_check_lines_have_labels(self):
+        for name, key, label in (
+            (
+                "private-denied",
+                "call_infra_check_private_denied",
+                "Private ranges denied",
+            ),
+            (
+                "cert-issuer",
+                "call_infra_check_cert_issuer",
+                "Certificate issuer",
+            ),
+            ("renewal", "call_infra_check_renewal_ok", "Certificate renewal"),
+        ):
+            with self.subTest(name=name):
+                line = ci.CheckLine(
+                    name,
+                    True,
+                    key,
+                    {"peer": "10.0.0.1", "issuer": "x", "label": "x"},
+                )
+                self.assertTrue(
+                    self.todo._call_infra_line(line).startswith(
+                        f"✓ {t(label)} : "
+                    )
+                )
+
+    def test_the_check_of_a_ntfy_host_aims_at_the_ntfy_name(self):
+        state = installed_state(
+            production_answers(services=frozenset({"ntfy"}))
+        )
+        host = FakeHost(state=state)
+        self.drive("_call_infra_check", host, [""])
+        _remote, address, _cafile = self.check_local.call_args.args
+        self.assertEqual(address, NTFY_NAME)
+
+    def test_uninstall_lists_nginx_and_the_certificate(self):
+        host = FakeHost(state=installed_state(production_answers()))
+        out = self.drive("_call_infra_uninstall", host, ["n", "n"])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(t("call_infra_uninstall_nginx_purges"), out)
+        self.assertIn(t("call_infra_uninstall_certificate"), out)
+        self.assertIn(t("call_infra_uninstall_hook"), out)
 
 
 class TestCheck(MenuCase):
