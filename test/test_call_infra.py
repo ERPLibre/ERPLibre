@@ -1248,6 +1248,15 @@ UFW_ADDED = (
     "ufw allow 8080/tcp\n"
     "ufw allow 3478/udp comment 'erplibre-call coturn'\n"
 )
+# Règles de l'administrateur sur les mêmes ports, qui ne diffèrent des
+# nôtres que par l'action ou le journal : `ufw allow` les remplacerait
+# (« Rule updated »).
+UFW_ADDED_OTHER_ACTIONS = (
+    "Added user rules (see 'ufw status' for running firewall):\n"
+    "ufw deny 3478/udp\n"
+    "ufw limit 8080/tcp\n"
+    "ufw allow log 49152:49252/udp comment 'erplibre-call coturn'\n"
+)
 
 
 def rule(proto, port, svc):
@@ -1536,7 +1545,7 @@ class TestFirewallRun(unittest.TestCase):
             'echo "$*" >> "$LOG"\n'
             'case "$1 $2" in\n'
             '  "show added") cat "$ADDED" ;;\n'
-            '  "allow "*) echo "Rule added" ;;\n'
+            '  "allow "*) echo "${UFW_ALLOW_OUT:-Rule added}" ;;\n'
             '  "delete allow") echo "Rule deleted" ;;\n'
             "  *) exit 1 ;;\n"
             "esac\n",
@@ -1754,6 +1763,40 @@ class TestFirewallRun(unittest.TestCase):
             ci.firewall_record("ufw", done.stdout)["rules"],
             [["udp", "3478", "coturn"], ["udp", "49152:49252", "coturn"]],
         )
+
+    def test_ufw_allow_never_rewrites_another_action_on_the_port(self):
+        script = ci.firewall_script("ufw", self.RULES, "allow")
+        done = self.run_script(script, added=UFW_ADDED_OTHER_ACTIONS)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.calls(), ["show added"])
+        markers = self.markers(done)
+        for r in self.RULES:
+            self.assertIn(
+                f"FIREWALL_FOREIGN {r.proto} {r.port} {r.service}", markers
+            )
+        self.assertEqual(ci.firewall_record("ufw", done.stdout)["rules"], [])
+
+    def test_ufw_delete_leaves_another_action_on_the_port(self):
+        script = ci.firewall_script("ufw", self.RULES, "delete")
+        done = self.run_script(script, added=UFW_ADDED_OTHER_ACTIONS)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.calls(), ["show added"])
+        self.assertIn(
+            "FIREWALL_FOREIGN udp 49152:49252 coturn", self.markers(done)
+        )
+
+    def test_ufw_rule_updated_is_never_recorded(self):
+        script = ci.firewall_script("ufw", self.RULES, "allow")
+        done = self.run_script(
+            script,
+            added=UFW_ADDED.split("\n", 1)[0] + "\n",
+            UFW_ALLOW_OUT="Rule updated\nRule updated (v6)",
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        markers = self.markers(done)
+        self.assertIn("FIREWALL_FOREIGN udp 3478 coturn", markers)
+        self.assertNotIn("FIREWALL_ADDED udp 3478 coturn", markers)
+        self.assertEqual(ci.firewall_record("ufw", done.stdout)["rules"], [])
 
     def test_ufw_delete_only_removes_the_tool_rules(self):
         script = ci.firewall_script("ufw", self.RULES, "delete")
