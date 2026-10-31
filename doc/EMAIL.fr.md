@@ -349,8 +349,8 @@ réduire : seul le `Message-ID` relie les deux.
 | `~/.erplibre/mail/.rules/<compte>/media/` | les copies des images que porte une réponse (dossier 0700, fichiers 0600) |
 | `~/.erplibre/mail/.service.lock`, `.service_state.json` | le verrou du service sans interface, tenu toute une passe, et le dernier état rendu par chaque compte, pour que `--quiet` n'écrive un état qui dure qu'à son changement (mode 0600) |
 | `~/.erplibre/locks/kdbx-<hash>.lock` | le verrou que prend toute écriture dans le coffre KDBX (dossier 0700 ; voir « Tourner sans le client ») |
-| `~/.config/systemd/user/erplibre-mail-rules.service`, `.timer` | les unités du service sans interface, écrites par `Courriel > [6] > [8] > [1]` |
-| `~/.config/credstore.encrypted/erplibre-mail-kdbx` | le mot de passe maître du coffre chiffré pour le service par `systemd-creds --user` (mode 0600), écrit par `Courriel > [6] > [8] > [2]` |
+| `~/.config/systemd/user/erplibre-mail-rules.service`, `.timer` | les unités du service sans interface, écrites par `Courriel > [7] > [1]` |
+| `~/.config/credstore.encrypted/erplibre-mail-kdbx` | le mot de passe maître du coffre chiffré pour le service par `systemd-creds --user` (mode 0600), écrit par `Courriel > [7] > [2]` |
 | `~/.erplibre/mail.log` | le journal du paquet courriel, avec le texte complet des erreurs que le journal du service omet |
 
 ## Dépannage
@@ -472,8 +472,10 @@ manque est le pire des trois résultats possibles.
 
 La file part au début de chaque passe de synchronisation, avant la
 relecture du serveur : au lancement, par `r` / `Shift+R`, au minuteur
-`mail_refresh_sec`, et par `Courriel > [3] Synchroniser maintenant` depuis
-le menu CLI. Une passe qui envoie ou qui échoue le dit — le TUI dans sa
+`mail_refresh_sec`, par `Courriel > [3] Synchroniser maintenant` depuis
+le menu CLI, et à chaque passe du service sans interface une fois installé,
+pour un compte qui a une règle active (voir « Tourner sans le
+client »). Une passe qui envoie ou qui échoue le dit — le TUI dans sa
 ligne de statut pendant la passe, le menu sous le nom du compte. L'ordre
 est conservé : deux messages d'un même échange arriveraient sinon inversés.
 
@@ -590,8 +592,12 @@ plafonds d'envoi du compte (voir « Garde-fous »), enregistrés par leur
 propre bouton.
 En dessous, une ligne donne l'état du service sans interface — non
 installé, actif toutes les N min avec la prochaine passe, dernière sortie,
-mot de passe du coffre en place ou non (voir « Tourner sans le client »).
-Elle se lit en arrière-plan : l'écran n'attend jamais `systemctl`.
+et d'où le service tirerait le mot de passe du coffre : *mot de passe du
+coffre chiffré*, *kdbx.password en clair (déconseillé)* — le repli lu
+dans la configuration privée —, ou *pas de mot de passe du coffre* (voir
+« Tourner sans le client ») ; le mot de passe lui-même n'est jamais
+affiché. Elle se lit en arrière-plan : l'écran n'attend jamais
+`systemctl`.
 
 Les règles s'appliquent dans l'ordre, et **toutes** s'appliquent : un
 message qui correspond à deux règles reçoit deux réponses. Une règle
@@ -701,8 +707,10 @@ pouvant porter du script. Le PNG garde la largeur propre du dessin, ramenée
 convertisseur — `rsvg-convert`, le module Python `cairosvg`, `inkscape` ou
 ImageMagick, essayés dans cet ordre ; sans aucun, le formulaire dit
 d'installer `librsvg2-bin`. Un SVG qui renvoie à un fichier ou à une
-ressource externe — un `href` ou un `url()` autre que `#…` ou `data:`, un
-`@import`, une entité externe — est refusé.
+ressource externe — un `href`, un `absref` ou un `url()` autre que `#…` ou
+qu'un `data:` d'image PNG, JPEG, GIF, WebP ou de police (un SVG imbriqué ou
+un `data:` sans type est refusé), un `@import`, une entité externe — est
+refusé.
 
 Un sujet vide donne `Auto:` suivi du sujet reçu ; sinon le sujet est votre
 texte, où `{subject}` est remplacé par le sujet reçu.
@@ -996,17 +1004,22 @@ l'`In-Reply-To` de l'original, et les statistiques la compteraient comme
 une réponse. Le journal des règles garde la trace des deux.
 
 **Ce qu'une règle de redirection n'est pas.** Elle ne remplace pas la
-redirection de toute une boîte par votre serveur de courrier. Elle ne
-tourne que pendant que le client ou le menu tourne. Au-delà de 20 envois
+redirection de toute une boîte par votre serveur de courrier. Elle tourne
+avec le client, avec le menu, et avec le service sans interface une fois
+installé : fermer le client ne l'arrête pas alors. Au-delà de 20 envois
 par passe ou de 60 par heure (les plafonds du compte, un budget **partagé**
 avec les réponses et les rapports), les transferts entrent **retenus** dans
-la file d'envoi, attendent un geste sous `o`, et expirent après 24 h : du
+la file d'envoi, attendent un geste sous `o`, et expirent après 24 h ; une
+fois que la règle a 20 entrées dans la file, les messages suivants ne sont
+plus retenus mais écartés, et jamais transférés (voir « Plafonds »). Du
 courrier peut alors ne jamais partir, sans erreur visible hors la file et
 le journal. Chaque transfert classé dans Envoyés double l'espace qu'occupe
 le message (jusqu'à 25 Mio par message), et un quota IMAP plein fait
 rebondir le courrier entrant. Un serveur qui accepte certaines destinations
 et en refuse d'autres annonce un succès : les refusées sont perdues, et le
-journal dit *envoyé*. Pour tout faire suivre, la redirection de votre
+journal dit *envoyé* ; un message envoyé tout de suite depuis le client
+les compte sur sa ligne de statut (*destinataires refusés par le serveur*), sans les
+nommer parmi les servis. Pour tout faire suivre, la redirection de votre
 serveur de courrier est conseillée.
 
 ### Garde-fous
@@ -1032,11 +1045,11 @@ sous la raison indiquée.
 | boucle détectée | porte le marqueur `X-Loop` d'un client ERPLibre — un autre de vos comptes compris |
 | pourriel | porte `X-Spam-Flag: yes` |
 | expéditeur vide | a un expéditeur d'enveloppe vide (`Return-Path: <>`), comme un rebond |
-| aucune adresse de réponse | n'a aucune adresse à qui répondre, ou un De qui en nomme plusieurs |
+| aucune adresse de réponse | n'a aucune adresse à qui répondre, ou un De qui en nomme plusieurs — ou dont le libellé, une fois décodé, montre une autre adresse |
 | expéditeur automate | vient de `mailer-daemon`, `postmaster`, `no-reply`, d'une adresse de rebond… |
 | envoyé par ce compte | vient de l'adresse même de ce compte |
 | autre compte configuré | vient d'un autre compte configuré dans le client |
-| non adressé à ce compte | ne nomme ce compte ni dans À ni dans Cc — une copie en Cci, une liste, un alias |
+| non adressé à ce compte | ne nomme ce compte ni dans À ni dans Cc — une copie en Cci, une liste, un alias. Les adresses se lisent sur les en-têtes tels que reçus, avant décodage : un libellé encodé qui montrerait l'adresse de ce compte ne compte pas |
 | authentification en échec | est marqué `dmarc=fail`, ou `spf=fail` sans `dkim=pass`, par l'`Authentication-Results` du serveur de réception : répondre enverrait notre réponse à la personne dont l'adresse a été usurpée |
 | expéditeur non authentifié | rapport de statistiques seulement : ne porte aucun premier `Authentication-Results` qui authentifie le domaine du De (voir « Le rapport de statistiques ») |
 | limité | vient d'un expéditeur auquel cette règle a répondu récemment (ci-dessous) |
@@ -1076,6 +1089,12 @@ des règles, ou par la clé `caps` de `rules.json`
 (`{"per_pass": 20, "per_hour": 60}`, entiers d'au moins 1). C'est le
 plafond horaire qui borne un minuteur court : avec `mail_refresh_sec` à
 30 s, le seul plafond par passe laisserait passer 2 400 réponses par heure.
+Les plafonds valent aussi quand la file se vide : une vidange laisse partir
+au plus 20 envois automatiques, et aucun une fois que 60 sont réellement
+partis dans l'heure ; le reste attend en file une vidange suivante. Un
+arriéré accumulé pendant que le serveur d'envoi était injoignable part
+ainsi au rythme horaire, pas d'un bloc. Un envoi compte dans l'heure où il
+part réellement. *Relâcher* sous `o` est un geste et n'est pas plafonné.
 
 **Retenue du premier envoi.** Tant qu'une règle n'a pas réellement envoyé
 ses premières réponses — une par défaut, jusqu'à 10 —, chaque nouvelle
@@ -1126,13 +1145,17 @@ journal des règles donne le résultat et la raison de chaque message.
 
 Après une passe qui a fait quelque chose, une ligne s'ajoute à la ligne de
 statut, par compte ayant des règles actives — par exemple `perso :
-réponses automatiques envoyées : 2, en attente d'approbation (o) : 1`. Une
+envois automatiques : 2, en attente d'approbation (o) : 1`. Le compte
+réunit réponses, transferts et redirections. Une
 passe qui n'a rien trouvé à faire n'ajoute rien.
 
 Une seule passe à la fois traite un compte, quel que soit le processus —
 TUI ou menu. Une autre attend jusqu'à 30 s, puis renonce avec *Règles :
 une autre passe est en cours.* ; la passe suivante reprend où elle s'était
-arrêtée. Une passe rattrape au plus 200 messages ; les plus anciens sont
+arrêtée. Un cache qu'une passe ne peut pas écrire — tenu trop longtemps par
+un autre processus, ou disque plein — arrête la passe sur *Règles : la
+passe a échoué* ; le message en cours ne compte pas comme traité, et la
+passe suivante le réévalue. Une passe rattrape au plus 200 messages ; les plus anciens sont
 ignorés, avec un avertissement.
 
 ### Tester une règle
@@ -1158,8 +1181,9 @@ raison que donnerait une vraie passe (trop vieux, déjà
 traité, envoyé par ce compte…) ; et, s'il diffère, le verdict **pour un
 message neuf**, comme si celui-ci venait d'arriver après l'armement de la
 règle — armement, âge et « déjà traité » mis à part, les autres garde-fous,
-limite comprise, s'appliquent toujours. Quand une réponse serait décidée,
-l'essai dit aussi si le moteur la **retiendrait**, et pourquoi : tant
+limite comprise, s'appliquent toujours. Quand une réponse serait décidée
+— par l'un ou l'autre verdict —, l'essai dit aussi si le moteur la
+**retiendrait**, et pourquoi : tant
 qu'une règle n'a pas réellement envoyé ses premières réponses, chaque
 nouvelle est retenue pour relecture — le premier rapport réel l'est
 toujours — et se libère dans la file d'envoi (`o`), qui l'envoie aussitôt.
@@ -1167,8 +1191,9 @@ Quand un vrai message fait retenir une telle réponse, la ligne de statut le
 dit après la passe : *1 envoi automatique attend votre approbation (o)*.
 Un rapport de
 statistiques qui a atteint son plafond quotidien n'est pas retenu mais
-écarté : le verdict dit alors *plafond quotidien du rapport atteint*, et
-rien n'arriverait dans la file d'envoi. Pour un rapport de
+écarté : le verdict dit alors *plafond quotidien du rapport atteint* — le
+verdict réel, ou celui pour un message neuf quand lui seul répondrait —,
+et rien n'arriverait dans la file d'envoi. Pour un rapport de
 statistiques, il montre l'identifiant de serveur lu dans le premier
 `Authentication-Results` (ou que le serveur n'en écrit pas), si
 l'expéditeur est authentifié, et un avertissement tant qu'aucun
@@ -1251,9 +1276,10 @@ comprise, sans ouvrir le coffre ni le réseau ; un compte désactivé aussi.
 Un compte en cache `ephemeral` est sauté avec une ligne à chaque fois : ses
 règles ne peuvent pas tourner. Les comptes sont traités l'un après l'autre.
 
-**Installer.** `Courriel > [6] Règles du courrier entrant`, n'importe quel
-compte, puis `[8] Service sans interface (systemd)` — le même écran quel que
-soit le compte. Il s'ouvre sur l'état du service, puis propose `[1]`
+**Installer.** `Courriel > [7] Service sans interface (systemd)`, ou
+`Courriel > [6] Règles du courrier entrant`, n'importe quel compte à cache
+persistant, puis `[8]` — le même écran dans les deux cas ; `[7]` reste
+accessible quand il ne reste aucun compte, pour désinstaller. Il s'ouvre sur l'état du service, puis propose `[1]`
 installer ou mettre à jour, `[2]` le mot de passe du coffre pour le
 service, `[3]` lancer une passe maintenant, `[4]` désinstaller, `[0]`
 retour. `[1]` demande les minutes entre deux passes — 1 à 1440, 5 par
@@ -1342,7 +1368,7 @@ changement ; le code de sortie le dit quand même à chaque passe. Une passe
 ```
 
 écrit une ligne par compte (`--account` vaut `--compte`). Une ligne porte le
-nom du compte et des comptes — nouveaux messages, réponses envoyées,
+nom du compte et des comptes — nouveaux messages, envois automatiques,
 retenues —, jamais une adresse, un sujet, un secret ni le texte d'une
 erreur de serveur ou de règle : seulement le genre de la panne, le nom de
 la classe de l'erreur et, quand le serveur en a donné un, son code de
@@ -1354,7 +1380,10 @@ complet va dans `~/.erplibre/mail.log`.
 Une passe à la main ne lit pas le mot de passe chiffré de `[2]` : systemd
 ne le remet qu'au service qu'il lance. À la main, le coffre ne s'ouvre que
 par `kdbx.password` de la configuration ou par le trousseau système ;
-sinon la passe s'arrête sur « Coffre verrouillé » et le dit. Pour tester
+sinon la passe s'arrête sur « Coffre verrouillé » et le dit. Un
+`kdbx.password` que le coffre refuse est nommé comme tel, à la main comme
+dans le service sans credential : il se corrige dans la configuration,
+refaire `[2]` n'y change rien. Pour tester
 le mot de passe chiffré : `[3]` (lancer une passe maintenant), puis
 `journalctl --user -u erplibre-mail-rules`.
 
@@ -1364,7 +1393,7 @@ le mot de passe chiffré : `[3]` (lancer une passe maintenant), puis
 | 1 | erreur imprévue — un bogue ; la trace est dans `~/.erplibre/mail.log` |
 | 2 | argument refusé, compte inconnu |
 | 3 | coffre verrouillé : aucun mot de passe maître, mot de passe refusé, secret absent, trousseau système injoignable ou verrouillé |
-| 4 | réseau : serveur injoignable, lien coupé, dossier non synchronisé |
+| 4 | réseau : serveur injoignable, lien coupé, dossier non synchronisé, en-têtes des nouveaux messages non rapatriés (repris à la passe suivante) |
 | 5 | erreur de règle : `rules.json` illisible, ou passe du moteur en échec |
 | 6 | déjà en cours : une autre passe, le client ou le menu tient le compte, ou le cache est occupé |
 | 7 | authentification refusée : le serveur refuse le mot de passe ou le jeton |
