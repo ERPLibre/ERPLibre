@@ -32,6 +32,18 @@ avance à chaque synchronisation. Les fichiers de `manifest/` donnent en plus
 ce que le manifeste local ne porte pas : « freeze-revision » et
 « fork-upstream-freeze-revision ».
 
+L'amont d'un fork
+-----------------
+« upstream » vaut None hors d'un fork. Pour un fork, il porte ce que
+déclarent les attributs « fork-upstream-* », puis l'écart du clone avec cet
+amont (voir `ecart_amont`) : « base », le commit d'où partent nos commits,
+et « base_source », d'où il vient ; « ahead », nos commits au-dessus de
+cette base ; « tracking », la branche de suivi amont du clone, et
+« behind », les commits qu'elle porte et que HEAD n'a pas encore. Une
+valeur que le clone ne permet pas de calculer reste None : « behind » sans
+branche de suivi, que seul le diagnostic de mise à niveau rapatrie ; tout
+l'écart sans base, « base_reason » disant pourquoi.
+
 « state » d'un dépôt vaut :
 
   conforme        HEAD est la cible
@@ -753,6 +765,37 @@ def entree_depot(racine, chemin, attrs, remotes, sale, delai):
     return entree
 
 
+def ecart_amont(clone, chemin, attrs, remotes, head, delai):
+    """L'écart du clone avec l'amont de son fork, pour « upstream » (voir
+    la docstring du module). Ne lève pas : une erreur de git laisse None."""
+    m = RE_CHEMIN_VERSION.match(chemin or "")
+    version = m.group(1) if m else None
+    ecart = {
+        "base": None,
+        "base_source": None,
+        "base_reason": None,
+        "ahead": None,
+        "tracking": None,
+        "behind": None,
+    }
+    base, motif = base_de_nos_commits(
+        clone, attrs, remotes, version, head, delai
+    )
+    ecart["base_reason"] = motif
+    if base:
+        ecart["base"], ecart["base_source"] = base["sha"], base["source"]
+        ecart["ahead"] = avance_retard(clone, base["sha"], head, delai)[0]
+    amont = repo_upgrade.resoudre_amont(attrs, remotes) or {}
+    branche = amont.get("branche") or version
+    if amont.get("remote") and branche:
+        ref = f"refs/remotes/{amont['remote']}/{branche}"
+        suivi = resoudre(clone, ref, delai)
+        if suivi:
+            ecart["tracking"] = ref
+            ecart["behind"] = avance_retard(clone, suivi, head, delai)[1]
+    return ecart
+
+
 def remplir_depot(entree, racine, chemin, attrs, remotes, sale, delai):
     """Remplit `entree` (voir `entree_depot`)."""
     clone = os.path.join(racine, chemin)
@@ -789,6 +832,10 @@ def remplir_depot(entree, racine, chemin, attrs, remotes, sale, delai):
         return
     entree["head"], entree["branch"] = head, branche
     entree["modules"] = modules_du_depot(racine, chemin)
+    if entree["upstream"] is not None:
+        entree["upstream"].update(
+            ecart_amont(clone, chemin, attrs, remotes, head, delai)
+        )
 
     if attrs is None:
         entree["state"] = "hors_manifeste"
