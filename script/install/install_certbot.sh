@@ -41,6 +41,8 @@
 #   @@CERTBOT_PLUGIN_INSTALLED <p>  ce passage a installe le paquet du greffon
 #   @@CERTBOT_UNHELD <fichier>      le fichier de renouvellement mis de cote
 #                                   par une desinstallation est remis
+#   @@CERTBOT_REHELD <fichier>      ce passage echoue apres l'avoir remis :
+#                                   il est de nouveau mis de cote
 #   @@CERTBOT staging-ok            l'essai a blanc a reussi
 #   @@CERTBOT_TIMER <unite> added   minuteur active ou pose par l'outil (ce
 #                                   passage ou un precedent) : la
@@ -100,6 +102,7 @@ log() { echo "[CERTBOT] $*"; }
 # l'appelant.
 die() {
     echo "[CERTBOT] ERREUR : $*" >&2
+    rehold_renewal
     echo "@@CERTBOT failed $*" >&3
     exit 1
 }
@@ -281,8 +284,9 @@ ensure_packages() {
 
 # Remet en place le fichier de renouvellement mis de cote par une
 # desinstallation, pour que certbot retrouve la lignee et que le minuteur
-# la renouvelle de nouveau. Quand certbot a deja un fichier actif, c'est
-# lui qui fait foi : la copie mise de cote est retiree.
+# la renouvelle de nouveau ; UNHELD passe a 1. Quand certbot a deja un
+# fichier actif, c'est lui qui fait foi : la copie mise de cote est
+# retiree.
 unhold_renewal() {
     local active="${ROOT}${RENEWAL_FILE}" held="${ROOT}${RENEWAL_FILE}${HOLD_SUFFIX}"
     [ -e "$held" ] || return 0
@@ -292,7 +296,25 @@ unhold_renewal() {
         return 0
     fi
     mv -f "$held" "$active"
+    UNHELD=1
     echo "@@CERTBOT_UNHELD ${RENEWAL_FILE}"
+}
+
+# Defait unhold_renewal quand le passage s'arrete avant sa derniere ligne
+# (DONE a 0) : l'appelant n'ecrit alors aucun etat, et sans etat aucune
+# desinstallation ne remettrait le fichier de cote, tandis que le minuteur
+# du paquet renouvellerait la lignee sur un webroot ou un port 80 qui ne
+# sont plus servis. Appele par die, puis par la sortie ; sans effet quand
+# le fichier n'est plus actif ou que la copie de cote existe deja. Le
+# marqueur part sur le descripteur 3, avant celui de l'echec.
+rehold_renewal() {
+    [ "$UNHELD" = 1 ] && [ "$DONE" = 0 ] || return 0
+    local active="${ROOT}${RENEWAL_FILE}" held="${ROOT}${RENEWAL_FILE}${HOLD_SUFFIX}"
+    [ -e "$active" ] && [ ! -e "$held" ] || return 0
+    if mv -f "$active" "$held"; then
+        echo "[CERTBOT] ${RENEWAL_FILE} remis de cote : ce passage a echoue." >&2
+        echo "@@CERTBOT_REHELD ${RENEWAL_FILE}" >&3
+    fi
 }
 
 # Imprime, depuis une sortie de certbot lue sur l'entree, la ligne qui dit
@@ -512,6 +534,7 @@ ensure_timer() {
 }
 
 cleanup() {
+    rehold_renewal
     local file
     for file in ${TMP_FILES[@]+"${TMP_FILES[@]}"}; do
         rm -f "$file"
@@ -524,6 +547,8 @@ main() {
     TMP_FILES=()
     APT_READY=0
     CERTBOT_ERROR=""
+    UNHELD=0
+    DONE=0
     trap cleanup EXIT
     check_root
     # Tous les refus avant la premiere installation.
@@ -561,6 +586,7 @@ main() {
     fi
 
     ensure_timer
+    DONE=1
     # Derniere ligne et code de sortie : l'appelant distant ne lit que ca.
     echo "@@CERTBOT ${verdict} ${LINEAGE}"
 }
