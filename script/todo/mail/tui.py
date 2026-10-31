@@ -1374,6 +1374,23 @@ def _flush_rules(session, rules_base):
         return None, False
 
 
+def _flush_caps(session, rules_base):
+    """Les plafonds du compte pour la vidange (`storage.load_caps`) ;
+    fichier illisible ou cache sans règles : les plafonds par défaut."""
+    from script.todo.mail.rules import storage
+    from script.todo.mail.rules.model import RuleError
+
+    base = rules_base
+    if base is None:
+        base = storage.base_of(session.store)
+    if base is None:
+        return storage.Caps()
+    try:
+        return storage.load_caps(session.account.name, base)
+    except RuleError:
+        return storage.Caps()
+
+
 def flush_outbox(
     session,
     send_fn=None,
@@ -1407,6 +1424,13 @@ def flush_outbox(
       journal est retirée sans renvoi ;
     - retenue, relu dans la base et non dans l'instantané, elle reste et
       sa réservation est rendue ;
+    - automatique, hors `only_ids`, elle reste en file, réservation rendue,
+      quand la vidange a déjà fait partir `caps.per_pass` envois
+      automatiques ou que `caps.per_hour` sont partis dans l'heure
+      (`rule_log_sent_since`) : les plafonds du compte valent au départ
+      réel, pas seulement à la décision, et un arriéré accumulé pendant
+      une panne SMTP ne part pas d'un bloc. Un relâchement (`only_ids`)
+      est un geste et n'est pas plafonné ;
     - après un échec de connexion au serveur SMTP, les entrées suivantes
       restent en file sans nouvel essai : chacune attendrait le même
       délai de connexion ;
@@ -1440,7 +1464,10 @@ def flush_outbox(
     import email
     import email.policy
 
-    from script.todo.mail.rules.engine import smtp_failure_is_permanent
+    from script.todo.mail.rules.engine import (
+        HOUR_S,
+        smtp_failure_is_permanent,
+    )
     from script.todo.mail.smtp_send import (
         RawOutgoing,
         SmtpError,
@@ -1462,9 +1489,13 @@ def flush_outbox(
         voulues = set(only_ids)
         entrees = [e for e in entrees if e["id"] in voulues]
     regles, lisibles = None, False
+    caps = None
     if any(e.get("kind", "manual") != "manual" for e in entrees):
         regles, lisibles = _flush_rules(session, rules_base)
+        if only_ids is None:
+            caps = _flush_caps(session, rules_base)
     partis = retenus = echoues = 0
+    auto_partis = 0
     injoignable = False
     for entree in entrees:
         ident = entree["id"]
@@ -1510,6 +1541,16 @@ def flush_outbox(
         if store.outbox_held(ident):
             store.outbox_release(ident)
             retenus += 1
+            continue
+        if (
+            not manuelle
+            and caps is not None
+            and (
+                auto_partis >= caps.per_pass
+                or store.rule_log_sent_since(instant - HOUR_S) >= caps.per_hour
+            )
+        ):
+            store.outbox_release(ident)
             continue
         enveloppe = None
         if kind == "auto_redirect":
@@ -1560,9 +1601,13 @@ def flush_outbox(
                 except Exception:
                     pass
         if rule_id:
-            store.rule_log_set_outcome(rule_id, source, "sent")
+            store.rule_log_set_outcome(
+                rule_id, source, "sent", sent_at=int(clock())
+            )
         store.drop_queued(ident)
         partis += 1
+        if not manuelle:
+            auto_partis += 1
         if enveloppe is not None:
             continue
         erreur = file_in_sent(session, message, verrou)

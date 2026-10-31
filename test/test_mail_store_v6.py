@@ -233,6 +233,17 @@ class TestFreshCache(StoreCase):
         db.commit()
         self.assertNotIn("perm_attempts", self.colonnes("outbox"))
 
+    def test_a_rule_log_without_sent_at_gets_it_back(self):
+        """Un journal créé sans `sent_at` la reçoit à l'ouverture ; ses
+        lignes gardent leur `at`, qui en tient lieu."""
+        self.reclamer(outcome="sent", at=1000)
+        db = self.store._db()
+        db.execute("ALTER TABLE rule_log DROP COLUMN sent_at")
+        db.commit()
+        self.rouvrir()
+        self.assertIn("sent_at", self.colonnes("rule_log"))
+        self.assertEqual(self.store.rule_log_sent_since(1000), 1)
+
     def test_reopening_twice_is_harmless(self):
         self.rouvrir()
         self.rouvrir()

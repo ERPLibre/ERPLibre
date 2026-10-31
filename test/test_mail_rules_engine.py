@@ -364,6 +364,68 @@ class TestCaps(EngineCase):
         bilan = self.passe()
         self.assertEqual((bilan.status, bilan.sent), ("error", 0))
 
+    def test_a_backlog_queued_during_an_smtp_outage_leaves_within_caps(self):
+        """Quatre heures de panne SMTP : chaque heure, 3 réponses entrent
+        en file (plafond de 3 par heure à la décision). Au retour, la
+        vidange n'en fait partir que 3 par heure réelle, et le reste
+        attend la vidange d'une heure suivante, au lieu de 12 d'un bloc."""
+        self.regle(throttle_enabled=False)
+        storage.save_caps(
+            "perso", storage.Caps(per_pass=20, per_hour=3), base=self.base
+        )
+
+        def injoignable(session, msg, verrou=None, **_kw):
+            raise SmtpError("délai de connexion dépassé")
+
+        uid = 0
+        for heure in range(4):
+            for _ in range(3):
+                uid += 1
+                self.imap.recevoir(
+                    uid, internaldate=T0 + heure * HOUR + 500 + uid
+                )
+            self.horloge.instant = T0 + heure * HOUR + 1000
+            self.passe(deliver_fn=injoignable)
+        self.assertEqual(len(self.store.outbox()), 12)
+
+        partis = []
+
+        def vider():
+            return flush_outbox(
+                self.session,
+                send_fn=lambda a, msg, tr: partis.append(msg) or [CAROLE],
+                connect_fn=lambda a, p: SimpleNamespace(quit=lambda: None),
+                now=self.horloge,
+            )
+
+        self.horloge.instant = T0 + 4 * HOUR + 1000
+        self.assertEqual(vider()[0], 3)
+        self.assertEqual(vider()[0], 0)
+        self.assertEqual(len(self.store.outbox()), 9)
+        # L'heure suivante, la file reprend où elle s'était arrêtée ; une
+        # passe de la même heure ne décide aucun envoi de plus.
+        self.horloge.instant = T0 + 5 * HOUR + 1001
+        self.assertEqual(vider()[0], 3)
+        self.imap.recevoir(99, internaldate=T0 + 5 * HOUR + 1002)
+        self.horloge.instant = T0 + 5 * HOUR + 1003
+        bilan = self.passe(deliver_fn=self.espion)
+        self.assertEqual((bilan.sent, bilan.held), (0, 1))
+        self.assertEqual(len(partis), 6)
+
+    def test_a_sent_row_counts_in_the_hour_it_left(self):
+        """Une ligne passée à `sent` longtemps après sa décision compte à
+        l'heure de son départ réel ; une ligne en file, à sa décision."""
+        self.store.rule_log_claim("r", "a", outcome="queued", at=T0)
+        self.store.rule_log_set_outcome(
+            "r", "a", "sent", sent_at=T0 + 5 * HOUR
+        )
+        self.store.rule_log_claim("r", "b", outcome="queued", at=T0)
+        depuis = T0 + 4 * HOUR + 1
+        self.assertEqual(self.store.rule_log_recent_sends(depuis), 1)
+        self.assertEqual(self.store.rule_log_sent_since(depuis), 1)
+        self.assertEqual(self.store.rule_log_recent_sends(T0), 2)
+        self.assertEqual(self.store.rule_log_sent_since(T0), 1)
+
     def test_recent_sends_count_sent_and_queued_only(self):
         for cle, issue, instant in (
             ("a", "sent", T0),
