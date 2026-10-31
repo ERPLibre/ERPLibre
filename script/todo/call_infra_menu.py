@@ -33,6 +33,7 @@ from script.todo.todo_i18n import t
 # Code de sortie de ssh quand la connexion, ou le dépôt du script, échoue.
 SSH_FAILED = 255
 CHECK_KEY_LINE = "@@CHECK_KEY"
+PROBE_HIDDEN = ("@@FILE", "@@PENDING", "@@STATE")
 ADMIN_PASSWORD_LINE = "@@ADMIN_PASSWORD"
 SERVICE_CHOICES = {
     "1": frozenset({"coturn", "ntfy"}),
@@ -200,7 +201,11 @@ class CallInfraMenuMixin:
 
     def _call_infra_probe(self, host):
         """`HostFacts` de l'hôte, ou None, la raison affichée."""
-        result = self._call_infra_run(host, ci.probe_script())
+        # Les configurations lues (@@FILE) peuvent porter des secrets : en
+        # base64, elles restent lisibles à qui voit l'écran.
+        result = self._call_infra_run(
+            host, ci.probe_script(), hide=PROBE_HIDDEN
+        )
         if result is None:
             return None
         try:
