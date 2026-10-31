@@ -6,9 +6,10 @@
 Chaque fonction shell est extraite du script et jouee dans un bac a sable :
 les commandes systeme (`systemctl`, `pacman`, `ntfy`, `chown`...) y sont des
 bouchons qui notent leurs appels. Le script annonce un acces refuse par
-defaut : une configuration en place qui ne declare aucun controle d'acces
-l'arrete, car celle d'une distribution autorise la lecture ET l'ecriture
-anonymes sur tous les sujets, sur toutes les interfaces.
+defaut : une configuration en place qui pose des reglages sans declarer de
+controle d'acces l'arrete, car ntfy autorise alors la lecture ET l'ecriture
+anonymes sur tous les sujets, sur toutes les interfaces. Un fichier sans
+aucun reglage actif, celui que livre un paquet, est mis de cote et remplace.
 """
 import os
 import re
@@ -68,16 +69,23 @@ def lignes(chemin):
 
 
 class TestConfigurationDejaEnPlace(unittest.TestCase):
-    def _jouer(self, contenu_yml, environnement=None, variables=""):
+    def _jouer(self, contenu_yml, environnement=None, variables="",
+               origine=None):
         """Joue la fonction de configuration sur un server.yml donne.
 
         `variables` : affectations shell posees apres les defauts du
-        bac a sable, donc prioritaires sur eux.
+        bac a sable, donc prioritaires sur eux. `origine` : contenu d'un
+        server.yml.origine pose d'avance. Avec `origine` donne, rend aussi
+        le contenu de server.yml.origine apres coup (None s'il n'existe pas).
         """
         with tempfile.TemporaryDirectory() as dossier:
             if contenu_yml is not None:
                 with open(os.path.join(dossier, "server.yml"), "w") as flux:
                     flux.write(contenu_yml)
+            sauvegarde = os.path.join(dossier, "server.yml.origine")
+            if origine:
+                with open(sauvegarde, "w") as flux:
+                    flux.write(origine)
             enveloppe = (
                 "set -e\n"
                 "log() { echo \"$*\"; }\n"
@@ -99,10 +107,14 @@ class TestConfigurationDejaEnPlace(unittest.TestCase):
             fait = jouer(enveloppe, environnement)
             yml = os.path.join(dossier, "server.yml")
             ecrit = open(yml).read() if os.path.exists(yml) else ""
-            return fait, ecrit
+            if origine is None:
+                return fait, ecrit
+            garde = (open(sauvegarde).read() if os.path.exists(sauvegarde)
+                     else None)
+            return fait, ecrit, garde
 
     def test_une_config_permissive_arrete_l_installateur(self):
-        """Celle d'une distribution ne declare aucun controle d'acces."""
+        """Des reglages poses sans aucun controle d'acces."""
         fait, ecrit = self._jouer('listen-http: ":8080"\n')
         self.assertNotEqual(fait.returncode, 0, fait.stdout)
         self.assertIn("aucun controle d'acces", fait.stderr.lower())
@@ -122,6 +134,38 @@ class TestConfigurationDejaEnPlace(unittest.TestCase):
         fait, _ = self._jouer('listen-http: ":8080"\n',
                               {"NTFY_GARDER_CONFIG": "1"})
         self.assertEqual(fait.returncode, 0, fait.stderr)
+
+    # Celle que livre un paquet : chaque cle en commentaire.
+    COMMENTEE = ('# ntfy server config file\n#\n'
+                 '# base-url: "https://ntfy.exemple.test"\n\n'
+                 '  # listen-http: ":80"\n')
+
+    def test_une_config_sans_aucune_cle_est_remplacee_et_gardee(self):
+        """Elle ne porte aucun reglage : la remplacer ne perd rien, et une
+        installation neuve par paquet n'exige aucune variable."""
+        fait, ecrit, garde = self._jouer(self.COMMENTEE, origine="")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn('auth-default-access: "deny-all"', ecrit)
+        self.assertEqual(garde, self.COMMENTEE)
+
+    def test_une_sauvegarde_deja_la_n_est_pas_ecrasee(self):
+        fait, ecrit, garde = self._jouer(self.COMMENTEE, origine="avant\n")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("deny-all", ecrit)
+        self.assertEqual(garde, "avant\n")
+
+    def test_garder_la_config_vaut_aussi_pour_celle_sans_cle(self):
+        fait, ecrit, garde = self._jouer(self.COMMENTEE,
+                                         {"NTFY_GARDER_CONFIG": "1"},
+                                         origine="")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(ecrit, self.COMMENTEE)
+        self.assertIsNone(garde)
+
+    def test_une_seule_cle_sans_controle_d_acces_arrete_encore(self):
+        fait, ecrit = self._jouer(self.COMMENTEE + 'listen-http: ":80"\n')
+        self.assertNotEqual(fait.returncode, 0, fait.stdout)
+        self.assertIn("aucun controle d'acces", fait.stderr.lower())
 
     def test_sans_config_l_installateur_ecrit_la_sienne(self):
         fait, ecrit = self._jouer(None)
