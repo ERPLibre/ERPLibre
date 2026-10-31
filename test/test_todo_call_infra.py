@@ -752,5 +752,56 @@ class TestTranslations(unittest.TestCase):
             self.assertNotIn(key, TRANSLATIONS)
 
 
+class TestDocumentation(unittest.TestCase):
+    """La documentation nomme le menu à sa place actuelle.
+
+    Les `.base.md` sont les sources ; les `.md` et `.fr.md` sont générés
+    par mmg, donc les lire prouve aussi que la génération a été faite.
+    `docs/superpowers/` est exclu : plans et specs datés décrivent l'état
+    du jour où ils ont été écrits."""
+
+    MENU_EN = "TODO › Deploy › Call infrastructure"
+    MENU_FR = "TODO › Déployer › Infrastructure d'appel"
+    OLD_PATHS = ("Deploy › Prepare ntfy", "Déployer › Préparer ntfy")
+
+    def _read(self, relative):
+        return (REPO / relative).read_text(encoding="utf-8")
+
+    def test_no_source_doc_names_the_old_deploy_path(self):
+        import subprocess
+
+        listed = subprocess.run(
+            ["git", "ls-files", "*.base.md"],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        ).stdout.split()
+        sources = [p for p in listed if not p.startswith("docs/superpowers/")]
+        self.assertIn("CHANGELOG.base.md", sources)
+        for relative in sources:
+            text = self._read(relative)
+            for old in self.OLD_PATHS:
+                self.assertNotIn(old, text, relative)
+
+    def test_the_changelog_names_the_menu_in_both_languages(self):
+        unreleased = self._read("CHANGELOG.base.md").split("## [1.8.0]")[0]
+        for needle in (self.MENU_EN, self.MENU_FR, "coturn"):
+            self.assertIn(needle, unreleased)
+        self.assertIn(self.MENU_EN, self._read("CHANGELOG.md"))
+        self.assertIn(self.MENU_FR, self._read("CHANGELOG.fr.md"))
+
+    def test_the_long_test_readme_names_the_menu_in_both_languages(self):
+        self.assertIn(
+            self.MENU_EN + " › Prepare ntfy for ERPLibre mobile",
+            self._read("long_test/README.md"),
+        )
+        self.assertIn(
+            self.MENU_FR + " › Préparer ntfy pour ERPLibre mobile",
+            self._read("long_test/README.fr.md"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
