@@ -709,23 +709,43 @@ def ntfy_config(answers, existing=None):
 # cli-password, pkey-pwd, smtp-sender-pass, web-push-private-key,
 # upstream-access-token, et les connexions aux bases de coturn, qui portent
 # un mot de passe. `user=<nom>:<mot de passe>` garde son nom ; les listes
-# auth-users et auth-tokens de ntfy perdent chacun de leurs éléments.
+# auth-users et auth-tokens de ntfy perdent chacun de leurs éléments, en
+# tirets comme entre crochets, sur une ligne ou sur plusieurs. En dernier
+# filet, toute empreinte bcrypt (`$2a$`, `$2b$`, `$2y$`) et tout jeton ntfy
+# (`tk_…`) sont masqués où qu'ils soient, commentaires compris.
 _SECRET_KEY = re.compile(
     r"secret|pass|pwd|token|private-key|^(psql|mysql|mongo|redis)-", re.I
 )
 _SECRET_LISTS = ("auth-users", "auth-tokens")
 _CONF_LINE = re.compile(r"^(\s*)([A-Za-z0-9_.-]+)(\s*[:=]\s*|\s+)(.*)$")
 _LIST_ITEM = re.compile(r"^(\s*-\s*)\S")
+_BCRYPT = re.compile(r"\$2[aby]\$\d{2}\$[./A-Za-z0-9]+")
+_NTFY_TOKEN = re.compile(r"\btk_[A-Za-z0-9]+")
+
+
+def _redact_flow_item(body):
+    """(ligne masquée, liste encore ouverte) pour une ligne d'une liste
+    entre crochets ouverte plus haut ; « ] » la ferme."""
+    stripped = body.strip()
+    if stripped.startswith("]"):
+        return body, False
+    indent = body[: len(body) - len(body.lstrip())]
+    closes = "]" in stripped
+    return indent + ("***]" if closes else "***"), not closes
 
 
 def redact_secrets(text):
     """`text` dont chaque valeur secrète devient « *** », guillemets gardés ;
     les autres lignes restent à l'octet près. Sert au diff montré à
     l'écran, jamais au fichier écrit."""
-    lines, in_list = [], False
+    lines, in_list, in_flow = [], False, False
     for line in text.splitlines(keepends=True):
         body = line.rstrip("\r\n")
         end = line[len(body) :]
+        if in_flow:
+            body, in_flow = _redact_flow_item(body)
+            lines.append(body + end)
+            continue
         if in_list:
             item = _LIST_ITEM.match(body)
             if item:
@@ -736,13 +756,21 @@ def redact_secrets(text):
         if match and not body.lstrip().startswith("#"):
             indent, key, sep, value = match.groups()
             bare = value.strip()
+            secret = key in _SECRET_LISTS or _SECRET_KEY.search(key)
             if key in _SECRET_LISTS and not bare:
                 in_list = True
+            elif secret and bare.startswith("["):
+                in_flow = not bare.endswith("]")
+                shown = (
+                    "[" if bare == "[" else "[***" + ("" if in_flow else "]")
+                )
+                body = f"{indent}{key}{sep}{shown}"
             elif key == "user" and ":" in bare:
                 body = f"{indent}{key}{sep}{bare.split(':', 1)[0]}:***"
-            elif _SECRET_KEY.search(key) and bare:
+            elif secret and bare:
                 quote = bare[0] if bare[0] in "\"'" else ""
                 body = f"{indent}{key}{sep}{quote}***{quote}"
+        body = _NTFY_TOKEN.sub("tk_***", _BCRYPT.sub("***", body))
         lines.append(body + end)
     return "".join(lines)
 
