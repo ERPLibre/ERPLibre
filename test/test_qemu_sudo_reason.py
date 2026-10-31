@@ -272,6 +272,33 @@ class LesDeuxFamilles(unittest.TestCase):
         self.assertEqual("", DQ.sudo_n_hint(["virsh", "list"]))
 
 
+class LeDemarrageDuDemon(unittest.TestCase):
+    """Le sondage de la socket est gardé pour le processus : celui fait
+    pendant que le démon démarre ne doit pas figer « sudo » pour la suite."""
+
+    def test_a_socket_that_appears_late_still_spares_sudo(self):
+        appels = []
+
+        def pret(use_sudo):
+            # Le démon répond à partir du 4e sondage, au groupe comme à root.
+            appels.append(use_sudo)
+            return len(appels) >= 4
+
+        runner = DQ.Runner(use_sudo=True, dry_run=False)
+        DQ.libvirt_sudo_reset()
+        self.addCleanup(DQ.libvirt_sudo_reset)
+        with (
+            mock.patch.object(DQ, "libvirt_ready", pret),
+            mock.patch.object(DQ.os, "geteuid", return_value=1000),
+            mock.patch.object(DQ.shutil, "which", return_value="/usr/bin/x"),
+            mock.patch.object(DQ.time, "sleep", lambda s: None),
+            mock.patch.object(DQ.Runner, "run", return_value=None),
+            redirect_stdout(io.StringIO()),
+        ):
+            DQ.ensure_libvirt_service(runner)
+            self.assertFalse(runner.libvirt_sudo)
+
+
 class LeRenduDuMenu(unittest.TestCase):
     """Le récapitulatif parle deux langues, le script une seule."""
 
