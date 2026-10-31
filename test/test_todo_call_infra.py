@@ -637,38 +637,72 @@ class TestHost(unittest.TestCase):
 
         self.todo = TODO()
 
-    def host(self, chosen, local_ntfy):
+    def host(self, chosen):
         out = io.StringIO()
         with (
             mock.patch.object(
                 self.todo, "_ntfy_mobile_host", return_value=chosen
             ),
-            mock.patch.object(
-                self.todo, "_call_infra_local_ntfy", return_value=local_ntfy
-            ),
             contextlib.redirect_stdout(out),
         ):
             return self.todo._call_infra_host(), out.getvalue()
 
-    def test_this_machine_with_a_ntfy_warns_it_is_adopted(self):
-        local = nm.LocalHost()
-        host, out = self.host(local, True)
-        self.assertIs(host, local)
-        self.assertIn(t("call_infra_local_ntfy_adopted"), out)
-
-    def test_this_machine_without_ntfy_says_nothing(self):
-        _host, out = self.host(nm.LocalHost(), False)
-        self.assertEqual(out, "")
-
-    def test_over_ssh_no_warning(self):
-        ssh = nm.SshHost("alias-exemple")
-        host, out = self.host(ssh, True)
-        self.assertIs(host, ssh)
-        self.assertEqual(out, "")
+    def test_the_host_choice_says_nothing(self):
+        # L'avertissement d'adoption est celui de l'installation : la
+        # vérification et la désinstallation passent aussi par ici.
+        for chosen in (nm.LocalHost(), nm.SshHost("alias-exemple")):
+            with self.subTest(host=type(chosen).__name__):
+                host, out = self.host(chosen)
+                self.assertIs(host, chosen)
+                self.assertEqual(out, "")
 
     def test_cancelled(self):
-        host, _out = self.host(None, True)
+        host, _out = self.host(None)
         self.assertIsNone(host)
+
+
+class LocalFakeHost(FakeHost, nm.LocalHost):
+    """FakeHost qui passe pour cette machine."""
+
+
+NTFY_FOREIGN = 'listen-http: ":8080"\nauth-default-access: "read-write"\n'
+
+
+class TestLocalNtfyWarning(MenuCase):
+    def ntfy_host(self, cls, text):
+        return cls(
+            ntfy="ntfy active /etc/ntfy/server.yml",
+            files={"/etc/ntfy/server.yml": text},
+            ports=(("tcp", 22, "sshd"), ("tcp", 8080, "ntfy")),
+        )
+
+    def test_install_here_warns_for_a_foreign_ntfy(self):
+        host = self.ntfy_host(LocalFakeHost, NTFY_FOREIGN)
+        out = self.drive("_call_infra_install", host, DEFAULTS + ["n"])
+        self.assertIn(t("call_infra_local_ntfy_adopted"), out)
+
+    def test_install_here_says_nothing_for_the_tool_config(self):
+        ans = answers()
+        host = self.ntfy_host(LocalFakeHost, ci.ntfy_config(ans))
+        out = self.drive("_call_infra_install", host, DEFAULTS + ["n"])
+        self.assertNotIn(t("call_infra_local_ntfy_adopted"), out)
+
+    def test_install_over_ssh_says_nothing(self):
+        host = self.ntfy_host(FakeHost, NTFY_FOREIGN)
+        out = self.drive("_call_infra_install", host, DEFAULTS + ["n"])
+        self.assertNotIn(t("call_infra_local_ntfy_adopted"), out)
+
+    def test_check_and_uninstall_say_nothing(self):
+        state = installed_state()
+        for method, replies in (
+            ("_call_infra_check", [""]),
+            ("_call_infra_uninstall", ["n", "n"]),
+        ):
+            with self.subTest(method=method):
+                host = self.ntfy_host(LocalFakeHost, NTFY_FOREIGN)
+                host.state = state
+                out = self.drive(method, host, replies)
+                self.assertNotIn(t("call_infra_local_ntfy_adopted"), out)
 
 
 class TestSubmenu(unittest.TestCase):
