@@ -292,14 +292,13 @@ class TestInstall(MenuCase):
         self.drive("_call_infra_install", host, DEFAULTS + ["o", ""])
         self.assertEqual({user for _, user in host.calls}, {None})
 
-    def test_the_check_password_never_reaches_the_screen(self):
+    def test_the_install_script_carries_no_check_password(self):
+        # Le mot de passe du compte de contrôle naît sur l'hôte : rien de
+        # secret ne part d'ici pour lui.
         host = FakeHost()
-        with mock.patch.object(
-            cim.secrets, "token_urlsafe", return_value="Kq4controleinvente77"
-        ):
-            out = self.drive("_call_infra_install", host, DEFAULTS + ["o", ""])
-        self.assertNotIn("Kq4controleinvente77", out)
-        self.assertIn(b64("Kq4controleinvente77"), host.script_of("install"))
+        self.drive("_call_infra_install", host, DEFAULTS + ["o", ""])
+        self.assertNotIn("TURN_CHECK_PASSWORD", host.script_of("install"))
+        self.assertFalse(hasattr(cim, "secrets"))
 
     def test_a_rerun_with_the_same_answers_changes_nothing(self):
         ans = answers()

@@ -39,7 +39,6 @@ COTURN_INSTALLER = os.path.join(REPO, "script", "install", "install_coturn.sh")
 NTFY_INSTALLER = os.path.join(REPO, "script", "install", "install_ntfy.sh")
 
 STAMP = "20261030-101500"
-PASSWORD = "Kq4-controle-invente-77"
 NOW = datetime.datetime.now(datetime.timezone.utc)
 UTC = datetime.timezone.utc
 
@@ -557,7 +556,6 @@ class TestPlan(unittest.TestCase):
         text = json.dumps(ci.written_state(plan, STAMP))
         self.assertNotIn("PRIVATE KEY", text)
         self.assertNotIn(TURN_KEY.splitlines()[1], text)
-        self.assertNotIn(PASSWORD, text)
 
     def adopted_coturn(self):
         facts = base_facts(
@@ -882,18 +880,19 @@ echo "$v"
 
 
 class TestInstallScriptText(unittest.TestCase):
-    def test_password_and_key_only_in_base64(self):
+    def test_no_check_password_and_key_only_in_base64(self):
+        # Le mot de passe du compte de contrôle naît sur l'hôte, dans
+        # install_coturn.sh : le script n'en porte aucun.
         plan = ci.plan_install(base_facts(), supplied(), NOW)
-        script = ci.install_script(plan, STAMP, PASSWORD)
-        self.assertNotIn(PASSWORD, script)
-        self.assertIn(base64.b64encode(PASSWORD.encode()).decode(), script)
+        script = ci.install_script(plan, STAMP)
+        self.assertNotIn("TURN_CHECK_PASSWORD", script)
         self.assertNotIn("PRIVATE KEY", script)
         for line in TURN_KEY.splitlines()[1:-1]:
             self.assertNotIn(line, script)
 
     def test_state_written_after_the_last_active_check_and_guarded(self):
         plan = ci.plan_install(base_facts(), answers(), NOW)
-        script = ci.install_script(plan, STAMP, PASSWORD)
+        script = ci.install_script(plan, STAMP)
         last_active = script.rindex("@@ACTIVE")
         guard = script.index('if [ "$OK" = 1 ]; then')
         write_state = script.index('> "$STATE.new"')
@@ -908,21 +907,13 @@ class TestInstallScriptText(unittest.TestCase):
         # Le script voyage en UN argument de « sh -c » : Linux borne un
         # argument à 128 Kio (MAX_ARG_STRLEN), guillemets de ssh compris.
         plan = ci.plan_install(base_facts(), supplied(), NOW)
-        script = ci.install_script(plan, STAMP, PASSWORD)
+        script = ci.install_script(plan, STAMP)
         self.assertLess(len(shlex.quote(script).encode()), 128 * 1024 - 4096)
 
     def test_bad_inputs(self):
         plan = ci.plan_install(base_facts(), answers(), NOW)
         with self.assertRaises(ValueError):
-            ci.install_script(plan, "../x", PASSWORD)
-        with self.assertRaises(ValueError):
-            ci.install_script(plan, STAMP, "")
-        ntfy_only = ci.plan_install(
-            base_facts(), answers(services=frozenset({"ntfy"})), NOW
-        )
-        self.assertNotIn(
-            "TURN_CHECK_PASSWORD", ci.install_script(ntfy_only, STAMP, "")
-        )
+            ci.install_script(plan, "../x")
 
 
 class TestInstallScriptRun(unittest.TestCase):
@@ -952,7 +943,7 @@ class TestInstallScriptRun(unittest.TestCase):
         return self.root + host_path
 
     def run_script(self, plan, seen=(), **env):
-        script = ci.install_script(plan, STAMP, PASSWORD, root=self.root)
+        script = ci.install_script(plan, STAMP, root=self.root)
         full = dict(
             os.environ,
             PATH=self.stubs + ":" + os.environ["PATH"],
@@ -1022,7 +1013,7 @@ class TestInstallScriptRun(unittest.TestCase):
         )
         coturn = self.env_of("install_coturn")
         self.assertEqual(coturn["TURN_REALM"], "turn.exemple.test")
-        self.assertEqual(coturn["TURN_CHECK_PASSWORD"], PASSWORD)
+        self.assertNotIn("TURN_CHECK_PASSWORD", coturn)
         self.assertEqual(coturn["TURN_EXTERNAL_IP"], "198.51.100.7")
         self.assertEqual(coturn["TURN_MIN_PORT"], "49152")
         # Le plan de développement permet les plages privées : la
@@ -1036,7 +1027,6 @@ class TestInstallScriptRun(unittest.TestCase):
         self.assertEqual(
             ntfy["NTFY_BASE_URL"], "http://turn.exemple.test:8080"
         )
-        self.assertNotIn(PASSWORD, self.read(os.path.join(self.log, "argv")))
         self.assertNotIn("TURN_CHECK_PASSWORD", "".join(ntfy))
         for name in ("install_coturn", "install_ntfy"):
             self.assertEqual(
