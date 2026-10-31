@@ -1274,6 +1274,31 @@ class TestInstallScriptRun(unittest.TestCase):
         copy, original = self.rerun_after_a_cut_backup("avant l'outil\n")
         self.assertEqual(copy, "avant l'outil\n")
 
+    def test_a_config_without_its_package_is_moved_aside_after_the_copy(self):
+        # pacman refuse d'installer un paquet dont un fichier existe déjà
+        # sans propriétaire : la configuration étrangère sans paquet quitte
+        # sa place une fois copiée, et l'installateur la remplace.
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        write(self.path("/etc/turnserver/turnserver.conf"), original, 0o640)
+        current = service("/etc/turnserver/turnserver.conf", original)
+        current.update(unit="turnserver", unit_found=False, active="inactive")
+        facts = base_facts(family="arch", os_id="arch", coturn=current)
+        plan = ci.plan_install(
+            facts, answers(services=frozenset({"coturn"})), NOW
+        )
+        record = plan.new_state["services"]["coturn"]
+        self.assertTrue(record["installed_by_tool"] and record["adopted"])
+        done = self.run_script(plan, seen=("/etc/turnserver/turnserver.conf",))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        backup = "/etc/turnserver/turnserver.conf.bak-" + STAMP
+        self.assertEqual(self.read(self.path(backup)), original)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.log, "install_coturn.seen"))
+        )
+        self.assertEqual(
+            self.env_of("install_coturn")["TURN_GARDER_CONFIG"], "1"
+        )
+
     def assert_no_state(self, done):
         self.assertNotEqual(done.returncode, 0)
         self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
