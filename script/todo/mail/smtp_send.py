@@ -391,13 +391,16 @@ def recipients(msg) -> list[str]:
 
 
 class SmtpTransport(Protocol):
+    """Les deux chemins d'envoi rendent les destinataires que le serveur a
+    refusés (`{adresse: (code, texte)}`, comme `smtplib`), ou None."""
+
     def send_message(
         self, msg, from_addr: str, to_addrs: list[str]
-    ) -> None: ...
+    ) -> dict | None: ...
 
     def send_raw(
         self, raw: bytes, from_addr: str, to_addrs: list[str]
-    ) -> None: ...
+    ) -> dict | None: ...
 
     def quit(self) -> None: ...
 
@@ -406,13 +409,18 @@ class SmtplibTransport:
     def __init__(self, client) -> None:
         self.client = client
 
-    def send_message(self, msg, from_addr: str, to_addrs: list[str]) -> None:
-        self.client.send_message(msg, from_addr=from_addr, to_addrs=to_addrs)
+    def send_message(self, msg, from_addr: str, to_addrs: list[str]) -> dict:
+        """`smtplib` ne lève que si TOUS les destinataires sont refusés ;
+        sinon il rend les refusés, que cette méthode rend à son tour."""
+        return self.client.send_message(
+            msg, from_addr=from_addr, to_addrs=to_addrs
+        )
 
     def send_raw(
         self, raw: bytes, from_addr: str, to_addrs: list[str]
-    ) -> None:
-        """Remet `raw` octet pour octet par `sendmail`, après `to_crlf`.
+    ) -> dict:
+        """Remet `raw` octet pour octet par `sendmail`, après `to_crlf`, et
+        rend les destinataires refusés, comme `send_message`.
 
         Jamais `send_message`, qui re-sérialise le message (en-têtes
         repliés, signature DKIM cassée) et lève `ValueError` sur un message
@@ -428,7 +436,9 @@ class SmtplibTransport:
             self.client.ehlo_or_helo_if_needed()
             if self.client.has_extn("8bitmime"):
                 options = ["BODY=8BITMIME"]
-        self.client.sendmail(from_addr, to_addrs, data, mail_options=options)
+        return self.client.sendmail(
+            from_addr, to_addrs, data, mail_options=options
+        )
 
     def quit(self) -> None:
         try:
@@ -520,7 +530,9 @@ def send(account, msg, transport: SmtpTransport) -> list[str]:
     Un `RawOutgoing` part par `transport.send_raw` à son enveloppe telle
     quelle : elle ne passe jamais par `recipients()`, et ses octets ne
     sont pas relus. Tout autre message part par `send_message` aux
-    destinataires de `recipients()`, sans le Cci interne.
+    destinataires de `recipients()`, sans le Cci interne. Un destinataire
+    que le serveur refuse alors qu'il en accepte d'autres n'est pas rendu
+    parmi les servis.
     """
     raw = isinstance(msg, RawOutgoing)
     to_addrs = list(msg.envelope) if raw else recipients(msg)
@@ -532,9 +544,11 @@ def send(account, msg, transport: SmtpTransport) -> list[str]:
         )
     try:
         if raw:
-            transport.send_raw(msg.raw, account.email, to_addrs)
+            refused = transport.send_raw(msg.raw, account.email, to_addrs)
         else:
-            transport.send_message(without_bcc(msg), account.email, to_addrs)
+            refused = transport.send_message(
+                without_bcc(msg), account.email, to_addrs
+            )
     except Exception as exc:
         # Le serveur peut refuser pour mille raisons (auth, quota,
         # destinataire rejeté) : une seule erreur de haut niveau, avec le
@@ -543,6 +557,9 @@ def send(account, msg, transport: SmtpTransport) -> list[str]:
         raise SmtpError(
             f"{t('mail_err_send_refused')} {exc}", code=smtp_code(exc)
         ) from exc
+    if isinstance(refused, dict) and refused:
+        rejected = {str(addr).lower() for addr in refused}
+        return [addr for addr in to_addrs if addr.lower() not in rejected]
     return to_addrs
 
 
