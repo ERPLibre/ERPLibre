@@ -487,6 +487,17 @@ class TestInstall(MenuCase):
         out = self.drive("_call_infra_install", host, DEFAULTS + ["o", ""])
         self.assertEqual(out.count(ADMIN_PASSWORD), 1)
 
+    def test_the_admin_added_to_an_adopted_ntfy_is_recorded(self):
+        foreign = 'listen-http: ":8080"\nauth-default-access: "deny-all"\n'
+        host = FakeHost(
+            admin_password=ADMIN_PASSWORD,
+            ntfy="ntfy active /etc/ntfy/server.yml",
+            files={"/etc/ntfy/server.yml": foreign},
+            ports=(("tcp", 22, "sshd"), ("tcp", 8080, "ntfy")),
+        )
+        self.drive("_call_infra_install", host, DEFAULTS + ["o", ""])
+        self.assertIs(host.state["services"]["ntfy"]["admin_added"], True)
+
     def test_the_admin_password_survives_a_failed_install(self):
         host = FakeHost(admin_password=ADMIN_PASSWORD, install_ok=False)
         out = self.drive("_call_infra_install", host, DEFAULTS + ["o"])
