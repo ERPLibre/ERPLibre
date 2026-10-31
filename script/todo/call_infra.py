@@ -19,8 +19,8 @@ Déroulé :
 2. `plan_install(facts, answers, now)` refuse (`Refusal`, clé i18n et
    valeurs) ou rend un `InstallPlan` : services adoptés, diffs des fichiers
    remplacés, état à écrire, « rien à changer ».
-3. `install_script(plan, stamp, check_password)` rend le script qui sauve
-   les configurations adoptées, lance les installateurs et n'écrit l'état
+3. `install_script(plan, stamp)` rend le script qui sauve les
+   configurations adoptées, lance les installateurs et n'écrit l'état
    qu'une fois chaque service vu actif.
 4. `check_remote_script()` lit l'hôte sans rien écrire ; `check_local()`
    en tire le verdict depuis la machine qui lance `todo.py` : allocations
@@ -1098,7 +1098,7 @@ def _place(payload, path, mode, group=None):
     )
 
 
-def _coturn_block(plan, check_password):
+def _coturn_block(plan):
     answers = plan.answers
     lines = [
         "# coturn",
@@ -1138,11 +1138,9 @@ def _coturn_block(plan, check_password):
         }
     if "coturn" in plan.adopt:
         variables["TURN_GARDER_CONFIG"] = "1"
-    # Le mot de passe passe du base64 à une variable du shell, puis à
-    # l'environnement de l'installateur, qui le retire aussitôt du sien.
-    raw["TURN_CHECK_PASSWORD"] = (
-        f"$(printf %s {shlex.quote(_b64(check_password))} | base64 -d)"
-    )
+    # Sans TURN_CHECK_PASSWORD, install_coturn.sh tire le mot de passe du
+    # compte de contrôle sur l'hôte et n'en garde que la clé, que la
+    # vérification relit : aucun secret de ce compte ne part d'ici.
     lines += ["(", "  umask 022"] + _export(variables, raw)
     lines += ['  exec bash "$D/install_coturn.sh"', ")", "RC_coturn=$?"]
     return lines
@@ -1229,7 +1227,7 @@ def _state_write_lines(state):
     ]
 
 
-def install_script(plan, stamp, check_password, root=""):
+def install_script(plan, stamp, root=""):
     """Script `sh` d'installation, lancé en root sur l'hôte.
 
     Ordre : fiche de l'origine de chaque service dans `PENDING_DIR` (gardée
@@ -1243,15 +1241,13 @@ def install_script(plan, stamp, check_password, root=""):
     nul. Une coupure en cours de route laisse l'ancien état (ou aucun) et
     les fiches : la relance repart de là.
 
-    `check_password` (le compte de contrôle de coturn), le certificat et la
-    clé ne figurent qu'en base64 dans le texte. `root` préfixe chaque
-    chemin de l'hôte (tests).
+    Le mot de passe du compte de contrôle de coturn n'y figure pas :
+    l'installateur le tire sur l'hôte. Le certificat et la clé n'y
+    figurent qu'en base64. `root` préfixe chaque chemin de l'hôte (tests).
     """
     if not _STAMP.match(stamp or ""):
         raise ValueError(f"stamp: {stamp!r}")
     services = [s for s in SERVICES if s in plan.answers.services]
-    if "coturn" in services and not check_password:
-        raise ValueError("check_password is required for coturn")
     state = written_state(plan, stamp)
     lines = [
         "set -u",
@@ -1290,7 +1286,7 @@ def install_script(plan, stamp, check_password, root=""):
             )
     for svc in services:
         if svc == "coturn":
-            lines += _coturn_block(plan, check_password)
+            lines += _coturn_block(plan)
         else:
             lines += _ntfy_block(plan)
     lines.append("OK=1")
