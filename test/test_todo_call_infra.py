@@ -75,6 +75,8 @@ class FakeHost:
         firewall_out=None,
         uninstall_out="@@REMOVED state\n@@DONE yes\n",
         uninstall_code=0,
+        firewall_pending=(),
+        state_code=0,
     ):
         self.os_line = os_line
         self.systemd = systemd
@@ -91,6 +93,8 @@ class FakeHost:
         self.firewall_out = firewall_out
         self.uninstall_out = uninstall_out
         self.uninstall_code = uninstall_code
+        self.firewall_pending = list(firewall_pending)
+        self.state_code = state_code
         self.calls = []
 
     @staticmethod
@@ -107,7 +111,9 @@ class FakeHost:
             return "install"
         if "@@SAVED" in script:
             return "state"
-        if "@@FIREWALL_ADDED" in script:
+        # Après les autres : la sonde et la vérification nomment aussi des
+        # lignes @@FIREWALL_*.
+        if "@@FIREWALL_" in script:
             return "firewall"
         return "unknown"
 
@@ -134,6 +140,9 @@ class FakeHost:
         ]
         if self.state is not None:
             lines.append(f"@@STATE {b64(json.dumps(self.state))}")
+        lines += [
+            f"@@FIREWALL_PENDING {line}" for line in self.firewall_pending
+        ]
         lines.append("@@END")
         return "\n".join(lines) + "\n"
 
@@ -169,7 +178,10 @@ class FakeHost:
             self.state = state_of(script)
             return 0, out + "@@SAVED yes\n"
         if kind == "state":
+            if self.state_code:
+                return self.state_code, "@@FAILED state\n@@SAVED no\n"
             self.state = state_of(script)
+            self.firewall_pending = []
             return 0, "@@SAVED yes\n"
         if kind == "firewall":
             out = self.firewall_out
@@ -317,6 +329,59 @@ class TestInstall(MenuCase):
         out = self.drive("_call_infra_install", host, DEFAULTS)
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn(t("call_infra_nothing_to_change"), out)
+
+    def rerun_host(self, **changes):
+        ans = answers()
+        values = dict(
+            state=installed_state(ans),
+            coturn="coturn active /etc/turnserver.conf",
+            ntfy="ntfy active /etc/ntfy/server.yml",
+            files={
+                "/etc/turnserver.conf": ci.coturn_config(ans),
+                "/etc/ntfy/server.yml": ci.ntfy_config(ans),
+            },
+            ports=(("udp", 3478, "turnserver"), ("tcp", 8080, "ntfy")),
+        )
+        values.update(changes)
+        return FakeHost(**values)
+
+    def test_a_rerun_still_offers_the_firewall_rules_not_recorded(self):
+        # Un « non » au pare-feu, ou un état qui n'a pas pu s'écrire après
+        # l'ajout, ne ferme pas la porte à la relance.
+        host = self.rerun_host(firewall="ufw")
+        out = self.drive("_call_infra_install", host, DEFAULTS + ["o"])
+        self.assertIn(t("call_infra_nothing_to_change"), out)
+        self.assertEqual(host.kinds(), ["probe", "firewall", "state"])
+        self.assertEqual(
+            host.state["firewall"]["rules"],
+            [["tcp", "3478", "coturn"], ["udp", "3478", "coturn"]],
+        )
+
+    def test_a_rerun_records_the_rules_a_failed_save_left_pending(self):
+        host = self.rerun_host(
+            firewall="ufw", firewall_pending=["ufw udp 49152:49252 coturn"]
+        )
+        self.drive("_call_infra_install", host, DEFAULTS + ["n"])
+        self.assertEqual(host.kinds(), ["probe", "state"])
+        self.assertEqual(
+            host.state["firewall"]["rules"], [["udp", "49152:49252", "coturn"]]
+        )
+
+    def test_a_refused_state_save_says_the_state_is_not_saved(self):
+        host = self.rerun_host(firewall="ufw")
+        host.state_code = 0
+        original = host._answer
+
+        def answer(script, sudo_user):
+            if host.kind(script) == "state":
+                host.calls.append((script, sudo_user))
+                return 1, "sudo: 3 saisies de mots de passe incorrectes\n"
+            return original(script, sudo_user)
+
+        host._answer = answer
+        out = self.drive("_call_infra_install", host, DEFAULTS + ["o"])
+        self.assertIn(t("call_infra_sudo_refused"), out)
+        self.assertIn(t("call_infra_state_not_saved"), out)
 
     def test_fedora_is_refused_before_any_question(self):
         host = FakeHost(os_line="fedora 41")
@@ -619,6 +684,20 @@ class TestUninstall(MenuCase):
             out,
         )
         self.assertIn(t("call_infra_uninstalled"), out)
+
+    def test_pending_firewall_rules_are_removed_too(self):
+        host = FakeHost(
+            state=installed_state(), firewall_pending=["ufw udp 3478 coturn"]
+        )
+        with mock.patch.object(
+            ci, "uninstall_script", wraps=ci.uninstall_script
+        ) as built:
+            out = self.drive("_call_infra_uninstall", host, ["n", "o"])
+        self.assertEqual(
+            ci.rules_from_state(built.call_args.args[0]),
+            (ci.Rule("udp", "3478", "coturn"),),
+        )
+        self.assertIn("3478/udp", out)
 
     def test_a_state_of_another_version_is_refused(self):
         state = installed_state()
