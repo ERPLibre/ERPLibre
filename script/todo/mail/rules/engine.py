@@ -1372,7 +1372,7 @@ class _Pass:
             self.sends_this_pass += 1
             self._queue(rule, msg_key, msg, now, "queued", "smtp_transient")
             return
-        store.rule_log_set_outcome(rule.id, msg_key, "sent")
+        store.rule_log_set_outcome(rule.id, msg_key, "sent", sent_at=now)
         self.sends_this_pass += 1
         self.result.sent += 1
         _logger.info("règles %s : règle %s, sent", self.name, rule.id)

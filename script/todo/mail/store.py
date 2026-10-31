@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS rule_log (
   queue_id       INTEGER,
   sealed_sender  BLOB,
   sealed_subject BLOB,
+  sent_at        INTEGER,
   UNIQUE(rule_id, msg_key)
 );
 CREATE INDEX IF NOT EXISTS idx_rule_log_sender
@@ -225,6 +226,17 @@ def _ensure_columns(conn) -> list[str]:
         " ON messages(in_reply_to_hash)"
     )
     return ajoutees
+
+
+def _ensure_rule_log_columns(conn) -> None:
+    """Ajoute `sent_at` à un journal des règles créé sans elle, lu dans
+    `PRAGMA table_info` comme pour `messages`. Les lignes existantes
+    gardent `sent_at` nul : leur `at` en tient lieu."""
+    presentes = {
+        row["name"] for row in conn.execute("PRAGMA table_info(rule_log)")
+    }
+    if "sent_at" not in presentes:
+        conn.execute("ALTER TABLE rule_log ADD COLUMN sent_at INTEGER")
 
 
 def _ensure_outbox_columns(conn) -> None:
@@ -562,6 +574,7 @@ class Store:
             conn.executescript(SCHEMA)
             _ensure_columns(conn)
             _ensure_outbox_columns(conn)
+            _ensure_rule_log_columns(conn)
             neuf = _ensure_fts(conn, self.mode)
             # REPLACE, pas IGNORE : un cache d'avant la v2 porte encore
             # « 1 », et l'ignorer laisserait la version mentir sur une base
@@ -1375,21 +1388,31 @@ class Store:
         )
 
     def _avancer_issue(
-        self, db, rule_id, msg_key, outcome, reason, queue_id
+        self, db, rule_id, msg_key, outcome, reason, queue_id, sent_at=None
     ) -> bool:
         """L'UPDATE de `rule_log_set_outcome`, SANS commit.
 
         `reason` remplace la raison précédente : elle explique la nouvelle
         issue, pas l'ancienne. `queue_id` absent garde celui déjà inscrit,
         pour que le lien vers la file survive au passage à `sent`.
+        `sent_at` absent garde la valeur inscrite.
         """
         terminales = ",".join("?" for _ in RULE_LOG_TERMINAL)
         curseur = db.execute(
             "UPDATE rule_log SET outcome = ?, reason = ?,"
-            " queue_id = COALESCE(?, queue_id)"
+            " queue_id = COALESCE(?, queue_id),"
+            " sent_at = COALESCE(?, sent_at)"
             " WHERE rule_id = ? AND msg_key = ?"
             f" AND outcome NOT IN ({terminales})",
-            (outcome, reason, queue_id, rule_id, msg_key, *RULE_LOG_TERMINAL),
+            (
+                outcome,
+                reason,
+                queue_id,
+                None if sent_at is None else int(sent_at),
+                rule_id,
+                msg_key,
+                *RULE_LOG_TERMINAL,
+            ),
         )
         return curseur.rowcount > 0
 
@@ -1401,17 +1424,20 @@ class Store:
         outcome: str,
         reason: str | None = None,
         queue_id: int | None = None,
+        sent_at: int | None = None,
     ) -> bool:
         """Fait AVANCER l'issue d'une ligne. Vrai si une ligne a changé.
 
         Une issue de `RULE_LOG_TERMINAL` n'est jamais réécrite : une vidange
         concurrente peut avoir envoyé l'entrée de file avant que le moteur
         n'écrive `queued`, et rétrograder `sent` ferait croire à un envoi
-        encore à faire.
+        encore à faire. `sent_at` est l'époque du départ réel, que lisent
+        les plafonds par heure (`rule_log_recent_sends`,
+        `rule_log_sent_since`).
         """
         db = self._db()
         change = self._avancer_issue(
-            db, rule_id, msg_key, outcome, reason, queue_id
+            db, rule_id, msg_key, outcome, reason, queue_id, sent_at
         )
         db.commit()
         return change
@@ -1505,20 +1531,38 @@ class Store:
 
     @_locked
     def rule_log_recent_sends(self, since: int) -> int:
-        """Combien de réponses automatiques du compte, toutes règles
-        confondues, sont parties ou attendent en file, décidées à `since`
-        ou après.
+        """Combien d'envois automatiques du compte, toutes règles
+        confondues, sont partis à `since` ou après, ou attendent en file,
+        décidés à `since` ou après.
 
-        Compte les issues `sent` et `queued` ; `at` est l'époque de la
-        décision, inchangée quand l'issue avance. Une réponse retenue n'y
-        entre pas tant qu'elle n'est pas partie : c'est le plafond glissant
-        par heure qui la retient.
+        Une issue `sent` compte à l'époque de son départ réel (`sent_at`,
+        `at` à défaut) : une réponse partie d'une file vidée longtemps après
+        sa décision occupe l'heure où elle part. Une issue `queued` compte à
+        l'époque de sa décision (`at`). Une réponse retenue n'y entre pas
+        tant qu'elle n'est pas partie : c'est le plafond glissant par heure
+        qui la retient.
         """
         return (
             self._db()
             .execute(
-                "SELECT COUNT(*) FROM rule_log WHERE at >= ?"
-                " AND outcome IN ('sent', 'queued')",
+                "SELECT COUNT(*) FROM rule_log WHERE"
+                " (outcome = 'sent' AND COALESCE(sent_at, at) >= ?)"
+                " OR (outcome = 'queued' AND at >= ?)",
+                (int(since), int(since)),
+            )
+            .fetchone()[0]
+        )
+
+    @_locked
+    def rule_log_sent_since(self, since: int) -> int:
+        """Combien d'envois automatiques du compte sont réellement partis
+        à `since` ou après (`sent_at`, `at` à défaut), file exclue : le
+        compte que la vidange de la file oppose au plafond par heure."""
+        return (
+            self._db()
+            .execute(
+                "SELECT COUNT(*) FROM rule_log WHERE outcome = 'sent'"
+                " AND COALESCE(sent_at, at) >= ?",
                 (int(since),),
             )
             .fetchone()[0]
