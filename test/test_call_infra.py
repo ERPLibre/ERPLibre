@@ -3769,6 +3769,698 @@ class TestUninstall(unittest.TestCase):
             ci.uninstall_script(None, False, "a b")
 
 
+def production(**changes):
+    """Réponses de production inventées : les deux services, Let's Encrypt
+    par HTTP à travers un nginx installé par l'outil."""
+    values = dict(
+        mode="production",
+        tls="letsencrypt",
+        acme="http-nginx",
+        nginx="install",
+        public_name="exemple.test",
+        ntfy_name="ntfy.exemple.test",
+        turn_name="turn.exemple.test",
+        email="admin@exemple.test",
+    )
+    values.update(changes)
+    return answers(**values)
+
+
+def coturn_only(**changes):
+    values = dict(
+        services=frozenset({"coturn"}),
+        acme="http-standalone",
+        nginx=None,
+        ntfy_name=None,
+    )
+    values.update(changes)
+    return production(**values)
+
+
+def installer_ranges_block():
+    """Le tableau DENIED_PEER_RANGES d'install_coturn.sh, tel quel."""
+    with open(COTURN_INSTALLER) as handle:
+        text = handle.read()
+    return re.search(
+        r"^DENIED_PEER_RANGES=\(\n.*?^\)\n", text, re.M | re.S
+    ).group(0)
+
+
+def installer_ranges():
+    """Les plages de DENIED_PEER_RANGES, lues dans install_coturn.sh."""
+    return tuple(
+        line.strip() for line in installer_ranges_block().splitlines()[1:-1]
+    )
+
+
+class TestProduction(unittest.TestCase):
+    """Mode production : réponses, refus, configurations de coturn et ntfy,
+    ports, pare-feu et relecture de l'état."""
+
+    def refusal(self, facts, ans):
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.plan_install(facts, ans, NOW)
+        return caught.exception
+
+    def test_constants(self):
+        self.assertEqual(ci.MODES, ("development", "production"))
+        self.assertEqual(ci.TLS_MODES, ("none", "supplied", "letsencrypt"))
+        self.assertEqual(
+            ci.ACME_METHODS, ("http-nginx", "http-standalone", "dns")
+        )
+        self.assertEqual(
+            ci.DNS_PLUGINS,
+            (
+                "cloudflare",
+                "digitalocean",
+                "dnsimple",
+                "google",
+                "linode",
+                "luadns",
+                "nsone",
+                "ovh",
+                "rfc2136",
+            ),
+        )
+        self.assertEqual((ci.PROD_MIN_PORT, ci.PROD_MAX_PORT), (49152, 65535))
+        self.assertEqual(
+            ci.FIREWALL_LABELS, ci.SERVICES + ("nginx", "certbot")
+        )
+
+    def test_lot_1_answers_keep_their_defaults(self):
+        ans = answers()
+        self.assertEqual(ans.mode, "development")
+        self.assertIsNone(ans.ntfy_name)
+        self.assertIsNone(ans.turn_name)
+        self.assertIsNone(ans.acme)
+        self.assertIsNone(ans.nginx)
+        self.assertFalse(ans.turns_443)
+        self.assertFalse(ans.ntfy_web)
+        self.assertEqual(ans.email, "")
+        plan = ci.plan_install(base_facts(), ans, NOW)
+        self.assertEqual(plan.new_state["mode"], "development")
+
+    def test_default_names(self):
+        self.assertEqual(
+            ci.default_names("exemple.test"),
+            ("ntfy.exemple.test", "turn.exemple.test"),
+        )
+        self.assertEqual(
+            ci.default_names(" exemple.test. "),
+            ("ntfy.exemple.test", "turn.exemple.test"),
+        )
+
+    def test_names_fall_back_to_the_public_name(self):
+        ans = production(ntfy_name=None, turn_name=None)
+        self.assertEqual(ci.ntfy_host(ans), "exemple.test")
+        self.assertEqual(ci.turn_host(ans), "exemple.test")
+        ans = production()
+        self.assertEqual(ci.ntfy_host(ans), "ntfy.exemple.test")
+        self.assertEqual(ci.turn_host(ans), "turn.exemple.test")
+
+    # --- Refus ------------------------------------------------------------
+
+    def test_production_without_tls_is_refused(self):
+        refusal = self.refusal(base_facts(), production(tls="none", acme=None))
+        self.assertEqual(refusal.key, "call_infra_prod_needs_tls")
+
+    def test_ntfy_in_production_needs_nginx(self):
+        refusal = self.refusal(base_facts(), production(nginx=None))
+        self.assertEqual(refusal.key, "call_infra_prod_needs_nginx")
+        # coturn seul se passe de nginx.
+        ci.plan_install(base_facts(), coturn_only(), NOW)
+
+    def test_supplied_certificate_must_cover_every_name_used(self):
+        ans = production(
+            tls="supplied", acme=None, cert_pem=TURN_CERT, key_pem=TURN_KEY
+        )
+        refusal = self.refusal(base_facts(), ans)
+        self.assertEqual(refusal.key, "call_infra_cert_name_missing")
+        self.assertEqual(refusal.values["name"], "ntfy.exemple.test")
+        # Un certificat générique couvre les deux noms.
+        ci.plan_install(
+            base_facts(),
+            dataclasses.replace(ans, cert_pem=WILD_CERT, key_pem=WILD_KEY),
+            NOW,
+        )
+        # Sur un hôte de coturn seul, seul le nom de TURN compte.
+        ci.plan_install(
+            base_facts(),
+            coturn_only(
+                tls="supplied", acme=None, cert_pem=TURN_CERT, key_pem=TURN_KEY
+            ),
+            NOW,
+        )
+
+    def test_acme_method_must_suit_the_services(self):
+        cases = {
+            "standalone while nginx is used": (
+                base_facts(),
+                production(acme="http-standalone"),
+            ),
+            "standalone while nginx answers on 80": (
+                base_facts(busy_ports=(("tcp", 80, "nginx"),)),
+                coturn_only(),
+            ),
+            "webroot without nginx": (
+                base_facts(),
+                coturn_only(acme="http-nginx"),
+            ),
+        }
+        for name, (facts, ans) in cases.items():
+            with self.subTest(name):
+                refusal = self.refusal(facts, ans)
+                self.assertEqual(refusal.key, "call_infra_acme_method")
+                self.assertEqual(refusal.values["method"], ans.acme)
+
+    def test_standalone_certbot_needs_port_80_free(self):
+        refusal = self.refusal(
+            base_facts(busy_ports=(("tcp", 80, "lighttpd"),)), coturn_only()
+        )
+        self.assertEqual(refusal.key, "call_infra_port_busy")
+        self.assertEqual(refusal.values["port"], 80)
+
+    def test_dns_plugin_needs_a_known_plugin_and_credentials(self):
+        good = dict(
+            acme="dns",
+            dns_plugin="cloudflare",
+            dns_credentials="dns_cloudflare_api_token = Inventejeton\n",
+        )
+        for changes in (
+            {"dns_plugin": "inconnu"},
+            {"dns_plugin": None},
+            {"dns_credentials": ""},
+            {"dns_credentials": "  \n"},
+            {"dns_credentials": None},
+        ):
+            with self.subTest(changes=changes):
+                refusal = self.refusal(
+                    base_facts(), coturn_only(**(good | changes))
+                )
+                self.assertEqual(refusal.key, "call_infra_dns_plugin")
+        plan = ci.plan_install(base_facts(), coturn_only(**good), NOW)
+        # Le fichier d'identifiants est un secret : jamais dans l'état.
+        self.assertNotIn("Inventejeton", json.dumps(plan.new_state))
+
+    def test_turns_443_replaces_the_tls_port_on_a_coturn_only_host(self):
+        ans = coturn_only(turns_443=True)
+        plan = ci.plan_install(base_facts(), ans, NOW)
+        config = ci.coturn_config(ans)
+        self.assertIn("tls-listening-port=443\n", config)
+        self.assertNotIn("tls-listening-port=5349", config)
+        rules = ci.firewall_rules(ans)
+        self.assertIn(rule("tcp", "443", "coturn"), rules)
+        self.assertNotIn(rule("tcp", "5349", "coturn"), rules)
+        self.assertIn(("tcp", 443, "coturn"), ci.needed_ports(ans))
+        block = "\n".join(ci._coturn_block(plan))
+        self.assertIn("  TURN_ALT_TLS_PORT=443\n", block)
+        self.assertTrue(
+            plan.new_state["services"]["coturn"]["settings"]["turns_443"]
+        )
+        # Sans le choix, rien de 443 pour coturn.
+        plain = ci.plan_install(base_facts(), coturn_only(), NOW)
+        self.assertNotIn(
+            "TURN_ALT_TLS_PORT", "\n".join(ci._coturn_block(plain))
+        )
+
+    def test_turns_443_is_refused_when_443_is_taken(self):
+        cases = {
+            "nginx used": (
+                base_facts(),
+                coturn_only(
+                    turns_443=True, acme="http-nginx", nginx="install"
+                ),
+                "nginx",
+            ),
+            "443 busy": (
+                base_facts(busy_ports=(("tcp", 443, "caddy"),)),
+                coturn_only(turns_443=True),
+                "caddy",
+            ),
+        }
+        for name, (facts, ans, holder) in cases.items():
+            with self.subTest(name):
+                refusal = self.refusal(facts, ans)
+                self.assertEqual(refusal.key, "call_infra_turns_443")
+                self.assertEqual(refusal.values["holder"], holder)
+                self.assertEqual(refusal.values["port"], 5349)
+        # coturn qui tient déjà 443 (relance) n'est pas un refus.
+        ci.plan_install(
+            base_facts(busy_ports=(("tcp", 443, "turnserver"),)),
+            coturn_only(turns_443=True),
+            NOW,
+        )
+
+    def test_answers_out_of_contract(self):
+        for ans in (
+            answers(mode="staging"),
+            answers(tls="letsencrypt", acme="http-nginx"),
+            production(nginx="ailleurs"),
+            production(acme=None),
+            production(acme="tls-alpn"),
+            answers(turns_443=True),
+        ):
+            with self.subTest(ans=ans):
+                with self.assertRaises(ValueError):
+                    ci.plan_install(base_facts(), ans, NOW)
+
+    def test_bad_names_and_email_are_refused(self):
+        for changes, name in (
+            ({"ntfy_name": "ntfy exemple"}, "ntfy_name"),
+            ({"turn_name": "-turn.exemple.test"}, "turn_name"),
+            ({"email": "pas une adresse"}, "email"),
+            ({"email": "a@b.test;reboot"}, "email"),
+        ):
+            with self.subTest(changes=changes):
+                refusal = self.refusal(base_facts(), production(**changes))
+                self.assertEqual(refusal.key, "call_infra_bad_value")
+                self.assertEqual(refusal.values["name"], name)
+        ci.plan_install(base_facts(), production(email=""), NOW)
+
+    # --- coturn -----------------------------------------------------------
+
+    def test_coturn_production_denies_the_installer_ranges(self):
+        self.assertEqual(ci.DENIED_PEER_RANGES, installer_ranges())
+        config = ci.coturn_config(production())
+        self.assertIn("denied-peer-ip=10.0.0.0-10.255.255.255\n", config)
+        denied = tuple(
+            line.split("=", 1)[1]
+            for line in config.splitlines()
+            if line.startswith("denied-peer-ip=")
+        )
+        self.assertEqual(denied, installer_ranges())
+        self.assertNotIn("denied-peer-ip", ci.coturn_config(answers()))
+        self.assertNotIn("denied-peer-ip", ci.coturn_config(supplied()))
+
+    def test_coturn_production_parity_with_the_installer(self):
+        ans = production(
+            tls="supplied",
+            acme=None,
+            cert_pem=WILD_CERT,
+            key_pem=WILD_KEY,
+            external_ip="203.0.113.7",
+        )
+        lo, hi = ci.relay_range(ans)
+        env = (
+            "TURN_REALM=%s\nTURN_PORT=%d\nTURN_TLS_PORT=%d\nTURN_MIN_PORT=%d\n"
+            "TURN_MAX_PORT=%d\nTURN_CERT_FILE=/x.crt\nTURN_KEY_FILE=/x.key\n"
+            "TURN_EXTERNAL_IP=%s\nTURN_ALLOW_PRIVATE=\n"
+            % (
+                ans.public_name,
+                ans.turn_port,
+                ans.turns_port,
+                lo,
+                hi,
+                ans.external_ip,
+            )
+        ) + installer_ranges_block()
+        self.assertEqual(
+            ci.coturn_config(ans), TestCoturnConfig.installer_config(self, env)
+        )
+
+    def test_coturn_block_follows_the_mode(self):
+        prod = ci.plan_install(base_facts(), production(), NOW)
+        block = "\n".join(ci._coturn_block(prod))
+        self.assertNotIn("TURN_ALLOW_PRIVATE", block)
+        self.assertIn("  TURN_MIN_PORT=49152\n", block)
+        self.assertIn("  TURN_MAX_PORT=65535\n", block)
+        dev = ci.plan_install(base_facts(), answers(), NOW)
+        self.assertIn(
+            "  TURN_ALLOW_PRIVATE=1\n", "\n".join(ci._coturn_block(dev))
+        )
+
+    def test_letsencrypt_counts_as_tls_for_coturn(self):
+        config = ci.coturn_config(production())
+        self.assertIn("tls-listening-port=5349\n", config)
+        self.assertIn("cert=/etc/erplibre-call/tls/turn.crt\n", config)
+        self.assertNotIn("no-tls", config)
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        self.assertEqual(
+            plan.new_state["services"]["coturn"]["tls_files"],
+            [
+                "/etc/erplibre-call/tls/turn.crt",
+                "/etc/erplibre-call/tls/turn.key",
+            ],
+        )
+
+    def test_external_ip_lands_in_the_coturn_config(self):
+        # Hôte derrière un NAT : le nom de TURN résout vers une adresse
+        # absente des interfaces, l'adresse confirmée part dans la config.
+        facts = base_facts(addresses=("10.0.0.5",))
+        ans = coturn_only(external_ip="203.0.113.7")
+        plan = ci.plan_install(facts, ans, NOW)
+        self.assertIn("external-ip=203.0.113.7\n", ci.coturn_config(ans))
+        self.assertIn(
+            "  TURN_EXTERNAL_IP=203.0.113.7\n",
+            "\n".join(ci._coturn_block(plan)),
+        )
+
+    def test_media_range_default_in_production(self):
+        self.assertEqual(ci.relay_range(production()), (49152, 65535))
+        self.assertEqual(ci.relay_range(answers()), (49152, 49252))
+        chosen = production(min_port=50000, max_port=50100)
+        self.assertEqual(ci.relay_range(chosen), (50000, 50100))
+        config = ci.coturn_config(production())
+        self.assertIn("min-port=49152\nmax-port=65535\n", config)
+        settings = ci.plan_install(base_facts(), production(), NOW).new_state[
+            "services"
+        ]["coturn"]["settings"]
+        self.assertEqual(
+            (settings["min_port"], settings["max_port"]), (49152, 65535)
+        )
+
+    # --- external-ip ------------------------------------------------------
+
+    @staticmethod
+    def resolver(*addresses):
+        def resolve(name, port, *args, **kwargs):
+            if not addresses:
+                raise OSError("name does not resolve")
+            return [
+                (
+                    10 if ":" in a else 2,
+                    1,
+                    6,
+                    "",
+                    (a, 0, 0, 0) if ":" in a else (a, 0),
+                )
+                for a in addresses
+            ]
+
+        return resolve
+
+    def test_external_ip_for(self):
+        name = "turn.exemple.test"
+        self.assertEqual(
+            ci.external_ip_for(
+                name, ("10.0.0.5",), self.resolver("203.0.113.7")
+            ),
+            ("203.0.113.7", "nat"),
+        )
+        self.assertEqual(
+            ci.external_ip_for(
+                name, ("10.0.0.5", "203.0.113.7"), self.resolver("203.0.113.7")
+            ),
+            ("203.0.113.7", "local"),
+        )
+        self.assertEqual(
+            ci.external_ip_for(name, ("10.0.0.5",), self.resolver()),
+            (None, "unresolved"),
+        )
+
+    def test_external_ip_for_judges_on_ipv4_first(self):
+        # L'IPv6 est sur l'hôte mais l'IPv4 passe par un NAT : coturn a
+        # besoin d'external-ip pour ses relais IPv4.
+        resolve = self.resolver("2001:db8::10", "203.0.113.7")
+        self.assertEqual(
+            ci.external_ip_for(
+                "turn.exemple.test", ("2001:db8::10",), resolve
+            ),
+            ("203.0.113.7", "nat"),
+        )
+        # Seulement de l'IPv6, présente sur l'hôte, sous une autre graphie.
+        self.assertEqual(
+            ci.external_ip_for(
+                "turn.exemple.test",
+                ("2001:db8:0:0::10",),
+                self.resolver("2001:db8::10"),
+            ),
+            ("2001:db8::10", "local"),
+        )
+
+    # --- ntfy -------------------------------------------------------------
+
+    def test_ntfy_production_config(self):
+        text = ci.ntfy_config(production())
+        keys = nm.read_yml_keys(text)
+        self.assertEqual(keys["behind-proxy"], "true")
+        self.assertEqual(keys["web-root"], "disable")
+        self.assertEqual(keys["base-url"], "https://ntfy.exemple.test")
+        self.assertTrue(keys["listen-http"].startswith("127.0.0.1:"))
+        self.assertEqual(keys["listen-http"], "127.0.0.1:8080")
+        for key in ("listen-https", "cert-file", "key-file"):
+            self.assertNotIn(key, keys)
+        self.assertIn("behind-proxy: true\n", text)
+        self.assertEqual(nm.config_problems(keys), [])
+        web = nm.read_yml_keys(ci.ntfy_config(production(ntfy_web=True)))
+        self.assertEqual(web["web-root"], "app")
+        self.assertEqual(
+            ci.ntfy_base_url(production()), "https://ntfy.exemple.test"
+        )
+        # Appliquée à son propre résultat, elle le rend inchangé.
+        self.assertEqual(ci.ntfy_config(production(), text), text)
+
+    def test_ntfy_from_development_https_to_production(self):
+        dev = ci.ntfy_config(supplied())
+        keys = nm.read_yml_keys(ci.ntfy_config(production(), dev))
+        for key in ("listen-https", "cert-file", "key-file"):
+            self.assertNotIn(key, keys)
+        self.assertEqual(keys["listen-http"], "127.0.0.1:8080")
+
+    def test_development_ntfy_is_unchanged(self):
+        keys = nm.read_yml_keys(ci.ntfy_config(answers()))
+        self.assertNotIn("behind-proxy", keys)
+        self.assertNotIn("web-root", keys)
+
+    def test_ntfy_block_in_production(self):
+        ans = production(
+            tls="supplied", acme=None, cert_pem=WILD_CERT, key_pem=WILD_KEY
+        )
+        plan = ci.plan_install(base_facts(), ans, NOW)
+        block = "\n".join(ci._ntfy_block(plan))
+        self.assertIn("  NTFY_PORT=8080\n", block)
+        self.assertIn("  NTFY_BASE_URL=https://ntfy.exemple.test\n", block)
+        self.assertNotIn("NTFY_HTTPS_PORT", block)
+        self.assertNotIn("NTFY_CERT_FILE", block)
+        self.assertEqual(plan.new_state["services"]["ntfy"]["tls_files"], [])
+
+    # --- Ports et pare-feu ------------------------------------------------
+
+    def test_firewall_rules_production_both_services(self):
+        self.assertEqual(
+            ci.firewall_rules(production()),
+            (
+                rule("tcp", "80", "nginx"),
+                rule("tcp", "443", "nginx"),
+                rule("udp", "3478", "coturn"),
+                rule("tcp", "3478", "coturn"),
+                rule("tcp", "5349", "coturn"),
+                rule("udp", "49152:65535", "coturn"),
+            ),
+        )
+        ports = [r.port for r in ci.firewall_rules(production(ntfy_port=8090))]
+        self.assertNotIn("8090", ports)
+        self.assertNotIn("8080", ports)
+
+    def test_firewall_rules_production_coturn_only(self):
+        self.assertEqual(
+            ci.firewall_rules(coturn_only()),
+            (
+                rule("tcp", "80", "certbot"),
+                rule("udp", "3478", "coturn"),
+                rule("tcp", "3478", "coturn"),
+                rule("tcp", "5349", "coturn"),
+                rule("udp", "49152:65535", "coturn"),
+            ),
+        )
+        # nginx installé pour le seul défi ACME : il n'écoute que sur 80.
+        self.assertEqual(
+            ci.firewall_rules(coturn_only(acme="http-nginx", nginx="install"))[
+                0
+            ],
+            rule("tcp", "80", "nginx"),
+        )
+        self.assertNotIn(
+            rule("tcp", "443", "nginx"),
+            ci.firewall_rules(coturn_only(acme="http-nginx", nginx="install")),
+        )
+        # DNS-01 n'ouvre rien pour le certificat.
+        dns = coturn_only(
+            acme="dns", dns_plugin="ovh", dns_credentials="dns_ovh_key = x\n"
+        )
+        self.assertEqual(
+            [r.service for r in ci.firewall_rules(dns)], ["coturn"] * 4
+        )
+
+    def test_needed_ports_production(self):
+        ports = ci.needed_ports(production())
+        self.assertIn(("tcp", 80, "nginx"), ports)
+        self.assertIn(("tcp", 443, "nginx"), ports)
+        self.assertIn(("tcp", 5349, "coturn"), ports)
+        # Le port de boucle locale de ntfy n'est pas une ouverture, mais il
+        # doit être libre : ntfy y écoute.
+        self.assertIn(("tcp", 8080, "ntfy"), ports)
+        self.assertIn(("tcp", 80, "certbot"), ci.needed_ports(coturn_only()))
+
+    def test_existing_nginx_holds_its_ports_without_refusal(self):
+        facts = base_facts(
+            busy_ports=(("tcp", 80, "nginx"), ("tcp", 443, "nginx"))
+        )
+        ci.plan_install(facts, production(nginx="existing"), NOW)
+        refusal = self.refusal(
+            base_facts(busy_ports=(("tcp", 443, "apache2"),)), production()
+        )
+        self.assertEqual(refusal.key, "call_infra_port_busy")
+        self.assertEqual(refusal.values["process"], "apache2")
+
+    def test_ntfy_port_clashing_with_nginx_is_refused(self):
+        refusal = self.refusal(base_facts(), production(ntfy_port=443))
+        self.assertEqual(refusal.key, "call_infra_bad_value")
+
+    def test_firewall_labels_for_nginx_and_certbot(self):
+        for label in ("nginx", "certbot", "coturn", "ntfy"):
+            ci._check_rule(rule("tcp", "80", label))
+        with self.assertRaises(ValueError):
+            ci._check_rule(rule("tcp", "80", "apache"))
+        state = {
+            "firewall": {
+                "kind": "ufw",
+                "rules": [["tcp", "80", "nginx"], ["tcp", "80", "certbot"]],
+            }
+        }
+        self.assertEqual(
+            ci.rules_from_state(state),
+            (rule("tcp", "80", "nginx"), rule("tcp", "80", "certbot")),
+        )
+        record = ci.firewall_record("ufw", "@@FIREWALL_ADDED tcp 443 nginx\n")
+        self.assertEqual(record["rules"], [["tcp", "443", "nginx"]])
+
+    def test_check_reads_back_nginx_and_certbot_rules(self):
+        lines = (
+            "ufw allow 443/tcp comment 'erplibre-call nginx'\n"
+            "ufw allow 80/tcp comment 'erplibre-call certbot'\n"
+            "ufw allow 8443/tcp comment 'erplibre-call apache'\n"
+        )
+        done = subprocess.run(
+            ["sed", "-n", "-E", ci._CHECK_UFW_SED],
+            input=lines,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(
+            done.stdout,
+            "@@FIREWALL_RULE ufw tcp 443 nginx\n"
+            "@@FIREWALL_RULE ufw tcp 80 certbot\n",
+        )
+        nft = '\t\ttcp dport 443 accept comment "erplibre-call nginx" # handle 7\n'
+        done = subprocess.run(
+            ["sed", "-n", "-E", ci._CHECK_NFT_SED],
+            input=nft,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(
+            done.stdout, "@@FIREWALL_RULE nftables tcp 443 nginx\n"
+        )
+
+    # --- État -------------------------------------------------------------
+
+    def test_new_state_mode_and_settings(self):
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        self.assertEqual(plan.new_state["mode"], "production")
+        coturn = plan.new_state["services"]["coturn"]["settings"]
+        ntfy = plan.new_state["services"]["ntfy"]["settings"]
+        self.assertEqual(coturn["turn_name"], "turn.exemple.test")
+        self.assertEqual(ntfy["ntfy_name"], "ntfy.exemple.test")
+        self.assertEqual(ntfy["base_url"], "https://ntfy.exemple.test")
+        self.assertEqual(coturn["acme"], "http-nginx")
+        self.assertIs(ntfy["nginx"], True)
+        self.assertFalse(ntfy["web"])
+
+    def test_lot_1_state_reads_back_as_development(self):
+        state = installed_state(answers())
+        del state["mode"]
+        back = ci.state_answers(state)
+        self.assertEqual(back.mode, "development")
+        self.assertIsNone(back.ntfy_name)
+        self.assertFalse(back.turns_443)
+        # Les réglages d'un état de lot 1 n'ont pas changé de forme.
+        self.assertNotIn(
+            "turn_name",
+            installed_state(answers())["services"]["coturn"]["settings"],
+        )
+
+    def test_production_round_trip(self):
+        cases = (
+            production(max_port=65535, ntfy_web=True, ntfy_port=8090),
+            coturn_only(
+                acme="dns",
+                dns_plugin="rfc2136",
+                dns_credentials="dns_rfc2136_secret = Invente\n",
+                turns_443=True,
+                max_port=65535,
+                external_ip="203.0.113.7",
+            ),
+            production(
+                tls="supplied",
+                acme=None,
+                cert_pem=WILD_CERT,
+                key_pem=WILD_KEY,
+                max_port=65535,
+                ntfy_port=8080,
+                email="",
+            ),
+        )
+        for ans in cases:
+            with self.subTest(ans=ans):
+                plan = ci.plan_install(base_facts(), ans, NOW)
+                back = ci.state_answers(ci.written_state(plan, STAMP))
+                # Un nginx installé par l'outil se relit comme existant.
+                self.assertEqual(
+                    back,
+                    dataclasses.replace(
+                        ans,
+                        cert_pem=None,
+                        key_pem=None,
+                        dns_credentials=None,
+                        nginx="existing" if ans.nginx else None,
+                    ),
+                )
+
+    def installed(self, ans):
+        first = ci.plan_install(base_facts(), ans, NOW)
+        ports = [("udp", 3478, "turnserver"), ("tcp", 3478, "turnserver")]
+        ntfy = None
+        if "ntfy" in ans.services:
+            ntfy = service(ci.NTFY_CONFIG, ci.ntfy_config(ans), unit="ntfy")
+            ports.append(("tcp", 8080, "ntfy"))
+        if ans.nginx:
+            ports += [("tcp", 80, "nginx"), ("tcp", 443, "nginx")]
+        return base_facts(
+            coturn=service("/etc/turnserver.conf", ci.coturn_config(ans)),
+            ntfy=ntfy,
+            busy_ports=tuple(ports),
+            state=ci.written_state(first, STAMP),
+        )
+
+    def test_rerun_with_the_same_production_answers(self):
+        for ans in (
+            production(),
+            production(
+                tls="supplied", acme=None, cert_pem=WILD_CERT, key_pem=WILD_KEY
+            ),
+            coturn_only(turns_443=True),
+        ):
+            with self.subTest(ans=ans):
+                facts = self.installed(ans)
+                # Le nginx que l'outil a installé existe à la relance.
+                if ans.nginx:
+                    ans = dataclasses.replace(ans, nginx="existing")
+                self.assertTrue(ci.plan_install(facts, ans, NOW).nothing_to_do)
+
+    def test_switching_mode_is_something_to_do(self):
+        dev = answers()
+        facts = TestPlan.both_installed(self, dev)
+        prod = production(public_name="turn.exemple.test")
+        self.assertFalse(
+            ci.plan_install(
+                facts, dataclasses.replace(prod, nginx="existing"), NOW
+            ).nothing_to_do
+        )
+
+
 class TestStdlibOnly(unittest.TestCase):
     ALLOWED_SIBLINGS = {"script.todo.ntfy_mobile", "script.todo.turn_client"}
 

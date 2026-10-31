@@ -50,6 +50,7 @@ import json
 import os
 import re
 import shlex
+import socket
 import ssl
 import subprocess
 import tempfile
@@ -68,7 +69,41 @@ PENDING_DIR = "/etc/erplibre-call/pending"
 MARKER = "# erplibre-call: managed"
 
 SERVICES = ("coturn", "ntfy")
-TLS_MODES = ("none", "supplied")
+# Libellés d'une règle de pare-feu : les services, plus nginx (80 et 443,
+# devant ntfy ou pour le défi ACME) et certbot autonome (80). Le libellé
+# finit dans le commentaire de la règle, que la vérification et la
+# désinstallation relisent.
+FIREWALL_LABELS = SERVICES + ("nginx", "certbot")
+MODES = ("development", "production")
+# « letsencrypt » n'existe qu'en production ; « none » y est refusé.
+TLS_MODES = ("none", "supplied", "letsencrypt")
+# Défi ACME : HTTP-01 par le webroot d'un nginx, HTTP-01 par certbot qui
+# écoute lui-même sur 80, ou DNS-01 par un greffon DNS de certbot.
+ACME_METHODS = ("http-nginx", "http-standalone", "dns")
+# Greffons DNS de certbot proposés ; chacun lit un fichier d'identifiants.
+DNS_PLUGINS = (
+    "cloudflare",
+    "digitalocean",
+    "dnsimple",
+    "google",
+    "linode",
+    "luadns",
+    "nsone",
+    "ovh",
+    "rfc2136",
+)
+NGINX_MODES = ("existing", "install")
+# Plage des relais de coturn en production : sa plage par défaut entière.
+PROD_MIN_PORT, PROD_MAX_PORT = 49152, 65535
+# Plage par défaut d'`Answers` : en production, elle cède la place à la
+# plage entière (voir `relay_range`).
+DEV_MIN_PORT, DEV_MAX_PORT = 49152, 49252
+HTTP_PORT, HTTPS_PORT = 80, 443
+# coturn ne sert TLS que sur un seul port avec les lignes de l'installateur
+# (deux `tls-listening-port` : le dernier gagne ; `alt-tls-listening-port`
+# reste inerte avec `no-rfc5780`). Le choix de 443 remplace donc
+# `turns_port` au lieu de s'y ajouter.
+TURNS_ALT_PORT = 443
 SUPPORTED = "Debian, Ubuntu, Arch Linux"
 FIREWALLS = ("ufw", "nftables", "none", "unknown")
 
@@ -93,7 +128,9 @@ NTFY_HTTPS_PORT = 8443
 NTFY_ADMIN_USER = "erplibre"
 
 # Nom du processus qui tient les ports d'un service (colonne de `ss -p`).
-PROCESSES = {"coturn": "turnserver", "ntfy": "ntfy"}
+# certbot autonome n'y est pas : le port 80 doit rester libre pour lui, il
+# ne l'ouvre que le temps d'un défi.
+PROCESSES = {"coturn": "turnserver", "ntfy": "ntfy", "nginx": "nginx"}
 
 _REPO = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -110,6 +147,9 @@ _MARKER_LINE = re.compile(r"@@([A-Z_]+)(?: (.*))?$")
 # écrit dans turnserver.conf et dans une requête SQL.
 _NAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$")
 _EXTERNAL_IP = re.compile(r"^[0-9A-Fa-f:./]+$")
+# Courriel donné à certbot (`--email`) : une forme simple, sans espace ni
+# caractère du shell.
+_EMAIL = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 _STAMP = re.compile(r"^[A-Za-z0-9_-]+$")
 # Locale des scripts lancés sur l'hôte : ufw traduit ses messages
 # (« Status: active », « Skipping »), que les scripts lisent en anglais.
@@ -172,7 +212,16 @@ class HostFacts:
 @dataclasses.dataclass(frozen=True)
 class Answers:
     """Les réponses de l'utilisateur. `ntfy_port` None : 8080 en http,
-    8443 avec un certificat fourni."""
+    8443 avec un certificat fourni en développement ; 8080 sur 127.0.0.1
+    en production, derrière nginx.
+
+    Production (`mode`) : `ntfy_name` et `turn_name` (None : `public_name`,
+    qui reste le realm de coturn), `acme` pour `tls="letsencrypt"` (une de
+    `ACME_METHODS`), `dns_plugin` et `dns_credentials` (texte du fichier
+    d'identifiants, un secret jamais consigné) pour `acme="dns"`, `email`
+    pour Let's Encrypt (vide : aucun), `ntfy_web` (interface web de ntfy),
+    `turns_443` (TURN sur TLS écoute 443 au lieu de `turns_port`), `nginx`
+    (« existing », « install », None sans nginx)."""
 
     services: frozenset[str]
     tls: str
@@ -181,10 +230,20 @@ class Answers:
     public_name: str
     turn_port: int = 3478
     turns_port: int = 5349
-    min_port: int = 49152
-    max_port: int = 49252
+    min_port: int = DEV_MIN_PORT
+    max_port: int = DEV_MAX_PORT
     ntfy_port: int | None = None
     external_ip: str | None = None
+    mode: str = "development"
+    ntfy_name: str | None = None
+    turn_name: str | None = None
+    acme: str | None = None
+    dns_plugin: str | None = None
+    dns_credentials: str | None = None
+    email: str = ""
+    ntfy_web: bool = False
+    turns_443: bool = False
+    nginx: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -558,19 +617,128 @@ def _pending_rule(value):
 # --- Configurations ---------------------------------------------------------
 
 
+def is_production(answers):
+    return answers.mode == "production"
+
+
+def has_tls(answers):
+    """Vrai quand coturn reçoit un certificat : fourni, ou de Let's
+    Encrypt (copié par le crochet de déploiement)."""
+    return answers.tls in ("supplied", "letsencrypt")
+
+
+def _ntfy_own_tls(answers):
+    """Vrai quand ntfy sert https lui-même : un certificat fourni en
+    développement. En production, nginx tient le TLS devant lui."""
+    return answers.tls == "supplied" and not is_production(answers)
+
+
+def default_names(domain):
+    """(nom de ntfy, nom de TURN) proposés pour un domaine."""
+    domain = domain.strip().rstrip(".")
+    return f"ntfy.{domain}", f"turn.{domain}"
+
+
+def ntfy_host(answers):
+    return answers.ntfy_name or answers.public_name
+
+
+def turn_host(answers):
+    return answers.turn_name or answers.public_name
+
+
+def coturn_tls_port(answers):
+    """Le port TLS de coturn : 443 quand `turns_443`, sinon `turns_port`."""
+    return TURNS_ALT_PORT if answers.turns_443 else answers.turns_port
+
+
+def relay_range(answers):
+    """(min, max) des relais : en production, la plage par défaut des
+    réponses devient PROD_MIN_PORT–PROD_MAX_PORT ; une plage choisie
+    reste."""
+    pair = (answers.min_port, answers.max_port)
+    if is_production(answers) and pair == (DEV_MIN_PORT, DEV_MAX_PORT):
+        return PROD_MIN_PORT, PROD_MAX_PORT
+    return pair
+
+
+def _nginx_ports(answers):
+    """Ports que nginx écoute en production : 80 dès qu'il sert (défi
+    ACME, redirection), 443 quand il porte le site de ntfy."""
+    if not is_production(answers) or answers.nginx is None:
+        return []
+    ports = [HTTP_PORT]
+    if "ntfy" in answers.services:
+        ports.append(HTTPS_PORT)
+    return ports
+
+
+def _certbot_ports(answers):
+    """Port que certbot autonome ouvre le temps d'un défi HTTP-01."""
+    if (
+        is_production(answers)
+        and answers.tls == "letsencrypt"
+        and answers.acme == "http-standalone"
+    ):
+        return [HTTP_PORT]
+    return []
+
+
+def external_ip_for(turn_name, addresses, resolve=socket.getaddrinfo):
+    """(adresse, raison) pour `external-ip` de coturn.
+
+    `resolve` (forme de `socket.getaddrinfo`) donne les adresses du nom de
+    TURN ; `addresses` sont celles des interfaces de l'hôte
+    (`HostFacts.addresses`). L'IPv4 est jugée d'abord : un relais IPv4
+    derrière un NAT a besoin d'external-ip même quand l'IPv6 du nom est sur
+    l'hôte. Raisons : « local » (une adresse résolue de la famille jugée
+    est sur l'hôte, pas d'external-ip), « nat » (aucune ne l'est : la
+    première est proposée), « unresolved » (le nom ne résout pas : à
+    demander), avec None pour adresse.
+    """
+    try:
+        found = resolve(turn_name, None)
+    except (OSError, UnicodeError):
+        return None, "unresolved"
+    resolved = []
+    for entry in found or ():
+        try:
+            address = ipaddress.ip_address(str(entry[4][0]).split("%", 1)[0])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if address not in resolved:
+            resolved.append(address)
+    if not resolved:
+        return None, "unresolved"
+    local = set()
+    for value in addresses:
+        try:
+            local.add(ipaddress.ip_address(str(value).split("%", 1)[0]))
+        except ValueError:
+            continue
+    v4 = [a for a in resolved if a.version == 4]
+    judged = v4 or resolved
+    for address in judged:
+        if address in local:
+            return str(address), "local"
+    return str(judged[0]), "nat"
+
+
 def ntfy_port(answers):
-    """Port public de ntfy : `answers.ntfy_port`, sinon 8080 en http et
-    8443 avec un certificat."""
+    """Port de ntfy : `answers.ntfy_port`, sinon 8080 en http et 8443 avec
+    un certificat fourni en développement ; en production, son port sur
+    127.0.0.1, 8080 par défaut."""
     if answers.ntfy_port is not None:
         return answers.ntfy_port
-    return NTFY_HTTPS_PORT if answers.tls == "supplied" else NTFY_HTTP_PORT
+    return NTFY_HTTPS_PORT if _ntfy_own_tls(answers) else NTFY_HTTP_PORT
 
 
 def ntfy_http_port(answers):
-    """Port http de ntfy. Avec un certificat, http n'écoute que sur
-    127.0.0.1 (la sonde de santé d'`inspect_script` le lit) : 8080, ou
-    8081 quand https a pris 8080."""
-    if answers.tls != "supplied":
+    """Port http de ntfy. Avec un certificat en développement, http
+    n'écoute que sur 127.0.0.1 (la sonde de santé d'`inspect_script` le
+    lit) : 8080, ou 8081 quand https a pris 8080. En production, c'est
+    `ntfy_port`, sur 127.0.0.1."""
+    if not _ntfy_own_tls(answers):
         return ntfy_port(answers)
     return (
         NTFY_HTTP_PORT + 1
@@ -589,32 +757,61 @@ def _url_host(name):
 
 
 def ntfy_base_url(answers):
-    scheme = "https" if answers.tls == "supplied" else "http"
+    """URL publique de ntfy : en production `https://<nom de ntfy>`, sans
+    port (nginx sert 443) ; sinon le nom public et le port de ntfy."""
+    if is_production(answers):
+        return f"https://{_url_host(ntfy_host(answers))}"
+    scheme = "https" if _ntfy_own_tls(answers) else "http"
     return f"{scheme}://{_url_host(answers.public_name)}:{ntfy_port(answers)}"
+
+
+# Plages refusées aux relais en production : DENIED_PEER_RANGES
+# d'install_coturn.sh, dans le même ordre (un test compare les deux).
+DENIED_PEER_RANGES = (
+    "0.0.0.0-0.255.255.255",
+    "10.0.0.0-10.255.255.255",
+    "100.64.0.0-100.127.255.255",
+    "127.0.0.0-127.255.255.255",
+    "169.254.0.0-169.254.255.255",
+    "172.16.0.0-172.31.255.255",
+    "192.168.0.0-192.168.255.255",
+    "::",
+    "::1",
+    "::ffff:0.0.0.0-::ffff:255.255.255.255",
+    "64:ff9b::-64:ff9b::ffff:ffff",
+    "fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+)
 
 
 def coturn_config(answers):
     """Le `turnserver.conf` qu'`install_coturn.sh` (`write_config`) écrit
-    pour ces réponses dans un plan de développement (TURN_ALLOW_PRIVATE=1,
-    aucune ligne `denied-peer-ip`), au caractère près : il sert au diff
-    montré avant d'adopter et à reconnaître une configuration déjà à
-    jour."""
+    pour ces réponses, au caractère près : il sert au diff montré avant
+    d'adopter et à reconnaître une configuration déjà à jour.
+
+    Développement : TURN_ALLOW_PRIVATE=1, aucune ligne `denied-peer-ip`.
+    Production : une ligne `denied-peer-ip` par plage de
+    DENIED_PEER_RANGES, la plage des relais de `relay_range`. Un
+    certificat, fourni ou de Let's Encrypt, ouvre TLS sur
+    `coturn_tls_port` (443 avec `turns_443`, que l'installateur reçoit en
+    TURN_ALT_TLS_PORT)."""
+    low, high = relay_range(answers)
     lines = [
         MARKER,
         "# Comptes dans userdb, pas ici. Ecrit par install_coturn.sh.",
         f"listening-port={answers.turn_port}",
     ]
-    if answers.tls == "supplied":
+    if has_tls(answers):
         lines += [
-            f"tls-listening-port={answers.turns_port}",
+            f"tls-listening-port={coturn_tls_port(answers)}",
             f"cert={COTURN_TLS_DIR}/turn.crt",
             f"pkey={COTURN_TLS_DIR}/turn.key",
         ]
     else:
         lines += ["no-tls", "no-dtls"]
     lines += [
-        f"min-port={answers.min_port}",
-        f"max-port={answers.max_port}",
+        f"min-port={low}",
+        f"max-port={high}",
         "fingerprint",
         "lt-cred-mech",
         f"realm={answers.public_name}",
@@ -622,6 +819,8 @@ def coturn_config(answers):
         "no-cli",
         "no-multicast-peers",
     ]
+    if is_production(answers):
+        lines += [f"denied-peer-ip={r}" for r in DENIED_PEER_RANGES]
     if answers.external_ip:
         lines.append(f"external-ip={answers.external_ip}")
     lines += [
@@ -682,11 +881,15 @@ def ntfy_config(answers, existing=None):
     lignes, dont les hôtes exemptés et le contrôle d'accès choisi, restent
     telles quelles. Sans fichier, ou avec un fichier fait de commentaires
     seulement, la base est `_NTFY_TEMPLATE`. Clés posées : MARKER en tête,
-    `base-url`, `listen-http`, et avec un certificat `listen-https`,
-    `cert-file`, `key-file` (retirées en http). `auth-file` et
-    `auth-default-access: deny-all` sont ajoutées seulement si elles
-    manquent : avec elles, install_ntfy.sh garde le fichier tel quel.
-    Appliquée à son propre résultat, elle le rend inchangé.
+    `base-url`, `listen-http`, et avec un certificat en développement
+    `listen-https`, `cert-file`, `key-file` (retirées sinon). En
+    production, ntfy n'écoute que sur 127.0.0.1 derrière nginx :
+    `behind-proxy: true` (l'adresse du client vient de X-Forwarded-For,
+    sans quoi chaque client serait 127.0.0.1) et `web-root: disable`, ou
+    `app` avec `ntfy_web`. `auth-file` et `auth-default-access: deny-all`
+    sont ajoutées seulement si elles manquent : avec elles,
+    install_ntfy.sh garde le fichier tel quel. Appliquée à son propre
+    résultat, elle le rend inchangé.
     """
     text = (
         existing if existing and _has_live_line(existing) else (_NTFY_TEMPLATE)
@@ -694,7 +897,15 @@ def ntfy_config(answers, existing=None):
     if not is_managed(text):
         text = MARKER + "\n" + text
     text = nm._set_key(text, "base-url", ntfy_base_url(answers), True)
-    if answers.tls == "supplied":
+    if is_production(answers):
+        http = f"127.0.0.1:{ntfy_http_port(answers)}"
+        text = nm._set_key(text, "listen-http", http, True)
+        for key in ("listen-https", "cert-file", "key-file"):
+            text = _drop_key(text, key)
+        text = nm._set_key(text, "behind-proxy", "true", False)
+        web = "app" if answers.ntfy_web else "disable"
+        text = nm._set_key(text, "web-root", web, False)
+    elif _ntfy_own_tls(answers):
         http = f"127.0.0.1:{ntfy_http_port(answers)}"
         text = nm._set_key(text, "listen-http", http, True)
         text = nm._set_key(
@@ -794,8 +1005,18 @@ def _check_answers(answers):
     refuserait après avoir commencé."""
     if not answers.services or not answers.services <= set(SERVICES):
         raise ValueError(f"services: {sorted(answers.services)}")
+    if answers.mode not in MODES:
+        raise ValueError(f"mode: {answers.mode}")
     if answers.tls not in TLS_MODES:
         raise ValueError(f"tls: {answers.tls}")
+    if answers.nginx is not None and answers.nginx not in NGINX_MODES:
+        raise ValueError(f"nginx: {answers.nginx}")
+    if not is_production(answers) and (
+        answers.tls == "letsencrypt" or answers.turns_443
+    ):
+        raise ValueError("letsencrypt and turns_443 need production mode")
+    if answers.tls == "letsencrypt" and answers.acme not in ACME_METHODS:
+        raise ValueError(f"acme: {answers.acme}")
     if answers.tls == "supplied" and not (
         answers.cert_pem and answers.key_pem
     ):
@@ -806,6 +1027,15 @@ def _check_answers(answers):
             name="public_name",
             value=answers.public_name,
         )
+    if is_production(answers):
+        for name in ("ntfy_name", "turn_name"):
+            value = getattr(answers, name)
+            if value is not None and not _NAME.match(value):
+                raise Refusal("call_infra_bad_value", name=name, value=value)
+        if answers.email and not _EMAIL.match(answers.email):
+            raise Refusal(
+                "call_infra_bad_value", name="email", value=answers.email
+            )
     ports = {
         "turn_port": answers.turn_port,
         "turns_port": answers.turns_port,
@@ -828,6 +1058,13 @@ def _check_answers(answers):
             name="external_ip",
             value=answers.external_ip,
         )
+
+
+def _check_port_values(answers):
+    """Refusal `call_infra_bad_value` pour une règle sur le port de ssh ou
+    deux écoutes sur le même port. Après `_check_production` : nginx et
+    certbot autonome sur 80 sont un défi mal choisi avant d'être un
+    doublon."""
     firewall_rules(answers)
     seen = {}
     for proto, port, svc in needed_ports(answers):
@@ -841,27 +1078,34 @@ def _check_answers(answers):
 def needed_ports(answers):
     """[(proto, port, service)] que les services choisis vont écouter. La
     plage des relais n'y est pas : coturn passe un port pris, et `ss` y
-    liste aussi les sockets clients éphémères."""
-    ports = []
+    liste aussi les sockets clients éphémères. En production s'y ajoutent
+    80 et 443 de nginx, 80 de certbot autonome ; le port de ntfy, sur
+    127.0.0.1, y reste : il doit être libre, sans être ouvert au pare-feu
+    (`firewall_rules`)."""
+    ports = [("tcp", p, "nginx") for p in _nginx_ports(answers)]
+    ports += [("tcp", p, "certbot") for p in _certbot_ports(answers)]
     if "coturn" in answers.services:
         ports += [
             ("udp", answers.turn_port, "coturn"),
             ("tcp", answers.turn_port, "coturn"),
         ]
-        if answers.tls == "supplied":
-            ports.append(("tcp", answers.turns_port, "coturn"))
+        if has_tls(answers):
+            ports.append(("tcp", coturn_tls_port(answers), "coturn"))
     if "ntfy" in answers.services:
         ports.append(("tcp", ntfy_port(answers), "ntfy"))
-        if answers.tls == "supplied":
+        if _ntfy_own_tls(answers):
             ports.append(("tcp", ntfy_http_port(answers), "ntfy"))
     return ports
 
 
 def _check_ports(facts, answers):
+    """Refusal `call_infra_port_busy` pour un port voulu qu'un autre
+    processus tient ; un libellé sans processus connu (certbot) veut son
+    port libre de tout processus."""
     for proto, port, svc in needed_ports(answers):
         for busy_proto, busy_port, process in facts.busy_ports:
             if (busy_proto, busy_port) == (proto, port) and (
-                process != PROCESSES[svc]
+                process != PROCESSES.get(svc)
             ):
                 raise Refusal(
                     "call_infra_port_busy",
@@ -971,6 +1215,20 @@ def _name_covered(name, dns, ips):
     return False
 
 
+def certificate_names(answers):
+    """Les noms qu'un certificat fourni doit couvrir : le nom public en
+    développement ; en production, le nom de TURN avec coturn et celui de
+    ntfy avec ntfy."""
+    if not is_production(answers):
+        return [answers.public_name]
+    names = []
+    if "coturn" in answers.services:
+        names.append(turn_host(answers))
+    if "ntfy" in answers.services and ntfy_host(answers) not in names:
+        names.append(ntfy_host(answers))
+    return names
+
+
 def _check_certificate(answers, now):
     not_after, dns, ips, subject = _certificate_facts(answers.cert_pem)
     if not _key_matches(answers.cert_pem, answers.key_pem):
@@ -981,13 +1239,62 @@ def _check_certificate(answers, now):
         raise Refusal(
             "call_infra_cert_expired", date=not_after.strftime("%Y-%m-%d")
         )
-    if not _name_covered(answers.public_name, dns, ips):
-        names = [f"DNS:{d}" for d in dns] + [f"IP:{i}" for i in ips]
-        raise Refusal(
-            "call_infra_cert_name_missing",
-            name=answers.public_name,
-            names=", ".join(names) or subject,
-        )
+    for wanted in certificate_names(answers):
+        if not _name_covered(wanted, dns, ips):
+            names = [f"DNS:{d}" for d in dns] + [f"IP:{i}" for i in ips]
+            raise Refusal(
+                "call_infra_cert_name_missing",
+                name=wanted,
+                names=", ".join(names) or subject,
+            )
+
+
+def _check_production(facts, answers):
+    """Refus propres à la production, avant les ports : sans TLS
+    (`call_infra_prod_needs_tls`), ntfy sans nginx
+    (`call_infra_prod_needs_nginx`), défi ACME que les services ne
+    permettent pas (`call_infra_acme_method` : certbot autonome quand
+    nginx sert ou écoute déjà 80, webroot sans nginx), greffon DNS inconnu
+    ou sans identifiants (`call_infra_dns_plugin`), 443 pour coturn quand
+    nginx s'en sert ou qu'un autre processus le tient
+    (`call_infra_turns_443`)."""
+    if answers.tls == "none":
+        raise Refusal("call_infra_prod_needs_tls")
+    if "ntfy" in answers.services and answers.nginx is None:
+        raise Refusal("call_infra_prod_needs_nginx")
+    nginx_on_80 = any(
+        busy == ("tcp", HTTP_PORT, PROCESSES["nginx"])
+        for busy in facts.busy_ports
+    )
+    if answers.tls == "letsencrypt":
+        method = answers.acme
+        if (
+            method == "http-standalone"
+            and (answers.nginx is not None or nginx_on_80)
+        ) or (method == "http-nginx" and answers.nginx is None):
+            raise Refusal("call_infra_acme_method", method=method)
+        if method == "dns" and (
+            answers.dns_plugin not in DNS_PLUGINS
+            or not (answers.dns_credentials or "").strip()
+        ):
+            raise Refusal(
+                "call_infra_dns_plugin", plugin=answers.dns_plugin or ""
+            )
+    if answers.turns_443 and "coturn" in answers.services:
+        others = [
+            process
+            for proto, port, process in facts.busy_ports
+            if (proto, port) == ("tcp", TURNS_ALT_PORT)
+            and process != PROCESSES["coturn"]
+        ]
+        holder = "nginx" if answers.nginx is not None else None
+        holder = holder or (others[0] if others else None)
+        if holder is not None:
+            raise Refusal(
+                "call_infra_turns_443",
+                holder=holder,
+                port=answers.turns_port,
+            )
 
 
 # --- Plan -------------------------------------------------------------------
@@ -995,26 +1302,55 @@ def _check_certificate(answers, now):
 
 def _settings(svc, answers, cert_sha):
     """Ce qu'un service a reçu ; deux plans aux mêmes réglages ne changent
-    rien à ce service."""
+    rien à ce service.
+
+    Un plan de développement garde les clés du lot 1, à l'identique : un
+    état déjà écrit reste « rien à changer ». La production y ajoute les
+    noms, la source du certificat (`acme`, `dns_plugin`, `email`) et
+    `nginx` en booléen : un nginx que l'outil a installé existe à la
+    relance, « install » et « existing » y reviennent au même. Le fichier
+    d'identifiants DNS, secret, n'y est jamais."""
+    low, high = relay_range(answers)
     if svc == "coturn":
-        return {
+        settings = {
             "tls": answers.tls,
             "public_name": answers.public_name,
             "turn_port": answers.turn_port,
             "turns_port": answers.turns_port,
-            "min_port": answers.min_port,
-            "max_port": answers.max_port,
+            "min_port": low,
+            "max_port": high,
             "external_ip": answers.external_ip or None,
             "cert_sha256": cert_sha,
         }
-    return {
-        "tls": answers.tls,
-        "public_name": answers.public_name,
-        "port": ntfy_port(answers),
-        "http_port": ntfy_http_port(answers),
-        "base_url": ntfy_base_url(answers),
-        "cert_sha256": cert_sha,
-    }
+        extra = {
+            "turn_name": turn_host(answers),
+            "turns_443": answers.turns_443,
+        }
+    else:
+        settings = {
+            "tls": answers.tls,
+            "public_name": answers.public_name,
+            "port": ntfy_port(answers),
+            "http_port": ntfy_http_port(answers),
+            "base_url": ntfy_base_url(answers),
+            "cert_sha256": cert_sha,
+        }
+        extra = {"ntfy_name": ntfy_host(answers), "web": answers.ntfy_web}
+    if is_production(answers):
+        settings.update(extra)
+        settings.update(
+            {
+                "acme": answers.acme if answers.tls == "letsencrypt" else None,
+                "dns_plugin": (
+                    answers.dns_plugin
+                    if answers.tls == "letsencrypt" and answers.acme == "dns"
+                    else None
+                ),
+                "email": answers.email,
+                "nginx": answers.nginx is not None,
+            }
+        )
+    return settings
 
 
 def _origin(current, prior_record):
@@ -1066,10 +1402,11 @@ def plan_install(facts, answers, now):
 
     Refus, dans l'ordre : système (`call_infra_unsupported_os`,
     `call_infra_no_systemd`), état d'une autre version
-    (`call_infra_state_version`), réponses (`call_infra_bad_value`), port
-    tenu par un autre processus que le service réinstallé
-    (`call_infra_port_busy`), certificat fourni illisible, d'une autre clé,
-    expiré ou sans le nom public (`call_infra_cert_unreadable`,
+    (`call_infra_state_version`), réponses (`call_infra_bad_value`), en
+    production ceux de `_check_production`, port tenu par un autre
+    processus que le service réinstallé (`call_infra_port_busy`),
+    certificat fourni illisible, d'une autre clé, expiré ou sans l'un des
+    noms de `certificate_names` (`call_infra_cert_unreadable`,
     `call_infra_cert_key_mismatch`, `call_infra_cert_expired`,
     `call_infra_cert_name_missing`).
 
@@ -1094,6 +1431,9 @@ def plan_install(facts, answers, now):
             expected=STATE_VERSION,
         )
     _check_answers(answers)
+    if is_production(answers):
+        _check_production(facts, answers)
+    _check_port_values(answers)
     _check_ports(facts, answers)
     cert_sha = None
     if answers.tls == "supplied":
@@ -1119,6 +1459,7 @@ def plan_install(facts, answers, now):
                 f"{COTURN_TLS_DIR}/turn.crt",
                 f"{COTURN_TLS_DIR}/turn.key",
             ]
+            tls_files = tls_files if has_tls(answers) else []
         else:
             unit, config = NTFY_UNIT, NTFY_CONFIG
             desired = ntfy_config(
@@ -1128,6 +1469,7 @@ def plan_install(facts, answers, now):
                 f"{NTFY_TLS_DIR}/ntfy.crt",
                 f"{NTFY_TLS_DIR}/ntfy.key",
             ]
+            tls_files = tls_files if _ntfy_own_tls(answers) else []
             configs[svc] = desired
         old_text = current["config_text"] if current else ""
         if current and is_foreign(old_text):
@@ -1147,7 +1489,7 @@ def plan_install(facts, answers, now):
         record = {"unit": unit, "config": config}
         record.update(_origin(current, prior_record))
         record["settings"] = settings
-        record["tls_files"] = tls_files if answers.tls == "supplied" else []
+        record["tls_files"] = tls_files
         services[svc] = record
 
     stamp_now = now.isoformat(timespec="seconds")
@@ -1156,7 +1498,7 @@ def plan_install(facts, answers, now):
         {
             "version": STATE_VERSION,
             "method": "packages",
-            "mode": "development",
+            "mode": answers.mode,
             "created_at": prior.get("created_at") or stamp_now,
             "updated_at": stamp_now,
             "services": services,
@@ -1224,7 +1566,10 @@ def mark_admin_added(state, output):
 def state_answers(state):
     """Les réponses d'un état écrit, pour préremplir une relance ; None
     pour un état absent, d'une autre version ou sans service. Le
-    certificat et la clé n'y sont pas : l'état ne garde que l'empreinte."""
+    certificat, la clé et le fichier d'identifiants DNS n'y sont pas :
+    l'état ne garde que l'empreinte du certificat. Un état sans « mode »
+    (lot 1) est de développement ; un nginx consigné se relit
+    « existing »."""
     if not isinstance(state, dict) or state.get("version") != STATE_VERSION:
         return None
     services = state.get("services")
@@ -1241,6 +1586,13 @@ def state_answers(state):
     coturn = coturn if isinstance(coturn, dict) else {}
     ntfy = ntfy if isinstance(ntfy, dict) else {}
     first = coturn or ntfy
+    mode = state.get("mode", "development")
+    production = mode == "production"
+
+    def text(settings, key):
+        value = settings.get(key) if production else None
+        return value if isinstance(value, str) and value else None
+
     try:
         return Answers(
             services=frozenset(names),
@@ -1250,10 +1602,19 @@ def state_answers(state):
             public_name=first.get("public_name", ""),
             turn_port=int(coturn.get("turn_port", 3478)),
             turns_port=int(coturn.get("turns_port", 5349)),
-            min_port=int(coturn.get("min_port", 49152)),
-            max_port=int(coturn.get("max_port", 49252)),
+            min_port=int(coturn.get("min_port", DEV_MIN_PORT)),
+            max_port=int(coturn.get("max_port", DEV_MAX_PORT)),
             ntfy_port=int(ntfy["port"]) if ntfy.get("port") else None,
             external_ip=coturn.get("external_ip") or None,
+            mode=mode if mode in MODES else "development",
+            ntfy_name=text(ntfy, "ntfy_name"),
+            turn_name=text(coturn, "turn_name"),
+            acme=text(first, "acme"),
+            dns_plugin=text(first, "dns_plugin"),
+            email=text(first, "email") or "",
+            ntfy_web=production and ntfy.get("web") is True,
+            turns_443=production and coturn.get("turns_443") is True,
+            nginx="existing" if production and first.get("nginx") else None,
         )
     except (TypeError, ValueError):
         return None
@@ -1323,20 +1684,26 @@ def _coturn_block(plan):
         )
         + " || fail payload-coturn",
     ]
+    low, high = relay_range(answers)
     variables = {
         "TURN_REALM": answers.public_name,
         "TURN_PORT": answers.turn_port,
         "TURN_TLS_PORT": answers.turns_port,
-        "TURN_MIN_PORT": answers.min_port,
-        "TURN_MAX_PORT": answers.max_port,
+        "TURN_MIN_PORT": low,
+        "TURN_MAX_PORT": high,
     }
     raw = {}
     # Un plan de développement relaie aussi vers les plages privées (réseau
     # local, boucle locale) : sans TURN_ALLOW_PRIVATE=1, l'installateur les
     # refuse, et la configuration écrite ne serait plus celle que
-    # `coturn_config` décrit.
+    # `coturn_config` décrit. Un plan de production ne l'exporte jamais :
+    # le défaut de l'installateur refuse ces plages.
     if plan.new_state.get("mode") == "development":
         variables["TURN_ALLOW_PRIVATE"] = "1"
+    # TLS sur 443 au lieu de TURN_TLS_PORT : coturn ne sert TLS que sur un
+    # port à la fois.
+    if answers.turns_443:
+        variables["TURN_ALT_TLS_PORT"] = TURNS_ALT_PORT
     if answers.external_ip:
         variables["TURN_EXTERNAL_IP"] = answers.external_ip
     if answers.tls == "supplied":
@@ -1387,7 +1754,7 @@ def _ntfy_block(plan):
         f" || install -d -m 0755 {_host(os.path.dirname(NTFY_CONFIG))}"
         " || fail ntfy-config"
     )
-    if answers.tls == "supplied":
+    if _ntfy_own_tls(answers):
         tls_dir = _host(NTFY_TLS_DIR)
         # Le groupe « ntfy » doit exister avant le paquet pour que la clé
         # lui soit lisible : le compte est créé comme install_ntfy.sh le
@@ -1412,7 +1779,8 @@ def _ntfy_block(plan):
         variables["NTFY_KEY_FILE"] = f"{NTFY_TLS_DIR}/ntfy.key"
     else:
         # Comme install_coturn.sh : sans certificat, l'ancienne copie part,
-        # et l'état ne consigne plus aucun fichier TLS pour ntfy.
+        # et l'état ne consigne plus aucun fichier TLS pour ntfy. En
+        # production, nginx tient le certificat : ntfy n'en a aucun.
         lines.append(
             f"rm -f {_host(NTFY_TLS_DIR + '/ntfy.crt')}"
             f" {_host(NTFY_TLS_DIR + '/ntfy.key')} || fail ntfy-tls"
@@ -1623,7 +1991,7 @@ def _check_rule(rule):
     if (
         not isinstance(rule, Rule)
         or rule.proto not in ("tcp", "udp")
-        or rule.service not in SERVICES
+        or rule.service not in FIREWALL_LABELS
         or _port_bounds(rule.port) is None
     ):
         raise ValueError(f"firewall rule: {rule!r}")
@@ -1636,21 +2004,23 @@ def _span(low, high):
 
 
 def firewall_rules(answers):
-    """Les ouvertures des services choisis : coturn TURN en udp et tcp,
-    TURNS en tcp avec un certificat, la plage des relais en udp ; ntfy son
-    port en tcp. Son port http interne, sur 127.0.0.1 avec un certificat,
-    n'est pas ouvert. Refusal `call_infra_bad_value` pour une règle qui
-    couvrirait le port de ssh."""
-    rules = []
+    """Les ouvertures des services choisis : en production, nginx en tcp
+    sur 80 (et 443 devant ntfy), certbot autonome sur 80 ; coturn TURN en
+    udp et tcp, TURNS en tcp avec un certificat (sur `coturn_tls_port`),
+    la plage des relais de `relay_range` en udp ; ntfy son port en tcp en
+    développement. Son port http interne, sur 127.0.0.1 avec un
+    certificat ou en production, n'est pas ouvert. Refusal
+    `call_infra_bad_value` pour une règle qui couvrirait le port de
+    ssh."""
+    rules = [Rule("tcp", str(p), "nginx") for p in _nginx_ports(answers)]
+    rules += [Rule("tcp", str(p), "certbot") for p in _certbot_ports(answers)]
     if "coturn" in answers.services:
         turn = str(answers.turn_port)
         rules += [Rule("udp", turn, "coturn"), Rule("tcp", turn, "coturn")]
-        if answers.tls == "supplied":
-            rules.append(Rule("tcp", str(answers.turns_port), "coturn"))
-        rules.append(
-            Rule("udp", _span(answers.min_port, answers.max_port), "coturn")
-        )
-    if "ntfy" in answers.services:
+        if has_tls(answers):
+            rules.append(Rule("tcp", str(coturn_tls_port(answers)), "coturn"))
+        rules.append(Rule("udp", _span(*relay_range(answers)), "coturn"))
+    if "ntfy" in answers.services and not is_production(answers):
         rules.append(Rule("tcp", str(ntfy_port(answers)), "ntfy"))
     for rule in rules:
         bounds = _port_bounds(rule.port)
@@ -2207,14 +2577,14 @@ class CheckLine:
 # de l'outil. Imprime « @@FIREWALL_RULE ufw <proto> <port> <service> ».
 _CHECK_UFW_SED = (
     r"s/^ufw allow ([0-9]+(:[0-9]+)?)\/(tcp|udp) comment"
-    f" '{FIREWALL_COMMENT} ({'|'.join(SERVICES)})'$"
+    f" '{FIREWALL_COMMENT} ({'|'.join(FIREWALL_LABELS)})'$"
     r"/@@FIREWALL_RULE ufw \3 \1 \4/p"
 )
 # `nft list ruleset` : une règle de l'outil, telle que `_nft_rule` la pose
 # (une plage s'y écrit avec « - »).
 _CHECK_NFT_SED = (
     r"s/.*[[:space:]](tcp|udp) dport ([0-9]+(-[0-9]+)?) accept comment"
-    f' "{FIREWALL_COMMENT} ({"|".join(SERVICES)})".*'
+    f' "{FIREWALL_COMMENT} ({"|".join(FIREWALL_LABELS)})".*'
     r"/@@FIREWALL_RULE nftables \1 \2 \4/p"
 )
 
