@@ -192,11 +192,50 @@ def module_qemu():
 
 
 def cle_publique():
+    """La clé publique que reçoivent les VM : la clé par défaut de
+    l'utilisateur, sinon une clé propre aux tests longs. Sans clé, une VM
+    démarre sans accès ssh et chaque test échoue à l'attente de ssh. Les
+    appelants dérivent la clé privée en ôtant « .pub »."""
     for nom in ("id_ed25519.pub", "id_rsa.pub"):
         chemin = os.path.expanduser(f"~/.ssh/{nom}")
         if os.path.exists(chemin):
             return chemin
-    return ""
+    return cle_jetable()
+
+
+def cle_jetable(dossier="~/.erplibre/longtest/ssh"):
+    """Une paire ed25519 sans phrase de passe, créée au premier appel dans
+    un dossier 0700 hors de ~/.ssh, puis réutilisée : elle n'ouvre que les
+    VM jetables et ne change pas l'identité ssh de l'utilisateur. Rend le
+    chemin de la clé publique, ou "" quand ssh-keygen échoue."""
+    dossier = os.path.expanduser(dossier)
+    prive = os.path.join(dossier, "id_ed25519")
+    if os.path.exists(prive + ".pub"):
+        return prive + ".pub"
+    try:
+        os.makedirs(dossier, mode=0o700, exist_ok=True)
+        fini = subprocess.run(
+            [
+                "ssh-keygen",
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-C",
+                "erplibre-longtest",
+                "-f",
+                prive,
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if fini.returncode != 0 or not os.path.exists(prive + ".pub"):
+        return ""
+    return prive + ".pub"
 
 
 def nom_etage(niveau, base):
