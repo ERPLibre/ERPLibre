@@ -1486,6 +1486,12 @@ def install_script(plan, stamp, root=""):
                 f"  cp -p {_host(config)} {_host(extra)} || fail backup-{svc}",
                 "fi",
             ]
+            # Une configuration de coturn sans paquet (installed_by_tool) :
+            # pacman refuse un paquet dont un fichier existe déjà sans
+            # propriétaire. Copiée, elle quitte sa place ; l'installateur
+            # pose celle du paquet puis la remplace (TURN_GARDER_CONFIG=1).
+            if svc == "coturn" and record["installed_by_tool"]:
+                lines.append(f"rm -f {_host(config)} || fail backup-{svc}")
     for svc in services:
         if svc == "coturn":
             lines += _coturn_block(plan)
