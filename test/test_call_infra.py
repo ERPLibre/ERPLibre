@@ -1050,6 +1050,31 @@ class TestInstallScriptRun(unittest.TestCase):
             self.read(os.path.join(self.log, "install_ntfy.seen")),
         )
 
+    def test_a_new_ntfy_config_dir_is_traversable(self):
+        # Le script tourne sous umask 077, et ntfy, sous son propre compte,
+        # doit atteindre server.yml : faute de quoi il démarre sur ses
+        # valeurs par défaut, sans contrôle d'accès.
+        for ans in (answers(services=frozenset({"ntfy"})), supplied()):
+            with self.subTest(tls=ans.tls):
+                self.tearDown()
+                self.setUp()
+                done = self.run_script(ci.plan_install(base_facts(), ans, NOW))
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertEqual(
+                    stat.S_IMODE(os.stat(self.path("/etc/ntfy")).st_mode),
+                    0o755,
+                )
+
+    def test_an_existing_ntfy_config_dir_keeps_its_mode(self):
+        os.makedirs(self.path("/etc/ntfy"))
+        os.chmod(self.path("/etc/ntfy"), 0o750)
+        ans = answers(services=frozenset({"ntfy"}))
+        done = self.run_script(ci.plan_install(base_facts(), ans, NOW))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            stat.S_IMODE(os.stat(self.path("/etc/ntfy")).st_mode), 0o750
+        )
+
     def test_back_to_http_removes_the_ntfy_certificate(self):
         for name in ("ntfy.crt", "ntfy.key"):
             write(self.path("/etc/ntfy/tls/" + name), "ancien\n", 0o640)
