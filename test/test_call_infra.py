@@ -2646,7 +2646,7 @@ class TestUninstall(unittest.TestCase):
             write(self.path("/etc/ntfy/tls/ntfy.key"), TURN_KEY, 0o640)
         return state
 
-    # Review Focus 5 : sans état, rien ne change.
+    # Sans état, rien ne change.
     def test_no_state_prints_nothing_and_changes_nothing(self):
         write(self.path("/etc/turnserver.conf"), "listening-port=3478\n")
         before = snapshot(self.root)
@@ -2818,7 +2818,7 @@ class TestUninstall(unittest.TestCase):
         self.assertIn("systemctl disable --now turnserver", calls)
         self.assertFalse([c for c in calls if c.startswith("apt-get")])
 
-    # Review Focus 5 : une coupure ou un échec garde l'état ; la relance
+    # Une coupure ou un échec garde l'état ; la relance
     # termine ; une désinstallation de plus ne trouve rien.
     def test_failure_keeps_the_state_and_a_rerun_converges(self):
         state = self.tool_installed_ntfy()
@@ -2920,7 +2920,7 @@ class TestUninstall(unittest.TestCase):
         self.assertNotEqual(done.returncode, 0)
         self.assertTrue(os.path.exists(self.path(ci.STATE_PATH)))
 
-    # Review Focus 5 : un service gardé n'est pas désinstallé ; l'état et
+    # Un service gardé n'est pas désinstallé ; l'état et
     # ce que sa configuration utilise restent, jusqu'à ce que la relance
     # puisse le défaire.
     def test_kept_service_keeps_its_tls_database_and_the_state(self):
