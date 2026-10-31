@@ -133,7 +133,7 @@ def parse_args(argv) -> argparse.Namespace:
         "--compte",
         "--account",
         dest="account",
-        metavar="NOM",
+        metavar=t("mail_service_cli_account_metavar"),
         help=t("mail_service_cli_account_help"),
     )
     parser.add_argument(
@@ -264,7 +264,6 @@ def _config_reader(config_file) -> Callable:
 _FIXED_WARNING_KEYS = (
     "mail_rules_cache_rebuilt",
     "mail_rules_catchup_warning",
-    "mail_rules_error",
     "mail_stats_snapshot_unsaved",
     "mail_rules_cap_warning",
 )
@@ -400,11 +399,8 @@ def _locked_main(args, deps: ServiceDeps, out, base: Path) -> int:
         config_file = ConfigFile()
     if deps.configure_logging:
         logging.getLogger().setLevel(logging.WARNING)
-    manager = KdbxManager(
-        config_file,
-        password=credential.read_master_password(deps.env),
-        interactive=False,
-    )
+    maitre = credential.read_master_password(deps.env)
+    manager = KdbxManager(config_file, password=maitre, interactive=False)
     secrets = SecretStore(kdbx_manager=manager, use_keyring=deps.use_keyring)
     if any(kdbx_refs(account) for account in a_traiter):
         if manager.get_kdbx() is None:
@@ -416,6 +412,10 @@ def _locked_main(args, deps: ServiceDeps, out, base: Path) -> int:
                 # Hors de l'unité, systemd ne dépose pas le credential :
                 # le refaire ne changerait rien.
                 cle = "mail_service_vault_no_password_by_hand"
+            elif raison == "wrong_password" and maitre is None:
+                # Sans credential lu, le mot de passe refusé est
+                # `kdbx.password` : refaire le credential n'y change rien.
+                cle = "mail_service_vault_wrong_password_config"
             _emit(out, f"{t('mail_service_vault_locked')} {t(cle)}")
             return worst_exit(codes + [EXIT_VAULT])
     if deps.use_keyring and any(keyring_refs(a) for a in a_traiter):
@@ -559,6 +559,24 @@ def _process(
             elements.append(t("mail_service_rule_error"))
             code = worst_exit([code, EXIT_RULE])
             fail, kind_fail = f"rule:{EXIT_RULE}", "rule"
+        if t("mail_rules_error") in bilan.warnings:
+            # Le moteur ne lève cet avertissement que pour un rattrapage
+            # d'en-têtes en échec : ses messages restent des trous, repris
+            # à la passe suivante. Le texte du TUI renvoie à sa touche
+            # « l » ; le journal reçoit le sien, et le code d'une panne
+            # de lien comme un dossier en erreur.
+            bilan = replace(
+                bilan,
+                warnings=[
+                    w for w in bilan.warnings if w != t("mail_rules_error")
+                ],
+            )
+            element = t("mail_service_catchup_failed")
+            elements.append(element)
+            durables.append(element)
+            code = worst_exit([code, EXIT_NETWORK])
+            if not fail:
+                fail, kind_fail = f"network:{EXIT_NETWORK}", "network"
         bilan_items = engine.summary_items(
             _journal_safe(bilan, nom), with_status=False
         )

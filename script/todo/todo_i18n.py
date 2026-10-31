@@ -16250,6 +16250,10 @@ TRANSLATIONS = {
         "fr": "ne traiter que ce compte",
         "en": "process only this account",
     },
+    "mail_service_cli_account_metavar": {
+        "fr": "NOM",
+        "en": "NAME",
+    },
     "mail_service_cli_quiet_help": {
         "fr": "taire les comptes sans nouveauté",
         "en": "stay silent for accounts with nothing new",
@@ -16302,6 +16306,10 @@ TRANSLATIONS = {
         "fr": "mot de passe maître refusé (à refaire : Courriel [7] › [2]).",
         "en": "master password refused (redo: Mail [7] › [2]).",
     },
+    "mail_service_vault_wrong_password_config": {
+        "fr": "kdbx.password de la configuration refusé par le coffre (à corriger dans la configuration).",
+        "en": "kdbx.password from the configuration refused by the vault (fix it in the configuration).",
+    },
     "mail_service_vault_not_configured": {
         "fr": "aucun coffre KeePass configuré.",
         "en": "no KeePass vault configured.",
@@ -16344,6 +16352,10 @@ TRANSLATIONS = {
     "mail_service_busy": {
         "fr": "déjà en cours (le client tient le verrou du compte)",
         "en": "already running (the client holds the account lock)",
+    },
+    "mail_service_catchup_failed": {
+        "fr": "rattrapage des en-têtes en échec, repris à la passe suivante (voir ~/.erplibre/mail.log)",
+        "en": "header catch-up failed, retried on the next pass (see ~/.erplibre/mail.log)",
     },
     "mail_service_rule_error": {
         "fr": "erreur de règle (voir ~/.erplibre/mail.log)",
@@ -16392,6 +16404,10 @@ TRANSLATIONS = {
     "mail_service_creds_failed": {
         "fr": "Chiffrement refusé par systemd-creds :",
         "en": "Encryption refused by systemd-creds:",
+    },
+    "mail_service_creds_write_failed": {
+        "fr": "Mot de passe chiffré non écrit (dossier credstore) :",
+        "en": "Encrypted password not written (credstore folder):",
     },
     "mail_service_creds_verify_failed": {
         "fr": "Le mot de passe chiffré ne se relit pas : retiré.",

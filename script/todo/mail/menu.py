@@ -446,9 +446,11 @@ def _encrypt_for_service(kdbx_path: str, *, run, lire) -> None:
         print(exc)
         return
     except OSError as exc:
-        # Le credstore n'a pas pu s'écrire : le nom du type suffit, le
-        # texte de l'exception nommerait le chemin du dossier personnel.
-        print(f"{t('mail_service_creds_failed')} {type(exc).__name__}")
+        # `setup_credential` rend déjà en `CredentialError` toute panne de
+        # `systemd-creds` : un OSError vient de l'écriture du credstore,
+        # après un chiffrement réussi. Le nom du type suffit, le texte de
+        # l'exception nommerait le chemin du dossier personnel.
+        print(f"{t('mail_service_creds_write_failed')} {type(exc).__name__}")
         return
     finally:
         password = None
