@@ -32,7 +32,7 @@ REALM = "turn.exemple.test"
 MOT_DE_PASSE = "Pz7-controle-invente-41"
 CONSTANTES = ("MARKER", "CALL_DIR", "TLS_DIR", "DB_DIR", "DB_FILE",
               "CHECK_USER", "OS_RELEASE", "DEBIAN_CONF", "ARCH_CONF",
-              "DEFAULT_FILE", "APPLIED_FILE")
+              "DEFAULT_FILE", "APPLIED_FILE", "SYSTEMD_DIR")
 TABLES_COTURN = {"turnusers_lt", "turn_secret", "allowed_peer_ip",
                  "denied_peer_ip", "turn_origin_to_realm",
                  "turn_realm_option", "oauth_key", "admin_user"}
@@ -85,7 +85,8 @@ ENTREES = (
     "TURN_REALM=%s\nTURN_PORT=3478\nTURN_TLS_PORT=5349\n"
     "TURN_MIN_PORT=49152\nTURN_MAX_PORT=49252\nTURN_CERT_FILE=\n"
     "TURN_KEY_FILE=\nTURN_EXTERNAL_IP=\nTURN_CHECK_PASSWORD='%s'\n"
-    "TURN_GARDER_CONFIG=\nTURN_ALLOW_PRIVATE=\n" % (REALM, MOT_DE_PASSE))
+    "TURN_GARDER_CONFIG=\nTURN_ALLOW_PRIVATE=\nTURN_ALT_TLS_PORT=\n"
+    % (REALM, MOT_DE_PASSE))
 
 # Les plages qu'un relais ne doit pas joindre par defaut, au format de
 # denied-peer-ip (adresse, ou premiere-derniere).
@@ -253,6 +254,21 @@ class TestConfiguration(unittest.TestCase):
         self.assertIn("pkey=/etc/erplibre-call/tls/turn.key", contenu)
         self.assertNotIn("no-tls", contenu)
 
+    def test_tls_sur_le_port_alternatif_au_lieu_du_port_tls(self):
+        """coturn ne sert TLS que sur un port : TURN_ALT_TLS_PORT remplace
+        TURN_TLS_PORT, il ne s'y ajoute pas."""
+        fait, texte, _, _, _ = self._ecrire(
+            "TURN_CERT_FILE=/c.pem\nTURN_KEY_FILE=/k.pem\n"
+            "TURN_ALT_TLS_PORT=443")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        contenu = texte.splitlines()
+        self.assertEqual(
+            [c for c in contenu if c.startswith("tls-listening-port")],
+            ["tls-listening-port=443"])
+        self.assertFalse([c for c in contenu
+                          if c.startswith("alt-tls-listening-port")])
+        self.assertIn("cert=/etc/erplibre-call/tls/turn.crt", contenu)
+
     def test_ports_et_adresse_externe_choisis(self):
         fait, texte, _, _, _ = self._ecrire(
             "TURN_PORT=3479\nTURN_MIN_PORT=50000\nTURN_MAX_PORT=50100\n"
@@ -280,6 +296,9 @@ class TestConfiguration(unittest.TestCase):
         self.assertEqual(refait.returncode, 0, refait.stderr)
         self.assertIn("CHANGED=0", refait.stdout)
         self.assertEqual(retexte, texte)
+
+
+CERT = "TURN_CERT_FILE=@D@/c.pem\nTURN_KEY_FILE=@D@/k.pem\n"
 
 
 class TestEntrees(unittest.TestCase):
@@ -312,7 +331,14 @@ class TestEntrees(unittest.TestCase):
                 "TURN_KEY_FILE=@D@/k.pem",
                 "TURN_CERT_FILE=@D@/absent.pem\nTURN_KEY_FILE=@D@/k.pem",
                 "TURN_EXTERNAL_IP='198.51.100.7\nuser=x'",
-                "TURN_ALLOW_PRIVATE=oui"):
+                "TURN_ALLOW_PRIVATE=oui",
+                # TLS sur un port alternatif : seulement avec un
+                # certificat, sur un port valide distinct des autres.
+                "TURN_ALT_TLS_PORT=443",
+                CERT + "TURN_ALT_TLS_PORT=abc",
+                CERT + "TURN_ALT_TLS_PORT=0",
+                CERT + "TURN_ALT_TLS_PORT=3478",
+                CERT + "TURN_ALT_TLS_PORT=5349"):
             with self.subTest(variables=variables):
                 fait = self._verifier(variables, fichiers=True)
                 self.assertNotEqual(fait.returncode, 0, fait.stdout)
@@ -329,6 +355,16 @@ class TestEntrees(unittest.TestCase):
         fait = self._verifier(
             "TURN_CERT_FILE=@D@/c.pem\nTURN_KEY_FILE=@D@/k.pem", fichiers=True)
         self.assertEqual(fait.returncode, 0, fait.stderr)
+
+    def test_port_alternatif_avec_certificat_accepte(self):
+        fait = self._verifier(CERT + "TURN_ALT_TLS_PORT=443", fichiers=True)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("OK", fait.stdout)
+
+    def test_port_alternatif_sans_certificat_nomme_la_raison(self):
+        fait = self._verifier("TURN_ALT_TLS_PORT=443", fichiers=True)
+        self.assertNotEqual(fait.returncode, 0)
+        self.assertIn("TURN_ALT_TLS_PORT", fait.stderr)
 
 
 class TestSysteme(unittest.TestCase):
@@ -829,6 +865,123 @@ class TestTampon(unittest.TestCase):
                 avant = fait.stdout
 
 
+class TestDropin(unittest.TestCase):
+    """`write_dropin` : le droit d'ecouter un port privilegie, donne a
+    l'unite par un fragment systemd que l'outil pose et retire."""
+
+    DROPIN = ("# erplibre-call: managed\n[Service]\n"
+              "AmbientCapabilities=CAP_NET_BIND_SERVICE\n")
+
+    def _poser(self, dossier, variables="", unite="coturn"):
+        enveloppe = (
+            ENTETE + constantes(SYSTEMD_DIR=dossier) + ENTREES + variables
+            + "\nUNIT=%s\nCONFIG_CHANGED=0\n" % unite
+            + fonctions("refuse_linked_config", "write_dropin")
+            + "write_dropin\necho \"CHANGED=$CONFIG_CHANGED\"\n")
+        return jouer(enveloppe)
+
+    def chemin(self, dossier, unite="coturn"):
+        return os.path.join(dossier, "%s.service.d" % unite,
+                            "erplibre-call.conf")
+
+    def test_443_pose_le_fragment(self):
+        """Les unites des paquets lancent coturn sous un compte sans
+        CAP_NET_BIND_SERVICE : sans ce fragment, coturn ne peut ouvrir 443
+        et cesse aussi de repondre sur listening-port."""
+        for unite in ("coturn", "turnserver"):
+            with self.subTest(unite=unite), \
+                    tempfile.TemporaryDirectory() as dossier:
+                fait = self._poser(dossier, "TURN_ALT_TLS_PORT=443", unite)
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                self.assertIn("CHANGED=1", fait.stdout)
+                chemin = self.chemin(dossier, unite)
+                self.assertEqual(open(chemin).read(), self.DROPIN)
+                self.assertEqual(stat.S_IMODE(os.stat(chemin).st_mode),
+                                 0o644)
+                # Aucun fichier temporaire a cote : systemd lit *.conf.
+                self.assertEqual(os.listdir(os.path.dirname(chemin)),
+                                 ["erplibre-call.conf"])
+
+    def test_relance_identique_rien_a_redemarrer(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            self._poser(dossier, "TURN_ALT_TLS_PORT=443")
+            fait = self._poser(dossier, "TURN_ALT_TLS_PORT=443")
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertIn("CHANGED=0", fait.stdout)
+
+    def test_sans_port_alternatif_aucun_fragment(self):
+        for variables in ("", "TURN_ALT_TLS_PORT=8443"):
+            with self.subTest(variables=variables), \
+                    tempfile.TemporaryDirectory() as dossier:
+                fait = self._poser(dossier, variables)
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                self.assertIn("CHANGED=0", fait.stdout)
+                self.assertEqual(os.listdir(dossier), [])
+
+    def test_le_choix_retire_retire_le_fragment(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            self._poser(dossier, "TURN_ALT_TLS_PORT=443")
+            fait = self._poser(dossier)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertIn("CHANGED=1", fait.stdout)
+            self.assertFalse(os.path.exists(self.chemin(dossier)))
+            self.assertEqual(os.listdir(dossier), [])
+
+    def test_un_fragment_etranger_est_laisse(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = self.chemin(dossier)
+            os.makedirs(os.path.dirname(chemin))
+            with open(chemin, "w") as flux:
+                flux.write("[Service]\nNice=5\n")
+            fait = self._poser(dossier)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertIn("CHANGED=0", fait.stdout)
+            self.assertEqual(open(chemin).read(), "[Service]\nNice=5\n")
+
+    def test_un_fragment_en_lien_est_refuse(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            victime = os.path.join(dossier, "victime")
+            with open(victime, "w") as flux:
+                flux.write("intact\n")
+            chemin = self.chemin(dossier)
+            os.makedirs(os.path.dirname(chemin))
+            os.symlink(victime, chemin)
+            fait = self._poser(dossier, "TURN_ALT_TLS_PORT=443")
+            self.assertNotEqual(fait.returncode, 0, fait.stdout)
+            self.assertEqual(open(victime).read(), "intact\n")
+
+
+class TestService(unittest.TestCase):
+    """`enable_service` : relit les unites avant tout redemarrage."""
+
+    def _activer(self, change):
+        with tempfile.TemporaryDirectory() as dossier:
+            journal = os.path.join(dossier, "appels")
+            enveloppe = (
+                ENTETE + "J=%s\nUNIT=coturn\nCONFIG_CHANGED=%d\n"
+                % (journal, change)
+                + "systemctl() { echo \"systemctl $*\" >> $J; }\n"
+                "sleep() { :; }\n"
+                + fonctions("enable_service") + "enable_service\n")
+            fait = jouer(enveloppe)
+            return fait, lignes(journal)
+
+    def test_un_fragment_change_est_lu_avant_le_redemarrage(self):
+        """Un fragment pose par un passage interrompu avant le redemarrage
+        n'est relu que par daemon-reload : la relance, qui redemarre sur
+        l'ecart d'empreinte, le relit aussi."""
+        fait, appels = self._activer(1)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertLess(appels.index("systemctl daemon-reload"),
+                        appels.index("systemctl restart coturn"))
+
+    def test_sans_changement_ni_relecture_ni_redemarrage(self):
+        fait, appels = self._activer(0)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertNotIn("systemctl daemon-reload", appels)
+        self.assertNotIn("systemctl restart coturn", appels)
+
+
 class TestSource(unittest.TestCase):
     def test_le_mot_de_passe_n_est_jamais_affiche(self):
         """Aucune ligne n'imprime la valeur de TURN_CHECK_PASSWORD ; le seul
@@ -890,7 +1043,9 @@ class TestMain(unittest.TestCase):
                 flux.write(unite.replace("@D@", dossier))
             enveloppe = (
                 ENTETE + constantes(DEBIAN_CONF=chemin, ARCH_CONF=chemin,
-                                    CALL_DIR=dossier, APPLIED_FILE=applique)
+                                    CALL_DIR=dossier, APPLIED_FILE=applique,
+                                    TLS_DIR=os.path.join(dossier, "tls"),
+                                    SYSTEMD_DIR=dossier)
                 + ENTREES + "TURN_GARDER_CONFIG=%s\n" % garder + variables
                 + "export TURN_CHECK_PASSWORD\n"
                 "J=%s\nE=%s/etats\nU=%s/unite\n" % (journal, dossier, dossier)
@@ -901,6 +1056,7 @@ class TestMain(unittest.TestCase):
                 "write_config() { echo \"write $1\" >> $J;"
                 " [ -e \"$1\" ] || echo '# erplibre-call: managed' > \"$1\";"
                 " CONFIG_CHANGED=%d; }\n" % change
+                + "write_dropin() { echo \"dropin $UNIT\" >> $J; }\n"
                 + "install() { echo \"install $*\" >> $J; }\n"
                 + "enable_default() { echo default >> $J; }\n"
                 "prepare_database() { echo base >> $J; }\n"
@@ -1070,6 +1226,13 @@ class TestMain(unittest.TestCase):
         self.assertNotIn("install", appels)
         self.assertFalse([a for a in appels if a.startswith("write")])
         self.assertIn("lien", fait.stderr)
+
+    def test_le_fragment_suit_la_configuration_avant_le_redemarrage(self):
+        _, appels, chemin = self._jouer(["active"])
+        self.assertLess(appels.index("write " + chemin),
+                        appels.index("dropin coturn"))
+        self.assertLess(appels.index("dropin coturn"),
+                        appels.index("systemctl restart coturn"))
 
     def test_systeme_non_supporte_refuse_avant_installation(self):
         fait, appels, _ = self._jouer(["active"], famille="fedora")

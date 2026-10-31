@@ -15,6 +15,11 @@
 #   TURN_REALM            obligatoire : nom public du service, realm TURN
 #   TURN_PORT             3478, udp et tcp
 #   TURN_TLS_PORT         5349, tcp, ecoute seulement avec un certificat
+#   TURN_ALT_TLS_PORT     optionnel, seulement avec un certificat : TLS
+#                         ecoute sur ce port AU LIEU de TURN_TLS_PORT
+#                         (coturn ne sert TLS que sur un port). Sous 1024,
+#                         un fragment de l'unite donne a coturn le droit
+#                         de l'ouvrir (voir write_dropin).
 #   TURN_MIN_PORT         49152 } plage udp des relais
 #   TURN_MAX_PORT         49252 }
 #   TURN_CERT_FILE        certificat et cle, les deux ou aucun ; copies dans
@@ -71,6 +76,8 @@ DEFAULT_FILE="/etc/default/coturn"
 # Empreinte de la configuration et du certificat que coturn a charges, ecrite
 # seulement apres un redemarrage reussi (voir main).
 APPLIED_FILE="/etc/erplibre-call/coturn.applied"
+# Les fragments d'unite (<unite>.service.d/) que pose write_dropin.
+SYSTEMD_DIR="/etc/systemd/system"
 
 TURN_REALM="${TURN_REALM:-}"
 TURN_PORT="${TURN_PORT:-3478}"
@@ -83,6 +90,7 @@ TURN_EXTERNAL_IP="${TURN_EXTERNAL_IP:-}"
 TURN_CHECK_PASSWORD="${TURN_CHECK_PASSWORD:-}"
 TURN_GARDER_CONFIG="${TURN_GARDER_CONFIG:-}"
 TURN_ALLOW_PRIVATE="${TURN_ALLOW_PRIVATE:-}"
+TURN_ALT_TLS_PORT="${TURN_ALT_TLS_PORT:-}"
 
 # Plages refusees aux relais sans TURN_ALLOW_PRIVATE=1, au format de
 # denied-peer-ip (adresse seule, ou premiere-derniere). Aux plages privees
@@ -149,6 +157,14 @@ check_inputs() {
             || die "cle illisible : ${TURN_KEY_FILE}"
         [ "$TURN_PORT" != "$TURN_TLS_PORT" ] \
             || die "TURN_PORT et TURN_TLS_PORT doivent differer."
+    fi
+    if [ -n "$TURN_ALT_TLS_PORT" ]; then
+        has_cert || die "TURN_ALT_TLS_PORT demande un certificat (TURN_CERT_FILE et TURN_KEY_FILE)."
+        valid_port "$TURN_ALT_TLS_PORT" \
+            || die "port invalide : ${TURN_ALT_TLS_PORT} (1 a 65535)."
+        [ "$TURN_ALT_TLS_PORT" != "$TURN_PORT" ] \
+            && [ "$TURN_ALT_TLS_PORT" != "$TURN_TLS_PORT" ] \
+            || die "TURN_ALT_TLS_PORT doit differer de TURN_PORT et de TURN_TLS_PORT."
     fi
     if [ -n "$TURN_EXTERNAL_IP" ] && ! [[ "$TURN_EXTERNAL_IP" =~ ^[0-9A-Fa-f:./]+$ ]]; then
         die "TURN_EXTERNAL_IP invalide : ${TURN_EXTERNAL_IP}"
@@ -304,7 +320,10 @@ refuse_linked_config() {
 # fichier a moitie ecrit). Le voisin vient de mktemp : un nom neuf, cree en
 # exclusif et 0600, qu'aucun lien pose d'avance ne peut detourner vers un
 # autre fichier. CONFIG_CHANGED passe a 1 quand le contenu change.
-# Sans certificat, no-tls et no-dtls : aucun port TLS n'ecoute. Sans
+# Sans certificat, no-tls et no-dtls : aucun port TLS n'ecoute. Avec un
+# certificat, TLS ecoute sur TURN_ALT_TLS_PORT quand il est donne, sinon
+# sur TURN_TLS_PORT : deux lignes tls-listening-port, coturn ne garde que la
+# derniere, et alt-tls-listening-port reste inerte sous no-rfc5780. Sans
 # TURN_ALLOW_PRIVATE=1, une ligne denied-peer-ip par plage de
 # DENIED_PEER_RANGES. Les quatre
 # dernieres lignes sont celles du fichier livre par Debian, qu'il remplace :
@@ -321,7 +340,7 @@ write_config() {
         echo "# Comptes dans userdb, pas ici. Ecrit par install_coturn.sh."
         echo "listening-port=${TURN_PORT}"
         if has_cert; then
-            echo "tls-listening-port=${TURN_TLS_PORT}"
+            echo "tls-listening-port=${TURN_ALT_TLS_PORT:-$TURN_TLS_PORT}"
             echo "cert=${TLS_DIR}/turn.crt"
             echo "pkey=${TLS_DIR}/turn.key"
         else
@@ -354,6 +373,38 @@ write_config() {
     fi
     mv -f "$tmp" "$conf"
     log "Configuration ecrite : ${conf}"
+}
+
+# write_dropin : avec TURN_ALT_TLS_PORT sous 1024, pose
+# <SYSTEMD_DIR>/<unite>.service.d/erplibre-call.conf, root 0644, qui donne
+# a coturn AmbientCapabilities=CAP_NET_BIND_SERVICE. Les unites des paquets
+# le lancent sous un compte sans ce droit : coturn qui ne peut ouvrir son
+# port TLS reessaie en boucle et cesse aussi de repondre sur listening-port.
+# Sans ce besoin, le fragment que ce script a pose (premiere ligne MARKER)
+# est retire ; un fichier etranger au meme nom est laisse. Ecriture par un
+# voisin de mktemp renomme, dont le nom ne finit pas par .conf : systemd ne
+# le lit pas. CONFIG_CHANGED passe a 1 quand le fragment change.
+write_dropin() {
+    local dir="${SYSTEMD_DIR}/${UNIT}.service.d" file tmp
+    file="${dir}/erplibre-call.conf"
+    refuse_linked_config "$file"
+    if [ -n "$TURN_ALT_TLS_PORT" ] && [ "$TURN_ALT_TLS_PORT" -lt 1024 ]; then
+        mkdir -p "$dir"
+        tmp=$(mktemp "${dir}/.erplibre-call.conf.XXXXXX")
+        printf '%s\n' "$MARKER" "[Service]" \
+            "AmbientCapabilities=CAP_NET_BIND_SERVICE" > "$tmp"
+        chmod 0644 "$tmp"
+        if ! cmp -s "$tmp" "$file"; then
+            CONFIG_CHANGED=1
+        fi
+        mv -f "$tmp" "$file"
+        log "Fragment d'unite ecrit : ${file}"
+    elif [ -f "$file" ] && [ "$(head -n 1 "$file")" = "$MARKER" ]; then
+        rm -f "$file"
+        rmdir "$dir" 2>/dev/null || true
+        CONFIG_CHANGED=1
+        log "Fragment d'unite retire : ${file}"
+    fi
 }
 
 # L'ancien script d'init Debian ne demarre coturn qu'avec cette ligne ;
@@ -424,10 +475,13 @@ EOF
 }
 
 # applied_digest <chemin> : imprime l'empreinte sha256 de ce que coturn
-# charge au demarrage, la configuration puis, avec un certificat, le
-# certificat et la cle copies dans TLS_DIR ; une ligne par fichier.
+# charge au demarrage, la configuration puis, quand TLS_DIR porte une copie,
+# le certificat et la cle copies ; une ligne par fichier. Il ne lit que son
+# argument et TLS_DIR : erplibre_call_deploy_hook.sh en porte la meme copie,
+# au caractere pres, pour ecrire APPLIED_FILE apres un renouvellement. Dans
+# main, install_certificate a deja pose les deux copies ou retire les deux.
 applied_digest() {
-    if has_cert; then
+    if [ -e "$TLS_DIR/turn.crt" ] || [ -e "$TLS_DIR/turn.key" ]; then
         sha256sum "$1" "$TLS_DIR/turn.crt" "$TLS_DIR/turn.key"
     else
         sha256sum "$1"
@@ -449,10 +503,13 @@ record_applied() {
 # Redemarre seulement quand CONFIG_CHANGED vaut 1 : un redemarrage coupe les
 # appels en cours, et un compte change dans la base n'en demande pas. Sinon
 # « start », sans effet sur un service actif. Un echec n'arrete pas le
-# script : service_state dit ensuite l'etat reel.
+# script : service_state dit ensuite l'etat reel. Tout redemarrage suit un
+# daemon-reload : systemd ne relit un fragment d'unite qu'ainsi, y compris
+# celui qu'un passage interrompu a pose sans le faire relire.
 enable_service() {
     systemctl enable "$UNIT" || log "AVERTISSEMENT : systemctl enable ${UNIT} a echoue."
     if [ "$CONFIG_CHANGED" = 1 ]; then
+        systemctl daemon-reload || log "AVERTISSEMENT : systemctl daemon-reload a echoue."
         systemctl restart "$UNIT" || log "AVERTISSEMENT : systemctl restart ${UNIT} a echoue."
     else
         log "Configuration inchangee : ${UNIT} n'est pas redemarre."
@@ -513,6 +570,7 @@ main() {
         log "TURN_ALLOW_PRIVATE=1 : plages privees permises aux relais (reseau local, developpement)."
     fi
     write_config "$conf"
+    write_dropin
     enable_default
     # Le compte AVANT le demarrage : le service lit une base deja prete.
     prepare_database
