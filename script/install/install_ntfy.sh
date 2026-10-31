@@ -112,6 +112,35 @@ is_arch_like() {
     esac
 }
 
+# Une operation dpkg coupee (ssh perdu pendant apt ou dpkg -i) laisse des
+# paquets deballes ou a moitie configures, et apt-get refuse alors toute
+# installation tant que « dpkg --configure -a » n'a pas tourne. Il passe
+# d'abord, sans question au terminal en mode non interactif ; sans rien en
+# attente, il ne fait rien. Un echec n'arrete pas le script : apt-get le
+# dira, et une relance qui ne fait que reconfigurer n'en a pas besoin.
+recover_dpkg() {
+    if non_interactive; then
+        dpkg --configure -a --force-confdef --force-confold \
+            || log "AVERTISSEMENT : dpkg --configure -a a echoue."
+    else
+        dpkg --configure -a || log "AVERTISSEMENT : dpkg --configure -a a echoue."
+    fi
+}
+
+# Vrai quand ntfy est installe et utilisable. Le binaire d'un .deb deballe
+# dont le postinst n'a pas tourne repond deja a « ntfy --version » : quand
+# dpkg connait le paquet dans un etat interrompu (half-installed, unpacked,
+# half-configured), il est tenu pour absent et reinstalle. Un binaire pose
+# hors paquet n'a pas d'etat dpkg, et seul le binaire tranche.
+ntfy_installed() {
+    local status
+    status=$(dpkg-query -W -f='${Status}' ntfy 2>/dev/null) || status=""
+    case "${status##* }" in
+        half-installed|unpacked|half-configured) return 1 ;;
+    esac
+    command -v ntfy &>/dev/null && ntfy --version &>/dev/null
+}
+
 # ---------------------------------------------------------------------------
 # Get latest ntfy version from GitHub
 # ---------------------------------------------------------------------------
@@ -531,8 +560,11 @@ main() {
     if non_interactive; then
         export DEBIAN_FRONTEND=noninteractive
     fi
+    if is_ubuntu_like; then
+        recover_dpkg
+    fi
 
-    if command -v ntfy &>/dev/null && ntfy --version &>/dev/null; then
+    if ntfy_installed; then
         log "ntfy is already installed: $(ntfy --version 2>/dev/null | head -1)"
         log "Reconfiguring and restarting..."
         refresh_systemd_service

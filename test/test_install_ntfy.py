@@ -542,8 +542,11 @@ class TestDebianNonInteractif(unittest.TestCase):
 class TestMain(unittest.TestCase):
     """`main` : le code de sortie et la derniere ligne disent l'etat reel."""
 
-    def _jouer(self, etats, restart_echoue=False):
-        """`etats` : sorties successives de `systemctl is-active ntfy`."""
+    def _jouer(self, etats, restart_echoue=False, statut="install ok installed",
+               os_id="debian"):
+        """`etats` : sorties successives de `systemctl is-active ntfy`.
+        `statut` : ce que dpkg-query rend pour le paquet ntfy, None quand
+        dpkg ne le connait pas."""
         with tempfile.TemporaryDirectory() as dossier:
             journal = os.path.join(dossier, "appels")
             with open(os.path.join(dossier, "etats"), "w") as flux:
@@ -553,8 +556,14 @@ class TestMain(unittest.TestCase):
                 "log() { echo \"$*\"; }\n"
                 "J=%s\nE=%s/etats\n"
                 "check_root() { :; }\n"
-                "detect_os() { OS=debian; OS_LIKE=; }\n"
+                "detect_os() { OS=%s; OS_LIKE=; }\n"
                 "ntfy() { return 0; }\n"
+                "dpkg() { echo \"dpkg $* FRONTEND=$DEBIAN_FRONTEND\" >> $J; }\n"
+                "dpkg-query() { %s; }\n"
+                "apt-get() { echo \"apt-get $*\" >> $J; }\n"
+                "get_latest_version() { echo 2.0.0; }\n"
+                "install_deb() { echo \"install_deb $*\" >> $J; }\n"
+                "install_arch() { echo install_arch >> $J; }\n"
                 "configure_ntfy() { echo configure >> $J; }\n"
                 "ensure_admin_user() { echo admin >> $J; }\n"
                 "refresh_systemd_service() { echo refresh >> $J; }\n"
@@ -570,11 +579,14 @@ class TestMain(unittest.TestCase):
                 "  [ \"$1\" != restart ] || [ %d = 0 ]\n"
                 "}\n"
                 "NTFY_PORT=8080\nNTFY_CERT_FILE=\nNTFY_KEY_FILE=\n"
-                "NTFY_HTTPS_PORT=\nCONFIG_DIR=/x\n"
-                % (journal, dossier, 1 if restart_echoue else 0)
-            ) + extraire_fonction("non_interactive") + extraire_fonction(
-                "enable_service") + extraire_fonction(
-                "service_state") + extraire_fonction("main") + "\nmain\n"
+                "NTFY_HTTPS_PORT=\nCONFIG_DIR=/x\nNTFY_NON_INTERACTIVE=1\n"
+                % (journal, dossier, os_id,
+                   "return 1" if statut is None else "echo '%s'" % statut,
+                   1 if restart_echoue else 0)
+            ) + "".join(extraire_fonction(nom) for nom in (
+                "non_interactive", "is_ubuntu_like", "is_arch_like",
+                "recover_dpkg", "ntfy_installed", "enable_service",
+                "service_state", "main")) + "\nmain\n"
             fait = jouer(enveloppe)
             return fait, lignes(journal)
 
@@ -603,6 +615,41 @@ class TestMain(unittest.TestCase):
         fait, _ = self._jouer(["activating", "activating", "active"])
         self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
         self.assertEqual(fait.stdout.splitlines()[-1], "@@ACTIVE ntfy active")
+
+    def test_debian_une_operation_dpkg_coupee_est_reprise_d_abord(self):
+        """Un ssh coupe pendant apt laisse dpkg interrompu : la reprise
+        passe avant tout, sans question au terminal."""
+        _, appels = self._jouer(["active"])
+        reprise = [a for a in appels if a.startswith("dpkg --configure -a")]
+        self.assertEqual(len(reprise), 1, appels)
+        self.assertIn("--force-confold", reprise[0])
+        self.assertIn("FRONTEND=noninteractive", reprise[0])
+        self.assertEqual(appels.index(reprise[0]), 0, appels)
+
+    def test_un_paquet_deballe_non_configure_est_reinstalle(self):
+        """Le binaire d'un .deb deballe repond a « ntfy --version » alors
+        que son postinst n'a pas tourne : l'etat de dpkg tranche."""
+        for statut in ("install reinstreq half-installed",
+                       "install ok unpacked", "install ok half-configured"):
+            with self.subTest(statut=statut):
+                _, appels = self._jouer(["active"], statut=statut)
+                self.assertIn("install_deb 2.0.0", appels)
+                self.assertNotIn("refresh", appels)
+
+    def test_paquet_installe_ou_inconnu_de_dpkg_non_reinstalle(self):
+        """Un binaire pose hors paquet n'a pas d'etat dpkg ; un paquet
+        retire dont seule la configuration reste ne le remplace pas."""
+        for statut in (None, "install ok installed",
+                       "deinstall ok config-files"):
+            with self.subTest(statut=statut):
+                _, appels = self._jouer(["active"], statut=statut)
+                self.assertIn("refresh", appels)
+                self.assertFalse([a for a in appels
+                                  if a.startswith("install_deb")])
+
+    def test_arch_aucune_reprise_dpkg(self):
+        _, appels = self._jouer(["active"], os_id="arch")
+        self.assertFalse([a for a in appels if a.startswith("dpkg")])
 
     def test_un_redemarrage_refuse_donne_quand_meme_le_marqueur(self):
         fait, _ = self._jouer(["inactive"], restart_echoue=True)
