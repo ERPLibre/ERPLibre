@@ -351,6 +351,22 @@ class LesBriques(unittest.TestCase):
         self.assertIn("@@CHECK_KEY ***", masque)
         self.assertIn("@@ACTIVE ntfy active", masque)
 
+    def test_phone_tokens_are_masked(self):
+        """Le jeton qu'imprime `ntfy token add` ouvre les sujets du
+        téléphone tant que la VM vit : il ne va pas au journal, où qu'il
+        soit dans la ligne."""
+        texte = (
+            "token tk_Inventeabc123XYZ created for user erm_longtest\n"
+            "autre tk_Zz9 fin\r\n"
+            "tk_ seul, sans jeton\n"
+        )
+        masque = lt.masquer(texte)
+        self.assertNotIn("tk_Inventeabc123XYZ", masque)
+        self.assertNotIn("tk_Zz9", masque)
+        self.assertIn("token tk_*** created for user erm_longtest\n", masque)
+        self.assertIn("autre tk_*** fin\r\n", masque)
+        self.assertIn("tk_ seul, sans jeton\n", masque)
+
     def test_remote_command_reads_the_script_from_stdin(self):
         """Le corps du script ne passe ni dans l'argv local de ssh ni dans
         le journal : il arrive par l'entrée standard."""
