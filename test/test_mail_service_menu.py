@@ -29,6 +29,8 @@ from script.todo.todo_i18n import t
 OWN = "boite.regles@example.org"
 MAITRE = "maitre-essai"
 AUTRE_DEPOT = "/srv/depot erplibre"
+# La vraie lecture d'état, gardée avant que `setUp` la double.
+_VRAI_STATUS = service.status
 
 
 class FakeConfig(dict):
@@ -203,7 +205,28 @@ class TestEntry(ServiceMenuCase):
             start=1,
         ):
             self.assertIn(f"[{rang}] {t(cle)}", texte)
-        self.doubles["status"].assert_called_with(run=self.run)
+        self.doubles["status"].assert_called_with(
+            run=self.run, config_file=self.config
+        )
+
+    def test_the_state_names_a_clear_vault_password_of_the_config(self):
+        """Sans credential, un `kdbx.password` de la configuration se dit
+        en clair et déconseillé ; sa valeur n'est jamais imprimée."""
+        reel = _VRAI_STATUS
+        muet = mock.Mock(return_value=mock.Mock(returncode=1, stdout=""))
+        self.doubles["status"].side_effect = lambda **kw: reel(
+            run=muet, config_file=kw.get("config_file")
+        )
+        self.config = FakeConfig(
+            kdbx={"path": "private/essai.kdbx", "password": "repli-essai"}
+        )
+        sortie = self.lancer(["0"])
+        self.assertIn(t("mail_service_status_credential_config"), sortie)
+        self.assertNotIn(t("mail_service_status_credential_no"), sortie)
+        self.assertNotIn("repli-essai", sortie)
+        self.config = FakeConfig(kdbx={"path": "private/essai.kdbx"})
+        sortie = self.lancer(["0"])
+        self.assertIn(t("mail_service_status_credential_no"), sortie)
 
     def test_start_runs_a_pass_or_says_why_not(self):
         sortie = self.lancer(["3", "0"])

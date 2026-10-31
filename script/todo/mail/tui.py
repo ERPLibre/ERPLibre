@@ -2214,7 +2214,8 @@ def run_tui(
 
         # Source de l'état du service des règles (`RulesScreen`) : une
         # fonction sans argument qui rend un `service.ServiceStatus` ;
-        # None vaut `service.status`, qui interroge systemctl.
+        # None vaut `service.status` sur `config_file`, qui interroge
+        # systemctl.
         service_status_fn = None
 
         BINDINGS = [
@@ -6319,7 +6320,13 @@ def run_tui(
             rien."""
             from script.todo.mail import service
 
-            fn = getattr(self.app, "service_status_fn", None) or service.status
+            fn = getattr(self.app, "service_status_fn", None)
+            if fn is None:
+                config = getattr(self.app, "config_file", None)
+
+                def fn():
+                    return service.status(config_file=config)
+
             try:
                 texte = service.status_text(fn())
             except Exception:

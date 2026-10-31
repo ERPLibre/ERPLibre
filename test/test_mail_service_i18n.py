@@ -107,6 +107,7 @@ SERVICE_KEYS = (
     "mail_service_status_unknown",
     "mail_service_status_credential_yes",
     "mail_service_status_credential_no",
+    "mail_service_status_credential_config",
 )
 # Fichiers dont chaque `t("mail_…")` littéral doit être déclaré.
 SOURCES = (

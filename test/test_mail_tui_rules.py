@@ -313,9 +313,35 @@ class TestServiceLine(RulesCase):
                 await app.workers.wait_for_complete()
                 await pilot.pause()
                 ligne = self.text_of(app, "#rules_service")
-        lecture.assert_called_once_with()
+        lecture.assert_called_once_with(config_file=app.config_file)
         self.assertIn(t("mail_service_status_not_installed"), ligne)
         self.assertTrue(ligne.startswith(t("mail_service_status_title")))
+
+    async def test_the_service_state_reads_the_app_configuration(self):
+        """La lecture par défaut reçoit la configuration de l'application :
+        un `kdbx.password` en clair s'y dit, sans sa valeur."""
+        from script.todo.mail import service
+
+        app = self._app()
+        app.service_status_fn = None
+        app.config_file = mock.Mock(
+            get_config_value=lambda keys: {
+                ("kdbx", "path"): "private/essai.kdbx",
+                ("kdbx", "password"): "repli-essai",
+            }.get(tuple(keys))
+        )
+        vraie = service.status
+        muet = mock.Mock(return_value=mock.Mock(returncode=1, stdout=""))
+        with mock.patch.object(
+            service, "status", side_effect=lambda **kw: vraie(run=muet, **kw)
+        ):
+            async with app.run_test(size=self.SIZE) as pilot:
+                await self.open_rules(app, pilot)
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                ligne = self.text_of(app, "#rules_service")
+        self.assertIn(t("mail_service_status_credential_config"), ligne)
+        self.assertNotIn("repli-essai", ligne)
 
     async def test_a_slow_service_state_does_not_block_the_screen(self):
         import threading

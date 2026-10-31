@@ -267,7 +267,13 @@ def _service_menu(
     from script.todo.mail import service
 
     while True:
-        print(service.status_text(service.status(run=run)))
+        print(
+            service.status_text(
+                service.status(
+                    run=run, config_file=getattr(todo, "config_file", None)
+                )
+            )
+        )
         help_info = f"""{todo._menu_header()}
 [1] {t("mail_service_menu_install")}
 [2] {t("mail_service_menu_credential")}
@@ -361,15 +367,11 @@ def _configured_kdbx(todo) -> str:
 
 def _configured_kdbx_password(todo) -> bool:
     """Vrai si la configuration porte un `kdbx` avec un chemin et un
-    `kdbx.password` non vide : le repli du service sans credential."""
-    if not _configured_kdbx(todo):
-        return False
-    try:
-        valeur = todo.config_file.get_config_value(["kdbx", "password"])
-    except Exception:
-        # `get_config_value` lève `TypeError` sur une clé absente.
-        return False
-    return isinstance(valeur, str) and bool(valeur)
+    `kdbx.password` non vide : le repli du service sans credential
+    (`service.config_kdbx_password`)."""
+    from script.todo.mail import service
+
+    return service.config_kdbx_password(getattr(todo, "config_file", None))
 
 
 def _service_credential(todo, *, run, getpass_fn, isatty) -> None:

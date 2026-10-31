@@ -16617,6 +16617,10 @@ TRANSLATIONS = {
         "fr": "pas de mot de passe du coffre",
         "en": "no vault password",
     },
+    "mail_service_status_credential_config": {
+        "fr": "kdbx.password en clair (déconseillé)",
+        "en": "kdbx.password in clear text (not recommended)",
+    },
     "mail_service_exit_0": {
         "fr": "ok",
         "en": "ok",

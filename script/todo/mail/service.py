@@ -132,6 +132,9 @@ class ServiceStatus:
     last_exit: int | None = None
     # Fichier du credential présent.
     credential: bool = False
+    # La configuration porte un `kdbx.path` et un `kdbx.password` non vide :
+    # le repli EN CLAIR du service, lu quand le credential manque.
+    config_password: bool = False
     # `WorkingDirectory=` installé, `%%` rendu en `%`.
     repo: str = ""
     # Dépôt installé, ou son python, introuvable.
@@ -560,14 +563,19 @@ def _installed_python(directory: Path) -> str:
 
 
 def status(
-    *, run: Callable | None = None, timeout: float = STATUS_TIMEOUT_S
+    *,
+    run: Callable | None = None,
+    timeout: float = STATUS_TIMEOUT_S,
+    config_file=None,
 ) -> ServiceStatus:
     """L'état du service ; une panne de systemctl ne lève pas.
 
     Fichiers, intervalle, dépôt et credential se lisent sur le disque ;
-    systemctl n'est interrogé que si quelque chose est installé, chaque
-    appel borné à `timeout`. Un appel `show` en échec remplit `error` ;
-    les autres champs gardent ce qui a été lu.
+    `config_file` (un `ConfigFile`, celui que lit le service) dit si
+    `kdbx.password` y est en clair (`config_kdbx_password`), None ne le
+    consulte pas. systemctl n'est interrogé que si quelque chose est
+    installé, chaque appel borné à `timeout`. Un appel `show` en échec
+    remplit `error` ; les autres champs gardent ce qui a été lu.
     """
     st = ServiceStatus()
     config = credential.manager_config_home(run=run)
@@ -575,6 +583,7 @@ def status(
     st.credential = (
         config / credential.CREDSTORE_NAME / credential.CREDENTIAL_ID
     ).exists()
+    st.config_password = config_kdbx_password(config_file)
     st.installed = (
         (directory / SERVICE).exists()
         or (directory / TIMER).exists()
@@ -626,6 +635,28 @@ def status(
     return st
 
 
+def config_kdbx_password(config_file) -> bool:
+    """Vrai si `config_file` porte un `kdbx.path` et un `kdbx.password`
+    non vides : le service ouvre alors le coffre sans credential. Ne rend
+    que la présence ; la valeur ne quitte pas cette fonction. None, ou une
+    lecture qui lève (`get_config_value` lève `TypeError` sur une clé
+    absente), vaut faux."""
+    lire = getattr(config_file, "get_config_value", None)
+    if lire is None:
+        return False
+    try:
+        chemin = lire(["kdbx", "path"])
+        valeur = lire(["kdbx", "password"])
+    except Exception:
+        return False
+    return (
+        isinstance(chemin, str)
+        and bool(chemin)
+        and isinstance(valeur, str)
+        and bool(valeur)
+    )
+
+
 def _exit_label(code: int) -> str:
     if code in EXIT_LABELS:
         return t(f"mail_service_exit_{code}")
@@ -662,11 +693,14 @@ def status_text(st: ServiceStatus) -> str:
         parts.append(t("mail_service_status_repo_missing"))
     if st.installed and not st.up_to_date:
         parts.append(t("mail_service_status_outdated"))
-    parts.append(
-        t("mail_service_status_credential_yes")
-        if st.credential
-        else t("mail_service_status_credential_no")
-    )
+    # Le credential prime : systemd le dépose, et le service le lit avant
+    # la configuration.
+    if st.credential:
+        parts.append(t("mail_service_status_credential_yes"))
+    elif st.config_password:
+        parts.append(t("mail_service_status_credential_config"))
+    else:
+        parts.append(t("mail_service_status_credential_no"))
     return f"{t('mail_service_status_title')} {', '.join(parts)}"
 
 
