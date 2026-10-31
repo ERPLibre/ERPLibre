@@ -83,6 +83,7 @@ class Racine:
         services=("coturn",),
         tls=True,
         etat=True,
+        source="letsencrypt",
     ):
         self.dossier = dossier
         self.r = os.path.join(dossier, "racine")
@@ -118,6 +119,7 @@ class Racine:
                                     if nom == "coturn"
                                     else "/etc/ntfy/server.yml"
                                 ),
+                                "settings": {"tls": source},
                             }
                             for nom in services
                         },
@@ -333,6 +335,25 @@ class TestCopie(unittest.TestCase):
             self.assertFalse([a for a in r.appels if "kill" in a])
             # nginx sert toujours la lignee : il est recharge.
             self.assertIn("systemctl reload nginx", r.appels)
+
+    def test_coturn_sur_un_certificat_fourni_garde_le_sien(self):
+        """Un etat dont coturn ne sert pas la lignee (certificat fourni, ou
+        aucun) : un renouvellement de l'ancienne lignee ne remplace pas la
+        paire de coturn, nginx est recharge."""
+        for source in ("supplied", "none", None):
+            with self.subTest(
+                source=source
+            ), tempfile.TemporaryDirectory() as dossier:
+                r = Racine(dossier, source=source)
+                fait = r.lancer()
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                self.assertEqual(r.servi("turn.crt"), ANCIEN_CRT)
+                self.assertEqual(r.servi("turn.key"), ANCIENNE_CLE)
+                self.assertFalse([a for a in r.appels if "kill" in a])
+                self.assertIn(
+                    "@@HOOK coturn-skip not-letsencrypt", r.marqueurs
+                )
+                self.assertIn("systemctl reload nginx", r.appels)
 
     def test_sans_etat_ni_dossier_tls_rien_pour_coturn(self):
         for options in ({"etat": False}, {"tls": False}):
