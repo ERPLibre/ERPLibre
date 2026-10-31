@@ -241,6 +241,63 @@ class RienNInterrompLaCourse(unittest.TestCase):
                     )
 
 
+class LaPlaceDesVM(unittest.TestCase):
+    """`--garder` laisse chaque VM debout : la place se compte pour toutes
+    celles de la course, pas pour une seule."""
+
+    # Assez pour une VM et sa marge, pas pour deux.
+    UNE = (8, lt.MEMOIRE_MO + lt.MARGE_RAM_MO + 512, 100)
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+        self.journal = os.path.join(self.maison, "x.log")
+
+    def _plan(self, nombre):
+        with (
+            mock.patch.object(lt, "capacite_hote", return_value=self.UNE),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return lt.plan_tient(self.journal, nombre)
+
+    def test_room_for_one_vm(self):
+        self.assertTrue(self._plan(1))
+
+    def test_room_for_two_vms(self):
+        self.assertFalse(self._plan(2))
+        large = (8, 2 * (lt.MEMOIRE_MO + lt.MARGE_RAM_MO), 100)
+        with (
+            mock.patch.object(lt, "capacite_hote", return_value=large),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertTrue(lt.plan_tient(self.journal, 2))
+
+    def _mener(self, *args):
+        crees = []
+        with (
+            mock.patch.object(lt, "capacite_hote", return_value=self.UNE),
+            mock.patch.object(
+                lt, "mener_un", side_effect=lambda c, d: self._vu(crees, d)
+            ),
+        ):
+            code, _sortie = lancer(self.maison, *args)
+        return code, crees
+
+    @staticmethod
+    def _vu(crees, distro):
+        crees.append(distro)
+        return {"distro": distro, "verdict": "OK"}
+
+    def test_keeping_every_vm_asks_room_for_each(self):
+        code, crees = self._mener("--garder")
+        self.assertEqual(1, code)
+        self.assertEqual([], crees)
+
+    def test_keeping_one_system_asks_room_for_one(self):
+        _code, crees = self._mener("--garder", "--distro", "arch")
+        self.assertEqual(["arch"], crees)
+
+
 class LesListes(unittest.TestCase):
     def test_it_shares_the_lock(self):
         self.assertIn("call_infra.py", descente.SCRIPTS)
