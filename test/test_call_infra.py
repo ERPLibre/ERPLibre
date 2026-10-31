@@ -1240,6 +1240,21 @@ NFT_HANDLES = """table inet filter { # handle 1
 	}
 }
 """
+# iptables-nft : la table « ip filter » et sa chaîne « INPUT » en drop,
+# celles d'ip6tables laissées en accept. iptables-persistent recharge cette
+# table entière, une règle nft native qui s'y trouve disparaîtrait.
+NFT_IPTABLES_V4 = """table ip filter {
+	chain INPUT {
+		type filter hook input priority filter; policy drop;
+		tcp dport 22 counter packets 0 bytes 0 accept
+	}
+}
+table ip6 filter {
+	chain INPUT {
+		type filter hook input priority filter; policy accept;
+	}
+}
+"""
 NFT_INCLUDE = 'flush ruleset\ninclude "/etc/nftables.d/*.nft"\n'
 
 UFW_ADDED = (
@@ -1624,6 +1639,13 @@ class TestFirewallRun(unittest.TestCase):
         self.assertIn("FIREWALL_MANUAL 1", self.markers(done))
         self.assertEqual(self.calls(), ["list ruleset"])
 
+    def test_an_iptables_nft_chain_changes_nothing(self):
+        done = self.run_script(self.nft(), ruleset=NFT_IPTABLES_V4)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("FIREWALL_MANUAL 1", self.markers(done))
+        self.assertEqual(self.calls(), ["list ruleset"])
+        self.assertEqual(self.applied(), "")
+
     def test_a_bridge_chain_is_not_an_input_chain(self):
         done = self.run_script(self.nft(), ruleset=NFT_BRIDGE_DROP)
         self.assertIn("FIREWALL_CHAIN inet filter input", self.markers(done))
@@ -1829,6 +1851,16 @@ class TestFirewallRun(unittest.TestCase):
         facts = ci.parse_probe(done.stdout)
         self.assertEqual(facts.firewall, "nftables")
         self.assertEqual(facts.nft_chains, (("inet", "filter", "input"),))
+
+    def test_probe_calls_an_iptables_nft_drop_unknown(self):
+        script = ci.probe_script(root=self.root)
+        for name in ("systemctl", "ss", "ip", "iptables"):
+            write(os.path.join(self.stubs, name), "#!/bin/sh\nexit 1\n")
+        write(os.path.join(self.stubs, "ufw"), "#!/bin/sh\nexit 1\n")
+        done = self.run_script(script, ruleset=NFT_IPTABLES_V4)
+        facts = ci.parse_probe(done.stdout)
+        self.assertEqual(facts.firewall, "unknown")
+        self.assertEqual(facts.nft_chains, ())
 
 
 class TestStdlibOnly(unittest.TestCase):
