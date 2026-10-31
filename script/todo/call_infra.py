@@ -127,10 +127,50 @@ NTFY_HTTPS_PORT = 8443
 # imprime alors `@@ADMIN_PASSWORD`, une seule fois.
 NTFY_ADMIN_USER = "erplibre"
 
-# Nom du processus qui tient les ports d'un service (colonne de `ss -p`).
-# certbot autonome n'y est pas : le port 80 doit rester libre pour lui, il
-# ne l'ouvre que le temps d'un défi.
-PROCESSES = {"coturn": "turnserver", "ntfy": "ntfy", "nginx": "nginx"}
+# Nom du processus qui tient les ports d'un libellé (colonne de `ss -p`) :
+# un port que tient ce processus-là n'est pas « occupé » pour lui. certbot
+# autonome n'ouvre 80 que le temps d'un défi ; tout autre processus sur 80
+# le lui refuse.
+PROCESSES = {
+    "coturn": "turnserver",
+    "ntfy": "ntfy",
+    "nginx": "nginx",
+    "certbot": "certbot",
+}
+
+# nginx de production (voir install_nginx.sh) : le site de l'outil, son
+# dossier d'inclusion sur Arch et le dossier du défi HTTP-01, hors de
+# /var/lib/erplibre-call que l'installateur coturn garde en 0750.
+NGINX_CONF = "/etc/nginx/nginx.conf"
+NGINX_SITE_FILE = "erplibre-call-ntfy.conf"
+NGINX_INCLUDE_DIR = "/etc/nginx/erplibre-call.d"
+NGINX_LAYOUTS = ("debian", "confd", "arch-include")
+NGINX_APPLIED = "/etc/erplibre-call/nginx.applied"
+ACME_ROOT = "/var/lib/erplibre-call-acme"
+# Lignée certbot de l'outil : un seul certificat pour tous ses noms.
+CERT_NAME = "erplibre-call"
+LINEAGE_DIR = "/etc/letsencrypt/live/erplibre-call"
+RENEWAL_FILE = "/etc/letsencrypt/renewal/erplibre-call.conf"
+# Fichier de renouvellement mis de côté (désinstallation qui garde le
+# certificat) : « certbot renew » ignore alors la lignée.
+RENEWAL_HOLD = RENEWAL_FILE + ".erplibre-hold"
+HOOK_PATH = "/etc/letsencrypt/renewal-hooks/deploy/erplibre-call"
+DNS_DIR = "/etc/erplibre-call/dns"
+# Certificat fourni en production : nginx le lit en root depuis ces copies,
+# coturn reçoit les siennes (turn.crt, turn.key) par son installateur.
+SITE_CERT = "/etc/erplibre-call/tls/site.crt"
+SITE_KEY = "/etc/erplibre-call/tls/site.key"
+# Unité systemd complétée pour que coturn lie 443 (voir install_coturn.sh,
+# write_dropin).
+COTURN_DROPIN = "/etc/systemd/system/{unit}.service.d/erplibre-call.conf"
+# Défi ACME de l'outil → méthode d'install_certbot.sh (CERTBOT_METHOD).
+CERTBOT_METHODS = {
+    "http-nginx": "webroot",
+    "http-standalone": "standalone",
+    "dns": "dns",
+}
+# Paquet du greffon DNS de certbot, par famille de systèmes.
+DNS_PACKAGES = {"debian": "python3-certbot-dns-{}", "arch": "certbot-dns-{}"}
 
 _REPO = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -138,7 +178,15 @@ _REPO = os.path.dirname(
 INSTALLERS = {
     "coturn": os.path.join(_REPO, "script", "install", "install_coturn.sh"),
     "ntfy": os.path.join(_REPO, "script", "install", "install_ntfy.sh"),
+    "nginx": os.path.join(_REPO, "script", "install", "install_nginx.sh"),
+    "certbot": os.path.join(_REPO, "script", "install", "install_certbot.sh"),
 }
+HOOK_SOURCE = os.path.join(
+    _REPO, "script", "install", "erplibre_call_deploy_hook.sh"
+)
+# Fiches `PENDING_DIR/<nom>.json` : les services, puis nginx et certbot,
+# dont l'origine (installés par l'outil ou non) survit à un passage coupé.
+PENDING_NAMES = SERVICES + ("nginx", "certbot")
 
 _DEBIAN_IDS = {"debian", "ubuntu", "linuxmint", "pop", "raspbian"}
 _ARCH_IDS = {"arch", "manjaro", "endeavouros", "artix", "garuda"}
@@ -191,6 +239,17 @@ class HostFacts:
 
     `ufw_added` : les lignes `ufw ...` de `ufw show added` quand ufw est
     le pare-feu actif, () sinon.
+
+    `nginx` : None sans nginx ni fiche en attente, sinon `state` (active,
+    inactive, absent), `layout` (une de NGINX_LAYOUTS, la règle
+    d'install_nginx.sh ; None sans nginx), `include` (nginx.conf porte la
+    ligne include de l'outil), `names` (((nom, fichier), ...) de chaque
+    `server_name` des sites que l'outil n'a pas écrits), `pending`.
+
+    `certbot` : None sans certbot ni lignée, fichier mis de côté ou fiche,
+    sinon `version` (None sans certbot), `lineage` (noms de la lignée de
+    l'outil, None sans elle), `held` (son fichier de renouvellement est mis
+    de côté), `plugins` (greffons DNS installés), `pending`.
     """
 
     family: str | None
@@ -207,6 +266,8 @@ class HostFacts:
     nft_chains: tuple[tuple[str, str, str], ...] = ()
     firewall_pending: tuple = ()
     ufw_added: tuple[str, ...] = ()
+    nginx: dict | None = None
+    certbot: dict | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -253,7 +314,10 @@ class InstallPlan:
     place qui change, valeurs secrètes masquées (`redact_secrets`) ; `new_state` : l'état à écrire, sans les chemins des
     copies, qui dépendent du tampon (voir `written_state`) ; `configs` :
     {service: texte voulu} des configurations que le script écrit lui-même
-    (ntfy ; celle de coturn est écrite par son installateur)."""
+    (ntfy ; celle de coturn est écrite par son installateur).
+    `lineage_unchanged` : la lignée certbot de l'hôte porte déjà exactement
+    les noms du certificat et n'est pas mise de côté : certbot passe sans
+    essai à blanc (CERTBOT_SKIP_STAGING=1)."""
 
     answers: Answers
     adopt: tuple[str, ...]
@@ -261,6 +325,7 @@ class InstallPlan:
     nothing_to_do: bool
     new_state: dict
     configs: dict = dataclasses.field(default_factory=dict)
+    lineage_unchanged: bool = False
 
 
 # --- Sonde ------------------------------------------------------------------
@@ -294,6 +359,35 @@ _EXEC_CONF_SED = (
     "s/^ExecStart=.*[[:space:]](-c|--conf-file)[[:space:]=]+"
     "([^[:space:]]+).*/\\2/p"
 )
+# Lignes `include` actives de nginx.conf qui décident de la disposition,
+# les mêmes motifs qu'install_nginx.sh (`has_include`, `layout`) : la ligne
+# de l'outil, sites-enabled (Debian), conf.d (paquet amont de nginx).
+_NGINX_INCLUDE_OURS = (
+    r"^[[:space:]]*include[[:space:]]+/etc/nginx/erplibre-call\.d/\*\.conf"
+    r"[[:space:]]*;"
+)
+_NGINX_INCLUDE_SITES = (
+    r"^[[:space:]]*include[[:space:]]+(/etc/nginx/)?sites-enabled/\*"
+    r"[[:space:]]*;"
+)
+_NGINX_INCLUDE_CONFD = (
+    r"^[[:space:]]*include[[:space:]]+(/etc/nginx/)?conf\.d/\*\.conf"
+    r"[[:space:]]*;"
+)
+# Chaque nom d'une directive `server_name`, jusqu'à son « ; », même sur
+# plusieurs lignes ; un commentaire (# jusqu'à la fin de ligne) ne compte
+# pas. `proxy_ssl_server_name` et les autres mots qui finissent pareil ne
+# sont pas `server_name` : seul le mot exact ouvre la liste.
+_NGINX_NAMES_AWK = (
+    '{ sub(/#.*/, ""); gsub(/;/, " ; "); n = split($0, w);'
+    ' for (i = 1; i <= n; i++) { t = w[i]; if (t == "") continue;'
+    ' if (on) { if (t == ";") on = 0; else print "@@NGINX_NAME " t " " file }'
+    ' else if (t == "server_name") on = 1 } }'
+)
+_DPKG_PLUGINS_AWK = (
+    '$3 == "installed" { sub(/^python3-certbot-dns-/, "", $4);'
+    ' print "@@CERTBOT_PLUGIN " $4 }'
+)
 
 
 def probe_script(root=""):
@@ -311,7 +405,15 @@ def probe_script(root=""):
     seulement), `@@STATE <base64>`, `@@FIREWALL_PENDING <ufw|nftables>
     <proto> <port> <service>` par règle posée que l'état ne consigne pas
     encore, `@@UFW_ADDED <ligne>` par ligne de `ufw show added` quand ufw
-    est actif, puis `@@END` : sans lui, la sortie est tronquée.
+    est actif, `@@NGINX <active|inactive|absent> <disposition> [include]`
+    (« include » : nginx.conf porte la ligne de l'outil), `@@NGINX_NAME
+    <nom> <fichier>` par nom de `server_name` des sites actifs que l'outil
+    n'a pas écrits (nginx.conf, sites-enabled, conf.d,
+    NGINX_INCLUDE_DIR), `@@CERTBOT <version|absent>`, `@@CERTBOT_PLUGIN
+    <greffon>` par greffon DNS installé, `@@LINEAGE erplibre-call
+    <noms...>` (lu par `certbot certificates`, qui n'écrit que son
+    journal), `@@HELD erplibre-call` quand son fichier de renouvellement est
+    mis de côté, puis `@@END` : sans lui, la sortie est tronquée.
     """
     files = " ".join(
         [
@@ -374,7 +476,7 @@ def probe_script(root=""):
             '    echo "@@FILE $f $(base64 -w0 < "$R$f")"',
             "  fi",
             "done",
-            "for s in " + " ".join(SERVICES) + "; do",
+            "for s in " + " ".join(PENDING_NAMES) + "; do",
             f'  f="$R{PENDING_DIR}/$s.json"',
             '  if [ -f "$f" ]; then'
             ' echo "@@PENDING $s $(base64 -w0 < "$f")"; fi',
@@ -405,6 +507,8 @@ def probe_script(root=""):
             'if [ "$FW" = nftables ]; then',
             '  printf "%s\\n" "$NI" | sed \'s/^/@@NFT_INPUT /\'',
             "fi",
+            *_nginx_probe_lines(),
+            *_certbot_probe_lines(),
             f'S="$R{STATE_PATH}"',
             'if [ -f "$S" ]; then echo "@@STATE $(base64 -w0 < "$S")"; fi',
             f'FP="$R{PENDING_DIR}/firewall"',
@@ -413,6 +517,70 @@ def probe_script(root=""):
             "",
         ]
     )
+
+
+def _nginx_probe_lines():
+    """Lignes de la sonde pour nginx : présent quand son binaire répond et
+    que nginx.conf existe (la règle d'install_nginx.sh)."""
+    conf = '"$NC"'
+    sites = ['"$NC"'] + [
+        f'"$R{d}/"{g}'
+        for d, g in (
+            ("/etc/nginx/sites-enabled", "*"),
+            ("/etc/nginx/conf.d", "*.conf"),
+            (NGINX_INCLUDE_DIR, "*.conf"),
+        )
+    ]
+    return [
+        "NX=absent; NL=-; NO=",
+        f'NC="$R{NGINX_CONF}"',
+        f"if command -v nginx >/dev/null 2>&1 && [ -f {conf} ]; then",
+        "  NX=$(systemctl is-active nginx 2>/dev/null)",
+        '  [ "$NX" = active ] || NX=inactive',
+        f"  if grep -qE {shlex.quote(_NGINX_INCLUDE_OURS)} {conf}; then"
+        " NL=arch-include; NO=include",
+        f"  elif grep -qE {shlex.quote(_NGINX_INCLUDE_SITES)} {conf}; then"
+        " NL=debian",
+        f"  elif grep -qE {shlex.quote(_NGINX_INCLUDE_CONFD)} {conf}; then"
+        " NL=confd",
+        "  else NL=arch-include; fi",
+        "fi",
+        'echo "@@NGINX $NX $NL${NO:+ $NO}"',
+        'if [ "$NX" != absent ]; then',
+        f"  for f in {' '.join(sites)}; do",
+        '    [ -f "$f" ] || continue',
+        f'    [ "$(head -n 1 "$f")" = {shlex.quote(MARKER)} ] && continue',
+        f'    awk -v file="${{f#"$R"}}" {shlex.quote(_NGINX_NAMES_AWK)} "$f"',
+        "  done",
+        "fi",
+    ]
+
+
+def _certbot_probe_lines():
+    """Lignes de la sonde pour certbot : version, greffons DNS installés
+    (dpkg ou pacman), noms de la lignée de l'outil, fichier mis de côté."""
+    return [
+        "CV=absent",
+        "command -v certbot >/dev/null 2>&1"
+        " && CV=$(certbot --version 2>&1 | awk 'NR == 1 { print $NF }')",
+        'echo "@@CERTBOT ${CV:-unknown}"',
+        'if [ "$CV" != absent ]; then',
+        "  if command -v dpkg-query >/dev/null 2>&1; then",
+        "    dpkg-query -W -f '${Status} ${Package}\\n'"
+        " 'python3-certbot-dns-*' 2>/dev/null"
+        f" | awk {shlex.quote(_DPKG_PLUGINS_AWK)}",
+        "  elif command -v pacman >/dev/null 2>&1; then",
+        "    pacman -Qq 2>/dev/null"
+        " | sed -n 's/^certbot-dns-/@@CERTBOT_PLUGIN /p'",
+        "  fi",
+        f'  if [ -d "$R{LINEAGE_DIR}" ]; then',
+        f"    certbot certificates --cert-name {CERT_NAME} 2>/dev/null"
+        " | sed -n 's/^[[:space:]]*Domains:[[:space:]]*/"
+        f"@@LINEAGE {CERT_NAME} /p'",
+        "  fi",
+        "fi",
+        f'if [ -f "$R{RENEWAL_HOLD}" ]; then echo "@@HELD {CERT_NAME}"; fi',
+    ]
 
 
 def marker_lines(output):
@@ -505,6 +673,8 @@ def parse_probe(output):
     addresses, ports, files, pending, chains = [], [], {}, {}, []
     firewall_pending, ufw_added = [], []
     coturn_marker, ntfy_marker, complete, enabled = [], [], False, {}
+    nginx_marker, nginx_names, plugins = [], [], []
+    certbot_version, lineage, held = None, None, False
     for name, value in marker_lines(output):
         if name == "OS":
             parts = value.split()
@@ -542,8 +712,27 @@ def parse_probe(output):
         elif name == "PENDING":
             svc, _, encoded = value.partition(" ")
             record = _decode_json(encoded)
-            if svc in SERVICES and record is not None:
+            if svc in PENDING_NAMES and record is not None:
                 pending[svc] = record
+        elif name == "NGINX":
+            nginx_marker = value.split()
+        elif name == "NGINX_NAME":
+            found, _, where = value.strip().partition(" ")
+            entry = (found, where.strip())
+            if found and entry[1] and entry not in nginx_names:
+                nginx_names.append(entry)
+        elif name == "CERTBOT":
+            certbot_version = value.strip() or "unknown"
+        elif name == "CERTBOT_PLUGIN":
+            plugin = value.strip()
+            if plugin in DNS_PLUGINS and plugin not in plugins:
+                plugins.append(plugin)
+        elif name == "LINEAGE":
+            parts = value.split()
+            if parts and parts[0] == CERT_NAME:
+                lineage = tuple(parts[1:])
+        elif name == "HELD":
+            held = held or value.strip() == CERT_NAME
         elif name == "FIREWALL":
             kind = value.strip()
             firewall = kind if kind in FIREWALLS else "unknown"
@@ -597,7 +786,41 @@ def parse_probe(output):
         nft_chains=tuple(chains),
         firewall_pending=tuple(firewall_pending),
         ufw_added=tuple(ufw_added),
+        nginx=_nginx_facts(nginx_marker, nginx_names, pending.get("nginx")),
+        certbot=_certbot_facts(
+            certbot_version, lineage, held, plugins, pending.get("certbot")
+        ),
     )
+
+
+def _nginx_facts(marker, names, pending):
+    """`HostFacts.nginx` des lignes `@@NGINX` et `@@NGINX_NAME`."""
+    state = marker[0] if marker[:1] in (["active"], ["inactive"]) else "absent"
+    if state == "absent" and pending is None:
+        return None
+    present = state != "absent"
+    layout = marker[1] if len(marker) > 1 else None
+    return {
+        "state": state,
+        "layout": layout if present and layout in NGINX_LAYOUTS else None,
+        "include": present and marker[2:3] == ["include"],
+        "names": tuple(names) if present else (),
+        "pending": pending,
+    }
+
+
+def _certbot_facts(version, lineage, held, plugins, pending):
+    """`HostFacts.certbot` des lignes `@@CERTBOT*`, `@@LINEAGE`, `@@HELD`."""
+    present = version not in (None, "absent")
+    if not present and lineage is None and not held and pending is None:
+        return None
+    return {
+        "version": version if present else None,
+        "lineage": lineage,
+        "held": held,
+        "plugins": tuple(plugins),
+        "pending": pending,
+    }
 
 
 def _pending_rule(value):
@@ -905,7 +1128,11 @@ def ntfy_config(answers, existing=None):
         text = nm._set_key(text, "behind-proxy", "true", False)
         web = "app" if answers.ntfy_web else "disable"
         text = nm._set_key(text, "web-root", web, False)
-    elif _ntfy_own_tls(answers):
+        return _ntfy_auth_keys(text)
+    # Un retour au développement retire ce que la production a posé.
+    for key in ("behind-proxy", "web-root"):
+        text = _drop_key(text, key)
+    if _ntfy_own_tls(answers):
         http = f"127.0.0.1:{ntfy_http_port(answers)}"
         text = nm._set_key(text, "listen-http", http, True)
         text = nm._set_key(
@@ -917,6 +1144,12 @@ def ntfy_config(answers, existing=None):
         text = nm._set_key(text, "listen-http", f":{ntfy_port(answers)}", True)
         for key in ("listen-https", "cert-file", "key-file"):
             text = _drop_key(text, key)
+    return _ntfy_auth_keys(text)
+
+
+def _ntfy_auth_keys(text):
+    """`text` avec `auth-file` et `auth-default-access: deny-all` quand
+    elles manquent ; présentes, elles restent telles quelles."""
     keys = nm.read_yml_keys(text)
     if not keys.get("auth-file"):
         text = nm._set_key(text, "auth-file", NTFY_AUTH_FILE, True)
@@ -1255,7 +1488,10 @@ def _check_production(facts, answers):
     (`call_infra_prod_needs_nginx`), défi ACME que les services ne
     permettent pas (`call_infra_acme_method` : certbot autonome quand
     nginx sert ou écoute déjà 80, webroot sans nginx), greffon DNS inconnu
-    ou sans identifiants (`call_infra_dns_plugin`), 443 pour coturn quand
+    ou sans identifiants (`call_infra_dns_plugin`), nom que nginx servirait
+    déjà servi par un site que l'outil n'a pas écrit
+    (`call_infra_nginx_name_taken`, avec ce fichier : deux `server_name`
+    égaux sur un port, nginx n'en garde qu'un), 443 pour coturn quand
     nginx s'en sert ou qu'un autre processus le tient
     (`call_infra_turns_443`)."""
     if answers.tls == "none":
@@ -1280,6 +1516,14 @@ def _check_production(facts, answers):
             raise Refusal(
                 "call_infra_dns_plugin", plugin=answers.dns_plugin or ""
             )
+    if answers.nginx is not None:
+        taken = _nginx_taken(facts)
+        for wanted in certificate_names(answers):
+            where = taken.get(wanted.lower())
+            if where is not None:
+                raise Refusal(
+                    "call_infra_nginx_name_taken", name=wanted, file=where
+                )
     if answers.turns_443 and "coturn" in answers.services:
         others = [
             process
@@ -1295,6 +1539,24 @@ def _check_production(facts, answers):
                 holder=holder,
                 port=answers.turns_port,
             )
+
+
+def _nginx_present(facts):
+    return bool(facts.nginx) and facts.nginx.get("state") != "absent"
+
+
+def _nginx_taken(facts):
+    """{nom en minuscules: fichier} des `server_name` exacts des sites
+    étrangers. Un joker (`*.x`, `.x`), une expression (`~...`) ou « _ » ne
+    prennent aucun nom : nginx préfère le nom exact de l'outil."""
+    taken = {}
+    if not _nginx_present(facts):
+        return taken
+    for name, where in facts.nginx.get("names") or ():
+        key = name.lower().rstrip(".")
+        if _NAME.match(key) and key not in taken:
+            taken[key] = where
+    return taken
 
 
 # --- Plan -------------------------------------------------------------------
@@ -1397,6 +1659,156 @@ def _origin(current, prior_record):
     }
 
 
+def _nginx_paths(layout):
+    """(site, lien dans sites-enabled, nginx.conf quand l'outil y a sa
+    ligne include) d'une disposition : `site_path`, `link_path` et
+    `ensure_include` d'install_nginx.sh."""
+    if layout == "debian":
+        return (
+            f"/etc/nginx/sites-available/{NGINX_SITE_FILE}",
+            f"/etc/nginx/sites-enabled/{NGINX_SITE_FILE}",
+            None,
+        )
+    if layout == "confd":
+        return f"/etc/nginx/conf.d/{NGINX_SITE_FILE}", None, None
+    return f"{NGINX_INCLUDE_DIR}/{NGINX_SITE_FILE}", None, NGINX_CONF
+
+
+def _tool_origin(prior_record, pending, present):
+    """(installé par l'outil, source) : du dernier état écrit, sinon de la
+    fiche d'un passage coupé, sinon de la sonde (absent : ce passage
+    l'installe). `source` est le dict lu, None pour la sonde."""
+    for source in (prior_record, pending):
+        if isinstance(source, dict) and "installed_by_tool" in source:
+            return bool(source["installed_by_tool"]), source
+    return not present, None
+
+
+def _nginx_settings(answers):
+    """Ce que nginx reçoit d'un plan ; deux plans aux mêmes valeurs ne
+    changent rien au site."""
+    ntfy = "ntfy" in answers.services
+    http_challenge = (
+        answers.tls == "letsencrypt" and answers.acme == "http-nginx"
+    )
+    return {
+        "names": certificate_names(answers),
+        "ntfy_name": ntfy_host(answers) if ntfy else None,
+        "upstream_port": ntfy_http_port(answers) if ntfy else None,
+        "acme_root": ACME_ROOT if http_challenge else None,
+        "tls_files": (
+            [SITE_CERT, SITE_KEY] if answers.tls == "supplied" else []
+        ),
+    }
+
+
+def _certbot_settings(answers):
+    dns = answers.acme == "dns"
+    return {
+        "method": answers.acme,
+        "plugin": answers.dns_plugin if dns else None,
+        "names": certificate_names(answers),
+        "email": answers.email,
+    }
+
+
+def _nginx_record(facts, answers, prior):
+    """Fiche « nginx » de l'état. `installed_by_tool`, `layout` (et `site`,
+    `link`, `include` qui en découlent) et `backup` (copie de nginx.conf
+    d'avant la ligne include) sont des valeurs de plan : le script les
+    remplace par ce qu'install_nginx.sh imprime (`installed_state`)."""
+    record = prior.get("nginx")
+    record = record if isinstance(record, dict) else {}
+    pending = (facts.nginx or {}).get("pending")
+    tool, _source = _tool_origin(record, pending, _nginx_present(facts))
+    layout = (facts.nginx or {}).get("layout")
+    if not _nginx_present(facts) or layout not in NGINX_LAYOUTS:
+        # Le paquet Debian inclut sites-enabled ; celui d'Arch, aucun
+        # dossier.
+        layout = "debian" if facts.family == "debian" else "arch-include"
+    site, link, include = _nginx_paths(layout)
+    backup = record.get("backup")
+    return {
+        "installed_by_tool": tool,
+        "layout": layout,
+        "site": site,
+        "link": link,
+        "include": include,
+        "backup": backup if _run_path(backup) else None,
+        "applied": NGINX_APPLIED,
+        **_nginx_settings(answers),
+    }
+
+
+def _certbot_record(facts, answers, prior):
+    """Fiche « certbot » de l'état : origine du paquet, paquets de greffons
+    DNS que l'outil a installés (union des passages), minuteur de
+    renouvellement (`installed_state` le lit dans `@@CERTBOT_TIMER`),
+    lignée, identifiants DNS posés."""
+    record = prior.get("certbot")
+    record = record if isinstance(record, dict) else {}
+    found = facts.certbot or {}
+    tool, source = _tool_origin(
+        record, found.get("pending"), bool(found.get("version"))
+    )
+    plugins = (source or {}).get("plugins_installed")
+    plugins = [
+        p for p in plugins or () if isinstance(p, str) and _PACKAGE.match(p)
+    ]
+    dns = answers.acme == "dns"
+    if dns and answers.dns_plugin not in found.get("plugins", ()):
+        package = DNS_PACKAGES[facts.family].format(answers.dns_plugin)
+        if package not in plugins:
+            plugins.append(package)
+    timer = record.get("timer")
+    return {
+        "installed_by_tool": tool,
+        "plugins_installed": plugins,
+        "timer": timer if _timer_record(timer) else None,
+        "cert_name": CERT_NAME,
+        "lineage": LINEAGE_DIR,
+        "renewal": RENEWAL_FILE,
+        "dns_credentials": (
+            f"{DNS_DIR}/{answers.dns_plugin}.ini" if dns else None
+        ),
+        **_certbot_settings(answers),
+    }
+
+
+def _lineage_unchanged(facts, answers):
+    found = facts.certbot or {}
+    lineage = found.get("lineage")
+    if lineage is None or found.get("held"):
+        return False
+    wanted = {n.lower() for n in certificate_names(answers)}
+    return {n.lower() for n in lineage} == wanted
+
+
+def _production_unchanged(facts, answers, prior):
+    """Vrai quand nginx et certbot n'ont rien à refaire : fiches de l'état
+    aux mêmes réglages, nginx actif, lignée aux mêmes noms, crochet posé."""
+
+    def same(name, settings):
+        record = prior.get(name)
+        return isinstance(record, dict) and all(
+            record.get(key) == value for key, value in settings.items()
+        )
+
+    if answers.nginx is not None and not (
+        same("nginx", _nginx_settings(answers))
+        and _nginx_present(facts)
+        and facts.nginx.get("state") == "active"
+    ):
+        return False
+    if answers.tls == "letsencrypt" and not (
+        same("certbot", _certbot_settings(answers))
+        and _lineage_unchanged(facts, answers)
+        and isinstance(prior.get("hook"), dict)
+    ):
+        return False
+    return True
+
+
 def plan_install(facts, answers, now):
     """Plan d'installation, ou Refusal avant que rien ne soit touché.
 
@@ -1412,8 +1824,14 @@ def plan_install(facts, answers, now):
 
     `nothing_to_do` : chaque service choisi est consigné avec les mêmes
     réglages, son unité est active et sa configuration sur l'hôte est déjà
-    celle voulue. Les services consignés et non choisis restent dans
-    l'état tels quels, comme toute clé inconnue de l'état (pare-feu...).
+    celle voulue ; en production, nginx et certbot aussi
+    (`_production_unchanged`). Les services consignés et non choisis
+    restent dans l'état tels quels, comme toute clé inconnue de l'état
+    (pare-feu...).
+
+    Production : l'état gagne les fiches « nginx » (`_nginx_record`),
+    « certbot » (`_certbot_record`) et « hook » quand le plan s'en sert, et
+    la fiche de coturn son complément d'unité (`dropin`, None sans 443).
     """
     if facts.family is None:
         raise Refusal(
@@ -1490,6 +1908,11 @@ def plan_install(facts, answers, now):
         record.update(_origin(current, prior_record))
         record["settings"] = settings
         record["tls_files"] = tls_files
+        if svc == "coturn" and is_production(answers):
+            # La désinstallation retire ce complément d'unité (ruling L2-4).
+            record["dropin"] = (
+                COTURN_DROPIN.format(unit=unit) if answers.turns_443 else None
+            )
         services[svc] = record
 
     stamp_now = now.isoformat(timespec="seconds")
@@ -1504,6 +1927,15 @@ def plan_install(facts, answers, now):
             "services": services,
         }
     )
+    # Une fiche d'un passage précédent que ce plan n'utilise pas reste
+    # telle quelle : la désinstallation défait encore ce qu'elle consigne.
+    if is_production(answers):
+        if answers.nginx is not None:
+            new_state["nginx"] = _nginx_record(facts, answers, prior)
+        if answers.tls == "letsencrypt":
+            new_state["certbot"] = _certbot_record(facts, answers, prior)
+            new_state["hook"] = {"path": HOOK_PATH, "installed_by_tool": True}
+        unchanged = unchanged and _production_unchanged(facts, answers, prior)
     return InstallPlan(
         answers=answers,
         adopt=tuple(adopt),
@@ -1511,6 +1943,9 @@ def plan_install(facts, answers, now):
         nothing_to_do=unchanged,
         new_state=new_state,
         configs=configs,
+        lineage_unchanged=(
+            answers.tls == "letsencrypt" and _lineage_unchanged(facts, answers)
+        ),
     )
 
 
@@ -1664,26 +2099,24 @@ def _export(variables, raw=None):
     return lines
 
 
-def _place(payload, path, mode, group=None):
+def _place(payload, path, mode, group=None, gunzip=False):
     """Écrit un fichier de l'hôte par `.new` puis renommage, droits posés
     avant le renommage : le fichier n'existe jamais avec d'autres droits."""
     new, final = _host(path + ".new"), _host(path)
     owner = f" && chown root:{group} {new}" if group else ""
     return (
-        _decode_to(payload, new) + owner + f" && chmod {mode} {new}"
+        _decode_to(payload, new, gunzip) + owner + f" && chmod {mode} {new}"
         f" && mv -f {new} {final}"
     )
 
 
-def _coturn_block(plan):
+# Lignée de l'outil sur l'hôte, pour les lignes du script (`$R` devant).
+_LIVE = f'"$R"{shlex.quote(LINEAGE_DIR)}'
+
+
+def _coturn_variables(plan):
+    """Variables d'install_coturn.sh communes à ses passages."""
     answers = plan.answers
-    lines = [
-        "# coturn",
-        _decode_to(
-            _installer_payload("coturn"), '"$D/install_coturn.sh"', gunzip=True
-        )
-        + " || fail payload-coturn",
-    ]
     low, high = relay_range(answers)
     variables = {
         "TURN_REALM": answers.public_name,
@@ -1692,7 +2125,6 @@ def _coturn_block(plan):
         "TURN_MIN_PORT": low,
         "TURN_MAX_PORT": high,
     }
-    raw = {}
     # Un plan de développement relaie aussi vers les plages privées (réseau
     # local, boucle locale) : sans TURN_ALLOW_PRIVATE=1, l'installateur les
     # refuse, et la configuration écrite ne serait plus celle que
@@ -1701,11 +2133,46 @@ def _coturn_block(plan):
     if plan.new_state.get("mode") == "development":
         variables["TURN_ALLOW_PRIVATE"] = "1"
     # TLS sur 443 au lieu de TURN_TLS_PORT : coturn ne sert TLS que sur un
-    # port à la fois.
-    if answers.turns_443:
+    # port à la fois. L'installateur refuse 443 sans certificat : avec
+    # Let's Encrypt, la variable suit la lignée (`_lineage_exports`).
+    if answers.turns_443 and answers.tls != "letsencrypt":
         variables["TURN_ALT_TLS_PORT"] = TURNS_ALT_PORT
     if answers.external_ip:
         variables["TURN_EXTERNAL_IP"] = answers.external_ip
+    if "coturn" in plan.adopt:
+        variables["TURN_GARDER_CONFIG"] = "1"
+    return variables
+
+
+def _lineage_exports(plan, indent):
+    """Lignes qui donnent à install_coturn.sh la lignée certbot comme
+    certificat, et 443 avec `turns_443`."""
+    names = ["TURN_CERT_FILE", "TURN_KEY_FILE"]
+    lines = [
+        f'TURN_CERT_FILE={_LIVE}"/fullchain.pem"',
+        f'TURN_KEY_FILE={_LIVE}"/privkey.pem"',
+    ]
+    if plan.answers.turns_443:
+        lines.append(f"TURN_ALT_TLS_PORT={TURNS_ALT_PORT}")
+        names.append("TURN_ALT_TLS_PORT")
+    lines.append("export " + " ".join(names))
+    return [indent + line for line in lines]
+
+
+def _coturn_block(plan):
+    """Premier passage d'install_coturn.sh. Avec Let's Encrypt, la lignée
+    déjà sur le disque ($LE=1) lui sert de certificat ; sans elle, coturn
+    démarre sans TLS (`no-tls`) et `_coturn_lineage_lines` le reprend après
+    la délivrance."""
+    answers = plan.answers
+    lines = [
+        "# coturn",
+        _decode_to(
+            _installer_payload("coturn"), '"$D/install_coturn.sh"', gunzip=True
+        )
+        + " || fail payload-coturn",
+    ]
+    raw = {}
     if answers.tls == "supplied":
         # L'installateur copie ces fichiers dans COTURN_TLS_DIR ; ici ils ne
         # vivent que dans le dossier de travail, effacé en sortie.
@@ -1719,13 +2186,39 @@ def _coturn_block(plan):
             "TURN_CERT_FILE": '"$D/turn.crt"',
             "TURN_KEY_FILE": '"$D/turn.key"',
         }
-    if "coturn" in plan.adopt:
-        variables["TURN_GARDER_CONFIG"] = "1"
     # Sans TURN_CHECK_PASSWORD, install_coturn.sh tire le mot de passe du
     # compte de contrôle sur l'hôte et n'en garde que la clé, que la
     # vérification relit : aucun secret de ce compte ne part d'ici.
-    lines += ["(", "  umask 022"] + _export(variables, raw)
+    lines += ["(", "  umask 022"] + _export(_coturn_variables(plan), raw)
+    if answers.tls == "letsencrypt":
+        lines.append('  if [ "$LE" = 1 ]; then')
+        lines += _lineage_exports(plan, "    ")
+        lines.append("  fi")
     lines += ['  exec bash "$D/install_coturn.sh"', ")", "RC_coturn=$?"]
+    return lines
+
+
+def _coturn_lineage_lines(plan):
+    """Second passage d'install_coturn.sh, avec la lignée : quand coturn a
+    démarré sans elle ($LE=0), ou quand certbot vient d'en délivrer une
+    nouvelle que le crochet n'a pas pu lui remettre (aucun état ne nomme
+    encore coturn : `@@HOOK coturn-skip`). L'installateur écrit alors les
+    lignes TLS et redémarre coturn."""
+    lines = [
+        "CB=$(mval CERTBOT)",
+        'if [ "$LE" = 0 ] || { [ "${CB%% *}" = issued ]'
+        " && grep -q '^@@HOOK coturn-skip' \"$D/run.m\"; }; then",
+        "  (",
+        "    umask 022",
+    ]
+    lines += ["  " + line for line in _export(_coturn_variables(plan))]
+    lines += _lineage_exports(plan, "    ")
+    lines += [
+        '    exec bash "$D/install_coturn.sh"',
+        "  )",
+        '  [ "$?" = 0 ] || fail coturn-tls',
+        "fi",
+    ]
     return lines
 
 
@@ -1797,11 +2290,20 @@ def _ntfy_block(plan):
         f"  chmod 0644 {new} || fail ntfy-config",
         "fi",
         f"mv -f {new} {config} || fail ntfy-config",
-        "(",
-        "  umask 022",
+        "{",
+        "  (",
+        "    umask 022",
     ]
-    lines += _export(variables)
-    lines += ['  exec bash "$D/install_ntfy.sh"', ")", "RC_ntfy=$?"]
+    lines += ["  " + line for line in _export(variables)]
+    # La sortie passe par `cap` : `@@ADMIN_PASSWORD` y devient
+    # `@@ADMIN_ADDED`, que l'écriture de l'état lit (`admin_added`).
+    lines += [
+        '    exec bash "$D/install_ntfy.sh"',
+        "  )",
+        '  echo "$?" > "$D/rc.ntfy"',
+        "} | cap",
+        'RC_ntfy=$(cat "$D/rc.ntfy" 2>/dev/null)',
+    ]
     return lines
 
 
@@ -1819,30 +2321,495 @@ def _state_write_lines(state):
     ]
 
 
+# Valeurs que le script prend aux marqueurs des installateurs : un paquet
+# (`@@CERTBOT_PLUGIN_INSTALLED`), un chemin (`@@NGINX_BACKUP`), une unité
+# de minuteur (`@@CERTBOT_TIMER`). Les formes sont celles que les lignes
+# `sh` de `_run_field_lines` vérifient, au caractère près.
+_PACKAGE = re.compile(r"^[a-z0-9.+-]+$")
+_RUN_PATH = re.compile(r"^(/[A-Za-z0-9._-]+)+$")
+_TIMER = re.compile(r"^[A-Za-z0-9@._-]*\.timer$")
+
+
+def _run_path(value):
+    return (
+        isinstance(value, str)
+        and bool(_RUN_PATH.match(value))
+        and not {".", ".."} & set(value.split("/"))
+    )
+
+
+def _timer_record(value):
+    return (
+        isinstance(value, dict)
+        and set(value) == {"unit", "added"}
+        and isinstance(value["added"], bool)
+        and isinstance(value["unit"], str)
+        and bool(_TIMER.match(value["unit"]))
+    )
+
+
+def deploy_hook_text():
+    """Le crochet de déploiement certbot que l'installation pose en
+    HOOK_PATH, tel quel."""
+    with open(HOOK_SOURCE, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _hook_payload():
+    with open(HOOK_SOURCE, "rb") as handle:
+        return _b64(gzip.compress(handle.read(), mtime=0))
+
+
+def _uses_nginx(answers):
+    return is_production(answers) and answers.nginx is not None
+
+
+def _uses_certbot(answers):
+    return is_production(answers) and answers.tls == "letsencrypt"
+
+
+def _run_fields(plan):
+    """[(nom, (fiche, clé))] des valeurs de l'état que le script prend à la
+    sortie des installateurs de ce passage : nginx et certbot impriment ce
+    qu'ils ont fait, le plan n'en a qu'une prévision."""
+    fields = []
+    if _uses_nginx(plan.answers):
+        fields += [
+            ("nginx_tool", ("nginx", "installed_by_tool")),
+            ("nginx_layout", ("nginx", "layout")),
+            ("nginx_site", ("nginx", "site")),
+            ("nginx_link", ("nginx", "link")),
+            ("nginx_include", ("nginx", "include")),
+            ("nginx_backup", ("nginx", "backup")),
+        ]
+    if _uses_certbot(plan.answers):
+        fields += [
+            ("certbot_tool", ("certbot", "installed_by_tool")),
+            ("certbot_plugins", ("certbot", "plugins_installed")),
+            ("certbot_timer", ("certbot", "timer")),
+        ]
+    return fields
+
+
+def _last_markers(output):
+    """{NOM: valeur} de la dernière ligne `@@NOM valeur` de chaque nom."""
+    return dict(marker_lines(output or ""))
+
+
+def _run_values(defaults, last):
+    """`defaults` ({nom: valeur de plan}) où chaque marqueur bien formé
+    impose ce que l'installateur a fait ; la règle des lignes `sh` de
+    `_run_field_lines`."""
+    values = dict(defaults)
+    if "nginx_tool" in values and last.get("NGINX_INSTALLED"):
+        values["nginx_tool"] = True
+    layout = last.get("NGINX_LAYOUT")
+    if "nginx_layout" in values and layout in NGINX_LAYOUTS:
+        values["nginx_layout"] = layout
+        (
+            values["nginx_site"],
+            values["nginx_link"],
+            values["nginx_include"],
+        ) = _nginx_paths(layout)
+    backup = last.get("NGINX_BACKUP")
+    if "nginx_backup" in values and _run_path(backup):
+        values["nginx_backup"] = backup
+    if "certbot_tool" in values and last.get("CERTBOT_INSTALLED"):
+        values["certbot_tool"] = True
+    plugin = last.get("CERTBOT_PLUGIN_INSTALLED") or ""
+    plugins = values.get("certbot_plugins")
+    if (
+        plugins is not None
+        and _PACKAGE.match(plugin)
+        and plugin not in plugins
+    ):
+        values["certbot_plugins"] = [*plugins, plugin]
+    unit, sep, kind = (last.get("CERTBOT_TIMER") or "").rpartition(" ")
+    if (
+        "certbot_timer" in values
+        and sep
+        and _TIMER.match(unit)
+        and kind in ("added", "present")
+    ):
+        values["certbot_timer"] = {"unit": unit, "added": kind == "added"}
+    return values
+
+
+def _run_field_lines(fields, defaults):
+    """Lignes `sh` qui posent `J_<nom>` (texte JSON) pour chaque champ :
+    la valeur de plan, remplacée par celle d'un marqueur bien formé de
+    "$D/run.m" (voir `cap`). Les valeurs admises ne portent ni « | », ni
+    « & », ni « \\ » : elles passent telles quelles dans `sed`."""
+    names = {name for name, _key in fields}
+    lines = [
+        f"J_{name}={shlex.quote(json.dumps(defaults[name]))}"
+        for name, _key in fields
+    ]
+    if "nginx_tool" in names:
+        lines.append('[ -n "$(mval NGINX_INSTALLED)" ] && J_nginx_tool=true')
+    if "nginx_layout" in names:
+        lines.append('case "$(mval NGINX_LAYOUT)" in')
+        for layout in NGINX_LAYOUTS:
+            site, link, include = _nginx_paths(layout)
+            sets = [
+                f"J_nginx_layout={shlex.quote(json.dumps(layout))}",
+                f"J_nginx_site={shlex.quote(json.dumps(site))}",
+                f"J_nginx_link={shlex.quote(json.dumps(link))}",
+                f"J_nginx_include={shlex.quote(json.dumps(include))}",
+            ]
+            lines.append(f"  {layout}) " + "; ".join(sets) + " ;;")
+        lines.append("esac")
+    if "nginx_backup" in names:
+        lines.append(
+            'V=$(mval NGINX_BACKUP); okpath "$V" && J_nginx_backup="\\"$V\\""'
+        )
+    if "certbot_tool" in names:
+        lines.append(
+            '[ -n "$(mval CERTBOT_INSTALLED)" ] && J_certbot_tool=true'
+        )
+    if "certbot_plugins" in names:
+        lines += [
+            "V=$(mval CERTBOT_PLUGIN_INSTALLED)",
+            'case "$V" in',
+            "  ''|*[!a-z0-9.+-]*) ;;",
+            '  *) case "$J_certbot_plugins" in',
+            '    *"\\"$V\\""*) ;;',
+            '    \'[]\') J_certbot_plugins="[\\"$V\\"]" ;;',
+            '    *) J_certbot_plugins="${J_certbot_plugins%]}, \\"$V\\"]" ;;',
+            "  esac ;;",
+            "esac",
+        ]
+    if "certbot_timer" in names:
+        lines += [
+            "V=$(mval CERTBOT_TIMER); U=${V% *}; K=${V##* }",
+            'case "$U" in',
+            "  *[!A-Za-z0-9@._-]*) ;;",
+            '  *.timer) case "$K" in',
+            '    added) J_certbot_timer="{\\"added\\": true,'
+            ' \\"unit\\": \\"$U\\"}" ;;',
+            '    present) J_certbot_timer="{\\"added\\": false,'
+            ' \\"unit\\": \\"$U\\"}" ;;',
+            "  esac ;;",
+            "esac",
+        ]
+    return lines
+
+
+def _template(state, fields):
+    """`state` en JSON où chaque champ de `fields` devient
+    "__RUN_<nom>__", que `sed` remplace sur l'hôte."""
+    template = copy.deepcopy(state)
+    for name, (record, key) in fields:
+        template[record][key] = f"__RUN_{name}__"
+    return json.dumps(template, indent=2, sort_keys=True)
+
+
+def _admin_pending(state):
+    """Vrai quand l'état peut encore gagner `admin_added` à ce passage : un
+    ntfy adopté qui ne le porte pas (voir `mark_admin_added`)."""
+    record = state["services"].get("ntfy")
+    return (
+        isinstance(record, dict)
+        and bool(record.get("adopted"))
+        and record.get("admin_added") is not True
+    )
+
+
+def installed_state(plan, stamp, output):
+    """L'état que `install_script(plan, stamp)` a écrit, d'après `output`,
+    sa sortie : `written_state`, avec `admin_added` quand l'installateur a
+    créé le compte d'un ntfy adopté, et les fiches nginx et certbot telles
+    que leurs installateurs les ont imprimées. C'est celui que l'appelant
+    complète ensuite (pare-feu) : il ne perd rien de ce que le passage root
+    a consigné."""
+    state = mark_admin_added(written_state(plan, stamp), output)
+    state = copy.deepcopy(state)
+    fields = _run_fields(plan)
+    defaults = {name: state[r][k] for name, (r, k) in fields}
+    values = _run_values(defaults, _last_markers(output))
+    for name, (record, key) in fields:
+        state[record][key] = values[name]
+    return state
+
+
+def _state_from_run_lines(state, fields):
+    """Lignes `sh` qui écrivent l'état en prenant aux marqueurs de ce
+    passage ce que `_run_fields` désigne et `admin_added` : le même état
+    qu'`installed_state` calcule de la sortie. Une seule écriture de
+    "$STATE.new", comme `_state_write_lines`."""
+    defaults = {name: state[r][k] for name, (r, k) in fields}
+    lines = _run_field_lines(fields, defaults)
+    tpl = '"$D/state.tpl"'
+    plain = _decode_to(_b64(_template(state, fields)), tpl) + " || fail state"
+    if _admin_pending(state):
+        marked = copy.deepcopy(state)
+        marked["services"]["ntfy"]["admin_added"] = True
+        lines += [
+            "if grep -qx '@@ADMIN_ADDED' \"$D/run.m\" 2>/dev/null; then",
+            "  "
+            + _decode_to(_b64(_template(marked, fields)), tpl)
+            + " || fail state",
+            "else",
+            "  " + plain,
+            "fi",
+        ]
+    else:
+        lines.append(plain)
+    edits = " ".join(
+        f'-e "s|\\"__RUN_{name}__\\"|$J_{name}|"' for name, _key in fields
+    )
+    copy_tpl = f"sed {edits}" if edits else "cat"
+    lines += [
+        f'{copy_tpl} {tpl} > "$STATE.new" || fail state',
+        'chown root:root "$STATE.new"; chmod 0600 "$STATE.new"',
+        'mv -f "$STATE.new" "$STATE" || fail state',
+    ]
+    return lines
+
+
+def _capture_lines():
+    """Fonctions `sh` des étapes dont la sortie compte pour l'état.
+
+    `cap` recopie sa sortie ligne à ligne et garde chaque ligne `@@` dans
+    "$D/run.m", sauf `@@ADMIN_PASSWORD <mot de passe>` qui y devient
+    `@@ADMIN_ADDED` : le mot de passe ne touche pas le disque. `mval
+    <NOM>` imprime la valeur de la dernière ligne `@@NOM` gardée.
+    `step_rc <étape>` lit le code de sortie déposé par l'étape (une
+    étape coupée n'en dépose aucun). `okpath` admet un chemin absolu fait
+    de [A-Za-z0-9._-], sans composant « . » ni « .. »."""
+    keep = (
+        "{ print; fflush() }"
+        ' /^@@ADMIN_PASSWORD [^ ]/ { print "@@ADMIN_ADDED" >> f; next }'
+        " /^@@[A-Z_]+/ { print >> f }"
+    )
+    return [
+        f'cap() {{ awk -v f="$D/run.m" {shlex.quote(keep)}; }}',
+        'mval() { sed -n "s/^@@$1 //p" "$D/run.m" 2>/dev/null | tail -n 1; }',
+        'step_rc() { [ "$(cat "$D/rc.$1" 2>/dev/null)" = 0 ]; }',
+        "okpath() {",
+        '  case "$1" in /?*) ;; *) return 1 ;; esac',
+        '  case "$1" in *[!A-Za-z0-9._/-]*|*//*|*/|*/./*|*/../*|*/.|*/..)'
+        " return 1 ;; esac",
+        "}",
+    ]
+
+
+def _rehold_lines():
+    """Fonction `sh` `rehold` : install_certbot.sh a remis le fichier de
+    renouvellement mis de côté (`@@CERTBOT_UNHELD`) et ce passage échoue
+    ensuite, avant l'état : le fichier repart de côté, faute d'état qui
+    consigne Let's Encrypt. Rien quand l'installateur l'a déjà fait
+    (`@@CERTBOT_REHELD`)."""
+    renewal = f'"$R"{shlex.quote(RENEWAL_FILE)}'
+    return [
+        "rehold() {",
+        "  grep -q '^@@CERTBOT_UNHELD ' \"$D/run.m\" 2>/dev/null || return 0",
+        "  grep -q '^@@CERTBOT_REHELD ' \"$D/run.m\" 2>/dev/null && return 0",
+        f"  F={renewal}",
+        '  if [ -f "$F" ] && [ ! -e "$F.erplibre-hold" ]'
+        ' && mv -f "$F" "$F.erplibre-hold"; then',
+        f'    echo "@@CERTBOT_REHELD {RENEWAL_FILE}"',
+        "  fi",
+        "}",
+    ]
+
+
+def _step(name, script, variables, raw=None, env_lines=()):
+    """Étape lancée par `bash <script>` dans un sous-shell (umask 022),
+    sortie par `cap`, arrêt du script (`fail <nom>`) sur un code non
+    nul."""
+    lines = ["{", "  (", "    umask 022"]
+    # Un `export` sans nom imprimerait tout l'environnement.
+    if variables or raw:
+        lines += ["  " + line for line in _export(variables, raw)]
+    lines += ["    " + line for line in env_lines]
+    lines += [
+        f"    exec bash {script}",
+        "  )",
+        f'  echo "$?" > "$D/rc.{name}"',
+        "} | cap",
+        f"step_rc {name} || fail {name}",
+    ]
+    return lines
+
+
+def _nginx_variables(plan):
+    """Variables d'install_nginx.sh, les mêmes aux deux étapes : les noms
+    du certificat sur 80, ntfy sur 443, la lignée ou le certificat fourni,
+    le dossier du défi quand certbot passe par nginx."""
+    answers, record = plan.answers, plan.new_state["nginx"]
+    ntfy = "ntfy" in answers.services
+    if answers.tls == "letsencrypt":
+        cert = f"{LINEAGE_DIR}/fullchain.pem"
+        key = f"{LINEAGE_DIR}/privkey.pem"
+    else:
+        cert, key = SITE_CERT, SITE_KEY
+    variables = {
+        "NGINX_NAMES": " ".join(certificate_names(answers)),
+        "NGINX_NTFY_NAME": ntfy_host(answers) if ntfy else "",
+    }
+    if ntfy:
+        variables["NGINX_UPSTREAM_PORT"] = ntfy_http_port(answers)
+    variables.update(
+        {
+            "NGINX_CERT_FILE": cert,
+            "NGINX_KEY_FILE": key,
+            "NGINX_ACME_ROOT": record["acme_root"] or "",
+        }
+    )
+    if answers.nginx == "install" or record["installed_by_tool"]:
+        variables["NGINX_INSTALL"] = 1
+    # Sur Arch, la ligne include ajoutée à nginx.conf est l'adoption que le
+    # plan annonce ; install_nginx.sh garde la copie d'avant.
+    variables["NGINX_ADOPT_INCLUDE"] = 1
+    return variables
+
+
+def _certbot_variables(plan):
+    answers = plan.answers
+    variables = {
+        "CERTBOT_NAMES": " ".join(certificate_names(answers)),
+        "CERTBOT_METHOD": CERTBOT_METHODS[answers.acme],
+        "CERTBOT_EMAIL": answers.email,
+    }
+    if answers.acme == "http-nginx":
+        variables["CERTBOT_WEBROOT"] = ACME_ROOT
+    if answers.acme == "dns":
+        variables["CERTBOT_DNS_PLUGIN"] = answers.dns_plugin
+        variables["CERTBOT_DNS_CREDENTIALS"] = plan.new_state["certbot"][
+            "dns_credentials"
+        ]
+    if plan.lineage_unchanged:
+        variables["CERTBOT_SKIP_STAGING"] = 1
+    return variables
+
+
+def _production_lines(plan):
+    """Étapes de production après coturn et ntfy, chacune arrêtant le
+    script avant l'état : certificat fourni posé pour nginx, nginx avant
+    certbot (défi HTTP-01 par le webroot), identifiants DNS, certbot,
+    crochet posé puis lancé sur la lignée, coturn repris sur la lignée,
+    nginx complet (443 devant ntfy)."""
+    answers = plan.answers
+    nginx, certbot = _uses_nginx(answers), _uses_certbot(answers)
+    lines = []
+    if nginx:
+        lines.append(
+            _decode_to(
+                _installer_payload("nginx"), '"$D/install_nginx.sh"', True
+            )
+            + " || fail payload-nginx"
+        )
+    if nginx and answers.tls == "supplied":
+        lines += [
+            f"mkdir -p {_host(COTURN_TLS_DIR)} || fail site-tls",
+            _place(_b64(answers.cert_pem), SITE_CERT, "0600")
+            + " || fail site-tls",
+            _place(_b64(answers.key_pem), SITE_KEY, "0600")
+            + " || fail site-tls",
+        ]
+    if certbot and answers.acme == "http-nginx":
+        # Le défi passe par le port 80 de nginx. Sans lignée, l'étape acme
+        # n'écrit que 80 ; avec elle, le site complet sert déjà le défi,
+        # et 443 ne tombe pas le temps de certbot.
+        lines += ["# nginx avant certbot", 'NS=acme; [ "$LE" = 1 ] && NS=full']
+        lines += _step(
+            "nginx-acme",
+            '"$D/install_nginx.sh"',
+            _nginx_variables(plan),
+            {"NGINX_STAGE": '"$NS"'},
+        )
+    if certbot and answers.acme == "dns":
+        path = plan.new_state["certbot"]["dns_credentials"]
+        lines += [
+            f"install -d -m 0700 {_host(DNS_DIR)} || fail dns",
+            _place(_b64(answers.dns_credentials), path, "0600")
+            + " || fail dns",
+        ]
+    if certbot:
+        hook = _host(HOOK_PATH)
+        lines += [
+            "# certbot",
+            _decode_to(
+                _installer_payload("certbot"), '"$D/install_certbot.sh"', True
+            )
+            + " || fail payload-certbot",
+        ]
+        lines += _step(
+            "certbot", '"$D/install_certbot.sh"', _certbot_variables(plan)
+        )
+        lines += [
+            "# crochet de déploiement",
+            f"install -d -m 0755 {_host(os.path.dirname(HOOK_PATH))}"
+            " || fail hook",
+            _place(_hook_payload(), HOOK_PATH, "0755", gunzip=True)
+            + " || fail hook",
+        ]
+        lines += _step(
+            "hook",
+            hook,
+            {},
+            env_lines=(
+                'ERPLIBRE_CALL_ROOT="$R"',
+                f"RENEWED_LINEAGE={_LIVE}",
+                "export ERPLIBRE_CALL_ROOT RENEWED_LINEAGE",
+            ),
+        )
+        if "coturn" in answers.services:
+            lines += _coturn_lineage_lines(plan)
+    if nginx:
+        lines.append("# nginx complet")
+        lines += _step(
+            "nginx-full",
+            '"$D/install_nginx.sh"',
+            {"NGINX_STAGE": "full", **_nginx_variables(plan)},
+        )
+    return lines
+
+
 def install_script(plan, stamp, root=""):
     """Script `sh` d'installation, lancé en root sur l'hôte.
 
-    Ordre : fiche de l'origine de chaque service dans `PENDING_DIR` (gardée
-    si elle existe déjà), copie `cp -p` de chaque configuration adoptée
-    vers le chemin que consigne `written_state` (quand ce fichier existe
-    déjà, seule une configuration qui en diffère est copiée, sous
-    `<config>.bak-<stamp>`), installateurs décodés du base64 et lancés avec
-    leurs variables (umask 022 : ce qu'ils écrivent doit rester lisible des
-    comptes de service), une ligne `@@ACTIVE <service> <état>` par service,
-    et SEULEMENT si chaque installateur a réussi et chaque unité est
-    active : l'état écrit en `.new` (0600) puis renommé, et les fiches
-    retirées. Dernière ligne : `@@SAVED yes`, ou `@@SAVED no` et un code non
-    nul. Une coupure en cours de route laisse l'ancien état (ou aucun) et
-    les fiches : la relance repart de là.
+    Ordre : fiche de l'origine de chaque service, et de nginx et certbot en
+    production, dans `PENDING_DIR` (gardée si elle existe déjà), copie
+    `cp -p` de chaque configuration adoptée vers le chemin que consigne
+    `written_state` (quand ce fichier existe déjà, seule une configuration
+    qui en diffère est copiée, sous `<config>.bak-<stamp>`), installateurs
+    décodés du base64 et lancés avec leurs variables (umask 022 : ce qu'ils
+    écrivent doit rester lisible des comptes de service), en production
+    les étapes de `_production_lines`, une ligne `@@ACTIVE <service>
+    <état>` par service (et nginx), et SEULEMENT si chaque installateur a
+    réussi et chaque unité est active : l'état écrit en `.new` (0600) puis
+    renommé, et les fiches retirées. Dernière ligne : `@@SAVED yes`, ou
+    `@@SAVED no` et un code non nul. Une coupure en cours de route laisse
+    l'ancien état (ou aucun) et les fiches : la relance repart de là.
+
+    L'état écrit est celui d'`installed_state` : `admin_added` et ce que
+    nginx et certbot ont imprimé y sont consignés par ce passage même, sans
+    attendre un second passage root.
+
+    Production : un échec de coturn ou de ntfy arrête le script avant
+    nginx et certbot. Avec Let's Encrypt, coturn démarre sans TLS tant que
+    la lignée n'existe pas, puis la reprend après certbot ; un échec après
+    certbot remet de côté le fichier de renouvellement qu'il avait remis
+    (`rehold`).
 
     Le mot de passe du compte de contrôle de coturn n'y figure pas :
-    l'installateur le tire sur l'hôte. Le certificat et la clé n'y
-    figurent qu'en base64. `root` préfixe chaque chemin de l'hôte (tests).
+    l'installateur le tire sur l'hôte. Le certificat, la clé et les
+    identifiants DNS n'y figurent qu'en base64. `root` préfixe chaque
+    chemin de l'hôte (tests).
     """
     if not _STAMP.match(stamp or ""):
         raise ValueError(f"stamp: {stamp!r}")
-    services = [s for s in SERVICES if s in plan.answers.services]
+    answers = plan.answers
+    services = [s for s in SERVICES if s in answers.services]
     state = written_state(plan, stamp)
+    production = is_production(answers)
+    certbot = _uses_certbot(answers)
+    # nginx et certbot ont leur fiche quand ce plan s'en sert.
+    extra = ["nginx"] if _uses_nginx(answers) else []
+    extra += ["certbot"] if certbot else []
+    rehold = " rehold;" if certbot else ""
     lines = [
         "set -u",
         f"R={shlex.quote(root)}",
@@ -1850,17 +2817,20 @@ def install_script(plan, stamp, root=""):
         f'STATE="$R"{shlex.quote(STATE_PATH)}',
         f'PENDING="$R"{shlex.quote(PENDING_DIR)}',
         "umask 077",
-        'fail() { echo "@@FAILED $1"; echo "@@SAVED no"; exit 1; }',
+        f'fail() {{ echo "@@FAILED $1";{rehold} echo "@@SAVED no"; exit 1; }}',
         "D=$(mktemp -d) || fail workdir",
         "trap 'rm -rf \"$D\"' EXIT",
         "trap 'exit 129' HUP INT TERM",
+        *_capture_lines(),
+        *(_rehold_lines() if certbot else []),
         # Le dossier reste traversable : coturn y lit son certificat.
         'mkdir -p "$PENDING" && chmod 0755 "$CALL" && chmod 0700 "$PENDING"'
         " || fail pending",
     ]
+    origins = {}
     for svc in services:
         record = state["services"][svc]
-        origin = {
+        origins[svc] = {
             k: record[k]
             for k in (
                 "installed_by_tool",
@@ -1871,14 +2841,20 @@ def install_script(plan, stamp, root=""):
                 "was_enabled",
             )
         }
-        pending = f'"$PENDING/{svc}.json"'
+    for name in extra:
+        keys = ("installed_by_tool", "plugins_installed")
+        origins[name] = {k: state[name][k] for k in keys if k in state[name]}
+    for name, origin in origins.items():
+        pending = f'"$PENDING/{name}.json"'
         lines += [
             f"if [ ! -e {pending} ]; then",
             "  "
-            + _decode_to(_b64(json.dumps(origin)), f'"$PENDING/{svc}.new"')
-            + f' && mv -f "$PENDING/{svc}.new" {pending} || fail pending',
+            + _decode_to(_b64(json.dumps(origin)), f'"$PENDING/{name}.new"')
+            + f' && mv -f "$PENDING/{name}.new" {pending} || fail pending',
             "fi",
         ]
+    for svc in services:
+        record = state["services"][svc]
         if svc in plan.adopt:
             backup = record.get("backup")
             if not _is_backup_of(record["config"], backup):
@@ -1887,12 +2863,16 @@ def install_script(plan, stamp, root=""):
             # : elle garde l'original. Une configuration étrangère qui en
             # diffère (refaite à la main depuis) est copiée à part, sous le
             # tampon de ce passage, plutôt que perdue.
-            config, extra = record["config"], f"{record['config']}.bak-{stamp}"
+            config, extra_copy = (
+                record["config"],
+                f"{record['config']}.bak-{stamp}",
+            )
             lines += [
                 f"if [ ! -e {_host(backup)} ]; then",
                 f"  cp -p {_host(config)} {_host(backup)} || fail backup-{svc}",
                 f"elif ! cmp -s {_host(config)} {_host(backup)}; then",
-                f"  cp -p {_host(config)} {_host(extra)} || fail backup-{svc}",
+                f"  cp -p {_host(config)} {_host(extra_copy)}"
+                f" || fail backup-{svc}",
                 "fi",
             ]
             # Une configuration de coturn sans paquet (installed_by_tool) :
@@ -1901,26 +2881,44 @@ def install_script(plan, stamp, root=""):
             # pose celle du paquet puis la remplace (TURN_GARDER_CONFIG=1).
             if svc == "coturn" and record["installed_by_tool"]:
                 lines.append(f"rm -f {_host(config)} || fail backup-{svc}")
-    for svc in services:
-        if svc == "coturn":
-            lines += _coturn_block(plan)
-        else:
-            lines += _ntfy_block(plan)
-    lines.append("OK=1")
-    for svc in services:
-        unit = shlex.quote(state["services"][svc]["unit"])
+    if certbot:
+        # $LE : la lignée est déjà sur le disque (relance, réinstallation
+        # après une désinstallation qui a gardé le certificat).
         lines += [
-            f'[ "$RC_{svc}" = 0 ] || OK=0',
-            f"A=$(systemctl is-active {unit} 2>/dev/null)",
-            f'echo "@@ACTIVE {svc} ${{A:-unknown}}"',
+            "LE=0",
+            f'[ -f {_LIVE}"/fullchain.pem" ] && [ -f {_LIVE}"/privkey.pem" ]'
+            " && LE=1",
+        ]
+    for svc in services:
+        lines += _coturn_block(plan) if svc == "coturn" else _ntfy_block(plan)
+        if production:
+            lines.append(f'[ "$RC_{svc}" = 0 ] || fail {svc}')
+    if production:
+        lines += _production_lines(plan)
+    units = [(svc, state["services"][svc]["unit"]) for svc in services]
+    if _uses_nginx(answers):
+        units.append(("nginx", "nginx"))
+    lines.append("OK=1")
+    for name, unit in units:
+        if name in services:
+            lines.append(f'[ "$RC_{name}" = 0 ] || OK=0')
+        lines += [
+            f"A=$(systemctl is-active {shlex.quote(unit)} 2>/dev/null)",
+            f'echo "@@ACTIVE {name} ${{A:-unknown}}"',
             '[ "$A" = active ] || OK=0',
         ]
+    fields = _run_fields(plan)
+    if fields or _admin_pending(state):
+        write = _state_from_run_lines(state, fields)
+    else:
+        write = _state_write_lines(state)
     lines.append('if [ "$OK" = 1 ]; then')
-    lines += ["  " + line for line in _state_write_lines(state)]
+    lines += ["  " + line for line in write]
     lines += [
-        *[f'  rm -f "$PENDING/{svc}.json"' for svc in services],
+        *[f'  rm -f "$PENDING/{name}.json"' for name in origins],
         '  echo "@@SAVED yes"',
         "else",
+        *(["  rehold"] if certbot else []),
         '  echo "@@SAVED no"',
         "  exit 1",
         "fi",
