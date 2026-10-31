@@ -1507,45 +1507,50 @@ def _script_tail():
 
 
 def _ufw_script(rules, action):
-    """ufw : une règle déjà là (`ufw show added`) sans le commentaire de
-    l'outil appartient à l'administrateur ; elle n'est ni ajoutée ni
-    consignée (FOREIGN), et donc jamais retirée. ufw garde ses règles d'un
-    démarrage à l'autre."""
+    """ufw : la règle de l'outil est la ligne exacte `ufw allow <spec>
+    comment 'erplibre-call <service>'` de `ufw show added`. Toute autre
+    ligne qui porte « <spec> » appartient à l'administrateur, quelle que
+    soit son action (deny, reject, limit), son journal ou son sens : elle
+    n'est ni ajoutée ni consignée (FOREIGN), et donc jamais retirée. ufw
+    remplace une règle qui ne diffère de la nôtre que par l'action ou le
+    journal et répond « Rule updated » : cette réponse est FOREIGN aussi.
+    ufw garde ses règles d'un démarrage à l'autre."""
     lines = _script_head("") + [
         'ufw show added > "$D/added" 2>/dev/null'
         ' || { echo "@@FIREWALL_FAILED show"; echo "@@END"; exit 1; }',
     ]
     for rule in rules:
         spec = _ufw_spec(rule)
-        mine = f"*{shlex.quote(f'comment {_comment(rule)!r}')}*"
-        pattern = shlex.quote(f"^ufw allow {spec}( |$)")
-        lines.append(f'L=$(grep -E {pattern} "$D/added")')
+        mine = shlex.quote(f"ufw allow {spec} comment {_comment(rule)!r}")
+        other = shlex.quote(f" {spec}( |$)")
+        lines.append(
+            f'if grep -qxF {mine} "$D/added"; then L=mine;'
+            f' elif grep -qE {other} "$D/added"; then L=other; else L=; fi'
+        )
         if action == "allow":
             command = f"ufw allow {spec} comment {shlex.quote(_comment(rule))}"
             lines += [
-                'if [ -n "$L" ]; then',
-                '  case "$L" in',
-                f'    {mine}) echo "{_marker("KEPT", rule)}" ;;',
-                f'    *) echo "{_marker("FOREIGN", rule)}" ;;',
-                "  esac",
-                f"elif O=$({command} 2>&1); then",
-                '  case "$O" in',
-                f'    *Skipping*) echo "{_marker("FOREIGN", rule)}" ;;',
-                f'    *) echo "{_marker("ADDED", rule)}" ;;',
-                "  esac",
-                "else",
-                f'  echo "{_marker("FAILED", rule)}"; RC=1',
-                "fi",
+                'case "$L" in',
+                f'  mine) echo "{_marker("KEPT", rule)}" ;;',
+                f'  other) echo "{_marker("FOREIGN", rule)}" ;;',
+                f"  *) if O=$({command} 2>&1); then",
+                '    case "$O" in',
+                f'      *Skipping*|*updated*) echo "{_marker("FOREIGN", rule)}"'
+                " ;;",
+                f'      *) echo "{_marker("ADDED", rule)}" ;;',
+                "    esac",
+                f'  else echo "{_marker("FAILED", rule)}"; RC=1; fi ;;',
+                "esac",
             ]
         else:
             lines += [
                 'case "$L" in',
-                f'  "") echo "{_marker("ABSENT", rule)}" ;;',
-                f"  {mine})",
+                "  mine)",
                 f"    if ufw delete allow {spec} </dev/null >/dev/null; then"
                 f' echo "{_marker("REMOVED", rule)}";',
                 f'    else echo "{_marker("FAILED", rule)}"; RC=1; fi ;;',
-                f'  *) echo "{_marker("FOREIGN", rule)}" ;;',
+                f'  other) echo "{_marker("FOREIGN", rule)}" ;;',
+                f'  *) echo "{_marker("ABSENT", rule)}" ;;',
                 "esac",
             ]
     if action == "allow":
