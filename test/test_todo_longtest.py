@@ -888,11 +888,59 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             code = dominfo if "dominfo" in argv else 0
             return types.SimpleNamespace(
                 returncode=code,
-                stdout="",
+                stdout="default\niso\n" if "pool-list" in argv else "",
                 stderr=erreur if code else "",
             )
 
         self.dp.subprocess.run = faux
+
+    def _verbes(self):
+        return [
+            (argv[argv.index("qemu:///system") + 1], argv)
+            for argv in self.argvs
+        ]
+
+    def test_destroy_and_undefine_target_the_checked_uuid(self):
+        """Entre la vérification et le geste, le nom peut changer de
+        machine : viser l'UUID vérifié ferme cette fenêtre."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        gestes = {v: a for v, a in self._verbes() if v in ("destroy", "undefine")}
+        self.assertEqual({"destroy", "undefine"}, set(gestes))
+        for argv in gestes.values():
+            self.assertIn("LE-NOTRE", argv)
+            self.assertNotIn("deep-pve-1", argv)
+
+    def test_an_old_report_still_targets_the_name(self):
+        self._virsh()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1")
+        gestes = [a for v, a in self._verbes() if v == "undefine"]
+        self.assertIn("deep-pve-1", gestes[0])
+
+    def test_pools_are_refreshed_before_the_undefine(self):
+        """Un disque posé hors libvirt (sous root) n'est un volume qu'après
+        relecture de son pool : sans elle, --remove-all-storage le laisse,
+        en root 0600, hors de portée de l'utilisateur."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        verbes = [
+            (v, a[-1]) if v == "pool-refresh" else v
+            for v, a in self._verbes()
+        ]
+        self.assertIn(("pool-refresh", "default"), verbes)
+        self.assertIn(("pool-refresh", "iso"), verbes)
+        self.assertLess(
+            verbes.index(("pool-refresh", "iso")), verbes.index("undefine")
+        )
 
     def test_a_homonym_with_another_uuid_is_left_alone(self):
         self._virsh()
@@ -2072,7 +2120,8 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
 
     def test_virsh_undefines_each_root_after_checking_its_uuid(self):
         """La vraie detruire_etage1, virsh bouchonné : chaque racine est
-        lue (dominfo, UUID) puis effacée sous SON nom."""
+        lue (dominfo, UUID) puis effacée par l'UUID vérifié : son nom a pu
+        passer à un autre domaine entre-temps."""
         import types
 
         lances = []
@@ -2095,7 +2144,7 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
             code, texte = self._lancer()
         undefine = ["virsh", "--connect", "qemu:///system", "undefine"]
         effaces = [argv[4] for argv in lances if argv[:4] == undefine]
-        self.assertEqual(effaces, ["essai-sd-alpha", "essai-sd-beta"])
+        self.assertEqual(effaces, ["uuid-alpha", "uuid-beta"])
         self.assertEqual(code, 0)
         self.assertIn("2 / 2 défait(s)", texte)
 
