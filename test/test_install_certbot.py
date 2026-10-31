@@ -608,6 +608,70 @@ class TestLignee(unittest.TestCase):
             self.assertEqual(hote.conf_vue_par_certbot()[0], "conf presente")
 
 
+class TestGardeRemiseEnEchec(unittest.TestCase):
+    """Un passage qui a remis le fichier de renouvellement et qui echoue le
+    remet de cote : aucun etat ne nomme alors la lignee, et le minuteur du
+    paquet ne doit pas la renouveler."""
+
+    def _jouer_en_echec(self, hote, garde="[renewalparams]\nanterieur\n",
+                        **variables):
+        """`garde` : le contenu attendu de la copie remise de cote."""
+        ecrire(hote.chemin(GARDE), "[renewalparams]\nanterieur\n")
+        fait = hote.jouer(**variables)
+        self.assertNotEqual(fait.returncode, 0, fait.stdout)
+        self.assertTrue(derniere(fait.stdout).startswith("@@CERTBOT failed "),
+                        fait.stdout)
+        self.assertEqual(lire(hote.chemin(GARDE)), garde)
+        self.assertFalse(os.path.lexists(hote.chemin(RENOUVELLEMENT)))
+        self.assertEqual(marqueurs(fait.stdout, "CERTBOT_REHELD"),
+                         [RENOUVELLEMENT])
+        return fait
+
+    def test_essai_en_echec(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            self._jouer_en_echec(hote, CB_ECHEC_ESSAI="1", **entrees())
+            self.assertEqual(hote.conf_vue_par_certbot(), ["conf presente"])
+
+    def test_delivrance_en_echec(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            self._jouer_en_echec(hote, CB_ECHEC_REEL="1", **entrees())
+
+    def test_minuteur_en_echec(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier, os_release=OS_ARCH, minuteur=None)
+            hote.avec_webroot()
+            # La delivrance a reussi et reecrit le fichier : c'est cette
+            # version qui est remise de cote.
+            self._jouer_en_echec(hote, garde="[renewalparams]\n",
+                                 SYSTEMCTL_ECHEC="1", **entrees())
+
+    def test_succes_garde_le_fichier_actif(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            ecrire(hote.chemin(GARDE), "[renewalparams]\nanterieur\n")
+            fait = hote.jouer(**entrees())
+            self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
+            self.assertTrue(os.path.exists(hote.chemin(RENOUVELLEMENT)))
+            self.assertFalse(os.path.lexists(hote.chemin(GARDE)))
+            self.assertEqual(marqueurs(fait.stdout, "CERTBOT_REHELD"), [])
+
+    def test_sans_garde_au_depart_rien_n_est_mis_de_cote(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            ecrire(hote.chemin(RENOUVELLEMENT), "actif\n")
+            fait = hote.jouer(CB_ECHEC_ESSAI="1", **entrees())
+            self.assertNotEqual(fait.returncode, 0, fait.stdout)
+            self.assertEqual(lire(hote.chemin(RENOUVELLEMENT)), "actif\n")
+            self.assertFalse(os.path.lexists(hote.chemin(GARDE)))
+            self.assertEqual(marqueurs(fait.stdout, "CERTBOT_REHELD"), [])
+
+
 class TestEntrees(unittest.TestCase):
     """Refus avant tout appel a certbot ou au gestionnaire de paquets."""
 
