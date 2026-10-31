@@ -506,6 +506,77 @@ class TestConnect(unittest.TestCase):
             with self.assertRaises(SmtpError):
                 connect(self._account("ssl"), "hunter2")
 
+    def test_a_refused_login_quits_and_keeps_the_server_text(self):
+        """Un refus laisse une session saine : QUIT la ferme, et l'erreur
+        qui sort reste celle du refus."""
+        import smtplib
+
+        client = MagicMock()
+        refus = smtplib.SMTPAuthenticationError(535, b"5.7.8 refus")
+        client.login.side_effect = refus
+        with patch("smtplib.SMTP_SSL", return_value=client):
+            with self.assertRaises(SmtpError) as ctx:
+                connect(self._account("ssl"), "mauvais")
+        client.quit.assert_called_once_with()
+        client.close.assert_not_called()
+        self.assertIn("535", str(ctx.exception))
+        self.assertIs(ctx.exception.__cause__, refus)
+
+    def test_a_failing_quit_falls_back_to_closing_the_socket(self):
+        import smtplib
+
+        client = MagicMock()
+        refus = smtplib.SMTPAuthenticationError(535, b"refus")
+        client.login.side_effect = refus
+        client.quit.side_effect = smtplib.SMTPServerDisconnected("partie")
+        client.close.side_effect = OSError("déjà fermée")
+        with patch("smtplib.SMTP_SSL", return_value=client):
+            with self.assertRaises(SmtpError) as ctx:
+                connect(self._account("ssl"), "mauvais")
+        client.close.assert_called_once_with()
+        self.assertIs(ctx.exception.__cause__, refus)
+
+    def test_a_broken_link_closes_the_socket_without_quit(self):
+        import socket
+
+        for panne in (socket.timeout("délai"), OSError("coupure")):
+            with self.subTest(panne=type(panne).__name__):
+                client = MagicMock()
+                client.login.side_effect = panne
+                with patch("smtplib.SMTP_SSL", return_value=client):
+                    with self.assertRaises(SmtpError):
+                        connect(self._account("ssl"), "hunter2")
+                client.quit.assert_not_called()
+                client.close.assert_called_once_with()
+
+    def test_a_failed_starttls_closes_the_plain_socket(self):
+        client = MagicMock()
+        client.starttls.side_effect = OSError("poignée TLS refusée")
+        with patch("smtplib.SMTP", return_value=client):
+            with self.assertRaises(SmtpError):
+                connect(self._account("starttls"), "hunter2")
+        client.close.assert_called_once_with()
+        client.login.assert_not_called()
+
+    def test_a_refused_token_quits_and_stays_an_auth_error(self):
+        from script.todo.mail.smtp_send import SmtpAuthError
+
+        account = self._account("ssl")
+        account.auth = "oauth"
+        client = MagicMock()
+        client.docmd.return_value = (535, b"refus")
+        with patch("smtplib.SMTP_SSL", return_value=client):
+            with self.assertRaises(SmtpAuthError):
+                connect(account, "jeton")
+        client.quit.assert_called_once_with()
+
+    def test_a_successful_login_keeps_the_connection_open(self):
+        client = MagicMock()
+        with patch("smtplib.SMTP_SSL", return_value=client):
+            connect(self._account("ssl"), "hunter2")
+        client.quit.assert_not_called()
+        client.close.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -250,6 +250,32 @@ class TestWhatLeavesBySmtp(MailSandboxCase):
 
 
 @requires_servers
+class TestImapRefusals(MailSandboxCase):
+    """Un LOGIN refusé sur le fil ferme la socket avant que l'erreur ne
+    sorte : rien ne traîne jusqu'au ramasse-miettes."""
+
+    def test_a_wrong_password_closes_the_imap_socket(self):
+        import imaplib
+
+        from script.todo.mail.imap_transport import ImapError, connect
+
+        opened = []
+
+        class Recording(imaplib.IMAP4):
+            def __init__(inner, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                opened.append(inner)
+
+        imap = self.imap_server()
+        account = sandbox_account(imap_port=imap.port)
+        with unittest.mock.patch("imaplib.IMAP4", Recording):
+            with self.assertRaises(ImapError):
+                connect(account, "mauvais-mot-de-passe")
+        self.assertEqual(len(opened), 1)
+        self.assertEqual(opened[0].sock.fileno(), -1)
+
+
+@requires_servers
 class TestSmtpRefusals(MailSandboxCase):
     """Le risque couvert : un refus du serveur doit devenir une `SmtpError`
     lisible, jamais une exception brute remontée dans le TUI."""
@@ -258,11 +284,9 @@ class TestSmtpRefusals(MailSandboxCase):
         """Le serveur EXIGE l'authentification et la refuse pour de vrai —
         un 535 sur le fil, pas une exception injectée.
 
-        La sous-classe ne change rien au protocole : elle ne sert qu'à
-        retenir la connexion pour la fermer. `smtp_send.connect()` ne ferme
-        pas sa socket quand `login()` échoue — elle traîne jusqu'au
-        ramasse-miettes, ce qui est bénin dans le TUI mais laisserait ici un
-        `ResourceWarning` attaché à un test au hasard.
+        La sous-classe ne change rien au protocole : elle retient la
+        connexion pour vérifier que `smtp_send.connect()` a fermé sa socket
+        en sortant sur le refus, sans attendre le ramasse-miettes.
         """
         import smtplib
 
@@ -280,8 +304,8 @@ class TestSmtpRefusals(MailSandboxCase):
         with unittest.mock.patch("smtplib.SMTP", Recording):
             with self.assertRaises(SmtpError):
                 connect(account, "mauvais-mot-de-passe")
-        for client in opened:
-            client.close()
+        self.assertEqual(len(opened), 1)
+        self.assertIsNone(opened[0].sock)
 
     def test_a_closed_port_is_an_smtp_error(self):
         """Le serveur est démarré puis tué : le port est fermé pour de bon,

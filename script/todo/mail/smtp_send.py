@@ -426,8 +426,36 @@ class SmtplibTransport:
             pass
 
 
+def _abandon(client, exc: BaseException) -> None:
+    """Ferme `client` après un échec, sans jamais lever.
+
+    Un refus du serveur (`SMTPResponseException`, `SmtpAuthError`) laisse
+    une session saine : QUIT la ferme poliment. Toute autre panne (délai,
+    coupure, échec TLS) peut l'avoir laissée morte, et QUIT y attendrait
+    un délai entier : seule la socket est fermée.
+    """
+    import smtplib
+
+    if isinstance(exc, (smtplib.SMTPResponseException, SmtpAuthError)):
+        try:
+            client.quit()
+            return
+        except Exception:
+            pass
+    try:
+        client.close()
+    except Exception:
+        # La cause d'origine prime sur un échec de fermeture.
+        pass
+
+
 def connect(account, secret: str) -> SmtplibTransport:
-    """`secret` est un mot de passe ou un jeton, selon `account.auth`."""
+    """`secret` est un mot de passe ou un jeton, selon `account.auth`.
+
+    Tout échec après l'ouverture ferme la connexion (`_abandon`) avant que
+    l'erreur ne sorte, sans la remplacer ; une ouverture qui échoue ferme
+    elle-même ce qu'elle a ouvert (`SMTP.__init__`).
+    """
     import smtplib
 
     conf = account.smtp
@@ -436,26 +464,32 @@ def connect(account, secret: str) -> SmtplibTransport:
             client = smtplib.SMTP_SSL(conf.host, conf.port, timeout=30)
         else:
             client = smtplib.SMTP(conf.host, conf.port, timeout=30)
+        try:
             if conf.security == "starttls":
                 client.starttls()
-        if getattr(account, "auth", "login") == "oauth":
-            import base64
+            if getattr(account, "auth", "login") == "oauth":
+                import base64
 
-            from script.todo.mail.imap_transport import xoauth2_chain
+                from script.todo.mail.imap_transport import xoauth2_chain
 
-            # `ehlo()` explicite : `login()` le fait pour nous, `docmd` non.
-            # Sans lui, le serveur n'a pas encore annoncé ses mécanismes et
-            # refuse la commande sans dire pourquoi.
-            client.ehlo()
-            jeton = base64.b64encode(xoauth2_chain(conf.user, secret)).decode()
-            code, reponse = client.docmd("AUTH", f"XOAUTH2 {jeton}")
-            if code != 235:
-                raise SmtpAuthError(
-                    f"{t('mail_err_token_refused')} {conf.host} :"
-                    f" {code} {reponse!r}"
-                )
-        else:
-            client.login(conf.user, secret)
+                # `ehlo()` explicite : `login()` le fait pour nous, `docmd`
+                # non. Sans lui, le serveur n'a pas encore annoncé ses
+                # mécanismes et refuse la commande sans dire pourquoi.
+                client.ehlo()
+                jeton = base64.b64encode(
+                    xoauth2_chain(conf.user, secret)
+                ).decode()
+                code, reponse = client.docmd("AUTH", f"XOAUTH2 {jeton}")
+                if code != 235:
+                    raise SmtpAuthError(
+                        f"{t('mail_err_token_refused')} {conf.host} :"
+                        f" {code} {reponse!r}"
+                    )
+            else:
+                client.login(conf.user, secret)
+        except BaseException as exc:
+            _abandon(client, exc)
+            raise
     except SmtpAuthError:
         raise
     except Exception as exc:
