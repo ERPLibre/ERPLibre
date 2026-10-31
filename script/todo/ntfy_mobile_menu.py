@@ -146,8 +146,8 @@ class NtfyMobileMenuMixin:
                 print(f"✗ {t(problem)}")
             print(
                 t(
-                    "Fix this with: Deploy - Install NTFY notification"
-                    " server."
+                    "Fix this with: Deploy - Call infrastructure - Install"
+                    " on a host (coturn, ntfy)."
                 )
             )
             return

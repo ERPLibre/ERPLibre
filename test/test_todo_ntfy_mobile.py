@@ -154,7 +154,7 @@ class MenuCase(unittest.TestCase):
 
 
 class TestNumbering(unittest.TestCase):
-    def test_menu_entry_after_install_and_numbering_shifted(self):
+    def test_deploy_menu_reaches_ntfy_through_call_infrastructure(self):
         src = TODO_PY.read_text(encoding="utf-8")
         start = src.index("def prompt_execute_deploy(self):")
         end = src.index("def prompt_execute_deploy_ssh(self):", start)
@@ -171,22 +171,32 @@ class TestNumbering(unittest.TestCase):
                 "5": "prompt_execute_deploy_ssh",
                 "6": "prompt_execute_qemu",
                 "7": "prompt_execute_proxmox",
-                "8": "_deploy_ntfy_server",
-                "9": "prompt_execute_ntfy_mobile",
-                "10": "prompt_execute_qemu_cache",
-                "11": "_deploy_asterisk_server",
-                "12": "prompt_execute_vpn",
+                "8": "prompt_execute_call_infra",
+                "9": "prompt_execute_qemu_cache",
+                "10": "_deploy_asterisk_server",
+                "11": "prompt_execute_vpn",
                 "1": "_deploy_clone_erplibre",
             },
         )
         labels = re.findall(r't\(\s*"(Deploy - [^"]+|QEMU cache[^"]+)"', body)
         self.assertEqual(
-            labels[:3],
+            labels[:2],
             [
-                "Deploy - Install NTFY notification server",
-                "Deploy - Prepare ntfy for ERPLibre mobile",
+                "Deploy - Call infrastructure",
                 "QEMU cache - Download mirror for local VMs",
             ],
+        )
+        self.assertNotIn("Deploy - Prepare ntfy for ERPLibre mobile", body)
+
+    def test_call_infrastructure_submenu_reaches_ntfy_mobile(self):
+        src = (REPO / "script" / "todo" / "call_infra_menu.py").read_text(
+            encoding="utf-8"
+        )
+        start = src.index("def prompt_execute_call_infra(self):")
+        body = src[start : src.index("def _call_infra_host(self):", start)]
+        self.assertIn(
+            'elif status == "2":\n                self.prompt_execute_ntfy_mobile()',
+            body,
         )
 
     def test_submenu_dispatches_to_the_three_actions(self):
