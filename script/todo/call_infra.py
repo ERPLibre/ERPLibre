@@ -1532,10 +1532,14 @@ def _ufw_script(rules, action):
     remplace une règle qui ne diffère de la nôtre que par l'action ou le
     journal et répond « Rule updated » : cette réponse est FOREIGN aussi.
     ufw garde ses règles d'un démarrage à l'autre."""
-    lines = _script_head("") + [
+    show = (
         'ufw show added > "$D/added" 2>/dev/null'
-        ' || { echo "@@FIREWALL_FAILED show"; echo "@@END"; exit 1; }',
-    ]
+        ' || { echo "@@FIREWALL_FAILED show"; echo "@@END"; exit 1; }'
+    )
+    if action == "allow":
+        lines = _script_head("") + [show]
+    else:
+        lines = _script_head("") + _when_present("ufw", show, '"$D/added"')
     for rule in rules:
         spec = _ufw_spec(rule)
         mine = shlex.quote(f"ufw allow {spec} comment {_comment(rule)!r}")
@@ -1573,6 +1577,18 @@ def _ufw_script(rules, action):
     if action == "allow":
         lines.append('[ "$RC" = 0 ] && echo "@@FIREWALL_PERSISTED yes"')
     return "\n".join(lines + _script_tail())
+
+
+def _when_present(command, listing, target):
+    """Lignes `sh` du retrait : `listing` remplit `target` quand `command`
+    existe ; sans elle, `target` reste vide et chaque règle se dit ABSENT.
+    Un pare-feu désinstallé depuis ne porte plus aucune règle de l'outil,
+    et le retrait se termine au lieu d'échouer à chaque relance."""
+    return [
+        f"if command -v {command} >/dev/null 2>&1; then",
+        f"  {listing}",
+        f"else : > {target}; fi",
+    ]
 
 
 def _nft_find(rule):
@@ -1676,13 +1692,14 @@ def _nft_delete(rules):
     """nftables : chaque règle de l'outil est retrouvée par son commentaire
     dans tout le jeu (`nft -a list ruleset`), puis retirée par son handle ;
     une règle sans ce commentaire n'est jamais touchée. Ses lignes partent
-    aussi de NFT_PERSIST_FILE, effacé quand il n'en reste aucune."""
+    aussi de NFT_PERSIST_FILE, effacé quand il n'en reste aucune, que nft
+    soit encore là ou non."""
     persist = _host(NFT_PERSIST_FILE)
-    lines = [
+    listing = (
         'nft -a list ruleset > "$D/handles" 2>/dev/null'
-        ' || { echo "@@FIREWALL_FAILED list"; echo "@@END"; exit 1; }',
-        "set --",
-    ]
+        ' || { echo "@@FIREWALL_FAILED list"; echo "@@END"; exit 1; }'
+    )
+    lines = _when_present("nft", listing, '"$D/handles"') + ["set --"]
     for rule in rules:
         lines += [
             f'{_nft_find(rule)} > "$D/found"',
