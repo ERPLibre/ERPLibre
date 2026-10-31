@@ -756,6 +756,7 @@ class TestCoturnConfig(unittest.TestCase):
                 + env
                 + "SERVICE_GROUP=turnserver\nCONFIG_CHANGED=0\n"
                 + function("has_cert")
+                + function("refuse_linked_config")
                 + function("write_config")
                 + "write_config %s\n" % conf
             )
