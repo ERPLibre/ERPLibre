@@ -414,7 +414,7 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
         sauve = [v.strip() for n, v in ci.marker_lines(sortie) if n == "SAVED"]
         if code != 0 or sauve[-1:] != ["yes"]:
             return res
-        etat = ci.mark_admin_added(ci.written_state(plan, stamp), sortie)
+        etat = ci.installed_state(plan, stamp, sortie)
     res["etape"] = "pare-feu"
     record = _pare_feu(
         cible, facts, answers, etat.get("firewall"), log, executer
