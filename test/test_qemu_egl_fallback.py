@@ -138,6 +138,20 @@ class Repli(unittest.TestCase):
         chemin = DQ.system_path(f"{venv}:/opt/outils:/opt/autres")
         self.assertEqual("/opt/outils:/opt/autres", chemin)
 
+    def test_virt_install_runs_with_a_path_free_of_user_dirs(self):
+        """Un « python3 » posé chez l'utilisateur (~/.local/bin par uv,
+        ~/.pyenv/shims) passerait avant /usr/bin, et virt-install y mourrait
+        de même. Le secure_path de sudo les écartait aussi."""
+        with mock.patch.dict(DQ.os.environ, {"HOME": "/home/u"}):
+            chemin = DQ.system_path(
+                "/home/u/.local/bin:/usr/bin:/home/u/.pyenv/shims:/opt/outils"
+            )
+        self.assertEqual("/usr/bin:/opt/outils", chemin)
+
+    def test_a_root_home_filters_nothing_more(self):
+        with mock.patch.dict(DQ.os.environ, {"HOME": "/"}):
+            self.assertEqual("/usr/bin:/bin", DQ.system_path("/usr/bin:/bin"))
+
     def test_the_first_attempt_carries_the_3d(self):
         lances, _, _ = self._lancer()
         self.assertIn("model.acceleration.accel3d=on", " ".join(lances[0]))
