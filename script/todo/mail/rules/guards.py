@@ -41,7 +41,8 @@ from script.todo.mail.rules import filter as rules_filter
 from script.todo.mail.rules.filter import (
     addr_specs,
     normalize_address,
-    sole_address,
+    sender_address,
+    view_addresses,
 )
 from script.todo.mail.rules.model import (
     FORWARD_MAX_BYTES,
@@ -217,12 +218,12 @@ def reply_target(view: MessageView, *, raw: bool = False) -> str:
 
     Return-Path présent : l'addr-spec de sa première occurrence, ou « »
     si elle est vide ou « <> ». Absent : l'adresse de From si elle est
-    unique et sans ambiguïté (`filter.sole_address`), sinon « ». `raw`
+    unique et sans ambiguïté (`filter.sender_address`), sinon « ». `raw`
     rend la forme reçue (pour l'envoi), sinon la forme normalisée.
     """
     first = _first_occurrence(view, "Return-Path")
     if first is None:
-        return sole_address(view.frm, raw=raw)
+        return sender_address(view, raw=raw)
     specs = addr_specs(first, raw=raw)
     return specs[0] if specs else ""
 
@@ -231,9 +232,9 @@ def stats_target(view: MessageView) -> str:
     """L'addr-spec normalisée de From s'il en porte une seule, sinon « ».
 
     Une adresse que le libellé contredit compte comme ambiguë
-    (`filter.sole_address`).
+    (`filter.sender_address`).
     """
-    return sole_address(view.frm)
+    return sender_address(view)
 
 
 def _strip_comments(text: str) -> str:
@@ -454,7 +455,7 @@ def response_addresses(rule: Rule, view: MessageView) -> tuple[str, str, str]:
     la limite par expéditeur porte sur lui. Règle `reply` : Return-Path,
     sinon From, jamais Reply-To. N'évalue ni le filtre ni les garde-fous.
     """
-    sender_addr = sole_address(view.frm, raw=True)
+    sender_addr = sender_address(view, raw=True)
     sender = normalize_address(sender_addr) if sender_addr else ""
     if rule.action.kind in ("stats", "forward"):
         return sender, sender, sender_addr
@@ -501,7 +502,7 @@ def is_delivery_report(view: MessageView) -> bool:
     content_type = _first_occurrence(view, "Content-Type") or ""
     if fold(content_type.split(";", 1)[0]).strip() in DELIVERY_REPORT_TYPES:
         return True
-    addresses = addr_specs(view.frm)
+    addresses = view_addresses(view, "from")
     return_path = _first_occurrence(view, "Return-Path")
     if return_path:
         addresses += addr_specs(return_path)[:1]
@@ -520,7 +521,7 @@ def forward_targets(
     d'envoi. Les retirées sont des paires (adresse, code). Lève
     `RuleError` sur des options illisibles (`model.forward_options`).
     """
-    senders = {sole_address(view.frm)}
+    senders = {sender_address(view)}
     return_path = _first_occurrence(view, "Return-Path")
     if return_path:
         senders.update(addr_specs(return_path)[:1])
@@ -636,7 +637,7 @@ def _check_addresses(
     return_path = _first_occurrence(view, "Return-Path")
     if return_path is not None and not addr_specs(return_path):
         return "null_sender"
-    if not target or (view.frm.strip() and not sender):
+    if not target or (view.frm_raw.strip() and not sender):
         return "no_target"
     people = [address for address in (target, sender, *extra) if address]
     if lists and any(ROBOT_LOCALPARTS.match(_localpart(a)) for a in people):
@@ -647,7 +648,9 @@ def _check_addresses(
         return "other_account"
     if not lists:
         return None
-    recipients = addr_specs(view.to) + addr_specs(view.cc)
+    # Sur les en-têtes bruts : un libellé encodé qui, décodé, montrerait
+    # notre adresse ne fait pas un message adressé au compte.
+    recipients = view_addresses(view, "to_cc")
     if not any(address in ctx.own_addresses for address in recipients):
         return "not_addressed"
     return None

@@ -479,7 +479,7 @@ def forward_reply_to(view, own, others) -> str:
     if kept:
         return ", ".join(kept)
     try:
-        return smtp_address(rules_filter.sole_address(view.frm, raw=True))
+        return smtp_address(rules_filter.sender_address(view, raw=True))
     except SmtpError:
         return ""
 

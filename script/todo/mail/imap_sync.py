@@ -92,6 +92,13 @@ class HeaderInfo:
     # a ajoutée — et chacune est dépliée : "\n" n'y sert que de
     # séparateur. Gardés en mémoire seulement, jamais dans le cache.
     extra: dict = field(default_factory=dict)
+    # From, To et Cc tels que reçus, dépliés, AVANT tout décodage RFC 2047 :
+    # les adresses s'analysent sur eux, un libellé encodé y restant un
+    # libellé (`rules.model.MessageView`). None : la source n'a que la
+    # forme décodée. Jamais dans le cache.
+    frm_raw: str | None = None
+    to_raw: str | None = None
+    cc_raw: str | None = None
 
 
 # Le plafond des en-têtes d'INBOX qu'un rapport transporte. Une première

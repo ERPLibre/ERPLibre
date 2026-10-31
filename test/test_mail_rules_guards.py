@@ -1080,6 +1080,116 @@ class TestForgedOrUnreadableFrom(unittest.TestCase):
         self.assertEqual(stats_target(message), "")
 
 
+class TestEncodedLabelsInAddresses(unittest.TestCase):
+    """Les adresses s'analysent sur les en-têtes BRUTS, du FETCH jusqu'au
+    verdict : un libellé RFC 2047 reste un libellé, même quand, décodé, il
+    montrerait une adresse."""
+
+    def fetched(self, frm=f"Carole <{HUMAN}>", to=OWN, cc=""):
+        """La vue d'un message tel que le rend le FETCH d'en-têtes."""
+        import dataclasses
+
+        from script.todo.mail.imap_transport import parse_fetch_headers
+        from script.todo.mail.rules.model import message_view
+
+        lignes = [f"From: {frm}", f"To: {to}"]
+        if cc:
+            lignes.append(f"Cc: {cc}")
+        lignes += ["Subject: Demande", "Message-ID: <m1@example.org>"]
+        brut = ("\r\n".join(lignes) + "\r\n\r\n").encode()
+        prefixe = b"1 (UID 4600 FLAGS () BODY[HEADER] {%d}" % len(brut)
+        (header,) = parse_fetch_headers([(prefixe, brut), b")"])
+        return dataclasses.replace(
+            message_view(header, UIDV), internaldate=NOW - 60
+        )
+
+    def decide(self, message, rule=None):
+        return decide(rule or armed_rule(), message, ctx(), None)
+
+    def test_our_address_hidden_in_an_encoded_to_label_is_not_addressed(
+        self,
+    ):
+        for champ, valeur in (
+            ("to", f"=?utf-8?q?boite.regles=40example.org=2C?= <{SECOND}>"),
+            ("to", f'"=?utf-8?q?boite.regles=40example.org?=" <{SECOND}>'),
+            ("cc", f"=?utf-8?q?boite.regles=40example.org=2C?= <{SECOND}>"),
+        ):
+            with self.subTest(champ=champ, valeur=valeur):
+                kwargs = {"to": THIRD, champ: valeur}
+                message = self.fetched(**kwargs)
+                # L'affichage garde la forme décodée.
+                self.assertIn(OWN, getattr(message, champ))
+                self.assertEqual(self.decide(message).reason, "not_addressed")
+
+    def test_an_encoded_label_does_not_hide_our_real_address(self):
+        """Décodé, un libellé qui porte « @ » rend l'en-tête illisible ;
+        brut, l'adresse réelle reste lue."""
+        for to in (
+            f"=?utf-8?q?carole.regle=40example.org?= <{OWN}>",
+            f"=?utf-8?q?Bo=C3=AEte_r=C3=A8gles?= <{OWN}>",
+        ):
+            with self.subTest(to=to):
+                decision = self.decide(self.fetched(to=to))
+                self.assertEqual(decision.reason, SEND)
+                self.assertEqual(decision.target_addr, HUMAN)
+
+    def test_the_reply_goes_to_the_real_from_address(self):
+        for frm in (
+            f"=?utf-8?q?Carole_R=C3=A9gle?= <{HUMAN}>",
+            f'"=?utf-8?q?Carole?=" <{HUMAN}>',
+            f"=?utf-8?q?Carole_=5BF=5D?= <{HUMAN}>",
+        ):
+            with self.subTest(frm=frm):
+                decision = self.decide(self.fetched(frm=frm))
+                self.assertEqual(decision.reason, SEND)
+                self.assertEqual(decision.target_addr, HUMAN)
+
+    def test_an_encoded_from_label_showing_another_address_is_ambiguous(
+        self,
+    ):
+        for frm in (
+            f"=?utf-8?q?carole.regle=40example.org?= <{SECOND}>",
+            f"=?utf-8?q?carole.regle=40example.org=2C?= <{SECOND}>",
+        ):
+            with self.subTest(frm=frm):
+                message = self.fetched(frm=frm)
+                decision = self.decide(message)
+                self.assertEqual(decision.reason, "no_target")
+                self.assertEqual(decision.target_addr, "")
+                self.assertEqual(stats_target(message), "")
+
+    def test_a_from_condition_sees_only_the_real_address(self):
+        rule = armed_rule(
+            filter=Group(
+                children=[
+                    Condition(field="from", value="*@example.org", op="glob")
+                ]
+            )
+        )
+        message = self.fetched(
+            frm=f"=?utf-8?q?carole.regle=40example.org=2C?= <{SECOND}>"
+        )
+        self.assertFalse(self.decide(message, rule).matched)
+
+    def test_a_to_condition_sees_only_the_real_addresses(self):
+        rule = armed_rule(
+            filter=Group(
+                children=[Condition(field="to_cc", value=OWN, op="glob")]
+            )
+        )
+        message = self.fetched(
+            to=f"=?utf-8?q?boite.regles=40example.org=2C?= <{SECOND}>"
+        )
+        self.assertFalse(self.decide(message, rule).matched)
+
+    def test_a_view_without_raw_headers_reads_the_decoded_ones(self):
+        """Une ligne du cache n'a que la forme décodée : elle sert."""
+        message = view(frm=f"Carole <{HUMAN}>", to=OWN)
+        self.assertEqual(message.frm_raw, message.frm)
+        self.assertEqual(message.to_raw, OWN)
+        self.assertEqual(self.decide(message).reason, SEND)
+
+
 class TestHostileHeaderSize(unittest.TestCase):
     """Un en-tête d'environ 100 Ko tient sous la limite d'un serveur de
     courrier courant : son analyse reste linéaire, avant tout filtre."""

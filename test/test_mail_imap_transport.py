@@ -629,6 +629,32 @@ class TestRulesHeaders(unittest.TestCase):
         info = self._info(self.BASE)
         self.assertEqual(info.internaldate, self.RECU_EPOCH)
 
+    def test_address_headers_are_also_kept_undecoded_and_unfolded(self):
+        """From, To et Cc bruts : un libellé encodé y reste un mot encodé,
+        la forme décodée sert à l'affichage."""
+        entetes = (
+            b"From: =?utf-8?q?Carole_R=C3=A9gle?= <carole.regle@example.org>\r\n"
+            b"To: =?utf-8?q?boite.regles=40example.org=2C?=\r\n"
+            b" <autre@example.net>\r\n"
+            b"Cc: denis.tri@example.org\r\n"
+            b"Subject: Absence\r\n"
+        )
+        info = self._info(entetes)
+        self.assertEqual(
+            info.to_raw,
+            "=?utf-8?q?boite.regles=40example.org=2C?= <autre@example.net>",
+        )
+        # Décodé, le libellé devient une adresse : affichage seulement.
+        self.assertIn("boite.regles@example.org", info.to)
+        self.assertEqual(
+            info.frm_raw,
+            "=?utf-8?q?Carole_R=C3=A9gle?= <carole.regle@example.org>",
+        )
+        self.assertEqual(info.frm, "Carole Régle <carole.regle@example.org>")
+        self.assertEqual(info.cc_raw, "denis.tri@example.org")
+        sans_cc = self._info(self.BASE)
+        self.assertEqual(sans_cc.cc_raw, "")
+
     def test_internaldate_after_the_literal(self):
         """L'attribut peut SUIVRE le littéral : il se lit alors dans
         l'entrée suivante, comme UID et FLAGS."""

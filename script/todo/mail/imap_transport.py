@@ -260,6 +260,12 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
             valeur = msg.get(nom)
             return str(valeur).strip() if valeur else ""
 
+        # Non décodé, déplié : un libellé RFC 2047 qui cache « @ » ou « , »
+        # y reste un mot encodé et ne devient pas une adresse.
+        def brut(nom: str) -> str:
+            valeur = msg.get(nom)
+            return " ".join(str(valeur).split()) if valeur else ""
+
         out.append(
             HeaderInfo(
                 uid=int(uid_match.group(1)),
@@ -279,6 +285,9 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
                 cc=decode_header_value(msg.get("Cc")),
                 internaldate=internaldate_epoch(meta),
                 extra=extra_headers(msg),
+                frm_raw=brut("From"),
+                to_raw=brut("To"),
+                cc_raw=brut("Cc"),
             )
         )
     return out
