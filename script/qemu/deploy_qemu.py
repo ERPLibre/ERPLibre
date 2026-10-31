@@ -1546,12 +1546,14 @@ def ensure_libvirt_service(runner: Runner) -> None:
             privileged=True,
             check=False,
         )
-    # Le sondage d'avant a vu un démon arrêté, et a donc conclu « sudo » :
-    # le refaire maintenant qu'il tourne rend la réponse du groupe.
-    libvirt_sudo_reset()
-    # Le socket peut mettre un instant à apparaître.
+    # Le socket peut mettre un instant à apparaître. Tant qu'il manque, le
+    # sondage de libvirt_needs_sudo() conclut « sudo », à tort : il est
+    # refait à chaque tour, sans sudo d'abord, et oublié une fois le démon
+    # joint, pour que la suite le refasse sur un démon qui répond.
     for _ in range(10):
+        libvirt_sudo_reset()
         if libvirt_ready(runner.libvirt_sudo):
+            libvirt_sudo_reset()
             return
         time.sleep(1)
     sys.exit(
