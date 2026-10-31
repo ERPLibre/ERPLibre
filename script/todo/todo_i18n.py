@@ -4121,6 +4121,239 @@ TRANSLATIONS = {
         "fr": "manquantes : {rules}",
         "en": "missing: {rules}",
     },
+    # Infrastructure d'appel : questions et résumé de la production
+    "call_infra_mode_development": {
+        "fr": "Développement : cette machine ou un réseau local, sans nginx",
+        "en": "Development: this machine or a local network, without nginx",
+    },
+    "call_infra_mode_production": {
+        "fr": "Production : noms publics, nginx devant ntfy, certificat reconnu",
+        "en": "Production: public names, nginx in front of ntfy, a trusted certificate",
+    },
+    "call_infra_hint_yes": {
+        "fr": "(O/n)",
+        "en": "(Y/n)",
+    },
+    "call_infra_hint_no": {
+        "fr": "(o/N)",
+        "en": "(y/N)",
+    },
+    "call_infra_ask_domain": {
+        "fr": "Domaine (les noms ntfy.<domaine> et turn.<domaine> en découlent)",
+        "en": "Domain (the names ntfy.<domain> and turn.<domain> derive from it)",
+    },
+    "call_infra_domain_needed": {
+        "fr": "La production demande un nom de domaine (example.org), pas une adresse IP.",
+        "en": "Production needs a domain name (example.org), not an IP address.",
+    },
+    "call_infra_ask_ntfy_name": {
+        "fr": "Nom de ntfy (https)",
+        "en": "ntfy name (https)",
+    },
+    "call_infra_ask_turn_name": {
+        "fr": "Nom de TURN",
+        "en": "TURN name",
+    },
+    "call_infra_tls_letsencrypt": {
+        "fr": "Let's Encrypt : certbot l'obtient et le renouvelle",
+        "en": "Let's Encrypt: certbot obtains and renews it",
+    },
+    "call_infra_ask_challenge": {
+        "fr": "Défi Let's Encrypt :",
+        "en": "Let's Encrypt challenge:",
+    },
+    "call_infra_challenge_http": {
+        "fr": "HTTP (port 80)",
+        "en": "HTTP (port 80)",
+    },
+    "call_infra_challenge_dns": {
+        "fr": "DNS (clé d'API du fournisseur DNS)",
+        "en": "DNS (API key of the DNS provider)",
+    },
+    "call_infra_ask_http_way": {
+        "fr": "Port 80 pour le défi (coturn seul sur cet hôte) :",
+        "en": "Port 80 for the challenge (coturn alone on this host):",
+    },
+    "call_infra_http_standalone": {
+        "fr": "certbot seul sur le port 80, le temps du défi",
+        "en": "certbot alone on port 80, for the challenge only",
+    },
+    "call_infra_http_nginx": {
+        "fr": "nginx installé pour le défi",
+        "en": "nginx installed for the challenge",
+    },
+    "call_infra_nginx_serves_challenge": {
+        "fr": "nginx est déjà sur cet hôte : il répond au défi HTTP sur le port 80.",
+        "en": "nginx is already on this host: it answers the HTTP challenge on port 80.",
+    },
+    "call_infra_ask_dns_plugin": {
+        "fr": "Fournisseur DNS (greffon de certbot) :",
+        "en": "DNS provider (certbot plugin):",
+    },
+    "call_infra_dns_plugins_packaged": {
+        "fr": "Seuls les greffons que {os} fournit en paquet sont proposés.",
+        "en": "Only the plugins that {os} ships as packages are offered.",
+    },
+    "call_infra_choice_range": {
+        "fr": "Votre choix (1-{count})",
+        "en": "Your choice (1-{count})",
+    },
+    "call_infra_ask_dns_credentials": {
+        "fr": "Fichier d'identifiants du greffon (lu sur cette machine, jamais affiché)",
+        "en": "Plugin credentials file (read on this machine, never shown)",
+    },
+    "call_infra_ask_email": {
+        "fr": "Courriel pour Let's Encrypt (« - » : aucun)",
+        "en": "Email for Let's Encrypt (\"-\": none)",
+    },
+    "call_infra_email_none": {
+        "fr": "Sans courriel, Let's Encrypt ne pourra prévenir de rien : ni d'un renouvellement qui échoue, ni d'un problème de compte.",
+        "en": "Without an email, Let's Encrypt cannot warn you of anything: neither a failing renewal nor an account problem.",
+    },
+    "call_infra_nginx_existing": {
+        "fr": "nginx est présent (disposition {layout}) : l'outil y ajoute son site, sans toucher aux autres.",
+        "en": "nginx is present ({layout} layout): the tool adds its own site and touches no other.",
+    },
+    "call_infra_nginx_install": {
+        "fr": "nginx est absent : l'outil l'installe.",
+        "en": "nginx is absent: the tool installs it.",
+    },
+    "call_infra_ask_ntfy_web": {
+        "fr": "Interface web de ntfy sur son nom public ?",
+        "en": "ntfy web interface on its public name?",
+    },
+    "call_infra_ask_turns_443": {
+        "fr": "TURN sur TLS sur le port 443 au lieu de {port} ?",
+        "en": "TURN over TLS on port 443 instead of {port}?",
+    },
+    "call_infra_ask_ntfy_local_port": {
+        "fr": "Port de ntfy (tcp, sur 127.0.0.1, derrière nginx)",
+        "en": "ntfy port (tcp, on 127.0.0.1, behind nginx)",
+    },
+    "call_infra_turn_name_nat": {
+        "fr": "{name} pointe vers {address}, absente des interfaces de l'hôte : l'hôte est derrière un NAT.",
+        "en": "{name} points to {address}, which is not on the host's interfaces: the host is behind NAT.",
+    },
+    "call_infra_ask_public_ip": {
+        "fr": "IP publique {address} ? (Entrée pour confirmer, ou tapez la bonne) :",
+        "en": "Public IP {address}? (Enter to confirm, or type the right one):",
+    },
+    "call_infra_turn_name_unresolved": {
+        "fr": "{name} ne résout pas : coturn a besoin de l'IP publique de l'hôte.",
+        "en": "{name} does not resolve: coturn needs the host's public IP.",
+    },
+    "call_infra_ask_typed_ip": {
+        "fr": "IP publique de l'hôte",
+        "en": "Public IP of the host",
+    },
+    "call_infra_public_ip_required": {
+        "fr": "En production, l'IP publique est obligatoire.",
+        "en": "In production, the public IP is required.",
+    },
+    "production": {
+        "fr": "production",
+        "en": "production",
+    },
+    "Names:": {
+        "fr": "Noms :",
+        "en": "Names:",
+    },
+    "Challenge:": {
+        "fr": "Défi :",
+        "en": "Challenge:",
+    },
+    "Email:": {
+        "fr": "Courriel :",
+        "en": "Email:",
+    },
+    "External IP:": {
+        "fr": "IP publique :",
+        "en": "External IP:",
+    },
+    "ntfy web interface:": {
+        "fr": "Interface web de ntfy :",
+        "en": "ntfy web interface:",
+    },
+    "call_infra_cert_letsencrypt": {
+        "fr": "Let's Encrypt (un essai à blanc d'abord, renouvelé par certbot)",
+        "en": "Let's Encrypt (a dry run first, renewed by certbot)",
+    },
+    "call_infra_challenge_http_nginx": {
+        "fr": "HTTP par nginx (port 80)",
+        "en": "HTTP through nginx (port 80)",
+    },
+    "call_infra_challenge_http_standalone": {
+        "fr": "HTTP, certbot seul sur le port 80",
+        "en": "HTTP, certbot alone on port 80",
+    },
+    "call_infra_challenge_dns_plugin": {
+        "fr": "DNS par le greffon {plugin}",
+        "en": "DNS through the {plugin} plugin",
+    },
+    "call_infra_email_absent": {
+        "fr": "aucun",
+        "en": "none",
+    },
+    "call_infra_nginx_to_install": {
+        "fr": "installé par l'outil",
+        "en": "installed by the tool",
+    },
+    "call_infra_nginx_kept": {
+        "fr": "existant, son site ajouté",
+        "en": "existing, its site added",
+    },
+    "call_infra_web_on": {
+        "fr": "activée",
+        "en": "enabled",
+    },
+    "call_infra_web_off": {
+        "fr": "désactivée",
+        "en": "disabled",
+    },
+    "call_infra_private_ranges_denied": {
+        "fr": "coturn refuse de relayer vers les adresses privées, de bouclage et locales au lien.",
+        "en": "coturn refuses to relay toward private, loopback and link-local addresses.",
+    },
+    "call_infra_dns_elsewhere": {
+        "fr": "{name} pointe vers {found}, ni une adresse de l'hôte ni l'IP publique confirmée : les clients n'y joindraient pas l'hôte.",
+        "en": "{name} points to {found}, neither an address of the host nor the confirmed public IP: clients would not reach the host there.",
+    },
+    "call_infra_dns_unresolved": {
+        "fr": "{name} ne résout pas encore : les clients n'y joindraient pas l'hôte.",
+        "en": "{name} does not resolve yet: clients would not reach the host there.",
+    },
+    "call_infra_dns_le_fails": {
+        "fr": "Le défi HTTP de Let's Encrypt échouerait : corrigez le DNS avant d'installer.",
+        "en": "The Let's Encrypt HTTP challenge would fail: fix the DNS before installing.",
+    },
+    "Private ranges denied": {
+        "fr": "Plages privées refusées",
+        "en": "Private ranges denied",
+    },
+    "Certificate issuer": {
+        "fr": "Émetteur du certificat",
+        "en": "Certificate issuer",
+    },
+    "Certificate renewal": {
+        "fr": "Renouvellement du certificat",
+        "en": "Certificate renewal",
+    },
+    "call_infra_uninstall_nginx_purges": {
+        "fr": "site de l'outil retiré ; nginx, installé par l'outil, purgé si aucun autre site ne s'en sert",
+        "en": "the tool's site removed; nginx, installed by the tool, purged unless another site uses it",
+    },
+    "call_infra_uninstall_nginx_keeps": {
+        "fr": "site de l'outil retiré ; nginx et ses autres sites gardés",
+        "en": "the tool's site removed; nginx and its other sites kept",
+    },
+    "call_infra_uninstall_certificate": {
+        "fr": "Certificat Let's Encrypt : gardé, son renouvellement suspendu ; supprimé seulement si vous supprimez aussi les certificats.",
+        "en": "Let's Encrypt certificate: kept, its renewal suspended; deleted only if you also remove the certificates.",
+    },
+    "call_infra_uninstall_hook": {
+        "fr": "Crochet de renouvellement, minuteur ajouté par l'outil et identifiants DNS : retirés.",
+        "en": "Renewal hook, the timer the tool added and the DNS credentials: removed.",
+    },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
         "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",

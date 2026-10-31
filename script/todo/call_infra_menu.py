@@ -20,7 +20,9 @@ import codecs
 import contextlib
 import dataclasses
 import datetime
+import ipaddress
 import os
+import socket
 import ssl
 import sys
 import time
@@ -42,10 +44,30 @@ SERVICE_CHOICES = {
     "3": frozenset({"ntfy"}),
 }
 SYMBOLS = {True: "✓", False: "✗", None: "?"}
+MODE_CHOICES = {"1": "development", "2": "production"}
+YES_WORDS = ("y", "yes", "o", "oui")
+# Greffons DNS de certbot qu'une distribution empaquette : Debian 13 n'en
+# fournit que trois, Ubuntu 24.04 tous sauf luadns et nsone, Arch les neuf.
+# install_certbot.sh refuse un greffon sans paquet ; le menu ne propose que
+# ceux-là, plus ceux que la sonde trouve déjà installés. Un dérivé de
+# Debian autre qu'Ubuntu reçoit la liste de Debian, la plus courte.
+DNS_PLUGINS_PACKAGED = {
+    "debian": ("cloudflare", "google", "rfc2136"),
+    "ubuntu": tuple(p for p in ci.DNS_PLUGINS if p not in ("luadns", "nsone")),
+    "arch": ci.DNS_PLUGINS,
+}
 
 
 def _yes(prompt):
-    return input(prompt).strip().lower() in ("y", "yes", "o", "oui")
+    return input(prompt).strip().lower() in YES_WORDS
+
+
+def _resolve(name, port):
+    """Adresses de `name`, sous la forme de `socket.getaddrinfo` qu'attend
+    `call_infra.external_ip_for`. Le nom se résout depuis cette machine,
+    par le DNS public, celui que les clients et Let's Encrypt
+    interrogent."""
+    return socket.getaddrinfo(name, port)
 
 
 class _HiddenLines:
@@ -321,7 +343,7 @@ class CallInfraMenuMixin:
                     host, ci.with_firewall(facts.state, record)
                 )
             return
-        self._call_infra_show_plan(plan)
+        self._call_infra_show_plan(plan, facts)
         if not _yes(t("Install now? (y/N): ")):
             print(t("Nothing installed."))
             return
@@ -343,7 +365,10 @@ class CallInfraMenuMixin:
 
     def _call_infra_ask_answers(self, host, facts):
         """`Answers` des questions, préremplies par l'état d'un passage
-        précédent ; None si une réponse ne se lit pas (raison affichée)."""
+        précédent ; None si une réponse ne se lit pas (raison affichée).
+        Après les services vient le mode : le développement demande le
+        certificat (aucun ou fourni), le nom public et les ports ; la
+        production pose les questions de `_call_infra_ask_production`."""
         prior = ci.state_answers(facts.state)
         default_name = self._call_infra_default_name(host, facts)
         if prior is None:
@@ -367,6 +392,26 @@ class CallInfraMenuMixin:
             print(t("Invalid selection!"))
             return None
 
+        print(f"\n{t('Mode:')}")
+        print(f"[1] {t('call_infra_mode_development')}")
+        print(f"[2] {t('call_infra_mode_production')}")
+        choice = self._call_infra_ask(
+            t("Your choice (1/2)"),
+            "2" if ci.is_production(prior) else "1",
+        )
+        mode = MODE_CHOICES.get(choice)
+        if mode is None:
+            print(t("Invalid selection!"))
+            return None
+        if mode == "production":
+            return self._call_infra_ask_production(
+                facts, prior, services, default_name
+            )
+        # Un état de production ne prête au développement que ce qui y a
+        # le même sens : la plage des relais et le port de ntfy y changent
+        # de valeur par défaut.
+        same_mode = not ci.is_production(prior)
+
         print(f"\n{t('Certificate:')}")
         print(f"[1] {t('call_infra_tls_none')}")
         print(
@@ -381,11 +426,8 @@ class CallInfraMenuMixin:
         tls = "supplied" if choice == "2" else "none"
         cert_pem = key_pem = None
         if tls == "supplied":
-            cert_pem = self._call_infra_read_file(t("Certificate file (PEM)"))
+            cert_pem, key_pem = self._call_infra_read_pair()
             if cert_pem is None:
-                return None
-            key_pem = self._call_infra_read_file(t("Private key file (PEM)"))
-            if key_pem is None:
                 return None
 
         name = self._call_infra_ask(
@@ -405,10 +447,13 @@ class CallInfraMenuMixin:
                 )
                 if ports["turns_port"] is None:
                     return None
+            low, high = (
+                (prior.min_port, prior.max_port)
+                if same_mode
+                else (ci.DEV_MIN_PORT, ci.DEV_MAX_PORT)
+            )
             relays = self._call_infra_ask_range(
-                t("Media relay port range (udp)"),
-                prior.min_port,
-                prior.max_port,
+                t("Media relay port range (udp)"), low, high
             )
             if relays is None:
                 return None
@@ -416,10 +461,11 @@ class CallInfraMenuMixin:
         if "ntfy" in services:
             # Le port de ntfy suit le mode : celui de l'état ne vaut que si
             # le mode est le même (8080 en http, 8443 avec un certificat).
-            same_mode = prior.tls == tls
+            same_mode = same_mode and prior.tls == tls
             default_port = ci.ntfy_port(
                 dataclasses.replace(
                     prior,
+                    mode="development",
                     tls=tls,
                     ntfy_port=prior.ntfy_port if same_mode else None,
                 )
@@ -439,24 +485,377 @@ class CallInfraMenuMixin:
             **ports,
         )
 
-    def _call_infra_show_plan(self, plan):
+    def _call_infra_read_pair(self):
+        """(certificat, clé) PEM lus sur cette machine, ou (None, None), la
+        raison affichée."""
+        cert_pem = self._call_infra_read_file(t("Certificate file (PEM)"))
+        if cert_pem is None:
+            return None, None
+        key_pem = self._call_infra_read_file(t("Private key file (PEM)"))
+        if key_pem is None:
+            return None, None
+        return cert_pem, key_pem
+
+    @staticmethod
+    def _call_infra_ask_yes(label, default):
+        """Oui ou non ; une réponse vide rend `default`, montré en
+        majuscule dans l'indice."""
+        hint = t("call_infra_hint_yes") if default else t("call_infra_hint_no")
+        raw = input(f"{label} {hint}: ").strip().lower()
+        if not raw:
+            return default
+        return raw in YES_WORDS
+
+    @staticmethod
+    def _call_infra_ask_email(default):
+        """Courriel pour Let's Encrypt : vide garde `default`, « - »
+        n'en donne aucun."""
+        shown = f" [{default}]" if default else ""
+        raw = input(f"{t('call_infra_ask_email')}{shown}: ").strip()
+        if raw == "-":
+            return ""
+        return raw or default
+
+    @staticmethod
+    def _call_infra_nginx_facts(facts):
+        """(nginx installé, nginx écoute 80) d'après la sonde."""
+        found = facts.nginx or {}
+        present = bool(found) and found.get("state") != "absent"
+        on_80 = ("tcp", ci.HTTP_PORT, ci.PROCESSES["nginx"]) in (
+            facts.busy_ports
+        )
+        return present, on_80
+
+    @staticmethod
+    def _call_infra_443_free(facts):
+        """Vrai quand aucun processus autre que coturn ne tient 443/tcp."""
+        return not any(
+            (proto, port) == ("tcp", ci.TURNS_ALT_PORT)
+            and process != ci.PROCESSES["coturn"]
+            for proto, port, process in facts.busy_ports
+        )
+
+    @staticmethod
+    def _call_infra_dns_offered(facts):
+        """Greffons DNS proposés, dans l'ordre de `DNS_PLUGINS` : ceux que
+        la distribution de l'hôte empaquette, plus ceux déjà installés."""
+        if facts.family == "arch":
+            packaged = DNS_PLUGINS_PACKAGED["arch"]
+        else:
+            packaged = DNS_PLUGINS_PACKAGED.get(
+                facts.os_id, DNS_PLUGINS_PACKAGED["debian"]
+            )
+        installed = set((facts.certbot or {}).get("plugins") or ())
+        return [p for p in ci.DNS_PLUGINS if p in packaged or p in installed]
+
+    def _call_infra_ask_plugin(self, facts, prior):
+        """Greffon DNS choisi dans la liste de `_call_infra_dns_offered`,
+        ou None, la raison affichée."""
+        offered = self._call_infra_dns_offered(facts)
+        print(f"\n{t('call_infra_ask_dns_plugin')}")
+        for number, plugin in enumerate(offered, 1):
+            print(f"[{number}] {plugin}")
+        if len(offered) < len(ci.DNS_PLUGINS):
+            print(
+                self._call_infra_text(
+                    "call_infra_dns_plugins_packaged", {"os": facts.os_id}
+                )
+            )
+        default = (
+            offered.index(prior.dns_plugin) + 1
+            if prior.dns_plugin in offered
+            else 1
+        )
+        choice = self._call_infra_ask(
+            self._call_infra_text(
+                "call_infra_choice_range", {"count": len(offered)}
+            ),
+            default,
+        )
+        if not choice.isdigit() or not 1 <= int(choice) <= len(offered):
+            print(t("Invalid selection!"))
+            return None
+        return offered[int(choice) - 1]
+
+    def _call_infra_ask_external_ip(self, facts, turn_name):
+        """(ok, adresse) pour `external-ip` de coturn, d'après
+        `external_ip_for` : rien à demander quand le nom de TURN résout
+        vers une adresse de l'hôte (adresse None) ; derrière un NAT,
+        l'adresse résolue est proposée, confirmée par Entrée ou remplacée ;
+        un nom qui ne résout pas exige une adresse tapée (ok False, raison
+        affichée, quand elle manque)."""
+        address, reason = ci.external_ip_for(
+            turn_name, facts.addresses, resolve=_resolve
+        )
+        if reason == "local":
+            return True, None
+        if reason == "nat":
+            print(
+                "⚠ "
+                + self._call_infra_text(
+                    "call_infra_turn_name_nat",
+                    {"name": turn_name, "address": address},
+                )
+            )
+            label = self._call_infra_text(
+                "call_infra_ask_public_ip", {"address": address}
+            )
+            return True, input(f"{label} ").strip() or address
+        print(
+            "⚠ "
+            + self._call_infra_text(
+                "call_infra_turn_name_unresolved", {"name": turn_name}
+            )
+        )
+        typed = input(f"{t('call_infra_ask_typed_ip')}: ").strip()
+        if not typed:
+            print(f"✗ {t('call_infra_public_ip_required')}")
+            return False, None
+        return True, typed
+
+    @staticmethod
+    def _call_infra_is_domain(name):
+        """Vrai pour un nom à points qui n'est pas une adresse IP : la
+        forme d'où `default_names` tire `ntfy.<d>` et `turn.<d>`."""
+        name = (name or "").strip().rstrip(".")
+        if "." not in name:
+            return False
+        try:
+            ipaddress.ip_address(name)
+        except ValueError:
+            return True
+        return False
+
+    def _call_infra_ask_production(self, facts, prior, services, default):
+        """Questions de production, après les services : domaine et noms
+        proposés (`ntfy.<d>`, `turn.<d>`), source du certificat, défi de
+        Let's Encrypt, courriel, nginx détecté, interface web de ntfy,
+        ports, 443 pour coturn sur un hôte sans nginx où 443 est libre,
+        IP publique. `Answers` de production, ou None (raison affichée).
+        `default` : le nom proposé pour le domaine sans état de
+        production."""
+        again = ci.is_production(prior)
+        if again and prior.public_name:
+            proposed = prior.public_name
+        else:
+            proposed = next(
+                (
+                    name
+                    for name in (default, facts.hostname)
+                    if self._call_infra_is_domain(name)
+                ),
+                "",
+            )
+        if proposed:
+            domain = self._call_infra_ask(t("call_infra_ask_domain"), proposed)
+        else:
+            domain = input(f"{t('call_infra_ask_domain')}: ")
+        domain = domain.strip().rstrip(".")
+        if not self._call_infra_is_domain(domain):
+            print(f"✗ {t('call_infra_domain_needed')}")
+            return None
+        # Les noms d'un état de production ne valent que pour son domaine.
+        same_domain = again and prior.public_name == domain
+        proposed_ntfy, proposed_turn = ci.default_names(domain)
+        names = {}
+        if "ntfy" in services:
+            names["ntfy_name"] = self._call_infra_ask(
+                t("call_infra_ask_ntfy_name"),
+                (same_domain and prior.ntfy_name) or proposed_ntfy,
+            )
+        if "coturn" in services:
+            names["turn_name"] = self._call_infra_ask(
+                t("call_infra_ask_turn_name"),
+                (same_domain and prior.turn_name) or proposed_turn,
+            )
+
+        print(f"\n{t('Certificate:')}")
+        print(f"[1] {t('call_infra_tls_letsencrypt')}")
+        print(
+            f"[2] {t('Supplied: certificate and key files of this machine')}"
+        )
+        choice = self._call_infra_ask(
+            t("Your choice (1/2)"), "2" if prior.tls == "supplied" else "1"
+        )
+        if choice not in ("1", "2"):
+            print(t("Invalid selection!"))
+            return None
+        tls = "supplied" if choice == "2" else "letsencrypt"
+        cert_pem = key_pem = None
+        if tls == "supplied":
+            cert_pem, key_pem = self._call_infra_read_pair()
+            if cert_pem is None:
+                return None
+
+        nginx_present, nginx_on_80 = self._call_infra_nginx_facts(facts)
+        # ntfy passe toujours par nginx ; coturn seul ne s'en sert que pour
+        # le défi HTTP.
+        use_nginx = "ntfy" in services
+        acme = dns_plugin = dns_credentials = None
+        email = ""
+        if tls == "letsencrypt":
+            print(f"\n{t('call_infra_ask_challenge')}")
+            print(f"[1] {t('call_infra_challenge_http')}")
+            print(f"[2] {t('call_infra_challenge_dns')}")
+            choice = self._call_infra_ask(
+                t("Your choice (1/2)"), "2" if prior.acme == "dns" else "1"
+            )
+            if choice not in ("1", "2"):
+                print(t("Invalid selection!"))
+                return None
+            if choice == "2":
+                acme = "dns"
+                dns_plugin = self._call_infra_ask_plugin(facts, prior)
+                if dns_plugin is None:
+                    return None
+                # Lu ici, envoyé dans le corps du script : jamais affiché.
+                dns_credentials = self._call_infra_read_file(
+                    t("call_infra_ask_dns_credentials")
+                )
+                if dns_credentials is None:
+                    return None
+            elif use_nginx:
+                acme = "http-nginx"
+            elif nginx_present or nginx_on_80:
+                # certbot seul ne peut pas prendre 80 à un nginx.
+                print(f"  {t('call_infra_nginx_serves_challenge')}")
+                acme, use_nginx = "http-nginx", True
+            else:
+                print(f"\n{t('call_infra_ask_http_way')}")
+                print(f"[1] {t('call_infra_http_standalone')}")
+                print(f"[2] {t('call_infra_http_nginx')}")
+                choice = self._call_infra_ask(
+                    t("Your choice (1/2)"),
+                    "2" if prior.acme == "http-nginx" else "1",
+                )
+                if choice not in ("1", "2"):
+                    print(t("Invalid selection!"))
+                    return None
+                acme = "http-nginx" if choice == "2" else "http-standalone"
+                use_nginx = acme == "http-nginx"
+            email = self._call_infra_ask_email(prior.email if again else "")
+            if not email:
+                print(f"⚠ {t('call_infra_email_none')}")
+
+        nginx = None
+        if use_nginx:
+            if nginx_present:
+                nginx = "existing"
+                layout = (facts.nginx or {}).get("layout") or "?"
+                print(
+                    "  "
+                    + self._call_infra_text(
+                        "call_infra_nginx_existing", {"layout": layout}
+                    )
+                )
+            else:
+                nginx = "install"
+                print(f"  {t('call_infra_nginx_install')}")
+        ntfy_web = False
+        if "ntfy" in services:
+            ntfy_web = self._call_infra_ask_yes(
+                t("call_infra_ask_ntfy_web"), again and prior.ntfy_web
+            )
+
+        ports, turns_443 = {}, False
+        if "coturn" in services:
+            ports["turn_port"] = self._call_infra_ask_int(
+                t("TURN port (udp and tcp)"), prior.turn_port
+            )
+            if ports["turn_port"] is None:
+                return None
+            if (
+                nginx is None
+                and not nginx_present
+                and self._call_infra_443_free(facts)
+            ):
+                turns_443 = self._call_infra_ask_yes(
+                    self._call_infra_text(
+                        "call_infra_ask_turns_443", {"port": prior.turns_port}
+                    ),
+                    again and prior.turns_443,
+                )
+            if turns_443:
+                ports["turns_port"] = prior.turns_port
+            else:
+                ports["turns_port"] = self._call_infra_ask_int(
+                    t("TURNS port (tcp, TLS)"), prior.turns_port
+                )
+                if ports["turns_port"] is None:
+                    return None
+            low, high = (
+                (prior.min_port, prior.max_port)
+                if again
+                else (ci.PROD_MIN_PORT, ci.PROD_MAX_PORT)
+            )
+            relays = self._call_infra_ask_range(
+                t("Media relay port range (udp)"), low, high
+            )
+            if relays is None:
+                return None
+            ports["min_port"], ports["max_port"] = relays
+        if "ntfy" in services:
+            ports["ntfy_port"] = self._call_infra_ask_int(
+                t("call_infra_ask_ntfy_local_port"),
+                (again and prior.ntfy_port) or ci.NTFY_HTTP_PORT,
+            )
+            if ports["ntfy_port"] is None:
+                return None
+
+        external_ip = None
+        if "coturn" in services:
+            ok, external_ip = self._call_infra_ask_external_ip(
+                facts, names["turn_name"]
+            )
+            if not ok:
+                return None
+        return ci.Answers(
+            services=services,
+            tls=tls,
+            cert_pem=cert_pem,
+            key_pem=key_pem,
+            public_name=domain,
+            external_ip=external_ip,
+            mode="production",
+            acme=acme,
+            dns_plugin=dns_plugin,
+            dns_credentials=dns_credentials,
+            email=email,
+            ntfy_web=ntfy_web,
+            turns_443=turns_443,
+            nginx=nginx,
+            **names,
+            **ports,
+        )
+
+    def _call_infra_show_plan(self, plan, facts):
         answers = plan.answers
+        production = ci.is_production(answers)
         chosen = [s for s in ci.SERVICES if s in answers.services]
         print(f"\n{t('Summary')}")
         print(f"  {t('Services:')} {', '.join(chosen)}")
-        print(f"  {t('Mode:')} {t('development')}")
-        if answers.tls == "none":
-            print(f"  {t('TLS:')} {t('call_infra_tls_none')}")
+        if production:
+            print(f"  {t('Mode:')} {t('production')}")
+            self._call_infra_show_production(answers)
         else:
-            print(f"  {t('TLS:')} {t('supplied certificate')}")
-        print(f"  {t('Public name:')} {answers.public_name}")
+            print(f"  {t('Mode:')} {t('development')}")
+            if answers.tls == "none":
+                print(f"  {t('TLS:')} {t('call_infra_tls_none')}")
+            else:
+                print(f"  {t('TLS:')} {t('supplied certificate')}")
+            print(f"  {t('Public name:')} {answers.public_name}")
         opened = ", ".join(
             f"{r.port}/{r.proto} {r.service}"
             for r in ci.firewall_rules(answers)
         )
         print(f"  {t('Ports:')} {opened}")
         if "coturn" in answers.services:
-            print(f"  ⚠ {t('call_infra_private_ranges_allowed')}")
+            if production:
+                print(f"  ✓ {t('call_infra_private_ranges_denied')}")
+            else:
+                print(f"  ⚠ {t('call_infra_private_ranges_allowed')}")
+        if production:
+            self._call_infra_dns_warnings(answers, facts)
         for svc in plan.adopt:
             record = plan.new_state["services"][svc]
             print(
@@ -469,6 +868,72 @@ class CallInfraMenuMixin:
         for path, diff in plan.diffs:
             print(f"\n{t('Changes to')} {path} :")
             print(diff)
+
+    def _call_infra_show_production(self, answers):
+        """Lignes du résumé propres à la production : noms, source du
+        certificat, défi, courriel, nginx, interface web, IP publique."""
+        names = []
+        if "ntfy" in answers.services:
+            names.append(f"ntfy {ci.ntfy_host(answers)}")
+        if "coturn" in answers.services:
+            names.append(f"TURN {ci.turn_host(answers)}")
+        print(f"  {t('Names:')} {', '.join(names)}")
+        if answers.tls == "letsencrypt":
+            print(f"  {t('Certificate:')} {t('call_infra_cert_letsencrypt')}")
+            if answers.acme == "dns":
+                challenge = self._call_infra_text(
+                    "call_infra_challenge_dns_plugin",
+                    {"plugin": answers.dns_plugin},
+                )
+            elif answers.acme == "http-standalone":
+                challenge = t("call_infra_challenge_http_standalone")
+            else:
+                challenge = t("call_infra_challenge_http_nginx")
+            print(f"  {t('Challenge:')} {challenge}")
+            print(
+                f"  {t('Email:')} "
+                f"{answers.email or t('call_infra_email_absent')}"
+            )
+        else:
+            print(f"  {t('Certificate:')} {t('supplied certificate')}")
+        if answers.nginx == "install":
+            print(f"  nginx : {t('call_infra_nginx_to_install')}")
+        elif answers.nginx == "existing":
+            print(f"  nginx : {t('call_infra_nginx_kept')}")
+        if "ntfy" in answers.services:
+            web = (
+                "call_infra_web_on"
+                if answers.ntfy_web
+                else "call_infra_web_off"
+            )
+            print(f"  {t('ntfy web interface:')} {t(web)}")
+        if answers.external_ip:
+            print(f"  {t('External IP:')} {answers.external_ip}")
+
+    def _call_infra_dns_warnings(self, answers, facts):
+        """Un avertissement par nom du certificat qui ne résout vers aucune
+        adresse de l'hôte ni vers l'IP publique confirmée, ou ne résout
+        pas : les clients n'y joindraient pas l'hôte, et le défi HTTP de
+        Let's Encrypt échouerait (le défi DNS, lui, ne lit pas l'adresse)."""
+        known = list(facts.addresses)
+        if answers.external_ip:
+            known.append(answers.external_ip.split("/", 1)[0])
+        http_challenge = answers.tls == "letsencrypt" and answers.acme != "dns"
+        for name in ci.certificate_names(answers):
+            found, reason = ci.external_ip_for(name, known, resolve=_resolve)
+            if reason == "local":
+                continue
+            if reason == "nat":
+                text = self._call_infra_text(
+                    "call_infra_dns_elsewhere", {"name": name, "found": found}
+                )
+            else:
+                text = self._call_infra_text(
+                    "call_infra_dns_unresolved", {"name": name}
+                )
+            if http_challenge:
+                text += " " + t("call_infra_dns_le_fails")
+            print(f"  ⚠ {text}")
 
     def _call_infra_installed(self, code, out):
         """Vrai quand le script a écrit l'état (`@@SAVED yes`). La dernière
@@ -583,8 +1048,17 @@ class CallInfraMenuMixin:
         ]
         address, cafile = "", None
         if settings:
+            # En production, le nom public est le domaine, qui peut ne pas
+            # joindre l'hôte : le nom de TURN, puis celui de ntfy, passent
+            # avant lui.
+            keys = ("public_name",)
+            if state.get("mode") == "production":
+                keys = ("turn_name", "ntfy_name", "public_name")
             names = [
-                s["public_name"] for s in settings if s.get("public_name")
+                s[key]
+                for key in keys
+                for s in settings
+                if isinstance(s.get(key), str) and s.get(key)
             ]
             address = self._call_infra_ask(
                 t("Address that reaches the host from this machine"),
@@ -613,8 +1087,11 @@ class CallInfraMenuMixin:
             "turn-udp": t("TURN over UDP"),
             "turn-tcp": t("TURN over TCP"),
             "turn-tls": t("TURN over TLS"),
+            "private-denied": t("Private ranges denied"),
             "ntfy-health": t("ntfy health"),
             "cert-expiry": t("Certificate expiry"),
+            "cert-issuer": t("Certificate issuer"),
+            "renewal": t("Certificate renewal"),
             "firewall": t("Firewall rules"),
             "state": t("Host state"),
         }
@@ -694,6 +1171,20 @@ class CallInfraMenuMixin:
             else:
                 what = t("call_infra_uninstall_keeps_package")
             print(f"  {svc} : {what}")
+        nginx = state.get("nginx")
+        if isinstance(nginx, dict):
+            what = (
+                "call_infra_uninstall_nginx_purges"
+                if nginx.get("installed_by_tool")
+                else "call_infra_uninstall_nginx_keeps"
+            )
+            print(f"  nginx : {t(what)}")
+        if isinstance(state.get("certbot"), dict):
+            print(f"  {t('call_infra_uninstall_certificate')}")
+        if isinstance(state.get("certbot"), dict) or isinstance(
+            state.get("hook"), dict
+        ):
+            print(f"  {t('call_infra_uninstall_hook')}")
         rules = ci.rules_from_state(state)
         if rules:
             listed = ", ".join(f"{r.port}/{r.proto}" for r in rules)
