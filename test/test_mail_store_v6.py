@@ -219,6 +219,59 @@ class TestMigrationFromV5(unittest.TestCase):
         self.assertEqual(SCHEMA_VERSION, 6)
 
 
+class TestConcurrentMigration(unittest.TestCase):
+    """Deux processus qui migrent le même cache v5 : le second attend le
+    premier et n'ajoute pas une colonne déjà ajoutée."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.account = account_from_preset("perso", COMPTE, "generic")
+        racine = cache_root(self.account, "clear", Path(self.tmp.name))
+        racine.mkdir(parents=True)
+        self.db = racine / "cache.db"
+        conn = sqlite3.connect(self.db)
+        conn.executescript(V5_SQL)
+        conn.close()
+
+    def test_a_column_added_meanwhile_does_not_fail_the_open(self):
+        vrai = sqlite3.connect
+        db = self.db
+        tentatives = []
+
+        class Concurrente(sqlite3.Connection):
+            """Juste avant chaque ALTER, un autre processus tente d'ajouter
+            la même colonne ; s'il trouve la base verrouillée, il renonce,
+            comme son ouverture qui attendrait."""
+
+            def execute(self, sql, *args):
+                if sql.startswith("ALTER TABLE") and "ADD COLUMN" in sql:
+                    autre = vrai(db, timeout=0)
+                    try:
+                        autre.execute(sql)
+                        autre.commit()
+                        tentatives.append("ajoutée")
+                    except sqlite3.OperationalError:
+                        tentatives.append("verrouillée")
+                    finally:
+                        autre.close()
+                return super().execute(sql, *args)
+
+        def connect(*args, **kwargs):
+            return vrai(*args, factory=Concurrente, **kwargs)
+
+        store = Store(self.account, mode="clear", base=Path(self.tmp.name))
+        with patch("script.todo.mail.store.sqlite3.connect", connect):
+            store.open()
+        self.addCleanup(store.close)
+        self.assertTrue(tentatives)
+        self.assertEqual(set(tentatives), {"verrouillée"})
+        colonnes = {
+            r["name"] for r in store._db().execute("PRAGMA table_info(outbox)")
+        }
+        self.assertTrue(OUTBOX_V6 <= colonnes)
+
+
 class TestFreshCache(StoreCase):
     def test_a_fresh_cache_has_every_v6_column(self):
         self.assertTrue(MESSAGES_V6 <= self.colonnes("messages"))

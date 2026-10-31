@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 # Clés connues et leur valeur par défaut. Une clé absente de ce dictionnaire
@@ -86,10 +87,31 @@ def load() -> dict:
 
 
 def _save(data: dict) -> None:
+    """Remplace le fichier d'un coup : un temporaire du même dossier,
+    synchronisé puis renommé. Un lecteur concurrent (le service des
+    règles, un autre terminal) lit l'ancien contenu ou le nouveau, jamais
+    un fichier tronqué qu'il prendrait pour vide ; une écriture qui échoue
+    (disque plein) laisse l'ancien intact."""
+    tmp = None
     try:
-        _path().write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        path = _path()
+        fd, tmp = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, ensure_ascii=False, indent=2))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        tmp = None
     except OSError:
         pass
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 
 def get(key: str, default=None):

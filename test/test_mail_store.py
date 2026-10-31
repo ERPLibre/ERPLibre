@@ -65,6 +65,50 @@ class TestResolveMode(unittest.TestCase):
         )
 
 
+class TestPrefsWriteNeverLosesTheMode(unittest.TestCase):
+    """Une préférence réécrite en même temps qu'un compte s'ouvre : une
+    écriture interrompue (fichier plafonné, disque plein) laisse l'ancien
+    fichier entier, et le mode général lu reste `encrypted`, jamais le
+    repli `clear` d'un fichier illisible."""
+
+    def test_an_interrupted_prefs_write_keeps_the_general_mode(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as home:
+            env = dict(os.environ, HOME=home)
+            env.pop("XDG_CONFIG_HOME", None)
+            racine = Path(__file__).resolve().parents[1]
+            prefs = Path(home) / ".erplibre" / "todo_prefs.json"
+            prefs.parent.mkdir()
+            prefs.write_text('{"mail_cache_mode": "encrypted"}')
+            # Le fils ne peut écrire que 40 octets par fichier (SIGXFSZ
+            # ignoré : l'écriture lève EFBIG au lieu de tuer).
+            code = (
+                "import resource, signal\n"
+                "signal.signal(signal.SIGXFSZ, signal.SIG_IGN)\n"
+                "resource.setrlimit(resource.RLIMIT_FSIZE, (40, 40))\n"
+                "from script.todo import todo_prefs\n"
+                "todo_prefs.set('mail_pane_sizes', {'x': 'y' * 200})\n"
+            )
+            fini = subprocess.run(
+                [sys.executable, "-c", code],
+                cwd=racine,
+                env=env,
+                capture_output=True,
+                timeout=60,
+            )
+            self.assertEqual(fini.returncode, 0, fini.stderr)
+            acc = account_from_preset(
+                "perso", "boite.regles@example.org", "generic"
+            )
+            with mock.patch.dict(os.environ, {"HOME": home}):
+                self.assertEqual(resolve_mode(acc), "encrypted")
+            self.assertEqual(
+                sorted(p.name for p in prefs.parent.iterdir()),
+                ["todo_prefs.json"],
+            )
+
+
 class TestFolderDirname(unittest.TestCase):
     def test_slash_is_escaped(self):
         self.assertNotIn("/", folder_dirname("[Gmail]/Sent Mail"))
@@ -457,6 +501,50 @@ class TestBodies(StoreCase):
             self.store.write_body("INBOX", 1, b"corps")
 
         self.assertEqual(seen, [0o600])
+
+    def test_a_write_cut_short_leaves_the_previous_body_whole(self):
+        """Une écriture interrompue à mi-chemin (processus tué) laisse le
+        corps précédent entier, ou aucun, jamais un corps tronqué ; aucun
+        temporaire ne reste à côté."""
+        from unittest.mock import patch
+
+        self.store.upsert_folder("INBOX")
+        vrai = os.fdopen
+
+        class Coupe:
+            def __init__(self, handle):
+                self.handle = handle
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                self.handle.close()
+
+            def write(self, data):
+                self.handle.write(data[: len(data) // 2])
+                self.handle.flush()
+                raise KeyboardInterrupt
+
+        def coupe(fd, *args, **kwargs):
+            return Coupe(vrai(fd, *args, **kwargs))
+
+        with patch("os.fdopen", side_effect=coupe):
+            with self.assertRaises(KeyboardInterrupt):
+                self.store.write_body("INBOX", 2, b"x" * 4000)
+        self.assertIsNone(self.store.read_body("INBOX", 2))
+        self.store.write_body("INBOX", 1, b"ancien corps entier")
+        with patch("os.fdopen", side_effect=coupe):
+            with self.assertRaises(KeyboardInterrupt):
+                self.store.write_body("INBOX", 1, b"y" * 4000)
+        self.assertEqual(
+            self.store.read_body("INBOX", 1), b"ancien corps entier"
+        )
+        dossier = self.store._body_path("INBOX", 1).parent
+        self.assertEqual(
+            sorted(p.name for p in dossier.iterdir()),
+            [self.store._body_path("INBOX", 1).name],
+        )
 
 
 class TestPurge(StoreCase):
