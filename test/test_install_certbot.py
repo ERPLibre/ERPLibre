@@ -132,14 +132,22 @@ exit 1
 echo "dpkg $*" >> "$J"
 exit 0
 """,
+    # Comme apt : la langue suit LC_ALL, puis LC_MESSAGES, puis LANG ; en
+    # francais, une espace insecable precede le deux-points.
     "apt-cache": """#!/bin/sh
 echo "apt-cache $*" >> "$J"
 for p; do :; done
 echo "$p:"
-echo "  Installed: (none)"
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+    fr*) installe="  Install\\303\\251\\302\\240: (aucun)"
+         candidat="  Candidat\\302\\240:"; aucun="(aucun)" ;;
+    *) installe="  Installed: (none)"
+       candidat="  Candidate:"; aucun="(none)" ;;
+esac
+printf "$installe\\n"
 case " $APT_SANS_CANDIDAT " in
-    *" $p "*) echo "  Candidate: (none)" ;;
-    *) echo "  Candidate: 4.0.0-1" ;;
+    *" $p "*) printf "$candidat %s\\n" "$aucun" ;;
+    *) printf "$candidat %s\\n" 4.0.0-1 ;;
 esac
 exit 0
 """,
@@ -722,6 +730,31 @@ class TestPaquets(unittest.TestCase):
             self.assertEqual(hote.certbot(), [])
             self.assertFalse([a for a in hote.appels()
                               if a.startswith("apt-get") and " install " in a])
+
+    def test_debian_greffon_sous_un_systeme_en_francais(self):
+        """apt lit la langue de l'hote, que sudo et ssh transmettent : le
+        greffon livre est trouve meme quand apt ecrit « Candidat : »."""
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_identifiants()
+            fait = hote.jouer(LANG="fr_CA.UTF-8", LC_ALL="",
+                              LC_MESSAGES="", **entrees("dns"))
+            self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
+            self.assertEqual(
+                marqueurs(fait.stdout, "CERTBOT_PLUGIN_INSTALLED"),
+                ["python3-certbot-dns-ovh"])
+
+    def test_debian_greffon_sans_paquet_refuse_en_francais(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_identifiants()
+            fait = hote.jouer(LANG="fr_CA.UTF-8", LC_ALL="",
+                              LC_MESSAGES="",
+                              APT_SANS_CANDIDAT="python3-certbot-dns-ovh",
+                              **entrees("dns"))
+            self.assertNotEqual(fait.returncode, 0, fait.stdout)
+            self.assertIn("python3-certbot-dns-ovh", derniere(fait.stdout))
+            self.assertEqual(hote.certbot(), [])
 
     def test_arch_greffon_installe(self):
         with tempfile.TemporaryDirectory() as dossier:

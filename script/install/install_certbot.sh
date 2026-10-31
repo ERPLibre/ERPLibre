@@ -217,10 +217,13 @@ apt_prepare() {
 }
 
 # Vrai quand les depots Debian proposent une version du paquet : Debian 13
-# ne livre que trois des neuf greffons DNS.
+# ne livre que trois des neuf greffons DNS. LC_ALL=C : apt suit la langue
+# de l'hote, que sudo et ssh transmettent, et l'apt francais ecrit
+# « Candidat : » avec une espace insecable, qu'aucun motif anglais ne lit.
 apt_has_candidate() {
     local candidate
-    candidate=$(apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/ { print $2; exit }')
+    candidate=$(LC_ALL=C apt-cache policy "$1" 2>/dev/null \
+        | awk '/^ *Candidate:/ { print $2; exit }')
     [ -n "$candidate" ] && [ "$candidate" != "(none)" ]
 }
 
