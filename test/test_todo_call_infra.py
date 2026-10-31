@@ -987,9 +987,18 @@ class TestDocumentation(unittest.TestCase):
     MENU_EN = "TODO › Deploy › Call infrastructure"
     MENU_FR = "TODO › Déployer › Infrastructure d'appel"
     OLD_PATHS = ("Deploy › Prepare ntfy", "Déployer › Préparer ntfy")
+    # Chaque chemin de OLD_PATHS, ses mots séparés par n'importe quelle
+    # suite de blancs, saut de ligne compris.
+    OLD_PATTERNS = tuple(
+        re.compile(r"\s+".join(re.escape(word) for word in old.split()))
+        for old in OLD_PATHS
+    )
 
     def _read(self, relative):
         return (REPO / relative).read_text(encoding="utf-8")
+
+    def _names_old_path(self, text):
+        return any(pattern.search(text) for pattern in self.OLD_PATTERNS)
 
     def test_no_source_doc_names_the_old_deploy_path(self):
         import subprocess
@@ -1005,9 +1014,25 @@ class TestDocumentation(unittest.TestCase):
         sources = [p for p in listed if not p.startswith("docs/superpowers/")]
         self.assertIn("CHANGELOG.base.md", sources)
         for relative in sources:
-            text = self._read(relative)
-            for old in self.OLD_PATHS:
-                self.assertNotIn(old, text, relative)
+            with self.subTest(relative=relative):
+                self.assertFalse(
+                    self._names_old_path(self._read(relative)), relative
+                )
+
+    def test_an_old_path_wrapped_across_lines_is_caught(self):
+        """Un paragraphe reformaté coupe le chemin n'importe où : entre
+        ses mots, l'espace peut devenir un saut de ligne ou plusieurs
+        espaces."""
+        for text in (
+            "`TODO › Déployer ›\nPréparer ntfy pour ERPLibre mobile`",
+            "TODO › Deploy  ›   Prepare\n  ntfy for ERPLibre mobile",
+            "Deploy › Prepare ntfy",
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(self._names_old_path(text))
+        self.assertFalse(
+            self._names_old_path(self.MENU_FR + " › Préparer ntfy")
+        )
 
     def test_the_changelog_names_the_menu_in_both_languages(self):
         unreleased = self._read("CHANGELOG.base.md").split("## [1.8.0]")[0]
