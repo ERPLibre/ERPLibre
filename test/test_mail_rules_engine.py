@@ -628,6 +628,32 @@ class TestPoisonAndCursor(EngineCase):
         self.assertEqual(echec[0]["reason"], "build_error")
         self.assertEqual(self.etat().cursor, 2)
 
+    def test_a_busy_cache_leaves_the_message_for_the_next_pass(self):
+        """Le journal refusé par une base tenue ailleurs (ou un disque
+        plein) : la passe s'arrête en erreur sans avancer le curseur, et
+        la suivante répond, plutôt que de compter le message comme traité
+        sans aucune ligne au journal."""
+        import sqlite3
+
+        self.regle(throttle_enabled=False)
+        self.imap.recevoir(1)
+        self.imap.recevoir(2, frm=BRUNO)
+        vrai = self.store.rule_log_claim
+
+        def occupe(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        with mock.patch.object(self.store, "rule_log_claim", occupe):
+            bilan = self.passe()
+        self.assertEqual(bilan.status, "error")
+        self.assertEqual((bilan.sent, bilan.failed), (0, 0))
+        self.assertFalse(self.etat().cursor)
+        self.assertEqual(self.envois, [])
+        self.assertIs(self.store.rule_log_claim.__func__, vrai.__func__)
+        bilan = self.passe()
+        self.assertEqual((bilan.status, bilan.sent), ("ok", 2))
+        self.assertEqual(self.etat().cursor, 2)
+
     def test_a_uid_gone_from_the_server_is_passed_and_not_refetched(self):
         self.regle(throttle_enabled=False)
         self.imap.recevoir(1)
