@@ -19,7 +19,10 @@ Garanties :
   évaluer (hors ligne, FETCH en échec) reste un TROU et se réévalue à la
   passe suivante ;
 - un message dont le traitement lève est journalisé en échec et ne bloque
-  ni le curseur ni les messages suivants.
+  ni le curseur ni les messages suivants ; une panne du cache lui-même
+  (`_STORE_FAILURES` : base occupée, disque plein) arrête la passe en
+  `status="error"` sans avancer le curseur sur ce message, qui se
+  réévalue à la passe suivante, puisque rien n'a pu l'y journaliser.
 
 Une règle `forward` relaie le message au lieu d'y répondre. Ses octets
 complets ne sont lus (BODY.PEEK[], qui ne marque pas lu) que lorsqu'elle a
@@ -41,6 +44,7 @@ import collections
 import contextlib
 import dataclasses
 import logging
+import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -72,9 +76,16 @@ from script.todo.mail.smtp_send import (
     SmtpError,
     smtp_address,
 )
+from script.todo.mail.store import StoreError
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
+
+# Pannes du cache qui ne disent rien du message : base tenue par un autre
+# processus au-delà du délai d'attente, disque plein, erreur d'entrée et
+# sortie. Elles traversent la passe au lieu d'être journalisées en échec
+# du message, journal que la même panne empêche d'écrire.
+_STORE_FAILURES = (sqlite3.OperationalError, StoreError)
 
 MAX_AUTO_PER_PASS = storage.DEFAULT_CAP_PER_PASS
 MAX_AUTO_PER_HOUR = storage.DEFAULT_CAP_PER_HOUR
@@ -925,6 +936,8 @@ class _Pass:
         try:
             view = message_view(header, self.uidv)
             msg_key = self.store.message_key(view.msgid, self.uidv, view.uid)
+        except _STORE_FAILURES:
+            raise
         except Exception as exc:
             self.result.failed += 1
             _logger.error(
@@ -942,7 +955,7 @@ class _Pass:
         for rule in self.actives:
             try:
                 stop = self._apply(rule, view, msg_key, loader, raw)
-            except _Hole:
+            except (_Hole, *_STORE_FAILURES):
                 raise
             except RegexTimeout as exc:
                 # Verdict du filtre inconnu : la règle a peut-être apparié,
@@ -1032,7 +1045,7 @@ class _Pass:
         if d.reason == guards.SEND:
             try:
                 self._send(rule, view, msg_key, d, raw)
-            except _Hole:
+            except (_Hole, *_STORE_FAILURES):
                 raise
             except Exception as exc:
                 # Le filtre a apparié : « arrêter ici » vaut même quand la
@@ -1044,7 +1057,9 @@ class _Pass:
         return d.matched and rule.stop_after
 
     def _fail(self, rule, view, msg_key, code, exc) -> None:
-        """Journalise un échec (règle, message) sans jamais lever."""
+        """Journalise un échec (règle, message) sans lever, sauf une panne
+        du cache (`_STORE_FAILURES`) : sans ligne au journal, le message ne
+        doit pas compter comme traité."""
         _logger.error(
             "règles %s : règle %s, %s (%s)",
             self.name,
@@ -1061,6 +1076,8 @@ class _Pass:
             self.result.errors.append(
                 f"{rule.name or rule.id} : {t('mail_rules_reason_' + code)}"
             )
+        except _STORE_FAILURES:
+            raise
         except Exception as again:
             _logger.error(
                 "règles %s : journal en échec (%s)",
