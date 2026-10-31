@@ -108,6 +108,8 @@ _MARKER_LINE = re.compile(r"@@([A-Z_]+)(?: (.*))?$")
 _NAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$")
 _EXTERNAL_IP = re.compile(r"^[0-9A-Fa-f:./]+$")
 _STAMP = re.compile(r"^[A-Za-z0-9_-]+$")
+# Réponse de `systemctl is-enabled` : enabled, disabled, static, masked...
+_UNIT_STATE = re.compile(r"^[a-z-]+$")
 
 
 class Refusal(Exception):
@@ -126,7 +128,8 @@ class HostFacts:
 
     `coturn` et `ntfy` valent None quand ni unité ni configuration ni fiche
     en attente n'existe, sinon un dict : `unit`, `unit_found` (l'unité
-    existe, donc le paquet est là), `active` (état systemd), `config`,
+    existe, donc le paquet est là), `active` (état systemd), `enabled`
+    (réponse de `systemctl is-enabled`, None sans elle), `config`,
     `config_text` (vide sans fichier), `managed` (première ligne MARKER),
     `pending` (fiche laissée par une installation interrompue, ou None).
 
@@ -225,7 +228,8 @@ def probe_script(root=""):
     `@@SYSTEMD yes|no`, `@@HOSTNAME`, `@@ADDR` par adresse globale,
     `@@PORT <proto> <port> <processus>` par port en écoute, `@@COTURN
     <unité> <état> <config de l'unité>` et `@@NTFY <unité> <état> <config>`
-    (« - » pour absent), `@@FILE <chemin> <base64>` par configuration
+    (« - » pour absent), `@@ENABLED <service> <is-enabled>` par unité
+    trouvée, `@@FILE <chemin> <base64>` par configuration
     présente, `@@PENDING <service> <base64>`, `@@FIREWALL`, `@@NFT_INPUT
     <famille> <table> <chaîne>` par chaîne input en drop (nftables
     seulement), `@@STATE <base64>`, puis `@@END` : sans lui, la sortie est
@@ -273,12 +277,19 @@ def probe_script(root=""):
             '  CC=$(unit_conf "$CU")',
             "fi",
             'echo "@@COTURN $CU ${CA:--} ${CC:--}"',
+            'if [ "$CU" != - ]; then',
+            '  echo "@@ENABLED coturn $(systemctl is-enabled "$CU" 2>/dev/null)"',
+            "fi",
             "NU=-; NA=-",
             f"if systemctl cat {NTFY_UNIT} >/dev/null 2>&1; then",
             f"  NU={NTFY_UNIT}; NA=$(systemctl is-active {NTFY_UNIT}"
             " 2>/dev/null)",
             "fi",
             f'echo "@@NTFY $NU ${{NA:--}} {NTFY_CONFIG}"',
+            'if [ "$NU" != - ]; then',
+            f'  echo "@@ENABLED ntfy $(systemctl is-enabled {NTFY_UNIT}'
+            ' 2>/dev/null)"',
+            "fi",
             f"for f in {files}; do",
             '  if [ "$f" != - ] && [ -f "$R$f" ]; then',
             '    echo "@@FILE $f $(base64 -w0 < "$R$f")"',
@@ -378,7 +389,9 @@ def is_foreign(text):
     return bool(text) and not is_managed(text)
 
 
-def _service_facts(marker, default_unit, default_config, files, pending):
+def _service_facts(
+    marker, default_unit, default_config, files, pending, enabled=None
+):
     unit, active, config = (marker + ["-", "-", "-"])[:3]
     unit_found = unit != "-"
     path = config if config != "-" else default_config
@@ -389,6 +402,7 @@ def _service_facts(marker, default_unit, default_config, files, pending):
         "unit": unit if unit_found else default_unit,
         "unit_found": unit_found,
         "active": active if unit_found and active != "-" else "inactive",
+        "enabled": enabled if unit_found and enabled else None,
         "config": path,
         "config_text": text or "",
         "managed": is_managed(text or ""),
@@ -405,7 +419,7 @@ def parse_probe(output):
     os_id, os_version, id_like = "unknown", "", ""
     systemd, hostname, firewall, state = False, "", "unknown", None
     addresses, ports, files, pending, chains = [], [], {}, {}, []
-    coturn_marker, ntfy_marker, complete = [], [], False
+    coturn_marker, ntfy_marker, complete, enabled = [], [], False, {}
     for name, value in marker_lines(output):
         if name == "OS":
             parts = value.split()
@@ -431,6 +445,10 @@ def parse_probe(output):
             coturn_marker = value.split(None, 2)
         elif name == "NTFY":
             ntfy_marker = value.split(None, 2)
+        elif name == "ENABLED":
+            svc, _, current = value.partition(" ")
+            if svc in SERVICES and _UNIT_STATE.match(current.strip()):
+                enabled[svc] = current.strip()
         elif name == "FILE":
             path, _, encoded = value.rpartition(" ")
             text = _decode(encoded)
@@ -461,9 +479,15 @@ def parse_probe(output):
         COTURN_CONFIGS.get(family, COTURN_CONFIGS["debian"]),
         files,
         pending.get("coturn"),
+        enabled.get("coturn"),
     )
     ntfy = _service_facts(
-        ntfy_marker, NTFY_UNIT, NTFY_CONFIG, files, pending.get("ntfy")
+        ntfy_marker,
+        NTFY_UNIT,
+        NTFY_CONFIG,
+        files,
+        pending.get("ntfy"),
+        enabled.get("ntfy"),
     )
     return HostFacts(
         family=family,
@@ -875,18 +899,38 @@ def _settings(svc, answers, cert_sha):
 def _origin(current, prior_record):
     """Ce que l'hôte avait avant l'outil : du dernier état écrit, sinon de la
     fiche d'une installation interrompue, sinon de la sonde. `backup` vaut
-    None pour une adoption de ce passage ; `written_state` le complète."""
+    None pour une adoption de ce passage ; `written_state` le complète.
+
+    `was_active` (l'unité tournait) et `was_enabled` (sa réponse à
+    `systemctl is-enabled`) disent ce que la désinstallation d'un service
+    adopté remet : les installateurs activent et démarrent toujours
+    l'unité. None quand l'unité n'existait pas, ou pour un état écrit
+    avant que l'outil ne les consigne."""
     for source in (prior_record, (current or {}).get("pending")):
         if isinstance(source, dict) and "installed_by_tool" in source:
+            was_active = source.get("was_active")
+            was_enabled = source.get("was_enabled")
             return {
                 "installed_by_tool": bool(source.get("installed_by_tool")),
                 "adopted": bool(source.get("adopted")),
                 "backup": source.get("backup"),
+                "was_active": (
+                    was_active if isinstance(was_active, bool) else None
+                ),
+                "was_enabled": (
+                    was_enabled
+                    if isinstance(was_enabled, str)
+                    and _UNIT_STATE.match(was_enabled)
+                    else None
+                ),
             }
+    found = bool(current and current.get("unit_found"))
     return {
-        "installed_by_tool": not (current and current.get("unit_found")),
+        "installed_by_tool": not found,
         "adopted": bool(current) and is_foreign(current["config_text"]),
         "backup": None,
+        "was_active": current.get("active") == "active" if found else None,
+        "was_enabled": current.get("enabled") if found else None,
     }
 
 
@@ -1296,7 +1340,14 @@ def install_script(plan, stamp, root=""):
         record = state["services"][svc]
         origin = {
             k: record[k]
-            for k in ("installed_by_tool", "adopted", "backup", "config")
+            for k in (
+                "installed_by_tool",
+                "adopted",
+                "backup",
+                "config",
+                "was_active",
+                "was_enabled",
+            )
         }
         pending = f'"$PENDING/{svc}.json"'
         lines += [
@@ -2389,6 +2440,15 @@ def _uninstall_records(state):
             raise invalid
         if backup is not None and not _is_backup_of(config, backup):
             raise invalid
+        was_active = record.get("was_active")
+        was_enabled = record.get("was_enabled")
+        if was_active not in (True, False, None) or not (
+            was_enabled is None
+            or (
+                isinstance(was_enabled, str) and _UNIT_STATE.match(was_enabled)
+            )
+        ):
+            raise invalid
         if not isinstance(tls_files, list) or not set(tls_files) <= (
             _TLS_FILES[svc]
         ):
@@ -2402,6 +2462,8 @@ def _uninstall_records(state):
                     "installed_by_tool": bool(record.get("installed_by_tool")),
                     "adopted": bool(record.get("adopted")),
                     "backup": backup,
+                    "was_active": was_active,
+                    "was_enabled": was_enabled,
                     "tls_files": sorted(tls_files),
                 },
             )
@@ -2509,7 +2571,12 @@ def _restore_lines(svc, record):
     copie disparue alors que la configuration de l'outil est en place se
     dit (`@@BACKUP_MISSING`) et laisse le service tel que l'outil l'a
     configuré (KEEP_<service>=1, KEPT=1) : ni ses fichiers TLS, ni ses
-    données, ni l'état ne partent, sans bloquer les autres services."""
+    données, ni l'état ne partent, sans bloquer les autres services.
+
+    L'unité retrouve ce qu'elle était avant l'outil, dont l'installateur
+    l'a activée et démarrée : arrêtée si elle ne tournait pas, désactivée
+    si `is-enabled` disait « disabled », relancée sinon (et pour un état
+    qui ne le consigne pas)."""
     config, backup = record["config"], record["backup"]
     unit = shlex.quote(record["unit"])
     lines = []
@@ -2528,10 +2595,22 @@ def _restore_lines(svc, record):
         f" KEEP_{svc}=1; KEPT=1",
         "fi",
         f'if [ "$KEEP_{svc}" = 0 ]; then',
-        f"  systemctl try-restart {unit} >/dev/null 2>&1"
-        f' || echo "@@RESTART_FAILED {svc}"',
-        "fi",
     ]
+    if record.get("was_active") is False:
+        lines.append(
+            f"  systemctl stop {unit} >/dev/null 2>&1 || failed stop-{svc}"
+        )
+    else:
+        lines.append(
+            f"  systemctl try-restart {unit} >/dev/null 2>&1"
+            f' || echo "@@RESTART_FAILED {svc}"'
+        )
+    if record.get("was_enabled") == "disabled":
+        lines.append(
+            f"  systemctl disable {unit} >/dev/null 2>&1"
+            f" || failed disable-{svc}"
+        )
+    lines.append("fi")
     return lines
 
 
@@ -2556,10 +2635,11 @@ def _put_back_lines(svc, record):
 def _service_uninstall_lines(svc, record, remove_data, stamp):
     """Lignes `sh` d'un service. Posé par l'outil : arrêt, purge du
     paquet, fichiers et configuration retirés, puis la configuration
-    d'origine remise quand l'outil l'avait aussi adoptée. Adopté : configuration
-    d'origine remise et service relancé, paquet laissé. Paquet déjà là sans
-    configuration : arrêt et configuration de l'outil retirée. Puis ses
-    fichiers TLS et ses données, retirés ou gardés selon `remove_data`."""
+    d'origine remise quand l'outil l'avait aussi adoptée. Adopté :
+    configuration d'origine remise, unité rendue à son état d'avant
+    l'outil, paquet laissé. Paquet déjà là sans configuration : arrêt et
+    configuration de l'outil retirée. Puis ses fichiers TLS et ses
+    données, retirés ou gardés selon `remove_data`."""
     installed = record["installed_by_tool"]
     hold = svc == "ntfy" and installed and not remove_data
     package = PACKAGES[svc]

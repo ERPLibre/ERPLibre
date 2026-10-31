@@ -219,6 +219,14 @@ class TestParseProbe(unittest.TestCase):
         self.assertFalse(facts.coturn["managed"])
         self.assertIn(("udp", 3478, "turnserver"), facts.busy_ports)
 
+    def test_enabled_state_of_each_unit(self):
+        text = ARCH_PROBE.replace(
+            "@@FIREWALL ufw\r\n",
+            "@@ENABLED coturn disabled\r\n@@FIREWALL ufw\r\n",
+        )
+        self.assertEqual(ci.parse_probe(text).coturn["enabled"], "disabled")
+        self.assertIsNone(ci.parse_probe(ARCH_PROBE).coturn["enabled"])
+
     def test_arch_config_path_defaults_to_the_package_one(self):
         text = ARCH_PROBE.replace(
             "turnserver active /etc/turnserver/turnserver.conf",
@@ -342,6 +350,7 @@ class TestProbeScript(unittest.TestCase):
                     'case "$1 $2" in\n'
                     "  'cat coturn') cat <<'EOF'\n%sEOF\n;;\n"
                     "  'is-active coturn') echo active ;;\n"
+                    "  'is-enabled coturn') echo disabled; exit 1 ;;\n"
                     "  *) exit 3 ;;\n"
                     "esac\n"
                 )
@@ -382,6 +391,7 @@ class TestProbeScript(unittest.TestCase):
         self.assertEqual(facts.coturn["config"], "/etc/turnserver.conf")
         self.assertEqual(facts.coturn["config_text"], ARCH_COTURN)
         self.assertFalse(facts.coturn["managed"])
+        self.assertEqual(facts.coturn["enabled"], "disabled")
         self.assertIsNone(facts.ntfy)
         self.assertEqual(facts.firewall, "ufw")
         self.assertEqual(facts.state, state)
@@ -569,6 +579,38 @@ class TestPlan(unittest.TestCase):
             ),
         )
         return facts, answers(services=frozenset({"coturn"}))
+
+    def test_adoption_records_whether_the_unit_ran_and_was_enabled(self):
+        facts, ans = self.adopted_coturn()
+        stopped = dict(facts.coturn, active="inactive", enabled="disabled")
+        plan = ci.plan_install(
+            dataclasses.replace(facts, coturn=stopped), ans, NOW
+        )
+        record = plan.new_state["services"]["coturn"]
+        self.assertIs(record["was_active"], False)
+        self.assertEqual(record["was_enabled"], "disabled")
+        # La fiche d'attente porte la même origine : une relance après
+        # une coupure voit l'unité que l'installateur a démarrée.
+        origin = json.loads(
+            base64.b64decode(
+                re.search(
+                    r"printf %s '?([A-Za-z0-9+/=]+)'? \| base64 -d >"
+                    r' "\$PENDING/coturn.new"',
+                    ci.install_script(plan, STAMP),
+                ).group(1)
+            )
+        )
+        self.assertIs(origin["was_active"], False)
+        self.assertEqual(origin["was_enabled"], "disabled")
+        rerun = dict(
+            stopped, active="active", enabled="enabled", pending=origin
+        )
+        again = ci.plan_install(
+            dataclasses.replace(facts, coturn=rerun), ans, NOW
+        )
+        self.assertIs(
+            again.new_state["services"]["coturn"]["was_active"], False
+        )
 
     def test_unmanaged_coturn_is_adopted_with_a_diff(self):
         facts, ans = self.adopted_coturn()
@@ -2998,6 +3040,51 @@ class TestUninstall(unittest.TestCase):
             "BACKUP_LOST coturn /etc/turnserver.conf.bak-" + STAMP, markers
         )
         self.assertEqual(markers[-1], "DONE yes")
+
+    def test_adopted_unit_stopped_before_is_stopped_again(self):
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        current = service("/etc/turnserver.conf", original)
+        current.update(active="inactive", enabled="disabled")
+        ans = answers(services=frozenset({"coturn"}))
+        state = installed_state(
+            ans,
+            facts=base_facts(
+                coturn=current, busy_ports=(("udp", 3478, "turnserver"),)
+            ),
+        )
+        backup = state["services"]["coturn"]["backup"]
+        self.place_state(state)
+        write(self.path(backup), original, 0o640)
+        write(self.path("/etc/turnserver.conf"), ci.coturn_config(ans))
+        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        self.assertIn("systemctl stop coturn", calls)
+        self.assertIn("systemctl disable coturn", calls)
+        self.assertNotIn("systemctl try-restart coturn", calls)
+        with open(self.path("/etc/turnserver.conf")) as handle:
+            self.assertEqual(handle.read(), original)
+
+    def test_adopted_unit_running_and_enabled_is_restarted(self):
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        current = service("/etc/turnserver.conf", original)
+        current.update(enabled="enabled")
+        ans = answers(services=frozenset({"coturn"}))
+        state = installed_state(
+            ans,
+            facts=base_facts(
+                coturn=current, busy_ports=(("udp", 3478, "turnserver"),)
+            ),
+        )
+        self.place_state(state)
+        write(self.path(state["services"]["coturn"]["backup"]), original)
+        write(self.path("/etc/turnserver.conf"), ci.coturn_config(ans))
+        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        self.assertIn("systemctl try-restart coturn", calls)
+        self.assertNotIn("systemctl stop coturn", calls)
+        self.assertNotIn("systemctl disable coturn", calls)
 
     def adopted_coturn(self, ans, **facts):
         """Un coturn adopté dont la copie de la configuration d'origine a
