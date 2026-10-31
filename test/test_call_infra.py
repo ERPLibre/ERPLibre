@@ -1767,6 +1767,38 @@ class TestPendingFirewall(unittest.TestCase):
         )
 
 
+class TestAdminAdded(unittest.TestCase):
+    def adopted_ntfy_state(self):
+        facts = base_facts(
+            ntfy=service(ci.NTFY_CONFIG, NTFY_FOREIGN, unit="ntfy"),
+            busy_ports=(("tcp", 8080, "ntfy"),),
+        )
+        ans = answers(services=frozenset({"ntfy"}))
+        return facts, ans, installed_state(ans, facts=facts)
+
+    def test_the_admin_created_in_an_adopted_ntfy_is_recorded(self):
+        _facts, _ans, state = self.adopted_ntfy_state()
+        out = "@@ADMIN_PASSWORD Ab1\n@@SAVED yes\n"
+        marked = ci.mark_admin_added(state, out)
+        self.assertIs(marked["services"]["ntfy"]["admin_added"], True)
+        self.assertNotIn("admin_added", state["services"]["ntfy"])
+        self.assertEqual(ci.mark_admin_added(state, "@@SAVED yes\n"), state)
+        # Un ntfy posé par l'outil part en entier, base des comptes avec.
+        tool = installed_state(answers(services=frozenset({"ntfy"})))
+        self.assertEqual(ci.mark_admin_added(tool, out), tool)
+
+    def test_a_rerun_keeps_the_record(self):
+        facts, ans, state = self.adopted_ntfy_state()
+        marked = ci.mark_admin_added(state, "@@ADMIN_PASSWORD Ab1\n")
+        managed = service(
+            ci.NTFY_CONFIG, ci.ntfy_config(ans, NTFY_FOREIGN), unit="ntfy"
+        )
+        again = ci.plan_install(
+            dataclasses.replace(facts, ntfy=managed, state=marked), ans, NOW
+        )
+        self.assertIs(again.new_state["services"]["ntfy"]["admin_added"], True)
+
+
 class TestFirewallRun(unittest.TestCase):
     """Scripts du pare-feu joués pour de vrai : `nft` et `ufw` sont des
     bouchons qui notent leurs appels, la racine est un dossier temporaire."""
@@ -3315,6 +3347,50 @@ class TestUninstall(unittest.TestCase):
         done = self.uninstall(state, UNITS="ntfy", PKGS="ntfy")
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertFalse(os.path.exists(self.path(ci.CALL_DIR)))
+
+    def test_adopted_ntfy_loses_the_admin_the_tool_added(self):
+        facts = base_facts(
+            ntfy=service(ci.NTFY_CONFIG, NTFY_FOREIGN, unit="ntfy"),
+            busy_ports=(("tcp", 8080, "ntfy"),),
+        )
+        ans = answers(services=frozenset({"ntfy"}))
+        state = ci.mark_admin_added(
+            installed_state(ans, facts=facts), "@@ADMIN_PASSWORD Ab1\n"
+        )
+        backup = state["services"]["ntfy"]["backup"]
+        self.place_state(state)
+        write(self.path(backup), NTFY_FOREIGN, 0o640)
+        write(self.path(ci.NTFY_CONFIG), ci.ntfy_config(ans, NTFY_FOREIGN))
+        write(os.path.join(self.stubs, "id"), "#!/bin/sh\nexit 0\n")
+        write(
+            os.path.join(self.stubs, "runuser"),
+            '#!/bin/sh\necho "runuser $*" >> "$LOG"\n'
+            'while [ "$1" != -- ]; do shift; done; shift; exec "$@"\n',
+        )
+        write(
+            os.path.join(self.stubs, "ntfy"),
+            "#!/bin/sh\n"
+            'echo "ntfy $* $(head -n 1 "$ROOT/etc/ntfy/server.yml")" >> "$LOG"\n'
+            'case "$*" in\n'
+            '  *" list") echo "user erplibre (role: admin, tier: none)" >&2 ;;\n'
+            "esac\n",
+        )
+        done = self.uninstall(state, UNITS="ntfy", PKGS="ntfy")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        # Retiré sous la configuration de l'outil, avant la remise de
+        # l'originale, et sous le compte du service.
+        config = self.path(ci.NTFY_CONFIG)
+        self.assertIn(
+            f"ntfy user --config {config} del erplibre {ci.MARKER}", calls
+        )
+        self.assertIn(
+            f"runuser -u ntfy -- ntfy user --config {config} del erplibre",
+            calls,
+        )
+        self.assertIn("REMOVED account erplibre", self.markers(done))
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), NTFY_FOREIGN)
 
     def adopted_coturn(self, ans, **facts):
         """Un coturn adopté dont la copie de la configuration d'origine a
