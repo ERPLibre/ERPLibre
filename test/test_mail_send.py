@@ -419,9 +419,12 @@ class TestSend(unittest.TestCase):
         )
         del msg["To"]
         smtp = FakeSmtp()
-        with self.assertRaises(SmtpError):
+        with self.assertRaises(SmtpError) as ctx:
             send(self.acc, msg, smtp)
         self.assertEqual(smtp.sent, [])
+        # Aucun nouvel essai n'y changerait rien : ni réessai, ni panne
+        # SMTP qui mettrait en file le reste d'une passe.
+        self.assertTrue(ctx.exception.permanent)
 
 
 class TestWithoutBcc(unittest.TestCase):

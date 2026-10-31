@@ -199,6 +199,27 @@ class TestOneCasePerReason(unittest.TestCase):
     def test_no_target(self):
         self.assertEqual(self.reason(view(frm="Inconnu")), "no_target")
 
+    def test_an_encoded_return_path_is_no_address(self):
+        """Un Return-Path dont l'addr-spec porte un mot encodé ne donne
+        aucune adresse, comme « <> », plutôt qu'une forme que l'enveloppe
+        décoderait en une autre (délai par cible, `self` et
+        `robot_sender` contournés)."""
+        for local in ("carole.regle", "boite.regles", "mailer-daemon"):
+            for encoded in (
+                f"=?utf-8?q?{local}?=",
+                f"=?iso-8859-1?q?{local}?=",
+            ):
+                with self.subTest(encoded=encoded):
+                    message = view(
+                        {"Return-Path": f"<{encoded}@example.org>"},
+                        frm=f"Carole <{HUMAN}>",
+                    )
+                    self.assertEqual(self.reason(message), "null_sender")
+
+    def test_a_from_domain_ending_with_a_dot_has_no_target(self):
+        message = view(frm="Carole <carole@example.net.>")
+        self.assertEqual(self.reason(message), "no_target")
+
     def test_robot_sender(self):
         for sender in (
             "mailer-daemon@example.net",

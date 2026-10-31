@@ -130,6 +130,23 @@ class TestAddresses(unittest.TestCase):
         # avec l'adresse.
         self.assertEqual(addr_specs('" <bruno.filtre@example.net>'), [])
 
+    def test_addr_specs_drops_an_encoded_word_in_the_address(self):
+        """Un mot encodé dans l'addr-spec est interdit, et le registre
+        d'en-têtes le décoderait en une autre adresse."""
+        for value in (
+            "<=?utf-8?q?carole.regle?=@example.org>",
+            "<=?utf-8?b?Y2Fyb2xlLnJlZ2xl?=@example.org>",
+            "carole.regle@=?utf-8?q?example.org?=",
+        ):
+            for raw in (False, True):
+                with self.subTest(value=value, raw=raw):
+                    self.assertEqual(addr_specs(value, raw=raw), [])
+
+    def test_addr_specs_drops_a_domain_ending_with_a_dot(self):
+        self.assertEqual(addr_specs("Carole <carole@example.net.>"), [])
+        self.assertEqual(addr_specs("carole@"), [])
+        self.assertEqual(addr_specs("@example.net"), [])
+
 
 class TestSoleAddress(unittest.TestCase):
     """L'adresse unique et sans ambiguïté d'un From."""

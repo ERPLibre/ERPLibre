@@ -104,18 +104,40 @@ _ADDRESS_LIKE_RE = re.compile(
 )
 
 
+def _is_addr_spec(addr: str) -> bool:
+    """Vrai si `addr` a la forme d'une addr-spec que l'enveloppe recevra
+    telle quelle : une partie locale et un domaine non vides autour du
+    dernier « @ », ni blanc, ni chevron, ni séparateur, ni mot encodé
+    RFC 2047 (« =? »), ni domaine terminé par un point.
+
+    Un mot encodé est interdit dans une addr-spec (RFC 2047 § 5), mais le
+    registre d'en-têtes de `email.policy.default` le DÉCODE quand la
+    réponse pose cette chaîne dans To : l'enveloppe recevrait une autre
+    adresse que celle que les garde-fous ont contrôlée. Un domaine terminé
+    par un point n'y donne aucune adresse du tout.
+    """
+    local, _, domain = addr.rpartition("@")
+    return bool(
+        local
+        and domain
+        and not domain.endswith(".")
+        and "=?" not in addr
+        and not _GARBLED_ADDR_RE.search(addr)
+    )
+
+
 def addr_specs(header_value: str, *, raw: bool = False) -> list[str]:
     """Les addr-spec (contenant « @ ») d'un en-tête d'adresses.
 
     Normalisées par `normalize_address`, ou seulement débarrassées des
     blancs si `raw` est vrai. Le libellé n'est jamais rendu. Un fragment
-    qui porte un blanc, un chevron ou un séparateur n'est pas une adresse
-    et n'est pas rendu non plus.
+    que `_is_addr_spec` refuse n'est pas une adresse et n'est pas rendu
+    non plus.
     """
     out = []
     for _name, addr in email.utils.getaddresses([header_value or ""]):
         addr = addr.strip()
-        if "@" not in addr or _GARBLED_ADDR_RE.search(addr):
+        if not _is_addr_spec(addr):
             continue
         out.append(addr if raw else normalize_address(addr))
     return out
