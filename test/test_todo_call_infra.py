@@ -71,6 +71,7 @@ class FakeHost:
         install_ok=True,
         admin_password=None,
         sudo_error=None,
+        sudo_code=1,
         firewall_out=None,
         uninstall_out="@@REMOVED state\n@@DONE yes\n",
         uninstall_code=0,
@@ -86,6 +87,7 @@ class FakeHost:
         self.install_ok = install_ok
         self.admin_password = admin_password
         self.sudo_error = sudo_error
+        self.sudo_code = sudo_code
         self.firewall_out = firewall_out
         self.uninstall_out = uninstall_out
         self.uninstall_code = uninstall_code
@@ -150,7 +152,7 @@ class FakeHost:
     def _answer(self, script, sudo_user):
         self.calls.append((script, sudo_user))
         if self.sudo_error:
-            return 1, f"{self.sudo_error}\n"
+            return self.sudo_code, f"{self.sudo_error}\n"
         kind = self.kind(script)
         if kind == "probe":
             return 0, self.probe_output()
@@ -412,9 +414,13 @@ class TestInstall(MenuCase):
         self.assertEqual(out.count(ADMIN_PASSWORD), 1)
 
     def test_sudo_refused_gives_a_clear_line(self):
+        # Décidé par la forme de la sortie, pas par son texte : sudo parle
+        # la langue de l'utilisateur, et aucun message n'est prévisible.
         for error in (
             "sudo: 3 incorrect password attempts",
             "sudo: a password is required",
+            "sudo: 3 saisies de mots de passe incorrectes",
+            "alice is not in the sudoers file.",
         ):
             with self.subTest(error=error):
                 host = FakeHost(sudo_error=error)
@@ -422,6 +428,15 @@ class TestInstall(MenuCase):
                 self.assertEqual(host.kinds(), ["probe"])
                 self.assertIn(t("call_infra_sudo_refused"), out)
                 self.assertNotIn("Traceback", out)
+
+    def test_a_failed_ssh_connection_is_not_a_sudo_refusal(self):
+        # ssh rend 255 quand la connexion (ou le dépôt du script) échoue.
+        host = FakeHost(
+            sudo_error="ssh: connect to host: refused", sudo_code=255
+        )
+        out = self.drive("_call_infra_install", host, [])
+        self.assertNotIn(t("call_infra_sudo_refused"), out)
+        self.assertIn(t("call_infra_probe_incomplete"), out)
 
     def test_an_unreadable_certificate_stops_before_installing(self):
         host = FakeHost()

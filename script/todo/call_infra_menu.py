@@ -30,9 +30,8 @@ from script.todo import call_infra as ci
 from script.todo import ntfy_mobile as nm
 from script.todo.todo_i18n import t
 
-# Ce que sudo écrit quand il refuse : trois essais manqués, ou un mot de
-# passe exigé sans terminal pour le demander.
-SUDO_REFUSED = ("incorrect password", "a password is required")
+# Code de sortie de ssh quand la connexion, ou le dépôt du script, échoue.
+SSH_FAILED = 255
 CHECK_KEY_LINE = "@@CHECK_KEY"
 ADMIN_PASSWORD_LINE = "@@ADMIN_PASSWORD"
 SERVICE_CHOICES = {
@@ -175,6 +174,13 @@ class CallInfraMenuMixin:
         """(code, sortie) de `script` lancé en root par `host`, ou None
         quand sudo a refusé (ligne `call_infra_sudo_refused` affichée).
 
+        Le refus se lit à la forme de la sortie, jamais à son texte, que
+        sudo écrit dans la langue de l'utilisateur : chaque script imprime
+        au moins une ligne `@@`, un code non nul sans aucune ne vient que
+        d'un script qui n'a pas démarré. Le code de ssh (255) n'en est pas
+        un : la connexion a échoué, et le message de ssh est déjà à
+        l'écran.
+
         Les lignes qui commencent par un des préfixes `hide` sont masquées
         à l'écran et gardées dans la sortie rendue.
         """
@@ -184,7 +190,7 @@ class CallInfraMenuMixin:
                 code, out = host.run(script, sudo_user=None)
             finally:
                 writer.finish()
-        if code != 0 and any(s in out.lower() for s in SUDO_REFUSED):
+        if code not in (0, SSH_FAILED) and not ci.marker_lines(out):
             print(f"✗ {t('call_infra_sudo_refused')}")
             return None
         return code, out
