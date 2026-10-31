@@ -8,7 +8,7 @@
 # arrete le script avant qu'il ne touche a quoi que ce soit.
 #
 # Usage, deja root, les variables exportees par le script appelant :
-#   export TURN_REALM=turn.exemple.test TURN_CHECK_PASSWORD=...
+#   export TURN_REALM=turn.exemple.test
 #   bash install_coturn.sh
 #
 # Entrees (environnement) :
@@ -20,10 +20,13 @@
 #   TURN_CERT_FILE        certificat et cle, les deux ou aucun ; copies dans
 #   TURN_KEY_FILE         /etc/erplibre-call/tls, lisibles du compte coturn
 #   TURN_EXTERNAL_IP      optionnel : adresse publique, derriere un NAT
-#   TURN_CHECK_PASSWORD   obligatoire : mot de passe du compte de controle
-#                         « erplibre-check ». Lu de l'environnement, jamais
-#                         d'un argument ; main le retire de l'environnement
-#                         des commandes lancees ensuite.
+#   TURN_CHECK_PASSWORD   facultatif : mot de passe du compte de controle
+#                         « erplibre-check », qui remplace la cle en place.
+#                         Lu de l'environnement, jamais d'un argument ; main
+#                         le retire de l'environnement des commandes lancees
+#                         ensuite. Absent, la cle en place pour ce realm est
+#                         gardee, ou nait sur l'hote (voir ensure_check_user) :
+#                         aucun secret ne voyage vers l'hote.
 #   TURN_GARDER_CONFIG=1  une configuration coturn deja en place, que ce
 #                         script n'a pas ecrite, est remplacee : l'appelant
 #                         en garde une copie et a fait accepter le
@@ -132,7 +135,6 @@ check_inputs() {
     if ! [[ "$TURN_REALM" =~ ^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$ ]]; then
         die "TURN_REALM invalide : lettres, chiffres, point, deux-points et tiret seulement."
     fi
-    [ -n "$TURN_CHECK_PASSWORD" ] || die "TURN_CHECK_PASSWORD manque (compte de controle)."
     local port
     for port in "$TURN_PORT" "$TURN_TLS_PORT" "$TURN_MIN_PORT" "$TURN_MAX_PORT"; do
         valid_port "$port" || die "port invalide : ${port} (1 a 65535)."
@@ -374,8 +376,13 @@ prepare_database() {
     fi
 }
 
-# Pose le compte de controle, idempotent : la ligne de CHECK_USER est
-# effacee (quel que soit son realm) puis recreee, dans une transaction.
+# Pose le compte de controle, idempotent, dans une transaction. Avec
+# TURN_CHECK_PASSWORD, la ligne de CHECK_USER est effacee (quel que soit
+# son realm) puis recreee avec la cle de ce mot de passe. Sans lui, le mot
+# de passe est tire de /dev/urandom sur l'hote, jamais affiche ni garde :
+# seules les lignes d'un autre realm sont effacees, et INSERT OR IGNORE
+# laisse en place la cle deja posee pour ce realm. La verification lit
+# cette cle dans la base, le mot de passe ne lui sert a rien.
 # hmackey = MD5 hex de « utilisateur:realm:mot de passe », la cle long
 # terme que turnadmin -a ecrirait. printf est une commande interne : le
 # mot de passe n'atteint md5sum que par le tube. La requete passe sur
@@ -384,8 +391,13 @@ prepare_database() {
 # que coturn 4.6 cree lui-meme ; IF NOT EXISTS laisse en place une base
 # deja creee par coturn.
 ensure_check_user() {
-    local key
-    key=$(printf '%s:%s:%s' "$CHECK_USER" "$TURN_REALM" "$TURN_CHECK_PASSWORD" | md5sum | cut -d ' ' -f 1)
+    local key password="$TURN_CHECK_PASSWORD" keep=""
+    if [ -z "$password" ]; then
+        password=$(head -c 24 /dev/urandom | base64 | tr -d '/+=\n')
+        keep=" AND realm<>'${TURN_REALM}'"
+    fi
+    key=$(printf '%s:%s:%s' "$CHECK_USER" "$TURN_REALM" "$password" | md5sum | cut -d ' ' -f 1)
+    password=""
     [[ "$key" =~ ^[0-9a-f]{32}$ ]] || die "cle du compte de controle non calculee."
     runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF
 .timeout 5000
@@ -398,8 +410,8 @@ CREATE TABLE IF NOT EXISTS turn_realm_option (realm varchar(127) default '', opt
 CREATE TABLE IF NOT EXISTS oauth_key (kid varchar(128),ikm_key varchar(256),timestamp bigint default 0,lifetime integer default 0,as_rs_alg varchar(64) default '',realm varchar(127) default '',primary key (kid));
 CREATE TABLE IF NOT EXISTS admin_user (name varchar(32), realm varchar(127), password varchar(127), primary key (name));
 BEGIN;
-DELETE FROM turnusers_lt WHERE name='${CHECK_USER}';
-INSERT INTO turnusers_lt (realm, name, hmackey) VALUES ('${TURN_REALM}', '${CHECK_USER}', '${key}');
+DELETE FROM turnusers_lt WHERE name='${CHECK_USER}'${keep};
+INSERT OR IGNORE INTO turnusers_lt (realm, name, hmackey) VALUES ('${TURN_REALM}', '${CHECK_USER}', '${key}');
 COMMIT;
 EOF
     log "Compte de controle ${CHECK_USER} pose dans ${DB_FILE} (realm ${TURN_REALM})."
