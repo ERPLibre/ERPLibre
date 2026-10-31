@@ -3939,6 +3939,10 @@ TRANSLATIONS = {
         "fr": "Désinstallé : l'état de l'hôte est retiré.",
         "en": "Uninstalled: the host state is removed.",
     },
+    "call_infra_backup_lost": {
+        "fr": "{service} : la copie d'origine {backup} est absente ; le paquet est retiré, sa configuration d'origine ne peut pas être remise.",
+        "en": "{service}: the original copy {backup} is missing; the package is removed, its original configuration cannot be put back.",
+    },
     "call_infra_backup_missing": {
         "fr": "{service} : la copie d'origine {backup} est absente ; le service reste tel que l'outil l'a configuré. Remettez votre configuration d'origine, puis relancez la désinstallation.",
         "en": "{service}: the original copy {backup} is missing; the service stays as the tool configured it. Put your original configuration back, then run the uninstall again.",

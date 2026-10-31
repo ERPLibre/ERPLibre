@@ -669,6 +669,15 @@ class CallInfraMenuMixin:
                 missing.append(value.strip())
             elif name == "PENDING_LEFT":
                 left.append(value.strip())
+            elif name == "BACKUP_LOST":
+                svc, _, backup = value.strip().partition(" ")
+                print(
+                    "⚠ "
+                    + self._call_infra_text(
+                        "call_infra_backup_lost",
+                        {"service": svc, "backup": backup},
+                    )
+                )
         for svc in left:
             print(
                 "⚠ "

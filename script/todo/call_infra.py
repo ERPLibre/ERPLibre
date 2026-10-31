@@ -2535,9 +2535,28 @@ def _restore_lines(svc, record):
     return lines
 
 
+def _put_back_lines(svc, record):
+    """La copie d'origine remise par `mv` après la purge d'un service que
+    l'outil a posé ET dont il a adopté la configuration (fichier resté sans
+    paquet) : l'hôte retrouve son fichier, sans service à relancer. Une
+    copie disparue se dit (`@@BACKUP_LOST`) sans rien bloquer : le paquet
+    est déjà parti, il n'y a plus rien à garder."""
+    config, backup = _host(record["config"]), _host(record["backup"])
+    return [
+        f"if [ -f {backup} ]; then",
+        f"  if mv -f {backup} {config}; then"
+        f' echo "@@RESTORED {record["config"]} {record["backup"]}";',
+        f"  else failed restore-{svc}; fi",
+        "else",
+        f'  echo "@@BACKUP_LOST {svc} {record["backup"]}"',
+        "fi",
+    ]
+
+
 def _service_uninstall_lines(svc, record, remove_data, stamp):
     """Lignes `sh` d'un service. Posé par l'outil : arrêt, purge du
-    paquet, fichiers et configuration retirés. Adopté : configuration
+    paquet, fichiers et configuration retirés, puis la configuration
+    d'origine remise quand l'outil l'avait aussi adoptée. Adopté : configuration
     d'origine remise et service relancé, paquet laissé. Paquet déjà là sans
     configuration : arrêt et configuration de l'outil retirée. Puis ses
     fichiers TLS et ses données, retirés ou gardés selon `remove_data`."""
@@ -2571,6 +2590,8 @@ def _service_uninstall_lines(svc, record, remove_data, stamp):
         if svc == "ntfy":
             lines += _ntfy_tool_files_lines()
         lines += _remove_managed_lines(svc, record["config"])
+        if record["adopted"] and record["backup"]:
+            lines += _put_back_lines(svc, record)
         if svc == "ntfy":
             cache = _host(NTFY_CACHE_DIR)
             lines.append(

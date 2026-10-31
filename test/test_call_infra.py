@@ -2956,6 +2956,49 @@ class TestUninstall(unittest.TestCase):
             self.assertEqual(handle.read(), "comptes")
         self.assertFalse(os.path.exists(hold))
 
+    def test_installed_and_adopted_purges_then_restores_the_original(self):
+        # Une configuration étrangère sans unité (paquet retiré sans
+        # purge) : l'outil pose le paquet ET adopte la configuration.
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        current = service("/etc/turnserver.conf", original)
+        current.update(unit_found=False, active="inactive")
+        ans = answers(services=frozenset({"coturn"}))
+        state = installed_state(ans, facts=base_facts(coturn=current))
+        record = state["services"]["coturn"]
+        self.assertTrue(record["installed_by_tool"] and record["adopted"])
+        backup = "/etc/turnserver.conf.bak-" + STAMP
+        self.assertEqual(record["backup"], backup)
+        self.place_state(state)
+        write(self.path(backup), original, 0o640)
+        write(self.path("/etc/turnserver.conf"), ci.coturn_config(ans))
+        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        self.assertIn("apt-get purge -y coturn", calls)
+        self.assertNotIn("systemctl try-restart coturn", calls)
+        with open(self.path("/etc/turnserver.conf")) as handle:
+            self.assertEqual(handle.read(), original)
+        self.assertFalse(os.path.exists(self.path(backup)))
+        markers = self.markers(done)
+        self.assertIn(f"RESTORED /etc/turnserver.conf {backup}", markers)
+        self.assertEqual(markers[-1], "DONE yes")
+
+    def test_installed_and_adopted_without_its_copy_says_it_is_lost(self):
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        current = service("/etc/turnserver.conf", original)
+        current.update(unit_found=False, active="inactive")
+        ans = answers(services=frozenset({"coturn"}))
+        state = installed_state(ans, facts=base_facts(coturn=current))
+        self.place_state(state)
+        write(self.path("/etc/turnserver.conf"), ci.coturn_config(ans))
+        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        self.assertIn(
+            "BACKUP_LOST coturn /etc/turnserver.conf.bak-" + STAMP, markers
+        )
+        self.assertEqual(markers[-1], "DONE yes")
+
     def adopted_coturn(self, ans, **facts):
         """Un coturn adopté dont la copie de la configuration d'origine a
         disparu : la configuration de l'outil est en place."""
