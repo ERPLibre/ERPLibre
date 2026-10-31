@@ -2449,7 +2449,8 @@ def _restore_lines(svc, record):
     """Copie remise par `mv` (droits et propriétaire de l'original) ; une
     copie disparue alors que la configuration de l'outil est en place se
     dit (`@@BACKUP_MISSING`) et laisse le service tel que l'outil l'a
-    configuré (KEEP_<service>=1), sans bloquer le reste."""
+    configuré (KEEP_<service>=1, KEPT=1) : ni ses fichiers TLS, ni ses
+    données, ni l'état ne partent, sans bloquer les autres services."""
     config, backup = record["config"], record["backup"]
     unit = shlex.quote(record["unit"])
     lines = []
@@ -2464,7 +2465,8 @@ def _restore_lines(svc, record):
     else:
         lines.append(f"if {_is_managed_test(config)}; then")
     lines += [
-        f'  echo "@@BACKUP_MISSING {svc} {backup or "-"}"; KEEP_{svc}=1',
+        f'  echo "@@BACKUP_MISSING {svc} {backup or "-"}";'
+        f" KEEP_{svc}=1; KEPT=1",
         "fi",
         f'if [ "$KEEP_{svc}" = 0 ]; then',
         f"  systemctl try-restart {unit} >/dev/null 2>&1"
@@ -2575,9 +2577,12 @@ def uninstall_script(state, remove_data, stamp, root=""):
     en dernier (`@@REMOVED state`). Chaque retrait imprime `@@REMOVED
     <quoi> <chemin ou nom>`, chaque chose gardée `@@KEPT <chemin>`, une
     configuration remise `@@RESTORED <config> <copie>`, un échec `@@FAILED
-    <étape>`. Dernière ligne `@@DONE yes`, ou `@@DONE no` et un code non
-    nul : l'état reste, et la relance reprend là où elle s'est arrêtée,
-    chaque étape étant sans effet une fois faite.
+    <étape>`. Dernière ligne `@@DONE yes` ; `@@DONE no` après un échec, ou
+    `@@DONE partial` quand un service adopté sans copie d'origine reste
+    configuré par l'outil (`@@BACKUP_MISSING`), avec un code non nul : l'état
+    reste, et la relance reprend là où elle s'est arrêtée, chaque étape
+    étant sans effet une fois faite. Le service gardé se défait à la relance
+    qui suit la remise en place de sa configuration par l'administrateur.
 
     La base des comptes de ntfy n'est retirée, avec `remove_data`, que si
     l'outil a posé ntfy : celle d'un ntfy adopté porte les comptes et
@@ -2623,6 +2628,7 @@ def uninstall_script(state, remove_data, stamp, root=""):
     lines = head + [
         "umask 077",
         "OK=1",
+        "KEPT=0",
         'failed() { echo "@@FAILED $1"; OK=0; }',
         'D=$(mktemp -d) || { echo "@@FAILED workdir"; echo "@@DONE no";'
         " exit 1; }",
@@ -2647,8 +2653,10 @@ def uninstall_script(state, remove_data, stamp, root=""):
     recorded = [svc for svc, _ in records]
     others = [svc for svc in SERVICES if svc not in recorded]
     tls = '"$CALL/tls"'
+    # Un service gardé (KEPT) est encore configuré par l'outil : l'état,
+    # ses fiches et `tls/`, que sa configuration nomme, restent.
     lines += [
-        'if [ "$OK" = 1 ]; then',
+        'if [ "$OK" = 1 ] && [ "$KEPT" = 0 ]; then',
         *[f'  rm -f "$PENDING/{svc}.json"' for svc in recorded],
         *[
             f'  if [ -f "$PENDING/{svc}.json" ]; then'
@@ -2678,8 +2686,9 @@ def uninstall_script(state, remove_data, stamp, root=""):
         "  fi",
         '  rmdir "$CALL" 2>/dev/null',
         "fi",
-        'if [ "$OK" = 1 ]; then echo "@@DONE yes"; else echo "@@DONE no";'
-        " exit 1; fi",
+        'if [ "$OK" = 0 ]; then echo "@@DONE no"; exit 1; fi',
+        'if [ "$KEPT" = 1 ]; then echo "@@DONE partial"; exit 1; fi',
+        'echo "@@DONE yes"',
         "",
     ]
     return "\n".join(lines)

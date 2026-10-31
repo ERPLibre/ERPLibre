@@ -2882,23 +2882,89 @@ class TestUninstall(unittest.TestCase):
             self.assertEqual(handle.read(), "comptes")
         self.assertFalse(os.path.exists(hold))
 
-    def test_adopted_backup_missing_is_said_and_not_fatal(self):
+    def adopted_coturn(self, ans, **facts):
+        """Un coturn adopté dont la copie de la configuration d'origine a
+        disparu : la configuration de l'outil est en place."""
         original = "listening-port=3478\nrealm=ancien.exemple.test\n"
         facts = base_facts(
             coturn=service("/etc/turnserver.conf", original),
             busy_ports=(("udp", 3478, "turnserver"),),
+            **facts,
         )
-        ans = answers(services=frozenset({"coturn"}))
         state = installed_state(ans, facts=facts)
         self.place_state(state)
         write(self.path("/etc/turnserver.conf"), ci.coturn_config(ans))
-        done = self.uninstall(state, UNITS="coturn", PKGS="coturn")
-        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        return state, original
+
+    def test_adopted_backup_missing_is_said_and_the_rest_goes(self):
+        state, _ = self.adopted_coturn(answers())
+        write(self.path(ci.NTFY_CONFIG), ci.ntfy_config(answers()), 0o644)
+        done = self.uninstall(state, UNITS="coturn ntfy", PKGS="coturn ntfy")
         backup = "/etc/turnserver.conf.bak-" + STAMP
-        self.assertIn(f"BACKUP_MISSING coturn {backup}", self.markers(done))
+        markers = self.markers(done)
+        self.assertIn(f"BACKUP_MISSING coturn {backup}", markers)
         # La configuration en place n'est pas retirée : le service tourne.
         self.assertTrue(os.path.exists(self.path("/etc/turnserver.conf")))
-        self.assertFalse([c for c in self.calls() if "purge" in c])
+        calls = self.calls()
+        self.assertNotIn("apt-get purge -y coturn", calls)
+        self.assertNotIn("systemctl try-restart coturn", calls)
+        # Le service d'à côté, lui, est désinstallé.
+        self.assertIn("apt-get purge -y ntfy", calls)
+        self.assertFalse(os.path.exists(self.path(ci.NTFY_CONFIG)))
+        self.assertNotIn("FAILED", " ".join(markers))
+        self.assertEqual(markers[-1], "DONE partial")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertTrue(os.path.exists(self.path(ci.STATE_PATH)))
+
+    # Review Focus 5 : un service gardé n'est pas désinstallé ; l'état et
+    # ce que sa configuration utilise restent, jusqu'à ce que la relance
+    # puisse le défaire.
+    def test_kept_service_keeps_its_tls_database_and_the_state(self):
+        ans = supplied(services=frozenset({"coturn"}))
+        state, original = self.adopted_coturn(ans)
+        kept = (
+            "/etc/turnserver.conf",
+            "/etc/erplibre-call/tls/turn.crt",
+            "/etc/erplibre-call/tls/turn.key",
+            "/var/lib/erplibre-call/turndb",
+            "/etc/erplibre-call/pending/coturn.json",
+            ci.STATE_PATH,
+        )
+        write(self.path("/etc/erplibre-call/tls/turn.crt"), TURN_CERT)
+        write(self.path("/etc/erplibre-call/tls/turn.key"), TURN_KEY)
+        write(self.path("/var/lib/erplibre-call/turndb"), "db", 0o640)
+        write(self.path("/etc/erplibre-call/pending/coturn.json"), "{}")
+        for _ in range(2):
+            done = self.uninstall(
+                state, remove_data=True, UNITS="coturn", PKGS="coturn"
+            )
+            self.assertNotEqual(done.returncode, 0)
+            markers = self.markers(done)
+            self.assertIn(
+                f"BACKUP_MISSING coturn /etc/turnserver.conf.bak-{STAMP}",
+                markers,
+            )
+            self.assertNotIn("REMOVED state", markers)
+            self.assertNotIn("NOTHING", markers)
+            self.assertEqual(markers[-1], "DONE partial")
+            for path in kept:
+                self.assertTrue(os.path.exists(self.path(path)), path)
+
+        # L'administrateur remet sa configuration : la relance termine.
+        write(self.path("/etc/turnserver.conf"), original, 0o644)
+        done = self.uninstall(
+            state, remove_data=True, UNITS="coturn", PKGS="coturn"
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            self.markers(done)[-2:], ["REMOVED state", "DONE yes"]
+        )
+        with open(self.path("/etc/turnserver.conf")) as handle:
+            self.assertEqual(handle.read(), original)
+        for path in kept[1:]:
+            self.assertFalse(os.path.exists(self.path(path)), path)
+        self.assertIn("systemctl try-restart coturn", self.calls())
+        self.assertNotIn("apt-get purge -y coturn", self.calls())
 
     def test_pending_record_of_a_service_not_in_the_state_is_kept(self):
         state = installed_state(answers(services=frozenset({"coturn"})))
