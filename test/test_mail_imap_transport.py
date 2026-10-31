@@ -507,6 +507,96 @@ class TestConnect(unittest.TestCase):
             with self.assertRaises(ImapError):
                 connect(self._account("ssl"), "hunter2")
 
+    def test_a_refused_login_logs_out_and_keeps_the_server_text(self):
+        """Un refus laisse une socket saine : LOGOUT la ferme, et l'erreur
+        qui sort reste celle du refus."""
+        import imaplib
+
+        client = MagicMock()
+        refus = imaplib.IMAP4.error("[AUTHENTICATIONFAILED] refus")
+        client.login.side_effect = refus
+        with patch("imaplib.IMAP4_SSL", return_value=client):
+            with self.assertRaises(ImapError) as ctx:
+                connect(self._account("ssl"), "mauvais")
+        client.logout.assert_called_once_with()
+        client.shutdown.assert_not_called()
+        self.assertIn("AUTHENTICATIONFAILED", str(ctx.exception))
+        self.assertIs(ctx.exception.__cause__, refus)
+
+    def test_a_failing_logout_falls_back_to_closing_the_socket(self):
+        import imaplib
+
+        client = MagicMock()
+        refus = imaplib.IMAP4.error("refus")
+        client.login.side_effect = refus
+        client.logout.side_effect = OSError("déjà fermée")
+        client.shutdown.side_effect = OSError("déjà fermée")
+        with patch("imaplib.IMAP4_SSL", return_value=client):
+            with self.assertRaises(ImapError) as ctx:
+                connect(self._account("ssl"), "mauvais")
+        client.shutdown.assert_called_once_with()
+        self.assertIs(ctx.exception.__cause__, refus)
+        self.assertNotIn("déjà fermée", str(ctx.exception))
+
+    def test_a_broken_link_closes_the_socket_without_logout(self):
+        """Socket peut-être morte : LOGOUT y attendrait un délai entier."""
+        import imaplib
+        import socket
+
+        for panne in (
+            socket.timeout("délai"),
+            OSError("coupure"),
+            imaplib.IMAP4.abort("coupure"),
+        ):
+            with self.subTest(panne=type(panne).__name__):
+                client = MagicMock()
+                client.login.side_effect = panne
+                with patch("imaplib.IMAP4_SSL", return_value=client):
+                    with self.assertRaises(ImapError):
+                        connect(self._account("ssl"), "hunter2")
+                client.logout.assert_not_called()
+                client.shutdown.assert_called_once_with()
+
+    def test_a_failed_starttls_closes_the_plain_socket(self):
+        client = MagicMock()
+        client.starttls.side_effect = OSError("poignée TLS refusée")
+        with patch("imaplib.IMAP4", return_value=client):
+            with self.assertRaises(ImapError):
+                connect(self._account("starttls"), "hunter2")
+        client.shutdown.assert_called_once_with()
+        client.login.assert_not_called()
+
+    def test_a_refused_token_logs_out_and_stays_an_auth_error(self):
+        import imaplib
+
+        from script.todo.mail.imap_transport import ImapAuthError
+
+        account = self._account("ssl")
+        account.auth = "oauth"
+        client = MagicMock()
+        client.authenticate.side_effect = imaplib.IMAP4.error("refus")
+        with patch("imaplib.IMAP4_SSL", return_value=client):
+            with self.assertRaises(ImapAuthError):
+                connect(account, "jeton")
+        client.logout.assert_called_once_with()
+
+    def test_a_non_ascii_password_logs_out(self):
+        client = MagicMock()
+        client.login.side_effect = UnicodeEncodeError(
+            "ascii", "motdepassé", 10, 11, "ordinal not in range(128)"
+        )
+        with patch("imaplib.IMAP4_SSL", return_value=client):
+            with self.assertRaises(ImapError):
+                connect(self._account("ssl"), "motdepassé")
+        client.logout.assert_called_once_with()
+
+    def test_a_successful_login_keeps_the_connection_open(self):
+        client = MagicMock()
+        with patch("imaplib.IMAP4_SSL", return_value=client):
+            connect(self._account("ssl"), "hunter2")
+        client.logout.assert_not_called()
+        client.shutdown.assert_not_called()
+
 
 class TestRulesHeaders(unittest.TestCase):
     """v6 : INTERNALDATE, `Cc` et les en-têtes que lisent les garde-fous des

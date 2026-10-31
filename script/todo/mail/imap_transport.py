@@ -81,6 +81,12 @@ class ImapError(Exception):
     """Le serveur a refusé, ou a répondu quelque chose d'inattendu."""
 
 
+# Les échecs après lesquels la socket reste saine (`_abandon`). Liés à
+# l'import : `imaplib.IMAP4` remplacé par un double ne les change pas.
+_IMAP_ABORT = imaplib.IMAP4.abort
+_POLITE_FAILURES = (imaplib.IMAP4.error, ImapAuthError, UnicodeEncodeError)
+
+
 def decode_header_value(raw: str | None) -> str:
     """Un en-tête RFC 2047 rendu en texte lisible, sans jamais lever."""
     if not raw:
@@ -703,12 +709,40 @@ def _delai_lecture() -> int:
     return valeur if valeur > 0 else defaut
 
 
+def _abandon(client, exc: BaseException) -> None:
+    """Ferme `client` après un échec, sans jamais lever.
+
+    Un refus du serveur (`IMAP4.error` hors `abort`, `ImapAuthError`) ou
+    un mot de passe non ASCII, qui n'est jamais parti, laissent une
+    socket saine : LOGOUT la ferme poliment. Toute autre panne (`abort`,
+    délai, coupure) peut l'avoir laissée morte, et LOGOUT y attendrait un
+    délai de lecture entier : seule la socket est fermée.
+    """
+    poli = isinstance(exc, _POLITE_FAILURES) and not isinstance(
+        exc, _IMAP_ABORT
+    )
+    if poli:
+        try:
+            client.logout()
+            return
+        except Exception:
+            pass
+    try:
+        client.shutdown()
+    except Exception:
+        # La socket peut déjà être fermée ; la cause d'origine prime.
+        pass
+
+
 def connect(account, secret: str) -> ImaplibTransport:
     """Ouvre une connexion TLS et s'authentifie. Lève `ImapError` sur refus.
 
     `secret` est un mot de passe ou un jeton d'accès selon `account.auth` :
     l'appelant n'a pas à choisir de fonction, il passe le secret que le
-    coffre lui a rendu.
+    coffre lui a rendu. Tout échec après l'ouverture ferme la connexion
+    (`_abandon`) avant que l'erreur ne sorte, sans la remplacer ; une
+    ouverture qui échoue ferme elle-même ce qu'elle a ouvert
+    (`IMAP4.__init__`).
     """
     import imaplib
 
@@ -719,20 +753,25 @@ def connect(account, secret: str) -> ImaplibTransport:
             client = imaplib.IMAP4_SSL(conf.host, conf.port, timeout=delai)
         else:
             client = imaplib.IMAP4(conf.host, conf.port, timeout=delai)
+        try:
             if conf.security == "starttls":
                 client.starttls()
-        if getattr(account, "auth", "login") == "oauth":
-            chaine = xoauth2_chain(conf.user, secret)
-            try:
-                client.authenticate("XOAUTH2", lambda _: chaine)
-            except imaplib.IMAP4.error as exc:
-                # Le serveur a parlé, et c'était un refus. Le distinguer
-                # ici, pendant qu'on sait encore que la socket était bonne.
-                raise ImapAuthError(
-                    f"{t('mail_err_token_refused')} {conf.host} : {exc}"
-                ) from exc
-        else:
-            client.login(conf.user, secret)
+            if getattr(account, "auth", "login") == "oauth":
+                chaine = xoauth2_chain(conf.user, secret)
+                try:
+                    client.authenticate("XOAUTH2", lambda _: chaine)
+                except imaplib.IMAP4.error as exc:
+                    # Le serveur a parlé, et c'était un refus. Le distinguer
+                    # ici, pendant qu'on sait encore que la socket était
+                    # bonne.
+                    raise ImapAuthError(
+                        f"{t('mail_err_token_refused')} {conf.host} : {exc}"
+                    ) from exc
+            else:
+                client.login(conf.user, secret)
+        except BaseException as exc:
+            _abandon(client, exc)
+            raise
     except UnicodeEncodeError as exc:
         # `imaplib` encode la commande LOGIN en ASCII : un mot de passe
         # accentué n'atteint même pas le serveur. Ce cas sort AVANT le
