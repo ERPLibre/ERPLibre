@@ -14201,6 +14201,10 @@ TRANSLATIONS = {
         "en": "folders resynchronised (UIDVALIDITY changed):",
     },
     "mail_sent_to": {"fr": "Envoyé à", "en": "Sent to"},
+    "mail_refused_by_server": {
+        "fr": "destinataires refusés par le serveur :",
+        "en": "recipients refused by the server:",
+    },
     "mail_sent_not_filed": {
         "fr": "envoyé, mais pas classé dans Envoyés",
         "en": "sent, but not filed in Sent",

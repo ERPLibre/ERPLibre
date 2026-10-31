@@ -1842,6 +1842,11 @@ def deliver(
             transport.quit()
 
     status = f"{t('mail_sent_to')} {', '.join(served)}"
+    expected = list(msg.envelope) if brut else recipients(msg)
+    if len(served) < len(expected):
+        # Refus partiel : les adresses refusées ne sont pas dites servies.
+        refused = len(expected) - len(served)
+        status = f"{status} — {t('mail_refused_by_server')} {refused}"
     if brut:
         return status
     sent_folder = resolve_sent_folder(session)

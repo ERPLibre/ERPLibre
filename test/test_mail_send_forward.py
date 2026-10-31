@@ -905,6 +905,42 @@ class TestSendRaw(ForwardCase):
         self.assertEqual(rcpt, [CAROLE, DENIS])
         self.assertIsNone(envoye["X-ERPLibre-Bcc"])
 
+    def test_a_partial_refusal_is_not_served(self):
+        """`smtplib` ne lève que si tous les destinataires sont refusés ;
+        sinon il rend les refusés, qui ne sont pas rendus parmi les
+        servis, sur les deux chemins d'envoi."""
+        refusee = "refusee@example.net"
+
+        class Partiel(FauxClient):
+            def sendmail(self, *args, **kwargs):
+                super().sendmail(*args, **kwargs)
+                return {refusee.upper(): (550, b"inconnu")}
+
+            def send_message(self, msg, from_addr=None, to_addrs=None):
+                return {refusee: (451, b"plus tard")}
+
+        sortie = self.redirect(to=(CAROLE, refusee, DENIS))
+        servis = send(self.account, sortie, SmtplibTransport(Partiel()))
+        self.assertEqual(servis, [CAROLE, DENIS])
+        msg = build_message(self.account, [CAROLE, refusee], "Devis", "B")
+        servis = send(self.account, msg, SmtplibTransport(Partiel()))
+        self.assertEqual(servis, [CAROLE])
+
+    def test_the_status_of_a_partial_refusal_counts_the_refused(self):
+        from types import SimpleNamespace
+
+        from script.todo.mail.tui import deliver
+
+        refusee = "refusee@example.net"
+        sortie = self.redirect(to=(CAROLE, refusee))
+        session = SimpleNamespace(online=True, account=self.account)
+        statut = deliver(session, sortie, send_fn=lambda *a: [CAROLE])
+        self.assertEqual(
+            statut,
+            f"{t('mail_sent_to')} {CAROLE} — {t('mail_refused_by_server')} 1",
+        )
+        self.assertNotIn(refusee, statut)
+
     def test_a_refusal_carries_the_smtp_code(self):
         refus = smtplib.SMTPRecipientsRefused({CAROLE: (550, b"inconnu")})
         with self.assertRaises(SmtpError) as ctx:
