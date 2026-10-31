@@ -59,6 +59,9 @@ OS_RELEASE="/etc/os-release"
 DEBIAN_CONF="/etc/turnserver.conf"
 ARCH_CONF="/etc/turnserver/turnserver.conf"
 DEFAULT_FILE="/etc/default/coturn"
+# Empreinte de la configuration et du certificat que coturn a charges, ecrite
+# seulement apres un redemarrage reussi (voir main).
+APPLIED_FILE="/etc/erplibre-call/coturn.applied"
 
 TURN_REALM="${TURN_REALM:-}"
 TURN_PORT="${TURN_PORT:-3478}"
@@ -353,10 +356,33 @@ EOF
     log "Compte de controle ${CHECK_USER} pose dans ${DB_FILE} (realm ${TURN_REALM})."
 }
 
-# Redemarre seulement quand la configuration ou le certificat a change :
-# un redemarrage coupe les appels en cours, et un compte change dans la
-# base n'en demande pas. Sinon « start », sans effet sur un service actif.
-# Un echec n'arrete pas le script : service_state dit ensuite l'etat reel.
+# applied_digest <chemin> : imprime l'empreinte sha256 de ce que coturn
+# charge au demarrage, la configuration puis, avec un certificat, le
+# certificat et la cle copies dans TLS_DIR ; une ligne par fichier.
+applied_digest() {
+    if has_cert; then
+        sha256sum "$1" "$TLS_DIR/turn.crt" "$TLS_DIR/turn.key"
+    else
+        sha256sum "$1"
+    fi
+}
+
+# record_applied <empreinte> : ecrit APPLIED_FILE, root 0600, par un fichier
+# voisin renomme ; le dossier appartient a root, aucun autre compte n'y pose
+# de lien.
+record_applied() {
+    install -d -m 0755 -o root -g root "$CALL_DIR"
+    (
+        umask 077
+        printf '%s\n' "$1" > "$APPLIED_FILE.erplibre-new"
+    )
+    mv -f "$APPLIED_FILE.erplibre-new" "$APPLIED_FILE"
+}
+
+# Redemarre seulement quand CONFIG_CHANGED vaut 1 : un redemarrage coupe les
+# appels en cours, et un compte change dans la base n'en demande pas. Sinon
+# « start », sans effet sur un service actif. Un echec n'arrete pas le
+# script : service_state dit ensuite l'etat reel.
 enable_service() {
     systemctl enable "$UNIT" || log "AVERTISSEMENT : systemctl enable ${UNIT} a echoue."
     if [ "$CONFIG_CHANGED" = 1 ]; then
@@ -420,8 +446,26 @@ main() {
     # Le compte AVANT le demarrage : le service lit une base deja prete.
     prepare_database
     ensure_check_user
+
+    # Le fichier sur disque n'est pas forcement celui que coturn a charge : un
+    # passage interrompu entre write_config et le redemarrage laisse la
+    # nouvelle configuration en place et coturn sur l'ancienne. APPLIED_FILE
+    # n'existe, avec l'empreinte du disque, qu'apres un redemarrage suivi de
+    # l'etat « active » ; tout ecart redemarre. Il est retire AVANT le
+    # redemarrage : une coupure pendant celui-ci ne laisse aucune empreinte.
+    local applied
+    applied=$(applied_digest "$conf")
+    if [ "$(cat "$APPLIED_FILE" 2>/dev/null)" != "$applied" ]; then
+        CONFIG_CHANGED=1
+    fi
+    if [ "$CONFIG_CHANGED" = 1 ]; then
+        rm -f "$APPLIED_FILE"
+    fi
     enable_service
     state=$(service_state)
+    if [ "$state" = active ] && [ "$CONFIG_CHANGED" = 1 ]; then
+        record_applied "$applied"
+    fi
 
     echo "@@UNIT ${UNIT}"
     echo "@@USER ${SERVICE_USER}"
