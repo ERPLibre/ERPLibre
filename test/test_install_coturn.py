@@ -107,27 +107,66 @@ def lignes(chemin):
 class TestConfiguration(unittest.TestCase):
     """`write_config` : le fichier que coturn lit, et rien d'identifiant."""
 
-    def _ecrire(self, variables="", deja=None):
+    def _ecrire(self, variables="", deja=None, avant=None):
+        """`avant(dossier, conf)` prepare le dossier avant l'ecriture."""
         with tempfile.TemporaryDirectory() as dossier:
             conf = os.path.join(dossier, "turnserver.conf")
             journal = os.path.join(dossier, "appels")
             if deja is not None:
                 with open(conf, "w") as flux:
                     flux.write(deja)
+            if avant is not None:
+                avant(dossier, conf)
             enveloppe = (
                 ENTETE + constantes() + ENTREES + variables + "\n"
                 "J=%s\n"
                 "chown() { echo \"chown $*\" >> $J; }\n"
                 "SERVICE_USER=turnserver\nSERVICE_GROUP=turnserver\n"
                 "CONFIG_CHANGED=0\n" % journal
-            ) + fonctions("has_cert", "write_config") + (
+            ) + fonctions("has_cert", "refuse_linked_config",
+                          "write_config") + (
                 "write_config %s\necho \"CHANGED=$CONFIG_CHANGED\"\n" % conf)
             fait = jouer(enveloppe)
-            texte = open(conf).read() if os.path.exists(conf) else ""
+            texte = (open(conf).read()
+                     if os.path.exists(conf) and not os.path.islink(conf)
+                     else "")
             mode = (stat.S_IMODE(os.stat(conf).st_mode)
                     if os.path.exists(conf) else None)
             restes = sorted(os.listdir(dossier))
+            self.victime = None
+            victime = os.path.join(dossier, "victime")
+            if os.path.exists(victime):
+                with open(victime) as flux:
+                    self.victime = flux.read()
             return fait, texte, mode, lignes(journal), restes
+
+    @staticmethod
+    def _victime(dossier):
+        chemin = os.path.join(dossier, "victime")
+        with open(chemin, "w") as flux:
+            flux.write("intact\n")
+        return chemin
+
+    def test_une_configuration_en_lien_est_refusee(self):
+        """Le fichier vise par un lien n'est pas celui que l'outil gere :
+        rien n'est ecrit, ni le lien ni sa cible."""
+        def lien(dossier, conf):
+            os.symlink(self._victime(dossier), conf)
+        fait, _, _, _, restes = self._ecrire(avant=lien)
+        self.assertNotEqual(fait.returncode, 0, fait.stdout)
+        self.assertIn("lien", fait.stderr)
+        self.assertEqual(self.victime, "intact\n")
+        self.assertEqual(restes, ["turnserver.conf", "victime"])
+
+    def test_le_fichier_temporaire_n_a_pas_de_nom_previsible(self):
+        """Un lien pose d'avance au nom d'un fichier temporaire fixe ferait
+        ecrire root dans sa cible : mktemp cree un nom neuf, exclusif."""
+        def piege(dossier, conf):
+            os.symlink(self._victime(dossier), conf + ".erplibre-new")
+        fait, texte, _, _, _ = self._ecrire(avant=piege)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(self.victime, "intact\n")
+        self.assertTrue(texte.startswith("# erplibre-call: managed\n"), texte)
 
     def test_sans_certificat_ni_tls_ni_certificat(self):
         fait, texte, _, _, _ = self._ecrire()
@@ -711,9 +750,10 @@ class TestMain(unittest.TestCase):
     marqueurs, code de sortie."""
 
     def _jouer(self, etats, famille="debian", conf=None, garder="",
-               change=1, unite="", tampon=None):
+               change=1, unite="", tampon=None, lien=None):
         """`tampon` : None, aucun tampon ; "juste", le tampon de la
-        configuration presente ; sinon le texte du tampon."""
+        configuration presente ; sinon le texte du tampon. `lien` : la
+        configuration est un lien vers ce chemin."""
         with tempfile.TemporaryDirectory() as dossier:
             journal = os.path.join(dossier, "appels")
             chemin = os.path.join(dossier, "turnserver.conf")
@@ -721,6 +761,8 @@ class TestMain(unittest.TestCase):
             if conf is not None:
                 with open(chemin, "w") as flux:
                     flux.write(conf)
+            if lien is not None:
+                os.symlink(lien, chemin)
             if tampon is not None:
                 if tampon == "juste":
                     tampon = self.empreinte(chemin)
@@ -766,7 +808,7 @@ class TestMain(unittest.TestCase):
             ) + fonctions(
                 "valid_port", "has_cert", "check_inputs", "family",
                 "unit_name", "unit_text", "service_user", "config_path",
-                "config_is_foreign", "applied_digest", "record_applied",
+                "refuse_linked_config", "config_is_foreign", "applied_digest", "record_applied",
                 "enable_service", "service_state", "main") + "main\n"
             fait = jouer(enveloppe)
             # Le dossier disparait au retour : le contenu est lu avant.
@@ -894,6 +936,17 @@ class TestMain(unittest.TestCase):
         self.assertTrue([s for s in sortie if s.startswith("@@CONFIG ")
                          and s.endswith("/arch.conf")], sortie)
         self.assertIn("systemctl restart turnserver", appels)
+
+    def test_configuration_en_lien_refusee_avant_installation(self):
+        with tempfile.TemporaryDirectory() as ailleurs:
+            cible = os.path.join(ailleurs, "turn.conf")
+            with open(cible, "w") as flux:
+                flux.write("# erplibre-call: managed\n")
+            fait, appels, _ = self._jouer(["active"], lien=cible)
+        self.assertNotEqual(fait.returncode, 0)
+        self.assertNotIn("install", appels)
+        self.assertFalse([a for a in appels if a.startswith("write")])
+        self.assertIn("lien", fait.stderr)
 
     def test_systeme_non_supporte_refuse_avant_installation(self):
         fait, appels, _ = self._jouer(["active"], famille="fedora")

@@ -249,47 +249,58 @@ install_certificate() {
     install -m 0640 -o root -g "$SERVICE_GROUP" "$TURN_KEY_FILE" "$key"
 }
 
+# refuse_linked_config <chemin> : arrete le script quand la configuration
+# est un lien symbolique. Le fichier vise n'est pas celui que l'outil gere,
+# et le renommage final remplacerait le lien sans toucher sa cible.
+refuse_linked_config() {
+    if [ -L "$1" ]; then
+        die "${1} est un lien symbolique ; rien n'est ecrit."
+    fi
+}
+
 # write_config <chemin> : ecrit la configuration complete, root:<groupe
 # coturn> 0640, par un fichier voisin renomme (coturn ne lit jamais un
-# fichier a moitie ecrit). CONFIG_CHANGED passe a 1 quand le contenu change.
+# fichier a moitie ecrit). Le voisin vient de mktemp : un nom neuf, cree en
+# exclusif et 0600, qu'aucun lien pose d'avance ne peut detourner vers un
+# autre fichier. CONFIG_CHANGED passe a 1 quand le contenu change.
 # Sans certificat, no-tls et no-dtls : aucun port TLS n'ecoute. Les quatre
 # dernieres lignes sont celles du fichier livre par Debian, qu'il remplace :
 # journal systeme, et pas de reponses STUN plus grosses que les requetes
 # (amplification).
 write_config() {
-    local conf="$1" tmp="$1.erplibre-new"
-    mkdir -p "$(dirname "$conf")"
-    (
-        umask 077
-        {
-            echo "$MARKER"
-            echo "# Comptes dans userdb, pas ici. Ecrit par install_coturn.sh."
-            echo "listening-port=${TURN_PORT}"
-            if has_cert; then
-                echo "tls-listening-port=${TURN_TLS_PORT}"
-                echo "cert=${TLS_DIR}/turn.crt"
-                echo "pkey=${TLS_DIR}/turn.key"
-            else
-                echo "no-tls"
-                echo "no-dtls"
-            fi
-            echo "min-port=${TURN_MIN_PORT}"
-            echo "max-port=${TURN_MAX_PORT}"
-            echo "fingerprint"
-            echo "lt-cred-mech"
-            echo "realm=${TURN_REALM}"
-            echo "userdb=${DB_FILE}"
-            echo "no-cli"
-            echo "no-multicast-peers"
-            if [ -n "$TURN_EXTERNAL_IP" ]; then
-                echo "external-ip=${TURN_EXTERNAL_IP}"
-            fi
-            echo "syslog"
-            echo "no-rfc5780"
-            echo "no-stun-backward-compatibility"
-            echo "response-origin-only-with-rfc5780"
-        } > "$tmp"
-    )
+    local conf="$1" dir tmp
+    refuse_linked_config "$conf"
+    dir=$(dirname "$conf")
+    mkdir -p "$dir"
+    tmp=$(mktemp "${dir}/.$(basename "$conf").XXXXXX")
+    {
+        echo "$MARKER"
+        echo "# Comptes dans userdb, pas ici. Ecrit par install_coturn.sh."
+        echo "listening-port=${TURN_PORT}"
+        if has_cert; then
+            echo "tls-listening-port=${TURN_TLS_PORT}"
+            echo "cert=${TLS_DIR}/turn.crt"
+            echo "pkey=${TLS_DIR}/turn.key"
+        else
+            echo "no-tls"
+            echo "no-dtls"
+        fi
+        echo "min-port=${TURN_MIN_PORT}"
+        echo "max-port=${TURN_MAX_PORT}"
+        echo "fingerprint"
+        echo "lt-cred-mech"
+        echo "realm=${TURN_REALM}"
+        echo "userdb=${DB_FILE}"
+        echo "no-cli"
+        echo "no-multicast-peers"
+        if [ -n "$TURN_EXTERNAL_IP" ]; then
+            echo "external-ip=${TURN_EXTERNAL_IP}"
+        fi
+        echo "syslog"
+        echo "no-rfc5780"
+        echo "no-stun-backward-compatibility"
+        echo "response-origin-only-with-rfc5780"
+    } > "$tmp"
     chown "root:${SERVICE_GROUP}" "$tmp"
     chmod 0640 "$tmp"
     if ! cmp -s "$tmp" "$conf"; then
@@ -427,6 +438,7 @@ main() {
 
     local conf state
     conf=$(config_path)
+    refuse_linked_config "$conf"
     if config_is_foreign "$conf" && [ "$TURN_GARDER_CONFIG" != 1 ]; then
         die "${conf} existe et n'a pas ete ecrit par erplibre-call ; le garder de cote puis relancer avec TURN_GARDER_CONFIG=1."
     fi
