@@ -155,18 +155,8 @@ class CallInfraMenuMixin:
 
     def _call_infra_host(self):
         """LocalHost ou SshHost, le choix de `_ntfy_mobile_host` ; None si
-        l'on renonce. Sur cette machine, un ntfy déjà installé est annoncé
-        comme ADOPTÉ : sa configuration est montrée en diff et sauvée, ses
-        comptes et jetons restent."""
-        host = self._ntfy_mobile_host()
-        if isinstance(host, nm.LocalHost) and self._call_infra_local_ntfy():
-            print(f"⚠ {t('call_infra_local_ntfy_adopted')}")
-        return host
-
-    def _call_infra_local_ntfy(self):
-        """Vrai quand la configuration de ntfy existe sur cette machine. Un
-        `stat`, rien de lancé : la sonde, en root, lira le reste."""
-        return os.path.exists(ci.NTFY_CONFIG)
+        l'on renonce."""
+        return self._ntfy_mobile_host()
 
     # --- Exécution et rendu -------------------------------------------------
 
@@ -288,6 +278,16 @@ class CallInfraMenuMixin:
         if not facts.systemd:
             self._call_infra_refuse(ci.Refusal("call_infra_no_systemd"))
             return
+        # Sur cette machine, un ntfy d'une autre main (configuration sans la
+        # marque de l'outil) est annoncé avant les questions : il sera
+        # ADOPTÉ, sa configuration montrée en diff et sauvée, ses comptes
+        # et jetons gardés. Celui que l'outil a écrit n'est que mis à jour.
+        if (
+            isinstance(host, nm.LocalHost)
+            and facts.ntfy
+            and ci.is_foreign(facts.ntfy["config_text"])
+        ):
+            print(f"⚠ {t('call_infra_local_ntfy_adopted')}")
         print(
             f"{t('Host:')} {facts.hostname} — {facts.os_id}"
             f" {facts.os_version} — {', '.join(facts.addresses)}"
