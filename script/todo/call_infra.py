@@ -389,6 +389,18 @@ _NGINX_NAMES_AWK = (
     ' if (on) { if (t == ";") on = 0; else print "@@NGINX_NAME " t " " file }'
     ' else if (t == "server_name") on = 1 } }'
 )
+# Les mêmes noms dans la sortie de `nginx -T`, qui imprime chaque fichier
+# que nginx lit (inclusions comprises) sous une ligne « # configuration
+# file <chemin>: ». Un fichier dont la première ligne est `marker` (ceux de
+# l'outil) est sauté ; la liste d'un `server_name` ne déborde pas d'un
+# fichier sur le suivant.
+_NGINX_DUMP_AWK = (
+    'index($0, "# configuration file ") == 1 && /:$/'
+    " { file = substr($0, 22, length($0) - 22); first = 1; skip = 0; on = 0;"
+    " next }"
+    " first { first = 0; if ($0 == marker) skip = 1 }"
+    ' skip || file == "" { next } ' + _NGINX_NAMES_AWK
+)
 _DPKG_PLUGINS_AWK = (
     '$3 == "installed" { sub(/^python3-certbot-dns-/, "", $4);'
     ' print "@@CERTBOT_PLUGIN " $4 }'
@@ -412,9 +424,8 @@ def probe_script(root=""):
     encore, `@@UFW_ADDED <ligne>` par ligne de `ufw show added` quand ufw
     est actif, `@@NGINX <active|inactive|absent> <disposition> [include]`
     (« include » : nginx.conf porte la ligne de l'outil), `@@NGINX_NAME
-    <nom> <fichier>` par nom de `server_name` des sites actifs que l'outil
-    n'a pas écrits (nginx.conf, sites-enabled, conf.d,
-    NGINX_INCLUDE_DIR), `@@CERTBOT <version|absent>`, `@@CERTBOT_PLUGIN
+    <nom> <fichier>` par nom de `server_name` des fichiers que nginx lit
+    et que l'outil n'a pas écrits (`_nginx_probe_lines`), `@@CERTBOT <version|absent>`, `@@CERTBOT_PLUGIN
     <greffon>` par greffon DNS installé, `@@LINEAGE erplibre-call
     <noms...>` (lu par `certbot certificates`, qui n'écrit que son
     journal), `@@HELD erplibre-call` quand son fichier de renouvellement est
@@ -526,7 +537,10 @@ def probe_script(root=""):
 
 def _nginx_probe_lines():
     """Lignes de la sonde pour nginx : présent quand son binaire répond et
-    que nginx.conf existe (la règle d'install_nginx.sh)."""
+    que nginx.conf existe (la règle d'install_nginx.sh). Les noms des
+    sites viennent de `nginx -T` (lecture seule, chaque fichier inclus) ;
+    quand il échoue (configuration invalide), des emplacements connus :
+    nginx.conf, sites-enabled, conf.d, le dossier de l'outil."""
     conf = '"$NC"'
     sites = ['"$NC"'] + [
         f'"$R{d}/"{g}'
@@ -552,11 +566,18 @@ def _nginx_probe_lines():
         "fi",
         'echo "@@NGINX $NX $NL${NO:+ $NO}"',
         'if [ "$NX" != absent ]; then',
-        f"  for f in {' '.join(sites)}; do",
-        '    [ -f "$f" ] || continue',
-        f'    [ "$(head -n 1 "$f")" = {shlex.quote(MARKER)} ] && continue',
-        f'    awk -v file="${{f#"$R"}}" {shlex.quote(_NGINX_NAMES_AWK)} "$f"',
-        "  done",
+        "  if NT=$(nginx -T 2>/dev/null)"
+        " && printf '%s\\n' \"$NT\" | grep -q '^# configuration file '; then",
+        "    printf '%s\\n' \"$NT\""
+        f" | awk -v marker={shlex.quote(MARKER)}"
+        f" {shlex.quote(_NGINX_DUMP_AWK)}",
+        "  else",
+        f"    for f in {' '.join(sites)}; do",
+        '      [ -f "$f" ] || continue',
+        f'      [ "$(head -n 1 "$f")" = {shlex.quote(MARKER)} ] && continue',
+        f'      awk -v file="${{f#"$R"}}" {shlex.quote(_NGINX_NAMES_AWK)} "$f"',
+        "    done",
+        "  fi",
         "fi",
     ]
 
