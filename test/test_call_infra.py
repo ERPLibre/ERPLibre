@@ -4640,7 +4640,7 @@ class TestProductionProbe(unittest.TestCase):
         facts = base_facts(busy_ports=(("tcp", 80, "certbot"),))
         ci.plan_install(facts, coturn_only(), NOW)
 
-    def sandbox(self, nginx_conf, files=None, links=None):
+    def sandbox(self, nginx_conf, files=None, links=None, dump=None):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = os.path.join(tmp.name, "root")
@@ -4688,7 +4688,14 @@ class TestProductionProbe(unittest.TestCase):
             "echo 'install ok installed python3-certbot-dns-cloudflare'\n"
             "echo 'deinstall ok config-files python3-certbot-dns-ovh'\n",
         )
-        write(os.path.join(stubs, "nginx"), "#!/bin/sh\nexit 0\n")
+        nginx = "#!/bin/sh\nexit 0\n"
+        if dump is not None:
+            write(os.path.join(tmp.name, "dump"), dump, 0o644)
+            nginx = (
+                "#!/bin/sh\n"
+                f'[ "$1" = -T ] && cat {shlex.quote(tmp.name)}/dump\n'
+            )
+        write(os.path.join(stubs, "nginx"), nginx)
         write(os.path.join(stubs, "uname"), "#!/bin/sh\necho hote\n")
         for name in ("ss", "ip", "ufw", "nft", "iptables", "pacman"):
             write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
@@ -4758,6 +4765,45 @@ class TestProductionProbe(unittest.TestCase):
         )
         self.assertTrue(facts.certbot["held"])
         self.assertEqual(facts.certbot["plugins"], ("cloudflare",))
+
+    def test_probe_reads_every_included_file_from_nginx_t(self):
+        # Un dossier inclus hors des emplacements connus porte un nom pris :
+        # « nginx -T » imprime chaque fichier lu, sous son chemin.
+        dump = (
+            "# configuration file /etc/nginx/nginx.conf:\n"
+            "http {\n"
+            "    include /etc/nginx/vhosts/*.conf;\n"
+            "    include /etc/nginx/erplibre-call.d/*.conf;\n"
+            "}\n"
+            "\n"
+            "# configuration file /etc/nginx/vhosts/a.conf:\n"
+            "server { server_name ntfy.exemple.test\n"
+            "    www.exemple.test; }\n"
+            "\n"
+            "# configuration file /etc/nginx/erplibre-call.d/"
+            "erplibre-call-ntfy.conf:\n"
+            f"{ci.MARKER}\n"
+            "server { server_name turn.exemple.test; }\n"
+            "\n"
+        )
+        _root, facts = self.sandbox(
+            "http {\n    include /etc/nginx/erplibre-call.d/*.conf;\n}\n",
+            # Lu seulement quand nginx -T ne répond pas.
+            {"/etc/nginx/conf.d/autre.conf": "server_name autre.test;\n"},
+            dump=dump,
+        )
+        self.assertEqual(
+            facts.nginx["names"],
+            (
+                ("ntfy.exemple.test", "/etc/nginx/vhosts/a.conf"),
+                ("www.exemple.test", "/etc/nginx/vhosts/a.conf"),
+            ),
+        )
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.plan_install(facts, production(nginx="existing"), NOW)
+        self.assertEqual(
+            caught.exception.values["file"], "/etc/nginx/vhosts/a.conf"
+        )
 
     def test_probe_skips_the_tool_site(self):
         ours = ci.MARKER + "\nserver { server_name ntfy.exemple.test; }\n"
