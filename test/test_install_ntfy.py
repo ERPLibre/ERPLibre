@@ -326,7 +326,13 @@ esac
 exit 0
 """
 
-    def _jouer(self, deja_present=False, public="0"):
+    # runuser -u <compte> -- <commande>... : note l'argv, lance la commande.
+    BOUCHON_RUNUSER = ('#!/bin/sh\necho "runuser $*" >> "$BAC/argv.log"\n'
+                       'while [ "$1" != "--" ]; do shift; done\nshift\n'
+                       'exec "$@"\n')
+
+    def _jouer(self, deja_present=False, public="0", compte=True):
+        """`compte` : le compte « ntfy » existe sur l'hote."""
         dossier = tempfile.mkdtemp()
         self.addCleanup(subprocess.run, ["rm", "-rf", dossier])
         os.makedirs(os.path.join(dossier, "bin"))
@@ -342,6 +348,10 @@ exit 0
             flux.write('#!/bin/sh\necho "ENVARGV $*" >> "$BAC/argv.log"\n'
                        'exec %s "$@"\n' % shutil.which("env"))
         os.chmod(bouchon_env, stat.S_IRWXU)
+        bouchon_runuser = os.path.join(dossier, "bin", "runuser")
+        with open(bouchon_runuser, "w") as flux:
+            flux.write(self.BOUCHON_RUNUSER)
+        os.chmod(bouchon_runuser, stat.S_IRWXU)
         if deja_present:
             open(os.path.join(dossier, "admin"), "w").close()
             open(os.path.join(dossier, "lib", "user.db"), "w").close()
@@ -352,16 +362,15 @@ exit 0
         enveloppe = (
             "set -e\n"
             "log() { echo \"$*\"; }\n"
-            "id() { return 0; }\n"
+            "id() { return %d; }\n"
             "chown() { echo \"chown $*\" >> %s/chown.log; }\n"
             "CONFIG_DIR=%s\n"
             "AUTH_FILE=/inexistant/user.db\n"
             "NTFY_PUBLIC=%s\n"
             "NTFY_ADMIN_USER=erplibre\n"
             "NTFY_NON_INTERACTIVE=1\n"
-            % (dossier, dossier, public)
+            % (0 if compte else 1, dossier, dossier, public)
         ) + extraire_fonction("ntfy_cli") + extraire_fonction(
-            "config_auth_file") + extraire_fonction(
             "ensure_admin_user") + "\nensure_admin_user\n"
         env = {
             "BAC": dossier,
@@ -417,16 +426,34 @@ exit 0
         # Il arrive bien a la CLI, par l'environnement.
         self.assertIn("ENV NTFY_PASSWORD=" + motdepasse, journal)
 
-    def test_la_base_creee_par_root_revient_au_compte_du_service(self):
-        _, _, chowns, dossier = self._jouer()
-        self.assertIn("chown ntfy:ntfy %s/lib/user.db" % dossier, chowns)
+    def test_la_cli_tourne_sous_le_compte_du_service(self):
+        """Le dossier de la base appartient au compte « ntfy », qui peut y
+        poser user.db-wal ou -shm en lien vers un fichier de root : SQLite
+        suit ces liens. Lancee sous ce compte, la CLI n'ecrit rien que ce
+        compte ne puisse deja ecrire, et root n'a rien a lui rendre."""
+        fait, journal, chowns, _ = self._jouer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        sous_compte = [a for a in self.argv if a.startswith("runuser ")]
+        self.assertEqual(len(sous_compte), 2, self.argv)
+        for appel in sous_compte:
+            self.assertTrue(appel.startswith("runuser -u ntfy -- ntfy user "),
+                            appel)
+        self.assertEqual(chowns, [])
 
-    def test_compte_present_aucun_mot_de_passe_mais_proprietaire_remis(self):
-        fait, journal, chowns, dossier = self._jouer(deja_present=True)
+    def test_compte_present_aucun_mot_de_passe_ni_chown(self):
+        fait, journal, chowns, _ = self._jouer(deja_present=True)
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertNotIn("@@ADMIN_PASSWORD", fait.stdout)
         self.assertFalse([l for l in journal if " add " in l], journal)
-        self.assertIn("chown ntfy:ntfy %s/lib/user.db" % dossier, chowns)
+        self.assertEqual(chowns, [])
+
+    def test_sans_compte_ntfy_la_cli_tourne_en_root(self):
+        """Sans compte « ntfy », aucun autre compte ne possede le dossier."""
+        fait, journal, chowns, _ = self._jouer(compte=False)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertFalse([a for a in self.argv if a.startswith("runuser ")])
+        self.assertEqual(len([l for l in journal if l.startswith("ARGS ")]), 2)
+        self.assertEqual(chowns, [])
 
     def test_public_aucun_compte(self):
         fait, journal, chowns, _ = self._jouer(public="1")

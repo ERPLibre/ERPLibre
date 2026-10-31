@@ -453,6 +453,13 @@ service_state() {
 # d'aucun processus (lisible de tout compte local par ps ou
 # /proc/<pid>/cmdline), seulement dans l'environnement de la CLI. Les
 # arguments d'une fonction shell, eux, restent dans la memoire du shell.
+#
+# La commande tourne sous le compte « ntfy » quand il existe (runuser garde
+# l'environnement) : la base des comptes vit dans un dossier de ce compte,
+# qui peut y poser user.db-wal ou user.db-shm en lien vers un fichier de
+# root, et SQLite suit ces liens a l'ouverture. Sous ce compte, la CLI
+# n'ecrit que ce qu'il peut deja ecrire, et la base qu'elle cree lui
+# appartient d'emblee. Sans ce compte, aucun autre ne possede le dossier.
 ntfy_cli() {
     local password=""
     if [ "${1:-}" = "-p" ]; then
@@ -468,18 +475,11 @@ ntfy_cli() {
         if [ -n "${password}" ]; then
             export NTFY_PASSWORD="${password}"
         fi
+        if id ntfy &>/dev/null; then
+            exec runuser -u ntfy -- "$@"
+        fi
         exec "$@"
     )
-}
-
-# Imprime le chemin de auth-file lu dans la configuration en place (une
-# configuration gardee peut le placer ailleurs), AUTH_FILE a defaut.
-config_auth_file() {
-    local file
-    file=$(sed -nE "s/^auth-file:[[:space:]]*[\"']?([^\"'#]*).*/\1/p" \
-        "${CONFIG_DIR}/server.yml" 2>/dev/null | head -n 1 \
-        | sed 's/[[:space:]]*$//')
-    echo "${file:-${AUTH_FILE}}"
 }
 
 ensure_admin_user() {
@@ -490,7 +490,7 @@ ensure_admin_user() {
         return
     fi
     local config="${CONFIG_DIR}/server.yml"
-    local motdepasse auth_file f
+    local motdepasse
 
     # « user list » ecrit sur la sortie d'erreur.
     if ntfy_cli ntfy user --config "${config}" list 2>&1 \
@@ -518,17 +518,6 @@ ensure_admin_user() {
             log "AVERTISSEMENT : creation du compte impossible."
             log "  A faire a la main : ntfy user --config ${config} add --role=admin ${NTFY_ADMIN_USER}"
         fi
-    fi
-
-    # La CLI tourne en root : la base qu'elle cree ou ouvre (et ses fichiers
-    # -wal / -shm) revient au compte du service, qui doit pouvoir y ecrire.
-    auth_file=$(config_auth_file)
-    if id ntfy &>/dev/null; then
-        for f in "${auth_file}" "${auth_file}-wal" "${auth_file}-shm"; do
-            if [ -e "${f}" ]; then
-                chown ntfy:ntfy "${f}"
-            fi
-        done
     fi
 }
 
