@@ -108,6 +108,11 @@ _MARKER_LINE = re.compile(r"@@([A-Z_]+)(?: (.*))?$")
 _NAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$")
 _EXTERNAL_IP = re.compile(r"^[0-9A-Fa-f:./]+$")
 _STAMP = re.compile(r"^[A-Za-z0-9_-]+$")
+# Locale des scripts lancés sur l'hôte : ufw traduit ses messages
+# (« Status: active », « Skipping »), que les scripts lisent en anglais.
+# sudo garde LANG, LANGUAGE et LC_* de l'appelant, et ssh ne les transmet
+# que si l'hôte les accepte ; gettext lit LANGUAGE avant LC_ALL.
+_C_LOCALE = "LC_ALL=C; export LC_ALL; unset LANGUAGE"
 # Réponse de `systemctl is-enabled` : enabled, disabled, static, masked...
 _UNIT_STATE = re.compile(r"^[a-z-]+$")
 
@@ -251,6 +256,7 @@ def probe_script(root=""):
     )
     return "\n".join(
         [
+            _C_LOCALE,
             f"R={shlex.quote(root)}",
             # Une invite de sudo sans fin de ligne ne colle pas à la
             # première ligne de faits.
@@ -1647,8 +1653,7 @@ def _record_lines(kind):
 def _script_head(root):
     return [
         "set -u",
-        # Les messages de ufw se lisent en anglais (« Skipping »).
-        "LC_ALL=C; export LC_ALL",
+        _C_LOCALE,
         f"R={shlex.quote(root)}",
         "umask 077",
         "RC=0",
@@ -2093,6 +2098,7 @@ def check_remote_script(root=""):
     certs = " ".join(f"{svc}:{path}" for svc, path in TLS_CERTS.items())
     return "\n".join(
         [
+            _C_LOCALE,
             f"R={shlex.quote(root)}",
             "echo",
             f'S="$R"{shlex.quote(STATE_PATH)}',
