@@ -489,6 +489,14 @@ service_state() {
 # root, et SQLite suit ces liens a l'ouverture. Sous ce compte, la CLI
 # n'ecrit que ce qu'il peut deja ecrire, et la base qu'elle cree lui
 # appartient d'emblee. Sans ce compte, aucun autre ne possede le dossier.
+#
+# Sous ce compte, la CLI quitte le terminal de controle de root : un
+# processus non privilegie qui le partage peut y injecter des frappes
+# (ioctl TIOCSTI) que le shell de root lira. « setsid -w » lui donne une
+# session sans terminal et rend son code de sortie ; sans setsid,
+# « runuser --pty » lui ouvre un pseudo-terminal a elle. L'entree vient de
+# /dev/null : le mot de passe passe par NTFY_PASSWORD, rien ne se lit au
+# clavier.
 ntfy_cli() {
     local password=""
     if [ "${1:-}" = "-p" ]; then
@@ -505,7 +513,10 @@ ntfy_cli() {
             export NTFY_PASSWORD="${password}"
         fi
         if id ntfy &>/dev/null; then
-            exec runuser -u ntfy -- "$@"
+            if command -v setsid &>/dev/null; then
+                exec setsid -w runuser -u ntfy -- "$@" </dev/null
+            fi
+            exec runuser --pty -u ntfy -- "$@" </dev/null
         fi
         exec "$@"
     )
