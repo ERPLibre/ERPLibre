@@ -425,6 +425,7 @@ class TestPaquets(unittest.TestCase):
                 "  [ %d = 1 ] || return 1\n"
                 "  echo 'install ok installed'; echo 'install ok installed'\n"
                 "}\n" % (1 if presents else 0)
+                + "dpkg() { echo \"dpkg $* FRONTEND=$DEBIAN_FRONTEND\" >> $J; }\n"
                 + fonctions("packages_present", "install_packages")
                 + "install_packages\n")
             fait = jouer(enveloppe)
@@ -440,11 +441,27 @@ class TestPaquets(unittest.TestCase):
         self.assertIn("-y", installe[0].split())
         self.assertFalse([a for a in appels if a.startswith("pacman")])
 
+    def test_debian_une_operation_dpkg_coupee_est_reprise(self):
+        """Un ssh coupe pendant apt laisse dpkg interrompu, et apt-get
+        refuse alors toute installation : la reprise passe avant, sans
+        question au terminal."""
+        fait, appels = self._installer("debian")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        reprise = [i for i, a in enumerate(appels)
+                   if a.startswith("dpkg --configure -a")]
+        self.assertEqual(len(reprise), 1, appels)
+        self.assertIn("--force-confold", appels[reprise[0]])
+        self.assertIn("FRONTEND=noninteractive", appels[reprise[0]])
+        installe = [i for i, a in enumerate(appels)
+                    if a.startswith("apt-get") and " install " in a]
+        self.assertLess(reprise[0], installe[0])
+
     def test_arch(self):
         fait, appels = self._installer("arch")
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertIn("pacman -S --noconfirm --needed coturn sqlite", appels)
         self.assertFalse([a for a in appels if a.startswith("apt-get")])
+        self.assertFalse([a for a in appels if a.startswith("dpkg")])
 
     def test_deja_installes_rien_n_est_mis_a_jour(self):
         for famille in ("debian", "arch"):
@@ -453,7 +470,8 @@ class TestPaquets(unittest.TestCase):
                 self.assertEqual(fait.returncode, 0, fait.stderr)
                 self.assertFalse([a for a in appels
                                   if a.startswith("apt-get")
-                                  or a.startswith("pacman -S")], appels)
+                                  or a.startswith("pacman -S")
+                                  or a.startswith("dpkg")], appels)
 
 
 class TestDefaut(unittest.TestCase):
