@@ -2258,9 +2258,10 @@ def _coturn_block(plan):
 def _coturn_lineage_lines(plan):
     """Second passage d'install_coturn.sh, avec la lignée : quand coturn a
     démarré sans elle ($LE=0), ou quand certbot vient d'en délivrer une
-    nouvelle que le crochet n'a pas pu lui remettre (aucun état ne nomme
-    encore coturn : `@@HOOK coturn-skip`). L'installateur écrit alors les
-    lignes TLS et redémarre coturn."""
+    nouvelle que le crochet n'a pas pu lui remettre (`@@HOOK coturn-skip` :
+    aucun état ne nomme encore coturn, ou l'état d'avant le dit sur un
+    autre certificat). L'installateur écrit alors les lignes TLS et
+    redémarre coturn."""
     lines = [
         "CB=$(mval CERTBOT)",
         'if [ "$LE" = 0 ] || { [ "${CB%% *}" = issued ]'
