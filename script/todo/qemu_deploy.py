@@ -1161,7 +1161,10 @@ class QemuDeployMixin:
         Les FAITS viennent de deploy_qemu, seule autorité sur ce que le
         déploiement écrit et où ; leur mise en phrase revient au menu, qui
         parle deux langues. Root ne verra aucune invite : ne rien annoncer
-        vaut mieux qu'annoncer une question qui ne viendra pas.
+        vaut mieux qu'annoncer une question qui ne viendra pas. De même pour
+        un utilisateur dont la socket répond et qu'aucun répertoire fermé
+        n'arrête : deploy_qemu ne demande sudo qu'à la commande qui l'exige,
+        et aucune ne l'exigera. virsh absent, des paquets seront installés.
         """
         if os.geteuid() == 0:
             return []
@@ -1170,6 +1173,11 @@ class QemuDeployMixin:
         except Exception:
             return []
         ecritures = [valeurs for cle, valeurs in faits if cle == "ecriture"]
+        socket_ok = any(
+            cle == "socket" and valeurs[0] == "ok" for cle, valeurs in faits
+        )
+        if not ecritures and socket_ok:
+            return []
         lignes = [t("sudo password: asked when the deployment starts")]
         for chemin, proprio, mode in ecritures:
             lignes.append(
@@ -1221,9 +1229,14 @@ class QemuDeployMixin:
         offline=False,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
-        dry-run ET le déploiement réel)."""
-        parts = [] if dry_run else ["sudo"]
-        parts += [
+        dry-run ET le déploiement réel).
+
+        Jamais de sudo en tête : deploy_qemu tourne en utilisateur et met
+        sudo devant la seule commande qui exige root. Lancé sous root, il
+        écrirait lui-même dans les pools au lieu de passer par libvirt, et
+        l'aperçu, qui tourne en utilisateur, ne montrerait plus ce que fait
+        le lancement."""
+        parts = [
             self._qemu_script_path(),
             "--distro",
             d,

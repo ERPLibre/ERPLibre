@@ -272,6 +272,46 @@ class LesDeuxFamilles(unittest.TestCase):
         self.assertEqual("", DQ.sudo_n_hint(["virsh", "list"]))
 
 
+class LeMenuLanceSansSudo(unittest.TestCase):
+    """Le menu lance deploy_qemu en utilisateur, comme son aperçu : c'est
+    deploy_qemu qui met sudo devant la seule commande qui l'exige."""
+
+    def _parts(self, dry_run):
+        from script.todo.qemu_deploy import QemuDeployMixin
+
+        return QemuDeployMixin._qemu_build_deploy_parts(
+            mock.MagicMock(
+                _qemu_script_path=lambda: "deploy_qemu.py",
+                _qemu_installs_erplibre=lambda branch, cmd: False,
+                _qemu_tools_for=lambda *a: [],
+                _parse_disk_gb=lambda disk: 20,
+                _qemu_tools_disk_gb=lambda *a: 0,
+            ),
+            "debian",
+            "13",
+            "amd64",
+            "vm",
+            2048,
+            2,
+            "20G",
+            "",
+            None,
+            dry_run,
+        )
+
+    def test_the_real_launch_carries_no_sudo(self):
+        parts = self._parts(False)
+        self.assertEqual("deploy_qemu.py", parts[0])
+        self.assertNotIn("sudo", parts)
+
+    def test_preview_and_launch_differ_only_by_their_mode(self):
+        """L'aperçu montre la voie que prendra le lancement : même
+        utilisateur, mêmes arguments, au mode près."""
+        apercu = [p for p in self._parts(True) if p != "--dry-run"]
+        reel = [p for p in self._parts(False) if p not in ("-y", "--no-wait-ip")]
+        self.assertEqual(apercu, reel)
+
+
 class LeDemarrageDuDemon(unittest.TestCase):
     """Le sondage de la socket est gardé pour le processus : celui fait
     pendant que le démon démarre ne doit pas figer « sudo » pour la suite."""
@@ -344,6 +384,15 @@ class LeRenduDuMenu(unittest.TestCase):
             ),
             lignes,
         )
+
+    def test_nothing_is_announced_when_nothing_needs_root(self):
+        """Le déploiement ne demande sudo qu'à la commande qui l'exige : avec
+        la socket ouverte et aucun répertoire fermé, aucune ne l'exigera."""
+        self.assertEqual([], self._lignes([("socket", ("ok",))]))
+
+    def test_a_missing_virsh_is_announced(self):
+        """virsh absent : le déploiement installera des paquets, sous sudo."""
+        self.assertNotEqual([], self._lignes([("socket", ("absent",))]))
 
     def test_an_unreadable_module_says_nothing(self):
         """Le récapitulatif ne doit pas tomber parce qu'un module ne se charge
