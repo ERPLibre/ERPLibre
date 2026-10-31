@@ -970,6 +970,19 @@ class Runner:
             return self._libvirt_sudo
         return self.use_sudo and libvirt_needs_sudo()
 
+    @property
+    def probe_sudo(self) -> bool:
+        """sudo pour une LECTURE de libvirt que Python lance lui-même.
+
+        Ces lectures (virsh_out, pool_for_dir, static_net_plan) s'exécutent
+        même à blanc, puisque l'aperçu en a besoin pour décider. À blanc,
+        elles partent donc sans sudo : un --dry-run ne pose jamais de question
+        de mot de passe. Une socket qui refuse l'utilisateur rend alors une
+        lecture vide, et l'aperçu montre la voie root au lieu de la voie
+        volume.
+        """
+        return self.libvirt_sudo and not self.dry_run
+
     def _annoncer_sudo(self) -> None:
         """Dit pourquoi root, AVANT que sudo ne réclame le mot de passe.
 
@@ -1177,7 +1190,7 @@ class Depot:
         if _inscriptible(self.directory):
             self.mode = "direct"
             return
-        self.pool = pool_for_dir(self.directory, runner.libvirt_sudo)
+        self.pool = pool_for_dir(self.directory, runner.probe_sudo)
         self.mode = "volume" if self.pool else "root"
         if self.pool:
             refresh_pool(runner, self.pool)
@@ -4846,7 +4859,7 @@ def prepare_disk(
             )
         depot.delete(disk)
     if depot.mode == "volume":
-        source = pool_for_dir(image.parent, runner.libvirt_sudo)
+        source = pool_for_dir(image.parent, runner.probe_sudo)
         if source:
             refresh_pool(runner, source)
             with fichier_xml_temporaire(
@@ -6712,7 +6725,7 @@ def main() -> None:
 
         print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
         static = static_net_plan(
-            network_name(args.network), runner.libvirt_sudo, args.name
+            network_name(args.network), runner.probe_sudo, args.name
         )
         if static:
             print(
