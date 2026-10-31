@@ -195,7 +195,12 @@ class TestLesChampsDesTraductions(unittest.TestCase):
     def test_each_translation_keeps_the_fields_of_its_key(self):
         """Une traduction qui perd, ajoute ou renomme un champ {…} fait
         lever .format() là où le texte sert : dans une commande d'effacement,
-        le suivi tomberait au lieu d'afficher son refus."""
+        le suivi tomberait au lieu d'afficher son refus.
+
+        Une clé identifiant (« call_infra_adopted ») ne porte pas le texte :
+        ses champs sont ceux de sa traduction anglaise, que le français doit
+        garder à l'identique."""
+        import re
         import string
 
         def champs(texte):
@@ -205,11 +210,16 @@ class TestLesChampsDesTraductions(unittest.TestCase):
                 if f is not None
             }
 
+        def reference(cle, entree):
+            if re.fullmatch(r"[a-z0-9_]+", cle):
+                return champs(entree["en"])
+            return champs(cle)
+
         ecarts = [
             (cle, langue)
             for cle, entree in todo_i18n.TRANSLATIONS.items()
             for langue in ("fr", "en")
-            if champs(entree[langue]) != champs(cle)
+            if champs(entree[langue]) != reference(cle, entree)
         ]
         self.assertEqual([], ecarts)
 
