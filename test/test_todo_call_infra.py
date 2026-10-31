@@ -588,6 +588,23 @@ class TestUninstall(MenuCase):
             out,
         )
 
+    def test_a_lost_backup_after_a_purge_is_said(self):
+        host = FakeHost(
+            state=installed_state(),
+            uninstall_out=(
+                "@@BACKUP_LOST coturn /etc/turnserver.conf.bak-1\n"
+                "@@DONE yes\n"
+            ),
+        )
+        out = self.drive("_call_infra_uninstall", host, ["n", "o"])
+        self.assertIn(
+            t("call_infra_backup_lost").format(
+                service="coturn", backup="/etc/turnserver.conf.bak-1"
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_uninstalled"), out)
+
     def test_a_state_of_another_version_is_refused(self):
         state = installed_state()
         state["version"] = 99
