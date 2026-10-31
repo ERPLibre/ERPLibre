@@ -12,6 +12,7 @@ anonymes sur tous les sujets, sur toutes les interfaces.
 """
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -232,6 +233,13 @@ exit 0
         with open(bouchon, "w") as flux:
             flux.write(self.BOUCHON_NTFY)
         os.chmod(bouchon, stat.S_IRWXU)
+        # `env` passe devant le vrai sur PATH et note ses arguments : un
+        # secret donne en NOM=valeur a env se lit dans /proc/<pid>/cmdline.
+        bouchon_env = os.path.join(dossier, "bin", "env")
+        with open(bouchon_env, "w") as flux:
+            flux.write('#!/bin/sh\necho "ENVARGV $*" >> "$BAC/argv.log"\n'
+                       'exec %s "$@"\n' % shutil.which("env"))
+        os.chmod(bouchon_env, stat.S_IRWXU)
         if deja_present:
             open(os.path.join(dossier, "admin"), "w").close()
             open(os.path.join(dossier, "lib", "user.db"), "w").close()
@@ -263,6 +271,7 @@ exit 0
             "NTFY_AUTH_FILE": "/tmp/autre.db",
         }
         fait = jouer(enveloppe, env)
+        self.argv = lignes(os.path.join(dossier, "argv.log"))
         return (fait, lignes(os.path.join(dossier, "ntfy.log")),
                 lignes(os.path.join(dossier, "chown.log")), dossier)
 
@@ -291,6 +300,20 @@ exit 0
         self.assertIn("ENV NTFY_PASSWORD=" + motdepasse, journal)
         # Le marqueur suffit au menu : pas de second affichage en clair.
         self.assertEqual(fait.stdout.count(motdepasse), 1)
+
+    def test_le_mot_de_passe_ne_passe_dans_aucun_argv(self):
+        """Tout compte local lit les arguments d'un processus (`ps`), pas
+        son environnement : le mot de passe ne voyage que par ce dernier."""
+        fait, journal, _, _ = self._jouer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        motdepasse = [l for l in fait.stdout.splitlines()
+                      if l.startswith("@@ADMIN_PASSWORD ")][0].split()[1]
+        arguments = self.argv + [l for l in journal if l.startswith("ARGS ")]
+        self.assertTrue(arguments, journal)
+        for ligne in arguments:
+            self.assertNotIn(motdepasse, ligne)
+        # Il arrive bien a la CLI, par l'environnement.
+        self.assertIn("ENV NTFY_PASSWORD=" + motdepasse, journal)
 
     def test_la_base_creee_par_root_revient_au_compte_du_service(self):
         _, _, chowns, dossier = self._jouer()

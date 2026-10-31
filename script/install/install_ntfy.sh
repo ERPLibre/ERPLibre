@@ -415,19 +415,32 @@ service_state() {
 # Compte administrateur
 # ---------------------------------------------------------------------------
 
-# Lance une commande sans aucune variable NTFY_* exportee : la CLI ntfy les
-# lit AVANT --config, et celles qui pilotent ce script (NTFY_BASE_URL,
-# NTFY_CERT_FILE...) ou un NTFY_AUTH_FILE herite viseraient un autre fichier.
-# Une affectation NOM=valeur passee en tete des arguments est remise par env
-# apres le retrait : c'est ainsi que NTFY_PASSWORD atteint « user add ».
+# ntfy_cli [-p <mot de passe>] <commande>... : lance la commande sans aucune
+# variable NTFY_* exportee — la CLI ntfy les lit AVANT --config, et celles qui
+# pilotent ce script (NTFY_BASE_URL, NTFY_CERT_FILE...) ou un NTFY_AUTH_FILE
+# herite viseraient un autre fichier. -p exporte NTFY_PASSWORD pour la seule
+# commande lancee. Le retrait et l'export se font par des commandes internes
+# dans un sous-shell, puis exec : le mot de passe ne figure dans l'argv
+# d'aucun processus (lisible de tout compte local par ps ou
+# /proc/<pid>/cmdline), seulement dans l'environnement de la CLI. Les
+# arguments d'une fonction shell, eux, restent dans la memoire du shell.
 ntfy_cli() {
-    local args=() var
-    for var in $(compgen -e); do
-        case "${var}" in
-            NTFY_*) args+=(-u "${var}") ;;
-        esac
-    done
-    env "${args[@]}" "$@"
+    local password=""
+    if [ "${1:-}" = "-p" ]; then
+        password="$2"
+        shift 2
+    fi
+    (
+        for var in $(compgen -e); do
+            case "${var}" in
+                NTFY_*) unset "${var}" ;;
+            esac
+        done
+        if [ -n "${password}" ]; then
+            export NTFY_PASSWORD="${password}"
+        fi
+        exec "$@"
+    )
 }
 
 # Imprime le chemin de auth-file lu dans la configuration en place (une
@@ -456,7 +469,7 @@ ensure_admin_user() {
         log "Compte ${NTFY_ADMIN_USER} deja present, mot de passe inchange."
     else
         motdepasse=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
-        if ntfy_cli NTFY_PASSWORD="${motdepasse}" \
+        if ntfy_cli -p "${motdepasse}" \
                 ntfy user --config "${config}" add --role=admin \
                 "${NTFY_ADMIN_USER}" >/dev/null 2>&1; then
             # Affiche UNE seule fois, sur la ligne @@ADMIN_PASSWORD que le
