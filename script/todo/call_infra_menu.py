@@ -21,6 +21,7 @@ import contextlib
 import dataclasses
 import datetime
 import os
+import ssl
 import sys
 import time
 
@@ -591,6 +592,17 @@ class CallInfraMenuMixin:
             if any(s.get("tls") == "supplied" for s in settings):
                 raw = input(f"{t('call_infra_ask_cafile')}: ").strip()
                 cafile = os.path.expanduser(raw) if raw else None
+                # Une autorité qui ne se charge pas (chemin mal tapé, fichier
+                # qui n'est pas un PEM) ferait dire « injoignable » au relais.
+                if cafile is not None:
+                    try:
+                        ssl.create_default_context(cafile=cafile)
+                    except (OSError, ValueError) as error:
+                        print(
+                            f"✗ {t('The file could not be read:')} {cafile}"
+                            f" ({error})"
+                        )
+                        return
         print(f"\n{t('Call infra - Check')}")
         for line in ci.check_local(remote, address, cafile):
             print(self._call_infra_line(line))

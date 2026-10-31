@@ -18,8 +18,11 @@ import io
 import json
 import re
 import shlex
+import os
 import string
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -553,17 +556,62 @@ class TestCheck(MenuCase):
         )
         self.assertNotIn(CHECK_KEY, out)
 
-    def test_supplied_tls_asks_for_the_authority(self):
+    def supplied_host(self):
         state = installed_state()
         for record in state["services"].values():
             record["settings"]["tls"] = "supplied"
-        host = FakeHost(state=state)
-        self.drive(
-            "_call_infra_check", host, ["turn.exemple.test", "/ca/exemple.crt"]
-        )
+        return FakeHost(state=state)
+
+    def test_supplied_tls_asks_for_the_authority(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ca = os.path.join(tmp, "ca.crt")
+            subprocess.run(
+                [
+                    "openssl",
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "ec",
+                    "-pkeyopt",
+                    "ec_paramgen_curve:prime256v1",
+                    "-nodes",
+                    "-keyout",
+                    os.path.join(tmp, "ca.key"),
+                    "-out",
+                    ca,
+                    "-days",
+                    "2",
+                    "-subj",
+                    "/CN=ca.exemple.test",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            self.drive(
+                "_call_infra_check",
+                self.supplied_host(),
+                ["turn.exemple.test", ca],
+            )
         _remote, address, cafile = self.check_local.call_args.args
         self.assertEqual(address, "turn.exemple.test")
-        self.assertEqual(cafile, "/ca/exemple.crt")
+        self.assertEqual(cafile, ca)
+
+    def test_an_authority_that_does_not_load_stops_the_check(self):
+        # Sans ce contrôle, un chemin mal tapé se lit « relais injoignable ».
+        with tempfile.TemporaryDirectory() as tmp:
+            garbage = os.path.join(tmp, "pas-un-pem.crt")
+            with open(garbage, "w") as handle:
+                handle.write("pas un certificat\n")
+            for path in ("/nonexistent/exemple-ca.crt", garbage):
+                with self.subTest(path=path):
+                    out = self.drive(
+                        "_call_infra_check",
+                        self.supplied_host(),
+                        ["turn.exemple.test", path],
+                    )
+                    self.check_local.assert_not_called()
+                    self.assertIn(path, out)
+                    self.assertIn(t("The file could not be read:"), out)
 
     def test_no_state_asks_nothing(self):
         host = FakeHost()
