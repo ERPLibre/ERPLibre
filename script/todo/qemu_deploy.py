@@ -1254,7 +1254,10 @@ class QemuDeployMixin:
         Les FAITS viennent de deploy_qemu, seule autorité sur ce que le
         déploiement écrit et où ; leur mise en phrase revient au menu, qui
         parle deux langues. Root ne verra aucune invite : ne rien annoncer
-        vaut mieux qu'annoncer une question qui ne viendra pas.
+        vaut mieux qu'annoncer une question qui ne viendra pas. De même pour
+        un utilisateur dont la socket répond et qu'aucun répertoire fermé
+        n'arrête : deploy_qemu ne demande sudo qu'à la commande qui l'exige,
+        et aucune ne l'exigera. virsh absent, des paquets seront installés.
         """
         if os.geteuid() == 0:
             return []
@@ -1263,6 +1266,11 @@ class QemuDeployMixin:
         except Exception:
             return []
         ecritures = [valeurs for cle, valeurs in faits if cle == "ecriture"]
+        socket_ok = any(
+            cle == "socket" and valeurs[0] == "ok" for cle, valeurs in faits
+        )
+        if not ecritures and socket_ok:
+            return []
         lignes = [t("sudo password: asked when the deployment starts")]
         for chemin, proprio, mode in ecritures:
             lignes.append(
@@ -1321,15 +1329,20 @@ class QemuDeployMixin:
         `user` : compte créé par cloud-init ; vide, VM_USER_DEFAULT.
         `password_hash` : empreinte SHA-512 crypt de son mot de passe, passée
         en « --password-hash ». Le clair n'est jamais dans la commande : elle
-        s'affiche en aperçu et sudo la journalise. Vide, aucune option de mot
-        de passe : le compte n'ouvre que par la clé SSH."""
+        s'affiche en aperçu. Vide, aucune option de mot de passe : le compte
+        n'ouvre que par la clé SSH.
+
+        Jamais de sudo en tête : deploy_qemu tourne en utilisateur et met
+        sudo devant la seule commande qui exige root. Lancé sous root, il
+        écrirait lui-même dans les pools au lieu de passer par libvirt, et
+        l'aperçu, qui tourne en utilisateur, ne montrerait plus ce que fait
+        le lancement."""
         from script.todo.deploy_form_lib import desktop_ram
 
         # Dernier rempart du plancher de RAM d'un bureau : toute interface
         # passe par ici, et deploy_qemu.py prend « --memory » tel quel.
         eram = desktop_ram(eram, desktop, self.QEMU_DESKTOP_MIN_RAM_MB)
-        parts = [] if dry_run else ["sudo"]
-        parts += [
+        parts = [
             self._qemu_script_path(),
             "--distro",
             d,

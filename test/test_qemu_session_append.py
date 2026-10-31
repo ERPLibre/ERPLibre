@@ -210,8 +210,11 @@ class TestDeploieSpecSession(unittest.TestCase):
         # le suivi.
         self.assertEqual([], self.tui)
         self.assertEqual(3, len(self.jobs))
+        # deploy_qemu se lance sans sudo : aucune commande ne peut attendre
+        # un mot de passe que personne ne voit.
         for _, _, parts in self.jobs:
-            self.assertEqual(["sudo", "-n"], parts[:2])
+            self.assertNotEqual("sudo", parts[0])
+            self.assertTrue(parts[0].endswith("deploy_qemu.py"), parts[0])
         mon.run_monitor.assert_not_called()
         self.assertEqual(["vm-bad"], bilan["failed"])
         self.assertEqual(["vm-noip"], bilan["no_ip"])
@@ -250,8 +253,8 @@ class TestDeploieSpecSession(unittest.TestCase):
         self.assertIsNone(self._joue(None))
         self.assertEqual(3, len(self.jobs))
         for _, _, parts in self.jobs:
-            self.assertEqual("sudo", parts[0])
-            self.assertNotEqual("-n", parts[1])
+            self.assertTrue(parts[0].endswith("deploy_qemu.py"), parts[0])
+            self.assertNotIn("-n", parts[:2])
         self.assertEqual([None], suivi)
 
 
