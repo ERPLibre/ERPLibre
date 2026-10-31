@@ -183,6 +183,38 @@ class TestSimulate(TrialCase):
         self.deja_approuvee(rule)
         self.assertEqual(self.simuler(rule, self.entete(ARME + 1)).hold, "")
 
+    def plafond_atteint(self, rule):
+        """`STATS_DAILY_MAX` rapports envoyés dans les dernières 24 h."""
+        for numero in range(engine.STATS_DAILY_MAX):
+            self.store.rule_log_claim(
+                rule.id,
+                f"plafond-{numero}",
+                outcome="sent",
+                at=self.horloge() - 2 * 3600,
+                fingerprint=rule.fingerprint(),
+            )
+
+    def test_simulate_announces_the_daily_cap_for_a_new_message(self):
+        """Message reçu avant l'armement : seul le verdict « neuf »
+        répondrait, et le plafond quotidien l'écarterait, comme la passe."""
+        rule = self.regle_stats()
+        self.plafond_atteint(rule)
+        sim = self.simuler(rule, self.entete(ARME - 1))
+        self.assertNotEqual(sim.reason, SEND)
+        self.assertEqual(sim.reason_if_new, SEND)
+        self.assertEqual(sim.hold, "stats_cap")
+        self.demande(ARME)
+        bilan = self.passe()
+        self.assertEqual(bilan.skipped["stats_cap"], 1)
+        self.assertEqual(self.envois, [])
+
+    def test_simulate_gives_no_hold_when_no_verdict_would_send(self):
+        rule = self.regle_stats()
+        self.plafond_atteint(rule)
+        sim = self.simuler(rule, self.entete(ARME, frm=OWN, auth=False))
+        self.assertEqual((sim.reason, sim.reason_if_new), ("self", "self"))
+        self.assertEqual(sim.hold, "")
+
     def test_simulate_without_body_still_gives_the_target(self):
         rule = self.regle()
         rule.filter = Group("all", [Condition("body", "question")])

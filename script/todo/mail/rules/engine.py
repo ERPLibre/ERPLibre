@@ -1482,7 +1482,8 @@ class Simulation:
     lu du premier `Authentication-Results` (« » : aucun) ; `authenticated`
     le verdict de `guards.stats_authenticated` pour une règle `stats`,
     None sinon. `hold` est le code de `hold_reason` quand le verdict réel
-    est d'envoyer ; `auth_serv_unset` est vrai pour une règle `stats` dont
+    ou celui d'un message neuf est d'envoyer, celui du premier envoi d'une
+    passe (`stats_cap` compris) ; `auth_serv_unset` est vrai pour une règle `stats` dont
     les réglages n'exigent aucun identifiant de serveur. `forward` est
     l'aperçu d'une règle `forward` (`ForwardPreview`), qui n'a jamais de
     `rendered`. `kind` est le type de l'action de la règle essayée.
@@ -1665,7 +1666,10 @@ def _simulate(
     except BodyUnavailable:
         sim.reason_if_new = "body_unavailable"
 
-    if sim.reason == guards.SEND:
+    # La retenue ne dépend que de la règle, du journal et de l'heure, pas
+    # du message : elle vaut pour chacun des deux verdicts qui enverrait,
+    # comme pour le premier envoi d'une passe (`_dispatch`).
+    if guards.SEND in (sim.reason, sim.reason_if_new):
         try:
             caps = storage.load_caps(name, base)
         except RuleError:

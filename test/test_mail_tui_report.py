@@ -821,6 +821,29 @@ class TestTrialLines(unittest.TestCase):
             textes,
         )
 
+    def test_the_daily_stats_cap_replaces_the_new_message_verdict(self):
+        """Message déjà traité (ou trop vieux) : le plafond se lit dans le
+        verdict pour un message neuf, qui ne promet aucune réponse."""
+        textes = self.textes(
+            self.sim(reason="too_old", reason_if_new="send", hold="stats_cap")
+        )
+        self.assertIn(
+            f"{t('mail_rules_trial_verdict')} "
+            f"{t('mail_rules_reason_too_old')}",
+            textes,
+        )
+        self.assertIn(
+            f"{t('mail_rules_trial_verdict_if_new')} "
+            f"{t('mail_rules_reason_stats_cap')}",
+            textes,
+        )
+        self.assertFalse(
+            any(t("mail_rules_trial_would_send") in x for x in textes)
+        )
+        self.assertFalse(
+            any(x.startswith(t("mail_rules_trial_held")) for x in textes)
+        )
+
     def test_a_real_hold_keeps_its_line(self):
         textes = self.textes(self.sim(reason="send", hold="hold_first"))
         self.assertIn(

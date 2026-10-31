@@ -1184,18 +1184,26 @@ def rule_trial_lines(sim) -> list[tuple[str, str]]:
         }.get(sim.matched, "mail_rules_trial_unknown")
         lines.append((t(cle), ""))
     # Le plafond quotidien d'un rapport écarte la demande, sans file ni
-    # retenue : c'est le verdict, et rien n'est à libérer.
+    # retenue : il remplace « répondrait » dans chaque verdict qui le
+    # dirait, réel ou pour un message neuf, et rien n'est à libérer.
     capped = sim.hold == "stats_cap"
+
+    def plafonne(code: str) -> str:
+        return "stats_cap" if capped and code == SEND else code
+
     if sim.reason:
-        code = "stats_cap" if capped and sim.reason == SEND else sim.reason
         lines.append(
-            (f"{t('mail_rules_trial_verdict')} {verdict(code)}", "bold")
+            (
+                f"{t('mail_rules_trial_verdict')} "
+                f"{verdict(plafonne(sim.reason))}",
+                "bold",
+            )
         )
     if sim.reason_if_new and sim.reason_if_new != sim.reason:
         lines.append(
             (
                 f"{t('mail_rules_trial_verdict_if_new')} "
-                f"{verdict(sim.reason_if_new)}",
+                f"{verdict(plafonne(sim.reason_if_new))}",
                 "",
             )
         )
