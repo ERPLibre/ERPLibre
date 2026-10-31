@@ -23,6 +23,7 @@ Ce que ces tests gardent :
 """
 
 import io
+import subprocess
 import sys
 import tempfile
 import threading
@@ -331,6 +332,56 @@ class LeCacheDImages(unittest.TestCase):
             self.assertEqual([(contenu, dest)], publies)
             self.assertFalse(dest.exists(), "le cache a été écrit en direct")
             self.assertFalse(etape.exists(), "le fichier d'étape est resté")
+
+
+class LAperçuNeDemandeRien(unittest.TestCase):
+    """--dry-run ne lance aucun sudo, même quand la socket refuse
+    l'utilisateur : l'aperçu du menu tourne en utilisateur, et une invite de
+    mot de passe y serait une question posée par une commande qui ne doit
+    rien toucher."""
+
+    def _sudo_lances(self, *extra):
+        vus = []
+
+        def faux(argv, *a, **k):
+            vus.append(list(argv))
+            return subprocess.CompletedProcess(argv, 1, "", "")
+
+        argv = [
+            "deploy_qemu.py",
+            "--distro",
+            "debian",
+            "--version",
+            "13",
+            "--name",
+            "vm-apercu",
+            "--password",
+            "x",
+            "--dry-run",
+            *extra,
+        ]
+        DQ._POOLS.clear()
+        DQ.libvirt_sudo_reset()
+        self.addCleanup(DQ._POOLS.clear)
+        self.addCleanup(DQ.libvirt_sudo_reset)
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(DQ, "libvirt_ready", return_value=False),
+            mock.patch.object(DQ, "terminal_present", return_value=True),
+            mock.patch.object(DQ.os, "geteuid", return_value=1000),
+            mock.patch.object(DQ.subprocess, "run", faux),
+            redirect_stdout(io.StringIO()),
+            mock.patch("sys.stderr", io.StringIO()),
+        ):
+            DQ.main()
+        return [v for v in vus if v[:1] == ["sudo"]]
+
+    def test_a_cloud_image_preview_runs_no_sudo(self):
+        self.assertEqual([], self._sudo_lances())
+
+    def test_an_installer_preview_runs_no_sudo(self):
+        """La voie s390x lit le réseau pour choisir une adresse fixe."""
+        self.assertEqual([], self._sudo_lances("--arch", "s390x"))
 
 
 class LAdresse(unittest.TestCase):
