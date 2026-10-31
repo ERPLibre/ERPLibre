@@ -2918,9 +2918,18 @@ case "$1" in
 esac
 exit 0
 """
+# DPKG_STATUS remplace l'état rendu pour les paquets de PKGS : une
+# opération dpkg coupée les laisse « half-configured », « unpacked »...
 STUB_DPKG_QUERY = r"""#!/bin/sh
 for p; do :; done
-case " ${PKGS:-} " in *" $p "*) echo "install ok installed" ;; *) exit 1 ;; esac
+case " ${PKGS:-} " in
+  *" $p "*) echo "${DPKG_STATUS:-install ok installed}" ;;
+  *) exit 1 ;;
+esac
+"""
+STUB_DPKG = r"""#!/bin/sh
+echo "dpkg $*" >> "$LOG"
+exit 0
 """
 # La purge de ntfy peut emporter ses dossiers (script postrm du paquet) :
 # POSTRM=1 le simule.
@@ -2974,6 +2983,7 @@ class TestUninstall(unittest.TestCase):
         for name, text in (
             ("systemctl", STUB_UNINSTALL_SYSTEMCTL),
             ("dpkg-query", STUB_DPKG_QUERY),
+            ("dpkg", STUB_DPKG),
             ("apt-get", STUB_APT_GET),
             ("pacman", STUB_PACMAN),
             ("ufw", STUB_UFW),
@@ -3090,6 +3100,57 @@ class TestUninstall(unittest.TestCase):
             f"RESTORED {ci.NTFY_CONFIG} {backup}", self.markers(done)
         )
         self.assertFalse(os.path.exists(self.path(ci.CALL_DIR)))
+
+    def test_an_interrupted_package_of_the_tool_is_repaired_then_purged(
+        self,
+    ):
+        for status in (
+            "half-installed",
+            "unpacked",
+            "half-configured",
+            "triggers-awaited",
+            "triggers-pending",
+        ):
+            with self.subTest(status=status):
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                state = self.tool_installed_ntfy()
+                done = self.uninstall(
+                    state,
+                    UNITS="ntfy",
+                    PKGS="ntfy",
+                    DPKG_STATUS=f"install ok {status}",
+                )
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                calls = self.calls()
+                repair = "dpkg --configure -a --force-confdef --force-confold"
+                self.assertIn(repair, calls)
+                self.assertIn("apt-get purge -y ntfy", calls)
+                self.assertLess(
+                    calls.index(repair), calls.index("apt-get purge -y ntfy")
+                )
+                self.assertIn("REMOVED package ntfy", self.markers(done))
+
+    def test_a_fully_installed_package_is_purged_without_dpkg_repair(self):
+        state = self.tool_installed_ntfy()
+        done = self.uninstall(state, UNITS="ntfy", PKGS="ntfy")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        self.assertIn("apt-get purge -y ntfy", calls)
+        self.assertFalse([c for c in calls if c.startswith("dpkg ")], calls)
+
+    def test_a_package_left_as_config_files_is_not_purged(self):
+        state = self.tool_installed_ntfy()
+        done = self.uninstall(
+            state,
+            UNITS="ntfy",
+            PKGS="ntfy",
+            DPKG_STATUS="deinstall ok config-files",
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(
+            [c for c in self.calls() if c.startswith(("apt-get", "dpkg "))]
+        )
 
     def test_remove_data_false_keeps_the_ntfy_user_database(self):
         state = self.tool_installed_ntfy(
