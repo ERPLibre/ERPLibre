@@ -1336,6 +1336,16 @@ class TestStateAnswers(unittest.TestCase):
             back, dataclasses.replace(ans, cert_pem=None, key_pem=None)
         )
 
+    def test_settings_that_are_not_a_dict_are_ignored(self):
+        state = installed_state(answers())
+        for bad in ("texte", ["liste"], 3):
+            with self.subTest(bad=bad):
+                broken = json.loads(json.dumps(state))
+                broken["services"]["coturn"]["settings"] = bad
+                back = ci.state_answers(broken)
+                self.assertEqual(back.turn_port, 3478)
+                self.assertEqual(back.public_name, "turn.exemple.test")
+
     def test_coturn_only(self):
         ans = answers(services=frozenset({"coturn"}))
         plan = ci.plan_install(base_facts(), ans, NOW)
@@ -3486,6 +3496,11 @@ class TestUninstall(unittest.TestCase):
             "dots": ("coturn", "config", "/etc/../root/x"),
             "backup": ("coturn", "backup", "/tmp/autre.bak-1"),
             "tls": ("ntfy", "tls_files", ["/root/.ssh/id_ed25519"]),
+            "tls-list": ("ntfy", "tls_files", [["x"]]),
+            "tls-dict": ("ntfy", "tls_files", [{"x": 1}]),
+            "unit-list": ("coturn", "unit", ["coturn"]),
+            "was_active": ("coturn", "was_active", "oui"),
+            "was_enabled": ("coturn", "was_enabled", ["enabled"]),
             "record": ("ntfy", None, "pas un dict"),
         }
         for label, (svc, key, value) in cases.items():

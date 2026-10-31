@@ -710,6 +710,16 @@ class TestUninstall(MenuCase):
         )
         self.assertIn("3478/udp", out)
 
+    def test_a_malformed_state_is_refused_without_a_traceback(self):
+        state = installed_state()
+        state["services"]["ntfy"]["tls_files"] = [["x"]]
+        host = FakeHost(state=state)
+        out = self.drive("_call_infra_uninstall", host, [])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(
+            t("call_infra_state_invalid").format(service="ntfy"), out
+        )
+
     def test_a_state_of_another_version_is_refused(self):
         state = installed_state()
         state["version"] = 99
