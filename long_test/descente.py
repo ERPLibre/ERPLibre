@@ -1200,6 +1200,37 @@ def a_defaire(rapport, nom_base=""):
     ]
 
 
+def rafraichir_pools():
+    """Fait relire leur répertoire aux pools libvirt actifs. Rend sans rien
+    dire, réussite ou non.
+
+    « undefine --remove-all-storage » ne retire que les disques que libvirt
+    connaît comme volumes. Un disque écrit hors libvirt (par root, sous
+    sudo) n'en est un qu'après relecture de son pool ; sinon libvirt le
+    déclare non géré et le laisse, en root 0600, hors de portée de
+    l'utilisateur. Ce n'est qu'une relecture : un échec n'empêche pas la
+    destruction, il laisse seulement ce disque-là.
+    """
+    try:
+        pools = subprocess.run(
+            virsh_local("pool-list", "--name"),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if pools.returncode:
+            return
+        for pool in pools.stdout.split():
+            subprocess.run(
+                virsh_local("pool-refresh", pool),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+    except (OSError, subprocess.SubprocessError):
+        return
+
+
 def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
     """Le domaine libvirt du premier étage — le SEUL qui en soit un.
 
@@ -1270,17 +1301,21 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
             f"    [à blanc] virsh undefine {nom} --remove-all-storage", journal
         )
         return True
+    # Les gestes visent l'UUID vérifié quand il y en a un : entre la
+    # vérification et le geste, le nom peut être passé à un autre domaine.
+    cible = attendu or nom
+    rafraichir_pools()
     # « --remove-all-storage » retire les VOLUMES du domaine — disque dans
     # son pool, seed dans le sien — et laisse l'image de base du cache, qui
     # n'est pas un disque du domaine.
     subprocess.run(
-        virsh_local("destroy", nom, invite=True),
+        virsh_local("destroy", cible, invite=True),
         capture_output=True,
         text=True,
     )
     res = subprocess.run(
         virsh_local(
-            "undefine", nom, "--nvram", "--remove-all-storage", invite=True
+            "undefine", cible, "--nvram", "--remove-all-storage", invite=True
         ),
         capture_output=True,
         text=True,
