@@ -148,6 +148,9 @@ class HostFacts:
     `firewall_pending` : ((ufw|nftables, Rule), ...) des règles que
     `firewall_script` a posées ou gardées et qu'aucun état écrit ne
     consigne encore (fiche `PENDING_DIR/firewall`).
+
+    `ufw_added` : les lignes `ufw ...` de `ufw show added` quand ufw est
+    le pare-feu actif, () sinon.
     """
 
     family: str | None
@@ -163,6 +166,7 @@ class HostFacts:
     state: dict | None
     nft_chains: tuple[tuple[str, str, str], ...] = ()
     firewall_pending: tuple = ()
+    ufw_added: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -247,7 +251,8 @@ def probe_script(root=""):
     <famille> <table> <chaîne>` par chaîne input en drop (nftables
     seulement), `@@STATE <base64>`, `@@FIREWALL_PENDING <ufw|nftables>
     <proto> <port> <service>` par règle posée que l'état ne consigne pas
-    encore, puis `@@END` : sans lui, la sortie est tronquée.
+    encore, `@@UFW_ADDED <ligne>` par ligne de `ufw show added` quand ufw
+    est actif, puis `@@END` : sans lui, la sortie est tronquée.
     """
     files = " ".join(
         [
@@ -335,6 +340,9 @@ def probe_script(root=""):
             "  FW=unknown",
             "fi",
             'echo "@@FIREWALL $FW"',
+            'if [ "$FW" = ufw ]; then',
+            "  ufw show added 2>/dev/null | sed 's/^/@@UFW_ADDED /'",
+            "fi",
             'if [ "$FW" = nftables ]; then',
             '  printf "%s\\n" "$NI" | sed \'s/^/@@NFT_INPUT /\'',
             "fi",
@@ -436,7 +444,7 @@ def parse_probe(output):
     os_id, os_version, id_like = "unknown", "", ""
     systemd, hostname, firewall, state = False, "", "unknown", None
     addresses, ports, files, pending, chains = [], [], {}, {}, []
-    firewall_pending = []
+    firewall_pending, ufw_added = [], []
     coturn_marker, ntfy_marker, complete, enabled = [], [], False, {}
     for name, value in marker_lines(output):
         if name == "OS":
@@ -490,6 +498,10 @@ def parse_probe(output):
             entry = _pending_rule(value)
             if entry is not None and entry not in firewall_pending:
                 firewall_pending.append(entry)
+        elif name == "UFW_ADDED":
+            line = value.strip()
+            if line.startswith("ufw ") and line not in ufw_added:
+                ufw_added.append(line)
         elif name == "END":
             complete = True
     if not complete:
@@ -525,6 +537,7 @@ def parse_probe(output):
         state=state,
         nft_chains=tuple(chains),
         firewall_pending=tuple(firewall_pending),
+        ufw_added=tuple(ufw_added),
     )
 
 
@@ -2081,10 +2094,22 @@ def merge_pending_firewall(state, pending):
     return with_firewall(state, firewall_record(kind, "", record, pending))
 
 
+def _ufw_foreign(rule, added):
+    """Vrai quand une ligne de `added` (`ufw show added`) porte la règle
+    sans être celle de l'outil : le même test que `_ufw_script`, qui la dit
+    FOREIGN et ne la consigne jamais."""
+    spec = _ufw_spec(rule)
+    mine = f"ufw allow {spec} comment {_comment(rule)!r}"
+    other = re.compile(rf" {re.escape(spec)}( |$)")
+    return mine not in added and any(other.search(line) for line in added)
+
+
 def firewall_missing(facts, answers):
     """Vrai quand une relance doit encore proposer le pare-feu : une règle
     posée attend d'être consignée, ou une règle voulue que le pare-feu actif
-    sait recevoir n'est pas consignée pour lui."""
+    sait recevoir n'est pas consignée pour lui. Sous ufw, un port qu'une
+    règle de l'administrateur couvre déjà (FOREIGN) ne manque pas : elle
+    reste non consignée, et la désinstallation n'y touche pas."""
     if facts.firewall_pending:
         return True
     rules = firewall_rules(answers)
@@ -2095,7 +2120,11 @@ def firewall_missing(facts, answers):
     record = state.get("firewall")
     same = isinstance(record, dict) and record.get("kind") == facts.firewall
     recorded = set(rules_from_state(state)) if same else set()
-    return any(rule not in recorded for rule in rules)
+    foreign = facts.ufw_added if facts.firewall == "ufw" else ()
+    return any(
+        rule not in recorded and not _ufw_foreign(rule, foreign)
+        for rule in rules
+    )
 
 
 def with_firewall(state, record):
