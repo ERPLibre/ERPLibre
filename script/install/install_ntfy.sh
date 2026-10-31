@@ -302,14 +302,26 @@ configure_ntfy() {
         chown ntfy:ntfy "$CACHE_DIR" "$DATA_DIR"
     fi
 
-    # Une configuration deja en place est RESPECTEE — elle peut porter des
-    # reglages d'exploitation que ce script ignore — mais seulement si elle
-    # declare son controle d'acces. Celle d'une distribution n'en declare
-    # aucun : lecture ET ecriture anonymes sur tous les sujets, sur toutes
+    # Un fichier sans aucune ligne active (que des commentaires et des lignes
+    # vides, la forme que livrent les paquets) ne porte aucun reglage : il est
+    # mis de cote en server.yml.origine, sauf si ce nom est deja pris, puis
+    # remplace. NTFY_GARDER_CONFIG=1 le garde, comme toute autre.
+    #
+    # Une configuration qui pose des reglages est RESPECTEE — elle peut porter
+    # des reglages d'exploitation que ce script ignore — mais seulement si
+    # elle declare son controle d'acces. Sans auth-default-access, ntfy
+    # autorise lecture ET ecriture anonymes sur tous les sujets, sur toutes
     # les interfaces, alors que ce script annonce le contraire. Une posture
     # annoncee et non appliquee est pire que pas de script. Les reglages
     # d'une configuration gardee (port, certificat) ne sont pas modifies ici.
-    if [ -f "${CONFIG_DIR}/server.yml" ]; then
+    if [ -f "${CONFIG_DIR}/server.yml" ] \
+            && [ "${NTFY_GARDER_CONFIG:-0}" != "1" ] \
+            && ! grep -qvE '^[[:space:]]*(#|$)' "${CONFIG_DIR}/server.yml"; then
+        if [ ! -e "${CONFIG_DIR}/server.yml.origine" ]; then
+            mv "${CONFIG_DIR}/server.yml" "${CONFIG_DIR}/server.yml.origine"
+        fi
+        log "Config sans aucun reglage actif : remplacee."
+    elif [ -f "${CONFIG_DIR}/server.yml" ]; then
         if grep -qE '^[[:space:]]*auth-default-access:' "${CONFIG_DIR}/server.yml"; then
             log "Config already exists at ${CONFIG_DIR}/server.yml — skipping."
             return
