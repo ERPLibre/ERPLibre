@@ -1025,6 +1025,9 @@ class TestInstallScriptRun(unittest.TestCase):
         self.assertEqual(coturn["TURN_CHECK_PASSWORD"], PASSWORD)
         self.assertEqual(coturn["TURN_EXTERNAL_IP"], "198.51.100.7")
         self.assertEqual(coturn["TURN_MIN_PORT"], "49152")
+        # Le plan de développement permet les plages privées : la
+        # configuration écrite est celle que montre coturn_config.
+        self.assertEqual(coturn["TURN_ALLOW_PRIVATE"], "1")
         self.assertNotIn("TURN_GARDER_CONFIG", coturn)
         self.assertNotIn("TURN_CERT_FILE", coturn)
         ntfy = self.env_of("install_ntfy")
