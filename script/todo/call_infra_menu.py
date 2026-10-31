@@ -304,6 +304,16 @@ class CallInfraMenuMixin:
             return
         if plan.nothing_to_do:
             print(f"✓ {t('call_infra_nothing_to_change')}")
+            # Les services sont à jour, pas forcément le pare-feu : une règle
+            # refusée, ou posée sans que l'état ait pu s'écrire, se propose
+            # encore.
+            if ci.firewall_missing(facts, answers):
+                record = self._call_infra_firewall(
+                    host, facts, answers, facts.state.get("firewall")
+                )
+                self._call_infra_save_state(
+                    host, ci.with_firewall(facts.state, record)
+                )
             return
         self._call_infra_show_plan(plan)
         if not _yes(t("Install now? (y/N): ")):
@@ -485,13 +495,16 @@ class CallInfraMenuMixin:
 
     def _call_infra_firewall(self, host, facts, answers, previous):
         """`state["firewall"]` après l'aperçu des règles et, sur un oui,
-        leur ajout. Sans oui, les règles déjà consignées restent : elles
-        sont encore sur l'hôte et la désinstallation doit les retirer."""
+        leur ajout. Sans oui, les règles déjà consignées restent, avec
+        celles qu'un passage a posées sans pouvoir les consigner
+        (`facts.firewall_pending`) : elles sont encore sur l'hôte et la
+        désinstallation doit les retirer."""
         kind = facts.firewall
         rules = ci.firewall_rules(answers)
         chain = facts.nft_chains[0] if len(facts.nft_chains) == 1 else None
         preview = ci.firewall_preview(kind, rules, chain)
-        record = ci.firewall_record(kind, "", previous)
+        pending = facts.firewall_pending
+        record = ci.firewall_record(kind, "", previous, pending)
         if preview:
             print(
                 f"\n{t('Firewall')} ({kind}) : {t('call_infra_firewall_preview')}"
@@ -504,7 +517,7 @@ class CallInfraMenuMixin:
                 )
                 if result is not None:
                     code, out = result
-                    record = ci.firewall_record(kind, out, previous)
+                    record = ci.firewall_record(kind, out, previous, pending)
                     names = {name for name, _ in ci.marker_lines(out)}
                     if "FIREWALL_MANUAL" in names:
                         print(f"⚠ {t('call_infra_firewall_manual')}")
@@ -521,6 +534,7 @@ class CallInfraMenuMixin:
     def _call_infra_save_state(self, host, state):
         result = self._call_infra_run(host, ci.state_write_script(state))
         if result is None:
+            print(f"✗ {t('call_infra_state_not_saved')}")
             return False
         saved = [v for n, v in ci.marker_lines(result[1]) if n == "SAVED"]
         if result[0] != 0 or saved[-1:] != ["yes"]:
@@ -604,7 +618,10 @@ class CallInfraMenuMixin:
         if facts is None:
             return
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        if not isinstance(facts.state, dict):
+        # Les règles qu'un passage a posées sans pouvoir les consigner
+        # partent avec les autres.
+        state = ci.merge_pending_firewall(facts.state, facts.firewall_pending)
+        if not isinstance(state, dict):
             result = self._call_infra_run(
                 host, ci.uninstall_script(None, False, stamp)
             )
@@ -623,17 +640,17 @@ class CallInfraMenuMixin:
             return
         # L'état vient de l'hôte : il est validé avant toute question.
         try:
-            ci.uninstall_script(facts.state, False, stamp)
+            ci.uninstall_script(state, False, stamp)
         except ci.Refusal as refusal:
             self._call_infra_refuse(refusal)
             return
-        self._call_infra_show_uninstall(facts.state)
+        self._call_infra_show_uninstall(state)
         remove_data = _yes(t("call_infra_ask_remove_data"))
         if not _yes(t("Uninstall now? (y/N): ")):
             print(t("Nothing uninstalled."))
             return
         result = self._call_infra_run(
-            host, ci.uninstall_script(facts.state, remove_data, stamp)
+            host, ci.uninstall_script(state, remove_data, stamp)
         )
         if result is not None:
             self._call_infra_uninstalled(*result)

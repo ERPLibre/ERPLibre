@@ -1643,6 +1643,66 @@ class TestFirewall(unittest.TestCase):
         self.assertEqual(ci.parse_probe(DEBIAN_PROBE).nft_chains, ())
 
 
+class TestPendingFirewall(unittest.TestCase):
+    PENDING = (
+        ("ufw", rule("udp", "3478", "coturn")),
+        ("nftables", rule("tcp", "8080", "ntfy")),
+    )
+
+    def test_record_merges_the_pending_rules_of_its_kind(self):
+        record = ci.firewall_record("ufw", "", None, self.PENDING)
+        self.assertEqual(record["rules"], [["udp", "3478", "coturn"]])
+
+    def test_uninstall_state_carries_the_pending_rules(self):
+        state = installed_state(firewall=ufw_record("udp 49152:49252 coturn"))
+        merged = ci.merge_pending_firewall(state, self.PENDING)
+        self.assertEqual(
+            set(ci.rules_from_state(merged)),
+            {
+                rule("udp", "3478", "coturn"),
+                rule("udp", "49152:49252", "coturn"),
+            },
+        )
+        self.assertEqual(
+            ci.rules_from_state(state), (rule("udp", "49152:49252", "coturn"),)
+        )
+        bare = ci.merge_pending_firewall(installed_state(), self.PENDING[1:])
+        self.assertEqual(bare["firewall"]["kind"], "nftables")
+        self.assertIs(ci.merge_pending_firewall(None, self.PENDING), None)
+
+    def test_firewall_missing(self):
+        ans = answers()
+        full = ci.firewall_record(
+            "ufw",
+            "".join(
+                f"@@FIREWALL_ADDED {r.proto} {r.port} {r.service}\n"
+                for r in ci.firewall_rules(ans)
+            ),
+        )
+        recorded = base_facts(
+            firewall="ufw", state=installed_state(ans, firewall=full)
+        )
+        self.assertFalse(ci.firewall_missing(recorded, ans))
+        bare = base_facts(firewall="ufw", state=installed_state(ans))
+        self.assertTrue(ci.firewall_missing(bare, ans))
+        pending = dataclasses.replace(
+            recorded, firewall_pending=self.PENDING[:1]
+        )
+        self.assertTrue(ci.firewall_missing(pending, ans))
+        for kind in ("none", "unknown"):
+            self.assertFalse(
+                ci.firewall_missing(
+                    dataclasses.replace(bare, firewall=kind), ans
+                )
+            )
+        # nftables sans chaîne unique : rien à proposer.
+        self.assertFalse(
+            ci.firewall_missing(
+                dataclasses.replace(bare, firewall="nftables"), ans
+            )
+        )
+
+
 class TestFirewallRun(unittest.TestCase):
     """Scripts du pare-feu joués pour de vrai : `nft` et `ufw` sont des
     bouchons qui notent leurs appels, la racine est un dossier temporaire."""
@@ -1887,7 +1947,7 @@ class TestFirewallRun(unittest.TestCase):
             self.assertEqual(handle.read(), ci.MARKER + "\n" + other + "\n")
 
     def test_ufw_allow_skips_a_rule_the_user_already_has(self):
-        script = ci.firewall_script("ufw", self.RULES, "allow")
+        script = ci.firewall_script("ufw", self.RULES, "allow", root=self.root)
         done = self.run_script(script, added=UFW_ADDED)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(
@@ -1907,7 +1967,7 @@ class TestFirewallRun(unittest.TestCase):
         )
 
     def test_ufw_allow_never_rewrites_another_action_on_the_port(self):
-        script = ci.firewall_script("ufw", self.RULES, "allow")
+        script = ci.firewall_script("ufw", self.RULES, "allow", root=self.root)
         done = self.run_script(script, added=UFW_ADDED_OTHER_ACTIONS)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.calls(), ["show added"])
@@ -1919,7 +1979,9 @@ class TestFirewallRun(unittest.TestCase):
         self.assertEqual(ci.firewall_record("ufw", done.stdout)["rules"], [])
 
     def test_ufw_delete_leaves_another_action_on_the_port(self):
-        script = ci.firewall_script("ufw", self.RULES, "delete")
+        script = ci.firewall_script(
+            "ufw", self.RULES, "delete", root=self.root
+        )
         done = self.run_script(script, added=UFW_ADDED_OTHER_ACTIONS)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.calls(), ["show added"])
@@ -1928,7 +1990,7 @@ class TestFirewallRun(unittest.TestCase):
         )
 
     def test_ufw_rule_updated_is_never_recorded(self):
-        script = ci.firewall_script("ufw", self.RULES, "allow")
+        script = ci.firewall_script("ufw", self.RULES, "allow", root=self.root)
         done = self.run_script(
             script,
             added=UFW_ADDED.split("\n", 1)[0] + "\n",
@@ -1941,7 +2003,9 @@ class TestFirewallRun(unittest.TestCase):
         self.assertEqual(ci.firewall_record("ufw", done.stdout)["rules"], [])
 
     def test_ufw_delete_only_removes_the_tool_rules(self):
-        script = ci.firewall_script("ufw", self.RULES, "delete")
+        script = ci.firewall_script(
+            "ufw", self.RULES, "delete", root=self.root
+        )
         done = self.run_script(script, added=UFW_ADDED)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.calls(), ["show added", "delete allow 3478/udp"])
@@ -1949,6 +2013,78 @@ class TestFirewallRun(unittest.TestCase):
         self.assertIn("FIREWALL_REMOVED udp 3478 coturn", markers)
         self.assertIn("FIREWALL_ABSENT udp 49152:49252 coturn", markers)
         self.assertIn("FIREWALL_FOREIGN tcp 8080 ntfy", markers)
+
+    def pending_firewall(self):
+        path = os.path.join(self.root, ci.PENDING_DIR.lstrip("/"), "firewall")
+        if not os.path.exists(path):
+            return None
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        with open(path) as handle:
+            return sorted(set(handle.read().splitlines()))
+
+    def test_ufw_rules_are_recorded_in_the_run_that_adds_them(self):
+        # Un enregistrement de l'état raté ensuite ne les perd pas : la
+        # sonde suivante relit cette fiche.
+        script = ci.firewall_script("ufw", self.RULES, "allow", root=self.root)
+        done = self.run_script(script, added=UFW_ADDED)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(
+            self.pending_firewall(),
+            ["ufw udp 3478 coturn", "ufw udp 49152:49252 coturn"],
+        )
+
+    def test_nft_rules_are_recorded_in_the_run_that_adds_them(self):
+        done = self.run_script(
+            self.nft(), ruleset=NFT_ONE_DROP, handles=NFT_HANDLES
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(
+            self.pending_firewall(),
+            [
+                "nftables tcp 8080 ntfy",
+                "nftables udp 3478 coturn",
+                "nftables udp 49152:49252 coturn",
+            ],
+        )
+
+    def test_a_failed_nft_insert_records_no_pending_rule(self):
+        done = self.run_script(self.nft(), ruleset=NFT_ONE_DROP, NFT_F_RC="1")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIsNone(self.pending_firewall())
+
+    def test_state_write_clears_the_pending_rules(self):
+        write(
+            os.path.join(self.root, ci.PENDING_DIR.lstrip("/"), "firewall"),
+            "ufw udp 3478 coturn\n",
+            0o600,
+        )
+        write(os.path.join(self.stubs, "chown"), "#!/bin/sh\nexit 0\n")
+        done = self.run_script(
+            ci.state_write_script({"version": 1}, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIsNone(self.pending_firewall())
+
+    def test_probe_reads_the_pending_rules(self):
+        write(
+            os.path.join(self.root, ci.PENDING_DIR.lstrip("/"), "firewall"),
+            "ufw udp 3478 coturn\nufw udp 3478 coturn\nufw tcp 22 ntfy\n"
+            "nftables tcp 8080 ntfy\n",
+            0o600,
+        )
+        for name in ("systemctl", "ss", "ip", "iptables", "nft", "ufw"):
+            write(os.path.join(self.stubs, name), "#!/bin/sh\nexit 1\n")
+        done = self.run_script(ci.probe_script(root=self.root))
+        facts = ci.parse_probe(done.stdout)
+        # Une règle sur le port de ssh est écartée, une répétée compte une
+        # fois.
+        self.assertEqual(
+            facts.firewall_pending,
+            (
+                ("ufw", rule("udp", "3478", "coturn")),
+                ("nftables", rule("tcp", "8080", "ntfy")),
+            ),
+        )
 
     def test_state_write_script(self):
         state = {"version": 1, "firewall": {"kind": "ufw", "rules": []}}
@@ -3085,6 +3221,17 @@ class TestUninstall(unittest.TestCase):
         self.assertIn("systemctl try-restart coturn", calls)
         self.assertNotIn("systemctl stop coturn", calls)
         self.assertNotIn("systemctl disable coturn", calls)
+
+    def test_success_removes_the_pending_firewall_rules(self):
+        state = self.tool_installed_ntfy()
+        write(
+            self.path(ci.PENDING_DIR + "/firewall"),
+            "ufw tcp 8080 ntfy\n",
+            0o600,
+        )
+        done = self.uninstall(state, UNITS="ntfy", PKGS="ntfy")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(os.path.exists(self.path(ci.CALL_DIR)))
 
     def adopted_coturn(self, ans, **facts):
         """Un coturn adopté dont la copie de la configuration d'origine a
