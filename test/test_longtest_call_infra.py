@@ -218,7 +218,7 @@ class RienNInterrompLaCourse(unittest.TestCase):
         self.assertGreaterEqual(len(bornes), 3)
         couvertes = set()
         for noeud in ast.walk(arbre):
-            if isinstance(noeud, ast.Try):
+            if isinstance(noeud, ast.Try) and self._attrape_le_delai(noeud):
                 for corps in noeud.body:
                     for interne in ast.walk(corps):
                         if hasattr(interne, "lineno"):
@@ -226,6 +226,53 @@ class RienNInterrompLaCourse(unittest.TestCase):
         for ligne in bornes:
             with self.subTest(ligne=ligne):
                 self.assertIn(ligne, couvertes)
+
+    # Les classes dont TimeoutExpired hérite, elle comprise : un `except`
+    # qui en nomme une rattrape le délai dépassé.
+    PARENTS_DU_DELAI = {
+        "TimeoutExpired",
+        "SubprocessError",
+        "Exception",
+        "BaseException",
+    }
+
+    @classmethod
+    def _attrape_le_delai(cls, essai):
+        """Vrai quand un `except` de `essai` est nu ou nomme une classe de
+        PARENTS_DU_DELAI, seule ou dans un tuple."""
+        for gestion in essai.handlers:
+            if gestion.type is None:
+                return True
+            types = (
+                gestion.type.elts
+                if isinstance(gestion.type, ast.Tuple)
+                else [gestion.type]
+            )
+            noms = {ast.unparse(t).rsplit(".", 1)[-1] for t in types}
+            if noms & cls.PARENTS_DU_DELAI:
+                return True
+        return False
+
+    def test_a_handler_without_the_timeout_does_not_count(self):
+        """Un `except OSError` laisse passer TimeoutExpired : l'appel qu'il
+        entoure n'est pas rattrapé."""
+
+        def essai(source):
+            return ast.parse(source).body[0]
+
+        self.assertFalse(
+            self._attrape_le_delai(essai("try:\n x()\nexcept OSError:\n y"))
+        )
+        for gestion in (
+            "except (OSError, subprocess.SubprocessError):",
+            "except subprocess.TimeoutExpired:",
+            "except Exception:",
+            "except:",
+        ):
+            with self.subTest(gestion=gestion):
+                self.assertTrue(
+                    self._attrape_le_delai(essai(f"try:\n x()\n{gestion}\n y"))
+                )
 
     def test_every_run_is_bounded(self):
         """Un appel sans délai pend la course entière sur un ssh muet."""
