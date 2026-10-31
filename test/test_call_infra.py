@@ -4595,7 +4595,7 @@ class TestProductionProbe(unittest.TestCase):
         self.assertEqual(ci.parse_probe(bare).nginx["state"], "absent")
 
     def test_name_served_by_a_foreign_site_is_refused(self):
-        # Review Focus 4 : le nom est pris, le fichier est nommé.
+        # Le nom est pris : le refus nomme le fichier qui le sert.
         facts = ci.parse_probe(NGINX_PROBE)
         with self.assertRaises(ci.Refusal) as caught:
             ci.plan_install(facts, production(nginx="existing"), NOW)
@@ -5093,9 +5093,9 @@ class TestProductionInstall(unittest.TestCase):
     # --- coturn et la lignée --------------------------------------------
 
     def test_first_run_coturn_without_then_with_the_certificate(self):
-        # Ruling L2-4 : pas de TURN_ALT_TLS_PORT tant qu'aucun certificat
-        # n'existe ; coturn reprend la lignée après la délivrance. Le
-        # crochet ne le peut pas : aucun état ne nomme encore coturn.
+        # Pas de TURN_ALT_TLS_PORT tant qu'aucun certificat n'existe ;
+        # coturn reprend la lignée après la délivrance. Le crochet ne le
+        # peut pas : aucun état ne nomme encore coturn.
         plan = ci.plan_install(base_facts(), coturn_only(turns_443=True), NOW)
         done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
@@ -5235,9 +5235,9 @@ class TestProductionInstall(unittest.TestCase):
         self.assertIn(("ACTIVE", "nginx failed"), ci.marker_lines(done.stdout))
 
     def test_renewal_file_held_again_when_a_later_step_fails(self):
-        # Task 5 : install_certbot.sh remet le fichier mis de côté ; un
-        # échec après lui (crochet, nginx full, unité inactive) le remet de
-        # côté, faute d'état qui consigne Let's Encrypt.
+        # install_certbot.sh remet le fichier mis de côté ; un échec après
+        # lui (crochet, nginx full, unité inactive) le remet de côté, faute
+        # d'état qui consigne Let's Encrypt.
         unheld = f"@@CERTBOT_UNHELD {RENEWAL}\n" + CERTBOT_ISSUED
         for env in ({"RC_erplibre_call": "1"}, {"ACTIVE_nginx": "failed"}):
             with self.subTest(env=env):
@@ -5543,8 +5543,8 @@ class TestProductionInstall(unittest.TestCase):
         self.assertEqual(record["plugins_installed"], [])
 
     def test_admin_added_written_by_the_install_run(self):
-        # Lot 1 P4 : l'état de ce passage porte admin_added, sans attendre
-        # un second passage root.
+        # L'état de ce passage porte admin_added, sans attendre un second
+        # passage root.
         foreign = 'listen-http: ":8080"\n'
         write(self.path(ci.NTFY_CONFIG), foreign, 0o644)
         facts = base_facts(
@@ -5648,8 +5648,8 @@ class TestProductionInstall(unittest.TestCase):
         self.assertFalse(plan.nothing_to_do)
 
     def test_development_ntfy_drops_the_production_keys(self):
-        # Carry to T6 : de la production au développement, behind-proxy et
-        # web-root partent.
+        # De la production au développement, behind-proxy et web-root
+        # partent.
         prod = ci.ntfy_config(production())
         dev = ci.ntfy_config(answers(), existing=prod)
         keys = nm.read_yml_keys(dev)
