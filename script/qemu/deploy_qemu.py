@@ -1506,6 +1506,35 @@ class Depot:
             return dest.with_suffix(dest.suffix + ".part")
         return staging_dir() / (dest.name + ".part")
 
+    def _temoin(self, dest: Path) -> Path:
+        """Le témoin d'une publication en cours de `dest`, chez l'utilisateur.
+
+        Hors voie directe, la publication écrit `dest` sous son nom final
+        (vol-create puis vol-upload, ou install sous sudo) : rien n'y est
+        atomique. Le témoin est posé avant la première écriture et retiré
+        après la dernière ; un processus tué entre les deux (SIGKILL compris)
+        le laisse, et le passage suivant sait que `dest` est incomplet.
+        """
+        return staging_dir() / (dest.name + ".publication")
+
+    def publication_interrompue(self, dest: Path) -> bool:
+        """Vrai si `dest` est le reste d'une publication qui n'a pas fini."""
+        return self.mode != "direct" and self._temoin(dest).exists()
+
+    def _retirer_reste(self, dest: Path) -> bool:
+        """Retire un `dest` à moitié écrit, sans jamais sortir. Rend le
+        succès : appelé pendant qu'une exception remonte, un sys.exit ici
+        remplacerait l'erreur d'origine par la sienne."""
+        if self.mode == "volume":
+            cmd = ["virsh", "-c", LIBVIRT_URI, "vol-delete"]
+            cmd += ["--pool", self.pool, dest.name]
+            code, _out = self.runner.run(cmd, libvirt=True, capture=True)
+        else:
+            code, _out = self.runner.run(
+                ["rm", "-f", str(dest)], privileged=True, capture=True
+            )
+        return code == 0 or not dest.exists()
+
     def publish(self, src: Path, dest: Path) -> None:
         """Copie `src` sur `dest`, lisible par tous (0644). `src` reste.
 
@@ -1514,25 +1543,52 @@ class Depot:
         copie les octets tels quels, et vol-create-from convertit ensuite
         selon ce format déclaré — un qcow2 déclaré raw donnerait un disque
         illisible.
+
+        Hors voie directe, un échec en cours de route (commande en erreur,
+        Ctrl-C) retire ce qui a été écrit avant de laisser remonter
+        l'exception ; le témoin de `_temoin` couvre ce qu'aucune exception ne
+        signale.
         """
-        if self.mode == "volume":
-            taille = src.stat().st_size if src.exists() else 0
-            fmt = image_format(src)
-            self.delete(dest)
-            with fichier_xml_temporaire(
-                volume_xml(dest.name, str(taille), fmt, mode="0644"),
-                prefixe="erplibre-vol-",
-            ) as xml:
-                self.virsh("vol-create", self.pool, xml)
-            self.virsh("vol-upload", "--pool", self.pool, dest.name, str(src))
+        if self.mode == "direct":
+            self.runner.run(
+                ["install", "-D", "-m", "0644", str(src), str(dest)]
+            )
             return
-        self.runner.run(
-            ["install", "-D", "-m", "0644", str(src), str(dest)],
-            privileged=self.mode == "root",
-        )
+        if self.mode == "volume":
+            # vol-create refuse un nom déjà pris ; install, lui, remplace.
+            self.delete(dest)
+        temoin = self._temoin(dest)
+        if not self.runner.dry_run:
+            temoin.parent.mkdir(parents=True, exist_ok=True)
+            temoin.touch()
+        try:
+            if self.mode == "volume":
+                taille = src.stat().st_size if src.exists() else 0
+                fmt = image_format(src)
+                with fichier_xml_temporaire(
+                    volume_xml(dest.name, str(taille), fmt, mode="0644"),
+                    prefixe="erplibre-vol-",
+                ) as xml:
+                    self.virsh("vol-create", self.pool, xml)
+                self.virsh(
+                    "vol-upload", "--pool", self.pool, dest.name, str(src)
+                )
+            else:
+                self.runner.run(
+                    ["install", "-D", "-m", "0644", str(src), str(dest)],
+                    privileged=True,
+                )
+        except BaseException:
+            if self._retirer_reste(dest) and not self.runner.dry_run:
+                temoin.unlink(missing_ok=True)
+            raise
+        if not self.runner.dry_run:
+            temoin.unlink(missing_ok=True)
 
     def delete(self, dest: Path) -> None:
-        """Retire `dest` s'il existe."""
+        """Retire `dest` s'il existe, et le témoin d'une publication de
+        `dest` restée en plan : une fois `dest` retiré, il n'y a plus rien
+        d'incomplet à signaler."""
         if self.mode == "volume":
             if dest.exists():
                 self.virsh("vol-delete", "--pool", self.pool, dest.name)
@@ -1540,6 +1596,8 @@ class Depot:
             self.runner.run(["rm", "-f", str(dest)], privileged=True)
         elif not self.runner.dry_run:
             dest.unlink(missing_ok=True)
+        if self.mode != "direct" and not self.runner.dry_run:
+            self._temoin(dest).unlink(missing_ok=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -2753,7 +2811,22 @@ def download_image(
     octet tiré, et non comme une panne de réseau."""
     if isinstance(urls, str):
         urls = [urls]
-    if not remplace and image_en_cache(dest):
+    # Un fichier présent n'est une image complète que si sa publication a
+    # fini : un vol-upload coupé laisse un volume de la bonne taille, rempli
+    # de zéros ou d'un en-tête qcow2 vide, que rien d'autre ne distingue.
+    interrompue = (
+        depot is not None
+        and dest.exists()
+        and depot.publication_interrompue(dest)
+    )
+    if interrompue:
+        print(
+            f"  Image en cache incomplète (publication interrompue) :"
+            f" retirée, nouveau téléchargement : {dest}",
+            flush=True,
+        )
+        depot.delete(dest)
+    if not remplace and not interrompue and image_en_cache(dest):
         size_mb = dest.stat().st_size / 1024 / 1024
         print(
             f"  Image déjà présente ({size_mb:.0f} Mo), téléchargement"
@@ -2922,8 +2995,13 @@ class FichierPartiel:
         """Renomme le fichier complet par-dessus `dest` ; en voie volume, le
         publie par vol-upload puis retire la copie de l'utilisateur."""
         if self.depot is not None:
-            self.depot.publish(self.chemin, self.dest)
-            self.chemin.unlink(missing_ok=True)
+            try:
+                self.depot.publish(self.chemin, self.dest)
+            finally:
+                # Réussie ou non, l'étape ne resservira pas : chaque passage
+                # retélécharge depuis zéro, et elle pèse la taille de
+                # l'image.
+                self.chemin.unlink(missing_ok=True)
             return
         if self.runner is None:
             self.chemin.replace(self.dest)
@@ -3043,9 +3121,23 @@ def _telecharge_miroirs(
     # proprement sur une erreur HTTP. En mode `remplace`, `dest` porte
     # encore l'ancienne image ENTIÈRE : -C - y ajouterait la fin de la
     # nouvelle, d'où un curl sans -C -, qui réécrit le fichier depuis zéro.
-    # sudo seulement quand l'utilisateur n'écrit pas dans le cache.
+    #
+    # En voie volume, `dest` n'est pas inscriptible par l'utilisateur :
+    # l'image se télécharge chez lui, et se passe au déploiement comme
+    # image locale, qu'il convertit et téléverse sans root. Ailleurs, sudo
+    # seulement quand l'utilisateur n'écrit pas dans le cache.
     sudo = "" if part.direct else "sudo "
-    if remplace:
+    if part.depot is not None:
+        locale = staging_dir() / dest.name
+        resume = (
+            f"\n  Destination : {dest}"
+            f"\n  Télécharger l'image manuellement, sans droit particulier :"
+            f"\n    curl -fL -C - -o {locale} \\\n"
+            f"      {urls[0]}"
+            f"\n  puis relancez le déploiement avec {locale} en argument"
+            " positionnel."
+        )
+    elif remplace:
         resume = (
             f"\n  Destination : {dest} (ancienne image laissée en place)"
             f"\n  La remplacer manuellement :"
