@@ -650,6 +650,118 @@ class LeCheminDuMenu(unittest.TestCase):
         self.assertTrue(res["rien_a_faire"])
         self.assertEqual(1, len(hote.scripts))
 
+    def test_the_admin_added_to_an_adopted_ntfy_is_recorded(self):
+        """L'installateur crée l'administrateur dans un ntfy adopté : l'état
+        le dit, pour que la désinstallation l'en retire comme le menu."""
+        etrangere = 'listen-http: ":8080"\nauth-default-access: "deny-all"\n'
+        sonde = (
+            DEBIAN_UFW_PROBE.replace("ufw", "none")
+            .replace(
+                "@@PORT tcp 22 sshd",
+                "@@PORT tcp 22 sshd\n@@PORT tcp 8080 ntfy",
+            )
+            .replace(
+                "@@NTFY - - /etc/ntfy/server.yml",
+                "@@NTFY ntfy active /etc/ntfy/server.yml\n"
+                f"@@FILE /etc/ntfy/server.yml {b64(etrangere)}",
+            )
+        )
+        hote = Hote(
+            (0, sonde),
+            (
+                0,
+                "@@ADMIN_PASSWORD Mot-de-passe-invente-42\n"
+                "@@ACTIVE coturn active\n@@ACTIVE ntfy active\n@@SAVED yes",
+            ),
+            (0, "@@SAVED yes\n"),
+        )
+        res = lt.installer("vm", self.ans, self.log, executer=hote)
+        self.assertTrue(res["ok"], res)
+        self.assertIn("ntfy", res["adoptes"])
+        self.assertIs(True, res["etat"]["services"]["ntfy"]["admin_added"])
+        self.assertEqual(ci.state_write_script(res["etat"]), hote.scripts[2])
+
+    def test_rules_left_pending_by_a_cut_run_are_recorded(self):
+        """Une règle posée par un passage dont l'état ne s'est pas écrit
+        (`pending/firewall`) entre à l'état, même quand le pare-feu de ce
+        passage ne la remontre pas."""
+        sonde = DEBIAN_UFW_PROBE.replace(
+            "@@END", "@@FIREWALL_PENDING ufw tcp 5349 coturn\n@@END"
+        )
+        hote = Hote(
+            (0, sonde),
+            (0, "@@ACTIVE coturn active\n@@ACTIVE ntfy active\n@@SAVED yes"),
+            (0, "@@FIREWALL_PERSISTED yes\n@@END\n"),
+            (0, "@@SAVED yes\n"),
+        )
+        res = lt.installer("vm", self.ans, self.log, executer=hote)
+        self.assertTrue(res["ok"], res)
+        self.assertIn(
+            ["tcp", "5349", "coturn"], res["etat"]["firewall"]["rules"]
+        )
+
+    def _sonde_a_jour(self, pare_feu, etat=None, fin=""):
+        """La sonde d'un hôte où les deux services sont déjà ceux de
+        `self.ans` : le plan n'y trouve rien à changer."""
+        facts = ci.parse_probe(DEBIAN_UFW_PROBE.replace("ufw", "none"))
+        plan = ci.plan_install(facts, self.ans, NOW)
+        if etat is None:
+            etat = ci.written_state(plan, "20261030-000000")
+        return (
+            "@@OS debian 13 \n@@SYSTEMD yes\n@@HOSTNAME vm\n"
+            f"@@ADDR {IP}\n"
+            "@@PORT udp 3478 turnserver\n@@PORT tcp 3478 turnserver\n"
+            "@@PORT tcp 8080 ntfy\n"
+            "@@COTURN coturn active /etc/turnserver.conf\n"
+            "@@NTFY ntfy active /etc/ntfy/server.yml\n"
+            f"@@FILE /etc/turnserver.conf {b64(ci.coturn_config(self.ans))}\n"
+            f"@@FILE /etc/ntfy/server.yml {b64(plan.configs['ntfy'])}\n"
+            f"@@FIREWALL {pare_feu}\n"
+            f"@@STATE {b64(json.dumps(etat))}\n{fin}@@END\n"
+        ), etat
+
+    def test_nothing_to_change_still_offers_missing_rules(self):
+        """Services à jour, règles absentes de l'état : la relance pose et
+        consigne le pare-feu, comme le menu."""
+        sonde, etat = self._sonde_a_jour("ufw")
+        regles = ci.firewall_rules(self.ans)
+        ajout = "".join(
+            f"@@FIREWALL_ADDED {r.proto} {r.port} {r.service}\n"
+            for r in regles
+        )
+        hote = Hote(
+            (0, sonde),
+            (0, ajout + "@@FIREWALL_PERSISTED yes\n@@END\n"),
+            (0, "@@SAVED yes\n"),
+        )
+        res = lt.installer("vm", self.ans, self.log, executer=hote)
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(res["rien_a_faire"])
+        self.assertEqual(3, len(hote.scripts))
+        self.assertEqual(
+            ci.firewall_script("ufw", regles, "allow"), hote.scripts[1]
+        )
+        self.assertEqual(len(regles), len(res["etat"]["firewall"]["rules"]))
+        self.assertEqual(ci.state_write_script(res["etat"]), hote.scripts[2])
+        self.assertEqual(etat["services"], res["etat"]["services"])
+
+    def test_nothing_to_change_with_rules_recorded_runs_nothing(self):
+        sonde, etat = self._sonde_a_jour("ufw")
+        record = ci.firewall_record(
+            "ufw",
+            "".join(
+                f"@@FIREWALL_ADDED {r.proto} {r.port} {r.service}\n"
+                for r in ci.firewall_rules(self.ans)
+            ),
+        )
+        sonde, _etat = self._sonde_a_jour(
+            "ufw", ci.with_firewall(etat, record)
+        )
+        hote = Hote((0, sonde))
+        res = lt.installer("vm", self.ans, self.log, executer=hote)
+        self.assertTrue(res["ok"] and res["rien_a_faire"], res)
+        self.assertEqual(1, len(hote.scripts))
+
     def test_a_refusal_is_a_failed_plan(self):
         hote = Hote((0, DEBIAN_UFW_PROBE.replace("debian 13", "fedora 43")))
         res = lt.installer("vm", self.ans, self.log, executer=hote)
@@ -679,6 +791,79 @@ class LeCheminDuMenu(unittest.TestCase):
         self.assertEqual(
             "echec", lt.desinstaller("vm", True, self.log, executer=hote)
         )
+
+    def test_uninstall_removes_rules_left_pending(self):
+        """Une règle posée sans avoir été consignée part avec les autres."""
+        facts = ci.parse_probe(DEBIAN_UFW_PROBE.replace("ufw", "none"))
+        etat = ci.written_state(
+            ci.plan_install(facts, self.ans, NOW), "20261030-000000"
+        )
+        sonde = DEBIAN_UFW_PROBE.replace(
+            "@@END",
+            f"@@STATE {b64(json.dumps(etat))}\n"
+            "@@FIREWALL_PENDING ufw tcp 5349 coturn\n@@END",
+        )
+        hote = Hote((0, sonde), (0, "@@REMOVED state\n@@DONE yes\n"))
+        self.assertEqual(
+            "fait", lt.desinstaller("vm", True, self.log, executer=hote)
+        )
+        # Le script du pare-feu voyage en base64 dans celui de la
+        # désinstallation.
+        retrait = ci.firewall_script(
+            "ufw", [ci.Rule("tcp", "5349", "coturn")], "delete"
+        )
+        self.assertTrue(b64(retrait) in hote.scripts[1], "règle oubliée")
+
+
+class LeMemeCheminQueLeMenu(unittest.TestCase):
+    """Chaque brique de `call_infra` que les étapes du menu appellent est
+    appelée ici aussi : une brique ajoutée au menu et oubliée par le test
+    long ferait certifier un chemin que le produit ne prend plus."""
+
+    ETAPES_DU_MENU = (
+        "_call_infra_probe",
+        "_call_infra_install",
+        "_call_infra_installed",
+        "_call_infra_firewall",
+        "_call_infra_save_state",
+        "_call_infra_report",
+        "_call_infra_uninstall",
+        "_call_infra_uninstalled",
+    )
+    # Ce qui ne sert qu'à l'écran du menu : le texte d'un refus, les notes
+    # affichées sous l'aperçu du pare-feu.
+    ECRAN_SEUL = {"SUPPORTED", "firewall_notes"}
+
+    def test_every_brick_of_the_menu_steps_is_called(self):
+        menu = ast.parse(
+            (RACINE / "script/todo/call_infra_menu.py").read_text(
+                encoding="utf-8"
+            )
+        )
+        etapes = {
+            n.name: n
+            for n in ast.walk(menu)
+            if isinstance(n, ast.FunctionDef) and n.name in self.ETAPES_DU_MENU
+        }
+        self.assertEqual(set(self.ETAPES_DU_MENU), set(etapes))
+        appelees = {
+            n.attr
+            for n in ast.walk(ast.parse(SRC))
+            if isinstance(n, ast.Attribute)
+            and isinstance(n.value, ast.Name)
+            and n.value.id == "ci"
+        }
+        for nom, etape in etapes.items():
+            briques = {
+                a.attr
+                for a in ast.walk(etape)
+                if isinstance(a, ast.Attribute)
+                and isinstance(a.value, ast.Name)
+                and a.value.id == "ci"
+            }
+            for brique in sorted(briques - self.ECRAN_SEUL):
+                with self.subTest(etape=nom, brique=brique):
+                    self.assertIn(brique, appelees)
 
 
 class LeTransport(unittest.TestCase):

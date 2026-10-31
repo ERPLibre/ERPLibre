@@ -339,15 +339,44 @@ def _sonde(cible, log, executer):
         return None
 
 
+def _pare_feu(cible, facts, answers, precedent, log, executer):
+    """`state["firewall"]` après l'étape du pare-feu du menu, avec son
+    « oui » : les règles sont ajoutées quand le pare-feu actif en montre un
+    aperçu. Celles de `precedent` (la fiche de l'état) et celles qu'un
+    passage a posées sans pouvoir les consigner (`facts.firewall_pending`)
+    restent. None quand le script du pare-feu échoue."""
+    kind = facts.firewall
+    regles = ci.firewall_rules(answers)
+    chaine = facts.nft_chains[0] if len(facts.nft_chains) == 1 else None
+    pending = facts.firewall_pending
+    if not ci.firewall_preview(kind, regles, chaine):
+        return ci.firewall_record(kind, "", precedent, pending)
+    code, sortie = executer(
+        cible, ci.firewall_script(kind, regles, "allow"), log, DELAI_SCRIPT
+    )
+    if code != 0:
+        return None
+    return ci.firewall_record(kind, sortie, precedent, pending)
+
+
+def _ecrire_etat(cible, etat, log, executer):
+    """Vrai quand `state_write_script` a écrit `etat` (`@@SAVED yes`)."""
+    code, sortie = executer(
+        cible, ci.state_write_script(etat), log, DELAI_SCRIPT
+    )
+    sauve = [v.strip() for n, v in ci.marker_lines(sortie) if n == "SAVED"]
+    return code == 0 and sauve[-1:] == ["yes"]
+
+
 def installer(cible, answers, log, executer=distant, maintenant=None):
     """Le chemin du menu, de la sonde à l'état écrit.
 
     Rend {"ok", "etape", "rien_a_faire", "adoptes", "etat"} : `etape` nomme
     ce qui a échoué (sonde, plan, install, pare-feu, etat), `adoptes` les
     services dont la configuration étrangère a été sauvée, `etat` l'état
-    écrit sur l'hôte. Le pare-feu reçoit ses règles quand il en montre
-    (le « oui » du menu) ; sans aperçu, la consignation reste celle de
-    l'état précédent."""
+    écrit sur l'hôte (None quand rien n'a été écrit). Une relance où les
+    services sont à jour passe encore par le pare-feu tant qu'une règle
+    manque à l'état (`firewall_missing`), comme le menu."""
     res = {
         "ok": False,
         "etape": "sonde",
@@ -371,40 +400,30 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
     res["adoptes"] = plan.adopt
     if plan.nothing_to_do:
         _ajouter(log, "✓ rien à changer")
-        res.update(ok=True, etape="", rien_a_faire=True)
-        return res
-    res["etape"] = "install"
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    code, sortie = executer(
-        cible, ci.install_script(plan, stamp), log, DELAI_INSTALL
-    )
-    sauve = [v.strip() for n, v in ci.marker_lines(sortie) if n == "SAVED"]
-    if code != 0 or sauve[-1:] != ["yes"]:
-        return res
-    etat = ci.written_state(plan, stamp)
-    kind = facts.firewall
-    regles = ci.firewall_rules(answers)
-    chaine = facts.nft_chains[0] if len(facts.nft_chains) == 1 else None
-    precedent = etat.get("firewall")
-    record = ci.firewall_record(kind, "", precedent)
-    if ci.firewall_preview(kind, regles, chaine):
-        res["etape"] = "pare-feu"
-        code, sortie = executer(
-            cible,
-            ci.firewall_script(kind, regles, "allow"),
-            log,
-            DELAI_SCRIPT,
-        )
-        if code != 0:
+        res["rien_a_faire"] = True
+        if not ci.firewall_missing(facts, answers):
+            res.update(ok=True, etape="")
             return res
-        record = ci.firewall_record(kind, sortie, precedent)
+        etat = facts.state
+    else:
+        res["etape"] = "install"
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        code, sortie = executer(
+            cible, ci.install_script(plan, stamp), log, DELAI_INSTALL
+        )
+        sauve = [v.strip() for n, v in ci.marker_lines(sortie) if n == "SAVED"]
+        if code != 0 or sauve[-1:] != ["yes"]:
+            return res
+        etat = ci.mark_admin_added(ci.written_state(plan, stamp), sortie)
+    res["etape"] = "pare-feu"
+    record = _pare_feu(
+        cible, facts, answers, etat.get("firewall"), log, executer
+    )
+    if record is None:
+        return res
     etat = ci.with_firewall(etat, record)
     res["etape"] = "etat"
-    code, sortie = executer(
-        cible, ci.state_write_script(etat), log, DELAI_SCRIPT
-    )
-    sauve = [v.strip() for n, v in ci.marker_lines(sortie) if n == "SAVED"]
-    if code != 0 or sauve[-1:] != ["yes"]:
+    if not _ecrire_etat(cible, etat, log, executer):
         return res
     res.update(ok=True, etape="", etat=etat)
     return res
@@ -439,7 +458,10 @@ def desinstaller(cible, remove_data, log, executer=distant):
     if facts is None:
         return "echec"
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    etat = facts.state if isinstance(facts.state, dict) else None
+    # Les règles qu'un passage a posées sans pouvoir les consigner partent
+    # avec les autres.
+    etat = ci.merge_pending_firewall(facts.state, facts.firewall_pending)
+    etat = etat if isinstance(etat, dict) else None
     try:
         script = ci.uninstall_script(etat, remove_data, stamp)
     except ci.Refusal as refus:
