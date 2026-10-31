@@ -11,7 +11,9 @@ import io
 import os
 import re
 import shlex
+import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -342,6 +344,99 @@ class TestRunners(unittest.TestCase):
         passed = run.call_args.kwargs["env"]
         self.assertEqual(passed.get("PATH"), "/opt/inexistant/bin")
         self.assertFalse([k for k in passed if k.startswith("NTFY_")])
+
+    SECRET_SCRIPT = "printf %s 'Q2xlZkludmVudGVlQUJD' > /dev/null\necho fini\n"
+
+    def test_root_script_runs_from_a_private_file_not_argv(self):
+        # `ps` montre l'argv à tout compte local : le script lancé en root
+        # n'y passe pas, seul le chemin d'un fichier 0600 y figure.
+        seen = {}
+
+        def tee(argv, env=None):
+            path = argv[-1]
+            seen["argv"] = argv
+            seen["mode"] = os.stat(path).st_mode & 0o777
+            with open(path) as handle:
+                seen["text"] = handle.read()
+            return 0, ""
+
+        with mock.patch.object(nm, "_tee_run", side_effect=tee):
+            nm.LocalHost().run(self.SECRET_SCRIPT, None)
+        self.assertEqual(seen["argv"][:2], ["sudo", "sh"])
+        self.assertEqual(len(seen["argv"]), 3)
+        self.assertEqual(seen["mode"], 0o600)
+        self.assertEqual(seen["text"], self.SECRET_SCRIPT)
+        self.assertFalse(os.path.exists(seen["argv"][-1]))
+        for arg in seen["argv"]:
+            self.assertNotIn("Q2xlZkludmVudGVlQUJD", arg)
+
+    def test_root_script_over_ssh_is_staged_on_stdin(self):
+        staged = {}
+
+        def stage(argv, **kwargs):
+            staged["argv"] = argv
+            staged["input"] = kwargs.get("input")
+            return mock.Mock(returncode=0, stdout=b"/tmp/tmp.Ab12Cd\n")
+
+        with mock.patch.object(
+            nm.subprocess, "run", side_effect=stage
+        ), mock.patch.object(nm, "_tee_run", return_value=(0, "ok")) as tee:
+            result = nm.SshHost("alice@ntfy.exemple.test").run(
+                self.SECRET_SCRIPT, None
+            )
+        self.assertEqual(result, (0, "ok"))
+        self.assertEqual(staged["input"], self.SECRET_SCRIPT.encode())
+        self.assertEqual(
+            staged["argv"][:3], ["ssh", "-T", "alice@ntfy.exemple.test"]
+        )
+        run = tee.call_args.args[0]
+        self.assertEqual(run[:3], ["ssh", "-t", "alice@ntfy.exemple.test"])
+        self.assertIn("sudo sh", run[3])
+        self.assertIn("/tmp/tmp.Ab12Cd", run[3])
+        for arg in staged["argv"] + run:
+            self.assertNotIn("Q2xlZkludmVudGVlQUJD", arg)
+
+    def test_ssh_staging_failure_runs_nothing(self):
+        for done in (
+            mock.Mock(returncode=255, stdout=b""),
+            mock.Mock(returncode=0, stdout=b"/tmp/x y; rm -rf /\n"),
+        ):
+            with mock.patch.object(
+                nm.subprocess, "run", return_value=done
+            ), mock.patch.object(
+                nm, "_tee_run"
+            ) as tee, contextlib.redirect_stdout(
+                io.StringIO()
+            ):
+                code, _out = nm.SshHost("alice@ntfy.exemple.test").run(
+                    "true", None
+                )
+            self.assertEqual(code, 255)
+            tee.assert_not_called()
+
+    def test_ssh_staged_run_removes_its_directory(self):
+        # Le dossier est retiré par le compte de connexion, après sudo, que
+        # sudo ait réussi ou non ; le code rendu reste celui de sudo.
+        remote = nm.SshHost("h").staged_argv("/tmp/tmp.Ab12Cd")[3]
+        with tempfile.TemporaryDirectory() as tmp:
+            stubs = os.path.join(tmp, "stubs")
+            os.makedirs(stubs)
+            staged = os.path.join(tmp, "staged")
+            os.makedirs(staged)
+            with open(os.path.join(staged, "s"), "w") as handle:
+                handle.write("echo dans-le-script; exit 4\n")
+            with open(os.path.join(stubs, "sudo"), "w") as handle:
+                handle.write('#!/bin/sh\nexec "$@"\n')
+            os.chmod(os.path.join(stubs, "sudo"), 0o755)
+            done = subprocess.run(
+                ["sh", "-c", remote.replace("/tmp/tmp.Ab12Cd", staged)],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, PATH=stubs + ":" + os.environ["PATH"]),
+            )
+            self.assertEqual(done.returncode, 4)
+            self.assertIn("dans-le-script", done.stdout)
+            self.assertFalse(os.path.exists(staged))
 
     def test_restore_command_names_the_backup(self):
         command = nm.restore_command("/etc/ntfy/server.yml", "20260101")
