@@ -88,6 +88,9 @@ NTFY_TLS_DIR = "/etc/ntfy/tls"
 NTFY_AUTH_FILE = "/var/lib/ntfy/user.db"
 NTFY_HTTP_PORT = 8080
 NTFY_HTTPS_PORT = 8443
+# Le compte administrateur qu'install_ntfy.sh crée quand il manque ; il
+# imprime alors `@@ADMIN_PASSWORD`, une seule fois.
+NTFY_ADMIN_USER = "erplibre"
 
 # Nom du processus qui tient les ports d'un service (colonne de `ss -p`).
 PROCESSES = {"coturn": "turnserver", "ntfy": "ntfy"}
@@ -987,7 +990,13 @@ def _origin(current, prior_record):
         if isinstance(source, dict) and "installed_by_tool" in source:
             was_active = source.get("was_active")
             was_enabled = source.get("was_enabled")
-            return {
+            # `admin_added` (voir `mark_admin_added`) ne vit que dans l'état.
+            admin = (
+                {"admin_added": True}
+                if source.get("admin_added") is True
+                else {}
+            )
+            return admin | {
                 "installed_by_tool": bool(source.get("installed_by_tool")),
                 "adopted": bool(source.get("adopted")),
                 "backup": source.get("backup"),
@@ -1146,6 +1155,29 @@ def written_state(plan, stamp):
         ):
             record["backup"] = f"{record['config']}.bak-{stamp}"
     return state
+
+
+def mark_admin_added(state, output):
+    """Copie de `state` dont le ntfy adopté porte `admin_added: true` quand
+    `output`, celle du script d'installation, montre que l'installateur y a
+    créé NTFY_ADMIN_USER (`@@ADMIN_PASSWORD`) : la base des comptes d'un ntfy
+    adopté reste à la désinstallation, ce compte-là doit en partir.
+    `state` tel quel sinon."""
+    created = any(
+        name == "ADMIN_PASSWORD" and value.strip()
+        for name, value in marker_lines(output or "")
+    )
+    services = state.get("services") if isinstance(state, dict) else None
+    record = services.get("ntfy") if isinstance(services, dict) else None
+    if (
+        not created
+        or not isinstance(record, dict)
+        or not record.get("adopted")
+    ):
+        return state
+    marked = copy.deepcopy(state)
+    marked["services"]["ntfy"]["admin_added"] = True
+    return marked
 
 
 def state_answers(state):
@@ -2606,6 +2638,7 @@ def _uninstall_records(state):
                     "backup": backup,
                     "was_active": was_active,
                     "was_enabled": was_enabled,
+                    "admin_added": record.get("admin_added") is True,
                     "tls_files": sorted(tls_files),
                 },
             )
@@ -2708,6 +2741,27 @@ def _ntfy_tool_files_lines():
     ]
 
 
+def _admin_removal_lines():
+    """Retrait de NTFY_ADMIN_USER d'un ntfy adopté, sous la configuration
+    de l'outil, encore en place, et sous le compte du service quand il
+    existe (comme install_ntfy.sh) : root laisserait dans le dossier de la
+    base des fichiers que ntfy ne peut plus écrire. Un compte déjà parti
+    ne fait rien."""
+    config, user = _host(NTFY_CONFIG), shlex.quote(NTFY_ADMIN_USER)
+    found = shlex.quote(f"^user {NTFY_ADMIN_USER} ")
+    return [
+        "if command -v ntfy >/dev/null 2>&1; then",
+        '  U=; id ntfy >/dev/null 2>&1 && U="runuser -u ntfy --"',
+        f"  if $U ntfy user --config {config} list 2>&1 | grep -q {found};"
+        " then",
+        f"    if $U ntfy user --config {config} del {user} >/dev/null 2>&1;"
+        f' then echo "@@REMOVED account {NTFY_ADMIN_USER}";',
+        "    else failed account-ntfy; fi",
+        "  fi",
+        "fi",
+    ]
+
+
 def _restore_lines(svc, record):
     """Copie remise par `mv` (droits et propriétaire de l'original) ; une
     copie disparue alors que la configuration de l'outil est en place se
@@ -2723,8 +2777,10 @@ def _restore_lines(svc, record):
     unit = shlex.quote(record["unit"])
     lines = []
     if backup:
+        lines += [f"if [ -f {_host(backup)} ]; then"]
+        if svc == "ntfy" and record.get("admin_added"):
+            lines += ["  " + line for line in _admin_removal_lines()]
         lines += [
-            f"if [ -f {_host(backup)} ]; then",
             f"  if mv -f {_host(backup)} {_host(config)}; then"
             f' echo "@@RESTORED {config} {backup}";',
             f"  else failed restore-{svc}; fi",
@@ -2888,7 +2944,8 @@ def uninstall_script(state, remove_data, stamp, root=""):
 
     La base des comptes de ntfy n'est retirée, avec `remove_data`, que si
     l'outil a posé ntfy : celle d'un ntfy adopté porte les comptes et
-    jetons d'avant lui. Refusal `call_infra_state_version` ou
+    jetons d'avant lui ; seul le compte que l'installateur y a ajouté
+    (`admin_added`) en part (`@@REMOVED account <nom>`). Refusal `call_infra_state_version` ou
     `call_infra_state_invalid` pour un état qu'on ne peut pas suivre.
     `root` préfixe chaque chemin de l'hôte (tests).
     """
