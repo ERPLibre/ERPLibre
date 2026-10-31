@@ -576,6 +576,12 @@ class Store:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA foreign_keys = ON")
             conn.executescript(SCHEMA)
+            # La migration lit `PRAGMA table_info` puis ajoute ce qui
+            # manque : sous le verrou d'écriture, pris AVANT la lecture,
+            # un second processus qui ouvre le même cache attend qu'elle
+            # finisse et relit des colonnes déjà là, au lieu d'ajouter
+            # deux fois la même (« duplicate column name »).
+            conn.execute("BEGIN IMMEDIATE")
             _ensure_columns(conn)
             _ensure_outbox_columns(conn)
             _ensure_rule_log_columns(conn)
@@ -2502,13 +2508,28 @@ class Store:
         path = self._body_path(folder_name, uid)
         path.parent.mkdir(parents=True, exist_ok=True)
         os.chmod(path.parent, 0o700)
-        # `write_bytes` puis `chmod` laisserait le corps du message — scellé,
-        # mais destiné à rester privé même déchiffré — lisible à l'umask du
-        # process le temps entre les deux appels : le fichier est donc créé
-        # DÉJÀ en 0600.
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(self._crypto.seal(raw))
+        # Le corps s'écrit dans un temporaire du même dossier, synchronisé
+        # puis renommé : un processus tué en pleine écriture laisse
+        # l'ancien fichier ou aucun, jamais un corps tronqué que
+        # `read_body` rendrait pour toujours. Le temporaire naît DÉJÀ en
+        # 0600 (`O_EXCL`, jamais un lien) : le corps, même scellé, n'est
+        # lisible à aucun moment à l'umask du processus.
+        sealed = self._crypto.seal(raw)
+        tmp = path.with_name(f".{path.name}.{os.urandom(6).hex()}.tmp")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(tmp, flags, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(sealed)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            raise
         os.chmod(path, 0o600)
         db = self._db()
         db.execute(
