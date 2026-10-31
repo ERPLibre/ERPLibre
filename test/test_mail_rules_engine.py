@@ -1142,6 +1142,17 @@ class TestSummaryLine(unittest.TestCase):
         self.assertIn(t("mail_rules_locked"), ligne)
         self.assertIn(f"{t('mail_rules_status_held')} 1", ligne)
 
+    def test_the_sent_count_and_the_preview_do_not_say_reply(self):
+        """Le compte des envois et l'en-tête de l'aperçu valent aussi pour
+        un transfert ou une redirection : ni l'un ni l'autre ne dit
+        « réponse », qui se lirait comme un envoi aux expéditeurs."""
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for cle in ("mail_rules_status_sent", "mail_outbox_preview"):
+            for langue, mot in (("fr", "répons"), ("en", "repl")):
+                with self.subTest(cle=cle, langue=langue):
+                    self.assertNotIn(mot, TRANSLATIONS[cle][langue].lower())
+
     def test_summary_items_match_summary_line(self):
         rapports = [
             engine.EngineReport(account="muet", active_rules=1),

@@ -15358,8 +15358,8 @@ TRANSLATIONS = {
         "en": "Rules are busy with another pass, try again.",
     },
     "mail_rules_status_sent": {
-        "fr": "réponses automatiques envoyées :",
-        "en": "automatic replies sent:",
+        "fr": "envois automatiques :",
+        "en": "automatic sends:",
     },
     "mail_rules_status_held": {
         "fr": "en attente d'approbation (o) :",
@@ -15835,8 +15835,8 @@ TRANSLATIONS = {
         "en": "No rule at that number.",
     },
     "mail_outbox_preview": {
-        "fr": "Aperçu de la réponse automatique :",
-        "en": "Automatic reply preview:",
+        "fr": "Aperçu de l'envoi automatique :",
+        "en": "Automatic send preview:",
     },
     "mail_outbox_auto": {"fr": "[auto]", "en": "[auto]"},
     "mail_outbox_expires": {"fr": "expire le", "en": "expires"},
