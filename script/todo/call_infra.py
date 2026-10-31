@@ -1000,13 +1000,28 @@ def plan_install(facts, answers, now):
     )
 
 
+def _is_backup_of(config, backup):
+    """Vrai pour une copie `<config>.bak-<tampon>` : le chemin vient de
+    l'hôte et finit dans un script lancé en root."""
+    return (
+        isinstance(config, str)
+        and isinstance(backup, str)
+        and backup.startswith(config + ".bak-")
+        and bool(_STAMP.match(backup[len(config) + 5 :]))
+    )
+
+
 def written_state(plan, stamp):
     """L'état tel que `install_script` l'écrit : `new_state` où chaque
-    adoption de ce passage reçoit sa copie `<config>.bak-<stamp>`."""
+    adoption de ce passage reçoit sa copie `<config>.bak-<stamp>`, sauf
+    celle qu'une fiche ou un état précédent nomme déjà (un passage coupé) :
+    `install_script` copie vers ce chemin-là, le même qui est consigné."""
     state = copy.deepcopy(plan.new_state)
     for svc in plan.adopt:
         record = state["services"][svc]
-        if record.get("adopted") and not record.get("backup"):
+        if record.get("adopted") and not _is_backup_of(
+            record["config"], record.get("backup")
+        ):
             record["backup"] = f"{record['config']}.bak-{stamp}"
     return state
 
@@ -1242,8 +1257,10 @@ def install_script(plan, stamp, root=""):
     """Script `sh` d'installation, lancé en root sur l'hôte.
 
     Ordre : fiche de l'origine de chaque service dans `PENDING_DIR` (gardée
-    si elle existe déjà), copie `cp -p <config> <config>.bak-<stamp>` de chaque
-    configuration adoptée, installateurs décodés du base64 et lancés avec
+    si elle existe déjà), copie `cp -p` de chaque configuration adoptée
+    vers le chemin que consigne `written_state` (quand ce fichier existe
+    déjà, seule une configuration qui en diffère est copiée, sous
+    `<config>.bak-<stamp>`), installateurs décodés du base64 et lancés avec
     leurs variables (umask 022 : ce qu'ils écrivent doit rester lisible des
     comptes de service), une ligne `@@ACTIVE <service> <état>` par service,
     et SEULEMENT si chaque installateur a réussi et chaque unité est
@@ -1290,11 +1307,21 @@ def install_script(plan, stamp, root=""):
             "fi",
         ]
         if svc in plan.adopt:
-            backup = f"{record['config']}.bak-{stamp}"
-            lines.append(
-                f"cp -p {_host(record['config'])} {_host(backup)}"
-                f" || fail backup-{svc}"
-            )
+            backup = record.get("backup")
+            if not _is_backup_of(record["config"], backup):
+                backup = f"{record['config']}.bak-{stamp}"
+            # La copie consignée existe déjà quand un passage coupé l'a faite
+            # : elle garde l'original. Une configuration étrangère qui en
+            # diffère (refaite à la main depuis) est copiée à part, sous le
+            # tampon de ce passage, plutôt que perdue.
+            config, extra = record["config"], f"{record['config']}.bak-{stamp}"
+            lines += [
+                f"if [ ! -e {_host(backup)} ]; then",
+                f"  cp -p {_host(config)} {_host(backup)} || fail backup-{svc}",
+                f"elif ! cmp -s {_host(config)} {_host(backup)}; then",
+                f"  cp -p {_host(config)} {_host(extra)} || fail backup-{svc}",
+                "fi",
+            ]
     for svc in services:
         if svc == "coturn":
             lines += _coturn_block(plan)
@@ -2360,11 +2387,7 @@ def _uninstall_records(state):
         tls_files = record.get("tls_files") or []
         if record.get("unit") not in _UNITS[svc] or not _safe_path(config):
             raise invalid
-        if backup is not None and not (
-            isinstance(backup, str)
-            and backup.startswith(config + ".bak-")
-            and _STAMP.match(backup[len(config) + 5 :])
-        ):
+        if backup is not None and not _is_backup_of(config, backup):
             raise invalid
         if not isinstance(tls_files, list) or not set(tls_files) <= (
             _TLS_FILES[svc]

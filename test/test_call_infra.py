@@ -1126,6 +1126,58 @@ class TestInstallScriptRun(unittest.TestCase):
         state = json.loads(self.read(self.path(ci.STATE_PATH)))
         self.assertEqual(state["services"]["coturn"]["backup"], backup)
 
+    def rerun_after_a_cut_backup(self, first_copy):
+        # Le passage précédent a déposé sa fiche, dont la copie porte son
+        # tampon, puis s'est arrêté avant ou après son `cp -p`.
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        old = "/etc/turnserver.conf.bak-20261029-080000"
+        write(self.path("/etc/turnserver.conf"), original, 0o640)
+        if first_copy is not None:
+            write(self.path(old), first_copy, 0o640)
+        pending = {
+            "installed_by_tool": False,
+            "adopted": True,
+            "backup": old,
+            "config": "/etc/turnserver.conf",
+        }
+        write(
+            self.path(ci.PENDING_DIR + "/coturn.json"),
+            json.dumps(pending),
+            0o600,
+        )
+        facts = base_facts(
+            coturn=service("/etc/turnserver.conf", original, pending=pending),
+            busy_ports=(("udp", 3478, "turnserver"),),
+        )
+        plan = ci.plan_install(
+            facts, answers(services=frozenset({"coturn"})), NOW
+        )
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        state = json.loads(self.read(self.path(ci.STATE_PATH)))
+        self.assertEqual(state["services"]["coturn"]["backup"], old)
+        extra = self.path("/etc/turnserver.conf.bak-" + STAMP)
+        if first_copy in (None, original):
+            self.assertFalse(os.path.exists(extra))
+        else:
+            self.assertEqual(self.read(extra), original)
+        return self.read(self.path(old)), original
+
+    def test_rerun_copies_to_the_recorded_backup(self):
+        copy, original = self.rerun_after_a_cut_backup(None)
+        self.assertEqual(copy, original)
+
+    def test_rerun_keeps_a_backup_already_written(self):
+        original = "listening-port=3478\nrealm=ancien.exemple.test\n"
+        copy, _original = self.rerun_after_a_cut_backup(original)
+        self.assertEqual(copy, original)
+
+    def test_rerun_never_loses_a_config_remade_since(self):
+        # La copie consignée garde l'original d'avant l'outil ; une
+        # configuration refaite à la main depuis est copiée à part.
+        copy, original = self.rerun_after_a_cut_backup("avant l'outil\n")
+        self.assertEqual(copy, "avant l'outil\n")
+
     def assert_no_state(self, done):
         self.assertNotEqual(done.returncode, 0)
         self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
