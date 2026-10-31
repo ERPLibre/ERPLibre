@@ -319,6 +319,14 @@ class MessageView:
     plusieurs occurrences jointes par « \\n » dans l'ordre du message.
     `size` est la taille annoncée par le serveur (RFC822.SIZE), en octets ;
     0 si elle est inconnue.
+
+    `frm`, `to` et `cc` sont décodés RFC 2047, pour l'affichage et le
+    journal. Les ADRESSES se lisent sur `frm_raw`, `to_raw` et `cc_raw`,
+    les mêmes en-têtes avant décodage : un libellé encodé qui cache « @ »
+    et « , » y reste un mot encodé, alors que décodé il deviendrait une
+    adresse choisie par l'expéditeur (notre adresse dans To, par exemple).
+    Laissés à None, ils prennent la forme décodée : une ligne du cache n'a
+    qu'elle.
     """
 
     uid: int
@@ -333,6 +341,14 @@ class MessageView:
     references: str = ""
     extra: Mapping[str, str] = field(default_factory=dict)
     size: int = 0
+    frm_raw: str | None = None
+    to_raw: str | None = None
+    cc_raw: str | None = None
+
+    def __post_init__(self) -> None:
+        for nom in ("frm", "to", "cc"):
+            if getattr(self, f"{nom}_raw") is None:
+                object.__setattr__(self, f"{nom}_raw", getattr(self, nom))
 
 
 def message_view(header, uidvalidity: int) -> MessageView:
@@ -341,7 +357,9 @@ def message_view(header, uidvalidity: int) -> MessageView:
     Lecture par `getattr` : une ligne du cache n'a ni Cc ni en-têtes
     supplémentaires, et porte sa date de réception sous `received_at` et
     non `internaldate`. Les champs absents prennent une chaîne vide, un
-    dictionnaire vide ou 0 ; une taille illisible vaut 0 (inconnue).
+    dictionnaire vide ou 0 ; une taille illisible vaut 0 (inconnue). Sans
+    en-têtes bruts (`frm_raw`…), les adresses se lisent sur la forme
+    décodée.
     """
     extra = getattr(header, "extra", None) or {}
     internaldate = getattr(header, "internaldate", 0) or getattr(
@@ -362,7 +380,16 @@ def message_view(header, uidvalidity: int) -> MessageView:
             {str(k).lower(): str(v) for k, v in extra.items()}
         ),
         size=_size_of(header),
+        frm_raw=_raw_of(header, "frm_raw"),
+        to_raw=_raw_of(header, "to_raw"),
+        cc_raw=_raw_of(header, "cc_raw"),
     )
+
+
+def _raw_of(header, name: str) -> str | None:
+    """L'en-tête brut `name` de `header`, ou None s'il ne le porte pas."""
+    value = getattr(header, name, None)
+    return None if value is None else str(value)
 
 
 def _size_of(header) -> int:

@@ -121,35 +121,60 @@ def addr_specs(header_value: str, *, raw: bool = False) -> list[str]:
     return out
 
 
+def _names_only(text: str, wanted: str) -> bool:
+    """Vrai si toute forme d'adresse de `text` normalise en `wanted`."""
+    return all(
+        normalize_address(token) == wanted
+        for token in _ADDRESS_LIKE_RE.findall(text or "")
+    )
+
+
 def sole_address(header_value: str, *, raw: bool = False) -> str:
     """L'unique adresse d'un en-tête d'une seule boîte (From), ou « ».
 
     Rend « » si l'en-tête porte zéro ou plusieurs addr-spec, ou si son
-    libellé contient une AUTRE adresse que l'addr-spec. Les en-têtes
-    arrivent décodés RFC 2047 : un libellé encodé qui cache « @ » et « , »
-    devient, une fois décodé, une seconde adresse que l'expéditeur a
-    choisie, ou un en-tête que l'analyseur ne lit plus. Une adresse ambiguë
-    n'est ni une cible de réponse ni une clé de limite.
+    libellé contient une AUTRE adresse que l'addr-spec. Une adresse ambiguë
+    n'est ni une cible de réponse ni une clé de limite. Pour l'en-tête d'un
+    message, `sender_address` lit la forme brute et la forme décodée.
     """
     specs = addr_specs(header_value, raw=raw)
     if len(specs) != 1:
         return ""
     spec = specs[0]
-    wanted = normalize_address(spec)
-    for token in _ADDRESS_LIKE_RE.findall(header_value or ""):
-        if normalize_address(token) != wanted:
-            return ""
+    if not _names_only(header_value, normalize_address(spec)):
+        return ""
     return spec
+
+
+def sender_address(view: MessageView, *, raw: bool = False) -> str:
+    """L'adresse de From de `view` (`sole_address`), ou « ».
+
+    L'addr-spec se lit sur l'en-tête BRUT (`view.frm_raw`) : c'est
+    l'adresse réelle, celle à qui une réponse part. Un libellé encodé RFC
+    2047 qui, décodé (`view.frm`), fait paraître une AUTRE adresse rend
+    l'expéditeur ambigu, donc « », comme un libellé en clair.
+    """
+    spec = sole_address(view.frm_raw, raw=raw)
+    if spec and not _names_only(view.frm, normalize_address(spec)):
+        return ""
+    return spec
+
+
+def view_addresses(view: MessageView, field: str) -> list[str]:
+    """Les addr-spec normalisées de From (`field` « from ») ou de To puis
+    Cc (« to_cc ») de `view`, lues sur les en-têtes BRUTS : un libellé
+    encodé RFC 2047 n'y ajoute aucune adresse."""
+    if field == "from":
+        return addr_specs(view.frm_raw)
+    return addr_specs(view.to_raw) + addr_specs(view.cc_raw)
 
 
 def field_values(
     view: MessageView, field: str, body: Callable[[], str]
 ) -> list[str]:
     """Les valeurs d'un champ ; `body` n'est appelé que pour « body »."""
-    if field == "from":
-        return addr_specs(view.frm)
-    if field == "to_cc":
-        return addr_specs(view.to) + addr_specs(view.cc)
+    if field in ("from", "to_cc"):
+        return view_addresses(view, field)
     if field == "subject":
         return [view.subject]
     if field == "body":
