@@ -184,7 +184,7 @@ class Answers:
 class InstallPlan:
     """`adopt` : services dont la configuration étrangère sera sauvée puis
     remplacée ; `diffs` : (chemin, diff unifié) de chaque configuration en
-    place qui change ; `new_state` : l'état à écrire, sans les chemins des
+    place qui change, valeurs secrètes masquées (`redact_secrets`) ; `new_state` : l'état à écrire, sans les chemins des
     copies, qui dépendent du tampon (voir `written_state`) ; `configs` :
     {service: texte voulu} des configurations que le script écrit lui-même
     (ntfy ; celle de coturn est écrite par son installateur)."""
@@ -701,6 +701,49 @@ def ntfy_config(answers, existing=None):
 # --- Contrôles --------------------------------------------------------------
 
 
+# Clés dont la valeur est un secret, dans turnserver.conf (`clé=valeur`,
+# `clé valeur`) et server.yml (`clé: valeur`) : static-auth-secret,
+# cli-password, pkey-pwd, smtp-sender-pass, web-push-private-key,
+# upstream-access-token, et les connexions aux bases de coturn, qui portent
+# un mot de passe. `user=<nom>:<mot de passe>` garde son nom ; les listes
+# auth-users et auth-tokens de ntfy perdent chacun de leurs éléments.
+_SECRET_KEY = re.compile(
+    r"secret|pass|pwd|token|private-key|^(psql|mysql|mongo|redis)-", re.I
+)
+_SECRET_LISTS = ("auth-users", "auth-tokens")
+_CONF_LINE = re.compile(r"^(\s*)([A-Za-z0-9_.-]+)(\s*[:=]\s*|\s+)(.*)$")
+_LIST_ITEM = re.compile(r"^(\s*-\s*)\S")
+
+
+def redact_secrets(text):
+    """`text` dont chaque valeur secrète devient « *** », guillemets gardés ;
+    les autres lignes restent à l'octet près. Sert au diff montré à
+    l'écran, jamais au fichier écrit."""
+    lines, in_list = [], False
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        end = line[len(body) :]
+        if in_list:
+            item = _LIST_ITEM.match(body)
+            if item:
+                lines.append(item.group(1) + "***" + end)
+                continue
+            in_list = False
+        match = _CONF_LINE.match(body)
+        if match and not body.lstrip().startswith("#"):
+            indent, key, sep, value = match.groups()
+            bare = value.strip()
+            if key in _SECRET_LISTS and not bare:
+                in_list = True
+            elif key == "user" and ":" in bare:
+                body = f"{indent}{key}{sep}{bare.split(':', 1)[0]}:***"
+            elif _SECRET_KEY.search(key) and bare:
+                quote = bare[0] if bare[0] in "\"'" else ""
+                body = f"{indent}{key}{sep}{quote}***{quote}"
+        lines.append(body + end)
+    return "".join(lines)
+
+
 def _check_answers(answers):
     """ValueError pour une réponse hors contrat (erreur de l'appelant) ;
     Refusal `call_infra_bad_value` pour une valeur que l'installateur
@@ -1040,7 +1083,8 @@ def plan_install(facts, answers, now):
         if current and is_foreign(old_text):
             adopt.append(svc)
         if old_text and old_text != desired:
-            diffs.append((config, nm.unified_diff(old_text, desired, config)))
+            shown = (redact_secrets(old_text), redact_secrets(desired))
+            diffs.append((config, nm.unified_diff(*shown, config)))
         prior_record = prior_services.get(svc)
         settings = _settings(svc, answers, cert_sha)
         unchanged = unchanged and (
