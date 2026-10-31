@@ -4795,7 +4795,8 @@ def ci_i18n_keys():
 
 # Bouchon des installateurs de production : note l'ordre des appels (avec
 # l'étape de nginx), leur environnement (un fichier par appel), imprime la
-# sortie préparée pour cet appel et rend le code demandé.
+# sortie préparée pour cet appel et rend le code demandé. SIGNAL_AT=<étape>
+# envoie TERM au script joué pendant cette étape.
 STUB_BASH_PROD = r"""#!/bin/sh
 name=$(basename "$1" .sh)
 tag=$name${NGINX_STAGE:+-$NGINX_STAGE}
@@ -4807,6 +4808,11 @@ env | grep -E '^(TURN|NTFY|NGINX|CERTBOT|RENEWED|ERPLIBRE)_' | sort \
     > "$LOG/$tag.$n.env"
 [ -n "${TURN_CERT_FILE:-}" ] && cat "$TURN_CERT_FILE" > "$LOG/$tag.$n.cert"
 [ -f "$OUT/$tag" ] && cat "$OUT/$tag"
+if [ "${SIGNAL_AT:-}" = "$tag" ]; then
+    # Le script joué mène sa session : son pid est le groupe de ce bouchon.
+    read -r _ _ _ _ group _ < /proc/$$/stat
+    kill -TERM "$group"
+fi
 v=$(echo "$tag" | tr -- '-.' '__')
 eval "exit \${RC_$v:-0}"
 """
@@ -5149,6 +5155,25 @@ class TestProductionInstall(unittest.TestCase):
                 self.assertIn(
                     ("CERTBOT_REHELD", RENEWAL), ci.marker_lines(done.stdout)
                 )
+
+    def test_renewal_file_held_again_when_the_run_is_interrupted(self):
+        # Une session coupée (HUP, INT, TERM) après certbot laisse le même
+        # trou qu'un échec : aucun état ne consigne Let's Encrypt.
+        unheld = f"@@CERTBOT_UNHELD {RENEWAL}\n" + CERTBOT_ISSUED
+        write(self.path(RENEWAL), "renouvellement\n", 0o644)
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(
+            plan, {"install_certbot": unheld}, SIGNAL_AT="erplibre-call"
+        )
+        self.assertEqual(done.returncode, 129, done.stdout + done.stderr)
+        self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+        self.assertFalse(os.path.exists(self.path(RENEWAL)))
+        self.assertEqual(
+            self.read(self.path(RENEWAL + ".erplibre-hold")),
+            "renouvellement\n",
+        )
+        self.assertNotIn("install_nginx-full", self.order())
+        self.assertEqual(os.listdir(self.scratch), [])
 
     def test_renewal_file_left_alone_when_certbot_held_it_itself(self):
         write(self.path(RENEWAL + ".erplibre-hold"), "garde\n", 0o644)
