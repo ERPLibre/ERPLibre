@@ -323,8 +323,8 @@ rule lets a client collapse: only the `Message-ID` ties the two together.
 | `~/.erplibre/mail/.rules/<account>/media/` | the copies of the images a reply carries (directory 0700, files 0600) |
 | `~/.erplibre/mail/.service.lock`, `.service_state.json` | the headless service's lock, held for a whole pass, and the last state each account reported, so that `--quiet` writes a lasting state only when it changes (mode 0600) |
 | `~/.erplibre/locks/kdbx-<hash>.lock` | the lock every write into the KDBX vault takes (directory 0700; see "Running without the client") |
-| `~/.config/systemd/user/erplibre-mail-rules.service`, `.timer` | the headless service's units, written by `Mail > [6] > [8] > [1]` |
-| `~/.config/credstore.encrypted/erplibre-mail-kdbx` | the vault master password encrypted for the service by `systemd-creds --user` (mode 0600), written by `Mail > [6] > [8] > [2]` |
+| `~/.config/systemd/user/erplibre-mail-rules.service`, `.timer` | the headless service's units, written by `Mail > [7] > [1]` |
+| `~/.config/credstore.encrypted/erplibre-mail-kdbx` | the vault master password encrypted for the service by `systemd-creds --user` (mode 0600), written by `Mail > [7] > [2]` |
 | `~/.erplibre/mail.log` | the mail package's log, with the full text of the errors the service's journal leaves out |
 
 ## Troubleshooting
@@ -437,7 +437,9 @@ the worst of the three possible outcomes.
 
 The queue empties at the start of every sync pass, before the server is
 read again: at launch, on `r` / `Shift+R`, on the `mail_refresh_sec` timer,
-and on `Mail > [3] Synchronise now` from the CLI menu. A pass that sends or
+on `Mail > [3] Synchronise now` from the CLI menu, and at every pass of the
+headless service once installed, for an account with an enabled rule (see
+"Running without the client"). A pass that sends or
 fails something says so — the TUI in its status line while the pass runs,
 the menu under the account name. Order is preserved: two messages of one
 exchange would otherwise arrive reversed.
@@ -549,9 +551,12 @@ re-armed.*
 Under the table, *Cap per pass* and *Cap per hour* set the account's send
 caps (see "Safeguards"), saved by their own button.
 Below them a line gives the state of the headless service — not
-installed, active every N min with the next pass, last exit, whether the
-vault password is in place (see "Running without the client"). It is read
-in the background: the screen never waits on `systemctl`.
+installed, active every N min with the next pass, last exit, and where
+the service would take the vault password from: *vault password
+encrypted*, *kdbx.password in clear text (not recommended)* — the
+fallback read from the private configuration —, or *no vault password*
+(see "Running without the client"); the password itself is never shown.
+It is read in the background: the screen never waits on `systemctl`.
 
 Rules apply in order, and **all** of them apply: a message that matches two
 rules gets two replies. A rule with "stop here" ends the list for that
@@ -656,8 +661,10 @@ PNG keeps the drawing's own width, reduced to 1200 px at most (600 px when
 the drawing gives none), and needs a converter — `rsvg-convert`, the Python
 module `cairosvg`, `inkscape` or ImageMagick, tried in that order; without
 one, the form says to install `librsvg2-bin`. An SVG that points to an
-outside file or resource — an `href` or `url()` other than `#…` or
-`data:`, an `@import`, an external entity — is refused.
+outside file or resource — an `href`, `absref` or `url()` other than `#…`
+or a `data:` PNG, JPEG, GIF, WebP image or font (an embedded SVG or a
+`data:` without a type is refused), an `@import`, an external entity — is
+refused.
 
 An empty subject gives `Auto:` followed by the received subject; otherwise
 the subject is your text, with `{subject}` replaced by the received
@@ -934,15 +941,20 @@ the statistics would count it as an answer. The rules log keeps the trace
 of both.
 
 **What a forward rule is not.** It does not replace your mail server's
-redirection of a whole mailbox. It runs only while the client or the menu
-runs. Beyond 20 sends per pass or 60 per hour (the account's caps, a budget
-**shared** with replies and reports), forwards enter the outbox **held**,
-wait for a gesture under `o`, and expire after 24 h: mail can then never
-leave, with no error visible outside the outbox and the rules log. Each
+redirection of a whole mailbox. It runs with the client, with the menu,
+and with the headless service once installed: closing the client does not
+stop it then. Beyond 20 sends per pass or 60 per hour (the account's caps,
+a budget **shared** with replies and reports), forwards enter the outbox
+**held**, wait for a gesture under `o`, and expire after 24 h; once the
+rule has 20 entries in the outbox, further messages are not held but
+skipped, and never forwarded (see "Caps"). Mail can then never leave, with
+no error visible outside the outbox and the rules log. Each
 forward filed into Sent doubles the space the message takes (up to 25 MiB
 per message), and an IMAP quota that fills up bounces incoming mail. A
 server that accepts some destinations and refuses others reports a
-success: the refused ones are lost, and the log says *sent*. To send
+success: the refused ones are lost, and the log says *sent*; a message sent
+at once from the client counts them on its status line (*recipients
+refused by the server*), without naming them among those served. To send
 everything on, use your mail server's redirection.
 
 ### Safeguards
@@ -967,11 +979,11 @@ every other stop is written to the rules log (`l`) under the reason shown.
 | loop detected | carries the `X-Loop` marker of an ERPLibre client — another of your accounts included |
 | spam | carries `X-Spam-Flag: yes` |
 | null sender | has an empty envelope sender (`Return-Path: <>`), as a bounce does |
-| no reply address | has no address to answer, or a From that names more than one |
+| no reply address | has no address to answer, or a From that names more than one — or whose display name, once decoded, shows another address |
 | robot sender | comes from `mailer-daemon`, `postmaster`, `no-reply`, a bounce address… |
 | sent by this account | comes from this account's own address |
 | another configured account | comes from another account configured in the client |
-| not addressed to this account | names this account in neither To nor Cc — a Bcc copy, a list, an alias |
+| not addressed to this account | names this account in neither To nor Cc — a Bcc copy, a list, an alias. Addresses are read on the headers as received, before decoding: an encoded display name that would show this account's address does not count |
 | authentication failed | is marked `dmarc=fail`, or `spf=fail` without `dkim=pass`, by the receiving server's `Authentication-Results`: answering would send our reply to whoever was impersonated |
 | sender not authenticated | statistics report only: carries no first `Authentication-Results` that vouches for the From domain (see "The statistics report") |
 | throttled | comes from a sender this rule answered recently (below) |
@@ -1009,6 +1021,12 @@ forwarded. Both caps are set under the rule list, or by the `caps` key of
 `rules.json` (`{"per_pass": 20, "per_hour": 60}`, whole numbers of at
 least 1). The hourly cap is what bounds a short timer: with `mail_refresh_sec` at 30 s,
 the cap per pass alone would let 2 400 replies an hour through.
+The caps also hold when the outbox empties: a drain lets at most 20
+automatic sends leave, and none once 60 have really left in the last hour;
+the rest stays queued for a later drain. A backlog built up while the
+mail server was unreachable thus leaves at the hourly pace, not all at
+once. A send counts in the hour it really leaves. *Release* under `o` is a
+gesture and is not capped.
 
 **Holding the first send.** Until a rule has really sent its first
 replies — one by default, up to 10 — each new reply waits **held** in the
@@ -1053,14 +1071,18 @@ gives each message's result and reason. `~/.erplibre/mail.log` never
 carries an address or a subject.
 
 After a pass that did something, one line is appended to the status line,
-per account with enabled rules — for instance `perso : automatic replies
-sent: 2, awaiting approval (o): 1`. A pass that found nothing to do adds
+per account with enabled rules — for instance `perso : automatic sends:
+2, awaiting approval (o): 1`. The count covers replies, forwards and
+redirects alike. A pass that found nothing to do adds
 nothing.
 
 One pass at a time handles an account, whatever the process — TUI or menu.
 Another one waits up to 30 s, then gives up with *Rules: another pass is
-running.*; the next pass picks up where it stopped. A pass catches up at
-most 200 messages; older ones are skipped with a warning.
+running.*; the next pass picks up where it stopped. A cache that cannot be
+written during a pass — held too long by another process, or a full disk —
+stops the pass with *Rules: the pass failed*; the message it was on is not
+counted as handled, and the next pass evaluates it again. A pass catches
+up at most 200 messages; older ones are skipped with a warning.
 
 ### Testing a rule
 
@@ -1084,15 +1106,16 @@ a real pass would give (too old, already handled, sent by this account…);
 and, when it differs, the verdict **for a new message**, as if this one had
 just arrived after the rule was armed — arming, age and "already handled"
 aside, the other safeguards, the throttle included, still apply. When a
-reply would be decided, the trial also says whether the engine would
-**hold** it, and why: until a rule has really sent its first replies, each
+reply would be decided — by either verdict —, the trial also says whether
+the engine would **hold** it, and why: until a rule has really sent its first replies, each
 new one is held for review — the first real report always is — and is
 released from the outbox (`o`), which sends it at once. When a real
 message gets such a reply held, the status line says so after the pass:
 *1 automatic send awaits your approval (o)*. A statistics report past its
 daily cap
 is not held but skipped: the verdict then reads *daily report cap
-reached*, and nothing would reach the outbox. For a statistics report, it
+reached* — the real one, or the one for a new message when only that one
+would reply —, and nothing would reach the outbox. For a statistics report, it
 shows the server identifier read in the first `Authentication-Results` (or
 that the server writes none), whether the sender is authenticated, and a
 warning while no identifier is set. Then the recipient, the subject, the text of
@@ -1167,8 +1190,10 @@ so is a disabled account. An account with an `ephemeral` cache is skipped
 with a line every time, since its rules cannot run. Accounts are handled
 one after the other.
 
-**Installing.** `Mail > [6] Incoming mail rules`, any account, then
-`[8] Headless service (systemd)` — the same screen whatever the account.
+**Installing.** `Mail > [7] Headless service (systemd)`, or
+`Mail > [6] Incoming mail rules`, any account with a persistent cache, then
+`[8]` — the same screen either way; `[7]` stays reachable with no account
+left, to uninstall.
 It starts with the state of the service, then offers `[1]` install or
 update, `[2]` the vault password for the service, `[3]` run a pass now,
 `[4]` uninstall, `[0]` back. `[1]` asks the minutes between two passes —
@@ -1251,7 +1276,7 @@ the root of the checkout:
 ```
 
 writes one line per account (`--account` is the same as `--compte`). A
-line carries the account name and counts — new messages, replies sent,
+line carries the account name and counts — new messages, automatic sends,
 held — never an address, a subject, a secret nor the text of a server or
 rule error: only the kind of failure, the error's class name and, when the
 server gave one, its IMAP response code in brackets such as
@@ -1262,7 +1287,10 @@ quoted. The full text goes to `~/.erplibre/mail.log`.
 A pass by hand does not read the encrypted password of `[2]`: systemd
 hands it only to the service it starts. By hand, the vault opens only
 through `kdbx.password` in the configuration or the system keyring;
-otherwise the pass stops at "Vault locked" and says so. To test the
+otherwise the pass stops at "Vault locked" and says so. A
+`kdbx.password` the vault refuses is named as such, whether by hand or in
+the service without a credential: fix it in the configuration, redoing
+`[2]` changes nothing for it. To test the
 encrypted password, use `[3]` (start a pass now), then
 `journalctl --user -u erplibre-mail-rules`.
 
@@ -1272,7 +1300,7 @@ encrypted password, use `[3]` (start a pass now), then
 | 1 | unexpected error — a bug; the trace is in `~/.erplibre/mail.log` |
 | 2 | argument refused, unknown account |
 | 3 | vault locked: no master password, password refused, secret missing, system keyring unreachable or locked |
-| 4 | network: server unreachable, link cut, folder not synced |
+| 4 | network: server unreachable, link cut, folder not synced, headers of new messages not fetched (retried on the next pass) |
 | 5 | rule error: `rules.json` unreadable, or the engine's pass failed |
 | 6 | already running: another pass, the client or the menu holds the account, or the cache is busy |
 | 7 | authentication refused: the server refuses the password or the token |

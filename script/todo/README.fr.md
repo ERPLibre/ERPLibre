@@ -24,7 +24,7 @@ commande sans interface — `.venv.erplibre/bin/python -m
 script.todo.mail.rules.run [--compte NOM] [--quiet]`, une passe par compte,
 un code de sortie par genre de panne —, `mail/service.py` écrit, installe et
 lit les unités systemd utilisateur qui la lancent sur minuterie
-(`Courriel > [6] > [8]`), et `mail/credential.py` chiffre pour elle le mot
+(`Courriel > [7]`), et `mail/credential.py` chiffre pour elle le mot
 de passe maître du coffre par `systemd-creds --user`. `kdbx_write.py` porte
 le verrou et l'écriture atomique du coffre KDBX, partagés par le client
 courriel, le service et le VPN, pour que deux processus ne perdent jamais
