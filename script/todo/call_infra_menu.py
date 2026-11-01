@@ -1496,17 +1496,14 @@ class CallInfraMenuMixin:
 
     @staticmethod
     def _call_infra_exempt_ok(address):
-        """Vrai pour une adresse que ntfy peut exempter : ni boucle locale,
-        ni adresse non spécifiée, ni lien local, les refus de
-        `call_infra` ; une proposition qui n'en est pas une ne se fait
-        pas."""
+        """Vrai pour une adresse que ntfy peut exempter, celle que
+        `call_infra` accepte ; une proposition qui n'en est pas une ne se
+        fait pas."""
         try:
-            found = ipaddress.ip_address(address)
-        except ValueError:
+            ci._check_exempt(address)
+        except ci.Refusal:
             return False
-        return not (
-            found.is_loopback or found.is_unspecified or found.is_link_local
-        )
+        return True
 
     def _call_infra_ask_exempt(self, host, facts, runner, url, key):
         """L'adresse à exempter des limites de ntfy pour ce serveur Odoo,
