@@ -3161,6 +3161,17 @@ def _span(low, high):
     return str(low) if low == high else f"{low}:{high}"
 
 
+def firewall_before_install(answers):
+    """Vrai quand le défi HTTP-01 de Let's Encrypt (par nginx ou par certbot
+    seul) a lieu pendant le script d'installation : le port 80 doit déjà
+    passer le pare-feu, sinon l'essai à blanc échoue et aucun état ne
+    s'écrit, à chaque passage."""
+    return _uses_certbot(answers) and answers.acme in (
+        "http-nginx",
+        "http-standalone",
+    )
+
+
 def firewall_rules(answers):
     """Les ouvertures des services choisis : en production, nginx en tcp
     sur 80 (et 443 devant ntfy), certbot autonome sur 80 ; coturn TURN en

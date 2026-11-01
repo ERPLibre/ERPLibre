@@ -347,6 +347,16 @@ class CallInfraMenuMixin:
         if not _yes(t("Install now? (y/N): ")):
             print(t("Nothing installed."))
             return
+        prior = facts.state if isinstance(facts.state, dict) else {}
+        record = None
+        # Le défi HTTP-01 passe pendant le script : les règles, port 80
+        # compris, sont proposées avant lui. Posées, elles vont dans la
+        # fiche du pare-feu de l'hôte, qu'un passage en échec laisse à la
+        # relance (`facts.firewall_pending`).
+        if ci.firewall_before_install(answers):
+            record = self._call_infra_firewall(
+                host, facts, answers, prior.get("firewall")
+            )
         stamp = time.strftime("%Y%m%d-%H%M%S")
         result = self._call_infra_run(
             host,
@@ -357,9 +367,10 @@ class CallInfraMenuMixin:
             return
         # L'état que le passage root vient d'écrire, que le pare-feu complète.
         state = ci.installed_state(plan, stamp, result[1])
-        record = self._call_infra_firewall(
-            host, facts, answers, state.get("firewall")
-        )
+        if record is None:
+            record = self._call_infra_firewall(
+                host, facts, answers, state.get("firewall")
+            )
         self._call_infra_save_state(host, ci.with_firewall(state, record))
         self._call_infra_report(host)
 
