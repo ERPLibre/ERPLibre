@@ -4477,6 +4477,15 @@ def _migration_cp(source, target):
     )
 
 
+def _traversable_dir(path):
+    """Commande `sh` qui crée le dossier `path` de l'hôte en 0755 quand il
+    manque, malgré l'umask 077 du script : le compte d'un conteneur doit
+    le traverser pour lire le fichier qu'on y remet. Un dossier déjà là
+    garde ses droits."""
+    host = _host(path)
+    return f"{{ [ -d {host} ] || install -d -m 0755 {host}; }}"
+
+
 def _migration_dir_lines(stamp):
     """`MBD`, le dossier des copies, et `MB`, celui de ce passage."""
     return [
@@ -4822,9 +4831,12 @@ def _to_packages_rollback_lines(plan, stamp, services):
             for name, path in zip(
                 _COTURN_HELD_FOR_PACKAGES, (config, COTURN_APPLIED)
             ):
+                # La purge du paquet peut emporter le dossier de la
+                # configuration (/etc/turnserver sur Arch).
+                folder = _traversable_dir(os.path.dirname(path))
                 copy_back = _migration_cp(f'"$MB/{name}"', _host(path))
                 step.append(
-                    f'if [ -f "$MB/{name}" ]; then {copy_back}'
+                    f'if [ -f "$MB/{name}" ]; then {folder} && {copy_back}'
                     " || fail coturn-config; fi"
                 )
             owned = (
