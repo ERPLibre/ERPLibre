@@ -137,6 +137,25 @@ télécharge rien. Une exigence que pip ne peut pas installer arrête le contene
 avant Odoo, avec l'erreur de pip dans `docker compose logs`.
 
 <!-- [en] -->
+Root keeps only the two capabilities setpriv needs (`cap_drop`, `cap_add`), and
+`no-new-privileges` stops Odoo from ever regaining one. Since the container
+starts as root, `docker exec` opens a root shell by default: a file it writes in
+the filestore or in `/etc/odoo` belongs to root, and Odoo can no longer change
+it. Pass the account:
+
+<!-- [fr] -->
+Root ne garde que les deux capacités dont setpriv a besoin (`cap_drop`,
+`cap_add`), et `no-new-privileges` empêche Odoo d'en regagner une. Comme le
+conteneur démarre en root, `docker exec` ouvre un shell root par défaut : un
+fichier qu'il écrit dans le filestore ou dans `/etc/odoo` appartient à root, et
+Odoo ne peut plus le modifier. Passez le compte :
+
+<!-- [common] -->
+```bash
+docker compose exec -u odoo ERPLibre bash
+```
+
+<!-- [en] -->
 ### Diagnostic Docker-Compose
 
 Show docker-compose information

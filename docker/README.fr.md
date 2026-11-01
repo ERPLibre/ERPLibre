@@ -69,6 +69,16 @@ root, car les venvs appartiennent à root. Une exigence déjà satisfaite ne
 télécharge rien. Une exigence que pip ne peut pas installer arrête le conteneur
 avant Odoo, avec l'erreur de pip dans `docker compose logs`.
 
+Root ne garde que les deux capacités dont setpriv a besoin (`cap_drop`,
+`cap_add`), et `no-new-privileges` empêche Odoo d'en regagner une. Comme le
+conteneur démarre en root, `docker exec` ouvre un shell root par défaut : un
+fichier qu'il écrit dans le filestore ou dans `/etc/odoo` appartient à root, et
+Odoo ne peut plus le modifier. Passez le compte :
+
+```bash
+docker compose exec -u odoo ERPLibre bash
+```
+
 ### Diagnostic Docker-Compose
 
 Afficher les informations docker-compose

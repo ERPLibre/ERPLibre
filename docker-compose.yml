@@ -25,6 +25,12 @@ services:
     # PIP_EXTRA_REQUIREMENTS_* lists, then the entrypoint runs Odoo as odoo.
     user: root
     entrypoint: ["/entrypoint_pip_extra.sh"]
+    # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
+    # with no capability and can never regain one.
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - db
     # not behind a proxy

@@ -69,6 +69,16 @@ because the venvs belong to root. A satisfied requirement downloads nothing. A
 requirement pip cannot install stops the container before Odoo, with pip's
 error in `docker compose logs`.
 
+Root keeps only the two capabilities setpriv needs (`cap_drop`, `cap_add`), and
+`no-new-privileges` stops Odoo from ever regaining one. Since the container
+starts as root, `docker exec` opens a root shell by default: a file it writes in
+the filestore or in `/etc/odoo` belongs to root, and Odoo can no longer change
+it. Pass the account:
+
+```bash
+docker compose exec -u odoo ERPLibre bash
+```
+
 ### Diagnostic Docker-Compose
 
 Show docker-compose information
