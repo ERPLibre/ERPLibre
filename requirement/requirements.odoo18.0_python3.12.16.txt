@@ -1,7 +1,8 @@
 # For OSX
 cython
 
-setuptools==84.0.0
+# setuptools 84.0.0 : GHSA-xmj3-9gf7-h52w, corrigé en 84.1.0.
+setuptools==84.1.0
 
 # Module voice_to_text
 #SpeechRecognition==3.10.0
@@ -47,6 +48,72 @@ certifi==2026.10.23
 # qu'Odoo 18 importe avant pypdf, garde CVE-2023-36464 : aucune version de
 # PyPDF2 ne la corrige.
 pypdf==6.21.4
+
+# Dépendances transitives touchées par des CVE connues (base OSV) : la
+# première version qui les corrige toutes. Chaque épingle l'emporte sur la
+# version qu'amène le paquet qui en dépend.
+# aiohttp 3.14.3 : CVE-2026-111063, CVE-2026-111064, CVE-2026-111065,
+# CVE-2026-111066, CVE-2026-111748, CVE-2026-111749, CVE-2026-111750, corrigées
+# en 3.14.4.
+aiohttp==3.14.4
+# anyio 4.13.0 : CVE-2026-63374, CVE-2026-64847, corrigées en 4.14.2.
+anyio==4.14.2
+# Authlib 1.7.1 : CVE-2026-114614, CVE-2026-114615, CVE-2026-114616,
+# CVE-2026-114617, CVE-2026-114618, CVE-2026-114619, CVE-2026-114620,
+# CVE-2026-116672, CVE-2026-96760, corrigées en 1.9.1.
+authlib==1.9.1
+# cbor2 5.6.2 : CVE-2025-64076, CVE-2025-68131, CVE-2026-26209, corrigées en
+# 5.9.0.
+cbor2==5.9.0
+# filelock 3.29.0 : CVE-2026-112907, CVE-2026-112909, CVE-2026-112910,
+# CVE-2026-112913, CVE-2026-112915, CVE-2026-112935, CVE-2026-112936,
+# CVE-2026-112939, CVE-2026-112940, corrigées en 4.2.1.
+filelock==4.2.1
+# h2 4.3.0 : CVE-2026-71554, corrigées en 4.4.1.
+h2==4.4.1
+# hpack 4.1.0 : CVE-2026-59980, corrigées en 4.2.0.
+hpack==4.2.0
+# joserfc 1.6.5 : CVE-2026-119283, CVE-2026-119284, CVE-2026-48990,
+# CVE-2026-49852, corrigées en 1.7.6.
+joserfc==1.7.6
+# markdownify 0.13.1 : CVE-2025-46656, corrigées en 0.14.1.
+markdownify==0.14.1
+# msgpack 1.2.1 : CVE-2026-114613, corrigées en 1.2.3.
+msgpack==1.2.3
+# multidict 6.7.1 : CVE-2026-104874, corrigées en 6.9.1.
+multidict==6.9.1
+# pyasn1 0.6.3 : CVE-2026-119194, CVE-2026-119195, CVE-2026-119196,
+# CVE-2026-119197, CVE-2026-59884, CVE-2026-59885, CVE-2026-59886, corrigées en
+# 0.6.5.
+pyasn1==0.6.5
+# soupsieve 2.8.3 : CVE-2026-49476, CVE-2026-49477, CVE-2026-85999,
+# CVE-2026-86000, corrigées en 2.9.0.
+soupsieve==2.9.0
+# starlette 1.0.0 : CVE-2026-48710, CVE-2026-48817, CVE-2026-48818,
+# CVE-2026-54282, CVE-2026-54283, corrigées en 1.3.1.
+starlette==1.3.1
+# tornado 6.5.5 : CVE-2026-103261, CVE-2026-103262, CVE-2026-103263,
+# CVE-2026-115927, CVE-2026-116577, CVE-2026-116578, CVE-2026-49853,
+# CVE-2026-49854, CVE-2026-49855, CVE-2026-82397, CVE-2026-91990,
+# CVE-2026-91991, CVE-2026-91992, corrigées en 6.6.
+tornado==6.6
+# virtualenv 21.3.1 : CVE-2026-102925, CVE-2026-102930, CVE-2026-102937,
+# CVE-2026-102938, CVE-2026-113714, CVE-2026-113715, CVE-2026-113716,
+# CVE-2026-113717, CVE-2026-113718, CVE-2026-113719, CVE-2026-113720,
+# CVE-2026-113721, CVE-2026-113722, CVE-2026-113723, CVE-2026-113724,
+# CVE-2026-113725, CVE-2026-113726, CVE-2026-113732, CVE-2026-113776, corrigées
+# en 21.14.9 ; CVE-2026-113713 et CVE-2026-115586, apparues après 21.3.1,
+# corrigées en 21.14.13.
+virtualenv==21.14.13
+# WebOb 1.8.9 : CVE-2026-44889, CVE-2026-54770, corrigées en 1.8.11.
+webob==1.8.11
+# zeep 4.2.1 : CVE-2026-58501, corrigées en 4.3.3.
+zeep==4.3.3
+# bokeh reste à 3.6.3 malgré CVE-2026-21883 : web_widget_bokeh_chart
+# (OCA_web) embarque bokeh-3.6.3.min.js, que le paquet Python doit suivre.
+# oauthlib reste sous 4 (CVE-2026-49264 et suivantes, corrigées en 4.0.0)
+# pour tweepy, voir plus bas. ecdsa, python-jose, Js2Py, paramiko et
+# deep-translator n'ont aucune version corrigée.
 
 # Module infobip_whatsapp_integration
 # Ignore it, need another version of requests
