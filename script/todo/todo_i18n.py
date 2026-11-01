@@ -4318,6 +4318,10 @@ TRANSLATIONS = {
         "fr": "{name} pointe vers {found}, ni une adresse de l'hôte ni l'IP publique confirmée : les clients n'y joindraient pas l'hôte.",
         "en": "{name} points to {found}, neither an address of the host nor the confirmed public IP: clients would not reach the host there.",
     },
+    "call_infra_dns_unverifiable": {
+        "fr": "{name} pointe vers {found}, qui n'est pas une adresse de l'hôte : c'est attendu derrière un NAT, mais l'outil ne peut pas vérifier que cette adresse mène à l'hôte.",
+        "en": "{name} points to {found}, not an address of the host: expected behind a NAT, but the tool cannot check that this address leads to the host.",
+    },
     "call_infra_dns_unresolved": {
         "fr": "{name} ne résout pas encore : les clients n'y joindraient pas l'hôte.",
         "en": "{name} does not resolve yet: clients would not reach the host there.",

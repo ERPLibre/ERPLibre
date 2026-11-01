@@ -931,14 +931,25 @@ class CallInfraMenuMixin:
         """Un avertissement par nom du certificat qui ne résout vers aucune
         adresse de l'hôte ni vers l'IP publique confirmée, ou ne résout
         pas : les clients n'y joindraient pas l'hôte, et le défi HTTP de
-        Let's Encrypt échouerait (le défi DNS, lui, ne lit pas l'adresse)."""
+        Let's Encrypt échouerait (le défi DNS, lui, ne lit pas l'adresse).
+        Sans coturn, aucune IP publique n'est demandée : un nom qui pointe
+        hors de l'hôte peut être celle de son NAT, ce que l'outil ne peut
+        pas vérifier ; il le dit sans conclure."""
         known = list(facts.addresses)
         if answers.external_ip:
             known.append(answers.external_ip.split("/", 1)[0])
         http_challenge = answers.tls == "letsencrypt" and answers.acme != "dns"
+        public_ip_asked = "coturn" in answers.services
         for name in ci.certificate_names(answers):
             found, reason = ci.external_ip_for(name, known, resolve=_resolve)
             if reason == "local":
+                continue
+            if reason == "nat" and not public_ip_asked:
+                text = self._call_infra_text(
+                    "call_infra_dns_unverifiable",
+                    {"name": name, "found": found},
+                )
+                print(f"  ⚠ {text}")
                 continue
             if reason == "nat":
                 text = self._call_infra_text(
