@@ -10528,7 +10528,8 @@ class TestContainerPlan(unittest.TestCase):
 # Chaque bouchon note son argv dans "$LOG/argv", précédé du compte sous
 # lequel `runuser` l'a lancé et de son XDG_RUNTIME_DIR. L'état simulé de
 # l'hôte (comptes, groupes, paquets, images, conteneurs) vit dans "$FK".
-# La purge d'apt-get, avec FAKE_PURGE_WIPES, efface les dossiers du paquet ;
+# La purge d'apt-get échoue pour le paquet FAKE_PURGE_FAIL ; avec
+# FAKE_PURGE_WIPES, elle efface les dossiers du paquet ;
 # avec FAKE_POSTRM, celle de ntfy fait ce que fait le postrm du .deb :
 # compte supprimé, configuration effacée, dossier retiré s'il est vide.
 _NOTE = (
@@ -10632,6 +10633,7 @@ mkdir -p "$ROOT/run/user/$id"
     "apt-get": _NOTE
     + r"""
 if [ "$1" = purge ]; then
+  [ "$3" != "${FAKE_PURGE_FAIL:-}" ] || exit 100
   for p; do
     grep -vxF -- "$p" "$FK/installed" > "$FK/installed.new"
     mv "$FK/installed.new" "$FK/installed"
@@ -12073,6 +12075,68 @@ esac
         )
         self.assertEqual(stat.S_IMODE(os.stat(config_dir).st_mode), 0o755)
         self.assertIn("ntfy:", self.read(os.path.join(self.fk, "passwd")))
+
+    def test_failed_reverse_purge_returns_the_held_ntfy_dirs(self):
+        # La purge de ntfy échoue après la mise à l'abri de ses dossiers :
+        # l'étape du service les remet avant de rendre ses fichiers au
+        # conteneur, au lieu de lui recréer un dossier de données vide.
+        plan, _before = self.to_packages(
+            container_answers(
+                tls="supplied", cert_pem=TURN_CERT, key_pem=TURN_KEY
+            )
+        )
+        done = self.run_script(
+            plan,
+            ACTIVE_coturn="failed",
+            FAKE_INSTALLS="1",
+            FAKE_PURGE_FAIL="ntfy",
+        )
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("ROLLBACK_FAILED", "package-ntfy"), markers)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rollback-failed"), ("SAVED", "no")]
+        )
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_TLS_DIR + "/ntfy.key")), TURN_KEY
+        )
+        self.assertFalse(os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)))
+        self.assertIn(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d",
+            self.argv(),
+        )
+
+    def test_reverse_rollback_removes_the_coturn_dropin(self):
+        # Le complément d'unité que l'installateur par paquets de coturn
+        # pose pour 443 repart avec son paquet.
+        plan, _before = self.to_packages(
+            coturn_only(turns_443=True, method="container", engine="docker")
+        )
+        dropin = plan.new_state["services"]["coturn"]["dropin"]
+        self.assertEqual(dropin, ci.COTURN_DROPIN.format(unit="coturn"))
+        folder = os.path.dirname(dropin)
+        write(
+            os.path.join(self.stubs, "bash"),
+            STUB_BASH_CONTAINER.replace(
+                'name=$(basename "$1" .sh)\n',
+                'name=$(basename "$1" .sh)\n'
+                'if [ "$name" = install_coturn ] && [ -z "${TURN_TARGET:-}" ]'
+                "; then\n"
+                f'  mkdir -p "$ROOT{folder}"\n'
+                f'  echo {shlex.quote(ci.MARKER)} > "$ROOT{dropin}"\n'
+                "fi\n",
+                1,
+            ),
+        )
+        done = self.run_script(plan, ACTIVE_coturn="failed", FAKE_INSTALLS="1")
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        self.assertIn(("REMOVED", f"dropin {dropin}"), markers)
+        self.assertFalse(os.path.exists(self.path(folder)))
 
     def test_rootless_reverse_removes_images_under_its_account(self):
         plan, _before = self.to_packages(
