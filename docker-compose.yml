@@ -13,6 +13,24 @@ services:
       STOP_BEFORE_INIT: "False"
       DB_NAME: ""
       UPDATE_ALL_DB: "False"
+      # Python packages the image lacks, on one line, separated by spaces,
+      # pinned when needed. Installed at each start, before Odoo; nothing is
+      # downloaded once satisfied.
+      # Example: "humanize pyotp==2.9.0 phonenumbers>=8.13,<9"
+      # Odoo's venv, the one the addons import
+      PIP_EXTRA_REQUIREMENTS_ODOO: ""
+      # ERPLibre tools' venv (.venv.erplibre), the one of script/
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+    # The venvs belong to root: the container starts as root to install the
+    # PIP_EXTRA_REQUIREMENTS_* lists, then the entrypoint runs Odoo as odoo.
+    user: root
+    entrypoint: ["/entrypoint_pip_extra.sh"]
+    # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
+    # with no capability and can never regain one.
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - db
     # not behind a proxy
@@ -29,6 +47,7 @@ services:
       - erplibre_data_dir:/home/odoo/.local/share/Odoo
       - ./odoo18.0/addons/addons:/ERPLibre/odoo18.0/addons/addons
       - erplibre_conf:/etc/odoo
+      - ./docker/entrypoint_pip_extra.sh:/entrypoint_pip_extra.sh:ro
     restart: always
 
   db:
