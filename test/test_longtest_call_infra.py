@@ -2069,7 +2069,10 @@ class LeCheminOdoo(unittest.TestCase):
         self.assertEqual(3, len(hote.scripts))
         self.assertEqual(ci.probe_script(), hote.scripts[0])
         self.assertIn("@@ODOO_ADDED", hote.scripts[1])
-        self.assertEqual(ci.state_write_script(res["etat"]), hote.scripts[2])
+        self.assertEqual(
+            ci.state_write_script(res["etat"], pending_taken=False),
+            hote.scripts[2],
+        )
         fiche = res["etat"]["odoos"][self.cle]
         self.assertEqual("user", fiche["credential"]["kind"])
         self.assertEqual(EXEMPT, fiche["exempt"])

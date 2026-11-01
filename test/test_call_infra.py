@@ -8778,6 +8778,24 @@ class TestOdooPlan(OdooSandbox):
         for row in HAND_ROWS:
             self.assertIn(row, link.rows)
 
+    def test_add_keeps_the_pending_firewall_record(self):
+        # Des règles posées par une installation dont l'état n'a pas été
+        # écrit : l'ajout ne les consigne pas, il laisse donc leur fiche à
+        # la prochaine installation ou désinstallation.
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        pending = self.path(ci.PENDING_DIR + "/firewall")
+        os.makedirs(os.path.dirname(pending), exist_ok=True)
+        with open(pending, "w") as handle:
+            handle.write("ufw 3478/udp\n")
+        link = FakeLink(self.events, rows=HAND_ROWS)
+        plan = self.plan(state, odoo_facts("absent", rows=HAND_ROWS))
+        final = self.add(link, plan, PASSWORD_1)
+        self.assertEqual(self.state_on_host(), final)
+        with open(pending) as handle:
+            self.assertEqual(handle.read(), "ufw 3478/udp\n")
+
     def test_rerun_rotates_the_secret_with_the_odoo_lifetime(self):
         state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
         self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
