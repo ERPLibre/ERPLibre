@@ -3968,12 +3968,36 @@ TRANSLATIONS = {
         "en": "No systemd on the host: the install by packages and systemd services needs it.",
     },
     "call_infra_state_version": {
-        "fr": "L'état de l'hôte est de la version {found}, cet outil lit la version {expected} : rien n'est touché.",
-        "en": "The host state is version {found}, this tool reads version {expected}: nothing is touched.",
+        "fr": "L'état de l'hôte est de la version {found}, cet outil lit les versions {expected} : rien n'est touché.",
+        "en": "The host state is version {found}, this tool reads versions {expected}: nothing is touched.",
     },
     "call_infra_state_invalid": {
         "fr": "L'état de l'hôte porte une fiche {service} qu'on ne peut pas suivre : rien n'est touché.",
         "en": "The host state holds a {service} record that cannot be followed: nothing is touched.",
+    },
+    "call_infra_foreign_container": {
+        "fr": "Des conteneurs que l'état de l'outil ne consigne pas portent ses noms ou ses images : {names}. Retirez-les, ou désinstallez d'abord : rien n'est touché.",
+        "en": "Containers that the tool's state does not record carry its names or images: {names}. Remove them, or uninstall first: nothing is touched.",
+    },
+    "call_infra_method_partial": {
+        "fr": "La méthode d'installation vaut pour tout l'hôte : en changer migre chaque service consigné. Choisissez aussi {service}.",
+        "en": "The install method applies to the whole host: changing it migrates every recorded service. Choose {service} too.",
+    },
+    "call_infra_ntfy_downgrade": {
+        "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : il ne pourrait plus la lire. Mettez à jour ntfy sur l'hôte, ou gardez les conteneurs.",
+        "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: it could no longer read it. Upgrade ntfy on the host, or keep the containers.",
+    },
+    "call_infra_engine_switch": {
+        "fr": "Les conteneurs tournent sous {old} : passer à {new} demande d'abord de désinstaller, ou de revenir aux paquets.",
+        "en": "The containers run under {old}: moving to {new} first needs an uninstall, or a return to packages.",
+    },
+    "call_infra_engine_missing": {
+        "fr": "{engine} demande des paquets absents de l'hôte : {packages}. Acceptez leur installation, ou installez-les vous-même.",
+        "en": "{engine} needs packages the host lacks: {packages}. Accept their installation, or install them yourself.",
+    },
+    "call_infra_container_port": {
+        "fr": "Le port {port} est sous {start}, le premier port qu'un compte sans privilège peut ouvrir sur cet hôte, et ce conteneur ne tourne pas en root : choisissez un port d'au moins {start}, {alt} par exemple.",
+        "en": "Port {port} is below {start}, the first port an unprivileged account can open on this host, and this container does not run as root: choose a port of at least {start}, {alt} for instance.",
     },
     "call_infra_bad_value": {
         "fr": "Valeur refusée pour {name} : {value}",

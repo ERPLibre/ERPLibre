@@ -75,7 +75,13 @@ from script.todo import odoo_link as ol
 from script.todo import turn_client
 
 STATE_PATH = "/etc/erplibre-call/state.json"
+# Version de l'état d'un hôte par paquets ; celui d'un hôte en conteneurs
+# est à CONTAINER_STATE_VERSION, et seulement lui : un état écrit par une
+# version de l'outil qui ne connaissait que les paquets reste lisible et
+# « rien à changer ».
 STATE_VERSION = 1
+CONTAINER_STATE_VERSION = 2
+STATE_VERSIONS_READ = (STATE_VERSION, CONTAINER_STATE_VERSION)
 CALL_DIR = "/etc/erplibre-call"
 PENDING_DIR = "/etc/erplibre-call/pending"
 
@@ -91,6 +97,9 @@ SERVICES = ("coturn", "ntfy")
 # désinstallation relisent.
 FIREWALL_LABELS = SERVICES + ("nginx", "certbot")
 MODES = ("development", "production")
+# Méthode d'installation, une par hôte : paquets de la distribution sous
+# systemd, ou conteneurs lancés par un fichier compose.
+METHODS = ("packages", "container")
 # Mode d'identification de coturn, un seul à la fois (coturn 4.6 ne les
 # mélange pas) : « fixed », des comptes long terme (`lt-cred-mech`) ;
 # « secret », des identifiants temporaires signés par les secrets de
@@ -314,7 +323,12 @@ class Answers:
     d'identifiants, un secret jamais consigné) pour `acme="dns"`, `email`
     pour Let's Encrypt (vide : aucun), `ntfy_web` (interface web de ntfy),
     `turns_443` (TURN sur TLS écoute 443 au lieu de `turns_port`), `nginx`
-    (« existing », « install », None sans nginx)."""
+    (« existing », « install », None sans nginx).
+
+    Méthode (`method`, une de METHODS) : en « container », `engine` (un de
+    `cc.ENGINES`) et `rootless` (Podman sous un compte sans privilège) ;
+    `install_engine` vaut accord pour installer les paquets
+    qu'`engine_offer` nomme. En « packages », `engine` vaut None."""
 
     services: frozenset[str]
     tls: str
@@ -337,6 +351,10 @@ class Answers:
     ntfy_web: bool = False
     turns_443: bool = False
     nginx: str | None = None
+    method: str = "packages"
+    engine: str | None = None
+    rootless: bool = False
+    install_engine: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -366,7 +384,12 @@ class InstallPlan:
     `odoo_readd` : clés des serveurs Odoo dont les URL de TURN changent
     avec ce plan (nom de TURN, ports, TLS) et qu'il faut ajouter de
     nouveau pour qu'ils les reçoivent ; l'avertissement est la clé
-    ODOO_READD_WARNING (valeur `odoos`)."""
+    ODOO_READD_WARNING (valeur `odoos`).
+    `migration` : « to_container » ou « to_packages » quand la méthode de
+    l'état change avec ce plan, None sinon. `engine_packages` : paquets du
+    moteur et de son outil de composition que le script installe (accord
+    `install_engine`). `compose` : gabarit du fichier compose
+    (`cc.compose_text`, chaque service consigné), vide par paquets."""
 
     answers: Answers
     adopt: tuple[str, ...]
@@ -379,6 +402,9 @@ class InstallPlan:
     certbot_force: bool = False
     purge_secrets: tuple[str, ...] = ()
     odoo_readd: tuple[str, ...] = ()
+    migration: str | None = None
+    engine_packages: tuple[str, ...] = ()
+    compose: str = ""
 
 
 # --- Sonde ------------------------------------------------------------------
@@ -1396,6 +1422,15 @@ def _check_answers(answers):
     refuserait après avoir commencé."""
     if not answers.services or not answers.services <= set(SERVICES):
         raise ValueError(f"services: {sorted(answers.services)}")
+    if answers.method not in METHODS:
+        raise ValueError(f"method: {answers.method}")
+    if answers.method == "container":
+        if answers.engine not in cc.ENGINES:
+            raise ValueError(f"engine: {answers.engine}")
+    elif answers.engine is not None:
+        raise ValueError("engine set with the packages method")
+    if answers.rootless and answers.engine != "podman":
+        raise ValueError("rootless needs podman")
     if answers.mode not in MODES:
         raise ValueError(f"mode: {answers.mode}")
     if answers.tls not in TLS_MODES:
@@ -1730,7 +1765,9 @@ def _settings(svc, answers, cert_sha):
     noms, la source du certificat (`acme`, `dns_plugin`, `email`) et
     `nginx` en booléen : un nginx que l'outil a installé existe à la
     relance, « install » et « existing » y reviennent au même. Le fichier
-    d'identifiants DNS, secret, n'y est jamais."""
+    d'identifiants DNS, secret, n'y est jamais. En conteneurs s'y ajoutent
+    `method`, `engine` et `rootless` ; un état par paquets garde les clés
+    qu'il avait."""
     low, high = relay_range(answers)
     if svc == "coturn":
         settings = {
@@ -1769,6 +1806,14 @@ def _settings(svc, answers, cert_sha):
                 ),
                 "email": answers.email,
                 "nginx": answers.nginx is not None,
+            }
+        )
+    if answers.method == "container":
+        settings.update(
+            {
+                "method": answers.method,
+                "engine": answers.engine,
+                "rootless": answers.rootless,
             }
         )
     return settings
@@ -2142,12 +2187,280 @@ def _production_unchanged(facts, answers, prior):
     return True
 
 
+def _state_refusal(state):
+    """Refusal pour un état écrit que cet outil ne suit pas, None sinon :
+    version hors de STATE_VERSIONS_READ (`call_infra_state_version`),
+    méthode inconnue ou qui ne va pas avec la version, CONTAINER_STATE_VERSION
+    étant celle du mode conteneur et de lui seul
+    (`call_infra_state_invalid`, `service` « method »). Un état sans
+    `method` est un état par paquets."""
+    version = state.get("version")
+    if isinstance(version, bool) or version not in STATE_VERSIONS_READ:
+        return Refusal(
+            "call_infra_state_version",
+            found=version,
+            expected=", ".join(str(v) for v in STATE_VERSIONS_READ),
+        )
+    method = state.get("method", "packages")
+    if method not in METHODS or (method == "container") != (
+        version == CONTAINER_STATE_VERSION
+    ):
+        return Refusal("call_infra_state_invalid", service="method")
+    return None
+
+
+def _recorded(state):
+    """Services que `state` consigne (fiche dict), dans l'ordre de
+    SERVICES."""
+    services = state.get("services") if isinstance(state, dict) else None
+    if not isinstance(services, dict):
+        return ()
+    return tuple(s for s in SERVICES if isinstance(services.get(s), dict))
+
+
+def _state_method(state):
+    """Méthode de l'état écrit, None quand il ne consigne aucun service."""
+    if not _recorded(state):
+        return None
+    return state.get("method", "packages")
+
+
+def _engine_label(engine, rootless):
+    return f"{engine} (rootless)" if rootless else str(engine)
+
+
+def engine_offer(facts, engine, rootless):
+    """Paquets de la distribution qui manquent à l'hôte pour conduire
+    `engine` (et le mode rootless) : `cc.engine_packages` sur ce que la
+    sonde a lu, où une sortie sans section des moteurs compte pour rien de
+    présent. () sur un système que l'outil ne prend pas en charge, que
+    `plan_install` refuse avant."""
+    if facts.family is None:
+        return ()
+    return cc.engine_packages(
+        facts.os_id, facts.family, engine, rootless, facts.engines
+    )
+
+
+def container_account(facts, svc, rootless, purged):
+    """Compte sous lequel le conteneur de `svc` tourne : en rootless, le
+    compte ROOTLESS_ACCOUNT pour les deux ; sinon ntfy sous `ntfy`, et
+    coturn sous `turnserver` quand la sonde le trouve et que ce plan ne
+    purge pas le paquet de coturn (`purged`), dont la purge supprime ce
+    compte, ou sous le compte système que l'outil crée."""
+    if svc not in SERVICES:
+        raise ValueError(f"service: {svc}")
+    if rootless:
+        return cc.ROOTLESS_ACCOUNT
+    if svc == "ntfy":
+        return cc.NTFY_ACCOUNT
+    accounts = facts.engines.accounts if facts.engines else {}
+    package_account, own_account = cc.COTURN_ACCOUNTS
+    if package_account in accounts and not purged:
+        return package_account
+    return own_account
+
+
+def _container_ports(answers):
+    """(port, port proposé à la place) de chaque port qu'un conteneur lie
+    sous un compte sans privilège : ceux de coturn en rootless seulement
+    (en root, la capacité posée sur son binaire lui ouvre les ports bas),
+    ceux de ntfy dans tout mode conteneur (l'image ne pose pas cette
+    capacité). Le port proposé est la valeur par défaut d'`Answers`."""
+    ports = []
+    if answers.rootless and "coturn" in answers.services:
+        ports.append((answers.turn_port, Answers.turn_port))
+        if has_tls(answers):
+            ports.append((coturn_tls_port(answers), Answers.turns_port))
+    if "ntfy" in answers.services:
+        default = ntfy_port(dataclasses.replace(answers, ntfy_port=None))
+        ports.append((ntfy_port(answers), default))
+        if _ntfy_own_tls(answers):
+            ports.append((ntfy_http_port(answers), NTFY_HTTP_PORT))
+    return ports
+
+
+def method_refusal(facts, answers):
+    """Refusal tiré de la méthode d'installation, avant que rien ne soit
+    touché, ou None. Dans l'ordre :
+
+    - `call_infra_foreign_container` (`names`) : un conteneur aux noms ou
+      à l'image de l'outil que l'état ne consigne pas comme le sien
+      (`cc.foreign_containers`), quelle que soit la méthode ;
+    - `call_infra_method_partial` (`service`) : la méthode change alors
+      qu'un service consigné n'est pas choisi ; elle est la même pour tout
+      l'hôte, chaque service consigné migre ;
+    - `call_infra_ntfy_downgrade` (`host`, `image`) : retour aux paquets
+      d'un ntfy en conteneur alors que l'hôte porte un binaire ntfy plus
+      ancien que celui de l'image, qui a mis à jour la base des comptes ;
+      sans binaire sur l'hôte, l'installateur pose la version de l'image ;
+    - `call_infra_engine_switch` (`old`, `new`) : un hôte en conteneurs
+      passe à un autre moteur ou mode ; les anciens conteneurs garderaient
+      leurs ports ;
+    - `call_infra_engine_missing` (`engine`, `packages`) : il manque des
+      paquets (`engine_offer`) et `install_engine` ne les accorde pas ;
+    - `call_infra_container_port` (`port`, `start`, `alt`) : un port de
+      `_container_ports` sous `unpriv_port_start` de l'hôte.
+    """
+    prior = facts.state if isinstance(facts.state, dict) else {}
+    engines = facts.engines or cc.EngineFacts()
+    names = cc.foreign_containers(engines, prior)
+    if names:
+        return Refusal("call_infra_foreign_container", names=", ".join(names))
+    recorded = _recorded(prior)
+    before = _state_method(prior)
+    if before is not None and before != answers.method:
+        for svc in recorded:
+            if svc not in answers.services:
+                return Refusal("call_infra_method_partial", service=svc)
+        host = engines.ntfy_host_version
+        image = cc.IMAGE_VERSIONS["ntfy"]
+        if (
+            before == "container"
+            and "ntfy" in recorded
+            and host
+            and cc.version_older(host, image)
+        ):
+            return Refusal("call_infra_ntfy_downgrade", host=host, image=image)
+    if before == "container" and answers.method == "container":
+        block = prior.get("container")
+        block = block if isinstance(block, dict) else {}
+        old = (block.get("engine"), block.get("rootless") is True)
+        if old != (answers.engine, answers.rootless):
+            return Refusal(
+                "call_infra_engine_switch",
+                old=_engine_label(*old),
+                new=_engine_label(answers.engine, answers.rootless),
+            )
+    if answers.method != "container":
+        return None
+    missing = engine_offer(facts, answers.engine, answers.rootless)
+    if missing and not answers.install_engine:
+        return Refusal(
+            "call_infra_engine_missing",
+            engine=answers.engine,
+            packages=", ".join(missing),
+        )
+    start = engines.unpriv_port_start
+    for port, alt in _container_ports(answers):
+        if port < start:
+            return Refusal(
+                "call_infra_container_port", port=port, start=start, alt=alt
+            )
+    return None
+
+
+def _carried(block, key, kind, default):
+    """`block[key]` copié quand il est du type `kind`, sinon `default`."""
+    value = block.get(key)
+    return copy.deepcopy(value) if isinstance(value, kind) else default
+
+
+# Champs du bloc `container` que le script d'installation remplit de ce
+# qu'il a fait sur l'hôte : (clé, type, défaut). Le plan les reprend de
+# l'état précédent ; ils disent à la désinstallation ce qu'elle défait.
+_CONTAINER_ADDED = (
+    ("images_pulled", list, []),
+    ("engine_packages_added", list, []),
+    ("accounts_added", list, []),
+    ("restart_unit_enabled", str, None),
+    ("linger_added", bool, False),
+)
+
+
+def _container_block(facts, answers, prior, services):
+    """Le bloc `container` de l'état pour `answers`. L'outil de composition
+    est celui que la sonde trouve, sinon le premier de
+    `cc.COMPOSE_PROVIDERS`, celui que chaque paquet de `engine_offer`
+    fournit. L'uid du compte rootless et les champs de _CONTAINER_ADDED
+    viennent de l'état précédent en conteneurs ; le script d'installation
+    les remplit."""
+    old = (
+        prior.get("container") if _state_method(prior) == "container" else None
+    )
+    old = old if isinstance(old, dict) else {}
+    engines = facts.engines or cc.EngineFacts()
+    account = cc.ROOTLESS_ACCOUNT if answers.rootless else None
+    uid = old.get("uid") if account and old.get("account") == account else None
+    compose = engines.compose.get(answers.engine) or (
+        cc.COMPOSE_PROVIDERS[answers.engine][0]
+    )
+    block = {
+        "engine": answers.engine,
+        "rootless": answers.rootless,
+        "account": account,
+        "uid": uid,
+        "compose": list(compose),
+        "compose_file": cc.COMPOSE_FILE,
+        "project": cc.PROJECT,
+        "images": {svc: cc.IMAGES[svc] for svc in services},
+    }
+    for key, kind, default in _CONTAINER_ADDED:
+        block[key] = _carried(old, key, kind, default)
+    return block
+
+
+def _container_added(prior):
+    """Ce qu'une installation en conteneurs a ajouté à l'hôte, gardé sous
+    `container_added` quand l'hôte revient aux paquets : moteur, mode et
+    compte rootless, puis les champs de _CONTAINER_ADDED, réunis avec
+    ceux d'un retour précédent. La désinstallation le défait."""
+    block = prior.get("container")
+    block = block if isinstance(block, dict) else {}
+    before = prior.get("container_added")
+    before = before if isinstance(before, dict) else {}
+    added = {
+        key: copy.deepcopy(block.get(key))
+        for key in ("engine", "rootless", "account", "uid")
+    }
+    for key, kind, default in _CONTAINER_ADDED:
+        new = _carried(block, key, kind, default)
+        old = _carried(before, key, kind, default)
+        if kind is list:
+            added[key] = old + [item for item in new if item not in old]
+        elif kind is bool:
+            added[key] = old or new
+        else:
+            added[key] = new if new is not None else old
+    return added
+
+
+def _container_running(facts, answers, svc):
+    """Le conteneur de `svc` tourne, sous le moteur et le mode voulus, sur
+    son image épinglée."""
+    engines = facts.engines or cc.EngineFacts()
+    wanted = (
+        cc.CONTAINERS[svc],
+        answers.engine,
+        answers.rootless,
+        "running",
+        cc.IMAGES[svc],
+    )
+    return wanted in engines.containers
+
+
+def _compose_users(services):
+    """{service: « uid:gid »} des fiches qui portent leurs deux ids."""
+    users = {}
+    for svc, record in services.items():
+        if not isinstance(record, dict):
+            continue
+        uid, gid = record.get("uid"), record.get("gid")
+        if all(
+            isinstance(v, int) and not isinstance(v, bool) for v in (uid, gid)
+        ):
+            users[svc] = f"{uid}:{gid}"
+    return users
+
+
 def plan_install(facts, answers, now):
     """Plan d'installation, ou Refusal avant que rien ne soit touché.
 
     Refus, dans l'ordre : système (`call_infra_unsupported_os`,
     `call_infra_no_systemd`), état d'une autre version
-    (`call_infra_state_version`), réponses (`call_infra_bad_value`), en
+    (`call_infra_state_version`) ou qu'on ne peut pas suivre
+    (`call_infra_state_invalid` : méthode, bloc `container` altéré),
+    réponses (`call_infra_bad_value`), ceux de `method_refusal`, en
     production ceux de `_check_production`, port tenu par un autre
     processus que le service réinstallé (`call_infra_port_busy`),
     certificat fourni illisible, d'une autre clé, expiré ou sans l'un des
@@ -2170,7 +2483,23 @@ def plan_install(facts, answers, now):
 
     Production : l'état gagne les fiches « nginx » (`_nginx_record`),
     « certbot » (`_certbot_record`) et « hook » quand le plan s'en sert, et
-    la fiche de coturn son complément d'unité (`dropin`, None sans 443).
+    la fiche de coturn son complément d'unité (`dropin`, None sans 443 ou
+    en conteneurs).
+
+    Conteneurs (`answers.method`) : l'état passe à CONTAINER_STATE_VERSION
+    avec un bloc `container` (`_container_block`) ; chaque fiche de service
+    porte `container`, `account` (`container_account`, ou celui de l'état
+    précédent en conteneurs), `uid` et `gid` (repris de l'état précédent
+    pour le même compte, remplis par le script sinon), `config` (le chemin
+    de la famille pour coturn) et `unit`, l'unité d'un paquet qui était là
+    avant l'outil et reste sur l'hôte, arrêtée, pour être remise à la
+    désinstallation (None sinon). `nothing_to_do` y demande, au lieu de
+    l'unité active, le conteneur en marche sur son image épinglée
+    (`_container_running`), le même compte, la configuration de coturn de
+    la saveur « container », aucun paquet à installer et le fichier compose
+    de l'hôte égal au gabarit résolu par les uid:gid des fiches. Le retour
+    aux paquets rend un état à STATE_VERSION sans bloc `container`, dont
+    les ajouts passent sous `container_added` (`_container_added`).
     """
     if facts.family is None:
         raise Refusal(
@@ -2181,13 +2510,27 @@ def plan_install(facts, answers, now):
     if not facts.systemd:
         raise Refusal("call_infra_no_systemd")
     prior = facts.state if isinstance(facts.state, dict) else {}
-    if prior and prior.get("version") != STATE_VERSION:
-        raise Refusal(
-            "call_infra_state_version",
-            found=prior.get("version"),
-            expected=STATE_VERSION,
-        )
+    refusal = _state_refusal(prior) if prior else None
+    if refusal is None and prior.get("method") == "container":
+        problem = cc.container_block_problem(prior)
+        if problem:
+            refusal = Refusal("call_infra_state_invalid", service=problem)
+    if refusal is not None:
+        raise refusal
     _check_answers(answers)
+    refusal = method_refusal(facts, answers)
+    if refusal is not None:
+        raise refusal
+    container = answers.method == "container"
+    before = _state_method(prior)
+    migration = None
+    if before is not None and before != answers.method:
+        migration = "to_container" if container else "to_packages"
+    engine_packages = (
+        engine_offer(facts, answers.engine, answers.rootless)
+        if container
+        else ()
+    )
     readd = _odoo_readd(prior, answers)
     if is_production(answers):
         _check_production(facts, answers)
@@ -2202,7 +2545,8 @@ def plan_install(facts, answers, now):
     if not isinstance(prior_services, dict):
         prior_services = {}
     services = copy.deepcopy(prior_services)
-    adopt, diffs, configs, unchanged = [], [], {}, bool(prior)
+    adopt, diffs, configs = [], [], {}
+    unchanged = bool(prior) and migration is None
     for svc in SERVICES:
         if svc not in answers.services:
             continue
@@ -2211,8 +2555,15 @@ def plan_install(facts, answers, now):
             unit = COTURN_UNITS[facts.family]
             config = COTURN_CONFIGS[facts.family]
             if current:
-                unit, config = current["unit"], current["config"]
-            desired = coturn_config(answers, prior.get("turn_mode"))
+                unit = current["unit"]
+                # En conteneurs, l'installateur écrit le chemin de la
+                # famille, celui que le fichier compose monte.
+                config = config if container else current["config"]
+            desired = coturn_config(
+                answers,
+                prior.get("turn_mode"),
+                flavour="container" if container else "packages",
+            )
             tls_files = [
                 f"{COTURN_TLS_DIR}/turn.crt",
                 f"{COTURN_TLS_DIR}/turn.key",
@@ -2229,7 +2580,9 @@ def plan_install(facts, answers, now):
             ]
             tls_files = tls_files if _ntfy_own_tls(answers) else []
             configs[svc] = desired
-        old_text = current["config_text"] if current else ""
+        old_text = ""
+        if current and (not container or current["config"] == config):
+            old_text = current["config_text"]
         if current and is_foreign(old_text):
             adopt.append(svc)
         if old_text and old_text != desired:
@@ -2237,37 +2590,82 @@ def plan_install(facts, answers, now):
             diffs.append((config, nm.unified_diff(*shown, config)))
         prior_record = prior_services.get(svc)
         settings = _settings(svc, answers, cert_sha)
-        unchanged = unchanged and (
+        origin = _origin(current, prior_record)
+        same = (
             isinstance(prior_record, dict)
             and prior_record.get("settings") == settings
             and bool(current)
-            and current.get("active") == "active"
             and old_text == desired
         )
-        record = {"unit": unit, "config": config}
-        record.update(_origin(current, prior_record))
+        if container:
+            record = _container_record(
+                facts, answers, svc, prior_record, current, origin, migration
+            )
+            record["config"] = config
+            same = (
+                same
+                and prior_record.get("account") == record["account"]
+                and _container_running(facts, answers, svc)
+            )
+        else:
+            record = {"unit": unit, "config": config}
+            same = same and current.get("active") == "active"
+        unchanged = unchanged and same
+        record.update(origin)
         record["settings"] = settings
         record["tls_files"] = tls_files
         if svc == "coturn" and is_production(answers):
             # Complément d'unité qui laisse coturn servir TLS sur 443 ; la
-            # désinstallation le retire.
+            # désinstallation le retire. Le conteneur n'en a pas besoin :
+            # la capacité est posée sur le binaire de son image.
             record["dropin"] = (
-                COTURN_DROPIN.format(unit=unit) if answers.turns_443 else None
+                COTURN_DROPIN.format(unit=unit)
+                if answers.turns_443 and not container
+                else None
             )
         services[svc] = record
+
+    compose = ""
+    if container:
+        chosen = tuple(
+            s for s in SERVICES if isinstance(services.get(s), dict)
+        )
+        compose = cc.compose_text(
+            chosen, COTURN_CONFIGS[facts.family], answers.rootless
+        )
+        try:
+            resolved = cc.compose_resolved(compose, _compose_users(services))
+        except ValueError:
+            resolved = None
+        found = (facts.engines or cc.EngineFacts()).compose_text
+        unchanged = unchanged and not engine_packages and resolved == found
 
     stamp_now = now.isoformat(timespec="seconds")
     new_state = copy.deepcopy(prior)
     new_state.update(
         {
-            "version": STATE_VERSION,
-            "method": "packages",
+            "version": (
+                CONTAINER_STATE_VERSION if container else STATE_VERSION
+            ),
+            "method": answers.method,
             "mode": answers.mode,
             "created_at": prior.get("created_at") or stamp_now,
             "updated_at": stamp_now,
             "services": services,
         }
     )
+    if container:
+        new_state["container"] = _container_block(
+            facts, answers, prior, chosen
+        )
+        # L'outil de composition que la sonde trouve a changé : l'état
+        # s'écrit, les opérations suivantes passent par celui-là.
+        unchanged = unchanged and new_state["container"]["compose"] == (
+            prior.get("container") or {}
+        ).get("compose")
+    elif migration == "to_packages":
+        new_state["container_added"] = _container_added(prior)
+        new_state.pop("container", None)
     # Une fiche d'un passage précédent que ce plan n'utilise pas reste
     # telle quelle : la désinstallation défait encore ce qu'elle consigne
     # (avec ce qu'en dit la fiche d'un passage coupé, `_carry_fiches`).
@@ -2306,7 +2704,45 @@ def plan_install(facts, answers, now):
         certbot_force=letsencrypt and _certbot_force(facts, answers),
         purge_secrets=tuple(purge),
         odoo_readd=readd,
+        migration=migration,
+        engine_packages=engine_packages,
+        compose=compose,
     )
+
+
+def _container_record(
+    facts, answers, svc, prior_record, current, origin, migration
+):
+    """Début de la fiche d'un service en conteneurs : `container`,
+    `account`, `uid`, `gid` et `unit` (voir `plan_install`). Le compte de
+    l'état précédent en conteneurs reste, avec ses ids : ses données lui
+    appartiennent déjà. Une migration vers les conteneurs purge le paquet
+    d'un service que l'outil avait posé (`installed_by_tool`)."""
+    account = uid = gid = None
+    if (
+        isinstance(prior_record, dict)
+        and prior_record.get("container") == cc.CONTAINERS[svc]
+        and isinstance(prior_record.get("account"), str)
+        and cc.ACCOUNT_RE.match(prior_record["account"])
+    ):
+        account = prior_record["account"]
+        uid, gid = prior_record.get("uid"), prior_record.get("gid")
+    if account is None:
+        purged = migration == "to_container" and origin["installed_by_tool"]
+        account = container_account(facts, svc, answers.rootless, purged)
+    unit = None
+    if not origin["installed_by_tool"]:
+        if isinstance(prior_record, dict):
+            unit = prior_record.get("unit")
+        if not isinstance(unit, str):
+            unit = current["unit"] if current else None
+    return {
+        "container": cc.CONTAINERS[svc],
+        "account": account,
+        "uid": uid,
+        "gid": gid,
+        "unit": unit,
+    }
 
 
 def _odoo_readd(prior, answers):
@@ -2395,8 +2831,11 @@ def state_answers(state):
     certificat, la clé et le fichier d'identifiants DNS n'y sont pas :
     l'état ne garde que l'empreinte du certificat. Un état sans « mode »
     (écrit avant le mode production) est de développement ; un nginx
-    consigné se relit « existing »."""
-    if not isinstance(state, dict) or state.get("version") != STATE_VERSION:
+    consigné se relit « existing ». La méthode, le moteur et le mode
+    rootless viennent du bloc `container` ; `install_engine` reste faux,
+    un accord ne se consigne pas. None aussi pour un état que
+    `_state_refusal` refuse ou un moteur hors de `cc.ENGINES`."""
+    if not isinstance(state, dict) or _state_refusal(state) is not None:
         return None
     services = state.get("services")
     if not isinstance(services, dict):
@@ -2414,6 +2853,15 @@ def state_answers(state):
     first = coturn or ntfy
     mode = state.get("mode", "development")
     production = mode == "production"
+    method = state.get("method", "packages")
+    engine, rootless = None, False
+    if method == "container":
+        block = state.get("container")
+        block = block if isinstance(block, dict) else {}
+        engine = block.get("engine")
+        if engine not in cc.ENGINES:
+            return None
+        rootless = engine == "podman" and block.get("rootless") is True
 
     def text(settings, key):
         value = settings.get(key) if production else None
@@ -2441,6 +2889,9 @@ def state_answers(state):
             ntfy_web=production and ntfy.get("web") is True,
             turns_443=production and coturn.get("turns_443") is True,
             nginx="existing" if production and first.get("nginx") else None,
+            method=method,
+            engine=engine,
+            rootless=rootless,
         )
     except (TypeError, ValueError):
         return None
@@ -7315,12 +7766,9 @@ def uninstall_script(state, remove_data, stamp, root=""):
                 "",
             ]
         )
-    if state.get("version") != STATE_VERSION:
-        raise Refusal(
-            "call_infra_state_version",
-            found=state.get("version"),
-            expected=STATE_VERSION,
-        )
+    refusal = _state_refusal(state)
+    if refusal is not None:
+        raise refusal
     records = _uninstall_records(state)
     prod = _production_records(state)
     record = state.get("firewall")

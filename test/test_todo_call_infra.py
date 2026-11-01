@@ -1400,7 +1400,8 @@ class TestUninstall(MenuCase):
         out = self.drive("_call_infra_uninstall", host, [])
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn(
-            t("call_infra_state_version").format(found=99, expected=1), out
+            t("call_infra_state_version").format(found=99, expected="1, 2"),
+            out,
         )
 
 
