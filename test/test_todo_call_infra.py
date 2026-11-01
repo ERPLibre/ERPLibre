@@ -868,6 +868,60 @@ class TestProductionInstall(ProductionCase):
             )
         )
 
+    def test_443_held_by_coturn_itself_is_asked_again(self):
+        # Relance d'un coturn déjà sur 443 : la question revient, oui par
+        # défaut, et coturn ne repart pas en silence sur 5349.
+        replies = list(PROD_COTURN)
+        replies[9:11] = ["o"]
+        host = FakeHost()
+        self.drive("_call_infra_install", host, replies + ["o", ""])
+        host.ports = (("tcp", 22, "sshd"), ("tcp", 443, "turnserver"))
+        self.prompts = []
+        again = [""] * 11
+        _out, ans = self.planned(host, again + ["n"])
+        self.assertIs(ans.turns_443, True)
+        self.assertTrue(
+            any(
+                t("call_infra_ask_turns_443").format(port=5349) in p
+                for p in self.prompts
+            )
+        )
+
+    def test_443_is_not_asked_when_nginx_is_present_but_unused(self):
+        # nginx est là sans servir ce plan (défi DNS, coturn seul) : 443
+        # reste à lui.
+        host = FakeHost(probe_extra=["@@NGINX active debian"])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "cloudflare.ini")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(DNS_SECRET)
+            replies = ["2", "2", DOMAIN, "", "", "2", "1", path, ""]
+            replies += ["", "", ""]
+            _out, ans = self.planned(host, replies + ["n"])
+        self.assertIsNone(ans.nginx)
+        self.assertIs(ans.turns_443, False)
+        self.assertFalse(
+            any(
+                t("call_infra_ask_turns_443").format(port=5349) in p
+                for p in self.prompts
+            )
+        )
+
+    def test_ubuntu_and_installed_plugins_are_offered(self):
+        host = FakeHost(os_line="ubuntu 24.04")
+        replies = ["", "2", DOMAIN, "", "", "", "2", "99"]
+        out = self.drive("_call_infra_install", host, replies)
+        self.assertIn("[6] ovh", out)
+        self.assertNotIn("] luadns", out)
+        self.assertNotIn("] nsone", out)
+        # Un greffon déjà installé est offert même sans paquet Debian.
+        host = FakeHost(
+            probe_extra=["@@CERTBOT 4.0.0", "@@CERTBOT_PLUGIN ovh"]
+        )
+        out = self.drive("_call_infra_install", host, replies)
+        self.assertIn("[3] ovh", out)
+        self.assertNotIn("] luadns", out)
+
     def test_a_domain_that_is_an_address_is_refused(self):
         for typed in ("192.0.2.10", "2001:db8::1", "hote-exemple"):
             with self.subTest(typed=typed):
@@ -937,7 +991,6 @@ class TestProductionInstall(ProductionCase):
             ans, answers(public_name="192.0.2.10", ntfy_port=8080)
         )
         self.assertIn(f"{t('Mode:')} {t('development')}", out)
-
 
     def test_development_after_production_drops_the_nat_address(self):
         # L'adresse publique d'un hôte derrière un NAT n'a pas de sens pour
