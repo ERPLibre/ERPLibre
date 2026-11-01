@@ -70,11 +70,19 @@ def lancer(maison, *args):
     with (
         mock.patch.dict(os.environ, {"HOME": maison}),
         mock.patch.object(descente, "autre_descente", lambda: []),
+        # Un essai à blanc ne lance rien : une commande qui partirait
+        # d'ici (création de VM, clé ssh) échoue le test au lieu de tourner.
+        mock.patch("subprocess.run", side_effect=_aucun_processus),
+        mock.patch("subprocess.Popen", side_effect=_aucun_processus),
         contextlib.redirect_stdout(sortie),
         contextlib.redirect_stderr(io.StringIO()),
     ):
         code = lt.mener(list(args))
     return code, sortie.getvalue()
+
+
+def _aucun_processus(argv, *args, **kwargs):
+    raise AssertionError(f"processus lancé par un essai à blanc : {argv}")
 
 
 class LaPlace(unittest.TestCase):
@@ -126,6 +134,15 @@ class LEssaiABlanc(unittest.TestCase):
                 self.assertEqual("call_infra", rapport["outil"])
         self.assertFalse(os.path.exists(os.path.join(self.maison, ".ssh")))
         self.assertFalse([f for f in self._fichiers() if f.endswith(".crt")])
+        # Le rapport à blanc et son journal, rien d'autre.
+        self.assertEqual(
+            [],
+            [
+                f
+                for f in self._fichiers()
+                if not f.endswith(("-dryrun.json", ".log"))
+            ],
+        )
 
     def test_one_distribution_only(self):
         code, sortie = lancer(self.maison, "--dry-run", "--distro", "arch")

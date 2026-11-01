@@ -60,6 +60,18 @@ class TestCleJetable(unittest.TestCase):
             os.path.exists(os.path.join(self.maison, ".erplibre"))
         )
 
+    def test_sans_creer_le_chemin_seul(self):
+        """Un essai à blanc nomme la clé sans la créer ni rien lancer."""
+        with mock.patch.object(
+            descente.subprocess, "run", side_effect=AssertionError("lancé")
+        ):
+            pub = descente.cle_publique(creer=False)
+        self.assertEqual(
+            pub,
+            os.path.join(self.maison, ".erplibre/longtest/ssh/id_ed25519.pub"),
+        )
+        self.assertEqual(os.listdir(self.maison), [])
+
     def test_echec_de_ssh_keygen_rend_vide(self):
         with mock.patch.object(
             descente.subprocess, "run", side_effect=OSError("absent")
