@@ -4982,26 +4982,33 @@ def _host_step(run, script):
 
 def _write_odoo(link, plan, value):
     """Écrit dans Odoo, par `link`, ce que `plan` prévoit, avec le secret
-    ou le mot de passe `value`. Avec le module : la liste d'URL d'abord, le
-    secret en dernier (sur l'API web, chaque paramètre est sa propre
-    transaction : une coupure entre les deux laisse l'ancienne
-    configuration ou aucune, jamais un nouveau secret sur d'anciennes URL),
-    puis les lignes que l'outil avait écrites retirées. Sans lui : les trois
-    lignes (le mot de passe sur les deux TURN, aucun sur le STUN), puis les
-    paramètres du module restés dans la base retirés."""
+    ou le mot de passe `value`.
+
+    L'appel qui porte `value` est le dernier : un appel qui échoue avant
+    lui laisse Odoo sur l'identifiant d'avant, que le retour arrière
+    d'`apply_odoo_add` garde sur coturn, et non sur `value`, qu'il en
+    retire. Avec le module : les lignes que l'outil avait écrites retirées,
+    puis la liste d'URL, le secret en dernier (sur l'API web, chaque
+    paramètre est sa propre transaction : une coupure entre les deux laisse
+    l'ancienne configuration ou aucune, jamais un nouveau secret sur
+    d'anciennes URL). Sans lui : les paramètres du module restés dans la
+    base retirés, puis les trois lignes (le mot de passe sur les deux TURN,
+    aucun sur le STUN). `replace_rows` crée avant d'effacer : un échec
+    entre les deux laisse aussi les lignes d'avant, dont le retour arrière
+    remet la clé sur coturn."""
     url, database = _split_key(plan.key)
     owned = ol.owned_username(url, database)
     if plan.kind == "secret":
-        link.set_params({**plan.params, ol.PARAM_SECRET: value})
         link.replace_rows(owned, [])
+        link.set_params({**plan.params, ol.PARAM_SECRET: value})
         return
+    if plan.params:
+        link.set_params(plan.params)
     rows = [
         dict(row, credential=value) if row["server_type"] == "turn" else row
         for row in plan.rows
     ]
     link.replace_rows(owned, rows)
-    if plan.params:
-        link.set_params(plan.params)
 
 
 def apply_odoo_add(
@@ -5026,7 +5033,9 @@ def apply_odoo_add(
     `odoo_rollback_script` retire de coturn l'identifiant qui vient d'y
     être posé, et l'état garde sa fiche d'avant ; `Refusal`
     (`call_infra_odoo_write_failed`), sa cause dans `__cause__`. Une
-    interruption (Ctrl-C) est défaite de même, puis relevée telle quelle.
+    interruption (Ctrl-C) est défaite de même, puis relevée telle quelle ;
+    un retour arrière en échec, interruption ou non, lève
+    `call_infra_odoo_rollback_failed`, l'erreur d'origine dans `__cause__`.
     Autres refus : `call_infra_odoo_host_failed` (`step`), rien n'est
     écrit dans Odoo ; `call_infra_odoo_rollback_failed` (`step`) ;
     `call_infra_odoo_state_failed`. Une erreur d'installation du module
@@ -5072,12 +5081,12 @@ def apply_odoo_add(
             root=root,
         )
         undone = _host_step(run, rollback)
-        if not isinstance(error, Exception):
-            raise
         if not undone["ok"]:
             raise Refusal(
                 "call_infra_odoo_rollback_failed", step=undone["failed"]
             ) from error
+        if not isinstance(error, Exception):
+            raise
         raise Refusal("call_infra_odoo_write_failed") from error
     final = odoo_added_state(
         plan.state,
