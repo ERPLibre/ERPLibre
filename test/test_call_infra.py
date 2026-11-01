@@ -10625,8 +10625,12 @@ if [ "$1" = purge ]; then
   done
   echo "purge-sees $(ls "$ROOT/var/lib/erplibre-call-backup"/*/ 2>/dev/null \
       | tr '\n' ' ')" >> "$LOG/argv"
-  if [ -n "${FAKE_PURGE_WIPES:-}" ] && [ "$3" = ntfy ]; then
-    rm -rf "$ROOT/var/lib/ntfy" "$ROOT/etc/ntfy/tls"
+  if [ -n "${FAKE_PURGE_WIPES:-}" ]; then
+    case "$3" in
+      ntfy) rm -rf "$ROOT/var/lib/ntfy" "$ROOT/etc/ntfy/tls" \
+          "$ROOT/etc/ntfy/server.yml" "$ROOT/var/cache/ntfy" ;;
+      coturn) rm -f "$ROOT/etc/turnserver.conf" ;;
+    esac
   fi
   exit 0
 fi
@@ -10660,9 +10664,10 @@ for _name in (
 CONTAINER_STUBS["podman"] = CONTAINER_STUBS["docker"]
 # Les installateurs : TURN_*/NTFY_* notés par passage ; celui de coturn,
 # en conteneurs, imprime `@@RECREATE` (FAKE_RECREATE_<n>, sinon
-# FAKE_RECREATE, sinon 1) et pose alors l'empreinte en attente.
-# FAKE_TOUCH_<étiquette>_<n> : fichiers de la racine que ce passage
-# modifie, comme un service qui écrit dans sa base.
+# FAKE_RECREATE, sinon 1) et pose alors l'empreinte en attente. Par
+# paquets, avec FAKE_INSTALLS, chacun ajoute son paquet à la liste des
+# paquets présents. FAKE_TOUCH_<étiquette>_<n> : fichiers de la racine que
+# ce passage modifie, comme un service qui écrit dans sa base.
 STUB_BASH_CONTAINER = r"""#!/bin/sh
 name=$(basename "$1" .sh)
 tag=$name${NGINX_STAGE:+-$NGINX_STAGE}
@@ -10680,6 +10685,12 @@ if [ "$name" = install_coturn ] && [ "${TURN_TARGET:-}" = container ]; then
   fi
   echo "@@RECREATE $r"
   echo "@@CONFIGURED coturn"
+fi
+if [ -z "${TURN_TARGET:-}" ] && [ -n "${FAKE_INSTALLS:-}" ]; then
+  case "$name" in
+    install_coturn) echo coturn >> "$FK/installed" ;;
+    install_ntfy) echo ntfy >> "$FK/installed" ;;
+  esac
 fi
 v=$(echo "$tag" | tr -- '-.' '__')
 eval "touched=\${FAKE_TOUCH_${v}_$n:-}"
@@ -11846,6 +11857,69 @@ esac
                 f"chown as=root xdg= root:{gid} {self.path(path)}",
                 argv[stop:up],
             )
+
+    def test_failing_reverse_gate_purges_the_packages_it_installed(self):
+        # Un paquet que ce passage a posé repart avec le retour en
+        # arrière : l'état en conteneurs, qui reste, ne le consigne pas.
+        # Données, copies TLS, configuration de ntfy et cache survivent à
+        # la purge.
+        plan, _before = self.to_packages(
+            container_answers(
+                tls="supplied", cert_pem=TURN_CERT, key_pem=TURN_KEY
+            )
+        )
+        secrets = self.secrets()
+        write(self.path(ci.NTFY_CONFIG), "# server.yml du conteneur\n", 0o644)
+        os.makedirs(self.path(ci.NTFY_CACHE_DIR))
+        coturn_config = self.read(self.path("/etc/turnserver.conf"))
+        done = self.run_script(
+            plan,
+            ACTIVE_coturn="failed",
+            FAKE_INSTALLS="1",
+            FAKE_PURGE_WIPES="1",
+        )
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        argv = self.argv()
+        stop = argv.index("systemctl as=root xdg= disable --now coturn")
+        up = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d"
+        )
+        for package in ("coturn", "ntfy"):
+            purge = argv.index(f"apt-get as=root xdg= purge -y {package}")
+            self.assertLess(stop, purge)
+            self.assertLess(purge, up)
+            self.assertIn(("REMOVED", f"package {package}"), markers)
+        self.assertEqual(
+            self.read(os.path.join(self.fk, "installed")), "sqlite3\n"
+        )
+        self.assertEqual(self.secrets(), secrets)
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_TLS_DIR + "/ntfy.key")), TURN_KEY
+        )
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_CONFIG)), "# server.yml du conteneur\n"
+        )
+        self.assertTrue(os.path.isdir(self.path(ci.NTFY_CACHE_DIR)))
+        self.assertEqual(
+            self.read(self.path("/etc/turnserver.conf")), coturn_config
+        )
+        self.assertFalse(os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)))
+        # Un paquet déjà là avant le passage reste.
+        plan, _before = self.to_packages()
+        write(os.path.join(self.fk, "installed"), "coturn\nsqlite3\n")
+        done = self.run_script(plan, ACTIVE_coturn="failed", FAKE_INSTALLS="1")
+        self.assertEqual(
+            ci.marker_lines(done.stdout)[-2], ("MIGRATION", "rolled-back")
+        )
+        argv = self.argv()
+        self.assertNotIn("apt-get as=root xdg= purge -y coturn", argv)
+        self.assertIn("apt-get as=root xdg= purge -y ntfy", argv)
 
     def test_rootless_reverse_removes_images_under_its_account(self):
         plan, _before = self.to_packages(
