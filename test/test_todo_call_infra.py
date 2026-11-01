@@ -1463,7 +1463,7 @@ class TestTranslations(unittest.TestCase):
         source = CALL_INFRA_PY.read_text(encoding="utf-8")
         source += MENU_PY.read_text(encoding="utf-8")
         source += ODOO_LINK_PY.read_text(encoding="utf-8")
-        keys = set(re.findall(r'"(call_infra_[a-z_]+)"', source))
+        keys = set(re.findall(r'"(call_infra_[a-z0-9_]+)"', source))
         keys |= set(ci.CHECK_KEYS)
         self.assertGreater(len(keys), 25)
         for key in sorted(keys):

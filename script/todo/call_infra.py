@@ -32,6 +32,11 @@ Déroulé :
    `erplibre_turn`) ou le compte fixe d'un serveur Odoo ; `turn_mode_for`
    dit le mode de coturn que ce serveur demande, `ice_urls` les URL que le
    module distribue.
+7. `plan_odoo_add(state, facts, url, base, ...)` rend un `OdooPlan` (ou
+   refuse) sans rien écrire ; `apply_odoo_add` pose l'identifiant sur
+   coturn, puis écrit Odoo, et défait coturn quand Odoo refuse ;
+   `apply_odoo_remove` nettoie Odoo, puis révoque sur l'hôte. Les deux
+   lancent leurs scripts par le `run` que l'appelant leur donne.
 
 L'état (`STATE_PATH`, root 0600) est le seul registre de ce que l'outil a
 fait sur l'hôte ; il ne porte aucun secret. Avant de toucher à un service,
@@ -54,6 +59,7 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 import shlex
 import socket
 import ssl
@@ -4783,6 +4789,364 @@ def odoo_result(output):
         elif name == "TURN_MODE" and value in TURN_MODES:
             result["turn_mode"] = value
     return result
+
+
+# --- Ajouter et retirer un serveur Odoo -------------------------------------
+
+# Avertissements d'un plan d'ajout (`OdooPlan.warnings`) : compte fixe sans
+# TURN sur TLS, module absent du chemin des addons (le texte dit comment
+# l'y mettre), plus d'entrées ICE qu'Odoo n'en envoie (valeur `count`).
+NO_TURNS_WARNING = "call_infra_no_turns"
+MODULE_ABSENT_WARNING = "call_infra_module_absent"
+ICE_OVER_WARNING = "call_infra_ice_over_5"
+# Clés i18n que l'ajout et le retrait rendent : avertissements, puis refus
+# (`Refusal`) de `plan_odoo_add`, `apply_odoo_add` et `apply_odoo_remove`.
+ODOO_PLAN_KEYS = (
+    NO_TURNS_WARNING,
+    MODULE_ABSENT_WARNING,
+    ICE_OVER_WARNING,
+    "call_infra_odoo_no_coturn",
+    "call_infra_odoo_version",
+    "call_infra_turn_mode_mismatch",
+    "call_infra_odoo_exempt",
+    "call_infra_odoo_host_failed",
+    "call_infra_odoo_write_failed",
+    "call_infra_odoo_rollback_failed",
+    "call_infra_odoo_state_failed",
+    "call_infra_odoo_remove_unreachable",
+)
+# mail envoie au navigateur au plus cinq serveurs ICE (`search(limit=5)`,
+# la borne de Firefox) ; le module `erplibre_turn` garde la même.
+MAX_ICE_SERVERS = 5
+# États d'`ir.module.module` : module installé (une mise à jour en attente
+# ne le désinstalle pas), ou présent sur le chemin des addons et
+# installable. Tout autre état, « absent » compris, ne s'installe pas.
+_MODULE_INSTALLED = ("installed", "to upgrade")
+_MODULE_INSTALLABLE = ("uninstalled", "to install")
+# Longueur, en octets, des secrets et mots de passe tirés : celle de
+# `secrets.token_urlsafe(32)`, 43 caractères.
+_DRAW_BYTES = 32
+
+
+@dataclasses.dataclass(frozen=True)
+class OdooPlan:
+    """Ce que « Ajouter un serveur Odoo » fera, calculé avant tout
+    changement (`plan_odoo_add`).
+
+    `key` : `ol.odoo_key` de la base. `kind` : « secret » (module
+    `erplibre_turn`, identifiants temporaires) ou « user » (compte fixe).
+    `install_module` : le module, présent sur le chemin des addons,
+    s'installe d'abord. `params` : paramètres d'Odoo à écrire, sans le
+    secret, tiré seulement par `apply_odoo_add` (avec le module : la liste
+    `erplibre_turn.urls` ; sans lui : None pour chaque paramètre du module
+    resté dans la base). `rows` : les trois lignes `mail.ice.server` du
+    compte fixe, au nom `ol.owned_username`, sans mot de passe ; () avec le
+    module. `rows_total` : les entrées ICE qu'Odoo aura, celles de l'outil
+    plus les lignes qui ne sont pas les siennes. `warnings` : clés i18n,
+    leurs valeurs dans `messages()`. `exempt` : l'adresse à exempter des
+    limites de ntfy, None sans ntfy dans l'état.
+
+    `state` : l'état de l'hôte que le plan suppose (lu par la sonde) ;
+    `realm` : celui de coturn ; `ttl_hours` : la durée de vie des
+    identifiants que la base applique, qui borne la grâce de l'ancien
+    secret ; `ntfy_text` : `server.yml` tel que la sonde l'a lu."""
+
+    key: str
+    kind: str
+    install_module: bool
+    params: dict
+    rows: tuple
+    rows_total: int
+    warnings: tuple
+    exempt: str | None
+    state: dict = dataclasses.field(default_factory=dict)
+    realm: str = ""
+    ttl_hours: int = DEFAULT_TTL_HOURS
+    ntfy_text: str | None = None
+
+    def messages(self):
+        """((clé, valeurs), ...) des avertissements, dans leur ordre, pour
+        `t(clé).format(**valeurs)`."""
+        values = {ICE_OVER_WARNING: {"count": self.rows_total}}
+        return tuple((key, dict(values.get(key, {}))) for key in self.warnings)
+
+
+def _fixed_row(url, owned):
+    """La ligne `mail.ice.server` de l'URL `stun:…` ou `turn:…` : le type
+    avant le premier « : », l'URI après (mail les recolle en
+    `type:uri`). Chaque ligne porte le nom de l'outil, celle du STUN aussi :
+    sans nom, elle ne se distinguerait pas d'une ligne écrite à la main, et
+    WebRTC ignore le nom d'une URL `stun:`."""
+    server_type, _, uri = url.partition(":")
+    return {"server_type": server_type, "uri": uri, "username": owned}
+
+
+def plan_odoo_add(
+    state, facts, url, database, want_module_install, exempt, *, ntfy_text=None
+):
+    """Le plan d'ajout de la base `database` de l'Odoo `url` (`facts` :
+    `ol.OdooFacts` lus par son lien) au coturn de `state`. Rien n'est
+    écrit.
+
+    Module installé, ou présent et `want_module_install` : mode secret,
+    `erplibre_turn.urls` = `ice_urls(state)`, aucune ligne. Sinon : compte
+    fixe, trois lignes (STUN, TURN en UDP et en TCP, jamais `turns:`, que
+    `server_type` n'offre pas). L'adresse `exempt` n'est gardée qu'avec
+    ntfy dans l'état ; `ntfy_text` est alors requis (ValueError).
+
+    Refus (`Refusal`), avant toute écriture : `call_infra_odoo_no_coturn`
+    (aucun coturn dans l'état), `call_infra_odoo_version` (`version`),
+    `call_infra_turn_mode_mismatch`, `call_infra_odoo_exempt`. Une URL ou
+    une base invalide lève `ol.OdooError`."""
+    key = ol.odoo_key(url, database)
+    answers = state_answers(state)
+    if answers is None or "coturn" not in answers.services:
+        raise Refusal("call_infra_odoo_no_coturn")
+    if facts.major != ol.SUPPORTED_MAJOR:
+        raise Refusal("call_infra_odoo_version", version=facts.version)
+    realm = _coturn_target(state)[1]
+    installed = facts.module_state in _MODULE_INSTALLED
+    install = (
+        not installed
+        and bool(want_module_install)
+        and facts.module_state in _MODULE_INSTALLABLE
+    )
+    secret = installed or install
+    turn_mode_for(state, secret)
+    owned = ol.owned_username(url, database)
+    warnings = []
+    if secret:
+        urls = _ice_urls_for(answers)
+        params = {ol.PARAM_URLS: "\n".join(urls)}
+        rows = ()
+        entries = len(urls)
+    else:
+        params = {
+            name: None
+            for name in (ol.PARAM_URLS, ol.PARAM_SECRET)
+            if name in facts.params
+        }
+        rows = tuple(
+            _fixed_row(u, owned) for u in _ice_urls_for(answers, tls=False)
+        )
+        entries = len(rows)
+        warnings.append(NO_TURNS_WARNING)
+    if facts.module_state not in _MODULE_INSTALLED + _MODULE_INSTALLABLE:
+        warnings.append(MODULE_ABSENT_WARNING)
+    others = [r for r in facts.rows if (r.get("username") or "") != owned]
+    total = len(others) + entries
+    if total > MAX_ICE_SERVERS:
+        warnings.append(ICE_OVER_WARNING)
+    if exempt is not None and _has_ntfy(state):
+        _check_exempt(exempt)
+    else:
+        exempt = None
+    _need_ntfy_text(state, key, exempt, ntfy_text)
+    return OdooPlan(
+        key=key,
+        kind="secret" if secret else "user",
+        install_module=install,
+        params=params,
+        rows=rows,
+        rows_total=total,
+        warnings=tuple(warnings),
+        exempt=exempt,
+        state=copy.deepcopy(state),
+        realm=realm,
+        ttl_hours=odoo_ttl_hours(facts.params.get(ol.PARAM_TTL)),
+        ntfy_text=ntfy_text,
+    )
+
+
+def _link_method(link):
+    """« webapi » ou « shell », le chemin du lien vers Odoo que la fiche
+    de l'état consigne ; None pour un autre objet."""
+    if isinstance(link, ol.OdooShell):
+        return "shell"
+    if isinstance(link, ol.WebApi):
+        return "webapi"
+    return None
+
+
+def _host_step(run, script):
+    """Lance `script` par `run` (script → (code, sortie), ou None quand il
+    n'a pas tourné) et rend `odoo_result` de sa sortie ; un script qui
+    n'a pas abouti rend un résultat `ok` faux, `failed` à « - » quand sa
+    sortie ne nomme aucune étape."""
+    done = run(script)
+    result = odoo_result(done[1] if done else "")
+    if not result["ok"] and not result["failed"]:
+        result["failed"] = "-"
+    return result
+
+
+def _write_odoo(link, plan, value):
+    """Écrit dans Odoo, par `link`, ce que `plan` prévoit, avec le secret
+    ou le mot de passe `value`. Avec le module : la liste d'URL d'abord, le
+    secret en dernier (sur l'API web, chaque paramètre est sa propre
+    transaction : une coupure entre les deux laisse l'ancienne
+    configuration ou aucune, jamais un nouveau secret sur d'anciennes URL),
+    puis les lignes que l'outil avait écrites retirées. Sans lui : les trois
+    lignes (le mot de passe sur les deux TURN, aucun sur le STUN), puis les
+    paramètres du module restés dans la base retirés."""
+    url, database = _split_key(plan.key)
+    owned = ol.owned_username(url, database)
+    if plan.kind == "secret":
+        link.set_params({**plan.params, ol.PARAM_SECRET: value})
+        link.replace_rows(owned, [])
+        return
+    rows = [
+        dict(row, credential=value) if row["server_type"] == "turn" else row
+        for row in plan.rows
+    ]
+    link.replace_rows(owned, rows)
+    if plan.params:
+        link.set_params(plan.params)
+
+
+def apply_odoo_add(
+    run, link, plan, now, *, draw=secrets.token_urlsafe, root=""
+):
+    """Branche la base de `plan` sur coturn ; rend l'état écrit.
+
+    `run` lance un script root sur l'hôte de coturn et rend (code, sortie),
+    ou None quand il n'a pas tourné : le menu passe son `_call_infra_run`,
+    le test long son lanceur, chacun masquant ce qu'il doit. `link` est le
+    `ol.WebApi` ou `ol.OdooShell` de la base, `draw(nbytes)` tire les
+    secrets (`secrets.token_urlsafe`) sur la machine qui lance `todo.py`.
+
+    Ordre : le module installé quand le plan le demande (sans paramètre,
+    il rend ce que mail rend : rien ne change pour les appels, et un échec
+    laisse l'hôte intact) ; puis l'hôte (`odoo_add_script`, l'identifiant
+    posé sur coturn avant qu'Odoo le distribue) ; puis Odoo
+    (`_write_odoo`) ; enfin l'état avec la fiche de la base
+    (`odoo_added_state`, `state_write_script`).
+
+    Odoo qui refuse ou ne répond plus pendant l'écriture : le script
+    `odoo_rollback_script` retire de coturn l'identifiant qui vient d'y
+    être posé, et l'état garde sa fiche d'avant ; `Refusal`
+    (`call_infra_odoo_write_failed`), sa cause dans `__cause__`. Une
+    interruption (Ctrl-C) est défaite de même, puis relevée telle quelle.
+    Autres refus : `call_infra_odoo_host_failed` (`step`), rien n'est
+    écrit dans Odoo ; `call_infra_odoo_rollback_failed` (`step`) ;
+    `call_infra_odoo_state_failed`. Une erreur d'installation du module
+    (`ol.OdooError`) remonte telle quelle, l'hôte n'est pas touché."""
+    url, database = _split_key(plan.key)
+    secret = plan.kind == "secret"
+    user = None if secret else ol.owned_username(url, database)
+    mode = turn_mode_for(plan.state, secret)
+    check_secret = None
+    if _switch_to(plan.state, mode) == "secret":
+        check_secret = draw(_DRAW_BYTES)
+    value = draw(_DRAW_BYTES)
+    if plan.install_module:
+        link.install_module()
+    common = dict(
+        ttl_hours=plan.ttl_hours,
+        check_secret=check_secret,
+        ntfy_text=plan.ntfy_text,
+    )
+    script = odoo_add_script(
+        plan.state,
+        plan.key,
+        plan.kind,
+        value,
+        user,
+        plan.exempt,
+        now,
+        root=root,
+        **common,
+    )
+    result = _host_step(run, script)
+    if not result["ok"]:
+        raise Refusal("call_infra_odoo_host_failed", step=result["failed"])
+    try:
+        _write_odoo(link, plan, value)
+    except BaseException as error:
+        rollback = odoo_rollback_script(
+            plan.state,
+            plan.key,
+            _sha256(value) if secret else user,
+            exempt=plan.exempt,
+            ntfy_text=plan.ntfy_text,
+            root=root,
+        )
+        undone = _host_step(run, rollback)
+        if not isinstance(error, Exception):
+            raise
+        if not undone["ok"]:
+            raise Refusal(
+                "call_infra_odoo_rollback_failed", step=undone["failed"]
+            ) from error
+        raise Refusal("call_infra_odoo_write_failed") from error
+    final = odoo_added_state(
+        plan.state,
+        plan.key,
+        plan.kind,
+        value,
+        user,
+        plan.exempt,
+        now,
+        method=_link_method(link),
+        **common,
+    )
+    done = run(state_write_script(final, root=root))
+    saved = dict(marker_lines(done[1] if done else "")).get("SAVED")
+    if (saved or "").strip() != "yes":
+        raise Refusal("call_infra_odoo_state_failed")
+    return final
+
+
+def apply_odoo_remove(
+    run,
+    link,
+    state,
+    key,
+    *,
+    now=None,
+    ntfy_text=None,
+    revoke_anyway=False,
+    root="",
+):
+    """Débranche la base `key` de `state` ; rend l'état écrit.
+
+    Odoo d'abord, par `link` : `erplibre_turn.secret` et
+    `erplibre_turn.urls` retirés (le module reste installé, sa durée de vie
+    aussi), puis les lignes au nom de l'outil (`replace_rows(owned, [])`),
+    jamais une autre. Puis l'hôte, par `run` (comme `apply_odoo_add`) :
+    `odoo_remove_script`, qui révoque sans grâce et écrit l'état sans la
+    fiche. Révoquer avant de nettoyer Odoo laisserait Odoo distribuer un
+    identifiant mort.
+
+    Odoo injoignable ou qui refuse (`ol.OdooError`), ou `link` None : sans
+    `revoke_anyway`, rien n'est fait sur l'hôte, `Refusal`
+    (`call_infra_odoo_remove_unreachable`, la cause dans `__cause__`) ; le
+    menu demande alors s'il faut révoquer quand même et rappelle avec
+    `revoke_anyway=True`. Script en échec : `call_infra_odoo_host_failed`
+    (`step`). `ntfy_text` : `server.yml` lu par la sonde, requis quand la
+    fiche consigne une adresse exemptée. ValueError pour une clé absente
+    de l'état, avant tout appel."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    url, database = _split_key(key)
+    _entry_of(state, key)
+    _need_ntfy_text(state, key, None, ntfy_text)
+    cleaned, cause = False, None
+    if link is not None:
+        try:
+            link.set_params({ol.PARAM_SECRET: None, ol.PARAM_URLS: None})
+            link.replace_rows(ol.owned_username(url, database), [])
+            cleaned = True
+        except ol.OdooError as error:
+            cause = error
+    if not cleaned and not revoke_anyway:
+        raise Refusal("call_infra_odoo_remove_unreachable") from cause
+    script = odoo_remove_script(
+        state, key, now=now, ntfy_text=ntfy_text, root=root
+    )
+    result = _host_step(run, script)
+    if not result["ok"]:
+        raise Refusal("call_infra_odoo_host_failed", step=result["failed"])
+    return odoo_removed_state(state, key, now)
 
 
 # --- Vérification -----------------------------------------------------------

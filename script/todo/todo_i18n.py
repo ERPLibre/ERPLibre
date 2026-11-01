@@ -4415,6 +4415,43 @@ TRANSLATIONS = {
         "fr": "Les URL de TURN changent (nom, ports ou TLS) : ajoutez de nouveau ces serveurs Odoo pour qu'ils les reçoivent : {odoos}.",
         "en": "The TURN URLs change (name, ports or TLS): add these Odoo servers again so that they receive them: {odoos}.",
     },
+    # Ajouter et retirer un serveur Odoo (plan_odoo_add, apply_odoo_*)
+    "call_infra_no_turns": {
+        "fr": "Sans le module erplibre_turn, Odoo reçoit un compte fixe en trois lignes (STUN, TURN en UDP et en TCP) : TURN sur TLS (turns:) n'est pas disponible, et un réseau qui ne laisse passer que le HTTPS bloquera les appels relayés.",
+        "en": "Without the erplibre_turn module, Odoo gets a fixed account in three rows (STUN, TURN over UDP and over TCP): TURN over TLS (turns:) is not available, and a network that lets only HTTPS through will block relayed calls.",
+    },
+    "call_infra_module_absent": {
+        "fr": "Le module erplibre_turn n'est pas sur le chemin des addons de cette base. Pour des identifiants temporaires et TURN sur TLS : ajoutez ERPLibre_erplibre_addons au chemin des addons d'Odoo, redémarrez Odoo, mettez à jour la liste des applications, puis relancez l'ajout. Sans lui, l'ajout pose un compte fixe.",
+        "en": "The erplibre_turn module is not on this database's addons path. For temporary credentials and TURN over TLS: add ERPLibre_erplibre_addons to Odoo's addons path, restart Odoo, update the apps list, then run the add again. Without it, the add sets a fixed account.",
+    },
+    "call_infra_ice_over_5": {
+        "fr": "{count} serveurs ICE au total : Odoo n'en envoie que cinq au navigateur, les autres sont ignorés. Retirez des lignes mail.ice.server écrites à la main pour garder celles de l'outil.",
+        "en": "{count} ICE servers in all: Odoo sends only five to the browser, the others are ignored. Remove hand-written mail.ice.server rows to keep the tool's.",
+    },
+    "call_infra_odoo_no_coturn": {
+        "fr": "Cet hôte ne porte aucun coturn installé par l'outil : installez d'abord l'infrastructure d'appel avec coturn, puis ajoutez le serveur Odoo. Rien n'est touché.",
+        "en": "This host carries no coturn installed by the tool: first install the call infrastructure with coturn, then add the Odoo server. Nothing is touched.",
+    },
+    "call_infra_odoo_host_failed": {
+        "fr": "Le script lancé sur l'hôte de coturn a échoué à l'étape « {step} ». Corrigez la cause, puis relancez l'opération.",
+        "en": "The script run on the coturn host failed at step « {step} ». Fix the cause, then run the operation again.",
+    },
+    "call_infra_odoo_write_failed": {
+        "fr": "L'écriture dans Odoo a échoué : l'identifiant posé sur coturn en est retiré, et l'état de l'hôte ne consigne pas ce serveur Odoo. Corrigez la cause, puis relancez l'ajout.",
+        "en": "Writing to Odoo failed: the credential set on coturn is removed again, and the host state does not record this Odoo server. Fix the cause, then run the add again.",
+    },
+    "call_infra_odoo_rollback_failed": {
+        "fr": "L'écriture dans Odoo a échoué, puis le retrait de l'identifiant posé sur coturn aussi (étape « {step} ») : cet identifiant reste valide sans que l'état le consigne. Un compte fixe est remplacé au prochain ajout de ce serveur Odoo ; un secret reste valide jusqu'à la désinstallation de coturn, qui efface sa base.",
+        "en": "Writing to Odoo failed, then removing the credential set on coturn failed too (step « {step} »): that credential stays valid without the state recording it. A fixed account is replaced by the next add of this Odoo server; a secret stays valid until coturn is uninstalled, which erases its database.",
+    },
+    "call_infra_odoo_state_failed": {
+        "fr": "coturn et Odoo sont écrits, mais l'état de l'hôte n'a pas pu l'être : il ne consigne pas ce serveur Odoo, que « Retirer » ne trouvera pas. Relancez l'ajout pour que l'état le consigne ; le secret de cet essai reste valide dans coturn jusqu'à sa désinstallation.",
+        "en": "coturn and Odoo are written, but the host state could not be: it does not record this Odoo server, which « Remove » will not find. Run the add again so that the state records it; this attempt's secret stays valid in coturn until it is uninstalled.",
+    },
+    "call_infra_odoo_remove_unreachable": {
+        "fr": "Odoo n'a pas pu être nettoyé : rien n'est révoqué sur l'hôte de coturn. Révoquer quand même laisse dans Odoo des paramètres ou des lignes ICE qui ne marchent plus.",
+        "en": "Odoo could not be cleaned: nothing is revoked on the coturn host. Revoking anyway leaves in Odoo parameters or ICE rows that no longer work.",
+    },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
         "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
