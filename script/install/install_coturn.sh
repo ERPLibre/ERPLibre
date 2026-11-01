@@ -43,12 +43,20 @@
 #                         plages sont refusees (denied-peer-ip), et le
 #                         relais ne sert pas de passerelle vers les voisins
 #                         de l'hote. Le script annonce quand il les permet.
+#   TURN_AUTH             fixed (defaut) ou secret : le mode
+#                         d'identification de coturn, un seul a la fois.
+#                         fixed : lt-cred-mech, des comptes long terme
+#                         (turnusers_lt), dont le compte de controle.
+#                         secret : use-auth-secret, des identifiants
+#                         temporaires signes par un secret de la table
+#                         turn_secret ; le compte de controle long terme
+#                         quitte la base (voir remove_check_user).
 #
-# Les comptes vivent dans la base SQLite de coturn (userdb), jamais dans
-# turnserver.conf : coturn la relit a chaque allocation, un compte ajoute ou
-# retire prend effet sans redemarrage. La configuration porte lt-cred-mech
-# et PAS use-auth-secret : avec use-auth-secret, coturn 4.6 refuse tout
-# compte long terme, meme quand la base ne contient aucun secret.
+# Les comptes et les secrets vivent dans la base SQLite de coturn (userdb),
+# jamais dans turnserver.conf : coturn la relit a chaque allocation, un
+# compte ou un secret ajoute ou retire prend effet sans redemarrage. Les
+# deux modes ne se melangent pas : avec use-auth-secret, coturn 4.6 refuse
+# tout compte long terme, meme quand la base ne contient aucun secret.
 #
 # Le compte de controle est ecrit par sqlite3, la requete sur l'entree
 # standard, et non par « turnadmin -p » : un argument se lit de tout compte
@@ -91,6 +99,7 @@ TURN_CHECK_PASSWORD="${TURN_CHECK_PASSWORD:-}"
 TURN_GARDER_CONFIG="${TURN_GARDER_CONFIG:-}"
 TURN_ALLOW_PRIVATE="${TURN_ALLOW_PRIVATE:-}"
 TURN_ALT_TLS_PORT="${TURN_ALT_TLS_PORT:-}"
+TURN_AUTH="${TURN_AUTH:-fixed}"
 
 # Plages refusees aux relais sans TURN_ALLOW_PRIVATE=1, au format de
 # denied-peer-ip (adresse seule, ou premiere-derniere). Aux plages privees
@@ -172,6 +181,10 @@ check_inputs() {
     case "$TURN_ALLOW_PRIVATE" in
         ''|0|1) ;;
         *) die "TURN_ALLOW_PRIVATE invalide : ${TURN_ALLOW_PRIVATE} (1, 0 ou vide)." ;;
+    esac
+    case "$TURN_AUTH" in
+        fixed|secret) ;;
+        *) die "TURN_AUTH invalide : ${TURN_AUTH} (fixed ou secret)." ;;
     esac
 }
 
@@ -325,8 +338,8 @@ refuse_linked_config() {
 # sur TURN_TLS_PORT : deux lignes tls-listening-port, coturn ne garde que la
 # derniere, et alt-tls-listening-port reste inerte sous no-rfc5780. Sans
 # TURN_ALLOW_PRIVATE=1, une ligne denied-peer-ip par plage de
-# DENIED_PEER_RANGES. Les quatre
-# dernieres lignes sont celles du fichier livre par Debian, qu'il remplace :
+# DENIED_PEER_RANGES. TURN_AUTH=secret ecrit use-auth-secret a la place de
+# lt-cred-mech. Les quatre dernieres lignes sont celles du fichier livre par Debian, qu'il remplace :
 # journal systeme, et pas de reponses STUN plus grosses que les requetes
 # (amplification).
 write_config() {
@@ -350,7 +363,11 @@ write_config() {
         echo "min-port=${TURN_MIN_PORT}"
         echo "max-port=${TURN_MAX_PORT}"
         echo "fingerprint"
-        echo "lt-cred-mech"
+        if [ "$TURN_AUTH" = secret ]; then
+            echo "use-auth-secret"
+        else
+            echo "lt-cred-mech"
+        fi
         echo "realm=${TURN_REALM}"
         echo "userdb=${DB_FILE}"
         echo "no-cli"
@@ -433,6 +450,21 @@ prepare_database() {
     fi
 }
 
+# Imprime le schema que coturn 4.6 cree lui-meme dans sa base SQLite ;
+# IF NOT EXISTS laisse en place une base deja creee par coturn.
+schema_sql() {
+    cat <<'EOF'
+CREATE TABLE IF NOT EXISTS turnusers_lt ( realm varchar(127) default '', name varchar(512), hmackey char(128), PRIMARY KEY (realm,name));
+CREATE TABLE IF NOT EXISTS turn_secret (realm varchar(127) default '', value varchar(127), primary key (realm,value));
+CREATE TABLE IF NOT EXISTS allowed_peer_ip (realm varchar(127) default '', ip_range varchar(256), primary key (realm,ip_range));
+CREATE TABLE IF NOT EXISTS denied_peer_ip (realm varchar(127) default '', ip_range varchar(256), primary key (realm,ip_range));
+CREATE TABLE IF NOT EXISTS turn_origin_to_realm (origin varchar(127),realm varchar(127),primary key (origin));
+CREATE TABLE IF NOT EXISTS turn_realm_option (realm varchar(127) default '', opt varchar(32), value varchar(128), primary key (realm,opt));
+CREATE TABLE IF NOT EXISTS oauth_key (kid varchar(128),ikm_key varchar(256),timestamp bigint default 0,lifetime integer default 0,as_rs_alg varchar(64) default '',realm varchar(127) default '',primary key (kid));
+CREATE TABLE IF NOT EXISTS admin_user (name varchar(32), realm varchar(127), password varchar(127), primary key (name));
+EOF
+}
+
 # Pose le compte de controle, idempotent, dans une transaction. Avec
 # TURN_CHECK_PASSWORD, la ligne de CHECK_USER est effacee (quel que soit
 # son realm) puis recreee avec la cle de ce mot de passe. Sans lui, le mot
@@ -445,8 +477,7 @@ prepare_database() {
 # mot de passe n'atteint md5sum que par le tube. La requete passe sur
 # l'entree standard de sqlite3, lance sous le compte coturn (runuser) :
 # root n'ouvre aucun fichier du dossier de ce compte. Le schema est celui
-# que coturn 4.6 cree lui-meme ; IF NOT EXISTS laisse en place une base
-# deja creee par coturn.
+# de schema_sql.
 ensure_check_user() {
     local key password="$TURN_CHECK_PASSWORD" keep=""
     if [ -z "$password" ]; then
@@ -458,20 +489,26 @@ ensure_check_user() {
     [[ "$key" =~ ^[0-9a-f]{32}$ ]] || die "cle du compte de controle non calculee."
     runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF
 .timeout 5000
-CREATE TABLE IF NOT EXISTS turnusers_lt ( realm varchar(127) default '', name varchar(512), hmackey char(128), PRIMARY KEY (realm,name));
-CREATE TABLE IF NOT EXISTS turn_secret (realm varchar(127) default '', value varchar(127), primary key (realm,value));
-CREATE TABLE IF NOT EXISTS allowed_peer_ip (realm varchar(127) default '', ip_range varchar(256), primary key (realm,ip_range));
-CREATE TABLE IF NOT EXISTS denied_peer_ip (realm varchar(127) default '', ip_range varchar(256), primary key (realm,ip_range));
-CREATE TABLE IF NOT EXISTS turn_origin_to_realm (origin varchar(127),realm varchar(127),primary key (origin));
-CREATE TABLE IF NOT EXISTS turn_realm_option (realm varchar(127) default '', opt varchar(32), value varchar(128), primary key (realm,opt));
-CREATE TABLE IF NOT EXISTS oauth_key (kid varchar(128),ikm_key varchar(256),timestamp bigint default 0,lifetime integer default 0,as_rs_alg varchar(64) default '',realm varchar(127) default '',primary key (kid));
-CREATE TABLE IF NOT EXISTS admin_user (name varchar(32), realm varchar(127), password varchar(127), primary key (name));
+$(schema_sql)
 BEGIN;
 DELETE FROM turnusers_lt WHERE name='${CHECK_USER}'${keep};
 INSERT OR IGNORE INTO turnusers_lt (realm, name, hmackey) VALUES ('${TURN_REALM}', '${CHECK_USER}', '${key}');
 COMMIT;
 EOF
     log "Compte de controle ${CHECK_USER} pose dans ${DB_FILE} (realm ${TURN_REALM})."
+}
+
+# Mode secret : retire le compte de controle long terme, de tout realm, que
+# use-auth-secret refuserait de toute facon. Les secrets de turn_secret
+# restent : l'appelant y pose le secret de controle et celui de chaque base
+# Odoo. Meme schema, meme compte de service qu'ensure_check_user.
+remove_check_user() {
+    runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF
+.timeout 5000
+$(schema_sql)
+DELETE FROM turnusers_lt WHERE name='${CHECK_USER}';
+EOF
+    log "Mode secret : compte de controle ${CHECK_USER} retire de ${DB_FILE}."
 }
 
 # applied_digest <chemin> : imprime l'empreinte sha256 de ce que coturn
@@ -574,7 +611,11 @@ main() {
     enable_default
     # Le compte AVANT le demarrage : le service lit une base deja prete.
     prepare_database
-    ensure_check_user
+    if [ "$TURN_AUTH" = secret ]; then
+        remove_check_user
+    else
+        ensure_check_user
+    fi
 
     # Le fichier sur disque n'est pas forcement celui que coturn a charge : un
     # passage interrompu entre write_config et le redemarrage laisse la
