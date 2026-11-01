@@ -7641,11 +7641,15 @@ TRANSLATIONS = {
         "fr": "Infrastructure d'appel sur des VM jetables : le lancer",
         "en": "Call infrastructure on throwaway VMs: run it",
     },
-    "This creates a Debian VM and an Arch VM and installs coturn and ntfy on them.": {
-        "fr": "Cela crée une VM Debian et une VM Arch, et y installe coturn"
-        " et ntfy.",
-        "en": "This creates a Debian VM and an Arch VM and installs coturn"
-        " and ntfy on them.",
+    "This creates four VMs one after the other (development, then production with nginx, on Debian and on Arch) and installs coturn and ntfy on them. call_infra.py --scenario dev or prod runs only one.": {
+        "fr": "Cela crée quatre VM l'une après l'autre (développement, puis"
+        " production avec nginx, sous Debian et sous Arch), et y installe"
+        " coturn et ntfy. call_infra.py --scenario dev ou prod n'en lance"
+        " qu'un.",
+        "en": "This creates four VMs one after the other (development, then"
+        " production with nginx, on Debian and on Arch) and installs coturn"
+        " and ntfy on them. call_infra.py --scenario dev or prod runs only"
+        " one.",
     },
     "Run the call infrastructure test?": {
         "fr": "Lancer le test de l'infrastructure d'appel ?",
