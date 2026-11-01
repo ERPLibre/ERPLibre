@@ -2076,10 +2076,56 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
         moteur.detruire_etage1 = espion
         return appels
 
-    def _lancer(self, dry_run=False):
+    def _lancer(self, dry_run=False, avant=None):
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            code = moteur.detruire(self.famille, None, dry_run=dry_run)
+            code = moteur.detruire(
+                self.famille, None, dry_run=dry_run, avant=avant
+            )
         return code, sortie.getvalue()
+
+    def test_the_caller_undoes_its_own_after_the_yes_before_any_vm(self):
+        self._rapport(self.ALPHA)
+        appels = self._espionner_etage1()
+        vu = []
+        code, _ = self._lancer(
+            avant=lambda a_blanc: vu.append(
+                (a_blanc, len(self.questions), len(appels))
+            )
+        )
+        self.assertEqual(code, 0)
+        # Après l'unique confirmation, avant la première VM.
+        self.assertEqual(vu, [(False, 1, 0)])
+
+    def test_a_refused_confirmation_lets_the_caller_undo_nothing(self):
+        self._rapport(self.ALPHA)
+        self._espionner_etage1()
+        import builtins
+
+        builtins.input = lambda prompt="": "non"
+        vu = []
+        code, _ = self._lancer(avant=vu.append)
+        self.assertEqual(code, 1)
+        self.assertEqual(vu, [])
+
+    def test_a_running_descent_lets_the_caller_undo_nothing(self):
+        self._rapport(self.ALPHA)
+        self._espionner_etage1()
+        moteur.autre_descente = lambda: [4242]
+        vu = []
+        code, _ = self._lancer(avant=vu.append)
+        self.assertEqual(code, 1)
+        self.assertEqual(vu, [])
+        self.assertEqual(self.questions, [])
+
+    def test_a_dry_run_lets_the_caller_list_without_asking(self):
+        self._rapport(self.ALPHA)
+        appels = self._espionner_etage1()
+        vu = []
+        code, _ = self._lancer(dry_run=True, avant=vu.append)
+        self.assertEqual(code, 0)
+        self.assertEqual(vu, [True])
+        self.assertEqual(self.questions, [])
+        self.assertEqual(appels, [])
 
     def test_every_level_one_entry_is_destroyed_by_its_uuid(self):
         self._rapport(self.ALPHA, self.BETA)
