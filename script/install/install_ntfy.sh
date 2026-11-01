@@ -23,6 +23,12 @@
 #                        dpkg sur un fichier de configuration modifie. C'est
 #                        le mode d'un lancement a distance, ou rien ne
 #                        repond au terminal.
+#   NTFY_VERSION         version exacte posee quand ntfy manque (2.36.0) :
+#                        ni API de GitHub ni depot Arch, le binaire officiel
+#                        de cette version, et un echec quand il ne se
+#                        telecharge pas. Sans elle, la derniere version
+#                        publiee, ou une version de repli quand l'API ne
+#                        repond pas.
 #
 # Sortie lisible par un programme :
 #   @@ADMIN_PASSWORD <mot de passe>
@@ -68,6 +74,7 @@ NTFY_KEY_FILE="${NTFY_KEY_FILE:-}"
 NTFY_HTTPS_PORT="${NTFY_HTTPS_PORT:-}"
 NTFY_ADMIN_USER="${NTFY_ADMIN_USER:-erplibre}"
 NTFY_NON_INTERACTIVE="${NTFY_NON_INTERACTIVE:-0}"
+NTFY_VERSION="${NTFY_VERSION:-}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -145,8 +152,20 @@ ntfy_installed() {
 # Get latest ntfy version from GitHub
 # ---------------------------------------------------------------------------
 
+# NTFY_VERSION, quand il est donne : trois nombres separes par des points,
+# la forme des versions publiees ; il entre dans une URL de telechargement.
+check_version() {
+    [ -z "${NTFY_VERSION:-}" ] && return 0
+    [[ "$NTFY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || die "NTFY_VERSION invalide : ${NTFY_VERSION} (attendu : 2.36.0)"
+}
+
 get_latest_version() {
     local ver
+    if [ -n "${NTFY_VERSION:-}" ]; then
+        echo "$NTFY_VERSION"
+        return 0
+    fi
     ver=$(curl -fsSL \
         "https://api.github.com/repos/binwiederhier/ntfy/releases/latest" \
         2>/dev/null | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/' | head -1)
@@ -227,6 +246,14 @@ install_binary() {
 
 install_arch() {
     local aur_pkg="ntfy"
+
+    # Une version exacte ne vient que du binaire officiel : le depot porte
+    # la sienne.
+    if [ -n "${NTFY_VERSION:-}" ]; then
+        log "NTFY_VERSION=${NTFY_VERSION} : binaire officiel de cette version."
+        install_binary "$NTFY_VERSION"
+        return
+    fi
 
     # Le paquet des depots officiels passe avant tout : pacman l'installe et
     # le met a jour sans assistant ni compte utilisateur.
@@ -567,6 +594,7 @@ ensure_admin_user() {
 
 main() {
     check_root
+    check_version
     detect_os
     if non_interactive; then
         export DEBIAN_FRONTEND=noninteractive

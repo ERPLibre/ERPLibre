@@ -401,7 +401,10 @@ class InstallPlan:
     l'état change avec ce plan, None sinon. `engine_packages` : paquets du
     moteur et de son outil de composition que le script installe (accord
     `install_engine`). `compose` : gabarit du fichier compose
-    (`cc.compose_text`, chaque service consigné), vide par paquets."""
+    (`cc.compose_text`, chaque service consigné), vide par paquets.
+    `prior_state` : l'état écrit d'avant une migration (None sans elle),
+    d'où le script tire les unités à arrêter et le bloc `container` à
+    défaire, et où il revient quand la nouvelle méthode ne démarre pas."""
 
     answers: Answers
     adopt: tuple[str, ...]
@@ -417,6 +420,7 @@ class InstallPlan:
     migration: str | None = None
     engine_packages: tuple[str, ...] = ()
     compose: str = ""
+    prior_state: dict | None = None
 
 
 # --- Sonde ------------------------------------------------------------------
@@ -2774,6 +2778,7 @@ def plan_install(facts, answers, now):
         migration=migration,
         engine_packages=engine_packages,
         compose=compose,
+        prior_state=copy.deepcopy(prior) if migration else None,
     )
 
 
@@ -3120,13 +3125,17 @@ def _coturn_payload_lines(answers):
     return lines, raw
 
 
-def _coturn_block(plan):
+def _coturn_block(plan, payload=True):
     """Premier passage d'install_coturn.sh. Avec Let's Encrypt, la lignée
     déjà sur le disque ($LE=1) lui sert de certificat ; sans elle, coturn
     démarre sans TLS (`no-tls`) et `_coturn_lineage_lines` le reprend après
-    la délivrance."""
+    la délivrance. `payload` faux : l'installateur et le certificat sont
+    déjà décodés dans "$D" (`_coturn_payload_lines`), le script ne les
+    porte qu'une fois."""
     answers = plan.answers
     lines, raw = _coturn_payload_lines(answers)
+    if not payload:
+        lines = ["# coturn"]
     # Sans TURN_CHECK_PASSWORD, install_coturn.sh tire le mot de passe du
     # compte de contrôle sur l'hôte et n'en garde que la clé, que la
     # vérification relit : aucun secret de ce compte ne part d'ici.
@@ -3172,22 +3181,32 @@ def _coturn_lineage_lines(plan):
 _USERADD = "useradd --system --no-create-home --shell /usr/sbin/nologin"
 
 
-def _ntfy_block(plan):
-    answers = plan.answers
-    config = _host(NTFY_CONFIG)
-    new = _host(NTFY_CONFIG + ".erplibre-new")
-    lines = [
-        "# ntfy",
+def _ntfy_payload_line():
+    """install_ntfy.sh décodé dans le dossier de travail."""
+    return (
         _decode_to(
             _installer_payload("ntfy"), '"$D/install_ntfy.sh"', gunzip=True
         )
-        + " || fail payload-ntfy",
-    ]
+        + " || fail payload-ntfy"
+    )
+
+
+def _ntfy_block(plan, payload=True, version=None):
+    """install_ntfy.sh avec la configuration voulue déjà en place.
+    `payload` faux : l'installateur est déjà dans "$D"
+    (`_ntfy_payload_line`). `version` : NTFY_VERSION, la version exacte que
+    l'installateur pose quand ntfy manque à l'hôte."""
+    answers = plan.answers
+    config = _host(NTFY_CONFIG)
+    new = _host(NTFY_CONFIG + ".erplibre-new")
+    lines = ["# ntfy"] + ([_ntfy_payload_line()] if payload else [])
     variables = {
         "NTFY_PORT": ntfy_http_port(answers),
         "NTFY_BASE_URL": ntfy_base_url(answers),
         "NTFY_NON_INTERACTIVE": 1,
     }
+    if version is not None:
+        variables["NTFY_VERSION"] = version
     # Le compte « ntfy » doit traverser le dossier pour lire server.yml ;
     # sans lui, ntfy démarre sur ses valeurs par défaut, sans contrôle
     # d'accès. Créé ici en 0755 malgré l'umask 077 du script ; un dossier
@@ -4200,16 +4219,18 @@ def _pull_lines(plan):
     return lines
 
 
-def _coturn_container_block(plan):
+def _coturn_container_block(plan, payload=True):
     """coturn en conteneurs : install_coturn.sh avec TURN_TARGET=container
     et le compte du conteneur (`_coturn_variables`) écrit configuration,
     copies TLS et base, et pose sur l'hôte le sqlite3 que l'outil lit. Sa
     sortie passe par `cap` : `@@RECREATE 1` (configuration changée,
     empreinte en attente) y est relu par `_compose_lines`. Un échec arrête
     le script : le conteneur ne démarrerait pas sur une configuration
-    incomplète."""
+    incomplète. `payload` : comme pour `_coturn_block`."""
     answers = plan.answers
     lines, raw = _coturn_payload_lines(answers)
+    if not payload:
+        lines = ["# coturn"]
     lines += ["{", "  (", "    umask 022"]
     lines += ["  " + line for line in _export(_coturn_variables(plan), raw)]
     if answers.tls == "letsencrypt":
@@ -4430,6 +4451,449 @@ def _container_gate_lines(plan):
     return lines
 
 
+# --- Migration entre méthodes -----------------------------------------------
+
+# Copies des bases qu'une migration prend avant de changer de méthode, un
+# dossier root 0700 par tampon : hors de tout montage d'un conteneur, et
+# hors de CALL_DIR, que la désinstallation parcourt.
+MIGRATION_BACKUP_DIR = "/var/lib/erplibre-call-backup"
+# (service, fichier) des données qu'une migration copie, et qu'un retour en
+# arrière remet.
+_MIGRATED_DATA = (("coturn", COTURN_DB), ("ntfy", NTFY_AUTH_FILE))
+# Fichiers de coturn qu'un retour aux paquets met dans la copie avant que
+# l'installateur ne les réécrive : la configuration du conteneur et son
+# empreinte, que remet un retour en arrière.
+_COTURN_HELD_FOR_PACKAGES = ("turnserver.conf", "coturn.applied")
+
+
+def _migration_cp(source, target):
+    """`cp` d'un fichier de données, `source` et `target` déjà cités : un
+    lien n'est jamais suivi, la destination est retirée avant d'être
+    recréée (un lien posé à sa place ne détourne pas l'écriture), droits et
+    dates gardés, propriétaire root."""
+    return (
+        "cp --remove-destination --no-dereference"
+        f" --preserve=mode,timestamps {source} {target}"
+    )
+
+
+def _migration_dir_lines(stamp):
+    """`MBD`, le dossier des copies, et `MB`, celui de ce passage."""
+    return [
+        f'MBD="$R"{shlex.quote(MIGRATION_BACKUP_DIR)}',
+        f'MB="$MBD"/{shlex.quote(stamp)}',
+    ]
+
+
+def _migration_backup_lines(services, stamp):
+    """Copie dans "$MB" de chaque base de `_MIGRATED_DATA` des `services`,
+    leurs services arrêtés et avant toute purge, par root (le compte d'un
+    paquet purgé n'existe plus), `@@BACKUP <chemin>` pour chacune. Seul un
+    fichier ordinaire se copie : un lien ou un autre type arrête le
+    script. Une copie déjà là sous ce tampon est gardée, elle est la plus
+    ancienne."""
+    lines = ['mkdir -p "$MB" && chmod 0700 "$MBD" "$MB" || fail backup']
+    for svc, path in _MIGRATED_DATA:
+        if svc not in services:
+            continue
+        name = os.path.basename(path)
+        source = _host(path)
+        lines += [
+            f'if [ ! -e "$MB/{name}" ]; then',
+            f"  if [ -L {source} ] || {{ [ -e {source} ] && [ ! -f {source} ];"
+            f" }}; then fail backup-{svc}; fi",
+            f"  if [ -f {source} ]; then",
+            "    "
+            + _migration_cp(source, f'"$MB/{name}.new"')
+            + f' && mv -f "$MB/{name}.new" "$MB/{name}" || fail backup-{svc}',
+            "  fi",
+            "fi",
+            f'if [ -f "$MB/{name}" ]; then'
+            f' echo "@@BACKUP {MIGRATION_BACKUP_DIR}/{stamp}/{name}"; fi',
+        ]
+    return lines
+
+
+def _migration_restore_lines(svc, stamp):
+    """La base de `svc` remise de sa copie quand elle en diffère
+    (`@@RESTORED <base> <copie>`) : un conteneur qui a tourné, même un
+    instant, a pu la changer (ntfy met à jour le schéma de sa base des
+    comptes), et le service d'avant relit celle qu'il a laissée."""
+    path = dict(_MIGRATED_DATA)[svc]
+    name = os.path.basename(path)
+    target = _host(path)
+    copy_back = _migration_cp(f'"$MB/{name}"', target)
+    return [
+        f'if [ -f "$MB/{name}" ] && ! cmp -s "$MB/{name}" {target}; then',
+        f"  mkdir -p {_host(os.path.dirname(path))} && {copy_back}"
+        f" || fail restore-{svc}",
+        f'  echo "@@RESTORED {path} {MIGRATION_BACKUP_DIR}/{stamp}/{name}"',
+        "fi",
+    ]
+
+
+def _migration_stop_lines(svc, unit):
+    """L'unité arrêtée et désactivée quand elle existe."""
+    quoted = shlex.quote(unit)
+    return [
+        f"if systemctl cat {quoted} >/dev/null 2>&1; then",
+        f"  systemctl disable --now {quoted} >/dev/null 2>&1"
+        f" || fail stop-{svc}",
+        "fi",
+    ]
+
+
+def _migration_purge_lines(svc, stamp):
+    """Le paquet d'un service que l'outil avait posé, retiré pour passer en
+    conteneurs comme la désinstallation le retire (`pkg_purge`), sans
+    jamais toucher à ses données ni à ses copies TLS. Les dossiers de ntfy
+    que la purge de son paquet efface (_HELD) sont mis à l'abri sous
+    HOLD_PREFIX<tampon> le temps de la purge, puis remis (`held_back`) ;
+    l'unité et le binaire qu'install_ntfy.sh a posés hors paquet partent
+    (`_ntfy_tool_files_lines`), le cache de ntfy peut partir avec le
+    paquet. La base de coturn vit hors des dossiers de son paquet."""
+    package = PACKAGES[svc]
+    purge = [
+        f"if pkg_installed {package}; then",
+        f"  pkg_purge {package} || fail package-{svc}",
+        f'  echo "@@REMOVED package {package}"',
+        "fi",
+    ]
+    if svc != "ntfy":
+        return purge
+    lines = [
+        f'H="$R"{shlex.quote(HOLD_PREFIX + stamp)}',
+        'mkdir -p "$H" || fail hold-ntfy',
+    ]
+    for name, path in _HELD:
+        lines.append(
+            f"if [ -e {_host(path)} ]; then"
+            f' mv {_host(path)} "$H/{name}" || fail hold-ntfy; fi'
+        )
+    return lines + purge + _ntfy_tool_files_lines() + ['held_back "$H"']
+
+
+def _migration_records(plan):
+    """{service: fiche vérifiée} de l'état d'avant une migration vers les
+    conteneurs (`_uninstall_records`), pour chaque service de ce plan
+    que cet état consigne."""
+    records = dict(_uninstall_records(plan.prior_state or {}))
+    return {
+        s: records[s]
+        for s in SERVICES
+        if s in plan.answers.services and s in records
+    }
+
+
+def _packages_plan(plan):
+    """`plan` aux réponses passées à la méthode des paquets : les blocs par
+    paquets qui rendent les services d'avant, avec le certificat que le
+    menu vient de lire (un passage sans lui effacerait les copies TLS)."""
+    answers = dataclasses.replace(
+        plan.answers,
+        method="packages",
+        engine=None,
+        rootless=False,
+        install_engine=False,
+    )
+    return dataclasses.replace(plan, answers=answers)
+
+
+def _rollback_function(head, steps, tail):
+    """Fonction `sh` `migback` : `MIG` repasse à 0 (un `fail` n'y revient
+    plus), puis les lignes `head` ; chaque liste de `steps` tourne dans un
+    sous-shell où `fail` imprime `@@ROLLBACK_FAILED <étape>` et ne quitte
+    que lui, sans arrêter les autres ; `tail` suit, puis `@@MIGRATION
+    rolled-back`, ou `@@MIGRATION rollback-failed` quand une étape a
+    échoué (MRB=0)."""
+    lines = ["migback() {", "  MIG=0; MRB=1"]
+    lines += ["  " + line for line in head]
+    for step in steps:
+        lines += [
+            "  (",
+            '    fail() { echo "@@ROLLBACK_FAILED $1"; exit 1; }',
+            *["    " + line for line in step],
+            "  ) || MRB=0",
+        ]
+    lines += ["  " + line for line in tail]
+    lines += [
+        '  if [ "$MRB" = 1 ]; then echo "@@MIGRATION rolled-back";',
+        '  else echo "@@MIGRATION rollback-failed"; fi',
+        "}",
+    ]
+    return lines
+
+
+def _to_container_rollback_lines(plan, stamp, records):
+    """`migback` d'une migration vers les conteneurs : conteneurs arrêtés
+    et fichier compose retiré, puis chaque service rendu à la méthode des
+    paquets, sa base remise de sa copie (`_migration_restore_lines`) et ses
+    données rendues au compte de son paquet. coturn repasse par son
+    installateur par paquets (`_packages_plan`), qui réécrit sa
+    configuration, réinstalle un paquet purgé, rend la base à son compte et
+    relance l'unité ; ntfy posé par l'outil repasse par install_ntfy.sh à
+    la version de l'image, ntfy adopté retrouve son unité activée et
+    démarrée, sa configuration (la même par les deux méthodes) et la copie
+    de son adoption telles quelles."""
+    packages = _packages_plan(plan)
+    compose = _host(cc.COMPOSE_FILE)
+    data = _host(COTURN_DATA_DIR)
+    steps = []
+    if "coturn" in records:
+        steps.append(
+            [
+                *_migration_restore_lines("coturn", stamp),
+                *_coturn_block(packages, payload=False),
+                '[ "$RC_coturn" = 0 ] || fail coturn',
+                f"if [ -d {data} ]; then chown -R --no-dereference"
+                f" --reference={data} {data} || fail chown-coturn; fi",
+            ]
+        )
+    if "ntfy" in records:
+        record = records["ntfy"]
+        step = []
+        if record["installed_by_tool"]:
+            step.append('if [ -d "${H:-}" ]; then held_back "$H"; fi')
+        step += [
+            f"id ntfy >/dev/null 2>&1 || {_USERADD} ntfy || fail ntfy-user",
+            *_migration_restore_lines("ntfy", stamp),
+        ]
+        for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
+            step.append(
+                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
+                f" ntfy:ntfy {_host(path)} || fail chown-ntfy; fi"
+            )
+        if record["installed_by_tool"]:
+            step += _ntfy_block(
+                packages, payload=False, version=cc.IMAGE_VERSIONS["ntfy"]
+            )
+            step.append('[ "$RC_ntfy" = 0 ] || fail ntfy')
+        else:
+            if _ntfy_own_tls(plan.answers):
+                for path in (NTFY_TLS_DIR, NTFY_TLS_DIR + "/ntfy.key"):
+                    step.append(
+                        f"if [ -e {_host(path)} ]; then chown root:ntfy"
+                        f" {_host(path)} || fail ntfy-tls; fi"
+                    )
+            unit = shlex.quote(record["unit"])
+            step.append(
+                f"systemctl enable --now {unit} >/dev/null 2>&1 || fail ntfy"
+            )
+        steps.append(step)
+    # Les conteneurs s'arrêtent avant que les paquets ne reprennent leurs
+    # ports.
+    head = [
+        f"if [ -f {compose} ]; then",
+        f"  if comp down >/dev/null 2>&1; then rm -f {compose};",
+        '  else echo "@@ROLLBACK_FAILED compose-down"; MRB=0; fi',
+        "fi",
+        f"rm -f {_host(COTURN_APPLIED_PENDING)}",
+    ]
+    return _rollback_function(head, steps, [])
+
+
+def _to_container_lines(plan, stamp):
+    """Lignes d'une migration vers les conteneurs, après les images
+    (`_pull_lines`) : rien n'est arrêté tant qu'un pull peut encore
+    échouer. Installateurs et certificat décodés une seule fois pour les
+    deux méthodes ; `migback` défini (`_to_container_rollback_lines`) et
+    MIG=1, d'où tout `fail` revient aux paquets ; chaque unité de l'état
+    d'avant arrêtée et désactivée, puis les bases copiées
+    (`_migration_backup_lines`), puis le complément d'unité de coturn
+    retiré et le paquet de chaque service que l'outil avait posé purgé
+    (`_migration_purge_lines`) ; un paquet adopté reste, son unité
+    arrêtée, que la fiche garde (`unit`, `was_active`, `was_enabled`) pour
+    la désinstallation. Après une purge, les comptes sont relus (la purge
+    d'un paquet supprime son compte, recréé ici) ; les données passent
+    enfin au compte du conteneur."""
+    records = _migration_records(plan)
+    services = [s for s in SERVICES if s in plan.answers.services]
+    lines = ["# migration vers les conteneurs"]
+    if "coturn" in services:
+        lines += _coturn_payload_lines(plan.answers)[0]
+    if "ntfy" in records and records["ntfy"]["installed_by_tool"]:
+        lines.append(_ntfy_payload_line())
+    lines += _purge_helper_lines() + ['failed() { fail "$1"; }']
+    lines += _migration_dir_lines(stamp)
+    lines += _to_container_rollback_lines(plan, stamp, records)
+    lines.append("MIG=1")
+    for svc, record in records.items():
+        lines += _migration_stop_lines(svc, record["unit"])
+    lines += _migration_backup_lines(records, stamp)
+    purged = False
+    for svc, record in records.items():
+        if record.get("dropin"):
+            lines += _dropin_lines(record["dropin"])
+        if record["installed_by_tool"]:
+            lines += _migration_purge_lines(svc, stamp)
+            purged = True
+    if purged:
+        lines += _container_accounts_lines(plan)
+    for svc, path in (("coturn", COTURN_DATA_DIR), ("ntfy", NTFY_DATA_DIR)):
+        if svc in services:
+            lines.append(
+                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
+                f' "$U_{svc}" {_host(path)} || fail chown-{svc}; fi'
+            )
+    return lines
+
+
+def _prior_ids(record):
+    """(uid, gid) d'une fiche de l'état en conteneurs, chacun de 1 à
+    2³¹−1 ; ValueError sinon."""
+    ids = (record.get("uid"), record.get("gid"))
+    if not all(
+        isinstance(v, int) and not isinstance(v, bool) and 1 <= v < 2**31
+        for v in ids
+    ):
+        raise ValueError(f"ids: {ids!r}")
+    return ids
+
+
+def _to_packages_rollback_lines(plan, stamp, services):
+    """`migback` d'un retour aux paquets : chaque unité arrêtée et
+    désactivée (un paquet qui vient d'être posé reste, inactif), les bases
+    remises de leur copie, la configuration de coturn et son empreinte
+    remises, les fichiers que le conteneur lit (configuration de coturn,
+    copies TLS, données) rendus à son compte, puis les conteneurs
+    relancés par le fichier compose, resté en place."""
+    prior = plan.prior_state["services"]
+    steps = []
+    for svc in services:
+        uid, gid = _prior_ids(prior[svc])
+        step = _migration_stop_lines(
+            svc, plan.new_state["services"][svc]["unit"]
+        )
+        step += _migration_restore_lines(svc, stamp)
+        if svc == "coturn":
+            config = prior[svc]["config"]
+            for name, path in zip(
+                _COTURN_HELD_FOR_PACKAGES, (config, COTURN_APPLIED)
+            ):
+                copy_back = _migration_cp(f'"$MB/{name}"', _host(path))
+                step.append(
+                    f'if [ -f "$MB/{name}" ]; then {copy_back}'
+                    " || fail coturn-config; fi"
+                )
+            owned = (
+                config,
+                COTURN_TLS_DIR,
+                COTURN_TLS_DIR + "/turn.crt",
+                COTURN_TLS_DIR + "/turn.key",
+            )
+            data = (COTURN_DATA_DIR,)
+        else:
+            owned = (NTFY_TLS_DIR, NTFY_TLS_DIR + "/ntfy.key")
+            data = (NTFY_DATA_DIR, NTFY_CACHE_DIR)
+        for path in owned:
+            step.append(
+                f"if [ -e {_host(path)} ]; then chown root:{gid}"
+                f" {_host(path)} || fail chown-{svc}; fi"
+            )
+        for path in data:
+            step.append(
+                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
+                f" {uid}:{gid} {_host(path)} || fail chown-{svc}; fi"
+            )
+        steps.append(step)
+    tail = ['comp up -d || { echo "@@ROLLBACK_FAILED compose-up"; MRB=0; }']
+    return _rollback_function([], steps, tail)
+
+
+def _to_packages_lines(plan, stamp):
+    """Lignes d'un retour aux paquets, avant leurs installateurs : `eng`
+    et `comp` du bloc `container` d'avant ; `migback` défini
+    (`_to_packages_rollback_lines`) et MIG=1 ; conteneurs arrêtés
+    (`comp down`), puis les bases copiées (`_migration_backup_lines`) ; la
+    configuration de coturn du conteneur et son empreinte mises dans la
+    copie (pacman refuse un paquet dont un fichier existe déjà sans
+    propriétaire ; l'installateur réécrit l'une et l'autre) ; le compte
+    `ntfy` créé au besoin et les données de ntfy rendues à ce compte, avant
+    que son installateur ne démarre le service. Les installateurs rendent
+    la base de coturn à son compte."""
+    prior = plan.prior_state
+    block = prior["container"]
+    services = [
+        s
+        for s in SERVICES
+        if s in plan.answers.services
+        and isinstance(prior["services"].get(s), dict)
+    ]
+    lines = [
+        "# migration vers les paquets",
+        "cd / || fail workdir",
+        f'eng() {{ {shlex.join(cc.engine_argv(block))} "$@"; }}',
+        f'comp() {{ {shlex.join(cc.compose_argv(block))} "$@"; }}',
+        *_migration_dir_lines(stamp),
+        *_to_packages_rollback_lines(plan, stamp, services),
+        "MIG=1",
+        "comp down || fail compose-down",
+        *_migration_backup_lines(services, stamp),
+    ]
+    if "coturn" in services:
+        config = prior["services"]["coturn"]["config"]
+        if config not in COTURN_CONFIGS.values():
+            raise ValueError(f"coturn config: {config!r}")
+        name, applied = _COTURN_HELD_FOR_PACKAGES
+        lines += [
+            f"if {_is_managed_test(config)}; then",
+            f'  if [ -e "$MB/{name}" ]; then rm -f {_host(config)};'
+            f' else mv -f {_host(config)} "$MB/{name}"; fi'
+            " || fail coturn-config",
+            "fi",
+            f"if [ -f {_host(COTURN_APPLIED)} ]; then",
+            f'  if [ -e "$MB/{applied}" ]; then rm -f {_host(COTURN_APPLIED)};'
+            f' else mv -f {_host(COTURN_APPLIED)} "$MB/{applied}"; fi'
+            " || fail coturn-config",
+            "fi",
+        ]
+    if "ntfy" in services:
+        lines.append(
+            f"id ntfy >/dev/null 2>&1 || {_USERADD} ntfy || fail ntfy-user"
+        )
+        for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
+            lines.append(
+                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
+                f" ntfy:ntfy {_host(path)} || fail chown-ntfy; fi"
+            )
+    return lines
+
+
+def _image_removal_lines(plan):
+    """Après la barrière des unités d'un retour aux paquets : chaque image
+    que l'outil a tirée pendant la période en conteneurs, retirée sans
+    forcer (`@@IMAGE_REMOVED <référence>`, ou `@@IMAGE_KEPT <référence>`
+    quand le moteur la refuse, une image encore servie), puis le fichier
+    compose."""
+    block = plan.prior_state["container"]
+    exists = {"docker": "image inspect", "podman": "image exists"}[
+        block["engine"]
+    ]
+    lines = []
+    for ref in block.get("images_pulled") or []:
+        if ref not in cc.IMAGES.values():
+            continue
+        lines += [
+            f"if eng {exists} {ref} >/dev/null 2>&1; then",
+            f"  if eng rmi {ref} >/dev/null 2>&1; then"
+            f' echo "@@IMAGE_REMOVED {ref}";',
+            f'  else echo "@@IMAGE_KEPT {ref}"; fi',
+            "fi",
+        ]
+    lines.append(f"rm -f {_host(cc.COMPOSE_FILE)}")
+    return lines
+
+
+def _migration_lines(plan, stamp):
+    """Lignes de la migration de `plan.migration` : celles de
+    `_to_container_lines` ou de `_to_packages_lines`, [] sans migration."""
+    if plan.migration == "to_container":
+        return _to_container_lines(plan, stamp)
+    if plan.migration == "to_packages":
+        return _to_packages_lines(plan, stamp)
+    return []
+
+
 # --- CLI de ntfy selon la méthode -------------------------------------------
 
 
@@ -4544,6 +5008,15 @@ def install_script(plan, stamp, root=""):
     que le passage ajoute à l'hôte va dans la fiche « container » au fur et
     à mesure (`cfiche`) ; l'état écrit le prend aux marqueurs du passage
     (`installed_state`), et la fiche part avec les autres.
+
+    Migration (`plan.migration`, `_migration_lines`) : vers les conteneurs,
+    après les images ; vers les paquets, avant leurs installateurs, qui
+    posent ntfy à la version de l'image. Les bases sont copiées
+    (`@@BACKUP`). Dès qu'un service a changé, un échec ou une barrière
+    ratée revient à la méthode d'avant (`migback`, `@@MIGRATION
+    rolled-back` ou `rollback-failed`) sans écrire l'état ; une barrière
+    franchie écrit l'état et imprime `@@MIGRATION done`. Le retour aux
+    paquets retire ensuite les images tirées et le fichier compose.
     """
     if not _STAMP.match(stamp or ""):
         raise ValueError(f"stamp: {stamp!r}")
@@ -4557,6 +5030,10 @@ def install_script(plan, stamp, root=""):
     extra = ["nginx"] if _uses_nginx(answers) else []
     extra += ["certbot"] if certbot else []
     rehold = " rehold;" if certbot else ""
+    migration = plan.migration is not None
+    # Une migration engagée (MIG=1) revient à la méthode d'avant avant de
+    # s'arrêter (`migback`, `_migration_lines`).
+    back = ' [ "$MIG" = 1 ] && migback;' if migration else ""
     # Les fiches nginx et certbot que ce plan n'utilise pas sont consignées
     # dans l'état (`_carry_fiches`) : elles partent avec lui.
     carried = [
@@ -4571,7 +5048,9 @@ def install_script(plan, stamp, root=""):
         f'STATE="$R"{shlex.quote(STATE_PATH)}',
         f'PENDING="$R"{shlex.quote(PENDING_DIR)}',
         "umask 077",
-        f'fail() {{ echo "@@FAILED $1";{rehold} echo "@@SAVED no"; exit 1; }}',
+        f'fail() {{ echo "@@FAILED $1";{rehold}{back} echo "@@SAVED no";'
+        " exit 1; }",
+        *(["MIG=0"] if migration else []),
         "D=$(mktemp -d) || fail workdir",
         "trap 'rm -rf \"$D\"' EXIT",
         # Une coupure laisse le même trou qu'un échec ; le piège EXIT, qui
@@ -4658,9 +5137,10 @@ def install_script(plan, stamp, root=""):
         if state["container"]["rootless"]:
             lines += _rootless_lines(plan)
         lines += _pull_lines(plan)
+        lines += _migration_lines(plan, stamp)
         for svc in services:
             lines += (
-                _coturn_container_block(plan)
+                _coturn_container_block(plan, payload=not migration)
                 if svc == "coturn"
                 else _ntfy_container_block(plan)
             )
@@ -4668,10 +5148,24 @@ def install_script(plan, stamp, root=""):
         if "ntfy" in services:
             lines += _ntfy_admin_lines(plan)
     else:
+        lines += _migration_lines(plan, stamp)
+        # Un retour aux paquets pose ntfy à la version de l'image, qui a
+        # mis à jour sa base des comptes.
+        version = cc.IMAGE_VERSIONS["ntfy"] if migration else None
         for svc in services:
-            lines += (
-                _coturn_block(plan) if svc == "coturn" else _ntfy_block(plan)
-            )
+            if svc == "coturn":
+                lines += _coturn_block(plan)
+            else:
+                lines += _ntfy_block(plan, version=version)
+            if svc == "coturn" and migration:
+                # La base de coturn et ce que SQLite pose à côté passent
+                # au compte que l'installateur a donné à son dossier.
+                data = _host(COTURN_DATA_DIR)
+                lines.append(
+                    f'if [ "$RC_coturn" = 0 ] && [ -d {data} ]; then'
+                    f" chown -R --no-dereference --reference={data} {data}"
+                    " || fail chown-coturn; fi"
+                )
             if production:
                 lines.append(f'[ "$RC_{svc}" = 0 ] || fail {svc}')
     if production:
@@ -4702,6 +5196,10 @@ def install_script(plan, stamp, root=""):
     else:
         write = _state_write_lines(state)
     lines.append('if [ "$OK" = 1 ]; then')
+    if migration:
+        lines.append("  MIG=0")
+    if plan.migration == "to_packages":
+        lines += ["  " + line for line in _image_removal_lines(plan)]
     lines += ["  " + line for line in write]
     if certbot:
         # L'état écrit consigne Let's Encrypt : une coupure ne remet plus
@@ -4711,9 +5209,11 @@ def install_script(plan, stamp, root=""):
     done = [*origins, *carried, *(["container"] if container else [])]
     lines += [
         *[f'  rm -f "$PENDING/{name}.json"' for name in done],
+        *(['  echo "@@MIGRATION done"'] if migration else []),
         '  echo "@@SAVED yes"',
         "else",
         *(["  rehold"] if certbot else []),
+        *(["  migback"] if migration else []),
         '  echo "@@SAVED no"',
         "  exit 1",
         "fi",
@@ -7824,11 +8324,18 @@ def _family_lines():
 
 def _uninstall_helpers():
     """Fonctions `sh` du script : famille du système et paquet présent
-    (`_family_lines`), purge, remise en place de ce qui a été mis de côté.
-    La purge d'un paquet dans un état de _DPKG_INTERRUPTED passe d'abord
-    par « dpkg --configure -a »."""
+    (`_family_lines`), purge et remise en place (`_purge_helper_lines`)."""
+    return _family_lines() + _purge_helper_lines()
+
+
+def _purge_helper_lines():
+    """Fonctions `sh` `pkg_purge <paquet>` et `held_back <dossier>`, qui
+    remet à leur place les dossiers de _HELD mis à l'abri dans `dossier`
+    et appelle `failed` pour celui dont la place est reprise. Elles
+    demandent celles de `_family_lines`. La purge d'un paquet dans un état
+    de _DPKG_INTERRUPTED passe d'abord par « dpkg --configure -a »."""
     held = " ".join(f"{name}:{path}" for name, path in _HELD)
-    return _family_lines() + [
+    return [
         "pkg_purge() {",
         '  case "$FAMILY" in',
         f'    debian) case "$(dpkg_status "$1")" in {_DPKG_INTERRUPTED})',
