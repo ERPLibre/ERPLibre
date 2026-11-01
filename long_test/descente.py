@@ -191,26 +191,28 @@ def module_qemu():
     return mod
 
 
-def cle_publique():
+def cle_publique(creer=True):
     """La clé publique que reçoivent les VM : la clé par défaut de
     l'utilisateur, sinon une clé propre aux tests longs. Sans clé, une VM
     démarre sans accès ssh et chaque test échoue à l'attente de ssh. Les
-    appelants dérivent la clé privée en ôtant « .pub »."""
+    appelants dérivent la clé privée en ôtant « .pub ». `creer` faux (un
+    essai à blanc) rend le chemin de la clé propre sans la créer."""
     for nom in ("id_ed25519.pub", "id_rsa.pub"):
         chemin = os.path.expanduser(f"~/.ssh/{nom}")
         if os.path.exists(chemin):
             return chemin
-    return cle_jetable()
+    return cle_jetable(creer=creer)
 
 
-def cle_jetable(dossier="~/.erplibre/longtest/ssh"):
+def cle_jetable(dossier="~/.erplibre/longtest/ssh", creer=True):
     """Une paire ed25519 sans phrase de passe, créée au premier appel dans
     un dossier 0700 hors de ~/.ssh, puis réutilisée : elle n'ouvre que les
     VM jetables et ne change pas l'identité ssh de l'utilisateur. Rend le
-    chemin de la clé publique, ou "" quand ssh-keygen échoue."""
+    chemin de la clé publique, ou "" quand ssh-keygen échoue ; `creer`
+    faux rend ce chemin sans rien écrire ni lancer."""
     dossier = os.path.expanduser(dossier)
     prive = os.path.join(dossier, "id_ed25519")
-    if os.path.exists(prive + ".pub"):
+    if os.path.exists(prive + ".pub") or not creer:
         return prive + ".pub"
     try:
         os.makedirs(dossier, mode=0o700, exist_ok=True)
