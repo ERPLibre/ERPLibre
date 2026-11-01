@@ -36,6 +36,7 @@ from script.todo.todo_i18n import TRANSLATIONS, t
 REPO = Path(__file__).resolve().parent.parent
 MENU_PY = REPO / "script" / "todo" / "call_infra_menu.py"
 CALL_INFRA_PY = REPO / "script" / "todo" / "call_infra.py"
+ODOO_LINK_PY = REPO / "script" / "todo" / "odoo_link.py"
 
 CHECK_KEY = "0123456789abcdef0123456789abcdef"
 ADMIN_PASSWORD = "Mot-de-passe-invente-42"
@@ -1457,9 +1458,11 @@ class TestTranslations(unittest.TestCase):
 
     def test_every_key_call_infra_hands_out_is_translated(self):
         """Refus, notes du pare-feu et verdicts arrivent par une variable :
-        aucun `t("…")` littéral ne les montre au test précédent."""
+        aucun `t("…")` littéral ne les montre au test précédent. Les refus
+        d'`odoo_link` (`OdooError`) arrivent au menu de la même façon."""
         source = CALL_INFRA_PY.read_text(encoding="utf-8")
         source += MENU_PY.read_text(encoding="utf-8")
+        source += ODOO_LINK_PY.read_text(encoding="utf-8")
         keys = set(re.findall(r'"(call_infra_[a-z_]+)"', source))
         keys |= set(ci.CHECK_KEYS)
         self.assertGreater(len(keys), 25)

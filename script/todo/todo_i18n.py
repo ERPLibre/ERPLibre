@@ -4358,6 +4358,47 @@ TRANSLATIONS = {
         "fr": "Crochet de renouvellement, minuteur ajouté par l'outil et identifiants DNS : retirés.",
         "en": "Renewal hook, the timer the tool added and the DNS credentials: removed.",
     },
+    # Accès à une base Odoo (odoo_link.py) : refus d'OdooError
+    "call_infra_odoo_url": {
+        "fr": "L'URL d'Odoo doit avoir la forme http(s)://nom[:port], sans compte ni mot de passe.",
+        "en": "The Odoo URL must look like http(s)://name[:port], with no account or password.",
+    },
+    "call_infra_odoo_database": {
+        "fr": "Nom de base invalide : lettres, chiffres, « _ », « . » ou « - », deux caractères au moins, le premier une lettre ou un chiffre.",
+        "en": "Invalid database name: letters, digits, \"_\", \".\" or \"-\", at least two characters, the first a letter or a digit.",
+    },
+    "call_infra_odoo_version": {
+        "fr": "Cette base Odoo est en version {version} : seul Odoo 18 est pris en charge. Rien n'est touché.",
+        "en": "This Odoo database runs version {version}: only Odoo 18 is supported. Nothing is touched.",
+    },
+    "call_infra_odoo_login": {
+        "fr": "Connexion refusée à la base {database} : identifiant ou mot de passe faux, ou base inconnue. Un administrateur en double authentification se connecte par une clé d'API.",
+        "en": "Login refused on database {database}: wrong login or password, or unknown database. An administrator with two-factor authentication logs in with an API key.",
+    },
+    "call_infra_odoo_not_admin": {
+        "fr": "Le compte {login} n'est pas administrateur (groupe base.group_system) : il ne peut écrire ni les paramètres ni les serveurs ICE.",
+        "en": "The account {login} is not an administrator (group base.group_system): it can write neither the parameters nor the ICE servers.",
+    },
+    "call_infra_odoo_unreachable": {
+        "fr": "Odoo injoignable à {url} : {reason}.",
+        "en": "Odoo unreachable at {url}: {reason}.",
+    },
+    "call_infra_odoo_rpc_error": {
+        "fr": "Odoo a refusé l'opération : {message}",
+        "en": "Odoo refused the operation: {message}",
+    },
+    "call_infra_odoo_install_failed": {
+        "fr": "Le module erplibre_turn n'est pas installé (état : {state}). « absent » : il n'est pas sur le chemin des addons de cette base, ou la liste des applications n'a pas été mise à jour.",
+        "en": "The erplibre_turn module is not installed (state: {state}). \"absent\": it is not on this database's addons path, or the apps list was not updated.",
+    },
+    "call_infra_odoo_dir": {
+        "fr": "Dossier ERPLibre invalide : {directory}. Il faut un chemin absolu, celui qui porte odoo_bin.sh.",
+        "en": "Invalid ERPLibre directory: {directory}. It must be an absolute path, the one that holds odoo_bin.sh.",
+    },
+    "call_infra_odoo_shell_failed": {
+        "fr": "odoo-bin shell a échoué ; sa dernière ligne : {line}",
+        "en": "odoo-bin shell failed; its last line: {line}",
+    },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
         "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
