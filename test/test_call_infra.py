@@ -8379,6 +8379,704 @@ class TestInstallKeepsTheMode(OdooSandbox):
         self.assertEqual(plan.odoo_readd, ())
 
 
+def odoo_facts(module_state="installed", rows=(), params=None, version="18.0"):
+    """`ol.OdooFacts` d'une base Odoo inventée."""
+    return ol.OdooFacts(
+        version=version,
+        major=ol.major_of(version),
+        module_state=module_state,
+        params=dict(params or {}),
+        rows=tuple(rows),
+        host_name="erp-a.exemple.test",
+    )
+
+
+def ice_row(row_id, uri, username="", server_type="turn"):
+    return {
+        "id": row_id,
+        "server_type": server_type,
+        "uri": uri,
+        "username": username,
+    }
+
+
+# Lignes `mail.ice.server` écrites à la main par l'administrateur d'une base :
+# l'outil ne les écrit ni ne les efface jamais, même sur l'hôte de coturn.
+HAND_ROWS = (
+    ice_row(1, "turn.exemple.test:3478", "alice"),
+    ice_row(2, "stun.exemple.test:3478", "", "stun"),
+    ice_row(3, "relais.exemple.test:3478?transport=tcp", "bob"),
+)
+
+
+class FakeLink:
+    """`ol.WebApi` ou `ol.OdooShell` d'une base inventée : note ses appels
+    dans `events` (partagé avec le `run` du test, pour l'ordre), tient ses
+    lignes et ses paramètres, et lève `fail_on[<méthode>]` à la demande."""
+
+    def __init__(self, events, rows=(), params=None, fail_on=None):
+        self.events = events
+        self.rows = [dict(row) for row in rows]
+        self.params = dict(params or {})
+        self.fail_on = dict(fail_on or {})
+        self.next_id = 100
+
+    def _call(self, name, *args):
+        self.events.append((name,) + args)
+        if name in self.fail_on:
+            raise self.fail_on[name]
+
+    def install_module(self):
+        self._call("install_module")
+
+    def set_params(self, values):
+        self._call("set_params", dict(values))
+        for key, value in values.items():
+            if value is None:
+                self.params.pop(key, None)
+            else:
+                self.params[key] = value
+
+    def replace_rows(self, owned, rows):
+        self._call("replace_rows", owned, [dict(r) for r in rows])
+        kept = [r for r in self.rows if r.get("username") != owned]
+        for row in rows:
+            self.next_id += 1
+            kept.append(dict(row, id=self.next_id))
+        self.rows = kept
+
+
+def unreachable():
+    return ol.OdooError(
+        "call_infra_odoo_unreachable",
+        url=URL_A,
+        reason="connection refused",
+    )
+
+
+class TestOdooPlan(OdooSandbox):
+    """« Ajouter » et « Retirer un serveur Odoo » : le plan, puis le côté
+    coturn d'abord, Odoo ensuite, défait quand Odoo refuse l'écriture."""
+
+    def setUp(self):
+        super().setUp()
+        self.events = []
+        self.scripts = []
+
+    def run_host(self, script):
+        """Le `run` que le menu et le test long passent : (code, sortie)
+        du script joué dans la racine temporaire."""
+        self.scripts.append(script)
+        self.events.append(("host", ci.odoo_result(script)))
+        done = self.run_script(script)
+        self.events.append(("host-done", done.returncode))
+        return done.returncode, done.stdout
+
+    def kinds(self):
+        """Le genre de chaque script joué, par son marqueur final."""
+        found = []
+        for script in self.scripts:
+            for marker in ("ODOO_ADDED", "ODOO_REMOVED", "ODOO_ROLLBACK"):
+                if f'"@@{marker} yes"' in script:
+                    found.append(marker)
+                    break
+            else:
+                found.append("SAVED" if "@@SAVED yes" in script else "?")
+        return found
+
+    @staticmethod
+    def draw(*values):
+        drawn = iter(values)
+        return lambda nbytes: next(drawn)
+
+    def plan(self, state, facts, exempt=None, want=False, **kw):
+        return ci.plan_odoo_add(state, facts, URL_A, DB_A, want, exempt, **kw)
+
+    def add(self, link, plan, *values):
+        return ci.apply_odoo_add(
+            self.run_host,
+            link,
+            plan,
+            NOW,
+            draw=self.draw(*values),
+            root=self.root,
+        )
+
+    def odoo_calls(self):
+        return [e for e in self.events if not e[0].startswith("host")]
+
+    # --- Le plan --------------------------------------------------------
+
+    def test_module_installed_plans_params_and_no_rows(self):
+        state = secret_state()
+        plan = self.plan(state, odoo_facts("installed"))
+        self.assertEqual(plan.key, KEY_A)
+        self.assertEqual(plan.kind, "secret")
+        self.assertFalse(plan.install_module)
+        self.assertEqual(
+            plan.params, {ol.PARAM_URLS: "\n".join(ci.ice_urls(state))}
+        )
+        self.assertNotIn(ol.PARAM_SECRET, plan.params)
+        self.assertEqual(plan.rows, ())
+        self.assertEqual(plan.rows_total, 3)
+        self.assertEqual(plan.warnings, ())
+        self.assertEqual(plan.realm, REALM)
+        self.assertEqual(plan.ttl_hours, 24)
+        self.assertEqual(plan.state, state)
+
+    def test_module_absent_on_a_fixed_coturn_plans_three_rows(self):
+        state = installed_state()
+        plan = self.plan(state, odoo_facts("absent"), want=True)
+        self.assertEqual(plan.kind, "user")
+        self.assertFalse(plan.install_module)
+        self.assertEqual(
+            plan.rows,
+            (
+                {
+                    "server_type": "stun",
+                    "uri": "turn.exemple.test:3478",
+                    "username": USER_A,
+                },
+                {
+                    "server_type": "turn",
+                    "uri": "turn.exemple.test:3478?transport=udp",
+                    "username": USER_A,
+                },
+                {
+                    "server_type": "turn",
+                    "uri": "turn.exemple.test:3478?transport=tcp",
+                    "username": USER_A,
+                },
+            ),
+        )
+        self.assertEqual(plan.params, {})
+        self.assertIn("call_infra_no_turns", plan.warnings)
+        self.assertIn("call_infra_module_absent", plan.warnings)
+        self.assertNotIn("call_infra_ice_over_5", plan.warnings)
+
+    def test_fixed_rows_never_carry_turns_even_with_tls(self):
+        plan = self.plan(installed_state(supplied()), odoo_facts("absent"))
+        self.assertEqual(len(plan.rows), 3)
+        self.assertFalse([r for r in plan.rows if "5349" in r["uri"]])
+
+    def test_module_on_the_path_installed_when_asked(self):
+        state = installed_state()
+        plan = self.plan(state, odoo_facts("uninstalled"), want=True)
+        self.assertTrue(plan.install_module)
+        self.assertEqual(plan.kind, "secret")
+        self.assertNotIn("call_infra_module_absent", plan.warnings)
+        declined = self.plan(state, odoo_facts("uninstalled"), want=False)
+        self.assertFalse(declined.install_module)
+        self.assertEqual(declined.kind, "user")
+        self.assertEqual(declined.warnings, ("call_infra_no_turns",))
+
+    def test_fixed_plan_clears_a_left_module_configuration(self):
+        """Des paramètres du module restés dans une base où il n'est plus
+        installé reprendraient vie à sa réinstallation, avec un secret
+        révoqué : le plan fixe les retire."""
+        facts = odoo_facts(
+            "uninstalled",
+            params={ol.PARAM_SECRET: "sha256:" + "a" * 64, ol.PARAM_TTL: "8"},
+        )
+        plan = self.plan(installed_state(), facts)
+        self.assertEqual(plan.params, {ol.PARAM_SECRET: None})
+
+    def test_ice_over_five_counts_hand_rows_and_tool_rows(self):
+        own = (
+            ice_row(4, "turn.exemple.test:3478", USER_A, "stun"),
+            ice_row(5, "turn.exemple.test:3478?transport=udp", USER_A),
+            ice_row(6, "turn.exemple.test:3478?transport=tcp", USER_A),
+        )
+        facts = odoo_facts("absent", rows=HAND_ROWS + own)
+        plan = self.plan(installed_state(), facts)
+        self.assertEqual(plan.rows_total, 6)
+        self.assertIn("call_infra_ice_over_5", plan.warnings)
+        self.assertIn(("call_infra_ice_over_5", {"count": 6}), plan.messages())
+        self.assertIn(("call_infra_no_turns", {}), plan.messages())
+        module = self.plan(
+            secret_state(), odoo_facts("installed", rows=HAND_ROWS + own)
+        )
+        self.assertEqual(module.rows_total, 6)
+        self.assertIn("call_infra_ice_over_5", module.warnings)
+
+    def test_five_entries_do_not_warn(self):
+        facts = odoo_facts("absent", rows=HAND_ROWS[:2])
+        plan = self.plan(installed_state(), facts)
+        self.assertEqual(plan.rows_total, 5)
+        self.assertNotIn("call_infra_ice_over_5", plan.warnings)
+
+    def test_ttl_comes_from_the_odoo_parameter(self):
+        facts = odoo_facts("installed", params={ol.PARAM_TTL: "48"})
+        self.assertEqual(self.plan(secret_state(), facts).ttl_hours, 48)
+        facts = odoo_facts("installed", params={ol.PARAM_TTL: "0"})
+        self.assertEqual(self.plan(secret_state(), facts).ttl_hours, 1)
+
+    def test_refusals_before_anything_changes(self):
+        mixed = secret_state(odoos={KEY_B: secret_entry(SECRET_B)})
+        cases = (
+            (mixed, odoo_facts("absent"), "call_infra_turn_mode_mismatch"),
+            (
+                secret_state(),
+                odoo_facts(version="17.0"),
+                "call_infra_odoo_version",
+            ),
+            (
+                installed_state(answers(services=frozenset({"ntfy"}))),
+                odoo_facts(),
+                "call_infra_odoo_no_coturn",
+            ),
+        )
+        for state, facts, key in cases:
+            with self.subTest(key=key):
+                with self.assertRaises(ci.Refusal) as caught:
+                    self.plan(state, facts)
+                self.assertEqual(caught.exception.key, key)
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.plan_odoo_add({}, odoo_facts(), URL_A, DB_A, False, None)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_no_coturn")
+
+    def test_exempt_address(self):
+        state = secret_state()
+        plan = self.plan(
+            state, odoo_facts(), exempt="203.0.113.7", ntfy_text=NTFY_YML
+        )
+        self.assertEqual(plan.exempt, "203.0.113.7")
+        self.assertEqual(plan.ntfy_text, NTFY_YML)
+        with self.assertRaises(ci.Refusal) as caught:
+            self.plan(state, odoo_facts(), exempt="127.0.0.1", ntfy_text="")
+        self.assertEqual(caught.exception.key, "call_infra_odoo_exempt")
+        with self.assertRaises(ValueError):
+            self.plan(state, odoo_facts(), exempt="203.0.113.7")
+        coturn_only = installed_state(answers(services=frozenset({"coturn"})))
+        alone = self.plan(
+            coturn_only, odoo_facts("absent"), exempt="127.0.0.1"
+        )
+        self.assertIsNone(alone.exempt)
+
+    def test_every_key_the_plan_hands_out_is_translated(self):
+        keys = set(ci.ODOO_PLAN_KEYS)
+        self.assertTrue(
+            {
+                "call_infra_no_turns",
+                "call_infra_ice_over_5",
+                "call_infra_module_absent",
+                "call_infra_odoo_write_failed",
+            }
+            <= keys
+        )
+        translations = ci_i18n_keys()
+        for key in sorted(keys):
+            self.assertIn(key, translations, key)
+
+    # --- Ajouter --------------------------------------------------------
+
+    def test_add_with_the_module_writes_coturn_then_odoo_then_the_state(self):
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        link = FakeLink(self.events, rows=HAND_ROWS)
+        plan = self.plan(state, odoo_facts("installed", rows=HAND_ROWS))
+        final = self.add(link, plan, CHECK_SECRET, SECRET_A)
+        # Le secret de contrôle de la bascule, puis celui de cet Odoo.
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A})
+        self.assertEqual(self.kinds(), ["ODOO_ADDED", "SAVED"])
+        self.assertEqual(
+            self.odoo_calls(),
+            [
+                (
+                    "set_params",
+                    {
+                        ol.PARAM_URLS: "\n".join(ci.ice_urls(state)),
+                        ol.PARAM_SECRET: SECRET_A,
+                    },
+                ),
+                ("replace_rows", USER_A, []),
+            ],
+        )
+        # Le secret en dernier : sur l'API web, chaque paramètre est sa
+        # propre transaction, et un nouveau secret ne doit jamais signer
+        # d'anciennes URL.
+        self.assertEqual(
+            list(self.odoo_calls()[0][1]), [ol.PARAM_URLS, ol.PARAM_SECRET]
+        )
+        names = [e[0] for e in self.events]
+        self.assertLess(names.index("host-done"), names.index("set_params"))
+        host = self.state_on_host()
+        self.assertEqual(host, final)
+        self.assertEqual(host["turn_mode"], "secret")
+        self.assertEqual(host["check_secret_sha256"], sha(CHECK_SECRET))
+        entry = host["odoos"][KEY_A]
+        self.assertEqual(
+            entry["credential"],
+            {"kind": "secret", "value_sha256": sha(SECRET_A)},
+        )
+        self.assertTrue(entry["module"])
+        self.assertFalse(entry["rows"])
+        self.assertEqual(link.rows, list(HAND_ROWS))
+        self.assertNotIn(SECRET_A, json.dumps(host))
+
+    def test_add_installs_the_module_before_touching_coturn(self):
+        """Le module installé sans paramètre rend ce que mail rend : rien ne
+        change pour les appels tant que coturn n'a pas reçu le secret."""
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        link = FakeLink(self.events)
+        plan = self.plan(state, odoo_facts("uninstalled"), want=True)
+        self.add(link, plan, CHECK_SECRET, SECRET_A)
+        names = [e[0] for e in self.events]
+        self.assertEqual(names[0], "install_module")
+        self.assertLess(names.index("host"), names.index("set_params"))
+
+    def test_a_failed_install_changes_nothing_on_the_host(self):
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        error = ol.OdooError("call_infra_odoo_install_failed", state="absent")
+        link = FakeLink(self.events, fail_on={"install_module": error})
+        plan = self.plan(state, odoo_facts("uninstalled"), want=True)
+        with self.assertRaises(ol.OdooError):
+            self.add(link, plan, CHECK_SECRET, SECRET_A)
+        self.assertEqual(self.scripts, [])
+        self.assertEqual(self.state_on_host(), state)
+
+    def test_add_without_the_module_writes_three_rows_with_the_password(self):
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        link = FakeLink(self.events, rows=HAND_ROWS)
+        plan = self.plan(state, odoo_facts("absent", rows=HAND_ROWS))
+        final = self.add(link, plan, PASSWORD_1)
+        self.assertEqual(
+            self.users()[USER_A],
+            tc.long_term_key(USER_A, REALM, PASSWORD_1).hex(),
+        )
+        (call,) = [e for e in self.odoo_calls() if e[0] == "replace_rows"]
+        _, owned, rows = call
+        self.assertEqual(owned, USER_A)
+        self.assertEqual([r["username"] for r in rows], [USER_A] * 3)
+        self.assertEqual(
+            [r.get("credential") for r in rows],
+            [None, PASSWORD_1, PASSWORD_1],
+        )
+        self.assertFalse(
+            [e for e in self.odoo_calls() if e[0] == "set_params"]
+        )
+        entry = final["odoos"][KEY_A]
+        self.assertEqual(entry["credential"], {"kind": "user", "user": USER_A})
+        self.assertTrue(entry["rows"])
+        self.assertEqual(final["turn_mode"], "fixed")
+        self.assertEqual(self.state_on_host(), final)
+        self.assertNotIn(PASSWORD_1, json.dumps(final))
+        for row in HAND_ROWS:
+            self.assertIn(row, link.rows)
+
+    def test_rerun_rotates_the_secret_with_the_odoo_lifetime(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        self.put_state(state)
+        link = FakeLink(self.events)
+        facts = odoo_facts("installed", params={ol.PARAM_TTL: "48"})
+        final = self.add(link, self.plan(state, facts), SECRET_B)
+        # Pas de bascule : aucun secret de contrôle n'est tiré.
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A, SECRET_B})
+        entry = final["odoos"][KEY_A]
+        self.assertEqual(entry["credential"]["value_sha256"], sha(SECRET_B))
+        expires = NOW + datetime.timedelta(hours=48)
+        self.assertEqual(
+            entry["retired"],
+            [
+                {
+                    "value_sha256": sha(SECRET_A),
+                    "expires_at": expires.isoformat(timespec="seconds"),
+                }
+            ],
+        )
+        self.assertEqual(self.state_on_host(), final)
+
+    def test_odoo_write_failure_rolls_coturn_back_and_keeps_the_state(self):
+        """Review Focus 1 : un mot de passe d'administrateur faux, un refus
+        d'accès ou une coupure au moment d'écrire Odoo retire de coturn le
+        secret qui vient d'y être posé ; l'état reste celui d'avant."""
+        state = secret_state(odoos={KEY_B: secret_entry(SECRET_B)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_B), check_user=False)
+        self.put_state(state)
+        error = ol.OdooError(
+            "call_infra_odoo_rpc_error", message="AccessError"
+        )
+        link = FakeLink(self.events, fail_on={"set_params": error})
+        plan = self.plan(state, odoo_facts("installed"))
+        with self.assertRaises(ci.Refusal) as caught:
+            self.add(link, plan, SECRET_A)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_write_failed")
+        self.assertIs(caught.exception.__cause__, error)
+        self.assertEqual(self.kinds(), ["ODOO_ADDED", "ODOO_ROLLBACK"])
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_B})
+        self.assertEqual(self.state_on_host(), state)
+        self.assertNotIn(SECRET_A, repr(caught.exception.values))
+
+    def test_a_failed_rotation_of_a_fixed_account_restores_its_key(self):
+        entry = {
+            "method": "webapi",
+            "module": False,
+            "credential": {"kind": "user", "user": USER_A},
+            "retired": [],
+            "rows": True,
+            "exempt": None,
+            "added_at": "2026-10-30T10:00:00+00:00",
+        }
+        state = installed_state()
+        state["turn_mode"] = "fixed"
+        state["odoos"] = {KEY_A: entry}
+        old_key = tc.long_term_key(USER_A, REALM, PASSWORD_1).hex()
+        self.seed(users=((USER_A, old_key),))
+        self.put_state(state)
+        link = FakeLink(self.events, fail_on={"replace_rows": unreachable()})
+        plan = self.plan(state, odoo_facts("absent"))
+        with self.assertRaises(ci.Refusal) as caught:
+            self.add(link, plan, PASSWORD_2)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_write_failed")
+        self.assertEqual(self.users()[USER_A], old_key)
+        self.assertEqual(self.state_on_host(), state)
+
+    def test_an_interrupted_odoo_write_is_rolled_back_too(self):
+        state = secret_state()
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put_state(state)
+        link = FakeLink(
+            self.events, fail_on={"set_params": KeyboardInterrupt()}
+        )
+        with self.assertRaises(KeyboardInterrupt):
+            self.add(link, self.plan(state, odoo_facts()), SECRET_A)
+        self.assertEqual(self.kinds(), ["ODOO_ADDED", "ODOO_ROLLBACK"])
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+
+    def test_a_failed_rollback_says_the_credential_may_stay(self):
+        state = secret_state()
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put_state(state)
+        link = FakeLink(self.events, fail_on={"set_params": unreachable()})
+        plan = self.plan(state, odoo_facts())
+
+        def run(script):
+            if '"@@ODOO_ROLLBACK yes"' in script:
+                return 1, "@@FAILED revoke\n@@ODOO_ROLLBACK no\n"
+            return self.run_host(script)
+
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.apply_odoo_add(
+                run, link, plan, NOW, draw=self.draw(SECRET_A), root=self.root
+            )
+        self.assertEqual(
+            caught.exception.key, "call_infra_odoo_rollback_failed"
+        )
+        self.assertEqual(caught.exception.values, {"step": "revoke"})
+
+    def test_a_failed_host_script_leaves_odoo_alone(self):
+        state = secret_state()
+        self.put_state(state)
+        link = FakeLink(self.events)
+        plan = self.plan(state, odoo_facts())
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.apply_odoo_add(
+                lambda script: (1, "@@FAILED secret\n@@ODOO_ADDED no\n"),
+                link,
+                plan,
+                NOW,
+                draw=self.draw(SECRET_A),
+                root=self.root,
+            )
+        self.assertEqual(caught.exception.key, "call_infra_odoo_host_failed")
+        self.assertEqual(caught.exception.values, {"step": "secret"})
+        self.assertEqual(self.odoo_calls(), [])
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.apply_odoo_add(
+                lambda script: None,
+                link,
+                plan,
+                NOW,
+                draw=self.draw(SECRET_A),
+                root=self.root,
+            )
+        self.assertEqual(caught.exception.key, "call_infra_odoo_host_failed")
+        self.assertEqual(self.odoo_calls(), [])
+
+    def test_a_failed_state_write_is_said(self):
+        state = secret_state()
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put_state(state)
+        link = FakeLink(self.events)
+
+        def run(script):
+            if '"@@ODOO_ADDED yes"' in script:
+                return self.run_host(script)
+            return 1, "@@FAILED state\n@@SAVED no\n"
+
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.apply_odoo_add(
+                run,
+                link,
+                self.plan(state, odoo_facts()),
+                NOW,
+                draw=self.draw(SECRET_A),
+                root=self.root,
+            )
+        self.assertEqual(caught.exception.key, "call_infra_odoo_state_failed")
+
+    def test_add_with_an_exempt_address_writes_it_to_ntfy(self):
+        state = secret_state()
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put_state(state)
+        self.put(ci.NTFY_CONFIG, NTFY_YML)
+        plan = self.plan(
+            state, odoo_facts(), exempt="198.51.100.20", ntfy_text=NTFY_YML
+        )
+        final = self.add(FakeLink(self.events), plan, SECRET_A)
+        self.assertEqual(final["odoos"][KEY_A]["exempt"], "198.51.100.20")
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertIn("198.51.100.20", handle.read())
+
+    def test_the_method_comes_from_the_link(self):
+        self.assertEqual(
+            ci._link_method(ol.WebApi.__new__(ol.WebApi)), "webapi"
+        )
+        shell = ol.OdooShell.__new__(ol.OdooShell)
+        self.assertEqual(ci._link_method(shell), "shell")
+        self.assertIsNone(ci._link_method(FakeLink([])))
+
+    # --- Retirer --------------------------------------------------------
+
+    def test_remove_cleans_odoo_first_then_revokes_on_the_host(self):
+        state = secret_state(
+            odoos={
+                KEY_A: secret_entry(SECRET_A),
+                KEY_B: secret_entry(SECRET_B),
+            }
+        )
+        self.seed(secrets=(CHECK_SECRET, SECRET_A, SECRET_B), check_user=False)
+        self.put_state(state)
+        own = ice_row(9, "turn.exemple.test:3478?transport=udp", USER_A)
+        link = FakeLink(
+            self.events,
+            rows=HAND_ROWS + (own,),
+            params={
+                ol.PARAM_SECRET: SECRET_A,
+                ol.PARAM_URLS: "x",
+                ol.PARAM_TTL: "8",
+            },
+        )
+        final = ci.apply_odoo_remove(
+            self.run_host, link, state, KEY_A, now=NOW, root=self.root
+        )
+        self.assertEqual(
+            [e[0] for e in self.events],
+            ["set_params", "replace_rows", "host", "host-done"],
+        )
+        self.assertEqual(
+            self.events[0][1], {ol.PARAM_SECRET: None, ol.PARAM_URLS: None}
+        )
+        self.assertEqual(self.events[1][1:], (USER_A, []))
+        # Le module reste installé et sa durée de vie aussi.
+        self.assertEqual(link.params, {ol.PARAM_TTL: "8"})
+        self.assertEqual(link.rows, list(HAND_ROWS))
+        # L'autre Odoo garde son secret, donc ses allocations.
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_B})
+        self.assertNotIn(KEY_A, final["odoos"])
+        self.assertEqual(self.state_on_host(), final)
+        self.assertEqual(final["turn_mode"], "secret")
+
+    def test_hand_rows_survive_add_and_remove(self):
+        """Review Focus 2 : une ligne écrite à la main sur l'hôte de coturn,
+        dont le nom n'est pas celui de l'outil, n'est jamais effacée."""
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        link = FakeLink(self.events, rows=HAND_ROWS)
+        plan = self.plan(state, odoo_facts("absent", rows=HAND_ROWS))
+        self.assertFalse([r for r in plan.rows if r["username"] == "alice"])
+        added = self.add(link, plan, PASSWORD_1)
+        ci.apply_odoo_remove(
+            self.run_host, link, added, KEY_A, now=NOW, root=self.root
+        )
+        self.assertEqual(link.rows, list(HAND_ROWS))
+        for event in self.odoo_calls():
+            if event[0] == "replace_rows":
+                self.assertEqual(event[1], USER_A)
+                self.assertFalse(
+                    [r for r in event[2] if r["username"] != USER_A]
+                )
+        self.assertNotIn(USER_A, self.users())
+
+    def test_remove_with_odoo_unreachable_asks_before_revoking(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        self.put_state(state)
+        link = FakeLink(self.events, fail_on={"set_params": unreachable()})
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.apply_odoo_remove(
+                self.run_host, link, state, KEY_A, now=NOW, root=self.root
+            )
+        self.assertEqual(
+            caught.exception.key, "call_infra_odoo_remove_unreachable"
+        )
+        self.assertEqual(
+            caught.exception.__cause__.key, "call_infra_odoo_unreachable"
+        )
+        self.assertEqual(self.scripts, [])
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A})
+        final = ci.apply_odoo_remove(
+            self.run_host,
+            link,
+            state,
+            KEY_A,
+            now=NOW,
+            revoke_anyway=True,
+            root=self.root,
+        )
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+        self.assertEqual(self.state_on_host(), final)
+
+    def test_remove_without_a_link_needs_the_flag(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        self.put_state(state)
+        with self.assertRaises(ci.Refusal):
+            ci.apply_odoo_remove(
+                self.run_host, None, state, KEY_A, now=NOW, root=self.root
+            )
+        ci.apply_odoo_remove(
+            self.run_host,
+            None,
+            state,
+            KEY_A,
+            now=NOW,
+            revoke_anyway=True,
+            root=self.root,
+        )
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+
+    def test_remove_of_an_unknown_odoo_touches_nothing(self):
+        state = secret_state(odoos={KEY_B: secret_entry(SECRET_B)})
+        link = FakeLink(self.events)
+        with self.assertRaises(ValueError):
+            ci.apply_odoo_remove(self.run_host, link, state, KEY_A, now=NOW)
+        self.assertEqual(self.events, [])
+
+    def test_a_failed_remove_script_is_said(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        link = FakeLink(self.events)
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.apply_odoo_remove(
+                lambda s: (1, "@@FAILED revoke\n@@ODOO_REMOVED no\n"),
+                link,
+                state,
+                KEY_A,
+                now=NOW,
+            )
+        self.assertEqual(caught.exception.key, "call_infra_odoo_host_failed")
+        self.assertEqual(caught.exception.values, {"step": "revoke"})
+
+
 class TestStdlibOnly(unittest.TestCase):
     ALLOWED_SIBLINGS = {
         "script.todo.ntfy_mobile",
