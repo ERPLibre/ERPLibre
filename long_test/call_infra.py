@@ -671,6 +671,7 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
         _ajouter(log, f"✗ plan : {refus.key} {refus.values}")
         return res
     res["adoptes"] = plan.adopt
+    record = None
     if plan.nothing_to_do:
         _ajouter(log, "✓ rien à changer")
         res["rien_a_faire"] = True
@@ -679,6 +680,16 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
             return res
         etat = facts.state
     else:
+        # Comme le menu : le défi HTTP-01 passe pendant l'installation, le
+        # port 80 doit déjà passer le pare-feu.
+        if ci.firewall_before_install(answers):
+            res["etape"] = "pare-feu"
+            prior = facts.state if isinstance(facts.state, dict) else {}
+            record = _pare_feu(
+                cible, facts, answers, prior.get("firewall"), log, executer
+            )
+            if record is None:
+                return res
         res["etape"] = "install"
         stamp = time.strftime("%Y%m%d-%H%M%S")
         code, sortie = executer(
@@ -688,12 +699,13 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
         if code != 0 or sauve[-1:] != ["yes"]:
             return res
         etat = ci.installed_state(plan, stamp, sortie)
-    res["etape"] = "pare-feu"
-    record = _pare_feu(
-        cible, facts, answers, etat.get("firewall"), log, executer
-    )
     if record is None:
-        return res
+        res["etape"] = "pare-feu"
+        record = _pare_feu(
+            cible, facts, answers, etat.get("firewall"), log, executer
+        )
+        if record is None:
+            return res
     etat = ci.with_firewall(etat, record)
     res["etape"] = "etat"
     if not _ecrire_etat(cible, etat, log, executer):
