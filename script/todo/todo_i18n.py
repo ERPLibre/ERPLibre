@@ -4453,6 +4453,14 @@ TRANSLATIONS = {
         "fr": "Dossier ERPLibre invalide : {directory}. Il faut un chemin absolu, celui qui porte odoo_bin.sh.",
         "en": "Invalid ERPLibre directory: {directory}. It must be an absolute path, the one that holds odoo_bin.sh.",
     },
+    "call_infra_odoo_dir_owner": {
+        "fr": "Le dossier {directory} et son odoo_bin.sh n'appartiennent pas au même compte : odoo-bin shell n'est pas lancé. Rendez-les au compte qui fait tourner Odoo, ou passez par l'API web. Rien n'est touché.",
+        "en": "The directory {directory} and its odoo_bin.sh do not belong to the same account: odoo-bin shell is not started. Give them back to the account that runs Odoo, or use the web API. Nothing is touched.",
+    },
+    "call_infra_odoo_dir_writable": {
+        "fr": "Ce dossier ERPLibre appartient à root, mais {path} appartient à un autre compte ou est modifiable par le groupe ou les autres : odoo-bin shell n'est pas lancé en root sur des fichiers qu'un autre compte peut changer. Passez par le dossier du compte qui fait tourner Odoo, ou par l'API web. Rien n'est touché.",
+        "en": "This ERPLibre directory belongs to root, but {path} belongs to another account or is writable by its group or others: odoo-bin shell is not run as root on files another account can change. Use the directory of the account that runs Odoo, or the web API. Nothing is touched.",
+    },
     "call_infra_odoo_shell_failed": {
         "fr": "odoo-bin shell a échoué ; sa dernière ligne : {line}",
         "en": "odoo-bin shell failed; its last line: {line}",
