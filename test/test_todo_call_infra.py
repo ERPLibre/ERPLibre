@@ -692,6 +692,37 @@ class TestProductionInstall(ProductionCase):
         _remote, address, cafile = self.check_local.call_args.args
         self.assertEqual((address, cafile), (TURN_NAME, None))
 
+    def test_http_challenge_offers_the_firewall_before_the_install(self):
+        # Le défi HTTP-01 passe pendant le script d'installation : un
+        # pare-feu actif qui ne laisse passer que ssh le ferait échouer à
+        # chaque passage si le port 80 n'était proposé qu'après.
+        for replies in (PROD_BOTH, PROD_COTURN):
+            with self.subTest(replies=replies):
+                host = FakeHost(firewall="ufw")
+                out = self.drive(
+                    "_call_infra_install", host, replies + ["o", "o", ""]
+                )
+                self.assertEqual(
+                    host.kinds(),
+                    ["probe", "firewall", "install", "state", "check"],
+                )
+                # Une seule question : le oui d'avant vaut pour l'état.
+                rules = t("Add these rules? (y/N): ")
+                asked = [p for p in self.prompts if p == rules]
+                self.assertEqual(len(asked), 1, self.prompts)
+                self.assertIn("80/tcp", out)
+                self.assertEqual(
+                    host.state["firewall"]["rules"],
+                    [["tcp", "3478", "coturn"], ["udp", "3478", "coturn"]],
+                )
+                self.prompts.clear()
+
+    def test_a_failed_http_challenge_after_the_firewall_keeps_no_state(self):
+        host = FakeHost(firewall="ufw", install_ok=False)
+        self.drive("_call_infra_install", host, PROD_BOTH + ["o", "o"])
+        self.assertEqual(host.kinds(), ["probe", "firewall", "install"])
+        self.assertIsNone(host.state)
+
     def test_dns_challenge_never_prints_the_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "cloudflare.ini")
