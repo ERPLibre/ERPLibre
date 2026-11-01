@@ -78,9 +78,16 @@ class LongTestMenuMixin:
                 "This creates throwaway Odoo databases and servers, for a few minutes.",
                 "Run the mobile sync test?",
             )
-        if nom == "call_infra.py" and "--detruire" not in (args or ""):
+        if nom == "call_infra.py":
+            # Son scénario des serveurs Odoo crée aussi des bases et des
+            # serveurs Odoo sur cette machine, que sa destruction supprime.
+            if "--detruire" in (args or ""):
+                return (
+                    "This destroys the machines of this test and their disks, stops its local Odoo servers and drops its call_infra_odoo_* databases.",
+                    "Destroy the machines and databases of this test?",
+                )
             return (
-                "This creates four VMs one after the other (development, then production with nginx, on Debian and on Arch) and installs coturn and ntfy on them. call_infra.py --scenario dev or prod runs only one.",
+                "This creates five VMs one after the other (development, then production with nginx, on Debian and on Arch, then Odoo servers on one coturn on Debian, with three throwaway Odoo 18 databases on this machine) and installs coturn and ntfy on them. call_infra.py --scenario dev, prod or odoo runs only one.",
                 "Run the call infrastructure test?",
             )
         if "--detruire" in (args or ""):

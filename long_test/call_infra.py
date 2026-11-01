@@ -26,7 +26,7 @@ machine par `check_local`, comme le menu le fait ; la désinstallation est
 jugée sur ce qui reste sur l'hôte (unité, dossier de l'outil, règles du
 pare-feu, configuration remise) et sur les ports vus d'ici.
 
-DEUX SCÉNARIOS PAR SYSTÈME
+TROIS SCÉNARIOS
 
 Le développement (`dev`) : sur Debian, ufw y est activé (ssh d'abord), ntfy
 y est d'abord posé à l'ancienne par install_ntfy.sh avec un compte de
@@ -42,12 +42,25 @@ le pare-feu accepté. Puis le crochet de déploiement du produit, lancé à la
 main avec RENEWED_LINEAGE sur une fausse lignée (voir `crochets`), une
 relance qui ne change rien et la désinstallation, données comprises.
 
-Chaque scénario part d'une VM neuve, au même nom : les deux d'un système
+Les serveurs Odoo (`odoo`), sur Debian seulement : coturn et ntfy de
+développement avec un certificat fourni, puis trois bases d'un Odoo 18 de
+cette machine (le harnais de `mobile_sync_odoo.py`) branchées et débranchées
+par les briques de « Ajouter » et « Retirer un serveur Odoo » : compte fixe
+sans le module, bascule de coturn en mode secret avec `erplibre_turn`,
+second Odoo sans redémarrage, rotation et sa grâce, retrait d'un Odoo qui
+laisse l'autre allouer, refus de l'autre mode. Chaque allocation part de
+cette machine sous les identifiants qu'Odoo remet à un utilisateur ou à un
+invité (`check_through_odoo`). Les bases `call_infra_odoo_*` entrent au
+rapport avant d'exister et partent à la fin de la course, ou par
+`--detruire`.
+
+Chaque scénario part d'une VM neuve, au même nom : ceux d'un système
 tournent l'un après l'autre.
 
-  ./long_test/call_infra.py                  # Debian puis Arch, dev puis prod
+  ./long_test/call_infra.py                  # Debian puis Arch, chaque scénario
   ./long_test/call_infra.py --distro arch    # un seul système
   ./long_test/call_infra.py --scenario prod  # un seul scénario
+  ./long_test/call_infra.py --scenario odoo  # les serveurs Odoo, Debian
   ./long_test/call_infra.py --dry-run        # le plan, rien de créé
   ./long_test/call_infra.py --garder --scenario dev   # garder les VM
   ./long_test/call_infra.py --detruire       # défaire la dernière course
@@ -63,11 +76,14 @@ import os
 import re
 import secrets
 import shlex
+import signal
 import socket
 import ssl
 import subprocess
 import sys
 import time
+import urllib.parse
+from pathlib import Path
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
@@ -78,16 +94,19 @@ from descente import (  # noqa: E402
     Famille,
     capacite_hote,
     cle_publique,
+    descente_vivante,
     detruire,
     detruire_etage1,
     dire,
     drapeaux_cache,
     retirer_alias,
 )
+import mobile_sync_odoo as mso  # noqa: E402
 from script.reverse_proxy import local_cert  # noqa: E402
 from script.todo import call_infra as ci  # noqa: E402
 from script.todo import call_infra_menu as cim  # noqa: E402
 from script.todo import ntfy_mobile as nm  # noqa: E402
+from script.todo import odoo_link as ol  # noqa: E402
 from script.todo import turn_client  # noqa: E402
 
 OUTIL = "call_infra"
@@ -128,7 +147,7 @@ SECRETS = (cim.ADMIN_PASSWORD_LINE, *cim.CHECK_HIDDEN)
 # ligne : il ouvre les sujets du téléphone tant que la VM vit.
 JETON = re.compile(r"tk_[A-Za-z0-9]+")
 
-SCENARIOS_NOMS = ("dev", "prod")
+SCENARIOS_NOMS = ("dev", "prod", "odoo")
 
 # Les lignes de `check_local` qui doivent être vertes, par scénario et par
 # système. En production, `private-denied` est la permission refusée vers
@@ -170,6 +189,21 @@ CONTROLES = {
         ),
         "arch": (*_PROD_CONTROLES, "service-coturn", "service-ntfy"),
     },
+    # En mode secret, les lignes turn-* allouent sous le secret de contrôle,
+    # odoo-1 et odoo-2 sous le secret de chacun des deux Odoo branchés.
+    "odoo": {
+        "debian": (
+            "turn-udp",
+            "turn-tcp",
+            "turn-tls",
+            "ntfy-health",
+            "firewall",
+            "service-coturn",
+            "service-ntfy",
+            "odoo-1",
+            "odoo-2",
+        ),
+    },
 }
 
 # Les étapes de la production après la préparation du système.
@@ -188,6 +222,34 @@ _PROD_ETAPES = (
     "etat-apres-desinstallation",
     "ports-fermes",
     "desinstallation-vide",
+)
+
+# Les étapes des serveurs Odoo après la préparation du système : A sans le
+# module, B et C avec, sur le même coturn (voir `scenario_odoo`).
+_ODOO_ETAPES = (
+    "odoo-harnais",
+    "installation",
+    "a-fixe",
+    "a-par-odoo",
+    "a-retire",
+    "a-revoque",
+    "b-module",
+    "b-bascule",
+    "b-utilisateur",
+    "b-invite",
+    "c-module",
+    "c-sans-redemarrage",
+    "b-et-c",
+    "verification-secret",
+    "b-rotation",
+    "b-grace",
+    "c-retire",
+    "b-reste",
+    "c-revoque",
+    "a-refuse",
+    "b-retire",
+    "desinstallation",
+    "bases-supprimees",
 )
 
 # Les étapes, dans l'ordre, pour le plan et le rapport.
@@ -227,6 +289,9 @@ ETAPES = {
         "debian": ("vm", "ssh", "cloud-init", "ufw-actif", *_PROD_ETAPES),
         "arch": ("vm", "ssh", "cloud-init", "pacman", *_PROD_ETAPES),
     },
+    "odoo": {
+        "debian": ("vm", "ssh", "cloud-init", "ufw-actif", *_ODOO_ETAPES),
+    },
 }
 
 # Le domaine inventé de la production : ses noms ne se résolvent nulle
@@ -246,6 +311,25 @@ TEMOIN_LE = "/etc/letsencrypt/.erplibre-longtest"
 # rejeu de la base partagée (secret et comptes long terme).
 LIBELLE_TELEPHONE = "longtest"
 UTILISATEUR_REST = "longtest"
+
+# Les trois bases du scénario des serveurs Odoo, une par lettre :
+# `call_infra_odoo_<course>_<lettre>`, jamais un nom de mobile_sync, que son
+# propre balayage supprime.
+LETTRES_ODOO = ("a", "b", "c")
+PREFIXE_BASE_ODOO = "call_infra_odoo_"
+_BASE_ODOO = re.compile(r"^call_infra_odoo_[0-9]+_[0-9]+_[abc]$")
+# Les comptes que le gabarit Odoo 18 de mobile_sync_odoo crée : son
+# administrateur (base sans démonstration) et l'utilisateur interne du chat.
+ADMIN_ODOO = ("admin", "admin")
+UTILISATEUR_ODOO = ("chat_user", "chat_user")
+# Le canal public créé dans la base B pour son lien d'invitation.
+CANAL_INVITES = "call infra invites"
+# Les sortes d'URL de TURN qu'Odoo remet : sans le module, les deux lignes
+# `turn:` du compte fixe ; avec lui, `turns:` en plus (certificat fourni).
+ICE_FIXE = ("turn-udp", "turn-tcp")
+ICE_SECRET = ("turn-udp", "turn-tcp", "turns")
+# Attente de l'arrêt d'un serveur Odoo orphelin avant SIGKILL.
+DELAI_ARRET_ODOO = 10
 
 OPTIONS_SSH = [
     "-o",
@@ -1139,13 +1223,15 @@ class Scenario:
     """Les étapes d'un système dans un scénario, et leur journal. `etapes`
     : {nom: bool}, dans l'ordre où elles ont tourné ; `details` : ce qui
     éclaire un verdict (lignes de vérification, ports, rejeu du mélange,
-    passes du crochet)."""
+    passes du crochet). `course` : la `Course` dont le rapport reçoit ce
+    que le scénario crée hors de la VM (les bases Odoo), None sans elle."""
 
-    def __init__(self, distro, log, journal, scenario="dev"):
+    def __init__(self, distro, log, journal, scenario="dev", course=None):
         self.distro = distro
         self.scenario = scenario
         self.log = log
         self.journal = journal
+        self.course = course
         self.etapes = {}
         self.details = {}
 
@@ -1595,9 +1681,864 @@ def scenario_prod(sc, cible, ip, dossier):
     )
 
 
+# --- Serveurs Odoo ------------------------------------------------------
+
+
+def noms_bases(identifiant):
+    """{lettre: base} des trois bases d'une course : `call_infra_odoo_
+    <identifiant>_<lettre>`. ValueError pour un identifiant qui ne donne pas
+    un nom de la forme `_BASE_ODOO` (63 octets au plus, la borne de
+    PostgreSQL)."""
+    bases = {}
+    for lettre in LETTRES_ODOO:
+        nom = f"{PREFIXE_BASE_ODOO}{identifiant}_{lettre}"
+        if not _BASE_ODOO.match(nom) or len(nom) > mso.LONGUEUR_NOM_MAX:
+            raise ValueError(f"nom de base invalide : {nom!r}")
+        bases[lettre] = nom
+    return bases
+
+
+def identifiant_de(course):
+    """`<pid>_<horodatage>` de la course, ou d'ici et maintenant sans
+    elle."""
+    return getattr(course, "identifiant", None) or (
+        f"{os.getpid()}_{time.strftime('%Y%m%d%H%M%S')}"
+    )
+
+
+def sorte_url(url):
+    """« turn-udp », « turn-tcp », « turns » ou le schéma d'une URL ICE ;
+    `turn:` sans transport est UDP, comme `check_through_odoo` l'alloue."""
+    schema = url.split(":", 1)[0].lower()
+    if schema != "turn":
+        return schema
+    return "turn-tcp" if "transport=tcp" in url.lower() else "turn-udp"
+
+
+def verdict_ice(lignes, attendus, refuse=False):
+    """(ok, détail) des lignes de `check_through_odoo`.
+
+    Les sortes d'URL des lignes (`sorte_url`) doivent être exactement
+    `attendus`. Accepté : chaque ligne est verte. Refusé (`refuse`) :
+    chaque ligne est en échec sous un 401 de coturn, ses identifiants
+    inconnus ; une panne (délai, connexion) ne prouve pas la révocation."""
+    sortes = {}
+    for ligne in lignes:
+        sorte = sorte_url(str(ligne.values.get("url", "")))
+        sortes.setdefault(sorte, []).append(ligne)
+
+    def bonne(ligne):
+        if not refuse:
+            return ligne.ok is True
+        erreur = str(ligne.values.get("error") or "")
+        return ligne.ok is False and erreur.startswith("401")
+
+    detail = {
+        "manque": [s for s in attendus if s not in sortes],
+        "en_trop": sorted(set(sortes) - set(attendus)),
+        "en_defaut": [li.name for li in lignes if not bonne(li)],
+        "lignes": _lignes_en_dict(lignes),
+    }
+    ok = bool(lignes) and not any(
+        detail[k] for k in ("manque", "en_trop", "en_defaut")
+    )
+    return ok, detail
+
+
+def adresse_vers(ip):
+    """L'adresse de cette machine que la VM `ip` voit : la source que le
+    noyau choisit pour la joindre (connect UDP, aucun paquet envoyé). ""
+    quand `ip` n'est pas joignable ou pas une adresse."""
+    famille = socket.AF_INET6 if ":" in ip else socket.AF_INET
+    try:
+        with socket.socket(famille, socket.SOCK_DGRAM) as prise:
+            prise.connect((ip, 9))
+            return prise.getsockname()[0]
+    except (OSError, UnicodeError):
+        return ""
+
+
+def exempt_du_menu(url, tapee):
+    """L'adresse que le menu exempte des limites de ntfy pour l'Odoo `url`
+    quand l'opérateur tape `tapee` : sa proposition, `external_ip_for` sur
+    le nom de l'URL sans adresse d'hôte (Odoo n'est pas joint par
+    odoo-bin shell sur l'hôte de coturn), tombe quand ntfy ne peut pas
+    l'exempter — la boucle locale d'un Odoo du harnais —, et ce qui est
+    tapé l'emporte. None quand il ne reste rien."""
+    nom = urllib.parse.urlsplit(ol.normalize_url(url)).hostname or ""
+    propose, _raison = ci.external_ip_for(nom, (), resolve=cim._resolve)
+    if propose and not _todo()._call_infra_exempt_ok(propose):
+        propose = None
+    return tapee or propose or None
+
+
+def mode_conf(facts):
+    """« secret » (`use-auth-secret`) ou « fixed » (`lt-cred-mech`) d'après
+    la configuration de coturn que la sonde a lue ; None sans elle, ou
+    quand elle porte les deux."""
+    texte = ((facts and facts.coturn) or {}).get("config_text") or ""
+    lignes = {ligne.strip() for ligne in texte.splitlines()}
+    secret, fixe = "use-auth-secret" in lignes, "lt-cred-mech" in lignes
+    if secret == fixe:
+        return None
+    return "secret" if secret else "fixed"
+
+
+def exempts(facts):
+    """Les hôtes exemptés des limites de ntfy dans le `server.yml` que la
+    sonde a lu ; [] sans lui."""
+    texte = ((facts and facts.ntfy) or {}).get("config_text") or ""
+    valeur = nm.read_yml_keys(texte).get(nm.EXEMPT_HOSTS_KEY, "")
+    return [h.strip() for h in valeur.split(",") if h.strip()]
+
+
+def _refus(res, cle, log, quoi):
+    res["refus"] = cle
+    _ajouter(log, f"✗ {quoi} : {cle}")
+    return res
+
+
+def _cle_refus(refus):
+    """La clé d'un refus, suivie après « / » de celle de sa cause quand
+    c'est une erreur d'Odoo, comme le menu affiche les deux."""
+    cause = refus.__cause__
+    if isinstance(cause, ol.OdooError):
+        return f"{refus.key}/{cause.key}"
+    return refus.key
+
+
+def ajouter_odoo(
+    cible,
+    lien,
+    url,
+    base,
+    installer_module,
+    exempt,
+    log,
+    executer=distant,
+    maintenant=None,
+):
+    """Le chemin du menu « Ajouter un serveur Odoo », sans ses questions.
+
+    Sonde de l'hôte de coturn, faits de la base par `lien` (version,
+    connexion et droits vérifiés avant toute écriture), choix du module
+    (`installer_module` : le oui à « Installer erplibre_turn ? », lu
+    seulement quand le module est installable), mode de coturn, plan, puis
+    `apply_odoo_add` dont chaque script part par `executer`. `exempt` :
+    l'adresse que l'opérateur retient pour ntfy.
+
+    Rend {"ok", "etape", "refus", "plan", "etat"} : `etape` nomme ce qui a
+    échoué (sonde, coturn, odoo, plan, ajout), `refus` la clé du refus
+    (`_cle_refus`), `etat` l'état écrit."""
+    res = {"ok": False, "etape": "sonde", "refus": None, "plan": None}
+    res["etat"] = None
+    facts = _sonde(cible, log, executer)
+    if facts is None:
+        return res
+    res["etape"] = "coturn"
+    answers = ci.state_answers(facts.state)
+    if answers is None or "coturn" not in answers.services:
+        return _refus(res, "call_infra_odoo_no_coturn", log, "ajout")
+    res["etape"] = "odoo"
+    try:
+        odoo = lien.facts()
+    except ol.OdooError as erreur:
+        return _refus(res, erreur.key, log, "ajout")
+    res["etape"] = "plan"
+    todo = _todo()
+    sorte = todo._call_infra_module_kind(odoo)
+    installer_aussi = sorte == "installable" and bool(installer_module)
+    try:
+        ci.turn_mode_for(facts.state, sorte == "installed" or installer_aussi)
+        plan = ci.plan_odoo_add(
+            facts.state,
+            odoo,
+            url,
+            base,
+            installer_aussi,
+            exempt,
+            ntfy_text=todo._call_infra_ntfy_text(facts),
+        )
+    except ci.Refusal as refus:
+        return _refus(res, refus.key, log, "ajout")
+    res.update(plan=plan, etape="ajout")
+    try:
+        etat = ci.apply_odoo_add(
+            lambda script: executer(cible, script, log, DELAI_INSTALL),
+            lien,
+            plan,
+            maintenant or datetime.datetime.now(datetime.timezone.utc),
+        )
+    except ci.Refusal as refus:
+        return _refus(res, _cle_refus(refus), log, "ajout")
+    except ol.OdooError as erreur:
+        return _refus(res, erreur.key, log, "ajout")
+    res.update(ok=True, etape="", etat=etat)
+    return res
+
+
+def retirer_odoo(cible, lien, cle, log, executer=distant, maintenant=None):
+    """Le chemin du menu « Retirer un serveur Odoo » : sonde, puis
+    `apply_odoo_remove` (Odoo nettoyé par `lien`, puis l'identifiant
+    révoqué sur coturn par `executer`). Odoo joignable ici : jamais de
+    révocation « quand même ».
+
+    Rend {"ok", "etape", "refus", "etat"}, comme `ajouter_odoo` ; une clé
+    que l'état ne consigne pas est le refus « absent »."""
+    res = {"ok": False, "etape": "sonde", "refus": None, "etat": None}
+    facts = _sonde(cible, log, executer)
+    if facts is None:
+        return res
+    res["etape"] = "retrait"
+    try:
+        etat = ci.apply_odoo_remove(
+            lambda script: executer(cible, script, log, DELAI_INSTALL),
+            lien,
+            facts.state,
+            cle,
+            now=maintenant or datetime.datetime.now(datetime.timezone.utc),
+            ntfy_text=_todo()._call_infra_ntfy_text(facts),
+        )
+    except ci.Refusal as refus:
+        return _refus(res, _cle_refus(refus), log, "retrait")
+    except ValueError:
+        return _refus(res, "absent", log, "retrait")
+    res.update(ok=True, etape="", etat=etat)
+    return res
+
+
+def allouer(ice, etat, cafile):
+    """Les lignes de `check_through_odoo` pour la liste ICE `ice`, sous le
+    realm et le nom de TURN du coturn de `etat`, comme « Vérifier par
+    Odoo » du menu : une allocation réelle depuis cette machine par URL de
+    TURN."""
+    answers = ci.state_answers(etat)
+    if answers is None:
+        return [ci.CheckLine("odoo-ice", False, "call_infra_odoo_no_coturn")]
+    return ci.check_through_odoo(
+        ice,
+        answers.public_name,
+        None,
+        cafile,
+        turn_host=ci.turn_host(answers),
+    )
+
+
+def par_odoo(harnais, lettre, etat, cafile, invitation=None):
+    """(liste ICE, lignes) de « Vérifier par Odoo » sur la base `lettre` :
+    l'utilisateur UTILISATEUR_ODOO entre dans un appel
+    (`WebApi.join_call_ice`), ou un invité par le lien `invitation`
+    (`join_call_ice_guest`), puis chaque URL de TURN remise s'alloue
+    (`allouer`). Un refus d'Odoo rend ([], une ligne `odoo-ice` en échec
+    sous sa clé). La liste garde les identifiants remis : elle ne va
+    jamais au journal."""
+    api = harnais.lien(lettre, *UTILISATEUR_ODOO)
+    try:
+        if invitation is None:
+            ice = api.join_call_ice(*UTILISATEUR_ODOO)
+        else:
+            ice = api.join_call_ice_guest(invitation)
+    except ol.OdooError as erreur:
+        return [], [ci.CheckLine("odoo-ice", False, erreur.key)]
+    return ice, allouer(ice, etat, cafile)
+
+
+def lien_invitation(lien):
+    """Le lien d'invitation d'un canal public créé dans la base de `lien`
+    (compte administrateur) : `<URL>/chat/<id>/<uuid>`, celui qu'Odoo
+    montre sous « Inviter ». Sans groupe (`group_public_id` faux), le canal
+    laisse entrer un invité. `WebApi` n'a pas de méthode publique pour
+    créer un enregistrement quelconque : son appel JSON-RPC (`_execute`)
+    sert ici."""
+    ident = lien._execute(
+        "discuss.channel",
+        "create",
+        [
+            {
+                "name": CANAL_INVITES,
+                "channel_type": "channel",
+                "group_public_id": False,
+            }
+        ],
+    )
+    (fiche,) = lien._execute(
+        "discuss.channel", "read", [[ident]], {"fields": ["uuid"]}
+    )
+    return f"{lien.url}/chat/{ident}/{fiche['uuid']}"
+
+
+def bases_restantes(noms):
+    """Celles de `noms` que PostgreSQL connaît encore ou dont le filestore
+    reste ; toutes quand psql ne répond pas, rien n'étant prouvé."""
+    try:
+        vues = set(
+            mso.psql(
+                "SELECT datname FROM pg_database"
+                f" WHERE datname LIKE '{PREFIXE_BASE_ODOO}%'"
+            ).split()
+        )
+    except (RuntimeError, OSError):
+        return list(noms)
+    filestore = mso.CACHE / "data" / "filestore"
+    return [n for n in noms if n in vues or (filestore / n).exists()]
+
+
+class Harnais:
+    """Les trois Odoo 18 du scénario `odoo`, sur cette machine.
+
+    Le gabarit Odoo 18 de `mobile_sync_odoo` (construit une fois, gardé),
+    copié en trois bases `noms_bases`, puis un serveur par base sur des
+    ports libres de 127.0.0.1, sans worker ni cron, filtré sur sa base, son
+    dossier dans celui de la course (`odoo-<lettre>`). Le chemin d'addons
+    de la 18 porte `ERPLibre_erplibre_addons`, donc `erplibre_turn` :
+    installable, non installé. Chaque base entre au rapport (`course`)
+    AVANT d'exister : une course tuée laisse de quoi la supprimer
+    (`defaire_odoo`)."""
+
+    def __init__(self, dossier, identifiant, course=None, journal=None):
+        self.dossier = dossier
+        self.bases = noms_bases(identifiant)
+        self.course = course
+        self.journal = journal
+        self.serveurs = {}
+        self.inscrites = []
+
+    def preparer(self):
+        """(ok, détail) : les trois serveurs debout ({lettre: url}), ou la
+        raison d'un échec."""
+        try:
+            version = mso.versions_installees(demandees=(18,))[18]
+            mso.construire_gabarit(
+                version, journal=lambda m: dire(f"      {m}", self.journal)
+            )
+            for lettre in LETTRES_ODOO:
+                base = self.bases[lettre]
+                self.inscrites.append(base)
+                if self.course is not None:
+                    self.course.noter_base(base)
+                mso.copier_gabarit(version, base)
+                dossier = Path(self.dossier) / f"odoo-{lettre}"
+                dossier.mkdir(parents=True, exist_ok=True)
+                self.serveurs[lettre] = mso.demarrer_serveur(
+                    version, base, dossier
+                )
+        except (
+            mso.PrerequisManquant,
+            RuntimeError,
+            OSError,
+            ValueError,
+            subprocess.SubprocessError,
+        ) as souci:
+            return False, str(souci)[-500:]
+        return True, {lettre: s.url for lettre, s in self.serveurs.items()}
+
+    def url(self, lettre):
+        return self.serveurs[lettre].url
+
+    def lien(self, lettre, login=ADMIN_ODOO[0], mot_de_passe=ADMIN_ODOO[1]):
+        """Le `ol.WebApi` de la base `lettre`, sous l'administrateur par
+        défaut : un lien neuf à chaque action, comme le menu qui redemande
+        les identifiants."""
+        return ol.WebApi(
+            self.url(lettre), self.bases[lettre], login, mot_de_passe
+        )
+
+    def defaire(self):
+        """Serveurs arrêtés, bases inscrites supprimées avec leur
+        filestore. Rend celles qui restent ; aucune, et le rapport les
+        oublie."""
+        for serveur in self.serveurs.values():
+            mso.arreter_serveur(serveur)
+        for base in self.inscrites:
+            mso.supprimer_base(base)
+        restantes = bases_restantes(self.inscrites) if self.inscrites else []
+        if not restantes and self.course is not None:
+            self.course.oublier_odoo()
+        return restantes
+
+
+def serveurs_de(course, proc="/proc", lire=None):
+    """Les pid des serveurs Odoo du harnais de la course dont `course` est
+    le dossier : ceux dont la ligne de commande nomme un fichier de
+    configuration sous `<course>/odoo-`. `lire(pid)` rend la ligne de
+    commande (`mso.commande_de`)."""
+    lire = lire or mso.commande_de
+    marque = os.path.join(course, "odoo-")
+    try:
+        entrees = os.listdir(proc)
+    except OSError:
+        return []
+    return sorted(
+        int(e)
+        for e in entrees
+        if e.isdigit() and int(e) != os.getpid() and marque in lire(int(e))
+    )
+
+
+def arreter_serveurs(pids, tuer=os.kill, lire=None, delai=DELAI_ARRET_ODOO):
+    """SIGTERM à chaque pid, puis SIGKILL à ceux qui vivent encore après
+    `delai` secondes (`lire(pid)` vide : le processus n'est plus)."""
+    lire = lire or mso.commande_de
+    vivants = []
+    for pid in pids:
+        try:
+            tuer(pid, signal.SIGTERM)
+            vivants.append(pid)
+        except ProcessLookupError:
+            continue
+    fin = time.monotonic() + delai
+    while vivants and time.monotonic() < fin:
+        time.sleep(0.2)
+        vivants = [pid for pid in vivants if lire(pid)]
+    for pid in [p for p in vivants if lire(p)]:
+        try:
+            tuer(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            continue
+
+
+def defaire_odoo(journal, dry_run, dossier=None):
+    """Ce qu'une course du scénario `odoo` n'a pas pu défaire (tuée,
+    coupée), avant les VM de `detruire` : pour chaque rapport de ce test,
+    ni à blanc ni d'une course vivante, qui nomme encore des bases, ses
+    serveurs Odoo arrêtés (`serveurs_de`), ses bases supprimées avec leur
+    filestore, puis le rapport réécrit avec celles qui restent. Seul un nom
+    de la forme `_BASE_ODOO` est supprimé. Rend le nombre de bases visées ;
+    `dry_run` les nomme sans rien toucher."""
+    dossier = dossier or os.path.expanduser("~/.erplibre/longtest")
+    try:
+        fichiers = sorted(
+            f
+            for f in os.listdir(dossier)
+            if f.startswith(NOM_BASE) and f.endswith(".json")
+        )
+    except OSError:
+        return 0
+    total = 0
+    for nom in fichiers:
+        chemin = os.path.join(dossier, nom)
+        try:
+            with open(chemin, encoding="utf-8") as fh:
+                rapport = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if (
+            not isinstance(rapport, dict)
+            or rapport.get("outil") != OUTIL
+            or rapport.get("dry_run")
+            or descente_vivante(rapport.get("pid"))
+        ):
+            continue
+        bloc = (
+            rapport.get("odoo")
+            if isinstance(rapport.get("odoo"), dict)
+            else {}
+        )
+        bases = [
+            b
+            for b in bloc.get("bases") or []
+            if isinstance(b, str) and _BASE_ODOO.match(b)
+        ]
+        if not bases:
+            continue
+        pids = serveurs_de(chemin[: -len(".json")])
+        dire(
+            f"  {nom} : {len(pids)} serveur(s) Odoo, bases {', '.join(bases)}",
+            journal,
+        )
+        total += len(bases)
+        if dry_run:
+            continue
+        arreter_serveurs(pids)
+        for base in bases:
+            mso.supprimer_base(base)
+        restantes = bases_restantes(bases)
+        rapport["odoo"] = {"bases": restantes}
+        with open(chemin, "w", encoding="utf-8") as fh:
+            json.dump(rapport, fh, indent=2)
+        if restantes:
+            dire(f"  ✗ bases restantes : {', '.join(restantes)}", journal)
+    if dry_run and total:
+        dire("  --dry-run : aucune base supprimée.", journal)
+    return total
+
+
+def _faits_odoo(lien):
+    """`OdooFacts` de la base, None quand elle ne répond pas."""
+    try:
+        return lien.facts()
+    except ol.OdooError:
+        return None
+
+
+def _lignes_outil(odoo, cle):
+    """Les lignes `mail.ice.server` que l'outil a écrites dans la base de
+    `cle` (son nom `ol.owned_username`)."""
+    url, _, base = cle.rpartition("|")
+    nom = ol.owned_username(url, base)
+    return [r for r in (odoo.rows if odoo else ()) if r.get("username") == nom]
+
+
+def _fiche(etat, cle):
+    fiche = ((etat or {}).get("odoos") or {}).get(cle)
+    return fiche if isinstance(fiche, dict) else {}
+
+
+def _empreinte(etat, cle):
+    """L'empreinte du secret de la base `cle` que l'état consigne."""
+    return (_fiche(etat, cle).get("credential") or {}).get("value_sha256")
+
+
+def _exempt_present(facts, exempt, present):
+    """Vrai quand `server.yml` porte `exempt` (`present`) ou ne le porte
+    pas ; toujours vrai sans adresse exemptée dans cette course."""
+    return exempt is None or (exempt in exempts(facts)) == present
+
+
+def _pid_valide(pid):
+    return pid.isdigit() and pid != "0"
+
+
+class _Odoo:
+    """Ce que les phases du scénario partagent : la VM (alias et adresse),
+    le harnais, le certificat, l'adresse exemptée, l'unité de coturn, le
+    MainPID après la bascule et les listes ICE remises."""
+
+    def __init__(self, sc, cible, ip, harnais, cafile, exempt, unite):
+        self.sc = sc
+        self.cible = cible
+        self.ip = ip
+        self.harnais = harnais
+        self.cafile = cafile
+        self.exempt = exempt
+        self.unite = unite
+        self.pid = ""
+        self.remis = {}
+
+    def cle(self, lettre):
+        return ol.odoo_key(
+            self.harnais.url(lettre), self.harnais.bases[lettre]
+        )
+
+    def ajouter(self, lettre, module):
+        return ajouter_odoo(
+            self.cible,
+            self.harnais.lien(lettre),
+            self.harnais.url(lettre),
+            self.harnais.bases[lettre],
+            module,
+            self.exempt,
+            self.sc.log,
+        )
+
+    def retirer(self, lettre):
+        return retirer_odoo(
+            self.cible,
+            self.harnais.lien(lettre),
+            self.cle(lettre),
+            self.sc.log,
+        )
+
+    def sonde(self):
+        return _sonde(self.cible, self.sc.log, distant)
+
+    def pid_coturn(self):
+        return _pid(self.cible, self.unite, self.sc.log, distant)
+
+    def par_odoo(self, lettre, etat, invitation=None):
+        return par_odoo(self.harnais, lettre, etat, self.cafile, invitation)
+
+    def noter_ice(self, nom, lignes, attendus, refuse=False, **en_plus):
+        ok, detail = verdict_ice(lignes, attendus, refuse)
+        detail.update(en_plus)
+        return self.sc.noter(nom, ok and all(en_plus.values()), detail)
+
+
+def _phase_a(o):
+    """A sans le module (installable, son installation refusée) : compte
+    fixe, trois lignes, coturn en `lt-cred-mech` ; ses deux URL `turn:`
+    s'allouent sous les identifiants qu'Odoo remet. Puis A retiré : lignes
+    parties, compte révoqué (les identifiants remis avant → 401)."""
+    cle = o.cle("a")
+    res = o.ajouter("a", False)
+    facts = o.sonde()
+    etat = facts.state if facts else {}
+    odoo = _faits_odoo(o.harnais.lien("a"))
+    detail = {
+        "ajout": res["ok"],
+        "refus": res["refus"],
+        "compte-fixe": (_fiche(etat, cle).get("credential") or {}).get("kind")
+        == "user",
+        "mode": etat.get("turn_mode") == "fixed",
+        "lt-cred-mech": mode_conf(facts) == "fixed",
+        "trois-lignes": len(_lignes_outil(odoo, cle)) == 3,
+        "exempt": _exempt_present(facts, o.exempt, True),
+    }
+    o.sc.noter(
+        "a-fixe", all(v for k, v in detail.items() if k != "refus"), detail
+    )
+    ice, lignes = o.par_odoo("a", etat)
+    o.remis["a"] = ice
+    o.noter_ice("a-par-odoo", lignes, ICE_FIXE)
+    res = o.retirer("a")
+    facts = o.sonde()
+    etat = facts.state if facts else {}
+    odoo = _faits_odoo(o.harnais.lien("a"))
+    detail = {
+        "retrait": res["ok"],
+        "hors-etat": cle not in ((etat or {}).get("odoos") or {}),
+        "sans-lignes": odoo is not None and not _lignes_outil(odoo, cle),
+        "exempt-retire": _exempt_present(facts, o.exempt, False),
+    }
+    o.sc.noter("a-retire", all(detail.values()), detail)
+    o.noter_ice(
+        "a-revoque", allouer(o.remis["a"], etat, o.cafile), ICE_FIXE, True
+    )
+
+
+def _noter_module(o, nom, lettre, res, facts):
+    """L'ajout d'une base avec le module : installé par l'outil, ses
+    paramètres posés, aucune ligne de l'outil, une fiche en secret et
+    l'adresse exemptée dans `server.yml`."""
+    cle = o.cle(lettre)
+    etat = facts.state if facts else {}
+    odoo = _faits_odoo(o.harnais.lien(lettre))
+    params = odoo.params if odoo else {}
+    detail = {
+        "ajout": res["ok"],
+        "refus": res["refus"],
+        "module-installe": bool(odoo) and odoo.module_state == "installed",
+        "parametres": ol.PARAM_URLS in params and ol.PARAM_SECRET in params,
+        "sans-lignes": odoo is not None and not _lignes_outil(odoo, cle),
+        "secret": (_fiche(etat, cle).get("credential") or {}).get("kind")
+        == "secret",
+        "exempt": _exempt_present(facts, o.exempt, True),
+    }
+    return o.sc.noter(
+        nom, all(v for k, v in detail.items() if k != "refus"), detail
+    )
+
+
+def _phase_b(o):
+    """B avec le module, que l'outil installe : coturn bascule en mode
+    secret, redémarré une fois (MainPID changé) ; un utilisateur et un
+    invité entré par un lien d'invitation allouent `turn:` et `turns:`."""
+    avant = o.pid_coturn()
+    res = o.ajouter("b", True)
+    facts = o.sonde()
+    _noter_module(o, "b-module", "b", res, facts)
+    etat = facts.state if facts else {}
+    o.pid = o.pid_coturn()
+    detail = {
+        "mode": etat.get("turn_mode") == "secret",
+        "secret-de-controle": bool(etat.get("check_secret_sha256")),
+        "use-auth-secret": mode_conf(facts) == "secret",
+        "redemarre": _pid_valide(avant)
+        and _pid_valide(o.pid)
+        and avant != o.pid,
+        "pid": [avant, o.pid],
+    }
+    o.sc.noter(
+        "b-bascule", all(v for k, v in detail.items() if k != "pid"), detail
+    )
+    ice, lignes = o.par_odoo("b", etat)
+    o.remis["b"] = ice
+    o.noter_ice("b-utilisateur", lignes, ICE_SECRET)
+    try:
+        invitation = lien_invitation(o.harnais.lien("b"))
+    except ol.OdooError as erreur:
+        o.sc.noter("b-invite", False, {"invitation": erreur.key})
+        return
+    _ice, lignes = o.par_odoo("b", etat, invitation)
+    o.noter_ice("b-invite", lignes, ICE_SECRET)
+
+
+def _phase_c(o):
+    """C avec le module sur le même coturn : aucun redémarrage (MainPID
+    inchangé), B et C allouent chacun sous son secret ; puis la
+    vérification du menu, ses lignes turn-* sous le secret de contrôle et
+    odoo-1, odoo-2 sous celui de chaque Odoo."""
+    res = o.ajouter("c", True)
+    facts = o.sonde()
+    _noter_module(o, "c-module", "c", res, facts)
+    etat = facts.state if facts else {}
+    pid = o.pid_coturn()
+    o.sc.noter(
+        "c-sans-redemarrage",
+        _pid_valide(pid) and pid == o.pid,
+        {"pid": [o.pid, pid]},
+    )
+    _ice_b, lignes_b = o.par_odoo("b", etat)
+    o.remis["c"], lignes_c = o.par_odoo("c", etat)
+    ok_b, detail_b = verdict_ice(lignes_b, ICE_SECRET)
+    ok_c, detail_c = verdict_ice(lignes_c, ICE_SECRET)
+    o.sc.noter("b-et-c", ok_b and ok_c, {"b": detail_b, "c": detail_c})
+
+
+def _phase_rotation(o):
+    """B ajouté de nouveau : un secret neuf, l'ancien gardé une durée de
+    vie (`retired`), coturn jamais redémarré ; B alloue sous ses
+    identifiants neufs, et ceux remis avant la rotation allouent encore."""
+    cle = o.cle("b")
+    avant = o.sonde()
+    ancien = _empreinte(avant.state if avant else {}, cle)
+    res = o.ajouter("b", True)
+    facts = o.sonde()
+    etat = facts.state if facts else {}
+    neuf = _empreinte(etat, cle)
+    gardes = [
+        r.get("value_sha256") for r in _fiche(etat, cle).get("retired") or []
+    ]
+    pid = o.pid_coturn()
+    _ice, lignes = o.par_odoo("b", etat)
+    o.noter_ice(
+        "b-rotation",
+        lignes,
+        ICE_SECRET,
+        ajout=res["ok"],
+        secret_neuf=bool(neuf) and neuf != ancien,
+        ancien_garde=bool(ancien) and ancien in gardes,
+        sans_redemarrage=_pid_valide(pid) and pid == o.pid,
+    )
+    o.noter_ice("b-grace", allouer(o.remis["b"], etat, o.cafile), ICE_SECRET)
+
+
+def _phase_retrait_c(o):
+    """C retiré : B alloue toujours (son secret reste dans `turn_secret`),
+    C est révoqué sans grâce (ses identifiants → 401, son secret absent de
+    la base de coturn), l'adresse exemptée que B partage reste."""
+    cle_b, cle_c = o.cle("b"), o.cle("c")
+    avant = o.sonde()
+    secret_c = _empreinte(avant.state if avant else {}, cle_c)
+    res = o.retirer("c")
+    facts = o.sonde()
+    etat = facts.state if facts else {}
+    odoo = _faits_odoo(o.harnais.lien("c"))
+    pid = o.pid_coturn()
+    detail = {
+        "retrait": res["ok"],
+        "hors-etat": cle_c not in (etat.get("odoos") or {}),
+        "sans-parametres": odoo is not None
+        and ol.PARAM_SECRET not in odoo.params
+        and ol.PARAM_URLS not in odoo.params,
+        "exempt-garde": _exempt_present(facts, o.exempt, True),
+        "sans-redemarrage": _pid_valide(pid) and pid == o.pid,
+    }
+    o.sc.noter("c-retire", all(detail.values()), detail)
+    _ice, lignes = o.par_odoo("b", etat)
+    o.noter_ice("b-reste", lignes, ICE_SECRET)
+    _lignes, lus = verifier(o.cible, o.ip, o.cafile, o.sc.log)
+    realm = getattr(ci.state_answers(etat), "public_name", None)
+    presents = {
+        hashlib.sha256(v.encode("utf-8")).hexdigest()
+        for r, v in (lus or {}).get("turn_secrets") or []
+        if r == realm
+    }
+    o.noter_ice(
+        "c-revoque",
+        allouer(o.remis["c"], etat, o.cafile),
+        ICE_SECRET,
+        True,
+        secret_c_parti=bool(secret_c) and secret_c not in presents,
+        secret_b_garde=_empreinte(etat, cle_b) in presents,
+    )
+
+
+def _phase_fin(o):
+    """A sans le module de nouveau, B branché en mode secret : refusé pour
+    le mode, rien n'a changé sur l'hôte. Puis B retiré (le module reste
+    installé), la désinstallation, données comprises."""
+    avant = o.sonde()
+    res = o.ajouter("a", False)
+    apres = o.sonde()
+    odoo = _faits_odoo(o.harnais.lien("a"))
+    detail = {
+        "refus": res["refus"] == "call_infra_turn_mode_mismatch",
+        "etat-inchange": bool(avant)
+        and bool(apres)
+        and avant.state == apres.state,
+        "sans-lignes": odoo is not None
+        and not _lignes_outil(odoo, o.cle("a")),
+    }
+    o.sc.noter("a-refuse", all(detail.values()), detail)
+    res = o.retirer("b")
+    facts = o.sonde()
+    etat = facts.state if facts else {}
+    odoo = _faits_odoo(o.harnais.lien("b"))
+    detail = {
+        "retrait": res["ok"],
+        "aucun-odoo": not (etat.get("odoos") or {}),
+        "module-garde": bool(odoo) and odoo.module_state == "installed",
+        "sans-parametres": odoo is not None
+        and ol.PARAM_SECRET not in odoo.params
+        and ol.PARAM_URLS not in odoo.params,
+        "exempt-retire": _exempt_present(facts, o.exempt, False),
+    }
+    o.sc.noter("b-retire", all(detail.values()), detail)
+    o.sc.noter(
+        "desinstallation", desinstaller(o.cible, True, o.sc.log) == "fait"
+    )
+
+
+def _parcours_odoo(sc, cible, ip, dossier, harnais):
+    """coturn et ntfy de développement avec un certificat fourni pour
+    l'adresse de la VM, puis les phases de `scenario_odoo`."""
+    tls = local_cert.issue(os.path.join(dossier, "tls-odoo"), [ip])
+    answers = reponses(ip, *paire(tls))
+    res = installer(cible, answers, sc.log)
+    if not sc.noter("installation", res["ok"], res["etape"] or None):
+        return
+    # La VM joint cette machine par son adresse sur le réseau de libvirt :
+    # l'adresse que l'opérateur tape, la proposition du menu (la boucle
+    # locale d'un Odoo du harnais) tombant.
+    exempt = exempt_du_menu(harnais.url("a"), adresse_vers(ip))
+    unite = res["etat"]["services"]["coturn"]["unit"]
+    o = _Odoo(sc, cible, ip, harnais, tls["ca_crt"], exempt, unite)
+    _phase_a(o)
+    _phase_b(o)
+    _phase_c(o)
+    _verification(sc, cible, ip, o.cafile, nom="verification-secret")
+    _phase_rotation(o)
+    _phase_retrait_c(o)
+    _phase_fin(o)
+
+
+def scenario_odoo(sc, cible, ip, dossier):
+    """Plusieurs serveurs Odoo sur un coturn, de bout en bout.
+
+    1. A sans le module : mode fixe, trois lignes, `turn:` UDP et TCP
+       alloués sous ce qu'Odoo remet ;
+    2. A retiré : lignes parties, compte révoqué (401) ;
+    3. B, le module installé par l'outil : coturn bascule en secret une
+       fois, un utilisateur et un invité allouent `turn:` et `turns:` ;
+    4. C sur le même coturn : aucun redémarrage, B et C allouent ;
+    5. rotation de B : identifiants neufs, les anciens allouent encore ;
+    6. C retiré : B alloue toujours, le secret de C a disparu ;
+    7. A sans le module de nouveau : refusé pour le mode ;
+    8. B retiré, désinstallation ; les bases du harnais supprimées dans
+       tous les cas, même après un échec."""
+    if not _preparer(sc, cible, "debian"):
+        return
+    harnais = Harnais(
+        dossier, identifiant_de(sc.course), sc.course, sc.journal
+    )
+    try:
+        ok, detail = harnais.preparer()
+        if sc.noter("odoo-harnais", ok, detail):
+            _parcours_odoo(sc, cible, ip, dossier, harnais)
+    finally:
+        restantes = harnais.defaire()
+        sc.noter(
+            "bases-supprimees",
+            not restantes,
+            {"restantes": restantes} if restantes else None,
+        )
+
+
 SCENARIOS = {
     "dev": {"debian": scenario_debian, "arch": scenario_arch},
     "prod": {"debian": scenario_prod, "arch": scenario_prod},
+    "odoo": {"debian": scenario_odoo},
 }
 
 
@@ -1608,12 +2549,16 @@ class Course:
     """Le rapport, réécrit à chaque changement. Sa forme est le CONTRAT du
     défaire partagé (descente.py) : « outil » filtre les rapports, « pid »
     empêche de détruire sous une course vivante, « etages » porte une
-    entrée de niveau 1 par VM encore debout. « systemes » est à ce test."""
+    entrée de niveau 1 par VM encore debout. « systemes » est à ce test, et
+    « odoo » aussi : les bases du harnais encore à supprimer
+    (`defaire_odoo`). `identifiant` (`<pid>_<horodatage>`) nomme ces
+    bases."""
 
     def __init__(self, dry_run, journal):
         self.journal = journal
         self.dossier = journal[:-4]
         self.chemin = self.dossier + ("-dryrun.json" if dry_run else ".json")
+        self.identifiant = f"{os.getpid()}_{time.strftime('%Y%m%d%H%M%S')}"
         self.rapport = {
             "outil": OUTIL,
             "dry_run": dry_run,
@@ -1640,12 +2585,23 @@ class Course:
         self.rapport["systemes"].append(ligne)
         self.ecrire()
 
+    def noter_base(self, base):
+        """Écrit la base AVANT sa création, comme `inscrire` une VM."""
+        bloc = self.rapport.setdefault("odoo", {"bases": []})
+        bloc["bases"].append(base)
+        self.ecrire()
+
+    def oublier_odoo(self):
+        """Les bases supprimées : plus rien à défaire hors des VM."""
+        self.rapport["odoo"] = {"bases": []}
+        self.ecrire()
+
 
 def mener_un(course, distro, scenario):
     """Un système dans un scénario, de sa VM à son verdict ; la VM reste
     au rapport."""
     log = os.path.join(course.dossier, f"{scenario}-{distro}.log")
-    sc = Scenario(distro, log, course.journal, scenario)
+    sc = Scenario(distro, log, course.journal, scenario, course=course)
     nom = nom_vm(distro)
     dire(
         f"  ── {distro} {DISTROS[distro]} ({scenario}) : {nom}",
@@ -1708,6 +2664,9 @@ def mener(argv):
         return False
 
     if args.detruire:
+        # Les bases et serveurs Odoo d'abord : ils ne vivent pas dans les VM
+        # et le défaire partagé ne les connaît pas.
+        defaire_odoo(journal, args.dry_run)
         famille = Famille(OUTIL, NOM_BASE, pas_d_imbrique)
         return detruire(famille, journal, dry_run=args.dry_run)
 
@@ -1715,14 +2674,25 @@ def mener(argv):
     scenarios = (
         list(SCENARIOS_NOMS) if args.scenario == "tous" else [args.scenario]
     )
-    # Les scénarios d'un système, l'un après l'autre, chacun sur sa VM.
-    courses = [(d, s) for d in systemes for s in scenarios]
-    # Les deux scénarios d'un système prennent le même nom de VM : la
-    # première gardée ferait refuser la seconde.
+    # Les scénarios d'un système, l'un après l'autre, chacun sur sa VM ;
+    # seulement ceux qui tournent sur ce système (odoo : Debian).
+    courses = [
+        (d, s) for d in systemes for s in scenarios if d in SCENARIOS[s]
+    ]
+    if not courses:
+        dire(
+            f"  ✗ --scenario {args.scenario} ne tourne pas sur"
+            f" {args.distro} : seulement sur"
+            f" {', '.join(SCENARIOS[args.scenario])}",
+            journal,
+        )
+        return 1
+    # Les scénarios d'un système prennent le même nom de VM : le premier
+    # gardé ferait refuser le suivant.
     if args.garder and len(scenarios) > 1:
         dire(
-            "  ✗ --garder garde une VM par système : choisir --scenario dev"
-            " ou --scenario prod",
+            "  ✗ --garder garde une VM par système : choisir --scenario dev,"
+            " --scenario prod ou --scenario odoo",
             journal,
         )
         return 1
@@ -1737,6 +2707,9 @@ def mener(argv):
                 "      étapes : " + ", ".join(ETAPES[scenario][distro]),
                 journal,
             )
+            if scenario == "odoo":
+                bases = noms_bases(course.identifiant).values()
+                dire(f"      bases : {', '.join(bases)}", journal)
         course.ecrire()
         dire(f"  rapport : {course.chemin}", journal)
         return 0

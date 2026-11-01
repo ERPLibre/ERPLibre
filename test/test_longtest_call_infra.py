@@ -23,6 +23,7 @@ import ast
 import base64
 import contextlib
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -47,6 +48,7 @@ import call_infra as lt  # noqa: E402
 import descente  # noqa: E402
 
 from script.todo import call_infra as ci  # noqa: E402
+from script.todo import odoo_link as ol  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
 IP = "192.0.2.10"
@@ -213,9 +215,86 @@ class LEssaiABlanc(unittest.TestCase):
     def test_both_scenarios_by_default(self):
         code, sortie = lancer(self.maison, "--dry-run")
         self.assertEqual(0, code, sortie)
-        self.assertEqual(4, len(self._etapes(sortie)))
+        self.assertEqual(5, len(self._etapes(sortie)))
         self.assertIn("ntfy-ancien", sortie)
         self.assertIn("crochet-lignee", sortie)
+        self.assertIn("b-bascule", sortie)
+
+    # Les étapes du scénario des serveurs Odoo, dans l'ordre où elles
+    # tournent.
+    ODOO = (
+        "odoo-harnais",
+        "installation",
+        "a-fixe",
+        "a-par-odoo",
+        "a-retire",
+        "a-revoque",
+        "b-module",
+        "b-bascule",
+        "b-utilisateur",
+        "b-invite",
+        "c-module",
+        "c-sans-redemarrage",
+        "b-et-c",
+        "verification-secret",
+        "b-rotation",
+        "b-grace",
+        "c-retire",
+        "b-reste",
+        "c-revoque",
+        "a-refuse",
+        "b-retire",
+        "desinstallation",
+        "bases-supprimees",
+    )
+
+    def _bases(self, sortie):
+        return [
+            ligne.split("bases : ", 1)[1].split(", ")
+            for ligne in sortie.splitlines()
+            if "bases : " in ligne
+        ]
+
+    def test_the_odoo_plan_lists_its_steps_and_databases(self):
+        code, sortie = lancer(self.maison, "--dry-run", "--scenario", "odoo")
+        self.assertEqual(0, code, sortie)
+        self.assertIn("--distro debian --version 13", sortie)
+        self.assertNotIn("--distro arch", sortie)
+        self.assertEqual(
+            [["vm", "ssh", "cloud-init", "ufw-actif", *self.ODOO]],
+            self._etapes(sortie),
+        )
+        (bases,) = self._bases(sortie)
+        self.assertEqual(3, len(bases))
+        for base, lettre in zip(bases, "abc"):
+            with self.subTest(base=base):
+                self.assertRegex(base, rf"^call_infra_odoo_\d+_\d+_{lettre}$")
+                self.assertLessEqual(len(base), 63)
+        self.assertNotIn("mobile_sync_", sortie)
+        # Rien de créé : ni base, ni serveur, ni dossier de course.
+        self.assertEqual(
+            [],
+            [
+                f
+                for f in self._fichiers()
+                if not f.endswith(("-dryrun.json", ".log"))
+            ],
+        )
+
+    def test_the_odoo_scenario_runs_on_debian_only(self):
+        code, sortie = lancer(
+            self.maison, "--dry-run", "--distro", "arch", "--scenario", "odoo"
+        )
+        self.assertEqual(1, code)
+        self.assertIn("debian", sortie)
+        self.assertNotIn("deploy_qemu.py", sortie)
+        code, sortie = lancer(self.maison, "--dry-run", "--scenario", "odoo")
+        self.assertEqual(0, code, sortie)
+        self.assertEqual(1, len(self._etapes(sortie)))
+        code, sortie = lancer(self.maison, "--dry-run", "--distro", "arch")
+        self.assertEqual(0, code, sortie)
+        self.assertEqual(2, len(self._etapes(sortie)))
+        self.assertEqual([], self._bases(sortie))
 
     def test_an_unknown_scenario_is_refused(self):
         with self.assertRaises(SystemExit) as fin:
@@ -463,6 +542,7 @@ class LaPlaceDesVM(unittest.TestCase):
             [
                 ("debian", "dev"),
                 ("debian", "prod"),
+                ("debian", "odoo"),
                 ("arch", "dev"),
                 ("arch", "prod"),
             ],
@@ -527,10 +607,28 @@ class LeMenu(unittest.TestCase):
                 self.assertIn("fr", todo_i18n.TRANSLATIONS[cle])
 
     def test_destroying_asks_the_destroy_question(self):
-        self.assertEqual(
-            self.todo._longtest_question("--detruire", "call_infra.py"),
-            self.todo._longtest_question("--detruire"),
+        """La destruction de ce test supprime aussi ses bases Odoo : sa
+        question le dit, dans les deux langues."""
+        question = self.todo._longtest_question("--detruire", "call_infra.py")
+        self.assertNotEqual(
+            question, self.todo._longtest_question("--detruire")
         )
+        self.assertNotEqual(
+            question, self.todo._longtest_question("", "call_infra.py")
+        )
+        avertissement = todo_i18n.TRANSLATIONS[question[0]]
+        for langue in ("fr", "en"):
+            with self.subTest(langue=langue):
+                self.assertIn("call_infra_odoo_", avertissement[langue])
+                self.assertIn(langue, todo_i18n.TRANSLATIONS[question[1]])
+
+    def test_its_question_names_the_odoo_scenario(self):
+        avertissement, _q = self.todo._longtest_question("", "call_infra.py")
+        textes = todo_i18n.TRANSLATIONS[avertissement]
+        for langue in ("fr", "en"):
+            with self.subTest(langue=langue):
+                self.assertIn("Odoo", textes[langue])
+                self.assertIn("odoo", textes[langue])
 
 
 class LeReadme(unittest.TestCase):
@@ -545,6 +643,26 @@ class LeReadme(unittest.TestCase):
                     encoding="utf-8"
                 )
                 self.assertIn("## call_infra.py", texte)
+
+    def test_the_odoo_scenario_is_documented_in_both_halves(self):
+        base = (RACINE / "long_test/README.base.md").read_text(
+            encoding="utf-8"
+        )
+        sections = base.split("## call_infra.py")[1:]
+        for nom in ("README.md", "README.fr.md"):
+            texte = (RACINE / "long_test" / nom).read_text(encoding="utf-8")
+            sections.append(texte.split("## call_infra.py", 1)[1])
+        for section in sections:
+            section = section.split("\n## ", 1)[0]
+            with self.subTest(debut=section[:60]):
+                for mot in (
+                    "--scenario odoo",
+                    "erplibre_turn",
+                    "call_infra_odoo_",
+                    "use-auth-secret",
+                    "join_call_ice_guest",
+                ):
+                    self.assertIn(mot, section)
 
     def test_the_production_scenario_is_documented_in_both_halves(self):
         base = (RACINE / "long_test/README.base.md").read_text(
@@ -706,6 +824,26 @@ class LesBriques(unittest.TestCase):
             "ci.external_ip_for",
             "ci.deploy_hook_text",
             "_call_infra_nginx_facts",
+            "ci.plan_odoo_add",
+            "ci.apply_odoo_add",
+            "ci.apply_odoo_remove",
+            "ci.turn_mode_for",
+            "ci.check_through_odoo",
+            "ci.state_answers",
+            "ci.turn_host",
+            ".join_call_ice(",
+            ".join_call_ice_guest(",
+            "ol.WebApi",
+            "ol.owned_username",
+            "_call_infra_module_kind",
+            "_call_infra_ntfy_text",
+            "_call_infra_exempt_ok",
+            "mso.versions_installees",
+            "mso.construire_gabarit",
+            "mso.copier_gabarit",
+            "mso.demarrer_serveur",
+            "mso.arreter_serveur",
+            "mso.supprimer_base",
         ):
             with self.subTest(brique=brique):
                 self.assertIn(brique, SRC)
@@ -1028,10 +1166,18 @@ class LeMemeCheminQueLeMenu(unittest.TestCase):
         "_call_infra_report",
         "_call_infra_uninstall",
         "_call_infra_uninstalled",
+        "_call_infra_coturn_host",
+        "_call_infra_module_choice",
+        "_call_infra_ask_exempt",
+        "_call_infra_add_odoo",
+        "_call_infra_apply_odoo",
+        "_call_infra_odoo_line",
+        "_call_infra_remove_one",
+        "_call_infra_check_odoo",
     )
     # Ce qui ne sert qu'à l'écran du menu : le texte d'un refus, les notes
-    # affichées sous l'aperçu du pare-feu.
-    ECRAN_SEUL = {"SUPPORTED", "firewall_notes"}
+    # affichées sous l'aperçu du pare-feu, l'explication du module absent.
+    ECRAN_SEUL = {"SUPPORTED", "firewall_notes", "MODULE_ABSENT_WARNING"}
 
     def test_every_brick_of_the_menu_steps_is_called(self):
         menu = ast.parse(
@@ -1714,6 +1860,915 @@ class LeTransport(unittest.TestCase):
         self.assertEqual("", sortie)
         with open(self.log, encoding="utf-8") as fh:
             self.assertIn("interrompu", fh.read())
+
+
+# --- Le scénario des serveurs Odoo -----------------------------------------
+
+URL_ODOO = "http://127.0.0.1:40001"
+EXEMPT = "198.51.100.20"
+
+
+def ligne_ice(url, ok, erreur=None):
+    """Une ligne de `check_through_odoo` pour `url` : verte, ou en échec
+    sous `erreur`."""
+    if ok:
+        return ci.CheckLine(
+            f"odoo-ice-{url}",
+            True,
+            "call_infra_check_ice_relayed",
+            {"url": url, "relayed": "192.0.2.10:50000"},
+        )
+    return ci.CheckLine(
+        f"odoo-ice-{url}",
+        False,
+        "call_infra_check_ice_error",
+        {"url": url, "error": erreur},
+    )
+
+
+UDP = f"turn:{IP}:3478?transport=udp"
+TCP = f"turn:{IP}:3478?transport=tcp"
+TLS = f"turns:{IP}:5349?transport=tcp"
+
+
+class LesBriquesOdoo(unittest.TestCase):
+    def test_database_names(self):
+        bases = lt.noms_bases("4242_20261101120000")
+        self.assertEqual(
+            {
+                "a": "call_infra_odoo_4242_20261101120000_a",
+                "b": "call_infra_odoo_4242_20261101120000_b",
+                "c": "call_infra_odoo_4242_20261101120000_c",
+            },
+            bases,
+        )
+        for mauvais in ("", "x y", "MAJ_1", "1;drop"):
+            with self.subTest(mauvais=mauvais):
+                with self.assertRaises(ValueError):
+                    lt.noms_bases(mauvais)
+
+    def test_url_kinds(self):
+        self.assertEqual("turn-udp", lt.sorte_url(UDP))
+        self.assertEqual("turn-udp", lt.sorte_url(f"turn:{IP}:3478"))
+        self.assertEqual("turn-tcp", lt.sorte_url(TCP))
+        self.assertEqual("turns", lt.sorte_url(TLS))
+        self.assertEqual("stun", lt.sorte_url(f"stun:{IP}:3478"))
+
+    def test_ice_verdict_accepts_exactly_the_expected_kinds(self):
+        lignes = [ligne_ice(UDP, True), ligne_ice(TCP, True)]
+        ok, detail = lt.verdict_ice(lignes, ("turn-udp", "turn-tcp"))
+        self.assertTrue(ok, detail)
+        # Un turns: de trop, ou un manquant, n'est pas ce qu'on attendait.
+        ok, detail = lt.verdict_ice(
+            lignes + [ligne_ice(TLS, True)], ("turn-udp", "turn-tcp")
+        )
+        self.assertFalse(ok)
+        self.assertEqual(["turns"], detail["en_trop"])
+        ok, detail = lt.verdict_ice(lignes, ("turn-udp", "turn-tcp", "turns"))
+        self.assertFalse(ok)
+        self.assertEqual(["turns"], detail["manque"])
+        rouge = [ligne_ice(UDP, True), ligne_ice(TCP, False, "timeout")]
+        ok, detail = lt.verdict_ice(rouge, ("turn-udp", "turn-tcp"))
+        self.assertFalse(ok)
+        self.assertEqual([f"odoo-ice-{TCP}"], detail["en_defaut"])
+        self.assertFalse(lt.verdict_ice([], ())[0])
+
+    def test_ice_verdict_of_a_refusal_wants_a_401(self):
+        """Des identifiants révoqués : coturn les refuse (401). Une panne
+        (délai, connexion) ne prouve pas la révocation."""
+        refus = [
+            ligne_ice(UDP, False, "401 Unauthorized"),
+            ligne_ice(TCP, False, "401 Unauthorized"),
+        ]
+        attendus = ("turn-udp", "turn-tcp")
+        self.assertTrue(lt.verdict_ice(refus, attendus, refuse=True)[0])
+        panne = [refus[0], ligne_ice(TCP, False, "timeout")]
+        self.assertFalse(lt.verdict_ice(panne, attendus, refuse=True)[0])
+        vert = [refus[0], ligne_ice(TCP, True)]
+        self.assertFalse(lt.verdict_ice(vert, attendus, refuse=True)[0])
+        aucun = [ci.CheckLine("odoo-ice", False, "call_infra_check_ice_none")]
+        self.assertFalse(lt.verdict_ice(aucun, attendus, refuse=True)[0])
+
+    def test_the_exempt_address_is_the_menu_one(self):
+        """Le menu propose l'adresse du nom de l'URL d'Odoo, la boucle
+        locale d'un Odoo du harnais tombe, l'adresse tapée l'emporte."""
+        self.assertEqual(EXEMPT, lt.exempt_du_menu(URL_ODOO, EXEMPT))
+        self.assertIsNone(lt.exempt_du_menu(URL_ODOO, ""))
+        with mock.patch.object(
+            lt.cim, "_resolve", return_value=[(2, 1, 6, "", (IP, 0))]
+        ):
+            self.assertEqual(
+                IP, lt.exempt_du_menu("https://odoo.exemple.test", "")
+            )
+
+    def test_the_address_the_vm_sees(self):
+        self.assertEqual("127.0.0.1", lt.adresse_vers("127.0.0.1"))
+        self.assertEqual("", lt.adresse_vers("pas une adresse"))
+
+    def test_coturn_mode_from_its_config(self):
+        def faits(texte):
+            return mock.Mock(coturn={"config_text": texte})
+
+        self.assertEqual("secret", lt.mode_conf(faits("a\nuse-auth-secret\n")))
+        self.assertEqual("fixed", lt.mode_conf(faits("lt-cred-mech\nb\n")))
+        self.assertIsNone(lt.mode_conf(faits("lt-cred-mech\nuse-auth-secret")))
+        self.assertIsNone(lt.mode_conf(mock.Mock(coturn=None)))
+        self.assertIsNone(lt.mode_conf(None))
+
+    def test_exempt_hosts_from_the_probe(self):
+        yml = f"{lt.nm.EXEMPT_HOSTS_KEY}: {EXEMPT}, 203.0.113.7\n"
+        self.assertEqual(
+            [EXEMPT, "203.0.113.7"],
+            lt.exempts(mock.Mock(ntfy={"config_text": yml})),
+        )
+        self.assertEqual([], lt.exempts(mock.Mock(ntfy=None)))
+        self.assertEqual([], lt.exempts(None))
+
+
+class FauxLien:
+    """`ol.WebApi` d'une base inventée : rend ses faits, note ses appels,
+    lève `erreur` à `facts()` quand on la lui donne."""
+
+    def __init__(
+        self, module="uninstalled", rows=(), params=None, erreur=None
+    ):
+        self.odoo = ol.OdooFacts(
+            "18.0", 18, module, dict(params or {}), tuple(rows), "127.0.0.1"
+        )
+        self.erreur = erreur
+        self.appels = []
+
+    def facts(self):
+        if self.erreur:
+            raise self.erreur
+        return self.odoo
+
+    def install_module(self):
+        self.appels.append(("install_module",))
+
+    def set_params(self, values):
+        self.appels.append(("set_params", dict(values)))
+
+    def replace_rows(self, owned, rows):
+        self.appels.append(("replace_rows", owned, [dict(r) for r in rows]))
+
+
+class LeCheminOdoo(unittest.TestCase):
+    """« Ajouter » et « Retirer un serveur Odoo » par les briques du menu :
+    sonde, faits de la base, plan, puis le script de l'hôte et Odoo."""
+
+    BASE = "call_infra_odoo_1_19990101000000_a"
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.log = os.path.join(self.dossier, "x.log")
+        self.ans = lt.reponses(IP)
+        facts = ci.parse_probe(DEBIAN_UFW_PROBE.replace("ufw", "none"))
+        self.plan = ci.plan_install(facts, self.ans, NOW)
+        self.etat = ci.written_state(self.plan, "20261030-000000")
+        self.cle = ol.odoo_key(URL_ODOO, self.BASE)
+
+    def sonde(self, etat):
+        texte = (
+            "@@OS debian 13 \n@@SYSTEMD yes\n@@HOSTNAME vm\n"
+            f"@@ADDR {IP}\n"
+            "@@COTURN coturn active /etc/turnserver.conf\n"
+            "@@NTFY ntfy active /etc/ntfy/server.yml\n"
+            f"@@FILE /etc/turnserver.conf {b64(ci.coturn_config(self.ans))}\n"
+            f"@@FILE /etc/ntfy/server.yml {b64(self.plan.configs['ntfy'])}\n"
+            "@@FIREWALL none\n"
+        )
+        if etat is not None:
+            texte += f"@@STATE {b64(json.dumps(etat))}\n"
+        return texte + "@@END\n"
+
+    def ajouter(self, hote, lien, module=False, exempt=EXEMPT):
+        return lt.ajouter_odoo(
+            "vm",
+            lien,
+            URL_ODOO,
+            self.BASE,
+            module,
+            exempt,
+            self.log,
+            executer=hote,
+            maintenant=NOW,
+        )
+
+    def test_a_module_less_odoo_gets_three_rows_of_a_fixed_account(self):
+        hote = Hote(
+            (0, self.sonde(self.etat)),
+            (0, "@@ODOO_ADDED yes\n"),
+            (0, "@@SAVED yes\n"),
+        )
+        lien = FauxLien()
+        res = self.ajouter(hote, lien)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual("user", res["plan"].kind)
+        self.assertEqual(3, len(hote.scripts))
+        self.assertEqual(ci.probe_script(), hote.scripts[0])
+        self.assertIn("@@ODOO_ADDED", hote.scripts[1])
+        self.assertEqual(ci.state_write_script(res["etat"]), hote.scripts[2])
+        fiche = res["etat"]["odoos"][self.cle]
+        self.assertEqual("user", fiche["credential"]["kind"])
+        self.assertEqual(EXEMPT, fiche["exempt"])
+        self.assertNotIn(("install_module",), lien.appels)
+        (_nom, proprietaire, lignes) = lien.appels[-1]
+        self.assertEqual(ol.owned_username(URL_ODOO, self.BASE), proprietaire)
+        self.assertEqual(3, len(lignes))
+        # Le mot de passe du compte fixe va dans Odoo, jamais au journal.
+        mot = next(r["credential"] for r in lignes if "credential" in r)
+        journal = ""
+        if os.path.exists(self.log):
+            with open(self.log, encoding="utf-8") as fh:
+                journal = fh.read()
+        self.assertNotIn(mot, journal)
+        self.assertNotIn(mot, "".join(hote.scripts[2:]))
+
+    def test_the_module_is_installed_by_the_tool_when_asked(self):
+        hote = Hote(
+            (0, self.sonde(self.etat)),
+            (0, "@@ODOO_ADDED yes\n"),
+            (0, "@@SAVED yes\n"),
+        )
+        lien = FauxLien()
+        res = self.ajouter(hote, lien, module=True)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual("secret", res["plan"].kind)
+        self.assertEqual(("install_module",), lien.appels[0])
+        self.assertEqual("secret", res["etat"]["turn_mode"])
+
+    def test_the_other_mode_is_refused_before_anything_changes(self):
+        autre = ci.odoo_added_state(
+            self.etat,
+            ol.odoo_key("http://127.0.0.1:40002", "autre"),
+            "secret",
+            "S" * 43,
+            None,
+            None,
+            NOW,
+            check_secret="C" * 43,
+        )
+        hote = Hote((0, self.sonde(autre)))
+        lien = FauxLien()
+        res = self.ajouter(hote, lien)
+        self.assertFalse(res["ok"])
+        self.assertEqual("plan", res["etape"])
+        self.assertEqual("call_infra_turn_mode_mismatch", res["refus"])
+        self.assertEqual(1, len(hote.scripts))
+        self.assertEqual([], lien.appels)
+
+    def test_no_coturn_and_odoo_errors_are_refusals(self):
+        res = self.ajouter(Hote((0, self.sonde(None))), FauxLien())
+        self.assertEqual(
+            ("coturn", "call_infra_odoo_no_coturn"),
+            (res["etape"], res["refus"]),
+        )
+        erreur = ol.OdooError("call_infra_odoo_login", database=self.BASE)
+        res = self.ajouter(
+            Hote((0, self.sonde(self.etat))), FauxLien(erreur=erreur)
+        )
+        self.assertEqual(
+            ("odoo", "call_infra_odoo_login"), (res["etape"], res["refus"])
+        )
+        res = self.ajouter(Hote((None, "")), FauxLien())
+        self.assertEqual("sonde", res["etape"])
+
+    def test_a_failed_odoo_write_is_rolled_back_and_says_its_cause(self):
+        hote = Hote(
+            (0, self.sonde(self.etat)),
+            (0, "@@ODOO_ADDED yes\n"),
+            (0, "@@ODOO_ROLLBACK yes\n"),
+        )
+        lien = FauxLien()
+        erreur = ol.OdooError("call_infra_odoo_rpc_error", message="x")
+        lien.replace_rows = mock.Mock(side_effect=erreur)
+        res = self.ajouter(hote, lien)
+        self.assertFalse(res["ok"])
+        self.assertEqual(
+            "call_infra_odoo_write_failed/call_infra_odoo_rpc_error",
+            res["refus"],
+        )
+        self.assertIn("@@ODOO_ROLLBACK", hote.scripts[2])
+
+    def test_remove_cleans_odoo_then_revokes_on_the_host(self):
+        etat = ci.odoo_added_state(
+            self.etat,
+            self.cle,
+            "user",
+            "P" * 43,
+            ol.owned_username(URL_ODOO, self.BASE),
+            None,
+            NOW,
+        )
+        hote = Hote((0, self.sonde(etat)), (0, "@@ODOO_REMOVED yes\n"))
+        lien = FauxLien()
+        res = lt.retirer_odoo(
+            "vm", lien, self.cle, self.log, executer=hote, maintenant=NOW
+        )
+        self.assertTrue(res["ok"], res)
+        self.assertNotIn(self.cle, res["etat"]["odoos"])
+        self.assertEqual("set_params", lien.appels[0][0])
+        self.assertEqual(
+            ("replace_rows", ol.owned_username(URL_ODOO, self.BASE), []),
+            lien.appels[1],
+        )
+        self.assertIn("@@ODOO_REMOVED", hote.scripts[1])
+        # Un Odoo que l'état ne consigne pas : refus, rien sur l'hôte.
+        hote = Hote((0, self.sonde(self.etat)))
+        res = lt.retirer_odoo(
+            "vm", FauxLien(), self.cle, self.log, executer=hote
+        )
+        self.assertFalse(res["ok"])
+        self.assertEqual(1, len(hote.scripts))
+
+    def test_through_odoo_as_a_user_and_as_a_guest(self):
+        ice = [{"urls": UDP, "username": "1:odoo-u6", "credential": "x"}]
+        api = mock.Mock()
+        api.join_call_ice.return_value = ice
+        api.join_call_ice_guest.return_value = ice
+        harnais = mock.Mock()
+        harnais.lien.return_value = api
+        allocation = mock.Mock(return_value=[ligne_ice(UDP, True)])
+        with mock.patch.object(lt.ci, "check_through_odoo", allocation):
+            rendu, lignes = lt.par_odoo(harnais, "b", self.etat, "/ca.crt")
+            self.assertEqual(ice, rendu)
+            self.assertEqual([ligne_ice(UDP, True)], lignes)
+            harnais.lien.assert_called_with("b", *lt.UTILISATEUR_ODOO)
+            api.join_call_ice.assert_called_with(*lt.UTILISATEUR_ODOO)
+            lien = f"{URL_ODOO}/chat/1/jeton"
+            lt.par_odoo(harnais, "b", self.etat, "/ca.crt", invitation=lien)
+            api.join_call_ice_guest.assert_called_with(lien)
+        appel = allocation.call_args
+        self.assertEqual((ice, IP, None, "/ca.crt"), appel.args)
+        self.assertEqual(ci.turn_host(self.ans), appel.kwargs["turn_host"])
+        api.join_call_ice.side_effect = ol.OdooError("call_infra_odoo_x")
+        rendu, lignes = lt.par_odoo(harnais, "b", self.etat, None)
+        self.assertEqual([], rendu)
+        self.assertEqual([False], [li.ok for li in lignes])
+
+    def test_the_invitation_link_of_a_public_channel(self):
+        lien = mock.Mock(url=URL_ODOO)
+        lien._execute.side_effect = [7, [{"id": 7, "uuid": "abc-123"}]]
+        self.assertEqual(
+            f"{URL_ODOO}/chat/7/abc-123", lt.lien_invitation(lien)
+        )
+        cree = lien._execute.call_args_list[0].args
+        self.assertEqual(("discuss.channel", "create"), cree[:2])
+        self.assertEqual("channel", cree[2][0]["channel_type"])
+        self.assertIs(False, cree[2][0]["group_public_id"])
+
+
+class LeHarnais(unittest.TestCase):
+    """Les trois bases Odoo du scénario, copiées du gabarit de
+    mobile_sync_odoo : chacune entre au rapport avant d'exister."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.ordre = []
+
+    def _course(self):
+        course = mock.Mock()
+        course.noter_base.side_effect = lambda b: self.ordre.append(
+            ("note", b)
+        )
+        return course
+
+    def test_each_database_is_reported_before_it_exists(self):
+        version = mock.Mock()
+        course = self._course()
+        serveurs = iter(
+            mock.Mock(url=f"http://127.0.0.1:4000{i}") for i in range(3)
+        )
+        with (
+            mock.patch.object(
+                lt.mso, "versions_installees", return_value={18: version}
+            ) as versions,
+            mock.patch.object(lt.mso, "construire_gabarit") as gabarit,
+            mock.patch.object(
+                lt.mso,
+                "copier_gabarit",
+                side_effect=lambda v, b: self.ordre.append(("copie", b)),
+            ),
+            mock.patch.object(
+                lt.mso,
+                "demarrer_serveur",
+                side_effect=lambda v, b, r: next(serveurs),
+            ) as demarrer,
+        ):
+            harnais = lt.Harnais(self.dossier, "1_19990101000000", course)
+            ok, detail = harnais.preparer()
+        self.assertTrue(ok, detail)
+        versions.assert_called_once_with(demandees=(18,))
+        gabarit.assert_called_once()
+        bases = list(lt.noms_bases("1_19990101000000").values())
+        self.assertEqual(
+            [x for b in bases for x in (("note", b), ("copie", b))],
+            self.ordre,
+        )
+        # Un dossier par serveur : chacun y écrit sa configuration.
+        dossiers = {str(c.args[2]) for c in demarrer.call_args_list}
+        self.assertEqual(3, len(dossiers))
+        self.assertEqual("http://127.0.0.1:40001", harnais.url("b"))
+        lien = harnais.lien("c")
+        self.assertIsInstance(lien, ol.WebApi)
+        self.assertEqual(bases[2], lien.database)
+        self.assertEqual(lt.ADMIN_ODOO[0], lien.login)
+
+    def test_a_missing_prerequisite_is_a_failed_step(self):
+        course = self._course()
+        with mock.patch.object(
+            lt.mso,
+            "versions_installees",
+            side_effect=lt.mso.PrerequisManquant("Odoo 18 absent"),
+        ):
+            harnais = lt.Harnais(self.dossier, "1_19990101000000", course)
+            ok, detail = harnais.preparer()
+        self.assertFalse(ok)
+        self.assertIn("Odoo 18 absent", detail)
+        self.assertEqual([], self.ordre)
+
+    def test_undoing_stops_the_servers_and_drops_the_databases(self):
+        course = self._course()
+        harnais = lt.Harnais(self.dossier, "1_19990101000000", course)
+        harnais.inscrites = ["call_infra_odoo_1_19990101000000_a"]
+        serveur = mock.Mock()
+        harnais.serveurs = {"a": serveur}
+        with (
+            mock.patch.object(lt.mso, "arreter_serveur") as arreter,
+            mock.patch.object(lt.mso, "supprimer_base") as supprimer,
+            mock.patch.object(lt, "bases_restantes", return_value=[]),
+        ):
+            self.assertEqual([], harnais.defaire())
+        arreter.assert_called_once_with(serveur)
+        supprimer.assert_called_once_with("call_infra_odoo_1_19990101000000_a")
+        course.oublier_odoo.assert_called_once_with()
+        # Une base qui reste garde sa place au rapport.
+        course = self._course()
+        harnais = lt.Harnais(self.dossier, "1_19990101000000", course)
+        harnais.inscrites = ["call_infra_odoo_1_19990101000000_a"]
+        reste = ["call_infra_odoo_1_19990101000000_a"]
+        with (
+            mock.patch.object(lt.mso, "supprimer_base"),
+            mock.patch.object(lt, "bases_restantes", return_value=reste),
+        ):
+            self.assertEqual(reste, harnais.defaire())
+        course.oublier_odoo.assert_not_called()
+
+    def test_remaining_databases_are_read_from_postgresql(self):
+        noms = ["call_infra_odoo_1_2_a", "call_infra_odoo_1_2_b"]
+        with (
+            mock.patch.object(
+                lt.mso, "psql", return_value="call_infra_odoo_1_2_a\nautre"
+            ),
+            mock.patch.object(lt.mso, "CACHE", Path(self.dossier)),
+        ):
+            self.assertEqual(
+                ["call_infra_odoo_1_2_a"], lt.bases_restantes(noms)
+            )
+            filestore = (
+                Path(self.dossier) / "data/filestore/call_infra_odoo_1_2_b"
+            )
+            filestore.mkdir(parents=True)
+            self.assertEqual(noms, lt.bases_restantes(noms))
+        with mock.patch.object(
+            lt.mso, "psql", side_effect=RuntimeError("psql : refusé")
+        ):
+            self.assertEqual(noms, lt.bases_restantes(noms))
+
+    def test_the_run_reports_its_databases(self):
+        journal = os.path.join(self.dossier, "long-call-infra-1.log")
+        course = lt.Course(False, journal)
+        self.assertRegex(course.identifiant, r"^\d+_\d{14}$")
+        course.noter_base("call_infra_odoo_1_2_a")
+        with open(course.chemin, encoding="utf-8") as fh:
+            self.assertEqual(
+                ["call_infra_odoo_1_2_a"], json.load(fh)["odoo"]["bases"]
+            )
+        course.oublier_odoo()
+        with open(course.chemin, encoding="utf-8") as fh:
+            self.assertEqual([], json.load(fh)["odoo"]["bases"])
+
+
+class LeDefaireOdoo(unittest.TestCase):
+    """`--detruire` arrête les serveurs Odoo et supprime les bases que les
+    rapports de ce test nomment encore, puis défait les VM."""
+
+    BASES = [
+        "call_infra_odoo_123_19990101000000_a",
+        "call_infra_odoo_123_19990101000000_b",
+    ]
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+        self.dossier = os.path.join(self.maison, ".erplibre/longtest")
+        os.makedirs(self.dossier)
+        self.journal = os.path.join(self.dossier, "x.log")
+
+    def _rapport(self, nom="long-call-infra-19990101-000000.json", **champs):
+        rapport = {
+            "outil": "call_infra",
+            "dry_run": False,
+            "pid": 1,
+            "etages": [],
+            # Un nom d'une autre forme n'est jamais supprimé.
+            "odoo": {
+                "bases": [
+                    self.BASES[0],
+                    "mobile_sync_run_1_2_18",
+                    self.BASES[1],
+                ]
+            },
+        }
+        rapport.update(champs)
+        chemin = os.path.join(self.dossier, nom)
+        with open(chemin, "w", encoding="utf-8") as fh:
+            json.dump(rapport, fh)
+        return chemin
+
+    def _defaire(self, dry_run=False, vivante=False):
+        with (
+            mock.patch.object(lt, "descente_vivante", return_value=vivante),
+            mock.patch.object(lt, "serveurs_de", return_value=[4242]) as de,
+            mock.patch.object(lt, "arreter_serveurs") as arreter,
+            mock.patch.object(lt.mso, "supprimer_base") as supprimer,
+            mock.patch.object(lt, "bases_restantes", return_value=[]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            n = lt.defaire_odoo(self.journal, dry_run, dossier=self.dossier)
+        return n, de, arreter, supprimer
+
+    def test_the_databases_of_the_report_are_dropped(self):
+        chemin = self._rapport()
+        n, de, arreter, supprimer = self._defaire()
+        self.assertEqual(2, n)
+        de.assert_called_once_with(chemin[: -len(".json")])
+        arreter.assert_called_once_with([4242])
+        self.assertEqual(
+            self.BASES, [c.args[0] for c in supprimer.call_args_list]
+        )
+        with open(chemin, encoding="utf-8") as fh:
+            self.assertEqual([], json.load(fh)["odoo"]["bases"])
+
+    def test_a_dry_run_drops_nothing(self):
+        chemin = self._rapport()
+        n, _de, arreter, supprimer = self._defaire(dry_run=True)
+        self.assertEqual(2, n)
+        arreter.assert_not_called()
+        supprimer.assert_not_called()
+        with open(chemin, encoding="utf-8") as fh:
+            self.assertEqual(3, len(json.load(fh)["odoo"]["bases"]))
+
+    def test_other_reports_are_left_alone(self):
+        self._rapport("long-call-infra-a.json", outil="install_nixos")
+        self._rapport("long-call-infra-b-dryrun.json", dry_run=True)
+        self.assertEqual(0, self._defaire()[0])
+        self.assertEqual(0, self._defaire(vivante=True)[0])
+
+    def test_destroy_drops_the_databases_then_the_vms(self):
+        ordre = []
+        with (
+            mock.patch.object(
+                lt,
+                "defaire_odoo",
+                side_effect=lambda j, d: ordre.append(("odoo", d)),
+            ),
+            mock.patch.object(
+                lt,
+                "detruire",
+                side_effect=lambda f, j, dry_run: ordre.append(("vm", dry_run))
+                or 0,
+            ),
+        ):
+            code, _sortie = lancer(self.maison, "--detruire")
+        self.assertEqual(0, code)
+        self.assertEqual([("odoo", False), ("vm", False)], ordre)
+
+    def test_the_servers_of_a_run_are_found_by_their_config(self):
+        proc = os.path.join(self.maison, "proc")
+        for entree in ("12", "13", "self", "x"):
+            os.makedirs(os.path.join(proc, entree))
+        course = os.path.join(self.dossier, "long-call-infra-1")
+        lignes = {
+            12: f"python odoo-bin -c {course}/odoo-a/odoo18.conf",
+            13: "python odoo-bin -c /ailleurs/odoo18.conf",
+        }
+        self.assertEqual(
+            [12],
+            lt.serveurs_de(
+                course, proc=proc, lire=lambda p: lignes.get(p, "")
+            ),
+        )
+
+    def test_a_server_that_lingers_is_killed(self):
+        vivants = {12, 13}
+        envois = []
+
+        def tuer(pid, signal_):
+            envois.append((pid, signal_))
+            if pid == 12 or signal_ == lt.signal.SIGKILL:
+                vivants.discard(pid)
+
+        lt.arreter_serveurs(
+            [12, 13],
+            tuer=tuer,
+            lire=lambda p: "odoo" if p in vivants else "",
+            delai=0,
+        )
+        self.assertEqual(
+            [
+                (12, lt.signal.SIGTERM),
+                (13, lt.signal.SIGTERM),
+                (13, lt.signal.SIGKILL),
+            ],
+            envois,
+        )
+        self.assertEqual(set(), vivants)
+
+
+class Monde:
+    """Le coturn et les trois Odoo d'une course inventée, tels que les
+    briques du scénario les voient : chaque ajout ou retrait les change
+    comme le produit le fait. `redemarre` et `revoque` faux simulent un
+    produit qui ne redémarre pas coturn à la bascule ou qui ne révoque
+    rien."""
+
+    def __init__(self, base):
+        self.base = base
+        self.mode = None
+        self.pid = 100
+        self.odoos = {}
+        self.secrets = set()
+        self.comptes = set()
+        self.liste = []
+        self.odoo = {
+            lettre: {"module": "uninstalled", "params": {}, "rows": ()}
+            for lettre in "abc"
+        }
+        self.n = 0
+        self.redemarre = True
+        self.revoque = True
+
+    @staticmethod
+    def _sha(valeur):
+        return hashlib.sha256(valeur.encode("utf-8")).hexdigest()
+
+    def etat(self):
+        etat = json.loads(json.dumps(self.base))
+        if self.mode:
+            etat["turn_mode"] = self.mode
+        if self.mode == "secret":
+            etat["check_secret_sha256"] = "0" * 64
+        etat["odoos"] = {
+            cle: {
+                "credential": (
+                    {"kind": "secret", "value_sha256": self._sha(o["valeur"])}
+                    if o["sorte"] == "secret"
+                    else {"kind": "user", "user": "erplibre-00000000"}
+                ),
+                "retired": [
+                    {"value_sha256": self._sha(v), "expires_at": "2999-01-01"}
+                    for v in o["anciens"]
+                ],
+                "exempt": o["exempt"],
+            }
+            for cle, o in self.odoos.items()
+        }
+        return etat
+
+    def sonde(self, cible, log, executer):
+        conf = (
+            "use-auth-secret\n" if self.mode == "secret" else "lt-cred-mech\n"
+        )
+        yml = (
+            f"{lt.nm.EXEMPT_HOSTS_KEY}: {','.join(self.liste)}\n"
+            if self.liste
+            else ""
+        )
+        return mock.Mock(
+            state=self.etat(),
+            coturn={"config_text": conf},
+            ntfy={"config_text": yml},
+        )
+
+    def ajouter(self, cible, lien, url, base, module, exempt, log, **kw):
+        lettre, cle = lien.lettre, ol.odoo_key(url, base)
+        voulu = (
+            "secret"
+            if module or self.odoo[lettre]["module"] == "installed"
+            else "fixed"
+        )
+        if self.odoos and (self.mode or "fixed") != voulu:
+            return {
+                "ok": False,
+                "etape": "plan",
+                "plan": None,
+                "etat": None,
+                "refus": "call_infra_turn_mode_mismatch",
+            }
+        if voulu == "secret" and self.mode != "secret" and self.redemarre:
+            self.pid += 1
+        self.mode = voulu
+        self.n += 1
+        valeur = f"valeur-{self.n}"
+        avant = self.odoos.get(cle)
+        anciens = []
+        if voulu == "secret":
+            self.odoo[lettre].update(
+                module="installed",
+                params={ol.PARAM_URLS: "u", ol.PARAM_SECRET: "sha256:0"},
+                rows=(),
+            )
+            anciens = [avant["valeur"]] if avant else []
+            self.secrets.add(valeur)
+        else:
+            nom = ol.owned_username(url, base)
+            self.odoo[lettre]["rows"] = tuple(
+                {"server_type": "turn", "uri": "x", "username": nom}
+                for _ in range(3)
+            )
+            self.comptes.add(valeur)
+        self.odoos[cle] = {
+            "sorte": "secret" if voulu == "secret" else "user",
+            "valeur": valeur,
+            "anciens": anciens,
+            "exempt": exempt,
+            "lettre": lettre,
+        }
+        if exempt and exempt not in self.liste:
+            self.liste.append(exempt)
+        return {
+            "ok": True,
+            "etape": "",
+            "refus": None,
+            "plan": mock.Mock(key=cle),
+            "etat": self.etat(),
+        }
+
+    def retirer(self, cible, lien, cle, log, **kw):
+        o = self.odoos.pop(cle)
+        if self.revoque:
+            self.secrets -= {o["valeur"], *o["anciens"]}
+            self.comptes.discard(o["valeur"])
+        self.odoo[lien.lettre].update(params={}, rows=())
+        if o["exempt"] and all(
+            x["exempt"] != o["exempt"] for x in self.odoos.values()
+        ):
+            self.liste.remove(o["exempt"])
+        return {"ok": True, "etape": "", "refus": None, "etat": self.etat()}
+
+    def allouer(self, ice, etat, cafile):
+        if not ice:
+            return [
+                ci.CheckLine("odoo-ice", False, "call_infra_check_ice_none")
+            ]
+        vivant = ice["valeur"] in self.secrets | self.comptes
+        urls = [UDP, TCP] + ([TLS] if ice["sorte"] == "secret" else [])
+        return [
+            ligne_ice(u, vivant, None if vivant else "401 Unauthorized")
+            for u in urls
+        ]
+
+    def par_odoo(self, harnais, lettre, etat, cafile, invitation=None):
+        o = next(
+            (o for o in self.odoos.values() if o["lettre"] == lettre), None
+        )
+        ice = dict(o) if o else []
+        return ice, self.allouer(ice, etat, cafile)
+
+    def verifier(self, cible, adresse, cafile, log, executer=None):
+        noms = lt.CONTROLES["odoo"]["debian"]
+        lignes = [ci.CheckLine(n, True, "x") for n in noms]
+        return lignes, {"turn_secrets": [(IP, v) for v in self.secrets]}
+
+    def odoo_facts(self, lettre):
+        o = self.odoo[lettre]
+        return ol.OdooFacts(
+            "18.0", 18, o["module"], dict(o["params"]), o["rows"], "127.0.0.1"
+        )
+
+
+class LeScenarioOdoo(unittest.TestCase):
+    """`scenario_odoo` mené de bout en bout sur un monde inventé : chaque
+    brique qui touche l'hôte, Odoo ou le réseau est remplacée, les verdicts
+    sont ceux du scénario."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.log = os.path.join(self.dossier, "x.log")
+        self.journal = os.path.join(self.dossier, "j.log")
+        ans = lt.reponses(IP)
+        facts = ci.parse_probe(DEBIAN_UFW_PROBE.replace("ufw", "none"))
+        plan = ci.plan_install(facts, ans, NOW)
+        self.base = ci.written_state(plan, "20261030-000000")
+        self.monde = Monde(self.base)
+        self.harnais = []
+
+    def _harnais(self, preparer=(True, {})):
+        monde, harnais = self.monde, self.harnais
+
+        class Faux:
+            def __init__(
+                self, dossier, identifiant, course=None, journal=None
+            ):
+                self.bases = lt.noms_bases(identifiant)
+                self.defait = False
+                harnais.append(self)
+
+            def preparer(self):
+                return preparer
+
+            def url(self, lettre):
+                return f"http://127.0.0.1:{40001 + 'abc'.index(lettre)}"
+
+            def lien(self, lettre, login="admin", mdp="admin"):
+                return mock.Mock(
+                    lettre=lettre,
+                    url=self.url(lettre),
+                    facts=lambda: monde.odoo_facts(lettre),
+                )
+
+            def defaire(self):
+                self.defait = True
+                return []
+
+        return Faux
+
+    def _course(self, preparer=(True, {})):
+        tls = {}
+        for role in ("server_crt", "server_key", "ca_crt"):
+            tls[role] = os.path.join(self.dossier, role)
+            with open(tls[role], "w", encoding="utf-8") as fh:
+                fh.write(role)
+
+        def preparer_vm(sc, cible, distro):
+            sc.noter("cloud-init", True)
+            return sc.noter("ufw-actif", True)
+
+        installe = {
+            "ok": True,
+            "etape": "",
+            "etat": self.base,
+            "answers": lt.reponses(IP),
+        }
+        sc = lt.Scenario("debian", self.log, self.journal, "odoo")
+        m = self.monde
+        with (
+            mock.patch.object(lt, "_preparer", preparer_vm),
+            mock.patch.object(lt, "Harnais", self._harnais(preparer)),
+            mock.patch.object(lt.local_cert, "issue", return_value=tls),
+            mock.patch.object(lt, "installer", return_value=installe),
+            mock.patch.object(lt, "adresse_vers", return_value=EXEMPT),
+            mock.patch.object(lt, "_sonde", m.sonde),
+            mock.patch.object(lt, "_pid", lambda *a: str(m.pid)),
+            mock.patch.object(lt, "ajouter_odoo", m.ajouter),
+            mock.patch.object(lt, "retirer_odoo", m.retirer),
+            mock.patch.object(lt, "par_odoo", m.par_odoo),
+            mock.patch.object(lt, "allouer", m.allouer),
+            mock.patch.object(lt, "verifier", m.verifier),
+            mock.patch.object(lt, "lien_invitation", return_value="lien"),
+            mock.patch.object(lt, "desinstaller", return_value="fait"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            lt.scenario_odoo(sc, "vm", IP, self.dossier)
+        return sc
+
+    def test_the_odoo_run_notes_every_planned_step(self):
+        sc = self._course()
+        self.assertEqual(
+            list(lt.ETAPES["odoo"]["debian"][2:]), list(sc.etapes)
+        )
+        self.assertEqual(
+            [], [n for n, ok in sc.etapes.items() if not ok], sc.details
+        )
+        self.assertTrue(self.harnais[0].defait)
+
+    def test_a_switch_without_restart_is_seen(self):
+        self.monde.redemarre = False
+        sc = self._course()
+        self.assertFalse(sc.etapes["b-bascule"])
+        self.assertTrue(sc.etapes["c-sans-redemarrage"])
+
+    def test_credentials_left_alive_are_seen(self):
+        self.monde.revoque = False
+        sc = self._course()
+        self.assertFalse(sc.etapes["a-revoque"])
+        self.assertFalse(sc.etapes["c-revoque"])
+        self.assertTrue(sc.etapes["b-grace"])
+
+    def test_a_harness_that_fails_still_drops_its_databases(self):
+        sc = self._course(preparer=(False, "Odoo 18 absent"))
+        self.assertEqual(
+            ["cloud-init", "ufw-actif", "odoo-harnais", "bases-supprimees"],
+            list(sc.etapes),
+        )
+        self.assertFalse(sc.etapes["odoo-harnais"])
+        self.assertTrue(sc.etapes["bases-supprimees"])
+        self.assertTrue(self.harnais[0].defait)
 
 
 if __name__ == "__main__":
