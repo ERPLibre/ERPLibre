@@ -3196,6 +3196,10 @@ def install_script(plan, stamp, root=""):
         write = _state_write_lines(state)
     lines.append('if [ "$OK" = 1 ]; then')
     lines += ["  " + line for line in write]
+    if certbot:
+        # L'état écrit consigne Let's Encrypt : une coupure ne remet plus
+        # le fichier de renouvellement de côté.
+        lines.append("  trap 'exit 129' HUP INT TERM")
     lines += [
         *[f'  rm -f "$PENDING/{name}.json"' for name in [*origins, *carried]],
         '  echo "@@SAVED yes"',
