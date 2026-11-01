@@ -797,7 +797,9 @@ def creer_vm(nom, distro, journal, dry_run):
     (None, "", False). Une création qui échoue après avoir défini le
     domaine rend son nom et son UUID avec ok faux, pour qu'elle entre au
     rapport et reste défaisable."""
-    argv = argv_creation(distro, nom, cle_publique(), drapeaux_cache())
+    argv = argv_creation(
+        distro, nom, cle_publique(creer=not dry_run), drapeaux_cache()
+    )
     if dry_run:
         dire("      " + " ".join(shlex.quote(a) for a in argv), journal)
         return nom, "", True

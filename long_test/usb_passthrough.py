@@ -1596,8 +1596,9 @@ def montrer_commandes(course):
         ("remove-autoreattach", "--no-restart", "--purge"),
     ):
         d(f"    $ {shlex.join(argv_cli(*args, root=True))}")
+    # Le plan n'écrit rien : la clé jetable n'y est que nommée.
     deploiement = ["sudo"] + argv_deploiement(
-        course.noms["invite"], cle_publique(), drapeaux_cache()
+        course.noms["invite"], cle_publique(creer=False), drapeaux_cache()
     )
     d(f"    $ {shlex.join(deploiement)}")
     d(f"    invité : {CMD_USB_INVITE}")
