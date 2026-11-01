@@ -23,3 +23,17 @@ pdfminer
 # TODO support rename
 mpl_toolkits
 # mpl_toolkits rename to matplotlib
+
+# product_recommendation_ai (CybroAddons, extra) : torch==2.8.0+cpu est une
+# version locale que seul l'index de PyTorch publie, pas PyPI, et poetry ne la
+# trouve pas. torch, nomic et sentence-transformers forment une pile
+# d'apprentissage de plusieurs Go pour ce seul module : à installer à la main
+# là où il sert.
+torch
+nomic
+sentence-transformers
+
+# advanced_payment_cybersource (CybroAddons, extra) : cybersource-rest-client-python
+# exige setuptools<=81, qu'ERPLibre épingle à 84.0.0 ; le fichier de surcharge
+# l'écartait déjà en le laissant commenté.
+cybersource-rest-client-python
