@@ -80,7 +80,7 @@ class LongTestMenuMixin:
             )
         if nom == "call_infra.py" and "--detruire" not in (args or ""):
             return (
-                "This creates a Debian VM and an Arch VM and installs coturn and ntfy on them.",
+                "This creates four VMs one after the other (development, then production with nginx, on Debian and on Arch) and installs coturn and ntfy on them. call_infra.py --scenario dev or prod runs only one.",
                 "Run the call infrastructure test?",
             )
         if "--detruire" in (args or ""):
