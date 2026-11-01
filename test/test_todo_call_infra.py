@@ -939,6 +939,26 @@ class TestProductionInstall(ProductionCase):
         self.assertIn(f"{t('Mode:')} {t('development')}", out)
 
 
+    def test_development_after_production_drops_the_nat_address(self):
+        # L'adresse publique d'un hôte derrière un NAT n'a pas de sens pour
+        # un coturn de réseau local, et le domaine peut ne pas joindre
+        # l'hôte : le nom proposé est celui de TURN.
+        self.dns = {TURN_NAME: ["203.0.113.7"]}
+        host = FakeHost()
+        self.drive("_call_infra_install", host, PROD_COTURN + ["", "o", ""])
+        self.assertEqual(
+            host.state["services"]["coturn"]["settings"]["external_ip"],
+            "203.0.113.7",
+        )
+        self.prompts = []
+        replies = ["", "1", "", "", "", "", "n"]
+        _out, ans = self.planned(host, replies)
+        self.assertEqual(ans.mode, "development")
+        self.assertIsNone(ans.external_ip)
+        self.assertEqual(ans.public_name, TURN_NAME)
+        self.assertTrue(any(f"[{TURN_NAME}]" in p for p in self.prompts))
+
+
 class TestProductionScreens(ProductionCase):
     def test_new_check_lines_have_labels(self):
         for name, key, label in (
