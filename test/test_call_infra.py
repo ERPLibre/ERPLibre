@@ -3830,12 +3830,15 @@ def coturn_only(**changes):
     return production(**values)
 
 
-def nginx_facts(state="active", layout="debian", names=(), include=False):
+def nginx_facts(
+    state="active", layout="debian", names=(), include=False, enabled=None
+):
     return {
         "state": state,
         "layout": layout,
         "include": include,
         "names": tuple(names),
+        "enabled": enabled,
         "pending": None,
     }
 
@@ -4603,6 +4606,42 @@ class TestProductionProbe(unittest.TestCase):
                 authenticator="dns-cloudflare",
             ),
         )
+
+    def test_nginx_enabled_state(self):
+        text = NGINX_PROBE.replace(
+            "@@NGINX active debian\n",
+            "@@NGINX inactive debian\n@@NGINX_ENABLED disabled\n",
+        )
+        facts = ci.parse_probe(text)
+        self.assertEqual(facts.nginx["state"], "inactive")
+        self.assertEqual(facts.nginx["enabled"], "disabled")
+        bad = text.replace("disabled", "dis abled;x")
+        self.assertIsNone(ci.parse_probe(bad).nginx["enabled"])
+
+    def test_existing_nginx_records_how_it_was_found(self):
+        # Les installateurs activent et démarrent nginx : la
+        # désinstallation doit savoir ce qu'il était avant l'outil.
+        facts = base_facts(
+            nginx=nginx_facts(state="inactive", enabled="disabled")
+        )
+        ans = production(nginx="existing")
+        record = ci.plan_install(facts, ans, NOW).new_state["nginx"]
+        self.assertIs(record["was_active"], False)
+        self.assertEqual(record["was_enabled"], "disabled")
+        # La relance le trouve actif et activé : l'état fait foi.
+        state = ci.written_state(ci.plan_install(facts, ans, NOW), STAMP)
+        again = base_facts(
+            nginx=nginx_facts(enabled="enabled"), state=state
+        )
+        record = ci.plan_install(again, ans, NOW).new_state["nginx"]
+        self.assertIs(record["was_active"], False)
+        self.assertEqual(record["was_enabled"], "disabled")
+        # Posé par l'outil : rien à remettre, la purge l'emporte.
+        record = ci.plan_install(base_facts(), production(), NOW).new_state[
+            "nginx"
+        ]
+        self.assertIsNone(record["was_active"])
+        self.assertIsNone(record["was_enabled"])
 
     def test_an_unknown_authenticator_is_none(self):
         text = NGINX_PROBE.replace("dns-cloudflare", "manual;rm")
@@ -5561,7 +5600,10 @@ class TestProductionInstall(unittest.TestCase):
         pending = json.loads(
             self.read(self.path(ci.PENDING_DIR + "/nginx.json"))
         )
-        self.assertEqual(pending, {"installed_by_tool": True})
+        self.assertEqual(
+            pending,
+            {"installed_by_tool": True, "was_active": None, "was_enabled": None},
+        )
         facts = base_facts(
             nginx=dict(nginx_facts(), pending=pending),
             busy_ports=(("tcp", 80, "nginx"),),
@@ -6499,6 +6541,31 @@ class TestProductionUninstall(UninstallSandbox):
         self.assertNotIn("KEPT package nginx", markers)
         self.assertNotIn("KEPT package certbot", markers)
         self.assertFalse(self.exists(SITE_DEBIAN))
+
+    def test_an_existing_stopped_nginx_is_stopped_again(self):
+        facts = base_facts(
+            nginx=nginx_facts(state="inactive", enabled="disabled")
+        )
+        state = production_state(production(nginx="existing"), facts=facts)
+        state["certbot"]["installed_by_tool"] = False
+        self.place_production(state)
+        done = self.uninstall(state, UNITS="nginx", PKGS=DEBIAN_PKGS)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        self.assertIn("systemctl stop nginx", calls)
+        self.assertIn("systemctl disable nginx", calls)
+        self.assertLess(calls.index("nginx -t"), calls.index("systemctl stop nginx"))
+        self.assertFalse([c for c in calls if c.startswith("apt-get")])
+        # Trouvé actif et activé : il le reste.
+        self.setUp()
+        facts = base_facts(nginx=nginx_facts(enabled="enabled"))
+        state = production_state(production(nginx="existing"), facts=facts)
+        self.place_production(state)
+        done = self.uninstall(state, UNITS="nginx", PKGS=DEBIAN_PKGS)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        calls = self.calls()
+        self.assertNotIn("systemctl stop nginx", calls)
+        self.assertNotIn("systemctl disable nginx", calls)
 
     def test_another_enabled_site_keeps_the_tool_nginx(self):
         state = self.place_production(production_state(output=LE_OUTPUT))

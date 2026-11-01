@@ -577,6 +577,7 @@ def _nginx_probe_lines():
         "fi",
         'echo "@@NGINX $NX $NL${NO:+ $NO}"',
         'if [ "$NX" != absent ]; then',
+        '  echo "@@NGINX_ENABLED $(systemctl is-enabled nginx 2>/dev/null)"',
         "  if NT=$(nginx -T 2>/dev/null)"
         " && printf '%s\\n' \"$NT\" | grep -q '^# configuration file '; then",
         "    printf '%s\\n' \"$NT\""
@@ -719,7 +720,7 @@ def parse_probe(output):
     addresses, ports, files, pending, chains = [], [], {}, {}, []
     firewall_pending, ufw_added = [], []
     coturn_marker, ntfy_marker, complete, enabled = [], [], False, {}
-    nginx_marker, nginx_names, plugins = [], [], []
+    nginx_marker, nginx_names, plugins, nginx_enabled = [], [], [], None
     certbot_version, lineage, held, authenticator = None, None, False, None
     for name, value in marker_lines(output):
         if name == "OS":
@@ -762,6 +763,9 @@ def parse_probe(output):
                 pending[svc] = record
         elif name == "NGINX":
             nginx_marker = value.split()
+        elif name == "NGINX_ENABLED":
+            current = value.strip()
+            nginx_enabled = current if _UNIT_STATE.match(current) else None
         elif name == "NGINX_NAME":
             found, _, where = value.strip().partition(" ")
             entry = (found, where.strip())
@@ -840,7 +844,9 @@ def parse_probe(output):
         nft_chains=tuple(chains),
         firewall_pending=tuple(firewall_pending),
         ufw_added=tuple(ufw_added),
-        nginx=_nginx_facts(nginx_marker, nginx_names, pending.get("nginx")),
+        nginx=_nginx_facts(
+            nginx_marker, nginx_names, nginx_enabled, pending.get("nginx")
+        ),
         certbot=_certbot_facts(
             certbot_version,
             lineage,
@@ -852,8 +858,9 @@ def parse_probe(output):
     )
 
 
-def _nginx_facts(marker, names, pending):
-    """`HostFacts.nginx` des lignes `@@NGINX` et `@@NGINX_NAME`."""
+def _nginx_facts(marker, names, enabled, pending):
+    """`HostFacts.nginx` des lignes `@@NGINX`, `@@NGINX_NAME` et
+    `@@NGINX_ENABLED` (réponse de `systemctl is-enabled`)."""
     state = marker[0] if marker[:1] in (["active"], ["inactive"]) else "absent"
     if state == "absent" and pending is None:
         return None
@@ -864,6 +871,7 @@ def _nginx_facts(marker, names, pending):
         "layout": layout if present and layout in NGINX_LAYOUTS else None,
         "include": present and marker[2:3] == ["include"],
         "names": tuple(names) if present else (),
+        "enabled": enabled if present else None,
         "pending": pending,
     }
 
@@ -1795,11 +1803,24 @@ def _nginx_record(facts, answers, prior):
     """Fiche « nginx » de l'état. `installed_by_tool`, `layout` (et `site`,
     `link`, `include` qui en découlent) et `backup` (copie de nginx.conf
     d'avant la ligne include) sont des valeurs de plan : le script les
-    remplace par ce qu'install_nginx.sh imprime (`installed_state`)."""
+    remplace par ce qu'install_nginx.sh imprime (`installed_state`).
+
+    `was_active` et `was_enabled` disent ce qu'était un nginx déjà là,
+    qu'install_nginx.sh active et démarre : la désinstallation le remet
+    arrêté ou désactivé (comme `_origin` pour les services). None pour un
+    nginx que l'outil pose, ou pour un état qui ne les consigne pas."""
     record = prior.get("nginx")
     record = record if isinstance(record, dict) else {}
     pending = (facts.nginx or {}).get("pending")
-    tool, _source = _tool_origin(record, pending, _nginx_present(facts))
+    tool, source = _tool_origin(record, pending, _nginx_present(facts))
+    if source is not None:
+        was_active = source.get("was_active")
+        was_enabled = source.get("was_enabled")
+    elif not tool:
+        was_active = facts.nginx.get("state") == "active"
+        was_enabled = facts.nginx.get("enabled")
+    else:
+        was_active = was_enabled = None
     layout = (facts.nginx or {}).get("layout")
     if not _nginx_present(facts) or layout not in NGINX_LAYOUTS:
         # Le paquet Debian inclut sites-enabled ; celui d'Arch, aucun
@@ -1815,6 +1836,12 @@ def _nginx_record(facts, answers, prior):
         "include": include,
         "backup": backup if _run_path(backup) else None,
         "applied": NGINX_APPLIED,
+        "was_active": was_active if isinstance(was_active, bool) else None,
+        "was_enabled": (
+            was_enabled
+            if isinstance(was_enabled, str) and _UNIT_STATE.match(was_enabled)
+            else None
+        ),
         **_nginx_settings(answers),
     }
 
@@ -1910,6 +1937,17 @@ def _carry_fiches(new_state, facts, answers):
             "include": include,
             "backup": None,
             "applied": NGINX_APPLIED,
+            "was_active": (
+                pending.get("was_active")
+                if isinstance(pending.get("was_active"), bool)
+                else None
+            ),
+            "was_enabled": (
+                pending.get("was_enabled")
+                if isinstance(pending.get("was_enabled"), str)
+                and _UNIT_STATE.match(pending["was_enabled"])
+                else None
+            ),
             "names": [],
             "ntfy_name": None,
             "upstream_port": None,
@@ -3080,7 +3118,12 @@ def install_script(plan, stamp, root=""):
             )
         }
     for name in extra:
-        keys = ("installed_by_tool", "plugins_installed")
+        keys = (
+            "installed_by_tool",
+            "plugins_installed",
+            "was_active",
+            "was_enabled",
+        )
         origins[name] = {k: state[name][k] for k in keys if k in state[name]}
     for name, origin in origins.items():
         pending = f'"$PENDING/{name}.json"'
@@ -4998,8 +5041,11 @@ def _production_records(state):
             )
         ):
             raise invalid
+        was_enabled = nginx.get("was_enabled")
         found["nginx"] = {
             "installed_by_tool": nginx.get("installed_by_tool") is True,
+            "was_active": nginx.get("was_active") is not False,
+            "was_disabled": was_enabled == "disabled",
             "site": site,
             "link": link,
             "include": include,
@@ -5287,6 +5333,25 @@ def _nginx_finish_lines(record, remove_data):
     if _nginx_backup_lines(record):
         lines += ['elif [ "$NGX" = 1 ]; then', *_nginx_backup_lines(record)]
     lines.append("fi")
+    # Un nginx déjà là retrouve ce qu'il était : install_nginx.sh l'a
+    # activé et démarré. Pas après un test en échec : le site de l'outil
+    # est revenu, la relance reprendra.
+    restore = []
+    if not record["was_active"]:
+        restore.append(
+            "  systemctl stop nginx >/dev/null 2>&1 || failed stop-nginx"
+        )
+    if record["was_disabled"]:
+        restore.append(
+            "  systemctl disable nginx >/dev/null 2>&1 || failed disable-nginx"
+        )
+    if restore:
+        lines += [
+            'if [ "$NGP" = 0 ] && [ "$NOK" = 1 ]'
+            " && systemctl cat nginx >/dev/null 2>&1; then",
+            *restore,
+            "fi",
+        ]
     for path in record["tls_files"]:
         host = _host(path)
         if remove_data:
