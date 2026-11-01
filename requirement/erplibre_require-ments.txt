@@ -16,8 +16,8 @@ selenium
 uvloop
 python-randomword-fr
 isort
-# Formatage et tri des imports de l'outillage : il suit les versions de
-# CPython, là où black 24.8.0 s'arrête à py313. Voir .ruff.toml.
+# Formatage et tri des imports de l'outillage, black restant celui des
+# modules Odoo. Voir .ruff.toml.
 ruff
 pykeepass
 cryptography
@@ -63,7 +63,11 @@ pillow>=13.0.0
 virtualenv==21.14.13
 
 # For logical test and quality
-git+https://github.com/psf/black.git@24.8.0
+# black formate les modules Odoo (script/maintenance/black.sh). Épinglé : une
+# version de black change son style. 24.8.0 portait CVE-2026-32274, une
+# écriture de fichier arbitraire par le nom du fichier de cache, corrigée en
+# 26.3.1 ; les deux autres avis visent son action GitHub.
+black==26.10.1
 pre-commit
 
 # Bac à sable du client courriel : un VRAI serveur SMTP et un VRAI serveur

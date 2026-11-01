@@ -4,8 +4,8 @@
 # d'Odoo : 3.7.17 pour Odoo 12, 3.8.20 pour Odoo 14. Or
 # erplibre_require-ments.txt vise le venv d'outillage de l'HÔTE, en 3.15, et
 # plusieurs de ses bornes y sont inatteignables — « textual>=8,<9 » exige
-# 3.9, virtualenv 20.36.1 et black 24.8.0 exigent 3.8. Aucune image d'Odoo 12
-# à 15 ne pouvait donc se construire.
+# 3.9, black 26.10.1 exige 3.10. Aucune image d'Odoo 12 à 15 ne pouvait donc
+# se construire.
 #
 # L'image n'en a pas l'usage : elle ne lance que deux points d'entrée Python,
 # « script/version/update_env_version.py » et

@@ -1,10 +1,8 @@
 # Formatage et tri des imports de l'OUTILLAGE ERPLibre — script/, test/,
 # long_test/ et les scripts de la racine.
 #
-# ruff et non black : black 24.8.0 ne connaît aucune cible au-delà de py313,
-# quand l'outillage tourne sur conf/python-erplibre-version, et son tri
-# d'imports remplace isort sans second outil. C'est aussi ce que la norme OCA
-# emploie depuis qu'elle a quitté black.
+# ruff et non black : son tri d'imports remplace isort sans second outil, et
+# c'est ce que la norme OCA emploie depuis qu'elle a quitté black.
 #
 # Les modules Odoo n'obéissent PAS à ce fichier : chaque dépôt d'addons porte
 # sa propre norme. script/maintenance/format_python.sh aiguille entre les deux.
