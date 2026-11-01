@@ -1674,6 +1674,18 @@ class TestAddOdoo(OdooCase):
             host.state["odoos"][ODOO_KEY]["credential"]["kind"], "user"
         )
 
+    def test_the_install_defaults_to_no_on_a_fixed_coturn_in_use(self):
+        # Installer le module serait refusé : la réponse par défaut garde
+        # le compte fixe que ce coturn accepte.
+        self.link = FakeLink(odoo_facts("uninstalled"))
+        host = FakeHost(state=plugged_state("user", (OTHER_KEY,)))
+        self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "", "o"])
+        self.assertIn(t("call_infra_hint_no"), self.prompts[len(ADD_WEB)])
+        self.assertNotIn("install_module", self.link.names())
+        self.assertEqual(
+            host.state["odoos"][ODOO_KEY]["credential"]["kind"], "user"
+        )
+
     def test_module_absent_explains_then_asks_the_fallback(self):
         self.link = FakeLink(odoo_facts("absent"))
         host = FakeHost(state=installed_state())
