@@ -9177,6 +9177,469 @@ class TestOdooPlan(OdooSandbox):
         self.assertEqual(caught.exception.values, {"step": "revoke"})
 
 
+# --- Vérification par serveur Odoo, et par la liste ICE d'Odoo --------------
+
+# Clés hexa et identifiants inventés de la vérification des serveurs Odoo.
+FIXED_KEY = "d" * 32
+OTHER_REALM = "autre.exemple.test"
+ICE_HOST = "turn.exemple.test"
+ICE_SECRET = "InventeSecretIce_0123456789abcdefghijklm"
+ICE_USER = "1893542400:odoo-u7"
+ICE_PASSWORD = tc.rest_credentials(ICE_SECRET, "odoo-u7", 1893542400)[1]
+
+
+def user_entry(user):
+    """La fiche d'un Odoo sans module : un compte fixe dans coturn."""
+    entry = secret_entry(SECRET_A)
+    entry.update(
+        module=False, rows=True, credential={"kind": "user", "user": user}
+    )
+    return entry
+
+
+def fixed_state(odoos=None):
+    state = installed_state()
+    state["turn_mode"] = "fixed"
+    state["odoos"] = dict(odoos or {})
+    return state
+
+
+def odoo_remote(state, secrets=(), users=(), key=CHECK_KEY, realm=REALM):
+    """Sortie de `check_remote_script` qui porte aussi les lignes de la
+    base de coturn : `@@TURN_SECRET <realm> <valeur>` et `@@TURN_USER
+    <realm> <nom> <clé>`."""
+    text = remote_output(state, {"coturn": "active", "ntfy": "active"}, key)
+    extra = [f"@@TURN_SECRET {realm} {value}\n" for value in secrets]
+    extra += [f"@@TURN_USER {realm} {n} {k}\n" for n, k in users]
+    return text.replace("@@END\n", "".join(extra) + "@@END\n")
+
+
+def rest_key(secret, now=NOW):
+    """(utilisateur, clé) que la vérification tire d'un secret de coturn."""
+    expiry = int(now.timestamp()) + ci.CHECK_REST_SECONDS
+    username, password = tc.rest_credentials(secret, ci.CHECK_USER, expiry)
+    return username, tc.long_term_key(username, REALM, password)
+
+
+class TestOdooCheck(unittest.TestCase):
+    """`check_local` sur un coturn où des serveurs Odoo sont branchés."""
+
+    def check(self, state, secrets=(), users=(), key=CHECK_KEY, **results):
+        self.allocate = FakeAllocate(**results)
+        facts = ci.parse_check_remote(odoo_remote(state, secrets, users, key))
+        return ci.check_local(
+            facts,
+            HOST,
+            None,
+            allocate=self.allocate,
+            https_get=FakeGet(),
+            now=NOW,
+        )
+
+    def calls_with(self, username, key):
+        return [
+            c
+            for c in self.allocate.calls
+            if c["username"] == username and c["key"] == key
+        ]
+
+    def test_one_line_per_odoo_one_failing_without_its_secret(self):
+        state = secret_state(
+            odoos={
+                KEY_B: secret_entry(SECRET_B),
+                KEY_A: secret_entry(SECRET_A),
+            }
+        )
+        lines = by_name(self.check(state, secrets=(CHECK_SECRET, SECRET_A)))
+        self.assertEqual(
+            lines["odoo-1"],
+            ci.CheckLine(
+                "odoo-1",
+                True,
+                "call_infra_check_odoo_relayed",
+                {"odoo": KEY_A, "relayed": "192.0.2.10:50000"},
+            ),
+        )
+        self.assertEqual(
+            lines["odoo-2"],
+            ci.CheckLine(
+                "odoo-2",
+                False,
+                "call_infra_check_odoo_no_secret",
+                {"odoo": KEY_B},
+            ),
+        )
+        (call,) = self.calls_with(*rest_key(SECRET_A))
+        self.assertEqual(
+            (call["host"], call["port"], call["transport"]),
+            (HOST, 3478, "udp"),
+        )
+        self.assertEqual(self.calls_with(*rest_key(SECRET_B)), [])
+
+    def test_odoo_lines_follow_the_turn_lines(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        names = [
+            line.name
+            for line in self.check(state, secrets=(CHECK_SECRET, SECRET_A))
+        ]
+        self.assertEqual(names[:3], ["turn-udp", "turn-tcp", "odoo-1"])
+
+    def test_secret_mode_checks_turn_with_the_check_secret(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        lines = by_name(self.check(state, secrets=(SECRET_A, CHECK_SECRET)))
+        self.assertTrue(lines["turn-udp"].ok)
+        self.assertTrue(lines["turn-tcp"].ok)
+        self.assertEqual(len(self.calls_with(*rest_key(CHECK_SECRET))), 2)
+        self.assertNotIn(
+            ci.CHECK_USER, [c["username"] for c in self.allocate.calls]
+        )
+
+    def test_secret_mode_without_the_check_secret_says_so(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        lines = by_name(self.check(state, secrets=(SECRET_A,)))
+        self.assertEqual(
+            lines["turn-udp"],
+            ci.CheckLine("turn-udp", None, "call_infra_check_no_secret"),
+        )
+        self.assertTrue(lines["odoo-1"].ok)
+
+    def test_production_private_line_uses_the_check_secret(self):
+        state = production_state()
+        state["turn_mode"] = "secret"
+        state["check_secret_sha256"] = sha(CHECK_SECRET)
+        seen = []
+
+        def permission(host, port, transport, username, key, peer, **kw):
+            seen.append((username, key))
+            return tc.Allocation(False, None, "403 Forbidden")
+
+        facts = ci.parse_check_remote(
+            odoo_remote(state, secrets=(CHECK_SECRET,), realm="exemple.test")
+        )
+        lines = by_name(
+            ci.check_local(
+                facts,
+                HOST,
+                None,
+                allocate=FakeAllocate(),
+                https_get=FakeGet(),
+                now=NOW,
+                permission=permission,
+            )
+        )
+        self.assertTrue(lines["private-denied"].ok)
+        expiry = int(NOW.timestamp()) + ci.CHECK_REST_SECONDS
+        username, password = tc.rest_credentials(
+            CHECK_SECRET, ci.CHECK_USER, expiry
+        )
+        self.assertEqual(
+            seen,
+            [(username, tc.long_term_key(username, "exemple.test", password))],
+        )
+
+    def test_fixed_odoo_allocates_with_its_user_key(self):
+        state = fixed_state({KEY_A: user_entry(USER_A)})
+        lines = by_name(self.check(state, users=((USER_A, FIXED_KEY),)))
+        self.assertEqual(
+            lines["odoo-1"].detail, "call_infra_check_odoo_relayed"
+        )
+        self.assertEqual(
+            len(self.calls_with(USER_A, bytes.fromhex(FIXED_KEY))), 1
+        )
+        # Le compte de contrôle long terme reste celui du mode fixe.
+        self.assertEqual(
+            len(self.calls_with(ci.CHECK_USER, bytes.fromhex(CHECK_KEY))), 2
+        )
+
+    def test_fixed_odoo_whose_user_is_gone(self):
+        state = fixed_state({KEY_A: user_entry(USER_A)})
+        lines = by_name(self.check(state))
+        self.assertEqual(
+            lines["odoo-1"],
+            ci.CheckLine(
+                "odoo-1",
+                False,
+                "call_infra_check_odoo_no_user",
+                {"odoo": KEY_A, "user": USER_A},
+            ),
+        )
+
+    def test_a_refused_allocation_names_the_odoo_and_the_error(self):
+        state = fixed_state({KEY_A: user_entry(USER_A)})
+        refused = tc.Allocation(False, None, "401 Unauthorized")
+        lines = by_name(
+            self.check(state, users=((USER_A, FIXED_KEY),), udp=refused)
+        )
+        self.assertEqual(
+            lines["odoo-1"],
+            ci.CheckLine(
+                "odoo-1",
+                False,
+                "call_infra_check_odoo_error",
+                {"odoo": KEY_A, "error": "401 Unauthorized"},
+            ),
+        )
+
+    def test_rows_of_another_realm_do_not_count(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        facts = ci.parse_check_remote(
+            odoo_remote(
+                state, secrets=(CHECK_SECRET, SECRET_A), realm=OTHER_REALM
+            )
+        )
+        lines = by_name(
+            ci.check_local(
+                facts,
+                HOST,
+                None,
+                allocate=FakeAllocate(),
+                https_get=FakeGet(),
+                now=NOW,
+            )
+        )
+        self.assertEqual(
+            lines["odoo-1"].detail, "call_infra_check_odoo_no_secret"
+        )
+        self.assertEqual(
+            lines["turn-udp"].detail, "call_infra_check_no_secret"
+        )
+
+    def test_no_secret_reaches_a_line(self):
+        state = secret_state(
+            odoos={KEY_A: secret_entry(SECRET_A), KEY_B: user_entry(USER_A)}
+        )
+        lines = self.check(
+            state,
+            secrets=(CHECK_SECRET, SECRET_A),
+            users=((USER_A, FIXED_KEY),),
+        )
+        text = repr(lines)
+        for secret in (CHECK_SECRET, SECRET_A, FIXED_KEY, CHECK_KEY):
+            self.assertNotIn(secret, text)
+
+    def test_parse_keeps_coturn_rows_and_drops_malformed_ones(self):
+        facts = ci.parse_check_remote(
+            f"@@TURN_SECRET {REALM} {SECRET_A}\n"
+            f"@@TURN_SECRET {REALM}\n"
+            f"@@TURN_SECRET {REALM} a b\n"
+            f"@@TURN_USER {REALM} {USER_A} {FIXED_KEY}\n"
+            f"@@TURN_USER {REALM} {USER_A} pas-hexa\n"
+            f"@@TURN_USER {REALM} {USER_A}\n"
+            "@@END\n"
+        )
+        self.assertEqual(facts["turn_secrets"], [(REALM, SECRET_A)])
+        self.assertEqual(facts["turn_users"], {(REALM, USER_A): FIXED_KEY})
+
+
+class TestOdooCheckRemoteRun(OdooSandbox):
+    """`check_remote_script` lit les secrets et les comptes de la vraie base
+    SQLite de coturn, en lecture seule."""
+
+    def test_reads_every_secret_and_user_of_the_database(self):
+        self.seed(
+            secrets=(SECRET_A, CHECK_SECRET), users=((USER_A, FIXED_KEY),)
+        )
+        con = sqlite3.connect(self.db)
+        con.execute(
+            "insert into turn_secret values (?, ?)", (OTHER_REALM, SECRET_B)
+        )
+        con.commit()
+        con.close()
+        self.put_state(secret_state(odoos={KEY_A: secret_entry(SECRET_A)}))
+        write(
+            os.path.join(self.stubs, "systemctl"),
+            "#!/bin/sh\n"
+            'case "$1 $2" in\n'
+            "  'cat coturn') exit 0 ;;\n"
+            "  'is-active coturn') echo active ;;\n"
+            "  'show -p') echo turnserver ;;\n"
+            "  *) exit 3 ;;\n"
+            "esac\n",
+        )
+        before = self.secrets(), self.users()
+        done = self.run_script(ci.check_remote_script(root=self.root))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        facts = ci.parse_check_remote(done.stdout)
+        self.assertEqual(
+            sorted(facts["turn_secrets"]),
+            sorted(
+                [
+                    (REALM, SECRET_A),
+                    (REALM, CHECK_SECRET),
+                    (OTHER_REALM, SECRET_B),
+                ]
+            ),
+        )
+        self.assertEqual(
+            facts["turn_users"],
+            {(REALM, ci.CHECK_USER): "c" * 32, (REALM, USER_A): FIXED_KEY},
+        )
+        self.assertEqual(facts["check_key"], "c" * 32)
+        self.assertEqual((self.secrets(), self.users()), before)
+        reads = [a for a in self.argv() if a.startswith("sqlite3 ")]
+        self.assertTrue(reads)
+        self.assertTrue(all("-readonly" in a for a in reads), reads)
+
+
+def ice_server(url, username=ICE_USER, credential=ICE_PASSWORD):
+    entry = {"urls": url}
+    if username is not None:
+        entry["username"] = username
+    if credential is not None:
+        entry["credential"] = credential
+    return entry
+
+
+ICE_LIST = [
+    {"urls": f"stun:{ICE_HOST}:3478"},
+    ice_server(f"turn:{ICE_HOST}:3478?transport=udp"),
+    ice_server(f"turn:{ICE_HOST}:3478?transport=tcp"),
+    ice_server(f"turns:{ICE_HOST}:5349?transport=tcp"),
+]
+
+
+class TestCheckThroughOdoo(unittest.TestCase):
+    """`check_through_odoo` : la liste ICE qu'Odoo remet à un appelant,
+    allouée telle quelle."""
+
+    def run_check(self, ice, **kw):
+        self.allocate = kw.pop("allocate", None) or FakeAllocate()
+        kw.setdefault("now", NOW)
+        return ci.check_through_odoo(
+            ice,
+            REALM,
+            kw.pop("address", None),
+            kw.pop("cafile", None),
+            allocate=self.allocate,
+            **kw,
+        )
+
+    def test_every_turn_url_is_allocated_and_stun_is_skipped(self):
+        lines = self.run_check(ICE_LIST, cafile="/ca.pem")
+        self.assertEqual(
+            [(c["transport"], c["port"]) for c in self.allocate.calls],
+            [("udp", 3478), ("tcp", 3478), ("tls", 5349)],
+        )
+        key = tc.long_term_key(ICE_USER, REALM, ICE_PASSWORD)
+        for call in self.allocate.calls:
+            self.assertEqual(
+                (call["host"], call["username"]), (ICE_HOST, ICE_USER)
+            )
+            self.assertEqual(call["key"], key)
+        self.assertEqual(
+            [(c["cafile"], c["server_name"]) for c in self.allocate.calls],
+            [(None, None), (None, None), ("/ca.pem", ICE_HOST)],
+        )
+        self.assertEqual(
+            [line.name for line in lines],
+            [
+                f"odoo-ice-turn:{ICE_HOST}:3478?transport=udp",
+                f"odoo-ice-turn:{ICE_HOST}:3478?transport=tcp",
+                f"odoo-ice-turns:{ICE_HOST}:5349?transport=tcp",
+            ],
+        )
+        self.assertEqual(
+            lines[0].values,
+            {
+                "url": f"turn:{ICE_HOST}:3478?transport=udp",
+                "relayed": "192.0.2.10:50000",
+            },
+        )
+        self.assertTrue(all(line.ok for line in lines))
+
+    def test_credentials_are_never_in_a_line(self):
+        refused = tc.Allocation(False, None, "401 Unauthorized")
+        for allocate in (FakeAllocate(), FakeAllocate(udp=refused)):
+            text = repr(self.run_check(ICE_LIST, allocate=allocate))
+            self.assertNotIn(ICE_PASSWORD, text)
+            self.assertNotIn(ICE_USER, text)
+
+    def test_an_expired_username_reads_false_with_the_reason(self):
+        expired = f"{int(NOW.timestamp()) - 60}:odoo-u7"
+        refused = tc.Allocation(False, None, "401 Unauthorized")
+        (line,) = self.run_check(
+            [ice_server(f"turn:{ICE_HOST}:3478", username=expired)],
+            allocate=FakeAllocate(udp=refused),
+        )
+        self.assertFalse(line.ok)
+        self.assertEqual(line.detail, "call_infra_check_ice_expired")
+        self.assertEqual(line.values["error"], "401 Unauthorized")
+        self.assertEqual(line.values["url"], f"turn:{ICE_HOST}:3478")
+
+    def test_a_refusal_before_expiry_is_an_error(self):
+        refused = tc.Allocation(False, None, "401 Unauthorized")
+        (line,) = self.run_check(
+            [ice_server(f"turn:{ICE_HOST}:3478?transport=udp")],
+            allocate=FakeAllocate(udp=refused),
+        )
+        self.assertEqual(
+            line,
+            ci.CheckLine(
+                f"odoo-ice-turn:{ICE_HOST}:3478?transport=udp",
+                False,
+                "call_infra_check_ice_error",
+                {
+                    "url": f"turn:{ICE_HOST}:3478?transport=udp",
+                    "error": "401 Unauthorized",
+                },
+            ),
+        )
+
+    def test_urls_as_a_list_defaults_and_an_address_override(self):
+        entry = ice_server(
+            [
+                f"turn:{ICE_HOST}",
+                f"turns:{ICE_HOST}",
+                "turn:[2001:db8::5]:3479",
+            ]
+        )
+        self.run_check([entry], address="192.0.2.10")
+        self.assertEqual(
+            [
+                (c["host"], c["port"], c["transport"], c["server_name"])
+                for c in self.allocate.calls
+            ],
+            [
+                ("192.0.2.10", 3478, "udp", None),
+                ("192.0.2.10", 5349, "tls", ICE_HOST),
+                ("192.0.2.10", 3479, "udp", None),
+            ],
+        )
+
+    def test_ipv6_host_without_override(self):
+        self.run_check([ice_server("turn:[2001:db8::5]:3478?transport=tcp")])
+        self.assertEqual(self.allocate.calls[0]["host"], "2001:db8::5")
+
+    def test_odoo_handing_no_turn_url(self):
+        for ice in (False, None, [], [{"urls": f"stun:{ICE_HOST}:3478"}]):
+            self.assertEqual(
+                self.run_check(ice),
+                [ci.CheckLine("odoo-ice", False, "call_infra_check_ice_none")],
+            )
+            self.assertEqual(self.allocate.calls, [])
+
+    def test_missing_credential_bad_url_and_foreign_host(self):
+        lines = self.run_check(
+            [
+                ice_server(f"turn:{ICE_HOST}:3478", credential=None),
+                ice_server("turn:relais.autre.test:3478"),
+                ice_server(f"turns:{ICE_HOST}:5349?transport=udp"),
+                ice_server("pas une url"),
+            ],
+            turn_host=ICE_HOST.upper(),
+        )
+        self.assertEqual(
+            [(line.ok, line.detail) for line in lines],
+            [
+                (False, "call_infra_check_ice_no_credential"),
+                (None, "call_infra_check_ice_foreign"),
+                (None, "call_infra_check_ice_bad_url"),
+                (None, "call_infra_check_ice_bad_url"),
+            ],
+        )
+        self.assertEqual(self.allocate.calls, [])
+
+
 class TestStdlibOnly(unittest.TestCase):
     ALLOWED_SIBLINGS = {
         "script.todo.ntfy_mobile",
