@@ -10523,6 +10523,896 @@ class TestContainerPlan(unittest.TestCase):
         self.assertIn("turn.exemple.test", script)
 
 
+# --- Script d'installation en conteneurs ------------------------------------
+
+# Chaque bouchon note son argv dans "$LOG/argv", précédé du compte sous
+# lequel `runuser` l'a lancé et de son XDG_RUNTIME_DIR. L'état simulé de
+# l'hôte (comptes, paquets, images, conteneurs) vit dans "$FK".
+_NOTE = (
+    '#!/bin/sh\nprintf "%s\\n" "${0##*/} as=${FAKE_AS:-root}'
+    ' xdg=${XDG_RUNTIME_DIR:-} $*" >> "$LOG/argv"\n'
+)
+_COMPOSE_UP = r"""
+case " $* " in *" up "*)
+  for s in coturn ntfy; do
+    if grep -q "container_name: erplibre-call-$s" \
+        "$ROOT/etc/erplibre-call/compose.yml"; then
+      eval "st=\${FAKE_STATUS_$s:-running}"
+      echo "$st" > "$FK/container.erplibre-call-$s"
+    fi
+  done ;;
+esac
+exit 0
+"""
+CONTAINER_STUBS = {
+    "docker": _NOTE
+    + r"""
+case "$1" in
+  image) grep -qxF "$3" "$FK/images" 2>/dev/null; exit ;;
+  pull)
+    if [ -n "${FAKE_PULL_OUT:-}" ]; then echo "$FAKE_PULL_OUT"; exit 1; fi
+    echo "$2" >> "$FK/images"; exit 0 ;;
+  inspect) [ -f "$FK/container.$4" ] || exit 1; cat "$FK/container.$4"
+    exit 0 ;;
+  exec)
+    case " $* " in
+      *" list "*) [ -f "$FK/admin" ] \
+          && echo "user erplibre (role: admin, tier: none)" >&2; exit 0 ;;
+      *" add "*) [ -n "${NTFY_PASSWORD:-}" ] || exit 1
+        printf %s "$NTFY_PASSWORD" > "$FK/password"; touch "$FK/admin"
+        exit 0 ;;
+    esac
+    exit 0 ;;
+  compose) ;;
+  *) exit 0 ;;
+esac
+"""
+    + _COMPOSE_UP,
+    "docker-compose": _NOTE + _COMPOSE_UP,
+    "podman-compose": _NOTE + _COMPOSE_UP,
+    "runuser": _NOTE
+    + '[ "$1" = -u ] && [ "$3" = -- ] || exit 97\n'
+    + 'FAKE_AS=$2; export FAKE_AS; shift 3\nexec "$@"\n',
+    "systemctl": _NOTE
+    + r"""
+if [ "$1" = --user ]; then
+  shift
+  [ "$1" = is-enabled ] || exit 0
+  echo "${FAKE_USER_RESTART:-disabled}"; exit 0
+fi
+v=$(printf %s "$2" | tr -- '-.@' '___')
+case "$1" in
+  is-enabled) eval "s=\${ENABLED_$v:-enabled}"; echo "$s"
+    [ "$s" = enabled ]; exit ;;
+  is-active) eval "s=\${ACTIVE_$v:-active}"; echo "$s"
+    [ "$s" = active ]; exit ;;
+esac
+exit 0
+""",
+    "getent": '#!/bin/sh\n[ "$1" = passwd ] || exit 2\n'
+    'grep "^$2:" "$FK/passwd" 2>/dev/null || exit 2\n',
+    "useradd": _NOTE
+    + r"""
+for last; do :; done
+id=$(printf '%s\n' $FAKE_IDS | sed -n "s/^$last://p")
+echo "$last:x:$id:$id::/nonexistent:/usr/sbin/nologin" >> "$FK/passwd"
+""",
+    "usermod": _NOTE
+    + r"""
+case "$1" in --add-subuids) f=subuid ;; --add-subgids) f=subgid ;;
+  *) exit 97 ;; esac
+start=${2%-*}; end=${2#*-}
+mkdir -p "$ROOT/etc"
+echo "$3:$start:$((end - start + 1))" >> "$ROOT/etc/$f"
+""",
+    "loginctl": _NOTE
+    + r"""
+[ "$1" = enable-linger ] || exit 97
+mkdir -p "$ROOT/var/lib/systemd/linger"; touch "$ROOT/var/lib/systemd/linger/$2"
+id=$(grep "^$2:" "$FK/passwd" | cut -d: -f3)
+mkdir -p "$ROOT/run/user/$id"
+""",
+    "apt-get": _NOTE
+    + r"""
+[ "$1" = install ] || exit 0
+for p; do case "$p" in -*|install) ;; *) echo "$p" >> "$FK/installed" ;;
+  esac; done
+exit "${FAKE_APT_RC:-0}"
+""",
+    "dpkg-query": "#!/bin/sh\nfor p; do :; done\n"
+    'grep -qxF "$p" "$FK/installed" 2>/dev/null || exit 1\n'
+    'echo "install ok installed"\n',
+    "chown": _NOTE,
+    "sleep": _NOTE,
+    "id": "#!/bin/sh\nexit 0\n",
+}
+# Commandes que le script n'a pas à lancer ici : chacune note son appel et
+# échoue.
+for _name in (
+    "pacman",
+    "sudo",
+    "sqlite3",
+    "timeout",
+    "userdel",
+    "gpasswd",
+    "groupadd",
+    "podman",
+):
+    CONTAINER_STUBS.setdefault(_name, _NOTE + "exit 97\n")
+# Podman répond comme Docker, sauf `image exists` (même place pour la
+# référence).
+CONTAINER_STUBS["podman"] = CONTAINER_STUBS["docker"]
+# Les installateurs : TURN_*/NTFY_* notés par passage ; celui de coturn,
+# en conteneurs, imprime `@@RECREATE` (FAKE_RECREATE_<n>, sinon
+# FAKE_RECREATE, sinon 1) et pose alors l'empreinte en attente.
+STUB_BASH_CONTAINER = r"""#!/bin/sh
+name=$(basename "$1" .sh)
+tag=$name${NGINX_STAGE:+-$NGINX_STAGE}
+n=0
+while [ -e "$LOG/$tag.$n.env" ]; do n=$((n + 1)); done
+env | grep -E '^(TURN|NTFY|NGINX|CERTBOT)_' | sort > "$LOG/$tag.$n.env"
+echo "bash $tag" >> "$LOG/argv"
+[ -f "$OUT/$tag" ] && cat "$OUT/$tag"
+if [ "$name" = install_coturn ] && [ "${TURN_TARGET:-}" = container ]; then
+  eval "r=\${FAKE_RECREATE_$n:-\${FAKE_RECREATE:-1}}"
+  if [ "$r" = 1 ]; then
+    mkdir -p "$ROOT/etc/erplibre-call"
+    echo "empreinte-$n" \
+        > "$ROOT/etc/erplibre-call/coturn.applied.erplibre-pending"
+  fi
+  echo "@@RECREATE $r"
+  echo "@@CONFIGURED coturn"
+fi
+v=$(echo "$tag" | tr -- '-.' '__')
+eval "exit \${RC_$v:-0}"
+"""
+FAKE_IDS = "erplibre-coturn:997 ntfy:996 erplibre-call:995 turnserver:998"
+
+
+class TestContainerInstallRun(unittest.TestCase):
+    """Le script d'installation en conteneurs joué dans une racine
+    temporaire : moteur, comptes, images, configurations, fichier compose,
+    barrière des conteneurs et état. Moteurs et outils système en bouchons
+    devant le PATH : aucun vrai docker ni podman n'est joignable."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        names = ("root", "log", "fk", "out", "stubs", "scratch")
+        for name in names:
+            setattr(self, name, os.path.join(tmp.name, name))
+            os.makedirs(getattr(self, name))
+        for name, text in CONTAINER_STUBS.items():
+            write(os.path.join(self.stubs, name), text)
+        write(os.path.join(self.stubs, "bash"), STUB_BASH_CONTAINER)
+        write(self.path("/etc/os-release"), "ID=debian\n", 0o644)
+
+    def path(self, host_path):
+        return self.root + host_path
+
+    def read(self, path):
+        with open(path) as handle:
+            return handle.read()
+
+    def run_script(self, plan, outputs=None, **env):
+        for tag, text in (outputs or {}).items():
+            write(os.path.join(self.out, tag), text, 0o644)
+        script = ci.install_script(plan, STAMP, root=self.root)
+        full = dict(
+            os.environ,
+            PATH=self.stubs + ":" + os.environ["PATH"],
+            LOG=self.log,
+            FK=self.fk,
+            OUT=self.out,
+            ROOT=self.root,
+            TMPDIR=self.scratch,
+            FAKE_IDS=FAKE_IDS,
+        )
+        # Le compte qui lance les tests a sa propre session : les bouchons
+        # ne doivent voir que celle que `runuser` leur donne.
+        full.pop("XDG_RUNTIME_DIR", None)
+        full.pop("NTFY_PASSWORD", None)
+        full.update(env)
+        if os.path.exists(os.path.join(self.log, "argv")):
+            os.remove(os.path.join(self.log, "argv"))
+        return subprocess.run(
+            ["sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=full,
+            timeout=60,
+            start_new_session=True,
+        )
+
+    def argv(self):
+        path = os.path.join(self.log, "argv")
+        return self.read(path).splitlines() if os.path.exists(path) else []
+
+    def env_of(self, tag, n=0):
+        return dict(
+            line.split("=", 1)
+            for line in self.read(
+                os.path.join(self.log, f"{tag}.{n}.env")
+            ).splitlines()
+        )
+
+    def state(self):
+        return json.loads(self.read(self.path(ci.STATE_PATH)))
+
+    def assert_no_state(self, done):
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+        self.assertEqual(ci.marker_lines(done.stdout)[-1], ("SAVED", "no"))
+
+    def fresh_docker(self, **changes):
+        ans = container_answers(install_engine=True, **changes)
+        facts = base_facts(engines=cc.EngineFacts())
+        return ci.plan_install(facts, ans, NOW)
+
+    def rootless_plan(self, **changes):
+        ans = container_answers(
+            engine="podman", rootless=True, install_engine=True, **changes
+        )
+        return ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
+
+    def test_docker_fresh_dev_install(self):
+        plan = self.fresh_docker()
+        self.assertEqual(plan.engine_packages, ("docker.io", "docker-compose"))
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        self.assertIn(
+            "apt-get as=root xdg= install -y --no-install-recommends"
+            " docker.io docker-compose",
+            argv,
+        )
+        for svc in ("coturn", "ntfy"):
+            self.assertIn(f"docker as=root xdg= pull {cc.IMAGES[svc]}", argv)
+        self.assertIn(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d",
+            argv,
+        )
+        self.assertFalse([line for line in argv if "--force-recreate" in line])
+        coturn = self.env_of("install_coturn")
+        self.assertEqual(coturn["TURN_TARGET"], "container")
+        self.assertEqual(coturn["TURN_SERVICE_USER"], "erplibre-coturn")
+        # Les comptes manquants sont créés comme install_ntfy.sh crée
+        # « ntfy », sans connexion.
+        for account in ("erplibre-coturn", "ntfy"):
+            self.assertIn(
+                "useradd as=root xdg= --system --no-create-home"
+                f" --shell /usr/sbin/nologin {account}",
+                argv,
+            )
+        state = self.state()
+        self.assertEqual(state["version"], 2)
+        self.assertEqual(state["method"], "container")
+        block = state["container"]
+        self.assertEqual(
+            sorted(block["images_pulled"]), sorted(cc.IMAGES.values())
+        )
+        self.assertEqual(
+            block["engine_packages_added"], ["docker.io", "docker-compose"]
+        )
+        self.assertEqual(block["accounts_added"], ["erplibre-coturn", "ntfy"])
+        self.assertIsNone(block["restart_unit_enabled"])
+        self.assertIsNone(cc.container_block_problem(state))
+        self.assertEqual(
+            (
+                state["services"]["coturn"]["uid"],
+                state["services"]["coturn"]["gid"],
+            ),
+            (997, 997),
+        )
+        self.assertEqual(state["services"]["ntfy"]["uid"], 996)
+        # Le passage root et la relecture de sa sortie donnent le même état.
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+        compose = self.path(cc.COMPOSE_FILE)
+        self.assertEqual(
+            self.read(compose),
+            cc.compose_resolved(
+                plan.compose, {"coturn": "997:997", "ntfy": "996:996"}
+            ),
+        )
+        self.assertEqual(stat.S_IMODE(os.stat(compose).st_mode), 0o640)
+        self.assertIn(f"chown as=root xdg= root:root {compose}.new", argv)
+        # Les données de ntfy sont au compte de son conteneur.
+        for path in (ci.NTFY_DATA_DIR, ci.NTFY_CACHE_DIR):
+            self.assertTrue(os.path.isdir(self.path(path)))
+            self.assertIn(
+                f"chown as=root xdg= -R 996:996 {self.path(path)}", argv
+            )
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_CONFIG)), plan.configs["ntfy"]
+        )
+        # L'empreinte en attente devient celle que coturn sert.
+        self.assertEqual(
+            self.read(self.path(ci.COTURN_APPLIED)).strip(), "empreinte-0"
+        )
+        self.assertFalse(os.path.exists(self.path(ci.COTURN_APPLIED_PENDING)))
+        self.assertFalse(
+            os.path.exists(self.path(ci.PENDING_DIR + "/container.json"))
+        )
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("ACTIVE", "coturn active"), markers)
+        self.assertIn(("ACTIVE", "ntfy active"), markers)
+        self.assertEqual(markers[-1], ("SAVED", "yes"))
+        self.assertEqual(os.listdir(self.scratch), [])
+
+    def test_admin_password_only_in_the_environment(self):
+        plan = self.fresh_docker()
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        passwords = [
+            v for n, v in ci.marker_lines(done.stdout) if n == "ADMIN_PASSWORD"
+        ]
+        self.assertEqual(len(passwords), 1)
+        self.assertEqual(
+            self.read(os.path.join(self.fk, "password")), passwords[0]
+        )
+        self.assertNotIn(passwords[0], "\n".join(self.argv()))
+        adds = [line for line in self.argv() if " add --role=admin " in line]
+        self.assertEqual(
+            adds,
+            [
+                "docker as=root xdg= exec -e NTFY_PASSWORD -u 996:996"
+                " erplibre-call-ntfy ntfy user --config /etc/ntfy/server.yml"
+                " add --role=admin erplibre"
+            ],
+        )
+        # Un compte déjà là n'est pas recréé.
+        done = self.run_script(plan)
+        self.assertFalse(
+            [
+                n
+                for n, _v in ci.marker_lines(done.stdout)
+                if n == "ADMIN_PASSWORD"
+            ]
+        )
+
+    def test_pull_rate_limit_stops_before_anything(self):
+        plan = self.fresh_docker()
+        done = self.run_script(
+            plan,
+            FAKE_PULL_OUT="toomanyrequests: You have reached your rate limit",
+        )
+        self.assert_no_state(done)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("PULL_FAILED", "coturn rate-limit"), markers)
+        argv = self.argv()
+        self.assertFalse([line for line in argv if line.startswith("bash ")])
+        self.assertFalse([line for line in argv if " compose " in line])
+        self.assertFalse(os.path.exists(self.path(cc.COMPOSE_FILE)))
+        # Les fiches des services disent la méthode du passage coupé.
+        origin = json.loads(
+            self.read(self.path(ci.PENDING_DIR + "/coturn.json"))
+        )
+        self.assertEqual(origin["method"], "container")
+        # Ce que le passage a déjà ajouté reste consigné dans la fiche, que
+        # la désinstallation sans état signale.
+        fiche = json.loads(
+            self.read(self.path(ci.PENDING_DIR + "/container.json"))
+        )
+        listed = subprocess.run(
+            ["sh", "-c", ci.uninstall_script(None, False, STAMP, self.root)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertIn(("PENDING", "container"), ci.marker_lines(listed.stdout))
+        self.assertEqual(
+            fiche,
+            {
+                "accounts_added": ["erplibre-coturn", "ntfy"],
+                "engine_packages_added": ["docker.io", "docker-compose"],
+                "images_pulled": [],
+                "linger_added": False,
+                "restart_unit_enabled": None,
+            },
+        )
+
+    def test_pull_failure_other_than_the_registry_limit(self):
+        done = self.run_script(
+            self.fresh_docker(), FAKE_PULL_OUT="dial tcp: no such host"
+        )
+        self.assert_no_state(done)
+        self.assertIn(
+            ("PULL_FAILED", "coturn failed"), ci.marker_lines(done.stdout)
+        )
+
+    def test_fiche_carried_into_the_next_plan(self):
+        fiche = {
+            "accounts_added": ["erplibre-coturn", "root"],
+            "engine_packages_added": ["docker.io", "x;y"],
+            "images_pulled": [cc.IMAGES["coturn"], "autre/image"],
+            "linger_added": False,
+            "restart_unit_enabled": "docker.service",
+        }
+        ans = container_answers(install_engine=True)
+        facts = base_facts(engines=engine_facts(), container_pending=fiche)
+        block = ci.plan_install(facts, ans, NOW).new_state["container"]
+        self.assertEqual(block["accounts_added"], ["erplibre-coturn"])
+        self.assertEqual(block["engine_packages_added"], ["docker.io"])
+        self.assertEqual(block["images_pulled"], [cc.IMAGES["coturn"]])
+        self.assertEqual(block["restart_unit_enabled"], "docker.service")
+        # Une relance qui n'aurait rien d'autre à faire écrit l'état.
+        installed = container_installed(ans)
+        self.assertTrue(ci.plan_install(installed, ans, NOW).nothing_to_do)
+        pending = dataclasses.replace(installed, container_pending=fiche)
+        self.assertFalse(ci.plan_install(pending, ans, NOW).nothing_to_do)
+        # La sonde relit la fiche.
+        output = DEBIAN_PROBE.replace(
+            "@@END",
+            "@@PENDING container " + b64(json.dumps(fiche)) + "\n@@END",
+        )
+        self.assertEqual(ci.parse_probe(output).container_pending, fiche)
+
+    def test_engine_unit_enabled_only_when_it_was_not(self):
+        plan = self.fresh_docker()
+        done = self.run_script(
+            plan,
+            ENABLED_docker_service="disabled",
+            ACTIVE_docker_service="inactive",
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        self.assertIn("systemctl as=root xdg= enable docker.service", argv)
+        self.assertIn("systemctl as=root xdg= start docker.service", argv)
+        self.assertEqual(
+            self.state()["container"]["restart_unit_enabled"], "docker.service"
+        )
+        ans = container_answers(engine="podman")
+        plan = ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
+        done = self.run_script(plan, ENABLED_podman_restart_service="disabled")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        self.assertIn(
+            "systemctl as=root xdg= enable podman-restart.service", argv
+        )
+        self.assertNotIn(
+            "systemctl as=root xdg= start podman-restart.service", argv
+        )
+        self.assertTrue(
+            [line for line in argv if line.startswith("podman as=root ")]
+        )
+        self.assertEqual(
+            self.state()["container"]["restart_unit_enabled"],
+            "podman-restart.service",
+        )
+
+    def test_rootless_runs_every_podman_call_under_its_account(self):
+        write(self.path("/etc/subuid"), "autre:100000:65536\n", 0o644)
+        plan = self.rootless_plan()
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        engine = [
+            line
+            for line in argv
+            if line.split()[0] in ("podman", "podman-compose")
+        ]
+        self.assertTrue(engine)
+        for line in engine:
+            self.assertTrue(
+                line.split()[1:3] == ["as=erplibre-call", "xdg=/run/user/995"],
+                line,
+            )
+        for line in argv:
+            if line.startswith("runuser "):
+                self.assertTrue(
+                    line.startswith(
+                        "runuser as=root xdg= -u erplibre-call -- env"
+                        " XDG_RUNTIME_DIR=/run/user/995"
+                        " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus "
+                    ),
+                    line,
+                )
+        self.assertIn(
+            "useradd as=root xdg= --system --create-home --home-dir"
+            " /var/lib/erplibre-call-podman --shell /usr/sbin/nologin"
+            " erplibre-call",
+            argv,
+        )
+        # La plage subordonnée commence après la plus haute déjà donnée.
+        self.assertIn(
+            "usermod as=root xdg= --add-subuids 165536-231071 erplibre-call",
+            argv,
+        )
+        self.assertIn(
+            "usermod as=root xdg= --add-subgids 100000-165535 erplibre-call",
+            argv,
+        )
+        self.assertIn(
+            "loginctl as=root xdg= enable-linger erplibre-call", argv
+        )
+        self.assertIn(
+            "systemctl as=erplibre-call xdg=/run/user/995 --user enable"
+            " podman-restart.service",
+            argv,
+        )
+        self.assertIn(
+            "podman-compose as=erplibre-call xdg=/run/user/995 -f"
+            " /etc/erplibre-call/compose.yml -p erplibre-call up -d",
+            argv,
+        )
+        compose = self.read(self.path(cc.COMPOSE_FILE))
+        self.assertEqual(compose.count('user: "995:995"'), 2)
+        self.assertEqual(compose.count("userns_mode: keep-id"), 2)
+        self.assertIn(
+            f"chown as=root xdg= root:995 {self.path(cc.COMPOSE_FILE)}.new",
+            argv,
+        )
+        state = self.state()
+        block = state["container"]
+        self.assertEqual(
+            (block["account"], block["uid"]), ("erplibre-call", 995)
+        )
+        self.assertTrue(block["linger_added"])
+        self.assertEqual(block["restart_unit_enabled"], "user")
+        self.assertEqual(block["accounts_added"], ["erplibre-call"])
+        self.assertEqual(
+            self.env_of("install_coturn")["TURN_SERVICE_USER"], "erplibre-call"
+        )
+        self.assertIsNone(cc.container_block_problem(state))
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+
+    def test_rootless_session_that_never_appears_stops(self):
+        # loginctl n'ouvre ici aucune session : la relance n'attend que
+        # 30 s simulées (sleep en bouchon) puis s'arrête.
+        write(
+            os.path.join(self.stubs, "loginctl"),
+            _NOTE + "exit 0\n",
+        )
+        done = self.run_script(self.rootless_plan())
+        self.assert_no_state(done)
+        self.assertIn(
+            ("FAILED", "rootless-session"), ci.marker_lines(done.stdout)
+        )
+        self.assertEqual(
+            len([line for line in self.argv() if line.startswith("sleep ")]),
+            30,
+        )
+
+    def test_no_docker_group_nor_dropped_capability(self):
+        plans = [
+            self.fresh_docker(),
+            self.rootless_plan(),
+            ci.plan_install(
+                base_facts(engines=engine_facts()),
+                container_answers(engine="podman"),
+                NOW,
+            ),
+        ]
+        for plan in plans:
+            script = ci.install_script(plan, STAMP)
+            for word in (
+                "usermod -aG",
+                "gpasswd",
+                "no-new-privileges",
+                "docker group",
+            ):
+                self.assertNotIn(word, script)
+            self.assertNotIn("no-new-privileges", plan.compose)
+
+    def test_exited_container_writes_no_state_and_drops_the_digest(self):
+        done = self.run_script(
+            self.fresh_docker(), FAKE_STATUS_coturn="exited"
+        )
+        self.assert_no_state(done)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("ACTIVE", "coturn exited"), markers)
+        self.assertIn(("ACTIVE", "ntfy active"), markers)
+        self.assertFalse(os.path.exists(self.path(ci.COTURN_APPLIED_PENDING)))
+        self.assertFalse(os.path.exists(self.path(ci.COTURN_APPLIED)))
+        self.assertTrue(
+            os.path.exists(self.path(ci.PENDING_DIR + "/container.json"))
+        )
+
+    def rerun_plan(self, ans):
+        """Plan de la relance, de l'état que le premier passage a écrit."""
+        facts = dataclasses.replace(
+            container_installed(ans), state=self.state()
+        )
+        return ci.plan_install(facts, ans, NOW)
+
+    def test_second_run_pulls_nothing_and_recreates_nothing(self):
+        ans = container_answers(install_engine=True)
+        first = self.run_script(self.fresh_docker())
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="0")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        self.assertFalse([line for line in argv if " pull " in line])
+        self.assertFalse([line for line in argv if " up " in line + " "])
+        self.assertFalse(
+            [line for line in argv if line.startswith("useradd ")]
+        )
+        self.assertFalse(
+            [line for line in argv if line.startswith("apt-get ")]
+        )
+        block = self.state()["container"]
+        # Ce que le premier passage a ajouté reste consigné.
+        self.assertEqual(
+            sorted(block["images_pulled"]), sorted(cc.IMAGES.values())
+        )
+        self.assertEqual(block["accounts_added"], ["erplibre-coturn", "ntfy"])
+
+    def test_changed_coturn_config_recreates_only_coturn(self):
+        ans = container_answers(install_engine=True)
+        first = self.run_script(self.fresh_docker())
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        ups = [line for line in self.argv() if " up " in line + " "]
+        self.assertEqual(
+            ups,
+            [
+                "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+                " -p erplibre-call up -d --force-recreate coturn"
+            ],
+        )
+
+    def test_stopped_container_is_brought_up(self):
+        first = self.run_script(self.fresh_docker())
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        write(
+            os.path.join(self.fk, "container.erplibre-call-ntfy"), "exited\n"
+        )
+        ans = container_answers(install_engine=True)
+        done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="0")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        ups = [line for line in self.argv() if " up " in line + " "]
+        self.assertEqual(
+            ups,
+            [
+                "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+                " -p erplibre-call up -d"
+            ],
+        )
+
+    def test_production_letsencrypt_second_pass_recreates_coturn_once(self):
+        ans = coturn_only(method="container", engine="docker")
+        plan = ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        passes = [line for line in argv if line == "bash install_coturn"]
+        self.assertEqual(len(passes), 2)
+        second = self.env_of("install_coturn", 1)
+        self.assertEqual(second["TURN_TARGET"], "container")
+        self.assertEqual(second["TURN_SERVICE_USER"], "erplibre-coturn")
+        self.assertEqual(
+            second["TURN_CERT_FILE"], self.path(LINEAGE) + "/fullchain.pem"
+        )
+        recreate = [line for line in argv if "--force-recreate coturn" in line]
+        self.assertEqual(len(recreate), 1)
+        self.assertLess(argv.index(passes[0]), argv.index(recreate[0]))
+        self.assertLess(
+            [
+                i
+                for i, line in enumerate(argv)
+                if line == "bash install_coturn"
+            ][1],
+            argv.index(recreate[0]),
+        )
+        self.assertEqual(
+            self.read(self.path(ci.COTURN_APPLIED)).strip(), "empreinte-1"
+        )
+        self.assertEqual(self.state()["version"], 2)
+
+    def test_pull_classification_matches_the_python_rule(self):
+        # Une seule liste de sorties pour la règle Python et sa copie shell.
+        samples = [
+            "toomanyrequests: You have reached your pull rate limit",
+            "Error response from daemon: TOOMANYREQUESTS",
+            "reading manifest: received 429 Too Many",
+            "status\t429\tToo Many",
+            "HTTP/429",
+            "429",
+            "at429 y",
+            "size 14290 bytes",
+            "dial tcp: lookup registry: no such host",
+            "",
+        ]
+        plan = self.fresh_docker()
+        helpers = ci._container_helper_lines(
+            plan, ci.written_state(plan, STAMP)
+        )
+        start = helpers.index("pullclass() {")
+        script = "\n".join(helpers[start : helpers.index("}", start) + 1])
+        for text in samples:
+            with self.subTest(text=text):
+                sample = os.path.join(self.scratch, "sortie")
+                write(sample, text + "\n", 0o644)
+                done = subprocess.run(
+                    ["sh", "-c", f'{script}\npullclass "$1"', "sh", sample],
+                    capture_output=True,
+                    text=True,
+                    env=dict(
+                        os.environ, PATH=self.stubs + ":" + os.environ["PATH"]
+                    ),
+                    timeout=30,
+                )
+                self.assertEqual(done.stdout.strip(), cc.classify_pull(text))
+
+
+class TestContainerRunFields(unittest.TestCase):
+    """La fonction `cjson` du script et `installed_state` lisent les mêmes
+    marqueurs de la même façon, lignes mal formées comprises."""
+
+    LINES = (
+        f"@@IMAGE_PULLED {cc.IMAGES['coturn']}",
+        "@@IMAGE_PULLED autre/image:1",
+        f"@@IMAGE_PULLED {cc.IMAGES['coturn']}",
+        "@@ENGINE_PACKAGE podman",
+        "@@ENGINE_PACKAGE deux mots",
+        "@@ENGINE_PACKAGE *",
+        "@@ENGINE_PACKAGE uidmap",
+        "@@ACCOUNT_ADDED erplibre-call",
+        "@@ACCOUNT_ADDED root",
+        "@@RESTART_UNIT_ENABLED user",
+        "@@RESTART_UNIT_ENABLED autre.service",
+        "@@LINGER_ADDED erplibre-call",
+        "@@SERVICE_ACCOUNT coturn erplibre-call 995 995",
+        "@@SERVICE_ACCOUNT ntfy erplibre-call 995 995",
+        "@@SERVICE_ACCOUNT ntfy erplibre-call 0 995",
+        "@@SERVICE_ACCOUNT coturn autre 1 1",
+    )
+
+    def test_shell_and_python_agree(self):
+        ans = container_answers(engine="podman", rootless=True)
+        plan = ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
+        state = ci.written_state(plan, STAMP)
+        fields = [
+            (name, path)
+            for name, path in ci._run_fields(plan)
+            if ci._container_field(path)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            write(os.path.join(tmp, "run.m"), "\n".join(self.LINES) + "\n")
+            script = "\n".join(
+                [
+                    f"D={shlex.quote(tmp)}",
+                    "R=/nulle-part",
+                    "fail() { exit 9; }",
+                    *ci._capture_lines(),
+                    *ci._container_helper_lines(plan, state),
+                    "cjson",
+                    *[f'printf "%s\\n" "$J_{name}"' for name, _p in fields],
+                ]
+            )
+            done = subprocess.run(
+                ["sh", "-c", script],
+                capture_output=True,
+                text=True,
+                cwd=tmp,
+                timeout=30,
+            )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        shell = [json.loads(line) for line in done.stdout.splitlines()]
+        defaults = {name: ci._at(state, path) for name, path in fields}
+        pairs = ci.marker_lines("\n".join(self.LINES))
+        python = ci._container_run_values(defaults, pairs, state)
+        self.assertEqual(shell, [python[name] for name, _p in fields])
+        self.assertEqual(python["c_images"], [cc.IMAGES["coturn"]])
+        self.assertEqual(python["c_packages"], ["podman", "uidmap"])
+        self.assertEqual(python["c_accounts"], ["erplibre-call"])
+        self.assertIsNone(python["c_restart"])
+        self.assertTrue(python["c_linger"])
+        self.assertEqual(
+            (python["coturn_uid"], python["coturn_gid"], python["c_uid"]),
+            (995, 995, 995),
+        )
+        self.assertIsNone(python["ntfy_uid"])
+
+
+class TestNtfyCli(unittest.TestCase):
+    def installed(self, ans):
+        return container_installed(ans).state
+
+    def test_packages_keeps_the_host_binary(self):
+        cli = ci.ntfy_cli(json.loads(PACKAGES_STATE_V1), "ntfy")
+        self.assertEqual(
+            cli,
+            ci.NtfyCli(
+                "ntfy",
+                "ntfy",
+                "systemctl restart ntfy",
+                "systemctl is-active ntfy",
+            ),
+        )
+        self.assertEqual(ci.ntfy_cli(None, "ntfy"), cli)
+
+    def test_rootful_container(self):
+        cli = ci.ntfy_cli(self.installed(container_answers()), "ignoré")
+        self.assertEqual(
+            cli.prefix,
+            "docker exec -e NTFY_PASSWORD -u 996:996 erplibre-call-ntfy ntfy",
+        )
+        self.assertIsNone(cli.sudo_user)
+        self.assertEqual(
+            cli.restart,
+            "docker compose -f /etc/erplibre-call/compose.yml -p erplibre-call"
+            " restart ntfy",
+        )
+        self.assertIn(
+            "docker inspect -f '{{.State.Status}}' erplibre-call-ntfy",
+            cli.active,
+        )
+
+    def test_rootless_container(self):
+        ans = container_answers(engine="podman", rootless=True)
+        cli = ci.ntfy_cli(self.installed(ans), "ignoré")
+        self.assertEqual(
+            cli.prefix,
+            "env XDG_RUNTIME_DIR=/run/user/995 podman exec -e NTFY_PASSWORD"
+            " -u 995:995 erplibre-call-ntfy ntfy",
+        )
+        self.assertEqual(cli.sudo_user, "erplibre-call")
+        self.assertTrue(
+            cli.restart.startswith("runuser -u erplibre-call -- env ")
+        )
+        self.assertTrue(
+            cli.restart.endswith(
+                "podman-compose -f /etc/erplibre-call/compose.yml"
+                " -p erplibre-call restart ntfy"
+            )
+        )
+        self.assertTrue(
+            cli.active.startswith("S=$(runuser -u erplibre-call -- ")
+        )
+
+    def test_active_line_maps_the_container_state(self):
+        cli = ci.ntfy_cli(self.installed(container_answers()), "x")
+        with tempfile.TemporaryDirectory() as tmp:
+            for status, shown in (
+                ("running", "active"),
+                ("restarting", "activating"),
+                ("exited", "exited"),
+                ("", "unknown"),
+            ):
+                with self.subTest(status=status):
+                    write(
+                        os.path.join(tmp, "docker"),
+                        f'#!/bin/sh\n[ -n "{status}" ] && echo {status}\n',
+                    )
+                    done = subprocess.run(
+                        ["sh", "-c", cli.active],
+                        capture_output=True,
+                        text=True,
+                        env=dict(
+                            os.environ, PATH=tmp + ":" + os.environ["PATH"]
+                        ),
+                        timeout=30,
+                    )
+                    self.assertEqual(done.stdout.strip(), shown)
+
+    def test_tampered_block_refused(self):
+        state = self.installed(container_answers())
+        for path, value in (
+            (("container", "engine"), "sh"),
+            (("services", "ntfy", "uid"), 0),
+            (("services", "ntfy", "container"), "x;rm"),
+        ):
+            with self.subTest(path=path):
+                bad = copy.deepcopy(state)
+                ci._put(bad, path, value)
+                with self.assertRaises(ci.Refusal) as caught:
+                    ci.ntfy_cli(bad, "ntfy")
+                self.assertEqual(
+                    caught.exception.key, "call_infra_state_invalid"
+                )
+
+
+class TestAppliedDigestPaths(unittest.TestCase):
+    def test_same_paths_as_the_installer(self):
+        with open(COTURN_INSTALLER) as handle:
+            text = handle.read()
+        self.assertIn(f'APPLIED_FILE="{ci.COTURN_APPLIED}"', text)
+        self.assertIn(f'PENDING_FILE="{ci.COTURN_APPLIED_PENDING}"', text)
+
+
 class TestStdlibOnly(unittest.TestCase):
     ALLOWED_SIBLINGS = {
         "script.todo.call_infra_container",

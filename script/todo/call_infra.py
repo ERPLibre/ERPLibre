@@ -144,6 +144,12 @@ COTURN_CONFIGS = {
 }
 COTURN_TLS_DIR = "/etc/erplibre-call/tls"
 COTURN_DB = "/var/lib/erplibre-call/turndb"
+# Empreinte de la configuration que coturn sert (install_coturn.sh,
+# APPLIED_FILE) et, en conteneurs, celle que l'installateur vient d'écrire
+# et que le script d'installation promeut une fois le conteneur en marche
+# (PENDING_FILE).
+COTURN_APPLIED = "/etc/erplibre-call/coturn.applied"
+COTURN_APPLIED_PENDING = COTURN_APPLIED + ".erplibre-pending"
 
 NTFY_UNIT = "ntfy"
 NTFY_CONFIG = nm.DEFAULT_CONFIG
@@ -218,8 +224,10 @@ HOOK_SOURCE = os.path.join(
     _REPO, "script", "install", "erplibre_call_deploy_hook.sh"
 )
 # Fiches `PENDING_DIR/<nom>.json` : les services, puis nginx et certbot,
-# dont l'origine (installés par l'outil ou non) survit à un passage coupé.
-PENDING_NAMES = SERVICES + ("nginx", "certbot")
+# dont l'origine (installés par l'outil ou non) survit à un passage coupé,
+# et « container », ce qu'une installation en conteneurs a ajouté à l'hôte
+# (paquets, comptes, images...) avant de s'arrêter.
+PENDING_NAMES = SERVICES + ("nginx", "certbot", "container")
 
 _DEBIAN_IDS = {"debian", "ubuntu", "linuxmint", "pop", "raspbian"}
 _ARCH_IDS = {"arch", "manjaro", "endeavouros", "artix", "garuda"}
@@ -290,6 +298,9 @@ class HostFacts:
     `engines` : les moteurs de conteneurs, leurs outils de composition, les
     comptes et les conteneurs de l'outil (`cc.EngineFacts`) ; None quand la
     sortie ne porte aucune ligne de moteur.
+
+    `container_pending` : la fiche « container » d'une installation en
+    conteneurs coupée (ce qu'elle a ajouté à l'hôte), ou None.
     """
 
     family: str | None
@@ -309,6 +320,7 @@ class HostFacts:
     nginx: dict | None = None
     certbot: dict | None = None
     engines: cc.EngineFacts | None = None
+    container_pending: dict | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -944,6 +956,7 @@ def parse_probe(output):
             pending.get("certbot"),
         ),
         engines=cc.parse_engine_lines(engine_pairs) if engine_pairs else None,
+        container_pending=pending.get("container"),
     )
 
 
@@ -2368,13 +2381,63 @@ _CONTAINER_ADDED = (
 )
 
 
+# Valeurs admises dans les champs de _CONTAINER_ADDED : les unités dont
+# le script consigne l'activation (`@@RESTART_UNIT_ENABLED`, « user » pour
+# celle du compte rootless) et les comptes qu'il peut créer
+# (`@@ACCOUNT_ADDED`) ; `turnserver` vient du paquet de coturn.
+CONTAINER_RESTART_UNITS = ("docker.service", "podman-restart.service", "user")
+CONTAINER_ADDED_ACCOUNTS = (
+    cc.COTURN_ACCOUNTS[1],
+    cc.NTFY_ACCOUNT,
+    cc.ROOTLESS_ACCOUNT,
+)
+
+
+def _added_item(key, value):
+    """`value` est-il admis dans le champ `key` de _CONTAINER_ADDED ? Une
+    image épinglée, un nom de paquet (`_PACKAGE`), un compte de
+    CONTAINER_ADDED_ACCOUNTS, une unité de CONTAINER_RESTART_UNITS : la
+    règle des lignes `sh` de `_container_json_lines`."""
+    if not isinstance(value, str):
+        return False
+    if key == "images_pulled":
+        return value in cc.IMAGES.values()
+    if key == "engine_packages_added":
+        return bool(_PACKAGE.match(value))
+    if key == "accounts_added":
+        return value in CONTAINER_ADDED_ACCOUNTS
+    if key == "restart_unit_enabled":
+        return value in CONTAINER_RESTART_UNITS
+    return False
+
+
+def _merge_fiche(block, fiche):
+    """`block` (bloc `container`) gagne ce que la fiche « container » d'un
+    passage coupé consigne : les listes s'y ajoutent, `linger_added` vrai
+    l'emporte, une unité activée remplace la valeur de l'état. Une valeur
+    hors de `_added_item` est ignorée."""
+    for key, kind, _default in _CONTAINER_ADDED:
+        value = fiche.get(key)
+        if kind is list and isinstance(value, list):
+            block[key] = block[key] + [
+                item
+                for item in value
+                if _added_item(key, item) and item not in block[key]
+            ]
+        elif kind is bool and value is True:
+            block[key] = True
+        elif kind is str and _added_item(key, value):
+            block[key] = value
+
+
 def _container_block(facts, answers, prior, services):
     """Le bloc `container` de l'état pour `answers`. L'outil de composition
     est celui que la sonde trouve, sinon le premier de
     `cc.COMPOSE_PROVIDERS`, celui que chaque paquet de `engine_offer`
     fournit. L'uid du compte rootless et les champs de _CONTAINER_ADDED
-    viennent de l'état précédent en conteneurs ; le script d'installation
-    les remplit."""
+    viennent de l'état précédent en conteneurs, auxquels s'ajoute la fiche
+    « container » d'un passage coupé (`_merge_fiche`) ; le script
+    d'installation les complète."""
     old = (
         prior.get("container") if _state_method(prior) == "container" else None
     )
@@ -2397,6 +2460,8 @@ def _container_block(facts, answers, prior, services):
     }
     for key, kind, default in _CONTAINER_ADDED:
         block[key] = _carried(old, key, kind, default)
+    if isinstance(facts.container_pending, dict):
+        _merge_fiche(block, facts.container_pending)
     return block
 
 
@@ -2663,6 +2728,8 @@ def plan_install(facts, answers, now):
         unchanged = unchanged and new_state["container"]["compose"] == (
             prior.get("container") or {}
         ).get("compose")
+        # Une fiche « container » à consigner demande un passage.
+        unchanged = unchanged and not isinstance(facts.container_pending, dict)
     elif migration == "to_packages":
         new_state["container_added"] = _container_added(prior)
         new_state.pop("container", None)
@@ -2957,12 +3024,20 @@ _LIVE = f'"$R"{shlex.quote(LINEAGE_DIR)}'
 
 
 def _coturn_variables(plan):
-    """Variables d'install_coturn.sh communes à ses passages."""
-    return _coturn_env(
+    """Variables d'install_coturn.sh communes à ses passages ; en
+    conteneurs, la cible « container » et le compte du conteneur, qui
+    possède la base."""
+    variables = _coturn_env(
         plan.answers,
         plan.new_state.get("turn_mode"),
         "coturn" in plan.adopt,
     )
+    if plan.answers.method == "container":
+        variables["TURN_TARGET"] = "container"
+        variables["TURN_SERVICE_USER"] = plan.new_state["services"]["coturn"][
+            "account"
+        ]
+    return variables
 
 
 def _coturn_env(answers, turn_mode=None, adopt=False):
@@ -3016,12 +3091,11 @@ def _lineage_exports(answers, indent):
     return [indent + line for line in lines]
 
 
-def _coturn_block(plan):
-    """Premier passage d'install_coturn.sh. Avec Let's Encrypt, la lignée
-    déjà sur le disque ($LE=1) lui sert de certificat ; sans elle, coturn
-    démarre sans TLS (`no-tls`) et `_coturn_lineage_lines` le reprend après
-    la délivrance."""
-    answers = plan.answers
+def _coturn_payload_lines(answers):
+    """(lignes, variables brutes) communes aux deux méthodes :
+    install_coturn.sh décodé dans le dossier de travail et, avec un
+    certificat fourni, ses deux fichiers à côté, que TURN_CERT_FILE et
+    TURN_KEY_FILE nomment."""
     lines = [
         "# coturn",
         _decode_to(
@@ -3043,6 +3117,16 @@ def _coturn_block(plan):
             "TURN_CERT_FILE": '"$D/turn.crt"',
             "TURN_KEY_FILE": '"$D/turn.key"',
         }
+    return lines, raw
+
+
+def _coturn_block(plan):
+    """Premier passage d'install_coturn.sh. Avec Let's Encrypt, la lignée
+    déjà sur le disque ($LE=1) lui sert de certificat ; sans elle, coturn
+    démarre sans TLS (`no-tls`) et `_coturn_lineage_lines` le reprend après
+    la délivrance."""
+    answers = plan.answers
+    lines, raw = _coturn_payload_lines(answers)
     # Sans TURN_CHECK_PASSWORD, install_coturn.sh tire le mot de passe du
     # compte de contrôle sur l'hôte et n'en garde que la clé, que la
     # vérification relit : aucun secret de ce compte ne part d'ici.
@@ -3061,7 +3145,10 @@ def _coturn_lineage_lines(plan):
     nouvelle que le crochet n'a pas pu lui remettre (`@@HOOK coturn-skip` :
     aucun état ne nomme encore coturn, ou l'état d'avant le dit sur un
     autre certificat). L'installateur écrit alors les lignes TLS et
-    redémarre coturn."""
+    redémarre coturn ; en conteneurs, il imprime `@@RECREATE 1` et le
+    conteneur est recréé (`_coturn_container_lineage_lines`)."""
+    if plan.answers.method == "container":
+        return _coturn_container_lineage_lines(plan)
     lines = [
         "CB=$(mval CERTBOT)",
         'if [ "$LE" = 0 ] || { [ "${CB%% *}" = issued ]'
@@ -3078,6 +3165,11 @@ def _coturn_lineage_lines(plan):
         "fi",
     ]
     return lines
+
+
+# Création d'un compte système sans connexion, comme install_ntfy.sh crée
+# le compte « ntfy ».
+_USERADD = "useradd --system --no-create-home --shell /usr/sbin/nologin"
 
 
 def _ntfy_block(plan):
@@ -3111,8 +3203,7 @@ def _ntfy_block(plan):
         # lui soit lisible : le compte est créé comme install_ntfy.sh le
         # crée, et le paquet garde un compte déjà là.
         lines += [
-            "id ntfy >/dev/null 2>&1 || useradd --system --no-create-home"
-            " --shell /usr/sbin/nologin ntfy || fail ntfy-user",
+            f"id ntfy >/dev/null 2>&1 || {_USERADD} ntfy || fail ntfy-user",
             f"mkdir -p {tls_dir} && chown root:ntfy {tls_dir}"
             f" && chmod 0750 {tls_dir} || fail ntfy-tls",
             _place(_b64(answers.cert_pem), f"{NTFY_TLS_DIR}/ntfy.crt", "0644")
@@ -3226,10 +3317,34 @@ def _uses_certbot(answers):
     return is_production(answers) and answers.tls == "letsencrypt"
 
 
+# Champs du bloc `container` que le script prend à ses propres marqueurs :
+# (nom du champ, clé du bloc, marqueur). Les listes cumulent chaque ligne
+# du marqueur (`mall`), les autres prennent la dernière (`mval`).
+_CONTAINER_RUN = (
+    ("c_images", "images_pulled", "IMAGE_PULLED"),
+    ("c_packages", "engine_packages_added", "ENGINE_PACKAGE"),
+    ("c_accounts", "accounts_added", "ACCOUNT_ADDED"),
+    ("c_restart", "restart_unit_enabled", "RESTART_UNIT_ENABLED"),
+    ("c_linger", "linger_added", "LINGER_ADDED"),
+)
+# Un uid ou un gid tel que le script l'admet : de 1 à 2³¹−1, sans zéro de
+# tête (la règle de `okid`).
+_ID_TEXT = re.compile(r"^[1-9][0-9]{0,9}$")
+
+
+def _container_services(state):
+    """Services du fichier compose : chaque fiche de l'état en conteneurs,
+    dans l'ordre de SERVICES."""
+    return _recorded(state)
+
+
 def _run_fields(plan):
-    """[(nom, (fiche, clé))] des valeurs de l'état que le script prend à la
-    sortie des installateurs de ce passage : nginx et certbot impriment ce
-    qu'ils ont fait, le plan n'en a qu'une prévision."""
+    """[(nom, chemin)] des valeurs de l'état que le script prend à la sortie
+    de ce passage, `chemin` étant la suite de clés qui y mène : nginx et
+    certbot impriment ce qu'ils ont fait, le plan n'en a qu'une prévision ;
+    en conteneurs, le script imprime ce qu'il a ajouté à l'hôte
+    (_CONTAINER_RUN), et l'uid:gid du compte de chaque service, qu'il lit
+    sur l'hôte, d'où vient l'uid du compte rootless."""
     fields = []
     if _uses_nginx(plan.answers):
         fields += [
@@ -3246,7 +3361,88 @@ def _run_fields(plan):
             ("certbot_plugins", ("certbot", "plugins_installed")),
             ("certbot_timer", ("certbot", "timer")),
         ]
+    if plan.answers.method == "container":
+        state = plan.new_state
+        fields += [
+            (name, ("container", key)) for name, key, _m in _CONTAINER_RUN
+        ]
+        if state["container"]["rootless"]:
+            fields.append(("c_uid", ("container", "uid")))
+        for svc in _container_services(state):
+            fields += [
+                (f"{svc}_uid", ("services", svc, "uid")),
+                (f"{svc}_gid", ("services", svc, "gid")),
+            ]
     return fields
+
+
+def _at(state, path):
+    for key in path:
+        state = state[key]
+    return state
+
+
+def _put(state, path, value):
+    for key in path[:-1]:
+        state = state[key]
+    state[path[-1]] = value
+
+
+def _container_field(path):
+    return path[0] in ("container", "services")
+
+
+def _container_run_values(values, pairs, state):
+    """`values` où chaque champ conteneur de `_run_fields` prend ce que les
+    marqueurs `pairs` ([(NOM, valeur)] dans l'ordre) disent : la règle des
+    lignes `sh` de `_container_json_lines`, au caractère près. Les listes
+    gagnent chaque valeur admise (`_added_item`) qu'elles n'ont pas ;
+    l'unité activée est la dernière valeur, si elle est admise ;
+    `linger_added` devient vrai quand la dernière ligne nomme le compte
+    rootless ; l'uid:gid d'un service vient de sa dernière ligne
+    `@@SERVICE_ACCOUNT <service> <compte> <uid> <gid>` au compte de sa
+    fiche, quand ses ids sont admis (`_ID_TEXT`) ; l'uid du compte rootless
+    est celui du premier service."""
+    values = dict(values)
+    last = dict(pairs)
+    for name, key, marker in _CONTAINER_RUN:
+        if name not in values:
+            continue
+        if isinstance(values[name], list):
+            items = list(values[name])
+            for found, value in pairs:
+                if (
+                    found == marker
+                    and _added_item(key, value)
+                    and value not in items
+                ):
+                    items.append(value)
+            values[name] = items
+        elif name == "c_restart":
+            if _added_item(key, last.get(marker)):
+                values[name] = last[marker]
+        elif last.get(marker) == cc.ROOTLESS_ACCOUNT:
+            values[name] = True
+    services = _container_services(state)
+    for svc in services:
+        if f"{svc}_uid" not in values:
+            continue
+        account = state["services"][svc]["account"]
+        ids = None
+        for found, value in pairs:
+            parts = value.split()
+            if (
+                found == "SERVICE_ACCOUNT"
+                and len(parts) == 4
+                and parts[:2] == [svc, account]
+            ):
+                ids = parts[2:]
+        if ids and all(_ID_TEXT.match(p) and int(p) <= 2**31 - 1 for p in ids):
+            values[f"{svc}_uid"] = int(ids[0])
+            values[f"{svc}_gid"] = int(ids[1])
+    if "c_uid" in values and services:
+        values["c_uid"] = values[f"{services[0]}_uid"]
+    return values
 
 
 def _last_markers(output):
@@ -3301,8 +3497,13 @@ def _run_field_lines(fields, defaults):
     names = {name for name, _key in fields}
     lines = [
         f"J_{name}={shlex.quote(json.dumps(defaults[name]))}"
-        for name, _key in fields
+        for name, path in fields
+        if not _container_field(path)
     ]
+    # Les champs conteneur ont leur fonction, que la fiche « container »
+    # appelle aussi (`_container_json_lines`).
+    if any(_container_field(path) for _name, path in fields):
+        lines.append("cjson")
     if "nginx_tool" in names:
         lines.append('[ -n "$(mval NGINX_INSTALLED)" ] && J_nginx_tool=true')
     if "nginx_layout" in names:
@@ -3357,8 +3558,8 @@ def _template(state, fields):
     """`state` en JSON où chaque champ de `fields` devient
     "__RUN_<nom>__", que `sed` remplace sur l'hôte."""
     template = copy.deepcopy(state)
-    for name, (record, key) in fields:
-        template[record][key] = f"__RUN_{name}__"
+    for name, path in fields:
+        _put(template, path, f"__RUN_{name}__")
     return json.dumps(template, indent=2, sort_keys=True)
 
 
@@ -3376,17 +3577,20 @@ def _admin_pending(state):
 def installed_state(plan, stamp, output):
     """L'état que `install_script(plan, stamp)` a écrit, d'après `output`,
     sa sortie : `written_state`, avec `admin_added` quand l'installateur a
-    créé le compte d'un ntfy adopté, et les fiches nginx et certbot telles
-    que leurs installateurs les ont imprimées. C'est celui que l'appelant
-    complète ensuite (pare-feu) : il ne perd rien de ce que le passage root
-    a consigné."""
+    créé le compte d'un ntfy adopté, les fiches nginx et certbot telles que
+    leurs installateurs les ont imprimées et, en conteneurs, le bloc
+    `container` et l'uid:gid de chaque service tels que le script les a
+    imprimés (`_container_run_values`). C'est celui que l'appelant complète
+    ensuite (pare-feu) : il ne perd rien de ce que le passage root a
+    consigné."""
     state = mark_admin_added(written_state(plan, stamp), output)
     state = copy.deepcopy(state)
     fields = _run_fields(plan)
-    defaults = {name: state[r][k] for name, (r, k) in fields}
+    defaults = {name: _at(state, path) for name, path in fields}
     values = _run_values(defaults, _last_markers(output))
-    for name, (record, key) in fields:
-        state[record][key] = values[name]
+    values = _container_run_values(values, marker_lines(output or ""), state)
+    for name, path in fields:
+        _put(state, path, values[name])
     return state
 
 
@@ -3395,7 +3599,7 @@ def _state_from_run_lines(state, fields):
     passage ce que `_run_fields` désigne et `admin_added` : le même état
     qu'`installed_state` calcule de la sortie. Une seule écriture de
     "$STATE.new", comme `_state_write_lines`."""
-    defaults = {name: state[r][k] for name, (r, k) in fields}
+    defaults = {name: _at(state, path) for name, path in fields}
     lines = _run_field_lines(fields, defaults)
     tpl = '"$D/state.tpl"'
     plain = _decode_to(_b64(_template(state, fields)), tpl) + " || fail state"
@@ -3646,6 +3850,652 @@ def _production_lines(plan):
     return lines
 
 
+# --- Script d'installation en conteneurs ------------------------------------
+
+# États passagers d'un conteneur, relus par `cwait` avant de conclure.
+_TRANSIENT = "created|restarting|starting|configured|initialized|stopping"
+# Format d'`inspect` : l'état seul, commun à Docker et à Podman.
+_STATUS_FORMAT = "{{.State.Status}}"
+
+
+def _engine_shell_lines(block):
+    """Fonctions `sh` du bloc `container` d'un plan : `eng` (le moteur) et
+    `comp` (l'outil de composition, `-f COMPOSE_FILE -p PROJECT`), et en
+    rootless `ruser`, qui lance une commande sous le compte rootless et dans
+    sa session (`cc.rootless_prefix_sh`) : son uid n'est connu qu'en cours
+    de script, dans `$RUID` (`_container_accounts_lines`). ValueError pour
+    un moteur ou un outil hors de `cc.COMPOSE_PROVIDERS`."""
+    engine, words = block["engine"], tuple(block["compose"])
+    if words not in cc.COMPOSE_PROVIDERS.get(engine, ()):
+        raise ValueError(f"compose: {engine} {words}")
+    comp = " ".join(words) + f" -f {cc.COMPOSE_FILE} -p {cc.PROJECT}"
+    if block["rootless"]:
+        prefix = cc.rootless_prefix_sh(block["account"], "RUID")
+        return [
+            f'ruser() {{ {prefix} "$@"; }}',
+            f'eng() {{ ruser {engine} "$@"; }}',
+            f'comp() {{ ruser {comp} "$@"; }}',
+        ]
+    return [f'eng() {{ {engine} "$@"; }}', f'comp() {{ {comp} "$@"; }}']
+
+
+def _container_json_lines(plan, state):
+    """Fonction `sh` `cjson` : pose `J_<champ>` (texte JSON) pour chaque
+    champ conteneur de `_run_fields`, valeur du plan complétée par les
+    marqueurs déjà gardés dans "$D/run.m" (la règle de
+    `_container_run_values`). Les valeurs admises sont des images
+    épinglées, des noms de paquets, de comptes et d'unités, des chiffres :
+    ni « | », ni « & », ni « \\\\ », elles passent telles quelles dans `sed`.
+    Une ligne lue entière (IFS d'une fin de ligne, sans expansion de
+    chemins) n'entre que si toute la ligne est admise."""
+    fields = [
+        (n, path) for n, path in _run_fields(plan) if _container_field(path)
+    ]
+    names = {name for name, _path in fields}
+    lines = ["cjson() {"]
+    lines += [
+        f"  J_{name}={shlex.quote(json.dumps(_at(state, path)))}"
+        for name, path in fields
+    ]
+    images = "|".join(cc.IMAGES[svc] for svc in cc.CONTAINERS)
+    accounts = "|".join(CONTAINER_ADDED_ACCOUNTS)
+    lines += [
+        "  set -f",
+        "  IFS='",
+        "'",
+        "  for V in $(mall IMAGE_PULLED); do",
+        f'    case "$V" in {images}) jadd J_c_images "$V" ;; esac',
+        "  done",
+        "  for V in $(mall ENGINE_PACKAGE); do",
+        "    case \"$V\" in ''|*[!a-z0-9.+-]*) ;;"
+        ' *) jadd J_c_packages "$V" ;; esac',
+        "  done",
+        "  for V in $(mall ACCOUNT_ADDED); do",
+        f'    case "$V" in {accounts}) jadd J_c_accounts "$V" ;; esac',
+        "  done",
+        "  unset IFS",
+        "  set +f",
+        "  V=$(mval RESTART_UNIT_ENABLED)",
+        f'  case "$V" in {"|".join(CONTAINER_RESTART_UNITS)})'
+        ' J_c_restart="\\"$V\\"" ;; esac',
+        f'  [ "$(mval LINGER_ADDED)" = {cc.ROOTLESS_ACCOUNT} ]'
+        " && J_c_linger=true",
+    ]
+    services = _container_services(state)
+    for svc in services:
+        account = state["services"][svc]["account"]
+        if not cc.ACCOUNT_RE.match(account or ""):
+            raise ValueError(f"account: {account!r}")
+        lines += [
+            f"  V=$(mall SERVICE_ACCOUNT | awk -v s={svc} -v n={account}"
+            ' \'NF == 4 && $1 == s && $2 == n { v = $3 " " $4 }'
+            " END { print v }')",
+            "  JI=${V% *}; JG=${V#* }",
+            f'  okid "$JI" && okid "$JG" && J_{svc}_uid=$JI && J_{svc}_gid=$JG',
+        ]
+    if "c_uid" in names and services:
+        lines.append(f"  J_c_uid=$J_{services[0]}_uid")
+    lines += ["  :", "}"]
+    return lines
+
+
+def _container_helper_lines(plan, state):
+    """Fonctions `sh` du script en conteneurs, après celles de
+    `_capture_lines` :
+
+    - `mall <NOM>` : la valeur de chaque ligne `@@NOM` gardée ; `mark <NOM>
+      <valeur>...` imprime `@@NOM valeur` et la garde dans "$D/run.m",
+      comme `cap` ;
+    - `jadd <variable> <valeur>` ajoute la chaîne au tableau JSON de la
+      variable quand il ne l'a pas ; `okid` admet un uid ou un gid de 1 à
+      2³¹−1 (`_ID_TEXT`) ; `ids <compte>` pose `I` et `G`, ses ids ;
+    - `cjson` (`_container_json_lines`) et `cfiche`, qui écrit la fiche
+      PENDING_DIR/container.json de ce que le passage a déjà ajouté à
+      l'hôte : une coupure ou un échec la laisse, la relance la reprend
+      dans son plan, la désinstallation sans état la signale ;
+    - `pkg_installed` (`_family_lines`), `eng`, `comp`
+      (`_engine_shell_lines`) ;
+    - `cstatus <conteneur>` pose `S`, son état d'`inspect` (« missing »
+      sans lui) ; `cwait` relit un état passager (_TRANSIENT) une fois par
+      seconde, dix au plus ;
+    - `pullclass <fichier>` : « rate-limit » quand la sortie d'un pull dit
+      le refus du registre (`cc.PULL_RATE_LIMIT`, la règle de
+      `cc.classify_pull`), « failed » sinon.
+
+    Le script part de « / » : sous le compte rootless, l'outil de
+    composition ne peut pas lire le dossier courant de root."""
+    fiche = (
+        'printf \'{"accounts_added": %s, "engine_packages_added": %s,'
+        ' "images_pulled": %s, "linger_added": %s,'
+        ' "restart_unit_enabled": %s}\\n\''
+        ' "$J_c_accounts" "$J_c_packages" "$J_c_images" "$J_c_linger"'
+        ' "$J_c_restart" > "$PENDING/container.new"'
+    )
+    return [
+        "cd / || fail workdir",
+        'mall() { sed -n "s/^@@$1 //p" "$D/run.m" 2>/dev/null; }',
+        'mark() { echo "@@$*"; echo "@@$*" >> "$D/run.m"; }',
+        "jadd() {",
+        '  eval "J=\\$$1"',
+        '  case "$J" in',
+        '    *"\\"$2\\""*) return 0 ;;',
+        '    \'[]\') J="[\\"$2\\"]" ;;',
+        '    *) J="${J%]}, \\"$2\\"]" ;;',
+        "  esac",
+        '  eval "$1=\\$J"',
+        "}",
+        "okid() {",
+        "  case \"$1\" in ''|0*|*[!0-9]*) return 1 ;; esac",
+        '  [ "${#1}" -le 10 ] && [ "$1" -le 2147483647 ]',
+        "}",
+        "ids() {",
+        '  L=$(getent passwd "$1" 2>/dev/null | head -n 1)',
+        "  I=$(printf '%s\\n' \"$L\" | cut -d: -f3)",
+        "  G=$(printf '%s\\n' \"$L\" | cut -d: -f4)",
+        '  okid "$I" && okid "$G"',
+        "}",
+        *_container_json_lines(plan, state),
+        "cfiche() {",
+        "  cjson",
+        f"  {fiche}"
+        ' && mv -f "$PENDING/container.new" "$PENDING/container.json"'
+        " || fail pending",
+        "}",
+        *_family_lines(),
+        *_engine_shell_lines(state["container"]),
+        "cstatus() {",
+        f'  S=$(eng inspect -f {shlex.quote(_STATUS_FORMAT)} "$1"'
+        " 2>/dev/null) || S=",
+        "  case \"$S\" in ''|*[!a-z]*) S=missing ;; esac",
+        "}",
+        "cwait() {",
+        '  cstatus "$1"; N=0',
+        '  while [ "$N" -lt 10 ]; do',
+        f'    case "$S" in {_TRANSIENT}) ;; *) break ;; esac',
+        '    sleep 1; N=$((N + 1)); cstatus "$1"',
+        "  done",
+        "}",
+        "pullclass() {",
+        f'  if LC_ALL=C grep -qiE {shlex.quote(cc.PULL_RATE_LIMIT)} "$1";'
+        " then echo rate-limit; else echo failed; fi",
+        "}",
+    ]
+
+
+def _engine_lines(plan):
+    """Lignes du moteur : les paquets de `plan.engine_packages` qui
+    manquent encore, installés par apt-get ou pacman (`@@ENGINE_PACKAGE
+    <nom>` pour chacun que l'installation a posé, même quand elle échoue
+    ensuite), puis l'unité qui relance les conteneurs au démarrage :
+    docker.service activée et démarrée, podman-restart.service activée
+    pour Podman en root (`@@RESTART_UNIT_ENABLED <unité>`, seulement
+    quand elle ne l'était pas). podman-restart n'est pas lancé tout de
+    suite : il démarrerait tout conteneur arrêté de l'hôte en
+    `restart: always`. Le rootless a la sienne (`_rootless_lines`)."""
+    block = plan.new_state["container"]
+    lines = ["# moteur"]
+    packages = plan.engine_packages
+    for package in packages:
+        if not _PACKAGE.match(package):
+            raise ValueError(f"engine package: {package!r}")
+    if packages:
+        lines += [
+            "EP=",
+            f"for P in {' '.join(packages)}; do"
+            ' pkg_installed "$P" || EP="$EP $P"; done',
+            'if [ -n "$EP" ]; then',
+            '  case "$FAMILY" in',
+            "    debian) apt-get update -qq </dev/null",
+            "      DEBIAN_FRONTEND=noninteractive apt-get install -y"
+            " --no-install-recommends $EP </dev/null ;;",
+            "    arch) pacman -S --noconfirm --needed $EP </dev/null ;;",
+            "    *) false ;;",
+            "  esac",
+            "  ERC=$?",
+            '  for P in $EP; do pkg_installed "$P" && mark ENGINE_PACKAGE "$P";'
+            " done",
+            "  cfiche",
+            '  [ "$ERC" = 0 ] || fail engine-packages',
+            "fi",
+        ]
+    if block["rootless"]:
+        return lines
+    unit = {"docker": "docker.service", "podman": "podman-restart.service"}[
+        block["engine"]
+    ]
+    lines += [
+        f'if [ "$(systemctl is-enabled {unit} 2>/dev/null)" != enabled ]; then',
+        f"  systemctl enable {unit} || fail engine-service",
+        f"  mark RESTART_UNIT_ENABLED {unit}; cfiche",
+        "fi",
+    ]
+    if block["engine"] == "docker":
+        lines += [
+            f'if [ "$(systemctl is-active {unit} 2>/dev/null)" != active ];'
+            " then",
+            f"  systemctl start {unit} || fail engine-service",
+            "fi",
+        ]
+    return lines
+
+
+def _container_accounts_lines(plan):
+    """Lignes des comptes : chaque compte de CONTAINER_ADDED_ACCOUNTS qui
+    manque est créé (`useradd --system`, le compte rootless avec son
+    dossier personnel ROOTLESS_HOME, où vit son stockage ; `@@ACCOUNT_ADDED
+    <nom>`), un autre compte manquant (`turnserver`, du paquet) arrête le
+    script ; puis `@@SERVICE_ACCOUNT <service> <compte> <uid> <gid>` par
+    service, ids lus sur l'hôte, et `U_<service>` (uid:gid), `G_<service>`
+    (gid) pour la suite. En rootless, `RUID` et `RGID` sont ceux du compte
+    rootless."""
+    state = plan.new_state
+    services = _container_services(state)
+    accounts = []
+    for svc in services:
+        account = state["services"][svc]["account"]
+        if not cc.ACCOUNT_RE.match(account or "") or account == "root":
+            raise ValueError(f"account: {account!r}")
+        if account not in accounts:
+            accounts.append(account)
+    lines = ["# comptes"]
+    for account in accounts:
+        if account == cc.ROOTLESS_ACCOUNT:
+            add = (
+                "useradd --system --create-home --home-dir"
+                f" {cc.ROOTLESS_HOME} --shell /usr/sbin/nologin {account}"
+            )
+        elif account in CONTAINER_ADDED_ACCOUNTS:
+            add = f"{_USERADD} {account}"
+        else:
+            lines.append(
+                f"getent passwd {account} >/dev/null 2>&1"
+                f" || fail account-{account}"
+            )
+            continue
+        lines += [
+            f"if ! getent passwd {account} >/dev/null 2>&1; then",
+            f"  {add} || fail account-{account}",
+            f"  mark ACCOUNT_ADDED {account}; cfiche",
+            "fi",
+        ]
+    for svc in services:
+        account = state["services"][svc]["account"]
+        lines += [
+            f"ids {account} || fail account-{svc}",
+            f'U_{svc}="$I:$G"; G_{svc}=$G',
+            f'mark SERVICE_ACCOUNT {svc} {account} "$I" "$G"',
+        ]
+    if state["container"]["rootless"]:
+        lines.append("RUID=$I; RGID=$G")
+    return lines
+
+
+def _rootless_lines(plan):
+    """Lignes du compte rootless : ses plages d'ids subordonnés quand
+    /etc/subuid ou /etc/subgid n'en ont aucune, 65 536 ids à partir de la
+    fin de la plus haute plage déjà donnée et jamais sous 100 000, de sorte
+    qu'aucune ne recouvre celle d'un autre compte (`usermod
+    --add-subuids`) ; sa session permanente (`loginctl enable-linger`,
+    `@@LINGER_ADDED <compte>` quand elle ne l'était pas), attendue 30 s au
+    plus sous /run/user/<uid> ; son podman-restart.service d'utilisateur
+    activé (`@@RESTART_UNIT_ENABLED user`)."""
+    account = cc.ROOTLESS_ACCOUNT
+    span = (
+        "$2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $2 + $3 > m { m = $2 + $3 }"
+        " END { print m + 0 }"
+    )
+    return [
+        "# compte rootless",
+        "for F in subuid subgid; do",
+        f'  if ! grep -qE "^({account}|$RUID):" "$R/etc/$F" 2>/dev/null; then',
+        f'    S=$(awk -F: {shlex.quote(span)} "$R/etc/$F" 2>/dev/null)',
+        "    case \"$S\" in ''|*[!0-9]*) S=0 ;; esac",
+        '    [ "$S" -ge 100000 ] || S=100000',
+        f'    usermod "--add-${{F}}s" "$S-$((S + 65535))" {account}'
+        ' || fail "rootless-$F"',
+        "  fi",
+        "done",
+        f'if [ ! -e "$R/var/lib/systemd/linger/{account}" ]; then',
+        f"  loginctl enable-linger {account} || fail rootless-linger",
+        f"  mark LINGER_ADDED {account}; cfiche",
+        "fi",
+        "N=0",
+        'while [ ! -d "$R/run/user/$RUID" ] && [ "$N" -lt 30 ]; do',
+        "  sleep 1; N=$((N + 1))",
+        "done",
+        '[ -d "$R/run/user/$RUID" ] || fail rootless-session',
+        'if [ "$(ruser systemctl --user is-enabled podman-restart.service'
+        ' 2>/dev/null)" != enabled ]; then',
+        "  ruser systemctl --user enable podman-restart.service"
+        " || fail rootless-restart",
+        "  mark RESTART_UNIT_ENABLED user; cfiche",
+        "fi",
+    ]
+
+
+def _pull_lines(plan):
+    """Lignes des images : chaque image épinglée absente du moteur est
+    tirée (`@@IMAGE_PULLED <référence>`). Un pull qui échoue imprime sa
+    sortie en retrait, `@@PULL_FAILED <service> <rate-limit|failed>`
+    (`pullclass`) et arrête le script avant tout service : rien n'est
+    encore arrêté ni configuré."""
+    state = plan.new_state
+    exists = {"docker": "image inspect", "podman": "image exists"}[
+        state["container"]["engine"]
+    ]
+    lines = ["# images"]
+    for svc in _container_services(state):
+        ref = cc.IMAGES[svc]
+        lines += [
+            f"if ! eng {exists} {ref} >/dev/null 2>&1; then",
+            f'  if eng pull {ref} > "$D/pull.out" 2>&1; then',
+            f"    mark IMAGE_PULLED {ref}; cfiche",
+            "  else",
+            "    sed 's/^/  /' \"$D/pull.out\"",
+            f'    mark PULL_FAILED {svc} "$(pullclass "$D/pull.out")"',
+            f"    fail pull-{svc}",
+            "  fi",
+            "fi",
+        ]
+    return lines
+
+
+def _coturn_container_block(plan):
+    """coturn en conteneurs : install_coturn.sh avec TURN_TARGET=container
+    et le compte du conteneur (`_coturn_variables`) écrit configuration,
+    copies TLS et base, et pose sur l'hôte le sqlite3 que l'outil lit. Sa
+    sortie passe par `cap` : `@@RECREATE 1` (configuration changée,
+    empreinte en attente) y est relu par `_compose_lines`. Un échec arrête
+    le script : le conteneur ne démarrerait pas sur une configuration
+    incomplète."""
+    answers = plan.answers
+    lines, raw = _coturn_payload_lines(answers)
+    lines += ["{", "  (", "    umask 022"]
+    lines += ["  " + line for line in _export(_coturn_variables(plan), raw)]
+    if answers.tls == "letsencrypt":
+        lines.append('    if [ "$LE" = 1 ]; then')
+        lines += _lineage_exports(answers, "      ")
+        lines.append("    fi")
+    lines += [
+        '    exec bash "$D/install_coturn.sh"',
+        "  )",
+        '  echo "$?" > "$D/rc.coturn"',
+        "} | cap",
+        'RC_coturn=$(cat "$D/rc.coturn" 2>/dev/null)',
+        '[ "$RC_coturn" = 0 ] || fail coturn',
+    ]
+    return lines
+
+
+def _coturn_container_lineage_lines(plan):
+    """Second passage d'install_coturn.sh en conteneurs, aux mêmes
+    conditions que `_coturn_lineage_lines`, sortie par `cap` ; sur
+    `@@RECREATE 1`, le conteneur de coturn est recréé pour lire la
+    configuration TLS."""
+    lines = [
+        "CB=$(mval CERTBOT)",
+        'if [ "$LE" = 0 ] || { [ "${CB%% *}" = issued ]'
+        " && grep -q '^@@HOOK coturn-skip' \"$D/run.m\"; }; then",
+        "  {",
+        "    (",
+        "      umask 022",
+    ]
+    lines += ["    " + line for line in _export(_coturn_variables(plan))]
+    lines += _lineage_exports(plan.answers, "      ")
+    lines += [
+        '      exec bash "$D/install_coturn.sh"',
+        "    )",
+        '    echo "$?" > "$D/rc.coturn-tls"',
+        "  } | cap",
+        "  step_rc coturn-tls || fail coturn-tls",
+        '  if [ "$(mval RECREATE)" = 1 ]; then',
+        "    comp up -d --force-recreate coturn || fail coturn-recreate",
+        "  fi",
+        "fi",
+    ]
+    return lines
+
+
+def _ntfy_container_block(plan):
+    """ntfy en conteneurs : dossier de la configuration traversable,
+    certificat propre posé (clé lisible du groupe du compte du conteneur)
+    ou retiré, server.yml écrit comme `_ntfy_block` l'écrit, puis la base
+    des comptes et le cache, créés au besoin et rendus au compte du
+    conteneur. Aucun binaire ntfy ni aucune unité sur l'hôte."""
+    answers = plan.answers
+    config = _host(NTFY_CONFIG)
+    new = _host(NTFY_CONFIG + ".erplibre-new")
+    conf_dir = _host(os.path.dirname(NTFY_CONFIG))
+    lines = [
+        "# ntfy",
+        f"[ -d {conf_dir} ] || install -d -m 0755 {conf_dir}"
+        " || fail ntfy-config",
+    ]
+    if _ntfy_own_tls(answers):
+        tls_dir = _host(NTFY_TLS_DIR)
+        lines += [
+            f'mkdir -p {tls_dir} && chown "root:$G_ntfy" {tls_dir}'
+            f" && chmod 0750 {tls_dir} || fail ntfy-tls",
+            _place(_b64(answers.cert_pem), f"{NTFY_TLS_DIR}/ntfy.crt", "0644")
+            + " || fail ntfy-tls",
+            _place(
+                _b64(answers.key_pem),
+                f"{NTFY_TLS_DIR}/ntfy.key",
+                "0640",
+                group="$G_ntfy",
+            )
+            + " || fail ntfy-tls",
+        ]
+    else:
+        lines.append(
+            f"rm -f {_host(NTFY_TLS_DIR + '/ntfy.crt')}"
+            f" {_host(NTFY_TLS_DIR + '/ntfy.key')} || fail ntfy-tls"
+        )
+    lines += [
+        _decode_to(_b64(plan.configs["ntfy"]), new) + " || fail ntfy-config",
+        f"if [ -f {config} ]; then",
+        f"  chown --reference={config} {new}"
+        f" && chmod --reference={config} {new} || fail ntfy-config",
+        "else",
+        f"  chmod 0644 {new} || fail ntfy-config",
+        "fi",
+        f"mv -f {new} {config} || fail ntfy-config",
+    ]
+    for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
+        lines.append(
+            f"{{ [ -d {_host(path)} ] || install -d -m 0750 {_host(path)}; }}"
+            f' && chown -R "$U_ntfy" {_host(path)} || fail ntfy-data'
+        )
+    lines.append("RC_ntfy=0")
+    return lines
+
+
+def _compose_lines(plan):
+    """Lignes du fichier compose et du lancement : `plan.compose`, chaque
+    `@USER_<SVC>@` remplacé par l'uid:gid lu sur l'hôte, écrit 0640
+    root:root (en rootless, root et le groupe du compte, qui doit le lire)
+    par `.new` puis renommage. `comp up -d` seulement quand un conteneur
+    manque ou ne tourne pas, ou que le fichier a changé : podman-compose
+    relance sinon `podman run` sur des conteneurs déjà là. Sur `@@RECREATE
+    1` de l'installateur de coturn, et quand son conteneur existait déjà,
+    `comp up -d --force-recreate coturn` : il relit sa configuration. En
+    production, un conteneur qui ne tourne pas arrête le script avant nginx
+    et certbot."""
+    state = plan.new_state
+    services = _container_services(state)
+    group = "$RGID" if state["container"]["rootless"] else "root"
+    path = _host(cc.COMPOSE_FILE)
+    new = _host(cc.COMPOSE_FILE + ".new")
+    edits = " ".join(
+        f'-e "s|@USER_{svc.upper()}@|$U_{svc}|"' for svc in services
+    )
+    lines = [
+        "# fichier compose",
+        f"printf %s {shlex.quote(_b64(plan.compose))} | base64 -d"
+        f" | sed {edits} > {new} || fail compose-file",
+        f'chown "root:{group}" {new} && chmod 0640 {new} || fail compose-file',
+        f"CHANGED=1; cmp -s {new} {path} && CHANGED=0",
+        f"mv -f {new} {path} || fail compose-file",
+        "UP=$CHANGED",
+    ]
+    for svc in services:
+        lines += [
+            f"cstatus {cc.CONTAINERS[svc]}; E_{svc}=$S",
+            f'[ "$E_{svc}" = running ] || UP=1',
+        ]
+    lines.append('if [ "$UP" = 1 ]; then comp up -d || fail compose-up; fi')
+    if "coturn" in services and "coturn" in plan.answers.services:
+        lines += [
+            'if [ "$(mval RECREATE)" = 1 ] && [ "$E_coturn" != missing ]; then',
+            "  comp up -d --force-recreate coturn || fail compose-recreate",
+            "fi",
+        ]
+    if is_production(plan.answers):
+        for svc in services:
+            lines.append(
+                f'cwait {cc.CONTAINERS[svc]}; [ "$S" = running ] || fail {svc}'
+            )
+    return lines
+
+
+def _ntfy_exec(engine_sh, user_sh):
+    """Préfixe `sh` de la CLI de ntfy dans son conteneur : `exec -e
+    NTFY_PASSWORD` (sans valeur : le client la prend à son environnement,
+    elle n'atteint aucun argv) sous l'uid:gid `user_sh`."""
+    return (
+        f"{engine_sh} exec -e NTFY_PASSWORD -u {user_sh}"
+        f" {cc.CONTAINERS['ntfy']} ntfy"
+    )
+
+
+def _ntfy_admin_lines(plan):
+    """Le compte NTFY_ADMIN_USER, créé comme install_ntfy.sh le crée
+    (`ensure_admin_user`) quand le conteneur de ntfy tourne et que le
+    compte manque : mot de passe tiré sur l'hôte, passé par NTFY_PASSWORD,
+    imprimé une seule fois sur `@@ADMIN_PASSWORD`, que `cap` garde en
+    `@@ADMIN_ADDED`."""
+    cli = _ntfy_exec("eng", '"$U_ntfy"')
+    cfg = shlex.quote(NTFY_CONFIG)
+    user = NTFY_ADMIN_USER
+    return [
+        "# compte administrateur de ntfy",
+        f"cwait {cc.CONTAINERS['ntfy']}",
+        'if [ "$S" = running ]; then',
+        "  {",
+        f"    if {cli} user --config {cfg} list 2>&1"
+        f' | grep -q "^user {user} "; then',
+        f'      echo "Compte {user} deja present, mot de passe inchange."',
+        "    else",
+        "      NTFY_PASSWORD=$(head -c 24 /dev/urandom | base64"
+        " | tr -d '/+=' | head -c 24)",
+        "      export NTFY_PASSWORD",
+        f"      if {cli} user --config {cfg} add --role=admin {user}"
+        " >/dev/null 2>&1; then",
+        '        echo "@@ADMIN_PASSWORD $NTFY_PASSWORD"',
+        "      else",
+        f'        echo "AVERTISSEMENT : creation du compte {user} impossible."',
+        "      fi",
+        "      unset NTFY_PASSWORD",
+        "    fi",
+        "  } | cap",
+        "fi",
+    ]
+
+
+def _container_gate_lines(plan):
+    """Barrière des conteneurs : `@@ACTIVE <service> active` quand son
+    conteneur tourne (après `cwait`), sinon son état (« exited »,
+    « missing »...) et OK=0. Conteneur de coturn en marche : l'empreinte en
+    attente devient COTURN_APPLIED ; sinon elle est retirée, et la relance
+    la recalcule."""
+    state = plan.new_state
+    pending, applied = _host(COTURN_APPLIED_PENDING), _host(COTURN_APPLIED)
+    lines = []
+    for svc in _container_services(state):
+        lines += [
+            f"cwait {cc.CONTAINERS[svc]}",
+            'A=$S; [ "$A" = running ] && A=active',
+            f'echo "@@ACTIVE {svc} $A"',
+            '[ "$A" = active ] || OK=0',
+        ]
+        if svc == "coturn":
+            lines += [
+                'if [ "$A" = active ]; then',
+                f"  if [ -f {pending} ]; then mv -f {pending} {applied}"
+                " || OK=0; fi",
+                "else",
+                f"  rm -f {pending}",
+                "fi",
+            ]
+    return lines
+
+
+# --- CLI de ntfy selon la méthode -------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class NtfyCli:
+    """Comment parler au ntfy d'un état : `prefix` remplace le mot `ntfy`
+    d'une commande de sa CLI, lancée sous `sudo_user` (None : root) ;
+    `restart` le redémarre et `active` imprime « active » quand il tourne,
+    « activating » dans un état passager, sinon son état ; ces deux-là se
+    lancent en root."""
+
+    prefix: str
+    sudo_user: str | None
+    restart: str
+    active: str
+
+
+def ntfy_cli(state, owner):
+    """`NtfyCli` du ntfy de `state`. Par paquets (ou sans état) : le binaire
+    de l'hôte sous `owner`, le propriétaire de la base des comptes, et les
+    commandes systemctl de l'unité. En conteneurs : `<moteur> exec -e
+    NTFY_PASSWORD -u <uid>:<gid> erplibre-call-ntfy ntfy` en root ; en
+    rootless, `env XDG_RUNTIME_DIR=/run/user/<uid> podman exec ...` sous le
+    compte rootless ; redémarrage par l'outil de composition, état par
+    `inspect`. Refusal `call_infra_state_invalid` (`service` : le champ)
+    pour un bloc `container` altéré ou un état sans ntfy."""
+    if not isinstance(state, dict) or state.get("method") != "container":
+        return NtfyCli(
+            prefix="ntfy",
+            sudo_user=owner,
+            restart="systemctl restart ntfy",
+            active="systemctl is-active ntfy",
+        )
+    problem = cc.container_block_problem(state)
+    if problem:
+        raise Refusal("call_infra_state_invalid", service=problem)
+    record = state["services"].get("ntfy")
+    if not isinstance(record, dict):
+        raise Refusal("call_infra_state_invalid", service="ntfy")
+    block = state["container"]
+    user = f"{record['uid']}:{record['gid']}"
+    engine = shlex.join(cc.engine_argv(block))
+    status = (
+        f"S=$({engine} inspect -f {shlex.quote(_STATUS_FORMAT)}"
+        f" {cc.CONTAINERS['ntfy']} 2>/dev/null)"
+        '; case "$S" in running) S=active ;;'
+        f" {_TRANSIENT}) S=activating ;; esac"
+        '; echo "${S:-unknown}"'
+    )
+    restart = shlex.join(cc.compose_argv(block) + ["restart", "ntfy"])
+    if block["rootless"]:
+        local = f"env XDG_RUNTIME_DIR=/run/user/{block['uid']} podman"
+        return NtfyCli(
+            prefix=_ntfy_exec(local, user),
+            sudo_user=block["account"],
+            restart=restart,
+            active=status,
+        )
+    return NtfyCli(
+        prefix=_ntfy_exec(shlex.quote(block["engine"]), user),
+        sudo_user=None,
+        restart=restart,
+        active=status,
+    )
+
+
 def install_script(plan, stamp, root=""):
     """Script `sh` d'installation, lancé en root sur l'hôte.
 
@@ -3681,6 +4531,19 @@ def install_script(plan, stamp, root=""):
     `plan.purge_secrets` : ces anciens secrets d'Odoo sont effacés de la
     base de coturn avant l'écriture de l'état ; un échec arrête le script
     sans écrire l'état, qui les nomme encore pour la relance.
+
+    Conteneurs (`answers.method`) : les fiches portent aussi `method` ;
+    après les copies viennent le moteur (`_engine_lines`), les comptes
+    (`_container_accounts_lines`), le compte rootless (`_rootless_lines`),
+    les images (`_pull_lines` : un pull refusé arrête le script avant tout
+    service), coturn et ntfy (`_coturn_container_block`,
+    `_ntfy_container_block`), le fichier compose et le lancement
+    (`_compose_lines`), le compte administrateur de ntfy
+    (`_ntfy_admin_lines`), les étapes de production, puis la barrière des
+    conteneurs (`_container_gate_lines`) au lieu de celle des unités. Ce
+    que le passage ajoute à l'hôte va dans la fiche « container » au fur et
+    à mesure (`cfiche`) ; l'état écrit le prend aux marqueurs du passage
+    (`installed_state`), et la fiche part avec les autres.
     """
     if not _STAMP.match(stamp or ""):
         raise ValueError(f"stamp: {stamp!r}")
@@ -3688,6 +4551,7 @@ def install_script(plan, stamp, root=""):
     services = [s for s in SERVICES if s in answers.services]
     state = written_state(plan, stamp)
     production = is_production(answers)
+    container = answers.method == "container"
     certbot = _uses_certbot(answers)
     # nginx et certbot ont leur fiche quand ce plan s'en sert.
     extra = ["nginx"] if _uses_nginx(answers) else []
@@ -3715,6 +4579,7 @@ def install_script(plan, stamp, root=""):
         f"trap '{'rehold; ' if certbot else ''}exit 129' HUP INT TERM",
         *_capture_lines(),
         *(_rehold_lines() if certbot else []),
+        *(_container_helper_lines(plan, state) if container else []),
         # Le dossier reste traversable : coturn y lit son certificat.
         'mkdir -p "$PENDING" && chmod 0755 "$CALL" && chmod 0700 "$PENDING"'
         " || fail pending",
@@ -3733,6 +4598,8 @@ def install_script(plan, stamp, root=""):
                 "was_enabled",
             )
         }
+        if container:
+            origins[svc]["method"] = answers.method
     for name in extra:
         keys = (
             "installed_by_tool",
@@ -3786,17 +4653,41 @@ def install_script(plan, stamp, root=""):
             f'[ -f {_LIVE}"/fullchain.pem" ] && [ -f {_LIVE}"/privkey.pem" ]'
             " && LE=1",
         ]
-    for svc in services:
-        lines += _coturn_block(plan) if svc == "coturn" else _ntfy_block(plan)
-        if production:
-            lines.append(f'[ "$RC_{svc}" = 0 ] || fail {svc}')
+    if container:
+        lines += _engine_lines(plan) + _container_accounts_lines(plan)
+        if state["container"]["rootless"]:
+            lines += _rootless_lines(plan)
+        lines += _pull_lines(plan)
+        for svc in services:
+            lines += (
+                _coturn_container_block(plan)
+                if svc == "coturn"
+                else _ntfy_container_block(plan)
+            )
+        lines += _compose_lines(plan)
+        if "ntfy" in services:
+            lines += _ntfy_admin_lines(plan)
+    else:
+        for svc in services:
+            lines += (
+                _coturn_block(plan) if svc == "coturn" else _ntfy_block(plan)
+            )
+            if production:
+                lines.append(f'[ "$RC_{svc}" = 0 ] || fail {svc}')
     if production:
         lines += _production_lines(plan)
     lines += _purge_lines(plan, state)
-    units = [(svc, state["services"][svc]["unit"]) for svc in services]
+    units = (
+        []
+        if container
+        else [(svc, state["services"][svc]["unit"]) for svc in services]
+    )
     if _uses_nginx(answers):
         units.append(("nginx", "nginx"))
     lines.append("OK=1")
+    if container:
+        lines += [f'[ "$RC_{svc}" = 0 ] || OK=0' for svc in services]
+        lines += _container_gate_lines(plan)
     for name, unit in units:
         if name in services:
             lines.append(f'[ "$RC_{name}" = 0 ] || OK=0')
@@ -3816,8 +4707,10 @@ def install_script(plan, stamp, root=""):
         # L'état écrit consigne Let's Encrypt : une coupure ne remet plus
         # le fichier de renouvellement de côté.
         lines.append("  trap 'exit 129' HUP INT TERM")
+    # La fiche « container » passe dans l'état écrit (`_container_block`).
+    done = [*origins, *carried, *(["container"] if container else [])]
     lines += [
-        *[f'  rm -f "$PENDING/{name}.json"' for name in [*origins, *carried]],
+        *[f'  rm -f "$PENDING/{name}.json"' for name in done],
         '  echo "@@SAVED yes"',
         "else",
         *(["  rehold"] if certbot else []),
@@ -6900,15 +7793,13 @@ _DPKG_INTERRUPTED = (
 )
 
 
-def _uninstall_helpers():
-    """Fonctions `sh` du script : famille du système (os-release, mêmes
-    listes qu'`os_family`), paquet présent et purge, remise en place de ce
-    qui a été mis de côté. Sur Debian, un paquet dans un état de
-    _DPKG_INTERRUPTED compte comme présent, et sa purge passe d'abord par
-    « dpkg --configure -a » ; « config-files » ne compte pas."""
+def _family_lines():
+    """Lignes `sh` : `FAMILY` (debian, arch ou vide, d'os-release, mêmes
+    listes qu'`os_family`) et `pkg_installed <paquet>`. Sur Debian, un
+    paquet dans un état de _DPKG_INTERRUPTED compte comme présent ;
+    « config-files » ne compte pas."""
     debian = "|".join(sorted(_DEBIAN_IDS))
     arch = "|".join(sorted(_ARCH_IDS))
-    held = " ".join(f"{name}:{path}" for name, path in _HELD)
     return [
         "FAMILY=",
         'if [ -r "$R/etc/os-release" ]; then',
@@ -6928,6 +7819,16 @@ def _uninstall_helpers():
         "    *) return 1 ;;",
         "  esac",
         "}",
+    ]
+
+
+def _uninstall_helpers():
+    """Fonctions `sh` du script : famille du système et paquet présent
+    (`_family_lines`), purge, remise en place de ce qui a été mis de côté.
+    La purge d'un paquet dans un état de _DPKG_INTERRUPTED passe d'abord
+    par « dpkg --configure -a »."""
+    held = " ".join(f"{name}:{path}" for name, path in _HELD)
+    return _family_lines() + [
         "pkg_purge() {",
         '  case "$FAMILY" in',
         f'    debian) case "$(dpkg_status "$1")" in {_DPKG_INTERRUPTED})',
