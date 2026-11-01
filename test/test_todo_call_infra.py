@@ -31,6 +31,7 @@ from unittest import mock
 from script.todo import call_infra as ci
 from script.todo import call_infra_menu as cim
 from script.todo import ntfy_mobile as nm
+from script.todo import odoo_link as ol
 from script.todo.todo_i18n import TRANSLATIONS, t
 
 REPO = Path(__file__).resolve().parent.parent
@@ -101,6 +102,8 @@ class FakeHost:
         state_code=0,
         probe_extra=(),
         check_extra=(),
+        odoo_add_ok=True,
+        odoo_remove_ok=True,
     ):
         self.os_line = os_line
         self.systemd = systemd
@@ -124,10 +127,22 @@ class FakeHost:
         # Lignes de la base de coturn que la vérification lit
         # (`@@TURN_SECRET ...`, `@@TURN_USER ...`).
         self.check_extra = list(check_extra)
+        # Issue des scripts d'un serveur Odoo : l'ajout et le retrait
+        # réussissent, ou s'arrêtent à l'étape « coturn ».
+        self.odoo_add_ok = odoo_add_ok
+        self.odoo_remove_ok = odoo_remove_ok
         self.calls = []
 
     @staticmethod
     def kind(script):
+        # Les scripts d'un serveur Odoo d'abord : celui d'ajout peut porter
+        # l'installateur de coturn et l'écriture de l'état.
+        if "@@ODOO_ADDED" in script:
+            return "odoo-add"
+        if "@@ODOO_REMOVED" in script:
+            return "odoo-remove"
+        if "@@ODOO_ROLLBACK" in script:
+            return "odoo-rollback"
         if "@@OS" in script:
             return "probe"
         if "@@CHECK_KEY" in script:
@@ -188,6 +203,22 @@ class FakeHost:
             sys.stdout.write(out)
         return code, out
 
+    def _odoo_answer(self, kind, script):
+        """Sortie d'un script d'un serveur Odoo ; l'ajout qui bascule le
+        mode, ou purge, et le retrait écrivent l'état dès ce script."""
+        if kind == "odoo-add":
+            if not self.odoo_add_ok:
+                return 1, "@@FAILED coturn\n@@ODOO_ADDED no\n"
+            if STATE_LINE.search(script):
+                self.state = state_of(script)
+            return 0, "@@TURN_MODE secret\n@@ODOO_ADDED yes\n"
+        if kind == "odoo-remove":
+            if not self.odoo_remove_ok:
+                return 1, "@@FAILED coturn\n@@ODOO_REMOVED no\n"
+            self.state = state_of(script)
+            return 0, "@@ODOO_REMOVED yes\n"
+        return 0, "@@ODOO_ROLLBACK yes\n"
+
     def _answer(self, script, sudo_user):
         self.calls.append((script, sudo_user))
         if self.sudo_error:
@@ -195,6 +226,8 @@ class FakeHost:
         kind = self.kind(script)
         if kind == "probe":
             return 0, self.probe_output()
+        if kind.startswith("odoo-"):
+            return self._odoo_answer(kind, script)
         if kind == "install":
             out = "".join(
                 f"@@ACTIVE {svc} active\n"
@@ -280,6 +313,14 @@ class MenuCase(unittest.TestCase):
         # ne résout pas. Aucune requête DNS ne part des tests.
         self.dns = {}
         self.prompts = []
+        # Le lien vers Odoo que rend la fabrique doublure, et les
+        # arguments de chaque construction.
+        self.link = None
+        self.made = []
+
+    def make_link(self, method, url, database, **how):
+        self.made.append((method, url, database, how))
+        return self.link
 
     def resolve(self, name, port):
         if name not in self.dns:
@@ -313,6 +354,17 @@ class MenuCase(unittest.TestCase):
                 mock.patch(
                     "builtins.input",
                     side_effect=lambda *a: self.reply(pending, *a),
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "getpass.getpass",
+                    side_effect=lambda *a: self.reply(pending, *a),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    self.todo, "_call_infra_make_link", self.make_link
                 )
             )
             stack.enter_context(
@@ -1420,22 +1472,762 @@ class TestLocalNtfyWarning(MenuCase):
                 self.assertNotIn(t("call_infra_local_ntfy_adopted"), out)
 
 
+# --- Serveurs Odoo ------------------------------------------------------------
+
+ODOO_URL = "https://odoo.exemple.test"
+ODOO_DB = "base_exemple"
+ODOO_KEY = ol.odoo_key(ODOO_URL, ODOO_DB)
+OWNED = ol.owned_username(ODOO_URL, ODOO_DB)
+OTHER_KEY = ol.odoo_key("https://autre.exemple.test", "autre_base")
+ODOO_PASSWORD = "Mot-de-passe-Odoo-invente-77"
+USER_PASSWORD = "Mot-de-passe-utilisateur-invente-31"
+ODOO_ADDRESS = "198.51.100.20"
+# Réponses jusqu'aux faits de la base, par l'API web : méthode (1),
+# URL, base, identifiant (admin proposé), mot de passe (sans écho).
+ADD_WEB = ["", ODOO_URL, ODOO_DB, "", ODOO_PASSWORD]
+# Retrait par l'API web : choix de la base (1), méthode consignée,
+# identifiant, mot de passe.
+REMOVE_WEB = ["", "", "", ODOO_PASSWORD]
+
+
+def odoo_facts(module_state="installed", rows=(), params=None, version="18.0"):
+    return ol.OdooFacts(
+        version=version,
+        major=ol.major_of(version),
+        module_state=module_state,
+        params=dict(params or {}),
+        rows=tuple(rows),
+        host_name="odoo.exemple.test",
+    )
+
+
+class FakeLink(ol.WebApi):
+    """Lien vers Odoo doublure : rend des faits préparés et garde chaque
+    appel. Il dérive de WebApi pour que l'état consigne « webapi », sans
+    jamais en appeler le constructeur ni le réseau."""
+
+    def __init__(self, facts=None, fail=(), error=None):
+        self._facts = facts or odoo_facts()
+        self.fail = set(fail)
+        self.error = error or ol.OdooError(
+            "call_infra_odoo_unreachable",
+            url=ODOO_URL,
+            reason="connexion refusée",
+        )
+        self.calls = []
+
+    def _record(self, name, *args):
+        self.calls.append((name, *args))
+        if name in self.fail:
+            raise self.error
+
+    def facts(self):
+        self._record("facts")
+        return self._facts
+
+    def install_module(self):
+        self._record("install_module")
+
+    def set_params(self, values):
+        self._record("set_params", dict(values))
+
+    def replace_rows(self, owned, rows):
+        self._record("replace_rows", owned, [dict(r) for r in rows])
+
+    def whoami(self):
+        return "admin"
+
+    def names(self):
+        return [call[0] for call in self.calls]
+
+
+def plugged_state(kind="secret", keys=(ODOO_KEY,), method="webapi", **how):
+    """Un état d'installation où `keys` sont branchés sur coturn."""
+    state = installed_state(how.pop("ans", None))
+    state["turn_mode"] = "secret" if kind == "secret" else "fixed"
+    if kind == "secret":
+        state["check_secret_sha256"] = "c" * 64
+    state["odoos"] = {}
+    for key in keys:
+        url, _, database = key.rpartition("|")
+        credential = (
+            {"kind": "secret", "value_sha256": "a" * 64}
+            if kind == "secret"
+            else {"kind": "user", "user": ol.owned_username(url, database)}
+        )
+        state["odoos"][key] = {
+            "method": method,
+            "module": kind == "secret",
+            "credential": credential,
+            "retired": [],
+            "rows": kind != "secret",
+            "exempt": how.get("exempt"),
+            "added_at": "2026-10-31T10:00:00+00:00",
+        }
+    return state
+
+
+def odoo_line(key=ODOO_KEY, n=1):
+    return ci.CheckLine(
+        f"odoo-{n}",
+        True,
+        "call_infra_check_odoo_relayed",
+        {"odoo": key, "relayed": "192.0.2.10:50000"},
+    )
+
+
+class OdooCase(MenuCase):
+    def setUp(self):
+        super().setUp()
+        self.dns = {"odoo.exemple.test": [ODOO_ADDRESS]}
+        self.link = FakeLink()
+
+    def text(self, key, **values):
+        return t(key).format(**values)
+
+
+class TestAddOdoo(OdooCase):
+    def test_add_with_the_module_installed(self):
+        host = FakeHost(state=installed_state())
+        out = self.drive(
+            "_call_infra_add_odoo",
+            host,
+            ADD_WEB + ["", "o"],
+            lines=[odoo_line(OTHER_KEY, 1), odoo_line(ODOO_KEY, 2)],
+        )
+        self.assertEqual(host.kinds(), ["probe", "odoo-add", "state", "check"])
+        self.assertEqual(
+            self.made,
+            [
+                (
+                    "webapi",
+                    ODOO_URL,
+                    ODOO_DB,
+                    {"login": "admin", "secret": ODOO_PASSWORD},
+                )
+            ],
+        )
+        # Le script de l'hôte d'abord, puis Odoo : les paramètres en
+        # dernier, le secret à la fin.
+        self.assertEqual(
+            self.link.names(), ["facts", "replace_rows", "set_params"]
+        )
+        self.assertEqual(self.link.calls[1][1:], (OWNED, []))
+        params = self.link.calls[2][1]
+        self.assertEqual(list(params), [ol.PARAM_URLS, ol.PARAM_SECRET])
+        self.assertIn(t("call_infra_odoo_kind_secret"), out)
+        self.assertIn(
+            "identifiants temporaires",
+            TRANSLATIONS["call_infra_odoo_kind_secret"]["fr"],
+        )
+        self.assertIn("turn:192.0.2.10:3478?transport=udp", out)
+        entry = host.state["odoos"][ODOO_KEY]
+        self.assertEqual(entry["credential"]["kind"], "secret")
+        self.assertEqual(entry["method"], "webapi")
+        self.assertEqual(entry["exempt"], ODOO_ADDRESS)
+        self.assertEqual(host.state["turn_mode"], "secret")
+        self.assertIn(self.text("call_infra_odoo_added", odoo=ODOO_KEY), out)
+        # Seule la ligne de cette base est montrée après l'ajout.
+        check_line = re.compile(rf"^. {re.escape(t('Odoo server'))} \d+ : ")
+        shown = [line for line in out.splitlines() if check_line.match(line)]
+        self.assertEqual(len(shown), 1)
+        self.assertTrue(shown[0].startswith(f"✓ {t('Odoo server')} 2 : "))
+        self.assertEqual(
+            self.check_local.call_args.args[1:], ("192.0.2.10", None)
+        )
+
+    def test_passwords_and_the_drawn_secret_never_reach_the_screen(self):
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "o"])
+        secret = self.link.calls[-1][1][ol.PARAM_SECRET]
+        self.assertTrue(secret)
+        for hidden in (ODOO_PASSWORD, secret):
+            self.assertNotIn(hidden, out)
+            self.assertFalse(any(hidden in p for p in self.prompts))
+        self.assertNotIn(secret, json.dumps(host.state))
+        # Le mot de passe se demande sans écho.
+        self.assertIn(t("call_infra_ask_odoo_password"), self.prompts[4])
+
+    def test_an_installable_module_is_offered_and_installed_first(self):
+        self.link = FakeLink(odoo_facts("uninstalled"))
+        host = FakeHost(state=installed_state())
+        self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "", "o"])
+        self.assertIn(t("call_infra_ask_install_module"), self.prompts[5])
+        self.assertEqual(
+            self.link.names(),
+            ["facts", "install_module", "replace_rows", "set_params"],
+        )
+        self.assertEqual(host.state["turn_mode"], "secret")
+
+    def test_a_declined_install_gives_a_fixed_account(self):
+        self.link = FakeLink(odoo_facts("uninstalled"))
+        host = FakeHost(state=installed_state())
+        out = self.drive(
+            "_call_infra_add_odoo", host, ADD_WEB + ["n", "", "o"]
+        )
+        self.assertNotIn("install_module", self.link.names())
+        self.assertIn(t("call_infra_odoo_kind_user"), out)
+        self.assertIn(t("call_infra_no_turns"), out)
+        self.assertEqual(
+            host.state["odoos"][ODOO_KEY]["credential"]["kind"], "user"
+        )
+
+    def test_module_absent_explains_then_asks_the_fallback(self):
+        self.link = FakeLink(odoo_facts("absent"))
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + [""])
+        self.assertIn(t("call_infra_module_absent"), out)
+        self.assertIn(t("call_infra_ask_fixed_fallback"), self.prompts[-1])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertEqual(self.link.names(), ["facts"])
+        self.assertIn(t("Nothing added."), out)
+
+    def test_the_fixed_fallback_writes_three_owned_rows(self):
+        self.link = FakeLink(odoo_facts("absent"))
+        host = FakeHost(state=installed_state())
+        out = self.drive(
+            "_call_infra_add_odoo", host, ADD_WEB + ["o", "", "o"]
+        )
+        self.assertEqual(host.kinds(), ["probe", "odoo-add", "state", "check"])
+        self.assertEqual(self.link.names(), ["facts", "replace_rows"])
+        owned, rows = self.link.calls[1][1:]
+        self.assertEqual(owned, OWNED)
+        self.assertEqual(
+            [(r["server_type"], r["username"]) for r in rows],
+            [("stun", OWNED), ("turn", OWNED), ("turn", OWNED)],
+        )
+        self.assertNotIn("credential", rows[0])
+        password = rows[1]["credential"]
+        self.assertNotIn(password, out)
+        self.assertIn(t("call_infra_no_turns"), out)
+        # L'explication ne se répète pas dans le résumé.
+        self.assertEqual(out.count(t("call_infra_module_absent")), 1)
+        self.assertEqual(host.state["turn_mode"], "fixed")
+
+    def test_mixing_modes_is_refused_with_its_reason(self):
+        # Un coturn en mode secret qui sert déjà un Odoo : un Odoo sans
+        # module ne se voit pas offrir le compte fixe.
+        self.link = FakeLink(odoo_facts("absent"))
+        host = FakeHost(state=plugged_state("secret", (OTHER_KEY,)))
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB)
+        self.assertIn(t("call_infra_module_absent"), out)
+        self.assertIn(
+            self.text(
+                "call_infra_turn_mode_mismatch", mode="secret", odoos=OTHER_KEY
+            ),
+            out,
+        )
+        self.assertEqual(host.kinds(), ["probe"])
+
+    def test_a_module_odoo_on_a_fixed_coturn_is_refused(self):
+        host = FakeHost(state=plugged_state("user", (OTHER_KEY,)))
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB)
+        self.assertIn(
+            self.text(
+                "call_infra_turn_mode_mismatch", mode="fixed", odoos=OTHER_KEY
+            ),
+            out,
+        )
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertEqual(self.link.names(), ["facts"])
+
+    def test_no_coturn_is_refused_before_any_question(self):
+        state = installed_state(answers(services=frozenset({"ntfy"})))
+        host = FakeHost(state=state)
+        out = self.drive("_call_infra_add_odoo", host, [])
+        self.assertIn(t("call_infra_odoo_no_coturn"), out)
+        self.assertEqual(host.kinds(), ["probe"])
+
+    def test_an_odoo_17_is_refused_with_its_version(self):
+        self.link = FakeLink(
+            fail={"facts"},
+            error=ol.OdooError("call_infra_odoo_version", version="17.0"),
+        )
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB)
+        self.assertIn(
+            self.text("call_infra_odoo_version", version="17.0"), out
+        )
+        self.assertEqual(host.kinds(), ["probe"])
+
+    def test_existing_rows_are_listed_without_credential(self):
+        rows = (
+            {
+                "id": 7,
+                "server_type": "turn",
+                "uri": "turn.exemple.test:3478",
+                "username": "alice",
+            },
+            {
+                "id": 8,
+                "server_type": "stun",
+                "uri": "stun.exemple.test",
+                "username": "",
+            },
+        )
+        self.link = FakeLink(odoo_facts(rows=rows))
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "n"])
+        self.assertIn("turn:turn.exemple.test:3478 (alice)", out)
+        self.assertIn("stun:stun.exemple.test", out)
+
+    def test_declined_writes_nothing(self):
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", ""])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertEqual(self.link.names(), ["facts"])
+        self.assertIn(t("Nothing added."), out)
+
+    def test_a_loopback_url_proposes_no_exempt_address(self):
+        self.dns = {"odoo.exemple.test": ["127.0.0.1"]}
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "o"])
+        self.assertIn(
+            self.text("call_infra_odoo_exempt_local", address="127.0.0.1"), out
+        )
+        self.assertIsNone(host.state["odoos"][ODOO_KEY]["exempt"])
+
+    def test_a_typed_exempt_address_wins_and_a_dash_gives_none(self):
+        for typed, expected in (("203.0.113.7", "203.0.113.7"), ("-", None)):
+            with self.subTest(typed=typed):
+                self.link = FakeLink()
+                host = FakeHost(state=installed_state())
+                self.drive(
+                    "_call_infra_add_odoo", host, ADD_WEB + [typed, "o"]
+                )
+                self.assertEqual(
+                    host.state["odoos"][ODOO_KEY]["exempt"], expected
+                )
+
+    def test_a_loopback_typed_as_exempt_is_refused(self):
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["127.0.0.1"])
+        self.assertIn(
+            self.text("call_infra_odoo_exempt", address="127.0.0.1"), out
+        )
+        self.assertEqual(host.kinds(), ["probe"])
+
+    def test_without_ntfy_on_the_host_no_exempt_is_asked(self):
+        state = installed_state(answers(services=frozenset({"coturn"})))
+        host = FakeHost(state=state)
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["o"])
+        self.assertIn(t("call_infra_odoo_exempt_no_ntfy"), out)
+        self.assertIsNone(host.state["odoos"][ODOO_KEY]["exempt"])
+
+    def test_a_failed_odoo_write_rolls_coturn_back(self):
+        self.link = FakeLink(
+            fail={"set_params"},
+            error=ol.OdooError(
+                "call_infra_odoo_rpc_error", message="AccessError inventée"
+            ),
+        )
+        # Un coturn déjà en mode secret : l'ajout ne bascule rien, l'état
+        # de l'hôte reste octet pour octet celui d'avant.
+        host = FakeHost(state=plugged_state("secret", (OTHER_KEY,)))
+        before = json.loads(json.dumps(host.state))
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "o"])
+        self.assertEqual(host.kinds(), ["probe", "odoo-add", "odoo-rollback"])
+        self.assertIn(t("call_infra_odoo_write_failed"), out)
+        self.assertIn("AccessError inventée", out)
+        self.assertEqual(host.state, before)
+
+    def test_a_failed_host_script_writes_nothing_in_odoo(self):
+        host = FakeHost(state=installed_state(), odoo_add_ok=False)
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "o"])
+        self.assertIn(
+            self.text("call_infra_odoo_host_failed", step="coturn"), out
+        )
+        self.assertEqual(self.link.names(), ["facts"])
+        self.assertEqual(host.kinds(), ["probe", "odoo-add"])
+
+    def test_every_script_runs_as_root(self):
+        host = FakeHost(state=installed_state())
+        self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "o"])
+        self.assertEqual({user for _, user in host.calls}, {None})
+
+
+class TestRemoveOdoo(OdooCase):
+    def test_remove_cleans_odoo_then_revokes_on_coturn(self):
+        host = FakeHost(state=plugged_state())
+        out = self.drive("_call_infra_remove_odoo", host, REMOVE_WEB)
+        self.assertEqual(host.kinds(), ["probe", "odoo-remove"])
+        self.assertEqual(
+            self.link.calls,
+            [
+                ("set_params", {ol.PARAM_SECRET: None, ol.PARAM_URLS: None}),
+                ("replace_rows", OWNED, []),
+            ],
+        )
+        self.assertEqual(host.state["odoos"], {})
+        self.assertIn(self.text("call_infra_odoo_removed", odoo=ODOO_KEY), out)
+        self.assertNotIn(ODOO_PASSWORD, out)
+        self.assertEqual(self.made[0][:3], ("webapi", ODOO_URL, ODOO_DB))
+
+    def test_the_list_names_each_odoo_and_its_method(self):
+        host = FakeHost(state=plugged_state(keys=(ODOO_KEY, OTHER_KEY)))
+        out = self.drive(
+            "_call_infra_remove_odoo", host, ["2", "", "", ODOO_PASSWORD]
+        )
+        listed = sorted([ODOO_KEY, OTHER_KEY])
+        for n, key in enumerate(listed, 1):
+            self.assertIn(
+                f"[{n}] {key} ({t('call_infra_odoo_method_webapi')})", out
+            )
+        self.assertEqual(list(host.state["odoos"]), [listed[0]])
+        url, _, database = listed[1].rpartition("|")
+        self.assertEqual(self.made[0][1:3], (url, database))
+
+    def test_an_unreachable_odoo_asks_before_revoking_anyway(self):
+        self.link = FakeLink(fail={"set_params"})
+        host = FakeHost(state=plugged_state())
+        out = self.drive("_call_infra_remove_odoo", host, REMOVE_WEB + ["o"])
+        self.assertIn(t("call_infra_odoo_remove_unreachable"), out)
+        self.assertIn("connexion refusée", out)
+        self.assertIn(t("call_infra_ask_revoke_anyway"), self.prompts[-1])
+        self.assertEqual(host.kinds(), ["probe", "odoo-remove"])
+        self.assertEqual(host.state["odoos"], {})
+
+    def test_declining_the_revocation_changes_nothing(self):
+        self.link = FakeLink(fail={"set_params"})
+        state = plugged_state()
+        host = FakeHost(state=state)
+        out = self.drive("_call_infra_remove_odoo", host, REMOVE_WEB + [""])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(ODOO_KEY, host.state["odoos"])
+        self.assertIn(t("Nothing revoked."), out)
+
+    def test_no_odoo_plugged_says_so(self):
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_remove_odoo", host, [])
+        self.assertIn(t("call_infra_no_odoo"), out)
+        self.assertEqual(host.kinds(), ["probe"])
+
+    def test_a_failed_remove_script_is_shown(self):
+        host = FakeHost(state=plugged_state(), odoo_remove_ok=False)
+        out = self.drive("_call_infra_remove_odoo", host, REMOVE_WEB)
+        self.assertIn(
+            self.text("call_infra_odoo_host_failed", step="coturn"), out
+        )
+        self.assertIn(ODOO_KEY, host.state["odoos"])
+
+
+class TestCheckOdoo(OdooCase):
+    ICE = [
+        {
+            "urls": "turn:192.0.2.10:3478?transport=udp",
+            "username": "1893542400:odoo-u6",
+            "credential": "Identifiant-invente-remis-par-odoo",
+        }
+    ]
+
+    def ice_lines(self):
+        return [
+            ci.CheckLine(
+                "odoo-ice-turn:192.0.2.10:3478?transport=udp",
+                True,
+                "call_infra_check_ice_relayed",
+                {
+                    "url": "turn:192.0.2.10:3478?transport=udp",
+                    "relayed": "192.0.2.10:50001",
+                },
+            )
+        ]
+
+    def test_check_through_odoo_after_the_report(self):
+        host = FakeHost(state=plugged_state())
+        through = mock.Mock(return_value=self.ice_lines())
+        with (
+            mock.patch.object(
+                ol.WebApi, "join_call_ice", return_value=self.ICE
+            ) as join,
+            mock.patch.object(ci, "check_through_odoo", through),
+        ):
+            out = self.drive(
+                "_call_infra_check",
+                host,
+                ["", "o", "", "utilisateur", USER_PASSWORD],
+            )
+        self.assertEqual(host.kinds(), ["check"])
+        join.assert_called_once_with("utilisateur", USER_PASSWORD)
+        ice, realm, address, cafile = through.call_args.args
+        self.assertEqual(
+            (ice, realm, address, cafile),
+            (self.ICE, "192.0.2.10", "192.0.2.10", None),
+        )
+        self.assertEqual(through.call_args.kwargs["turn_host"], "192.0.2.10")
+        self.assertIn(t("call_infra_check_odoo_notice"), out)
+        self.assertIn(f"✓ {t('ICE handed out by Odoo')} : ", out)
+        self.assertNotIn(USER_PASSWORD, out)
+        self.assertNotIn(self.ICE[0]["credential"], out)
+        # La notice vient avant la question, qui vient après le rapport.
+        self.assertIn(t("call_infra_ask_check_odoo"), self.prompts[1])
+
+    def test_declined_joins_nothing(self):
+        host = FakeHost(state=plugged_state())
+        with mock.patch.object(ol.WebApi, "join_call_ice") as join:
+            self.drive("_call_infra_check", host, ["", ""])
+        join.assert_not_called()
+
+    def test_a_refused_user_login_is_shown(self):
+        host = FakeHost(state=plugged_state())
+        error = ol.OdooError("call_infra_odoo_user_login", login="utilisateur")
+        with mock.patch.object(ol.WebApi, "join_call_ice", side_effect=error):
+            out = self.drive(
+                "_call_infra_check",
+                host,
+                ["", "o", "", "utilisateur", USER_PASSWORD],
+            )
+        self.assertIn(
+            self.text("call_infra_odoo_user_login", login="utilisateur"), out
+        )
+
+    def test_without_odoo_the_question_is_not_asked(self):
+        host = FakeHost(state=installed_state())
+        self.drive("_call_infra_check", host, [""])
+        self.assertFalse(
+            any(t("call_infra_ask_check_odoo") in p for p in self.prompts)
+        )
+
+    def test_the_install_report_never_asks_it(self):
+        # Le rapport d'après l'installation ne pose pas la question.
+        host = FakeHost(state=plugged_state())
+        with mock.patch.object(ol.WebApi, "join_call_ice") as join:
+            self.todo_report(host)
+        join.assert_not_called()
+
+    def todo_report(self, host):
+        pending = [""]
+        with (
+            mock.patch(
+                "builtins.input", side_effect=lambda *a: pending.pop(0)
+            ),
+            mock.patch.object(ci, "check_local", return_value=LINES),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.todo._call_infra_report(host)
+        self.assertEqual(pending, [])
+
+    def test_odoo_lines_have_labels(self):
+        line = odoo_line(ODOO_KEY, 3)
+        self.assertTrue(
+            self.todo._call_infra_line(line).startswith(
+                f"✓ {t('Odoo server')} 3 : "
+            )
+        )
+        for name in (
+            "odoo-ice",
+            "odoo-ice-turns:192.0.2.10:5349?transport=tcp",
+        ):
+            line = ci.CheckLine(
+                name, False, "call_infra_check_ice_none", {"url": "x"}
+            )
+            self.assertTrue(
+                self.todo._call_infra_line(line).startswith(
+                    f"✗ {t('ICE handed out by Odoo')} : "
+                )
+            )
+
+
+class TestUninstallOdoo(OdooCase):
+    def test_each_odoo_is_offered_for_removal_first(self):
+        host = FakeHost(state=plugged_state())
+        self.drive(
+            "_call_infra_uninstall",
+            host,
+            [""] + REMOVE_WEB[1:] + ["n", "o"],
+        )
+        self.assertEqual(
+            host.kinds(), ["probe", "odoo-remove", "probe", "uninstall"]
+        )
+        self.assertEqual(self.link.names(), ["set_params", "replace_rows"])
+        self.assertIn(
+            self.text("call_infra_ask_remove_odoo_first", odoo=ODOO_KEY),
+            self.prompts[0],
+        )
+
+    def test_the_odoo_kept_are_listed(self):
+        host = FakeHost(state=plugged_state())
+        out = self.drive("_call_infra_uninstall", host, ["n", "n", "n"])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(
+            self.text("call_infra_uninstall_odoos_kept", odoos=ODOO_KEY), out
+        )
+
+    def test_without_odoo_nothing_more_is_asked(self):
+        host = FakeHost(state=installed_state())
+        self.drive("_call_infra_uninstall", host, ["n", "n"])
+        self.assertEqual(host.kinds(), ["probe"])
+
+
+class TestInstallWithOdoo(OdooCase):
+    def test_a_port_change_names_the_odoo_to_add_again(self):
+        host = FakeHost(state=plugged_state())
+        out = self.drive(
+            "_call_infra_install",
+            host,
+            ["", "", "", "", "3479", "", "", "n"],
+        )
+        self.assertIn(self.text("call_infra_odoo_readd", odoos=ODOO_KEY), out)
+        self.assertEqual(host.kinds(), ["probe"])
+
+
+class TestOdooLink(unittest.TestCase):
+    """Construction réelle des liens : aucun ne joint Odoo avant le premier
+    appel, rien ne part sur le réseau."""
+
+    def setUp(self):
+        from script.todo.todo import TODO
+
+        self.todo = TODO()
+
+    def link(self, method, replies, runner=None, hidden=()):
+        """Construit le lien : `replies` pour input(), `hidden` pour la
+        saisie sans écho, chacune épuisée."""
+        pending, secrets = list(replies), list(hidden)
+        out = io.StringIO()
+        self.getpass = mock.Mock(side_effect=lambda *a: secrets.pop(0))
+        with (
+            mock.patch(
+                "builtins.input", side_effect=lambda *a: pending.pop(0)
+            ),
+            mock.patch("getpass.getpass", self.getpass),
+            mock.patch.object(
+                self.todo, "_ntfy_mobile_host", return_value=runner
+            ),
+            contextlib.redirect_stdout(out),
+        ):
+            found = self.todo._call_infra_odoo_link(ODOO_URL, ODOO_DB, method)
+        self.assertEqual((pending, secrets), ([], []))
+        return found, out.getvalue()
+
+    def test_the_web_api_takes_the_hidden_password(self):
+        (link, runner), out = self.link("webapi", [""], hidden=[ODOO_PASSWORD])
+        self.getpass.assert_called_once()
+        self.assertIn(
+            t("call_infra_ask_odoo_password"), self.getpass.call_args.args[0]
+        )
+        self.assertIsInstance(link, ol.WebApi)
+        self.assertIsNone(runner)
+        self.assertEqual(
+            (link.url, link.database, link.login), (ODOO_URL, ODOO_DB, "admin")
+        )
+        self.assertNotIn(ODOO_PASSWORD, out)
+        self.assertEqual(link._secret, ODOO_PASSWORD)
+
+    def test_the_shell_here_defaults_to_this_erplibre(self):
+        local = nm.LocalHost()
+        (link, runner), _out = self.link("shell", [""], runner=local)
+        self.assertIsInstance(link, ol.OdooShell)
+        self.assertIs(runner, local)
+        self.assertEqual(link.erplibre_dir, str(REPO))
+        self.assertEqual(link.url, ODOO_URL)
+
+    def test_the_shell_over_ssh_needs_a_typed_directory(self):
+        remote = nm.SshHost("alias-exemple")
+        (link, _runner), _out = self.link(
+            "shell", ["/srv/erplibre-exemple"], runner=remote
+        )
+        self.assertEqual(link.erplibre_dir, "/srv/erplibre-exemple")
+        self.assertEqual(link.host.target, "alias-exemple")
+        # Le runner passe par le masque des lignes de paramètres.
+        self.assertIsInstance(link.host, cim._QuietHost)
+        self.assertEqual(link.host._hide, cim.ODOO_HIDDEN)
+
+    def test_a_relative_directory_is_refused(self):
+        (link, _runner), out = self.link(
+            "shell", ["relatif"], runner=nm.SshHost("alias-exemple")
+        )
+        self.assertIsNone(link)
+        self.assertIn(
+            t("call_infra_odoo_dir").format(directory="relatif"), out
+        )
+
+    def test_shell_parameter_and_row_lines_stay_off_screen(self):
+        class Runner:
+            target = "alias-exemple"
+
+            def run(self, script, sudo_user):
+                text = (
+                    "@@ODOO_PARAM erplibre_turn.urls dXJs\n@@ODOO_DONE facts\n"
+                )
+                sys.stdout.buffer.write(text.encode())
+                return 0, text
+
+        quiet = cim._QuietHost(Runner(), cim.ODOO_HIDDEN)
+        out = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+        with contextlib.redirect_stdout(out):
+            code, captured = quiet.run("script", None)
+        out.flush()
+        shown = out.buffer.getvalue().decode()
+        self.assertIn("dXJs", captured)
+        self.assertNotIn("dXJs", shown)
+        self.assertIn("@@ODOO_DONE facts", shown)
+        self.assertEqual(quiet.target, "alias-exemple")
+
+
+class TestOdooModuleStates(unittest.TestCase):
+    def test_the_menu_reads_module_states_as_the_plan_does(self):
+        state = installed_state()
+        for module_state in (
+            "installed",
+            "to upgrade",
+            "uninstalled",
+            "to install",
+            "to remove",
+            "uninstallable",
+            "absent",
+        ):
+            with self.subTest(module_state=module_state):
+                facts = odoo_facts(module_state)
+                kept = ci.plan_odoo_add(
+                    state, facts, ODOO_URL, ODOO_DB, False, None
+                )
+                offered = ci.plan_odoo_add(
+                    state, facts, ODOO_URL, ODOO_DB, True, None
+                )
+                expected = (
+                    "installed"
+                    if kept.kind == "secret"
+                    else "installable" if offered.install_module else "absent"
+                )
+                self.assertEqual(
+                    cim.CallInfraMenuMixin._call_infra_module_kind(facts),
+                    expected,
+                )
+
+
 class TestSubmenu(unittest.TestCase):
-    def test_dispatches_to_the_four_actions(self):
+    def test_dispatches_to_the_six_actions(self):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with (
-            mock.patch.object(TODO, "_call_infra_install") as install,
-            mock.patch.object(TODO, "prompt_execute_ntfy_mobile") as mobile,
-            mock.patch.object(TODO, "_call_infra_check") as check,
-            mock.patch.object(TODO, "_call_infra_uninstall") as uninstall,
-            mock.patch("click.prompt", side_effect=["1", "2", "3", "4", "0"]),
-            contextlib.redirect_stdout(io.StringIO()),
-        ):
+        order = []
+        names = (
+            "_call_infra_install",
+            "_call_infra_add_odoo",
+            "_call_infra_remove_odoo",
+            "prompt_execute_ntfy_mobile",
+            "_call_infra_check",
+            "_call_infra_uninstall",
+        )
+        with contextlib.ExitStack() as stack:
+            for name in names:
+                stack.enter_context(
+                    mock.patch.object(
+                        TODO,
+                        name,
+                        side_effect=lambda name=name: order.append(name),
+                    )
+                )
+            stack.enter_context(
+                mock.patch(
+                    "click.prompt",
+                    side_effect=["1", "2", "3", "4", "5", "6", "0"],
+                )
+            )
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             todo.prompt_execute_call_infra()
-        for called in (install, mobile, check, uninstall):
-            called.assert_called_once_with()
+        self.assertEqual(order, list(names))
 
     def test_breadcrumb_label(self):
         from script.todo.todo import TODO
@@ -1520,6 +2312,8 @@ class TestTranslations(unittest.TestCase):
             "Call infra - Prepare ntfy for ERPLibre mobile": (
                 "Préparer ntfy pour ERPLibre mobile"
             ),
+            "Call infra - Add an Odoo server": "Ajouter un serveur Odoo",
+            "Call infra - Remove an Odoo server": "Retirer un serveur Odoo",
             "Call infra - Check": "Vérifier",
             "Call infra - Uninstall": "Désinstaller",
         }
