@@ -331,25 +331,26 @@ class TODO(
 [3] {t("Run - Execute and install an instance")}
 [4] {t("Test - Test an Odoo module")}
 [5] {t("Process - Execution tools")}
+[6] {t("Uninstall - Remove an Odoo version")}
 
 ── {t("Data")} ──
-[6] {t("Database - Database tools")}
-[7] {t("Analyse - Odoo database analysis")}
-[8] {t("Transform data - Transform your data")}
+[7] {t("Database - Database tools")}
+[8] {t("Analyse - Odoo database analysis")}
+[9] {t("Transform data - Transform your data")}
 
 ── {t("Sources & documentation")} ──
-[9] {t("Git - Git and shell tools")}
-[10] {t("Doc - Documentation search")}
+[10] {t("Git - Git and shell tools")}
+[11] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[11] {t("GPT code - AI assistant tools")}
-[12] {t("Automation - Demonstration of developed features")}
+[12] {t("GPT code - AI assistant tools")}
+[13] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[13] {t("Deploy - Deploy ERPLibre locally")}
-[14] {t("Network - Network tools")}
-[15] {t("Security - Dependency security audit")}
-[16] {t("Docker / Podman - Container engines")}
+[14] {t("Deploy - Deploy ERPLibre locally")}
+[15] {t("Network - Network tools")}
+[16] {t("Security - Dependency security audit")}
+[17] {t("Docker / Podman - Container engines")}
 [0] {t("Back")}
 """
         while True:
@@ -378,46 +379,50 @@ class TODO(
                 if status is not False:
                     return
             elif status == "6":
-                status = self.prompt_execute_database()
+                status = self.prompt_execute_uninstall()
                 if status is not False:
                     return
             elif status == "7":
-                status = self.prompt_execute_analyse()
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_transform()
+                status = self.prompt_execute_analyse()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_transform()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "15":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "16":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "17":
                 status = self.prompt_execute_container()
                 if status is not False:
                     return
@@ -792,6 +797,7 @@ class TODO(
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
+        "prompt_execute_uninstall": "Uninstall",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
         "prompt_execute_update": "Update",
@@ -5457,6 +5463,63 @@ class TODO(
             source_erplibre=False,
         )
         print(t("Git daemon process killed."))
+
+    def prompt_execute_uninstall(self):
+        print(f"🤖 {t('Remove what an Odoo version installed!')}")
+        choices = [
+            {"prompt_description": t("Remove an Odoo version")},
+            {"prompt_description": t("Remove every Odoo version")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.uninstall_odoo_version()
+            elif status == "2":
+                self.uninstall_odoo_version(tout=True)
+            else:
+                print(t("Command not found !"))
+
+    def uninstall_odoo_version(self, tout=False):
+        """Lance script/version/odoo_version_remove.py dans ce terminal : il
+        affiche son plan et demande lui-même la confirmation. La version
+        active n'est pas proposée, le script la refuse hors de --all."""
+        from script.version import odoo_version_remove
+
+        argv = ["--all"]
+        if not tout:
+            active = odoo_version_remove.lire_active(".")
+            choix = [
+                v
+                for v in odoo_version_remove.versions_connues(".")
+                if v != active
+            ]
+            if not choix:
+                print(t("No Odoo version to remove besides the active one."))
+                return
+            for i, version in enumerate(choix, 1):
+                print(f"[{i}] {version}")
+            print(f"[0] {t('Back')}")
+            versions = odoo_version_remove.versions_choisies(
+                input(t("Versions to remove, numbers separated by spaces: ")),
+                choix,
+            )
+            if not versions:
+                if versions is None:
+                    print(t("Command not found !"))
+                return
+            argv = [a for v in versions for a in ("--version", v)]
+        subprocess.run(
+            [
+                os.path.join(".venv.erplibre", "bin", "python"),
+                os.path.join("script", "version", "odoo_version_remove.py"),
+                *argv,
+            ]
+        )
 
     def prompt_execute_rtk(self):
         print(

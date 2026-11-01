@@ -192,3 +192,49 @@ install_docker_debian:
 .PHONY: install_docker_ubuntu
 install_docker_ubuntu:
 	./script/install/install_ubuntu_docker.sh
+
+#############
+# UNINSTALL #
+#############
+
+# remove an Odoo version: its odoo<V>/ tree, venv, git-repo projects, its
+# entries in the installed list and the state, then compact the object stores
+# it shared. V takes several versions, V="12.0 13.0", so that a shared store
+# is compacted once. DRY=1 shows the plan only. The active version is refused.
+.PHONY: odoo_version_remove
+odoo_version_remove:
+	$(if $(V),,$(error V is required, e.g. make odoo_version_remove V=16.0))
+	./.venv.erplibre/bin/python ./script/version/odoo_version_remove.py $(foreach v,$(V),--version $(v)) $(if $(filter 1,$(DRY)),--dry-run,)
+
+.PHONY: odoo_version_remove_odoo_18
+odoo_version_remove_odoo_18:
+	$(MAKE) odoo_version_remove V=18.0
+
+.PHONY: odoo_version_remove_odoo_17
+odoo_version_remove_odoo_17:
+	$(MAKE) odoo_version_remove V=17.0
+
+.PHONY: odoo_version_remove_odoo_16
+odoo_version_remove_odoo_16:
+	$(MAKE) odoo_version_remove V=16.0
+
+.PHONY: odoo_version_remove_odoo_15
+odoo_version_remove_odoo_15:
+	$(MAKE) odoo_version_remove V=15.0
+
+.PHONY: odoo_version_remove_odoo_14
+odoo_version_remove_odoo_14:
+	$(MAKE) odoo_version_remove V=14.0
+
+.PHONY: odoo_version_remove_odoo_13
+odoo_version_remove_odoo_13:
+	$(MAKE) odoo_version_remove V=13.0
+
+.PHONY: odoo_version_remove_odoo_12
+odoo_version_remove_odoo_12:
+	$(MAKE) odoo_version_remove V=12.0
+
+# every Odoo version, the active one included: an install clones again
+.PHONY: odoo_version_remove_all
+odoo_version_remove_all:
+	./.venv.erplibre/bin/python ./script/version/odoo_version_remove.py --all $(if $(filter 1,$(DRY)),--dry-run,)
