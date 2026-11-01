@@ -41,7 +41,7 @@ RUN cd $ODOO_PREFIX && \
 # Le venv des outils prend le python de l'image, celui d'Odoo.
 #
 # Ses requis sont ceux de l'IMAGE et non ceux de l'hote : le fichier complet
-# vise un venv en 3.14 et porte des bornes qu'un Python 3.7 ou 3.8 ne peut pas
+# vise un venv en 3.15 et porte des bornes qu'un Python 3.7 ou 3.8 ne peut pas
 # satisfaire, ce qui interdisait toute image d'Odoo 12 a 15.
 #
 # Le garde porte sur ce que l'image LANCE, et non sur tout script/ : compiler
