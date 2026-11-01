@@ -1060,6 +1060,89 @@ class TestCoturnConfig(unittest.TestCase):
                     )
                     self.assertEqual("lt-cred-mech" in lines, mode != "secret")
 
+    def production_env(self, ans, auth="fixed"):
+        lo, hi = ci.relay_range(ans)
+        return (
+            "TURN_REALM=%s\nTURN_PORT=%d\nTURN_TLS_PORT=%d\nTURN_MIN_PORT=%d\n"
+            "TURN_MAX_PORT=%d\nTURN_CERT_FILE=/x.crt\nTURN_KEY_FILE=/x.key\n"
+            "TURN_EXTERNAL_IP=%s\nTURN_ALLOW_PRIVATE=\nTURN_AUTH=%s\n"
+            % (
+                ans.public_name,
+                ans.turn_port,
+                ans.turns_port,
+                lo,
+                hi,
+                ans.external_ip or "",
+                auth,
+            )
+        ) + installer_ranges_block()
+
+    def test_container_parity_with_the_installer(self):
+        """La saveur conteneur est ce qu'écrit l'installateur sous
+        TURN_TARGET=container, en développement, en développement avec
+        TLS et en production, dans les deux modes."""
+        cases = (
+            ("dev", answers(), lambda a, auth: self.env(a, False, auth)),
+            ("dev-tls", supplied(), lambda a, auth: self.env(a, True, auth)),
+            (
+                "production",
+                production(external_ip="203.0.113.7"),
+                self.production_env,
+            ),
+        )
+        for label, ans, env in cases:
+            for mode, auth in (
+                (None, "fixed"),
+                ("fixed", "fixed"),
+                ("secret", "secret"),
+            ):
+                with self.subTest(case=label, mode=mode):
+                    self.assertEqual(
+                        ci.coturn_config(ans, mode, "container"),
+                        self.installer_config(
+                            env(ans, auth) + "TURN_TARGET=container\n"
+                        ),
+                    )
+
+    def test_container_flavour_lines(self):
+        """coturn 4.18 ne connaît plus no-dtls ni
+        no-stun-backward-compatibility, et journalise sur la sortie
+        standard que lit le moteur ; le reste est la saveur paquets."""
+        for ans in (answers(), supplied(), production()):
+            with self.subTest(tls=ans.tls, mode=ans.mode):
+                packages = ci.coturn_config(ans, "secret").splitlines()
+                container = ci.coturn_config(
+                    ans, "secret", "container"
+                ).splitlines()
+                self.assertIn("log-file=stdout", container)
+                self.assertIn("syslog", packages)
+                for gone in (
+                    "syslog",
+                    "no-dtls",
+                    "no-stun-backward-compatibility",
+                ):
+                    self.assertNotIn(gone, container)
+                self.assertEqual(
+                    [
+                        line
+                        for line in packages
+                        if line
+                        not in ("no-dtls", "no-stun-backward-compatibility")
+                    ],
+                    [
+                        "syslog" if line == "log-file=stdout" else line
+                        for line in container
+                    ],
+                )
+        self.assertEqual(
+            ci.coturn_config(answers(), None, "packages"),
+            ci.coturn_config(answers()),
+        )
+
+    def test_unknown_flavour_refused(self):
+        with self.assertRaises(ValueError):
+            ci.coturn_config(answers(), None, "conteneur")
+
 
 class TestNtfyConfig(unittest.TestCase):
     def test_http(self):

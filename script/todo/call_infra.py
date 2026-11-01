@@ -1144,7 +1144,12 @@ DENIED_PEER_RANGES = (
 )
 
 
-def coturn_config(answers, turn_mode=None):
+# Ce que la saveur conteneur de `coturn_config` retire des lignes de la
+# saveur paquets : coturn 4.18, celui de l'image, ne les connaît plus.
+_COTURN_DROPPED_IN_CONTAINER = ("no-dtls", "no-stun-backward-compatibility")
+
+
+def coturn_config(answers, turn_mode=None, flavour="packages"):
     """Le `turnserver.conf` qu'`install_coturn.sh` (`write_config`) écrit
     pour ces réponses, au caractère près : il sert au diff montré avant
     d'adopter et à reconnaître une configuration déjà à jour.
@@ -1157,7 +1162,14 @@ def coturn_config(answers, turn_mode=None):
     DENIED_PEER_RANGES, la plage des relais de `relay_range`. Un
     certificat, fourni ou de Let's Encrypt, ouvre TLS sur
     `coturn_tls_port` (443 avec `turns_443`, que l'installateur reçoit en
-    TURN_ALT_TLS_PORT)."""
+    TURN_ALT_TLS_PORT).
+
+    `flavour` « container » rend ce qu'écrit l'installateur sous
+    TURN_TARGET=container : `log-file=stdout` à la place de `syslog`, sans
+    `no-dtls` ni `no-stun-backward-compatibility`. Toute autre valeur que
+    « packages » ou « container » lève ValueError."""
+    if flavour not in ("packages", "container"):
+        raise ValueError(f"saveur coturn inconnue : {flavour!r}")
     low, high = relay_range(answers)
     lines = [
         MARKER,
@@ -1192,6 +1204,12 @@ def coturn_config(answers, turn_mode=None):
         "no-stun-backward-compatibility",
         "response-origin-only-with-rfc5780",
     ]
+    if flavour == "container":
+        lines = [
+            "log-file=stdout" if line == "syslog" else line
+            for line in lines
+            if line not in _COTURN_DROPPED_IN_CONTAINER
+        ]
     return "\n".join(lines) + "\n"
 
 

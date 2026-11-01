@@ -3,7 +3,9 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
 # Installe coturn (serveur STUN/TURN) par les paquets du systeme, sous
-# systemd, pour l'infrastructure d'appel ERPLibre.
+# systemd, pour l'infrastructure d'appel ERPLibre. Avec
+# TURN_TARGET=container, prepare seulement ce que monte le conteneur coturn
+# lance par l'appelant (voir configure_container).
 # Supporte : Debian, Ubuntu, Arch Linux (et derives). Tout autre systeme
 # arrete le script avant qu'il ne touche a quoi que ce soit.
 #
@@ -51,6 +53,12 @@
 #                         temporaires signes par un secret de la table
 #                         turn_secret ; le compte de controle long terme
 #                         quitte la base (voir remove_check_user).
+#   TURN_TARGET           packages (defaut) ou container. container :
+#                         coturn vient de l'image, l'hote ne recoit que
+#                         sqlite3 ; ni unite, ni fragment, ni systemctl.
+#   TURN_SERVICE_USER     obligatoire avec container, refuse sinon : le
+#                         compte, deja cree, sous lequel tourne le conteneur
+#                         et qui possede la base. Jamais root.
 #
 # Les comptes et les secrets vivent dans la base SQLite de coturn (userdb),
 # jamais dans turnserver.conf : coturn la relit a chaque allocation, un
@@ -65,6 +73,9 @@
 # Sortie : « @@UNIT <unite> », « @@USER <compte> », « @@CONFIG <chemin> »,
 # puis en derniere ligne « @@ACTIVE coturn <etat> ». Code de sortie non nul
 # quand l'etat n'est pas « active ».
+# Avec TURN_TARGET=container : « @@RECREATE 1 » quand le conteneur doit
+# etre recree pour charger la configuration ou le certificat, sinon
+# « @@RECREATE 0 », puis en derniere ligne « @@CONFIGURED coturn », code 0.
 
 set -euo pipefail
 
@@ -82,8 +93,12 @@ DEBIAN_CONF="/etc/turnserver.conf"
 ARCH_CONF="/etc/turnserver/turnserver.conf"
 DEFAULT_FILE="/etc/default/coturn"
 # Empreinte de la configuration et du certificat que coturn a charges, ecrite
-# seulement apres un redemarrage reussi (voir main).
+# seulement apres un redemarrage reussi (voir main) ; en cible conteneur,
+# par l'appelant qui a recree le conteneur (voir configure_container).
 APPLIED_FILE="/etc/erplibre-call/coturn.applied"
+# Cible conteneur : l'empreinte a charger, que l'appelant renomme en
+# APPLIED_FILE une fois le conteneur recree et en marche.
+PENDING_FILE="/etc/erplibre-call/coturn.applied.erplibre-pending"
 # Les fragments d'unite (<unite>.service.d/) que pose write_dropin.
 SYSTEMD_DIR="/etc/systemd/system"
 
@@ -100,6 +115,8 @@ TURN_GARDER_CONFIG="${TURN_GARDER_CONFIG:-}"
 TURN_ALLOW_PRIVATE="${TURN_ALLOW_PRIVATE:-}"
 TURN_ALT_TLS_PORT="${TURN_ALT_TLS_PORT:-}"
 TURN_AUTH="${TURN_AUTH:-fixed}"
+TURN_TARGET="${TURN_TARGET:-packages}"
+TURN_SERVICE_USER="${TURN_SERVICE_USER:-}"
 
 # Plages refusees aux relais sans TURN_ALLOW_PRIVATE=1, au format de
 # denied-peer-ip (adresse seule, ou premiere-derniere). Aux plages privees
@@ -185,6 +202,24 @@ check_inputs() {
     case "$TURN_AUTH" in
         fixed|secret) ;;
         *) die "TURN_AUTH invalide : ${TURN_AUTH} (fixed ou secret)." ;;
+    esac
+    # Lus avec une valeur par defaut : une fonction extraite seule tourne
+    # sans les lectures de l'environnement en tete du script.
+    local target="${TURN_TARGET-packages}" account="${TURN_SERVICE_USER:-}"
+    case "$target" in
+        packages)
+            [ -z "$account" ] \
+                || die "TURN_SERVICE_USER ne sert qu'avec TURN_TARGET=container : le paquet fixe le compte."
+            ;;
+        container)
+            [ -n "$account" ] \
+                || die "TURN_SERVICE_USER manque : le compte du conteneur coturn."
+            # Le nom finit dans des arguments de runuser, chown et install :
+            # la forme d'un compte systeme, et jamais root.
+            [[ "$account" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && [ "$account" != root ] \
+                || die "TURN_SERVICE_USER invalide : ${account} (compte systeme, jamais root)."
+            ;;
+        *) die "TURN_TARGET invalide : ${target} (packages ou container)." ;;
     esac
 }
 
@@ -297,6 +332,36 @@ install_packages() {
     esac
 }
 
+# Cible conteneur : coturn vient de l'image, et l'hote ne recoit que le
+# client SQLite qui ecrit la base (compte de controle, secrets) ; l'image
+# n'en porte pas. Memes reprise de dpkg et options qu'install_packages, et
+# rien n'est mis a jour quand il est deja installe.
+install_sqlite() {
+    case "$FAMILY" in
+        debian)
+            if dpkg-query -W -f='${Status}\n' sqlite3 2>/dev/null \
+                | grep -q 'install ok installed'; then
+                log "sqlite3 deja installe."
+                return 0
+            fi
+            export DEBIAN_FRONTEND=noninteractive
+            dpkg --configure -a --force-confdef --force-confold
+            apt-get update -qq
+            apt-get install -y --no-install-recommends \
+                -o Dpkg::Options::=--force-confdef \
+                -o Dpkg::Options::=--force-confold \
+                sqlite3
+            ;;
+        arch)
+            if pacman -Q sqlite >/dev/null 2>&1; then
+                log "sqlite deja installe."
+                return 0
+            fi
+            pacman -S --noconfirm --needed sqlite
+            ;;
+    esac
+}
+
 # Copie certificat et cle dans TLS_DIR, root:<groupe coturn> 0640 : le
 # compte coturn ne lit ni /home (unite Debian) ni les cles de Let's Encrypt.
 # Sans certificat, les copies d'une installation precedente sont retirees.
@@ -342,8 +407,13 @@ refuse_linked_config() {
 # lt-cred-mech. Les quatre dernieres lignes sont celles du fichier livre par Debian, qu'il remplace :
 # journal systeme, et pas de reponses STUN plus grosses que les requetes
 # (amplification).
+# Cible conteneur, pour coturn 4.18 : log-file=stdout a la place de
+# syslog, le moteur lit la sortie standard du conteneur ; ni no-dtls ni
+# no-stun-backward-compatibility, que 4.18 ne connait plus et signale a
+# chaque demarrage.
 write_config() {
-    local conf="$1" dir tmp
+    local conf="$1" dir tmp container=0
+    [ "${TURN_TARGET-packages}" != container ] || container=1
     refuse_linked_config "$conf"
     dir=$(dirname "$conf")
     mkdir -p "$dir"
@@ -358,7 +428,7 @@ write_config() {
             echo "pkey=${TLS_DIR}/turn.key"
         else
             echo "no-tls"
-            echo "no-dtls"
+            [ "$container" = 1 ] || echo "no-dtls"
         fi
         echo "min-port=${TURN_MIN_PORT}"
         echo "max-port=${TURN_MAX_PORT}"
@@ -378,9 +448,13 @@ write_config() {
         if [ -n "$TURN_EXTERNAL_IP" ]; then
             echo "external-ip=${TURN_EXTERNAL_IP}"
         fi
-        echo "syslog"
+        if [ "$container" = 1 ]; then
+            echo "log-file=stdout"
+        else
+            echo "syslog"
+        fi
         echo "no-rfc5780"
-        echo "no-stun-backward-compatibility"
+        [ "$container" = 1 ] || echo "no-stun-backward-compatibility"
         echo "response-origin-only-with-rfc5780"
     } > "$tmp"
     chown "root:${SERVICE_GROUP}" "$tmp"
@@ -534,16 +608,17 @@ applied_digest() {
     fi
 }
 
-# record_applied <empreinte> : ecrit APPLIED_FILE, root 0600, par un fichier
-# voisin renomme ; le dossier appartient a root, aucun autre compte n'y pose
-# de lien.
+# record_applied <empreinte> [fichier] : ecrit le fichier, APPLIED_FILE par
+# defaut, root 0600, par un fichier voisin renomme ; le dossier appartient a
+# root, aucun autre compte n'y pose de lien.
 record_applied() {
+    local file="${2:-$APPLIED_FILE}"
     install -d -m 0755 -o root -g root "$CALL_DIR"
     (
         umask 077
-        printf '%s\n' "$1" > "$APPLIED_FILE.erplibre-new"
+        printf '%s\n' "$1" > "$file.erplibre-new"
     )
-    mv -f "$APPLIED_FILE.erplibre-new" "$APPLIED_FILE"
+    mv -f "$file.erplibre-new" "$file"
 }
 
 # Redemarre seulement quand CONFIG_CHANGED vaut 1 : un redemarrage coupe les
@@ -585,6 +660,58 @@ service_state() {
     echo "${state:-unknown}"
 }
 
+# Cible conteneur : prepare ce que monte le conteneur coturn, lance par le
+# fichier compose de l'appelant sous TURN_SERVICE_USER. La configuration va
+# au chemin du paquet de la famille, qu'aucune unite ne nomme ici ; copies
+# TLS, base et compte de controle sont ceux de la cible paquets. Le compte
+# est verifie avant toute ecriture : l'appelant le cree, ce script non.
+# Rien ne redemarre : quand l'empreinte de ce que coturn chargerait differe
+# de APPLIED_FILE, elle est ecrite dans PENDING_FILE et « @@RECREATE 1 » le
+# dit ; APPLIED_FILE reste tel quel, l'appelant le remplace une fois le
+# conteneur recree et en marche. Sinon « @@RECREATE 0 », et un PENDING_FILE
+# laisse par un passage interrompu est retire : il ne decrit plus rien a
+# appliquer.
+configure_container() {
+    local conf applied
+    case "$FAMILY" in
+        debian) conf="$DEBIAN_CONF" ;;
+        arch) conf="$ARCH_CONF" ;;
+    esac
+    refuse_linked_config "$conf"
+    if config_is_foreign "$conf" && [ "$TURN_GARDER_CONFIG" != 1 ]; then
+        die "${conf} existe et n'a pas ete ecrit par erplibre-call ; le garder de cote puis relancer avec TURN_GARDER_CONFIG=1."
+    fi
+    SERVICE_USER="$TURN_SERVICE_USER"
+    id -u "$SERVICE_USER" >/dev/null 2>&1 \
+        || die "compte de service introuvable : ${SERVICE_USER}"
+    SERVICE_GROUP=$(id -gn "$SERVICE_USER")
+
+    install_sqlite
+    CONFIG_CHANGED=0
+    install_certificate
+    if [ "$TURN_ALLOW_PRIVATE" = 1 ]; then
+        log "TURN_ALLOW_PRIVATE=1 : plages privees permises aux relais (reseau local, developpement)."
+    fi
+    write_config "$conf"
+    prepare_database
+    if [ "$TURN_AUTH" = secret ]; then
+        remove_check_user
+    else
+        ensure_check_user
+    fi
+
+    applied=$(applied_digest "$conf")
+    if [ "$(cat "$APPLIED_FILE" 2>/dev/null)" != "$applied" ]; then
+        record_applied "$applied" "$PENDING_FILE"
+        echo "@@RECREATE 1"
+    else
+        rm -f "$PENDING_FILE"
+        echo "@@RECREATE 0"
+    fi
+    # Derniere ligne : l'appelant distant ne lit que ca.
+    echo "@@CONFIGURED coturn"
+}
+
 main() {
     # Le mot de passe reste une variable du shell : aucune commande lancee
     # ensuite ne le recoit dans son environnement.
@@ -593,6 +720,10 @@ main() {
     check_inputs
     detect_os
     FAMILY=$(family)
+    if [ "${TURN_TARGET-packages}" = container ]; then
+        configure_container
+        return 0
+    fi
     UNIT=$(unit_name)
 
     local conf state
