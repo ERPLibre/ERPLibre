@@ -59,9 +59,9 @@ def b64(text):
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
-def lancer(maison, *args):
+def lancer(maison, *args, descentes=()):
     """Le script mené dans ce processus, sur un HOME qui ne contient rien.
-    Rend (code, sortie).
+    Rend (code, sortie). `descentes` : les PID qu'autre_descente rend.
 
     Pas de sous-processus : un call_infra.py vivant est, pour les tests des
     autres tests longs que le lanceur unitaire passe en parallèle, une
@@ -71,7 +71,7 @@ def lancer(maison, *args):
     sortie = io.StringIO()
     with (
         mock.patch.dict(os.environ, {"HOME": maison}),
-        mock.patch.object(descente, "autre_descente", lambda: []),
+        mock.patch.object(descente, "autre_descente", lambda: list(descentes)),
         # Un essai à blanc ne lance rien : une commande qui partirait
         # d'ici (création de VM, clé ssh) échoue le test au lieu de tourner.
         mock.patch("subprocess.run", side_effect=_aucun_processus),
@@ -2457,6 +2457,7 @@ class LeDefaireOdoo(unittest.TestCase):
             ordre.append(("vm", dry_run))
             return 0
 
+        self._rapport(etages=[LeDefaire.ETAGE])
         for options, a_blanc in (((), False), (("--dry-run",), True)):
             ordre = []
             with (
@@ -2472,9 +2473,10 @@ class LeDefaireOdoo(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertEqual([("odoo", a_blanc), ("vm", a_blanc)], ordre)
 
-    def _detruire_pour_de_vrai(self, *options, reponse="OUI"):
+    def _detruire_pour_de_vrai(self, *options, reponse="OUI", descentes=()):
         """`--detruire` par le défaire partagé, VM et processus bouchés ;
-        rend (code, arreter_serveurs, supprimer_base, detruire_etage1)."""
+        rend (code, arreter_serveurs, supprimer_base, detruire_etage1) et
+        garde la sortie dans `self.sortie`."""
         with (
             mock.patch.object(lt, "descente_vivante", return_value=False),
             mock.patch.object(lt, "serveurs_de", return_value=[4242]),
@@ -2490,8 +2492,69 @@ class LeDefaireOdoo(unittest.TestCase):
             mock.patch.object(descente, "retirer_alias"),
             mock.patch("builtins.input", return_value=reponse),
         ):
-            code, _sortie = lancer(self.maison, "--detruire", *options)
+            code, self.sortie = lancer(
+                self.maison, "--detruire", *options, descentes=descentes
+            )
         return code, arreter, supprimer, etage1
+
+    def test_without_a_vm_report_a_dry_run_lists_the_databases(self):
+        chemin = self._rapport()
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai(
+            "--dry-run"
+        )
+        self.assertEqual(0, code)
+        self.assertIn(self.BASES[0], self.sortie)
+        self.assertIn("aucune base supprimée", self.sortie)
+        self.assertNotIn("rien à défaire", self.sortie)
+        arreter.assert_not_called()
+        supprimer.assert_not_called()
+        etage1.assert_not_called()
+        with open(chemin, encoding="utf-8") as fh:
+            self.assertEqual(3, len(json.load(fh)["odoo"]["bases"]))
+
+    def test_without_a_vm_report_a_running_descent_drops_nothing(self):
+        chemin = self._rapport()
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai(
+            descentes=[999999]
+        )
+        self.assertEqual(1, code)
+        self.assertIn("une descente tourne", self.sortie)
+        self.assertNotIn(self.BASES[0], self.sortie)
+        arreter.assert_not_called()
+        supprimer.assert_not_called()
+        with open(chemin, encoding="utf-8") as fh:
+            self.assertEqual(3, len(json.load(fh)["odoo"]["bases"]))
+
+    def test_without_a_vm_report_a_refusal_drops_nothing(self):
+        self._rapport()
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai(
+            reponse="oui"
+        )
+        self.assertEqual(1, code)
+        self.assertIn(self.BASES[0], self.sortie)
+        arreter.assert_not_called()
+        supprimer.assert_not_called()
+
+    def test_without_a_vm_report_a_confirmation_drops_the_databases(self):
+        chemin = self._rapport()
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai()
+        self.assertEqual(0, code)
+        arreter.assert_called_once_with([4242], chemin[: -len(".json")])
+        self.assertEqual(
+            self.BASES, [c.args[0] for c in supprimer.call_args_list]
+        )
+        etage1.assert_not_called()
+        with open(chemin, encoding="utf-8") as fh:
+            self.assertEqual([], json.load(fh)["odoo"]["bases"])
+
+    def test_with_a_vm_report_a_running_descent_drops_nothing(self):
+        self._rapport(etages=[LeDefaire.ETAGE])
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai(
+            descentes=[999999]
+        )
+        self.assertEqual(1, code)
+        supprimer.assert_not_called()
+        etage1.assert_not_called()
 
     def test_destroy_dry_run_stops_no_server_and_drops_no_database(self):
         chemin = self._rapport(etages=[LeDefaire.ETAGE])
