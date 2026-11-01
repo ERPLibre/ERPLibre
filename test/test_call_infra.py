@@ -11561,6 +11561,81 @@ class TestMigrationRun(ContainerSandbox):
             ci.marker_lines(done.stdout),
         )
 
+    def test_arch_rollback_reinstalls_the_purged_coturn(self):
+        # pacman refuse coturn tant que sa configuration existe sans paquet
+        # pour la porter : celle que l'installateur en conteneurs a écrite
+        # après la purge quitte sa place avant le paquet.
+        write(self.path("/etc/os-release"), "ID=arch\n", 0o644)
+        config = ci.COTURN_CONFIGS["arch"]
+        ans = answers(services=frozenset({"coturn"}))
+        arch = base_facts(family="arch", os_id="arch")
+        state = ci.written_state(ci.plan_install(arch, ans, NOW), STAMP)
+        facts = dataclasses.replace(
+            arch,
+            coturn=service(config, ci.coturn_config(ans), unit="turnserver"),
+            state=state,
+            engines=engine_facts(accounts={"turnserver": (998, 998)}),
+        )
+        plan = ci.plan_install(
+            facts,
+            dataclasses.replace(ans, method="container", engine="docker"),
+            NOW,
+        )
+        self.assertEqual(plan.migration, "to_container")
+        before = self.prepare(state)
+        secrets = self.secrets()
+        write(os.path.join(self.fk, "installed"), "coturn\nsqlite\n")
+        write(self.path(config), ci.MARKER + "\nlistening-port=3478\n", 0o640)
+        write(
+            os.path.join(self.stubs, "pacman"),
+            _NOTE
+            + r"""
+case "$1" in
+  -Qq) grep -qxF "$2" "$FK/installed" ;;
+  -Rn) for p; do :; done
+    grep -vxF "$p" "$FK/installed" > "$FK/installed.new"
+    mv "$FK/installed.new" "$FK/installed" ;;
+  -S) if [ -e "$ROOT/etc/turnserver/turnserver.conf" ]; then
+      echo "coturn: /etc/turnserver/turnserver.conf exists in filesystem"
+      exit 1
+    fi
+    for p; do case "$p" in -*) ;; *) echo "$p" >> "$FK/installed" ;; esac
+    done ;;
+  *) exit 97 ;;
+esac
+""",
+        )
+        # install_packages d'install_coturn.sh par paquets : pacman -S
+        # quand coturn manque.
+        write(
+            os.path.join(self.stubs, "bash"),
+            STUB_BASH_CONTAINER.replace(
+                'name=$(basename "$1" .sh)\n',
+                'name=$(basename "$1" .sh)\n'
+                'if [ "$name" = install_coturn ] && [ -z "${TURN_TARGET:-}" ]'
+                "; then\n"
+                "  pacman -Qq coturn >/dev/null 2>&1"
+                " || pacman -S --noconfirm --needed coturn sqlite || exit 1\n"
+                "fi\n",
+                1,
+            ),
+        )
+        done = self.run_script(plan, FAKE_STATUS_coturn="exited")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        argv = self.argv()
+        purge = argv.index("pacman as=root xdg= -Rn --noconfirm coturn")
+        install = argv.index(
+            "pacman as=root xdg= -S --noconfirm --needed coturn sqlite"
+        )
+        self.assertLess(purge, install)
+        self.assertIn("coturn", self.read(os.path.join(self.fk, "installed")))
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+        self.assertEqual(self.secrets(), secrets)
+
     def test_failure_after_the_stop_rolls_back_too(self):
         # Un installateur en échec après l'arrêt des paquets remet aussi
         # les services d'avant.
