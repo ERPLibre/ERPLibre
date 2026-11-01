@@ -1818,6 +1818,8 @@ class TestCallInfraMenuNumbering(MenuCoherence, unittest.TestCase):
 
     EXPECTED = {
         "Call infra - Install on a host": "_call_infra_install",
+        "Call infra - Add an Odoo server": "_call_infra_add_odoo",
+        "Call infra - Remove an Odoo server": "_call_infra_remove_odoo",
         "Call infra - Prepare ntfy": "prompt_execute_ntfy_mobile",
         "Call infra - Check": "_call_infra_check",
         "Call infra - Uninstall": "_call_infra_uninstall",

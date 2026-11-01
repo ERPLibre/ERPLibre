@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le sous-menu « Infrastructure d'appel » : installer coturn et ntfy sur un
-hôte, préparer ntfy pour ERPLibre mobile, vérifier, désinstaller.
+hôte, y brancher ou en retirer un serveur Odoo, préparer ntfy pour
+ERPLibre mobile, vérifier, désinstaller.
 
 Même frontière que `ntfy_mobile_menu.py` : ici on DEMANDE et on affiche ;
 `call_infra.py` décide et construit les scripts `sh`, que `host.run` lance
@@ -14,24 +15,30 @@ Secrets : le mot de passe du compte de contrôle de coturn naît sur l'hôte,
 dans son installateur ; les lignes de la vérification qui portent une clé
 ou un secret de coturn (CHECK_HIDDEN) sont masquées à l'écran ; le mot de
 passe administrateur de ntfy n'est affiché qu'une fois, après
-l'installation.
+l'installation. Le mot de passe ou la clé d'API d'un compte Odoo se tape
+sans écho (`getpass`) et ne vit que dans le lien (`odoo_link`) de
+l'opération en cours ; le secret ou le mot de passe que coturn et Odoo
+partagent est tiré par `call_infra.apply_odoo_add` et n'est jamais affiché.
 """
 
 import codecs
 import contextlib
 import dataclasses
 import datetime
+import getpass
 import ipaddress
 import os
 import socket
 import ssl
 import sys
 import time
+import urllib.parse
 
 import click
 
 from script.todo import call_infra as ci
 from script.todo import ntfy_mobile as nm
+from script.todo import odoo_link as ol
 from script.todo.todo_i18n import t
 
 # Code de sortie de ssh quand la connexion, ou le dépôt du script, échoue.
@@ -50,6 +57,28 @@ SERVICE_CHOICES = {
 SYMBOLS = {True: "✓", False: "✗", None: "?"}
 MODE_CHOICES = {"1": "development", "2": "production"}
 YES_WORDS = ("y", "yes", "o", "oui")
+# Chemins vers une base Odoo : son API web (compte administrateur), ou
+# `odoo-bin shell` sur son hôte, par cette machine ou par ssh.
+ODOO_METHODS = {"1": "webapi", "2": "shell"}
+ODOO_METHOD_LABELS = {
+    "webapi": "call_infra_odoo_method_webapi",
+    "shell": "call_infra_odoo_method_shell",
+}
+# Lignes d'un `odoo-bin shell` qui n'ont rien à faire à l'écran : les
+# paramètres d'`erplibre_turn` (base64, le secret en empreinte) et les
+# lignes `mail.ice.server` lues.
+ODOO_HIDDEN = ("@@ODOO_PARAM", "@@ODOO_ROW")
+# Le dossier ERPLibre d'où tourne ce `todo.py`, proposé pour un Odoo de
+# cette machine.
+ERPLIBRE_DIR = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+# États d'`erplibre_turn` (`OdooFacts.module_state`) : installé (une mise à
+# jour en attente ne le désinstalle pas), ou sur le chemin des addons et
+# installable. Les mêmes que lit `call_infra.plan_odoo_add` ; tout autre
+# état, « absent » compris, ne s'installe pas.
+MODULE_INSTALLED = ("installed", "to upgrade")
+MODULE_INSTALLABLE = ("uninstalled", "to install")
 # Greffons DNS de certbot qu'une distribution empaquette : Debian 13 n'en
 # fournit que trois, Ubuntu 24.04 tous sauf luadns et nsone, Arch les neuf.
 # install_certbot.sh refuse un greffon sans paquet ; le menu ne propose que
@@ -147,6 +176,28 @@ class _HiddenLines:
             self._passing = True
 
 
+class _QuietHost:
+    """Runner de `ntfy_mobile` dont l'écho à l'écran passe par
+    `_HiddenLines` : les lignes qui commencent par un des préfixes `hide`
+    s'affichent « <préfixe> *** », la sortie rendue les garde. Tout autre
+    attribut (`target`, `hostname`) est celui du runner."""
+
+    def __init__(self, host, hide):
+        self._host = host
+        self._hide = tuple(hide)
+
+    def __getattr__(self, name):
+        return getattr(self._host, name)
+
+    def run(self, script, sudo_user):
+        writer = _HiddenLines(sys.stdout, self._hide)
+        with contextlib.redirect_stdout(writer):
+            try:
+                return self._host.run(script, sudo_user)
+            finally:
+                writer.finish()
+
+
 class CallInfraMenuMixin:
     def prompt_execute_call_infra(self):
         print(f"\n{t('Deploy - Call infrastructure')}")
@@ -156,6 +207,8 @@ class CallInfraMenuMixin:
                     "Call infra - Install on a host (coturn, ntfy)"
                 )
             },
+            {"prompt_description": t("Call infra - Add an Odoo server")},
+            {"prompt_description": t("Call infra - Remove an Odoo server")},
             {
                 "prompt_description": t(
                     "Call infra - Prepare ntfy for ERPLibre mobile"
@@ -173,10 +226,14 @@ class CallInfraMenuMixin:
             elif status == "1":
                 self._call_infra_install()
             elif status == "2":
-                self.prompt_execute_ntfy_mobile()
+                self._call_infra_add_odoo()
             elif status == "3":
-                self._call_infra_check()
+                self._call_infra_remove_odoo()
             elif status == "4":
+                self.prompt_execute_ntfy_mobile()
+            elif status == "5":
+                self._call_infra_check()
+            elif status == "6":
                 self._call_infra_uninstall()
             else:
                 print(t("Command not found !"))
@@ -886,6 +943,14 @@ class CallInfraMenuMixin:
                     {"service": svc, "config": record["config"]},
                 )
             )
+        if plan.odoo_readd:
+            print(
+                "  ⚠ "
+                + self._call_infra_text(
+                    ci.ODOO_READD_WARNING,
+                    {"odoos": ", ".join(plan.odoo_readd)},
+                )
+            )
         for path, diff in plan.diffs:
             print(f"\n{t('Changes to')} {path} :")
             print(diff)
@@ -1053,24 +1118,18 @@ class CallInfraMenuMixin:
         host = self._call_infra_host()
         if host is None:
             return
-        self._call_infra_report(host)
+        # La question ne vit qu'ici : le rapport passe aussi après chaque
+        # installation, où il ne demande rien de plus.
+        checked = self._call_infra_report(host)
+        if checked is not None:
+            self._call_infra_check_odoo(*checked)
 
-    def _call_infra_report(self, host):
-        """Lit l'hôte (`check_remote_script`, ses secrets masqués à
-        l'écran) et affiche une ligne par `CheckLine` de `check_local`."""
-        result = self._call_infra_run(
-            host, ci.check_remote_script(), hide=CHECK_HIDDEN
-        )
-        if result is None:
-            return
-        try:
-            remote = ci.parse_check_remote(result[1])
-        except ci.Refusal as refusal:
-            self._call_infra_refuse(refusal)
-            return
-        state = remote["state"] if isinstance(remote["state"], dict) else {}
-        services = state.get("services")
-        settings = [
+    @staticmethod
+    def _call_infra_settings(state):
+        """Les réglages (`settings`) de chaque service consigné dans
+        `state`, dans l'ordre de l'état."""
+        services = state.get("services") if isinstance(state, dict) else None
+        return [
             record["settings"]
             for record in (
                 services.values() if isinstance(services, dict) else []
@@ -1078,23 +1137,46 @@ class CallInfraMenuMixin:
             if isinstance(record, dict)
             and isinstance(record.get("settings"), dict)
         ]
+
+    def _call_infra_default_address(self, state):
+        """Le nom par où joindre l'hôte, proposé à la vérification : en
+        production, le nom public est le domaine, qui peut ne pas joindre
+        l'hôte, et le nom de TURN, puis celui de ntfy, passent avant lui ;
+        "" sans réglage."""
+        keys = ("public_name",)
+        if state.get("mode") == "production":
+            keys = ("turn_name", "ntfy_name", "public_name")
+        settings = self._call_infra_settings(state)
+        names = [
+            s[key]
+            for key in keys
+            for s in settings
+            if isinstance(s.get(key), str) and s.get(key)
+        ]
+        return names[0] if names else ""
+
+    def _call_infra_report(self, host):
+        """Lit l'hôte (`check_remote_script`, ses secrets masqués à
+        l'écran) et affiche une ligne par `CheckLine` de `check_local`.
+        Rend (état lu, adresse, autorité) pour une vérification qui va plus
+        loin, ou None quand l'hôte n'a pas pu être lu."""
+        result = self._call_infra_run(
+            host, ci.check_remote_script(), hide=CHECK_HIDDEN
+        )
+        if result is None:
+            return None
+        try:
+            remote = ci.parse_check_remote(result[1])
+        except ci.Refusal as refusal:
+            self._call_infra_refuse(refusal)
+            return None
+        state = remote["state"] if isinstance(remote["state"], dict) else {}
+        settings = self._call_infra_settings(state)
         address, cafile = "", None
         if settings:
-            # En production, le nom public est le domaine, qui peut ne pas
-            # joindre l'hôte : le nom de TURN, puis celui de ntfy, passent
-            # avant lui.
-            keys = ("public_name",)
-            if state.get("mode") == "production":
-                keys = ("turn_name", "ntfy_name", "public_name")
-            names = [
-                s[key]
-                for key in keys
-                for s in settings
-                if isinstance(s.get(key), str) and s.get(key)
-            ]
             address = self._call_infra_ask(
                 t("Address that reaches the host from this machine"),
-                names[0] if names else "",
+                self._call_infra_default_address(state),
             )
             if any(s.get("tls") == "supplied" for s in settings):
                 raw = input(f"{t('call_infra_ask_cafile')}: ").strip()
@@ -1109,10 +1191,11 @@ class CallInfraMenuMixin:
                             f"✗ {t('The file could not be read:')} {cafile}"
                             f" ({error})"
                         )
-                        return
+                        return None
         print(f"\n{t('Call infra - Check')}")
         for line in ci.check_local(remote, address, cafile):
             print(self._call_infra_line(line))
+        return state, address, cafile
 
     def _call_infra_line(self, line):
         labels = {
@@ -1129,10 +1212,538 @@ class CallInfraMenuMixin:
         }
         if line.name.startswith("service-"):
             label = f"{t('Service')} {line.name[len('service-'):]}"
+        elif line.name == "odoo-ice" or line.name.startswith("odoo-ice-"):
+            label = t("ICE handed out by Odoo")
+        elif line.name.startswith("odoo-"):
+            label = f"{t('Odoo server')} {line.name[len('odoo-'):]}"
         else:
             label = labels.get(line.name, line.name)
         detail = self._call_infra_text(line.detail, line.values)
         return f"{SYMBOLS.get(line.ok, '?')} {label} : {detail}"
+
+    # --- Serveurs Odoo ------------------------------------------------------
+
+    @staticmethod
+    def _call_infra_odoos(state):
+        """{clé: fiche} des serveurs Odoo que l'état consigne ; {} sans."""
+        odoos = state.get("odoos") if isinstance(state, dict) else None
+        return odoos if isinstance(odoos, dict) else {}
+
+    @staticmethod
+    def _call_infra_has_ntfy(state):
+        services = state.get("services") if isinstance(state, dict) else None
+        return isinstance(services, dict) and isinstance(
+            services.get("ntfy"), dict
+        )
+
+    @staticmethod
+    def _call_infra_ntfy_text(facts):
+        """`server.yml` tel que la sonde l'a lu, "" sans ntfy sur l'hôte :
+        les scripts d'un serveur Odoo le comparent au fichier avant d'y
+        toucher."""
+        return (facts.ntfy or {}).get("config_text") or ""
+
+    @staticmethod
+    def _call_infra_module_kind(odoo):
+        """« installed », « installable » ou « absent » : ce que l'état
+        d'`erplibre_turn` dans `odoo` (`OdooFacts`) permet."""
+        if odoo.module_state in MODULE_INSTALLED:
+            return "installed"
+        if odoo.module_state in MODULE_INSTALLABLE:
+            return "installable"
+        return "absent"
+
+    @staticmethod
+    def _call_infra_hidden(label):
+        """Saisie sans écho : un mot de passe ou une clé d'API ne paraît
+        ni à l'écran ni dans l'historique du terminal."""
+        return getpass.getpass(f"{label}: ")
+
+    @staticmethod
+    def _call_infra_make_link(method, url, database, **how):
+        """Le lien vers la base : `ol.WebApi(url, database, login, secret)`
+        pour « webapi », `ol.OdooShell(host, erplibre_dir, database,
+        url=url)` pour « shell ». Seul endroit qui les construit."""
+        if method == "webapi":
+            return ol.WebApi(url, database, how["login"], how["secret"])
+        return ol.OdooShell(
+            how["host"], how["erplibre_dir"], database, url=url
+        )
+
+    def _call_infra_coturn_host(self, title):
+        """(hôte, HostFacts) d'un hôte dont l'état porte un coturn de
+        l'outil, ou None, la raison affichée."""
+        print(f"\n{t(title)}")
+        host = self._call_infra_host()
+        if host is None:
+            return None
+        facts = self._call_infra_probe(host)
+        if facts is None:
+            return None
+        answers = ci.state_answers(facts.state)
+        if answers is None or "coturn" not in answers.services:
+            self._call_infra_refuse(ci.Refusal("call_infra_odoo_no_coturn"))
+            return None
+        return host, facts
+
+    def _call_infra_ask_method(self, recorded=None):
+        """« webapi » ou « shell », ou None (raison affichée). `recorded` :
+        le chemin que la fiche consigne, proposé."""
+        print(f"\n{t('call_infra_odoo_method')}")
+        print(f"[1] {t('call_infra_odoo_method_webapi')}")
+        print(f"[2] {t('call_infra_odoo_method_shell')}")
+        default = "2" if recorded == "shell" else "1"
+        method = ODOO_METHODS.get(
+            self._call_infra_ask(t("Your choice (1/2)"), default)
+        )
+        if method is None:
+            print(t("Invalid selection!"))
+        return method
+
+    def _call_infra_odoo_link(self, url, database, method):
+        """(lien, runner) vers la base `database` de l'Odoo `url` : par
+        l'API web, l'identifiant et son mot de passe ou sa clé d'API (sans
+        écho) ; par `odoo-bin shell`, l'hôte d'Odoo (cette machine ou ssh)
+        et son dossier ERPLibre, celui de ce `todo.py` proposé ici. `runner`
+        est l'hôte d'Odoo, None par l'API web. (None, None) quand on
+        renonce ou qu'une réponse est refusée (raison affichée)."""
+        try:
+            if method == "webapi":
+                login = self._call_infra_ask(
+                    t("call_infra_ask_odoo_login"), "admin"
+                )
+                secret = self._call_infra_hidden(
+                    t("call_infra_ask_odoo_password")
+                )
+                link = self._call_infra_make_link(
+                    method, url, database, login=login, secret=secret
+                )
+                return link, None
+            runner = self._ntfy_mobile_host()
+            if runner is None:
+                return None, None
+            label = t("call_infra_ask_odoo_dir")
+            if isinstance(runner, nm.LocalHost):
+                directory = self._call_infra_ask(label, ERPLIBRE_DIR)
+            else:
+                directory = input(f"{label}: ").strip()
+            link = self._call_infra_make_link(
+                method,
+                url,
+                database,
+                host=_QuietHost(runner, ODOO_HIDDEN),
+                erplibre_dir=directory,
+            )
+            return link, runner
+        except ol.OdooError as error:
+            self._call_infra_refuse(error)
+            return None, None
+
+    def _call_infra_explain(self, refusal):
+        """Le refus, puis sa cause quand c'est une erreur d'Odoo
+        (`OdooError`) : un mot de passe faux, un droit manquant."""
+        self._call_infra_refuse(refusal)
+        cause = refusal.__cause__
+        if isinstance(cause, ol.OdooError):
+            print(f"  {self._call_infra_text(cause.key, cause.values)}")
+
+    def _call_infra_pick_odoo(self, odoos):
+        """Clé du serveur Odoo choisi dans la liste numérotée de `odoos`
+        (`url|base`, chemin consigné), ou None (raison affichée)."""
+        keys = sorted(odoos)
+        for number, key in enumerate(keys, 1):
+            entry = odoos[key] if isinstance(odoos[key], dict) else {}
+            label = ODOO_METHOD_LABELS.get(entry.get("method"))
+            shown = f" ({t(label)})" if label else ""
+            print(f"[{number}] {key}{shown}")
+        choice = self._call_infra_ask(
+            self._call_infra_text(
+                "call_infra_choice_range", {"count": len(keys)}
+            ),
+            1,
+        )
+        if not choice.isdigit() or not 1 <= int(choice) <= len(keys):
+            print(t("Invalid selection!"))
+            return None
+        return keys[int(choice) - 1]
+
+    def _call_infra_add_odoo(self):
+        found = self._call_infra_coturn_host("Call infra - Add an Odoo server")
+        if found is None:
+            return
+        host, facts = found
+        reached = self._call_infra_reach_odoo()
+        if reached is None:
+            return
+        url, database, link, runner, odoo = reached
+        want = self._call_infra_module_choice(facts.state, odoo)
+        if want is None:
+            return
+        self._call_infra_show_rows(odoo, ol.owned_username(url, database))
+        exempt = self._call_infra_ask_exempt(
+            host, facts, runner, url, ol.odoo_key(url, database)
+        )
+        try:
+            plan = ci.plan_odoo_add(
+                facts.state,
+                odoo,
+                url,
+                database,
+                want,
+                exempt,
+                ntfy_text=self._call_infra_ntfy_text(facts),
+            )
+        except ci.Refusal as refusal:
+            self._call_infra_refuse(refusal)
+            return
+        self._call_infra_show_odoo_plan(plan)
+        if not _yes(t("Add this Odoo server now? (y/N): ")):
+            print(t("Nothing added."))
+            return
+        self._call_infra_apply_odoo(host, link, plan)
+
+    def _call_infra_reach_odoo(self):
+        """(URL, base, lien, runner, `OdooFacts`) d'une base jointe par le
+        chemin choisi, ses faits lus (`facts()` : version, connexion et
+        droits vérifiés avant toute écriture) ; None quand on renonce ou
+        qu'Odoo refuse (raison affichée)."""
+        method = self._call_infra_ask_method()
+        if method is None:
+            return None
+        url = input(f"{t('call_infra_ask_odoo_url')}: ").strip()
+        database = input(f"{t('call_infra_ask_odoo_database')}: ").strip()
+        try:
+            ol.odoo_key(url, database)
+        except ol.OdooError as error:
+            self._call_infra_refuse(error)
+            return None
+        link, runner = self._call_infra_odoo_link(url, database, method)
+        if link is None:
+            return None
+        try:
+            return url, database, link, runner, link.facts()
+        except ol.OdooError as error:
+            self._call_infra_refuse(error)
+            return None
+
+    def _call_infra_apply_odoo(self, host, link, plan):
+        """`apply_odoo_add` par `_call_infra_run` sur l'hôte de coturn,
+        puis la ligne de vérification de la base. Un refus s'affiche avec
+        sa cause d'Odoo."""
+        try:
+            final = ci.apply_odoo_add(
+                lambda script: self._call_infra_run(host, script),
+                link,
+                plan,
+                datetime.datetime.now(datetime.timezone.utc),
+            )
+        except ci.Refusal as refusal:
+            self._call_infra_explain(refusal)
+            return
+        except ol.OdooError as error:
+            self._call_infra_refuse(error)
+            return
+        print(
+            "✓ "
+            + self._call_infra_text(
+                "call_infra_odoo_added", {"odoo": plan.key}
+            )
+        )
+        if plan.key in self._call_infra_odoos(final):
+            self._call_infra_odoo_line(host, plan.key)
+
+    def _call_infra_module_choice(self, state, odoo):
+        """Vrai pour installer le module présent sur le chemin des addons,
+        faux sinon ; None quand on renonce ou que coturn refuse le mode
+        qui en découle (`turn_mode_for`, raison affichée), avant toute
+        autre question. Module absent : l'explication, puis le compte fixe
+        proposé, seulement quand coturn l'accepte (en mode fixe, ou sans
+        Odoo branché)."""
+        kind = self._call_infra_module_kind(odoo)
+        install = False
+        if kind == "installable":
+            install = self._call_infra_ask_yes(
+                t("call_infra_ask_install_module"), True
+            )
+        elif kind == "absent":
+            print(f"⚠ {t(ci.MODULE_ABSENT_WARNING)}")
+        try:
+            ci.turn_mode_for(state, kind == "installed" or install)
+        except ci.Refusal as refusal:
+            self._call_infra_refuse(refusal)
+            return None
+        if kind == "absent" and not self._call_infra_ask_yes(
+            t("call_infra_ask_fixed_fallback"), False
+        ):
+            print(t("Nothing added."))
+            return None
+        return install
+
+    def _call_infra_show_rows(self, odoo, owned):
+        """Les lignes `mail.ice.server` de la base : `type:uri` et le nom
+        d'utilisateur ; aucune ne porte de mot de passe (`OdooFacts`)."""
+        if not odoo.rows:
+            print(f"\n{t('call_infra_odoo_rows_none')}")
+            return
+        print(f"\n{t('call_infra_odoo_rows')}")
+        for row in odoo.rows:
+            user = row.get("username") or ""
+            mark = (
+                f" {t('call_infra_odoo_row_owned')}" if user == owned else ""
+            )
+            who = f" ({user})" if user else ""
+            print(f"  {row.get('server_type')}:{row.get('uri')}{who}{mark}")
+
+    @staticmethod
+    def _call_infra_exempt_ok(address):
+        """Vrai pour une adresse que ntfy peut exempter : ni boucle locale,
+        ni adresse non spécifiée, ni lien local, les refus de
+        `call_infra` ; une proposition qui n'en est pas une ne se fait
+        pas."""
+        try:
+            found = ipaddress.ip_address(address)
+        except ValueError:
+            return False
+        return not (
+            found.is_loopback or found.is_unspecified or found.is_link_local
+        )
+
+    def _call_infra_ask_exempt(self, host, facts, runner, url, key):
+        """L'adresse à exempter des limites de ntfy pour ce serveur Odoo,
+        ou None. Sans ntfy dans l'état, aucune (dit à l'écran). Sinon,
+        l'adresse proposée est celle que `external_ip_for` tire du nom de
+        l'URL d'Odoo et des adresses de son hôte, connues quand Odoo est
+        joint par `odoo-bin shell` sur l'hôte même de coturn : l'adresse
+        de l'hôte qui porte ce nom, sinon celle où le nom résout. Une
+        fiche déjà consignée propose son adresse. Entrée garde la
+        proposition, « - » n'en exempte aucune."""
+        if not self._call_infra_has_ntfy(facts.state):
+            print(f"⚠ {t('call_infra_odoo_exempt_no_ntfy')}")
+            return None
+        entry = self._call_infra_odoos(facts.state).get(key)
+        proposed = entry.get("exempt") if isinstance(entry, dict) else None
+        if not proposed:
+            same_host = runner is not None and (
+                type(runner) is type(host)
+                and getattr(runner, "target", None)
+                == getattr(host, "target", None)
+            )
+            name = urllib.parse.urlsplit(ol.normalize_url(url)).hostname
+            proposed, _reason = ci.external_ip_for(
+                name or "",
+                facts.addresses if same_host else (),
+                resolve=_resolve,
+            )
+            if proposed and not self._call_infra_exempt_ok(proposed):
+                print(
+                    "⚠ "
+                    + self._call_infra_text(
+                        "call_infra_odoo_exempt_local", {"address": proposed}
+                    )
+                )
+                proposed = None
+        shown = f" [{proposed}]" if proposed else ""
+        raw = input(f"{t('call_infra_ask_odoo_exempt')}{shown}: ").strip()
+        if raw == "-":
+            return None
+        return raw or proposed or None
+
+    def _call_infra_show_odoo_plan(self, plan):
+        """Le résumé avant le oui : la base, le mode et ce qu'Odoo
+        recevra (les URL du module ou les lignes du compte fixe, sans
+        identifiant), l'adresse exemptée, les avertissements. L'explication
+        du module absent, déjà montrée, ne se répète pas."""
+        print(f"\n{t('Summary')}")
+        print(f"  {t('Odoo server:')} {plan.key}")
+        kind = (
+            "call_infra_odoo_kind_secret"
+            if plan.kind == "secret"
+            else "call_infra_odoo_kind_user"
+        )
+        print(f"  {t('Credentials:')} {t(kind)}")
+        if plan.install_module:
+            print(f"  {t('call_infra_odoo_install_first')}")
+        if plan.kind == "secret":
+            urls = (plan.params.get(ol.PARAM_URLS) or "").split("\n")
+            print(f"  {t('ICE URLs:')} {', '.join(urls)}")
+        else:
+            rows = [
+                f"{row['server_type']}:{row['uri']} ({row['username']})"
+                for row in plan.rows
+            ]
+            print(f"  {t('ICE rows:')} {', '.join(rows)}")
+        if self._call_infra_has_ntfy(plan.state):
+            print(
+                f"  {t('ntfy exemption:')}"
+                f" {plan.exempt or t('call_infra_odoo_exempt_none')}"
+            )
+        for key, values in plan.messages():
+            if key != ci.MODULE_ABSENT_WARNING:
+                print(f"  ⚠ {self._call_infra_text(key, values)}")
+
+    def _call_infra_odoo_line(self, host, key):
+        """La ligne de vérification `odoo-<n>` de la base `key` : une
+        allocation sous ce que coturn connaît d'elle, depuis cette machine,
+        par le nom que la vérification propose."""
+        result = self._call_infra_run(
+            host, ci.check_remote_script(), hide=CHECK_HIDDEN
+        )
+        if result is None:
+            return
+        try:
+            remote = ci.parse_check_remote(result[1])
+        except ci.Refusal as refusal:
+            self._call_infra_refuse(refusal)
+            return
+        state = remote["state"] if isinstance(remote["state"], dict) else {}
+        address = self._call_infra_default_address(state)
+        for line in ci.check_local(remote, address, None):
+            if (
+                line.name.startswith("odoo-")
+                and line.values.get("odoo") == key
+            ):
+                print(self._call_infra_line(line))
+
+    def _call_infra_remove_odoo(self):
+        found = self._call_infra_coturn_host(
+            "Call infra - Remove an Odoo server"
+        )
+        if found is None:
+            return
+        host, facts = found
+        odoos = self._call_infra_odoos(facts.state)
+        if not odoos:
+            print(t("call_infra_no_odoo"))
+            return
+        key = self._call_infra_pick_odoo(odoos)
+        if key is not None:
+            self._call_infra_remove_one(host, facts, key)
+
+    def _call_infra_remove_one(self, host, facts, key):
+        """Débranche la base `key` (`apply_odoo_remove`) : Odoo nettoyé
+        par le chemin choisi (celui que la fiche consigne, proposé), puis
+        son identifiant révoqué sur coturn. Odoo injoignable : rien n'est
+        révoqué sans un oui. Rend l'état écrit, ou None (raison
+        affichée)."""
+        entry = self._call_infra_odoos(facts.state).get(key)
+        recorded = entry.get("method") if isinstance(entry, dict) else None
+        url, _, database = key.rpartition("|")
+        method = self._call_infra_ask_method(recorded)
+        if method is None:
+            return None
+        link, _runner = self._call_infra_odoo_link(url, database, method)
+
+        def remove(anyway):
+            return ci.apply_odoo_remove(
+                lambda script: self._call_infra_run(host, script),
+                link,
+                facts.state,
+                key,
+                ntfy_text=self._call_infra_ntfy_text(facts),
+                revoke_anyway=anyway,
+            )
+
+        try:
+            try:
+                new = remove(False)
+            except ci.Refusal as refusal:
+                if refusal.key != "call_infra_odoo_remove_unreachable":
+                    raise
+                self._call_infra_explain(refusal)
+                if not self._call_infra_ask_yes(
+                    t("call_infra_ask_revoke_anyway"), False
+                ):
+                    print(t("Nothing revoked."))
+                    return None
+                new = remove(True)
+        except ci.Refusal as refusal:
+            self._call_infra_explain(refusal)
+            return None
+        print(
+            "✓ "
+            + self._call_infra_text("call_infra_odoo_removed", {"odoo": key})
+        )
+        return new
+
+    def _call_infra_check_odoo(self, state, address, cafile):
+        """« Vérifier aussi par Odoo » après le rapport : un utilisateur de
+        la base choisie entre dans un appel (`WebApi.join_call_ice`), et
+        chaque URL de TURN de la liste qu'Odoo lui remet est allouée sous
+        les identifiants remis (`check_through_odoo`). Odoo laisse un avis
+        d'appel dans la discussion de l'utilisateur avec lui-même, dit
+        avant la question."""
+        odoos = self._call_infra_odoos(state)
+        answers = ci.state_answers(state)
+        if not odoos or answers is None or "coturn" not in answers.services:
+            return
+        print(f"\n{t('call_infra_check_odoo_notice')}")
+        if not self._call_infra_ask_yes(t("call_infra_ask_check_odoo"), False):
+            return
+        key = self._call_infra_pick_odoo(odoos)
+        if key is None:
+            return
+        url, _, database = key.rpartition("|")
+        login = input(f"{t('call_infra_ask_odoo_user')}: ").strip()
+        password = self._call_infra_hidden(
+            t("call_infra_ask_odoo_user_password")
+        )
+        try:
+            api = ol.WebApi(url, database, login, password)
+            ice = api.join_call_ice(login, password)
+        except ol.OdooError as error:
+            self._call_infra_refuse(error)
+            return
+        print(f"\n{t('ICE handed out by Odoo')}")
+        for line in ci.check_through_odoo(
+            ice,
+            answers.public_name,
+            address or None,
+            cafile,
+            turn_host=ci.turn_host(answers),
+        ):
+            print(self._call_infra_line(line))
+
+    def _call_infra_unplug_odoos(self, host, facts):
+        """Avant de désinstaller : chaque serveur Odoo branché est proposé
+        au retrait (Odoo nettoyé, identifiant révoqué), l'hôte relu après
+        chacun ; ceux qu'on garde sont nommés, leurs lignes ou paramètres
+        pointeront vers un coturn retiré. Rend les faits à jour, ou None
+        quand l'hôte ne se relit plus."""
+        odoos = self._call_infra_odoos(facts.state)
+        if not odoos:
+            return facts
+        print(
+            "\n"
+            + self._call_infra_text(
+                "call_infra_uninstall_odoos",
+                {"odoos": ", ".join(sorted(odoos))},
+            )
+        )
+        kept = []
+        for key in sorted(odoos):
+            if (
+                not self._call_infra_ask_yes(
+                    self._call_infra_text(
+                        "call_infra_ask_remove_odoo_first", {"odoo": key}
+                    ),
+                    True,
+                )
+                or self._call_infra_remove_one(host, facts, key) is None
+            ):
+                kept.append(key)
+                continue
+            facts = self._call_infra_probe(host)
+            if facts is None:
+                return None
+        if kept:
+            print(
+                "⚠ "
+                + self._call_infra_text(
+                    "call_infra_uninstall_odoos_kept",
+                    {"odoos": ", ".join(kept)},
+                )
+            )
+        return facts
 
     # --- Désinstaller -------------------------------------------------------
 
@@ -1142,6 +1753,9 @@ class CallInfraMenuMixin:
         if host is None:
             return
         facts = self._call_infra_probe(host)
+        if facts is None:
+            return
+        facts = self._call_infra_unplug_odoos(host, facts)
         if facts is None:
             return
         stamp = time.strftime("%Y%m%d-%H%M%S")

@@ -3651,6 +3651,14 @@ TRANSLATIONS = {
         "fr": "Installer sur un hôte (coturn, ntfy)",
         "en": "Install on a host (coturn, ntfy)",
     },
+    "Call infra - Add an Odoo server": {
+        "fr": "Ajouter un serveur Odoo",
+        "en": "Add an Odoo server",
+    },
+    "Call infra - Remove an Odoo server": {
+        "fr": "Retirer un serveur Odoo",
+        "en": "Remove an Odoo server",
+    },
     "Call infra - Prepare ntfy for ERPLibre mobile": {
         "fr": "Préparer ntfy pour ERPLibre mobile",
         "en": "Prepare ntfy for ERPLibre mobile",
@@ -4509,6 +4517,171 @@ TRANSLATIONS = {
     "call_infra_odoo_remove_unreachable": {
         "fr": "Odoo n'a pas pu être nettoyé : rien n'est révoqué sur l'hôte de coturn. Révoquer quand même laisse dans Odoo des paramètres ou des lignes ICE qui ne marchent plus.",
         "en": "Odoo could not be cleaned: nothing is revoked on the coturn host. Revoking anyway leaves in Odoo parameters or ICE rows that no longer work.",
+    },
+    # Menu : ajouter, retirer, vérifier par Odoo (call_infra_menu.py)
+    "call_infra_odoo_method": {
+        "fr": "Accès à la base Odoo :",
+        "en": "Access to the Odoo database:",
+    },
+    "call_infra_odoo_method_webapi": {
+        "fr": "API web (compte admin)",
+        "en": "Web API (admin account)",
+    },
+    "call_infra_odoo_method_shell": {
+        "fr": "ssh et odoo-bin shell",
+        "en": "ssh and odoo-bin shell",
+    },
+    "call_infra_ask_odoo_url": {
+        "fr": "URL de la base Odoo, celle des navigateurs (https://nom[:port])",
+        "en": "URL of the Odoo database, the one browsers use (https://name[:port])",
+    },
+    "call_infra_ask_odoo_database": {
+        "fr": "Nom de la base",
+        "en": "Database name",
+    },
+    "call_infra_ask_odoo_login": {
+        "fr": "Identifiant d'un administrateur de la base",
+        "en": "Login of an administrator of the database",
+    },
+    "call_infra_ask_odoo_password": {
+        "fr": "Son mot de passe ou une clé d'API (non affiché ; clé d'API obligatoire en double authentification)",
+        "en": "Its password or an API key (not shown; an API key is required with two-factor authentication)",
+    },
+    "call_infra_ask_odoo_dir": {
+        "fr": "Dossier ERPLibre de l'hôte d'Odoo (celui qui porte odoo_bin.sh)",
+        "en": "ERPLibre directory on the Odoo host (the one that holds odoo_bin.sh)",
+    },
+    "call_infra_ask_install_module": {
+        "fr": "Le module erplibre_turn est sur le chemin des addons : l'installer dans la base, pour des identifiants temporaires et TURN sur TLS ?",
+        "en": "The erplibre_turn module is on the addons path: install it in the database, for temporary credentials and TURN over TLS?",
+    },
+    "call_infra_ask_fixed_fallback": {
+        "fr": "Continuer avec un compte fixe, sans TLS ?",
+        "en": "Continue with a fixed account, without TLS?",
+    },
+    "call_infra_odoo_rows": {
+        "fr": "Lignes mail.ice.server de la base (seules celles au nom de l'outil seront remplacées) :",
+        "en": "mail.ice.server rows of the database (only the tool's own will be replaced):",
+    },
+    "call_infra_odoo_rows_none": {
+        "fr": "Aucune ligne mail.ice.server dans la base.",
+        "en": "No mail.ice.server row in the database.",
+    },
+    "call_infra_odoo_row_owned": {
+        "fr": "(de l'outil)",
+        "en": "(the tool's)",
+    },
+    "call_infra_odoo_exempt_no_ntfy": {
+        "fr": "ntfy n'est pas sur cet hôte : aucune adresse n'est exemptée de ses limites ici. Exemptez ce serveur Odoo sur l'hôte de ntfy (« Préparer ntfy pour ERPLibre mobile »).",
+        "en": "ntfy is not on this host: no address is exempted from its limits here. Exempt this Odoo server on the ntfy host (« Prepare ntfy for ERPLibre mobile »).",
+    },
+    "call_infra_odoo_exempt_local": {
+        "fr": "L'URL d'Odoo résout vers {address}, une adresse locale que ntfy ne peut pas exempter : tapez l'adresse publique d'où ce serveur Odoo joint ntfy.",
+        "en": "The Odoo URL resolves to {address}, a local address ntfy cannot exempt: type the public address this Odoo server reaches ntfy from.",
+    },
+    "call_infra_ask_odoo_exempt": {
+        "fr": "Adresse IP d'où ce serveur Odoo joint ntfy, exemptée de ses limites (« - » : aucune)",
+        "en": "IP address this Odoo server reaches ntfy from, exempted from its limits (« - »: none)",
+    },
+    "call_infra_odoo_exempt_none": {
+        "fr": "aucune",
+        "en": "none",
+    },
+    "Odoo server:": {
+        "fr": "Serveur Odoo :",
+        "en": "Odoo server:",
+    },
+    "Credentials:": {
+        "fr": "Identifiants :",
+        "en": "Credentials:",
+    },
+    "ICE URLs:": {
+        "fr": "URL ICE :",
+        "en": "ICE URLs:",
+    },
+    "ICE rows:": {
+        "fr": "Lignes ICE :",
+        "en": "ICE rows:",
+    },
+    "ntfy exemption:": {
+        "fr": "Exemption ntfy :",
+        "en": "ntfy exemption:",
+    },
+    "call_infra_odoo_kind_secret": {
+        "fr": "identifiants temporaires (module erplibre_turn), un secret propre à cette base",
+        "en": "temporary credentials (erplibre_turn module), a secret of this database's own",
+    },
+    "call_infra_odoo_kind_user": {
+        "fr": "compte fixe propre à cette base, en trois lignes mail.ice.server (sans module)",
+        "en": "fixed account of this database's own, in three mail.ice.server rows (no module)",
+    },
+    "call_infra_odoo_install_first": {
+        "fr": "Le module erplibre_turn s'installe d'abord dans la base.",
+        "en": "The erplibre_turn module is installed in the database first.",
+    },
+    "Add this Odoo server now? (y/N): ": {
+        "fr": "Ajouter ce serveur Odoo maintenant ? (o/N) : ",
+        "en": "Add this Odoo server now? (y/N): ",
+    },
+    "Nothing added.": {
+        "fr": "Rien n'est ajouté.",
+        "en": "Nothing added.",
+    },
+    "call_infra_odoo_added": {
+        "fr": "Serveur Odoo {odoo} branché sur coturn.",
+        "en": "Odoo server {odoo} plugged into coturn.",
+    },
+    "call_infra_no_odoo": {
+        "fr": "Aucun serveur Odoo n'est branché sur ce coturn.",
+        "en": "No Odoo server is plugged into this coturn.",
+    },
+    "call_infra_ask_revoke_anyway": {
+        "fr": "Révoquer quand même sur coturn ?",
+        "en": "Revoke on coturn anyway?",
+    },
+    "Nothing revoked.": {
+        "fr": "Rien n'est révoqué.",
+        "en": "Nothing revoked.",
+    },
+    "call_infra_odoo_removed": {
+        "fr": "Serveur Odoo {odoo} retiré : son identifiant est révoqué sur coturn.",
+        "en": "Odoo server {odoo} removed: its credential is revoked on coturn.",
+    },
+    "call_infra_check_odoo_notice": {
+        "fr": "La vérification par Odoo entre dans un appel sous un utilisateur de la base : Odoo laisse l'avis « a lancé une conférence » dans la discussion de cet utilisateur avec lui-même. Rien d'autre n'est écrit.",
+        "en": "The check through Odoo joins a call as a user of the database: Odoo leaves the notice « started a live conference » in that user's chat with themself. Nothing else is written.",
+    },
+    "call_infra_ask_check_odoo": {
+        "fr": "Vérifier aussi par Odoo ?",
+        "en": "Also check through Odoo?",
+    },
+    "call_infra_ask_odoo_user": {
+        "fr": "Identifiant d'un utilisateur de la base",
+        "en": "Login of a user of the database",
+    },
+    "call_infra_ask_odoo_user_password": {
+        "fr": "Son mot de passe (non affiché ; ni clé d'API, ni compte en double authentification)",
+        "en": "Their password (not shown; no API key, no account with two-factor authentication)",
+    },
+    "Odoo server": {
+        "fr": "Serveur Odoo",
+        "en": "Odoo server",
+    },
+    "ICE handed out by Odoo": {
+        "fr": "ICE remis par Odoo",
+        "en": "ICE handed out by Odoo",
+    },
+    "call_infra_uninstall_odoos": {
+        "fr": "Serveurs Odoo branchés sur ce coturn : {odoos}",
+        "en": "Odoo servers plugged into this coturn: {odoos}",
+    },
+    "call_infra_ask_remove_odoo_first": {
+        "fr": "Retirer d'abord {odoo} (Odoo nettoyé, identifiant révoqué) ?",
+        "en": "First remove {odoo} (Odoo cleaned, credential revoked)?",
+    },
+    "call_infra_uninstall_odoos_kept": {
+        "fr": "Ces serveurs Odoo gardent les lignes mail.ice.server au nom erplibre-… ou les paramètres erplibre_turn.* de l'outil, qui pointeront vers un coturn désinstallé : {odoos}. Retirez-les dans Odoo à la main.",
+        "en": "These Odoo servers keep the tool's mail.ice.server rows named erplibre-… or erplibre_turn.* parameters, which will point at an uninstalled coturn: {odoos}. Remove them in Odoo by hand.",
     },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {

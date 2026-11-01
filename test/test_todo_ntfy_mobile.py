@@ -195,7 +195,7 @@ class TestNumbering(unittest.TestCase):
         start = src.index("def prompt_execute_call_infra(self):")
         body = src[start : src.index("def _call_infra_host(self):", start)]
         self.assertIn(
-            'elif status == "2":\n                self.prompt_execute_ntfy_mobile()',
+            'elif status == "4":\n                self.prompt_execute_ntfy_mobile()',
             body,
         )
 
