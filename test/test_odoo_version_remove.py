@@ -232,6 +232,15 @@ class TestRetrait(Checkout):
         )
         self.g18, self.a18 = self.projet("18.0", "core", self.amont, "18.0")
         self.gsolo, _ = self.projet("16.0", "solo", self.solo, "16.0")
+        # La branche par défaut du remote, vue depuis 18.0, est une version
+        # retirée : « origin/HEAD » doit partir avec elle.
+        _git(
+            None,
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/16.0",
+            gitdir=self.g18,
+        )
 
     def test_essai_a_sec_ne_touche_rien(self):
         avant = self.fichiers()
@@ -275,6 +284,11 @@ class TestRetrait(Checkout):
             None, "for-each-ref", "--format=%(refname)", gitdir=self.g18
         ).split()
         self.assertNotIn("refs/remotes/origin/16.0", refs)
+        self.assertFalse(
+            os.path.lexists(
+                os.path.join(self.g18, "refs", "remotes", "origin", "HEAD")
+            )
+        )
         self.assertIn("refs/remotes/origin/18.0", refs)
         self.assertIn("refs/remotes/origin/17.0", refs)
         # L'historique propre à 16.0 a quitté le stockage partagé.

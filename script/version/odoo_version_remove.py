@@ -362,19 +362,30 @@ def refs_a_retirer(gitdir, gardees):
     """Les références de `gitdir` d'une série d'Odoo absente de `gardees`.
 
     La branche extraite et « refs/remotes/m/* » (la révision du manifeste)
-    restent toujours."""
-    out, _err, code = git(["for-each-ref", "--format=%(refname)"], gitdir)
+    restent toujours. Une référence symbolique dont la cible part, telle
+    « refs/remotes/<remote>/HEAD » qui désigne la branche par défaut du
+    remote, part avec elle : laissée, elle ne désignerait plus rien et git
+    la signalerait à chaque commande."""
+    out, _err, code = git(
+        ["for-each-ref", "--format=%(refname) %(symref)"], gitdir
+    )
     if code:
         return []
     extraite, _err, _code = git(["symbolic-ref", "-q", "HEAD"], gitdir)
     extraite = extraite.strip()
-    retirer = []
-    for ref in out.split():
+    retirer, symboliques = [], []
+    for ligne in out.splitlines():
+        ref, _, cible = ligne.partition(" ")
         if ref == extraite or ref.startswith("refs/remotes/m/"):
+            continue
+        if cible:
+            symboliques.append((ref, cible))
             continue
         s = version_de_ref(ref)
         if s is not None and s not in gardees:
             retirer.append(ref)
+    partantes = set(retirer)
+    retirer += [ref for ref, cible in symboliques if cible in partantes]
     return retirer
 
 
@@ -722,7 +733,8 @@ def compacter(partage, erreurs):
     objets = partage["objets"]
     restants = partage["restants"]
     for gitdir, refs in partage["refs"].items():
-        entree = "".join(f"delete {r}\n" for r in refs)
+        # no-deref : une référence symbolique part elle-même, pas sa cible.
+        entree = "".join(f"option no-deref\ndelete {r}\n" for r in refs)
         _out, err, code = git(["update-ref", "--stdin"], gitdir, entree=entree)
         if code:
             erreurs.append(f"{gitdir}: update-ref: {err.strip()}")
