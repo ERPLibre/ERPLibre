@@ -4121,6 +4121,56 @@ TRANSLATIONS = {
         "fr": "manquantes : {rules}",
         "en": "missing: {rules}",
     },
+    "call_infra_check_no_secret": {
+        "fr": "secret de contrôle introuvable dans la base de coturn",
+        "en": "check secret not found in coturn's database",
+    },
+    # Vérification par serveur Odoo branché (lignes odoo-<n>)
+    "call_infra_check_odoo_relayed": {
+        "fr": "{odoo} : relais {relayed}",
+        "en": "{odoo}: relay {relayed}",
+    },
+    "call_infra_check_odoo_error": {
+        "fr": "{odoo} : {error}",
+        "en": "{odoo}: {error}",
+    },
+    "call_infra_check_odoo_no_secret": {
+        "fr": "{odoo} : son secret manque dans la base de coturn ; ajoutez de nouveau ce serveur Odoo",
+        "en": "{odoo}: its secret is missing from coturn's database; add this Odoo server again",
+    },
+    "call_infra_check_odoo_no_user": {
+        "fr": "{odoo} : son compte {user} manque dans la base de coturn ; ajoutez de nouveau ce serveur Odoo",
+        "en": "{odoo}: its account {user} is missing from coturn's database; add this Odoo server again",
+    },
+    # Vérification par la liste ICE qu'Odoo remet (lignes odoo-ice-<url>)
+    "call_infra_check_ice_relayed": {
+        "fr": "{url} : relais {relayed}",
+        "en": "{url}: relay {relayed}",
+    },
+    "call_infra_check_ice_error": {
+        "fr": "{url} : {error}",
+        "en": "{url}: {error}",
+    },
+    "call_infra_check_ice_expired": {
+        "fr": "{url} : {error} ; identifiants expirés depuis {date} (horloge d'Odoo, ou durée des identifiants trop courte)",
+        "en": "{url}: {error}; credentials expired since {date} (Odoo's clock, or a credential lifetime too short)",
+    },
+    "call_infra_check_ice_no_credential": {
+        "fr": "{url} : Odoo la remet sans nom d'utilisateur ou sans mot de passe",
+        "en": "{url}: Odoo hands it without a username or a password",
+    },
+    "call_infra_check_ice_bad_url": {
+        "fr": "{url} : URL illisible ou transport non vérifiable",
+        "en": "{url}: unreadable URL or transport that cannot be checked",
+    },
+    "call_infra_check_ice_foreign": {
+        "fr": "{url} : un autre serveur que ce coturn, non vérifié",
+        "en": "{url}: a server other than this coturn, not checked",
+    },
+    "call_infra_check_ice_none": {
+        "fr": "Odoo ne remet aucune URL de TURN à l'appelant",
+        "en": "Odoo hands the caller no TURN URL",
+    },
     # Infrastructure d'appel : questions et résumé de la production
     "call_infra_mode_development": {
         "fr": "Développement : cette machine ou un réseau local, sans nginx",
@@ -4398,6 +4448,14 @@ TRANSLATIONS = {
     "call_infra_odoo_shell_failed": {
         "fr": "odoo-bin shell a échoué ; sa dernière ligne : {line}",
         "en": "odoo-bin shell failed; its last line: {line}",
+    },
+    "call_infra_odoo_user_login": {
+        "fr": "Connexion refusée pour {login} : identifiant ou mot de passe faux. La vérification par Odoo entre comme un navigateur : ni clé d'API, ni compte en double authentification.",
+        "en": "Login refused for {login}: wrong login or password. The check through Odoo logs in like a browser: no API key, no account with two-factor authentication.",
+    },
+    "call_infra_odoo_invitation": {
+        "fr": "Lien d'invitation refusé : il doit être de la forme <URL de la base>/chat/<id>/<jeton>, sur la même base, et Odoo doit encore le connaître.",
+        "en": "Invitation link refused: it must look like <database URL>/chat/<id>/<token>, on the same database, and Odoo must still know it.",
     },
     "call_infra_turn_mode_mismatch": {
         "fr": "Ce coturn sert ses serveurs Odoo en mode « {mode} » ({odoos}) : coturn 4.6 ne mélange pas les identifiants temporaires (module erplibre_turn, mode « secret ») et les comptes fixes (mode « fixed »). Ce serveur Odoo demande l'autre mode : donnez-lui le même (erplibre_turn installé pour « secret », sans lui pour « fixed »), ou retirez d'abord les serveurs Odoo branchés. Rien n'est touché.",

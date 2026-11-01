@@ -24,7 +24,10 @@ Déroulé :
    qu'une fois chaque service vu actif.
 4. `check_remote_script()` lit l'hôte sans rien écrire ; `check_local()`
    en tire le verdict depuis la machine qui lance `todo.py` : allocations
-   TURN réelles, santé de ntfy, certificat, pare-feu, unités.
+   TURN réelles (dont une par serveur Odoo branché, sous ce que coturn
+   connaît de lui), santé de ntfy, certificat, pare-feu, unités.
+   `check_through_odoo()` alloue la liste ICE qu'un Odoo remet à un
+   appelant, telle quelle.
 5. `uninstall_script(state, remove_data, stamp)` défait ce que l'état
    consigne et n'efface l'état qu'en dernier, une fois tout réussi.
 6. `odoo_add_script`, `odoo_remove_script` et `odoo_rollback_script`
@@ -5183,7 +5186,22 @@ PRIVATE_PROBE_PEER = "10.0.0.1"
 # Mot que Let's Encrypt met dans le nom des émetteurs de son serveur de
 # test : un certificat qu'aucun client ne reconnaît.
 STAGING_ISSUER = "(STAGING)"
+# Durée de vie, en secondes, des identifiants temporaires que la
+# vérification tire d'un secret de coturn : le temps d'une allocation.
+CHECK_REST_SECONDS = 300
+# Ports par défaut d'une URL ICE sans port (RFC 7065) : 3478 pour `turn:`,
+# 5349 pour `turns:`.
+ICE_DEFAULT_PORTS = {"turn": 3478, "turns": 5349}
 _HEX_KEY = re.compile(r"^[0-9a-f]{32}$")
+# URL ICE (RFC 7064, RFC 7065) : schéma, hôte (IPv6 entre crochets), port
+# et transport facultatifs.
+_ICE_URL = re.compile(
+    r"^(?P<scheme>stuns?|turns?):"
+    r"(?P<host>\[[0-9A-Fa-f:.]+\]|[^\s:?\[\]/@]+)"
+    r"(?::(?P<port>[0-9]{1,5}))?"
+    r"(?:\?transport=(?P<transport>udp|tcp))?$",
+    re.IGNORECASE,
+)
 
 # Clés i18n que porte `CheckLine.detail` ; chacune a sa traduction dans
 # todo_i18n.py, avec les champs de `CheckLine.values` entre accolades.
@@ -5213,6 +5231,18 @@ CHECK_KEYS = (
     "call_infra_check_firewall_none",
     "call_infra_check_firewall_ok",
     "call_infra_check_firewall_missing",
+    "call_infra_check_no_secret",
+    "call_infra_check_odoo_relayed",
+    "call_infra_check_odoo_error",
+    "call_infra_check_odoo_no_secret",
+    "call_infra_check_odoo_no_user",
+    "call_infra_check_ice_relayed",
+    "call_infra_check_ice_error",
+    "call_infra_check_ice_expired",
+    "call_infra_check_ice_no_credential",
+    "call_infra_check_ice_bad_url",
+    "call_infra_check_ice_foreign",
+    "call_infra_check_ice_none",
 )
 
 
@@ -5255,7 +5285,9 @@ def check_remote_script(root=""):
     <état systemd>` (« absent » sans unité), `@@CHECK_KEY <hex>` (la clé
     long terme du compte de contrôle, lue dans la base de coturn par
     `sqlite3 -readonly` sous le compte du service : root n'ouvre aucun
-    fichier de ce dossier, qui appartient à ce compte), `@@CERT <étiquette>
+    fichier de ce dossier, qui appartient à ce compte), `@@TURN_SECRET
+    <realm> <valeur>` par ligne de `turn_secret` et `@@TURN_USER <realm>
+    <nom> <clé hexa>` par ligne de `turnusers_lt` (même lecture), `@@CERT <étiquette>
     <base64>` par certificat de TLS_CERTS présent, `@@HOOK <exec|present>`
     quand le crochet de déploiement existe (exécutable ou non),
     `@@RENEWAL <active|held>` selon le fichier de renouvellement de la
@@ -5265,11 +5297,20 @@ def check_remote_script(root=""):
     dans un pare-feu actif, puis `@@END`. `root` préfixe chaque chemin lu
     (tests).
 
-    La ligne `@@CHECK_KEY` porte un secret : qui la lit s'authentifie
-    auprès du relais sous le compte de contrôle. La sortie se capture sans
-    être recopiée à l'écran.
+    Les lignes `@@CHECK_KEY`, `@@TURN_SECRET` et `@@TURN_USER` portent des
+    secrets : qui les lit s'authentifie auprès du relais sous le compte de
+    contrôle ou au nom d'un serveur Odoo. La sortie se capture sans que ces
+    lignes soient recopiées à l'écran ni au journal.
     """
     query = f"select hmackey from turnusers_lt where name='{CHECK_USER}'"
+    reads = (
+        (query, "CHECK_KEY"),
+        ("select realm || ' ' || value from turn_secret", "TURN_SECRET"),
+        (
+            "select realm || ' ' || name || ' ' || hmackey from turnusers_lt",
+            "TURN_USER",
+        ),
+    )
     certs = " ".join(f"{svc}:{path}" for svc, path in TLS_CERTS.items())
     return "\n".join(
         [
@@ -5298,9 +5339,12 @@ def check_remote_script(root=""):
             'if [ "$CU" != - ] && [ -f "$DB" ]'
             " && command -v sqlite3 >/dev/null 2>&1; then",
             '  U=$(systemctl show -p User --value "$CU" 2>/dev/null)',
-            '  runuser -u "${U:-turnserver}" -- sqlite3 -readonly'
-            f' -init /dev/null "$DB" "{query}" 2>/dev/null'
-            " | sed 's/^/@@CHECK_KEY /'",
+            *(
+                '  runuser -u "${U:-turnserver}" -- sqlite3 -readonly'
+                f' -init /dev/null "$DB" "{sql}" 2>/dev/null'
+                f" | sed 's/^/@@{marker} /'"
+                for sql, marker in reads
+            ),
             "fi",
             f"for c in {certs}; do",
             '  f="$R${c#*:}"',
@@ -5335,9 +5379,25 @@ def check_remote_script(root=""):
     )
 
 
+def _coturn_row(name, value, turn_secrets, turn_users):
+    """Range une ligne `@@TURN_SECRET <realm> <valeur>` dans
+    `turn_secrets` [(realm, valeur)], ou `@@TURN_USER <realm> <nom> <clé>`
+    dans `turn_users` {(realm, nom): clé hexa} ; une ligne d'une autre
+    forme est écartée."""
+    parts = value.split()
+    if name == "TURN_SECRET" and len(parts) == 2:
+        if tuple(parts) not in turn_secrets:
+            turn_secrets.append(tuple(parts))
+    elif name == "TURN_USER" and len(parts) == 3:
+        if _HEX_KEY.match(parts[2].lower()):
+            turn_users[(parts[0], parts[1])] = parts[2].lower()
+
+
 def parse_check_remote(output):
     """Dict de la sortie de `check_remote_script` : `state` (dict ou None),
     `active` {service: état}, `check_key` (32 chiffres hexa ou None),
+    `turn_secrets` [(realm, valeur)], `turn_users` {(realm, nom): clé
+    hexa},
     `firewall_rules` [(ufw|nftables, Rule)], `certs` {étiquette de
     TLS_CERTS: PEM}, `hook` (« exec », « present » ou None), `renewal`
     (« active », « held » ou None), `timers` {minuteur de CERTBOT_TIMERS:
@@ -5347,6 +5407,7 @@ def parse_check_remote(output):
     `rules_from_state`. Refusal `call_infra_probe_incomplete` sans `@@END`.
     """
     state, active, key, rules, certs = None, {}, None, [], {}
+    turn_secrets, turn_users = [], {}
     hook = renewal = None
     timers = {}
     complete = False
@@ -5361,6 +5422,8 @@ def parse_check_remote(output):
             candidate = value.strip().lower()
             if key is None and _HEX_KEY.match(candidate):
                 key = candidate
+        elif name in ("TURN_SECRET", "TURN_USER"):
+            _coturn_row(name, value, turn_secrets, turn_users)
         elif name == "FIREWALL_RULE":
             parts = value.split()
             if len(parts) != 4 or parts[0] not in ("ufw", "nftables"):
@@ -5399,6 +5462,8 @@ def parse_check_remote(output):
         "state": state,
         "active": active,
         "check_key": key,
+        "turn_secrets": turn_secrets,
+        "turn_users": turn_users,
         "firewall_rules": rules,
         "certs": certs,
         "hook": hook,
@@ -5458,8 +5523,9 @@ def _int(value, default):
         return default
 
 
-def _turn_lines(settings, key, address, cafile, allocate, timeout):
-    """Une allocation réelle par transport, sous le compte de contrôle ;
+def _turn_lines(settings, credential, address, cafile, allocate, timeout):
+    """Une allocation réelle par transport, sous le compte de contrôle
+    (`credential` : (utilisateur, clé) de `_check_credential`) ;
     TLS dès qu'un certificat existe (fourni ou de Let's Encrypt), sur 443
     quand coturn y sert TLS. Le nom attendu dans le certificat est celui de
     TURN en production, le nom public sinon. Un certificat de Let's Encrypt
@@ -5477,11 +5543,12 @@ def _turn_lines(settings, key, address, cafile, allocate, timeout):
             else _int(settings.get("turns_port"), 5349)
         )
         transports.append(("tls", tls_port))
-    if not key:
+    if not credential[1]:
         return [
-            CheckLine(f"turn-{transport}", None, "call_infra_check_no_key")
+            CheckLine(f"turn-{transport}", None, credential[0])
             for transport, _ in transports
         ]
+    username, key = credential
     authority = cafile if tls == "supplied" else None
     lines = []
     for transport, port in transports:
@@ -5497,8 +5564,8 @@ def _turn_lines(settings, key, address, cafile, allocate, timeout):
             address,
             port,
             transport,
-            CHECK_USER,
-            bytes.fromhex(key),
+            username,
+            key,
             timeout=timeout,
             **extra,
         )
@@ -5542,21 +5609,21 @@ def _turn_lines(settings, key, address, cafile, allocate, timeout):
     return lines
 
 
-def _private_line(settings, key, address, permission, timeout):
+def _private_line(settings, credential, address, permission, timeout):
     """Production : une permission demandée vers PRIVATE_PROBE_PEER depuis
     une allocation du compte de contrôle. coturn la refuse (403) quand ses
     plages privées sont refusées ; accordée, n'importe quel détenteur
     d'identifiants relaie vers le réseau de l'hôte. Une allocation en échec
     ne dit rien des plages : None, la cause dans `error`."""
     name = "private-denied"
-    if not key:
-        return CheckLine(name, None, "call_infra_check_no_key")
+    if not credential[1]:
+        return CheckLine(name, None, credential[0])
     result = permission(
         address,
         _int(settings.get("turn_port"), 3478),
         "udp",
-        CHECK_USER,
-        bytes.fromhex(key),
+        credential[0],
+        credential[1],
         PRIVATE_PROBE_PEER,
         timeout=timeout,
     )
@@ -5568,6 +5635,114 @@ def _private_line(settings, key, address, permission, timeout):
     return CheckLine(
         name, None, "call_infra_check_private_unknown", {"error": result.error}
     )
+
+
+def _secret_of(facts_remote, realm, digest):
+    """La valeur de `turn_secret` du realm dont le SHA-256 vaut `digest`,
+    None sans elle."""
+    for found_realm, value in facts_remote.get("turn_secrets") or ():
+        if found_realm == realm and _sha256(value) == digest:
+            return value
+    return None
+
+
+def _rest_credential(secret, realm, now):
+    """(utilisateur, clé) temporaires que coturn en mode `use-auth-secret`
+    accepte sous `secret` : utilisateur `<now + CHECK_REST_SECONDS>:` +
+    CHECK_USER, clé long terme de son mot de passe REST dans `realm`."""
+    expiry = int(now.timestamp()) + CHECK_REST_SECONDS
+    username, password = turn_client.rest_credentials(
+        secret, CHECK_USER, expiry
+    )
+    return username, turn_client.long_term_key(username, realm, password)
+
+
+def _check_credential(state, facts_remote, realm, now):
+    """(utilisateur, clé) du compte de contrôle, ou (clé i18n, None) quand
+    la base de coturn ne le porte pas. Mode secret : des identifiants
+    temporaires tirés du secret de contrôle (`check_secret_sha256`), car
+    `use-auth-secret` refuse tout compte long terme ; sinon le compte long
+    terme CHECK_USER et sa clé (`@@CHECK_KEY`)."""
+    if state.get("turn_mode") == "secret":
+        digest = state.get("check_secret_sha256")
+        secret = _secret_of(facts_remote, realm, digest)
+        if secret is None:
+            return "call_infra_check_no_secret", None
+        return _rest_credential(secret, realm, now)
+    key = facts_remote.get("check_key")
+    if not key:
+        return "call_infra_check_no_key", None
+    return CHECK_USER, bytes.fromhex(key)
+
+
+def _odoo_lines(
+    state, facts_remote, settings, address, allocate, now, timeout
+):
+    """Une ligne `odoo-<n>` par serveur Odoo de l'état, dans l'ordre de
+    leurs clés : une allocation UDP sous ce que coturn connaît de lui.
+    Un Odoo du module s'authentifie par des identifiants temporaires tirés
+    de SON secret (retrouvé par `value_sha256`), un Odoo sans module par son
+    compte fixe et la clé que porte `turnusers_lt`. Sans l'un ni l'autre
+    dans la base de coturn, la ligne échoue sans rien allouer. Le realm
+    est le nom public de coturn (`public_name`)."""
+    realm = settings.get("public_name")
+    users = facts_remote.get("turn_users") or {}
+    port = _int(settings.get("turn_port"), 3478)
+    lines = []
+    for n, key in enumerate(sorted(_odoos(state)), 1):
+        entry = _odoos(state)[key]
+        credential = entry.get("credential") if isinstance(entry, dict) else {}
+        credential = credential if isinstance(credential, dict) else {}
+        name, who = f"odoo-{n}", {"odoo": key}
+        if credential.get("kind") == "user":
+            user = credential.get("user")
+            hexkey = users.get((realm, user))
+            if hexkey is None:
+                lines.append(
+                    CheckLine(
+                        name,
+                        False,
+                        "call_infra_check_odoo_no_user",
+                        {**who, "user": user},
+                    )
+                )
+                continue
+            username, secret_key = user, bytes.fromhex(hexkey)
+        else:
+            value = _secret_of(
+                facts_remote, realm, credential.get("value_sha256")
+            )
+            if value is None:
+                lines.append(
+                    CheckLine(
+                        name, False, "call_infra_check_odoo_no_secret", who
+                    )
+                )
+                continue
+            username, secret_key = _rest_credential(value, realm, now)
+        result = allocate(
+            address, port, "udp", username, secret_key, timeout=timeout
+        )
+        if result.ok:
+            host, relayed_port = result.relayed or ("?", 0)
+            lines.append(
+                CheckLine(
+                    name,
+                    True,
+                    "call_infra_check_odoo_relayed",
+                    {**who, "relayed": f"{_url_host(host)}:{relayed_port}"},
+                )
+            )
+        else:
+            lines.append(
+                CheckLine(
+                    name,
+                    False,
+                    "call_infra_check_odoo_error",
+                    {**who, "error": result.error},
+                )
+            )
+    return lines
 
 
 def _ntfy_line(settings, address, cafile, https_get, timeout, production):
@@ -5845,7 +6020,8 @@ def check_local(
     fourni (None : celles du système, qui vérifient Let's Encrypt). Lignes,
     pour les services consignés dans l'état : `turn-udp`, `turn-tcp`,
     `turn-tls` (avec un certificat ; allocations réelles sous le compte de
-    contrôle), `private-denied` (production : `_private_line`),
+    contrôle, `_check_credential`), `private-denied` (production :
+    `_private_line`), `odoo-<n>` par serveur Odoo branché (`_odoo_lines`),
     `ntfy-health` (`/v1/health`, par nginx sur 443 en production),
     `cert-expiry` et `cert-issuer` (avec un certificat), `renewal` (Let's
     Encrypt), `firewall`, puis `service-<service>`. Sans état : une seule
@@ -5873,18 +6049,33 @@ def check_local(
         )
         for svc, record in records.items()
     }
-    key = facts_remote.get("check_key")
     lines = []
     if "coturn" in records:
+        credential = _check_credential(
+            state, facts_remote, settings["coturn"].get("public_name"), now
+        )
         lines += _turn_lines(
-            settings["coturn"], key, address, cafile, allocate, timeout
+            settings["coturn"], credential, address, cafile, allocate, timeout
         )
         if production:
             lines.append(
                 _private_line(
-                    settings["coturn"], key, address, permission, timeout
+                    settings["coturn"],
+                    credential,
+                    address,
+                    permission,
+                    timeout,
                 )
             )
+        lines += _odoo_lines(
+            state,
+            facts_remote,
+            settings["coturn"],
+            address,
+            allocate,
+            now,
+            timeout,
+        )
     if "ntfy" in records:
         lines.append(
             _ntfy_line(
@@ -5919,6 +6110,159 @@ def check_local(
                 {"state": current},
             )
         )
+    return lines
+
+
+def _ice_expired(username, now):
+    """La date d'expiration d'un utilisateur REST `<horodatage>:<id>` déjà
+    passée à `now` (« AAAA-MM-JJ HH:MM UTC »), None sinon."""
+    stamp, sep, _ = str(username).partition(":")
+    if not sep or not stamp.isdigit():
+        return None
+    try:
+        when = datetime.datetime.fromtimestamp(
+            int(stamp), datetime.timezone.utc
+        )
+    except (OverflowError, OSError, ValueError):
+        return None
+    return when.strftime("%Y-%m-%d %H:%M UTC") if when <= now else None
+
+
+def _ice_targets(ice):
+    """(url, entrée) de chaque URL d'une liste RTCIceServer ; `urls` est
+    une chaîne ou une liste, une entrée qui n'est pas un dict est
+    ignorée."""
+    for entry in ice if isinstance(ice, (list, tuple)) else ():
+        if not isinstance(entry, dict):
+            continue
+        urls = entry.get("urls")
+        for url in [urls] if isinstance(urls, str) else urls or ():
+            if isinstance(url, str):
+                yield url.strip(), entry
+
+
+def _parse_ice_url(url):
+    """(schéma, hôte, port, transport de `turn_client`) d'une URL ICE ;
+    l'hôte sans crochets, le port par défaut d'ICE_DEFAULT_PORTS, `turns:`
+    en « tls ». None pour une URL illisible, un port hors plage, ou
+    `turns:` sur UDP (DTLS, que `turn_client` ne parle pas)."""
+    match = _ICE_URL.match(url)
+    if not match:
+        return None
+    scheme = match.group("scheme").lower()
+    transport = (match.group("transport") or "udp").lower()
+    port = int(match.group("port") or ICE_DEFAULT_PORTS.get(scheme, 3478))
+    if not 0 < port < 65536:
+        return None
+    if scheme == "turns":
+        if match.group("transport") and transport == "udp":
+            return None
+        transport = "tls"
+    return scheme, match.group("host").strip("[]"), port, transport
+
+
+def _ice_credential(entry):
+    """(utilisateur, mot de passe) d'une entrée RTCIceServer, None quand
+    l'un manque."""
+    username, password = entry.get("username"), entry.get("credential")
+    if isinstance(username, str) and isinstance(password, str):
+        if username and password:
+            return username, password
+    return None
+
+
+def _ice_line(name, shown, result, username, now):
+    """La ligne d'une URL de TURN d'après son allocation `result` ; un
+    refus sous un `username` REST déjà expiré à `now` le dit."""
+    if result.ok:
+        relayed_host, relayed_port = result.relayed or ("?", 0)
+        relayed = f"{_url_host(relayed_host)}:{relayed_port}"
+        return CheckLine(
+            name,
+            True,
+            "call_infra_check_ice_relayed",
+            {**shown, "relayed": relayed},
+        )
+    expired = _ice_expired(username, now)
+    if expired:
+        return CheckLine(
+            name,
+            False,
+            "call_infra_check_ice_expired",
+            {**shown, "error": result.error, "date": expired},
+        )
+    return CheckLine(
+        name,
+        False,
+        "call_infra_check_ice_error",
+        {**shown, "error": result.error},
+    )
+
+
+def check_through_odoo(
+    ice,
+    realm,
+    address_override=None,
+    cafile=None,
+    allocate=turn_client.allocate,
+    *,
+    turn_host=None,
+    now=None,
+    timeout=5.0,
+):
+    """Une ligne `odoo-ice-<url>` par URL `turn:` ou `turns:` de `ice`, la
+    liste `iceServers` qu'Odoo a remise à un appelant
+    (`WebApi.join_call_ice`) : une allocation réelle sous le nom
+    d'utilisateur et le mot de passe remis, clé MD5(utilisateur:`realm`:mot
+    de passe). `realm` est le nom public de coturn ; les URL `stun:` ne
+    s'allouent pas.
+
+    `turn:` part en UDP sauf `?transport=tcp`, `turns:` en TLS (TCP) avec
+    le nom de l'URL attendu dans le certificat, vérifié contre `cafile`
+    (sinon les autorités du système). `address_override` remplace l'hôte
+    de l'URL pour la connexion. Avec `turn_host`, une URL d'un autre hôte
+    n'est pas allouée : None, son realm n'est pas celui de coturn.
+
+    Une URL sans nom d'utilisateur ou sans mot de passe échoue ; une URL
+    illisible, ou `turns:` sur UDP (DTLS), vaut None. Un refus sous un nom
+    déjà expiré à `now` le dit (`call_infra_check_ice_expired`). Sans
+    aucune URL de TURN, une seule ligne `odoo-ice` en échec. Les
+    identifiants n'entrent dans aucune ligne."""
+    if now is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+    expected = (turn_host or "").strip("[]").lower()
+    lines = []
+    for url, entry in _ice_targets(ice):
+        name, shown = f"odoo-ice-{url}", {"url": url}
+        target = _parse_ice_url(url)
+        if target is not None and target[0].startswith("stun"):
+            continue
+        if target is None:
+            detail, ok = "call_infra_check_ice_bad_url", None
+        elif expected and target[1].lower() != expected:
+            detail, ok = "call_infra_check_ice_foreign", None
+        elif not _ice_credential(entry):
+            detail, ok = "call_infra_check_ice_no_credential", False
+        else:
+            _scheme, host, port, transport = target
+            username, password = _ice_credential(entry)
+            extra = {}
+            if transport == "tls":
+                extra = dict(cafile=cafile, server_name=host)
+            result = allocate(
+                address_override or host,
+                port,
+                transport,
+                username,
+                turn_client.long_term_key(username, realm, password),
+                timeout=timeout,
+                **extra,
+            )
+            lines.append(_ice_line(name, shown, result, username, now))
+            continue
+        lines.append(CheckLine(name, ok, detail, shown))
+    if not lines:
+        return [CheckLine("odoo-ice", False, "call_infra_check_ice_none")]
     return lines
 
 

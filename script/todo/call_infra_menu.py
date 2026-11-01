@@ -11,9 +11,10 @@ ligne du verdict (`CheckLine`) portent une clé i18n et ses valeurs, rendues
 ici par `t(clé).format(**valeurs)`.
 
 Secrets : le mot de passe du compte de contrôle de coturn naît sur l'hôte,
-dans son installateur ; la ligne `@@CHECK_KEY` de la vérification est
-masquée à l'écran ; le mot de passe administrateur de ntfy n'est affiché
-qu'une fois, après l'installation.
+dans son installateur ; les lignes de la vérification qui portent une clé
+ou un secret de coturn (CHECK_HIDDEN) sont masquées à l'écran ; le mot de
+passe administrateur de ntfy n'est affiché qu'une fois, après
+l'installation.
 """
 
 import codecs
@@ -36,6 +37,9 @@ from script.todo.todo_i18n import t
 # Code de sortie de ssh quand la connexion, ou le dépôt du script, échoue.
 SSH_FAILED = 255
 CHECK_KEY_LINE = "@@CHECK_KEY"
+# Lignes de `check_remote_script` qui portent un secret de coturn : la clé du
+# compte de contrôle, chaque secret partagé et chaque clé de compte fixe.
+CHECK_HIDDEN = (CHECK_KEY_LINE, "@@TURN_SECRET", "@@TURN_USER")
 PROBE_HIDDEN = ("@@FILE", "@@PENDING", "@@STATE")
 ADMIN_PASSWORD_LINE = "@@ADMIN_PASSWORD"
 SERVICE_CHOICES = {
@@ -1052,10 +1056,10 @@ class CallInfraMenuMixin:
         self._call_infra_report(host)
 
     def _call_infra_report(self, host):
-        """Lit l'hôte (`check_remote_script`, la clé masquée à l'écran) et
-        affiche une ligne par `CheckLine` de `check_local`."""
+        """Lit l'hôte (`check_remote_script`, ses secrets masqués à
+        l'écran) et affiche une ligne par `CheckLine` de `check_local`."""
         result = self._call_infra_run(
-            host, ci.check_remote_script(), hide=(CHECK_KEY_LINE,)
+            host, ci.check_remote_script(), hide=CHECK_HIDDEN
         )
         if result is None:
             return

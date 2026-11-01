@@ -1251,6 +1251,335 @@ class TestShellPythonBody(unittest.TestCase):
         self.assertEqual(out, "@@ODOO_VERSION 17.0\n")
 
 
+# --- Entrée dans un appel : la liste ICE qu'Odoo remet ----------------------
+
+CALLER = "appelant@exemple.test"
+CALLER_PASSWORD = "Appelant-invente-31"
+CALLER_PARTNER = 31
+CHAT_ID = 55
+GUEST_CHANNEL = 60
+INVITATION_TOKEN = "3c1f0e2a-invente-4b7d-9a65-0d8e2f1b7c44"
+ICE_CREDENTIAL = "Q2xlLWludmVudGVlLXBvdXItbGUtdGVzdA=="
+ICE_SERVERS = [
+    {"urls": "stun:turn.exemple.test:3478"},
+    {
+        "urls": "turn:turn.exemple.test:3478?transport=udp",
+        "username": "1893542400:odoo-u9",
+        "credential": ICE_CREDENTIAL,
+    },
+]
+
+
+class _DiscussHandler(http.server.BaseHTTPRequestHandler):
+    """Requêtes HTTP vers le `FakeDiscuss` du serveur (`server.fake`)."""
+
+    def log_message(self, *args):
+        pass
+
+    def cookies(self):
+        jar = {}
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            name, sep, value = part.strip().partition("=")
+            if sep:
+                jar[name] = value
+        return jar
+
+    def send(self, status, body=b"", headers=()):
+        self.send_response(status)
+        for name, value in headers:
+            self.send_header(name, value)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        fake = self.server.fake
+        path, _, query = self.path.partition("?")
+        jar = self.cookies()
+        fake.calls.append((path, query, jar))
+        self.send(*fake.page(path, query, jar))
+
+    def do_POST(self):
+        fake = self.server.fake
+        length = int(self.headers.get("Content-Length", 0))
+        payload = json.loads(self.rfile.read(length))
+        params = dict(payload.get("params") or {})
+        jar = self.cookies()
+        logged = dict(params)
+        logged.pop("password", None)
+        fake.calls.append((self.path, logged, jar))
+        headers = []
+        try:
+            if self.path in fake.fail:
+                raise RpcFault("odoo.exceptions.UserError", "refus")
+            answer = {"result": fake.route(self.path, params, jar, headers)}
+        except LookupError:
+            self.send(404)
+            return
+        except RpcFault as fault:
+            answer = {
+                "error": {
+                    "code": 200,
+                    "message": "Odoo Server Error",
+                    "data": {"name": fault.name, "message": fault.message},
+                }
+            }
+        answer.update(jsonrpc="2.0", id=payload.get("id"))
+        body = json.dumps(answer).encode()
+        self.send(200, body, [("Content-Type", "application/json")] + headers)
+
+
+class FakeDiscuss:
+    """Les routes de session et d'appel d'Odoo 18 derrière un vrai serveur
+    HTTP sur 127.0.0.1 : `/web/session/authenticate`, `channel_get` par
+    `/web/dataset/call_kw`, `/mail/rtc/channel/join_call` et `leave_call`,
+    et pour un invité `/web/login?db=` puis le lien `/chat/<id>/<jeton>`.
+    Les cookies de session (`session_id`) et d'invité (`dgid`) se posent et
+    se lisent comme dans Odoo. `calls` note (chemin, paramètres sans mot de
+    passe, cookies reçus)."""
+
+    def __init__(self, version="18.0"):
+        self.version = version
+        self.sessions = {}
+        self.calls = []
+        self.ice = list(ICE_SERVERS)
+        self.fail = set()
+        self.rtc = True
+        self.httpd = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", 0), _DiscussHandler
+        )
+        self.httpd.fake = self
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        self.thread = threading.Thread(
+            target=self.httpd.serve_forever,
+            kwargs={"poll_interval": 0.02},
+            daemon=True,
+        )
+
+    def page(self, path, query, jar):
+        """(statut, corps, en-têtes) d'un GET : `/web/login?db=` pose la
+        base dans une nouvelle session puis redirige vers lui-même ; le
+        lien d'invitation fait de la session un invité (`dgid`)."""
+        if path == "/web/login":
+            sid = jar.get("session_id")
+            if sid in self.sessions:
+                return 200, b"<html>login</html>", ()
+            sid = f"sid{len(self.sessions) + 1}"
+            self.sessions[sid] = {"db": query.split("db=")[1]}
+            return (
+                302,
+                b"",
+                (
+                    ("Location", f"{path}?{query}"),
+                    ("Set-Cookie", f"session_id={sid}; Path=/"),
+                ),
+            )
+        if path == f"/chat/{GUEST_CHANNEL}/{INVITATION_TOKEN}":
+            session = self.sessions.get(jar.get("session_id"))
+            if session and session.get("db") == DATABASE:
+                cookie = ("Set-Cookie", "dgid=4|jeton-invite; Path=/")
+                return 200, b"<html>chat</html>", (cookie,)
+        return 404, b"", ()
+
+    def route(self, path, params, jar, headers):
+        session = self.sessions.get(jar.get("session_id"))
+        if path == "/jsonrpc":
+            major = int(self.version.split(".")[0])
+            return {"server_version": self.version, "server_serie": major}
+        if path == "/web/session/authenticate":
+            if params.get("db") != DATABASE:
+                raise RpcFault(
+                    "odoo.exceptions.AccessError", "Database not found."
+                )
+            if (params.get("login"), params.get("password")) != (
+                CALLER,
+                CALLER_PASSWORD,
+            ):
+                raise RpcFault("odoo.exceptions.AccessDenied", "Access Denied")
+            sid = f"sid{len(self.sessions) + 1}"
+            self.sessions[sid] = {"db": DATABASE, "uid": 9}
+            headers.append(("Set-Cookie", f"session_id={sid}; Path=/"))
+            return {"uid": 9, "partner_id": CALLER_PARTNER, "db": DATABASE}
+        if path == "/web/dataset/call_kw/discuss.channel/channel_get":
+            if not session or not session.get("uid"):
+                raise RpcFault(
+                    "odoo.http.SessionExpiredException", "Session expired"
+                )
+            return {
+                "discuss.channel": [{"id": CHAT_ID, "channel_type": "chat"}],
+                "res.partner": [{"id": CALLER_PARTNER}],
+            }
+        if path in (
+            "/mail/rtc/channel/join_call",
+            "/mail/rtc/channel/leave_call",
+        ):
+            channel = params.get("channel_id")
+            allowed = (session or {}).get("uid") and channel == CHAT_ID
+            guest = (
+                jar.get("dgid") == "4|jeton-invite"
+                and channel == GUEST_CHANNEL
+            )
+            if not (allowed or guest):
+                raise LookupError(path)
+            if path.endswith("leave_call"):
+                return None
+            store = {"discuss.channel": [{"id": channel}]}
+            if self.rtc:
+                store["Rtc"] = {
+                    "iceServers": self.ice,
+                    "selfSession": {"id": 3},
+                }
+            return store
+        raise LookupError(path)
+
+    def paths(self):
+        return [call[0] for call in self.calls]
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+class TestJoinCall(unittest.TestCase):
+    def setUp(self):
+        self.odoo = FakeDiscuss()
+        self.odoo.__enter__()
+        self.addCleanup(self.odoo.__exit__)
+
+    def api(self):
+        return ol.WebApi(self.odoo.url, DATABASE, None, None, timeout=5)
+
+    def test_a_user_joins_their_own_chat_and_leaves(self):
+        ice = self.api().join_call_ice(CALLER, CALLER_PASSWORD)
+        self.assertEqual(ice, ICE_SERVERS)
+        self.assertEqual(
+            self.odoo.paths(),
+            [
+                "/jsonrpc",
+                "/web/session/authenticate",
+                "/web/dataset/call_kw/discuss.channel/channel_get",
+                "/mail/rtc/channel/join_call",
+                "/mail/rtc/channel/leave_call",
+            ],
+        )
+        _, auth, _ = self.odoo.calls[1]
+        self.assertEqual((auth["db"], auth["login"]), (DATABASE, CALLER))
+        _, channel_get, jar = self.odoo.calls[2]
+        self.assertEqual(
+            (channel_get["model"], channel_get["method"], channel_get["args"]),
+            ("discuss.channel", "channel_get", []),
+        )
+        self.assertEqual(
+            channel_get["kwargs"], {"partners_to": [CALLER_PARTNER]}
+        )
+        self.assertIn("session_id", jar)
+        for path, params, _ in self.odoo.calls[3:]:
+            self.assertEqual(params, {"channel_id": CHAT_ID}, path)
+
+    def test_no_ice_servers_is_an_empty_list(self):
+        self.odoo.ice = False
+        self.assertEqual(self.api().join_call_ice(CALLER, CALLER_PASSWORD), [])
+        self.odoo.rtc = False
+        self.assertEqual(self.api().join_call_ice(CALLER, CALLER_PASSWORD), [])
+
+    def test_a_wrong_password_is_refused_before_any_channel(self):
+        with self.assertRaises(ol.OdooError) as caught:
+            self.api().join_call_ice(CALLER, "Faux-mot-de-passe-invente")
+        self.assertEqual(caught.exception.key, "call_infra_odoo_user_login")
+        self.assertEqual(caught.exception.values, {"login": CALLER})
+        self.assertEqual(
+            self.odoo.paths(), ["/jsonrpc", "/web/session/authenticate"]
+        )
+
+    def test_an_odoo_17_is_refused_before_login(self):
+        self.odoo.version = "17.0"
+        with self.assertRaises(ol.OdooError) as caught:
+            self.api().join_call_ice(CALLER, CALLER_PASSWORD)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_version")
+        self.assertEqual(self.odoo.paths(), ["/jsonrpc"])
+
+    def test_a_failed_join_still_leaves(self):
+        self.odoo.fail.add("/mail/rtc/channel/join_call")
+        with self.assertRaises(ol.OdooError) as caught:
+            self.api().join_call_ice(CALLER, CALLER_PASSWORD)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_rpc_error")
+        self.assertEqual(self.odoo.paths()[-1], "/mail/rtc/channel/leave_call")
+
+    def test_a_failed_leave_keeps_the_ice_list(self):
+        self.odoo.fail.add("/mail/rtc/channel/leave_call")
+        ice = self.api().join_call_ice(CALLER, CALLER_PASSWORD)
+        self.assertEqual(ice, ICE_SERVERS)
+
+    def test_neither_password_nor_credential_reaches_the_log(self):
+        with self.assertLogs("script.todo.odoo_link", logging.DEBUG) as logs:
+            self.api().join_call_ice(CALLER, CALLER_PASSWORD)
+        text = "\n".join(logs.output)
+        self.assertNotIn(CALLER_PASSWORD, text)
+        self.assertNotIn(ICE_CREDENTIAL, text)
+
+    def test_a_guest_joins_by_the_invitation_link(self):
+        link = f"{self.odoo.url}/chat/{GUEST_CHANNEL}/{INVITATION_TOKEN}"
+        ice = self.api().join_call_ice_guest(link)
+        self.assertEqual(ice, ICE_SERVERS)
+        self.assertEqual(
+            self.odoo.paths(),
+            [
+                "/jsonrpc",
+                "/web/login",
+                "/web/login",
+                f"/chat/{GUEST_CHANNEL}/{INVITATION_TOKEN}",
+                "/mail/rtc/channel/join_call",
+                "/mail/rtc/channel/leave_call",
+            ],
+        )
+        self.assertEqual(self.odoo.calls[1][1], f"db={DATABASE}")
+        _, params, jar = self.odoo.calls[4]
+        self.assertEqual(params, {"channel_id": GUEST_CHANNEL})
+        self.assertEqual(jar.get("dgid"), "4|jeton-invite")
+
+    def test_an_invitation_odoo_does_not_know_is_refused(self):
+        link = f"{self.odoo.url}/chat/{GUEST_CHANNEL}/jeton-inconnu"
+        with self.assertRaises(ol.OdooError) as caught:
+            self.api().join_call_ice_guest(link)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_invitation")
+        self.assertEqual(caught.exception.values, {})
+        self.assertNotIn("/mail/rtc/channel/join_call", self.odoo.paths())
+
+    def test_an_invitation_of_another_odoo_or_shape_is_refused_unsent(self):
+        for link in (
+            f"https://autre.exemple.test/chat/{GUEST_CHANNEL}/{INVITATION_TOKEN}",
+            f"{self.odoo.url}/odoo/discuss",
+            f"{self.odoo.url}/chat/abc/{INVITATION_TOKEN}",
+            "pas un lien",
+        ):
+            with self.assertRaises(ol.OdooError) as caught:
+                self.api().join_call_ice_guest(link)
+            self.assertEqual(
+                caught.exception.key, "call_infra_odoo_invitation"
+            )
+        self.assertEqual(self.odoo.calls, [])
+
+    def test_both_refusals_format_in_french_and_english(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        errors = []
+        for action in (
+            lambda: self.api().join_call_ice(CALLER, "Faux-invente"),
+            lambda: self.api().join_call_ice_guest("pas un lien"),
+        ):
+            with self.assertRaises(ol.OdooError) as caught:
+                action()
+            errors.append(caught.exception)
+        for error in errors:
+            for lang in ("fr", "en"):
+                text = TRANSLATIONS[error.key][lang].format(**error.values)
+                self.assertNotIn("{", text, error.key)
+
+
 class TestMessages(WebCase):
     """Chaque refus se formate, en français et en anglais, avec les
     valeurs que le code lui passe."""

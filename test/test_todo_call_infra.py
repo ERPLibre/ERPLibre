@@ -100,6 +100,7 @@ class FakeHost:
         firewall_pending=(),
         state_code=0,
         probe_extra=(),
+        check_extra=(),
     ):
         self.os_line = os_line
         self.systemd = systemd
@@ -120,6 +121,9 @@ class FakeHost:
         self.state_code = state_code
         # Lignes de sonde de production (`@@NGINX ...`, `@@CERTBOT ...`).
         self.probe_extra = list(probe_extra)
+        # Lignes de la base de coturn que la vérification lit
+        # (`@@TURN_SECRET ...`, `@@TURN_USER ...`).
+        self.check_extra = list(check_extra)
         self.calls = []
 
     @staticmethod
@@ -222,7 +226,8 @@ class FakeHost:
             out = "\n@@ACTIVE coturn active\n@@ACTIVE ntfy active\n"
             if self.state is not None:
                 out = f"\n@@STATE {b64(json.dumps(self.state))}" + out
-            return 0, out + f"@@CHECK_KEY {CHECK_KEY}\n@@END\n"
+            extra = "".join(line + "\n" for line in self.check_extra)
+            return 0, out + f"@@CHECK_KEY {CHECK_KEY}\n{extra}@@END\n"
         if kind == "uninstall-empty":
             return 0, "@@NOTHING\n"
         if kind == "uninstall":
@@ -1097,6 +1102,26 @@ class TestCheck(MenuCase):
             t("call_infra_check_unhealthy").format(status=503), shown[1]
         )
         self.assertNotIn(CHECK_KEY, out)
+
+    def test_coturn_secrets_and_user_keys_stay_off_screen(self):
+        secret = "SecretInventePourEcran_0123456789abcdefg"
+        hexkey = "e" * 32
+        host = FakeHost(
+            state=installed_state(),
+            check_extra=[
+                f"@@TURN_SECRET turn.exemple.test {secret}",
+                f"@@TURN_USER turn.exemple.test erplibre-0a1b2c3d {hexkey}",
+            ],
+        )
+        out = self.drive("_call_infra_check", host, [""])
+        self.assertNotIn(secret, out)
+        self.assertNotIn(hexkey, out)
+        self.assertIn("@@TURN_SECRET ***", out)
+        self.assertIn("@@TURN_USER ***", out)
+        remote = self.check_local.call_args[0][0]
+        self.assertEqual(
+            remote["turn_secrets"], [("turn.exemple.test", secret)]
+        )
 
     def supplied_host(self):
         state = installed_state()

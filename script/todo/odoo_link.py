@@ -24,6 +24,10 @@ l'infrastructure d'appel appelle sans savoir par quel chemin il passe :
   propriétaire du dossier. Son journal reste sur l'hôte ; seules les lignes
   `@@ODOO_*` reviennent.
 
+`WebApi` seule offre aussi `join_call_ice()` et `join_call_ice_guest()` :
+la liste ICE qu'Odoo remet à un utilisateur ou à un invité qui entre dans
+un appel, lue par les routes du navigateur dans une session à part.
+
 Aucune des deux ne relit un secret en clair : `facts().params` donne
 `erplibre_turn.secret` sous la forme de `secret_digest()`, et les lignes
 `mail.ice.server` sans leur `credential`. Les messages d'erreur qui
@@ -40,6 +44,7 @@ import base64
 import dataclasses
 import hashlib
 import http.client
+import http.cookiejar
 import ipaddress
 import json
 import logging
@@ -74,6 +79,9 @@ _OWNED = re.compile(r"^erplibre-[0-9a-f]{8}$")
 _MARKER = re.compile(r"^@@ODOO_([A-Z]+)(?: (.*))?$")
 # Un message d'Odoo est coupé à sa première ligne et à cette longueur.
 _MESSAGE_MAX = 300
+# Chemin d'un lien d'invitation à un canal (`/chat/<id>/<jeton>`), la route
+# publique d'Odoo 18 qui fait d'un visiteur un invité du canal.
+_INVITATION_PATH = re.compile(r"^/chat/([0-9]+)/([A-Za-z0-9_-]+)$")
 
 
 class OdooError(Exception):
@@ -237,6 +245,147 @@ def _row(record):
     }
 
 
+class _Session:
+    """Une session de navigateur sur une base Odoo : les cookies que pose
+    Odoo (`session_id`, et `dgid` pour un invité) sont gardés d'une requête
+    à l'autre, redirections comprises. `secrets` sont expurgés de tout
+    message d'erreur ; rien n'est journalisé au-delà du chemin appelé."""
+
+    def __init__(self, api, secrets=()):
+        self.api = api
+        self.secrets = tuple(s for s in secrets if s)
+        request = api.opener.request
+        self.opener = request.build_opener(
+            request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+        )
+        self._seq = 0
+
+    def _open(self, request):
+        """Corps de la réponse ; `call_infra_odoo_unreachable` pour un
+        échec de transport, `urllib.error.HTTPError` pour un statut d'erreur,
+        que l'appelant traduit."""
+        try:
+            with self.opener.open(request, timeout=self.api.timeout) as answer:
+                return answer.read()
+        except urllib.error.HTTPError:
+            raise
+        except (
+            urllib.error.URLError,
+            http.client.HTTPException,
+            OSError,
+            ValueError,
+        ) as error:
+            reason = getattr(error, "reason", None) or error
+            raise OdooError(
+                "call_infra_odoo_unreachable",
+                url=self.api.url,
+                reason=_redact(reason, self.secrets),
+            ) from None
+
+    def get(self, path):
+        """GET de `path` (chemin et requête) ; le corps est ignoré, seuls
+        comptent les cookies posés et le statut."""
+        _logger.debug("session GET %s", path.partition("?")[0])
+        self._open(urllib.request.Request(self.api.url + path))
+
+    def call(self, path, params):
+        """Résultat d'une route JSON d'Odoo (`type="json"`) ; `_RpcFault`
+        pour une réponse `error`, `call_infra_odoo_unreachable` pour un
+        statut HTTP d'erreur ou un corps qui n'est pas du JSON-RPC."""
+        self._seq += 1
+        _logger.debug("session POST %s", path)
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "call",
+                "params": params,
+                "id": self._seq,
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            self.api.url + path,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            body = self._open(request)
+        except urllib.error.HTTPError as error:
+            error.close()
+            raise OdooError(
+                "call_infra_odoo_unreachable",
+                url=self.api.url,
+                reason=f"HTTP {error.code}",
+            ) from None
+        return _rpc_result(body, self.api.url, self.secrets)
+
+    def join(self, channel_id):
+        """La liste `iceServers` que rend `/mail/rtc/channel/join_call`
+        pour `channel_id`, puis `/mail/rtc/channel/leave_call`, même quand
+        l'entrée a échoué ; une sortie en échec ne change pas le résultat.
+        [] quand Odoo ne rend aucun serveur (`iceServers` False)."""
+        params = {"channel_id": channel_id}
+        try:
+            try:
+                store = self.call("/mail/rtc/channel/join_call", params)
+            except _RpcFault as fault:
+                raise OdooError(
+                    "call_infra_odoo_rpc_error", message=fault.message
+                ) from None
+        finally:
+            try:
+                self.call("/mail/rtc/channel/leave_call", params)
+            except (OdooError, _RpcFault):
+                _logger.debug("session leave_call failed")
+        rtc = store.get("Rtc") if isinstance(store, dict) else None
+        ice = rtc.get("iceServers") if isinstance(rtc, dict) else None
+        if not isinstance(ice, list):
+            return []
+        return [server for server in ice if isinstance(server, dict)]
+
+
+def _rpc_result(body, url, secrets):
+    """`result` d'une réponse JSON-RPC ; `_RpcFault` (message expurgé de
+    `secrets`) pour une réponse `error`, `call_infra_odoo_unreachable` pour
+    un corps qui n'en est pas une."""
+    try:
+        answer = json.loads(body)
+    except ValueError:
+        answer = None
+    if not isinstance(answer, dict) or not (
+        "result" in answer or "error" in answer
+    ):
+        raise OdooError(
+            "call_infra_odoo_unreachable",
+            url=url,
+            reason="not a JSON-RPC answer",
+        )
+    if "error" in answer:
+        error = answer["error"] if isinstance(answer["error"], dict) else {}
+        data = error.get("data") if isinstance(error.get("data"), dict) else {}
+        message = data.get("message") or error.get("message") or "error"
+        raise _RpcFault(_redact(message, secrets))
+    return answer["result"]
+
+
+def _chat_id(store):
+    """L'id du canal que rend `channel_get` (un `Store` d'Odoo 18 :
+    `{"discuss.channel": [{"id": …}, …], …}`), le canal `chat` d'abord."""
+    channels = (
+        store.get("discuss.channel") if isinstance(store, dict) else None
+    )
+    channels = [
+        c
+        for c in (channels if isinstance(channels, list) else [])
+        if isinstance(c, dict) and isinstance(c.get("id"), int)
+    ]
+    channels.sort(key=lambda c: c.get("channel_type") != "chat")
+    if not channels:
+        raise OdooError(
+            "call_infra_odoo_rpc_error", message="channel_get: no channel"
+        )
+    return channels[0]["id"]
+
+
 class WebApi:
     """Une base Odoo par son API JSON-RPC.
 
@@ -297,30 +446,7 @@ class WebApi:
             raise OdooError(
                 "call_infra_odoo_unreachable", url=self.url, reason=str(reason)
             ) from None
-        try:
-            answer = json.loads(body)
-        except ValueError:
-            answer = None
-        if not isinstance(answer, dict) or not (
-            "result" in answer or "error" in answer
-        ):
-            raise OdooError(
-                "call_infra_odoo_unreachable",
-                url=self.url,
-                reason="not a JSON-RPC answer",
-            )
-        if "error" in answer:
-            error = (
-                answer["error"] if isinstance(answer["error"], dict) else {}
-            )
-            data = (
-                error.get("data")
-                if isinstance(error.get("data"), dict)
-                else {}
-            )
-            message = data.get("message") or error.get("message") or "error"
-            raise _RpcFault(_redact(message, (self._secret,) + tuple(secrets)))
-        return answer["result"]
+        return _rpc_result(body, self.url, (self._secret,) + tuple(secrets))
 
     def _call(
         self, uid, model, method, args, kwargs=None, timeout=None, secrets=()
@@ -347,18 +473,7 @@ class WebApi:
         une seule fois par objet."""
         if self._uid is not None:
             return self._uid
-        try:
-            info = self._post("common", "version", [])
-        except _RpcFault as fault:
-            raise OdooError(
-                "call_infra_odoo_unreachable",
-                url=self.url,
-                reason=fault.message,
-            ) from None
-        if not isinstance(info, dict):
-            info = {}
-        version = str(info.get("server_version") or "")
-        _check_version(version)
+        version = self._server_version()
         try:
             uid = self._post(
                 "common", "login", [self.database, self.login, self._secret]
@@ -378,6 +493,24 @@ class WebApi:
         self._version = version
         self._uid = uid
         return uid
+
+    def _server_version(self):
+        """La version du serveur (`common.version`), refusée
+        (`call_infra_odoo_version`) quand elle n'est pas 18 : avant toute
+        connexion."""
+        try:
+            info = self._post("common", "version", [])
+        except _RpcFault as fault:
+            raise OdooError(
+                "call_infra_odoo_unreachable",
+                url=self.url,
+                reason=fault.message,
+            ) from None
+        if not isinstance(info, dict):
+            info = {}
+        version = str(info.get("server_version") or "")
+        _check_version(version)
+        return version
 
     def _execute(
         self, model, method, args, kwargs=None, timeout=None, secrets=()
@@ -495,6 +628,96 @@ class WebApi:
             "res.users", "read", [[uid]], {"fields": ["login"]}
         )
         return record["login"]
+
+    def join_call_ice(self, user_login, user_secret):
+        """La liste ICE qu'Odoo remet à `user_login` quand il entre dans un
+        appel : `[{"urls", "username", "credential"}, …]`, [] sans serveur.
+
+        Le compte entre comme un navigateur, dans une session à lui
+        (`/web/session/authenticate`, mot de passe seulement : ni clé d'API
+        ni double authentification), indépendante du compte de cet objet.
+        Il ouvre sa discussion avec lui-même (`discuss.channel.channel_get`
+        avec son seul partenaire), y entre (`/mail/rtc/channel/join_call`)
+        et en ressort (`leave_call`). L'entrée crée une session d'appel et
+        laisse dans cette discussion l'avis « a lancé une conférence ».
+
+        Refus : `call_infra_odoo_version` avant toute connexion,
+        `call_infra_odoo_user_login` pour un identifiant ou un mot de passe
+        refusé, `call_infra_odoo_rpc_error` pour une route qui échoue."""
+        self._server_version()
+        session = _Session(self, (user_secret,))
+        try:
+            info = session.call(
+                "/web/session/authenticate",
+                {
+                    "db": self.database,
+                    "login": user_login,
+                    "password": user_secret,
+                },
+            )
+        except _RpcFault:
+            info = None
+        info = info if isinstance(info, dict) else {}
+        partner = info.get("partner_id")
+        if not info.get("uid") or not isinstance(partner, int):
+            raise OdooError("call_infra_odoo_user_login", login=user_login)
+        try:
+            store = session.call(
+                "/web/dataset/call_kw/discuss.channel/channel_get",
+                {
+                    "model": "discuss.channel",
+                    "method": "channel_get",
+                    "args": [],
+                    "kwargs": {"partners_to": [partner]},
+                },
+            )
+        except _RpcFault as fault:
+            raise OdooError(
+                "call_infra_odoo_rpc_error", message=fault.message
+            ) from None
+        return session.join(_chat_id(store))
+
+    def join_call_ice_guest(self, invitation_url):
+        """La liste ICE qu'Odoo remet à un invité entré par un lien
+        d'invitation (`<URL de la base>/chat/<id>/<jeton>`), [] sans
+        serveur.
+
+        `/web/login?db=` pose d'abord la base dans la session (un serveur
+        à plusieurs bases n'en choisit aucune sans elle) ; le lien fait
+        ensuite du visiteur un invité du canal (cookie `dgid`), qui entre
+        dans l'appel et en ressort comme `join_call_ice`. Le jeton du lien
+        ouvre le canal : il n'apparaît dans aucun message.
+
+        Refus `call_infra_odoo_invitation` pour un lien d'une autre origine
+        que la base, d'une autre forme, ou qu'Odoo refuse (404) ;
+        `call_infra_odoo_version` avant toute requête au lien."""
+        parts = urllib.parse.urlsplit(str(invitation_url).strip())
+        match = _INVITATION_PATH.match(parts.path)
+        try:
+            origin = normalize_url(invitation_url)
+        except OdooError:
+            origin = None
+        if origin != self.url or not match:
+            raise OdooError("call_infra_odoo_invitation")
+        self._server_version()
+        session = _Session(self, (match.group(2),))
+        try:
+            session.get(
+                "/web/login?" + urllib.parse.urlencode({"db": self.database})
+            )
+        except urllib.error.HTTPError as error:
+            error.close()
+            raise OdooError(
+                "call_infra_odoo_unreachable",
+                url=self.url,
+                reason=f"HTTP {error.code}",
+            ) from None
+        try:
+            session.get(parts.path)
+        except urllib.error.HTTPError as error:
+            error.close()
+            raise OdooError("call_infra_odoo_invitation") from None
+        return session.join(int(match.group(1)))
 
 
 # Début de tout corps Python : version imprimée, puis arrêt (code 4) sur
