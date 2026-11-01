@@ -2057,13 +2057,29 @@ class Harnais:
         return restantes
 
 
+def est_serveur_de(ligne, course):
+    """Vrai quand la ligne de commande `ligne` (`mso.commande_de`, argv
+    séparés par des espaces) est celle d'un serveur Odoo du harnais de la
+    course `course` : un argv qui finit par `odoo-bin`, suivi plus loin de
+    `-c` et d'un fichier de configuration sous `<course>/odoo-`. Le même
+    chemin dans une autre commande (un éditeur, `tail`) n'en fait pas un."""
+    marque = os.path.join(course, "odoo-")
+    argv = ligne.split()
+    for i, mot in enumerate(argv):
+        if mot.endswith("odoo-bin"):
+            suite = argv[i + 1 :]
+            return any(
+                a == "-c" and b.startswith(marque)
+                for a, b in zip(suite, suite[1:])
+            )
+    return False
+
+
 def serveurs_de(course, proc="/proc", lire=None):
     """Les pid des serveurs Odoo du harnais de la course dont `course` est
-    le dossier : ceux dont la ligne de commande nomme un fichier de
-    configuration sous `<course>/odoo-`. `lire(pid)` rend la ligne de
-    commande (`mso.commande_de`)."""
+    le dossier (`est_serveur_de`). `lire(pid)` rend la ligne de commande
+    (`mso.commande_de`)."""
     lire = lire or mso.commande_de
-    marque = os.path.join(course, "odoo-")
     try:
         entrees = os.listdir(proc)
     except OSError:
@@ -2071,14 +2087,24 @@ def serveurs_de(course, proc="/proc", lire=None):
     return sorted(
         int(e)
         for e in entrees
-        if e.isdigit() and int(e) != os.getpid() and marque in lire(int(e))
+        if e.isdigit()
+        and int(e) != os.getpid()
+        and est_serveur_de(lire(int(e)), course)
     )
 
 
-def arreter_serveurs(pids, tuer=os.kill, lire=None, delai=DELAI_ARRET_ODOO):
-    """SIGTERM à chaque pid, puis SIGKILL à ceux qui vivent encore après
-    `delai` secondes (`lire(pid)` vide : le processus n'est plus)."""
+def arreter_serveurs(
+    pids, course, tuer=os.kill, lire=None, delai=DELAI_ARRET_ODOO
+):
+    """SIGTERM à chaque pid, puis SIGKILL à ceux qui sont encore, après
+    `delai` secondes, un serveur du harnais de `course`
+    (`est_serveur_de`) : un pid repris entre-temps par un autre programme
+    ne reçoit rien."""
     lire = lire or mso.commande_de
+
+    def encore(pid):
+        return est_serveur_de(lire(pid), course)
+
     vivants = []
     for pid in pids:
         try:
@@ -2089,8 +2115,8 @@ def arreter_serveurs(pids, tuer=os.kill, lire=None, delai=DELAI_ARRET_ODOO):
     fin = time.monotonic() + delai
     while vivants and time.monotonic() < fin:
         time.sleep(0.2)
-        vivants = [pid for pid in vivants if lire(pid)]
-    for pid in [p for p in vivants if lire(p)]:
+        vivants = [pid for pid in vivants if encore(pid)]
+    for pid in [p for p in vivants if encore(p)]:
         try:
             tuer(pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -2141,7 +2167,8 @@ def defaire_odoo(journal, dry_run, dossier=None):
         ]
         if not bases:
             continue
-        pids = serveurs_de(chemin[: -len(".json")])
+        course = chemin[: -len(".json")]
+        pids = serveurs_de(course)
         dire(
             f"  {nom} : {len(pids)} serveur(s) Odoo, bases {', '.join(bases)}",
             journal,
@@ -2149,7 +2176,7 @@ def defaire_odoo(journal, dry_run, dossier=None):
         total += len(bases)
         if dry_run:
             continue
-        arreter_serveurs(pids)
+        arreter_serveurs(pids, course)
         for base in bases:
             mso.supprimer_base(base)
         restantes = bases_restantes(bases)
