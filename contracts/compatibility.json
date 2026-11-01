@@ -73,6 +73,17 @@
       },
       "methods_on_discuss_channel": ["erplibre_remove_member"],
       "methods_on_mail_message": ["erplibre_set_starred"]
+    },
+    "erplibre_turn": {
+      "version": "18.0.1.0.0",
+      "description": "ERPLibre module of the call infrastructure, optional: every call participant, guests included, gets TURN credentials signed by a secret shared with coturn (use-auth-secret), valid erplibre_turn.ttl_hours hours (24 by default); the app reads the ICE list Odoo hands out and needs no call of its own",
+      "system_parameters": ["erplibre_turn.secret", "erplibre_turn.urls", "erplibre_turn.ttl_hours"],
+      "without": {
+        "module": "Odoo hands out its own mail.ice.server rows: TODO › Deploy › Call infrastructure writes three of them (STUN, TURN over UDP and TCP) with a fixed coturn account, and TURN over TLS (turns:) is not available"
+      },
+      "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_turn",
+      "depends": ["mail"],
+      "optional": true
     }
   }
 }

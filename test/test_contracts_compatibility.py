@@ -9,8 +9,13 @@ contrôleurs du module (quand le module est cloné), et chaque route porte
 la note d'accès qu'une requête doit respecter : jeton CSRF, utilisateurs
 internes seulement, arguments et version de charge de la marque d'un
 appareil.
+
+L'entrée erplibre_turn suit le manifeste du module : version et
+dépendances identiques, aucune route puisqu'il n'a pas de contrôleur, et
+aucun champ ajouté à un modèle stocké.
 """
 
+import ast
 import json
 import re
 import unittest
@@ -24,6 +29,14 @@ MODULE = (
     / "addons"
     / "ERPLibre_erplibre_addons"
     / "erplibre_mobile_chat"
+)
+
+TURN = (
+    RACINE
+    / "odoo18.0"
+    / "addons"
+    / "ERPLibre_erplibre_addons"
+    / "erplibre_turn"
 )
 
 
@@ -68,6 +81,40 @@ class TestContratChat(unittest.TestCase):
                 )
             )
         self.assertEqual(sorted(declarees), sorted(chat()["routes"]))
+
+
+def turn():
+    return json.loads(CONTRAT.read_text(encoding="utf-8"))["modules"][
+        "erplibre_turn"
+    ]
+
+
+class TestContratTurn(unittest.TestCase):
+    def test_l_entree_est_optionnelle_sur_mail_sans_route(self):
+        module = turn()
+        self.assertEqual(
+            module["source"],
+            "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_turn",
+        )
+        self.assertEqual(module["version"], "18.0.1.0.0")
+        self.assertEqual(module["depends"], ["mail"])
+        self.assertIs(module["optional"], True)
+        self.assertNotIn("routes", module)
+        self.assertNotIn("route_access", module)
+        self.assertEqual(
+            [cle for cle in module if cle.startswith("custom_fields")], []
+        )
+
+    def test_l_entree_suit_le_manifeste(self):
+        manifeste = TURN / "__manifest__.py"
+        if not manifeste.is_file():
+            self.skipTest("module erplibre_turn absent")
+        lu = ast.literal_eval(manifeste.read_text(encoding="utf-8"))
+        module = turn()
+        self.assertEqual(module["version"], lu["version"])
+        self.assertEqual(module["depends"], lu["depends"])
+        self.assertEqual(module["source"], TURN.relative_to(RACINE).as_posix())
+        self.assertFalse((TURN / "controllers").exists())
 
 
 if __name__ == "__main__":

@@ -2393,6 +2393,28 @@ class TestDocumentation(unittest.TestCase):
         self.assertIn(self.MENU_EN, self._read("CHANGELOG.md"))
         self.assertIn(self.MENU_FR, self._read("CHANGELOG.fr.md"))
 
+    def test_the_changelog_quotes_the_odoo_server_screens(self):
+        """Chaque moitié du journal cite l'écran dans sa langue, mot pour
+        mot depuis TRANSLATIONS : une entrée renommée dans le menu fait
+        échouer ce test tant que le journal n'a pas suivi."""
+        keys = (
+            "Call infra - Add an Odoo server",
+            "Call infra - Remove an Odoo server",
+            "call_infra_ask_check_odoo",
+            "call_infra_ask_fixed_fallback",
+        )
+        for lang, generated in (
+            ("en", "CHANGELOG.md"),
+            ("fr", "CHANGELOG.fr.md"),
+        ):
+            unreleased = self._read(generated).split("## [1.8.0]")[0]
+            for key in keys:
+                with self.subTest(lang=lang, key=key):
+                    self.assertIn(TRANSLATIONS[key][lang], unreleased)
+            for needle in ("erplibre_turn", "use-auth-secret", "lt-cred-mech"):
+                with self.subTest(lang=lang, needle=needle):
+                    self.assertIn(needle, unreleased)
+
     def test_the_long_test_readme_names_the_menu_in_both_languages(self):
         self.assertIn(
             self.MENU_EN + " › Prepare ntfy for ERPLibre mobile",
