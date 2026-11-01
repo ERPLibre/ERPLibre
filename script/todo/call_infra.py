@@ -4762,20 +4762,60 @@ def _prior_ids(record):
     return ids
 
 
-def _to_packages_rollback_lines(plan, stamp, services):
-    """`migback` d'un retour aux paquets : chaque unité arrêtée et
-    désactivée (un paquet qui vient d'être posé reste, inactif), les bases
-    remises de leur copie, la configuration de coturn et son empreinte
-    remises, les fichiers que le conteneur lit (configuration de coturn,
-    copies TLS, données) rendus à son compte, puis les conteneurs
-    relancés par le fichier compose, resté en place."""
+# Configuration de ntfy qu'un retour aux paquets copie : la purge de son
+# paquet l'efface, et le conteneur relancé par un retour en arrière la lit.
+_NTFY_HELD_FOR_PACKAGES = "server.yml"
+
+
+def _reverse_purgeable(plan, services):
+    """Services d'un retour aux paquets dont la fiche en conteneurs n'a
+    aucune unité de l'hôte (`unit` None) : un paquet que le passage trouve
+    absent puis pose n'appartient qu'à lui."""
     prior = plan.prior_state["services"]
+    return [s for s in services if prior[s].get("unit") is None]
+
+
+def _reverse_purge_lines(plan, svc, stamp):
+    """Étape de retour en arrière qui retire ce qu'un retour aux paquets a
+    posé pour `svc` : unité arrêtée, puis, quand le paquet manquait avant
+    le passage (PKG0_<svc>=0), sa purge (`_migration_purge_lines`, qui met
+    les dossiers de ntfy à l'abri) et, pour coturn, son complément
+    d'unité. L'état en conteneurs, qui reste, ne consigne aucun de ces
+    ajouts."""
+    unit = plan.new_state["services"][svc]["unit"]
+    lines = _migration_stop_lines(svc, unit)
+    lines.append(f'if [ "${{PKG0_{svc}:-1}}" = 0 ]; then')
+    lines += ["  " + line for line in _migration_purge_lines(svc, stamp)]
+    lines.append("fi")
+    dropin = plan.new_state["services"][svc].get("dropin")
+    if dropin:
+        lines += _dropin_lines(dropin)
+    return lines
+
+
+def _to_packages_rollback_lines(plan, stamp, services):
+    """`migback` d'un retour aux paquets : un paquet que le passage a posé
+    purgé (`_reverse_purge_lines`), un paquet déjà là gardé ; chaque unité
+    arrêtée et désactivée, les bases remises de leur copie, la
+    configuration de coturn et son empreinte remises, comme celle de ntfy,
+    les fichiers que le conteneur lit (configuration de coturn, copies
+    TLS, données) rendus à son compte, puis les conteneurs relancés par le
+    fichier compose, resté en place. Chaque purge est une étape à part :
+    son échec laisse les autres rendre leurs fichiers aux conteneurs."""
+    prior = plan.prior_state["services"]
+    purgeable = _reverse_purgeable(plan, services)
     steps = []
     for svc in services:
+        if svc in purgeable:
+            steps.append(_reverse_purge_lines(plan, svc, stamp))
         uid, gid = _prior_ids(prior[svc])
         step = _migration_stop_lines(
             svc, plan.new_state["services"][svc]["unit"]
         )
+        if svc == "ntfy" and svc in purgeable:
+            # Dossiers restés à l'abri quand la purge a échoué en route.
+            hold = f'"$R"{shlex.quote(HOLD_PREFIX + stamp)}'
+            step.append(f"if [ -d {hold} ]; then held_back {hold}; fi")
         step += _migration_restore_lines(svc, stamp)
         if svc == "coturn":
             config = prior[svc]["config"]
@@ -4795,6 +4835,14 @@ def _to_packages_rollback_lines(plan, stamp, services):
             )
             data = (COTURN_DATA_DIR,)
         else:
+            name = _NTFY_HELD_FOR_PACKAGES
+            copy_back = _migration_cp(f'"$MB/{name}"', _host(NTFY_CONFIG))
+            step += [
+                f'if [ -f "$MB/{name}" ]; then',
+                f"  mkdir -p {_host(os.path.dirname(NTFY_CONFIG))}"
+                f" && {copy_back} || fail ntfy-config",
+                "fi",
+            ]
             owned = (NTFY_TLS_DIR, NTFY_TLS_DIR + "/ntfy.key")
             data = (NTFY_DATA_DIR, NTFY_CACHE_DIR)
         for path in owned:
@@ -4803,6 +4851,15 @@ def _to_packages_rollback_lines(plan, stamp, services):
                 f" {_host(path)} || fail chown-{svc}; fi"
             )
         for path in data:
+            # Le cache de ntfy part avec son paquet : le conteneur relancé
+            # le monte.
+            if svc == "ntfy":
+                step.append(
+                    f"{{ [ -d {_host(path)} ] || install -d -m 0750"
+                    f" {_host(path)}; }} && chown -R --no-dereference"
+                    f" {uid}:{gid} {_host(path)} || fail chown-{svc}"
+                )
+                continue
             step.append(
                 f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
                 f" {uid}:{gid} {_host(path)} || fail chown-{svc}; fi"
@@ -4819,10 +4876,12 @@ def _to_packages_lines(plan, stamp):
     (`comp down`), puis les bases copiées (`_migration_backup_lines`) ; la
     configuration de coturn du conteneur et son empreinte mises dans la
     copie (pacman refuse un paquet dont un fichier existe déjà sans
-    propriétaire ; l'installateur réécrit l'une et l'autre) ; le compte
-    `ntfy` créé au besoin et les données de ntfy rendues à ce compte, avant
-    que son installateur ne démarre le service. Les installateurs rendent
-    la base de coturn à son compte."""
+    propriétaire ; l'installateur réécrit l'une et l'autre), celle de ntfy
+    copiée ; le compte `ntfy` créé au besoin et les données de ntfy rendues
+    à ce compte, avant que son installateur ne démarre le service. Les
+    installateurs rendent la base de coturn à son compte. PKG0_<svc> dit,
+    avant tout installateur, si le paquet d'un service sans unité de l'hôte
+    était déjà là (`_reverse_purgeable`)."""
     prior = plan.prior_state
     block = prior["container"]
     services = [
@@ -4831,12 +4890,21 @@ def _to_packages_lines(plan, stamp):
         if s in plan.answers.services
         and isinstance(prior["services"].get(s), dict)
     ]
+    purgeable = _reverse_purgeable(plan, services)
     lines = [
         "# migration vers les paquets",
         "cd / || fail workdir",
         f'eng() {{ {shlex.join(cc.engine_argv(block))} "$@"; }}',
         f'comp() {{ {shlex.join(cc.compose_argv(block))} "$@"; }}',
         *_migration_dir_lines(stamp),
+    ]
+    if purgeable:
+        lines += _uninstall_helpers() + ['failed() { fail "$1"; }']
+    for svc in purgeable:
+        lines.append(
+            f"PKG0_{svc}=0; pkg_installed {PACKAGES[svc]} && PKG0_{svc}=1"
+        )
+    lines += [
         *_to_packages_rollback_lines(plan, stamp, services),
         "MIG=1",
         "comp down || fail compose-down",
@@ -4860,9 +4928,16 @@ def _to_packages_lines(plan, stamp):
             "fi",
         ]
     if "ntfy" in services:
-        lines.append(
-            f"id ntfy >/dev/null 2>&1 || {_USERADD} ntfy || fail ntfy-user"
-        )
+        name, config = _NTFY_HELD_FOR_PACKAGES, _host(NTFY_CONFIG)
+        lines += [
+            f'if [ ! -e "$MB/{name}" ] && [ -f {config} ]'
+            f" && [ ! -L {config} ]; then",
+            "  "
+            + _migration_cp(config, f'"$MB/{name}.new"')
+            + f' && mv -f "$MB/{name}.new" "$MB/{name}" || fail backup-ntfy',
+            "fi",
+            f"id ntfy >/dev/null 2>&1 || {_USERADD} ntfy || fail ntfy-user",
+        ]
         for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
             lines.append(
                 f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
