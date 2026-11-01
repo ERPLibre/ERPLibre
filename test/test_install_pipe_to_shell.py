@@ -492,7 +492,7 @@ class TestLeReplisDePyenvSeDeclenche(unittest.TestCase):
             [
                 str(self.faux / "bash"),
                 "-c",
-                f'source "{self.LIB}"; el_pyenv_install 3.12.10',
+                f'source "{self.LIB}"; el_pyenv_install 3.12.16',
             ],
             env=env,
             capture_output=True,

@@ -60,20 +60,20 @@ class TestDie(unittest.TestCase):
 
 class TestConstants(unittest.TestCase):
     def test_erplibre_template_version(self):
-        result = ERPLIBRE_TEMPLATE_VERSION % ("18.0", "3.12.10")
-        self.assertEqual(result, "odoo18.0_python3.12.10")
+        result = ERPLIBRE_TEMPLATE_VERSION % ("18.0", "3.12.16")
+        self.assertEqual(result, "odoo18.0_python3.12.16")
 
     def test_venv_template(self):
-        result = VENV_TEMPLATE_FILE % "odoo18.0_python3.12.10"
-        self.assertEqual(result, ".venv.odoo18.0_python3.12.10")
+        result = VENV_TEMPLATE_FILE % "odoo18.0_python3.12.16"
+        self.assertEqual(result, ".venv.odoo18.0_python3.12.16")
 
     def test_pyproject_template(self):
-        result = PYPROJECT_TEMPLATE_FILE % "odoo18.0_python3.12.10"
-        self.assertEqual(result, "pyproject.odoo18.0_python3.12.10.toml")
+        result = PYPROJECT_TEMPLATE_FILE % "odoo18.0_python3.12.16"
+        self.assertEqual(result, "pyproject.odoo18.0_python3.12.16.toml")
 
     def test_poetry_lock_template(self):
-        result = POETRY_LOCK_TEMPLATE_FILE % "odoo18.0_python3.12.10"
-        self.assertEqual(result, "poetry.odoo18.0_python3.12.10.lock")
+        result = POETRY_LOCK_TEMPLATE_FILE % "odoo18.0_python3.12.16"
+        self.assertEqual(result, "poetry.odoo18.0_python3.12.16.lock")
 
     def test_addons_template(self):
         result = ADDONS_TEMPLATE_FILE % "18.0"
@@ -98,22 +98,22 @@ class TestUpdateValidateVersion(unittest.TestCase):
 
     def test_explicit_erplibre_version(self):
         data = {
-            "odoo18.0_python3.12.10": {
+            "odoo18.0_python3.12.16": {
                 "odoo_version": "18.0",
-                "python_version": "3.12.10",
+                "python_version": "3.12.16",
                 "poetry_version": "2.1.3",
                 "default": True,
             }
         }
         update = self._make_update(
             data,
-            {"erplibre_version": "odoo18.0_python3.12.10"},
+            {"erplibre_version": "odoo18.0_python3.12.16"},
         )
         update.validate_version()
         self.assertEqual(update.new_version_odoo, "18.0")
-        self.assertEqual(update.new_version_python, "3.12.10")
+        self.assertEqual(update.new_version_python, "3.12.16")
         self.assertEqual(update.new_version_poetry, "2.1.3")
-        self.assertEqual(update.new_version_erplibre, "odoo18.0_python3.12.10")
+        self.assertEqual(update.new_version_erplibre, "odoo18.0_python3.12.16")
 
     def test_explicit_odoo_version(self):
         data = {}
@@ -125,9 +125,9 @@ class TestUpdateValidateVersion(unittest.TestCase):
 
     def test_default_version_fallback(self):
         data = {
-            "odoo18.0_python3.12.10": {
+            "odoo18.0_python3.12.16": {
                 "odoo_version": "18.0",
-                "python_version": "3.12.10",
+                "python_version": "3.12.16",
                 "poetry_version": "2.1.3",
                 "default": True,
             }
@@ -153,16 +153,16 @@ class TestUpdateValidateVersion(unittest.TestCase):
 
     def test_expected_paths_set(self):
         data = {
-            "odoo18.0_python3.12.10": {
+            "odoo18.0_python3.12.16": {
                 "odoo_version": "18.0",
-                "python_version": "3.12.10",
+                "python_version": "3.12.16",
                 "poetry_version": "2.1.3",
                 "default": True,
             }
         }
         update = self._make_update(
             data,
-            {"erplibre_version": "odoo18.0_python3.12.10"},
+            {"erplibre_version": "odoo18.0_python3.12.16"},
         )
         update.validate_version()
         self.assertIn("requirement", update.expected_pyproject_path)
@@ -182,9 +182,9 @@ class TestUpdateDetectVersion(unittest.TestCase):
         with patch("sys.argv", ["prog"]):
             update = Update()
         update.data_version = {
-            "odoo18.0_python3.12.10": {
+            "odoo18.0_python3.12.16": {
                 "odoo_version": "18.0",
-                "python_version": "3.12.10",
+                "python_version": "3.12.16",
             }
         }
         tmpdir = tempfile.mkdtemp()
@@ -193,7 +193,7 @@ class TestUpdateDetectVersion(unittest.TestCase):
         odoo_file = os.path.join(tmpdir, "odoo_ver")
         poetry_file = os.path.join(tmpdir, "poetry_ver")
         with open(py_file, "w") as f:
-            f.write("3.12.10")
+            f.write("3.12.16")
         with open(odoo_file, "w") as f:
             f.write("18.0")
         with open(poetry_file, "w") as f:
@@ -219,7 +219,7 @@ class TestUpdateDetectVersion(unittest.TestCase):
             result = update.detect_version()
         self.assertTrue(result)
         self.assertEqual(
-            update.detected_version_erplibre, "odoo18.0_python3.12.10"
+            update.detected_version_erplibre, "odoo18.0_python3.12.16"
         )
 
 

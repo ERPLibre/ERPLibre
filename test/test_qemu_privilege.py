@@ -214,7 +214,7 @@ class LePathDesOutilsSysteme(unittest.TestCase):
         chemin = os.pathsep.join(
             [
                 "/home/x/git/erplibre/.venv.erplibre/bin",
-                "/home/x/git/erplibre/.venv.odoo18.0_python3.12.10/bin",
+                "/home/x/git/erplibre/.venv.odoo18.0_python3.12.16/bin",
                 "/usr/local/bin",
                 "/usr/bin",
             ]

@@ -32,7 +32,7 @@ Follow us on Mastodon : https://fosstodon.org/@erplibre
 
 | Odoo version | Python  | Status     |
 |--------------|---------|------------|
-| 18.0         | 3.12.10 | Active     |
+| 18.0         | 3.12.16 | Active     |
 | 17.0         | 3.10.18 | Inactive   |
 | 16.0         | 3.10.18 | Inactive   |
 | 15.0         | 3.8.20  | Deprecated |
@@ -45,7 +45,7 @@ Switch between versions with `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
 The Python in that table is the one of the Odoo virtual environment. The
 tooling virtual environment `.venv.erplibre` (TODO, `repo`, formatters) runs
-its own interpreter, **3.14.7**, set by `conf/python-erplibre-version`. Where a
+its own interpreter, **3.14.10**, set by `conf/python-erplibre-version`. Where a
 distribution does not carry it, pyenv compiles it.
 
 

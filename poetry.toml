@@ -3,3 +3,11 @@ cache-dir = "./"
 create = false
 in-project = true
 path = "{cache-dir}.venv"
+
+[solver]
+# Resolution (poetry lock, poetry add) ignores any release younger than 7
+# days: a malicious version of a legitimate package is usually withdrawn
+# within one to three days. poetry install follows the lock and is never
+# held back. make poetry_update exempts the packages pinned with « == » in
+# requirement/requirements.<version>.txt. Poetry 1.8 ignores this key.
+min-release-age = 7

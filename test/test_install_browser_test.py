@@ -42,9 +42,9 @@ SCRIPT = RACINE / "script/install/install_browser_test.sh"
 AIGUILLAGE = RACINE / "script/install/install_dev.sh"
 MAKEFILE = RACINE / "conf/make.installation.Makefile"
 ODOO18_COMMON = RACINE / "odoo18.0/odoo/odoo/tests/common.py"
-PYPROJECT_18 = RACINE / "requirement/pyproject.odoo18.0_python3.12.10.toml"
+PYPROJECT_18 = RACINE / "requirement/pyproject.odoo18.0_python3.12.16.toml"
 REQUIREMENTS_18 = (
-    RACINE / "requirement/requirements.odoo18.0_python3.12.10.txt"
+    RACINE / "requirement/requirements.odoo18.0_python3.12.16.txt"
 )
 
 

@@ -106,7 +106,7 @@ copy-on-write, no compression), otherwise `swapon` refuses it.
 | `uv` | available, but almost no gain: the time is in the compiler | noticeable gain |
 | Odoo features | no wkhtmltopdf, no PyMuPDF, factur-x 3.x | complete |
 | Hardware | IBM Z reliability, I/O and virtualisation; ERPLibre runs where the organisation's data already lives | widely available, cheaper to test |
-| Reproducibility | the lock is architecture-neutral: the same lock (`requirement/poetry.odoo18.0_python3.12.10.lock`) serves both, the differences being platform markers | — |
+| Reproducibility | the lock is architecture-neutral: the same lock (`requirement/poetry.odoo18.0_python3.12.16.lock`) serves both, the differences being platform markers | — |
 
 ## By system
 
@@ -246,4 +246,4 @@ What stays global although it matters a lot on s390x:
 only after testing the architecture. The Python requirements are
 architecture-neutral: the `platform_machine` markers (PyMuPDF excluded on
 s390x; factur-x ≥ 6.8 elsewhere, < 4 on s390x) are kept in the single lock of
-each Odoo version (`requirement/poetry.odoo18.0_python3.12.10.lock`).
+each Odoo version (`requirement/poetry.odoo18.0_python3.12.16.lock`).

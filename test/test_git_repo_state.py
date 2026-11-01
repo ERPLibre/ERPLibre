@@ -94,9 +94,9 @@ class Checkout(unittest.TestCase):
         _ecrire(
             self.racine,
             {
-                ".erplibre-version": "odoo18.0_python3.12.10\n",
+                ".erplibre-version": "odoo18.0_python3.12.16\n",
                 ".odoo-version": "18.0\n",
-                ".python-odoo-version": "3.12.10\n",
+                ".python-odoo-version": "3.12.16\n",
                 # Comme le checkout réel, la racine ignore ce que git-repo
                 # et les fichiers de `manifest/` y posent.
                 ".gitignore": "/.repo/\n/odoo*/\n/manifest/\n",
@@ -339,8 +339,8 @@ class TestSnapshot(Checkout):
         self.assertEqual(code, 0)
         self.assertEqual(d["schema"], 1)
         self.assertEqual(d["command"], "snapshot")
-        self.assertEqual(d["odoo"], {"version": "18.0", "python": "3.12.10"})
-        self.assertEqual(d["erplibre"]["version"], "odoo18.0_python3.12.10")
+        self.assertEqual(d["odoo"], {"version": "18.0", "python": "3.12.16"})
+        self.assertEqual(d["erplibre"]["version"], "odoo18.0_python3.12.16")
         self.assertEqual(d["erplibre"]["commit"], "v0.1")
         self.assertEqual(d["erplibre"]["branch"], "principale")
         self.assertIsNone(d["erplibre"]["dirty"])

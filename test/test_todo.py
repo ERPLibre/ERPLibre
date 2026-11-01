@@ -97,9 +97,9 @@ class TestFillHelpInfo(unittest.TestCase):
 class TestGetOdooVersion(unittest.TestCase):
     def test_reads_version_data(self):
         version_data = {
-            "odoo18.0_python3.12.10": {
+            "odoo18.0_python3.12.16": {
                 "odoo_version": "18.0",
-                "python_version": "3.12.10",
+                "python_version": "3.12.16",
                 "default": True,
                 "is_deprecated": False,
             },
@@ -139,14 +139,14 @@ class TestGetOdooVersion(unittest.TestCase):
             self.assertEqual(odoo_current, "odoo18.0")
             # Check erplibre_version was added
             names = [v["erplibre_version"] for v in versions]
-            self.assertIn("odoo18.0_python3.12.10", names)
+            self.assertIn("odoo18.0_python3.12.16", names)
             self.assertIn("odoo16.0_python3.10.18", names)
 
     def test_installed_versions_read(self):
         version_data = {
-            "odoo18.0_python3.12.10": {
+            "odoo18.0_python3.12.16": {
                 "odoo_version": "18.0",
-                "python_version": "3.12.10",
+                "python_version": "3.12.16",
                 "default": True,
                 "is_deprecated": False,
             },

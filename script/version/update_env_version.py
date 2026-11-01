@@ -51,6 +51,23 @@ LOCAL_MANIFEST_PATH = os.path.join(
 )
 
 
+def poetry_version_in_venv(venv):
+    """La version de Poetry installée dans le venv `venv`, lue dans son
+    dossier « poetry-<version>.dist-info », ou None sans Poetry. Rien n'est
+    exécuté : ce script tourne avec le Python du système."""
+    import glob
+    import re
+
+    motif = re.compile(r"poetry-([^-]+)\.dist-info")
+    for chemin in glob.glob(
+        os.path.join(venv, "lib", "python*", "site-packages", "poetry-*")
+    ):
+        m = motif.fullmatch(os.path.basename(chemin))
+        if m:
+            return m.group(1)
+    return None
+
+
 def local_manifest_frozen(path=LOCAL_MANIFEST_PATH):
     """True si le manifeste local épingle au moins un projet sur un commit,
     False s'il suit les branches, None s'il manque ou ne se lit pas.
@@ -473,6 +490,26 @@ class Update:
                 " installation required."
             )
             status = False
+        # Le venv de la version demandée doit exister, avec le Poetry qu'elle
+        # déclare : un changement de Python crée un venv neuf, un changement
+        # de Poetry le remplace. Sans ce contrôle, une version marquée
+        # installée répondait « Nothing to do » et gardait l'ancien venv.
+        if self.config.install_dev:
+            if not venv_exist:
+                _logger.info(
+                    f"Missing '{self.expected_venv_name}': installation required."
+                )
+                status = False
+            elif self.new_version_poetry:
+                installe = poetry_version_in_venv(self.expected_venv_name)
+                if installe != self.new_version_poetry:
+                    _logger.info(
+                        f"Poetry {installe or 'missing'} in"
+                        f" '{self.expected_venv_name}',"
+                        f" {self.new_version_poetry} expected:"
+                        " installation required."
+                    )
+                    status = False
         # Le mode que TODO a demandé (EL_FREEZE : 1 production, sur les
         # commits gelés ; 0 développement, sur les branches) ne prend effet
         # qu'au repo sync. Une version déjà installée sauterait ce sync, et

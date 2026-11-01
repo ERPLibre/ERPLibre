@@ -47,7 +47,7 @@ el_mise_exec_path() {
 
 # Vrai si l'exécutable rend EXACTEMENT la version demandée. Un interpréteur
 # présent mais d'une autre version casserait Poetry, dont le pyproject exige
-# le patch au près (>=3.12.10,<3.13).
+# le patch au près (>=3.12.16,<3.13).
 el_python_is_version() {
   local exe="$1" want="$2" got
   [ -x "${exe}" ] || return 1
@@ -58,12 +58,12 @@ el_python_is_version() {
 # Vrai si l'exécutable CONVIENT. Deux exigences, selon ce qui borne l'appelant.
 #
 #   patch    même majeure.mineure, et patch au moins égal. C'est ce que le
-#            pyproject d'Odoo demande — « >=3.12.10,<3.13 » —, et Poetry
+#            pyproject d'Odoo demande — « >=3.12.16,<3.13 » —, et Poetry
 #            refuserait un patch inférieur.
 #   mineure  même majeure.mineure, quel que soit le patch. RIEN n'épingle le
 #            patch du venv d'OUTILLAGE : l'exiger écarte le Python des
 #            distributions dès qu'il est d'un patch en retard — NixOS 25.11
-#            livre 3.14.2 quand conf/ demande 3.14.7 — et force pyenv à
+#            livre 3.14.2 quand conf/ demande 3.14.10 — et force pyenv à
 #            COMPILER CPython pour une différence qui ne gêne personne.
 #
 # L'égalité stricte, elle, rejetterait aussi un patch plus RÉCENT : c'est

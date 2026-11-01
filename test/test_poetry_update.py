@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from collections import defaultdict
 from types import SimpleNamespace
 
@@ -38,14 +39,14 @@ LST_SIGN = ("==", "!=", ">=", "<=", "<", ">", ";", "~=")
 class TestResolveMarker(unittest.TestCase):
     def test_line_without_marker_is_unchanged(self):
         self.assertEqual(
-            P.resolve_marker("paquet==1.2.3", "3.12.10"),
+            P.resolve_marker("paquet==1.2.3", "3.12.16"),
             ("paquet==1.2.3", None, ""),
         )
 
     def test_python_version_marker_of_the_target_is_kept_bare(self):
         self.assertEqual(
             P.resolve_marker(
-                "paquet==2.0.0 ; python_version >= '3.12'", "3.12.10"
+                "paquet==2.0.0 ; python_version >= '3.12'", "3.12.16"
             ),
             ("paquet==2.0.0", "paquet", ""),
         )
@@ -53,7 +54,7 @@ class TestResolveMarker(unittest.TestCase):
     def test_python_version_marker_of_another_python_is_dropped(self):
         self.assertIsNone(
             P.resolve_marker(
-                "paquet==1.0.0; python_version < '3.12'", "3.12.10"
+                "paquet==1.0.0; python_version < '3.12'", "3.12.16"
             )
         )
 
@@ -69,7 +70,7 @@ class TestResolveMarker(unittest.TestCase):
 
     def test_platform_machine_marker_is_kept_for_poetry(self):
         line, name, marker = P.resolve_marker(
-            "paquet>=6.8 ; platform_machine != 's390x'", "3.12.10"
+            "paquet>=6.8 ; platform_machine != 's390x'", "3.12.16"
         )
         self.assertEqual(name, "paquet")
         self.assertEqual(marker, 'platform_machine != "s390x"')
@@ -121,7 +122,7 @@ class TestManifestExternalDependencies(unittest.TestCase):
                 "]}}"
             )
         self.config = SimpleNamespace(
-            set_version_odoo="18.0", set_version_python="3.12.10"
+            set_version_odoo="18.0", set_version_python="3.12.16"
         )
 
     def test_marker_lines_join_the_bare_name(self):
@@ -145,6 +146,101 @@ class TestManifestExternalDependencies(unittest.TestCase):
             result['autre ; platform_machine != "s390x"'],
             {'autre>=6.8 ; platform_machine != "s390x"'},
         )
+
+
+class TestMinReleaseAgeExemption(unittest.TestCase):
+    """poetry.toml fait attendre 7 jours toute version ; les épingles « == »
+    du fichier d'ERPLibre, décisions relues, y échappent."""
+
+    LIGNES = (
+        "pypdf==6.21.4\n"
+        "Pillow==13.0.0 ; python_version >= '3.12'\n"
+        "lxml_html_clean==0.4.6\n"
+        "setuptools==84.0.0  # outillage\n"
+        "pandas===3.0.6\n"
+        "requests>=2\n"
+        "# certifi==2026.1.1\n"
+        "foo\n"
+        "-r autre.txt\n"
+        "zed @ git+https://example.invalid/zed.git\n"
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fichier = os.path.join(self.tmp.name, "requirements.txt")
+        with open(self.fichier, "w") as f:
+            f.write(self.LIGNES)
+
+    def test_pinned_names_are_normalized(self):
+        self.assertEqual(
+            P.pinned_packages(self.fichier),
+            ["lxml-html-clean", "pandas", "pillow", "pypdf", "setuptools"],
+        )
+
+    def test_exemption_merges_with_the_environment(self):
+        with mock.patch.dict(
+            os.environ, {P.ENV_MIN_RELEASE_AGE_EXCLUDE: "numpy, pypdf"}
+        ):
+            P.exempt_pins_from_min_release_age(self.fichier)
+            self.assertEqual(
+                os.environ[P.ENV_MIN_RELEASE_AGE_EXCLUDE],
+                "lxml-html-clean,numpy,pandas,pillow,pypdf,setuptools",
+            )
+
+    def test_missing_file_sets_nothing(self):
+        with mock.patch.dict(os.environ, clear=False):
+            os.environ.pop(P.ENV_MIN_RELEASE_AGE_EXCLUDE, None)
+            absent = os.path.join(self.tmp.name, "absent.txt")
+            self.assertEqual(P.exempt_pins_from_min_release_age(absent), [])
+            self.assertNotIn(P.ENV_MIN_RELEASE_AGE_EXCLUDE, os.environ)
+
+    def test_poetry_toml_sets_seven_days(self):
+        import tomllib
+
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(racine, "poetry.toml"), "rb") as f:
+            conf = tomllib.load(f)
+        self.assertEqual(conf["solver"]["min-release-age"], 7)
+
+
+class TestPoetryAddFailure(unittest.TestCase):
+    """« poetry add » refusé : le pyproject retrouve ses dépendances, et le
+    script sort en erreur au lieu de rendre 0 sur un pyproject vidé."""
+
+    def test_pyproject_restored_and_exit_code(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pyproject = os.path.join(tmp, "pyproject.toml")
+            contenu = (
+                '[tool.poetry]\nname = "x"\n\n'
+                '[tool.poetry.dependencies]\npython = ">=3.12,<3.13"\n'
+                'requests = "2.34.2"\n'
+            )
+            with open(pyproject, "w") as fh:
+                fh.write(contenu)
+            config = SimpleNamespace(
+                dir=tmp + os.sep,
+                dry=False,
+                force=False,
+                set_version_poetry="2.1.3",
+                set_version_odoo="18.0",
+                set_version_python="3.12.16",
+                set_version_erplibre="odoo18.0_python3.12.16",
+            )
+            with patch.object(
+                P, "get_config", return_value=config
+            ), patch.object(P, "combine_requirements"), patch.object(
+                P,
+                "call_poetry_add_build_dependency",
+                return_value=False,
+            ):
+                with self.assertRaises(SystemExit) as fin:
+                    P.main()
+            self.assertEqual(fin.exception.code, 1)
+            with open(pyproject) as fh:
+                self.assertEqual(fh.read(), contenu)
 
 
 if __name__ == "__main__":

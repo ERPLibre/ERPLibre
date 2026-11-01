@@ -219,7 +219,7 @@ le refuse.
 | `uv` | available, but almost no gain: the time is in the compiler | noticeable gain |
 | Odoo features | no wkhtmltopdf, no PyMuPDF, factur-x 3.x | complete |
 | Hardware | IBM Z reliability, I/O and virtualisation; ERPLibre runs where the organisation's data already lives | widely available, cheaper to test |
-| Reproducibility | the lock is architecture-neutral: the same lock (`requirement/poetry.odoo18.0_python3.12.10.lock`) serves both, the differences being platform markers | — |
+| Reproducibility | the lock is architecture-neutral: the same lock (`requirement/poetry.odoo18.0_python3.12.16.lock`) serves both, the differences being platform markers | — |
 
 <!-- [fr] -->
 ## Avantages et inconvénients par rapport à amd64
@@ -233,7 +233,7 @@ le refuse.
 | `uv` | disponible, mais gain quasi nul : le temps est dans le compilateur | gain sensible |
 | Fonctions d'Odoo | sans wkhtmltopdf ni PyMuPDF, factur-x 3.x | complètes |
 | Matériel | fiabilité, entrées-sorties et virtualisation d'IBM Z ; ERPLibre tourne là où vivent déjà les données de l'organisation | répandu, moins coûteux pour tester |
-| Reproductibilité | le verrou est neutre vis-à-vis de l'architecture : le même verrou (`requirement/poetry.odoo18.0_python3.12.10.lock`) sert aux deux, les différences étant des marqueurs de plateforme | — |
+| Reproductibilité | le verrou est neutre vis-à-vis de l'architecture : le même verrou (`requirement/poetry.odoo18.0_python3.12.16.lock`) sert aux deux, les différences étant des marqueurs de plateforme | — |
 
 <!-- [en] -->
 ## By system
@@ -515,7 +515,7 @@ What stays global although it matters a lot on s390x:
 only after testing the architecture. The Python requirements are
 architecture-neutral: the `platform_machine` markers (PyMuPDF excluded on
 s390x; factur-x ≥ 6.8 elsewhere, < 4 on s390x) are kept in the single lock of
-each Odoo version (`requirement/poetry.odoo18.0_python3.12.10.lock`).
+each Odoo version (`requirement/poetry.odoo18.0_python3.12.16.lock`).
 
 <!-- [fr] -->
 Ce qui reste global bien que s390x en dépende beaucoup :
@@ -526,4 +526,4 @@ qu'après avoir testé l'architecture. Les dépendances Python sont neutres
 vis-à-vis de l'architecture : les marqueurs `platform_machine` (PyMuPDF exclu
 sur s390x ; factur-x ≥ 6.8 ailleurs, < 4 sur s390x) sont conservés dans
 l'unique verrou de chaque version d'Odoo
-(`requirement/poetry.odoo18.0_python3.12.10.lock`).
+(`requirement/poetry.odoo18.0_python3.12.16.lock`).

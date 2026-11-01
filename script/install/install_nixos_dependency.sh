@@ -37,7 +37,7 @@ EL_CA_BUNDLE=/var/lib/erplibre/ca-bundle.crt
 [ -r "${EL_CA_BUNDLE}" ] || EL_CA_BUNDLE=""
 EL_LOCALE=${EL_LOCALE:-$(lire_seed locale)}
 EL_TZ=${EL_TZ:-$(lire_seed timezone)}
-# « 3.12.10 » donne « python312 », le nom du paquet nixpkgs. Les deux versions
+# « 3.12.16 » donne « python312 », le nom du paquet nixpkgs. Les deux versions
 # du dépôt sont déclarées : celle d'Odoo et celle de l'outillage. Le second est
 # VIDE quand elles coïncident, un même paquet nommé deux fois entrant en
 # collision dans le profil.
@@ -122,7 +122,7 @@ echo -e "\n---- Vérification ----"
 manque=0
 # La version voulue vient du dépôt, pas d'une valeur écrite ici : le module
 # déclare python312 parce que .python-odoo-version dit 3.12.x, et les deux
-# doivent se répondre. « 3.12.10 » -> « 3.12 », qui est ce que
+# doivent se répondre. « 3.12.16 » -> « 3.12 », qui est ce que
 # lib_python_provider.sh cherche en /usr/bin.
 PY_WANT="$(cat .python-odoo-version 2> /dev/null | xargs)"
 PY_MM="${PY_WANT%.*}"

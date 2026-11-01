@@ -15,6 +15,31 @@ Les dépendances prioritaires sont dans ./requirements.txt, ensuite ./odoo/requi
 
 À FAIRE : ajouter une option pour seulement ajouter les dépendances manquantes et ignorer la mise à jour.
 
+## Délai minimal de publication
+
+`poetry.toml` fixe `solver.min-release-age = 7` : quand il résout (`poetry
+lock`, `poetry add`, donc `make poetry_update`), Poetry ignore toute version
+publiée depuis moins de 7 jours. Une version malveillante d'un paquet légitime,
+poussée depuis le compte volé d'un mainteneur ou une chaîne de publication
+compromise, est en général retirée en un à trois jours ; le délai la tient hors
+du verrou. `poetry install` suit le verrou et n'est jamais retenu. Poetry 1.8,
+celui des anciennes versions d'Odoo, ignore ce réglage.
+
+`make poetry_update` exempte chaque paquet épinglé par `==` dans
+`requirement/requirements.<version>.txt` : une telle épingle est un choix relu,
+souvent un correctif de sécurité plus récent que le délai. Pour laisser passer
+un paquet qui n'est pas épinglé, nommez-le, plusieurs séparés par des virgules :
+
+```bash
+POETRY_SOLVER_MIN_RELEASE_AGE_EXCLUDE=nom make poetry_update
+POETRY_SOLVER_MIN_RELEASE_AGE_EXCLUDE=pypdf,lxml-html-clean make poetry_update
+```
+
+Le délai n'arrête ni une porte dérobée posée patiemment et découverte des
+semaines plus tard, ni un typosquat ancien : les hash du verrou, la relecture
+du diff du verrou et la veille CVE restent nécessaires.
+`POETRY_SOLVER_MIN_RELEASE_AGE=0` lève le délai pour une exécution.
+
 ## Ajouter des dépendances manuellement
 
 Le script automatique va écraser cette dépendance, mais vous pouvez l'ajouter pour vos tests locaux.
@@ -29,11 +54,11 @@ Si vous obtenez cette erreur `relative path can't be expressed as a file URI` lo
 
 ## Mettre à jour Poetry
 
-Changez la version dans le fichier `./script/install/install_locally.sh` dans la constante `POETRY_VERSION`.
-
-Supprimez le répertoire `~/.poetry` et `./get-poetry.py`.
-
-Exécutez le script d'installation pour votre OS, vérifiez `./script/install/install_locally.sh`.
+La version de chaque version d'Odoo est `poetry_version` dans
+`conf/supported_version_erplibre.json` ; un changement de version l'écrit dans
+`.poetry-version`. L'installation remplace le Poetry du venv d'Odoo dès que sa
+version diffère de `.poetry-version` : un venv existant suit. Reverrouillez avec
+la nouvelle version pour rafraîchir l'en-tête du verrou.
 
 # FAQ
 

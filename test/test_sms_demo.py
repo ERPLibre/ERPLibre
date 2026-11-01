@@ -1912,7 +1912,7 @@ class TestMateriel(SmsDemoBase):
                 (dossier / "__manifest__.py").write_text(
                     repr({"name": module}) + "\n", encoding="utf-8"
                 )
-        python = racine / ".venv.odoo18.0_python3.12.10" / "bin" / "python"
+        python = racine / ".venv.odoo18.0_python3.12.16" / "bin" / "python"
         for fichier in (python, racine / "odoo18.0" / "odoo" / "odoo-bin"):
             fichier.parent.mkdir(parents=True, exist_ok=True)
             fichier.touch()

@@ -13,7 +13,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "docker", "entrypoint_pip_extra.sh")
-VERSION = "odoo18.0_python3.12.10"
+VERSION = "odoo18.0_python3.12.16"
 
 
 class TestEntrypointPipExtra(unittest.TestCase):

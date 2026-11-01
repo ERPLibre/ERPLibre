@@ -38,13 +38,13 @@ Pas de binaire mise pour s390x à ce jour : cette architecture reste sur pyenv.
 
 ## Le Python de l'outillage
 
-`conf/python-erplibre-version` (3.14.7) donne l'interpréteur de
-`.venv.erplibre`, le venv d'outillage, distinct du venv Odoo (3.12.10 pour
+`conf/python-erplibre-version` (3.14.10) donne l'interpréteur de
+`.venv.erplibre`, le venv d'outillage, distinct du venv Odoo (3.12.16 pour
 Odoo 18.0). C'est la seule version que `script/` vise : là où une distribution
 ne la porte pas, pyenv la compile.
 
 Le PATCH ne borne que le venv d'Odoo, dont le pyproject exige
-`>=3.12.10,<3.13`. Pour l'outillage, la majeure.mineure suffit : exiger le
+`>=3.12.16,<3.13`. Pour l'outillage, la majeure.mineure suffit : exiger le
 patch écarterait le Python d'une distribution d'un cran en retard — NixOS 25.11
 livre 3.14.2 — et ferait compiler CPython pour rien.
 
