@@ -140,8 +140,16 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # rejouer à chaque fois : c'est lui qui applique un lock régénéré par
     # « make poetry_update ». L'englober rendrait la mise à jour sans effet
     # dès la seconde installation.
-    if [[ ! -x "${POETRY_ODOO_PATH}" ]]; then
-        echo -e "Install Poetry ${POETRY_ODOO_PATH}"
+    # Un venv bâti avant un changement de .poetry-version garde son Poetry :
+    # la version installée doit être celle que le checkout demande, sinon
+    # « poetry install » tourne avec l'ancien et réécrit le lock à sa façon.
+    poetry_installe=""
+    if [[ -x "${POETRY_ODOO_PATH}" ]]; then
+        poetry_installe="$("${VENV_ODOO_PATH}/bin/python" -m pip show poetry \
+            2> /dev/null | awk '/^Version:/ {print $2}')"
+    fi
+    if [[ "${poetry_installe}" != "${EL_POETRY_VERSION}" ]]; then
+        echo -e "Install Poetry ${EL_POETRY_VERSION} ${POETRY_ODOO_PATH}${poetry_installe:+ (was ${poetry_installe})}"
         el_pip_install "${VENV_ODOO_PATH}" \
           ${PIP_CONSTRAINT_CRYPTO} "poetry==${EL_POETRY_VERSION}"
     fi
@@ -196,7 +204,7 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     esac
     export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-include ${swig_compat}"
     # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
-    # (astral-sh/uv#1804, « not planned ») et Poetry 2.1.3 n'a plus « export ».
+    # (astral-sh/uv#1804, « not planned ») et Poetry 2 n'a plus « export ».
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
         # Les dépendances que Poetry a amenées dans ce venv, alignées sur le
         # verrou AVANT l'installation : sans quoi Poetry les remplace pendant

@@ -30,11 +30,11 @@ artifacts: `rm -rf artifacts/` and rerun the update.
 
 ## Upgrade Poetry
 
-Change version in file `./script/install/install_locally.sh` into constant `POETRY_VERSION`.
-
-Erase directory `~/.poetry` and `./get-poetry.py`.
-
-Run installation script for OS, check `./script/install/install_locally.sh`.
+The version of each Odoo version is `poetry_version` in
+`conf/supported_version_erplibre.json`; a switch writes it to `.poetry-version`.
+The installation replaces the Poetry of the Odoo virtual environment whenever
+its version differs from `.poetry-version`, so an existing environment follows.
+Relock with the new version to refresh the header of the lock.
 
 # FAQ
 

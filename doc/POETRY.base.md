@@ -57,11 +57,11 @@ artifacts: `rm -rf artifacts/` and rerun the update.
 
 ## Upgrade Poetry
 
-Change version in file `./script/install/install_locally.sh` into constant `POETRY_VERSION`.
-
-Erase directory `~/.poetry` and `./get-poetry.py`.
-
-Run installation script for OS, check `./script/install/install_locally.sh`.
+The version of each Odoo version is `poetry_version` in
+`conf/supported_version_erplibre.json`; a switch writes it to `.poetry-version`.
+The installation replaces the Poetry of the Odoo virtual environment whenever
+its version differs from `.poetry-version`, so an existing environment follows.
+Relock with the new version to refresh the header of the lock.
 
 # FAQ
 
@@ -76,11 +76,11 @@ Si vous obtenez cette erreur `relative path can't be expressed as a file URI` lo
 
 ## Mettre à jour Poetry
 
-Changez la version dans le fichier `./script/install/install_locally.sh` dans la constante `POETRY_VERSION`.
-
-Supprimez le répertoire `~/.poetry` et `./get-poetry.py`.
-
-Exécutez le script d'installation pour votre OS, vérifiez `./script/install/install_locally.sh`.
+La version de chaque version d'Odoo est `poetry_version` dans
+`conf/supported_version_erplibre.json` ; un changement de version l'écrit dans
+`.poetry-version`. L'installation remplace le Poetry du venv d'Odoo dès que sa
+version diffère de `.poetry-version` : un venv existant suit. Reverrouillez avec
+la nouvelle version pour rafraîchir l'en-tête du verrou.
 
 # FAQ
 

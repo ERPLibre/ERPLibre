@@ -29,11 +29,11 @@ Si vous obtenez cette erreur `relative path can't be expressed as a file URI` lo
 
 ## Mettre à jour Poetry
 
-Changez la version dans le fichier `./script/install/install_locally.sh` dans la constante `POETRY_VERSION`.
-
-Supprimez le répertoire `~/.poetry` et `./get-poetry.py`.
-
-Exécutez le script d'installation pour votre OS, vérifiez `./script/install/install_locally.sh`.
+La version de chaque version d'Odoo est `poetry_version` dans
+`conf/supported_version_erplibre.json` ; un changement de version l'écrit dans
+`.poetry-version`. L'installation remplace le Poetry du venv d'Odoo dès que sa
+version diffère de `.poetry-version` : un venv existant suit. Reverrouillez avec
+la nouvelle version pour rafraîchir l'en-tête du verrou.
 
 # FAQ
 

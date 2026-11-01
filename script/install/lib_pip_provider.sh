@@ -15,7 +15,7 @@
 #
 # CE QUE ÇA NE FAIT PAS — et il faut le savoir avant d'en attendre trop :
 # « poetry install --no-root » n'est PAS concerné. uv ne lit pas poetry.lock
-# (astral-sh/uv#1804, fermé « not planned ») et Poetry 2.1.3 n'a plus la
+# (astral-sh/uv#1804, fermé « not planned ») et Poetry 2 n'a plus la
 # commande « export ». Or c'est cette étape qui domine : 354 paquets contre
 # 153 pour le venv d'outils. Le gain porte donc sur le venv d'outils et
 # l'amorçage de Poetry, pas sur le gros morceau.
