@@ -833,6 +833,30 @@ class TestModeSecret(unittest.TestCase):
             self.assertTrue([a for a in argv
                              if a.startswith("runuser -u turnserver -- ")])
 
+    def test_un_nouveau_nom_public_emporte_les_secrets(self):
+        """Le realm est le nom public : un secret laisse sous l'ancien
+        n'authentifierait plus rien. Un doublon de l'ancien realm part."""
+        def peupler(base):
+            self._peupler(base)
+            connexion = sqlite3.connect(base)
+            connexion.executescript(
+                "INSERT INTO turn_secret VALUES ('ancien.exemple.test',"
+                " 'secretAncien0123');"
+                "INSERT INTO turn_secret VALUES ('ancien.exemple.test',"
+                " 'secretInvente0123');")
+            connexion.close()
+
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, base, _ = self._jouer(dossier, peupler)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            connexion = sqlite3.connect(base)
+            secrets = connexion.execute(
+                "select realm, value from turn_secret"
+                " order by value").fetchall()
+            connexion.close()
+            self.assertEqual(secrets, [(REALM, "secretAncien0123"),
+                                       (REALM, "secretInvente0123")])
+
     def test_base_neuve_au_schema_de_coturn(self):
         with tempfile.TemporaryDirectory() as dossier:
             fait, base, _ = self._jouer(dossier)
