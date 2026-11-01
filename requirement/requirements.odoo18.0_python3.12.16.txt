@@ -109,11 +109,23 @@ virtualenv==21.14.13
 webob==1.8.11
 # zeep 4.2.1 : CVE-2026-58501, corrigées en 4.3.3.
 zeep==4.3.3
+# oauthlib 3.3.1 : CVE-2026-49264, CVE-2026-49265, CVE-2026-49272,
+# CVE-2026-118669, corrigées en 4.0.0. tweepy, qui exige oauthlib<4, est
+# écarté par ignore_requirements.
+oauthlib==4.0.0
+# paramiko 3.5.1 : CVE-2026-44405 (signatures RSA en SHA-1), corrigée après
+# 4.0.0. paramiko 4 retire les clés DSA (DSSKey) et 5 l'échange de clés et
+# les signatures en SHA-1 : un serveur SSH antérieur à OpenSSH 7.2 n'est plus
+# joignable. pysftp, qui importe DSSKey, n'est plus employé.
+paramiko==5.1.0
 # bokeh reste à 3.6.3 malgré CVE-2026-21883 : web_widget_bokeh_chart
-# (OCA_web) embarque bokeh-3.6.3.min.js, que le paquet Python doit suivre.
-# oauthlib reste sous 4 (CVE-2026-49264 et suivantes, corrigées en 4.0.0)
-# pour tweepy, voir plus bas. ecdsa, python-jose, Js2Py, paramiko et
-# deep-translator n'ont aucune version corrigée.
+# (OCA_web) embarque bokeh-3.6.3.min.js, que le paquet Python doit suivre, et
+# l'avis vise le serveur bokeh, qu'Odoo ne lance pas.
+# Sans version corrigée utilisable : python-jose (CVE-2024-33663, confusion
+# d'algorithme, écartée quand l'appelant restreint « algorithms », ce que
+# fait auth_oidc) et ecdsa, qu'il tire ; PyPDF2, voir pypdf plus haut.
+# PYSEC-2022-252 vise une version malveillante de deep-translator publiée en
+# 2022, mais l'avis, sans borne supérieure, couvre aussi 1.11.4.
 
 # Module infobip_whatsapp_integration
 # Ignore it, need another version of requests
@@ -125,7 +137,9 @@ PyPDF2
 img2pdf
 
 # For logical test and quality
-git+https://github.com/psf/black.git@24.8.0
+# black 24.8.0 : CVE-2026-32274, corrigée en 26.3.1 ; ses deux autres avis
+# visent l'action GitHub de black.
+black==26.10.1
 # Le pilote du navigateur des tests d'Odoo (tours, hoot) importe websocket.
 # requirements.txt d'Odoo 18 ne le nomme pas : absent du venv, chaque test
 # navigateur lève SkipTest et la passe reste verte. La 1.8.0 couvre
@@ -220,12 +234,6 @@ pymupdf>=1.28.2 ; platform_machine != 's390x'
 # 2.13, tout lancement de Python, Odoo compris, imprime une AttributeError et
 # extendable-pydantic n'est plus chargé. À lever quand extendable-pydantic suivra.
 pydantic<2.14
-
-# tweepy (recruitment_twitter), jusqu'à 4.17.0 au moins, exige oauthlib<4, que
-# OCA_web-api demande sans borne. Pour un nom nu, « poetry add » retient la
-# dernière version de CHAQUE paquet isolément : oauthlib 4 et tweepy 4.17
-# s'excluent alors et la résolution échoue. À lever quand tweepy suivra.
-oauthlib<4
 
 # pylint-odoo, jusqu'à 10.0.12 au moins, exige pylint==4.0.*, que
 # odoo_health_report demande sans borne : « poetry add » prendrait la

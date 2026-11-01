@@ -37,3 +37,8 @@ sentence-transformers
 # exige setuptools<=81, qu'ERPLibre épingle à 84.0.0 ; le fichier de surcharge
 # l'écartait déjà en le laissant commenté.
 cybersource-rest-client-python
+
+# recruitment_twitter (CybroAddons) : tweepy, jusqu'à 4.17.0 au moins, exige
+# oauthlib<4, dont les CVE ne sont corrigées qu'en 4.0.0. Le module reste non
+# installable tant que tweepy ne suit pas.
+tweepy
