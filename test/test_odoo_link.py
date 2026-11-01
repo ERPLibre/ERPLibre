@@ -1008,6 +1008,206 @@ class TestShellScriptForReal(unittest.TestCase):
         self.assertIn("odoo_bin.sh", caught.exception.values["line"])
 
 
+# Faux `stat` : la ligne de `stat.table` dont le premier champ est le
+# chemin RÉSOLU du fichier demandé donne « uid mode nom ».
+STUB_STAT = """#!/bin/sh
+here=$(dirname "$0")
+fmt=$3
+real=$(readlink -f -- "$4")
+line=$(awk -F '\\t' -v f="$real" '$1 == f {print $2}' "$here/stat.table")
+[ -n "$line" ] || exit 1
+set -- $line
+case "$fmt" in
+'%u %a %U') echo "$1 $2 $3" ;;
+'%u %a') echo "$1 $2" ;;
+*) exit 1 ;;
+esac
+"""
+
+STUB_ID = """#!/bin/sh
+[ "$1" = -u ] || exit 1
+cat "$(dirname "$0")/id.uid"
+"""
+
+# Faux `runuser` : garde ses arguments, puis lance ce qui suit « -- ».
+STUB_RUNUSER = """#!/bin/sh
+printf '%s\\n' "$*" > "$(dirname "$0")/runuser.argv"
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+shift
+exec "$@"
+"""
+
+# Faux `find` : garde ses arguments, imprime `find.out`.
+STUB_FIND = """#!/bin/sh
+printf '%s\\n' "$*" > "$(dirname "$0")/find.argv"
+cat "$(dirname "$0")/find.out"
+"""
+
+
+class StubHost(ShHost):
+    """ShHost dont le PATH commence par les faux `id`, `stat`, `runuser`
+    et `find` de `stubs`."""
+
+    def __init__(self, stubs):
+        super().__init__()
+        self.env = dict(
+            os.environ, PATH=stubs + os.pathsep + os.environ["PATH"]
+        )
+
+    def run(self, script, sudo_user):
+        self.calls.append((script, sudo_user))
+        done = subprocess.run(
+            ["sh", "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            env=self.env,
+        )
+        return done.returncode, done.stdout.decode("utf-8", "replace")
+
+
+class TestShellScriptAccount(unittest.TestCase):
+    """Le compte sous lequel le script root lance `odoo_bin.sh`, avec des
+    propriétaires que seuls de faux `stat` et `id` peuvent simuler."""
+
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="odoo-link-"))
+        self.addCleanup(subprocess.run, ["rm", "-rf", self.tmp])
+        self.checkout = os.path.join(self.tmp, "checkout")
+        self.stubs = os.path.join(self.tmp, "stubs")
+        os.mkdir(self.checkout)
+        os.mkdir(self.stubs)
+        self.bin = os.path.join(self.checkout, "odoo_bin.sh")
+        self.write(self.bin, FAKE_ODOO_BIN, stat.S_IRWXU)
+        self.write(
+            os.path.join(self.checkout, "answer"),
+            "@@ODOO_VERSION 18.0\n@@ODOO_DONE facts\n",
+        )
+        self.write(os.path.join(self.checkout, "code"), "0")
+        for name, text in (
+            ("stat", STUB_STAT),
+            ("id", STUB_ID),
+            ("runuser", STUB_RUNUSER),
+            ("find", STUB_FIND),
+        ):
+            self.write(os.path.join(self.stubs, name), text, stat.S_IRWXU)
+        self.write(os.path.join(self.stubs, "find.out"), "")
+        self.running_as("0")
+
+    def write(self, path, text, mode=None):
+        with open(path, "w") as handle:
+            handle.write(text)
+        if mode is not None:
+            os.chmod(path, mode)
+
+    def running_as(self, uid):
+        self.write(os.path.join(self.stubs, "id.uid"), uid + "\n")
+
+    def owners(self, directory, odoo_bin):
+        """`directory` : « uid mode nom » du dossier ; `odoo_bin` : « uid
+        mode » de son odoo_bin.sh."""
+        self.write(
+            os.path.join(self.stubs, "stat.table"),
+            f"{self.checkout}\t{directory}\n{self.bin}\t{odoo_bin}\n",
+        )
+
+    def facts(self, directory=None):
+        return ol.OdooShell(
+            StubHost(self.stubs), directory or self.checkout, DATABASE
+        ).facts()
+
+    def exists(self, *parts):
+        return os.path.exists(os.path.join(*parts))
+
+    def test_root_runs_the_owner_side_through_runuser(self):
+        self.owners("1001 755 erplibre", "1001 755")
+        self.facts()
+        with open(os.path.join(self.stubs, "runuser.argv")) as handle:
+            self.assertEqual(
+                handle.read(),
+                f"-u erplibre -- ./odoo_bin.sh shell -d {DATABASE} --no-http\n",
+            )
+        self.assertTrue(self.exists(self.checkout, "args"))
+
+    def test_the_owner_itself_runs_it_directly(self):
+        self.running_as("1001")
+        self.owners("1001 755 erplibre", "1001 755")
+        self.facts()
+        self.assertFalse(self.exists(self.stubs, "runuser.argv"))
+        self.assertTrue(self.exists(self.checkout, "args"))
+
+    def test_a_symlink_is_resolved_before_the_owner_is_read(self):
+        # Le lien appartiendrait à root ; c'est le dossier pointé qui
+        # décide du compte.
+        link = os.path.join(self.tmp, "lien")
+        os.symlink(self.checkout, link)
+        self.owners("1001 755 erplibre", "1001 755")
+        with open(os.path.join(self.stubs, "stat.table"), "a") as handle:
+            handle.write(f"{link}\t0 755 root\n")
+        self.facts(directory=link)
+        with open(os.path.join(self.stubs, "runuser.argv")) as handle:
+            self.assertTrue(handle.read().startswith("-u erplibre -- "))
+
+    def test_owners_that_differ_are_refused(self):
+        self.owners("0 755 root", "1001 755")
+        with self.assertRaises(ol.OdooError) as caught:
+            self.facts()
+        self.assertEqual(caught.exception.key, "call_infra_odoo_dir_owner")
+        self.assertEqual(caught.exception.values, {"directory": self.checkout})
+        self.assertFalse(self.exists(self.checkout, "args"))
+        self.assertFalse(self.exists(self.stubs, "runuser.argv"))
+
+    def test_root_with_a_group_writable_odoo_bin_is_refused(self):
+        self.owners("0 755 root", "0 775")
+        with self.assertRaises(ol.OdooError) as caught:
+            self.facts()
+        self.assertEqual(caught.exception.key, "call_infra_odoo_dir_writable")
+        self.assertEqual(caught.exception.values, {"path": self.bin})
+        self.assertFalse(self.exists(self.checkout, "args"))
+
+    def test_root_with_an_other_writable_directory_is_refused(self):
+        self.owners("0 757 root", "0 755")
+        with self.assertRaises(ol.OdooError) as caught:
+            self.facts()
+        self.assertEqual(caught.exception.values, {"path": self.checkout})
+
+    def test_root_with_a_file_of_another_account_inside_is_refused(self):
+        inside = os.path.join(self.checkout, ".venv.inventee/bin/activate")
+        self.owners("0 755 root", "0 755")
+        self.write(os.path.join(self.stubs, "find.out"), inside + "\n")
+        with self.assertRaises(ol.OdooError) as caught:
+            self.facts()
+        self.assertEqual(caught.exception.key, "call_infra_odoo_dir_writable")
+        self.assertEqual(caught.exception.values, {"path": inside})
+        self.assertFalse(self.exists(self.checkout, "args"))
+        with open(os.path.join(self.stubs, "find.argv")) as handle:
+            self.assertEqual(
+                handle.read().split(),
+                [
+                    self.checkout,
+                    "!",
+                    "-type",
+                    "l",
+                    "(",
+                    "!",
+                    "-user",
+                    "0",
+                    "-o",
+                    "-perm",
+                    "/022",
+                    ")",
+                    "-print",
+                    "-quit",
+                ],
+            )
+
+    def test_root_owned_and_closed_runs_as_root(self):
+        self.owners("0 755 root", "0 755")
+        self.facts()
+        self.assertFalse(self.exists(self.stubs, "runuser.argv"))
+        self.assertTrue(self.exists(self.checkout, "args"))
+
+
 # --- Le corps Python contre un faux env ----------------------------------
 
 

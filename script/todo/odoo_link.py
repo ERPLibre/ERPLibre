@@ -790,22 +790,57 @@ print("@@ODOO_MODULE", found[0] if found else "absent")
 # ses lignes `@@ODOO_*` sont recopiées, puis, sur un échec, sa dernière
 # ligne non vide en base64 (`@@ODOO_LAST`). Le code rendu est celui
 # d'`odoo-bin`.
+#
+# Sous quel compte : celui à qui appartiennent le dossier RÉSOLU (lien
+# symbolique suivi) et son `odoo_bin.sh`. Un lien de root vers le dossier
+# d'un autre compte ne fait donc pas tourner les fichiers de ce compte en
+# root. Deux propriétaires différents : refus (`@@ODOO_REFUSE owner`).
+# Propriétaire root : `odoo_bin.sh` source l'environnement virtuel et
+# `script/lib_odoo_rc.sh`, puis lance Python sur les addons du dossier ;
+# root ne le lance que si rien dans le dossier n'appartient à un autre
+# compte ni n'est modifiable par le groupe ou les autres, sinon refus
+# (`@@ODOO_REFUSE writable <chemin en base64>`). Un fichier hors du
+# dossier (interpréteur, addons d'un autre chemin) échappe à ce contrôle.
 _SH = """set -u
 LC_ALL=C; export LC_ALL; unset LANGUAGE
-dir={directory}
+dir=$(readlink -f -- {directory}) || dir={directory}
 if [ ! -x "$dir/odoo_bin.sh" ]; then
     printf '@@ODOO_LAST %s\\n' "$(printf 'no executable odoo_bin.sh in %s' "$dir" | base64 | tr -d '\\n')"
     exit 3
 fi
-owner=$(stat -c %U "$dir") || exit 3
+cd "$dir" || exit 3
+dir_meta=$(stat -L -c '%u %a %U' .) || exit 3
+bin_meta=$(stat -L -c '%u %a' odoo_bin.sh) || exit 3
+read -r dir_uid dir_mode owner <<EOF
+$dir_meta
+EOF
+read -r bin_uid bin_mode <<EOF
+$bin_meta
+EOF
+if [ "$dir_uid" != "$bin_uid" ]; then
+    printf '@@ODOO_REFUSE owner %s\\n' "$(printf %s "$dir" | base64 | tr -d '\\n')"
+    exit 3
+fi
+if [ "$dir_uid" = 0 ]; then
+    if [ $(( 0$dir_mode & 18 )) -ne 0 ]; then
+        bad=$dir
+    elif [ $(( 0$bin_mode & 18 )) -ne 0 ]; then
+        bad=$dir/odoo_bin.sh
+    else
+        bad=$(find "$dir" ! -type l \\( ! -user 0 -o -perm /022 \\) -print -quit) || bad=$dir
+    fi
+    if [ -n "$bad" ]; then
+        printf '@@ODOO_REFUSE writable %s\\n' "$(printf %s "$bad" | base64 | tr -d '\\n')"
+        exit 3
+    fi
+fi
 log=$(mktemp) || exit 3
 trap 'rm -f "$log"' EXIT
-if [ "$(id -un)" = "$owner" ]; then
+if [ "$(id -u)" = "$dir_uid" ]; then
     set --
 else
     set -- runuser -u "$owner" --
 fi
-cd "$dir" || exit 3
 printf %s {payload} | base64 -d | "$@" ./odoo_bin.sh shell -d {database} --no-http >"$log" 2>&1
 rc=$?
 grep '^@@ODOO_' "$log"
@@ -895,6 +930,19 @@ class OdooShell:
                     (out.strip().splitlines() or [""])[-1], secrets
                 ),
             )
+        for name, value in markers:
+            if name == "REFUSE":
+                kind, _, encoded = value.partition(" ")
+                if kind == "owner":
+                    raise OdooError(
+                        "call_infra_odoo_dir_owner",
+                        directory=_b64_text(encoded),
+                    )
+                if kind == "writable":
+                    raise OdooError(
+                        "call_infra_odoo_dir_writable",
+                        path=_b64_text(encoded),
+                    )
         last = [_b64_text(value) for name, value in markers if name == "LAST"]
         if last:
             line = last[-1]
