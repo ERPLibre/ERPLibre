@@ -35,6 +35,7 @@ import threading
 import unittest
 
 from script.todo import call_infra as ci
+from script.todo import call_infra_container as cc
 from script.todo import ntfy_mobile as nm
 from script.todo import odoo_link as ol
 from script.todo import turn_client as tc
@@ -9878,6 +9879,648 @@ class TestCheckThroughOdoo(unittest.TestCase):
             ],
         )
         self.assertEqual(self.allocate.calls, [])
+
+
+# État de développement tel qu'une installation par paquets l'écrivait avant
+# la méthode des conteneurs (coturn et ntfy posés par l'outil), recopié
+# littéralement : le nouveau code doit le relire « rien à changer ».
+PACKAGES_STATE_V1 = """{
+ "created_at": "2026-10-30T10:15:00+00:00",
+ "method": "packages",
+ "mode": "development",
+ "services": {
+  "coturn": {
+   "adopted": false,
+   "backup": null,
+   "config": "/etc/turnserver.conf",
+   "installed_by_tool": true,
+   "settings": {
+    "cert_sha256": null,
+    "external_ip": null,
+    "max_port": 49252,
+    "min_port": 49152,
+    "public_name": "turn.exemple.test",
+    "tls": "none",
+    "turn_port": 3478,
+    "turns_port": 5349
+   },
+   "tls_files": [],
+   "unit": "coturn",
+   "was_active": null,
+   "was_enabled": null
+  },
+  "ntfy": {
+   "adopted": false,
+   "backup": null,
+   "config": "/etc/ntfy/server.yml",
+   "installed_by_tool": true,
+   "settings": {
+    "base_url": "http://turn.exemple.test:8080",
+    "cert_sha256": null,
+    "http_port": 8080,
+    "port": 8080,
+    "public_name": "turn.exemple.test",
+    "tls": "none"
+   },
+   "tls_files": [],
+   "unit": "ntfy",
+   "was_active": null,
+   "was_enabled": null
+  }
+ },
+ "updated_at": "2026-10-30T10:15:00+00:00",
+ "version": 1
+}"""
+
+# uid:gid inventés des comptes que l'installation crée ou trouve.
+ACCOUNT_IDS = {
+    "turnserver": (998, 998),
+    "erplibre-coturn": (997, 997),
+    "ntfy": (996, 996),
+    "erplibre-call": (995, 995),
+}
+
+
+def engine_facts(**changes):
+    """Docker et Podman présents, chacun avec son outil de composition."""
+    values = dict(
+        engines={"docker": "26.1.5", "podman": "5.4.2"},
+        compose={
+            "docker": ("docker", "compose"),
+            "podman": ("podman-compose",),
+        },
+        docker_service=("active", "enabled"),
+        newuidmap=True,
+    )
+    values.update(changes)
+    return cc.EngineFacts(**values)
+
+
+def container_answers(**changes):
+    values = dict(method="container", engine="docker")
+    values.update(changes)
+    return answers(**values)
+
+
+def config_only(config, text):
+    """Ce que la sonde lit d'un service sans unité : son fichier seul."""
+    return dict(service(config, text), unit_found=False, active="inactive")
+
+
+def packages_facts(state=None, **changes):
+    """Hôte où coturn et ntfy tournent par paquets, de `answers()`."""
+    ans = answers()
+    facts = base_facts(
+        coturn=service("/etc/turnserver.conf", ci.coturn_config(ans)),
+        ntfy=service(ci.NTFY_CONFIG, ci.ntfy_config(ans), unit="ntfy"),
+        busy_ports=(
+            ("udp", 3478, "turnserver"),
+            ("tcp", 3478, "turnserver"),
+            ("tcp", 8080, "ntfy"),
+        ),
+        state=state if state is not None else json.loads(PACKAGES_STATE_V1),
+    )
+    return dataclasses.replace(facts, **changes)
+
+
+def container_installed(ans, facts=None):
+    """Faits de la relance qui suit une installation en conteneurs réussie
+    de `ans` : l'état tel que le script l'écrit (uid et gid relus sur
+    l'hôte, images tirées), les conteneurs en marche sur les images
+    épinglées, le fichier compose résolu sur l'hôte, les configurations
+    écrites."""
+    facts = facts or base_facts(engines=engine_facts())
+    plan = ci.plan_install(facts, ans, NOW)
+    state = ci.written_state(plan, STAMP)
+    users = {}
+    for svc, record in state["services"].items():
+        uid, gid = ACCOUNT_IDS[record["account"]]
+        record.update(uid=uid, gid=gid)
+        users[svc] = f"{uid}:{gid}"
+    block = state["container"]
+    if block["rootless"]:
+        block["uid"] = ACCOUNT_IDS[cc.ROOTLESS_ACCOUNT][0]
+    block["images_pulled"] = sorted(block["images"].values())
+    block["engine_packages_added"] = list(plan.engine_packages)
+    engines = dataclasses.replace(
+        facts.engines or engine_facts(),
+        accounts={
+            record["account"]: ACCOUNT_IDS[record["account"]]
+            for record in state["services"].values()
+        },
+        containers=tuple(
+            (
+                cc.CONTAINERS[svc],
+                ans.engine,
+                ans.rootless,
+                "running",
+                cc.IMAGES[svc],
+            )
+            for svc in state["services"]
+        ),
+        compose_text=cc.compose_resolved(plan.compose, users),
+    )
+    changes = {"state": state, "engines": engines}
+    if "coturn" in state["services"]:
+        changes["coturn"] = config_only(
+            ci.COTURN_CONFIGS["debian"],
+            ci.coturn_config(ans, None, flavour="container"),
+        )
+    if "ntfy" in state["services"]:
+        changes["ntfy"] = config_only(ci.NTFY_CONFIG, ci.ntfy_config(ans))
+    return dataclasses.replace(facts, **changes)
+
+
+class TestContainerPlan(unittest.TestCase):
+    """Plan de la méthode des conteneurs : état de version 2, migration
+    entre paquets et conteneurs, refus avant tout changement."""
+
+    def refusal(self, facts, ans):
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.plan_install(facts, ans, NOW)
+        return caught.exception
+
+    def test_packages_state_v1_still_nothing_to_do(self):
+        fixture = json.loads(PACKAGES_STATE_V1)
+        for name, engines in (
+            ("older probe", None),
+            ("engines present", engine_facts()),
+        ):
+            with self.subTest(name):
+                facts = packages_facts(engines=engines)
+                plan = ci.plan_install(facts, answers(), NOW)
+                self.assertTrue(plan.nothing_to_do)
+                self.assertIsNone(plan.migration)
+                self.assertEqual(plan.engine_packages, ())
+                self.assertEqual(plan.compose, "")
+                state = plan.new_state
+                self.assertEqual(state["version"], 1)
+                self.assertEqual(state["method"], "packages")
+                self.assertNotIn("container", state)
+                self.assertNotIn("container_added", state)
+                for svc in ("coturn", "ntfy"):
+                    self.assertEqual(
+                        set(state["services"][svc]["settings"]),
+                        set(fixture["services"][svc]["settings"]),
+                    )
+                    self.assertEqual(
+                        state["services"][svc], fixture["services"][svc]
+                    )
+                script = ci.install_script(plan, STAMP)
+                for word in ("compose", "podman", "docker"):
+                    self.assertNotIn(word, script)
+
+    def test_container_rerun_has_nothing_to_do(self):
+        for name, ans in (
+            ("docker", container_answers()),
+            ("podman", container_answers(engine="podman")),
+            (
+                "podman rootless",
+                container_answers(engine="podman", rootless=True),
+            ),
+        ):
+            with self.subTest(name):
+                facts = container_installed(ans)
+                plan = ci.plan_install(facts, ans, NOW)
+                self.assertTrue(plan.nothing_to_do)
+                self.assertEqual(plan.engine_packages, ())
+                self.assertIsNone(plan.migration)
+                self.assertEqual(plan.new_state["version"], 2)
+                self.assertEqual(plan.new_state["method"], "container")
+                # Les champs que l'installation a remplis passent tels quels.
+                self.assertEqual(
+                    plan.new_state["container"], facts.state["container"]
+                )
+                self.assertEqual(
+                    plan.new_state["services"], facts.state["services"]
+                )
+
+    def test_container_rerun_with_something_to_do(self):
+        ans = container_answers()
+        facts = container_installed(ans)
+        engines = facts.engines
+        cases = {
+            "stopped": dataclasses.replace(
+                engines,
+                containers=tuple(
+                    (n, e, r, "exited" if n.endswith("coturn") else s, i)
+                    for n, e, r, s, i in engines.containers
+                ),
+            ),
+            "other image": dataclasses.replace(
+                engines,
+                containers=tuple(
+                    (n, e, r, s, "docker.io/coturn/coturn:4.6.2")
+                    for n, e, r, s, i in engines.containers
+                ),
+            ),
+            "missing": dataclasses.replace(engines, containers=()),
+            "compose edited": dataclasses.replace(
+                engines, compose_text=engines.compose_text + "# main\n"
+            ),
+            "compose missing": dataclasses.replace(engines, compose_text=""),
+            "other compose tool": dataclasses.replace(
+                engines, compose={"docker": ("docker-compose",)}
+            ),
+        }
+        for name, changed in cases.items():
+            with self.subTest(name):
+                plan = ci.plan_install(
+                    dataclasses.replace(facts, engines=changed), ans, NOW
+                )
+                self.assertFalse(plan.nothing_to_do)
+        # La configuration de coturn n'est pas celle de la saveur conteneur.
+        packaged = dataclasses.replace(
+            facts,
+            coturn=dict(facts.coturn, config_text=ci.coturn_config(ans)),
+        )
+        self.assertFalse(ci.plan_install(packaged, ans, NOW).nothing_to_do)
+        # Un uid que l'état ne porte pas : le fichier résolu diffère.
+        state = copy.deepcopy(facts.state)
+        state["services"]["ntfy"]["uid"] = 990
+        self.assertFalse(
+            ci.plan_install(
+                dataclasses.replace(facts, state=state), ans, NOW
+            ).nothing_to_do
+        )
+
+    def test_container_settings_name_the_method(self):
+        ans = container_answers(engine="podman", rootless=True)
+        plan = ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
+        for record in plan.new_state["services"].values():
+            self.assertEqual(record["settings"]["method"], "container")
+            self.assertEqual(record["settings"]["engine"], "podman")
+            self.assertIs(record["settings"]["rootless"], True)
+
+    def test_fresh_container_plan(self):
+        ans = container_answers()
+        plan = ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
+        self.assertIsNone(plan.migration)
+        self.assertFalse(plan.nothing_to_do)
+        state = plan.new_state
+        self.assertEqual(state["version"], ci.CONTAINER_STATE_VERSION)
+        self.assertEqual(state["method"], "container")
+        coturn, ntfy = state["services"]["coturn"], state["services"]["ntfy"]
+        self.assertEqual(coturn["container"], "erplibre-call-coturn")
+        self.assertEqual(coturn["account"], "erplibre-coturn")
+        self.assertEqual(coturn["config"], "/etc/turnserver.conf")
+        self.assertIsNone(coturn["unit"])
+        self.assertTrue(coturn["installed_by_tool"])
+        self.assertEqual(ntfy["container"], "erplibre-call-ntfy")
+        self.assertEqual(ntfy["account"], "ntfy")
+        self.assertEqual(ntfy["config"], ci.NTFY_CONFIG)
+        self.assertEqual(
+            state["container"],
+            {
+                "engine": "docker",
+                "rootless": False,
+                "account": None,
+                "uid": None,
+                "compose": ["docker", "compose"],
+                "compose_file": "/etc/erplibre-call/compose.yml",
+                "project": "erplibre-call",
+                "images": dict(cc.IMAGES),
+                "images_pulled": [],
+                "engine_packages_added": [],
+                "accounts_added": [],
+                "restart_unit_enabled": None,
+                "linger_added": False,
+            },
+        )
+        self.assertEqual(
+            plan.compose,
+            cc.compose_text(("coturn", "ntfy"), "/etc/turnserver.conf", False),
+        )
+        self.assertEqual(plan.configs["ntfy"], ci.ntfy_config(ans))
+        rootless = ci.plan_install(
+            base_facts(engines=engine_facts()),
+            container_answers(engine="podman", rootless=True),
+            NOW,
+        )
+        block = rootless.new_state["container"]
+        self.assertEqual(block["account"], "erplibre-call")
+        self.assertEqual(block["compose"], ["podman-compose"])
+        for record in rootless.new_state["services"].values():
+            self.assertEqual(record["account"], "erplibre-call")
+        self.assertIn("userns_mode: keep-id", rootless.compose)
+
+    def test_first_container_plan_on_a_packages_state_migrates(self):
+        state = json.loads(PACKAGES_STATE_V1)
+        state["turn_mode"] = "fixed"
+        state["odoos"] = {FIXED_KEY: user_entry("odoo-u1")}
+        facts = packages_facts(
+            state=state,
+            engines=engine_facts(
+                accounts={"turnserver": (998, 998), "ntfy": (996, 996)}
+            ),
+        )
+        plan = ci.plan_install(facts, container_answers(), NOW)
+        self.assertEqual(plan.migration, "to_container")
+        self.assertEqual(plan.odoo_readd, ())
+        self.assertFalse(plan.nothing_to_do)
+        new = plan.new_state
+        self.assertEqual(new["version"], 2)
+        self.assertEqual(new["method"], "container")
+        self.assertEqual(new["odoos"], state["odoos"])
+        coturn = new["services"]["coturn"]
+        # coturn posé par l'outil : son paquet part, et avec lui le compte
+        # « turnserver » que le paquet supprime.
+        self.assertEqual(coturn["account"], "erplibre-coturn")
+        self.assertIsNone(coturn["unit"])
+        self.assertTrue(coturn["installed_by_tool"])
+        self.assertEqual(new["services"]["ntfy"]["account"], "ntfy")
+        self.assertIn("erplibre-call-ntfy", plan.compose)
+
+    def test_adopted_service_keeps_its_unit_and_account(self):
+        state = json.loads(PACKAGES_STATE_V1)
+        state["services"]["coturn"].update(
+            installed_by_tool=False,
+            adopted=True,
+            backup="/etc/turnserver.conf.bak-20261029-080000",
+            was_active=True,
+            was_enabled="enabled",
+        )
+        facts = packages_facts(
+            state=state,
+            engines=engine_facts(accounts={"turnserver": (998, 998)}),
+        )
+        plan = ci.plan_install(facts, container_answers(), NOW)
+        coturn = plan.new_state["services"]["coturn"]
+        self.assertEqual(coturn["account"], "turnserver")
+        self.assertEqual(coturn["unit"], "coturn")
+        self.assertFalse(coturn["installed_by_tool"])
+        self.assertEqual(
+            coturn["backup"], state["services"]["coturn"]["backup"]
+        )
+        self.assertIs(coturn["was_active"], True)
+        self.assertEqual(coturn["was_enabled"], "enabled")
+
+    def test_container_to_packages_migrates_back(self):
+        facts = container_installed(container_answers())
+        plan = ci.plan_install(facts, answers(), NOW)
+        self.assertEqual(plan.migration, "to_packages")
+        self.assertEqual(plan.odoo_readd, ())
+        self.assertEqual(plan.engine_packages, ())
+        self.assertEqual(plan.compose, "")
+        new = plan.new_state
+        self.assertEqual(new["version"], 1)
+        self.assertEqual(new["method"], "packages")
+        self.assertNotIn("container", new)
+        added = new["container_added"]
+        self.assertEqual(added["engine"], "docker")
+        self.assertIs(added["rootless"], False)
+        self.assertEqual(added["images_pulled"], sorted(cc.IMAGES.values()))
+        coturn = new["services"]["coturn"]
+        self.assertEqual(coturn["unit"], "coturn")
+        self.assertNotIn("container", coturn)
+        self.assertNotIn("account", coturn)
+        self.assertNotIn("method", coturn["settings"])
+        self.assertTrue(coturn["installed_by_tool"])
+        # Un retour aux conteneurs garde ces ajouts pour la désinstallation.
+        back = dataclasses.replace(
+            facts,
+            state=ci.written_state(plan, STAMP),
+            engines=dataclasses.replace(facts.engines, containers=()),
+        )
+        again = ci.plan_install(back, container_answers(), NOW)
+        self.assertEqual(again.migration, "to_container")
+        self.assertEqual(again.new_state["container_added"], added)
+
+    def test_rootless_low_port_refused_early(self):
+        facts = base_facts(engines=engine_facts())
+        rootless = dict(method="container", engine="podman", rootless=True)
+        refusal = self.refusal(facts, coturn_only(turns_443=True, **rootless))
+        self.assertEqual(refusal.key, "call_infra_container_port")
+        self.assertEqual(refusal.values["port"], 443)
+        self.assertEqual(refusal.values["start"], 1024)
+        self.assertEqual(refusal.values["alt"], 5349)
+        refusal = self.refusal(
+            facts,
+            answers(services=frozenset({"ntfy"}), ntfy_port=80, **rootless),
+        )
+        self.assertEqual(refusal.values["port"], 80)
+        self.assertEqual(refusal.values["alt"], 8080)
+        # ntfy n'a pas la capacité de coturn : refusé en root aussi.
+        refusal = self.refusal(
+            facts,
+            container_answers(services=frozenset({"ntfy"}), ntfy_port=80),
+        )
+        self.assertEqual(refusal.key, "call_infra_container_port")
+        # coturn en root lie 443 par la capacité de son binaire.
+        ci.plan_install(
+            facts,
+            coturn_only(turns_443=True, method="container", engine="docker"),
+            NOW,
+        )
+        # Le seuil est celui de l'hôte.
+        low = base_facts(engines=engine_facts(unpriv_port_start=0))
+        ci.plan_install(low, coturn_only(turns_443=True, **rootless), NOW)
+
+    def test_method_switch_must_take_every_recorded_service(self):
+        refusal = self.refusal(
+            packages_facts(engines=engine_facts()),
+            container_answers(services=frozenset({"ntfy"})),
+        )
+        self.assertEqual(refusal.key, "call_infra_method_partial")
+        self.assertEqual(refusal.values["service"], "coturn")
+
+    def test_foreign_container_is_refused(self):
+        engines = engine_facts(
+            containers=(
+                (
+                    "erplibre-call-coturn",
+                    "docker",
+                    False,
+                    "running",
+                    cc.IMAGES["coturn"],
+                ),
+            )
+        )
+        for ans in (container_answers(), answers()):
+            with self.subTest(method=ans.method):
+                refusal = self.refusal(base_facts(engines=engines), ans)
+                self.assertEqual(refusal.key, "call_infra_foreign_container")
+                self.assertEqual(
+                    refusal.values["names"], "erplibre-call-coturn"
+                )
+
+    def test_ntfy_downgrade_refused_only_with_an_older_host_binary(self):
+        facts = container_installed(container_answers())
+
+        def host(version):
+            return dataclasses.replace(
+                facts,
+                engines=dataclasses.replace(
+                    facts.engines, ntfy_host_version=version
+                ),
+            )
+
+        refusal = self.refusal(host("2.11.0"), answers())
+        self.assertEqual(refusal.key, "call_infra_ntfy_downgrade")
+        self.assertEqual(refusal.values["host"], "2.11.0")
+        self.assertEqual(refusal.values["image"], "2.36.0")
+        for version in (None, "2.36.0", "2.37.1"):
+            with self.subTest(version=version):
+                plan = ci.plan_install(host(version), answers(), NOW)
+                self.assertEqual(plan.migration, "to_packages")
+        # coturn seul revient aux paquets sans condition de version.
+        coturn = container_installed(
+            container_answers(services=frozenset({"coturn"}))
+        )
+        coturn = dataclasses.replace(
+            coturn,
+            engines=dataclasses.replace(
+                coturn.engines, ntfy_host_version="2.11.0"
+            ),
+        )
+        ci.plan_install(coturn, answers(services=frozenset({"coturn"})), NOW)
+
+    def test_missing_engine_needs_consent(self):
+        facts = base_facts(engines=cc.EngineFacts())
+        ans = container_answers(engine="podman")
+        refusal = self.refusal(facts, ans)
+        self.assertEqual(refusal.key, "call_infra_engine_missing")
+        self.assertEqual(refusal.values["engine"], "podman")
+        self.assertEqual(refusal.values["packages"], "podman, podman-compose")
+        self.assertEqual(
+            ci.engine_offer(facts, "podman", False),
+            ("podman", "podman-compose"),
+        )
+        plan = ci.plan_install(
+            facts, dataclasses.replace(ans, install_engine=True), NOW
+        )
+        self.assertEqual(plan.engine_packages, ("podman", "podman-compose"))
+        self.assertEqual(
+            plan.new_state["container"]["compose"], ["podman-compose"]
+        )
+        # Une sortie de sonde sans section des moteurs : rien n'est là.
+        self.assertEqual(
+            self.refusal(base_facts(), ans).key, "call_infra_engine_missing"
+        )
+
+    def test_engine_switch_on_a_container_host_is_refused(self):
+        facts = container_installed(container_answers())
+        for ans, new in (
+            (container_answers(engine="podman"), "podman"),
+            (
+                container_answers(engine="podman", rootless=True),
+                "podman (rootless)",
+            ),
+        ):
+            with self.subTest(new=new):
+                refusal = self.refusal(facts, ans)
+                self.assertEqual(refusal.key, "call_infra_engine_switch")
+                self.assertEqual(refusal.values["old"], "docker")
+                self.assertEqual(refusal.values["new"], new)
+
+    def test_state_versions(self):
+        refusal = self.refusal(
+            base_facts(state={"version": 3, "services": {}}), answers()
+        )
+        self.assertEqual(refusal.key, "call_infra_state_version")
+        self.assertEqual(refusal.values["found"], 3)
+        self.assertEqual(refusal.values["expected"], "1, 2")
+        container = container_installed(container_answers()).state
+        for name, state in (
+            (
+                "v2 without the container method",
+                dict(container, method="packages"),
+            ),
+            ("v1 with the container method", dict(container, version=1)),
+            ("unknown method", dict(container, method="lxc")),
+        ):
+            with self.subTest(name):
+                refusal = self.refusal(base_facts(state=state), answers())
+                self.assertEqual(refusal.key, "call_infra_state_invalid")
+                self.assertEqual(refusal.values["service"], "method")
+                self.assertIsNone(ci.state_answers(state))
+                with self.assertRaises(ci.Refusal):
+                    ci.uninstall_script(state, False, STAMP)
+        tampered = copy.deepcopy(container)
+        tampered["container"]["engine"] = "sh"
+        refusal = self.refusal(
+            base_facts(state=tampered, engines=engine_facts()),
+            container_answers(),
+        )
+        self.assertEqual(refusal.key, "call_infra_state_invalid")
+        self.assertEqual(refusal.values["service"], "engine")
+
+    def test_answers_out_of_contract(self):
+        for ans in (
+            answers(method="lxc"),
+            container_answers(engine="lxc"),
+            container_answers(engine=None),
+            answers(engine="docker"),
+            container_answers(rootless=True),
+            answers(rootless=True),
+        ):
+            with self.subTest(ans=ans):
+                with self.assertRaises(ValueError):
+                    ci.plan_install(
+                        base_facts(engines=engine_facts()), ans, NOW
+                    )
+
+    def test_container_account(self):
+        facts = base_facts(
+            engines=engine_facts(accounts={"turnserver": (998, 998)})
+        )
+        self.assertEqual(
+            ci.container_account(facts, "coturn", False, False), "turnserver"
+        )
+        self.assertEqual(
+            ci.container_account(facts, "coturn", False, True),
+            "erplibre-coturn",
+        )
+        self.assertEqual(
+            ci.container_account(base_facts(), "coturn", False, False),
+            "erplibre-coturn",
+        )
+        self.assertEqual(
+            ci.container_account(facts, "ntfy", False, False), "ntfy"
+        )
+        for svc in ("coturn", "ntfy"):
+            self.assertEqual(
+                ci.container_account(facts, svc, True, False), "erplibre-call"
+            )
+
+    def test_state_answers_of_a_container_state(self):
+        ans = container_answers(engine="podman", rootless=True, ntfy_port=8080)
+        state = container_installed(ans).state
+        self.assertEqual(ci.state_answers(state), ans)
+        state = container_installed(container_answers()).state
+        back = ci.state_answers(state)
+        self.assertEqual(
+            (back.method, back.engine, back.rootless),
+            ("container", "docker", False),
+        )
+        self.assertIs(back.install_engine, False)
+        packages = ci.state_answers(json.loads(PACKAGES_STATE_V1))
+        self.assertEqual(
+            (packages.method, packages.engine, packages.rootless),
+            ("packages", None, False),
+        )
+
+    def test_container_state_keeps_the_odoo_paths_working(self):
+        state = container_installed(container_answers()).state
+        state["turn_mode"] = "fixed"
+        state["odoos"] = {FIXED_KEY: user_entry("odoo-u1")}
+        self.assertEqual(
+            ci.ice_urls(state), ci._ice_urls_for(container_answers())
+        )
+        # Le nom public reste le realm : le changer avec un Odoo branché
+        # est refusé, en conteneurs comme par paquets.
+        facts = container_installed(container_answers())
+        refusal = self.refusal(
+            dataclasses.replace(facts, state=state),
+            container_answers(public_name="appel.exemple.test"),
+        )
+        self.assertEqual(refusal.key, "call_infra_odoo_realm")
+        # Une unité adoptée gardée laisse passer le script d'un Odoo.
+        state["services"]["coturn"]["unit"] = "coturn"
+        script = ci.odoo_add_script(
+            state, KEY_A, "user", PASSWORD_1, USER_A, None, NOW
+        )
+        self.assertIn("turn.exemple.test", script)
 
 
 class TestStdlibOnly(unittest.TestCase):
