@@ -511,7 +511,7 @@ exit 0
 class TestArch(unittest.TestCase):
     """`install_arch` : le depot officiel d'abord, jamais d'AUR sans tty."""
 
-    def _jouer(self, dans_depot, non_interactif):
+    def _jouer(self, dans_depot, non_interactif, version=""):
         with tempfile.TemporaryDirectory() as dossier:
             journal = os.path.join(dossier, "appels")
             enveloppe = (
@@ -529,7 +529,8 @@ class TestArch(unittest.TestCase):
                 "install_binary() { echo \"install_binary $*\" >> $J; }\n"
                 "create_systemd_service() { echo \"unit $*\" >> $J; }\n"
                 "NTFY_NON_INTERACTIVE=%s\n"
-                % (journal, 0 if dans_depot else 1, non_interactif)
+                "NTFY_VERSION=%s\n"
+                % (journal, 0 if dans_depot else 1, non_interactif, version)
             ) + extraire_fonction("non_interactive") + extraire_fonction(
                 "install_arch") + "\ninstall_arch\n"
             fait = jouer(enveloppe)
@@ -557,6 +558,52 @@ class TestArch(unittest.TestCase):
     def test_hors_depot_interactif_l_aur_reste_possible(self):
         appels = self._jouer(dans_depot=False, non_interactif="0")
         self.assertIn("yay -S --noconfirm ntfy", appels)
+
+    def test_version_exacte_le_binaire_officiel_jamais_le_depot(self):
+        for interactif in ("0", "1"):
+            appels = self._jouer(dans_depot=True, non_interactif=interactif,
+                                 version="2.36.0")
+            self.assertEqual(appels, ["install_binary 2.36.0"])
+
+
+class TestVersionExacte(unittest.TestCase):
+    """NTFY_VERSION : la version posee, sans appel a l'API de GitHub."""
+
+    def _jouer(self, version):
+        with tempfile.TemporaryDirectory() as dossier:
+            journal = os.path.join(dossier, "appels")
+            enveloppe = (
+                "set -e\n"
+                "log() { :; }\n"
+                "die() { echo \"die $*\" >&2; exit 1; }\n"
+                "J=%s\n"
+                "curl() { echo \"curl $*\" >> $J;"
+                " echo '\"tag_name\": \"v2.99.0\",'; }\n"
+                "NTFY_VERSION='%s'\n" % (journal, version)
+            ) + extraire_fonction("check_version") + extraire_fonction(
+                "get_latest_version") + "\ncheck_version\nget_latest_version\n"
+            fait = jouer(enveloppe)
+            return fait, lignes(journal)
+
+    def test_la_version_donnee_sans_appel_a_github(self):
+        fait, appels = self._jouer("2.36.0")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(fait.stdout.strip(), "2.36.0")
+        self.assertEqual(appels, [])
+
+    def test_sans_version_la_derniere_publiee(self):
+        fait, appels = self._jouer("")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(fait.stdout.strip(), "2.99.0")
+        self.assertEqual(len(appels), 1)
+
+    def test_une_version_mal_formee_arrete_le_script(self):
+        for version in ("2.36", "v2.36.0", "2.36.0/../x", "2.36.0 ", "x"):
+            with self.subTest(version=version):
+                fait, appels = self._jouer(version)
+                self.assertNotEqual(fait.returncode, 0)
+                self.assertIn("NTFY_VERSION invalide", fait.stderr)
+                self.assertEqual(appels, [])
 
 
 class TestDebianNonInteractif(unittest.TestCase):
@@ -632,7 +679,7 @@ class TestMain(unittest.TestCase):
             ) + "".join(extraire_fonction(nom) for nom in (
                 "non_interactive", "is_ubuntu_like", "is_arch_like",
                 "recover_dpkg", "ntfy_installed", "enable_service",
-                "service_state", "main")) + "\nmain\n"
+                "service_state", "check_version", "main")) + "\nmain\n"
             fait = jouer(enveloppe)
             return fait, lignes(journal)
 
