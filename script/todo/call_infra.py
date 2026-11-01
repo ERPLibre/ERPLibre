@@ -4802,11 +4802,31 @@ def _reverse_purge_lines(plan, svc, stamp):
     return lines
 
 
+def _account_back_lines(svc, account, uid, gid):
+    """Le compte `account` du conteneur de `svc` recréé avec ses ids
+    consignés (`uid`, `gid`, son groupe d'abord) quand il manque : la
+    purge d'un paquet supprime le compte qui porte son nom (le postrm du
+    .deb de ntfy supprime `ntfy`), alors que le conteneur relancé tourne
+    sous ces ids et que l'état qui reste nomme ce compte."""
+    if not cc.ACCOUNT_RE.match(account or "") or account == "root":
+        raise ValueError(f"account: {account!r}")
+    return [
+        f"if ! getent passwd {account} >/dev/null 2>&1; then",
+        f"  getent group {gid} >/dev/null 2>&1"
+        f" || groupadd --system --gid {gid} {account} || fail account-{svc}",
+        f"  {_USERADD} --uid {uid} --gid {gid} {account}"
+        f" || fail account-{svc}",
+        "fi",
+    ]
+
+
 def _to_packages_rollback_lines(plan, stamp, services):
     """`migback` d'un retour aux paquets : un paquet que le passage a posé
     purgé (`_reverse_purge_lines`), un paquet déjà là gardé ; chaque unité
-    arrêtée et désactivée, les bases remises de leur copie, la
-    configuration de coturn et son empreinte remises, comme celle de ntfy,
+    arrêtée et désactivée, le compte d'un conteneur que la purge a
+    supprimé recréé (`_account_back_lines`), les bases remises de leur
+    copie, la configuration de coturn et son empreinte remises, comme
+    celle de ntfy, chacune dans un dossier traversable recréé au besoin,
     les fichiers que le conteneur lit (configuration de coturn, copies
     TLS, données) rendus à son compte, puis les conteneurs relancés par le
     fichier compose, resté en place. Chaque purge est une étape à part :
@@ -4821,6 +4841,9 @@ def _to_packages_rollback_lines(plan, stamp, services):
         step = _migration_stop_lines(
             svc, plan.new_state["services"][svc]["unit"]
         )
+        account = prior[svc]["account"]
+        if svc in purgeable and account != cc.ROOTLESS_ACCOUNT:
+            step += _account_back_lines(svc, account, uid, gid)
         if svc == "ntfy" and svc in purgeable:
             # Dossiers restés à l'abri quand la purge a échoué en route.
             hold = f'"$R"{shlex.quote(HOLD_PREFIX + stamp)}'
@@ -4849,10 +4872,10 @@ def _to_packages_rollback_lines(plan, stamp, services):
         else:
             name = _NTFY_HELD_FOR_PACKAGES
             copy_back = _migration_cp(f'"$MB/{name}"', _host(NTFY_CONFIG))
+            folder = _traversable_dir(os.path.dirname(NTFY_CONFIG))
             step += [
                 f'if [ -f "$MB/{name}" ]; then',
-                f"  mkdir -p {_host(os.path.dirname(NTFY_CONFIG))}"
-                f" && {copy_back} || fail ntfy-config",
+                f"  {folder} && {copy_back} || fail ntfy-config",
                 "fi",
             ]
             owned = (NTFY_TLS_DIR, NTFY_TLS_DIR + "/ntfy.key")
@@ -8430,7 +8453,10 @@ def _uninstall_helpers():
 def _purge_helper_lines():
     """Fonctions `sh` `pkg_purge <paquet>` et `held_back <dossier>`, qui
     remet à leur place les dossiers de _HELD mis à l'abri dans `dossier`
-    et appelle `failed` pour celui dont la place est reprise. Elles
+    et appelle `failed` pour celui dont la place est reprise. Un dossier
+    parent que la purge a retiré (le postrm du .deb de ntfy retire
+    /etc/ntfy vide) revient en 0755 malgré l'umask 077 du script : le
+    compte de ntfy, sous paquet ou en conteneur, le traverse. Elles
     demandent celles de `_family_lines`. La purge d'un paquet dans un état
     de _DPKG_INTERRUPTED passe d'abord par « dpkg --configure -a »."""
     held = " ".join(f"{name}:{path}" for name, path in _HELD)
@@ -8453,7 +8479,8 @@ def _purge_helper_lines():
         '    [ -e "$1/$N" ] || continue',
         '    if [ -d "$P" ]; then rmdir "$P" 2>/dev/null; fi',
         '    if [ -e "$P" ]; then failed "hold-$N"; continue; fi',
-        '    mkdir -p "$(dirname "$P")" && mv "$1/$N" "$P"'
+        '    { [ -d "$(dirname "$P")" ]'
+        ' || install -d -m 0755 "$(dirname "$P")"; } && mv "$1/$N" "$P"'
         ' || failed "hold-$N"',
         "  done",
         '  rmdir "$1" 2>/dev/null',
