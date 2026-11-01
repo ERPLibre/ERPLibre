@@ -807,7 +807,8 @@ guest who came in through an invitation link (`join_call_ice_guest`):
    the harness servers are stopped and their databases dropped with their
    filestore, even after a failure. `--detruire` drops the
    `call_infra_odoo_*` databases a killed run left in its report, then
-   destroys the VMs.
+   destroys the VMs; when no report names a VM any more, it drops the
+   databases alone, after the same « OUI » confirmation.
 
 ```
 ./long_test/call_infra.py                  # Debian, then Arch, each scenario
@@ -1720,7 +1721,8 @@ utilisateur (`join_call_ice`) ou à un invité entré par un lien d'invitation
    comprises ; les serveurs du harnais arrêtés et leurs bases supprimées
    avec leur filestore, même après un échec. `--detruire` supprime les
    bases `call_infra_odoo_*` qu'une course tuée a laissées dans son
-   rapport, puis détruit les VM.
+   rapport, puis détruit les VM ; quand plus aucun rapport ne nomme de VM,
+   il supprime les bases seules, après la même confirmation « OUI ».
 
 ```
 ./long_test/call_infra.py                  # Debian, puis Arch, chaque scénario
