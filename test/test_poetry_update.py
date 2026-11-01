@@ -147,5 +147,44 @@ class TestManifestExternalDependencies(unittest.TestCase):
         )
 
 
+class TestPoetryAddFailure(unittest.TestCase):
+    """« poetry add » refusé : le pyproject retrouve ses dépendances, et le
+    script sort en erreur au lieu de rendre 0 sur un pyproject vidé."""
+
+    def test_pyproject_restored_and_exit_code(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pyproject = os.path.join(tmp, "pyproject.toml")
+            contenu = (
+                '[tool.poetry]\nname = "x"\n\n'
+                '[tool.poetry.dependencies]\npython = ">=3.12,<3.13"\n'
+                'requests = "2.34.2"\n'
+            )
+            with open(pyproject, "w") as fh:
+                fh.write(contenu)
+            config = SimpleNamespace(
+                dir=tmp + os.sep,
+                dry=False,
+                force=False,
+                set_version_poetry="2.1.3",
+                set_version_odoo="18.0",
+                set_version_python="3.12.10",
+                set_version_erplibre="odoo18.0_python3.12.10",
+            )
+            with patch.object(
+                P, "get_config", return_value=config
+            ), patch.object(P, "combine_requirements"), patch.object(
+                P,
+                "call_poetry_add_build_dependency",
+                return_value=False,
+            ):
+                with self.assertRaises(SystemExit) as fin:
+                    P.main()
+            self.assertEqual(fin.exception.code, 1)
+            with open(pyproject) as fh:
+                self.assertEqual(fh.read(), contenu)
+
+
 if __name__ == "__main__":
     unittest.main()

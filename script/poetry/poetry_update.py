@@ -754,16 +754,30 @@ def main():
         f"./requirement/poetry.{config.set_version_erplibre}.lock"
     )
 
+    pyproject_before = None
     if not config.dry:
         pyproject_toml_filename = f"{config.dir}pyproject.toml"
         ensure_pyproject_link(config, pyproject_toml_filename)
+        # The dependencies are deleted, then added back by « poetry add »:
+        # when it fails, the pyproject would stay empty of them.
+        with open(pyproject_toml_filename, encoding="utf-8") as f:
+            pyproject_before = f.read()
         delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
     if not config.dry:
         if config.force and os.path.isfile(poetry_default_lock_path):
             os.remove(poetry_default_lock_path)
         status = call_poetry_add_build_dependency()
-        if status and pyproject_toml_filename:
+        if not status:
+            with open(pyproject_toml_filename, "w", encoding="utf-8") as f:
+                f.write(pyproject_before)
+            print(
+                f"{Fore.RED}ERROR{Style.RESET_ALL} - poetry add failed: "
+                f"'{pyproject_toml_filename}' restored, the lock is unchanged."
+                " The solver's reason is above."
+            )
+            sys.exit(1)
+        if pyproject_toml_filename:
             sorted_dependency_poetry(pyproject_toml_filename)
             build_dependency_filename = (
                 f"./.venv.{config.set_version_erplibre}/build_dependency.txt"
@@ -774,6 +788,12 @@ def main():
                 # Le lock écrit par « poetry add » ignore les branches qu'on
                 # vient de rétablir : il ne décrit plus le pyproject.
                 status = call_poetry_lock(config)
+                if not status:
+                    print(
+                        f"{Fore.RED}ERROR{Style.RESET_ALL} - poetry lock"
+                        " failed after the marker variants were restored."
+                    )
+                    sys.exit(1)
         if (
             config.force
             and not os.path.islink(poetry_default_lock_path)
