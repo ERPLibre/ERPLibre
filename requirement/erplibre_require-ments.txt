@@ -5,7 +5,7 @@ toml
 # ERPLibre script
 giturlparse
 agithub
-GitPython
+GitPython>=3.2.1
 retrying
 xmltodict
 openupgradelib
@@ -55,11 +55,12 @@ pip-audit
 tldextract
 PyYAML
 
-# For mobile
-pillow
+# For mobile ; pillow 12.3.0 portait 40 CVE, corrigées en 13.0.0.
+pillow>=13.0.0
 
-# Force upgrade package to fix Ubuntu 25.04
-virtualenv==20.36.1
+# Force upgrade package to fix Ubuntu 25.04 ; 20.36.1 portait 19 CVE,
+# corrigées en 21.14.9, et deux autres le sont en 21.14.13.
+virtualenv==21.14.13
 
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
@@ -74,6 +75,17 @@ aiosmtpd
 twisted
 
 odoo-module-migrator
+
+# Planchers de sécurité des dépendances transitives (base OSV) : pip installe
+# la version du moment et ne met jamais à jour un venv existant, le plancher
+# l'y oblige. GitPython 3.2.1, filelock 4.2.1 (13 CVE), tornado 6.6 (3 CVE),
+# certifi 2026.10.18 et nbconvert 7.17.2 corrigent les failles connues des
+# versions qu'ils remplacent. twisted, pour les tests du client courriel,
+# n'a de correctif qu'en version candidate (26.10.0rc1).
+filelock>=4.2.1
+tornado>=6.6
+certifi>=2026.10.18
+nbconvert>=7.17.2
 
 # Ignore because need installation system
 # pymysql
