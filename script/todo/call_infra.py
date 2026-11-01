@@ -1635,8 +1635,9 @@ def _settings(svc, answers, cert_sha):
     """Ce qu'un service a reçu ; deux plans aux mêmes réglages ne changent
     rien à ce service.
 
-    Un plan de développement garde les clés du lot 1, à l'identique : un
-    état déjà écrit reste « rien à changer ». La production y ajoute les
+    Un plan de développement garde les clés d'avant le mode production, à
+    l'identique : un état de développement déjà écrit reste « rien à
+    changer ». La production y ajoute les
     noms, la source du certificat (`acme`, `dns_plugin`, `email`) et
     `nginx` en booléen : un nginx que l'outil a installé existe à la
     relance, « install » et « existing » y reviennent au même. Le fichier
@@ -2248,8 +2249,8 @@ def state_answers(state):
     pour un état absent, d'une autre version ou sans service. Le
     certificat, la clé et le fichier d'identifiants DNS n'y sont pas :
     l'état ne garde que l'empreinte du certificat. Un état sans « mode »
-    (lot 1) est de développement ; un nginx consigné se relit
-    « existing »."""
+    (écrit avant le mode production) est de développement ; un nginx
+    consigné se relit « existing »."""
     if not isinstance(state, dict) or state.get("version") != STATE_VERSION:
         return None
     services = state.get("services")

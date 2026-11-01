@@ -201,7 +201,7 @@ class LEssaiABlanc(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.maison, ".ssh")))
         self.assertFalse([f for f in self._fichiers() if f.endswith(".crt")])
 
-    def test_the_development_plan_is_the_first_lot(self):
+    def test_the_development_plan_has_its_own_steps(self):
         code, sortie = lancer(self.maison, "--dry-run", "--scenario", "dev")
         self.assertEqual(0, code, sortie)
         self.assertEqual(

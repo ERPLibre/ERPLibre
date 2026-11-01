@@ -3941,7 +3941,7 @@ class TestProduction(unittest.TestCase):
             ci.FIREWALL_LABELS, ci.SERVICES + ("nginx", "certbot")
         )
 
-    def test_lot_1_answers_keep_their_defaults(self):
+    def test_answers_default_to_development(self):
         ans = answers()
         self.assertEqual(ans.mode, "development")
         self.assertIsNone(ans.ntfy_name)
@@ -4490,14 +4490,14 @@ class TestProduction(unittest.TestCase):
         self.assertIs(ntfy["nginx"], True)
         self.assertFalse(ntfy["web"])
 
-    def test_lot_1_state_reads_back_as_development(self):
+    def test_a_state_without_mode_reads_back_as_development(self):
         state = installed_state(answers())
         del state["mode"]
         back = ci.state_answers(state)
         self.assertEqual(back.mode, "development")
         self.assertIsNone(back.ntfy_name)
         self.assertFalse(back.turns_443)
-        # Les réglages d'un état de lot 1 n'ont pas changé de forme.
+        # Les réglages d'un état de développement n'ont pas changé de forme.
         self.assertNotIn(
             "turn_name",
             installed_state(answers())["services"]["coturn"]["settings"],
@@ -4649,7 +4649,7 @@ class TestProductionProbe(unittest.TestCase):
         text = NGINX_PROBE.replace("dns-cloudflare", "manual;rm")
         self.assertIsNone(ci.parse_probe(text).certbot["authenticator"])
 
-    def test_a_lot_1_probe_has_neither(self):
+    def test_a_probe_without_nginx_or_certbot_has_neither(self):
         facts = ci.parse_probe(DEBIAN_PROBE)
         self.assertIsNone(facts.nginx)
         self.assertIsNone(facts.certbot)
