@@ -10661,6 +10661,8 @@ CONTAINER_STUBS["podman"] = CONTAINER_STUBS["docker"]
 # Les installateurs : TURN_*/NTFY_* notés par passage ; celui de coturn,
 # en conteneurs, imprime `@@RECREATE` (FAKE_RECREATE_<n>, sinon
 # FAKE_RECREATE, sinon 1) et pose alors l'empreinte en attente.
+# FAKE_TOUCH_<étiquette>_<n> : fichiers de la racine que ce passage
+# modifie, comme un service qui écrit dans sa base.
 STUB_BASH_CONTAINER = r"""#!/bin/sh
 name=$(basename "$1" .sh)
 tag=$name${NGINX_STAGE:+-$NGINX_STAGE}
@@ -10680,6 +10682,8 @@ if [ "$name" = install_coturn ] && [ "${TURN_TARGET:-}" = container ]; then
   echo "@@CONFIGURED coturn"
 fi
 v=$(echo "$tag" | tr -- '-.' '__')
+eval "touched=\${FAKE_TOUCH_${v}_$n:-}"
+for f in $touched; do printf changed >> "$ROOT$f"; done
 eval "exit \${RC_$v:-0}"
 """
 FAKE_IDS = "erplibre-coturn:997 ntfy:996 erplibre-call:995 turnserver:998"
@@ -11338,6 +11342,10 @@ class TestMigrationRun(ContainerSandbox):
         with sqlite3.connect(self.path(ci.COTURN_DB)) as db:
             return sorted(db.execute("SELECT realm, value FROM turn_secret"))
 
+    def read_bytes(self, host_path):
+        with open(self.path(host_path), "rb") as handle:
+            return handle.read()
+
     def user_db(self):
         with open(self.path(ci.NTFY_AUTH_FILE), "rb") as handle:
             return handle.read()
@@ -11372,7 +11380,8 @@ class TestMigrationRun(ContainerSandbox):
         )
         self.assertEqual(plan.migration, "to_packages")
         self.assertEqual(plan.odoo_readd, ())
-        before = self.prepare(facts.state)
+        cert = (ans.cert_pem, ans.key_pem) if ans.cert_pem else None
+        before = self.prepare(facts.state, cert)
         write(
             os.path.join(self.fk, "passwd"),
             "erplibre-coturn:x:997:997::/nonexistent:/usr/sbin/nologin\n"
@@ -11560,6 +11569,38 @@ class TestMigrationRun(ContainerSandbox):
             ),
             ci.marker_lines(done.stdout),
         )
+
+    def test_rollback_restores_a_turndb_the_container_side_changed(self):
+        plan, _before = self.to_container(ntfy_adopted=True)
+        turndb = self.read_bytes(ci.COTURN_DB)
+        done = self.run_script(
+            plan,
+            FAKE_STATUS_coturn="exited",
+            FAKE_TOUCH_install_coturn_0=ci.COTURN_DB,
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual(self.read_bytes(ci.COTURN_DB), turndb)
+        self.assertIn(
+            (
+                "RESTORED",
+                f"{ci.COTURN_DB} {ci.MIGRATION_BACKUP_DIR}/{STAMP}/turndb",
+            ),
+            ci.marker_lines(done.stdout),
+        )
+
+    def test_rollback_gives_an_adopted_ntfy_its_tls_back(self):
+        # Le conteneur avait la clé de ntfy à son groupe : le ntfy adopté,
+        # relancé, la relit sous le sien.
+        plan, _before = self.to_container(supplied(), ntfy_adopted=True)
+        done = self.run_script(plan, FAKE_STATUS_coturn="exited")
+        self.assertNotEqual(done.returncode, 0)
+        argv = self.argv()
+        enable = argv.index("systemctl as=root xdg= enable --now ntfy")
+        for path in (ci.NTFY_TLS_DIR, ci.NTFY_TLS_DIR + "/ntfy.key"):
+            chown = argv.index(
+                f"chown as=root xdg= root:ntfy {self.path(path)}"
+            )
+            self.assertLess(chown, enable)
 
     def test_arch_rollback_reinstalls_the_purged_coturn(self):
         # pacman refuse coturn tant que sa configuration existe sans paquet
@@ -11759,6 +11800,52 @@ esac
         self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
         self.assertEqual(self.secrets(), secrets)
         self.assertEqual(self.user_db(), USER_DB)
+
+    def test_failing_reverse_gate_restores_databases_and_ownership(self):
+        # Les installateurs par paquets ont écrit dans les bases et donné
+        # configuration et clés à leurs comptes : le retour en arrière remet
+        # les bases de leur copie et rend au groupe des conteneurs les
+        # fichiers qu'ils lisent, avant de les relancer.
+        plan, _before = self.to_packages(
+            container_answers(
+                tls="supplied", cert_pem=TURN_CERT, key_pem=TURN_KEY
+            )
+        )
+        turndb = self.read_bytes(ci.COTURN_DB)
+        done = self.run_script(
+            plan,
+            ACTIVE_coturn="failed",
+            FAKE_TOUCH_install_coturn_0=ci.COTURN_DB,
+            FAKE_TOUCH_install_ntfy_0=ci.NTFY_AUTH_FILE,
+        )
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(markers[-2], ("MIGRATION", "rolled-back"))
+        backup = f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}"
+        self.assertIn(("RESTORED", f"{ci.COTURN_DB} {backup}/turndb"), markers)
+        self.assertIn(
+            ("RESTORED", f"{ci.NTFY_AUTH_FILE} {backup}/user.db"), markers
+        )
+        self.assertEqual(self.read_bytes(ci.COTURN_DB), turndb)
+        self.assertEqual(self.user_db(), USER_DB)
+        argv = self.argv()
+        stop = argv.index("systemctl as=root xdg= disable --now coturn")
+        up = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d"
+        )
+        for gid, path in (
+            (997, "/etc/turnserver.conf"),
+            (997, ci.COTURN_TLS_DIR),
+            (997, ci.COTURN_TLS_DIR + "/turn.crt"),
+            (997, ci.COTURN_TLS_DIR + "/turn.key"),
+            (996, ci.NTFY_TLS_DIR),
+            (996, ci.NTFY_TLS_DIR + "/ntfy.key"),
+        ):
+            self.assertIn(
+                f"chown as=root xdg= root:{gid} {self.path(path)}",
+                argv[stop:up],
+            )
 
     def test_rootless_reverse_removes_images_under_its_account(self):
         plan, _before = self.to_packages(
