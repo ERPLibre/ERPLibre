@@ -4425,8 +4425,8 @@ TRANSLATIONS = {
         "en": "The erplibre_turn module is not on this database's addons path. For temporary credentials and TURN over TLS: add ERPLibre_erplibre_addons to Odoo's addons path, restart Odoo, update the apps list, then run the add again. Without it, the add sets a fixed account.",
     },
     "call_infra_ice_over_5": {
-        "fr": "{count} serveurs ICE au total : Odoo n'en envoie que cinq au navigateur, les autres sont ignorés. Retirez des lignes mail.ice.server écrites à la main pour garder celles de l'outil.",
-        "en": "{count} ICE servers in all: Odoo sends only five to the browser, the others are ignored. Remove hand-written mail.ice.server rows to keep the tool's.",
+        "fr": "{count} serveurs ICE au total : Odoo n'en envoie que cinq au navigateur. Avec le module erplibre_turn, ses entrées passent toujours en premier et les lignes mail.ice.server écrites à la main au-delà de la cinquième entrée sont écartées. Sans lui, les entrées au-delà de la cinquième sont ignorées : retirez des lignes écrites à la main pour garder celles de l'outil.",
+        "en": "{count} ICE servers in all: Odoo sends only five to the browser. With the erplibre_turn module, its entries always come first and the hand-written mail.ice.server rows past the fifth entry are dropped. Without it, the entries past the fifth are ignored: remove hand-written rows to keep the tool's.",
     },
     "call_infra_odoo_no_coturn": {
         "fr": "Cet hôte ne porte aucun coturn installé par l'outil : installez d'abord l'infrastructure d'appel avec coturn, puis ajoutez le serveur Odoo. Rien n'est touché.",

@@ -8903,6 +8903,17 @@ class TestOdooPlan(OdooSandbox):
         held = {r.get("credential") for r in link.rows} - {None}
         self.assertEqual(held, {PASSWORD_1})
 
+    def test_ice_over_five_names_what_the_module_keeps(self):
+        """Avec le module, ses entrées passent toujours en premier et ce
+        sont les lignes écrites à la main qui sont écartées : le texte le
+        dit, sans quoi il conseillerait d'en retirer pour rien."""
+        from script.todo import todo_i18n
+
+        text = todo_i18n.TRANSLATIONS["call_infra_ice_over_5"]
+        for lang in ("fr", "en"):
+            self.assertIn("erplibre_turn", text[lang], lang)
+            self.assertIn("{count}", text[lang], lang)
+
     def test_an_interrupted_write_whose_rollback_fails_says_so(self):
         """Ctrl-C pendant l'écriture, puis un retour arrière en échec :
         l'identifiant reste valide sur coturn, le refus le dit plutôt que
