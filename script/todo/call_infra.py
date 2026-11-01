@@ -156,6 +156,9 @@ RENEWAL_FILE = "/etc/letsencrypt/renewal/erplibre-call.conf"
 RENEWAL_HOLD = RENEWAL_FILE + ".erplibre-hold"
 HOOK_PATH = "/etc/letsencrypt/renewal-hooks/deploy/erplibre-call"
 DNS_DIR = "/etc/erplibre-call/dns"
+# Nom du minuteur du paquet qu'install_certbot.sh a activé (TIMER_RECORD) :
+# la sonde le lit pour qu'une fiche de passage coupé consigne ce minuteur.
+CERTBOT_TIMER_RECORD = "/etc/erplibre-call/certbot-timer.added"
 # Certificat fourni en production : nginx le lit en root depuis ces copies,
 # coturn reçoit les siennes (turn.crt, turn.key) par son installateur.
 SITE_CERT = "/etc/erplibre-call/tls/site.crt"
@@ -440,7 +443,9 @@ def probe_script(root=""):
     <greffon>` par greffon DNS installé, `@@LINEAGE erplibre-call
     <noms...>` (lu par `certbot certificates`, qui n'écrit que son
     journal), `@@HELD erplibre-call` quand son fichier de renouvellement est
-    mis de côté, puis `@@END` : sans lui, la sortie est tronquée.
+    mis de côté, `@@TIMER_ADDED <unité>` par minuteur que l'outil a activé
+    ou posé (`_certbot_probe_lines`), puis `@@END` : sans lui, la sortie
+    est tronquée.
     """
     files = " ".join(
         [
@@ -598,8 +603,12 @@ def _certbot_probe_lines():
     """Lignes de la sonde pour certbot : version, greffons DNS installés
     (dpkg ou pacman), noms de la lignée de l'outil, fichier mis de côté,
     authentificateur de son fichier de renouvellement (l'actif, sinon celui
-    mis de côté)."""
+    mis de côté), minuteur ajouté par l'outil : la première ligne de
+    CERTBOT_TIMER_RECORD, puis CERTBOT_OWN_TIMER quand l'une de ses unités
+    porte MARKER en tête. `parse_probe` ne garde qu'un nom de
+    CERTBOT_TIMERS."""
     renewal = f'"$R{RENEWAL_FILE}"'
+    own = " ".join(_host(path) for path in _CERTBOT_OWN_UNITS)
     return [
         "CV=absent",
         "command -v certbot >/dev/null 2>&1"
@@ -627,6 +636,14 @@ def _certbot_probe_lines():
         "  sed -n 's/^[[:space:]]*authenticator[[:space:]]*=[[:space:]]*/"
         f'@@AUTHENTICATOR {CERT_NAME} /p\' "$RF" | head -n 1',
         "fi",
+        f"TR={_host(CERTBOT_TIMER_RECORD)}",
+        'if [ -f "$TR" ]; then echo "@@TIMER_ADDED $(head -n 1 "$TR")"; fi',
+        f"for f in {own}; do",
+        f'  if [ -f "$f" ] && [ "$(head -n 1 "$f")" = {shlex.quote(MARKER)} ];'
+        " then",
+        f'    echo "@@TIMER_ADDED {CERTBOT_OWN_TIMER}"; break',
+        "  fi",
+        "done",
     ]
 
 
@@ -722,6 +739,7 @@ def parse_probe(output):
     coturn_marker, ntfy_marker, complete, enabled = [], [], False, {}
     nginx_marker, nginx_names, plugins, nginx_enabled = [], [], [], None
     certbot_version, lineage, held, authenticator = None, None, False, None
+    timer_added = None
     for name, value in marker_lines(output):
         if name == "OS":
             parts = value.split()
@@ -791,6 +809,10 @@ def parse_probe(output):
                 and _AUTHENTICATOR.match(parts[1])
             ):
                 authenticator = parts[1]
+        elif name == "TIMER_ADDED":
+            unit = value.strip()
+            if timer_added is None and unit in CERTBOT_TIMERS:
+                timer_added = unit
         elif name == "FIREWALL":
             kind = value.strip()
             firewall = kind if kind in FIREWALLS else "unknown"
@@ -853,6 +875,7 @@ def parse_probe(output):
             held,
             plugins,
             authenticator,
+            timer_added,
             pending.get("certbot"),
         ),
     )
@@ -876,9 +899,13 @@ def _nginx_facts(marker, names, enabled, pending):
     }
 
 
-def _certbot_facts(version, lineage, held, plugins, authenticator, pending):
+def _certbot_facts(
+    version, lineage, held, plugins, authenticator, timer_added, pending
+):
     """`HostFacts.certbot` des lignes `@@CERTBOT*`, `@@LINEAGE`, `@@HELD`,
-    `@@AUTHENTICATOR` (None quand il manque ou n'est pas reconnu)."""
+    `@@AUTHENTICATOR` (None quand il manque ou n'est pas reconnu) et
+    `@@TIMER_ADDED` (`timer_added` : un minuteur de CERTBOT_TIMERS, ou
+    None)."""
     present = version not in (None, "absent")
     if not present and lineage is None and not held and pending is None:
         return None
@@ -888,6 +915,7 @@ def _certbot_facts(version, lineage, held, plugins, authenticator, pending):
         "held": held,
         "plugins": tuple(plugins),
         "authenticator": authenticator,
+        "timer_added": timer_added,
         "pending": pending,
     }
 
@@ -1872,12 +1900,20 @@ def _include_diff():
     )
 
 
+def _added_timer(found):
+    """Fiche de minuteur `{unit, added: True}` du minuteur que la sonde dit
+    ajouté par l'outil (`timer_added` de `HostFacts.certbot`), None sans."""
+    unit = (found or {}).get("timer_added")
+    return {"unit": unit, "added": True} if unit in CERTBOT_TIMERS else None
+
+
 def _certbot_record(facts, answers, prior):
     """Fiche « certbot » de l'état : origine du paquet, paquets de greffons
     DNS que l'outil a installés (union des passages, ceux de la fiche d'un
-    passage coupé compris), minuteur de
-    renouvellement (`installed_state` le lit dans `@@CERTBOT_TIMER`),
-    lignée, identifiants DNS posés."""
+    passage coupé compris), minuteur de renouvellement (celui de l'état,
+    sinon celui que la sonde dit ajouté par l'outil ; `installed_state` le
+    remplace par celui de `@@CERTBOT_TIMER`), lignée, identifiants DNS
+    posés."""
     record = prior.get("certbot")
     record = record if isinstance(record, dict) else {}
     found = facts.certbot or {}
@@ -1899,7 +1935,7 @@ def _certbot_record(facts, answers, prior):
     return {
         "installed_by_tool": tool,
         "plugins_installed": plugins,
-        "timer": timer if _timer_record(timer) else None,
+        "timer": timer if _timer_record(timer) else _added_timer(found),
         "cert_name": CERT_NAME,
         "lineage": LINEAGE_DIR,
         "renewal": RENEWAL_FILE,
@@ -1917,7 +1953,10 @@ def _carry_fiches(new_state, facts, answers):
     cela, ce que ce passage a posé (paquets, greffons, site de l'étape
     acme, crochet) ne serait jamais défait. Une fiche absente de l'état
     devient une fiche minimale, aux chemins de l'outil ; une fiche déjà
-    dans l'état n'y gagne que les greffons de celle du passage coupé."""
+    dans l'état n'y gagne que les greffons de celle du passage coupé et,
+    quand elle n'en consigne aucun, le minuteur. Ce minuteur est celui que
+    la sonde dit ajouté par l'outil (`_added_timer`) : la désinstallation
+    l'arrête, et retire les unités propres de l'outil."""
     nginx_found, certbot_found = facts.nginx or {}, facts.certbot or {}
     pending = nginx_found.get("pending")
     if (
@@ -1982,7 +2021,10 @@ def _carry_fiches(new_state, facts, answers):
     for p in listed if isinstance(listed, list) else ():
         if p in _DNS_PLUGIN_PACKAGES and p not in plugins:
             plugins.append(p)
-    new_state["certbot"] = dict(record, plugins_installed=plugins)
+    timer = record.get("timer")
+    if not _timer_record(timer):
+        timer = _added_timer(certbot_found)
+    new_state["certbot"] = dict(record, plugins_installed=plugins, timer=timer)
 
 
 def _lineage_unchanged(facts, answers, prior):
