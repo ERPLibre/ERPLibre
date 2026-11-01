@@ -501,12 +501,21 @@ EOF
 # Mode secret : retire le compte de controle long terme, de tout realm, que
 # use-auth-secret refuserait de toute facon. Les secrets de turn_secret
 # restent : l'appelant y pose le secret de controle et celui de chaque base
-# Odoo. Meme schema, meme compte de service qu'ensure_check_user.
+# Odoo. Ceux d'un autre realm passent a TURN_REALM, comme ensure_check_user
+# repose le compte de controle : apres un changement de nom public, coturn
+# ne lit que les secrets du nouveau realm, et le secret de controle reste
+# sinon sous l'ancien, hors d'atteinte. Un secret deja present sous
+# TURN_REALM garde sa ligne, le doublon part. Meme schema, meme compte de
+# service qu'ensure_check_user.
 remove_check_user() {
     runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF
 .timeout 5000
 $(schema_sql)
+BEGIN;
 DELETE FROM turnusers_lt WHERE name='${CHECK_USER}';
+UPDATE OR IGNORE turn_secret SET realm='${TURN_REALM}' WHERE realm<>'${TURN_REALM}';
+DELETE FROM turn_secret WHERE realm<>'${TURN_REALM}';
+COMMIT;
 EOF
     log "Mode secret : compte de controle ${CHECK_USER} retire de ${DB_FILE}."
 }

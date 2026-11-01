@@ -2282,9 +2282,10 @@ def plan_install(facts, answers, now):
 def _odoo_readd(prior, answers):
     """Clés des serveurs Odoo de `prior` dont les URL de TURN changent avec
     `answers`, triées. Le nom public est le realm de coturn : il entre dans
-    la clé de chaque compte fixe et dans chaque ligne de `turn_secret`,
-    rien ne se migre, et le changer avec des Odoo branchés est refusé
-    (`call_infra_odoo_realm`). Un compte fixe ne reçoit pas de `turns:` :
+    la clé de chaque compte fixe, qui ne se migre pas, et dans l'URL de
+    chaque Odoo ; le changer avec des Odoo branchés est refusé
+    (`call_infra_odoo_realm`). L'installeur passe les lignes de
+    `turn_secret` au nouveau realm (`remove_check_user`). Un compte fixe ne reçoit pas de `turns:` :
     un changement de TLS ne concerne que les Odoo du module."""
     odoos = _odoos(prior)
     before = state_answers(prior) if odoos else None
