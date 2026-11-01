@@ -286,6 +286,23 @@ endif
 repo_configure_all:
 	./script/manifest/update_manifest_local_dev.sh $(if $(filter 1,$(FREEZE)),--freeze,)
 
+# bring every repo back to the revision of the local manifest, without
+# regenerating it (TODO › Execute › Git › Repo › Synchronize)
+.PHONY: repo_sync
+repo_sync:
+	.venv.erplibre/bin/repo sync -c -j$$(nproc)
+
+# pull every repo: dry run, questions (mode, strategy, deepen, clone), then
+# the pass pinned to the dry run (TODO › Execute › Git › Repo › Pull)
+.PHONY: repo_pull
+repo_pull:
+	.venv.erplibre/bin/python -c "from script.todo.todo import TODO; TODO()._git_repo_tirer()"
+
+# what a pull would do, without question nor move: fetch only
+.PHONY: repo_pull_dry_run
+repo_pull_dry_run:
+	.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --mode manifeste
+
 # write the SHA of every cloned repo of the active Odoo version into its
 # manifest/ file (git_manifest_odoo<V>.xml, _dev, extra) as freeze-revision
 # (UPSTREAM=1: also fork-upstream-freeze-revision, the upstream commit each
