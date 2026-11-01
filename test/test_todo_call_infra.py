@@ -313,6 +313,8 @@ class MenuCase(unittest.TestCase):
         # ne résout pas. Aucune requête DNS ne part des tests.
         self.dns = {}
         self.prompts = []
+        # Les invites passées à getpass(), saisie sans écho.
+        self.hidden = []
         # Le lien vers Odoo que rend la fabrique doublure, et les
         # arguments de chaque construction.
         self.link = None
@@ -333,6 +335,10 @@ class MenuCase(unittest.TestCase):
     def reply(self, pending, prompt=""):
         self.prompts.append(prompt)
         return pending.pop(0)
+
+    def reply_hidden(self, pending, prompt=""):
+        self.hidden.append(prompt)
+        return self.reply(pending, prompt)
 
     def drive(self, method, host, replies, lines=None):
         """Lance `method` avec `replies` pour input() ; rend la sortie.
@@ -359,7 +365,7 @@ class MenuCase(unittest.TestCase):
             stack.enter_context(
                 mock.patch(
                     "getpass.getpass",
-                    side_effect=lambda *a: self.reply(pending, *a),
+                    side_effect=lambda *a: self.reply_hidden(pending, *a),
                 )
             )
             stack.enter_context(
@@ -2002,6 +2008,10 @@ class TestCheckOdoo(OdooCase):
         self.assertNotIn(self.ICE[0]["credential"], out)
         # La notice vient avant la question, qui vient après le rapport.
         self.assertIn(t("call_infra_ask_check_odoo"), self.prompts[1])
+        # Le mot de passe de l'utilisateur se tape sans écho.
+        self.assertEqual(
+            self.hidden, [f"{t('call_infra_ask_odoo_user_password')}: "]
+        )
 
     def test_declined_joins_nothing(self):
         host = FakeHost(state=plugged_state())
