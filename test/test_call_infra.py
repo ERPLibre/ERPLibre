@@ -272,6 +272,39 @@ class TestParseProbe(unittest.TestCase):
         self.assertEqual(facts.ntfy["pending"], pending)
         self.assertEqual(facts.state, state)
 
+    def test_engine_facts(self):
+        text = DEBIAN_PROBE.replace(
+            "@@END\n",
+            "@@ENGINE docker 26.1.5\n"
+            "@@ENGINE podman 5.4.2\n"
+            "@@COMPOSE docker docker compose\n"
+            "@@COMPOSE podman podman-compose\n"
+            "@@UNPRIV_PORT 1024\n"
+            "@@ACCOUNT turnserver 998 998\n"
+            "@@ACCOUNT ntfy 997 997\n"
+            "@@SQLITE 1\n"
+            "@@END\n",
+        )
+        engines = ci.parse_probe(text).engines
+        self.assertIsInstance(engines, ci.cc.EngineFacts)
+        self.assertEqual(
+            engines.engines, {"docker": "26.1.5", "podman": "5.4.2"}
+        )
+        self.assertEqual(
+            engines.compose,
+            {"docker": ("docker", "compose"), "podman": ("podman-compose",)},
+        )
+        self.assertEqual(engines.unpriv_port_start, 1024)
+        self.assertEqual(
+            engines.accounts, {"turnserver": (998, 998), "ntfy": (997, 997)}
+        )
+        self.assertTrue(engines.sqlite3)
+
+    def test_no_engine_section_leaves_engines_unknown(self):
+        # Une sortie sans aucune ligne de moteur (sonde d'un outil plus
+        # ancien) ne passe pas pour un hôte sans moteur.
+        self.assertIsNone(ci.parse_probe(DEBIAN_PROBE).engines)
+
     def test_truncated_output_is_refused(self):
         with self.assertRaises(ci.Refusal) as caught:
             ci.parse_probe(DEBIAN_PROBE.replace("@@END\n", ""))
@@ -320,6 +353,38 @@ COTURN_UNIT = (
 )
 
 
+def engine_probe_stubs(stubs):
+    """Bouchons de chaque commande de la section des moteurs : rien de réel
+    n'est joignable même quand l'hôte des tests porte un vrai `docker`.
+    Chacun note son argv dans `$ENGINE_LOG` ; `timeout` lance le reste."""
+    note = '#!/bin/sh\nprintf "%s\\n" "${0##*/} $*" >> "$ENGINE_LOG"\n'
+    scripts = {
+        "docker": note + '[ "$1" = --version ] && echo "Docker version'
+        ' 26.1.5, build x"\n[ "$1 $2" = "compose version" ]\n',
+        "podman": note + '[ "$1" = --version ] && echo "podman version'
+        ' 5.4.2"\n',
+        "timeout": note + 'shift\nexec "$@"\n',
+        "getent": note + "exit 2\n",
+        "sqlite3": note,
+        "ntfy": note + "exit 1\n",
+        "newuidmap": note,
+    }
+    for name in (
+        "podman-compose",
+        "docker-compose",
+        "runuser",
+        "loginctl",
+        "useradd",
+        "usermod",
+        "userdel",
+        "apt-get",
+        "pacman",
+    ):
+        scripts[name] = note + "exit 99\n"
+    for name, text in scripts.items():
+        write(os.path.join(stubs, name), text)
+
+
 class TestProbeScript(unittest.TestCase):
     """La sonde jouée pour de vrai, racine et commandes en bouchons."""
 
@@ -327,6 +392,7 @@ class TestProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = os.path.join(tmp, "root")
             stubs = os.path.join(tmp, "stubs")
+            log = os.path.join(tmp, "engine.log")
             write(
                 os.path.join(root, "etc/os-release"),
                 'ID=debian\nVERSION_ID="13"\nNAME="Debian"\n',
@@ -377,8 +443,12 @@ class TestProbeScript(unittest.TestCase):
             )
             for name in ("nft", "iptables"):
                 write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
+            engine_probe_stubs(stubs)
             env = dict(
-                os.environ, PATH=stubs + ":" + os.environ["PATH"], **FRENCH
+                os.environ,
+                PATH=stubs + ":" + os.environ["PATH"],
+                ENGINE_LOG=log,
+                **FRENCH,
             )
             done = subprocess.run(
                 ["sh", "-c", ci.probe_script(root=root)],
@@ -387,7 +457,32 @@ class TestProbeScript(unittest.TestCase):
                 env=env,
                 timeout=30,
             )
+            calls = []
+            if os.path.exists(log):
+                with open(log) as handle:
+                    calls = handle.read().splitlines()
+            self.engine_calls = calls
             return done
+
+    def test_probe_reads_the_engines_without_touching_them(self):
+        done = self.run_probe()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue(done.stdout.rstrip().endswith("@@END"))
+        engines = ci.parse_probe(done.stdout).engines
+        self.assertEqual(
+            engines.engines, {"docker": "26.1.5", "podman": "5.4.2"}
+        )
+        self.assertEqual(
+            engines.compose,
+            {"docker": ("docker", "compose"), "podman": ("podman-compose",)},
+        )
+        self.assertEqual(engines.unpriv_port_start, 1024)
+        self.assertTrue(engines.sqlite3)
+        self.assertTrue(self.engine_calls)
+        for call in self.engine_calls:
+            words = call.split()
+            for forbidden in ("pull", "run", "rm", "rmi", "up", "exec"):
+                self.assertNotIn(forbidden, words[1:], call)
 
     def test_probe_reads_the_host(self):
         state = {"version": 1, "services": {}}
@@ -9704,6 +9799,7 @@ class TestCheckThroughOdoo(unittest.TestCase):
 
 class TestStdlibOnly(unittest.TestCase):
     ALLOWED_SIBLINGS = {
+        "script.todo.call_infra_container",
         "script.todo.ntfy_mobile",
         "script.todo.odoo_link",
         "script.todo.turn_client",
