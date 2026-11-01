@@ -17,14 +17,15 @@ import ast
 import base64
 import copy
 import dataclasses
-import hashlib
 import datetime
+import hashlib
 import http.server
 import json
 import os
 import re
 import shlex
 import shutil
+import sqlite3
 import ssl
 import stat
 import subprocess
@@ -35,6 +36,7 @@ import unittest
 
 from script.todo import call_infra as ci
 from script.todo import ntfy_mobile as nm
+from script.todo import odoo_link as ol
 from script.todo import turn_client as tc
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -909,14 +911,14 @@ class TestCoturnConfig(unittest.TestCase):
             with open(conf) as handle:
                 return handle.read()
 
-    def env(self, ans, cert):
+    def env(self, ans, cert, auth="fixed"):
         # coturn_config décrit un plan de développement : les plages
         # privées y restent permises, l'installateur reçoit
         # TURN_ALLOW_PRIVATE=1.
         return (
             "TURN_REALM=%s\nTURN_PORT=%d\nTURN_TLS_PORT=%d\nTURN_MIN_PORT=%d\n"
             "TURN_MAX_PORT=%d\nTURN_CERT_FILE=%s\nTURN_KEY_FILE=%s\n"
-            "TURN_EXTERNAL_IP=%s\nTURN_ALLOW_PRIVATE=1\n"
+            "TURN_EXTERNAL_IP=%s\nTURN_ALLOW_PRIVATE=1\nTURN_AUTH=%s\n"
             % (
                 ans.public_name,
                 ans.turn_port,
@@ -926,6 +928,7 @@ class TestCoturnConfig(unittest.TestCase):
                 "/x.crt" if cert else "",
                 "/x.key" if cert else "",
                 ans.external_ip or "",
+                auth,
             )
         )
 
@@ -940,6 +943,27 @@ class TestCoturnConfig(unittest.TestCase):
         self.assertEqual(
             ci.coturn_config(ans), self.installer_config(self.env(ans, True))
         )
+
+    def test_parity_in_both_modes(self):
+        """Le mode de l'état choisit la ligne d'identification, des deux
+        côtés : use-auth-secret en mode secret, lt-cred-mech sinon."""
+        for ans, cert in ((answers(), False), (supplied(), True)):
+            for mode, auth in (
+                (None, "fixed"),
+                ("fixed", "fixed"),
+                ("secret", "secret"),
+            ):
+                with self.subTest(tls=ans.tls, mode=mode):
+                    text = ci.coturn_config(ans, mode)
+                    self.assertEqual(
+                        text,
+                        self.installer_config(self.env(ans, cert, auth)),
+                    )
+                    lines = text.splitlines()
+                    self.assertEqual(
+                        "use-auth-secret" in lines, mode == "secret"
+                    )
+                    self.assertEqual("lt-cred-mech" in lines, mode != "secret")
 
 
 class TestNtfyConfig(unittest.TestCase):
@@ -4160,7 +4184,7 @@ class TestProduction(unittest.TestCase):
         env = (
             "TURN_REALM=%s\nTURN_PORT=%d\nTURN_TLS_PORT=%d\nTURN_MIN_PORT=%d\n"
             "TURN_MAX_PORT=%d\nTURN_CERT_FILE=/x.crt\nTURN_KEY_FILE=/x.key\n"
-            "TURN_EXTERNAL_IP=%s\nTURN_ALLOW_PRIVATE=\n"
+            "TURN_EXTERNAL_IP=%s\nTURN_ALLOW_PRIVATE=\nTURN_AUTH=fixed\n"
             % (
                 ans.public_name,
                 ans.turn_port,
@@ -4194,6 +4218,7 @@ class TestProduction(unittest.TestCase):
             "TURN_REALM=%s\nTURN_PORT=%d\nTURN_TLS_PORT=%d\nTURN_MIN_PORT=%d\n"
             "TURN_MAX_PORT=%d\nTURN_CERT_FILE=/x.crt\nTURN_KEY_FILE=/x.key\n"
             "TURN_EXTERNAL_IP=\nTURN_ALLOW_PRIVATE=\nTURN_ALT_TLS_PORT=443\n"
+            "TURN_AUTH=fixed\n"
             % (ans.public_name, ans.turn_port, ans.turns_port, lo, hi)
         ) + installer_ranges_block()
         self.assertEqual(
@@ -7309,8 +7334,1057 @@ class TestProductionUninstall(UninstallSandbox):
             ci.uninstall_script(state, False, STAMP)
 
 
+STUB_ODOO_SQLITE = r"""#!%(python)s
+import os
+import sqlite3
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["STUB_LOG"], "a") as log:
+    log.write("sqlite3 " + " ".join(args) + "\n")
+readonly = "-readonly" in args
+rest, i = [], 0
+while i < len(args):
+    if args[i] == "-init":
+        i += 2
+        continue
+    if args[i].startswith("-"):
+        i += 1
+        continue
+    rest.append(args[i])
+    i += 1
+base = rest[0]
+if readonly:
+    if not os.path.exists(base):
+        sys.exit("unable to open database file")
+    con = sqlite3.connect("file:%%s?mode=ro" %% base, uri=True)
+    for row in con.execute(rest[1]):
+        print("|".join(str(c) for c in row))
+    sys.exit(0)
+sql = "\n".join(
+    line for line in sys.stdin.read().splitlines() if not line.startswith(".")
+)
+fail = os.environ.get("SQLITE_FAIL_ON")
+if fail and fail in sql:
+    sys.exit("stub: refused")
+con = sqlite3.connect(base, isolation_level=None)
+try:
+    con.executescript(sql)
+except sqlite3.Error as error:
+    sys.exit(str(error))
+"""
+STUB_ODOO_RUNUSER = (
+    '#!/bin/sh\necho "runuser $*" >> "$STUB_LOG"\n'
+    'while [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"\n'
+)
+STUB_ODOO_SYSTEMCTL = r"""#!/bin/sh
+echo "systemctl $*" >> "$STUB_LOG"
+case "$1" in
+  show) echo "${UNIT_USER:-turnserver}" ;;
+  is-active) eval "v=\${ACTIVE_$2:-active}"; echo "$v"; [ "$v" = active ] ;;
+  restart) eval "exit \${RC_RESTART_$2:-0}" ;;
+esac
+"""
+STUB_ODOO_BASH = r"""#!/bin/sh
+name=$(basename "$1" .sh)
+echo "bash $*" >> "$STUB_LOG"
+env | grep -E '^TURN_' | sort > "$LOG/$name.env"
+if [ -n "${TURN_CERT_FILE:-}" ]; then cat "$TURN_CERT_FILE" > "$LOG/$name.cert"; fi
+echo "@@ACTIVE ${name#install_} active"
+exit "${RC_INSTALLER:-0}"
+"""
+# Commandes relayées vers la vraie : leur argv est noté, pour prouver qu'aucun
+# secret n'y passe.
+RELAYED_COMMANDS = (
+    "base64",
+    "sha256sum",
+    "cut",
+    "cmp",
+    "mv",
+    "cp",
+    "chmod",
+    "gzip",
+    "mkdir",
+    "rm",
+    "cat",
+    "mktemp",
+    "env",
+    "grep",
+    "sort",
+)
+COTURN_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS turnusers_lt ( realm varchar(127) default '',"
+    " name varchar(512), hmackey char(128), PRIMARY KEY (realm,name));"
+    "CREATE TABLE IF NOT EXISTS turn_secret (realm varchar(127) default '',"
+    " value varchar(127), primary key (realm,value));"
+)
+REALM = "turn.exemple.test"
+# Valeurs inventées, de la forme de `secrets.token_urlsafe(32)`.
+SECRET_A = "InventeSecretA_0123456789abcdefghijklmnopq"
+SECRET_B = "InventeSecretB_0123456789abcdefghijklmnopq"
+SECRET_C = "InventeSecretC_0123456789abcdefghijklmnopq"
+CHECK_SECRET = "InventeControle_0123456789abcdefghijklmno"
+PASSWORD_1 = "InventeMotDePasse1_0123456789abcdefghijkl"
+PASSWORD_2 = "InventeMotDePasse2_0123456789abcdefghijkl"
+URL_A, DB_A = "https://erp-a.exemple.test", "base_a"
+URL_B, DB_B = "https://erp-b.exemple.test", "base_b"
+NTFY_YML = (
+    ci.MARKER + '\nbase-url: "http://turn.exemple.test:8080"\n'
+    'visitor-request-limit-exempt-hosts: "203.0.113.50"\n'
+)
+
+
+def sha(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+KEY_A, KEY_B = ol.odoo_key(URL_A, DB_A), ol.odoo_key(URL_B, DB_B)
+USER_A = ol.owned_username(URL_A, DB_A)
+
+
+def secret_entry(value, retired=(), exempt=None):
+    return {
+        "method": "webapi",
+        "module": True,
+        "credential": {"kind": "secret", "value_sha256": sha(value)},
+        "retired": list(retired),
+        "rows": False,
+        "exempt": exempt,
+        "added_at": "2026-10-30T10:00:00+00:00",
+    }
+
+
+def secret_state(ans=None, odoos=None):
+    """L'état d'un coturn déjà passé en mode secret."""
+    state = installed_state(ans)
+    state["turn_mode"] = "secret"
+    state["check_secret_sha256"] = sha(CHECK_SECRET)
+    state["odoos"] = dict(odoos or {})
+    return state
+
+
+class OdooSandbox(unittest.TestCase):
+    """Les scripts des serveurs Odoo joués dans une racine temporaire, avec
+    une vraie base SQLite au schéma de coturn."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.join(self.tmp.name, "root")
+        self.log = os.path.join(self.tmp.name, "log")
+        self.stubs = os.path.join(self.tmp.name, "stubs")
+        self.scratch = os.path.join(self.tmp.name, "scratch")
+        for path in (self.root, self.log, self.scratch):
+            os.makedirs(path)
+        write(
+            os.path.join(self.stubs, "sqlite3"),
+            STUB_ODOO_SQLITE % {"python": sys.executable},
+        )
+        write(os.path.join(self.stubs, "runuser"), STUB_ODOO_RUNUSER)
+        write(os.path.join(self.stubs, "systemctl"), STUB_ODOO_SYSTEMCTL)
+        write(os.path.join(self.stubs, "bash"), STUB_ODOO_BASH)
+        for name in ("chown", "useradd"):
+            write(
+                os.path.join(self.stubs, name),
+                '#!/bin/sh\necho "%s $*" >> "$STUB_LOG"\n' % name,
+            )
+        write(os.path.join(self.stubs, "id"), "#!/bin/sh\nexit 0\n")
+        for name in RELAYED_COMMANDS:
+            real = shutil.which(name)
+            write(
+                os.path.join(self.stubs, name),
+                '#!/bin/sh\necho "%s $*" >> "$STUB_LOG"\nexec %s "$@"\n'
+                % (name, real),
+            )
+        os.makedirs(os.path.dirname(self.db), exist_ok=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def path(self, host_path):
+        return self.root + host_path
+
+    @property
+    def db(self):
+        return self.path(ci.COTURN_DB)
+
+    def seed(self, secrets=(), users=(), check_user=True):
+        con = sqlite3.connect(self.db)
+        con.executescript(COTURN_SCHEMA)
+        if check_user:
+            con.execute(
+                "insert into turnusers_lt values (?, ?, ?)",
+                (REALM, ci.CHECK_USER, "c" * 32),
+            )
+        for value in secrets:
+            con.execute(
+                "insert into turn_secret values (?, ?)", (REALM, value)
+            )
+        for name, key in users:
+            con.execute(
+                "insert into turnusers_lt values (?, ?, ?)", (REALM, name, key)
+            )
+        con.commit()
+        con.close()
+
+    def put(self, host_path, text):
+        full = self.path(host_path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as handle:
+            handle.write(text)
+
+    def put_state(self, state):
+        self.put(ci.STATE_PATH, json.dumps(state))
+
+    def run_script(self, script, **env):
+        full = dict(
+            os.environ,
+            PATH=self.stubs + ":" + os.environ["PATH"],
+            LOG=self.log,
+            STUB_LOG=os.path.join(self.log, "argv"),
+            TMPDIR=self.scratch,
+            SEEN="",
+        )
+        full.update(env)
+        return subprocess.run(
+            ["sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=full,
+            timeout=60,
+            start_new_session=True,
+        )
+
+    def argv(self):
+        path = os.path.join(self.log, "argv")
+        if not os.path.exists(path):
+            return []
+        with open(path) as handle:
+            return handle.read().splitlines()
+
+    def secrets(self):
+        con = sqlite3.connect(self.db)
+        try:
+            return {v for (v,) in con.execute("select value from turn_secret")}
+        finally:
+            con.close()
+
+    def users(self):
+        con = sqlite3.connect(self.db)
+        try:
+            return dict(con.execute("select name, hmackey from turnusers_lt"))
+        finally:
+            con.close()
+
+    def state_on_host(self):
+        with open(self.path(ci.STATE_PATH)) as handle:
+            return json.load(handle)
+
+    def installer_env(self):
+        with open(os.path.join(self.log, "install_coturn.env")) as handle:
+            return dict(
+                line.split("=", 1)
+                for line in handle.read().split("\n")
+                if line
+            )
+
+    def installer_ran(self):
+        return any(a.startswith("bash ") for a in self.argv())
+
+
+class TestTurnMode(unittest.TestCase):
+    def test_first_odoo_sets_the_mode(self):
+        lot1 = installed_state()
+        self.assertEqual(ci.turn_mode_for(lot1, True), "secret")
+        self.assertEqual(ci.turn_mode_for(lot1, False), "fixed")
+
+    def test_the_other_kind_is_refused_with_mode_and_odoos(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.turn_mode_for(state, False)
+        self.assertEqual(caught.exception.key, "call_infra_turn_mode_mismatch")
+        self.assertEqual(caught.exception.values["mode"], "secret")
+        self.assertIn(KEY_A, caught.exception.values["odoos"])
+        self.assertEqual(ci.turn_mode_for(state, True), "secret")
+
+    def test_an_empty_registry_accepts_either_mode(self):
+        """Le dernier Odoo retiré laisse le mode tel quel ; le suivant peut
+        repartir dans l'autre."""
+        state = secret_state(odoos={})
+        self.assertEqual(ci.turn_mode_for(state, False), "fixed")
+        fixed = installed_state()
+        fixed["turn_mode"] = "fixed"
+        self.assertEqual(ci.turn_mode_for(fixed, True), "secret")
+
+    def test_ttl_hours(self):
+        for raw, hours in (
+            (None, 24),
+            (False, 24),
+            ("", 24),
+            ("x", 24),
+            ("48", 48),
+            (0, 1),
+            ("-3", 1),
+            (12, 12),
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(ci.odoo_ttl_hours(raw), hours)
+
+
+class TestIceUrls(unittest.TestCase):
+    def test_with_tls_four_urls_turns_on_the_tls_port(self):
+        state = installed_state(supplied())
+        self.assertEqual(
+            ci.ice_urls(state),
+            [
+                "stun:turn.exemple.test:3478",
+                "turn:turn.exemple.test:3478?transport=udp",
+                "turn:turn.exemple.test:3478?transport=tcp",
+                "turns:turn.exemple.test:5349?transport=tcp",
+            ],
+        )
+
+    def test_without_tls_three_urls(self):
+        urls = ci.ice_urls(installed_state(answers(turn_port=3479)))
+        self.assertEqual(len(urls), 3)
+        self.assertFalse([u for u in urls if u.startswith("turns:")])
+        self.assertIn("turn:turn.exemple.test:3479?transport=tcp", urls)
+
+    def test_ipv6_name_is_bracketed(self):
+        urls = ci.ice_urls(
+            installed_state(answers(public_name="2001:db8::10"))
+        )
+        self.assertEqual(urls[0], "stun:[2001:db8::10]:3478")
+
+    def test_production_turn_name_and_443(self):
+        state = installed_state(supplied())
+        settings = state["services"]["coturn"]["settings"]
+        state["mode"] = "production"
+        settings.update(
+            public_name="exemple.test",
+            turn_name="turn.exemple.test",
+            turns_443=True,
+        )
+        urls = ci.ice_urls(state)
+        self.assertEqual(urls[0], "stun:turn.exemple.test:3478")
+        self.assertEqual(urls[-1], "turns:turn.exemple.test:443?transport=tcp")
+
+    def test_no_coturn_in_the_state(self):
+        state = installed_state(answers(services=frozenset({"ntfy"})))
+        with self.assertRaises(ValueError):
+            ci.ice_urls(state)
+
+
+class TestOdooCredentials(OdooSandbox):
+    """Le côté coturn d'un serveur Odoo branché : son secret ou son compte
+    fixe dans la base de coturn, le registre `odoos` de l'état."""
+
+    def add(
+        self,
+        state,
+        key=KEY_A,
+        kind="secret",
+        value=SECRET_A,
+        user=None,
+        exempt=None,
+        **kw,
+    ):
+        kw.setdefault("check_secret", CHECK_SECRET)
+        return ci.odoo_add_script(
+            state, key, kind, value, user, exempt, NOW, root=self.root, **kw
+        )
+
+    def test_first_module_odoo_switches_a_lot1_coturn_to_secret(self):
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        done = self.run_script(self.add(state))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.installer_env()["TURN_AUTH"], "secret")
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A})
+        host = self.state_on_host()
+        self.assertEqual(host["turn_mode"], "secret")
+        self.assertEqual(host["check_secret_sha256"], sha(CHECK_SECRET))
+        # Le registre n'est écrit qu'une fois Odoo écrit (`odoo_added_state`).
+        self.assertEqual(host.get("odoos", {}), {})
+        lines = done.stdout.splitlines()
+        self.assertIn("@@TURN_MODE secret", lines)
+        self.assertEqual(lines[-1], "@@ODOO_ADDED yes")
+        self.assertEqual(
+            ci.odoo_result(done.stdout),
+            {"ok": True, "failed": None, "turn_mode": "secret"},
+        )
+
+    def test_the_switch_keeps_the_supplied_certificate(self):
+        """Rejouer l'installateur sans certificat retirerait TLS : il
+        reçoit une copie de celui en place."""
+        state = installed_state(supplied())
+        self.seed()
+        self.put(ci.COTURN_TLS_DIR + "/turn.crt", TURN_CERT)
+        self.put(ci.COTURN_TLS_DIR + "/turn.key", TURN_KEY)
+        done = self.run_script(self.add(state))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        env = self.installer_env()
+        self.assertEqual(env["TURN_AUTH"], "secret")
+        self.assertIn("TURN_KEY_FILE", env)
+        with open(os.path.join(self.log, "install_coturn.cert")) as handle:
+            self.assertEqual(handle.read(), TURN_CERT)
+        self.assertNotIn("PRIVATE KEY", self.add(state))
+
+    def test_the_switch_refuses_without_the_certificate_copies(self):
+        state = installed_state(supplied())
+        self.seed()
+        done = self.run_script(self.add(state))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse(self.installer_ran())
+        self.assertEqual(self.secrets(), set())
+        self.assertEqual(ci.odoo_result(done.stdout)["ok"], False)
+
+    def test_the_switch_with_letsencrypt_uses_the_lineage(self):
+        state = installed_state(supplied())
+        state["services"]["coturn"]["settings"]["tls"] = "letsencrypt"
+        self.seed()
+        self.put(ci.LINEAGE_DIR + "/fullchain.pem", TURN_CERT)
+        self.put(ci.LINEAGE_DIR + "/privkey.pem", TURN_KEY)
+        done = self.run_script(self.add(state))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        env = self.installer_env()
+        self.assertTrue(env["TURN_CERT_FILE"].endswith("/fullchain.pem"))
+        self.assertEqual(env["TURN_AUTH"], "secret")
+
+    def test_a_failed_switch_writes_nothing(self):
+        state = installed_state()
+        self.seed()
+        self.put_state(state)
+        done = self.run_script(self.add(state), RC_INSTALLER="1")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("@@FAILED switch", done.stdout)
+        self.assertEqual(self.secrets(), set())
+        self.assertEqual(self.state_on_host(), state)
+
+    def test_second_module_odoo_no_restart(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        script = self.add(state, key=KEY_B, value=SECRET_B)
+        self.assertNotIn("install_coturn", script)
+        self.assertNotIn("restart", script)
+        done = self.run_script(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(self.installer_ran())
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A, SECRET_B})
+        self.assertIn("@@TURN_MODE secret", done.stdout.splitlines())
+        # Ni bascule ni purge : l'état reste celui de l'hôte.
+        self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+
+    def test_module_less_odoo_on_a_secret_coturn_is_refused(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        with self.assertRaises(ci.Refusal) as caught:
+            self.add(
+                state,
+                key=KEY_B,
+                kind="user",
+                value=PASSWORD_1,
+                user=ol.owned_username(URL_B, DB_B),
+            )
+        self.assertEqual(caught.exception.key, "call_infra_turn_mode_mismatch")
+
+    def test_secret_back_to_fixed_when_no_odoo_is_left(self):
+        state = secret_state(odoos={})
+        self.seed(secrets=(CHECK_SECRET, SECRET_C), check_user=False)
+        done = self.run_script(
+            self.add(state, kind="user", value=PASSWORD_1, user=USER_A)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.installer_env()["TURN_AUTH"], "fixed")
+        # Le secret de contrôle part, un secret inconnu de l'état reste.
+        self.assertEqual(self.secrets(), {SECRET_C})
+        host = self.state_on_host()
+        self.assertEqual(host["turn_mode"], "fixed")
+        self.assertNotIn("check_secret_sha256", host)
+        expected = tc.long_term_key(USER_A, REALM, PASSWORD_1).hex()
+        self.assertEqual(self.users()[USER_A], expected)
+        self.assertIn("@@TURN_MODE fixed", done.stdout.splitlines())
+
+    def test_rotation_keeps_the_old_digest_one_lifetime(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        new = ci.odoo_added_state(
+            state, KEY_A, "secret", SECRET_B, None, None, NOW, ttl_hours=6
+        )
+        entry = new["odoos"][KEY_A]
+        self.assertEqual(
+            entry["credential"],
+            {"kind": "secret", "value_sha256": sha(SECRET_B)},
+        )
+        expires = (NOW + datetime.timedelta(hours=6)).isoformat(
+            timespec="seconds"
+        )
+        self.assertEqual(
+            entry["retired"],
+            [{"value_sha256": sha(SECRET_A), "expires_at": expires}],
+        )
+        self.assertNotIn(SECRET_B, json.dumps(new))
+        # La rotation garde les deux secrets dans la base.
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        done = self.run_script(self.add(state, value=SECRET_B))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A, SECRET_B})
+
+    def test_first_add_entry(self):
+        new = ci.odoo_added_state(
+            installed_state(),
+            KEY_A,
+            "secret",
+            SECRET_A,
+            None,
+            None,
+            NOW,
+            check_secret=CHECK_SECRET,
+            method="shell",
+        )
+        self.assertEqual(new["turn_mode"], "secret")
+        self.assertEqual(new["check_secret_sha256"], sha(CHECK_SECRET))
+        entry = new["odoos"][KEY_A]
+        self.assertEqual(entry["method"], "shell")
+        self.assertTrue(entry["module"])
+        self.assertFalse(entry["rows"])
+        self.assertEqual(entry["retired"], [])
+        self.assertIsNone(entry["exempt"])
+        self.assertEqual(entry["added_at"], NOW.isoformat(timespec="seconds"))
+        fixed = ci.odoo_added_state(
+            installed_state(), KEY_A, "user", PASSWORD_1, USER_A, None, NOW
+        )
+        self.assertEqual(fixed["turn_mode"], "fixed")
+        self.assertEqual(
+            fixed["odoos"][KEY_A]["credential"],
+            {"kind": "user", "user": USER_A},
+        )
+        self.assertTrue(fixed["odoos"][KEY_A]["rows"])
+        self.assertNotIn(PASSWORD_1, json.dumps(fixed))
+
+    def expired_state(self):
+        past = (NOW - datetime.timedelta(minutes=1)).isoformat()
+        future = (NOW + datetime.timedelta(hours=1)).isoformat()
+        return secret_state(
+            odoos={
+                KEY_A: secret_entry(
+                    SECRET_A,
+                    retired=[
+                        {"value_sha256": sha(SECRET_B), "expires_at": past},
+                        {"value_sha256": sha(SECRET_C), "expires_at": future},
+                    ],
+                )
+            }
+        )
+
+    def test_an_expired_retired_secret_is_deleted_by_a_later_add(self):
+        state = self.expired_state()
+        self.seed(
+            secrets=(CHECK_SECRET, SECRET_A, SECRET_B, SECRET_C),
+            check_user=False,
+        )
+        other = "InventeSecretD_0123456789abcdefghijklmnopq"
+        done = self.run_script(self.add(state, key=KEY_B, value=other))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            self.secrets(), {CHECK_SECRET, SECRET_A, SECRET_C, other}
+        )
+        retired = self.state_on_host()["odoos"][KEY_A]["retired"]
+        self.assertEqual([r["value_sha256"] for r in retired], [sha(SECRET_C)])
+
+    def test_an_expired_retired_secret_is_deleted_by_a_later_remove(self):
+        state = self.expired_state()
+        state["odoos"][KEY_B] = secret_entry(SECRET_C)
+        self.seed(
+            secrets=(CHECK_SECRET, SECRET_A, SECRET_B, SECRET_C),
+            check_user=False,
+        )
+        done = self.run_script(
+            ci.odoo_remove_script(state, KEY_B, now=NOW, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        # SECRET_C est le secret de B, et un ancien de A encore valide.
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A})
+        host = self.state_on_host()
+        self.assertEqual(list(host["odoos"]), [KEY_A])
+
+    def test_remove_deletes_only_its_own_secret(self):
+        """Deux Odoo sur un coturn, un retiré : l'autre garde son secret,
+        donc ses allocations."""
+        future = (NOW + datetime.timedelta(hours=1)).isoformat()
+        state = secret_state(
+            odoos={
+                KEY_A: secret_entry(
+                    SECRET_A,
+                    retired=[
+                        {"value_sha256": sha(SECRET_C), "expires_at": future}
+                    ],
+                ),
+                KEY_B: secret_entry(SECRET_B),
+            }
+        )
+        self.seed(
+            secrets=(CHECK_SECRET, SECRET_A, SECRET_B, SECRET_C),
+            check_user=False,
+        )
+        done = self.run_script(
+            ci.odoo_remove_script(state, KEY_A, now=NOW, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        # Le retrait ne laisse aucun délai de grâce : l'ancien secret part.
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_B})
+        host = self.state_on_host()
+        self.assertEqual(list(host["odoos"]), [KEY_B])
+        self.assertEqual(host["turn_mode"], "secret")
+        self.assertEqual(done.stdout.splitlines()[-1], "@@ODOO_REMOVED yes")
+
+    def test_the_last_odoo_removed_leaves_the_mode(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        done = self.run_script(
+            ci.odoo_remove_script(state, KEY_A, now=NOW, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        host = self.state_on_host()
+        self.assertEqual(host["odoos"], {})
+        self.assertEqual(host["turn_mode"], "secret")
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+        self.assertFalse(self.installer_ran())
+
+    def test_remove_a_fixed_user(self):
+        state = installed_state()
+        state["turn_mode"] = "fixed"
+        state["odoos"] = {
+            KEY_A: {
+                "method": "webapi",
+                "module": False,
+                "credential": {"kind": "user", "user": USER_A},
+                "retired": [],
+                "rows": True,
+                "exempt": None,
+                "added_at": "2026-10-30T10:00:00+00:00",
+            }
+        }
+        self.seed(users=((USER_A, "d" * 32), ("autre-compte", "e" * 32)))
+        done = self.run_script(
+            ci.odoo_remove_script(state, KEY_A, now=NOW, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(set(self.users()), {ci.CHECK_USER, "autre-compte"})
+
+    def test_secrets_only_in_base64_never_in_argv(self):
+        state = installed_state()
+        self.seed()
+        script = self.add(state)
+        for clear in (SECRET_A, CHECK_SECRET):
+            self.assertNotIn(clear, script)
+            self.assertIn(b64(clear), script)
+        done = self.run_script(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        self.assertTrue([a for a in argv if a.startswith("base64")])
+        for line in argv + [done.stdout, done.stderr]:
+            for clear in (SECRET_A, CHECK_SECRET):
+                self.assertNotIn(clear, line)
+                self.assertNotIn(b64(clear), line)
+        # Le retrait lit les valeurs de la base pour les comparer à leur
+        # empreinte : elles ne passent pas plus dans un argv.
+        removing = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        done = self.run_script(
+            ci.odoo_remove_script(removing, KEY_A, now=NOW, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+        self.assertTrue([a for a in self.argv() if a.startswith("sha256sum")])
+        for line in self.argv() + [done.stdout, done.stderr]:
+            self.assertNotIn(SECRET_A, line)
+
+    def test_fixed_user_hmackey_and_password_never_in_clear(self):
+        state = installed_state()
+        self.seed()
+        script = self.add(state, kind="user", value=PASSWORD_1, user=USER_A)
+        key = tc.long_term_key(USER_A, REALM, PASSWORD_1).hex()
+        self.assertNotIn(PASSWORD_1, script)
+        self.assertNotIn(key, script)
+        self.assertNotIn("install_coturn", script)
+        done = self.run_script(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.users()[USER_A], key)
+        # Le compte de contrôle long terme reste en mode fixe.
+        self.assertIn(ci.CHECK_USER, self.users())
+        for line in self.argv() + [done.stdout]:
+            self.assertNotIn(key, line)
+        self.assertIn("@@TURN_MODE fixed", done.stdout.splitlines())
+
+    def test_fixed_rotation_rolled_back_restores_the_old_key(self):
+        state = installed_state()
+        state["turn_mode"] = "fixed"
+        old = tc.long_term_key(USER_A, REALM, PASSWORD_1).hex()
+        self.seed(users=((USER_A, old),))
+        done = self.run_script(
+            self.add(state, kind="user", value=PASSWORD_2, user=USER_A)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        new = tc.long_term_key(USER_A, REALM, PASSWORD_2).hex()
+        self.assertEqual(self.users()[USER_A], new)
+        done = self.run_script(
+            ci.odoo_rollback_script(state, KEY_A, USER_A, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.users()[USER_A], old)
+        self.assertEqual(done.stdout.splitlines()[-1], "@@ODOO_ROLLBACK yes")
+
+    def test_first_fixed_add_rolled_back_deletes_the_user(self):
+        state = installed_state()
+        self.seed()
+        self.run_script(
+            self.add(state, kind="user", value=PASSWORD_1, user=USER_A)
+        )
+        done = self.run_script(
+            ci.odoo_rollback_script(state, KEY_A, USER_A, root=self.root)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(set(self.users()), {ci.CHECK_USER})
+
+    def test_rollback_of_a_secret_deletes_only_the_new_one(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_A, SECRET_B), check_user=False)
+        done = self.run_script(
+            ci.odoo_rollback_script(
+                state, KEY_A, sha(SECRET_B), root=self.root
+            )
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A})
+        self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
+
+    def test_exempt_address_added_then_removed(self):
+        state = secret_state(odoos={})
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put(ci.NTFY_CONFIG, NTFY_YML)
+        done = self.run_script(
+            self.add(state, exempt="198.51.100.20", ntfy_text=NTFY_YML)
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            text = handle.read()
+        self.assertIn(
+            'visitor-request-limit-exempt-hosts: "203.0.113.50,198.51.100.20"',
+            text,
+        )
+        self.assertIn("systemctl restart ntfy", self.argv())
+        added = ci.odoo_added_state(
+            state,
+            KEY_A,
+            "secret",
+            SECRET_A,
+            None,
+            "198.51.100.20",
+            NOW,
+            ntfy_text=NTFY_YML,
+        )
+        self.assertEqual(added["odoos"][KEY_A]["exempt"], "198.51.100.20")
+        done = self.run_script(
+            ci.odoo_remove_script(
+                added, KEY_A, now=NOW, ntfy_text=text, root=self.root
+            )
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), NTFY_YML)
+
+    def test_a_shared_or_hand_written_exempt_address_stays(self):
+        shared = secret_state(
+            odoos={KEY_B: secret_entry(SECRET_B, exempt="198.51.100.20")}
+        )
+        text = NTFY_YML.replace("203.0.113.50", "203.0.113.50,198.51.100.20")
+        added = ci.odoo_added_state(
+            shared,
+            KEY_A,
+            "secret",
+            SECRET_A,
+            None,
+            "198.51.100.20",
+            NOW,
+            ntfy_text=text,
+        )
+        self.assertEqual(added["odoos"][KEY_A]["exempt"], "198.51.100.20")
+        script = ci.odoo_remove_script(
+            added, KEY_A, now=NOW, ntfy_text=text, root=self.root
+        )
+        self.assertNotIn("restart ntfy", script)
+        # Une adresse posée à la main n'appartient pas à l'outil.
+        hand = ci.odoo_added_state(
+            secret_state(),
+            KEY_A,
+            "secret",
+            SECRET_A,
+            None,
+            "203.0.113.50",
+            NOW,
+            ntfy_text=NTFY_YML,
+        )
+        self.assertIsNone(hand["odoos"][KEY_A]["exempt"])
+        script = self.add(
+            secret_state(), exempt="203.0.113.50", ntfy_text=NTFY_YML
+        )
+        self.assertNotIn("restart ntfy", script)
+
+    def test_a_new_exempt_address_replaces_the_old_one(self):
+        state = secret_state(
+            odoos={KEY_A: secret_entry(SECRET_A, exempt="198.51.100.20")}
+        )
+        text = NTFY_YML.replace("203.0.113.50", "203.0.113.50,198.51.100.20")
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        self.put(ci.NTFY_CONFIG, text)
+        done = self.run_script(
+            self.add(
+                state, value=SECRET_B, exempt="198.51.100.21", ntfy_text=text
+            )
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertIn(
+                'exempt-hosts: "203.0.113.50,198.51.100.21"', handle.read()
+            )
+        # Une adresse consignée ne se perd pas faute du texte de server.yml.
+        with self.assertRaises(ValueError):
+            self.add(state, value=SECRET_B)
+        with self.assertRaises(ValueError):
+            ci.odoo_remove_script(state, KEY_A, now=NOW)
+
+    def test_exempt_address_refusals(self):
+        for address in (
+            "127.0.0.1",
+            "::1",
+            "0.0.0.0",
+            "169.254.1.2",
+            "fe80::1",
+            "pas-une-adresse",
+        ):
+            with self.subTest(address=address):
+                with self.assertRaises(ci.Refusal) as caught:
+                    self.add(
+                        secret_state(), exempt=address, ntfy_text=NTFY_YML
+                    )
+                self.assertEqual(
+                    caught.exception.key, "call_infra_odoo_exempt"
+                )
+                self.assertEqual(caught.exception.values["address"], address)
+
+    def test_no_ntfy_in_the_state_no_exempt(self):
+        state = secret_state(ans=answers(services=frozenset({"coturn"})))
+        script = self.add(state, exempt="198.51.100.20")
+        self.assertNotIn("ntfy", script)
+        added = ci.odoo_added_state(
+            state, KEY_A, "secret", SECRET_A, None, "198.51.100.20", NOW
+        )
+        self.assertIsNone(added["odoos"][KEY_A]["exempt"])
+
+    def test_a_failed_credential_puts_ntfy_back(self):
+        state = secret_state(odoos={})
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put(ci.NTFY_CONFIG, NTFY_YML)
+        done = self.run_script(
+            self.add(state, exempt="198.51.100.20", ntfy_text=NTFY_YML),
+            SQLITE_FAIL_ON=SECRET_A,
+        )
+        self.assertNotEqual(done.returncode, 0)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), NTFY_YML)
+        self.assertEqual(done.stdout.splitlines()[-1], "@@ODOO_ADDED no")
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+
+    def test_ntfy_changed_since_the_probe_is_not_overwritten(self):
+        state = secret_state(odoos={})
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        edited = NTFY_YML + "# ajout fait a la main\n"
+        self.put(ci.NTFY_CONFIG, edited)
+        done = self.run_script(
+            self.add(state, exempt="198.51.100.20", ntfy_text=NTFY_YML)
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("@@FAILED ntfy-changed", done.stdout)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), edited)
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+
+    def test_rollback_puts_the_exempt_address_back_out(self):
+        state = secret_state(odoos={})
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put(ci.NTFY_CONFIG, NTFY_YML)
+        self.run_script(
+            self.add(state, exempt="198.51.100.20", ntfy_text=NTFY_YML)
+        )
+        done = self.run_script(
+            ci.odoo_rollback_script(
+                state,
+                KEY_A,
+                sha(SECRET_A),
+                exempt="198.51.100.20",
+                ntfy_text=NTFY_YML,
+                root=self.root,
+            )
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), NTFY_YML)
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+
+    def test_bad_arguments(self):
+        state = installed_state()
+        bad = (
+            dict(key="https://ERP-A.exemple.test/|base_a"),
+            dict(kind="autre"),
+            dict(value="court"),
+            dict(value="avec'apostrophe_0123456789abcdef"),
+            dict(kind="user", value=PASSWORD_1, user="erplibre-00000000"),
+            dict(kind="user", value=PASSWORD_1, user=None),
+            dict(kind="secret", user=USER_A),
+        )
+        for changes in bad:
+            with self.subTest(changes=changes):
+                with self.assertRaises(ValueError):
+                    self.add(state, **changes)
+        with self.assertRaises(ValueError):
+            self.add(state, check_secret=None)
+        with self.assertRaises(ValueError):
+            # Une adresse à exempter sans le texte de server.yml.
+            self.add(secret_state(), exempt="198.51.100.20")
+        with self.assertRaises(ValueError):
+            ci.odoo_rollback_script(state, KEY_A, "ni-empreinte-ni-compte")
+
+
+class TestInstallKeepsTheMode(OdooSandbox):
+    """Une réinstallation garde le mode de coturn et purge les anciens
+    secrets expirés."""
+
+    def test_secret_state_same_answers_nothing_to_do(self):
+        ans = answers()
+        state = secret_state(ans, odoos={KEY_A: secret_entry(SECRET_A)})
+        conf, text = "/etc/turnserver.conf", ci.coturn_config(ans, "secret")
+        facts = base_facts(
+            state=state,
+            coturn=service(conf, text),
+            ntfy=service(ci.NTFY_CONFIG, ci.ntfy_config(ans), unit="ntfy"),
+        )
+        plan = ci.plan_install(facts, ans, NOW)
+        self.assertTrue(plan.nothing_to_do)
+        self.assertEqual(plan.new_state["turn_mode"], "secret")
+        self.assertIn("use-auth-secret", text.splitlines())
+        # Sur un fichier encore en lt-cred-mech, le diff montre le passage.
+        lt = ci.coturn_config(ans)
+        plan = ci.plan_install(
+            dataclasses.replace(facts, coturn=service(conf, lt)), ans, NOW
+        )
+        self.assertFalse(plan.nothing_to_do)
+        self.assertIn("+use-auth-secret", plan.diffs[0][1])
+
+    def test_secret_mode_reaches_the_installer(self):
+        state = secret_state(answers())
+        plan = ci.plan_install(base_facts(state=state), answers(), NOW)
+        done = self.run_script(ci.install_script(plan, STAMP, root=self.root))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.installer_env()["TURN_AUTH"], "secret")
+        # Un état de lot précédent, sans mode, n'exporte rien : le défaut
+        # de l'installateur est le mode fixe.
+        plan = ci.plan_install(
+            base_facts(state=installed_state()), answers(), NOW
+        )
+        self.assertNotIn("TURN_AUTH", ci.install_script(plan, STAMP))
+
+    def test_the_letsencrypt_second_pass_keeps_the_mode(self):
+        state = secret_state(answers())
+        plan = ci.plan_install(base_facts(state=state), answers(), NOW)
+        self.assertIn(
+            "TURN_AUTH=secret", "\n".join(ci._coturn_lineage_lines(plan))
+        )
+
+    def test_install_purges_expired_retired_secrets(self):
+        past = (NOW - datetime.timedelta(minutes=1)).isoformat()
+        future = (NOW + datetime.timedelta(hours=1)).isoformat()
+        state = secret_state(
+            answers(),
+            odoos={
+                KEY_A: secret_entry(
+                    SECRET_A,
+                    retired=[
+                        {"value_sha256": sha(SECRET_B), "expires_at": past},
+                        {"value_sha256": sha(SECRET_C), "expires_at": future},
+                    ],
+                )
+            },
+        )
+        ans = answers()
+        facts = base_facts(
+            state=state,
+            coturn=service(
+                "/etc/turnserver.conf", ci.coturn_config(ans, "secret")
+            ),
+            ntfy=service(ci.NTFY_CONFIG, ci.ntfy_config(ans), unit="ntfy"),
+        )
+        plan = ci.plan_install(facts, ans, NOW)
+        self.assertFalse(plan.nothing_to_do)
+        self.assertEqual(plan.purge_secrets, (sha(SECRET_B),))
+        retired = plan.new_state["odoos"][KEY_A]["retired"]
+        self.assertEqual([r["value_sha256"] for r in retired], [sha(SECRET_C)])
+        self.seed(
+            secrets=(CHECK_SECRET, SECRET_A, SECRET_B, SECRET_C),
+            check_user=False,
+        )
+        done = self.run_script(ci.install_script(plan, STAMP, root=self.root))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A, SECRET_C})
+        self.assertEqual(
+            self.state_on_host()["odoos"][KEY_A]["retired"], retired
+        )
+
+    def test_realm_change_refused_while_odoo_are_plugged(self):
+        state = secret_state(answers(), odoos={KEY_A: secret_entry(SECRET_A)})
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.plan_install(
+                base_facts(state=state),
+                answers(public_name="nouveau.exemple.test"),
+                NOW,
+            )
+        self.assertEqual(caught.exception.key, "call_infra_odoo_realm")
+        self.assertIn(KEY_A, caught.exception.values["odoos"])
+        # Sans Odoo branché, le nom change comme avant.
+        ci.plan_install(
+            base_facts(state=secret_state(answers())),
+            answers(public_name="nouveau.exemple.test"),
+            NOW,
+        )
+
+    def test_port_change_lists_the_odoo_to_add_again(self):
+        fixed_entry = {
+            "method": "webapi",
+            "module": False,
+            "credential": {"kind": "user", "user": USER_A},
+            "retired": [],
+            "rows": True,
+            "exempt": None,
+            "added_at": "2026-10-30T10:00:00+00:00",
+        }
+        state = secret_state(
+            supplied(),
+            odoos={KEY_A: fixed_entry, KEY_B: secret_entry(SECRET_B)},
+        )
+        facts = base_facts(state=state)
+        plan = ci.plan_install(facts, supplied(turn_port=3479), NOW)
+        self.assertEqual(plan.odoo_readd, (KEY_A, KEY_B))
+        # Le port TLS ne sert qu'à la liste du module : les lignes fixes
+        # n'ont pas de turns:.
+        plan = ci.plan_install(facts, supplied(turns_port=5350), NOW)
+        self.assertEqual(plan.odoo_readd, (KEY_B,))
+        plan = ci.plan_install(facts, supplied(), NOW)
+        self.assertEqual(plan.odoo_readd, ())
+
+
 class TestStdlibOnly(unittest.TestCase):
-    ALLOWED_SIBLINGS = {"script.todo.ntfy_mobile", "script.todo.turn_client"}
+    ALLOWED_SIBLINGS = {
+        "script.todo.ntfy_mobile",
+        "script.todo.odoo_link",
+        "script.todo.turn_client",
+    }
 
     def test_module_imports_only_stdlib(self):
         with open(os.path.join(REPO, "script", "todo", "call_infra.py")) as f:
