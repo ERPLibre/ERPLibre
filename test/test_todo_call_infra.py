@@ -1719,6 +1719,27 @@ class TestAddOdoo(OdooCase):
             self.text("call_infra_odoo_rotates_secret", hours=24), out
         )
 
+    def test_plain_http_to_another_machine_asks_first(self):
+        url = "http://odoo.exemple.test:8069"
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ["", url, ODOO_DB, ""])
+        self.assertIn(self.text("call_infra_odoo_http_clear", url=url), out)
+        self.assertIn(t("call_infra_ask_http_anyway"), self.prompts[-1])
+        self.assertEqual(self.made, [])
+        self.assertEqual(host.kinds(), ["probe"])
+
+    def test_plain_http_on_this_machine_asks_nothing_more(self):
+        url = "http://127.0.0.1:8069"
+        host = FakeHost(state=installed_state())
+        self.drive(
+            "_call_infra_add_odoo",
+            host,
+            ["", url, ODOO_DB, "", ODOO_PASSWORD, "", "n"],
+        )
+        self.assertEqual(self.made[0][1], url)
+        for prompt in self.prompts:
+            self.assertNotIn(t("call_infra_ask_http_anyway"), prompt)
+
     def test_module_absent_explains_then_asks_the_fallback(self):
         self.link = FakeLink(odoo_facts("absent"))
         host = FakeHost(state=installed_state())

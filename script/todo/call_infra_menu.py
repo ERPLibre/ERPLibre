@@ -1339,6 +1339,28 @@ class CallInfraMenuMixin:
             self._call_infra_refuse(error)
             return None, None
 
+    def _call_infra_http_ok(self, url):
+        """Vrai pour une URL que l'API web peut joindre sans exposer ce
+        qu'elle envoie : https, ou http vers cette machine (boucle
+        locale). En http vers une autre machine, le mot de passe ou la clé
+        d'API, puis le secret de TURN ou le mot de passe du compte fixe,
+        passent en clair : dit, puis un oui, non par défaut."""
+        parts = urllib.parse.urlsplit(url)
+        if parts.scheme != "http":
+            return True
+        name = parts.hostname or ""
+        try:
+            local = ipaddress.ip_address(name).is_loopback
+        except ValueError:
+            local = name == "localhost"
+        if local:
+            return True
+        print(
+            "⚠ "
+            + self._call_infra_text("call_infra_odoo_http_clear", {"url": url})
+        )
+        return self._call_infra_ask_yes(t("call_infra_ask_http_anyway"), False)
+
     def _call_infra_explain(self, refusal):
         """Le refus, puis sa cause quand c'est une erreur d'Odoo
         (`OdooError`) : un mot de passe faux, un droit manquant."""
@@ -1416,6 +1438,9 @@ class CallInfraMenuMixin:
             ol.odoo_key(url, database)
         except ol.OdooError as error:
             self._call_infra_refuse(error)
+            return None
+        if method == "webapi" and not self._call_infra_http_ok(url):
+            print(t("Nothing added."))
             return None
         link, runner = self._call_infra_odoo_link(url, database, method)
         if link is None:

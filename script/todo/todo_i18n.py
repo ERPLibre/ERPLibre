@@ -4683,6 +4683,14 @@ TRANSLATIONS = {
         "fr": "Déjà branché : le mot de passe de son compte fixe change sur-le-champ. Les participants d'un appel en cours ne relaient plus vers un nouvel arrivant avant d'être revenus dans l'appel.",
         "en": "Already plugged: the password of its fixed account changes at once. Participants in an ongoing call can no longer relay toward a newcomer until they rejoin the call.",
     },
+    "call_infra_odoo_http_clear": {
+        "fr": "{url} est en http vers une autre machine : le mot de passe ou la clé d'API de l'administrateur, puis le secret de TURN ou le mot de passe du compte fixe, y passent en clair, lisibles sur le chemin. Préférez https.",
+        "en": "{url} is plain http to another machine: the administrator's password or API key, then the TURN secret or the fixed account's password, travel in clear, readable along the path. Prefer https.",
+    },
+    "call_infra_ask_http_anyway": {
+        "fr": "Continuer en http quand même ?",
+        "en": "Continue over http anyway?",
+    },
     "Nothing revoked.": {
         "fr": "Rien n'est révoqué.",
         "en": "Nothing revoked.",
