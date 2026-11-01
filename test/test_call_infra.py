@@ -10541,6 +10541,7 @@ case " $* " in *" up "*)
       echo "$st" > "$FK/container.erplibre-call-$s"
     fi
   done ;;
+  *" down "*) rm -f "$FK"/container.erplibre-call-* ;;
 esac
 exit 0
 """
@@ -10552,6 +10553,9 @@ case "$1" in
   pull)
     if [ -n "${FAKE_PULL_OUT:-}" ]; then echo "$FAKE_PULL_OUT"; exit 1; fi
     echo "$2" >> "$FK/images"; exit 0 ;;
+  rmi) [ -z "${FAKE_RMI_BUSY:-}" ] || exit 1
+    grep -vxF "$2" "$FK/images" > "$FK/images.new"
+    mv "$FK/images.new" "$FK/images"; exit 0 ;;
   inspect) [ -f "$FK/container.$4" ] || exit 1; cat "$FK/container.$4"
     exit 0 ;;
   exec)
@@ -10614,6 +10618,18 @@ mkdir -p "$ROOT/run/user/$id"
 """,
     "apt-get": _NOTE
     + r"""
+if [ "$1" = purge ]; then
+  for p; do
+    grep -vxF -- "$p" "$FK/installed" > "$FK/installed.new"
+    mv "$FK/installed.new" "$FK/installed"
+  done
+  echo "purge-sees $(ls "$ROOT/var/lib/erplibre-call-backup"/*/ 2>/dev/null \
+      | tr '\n' ' ')" >> "$LOG/argv"
+  if [ -n "${FAKE_PURGE_WIPES:-}" ] && [ "$3" = ntfy ]; then
+    rm -rf "$ROOT/var/lib/ntfy" "$ROOT/etc/ntfy/tls"
+  fi
+  exit 0
+fi
 [ "$1" = install ] || exit 0
 for p; do case "$p" in -*|install) ;; *) echo "$p" >> "$FK/installed" ;;
   esac; done
@@ -10669,11 +10685,10 @@ eval "exit \${RC_$v:-0}"
 FAKE_IDS = "erplibre-coturn:997 ntfy:996 erplibre-call:995 turnserver:998"
 
 
-class TestContainerInstallRun(unittest.TestCase):
-    """Le script d'installation en conteneurs joué dans une racine
-    temporaire : moteur, comptes, images, configurations, fichier compose,
-    barrière des conteneurs et état. Moteurs et outils système en bouchons
-    devant le PATH : aucun vrai docker ni podman n'est joignable."""
+class ContainerSandbox(unittest.TestCase):
+    """Racine temporaire et bouchons des scripts en conteneurs : moteurs et
+    outils système devant le PATH, aucun vrai docker ni podman n'est
+    joignable ; chaque appel se lit dans le journal des bouchons."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -10743,6 +10758,12 @@ class TestContainerInstallRun(unittest.TestCase):
         self.assertNotEqual(done.returncode, 0)
         self.assertFalse(os.path.exists(self.path(ci.STATE_PATH)))
         self.assertEqual(ci.marker_lines(done.stdout)[-1], ("SAVED", "no"))
+
+
+class TestContainerInstallRun(ContainerSandbox):
+    """Le script d'installation en conteneurs joué dans une racine
+    temporaire : moteur, comptes, images, configurations, fichier compose,
+    barrière des conteneurs et état."""
 
     def fresh_docker(self, **changes):
         ans = container_answers(install_engine=True, **changes)
@@ -11235,6 +11256,456 @@ class TestContainerInstallRun(unittest.TestCase):
                     timeout=30,
                 )
                 self.assertEqual(done.stdout.strip(), cc.classify_pull(text))
+
+
+# Secrets d'Odoo inventés dans la base de coturn d'un hôte qui migre.
+MIGRATION_SECRETS = (
+    ("turn.exemple.test", "InventeSecretMigration_A0123456789abcdefgh"),
+    ("turn.exemple.test", "InventeSecretMigration_B0123456789abcdefgh"),
+)
+USER_DB = b"SQLite format 3\0base des comptes inventee\n"
+
+
+def packages_host(ans, ntfy_adopted=False):
+    """Faits d'un hôte où une installation par paquets de `ans` a réussi :
+    coturn et ntfy actifs sur leur configuration, Docker présent, comptes
+    des paquets. `ntfy_adopted` : le paquet de ntfy était là avant l'outil,
+    actif et activé."""
+    first = ci.plan_install(base_facts(), ans, NOW)
+    state = ci.written_state(first, STAMP)
+    if ntfy_adopted:
+        state["services"]["ntfy"].update(
+            installed_by_tool=False, was_active=True, was_enabled="enabled"
+        )
+    return base_facts(
+        coturn=service("/etc/turnserver.conf", ci.coturn_config(ans)),
+        ntfy=service(ci.NTFY_CONFIG, ci.ntfy_config(ans), unit="ntfy"),
+        state=state,
+        engines=engine_facts(
+            accounts={"turnserver": (998, 998), "ntfy": (996, 996)}
+        ),
+    )
+
+
+class TestMigrationRun(ContainerSandbox):
+    """Migration entre paquets et conteneurs jouée dans le bac à sable :
+    images tirées avant tout arrêt, bases copiées avant toute purge,
+    retour à la méthode d'avant quand la barrière échoue, données et
+    certificats intacts dans les deux cas."""
+
+    def prepare(self, state, cert=None):
+        """L'hôte avant le passage : son état, ses comptes et paquets, une
+        base de coturn (secrets d'Odoo) et une base des comptes de ntfy, la
+        configuration de coturn de l'outil et, avec `cert` (certificat,
+        clé), les copies TLS de coturn et de ntfy."""
+        write(self.path(ci.STATE_PATH), json.dumps(state), 0o600)
+        write(
+            os.path.join(self.fk, "passwd"),
+            "turnserver:x:998:998::/nonexistent:/usr/sbin/nologin\n"
+            "ntfy:x:996:996::/nonexistent:/usr/sbin/nologin\n",
+            0o644,
+        )
+        write(os.path.join(self.fk, "installed"), "coturn\nntfy\nsqlite3\n")
+        os.makedirs(self.path(ci.COTURN_DATA_DIR), exist_ok=True)
+        with sqlite3.connect(self.path(ci.COTURN_DB)) as db:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS turn_secret"
+                " (realm varchar(127) default '',"
+                " value varchar(127), primary key (realm,value))"
+            )
+            db.executemany(
+                "INSERT OR IGNORE INTO turn_secret VALUES (?, ?)",
+                MIGRATION_SECRETS,
+            )
+        os.makedirs(self.path(ci.NTFY_DATA_DIR), exist_ok=True)
+        with open(self.path(ci.NTFY_AUTH_FILE), "wb") as handle:
+            handle.write(USER_DB)
+        write(
+            self.path("/etc/turnserver.conf"),
+            ci.MARKER + "\nlistening-port=3478\n",
+            0o640,
+        )
+        if cert:
+            for path in (
+                ci.COTURN_TLS_DIR + "/turn",
+                ci.NTFY_TLS_DIR + "/ntfy",
+            ):
+                write(self.path(path + ".crt"), cert[0], 0o644)
+                write(self.path(path + ".key"), cert[1], 0o640)
+        return self.read(self.path(ci.STATE_PATH))
+
+    def secrets(self):
+        with sqlite3.connect(self.path(ci.COTURN_DB)) as db:
+            return sorted(db.execute("SELECT realm, value FROM turn_secret"))
+
+    def user_db(self):
+        with open(self.path(ci.NTFY_AUTH_FILE), "rb") as handle:
+            return handle.read()
+
+    def to_container(self, ans=None, ntfy_adopted=False, **changes):
+        ans = ans or answers()
+        facts = packages_host(ans, ntfy_adopted)
+        plan = ci.plan_install(
+            facts,
+            dataclasses.replace(
+                ans, method="container", engine="docker", **changes
+            ),
+            NOW,
+        )
+        self.assertEqual(plan.migration, "to_container")
+        self.assertEqual(plan.odoo_readd, ())
+        cert = (ans.cert_pem, ans.key_pem) if ans.cert_pem else None
+        return plan, self.prepare(facts.state, cert)
+
+    def to_packages(self, ans=None, **changes):
+        """Plan de retour aux paquets d'un hôte en conteneurs, et l'hôte
+        préparé : ses conteneurs en marche, ses images, son fichier
+        compose."""
+        ans = ans or container_answers()
+        facts = container_installed(ans)
+        plan = ci.plan_install(
+            facts,
+            dataclasses.replace(
+                ans, method="packages", engine=None, rootless=False
+            ),
+            NOW,
+        )
+        self.assertEqual(plan.migration, "to_packages")
+        self.assertEqual(plan.odoo_readd, ())
+        before = self.prepare(facts.state)
+        write(
+            os.path.join(self.fk, "passwd"),
+            "erplibre-coturn:x:997:997::/nonexistent:/usr/sbin/nologin\n"
+            "ntfy:x:996:996::/nonexistent:/usr/sbin/nologin\n"
+            "erplibre-call:x:995:995::/var/lib/erplibre-call-podman:"
+            "/usr/sbin/nologin\n",
+            0o644,
+        )
+        write(os.path.join(self.fk, "installed"), "sqlite3\n")
+        write(
+            os.path.join(self.fk, "images"),
+            "".join(ref + "\n" for ref in cc.IMAGES.values()),
+            0o644,
+        )
+        for svc in ("coturn", "ntfy"):
+            write(
+                os.path.join(self.fk, f"container.{cc.CONTAINERS[svc]}"),
+                "running\n",
+                0o644,
+            )
+        write(self.path(cc.COMPOSE_FILE), facts.engines.compose_text, 0o640)
+        return plan, before
+
+    @staticmethod
+    def first(argv, *needles):
+        for index, line in enumerate(argv):
+            if any(needle in line for needle in needles):
+                return index
+        return None
+
+    def test_pull_precedes_first_stop(self):
+        plan, _before = self.to_container()
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        pull = self.first(argv, " pull ")
+        stop = self.first(argv, " disable --now ", " stop ")
+        self.assertIsNotNone(pull)
+        self.assertIsNotNone(stop)
+        self.assertLess(pull, stop)
+        # Un registre qui refuse : rien n'est arrêté ni purgé, l'état reste.
+        plan, before = self.to_container()
+        os.remove(os.path.join(self.fk, "images"))
+        done = self.run_script(
+            plan,
+            FAKE_PULL_OUT="toomanyrequests: You have reached your rate limit",
+        )
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("PULL_FAILED", "coturn rate-limit"), markers)
+        self.assertNotIn("MIGRATION", [name for name, _v in markers])
+        argv = self.argv()
+        self.assertIsNone(self.first(argv, " disable ", " stop ", " purge "))
+        self.assertIsNone(self.first(argv, "bash "))
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
+    def test_migration_to_containers_keeps_data_and_the_adopted_unit(self):
+        plan, before = self.to_container(ntfy_adopted=True)
+        secrets = self.secrets()
+        done = self.run_script(plan, FAKE_PURGE_WIPES="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "done"), ("SAVED", "yes")]
+        )
+        argv = self.argv()
+        # coturn posé par l'outil : arrêté, copié, puis purgé ; ntfy
+        # adopté : arrêté et désactivé, son paquet reste.
+        stop = argv.index("systemctl as=root xdg= disable --now coturn")
+        purge = argv.index("apt-get as=root xdg= purge -y coturn")
+        self.assertLess(stop, purge)
+        self.assertIn("systemctl as=root xdg= disable --now ntfy", argv)
+        self.assertFalse([line for line in argv if "purge -y ntfy" in line])
+        self.assertIn("purge-sees turndb user.db ", argv)
+        backup = f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}"
+        self.assertIn(("BACKUP", f"{backup}/turndb"), markers)
+        self.assertIn(("BACKUP", f"{backup}/user.db"), markers)
+        self.assertEqual(
+            stat.S_IMODE(os.stat(self.path(backup)).st_mode), 0o700
+        )
+        with open(self.path(f"{backup}/user.db"), "rb") as handle:
+            self.assertEqual(handle.read(), USER_DB)
+        # Copies faites par root, jamais par le compte de l'ancien service.
+        self.assertFalse([line for line in argv if line.startswith("cp ")])
+        self.assertFalse([line for line in argv if " as=turnserver " in line])
+        # Données remises au compte du conteneur, sans suivre de lien.
+        self.assertIn(
+            "chown as=root xdg= -R --no-dereference 997:997"
+            f" {self.path(ci.COTURN_DATA_DIR)}",
+            argv,
+        )
+        self.assertEqual(self.secrets(), secrets)
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertFalse([line for line in argv if line.startswith("sqlite3")])
+        state = self.state()
+        self.assertEqual(state["version"], 2)
+        ntfy = state["services"]["ntfy"]
+        self.assertEqual(ntfy["unit"], "ntfy")
+        self.assertIs(ntfy["was_active"], True)
+        self.assertEqual(ntfy["was_enabled"], "enabled")
+        self.assertIsNone(state["services"]["coturn"]["unit"])
+        self.assertNotEqual(self.read(self.path(ci.STATE_PATH)), before)
+        self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
+        self.assertTrue(os.path.exists(self.path(cc.COMPOSE_FILE)))
+
+    def test_purged_ntfy_keeps_its_data_and_tls(self):
+        # La purge du paquet de ntfy efface ses dossiers : ils sont mis à
+        # l'abri le temps de la purge, puis remis.
+        plan, _before = self.to_container(supplied())
+        done = self.run_script(plan, FAKE_PURGE_WIPES="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        self.assertIn("apt-get as=root xdg= purge -y ntfy", argv)
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_TLS_DIR + "/ntfy.key")), TURN_KEY
+        )
+        self.assertFalse(
+            os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)), argv
+        )
+        self.assertEqual(self.state()["services"]["ntfy"]["unit"], None)
+
+    def test_container_exited_rolls_back_to_packages(self):
+        plan, before = self.to_container(ntfy_adopted=True)
+        secrets = self.secrets()
+        done = self.run_script(plan, FAKE_STATUS_coturn="exited")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        self.assertIn(("ACTIVE", "coturn exited"), markers)
+        backup = f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}"
+        self.assertIn(("BACKUP", f"{backup}/turndb"), markers)
+        argv = self.argv()
+        up = self.first(argv, " up -d")
+        down = self.first(
+            argv,
+            " compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call down",
+        )
+        self.assertIsNotNone(down)
+        self.assertLess(up, down)
+        self.assertFalse(os.path.exists(self.path(cc.COMPOSE_FILE)))
+        # coturn rejoué par son installateur de paquets, sans la cible
+        # conteneur ; ntfy adopté relancé et réactivé.
+        self.assertEqual(
+            self.env_of("install_coturn", 0)["TURN_TARGET"], "container"
+        )
+        self.assertNotIn("TURN_TARGET", self.env_of("install_coturn", 1))
+        self.assertNotIn("TURN_SERVICE_USER", self.env_of("install_coturn", 1))
+        enable = argv.index("systemctl as=root xdg= enable --now ntfy")
+        self.assertLess(down, enable)
+        data = self.path(ci.NTFY_DATA_DIR)
+        self.assertIn(
+            f"chown as=root xdg= -R --no-dereference ntfy:ntfy {data}", argv
+        )
+        coturn_dir = self.path(ci.COTURN_DATA_DIR)
+        self.assertIn(
+            f"chown as=root xdg= -R --no-dereference --reference={coturn_dir}"
+            f" {coturn_dir}",
+            argv,
+        )
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+        self.assertEqual(self.secrets(), secrets)
+        self.assertEqual(self.user_db(), USER_DB)
+
+    def test_rollback_restores_a_database_the_container_changed(self):
+        # La base des comptes que le conteneur a mise à jour revient à sa
+        # copie : le ntfy de l'hôte, peut-être plus ancien, la relit.
+        plan, _before = self.to_container(ntfy_adopted=True)
+        write(
+            os.path.join(self.stubs, "chown"),
+            _NOTE + 'case " $* " in *" 996:996 "*)'
+            f' printf schema-10 > "$ROOT{ci.NTFY_AUTH_FILE}" ;; esac\n',
+        )
+        done = self.run_script(plan, FAKE_STATUS_coturn="exited")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertIn(
+            (
+                "RESTORED",
+                f"{ci.NTFY_AUTH_FILE} {ci.MIGRATION_BACKUP_DIR}"
+                f"/{STAMP}/user.db",
+            ),
+            ci.marker_lines(done.stdout),
+        )
+
+    def test_failure_after_the_stop_rolls_back_too(self):
+        # Un installateur en échec après l'arrêt des paquets remet aussi
+        # les services d'avant.
+        plan, before = self.to_container()
+        done = self.run_script(plan, RC_install_coturn="1")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("FAILED", "coturn"), markers)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rollback-failed"), ("SAVED", "no")]
+        )
+        # Le même installateur, rejoué par paquets, échoue aussi ; ntfy,
+        # posé par l'outil, revient par le sien à la version de l'image.
+        ntfy = self.env_of("install_ntfy", 0)
+        self.assertEqual(ntfy["NTFY_VERSION"], cc.IMAGE_VERSIONS["ntfy"])
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
+    def test_rollback_keeps_both_tls_pairs(self):
+        cert = (TURN_CERT, TURN_KEY)
+        plan, _before = self.to_container(supplied())
+        done = self.run_script(plan, FAKE_STATUS_ntfy="exited")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(
+            ("MIGRATION", "rolled-back"), ci.marker_lines(done.stdout)
+        )
+        for path in (ci.COTURN_TLS_DIR + "/turn", ci.NTFY_TLS_DIR + "/ntfy"):
+            self.assertEqual(self.read(self.path(path + ".crt")), cert[0])
+            self.assertEqual(self.read(self.path(path + ".key")), cert[1])
+        # Chaque passage de l'installateur de coturn reçoit le certificat :
+        # sans lui, il effacerait ses copies.
+        for n in (0, 1):
+            self.assertIn("TURN_CERT_FILE", self.env_of("install_coturn", n))
+
+    def test_migration_back_to_packages(self):
+        plan, before = self.to_packages()
+        secrets = self.secrets()
+        config = self.path("/etc/turnserver.conf")
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "done"), ("SAVED", "yes")]
+        )
+        argv = self.argv()
+        down = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call down"
+        )
+        installer = argv.index("bash install_coturn")
+        self.assertLess(down, installer)
+        self.assertNotIn("TURN_TARGET", self.env_of("install_coturn"))
+        self.assertEqual(
+            self.env_of("install_ntfy")["NTFY_VERSION"],
+            cc.IMAGE_VERSIONS["ntfy"],
+        )
+        # La configuration du conteneur quitte sa place avant le paquet.
+        self.assertFalse(os.path.exists(config))
+        data = self.path(ci.NTFY_DATA_DIR)
+        chown = argv.index(
+            f"chown as=root xdg= -R --no-dereference ntfy:ntfy {data}"
+        )
+        self.assertLess(chown, argv.index("bash install_ntfy"))
+        # Les images partent seulement une fois coturn actif par paquets.
+        active = argv.index("systemctl as=root xdg= is-active coturn")
+        for ref in cc.IMAGES.values():
+            rmi = argv.index(f"docker as=root xdg= rmi {ref}")
+            self.assertLess(active, rmi)
+            self.assertIn(("IMAGE_REMOVED", ref), markers)
+        self.assertLess(
+            markers.index(("ACTIVE", "coturn active")),
+            markers.index(("IMAGE_REMOVED", cc.IMAGES["coturn"])),
+        )
+        self.assertFalse(os.path.exists(self.path(cc.COMPOSE_FILE)))
+        state = self.state()
+        self.assertEqual(state["version"], 1)
+        self.assertNotIn("container", state)
+        self.assertNotEqual(self.read(self.path(ci.STATE_PATH)), before)
+        self.assertEqual(self.secrets(), secrets)
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertFalse([line for line in argv if " rmi -f" in line])
+
+    def test_image_in_use_is_kept(self):
+        plan, _before = self.to_packages()
+        done = self.run_script(plan, FAKE_RMI_BUSY="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = ci.marker_lines(done.stdout)
+        for ref in cc.IMAGES.values():
+            self.assertIn(("IMAGE_KEPT", ref), markers)
+        self.assertEqual(self.state()["version"], 1)
+
+    def test_failing_reverse_gate_restarts_the_containers(self):
+        plan, before = self.to_packages()
+        secrets = self.secrets()
+        config = self.read(self.path("/etc/turnserver.conf"))
+        done = self.run_script(plan, ACTIVE_coturn="failed")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        argv = self.argv()
+        self.assertFalse([line for line in argv if " rmi " in line])
+        down = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call down"
+        )
+        stop = argv.index("systemctl as=root xdg= disable --now coturn")
+        up = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d"
+        )
+        self.assertLess(down, stop)
+        self.assertLess(stop, up)
+        self.assertIn(
+            "chown as=root xdg= -R --no-dereference 997:997"
+            f" {self.path(ci.COTURN_DATA_DIR)}",
+            argv[stop:up],
+        )
+        self.assertEqual(self.read(self.path("/etc/turnserver.conf")), config)
+        self.assertTrue(os.path.exists(self.path(cc.COMPOSE_FILE)))
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+        self.assertEqual(self.secrets(), secrets)
+        self.assertEqual(self.user_db(), USER_DB)
+
+    def test_rootless_reverse_removes_images_under_its_account(self):
+        plan, _before = self.to_packages(
+            container_answers(engine="podman", rootless=True)
+        )
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        for ref in cc.IMAGES.values():
+            self.assertIn(
+                f"podman as=erplibre-call xdg=/run/user/995 rmi {ref}", argv
+            )
+        self.assertIn(
+            "podman-compose as=erplibre-call xdg=/run/user/995"
+            " -f /etc/erplibre-call/compose.yml -p erplibre-call down",
+            argv,
+        )
+        self.assertIn(
+            f"chown as=root xdg= -R --no-dereference ntfy:ntfy"
+            f" {self.path(ci.NTFY_DATA_DIR)}",
+            argv,
+        )
 
 
 class TestContainerRunFields(unittest.TestCase):
