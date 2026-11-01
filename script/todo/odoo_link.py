@@ -810,47 +810,41 @@ print("@@ODOO_MODULE", found[0] if found else "absent")
 # d'`odoo-bin`.
 #
 # Sous quel compte : celui à qui appartiennent le dossier RÉSOLU (lien
-# symbolique suivi) et son `odoo_bin.sh`. Un lien de root vers le dossier
-# d'un autre compte ne fait donc pas tourner les fichiers de ce compte en
-# root. Deux propriétaires différents : refus (`@@ODOO_REFUSE owner`).
-# Propriétaire root : `odoo_bin.sh` source l'environnement virtuel et
-# `script/lib_odoo_rc.sh`, puis lance Python sur les addons du dossier ;
-# root ne le lance que si rien dans le dossier n'appartient à un autre
-# compte ni n'est modifiable par le groupe ou les autres, sinon refus
-# (`@@ODOO_REFUSE writable <chemin en base64>`). Un fichier hors du
-# dossier (interpréteur, addons d'un autre chemin) échappe à ce contrôle.
+# symbolique suivi par `readlink -f`) et son `odoo_bin.sh`, lus par
+# `stat -L` dans le dossier courant que tient le `cd`. Un lien de root vers
+# le dossier d'un autre compte ne fait donc pas tourner les fichiers de ce
+# compte en root. Un chemin qui ne se résout pas est refusé (`@@ODOO_LAST`
+# « cannot resolve ») : le chemin non résolu ne sert jamais de repli. Deux
+# propriétaires différents : refus (`@@ODOO_REFUSE owner <dossier en
+# base64>`). Propriétaire root : refus (`@@ODOO_REFUSE root <dossier en
+# base64>`), car `odoo_bin.sh` source un environnement virtuel puis lance
+# un interpréteur et des addons qu'aucun contrôle du dossier ne couvre, et
+# un Odoo lancé en root écrit un filestore à root. Root passe par `runuser`
+# quand le propriétaire est un autre compte que celui qui lance le script.
 _SH = """set -u
 LC_ALL=C; export LC_ALL; unset LANGUAGE
-dir=$(readlink -f -- {directory}) || dir={directory}
+dir=$(readlink -f -- {directory}) || dir=
+if [ -z "$dir" ]; then
+    printf '@@ODOO_LAST %s\\n' "$(printf 'cannot resolve %s' {directory} | base64 | tr -d '\\n')"
+    exit 3
+fi
 if [ ! -x "$dir/odoo_bin.sh" ]; then
     printf '@@ODOO_LAST %s\\n' "$(printf 'no executable odoo_bin.sh in %s' "$dir" | base64 | tr -d '\\n')"
     exit 3
 fi
 cd "$dir" || exit 3
-dir_meta=$(stat -L -c '%u %a %U' .) || exit 3
-bin_meta=$(stat -L -c '%u %a' odoo_bin.sh) || exit 3
-read -r dir_uid dir_mode owner <<EOF
+dir_meta=$(stat -L -c '%u %U' .) || exit 3
+bin_uid=$(stat -L -c %u odoo_bin.sh) || exit 3
+read -r dir_uid owner <<EOF
 $dir_meta
-EOF
-read -r bin_uid bin_mode <<EOF
-$bin_meta
 EOF
 if [ "$dir_uid" != "$bin_uid" ]; then
     printf '@@ODOO_REFUSE owner %s\\n' "$(printf %s "$dir" | base64 | tr -d '\\n')"
     exit 3
 fi
 if [ "$dir_uid" = 0 ]; then
-    if [ $(( 0$dir_mode & 18 )) -ne 0 ]; then
-        bad=$dir
-    elif [ $(( 0$bin_mode & 18 )) -ne 0 ]; then
-        bad=$dir/odoo_bin.sh
-    else
-        bad=$(find "$dir" ! -type l \\( ! -user 0 -o -perm /022 \\) -print -quit) || bad=$dir
-    fi
-    if [ -n "$bad" ]; then
-        printf '@@ODOO_REFUSE writable %s\\n' "$(printf %s "$bad" | base64 | tr -d '\\n')"
-        exit 3
-    fi
+    printf '@@ODOO_REFUSE root %s\\n' "$(printf %s "$dir" | base64 | tr -d '\\n')"
+    exit 3
 fi
 log=$(mktemp) || exit 3
 trap 'rm -f "$log"' EXIT
@@ -956,10 +950,10 @@ class OdooShell:
                         "call_infra_odoo_dir_owner",
                         directory=_b64_text(encoded),
                     )
-                if kind == "writable":
+                if kind == "root":
                     raise OdooError(
-                        "call_infra_odoo_dir_writable",
-                        path=_b64_text(encoded),
+                        "call_infra_odoo_dir_root",
+                        directory=_b64_text(encoded),
                     )
         last = [_b64_text(value) for name, value in markers if name == "LAST"]
         if last:
