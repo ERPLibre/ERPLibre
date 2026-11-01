@@ -48,6 +48,27 @@ cd ERPLibre
 docker compose -f docker-compose.yml up -d
 ```
 
+### Extra Python packages for the addons
+
+An addon, or an ERPLibre script, can need a Python package the image does not
+carry. List them on one line, separated by spaces, with a version when it
+matters; a constraint holds neither a space nor a quote. Each venv of the image
+has its own list: `PIP_EXTRA_REQUIREMENTS_ODOO` for Odoo's venv, the one the
+addons import, and `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` for `.venv.erplibre`, the
+one of the tools in `script/`:
+
+```yaml
+    environment:
+      PIP_EXTRA_REQUIREMENTS_ODOO: "humanize pyotp==2.9.0 phonenumbers>=8.13,<9"
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+```
+
+At each start, `docker/entrypoint_pip_extra.sh` installs each list with the
+pip of its venv, then runs Odoo as `odoo`: the container starts as root
+because the venvs belong to root. A satisfied requirement downloads nothing. A
+requirement pip cannot install stops the container before Odoo, with pip's
+error in `docker compose logs`.
+
 ### Diagnostic Docker-Compose
 
 Show docker-compose information

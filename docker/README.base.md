@@ -96,6 +96,47 @@ docker compose -f docker-compose.yml up -d
 ```
 
 <!-- [en] -->
+### Extra Python packages for the addons
+
+An addon, or an ERPLibre script, can need a Python package the image does not
+carry. List them on one line, separated by spaces, with a version when it
+matters; a constraint holds neither a space nor a quote. Each venv of the image
+has its own list: `PIP_EXTRA_REQUIREMENTS_ODOO` for Odoo's venv, the one the
+addons import, and `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` for `.venv.erplibre`, the
+one of the tools in `script/`:
+
+<!-- [fr] -->
+### Paquets Python supplémentaires pour les addons
+
+Un addon, ou un script d'ERPLibre, peut demander un paquet Python que l'image
+n'a pas. Listez-les sur une ligne, séparés par des espaces, avec une version
+quand elle compte ; une contrainte ne contient ni espace ni guillemet. Chaque
+venv de l'image a sa liste : `PIP_EXTRA_REQUIREMENTS_ODOO` pour le venv d'Odoo,
+celui qu'importent les addons, et `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` pour
+`.venv.erplibre`, celui des outils de `script/` :
+
+<!-- [common] -->
+```yaml
+    environment:
+      PIP_EXTRA_REQUIREMENTS_ODOO: "humanize pyotp==2.9.0 phonenumbers>=8.13,<9"
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+```
+
+<!-- [en] -->
+At each start, `docker/entrypoint_pip_extra.sh` installs each list with the
+pip of its venv, then runs Odoo as `odoo`: the container starts as root
+because the venvs belong to root. A satisfied requirement downloads nothing. A
+requirement pip cannot install stops the container before Odoo, with pip's
+error in `docker compose logs`.
+
+<!-- [fr] -->
+À chaque démarrage, `docker/entrypoint_pip_extra.sh` installe chaque liste
+avec le pip de son venv, puis lance Odoo sous `odoo` : le conteneur démarre en
+root, car les venvs appartiennent à root. Une exigence déjà satisfaite ne
+télécharge rien. Une exigence que pip ne peut pas installer arrête le conteneur
+avant Odoo, avec l'erreur de pip dans `docker compose logs`.
+
+<!-- [en] -->
 ### Diagnostic Docker-Compose
 
 Show docker-compose information
