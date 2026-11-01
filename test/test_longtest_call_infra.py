@@ -1103,6 +1103,59 @@ class LeMemeCheminQueLeMenu(unittest.TestCase):
         # sa propre fonction.
         self.assertIn("._call_infra_nginx_facts(", SRC)
 
+    def _menu_answers(self, facts, resolve, typed_ip):
+        """Les `Answers` que le menu bâtit pour cette sonde quand
+        l'opérateur choisit la production avec un certificat fourni et
+        accepte chaque valeur proposée (l'adresse tapée quand le nom de
+        TURN ne se résout pas)."""
+        from script.todo import call_infra_menu as cim
+        from script.todo.todo import TODO
+
+        t = todo_i18n.t
+        todo = TODO.__new__(TODO)
+        choices = iter(["2", "2"])  # mode production, certificat fourni
+
+        def reply(prompt=""):
+            if t("call_infra_ask_domain") in prompt:
+                return lt.DOMAINE
+            if t("call_infra_ask_typed_ip") in prompt:
+                return typed_ip
+            if prompt.startswith(t("Your choice (1/2)") + " "):
+                return next(choices)
+            return ""
+
+        with (
+            mock.patch("builtins.input", side_effect=reply),
+            mock.patch.object(cim, "_resolve", resolve),
+            mock.patch.object(
+                TODO, "_call_infra_read_pair", return_value=("crt", "key")
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return todo._call_infra_ask_answers(None, facts)
+
+    def test_the_production_answers_are_the_menu_ones(self):
+        # Mêmes réponses, et non seulement mêmes briques : un menu qui
+        # changerait sa façon de régler external-ip ou nginx fait échouer
+        # le test long au lieu de le laisser certifier l'ancienne.
+        nginx = DEBIAN_UFW_PROBE.replace(
+            "@@FIREWALL ufw", "@@NGINX active debian\n@@FIREWALL ufw"
+        )
+        for sonde in (DEBIAN_UFW_PROBE, nginx):
+            facts = ci.parse_probe(sonde)
+            for nom, resolve in (
+                ("local", resolution(IP)),
+                ("nat", resolution("203.0.113.7")),
+                ("introuvable", resolution()),
+            ):
+                with self.subTest(nginx=sonde is nginx, nom=nom):
+                    menu = self._menu_answers(facts, resolve, IP)
+                    self.assertIsNotNone(menu)
+                    self.assertEqual(
+                        lt.reponses_prod(IP, "crt", "key", facts, resolve),
+                        menu,
+                    )
+
 
 def resolution(*adresses):
     """Double de `socket.getaddrinfo` : `adresses`, ou le nom qui ne se
