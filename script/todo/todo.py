@@ -80,7 +80,7 @@ def _bootstrap():
             _relaunch("1")
         except OSError:
             pass
-    voulue = _read_conf("python-erplibre-version", "3.14")
+    voulue = _read_conf("python-erplibre-version", "3.15")
     missing = [m for m in REQUIRED_MODULES if not importlib.util.find_spec(m)]
     if sys.version_info[:2] >= tuple(map(int, voulue.split(".")[:2])):
         if not missing:

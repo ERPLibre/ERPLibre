@@ -62,9 +62,9 @@ el_python_is_version() {
 #            refuserait un patch inférieur.
 #   mineure  même majeure.mineure, quel que soit le patch. RIEN n'épingle le
 #            patch du venv d'OUTILLAGE : l'exiger écarte le Python des
-#            distributions dès qu'il est d'un patch en retard — NixOS 25.11
-#            livre 3.14.2 quand conf/ demande 3.14.10 — et force pyenv à
-#            COMPILER CPython pour une différence qui ne gêne personne.
+#            distributions dès qu'il est d'un patch en retard — 3.15.0
+#            livré quand conf/ demande 3.15.2 — et force pyenv à COMPILER
+#            CPython pour une différence qui ne gêne personne.
 #
 # L'égalité stricte, elle, rejetterait aussi un patch plus RÉCENT : c'est
 # el_python_is_version, et elle ne sert qu'aux fournisseurs qui posent une

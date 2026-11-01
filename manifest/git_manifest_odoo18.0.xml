@@ -18,6 +18,7 @@
     <remote name="ERPLibre_origin_bemade" fetch="https://github.com/technolibre/" />
     <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
     <remote name="cetmix" fetch="https://github.com/cetmix/" />
+    <remote name="TechnoLibre_origin_cetmix" fetch="https://github.com/TechnoLibre/" />
     <remote name="dhongu" fetch="https://github.com/dhongu/" />
     <remote name="it-projects-llc" fetch="https://github.com/it-projects-llc/" />
     <remote name="itpp-labs" fetch="https://github.com/itpp-labs/" />
@@ -211,10 +212,13 @@
     />
     <project
         name="cetmix-tower.git"
-        revision="18.0"
-        freeze-revision="6b2a9616812f255966ca0b33b75a9a1898327a14"
+        revision="18.0_dev"
+        freeze-revision="3b1f77d7223fd0a2d4e99853d9ffc79fb1b1e052"
         path="odoo18.0/addons/cetmix_cetmix-tower"
-        remote="cetmix"
+        remote="TechnoLibre_origin_cetmix"
+        fork-upstream-remote="cetmix"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="4761a22d4d08d7fd3fc01d4047b1874db87c6fe5"
         groups="addons,odoo18.0"
     />
     <project
@@ -552,7 +556,7 @@
         remote="ERPLibre_origin_TechnoLibre"
         fork-upstream-remote="TechnoLibre"
         revision="18.0"
-        freeze-revision="8cb807fe8850b1ec109cd5688f69dc85834a7470"
+        freeze-revision="8989877bdd7a7003958963954e70c6c5776199fb"
         groups="addons,odoo18.0,code_generator,image_db"
     />
     <project
@@ -856,7 +860,7 @@
     <project
         name="server-tools.git"
         revision="18.0_dev"
-        freeze-revision="3e92454cb866e0569fae693b48da8e072f08696d"
+        freeze-revision="e0bae96b6c95e3fc9e39f02a7c644723ba460630"
         path="odoo18.0/addons/OCA_server-tools"
         remote="ERPLibre_origin_OCA"
         fork-upstream-remote="OCA"
@@ -934,10 +938,13 @@
     />
     <project
         name="storage.git"
-        revision="18.0"
-        freeze-revision="4e18dba99ce4088d681c664b8d83024174782ec9"
+        revision="18.0_dev"
+        freeze-revision="fba7148399536f3d4139bf9af88a0fac542180fc"
         path="odoo18.0/addons/OCA_storage"
-        remote="OCA"
+        remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="052b28e8d75011af8dc6eb80825544010ed5ac83"
         groups="addons,odoo18.0"
     />
     <project
