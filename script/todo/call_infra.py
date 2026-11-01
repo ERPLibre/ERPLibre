@@ -6,8 +6,8 @@
 d'installation, script d'installation, état de l'hôte, vérification et
 désinstallation.
 
-Fonctions pures, stdlib seule (plus `ntfy_mobile`, `odoo_link` et
-`turn_client`, stdlib seule aussi) :
+Fonctions pures, stdlib seule (plus `call_infra_container`, `ntfy_mobile`,
+`odoo_link` et `turn_client`, stdlib seule aussi) :
 le menu de `todo.py` les appelle, les scripts `sh` qu'elles construisent
 sont exécutés en root par `ntfy_mobile.LocalHost` ou `SshHost`, et leur
 sortie est relue par des lignes `@@NOM valeur`.
@@ -69,6 +69,7 @@ import ssl
 import subprocess
 import tempfile
 
+from script.todo import call_infra_container as cc
 from script.todo import ntfy_mobile as nm
 from script.todo import odoo_link as ol
 from script.todo import turn_client
@@ -276,6 +277,10 @@ class HostFacts:
     sinon `version` (None sans certbot), `lineage` (noms de la lignée de
     l'outil, None sans elle), `held` (son fichier de renouvellement est mis
     de côté), `plugins` (greffons DNS installés), `pending`.
+
+    `engines` : les moteurs de conteneurs, leurs outils de composition, les
+    comptes et les conteneurs de l'outil (`cc.EngineFacts`) ; None quand la
+    sortie ne porte aucune ligne de moteur.
     """
 
     family: str | None
@@ -294,6 +299,7 @@ class HostFacts:
     ufw_added: tuple[str, ...] = ()
     nginx: dict | None = None
     certbot: dict | None = None
+    engines: cc.EngineFacts | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -472,8 +478,9 @@ def probe_script(root=""):
     <noms...>` (lu par `certbot certificates`, qui n'écrit que son
     journal), `@@HELD erplibre-call` quand son fichier de renouvellement est
     mis de côté, `@@TIMER_ADDED <unité>` par minuteur que l'outil a activé
-    ou posé (`_certbot_probe_lines`), puis `@@END` : sans lui, la sortie
-    est tronquée.
+    ou posé (`_certbot_probe_lines`), les lignes des moteurs de conteneurs
+    (`cc.engine_probe_lines`), puis `@@END` : sans lui, la sortie est
+    tronquée.
     """
     files = " ".join(
         [
@@ -573,6 +580,7 @@ def probe_script(root=""):
             'if [ -f "$S" ]; then echo "@@STATE $(base64 -w0 < "$S")"; fi',
             f'FP="$R{PENDING_DIR}/firewall"',
             'if [ -f "$FP" ]; then sed "s/^/@@FIREWALL_PENDING /" "$FP"; fi',
+            *cc.engine_probe_lines(root),
             'echo "@@END"',
             "",
         ]
@@ -768,8 +776,11 @@ def parse_probe(output):
     nginx_marker, nginx_names, plugins, nginx_enabled = [], [], [], None
     certbot_version, lineage, held, authenticator = None, None, False, None
     timer_added = None
+    engine_pairs = []
     for name, value in marker_lines(output):
-        if name == "OS":
+        if name in cc.ENGINE_MARKERS:
+            engine_pairs.append((name, value))
+        elif name == "OS":
             parts = value.split()
             os_id = parts[0] if parts else "unknown"
             version = parts[1] if len(parts) > 1 else "-"
@@ -906,6 +917,7 @@ def parse_probe(output):
             timer_added,
             pending.get("certbot"),
         ),
+        engines=cc.parse_engine_lines(engine_pairs) if engine_pairs else None,
     )
 
 
