@@ -404,11 +404,47 @@ class TestSnapshot(Checkout):
                 "freeze_revision": self.sha["u2"],
                 "declared": True,
                 "url": "https://example.invalid/U/web.git",
+                "base": self.sha["u2"],
+                "base_source": "upstream_ref",
+                "base_reason": None,
+                "ahead": 2,
+                "tracking": "refs/remotes/U/18.0",
+                "behind": 0,
             },
         )
         self.assertIsNone(
             self.depots(d)["odoo18.0/addons/R_ahead"]["upstream"]
         )
+
+    def test_ecart_avec_l_amont(self):
+        """L'amont avance d'un commit : « behind » le compte, nos deux
+        commits restent « ahead »."""
+        u3 = _git(
+            self.web18,
+            "commit-tree",
+            "-p",
+            self.sha["u2"],
+            "-m",
+            "[UPD] u3",
+            f"{self.sha['u2']}^{{tree}}",
+        )
+        _git(self.web18, "update-ref", "refs/remotes/U/18.0", u3)
+        _code, d = self.lancer()
+        amont = self.depots(d)[WEB18]["upstream"]
+        self.assertEqual((amont["ahead"], amont["behind"]), (2, 1))
+        self.assertEqual(amont["base"], self.sha["u2"])
+
+    def test_ecart_sans_branche_de_suivi(self):
+        """Sans branche de suivi amont, la base vient du gel et « behind »
+        reste inconnu."""
+        _git(self.web18, "update-ref", "-d", "refs/remotes/U/18.0")
+        _code, d = self.lancer()
+        amont = self.depots(d)[WEB18]["upstream"]
+        self.assertEqual(amont["base"], self.sha["u2"])
+        self.assertEqual(amont["base_source"], "upstream_freeze")
+        self.assertEqual(amont["ahead"], 2)
+        self.assertIsNone(amont["tracking"])
+        self.assertIsNone(amont["behind"])
 
     def test_hors_manifeste(self):
         _code, d = self.lancer()
