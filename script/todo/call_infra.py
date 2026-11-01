@@ -4804,16 +4804,19 @@ def odoo_result(output):
 
 # Avertissements d'un plan d'ajout (`OdooPlan.warnings`) : compte fixe sans
 # TURN sur TLS, module absent du chemin des addons (le texte dit comment
-# l'y mettre), plus d'entrées ICE qu'Odoo n'en envoie (valeur `count`).
+# l'y mettre), plus d'entrées ICE qu'Odoo n'en envoie (valeur `count`),
+# base qui porte déjà l'identifiant d'une autre fiche (valeur `other`).
 NO_TURNS_WARNING = "call_infra_no_turns"
 MODULE_ABSENT_WARNING = "call_infra_module_absent"
 ICE_OVER_WARNING = "call_infra_ice_over_5"
+ODOO_ALIAS_WARNING = "call_infra_odoo_alias"
 # Clés i18n que l'ajout et le retrait rendent : avertissements, puis refus
 # (`Refusal`) de `plan_odoo_add`, `apply_odoo_add` et `apply_odoo_remove`.
 ODOO_PLAN_KEYS = (
     NO_TURNS_WARNING,
     MODULE_ABSENT_WARNING,
     ICE_OVER_WARNING,
+    ODOO_ALIAS_WARNING,
     "call_infra_odoo_no_coturn",
     "call_infra_odoo_version",
     "call_infra_turn_mode_mismatch",
@@ -4853,7 +4856,9 @@ class OdooPlan:
     module. `rows_total` : les entrées ICE qu'Odoo aura, celles de l'outil
     plus les lignes qui ne sont pas les siennes. `warnings` : clés i18n,
     leurs valeurs dans `messages()`. `exempt` : l'adresse à exempter des
-    limites de ntfy, None sans ntfy dans l'état.
+    limites de ntfy, None sans ntfy dans l'état. `alias` : la clé d'une
+    autre fiche de l'état dont la base porte déjà l'identifiant, None
+    sinon.
 
     `state` : l'état de l'hôte que le plan suppose (lu par la sonde) ;
     `realm` : celui de coturn ; `ttl_hours` : la durée de vie des
@@ -4872,11 +4877,15 @@ class OdooPlan:
     realm: str = ""
     ttl_hours: int = DEFAULT_TTL_HOURS
     ntfy_text: str | None = None
+    alias: str | None = None
 
     def messages(self):
         """((clé, valeurs), ...) des avertissements, dans leur ordre, pour
         `t(clé).format(**valeurs)`."""
-        values = {ICE_OVER_WARNING: {"count": self.rows_total}}
+        values = {
+            ICE_OVER_WARNING: {"count": self.rows_total},
+            ODOO_ALIAS_WARNING: {"other": self.alias},
+        }
         return tuple((key, dict(values.get(key, {}))) for key in self.warnings)
 
 
@@ -4888,6 +4897,33 @@ def _fixed_row(url, owned):
     WebRTC ignore le nom d'une URL `stun:`."""
     server_type, _, uri = url.partition(":")
     return {"server_type": server_type, "uri": uri, "username": owned}
+
+
+def _alias_of(state, key, facts):
+    """La clé d'une autre fiche de `state` que la base de `facts` porte
+    déjà : son secret (`erplibre_turn.secret`, actuel ou ancien) ou une
+    ligne `mail.ice.server` au nom de son compte fixe. La même base
+    branchée sous deux URL a deux fiches ; retirer l'une débrancherait
+    l'autre. None sans telle fiche."""
+    digest = facts.params.get(ol.PARAM_SECRET) or ""
+    names = {r.get("username") or "" for r in facts.rows}
+    for other, entry in sorted(_odoos(state).items()):
+        if other == key or not isinstance(entry, dict):
+            continue
+        credential = entry.get("credential")
+        credential = credential if isinstance(credential, dict) else {}
+        retired = entry.get("retired")
+        hashes = [credential.get("value_sha256")] + [
+            item.get("value_sha256")
+            for item in (retired if isinstance(retired, list) else ())
+            if isinstance(item, dict)
+        ]
+        if (
+            any(h and digest == ol.SECRET_DIGEST_PREFIX + h for h in hashes)
+            or (credential.get("user") or None) in names
+        ):
+            return other
+    return None
 
 
 def plan_odoo_add(
@@ -4942,6 +4978,9 @@ def plan_odoo_add(
         warnings.append(NO_TURNS_WARNING)
     if facts.module_state not in _MODULE_INSTALLED + _MODULE_INSTALLABLE:
         warnings.append(MODULE_ABSENT_WARNING)
+    alias = _alias_of(state, key, facts)
+    if alias is not None:
+        warnings.append(ODOO_ALIAS_WARNING)
     others = [r for r in facts.rows if (r.get("username") or "") != owned]
     total = len(others) + entries
     if total > MAX_ICE_SERVERS:
@@ -4964,6 +5003,7 @@ def plan_odoo_add(
         realm=realm,
         ttl_hours=odoo_ttl_hours(facts.params.get(ol.PARAM_TTL)),
         ntfy_text=ntfy_text,
+        alias=alias,
     )
 
 

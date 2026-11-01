@@ -4445,6 +4445,10 @@ TRANSLATIONS = {
         "fr": "Odoo à {url} redirige vers {target} : un appel JSON-RPC ne suit pas une redirection. Entrez {target} comme URL d'Odoo.",
         "en": "Odoo at {url} redirects to {target}: a JSON-RPC call does not follow a redirection. Enter {target} as the Odoo URL.",
     },
+    "call_infra_odoo_alias": {
+        "fr": "Cette base porte déjà l'identifiant du serveur Odoo {other} : c'est la même base sous une autre URL, ou une copie d'elle. Pour la même base, annulez et relancez avec l'URL de {other} : sinon, ses deux fiches se croisent, et retirer l'une débranche l'autre. Une copie (préproduction) reçoit ici son propre identifiant.",
+        "en": "This database already holds the credential of the Odoo server {other}: it is the same database under another URL, or a copy of it. For the same database, cancel and run again with the URL of {other}: otherwise its two records cross, and removing one unplugs the other. A copy (staging) gets its own credential here.",
+    },
     "call_infra_odoo_rpc_error": {
         "fr": "Odoo a refusé l'opération : {message}",
         "en": "Odoo refused the operation: {message}",

@@ -8642,6 +8642,43 @@ class TestOdooPlan(OdooSandbox):
             ci.plan_odoo_add({}, odoo_facts(), URL_A, DB_A, False, None)
         self.assertEqual(caught.exception.key, "call_infra_odoo_no_coturn")
 
+    def test_a_database_already_plugged_under_another_url_warns(self):
+        # Même base, autre URL (alias) : son secret ou sa ligne de compte
+        # fixe est celle d'une autre fiche de l'état.
+        user_b = ol.owned_username(URL_B, DB_B)
+        cases = (
+            (
+                secret_state(odoos={KEY_B: secret_entry(SECRET_A)}),
+                odoo_facts(
+                    "installed",
+                    params={ol.PARAM_SECRET: ol.secret_digest(SECRET_A)},
+                ),
+            ),
+            (
+                fixed_state(odoos={KEY_B: user_entry(user_b)}),
+                odoo_facts(
+                    "absent",
+                    rows=(ice_row(9, "turn.exemple.test:3478", user_b),),
+                ),
+            ),
+        )
+        for state, facts in cases:
+            with self.subTest(mode=state["turn_mode"]):
+                plan = self.plan(state, facts)
+                self.assertIn(ci.ODOO_ALIAS_WARNING, plan.warnings)
+                self.assertIn(
+                    (ci.ODOO_ALIAS_WARNING, {"other": KEY_B}), plan.messages()
+                )
+
+    def test_the_same_key_rerun_is_no_alias(self):
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        facts = odoo_facts(
+            "installed", params={ol.PARAM_SECRET: ol.secret_digest(SECRET_A)}
+        )
+        self.assertNotIn(
+            ci.ODOO_ALIAS_WARNING, self.plan(state, facts).warnings
+        )
+
     def test_exempt_address(self):
         state = secret_state()
         plan = self.plan(
