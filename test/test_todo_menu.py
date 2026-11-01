@@ -99,6 +99,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Test": "prompt_execute_test",
         "Process": "prompt_execute_process",
         "Uninstall": "prompt_execute_uninstall",
+        "Image Odoo": "prompt_execute_image_db",
         "Database": "prompt_execute_database",
         "Analyse": "prompt_execute_analyse",
         "Transform data": "prompt_execute_transform",

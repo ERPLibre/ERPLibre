@@ -18,6 +18,42 @@ _logger = logging.getLogger(__name__)
 
 PYTHON_BIN = ".venv.erplibre/bin/python3"
 IMAGE_DB_BIN = f"{PYTHON_BIN} ./script/database/image_db.py"
+CONFIG_IMAGE_DB = os.path.join("conf", "module_list_image_db_odoo.json")
+
+
+def load_image_config(path=CONFIG_IMAGE_DB):
+    """La configuration des images, {nom d'image: définition}, ou {} quand
+    le fichier manque ou ne se lit pas."""
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def images_of_version(dct_config, odoo_version):
+    """Les images actives de `odoo_version` (« 18.0 »), dans l'ordre de la
+    configuration : les noms à passer à --image. Une image « disable » n'en
+    fait pas partie."""
+    prefix = f"odoo{odoo_version}_"
+    return [
+        name
+        for name, dct in dct_config.items()
+        if name.startswith(prefix) and not dct.get("disable")
+    ]
+
+
+def versions_with_images(dct_config):
+    """Les versions d'Odoo qui ont au moins une image active, triées :
+    [« 12.0 », …, « 18.0 »]."""
+    versions = set()
+    for name, dct in dct_config.items():
+        if dct.get("disable") or not name.startswith("odoo"):
+            continue
+        version = name[len("odoo") :].split("_", 1)[0]
+        if version.replace(".", "").isdigit():
+            versions.add(version)
+    return sorted(versions, key=lambda v: [int(x) for x in v.split(".")])
 
 
 def get_config():
