@@ -743,6 +743,45 @@ class LeCheminDuMenu(unittest.TestCase):
         self.assertEqual(len(regles), len(etat["firewall"]["rules"]))
         self.assertEqual(ci.state_write_script(etat), hote.scripts[3])
 
+    def test_http_challenge_opens_the_firewall_before_the_install(self):
+        # Comme le menu : le défi HTTP-01 passe pendant l'installation.
+        ans = ci.Answers(
+            services=frozenset({"coturn"}),
+            tls="letsencrypt",
+            cert_pem=None,
+            key_pem=None,
+            public_name="exemple.test",
+            mode="production",
+            turn_name="turn.exemple.test",
+            acme="http-standalone",
+            min_port=ci.PROD_MIN_PORT,
+            max_port=ci.PROD_MAX_PORT,
+        )
+        regles = ci.firewall_rules(ans)
+        ajout = "".join(
+            f"@@FIREWALL_ADDED {r.proto} {r.port} {r.service}\n"
+            for r in regles
+        )
+        hote = Hote(
+            (0, DEBIAN_UFW_PROBE),
+            (0, ajout + "@@FIREWALL_PERSISTED yes\n@@END\n"),
+            (0, "@@ACTIVE coturn active\n@@SAVED yes"),
+            (0, "@@SAVED yes\n"),
+        )
+        res = lt.installer("vm", ans, self.log, executer=hote)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(4, len(hote.scripts))
+        self.assertEqual(
+            ci.firewall_script("ufw", regles, "allow"), hote.scripts[1]
+        )
+        self.assertIn("@@ACTIVE", hote.scripts[2])
+        self.assertEqual(len(regles), len(res["etat"]["firewall"]["rules"]))
+        # Un pare-feu en échec arrête avant l'installation.
+        hote = Hote((0, DEBIAN_UFW_PROBE), (1, "@@FIREWALL_FAILED\n"))
+        res = lt.installer("vm", ans, self.log, executer=hote)
+        self.assertEqual("pare-feu", res["etape"])
+        self.assertEqual(2, len(hote.scripts))
+
     def test_no_firewall_runs_no_firewall_script(self):
         sonde = DEBIAN_UFW_PROBE.replace("ufw", "none")
         hote = Hote(
