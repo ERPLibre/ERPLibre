@@ -4655,6 +4655,26 @@ TRANSLATIONS = {
         "fr": "Révoquer quand même sur coturn ?",
         "en": "Revoke on coturn anyway?",
     },
+    "Remove this Odoo server now? (y/N): ": {
+        "fr": "Retirer ce serveur Odoo maintenant ? (o/N) : ",
+        "en": "Remove this Odoo server now? (y/N): ",
+    },
+    "Nothing removed.": {
+        "fr": "Rien n'est retiré.",
+        "en": "Nothing removed.",
+    },
+    "call_infra_remove_revokes_secret": {
+        "fr": "chaque secret de ce serveur, anciens compris, révoqué sur coturn sans délai de grâce, et retiré d'Odoo : ses appels relayés échouent dès la prochaine entrée, jusqu'à un nouvel ajout",
+        "en": "every secret of this server, old ones included, revoked on coturn with no grace period, and removed from Odoo: its relayed calls fail from the next join on, until it is added again",
+    },
+    "call_infra_remove_deletes_user": {
+        "fr": "compte fixe {user} supprimé de coturn sur-le-champ, et ses lignes retirées d'Odoo : ses appels relayés échouent dès la prochaine entrée, jusqu'à un nouvel ajout",
+        "en": "fixed account {user} deleted from coturn at once, and its rows removed from Odoo: its relayed calls fail from the next join on, until it is added again",
+    },
+    "call_infra_remove_drops_exempt": {
+        "fr": "Exemption de ntfy : {exempt} retirée, ntfy redémarré.",
+        "en": "ntfy exemption: {exempt} removed, ntfy restarted.",
+    },
     "Nothing revoked.": {
         "fr": "Rien n'est révoqué.",
         "en": "Nothing revoked.",

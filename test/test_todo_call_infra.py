@@ -1485,9 +1485,11 @@ ODOO_ADDRESS = "198.51.100.20"
 # Réponses jusqu'aux faits de la base, par l'API web : méthode (1),
 # URL, base, identifiant (admin proposé), mot de passe (sans écho).
 ADD_WEB = ["", ODOO_URL, ODOO_DB, "", ODOO_PASSWORD]
-# Retrait par l'API web : choix de la base (1), méthode consignée,
-# identifiant, mot de passe.
-REMOVE_WEB = ["", "", "", ODOO_PASSWORD]
+# Débrancher une base par l'API web : méthode consignée, identifiant, mot
+# de passe.
+REMOVE_ONE = ["", "", ODOO_PASSWORD]
+# « Retirer » : choix de la base (1), oui au résumé, puis REMOVE_ONE.
+REMOVE_WEB = ["", "o"] + REMOVE_ONE
 
 
 def odoo_facts(module_state="installed", rows=(), params=None, version="18.0"):
@@ -1866,7 +1868,7 @@ class TestRemoveOdoo(OdooCase):
     def test_the_list_names_each_odoo_and_its_method(self):
         host = FakeHost(state=plugged_state(keys=(ODOO_KEY, OTHER_KEY)))
         out = self.drive(
-            "_call_infra_remove_odoo", host, ["2", "", "", ODOO_PASSWORD]
+            "_call_infra_remove_odoo", host, ["2", "o"] + REMOVE_ONE
         )
         listed = sorted([ODOO_KEY, OTHER_KEY])
         for n, key in enumerate(listed, 1):
@@ -1876,6 +1878,33 @@ class TestRemoveOdoo(OdooCase):
         self.assertEqual(list(host.state["odoos"]), [listed[0]])
         url, _, database = listed[1].rpartition("|")
         self.assertEqual(self.made[0][1:3], (url, database))
+
+    def test_the_summary_comes_before_any_question_on_the_link(self):
+        host = FakeHost(state=plugged_state(exempt="198.51.100.20"))
+        before = json.loads(json.dumps(host.state))
+        out = self.drive("_call_infra_remove_odoo", host, ["", ""])
+        self.assertIn(t("call_infra_remove_revokes_secret"), out)
+        self.assertIn(
+            self.text(
+                "call_infra_remove_drops_exempt", exempt="198.51.100.20"
+            ),
+            out,
+        )
+        self.assertIn(
+            t("Remove this Odoo server now? (y/N): "), self.prompts[1]
+        )
+        self.assertIn(t("Nothing removed."), out)
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertEqual(self.made, [])
+        self.assertEqual(host.state, before)
+
+    def test_the_summary_of_a_fixed_account(self):
+        host = FakeHost(state=plugged_state("user"))
+        out = self.drive("_call_infra_remove_odoo", host, ["", "n"])
+        self.assertIn(
+            self.text("call_infra_remove_deletes_user", user=OWNED), out
+        )
+        self.assertEqual(host.kinds(), ["probe"])
 
     def test_an_unreachable_odoo_asks_before_revoking_anyway(self):
         self.link = FakeLink(fail={"set_params"})
@@ -2034,7 +2063,7 @@ class TestUninstallOdoo(OdooCase):
         self.drive(
             "_call_infra_uninstall",
             host,
-            [""] + REMOVE_WEB[1:] + ["n", "o"],
+            ["", "n", "o"] + REMOVE_ONE,
         )
         self.assertEqual(
             host.kinds(), ["probe", "odoo-remove", "probe", "uninstall"]
@@ -2044,6 +2073,14 @@ class TestUninstallOdoo(OdooCase):
             self.text("call_infra_ask_remove_odoo_first", odoo=ODOO_KEY),
             self.prompts[0],
         )
+
+    def test_declining_the_uninstall_leaves_each_odoo_plugged(self):
+        host = FakeHost(state=plugged_state())
+        out = self.drive("_call_infra_uninstall", host, ["", "n", "n"])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertEqual(self.made, [])
+        self.assertIn(ODOO_KEY, host.state["odoos"])
+        self.assertIn(t("Nothing uninstalled."), out)
 
     def test_the_odoo_kept_are_listed(self):
         host = FakeHost(state=plugged_state())

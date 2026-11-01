@@ -1613,8 +1613,46 @@ class CallInfraMenuMixin:
             print(t("call_infra_no_odoo"))
             return
         key = self._call_infra_pick_odoo(odoos)
-        if key is not None:
-            self._call_infra_remove_one(host, facts, key)
+        if key is None:
+            return
+        self._call_infra_show_remove(facts.state, key)
+        if not _yes(t("Remove this Odoo server now? (y/N): ")):
+            print(t("Nothing removed."))
+            return
+        self._call_infra_remove_one(host, facts, key)
+
+    def _call_infra_show_remove(self, state, key):
+        """Le résumé avant le oui du retrait : la base, l'identifiant
+        révoqué sans grâce (secrets ou compte fixe), l'adresse exemptée de
+        ntfy qui part quand aucun autre Odoo ne la consigne."""
+        odoos = self._call_infra_odoos(state)
+        entry = odoos.get(key)
+        entry = entry if isinstance(entry, dict) else {}
+        credential = entry.get("credential")
+        credential = credential if isinstance(credential, dict) else {}
+        print(f"\n{t('Summary')}")
+        print(f"  {t('Odoo server:')} {key}")
+        if credential.get("kind") == "user":
+            what = self._call_infra_text(
+                "call_infra_remove_deletes_user",
+                {"user": credential.get("user")},
+            )
+        else:
+            what = t("call_infra_remove_revokes_secret")
+        print(f"  {t('Credentials:')} {what}")
+        exempt = entry.get("exempt")
+        shared = any(
+            isinstance(other, dict) and other.get("exempt") == exempt
+            for name, other in odoos.items()
+            if name != key
+        )
+        if exempt and not shared and self._call_infra_has_ntfy(state):
+            print(
+                "  "
+                + self._call_infra_text(
+                    "call_infra_remove_drops_exempt", {"exempt": exempt}
+                )
+            )
 
     def _call_infra_remove_one(self, host, facts, key):
         """Débranche la base `key` (`apply_odoo_remove`) : Odoo nettoyé
@@ -1700,15 +1738,14 @@ class CallInfraMenuMixin:
         ):
             print(self._call_infra_line(line))
 
-    def _call_infra_unplug_odoos(self, host, facts):
-        """Avant de désinstaller : chaque serveur Odoo branché est proposé
-        au retrait (Odoo nettoyé, identifiant révoqué), l'hôte relu après
-        chacun ; ceux qu'on garde sont nommés, leurs lignes ou paramètres
-        pointeront vers un coturn retiré. Rend les faits à jour, ou None
-        quand l'hôte ne se relit plus."""
+    def _call_infra_choose_odoos(self, facts):
+        """Avant le résumé de la désinstallation : chaque serveur Odoo
+        branché est proposé au retrait, rien n'est encore fait. Rend
+        (à retirer, gardés), triés ; ceux qu'on garde sont nommés, leurs
+        lignes ou paramètres pointeront vers un coturn retiré."""
         odoos = self._call_infra_odoos(facts.state)
         if not odoos:
-            return facts
+            return [], []
         print(
             "\n"
             + self._call_infra_text(
@@ -1716,22 +1753,21 @@ class CallInfraMenuMixin:
                 {"odoos": ", ".join(sorted(odoos))},
             )
         )
-        kept = []
+        chosen, kept = [], []
         for key in sorted(odoos):
-            if (
-                not self._call_infra_ask_yes(
-                    self._call_infra_text(
-                        "call_infra_ask_remove_odoo_first", {"odoo": key}
-                    ),
-                    True,
-                )
-                or self._call_infra_remove_one(host, facts, key) is None
+            if self._call_infra_ask_yes(
+                self._call_infra_text(
+                    "call_infra_ask_remove_odoo_first", {"odoo": key}
+                ),
+                True,
             ):
+                chosen.append(key)
+            else:
                 kept.append(key)
-                continue
-            facts = self._call_infra_probe(host)
-            if facts is None:
-                return None
+        self._call_infra_warn_kept(kept)
+        return chosen, kept
+
+    def _call_infra_warn_kept(self, kept):
         if kept:
             print(
                 "⚠ "
@@ -1740,6 +1776,22 @@ class CallInfraMenuMixin:
                     {"odoos": ", ".join(kept)},
                 )
             )
+
+    def _call_infra_unplug_odoos(self, host, facts, chosen):
+        """Après le oui de la désinstallation : chaque serveur Odoo de
+        `chosen` est retiré (Odoo nettoyé, identifiant révoqué), l'hôte
+        relu après chacun ; un retrait qui n'aboutit pas garde le serveur,
+        nommé. Rend les faits à jour, ou None quand l'hôte ne se relit
+        plus."""
+        failed = []
+        for key in chosen:
+            if self._call_infra_remove_one(host, facts, key) is None:
+                failed.append(key)
+                continue
+            facts = self._call_infra_probe(host)
+            if facts is None:
+                return None
+        self._call_infra_warn_kept(failed)
         return facts
 
     # --- Désinstaller -------------------------------------------------------
@@ -1752,9 +1804,7 @@ class CallInfraMenuMixin:
         facts = self._call_infra_probe(host)
         if facts is None:
             return
-        facts = self._call_infra_unplug_odoos(host, facts)
-        if facts is None:
-            return
+        chosen, _kept = self._call_infra_choose_odoos(facts)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         # Les règles qu'un passage a posées sans pouvoir les consigner
         # partent avec les autres.
@@ -1787,6 +1837,20 @@ class CallInfraMenuMixin:
         if not _yes(t("Uninstall now? (y/N): ")):
             print(t("Nothing uninstalled."))
             return
+        if chosen:
+            # Chaque retrait réécrit l'état : la désinstallation part de
+            # l'état relu après le dernier, validé de nouveau.
+            facts = self._call_infra_unplug_odoos(host, facts, chosen)
+            if facts is None:
+                return
+            state = ci.merge_pending_firewall(
+                facts.state, facts.firewall_pending
+            )
+            try:
+                ci.uninstall_script(state, remove_data, stamp)
+            except ci.Refusal as refusal:
+                self._call_infra_refuse(refusal)
+                return
         result = self._call_infra_run(
             host, ci.uninstall_script(state, remove_data, stamp)
         )
