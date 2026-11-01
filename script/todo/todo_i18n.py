@@ -7966,15 +7966,28 @@ TRANSLATIONS = {
         "fr": "Infrastructure d'appel sur des VM jetables : le lancer",
         "en": "Call infrastructure on throwaway VMs: run it",
     },
-    "This creates four VMs one after the other (development, then production with nginx, on Debian and on Arch) and installs coturn and ntfy on them. call_infra.py --scenario dev or prod runs only one.": {
-        "fr": "Cela crée quatre VM l'une après l'autre (développement, puis"
-        " production avec nginx, sous Debian et sous Arch), et y installe"
-        " coturn et ntfy. call_infra.py --scenario dev ou prod n'en lance"
+    "This creates five VMs one after the other (development, then production with nginx, on Debian and on Arch, then Odoo servers on one coturn on Debian, with three throwaway Odoo 18 databases on this machine) and installs coturn and ntfy on them. call_infra.py --scenario dev, prod or odoo runs only one.": {
+        "fr": "Cela crée cinq VM l'une après l'autre (développement, puis"
+        " production avec nginx, sous Debian et sous Arch, puis des"
+        " serveurs Odoo sur un même coturn sous Debian, avec trois bases"
+        " Odoo 18 jetables sur cette machine), et y installe coturn et"
+        " ntfy. call_infra.py --scenario dev, prod ou odoo n'en lance"
         " qu'un.",
-        "en": "This creates four VMs one after the other (development, then"
-        " production with nginx, on Debian and on Arch) and installs coturn"
-        " and ntfy on them. call_infra.py --scenario dev or prod runs only"
-        " one.",
+        "en": "This creates five VMs one after the other (development, then"
+        " production with nginx, on Debian and on Arch, then Odoo servers on"
+        " one coturn on Debian, with three throwaway Odoo 18 databases on"
+        " this machine) and installs coturn and ntfy on them. call_infra.py"
+        " --scenario dev, prod or odoo runs only one.",
+    },
+    "This destroys the machines of this test and their disks, stops its local Odoo servers and drops its call_infra_odoo_* databases.": {
+        "fr": "Cela détruit les machines de ce test et leurs disques, arrête"
+        " ses serveurs Odoo locaux et supprime ses bases call_infra_odoo_*.",
+        "en": "This destroys the machines of this test and their disks, stops"
+        " its local Odoo servers and drops its call_infra_odoo_* databases.",
+    },
+    "Destroy the machines and databases of this test?": {
+        "fr": "Détruire les machines et les bases de ce test ?",
+        "en": "Destroy the machines and databases of this test?",
     },
     "Run the call infrastructure test?": {
         "fr": "Lancer le test de l'infrastructure d'appel ?",

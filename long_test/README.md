@@ -764,17 +764,58 @@ name:
    coturn unit, the ports closed from this machine; a second uninstall
    finds nothing to do.
 
+The Odoo servers scenario (`--scenario odoo`) runs on Debian only. It
+plugs three databases of a local Odoo 18 into one coturn with the bricks
+of `Add an Odoo server` and `Remove an Odoo server`, reaching each
+database by its web API. The databases `call_infra_odoo_<run>_a`, `_b`
+and `_c` are copies of the Odoo 18 template of `mobile_sync_odoo.py`,
+whose addons path holds `erplibre_turn`; each one gets its own server on
+free ports of 127.0.0.1. Every allocation goes from this machine to the
+VM, with the credentials Odoo hands to a user (`join_call_ice`) or to a
+guest who came in through an invitation link (`join_call_ice_guest`):
+
+1. the VM, ssh, cloud-init and ufw, then the harness: template, three
+   databases, three servers. Each database enters the report before it
+   exists;
+2. coturn and ntfy in development mode with a supplied certificate for
+   the VM address. The ntfy exempt address is this machine's address as
+   the VM sees it: the menu's proposal, the loopback address of a harness
+   Odoo, is dropped and the address is typed;
+3. A, the module installable but declined: a fixed account, three
+   `mail.ice.server` rows, coturn in `lt-cred-mech`; the two `turn:` URLs
+   allocate. A removed: rows gone, exempt address removed, and the
+   credentials handed before get a 401;
+4. B, the module installed by the tool: coturn switches to
+   `use-auth-secret` and restarts once (its `MainPID` changes); a user and
+   a guest both allocate `turn:` and `turns:`;
+5. C, the module installed, on the same coturn: no restart (same
+   `MainPID`), B and C both allocate; then the check of the menu, its
+   `turn-*` lines under the check secret and `odoo-1`, `odoo-2` under each
+   Odoo's own secret;
+6. B added again: a new secret, B allocates with its new credentials, and
+   those handed before the rotation still allocate (the old secret's
+   grace), without a restart;
+7. C removed: B still allocates, C's credentials get a 401 and its secret
+   is gone from coturn's database, the exempt address B shares stays;
+8. A without the module again: refused for the mode, the host unchanged;
+9. B removed (the module stays installed), the uninstall, data included;
+   the harness servers are stopped and their databases dropped with their
+   filestore, even after a failure. `--detruire` drops the
+   `call_infra_odoo_*` databases a killed run left in its report, then
+   destroys the VMs.
+
 ```
-./long_test/call_infra.py                  # Debian, then Arch, dev then prod
+./long_test/call_infra.py                  # Debian, then Arch, each scenario
 ./long_test/call_infra.py --distro arch    # one system
 ./long_test/call_infra.py --scenario prod  # one scenario
+./long_test/call_infra.py --scenario odoo  # the Odoo servers, Debian
 ./long_test/call_infra.py --dry-run        # the plan, nothing created
 ./long_test/call_infra.py --garder --scenario dev   # keep the VMs
 ./long_test/call_infra.py --detruire       # undo the last run
 ```
 
 The VM names are fixed: a VM kept by `--garder` makes the next run refuse
-until `--detruire`. Both scenarios of a system use the same name, so
+until `--detruire`. The scenarios of a system use the same name, so
 `--garder` needs a single scenario.
 
 Each run's log is a `<scenario>-<system>.log` in the run's sub-directory;

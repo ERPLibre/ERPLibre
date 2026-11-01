@@ -823,18 +823,60 @@ du même nom :
    nginx purgé (l'outil l'avait installé), plus d'unité coturn, les ports
    fermés vus d'ici ; une seconde désinstallation ne trouve rien à faire.
 
+Le scénario des serveurs Odoo (`--scenario odoo`) tourne sur Debian
+seulement. Il branche trois bases d'un Odoo 18 de cette machine sur un même
+coturn par les briques de `Ajouter un serveur Odoo` et `Retirer un serveur
+Odoo`, chaque base jointe par son API web. Les bases
+`call_infra_odoo_<course>_a`, `_b` et `_c` sont des copies du gabarit Odoo
+18 de `mobile_sync_odoo.py`, dont le chemin d'addons porte `erplibre_turn` ;
+chacune a son serveur sur des ports libres de 127.0.0.1. Chaque allocation
+part de cette machine vers la VM, sous les identifiants qu'Odoo remet à un
+utilisateur (`join_call_ice`) ou à un invité entré par un lien d'invitation
+(`join_call_ice_guest`) :
+
+1. la VM, ssh, cloud-init et ufw, puis le harnais : gabarit, trois bases,
+   trois serveurs. Chaque base entre au rapport avant d'exister ;
+2. coturn et ntfy en mode développement avec un certificat fourni pour
+   l'adresse de la VM. L'adresse exemptée de ntfy est celle de cette
+   machine telle que la VM la voit : la proposition du menu, l'adresse de
+   boucle locale d'un Odoo du harnais, tombe et l'adresse est tapée ;
+3. A, le module installable mais refusé : un compte fixe, trois lignes
+   `mail.ice.server`, coturn en `lt-cred-mech` ; les deux URL `turn:`
+   s'allouent. A retiré : lignes parties, adresse exemptée retirée, et les
+   identifiants remis avant reçoivent un 401 ;
+4. B, le module installé par l'outil : coturn bascule en `use-auth-secret`
+   et redémarre une fois (son `MainPID` change) ; un utilisateur et un
+   invité allouent tous deux `turn:` et `turns:` ;
+5. C, le module installé, sur le même coturn : aucun redémarrage (même
+   `MainPID`), B et C allouent tous deux ; puis la vérification du menu,
+   ses lignes `turn-*` sous le secret de contrôle et `odoo-1`, `odoo-2`
+   sous le secret de chaque Odoo ;
+6. B ajouté de nouveau : un secret neuf, B alloue sous ses identifiants
+   neufs, et ceux remis avant la rotation allouent encore (la grâce de
+   l'ancien secret), sans redémarrage ;
+7. C retiré : B alloue toujours, les identifiants de C reçoivent un 401 et
+   son secret a quitté la base de coturn, l'adresse exemptée que B partage
+   reste ;
+8. A sans le module de nouveau : refusé pour le mode, l'hôte inchangé ;
+9. B retiré (le module reste installé), la désinstallation, données
+   comprises ; les serveurs du harnais arrêtés et leurs bases supprimées
+   avec leur filestore, même après un échec. `--detruire` supprime les
+   bases `call_infra_odoo_*` qu'une course tuée a laissées dans son
+   rapport, puis détruit les VM.
+
 ```
-./long_test/call_infra.py                  # Debian, puis Arch, dev puis prod
+./long_test/call_infra.py                  # Debian, puis Arch, chaque scénario
 ./long_test/call_infra.py --distro arch    # un seul système
 ./long_test/call_infra.py --scenario prod  # un seul scénario
+./long_test/call_infra.py --scenario odoo  # les serveurs Odoo, Debian
 ./long_test/call_infra.py --dry-run        # le plan, rien de créé
 ./long_test/call_infra.py --garder --scenario dev   # garder les VM
 ./long_test/call_infra.py --detruire       # défaire la dernière course
 ```
 
 Les noms des VM sont fixes : une VM gardée par `--garder` fait refuser la
-course suivante jusqu'au `--detruire`. Les deux scénarios d'un système
-prennent le même nom : `--garder` demande donc un seul scénario.
+course suivante jusqu'au `--detruire`. Les scénarios d'un système prennent
+le même nom : `--garder` demande donc un seul scénario.
 
 Le journal de chaque course est un `<scénario>-<système>.log` dans le
 sous-dossier de la course ; les secrets qu'impriment les scripts (le mot de
