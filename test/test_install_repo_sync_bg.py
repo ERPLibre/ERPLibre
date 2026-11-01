@@ -162,8 +162,10 @@ class TestValidateEnvironmentOdooSources(unittest.TestCase):
         self.addCleanup(os.chdir, cwd)
         os.makedirs(os.path.join("odoo18.0", "addons"))
         os.makedirs(".venv.odoo18.0_python3.12.16")
+        TestValidateEnvironmentOdooSources._poetry("2.5.1")
         with patch("sys.argv", ["prog", "--install_dev"]):
             self.update = Update()
+        self.update.new_version_poetry = "2.5.1"
         self.update.expected_venv_name = ".venv.odoo18.0_python3.12.16"
         self.update.expected_addons_name = os.path.join("odoo18.0", "addons")
         self.update.expected_odoo_name = "odoo18.0"
@@ -185,6 +187,18 @@ class TestValidateEnvironmentOdooSources(unittest.TestCase):
         os.makedirs(os.path.join("odoo18.0", "odoo"))
         open(os.path.join("odoo18.0", "odoo", "odoo-bin"), "w").close()
 
+    @staticmethod
+    def _poetry(version, venv=".venv.odoo18.0_python3.12.16"):
+        """Le dossier dist-info qu'une installation de Poetry laisse."""
+        site = os.path.join(venv, "lib", "python3.12", "site-packages")
+        for nom in os.listdir(site) if os.path.isdir(site) else ():
+            if nom.startswith("poetry-"):
+                shutil.rmtree(os.path.join(site, nom))
+        os.makedirs(os.path.join(site, f"poetry-{version}.dist-info"))
+        os.makedirs(
+            os.path.join(site, "poetry_core-2.5.0.dist-info"), exist_ok=True
+        )
+
     def test_missing_odoo_bin_requires_install(self):
         self.assertFalse(self.update.validate_environment())
 
@@ -202,6 +216,19 @@ class TestValidateEnvironmentOdooSources(unittest.TestCase):
             return_value=False,
         ):
             self.assertFalse(self.update.validate_environment())
+
+    def test_an_older_poetry_requires_install(self):
+        """Le venv garde Poetry 2.1.3 quand la version en déclare 2.5.1 :
+        l'installation doit passer pour le remplacer."""
+        self._odoo_bin()
+        self._poetry("2.1.3")
+        self.assertFalse(self.update.validate_environment())
+
+    def test_a_missing_venv_requires_install(self):
+        """Un changement de Python nomme un venv qui n'existe pas encore."""
+        self._odoo_bin()
+        shutil.rmtree(".venv.odoo18.0_python3.12.16")
+        self.assertFalse(self.update.validate_environment())
 
     def test_a_switch_ignores_the_installation_record(self):
         """--switch n'installe rien : l'état ne le concerne pas."""
