@@ -4631,18 +4631,30 @@ def _to_container_rollback_lines(plan, stamp, records):
     données rendues au compte de son paquet. coturn repasse par son
     installateur par paquets (`_packages_plan`), qui réécrit sa
     configuration, réinstalle un paquet purgé, rend la base à son compte et
-    relance l'unité ; ntfy posé par l'outil repasse par install_ntfy.sh à
-    la version de l'image, ntfy adopté retrouve son unité activée et
-    démarrée, sa configuration (la même par les deux méthodes) et la copie
-    de son adoption telles quelles."""
+    relance l'unité ; sans son paquet, la configuration gérée part avant
+    lui. ntfy posé par l'outil repasse par install_ntfy.sh à la version de
+    l'image, ntfy adopté retrouve son unité activée et démarrée, sa
+    configuration (la même par les deux méthodes) et la copie de son
+    adoption telles quelles."""
     packages = _packages_plan(plan)
     compose = _host(cc.COMPOSE_FILE)
     data = _host(COTURN_DATA_DIR)
     steps = []
     if "coturn" in records:
+        config = records["coturn"]["config"]
+        if config not in COTURN_CONFIGS.values():
+            raise ValueError(f"coturn config: {config!r}")
         steps.append(
             [
                 *_migration_restore_lines("coturn", stamp),
+                # pacman refuse un paquet dont un fichier existe déjà sans
+                # propriétaire : la configuration que l'installateur en
+                # conteneurs a écrite après la purge quitte sa place,
+                # l'installateur par paquets la réécrit.
+                f"if ! pkg_installed {PACKAGES['coturn']}"
+                f" && {_is_managed_test(config)}; then",
+                f"  rm -f {_host(config)} || fail coturn-config",
+                "fi",
                 *_coturn_block(packages, payload=False),
                 '[ "$RC_coturn" = 0 ] || fail coturn',
                 f"if [ -d {data} ]; then chown -R --no-dereference"
