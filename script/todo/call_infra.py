@@ -1882,6 +1882,70 @@ def _certbot_record(facts, answers, prior):
     }
 
 
+def _carry_fiches(new_state, facts, answers):
+    """Les fiches nginx et certbot d'un passage coupé que ce plan n'utilise
+    pas (relance en développement, ou certificat fourni) passent dans
+    l'état, que `install_script` écrit avant de retirer les fiches : sans
+    cela, ce que ce passage a posé (paquets, greffons, site de l'étape
+    acme, crochet) ne serait jamais défait. Une fiche absente de l'état
+    devient une fiche minimale, aux chemins de l'outil ; une fiche déjà
+    dans l'état n'y gagne que les greffons de celle du passage coupé."""
+    nginx_found, certbot_found = facts.nginx or {}, facts.certbot or {}
+    pending = nginx_found.get("pending")
+    if (
+        not _uses_nginx(answers)
+        and "nginx" not in new_state
+        and isinstance(pending, dict)
+        and "installed_by_tool" in pending
+    ):
+        layout = nginx_found.get("layout")
+        if layout not in NGINX_LAYOUTS:
+            layout = "debian" if facts.family == "debian" else "arch-include"
+        site, link, include = _nginx_paths(layout)
+        new_state["nginx"] = {
+            "installed_by_tool": bool(pending["installed_by_tool"]),
+            "layout": layout,
+            "site": site,
+            "link": link,
+            "include": include,
+            "backup": None,
+            "applied": NGINX_APPLIED,
+            "names": [],
+            "ntfy_name": None,
+            "upstream_port": None,
+            "acme_root": ACME_ROOT,
+            "tls_files": [],
+        }
+    pending = certbot_found.get("pending")
+    if _uses_certbot(answers) or not isinstance(pending, dict):
+        return
+    record = new_state.get("certbot")
+    if not isinstance(record, dict):
+        if "installed_by_tool" not in pending:
+            return
+        record = {
+            "installed_by_tool": bool(pending["installed_by_tool"]),
+            "plugins_installed": [],
+            "timer": None,
+            "cert_name": CERT_NAME,
+            "lineage": LINEAGE_DIR,
+            "renewal": RENEWAL_FILE,
+            "dns_credentials": None,
+            "method": None,
+            "plugin": None,
+            "names": [],
+            "email": "",
+            "credentials_sha256": None,
+        }
+    plugins = record.get("plugins_installed")
+    plugins = list(plugins) if isinstance(plugins, list) else []
+    listed = pending.get("plugins_installed")
+    for p in listed if isinstance(listed, list) else ():
+        if p in _DNS_PLUGIN_PACKAGES and p not in plugins:
+            plugins.append(p)
+    new_state["certbot"] = dict(record, plugins_installed=plugins)
+
+
 def _lineage_unchanged(facts, answers, prior):
     """Vrai quand la lignée active porte exactement les noms voulus, que son
     fichier de renouvellement passe par la méthode voulue et que les
@@ -2056,7 +2120,8 @@ def plan_install(facts, answers, now):
         }
     )
     # Une fiche d'un passage précédent que ce plan n'utilise pas reste
-    # telle quelle : la désinstallation défait encore ce qu'elle consigne.
+    # telle quelle : la désinstallation défait encore ce qu'elle consigne
+    # (avec ce qu'en dit la fiche d'un passage coupé, `_carry_fiches`).
     include = False
     if is_production(answers):
         if answers.nginx is not None:
@@ -2069,6 +2134,12 @@ def plan_install(facts, answers, now):
             new_state["certbot"] = _certbot_record(facts, answers, prior)
             new_state["hook"] = {"path": HOOK_PATH, "installed_by_tool": True}
         unchanged = unchanged and _production_unchanged(facts, answers, prior)
+    before = [new_state.get(name) for name in ("nginx", "certbot")]
+    _carry_fiches(new_state, facts, answers)
+    # Une fiche à consigner demande un passage : l'état s'écrit.
+    unchanged = unchanged and before == [
+        new_state.get(name) for name in ("nginx", "certbot")
+    ]
     letsencrypt = _uses_certbot(answers)
     return InstallPlan(
         answers=answers,
@@ -2968,6 +3039,13 @@ def install_script(plan, stamp, root=""):
     extra = ["nginx"] if _uses_nginx(answers) else []
     extra += ["certbot"] if certbot else []
     rehold = " rehold;" if certbot else ""
+    # Les fiches nginx et certbot que ce plan n'utilise pas sont consignées
+    # dans l'état (`_carry_fiches`) : elles partent avec lui.
+    carried = [
+        name
+        for name in ("nginx", "certbot")
+        if name not in extra and isinstance(state.get(name), dict)
+    ]
     lines = [
         "set -u",
         f"R={shlex.quote(root)}",
@@ -3075,7 +3153,7 @@ def install_script(plan, stamp, root=""):
     lines.append('if [ "$OK" = 1 ]; then')
     lines += ["  " + line for line in write]
     lines += [
-        *[f'  rm -f "$PENDING/{name}.json"' for name in origins],
+        *[f'  rm -f "$PENDING/{name}.json"' for name in [*origins, *carried]],
         '  echo "@@SAVED yes"',
         "else",
         *(["  rehold"] if certbot else []),

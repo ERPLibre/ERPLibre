@@ -5625,6 +5625,105 @@ class TestProductionInstall(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertFalse(os.path.exists(self.path(dns_dir)))
 
+    def test_fiches_of_a_failed_production_run_are_carried(self):
+        # Un passage de production pose nginx, certbot et un greffon puis
+        # échoue ; la relance part en développement : l'état consigne ce
+        # que les fiches disent, la désinstallation le défait.
+        nginx_pending = {"installed_by_tool": True}
+        certbot_pending = {
+            "installed_by_tool": True,
+            "plugins_installed": ["python3-certbot-dns-cloudflare"],
+        }
+        for layout in ("debian", "arch-include"):
+            with self.subTest(layout=layout):
+                facts = base_facts(
+                    nginx=dict(nginx_facts(layout=layout), pending=nginx_pending),
+                    certbot=dict(certbot_facts(), pending=certbot_pending),
+                    busy_ports=(("tcp", 80, "nginx"),),
+                )
+                plan = ci.plan_install(facts, answers(), NOW)
+                nginx = plan.new_state["nginx"]
+                self.assertIs(nginx["installed_by_tool"], True)
+                self.assertEqual(nginx["layout"], layout)
+                self.assertEqual(
+                    (nginx["site"], nginx["link"], nginx["include"]),
+                    ci._nginx_paths(layout),
+                )
+                certbot = plan.new_state["certbot"]
+                self.assertIs(certbot["installed_by_tool"], True)
+                self.assertEqual(
+                    certbot["plugins_installed"],
+                    ["python3-certbot-dns-cloudflare"],
+                )
+                script = ci.uninstall_script(plan.new_state, False, STAMP)
+                self.assertIn("pkg_purge python3-certbot-dns-cloudflare", script)
+                self.assertIn(nginx["site"], script)
+                self.assertIn(ci.HOOK_PATH, script)
+        # Un certificat fourni en production : nginx sert, certbot non.
+        facts = base_facts(
+            nginx=nginx_facts(),
+            certbot=dict(certbot_facts(), pending=certbot_pending),
+            busy_ports=(("tcp", 80, "nginx"), ("tcp", 443, "nginx")),
+        )
+        ans = production(
+            tls="supplied",
+            acme=None,
+            nginx="existing",
+            cert_pem=WILD_CERT,
+            key_pem=WILD_KEY,
+        )
+        plan = ci.plan_install(facts, ans, NOW)
+        self.assertEqual(
+            plan.new_state["certbot"]["plugins_installed"],
+            ["python3-certbot-dns-cloudflare"],
+        )
+
+    def test_carried_fiches_leave_with_the_state_written(self):
+        write(
+            self.path(ci.PENDING_DIR + "/certbot.json"),
+            json.dumps({"installed_by_tool": True, "plugins_installed": []}),
+            0o600,
+        )
+        facts = base_facts(
+            certbot=dict(
+                certbot_facts(),
+                pending={"installed_by_tool": True, "plugins_installed": []},
+            )
+        )
+        plan = ci.plan_install(facts, answers(), NOW)
+        installed = TestPlan.both_installed(self, answers())
+        self.assertFalse(
+            ci.plan_install(
+                dataclasses.replace(installed, certbot=facts.certbot),
+                answers(),
+                NOW,
+            ).nothing_to_do
+        )
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(
+            os.path.exists(self.path(ci.PENDING_DIR + "/certbot.json"))
+        )
+        self.assertIs(self.state()["certbot"]["installed_by_tool"], True)
+
+    def test_a_kept_record_gains_the_plugins_of_its_fiche(self):
+        ans = production(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        prior = production_installed(ans)
+        pending = {
+            "installed_by_tool": False,
+            "plugins_installed": ["python3-certbot-dns-google"],
+        }
+        facts = dataclasses.replace(
+            prior, certbot=dict(prior.certbot, pending=pending)
+        )
+        plan = ci.plan_install(facts, answers(), NOW)
+        self.assertEqual(
+            sorted(plan.new_state["certbot"]["plugins_installed"]),
+            ["python3-certbot-dns-cloudflare", "python3-certbot-dns-google"],
+        )
+
     def test_plugin_origin_from_the_probe(self):
         ans = production(
             acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
