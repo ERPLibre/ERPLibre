@@ -1784,6 +1784,14 @@ class TestJoinCall(unittest.TestCase):
         self.assertEqual(params, {"channel_id": GUEST_CHANNEL})
         self.assertEqual(jar.get("dgid"), "4|jeton-invite")
 
+    def test_the_invitation_token_stays_out_of_the_log(self):
+        link = f"{self.odoo.url}/chat/{GUEST_CHANNEL}/{INVITATION_TOKEN}"
+        with self.assertLogs("script.todo.odoo_link", logging.DEBUG) as logs:
+            self.api().join_call_ice_guest(link)
+        text = "\n".join(logs.output)
+        self.assertIn(f"/chat/{GUEST_CHANNEL}/", text)
+        self.assertNotIn(INVITATION_TOKEN, text)
+
     def test_an_invitation_odoo_does_not_know_is_refused(self):
         link = f"{self.odoo.url}/chat/{GUEST_CHANNEL}/jeton-inconnu"
         with self.assertRaises(ol.OdooError) as caught:

@@ -278,7 +278,8 @@ class _Session:
     """Une session de navigateur sur une base Odoo : les cookies que pose
     Odoo (`session_id`, et `dgid` pour un invité) sont gardés d'une requête
     à l'autre, redirections comprises. `secrets` sont expurgés de tout
-    message d'erreur ; rien n'est journalisé au-delà du chemin appelé."""
+    message d'erreur comme du chemin journalisé, seule trace d'une
+    requête."""
 
     def __init__(self, api, secrets=()):
         self.api = api
@@ -314,7 +315,9 @@ class _Session:
     def get(self, path):
         """GET de `path` (chemin et requête) ; le corps est ignoré, seuls
         comptent les cookies posés et le statut."""
-        _logger.debug("session GET %s", path.partition("?")[0])
+        _logger.debug(
+            "session GET %s", _redact(path.partition("?")[0], self.secrets)
+        )
         self._open(urllib.request.Request(self.api.url + path))
 
     def call(self, path, params):
