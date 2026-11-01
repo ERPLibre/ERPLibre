@@ -120,9 +120,10 @@ DELAI_SCRIPT = 300
 DELAI_PORT = 3
 
 # Les lignes de sortie qui portent un secret : le mot de passe de
-# l'administrateur de ntfy, la clé du compte de contrôle de coturn. Ce sont
-# celles que le menu masque à l'écran ; ici elles sont masquées au journal.
-SECRETS = (cim.ADMIN_PASSWORD_LINE, cim.CHECK_KEY_LINE)
+# l'administrateur de ntfy, et les clés et secrets de coturn que lit la
+# vérification. Ce sont celles que le menu masque à l'écran ; ici elles sont
+# masquées au journal.
+SECRETS = (cim.ADMIN_PASSWORD_LINE, *cim.CHECK_HIDDEN)
 # Un jeton d'accès de ntfy, que `ntfy token add` imprime au milieu d'une
 # ligne : il ouvre les sujets du téléphone tant que la VM vit.
 JETON = re.compile(r"tk_[A-Za-z0-9]+")

@@ -592,9 +592,16 @@ class LesBriques(unittest.TestCase):
             "[NTFY] ok\n"
             "@@ADMIN_PASSWORD Mot-de-passe-invente-42\n"
             "@@CHECK_KEY 0123456789abcdef0123456789abcdef\r\n"
+            "@@TURN_SECRET turn.exemple.test Secret-invente-du-journal-55\n"
+            "@@TURN_USER turn.exemple.test erplibre-0a1b2c3d "
+            "fedcba9876543210fedcba9876543210\n"
             "@@ACTIVE ntfy active\n"
         )
         masque = lt.masquer(texte)
+        self.assertNotIn("Secret-invente-du-journal-55", masque)
+        self.assertNotIn("fedcba9876543210", masque)
+        self.assertIn("@@TURN_SECRET ***", masque)
+        self.assertIn("@@TURN_USER ***", masque)
         self.assertNotIn("Mot-de-passe-invente-42", masque)
         self.assertNotIn("0123456789abcdef", masque)
         self.assertIn("@@ADMIN_PASSWORD ***", masque)
