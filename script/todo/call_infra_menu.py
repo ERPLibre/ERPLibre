@@ -1458,12 +1458,18 @@ class CallInfraMenuMixin:
         qui en découle (`turn_mode_for`, raison affichée), avant toute
         autre question. Module absent : l'explication, puis le compte fixe
         proposé, seulement quand coturn l'accepte (en mode fixe, ou sans
-        Odoo branché)."""
+        Odoo branché). La réponse par défaut à l'installation est celle que
+        coturn accepte : non quand des Odoo en compte fixe y sont branchés."""
         kind = self._call_infra_module_kind(odoo)
         install = False
         if kind == "installable":
+            try:
+                ci.turn_mode_for(state, True)
+                default = True
+            except ci.Refusal:
+                default = False
             install = self._call_infra_ask_yes(
-                t("call_infra_ask_install_module"), True
+                t("call_infra_ask_install_module"), default
             )
         elif kind == "absent":
             print(f"⚠ {t(ci.MODULE_ABSENT_WARNING)}")
