@@ -3857,6 +3857,7 @@ def certbot_facts(
         "held": held,
         "plugins": tuple(plugins),
         "authenticator": authenticator,
+        "timer_added": None,
         "pending": None,
     }
 
@@ -4854,6 +4855,50 @@ class TestProductionProbe(unittest.TestCase):
         self.assertEqual(facts.certbot["plugins"], ("cloudflare",))
         # Lu dans le fichier mis de côté quand il n'y en a pas d'actif.
         self.assertEqual(facts.certbot["authenticator"], "webroot")
+        self.assertIsNone(facts.certbot["timer_added"])
+
+    def test_probe_reads_the_timer_the_tool_added(self):
+        # Le minuteur du paquet que l'installation a noté, puis les unités
+        # propres de l'outil (MARKER en tête) ; une unité d'une autre main
+        # ou un nom hors de CERTBOT_TIMERS ne compte pas.
+        with open(ci.INSTALLERS["certbot"], encoding="utf-8") as handle:
+            self.assertIn(
+                f'TIMER_RECORD="{ci.CERTBOT_TIMER_RECORD}"', handle.read()
+            )
+        record = ci.CERTBOT_TIMER_RECORD
+        own = "/etc/systemd/system/erplibre-call-certbot"
+        cases = (
+            ({record: "certbot-renew.timer\n"}, "certbot-renew.timer"),
+            ({record: "certbot.timer\n"}, "certbot.timer"),
+            (
+                {own + ".timer": ci.MARKER + "\n[Timer]\n"},
+                ci.CERTBOT_OWN_TIMER,
+            ),
+            ({own + ".service": ci.MARKER + "\n"}, ci.CERTBOT_OWN_TIMER),
+            ({own + ".timer": "[Timer]\n"}, None),
+            ({record: "autre.timer\n"}, None),
+            ({}, None),
+        )
+        for files, expected in cases:
+            with self.subTest(files=files):
+                _root, facts = self.sandbox(self.DEBIAN_NGINX_CONF, files)
+                self.assertEqual(facts.certbot["timer_added"], expected)
+
+    def test_parse_keeps_only_a_known_added_timer(self):
+        for line, expected in (
+            ("certbot-renew.timer", "certbot-renew.timer"),
+            ("erplibre-call-certbot.timer", ci.CERTBOT_OWN_TIMER),
+            ("certbot.timer;rm", None),
+            ("autre.timer", None),
+            ("", None),
+        ):
+            with self.subTest(line=line):
+                text = NGINX_PROBE.replace(
+                    "@@FIREWALL none\n",
+                    f"@@TIMER_ADDED {line}\n@@FIREWALL none\n",
+                )
+                facts = ci.parse_probe(text)
+                self.assertEqual(facts.certbot["timer_added"], expected)
 
     def test_probe_reads_every_included_file_from_nginx_t(self):
         # Un dossier inclus hors des emplacements connus porte un nom pris :
@@ -5864,6 +5909,54 @@ class TestProductionInstall(unittest.TestCase):
             sorted(plan.new_state["certbot"]["plugins_installed"]),
             ["python3-certbot-dns-cloudflare", "python3-certbot-dns-google"],
         )
+
+    def test_a_carried_fiche_takes_the_timer_the_tool_added(self):
+        # Le passage coupé a activé un minuteur après certbot : la fiche
+        # minimale le consigne, une fiche gardée sans minuteur le gagne,
+        # une fiche qui en consigne un le garde.
+        pending = {"installed_by_tool": False, "plugins_installed": []}
+        added = {"unit": "certbot-renew.timer", "added": True}
+        facts = base_facts(
+            certbot=dict(
+                certbot_facts(),
+                pending=pending,
+                timer_added="certbot-renew.timer",
+            )
+        )
+        plan = ci.plan_install(facts, answers(), NOW)
+        self.assertEqual(plan.new_state["certbot"]["timer"], added)
+        prior = ci.plan_install(facts, answers(), NOW).new_state
+        for timer, expected in (
+            (None, added),
+            ({"unit": "certbot.timer", "added": False},) * 2,
+        ):
+            with self.subTest(timer=timer):
+                state = copy.deepcopy(prior)
+                state["certbot"]["timer"] = timer
+                kept = dataclasses.replace(facts, state=state)
+                record = ci.plan_install(kept, answers(), NOW).new_state[
+                    "certbot"
+                ]
+                self.assertEqual(record["timer"], expected)
+        # Sans minuteur ajouté, la fiche minimale n'en consigne aucun.
+        bare = base_facts(certbot=dict(certbot_facts(), pending=pending))
+        plan = ci.plan_install(bare, answers(), NOW)
+        self.assertIsNone(plan.new_state["certbot"]["timer"])
+
+    def test_the_planned_certbot_record_takes_the_added_timer(self):
+        # Un passage de production prévoit le minuteur que l'hôte dit
+        # ajouté par l'outil ; le marqueur de l'installateur l'emporte.
+        facts = base_facts(
+            certbot=dict(certbot_facts(), timer_added=ci.CERTBOT_OWN_TIMER)
+        )
+        record = ci.plan_install(facts, production(), NOW).new_state["certbot"]
+        self.assertEqual(
+            record["timer"], {"unit": ci.CERTBOT_OWN_TIMER, "added": True}
+        )
+        record = ci.plan_install(base_facts(), production(), NOW).new_state[
+            "certbot"
+        ]
+        self.assertIsNone(record["timer"])
 
     def test_plugin_origin_from_the_probe(self):
         ans = production(
@@ -6993,6 +7086,60 @@ class TestProductionUninstall(UninstallSandbox):
             "systemctl disable --now erplibre-call-certbot.timer", calls
         )
         self.assertIn("systemctl daemon-reload", calls)
+
+    def cut_run_then_development(self, probe, timer):
+        """L'état qu'écrit une relance en développement après un passage de
+        production coupé une fois certbot réussi : `probe` est la sortie de
+        sonde de l'hôte, `timer` la ligne `@@TIMER_ADDED`."""
+        pending = {"installed_by_tool": False, "plugins_installed": []}
+        lines = (
+            "@@CERTBOT 4.0.0\n"
+            f"@@PENDING certbot {b64(json.dumps(pending))}\n"
+            f"@@TIMER_ADDED {timer}\n"
+        )
+        firewall = re.search(r"@@FIREWALL [a-z]+\r?\n", probe).group(0)
+        facts = ci.parse_probe(probe.replace(firewall, lines + firewall))
+        plan = ci.plan_install(facts, answers(), NOW)
+        self.assertEqual(
+            plan.new_state["certbot"]["timer"], {"unit": timer, "added": True}
+        )
+        return self.place_production(plan.new_state)
+
+    def test_a_timer_enabled_by_a_cut_run_is_stopped_after_a_rerun(self):
+        # Arch : le passage coupé a activé certbot-renew.timer, que la
+        # relance en développement consigne ; la désinstallation l'arrête.
+        write(self.path("/etc/os-release"), "ID=arch\n", 0o644)
+        probe = re.sub(
+            r"@@COTURN .*\r\n(@@NTFY .*\r\n)@@FILE .*\r\n",
+            r"@@COTURN - - -\r\n\1",
+            ARCH_PROBE,
+        )
+        state = self.cut_run_then_development(probe, "certbot-renew.timer")
+        done = self.uninstall(
+            state, UNITS="turnserver ntfy certbot-renew.timer"
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(
+            "systemctl disable --now certbot-renew.timer", self.calls()
+        )
+        self.assertIn("REMOVED timer certbot-renew.timer", self.markers(done))
+
+    def test_own_units_of_a_cut_run_leave_after_a_rerun(self):
+        state = self.cut_run_then_development(
+            DEBIAN_PROBE, ci.CERTBOT_OWN_TIMER
+        )
+        units = "/etc/systemd/system/erplibre-call-certbot"
+        for suffix in (".service", ".timer"):
+            write(self.path(units + suffix), ci.MARKER + "\n", 0o644)
+        done = self.uninstall(
+            state, UNITS="coturn ntfy erplibre-call-certbot.timer"
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        for suffix in (".service", ".timer"):
+            self.assertFalse(self.exists(units + suffix))
+        self.assertIn(
+            "systemctl disable --now erplibre-call-certbot.timer", self.calls()
+        )
 
     def test_another_lineage_keeps_the_timer_certbot_and_plugins(self):
         ans = coturn_only(
