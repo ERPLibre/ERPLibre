@@ -3934,12 +3934,14 @@ def with_firewall(state, record):
     return updated
 
 
-def state_write_script(state, root=""):
+def state_write_script(state, root="", pending_taken=True):
     """Script `sh`, lancé en root, qui remplace l'état de l'hôte par
-    `state` (après `with_firewall`) : `.new` en 0600 puis renommage, puis
-    la fiche `PENDING_DIR/firewall` retirée : l'appelant y a pris les
-    règles (`firewall_record`, argument `pending`). Dernière ligne
-    `@@SAVED yes`, ou `@@FAILED state` et `@@SAVED no`."""
+    `state` (après `with_firewall`) : `.new` en 0600 puis renommage, puis,
+    avec `pending_taken`, la fiche `PENDING_DIR/firewall` retirée :
+    l'appelant y a pris les règles (`firewall_record`, argument
+    `pending`). Sans lui, la fiche reste pour qui la consignera. Dernière
+    ligne `@@SAVED yes`, ou `@@FAILED state` et `@@SAVED no`."""
+    pending = [f'rm -f "$R"{shlex.quote(PENDING_DIR)}/firewall']
     lines = [
         "set -u",
         f"R={shlex.quote(root)}",
@@ -3948,7 +3950,7 @@ def state_write_script(state, root=""):
         'fail() { echo "@@FAILED $1"; echo "@@SAVED no"; exit 1; }',
         f'mkdir -p "$R"{shlex.quote(CALL_DIR)} || fail state',
         *_state_write_lines(state),
-        f'rm -f "$R"{shlex.quote(PENDING_DIR)}/firewall',
+        *(pending if pending_taken else []),
         'echo "@@SAVED yes"',
         "",
     ]
@@ -5106,7 +5108,9 @@ def apply_odoo_add(
         method=_link_method(link),
         **common,
     )
-    done = run(state_write_script(final, root=root))
+    # L'état de la sonde ne porte pas les règles en attente : leur fiche
+    # reste à l'installation ou à la désinstallation qui les consigne.
+    done = run(state_write_script(final, root=root, pending_taken=False))
     saved = dict(marker_lines(done[1] if done else "")).get("SAVED")
     if (saved or "").strip() != "yes":
         raise Refusal("call_infra_odoo_state_failed")
