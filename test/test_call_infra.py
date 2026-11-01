@@ -10527,7 +10527,10 @@ class TestContainerPlan(unittest.TestCase):
 
 # Chaque bouchon note son argv dans "$LOG/argv", précédé du compte sous
 # lequel `runuser` l'a lancé et de son XDG_RUNTIME_DIR. L'état simulé de
-# l'hôte (comptes, paquets, images, conteneurs) vit dans "$FK".
+# l'hôte (comptes, groupes, paquets, images, conteneurs) vit dans "$FK".
+# La purge d'apt-get, avec FAKE_PURGE_WIPES, efface les dossiers du paquet ;
+# avec FAKE_POSTRM, celle de ntfy fait ce que fait le postrm du .deb :
+# compte supprimé, configuration effacée, dossier retiré s'il est vide.
 _NOTE = (
     '#!/bin/sh\nprintf "%s\\n" "${0##*/} as=${FAKE_AS:-root}'
     ' xdg=${XDG_RUNTIME_DIR:-} $*" >> "$LOG/argv"\n'
@@ -10593,8 +10596,18 @@ case "$1" in
 esac
 exit 0
 """,
-    "getent": '#!/bin/sh\n[ "$1" = passwd ] || exit 2\n'
-    'grep "^$2:" "$FK/passwd" 2>/dev/null || exit 2\n',
+    "getent": r"""#!/bin/sh
+case "$1" in
+  passwd) grep "^$2:" "$FK/passwd" 2>/dev/null || exit 2 ;;
+  group) grep -E "^$2:|^[^:]*:x:$2:" "$FK/group" 2>/dev/null || exit 2 ;;
+  *) exit 2 ;;
+esac
+""",
+    "groupadd": _NOTE
+    + r"""
+while [ $# -gt 1 ]; do [ "$1" = --gid ] && g=$2; shift; done
+echo "$1:x:$g:" >> "$FK/group"
+""",
     "useradd": _NOTE
     + r"""
 for last; do :; done
@@ -10632,6 +10645,12 @@ if [ "$1" = purge ]; then
       coturn) rm -f "$ROOT/etc/turnserver.conf" ;;
     esac
   fi
+  if [ -n "${FAKE_POSTRM:-}" ] && [ "$3" = ntfy ]; then
+    grep -v "^ntfy:" "$FK/passwd" > "$FK/passwd.new"
+    mv "$FK/passwd.new" "$FK/passwd"
+    rm -f "$ROOT/etc/ntfy/server.yml" "$ROOT/etc/ntfy/client.yml"
+    rmdir "$ROOT/etc/ntfy" 2>/dev/null
+  fi
   exit 0
 fi
 [ "$1" = install ] || exit 0
@@ -10655,7 +10674,6 @@ for _name in (
     "timeout",
     "userdel",
     "gpasswd",
-    "groupadd",
     "podman",
 ):
     CONTAINER_STUBS.setdefault(_name, _NOTE + "exit 97\n")
@@ -11514,6 +11532,14 @@ class TestMigrationRun(ContainerSandbox):
             os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)), argv
         )
         self.assertEqual(self.state()["services"]["ntfy"]["unit"], None)
+        # Le postrm du .deb retire /etc/ntfy resté vide : les copies TLS
+        # remises le recréent traversable pour le compte du conteneur.
+        plan, _before = self.to_container(supplied())
+        config_dir = self.path(os.path.dirname(ci.NTFY_CONFIG))
+        os.chmod(config_dir, 0o755)
+        done = self.run_script(plan, FAKE_PURGE_WIPES="1", FAKE_POSTRM="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(stat.S_IMODE(os.stat(config_dir).st_mode), 0o755)
 
     def test_container_exited_rolls_back_to_packages(self):
         plan, before = self.to_container(ntfy_adopted=True)
@@ -11976,6 +12002,77 @@ esac
             f" {self.path(ci.COTURN_DATA_DIR)}",
             argv[:up],
         )
+
+    def test_reverse_purge_of_ntfy_keeps_its_account_and_config_dir(self):
+        # Le postrm du .deb de ntfy supprime le compte « ntfy », celui du
+        # conteneur, et retire /etc/ntfy vide : le retour en arrière
+        # recrée le compte avec les ids consignés, et le dossier en 0755,
+        # que le conteneur doit traverser pour lire server.yml.
+        plan, _before = self.to_packages(
+            container_answers(
+                tls="supplied", cert_pem=TURN_CERT, key_pem=TURN_KEY
+            )
+        )
+        record = plan.prior_state["services"]["ntfy"]
+        self.assertEqual((record["uid"], record["gid"]), (996, 996))
+        write(self.path(ci.NTFY_CONFIG), "# server.yml du conteneur\n", 0o644)
+        os.chmod(self.path(os.path.dirname(ci.NTFY_CONFIG)), 0o755)
+        done = self.run_script(
+            plan,
+            ACTIVE_coturn="failed",
+            FAKE_INSTALLS="1",
+            FAKE_PURGE_WIPES="1",
+            FAKE_POSTRM="1",
+        )
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("REMOVED", "package ntfy"), markers)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        argv = self.argv()
+        purge = argv.index("apt-get as=root xdg= purge -y ntfy")
+        up = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d"
+        )
+        add = argv.index(
+            "useradd as=root xdg= --system --no-create-home --shell"
+            " /usr/sbin/nologin --uid 996 --gid 996 ntfy"
+        )
+        self.assertLess(purge, add)
+        self.assertLess(add, up)
+        self.assertIn(
+            "groupadd as=root xdg= --system --gid 996 ntfy", argv[purge:add]
+        )
+        self.assertIn("ntfy:", self.read(os.path.join(self.fk, "passwd")))
+        config_dir = self.path(os.path.dirname(ci.NTFY_CONFIG))
+        self.assertEqual(stat.S_IMODE(os.stat(config_dir).st_mode), 0o755)
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_CONFIG)), "# server.yml du conteneur\n"
+        )
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_TLS_DIR + "/ntfy.key")), TURN_KEY
+        )
+        self.assertEqual(self.user_db(), USER_DB)
+        # Sans copie TLS dans le dossier, seule la remise de server.yml le
+        # recrée.
+        plan, _before = self.to_packages()
+        shutil.rmtree(self.path(ci.NTFY_TLS_DIR))
+        write(self.path(ci.NTFY_CONFIG), "# server.yml du conteneur\n", 0o644)
+        os.chmod(config_dir, 0o755)
+        done = self.run_script(
+            plan,
+            ACTIVE_coturn="failed",
+            FAKE_INSTALLS="1",
+            FAKE_PURGE_WIPES="1",
+            FAKE_POSTRM="1",
+        )
+        self.assertEqual(
+            ci.marker_lines(done.stdout)[-2], ("MIGRATION", "rolled-back")
+        )
+        self.assertEqual(stat.S_IMODE(os.stat(config_dir).st_mode), 0o755)
+        self.assertIn("ntfy:", self.read(os.path.join(self.fk, "passwd")))
 
     def test_rootless_reverse_removes_images_under_its_account(self):
         plan, _before = self.to_packages(
