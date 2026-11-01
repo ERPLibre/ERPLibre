@@ -1554,8 +1554,9 @@ class CallInfraMenuMixin:
     def _call_infra_show_odoo_plan(self, plan):
         """Le résumé avant le oui : la base, le mode et ce qu'Odoo
         recevra (les URL du module ou les lignes du compte fixe, sans
-        identifiant), l'adresse exemptée, les avertissements. L'explication
-        du module absent, déjà montrée, ne se répète pas."""
+        identifiant), l'adresse exemptée, le changement d'identifiant d'une
+        base déjà branchée, les avertissements. L'explication du module
+        absent, déjà montrée, ne se répète pas."""
         print(f"\n{t('Summary')}")
         print(f"  {t('Odoo server:')} {plan.key}")
         kind = (
@@ -1579,6 +1580,16 @@ class CallInfraMenuMixin:
             print(
                 f"  {t('ntfy exemption:')}"
                 f" {plan.exempt or t('call_infra_odoo_exempt_none')}"
+            )
+        if plan.key in self._call_infra_odoos(plan.state):
+            rotates = (
+                "call_infra_odoo_rotates_secret"
+                if plan.kind == "secret"
+                else "call_infra_odoo_rotates_user"
+            )
+            print(
+                "  ⚠ "
+                + self._call_infra_text(rotates, {"hours": plan.ttl_hours})
             )
         for key, values in plan.messages():
             if key != ci.MODULE_ABSENT_WARNING:

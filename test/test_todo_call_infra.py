@@ -1692,6 +1692,33 @@ class TestAddOdoo(OdooCase):
             host.state["odoos"][ODOO_KEY]["credential"]["kind"], "user"
         )
 
+    def test_a_rerun_summary_says_the_credential_changes(self):
+        cases = (
+            (
+                "secret",
+                odoo_facts("installed"),
+                "call_infra_odoo_rotates_secret",
+            ),
+            ("user", odoo_facts("absent"), "call_infra_odoo_rotates_user"),
+        )
+        for kind, facts, key in cases:
+            with self.subTest(kind=kind):
+                self.link = FakeLink(facts)
+                host = FakeHost(state=plugged_state(kind))
+                answers = ["o"] if kind == "user" else []
+                out = self.drive(
+                    "_call_infra_add_odoo", host, ADD_WEB + answers + ["", "n"]
+                )
+                self.assertIn(self.text(key, hours=24), out)
+
+    def test_a_first_add_summary_says_no_rotation(self):
+        self.link = FakeLink(odoo_facts("installed"))
+        host = FakeHost(state=installed_state())
+        out = self.drive("_call_infra_add_odoo", host, ADD_WEB + ["", "n"])
+        self.assertNotIn(
+            self.text("call_infra_odoo_rotates_secret", hours=24), out
+        )
+
     def test_module_absent_explains_then_asks_the_fallback(self):
         self.link = FakeLink(odoo_facts("absent"))
         host = FakeHost(state=installed_state())

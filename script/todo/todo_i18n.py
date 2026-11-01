@@ -4675,6 +4675,14 @@ TRANSLATIONS = {
         "fr": "Exemption de ntfy : {exempt} retirée, ntfy redémarré.",
         "en": "ntfy exemption: {exempt} removed, ntfy restarted.",
     },
+    "call_infra_odoo_rotates_secret": {
+        "fr": "Déjà branché : son secret change. L'ancien reste valide une durée de vie ({hours} h), le temps que les participants d'un appel en cours le gardent.",
+        "en": "Already plugged: its secret changes. The old one stays valid for one lifetime ({hours} h), while participants in an ongoing call still hold it.",
+    },
+    "call_infra_odoo_rotates_user": {
+        "fr": "Déjà branché : le mot de passe de son compte fixe change sur-le-champ. Les participants d'un appel en cours ne relaient plus vers un nouvel arrivant avant d'être revenus dans l'appel.",
+        "en": "Already plugged: the password of its fixed account changes at once. Participants in an ongoing call can no longer relay toward a newcomer until they rejoin the call.",
+    },
     "Nothing revoked.": {
         "fr": "Rien n'est révoqué.",
         "en": "Nothing revoked.",
