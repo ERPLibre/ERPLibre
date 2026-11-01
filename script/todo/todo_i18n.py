@@ -4482,8 +4482,8 @@ TRANSLATIONS = {
         "en": "This coturn serves its Odoo servers in « {mode} » mode ({odoos}): coturn 4.6 does not mix temporary credentials (erplibre_turn module, « secret » mode) and fixed accounts (« fixed » mode). This Odoo server needs the other mode: give it the same one (erplibre_turn installed for « secret », without it for « fixed »), or first remove the plugged Odoo servers. Nothing is touched.",
     },
     "call_infra_odoo_exempt": {
-        "fr": "« {address} » ne peut pas être exemptée des limites de ntfy : donnez l'adresse IP publique d'où le serveur Odoo joint ntfy, ni boucle locale, ni adresse non spécifiée, ni lien local (derrière nginx, ntfy voit chaque client en 127.0.0.1, et l'exempter exempterait tout le monde).",
-        "en": "« {address} » cannot be exempted from ntfy's limits: give the public IP address the Odoo server reaches ntfy from, neither loopback, unspecified nor link-local (behind nginx, ntfy sees every client as 127.0.0.1, and exempting it would exempt everyone).",
+        "fr": "« {address} » ne peut pas être exemptée des limites de ntfy : donnez l'adresse IP publique d'où le serveur Odoo joint ntfy, une seule adresse et non un réseau, ni boucle locale, ni adresse non spécifiée, ni lien local (derrière nginx, ntfy voit chaque client en 127.0.0.1, et l'exempter exempterait tout le monde).",
+        "en": "« {address} » cannot be exempted from ntfy's limits: give the public IP address the Odoo server reaches ntfy from, a single address and not a network, neither loopback, unspecified nor link-local (behind nginx, ntfy sees every client as 127.0.0.1, and exempting it would exempt everyone).",
     },
     "call_infra_odoo_realm": {
         "fr": "Le nom public {old} est le realm de coturn, celui des identifiants des serveurs Odoo branchés ({odoos}) : il ne peut pas devenir {new} tant qu'ils y sont. Retirez-les d'abord, puis ajoutez-les de nouveau après l'installation. Rien n'est touché.",

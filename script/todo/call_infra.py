@@ -4132,17 +4132,20 @@ def _has_ntfy(state):
 
 
 def _check_exempt(address):
-    """Refuse (`call_infra_odoo_exempt`) ce qui n'est pas une adresse ou un
-    réseau IP, et la boucle locale, l'adresse non spécifiée et le lien
-    local : derrière nginx, ntfy voit chaque client en 127.0.0.1, et
-    l'exempter exempterait tout le monde."""
+    """Refuse (`call_infra_odoo_exempt`) ce qui n'est pas UNE adresse IP,
+    et la boucle locale, l'adresse non spécifiée et le lien local, sous
+    leur forme IPv4 projetée en IPv6 comprise : derrière nginx, ntfy voit
+    chaque client en 127.0.0.1, et l'exempter exempterait tout le monde.
+    Un réseau est refusé, même étroit : ntfy exempterait chaque client
+    qu'il couvre, et 0.0.0.0/0 les couvre tous."""
     try:
         if address != address.strip():
             raise ValueError(address)
-        network = ipaddress.ip_network(address, strict=False)
-    except (AttributeError, ValueError):
+        found = ipaddress.ip_address(address)
+    except (AttributeError, TypeError, ValueError):
         raise Refusal("call_infra_odoo_exempt", address=address) from None
-    if network.is_loopback or network.is_unspecified or network.is_link_local:
+    found = getattr(found, "ipv4_mapped", None) or found
+    if found.is_loopback or found.is_unspecified or found.is_link_local:
         raise Refusal("call_infra_odoo_exempt", address=address)
 
 

@@ -8158,7 +8158,14 @@ class TestOdooCredentials(OdooSandbox):
             "0.0.0.0",
             "169.254.1.2",
             "fe80::1",
+            "::ffff:127.0.0.1",
             "pas-une-adresse",
+            "0.0.0.0/0",
+            "::/0",
+            "0.0.0.0/1",
+            "127.0.0.0/7",
+            "198.51.100.0/24",
+            "198.51.100.20/32",
         ):
             with self.subTest(address=address):
                 with self.assertRaises(ci.Refusal) as caught:
