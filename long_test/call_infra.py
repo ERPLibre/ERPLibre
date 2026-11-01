@@ -399,10 +399,13 @@ def masquer(texte):
 def commande_distante(root=True, utilisateur=None, env=None, shell="sh"):
     """La commande que ssh fait lancer à l'hôte.
 
-    Le script arrive par l'entrée standard : « "$(cat)" » le lit en entier
+    Le script arrive par l'entrée standard, et le shell lancé (« sh -c »,
+    sous sudo) le lit par « eval "$(cat)" » : la substitution se fait
     AVANT que la redirection « </dev/null » ne s'applique, si bien que les
     commandes du script (apt, pacman) ne lisent jamais la suite du script.
-    Le corps ne passe donc ni par l'argv local de ssh ni par le journal.
+    Le corps reste une variable de ce shell : il ne passe ni par l'argv
+    local de ssh, ni par le journal, ni par l'argv de sudo ou du shell sur
+    l'hôte, où tout compte le lirait dans /proc.
     `root` : sous « sudo -n », qui échoue au lieu d'attendre un mot de
     passe ; `utilisateur` : sous ce compte. `env` : variables posées par
     « env », sans secret (elles se lisent dans la liste des processus).
@@ -415,7 +418,7 @@ def commande_distante(root=True, utilisateur=None, env=None, shell="sh"):
     if env:
         parties.append("env")
         parties += [f"{k}={shlex.quote(str(v))}" for k, v in env.items()]
-    parties += [shell, "-c", '"$(cat)"', "</dev/null"]
+    parties += [shell, "-c", shlex.quote('eval "$(cat)" </dev/null')]
     return " ".join(parties)
 
 
@@ -1037,10 +1040,8 @@ def script_lignee(cert_pem, key_pem):
     """Pose (`cert_pem`, `key_pem`) en fausse lignée certbot LINEAGE_DIR :
     fullchain.pem et cert.pem portent le certificat, privkey.pem (0600) la
     clé ; ce que certbot y laisse après un renouvellement. Les deux
-    voyagent en base64 dans le corps : jamais dans l'argv local de ssh ni
-    au journal, mais sur la VM le corps devient l'argument de « sh -c »
-    (`commande_distante`) le temps du script, lisible par ses comptes. Cela
-    ne vaut que pour une paire jetable comme celle de `local_cert`. Un
+    voyagent en base64 dans le corps, qui ne passe par aucun argv
+    (`commande_distante`). Un
     /etc/letsencrypt absent reçoit TEMOIN_LE, que `script_remise` lit pour
     l'emporter en entier."""
     lignee = ci.LINEAGE_DIR

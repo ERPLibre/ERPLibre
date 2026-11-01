@@ -747,17 +747,37 @@ class LesBriques(unittest.TestCase):
         le journal : il arrive par l'entrée standard."""
         commande = lt.commande_distante()
         self.assertTrue(commande.startswith("sudo -n "))
-        self.assertIn('"$(cat)"', commande)
-        self.assertTrue(commande.endswith("</dev/null"))
+        self.assertTrue(
+            commande.endswith("""sh -c 'eval "$(cat)" </dev/null'""")
+        )
         commande = lt.commande_distante(utilisateur="ntfy")
         self.assertIn("-u ntfy", commande)
         commande = lt.commande_distante(
             env={"NTFY_BASE_URL": "http://192.0.2.10:8080"}, shell="bash"
         )
         self.assertIn("env NTFY_BASE_URL=http://192.0.2.10:8080", commande)
-        self.assertIn('bash -c "$(cat)"', commande)
+        self.assertIn("""bash -c 'eval "$(cat)" </dev/null'""", commande)
         commande = lt.commande_distante(root=False, shell="bash")
         self.assertFalse(commande.startswith("sudo"))
+
+    def test_the_script_never_becomes_an_argv_of_the_remote_shell(self):
+        """Joué pour de vrai par un `sh` local, comme l'hôte le ferait :
+        le script ne paraît pas dans l'argv du shell qui le joue, et ses
+        commandes ne lisent rien de l'entrée standard."""
+        script = (
+            "secret=jeton-invente-0123\n"
+            'tr "\\0" " " </proc/$$/cmdline; echo\n'
+            'lu=$(cat); echo "lu=[$lu]"\n'
+        )
+        fait = subprocess.run(
+            ["sh", "-c", lt.commande_distante(root=False)],
+            input=script.encode(),
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        sortie = fait.stdout.decode()
+        self.assertNotIn("jeton-invente-0123", sortie)
+        self.assertIn("lu=[]", sortie)
 
     def test_check_verdict(self):
         L = ci.CheckLine
