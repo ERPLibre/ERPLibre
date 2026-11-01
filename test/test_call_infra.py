@@ -24,6 +24,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import ssl
 import stat
 import subprocess
@@ -5429,6 +5430,28 @@ class TestProductionInstall(unittest.TestCase):
         )
         self.assertNotIn("install_nginx-full", self.order())
         self.assertEqual(os.listdir(self.scratch), [])
+
+    def test_an_interruption_after_the_state_holds_nothing(self):
+        # L'état écrit consigne Let's Encrypt : une coupure entre lui et la
+        # fin du script ne remet plus le fichier de renouvellement de côté.
+        which = shutil.which("rm")
+        write(
+            os.path.join(self.stubs, "rm"),
+            "#!/bin/sh\n"
+            'case "$*" in *"/pending/nginx.json"*)\n'
+            "  read -r _ _ _ _ group _ < /proc/$$/stat\n"
+            '  kill -TERM "$group" ;;\n'
+            "esac\n"
+            f'exec {which} "$@"\n',
+        )
+        unheld = f"@@CERTBOT_UNHELD {RENEWAL}\n" + CERTBOT_ISSUED
+        write(self.path(RENEWAL), "renouvellement\n", 0o644)
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(plan, {"install_certbot": unheld})
+        self.assertEqual(done.returncode, 129, done.stdout + done.stderr)
+        self.assertEqual(self.state()["certbot"]["cert_name"], ci.CERT_NAME)
+        self.assertEqual(self.read(self.path(RENEWAL)), "renouvellement\n")
+        self.assertFalse(os.path.exists(self.path(ci.RENEWAL_HOLD)))
 
     def test_renewal_file_left_alone_when_certbot_held_it_itself(self):
         write(self.path(RENEWAL + ".erplibre-hold"), "garde\n", 0o644)
