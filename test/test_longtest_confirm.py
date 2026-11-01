@@ -201,5 +201,24 @@ class TestSynchroMobile(unittest.TestCase):
         self.assertIn("mobile_sync.py", SCRIPTS_DEFAISABLES)
 
 
+class TestInfrastructureDAppel(unittest.TestCase):
+    """Le test de l'infrastructure d'appel mène par défaut ses deux
+    scénarios : sa question annonce les quatre VM et nginx, la durée que
+    l'opérateur accepte."""
+
+    def test_sa_question_dit_les_quatre_vm(self):
+        from script.todo.longtest_menu import LongTestMenuMixin as L
+
+        avertissement, question = L._longtest_question("", "call_infra.py")
+        for cle in (avertissement, question):
+            self.assertIn(cle, todo_i18n.TRANSLATIONS)
+        textes = todo_i18n.TRANSLATIONS[avertissement]
+        self.assertIn("quatre VM", textes["fr"])
+        self.assertIn("four VMs", textes["en"])
+        for langue in ("fr", "en"):
+            self.assertIn("nginx", textes[langue])
+            self.assertIn("--scenario", textes[langue])
+
+
 if __name__ == "__main__":
     unittest.main()
