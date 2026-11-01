@@ -16,6 +16,7 @@ lance les tests. Toutes les valeurs sont inventées (`*.exemple.test`,
 import ast
 import base64
 import dataclasses
+import hashlib
 import datetime
 import http.server
 import json
@@ -3839,12 +3840,15 @@ def nginx_facts(state="active", layout="debian", names=(), include=False):
     }
 
 
-def certbot_facts(lineage=None, held=False, plugins=(), version="4.0.0"):
+def certbot_facts(
+    lineage=None, held=False, plugins=(), version="4.0.0", authenticator=None
+):
     return {
         "version": version,
         "lineage": tuple(lineage) if lineage is not None else None,
         "held": held,
         "plugins": tuple(plugins),
+        "authenticator": authenticator,
         "pending": None,
     }
 
@@ -3864,7 +3868,10 @@ def production_installed(ans, **changes):
         ports += [("tcp", 80, "nginx"), ("tcp", 443, "nginx")]
         nginx = nginx_facts()
     if ans.tls == "letsencrypt":
-        certbot = certbot_facts(lineage=ci.certificate_names(ans))
+        certbot = certbot_facts(
+            lineage=ci.certificate_names(ans),
+            authenticator=ci.certbot_authenticator(ans),
+        )
     values = dict(
         coturn=service("/etc/turnserver.conf", ci.coturn_config(ans)),
         ntfy=ntfy,
@@ -4565,6 +4572,7 @@ NGINX_PROBE = DEBIAN_PROBE.replace(
     "@@CERTBOT_PLUGIN cloudflare\n"
     "@@LINEAGE erplibre-call turn.exemple.test ntfy.exemple.test\n"
     "@@HELD erplibre-call\n"
+    "@@AUTHENTICATOR erplibre-call dns-cloudflare\n"
     "@@FIREWALL none\n",
 )
 
@@ -4592,8 +4600,13 @@ class TestProductionProbe(unittest.TestCase):
                 lineage=("turn.exemple.test", "ntfy.exemple.test"),
                 held=True,
                 plugins=("cloudflare",),
+                authenticator="dns-cloudflare",
             ),
         )
+
+    def test_an_unknown_authenticator_is_none(self):
+        text = NGINX_PROBE.replace("dns-cloudflare", "manual;rm")
+        self.assertIsNone(ci.parse_probe(text).certbot["authenticator"])
 
     def test_a_lot_1_probe_has_neither(self):
         facts = ci.parse_probe(DEBIAN_PROBE)
@@ -4768,7 +4781,7 @@ class TestProductionProbe(unittest.TestCase):
                 ),
                 "/etc/letsencrypt/live/erplibre-call/cert.pem": "x\n",
                 "/etc/letsencrypt/renewal/erplibre-call.conf.erplibre-hold": (
-                    "x\n"
+                    "[renewalparams]\nauthenticator = webroot\n"
                 ),
             },
             # Le lien de l'outil dans sites-enabled n'est pas un site
@@ -4797,6 +4810,8 @@ class TestProductionProbe(unittest.TestCase):
         )
         self.assertTrue(facts.certbot["held"])
         self.assertEqual(facts.certbot["plugins"], ("cloudflare",))
+        # Lu dans le fichier mis de côté quand il n'y en a pas d'actif.
+        self.assertEqual(facts.certbot["authenticator"], "webroot")
 
     def test_probe_reads_every_included_file_from_nginx_t(self):
         # Un dossier inclus hors des emplacements connus porte un nom pris :
@@ -5560,6 +5575,56 @@ class TestProductionInstall(unittest.TestCase):
             certbot, {"installed_by_tool": True, "plugins_installed": []}
         )
 
+    def test_plugins_of_a_failed_run_stay_recorded(self):
+        # Un état sans greffon, une relance DNS qui pose le paquet puis
+        # échoue : la suivante le trouve installé, la fiche seule le dit.
+        ans = production()
+        prior = production_installed(ans)
+        dns = dataclasses.replace(
+            ans,
+            nginx="existing",
+            acme="dns",
+            dns_plugin="cloudflare",
+            dns_credentials=CREDENTIALS,
+        )
+        pending = {
+            "installed_by_tool": False,
+            "plugins_installed": ["python3-certbot-dns-cloudflare"],
+        }
+        facts = dataclasses.replace(
+            prior,
+            certbot=dict(
+                prior.certbot, plugins=("cloudflare",), pending=pending
+            ),
+        )
+        record = ci.plan_install(facts, dns, NOW).new_state["certbot"]
+        self.assertEqual(
+            record["plugins_installed"], ["python3-certbot-dns-cloudflare"]
+        )
+
+    def test_other_dns_credentials_leave_after_certbot(self):
+        dns_dir = ci.DNS_DIR
+        for name in ("google", "cloudflare"):
+            write(self.path(f"{dns_dir}/{name}.ini"), "x\n", 0o600)
+        ans = production(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        plan = ci.plan_install(base_facts(), ans, NOW)
+        # certbot en échec : l'ancien fichier de renouvellement nomme
+        # encore l'ancien greffon, ses identifiants restent.
+        self.run_script(plan, RC_install_certbot="1")
+        self.assertTrue(os.path.exists(self.path(f"{dns_dir}/google.ini")))
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            sorted(os.listdir(self.path(dns_dir))), ["cloudflare.ini"]
+        )
+        # HTTP-01 : plus aucun identifiant DNS sur l'hôte.
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(os.path.exists(self.path(dns_dir)))
+
     def test_plugin_origin_from_the_probe(self):
         ans = production(
             acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
@@ -5670,6 +5735,66 @@ class TestProductionInstall(unittest.TestCase):
                 self.assertNotIn(
                     "CERTBOT_SKIP_STAGING", ci.install_script(plan, STAMP)
                 )
+
+    def test_method_change_with_the_same_names_forces_a_renewal(self):
+        # Sans renouvellement forcé, certbot dit « pas à échéance » et son
+        # fichier de renouvellement garde l'ancien authentificateur.
+        ans = production()
+        facts = production_installed(ans)
+        dns = dataclasses.replace(
+            ans,
+            nginx="existing",
+            acme="dns",
+            dns_plugin="cloudflare",
+            dns_credentials=CREDENTIALS,
+        )
+        plan = ci.plan_install(facts, dns, NOW)
+        self.assertFalse(plan.nothing_to_do)
+        self.assertFalse(plan.lineage_unchanged)
+        self.assertTrue(plan.certbot_force)
+        script = ci.install_script(plan, STAMP)
+        self.assertIn("CERTBOT_FORCE_RENEWAL=1", script)
+        self.assertNotIn("CERTBOT_SKIP_STAGING", script)
+        # Même méthode, autre greffon : renouvellement forcé aussi.
+        facts = production_installed(dns)
+        google = dataclasses.replace(dns, dns_plugin="google")
+        self.assertTrue(ci.plan_install(facts, google, NOW).certbot_force)
+        # Même méthode, même greffon : rien de forcé.
+        self.assertFalse(ci.plan_install(facts, dns, NOW).certbot_force)
+        # Lignée mise de côté sous une autre méthode : forcé aussi.
+        held = production_installed(
+            dns,
+            state=None,
+            certbot=certbot_facts(
+                lineage=ci.certificate_names(dns),
+                held=True,
+                authenticator="webroot",
+            ),
+        )
+        self.assertTrue(ci.plan_install(held, dns, NOW).certbot_force)
+
+    def test_new_dns_credentials_are_something_to_do(self):
+        old = production(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        facts = production_installed(old)
+        old = dataclasses.replace(old, nginx="existing")
+        self.assertTrue(ci.plan_install(facts, old, NOW).nothing_to_do)
+        new = dataclasses.replace(
+            old, dns_credentials=CREDENTIALS.replace("0123", "9876")
+        )
+        plan = ci.plan_install(facts, new, NOW)
+        self.assertFalse(plan.nothing_to_do)
+        # L'essai à blanc éprouve les nouveaux identifiants.
+        self.assertFalse(plan.lineage_unchanged)
+        self.assertFalse(plan.certbot_force)
+        # Le secret n'est consigné que par son empreinte.
+        state = json.dumps(plan.new_state)
+        self.assertNotIn("Inventejeton", state)
+        self.assertEqual(
+            plan.new_state["certbot"]["credentials_sha256"],
+            hashlib.sha256(new.dns_credentials.encode()).hexdigest(),
+        )
 
     def test_rerun_needs_an_active_nginx(self):
         ans = production()

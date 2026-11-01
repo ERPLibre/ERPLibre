@@ -206,6 +206,9 @@ _STAMP = re.compile(r"^[A-Za-z0-9_-]+$")
 _C_LOCALE = "LC_ALL=C; export LC_ALL; unset LANGUAGE"
 # Réponse de `systemctl is-enabled` : enabled, disabled, static, masked...
 _UNIT_STATE = re.compile(r"^[a-z-]+$")
+# Authentificateur d'un fichier de renouvellement de certbot que l'outil
+# sait reconnaître (voir `certbot_authenticator`).
+_AUTHENTICATOR = re.compile(r"^(webroot|standalone|dns-[a-z0-9]+)$")
 
 
 class Refusal(Exception):
@@ -317,7 +320,14 @@ class InstallPlan:
     (ntfy ; celle de coturn est écrite par son installateur).
     `lineage_unchanged` : la lignée certbot de l'hôte porte déjà exactement
     les noms du certificat et n'est pas mise de côté : certbot passe sans
-    essai à blanc (CERTBOT_SKIP_STAGING=1).
+    essai à blanc (CERTBOT_SKIP_STAGING=1) ; il faut pour cela que son
+    fichier de renouvellement porte la méthode voulue
+    (`certbot_authenticator`) et, en DNS-01, que les identifiants aient la
+    même empreinte que ceux de l'état.
+    `certbot_force` : la lignée de l'hôte (active ou mise de côté) porte un
+    autre authentificateur ; certbot délivre alors avant l'échéance
+    (CERTBOT_FORCE_RENEWAL=1), seule manière de réécrire son fichier de
+    renouvellement, qui sans cela renouvellerait par l'ancienne méthode.
     `nginx_include` : install_nginx.sh ajoute sa ligne include à nginx.conf
     (disposition arch-include sans elle) ; le script lui en donne l'accord
     (NGINX_ADOPT_INCLUDE=1), et `diffs` montre la ligne quand nginx.conf
@@ -331,6 +341,7 @@ class InstallPlan:
     configs: dict = dataclasses.field(default_factory=dict)
     lineage_unchanged: bool = False
     nginx_include: bool = False
+    certbot_force: bool = False
 
 
 # --- Sonde ------------------------------------------------------------------
@@ -584,7 +595,10 @@ def _nginx_probe_lines():
 
 def _certbot_probe_lines():
     """Lignes de la sonde pour certbot : version, greffons DNS installés
-    (dpkg ou pacman), noms de la lignée de l'outil, fichier mis de côté."""
+    (dpkg ou pacman), noms de la lignée de l'outil, fichier mis de côté,
+    authentificateur de son fichier de renouvellement (l'actif, sinon celui
+    mis de côté)."""
+    renewal = f'"$R{RENEWAL_FILE}"'
     return [
         "CV=absent",
         "command -v certbot >/dev/null 2>&1"
@@ -606,6 +620,12 @@ def _certbot_probe_lines():
         "  fi",
         "fi",
         f'if [ -f "$R{RENEWAL_HOLD}" ]; then echo "@@HELD {CERT_NAME}"; fi',
+        f"RF={renewal}",
+        f'[ -f "$RF" ] || RF="$R{RENEWAL_HOLD}"',
+        'if [ -f "$RF" ]; then',
+        "  sed -n 's/^[[:space:]]*authenticator[[:space:]]*=[[:space:]]*/"
+        f'@@AUTHENTICATOR {CERT_NAME} /p\' "$RF" | head -n 1',
+        "fi",
     ]
 
 
@@ -700,7 +720,7 @@ def parse_probe(output):
     firewall_pending, ufw_added = [], []
     coturn_marker, ntfy_marker, complete, enabled = [], [], False, {}
     nginx_marker, nginx_names, plugins = [], [], []
-    certbot_version, lineage, held = None, None, False
+    certbot_version, lineage, held, authenticator = None, None, False, None
     for name, value in marker_lines(output):
         if name == "OS":
             parts = value.split()
@@ -759,6 +779,14 @@ def parse_probe(output):
                 lineage = tuple(parts[1:])
         elif name == "HELD":
             held = held or value.strip() == CERT_NAME
+        elif name == "AUTHENTICATOR":
+            parts = value.split()
+            if (
+                len(parts) == 2
+                and parts[0] == CERT_NAME
+                and _AUTHENTICATOR.match(parts[1])
+            ):
+                authenticator = parts[1]
         elif name == "FIREWALL":
             kind = value.strip()
             firewall = kind if kind in FIREWALLS else "unknown"
@@ -814,7 +842,12 @@ def parse_probe(output):
         ufw_added=tuple(ufw_added),
         nginx=_nginx_facts(nginx_marker, nginx_names, pending.get("nginx")),
         certbot=_certbot_facts(
-            certbot_version, lineage, held, plugins, pending.get("certbot")
+            certbot_version,
+            lineage,
+            held,
+            plugins,
+            authenticator,
+            pending.get("certbot"),
         ),
     )
 
@@ -835,8 +868,9 @@ def _nginx_facts(marker, names, pending):
     }
 
 
-def _certbot_facts(version, lineage, held, plugins, pending):
-    """`HostFacts.certbot` des lignes `@@CERTBOT*`, `@@LINEAGE`, `@@HELD`."""
+def _certbot_facts(version, lineage, held, plugins, authenticator, pending):
+    """`HostFacts.certbot` des lignes `@@CERTBOT*`, `@@LINEAGE`, `@@HELD`,
+    `@@AUTHENTICATOR` (None quand il manque ou n'est pas reconnu)."""
     present = version not in (None, "absent")
     if not present and lineage is None and not held and pending is None:
         return None
@@ -845,6 +879,7 @@ def _certbot_facts(version, lineage, held, plugins, pending):
         "lineage": lineage,
         "held": held,
         "plugins": tuple(plugins),
+        "authenticator": authenticator,
         "pending": pending,
     }
 
@@ -1728,6 +1763,23 @@ def _nginx_settings(answers):
     }
 
 
+def certbot_authenticator(answers):
+    """L'authentificateur que certbot inscrit dans le fichier de
+    renouvellement pour la méthode de `answers` : « webroot »,
+    « standalone » ou « dns-<greffon> »."""
+    if answers.acme == "dns":
+        return f"dns-{answers.dns_plugin}"
+    return CERTBOT_METHODS[answers.acme]
+
+
+def _credentials_sha256(answers):
+    """Empreinte du fichier d'identifiants DNS : l'état ne garde jamais le
+    secret, mais un jeton remplacé doit être reposé à la relance."""
+    if answers.acme != "dns" or answers.dns_credentials is None:
+        return None
+    return hashlib.sha256(answers.dns_credentials.encode()).hexdigest()
+
+
 def _certbot_settings(answers):
     dns = answers.acme == "dns"
     return {
@@ -1735,6 +1787,7 @@ def _certbot_settings(answers):
         "plugin": answers.dns_plugin if dns else None,
         "names": certificate_names(answers),
         "email": answers.email,
+        "credentials_sha256": _credentials_sha256(answers),
     }
 
 
@@ -1793,7 +1846,8 @@ def _include_diff():
 
 def _certbot_record(facts, answers, prior):
     """Fiche « certbot » de l'état : origine du paquet, paquets de greffons
-    DNS que l'outil a installés (union des passages), minuteur de
+    DNS que l'outil a installés (union des passages, ceux de la fiche d'un
+    passage coupé compris), minuteur de
     renouvellement (`installed_state` le lit dans `@@CERTBOT_TIMER`),
     lignée, identifiants DNS posés."""
     record = prior.get("certbot")
@@ -1802,10 +1856,12 @@ def _certbot_record(facts, answers, prior):
     tool, source = _tool_origin(
         record, found.get("pending"), bool(found.get("version"))
     )
-    plugins = (source or {}).get("plugins_installed")
-    plugins = [
-        p for p in plugins or () if isinstance(p, str) and _PACKAGE.match(p)
-    ]
+    plugins = []
+    for origin in (source, found.get("pending")):
+        listed = origin.get("plugins_installed") if origin else None
+        for p in listed if isinstance(listed, list) else ():
+            if isinstance(p, str) and _PACKAGE.match(p) and p not in plugins:
+                plugins.append(p)
     dns = answers.acme == "dns"
     if dns and answers.dns_plugin not in found.get("plugins", ()):
         package = DNS_PACKAGES[facts.family].format(answers.dns_plugin)
@@ -1826,13 +1882,33 @@ def _certbot_record(facts, answers, prior):
     }
 
 
-def _lineage_unchanged(facts, answers):
+def _lineage_unchanged(facts, answers, prior):
+    """Vrai quand la lignée active porte exactement les noms voulus, que son
+    fichier de renouvellement passe par la méthode voulue et que les
+    identifiants DNS sont ceux que l'état consigne : certbot n'a rien à
+    éprouver."""
     found = facts.certbot or {}
     lineage = found.get("lineage")
     if lineage is None or found.get("held"):
         return False
+    if found.get("authenticator") != certbot_authenticator(answers):
+        return False
+    record = prior.get("certbot")
+    record = record if isinstance(record, dict) else {}
+    if record.get("credentials_sha256") != _credentials_sha256(answers):
+        return False
     wanted = {n.lower() for n in certificate_names(answers)}
     return {n.lower() for n in lineage} == wanted
+
+
+def _certbot_force(facts, answers):
+    """Vrai quand une lignée de l'hôte, active ou mise de côté, renouvelle
+    par un autre authentificateur que celui de `answers`."""
+    found = facts.certbot or {}
+    current = found.get("authenticator")
+    return (
+        found.get("lineage") is not None or bool(found.get("held"))
+    ) and current not in (None, certbot_authenticator(answers))
 
 
 def _production_unchanged(facts, answers, prior):
@@ -1853,7 +1929,7 @@ def _production_unchanged(facts, answers, prior):
         return False
     if answers.tls == "letsencrypt" and not (
         same("certbot", _certbot_settings(answers))
-        and _lineage_unchanged(facts, answers)
+        and _lineage_unchanged(facts, answers, prior)
         and isinstance(prior.get("hook"), dict)
     ):
         return False
@@ -1993,6 +2069,7 @@ def plan_install(facts, answers, now):
             new_state["certbot"] = _certbot_record(facts, answers, prior)
             new_state["hook"] = {"path": HOOK_PATH, "installed_by_tool": True}
         unchanged = unchanged and _production_unchanged(facts, answers, prior)
+    letsencrypt = _uses_certbot(answers)
     return InstallPlan(
         answers=answers,
         adopt=tuple(adopt),
@@ -2001,9 +2078,10 @@ def plan_install(facts, answers, now):
         new_state=new_state,
         configs=configs,
         lineage_unchanged=(
-            answers.tls == "letsencrypt" and _lineage_unchanged(facts, answers)
+            letsencrypt and _lineage_unchanged(facts, answers, prior)
         ),
         nginx_include=include,
+        certbot_force=letsencrypt and _certbot_force(facts, answers),
     )
 
 
@@ -2742,7 +2820,25 @@ def _certbot_variables(plan):
         ]
     if plan.lineage_unchanged:
         variables["CERTBOT_SKIP_STAGING"] = 1
+    if plan.certbot_force:
+        variables["CERTBOT_FORCE_RENEWAL"] = 1
     return variables
+
+
+def _dns_prune_lines(plan):
+    """Après une délivrance réussie, les identifiants DNS d'une autre
+    méthode ou d'un autre greffon quittent DNS_DIR : le fichier de
+    renouvellement ne les nomme plus. Avant elle, ils restent, l'ancien
+    fichier pouvant encore les lire."""
+    keep = plan.new_state["certbot"]["dns_credentials"]
+    test = f'[ "$f" = "$R"{shlex.quote(keep)} ] || ' if keep else ""
+    return [
+        f'for f in "$R"{shlex.quote(DNS_DIR)}/*.ini; do',
+        '  [ -e "$f" ] || continue',
+        f'  {test}rm -f "$f"',
+        "done",
+        f"rmdir {_host(DNS_DIR)} 2>/dev/null",
+    ]
 
 
 def _production_lines(plan):
@@ -2799,6 +2895,7 @@ def _production_lines(plan):
         lines += _step(
             "certbot", '"$D/install_certbot.sh"', _certbot_variables(plan)
         )
+        lines += _dns_prune_lines(plan)
         lines += [
             "# crochet de déploiement",
             f"install -d -m 0755 {_host(os.path.dirname(HOOK_PATH))}"

@@ -35,6 +35,13 @@
 #                        delivrance garde le certificat tant qu'il n'est pas
 #                        a echeance. Sans lignee sur le disque, l'essai a
 #                        lieu quand meme.
+#   CERTBOT_FORCE_RENEWAL=1
+#                        la lignee existe sous une autre methode (ou un
+#                        autre greffon) : la delivrance se fait meme avant
+#                        l'echeance (--force-renewal), seule maniere pour
+#                        certbot de reecrire l'authentificateur de son
+#                        fichier de renouvellement. L'essai a blanc a
+#                        toujours lieu, CERTBOT_SKIP_STAGING est ignore.
 #
 # Sortie lisible par un programme :
 #   @@CERTBOT_INSTALLED 1           ce passage a installe le paquet certbot
@@ -95,6 +102,7 @@ CERTBOT_DNS_PLUGIN="${CERTBOT_DNS_PLUGIN:-}"
 CERTBOT_DNS_CREDENTIALS="${CERTBOT_DNS_CREDENTIALS:-}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 CERTBOT_SKIP_STAGING="${CERTBOT_SKIP_STAGING:-}"
+CERTBOT_FORCE_RENEWAL="${CERTBOT_FORCE_RENEWAL:-}"
 
 log() { echo "[CERTBOT] $*"; }
 # Le marqueur part sur le descripteur 3, la sortie du script (ouvert par
@@ -146,6 +154,10 @@ check_inputs() {
     case "$CERTBOT_SKIP_STAGING" in
         ''|0|1) ;;
         *) die "CERTBOT_SKIP_STAGING vaut 1, 0 ou vide : ${CERTBOT_SKIP_STAGING}" ;;
+    esac
+    case "$CERTBOT_FORCE_RENEWAL" in
+        ''|0|1) ;;
+        *) die "CERTBOT_FORCE_RENEWAL vaut 1, 0 ou vide : ${CERTBOT_FORCE_RENEWAL}" ;;
     esac
     case "$CERTBOT_METHOD" in
         webroot)
@@ -559,8 +571,12 @@ main() {
     unhold_renewal
     build_args
 
-    local before after verdict
+    local before after verdict keep=--keep-until-expiring
     before=$(lineage_version)
+    if [ "$CERTBOT_FORCE_RENEWAL" = 1 ]; then
+        keep=--force-renewal
+        CERTBOT_SKIP_STAGING=""
+    fi
     if [ "$CERTBOT_SKIP_STAGING" = 1 ] && [ -n "$before" ]; then
         log "Lignee deja en place avec ces noms : pas d'essai a blanc."
     else
@@ -573,7 +589,7 @@ main() {
         echo "@@CERTBOT staging-ok"
     fi
     log "Delivrance du certificat ${CERT_NAME}..."
-    run_certbot certonly "${HEAD_ARGS[@]}" --keep-until-expiring --expand \
+    run_certbot certonly "${HEAD_ARGS[@]}" "$keep" --expand \
         "${TAIL_ARGS[@]}" || die "$CERTBOT_ERROR"
     if [ ! -e "${ROOT}${LINEAGE}/fullchain.pem" ] || [ ! -e "${ROOT}${LINEAGE}/privkey.pem" ]; then
         die "certbot a reussi, mais ${LINEAGE}/fullchain.pem ou privkey.pem manque."

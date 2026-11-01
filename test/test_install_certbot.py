@@ -85,8 +85,13 @@ if { [ "$essai" = 1 ] && [ -n "$CB_ECHEC_ESSAI" ]; } \\
     exit 1
 fi
 [ "$essai" = 1 ] && exit 0
+[ -n "$CB_SANS_LIGNEE" ] && exit 0
+case " $* " in
+    *" --force-renewal "*) force=1 ;;
+    *) force=0 ;;
+esac
 live="$R/etc/letsencrypt/live/erplibre-call"
-if [ -e "$live/cert.pem" ] && [ -z "$CB_ECHU" ]; then
+if [ -e "$live/cert.pem" ] && [ -z "$CB_ECHU" ] && [ "$force" = 0 ]; then
     echo 'Certificate not yet due for renewal; no action taken.'
     exit 0
 fi
@@ -573,6 +578,51 @@ class TestLignee(unittest.TestCase):
             self.assertEqual(marqueurs(fait.stdout, "CERTBOT"),
                              ["unchanged " + LIGNEE])
 
+    def test_changement_de_methode_force_la_delivrance(self):
+        """Memes noms, autre methode : sans --force-renewal, certbot dit
+        « pas a echeance » et garde l'ancien authentificateur dans le
+        fichier de renouvellement."""
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            hote.jouer(**entrees())
+            hote.oublier_appels()
+            fait = hote.jouer(CERTBOT_FORCE_RENEWAL="1",
+                              **entrees("standalone"))
+            self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
+            essai, reel = hote.certbot()
+            self.assertIn("--dry-run", essai)
+            self.assertIn(" --force-renewal ", reel + " ")
+            self.assertNotIn("--keep-until-expiring", reel)
+            self.assertIn(" --standalone ", reel + " ")
+            self.assertEqual(derniere(fait.stdout),
+                             "@@CERTBOT issued " + LIGNEE)
+
+    def test_force_l_emporte_sur_sans_essai(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            hote.jouer(**entrees())
+            hote.oublier_appels()
+            fait = hote.jouer(CERTBOT_FORCE_RENEWAL="1",
+                              CERTBOT_SKIP_STAGING="1", **entrees())
+            self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
+            appels = hote.certbot()
+            self.assertEqual(len(appels), 2, appels)
+            self.assertIn("--dry-run", appels[0])
+
+    def test_succes_sans_les_fichiers_de_la_lignee(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            fait = hote.jouer(CB_SANS_LIGNEE="1", **entrees())
+            self.assertNotEqual(fait.returncode, 0, fait.stdout)
+            self.assertTrue(derniere(fait.stdout).startswith(
+                "@@CERTBOT failed "), fait.stdout)
+            self.assertIn("fullchain.pem", derniere(fait.stdout))
+            self.assertFalse([a for a in hote.appels()
+                              if a.startswith("systemctl enable")])
+
     def test_sans_lignee_l_essai_a_lieu_quand_meme(self):
         with tempfile.TemporaryDirectory() as dossier:
             hote = Hote(dossier)
@@ -722,6 +772,26 @@ class TestEntrees(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dossier:
             fait = self._refus(Hote(dossier), **entrees("dns"))
             self.assertIn(IDENTIFIANTS, derniere(fait.stdout))
+
+    def test_force_invalide(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            hote.avec_webroot()
+            self._refus(hote, **entrees(CERTBOT_FORCE_RENEWAL="oui"))
+
+    def test_identifiants_lien_symbolique(self):
+        """Un lien est refuse meme vers un fichier 0600 : certbot lirait
+        ce que le lien designe, hors de l'outil."""
+        with tempfile.TemporaryDirectory() as dossier:
+            hote = Hote(dossier)
+            cible = hote.chemin("/root/ailleurs.ini")
+            ecrire(cible, "dns_ovh_application_secret = %s\n" % SECRET,
+                   0o600)
+            os.makedirs(os.path.dirname(hote.chemin(IDENTIFIANTS)))
+            os.symlink(cible, hote.chemin(IDENTIFIANTS))
+            fait = self._refus(hote, **entrees("dns"))
+            self.assertIn(IDENTIFIANTS, derniere(fait.stdout))
+            self.assertNotIn(SECRET, fait.stdout + fait.stderr)
 
     def test_identifiants_lisibles_par_d_autres(self):
         with tempfile.TemporaryDirectory() as dossier:
