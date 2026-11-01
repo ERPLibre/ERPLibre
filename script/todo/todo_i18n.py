@@ -4700,8 +4700,8 @@ TRANSLATIONS = {
         "en": "Odoo server {odoo} removed: its credential is revoked on coturn.",
     },
     "call_infra_check_odoo_notice": {
-        "fr": "La vérification par Odoo entre dans un appel sous un utilisateur de la base : Odoo laisse l'avis « a lancé une conférence » dans la discussion de cet utilisateur avec lui-même. Rien d'autre n'est écrit.",
-        "en": "The check through Odoo joins a call as a user of the database: Odoo leaves the notice « started a live conference » in that user's chat with themself. Nothing else is written.",
+        "fr": "La vérification par Odoo entre dans un appel sous un utilisateur de la base : Odoo laisse l'avis « a commencé une conférence en direct » dans la discussion de cet utilisateur avec lui-même, qu'il crée au besoin et épingle. Rien d'autre n'est écrit.",
+        "en": "The check through Odoo joins a call as a user of the database: Odoo leaves the notice « started a live conference » in that user's chat with themself, which it creates when needed and pins. Nothing else is written.",
     },
     "call_infra_ask_check_odoo": {
         "fr": "Vérifier aussi par Odoo ?",
