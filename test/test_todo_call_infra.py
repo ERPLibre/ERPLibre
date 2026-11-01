@@ -868,6 +868,28 @@ class TestProductionInstall(ProductionCase):
             )
         )
 
+    def test_ntfy_alone_behind_nat_says_the_name_cannot_be_checked(self):
+        # Sans coturn, aucune IP publique n'est demandée : un nom qui
+        # pointe hors de l'hôte peut être son NAT, rien ne dit qu'il faut
+        # corriger le DNS.
+        self.dns = {NTFY_NAME: ["203.0.113.7"]}
+        replies = ["3", "2", DOMAIN, "", "", "", EMAIL, "", ""]
+        out, ans = self.planned(FakeHost(), replies + ["n"])
+        self.assertEqual(ans.services, frozenset({"ntfy"}))
+        self.assertIn(
+            t("call_infra_dns_unverifiable").format(
+                name=NTFY_NAME, found="203.0.113.7"
+            ),
+            out,
+        )
+        self.assertNotIn(
+            t("call_infra_dns_elsewhere").format(
+                name=NTFY_NAME, found="203.0.113.7"
+            ),
+            out,
+        )
+        self.assertNotIn(t("call_infra_dns_le_fails"), out)
+
     def test_443_held_by_coturn_itself_is_asked_again(self):
         # Relance d'un coturn déjà sur 443 : la question revient, oui par
         # défaut, et coturn ne repart pas en silence sur 5349.
