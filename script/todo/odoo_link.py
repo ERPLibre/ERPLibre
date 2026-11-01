@@ -659,9 +659,10 @@ class WebApi:
         (`/web/session/authenticate`, mot de passe seulement : ni clé d'API
         ni double authentification), indépendante du compte de cet objet.
         Il ouvre sa discussion avec lui-même (`discuss.channel.channel_get`
-        avec son seul partenaire), y entre (`/mail/rtc/channel/join_call`)
-        et en ressort (`leave_call`). L'entrée crée une session d'appel et
-        laisse dans cette discussion l'avis « a lancé une conférence ».
+        avec son seul partenaire), que `channel_get` crée au besoin et
+        épingle, y entre (`/mail/rtc/channel/join_call`) et en ressort
+        (`leave_call`). L'entrée crée une session d'appel et laisse dans
+        cette discussion l'avis « a commencé une conférence en direct ».
 
         Refus : `call_infra_odoo_version` avant toute connexion,
         `call_infra_odoo_user_login` pour un identifiant ou un mot de passe
