@@ -140,6 +140,8 @@ from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
+# Le générateur des images de image_db/, lancé avec le Python des outils.
+IMAGE_DB_BIN = f"./{VENV_ERPLIBRE}/bin/python3 ./script/database/image_db.py"
 ENABLE_CRASH = False
 CRASH_E = None
 # Support mobile ERPLibre
@@ -332,25 +334,26 @@ class TODO(
 [4] {t("Test - Test an Odoo module")}
 [5] {t("Process - Execution tools")}
 [6] {t("Uninstall - Remove an Odoo version")}
+[7] {t("Image Odoo - Database images for a quick installation")}
 
 ── {t("Data")} ──
-[7] {t("Database - Database tools")}
-[8] {t("Analyse - Odoo database analysis")}
-[9] {t("Transform data - Transform your data")}
+[8] {t("Database - Database tools")}
+[9] {t("Analyse - Odoo database analysis")}
+[10] {t("Transform data - Transform your data")}
 
 ── {t("Sources & documentation")} ──
-[10] {t("Git - Git and shell tools")}
-[11] {t("Doc - Documentation search")}
+[11] {t("Git - Git and shell tools")}
+[12] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[12] {t("GPT code - AI assistant tools")}
-[13] {t("Automation - Demonstration of developed features")}
+[13] {t("GPT code - AI assistant tools")}
+[14] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[14] {t("Deploy - Deploy ERPLibre locally")}
-[15] {t("Network - Network tools")}
-[16] {t("Security - Dependency security audit")}
-[17] {t("Docker / Podman - Container engines")}
+[15] {t("Deploy - Deploy ERPLibre locally")}
+[16] {t("Network - Network tools")}
+[17] {t("Security - Dependency security audit")}
+[18] {t("Docker / Podman - Container engines")}
 [0] {t("Back")}
 """
         while True:
@@ -383,46 +386,50 @@ class TODO(
                 if status is not False:
                     return
             elif status == "7":
-                status = self.prompt_execute_database()
+                status = self.prompt_execute_image_db()
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_analyse()
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_transform()
+                status = self.prompt_execute_analyse()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_transform()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "15":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "16":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "17":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "18":
                 status = self.prompt_execute_container()
                 if status is not False:
                     return
@@ -798,6 +805,7 @@ class TODO(
         "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
         "prompt_execute_uninstall": "Uninstall",
+        "prompt_execute_image_db": "Image Odoo",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
         "prompt_execute_update": "Update",
@@ -5520,6 +5528,131 @@ class TODO(
                 *argv,
             ]
         )
+
+    def prompt_execute_image_db(self):
+        print(f"🤖 {t('Database images for a quick installation!')}")
+        choices = [
+            {"prompt_description": t("List the images of an Odoo version")},
+            {
+                "prompt_description": t(
+                    "Regenerate every image of an Odoo version"
+                )
+            },
+            {"prompt_description": t("Regenerate one image")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.image_db_list()
+            elif status == "2":
+                self.image_db_regenerate(tout=True)
+            elif status == "3":
+                self.image_db_regenerate(tout=False)
+            else:
+                print(t("Command not found !"))
+
+    def _image_db_choose_version(self, generer):
+        """La version d'Odoo choisie parmi celles qui ont des images, ou
+        None. Une image se génère avec l'Odoo ACTIF — odoo_bin.sh suit
+        .erplibre-version et config.conf — : pour `generer`, la version doit
+        être installée, et une autre que l'active n'est retenue qu'après le
+        passage à elle, proposé ici (make switch_odoo_<N>)."""
+        from script.database import image_db
+
+        versions = image_db.versions_with_images(image_db.load_image_config())
+        _entries, installees, active = get_odoo_version()
+        installees = {v.removeprefix("odoo") for v in installees}
+        for i, version in enumerate(versions, 1):
+            marques = []
+            if version in installees:
+                marques.append(t("Odoo version installed"))
+            if version == active:
+                marques.append(t("Odoo version active"))
+            suffixe = f" ({', '.join(marques)})" if marques else ""
+            print(f"[{i}] Odoo {version}{suffixe}")
+        print(f"[0] {t('Back')}")
+        reponse = input(t("Odoo version of the images: ")).strip()
+        if not reponse.isdigit() or not 0 < int(reponse) <= len(versions):
+            return None
+        version = versions[int(reponse) - 1]
+        if not generer or version == active:
+            return version
+        if version not in installees:
+            print(
+                t(
+                    "Odoo %s is not installed: install it first (TODO › Installation)."
+                )
+                % version
+            )
+            return None
+        majeure = version.split(".")[0]
+        if not self._is_yes(
+            input(
+                t(
+                    "The images are generated with the active Odoo: switch to"
+                    " Odoo %s now (make switch_odoo_%s)? [y/N] "
+                )
+                % (version, majeure)
+            )
+        ):
+            return None
+        status = self.execute.exec_command_live(
+            f"make switch_odoo_{majeure}", source_erplibre=False
+        )
+        return version if status == 0 else None
+
+    def image_db_list(self):
+        version = self._image_db_choose_version(generer=False)
+        if version:
+            self.execute.exec_command_live(
+                f"{IMAGE_DB_BIN} --odoo_version {version} --show_list_only",
+                source_erplibre=False,
+            )
+
+    def image_db_regenerate(self, tout):
+        """Regénère les images de `image_db/` d'une version : toutes, comme
+        make image_db_create_all_parallel, ou celle que l'on choisit."""
+        from script.database import image_db
+
+        version = self._image_db_choose_version(generer=True)
+        if not version:
+            return
+        if tout:
+            if not shutil.which("parallel"):
+                print(
+                    t(
+                        "GNU parallel is missing: install the « parallel » package."
+                    )
+                )
+                return
+            cmd = (
+                "./script/database/db_restore.py --clean_cache"
+                f" && {IMAGE_DB_BIN} --odoo_version {version} --check_addons_exist"
+                f" && {IMAGE_DB_BIN} --odoo_version {version}"
+                " --generate_bash_cmd_parallel | bash"
+                " ; status=$? ; ./script/database/db_restore.py --clean_cache"
+                " ; exit $status"
+            )
+        else:
+            images = image_db.images_of_version(
+                image_db.load_image_config(), version
+            )
+            for i, nom in enumerate(images, 1):
+                print(f"[{i}] {nom}")
+            print(f"[0] {t('Back')}")
+            reponse = input(t("Image to regenerate: ")).strip()
+            if not reponse.isdigit() or not 0 < int(reponse) <= len(images):
+                return
+            cmd = (
+                f"{IMAGE_DB_BIN} --odoo_version {version}"
+                f" --image {images[int(reponse) - 1]}"
+            )
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def prompt_execute_rtk(self):
         print(

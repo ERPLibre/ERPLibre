@@ -104,6 +104,54 @@ TRANSLATIONS = {
         "fr": "Aucune version d'Odoo à retirer hormis l'active.",
         "en": "No Odoo version to remove besides the active one.",
     },
+    "Image Odoo - Database images for a quick installation": {
+        "fr": "🖼️ Image Odoo - Images de base pour une installation rapide",
+        "en": "🖼️ Image Odoo - Database images for a quick installation",
+    },
+    "Database images for a quick installation!": {
+        "fr": "Images de base de données pour une installation rapide !",
+        "en": "Database images for a quick installation!",
+    },
+    "List the images of an Odoo version": {
+        "fr": "📋 Lister les images d'une version d'Odoo",
+        "en": "📋 List the images of an Odoo version",
+    },
+    "Regenerate every image of an Odoo version": {
+        "fr": "🔄 Regénérer toutes les images d'une version d'Odoo",
+        "en": "🔄 Regenerate every image of an Odoo version",
+    },
+    "Regenerate one image": {
+        "fr": "🖼️ Regénérer une image",
+        "en": "🖼️ Regenerate one image",
+    },
+    "Odoo version installed": {
+        "fr": "installée",
+        "en": "installed",
+    },
+    "Odoo version active": {
+        "fr": "active",
+        "en": "active",
+    },
+    "Odoo version of the images: ": {
+        "fr": "Version d'Odoo des images : ",
+        "en": "Odoo version of the images: ",
+    },
+    "Odoo %s is not installed: install it first (TODO › Installation).": {
+        "fr": "Odoo %s n'est pas installé : installez-le d'abord (TODO › Installation).",
+        "en": "Odoo %s is not installed: install it first (TODO › Installation).",
+    },
+    "The images are generated with the active Odoo: switch to Odoo %s now (make switch_odoo_%s)? [y/N] ": {
+        "fr": "Les images se génèrent avec l'Odoo actif : passer à Odoo %s maintenant (make switch_odoo_%s) ? [o/N] ",
+        "en": "The images are generated with the active Odoo: switch to Odoo %s now (make switch_odoo_%s)? [y/N] ",
+    },
+    "GNU parallel is missing: install the « parallel » package.": {
+        "fr": "GNU parallel manque : installez le paquet « parallel ».",
+        "en": "GNU parallel is missing: install the « parallel » package.",
+    },
+    "Image to regenerate: ": {
+        "fr": "Image à regénérer : ",
+        "en": "Image to regenerate: ",
+    },
     "Versions to remove, numbers separated by spaces: ": {
         "fr": "Versions à retirer, numéros séparés par des espaces : ",
         "en": "Versions to remove, numbers separated by spaces: ",
