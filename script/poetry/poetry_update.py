@@ -17,7 +17,8 @@ import iscompatible
 import toml
 from colorama import Fore, Style
 from packaging.markers import default_environment
-from packaging.requirements import Requirement
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 _logger = logging.getLogger(__name__)
@@ -661,6 +662,54 @@ def apply_marker_variants(pyproject_filename, build_dependency_filename):
     return has_changed
 
 
+# The variable Poetry reads for solver.min-release-age-exclude: a comma
+# separated list, inherited by every Poetry call of this script.
+ENV_MIN_RELEASE_AGE_EXCLUDE = "POETRY_SOLVER_MIN_RELEASE_AGE_EXCLUDE"
+
+
+def pinned_packages(filename):
+    """The packages `filename` pins with « == » (or « === »), as Poetry
+    names them (PEP 503, lower case, « - »), sorted. A comment, an option
+    line or a direct URL is skipped; a missing file pins nothing."""
+    try:
+        with open(filename, encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+    names = set()
+    for line in lines:
+        line = line.split("#", 1)[0].strip()
+        if not line or line.startswith("-"):
+            continue
+        try:
+            req = Requirement(line)
+        except InvalidRequirement:
+            continue
+        if req.url:
+            continue
+        if any(spec.operator in ("==", "===") for spec in req.specifier):
+            names.add(canonicalize_name(req.name))
+    return sorted(names)
+
+
+def exempt_pins_from_min_release_age(filename):
+    """Exempt from solver.min-release-age, set in poetry.toml, the packages
+    the ERPLibre file `filename` pins with « == »: such a pin is a reviewed
+    choice, often a security fix younger than the delay, which the solver
+    would otherwise refuse. Every other package waits for the delay. Names
+    already in ENV_MIN_RELEASE_AGE_EXCLUDE stay. Returns the pinned names."""
+    pinned = pinned_packages(filename)
+    current = [
+        n.strip()
+        for n in os.environ.get(ENV_MIN_RELEASE_AGE_EXCLUDE, "").split(",")
+        if n.strip()
+    ]
+    merged = sorted(set(current) | set(pinned))
+    if merged:
+        os.environ[ENV_MIN_RELEASE_AGE_EXCLUDE] = ",".join(merged)
+    return pinned
+
+
 def call_poetry_lock(config):
     """
     :return: True if success
@@ -765,6 +814,13 @@ def main():
         delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
     if not config.dry:
+        exempted = exempt_pins_from_min_release_age(
+            f"requirement/requirements.{config.set_version_erplibre}.txt"
+        )
+        print(
+            f"{len(exempted)} package(s) pinned with « == » exempted from"
+            " solver.min-release-age."
+        )
         if config.force and os.path.isfile(poetry_default_lock_path):
             os.remove(poetry_default_lock_path)
         status = call_poetry_add_build_dependency()

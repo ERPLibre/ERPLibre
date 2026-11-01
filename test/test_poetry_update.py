@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from collections import defaultdict
 from types import SimpleNamespace
 
@@ -145,6 +146,62 @@ class TestManifestExternalDependencies(unittest.TestCase):
             result['autre ; platform_machine != "s390x"'],
             {'autre>=6.8 ; platform_machine != "s390x"'},
         )
+
+
+class TestMinReleaseAgeExemption(unittest.TestCase):
+    """poetry.toml fait attendre 7 jours toute version ; les épingles « == »
+    du fichier d'ERPLibre, décisions relues, y échappent."""
+
+    LIGNES = (
+        "pypdf==6.21.4\n"
+        "Pillow==13.0.0 ; python_version >= '3.12'\n"
+        "lxml_html_clean==0.4.6\n"
+        "setuptools==84.0.0  # outillage\n"
+        "pandas===3.0.6\n"
+        "requests>=2\n"
+        "# certifi==2026.1.1\n"
+        "foo\n"
+        "-r autre.txt\n"
+        "zed @ git+https://example.invalid/zed.git\n"
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fichier = os.path.join(self.tmp.name, "requirements.txt")
+        with open(self.fichier, "w") as f:
+            f.write(self.LIGNES)
+
+    def test_pinned_names_are_normalized(self):
+        self.assertEqual(
+            P.pinned_packages(self.fichier),
+            ["lxml-html-clean", "pandas", "pillow", "pypdf", "setuptools"],
+        )
+
+    def test_exemption_merges_with_the_environment(self):
+        with mock.patch.dict(
+            os.environ, {P.ENV_MIN_RELEASE_AGE_EXCLUDE: "numpy, pypdf"}
+        ):
+            P.exempt_pins_from_min_release_age(self.fichier)
+            self.assertEqual(
+                os.environ[P.ENV_MIN_RELEASE_AGE_EXCLUDE],
+                "lxml-html-clean,numpy,pandas,pillow,pypdf,setuptools",
+            )
+
+    def test_missing_file_sets_nothing(self):
+        with mock.patch.dict(os.environ, clear=False):
+            os.environ.pop(P.ENV_MIN_RELEASE_AGE_EXCLUDE, None)
+            absent = os.path.join(self.tmp.name, "absent.txt")
+            self.assertEqual(P.exempt_pins_from_min_release_age(absent), [])
+            self.assertNotIn(P.ENV_MIN_RELEASE_AGE_EXCLUDE, os.environ)
+
+    def test_poetry_toml_sets_seven_days(self):
+        import tomllib
+
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(racine, "poetry.toml"), "rb") as f:
+            conf = tomllib.load(f)
+        self.assertEqual(conf["solver"]["min-release-age"], 7)
 
 
 class TestPoetryAddFailure(unittest.TestCase):

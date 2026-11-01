@@ -29,9 +29,20 @@ Priority dependencies in ./requirements.txt, after it's ./odoo/requirements.txt,
 
 TODO add option to only add missing dependencies and ignore update.
 
-## Add dependencies manually
+## Minimum release age
 
-The automatic script will erase this dependency, but you can add it for your local test.
+`poetry.toml` sets `solver.min-release-age = 7`: when it resolves (`poetry
+lock`, `poetry add`, thus `make poetry_update`), Poetry ignores any release
+published less than 7 days ago. A malicious version of a legitimate package,
+pushed from a stolen maintainer account or a compromised release pipeline, is
+usually withdrawn within one to three days; the delay keeps it out of the lock.
+`poetry install` follows the lock and is never held back. Poetry 1.8, used by
+older Odoo versions, ignores the setting.
+
+`make poetry_update` exempts every package pinned with `==` in
+`requirement/requirements.<version>.txt`: such a pin is a reviewed choice,
+often a security fix younger than the delay. To let a package that is not
+pinned through the delay, name it, several separated by commas:
 
 <!-- [fr] -->
 Cela va chercher tous les fichiers `requirements.txt` et mettre à jour `pyproject.toml` et mettre à jour poetry
@@ -39,6 +50,42 @@ Cela va chercher tous les fichiers `requirements.txt` et mettre à jour `pyproje
 Les dépendances prioritaires sont dans ./requirements.txt, ensuite ./odoo/requirements.txt, puis les valeurs de version les plus élevées.
 
 À FAIRE : ajouter une option pour seulement ajouter les dépendances manquantes et ignorer la mise à jour.
+
+## Délai minimal de publication
+
+`poetry.toml` fixe `solver.min-release-age = 7` : quand il résout (`poetry
+lock`, `poetry add`, donc `make poetry_update`), Poetry ignore toute version
+publiée depuis moins de 7 jours. Une version malveillante d'un paquet légitime,
+poussée depuis le compte volé d'un mainteneur ou une chaîne de publication
+compromise, est en général retirée en un à trois jours ; le délai la tient hors
+du verrou. `poetry install` suit le verrou et n'est jamais retenu. Poetry 1.8,
+celui des anciennes versions d'Odoo, ignore ce réglage.
+
+`make poetry_update` exempte chaque paquet épinglé par `==` dans
+`requirement/requirements.<version>.txt` : une telle épingle est un choix relu,
+souvent un correctif de sécurité plus récent que le délai. Pour laisser passer
+un paquet qui n'est pas épinglé, nommez-le, plusieurs séparés par des virgules :
+
+<!-- [common] -->
+```bash
+POETRY_SOLVER_MIN_RELEASE_AGE_EXCLUDE=nom make poetry_update
+POETRY_SOLVER_MIN_RELEASE_AGE_EXCLUDE=pypdf,lxml-html-clean make poetry_update
+```
+
+<!-- [en] -->
+The delay does not stop a backdoor planted patiently and found weeks later,
+nor an old typosquat: the lock hashes, reading the lock diff and the CVE watch
+remain needed. `POETRY_SOLVER_MIN_RELEASE_AGE=0` lifts the delay for one run.
+
+## Add dependencies manually
+
+The automatic script will erase this dependency, but you can add it for your local test.
+
+<!-- [fr] -->
+Le délai n'arrête ni une porte dérobée posée patiemment et découverte des
+semaines plus tard, ni un typosquat ancien : les hash du verrou, la relecture
+du diff du verrou et la veille CVE restent nécessaires.
+`POETRY_SOLVER_MIN_RELEASE_AGE=0` lève le délai pour une exécution.
 
 ## Ajouter des dépendances manuellement
 

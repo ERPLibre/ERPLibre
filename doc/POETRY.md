@@ -15,6 +15,30 @@ Priority dependencies in ./requirements.txt, after it's ./odoo/requirements.txt,
 
 TODO add option to only add missing dependencies and ignore update.
 
+## Minimum release age
+
+`poetry.toml` sets `solver.min-release-age = 7`: when it resolves (`poetry
+lock`, `poetry add`, thus `make poetry_update`), Poetry ignores any release
+published less than 7 days ago. A malicious version of a legitimate package,
+pushed from a stolen maintainer account or a compromised release pipeline, is
+usually withdrawn within one to three days; the delay keeps it out of the lock.
+`poetry install` follows the lock and is never held back. Poetry 1.8, used by
+older Odoo versions, ignores the setting.
+
+`make poetry_update` exempts every package pinned with `==` in
+`requirement/requirements.<version>.txt`: such a pin is a reviewed choice,
+often a security fix younger than the delay. To let a package that is not
+pinned through the delay, name it, several separated by commas:
+
+```bash
+POETRY_SOLVER_MIN_RELEASE_AGE_EXCLUDE=nom make poetry_update
+POETRY_SOLVER_MIN_RELEASE_AGE_EXCLUDE=pypdf,lxml-html-clean make poetry_update
+```
+
+The delay does not stop a backdoor planted patiently and found weeks later,
+nor an old typosquat: the lock hashes, reading the lock diff and the CVE watch
+remain needed. `POETRY_SOLVER_MIN_RELEASE_AGE=0` lifts the delay for one run.
+
 ## Add dependencies manually
 
 The automatic script will erase this dependency, but you can add it for your local test.
