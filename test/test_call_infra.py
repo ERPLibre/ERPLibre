@@ -8683,6 +8683,7 @@ class TestOdooPlan(OdooSandbox):
         self.assertEqual(
             self.odoo_calls(),
             [
+                ("replace_rows", USER_A, []),
                 (
                     "set_params",
                     {
@@ -8690,14 +8691,13 @@ class TestOdooPlan(OdooSandbox):
                         ol.PARAM_SECRET: SECRET_A,
                     },
                 ),
-                ("replace_rows", USER_A, []),
             ],
         )
         # Le secret en dernier : sur l'API web, chaque paramètre est sa
         # propre transaction, et un nouveau secret ne doit jamais signer
         # d'anciennes URL.
         self.assertEqual(
-            list(self.odoo_calls()[0][1]), [ol.PARAM_URLS, ol.PARAM_SECRET]
+            list(self.odoo_calls()[1][1]), [ol.PARAM_URLS, ol.PARAM_SECRET]
         )
         names = [e[0] for e in self.events]
         self.assertLess(names.index("host-done"), names.index("set_params"))
@@ -8838,6 +8838,95 @@ class TestOdooPlan(OdooSandbox):
         self.assertEqual(caught.exception.key, "call_infra_odoo_write_failed")
         self.assertEqual(self.users()[USER_A], old_key)
         self.assertEqual(self.state_on_host(), state)
+
+    def test_a_secret_write_failing_late_leaves_odoo_on_a_live_secret(self):
+        """Le secret est la dernière écriture dans Odoo : quand l'appel qui
+        retire les lignes de l'outil échoue, Odoo n'a pas reçu le secret que
+        le retour arrière retire de coturn, et garde celui d'avant."""
+        state = secret_state(odoos={KEY_A: secret_entry(SECRET_A)})
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        self.put_state(state)
+        link = FakeLink(
+            self.events,
+            params={ol.PARAM_SECRET: SECRET_A},
+            fail_on={"replace_rows": unreachable()},
+        )
+        plan = self.plan(state, odoo_facts("installed"))
+        with self.assertRaises(ci.Refusal) as caught:
+            self.add(link, plan, SECRET_B)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_write_failed")
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A})
+        self.assertEqual(link.params[ol.PARAM_SECRET], SECRET_A)
+        self.assertEqual(self.state_on_host(), state)
+
+    def test_a_fixed_write_failing_late_leaves_odoo_on_the_live_key(self):
+        """Le mot de passe est la dernière écriture dans Odoo : quand le
+        retrait des paramètres du module échoue, les lignes d'Odoo portent
+        encore le mot de passe que le retour arrière remet sur coturn."""
+        entry = {
+            "method": "webapi",
+            "module": False,
+            "credential": {"kind": "user", "user": USER_A},
+            "retired": [],
+            "rows": True,
+            "exempt": None,
+            "added_at": "2026-10-30T10:00:00+00:00",
+        }
+        state = installed_state()
+        state["turn_mode"] = "fixed"
+        state["odoos"] = {KEY_A: entry}
+        old_key = tc.long_term_key(USER_A, REALM, PASSWORD_1).hex()
+        self.seed(users=((USER_A, old_key),))
+        self.put_state(state)
+        udp, tcp = (
+            f"turn.exemple.test:3478?transport={proto}"
+            for proto in ("udp", "tcp")
+        )
+        live = (
+            ice_row(10, "turn.exemple.test:3478", USER_A, "stun"),
+            dict(ice_row(11, udp, USER_A), credential=PASSWORD_1),
+            dict(ice_row(12, tcp, USER_A), credential=PASSWORD_1),
+        )
+        left = {ol.PARAM_SECRET: "sha256:" + "a" * 64}
+        link = FakeLink(
+            self.events,
+            rows=live,
+            params=left,
+            fail_on={"set_params": unreachable()},
+        )
+        plan = self.plan(state, odoo_facts("uninstalled", params=left))
+        self.assertTrue(plan.params)
+        with self.assertRaises(ci.Refusal) as caught:
+            self.add(link, plan, PASSWORD_2)
+        self.assertEqual(caught.exception.key, "call_infra_odoo_write_failed")
+        self.assertEqual(self.users()[USER_A], old_key)
+        held = {r.get("credential") for r in link.rows} - {None}
+        self.assertEqual(held, {PASSWORD_1})
+
+    def test_an_interrupted_write_whose_rollback_fails_says_so(self):
+        """Ctrl-C pendant l'écriture, puis un retour arrière en échec :
+        l'identifiant reste valide sur coturn, le refus le dit plutôt que
+        la seule interruption, qui reste dans `__cause__`."""
+        state = secret_state()
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put_state(state)
+        stop = KeyboardInterrupt()
+        link = FakeLink(self.events, fail_on={"set_params": stop})
+        plan = self.plan(state, odoo_facts())
+
+        def run(script):
+            if '"@@ODOO_ROLLBACK yes"' in script:
+                return 1, "@@FAILED revoke\n@@ODOO_ROLLBACK no\n"
+            return self.run_host(script)
+
+        with self.assertRaises(ci.Refusal) as caught:
+            ci.apply_odoo_add(
+                run, link, plan, NOW, draw=self.draw(SECRET_A), root=self.root
+            )
+        self.assertEqual(
+            caught.exception.key, "call_infra_odoo_rollback_failed"
+        )
+        self.assertIs(caught.exception.__cause__, stop)
 
     def test_an_interrupted_odoo_write_is_rolled_back_too(self):
         state = secret_state()

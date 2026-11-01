@@ -4441,8 +4441,8 @@ TRANSLATIONS = {
         "en": "Writing to Odoo failed: the credential set on coturn is removed again, and the host state does not record this Odoo server. Fix the cause, then run the add again.",
     },
     "call_infra_odoo_rollback_failed": {
-        "fr": "L'écriture dans Odoo a échoué, puis le retrait de l'identifiant posé sur coturn aussi (étape « {step} ») : cet identifiant reste valide sans que l'état le consigne. Un compte fixe est remplacé au prochain ajout de ce serveur Odoo ; un secret reste valide jusqu'à la désinstallation de coturn, qui efface sa base.",
-        "en": "Writing to Odoo failed, then removing the credential set on coturn failed too (step « {step} »): that credential stays valid without the state recording it. A fixed account is replaced by the next add of this Odoo server; a secret stays valid until coturn is uninstalled, which erases its database.",
+        "fr": "L'écriture dans Odoo a échoué ou a été interrompue, puis le retrait de l'identifiant posé sur coturn aussi (étape « {step} ») : cet identifiant reste valide sans que l'état le consigne. Un compte fixe est remplacé au prochain ajout de ce serveur Odoo ; un secret reste valide jusqu'à la désinstallation de coturn, qui efface sa base.",
+        "en": "Writing to Odoo failed or was interrupted, then removing the credential set on coturn failed too (step « {step} »): that credential stays valid without the state recording it. A fixed account is replaced by the next add of this Odoo server; a secret stays valid until coturn is uninstalled, which erases its database.",
     },
     "call_infra_odoo_state_failed": {
         "fr": "coturn et Odoo sont écrits, mais l'état de l'hôte n'a pas pu l'être : il ne consigne pas ce serveur Odoo, que « Retirer » ne trouvera pas. Relancez l'ajout pour que l'état le consigne ; le secret de cet essai reste valide dans coturn jusqu'à sa désinstallation.",
