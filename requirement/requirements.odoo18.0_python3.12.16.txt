@@ -171,11 +171,11 @@ orjson
 meteostat==1.7.6
 
 # Fix build
-beautifulsoup4==4.13.5
+beautifulsoup4==4.15.0
 # pylint-odoo depend on pylint==3.3.9 https://github.com/OCA/pylint-odoo/pull/541
 #pylint-odoo==9.3.22
 #pylint==3.3.9
-isort==7.0.0
+isort==9.0.1
 git+https://github.com/mathben/flanker.git@update_imghdr_python3
 
 # Fix some OS
@@ -197,9 +197,9 @@ pillow==13.0.0
 # exigée par s3fs (>=2.19.0,<4.0.0).
 s3fs==2026.9.0
 fsspec==2026.9.0
-aiobotocore==3.9.1
-botocore==1.43.75
-boto3==1.43.75
+aiobotocore==3.10.0
+botocore==1.43.117
+boto3==1.43.117
 
 # factur-x >= 4.0 dépend de saxonche, qui encapsule SaxonC. Saxonica ne publie
 # de roue que pour x86_64, aarch64, macOS et Windows — aucune pour s390x, et
