@@ -38,7 +38,7 @@ Pas de binaire mise pour s390x à ce jour : cette architecture reste sur pyenv.
 
 ## Le Python de l'outillage
 
-`conf/python-erplibre-version` (3.14.7) donne l'interpréteur de
+`conf/python-erplibre-version` (3.14.10) donne l'interpréteur de
 `.venv.erplibre`, le venv d'outillage, distinct du venv Odoo (3.12.16 pour
 Odoo 18.0). C'est la seule version que `script/` vise : là où une distribution
 ne la porte pas, pyenv la compile.
