@@ -1389,7 +1389,7 @@ def racines_du_rapport(rapport, nom_base=""):
     return racines or [(nom_etage(1, nom_base), None, True)]
 
 
-def detruire(famille, journal=None, dry_run=False):
+def detruire(famille, journal=None, dry_run=False, avant=None):
     """Défait ce que le DERNIER rapport dit avoir créé, du plus profond.
 
     Rien d'autre : chaque machine visée est nommée par le rapport, avec
@@ -1397,6 +1397,12 @@ def detruire(famille, journal=None, dry_run=False):
     nom. Les étages imbriqués partent d'abord, chez leur parent, puis CHAQUE
     machine de niveau 1 (racines_du_rapport). Une seule confirmation couvre
     le tout.
+
+    `avant(a_blanc)` : ce que l'appelant défait hors des VM (bases,
+    processus), sous les mêmes garde-fous. Il n'est appelé ni quand une
+    descente tourne ni sans rapport ; avec `dry_run`, il l'est à blanc
+    (`a_blanc` vrai) après la liste des VM ; sinon après la confirmation,
+    avant la première VM, et jamais sur un refus.
 
     Rend 0 quand toutes les racines sont défaites, 1 quand une descente
     tourne, quand la confirmation est refusée ou quand une racine reste
@@ -1443,6 +1449,8 @@ def detruire(famille, journal=None, dry_run=False):
     for nom, _uuid, _cree in racines:
         dire(f"    étage  1  {nom} (libvirt)", journal)
     if dry_run:
+        if avant is not None:
+            avant(True)
         dire("\n  --dry-run : rien ne sera détruit.", journal)
         return 0
     # Une confirmation, parce que « --purge » emporte les disques et que le
@@ -1451,6 +1459,8 @@ def detruire(famille, journal=None, dry_run=False):
     if reponse != "OUI":
         dire("  annulé.", journal)
         return 1
+    if avant is not None:
+        avant(False)
     faits = sum(
         1
         for niveau, parent_alias, identite, nom in liste

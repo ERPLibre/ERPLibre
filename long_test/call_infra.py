@@ -2664,11 +2664,17 @@ def mener(argv):
         return False
 
     if args.detruire:
-        # Les bases et serveurs Odoo d'abord : ils ne vivent pas dans les VM
-        # et le défaire partagé ne les connaît pas.
-        defaire_odoo(journal, args.dry_run)
+        # Les bases et serveurs Odoo ne vivent pas dans les VM et le défaire
+        # partagé ne les connaît pas : il les confie à `avant`, sous ses
+        # garde-fous (aucune descente en cours, la confirmation), avant la
+        # première VM.
         famille = Famille(OUTIL, NOM_BASE, pas_d_imbrique)
-        return detruire(famille, journal, dry_run=args.dry_run)
+        return detruire(
+            famille,
+            journal,
+            dry_run=args.dry_run,
+            avant=lambda a_blanc: defaire_odoo(journal, a_blanc),
+        )
 
     systemes = list(DISTROS) if args.distro == "tous" else [args.distro]
     scenarios = (

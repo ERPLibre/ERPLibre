@@ -2432,23 +2432,87 @@ class LeDefaireOdoo(unittest.TestCase):
         self.assertEqual(0, self._defaire(vivante=True)[0])
 
     def test_destroy_drops_the_databases_then_the_vms(self):
-        ordre = []
+        def detruire(famille, journal, dry_run, avant):
+            avant(dry_run)
+            ordre.append(("vm", dry_run))
+            return 0
+
+        for options, a_blanc in (((), False), (("--dry-run",), True)):
+            ordre = []
+            with (
+                self.subTest(options=options),
+                mock.patch.object(
+                    lt,
+                    "defaire_odoo",
+                    side_effect=lambda j, d: ordre.append(("odoo", d)),
+                ),
+                mock.patch.object(lt, "detruire", side_effect=detruire),
+            ):
+                code, _sortie = lancer(self.maison, "--detruire", *options)
+            self.assertEqual(0, code)
+            self.assertEqual([("odoo", a_blanc), ("vm", a_blanc)], ordre)
+
+    def _detruire_pour_de_vrai(self, *options, reponse="OUI"):
+        """`--detruire` par le défaire partagé, VM et processus bouchés ;
+        rend (code, arreter_serveurs, supprimer_base, detruire_etage1)."""
         with (
+            mock.patch.object(lt, "descente_vivante", return_value=False),
+            mock.patch.object(lt, "serveurs_de", return_value=[4242]),
+            mock.patch.object(lt, "arreter_serveurs") as arreter,
+            mock.patch.object(lt.mso, "supprimer_base") as supprimer,
+            mock.patch.object(lt, "bases_restantes", return_value=[]),
             mock.patch.object(
-                lt,
-                "defaire_odoo",
-                side_effect=lambda j, d: ordre.append(("odoo", d)),
+                descente, "descente_vivante", return_value=False
             ),
             mock.patch.object(
-                lt,
-                "detruire",
-                side_effect=lambda f, j, dry_run: ordre.append(("vm", dry_run))
-                or 0,
-            ),
+                descente, "detruire_etage1", return_value=True
+            ) as etage1,
+            mock.patch.object(descente, "retirer_alias"),
+            mock.patch("builtins.input", return_value=reponse),
         ):
-            code, _sortie = lancer(self.maison, "--detruire")
+            code, _sortie = lancer(self.maison, "--detruire", *options)
+        return code, arreter, supprimer, etage1
+
+    def test_destroy_dry_run_stops_no_server_and_drops_no_database(self):
+        chemin = self._rapport(etages=[LeDefaire.ETAGE])
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai(
+            "--dry-run"
+        )
         self.assertEqual(0, code)
-        self.assertEqual([("odoo", False), ("vm", False)], ordre)
+        arreter.assert_not_called()
+        supprimer.assert_not_called()
+        etage1.assert_not_called()
+        with open(chemin, encoding="utf-8") as fh:
+            self.assertEqual(3, len(json.load(fh)["odoo"]["bases"]))
+
+    def test_destroy_refused_keeps_the_databases(self):
+        self._rapport(etages=[LeDefaire.ETAGE])
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai(
+            reponse="non"
+        )
+        self.assertEqual(1, code)
+        arreter.assert_not_called()
+        supprimer.assert_not_called()
+        etage1.assert_not_called()
+
+    def test_destroy_confirmed_drops_the_databases_then_the_vm(self):
+        self._rapport(etages=[LeDefaire.ETAGE])
+        code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai()
+        self.assertEqual(0, code)
+        arreter.assert_called_once_with([4242])
+        self.assertEqual(
+            self.BASES, [c.args[0] for c in supprimer.call_args_list]
+        )
+        etage1.assert_called_once()
+
+    def test_a_live_run_keeps_its_servers_and_databases(self):
+        chemin = self._rapport()
+        n, _de, arreter, supprimer = self._defaire(vivante=True)
+        self.assertEqual(0, n)
+        arreter.assert_not_called()
+        supprimer.assert_not_called()
+        with open(chemin, encoding="utf-8") as fh:
+            self.assertEqual(3, len(json.load(fh)["odoo"]["bases"]))
 
     def test_the_servers_of_a_run_are_found_by_their_config(self):
         proc = os.path.join(self.maison, "proc")
