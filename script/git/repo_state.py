@@ -63,6 +63,16 @@ de lecture.
 Une erreur sur un dépôt se rend dans son entrée (« error ») et n'arrête
 jamais les autres.
 
+Permissions manquantes
+----------------------
+Un « .git » que le compte qui lance le script ne peut pas lire — un clone
+de git-repo fait par root, son « .repo/projects/*.git » en mode 700 — rend
+« erreur » au dépôt. « snapshot » et « cross-version » ajoutent alors
+« permissions » (None sinon) : le compte, le propriétaire, le nombre de
+dépôts touchés et la commande à lancer en root pour rendre ces dépôts
+lisibles (voir `permissions_manquantes`). L'empreinte l'ignore : c'est un
+conseil sur l'environnement, pas un état du code.
+
 Codes de sortie : 0 rendu complet, les erreurs par dépôt comprises ;
 1 erreur interne (le JSON porte « error », la trace va sur la sortie
 d'erreur) ; 2 usage ; 3 la cible n'existe pas — un chemin hors du
@@ -79,11 +89,18 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import socket
 import subprocess
 import sys
 import traceback
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
+
+try:
+    import pwd
+except ImportError:  # pragma: no cover - hors Unix
+    pwd = None
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -205,6 +222,92 @@ def a_un_git(chemin):
     return os.path.lexists(os.path.join(chemin, ".git"))
 
 
+def cible_illisible(chemin):
+    """La cible du « .git » de `chemin` quand ce compte ne peut pas la lire
+    (dossier sans lecture ou sans traversée, fichier sans lecture), sinon
+    None — y compris quand la cible n'existe pas."""
+    cible = os.path.realpath(os.path.join(chemin, ".git"))
+    if not os.path.exists(cible):
+        return None
+    droits = os.R_OK | os.X_OK if os.path.isdir(cible) else os.R_OK
+    return None if os.access(cible, droits) else cible
+
+
+def _nom_compte(uid):
+    """Le nom du compte `uid`, ou l'uid en texte s'il n'a pas de nom."""
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except (AttributeError, KeyError):
+        return str(uid)
+
+
+def dans_un_conteneur():
+    """Vrai quand le script tourne dans un conteneur Docker."""
+    return os.path.exists("/.dockerenv")
+
+
+def _sous(chemin, base):
+    return chemin == base or chemin.startswith(base + os.sep)
+
+
+def permissions_manquantes(racine, dossiers):
+    """Le conseil « permissions » pour les clones `dossiers`, ou None quand
+    ce compte lit chacun de leurs « .git ».
+
+    {account, owner, count, path, command, container} :
+
+    - « path » est « <racine>/.repo » quand toutes les cibles illisibles y
+      sont, la racine quand elles sont sous elle, None sinon ;
+    - « command », à lancer en root, rend « path » lisible et traversable
+      par tous (« chmod -R go+rX ») ; None avec « path » : aucune commande
+      ne se propose hors du checkout ;
+    - « container » est le nom d'hôte quand le script tourne dans un
+      conteneur Docker, par défaut l'identifiant que « docker exec » prend.
+    """
+    cibles = [c for c in map(cible_illisible, dossiers) if c]
+    if not cibles:
+        return None
+    racine = os.path.realpath(racine)
+    repo = os.path.join(racine, ".repo")
+    if all(_sous(c, repo) for c in cibles):
+        chemin = repo
+    elif all(_sous(c, racine) for c in cibles):
+        chemin = racine
+    else:
+        chemin = None
+    try:
+        proprietaire = _nom_compte(os.stat(cibles[0]).st_uid)
+    except OSError:
+        proprietaire = None
+    return {
+        "account": _nom_compte(os.geteuid()),
+        "owner": proprietaire,
+        "count": len(cibles),
+        "path": chemin,
+        "command": (
+            f"chmod -R go+rX {shlex.quote(chemin)}" if chemin else None
+        ),
+        "container": socket.gethostname() if dans_un_conteneur() else None,
+    }
+
+
+def lien_git_illisible(chemin):
+    """Pourquoi le « .git » de `chemin` n'est pas lu, ou None.
+
+    git ne signale ni un lien « .git » cassé ni une cible illisible : il
+    remonte au dépôt parent, la racine ERPLibre, et répond pour elle. Les
+    clones de git-repo portent un lien vers « .repo/projects/… », cassé
+    quand « .repo » manque, illisible quand il appartient à un autre compte.
+    """
+    lien = os.path.join(chemin, ".git")
+    if os.path.islink(lien) and not os.path.exists(os.path.realpath(lien)):
+        return f"broken .git link: {os.readlink(lien)} does not exist"
+    cible = cible_illisible(chemin)
+    if cible:
+        return f".git not readable by this account: {cible}"
+    return None
+
+
 def lire_tete(chemin, delai=DELAI):
     """(head, branche, erreur) d'un clone, en un appel.
 
@@ -223,7 +326,14 @@ def lire_tete(chemin, delai=DELAI):
     if len(lignes) < 3:
         return None, None, "unexpected rev-parse output"
     if os.path.realpath(lignes[0]) != os.path.realpath(chemin):
-        return None, None, "not the root of a git repository"
+        return (
+            None,
+            None,
+            lien_git_illisible(chemin)
+            or (
+                f"not the root of a git repository: git answered for {lignes[0]}"
+            ),
+        )
     head = lignes[1].strip()
     branche = lignes[2].strip()
     if not manifest_freeze.is_sha(head):
@@ -717,7 +827,8 @@ def empreinte(donnees):
     stable = {
         k: v
         for k, v in donnees.items()
-        if k not in ("generated_at", "fingerprint", "duration_ms")
+        if k
+        not in ("generated_at", "fingerprint", "duration_ms", "permissions")
     }
     brut = json.dumps(
         stable, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -840,6 +951,14 @@ def snapshot(racine, sale=False, depots=None, delai=DELAI, jobs=None):
         "repos": repos,
         "counts": compter(repos),
         "errors": erreurs,
+        "permissions": permissions_manquantes(
+            racine,
+            [
+                os.path.join(racine, r["path"])
+                for r in repos
+                if r["state"] == "erreur"
+            ],
+        ),
     }
     donnees["fingerprint"] = empreinte(donnees)
     fin = datetime.datetime.now(datetime.timezone.utc)
@@ -1546,6 +1665,7 @@ def cross_version(racine, depot, module=None, options=None):
         "repo": None,
         "others": [],
         "error": None,
+        "permissions": None,
     }
     chemin, dossier, head, branche, erreur = ouvrir_clone(racine, depot, delai)
     donnees["path"] = chemin
@@ -1554,6 +1674,8 @@ def cross_version(racine, depot, module=None, options=None):
         erreur = "not under an odoo<V>/ tree"
     if erreur:
         donnees["error"] = erreur
+        if dossier:
+            donnees["permissions"] = permissions_manquantes(racine, [dossier])
         return donnees, EXIT_CIBLE
     version, reste = m.group(1), m.group(2)
     donnees["version"] = version
@@ -1585,6 +1707,14 @@ def cross_version(racine, depot, module=None, options=None):
                 racine, ici, autre, reste, projets, remotes, module, options
             )
         )
+    donnees["permissions"] = permissions_manquantes(
+        racine,
+        [
+            os.path.join(racine, o["path"])
+            for o in donnees["others"]
+            if o["error"]
+        ],
+    )
     return donnees, EXIT_OK
 
 
