@@ -6,8 +6,8 @@
 d'installation, script d'installation, état de l'hôte, vérification et
 désinstallation.
 
-Fonctions pures, stdlib seule (plus `ntfy_mobile` et `turn_client`, stdlib
-seule aussi) :
+Fonctions pures, stdlib seule (plus `ntfy_mobile`, `odoo_link` et
+`turn_client`, stdlib seule aussi) :
 le menu de `todo.py` les appelle, les scripts `sh` qu'elles construisent
 sont exécutés en root par `ntfy_mobile.LocalHost` ou `SshHost`, et leur
 sortie est relue par des lignes `@@NOM valeur`.
@@ -27,6 +27,11 @@ Déroulé :
    TURN réelles, santé de ntfy, certificat, pare-feu, unités.
 5. `uninstall_script(state, remove_data, stamp)` défait ce que l'état
    consigne et n'efface l'état qu'en dernier, une fois tout réussi.
+6. `odoo_add_script`, `odoo_remove_script` et `odoo_rollback_script`
+   posent ou retirent, dans la base de coturn, le secret (module
+   `erplibre_turn`) ou le compte fixe d'un serveur Odoo ; `turn_mode_for`
+   dit le mode de coturn que ce serveur demande, `ice_urls` les URL que le
+   module distribue.
 
 L'état (`STATE_PATH`, root 0600) est le seul registre de ce que l'outil a
 fait sur l'hôte ; il ne porte aucun secret. Avant de toucher à un service,
@@ -56,6 +61,7 @@ import subprocess
 import tempfile
 
 from script.todo import ntfy_mobile as nm
+from script.todo import odoo_link as ol
 from script.todo import turn_client
 
 STATE_PATH = "/etc/erplibre-call/state.json"
@@ -75,6 +81,11 @@ SERVICES = ("coturn", "ntfy")
 # désinstallation relisent.
 FIREWALL_LABELS = SERVICES + ("nginx", "certbot")
 MODES = ("development", "production")
+# Mode d'identification de coturn, un seul à la fois (coturn 4.6 ne les
+# mélange pas) : « fixed », des comptes long terme (`lt-cred-mech`) ;
+# « secret », des identifiants temporaires signés par les secrets de
+# `turn_secret` (`use-auth-secret`). Absent de l'état : « fixed ».
+TURN_MODES = ("fixed", "secret")
 # « letsencrypt » n'existe qu'en production ; « none » y est refusé.
 TLS_MODES = ("none", "supplied", "letsencrypt")
 # Défi ACME : HTTP-01 par le webroot d'un nginx, HTTP-01 par certbot qui
@@ -334,7 +345,13 @@ class InstallPlan:
     `nginx_include` : install_nginx.sh ajoute sa ligne include à nginx.conf
     (disposition arch-include sans elle) ; le script lui en donne l'accord
     (NGINX_ADOPT_INCLUDE=1), et `diffs` montre la ligne quand nginx.conf
-    est déjà sur l'hôte."""
+    est déjà sur l'hôte.
+    `purge_secrets` : empreintes des anciens secrets d'Odoo expirés que le
+    script efface de la base de coturn ; `new_state` ne les porte plus.
+    `odoo_readd` : clés des serveurs Odoo dont les URL de TURN changent
+    avec ce plan (nom de TURN, ports, TLS) et qu'il faut ajouter de
+    nouveau pour qu'ils les reçoivent ; l'avertissement est la clé
+    ODOO_READD_WARNING (valeur `odoos`)."""
 
     answers: Answers
     adopt: tuple[str, ...]
@@ -345,6 +362,8 @@ class InstallPlan:
     lineage_unchanged: bool = False
     nginx_include: bool = False
     certbot_force: bool = False
+    purge_secrets: tuple[str, ...] = ()
+    odoo_readd: tuple[str, ...] = ()
 
 
 # --- Sonde ------------------------------------------------------------------
@@ -1104,10 +1123,13 @@ DENIED_PEER_RANGES = (
 )
 
 
-def coturn_config(answers):
+def coturn_config(answers, turn_mode=None):
     """Le `turnserver.conf` qu'`install_coturn.sh` (`write_config`) écrit
     pour ces réponses, au caractère près : il sert au diff montré avant
     d'adopter et à reconnaître une configuration déjà à jour.
+
+    `turn_mode` est celui de l'état (`TURN_AUTH` de l'installateur) :
+    « secret » écrit `use-auth-secret`, tout autre valeur `lt-cred-mech`.
 
     Développement : TURN_ALLOW_PRIVATE=1, aucune ligne `denied-peer-ip`.
     Production : une ligne `denied-peer-ip` par plage de
@@ -1133,7 +1155,7 @@ def coturn_config(answers):
         f"min-port={low}",
         f"max-port={high}",
         "fingerprint",
-        "lt-cred-mech",
+        "use-auth-secret" if turn_mode == "secret" else "lt-cred-mech",
         f"realm={answers.public_name}",
         f"userdb={COTURN_DB}",
         "no-cli",
@@ -2092,7 +2114,13 @@ def plan_install(facts, answers, now):
     certificat fourni illisible, d'une autre clé, expiré ou sans l'un des
     noms de `certificate_names` (`call_infra_cert_unreadable`,
     `call_infra_cert_key_mismatch`, `call_infra_cert_expired`,
-    `call_infra_cert_name_missing`).
+    `call_infra_cert_name_missing`), nom public changé alors que des
+    serveurs Odoo sont branchés (`call_infra_odoo_realm`).
+
+    La configuration de coturn voulue suit le `turn_mode` de l'état
+    (`coturn_config`) : une réinstallation garde le mode qu'un serveur Odoo
+    a choisi. Les anciens secrets d'Odoo expirés partent de l'état et de la
+    base (`purge_secrets`).
 
     `nothing_to_do` : chaque service choisi est consigné avec les mêmes
     réglages, son unité est active et sa configuration sur l'hôte est déjà
@@ -2121,6 +2149,7 @@ def plan_install(facts, answers, now):
             expected=STATE_VERSION,
         )
     _check_answers(answers)
+    readd = _odoo_readd(prior, answers)
     if is_production(answers):
         _check_production(facts, answers)
     _check_port_values(answers)
@@ -2144,7 +2173,7 @@ def plan_install(facts, answers, now):
             config = COTURN_CONFIGS[facts.family]
             if current:
                 unit, config = current["unit"], current["config"]
-            desired = coturn_config(answers)
+            desired = coturn_config(answers, prior.get("turn_mode"))
             tls_files = [
                 f"{COTURN_TLS_DIR}/turn.crt",
                 f"{COTURN_TLS_DIR}/turn.key",
@@ -2221,6 +2250,8 @@ def plan_install(facts, answers, now):
     unchanged = unchanged and before == [
         new_state.get(name) for name in ("nginx", "certbot")
     ]
+    new_state, purge = _purged(new_state, now)
+    unchanged = unchanged and not purge
     letsencrypt = _uses_certbot(answers)
     return InstallPlan(
         answers=answers,
@@ -2234,7 +2265,39 @@ def plan_install(facts, answers, now):
         ),
         nginx_include=include,
         certbot_force=letsencrypt and _certbot_force(facts, answers),
+        purge_secrets=tuple(purge),
+        odoo_readd=readd,
     )
+
+
+def _odoo_readd(prior, answers):
+    """Clés des serveurs Odoo de `prior` dont les URL de TURN changent avec
+    `answers`, triées. Le nom public est le realm de coturn : il entre dans
+    la clé de chaque compte fixe et dans chaque ligne de `turn_secret`,
+    rien ne se migre, et le changer avec des Odoo branchés est refusé
+    (`call_infra_odoo_realm`). Un compte fixe ne reçoit pas de `turns:` :
+    un changement de TLS ne concerne que les Odoo du module."""
+    odoos = _odoos(prior)
+    before = state_answers(prior) if odoos else None
+    if (
+        before is None
+        or "coturn" not in before.services
+        or "coturn" not in answers.services
+    ):
+        return ()
+    if before.public_name != answers.public_name:
+        raise Refusal(
+            "call_infra_odoo_realm",
+            old=before.public_name,
+            new=answers.public_name,
+            odoos=", ".join(sorted(odoos)),
+        )
+    changed = []
+    for key, entry in odoos.items():
+        module = isinstance(entry, dict) and entry.get("module") is True
+        if _ice_urls_for(before, module) != _ice_urls_for(answers, module):
+            changed.append(key)
+    return tuple(sorted(changed))
 
 
 def _is_backup_of(config, backup):
@@ -2404,7 +2467,20 @@ _LIVE = f'"$R"{shlex.quote(LINEAGE_DIR)}'
 
 def _coturn_variables(plan):
     """Variables d'install_coturn.sh communes à ses passages."""
-    answers = plan.answers
+    return _coturn_env(
+        plan.answers,
+        plan.new_state.get("turn_mode"),
+        "coturn" in plan.adopt,
+    )
+
+
+def _coturn_env(answers, turn_mode=None, adopt=False):
+    """Variables d'install_coturn.sh pour `answers` : celles d'un plan
+    (`_coturn_variables`) comme celles de la bascule de mode d'un ajout
+    d'Odoo (`odoo_add_script`). `turn_mode` (« fixed », « secret ») part
+    en TURN_AUTH ; None, d'un état qui n'en consigne pas, n'exporte rien
+    et l'installateur garde son défaut, le mode fixe. `adopt` :
+    TURN_GARDER_CONFIG=1."""
     low, high = relay_range(answers)
     variables = {
         "TURN_REALM": answers.public_name,
@@ -2418,7 +2494,7 @@ def _coturn_variables(plan):
     # refuse, et la configuration écrite ne serait plus celle que
     # `coturn_config` décrit. Un plan de production ne l'exporte jamais :
     # le défaut de l'installateur refuse ces plages.
-    if plan.new_state.get("mode") == "development":
+    if answers.mode == "development":
         variables["TURN_ALLOW_PRIVATE"] = "1"
     # TLS sur 443 au lieu de TURN_TLS_PORT : coturn ne sert TLS que sur un
     # port à la fois. L'installateur refuse 443 sans certificat : avec
@@ -2427,12 +2503,14 @@ def _coturn_variables(plan):
         variables["TURN_ALT_TLS_PORT"] = TURNS_ALT_PORT
     if answers.external_ip:
         variables["TURN_EXTERNAL_IP"] = answers.external_ip
-    if "coturn" in plan.adopt:
+    if adopt:
         variables["TURN_GARDER_CONFIG"] = "1"
+    if turn_mode in TURN_MODES:
+        variables["TURN_AUTH"] = turn_mode
     return variables
 
 
-def _lineage_exports(plan, indent):
+def _lineage_exports(answers, indent):
     """Lignes qui donnent à install_coturn.sh la lignée certbot comme
     certificat, et 443 avec `turns_443`."""
     names = ["TURN_CERT_FILE", "TURN_KEY_FILE"]
@@ -2440,7 +2518,7 @@ def _lineage_exports(plan, indent):
         f'TURN_CERT_FILE={_LIVE}"/fullchain.pem"',
         f'TURN_KEY_FILE={_LIVE}"/privkey.pem"',
     ]
-    if plan.answers.turns_443:
+    if answers.turns_443:
         lines.append(f"TURN_ALT_TLS_PORT={TURNS_ALT_PORT}")
         names.append("TURN_ALT_TLS_PORT")
     lines.append("export " + " ".join(names))
@@ -2480,7 +2558,7 @@ def _coturn_block(plan):
     lines += ["(", "  umask 022"] + _export(_coturn_variables(plan), raw)
     if answers.tls == "letsencrypt":
         lines.append('  if [ "$LE" = 1 ]; then')
-        lines += _lineage_exports(plan, "    ")
+        lines += _lineage_exports(answers, "    ")
         lines.append("  fi")
     lines += ['  exec bash "$D/install_coturn.sh"', ")", "RC_coturn=$?"]
     return lines
@@ -2501,7 +2579,7 @@ def _coturn_lineage_lines(plan):
         "    umask 022",
     ]
     lines += ["  " + line for line in _export(_coturn_variables(plan))]
-    lines += _lineage_exports(plan, "    ")
+    lines += _lineage_exports(plan.answers, "    ")
     lines += [
         '    exec bash "$D/install_coturn.sh"',
         "  )",
@@ -3108,6 +3186,10 @@ def install_script(plan, stamp, root=""):
     l'installateur le tire sur l'hôte. Le certificat, la clé et les
     identifiants DNS n'y figurent qu'en base64. `root` préfixe chaque
     chemin de l'hôte (tests).
+
+    `plan.purge_secrets` : ces anciens secrets d'Odoo sont effacés de la
+    base de coturn avant l'écriture de l'état ; un échec arrête le script
+    sans écrire l'état, qui les nomme encore pour la relance.
     """
     if not _STAMP.match(stamp or ""):
         raise ValueError(f"stamp: {stamp!r}")
@@ -3219,6 +3301,7 @@ def install_script(plan, stamp, root=""):
             lines.append(f'[ "$RC_{svc}" = 0 ] || fail {svc}')
     if production:
         lines += _production_lines(plan)
+    lines += _purge_lines(plan, state)
     units = [(svc, state["services"][svc]["unit"]) for svc in services]
     if _uses_nginx(answers):
         units.append(("nginx", "nginx"))
@@ -3860,6 +3943,846 @@ def state_write_script(state, root=""):
         "",
     ]
     return "\n".join(lines)
+
+
+# --- Serveurs Odoo ----------------------------------------------------------
+
+# Durée de vie par défaut des identifiants temporaires, en heures : celle du
+# paramètre `erplibre_turn.ttl_hours` du module quand il est absent.
+DEFAULT_TTL_HOURS = 24
+# Avertissement d'un plan d'installation qui change les URL de TURN des
+# serveurs Odoo branchés (`InstallPlan.odoo_readd`), valeur `odoos`.
+ODOO_READD_WARNING = "call_infra_odoo_readd"
+# Table de l'outil dans la base de coturn, que coturn ne lit pas : la clé
+# qu'un compte fixe avait avant d'être remplacé y reste, et
+# `odoo_rollback_script` la remet en place quand la base Odoo n'a pas pu
+# recevoir le nouveau mot de passe.
+HELD_TABLE = "erplibre_held_user"
+# Un secret ou un mot de passe de `secrets.token_urlsafe` : il entre tel quel
+# dans une requête SQL et dans `turn_secret.value` (varchar(127)).
+_CREDENTIAL = re.compile(r"^[A-Za-z0-9_-]{16,127}$")
+_DIGEST = re.compile(r"^[0-9a-f]{64}$")
+_OWNED_USER = re.compile(r"^erplibre-[0-9a-f]{8}$")
+_UNIT_NAME = re.compile(r"^[A-Za-z0-9@._-]+$")
+_ODOO_DONE = ("ODOO_ADDED", "ODOO_REMOVED", "ODOO_ROLLBACK")
+# Tables que les scripts d'un serveur Odoo écrivent, au schéma de coturn
+# 4.6 (`schema_sql` d'install_coturn.sh) ; IF NOT EXISTS laisse en place
+# une base déjà créée.
+_USERDB_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS turnusers_lt ( realm varchar(127)"
+    " default '', name varchar(512), hmackey char(128),"
+    " PRIMARY KEY (realm,name));",
+    "CREATE TABLE IF NOT EXISTS turn_secret (realm varchar(127)"
+    " default '', value varchar(127), primary key (realm,value));",
+    f"CREATE TABLE IF NOT EXISTS {HELD_TABLE} (realm varchar(127)"
+    " default '', name varchar(512), hmackey char(128),"
+    " PRIMARY KEY (realm,name));",
+)
+
+
+def odoo_ttl_hours(raw):
+    """La durée de vie en heures que le module `erplibre_turn` applique à
+    la valeur brute de `erplibre_turn.ttl_hours` : absente ou illisible,
+    24 ; zéro ou négative, 1. La même règle que `ttl_hours` du module, pour
+    que l'ancien secret d'une rotation vive autant que les identifiants
+    qu'il a signés."""
+    if raw is None or raw is False or raw == "":
+        return DEFAULT_TTL_HOURS
+    try:
+        hours = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TTL_HOURS
+    return max(hours, 1)
+
+
+def _ice_urls_for(answers, tls=True):
+    """Les URL de TURN de ces réponses : STUN, TURN en UDP et en TCP sur
+    `turn_port`, et avec `tls` et un certificat, TURN sur TLS au port que
+    coturn sert (`coturn_tls_port`). L'hôte est le nom de TURN
+    (`turn_host`), entre crochets pour une IPv6."""
+    host = _url_host(turn_host(answers))
+    port = answers.turn_port
+    urls = [
+        f"stun:{host}:{port}",
+        f"turn:{host}:{port}?transport=udp",
+        f"turn:{host}:{port}?transport=tcp",
+    ]
+    if tls and has_tls(answers):
+        urls.append(f"turns:{host}:{coturn_tls_port(answers)}?transport=tcp")
+    return urls
+
+
+def ice_urls(state):
+    """Les URL que le module `erplibre_turn` distribue
+    (`erplibre_turn.urls`) pour le coturn de cet état : trois sans TLS,
+    quatre avec un `turns:`. ValueError pour un état sans coturn."""
+    answers = state_answers(state)
+    if answers is None or "coturn" not in answers.services:
+        raise ValueError("ice_urls: no coturn in the state")
+    return _ice_urls_for(answers)
+
+
+def _odoos(state):
+    """Le registre des serveurs Odoo branchés, {clé: fiche} ; {} quand
+    l'état n'en porte pas."""
+    odoos = state.get("odoos") if isinstance(state, dict) else None
+    return odoos if isinstance(odoos, dict) else {}
+
+
+def turn_mode_for(state, module_installed):
+    """Le mode de coturn qu'un serveur Odoo demande : « secret » avec le
+    module `erplibre_turn`, « fixed » sans lui. Refuse
+    (`call_infra_turn_mode_mismatch`, valeurs `mode` et `odoos`) quand
+    d'autres Odoo sont branchés sur un coturn de l'autre mode : coturn 4.6
+    ne mélange pas les deux. Sans Odoo branché, l'un ou l'autre est
+    accepté, et l'ajout fait basculer coturn."""
+    wanted = "secret" if module_installed else "fixed"
+    mode = state.get("turn_mode") if isinstance(state, dict) else None
+    mode = mode if mode in TURN_MODES else "fixed"
+    odoos = _odoos(state)
+    if odoos and mode != wanted:
+        raise Refusal(
+            "call_infra_turn_mode_mismatch",
+            mode=mode,
+            odoos=", ".join(sorted(odoos)),
+        )
+    return wanted
+
+
+def _switch_to(state, mode):
+    """Le mode vers lequel la configuration de coturn bascule pour accueillir
+    un Odoo de `mode`, ou None quand elle y est déjà. Un état sans
+    `turn_mode` est en `lt-cred-mech`, déjà le mode fixe."""
+    current = state.get("turn_mode")
+    if mode == "secret" and current != "secret":
+        return "secret"
+    if mode == "fixed" and current == "secret":
+        return "fixed"
+    return None
+
+
+def _sha256(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _expired(item, now):
+    """Vrai quand l'ancien secret `item` a passé son `expires_at`. Une date
+    illisible compte pour passée : un secret ne reste jamais sans fin."""
+    try:
+        when = datetime.datetime.fromisoformat(str(item.get("expires_at")))
+    except ValueError:
+        return True
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=datetime.timezone.utc)
+    return when <= now
+
+
+def _purged(state, now):
+    """(copie de `state` sans les anciens secrets expirés à `now`, leurs
+    empreintes). Une entrée qui n'est pas un dict part sans empreinte."""
+    new = copy.deepcopy(state)
+    digests = []
+    for entry in _odoos(new).values():
+        if not isinstance(entry, dict) or not isinstance(
+            entry.get("retired"), list
+        ):
+            continue
+        kept = []
+        for item in entry["retired"]:
+            if not isinstance(item, dict):
+                continue
+            if not _expired(item, now):
+                kept.append(item)
+            elif _DIGEST.match(str(item.get("value_sha256", ""))):
+                digests.append(item["value_sha256"])
+        entry["retired"] = kept
+    return new, digests
+
+
+def _coturn_target(state):
+    """(unité de coturn, realm) de l'état ; ValueError sans coturn. Les deux
+    finissent dans un script root : l'unité a la forme d'un nom d'unité, le
+    realm celle de `_NAME`."""
+    answers = state_answers(state)
+    if answers is None or "coturn" not in answers.services:
+        raise ValueError("no coturn in the state")
+    record = state["services"]["coturn"]
+    unit = record.get("unit")
+    if not isinstance(unit, str) or not _UNIT_NAME.match(unit):
+        raise ValueError(f"coturn unit: {unit!r}")
+    if not _NAME.match(answers.public_name or ""):
+        raise ValueError(f"realm: {answers.public_name!r}")
+    return unit, answers.public_name
+
+
+def _has_ntfy(state):
+    services = state.get("services") if isinstance(state, dict) else None
+    return isinstance(services, dict) and isinstance(
+        services.get("ntfy"), dict
+    )
+
+
+def _check_exempt(address):
+    """Refuse (`call_infra_odoo_exempt`) ce qui n'est pas une adresse ou un
+    réseau IP, et la boucle locale, l'adresse non spécifiée et le lien
+    local : derrière nginx, ntfy voit chaque client en 127.0.0.1, et
+    l'exempter exempterait tout le monde."""
+    try:
+        if address != address.strip():
+            raise ValueError(address)
+        network = ipaddress.ip_network(address, strict=False)
+    except (AttributeError, ValueError):
+        raise Refusal("call_infra_odoo_exempt", address=address) from None
+    if network.is_loopback or network.is_unspecified or network.is_link_local:
+        raise Refusal("call_infra_odoo_exempt", address=address)
+
+
+def _exempt_list(text):
+    value = nm.read_yml_keys(text or "").get(nm.EXEMPT_HOSTS_KEY, "")
+    return [host.strip() for host in value.split(",") if host.strip()]
+
+
+def _owned_exempt(state, key, exempt, ntfy_text):
+    """L'adresse exemptée que la fiche de `key` consigne : `exempt` quand
+    l'outil la pose ou la partage avec un autre Odoo de l'état, None sans
+    ntfy dans l'état (ntfy sur un autre hôte : rien n'est écrit) ou quand
+    `server.yml` la portait déjà sans qu'aucun Odoo de l'état ne la
+    consigne (une entrée écrite à la main, que l'outil ne retire jamais)."""
+    if exempt is None or not _has_ntfy(state):
+        return None
+    _check_exempt(exempt)
+    owned = {
+        entry.get("exempt")
+        for entry in _odoos(state).values()
+        if isinstance(entry, dict)
+    }
+    if exempt in owned:
+        return exempt
+    if ntfy_text is None:
+        raise ValueError("ntfy_text is required to exempt an address")
+    return None if exempt in _exempt_list(ntfy_text) else exempt
+
+
+def _exempt_text(text, before, after):
+    """`server.yml` (`text`) dont la liste des hôtes exemptés passe des
+    adresses que l'outil consigne dans `before` à celles de `after` : une
+    adresse que plus aucun Odoo ne consigne part, une adresse consignée qui
+    manque est ajoutée, les entrées écrites à la main restent. Une liste
+    vide retire la clé. `text` tel quel quand rien ne change."""
+
+    def owned(state):
+        return {
+            entry["exempt"]
+            for entry in _odoos(state).values()
+            if isinstance(entry, dict) and entry.get("exempt")
+        }
+
+    present = _exempt_list(text)
+    dropped = owned(before) - owned(after)
+    kept = [host for host in present if host not in dropped]
+    wanted = kept + [h for h in sorted(owned(after)) if h not in kept]
+    if wanted == present:
+        return text
+    if not wanted:
+        return _drop_key(text, nm.EXEMPT_HOSTS_KEY)
+    return nm._set_key(text, nm.EXEMPT_HOSTS_KEY, ",".join(wanted), True)
+
+
+def _split_key(key):
+    """(URL, base) d'une clé `ol.odoo_key` ; ValueError pour une clé que
+    `odoo_key` n'aurait pas rendue telle quelle."""
+    url, sep, database = str(key).rpartition("|")
+    try:
+        if not sep or ol.odoo_key(url, database) != key:
+            raise ValueError(f"odoo key: {key!r}")
+    except ol.OdooError:
+        raise ValueError(f"odoo key: {key!r}") from None
+    return url, database
+
+
+def _check_odoo(state, key, kind, value, user, now):
+    """Les arguments d'un ajout : ValueError, une erreur de programmation et
+    non un refus pour l'utilisateur. `kind` « secret » (module) ou « user »
+    (compte fixe, dont le nom est `ol.owned_username` de la clé)."""
+    if kind not in ("secret", "user"):
+        raise ValueError(f"kind: {kind!r}")
+    if not isinstance(value, str) or not _CREDENTIAL.match(value):
+        raise ValueError("credential value")
+    url, database = _split_key(key)
+    if kind == "user" and user != ol.owned_username(url, database):
+        raise ValueError(f"user: {user!r}")
+    if kind == "secret" and user is not None:
+        raise ValueError("a secret has no user")
+    if not isinstance(now, datetime.datetime) or now.tzinfo is None:
+        raise ValueError("now must be an aware datetime")
+    _coturn_target(state)
+
+
+def _odoo_host_state(state, kind, now, check_secret):
+    """L'état qu'écrit le script d'ajout, avant toute écriture dans Odoo :
+    la bascule du mode de coturn quand elle a lieu (`turn_mode`, et
+    `check_secret_sha256` en mode secret), les anciens secrets expirés
+    retirés. Le registre `odoos` n'y gagne rien : la fiche ne s'écrit
+    qu'une fois Odoo écrit (`odoo_added_state`)."""
+    mode = turn_mode_for(state, kind == "secret")
+    new, _ = _purged(state, now)
+    switch = _switch_to(state, mode)
+    if switch == "secret":
+        if not isinstance(check_secret, str) or not _CREDENTIAL.match(
+            check_secret
+        ):
+            raise ValueError("a check secret is required to switch")
+        new["turn_mode"] = "secret"
+        new["check_secret_sha256"] = _sha256(check_secret)
+    elif switch == "fixed":
+        new["turn_mode"] = "fixed"
+        new.pop("check_secret_sha256", None)
+    return new
+
+
+def odoo_added_state(
+    state,
+    key,
+    kind,
+    value,
+    user,
+    exempt,
+    now,
+    *,
+    ttl_hours=DEFAULT_TTL_HOURS,
+    check_secret=None,
+    method=None,
+    ntfy_text=None,
+):
+    """L'état une fois Odoo écrit : celui du script d'ajout
+    (`_odoo_host_state`), `turn_mode` posé, et la fiche `odoos[key]` :
+    `method` (« webapi », « shell »), `module`, `credential`
+    ({"kind": "secret", "value_sha256"} ou {"kind": "user", "user"}),
+    `retired`, `rows` (lignes `mail.ice.server` écrites, en mode fixe),
+    `exempt` (`_owned_exempt`), `added_at` (le premier ajout).
+
+    Rotation d'un secret : l'ancien passe dans `retired` avec `expires_at`
+    = `now` + `odoo_ttl_hours(ttl_hours)` ; il reste dans la base de coturn
+    jusqu'au premier script qui le trouve expiré. Un compte fixe est
+    remplacé sur-le-champ, sans délai. Aucun secret ni mot de passe n'est
+    consigné, seulement l'empreinte d'un secret."""
+    _check_odoo(state, key, kind, value, user, now)
+    new = _odoo_host_state(state, kind, now, check_secret)
+    new["turn_mode"] = "secret" if kind == "secret" else "fixed"
+    if not isinstance(new.get("odoos"), dict):
+        new["odoos"] = {}
+    previous = new["odoos"].get(key)
+    previous = previous if isinstance(previous, dict) else {}
+    retired = previous.get("retired")
+    retired = (
+        [r for r in retired if isinstance(r, dict)]
+        if isinstance(retired, list)
+        else []
+    )
+    if kind == "secret":
+        digest = _sha256(value)
+        credential = {"kind": "secret", "value_sha256": digest}
+        old = previous.get("credential")
+        old = old.get("value_sha256") if isinstance(old, dict) else None
+        retired = [r for r in retired if r.get("value_sha256") != digest]
+        if isinstance(old, str) and _DIGEST.match(old) and old != digest:
+            hours = odoo_ttl_hours(ttl_hours)
+            expires = now + datetime.timedelta(hours=hours)
+            retired.append(
+                {
+                    "value_sha256": old,
+                    "expires_at": expires.isoformat(timespec="seconds"),
+                }
+            )
+    else:
+        credential = {"kind": "user", "user": user}
+    new["odoos"][key] = {
+        "method": method,
+        "module": kind == "secret",
+        "credential": credential,
+        "retired": retired,
+        "rows": kind == "user",
+        "exempt": _owned_exempt(state, key, exempt, ntfy_text),
+        "added_at": previous.get("added_at")
+        or now.isoformat(timespec="seconds"),
+    }
+    return new
+
+
+def odoo_removed_state(state, key, now):
+    """L'état sans la fiche de `key`, anciens secrets expirés retirés. Le
+    mode de coturn reste tel quel, même quand c'était le dernier Odoo."""
+    new, _ = _purged(state, now)
+    if isinstance(new.get("odoos"), dict):
+        new["odoos"].pop(key, None)
+    return new
+
+
+def _userdb_lines(unit, realm):
+    """Lignes `sh` qui préparent l'accès à la base de coturn : `DB`,
+    `REALM`, `U` (le compte de l'unité, comme la vérification le lit),
+    `sq` (requête sur l'entrée standard) et `sqr` (lecture seule, requête en
+    argument), lancés sous ce compte par `runuser` : root n'ouvre aucun
+    fichier du dossier de la base, qui lui appartient. Puis `revoke`.
+
+    `revoke <empreinte>...` efface de `turn_secret`, pour ce realm, chaque
+    valeur dont le sha256 est donné. sqlite3 n'a pas de sha256 : les valeurs
+    sont lues puis hachées une à une ; `printf` est intégré au shell, une
+    valeur n'atteint `sha256sum` que par le tube et `sqlite3` que par son
+    entrée standard, jamais par un argv. Une valeur hors de l'alphabet des
+    secrets de l'outil n'entre pas dans la requête. Sans base, rien à
+    effacer. Les lignes supposent `R` et une fonction `fail`."""
+    return [
+        f'DB="$R"{shlex.quote(COTURN_DB)}',
+        f"REALM={shlex.quote(realm)}",
+        f"U=$(systemctl show -p User --value {shlex.quote(unit)}"
+        " 2>/dev/null)",
+        "U=${U:-turnserver}",
+        'sq() { runuser -u "$U" -- sqlite3 -bail -init /dev/null "$DB"; }',
+        'sqr() { runuser -u "$U" -- sqlite3 -readonly -bail -init /dev/null'
+        ' "$DB" "$1"; }',
+        "revoke() {",
+        '  [ -f "$DB" ] || return 0',
+        "  VALS=$(sqr \"SELECT value FROM turn_secret WHERE realm='$REALM';\")"
+        " || return 1",
+        "  printf '%s\\n' \"$VALS\" | while IFS= read -r v; do",
+        "    case \"$v\" in ''|*[!A-Za-z0-9_-]*) continue ;; esac",
+        "    h=$(printf %s \"$v\" | sha256sum | cut -d ' ' -f 1)",
+        '    case " $* " in *" $h "*) ;; *) continue ;; esac',
+        "    sq <<EOF || exit 1",
+        ".timeout 5000",
+        "DELETE FROM turn_secret WHERE realm='$REALM' AND value='$v';",
+        "EOF",
+        "  done",
+        "  RC=$?",
+        "  VALS=",
+        '  return "$RC"',
+        "}",
+    ]
+
+
+def _purge_lines(plan, state):
+    """Lignes d'`install_script` qui effacent de la base de coturn les
+    anciens secrets d'Odoo expirés (`plan.purge_secrets`), avant que l'état
+    qui ne les nomme plus soit écrit ; aucune sans eux."""
+    if not plan.purge_secrets:
+        return []
+    return [
+        *_userdb_lines(*_coturn_target(state)),
+        _revoke_line(plan.purge_secrets, "purge"),
+    ]
+
+
+def _revoke_line(digests, step):
+    """`revoke` des empreintes `digests` (64 chiffres hexa chacune)."""
+    for digest in digests:
+        if not _DIGEST.match(str(digest)):
+            raise ValueError(f"digest: {digest!r}")
+    return "revoke " + " ".join(digests) + f" || fail {step}"
+
+
+def _sql_lines(step, statements):
+    """Un `sq` dont la requête, sur l'entrée standard, crée les tables qui
+    manquent puis joue `statements`. `$REALM` et les variables du script
+    s'y développent ; un échec appelle `fail <step>`."""
+    return [
+        f"sq <<EOF || fail {step}",
+        ".timeout 5000",
+        *_USERDB_SCHEMA,
+        *statements,
+        "EOF",
+    ]
+
+
+def _secret_insert_lines(value, step):
+    """Pose le secret `value` dans `turn_secret`. Il voyage en base64 dans
+    le script et n'est décodé que sur l'hôte, dans une variable."""
+    return [
+        f"V=$(printf %s {shlex.quote(_b64(value))} | base64 -d)"
+        f" || fail {step}",
+        *_sql_lines(
+            step,
+            [
+                "INSERT OR IGNORE INTO turn_secret (realm, value)"
+                " VALUES ('$REALM', '$V');"
+            ],
+        ),
+        "V=",
+    ]
+
+
+def _user_insert_lines(user, hmackey):
+    """Pose ou remplace le compte fixe `user` (clé long terme `hmackey`) ;
+    la clé qu'il avait passe dans HELD_TABLE, dans la même transaction."""
+    held = f"{HELD_TABLE} WHERE realm='$REALM' AND name='{user}'"
+    return [
+        f"K=$(printf %s {shlex.quote(_b64(hmackey))} | base64 -d)"
+        " || fail user",
+        *_sql_lines(
+            "user",
+            [
+                "BEGIN;",
+                f"DELETE FROM {held};",
+                f"INSERT INTO {HELD_TABLE} (realm, name, hmackey)"
+                " SELECT realm, name, hmackey FROM turnusers_lt"
+                f" WHERE realm='$REALM' AND name='{user}';",
+                "INSERT OR REPLACE INTO turnusers_lt (realm, name, hmackey)"
+                f" VALUES ('$REALM', '{user}', '$K');",
+                "COMMIT;",
+            ],
+        ),
+        "K=",
+    ]
+
+
+def _user_undo_lines(user, step):
+    """Défait `_user_insert_lines` : la clé gardée dans HELD_TABLE revient,
+    ou le compte part quand il n'en avait pas."""
+    return _sql_lines(
+        step,
+        [
+            "BEGIN;",
+            f"DELETE FROM turnusers_lt WHERE realm='$REALM' AND name='{user}';",
+            "INSERT INTO turnusers_lt (realm, name, hmackey)"
+            f" SELECT realm, name, hmackey FROM {HELD_TABLE}"
+            f" WHERE realm='$REALM' AND name='{user}';",
+            f"DELETE FROM {HELD_TABLE} WHERE name='{user}';",
+            "COMMIT;",
+        ],
+    )
+
+
+def _user_remove_lines(user, step):
+    """Retire le compte fixe `user`, de tout realm, et sa clé gardée."""
+    return _sql_lines(
+        step,
+        [
+            f"DELETE FROM turnusers_lt WHERE name='{user}';",
+            f"DELETE FROM {HELD_TABLE} WHERE name='{user}';",
+        ],
+    )
+
+
+def _odoo_head(state, done, root):
+    """Début commun des scripts d'un serveur Odoo. `fail <étape>` imprime
+    `@@FAILED <étape>`, appelle `undo` (rien tant qu'un script ne le
+    redéfinit pas), puis `@@<done> no`, et sort en erreur."""
+    return [
+        "set -u",
+        _C_LOCALE,
+        f"R={shlex.quote(root)}",
+        f'CALL="$R"{shlex.quote(CALL_DIR)}',
+        f'STATE="$R"{shlex.quote(STATE_PATH)}',
+        "umask 077",
+        "undo() { :; }",
+        f'fail() {{ echo "@@FAILED $1"; undo; echo "@@{done} no"; exit 1; }}',
+        "D=$(mktemp -d) || fail workdir",
+        "trap 'rm -rf \"$D\"' EXIT",
+        *_userdb_lines(*_coturn_target(state)),
+    ]
+
+
+def _state_lines(state):
+    return [
+        'mkdir -p "$CALL" || fail state',
+        *_state_write_lines(state),
+    ]
+
+
+def _ntfy_put_lines(source):
+    """Remplace `server.yml` par le fichier `source` de l'hôte : voisin
+    `.erplibre-new` aux propriétaire et droits de l'original, renommé, puis
+    ntfy redémarré."""
+    new = '"$N.erplibre-new"'
+    return [
+        f'cp {source} {new} && chown --reference="$N" {new}'
+        f' && chmod --reference="$N" {new} && mv -f {new} "$N"',
+        f"systemctl restart {NTFY_UNIT}",
+    ]
+
+
+def _ntfy_lines(old, new):
+    """Écrit `new` à la place de `server.yml`, seulement si le fichier de
+    l'hôte est encore `old`, le texte que la sonde a lu : une modification
+    faite depuis n'est pas écrasée (`fail ntfy-changed`). `NTFY=1` dès que
+    le fichier est remplacé ; `undo` remet alors `old`. ntfy doit
+    redevenir actif."""
+    put = _ntfy_put_lines('"$D/ntfy.new"')
+    restore = _ntfy_put_lines('"$D/ntfy.old"')
+    return [
+        f'N="$R"{shlex.quote(NTFY_CONFIG)}',
+        "NTFY=0",
+        "undo() {",
+        '  if [ "$NTFY" = 1 ]; then',
+        "    NTFY=0",
+        "    { " + " && ".join(restore) + "; }"
+        ' || echo "@@FAILED ntfy-restore"',
+        "  fi",
+        "}",
+        _decode_to(_b64(old), '"$D/ntfy.old"') + " || fail ntfy",
+        _decode_to(_b64(new), '"$D/ntfy.new"') + " || fail ntfy",
+        'cmp -s "$D/ntfy.old" "$N" || fail ntfy-changed',
+        put[0] + " || fail ntfy",
+        "NTFY=1",
+        put[1] + " || fail ntfy-restart",
+        f"A=$(systemctl is-active {NTFY_UNIT} 2>/dev/null)",
+        '[ "$A" = active ] || fail ntfy-restart',
+    ]
+
+
+def _switch_lines(state, mode):
+    """Bascule la configuration de coturn en `mode` : install_coturn.sh
+    rejoué avec les réponses de l'état et TURN_AUTH, qui réécrit
+    `turnserver.conf` et redémarre coturn une fois. Le certificat lui est
+    rendu : copie de celui en place pour un certificat fourni (sans elle,
+    l'installateur retirerait TLS ; une copie absente arrête le script
+    avant lui), la lignée certbot avec Let's Encrypt quand elle existe."""
+    answers = state_answers(state)
+    lines = [
+        _decode_to(
+            _installer_payload("coturn"), '"$D/install_coturn.sh"', gunzip=True
+        )
+        + " || fail payload-coturn",
+    ]
+    raw = {}
+    if answers.tls == "supplied":
+        lines.append(
+            f'cp {_host(COTURN_TLS_DIR + "/turn.crt")} "$D/turn.crt"'
+            f' && cp {_host(COTURN_TLS_DIR + "/turn.key")} "$D/turn.key"'
+            " || fail tls-copy"
+        )
+        raw = {
+            "TURN_CERT_FILE": '"$D/turn.crt"',
+            "TURN_KEY_FILE": '"$D/turn.key"',
+        }
+    letsencrypt = answers.tls == "letsencrypt"
+    if letsencrypt:
+        lines += [
+            "LE=0",
+            f'[ -f {_LIVE}"/fullchain.pem" ] && [ -f {_LIVE}"/privkey.pem" ]'
+            " && LE=1",
+        ]
+    lines += ["(", "  umask 022"] + _export(_coturn_env(answers, mode), raw)
+    if letsencrypt:
+        lines.append('  if [ "$LE" = 1 ]; then')
+        lines += _lineage_exports(answers, "    ")
+        lines.append("  fi")
+    lines += [
+        '  exec bash "$D/install_coturn.sh"',
+        ")",
+        '[ "$?" = 0 ] || fail switch',
+    ]
+    return lines
+
+
+def _need_ntfy_text(state, key, exempt, ntfy_text):
+    """ValueError quand `server.yml` peut changer sans que son texte soit
+    donné : ntfy dans l'état et une adresse à exempter, ou une adresse que
+    la fiche de `key` consigne déjà (elle partirait de l'état et resterait
+    dans le fichier)."""
+    entry = _odoos(state).get(key)
+    held = isinstance(entry, dict) and entry.get("exempt")
+    if _has_ntfy(state) and ntfy_text is None and (exempt or held):
+        raise ValueError("ntfy_text is required to change the exempt hosts")
+
+
+def _entry_of(state, key):
+    entry = _odoos(state).get(key)
+    if not isinstance(entry, dict):
+        raise ValueError(f"no Odoo {key!r} in the state")
+    return entry
+
+
+def odoo_add_script(
+    state,
+    key,
+    kind,
+    value,
+    user,
+    exempt,
+    now,
+    *,
+    ttl_hours=DEFAULT_TTL_HOURS,
+    check_secret=None,
+    ntfy_text=None,
+    root="",
+):
+    """Script `sh`, lancé en root sur l'hôte de coturn, qui y pose le côté
+    coturn d'un serveur Odoo, AVANT toute écriture dans Odoo.
+
+    `kind` « secret » : `value` est le secret de cet Odoo (module
+    `erplibre_turn`), posé dans `turn_secret` sous le realm. « user » :
+    `value` est le mot de passe du compte fixe `user`
+    (`ol.owned_username` de la clé), posé dans `turnusers_lt` avec sa clé
+    long terme MD5(user:realm:mot de passe) ; la clé qu'il avait est
+    gardée pour `odoo_rollback_script`. Secrets et clés ne voyagent qu'en
+    base64 dans le corps du script, jamais dans un argv.
+
+    Ordre : bascule du mode de coturn quand `turn_mode_for` le demande
+    (`_switch_lines` ; vers « secret » le secret de contrôle `check_secret`
+    est posé, vers « fixed » il est effacé, l'installateur remettant le
+    compte de contrôle), anciens secrets expirés effacés (tous les Odoo),
+    état écrit quand l'un des deux a eu lieu (`_odoo_host_state`), adresse
+    exemptée ajoutée à `server.yml` de ntfy (texte `ntfy_text` lu par la
+    sonde) quand elle n'y est pas, puis l'identifiant. Un échec après
+    `server.yml` le remet tel quel. Dernières lignes : `@@TURN_MODE
+    <mode>`, `@@ODOO_ADDED yes` ; `@@FAILED <étape>` et `@@ODOO_ADDED no`
+    sinon. `ttl_hours` ne sert qu'à l'état final (`odoo_added_state`) ; il
+    est accepté ici pour que l'appelant passe les mêmes arguments aux
+    deux. Refus : `call_infra_turn_mode_mismatch`,
+    `call_infra_odoo_exempt`."""
+    _check_odoo(state, key, kind, value, user, now)
+    _need_ntfy_text(state, key, exempt, ntfy_text)
+    mode = turn_mode_for(state, kind == "secret")
+    switch = _switch_to(state, mode)
+    host_state = _odoo_host_state(state, kind, now, check_secret)
+    added = odoo_added_state(
+        state,
+        key,
+        kind,
+        value,
+        user,
+        exempt,
+        now,
+        ttl_hours=ttl_hours,
+        check_secret=check_secret,
+        ntfy_text=ntfy_text,
+    )
+    _, purge = _purged(state, now)
+    lines = _odoo_head(state, "ODOO_ADDED", root)
+    if switch is not None:
+        lines += _switch_lines(state, switch)
+        if switch == "secret":
+            lines += _secret_insert_lines(check_secret, "check-secret")
+        elif _DIGEST.match(str(state.get("check_secret_sha256", ""))):
+            lines.append(
+                _revoke_line([state["check_secret_sha256"]], "check-secret")
+            )
+    if purge:
+        lines.append(_revoke_line(purge, "purge"))
+    if host_state != state:
+        lines += _state_lines(host_state)
+    if _has_ntfy(state) and ntfy_text is not None:
+        text = _exempt_text(ntfy_text, state, added)
+        if text != ntfy_text:
+            lines += _ntfy_lines(ntfy_text, text)
+    if kind == "secret":
+        lines += _secret_insert_lines(value, "secret")
+    else:
+        realm = _coturn_target(state)[1]
+        hmackey = turn_client.long_term_key(user, realm, value).hex()
+        lines += _user_insert_lines(user, hmackey)
+    lines += [f'echo "@@TURN_MODE {mode}"', 'echo "@@ODOO_ADDED yes"', ""]
+    return "\n".join(lines)
+
+
+def odoo_remove_script(state, key, *, now=None, ntfy_text=None, root=""):
+    """Script `sh`, lancé en root sur l'hôte de coturn, qui débranche le
+    serveur Odoo `key` de l'état : son secret courant et ses anciens
+    secrets effacés sans délai de grâce (les autres Odoo gardent les
+    leurs, donc leurs allocations), ou son compte fixe retiré ; les anciens
+    secrets expirés des autres effacés aussi ; son adresse exemptée retirée
+    de `server.yml` (texte `ntfy_text`) quand aucun autre Odoo ne la
+    consigne ; l'état écrit sans lui (`odoo_removed_state`), le mode de
+    coturn inchangé. Dernière ligne `@@ODOO_REMOVED yes`, ou `@@FAILED
+    <étape>` et `@@ODOO_REMOVED no`. Rejouer le script après un échec
+    refait le même travail. `now` : l'instant de la purge (maintenant, en
+    UTC, par défaut)."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    url, database = _split_key(key)
+    entry = _entry_of(state, key)
+    _need_ntfy_text(state, key, None, ntfy_text)
+    removed = odoo_removed_state(state, key, now)
+    credential = entry.get("credential")
+    credential = credential if isinstance(credential, dict) else {}
+    lines = _odoo_head(state, "ODOO_REMOVED", root)
+    if credential.get("kind") == "user":
+        if credential.get("user") != ol.owned_username(url, database):
+            raise ValueError(f"user: {credential.get('user')!r}")
+        lines += _user_remove_lines(credential["user"], "revoke")
+    digests = [credential.get("value_sha256")] + [
+        item.get("value_sha256")
+        for item in entry.get("retired") or ()
+        if isinstance(item, dict)
+    ]
+    digests = [d for d in digests if isinstance(d, str) and _DIGEST.match(d)]
+    _, purge = _purged(state, now)
+    digests += [d for d in purge if d not in digests]
+    if digests:
+        lines.append(_revoke_line(digests, "revoke"))
+    if ntfy_text is not None and _has_ntfy(state):
+        text = _exempt_text(ntfy_text, state, removed)
+        if text != ntfy_text:
+            lines += _ntfy_lines(ntfy_text, text)
+            # L'état qui suit ne nomme plus cet Odoo : un échec à l'écrire
+            # ne remet pas l'adresse, la relance du retrait la retirerait.
+            lines.append("NTFY=0")
+    lines += _state_lines(removed)
+    lines += ['echo "@@ODOO_REMOVED yes"', ""]
+    return "\n".join(lines)
+
+
+def odoo_rollback_script(
+    state, key, credential, *, exempt=None, ntfy_text=None, root=""
+):
+    """Script `sh`, lancé en root sur l'hôte de coturn, qui défait un
+    `odoo_add_script` dont l'écriture dans Odoo a échoué : `credential` est
+    l'empreinte sha256 du secret posé (seul ce secret part, l'ancien de cet
+    Odoo reste) ou le nom du compte fixe (sa clé d'avant revient, ou il
+    part quand il n'existait pas). Avec `ntfy_text` et `exempt`, les mêmes
+    qu'à l'ajout, `server.yml` reprend `ntfy_text` s'il porte encore ce
+    que l'ajout y a écrit (`@@NTFY_KEPT` sinon). L'état n'est pas touché :
+    la bascule de mode que l'ajout a consignée reste vraie. Dernière ligne
+    `@@ODOO_ROLLBACK yes`, ou `@@FAILED <étape>` et `@@ODOO_ROLLBACK
+    no`."""
+    url, database = _split_key(key)
+    lines = _odoo_head(state, "ODOO_ROLLBACK", root)
+    if isinstance(credential, str) and _DIGEST.match(credential):
+        lines.append(_revoke_line([credential], "revoke"))
+    elif credential == ol.owned_username(url, database):
+        lines += _user_undo_lines(credential, "revoke")
+    else:
+        raise ValueError(f"credential: {credential!r}")
+    if ntfy_text is not None and _has_ntfy(state):
+        after = copy.deepcopy(state)
+        if not isinstance(after.get("odoos"), dict):
+            after["odoos"] = {}
+        after["odoos"][key] = {
+            "exempt": _owned_exempt(state, key, exempt, ntfy_text)
+        }
+        written = _exempt_text(ntfy_text, state, after)
+        if written != ntfy_text:
+            restore = _ntfy_put_lines('"$D/ntfy.old"')
+            lines += [
+                f'N="$R"{shlex.quote(NTFY_CONFIG)}',
+                _decode_to(_b64(ntfy_text), '"$D/ntfy.old"') + " || fail ntfy",
+                _decode_to(_b64(written), '"$D/ntfy.cur"') + " || fail ntfy",
+                'if cmp -s "$D/ntfy.cur" "$N"; then',
+                f"  {restore[0]} || fail ntfy",
+                f"  {restore[1]} || fail ntfy-restart",
+                "else",
+                '  echo "@@NTFY_KEPT"',
+                "fi",
+            ]
+    lines += ['echo "@@ODOO_ROLLBACK yes"', ""]
+    return "\n".join(lines)
+
+
+def odoo_result(output):
+    """Ce que dit la sortie d'un script d'Odoo : `ok` (dernier
+    `@@ODOO_ADDED`, `@@ODOO_REMOVED` ou `@@ODOO_ROLLBACK` à « yes »),
+    `failed` (la première étape de `@@FAILED`, ou None), `turn_mode` (celui
+    de `@@TURN_MODE`, ou None)."""
+    result = {"ok": False, "failed": None, "turn_mode": None}
+    for name, value in marker_lines(output or ""):
+        value = (value or "").strip()
+        if name in _ODOO_DONE:
+            result["ok"] = value == "yes"
+        elif name == "FAILED" and result["failed"] is None:
+            result["failed"] = value
+        elif name == "TURN_MODE" and value in TURN_MODES:
+            result["turn_mode"] = value
+    return result
 
 
 # --- Vérification -----------------------------------------------------------

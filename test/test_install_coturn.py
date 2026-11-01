@@ -86,6 +86,7 @@ ENTREES = (
     "TURN_MIN_PORT=49152\nTURN_MAX_PORT=49252\nTURN_CERT_FILE=\n"
     "TURN_KEY_FILE=\nTURN_EXTERNAL_IP=\nTURN_CHECK_PASSWORD='%s'\n"
     "TURN_GARDER_CONFIG=\nTURN_ALLOW_PRIVATE=\nTURN_ALT_TLS_PORT=\n"
+    "TURN_AUTH=fixed\n"
     % (REALM, MOT_DE_PASSE))
 
 # Les plages qu'un relais ne doit pas joindre par defaut, au format de
@@ -224,6 +225,30 @@ class TestConfiguration(unittest.TestCase):
                              MOT_DE_PASSE):
                 self.assertNotIn(interdit, texte)
 
+    def test_mode_secret_use_auth_secret_au_lieu_de_lt_cred_mech(self):
+        """coturn 4.6 ne melange pas les deux : avec use-auth-secret, tout
+        compte long terme est refuse."""
+        fait, texte, _, _, _ = self._ecrire("TURN_AUTH=secret")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        contenu = texte.splitlines()
+        self.assertIn("use-auth-secret", contenu)
+        self.assertNotIn("lt-cred-mech", contenu)
+        # Les secrets vivent dans la base, jamais dans la configuration.
+        self.assertFalse([c for c in contenu
+                          if c.startswith("static-auth-secret")])
+        self.assertLess(contenu.index("fingerprint"),
+                        contenu.index("use-auth-secret"))
+        self.assertLess(contenu.index("use-auth-secret"),
+                        contenu.index("realm=" + REALM))
+
+    def test_mode_fixe_lt_cred_mech(self):
+        for variables in ("", "TURN_AUTH=fixed"):
+            with self.subTest(variables=variables):
+                fait, texte, _, _, _ = self._ecrire(variables)
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                self.assertIn("lt-cred-mech", texte.splitlines())
+                self.assertNotIn("use-auth-secret", texte)
+
     def test_plages_privees_refusees_par_defaut(self):
         """Sans accord explicite, le relais ne sert pas de passerelle vers
         le reseau local de l'hote, sa boucle locale ni ses voisins."""
@@ -332,6 +357,8 @@ class TestEntrees(unittest.TestCase):
                 "TURN_CERT_FILE=@D@/absent.pem\nTURN_KEY_FILE=@D@/k.pem",
                 "TURN_EXTERNAL_IP='198.51.100.7\nuser=x'",
                 "TURN_ALLOW_PRIVATE=oui",
+                "TURN_AUTH=autre",
+                "TURN_AUTH=",
                 # TLS sur un port alternatif : seulement avec un
                 # certificat, sur un port valide distinct des autres.
                 "TURN_ALT_TLS_PORT=443",
@@ -358,6 +385,11 @@ class TestEntrees(unittest.TestCase):
 
     def test_port_alternatif_avec_certificat_accepte(self):
         fait = self._verifier(CERT + "TURN_ALT_TLS_PORT=443", fichiers=True)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("OK", fait.stdout)
+
+    def test_mode_secret_accepte(self):
+        fait = self._verifier("TURN_AUTH=secret")
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertIn("OK", fait.stdout)
 
@@ -616,7 +648,8 @@ class TestCompteDeControle(unittest.TestCase):
             ENTETE + constantes(DB_FILE=base) + ENTREES
             + "TURN_REALM=%s\nTURN_CHECK_PASSWORD='%s'\n"
               "SERVICE_USER=turnserver\n" % (realm, mot_de_passe)
-            + fonctions("ensure_check_user") + "ensure_check_user\n")
+            + fonctions("schema_sql", "ensure_check_user")
+            + "ensure_check_user\n")
         env = {"PATH": bouchons + os.pathsep + os.environ["PATH"],
                "STUB_LOG": os.path.join(dossier, "argv"),
                "STUB_SQL": os.path.join(dossier, "sql")}
@@ -739,6 +772,76 @@ class TestCompteDeControle(unittest.TestCase):
             sqlite = [a for a in argv if a.startswith("runuser ")]
             self.assertEqual(len(sqlite), 1, argv)
             self.assertIn("-u turnserver -- sqlite3", sqlite[0])
+
+
+class TestModeSecret(unittest.TestCase):
+    """`remove_check_user` : en mode secret, le compte de controle long
+    terme quitte la base (coturn le refuserait), les secrets restent."""
+
+    def _jouer(self, dossier, avant=None):
+        bouchons = os.path.join(dossier, "bin")
+        os.makedirs(bouchons, exist_ok=True)
+        for nom, contenu in (
+                ("sqlite3", BOUCHON_SQLITE % {"python": sys.executable}),
+                ("runuser", BOUCHON_RUNUSER)):
+            chemin = os.path.join(bouchons, nom)
+            with open(chemin, "w") as flux:
+                flux.write(contenu)
+            os.chmod(chemin, 0o755)
+        base = os.path.join(dossier, "turndb")
+        if avant is not None:
+            avant(base)
+        enveloppe = (
+            ENTETE + constantes(DB_FILE=base) + ENTREES
+            + "TURN_AUTH=secret\nSERVICE_USER=turnserver\n"
+            + fonctions("schema_sql", "remove_check_user")
+            + "remove_check_user\n")
+        env = {"PATH": bouchons + os.pathsep + os.environ["PATH"],
+               "STUB_LOG": os.path.join(dossier, "argv"),
+               "STUB_SQL": os.path.join(dossier, "sql")}
+        return jouer(enveloppe, env), base, lignes(
+            os.path.join(dossier, "argv"))
+
+    @staticmethod
+    def _peupler(base):
+        connexion = sqlite3.connect(base)
+        connexion.executescript(
+            "CREATE TABLE turnusers_lt (realm varchar(127) default '',"
+            " name varchar(512), hmackey char(128),"
+            " PRIMARY KEY (realm,name));"
+            "CREATE TABLE turn_secret (realm varchar(127) default '',"
+            " value varchar(127), primary key (realm,value));"
+            "INSERT INTO turnusers_lt VALUES ('%s', 'erplibre-check', '%s');"
+            "INSERT INTO turnusers_lt VALUES ('ancien.exemple.test',"
+            " 'erplibre-check', '%s');"
+            "INSERT INTO turn_secret VALUES ('%s', 'secretInvente0123');"
+            % (REALM, "a" * 32, "b" * 32, REALM))
+        connexion.close()
+
+    def test_le_compte_de_controle_part_les_secrets_restent(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, base, argv = self._jouer(dossier, self._peupler)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            connexion = sqlite3.connect(base)
+            utilisateurs = connexion.execute(
+                "select name from turnusers_lt").fetchall()
+            secrets = connexion.execute(
+                "select realm, value from turn_secret").fetchall()
+            connexion.close()
+            self.assertEqual(utilisateurs, [])
+            self.assertEqual(secrets, [(REALM, "secretInvente0123")])
+            self.assertTrue([a for a in argv
+                             if a.startswith("runuser -u turnserver -- ")])
+
+    def test_base_neuve_au_schema_de_coturn(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, base, _ = self._jouer(dossier)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            connexion = sqlite3.connect(base)
+            noms = {r[0] for r in connexion.execute(
+                "select name from sqlite_master where type='table'")}
+            connexion.close()
+            self.assertEqual(noms, TABLES_COTURN)
 
 
 class TestPreparationBase(unittest.TestCase):
@@ -1062,6 +1165,7 @@ class TestMain(unittest.TestCase):
                 "prepare_database() { echo base >> $J; }\n"
                 "ensure_check_user() { echo check >> $J;"
                 " declare -p TURN_CHECK_PASSWORD | cut -c1-11 >> $J; }\n"
+                "remove_check_user() { echo sans-controle >> $J; }\n"
                 "id() { case \"$1\" in -gn) echo turnserver;; *) echo 999;;"
                 " esac; }\n"
                 "sleep() { :; }\n"
@@ -1233,6 +1337,22 @@ class TestMain(unittest.TestCase):
                         appels.index("dropin coturn"))
         self.assertLess(appels.index("dropin coturn"),
                         appels.index("systemctl restart coturn"))
+
+    def test_mode_secret_retire_le_compte_de_controle(self):
+        fait, appels, _ = self._jouer(["active"],
+                                      variables="TURN_AUTH=secret\n")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("sans-controle", appels)
+        self.assertNotIn("check", appels)
+        # Avant le redemarrage, comme le compte en mode fixe.
+        self.assertLess(appels.index("sans-controle"),
+                        appels.index("systemctl restart coturn"))
+
+    def test_mode_fixe_pose_le_compte_de_controle(self):
+        fait, appels, _ = self._jouer(["active"])
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("check", appels)
+        self.assertNotIn("sans-controle", appels)
 
     def test_systeme_non_supporte_refuse_avant_installation(self):
         fait, appels, _ = self._jouer(["active"], famille="fedora")

@@ -4399,6 +4399,22 @@ TRANSLATIONS = {
         "fr": "odoo-bin shell a échoué ; sa dernière ligne : {line}",
         "en": "odoo-bin shell failed; its last line: {line}",
     },
+    "call_infra_turn_mode_mismatch": {
+        "fr": "Ce coturn sert ses serveurs Odoo en mode « {mode} » ({odoos}) : coturn 4.6 ne mélange pas les identifiants temporaires (module erplibre_turn, mode « secret ») et les comptes fixes (mode « fixed »). Ce serveur Odoo demande l'autre mode : donnez-lui le même (erplibre_turn installé pour « secret », sans lui pour « fixed »), ou retirez d'abord les serveurs Odoo branchés. Rien n'est touché.",
+        "en": "This coturn serves its Odoo servers in « {mode} » mode ({odoos}): coturn 4.6 does not mix temporary credentials (erplibre_turn module, « secret » mode) and fixed accounts (« fixed » mode). This Odoo server needs the other mode: give it the same one (erplibre_turn installed for « secret », without it for « fixed »), or first remove the plugged Odoo servers. Nothing is touched.",
+    },
+    "call_infra_odoo_exempt": {
+        "fr": "« {address} » ne peut pas être exemptée des limites de ntfy : donnez l'adresse IP publique d'où le serveur Odoo joint ntfy, ni boucle locale, ni adresse non spécifiée, ni lien local (derrière nginx, ntfy voit chaque client en 127.0.0.1, et l'exempter exempterait tout le monde).",
+        "en": "« {address} » cannot be exempted from ntfy's limits: give the public IP address the Odoo server reaches ntfy from, neither loopback, unspecified nor link-local (behind nginx, ntfy sees every client as 127.0.0.1, and exempting it would exempt everyone).",
+    },
+    "call_infra_odoo_realm": {
+        "fr": "Le nom public {old} est le realm de coturn, celui des identifiants des serveurs Odoo branchés ({odoos}) : il ne peut pas devenir {new} tant qu'ils y sont. Retirez-les d'abord, puis ajoutez-les de nouveau après l'installation. Rien n'est touché.",
+        "en": "The public name {old} is coturn's realm, the one of the plugged Odoo servers' credentials ({odoos}): it cannot become {new} while they are plugged. Remove them first, then add them again after the install. Nothing is touched.",
+    },
+    "call_infra_odoo_readd": {
+        "fr": "Les URL de TURN changent (nom, ports ou TLS) : ajoutez de nouveau ces serveurs Odoo pour qu'ils les reçoivent : {odoos}.",
+        "en": "The TURN URLs change (name, ports or TLS): add these Odoo servers again so that they receive them: {odoos}.",
+    },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
         "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
