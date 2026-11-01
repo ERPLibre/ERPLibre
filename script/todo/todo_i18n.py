@@ -84,6 +84,30 @@ TRANSLATIONS = {
         "fr": "📟 Process - Outils sur les executions",
         "en": "📟 Process - Execution tools",
     },
+    "Uninstall - Remove an Odoo version": {
+        "fr": "🗑️ Uninstall - Retirer une version d'Odoo",
+        "en": "🗑️ Uninstall - Remove an Odoo version",
+    },
+    "Remove what an Odoo version installed!": {
+        "fr": "Retirer ce qu'une version d'Odoo a installé !",
+        "en": "Remove what an Odoo version installed!",
+    },
+    "Remove an Odoo version": {
+        "fr": "🧹 Retirer une version d'Odoo : arbre, venv, dépôts, stockages partagés compactés",
+        "en": "🧹 Remove an Odoo version: tree, venv, repositories, shared stores compacted",
+    },
+    "Remove every Odoo version": {
+        "fr": "💣 Retirer toutes les versions d'Odoo, l'active comprise, pour recloner",
+        "en": "💣 Remove every Odoo version, the active one included, to clone again",
+    },
+    "No Odoo version to remove besides the active one.": {
+        "fr": "Aucune version d'Odoo à retirer hormis l'active.",
+        "en": "No Odoo version to remove besides the active one.",
+    },
+    "Versions to remove, numbers separated by spaces: ": {
+        "fr": "Versions à retirer, numéros séparés par des espaces : ",
+        "en": "Versions to remove, numbers separated by spaces: ",
+    },
     "Config - Configuration file management": {
         "fr": "🔧 Config - Traitement du fichier de configuration",
         "en": "🔧 Config - Configuration file management",
