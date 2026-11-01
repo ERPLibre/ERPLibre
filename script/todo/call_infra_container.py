@@ -88,9 +88,11 @@ PODMAN_ROOT_STORAGE = "/var/lib/containers/storage"
 PODMAN_USER_STORAGE = ".local/share/containers/storage"
 
 # Refus du registre pour excès de requêtes : Docker Hub répond HTTP 429 et
-# « toomanyrequests ». Motif lisible par `re` (re.I | re.M) comme par
-# `grep -iE`, pour qu'un script shell applique la même règle.
-PULL_RATE_LIMIT = r"toomanyrequests|(^|[ \t])429([ \t]|$)"
+# « toomanyrequests ». Motif lu de même par `re` (re.I | re.M) et par
+# `LC_ALL=C grep -iE`, pour qu'un script shell applique la même règle : ni
+# `\t` ni classe nommée, que l'ERE de POSIX ne lit pas comme `re`. « 429 »
+# compte seul, entre deux caractères qui ne sont ni lettre ni chiffre.
+PULL_RATE_LIMIT = r"toomanyrequests|(^|[^0-9A-Za-z])429([^0-9A-Za-z]|$)"
 
 # Paquets par famille : moteur, outil de composition, newuidmap pour le
 # rootless (dans « shadow », toujours là, sur Arch).
@@ -211,6 +213,17 @@ def rootless_prefix(account, uid):
     et dans sa session : Podman y trouve son stockage et son runtime, et
     `systemctl --user` le bus de l'utilisateur."""
     return _prefix_words(account, str(int(uid)))
+
+
+def rootless_prefix_sh(account, uid_var):
+    """Le préfixe de `rootless_prefix` en texte `sh`, l'uid pris à la
+    variable `uid_var` du script au moment de l'appel : un script root qui
+    crée le compte ne connaît son uid qu'en cours de route."""
+    if not _valid_account(account) or not re.match(
+        r"^[A-Z_][A-Z0-9_]*$", uid_var or ""
+    ):
+        raise ValueError(f"rootless prefix: {account!r} {uid_var!r}")
+    return " ".join(_sh_word(w) for w in _prefix_words(account, f"${uid_var}"))
 
 
 def _valid_id(value):
