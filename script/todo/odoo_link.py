@@ -245,6 +245,35 @@ def _row(record):
     }
 
 
+def _http_refusal(error, url):
+    """L'OdooError d'un statut HTTP d'erreur (`error`, refermé ici) rendu
+    à une requête vers la base `url`.
+
+    Une redirection vers une autre origine (`http://` renvoyé vers
+    `https://`, autre nom) donne `call_infra_odoo_redirected` avec la
+    destination : urllib ne suit pas un POST redirigé en 307 ou 308, et
+    suit un 301 à 303 en GET sans le corps, auquel Odoo répond par une
+    erreur. Tout autre statut donne `call_infra_odoo_unreachable`.
+    """
+    error.close()
+    if error.code in (301, 302, 303, 307, 308):
+        headers = error.headers or {}
+        target = urllib.parse.urljoin(
+            error.geturl() or url, headers.get("Location") or ""
+        )
+    else:
+        target = error.geturl() or url
+    try:
+        origin = normalize_url(target)
+    except OdooError:
+        origin = url
+    if origin != url:
+        return OdooError("call_infra_odoo_redirected", url=url, target=origin)
+    return OdooError(
+        "call_infra_odoo_unreachable", url=url, reason=f"HTTP {error.code}"
+    )
+
+
 class _Session:
     """Une session de navigateur sur une base Odoo : les cookies que pose
     Odoo (`session_id`, et `dgid` pour un invité) sont gardés d'une requête
@@ -310,12 +339,7 @@ class _Session:
         try:
             body = self._open(request)
         except urllib.error.HTTPError as error:
-            error.close()
-            raise OdooError(
-                "call_infra_odoo_unreachable",
-                url=self.api.url,
-                reason=f"HTTP {error.code}",
-            ) from None
+            raise _http_refusal(error, self.api.url) from None
         return _rpc_result(body, self.api.url, self.secrets)
 
     def join(self, channel_id):
@@ -430,12 +454,7 @@ class WebApi:
             ) as response:
                 body = response.read()
         except urllib.error.HTTPError as error:
-            error.close()
-            raise OdooError(
-                "call_infra_odoo_unreachable",
-                url=self.url,
-                reason=f"HTTP {error.code}",
-            ) from None
+            raise _http_refusal(error, self.url) from None
         except (
             urllib.error.URLError,
             http.client.HTTPException,
@@ -706,12 +725,7 @@ class WebApi:
                 "/web/login?" + urllib.parse.urlencode({"db": self.database})
             )
         except urllib.error.HTTPError as error:
-            error.close()
-            raise OdooError(
-                "call_infra_odoo_unreachable",
-                url=self.url,
-                reason=f"HTTP {error.code}",
-            ) from None
+            raise _http_refusal(error, self.url) from None
         try:
             session.get(parts.path)
         except urllib.error.HTTPError as error:

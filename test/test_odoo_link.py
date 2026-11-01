@@ -447,6 +447,49 @@ class TestWebApiRefusals(WebCase):
             self.api().facts()
         self.assertEqual(caught.exception.key, "call_infra_odoo_unreachable")
 
+    def redirector(self, code):
+        """Un serveur qui renvoie chaque POST vers le faux Odoo par
+        `code` ; son URL."""
+        target = self.server.url
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                self.send_response(code)
+                self.send_header("Location", target + self.path)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(
+            target=httpd.serve_forever,
+            kwargs={"poll_interval": 0.02},
+            daemon=True,
+        )
+        thread.start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        return f"http://127.0.0.1:{httpd.server_address[1]}"
+
+    def test_a_redirection_to_another_origin_names_the_destination(self):
+        # 301 : urllib rejoue en GET sans corps, l'erreur vient de la
+        # destination ; 308 : urllib ne suit pas un POST.
+        for code in (301, 308):
+            with self.subTest(code=code):
+                url = self.redirector(code)
+                api = ol.WebApi(url, DATABASE, LOGIN, PASSWORD, timeout=5)
+                with self.assertRaises(ol.OdooError) as caught:
+                    api.facts()
+                self.assertEqual(
+                    caught.exception.key, "call_infra_odoo_redirected"
+                )
+                self.assertEqual(
+                    caught.exception.values,
+                    {"url": url, "target": self.server.url},
+                )
+
     def test_an_error_answer_to_version_is_unreachable(self):
         self.odoo.raw = json.dumps(
             {"jsonrpc": "2.0", "id": 1, "error": {"message": "pas Odoo"}}

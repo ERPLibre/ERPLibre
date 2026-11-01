@@ -4441,6 +4441,10 @@ TRANSLATIONS = {
         "fr": "Odoo injoignable à {url} : {reason}.",
         "en": "Odoo unreachable at {url}: {reason}.",
     },
+    "call_infra_odoo_redirected": {
+        "fr": "Odoo à {url} redirige vers {target} : un appel JSON-RPC ne suit pas une redirection. Entrez {target} comme URL d'Odoo.",
+        "en": "Odoo at {url} redirects to {target}: a JSON-RPC call does not follow a redirection. Enter {target} as the Odoo URL.",
+    },
     "call_infra_odoo_rpc_error": {
         "fr": "Odoo a refusé l'opération : {message}",
         "en": "Odoo refused the operation: {message}",
