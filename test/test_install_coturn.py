@@ -32,7 +32,7 @@ REALM = "turn.exemple.test"
 MOT_DE_PASSE = "Pz7-controle-invente-41"
 CONSTANTES = ("MARKER", "CALL_DIR", "TLS_DIR", "DB_DIR", "DB_FILE",
               "CHECK_USER", "OS_RELEASE", "DEBIAN_CONF", "ARCH_CONF",
-              "DEFAULT_FILE", "APPLIED_FILE", "SYSTEMD_DIR")
+              "DEFAULT_FILE", "APPLIED_FILE", "PENDING_FILE", "SYSTEMD_DIR")
 TABLES_COTURN = {"turnusers_lt", "turn_secret", "allowed_peer_ip",
                  "denied_peer_ip", "turn_origin_to_realm",
                  "turn_realm_option", "oauth_key", "admin_user"}
@@ -322,6 +322,36 @@ class TestConfiguration(unittest.TestCase):
         self.assertIn("CHANGED=0", refait.stdout)
         self.assertEqual(retexte, texte)
 
+    def test_cible_conteneur_journal_sur_la_sortie_standard(self):
+        """coturn 4.18 en conteneur : le journal part sur la sortie
+        standard, lue par le moteur, et les deux lignes que 4.18 ne
+        connait plus disparaissent."""
+        for variables in ("", "TURN_CERT_FILE=/c.pem\nTURN_KEY_FILE=/k.pem"):
+            with self.subTest(variables=variables):
+                fait, texte, mode, appels, _ = self._ecrire(
+                    variables + "\nTURN_TARGET=container")
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                contenu = texte.splitlines()
+                self.assertIn("log-file=stdout", contenu)
+                for absente in ("syslog", "no-dtls",
+                                "no-stun-backward-compatibility"):
+                    self.assertNotIn(absente, contenu)
+                self.assertEqual(contenu[-3:], [
+                    "log-file=stdout", "no-rfc5780",
+                    "response-origin-only-with-rfc5780"])
+                self.assertEqual("no-tls" in contenu, variables == "")
+                self.assertEqual(mode, 0o640)
+                self.assertTrue([a for a in appels
+                                 if a.startswith("chown root:turnserver ")])
+
+    def test_cible_paquets_explicite_identique_au_defaut(self):
+        _, defaut, _, _, _ = self._ecrire()
+        fait, explicite, _, _, _ = self._ecrire("TURN_TARGET=packages")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(explicite, defaut)
+        self.assertIn("syslog", defaut.splitlines())
+        self.assertIn("no-dtls", defaut.splitlines())
+
 
 CERT = "TURN_CERT_FILE=@D@/c.pem\nTURN_KEY_FILE=@D@/k.pem\n"
 
@@ -397,6 +427,36 @@ class TestEntrees(unittest.TestCase):
         fait = self._verifier("TURN_ALT_TLS_PORT=443", fichiers=True)
         self.assertNotEqual(fait.returncode, 0)
         self.assertIn("TURN_ALT_TLS_PORT", fait.stderr)
+
+    def test_cible_conteneur_avec_compte_acceptee(self):
+        fait = self._verifier(
+            "TURN_TARGET=container\nTURN_SERVICE_USER=erplibre-coturn")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("OK", fait.stdout)
+
+    def test_cible_refusee_en_nommant_la_variable(self):
+        for variables, nommee in (
+                ("TURN_TARGET=autre", "TURN_TARGET"),
+                ("TURN_TARGET=", "TURN_TARGET"),
+                ("TURN_TARGET=container", "TURN_SERVICE_USER"),
+                ("TURN_TARGET=container\nTURN_SERVICE_USER=",
+                 "TURN_SERVICE_USER"),
+                # Un conteneur ne tourne jamais en root.
+                ("TURN_TARGET=container\nTURN_SERVICE_USER=root",
+                 "TURN_SERVICE_USER"),
+                ("TURN_TARGET=container\nTURN_SERVICE_USER='a b'",
+                 "TURN_SERVICE_USER"),
+                ("TURN_TARGET=container\nTURN_SERVICE_USER=Majuscule",
+                 "TURN_SERVICE_USER"),
+                # Paquets : le compte vient du paquet, pas de l'appelant.
+                ("TURN_TARGET=packages\nTURN_SERVICE_USER=erplibre-coturn",
+                 "TURN_SERVICE_USER"),
+                ("TURN_SERVICE_USER=erplibre-coturn", "TURN_SERVICE_USER")):
+            with self.subTest(variables=variables):
+                fait = self._verifier(variables)
+                self.assertNotEqual(fait.returncode, 0, fait.stdout)
+                self.assertNotIn("OK", fait.stdout)
+                self.assertIn(nommee, fait.stderr)
 
 
 class TestSysteme(unittest.TestCase):
@@ -540,6 +600,59 @@ class TestPaquets(unittest.TestCase):
                                   if a.startswith("apt-get")
                                   or a.startswith("pacman -S")
                                   or a.startswith("dpkg")], appels)
+
+    def _sqlite(self, famille, present=False):
+        """`install_sqlite`, la cible conteneur : coturn vient de l'image,
+        l'hote ne recoit que le client SQLite."""
+        with tempfile.TemporaryDirectory() as dossier:
+            journal = os.path.join(dossier, "appels")
+            enveloppe = (
+                ENTETE + "FAMILY=%s\nJ=%s\n" % (famille, journal)
+                + "apt-get() { echo \"apt-get $*\" >> $J; }\n"
+                "pacman() {\n"
+                "  echo \"pacman $*\" >> $J\n"
+                "  [ \"$1\" != -Q ] || [ %d = 1 ]\n"
+                "}\n" % (1 if present else 0)
+                + "dpkg-query() {\n"
+                "  echo \"dpkg-query $*\" >> $J\n"
+                "  [ %d = 1 ] || return 1\n"
+                "  echo 'install ok installed'\n"
+                "}\n" % (1 if present else 0)
+                + "dpkg() { echo \"dpkg $* FRONTEND=$DEBIAN_FRONTEND\" >> $J; }\n"
+                + fonctions("install_sqlite") + "install_sqlite\n")
+            fait = jouer(enveloppe)
+            return fait, lignes(journal)
+
+    def test_conteneur_debian_sqlite3_seul(self):
+        fait, appels = self._sqlite("debian")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        installe = [a for a in appels if a.startswith("apt-get")
+                    and " install " in a]
+        self.assertEqual(len(installe), 1, appels)
+        self.assertTrue(installe[0].endswith("--force-confold sqlite3"),
+                        installe)
+        self.assertNotIn("coturn", " ".join(appels))
+        reprise = [i for i, a in enumerate(appels)
+                   if a.startswith("dpkg --configure -a")]
+        self.assertEqual(len(reprise), 1, appels)
+        self.assertIn("FRONTEND=noninteractive", appels[reprise[0]])
+        self.assertLess(reprise[0], appels.index(installe[0]))
+
+    def test_conteneur_arch_sqlite_seul(self):
+        fait, appels = self._sqlite("arch")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("pacman -S --noconfirm --needed sqlite", appels)
+        self.assertNotIn("coturn", " ".join(appels))
+
+    def test_conteneur_sqlite_deja_la_rien_n_est_mis_a_jour(self):
+        for famille in ("debian", "arch"):
+            with self.subTest(famille=famille):
+                fait, appels = self._sqlite(famille, present=True)
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                self.assertFalse([a for a in appels
+                                  if a.startswith("apt-get")
+                                  or a.startswith("pacman -S")
+                                  or a.startswith("dpkg ")], appels)
 
 
 class TestDefaut(unittest.TestCase):
@@ -1382,6 +1495,338 @@ class TestMain(unittest.TestCase):
         fait, appels, _ = self._jouer(["active"], famille="fedora")
         self.assertNotEqual(fait.returncode, 0)
         self.assertNotIn("install", appels)
+
+
+# install sans -o ni -g : le bac a sable ne tourne pas en root. L'argv
+# complet est note, la copie ou le dossier sont faits pour de vrai.
+BOUCHON_INSTALL = r"""#!%(python)s
+import os
+import subprocess
+import sys
+
+with open(os.environ["STUB_LOG"], "a") as journal:
+    journal.write("install " + " ".join(sys.argv[1:]) + "\n")
+gardes, sauter = [], False
+for mot in sys.argv[1:]:
+    if sauter:
+        sauter = False
+    elif mot in ("-o", "-g"):
+        sauter = True
+    else:
+        gardes.append(mot)
+sys.exit(subprocess.call(["%(vrai)s"] + gardes))
+"""
+
+# id : seul le compte invente existe, uid et groupe a son nom.
+BOUCHON_ID = ('#!/bin/sh\necho "id $*" >> "$STUB_LOG"\n'
+              'case "$1 $2" in\n'
+              '  "-u erplibre-coturn") echo 990 ;;\n'
+              '  "-gn erplibre-coturn") echo erplibre-coturn ;;\n'
+              '  *) exit 1 ;;\n'
+              'esac\n')
+
+# dpkg-query : sqlite3 installe seulement quand SQLITE_PRESENT vaut 1.
+BOUCHON_DPKG_QUERY = ('#!/bin/sh\necho "dpkg-query $*" >> "$STUB_LOG"\n'
+                      '[ "$SQLITE_PRESENT" = 1 ] || exit 1\n'
+                      "echo 'install ok installed'\n")
+
+BOUCHON_PACMAN = ('#!/bin/sh\necho "pacman $*" >> "$STUB_LOG"\n'
+                  '[ "$1" != -Q ] || [ "$SQLITE_PRESENT" = 1 ]\n')
+
+# Ce que la cible conteneur ne lance jamais : systemd, les moteurs, les
+# comptes, sudo. Chaque appel est note dans STUB_INTERDIT et echoue.
+INTERDITES = ("systemctl", "docker", "podman", "podman-compose",
+              "docker-compose", "loginctl", "useradd", "usermod", "userdel",
+              "timeout", "getent", "turnadmin", "sudo", "runc")
+BOUCHON_INTERDIT = ('#!/bin/sh\necho "%(nom)s $*" >> "$STUB_INTERDIT"\n'
+                    'exit 97\n')
+
+
+class TestCibleConteneur(unittest.TestCase):
+    """`main` avec TURN_TARGET=container, toutes les fonctions du script
+    jouees pour de vrai dans un dossier temporaire : seules les commandes
+    systeme sont des bouchons, en tete du PATH. Rien ne redemarre : le
+    script dit s'il faut recreer le conteneur."""
+
+    COMPTE = "erplibre-coturn"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        d = self.d = self._tmp.name
+        self.bouchons = os.path.join(d, "bin")
+        os.makedirs(self.bouchons)
+        self.journaux = os.path.join(d, "journaux")
+        os.makedirs(self.journaux)
+        ecrits = {
+            "sqlite3": BOUCHON_SQLITE % {"python": sys.executable},
+            "runuser": BOUCHON_RUNUSER,
+            "install": BOUCHON_INSTALL % {"python": sys.executable,
+                                          "vrai": shutil.which("install")},
+            "id": BOUCHON_ID,
+            "chown": BOUCHON_JOURNAL % {"nom": "chown"},
+            "apt-get": BOUCHON_JOURNAL % {"nom": "apt-get"},
+            "dpkg": BOUCHON_JOURNAL % {"nom": "dpkg"},
+            "dpkg-query": BOUCHON_DPKG_QUERY,
+            "pacman": BOUCHON_PACMAN,
+        }
+        for nom in INTERDITES:
+            ecrits[nom] = BOUCHON_INTERDIT % {"nom": nom}
+        for nom, contenu in ecrits.items():
+            chemin = os.path.join(self.bouchons, nom)
+            with open(chemin, "w") as flux:
+                flux.write(contenu)
+            os.chmod(chemin, 0o755)
+        self.call = os.path.join(d, "etc-call")
+        self.chemins = {
+            "CALL_DIR": self.call,
+            "TLS_DIR": os.path.join(self.call, "tls"),
+            "DB_DIR": os.path.join(d, "lib"),
+            "DB_FILE": os.path.join(d, "lib", "turndb"),
+            "DEBIAN_CONF": os.path.join(d, "turnserver.conf"),
+            "ARCH_CONF": os.path.join(d, "arch", "turnserver.conf"),
+            "APPLIED_FILE": os.path.join(self.call, "coturn.applied"),
+            "PENDING_FILE": os.path.join(
+                self.call, "coturn.applied.erplibre-pending"),
+            "SYSTEMD_DIR": os.path.join(d, "systemd"),
+            "DEFAULT_FILE": os.path.join(d, "default-coturn"),
+            "OS_RELEASE": os.path.join(d, "os-release"),
+        }
+        self.applique = self.chemins["APPLIED_FILE"]
+        self.attente = self.chemins["PENDING_FILE"]
+        for nom in ("c.pem", "k.pem"):
+            with open(os.path.join(d, nom), "w") as flux:
+                flux.write("premier " + nom)
+
+    def _jouer(self, variables="", compte=COMPTE, famille="debian",
+               sqlite_present=False):
+        with open(self.chemins["OS_RELEASE"], "w") as flux:
+            flux.write("ID=%s\n" % famille)
+        noms = [n for n in re.findall(r"^([a-z_]+)\(\) \{$", source(), re.M)
+                if n != "check_root"]
+        enveloppe = (
+            ENTETE + constantes(**self.chemins) + ENTREES
+            + "TURN_TARGET=container\nTURN_SERVICE_USER=%s\n" % compte
+            + variables.replace("@D@", self.d) + "\n"
+            # EUID ne se change pas : la verification de root seule est
+            # remplacee, le reste du script est celui du fichier.
+            + "check_root() { :; }\n"
+            + fonctions(*noms) + "main\n")
+        # Chaque passage a ses propres journaux.
+        for nom in os.listdir(self.journaux):
+            os.remove(os.path.join(self.journaux, nom))
+        env = {"PATH": self.bouchons + os.pathsep + os.environ["PATH"],
+               "STUB_LOG": os.path.join(self.journaux, "argv"),
+               "STUB_SQL": os.path.join(self.journaux, "sql"),
+               "STUB_INTERDIT": os.path.join(self.journaux, "interdit"),
+               "SQLITE_PRESENT": "1" if sqlite_present else "0"}
+        fait = jouer(enveloppe, env)
+        self.appels = lignes(env["STUB_LOG"])
+        self.interdits = lignes(env["STUB_INTERDIT"])
+        return fait
+
+    @staticmethod
+    def _lire(chemin):
+        if not os.path.exists(chemin):
+            return None
+        with open(chemin) as flux:
+            return flux.read()
+
+    def _empreinte(self, conf):
+        """Ce que `applied_digest` imprime, calcule ici."""
+        fichiers = [conf]
+        tls = self.chemins["TLS_DIR"]
+        if os.path.exists(os.path.join(tls, "turn.crt")):
+            fichiers += [os.path.join(tls, "turn.crt"),
+                         os.path.join(tls, "turn.key")]
+        sortie = []
+        for chemin in fichiers:
+            with open(chemin, "rb") as flux:
+                sortie.append("%s  %s" % (hashlib.sha256(flux.read())
+                                          .hexdigest(), chemin))
+        return "\n".join(sortie) + "\n"
+
+    def _promouvoir(self):
+        """Ce que fait l'appelant une fois le conteneur recree et en
+        marche : l'empreinte en attente devient celle qui est chargee."""
+        os.replace(self.attente, self.applique)
+
+    def test_configuration_au_chemin_de_la_famille_sans_systemd(self):
+        fait = self._jouer()
+        self.assertEqual(fait.returncode, 0, fait.stdout + fait.stderr)
+        self.assertEqual(self.interdits, [])
+        sortie = fait.stdout.splitlines()
+        self.assertEqual(sortie[-1], "@@CONFIGURED coturn")
+        self.assertIn("@@RECREATE 1", sortie)
+        self.assertFalse([s for s in sortie if s.startswith("@@ACTIVE")])
+        conf = self.chemins["DEBIAN_CONF"]
+        contenu = self._lire(conf).splitlines()
+        self.assertIn("log-file=stdout", contenu)
+        for absente in ("syslog", "no-dtls",
+                        "no-stun-backward-compatibility"):
+            self.assertNotIn(absente, contenu)
+        self.assertEqual(stat.S_IMODE(os.stat(conf).st_mode), 0o640)
+        dossier = os.path.dirname(conf)
+        self.assertTrue([a for a in self.appels if re.fullmatch(
+            r"chown root:erplibre-coturn %s/\.turnserver\.conf\.\S+"
+            % re.escape(dossier), a)], self.appels)
+        # Ni fragment d'unite ni /etc/default : aucune unite ne lance coturn.
+        self.assertFalse(os.path.exists(self.chemins["SYSTEMD_DIR"]))
+        self.assertFalse(os.path.exists(self.chemins["DEFAULT_FILE"]))
+
+    def test_base_et_compte_de_controle_sous_le_compte_donne(self):
+        fait = self._jouer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("install -d -m 0750 -o erplibre-coturn -g "
+                      "erplibre-coturn " + self.chemins["DB_DIR"],
+                      self.appels)
+        self.assertTrue([a for a in self.appels if a.startswith(
+            "runuser -u erplibre-coturn -- sqlite3 ")], self.appels)
+        connexion = sqlite3.connect(self.chemins["DB_FILE"])
+        try:
+            rangs = connexion.execute(
+                "select realm, name from turnusers_lt").fetchall()
+        finally:
+            connexion.close()
+        self.assertEqual(rangs, [(REALM, "erplibre-check")])
+
+    def test_mode_secret_retire_le_compte_de_controle(self):
+        self.assertEqual(self._jouer().returncode, 0)
+        fait = self._jouer("TURN_AUTH=secret")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("use-auth-secret",
+                      self._lire(self.chemins["DEBIAN_CONF"]).splitlines())
+        connexion = sqlite3.connect(self.chemins["DB_FILE"])
+        try:
+            self.assertEqual(connexion.execute(
+                "select count(*) from turnusers_lt").fetchone(), (0,))
+        finally:
+            connexion.close()
+        self.assertEqual(self.interdits, [])
+
+    def test_sqlite3_seul_installe_sur_l_hote(self):
+        self._jouer()
+        installe = [a for a in self.appels
+                    if a.startswith("apt-get") and " install " in a]
+        self.assertEqual(len(installe), 1, self.appels)
+        self.assertTrue(installe[0].endswith(" sqlite3"), installe)
+        self.assertNotIn("coturn", installe[0].replace(
+            "erplibre-coturn", ""))
+        self._jouer(sqlite_present=True)
+        self.assertFalse([a for a in self.appels
+                          if a.startswith("apt-get")], self.appels)
+
+    def test_arch_configuration_au_chemin_du_paquet(self):
+        fait = self._jouer(famille="arch")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("pacman -S --noconfirm --needed sqlite", self.appels)
+        self.assertIsNotNone(self._lire(self.chemins["ARCH_CONF"]))
+        self.assertIsNone(self._lire(self.chemins["DEBIAN_CONF"]))
+        self.assertEqual(self.interdits, [])
+
+    def test_empreinte_en_attente_et_tampon_intact(self):
+        os.makedirs(self.call)
+        with open(self.applique, "w") as flux:
+            flux.write("0" * 64 + "  /ailleurs/turnserver.conf\n")
+        fait = self._jouer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("@@RECREATE 1", fait.stdout.splitlines())
+        self.assertEqual(self._lire(self.applique),
+                         "0" * 64 + "  /ailleurs/turnserver.conf\n")
+        self.assertEqual(self._lire(self.attente),
+                         self._empreinte(self.chemins["DEBIAN_CONF"]))
+        self.assertEqual(stat.S_IMODE(os.stat(self.attente).st_mode), 0o600)
+        self.assertIn("install -d -m 0755 -o root -g root " + self.call,
+                      self.appels)
+        self.assertFalse(os.path.exists(self.attente + ".erplibre-new"))
+
+    def test_relance_identique_rien_a_recreer(self):
+        self.assertEqual(self._jouer().returncode, 0)
+        self._promouvoir()
+        applique = self._lire(self.applique)
+        fait = self._jouer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        sortie = fait.stdout.splitlines()
+        self.assertIn("@@RECREATE 0", sortie)
+        self.assertNotIn("@@RECREATE 1", sortie)
+        self.assertEqual(sortie[-1], "@@CONFIGURED coturn")
+        self.assertFalse(os.path.exists(self.attente))
+        self.assertEqual(self._lire(self.applique), applique)
+        self.assertEqual(self.interdits, [])
+
+    def test_conteneur_jamais_recree_la_relance_le_redemande(self):
+        """Sans promotion, le conteneur tourne encore sur l'ancienne
+        configuration : la relance demande toujours de le recreer."""
+        self.assertEqual(self._jouer().returncode, 0)
+        fait = self._jouer()
+        self.assertIn("@@RECREATE 1", fait.stdout.splitlines())
+        self.assertIsNone(self._lire(self.applique))
+
+    def test_attente_perimee_retiree_quand_rien_n_est_a_recreer(self):
+        self.assertEqual(self._jouer().returncode, 0)
+        self._promouvoir()
+        with open(self.attente, "w") as flux:
+            flux.write("0" * 64 + "  /ailleurs/turnserver.conf\n")
+        fait = self._jouer()
+        self.assertIn("@@RECREATE 0", fait.stdout.splitlines())
+        self.assertFalse(os.path.exists(self.attente))
+
+    def test_certificat_renouvele_a_recreer(self):
+        self.assertEqual(self._jouer(CERT).returncode, 0)
+        self._promouvoir()
+        tls = self.chemins["TLS_DIR"]
+        self.assertEqual(self._lire(os.path.join(tls, "turn.crt")),
+                         "premier c.pem")
+        self.assertIn("@@RECREATE 0",
+                      self._jouer(CERT).stdout.splitlines())
+        with open(os.path.join(self.d, "c.pem"), "w") as flux:
+            flux.write("second c.pem")
+        fait = self._jouer(CERT)
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("@@RECREATE 1", fait.stdout.splitlines())
+        self.assertIn("install -m 0640 -o root -g erplibre-coturn %s/c.pem "
+                      "%s/turn.crt" % (self.d, tls), self.appels)
+        self.assertEqual(self._lire(self.attente),
+                         self._empreinte(self.chemins["DEBIAN_CONF"]))
+
+    def _rien_ecrit(self, fait, nommee):
+        self.assertNotEqual(fait.returncode, 0, fait.stdout)
+        self.assertIn(nommee, fait.stderr)
+        self.assertNotIn("@@CONFIGURED coturn", fait.stdout)
+        self.assertEqual(sorted(os.listdir(self.d)),
+                         ["bin", "c.pem", "journaux", "k.pem",
+                          "os-release"])
+        self.assertFalse([a for a in self.appels
+                          if a.split()[0] in ("apt-get", "dpkg", "pacman",
+                                              "install", "chown",
+                                              "runuser", "sqlite3")],
+                         self.appels)
+        self.assertEqual(self.interdits, [])
+
+    def test_sans_compte_refuse_avant_toute_ecriture(self):
+        self._rien_ecrit(self._jouer(compte=""), "TURN_SERVICE_USER")
+
+    def test_compte_absent_refuse_avant_toute_ecriture(self):
+        self._rien_ecrit(self._jouer(compte="compte-invente"),
+                         "compte-invente")
+
+    def test_root_refuse_avant_toute_ecriture(self):
+        self._rien_ecrit(self._jouer(compte="root"), "TURN_SERVICE_USER")
+
+    def test_configuration_etrangere_refusee_avant_toute_ecriture(self):
+        conf = self.chemins["DEBIAN_CONF"]
+        with open(conf, "w") as flux:
+            flux.write("listening-port=3478\n")
+        fait = self._jouer()
+        self.assertNotEqual(fait.returncode, 0)
+        self.assertIn("TURN_GARDER_CONFIG", fait.stderr)
+        self.assertEqual(self._lire(conf), "listening-port=3478\n")
+        self.assertFalse([a for a in self.appels
+                          if a.startswith("apt-get")], self.appels)
+        fait = self._jouer("TURN_GARDER_CONFIG=1")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertEqual(self._lire(conf).splitlines()[0],
+                         "# erplibre-call: managed")
 
 
 if __name__ == "__main__":
