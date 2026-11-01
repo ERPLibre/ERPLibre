@@ -172,7 +172,7 @@ def resolve_marker(line, python_version):
     be wrong on s390x.
 
     :param line: requirement line, comment already removed
-    :param python_version: target Python, ex. « 3.12.10 »
+    :param python_version: target Python, ex. « 3.12.16 »
     :return: None when the marker excludes the target; otherwise
         (line, name, kept_marker). A line with a marker is rewritten as
         name + specifier, followed by « ; kept_marker » when one is kept;

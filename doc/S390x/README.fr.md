@@ -109,7 +109,7 @@ le refuse.
 | `uv` | disponible, mais gain quasi nul : le temps est dans le compilateur | gain sensible |
 | Fonctions d'Odoo | sans wkhtmltopdf ni PyMuPDF, factur-x 3.x | complètes |
 | Matériel | fiabilité, entrées-sorties et virtualisation d'IBM Z ; ERPLibre tourne là où vivent déjà les données de l'organisation | répandu, moins coûteux pour tester |
-| Reproductibilité | le verrou est neutre vis-à-vis de l'architecture : le même verrou (`requirement/poetry.odoo18.0_python3.12.10.lock`) sert aux deux, les différences étant des marqueurs de plateforme | — |
+| Reproductibilité | le verrou est neutre vis-à-vis de l'architecture : le même verrou (`requirement/poetry.odoo18.0_python3.12.16.lock`) sert aux deux, les différences étant des marqueurs de plateforme | — |
 
 ## Par système
 
@@ -253,4 +253,4 @@ qu'après avoir testé l'architecture. Les dépendances Python sont neutres
 vis-à-vis de l'architecture : les marqueurs `platform_machine` (PyMuPDF exclu
 sur s390x ; factur-x ≥ 6.8 ailleurs, < 4 sur s390x) sont conservés dans
 l'unique verrou de chaque version d'Odoo
-(`requirement/poetry.odoo18.0_python3.12.10.lock`).
+(`requirement/poetry.odoo18.0_python3.12.16.lock`).

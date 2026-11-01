@@ -29,7 +29,7 @@ echo "Python Version: $PYTHON_VERSION"
 
 # Ce qui borne le PATCH, et pour qui.
 #
-# Le venv d'Odoo est contraint par son pyproject (« >=3.12.10,<3.13 ») : un
+# Le venv d'Odoo est contraint par son pyproject (« >=3.12.16,<3.13 ») : un
 # patch inférieur y serait refusé par Poetry. Rien n'épingle celui de
 # l'outillage — exiger le patch y écarte le Python des distributions dès
 # qu'il est d'un cran en retard, et force pyenv à compiler CPython pour rien.

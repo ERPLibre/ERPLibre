@@ -1278,7 +1278,7 @@ class TodoUpgrade:
             for path_git_clone_migrate in lst_path_git_clone_migrate:
                 cmd_migration = (
                     f"echo 'views_migration_18 {path_git_clone_migrate}' && "
-                    f"./.venv.odoo18.0_python3.12.10/bin/python ./script/code/odoo_upgrade_code_with_dir_module.py --path {path_git_clone_migrate}"
+                    f"./.venv.odoo18.0_python3.12.16/bin/python ./script/code/odoo_upgrade_code_with_dir_module.py --path {path_git_clone_migrate}"
                 )
                 cmd_parallel += f' "{cmd_migration}"'
                 # cmd_serial += f"{cmd_migration};"

@@ -249,7 +249,7 @@ zyp_soft gettext-tools
 
 # Dépendances de build pour pyenv (compilation de CPython) — CRITIQUE.
 # Python de la DISTRIBUTION d'abord : Tumbleweed livre python312 en 3.12.13,
-# qui satisfait « >=3.12.10,<3.13 ». lib_python_provider.sh le prefere alors a
+# qui satisfait « >=3.12.16,<3.13 ». lib_python_provider.sh le prefere alors a
 # toute compilation — decisif sur s390x, ou gcc 15.2 s'arrete sur une erreur
 # interne en batissant Parser/parser.c de CPython 3.12.10.
 # Le nom suit la version demandee : python312 pour 3.12.x.

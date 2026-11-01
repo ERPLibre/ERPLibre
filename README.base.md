@@ -74,7 +74,7 @@ Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
 
 | Odoo version | Python  | Status     |
 |--------------|---------|------------|
-| 18.0         | 3.12.10 | Active     |
+| 18.0         | 3.12.16 | Active     |
 | 17.0         | 3.10.18 | Inactive   |
 | 16.0         | 3.10.18 | Inactive   |
 | 15.0         | 3.8.20  | Deprecated |

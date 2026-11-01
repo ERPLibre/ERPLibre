@@ -17,16 +17,16 @@ install_erplibre:
 
 .PHONY: install_odoo_18
 install_odoo_18:
-	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.10 --install_dev
+	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.16 --install_dev
 
 .PHONY: switch_odoo_18
 switch_odoo_18:
-	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.10 --switch
+	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.16 --switch
 	./script/make.sh config_gen_all
 
 .PHONY: switch_odoo_18_update
 switch_odoo_18_update:
-	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.10 --switch --switch_update
+	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.16 --switch --switch_update
 	./script/make.sh config_gen_all
 
 .PHONY: install_odoo_17
@@ -119,7 +119,7 @@ switch_odoo_12_update:
 
 .PHONY: install_odoo_18_with_extra
 install_odoo_18_with_extra:
-	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.10 --install_dev --with_extra
+	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.16 --install_dev --with_extra
 
 .PHONY: install_odoo_17_with_extra
 install_odoo_17_with_extra:

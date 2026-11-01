@@ -11600,5 +11600,5 @@ bindings = ["ghostscript"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.12.10,<3.13"
-content-hash = "c86af374f7d8ab0adec470322ffd3a30b4efd49634e437a3eabbec7bb1d2f843"
+python-versions = ">=3.12.16,<3.13"
+content-hash = "509d581844356bad360c84dd6d1d500497361b18d22252cfd0b8495dbfbb8e27"

@@ -15,7 +15,7 @@ Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.8.0)
 - Toujours vérifier la version Odoo active avant de modifier du code (`cat .odoo-version`)
 - Les addons sont dans `addons/` et gérés par Google Repo — ne pas modifier la structure des dépôts
 - Utiliser le venv approprié pour le code Odoo. Son nom porte les DEUX versions
-  (`.venv.odoo18.0_python3.12.10/bin/python`) : le retrouver par
+  (`.venv.odoo18.0_python3.12.16/bin/python`) : le retrouver par
   `ls -d .venv.odoo*` plutôt que de le composer de tête
 - Les scripts ERPLibre utilisent `.venv.erplibre/bin/python`
 - Le Makefile principal inclut des fragments depuis `conf/make.*.Makefile`

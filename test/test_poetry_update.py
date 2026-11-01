@@ -38,14 +38,14 @@ LST_SIGN = ("==", "!=", ">=", "<=", "<", ">", ";", "~=")
 class TestResolveMarker(unittest.TestCase):
     def test_line_without_marker_is_unchanged(self):
         self.assertEqual(
-            P.resolve_marker("paquet==1.2.3", "3.12.10"),
+            P.resolve_marker("paquet==1.2.3", "3.12.16"),
             ("paquet==1.2.3", None, ""),
         )
 
     def test_python_version_marker_of_the_target_is_kept_bare(self):
         self.assertEqual(
             P.resolve_marker(
-                "paquet==2.0.0 ; python_version >= '3.12'", "3.12.10"
+                "paquet==2.0.0 ; python_version >= '3.12'", "3.12.16"
             ),
             ("paquet==2.0.0", "paquet", ""),
         )
@@ -53,7 +53,7 @@ class TestResolveMarker(unittest.TestCase):
     def test_python_version_marker_of_another_python_is_dropped(self):
         self.assertIsNone(
             P.resolve_marker(
-                "paquet==1.0.0; python_version < '3.12'", "3.12.10"
+                "paquet==1.0.0; python_version < '3.12'", "3.12.16"
             )
         )
 
@@ -69,7 +69,7 @@ class TestResolveMarker(unittest.TestCase):
 
     def test_platform_machine_marker_is_kept_for_poetry(self):
         line, name, marker = P.resolve_marker(
-            "paquet>=6.8 ; platform_machine != 's390x'", "3.12.10"
+            "paquet>=6.8 ; platform_machine != 's390x'", "3.12.16"
         )
         self.assertEqual(name, "paquet")
         self.assertEqual(marker, 'platform_machine != "s390x"')
@@ -121,7 +121,7 @@ class TestManifestExternalDependencies(unittest.TestCase):
                 "]}}"
             )
         self.config = SimpleNamespace(
-            set_version_odoo="18.0", set_version_python="3.12.10"
+            set_version_odoo="18.0", set_version_python="3.12.16"
         )
 
     def test_marker_lines_join_the_bare_name(self):
@@ -169,8 +169,8 @@ class TestPoetryAddFailure(unittest.TestCase):
                 force=False,
                 set_version_poetry="2.1.3",
                 set_version_odoo="18.0",
-                set_version_python="3.12.10",
-                set_version_erplibre="odoo18.0_python3.12.10",
+                set_version_python="3.12.16",
+                set_version_erplibre="odoo18.0_python3.12.16",
             )
             with patch.object(
                 P, "get_config", return_value=config

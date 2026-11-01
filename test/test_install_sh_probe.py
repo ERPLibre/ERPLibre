@@ -22,7 +22,7 @@ RACINE = Path(__file__).resolve().parent.parent
 # Répond à -V comme un vrai interpréteur, échoue sur tout le reste : c'est la
 # conduite d'un python qui ne trouve pas sa bibliothèque standard.
 PYTHON_MORT = """#!/bin/sh
-if [ "$1" = "-V" ]; then echo "Python 3.12.10"; exit 0; fi
+if [ "$1" = "-V" ]; then echo "Python 3.12.16"; exit 0; fi
 echo "Fatal Python error: init_fs_encoding" >&2
 exit 1
 """

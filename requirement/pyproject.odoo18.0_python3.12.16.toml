@@ -18,7 +18,7 @@ license = "AGPL-3.0-or-later"
 authors = [ "Mathieu Benoit <mathben@technolibre.ca>",]
 
 [tool.poetry.dependencies]
-python = ">=3.12.10,<3.13"
+python = ">=3.12.16,<3.13"
 a2wsgi = ">=1.10.6"
 aiobotocore = "3.9.1"
 altcha = ">=2.0.0"

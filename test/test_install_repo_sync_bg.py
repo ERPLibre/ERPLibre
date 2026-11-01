@@ -161,10 +161,10 @@ class TestValidateEnvironmentOdooSources(unittest.TestCase):
         os.chdir(self.tmp)
         self.addCleanup(os.chdir, cwd)
         os.makedirs(os.path.join("odoo18.0", "addons"))
-        os.makedirs(".venv.odoo18.0_python3.12.10")
+        os.makedirs(".venv.odoo18.0_python3.12.16")
         with patch("sys.argv", ["prog", "--install_dev"]):
             self.update = Update()
-        self.update.expected_venv_name = ".venv.odoo18.0_python3.12.10"
+        self.update.expected_venv_name = ".venv.odoo18.0_python3.12.16"
         self.update.expected_addons_name = os.path.join("odoo18.0", "addons")
         self.update.expected_odoo_name = "odoo18.0"
         self.update.expected_pyproject_path = "unused"
