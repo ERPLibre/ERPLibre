@@ -15,6 +15,7 @@ lance les tests. Toutes les valeurs sont inventées (`*.exemple.test`,
 
 import ast
 import base64
+import copy
 import dataclasses
 import hashlib
 import datetime
@@ -3059,6 +3060,9 @@ prev=
 for a; do [ "$prev" = --config-dir ] && dir=$a; prev=$a; done
 [ "${CERTBOT_RC:-0}" = 0 ] || { echo "erreur inventee" >&2; exit 1; }
 if [ "$1" = delete ]; then
+  # Comme certbot : sans fichier de renouvellement, la lignée est inconnue.
+  [ -f "$dir/renewal/erplibre-call.conf" ] || {
+    echo "No certificate found with name erplibre-call" >&2; exit 1; }
   rm -rf "$dir/live/erplibre-call" "$dir/archive/erplibre-call" \
     "$dir/renewal/erplibre-call.conf"
 fi
@@ -4630,9 +4634,7 @@ class TestProductionProbe(unittest.TestCase):
         self.assertEqual(record["was_enabled"], "disabled")
         # La relance le trouve actif et activé : l'état fait foi.
         state = ci.written_state(ci.plan_install(facts, ans, NOW), STAMP)
-        again = base_facts(
-            nginx=nginx_facts(enabled="enabled"), state=state
-        )
+        again = base_facts(nginx=nginx_facts(enabled="enabled"), state=state)
         record = ci.plan_install(again, ans, NOW).new_state["nginx"]
         self.assertIs(record["was_active"], False)
         self.assertEqual(record["was_enabled"], "disabled")
@@ -4946,7 +4948,8 @@ if [ "${SIGNAL_AT:-}" = "$tag" ]; then
     kill -TERM "$group"
 fi
 v=$(echo "$tag" | tr -- '-.' '__')
-eval "exit \${RC_$v:-0}"
+# RC_<étape>_<n> vise le passage n (0 : le premier), RC_<étape> chacun.
+eval "exit \${RC_${v}_$n:-\${RC_$v:-0}}"
 """
 
 LINEAGE = "/etc/letsencrypt/live/erplibre-call"
@@ -5307,6 +5310,71 @@ class TestProductionInstall(unittest.TestCase):
                 self.assert_no_state(done)
                 self.assertEqual(self.order()[-1], last)
 
+    def test_installer_markers_override_the_recorded_origin(self):
+        # L'état dit nginx et certbot trouvés sur l'hôte ; l'administrateur
+        # les a retirés depuis, ce passage les installe : la désinstallation
+        # doit les purger. Même règle en Python et en sh.
+        ans = production(
+            acme="dns", dns_plugin="cloudflare", dns_credentials=CREDENTIALS
+        )
+        prior = production_installed(ans)
+        state = copy.deepcopy(prior.state)
+        state["nginx"]["installed_by_tool"] = False
+        state["certbot"]["installed_by_tool"] = False
+        state["certbot"]["plugins_installed"] = []
+        facts = dataclasses.replace(
+            prior,
+            state=state,
+            nginx=None,
+            certbot=certbot_facts(plugins=("cloudflare",), version="absent"),
+            busy_ports=(),
+        )
+        plan = ci.plan_install(
+            facts, dataclasses.replace(ans, nginx="existing"), NOW
+        )
+        self.assertIs(plan.new_state["nginx"]["installed_by_tool"], False)
+        self.assertIs(plan.new_state["certbot"]["installed_by_tool"], False)
+        self.assertEqual(plan.new_state["certbot"]["plugins_installed"], [])
+        done = self.run_script(
+            plan,
+            {
+                "install_nginx-full": "@@NGINX_INSTALLED 1\n",
+                "install_certbot": "@@CERTBOT_INSTALLED 1\n"
+                "@@CERTBOT_PLUGIN_INSTALLED python3-certbot-dns-cloudflare\n"
+                + CERTBOT_ISSUED,
+            },
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        written = self.state()
+        self.assertEqual(written, ci.installed_state(plan, STAMP, done.stdout))
+        self.assertIs(written["nginx"]["installed_by_tool"], True)
+        self.assertIs(written["certbot"]["installed_by_tool"], True)
+        self.assertEqual(
+            written["certbot"]["plugins_installed"],
+            ["python3-certbot-dns-cloudflare"],
+        )
+
+    def test_second_coturn_pass_failure_stops_before_the_state(self):
+        # Premier passage Let's Encrypt : coturn démarre sans TLS, puis un
+        # second passage lui donne la lignée. S'il échoue, coturn reste
+        # sans TLS : aucun état ne doit dire letsencrypt.
+        unheld = f"@@CERTBOT_UNHELD {RENEWAL}\n" + CERTBOT_ISSUED
+        write(self.path(ci.RENEWAL_HOLD), "anterieur\n", 0o644)
+        os.makedirs(os.path.dirname(self.path(RENEWAL)), exist_ok=True)
+        os.rename(self.path(ci.RENEWAL_HOLD), self.path(RENEWAL))
+        plan = ci.plan_install(base_facts(), production(), NOW)
+        done = self.run_script(
+            plan, {"install_certbot": unheld}, RC_install_coturn_1="1"
+        )
+        self.assert_no_state(done)
+        self.assertEqual(self.order().count("install_coturn"), 2)
+        self.assertEqual(self.order()[-1], "install_coturn")
+        self.assertIn(("FAILED", "coturn-tls"), ci.marker_lines(done.stdout))
+        self.assertNotIn("install_nginx-full", self.order())
+        # Le fichier de renouvellement remis par certbot repart de côté.
+        self.assertTrue(os.path.exists(self.path(ci.RENEWAL_HOLD)))
+        self.assertFalse(os.path.exists(self.path(RENEWAL)))
+
     def tearDown_root(self):
         for path in (self.root, self.log):
             subprocess.run(["rm", "-rf", path], check=True)
@@ -5602,7 +5670,11 @@ class TestProductionInstall(unittest.TestCase):
         )
         self.assertEqual(
             pending,
-            {"installed_by_tool": True, "was_active": None, "was_enabled": None},
+            {
+                "installed_by_tool": True,
+                "was_active": None,
+                "was_enabled": None,
+            },
         )
         facts = base_facts(
             nginx=dict(nginx_facts(), pending=pending),
@@ -5679,7 +5751,9 @@ class TestProductionInstall(unittest.TestCase):
         for layout in ("debian", "arch-include"):
             with self.subTest(layout=layout):
                 facts = base_facts(
-                    nginx=dict(nginx_facts(layout=layout), pending=nginx_pending),
+                    nginx=dict(
+                        nginx_facts(layout=layout), pending=nginx_pending
+                    ),
                     certbot=dict(certbot_facts(), pending=certbot_pending),
                     busy_ports=(("tcp", 80, "nginx"),),
                 )
@@ -5698,7 +5772,9 @@ class TestProductionInstall(unittest.TestCase):
                     ["python3-certbot-dns-cloudflare"],
                 )
                 script = ci.uninstall_script(plan.new_state, False, STAMP)
-                self.assertIn("pkg_purge python3-certbot-dns-cloudflare", script)
+                self.assertIn(
+                    "pkg_purge python3-certbot-dns-cloudflare", script
+                )
                 self.assertIn(nginx["site"], script)
                 self.assertIn(ci.HOOK_PATH, script)
         # Un certificat fourni en production : nginx sert, certbot non.
@@ -6297,6 +6373,24 @@ class TestProductionCheck(unittest.TestCase):
         self.assertIs(line.ok, False)
         self.assertEqual(line.values, {"service": "site"})
 
+    def test_coturn_left_on_an_older_certificate_is_seen(self):
+        # Un crochet qui ne copierait plus les renouvellements laisse
+        # coturn sur une copie proche de l'échéance, la lignée fraîche.
+        soon, _key = Certificates.make(
+            "coturn-soon",
+            "turn.exemple.test",
+            "DNS:turn.exemple.test",
+            days=5,
+        )
+        line = by_name(
+            self.check(
+                production_state(),
+                certs={"coturn": soon, "lineage": TURN_CERT},
+            )
+        )["cert-expiry"]
+        self.assertIs(line.ok, False)
+        self.assertLess(line.values["days"], ci.CERT_WARN_DAYS)
+
     def test_lets_encrypt_certificate_missing(self):
         line = by_name(
             self.check(production_state(), certs={"coturn": TURN_CERT})
@@ -6554,7 +6648,9 @@ class TestProductionUninstall(UninstallSandbox):
         calls = self.calls()
         self.assertIn("systemctl stop nginx", calls)
         self.assertIn("systemctl disable nginx", calls)
-        self.assertLess(calls.index("nginx -t"), calls.index("systemctl stop nginx"))
+        self.assertLess(
+            calls.index("nginx -t"), calls.index("systemctl stop nginx")
+        )
         self.assertFalse([c for c in calls if c.startswith("apt-get")])
         # Trouvé actif et activé : il le reste.
         self.setUp()
@@ -6715,6 +6811,114 @@ class TestProductionUninstall(UninstallSandbox):
         self.assertIn(f"REMOVED dropin {dropin}", self.markers(done))
         self.assertFalse(self.exists(os.path.dirname(dropin)))
         self.assertIn("systemctl daemon-reload", self.calls())
+
+    def test_dropin_goes_on_the_adopted_and_package_only_branches(self):
+        for adopted in (True, False):
+            with self.subTest(adopted=adopted):
+                self.setUp()
+                state = production_state(coturn_only(turns_443=True))
+                record = state["services"]["coturn"]
+                record["installed_by_tool"] = False
+                record["adopted"] = adopted
+                self.place_production(state)
+                if adopted:
+                    record["backup"] = record["config"] + ".bak-" + STAMP
+                    write(self.path(record["backup"]), "listening-port=3478\n")
+                    self.place_state(state)
+                dropin = record["dropin"]
+                write(self.path(dropin), ci.MARKER + "\n[Service]\n", 0o644)
+                done = self.uninstall(state, UNITS="coturn")
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertIn(f"REMOVED dropin {dropin}", self.markers(done))
+                self.assertFalse(self.exists(dropin))
+                calls = self.calls()
+                reload = calls.index("systemctl daemon-reload")
+                if adopted:
+                    # Avant que l'unité adoptée ne reparte sans lui.
+                    self.assertLess(
+                        reload, calls.index("systemctl try-restart coturn")
+                    )
+                else:
+                    self.assertLess(
+                        calls.index("systemctl disable --now coturn"), reload
+                    )
+
+    def test_an_unmarked_site_is_never_removed(self):
+        state = self.place_production(production_state(output=LE_OUTPUT))
+        write(self.path(SITE_DEBIAN), "server { listen 80; }\n", 0o644)
+        done = self.uninstall(state, UNITS="nginx", PKGS=DEBIAN_PKGS)
+        self.assertEqual(self.read(SITE_DEBIAN), "server { listen 80; }\n")
+        self.assertNotIn(
+            f"REMOVED nginx-site {SITE_DEBIAN}", self.markers(done)
+        )
+
+    def test_other_sites_that_keep_the_tool_nginx(self):
+        # Un conf.d/*.conf, un lien « default » qui ne vise pas le site du
+        # paquet : chacun garde nginx.
+        cases = {
+            "confd": lambda: write(
+                self.path("/etc/nginx/conf.d/autre.conf"), "server {}\n"
+            ),
+            "default": lambda: os.symlink(
+                "/etc/nginx/sites-available/autre",
+                self.path("/etc/nginx/sites-enabled/default"),
+            ),
+        }
+        for name, place in cases.items():
+            with self.subTest(name=name):
+                self.setUp()
+                state = self.place_production(
+                    production_state(output=LE_OUTPUT)
+                )
+                place()
+                done = self.uninstall(state, UNITS="nginx", PKGS=DEBIAN_PKGS)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertIn("KEPT package nginx", self.markers(done))
+                self.assertNotIn("apt-get purge -y nginx", self.calls())
+
+    def test_a_link_to_another_site_is_not_removed(self):
+        state = self.place_production(production_state(output=LE_OUTPUT))
+        os.remove(self.path(LINK_DEBIAN))
+        os.symlink("/etc/nginx/sites-available/autre", self.path(LINK_DEBIAN))
+        done = self.uninstall(state, UNITS="nginx", PKGS=DEBIAN_PKGS)
+        self.assertTrue(os.path.islink(self.path(LINK_DEBIAN)))
+        self.assertNotIn(
+            f"REMOVED nginx-link {LINK_DEBIAN}", self.markers(done)
+        )
+
+    def test_no_nginx_purge_after_an_earlier_failure(self):
+        # Une étape en échec avant nginx (ici le pare-feu) : rien ne se
+        # purge, la relance reprendra.
+        state = production_state(output=LE_OUTPUT)
+        state["firewall"] = ufw_record("tcp 80 nginx")
+        self.place_production(state)
+        write(
+            self.added,
+            "ufw allow 80/tcp comment 'erplibre-call nginx'\n",
+            0o644,
+        )
+        done = self.uninstall(
+            state, UNITS="nginx", PKGS=DEBIAN_PKGS, UFW_DELETE_RC="1"
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("FAILED firewall", self.markers(done))
+        self.assertNotIn("apt-get purge -y nginx", self.calls())
+        self.assertTrue(self.exists(ci.STATE_PATH))
+
+    def test_arch_failing_nginx_test_puts_nginx_conf_back(self):
+        state = self.arch_state()
+        conf = ARCH_NGINX_CONF[:-2] + INCLUDE_LINE + "}\n"
+        write(self.path(ci.NGINX_CONF), conf, 0o644)
+        write(self.path(NGINX_BACKUP), ARCH_NGINX_CONF, 0o644)
+        done = self.uninstall(
+            state, UNITS="nginx certbot-renew.timer", NGINX_T_RC="1"
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("FAILED nginx-test", self.markers(done))
+        self.assertEqual(self.read(ci.NGINX_CONF), conf)
+        self.assertTrue(self.exists(SITE_ARCH))
+        self.assertTrue(self.exists(NGINX_BACKUP))
+        self.assertNotIn("systemctl reload nginx", self.calls())
 
     def test_a_foreign_dropin_stays(self):
         state = production_state(coturn_only(turns_443=True))

@@ -447,6 +447,19 @@ class TestRefus(unittest.TestCase):
             # nginx est recharge quand meme : il lit la lignee elle-meme.
             self.assertIn("systemctl reload nginx", r.appels)
 
+    def test_une_chaine_absente_echoue_sans_signal(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            r = Racine(dossier)
+            r.synchroniser()
+            os.remove(os.path.join(r.lignee, "fullchain.pem"))
+            fait = r.lancer()
+            self.assertNotEqual(fait.returncode, 0, fait.stdout)
+            self.assertEqual(r.servi("turn.crt"), ANCIEN_CRT)
+            self.assertFalse([a for a in r.appels if "kill" in a])
+            self.assertEqual(
+                sorted(os.listdir(r.tls)), ["turn.crt", "turn.key"]
+            )
+
 
 class TestNginx(unittest.TestCase):
     def test_nginx_actif_teste_puis_recharge(self):
