@@ -89,11 +89,13 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 sys.path.insert(0, os.path.join(RACINE, "long_test"))
 
+import descente  # noqa: E402
 from descente import (  # noqa: E402
     Descente,
     Famille,
     capacite_hote,
     cle_publique,
+    dernier_rapport,
     descente_vivante,
     detruire,
     detruire_etage1,
@@ -2191,6 +2193,36 @@ def defaire_odoo(journal, dry_run, dossier=None):
     return total
 
 
+def detruire_bases(journal, dry_run):
+    """`--detruire` quand aucun rapport ne nomme de VM : les serveurs et
+    bases Odoo que des rapports nomment encore (`defaire_odoo`), sous les
+    garde-fous du défaire partagé. Rien tant qu'une descente tourne
+    (`descente.autre_descente`) ; puis la liste ; avec `dry_run`, rien de
+    plus ; sinon la suppression, seulement après « tapez OUI ». Rend 1
+    quand une descente tourne ou que la confirmation est refusée, 0
+    sinon."""
+    autres = descente.autre_descente()
+    if autres:
+        dire(
+            f"  ⛔ une descente tourne ({', '.join(map(str, autres))}) :"
+            " rien ne sera détruit.",
+            journal,
+        )
+        dire("  Attendre qu'elle finisse, ou l'arrêter d'abord.", journal)
+        return 1
+    if not defaire_odoo(journal, True):
+        dire("  aucun rapport de descente : rien à défaire.", journal)
+        return 0
+    if dry_run:
+        return 0
+    reponse = input("\n  Supprimer ces bases ? (tapez OUI) : ").strip()
+    if reponse != "OUI":
+        dire("  annulé.", journal)
+        return 1
+    defaire_odoo(journal, False)
+    return 0
+
+
 def _faits_odoo(lien):
     """`OdooFacts` de la base, None quand elle ne répond pas."""
     try:
@@ -2695,7 +2727,11 @@ def mener(argv):
         # Les bases et serveurs Odoo ne vivent pas dans les VM et le défaire
         # partagé ne les connaît pas : il les confie à `avant`, sous ses
         # garde-fous (aucune descente en cours, la confirmation), avant la
-        # première VM.
+        # première VM. Sans rapport qui nomme une VM, le défaire partagé
+        # s'arrête avant `avant` : `detruire_bases` reprend alors ces
+        # garde-fous pour les bases seules.
+        if not dernier_rapport(OUTIL, NOM_BASE):
+            return detruire_bases(journal, args.dry_run)
         famille = Famille(OUTIL, NOM_BASE, pas_d_imbrique)
         return detruire(
             famille,
