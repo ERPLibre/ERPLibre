@@ -10023,7 +10023,7 @@ def container_installed(ans, facts=None):
     changes = {"state": state, "engines": engines}
     if "coturn" in state["services"]:
         changes["coturn"] = config_only(
-            ci.COTURN_CONFIGS["debian"],
+            ci.COTURN_CONFIGS[facts.family],
             ci.coturn_config(ans, None, flavour="container"),
         )
     if "ntfy" in state["services"]:
@@ -11376,12 +11376,12 @@ class TestMigrationRun(ContainerSandbox):
         cert = (ans.cert_pem, ans.key_pem) if ans.cert_pem else None
         return plan, self.prepare(facts.state, cert)
 
-    def to_packages(self, ans=None, **changes):
-        """Plan de retour aux paquets d'un hôte en conteneurs, et l'hôte
-        préparé : ses conteneurs en marche, ses images, son fichier
-        compose."""
+    def to_packages(self, ans=None, facts=None, **changes):
+        """Plan de retour aux paquets d'un hôte en conteneurs (`facts` :
+        faits de départ de `container_installed`), et l'hôte préparé : ses
+        conteneurs en marche, ses images, son fichier compose."""
         ans = ans or container_answers()
-        facts = container_installed(ans)
+        facts = container_installed(ans, facts)
         plan = ci.plan_install(
             facts,
             dataclasses.replace(
@@ -11920,6 +11920,62 @@ esac
         argv = self.argv()
         self.assertNotIn("apt-get as=root xdg= purge -y coturn", argv)
         self.assertIn("apt-get as=root xdg= purge -y ntfy", argv)
+
+    def test_arch_failing_reverse_gate_puts_the_coturn_config_back(self):
+        # pacman -Rn emporte la configuration de coturn puis le dossier
+        # /etc/turnserver vide : la configuration du conteneur revient
+        # quand même, avec son dossier, et rendue à son groupe.
+        write(self.path("/etc/os-release"), "ID=arch\n", 0o644)
+        config = ci.COTURN_CONFIGS["arch"]
+        arch = base_facts(family="arch", os_id="arch", engines=engine_facts())
+        plan, _before = self.to_packages(
+            container_answers(services=frozenset({"coturn"})), arch
+        )
+        self.assertEqual(
+            plan.prior_state["services"]["coturn"]["config"], config
+        )
+        os.remove(self.path("/etc/turnserver.conf"))
+        text = ci.MARKER + "\nlistening-port=3478\n"
+        write(self.path(config), text, 0o640)
+        write(
+            os.path.join(self.stubs, "pacman"),
+            _NOTE
+            + r"""
+case "$1" in
+  -Qq) grep -qxF "$2" "$FK/installed" ;;
+  -Rn) for p; do :; done
+    grep -vxF "$p" "$FK/installed" > "$FK/installed.new"
+    mv "$FK/installed.new" "$FK/installed"
+    rm -f "$ROOT/etc/turnserver/turnserver.conf"
+    rmdir "$ROOT/etc/turnserver" 2>/dev/null ;;
+  *) exit 97 ;;
+esac
+""",
+        )
+        done = self.run_script(plan, ACTIVE_coturn="failed", FAKE_INSTALLS="1")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("REMOVED", "package coturn"), markers)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        self.assertEqual(self.read(self.path(config)), text)
+        self.assertEqual(
+            stat.S_IMODE(os.stat(self.path("/etc/turnserver")).st_mode), 0o755
+        )
+        argv = self.argv()
+        up = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d"
+        )
+        self.assertIn(
+            f"chown as=root xdg= root:997 {self.path(config)}", argv[:up]
+        )
+        self.assertIn(
+            "chown as=root xdg= -R --no-dereference 997:997"
+            f" {self.path(ci.COTURN_DATA_DIR)}",
+            argv[:up],
+        )
 
     def test_rootless_reverse_removes_images_under_its_account(self):
         plan, _before = self.to_packages(
