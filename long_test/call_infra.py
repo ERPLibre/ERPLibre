@@ -952,7 +952,10 @@ def script_lignee(cert_pem, key_pem):
     """Pose (`cert_pem`, `key_pem`) en fausse lignée certbot LINEAGE_DIR :
     fullchain.pem et cert.pem portent le certificat, privkey.pem (0600) la
     clé ; ce que certbot y laisse après un renouvellement. Les deux
-    voyagent en base64 dans le corps, jamais en argument. Un
+    voyagent en base64 dans le corps : jamais dans l'argv local de ssh ni
+    au journal, mais sur la VM le corps devient l'argument de « sh -c »
+    (`commande_distante`) le temps du script, lisible par ses comptes. Cela
+    ne vaut que pour une paire jetable comme celle de `local_cert`. Un
     /etc/letsencrypt absent reçoit TEMOIN_LE, que `script_remise` lit pour
     l'emporter en entier."""
     lignee = ci.LINEAGE_DIR
