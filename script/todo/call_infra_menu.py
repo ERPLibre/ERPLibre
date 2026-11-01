@@ -420,8 +420,15 @@ class CallInfraMenuMixin:
             )
         # Un état de production ne prête au développement que ce qui y a
         # le même sens : la plage des relais et le port de ntfy y changent
-        # de valeur par défaut.
+        # de valeur par défaut ; l'adresse publique d'un hôte derrière un
+        # NAT (`external_ip`) ne sert pas un coturn de réseau local ; le
+        # nom proposé est celui de TURN ou de ntfy, le domaine pouvant ne
+        # pas joindre l'hôte.
         same_mode = not ci.is_production(prior)
+        from_development = same_mode
+        public_default = prior.public_name or default_name
+        if not from_development:
+            public_default = prior.turn_name or prior.ntfy_name or default_name
 
         print(f"\n{t('Certificate:')}")
         print(f"[1] {t('call_infra_tls_none')}")
@@ -442,8 +449,7 @@ class CallInfraMenuMixin:
                 return None
 
         name = self._call_infra_ask(
-            t("Public name of the host (name or address)"),
-            prior.public_name or default_name,
+            t("Public name of the host (name or address)"), public_default
         )
         ports = {}
         if "coturn" in services:
@@ -492,7 +498,7 @@ class CallInfraMenuMixin:
             cert_pem=cert_pem,
             key_pem=key_pem,
             public_name=name,
-            external_ip=prior.external_ip,
+            external_ip=prior.external_ip if from_development else None,
             **ports,
         )
 
