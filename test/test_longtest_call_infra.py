@@ -2409,7 +2409,7 @@ class LeDefaireOdoo(unittest.TestCase):
         n, de, arreter, supprimer = self._defaire()
         self.assertEqual(2, n)
         de.assert_called_once_with(chemin[: -len(".json")])
-        arreter.assert_called_once_with([4242])
+        arreter.assert_called_once_with([4242], chemin[: -len(".json")])
         self.assertEqual(
             self.BASES, [c.args[0] for c in supprimer.call_args_list]
         )
@@ -2496,10 +2496,10 @@ class LeDefaireOdoo(unittest.TestCase):
         etage1.assert_not_called()
 
     def test_destroy_confirmed_drops_the_databases_then_the_vm(self):
-        self._rapport(etages=[LeDefaire.ETAGE])
+        chemin = self._rapport(etages=[LeDefaire.ETAGE])
         code, arreter, supprimer, etage1 = self._detruire_pour_de_vrai()
         self.assertEqual(0, code)
-        arreter.assert_called_once_with([4242])
+        arreter.assert_called_once_with([4242], chemin[: -len(".json")])
         self.assertEqual(
             self.BASES, [c.args[0] for c in supprimer.call_args_list]
         )
@@ -2519,9 +2519,14 @@ class LeDefaireOdoo(unittest.TestCase):
         for entree in ("12", "13", "self", "x"):
             os.makedirs(os.path.join(proc, entree))
         course = os.path.join(self.dossier, "long-call-infra-1")
+        for entree in ("14", "15"):
+            os.makedirs(os.path.join(proc, entree))
         lignes = {
-            12: f"python odoo-bin -c {course}/odoo-a/odoo18.conf",
-            13: "python odoo-bin -c /ailleurs/odoo18.conf",
+            12: f"python /o/odoo18.0/odoo/odoo-bin -c {course}/odoo-a/odoo18.conf",
+            13: "python /o/odoo18.0/odoo/odoo-bin -c /ailleurs/odoo18.conf",
+            # Le chemin dans une autre commande n'en fait pas un serveur.
+            14: f"tail -f {course}/odoo-a/odoo18.log",
+            15: f"vim {course}/odoo-a/odoo18.conf",
         }
         self.assertEqual(
             [12],
@@ -2539,10 +2544,16 @@ class LeDefaireOdoo(unittest.TestCase):
             if pid == 12 or signal_ == lt.signal.SIGKILL:
                 vivants.discard(pid)
 
+        course = "/c/long-call-infra-1"
         lt.arreter_serveurs(
             [12, 13],
+            course,
             tuer=tuer,
-            lire=lambda p: "odoo" if p in vivants else "",
+            lire=lambda p: (
+                f"python odoo-bin -c {course}/odoo-a/odoo18.conf"
+                if p in vivants
+                else ""
+            ),
             delai=0,
         )
         self.assertEqual(
@@ -2554,6 +2565,21 @@ class LeDefaireOdoo(unittest.TestCase):
             envois,
         )
         self.assertEqual(set(), vivants)
+
+
+class LArretDesServeurs(unittest.TestCase):
+    def test_a_reused_pid_is_not_killed(self):
+        # Le serveur s'arrête au SIGTERM ; son pid revient aussitôt à un
+        # autre programme, qui ne reçoit pas de SIGKILL.
+        envois = []
+        lt.arreter_serveurs(
+            [12],
+            "/c/long-call-infra-1",
+            tuer=lambda pid, signal_: envois.append((pid, signal_)),
+            lire=lambda p: "/usr/bin/autre-programme --option",
+            delai=0,
+        )
+        self.assertEqual([(12, lt.signal.SIGTERM)], envois)
 
 
 class Monde:
