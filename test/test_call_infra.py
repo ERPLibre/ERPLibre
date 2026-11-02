@@ -10725,7 +10725,8 @@ class TestContainerPlan(unittest.TestCase):
 # l'hôte (comptes, groupes, paquets, images, conteneurs) vit dans "$FK".
 # Avec FAKE_DOWN_FAIL, le `down` de l'outil de composition échoue sans rien
 # arrêter ; avec FAKE_UP_KILL, son `up` tue tout le groupe du script par
-# SIGKILL, une fois les conteneurs lancés. La purge d'apt-get échoue pour le
+# SIGKILL, une fois les conteneurs lancés. Avec FAKE_NO_CLI, docker et
+# podman répondent 127, comme une commande absente. La purge d'apt-get échoue pour le
 # paquet FAKE_PURGE_FAIL ; celle du paquet FAKE_PURGE_SIGNAL envoie SIGTERM
 # à tout le groupe du script, comme une session coupée ; celle du paquet
 # FAKE_PURGE_CUT imprime « lecteur-parti », écrit jusqu'à ce que le lecteur
@@ -10757,6 +10758,7 @@ exit 0
 CONTAINER_STUBS = {
     "docker": _NOTE
     + r"""
+[ -z "${FAKE_NO_CLI:-}" ] || exit 127
 case "$1" in
   image) grep -qxF "$3" "$FK/images" 2>/dev/null; exit ;;
   pull)
@@ -11051,15 +11053,20 @@ class TestContainerInstallRun(ContainerSandbox):
 
     def test_docker_fresh_dev_install(self):
         plan = self.fresh_docker()
-        self.assertEqual(plan.engine_packages, ("docker.io", "docker-compose"))
+        # Debian 13 : le client est dans docker-cli, que docker.io ne fait
+        # que recommander.
+        self.assertEqual(
+            plan.engine_packages, ("docker.io", "docker-cli", "docker-compose")
+        )
         done = self.run_script(plan)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         argv = self.argv()
         self.assertIn(
             "apt-get as=root xdg= install -y --no-install-recommends"
-            " docker.io docker-compose",
+            " docker.io docker-cli docker-compose",
             argv,
         )
+        self.assertIn("docker as=root xdg= --version", argv)
         for svc in ("coturn", "ntfy"):
             self.assertIn(f"docker as=root xdg= pull {cc.IMAGES[svc]}", argv)
         self.assertIn(
@@ -11087,7 +11094,8 @@ class TestContainerInstallRun(ContainerSandbox):
             sorted(block["images_pulled"]), sorted(cc.IMAGES.values())
         )
         self.assertEqual(
-            block["engine_packages_added"], ["docker.io", "docker-compose"]
+            block["engine_packages_added"],
+            ["docker.io", "docker-cli", "docker-compose"],
         )
         self.assertEqual(block["accounts_added"], ["erplibre-coturn", "ntfy"])
         self.assertIsNone(block["restart_unit_enabled"])
@@ -11197,12 +11205,36 @@ class TestContainerInstallRun(ContainerSandbox):
             fiche,
             {
                 "accounts_added": ["erplibre-coturn", "ntfy"],
-                "engine_packages_added": ["docker.io", "docker-compose"],
+                "engine_packages_added": [
+                    "docker.io",
+                    "docker-cli",
+                    "docker-compose",
+                ],
                 "images_pulled": [],
                 "linger_added": False,
                 "restart_unit_enabled": None,
             },
         )
+
+    def test_engine_without_its_command_stops_before_any_account(self):
+        # Des paquets posés qui ne donnent pas la commande du moteur (un
+        # client recommandé seulement, que --no-install-recommends écarte)
+        # arrêtent le script sur cette cause, avant comptes et images.
+        for plan in (self.fresh_docker(), self.rootless_plan()):
+            engine = plan.new_state["container"]["engine"]
+            with self.subTest(engine=engine):
+                done = self.run_script(plan, FAKE_NO_CLI="1")
+                self.assert_no_state(done)
+                markers = ci.marker_lines(done.stdout)
+                self.assertIn(("FAILED", "engine-command"), markers)
+                for package in plan.engine_packages:
+                    self.assertIn(("ENGINE_PACKAGE", package), markers)
+                argv = self.argv()
+                self.assertIn(f"{engine} as=root xdg= --version", argv)
+                self.assertFalse(
+                    [line for line in argv if line.startswith("useradd ")]
+                )
+                self.assertFalse([line for line in argv if " pull " in line])
 
     def test_pull_failure_other_than_the_registry_limit(self):
         done = self.run_script(
@@ -11279,10 +11311,14 @@ class TestContainerInstallRun(ContainerSandbox):
         done = self.run_script(plan)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         argv = self.argv()
+        # `podman --version` seul tourne en root, comme dans la sonde : le
+        # client répond sans toucher à aucun stockage.
+        self.assertIn("podman as=root xdg= --version", argv)
         engine = [
             line
             for line in argv
             if line.split()[0] in ("podman", "podman-compose")
+            and line != "podman as=root xdg= --version"
         ]
         self.assertTrue(engine)
         for line in engine:

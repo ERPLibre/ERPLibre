@@ -2255,7 +2255,12 @@ def engine_offer(facts, engine, rootless):
     if facts.family is None:
         return ()
     return cc.engine_packages(
-        facts.os_id, facts.family, engine, rootless, facts.engines
+        facts.os_id,
+        facts.family,
+        engine,
+        rootless,
+        facts.engines,
+        os_version=facts.os_version,
     )
 
 
@@ -4159,7 +4164,10 @@ def _engine_lines(plan):
     """Lignes du moteur : les paquets de `plan.engine_packages` qui
     manquent encore, installés par apt-get ou pacman (`@@ENGINE_PACKAGE
     <nom>` pour chacun que l'installation a posé, même quand elle échoue
-    ensuite), puis l'unité qui relance les conteneurs au démarrage :
+    ensuite) ; la commande du moteur, qui doit répondre à `--version`
+    (sans démon), sinon `@@FAILED engine-command` avant tout compte et
+    toute image : un paquet qui ne fait que recommander le client pose un
+    démon sans commande. Puis l'unité qui relance les conteneurs au démarrage :
     docker.service activée et démarrée, podman-restart.service activée
     pour Podman en root (`@@RESTART_UNIT_ENABLED <unité>`, seulement
     quand elle ne l'était pas). podman-restart n'est pas lancé tout de
@@ -4191,6 +4199,9 @@ def _engine_lines(plan):
             '  [ "$ERC" = 0 ] || fail engine-packages',
             "fi",
         ]
+    lines.append(
+        f"{block['engine']} --version >/dev/null 2>&1 || fail engine-command"
+    )
     if block["rootless"]:
         return lines
     unit = {"docker": "docker.service", "podman": "podman-restart.service"}[

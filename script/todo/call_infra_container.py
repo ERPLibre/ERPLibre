@@ -110,6 +110,12 @@ _COMPOSE_PACKAGES = {
 # Ubuntu et ses dérivées nomment « docker-compose » l'ancien v1 ; le v2 y
 # est « docker-compose-v2 ».
 _UBUNTU_IDS = {"ubuntu", "linuxmint", "pop"}
+# Depuis Debian 13, le client /usr/bin/docker est dans « docker-cli », que
+# docker.io ne fait que recommander : l'installation sans recommandés
+# poserait un démon sans client. Debian 12 et Ubuntu le gardent dans
+# docker.io et n'ont aucun paquet docker-cli.
+_DOCKER_CLI_PACKAGE = "docker-cli"
+_DOCKER_CLI_DEBIAN_MAJOR = 13
 
 # Marqueurs de la section des moteurs dans la sortie de la sonde.
 ENGINE_MARKERS = frozenset(
@@ -704,13 +710,24 @@ def engine_present(facts, engine):
     return True
 
 
-def engine_packages(os_id, family, engine, rootless, facts):
+def _docker_cli_split(os_id, os_version):
+    """Le client de Docker est-il un paquet à part (_DOCKER_CLI_PACKAGE) ?
+    Sur Debian à partir de _DOCKER_CLI_DEBIAN_MAJOR, et sur testing et sid,
+    dont l'os-release ne porte aucun VERSION_ID (`os_version` vide)."""
+    if os_id != "debian":
+        return False
+    major = (os_version or "").split(".")[0]
+    return not major.isdigit() or int(major) >= _DOCKER_CLI_DEBIAN_MAJOR
+
+
+def engine_packages(os_id, family, engine, rootless, facts, *, os_version):
     """Paquets de la distribution qui manquent pour `engine` : le moteur,
-    son outil de composition, et pour le rootless newuidmap (« uidmap »
-    sur Debian et Ubuntu). `facts` (EngineFacts, ou None : rien n'est là)
-    dit ce qui est déjà présent, le moteur selon `engine_present`.
-    ValueError pour un moteur, une famille ou un rootless hors de ce que
-    l'outil installe."""
+    son client quand la distribution le sépare (`docker-cli`, d'après
+    `os_id` et `os_version`, VERSION_ID d'os-release), son outil de
+    composition, et pour le rootless newuidmap (« uidmap » sur Debian et
+    Ubuntu). `facts` (EngineFacts, ou None : rien n'est là) dit ce qui est
+    déjà présent, le moteur selon `engine_present`. ValueError pour un
+    moteur, une famille ou un rootless hors de ce que l'outil installe."""
     if engine not in ENGINES or family not in _ENGINE_PACKAGES:
         raise ValueError(f"engine packages: {engine} on {family}")
     if rootless and engine != "podman":
@@ -720,6 +737,8 @@ def engine_packages(os_id, family, engine, rootless, facts):
     wanted = []
     if not engine_present(facts, engine):
         wanted.append(_ENGINE_PACKAGES[family][engine])
+        if engine == "docker" and _docker_cli_split(os_id, os_version):
+            wanted.append(_DOCKER_CLI_PACKAGE)
     if engine not in facts.compose:
         wanted.append(_COMPOSE_PACKAGES[flavour][engine])
     if rootless and family == "debian" and not facts.newuidmap:
