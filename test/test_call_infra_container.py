@@ -810,6 +810,78 @@ class TestSmallRules(unittest.TestCase):
         )
         self.assertEqual(cc.foreign_containers(None, None), ())
 
+    def test_pending_containers_are_ours_in_the_engine_form(self):
+        # Podman rend l'image sans étiquette : la fiche d'une installation
+        # coupée reconnaît quand même ses conteneurs, pas une autre image.
+        digest = COTURN_REF.split("@")[1]
+        facts = cc.parse_engine_lines(
+            [
+                (
+                    "CONTAINER",
+                    "erplibre-call-coturn podman 0 running"
+                    f" docker.io/coturn/coturn@{digest}",
+                ),
+                (
+                    "CONTAINER",
+                    "erplibre-call-ntfy podman 0 running"
+                    " docker.io/binwiederhier/ntfy@sha256:" + "0" * 64,
+                ),
+            ]
+        )
+        self.assertEqual(
+            cc.foreign_containers(facts, None, ("podman", False)),
+            ("erplibre-call-ntfy",),
+        )
+
+
+class TestSameImage(unittest.TestCase):
+    DIGEST = COTURN_REF.split("@")[1]
+
+    def test_engine_forms_of_the_pinned_image(self):
+        # Docker rend la référence donnée à la création, avec ou sans
+        # registre ; Podman, en root comme en rootless, la rend sans
+        # étiquette.
+        for found in (
+            COTURN_REF,
+            f"docker.io/coturn/coturn@{self.DIGEST}",
+            f"coturn/coturn:4.18.0@{self.DIGEST}",
+            f"coturn/coturn@{self.DIGEST}",
+            f"index.docker.io/coturn/coturn:4.18.0@{self.DIGEST}",
+        ):
+            with self.subTest(found=found):
+                self.assertTrue(cc.same_image(found, COTURN_REF))
+
+    def test_other_or_unproven_images(self):
+        for found in (
+            "docker.io/coturn/coturn@sha256:" + "0" * 64,
+            f"docker.io/autre/coturn@{self.DIGEST}",
+            f"ghcr.io/coturn/coturn@{self.DIGEST}",
+            "docker.io/coturn/coturn:4.18.0",
+            # Un identifiant d'image seul : rien ne le relie au condensat.
+            self.DIGEST,
+            self.DIGEST.split(":")[1],
+            f"docker.io/coturn/coturn@{self.DIGEST[:-1]}",
+            "",
+            None,
+        ):
+            with self.subTest(found=found):
+                self.assertFalse(cc.same_image(found, COTURN_REF))
+
+    def test_identity(self):
+        self.assertEqual(
+            cc.image_identity(COTURN_REF),
+            ("docker.io/coturn/coturn", self.DIGEST),
+        )
+        self.assertEqual(
+            cc.image_identity(f"debian@{self.DIGEST}"),
+            ("docker.io/library/debian", self.DIGEST),
+        )
+        self.assertEqual(
+            cc.image_identity(f"localhost:5000/coturn:1@{self.DIGEST}"),
+            ("localhost:5000/coturn", self.DIGEST),
+        )
+        self.assertIsNone(cc.image_identity("docker.io/coturn/coturn:4.18.0"))
+
 
 # Outils réels que la sonde emploie ; tout le reste est un bouchon ou absent.
 BASE_TOOLS = (
