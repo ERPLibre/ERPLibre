@@ -10596,7 +10596,9 @@ class TestContainerPlan(unittest.TestCase):
 # Chaque bouchon note son argv dans "$LOG/argv", précédé du compte sous
 # lequel `runuser` l'a lancé et de son XDG_RUNTIME_DIR. L'état simulé de
 # l'hôte (comptes, groupes, paquets, images, conteneurs) vit dans "$FK".
-# La purge d'apt-get échoue pour le paquet FAKE_PURGE_FAIL ; avec
+# La purge d'apt-get échoue pour le paquet FAKE_PURGE_FAIL ; celle du
+# paquet FAKE_PURGE_SIGNAL envoie SIGTERM à tout le groupe du script,
+# comme une session coupée ; avec
 # FAKE_PURGE_WIPES, elle efface les dossiers du paquet ;
 # avec FAKE_POSTRM, celle de ntfy fait ce que fait le postrm du .deb :
 # compte supprimé, configuration effacée, dossier retiré s'il est vide.
@@ -10702,6 +10704,7 @@ mkdir -p "$ROOT/run/user/$id"
     + r"""
 if [ "$1" = purge ]; then
   [ "$3" != "${FAKE_PURGE_FAIL:-}" ] || exit 100
+  [ "$3" != "${FAKE_PURGE_SIGNAL:-}" ] || kill -TERM 0
   for p; do
     grep -vxF -- "$p" "$FK/installed" > "$FK/installed.new"
     mv "$FK/installed.new" "$FK/installed"
@@ -11728,6 +11731,51 @@ class TestMigrationRun(ContainerSandbox):
         )
         self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
         self.assertEqual(self.secrets(), secrets)
+        self.assertEqual(self.user_db(), USER_DB)
+
+    def test_cut_during_the_ntfy_purge_rolls_back(self):
+        plan, before = self.to_container(supplied())
+        done = self.run_script(plan, FAKE_PURGE_SIGNAL="ntfy")
+        self.assertEqual(done.returncode, 129, done.stdout + done.stderr)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("MIGRATION", "rolled-back"), markers)
+        # Les dossiers mis à l'abri pour la purge sont revenus, l'état
+        # d'avant reste.
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_TLS_DIR + "/ntfy.key")), TURN_KEY
+        )
+        self.assertFalse(os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)))
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+        self.assertIn("bash install_ntfy", self.argv())
+
+    def test_dirs_held_by_a_killed_run_come_back_first(self):
+        plan, _before = self.to_container()
+        hold = self.path(ci.HOLD_PREFIX + "20200101-000000")
+        os.makedirs(hold)
+        os.rename(self.path(ci.NTFY_DATA_DIR), hold + "/ntfy-data")
+        done = self.run_script(plan, FAKE_PURGE_WIPES="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        backup = f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}"
+        self.assertIn(
+            ("BACKUP", f"{backup}/user.db"), ci.marker_lines(done.stdout)
+        )
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertFalse(os.path.exists(hold))
+        # Leur place reprise entre-temps : rien ne change, l'opérateur
+        # tranche.
+        plan, before = self.to_container()
+        os.makedirs(hold + "/ntfy-data")
+        write(hold + "/ntfy-data/user.db", "ancienne base", 0o600)
+        done = self.run_script(plan)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(
+            ("FAILED", "hold-ntfy-data"), ci.marker_lines(done.stdout)
+        )
+        self.assertFalse(
+            [line for line in self.argv() if line.startswith("systemctl ")]
+        )
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
         self.assertEqual(self.user_db(), USER_DB)
 
     def test_rollback_restores_a_database_the_container_changed(self):
