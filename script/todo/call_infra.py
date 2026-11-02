@@ -8413,9 +8413,11 @@ def _container_service_lines(state, records, facts_remote):
     conteneur que le bloc `container` désigne (même moteur, même mode
     rootless), « missing » sans lui, et non celui d'une unité systemd
     qu'un paquet adopté garderait sur l'hôte. Un conteneur qui tourne sous
-    un autre uid que celui de l'état : `call_infra_check_container_account`
-    (la base de coturn, que la vérification et les scripts d'Odoo lisent
-    sous le compte de l'état, ne serait pas la sienne)."""
+    un autre uid que celui de l'état, ou sans `user` uid:gid non root (uid
+    None, « - » dans le détail : défaut de l'image, nom, root) :
+    `call_infra_check_container_account` (la base de coturn, que la
+    vérification et les scripts d'Odoo lisent sous le compte de l'état, ne
+    serait pas la sienne)."""
     block = state.get("container")
     block = block if isinstance(block, dict) else {}
     found = facts_remote.get("containers") or {}
@@ -8435,13 +8437,14 @@ def _container_service_lines(state, records, facts_remote):
         else:
             current = "active" if match[2] == "running" else match[2]
             expected = record.get("uid")
-            if match[3] is not None and match[3] != expected:
+            if match[3] is None or match[3] != expected:
+                found_uid = "-" if match[3] is None else match[3]
                 lines.append(
                     CheckLine(
                         name,
                         False,
                         "call_infra_check_container_account",
-                        {"found": match[3], "expected": expected},
+                        {"found": found_uid, "expected": expected},
                     )
                 )
                 continue
