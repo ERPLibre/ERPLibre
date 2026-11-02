@@ -4823,6 +4823,7 @@ def _to_container_rollback_lines(plan, stamp, records):
     # ports.
     head = [
         f"if [ -f {compose} ]; then",
+        *_volume_rm_lines("  "),
         f"  if comp down >/dev/null 2>&1; then rm -f {compose};",
         '  else echo "@@ROLLBACK_FAILED compose-down"; MRB=0; fi',
         "fi",
@@ -5063,6 +5064,7 @@ def _to_packages_lines(plan, stamp):
     lines += [
         *_to_packages_rollback_lines(plan, stamp, services),
         "MIG=1",
+        *_volume_rm_lines(),
         _indented("comp down") + " || fail compose-down",
         *_migration_backup_lines(services, stamp),
     ]
@@ -5100,6 +5102,28 @@ def _to_packages_lines(plan, stamp):
                 f" ntfy:ntfy {_host(path)} || fail chown-ntfy; fi"
             )
     return lines
+
+
+def _volume_rm_lines(indent=""):
+    """Lignes `sh` qui arrêtent puis retirent chaque conteneur de l'outil
+    encore là avec ses volumes anonymes (`eng rm -v`), avant le `down` de
+    l'outil de composition : l'image de coturn déclare un volume, que
+    `down` sans `-v` garde, et que podman-compose garde même avec `-v`,
+    faute d'étiquette du projet. Chaque montage de l'outil est un chemin
+    de l'hôte : aucune donnée n'y vit. Un retrait refusé laisse le
+    conteneur au `down` qui suit."""
+    names = " ".join(cc.CONTAINERS[svc] for svc in SERVICES)
+    return [
+        indent + line
+        for line in (
+            f"for C in {names}; do",
+            f'  if eng inspect -f {shlex.quote(_STATUS_FORMAT)} "$C"'
+            " >/dev/null 2>&1; then",
+            '    eng stop "$C" >/dev/null 2>&1; eng rm -v "$C" >/dev/null 2>&1',
+            "  fi",
+            "done",
+        )
+    ]
 
 
 def _image_removal_lines(plan):
@@ -6537,7 +6561,7 @@ def _userdb_lines(unit, realm, account=None):
         # compte de coturn ; les lignes lues reviennent à l'appelant.
         'sqr() { runuser -u "$U" -- sqlite3 -readonly -bail -init /dev/null'
         ' "$DB" "$1" 2>"$D/sqr.err"; SRC=$?;'
-        " sed 's/^/  /' \"$D/sqr.err\" >&2; return \"$SRC\"; }",
+        ' sed \'s/^/  /\' "$D/sqr.err" >&2; return "$SRC"; }',
         "revoke() {",
         '  [ -f "$DB" ] || return 0',
         "  VALS=$(sqr \"SELECT value FROM turn_secret WHERE realm='$REALM';\")"
@@ -9362,7 +9386,8 @@ def _container_uninstall_lines(state, additions, records):
     en marche (`_container_admin_lines`) ; les conteneurs arrêtés et
     retirés avec leurs volumes anonymes (`comp down -v` : chaque montage de
     l'outil est un chemin de l'hôte, et l'image de coturn déclare un volume
-    que `down` seul garderait), puis le fichier compose ; sans lui, chaque
+    que `down` seul garderait ; `_volume_rm_lines` d'abord, pour
+    podman-compose), puis le fichier compose ; sans lui, chaque
     conteneur consigné retiré par son nom ; enfin les images que l'outil a
     tirées (`_pulled_image_lines`). Un `down` qui échoue garde le fichier : la
     relance le reprend."""
@@ -9381,6 +9406,7 @@ def _container_uninstall_lines(state, additions, records):
     path = _host(cc.COMPOSE_FILE)
     lines += [
         f"if [ -f {path} ]; then",
+        *_volume_rm_lines("  "),
         f"  if {_indented('comp down -v')}; then",
         f"    if rm -f {path}; then"
         f' echo "@@REMOVED compose {cc.COMPOSE_FILE}";',
