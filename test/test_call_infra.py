@@ -3031,6 +3031,7 @@ class TestCheckRemoteRun(unittest.TestCase):
                 "esac\n" % (IN_C, added),
             )
             write(os.path.join(stubs, "nft"), "#!/bin/sh\nexit 1\n")
+            shadow_engines(stubs)
             before = snapshot(root)
             done = subprocess.run(
                 ["sh", "-c", ci.check_remote_script(root=root)],
@@ -3087,6 +3088,7 @@ class TestCheckRemoteRun(unittest.TestCase):
             )
             for name in ("ufw", "systemctl"):
                 write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
+            shadow_engines(stubs)
             done = subprocess.run(
                 ["sh", "-c", ci.check_remote_script(root=tmp)],
                 capture_output=True,
@@ -3184,6 +3186,14 @@ class TestHttpsGet(unittest.TestCase):
         facts = ci.parse_check_remote(remote_output(state, {"ntfy": "active"}))
         line = by_name(ci.check_local(facts, "127.0.0.1", None))["ntfy-health"]
         self.assertIs(line.ok, True, line)
+
+
+def shadow_engines(stubs):
+    """Doublures qui passent devant tout vrai moteur du PATH (le vrai
+    `docker` peut exister sur la machine des tests) : elles échouent sans
+    rien faire."""
+    for name in STUB_ODOO_ENGINES:
+        write(os.path.join(stubs, name), "#!/bin/sh\nexit 97\n")
 
 
 def snapshot(root):
@@ -6751,6 +6761,7 @@ class TestProductionCheck(unittest.TestCase):
             )
             for name in ("ufw", "nft"):
                 write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
+            shadow_engines(stubs)
             before = snapshot(root)
             done = subprocess.run(
                 ["sh", "-c", ci.check_remote_script(root=root)],
@@ -7570,8 +7581,13 @@ echo "bash $*" >> "$STUB_LOG"
 env | grep -E '^TURN_' | sort > "$LOG/$name.env"
 if [ -n "${TURN_CERT_FILE:-}" ]; then cat "$TURN_CERT_FILE" > "$LOG/$name.cert"; fi
 echo "@@ACTIVE ${name#install_} active"
+if [ -n "${STUB_BASH_OUT:-}" ]; then printf '%s\n' "$STUB_BASH_OUT"; fi
 exit "${RC_INSTALLER:-0}"
 """
+# Moteurs et outils de composition : aucun script d'Odoo par paquets ne les
+# appelle. Le vrai `docker` peut exister sur la machine des tests : ces
+# doublures passent devant lui dans le PATH, notent l'appel et échouent.
+STUB_ODOO_ENGINES = ("docker", "podman", "docker-compose", "podman-compose")
 # Commandes relayées vers la vraie : leur argv est noté, pour prouver qu'aucun
 # secret n'y passe.
 RELAYED_COMMANDS = (
@@ -7667,6 +7683,11 @@ class OdooSandbox(unittest.TestCase):
                 '#!/bin/sh\necho "%s $*" >> "$STUB_LOG"\n' % name,
             )
         write(os.path.join(self.stubs, "id"), "#!/bin/sh\nexit 0\n")
+        for name in STUB_ODOO_ENGINES:
+            write(
+                os.path.join(self.stubs, name),
+                '#!/bin/sh\necho "%s $*" >> "$STUB_LOG"\nexit 97\n' % name,
+            )
         for name in RELAYED_COMMANDS:
             real = shutil.which(name)
             write(
@@ -12327,6 +12348,617 @@ class TestNtfyCli(unittest.TestCase):
                 self.assertEqual(
                     caught.exception.key, "call_infra_state_invalid"
                 )
+
+
+STUB_ODOO_DOCKER = r"""#!/bin/sh
+echo "docker $*" >> "$STUB_LOG"
+case "$1" in
+  inspect) echo "${DOCKER_STATUS:-running}" ;;
+  compose) exit "${RC_COMPOSE:-0}" ;;
+esac
+"""
+COMPOSE_RUN = (
+    "docker compose -f /etc/erplibre-call/compose.yml -p erplibre-call"
+)
+
+
+def container_state(rootless=False, turn_mode=None, odoos=None):
+    """L'état d'une installation en conteneurs réussie : en root, coturn
+    sous le compte `turnserver` que son paquet a laissé ; en rootless, les
+    deux services sous le compte rootless."""
+    if rootless:
+        ans = container_answers(engine="podman", rootless=True)
+    else:
+        ans = container_answers()
+    state = container_installed(ans).state
+    if not rootless:
+        uid, gid = ACCOUNT_IDS["turnserver"]
+        state["services"]["coturn"].update(
+            account="turnserver", uid=uid, gid=gid
+        )
+    if turn_mode is not None:
+        state["turn_mode"] = turn_mode
+    if turn_mode == "secret":
+        state["check_secret_sha256"] = sha(CHECK_SECRET)
+    if odoos is not None:
+        state["odoos"] = dict(odoos)
+    return state
+
+
+class TestContainerOdoo(OdooSandbox):
+    """Les scripts d'un serveur Odoo sur un coturn et un ntfy en
+    conteneurs : la base lue et écrite sur l'hôte sous le compte du
+    conteneur, coturn recréé seulement quand sa configuration change, ntfy
+    redémarré par l'outil de composition."""
+
+    def setUp(self):
+        super().setUp()
+        write(os.path.join(self.stubs, "docker"), STUB_ODOO_DOCKER)
+
+    def add(
+        self,
+        state,
+        key=KEY_A,
+        kind="secret",
+        value=SECRET_A,
+        user=None,
+        exempt=None,
+        **kw,
+    ):
+        kw.setdefault("check_secret", CHECK_SECRET)
+        return ci.odoo_add_script(
+            state, key, kind, value, user, exempt, NOW, root=self.root, **kw
+        )
+
+    def calls(self, prefix):
+        return [a for a in self.argv() if a.startswith(prefix)]
+
+    def test_rootful_database_read_as_the_coturn_container_account(self):
+        state = container_state(
+            turn_mode="secret", odoos={KEY_A: secret_entry(SECRET_A)}
+        )
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        script = self.add(state, key=KEY_B, value=SECRET_B)
+        self.assertIn("U=turnserver", script.splitlines())
+        self.assertNotIn("systemctl show", script)
+        done = self.run_script(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A, SECRET_B})
+        runs = self.calls("runuser ")
+        self.assertTrue(runs)
+        self.assertTrue(
+            all(a.startswith("runuser -u turnserver ") for a in runs)
+        )
+        self.assertEqual(self.calls("systemctl"), [])
+
+    def test_rootless_database_read_as_the_rootless_account(self):
+        state = container_state(
+            rootless=True,
+            turn_mode="secret",
+            odoos={KEY_A: secret_entry(SECRET_A)},
+        )
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        script = self.add(state, key=KEY_B, value=SECRET_B)
+        self.assertIn("U=erplibre-call", script.splitlines())
+        self.assertNotIn("systemctl show", script)
+        done = self.run_script(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertTrue(
+            all(
+                a.startswith("runuser -u erplibre-call ")
+                for a in self.calls("runuser ")
+            )
+        )
+
+    def test_second_module_odoo_touches_no_container(self):
+        state = container_state(
+            turn_mode="secret", odoos={KEY_A: secret_entry(SECRET_A)}
+        )
+        self.seed(secrets=(CHECK_SECRET, SECRET_A), check_user=False)
+        scripts = [
+            self.add(state, key=KEY_B, value=SECRET_B),
+            ci.odoo_remove_script(state, KEY_A, now=NOW, root=self.root),
+            ci.odoo_rollback_script(
+                state, KEY_A, sha(SECRET_A), root=self.root
+            ),
+        ]
+        rotated = ci.odoo_added_state(
+            state, KEY_A, "secret", SECRET_B, None, None, NOW
+        )
+        scripts.append(self.add(rotated, value=SECRET_C))
+        for script in scripts:
+            for word in ("compose", "kill", "restart", "install_coturn"):
+                self.assertNotIn(word, script)
+        done = self.run_script(scripts[0])
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.calls("docker"), [])
+
+    def test_first_module_odoo_recreates_coturn_once_on_a_changed_config(self):
+        state = container_state(turn_mode="fixed", odoos={})
+        self.seed()
+        self.put_state(state)
+        self.put(ci.COTURN_APPLIED_PENDING, "nouvelle\n")
+        self.put(ci.COTURN_APPLIED, "ancienne\n")
+        script = self.add(state)
+        self.assertEqual(script.count("--force-recreate coturn"), 1)
+        lines = script.splitlines()
+        guard = lines.index(
+            "if grep -q '^@@RECREATE 1$' \"$D/coturn.out\"; then"
+        )
+        recreate = next(
+            i for i, ln in enumerate(lines) if "--force-recreate" in ln
+        )
+        self.assertLess(guard, recreate)
+        done = self.run_script(script, STUB_BASH_OUT="@@RECREATE 1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        env = self.installer_env()
+        self.assertEqual(env["TURN_TARGET"], "container")
+        self.assertEqual(env["TURN_SERVICE_USER"], "turnserver")
+        self.assertEqual(env["TURN_AUTH"], "secret")
+        self.assertEqual(
+            self.calls("docker compose"),
+            [COMPOSE_RUN + " up -d --force-recreate coturn"],
+        )
+        self.assertFalse(os.path.exists(self.path(ci.COTURN_APPLIED_PENDING)))
+        with open(self.path(ci.COTURN_APPLIED)) as handle:
+            self.assertEqual(handle.read(), "nouvelle\n")
+        self.assertEqual(self.secrets(), {CHECK_SECRET, SECRET_A})
+        self.assertEqual(self.state_on_host()["turn_mode"], "secret")
+        self.assertEqual(done.stdout.splitlines()[-1], "@@ODOO_ADDED yes")
+        self.assertEqual(self.calls("systemctl"), [])
+
+    def test_rootless_recreate_runs_under_the_rootless_account(self):
+        state = container_state(rootless=True, turn_mode="fixed", odoos={})
+        self.seed()
+        write(
+            os.path.join(self.stubs, "podman-compose"),
+            '#!/bin/sh\necho "podman-compose $*" >> "$STUB_LOG"\n',
+        )
+        write(
+            os.path.join(self.stubs, "podman"),
+            '#!/bin/sh\necho "podman $*" >> "$STUB_LOG"\necho running\n',
+        )
+        script = self.add(state)
+        self.assertIn("RUID=995", script.splitlines())
+        done = self.run_script(script, STUB_BASH_OUT="@@RECREATE 1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            self.installer_env()["TURN_SERVICE_USER"], "erplibre-call"
+        )
+        self.assertEqual(
+            self.calls("podman-compose"),
+            [
+                "podman-compose -f /etc/erplibre-call/compose.yml"
+                " -p erplibre-call up -d --force-recreate coturn"
+            ],
+        )
+        prefix = (
+            "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/995"
+            " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus"
+        )
+        self.assertIn(
+            f"{prefix} podman-compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d --force-recreate coturn",
+            self.argv(),
+        )
+        self.assertIn(
+            f"{prefix} podman inspect -f {{{{.State.Status}}}}"
+            " erplibre-call-coturn",
+            self.argv(),
+        )
+        self.assertEqual(self.calls("docker"), [])
+
+    def test_unchanged_coturn_config_recreates_nothing(self):
+        state = container_state(turn_mode="fixed", odoos={})
+        self.seed()
+        done = self.run_script(self.add(state), STUB_BASH_OUT="@@RECREATE 0")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.calls("docker"), [])
+
+    def test_coturn_not_running_after_the_recreate_fails(self):
+        state = container_state(turn_mode="fixed", odoos={})
+        self.seed()
+        self.put_state(state)
+        self.put(ci.COTURN_APPLIED_PENDING, "nouvelle\n")
+        done = self.run_script(
+            self.add(state),
+            STUB_BASH_OUT="@@RECREATE 1",
+            DOCKER_STATUS="exited",
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("@@FAILED switch-recreate", done.stdout)
+        self.assertFalse(os.path.exists(self.path(ci.COTURN_APPLIED_PENDING)))
+        self.assertFalse(os.path.exists(self.path(ci.COTURN_APPLIED)))
+        self.assertEqual(self.secrets(), set())
+        self.assertEqual(self.state_on_host(), state)
+
+    def test_failed_installer_stops_before_any_container(self):
+        state = container_state(turn_mode="fixed", odoos={})
+        self.seed()
+        done = self.run_script(
+            self.add(state), STUB_BASH_OUT="@@RECREATE 1", RC_INSTALLER="1"
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("@@FAILED switch", done.stdout)
+        self.assertEqual(self.calls("docker"), [])
+
+    def test_exempt_edit_restarts_ntfy_through_compose(self):
+        state = container_state(turn_mode="secret", odoos={})
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put(ci.NTFY_CONFIG, NTFY_YML)
+        script = self.add(state, exempt="198.51.100.20", ntfy_text=NTFY_YML)
+        self.assertIn(COMPOSE_RUN + " restart ntfy", script)
+        self.assertNotIn("systemctl", script)
+        done = self.run_script(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            text = handle.read()
+        self.assertIn("203.0.113.50,198.51.100.20", text)
+        self.assertEqual(
+            self.calls("docker compose"), [COMPOSE_RUN + " restart ntfy"]
+        )
+        self.assertIn(
+            "docker inspect -f {{.State.Status}} erplibre-call-ntfy",
+            self.argv(),
+        )
+        added = ci.odoo_added_state(
+            state,
+            KEY_A,
+            "secret",
+            SECRET_A,
+            None,
+            "198.51.100.20",
+            NOW,
+            ntfy_text=NTFY_YML,
+        )
+        done = self.run_script(
+            ci.odoo_remove_script(
+                added, KEY_A, now=NOW, ntfy_text=text, root=self.root
+            )
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), NTFY_YML)
+
+    def test_rollback_restarts_ntfy_through_compose(self):
+        state = container_state(turn_mode="secret", odoos={})
+        script = ci.odoo_rollback_script(
+            state,
+            KEY_A,
+            sha(SECRET_A),
+            exempt="198.51.100.20",
+            ntfy_text=NTFY_YML,
+            root=self.root,
+        )
+        self.assertIn(COMPOSE_RUN + " restart ntfy", script)
+        self.assertNotIn("systemctl", script)
+
+    def test_ntfy_not_running_after_the_restart_puts_the_file_back(self):
+        state = container_state(turn_mode="secret", odoos={})
+        self.seed(secrets=(CHECK_SECRET,), check_user=False)
+        self.put(ci.NTFY_CONFIG, NTFY_YML)
+        done = self.run_script(
+            self.add(state, exempt="198.51.100.20", ntfy_text=NTFY_YML),
+            DOCKER_STATUS="exited",
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("@@FAILED ntfy-restart", done.stdout)
+        with open(self.path(ci.NTFY_CONFIG)) as handle:
+            self.assertEqual(handle.read(), NTFY_YML)
+        self.assertEqual(self.secrets(), {CHECK_SECRET})
+
+    def test_tampered_container_state_refused(self):
+        state = container_state(
+            turn_mode="secret", odoos={KEY_A: secret_entry(SECRET_A)}
+        )
+        builders = (
+            lambda s: self.add(s, key=KEY_B, value=SECRET_B),
+            lambda s: ci.odoo_remove_script(s, KEY_A, now=NOW),
+            lambda s: ci.odoo_rollback_script(s, KEY_A, sha(SECRET_A)),
+        )
+        for path, value in (
+            (("services", "coturn", "account"), "root;id"),
+            (("services", "coturn", "account"), "root"),
+            (("container", "engine"), "sh"),
+            (("services", "ntfy", "uid"), 0),
+        ):
+            bad = copy.deepcopy(state)
+            ci._put(bad, path, value)
+            for build in builders:
+                with self.subTest(path=path, value=value):
+                    with self.assertRaises(ci.Refusal) as caught:
+                        build(bad)
+                    self.assertEqual(
+                        caught.exception.key, "call_infra_state_invalid"
+                    )
+
+
+def container_remote(state, containers=(), active=None):
+    """Sortie de `check_remote_script` d'un hôte en conteneurs inventé :
+    les lignes `@@CONTAINER_ACTIVE` de `containers` en plus."""
+    extra = "".join(f"@@CONTAINER_ACTIVE {line}\n" for line in containers)
+    return remote_output(state, active).replace("@@END\n", extra + "@@END\n")
+
+
+class TestContainerCheck(unittest.TestCase):
+    RUNNING = (
+        "coturn docker 0 running 998:998",
+        "ntfy docker 0 running 996:996",
+    )
+
+    def check(self, state, containers=RUNNING, active=None):
+        if active is None:
+            active = {"coturn": "active", "ntfy": "active"}
+        facts = ci.parse_check_remote(
+            container_remote(state, containers, active)
+        )
+        return ci.check_local(
+            facts,
+            HOST,
+            None,
+            allocate=FakeAllocate(),
+            https_get=FakeGet(),
+            now=NOW,
+        )
+
+    def test_running_container_under_the_recorded_uid(self):
+        lines = by_name(self.check(container_state()))
+        self.assertEqual(
+            lines["service-coturn"],
+            ci.CheckLine(
+                "service-coturn",
+                True,
+                "call_infra_check_active",
+                {"state": "active"},
+            ),
+        )
+        self.assertTrue(lines["service-ntfy"].ok)
+
+    def test_another_uid_than_the_state_is_a_mismatch(self):
+        state = container_state()
+        state["services"]["coturn"]["uid"] = 999
+        line = by_name(self.check(state))["service-coturn"]
+        self.assertIs(line.ok, False)
+        self.assertEqual(line.detail, "call_infra_check_container_account")
+        self.assertEqual(line.values, {"found": 998, "expected": 999})
+        self.assertIn(line.detail, ci.CHECK_KEYS)
+
+    def test_status_comes_from_the_recorded_engine_and_mode(self):
+        lines = by_name(
+            self.check(
+                container_state(),
+                containers=(
+                    "coturn podman 0 running 998:998",
+                    "coturn docker 0 exited 998:998",
+                    "ntfy docker 1 running 996:996",
+                ),
+            )
+        )
+        self.assertEqual(
+            (lines["service-coturn"].ok, lines["service-coturn"].values),
+            (False, {"state": "exited"}),
+        )
+        # Un ntfy rootless n'est pas celui d'un état en root.
+        self.assertEqual(lines["service-ntfy"].values, {"state": "missing"})
+
+    def test_an_active_unit_does_not_stand_for_a_missing_container(self):
+        lines = by_name(self.check(container_state(), containers=()))
+        self.assertEqual(
+            (lines["service-coturn"].ok, lines["service-coturn"].values),
+            (False, {"state": "missing"}),
+        )
+
+    def test_rootless_container(self):
+        state = container_state(rootless=True)
+        lines = by_name(
+            self.check(
+                state,
+                containers=(
+                    "coturn podman 1 running 995:995",
+                    "ntfy podman 1 running 995:995",
+                ),
+            )
+        )
+        self.assertTrue(lines["service-coturn"].ok)
+        self.assertTrue(lines["service-ntfy"].ok)
+
+    def test_other_lines_unchanged(self):
+        packages = [line.name for line in self.check(installed_state(), ())]
+        lines = self.check(container_state())
+        self.assertEqual([line.name for line in lines], packages)
+        self.assertEqual(
+            [line.name for line in lines],
+            [
+                "turn-udp",
+                "turn-tcp",
+                "ntfy-health",
+                "firewall",
+                "service-coturn",
+                "service-ntfy",
+            ],
+        )
+
+    def test_packages_state_ignores_the_container_lines(self):
+        state = installed_state()
+        plain = self.check(state, containers=())
+        with_containers = self.check(
+            state, containers=("coturn docker 0 exited 999:999",)
+        )
+        self.assertEqual(with_containers, plain)
+
+    def test_parse_container_lines(self):
+        facts = ci.parse_check_remote(
+            "@@CONTAINER_ACTIVE coturn docker 0 running 998:998\n"
+            "@@CONTAINER_ACTIVE ntfy podman 1 exited -\n"
+            "@@CONTAINER_ACTIVE nginx docker 0 running 1:1\n"
+            "@@CONTAINER_ACTIVE coturn lxc 0 running 1:1\n"
+            "@@CONTAINER_ACTIVE coturn docker 2 running 1:1\n"
+            "@@CONTAINER_ACTIVE coturn docker 0 Running 1:1\n"
+            "@@CONTAINER_ACTIVE coturn docker 0 running root\n"
+            "@@CONTAINER_ACTIVE coturn docker 0 running\n"
+            "@@END\n"
+        )
+        self.assertEqual(
+            facts["containers"],
+            {
+                "coturn": [("docker", False, "running", 998)],
+                "ntfy": [("podman", True, "exited", None)],
+            },
+        )
+
+
+STUB_CHECK_RUNUSER = (
+    '#!/bin/sh\necho "runuser $*" >> "$LOG"\n'
+    'while [ "$1" != -- ]; do shift; done; shift; exec "$@"\n'
+)
+
+
+class TestContainerCheckRemoteRun(unittest.TestCase):
+    """`check_remote_script` sur un hôte en conteneurs, chaque moteur et
+    outil système remplacé par une doublure qui note son appel."""
+
+    def run_check(self, systemctl, engine, engine_out, passwd, dirs=()):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "root")
+            stubs = os.path.join(tmp, "stubs")
+            log = os.path.join(tmp, "log")
+            write(root + ci.COTURN_DB, "base", 0o640)
+            for path in dirs:
+                os.makedirs(root + path)
+            shadow_engines(stubs)
+            write(os.path.join(stubs, "systemctl"), systemctl)
+            write(
+                os.path.join(stubs, engine),
+                f'#!/bin/sh\necho "{engine} $*" >> "$LOG"\n'
+                '[ "$1" = inspect ] || exit 97\n'
+                'case "$4" in\n'
+                + "".join(
+                    f"  {name}) echo '{out}' ;;\n"
+                    for name, out in engine_out.items()
+                )
+                + "  *) exit 1 ;;\nesac\n",
+            )
+            write(
+                os.path.join(stubs, "getent"),
+                '#!/bin/sh\ncase "$2" in\n'
+                + "".join(
+                    f"  {key}) echo '{line}' ;;\n"
+                    for key, line in passwd.items()
+                )
+                + "  *) exit 2 ;;\nesac\n",
+            )
+            write(os.path.join(stubs, "runuser"), STUB_CHECK_RUNUSER)
+            write(
+                os.path.join(stubs, "sqlite3"),
+                '#!/bin/sh\necho "sqlite3 $*" >> "$LOG"\n'
+                "echo %s\n" % CHECK_KEY,
+            )
+            for name in ("ufw", "nft"):
+                write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
+            before = snapshot(root)
+            done = subprocess.run(
+                ["sh", "-c", ci.check_remote_script(root=root)],
+                capture_output=True,
+                text=True,
+                env=dict(
+                    os.environ, PATH=stubs + ":" + os.environ["PATH"], LOG=log
+                ),
+                timeout=30,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(snapshot(root), before)
+            calls = []
+            if os.path.exists(log):
+                with open(log) as handle:
+                    calls = handle.read().splitlines()
+        return done.stdout, calls
+
+    def test_rootful_docker_containers(self):
+        out, calls = self.run_check(
+            "#!/bin/sh\n"
+            'case "$1 $2" in\n'
+            "  'is-active docker.service') echo active ;;\n"
+            "  *) exit 3 ;;\n"
+            "esac\n",
+            "docker",
+            {
+                "erplibre-call-coturn": "running 998:998",
+                "erplibre-call-ntfy": "exited 996:996",
+            },
+            {"998": "turnserver:x:998:998::/var/lib/turnserver:/bin/false"},
+        )
+        lines = out.splitlines()
+        self.assertIn(
+            "@@CONTAINER_ACTIVE coturn docker 0 running 998:998", lines
+        )
+        self.assertIn("@@CONTAINER_ACTIVE ntfy docker 0 exited 996:996", lines)
+        facts = ci.parse_check_remote(out)
+        self.assertEqual(
+            facts["active"], {"coturn": "active", "ntfy": "exited"}
+        )
+        self.assertEqual(facts["check_key"], CHECK_KEY)
+        engine = [c for c in calls if c.startswith("docker ")]
+        self.assertTrue(engine)
+        self.assertTrue(all(c.startswith("docker inspect ") for c in engine))
+        reads = [c for c in calls if c.startswith("runuser ")]
+        self.assertTrue(reads)
+        self.assertTrue(
+            all(
+                c.startswith("runuser -u turnserver -- sqlite3 -readonly")
+                for c in reads
+            )
+        )
+
+    def test_docker_not_running_is_never_woken(self):
+        out, calls = self.run_check(
+            "#!/bin/sh\nexit 3\n",
+            "docker",
+            {"erplibre-call-coturn": "running 998:998"},
+            {},
+        )
+        self.assertNotIn("@@CONTAINER_ACTIVE", out)
+        self.assertEqual([c for c in calls if c.startswith("docker")], [])
+        self.assertEqual(
+            ci.parse_check_remote(out)["active"],
+            {"coturn": "absent", "ntfy": "absent"},
+        )
+
+    def test_rootless_podman_containers(self):
+        home = cc.ROOTLESS_HOME
+        out, calls = self.run_check(
+            "#!/bin/sh\nexit 3\n",
+            "podman",
+            {
+                "erplibre-call-coturn": "running 995:995",
+                "erplibre-call-ntfy": "running 995:995",
+            },
+            {
+                "erplibre-call": f"erplibre-call:x:995:995::{home}:/bin/false",
+                "995": f"erplibre-call:x:995:995::{home}:/bin/false",
+            },
+            dirs=("/run/user/995", f"{home}/{cc.PODMAN_USER_STORAGE}"),
+        )
+        lines = out.splitlines()
+        self.assertIn(
+            "@@CONTAINER_ACTIVE coturn podman 1 running 995:995", lines
+        )
+        engine = [c for c in calls if c.startswith("podman ")]
+        self.assertTrue(engine)
+        self.assertTrue(all(c.startswith("podman inspect ") for c in engine))
+        self.assertIn(
+            "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/995"
+            " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus podman"
+            " inspect -f {{.State.Status}} {{.Config.User}}"
+            " erplibre-call-coturn",
+            calls,
+        )
+        self.assertTrue(
+            [
+                c
+                for c in calls
+                if c.startswith("runuser -u erplibre-call -- sqlite3")
+            ]
+        )
 
 
 class TestAppliedDigestPaths(unittest.TestCase):

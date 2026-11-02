@@ -6,6 +6,7 @@
 ntfy, script d'accès du téléphone, édition de `server.yml`, lien et QR."""
 
 import ast
+import base64
 import contextlib
 import io
 import os
@@ -453,6 +454,177 @@ class TestRunners(unittest.TestCase):
                 "ntfy",
             ],
         )
+
+
+# Préfixe de la CLI d'un ntfy en conteneur, tel que `call_infra.ntfy_cli`
+# le donne : la commande `ntfy` lancée dans le conteneur par le moteur.
+CONTAINER_CLI = (
+    "docker exec -e NTFY_PASSWORD -u 997:997 erplibre-call-ntfy ntfy"
+)
+COMPOSE_RESTART = (
+    "docker compose -f /etc/erplibre-call/compose.yml -p erplibre-call"
+    " restart ntfy"
+)
+
+
+class TestCliPrefix(unittest.TestCase):
+    """Les scripts du téléphone par la CLI d'un état : le binaire de l'hôte
+    par défaut, à l'octet près comme avant, ou la CLI dans son conteneur."""
+
+    def test_default_scripts_unchanged(self):
+        self.assertEqual(
+            nm.access_script("/c.yml", "erm_alice", "upab12cd34"),
+            "set -e\n"
+            "ntfy access --config /c.yml everyone 'up*' write-only\n"
+            'NTFY_PASSWORD="$(head -c 32 /dev/urandom | base64)"'
+            " ntfy user --config /c.yml add erm_alice\n"
+            "ntfy access --config /c.yml erm_alice 'upab12cd34*' read-only\n"
+            "ntfy token --config /c.yml add --label=erplibre-mobile"
+            " erm_alice\n",
+        )
+        self.assertEqual(
+            nm.revoke_script("/c.yml", "erm_alice"),
+            "set -e\nntfy user --config /c.yml del erm_alice\n",
+        )
+        self.assertEqual(
+            nm.list_script("/c.yml"), "ntfy access --config /c.yml\n"
+        )
+        self.assertEqual(
+            nm.restart_script(),
+            "systemctl restart ntfy\nsleep 2\n"
+            'echo "@@ACTIVE $(systemctl is-active ntfy)"\n',
+        )
+        self.assertEqual(
+            nm.restore_command("/c.yml", "20260101"),
+            "cp -p /c.yml.bak-20260101 /c.yml && systemctl restart ntfy",
+        )
+        inspect = nm.inspect_script("/c.yml")
+        self.assertEqual(inspect, nm.inspect_script("/c.yml", None))
+        self.assertNotIn("@@STATE", inspect)
+        self.assertTrue(
+            inspect.endswith(
+                'echo "@@UNIT $(systemctl show -p LoadState --value ntfy'
+                ' 2>/dev/null || echo ?)"\n'
+            )
+        )
+
+    def test_container_cli_keeps_every_call_on_its_config(self):
+        script = nm.access_script(
+            "/c.yml", "erm_alice", "upab12cd34", cli=CONTAINER_CLI
+        )
+        self.assertIn(
+            'NTFY_PASSWORD="$(head -c 32 /dev/urandom | base64)" '
+            + CONTAINER_CLI
+            + " user --config /c.yml add erm_alice",
+            script.splitlines(),
+        )
+        calls = ntfy_calls(script)
+        self.assertEqual(len(calls), 4)
+        for line in calls:
+            self.assertTrue(
+                line.split(" ntfy ")[0].endswith("erplibre-call-ntfy")
+            )
+            self.assertRegex(line, CONFIG_CALL)
+        for other in (
+            nm.revoke_script("/c.yml", "erm_alice", cli=CONTAINER_CLI),
+            nm.list_script("/c.yml", cli=CONTAINER_CLI),
+        ):
+            self.assertIn(CONTAINER_CLI + " ", other)
+            for line in ntfy_calls(other):
+                self.assertRegex(line, CONFIG_CALL)
+
+    def test_container_password_reaches_the_engine_only_by_environment(self):
+        script = nm.access_script(
+            "/c.yml", "erm_alice", "upab12cd34", cli=CONTAINER_CLI
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            stubs = os.path.join(tmp, "stubs")
+            os.makedirs(stubs)
+            log = os.path.join(tmp, "argv")
+            seen = os.path.join(tmp, "password")
+            with open(os.path.join(stubs, "docker"), "w") as handle:
+                handle.write(
+                    "#!/bin/sh\n"
+                    'echo "docker $*" >> "$LOG"\n'
+                    'if [ -n "${NTFY_PASSWORD:-}" ]; then'
+                    ' printf %s "$NTFY_PASSWORD" > "$SEEN"; fi\n'
+                    'case "$*" in *" token "*)'
+                    ' echo "token tk_exemple created for user erm_alice" ;;'
+                    " esac\n"
+                )
+            os.chmod(os.path.join(stubs, "docker"), 0o755)
+            done = subprocess.run(
+                ["sh", "-c", script],
+                capture_output=True,
+                text=True,
+                env=dict(
+                    os.environ,
+                    PATH=stubs + ":" + os.environ["PATH"],
+                    LOG=log,
+                    SEEN=seen,
+                ),
+                timeout=30,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            with open(log) as handle:
+                argv = handle.read()
+            with open(seen) as handle:
+                password = handle.read()
+        self.assertEqual(nm.parse_token(done.stdout), "tk_exemple")
+        self.assertGreater(len(password), 20)
+        self.assertNotIn(password, argv)
+        self.assertNotIn(password, script)
+        self.assertIn(
+            "docker exec -e NTFY_PASSWORD -u 997:997 erplibre-call-ntfy ntfy"
+            " user --config /c.yml add erm_alice",
+            argv.splitlines(),
+        )
+
+    def test_restart_and_restore_through_the_given_commands(self):
+        active = "echo active"
+        script = nm.restart_script(COMPOSE_RESTART, active)
+        self.assertEqual(
+            script,
+            f'{COMPOSE_RESTART}\nsleep 2\necho "@@ACTIVE $({active})"\n',
+        )
+        self.assertEqual(
+            nm.restore_command("/c.yml", "20260101", COMPOSE_RESTART),
+            f"cp -p /c.yml.bak-20260101 /c.yml && {COMPOSE_RESTART}",
+        )
+
+    def test_inspect_prints_the_state_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stubs = os.path.join(tmp, "stubs")
+            os.makedirs(stubs)
+            for name in ("ntfy", "systemctl", "curl", "wget"):
+                with open(os.path.join(stubs, name), "w") as handle:
+                    handle.write("#!/bin/sh\nexit 1\n")
+                os.chmod(os.path.join(stubs, name), 0o755)
+            config = os.path.join(tmp, "server.yml")
+            state = os.path.join(tmp, "state.json")
+            with open(config, "w") as handle:
+                handle.write('auth-file: "/x/user.db"\n')
+
+            def run():
+                return subprocess.run(
+                    ["sh", "-c", nm.inspect_script(config, state)],
+                    capture_output=True,
+                    text=True,
+                    env=dict(
+                        os.environ, PATH=stubs + ":" + os.environ["PATH"]
+                    ),
+                    timeout=30,
+                ).stdout
+
+            self.assertNotIn("STATE", nm.parse_markers(run()))
+            with open(state, "w") as handle:
+                handle.write('{"method": "container"}')
+            markers = nm.parse_markers(run())
+        self.assertEqual(
+            base64.b64decode(markers["STATE"]).decode(),
+            '{"method": "container"}',
+        )
+        self.assertIn("YML", markers)
 
 
 class TestStdlibOnly(unittest.TestCase):

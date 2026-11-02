@@ -4203,6 +4203,10 @@ TRANSLATIONS = {
         "fr": "Odoo ne remet aucune URL de TURN à l'appelant",
         "en": "Odoo hands the caller no TURN URL",
     },
+    "call_infra_check_container_account": {
+        "fr": "le conteneur tourne sous l'uid {found}, l'état consigne {expected}",
+        "en": "the container runs as uid {found}, the state records {expected}",
+    },
     # Infrastructure d'appel : questions et résumé de la production
     "call_infra_mode_development": {
         "fr": "Développement : cette machine ou un réseau local, sans nginx",

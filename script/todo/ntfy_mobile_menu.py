@@ -8,18 +8,25 @@ machine, quel téléphone, quelles adresses) et on affiche ; là-bas on décide
 et on construit les scripts `sh`. Chaque script passe par `host.run`, que
 l'hôte soit cette machine ou une cible ssh.
 
+L'état de l'infrastructure d'appel, lu avec le reste (`@@STATE`), dit comment
+parler à ntfy (`call_infra.ntfy_cli`) : le binaire et l'unité de l'hôte sans
+état ou par paquets, la CLI dans le conteneur, l'outil de composition et
+`inspect` en conteneurs.
+
 Le jeton du téléphone n'existe que dans le lien affiché : il n'est écrit dans
 aucun fichier.
 """
 
 import base64
 import binascii
+import json
 import socket
 import time
 import urllib.parse
 
 import click
 
+from script.todo import call_infra as ci
 from script.todo import ntfy_mobile as nm
 from script.todo.todo_i18n import t
 
@@ -27,7 +34,6 @@ from script.todo.todo_i18n import t
 # cette cadence, avant de conclure à un échec.
 RESTART_RECHECKS = 5
 RESTART_RECHECK_SECONDS = 1
-RECHECK_SCRIPT = "systemctl is-active ntfy\n"
 
 RATE_LIMITING_PROBLEM = "ntfy_mobile_subscriber_rate_limiting"
 LOCAL_URL_HOSTS = ("localhost", "127.0.0.1")
@@ -86,16 +92,31 @@ class NtfyMobileMenuMixin:
         finally:
             sock.close()
 
-    def _ntfy_mobile_inspect(self, host):
-        """(config, texte, clés, propriétaire, service) ou None, message
-        affiché. Service : l'état systemd du service `ntfy` (UNIT).
+    @staticmethod
+    def _ntfy_mobile_state(encoded):
+        """L'état de l'infrastructure d'appel de `@@STATE`, ou None sans
+        lui ou illisible : ntfy est alors celui de l'hôte."""
+        try:
+            state = json.loads(base64.b64decode(encoded or "", validate=True))
+        except (binascii.Error, ValueError):
+            return None
+        return state if isinstance(state, dict) else None
 
-        Lit le `server.yml` en root : root lit tous les fichiers.
+    def _ntfy_mobile_inspect(self, host):
+        """(config, texte, clés, propriétaire, service, cli) ou None,
+        message affiché. Service : l'état systemd du service `ntfy`
+        (UNIT), « container » quand l'état le dit en conteneur. `cli` :
+        le `call_infra.NtfyCli` de l'état ; un état altéré arrête tout
+        (`call_infra_state_invalid`).
+
+        Lit le `server.yml` et l'état en root : root lit tous les fichiers.
         """
         default = nm.DEFAULT_CONFIG
         config = input(f"{t('ntfy configuration file')} [{default}]: ")
         config = config.strip() or default
-        _code, out = host.run(nm.inspect_script(config), sudo_user=None)
+        _code, out = host.run(
+            nm.inspect_script(config, ci.STATE_PATH), sudo_user=None
+        )
         markers = nm.parse_markers(out)
         try:
             text = base64.b64decode(markers.get("YML", ""), validate=True)
@@ -107,7 +128,17 @@ class NtfyMobileMenuMixin:
             return None
         keys = nm.read_yml_keys(text)
         owner = markers.get("OWNER", "?")
-        return config, text, keys, owner, markers.get("UNIT", "?")
+        state = self._ntfy_mobile_state(markers.get("STATE"))
+        try:
+            cli = ci.ntfy_cli(state, owner)
+        except ci.Refusal as refusal:
+            field = refusal.values.get("service", "?")
+            print(f"✗ {t('call_infra_state_invalid').format(service=field)}")
+            return None
+        unit = markers.get("UNIT", "?")
+        if state is not None and state.get("method") == "container":
+            unit = "container"
+        return config, text, keys, owner, unit, cli
 
     def _ntfy_mobile_owner_known(self, owner):
         if owner and owner != "?":
@@ -115,12 +146,13 @@ class NtfyMobileMenuMixin:
         print(f"✗ {t('The owner of the ntfy auth file is unknown.')}")
         return False
 
-    def _ntfy_mobile_wait_active(self, host, state):
-        """Vrai quand ntfy est `active`, en relisant `activating`."""
+    def _ntfy_mobile_wait_active(self, host, state, cli):
+        """Vrai quand ntfy est `active`, en relisant `activating` par la
+        commande `cli.active`."""
         rechecks = 0
         while state == "activating" and rechecks < RESTART_RECHECKS:
             time.sleep(RESTART_RECHECK_SECONDS)
-            _code, out = host.run(RECHECK_SCRIPT, sudo_user=None)
+            _code, out = host.run(cli.active + "\n", sudo_user=None)
             state = out.strip().splitlines()[-1] if out.strip() else ""
             rechecks += 1
         if state == "active":
@@ -137,7 +169,7 @@ class NtfyMobileMenuMixin:
         inspected = self._ntfy_mobile_inspect(host)
         if inspected is None:
             return
-        config, text, keys, owner, unit = inspected
+        config, text, keys, owner, unit, cli = inspected
 
         problems = nm.config_problems(keys)
         blocking = [p for p in problems if p != RATE_LIMITING_PROBLEM]
@@ -155,16 +187,17 @@ class NtfyMobileMenuMixin:
             return
 
         if not self._ntfy_mobile_apply_config(
-            host, config, text, problems, unit
+            host, config, text, problems, unit, cli
         ):
             return
 
-        user = self._ntfy_mobile_ask_user(host, config, owner)
+        user = self._ntfy_mobile_ask_user(host, config, cli)
         if user is None:
             return
         prefix = nm.random_prefix()
         _code, out = host.run(
-            nm.access_script(config, user, prefix), sudo_user=owner
+            nm.access_script(config, user, prefix, cli=cli.prefix),
+            sudo_user=cli.sudo_user,
         )
         token = nm.parse_token(out)
         if token is None:
@@ -190,14 +223,16 @@ class NtfyMobileMenuMixin:
             f"\n⚠ {t('This link gives access to the notifications of this phone: do not share it.')}"
         )
 
-    def _ntfy_mobile_ask_user(self, host, config, owner):
+    def _ntfy_mobile_ask_user(self, host, config, cli):
         """Utilisateur ntfy du nouveau téléphone, ou None si l'on renonce.
 
         Un nom déjà préparé (deux libellés peuvent se replier sur le même)
         n'est jamais repris en silence : on en choisit un autre, ou on
         révoque l'ancien téléphone avant de le recréer.
         """
-        code, out = host.run(nm.list_script(config), sudo_user=owner)
+        code, out = host.run(
+            nm.list_script(config, cli=cli.prefix), sudo_user=cli.sudo_user
+        )
         if code != 0:
             print(f"✗ {t('The prepared phones could not be read.')}")
             return None
@@ -223,7 +258,8 @@ class NtfyMobileMenuMixin:
             if choice != "2":
                 return None
             code, _out = host.run(
-                nm.revoke_script(config, user), sudo_user=owner
+                nm.revoke_script(config, user, cli=cli.prefix),
+                sudo_user=cli.sudo_user,
             )
             if code != 0:
                 print(f"✗ {t('The revocation failed.')}")
@@ -231,13 +267,16 @@ class NtfyMobileMenuMixin:
             print(f"✓ {t('Access revoked.')}")
             return user
 
-    def _ntfy_mobile_apply_config(self, host, config, text, problems, unit):
+    def _ntfy_mobile_apply_config(
+        self, host, config, text, problems, unit, cli
+    ):
         """Propose les ajustements du `server.yml` ; Faux pour arrêter.
 
         Sans service systemd nommé `ntfy` (unit `not-found`), on le dit
-        avant d'écrire et on ne propose pas de redémarrage. Un redémarrage
-        qui échoue affiche la copie de sauvegarde et la commande qui la
-        remet.
+        avant d'écrire et on ne propose pas de redémarrage ; un ntfy en
+        conteneur (unit `container`) se redémarre par `cli.restart`. Un
+        redémarrage qui échoue affiche la copie de sauvegarde et la
+        commande qui la remet.
         """
         ssh = isinstance(host, nm.SshHost)
         default = "" if ssh else "127.0.0.1"
@@ -297,14 +336,16 @@ class NtfyMobileMenuMixin:
                 f"⚠ {t('Not restarted: the change applies at the next ntfy restart.')}"
             )
             return True
-        _code, out = host.run(nm.restart_script(), sudo_user=None)
+        _code, out = host.run(
+            nm.restart_script(cli.restart, cli.active), sudo_user=None
+        )
         state = nm.parse_markers(out).get("ACTIVE", "")
-        if self._ntfy_mobile_wait_active(host, state):
+        if self._ntfy_mobile_wait_active(host, state, cli):
             return True
         print(f"{t('Backup of the configuration:')} {config}.bak-{stamp}")
         print(
             f"{t('To put it back, run as root:')}"
-            f" {nm.restore_command(config, stamp)}"
+            f" {nm.restore_command(config, stamp, cli.restart)}"
         )
         return False
 
@@ -336,15 +377,17 @@ class NtfyMobileMenuMixin:
         return phone_url, None if odoo_url in ("", phone_url) else odoo_url
 
     def _ntfy_mobile_phones(self, host):
-        """(config, owner, [utilisateurs]) ou None."""
+        """(config, cli, [utilisateurs]) ou None."""
         inspected = self._ntfy_mobile_inspect(host)
         if inspected is None:
             return None
-        config, _text, _keys, owner, _unit = inspected
+        config, _text, _keys, owner, _unit, cli = inspected
         if not self._ntfy_mobile_owner_known(owner):
             return None
-        _code, out = host.run(nm.list_script(config), sudo_user=owner)
-        return config, owner, nm.phone_users(out)
+        _code, out = host.run(
+            nm.list_script(config, cli=cli.prefix), sudo_user=cli.sudo_user
+        )
+        return config, cli, nm.phone_users(out)
 
     def _ntfy_mobile_list(self):
         print(f"\n📱 {t('List the prepared phones')}")
@@ -369,7 +412,7 @@ class NtfyMobileMenuMixin:
         found = self._ntfy_mobile_phones(host)
         if found is None:
             return
-        config, owner, users = found
+        config, cli, users = found
         if not users:
             print(t("No phone prepared."))
             return
@@ -383,7 +426,10 @@ class NtfyMobileMenuMixin:
         print(user)
         if not _yes(t("Revoke the access of this phone? (y/N): ")):
             return
-        code, _out = host.run(nm.revoke_script(config, user), sudo_user=owner)
+        code, _out = host.run(
+            nm.revoke_script(config, user, cli=cli.prefix),
+            sudo_user=cli.sudo_user,
+        )
         if code != 0:
             print(f"✗ {t('The revocation failed.')}")
             return
