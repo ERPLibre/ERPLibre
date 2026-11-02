@@ -3637,6 +3637,19 @@ class LesScriptsConteneur(unittest.TestCase):
         ok, detail = lt.verdict_apres_conteneur(0, "@@UFW_RULES 2\n@@END\n")
         self.assertFalse(detail["sans-regle-ufw"])
 
+    def test_leftovers_are_named_in_the_detail(self):
+        # Un volume anonyme n'a qu'un nom de condensat : le détail le nomme,
+        # comme l'image restée dans le stockage d'un moteur retiré.
+        volume = "/var/lib/containers/storage/volumes/" + "ab" * 32 + "/"
+        sortie = (
+            f"@@VOLUME {volume}\n@@IMAGE_FILE coturn/coturn\n"
+            "@@UFW_RULES 0\n@@END\n"
+        )
+        ok, detail = lt.verdict_apres_conteneur(0, sortie)
+        self.assertFalse(ok)
+        self.assertEqual(detail["restes"]["VOLUME"], [volume])
+        self.assertEqual(detail["restes"]["IMAGE_FILE"], ["coturn/coturn"])
+
     def test_the_hook_without_nginx(self):
         requis, interdits = lt.attendus_crochet(
             "crochet-lignee", cc.CONTAINERS["coturn"], nginx=False
