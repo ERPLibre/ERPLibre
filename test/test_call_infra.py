@@ -10369,6 +10369,49 @@ class TestContainerPlan(unittest.TestCase):
                     refusal.values["names"], "erplibre-call-coturn"
                 )
 
+    def test_containers_of_an_interrupted_install_are_its_own(self):
+        # Un premier passage en conteneurs a lancé les conteneurs puis
+        # échoué : pas d'état, sa fiche « container » reste sur l'hôte.
+        running = tuple(
+            (cc.CONTAINERS[svc], "docker", False, "exited", cc.IMAGES[svc])
+            for svc in ("coturn", "ntfy")
+        )
+        facts = base_facts(
+            engines=engine_facts(containers=running),
+            container_pending={"accounts_added": ["ntfy"]},
+        )
+        plan = ci.plan_install(facts, container_answers(), NOW)
+        self.assertIsNone(plan.migration)
+        self.assertEqual(
+            plan.new_state["container"]["accounts_added"], ["ntfy"]
+        )
+        # Un autre moteur ou mode, ou la méthode des paquets : ces
+        # conteneurs restent étrangers.
+        for ans in (
+            answers(),
+            container_answers(engine="podman"),
+            container_answers(engine="podman", rootless=True),
+        ):
+            with self.subTest(method=ans.method, engine=ans.engine):
+                refusal = self.refusal(facts, ans)
+                self.assertEqual(refusal.key, "call_infra_foreign_container")
+        # Sans fiche, rien ne dit qu'ils viennent de l'outil.
+        refusal = self.refusal(
+            dataclasses.replace(facts, container_pending=None),
+            container_answers(),
+        )
+        self.assertEqual(refusal.key, "call_infra_foreign_container")
+        # Une autre image sous le nom de l'outil reste étrangère.
+        other = engine_facts(
+            containers=(
+                ("erplibre-call-ntfy", "docker", False, "running", "x/y:1"),
+            )
+        )
+        refusal = self.refusal(
+            dataclasses.replace(facts, engines=other), container_answers()
+        )
+        self.assertEqual(refusal.values["names"], "erplibre-call-ntfy")
+
     def test_ntfy_downgrade_refused_only_with_an_older_host_binary(self):
         facts = container_installed(container_answers())
 
@@ -11193,6 +11236,41 @@ class TestContainerInstallRun(ContainerSandbox):
         self.assertTrue(
             os.path.exists(self.path(ci.PENDING_DIR + "/container.json"))
         )
+
+    def test_fiche_written_before_the_containers_start(self):
+        # Moteur, comptes et images déjà là : seul le lancement laisse une
+        # trace, la fiche, que la relance lit pour reconnaître ses
+        # conteneurs.
+        write(
+            os.path.join(self.fk, "passwd"),
+            "erplibre-coturn:x:997:997::/nonexistent:/usr/sbin/nologin\n"
+            "ntfy:x:996:996::/nonexistent:/usr/sbin/nologin\n",
+            0o644,
+        )
+        write(
+            os.path.join(self.fk, "images"),
+            "".join(ref + "\n" for ref in cc.IMAGES.values()),
+            0o644,
+        )
+        plan = ci.plan_install(
+            base_facts(engines=engine_facts()), container_answers(), NOW
+        )
+        self.assertEqual(plan.engine_packages, ())
+        done = self.run_script(plan, FAKE_STATUS_coturn="exited")
+        self.assert_no_state(done)
+        fiche = self.path(ci.PENDING_DIR + "/container.json")
+        self.assertEqual(
+            json.loads(self.read(fiche)),
+            {
+                "accounts_added": [],
+                "engine_packages_added": [],
+                "images_pulled": [],
+                "linger_added": False,
+                "restart_unit_enabled": None,
+            },
+        )
+        argv = self.argv()
+        self.assertTrue([line for line in argv if " up -d" in line])
 
     def rerun_plan(self, ans):
         """Plan de la relance, de l'état que le premier passage a écrit."""

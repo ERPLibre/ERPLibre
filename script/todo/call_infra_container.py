@@ -741,15 +741,25 @@ def version_older(found, pinned):
     )
 
 
-def foreign_containers(facts, state):
+def foreign_containers(facts, state, pending=None):
     """Noms triés des conteneurs vus par la sonde que l'état ne consigne pas
     comme les siens : ceux de l'outil quand l'état n'est pas en mode
     conteneur, sous un autre moteur ou mode, ou pour un service qu'il ne
     consigne pas, et tout conteneur d'une image coturn ou ntfy sous un autre
-    nom."""
+    nom. `pending` (moteur, rootless) : une installation coupée de l'outil
+    a laissé sa fiche sur l'hôte ; les conteneurs à ses noms, sous ce
+    moteur et ce mode et sur son image épinglée, sont les siens."""
     if facts is None:
         return ()
     ours = set()
+    if pending is not None:
+        engine, rootless = pending
+        ours |= {
+            (name, engine, rootless)
+            for svc, name in CONTAINERS.items()
+            for found, e, r, _status, image in facts.containers
+            if (found, e, r, image) == (name, engine, rootless, IMAGES[svc])
+        }
     if isinstance(state, dict) and state.get("method") == "container":
         block = state.get("container")
         services = state.get("services")
