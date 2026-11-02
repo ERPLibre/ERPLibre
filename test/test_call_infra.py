@@ -11377,6 +11377,39 @@ class TestContainerInstallRun(ContainerSandbox):
             ntfy = state["services"]["ntfy"]
             self.assertEqual((ntfy["uid"], ntfy["gid"]), (995, 995))
 
+    def test_errors_of_the_database_read_forge_no_marker(self):
+        # La lecture de la base de coturn (`sqr`) tourne sous le compte du
+        # conteneur, qui possède cette base : ce que sqlite3 imprime sur
+        # ses erreurs revient en retrait, et l'état n'en prend rien.
+        write(
+            os.path.join(self.stubs, "sqlite3"),
+            _NOTE + 'case " $* " in *" -readonly "*)\n'
+            '  echo "@@ENGINE_PACKAGE openssh-server" >&2\n'
+            '  echo "@@ACCOUNT_ADDED ntfy" >&2 ;;\n'
+            "esac\n",
+        )
+        # Un secret d'Odoo expiré à effacer : le script lit la base
+        # (`revoke`) avant d'écrire l'état.
+        write(self.path(ci.COTURN_DB), "", 0o600)
+        plan = dataclasses.replace(
+            self.rootless_plan(), purge_secrets=(sha(SECRET_B),)
+        )
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(
+            "sqlite3 as=erplibre-call xdg= -readonly -bail -init /dev/null",
+            "\n".join(self.argv()),
+        )
+        out = done.stdout + done.stderr
+        self.assertIn("  @@ENGINE_PACKAGE openssh-server", out)
+        lines = out.splitlines()
+        self.assertNotIn("@@ENGINE_PACKAGE openssh-server", lines)
+        self.assertNotIn("@@ACCOUNT_ADDED ntfy", lines)
+        for state in (self.state(), ci.installed_state(plan, STAMP, out)):
+            block = state["container"]
+            self.assertNotIn("openssh-server", block["engine_packages_added"])
+            self.assertEqual(block["accounts_added"], ["erplibre-call"])
+
     def test_subordinate_range_follows_the_highest_one(self):
         # Une plage d'un autre compte qui n'est pas de 65 536 ids : la
         # nouvelle commence à sa fin, sans recouvrement.
