@@ -12723,6 +12723,29 @@ class TestContainerCheck(unittest.TestCase):
         self.assertEqual(line.values, {"found": 998, "expected": 999})
         self.assertIn(line.detail, ci.CHECK_KEYS)
 
+    def test_a_user_other_than_a_non_root_uid_is_a_mismatch(self):
+        """Un conteneur qui tourne sans `user` uid:gid non root (champ vide,
+        nom, 0:0 : « - » dans la ligne) n'est pas sous le compte de l'état,
+        même en marche."""
+        line = by_name(
+            self.check(
+                container_state(),
+                containers=(
+                    "coturn docker 0 running -",
+                    "ntfy docker 0 running 996:996",
+                ),
+            )
+        )["service-coturn"]
+        self.assertEqual(
+            line,
+            ci.CheckLine(
+                "service-coturn",
+                False,
+                "call_infra_check_container_account",
+                {"found": "-", "expected": 998},
+            ),
+        )
+
     def test_status_comes_from_the_recorded_engine_and_mode(self):
         lines = by_name(
             self.check(
