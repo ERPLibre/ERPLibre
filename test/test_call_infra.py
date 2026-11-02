@@ -3321,6 +3321,10 @@ class UninstallSandbox(unittest.TestCase):
             ("certbot", STUB_CERTBOT),
         ):
             write(os.path.join(self.stubs, name), text)
+        # Aucun moteur ni ntfy de la machine des tests n'est joignable : un
+        # test qui en veut un pose sa propre doublure.
+        shadow_engines(self.stubs)
+        write(os.path.join(self.stubs, "ntfy"), "#!/bin/sh\nexit 97\n")
 
     def path(self, host_path):
         return self.root + host_path
@@ -10768,7 +10772,11 @@ class ContainerSandbox(unittest.TestCase):
     def run_script(self, plan, outputs=None, **env):
         for tag, text in (outputs or {}).items():
             write(os.path.join(self.out, tag), text, 0o644)
-        script = ci.install_script(plan, STAMP, root=self.root)
+        return self.run_text(
+            ci.install_script(plan, STAMP, root=self.root), **env
+        )
+
+    def run_text(self, script, **env):
         full = dict(
             os.environ,
             PATH=self.stubs + ":" + os.environ["PATH"],
@@ -12347,6 +12355,600 @@ class TestNtfyCli(unittest.TestCase):
                     ci.ntfy_cli(bad, "ntfy")
                 self.assertEqual(
                     caught.exception.key, "call_infra_state_invalid"
+                )
+
+
+# Doublures propres à la désinstallation en conteneurs, posées devant
+# celles de CONTAINER_STUBS : session et comptes défaits (FAKE_USERDEL_RC
+# fait échouer `userdel`), processus d'un compte (FAKE_PGREP : il en
+# reste), ntfy de l'hôte (FAKE_NTFY_VERSION) ; `timeout` lance la commande.
+UNINSTALL_CONTAINER_STUBS = {
+    "loginctl": _NOTE
+    + r"""
+case "$1" in
+  disable-linger) rm -f "$ROOT/var/lib/systemd/linger/$2" ;;
+  terminate-user) ;;
+  *) exit 97 ;;
+esac
+""",
+    "userdel": _NOTE
+    + r"""
+for last; do :; done
+[ -z "${FAKE_USERDEL_RC:-}" ] || exit "$FAKE_USERDEL_RC"
+grep -v "^$last:" "$FK/passwd" > "$FK/passwd.new"
+mv "$FK/passwd.new" "$FK/passwd"
+""",
+    "pgrep": _NOTE + '[ -n "${FAKE_PGREP:-}" ]\n',
+    "timeout": _NOTE + 'shift\nexec "$@"\n',
+    "ntfy": _NOTE
+    + 'echo "ntfy ${FAKE_NTFY_VERSION:-2.36.0} (inventee), runtime go"\n',
+}
+
+
+def tool_additions(state, **values):
+    """`state` dont le bloc `container` consigne `values` (champs de ce que
+    l'installation a ajouté à l'hôte)."""
+    state = copy.deepcopy(state)
+    state["container"].update(values)
+    return state
+
+
+class TestContainerUninstall(ContainerSandbox):
+    """La désinstallation d'un état en conteneurs jouée dans le bac à
+    sable : conteneurs arrêtés et retirés, fichier compose et images
+    tirées retirés, données selon les règles des paquets, unités adoptées
+    rendues, et ce que l'installation a ajouté pour le moteur, seulement
+    sur demande."""
+
+    def setUp(self):
+        super().setUp()
+        for name, text in UNINSTALL_CONTAINER_STUBS.items():
+            write(os.path.join(self.stubs, name), text)
+
+    def host(self, state):
+        """L'hôte d'une installation en conteneurs réussie de `state` : son
+        état, son fichier compose, les images épinglées, ses conteneurs en
+        marche, les comptes, les paquets du moteur, les configurations de
+        l'outil, la base de coturn, celle des comptes de ntfy et son
+        cache."""
+        write(self.path(ci.STATE_PATH), json.dumps(state), 0o600)
+        write(self.path(cc.COMPOSE_FILE), cc.MANAGED_LINE + "\n", 0o640)
+        write(
+            os.path.join(self.fk, "images"),
+            "".join(ref + "\n" for ref in cc.IMAGES.values()),
+            0o644,
+        )
+        services = state["services"]
+        for svc in services:
+            write(
+                os.path.join(self.fk, f"container.{cc.CONTAINERS[svc]}"),
+                "running\n",
+                0o644,
+            )
+        write(
+            os.path.join(self.fk, "passwd"),
+            "".join(
+                f"{name}:x:{uid}:{uid}::/nonexistent:/usr/sbin/nologin\n"
+                for name, (uid, _gid) in ACCOUNT_IDS.items()
+            ),
+            0o644,
+        )
+        block = state.get("container") or state.get("container_added") or {}
+        write(
+            os.path.join(self.fk, "installed"),
+            "".join(
+                p + "\n"
+                for p in (block.get("engine_packages_added") or [])
+                + ["sqlite3"]
+            ),
+        )
+        if block.get("linger_added"):
+            write(
+                self.path("/var/lib/systemd/linger/erplibre-call"), "", 0o644
+            )
+        if block.get("rootless"):
+            os.makedirs(self.path(f"/run/user/{block['uid']}"))
+        if "coturn" in services:
+            write(
+                self.path(services["coturn"]["config"]),
+                ci.MARKER + "\nlistening-port=3478\n",
+                0o640,
+            )
+            write(self.path(ci.COTURN_DB), "base inventee", 0o640)
+        if "ntfy" in services:
+            write(
+                self.path(ci.NTFY_CONFIG),
+                ci.MARKER + '\nlisten-http: ":8080"\n',
+                0o644,
+            )
+            os.makedirs(self.path(ci.NTFY_DATA_DIR), exist_ok=True)
+            with open(self.path(ci.NTFY_AUTH_FILE), "wb") as handle:
+                handle.write(USER_DB)
+            write(self.path("/var/cache/ntfy/cache.db"), "cache", 0o640)
+
+    def uninstall(self, state, remove_data=False, remove_engine=False, **env):
+        script = ci.uninstall_script(
+            state,
+            remove_data,
+            STAMP,
+            root=self.root,
+            remove_engine=remove_engine,
+        )
+        return self.run_text(script, **env)
+
+    @staticmethod
+    def markers(done):
+        return [
+            f"{name} {value}".strip()
+            for name, value in ci.marker_lines(done.stdout)
+        ]
+
+    def docker_state(self, **values):
+        """Docker en root, coturn et ntfy, avec ce que l'installation a
+        ajouté : paquets du moteur, comptes, docker.service activée."""
+        state = container_installed(container_answers()).state
+        values = dict(
+            dict(
+                engine_packages_added=["docker.io", "docker-compose"],
+                accounts_added=["erplibre-coturn", "ntfy"],
+                restart_unit_enabled="docker.service",
+            ),
+            **values,
+        )
+        return tool_additions(state, **values)
+
+    def rootless_state(self, **values):
+        ans = container_answers(engine="podman", rootless=True)
+        values = dict(
+            dict(
+                engine_packages_added=["podman", "podman-compose"],
+                accounts_added=["erplibre-call"],
+                restart_unit_enabled="user",
+                linger_added=True,
+            ),
+            **values,
+        )
+        return tool_additions(container_installed(ans).state, **values)
+
+    def first(self, *needles):
+        for index, line in enumerate(self.argv()):
+            if all(needle in line for needle in needles):
+                return index
+        return None
+
+    def test_docker_keeps_user_db_and_engine(self):
+        state = self.docker_state()
+        self.host(state)
+        done = self.uninstall(state)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        self.assertEqual(markers[-1], "DONE yes")
+        down = self.first(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call down -v"
+        )
+        self.assertIsNotNone(down)
+        self.assertFalse(os.path.exists(self.path(cc.COMPOSE_FILE)))
+        self.assertIn(f"REMOVED compose {cc.COMPOSE_FILE}", markers)
+        for ref in cc.IMAGES.values():
+            self.assertIn(f"IMAGE_REMOVED {ref}", markers)
+            self.assertLess(down, self.first(f"docker as=root xdg= rmi {ref}"))
+        self.assertEqual(self.read(os.path.join(self.fk, "images")), "")
+        # Les règles des données ne changent pas : la base des comptes de
+        # ntfy reste sans remove_data, celle de coturn part comme par
+        # paquets.
+        with open(self.path(ci.NTFY_AUTH_FILE), "rb") as handle:
+            self.assertEqual(handle.read(), USER_DB)
+        self.assertIn(f"KEPT {ci.NTFY_AUTH_FILE}", markers)
+        self.assertFalse(os.path.exists(self.path(ci.COTURN_DATA_DIR)))
+        self.assertFalse(os.path.exists(self.path(ci.NTFY_CACHE_DIR)))
+        self.assertFalse(os.path.exists(self.path(ci.NTFY_CONFIG)))
+        self.assertFalse(os.path.exists(self.path("/etc/turnserver.conf")))
+        self.assertIn("KEPT engine docker.io docker-compose", markers)
+        self.assertIn("REMOVED state", markers)
+        # Fiches sans unité : rien à arrêter ni à purger côté systemd ou
+        # paquets ; rien du moteur ne part sans la demande.
+        for line in self.argv():
+            for word in (
+                "systemctl",
+                "userdel",
+                "loginctl",
+                "apt-get",
+                "sqlite3",
+                "--force",
+                "rmi -f",
+            ):
+                self.assertNotIn(word, line)
+
+    def test_containers_without_compose_file_are_removed_by_name(self):
+        state = self.docker_state()
+        self.host(state)
+        os.remove(self.path(cc.COMPOSE_FILE))
+        done = self.uninstall(state)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        for svc in ("coturn", "ntfy"):
+            name = cc.CONTAINERS[svc]
+            self.assertIsNotNone(
+                self.first(f"docker as=root xdg= rm -f -v {name}")
+            )
+            self.assertIn(f"REMOVED container {name}", self.markers(done))
+        self.assertIsNone(self.first(" down "))
+
+    def test_rootless_removes_engine_account_and_data(self):
+        state = self.rootless_state()
+        self.host(state)
+        done = self.uninstall(state, remove_data=True, remove_engine=True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        self.assertEqual(markers[-1], "DONE yes")
+        user = "as=erplibre-call xdg=/run/user/995"
+        down = self.first(
+            f"podman-compose {user} -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call down -v"
+        )
+        self.assertIsNotNone(down)
+        for ref in cc.IMAGES.values():
+            self.assertIsNotNone(self.first(f"podman {user} rmi {ref}"))
+        unit = self.first(
+            f"systemctl {user} --user disable podman-restart.service"
+        )
+        linger = self.first(
+            "loginctl as=root xdg= disable-linger erplibre-call"
+        )
+        end = self.first("loginctl as=root xdg= terminate-user erplibre-call")
+        userdel = self.first("userdel as=root xdg= -r erplibre-call")
+        purge = self.first("apt-get as=root xdg= purge -y podman")
+        self.assertTrue(
+            down < unit < linger < end < userdel < purge,
+            (down, unit, linger, end, userdel, purge),
+        )
+        self.assertIsNotNone(
+            self.first("apt-get as=root xdg= purge -y podman-compose")
+        )
+        for marker in (
+            "REMOVED account erplibre-call",
+            "REMOVED linger erplibre-call",
+            "REMOVED package podman",
+            "REMOVED package podman-compose",
+        ):
+            self.assertIn(marker, markers)
+        self.assertNotIn("erplibre-call:", self.read(f"{self.fk}/passwd"))
+        self.assertFalse(
+            os.path.exists(self.path("/var/lib/systemd/linger/erplibre-call"))
+        )
+        for path in (ci.NTFY_DATA_DIR, ci.COTURN_DATA_DIR, ci.CALL_DIR):
+            self.assertFalse(os.path.exists(self.path(path)), path)
+
+    def test_rootless_account_busy_is_kept_not_failed(self):
+        state = self.rootless_state()
+        self.host(state)
+        done = self.uninstall(
+            state,
+            remove_data=True,
+            remove_engine=True,
+            FAKE_PGREP="1",
+            FAKE_USERDEL_RC="8",
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        self.assertIn("KEPT account erplibre-call", markers)
+        self.assertEqual(markers[-1], "DONE yes")
+        sleeps = [line for line in self.argv() if line.startswith("sleep ")]
+        self.assertEqual(len(sleeps), 10)
+        self.assertLess(
+            self.first("loginctl", "terminate-user"), self.first("userdel")
+        )
+
+    def test_account_kept_while_its_data_stays(self):
+        state = self.docker_state()
+        self.host(state)
+        done = self.uninstall(state, remove_data=False, remove_engine=True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        # coturn sans TLS : sa base partie, son compte peut partir ; la base
+        # des comptes de ntfy reste, son compte aussi.
+        self.assertIsNotNone(
+            self.first("userdel as=root xdg= erplibre-coturn")
+        )
+        self.assertIn("REMOVED account erplibre-coturn", markers)
+        self.assertIn("KEPT account ntfy", markers)
+        self.assertIsNone(self.first("userdel", "ntfy"))
+        self.assertIsNotNone(
+            self.first("systemctl as=root xdg= disable docker.service")
+        )
+        for package in ("docker.io", "docker-compose"):
+            self.assertIsNotNone(
+                self.first(f"apt-get as=root xdg= purge -y {package}")
+            )
+            self.assertIn(f"REMOVED package {package}", markers)
+        self.assertNotIn("KEPT engine docker.io docker-compose", markers)
+
+    def test_image_in_use_is_kept_and_the_uninstall_goes_on(self):
+        state = self.docker_state()
+        self.host(state)
+        done = self.uninstall(state, FAKE_RMI_BUSY="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        for ref in cc.IMAGES.values():
+            self.assertIn(f"IMAGE_KEPT {ref}", markers)
+        self.assertEqual(markers[-1], "DONE yes")
+        self.assertIn("REMOVED state", markers)
+        for line in self.argv():
+            self.assertNotIn("rmi -f", line)
+            self.assertNotIn("--force", line)
+
+    def test_adopted_ntfy_unit_comes_back_as_it_was(self):
+        backup = f"{ci.NTFY_CONFIG}.bak-{STAMP}"
+        state = self.docker_state(accounts_added=[])
+        state["services"]["ntfy"].update(
+            unit="ntfy",
+            installed_by_tool=False,
+            adopted=True,
+            backup=backup,
+            was_active=True,
+            was_enabled="enabled",
+            admin_added=True,
+        )
+        for version, started in (("2.36.0", True), ("2.11.0", False)):
+            with self.subTest(version=version):
+                self.host(state)
+                write(self.path(backup), NTFY_FOREIGN, 0o640)
+                write(os.path.join(self.fk, "admin"), "", 0o644)
+                done = self.uninstall(state, FAKE_NTFY_VERSION=version)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                markers = self.markers(done)
+                # L'administrateur de l'outil part par le conteneur, tant
+                # qu'il tourne, sous le compte du service.
+                admin = self.first(
+                    "docker as=root xdg= exec -e NTFY_PASSWORD -u 996:996"
+                    " erplibre-call-ntfy ntfy user --config"
+                    " /etc/ntfy/server.yml del erplibre"
+                )
+                down = self.first(" down -v")
+                self.assertIsNotNone(admin)
+                self.assertLess(admin, down)
+                self.assertIn("REMOVED account erplibre", markers)
+                self.assertEqual(
+                    self.read(self.path(ci.NTFY_CONFIG)), NTFY_FOREIGN
+                )
+                self.assertIn(f"RESTORED {ci.NTFY_CONFIG} {backup}", markers)
+                self.assertTrue(os.path.exists(self.path(ci.NTFY_AUTH_FILE)))
+                enable = self.first("systemctl as=root xdg= enable ntfy")
+                start = self.first("systemctl as=root xdg= start ntfy")
+                if started:
+                    self.assertLess(down, enable)
+                    self.assertLess(enable, start)
+                    self.assertFalse(
+                        [m for m in markers if m.startswith("NTFY_DOWNGRADE")]
+                    )
+                else:
+                    # Un ntfy de l'hôte plus ancien que l'image ne relirait
+                    # pas la base qu'elle a mise à jour : l'unité reste
+                    # désactivée, et c'est dit.
+                    self.assertIsNone(enable)
+                    self.assertIsNone(start)
+                    self.assertIn("NTFY_DOWNGRADE ntfy 2.11.0 2.36.0", markers)
+                self.assertEqual(markers[-1], "DONE yes")
+
+    def test_adopted_unit_left_off_when_it_was_off(self):
+        backup = f"{ci.NTFY_CONFIG}.bak-{STAMP}"
+        state = self.docker_state(accounts_added=[])
+        state["services"]["ntfy"].update(
+            unit="ntfy",
+            installed_by_tool=False,
+            adopted=True,
+            backup=backup,
+            was_active=False,
+            was_enabled="disabled",
+        )
+        self.host(state)
+        write(self.path(backup), NTFY_FOREIGN, 0o640)
+        done = self.uninstall(state)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIsNone(self.first("systemctl", " enable "))
+        self.assertIsNone(self.first("systemctl", " start "))
+        self.assertIsNone(self.first(" exec "))
+
+    def test_engine_stays_while_a_service_stays_configured(self):
+        state = self.docker_state()
+        state["services"]["ntfy"].update(
+            unit="ntfy",
+            installed_by_tool=False,
+            adopted=True,
+            backup=f"{ci.NTFY_CONFIG}.bak-{STAMP}",
+        )
+        self.host(state)
+        done = self.uninstall(state, remove_data=True, remove_engine=True)
+        self.assertNotEqual(done.returncode, 0)
+        markers = self.markers(done)
+        self.assertEqual(markers[-1], "DONE partial")
+        self.assertTrue(os.path.exists(self.path(ci.STATE_PATH)))
+        for word in ("userdel", "purge", "disable docker.service"):
+            self.assertIsNone(self.first(word), word)
+
+    def test_return_to_packages_undoes_container_leftovers(self):
+        ans = container_answers()
+        facts = container_installed(ans)
+        block = facts.state["container"]
+        block.update(
+            engine_packages_added=["docker.io", "docker-compose"],
+            accounts_added=["erplibre-coturn"],
+            restart_unit_enabled="docker.service",
+        )
+        plan = ci.plan_install(
+            facts,
+            dataclasses.replace(
+                ans, method="packages", engine=None, rootless=False
+            ),
+            NOW,
+        )
+        state = ci.written_state(plan, STAMP)
+        self.assertEqual(state.get("method", "packages"), "packages")
+        self.assertIn("container_added", state)
+        for remove_engine in (False, True):
+            with self.subTest(remove_engine=remove_engine):
+                self.host(state)
+                done = self.uninstall(state, remove_engine=remove_engine)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                markers = self.markers(done)
+                for ref in cc.IMAGES.values():
+                    self.assertIn(f"IMAGE_REMOVED {ref}", markers)
+                self.assertIsNone(self.first(" down "))
+                kept = "KEPT engine docker.io docker-compose"
+                if remove_engine:
+                    self.assertNotIn(kept, markers)
+                    self.assertIn("REMOVED package docker.io", markers)
+                    self.assertIn("REMOVED account erplibre-coturn", markers)
+                    self.assertIsNotNone(
+                        self.first("systemctl", "disable docker.service")
+                    )
+                else:
+                    self.assertIn(kept, markers)
+                    self.assertIsNone(self.first("userdel"))
+                self.assertEqual(markers[-1], "DONE yes")
+
+    def test_uninstall_refuses_tampered_container_block(self):
+        rootful = self.docker_state()
+        rootless = self.rootless_state()
+        for state, path, value, field in (
+            (rootful, ("container", "engine"), "sh", "engine"),
+            (
+                rootful,
+                ("services", "coturn", "container"),
+                "x;rm",
+                "services.coturn.container",
+            ),
+            (rootful, ("services", "ntfy", "uid"), 0, "services.ntfy.uid"),
+            (rootless, ("container", "uid"), 0, "uid"),
+            (
+                rootful,
+                ("container", "images_pulled"),
+                ["x;rm -rf /"],
+                "container.images_pulled",
+            ),
+            (
+                rootful,
+                ("container", "accounts_added"),
+                ["root"],
+                "container.accounts_added",
+            ),
+            (
+                rootful,
+                ("container", "engine_packages_added"),
+                ["a b"],
+                "container.engine_packages_added",
+            ),
+            (
+                rootful,
+                ("container", "restart_unit_enabled"),
+                "sshd.service",
+                "container.restart_unit_enabled",
+            ),
+            (rootful, ("services", "ntfy", "unit"), "sshd", "ntfy"),
+        ):
+            with self.subTest(path=path, value=value):
+                bad = copy.deepcopy(state)
+                ci._put(bad, path, value)
+                with self.assertRaises(ci.Refusal) as caught:
+                    ci.uninstall_script(bad, True, STAMP, remove_engine=True)
+                self.assertEqual(
+                    caught.exception.key, "call_infra_state_invalid"
+                )
+                self.assertEqual(caught.exception.values, {"service": field})
+
+    def test_tampered_leftovers_of_a_return_to_packages_refused(self):
+        state = json.loads(PACKAGES_STATE_V1)
+        good = {
+            "engine": "docker",
+            "rootless": False,
+            "account": None,
+            "uid": None,
+            "images_pulled": [cc.IMAGES["coturn"]],
+            "engine_packages_added": [],
+            "accounts_added": [],
+            "restart_unit_enabled": None,
+            "linger_added": False,
+        }
+        state["container_added"] = good
+        ci.uninstall_script(state, True, STAMP, remove_engine=True)
+        for key, value in (
+            ("engine", "sh"),
+            ("rootless", True),
+            ("uid", 0),
+            ("images_pulled", ["busybox"]),
+            ("linger_added", "yes"),
+        ):
+            with self.subTest(key=key):
+                bad = copy.deepcopy(state)
+                bad["container_added"][key] = value
+                with self.assertRaises(ci.Refusal) as caught:
+                    ci.uninstall_script(bad, True, STAMP)
+                self.assertEqual(
+                    caught.exception.key, "call_infra_state_invalid"
+                )
+                self.assertTrue(
+                    caught.exception.values["service"].startswith(
+                        "container_added"
+                    )
+                )
+
+    def test_packages_state_script_unchanged(self):
+        ans = supplied()
+        for state in (
+            json.loads(PACKAGES_STATE_V1),
+            installed_state(ans, firewall=ufw_record("udp 3478 coturn")),
+        ):
+            for remove_data in (False, True):
+                script = ci.uninstall_script(state, remove_data, STAMP)
+                self.assertEqual(
+                    ci.uninstall_script(
+                        state, remove_data, STAMP, remove_engine=True
+                    ),
+                    script,
+                )
+                for word in (
+                    "compose",
+                    "rmi",
+                    "userdel",
+                    "loginctl",
+                    "nolder",
+                ):
+                    self.assertNotIn(word, script)
+
+    def test_version_rule_matches_the_python_one(self):
+        lines = "\n".join(ci._version_older_lines())
+        image = cc.IMAGE_VERSIONS["ntfy"]
+        for found in (
+            "2.11.0",
+            "2.35.9",
+            "2.36.0",
+            "v2.36.0",
+            "2.36",
+            "2.36.0.1",
+            "2.36.1",
+            "2.4",
+            "10.0.0",
+            "3",
+            "2.36.0+dfsg1",
+            "",
+            "inconnue",
+        ):
+            with self.subTest(found=found):
+                done = subprocess.run(
+                    [
+                        "sh",
+                        "-c",
+                        lines + '\nnolder "$1" "$2"',
+                        "sh",
+                        found,
+                        image,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(
+                    done.returncode == 0, cc.version_older(found, image)
                 )
 
 
