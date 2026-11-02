@@ -104,6 +104,7 @@ import contextlib
 import datetime
 import json
 import os
+import pwd
 import re
 import shutil
 import signal
@@ -744,6 +745,48 @@ def raccorder(dossier, constat, avant, refs, date_borne, delai=DELAI_GIT):
     return tours
 
 
+def _compte(uid):
+    """Le nom du compte `uid`, ou l'uid lui-même s'il n'en a pas."""
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return str(uid)
+
+
+def ecriture_refusee(dossier, delai=DELAI_GIT):
+    """Rend None quand un fetch peut écrire dans le clone de `dossier`, sinon
+    le motif, qui nomme le dossier, le compte qui tourne et le propriétaire.
+
+    Un fetch écrit FETCH_HEAD dans le dossier git du clone, ses objets et ses
+    références dans le dossier commun ; un projet git-repo pointe vers
+    .repo/, d'où les chemins réels. Sans cette garde, git ne dit que
+    « insufficient permission » ou « Permission denied », sur le premier
+    fichier qui refuse. Dans un conteneur, le motif rappelle que le code
+    appartient au compte choisi à la construction de l'image.
+    """
+    dossiers = []
+    for option in ("--absolute-git-dir", "--git-common-dir"):
+        out, _err, code = git(["rev-parse", option], dossier, delai)
+        if code or not out.strip():
+            return None
+        dossiers.append(os.path.realpath(os.path.join(dossier, out.strip())))
+    dossiers.append(os.path.realpath(os.path.join(dossiers[1], "objects")))
+    for chemin in dict.fromkeys(dossiers):
+        if os.access(chemin, os.W_OK | os.X_OK):
+            continue
+        motif = (
+            f"{chemin} is not writable by {_compte(os.geteuid())}, "
+            f"it belongs to {_compte(os.stat(chemin).st_uid)}"
+        )
+        if os.path.exists("/.dockerenv"):
+            motif += (
+                "; build the image with ERPLIBRE_CODE_OWNER=odoo to pull "
+                "from Odoo"
+            )
+        return motif
+    return None
+
+
 def recuperer(dossier, constat, delai=DELAI_GIT):
     """Récupère la cible du constat. Rend None, ou le motif d'un échec.
 
@@ -758,6 +801,9 @@ def recuperer(dossier, constat, delai=DELAI_GIT):
     cible = constat.get("cible")
     if not remote or remote == ".":
         return None
+    refus = ecriture_refusee(dossier, delai)
+    if refus:
+        return refus
     args = ["fetch", "--quiet", "--no-tags"]
     recuperer_git = git
     avant = date_borne = None

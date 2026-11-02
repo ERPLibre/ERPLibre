@@ -1769,5 +1769,45 @@ class TestBasesParDefaut(Banc):
         )
 
 
+@unittest.skipIf(os.geteuid() == 0, "root écrit partout : aucun refus")
+class TestEcritureRefusee(Banc):
+    """Un clone que le compte courant ne peut pas écrire : la garde le dit
+    avant le fetch, au lieu de l'erreur de permission de git."""
+
+    def objets_en_lecture_seule(self):
+        objets = os.path.join(self.depot(), ".git", "objects")
+        os.chmod(objets, 0o555)
+        self.addCleanup(os.chmod, objets, 0o755)
+        return objets
+
+    def test_clone_inscriptible(self):
+        self.assertIsNone(repo_pull.ecriture_refusee(self.depot()))
+
+    def test_objets_en_lecture_seule(self):
+        objets = self.objets_en_lecture_seule()
+        self.avancer("a.git", {"a.txt": "deux\n"})
+        donnees, _code = repo_pull.diagnostic(
+            self.racine, "branche", "rebase", regenerer=self.regenerer
+        )
+        c = self.constat(donnees)
+        self.assertEqual(c["verdict"], "fetch_echoue")
+        self.assertIn(
+            f"{os.path.realpath(objets)} is not writable", c["motif"]
+        )
+        self.assertNotIn("ERPLIBRE_CODE_OWNER", c["motif"])
+        self.assertEqual(self.constat(donnees, ".")["verdict"], "a_jour")
+
+    def test_conteneur_rappelle_le_proprietaire(self):
+        self.objets_en_lecture_seule()
+        existe = os.path.exists
+        with patch.object(
+            repo_pull.os.path,
+            "exists",
+            side_effect=lambda p: p == "/.dockerenv" or existe(p),
+        ):
+            motif = repo_pull.ecriture_refusee(self.depot())
+        self.assertIn("ERPLIBRE_CODE_OWNER=odoo", motif)
+
+
 if __name__ == "__main__":
     unittest.main()
