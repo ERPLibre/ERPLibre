@@ -4264,8 +4264,10 @@ def _rootless_lines(plan):
     qu'aucune ne recouvre celle d'un autre compte (`usermod
     --add-subuids`) ; sa session permanente (`loginctl enable-linger`,
     `@@LINGER_ADDED <compte>` quand elle ne l'était pas), attendue 30 s au
-    plus sous /run/user/<uid> ; son podman-restart.service d'utilisateur
-    activé (`@@RESTART_UNIT_ENABLED user`)."""
+    plus jusqu'au bus de son gestionnaire, /run/user/<uid>/bus : le
+    dossier paraît avant lui, et `systemctl --user` sans bus échoue ; son
+    podman-restart.service d'utilisateur activé (`@@RESTART_UNIT_ENABLED
+    user`)."""
     account = cc.ROOTLESS_ACCOUNT
     span = (
         "$2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $2 + $3 > m { m = $2 + $3 }"
@@ -4287,10 +4289,10 @@ def _rootless_lines(plan):
         f"  mark LINGER_ADDED {account}; cfiche",
         "fi",
         "N=0",
-        'while [ ! -d "$R/run/user/$RUID" ] && [ "$N" -lt 30 ]; do',
+        'while [ ! -e "$R/run/user/$RUID/bus" ] && [ "$N" -lt 30 ]; do',
         "  sleep 1; N=$((N + 1))",
         "done",
-        '[ -d "$R/run/user/$RUID" ] || fail rootless-session',
+        '[ -e "$R/run/user/$RUID/bus" ] || fail rootless-session',
         'if [ "$(ruser systemctl --user is-enabled podman-restart.service'
         ' 2>/dev/null)" != enabled ]; then',
         "  "
