@@ -522,7 +522,8 @@ class TestNettoyageGlobal(Banc):
 class TestConstructionOdoo(Banc):
     """Les réponses se jouent dans l'ordre du menu : la version
     (click.prompt), les architectures (input), la sortie (click.prompt), le
-    code (click.prompt), puis le sans-cache (input)."""
+    code (click.prompt), le type d'installation (click.prompt), puis le
+    sans-cache (input)."""
 
     def _banc(self, code=0, publiees=None, emulees=("amd64",)):
         todo = self.todo(code=code)
@@ -538,7 +539,7 @@ class TestConstructionOdoo(Banc):
 
     def test_une_version_choisie_ne_lance_qu_elle(self):
         todo = self._banc()
-        with self.reponses(entrees=["", "n"], prompts=["3", "1", "1"]):
+        with self.reponses(entrees=["", "n"], prompts=["3", "1", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             ["./script/docker/docker_build.sh --odoo_12"],
@@ -547,7 +548,7 @@ class TestConstructionOdoo(Banc):
 
     def test_toutes_les_lance_dans_l_ordre_du_catalogue(self):
         todo = self._banc()
-        with self.reponses(entrees=["o", "", "n"], prompts=["4", "1", "1"]):
+        with self.reponses(entrees=["o", "", "n"], prompts=["4", "1", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             [
@@ -571,7 +572,7 @@ class TestConstructionOdoo(Banc):
         relancer une à une coûte des heures."""
         todo = self._banc(code=1)
         with self.reponses(
-            entrees=["o", "", "n"], prompts=["4", "1", "1"]
+            entrees=["o", "", "n"], prompts=["4", "1", "1", "2"]
         ) as sortie:
             todo._container_build_odoo()
         self.assertEqual(3, len(todo.execute.commandes))
@@ -581,7 +582,7 @@ class TestConstructionOdoo(Banc):
 
     def test_le_sans_cache_ne_se_demande_qu_une_fois(self):
         todo = self._banc()
-        with self.reponses(entrees=["o", "", "o"], prompts=["4", "1", "1"]):
+        with self.reponses(entrees=["o", "", "o"], prompts=["4", "1", "1", "2"]):
             todo._container_build_odoo()
         for cmd in todo.execute.commandes:
             with self.subTest(cmd=cmd):
@@ -589,7 +590,7 @@ class TestConstructionOdoo(Banc):
 
     def test_plusieurs_architectures_en_local(self):
         todo = self._banc(emulees=("amd64", "arm64", "s390x"))
-        with self.reponses(entrees=["1 2", "n"], prompts=["1", "1", "1"]):
+        with self.reponses(entrees=["1 2", "n"], prompts=["1", "1", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             ["./script/docker/docker_build.sh --odoo_18 --platform=amd64,arm64"],
@@ -599,7 +600,7 @@ class TestConstructionOdoo(Banc):
     def test_pousser_nomme_toujours_les_architectures(self):
         """Le manifeste réunit des étiquettes suffixées, même pour l'hôte."""
         todo = self._banc()
-        with self.reponses(entrees=["", "n"], prompts=["1", "2", "1"]):
+        with self.reponses(entrees=["", "n"], prompts=["1", "2", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             ["./script/docker/docker_build.sh --odoo_18 --platform=amd64 --push"],
@@ -612,7 +613,7 @@ class TestConstructionOdoo(Banc):
             emulees=("amd64", "arm64", "s390x"),
         )
         with self.reponses(
-            entrees=["o", "1 3", "n"], prompts=["4", "1", "1"]
+            entrees=["o", "1 3", "n"], prompts=["4", "1", "1", "2"]
         ) as sortie:
             todo._container_build_odoo()
         self.assertEqual(
@@ -643,7 +644,7 @@ class TestConstructionOdoo(Banc):
         todo = self._banc()
         etats = iter([set(), {"amd64", "arm64"}])
         todo._container_plateformes_emulees = lambda prefixe: next(etats)
-        with self.reponses(entrees=["2", "o", "n"], prompts=["1", "1", "1"]):
+        with self.reponses(entrees=["2", "o", "n"], prompts=["1", "1", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             [
@@ -656,7 +657,7 @@ class TestConstructionOdoo(Banc):
     def test_le_code_gele_par_defaut(self):
         """Sans --branches, docker_build.sh clone sur les freeze-revision."""
         todo = self._banc()
-        with self.reponses(entrees=["", "n"], prompts=["1", "1", "1"]):
+        with self.reponses(entrees=["", "n"], prompts=["1", "1", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             ["./script/docker/docker_build.sh --odoo_18"],
@@ -665,7 +666,7 @@ class TestConstructionOdoo(Banc):
 
     def test_les_branches_ajoutent_l_option(self):
         todo = self._banc()
-        with self.reponses(entrees=["", "o"], prompts=["1", "1", "2"]):
+        with self.reponses(entrees=["", "o"], prompts=["1", "1", "2", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             [
@@ -678,6 +679,31 @@ class TestConstructionOdoo(Banc):
     def test_retour_au_choix_du_code_ne_lance_rien(self):
         todo = self._banc()
         with self.reponses(entrees=[""], prompts=["1", "1", "0"]):
+            todo._container_build_odoo()
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_les_modules_extra_par_defaut(self):
+        """Avec extra, docker_build.sh n'a rien à recevoir de plus."""
+        todo = self._banc()
+        with self.reponses(entrees=["", "n"], prompts=["1", "1", "1", "2"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_18"],
+            todo.execute.commandes,
+        )
+
+    def test_l_installation_standard_retire_les_extra(self):
+        todo = self._banc()
+        with self.reponses(entrees=["", "n"], prompts=["1", "1", "1", "1"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_18 --without_extra"],
+            todo.execute.commandes,
+        )
+
+    def test_retour_au_type_d_installation_ne_lance_rien(self):
+        todo = self._banc()
+        with self.reponses(entrees=[""], prompts=["1", "1", "1", "0"]):
             todo._container_build_odoo()
         self.assertEqual([], todo.execute.commandes)
 

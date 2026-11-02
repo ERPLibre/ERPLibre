@@ -14,6 +14,9 @@ Ce que ces tests gardent :
 - le gel et le refus d'un projet sans gel sont la règle par défaut, posés
   avant le premier appel au script de manifeste ;
 - seul « docker_build.sh --branches » remet les branches ;
+- les modules extra font partie de l'image, comme l'installation de
+  production du TODO avec modules extra ; seul « --without_extra » les
+  retire, et chaque projet du manifeste extra d'Odoo 18 porte un gel ;
 - le script de manifeste traduit EL_FREEZE_STRICT en --strict, et s'arrête
   quand la fusion refuse, au lieu de synchroniser l'ancien manifeste local.
 """
@@ -55,6 +58,36 @@ class TestDockerBuild(unittest.TestCase):
         self.assertIn("--build-arg EL_FREEZE=0", bloc)
         self.assertEqual(1, BUILD.count("EL_FREEZE="))
         self.assertIn("SUR_BRANCHES=false\n", BUILD)
+
+
+class TestModulesExtra(unittest.TestCase):
+    def test_extra_par_defaut_avant_la_mise_a_jour(self):
+        self.assertIn("\nARG EL_WITH_EXTRA=1\n", PROD)
+        appel = PROD.index("update_env_version.py --erplibre_version")
+        self.assertLess(PROD.index("ARG EL_WITH_EXTRA=1"), appel)
+        ligne = PROD[PROD.rindex("\n", 0, appel) : PROD.index("\n", appel)]
+        self.assertIn("${extra}", ligne)
+        self.assertIn(
+            'if [ "${EL_WITH_EXTRA}" = "1" ]; then extra="--with_extra"', PROD
+        )
+
+    def test_sans_extra_seulement_sur_demande(self):
+        self.assertIn('elif [ "$arg" == "--without_extra" ]; then', BUILD)
+        bloc = BUILD[BUILD.index('if [ "${SANS_EXTRA}" == true ]; then') :]
+        bloc = bloc[: bloc.index("\nfi\n")]
+        self.assertIn("--build-arg EL_WITH_EXTRA=0", bloc)
+        self.assertEqual(1, BUILD.count("EL_WITH_EXTRA="))
+
+    def test_chaque_projet_extra_d_odoo_18_porte_un_gel(self):
+        """En mode strict, un projet extra sans gel arrêterait l'image."""
+        texte = (
+            RACINE / "manifest/git_manifest_extra_odoo18.0.xml"
+        ).read_text(encoding="utf-8")
+        projets = re.findall(r"<project\b.*?/>", texte, re.S)
+        self.assertTrue(projets)
+        for projet in projets:
+            with self.subTest(projet=re.search(r'path="([^"]*)"', projet)[1]):
+                self.assertRegex(projet, r'\bfreeze-revision="[0-9a-f]{40}"')
 
 
 class TestScriptDeManifeste(unittest.TestCase):

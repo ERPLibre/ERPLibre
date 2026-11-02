@@ -77,6 +77,11 @@ build before anything is synchronised, and is named. Move a freeze forward,
 then commit and push it, to bring newer code into an image.
 `docker_build.sh --branches` builds a development image on the branches.
 
+The image holds the extra modules too, CybroOdoo and the rest of the
+version's extra manifest, as the production install of TODO with extra
+modules does. `docker_build.sh --without_extra`, or the standard install in
+the build menu of TODO, leaves them out.
+
 ### Running ERPLibre using Docker-Compose
 
 Go at the root of this git project.

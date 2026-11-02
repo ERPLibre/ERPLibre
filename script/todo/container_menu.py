@@ -600,6 +600,19 @@ class ContainerMenuMixin:
         if code is None:
             return
         sur_branches = " --branches" if code == 1 else ""
+        # Les modules extra par défaut, comme l'installation de production du
+        # TODO qui les inclut ; l'installation standard s'en passe.
+        type_install = self._container_choix_numerote(
+            t("Install type:"),
+            [
+                t("Standard install (without extra modules)"),
+                t("Install with extra modules (CybroOdoo - large, slow)"),
+            ],
+            defaut="2",
+        )
+        if type_install is None:
+            return
+        sans_extra = " --without_extra" if type_install == 0 else ""
         sans_cache = ""
         if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
             sans_cache = " --no-cache"
@@ -617,7 +630,7 @@ class ContainerMenuMixin:
                 options += " --push"
             cmd = (
                 f"{prefixe}./script/docker/docker_build.sh"
-                f" --odoo_{court}{options}{sur_branches}{sans_cache}"
+                f" --odoo_{court}{options}{sur_branches}{sans_extra}{sans_cache}"
             )
             if self.execute.exec_command_live(cmd, source_erplibre=False):
                 echecs.append(version)

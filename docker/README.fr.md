@@ -77,6 +77,11 @@ puis le commiter et le pousser, fait entrer un code plus récent dans une
 image. `docker_build.sh --branches` construit une image de développement sur
 les branches.
 
+L'image porte aussi les modules extra, CybroOdoo et le reste du manifeste
+extra de la version, comme l'installation de production du TODO avec modules
+extra. `docker_build.sh --without_extra`, ou l'installation standard dans le
+menu de construction du TODO, les laisse de côté.
+
 ### Exécuter ERPLibre avec Docker-Compose
 
 Allez à la racine de ce projet git.

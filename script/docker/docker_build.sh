@@ -13,6 +13,7 @@ ARGS=""
 PLATEFORMES=""
 POUSSER=false
 SUR_BRANCHES=false
+SANS_EXTRA=false
 AFFICHER_PLATEFORMES=false
 IS_RELEASE=false
 IS_RELEASE_ALPHA=false
@@ -51,6 +52,10 @@ for arg in "$@"; do
     # Les dépôts suivent la tête de leur branche au lieu de leur
     # freeze-revision : une image de développement.
     SUR_BRANCHES=true
+  elif [ "$arg" == "--without_extra" ]; then
+    # L'installation standard, sans les modules extra que l'image porte
+    # par défaut.
+    SANS_EXTRA=true
   elif [ "$arg" == "--push" ]; then
     POUSSER=true
   elif [ "$arg" == "--print-platforms" ]; then
@@ -241,6 +246,10 @@ fi
 # Sans --branches, le Dockerfile clone chaque dépôt sur son freeze-revision.
 if [ "${SUR_BRANCHES}" == true ]; then
   ARGS_PROD="${ARGS_PROD} --build-arg EL_FREEZE=0"
+fi
+# Sans --without_extra, l'image porte les modules extra.
+if [ "${SANS_EXTRA}" == true ]; then
+  ARGS_PROD="${ARGS_PROD} --build-arg EL_WITH_EXTRA=0"
 fi
 
 set -e
