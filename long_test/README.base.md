@@ -839,8 +839,10 @@ takes the menu's path with the method « containers »:
 6. the VM is rebooted: both containers run again, brought back by
    `docker.service`, by `podman-restart.service`, or for rootless Podman
    by the account's own `podman-restart.service` and its linger;
-7. a second install changes nothing; the uninstall, data and the tool's
-   additions included, leaves no container, image, volume, compose file,
+7. a second install changes nothing; with ntfy's container stopped by
+   hand, a third goes through `up -d` over the containers already there
+   and ntfy runs again; the uninstall, data and the tool's additions
+   included, leaves no container, image, volume, compose file,
    account or engine package, and the ports are closed from this machine;
 8. the `podman` course then installs coturn alone in production on the
    same VM, with a supplied certificate and TURN over TLS on 443: 443 is
@@ -1814,8 +1816,10 @@ la méthode « conteneurs » :
    `docker.service`, par `podman-restart.service`, ou pour Podman sans
    root par le `podman-restart.service` du compte et sa session
    permanente (linger) ;
-7. une seconde installation ne change rien ; la désinstallation, données et
-   ajouts de l'outil compris, ne laisse ni conteneur, ni image, ni volume,
+7. une seconde installation ne change rien ; le conteneur de ntfy arrêté
+   à la main, une troisième passe par `up -d` sur les conteneurs déjà là
+   et ntfy tourne de nouveau ; la désinstallation, données et ajouts de
+   l'outil compris, ne laisse ni conteneur, ni image, ni volume,
    ni fichier compose, ni compte, ni paquet du moteur, et les ports sont
    fermés vus d'ici ;
 8. la course `podman` installe ensuite coturn seul en production sur la

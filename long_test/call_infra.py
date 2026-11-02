@@ -366,6 +366,7 @@ def _conteneur_etapes(melange=False, production=False):
         "redemarrage",
         "verification-apres-redemarrage",
         "rien-a-changer",
+        "relance-up",
         "desinstallation",
         "etat-apres-desinstallation",
         "ports-fermes",
@@ -3294,7 +3295,6 @@ def odoo_invente(sc, cible, answers, etat, url, base, nom, bascule):
         timeout=5,
     )
     debuts = [avant.get("demarre", ""), apres.get("demarre", "")]
-    meme = all(debuts) and debuts[0] == debuts[1]
     detail = {
         "ajout": ajoute,
         "etat": ecrit,
@@ -3303,13 +3303,22 @@ def odoo_invente(sc, cible, answers, etat, url, base, nom, bascule):
         "en-marche": apres.get("etat") == "running",
         "rest": "ok" if rest.ok else rest.error,
     }
-    if bascule:
-        attendu = recree and all(debuts) and not meme
-    else:
-        attendu = not recree and meme
+    attendu = verdict_recreation(bascule, recree, debuts)
     ok = ajoute and ecrit and rest.ok and detail["en-marche"] and attendu
     sc.noter(nom, ok, detail)
     return (final if ecrit else etat), valeur
+
+
+def verdict_recreation(bascule, recree, debuts):
+    """Vert quand le conteneur de coturn a été recréé comme `bascule` le
+    veut : recréé (`recree`, la ligne `@@RECREATE 1`) et deux dates de
+    démarrage lues, différentes, pour une bascule ; ni l'un ni l'autre
+    sinon, la même date lue avant et après. Le marqueur seul ne prouve
+    rien : seule la date dit que le conteneur a vraiment redémarré."""
+    meme = all(debuts) and debuts[0] == debuts[1]
+    if bascule:
+        return bool(recree and all(debuts) and not meme)
+    return bool(not recree and meme)
 
 
 def relais_prive(sc, answers, secret):
@@ -3475,7 +3484,7 @@ def scenario_conteneur(sc, cible, ip, dossier):
     ajoutes = etat["container"].get("engine_packages_added") or []
     sc.noter(
         "moteur-installe",
-        bool(offre) and set(offre) <= set(ajoutes),
+        verdict_moteur_installe(offre, ajoutes),
         {"proposes": offre, "consignes": ajoutes},
     )
     _verification(sc, cible, ip, cafile)
@@ -3509,6 +3518,7 @@ def scenario_conteneur(sc, cible, ip, dossier):
     _verification(sc, cible, ip, cafile, nom="verification-apres-redemarrage")
     again = installer(cible, reponses_de, sc.log)
     sc.noter("rien-a-changer", again["ok"] and again["rien_a_faire"])
+    relance_up(sc, cible, etat, reponses_de)
     desinstallation_conteneur(sc, cible, ip, answers, etat)
     sc.noter(
         "desinstallation-vide", desinstaller(cible, True, sc.log) == "rien"
@@ -3518,6 +3528,76 @@ def scenario_conteneur(sc, cible, ip, dossier):
 
 
 # --- Migration ----------------------------------------------------------
+
+
+def verdict_relance_up(arret, res, apres):
+    """Vert quand le conteneur de ntfy a été arrêté (`arret`, le code du
+    script), que la relance qui suit a tourné (`res`, le résultat
+    d'`installer`, pas « rien à changer » : le conteneur arrêté demande un
+    passage) et que ntfy tourne de nouveau (`apres`, son état lu)."""
+    return bool(
+        arret == 0
+        and res["ok"]
+        and not res["rien_a_faire"]
+        and apres.get("etat") == "running"
+    )
+
+
+def relance_up(sc, cible, etat, reponses_de):
+    """Le conteneur de ntfy arrêté par le moteur de l'état, puis
+    l'installation relancée avec les mêmes réponses : le script passe par
+    `up -d` sur des conteneurs déjà là, ce que podman-compose traduit par
+    `podman run`, refusé pour un nom pris, puis `podman start`. ntfy doit
+    tourner de nouveau."""
+    arret = f"{_eng(etat)}\neng stop {cc.CONTAINERS['ntfy']}"
+    code, _sortie = distant(cible, arret, sc.log, DELAI_SCRIPT)
+    res = installer(cible, reponses_de, sc.log)
+    apres = _etats(cible, etat, sc.log, attente=10).get("ntfy", {})
+    sc.noter(
+        "relance-up",
+        verdict_relance_up(code, res, apres),
+        {
+            "arret": code,
+            "installation": res["etape"] or res["ok"],
+            "rien-a-faire": res["rien_a_faire"],
+            "ntfy": apres.get("etat"),
+        },
+    )
+
+
+def verdict_moteur_installe(offre, ajoutes):
+    """Vert quand des paquets du moteur ont été proposés et que chacun est
+    consigné dans l'état (`engine_packages_added`) : la désinstallation ne
+    retire que ceux-là."""
+    return bool(offre) and set(offre) <= set(ajoutes)
+
+
+def verdict_secrets(avant, apres):
+    """Vert quand des lignes `turn_secret` ont été lues avant la migration
+    et que les mêmes le sont après : deux lectures vides ne prouvent rien."""
+    return bool(avant) and avant == apres
+
+
+def verdict_telephone(telephone, telephones):
+    """Vert quand le téléphone inscrit avant la migration figure dans la
+    liste des comptes de ntfy lue après."""
+    return telephone is not None and telephone in (telephones or ())
+
+
+def verdict_retour(ancien, res):
+    """Vert pour le retour aux paquets : refusé par
+    `call_infra_ntfy_downgrade` quand l'hôte porte un ntfy plus ancien que
+    l'image (`ancien`), migré (`to_packages`, `@@MIGRATION done`) sinon.
+    `res` : le résultat d'`installer`."""
+    if ancien:
+        return not res["ok"] and res["refus"] == "call_infra_ntfy_downgrade"
+    plan = res["plan"]
+    return bool(
+        res["ok"]
+        and plan is not None
+        and plan.migration == "to_packages"
+        and res["migration"] == "done"
+    )
 
 
 def secrets_turn(lus):
@@ -3631,7 +3711,7 @@ def _parcours_migration(sc, cible, ip, dossier, harnais):
     apres = secrets_turn(lus)
     sc.noter(
         "secrets-identiques",
-        bool(avant) and avant == apres,
+        verdict_secrets(avant, apres),
         {"avant": len(avant), "apres": len(apres)},
     )
     vert, problemes = verdict_controle(
@@ -3645,8 +3725,9 @@ def _parcours_migration(sc, cible, ip, dossier, harnais):
     _noter_ice(sc, "odoo-relaie-conteneurs", harnais, etat, cafile)
     sc.noter(
         "telephone-garde",
-        telephone is not None
-        and telephone in _telephones(cible, sc.log, proprietaire, etat),
+        verdict_telephone(
+            telephone, _telephones(cible, sc.log, proprietaire, etat)
+        ),
     )
 
     facts = _sonde(cible, sc.log, distant)
@@ -3655,18 +3736,9 @@ def _parcours_migration(sc, cible, ip, dossier, harnais):
     res = installer(
         cible, lambda f: methode_du_menu(base, f, "packages"), sc.log
     )
-    plan = res["plan"]
-    if ancien:
-        ok = not res["ok"] and res["refus"] == "call_infra_ntfy_downgrade"
-    else:
-        ok = (
-            res["ok"]
-            and plan.migration == "to_packages"
-            and res["migration"] == "done"
-        )
     sc.noter(
         "retour-paquets",
-        ok,
+        verdict_retour(ancien, res),
         {
             "ntfy-hote": hote,
             "plus-ancien": ancien,

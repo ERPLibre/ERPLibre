@@ -3129,6 +3129,7 @@ class LesCoursesConteneur(unittest.TestCase):
                     "crochet-lignee",
                     "redemarrage",
                     "rien-a-changer",
+                    "relance-up",
                     "etat-apres-desinstallation",
                 ):
                     self.assertIn(etape, etapes)
@@ -3236,6 +3237,85 @@ class LesCoursesConteneur(unittest.TestCase):
                 os.path.join(self.maison, "dev-debian.log"),
             ],
             journaux,
+        )
+
+
+class LesVerdictsDesConteneurs(unittest.TestCase):
+    """Chaque verdict des courses conteneur et migration refuse ce qu'il ne
+    prouve pas : un marqueur sans date de démarrage changée, deux lectures
+    vides, un téléphone absent de la liste, un retour vert sans refus."""
+
+    def test_a_recreation_is_proven_by_the_start_date(self):
+        cas = (
+            (True, True, ["t1", "t2"], True),
+            (True, True, ["t1", "t1"], False),
+            (True, True, ["", "t2"], False),
+            (True, False, ["t1", "t2"], False),
+            (False, False, ["t1", "t1"], True),
+            (False, False, ["t1", "t2"], False),
+            (False, True, ["t1", "t1"], False),
+            (False, False, ["", ""], False),
+        )
+        for bascule, recree, debuts, vert in cas:
+            with self.subTest(bascule=bascule, recree=recree, debuts=debuts):
+                self.assertIs(
+                    lt.verdict_recreation(bascule, recree, debuts), vert
+                )
+
+    def test_the_offered_packages_must_be_recorded(self):
+        self.assertTrue(
+            lt.verdict_moteur_installe(
+                ["podman", "uidmap"], ["podman", "uidmap", "x"]
+            )
+        )
+        self.assertFalse(
+            lt.verdict_moteur_installe(["podman", "uidmap"], ["podman"])
+        )
+        self.assertFalse(lt.verdict_moteur_installe([], ["podman"]))
+
+    def test_two_empty_reads_prove_nothing(self):
+        self.assertTrue(lt.verdict_secrets({"a"}, {"a"}))
+        self.assertFalse(lt.verdict_secrets(set(), set()))
+        self.assertFalse(lt.verdict_secrets({"a"}, {"b"}))
+
+    def test_the_phone_must_be_in_the_listing(self):
+        self.assertTrue(lt.verdict_telephone("tel-1", ["tel-1", "tel-2"]))
+        self.assertFalse(lt.verdict_telephone("tel-1", ["tel-2"]))
+        self.assertFalse(lt.verdict_telephone("tel-1", None))
+        self.assertFalse(lt.verdict_telephone(None, [None]))
+
+    def test_the_up_rerun_needs_a_run_and_ntfy_back(self):
+        couru = dict(ok=True, rien_a_faire=False, etape="")
+        marche = {"etat": "running"}
+        self.assertTrue(lt.verdict_relance_up(0, couru, marche))
+        self.assertFalse(lt.verdict_relance_up(1, couru, marche))
+        self.assertFalse(
+            lt.verdict_relance_up(0, dict(couru, rien_a_faire=True), marche)
+        )
+        self.assertFalse(
+            lt.verdict_relance_up(0, dict(couru, ok=False), marche)
+        )
+        self.assertFalse(lt.verdict_relance_up(0, couru, {"etat": "exited"}))
+
+    def test_the_return_needs_the_refusal_with_an_older_host_ntfy(self):
+        migre = dict(
+            ok=True,
+            refus=None,
+            migration="done",
+            plan=mock.Mock(migration="to_packages"),
+        )
+        refuse = dict(
+            ok=False,
+            refus="call_infra_ntfy_downgrade",
+            migration=None,
+            plan=None,
+        )
+        self.assertTrue(lt.verdict_retour(False, migre))
+        self.assertFalse(lt.verdict_retour(True, migre))
+        self.assertTrue(lt.verdict_retour(True, refuse))
+        self.assertFalse(lt.verdict_retour(False, refuse))
+        self.assertFalse(
+            lt.verdict_retour(False, dict(migre, migration="rolled-back"))
         )
 
 
@@ -3825,6 +3905,20 @@ class LeScenarioConteneur(unittest.TestCase):
         self.assertEqual(
             "403 Forbidden", sc.details["relais-prive"]["resultat"]
         )
+
+    def test_a_stopped_ntfy_comes_back_through_up(self):
+        for moteur in ("docker", "podman-rootless"):
+            with self.subTest(moteur=moteur):
+                sc, mondes, appels = self._course(moteur)
+                self.assertTrue(sc.etapes["relance-up"], sc.details)
+                arrets = [
+                    v
+                    for v in mondes[0].vus
+                    if v.endswith(f"eng stop {cc.CONTAINERS['ntfy']}")
+                ]
+                self.assertEqual(1, len(arrets))
+                if moteur == "podman-rootless":
+                    self.assertIn("runuser -u erplibre-call", arrets[0])
 
     def test_the_hook_signals_the_container(self):
         sc, mondes, _a = self._course("podman-rootless")

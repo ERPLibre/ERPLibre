@@ -896,8 +896,10 @@ la méthode « conteneurs » :
    `docker.service`, par `podman-restart.service`, ou pour Podman sans
    root par le `podman-restart.service` du compte et sa session
    permanente (linger) ;
-7. une seconde installation ne change rien ; la désinstallation, données et
-   ajouts de l'outil compris, ne laisse ni conteneur, ni image, ni volume,
+7. une seconde installation ne change rien ; le conteneur de ntfy arrêté
+   à la main, une troisième passe par `up -d` sur les conteneurs déjà là
+   et ntfy tourne de nouveau ; la désinstallation, données et ajouts de
+   l'outil compris, ne laisse ni conteneur, ni image, ni volume,
    ni fichier compose, ni compte, ni paquet du moteur, et les ports sont
    fermés vus d'ici ;
 8. la course `podman` installe ensuite coturn seul en production sur la
