@@ -587,6 +587,19 @@ class ContainerMenuMixin:
         if sortie is None:
             return
         pousser = sortie == 1
+        # Le gel est la règle : l'image porte le code que nomme le manifeste.
+        # Les branches donnent une image de développement, dont le code
+        # change d'une construction à l'autre.
+        code = self._container_choix_numerote(
+            t("Code:"),
+            [
+                t("The frozen commits of the manifest"),
+                t("The head of each branch (development image)"),
+            ],
+        )
+        if code is None:
+            return
+        sur_branches = " --branches" if code == 1 else ""
         sans_cache = ""
         if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
             sans_cache = " --no-cache"
@@ -604,7 +617,7 @@ class ContainerMenuMixin:
                 options += " --push"
             cmd = (
                 f"{prefixe}./script/docker/docker_build.sh"
-                f" --odoo_{court}{options}{sans_cache}"
+                f" --odoo_{court}{options}{sur_branches}{sans_cache}"
             )
             if self.execute.exec_command_live(cmd, source_erplibre=False):
                 echecs.append(version)

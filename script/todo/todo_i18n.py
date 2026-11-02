@@ -18449,6 +18449,18 @@ TRANSLATIONS = {
         "fr": "Sortie :",
         "en": "Output:",
     },
+    "Code:": {
+        "fr": "Code :",
+        "en": "Code:",
+    },
+    "The frozen commits of the manifest": {
+        "fr": "Les commits gelés du manifeste",
+        "en": "The frozen commits of the manifest",
+    },
+    "The head of each branch (development image)": {
+        "fr": "La tête de chaque branche (image de développement)",
+        "en": "The head of each branch (development image)",
+    },
     "A local tag per architecture": {
         "fr": "Une étiquette locale par architecture",
         "en": "A local tag per architecture",
