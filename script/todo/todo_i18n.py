@@ -3983,6 +3983,14 @@ TRANSLATIONS = {
         "fr": "La méthode d'installation vaut pour tout l'hôte : en changer migre chaque service consigné. Choisissez aussi {service}.",
         "en": "The install method applies to the whole host: changing it migrates every recorded service. Choose {service} too.",
     },
+    "call_infra_method_added": {
+        "fr": "Le retour aux paquets ne déplace que les services de l'état : revenez d'abord aux paquets sans {service}, puis ajoutez-le par une nouvelle installation.",
+        "en": "The return to packages moves only the services of the state: return to packages without {service} first, then add it with a new install.",
+    },
+    "call_infra_container_over_packages": {
+        "fr": "{service} tourne déjà par paquets sur cet hôte, sans état de l'outil. Installez-le d'abord par paquets (l'outil l'adopte), puis passez aux conteneurs : la migration arrête son unité et garde ses données.",
+        "en": "{service} already runs from packages on this host, with no state of the tool. Install it from packages first (the tool adopts it), then move to containers: the migration stops its unit and keeps its data.",
+    },
     "call_infra_ntfy_downgrade": {
         "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : il ne pourrait plus la lire. Mettez à jour ntfy sur l'hôte, ou gardez les conteneurs.",
         "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: it could no longer read it. Upgrade ntfy on the host, or keep the containers.",
