@@ -10827,7 +10827,7 @@ echo "$3:$start:$((end - start + 1))" >> "$ROOT/etc/$f"
 [ "$1" = enable-linger ] || exit 97
 mkdir -p "$ROOT/var/lib/systemd/linger"; touch "$ROOT/var/lib/systemd/linger/$2"
 id=$(grep "^$2:" "$FK/passwd" | cut -d: -f3)
-mkdir -p "$ROOT/run/user/$id"
+mkdir -p "$ROOT/run/user/$id"; : > "$ROOT/run/user/$id/bus"
 """,
     "apt-get": _NOTE
     + r"""
@@ -11401,13 +11401,15 @@ class TestContainerInstallRun(ContainerSandbox):
         )
 
     def test_rootless_session_that_never_appears_stops(self):
-        # loginctl n'ouvre ici aucune session : la relance n'attend que
-        # 30 s simulées (sleep en bouchon) puis s'arrête.
+        # Le dossier de la session paraît, le bus de son gestionnaire
+        # jamais : le script n'attend que 30 s simulées (sleep en
+        # bouchon), puis s'arrête avant tout `systemctl --user`.
         write(
             os.path.join(self.stubs, "loginctl"),
-            _NOTE + "exit 0\n",
+            _NOTE + 'mkdir -p "$ROOT/run/user/995"\n',
         )
         done = self.run_script(self.rootless_plan())
+        self.assertFalse([line for line in self.argv() if " --user " in line])
         self.assert_no_state(done)
         self.assertIn(
             ("FAILED", "rootless-session"), ci.marker_lines(done.stdout)
