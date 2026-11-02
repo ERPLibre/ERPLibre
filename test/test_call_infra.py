@@ -11842,6 +11842,19 @@ class TestMigrationRun(ContainerSandbox):
                 return index
         return None
 
+    def test_a_migration_writes_no_fiche_before_up(self):
+        # Une migration ratée arrête et retire ses conteneurs (`migback`) :
+        # aucune fiche n'a à les reconnaître pour siens.
+        plan, _before = self.to_container()
+        lines = ci.install_script(plan, STAMP).splitlines()
+        up = lines.index("UP=$CHANGED")
+        self.assertNotEqual(lines[up + 1], "cfiche")
+        fresh = ci.plan_install(
+            base_facts(engines=engine_facts()), container_answers(), NOW
+        )
+        lines = ci.install_script(fresh, STAMP).splitlines()
+        self.assertEqual(lines[lines.index("UP=$CHANGED") + 1], "cfiche")
+
     def test_pull_precedes_first_stop(self):
         plan, _before = self.to_container()
         done = self.run_script(plan)
