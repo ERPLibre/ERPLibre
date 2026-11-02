@@ -2558,14 +2558,13 @@ def _container_added(prior):
 
 def _container_running(facts, answers, svc):
     """Le conteneur de `svc` tourne, sous le moteur et le mode voulus, sur
-    son image épinglée (`cc.same_image` : dépôt et condensat, quelle que
-    soit la forme que le moteur rend)."""
+    son image épinglée (`cc.runs_pinned` : par identifiant d'image, quelle
+    que soit la forme de nom que le moteur rend)."""
     engines = facts.engines or cc.EngineFacts()
     wanted = (cc.CONTAINERS[svc], answers.engine, answers.rootless, "running")
     return any(
-        (name, engine, rootless, status) == wanted
-        and cc.same_image(image, cc.IMAGES[svc])
-        for name, engine, rootless, status, image in engines.containers
+        container[:4] == wanted and cc.runs_pinned(engines, container, svc)
+        for container in engines.containers
     )
 
 

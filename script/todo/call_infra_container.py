@@ -20,7 +20,7 @@ root, les exécute sur l'hôte et relit leur sortie `@@NOM valeur`.
 - `engine_argv` / `compose_argv` : la commande du moteur pour le bloc
   `container` de l'état, directe en root ou par `runuser` en rootless ;
   `container_block_problem` refuse un bloc altéré avant qu'il ne serve.
-- `engine_packages`, `classify_pull`, `version_older`, `same_image`,
+- `engine_packages`, `classify_pull`, `version_older`, `runs_pinned`,
   `foreign_containers` : petites règles que le plan et les scripts
   partagent.
 """
@@ -166,8 +166,14 @@ _PS_FORMAT = "{{.Names}} {{.State}} {{.Image}}"
 _PS_AWK = (
     "$1 ~ /^erplibre-call-/ || $3 ~ /(^|\\/)coturn\\/coturn([:@]|$)/"
     " || $3 ~ /(^|\\/)binwiederhier\\/ntfy([:@]|$)/"
-    ' { print "@@CONTAINER " $1 " " e " " r " " $2 " " $3 }'
+    ' { print $1 " " $2 " " $3 }'
 )
+# Identifiant de l'image d'un conteneur (`container inspect`) et d'une
+# image locale (`image inspect`), communs aux deux moteurs : Docker les
+# rend « sha256:<hex> », Podman en hexadécimal seul (`image_id`).
+_CONTAINER_IMAGE_FORMAT = "{{.Image}}"
+_IMAGE_ID_FORMAT = "{{.Id}}"
+_IMAGE_ID = re.compile(r"^(?:sha256:)?([0-9a-f]{64})\Z")
 _VERSION_SED = (
     "s/^.*[Vv]ersion[[:space:]][[:space:]]*v\\{0,1\\}"
     "\\([0-9][^[:space:],]*\\).*/\\1/p"
@@ -195,8 +201,12 @@ class EngineFacts:
     rendu seul, compte ou non, pour dire s'il faut le paquet ; `user_bus` :
     une unité de USER_BUS_UNITS est installée.
     `containers` : (nom, moteur, rootless, état, image) de chaque conteneur
-    de l'outil ou lancé d'une image coturn ou ntfy. `images` : (moteur,
-    rootless, référence) de chaque image épinglée présente.
+    de l'outil ou lancé d'une image coturn ou ntfy, l'image sous la forme
+    que `ps` du moteur rend. `container_image_ids` : (nom, moteur,
+    rootless) → identifiant de son image (`image_id`), pour ceux dont
+    `inspect` l'a rendu. `images` : (moteur, rootless, référence) de chaque
+    image épinglée présente ; `image_ids` : la même clé → son identifiant
+    local, quand le moteur l'a rendu.
     `ntfy_host_version` : version du binaire ntfy de l'hôte, None sans lui.
     `sqlite3` : le client sqlite3 de l'hôte est là. `compose_text` : le
     fichier COMPOSE_FILE présent, vide sans lui.
@@ -216,6 +226,8 @@ class EngineFacts:
     compose_text: str = ""
     newuidmap: bool = False
     user_bus: bool = False
+    container_image_ids: dict = dataclasses.field(default_factory=dict)
+    image_ids: dict = dataclasses.field(default_factory=dict)
 
 
 # --- Commandes ----------------------------------------------------------------
@@ -473,9 +485,9 @@ def engine_probe_lines(root=""):
     <subuid> <subgid> <linger> <newuidmap> <podman-restart utilisateur>`
     (0|1, « - » sans session), `@@USER_BUS <0|1>` (une unité de
     USER_BUS_UNITS est là), `@@CONTAINER <nom> <moteur> <0|1> <état>
-    <image>`, `@@IMAGE <moteur> <0|1> <référence>` par image épinglée
-    présente, `@@NTFY_HOST <version>`, `@@SQLITE <0|1>`, `@@COMPOSE_FILE
-    <base64>`.
+    <image> <identifiant de l'image|->`, `@@IMAGE <moteur> <0|1>
+    <référence> <identifiant|->` par image épinglée présente, `@@NTFY_HOST
+    <version>`, `@@SQLITE <0|1>`, `@@COMPOSE_FILE <base64>`.
     """
     refs = " ".join(_quote(ref) for ref in IMAGES.values())
     acct = ROOTLESS_ACCOUNT
@@ -546,30 +558,36 @@ def engine_probe_lines(root=""):
         f"for E_F in {' '.join(USER_BUS_UNITS)}; do"
         ' [ -e "$R$E_F" ] && E_UB=1; done',
         'echo "@@USER_BUS $E_UB"',
-        # Conteneurs et images épinglées, sans réveiller ni créer.
-        'if [ -n "$E_D" ] && [ "$E_DA" = active ]; then',
-        f"  timeout 20 docker {ps} 2>/dev/null"
-        f" | awk -v e=docker -v r=0 {_quote(_PS_AWK)}",
-        f"  for E_I in {refs}; do",
-        '    timeout 20 docker image inspect "$E_I" >/dev/null 2>&1'
-        ' && echo "@@IMAGE docker 0 $E_I"',
+        # Conteneurs et images épinglées, sans réveiller ni créer :
+        # `elist <moteur> <0|1> <commande du moteur...>`. Un identifiant
+        # qui n'a pas la forme d'un identifiant d'image devient « - ».
+        "elist() {",
+        "  E_E=$1; E_R=$2; shift 2",
+        f'  timeout 20 "$@" {ps} 2>/dev/null | awk {_quote(_PS_AWK)}'
+        " | while read -r E_N E_S E_G; do",
+        '    E_ID=$(timeout 20 "$@" container inspect --format'
+        f' {_quote(_CONTAINER_IMAGE_FORMAT)} "$E_N" 2>/dev/null'
+        " | head -n 1)",
+        "    case \"$E_ID\" in ''|*[!0-9a-z:]*) E_ID=- ;; esac",
+        '    echo "@@CONTAINER $E_N $E_E $E_R $E_S $E_G $E_ID"',
         "  done",
+        f"  for E_I in {refs}; do",
+        '    if E_ID=$(timeout 20 "$@" image inspect --format'
+        f' {_quote(_IMAGE_ID_FORMAT)} "$E_I" 2>/dev/null); then',
+        "      E_ID=$(printf '%s\\n' \"$E_ID\" | head -n 1)",
+        "      case \"$E_ID\" in ''|*[!0-9a-z:]*) E_ID=- ;; esac",
+        '      echo "@@IMAGE $E_E $E_R $E_I $E_ID"',
+        "    fi",
+        "  done",
+        "}",
+        'if [ -n "$E_D" ] && [ "$E_DA" = active ]; then',
+        "  elist docker 0 docker",
         "fi",
         f'if [ -n "$E_P" ] && [ -d "$R{PODMAN_ROOT_STORAGE}" ]; then',
-        f"  timeout 20 podman {ps} 2>/dev/null"
-        f" | awk -v e=podman -v r=0 {_quote(_PS_AWK)}",
-        f"  for E_I in {refs}; do",
-        '    timeout 20 podman image exists "$E_I" >/dev/null 2>&1'
-        ' && echo "@@IMAGE podman 0 $E_I"',
-        "  done",
+        "  elist podman 0 podman",
         "fi",
         'if [ -n "$E_P" ] && [ -n "$E_RS" ]; then',
-        f"  timeout 20 {rl} podman {ps} 2>/dev/null"
-        f" | awk -v e=podman -v r=1 {_quote(_PS_AWK)}",
-        f"  for E_I in {refs}; do",
-        f'    timeout 20 {rl} podman image exists "$E_I" >/dev/null 2>&1'
-        ' && echo "@@IMAGE podman 1 $E_I"',
-        "  done",
+        f"  elist podman 1 {rl} podman",
         "fi",
         "if command -v ntfy >/dev/null 2>&1; then",
         "  E_NV=$(timeout 20 ntfy --version 2>/dev/null"
@@ -601,7 +619,7 @@ def parse_engine_lines(pairs):
     """`EngineFacts` des paires (NOM, valeur) de la section des moteurs ;
     les autres noms sont ignorés, une ligne mal formée aussi."""
     engines, compose, accounts = {}, {}, {}
-    containers, images = [], []
+    containers, images, container_ids, image_ids = [], [], {}, {}
     docker_service, podman_restart, port = None, None, 1024
     rootless_line, ntfy, sqlite3, text = None, None, False, ""
     user_bus = False
@@ -646,7 +664,7 @@ def parse_engine_lines(pairs):
                 rootless_line = flags + [parts[4]]
         elif name == "CONTAINER":
             if (
-                len(parts) == 5
+                len(parts) in (5, 6)
                 and _CONTAINER_NAME.match(parts[0])
                 and parts[1] in ENGINES
                 and _flag(parts[2]) is not None
@@ -662,9 +680,12 @@ def parse_engine_lines(pairs):
                 )
                 if entry not in containers:
                     containers.append(entry)
+                found = image_id(parts[5]) if len(parts) == 6 else None
+                if found:
+                    container_ids.setdefault(entry[:3], found)
         elif name == "IMAGE":
             if (
-                len(parts) == 3
+                len(parts) in (3, 4)
                 and parts[0] in ENGINES
                 and _flag(parts[1]) is not None
                 and parts[2] in IMAGES.values()
@@ -672,6 +693,9 @@ def parse_engine_lines(pairs):
                 entry = (parts[0], _flag(parts[1]), parts[2])
                 if entry not in images:
                     images.append(entry)
+                found = image_id(parts[3]) if len(parts) == 4 else None
+                if found:
+                    image_ids.setdefault(entry, found)
         elif name == "NTFY_HOST":
             current = value.strip()
             if _VERSION.match(current):
@@ -712,6 +736,8 @@ def parse_engine_lines(pairs):
         compose_text=text,
         newuidmap=newuidmap,
         user_bus=user_bus,
+        container_image_ids=container_ids,
+        image_ids=image_ids,
     )
 
 
@@ -849,6 +875,30 @@ def same_image(found, pinned):
     return found_id is not None and found_id == image_identity(pinned)
 
 
+def image_id(text):
+    """L'identifiant d'image `text` en 64 chiffres hexadécimaux, que le
+    moteur le rende « sha256:<hex> » (Docker) ou seul (Podman) ; None hors
+    de ces formes."""
+    found = _IMAGE_ID.match(text.strip()) if isinstance(text, str) else None
+    return found.group(1) if found else None
+
+
+def runs_pinned(facts, container, svc):
+    """Le conteneur `container` (nom, moteur, rootless, état, image, une
+    entrée de `facts.containers`) tourne-t-il l'image épinglée de `svc` ?
+    Par identifiant d'image quand la sonde a rendu le sien et celui de la
+    référence épinglée sous le même moteur et mode : `ps` ne rend pas la
+    même forme de nom d'un moteur à l'autre (Docker peut omettre registre
+    et condensat). Sans l'un des deux, la forme du nom (`same_image`)."""
+    name, engine, rootless, _status, image = container
+    pinned = IMAGES[svc]
+    found = facts.container_image_ids.get((name, engine, rootless))
+    local = facts.image_ids.get((engine, rootless, pinned))
+    if found and local:
+        return found == local
+    return same_image(image, pinned)
+
+
 def foreign_containers(facts, state, pending=None):
     """Noms triés des conteneurs vus par la sonde que l'état ne consigne pas
     comme les siens : ceux de l'outil quand l'état n'est pas en mode
@@ -856,7 +906,7 @@ def foreign_containers(facts, state, pending=None):
     consigne pas, et tout conteneur d'une image coturn ou ntfy sous un autre
     nom. `pending` (moteur, rootless) : une installation coupée de l'outil
     a laissé sa fiche sur l'hôte ; les conteneurs à ses noms, sous ce
-    moteur et ce mode et sur son image épinglée (`same_image`), sont les
+    moteur et ce mode et sur son image épinglée (`runs_pinned`), sont les
     siens."""
     if facts is None:
         return ()
@@ -866,9 +916,9 @@ def foreign_containers(facts, state, pending=None):
         ours |= {
             (name, engine, rootless)
             for svc, name in CONTAINERS.items()
-            for found, e, r, _status, image in facts.containers
-            if (found, e, r) == (name, engine, rootless)
-            and same_image(image, IMAGES[svc])
+            for container in facts.containers
+            if container[:3] == (name, engine, rootless)
+            and runs_pinned(facts, container, svc)
         }
     if isinstance(state, dict) and state.get("method") == "container":
         block = state.get("container")

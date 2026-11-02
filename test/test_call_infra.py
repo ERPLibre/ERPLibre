@@ -10024,12 +10024,53 @@ def packages_facts(state=None, **changes):
 
 def ps_image(engine, svc):
     """L'image du conteneur de `svc` telle que `ps` du moteur la rend :
-    Docker, la référence épinglée donnée à la création ; Podman, en root
-    comme en rootless, la même sans étiquette."""
+    Docker, dépôt et étiquette sans registre ni condensat
+    (« coturn/coturn:4.18.0 ») ; Podman, en root comme en rootless, la
+    référence épinglée sans étiquette."""
+    name, digest = cc.IMAGES[svc].split("@")
     if engine == "podman":
-        name, digest = cc.IMAGES[svc].split("@")
         return f"{name.rsplit(':', 1)[0]}@{digest}"
-    return cc.IMAGES[svc]
+    return name.split("/", 1)[1]
+
+
+# Identifiants inventés des images épinglées, tels que les deux moteurs
+# les rendent : Docker « sha256:<hex> », Podman l'hexadécimal seul.
+IMAGE_IDS = {"coturn": "c0" * 32, "ntfy": "f1" * 32}
+
+
+def inspect_id(engine, svc):
+    """L'identifiant de l'image de `svc` sous la forme que rendent
+    `container inspect` et `image inspect` du moteur."""
+    return ("sha256:" if engine == "docker" else "") + IMAGE_IDS[svc]
+
+
+def probed_ids(engines):
+    """`engines` (cc.EngineFacts) relu par `parse_engine_lines` depuis les
+    lignes que la sonde imprimerait, identifiants compris : la forme brute
+    de chaque moteur passe par l'analyse réelle."""
+    pairs = []
+    for name, engine, rootless, status, image in engines.containers:
+        svc = next(s for s, n in cc.CONTAINERS.items() if n == name)
+        flag = "1" if rootless else "0"
+        pairs.append(
+            (
+                "CONTAINER",
+                f"{name} {engine} {flag} {status} {image}"
+                f" {inspect_id(engine, svc)}",
+            )
+        )
+        pairs.append(
+            (
+                "IMAGE",
+                f"{engine} {flag} {cc.IMAGES[svc]} {inspect_id(engine, svc)}",
+            )
+        )
+    parsed = cc.parse_engine_lines(pairs)
+    return dataclasses.replace(
+        engines,
+        container_image_ids=parsed.container_image_ids,
+        image_ids=parsed.image_ids,
+    )
 
 
 def container_installed(ans, facts=None):
@@ -10069,7 +10110,7 @@ def container_installed(ans, facts=None):
         ),
         compose_text=cc.compose_resolved(plan.compose, users),
     )
-    changes = {"state": state, "engines": engines}
+    changes = {"state": state, "engines": probed_ids(engines)}
     if "coturn" in state["services"]:
         changes["coturn"] = config_only(
             ci.COTURN_CONFIGS[facts.family],
@@ -10145,27 +10186,48 @@ class TestContainerPlan(unittest.TestCase):
                 )
 
     def test_container_on_another_image_is_not_nothing_to_do(self):
-        # Même nom, même moteur, mais une autre image ou une image sans
-        # condensat : la relance refait le passage.
-        ans = container_answers(engine="podman")
-        facts = container_installed(ans)
-        for image in (
-            "docker.io/coturn/coturn@sha256:" + "0" * 64,
-            "docker.io/coturn/coturn:4.18.0",
+        # Même nom, même moteur, mais l'identifiant d'une autre image : la
+        # relance refait le passage, quel que soit le nom que `ps` rend.
+        for ans in (
+            container_answers(),
+            container_answers(engine="podman"),
+            container_answers(engine="podman", rootless=True),
         ):
-            with self.subTest(image=image):
-                containers = tuple(
-                    (name, e, r, s, image if name.endswith("coturn") else i)
-                    for name, e, r, s, i in facts.engines.containers
-                )
+            with self.subTest(engine=ans.engine, rootless=ans.rootless):
+                facts = container_installed(ans)
+                key = (cc.CONTAINERS["coturn"], ans.engine, ans.rootless)
+                ids = dict(facts.engines.container_image_ids)
+                ids[key] = "0e" * 32
                 changed = dataclasses.replace(
                     facts,
                     engines=dataclasses.replace(
-                        facts.engines, containers=containers
+                        facts.engines, container_image_ids=ids
                     ),
                 )
                 self.assertFalse(
                     ci.plan_install(changed, ans, NOW).nothing_to_do
+                )
+
+    def test_container_without_image_ids_falls_back_to_the_name(self):
+        # Sans identifiant (sonde plus ancienne, `inspect` muet), seule la
+        # forme du nom compte : celle de Podman porte le condensat, celle
+        # de Docker ne prouve rien et la relance refait le passage.
+        for ans, expected in (
+            (container_answers(), False),
+            (container_answers(engine="podman"), True),
+            (container_answers(engine="podman", rootless=True), True),
+        ):
+            with self.subTest(engine=ans.engine, rootless=ans.rootless):
+                facts = container_installed(ans)
+                changed = dataclasses.replace(
+                    facts,
+                    engines=dataclasses.replace(
+                        facts.engines, container_image_ids={}, image_ids={}
+                    ),
+                )
+                self.assertEqual(
+                    ci.plan_install(changed, ans, NOW).nothing_to_do,
+                    expected,
                 )
 
     def test_container_rerun_keeps_the_recorded_account_and_ids(self):
@@ -10215,6 +10277,9 @@ class TestContainerPlan(unittest.TestCase):
                     (n, e, r, s, "docker.io/coturn/coturn:4.6.2")
                     for n, e, r, s, i in engines.containers
                 ),
+                container_image_ids={
+                    key: "0e" * 32 for key in engines.container_image_ids
+                },
             ),
             "missing": dataclasses.replace(engines, containers=()),
             "compose edited": dataclasses.replace(
