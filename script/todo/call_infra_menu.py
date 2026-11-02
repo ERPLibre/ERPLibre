@@ -56,6 +56,14 @@ SERVICE_CHOICES = {
 }
 SYMBOLS = {True: "✓", False: "✗", None: "?"}
 MODE_CHOICES = {"1": "development", "2": "production"}
+# Méthode d'installation (`Answers.method`) et moteur de conteneurs
+# (`Answers.engine`), dans l'ordre où le menu les numérote.
+METHOD_CHOICES = {"1": "packages", "2": "container"}
+ENGINE_CHOICES = {"1": "docker", "2": "podman"}
+ENGINE_NAMES = {"docker": "Docker", "podman": "Podman"}
+# Refus de `method_refusal` qui porte sur un port : les ports se demandent
+# après la méthode, et `plan_install` le rend avant le résumé.
+PORT_REFUSAL = "call_infra_container_port"
 YES_WORDS = ("y", "yes", "o", "oui")
 # Chemins vers une base Odoo : son API web (compte administrateur), ou
 # `odoo-bin shell` sur son hôte, par cette machine ou par ssh.
@@ -404,6 +412,9 @@ class CallInfraMenuMixin:
                     host, ci.with_firewall(facts.state, record)
                 )
             return
+        if plan.migration and not self._call_infra_confirm_migration(plan):
+            print(t("Nothing installed."))
+            return
         self._call_infra_show_plan(plan, facts)
         if not _yes(t("Install now? (y/N): ")):
             print(t("Nothing installed."))
@@ -437,10 +448,12 @@ class CallInfraMenuMixin:
 
     def _call_infra_ask_answers(self, host, facts):
         """`Answers` des questions, préremplies par l'état d'un passage
-        précédent ; None si une réponse ne se lit pas (raison affichée).
-        Après les services vient le mode : le développement demande le
-        certificat (aucun ou fourni), le nom public et les ports ; la
-        production pose les questions de `_call_infra_ask_production`."""
+        précédent ; None si une réponse ne se lit pas ou que la méthode est
+        refusée (raison affichée). Après les services viennent la méthode
+        (`_call_infra_ask_install_method`), puis le mode : le développement
+        demande le certificat (aucun ou fourni), le nom public et les
+        ports ; la production pose les questions de
+        `_call_infra_ask_production`."""
         prior = ci.state_answers(facts.state)
         default_name = self._call_infra_default_name(host, facts)
         if prior is None:
@@ -463,6 +476,16 @@ class CallInfraMenuMixin:
         if services is None:
             print(t("Invalid selection!"))
             return None
+        how = self._call_infra_ask_install_method(facts, services, prior)
+        if how is None:
+            return None
+        method, engine, rootless, install_engine = how
+        chosen = dict(
+            method=method,
+            engine=engine,
+            rootless=rootless,
+            install_engine=install_engine,
+        )
 
         print(f"\n{t('Mode:')}")
         print(f"[1] {t('call_infra_mode_development')}")
@@ -476,9 +499,12 @@ class CallInfraMenuMixin:
             print(t("Invalid selection!"))
             return None
         if mode == "production":
-            return self._call_infra_ask_production(
-                facts, prior, services, default_name
+            answers = self._call_infra_ask_production(
+                facts, prior, services, default_name, rootless
             )
+            if answers is None:
+                return None
+            return dataclasses.replace(answers, **chosen)
         # Un état de production ne prête au développement que ce qui y a
         # le même sens : la plage des relais et le port de ntfy y changent
         # de valeur par défaut ; l'adresse publique d'un hôte derrière un
@@ -561,7 +587,113 @@ class CallInfraMenuMixin:
             public_name=name,
             external_ip=prior.external_ip if from_development else None,
             **ports,
+            **chosen,
         )
+
+    def _call_infra_ask_install_method(self, facts, services, prior):
+        """(méthode, moteur, rootless, installer le moteur) pour
+        `services`, ou None (raison affichée). Paquets du système ou
+        conteneurs, proposé d'après `prior` (les `Answers` de l'état). En
+        conteneurs, le moteur (`_call_infra_ask_engine`), puis les paquets
+        qui manquent à l'hôte pour lui (`engine_offer` : moteur, outil de
+        composition), proposés à l'installation, non par défaut.
+
+        `method_refusal` passe aussitôt, sur `prior` aux services et à la
+        méthode choisis : un conteneur étranger, une migration partielle,
+        un ntfy de l'hôte trop ancien, un changement de moteur ou des
+        paquets refusés arrêtent avant les autres questions. Son refus d'un
+        port (PORT_REFUSAL) attend : les ports se demandent plus loin, et
+        `plan_install` le rend avant le résumé."""
+        print(f"\n{t('call_infra_install_method')}")
+        print(f"[1] {t('call_infra_method_packages')}")
+        print(f"[2] {t('call_infra_method_container')}")
+        method = METHOD_CHOICES.get(
+            self._call_infra_ask(
+                t("call_infra_choice_method"),
+                "2" if prior.method == "container" else "1",
+            )
+        )
+        if method is None:
+            print(t("Invalid selection!"))
+            return None
+        engine, rootless, install_engine = None, False, False
+        if method == "container":
+            picked = self._call_infra_ask_engine(facts, prior)
+            if picked is None:
+                return None
+            engine, rootless = picked
+            missing = ci.engine_offer(facts, engine, rootless)
+            if missing:
+                print(
+                    self._call_infra_text(
+                        "call_infra_engine_offer",
+                        {
+                            "engine": ENGINE_NAMES[engine],
+                            "packages": " ".join(missing),
+                        },
+                    )
+                )
+                install_engine = self._call_infra_ask_yes(
+                    t("call_infra_ask_install_engine"), False
+                )
+        how = (method, engine, rootless, install_engine)
+        refusal = ci.method_refusal(
+            facts,
+            dataclasses.replace(
+                prior,
+                services=services,
+                method=method,
+                engine=engine,
+                rootless=rootless,
+                install_engine=install_engine,
+            ),
+        )
+        if refusal is not None and refusal.key != PORT_REFUSAL:
+            self._call_infra_refuse(refusal)
+            return None
+        return how
+
+    def _call_infra_ask_engine(self, facts, prior):
+        """(moteur, rootless), ou None (raison affichée). Un seul moteur
+        sur l'hôte est pris, et dit ; les deux, ou aucun, se demandent,
+        celui de `prior` proposé. Podman demande ensuite root ou sans root
+        (sous le compte dédié que l'outil crée)."""
+        found = facts.engines.engines if facts.engines else {}
+        present = [e for e in ENGINE_CHOICES.values() if e in found]
+        if len(present) == 1:
+            engine = present[0]
+            print(
+                self._call_infra_text(
+                    "call_infra_engine_found", {"engine": ENGINE_NAMES[engine]}
+                )
+            )
+        else:
+            if not present:
+                print(f"⚠ {t('call_infra_engine_none')}")
+            print(f"\n{t('call_infra_engine')}")
+            for number, name in ENGINE_CHOICES.items():
+                print(f"[{number}] {ENGINE_NAMES[name]}")
+            engine = ENGINE_CHOICES.get(
+                self._call_infra_ask(
+                    t("call_infra_choice_engine"),
+                    "2" if prior.engine == "podman" else "1",
+                )
+            )
+            if engine is None:
+                print(t("Invalid selection!"))
+                return None
+        if engine != "podman":
+            return engine, False
+        print(f"\n{t('call_infra_podman_mode')}")
+        print(f"[1] {t('call_infra_podman_root')}")
+        print(f"[2] {t('call_infra_podman_rootless')}")
+        choice = self._call_infra_ask(
+            t("call_infra_choice_podman"), "2" if prior.rootless else "1"
+        )
+        if choice not in ("1", "2"):
+            print(t("Invalid selection!"))
+            return None
+        return engine, choice == "2"
 
     def _call_infra_read_pair(self):
         """(certificat, clé) PEM lus sur cette machine, ou (None, None), la
@@ -704,14 +836,18 @@ class CallInfraMenuMixin:
             return True
         return False
 
-    def _call_infra_ask_production(self, facts, prior, services, default):
+    def _call_infra_ask_production(
+        self, facts, prior, services, default, rootless=False
+    ):
         """Questions de production, après les services : domaine et noms
         proposés (`ntfy.<d>`, `turn.<d>`), source du certificat, défi de
         Let's Encrypt, courriel, nginx détecté, interface web de ntfy,
         ports, 443 pour coturn sur un hôte sans nginx où 443 est libre,
         IP publique. `Answers` de production, ou None (raison affichée).
         `default` : le nom proposé pour le domaine sans état de
-        production."""
+        production. `rootless` (Podman sans root) : coturn tourne sous un
+        compte sans privilège, la question de 443 laisse place à la raison
+        pour laquelle elle n'est pas posée."""
         again = ci.is_production(prior)
         if again and prior.public_name:
             proposed = prior.public_name
@@ -842,11 +978,20 @@ class CallInfraMenuMixin:
             )
             if ports["turn_port"] is None:
                 return None
-            if (
+            asks_443 = (
                 nginx is None
                 and not nginx_present
                 and self._call_infra_443_free(facts)
-            ):
+            )
+            if asks_443 and rootless:
+                print(
+                    "  "
+                    + self._call_infra_text(
+                        "call_infra_rootless_no_443",
+                        {"port": prior.turns_port},
+                    )
+                )
+            elif asks_443:
                 turns_443 = self._call_infra_ask_yes(
                     self._call_infra_text(
                         "call_infra_ask_turns_443", {"port": prior.turns_port}
@@ -912,6 +1057,7 @@ class CallInfraMenuMixin:
         chosen = [s for s in ci.SERVICES if s in answers.services]
         print(f"\n{t('Summary')}")
         print(f"  {t('Services:')} {', '.join(chosen)}")
+        self._call_infra_show_method(plan)
         if production:
             print(f"  {t('Mode:')} {t('production')}")
             self._call_infra_show_production(answers)
@@ -954,6 +1100,71 @@ class CallInfraMenuMixin:
         for path, diff in plan.diffs:
             print(f"\n{t('Changes to')} {path} :")
             print(diff)
+
+    def _call_infra_show_method(self, plan):
+        """Lignes du résumé sur la méthode : paquets du système, ou le
+        moteur et son mode (root, ou sans root sous le compte du bloc
+        `container`), les images épinglées, les paquets du moteur à
+        installer, et sous Docker l'effet de son démon sur le transfert
+        IP de l'hôte."""
+        answers = plan.answers
+        if answers.method != "container":
+            print(f"  {t('Method:')} {t('call_infra_method_packages')}")
+            return
+        block = plan.new_state.get("container") or {}
+        if answers.rootless:
+            how = self._call_infra_text(
+                "call_infra_summary_rootless",
+                {"account": block.get("account")},
+            )
+        else:
+            how = self._call_infra_text(
+                "call_infra_summary_rootful",
+                {"engine": ENGINE_NAMES.get(answers.engine, answers.engine)},
+            )
+        print(f"  {t('Method:')} {how}")
+        print(f"  {t('Images:')}")
+        for svc, ref in (block.get("images") or {}).items():
+            print(f"    {svc} {ref}")
+        if plan.engine_packages:
+            print(
+                f"  {t('Packages to install:')}"
+                f" {' '.join(plan.engine_packages)}"
+            )
+        if answers.engine == "docker":
+            print(f"  ⚠ {t('call_infra_docker_forward_note')}")
+
+    def _call_infra_confirm_migration(self, plan):
+        """Avant le résumé d'un plan qui change de méthode : ce qui
+        s'arrête, ce qui est copié et où (MIGRATION_BACKUP_DIR), le retour
+        à l'ancienne méthode si la nouvelle ne démarre pas, les serveurs
+        Odoo laissés tels quels ; puis le oui, non par défaut."""
+        before = plan.prior_state or {}
+        recorded = before.get("services")
+        recorded = recorded if isinstance(recorded, dict) else {}
+        names = {
+            "packages": t("call_infra_by_packages"),
+            "container": t("call_infra_by_containers"),
+        }
+        new = plan.answers.method
+        old = "container" if new == "packages" else "packages"
+        print(
+            "\n⚠ "
+            + self._call_infra_text(
+                "call_infra_migration_notice",
+                {
+                    "old": names[old],
+                    "new": names[new],
+                    "services": ", ".join(
+                        s
+                        for s in ci.SERVICES
+                        if isinstance(recorded.get(s), dict)
+                    ),
+                    "backup": ci.MIGRATION_BACKUP_DIR,
+                },
+            )
+        )
+        return self._call_infra_ask_yes(t("call_infra_ask_migrate"), False)
 
     def _call_infra_show_production(self, answers):
         """Lignes du résumé propres à la production : noms, source du
@@ -1035,8 +1246,17 @@ class CallInfraMenuMixin:
     def _call_infra_installed(self, code, out):
         """Vrai quand le script a écrit l'état (`@@SAVED yes`). La dernière
         ligne `@@ACTIVE` d'un service fait foi : son installateur en
-        imprime une, le script la sienne après lui."""
+        imprime une, le script la sienne après lui.
+
+        En échec, une image qui ne se tire pas (`@@PULL_FAILED <service>
+        <rate-limit|failed>`) se dit seule : la limite du registre n'est
+        pas une panne, et rien n'était encore arrêté. Une migration
+        ratée dit son retour en arrière (`@@MIGRATION rolled-back`, ou
+        `rollback-failed` avec les étapes `@@ROLLBACK_FAILED`) et les
+        copies des bases (`@@BACKUP`), qu'une migration réussie nomme
+        aussi."""
         saved, active, failed, password = "", {}, [], ""
+        pulls, migration, backups, undone = [], "", [], []
         for name, value in ci.marker_lines(out):
             if name == "SAVED":
                 saved = value.strip()
@@ -1047,6 +1267,15 @@ class CallInfraMenuMixin:
                 failed.append(value.strip())
             elif name == "ADMIN_PASSWORD" and value.strip():
                 password = value.strip()
+            elif name == "PULL_FAILED":
+                svc, _, why = value.strip().partition(" ")
+                pulls.append((svc, why.strip()))
+            elif name == "MIGRATION":
+                migration = value.strip()
+            elif name == "BACKUP":
+                backups.append(value.strip())
+            elif name == "ROLLBACK_FAILED":
+                undone.append(value.strip())
         for svc, current in active.items():
             print(f"{SYMBOLS[current == 'active']} {svc} : {current}")
         # Le compte de ntfy existe dès que son installateur l'a créé, même
@@ -1054,13 +1283,67 @@ class CallInfraMenuMixin:
         if password:
             print(f"\n⚠ {t('call_infra_admin_password')}")
             print(f"  {password}\n")
+        copies = ", ".join(backups) or "-"
         if code != 0 or saved != "yes":
+            if pulls:
+                for svc, why in pulls:
+                    if why == "rate-limit":
+                        print(f"✗ {t('call_infra_registry_limit')}")
+                    else:
+                        text = self._call_infra_text(
+                            "call_infra_pull_failed", {"service": svc}
+                        )
+                        print(f"✗ {text}")
+                return False
             for step in failed:
                 print(f"✗ {t('Step failed:')} {step}")
-            print(f"✗ {t('call_infra_install_failed')}")
+            if migration == "rolled-back":
+                text = self._call_infra_text(
+                    "call_infra_migration_rolled_back", {"backups": copies}
+                )
+                print(f"✗ {text}")
+            elif migration == "rollback-failed":
+                text = self._call_infra_text(
+                    "call_infra_migration_rollback_failed",
+                    {"steps": ", ".join(undone) or "-", "backups": copies},
+                )
+                print(f"✗ {text}")
+            else:
+                print(f"✗ {t('call_infra_install_failed')}")
             return False
+        self._call_infra_container_notes(out)
+        if migration == "done" and backups:
+            text = self._call_infra_text(
+                "call_infra_migration_backups", {"backups": copies}
+            )
+            print(f"  {text}")
         print(f"✓ {t('call_infra_installed')}")
         return True
+
+    def _call_infra_container_notes(self, out):
+        """Ce qu'un script en conteneurs a gardé au lieu de le retirer, une
+        ligne chacun : une image que le moteur refuse de retirer
+        (`@@IMAGE_KEPT`), les paquets du moteur (`@@KEPT engine`), un
+        compte (`@@KEPT account`), un ntfy de l'hôte laissé désactivé parce
+        que plus ancien que l'image (`@@NTFY_DOWNGRADE <unité> <hôte>
+        <image>`, NTFY_DOWNGRADE_NOTICE)."""
+        for name, value in ci.marker_lines(out):
+            value = value.strip()
+            if name == "IMAGE_KEPT":
+                key, values = "call_infra_image_kept", {"image": value}
+            elif name == "KEPT" and value.startswith("engine "):
+                key = "call_infra_engine_kept"
+                values = {"packages": value[len("engine ") :]}
+            elif name == "KEPT" and value.startswith("account "):
+                key = "call_infra_account_kept"
+                values = {"account": value[len("account ") :]}
+            elif name == "NTFY_DOWNGRADE":
+                unit, host, image = (value.split() + ["?", "?", "?"])[:3]
+                key = ci.NTFY_DOWNGRADE_NOTICE
+                values = {"unit": unit, "host": host, "image": image}
+            else:
+                continue
+            print(f"⚠ {self._call_infra_text(key, values)}")
 
     def _call_infra_firewall(self, host, facts, answers, previous):
         """`state["firewall"]` après l'aperçu des règles et, sur un oui,
@@ -1876,6 +2159,14 @@ class CallInfraMenuMixin:
             return
         self._call_infra_show_uninstall(state)
         remove_data = _yes(t("call_infra_ask_remove_data"))
+        # Ce que l'outil a posé pour les conteneurs ne part que sur un oui,
+        # demandé seulement quand l'état en consigne.
+        added = self._call_infra_engine_added(state)
+        remove_engine = bool(added) and _yes(
+            self._call_infra_text(
+                "call_infra_ask_remove_engine", {"added": ", ".join(added)}
+            )
+        )
         if not _yes(t("Uninstall now? (y/N): ")):
             print(t("Nothing uninstalled."))
             return
@@ -1894,15 +2185,65 @@ class CallInfraMenuMixin:
                 self._call_infra_refuse(refusal)
                 return
         result = self._call_infra_run(
-            host, ci.uninstall_script(state, remove_data, stamp)
+            host,
+            ci.uninstall_script(
+                state, remove_data, stamp, remove_engine=remove_engine
+            ),
         )
         if result is not None:
             self._call_infra_uninstalled(*result)
 
+    @staticmethod
+    def _call_infra_engine_added(state):
+        """Ce que l'outil a ajouté à l'hôte pour les conteneurs, lu du bloc
+        `container` et de `container_added` (ce qu'un retour aux paquets
+        a gardé) : paquets, comptes, unité de redémarrage activée, linger
+        du compte rootless ; [] sans ajout. Les images, elles, partent
+        toujours avec la désinstallation."""
+        added = []
+        for key in ("container", "container_added"):
+            block = state.get(key)
+            if not isinstance(block, dict):
+                continue
+            values = []
+            for field in ("engine_packages_added", "accounts_added"):
+                found = block.get(field)
+                if isinstance(found, list):
+                    values += found
+            unit = block.get("restart_unit_enabled")
+            if unit == "user":
+                values.append("podman-restart.service (user)")
+            elif unit:
+                values.append(unit)
+            if block.get("linger_added") is True:
+                values.append("linger")
+            added += [
+                v for v in values if isinstance(v, str) and v not in added
+            ]
+        return added
+
+    @staticmethod
+    def _call_infra_images_pulled(state):
+        """Images que l'outil a tirées, lues du bloc `container` et de
+        `container_added`, sans doublon."""
+        images = []
+        for key in ("container", "container_added"):
+            block = state.get(key)
+            found = (
+                block.get("images_pulled") if isinstance(block, dict) else None
+            )
+            for ref in found if isinstance(found, list) else ():
+                if isinstance(ref, str) and ref not in images:
+                    images.append(ref)
+        return images
+
     def _call_infra_show_uninstall(self, state):
         services = state.get("services")
         services = services if isinstance(services, dict) else {}
+        container = state.get("method") == "container"
         print(f"\n{t('Recorded on the host:')}")
+        if container:
+            print(f"  {t('call_infra_uninstall_containers')}")
         for svc in ci.SERVICES:
             record = services.get(svc)
             if not isinstance(record, dict):
@@ -1915,11 +2256,18 @@ class CallInfraMenuMixin:
                         "backup": record.get("backup"),
                     },
                 )
+            elif record.get("installed_by_tool") and container:
+                what = t("call_infra_uninstall_container")
             elif record.get("installed_by_tool"):
                 what = t("call_infra_uninstall_purges")
             else:
                 what = t("call_infra_uninstall_keeps_package")
             print(f"  {svc} : {what}")
+        images = self._call_infra_images_pulled(state)
+        if images:
+            print(f"  {t('call_infra_uninstall_images')}")
+            for ref in images:
+                print(f"    {ref}")
         nginx = state.get("nginx")
         if isinstance(nginx, dict):
             what = (
@@ -1966,6 +2314,7 @@ class CallInfraMenuMixin:
                     "call_infra_pending_left", {"service": svc}
                 )
             )
+        self._call_infra_container_notes(out)
         if code == 0 and done == "yes":
             print(f"✓ {t('call_infra_uninstalled')}")
             return True

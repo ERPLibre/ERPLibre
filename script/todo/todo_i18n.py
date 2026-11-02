@@ -4003,6 +4003,154 @@ TRANSLATIONS = {
         "fr": "Le port {port} est sous {start}, le premier port qu'un compte sans privilège peut ouvrir sur cet hôte, et ce conteneur ne tourne pas en root : choisissez un port d'au moins {start}, {alt} par exemple.",
         "en": "Port {port} is below {start}, the first port an unprivileged account can open on this host, and this container does not run as root: choose a port of at least {start}, {alt} for instance.",
     },
+    "call_infra_install_method": {
+        "fr": "Méthode d'installation :",
+        "en": "Install method:",
+    },
+    "call_infra_method_packages": {
+        "fr": "Paquets du système (systemd)",
+        "en": "System packages (systemd)",
+    },
+    "call_infra_method_container": {
+        "fr": "Conteneurs (Docker ou Podman)",
+        "en": "Containers (Docker or Podman)",
+    },
+    "call_infra_choice_method": {
+        "fr": "Méthode (1/2)",
+        "en": "Method (1/2)",
+    },
+    "call_infra_engine": {
+        "fr": "Moteur de conteneurs :",
+        "en": "Container engine:",
+    },
+    "call_infra_choice_engine": {
+        "fr": "Moteur (1/2)",
+        "en": "Engine (1/2)",
+    },
+    "call_infra_engine_none": {
+        "fr": "Ni Docker ni Podman sur l'hôte : le moteur choisi y sera installé, après accord.",
+        "en": "Neither Docker nor Podman on the host: the chosen engine is installed there, once agreed.",
+    },
+    "call_infra_engine_found": {
+        "fr": "{engine} est sur l'hôte : les conteneurs tourneront sous lui.",
+        "en": "{engine} is on the host: the containers will run under it.",
+    },
+    "call_infra_podman_mode": {
+        "fr": "Podman :",
+        "en": "Podman:",
+    },
+    "call_infra_podman_root": {
+        "fr": "En root",
+        "en": "As root",
+    },
+    "call_infra_podman_rootless": {
+        "fr": "Sans root (compte erplibre-call)",
+        "en": "Rootless (erplibre-call account)",
+    },
+    "call_infra_choice_podman": {
+        "fr": "Mode de Podman (1/2)",
+        "en": "Podman mode (1/2)",
+    },
+    "call_infra_engine_offer": {
+        "fr": "Paquets à installer sur l'hôte pour {engine} : {packages}",
+        "en": "Packages to install on the host for {engine}: {packages}",
+    },
+    "call_infra_ask_install_engine": {
+        "fr": "Les installer ?",
+        "en": "Install them?",
+    },
+    "call_infra_rootless_no_443": {
+        "fr": "Podman sans root : coturn tourne sous un compte sans privilège, qui ne peut pas ouvrir 443 ; TURN sur TLS garde son propre port ({port} proposé).",
+        "en": "Rootless Podman: coturn runs under an unprivileged account, which cannot open 443; TURN over TLS keeps its own port ({port} proposed).",
+    },
+    "call_infra_by_packages": {
+        "fr": "paquets du système",
+        "en": "system packages",
+    },
+    "call_infra_by_containers": {
+        "fr": "conteneurs",
+        "en": "containers",
+    },
+    "call_infra_migration_notice": {
+        "fr": "Passage de la méthode « {old} » à « {new} » pour {services} : chaque service s'arrête sous l'ancienne méthode et repart sous la nouvelle, avec sa configuration, ses secrets, la base de coturn et les comptes de ntfy. Ces bases sont d'abord copiées dans {backup}/<horodatage>/ ; le cache de ntfy peut être perdu. Si la nouvelle méthode ne démarre pas, l'ancienne revient. Les serveurs Odoo branchés ne sont pas touchés et gardent leurs identifiants.",
+        "en": "Moving from the \"{old}\" method to \"{new}\" for {services}: each service stops under the old method and starts again under the new one, with its configuration, its secrets, coturn's database and ntfy's accounts. Those databases are first copied into {backup}/<timestamp>/; ntfy's cache may be lost. If the new method does not start, the old one comes back. Plugged Odoo servers are not touched and keep their credentials.",
+    },
+    "call_infra_ask_migrate": {
+        "fr": "Migrer maintenant ?",
+        "en": "Migrate now?",
+    },
+    "Method:": {
+        "fr": "Méthode :",
+        "en": "Method:",
+    },
+    "Images:": {
+        "fr": "Images :",
+        "en": "Images:",
+    },
+    "Packages to install:": {
+        "fr": "Paquets à installer :",
+        "en": "Packages to install:",
+    },
+    "call_infra_summary_rootful": {
+        "fr": "conteneurs sous {engine} (moteur en root)",
+        "en": "containers under {engine} (engine as root)",
+    },
+    "call_infra_summary_rootless": {
+        "fr": "conteneurs sous Podman sans root (compte {account})",
+        "en": "containers under rootless Podman ({account} account)",
+    },
+    "call_infra_docker_forward_note": {
+        "fr": "Docker passe la politique FORWARD d'iptables à DROP en démarrant : sur un hôte qui route pour d'autres (VM en pont, conteneurs d'un autre outil), ce trafic peut être coupé.",
+        "en": "Docker sets iptables' FORWARD policy to DROP when it starts: on a host that routes for others (bridged VMs, another tool's containers), that traffic can be cut.",
+    },
+    "call_infra_registry_limit": {
+        "fr": "Limite du registre atteinte (Docker Hub) : réessayer plus tard.",
+        "en": "Registry limit reached (Docker Hub): try again later.",
+    },
+    "call_infra_pull_failed": {
+        "fr": "Le téléchargement de l'image de {service} a échoué : aucun service n'est arrêté, l'état de l'hôte n'est pas écrit.",
+        "en": "Downloading the {service} image failed: no service is stopped, the host state is not written.",
+    },
+    "call_infra_migration_rolled_back": {
+        "fr": "La nouvelle méthode n'a pas démarré : l'hôte est revenu à la précédente et son état n'a pas changé. Copies des bases : {backups}",
+        "en": "The new method did not start: the host went back to the previous one and its state did not change. Copies of the databases: {backups}",
+    },
+    "call_infra_migration_rollback_failed": {
+        "fr": "La nouvelle méthode n'a pas démarré, et le retour à la précédente a échoué ({steps}) : l'état de l'hôte reste celui d'avant. Copies des bases : {backups}. Relancez l'installation, ou remettez les services à la main.",
+        "en": "The new method did not start, and going back to the previous one failed ({steps}): the host state stays as it was. Copies of the databases: {backups}. Run the install again, or put the services back by hand.",
+    },
+    "call_infra_migration_backups": {
+        "fr": "Copies des bases d'avant la migration : {backups}",
+        "en": "Copies of the databases from before the migration: {backups}",
+    },
+    "call_infra_image_kept": {
+        "fr": "Image gardée, le moteur refuse de la retirer (encore utilisée ?) : {image}",
+        "en": "Image kept, the engine refuses to remove it (still in use?): {image}",
+    },
+    "call_infra_engine_kept": {
+        "fr": "Paquets du moteur gardés : {packages}",
+        "en": "Engine packages kept: {packages}",
+    },
+    "call_infra_account_kept": {
+        "fr": "Compte gardé sur l'hôte : {account}",
+        "en": "Account kept on the host: {account}",
+    },
+    "call_infra_ask_remove_engine": {
+        "fr": "Retirer aussi ce que l'outil a ajouté pour les conteneurs ({added}) ? (o/N) : ",
+        "en": "Also remove what the tool added for the containers ({added})? (y/N): ",
+    },
+    "call_infra_uninstall_containers": {
+        "fr": "conteneurs arrêtés et retirés, avec le fichier compose",
+        "en": "containers stopped and removed, with the compose file",
+    },
+    "call_infra_uninstall_container": {
+        "fr": "conteneur retiré, configuration de l'outil retirée",
+        "en": "container removed, the tool's configuration removed",
+    },
+    "call_infra_uninstall_images": {
+        "fr": "Images tirées par l'outil, retirées quand le moteur l'accepte :",
+        "en": "Images the tool pulled, removed when the engine accepts:",
+    },
     "call_infra_bad_value": {
         "fr": "Valeur refusée pour {name} : {value}",
         "en": "Value refused for {name}: {value}",
