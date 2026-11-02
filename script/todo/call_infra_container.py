@@ -64,7 +64,9 @@ ROOTLESS_HOME = "/var/lib/erplibre-call-podman"
 # compte système que l'outil crée.
 COTURN_ACCOUNTS = ("turnserver", "erplibre-coturn")
 NTFY_ACCOUNT = "ntfy"
-ACCOUNT_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+# `\Z` et non `$`, qui accepte un saut de ligne final : un nom de compte
+# tient sur une ligne des sorties `@@NOM valeur` et du hook de déploiement.
+ACCOUNT_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}\Z")
 # Comptes dont la sonde rend uid et gid.
 PROBED_ACCOUNTS = COTURN_ACCOUNTS + (NTFY_ACCOUNT, ROOTLESS_ACCOUNT)
 

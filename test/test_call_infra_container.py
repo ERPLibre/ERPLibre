@@ -135,6 +135,7 @@ class TestConstants(unittest.TestCase):
         self.assertTrue(cc.ACCOUNT_RE.match("erplibre-coturn"))
         self.assertFalse(cc.ACCOUNT_RE.match("Root"))
         self.assertFalse(cc.ACCOUNT_RE.match("-x"))
+        self.assertFalse(cc.ACCOUNT_RE.match("ntfy\n"))
 
     def test_engines_are_the_local_runtime_ones(self):
         self.assertEqual(cc.ENGINES, cr.MOTEURS)
@@ -491,6 +492,14 @@ class TestContainerBlockProblem(unittest.TestCase):
             ),
             (container_state(ntfy={"uid": -1}), "services.ntfy.uid"),
             (container_state(ntfy={"gid": None}), "services.ntfy.gid"),
+            (
+                container_state(rootless_block(account="erplibre-call\n")),
+                "account",
+            ),
+            (
+                container_state(coturn={"account": "turnserver\n"}),
+                "services.coturn.account",
+            ),
         ]
         for state, field in cases:
             with self.subTest(field=field, state=state):
