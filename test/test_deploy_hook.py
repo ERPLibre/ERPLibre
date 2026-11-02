@@ -727,6 +727,33 @@ class TestConteneur(unittest.TestCase):
                 r.appels.index("docker " + SIGNAL),
             )
 
+    def test_empreinte_en_attente_suit_la_paire_renouvelee(self):
+        """Pendant une installation en conteneurs : coturn vient d'etre
+        recree sur une nouvelle configuration, son empreinte attend
+        encore, calculee avec l'ancienne paire. Apres le signal, elle dit
+        la nouvelle paire, celle que coturn sert."""
+        with tempfile.TemporaryDirectory() as dossier:
+            r = Racine(dossier, contenu=etat_conteneur())
+            attente = r.applied + ".erplibre-pending"
+            ecrire(attente, r.empreinte_installateur())
+            ecrire(r.applied, "0" * 64 + "  /ancienne/configuration\n")
+            r.lancer()
+            self.assertEqual(
+                r.fait.returncode, 0, r.fait.stdout + r.fait.stderr
+            )
+            self.assertEqual(lire(attente), r.empreinte_installateur())
+            self.assertEqual(stat.S_IMODE(os.stat(attente).st_mode), 0o600)
+            self.assertIn("@@HOOK pending", r.marqueurs)
+            self.assertIn("@@HOOK applied-stale", r.marqueurs)
+            # Une attente qui ne dit pas la paire d'avant reste telle quelle.
+            r = Racine(os.path.join(dossier, "b"), contenu=etat_conteneur())
+            attente = r.applied + ".erplibre-pending"
+            ecrire(attente, "autre\n")
+            r.synchroniser()
+            r.lancer()
+            self.assertEqual(lire(attente), "autre\n")
+            self.assertNotIn("@@HOOK pending", r.marqueurs)
+
     def test_podman_root_signale_le_conteneur(self):
         with tempfile.TemporaryDirectory() as dossier:
             r = self.lancer(dossier, etat_conteneur("podman"))

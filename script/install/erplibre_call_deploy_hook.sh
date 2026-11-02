@@ -35,6 +35,10 @@ LINEAGE="erplibre-call"
 TLS_DIR="$R/etc/erplibre-call/tls"
 STATE_FILE="$R/etc/erplibre-call/state.json"
 APPLIED_FILE="$R/etc/erplibre-call/coturn.applied"
+# Empreinte en attente qu'install_coturn.sh ecrit en conteneurs, et que
+# l'installation fait passer en APPLIED_FILE une fois le conteneur en
+# marche.
+PENDING_FILE="$APPLIED_FILE.erplibre-pending"
 RENEWED_LINEAGE="${RENEWED_LINEAGE:-}"
 FAILED=0
 REFUSED=0
@@ -242,20 +246,25 @@ copy_pair() {
     [ "$ok" = 1 ]
 }
 
-# record_applied <empreinte> : ecrit APPLIED_FILE, root 0600, par un fichier
-# voisin renomme ; le dossier appartient a root, aucun autre compte n'y pose
-# de lien.
+# record_applied <empreinte> [fichier] : ecrit APPLIED_FILE (ou fichier),
+# root 0600, par un fichier voisin renomme ; le dossier appartient a root,
+# aucun autre compte n'y pose de lien.
 record_applied() {
+    local target="${2:-$APPLIED_FILE}"
     (
         umask 077
-        printf '%s\n' "$1" > "$APPLIED_FILE.erplibre-new"
-    ) && mv -f "$APPLIED_FILE.erplibre-new" "$APPLIED_FILE"
+        printf '%s\n' "$1" > "$target.erplibre-new"
+    ) && mv -f "$target.erplibre-new" "$target"
 }
 
 # coturn_renew : etape 1. APPLIED_FILE n'est reecrit que s'il disait deja
 # chargee la paire en place avec la configuration du disque : SIGUSR2 ne
 # relit que certificat et cle, et un coturn sur une configuration perimee
-# doit rester signale a l'installation, qui le redemarrera. En conteneurs,
+# doit rester signale a l'installation, qui le redemarrera. PENDING_FILE
+# suit la meme regle : quand une installation en conteneurs vient de
+# recreer coturn sur la configuration du disque, l'empreinte en attente
+# dit l'ancienne paire, et c'est la nouvelle que coturn sert apres le
+# signal ; l'installation fait ensuite passer la bonne. En conteneurs,
 # « inspect » dit si le conteneur tourne : arrete ou absent, il lira la
 # paire copiee a son prochain demarrage. Code 2 pour un etat refuse, avant
 # toute commande de coturn.
@@ -322,6 +331,11 @@ coturn_renew() {
     fi
     hook "signal $unit"
 
+    if [ -n "$before" ] && [ "$(cat "$PENDING_FILE" 2>/dev/null)" = "$before" ]; then
+        record_applied "$(applied_digest "$config")" "$PENDING_FILE" \
+            || { hook "failed pending"; return 1; }
+        hook "pending"
+    fi
     if [ -n "$before" ] && [ "$(cat "$APPLIED_FILE" 2>/dev/null)" = "$before" ]; then
         record_applied "$(applied_digest "$config")" || { hook "failed applied"; return 1; }
         hook "applied"
