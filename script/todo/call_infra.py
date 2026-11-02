@@ -5351,8 +5351,8 @@ def ntfy_cli(state, owner):
     """`NtfyCli` du ntfy de `state`. Par paquets (ou sans état) : le binaire
     de l'hôte sous `owner`, le propriétaire de la base des comptes, et les
     commandes systemctl de l'unité. En conteneurs : `<moteur> exec -e
-    NTFY_PASSWORD -u <uid>:<gid> erplibre-call-ntfy ntfy` en root ; en
-    rootless, `env XDG_RUNTIME_DIR=/run/user/<uid> podman exec ...` sous le
+    NTFY_PASSWORD -u <uid>:<gid> erplibre-call-ntfy ntfy` lancé en root,
+    précédé en rootless du préfixe de `cc.engine_argv`, qui passe sous le
     compte rootless ; redémarrage par l'outil de composition, état par
     `inspect`. Refusal `call_infra_state_invalid` (`service` : le champ)
     pour un bloc `container` altéré ou un état sans ntfy."""
@@ -5380,16 +5380,8 @@ def ntfy_cli(state, owner):
         '; echo "${S:-unknown}"'
     )
     restart = shlex.join(cc.compose_argv(block) + ["restart", "ntfy"])
-    if block["rootless"]:
-        local = f"env XDG_RUNTIME_DIR=/run/user/{block['uid']} podman"
-        return NtfyCli(
-            prefix=_ntfy_exec(local, user),
-            sudo_user=block["account"],
-            restart=restart,
-            active=status,
-        )
     return NtfyCli(
-        prefix=_ntfy_exec(shlex.quote(block["engine"]), user),
+        prefix=_ntfy_exec(engine, user),
         sudo_user=None,
         restart=restart,
         active=status,

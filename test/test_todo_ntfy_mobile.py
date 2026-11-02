@@ -498,6 +498,11 @@ CONTAINER_STATE = {
 CONTAINER_CLI = (
     "docker exec -e NTFY_PASSWORD -u 997:997 erplibre-call-ntfy ntfy"
 )
+ROOTLESS_CLI = (
+    "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/995"
+    " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus podman exec -e"
+    " NTFY_PASSWORD -u 995:995 erplibre-call-ntfy ntfy"
+)
 COMPOSE_RESTART = (
     "docker compose -f /etc/erplibre-call/compose.yml -p erplibre-call"
     " restart ntfy"
@@ -585,12 +590,13 @@ class TestContainerState(MenuCase):
         self.assertNotIn("access", host.kinds())
 
     def test_rootless_cli_runs_under_the_rootless_account(self):
+        # Lancée en root, passée au compte rootless par le préfixe commun :
+        # dans sa session, depuis « / ».
         host = FakeHost(state=rootless_state())
         self.drive("_ntfy_mobile_prepare", host, ["", "", "Alice", "", ""])
-        self.assertEqual(host.user_of("access"), "erplibre-call")
+        self.assertIsNone(host.user_of("access"))
         self.assertIn(
-            "env XDG_RUNTIME_DIR=/run/user/995 podman exec -e NTFY_PASSWORD"
-            " -u 995:995 erplibre-call-ntfy ntfy user",
+            ROOTLESS_CLI + " user",
             host.script_of("access"),
         )
 
@@ -622,12 +628,7 @@ class TestContainerState(MenuCase):
         la CLI du conteneur, sous le compte qui la lance."""
         for state, user, cli in (
             (CONTAINER_STATE, None, CONTAINER_CLI),
-            (
-                rootless_state(),
-                "erplibre-call",
-                "env XDG_RUNTIME_DIR=/run/user/995 podman exec -e"
-                " NTFY_PASSWORD -u 995:995 erplibre-call-ntfy ntfy",
-            ),
+            (rootless_state(), None, ROOTLESS_CLI),
         ):
             with self.subTest(user=user):
                 host = FakeHost(state=state)
