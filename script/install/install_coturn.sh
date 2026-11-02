@@ -550,8 +550,10 @@ EOF
 # terme que turnadmin -a ecrirait. printf est une commande interne : le
 # mot de passe n'atteint md5sum que par le tube. La requete passe sur
 # l'entree standard de sqlite3, lance sous le compte coturn (runuser) :
-# root n'ouvre aucun fichier du dossier de ce compte. Le schema est celui
-# de schema_sql.
+# root n'ouvre aucun fichier du dossier de ce compte. Sa sortie et ses
+# erreurs passent en retrait : ce compte possede la base, et rien de ce
+# qu'il imprime ne commence une ligne par « @@ », que l'appelant lit comme
+# un marqueur. Le schema est celui de schema_sql.
 ensure_check_user() {
     local key password="$TURN_CHECK_PASSWORD" keep=""
     if [ -z "$password" ]; then
@@ -561,7 +563,7 @@ ensure_check_user() {
     key=$(printf '%s:%s:%s' "$CHECK_USER" "$TURN_REALM" "$password" | md5sum | cut -d ' ' -f 1)
     password=""
     [[ "$key" =~ ^[0-9a-f]{32}$ ]] || die "cle du compte de controle non calculee."
-    runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF
+    runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF 2>&1 | sed 's/^/  /'
 .timeout 5000
 $(schema_sql)
 BEGIN;
@@ -582,7 +584,7 @@ EOF
 # TURN_REALM garde sa ligne, le doublon part. Meme schema, meme compte de
 # service qu'ensure_check_user.
 remove_check_user() {
-    runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF
+    runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF 2>&1 | sed 's/^/  /'
 .timeout 5000
 $(schema_sql)
 BEGIN;
