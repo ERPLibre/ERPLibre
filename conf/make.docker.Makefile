@@ -15,6 +15,12 @@ docker_run_daemon:
 docker_stop:
 	docker compose down
 
+# Efface les volumes du projet compose — bases, filestore et configuration —
+# après une double confirmation.
+.PHONY: docker_volume_clean
+docker_volume_clean:
+	./script/docker/docker_volume_clean.sh
+
 .PHONY: docker_restart_daemon
 docker_restart_daemon:
 	./script/make.sh docker_stop
