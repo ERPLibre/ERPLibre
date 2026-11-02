@@ -88,6 +88,15 @@ NTFY_DATA_DIR = "/var/lib/ntfy"
 PODMAN_ROOT_STORAGE = "/var/lib/containers/storage"
 # Stockage rootless, relatif au dossier personnel du compte.
 PODMAN_USER_STORAGE = ".local/share/containers/storage"
+# Unité du bus D-Bus de session que le gestionnaire systemd d'un compte
+# lance : sans elle, /run/user/<uid>/bus n'apparaît jamais et `systemctl
+# --user` échoue. Sur Debian et Ubuntu, elle vient de « dbus-user-session »,
+# que podman ne fait que recommander.
+USER_BUS_UNITS = (
+    "/usr/lib/systemd/user/dbus.socket",
+    "/lib/systemd/user/dbus.socket",
+)
+USER_BUS_PACKAGE = "dbus-user-session"
 
 # Refus du registre pour excès de requêtes : Docker Hub répond HTTP 429 et
 # « toomanyrequests ». Motif lu de même par `re` (re.I | re.M) et par
@@ -127,6 +136,7 @@ ENGINE_MARKERS = frozenset(
         "UNPRIV_PORT",
         "ACCOUNT",
         "ROOTLESS",
+        "USER_BUS",
         "CONTAINER",
         "IMAGE",
         "NTFY_HOST",
@@ -177,7 +187,8 @@ class EngineFacts:
     ROOTLESS_ACCOUNT quand il existe (`subuid`, `subgid`, `linger`,
     `newuidmap` : bool, `user_restart` : is-enabled du podman-restart de
     l'utilisateur, None sans session), None sinon ; `newuidmap` est aussi
-    rendu seul, compte ou non, pour dire s'il faut le paquet.
+    rendu seul, compte ou non, pour dire s'il faut le paquet ; `user_bus` :
+    une unité de USER_BUS_UNITS est installée.
     `containers` : (nom, moteur, rootless, état, image) de chaque conteneur
     de l'outil ou lancé d'une image coturn ou ntfy. `images` : (moteur,
     rootless, référence) de chaque image épinglée présente.
@@ -199,6 +210,7 @@ class EngineFacts:
     sqlite3: bool = False
     compose_text: str = ""
     newuidmap: bool = False
+    user_bus: bool = False
 
 
 # --- Commandes ----------------------------------------------------------------
@@ -454,7 +466,8 @@ def engine_probe_lines(root=""):
     `@@DOCKER_SERVICE <actif> <activé>`, `@@PODMAN_RESTART <activé>`,
     `@@UNPRIV_PORT <n>`, `@@ACCOUNT <nom> <uid> <gid>`, `@@ROOTLESS
     <subuid> <subgid> <linger> <newuidmap> <podman-restart utilisateur>`
-    (0|1, « - » sans session), `@@CONTAINER <nom> <moteur> <0|1> <état>
+    (0|1, « - » sans session), `@@USER_BUS <0|1>` (une unité de
+    USER_BUS_UNITS est là), `@@CONTAINER <nom> <moteur> <0|1> <état>
     <image>`, `@@IMAGE <moteur> <0|1> <référence>` par image épinglée
     présente, `@@NTFY_HOST <version>`, `@@SQLITE <0|1>`, `@@COMPOSE_FILE
     <base64>`.
@@ -524,6 +537,10 @@ def engine_probe_lines(root=""):
         "fi",
         "command -v newuidmap >/dev/null 2>&1 && E_NU=1",
         'echo "@@ROOTLESS $E_SU $E_SG $E_LI $E_NU ${E_UR:--}"',
+        "E_UB=0",
+        f"for E_F in {' '.join(USER_BUS_UNITS)}; do"
+        ' [ -e "$R$E_F" ] && E_UB=1; done',
+        'echo "@@USER_BUS $E_UB"',
         # Conteneurs et images épinglées, sans réveiller ni créer.
         'if [ -n "$E_D" ] && [ "$E_DA" = active ]; then',
         f"  timeout 20 docker {ps} 2>/dev/null"
@@ -582,6 +599,7 @@ def parse_engine_lines(pairs):
     containers, images = [], []
     docker_service, podman_restart, port = None, None, 1024
     rootless_line, ntfy, sqlite3, text = None, None, False, ""
+    user_bus = False
     for name, value in pairs:
         parts = value.split()
         if name == "ENGINE":
@@ -655,6 +673,8 @@ def parse_engine_lines(pairs):
                 ntfy = current
         elif name == "SQLITE":
             sqlite3 = value.strip() == "1"
+        elif name == "USER_BUS":
+            user_bus = value.strip() == "1"
         elif name == "COMPOSE_FILE":
             text = _decode(value) or ""
     newuidmap = bool(rootless_line and rootless_line[3])
@@ -686,6 +706,7 @@ def parse_engine_lines(pairs):
         sqlite3=sqlite3,
         compose_text=text,
         newuidmap=newuidmap,
+        user_bus=user_bus,
     )
 
 
@@ -724,8 +745,9 @@ def engine_packages(os_id, family, engine, rootless, facts, *, os_version):
     """Paquets de la distribution qui manquent pour `engine` : le moteur,
     son client quand la distribution le sépare (`docker-cli`, d'après
     `os_id` et `os_version`, VERSION_ID d'os-release), son outil de
-    composition, et pour le rootless newuidmap (« uidmap » sur Debian et
-    Ubuntu). `facts` (EngineFacts, ou None : rien n'est là) dit ce qui est
+    composition, et pour le rootless sur Debian et Ubuntu newuidmap
+    (« uidmap ») et le bus de session du compte (USER_BUS_PACKAGE, sans
+    unité de USER_BUS_UNITS). `facts` (EngineFacts, ou None : rien n'est là) dit ce qui est
     déjà présent, le moteur selon `engine_present`. ValueError pour un
     moteur, une famille ou un rootless hors de ce que l'outil installe."""
     if engine not in ENGINES or family not in _ENGINE_PACKAGES:
@@ -743,6 +765,8 @@ def engine_packages(os_id, family, engine, rootless, facts, *, os_version):
         wanted.append(_COMPOSE_PACKAGES[flavour][engine])
     if rootless and family == "debian" and not facts.newuidmap:
         wanted.append("uidmap")
+    if rootless and family == "debian" and not facts.user_bus:
+        wanted.append(USER_BUS_PACKAGE)
     return tuple(wanted)
 
 

@@ -4282,7 +4282,15 @@ def _rootless_lines(plan):
     --add-subuids`) ; sa session permanente (`loginctl enable-linger`,
     `@@LINGER_ADDED <compte>` quand elle ne l'était pas), attendue 30 s au
     plus jusqu'au bus de son gestionnaire, /run/user/<uid>/bus : le
-    dossier paraît avant lui, et `systemctl --user` sans bus échoue ; son
+    dossier paraît avant lui, et le Podman du compte a besoin du bus. Une
+    fois le dossier là, `dbus.socket` du compte est démarré une fois : un
+    gestionnaire lancé avant la pose de `cc.USER_BUS_PACKAGE` (relance
+    après un échec) n'ouvre pas le bus de lui-même ; `systemctl --user`
+    lui parle par sa socket privée, sans bus. Un bus qui ne vient pas
+    imprime `@@ROOTLESS_SESSION run-dir=<0|1> manager=<is-active de
+    user@<uid>.service> bus-unit=<0|1>` (une unité de `cc.USER_BUS_UNITS`
+    est installée), de quoi dire laquelle des trois manque, puis `@@FAILED
+    rootless-session`. Enfin son
     podman-restart.service d'utilisateur activé (`@@RESTART_UNIT_ENABLED
     user`)."""
     account = cc.ROOTLESS_ACCOUNT
@@ -4305,11 +4313,21 @@ def _rootless_lines(plan):
         f"  loginctl enable-linger {account} || fail rootless-linger",
         f"  mark LINGER_ADDED {account}; cfiche",
         "fi",
-        "N=0",
+        "N=0; BS=0",
         'while [ ! -e "$R/run/user/$RUID/bus" ] && [ "$N" -lt 30 ]; do',
+        '  if [ "$BS" = 0 ] && [ -d "$R/run/user/$RUID" ]; then',
+        "    BS=1; ruser systemctl --user start dbus.socket >/dev/null 2>&1",
+        "  fi",
         "  sleep 1; N=$((N + 1))",
         "done",
-        '[ -e "$R/run/user/$RUID/bus" ] || fail rootless-session',
+        'if [ ! -e "$R/run/user/$RUID/bus" ]; then',
+        '  RD=0; [ -d "$R/run/user/$RUID" ] && RD=1',
+        '  RM=$(systemctl is-active "user@$RUID.service" 2>/dev/null)',
+        f"  RB=0; for F in {' '.join(cc.USER_BUS_UNITS)}; do"
+        ' [ -e "$R$F" ] && RB=1; done',
+        '  echo "@@ROOTLESS_SESSION run-dir=$RD manager=${RM:--} bus-unit=$RB"',
+        "  fail rootless-session",
+        "fi",
         'if [ "$(ruser systemctl --user is-enabled podman-restart.service'
         ' 2>/dev/null)" != enabled ]; then',
         "  "
