@@ -169,6 +169,20 @@ class TestLigneDeCommandeDocker(Banc):
             todo.execute.commandes,
         )
 
+    def test_effacer_les_volumes_lance_le_script_a_double_confirmation(self):
+        """Les deux confirmations sont celles du script : le menu ne les
+        double pas, et ne les contourne pas non plus."""
+        todo = self.todo()
+        todo._container_fiches = lambda: [self.FICHE_VIVANTE]
+        with mock.patch.object(
+            container_menu.shutil, "which", return_value="/usr/bin/docker"
+        ):
+            with self.reponses(prompts=["7", "0"]):
+                todo._container_erplibre()
+        self.assertEqual(
+            ["./script/docker/docker_volume_clean.sh"], todo.execute.commandes
+        )
+
     def test_un_moteur_muet_arrete_avant_le_script(self):
         """Le script s'arrêterait sur « /var/run/docker.sock: no such file or
         directory », qui accuse le script et non le moteur."""

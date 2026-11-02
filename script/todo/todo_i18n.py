@@ -18285,6 +18285,10 @@ TRANSLATIONS = {
         "fr": "📤 Copier un fichier dans le conteneur",
         "en": "📤 Copy a file into the container",
     },
+    "Delete the volumes: databases, filestore, configuration": {
+        "fr": "🗑 Effacer les volumes : bases, filestore, configuration",
+        "en": "🗑 Delete the volumes: databases, filestore, configuration",
+    },
     "File to copy": {
         "fr": "Fichier à copier",
         "en": "File to copy",
