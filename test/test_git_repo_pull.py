@@ -1809,5 +1809,456 @@ class TestEcritureRefusee(Banc):
         self.assertIn("ERPLIBRE_CODE_OWNER=odoo", motif)
 
 
+class BancRetour(Banc):
+    """Un retour à un instantané : « A » a tiré un commit amont depuis
+    l'instantané, dont `self.i0` est le commit et `self.c1` celui d'après."""
+
+    def setUp(self):
+        super().setUp()
+        self.i0 = self.head()
+        self.c1 = self.avancer("a.git", {"a.txt": "deux\n"})
+        _git(self.depot(), "pull", "-q", "--ff-only")
+        self.fichier = os.path.join(self.dossier, "cibles.json")
+
+    def cibles(self, depots, racine=None):
+        """Écrit le fichier de cibles et le relit comme la commande."""
+        with open(self.fichier, "w") as fh:
+            json.dump({"racine": racine, "depots": depots}, fh)
+        return repo_pull.lire_cibles(self.fichier, self.racine)
+
+    def cible_a(self, sha=None, branche=VERSION):
+        return {CHEMIN_A: {"head": sha or self.i0, "branch": branche}}
+
+    def diag_retour(self, depots, racine=None, **kw):
+        donnees, code = repo_pull.diagnostic_retour(
+            self.racine, self.cibles(depots, racine), **kw
+        )
+        self.assertEqual(code, 0, donnees)
+        return donnees
+
+    def retour(self, depots, racine=None, donnees=None, **kw):
+        """Essai à sec puis application, épinglée sur ce qu'il a montré."""
+        donnees = donnees or self.diag_retour(depots, racine)
+        lus = [repo_apply.lire_attendu(x) for x in donnees["attendus"]]
+        kw.setdefault("horodatage", STAMP)
+        return repo_pull.passe_retour(
+            self.racine,
+            VERSION,
+            self.cibles(depots, racine),
+            attendus=[c for c, _e in lus],
+            epingles={c: e for c, e in lus if e},
+            regenerer=self.regenerer,
+            **kw,
+        )
+
+    def stashs(self, chemin=CHEMIN_A):
+        return _git(self.depot(chemin), "stash", "list", "--format=%H").split()
+
+
+class TestRetourEssai(BancRetour):
+    def test_verdicts_et_compteurs(self):
+        self.commit(self.depot(), {"b.txt": "local\n"}, "local")
+        self.creer_distant("b.git", {"b.txt": "un\n"})
+        d1 = self.commit(self.sources["b.git"], {"b.txt": "ailleurs\n"})
+        _git(
+            self.sources["b.git"],
+            "push",
+            "-q",
+            self.distant("b.git"),
+            "HEAD:autre",
+        )
+        self.cloner("b.git", CHEMIN_B)
+        self.creer_distant("d.git", {"d.txt": "un\n"})
+        chemin_d = "odooX.0/addons/D"
+        self.cloner("d.git", chemin_d)
+        self.manifeste_local(
+            [
+                ("a.git", CHEMIN_A, VERSION),
+                ("b.git", CHEMIN_B, VERSION),
+                ("d.git", chemin_d, VERSION),
+            ]
+        )
+        self.cloner("d.git", "odoo99.0/addons/E")
+        racine = {"head": self.head("."), "branch": VERSION}
+        head_b = self.head(CHEMIN_B)
+        depots = dict(self.cible_a())
+        depots[CHEMIN_B] = {"head": d1, "branch": "autre"}
+        depots["odooX.0/addons/C"] = {"head": d1, "branch": None}
+        donnees = self.diag_retour(depots, racine)
+
+        self.assertEqual(donnees["mode"], "instantane")
+        a = self.constat(donnees)
+        self.assertEqual(a["verdict"], "recul")
+        self.assertEqual((a["quittes"], a["locaux"]), (2, 1))
+        self.assertEqual(a["cible_branche"], VERSION)
+        b = self.constat(donnees, CHEMIN_B)
+        self.assertEqual(b["verdict"], "deplacement")
+        self.assertEqual((b["quittes"], b["locaux"]), (0, 0))
+        self.assertEqual(self.constat(donnees, ".")["verdict"], "a_jour")
+        self.assertEqual(
+            self.constat(donnees, "odooX.0/addons/C")["verdict"], "absent"
+        )
+        self.assertEqual(
+            donnees["hors_instantane"], ["odoo99.0/addons/E", chemin_d]
+        )
+        self.assertEqual(donnees["plan"], [CHEMIN_A, CHEMIN_B])
+        self.assertEqual(
+            donnees["attendus"],
+            [
+                f"{CHEMIN_A}={self.i0}:{self.head()}",
+                f"{CHEMIN_B}={d1}:{self.head(CHEMIN_B)}",
+            ],
+        )
+        self.assertEqual(self.head(CHEMIN_B), head_b, "rien ne bouge")
+        self.assertEqual(
+            _git(self.depot(CHEMIN_B), "branch", "--show-current"), VERSION
+        )
+
+    def test_sha_absent_recupere_par_son_sha(self):
+        source = self.sources["a.git"]
+        _git(source, "checkout", "-q", "-b", "cachee", self.i0)
+        cache = self.commit(source, {"a.txt": "cache\n"}, "cache")
+        _git(source, "push", "-q", self.distant("a.git"), "HEAD:cachee")
+        self.assertFalse(repo_pull.repo_state.resoudre(self.depot(), cache))
+        avant = self.branches()
+        c = self.constat(self.diag_retour(self.cible_a(cache, None)))
+        self.assertEqual((c["verdict"], c["fetch"]), ("deplacement", "ok"))
+        self.assertEqual(
+            repo_pull.repo_state.resoudre(self.depot(), cache), cache
+        )
+        self.assertEqual(self.head(), self.c1, "l'essai à sec ne bouge rien")
+        self.assertEqual(self.branches(), avant)
+
+    def test_commit_introuvable(self):
+        absent = "ab" * 20
+        c = self.constat(self.diag_retour(self.cible_a(absent)))
+        self.assertEqual(c["verdict"], "commit_introuvable")
+        self.assertIn(REMOTE, c["motif"])
+        self.assertEqual(self.head(), self.c1)
+
+    def test_remote_injoignable(self):
+        _git(
+            self.depot(),
+            "remote",
+            "set-url",
+            REMOTE,
+            os.path.join(self.distants, "perdu.git"),
+        )
+        c = self.constat(self.diag_retour(self.cible_a("ab" * 20)))
+        self.assertEqual(c["verdict"], "fetch_echoue")
+
+    def test_fichier_de_cibles_refuse(self):
+        for depots in (
+            {CHEMIN_A: {"head": "court", "branch": None}},
+            {"../dehors": {"head": self.i0, "branch": None}},
+            {CHEMIN_A: {"head": self.i0, "branch": "-x"}},
+        ):
+            with self.assertRaises(ValueError):
+                self.cibles(depots)
+
+    def test_chemin_seul_hors_des_cibles(self):
+        donnees, code = repo_pull.diagnostic_retour(
+            self.racine, self.cibles(self.cible_a()), chemin_seul="z"
+        )
+        self.assertEqual(code, repo_pull.EXIT_CIBLE)
+
+
+class TestRetourApplication(BancRetour):
+    def test_recul_puis_retour_par_la_sauvegarde(self):
+        charge, code = self.retour(self.cible_a())
+        self.assertEqual(code, 0, charge)
+        res = self.resultat(charge)
+        nom = f"{VERSION}_avant_retour_{STAMP}"
+        self.assertEqual(res["etat"], "recule")
+        self.assertEqual((res["depart"], res["arrivee"]), (self.c1, self.i0))
+        self.assertEqual(res["sauvegarde"], nom)
+        self.assertEqual(res["stash"]["etat"], "aucun")
+        self.assertEqual(self.head(), self.i0)
+        self.assertEqual(
+            _git(self.depot(), "branch", "--show-current"), VERSION
+        )
+        passe = repo_pull.lire_passe(STAMP, self.racine)
+        self.assertEqual(passe["mode"], "instantane")
+        self.assertTrue(passe["termine"])
+        lst = repo_pull.lister_sauvegardes(self.racine)["sauvegardes"]
+        self.assertEqual(
+            [(x["nom"], x["sha"], x["branche"]) for x in lst],
+            [(nom, self.c1, VERSION)],
+        )
+        charge, code = repo_pull.restaurer_sauvegarde(
+            self.racine, CHEMIN_A, nom
+        )
+        self.assertEqual(charge["resultats"][0]["etat"], "revenu", charge)
+        self.assertEqual(self.head(), self.c1)
+
+    def test_arbre_sale_stashe_et_garde(self):
+        self.ecrire(self.depot(), "b.txt", "travail\n")
+        donnees = self.diag_retour(self.cible_a())
+        self.assertTrue(self.constat(donnees)["stash_prevu"])
+        charge, _code = self.retour(self.cible_a(), donnees=donnees)
+        stash = self.resultat(charge)["stash"]
+        self.assertEqual(stash["etat"], "garde")
+        self.assertEqual(self.stashs(), [stash["sha"]])
+        self.assertEqual(stash["message"], f"repo_pull retour {STAMP}")
+        self.assertEqual(
+            stash["commande"], f"git -C {CHEMIN_A} stash apply {stash['sha']}"
+        )
+        self.assertEqual(self.lire(self.depot(), "b.txt"), "un\n")
+        self.assertEqual(self.head(), self.i0)
+
+    def test_cible_detachee(self):
+        charge, _code = self.retour(self.cible_a(branche=None))
+        self.assertEqual(self.resultat(charge)["etat"], "recule")
+        self.assertEqual(self.head(), self.i0)
+        self.assertEqual(_git(self.depot(), "branch", "--show-current"), "")
+        self.assertEqual(
+            _git(self.depot(), "rev-parse", VERSION),
+            self.c1,
+            "branche intacte",
+        )
+
+    def test_branche_absente_creee_sur_le_sha(self):
+        charge, _code = self.retour(self.cible_a(branche="ancienne"))
+        res = self.resultat(charge)
+        self.assertEqual(res["etat"], "recule")
+        self.assertEqual(res["branche_arrivee"], "ancienne")
+        self.assertEqual(
+            _git(self.depot(), "branch", "--show-current"), "ancienne"
+        )
+        self.assertEqual(self.head(), self.i0)
+        self.assertEqual(_git(self.depot(), "rev-parse", VERSION), self.c1)
+        charge, _code = repo_pull.restaurer_sauvegarde(
+            self.racine, CHEMIN_A, res["sauvegarde"]
+        )
+        self.assertEqual(charge["resultats"][0]["etat"], "revenu", charge)
+        self.assertEqual(
+            _git(self.depot(), "branch", "--show-current"), VERSION
+        )
+        self.assertEqual(self.head(), self.c1)
+
+    def test_autre_branche_existante_sauvegardee_puis_rendue(self):
+        _git(self.depot(), "branch", "ancienne", self.c1)
+        charge, _code = self.retour(self.cible_a(branche="ancienne"))
+        res = self.resultat(charge)
+        self.assertEqual(
+            res["sauvegarde_cible"], f"ancienne_avant_retour_{STAMP}"
+        )
+        self.assertEqual(_git(self.depot(), "rev-parse", "ancienne"), self.i0)
+        charge, _code = repo_pull.restaurer_sauvegarde(
+            self.racine, CHEMIN_A, res["sauvegarde"]
+        )
+        self.assertEqual(charge["resultats"][0]["etat"], "revenu", charge)
+        self.assertEqual(
+            _git(self.depot(), "branch", "--show-current"), VERSION
+        )
+        self.assertEqual(_git(self.depot(), "rev-parse", "ancienne"), self.c1)
+
+    def test_racine_en_dernier_puis_manifeste_regenere(self):
+        r0 = self.head(".")
+        self.avancer("erplibre.git", {"conf/lisezmoi.txt": "deux\n"})
+        _git(self.racine, "pull", "-q", "--ff-only")
+        r1 = self.head(".")
+        self.predit = [("a.git", CHEMIN_A, "Y.0")]
+        ordre = []
+        vrai = repo_pull.retourner
+
+        def retourner(racine, constat, *a, **kw):
+            ordre.append(constat["chemin"])
+            return vrai(racine, constat, *a, **kw)
+
+        racine = {"head": r0, "branch": VERSION}
+        with patch.object(repo_pull, "retourner", retourner):
+            charge, code = self.retour(self.cible_a(), racine)
+        self.assertEqual(code, 0, charge)
+        self.assertEqual(ordre, [CHEMIN_A, "."])
+        self.assertEqual(self.head("."), r0)
+        self.assertEqual([x[0] for x in self.appels_regenerer], [self.racine])
+        manifeste = charge["manifeste"]
+        self.assertTrue(manifeste["ecrit"], manifeste)
+        local = repo_pull.repo_state.MANIFESTE_LOCAL
+        self.assertIn('revision="Y.0"', self.lire(self.racine, local))
+        nom = self.resultat(charge, ".")["sauvegarde"]
+        charge, _code = repo_pull.restaurer_sauvegarde(self.racine, ".", nom)
+        res = charge["resultats"][0]
+        self.assertEqual(res["etat"], "revenu", charge)
+        self.assertTrue(res["manifeste_restaure"])
+        self.assertEqual(self.head("."), r1)
+        self.assertIn(f'revision="{VERSION}"', self.lire(self.racine, local))
+
+    def test_clone_hors_manifeste_revient_par_sa_sauvegarde(self):
+        chemin = "odoo99.0/addons/E"
+        self.cloner("a.git", chemin)
+        charge, _code = self.retour(
+            {chemin: {"head": self.i0, "branch": VERSION}}
+        )
+        nom = self.resultat(charge, chemin)["sauvegarde"]
+        self.assertEqual(self.head(chemin), self.i0)
+        designe = repo_pull.lire_designation(self.racine, f"{chemin}={nom}")
+        charge, _code = repo_pull.restaurer_sauvegarde(self.racine, *designe)
+        self.assertEqual(charge["resultats"][0]["etat"], "revenu", charge)
+        self.assertEqual(self.head(chemin), self.c1)
+
+    def test_hors_plan_dans_les_resultats(self):
+        depots = dict(self.cible_a())
+        racine = {"head": self.head("."), "branch": VERSION}
+        charge, _code = self.retour(depots, racine)
+        self.assertEqual(self.resultat(charge, ".")["etat"], "a_jour")
+        self.assertIsNone(charge["manifeste"], "la racine n'a pas bougé")
+        depots[CHEMIN_A] = {"head": "ab" * 20, "branch": None}
+        charge, _code = self.retour(depots, horodatage="20990101T0900")
+        self.assertEqual(self.resultat(charge)["etat"], "saute_introuvable")
+        self.assertIsNone(charge["horodatage"], "rien n'est écrit")
+
+    def test_epingle_derivee(self):
+        donnees = self.diag_retour(self.cible_a())
+        self.commit(self.depot(), {"b.txt": "local\n"}, "local")
+        charge, code = self.retour(self.cible_a(), donnees=donnees)
+        self.assertEqual(code, repo_pull.EXIT_PLAN_CHANGE)
+        self.assertEqual(charge["derives"][0]["cle"], "head")
+        self.assertNotIn(f"{VERSION}_avant_retour_{STAMP}", self.branches())
+        self.assertFalse(
+            os.path.exists(repo_pull.dossier_passe(STAMP, self.racine))
+        )
+
+    def test_plan_different(self):
+        donnees = self.diag_retour(self.cible_a())
+        donnees["attendus"] = []
+        charge, code = self.retour(self.cible_a(), donnees=donnees)
+        self.assertEqual(code, repo_pull.EXIT_PLAN_CHANGE)
+        self.assertEqual(self.head(), self.c1)
+
+
+class TestRetourSuperficiel(BancSuperficiel):
+    def test_commit_sous_la_frontiere_recupere_seul(self):
+        ancien = self.historique[5]
+        fichier = os.path.join(self.dossier, "cibles.json")
+        with open(fichier, "w") as fh:
+            json.dump(
+                {
+                    "racine": None,
+                    "depots": {
+                        self.CHEMIN_S: {"head": ancien, "branch": None}
+                    },
+                },
+                fh,
+            )
+        cibles = repo_pull.lire_cibles(fichier, self.racine)
+        donnees, _code = repo_pull.diagnostic_retour(self.racine, cibles)
+        c = self.constat(donnees, self.CHEMIN_S)
+        self.assertIn(c["verdict"], ("recul", "deplacement"), c)
+        self.assertEqual(self.compte(), 3, "l'historique de HEAD reste")
+        depot = self.depot(self.CHEMIN_S)
+        self.assertEqual(_git(depot, "rev-list", "--count", ancien), "1")
+        lus = [repo_apply.lire_attendu(x) for x in donnees["attendus"]]
+        charge, code = repo_pull.passe_retour(
+            self.racine,
+            VERSION,
+            cibles,
+            attendus=[c for c, _e in lus],
+            epingles={c: e for c, e in lus if e},
+            horodatage=STAMP,
+        )
+        self.assertEqual(code, 0, charge)
+        self.assertEqual(self.head(self.CHEMIN_S), ancien)
+
+
+class TestReappliquerStash(BancRetour):
+    def setUp(self):
+        super().setUp()
+        self.ecrire(self.depot(), "b.txt", "travail\n")
+        charge, _code = self.retour(self.cible_a())
+        self.sha = self.resultat(charge)["stash"]["sha"]
+
+    def reappliquer(self):
+        charge, code = repo_pull.reappliquer_stash(
+            self.racine, CHEMIN_A, self.sha
+        )
+        return charge, code
+
+    def test_applique_et_garde_le_stash(self):
+        charge, code = self.reappliquer()
+        self.assertEqual((charge["etat"], code), ("applique", 0), charge)
+        self.assertEqual(self.lire(self.depot(), "b.txt"), "travail\n")
+        self.assertEqual(self.stashs(), [self.sha])
+
+    def test_refuse_un_arbre_sale(self):
+        self.ecrire(self.depot(), "a.txt", "autre\n")
+        charge, _code = self.reappliquer()
+        self.assertEqual(charge["etat"], "refuse_sale")
+        self.assertEqual(self.lire(self.depot(), "a.txt"), "autre\n")
+
+    def test_conflit_laisse_l_arbre_propre(self):
+        _git(self.depot(), "checkout", "-q", VERSION)
+        _git(self.depot(), "reset", "-q", "--hard", self.c1)
+        self.ecrire(self.depot(), "a.txt", "travail\n")
+        _git(self.depot(), "stash", "push", "-q", "-m", "a")
+        self.sha = _git(self.depot(), "rev-parse", "refs/stash")
+        _git(self.depot(), "reset", "-q", "--hard", self.i0)
+        charge, _code = self.reappliquer()
+        self.assertEqual(charge["etat"], "conflit", charge)
+        self.assertEqual(
+            _git(
+                self.depot(), "status", "--porcelain", "--untracked-files=no"
+            ),
+            "",
+        )
+        self.assertIn(self.sha, self.stashs())
+
+    def test_introuvable(self):
+        self.sha = self.c1
+        charge, code = self.reappliquer()
+        self.assertEqual(charge["etat"], "introuvable")
+        self.assertEqual(code, repo_pull.EXIT_CIBLE)
+
+
+class TestRetourLigneDeCommande(BancRetour):
+    def main(self, *args):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = repo_pull.main([*args, "--root", self.racine])
+        return json.loads(sortie.getvalue()), code
+
+    def test_essai_puis_application(self):
+        self.ecrire(self.depot(), "b.txt", "travail\n")
+        self.cibles(self.cible_a())
+        commun = ["--mode", "instantane", "--targets", self.fichier, "--json"]
+        donnees, code = self.main("--dry-run", *commun)
+        self.assertEqual(code, 0, donnees)
+        self.assertEqual(donnees["plan"], [CHEMIN_A])
+        self.assertNotIn("_attrs", donnees["depots"][0])
+        args = ["--apply", *commun, "--confirm", VERSION, "--pass", STAMP]
+        for x in donnees["attendus"]:
+            args += ["--expect", x]
+        charge, code = self.main(*args)
+        self.assertEqual(code, 0, charge)
+        self.assertEqual(self.resultat(charge)["etat"], "recule")
+        sha = self.resultat(charge)["stash"]["sha"]
+        charge, code = self.main(
+            "--apply-stash", f"{CHEMIN_A}={sha}", "--confirm", VERSION
+        )
+        self.assertEqual(
+            (charge["command"], charge["etat"]), ("apply-stash", "applique")
+        )
+        _c, code = self.main("--apply-stash", f"{CHEMIN_A}={sha}")
+        self.assertEqual(code, repo_pull.EXIT_USAGE, "--confirm exigé")
+
+    def test_usage(self):
+        _c, code = self.main("--dry-run", "--mode", "instantane")
+        self.assertEqual(code, repo_pull.EXIT_USAGE)
+        self.cibles(self.cible_a())
+        _c, code = self.main("--dry-run", "--targets", self.fichier)
+        self.assertEqual(code, repo_pull.EXIT_USAGE)
+        with open(self.fichier, "w") as fh:
+            fh.write("{")
+        _c, code = self.main(
+            "--dry-run", "--mode", "instantane", "--targets", self.fichier
+        )
+        self.assertEqual(code, repo_pull.EXIT_USAGE)
+        _c, code = self.main(
+            "--apply-stash", "z=" + "ab" * 20, "--confirm", VERSION
+        )
+        self.assertEqual(code, repo_pull.EXIT_CIBLE)
+
+
 if __name__ == "__main__":
     unittest.main()
