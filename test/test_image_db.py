@@ -56,5 +56,72 @@ class TestImageDbConfig(unittest.TestCase):
         self.assertIn("odoo18.0_base", I.images_of_version(config, "18.0"))
 
 
+class TestChoixDeVersion(unittest.TestCase):
+    """Le choix de version du menu Image Odoo. get_odoo_version y est simulé
+    avec son vrai format : des noms de dossier, « odoo18.0 », là où les
+    versions des images sont nues, « 18.0 »."""
+
+    def setUp(self):
+        from unittest.mock import MagicMock, patch
+
+        from script.todo import todo
+
+        self.todo = todo.TODO.__new__(todo.TODO)
+        self.todo.execute = MagicMock()
+        self.todo.execute.exec_command_live.return_value = 0
+        p = patch.object(
+            todo,
+            "get_odoo_version",
+            return_value=([], ["odoo17.0", "odoo18.0"], "odoo18.0"),
+        )
+        p.start()
+        self.addCleanup(p.stop)
+        p = patch.object(I, "load_image_config", return_value=CONFIG)
+        p.start()
+        self.addCleanup(p.stop)
+        self.invite = []
+        self.reponses = []
+
+        def repondre(question=""):
+            self.invite.append(question)
+            return self.reponses.pop(0)
+
+        p = patch("builtins.input", side_effect=repondre)
+        p.start()
+        self.addCleanup(p.stop)
+        p = patch("builtins.print")
+        p.start()
+        self.addCleanup(p.stop)
+
+    def choisir(self, *reponses, generer=True):
+        self.reponses = list(reponses)
+        return self.todo._image_db_choose_version(generer=generer)
+
+    def test_la_version_active_ne_propose_pas_de_basculer(self):
+        # 3 : 18.0 dans ["9.0", "16.0", "18.0"]
+        self.assertEqual("18.0", self.choisir("3"))
+        self.assertEqual(1, len(self.invite), self.invite)
+        self.todo.execute.exec_command_live.assert_not_called()
+
+    def test_une_autre_version_installee_bascule_apres_accord(self):
+        from unittest.mock import patch
+
+        config = dict(CONFIG, **{"odoo17.0_base": {"image_list": []}})
+        with patch.object(I, "load_image_config", return_value=config):
+            # ["9.0", "16.0", "17.0", "18.0"] : 3 vaut 17.0
+            self.assertEqual("17.0", self.choisir("3", "o"))
+        self.todo.execute.exec_command_live.assert_called_once_with(
+            "make switch_odoo_17", source_erplibre=False
+        )
+
+    def test_une_version_absente_est_refusee(self):
+        self.assertIsNone(self.choisir("2"))
+        self.todo.execute.exec_command_live.assert_not_called()
+
+    def test_lister_ne_bascule_jamais(self):
+        self.assertEqual("16.0", self.choisir("2", generer=False))
+        self.todo.execute.exec_command_live.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

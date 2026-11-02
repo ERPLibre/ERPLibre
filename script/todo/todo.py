@@ -5565,8 +5565,11 @@ class TODO(
         from script.database import image_db
 
         versions = image_db.versions_with_images(image_db.load_image_config())
+        # get_odoo_version nomme les versions comme leurs dossiers,
+        # « odoo18.0 » ; celles des images sont nues, « 18.0 ».
         _entries, installees, active = get_odoo_version()
         installees = {v.removeprefix("odoo") for v in installees}
+        active = (active or "").removeprefix("odoo")
         for i, version in enumerate(versions, 1):
             marques = []
             if version in installees:
