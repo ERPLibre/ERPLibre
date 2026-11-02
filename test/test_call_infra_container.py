@@ -952,9 +952,9 @@ class TestSameImage(unittest.TestCase):
     DIGEST = COTURN_REF.split("@")[1]
 
     def test_engine_forms_of_the_pinned_image(self):
-        # Docker rend la référence donnée à la création, avec ou sans
-        # registre ; Podman, en root comme en rootless, la rend sans
-        # étiquette.
+        # Toute forme du même dépôt qui porte le même condensat, avec ou
+        # sans registre ni étiquette ; Podman, en root comme en rootless,
+        # rend la référence sans étiquette.
         for found in (
             COTURN_REF,
             f"docker.io/coturn/coturn@{self.DIGEST}",
@@ -971,6 +971,9 @@ class TestSameImage(unittest.TestCase):
             f"docker.io/autre/coturn@{self.DIGEST}",
             f"ghcr.io/coturn/coturn@{self.DIGEST}",
             "docker.io/coturn/coturn:4.18.0",
+            # La forme que rend le ps de Docker : sans condensat, elle ne
+            # prouve rien, et seul l'identifiant d'image la reconnaît.
+            "coturn/coturn:4.18.0",
             # Un identifiant d'image seul : rien ne le relie au condensat.
             self.DIGEST,
             self.DIGEST.split(":")[1],
