@@ -29,6 +29,7 @@ from pathlib import Path
 from unittest import mock
 
 from script.todo import call_infra as ci
+from script.todo import call_infra_container as cc
 from script.todo import call_infra_menu as cim
 from script.todo import ntfy_mobile as nm
 from script.todo import odoo_link as ol
@@ -104,6 +105,7 @@ class FakeHost:
         check_extra=(),
         odoo_add_ok=True,
         odoo_remove_ok=True,
+        install_extra=(),
     ):
         self.os_line = os_line
         self.systemd = systemd
@@ -131,6 +133,9 @@ class FakeHost:
         # réussissent, ou s'arrêtent à l'étape « coturn ».
         self.odoo_add_ok = odoo_add_ok
         self.odoo_remove_ok = odoo_remove_ok
+        # Lignes mises en tête de la sortie de l'installation : celles
+        # d'une image qui ne se tire pas, d'une migration, de ses copies.
+        self.install_extra = list(install_extra)
         self.calls = []
 
     @staticmethod
@@ -229,7 +234,8 @@ class FakeHost:
         if kind.startswith("odoo-"):
             return self._odoo_answer(kind, script)
         if kind == "install":
-            out = "".join(
+            out = "".join(line + "\n" for line in self.install_extra)
+            out += "".join(
                 f"@@ACTIVE {svc} active\n"
                 for svc in ci.SERVICES
                 if f"RC_{svc}" in script
@@ -381,10 +387,10 @@ class MenuCase(unittest.TestCase):
         return out.getvalue()
 
 
-# Réponses d'une installation acceptée telle que proposée : services, mode
-# (développement), TLS, nom public, port TURN, plage des relais, port de
-# ntfy.
-DEFAULTS = ["", "", "", "", "", "", ""]
+# Réponses d'une installation acceptée telle que proposée : services,
+# méthode (paquets), mode (développement), TLS, nom public, port TURN, plage
+# des relais, port de ntfy.
+DEFAULTS = ["", "", "", "", "", "", "", ""]
 
 
 class TestInstall(MenuCase):
@@ -539,7 +545,7 @@ class TestInstall(MenuCase):
             files={"/etc/turnserver.conf": FOREIGN_COTURN},
             ports=(("udp", 3478, "turnserver"),),
         )
-        replies = ["2", "", "", "", "", "", "n"]
+        replies = ["2", "", "", "", "", "", "", "n"]
         out = self.drive("_call_infra_install", host, replies)
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn("-realm=ancien.exemple.test", out)
@@ -638,14 +644,16 @@ class TestInstall(MenuCase):
 
     def test_an_unreadable_certificate_stops_before_installing(self):
         host = FakeHost()
-        replies = ["", "", "2", "/nonexistent/exemple.crt"]
+        replies = ["", "", "", "2", "/nonexistent/exemple.crt"]
         out = self.drive("_call_infra_install", host, replies)
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn("/nonexistent/exemple.crt", out)
 
     def test_a_port_that_is_not_a_number_stops(self):
         host = FakeHost()
-        out = self.drive("_call_infra_install", host, ["", "", "", "", "abc"])
+        out = self.drive(
+            "_call_infra_install", host, ["", "", "", "", "", "abc"]
+        )
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn("abc", out)
 
@@ -695,14 +703,15 @@ class ProductionCase(MenuCase):
         return out, built.call_args.args[1]
 
 
-# Production, les deux services, Let's Encrypt par HTTP : services, mode,
-# domaine, nom de ntfy, nom de TURN, certificat, défi, courriel, interface
-# web de ntfy, port TURN, port TURNS, plage des relais, port de ntfy.
-PROD_BOTH = ["", "2", DOMAIN, "", "", "", "", EMAIL, "", "", "", "", ""]
-# coturn seul, Let's Encrypt par certbot seul sur 80 : services, mode,
-# domaine, nom de TURN, certificat, défi, voie du défi HTTP, courriel, port
-# TURN, 443 (question posée : ni nginx ni 443 pris), port TURNS, plage.
-PROD_COTURN = ["2", "2", DOMAIN, "", "", "", "", EMAIL, "", "", "", ""]
+# Production, les deux services, Let's Encrypt par HTTP : services,
+# méthode, mode, domaine, nom de ntfy, nom de TURN, certificat, défi,
+# courriel, interface web de ntfy, port TURN, port TURNS, plage des relais,
+# port de ntfy.
+PROD_BOTH = ["", "", "2", DOMAIN, "", "", "", "", EMAIL, "", "", "", "", ""]
+# coturn seul, Let's Encrypt par certbot seul sur 80 : services, méthode,
+# mode, domaine, nom de TURN, certificat, défi, voie du défi HTTP, courriel,
+# port TURN, 443 (question posée : ni nginx ni 443 pris), port TURNS, plage.
+PROD_COTURN = ["2", "", "2", DOMAIN, "", "", "", "", EMAIL, "", "", "", ""]
 
 
 class TestProductionInstall(ProductionCase):
@@ -792,7 +801,7 @@ class TestProductionInstall(ProductionCase):
             path = os.path.join(tmp, "cloudflare.ini")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(DNS_SECRET)
-            replies = ["", "2", DOMAIN, "", "", "", "2", "1", path, ""]
+            replies = ["", "", "2", DOMAIN, "", "", "", "2", "1", path, ""]
             replies += ["", "", "", "", ""]
             host = FakeHost()
             out = self.drive("_call_infra_install", host, replies + ["o", ""])
@@ -816,7 +825,7 @@ class TestProductionInstall(ProductionCase):
 
     def test_arch_offers_every_dns_plugin(self):
         host = FakeHost(os_line="arch -")
-        replies = ["", "2", DOMAIN, "", "", "", "2", "99"]
+        replies = ["", "", "2", DOMAIN, "", "", "", "2", "99"]
         out = self.drive("_call_infra_install", host, replies)
         self.assertEqual(host.kinds(), ["probe"])
         for number, plugin in enumerate(ci.DNS_PLUGINS, 1):
@@ -825,7 +834,7 @@ class TestProductionInstall(ProductionCase):
 
     def test_an_unreadable_credentials_file_stops(self):
         host = FakeHost()
-        replies = ["", "2", DOMAIN, "", "", "", "2", "1"]
+        replies = ["", "", "2", DOMAIN, "", "", "", "2", "1"]
         out = self.drive(
             "_call_infra_install", host, replies + ["/nonexistent/x.ini"]
         )
@@ -891,7 +900,7 @@ class TestProductionInstall(ProductionCase):
             ports=(("tcp", 22, "sshd"), ("tcp", 80, "nginx")),
         )
         # Ni la voie du défi HTTP ni 443 ne sont demandés : nginx sert.
-        replies = ["2", "2", DOMAIN, "", "", "", EMAIL, "", "", "", "n"]
+        replies = ["2", "", "2", DOMAIN, "", "", "", EMAIL, "", "", "", "n"]
         out, ans = self.planned(host, replies)
         self.assertEqual((ans.acme, ans.nginx), ("http-nginx", "existing"))
         self.assertIs(ans.turns_443, False)
@@ -901,14 +910,28 @@ class TestProductionInstall(ProductionCase):
         )
 
     def test_nginx_installed_for_the_challenge_on_a_coturn_host(self):
-        replies = ["2", "2", DOMAIN, "", "", "", "2", EMAIL, "", "", "", "n"]
+        replies = [
+            "2",
+            "",
+            "2",
+            DOMAIN,
+            "",
+            "",
+            "",
+            "2",
+            EMAIL,
+            "",
+            "",
+            "",
+            "n",
+        ]
         out, ans = self.planned(FakeHost(), replies)
         self.assertEqual((ans.acme, ans.nginx), ("http-nginx", "install"))
         self.assertIn(t("call_infra_nginx_install"), out)
 
     def test_443_is_asked_without_nginx_when_it_is_free(self):
         replies = list(PROD_COTURN)
-        replies[9:11] = ["o"]
+        replies[10:12] = ["o"]
         out, ans = self.planned(FakeHost(), replies + ["n"])
         self.assertIs(ans.turns_443, True)
         self.assertTrue(
@@ -922,7 +945,7 @@ class TestProductionInstall(ProductionCase):
     def test_443_held_by_another_process_is_not_asked(self):
         host = FakeHost(ports=(("tcp", 22, "sshd"), ("tcp", 443, "caddy")))
         replies = list(PROD_COTURN)
-        del replies[9]
+        del replies[10]
         _out, ans = self.planned(host, replies + ["n"])
         self.assertIs(ans.turns_443, False)
         self.assertFalse(
@@ -937,7 +960,7 @@ class TestProductionInstall(ProductionCase):
         # pointe hors de l'hôte peut être son NAT, rien ne dit qu'il faut
         # corriger le DNS.
         self.dns = {NTFY_NAME: ["203.0.113.7"]}
-        replies = ["3", "2", DOMAIN, "", "", "", EMAIL, "", ""]
+        replies = ["3", "", "2", DOMAIN, "", "", "", EMAIL, "", ""]
         out, ans = self.planned(FakeHost(), replies + ["n"])
         self.assertEqual(ans.services, frozenset({"ntfy"}))
         self.assertIn(
@@ -958,12 +981,12 @@ class TestProductionInstall(ProductionCase):
         # Relance d'un coturn déjà sur 443 : la question revient, oui par
         # défaut, et coturn ne repart pas en silence sur 5349.
         replies = list(PROD_COTURN)
-        replies[9:11] = ["o"]
+        replies[10:12] = ["o"]
         host = FakeHost()
         self.drive("_call_infra_install", host, replies + ["o", ""])
         host.ports = (("tcp", 22, "sshd"), ("tcp", 443, "turnserver"))
         self.prompts = []
-        again = [""] * 11
+        again = [""] * 12
         _out, ans = self.planned(host, again + ["n"])
         self.assertIs(ans.turns_443, True)
         self.assertTrue(
@@ -981,7 +1004,7 @@ class TestProductionInstall(ProductionCase):
             path = os.path.join(tmp, "cloudflare.ini")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(DNS_SECRET)
-            replies = ["2", "2", DOMAIN, "", "", "2", "1", path, ""]
+            replies = ["2", "", "2", DOMAIN, "", "", "2", "1", path, ""]
             replies += ["", "", ""]
             _out, ans = self.planned(host, replies + ["n"])
         self.assertIsNone(ans.nginx)
@@ -995,7 +1018,7 @@ class TestProductionInstall(ProductionCase):
 
     def test_ubuntu_and_installed_plugins_are_offered(self):
         host = FakeHost(os_line="ubuntu 24.04")
-        replies = ["", "2", DOMAIN, "", "", "", "2", "99"]
+        replies = ["", "", "2", DOMAIN, "", "", "", "2", "99"]
         out = self.drive("_call_infra_install", host, replies)
         self.assertIn("[6] ovh", out)
         self.assertNotIn("] luadns", out)
@@ -1012,7 +1035,9 @@ class TestProductionInstall(ProductionCase):
         for typed in ("192.0.2.10", "2001:db8::1", "hote-exemple"):
             with self.subTest(typed=typed):
                 host = FakeHost()
-                out = self.drive("_call_infra_install", host, ["", "2", typed])
+                out = self.drive(
+                    "_call_infra_install", host, ["", "", "2", typed]
+                )
                 self.assertEqual(host.kinds(), ["probe"])
                 self.assertIn(t("call_infra_domain_needed"), out)
 
@@ -1020,21 +1045,21 @@ class TestProductionInstall(ProductionCase):
         # Sans ssh ni état, le nom proposé est l'adresse de l'hôte : rien
         # n'est proposé, et une réponse vide est refusée.
         host = FakeHost()
-        out = self.drive("_call_infra_install", host, ["", "2", ""])
-        self.assertNotIn("[192.0.2.10]", self.prompts[2])
+        out = self.drive("_call_infra_install", host, ["", "", "2", ""])
+        self.assertNotIn("[192.0.2.10]", self.prompts[3])
         self.assertIn(t("call_infra_domain_needed"), out)
 
     def test_the_ssh_host_name_is_proposed_as_the_domain(self):
         host = FakeHost()
         ssh = nm.SshHost("alias-exemple", hostname="vps.exemple.test")
         ssh.run = host.run
-        self.drive("_call_infra_install", ssh, ["", "2", "", "", "", "9"])
-        self.assertIn("[vps.exemple.test]", self.prompts[2])
-        self.assertIn("[ntfy.vps.exemple.test]", self.prompts[3])
+        self.drive("_call_infra_install", ssh, ["", "", "2", "", "", "", "9"])
+        self.assertIn("[vps.exemple.test]", self.prompts[3])
+        self.assertIn("[ntfy.vps.exemple.test]", self.prompts[4])
 
     def test_names_are_proposed_from_the_domain_and_editable(self):
         replies = list(PROD_BOTH)
-        replies[3] = "push.exemple.test"
+        replies[4] = "push.exemple.test"
         _out, ans = self.planned(FakeHost(), replies + ["n"])
         self.assertEqual(ans.ntfy_name, "push.exemple.test")
         self.assertEqual(ans.turn_name, TURN_NAME)
@@ -1045,7 +1070,7 @@ class TestProductionInstall(ProductionCase):
         host = FakeHost()
         self.drive("_call_infra_install", host, PROD_BOTH + ["o", ""])
         self.prompts = []
-        replies = [""] * 13
+        replies = [""] * 14
         out, ans = self.planned(host, replies + ["n"])
         self.assertEqual(ans.mode, "production")
         self.assertEqual(
@@ -1061,8 +1086,8 @@ class TestProductionInstall(ProductionCase):
     def test_a_dash_clears_the_recorded_email(self):
         host = FakeHost()
         self.drive("_call_infra_install", host, PROD_BOTH + ["o", ""])
-        replies = [""] * 13
-        replies[7] = "-"
+        replies = [""] * 14
+        replies[8] = "-"
         out, ans = self.planned(host, replies + ["n"])
         self.assertEqual(ans.email, "")
         self.assertIn(t("call_infra_email_none"), out)
@@ -1070,7 +1095,7 @@ class TestProductionInstall(ProductionCase):
     def test_the_development_branch_carries_no_production_answer(self):
         host = FakeHost()
         self.drive("_call_infra_install", host, PROD_BOTH + ["o", ""])
-        replies = ["", "1", "", "192.0.2.10", "", "", "", "n"]
+        replies = ["", "", "1", "", "192.0.2.10", "", "", "", "n"]
         out, ans = self.planned(host, replies)
         self.assertEqual(ans.mode, "development")
         self.assertEqual(
@@ -1090,7 +1115,7 @@ class TestProductionInstall(ProductionCase):
             "203.0.113.7",
         )
         self.prompts = []
-        replies = ["", "1", "", "", "", "", "n"]
+        replies = ["", "", "1", "", "", "", "", "n"]
         _out, ans = self.planned(host, replies)
         self.assertEqual(ans.mode, "development")
         self.assertIsNone(ans.external_ip)
@@ -1403,6 +1428,471 @@ class TestUninstall(MenuCase):
             t("call_infra_state_version").format(found=99, expected="1, 2"),
             out,
         )
+
+
+# Lignes de la section des moteurs de la sonde : Docker et son plugin
+# compose, Podman et podman-compose, le client Docker seul.
+DOCKER_PROBE = [
+    "@@ENGINE docker 26.1.5",
+    "@@COMPOSE docker docker compose",
+    "@@DOCKER_SERVICE active enabled",
+]
+PODMAN_PROBE = [
+    "@@ENGINE podman 5.4.2",
+    "@@COMPOSE podman podman-compose",
+    "@@PODMAN_RESTART disabled",
+]
+DOCKER_ALONE = ["@@ENGINE docker 26.1.5", "@@DOCKER_SERVICE active enabled"]
+# Après la méthode et le moteur, en développement : mode, TLS, nom public,
+# port TURN, plage des relais, port de ntfy.
+DEV_REST = ["", "", "", "", "", ""]
+BACKUP_DIR = "/var/lib/erplibre-call-backup/20261102-101500"
+
+
+def container_state(**added):
+    """État d'une installation Docker des deux services, tel que le script
+    l'écrit : ids des comptes, images tirées, plus les champs `added` du
+    bloc `container`."""
+    facts = ci.parse_probe(FakeHost(probe_extra=DOCKER_PROBE).probe_output())
+    plan = ci.plan_install(
+        facts,
+        answers(method="container", engine="docker"),
+        datetime.datetime.now(UTC),
+    )
+    state = ci.written_state(plan, "20261030-101500")
+    for svc, uid in (("coturn", 990), ("ntfy", 996)):
+        state["services"][svc].update(uid=uid, gid=uid)
+    state["container"]["images_pulled"] = list(cc.IMAGES.values())
+    state["container"].update(added)
+    return state
+
+
+class TestInstallMethod(ProductionCase):
+    def packages_host(self, **changes):
+        """Hôte où tournent coturn et ntfy installés par paquets, Docker
+        présent : choisir les conteneurs y est une migration."""
+        ans = answers()
+        values = dict(
+            state=installed_state(ans),
+            coturn="coturn active /etc/turnserver.conf",
+            ntfy="ntfy active /etc/ntfy/server.yml",
+            files={
+                "/etc/turnserver.conf": ci.coturn_config(ans),
+                "/etc/ntfy/server.yml": ci.ntfy_config(ans),
+            },
+            ports=(("udp", 3478, "turnserver"), ("tcp", 8080, "ntfy")),
+            probe_extra=DOCKER_PROBE,
+        )
+        values.update(changes)
+        return FakeHost(**values)
+
+    def test_packages_is_the_default_and_asks_nothing_more(self):
+        out, ans = self.planned(FakeHost(), DEFAULTS + ["n"])
+        self.assertEqual(
+            (ans.method, ans.engine, ans.rootless, ans.install_engine),
+            ("packages", None, False, False),
+        )
+        self.assertIn(t("call_infra_method_packages"), out)
+        self.assertIn(t("call_infra_method_container"), out)
+        self.assertIn(t("call_infra_choice_method"), self.prompts[1])
+        self.assertIn(f"{t('Method:')} {t('call_infra_method_packages')}", out)
+        self.assertNotIn(t("call_infra_choice_engine"), " ".join(self.prompts))
+
+    def test_no_engine_offers_its_packages_and_the_yes_is_carried(self):
+        host = FakeHost()
+        out, ans = self.planned(host, ["", "2", "", "o"] + DEV_REST + ["n"])
+        self.assertEqual(
+            (ans.method, ans.engine, ans.rootless, ans.install_engine),
+            ("container", "docker", False, True),
+        )
+        self.assertIn(t("call_infra_engine_none"), out)
+        self.assertIn(
+            t("call_infra_engine_offer").format(
+                engine="Docker", packages="docker.io docker-compose"
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_choice_engine"), self.prompts[2])
+        self.assertIn(t("call_infra_hint_no"), self.prompts[3])
+        # Le résumé : méthode et moteur, images épinglées, paquets, et
+        # l'effet du démon Docker sur le transfert IP.
+        summary = out[out.index(t("Summary")) :]
+        self.assertIn(
+            t("call_infra_summary_rootful").format(engine="Docker"), summary
+        )
+        for ref in cc.IMAGES.values():
+            self.assertIn(ref, summary)
+        self.assertIn(
+            f"{t('Packages to install:')} docker.io docker-compose", summary
+        )
+        self.assertIn(t("call_infra_docker_forward_note"), summary)
+        self.assertEqual(host.kinds(), ["probe"])
+
+    def test_declined_engine_packages_stop_at_once(self):
+        host = FakeHost()
+        out = self.drive("_call_infra_install", host, ["", "2", "", "n"])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(
+            t("call_infra_engine_missing").format(
+                engine="docker", packages="docker.io, docker-compose"
+            ),
+            out,
+        )
+        self.assertNotIn(f"\n{t('Mode:')}", out)
+
+    def test_one_engine_on_the_host_is_used_and_said(self):
+        host = FakeHost(probe_extra=DOCKER_PROBE)
+        out, ans = self.planned(host, ["", "2"] + DEV_REST + ["n"])
+        self.assertEqual((ans.engine, ans.install_engine), ("docker", False))
+        self.assertIn(
+            t("call_infra_engine_found").format(engine="Docker"), out
+        )
+        self.assertNotIn(t("call_infra_choice_engine"), " ".join(self.prompts))
+        self.assertNotIn(t("Packages to install:"), out)
+
+    def test_compose_missing_offers_only_its_package(self):
+        host = FakeHost(probe_extra=DOCKER_ALONE)
+        out, ans = self.planned(host, ["", "2", "o"] + DEV_REST + ["n"])
+        self.assertIs(ans.install_engine, True)
+        self.assertIn(
+            t("call_infra_engine_offer").format(
+                engine="Docker", packages="docker-compose"
+            ),
+            out,
+        )
+        self.assertIn(f"{t('Packages to install:')} docker-compose", out)
+
+    def test_both_engines_are_asked_then_podman_root_or_not(self):
+        host = FakeHost(probe_extra=DOCKER_PROBE + PODMAN_PROBE)
+        out, ans = self.planned(host, ["", "2", "2", "1"] + DEV_REST + ["n"])
+        self.assertEqual((ans.engine, ans.rootless), ("podman", False))
+        self.assertIn(t("call_infra_choice_engine"), self.prompts[2])
+        self.assertIn(t("call_infra_choice_podman"), self.prompts[3])
+        self.assertIn(f"[2] {t('call_infra_podman_rootless')}", out)
+        self.assertIn(
+            t("call_infra_summary_rootful").format(engine="Podman"), out
+        )
+        self.assertNotIn(t("call_infra_docker_forward_note"), out)
+
+    def test_rootless_never_asks_443_and_says_why(self):
+        host = FakeHost(probe_extra=PODMAN_PROBE)
+        # coturn seul en production, comme PROD_COTURN, sous Podman sans
+        # root (newuidmap manque : « uidmap » est proposé), sans la
+        # question de 443.
+        replies = ["2", "2", "2", "o", "2", DOMAIN, "", "", "", "", EMAIL]
+        replies += ["", "", ""]
+        out, ans = self.planned(host, replies + ["n"])
+        self.assertEqual((ans.engine, ans.rootless), ("podman", True))
+        self.assertIs(ans.turns_443, False)
+        self.assertEqual(ans.turns_port, 5349)
+        self.assertFalse(
+            any(
+                t("call_infra_ask_turns_443").format(port=5349) in p
+                for p in self.prompts
+            )
+        )
+        self.assertIn(t("call_infra_rootless_no_443").format(port=5349), out)
+        self.assertIn(
+            t("call_infra_summary_rootless").format(account="erplibre-call"),
+            out,
+        )
+
+    def test_rootless_ntfy_on_80_is_refused_before_the_summary(self):
+        host = FakeHost(probe_extra=PODMAN_PROBE)
+        replies = ["", "2", "2", "o", "", "", "", "", "", "80"]
+        out = self.drive("_call_infra_install", host, replies)
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(
+            t("call_infra_container_port").format(
+                port=80, start=1024, alt=8080
+            ),
+            out,
+        )
+        self.assertNotIn(t("Summary"), out)
+
+    def test_a_low_recorded_port_waits_for_the_port_question(self):
+        # L'état propose ntfy sur 80 : la méthode ne le refuse pas encore,
+        # la question du port le remplace.
+        ans = answers(ntfy_port=80)
+        host = self.packages_host(
+            state=installed_state(ans),
+            files={
+                "/etc/turnserver.conf": ci.coturn_config(ans),
+                "/etc/ntfy/server.yml": ci.ntfy_config(ans),
+            },
+            ports=(("udp", 3478, "turnserver"), ("tcp", 80, "ntfy")),
+            probe_extra=PODMAN_PROBE,
+        )
+        replies = ["", "2", "2", "o", "", "", "", "", "", "8080", "n"]
+        out, planned = self.planned(host, replies)
+        self.assertEqual(planned.ntfy_port, 8080)
+        self.assertNotIn(
+            t("call_infra_container_port").format(
+                port=80, start=1024, alt=8080
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_ask_migrate"), self.prompts[-1])
+
+    def test_switching_method_shows_the_notice_and_no_runs_nothing(self):
+        host = self.packages_host()
+        out = self.drive(
+            "_call_infra_install", host, ["", "2"] + DEV_REST + ["n"]
+        )
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(
+            t("call_infra_migration_notice").format(
+                old=t("call_infra_by_packages"),
+                new=t("call_infra_by_containers"),
+                services="coturn, ntfy",
+                backup=ci.MIGRATION_BACKUP_DIR,
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_ask_migrate"), self.prompts[-1])
+        self.assertIn(t("call_infra_hint_no"), self.prompts[-1])
+        self.assertNotIn(t("Summary"), out)
+        self.assertIn(t("Nothing installed."), out)
+
+    def test_a_migration_yes_comes_before_the_summary(self):
+        host = self.packages_host(
+            install_extra=[
+                f"@@BACKUP {BACKUP_DIR}/turndb",
+                f"@@BACKUP {BACKUP_DIR}/user.db",
+                "@@MIGRATION done",
+            ]
+        )
+        out = self.drive(
+            "_call_infra_install", host, ["", "2"] + DEV_REST + ["o", "o", ""]
+        )
+        self.assertEqual(host.kinds(), ["probe", "install", "state", "check"])
+        notice = out.index(t("call_infra_by_containers"))
+        self.assertLess(notice, out.index(t("Summary")))
+        self.assertIn(
+            t("call_infra_migration_backups").format(
+                backups=f"{BACKUP_DIR}/turndb, {BACKUP_DIR}/user.db"
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_installed"), out)
+
+    def test_the_registry_limit_is_not_a_failure(self):
+        host = FakeHost(
+            probe_extra=DOCKER_PROBE,
+            install_ok=False,
+            install_extra=[
+                "@@PULL_FAILED coturn rate-limit",
+                "@@FAILED pull-coturn",
+            ],
+        )
+        out = self.drive(
+            "_call_infra_install", host, ["", "2"] + DEV_REST + ["o"]
+        )
+        self.assertEqual(host.kinds(), ["probe", "install"])
+        self.assertIn(
+            "Limite du registre atteinte (Docker Hub) : réessayer plus tard.",
+            TRANSLATIONS["call_infra_registry_limit"]["fr"],
+        )
+        self.assertIn(t("call_infra_registry_limit"), out)
+        pulled = t("call_infra_pull_failed").format(service="coturn")
+        self.assertNotIn(pulled, out)
+        self.assertNotIn(t("call_infra_install_failed"), out)
+        self.assertNotIn(t("Step failed:"), out)
+        self.assertIsNone(host.state)
+
+    def test_another_pull_failure_says_which_image(self):
+        host = FakeHost(
+            probe_extra=DOCKER_PROBE,
+            install_ok=False,
+            install_extra=["@@PULL_FAILED ntfy failed", "@@FAILED pull-ntfy"],
+        )
+        out = self.drive(
+            "_call_infra_install", host, ["", "2"] + DEV_REST + ["o"]
+        )
+        self.assertIn(t("call_infra_pull_failed").format(service="ntfy"), out)
+        self.assertNotIn(t("call_infra_registry_limit"), out)
+
+    def test_a_rolled_back_migration_names_the_copies(self):
+        host = self.packages_host(
+            install_ok=False,
+            install_extra=[
+                f"@@BACKUP {BACKUP_DIR}/turndb",
+                "@@FAILED container-coturn",
+                "@@MIGRATION rolled-back",
+            ],
+        )
+        out = self.drive(
+            "_call_infra_install", host, ["", "2"] + DEV_REST + ["o", "o"]
+        )
+        self.assertIn(
+            t("call_infra_migration_rolled_back").format(
+                backups=f"{BACKUP_DIR}/turndb"
+            ),
+            out,
+        )
+        self.assertIn(f"{t('Step failed:')} container-coturn", out)
+        self.assertNotIn(t("call_infra_install_failed"), out)
+        self.assertEqual(host.state["version"], ci.STATE_VERSION)
+
+    def test_a_failed_rollback_names_its_steps(self):
+        host = self.packages_host(
+            install_ok=False,
+            install_extra=[
+                f"@@BACKUP {BACKUP_DIR}/turndb",
+                "@@FAILED container-coturn",
+                "@@ROLLBACK_FAILED compose-down",
+                "@@MIGRATION rollback-failed",
+            ],
+        )
+        out = self.drive(
+            "_call_infra_install", host, ["", "2"] + DEV_REST + ["o", "o"]
+        )
+        self.assertIn(
+            t("call_infra_migration_rollback_failed").format(
+                steps="compose-down", backups=f"{BACKUP_DIR}/turndb"
+            ),
+            out,
+        )
+        self.assertNotIn(
+            t("call_infra_migration_rolled_back").format(
+                backups=f"{BACKUP_DIR}/turndb"
+            ),
+            out,
+        )
+
+    def test_a_partial_method_switch_is_refused_at_once(self):
+        host = self.packages_host()
+        out = self.drive("_call_infra_install", host, ["2", "2"])
+        self.assertEqual(host.kinds(), ["probe"])
+        self.assertIn(
+            t("call_infra_method_partial").format(service="ntfy"), out
+        )
+
+    def test_a_container_state_proposes_its_engine(self):
+        host = FakeHost(
+            state=container_state(), probe_extra=DOCKER_PROBE + PODMAN_PROBE
+        )
+        _out, ans = self.planned(host, ["", "", ""] + DEV_REST + ["n"])
+        self.assertEqual((ans.method, ans.engine), ("container", "docker"))
+        self.assertIn("[2]", self.prompts[1])
+        self.assertIn("[1]", self.prompts[2])
+
+    def test_the_rootless_label_names_the_account_the_tool_creates(self):
+        for lang in ("fr", "en"):
+            self.assertIn(
+                cc.ROOTLESS_ACCOUNT,
+                TRANSLATIONS["call_infra_podman_rootless"][lang],
+            )
+
+
+class TestContainerUninstall(MenuCase):
+    def test_the_engine_question_only_with_tool_additions(self):
+        cases = (
+            (installed_state(), ["n", "o"], None),
+            (container_state(), ["n", "o"], None),
+            (
+                container_state(engine_packages_added=["docker.io"]),
+                ["n", "o", "o"],
+                True,
+            ),
+            (
+                container_state(accounts_added=["erplibre-coturn"]),
+                ["n", "n", "o"],
+                False,
+            ),
+        )
+        for state, replies, asked in cases:
+            with self.subTest(replies=replies, asked=asked):
+                self.prompts = []
+                host = FakeHost(state=state)
+                with mock.patch.object(
+                    ci, "uninstall_script", wraps=ci.uninstall_script
+                ) as built:
+                    self.drive("_call_infra_uninstall", host, replies)
+                question = any(
+                    t("call_infra_ask_remove_engine")[:25] in p
+                    for p in self.prompts
+                )
+                self.assertEqual(question, asked is not None)
+                last = built.call_args
+                self.assertEqual(
+                    last.kwargs.get("remove_engine", False), bool(asked)
+                )
+                self.assertEqual(host.kinds(), ["probe", "uninstall"])
+
+    def test_the_question_names_what_the_tool_added(self):
+        state = container_state(
+            engine_packages_added=["docker.io", "docker-compose"],
+            accounts_added=["erplibre-coturn"],
+            restart_unit_enabled="docker.service",
+        )
+        host = FakeHost(state=state)
+        self.drive("_call_infra_uninstall", host, ["n", "n", "n"])
+        self.assertIn(
+            t("call_infra_ask_remove_engine").format(
+                added="docker.io, docker-compose, erplibre-coturn,"
+                " docker.service"
+            ),
+            self.prompts,
+        )
+
+    def test_a_return_to_packages_still_offers_the_engine_removal(self):
+        state = installed_state()
+        state["container_added"] = {
+            "engine": "docker",
+            "rootless": False,
+            "account": None,
+            "uid": None,
+            "images_pulled": [cc.IMAGES["coturn"]],
+            "engine_packages_added": ["docker.io"],
+            "accounts_added": [],
+            "restart_unit_enabled": None,
+            "linger_added": False,
+        }
+        host = FakeHost(state=state)
+        out = self.drive("_call_infra_uninstall", host, ["n", "o", "o"])
+        self.assertIn(cc.IMAGES["coturn"], out)
+        self.assertEqual(host.kinds(), ["probe", "uninstall"])
+
+    def test_the_summary_says_containers_not_purges(self):
+        host = FakeHost(state=container_state())
+        out = self.drive("_call_infra_uninstall", host, ["n", "n"])
+        self.assertIn(t("call_infra_uninstall_containers"), out)
+        self.assertIn(f"coturn : {t('call_infra_uninstall_container')}", out)
+        self.assertNotIn(t("call_infra_uninstall_purges"), out)
+        self.assertIn(t("call_infra_uninstall_images"), out)
+        for ref in cc.IMAGES.values():
+            self.assertIn(ref, out)
+
+    def test_what_stays_is_said(self):
+        ref = cc.IMAGES["ntfy"]
+        host = FakeHost(
+            state=container_state(),
+            uninstall_out=(
+                f"@@IMAGE_KEPT {ref}\n"
+                "@@KEPT engine docker.io docker-compose\n"
+                "@@KEPT account ntfy\n"
+                "@@NTFY_DOWNGRADE ntfy 2.11.0 2.36.0\n"
+                "@@KEPT /etc/erplibre-call/tls\n"
+                "@@DONE yes\n"
+            ),
+        )
+        out = self.drive("_call_infra_uninstall", host, ["n", "o"])
+        self.assertIn(t("call_infra_image_kept").format(image=ref), out)
+        self.assertIn(
+            t("call_infra_engine_kept").format(
+                packages="docker.io docker-compose"
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_account_kept").format(account="ntfy"), out)
+        self.assertIn(
+            t(ci.NTFY_DOWNGRADE_NOTICE).format(
+                unit="ntfy", host="2.11.0", image="2.36.0"
+            ),
+            out,
+        )
+        self.assertIn(t("call_infra_uninstalled"), out)
 
 
 class TestHost(unittest.TestCase):
@@ -2173,7 +2663,7 @@ class TestInstallWithOdoo(OdooCase):
         out = self.drive(
             "_call_infra_install",
             host,
-            ["", "", "", "", "3479", "", "", "n"],
+            ["", "", "", "", "", "3479", "", "", "n"],
         )
         self.assertIn(self.text("call_infra_odoo_readd", odoos=ODOO_KEY), out)
         self.assertEqual(host.kinds(), ["probe"])
