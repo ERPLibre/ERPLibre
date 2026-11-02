@@ -1585,7 +1585,8 @@ def verdict_apres_conteneur(code, sortie):
     compris, d'après `script_apres_conteneur` : ni conteneur, ni image, ni
     volume, ni fichier compose, ni compte de l'outil ni son dossier ni sa
     session permanente, chaque paquet du moteur purgé (statut « u » ou
-    « p », ni installé ni gardé avec sa configuration), ni dossier de l'outil ni règle ufw de l'outil.
+    « p », ni installé ni gardé avec sa configuration), ni dossier de
+    l'outil ni règle ufw de l'outil.
     """
     lus = _traces(sortie)
     paquets = [v.split() for v in lus.get("PKG", [])]
@@ -2584,9 +2585,10 @@ class Harnais:
     `lettres`, les trois du scénario `odoo` par défaut.
 
     Le gabarit Odoo 18 de `mobile_sync_odoo` (construit une fois, gardé),
-    copié en trois bases `noms_bases`, puis un serveur par base sur des
-    ports libres de 127.0.0.1, sans worker ni cron, filtré sur sa base, son
-    dossier dans celui de la course (`odoo-<lettre>`). Le chemin d'addons
+    copié en une base `noms_bases` par lettre, puis un serveur par base
+    sur des ports libres de 127.0.0.1, sans worker ni cron, filtré sur sa
+    base, son dossier dans celui de la course (`odoo-<lettre>`). Le chemin
+    d'addons
     de la 18 porte `ERPLibre_erplibre_addons`, donc `erplibre_turn` :
     installable, non installé. Chaque base entre au rapport (`course`)
     AVANT d'exister : une course tuée laisse de quoi la supprimer
