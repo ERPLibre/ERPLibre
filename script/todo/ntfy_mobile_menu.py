@@ -102,12 +102,30 @@ class NtfyMobileMenuMixin:
             return None
         return state if isinstance(state, dict) else None
 
+    @staticmethod
+    def _ntfy_mobile_cli_state(state):
+        """L'état qui dit comment parler à ntfy : `state`, sauf un état en
+        conteneurs dont `services` ne consigne aucun ntfy (coturn seul),
+        qui rend None : le ntfy est alors celui de l'hôte, que l'outil ne
+        gère pas. Une fiche ntfy consignée, ou un `services` illisible,
+        reste à `call_infra.ntfy_cli`, qui refuse ce qui est altéré."""
+        if (
+            state is not None
+            and state.get("method") == "container"
+            and isinstance(state.get("services"), dict)
+            and "ntfy" not in state["services"]
+        ):
+            return None
+        return state
+
     def _ntfy_mobile_inspect(self, host):
         """(config, texte, clés, propriétaire, service, cli) ou None,
         message affiché. Service : l'état systemd du service `ntfy`
         (UNIT), « container » quand l'état le dit en conteneur. `cli` :
         le `call_infra.NtfyCli` de l'état ; un état altéré arrête tout
-        (`call_infra_state_invalid`).
+        (`call_infra_state_invalid`). Pour un ntfy en conteneur, un second
+        appel imprime sa version par `cli` (`@@VERSION`) : celle de
+        l'inspection est celle du binaire de l'hôte, absent ou autre.
 
         Lit le `server.yml` et l'état en root : root lit tous les fichiers.
         """
@@ -128,7 +146,9 @@ class NtfyMobileMenuMixin:
             return None
         keys = nm.read_yml_keys(text)
         owner = markers.get("OWNER", "?")
-        state = self._ntfy_mobile_state(markers.get("STATE"))
+        state = self._ntfy_mobile_cli_state(
+            self._ntfy_mobile_state(markers.get("STATE"))
+        )
         try:
             cli = ci.ntfy_cli(state, owner)
         except ci.Refusal as refusal:
@@ -138,6 +158,7 @@ class NtfyMobileMenuMixin:
         unit = markers.get("UNIT", "?")
         if state is not None and state.get("method") == "container":
             unit = "container"
+            host.run(nm.version_script(cli.prefix), sudo_user=cli.sudo_user)
         return config, text, keys, owner, unit, cli
 
     def _ntfy_mobile_owner_known(self, owner):

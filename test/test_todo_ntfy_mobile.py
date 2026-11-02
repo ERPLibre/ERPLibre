@@ -80,6 +80,8 @@ class FakeHost:
     def kind(script):
         if "@@YML" in script:
             return "inspect"
+        if "@@VERSION" in script:
+            return "version"
         if "base64 -d" in script:
             return "write"
         if "systemctl restart" in script or " restart ntfy" in script:
@@ -109,6 +111,8 @@ class FakeHost:
             return 0, f"@@ACTIVE {self.states.pop(0)}\n"
         if kind == "recheck":
             return 0, f"{self.states.pop(0)}\n"
+        if kind == "version":
+            return 0, "@@VERSION ntfy 2.36.0\n"
         if kind == "access":
             return 0, self.token_out
         if kind == "list":
@@ -612,6 +616,63 @@ class TestContainerState(MenuCase):
             ),
             out,
         )
+
+    def test_version_read_through_the_container_cli(self):
+        """La version affichée est celle du ntfy qui sert les téléphones :
+        la CLI du conteneur, sous le compte qui la lance."""
+        for state, user, cli in (
+            (CONTAINER_STATE, None, CONTAINER_CLI),
+            (
+                rootless_state(),
+                "erplibre-call",
+                "env XDG_RUNTIME_DIR=/run/user/995 podman exec -e"
+                " NTFY_PASSWORD -u 995:995 erplibre-call-ntfy ntfy",
+            ),
+        ):
+            with self.subTest(user=user):
+                host = FakeHost(state=state)
+                self.drive("_ntfy_mobile_list", host, [""])
+                self.assertEqual(host.kinds()[:2], ["inspect", "version"])
+                self.assertEqual(
+                    host.script_of("version"),
+                    f'echo "@@VERSION $({cli} --version 2>&1'
+                    ' | head -n 1)"\n',
+                )
+                self.assertEqual(host.user_of("version"), user)
+
+    def test_container_state_without_ntfy_talks_to_the_host_ntfy(self):
+        """Un état en conteneurs qui ne consigne que coturn ne dit rien du
+        ntfy : préparer, lister et révoquer parlent au ntfy de l'hôte, par
+        les mêmes commandes que sans état."""
+        coturn_only = json.loads(json.dumps(CONTAINER_STATE))
+        coturn_only["services"] = {
+            "coturn": {
+                "container": "erplibre-call-coturn",
+                "account": "turnserver",
+                "uid": 998,
+                "gid": 998,
+                "unit": None,
+                "config": "/etc/turnserver.conf",
+            }
+        }
+        for method, kwargs, answers in (
+            ("_ntfy_mobile_prepare", {"yml": YML}, self.PREPARE),
+            ("_ntfy_mobile_list", {}, [""]),
+            ("_ntfy_mobile_revoke", {}, ["", "2", "y"]),
+        ):
+            with self.subTest(method=method):
+                runs = []
+                for state in (None, coturn_only):
+                    host = FakeHost(state=state, **kwargs)
+                    with mock.patch.object(
+                        nm, "random_prefix", return_value="upab12cd34"
+                    ), mock.patch(
+                        "time.strftime", return_value="20261102101500"
+                    ):
+                        out = self.drive(method, host, answers)
+                    runs.append((out, host.calls))
+                self.assertEqual(runs[0], runs[1])
+                self.assertGreater(len(runs[1][1]), 1)
 
     def test_packages_state_runs_the_same_commands_as_before(self):
         """Un état par paquets donne les commandes d'un hôte sans état :
