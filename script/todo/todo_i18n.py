@@ -3983,6 +3983,10 @@ TRANSLATIONS = {
         "fr": "La méthode d'installation vaut pour tout l'hôte : en changer migre chaque service consigné. Choisissez aussi {service}.",
         "en": "The install method applies to the whole host: changing it migrates every recorded service. Choose {service} too.",
     },
+    "call_infra_backup_kept": {
+        "fr": "Copies des bases prises par les migrations gardées sous {path} : secrets de coturn et comptes de ntfy. Retirez-les quand elles ne servent plus.",
+        "en": "Database copies taken by the migrations kept under {path}: coturn's secrets and ntfy's accounts. Remove them once they are no longer needed.",
+    },
     "call_infra_method_added": {
         "fr": "Le retour aux paquets ne déplace que les services de l'état : revenez d'abord aux paquets sans {service}, puis ajoutez-le par une nouvelle installation.",
         "en": "The return to packages moves only the services of the state: return to packages without {service} first, then add it with a new install.",

@@ -1874,10 +1874,15 @@ class TestContainerUninstall(MenuCase):
                 "@@KEPT account ntfy\n"
                 "@@NTFY_DOWNGRADE ntfy 2.11.0 2.36.0\n"
                 "@@KEPT /etc/erplibre-call/tls\n"
+                f"@@KEPT backup {ci.MIGRATION_BACKUP_DIR}\n"
                 "@@DONE yes\n"
             ),
         )
         out = self.drive("_call_infra_uninstall", host, ["n", "o"])
+        self.assertIn(
+            t("call_infra_backup_kept").format(path=ci.MIGRATION_BACKUP_DIR),
+            out,
+        )
         self.assertIn(t("call_infra_image_kept").format(image=ref), out)
         self.assertIn(
             t("call_infra_engine_kept").format(

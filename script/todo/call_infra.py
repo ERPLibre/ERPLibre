@@ -10146,7 +10146,8 @@ def uninstall_script(state, remove_data, stamp, root="", remove_engine=False):
     nginx et ligne include, dossier du défi ACME, lignée gardée ou retirée,
     identifiants DNS, paquets posés par l'outil) ;
     puis, SEULEMENT si aucune étape n'a échoué, `/etc/erplibre-call` est
-    retiré, sauf `tls/` (gardé sans `remove_data`) et les fiches des
+    retiré, sauf `tls/` (gardé sans `remove_data`, comme les copies des
+    migrations, MIGRATION_BACKUP_DIR, `@@KEPT backup <dossier>`) et les fiches des
     services que l'état ne consigne pas (`@@PENDING_LEFT <service>`), l'état
     en dernier (`@@REMOVED state`). Chaque retrait imprime `@@REMOVED
     <quoi> <chemin ou nom>`, chaque chose gardée `@@KEPT <chemin>`, une
@@ -10282,15 +10283,24 @@ def uninstall_script(state, remove_data, stamp, root="", remove_engine=False):
         "    esac",
         "  done",
     ]
+    # Les copies des migrations portent la base de coturn (secrets d'Odoo)
+    # et celle des comptes de ntfy : elles partent avec les données, ou la
+    # fin le dit.
+    backups = _host(MIGRATION_BACKUP_DIR)
     if remove_data:
-        lines.append(
+        lines += [
             f"  if [ -e {tls} ]; then rm -rf {tls}"
-            f' && echo "@@REMOVED tls {COTURN_TLS_DIR}" || failed tls; fi'
-        )
+            f' && echo "@@REMOVED tls {COTURN_TLS_DIR}" || failed tls; fi',
+            f"  if [ -e {backups} ]; then rm -rf {backups}"
+            f' && echo "@@REMOVED data {MIGRATION_BACKUP_DIR}"'
+            " || failed backups; fi",
+        ]
     else:
-        lines.append(
-            f'  if [ -e {tls} ]; then echo "@@KEPT {COTURN_TLS_DIR}"; fi'
-        )
+        lines += [
+            f'  if [ -e {tls} ]; then echo "@@KEPT {COTURN_TLS_DIR}"; fi',
+            f"  if [ -e {backups} ]; then"
+            f' echo "@@KEPT backup {MIGRATION_BACKUP_DIR}"; fi',
+        ]
     lines += [
         '  if [ "$OK" = 1 ]; then',
         '    rm -f "$STATE" && echo "@@REMOVED state" || failed state',

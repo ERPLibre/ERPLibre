@@ -1324,7 +1324,8 @@ class CallInfraMenuMixin:
         """Ce qu'un script en conteneurs a gardé au lieu de le retirer, une
         ligne chacun : une image que le moteur refuse de retirer
         (`@@IMAGE_KEPT`), les paquets du moteur (`@@KEPT engine`), un
-        compte (`@@KEPT account`), un ntfy de l'hôte laissé désactivé parce
+        compte (`@@KEPT account`), les copies des migrations (`@@KEPT
+        backup`), un ntfy de l'hôte laissé désactivé parce
         que plus ancien que l'image (`@@NTFY_DOWNGRADE <unité> <hôte>
         <image>`, NTFY_DOWNGRADE_NOTICE)."""
         for name, value in ci.marker_lines(out):
@@ -1337,6 +1338,9 @@ class CallInfraMenuMixin:
             elif name == "KEPT" and value.startswith("account "):
                 key = "call_infra_account_kept"
                 values = {"account": value[len("account ") :]}
+            elif name == "KEPT" and value.startswith("backup "):
+                key = "call_infra_backup_kept"
+                values = {"path": value[len("backup ") :]}
             elif name == "NTFY_DOWNGRADE":
                 unit, host, image = (value.split() + ["?", "?", "?"])[:3]
                 key = ci.NTFY_DOWNGRADE_NOTICE

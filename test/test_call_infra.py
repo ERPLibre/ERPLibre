@@ -12768,6 +12768,29 @@ class TestContainerUninstall(ContainerSandbox):
             ):
                 self.assertNotIn(word, line)
 
+    def test_migration_backups_go_with_the_data_or_are_said_kept(self):
+        backup = self.path(f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}/turndb")
+        for remove_data in (False, True):
+            with self.subTest(remove_data=remove_data):
+                state = self.docker_state()
+                self.host(state)
+                write(backup, "copie inventee", 0o600)
+                done = self.uninstall(state, remove_data=remove_data)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                markers = self.markers(done)
+                if remove_data:
+                    self.assertIn(
+                        f"REMOVED data {ci.MIGRATION_BACKUP_DIR}", markers
+                    )
+                    self.assertFalse(
+                        os.path.exists(self.path(ci.MIGRATION_BACKUP_DIR))
+                    )
+                else:
+                    self.assertIn(
+                        f"KEPT backup {ci.MIGRATION_BACKUP_DIR}", markers
+                    )
+                    self.assertEqual(self.read(backup), "copie inventee")
+
     def test_containers_without_compose_file_are_removed_by_name(self):
         state = self.docker_state()
         self.host(state)
