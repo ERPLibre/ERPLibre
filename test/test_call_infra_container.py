@@ -717,6 +717,22 @@ class TestEnginePackages(unittest.TestCase):
                     ),
                 )
 
+    def test_docker_cli_package_follows_raspbian_like_debian(self):
+        # Raspbian (ID=raspbian) reconstruit les paquets de Debian sous le
+        # même VERSION_ID : à partir de 13, son docker.io ne porte plus le
+        # client non plus.
+        for version, split in (("12", False), ("13", True), ("14", True)):
+            with self.subTest(version=version):
+                packages = cc.engine_packages(
+                    "raspbian",
+                    "debian",
+                    "docker",
+                    False,
+                    None,
+                    os_version=version,
+                )
+                self.assertEqual("docker-cli" in packages, split)
+
     def test_user_bus_package_only_without_its_unit(self):
         # podman recommande dbus-user-session sans en dépendre : le
         # rootless le demande tant que l'unité du bus manque.

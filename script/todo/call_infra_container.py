@@ -125,9 +125,11 @@ _UBUNTU_IDS = {"ubuntu", "linuxmint", "pop"}
 # Depuis Debian 13, le client /usr/bin/docker est dans « docker-cli », que
 # docker.io ne fait que recommander : l'installation sans recommandés
 # poserait un démon sans client. Debian 12 et Ubuntu le gardent dans
-# docker.io et n'ont aucun paquet docker-cli.
+# docker.io et n'ont aucun paquet docker-cli. Raspbian reconstruit les
+# paquets de Debian sous le même VERSION_ID et suit la même règle.
 _DOCKER_CLI_PACKAGE = "docker-cli"
 _DOCKER_CLI_DEBIAN_MAJOR = 13
+_DOCKER_CLI_IDS = {"debian", "raspbian"}
 
 # Marqueurs de la section des moteurs dans la sortie de la sonde.
 ENGINE_MARKERS = frozenset(
@@ -808,9 +810,10 @@ def engine_present(facts, engine):
 
 def _docker_cli_split(os_id, os_version):
     """Le client de Docker est-il un paquet à part (_DOCKER_CLI_PACKAGE) ?
-    Sur Debian à partir de _DOCKER_CLI_DEBIAN_MAJOR, et sur testing et sid,
-    dont l'os-release ne porte aucun VERSION_ID (`os_version` vide)."""
-    if os_id != "debian":
+    Sur Debian et Raspbian (_DOCKER_CLI_IDS) à partir de
+    _DOCKER_CLI_DEBIAN_MAJOR, et sur testing et sid, dont l'os-release ne
+    porte aucun VERSION_ID (`os_version` vide)."""
+    if os_id not in _DOCKER_CLI_IDS:
         return False
     major = (os_version or "").split(".")[0]
     return not major.isdigit() or int(major) >= _DOCKER_CLI_DEBIAN_MAJOR
