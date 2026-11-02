@@ -65,6 +65,18 @@ PostgreSQL est celui de Debian, 17 sur trixie, le dépôt de PostgreSQL ne
 publiant pas s390x : son `pg_dump` refuse un serveur PostgreSQL 18, si bien
 qu'une sauvegarde depuis Odoo demande un serveur en version 17 au plus.
 
+### Code gelé
+
+L'image clone chaque dépôt sur le commit de son `freeze-revision`, et non sur
+la tête de sa branche : deux constructions du même commit d'ERPLibre portent
+le même code. Les gels des manifestes de la version d'Odoo active
+s'appliquent, et ceux des fragments communs que liste `conf/git_manifest*.csv`,
+comme `image_db` et les outils ; un projet sans `freeze-revision` arrête la
+construction avant toute synchronisation, et il est nommé. Avancer un gel,
+puis le commiter et le pousser, fait entrer un code plus récent dans une
+image. `docker_build.sh --branches` construit une image de développement sur
+les branches.
+
 ### Exécuter ERPLibre avec Docker-Compose
 
 Allez à la racine de ce projet git.

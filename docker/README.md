@@ -66,6 +66,17 @@ client is Debian's, 17 on trixie, the PostgreSQL repository publishing no
 s390x: its `pg_dump` refuses a PostgreSQL 18 server, so a backup from Odoo
 needs a server of version 17 at most.
 
+### Frozen code
+
+The image clones each repository on the commit of its `freeze-revision`, not
+on the head of its branch: two builds of the same ERPLibre commit hold the
+same code. The freezes of the active Odoo version's manifests apply, and
+those of the common fragments that `conf/git_manifest*.csv` lists, such as
+`image_db` and the tools; a project without a `freeze-revision` stops the
+build before anything is synchronised, and is named. Move a freeze forward,
+then commit and push it, to bring newer code into an image.
+`docker_build.sh --branches` builds a development image on the branches.
+
 ### Running ERPLibre using Docker-Compose
 
 Go at the root of this git project.

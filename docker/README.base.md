@@ -102,6 +102,17 @@ client is Debian's, 17 on trixie, the PostgreSQL repository publishing no
 s390x: its `pg_dump` refuses a PostgreSQL 18 server, so a backup from Odoo
 needs a server of version 17 at most.
 
+### Frozen code
+
+The image clones each repository on the commit of its `freeze-revision`, not
+on the head of its branch: two builds of the same ERPLibre commit hold the
+same code. The freezes of the active Odoo version's manifests apply, and
+those of the common fragments that `conf/git_manifest*.csv` lists, such as
+`image_db` and the tools; a project without a `freeze-revision` stops the
+build before anything is synchronised, and is named. Move a freeze forward,
+then commit and push it, to bring newer code into an image.
+`docker_build.sh --branches` builds a development image on the branches.
+
 ### Running ERPLibre using Docker-Compose
 
 Go at the root of this git project.
@@ -137,6 +148,18 @@ du tout wkhtmltopdf. Une image s390x imprime ses rapports en HTML. Son client
 PostgreSQL est celui de Debian, 17 sur trixie, le dépôt de PostgreSQL ne
 publiant pas s390x : son `pg_dump` refuse un serveur PostgreSQL 18, si bien
 qu'une sauvegarde depuis Odoo demande un serveur en version 17 au plus.
+
+### Code gelé
+
+L'image clone chaque dépôt sur le commit de son `freeze-revision`, et non sur
+la tête de sa branche : deux constructions du même commit d'ERPLibre portent
+le même code. Les gels des manifestes de la version d'Odoo active
+s'appliquent, et ceux des fragments communs que liste `conf/git_manifest*.csv`,
+comme `image_db` et les outils ; un projet sans `freeze-revision` arrête la
+construction avant toute synchronisation, et il est nommé. Avancer un gel,
+puis le commiter et le pousser, fait entrer un code plus récent dans une
+image. `docker_build.sh --branches` construit une image de développement sur
+les branches.
 
 ### Exécuter ERPLibre avec Docker-Compose
 

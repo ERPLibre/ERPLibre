@@ -26,6 +26,15 @@ ENV DOCKER_BUILD=true
 # sorte que rien ne change de propriétaire après coup : un « chown -R »
 # recopierait l'arbre entier dans une couche de plus.
 ARG ERPLIBRE_CODE_OWNER=odoo
+# Chaque dépôt est cloné sur le commit de son freeze-revision, et non sur la
+# tête de sa branche : deux constructions du même commit d'ERPLibre donnent le
+# même code. EL_FREEZE_STRICT refuse un projet sans freeze-revision avant que
+# rien ne soit synchronisé. Les deux sont lus par le script qui génère le
+# manifeste local, appelé plus bas directement et par la mise à jour de
+# l'environnement ; en ARG, ils ne restent pas dans l'image.
+# EL_FREEZE=0 (docker_build.sh --branches) suit les branches.
+ARG EL_FREEZE=1
+ARG EL_FREEZE_STRICT=1
 
 RUN cat /etc/os-release
 

@@ -12,6 +12,7 @@ POETRY_VERSION=$(cat .poetry-version | xargs)
 ARGS=""
 PLATEFORMES=""
 POUSSER=false
+SUR_BRANCHES=false
 AFFICHER_PLATEFORMES=false
 IS_RELEASE=false
 IS_RELEASE_ALPHA=false
@@ -46,6 +47,10 @@ for arg in "$@"; do
   elif [[ "$arg" == --platform=* ]]; then
     # « --platform=amd64,arm64 » : les architectures à construire.
     PLATEFORMES="${arg#--platform=}"
+  elif [ "$arg" == "--branches" ]; then
+    # Les dépôts suivent la tête de leur branche au lieu de leur
+    # freeze-revision : une image de développement.
+    SUR_BRANCHES=true
   elif [ "$arg" == "--push" ]; then
     POUSSER=true
   elif [ "$arg" == "--print-platforms" ]; then
@@ -232,6 +237,10 @@ ARGS_PROD="${ARGS_PROD} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WOR
 # le code, et donc ne peut pas le tirer ; absent, le Dockerfile prend « odoo ».
 if [[ -n "${ERPLIBRE_CODE_OWNER:-}" ]]; then
   ARGS_PROD="${ARGS_PROD} --build-arg ERPLIBRE_CODE_OWNER=${ERPLIBRE_CODE_OWNER}"
+fi
+# Sans --branches, le Dockerfile clone chaque dépôt sur son freeze-revision.
+if [ "${SUR_BRANCHES}" == true ]; then
+  ARGS_PROD="${ARGS_PROD} --build-arg EL_FREEZE=0"
 fi
 
 set -e
