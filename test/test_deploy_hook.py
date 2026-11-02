@@ -4,9 +4,10 @@
 """Le hook de deploiement certbot, joue dans une racine temporaire.
 
 `ERPLIBRE_CALL_ROOT` prefixe chaque chemin du hook ; `systemctl`, `nginx`,
-`chown` et `kill` sont des bouchons qui notent leurs appels dans un
-journal. Le hook est lance tel quel, comme certbot le lance, avec
-RENEWED_LINEAGE pointant sur une lignee inventee.
+`chown`, `kill`, les moteurs `docker` et `podman` et `runuser` sont des
+bouchons qui notent leurs appels dans un journal, places en tete du PATH :
+aucun moteur reel n'est jamais appele. Le hook est lance tel quel, comme
+certbot le lance, avec RENEWED_LINEAGE pointant sur une lignee inventee.
 """
 import json
 import os
@@ -16,6 +17,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+from script.todo import call_infra as ci
+from script.todo import call_infra_container as cc
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(RACINE, "script/install/erplibre_call_deploy_hook.sh")
@@ -48,6 +52,27 @@ BOUCHONS = {
     "chown": '#!/bin/sh\necho "chown $*" >> "$J"\n',
     "kill": '#!/bin/sh\necho "kill $*" >> "$J"\n',
 }
+
+
+def bouchon_moteur(nom):
+    """Bouchon d'un moteur (ou de runuser, qui ne relance rien) : note
+    l'appel ; `inspect` imprime COTURN_RUNNING (true s'il n'est pas defini)
+    et sort avec INSPECT_RC, `kill` sort avec KILL_RC."""
+    return (
+        '#!/bin/sh\necho "%s $*" >> "$J"\n'
+        "for a; do\n"
+        '  case "$a" in\n'
+        "    inspect)\n"
+        '      echo "${COTURN_RUNNING-true}"\n'
+        '      exit "${INSPECT_RC:-0}" ;;\n'
+        '    kill) exit "${KILL_RC:-0}" ;;\n'
+        "  esac\n"
+        "done\n" % nom
+    )
+
+
+MOTEURS = ("docker", "podman", "runuser")
+BOUCHONS.update({nom: bouchon_moteur(nom) for nom in MOTEURS})
 
 
 def fonction(chemin, nom):
@@ -84,6 +109,8 @@ class Racine:
         tls=True,
         etat=True,
         source="letsencrypt",
+        contenu=None,
+        bouchons=(),
     ):
         self.dossier = dossier
         self.r = os.path.join(dossier, "racine")
@@ -95,7 +122,9 @@ class Racine:
         self.conf = self.r + config
         os.makedirs(self.call)
         os.makedirs(self.bouchons)
-        for nom, texte in BOUCHONS.items():
+        textes = dict(BOUCHONS)
+        textes.update({nom: bouchon_moteur(nom) for nom in bouchons})
+        for nom, texte in textes.items():
             chemin = os.path.join(self.bouchons, nom)
             ecrire(chemin, texte)
             os.chmod(chemin, 0o755)
@@ -104,7 +133,9 @@ class Racine:
             os.makedirs(self.tls)
             ecrire(os.path.join(self.tls, "turn.crt"), ANCIEN_CRT)
             ecrire(os.path.join(self.tls, "turn.key"), ANCIENNE_CLE)
-        if etat:
+        if contenu is not None:
+            ecrire(os.path.join(self.call, "state.json"), json.dumps(contenu))
+        elif etat:
             ecrire(
                 os.path.join(self.call, "state.json"),
                 json.dumps(
@@ -152,7 +183,9 @@ class Racine:
         l'installateur apres un redemarrage reussi."""
         ecrire(self.applied, self.empreinte_installateur())
 
-    def lancer(self, lignee=None, coturn="active", nginx="active", nginx_t=0):
+    def lancer(
+        self, lignee=None, coturn="active", nginx="active", nginx_t=0, **extra
+    ):
         env = dict(os.environ)
         env.update(
             PATH=self.bouchons + os.pathsep + env.get("PATH", ""),
@@ -163,6 +196,7 @@ class Racine:
             ETAT_turnserver=coturn,
             ETAT_nginx=nginx,
             NGINX_T=str(nginx_t),
+            **extra,
         )
         self.fait = subprocess.run(
             [HOOK], capture_output=True, text=True, env=env, timeout=30
@@ -271,6 +305,10 @@ class TestCopie(unittest.TestCase):
                 r.appels,
             )
             self.assertIn("@@HOOK signal coturn", r.marqueurs)
+            # Par paquets, aucun moteur de conteneurs n'est appele.
+            self.assertFalse(
+                [a for a in r.appels if a.split()[0] in MOTEURS], r.appels
+            )
             # Le signal suit les deux copies.
             self.assertLess(
                 max(
@@ -498,6 +536,403 @@ class TestNginx(unittest.TestCase):
             self.assertIn("@@HOOK nginx-failed", r.marqueurs)
             # coturn a eu sa paire quand meme.
             self.assertEqual(r.servi("turn.crt"), NOUVEAU_CRT)
+
+
+CONTENEUR = "erplibre-call-coturn"
+INSPECT = "inspect -f {{.State.Running}} %s" % CONTENEUR
+SIGNAL = "kill --signal SIGUSR2 %s" % CONTENEUR
+RUNUSER = (
+    "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/990 podman"
+)
+
+
+def etat_conteneur(
+    moteur="docker", rootless=False, source="letsencrypt", ntfy=False
+):
+    """Un etat en conteneurs comme l'outil l'ecrit : en root, coturn sous un
+    compte du paquet ; en rootless, sous le compte rootless dont la session
+    porte les conteneurs. Uid et gid inventes."""
+    if rootless:
+        bloc = {
+            "engine": "podman",
+            "rootless": True,
+            "account": "erplibre-call",
+            "uid": 990,
+            "compose": ["podman-compose"],
+        }
+        compte = {"account": "erplibre-call", "uid": 990, "gid": 990}
+    else:
+        bloc = {
+            "engine": moteur,
+            "rootless": False,
+            "account": None,
+            "uid": None,
+            "compose": list(cc.COMPOSE_PROVIDERS[moteur][0]),
+        }
+        compte = {"account": "turnserver", "uid": 998, "gid": 998}
+    bloc.update(
+        compose_file="/etc/erplibre-call/compose.yml", project="erplibre-call"
+    )
+    services = {
+        "coturn": dict(
+            compte,
+            container=CONTENEUR,
+            unit=None,
+            config="/etc/turnserver.conf",
+            settings={"tls": source, "method": "container"},
+        )
+    }
+    if ntfy:
+        services["ntfy"] = dict(
+            (
+                compte
+                if rootless
+                else {"account": "ntfy", "uid": 997, "gid": 997}
+            ),
+            container="erplibre-call-ntfy",
+            unit=None,
+            config="/etc/ntfy/server.yml",
+            settings={"tls": "none", "method": "container"},
+        )
+    return {
+        "version": 2,
+        "method": "container",
+        "mode": "production",
+        "container": bloc,
+        "services": services,
+    }
+
+
+def changer(etat, chemin, valeur):
+    """Copie de `etat` ou la cle pointee (« container.uid ») vaut `valeur`."""
+    copie = json.loads(json.dumps(etat))
+    cible = copie
+    cles = chemin.split(".")
+    for cle in cles[:-1]:
+        cible = cible[cle]
+    cible[cles[-1]] = valeur
+    return copie
+
+
+def etats_alteres():
+    """(etiquette, etat) : chaque champ du bloc `container` ou d'un service
+    hors de ce que l'outil ecrit, sur un etat par ailleurs valide."""
+    root, rl = etat_conteneur(ntfy=True), etat_conteneur(rootless=True)
+    return [
+        ("nom", changer(root, "services.coturn.container", CONTENEUR + ";id")),
+        (
+            "nom option",
+            changer(root, "services.coturn.container", "--privileged"),
+        ),
+        ("nom echange", changer(root, "services.ntfy.container", CONTENEUR)),
+        ("moteur sh", changer(root, "container.engine", "sh")),
+        ("moteur absent", changer(root, "container.engine", None)),
+        ("rootless texte", changer(root, "container.rootless", "no")),
+        ("rootless docker", changer(root, "container.rootless", True)),
+        ("compte root", changer(rl, "container.account", "root")),
+        ("compte shell", changer(rl, "container.account", "a;b")),
+        ("compte saut", changer(rl, "container.account", "erplibre-call\n")),
+        ("uid 0", changer(rl, "container.uid", 0)),
+        ("uid texte", changer(rl, "container.uid", "990 x")),
+        ("uid chaine", changer(rl, "container.uid", "990")),
+        ("uid booleen", changer(rl, "container.uid", True)),
+        ("uid reel", changer(rl, "container.uid", 990.0)),
+        ("uid trop grand", changer(rl, "container.uid", 2**31)),
+        ("compte en root", changer(root, "container.account", "ntfy")),
+        ("uid en root", changer(root, "container.uid", 997)),
+        (
+            "composition",
+            changer(root, "container.compose", ["podman-compose"]),
+        ),
+        (
+            "composition texte",
+            changer(root, "container.compose", "docker compose"),
+        ),
+        ("fichier", changer(root, "container.compose_file", "/tmp/x.yml")),
+        ("projet", changer(root, "container.project", "autre")),
+        ("bloc absent", changer(root, "container", None)),
+        ("bloc liste", changer(root, "container", [])),
+        ("services liste", changer(root, "services", [])),
+        ("service inconnu", changer(root, "services.nginx", {})),
+        ("fiche texte", changer(root, "services.coturn", "x")),
+        ("compte service", changer(root, "services.coturn.account", "root")),
+        (
+            "compte service saut",
+            changer(root, "services.coturn.account", "turnserver\n"),
+        ),
+        ("uid service", changer(root, "services.coturn.uid", "990 x")),
+        ("gid service", changer(root, "services.coturn.gid", True)),
+        ("uid ntfy", changer(root, "services.ntfy.uid", -1)),
+        ("gid ntfy", changer(root, "services.ntfy.gid", None)),
+    ]
+
+
+def etats_valides():
+    sans_coturn = etat_conteneur(ntfy=True)
+    del sans_coturn["services"]["coturn"]
+    sans_defauts = etat_conteneur()
+    del sans_defauts["container"]["compose_file"]
+    del sans_defauts["container"]["project"]
+    return [
+        ("docker", etat_conteneur()),
+        (
+            "docker-compose",
+            changer(etat_conteneur(), "container.compose", ["docker-compose"]),
+        ),
+        ("podman", etat_conteneur("podman", ntfy=True)),
+        ("rootless", etat_conteneur(rootless=True, ntfy=True)),
+        ("sans coturn", sans_coturn),
+        ("fichier et projet par defaut", sans_defauts),
+    ]
+
+
+class TestConteneur(unittest.TestCase):
+    """coturn en conteneur : memes copies, memes marqueurs ; SIGUSR2 passe
+    par le moteur, directement en root, par la session du compte rootless
+    sinon, et jamais par systemd."""
+
+    def lancer(self, dossier, etat, **options):
+        r = Racine(dossier, contenu=etat)
+        r.synchroniser()
+        self.avant = lire(r.applied)
+        r.lancer(**options)
+        return r
+
+    def test_docker_root_signale_le_conteneur(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            r = self.lancer(dossier, etat_conteneur())
+            self.assertEqual(
+                r.fait.returncode, 0, r.fait.stdout + r.fait.stderr
+            )
+            self.assertEqual(r.servi("turn.crt"), NOUVEAU_CRT)
+            self.assertEqual(r.servi("turn.key"), NOUVELLE_CLE)
+            self.assertIn("docker " + INSPECT, r.appels)
+            self.assertIn("docker " + SIGNAL, r.appels)
+            self.assertIn("@@HOOK signal " + CONTENEUR, r.marqueurs)
+            self.assertIn("@@HOOK applied", r.marqueurs)
+            self.assertEqual(lire(r.applied), r.empreinte_installateur())
+            self.assertFalse(
+                [a for a in r.appels if a.startswith("systemctl kill")],
+                r.appels,
+            )
+            self.assertFalse([a for a in r.appels if "restart" in a], r.appels)
+            self.assertFalse(
+                [a for a in r.appels if a.split()[0] in ("podman", "runuser")]
+            )
+            # Le signal suit les deux copies.
+            self.assertLess(
+                max(
+                    i for i, a in enumerate(r.appels) if a.startswith("chown ")
+                ),
+                r.appels.index("docker " + SIGNAL),
+            )
+
+    def test_podman_root_signale_le_conteneur(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            r = self.lancer(dossier, etat_conteneur("podman"))
+            self.assertEqual(
+                r.fait.returncode, 0, r.fait.stdout + r.fait.stderr
+            )
+            self.assertIn("podman " + SIGNAL, r.appels)
+            self.assertFalse(
+                [a for a in r.appels if a.split()[0] in ("docker", "runuser")]
+            )
+            self.assertIn("@@HOOK applied", r.marqueurs)
+
+    def test_rootless_signale_par_la_session_du_compte(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            r = self.lancer(dossier, etat_conteneur(rootless=True))
+            self.assertEqual(
+                r.fait.returncode, 0, r.fait.stdout + r.fait.stderr
+            )
+            self.assertIn(RUNUSER + " " + INSPECT, r.appels)
+            self.assertIn(RUNUSER + " " + SIGNAL, r.appels)
+            # Le bouchon de runuser ne relance rien : aucun appel direct.
+            self.assertFalse(
+                [a for a in r.appels if a.split()[0] in ("docker", "podman")]
+            )
+            self.assertFalse(
+                [a for a in r.appels if a.startswith("systemctl kill")]
+            )
+            self.assertIn("@@HOOK signal " + CONTENEUR, r.marqueurs)
+            self.assertIn("@@HOOK applied", r.marqueurs)
+
+    def test_conteneur_arrete_copie_sans_signal(self):
+        for options in (
+            {"COTURN_RUNNING": "false"},
+            {"COTURN_RUNNING": "", "INSPECT_RC": "1"},
+        ):
+            with self.subTest(
+                options=options
+            ), tempfile.TemporaryDirectory() as dossier:
+                r = self.lancer(dossier, etat_conteneur(), **options)
+                self.assertEqual(r.fait.returncode, 0, r.fait.stderr)
+                self.assertEqual(r.servi("turn.crt"), NOUVEAU_CRT)
+                self.assertIn("docker " + INSPECT, r.appels)
+                self.assertFalse([a for a in r.appels if " kill " in a])
+                self.assertIn(
+                    "@@HOOK coturn-inactive " + CONTENEUR, r.marqueurs
+                )
+                self.assertEqual(lire(r.applied), self.avant)
+
+    def test_signal_en_echec(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            r = self.lancer(dossier, etat_conteneur(), KILL_RC="1")
+            self.assertEqual(r.fait.returncode, 1, r.fait.stdout)
+            self.assertIn("@@HOOK failed signal " + CONTENEUR, r.marqueurs)
+            self.assertEqual(lire(r.applied), self.avant)
+            # nginx sert la lignee lui-meme : il est recharge quand meme.
+            self.assertIn("systemctl reload nginx", r.appels)
+
+    def test_empreinte_perimee_laissee_telle_quelle(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            r = Racine(dossier, contenu=etat_conteneur())
+            perime = "0" * 64 + "  /ailleurs/turnserver.conf\n"
+            ecrire(r.applied, perime)
+            r.lancer()
+            self.assertEqual(r.fait.returncode, 0, r.fait.stderr)
+            self.assertIn("docker " + SIGNAL, r.appels)
+            self.assertEqual(lire(r.applied), perime)
+            self.assertIn("@@HOOK applied-stale", r.marqueurs)
+
+    def test_certificat_fourni_rien_pour_coturn(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            r = self.lancer(dossier, etat_conteneur(source="supplied"))
+            self.assertEqual(r.fait.returncode, 0, r.fait.stderr)
+            self.assertEqual(r.servi("turn.crt"), ANCIEN_CRT)
+            self.assertFalse([a for a in r.appels if a.split()[0] in MOTEURS])
+            self.assertIn("@@HOOK coturn-skip not-letsencrypt", r.marqueurs)
+
+    def test_container_state_tampered_refused(self):
+        """Nom, moteur, compte et uid finissent dans des commandes root :
+        un etat altere sort en 2 avant le moindre appel d'un moteur, et rien
+        n'est copie. Un bouchon `sh` attrape un moteur « sh » qui passerait."""
+        cas = [
+            changer(
+                etat_conteneur(),
+                "services.coturn.container",
+                CONTENEUR + ";id",
+            ),
+            changer(etat_conteneur(), "container.engine", "sh"),
+            changer(
+                etat_conteneur(rootless=True), "container.account", "root"
+            ),
+            changer(etat_conteneur(rootless=True), "container.uid", 0),
+            changer(etat_conteneur(rootless=True), "container.uid", "990 x"),
+        ]
+        for etat in cas:
+            with self.subTest(
+                etat=etat
+            ), tempfile.TemporaryDirectory() as dossier:
+                r = Racine(dossier, contenu=etat, bouchons=("sh",))
+                r.synchroniser()
+                avant = lire(r.applied)
+                r.lancer()
+                self.assertEqual(r.fait.returncode, 2, r.fait.stdout)
+                self.assertIn("@@HOOK failed state", r.marqueurs)
+                self.assertEqual(r.servi("turn.crt"), ANCIEN_CRT)
+                self.assertEqual(lire(r.applied), avant)
+                # Seul nginx, qui lit la lignee lui-meme, est encore touche.
+                self.assertEqual(
+                    r.appels,
+                    [
+                        "systemctl is-active --quiet nginx",
+                        "nginx -t",
+                        "systemctl reload nginx",
+                    ],
+                )
+
+    def test_methode_et_version_incoherentes_refusees(self):
+        cas = [
+            changer(etat_conteneur(), "version", 1),
+            changer(etat_conteneur(), "method", "packages"),
+            changer(etat_conteneur(), "method", "autre"),
+        ]
+        for etat in cas:
+            with self.subTest(
+                etat=etat
+            ), tempfile.TemporaryDirectory() as dossier:
+                r = Racine(dossier, contenu=etat)
+                r.lancer()
+                self.assertEqual(r.fait.returncode, 2, r.fait.stdout)
+                self.assertIn("@@HOOK failed state", r.marqueurs)
+                self.assertFalse([a for a in r.appels if "kill" in a])
+                self.assertEqual(r.servi("turn.crt"), ANCIEN_CRT)
+
+
+def extrait_python(chemin):
+    """Le programme python3 de `coturn_record`, tel que le hook le lance."""
+    texte = lire(chemin)
+    debut = texte.index("\ncoturn_record() {\n")
+    debut = texte.index("<<'EOF'\n", debut) + len("<<'EOF'\n")
+    return texte[debut : texte.index("\nEOF\n", debut) + 1]
+
+
+class TestParite(unittest.TestCase):
+    """Le hook valide l'etat en stdlib, sans importer l'outil : la meme
+    liste d'etats passe par `cc.container_block_problem` et par le
+    programme du hook, qui doivent juger pareil."""
+
+    def juger(self, dossier, etat):
+        chemin = os.path.join(dossier, "state.json")
+        ecrire(chemin, json.dumps(etat))
+        return subprocess.run(
+            [sys.executable, "-I", "-", chemin],
+            input=extrait_python(HOOK),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def test_memes_refus_que_l_outil(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            for etiquette, etat in etats_alteres():
+                with self.subTest(etiquette):
+                    self.assertIsNotNone(cc.container_block_problem(etat))
+                    fait = self.juger(dossier, etat)
+                    self.assertEqual(fait.returncode, 2, fait.stdout)
+                    self.assertEqual(fait.stdout, "")
+
+    def test_memes_etats_acceptes(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            for etiquette, etat in etats_valides():
+                with self.subTest(etiquette):
+                    self.assertIsNone(cc.container_block_problem(etat))
+                    fait = self.juger(dossier, etat)
+                    self.assertEqual(fait.returncode, 0, fait.stderr)
+                    coturn = etat["services"].get("coturn")
+                    if coturn is None:
+                        self.assertEqual(fait.stdout, "")
+                        continue
+                    bloc = etat["container"]
+                    attendu = [
+                        "container",
+                        bloc["engine"],
+                        CONTENEUR,
+                        "1" if bloc["rootless"] else "0",
+                        bloc["account"] or "-",
+                        str(bloc["uid"] or "-"),
+                        coturn["config"],
+                    ]
+                    self.assertEqual(fait.stdout, " ".join(attendu) + "\n")
+
+    def test_constantes_de_l_outil(self):
+        """Les listes que le programme du hook recopie sont celles de
+        l'outil."""
+        programme = extrait_python(HOOK)
+        espace = {}
+        exec(compile(programme.split("\ntry:\n")[0], HOOK, "exec"), espace)
+        self.assertEqual(espace["ENGINES"], cc.ENGINES)
+        self.assertEqual(espace["CONTAINERS"], cc.CONTAINERS)
+        self.assertEqual(espace["COMPOSE_PROVIDERS"], cc.COMPOSE_PROVIDERS)
+        self.assertEqual(espace["COMPOSE_FILE"], cc.COMPOSE_FILE)
+        self.assertEqual(espace["PROJECT"], cc.PROJECT)
+        self.assertEqual(espace["ACCOUNT_RE"].pattern, cc.ACCOUNT_RE.pattern)
+        self.assertEqual(espace["MAX_ID"], cc._MAX_ID)
+        self.assertEqual(espace["METHODS"], ci.METHODS)
+        self.assertEqual(
+            espace["CONTAINER_VERSION"], ci.CONTAINER_STATE_VERSION
+        )
 
 
 class TestSource(unittest.TestCase):
