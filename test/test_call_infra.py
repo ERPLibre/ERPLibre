@@ -10022,6 +10022,16 @@ def packages_facts(state=None, **changes):
     return dataclasses.replace(facts, **changes)
 
 
+def ps_image(engine, svc):
+    """L'image du conteneur de `svc` telle que `ps` du moteur la rend :
+    Docker, la référence épinglée donnée à la création ; Podman, en root
+    comme en rootless, la même sans étiquette."""
+    if engine == "podman":
+        name, digest = cc.IMAGES[svc].split("@")
+        return f"{name.rsplit(':', 1)[0]}@{digest}"
+    return cc.IMAGES[svc]
+
+
 def container_installed(ans, facts=None):
     """Faits de la relance qui suit une installation en conteneurs réussie
     de `ans` : l'état tel que le script l'écrit (uid et gid relus sur
@@ -10053,7 +10063,7 @@ def container_installed(ans, facts=None):
                 ans.engine,
                 ans.rootless,
                 "running",
-                cc.IMAGES[svc],
+                ps_image(ans.engine, svc),
             )
             for svc in state["services"]
         ),
@@ -10132,6 +10142,30 @@ class TestContainerPlan(unittest.TestCase):
                 )
                 self.assertEqual(
                     plan.new_state["services"], facts.state["services"]
+                )
+
+    def test_container_on_another_image_is_not_nothing_to_do(self):
+        # Même nom, même moteur, mais une autre image ou une image sans
+        # condensat : la relance refait le passage.
+        ans = container_answers(engine="podman")
+        facts = container_installed(ans)
+        for image in (
+            "docker.io/coturn/coturn@sha256:" + "0" * 64,
+            "docker.io/coturn/coturn:4.18.0",
+        ):
+            with self.subTest(image=image):
+                containers = tuple(
+                    (name, e, r, s, image if name.endswith("coturn") else i)
+                    for name, e, r, s, i in facts.engines.containers
+                )
+                changed = dataclasses.replace(
+                    facts,
+                    engines=dataclasses.replace(
+                        facts.engines, containers=containers
+                    ),
+                )
+                self.assertFalse(
+                    ci.plan_install(changed, ans, NOW).nothing_to_do
                 )
 
     def test_container_rerun_keeps_the_recorded_account_and_ids(self):

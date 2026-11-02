@@ -2558,16 +2558,15 @@ def _container_added(prior):
 
 def _container_running(facts, answers, svc):
     """Le conteneur de `svc` tourne, sous le moteur et le mode voulus, sur
-    son image épinglée."""
+    son image épinglée (`cc.same_image` : dépôt et condensat, quelle que
+    soit la forme que le moteur rend)."""
     engines = facts.engines or cc.EngineFacts()
-    wanted = (
-        cc.CONTAINERS[svc],
-        answers.engine,
-        answers.rootless,
-        "running",
-        cc.IMAGES[svc],
+    wanted = (cc.CONTAINERS[svc], answers.engine, answers.rootless, "running")
+    return any(
+        (name, engine, rootless, status) == wanted
+        and cc.same_image(image, cc.IMAGES[svc])
+        for name, engine, rootless, status, image in engines.containers
     )
-    return wanted in engines.containers
 
 
 def _compose_users(services):

@@ -20,7 +20,7 @@ root, les exécute sur l'hôte et relit leur sortie `@@NOM valeur`.
 - `engine_argv` / `compose_argv` : la commande du moteur pour le bloc
   `container` de l'état, directe en root ou par `runuser` en rootless ;
   `container_block_problem` refuse un bloc altéré avant qu'il ne serve.
-- `engine_packages`, `classify_pull`, `version_older`,
+- `engine_packages`, `classify_pull`, `version_older`, `same_image`,
   `foreign_containers` : petites règles que le plan et les scripts
   partagent.
 """
@@ -146,6 +146,11 @@ ENGINE_MARKERS = frozenset(
 )
 
 _VERSION = re.compile(r"^v?[0-9][0-9A-Za-z.+~-]*$")
+_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}\Z")
+# Registre d'un nom sans registre, et ses autres noms ; ses images
+# officielles vivent sous « library/ ».
+_DEFAULT_REGISTRY = "docker.io"
+_DEFAULT_REGISTRY_ALIASES = ("index.docker.io", "registry-1.docker.io")
 _UNIT_ANSWER = re.compile(r"^[a-z-]+$")
 _CONTAINER_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _STATUS = re.compile(r"^[a-z]+$")
@@ -803,6 +808,47 @@ def version_older(found, pinned):
     )
 
 
+def image_identity(ref):
+    """(dépôt complet, condensat) de la référence d'image `ref`, ou None
+    sans condensat sha256 : l'étiquette est retirée, le registre par défaut
+    (_DEFAULT_REGISTRY) ajouté à un nom qui n'en porte pas, ses autres noms
+    ramenés à lui, et « library/ » ajouté à une image officielle. Un
+    identifiant d'image seul (« sha256:… » sans dépôt) n'est pas une
+    référence épinglée : None."""
+    if not isinstance(ref, str) or "@" not in ref:
+        return None
+    name, digest = ref.rsplit("@", 1)
+    if not _DIGEST.match(digest):
+        return None
+    if name.rfind(":") > name.rfind("/"):
+        name = name[: name.rfind(":")]
+    parts = name.split("/")
+    first = parts[0]
+    if len(parts) > 1 and (
+        "." in first or ":" in first or first == "localhost"
+    ):
+        registry, path = first.lower(), parts[1:]
+    else:
+        registry, path = _DEFAULT_REGISTRY, parts
+    if registry in _DEFAULT_REGISTRY_ALIASES:
+        registry = _DEFAULT_REGISTRY
+    if registry == _DEFAULT_REGISTRY and len(path) == 1:
+        path = ["library"] + path
+    if not all(path):
+        return None
+    return registry + "/" + "/".join(path), digest
+
+
+def same_image(found, pinned):
+    """L'image `found`, telle qu'un moteur la rend (`ps`), est-elle
+    l'image épinglée `pinned` ? Même dépôt et même condensat
+    (`image_identity`) : Docker rend la référence donnée à la création,
+    Podman la rend sans étiquette (« dépôt@sha256:… »), et une forme sans
+    condensat ne prouve rien."""
+    found_id = image_identity(found)
+    return found_id is not None and found_id == image_identity(pinned)
+
+
 def foreign_containers(facts, state, pending=None):
     """Noms triés des conteneurs vus par la sonde que l'état ne consigne pas
     comme les siens : ceux de l'outil quand l'état n'est pas en mode
@@ -810,7 +856,8 @@ def foreign_containers(facts, state, pending=None):
     consigne pas, et tout conteneur d'une image coturn ou ntfy sous un autre
     nom. `pending` (moteur, rootless) : une installation coupée de l'outil
     a laissé sa fiche sur l'hôte ; les conteneurs à ses noms, sous ce
-    moteur et ce mode et sur son image épinglée, sont les siens."""
+    moteur et ce mode et sur son image épinglée (`same_image`), sont les
+    siens."""
     if facts is None:
         return ()
     ours = set()
@@ -820,7 +867,8 @@ def foreign_containers(facts, state, pending=None):
             (name, engine, rootless)
             for svc, name in CONTAINERS.items()
             for found, e, r, _status, image in facts.containers
-            if (found, e, r, image) == (name, engine, rootless, IMAGES[svc])
+            if (found, e, r) == (name, engine, rootless)
+            and same_image(image, IMAGES[svc])
         }
     if isinstance(state, dict) and state.get("method") == "container":
         block = state.get("container")
