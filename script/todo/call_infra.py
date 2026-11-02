@@ -5257,15 +5257,25 @@ def install_script(plan, stamp, root=""):
         *(["MIG=0"] if migration else []),
         "D=$(mktemp -d) || fail workdir",
         "trap 'rm -rf \"$D\"' EXIT",
-        # Une coupure laisse le même trou qu'un échec ; le piège EXIT, qui
-        # retire $D, passe après `rehold` qui y lit run.m.
-        f"trap '{'rehold; ' if certbot else ''}exit 129' HUP INT TERM",
+        # Une coupure fait ce que fait un échec : `rehold`, et le retour à la
+        # méthode d'avant d'une migration engagée ; le piège EXIT, qui
+        # retire $D, passe après eux, qui y lisent run.m.
+        f"trap '{(rehold + back).strip()} exit 129' HUP INT TERM",
         *_capture_lines(),
         *(_rehold_lines() if certbot else []),
         *(_container_helper_lines(plan, state) if container else []),
         # Le dossier reste traversable : coturn y lit son certificat.
         'mkdir -p "$PENDING" && chmod 0755 "$CALL" && chmod 0700 "$PENDING"'
         " || fail pending",
+        # Les dossiers de ntfy qu'un passage tué en pleine purge a laissés
+        # à l'abri reviennent avant toute autre chose : sans eux, la suite
+        # repartirait d'une base des comptes vide. Leur place reprise
+        # arrête le script (`fail hold-<nom>`), rien n'étant encore changé.
+        *_purge_helper_lines(),
+        'failed() { fail "$1"; }',
+        f'for H in "$R"{shlex.quote(HOLD_PREFIX)}*; do',
+        '  if [ -d "$H" ]; then held_back "$H"; fi',
+        "done",
     ]
     origins = {}
     for svc in services:
