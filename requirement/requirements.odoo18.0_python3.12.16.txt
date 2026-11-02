@@ -189,7 +189,7 @@ beautifulsoup4==4.15.0
 # pylint-odoo depend on pylint==3.3.9 https://github.com/OCA/pylint-odoo/pull/541
 #pylint-odoo==9.3.22
 #pylint==3.3.9
-isort==9.0.1
+isort==9.0.2
 git+https://github.com/mathben/flanker.git@update_imghdr_python3
 
 # Fix some OS
