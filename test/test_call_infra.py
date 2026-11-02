@@ -11787,6 +11787,9 @@ class TestMigrationRun(ContainerSandbox):
         )
         self.assertIsNotNone(down)
         self.assertLess(up, down)
+        remove = self.first(argv, "docker as=root xdg= rm -v erplibre-call-")
+        self.assertIsNotNone(remove)
+        self.assertLess(remove, down)
         self.assertFalse(os.path.exists(self.path(cc.COMPOSE_FILE)))
         # coturn rejoué par son installateur de paquets, sans la cible
         # conteneur ; ntfy adopté relancé et réactivé.
@@ -12034,7 +12037,13 @@ esac
         )
         installer = argv.index("bash install_coturn")
         self.assertLess(down, installer)
+        for svc in ("coturn", "ntfy"):
+            remove = argv.index(
+                f"docker as=root xdg= rm -v {cc.CONTAINERS[svc]}"
+            )
+            self.assertLess(remove, down)
         self.assertNotIn("TURN_TARGET", self.env_of("install_coturn"))
+        self.assertNotIn("TURN_SERVICE_USER", self.env_of("install_coturn"))
         self.assertEqual(
             self.env_of("install_ntfy")["NTFY_VERSION"],
             cc.IMAGE_VERSIONS["ntfy"],
@@ -12767,6 +12776,14 @@ class TestContainerUninstall(ContainerSandbox):
             " -p erplibre-call down -v"
         )
         self.assertIsNotNone(down)
+        # Chaque conteneur part avec son volume anonyme avant le `down`.
+        for svc in ("coturn", "ntfy"):
+            name = cc.CONTAINERS[svc]
+            stop = self.first(f"docker as=root xdg= stop {name}")
+            remove = self.first(f"docker as=root xdg= rm -v {name}")
+            self.assertIsNotNone(stop)
+            self.assertLess(stop, remove)
+            self.assertLess(remove, down)
         self.assertFalse(os.path.exists(self.path(cc.COMPOSE_FILE)))
         self.assertIn(f"REMOVED compose {cc.COMPOSE_FILE}", markers)
         for ref in cc.IMAGES.values():
