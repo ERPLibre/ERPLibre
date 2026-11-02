@@ -10934,16 +10934,11 @@ FAKE_IDS = "erplibre-coturn:997 ntfy:996 erplibre-call:995 turnserver:998"
 
 def reowned(argv, owner, path):
     """Index de la ligne du journal où `reown` rend `path` (chemin de la
-    racine de test) à `owner` : `chown -h <owner> <path> ...`, le dossier
-    d'abord, puis ce qu'il contient ; None sans elle."""
-    prefix = f"chown as=root xdg= -h {owner} {path}"
+    racine de test) à `owner` : `chown -R --no-dereference <owner> <path>` ;
+    None sans elle."""
+    line = f"chown as=root xdg= -R --no-dereference {owner} {path}"
     return next(
-        (
-            index
-            for index, line in enumerate(argv)
-            if line == prefix or line.startswith(prefix + " ")
-        ),
-        None,
+        (index for index, logged in enumerate(argv) if logged == line), None
     )
 
 
@@ -12398,6 +12393,64 @@ esac
             self.assertIn(("IMAGE_KEPT", ref), markers)
         self.assertEqual(self.state()["version"], 1)
 
+    def assert_coturn_reowned_stopped(self, argv, after):
+        """Dans `argv` après l'index `after` : l'installateur de coturn par
+        paquets, puis son unité arrêtée, sa base rendue au compte du
+        paquet, son unité relancée, dans cet ordre."""
+        installer = argv.index("bash install_coturn", after + 1)
+        stop = argv.index("systemctl as=root xdg= stop coturn", installer)
+        data = self.path(ci.COTURN_DATA_DIR)
+        chown = reowned(argv, f"--reference={data}", data)
+        self.assertIsNotNone(chown)
+        start = argv.index("systemctl as=root xdg= start coturn", stop)
+        self.assertLess(after, installer)
+        self.assertLess(installer, stop)
+        self.assertLess(stop, chown)
+        self.assertLess(chown, start)
+
+    def test_coturn_data_reowned_with_its_unit_stopped(self):
+        # L'installateur par paquets démarre coturn, dont le compte écrit
+        # dans le dossier de la base : le chown ne passe qu'unité arrêtée,
+        # conteneurs déjà retirés.
+        plan, _before = self.to_packages()
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        down = argv.index(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call down"
+        )
+        self.assert_coturn_reowned_stopped(argv, down)
+        # Le retour en arrière d'une migration vers les conteneurs fait de
+        # même, après le `down` de ses conteneurs.
+        plan, _before = self.to_container(ntfy_adopted=True)
+        done = self.run_script(plan, FAKE_STATUS_coturn="exited")
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("MIGRATION", "rolled-back"), markers)
+        argv = self.argv()
+        down = self.first(argv, " -p erplibre-call down")
+        self.assertIsNotNone(down)
+        self.assert_coturn_reowned_stopped(argv, down)
+
+    def test_reverse_rollback_without_down_reowns_nothing(self):
+        # Le `down` échoue : rien n'a changé sur l'hôte, et des conteneurs
+        # peut-être encore en marche écrivent dans leurs données. Aucune
+        # étape ne les leur rend ; ils sont relancés.
+        plan, before = self.to_packages()
+        done = self.run_script(plan, FAKE_DOWN_FAIL="1")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("FAILED", "compose-down"), markers)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        argv = self.argv()
+        self.assertFalse([line for line in argv if line.startswith("chown ")])
+        down = self.first(argv, " -p erplibre-call down")
+        up = self.first(argv, " -p erplibre-call up -d")
+        self.assertLess(down, up)
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
     def test_failing_reverse_gate_restarts_the_containers(self):
         plan, before = self.to_packages()
         secrets = self.secrets()
@@ -12777,7 +12830,10 @@ class TestReown(unittest.TestCase):
             with open(path) as handle:
                 return done, handle.read().splitlines()
 
-    def test_tree_without_links_is_reowned_symlinks_untouched(self):
+    def test_tree_is_reowned_by_one_physical_walk(self):
+        # Un seul chown sur le dossier, jamais une liste de chemins
+        # complets : le parcours de `chown -R --no-dereference` ne suit
+        # aucun lien, pas même un dossier remplacé en cours de route.
         with tempfile.TemporaryDirectory() as tmp:
             tree = os.path.join(tmp, "data")
             os.makedirs(os.path.join(tree, "sub"))
@@ -12785,19 +12841,9 @@ class TestReown(unittest.TestCase):
             os.symlink("/etc/passwd", os.path.join(tree, "lien"))
             done, argv = self.run_reown(tree)
             self.assertEqual(done.returncode, 0, done.stderr)
-            self.assertEqual(len(argv), 1, argv)
-            words = argv[0].split()
-            self.assertEqual(words[:4], ["chown", "as=root", "xdg=", "-h"])
-            self.assertEqual(words[4], "7:7")
             self.assertEqual(
-                sorted(words[5:]),
-                sorted(
-                    [
-                        tree,
-                        os.path.join(tree, "sub"),
-                        os.path.join(tree, "sub", "f"),
-                    ]
-                ),
+                argv,
+                [f"chown as=root xdg= -R --no-dereference 7:7 {tree}"],
             )
             # Absent : rien à faire.
             done, argv = self.run_reown(os.path.join(tmp, "absent"))

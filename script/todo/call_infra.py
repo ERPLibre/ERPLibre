@@ -3936,15 +3936,20 @@ _STATUS_FORMAT = "{{.State.Status}}"
 def _reown_lines():
     """Fonction `sh` `reown <propriétaire> <dossier>` : rend `dossier` et
     ce qu'il contient à `propriétaire` (« uid:gid », « nom:groupe » ou
-    « --reference=<chemin> »), sans jamais suivre un lien (`find ! -type l`
-    puis `chown -h`). Un dossier qui est un lien, qui porte un fichier à
-    plusieurs liens physiques ou qui traverse un autre système de fichiers
-    n'est pas touché : `@@UNSAFE_TREE <dossier>` et un code non nul. Le
-    compte d'un service ou d'un conteneur écrit dans ce dossier ; un lien
-    physique vers un fichier de root, que root rendrait à ce compte, est
-    la seule entrée qui reste quand les liens symboliques ne sont pas
-    suivis. Un dossier absent ne fait rien. L'appelant arrête d'abord ce
-    qui tourne sous ce compte."""
+    « --reference=<chemin> ») par `chown -R --no-dereference`. Ce parcours
+    ouvre chaque dossier relativement à son parent et change chaque entrée
+    sans la suivre : un dossier remplacé par un lien en cours de route ne
+    détourne aucun chown hors de l'arbre, ce que ferait une liste de
+    chemins complets passée à chown après coup. Un lien symbolique change
+    de propriétaire, jamais sa cible. Un dossier qui est un lien, qui porte
+    un fichier à plusieurs liens physiques ou qui traverse un autre système
+    de fichiers n'est pas touché : `@@UNSAFE_TREE <dossier>` et un code non
+    nul. Le compte d'un service ou d'un conteneur écrit dans ce dossier ;
+    un lien physique vers un fichier de root, que root rendrait à ce
+    compte, est la seule entrée qui reste quand aucun lien symbolique n'est
+    suivi. Un dossier absent ne fait rien. L'appelant arrête d'abord ce qui
+    tourne sous ce compte, service de l'hôte comme conteneur : entre la
+    vérification et le chown, rien n'écrit plus dans l'arbre."""
     return [
         "reown() {",
         '  [ -e "$2" ] || [ -L "$2" ] || return 0',
@@ -3955,7 +3960,7 @@ def _reown_lines():
         ' | sort -u | wc -l)" != 1 ]; then',
         '    echo "@@UNSAFE_TREE ${2#"$R"}"; return 1',
         "  fi",
-        '  find "$2" -xdev ! -type l -exec chown -h "$1" {} +',
+        '  chown -R --no-dereference "$1" "$2"',
         "}",
     ]
 
@@ -4798,6 +4803,22 @@ def _rollback_function(head, steps, tail):
     return lines
 
 
+def _coturn_reown_lines(unit):
+    """Lignes `sh` qui rendent la base de coturn, et ce que SQLite pose à
+    côté, au compte que son installateur par paquets a donné à son dossier
+    (`reown --reference`), après cet installateur : le compte du paquet
+    n'existe qu'une fois le paquet posé. L'installateur a démarré l'unité
+    `unit`, dont le compte écrit dans ce dossier : elle s'arrête avant le
+    chown et repart après. À lancer seulement quand l'installateur a
+    réussi."""
+    quoted, data = shlex.quote(unit), _host(COTURN_DATA_DIR)
+    return [
+        f"systemctl stop {quoted} >/dev/null 2>&1 || fail stop-coturn",
+        f"reown --reference={data} {data} || fail chown-coturn",
+        f"systemctl start {quoted} >/dev/null 2>&1 || fail coturn",
+    ]
+
+
 def _to_container_rollback_lines(plan, stamp, records):
     """`migback` d'une migration vers les conteneurs : conteneurs arrêtés
     et fichier compose retiré, puis chaque service rendu à la méthode des
@@ -4805,14 +4826,14 @@ def _to_container_rollback_lines(plan, stamp, records):
     données rendues au compte de son paquet. coturn repasse par son
     installateur par paquets (`_packages_plan`), qui réécrit sa
     configuration, réinstalle un paquet purgé, rend la base à son compte et
-    relance l'unité ; sans son paquet, la configuration gérée part avant
-    lui. ntfy posé par l'outil repasse par install_ntfy.sh à la version de
-    l'image, ntfy adopté retrouve son unité activée et démarrée, sa
-    configuration (la même par les deux méthodes) et la copie de son
-    adoption telles quelles."""
+    relance l'unité, puis ses données passent au compte du paquet, l'unité
+    arrêtée le temps du chown (`_coturn_reown_lines`) ; sans son paquet, la
+    configuration gérée part avant lui. ntfy posé par l'outil repasse par
+    install_ntfy.sh à la version de l'image, ntfy adopté retrouve son
+    unité activée et démarrée, sa configuration (la même par les deux
+    méthodes) et la copie de son adoption telles quelles."""
     packages = _packages_plan(plan)
     compose = _host(cc.COMPOSE_FILE)
-    data = _host(COTURN_DATA_DIR)
     steps = []
     if "coturn" in records:
         config = records["coturn"]["config"]
@@ -4831,7 +4852,7 @@ def _to_container_rollback_lines(plan, stamp, records):
                 "fi",
                 *_coturn_block(packages, payload=False),
                 '[ "$RC_coturn" = 0 ] || fail coturn',
-                f"reown --reference={data} {data} || fail chown-coturn",
+                *_coturn_reown_lines(records["coturn"]["unit"]),
             ]
         )
     if "ntfy" in records:
@@ -4992,7 +5013,10 @@ def _to_packages_rollback_lines(plan, stamp, services):
     les fichiers que le conteneur lit (configuration de coturn, copies
     TLS, données) rendus à son compte, puis les conteneurs relancés par le
     fichier compose, resté en place. Chaque purge est une étape à part :
-    son échec laisse les autres rendre leurs fichiers aux conteneurs."""
+    son échec laisse les autres rendre leurs fichiers aux conteneurs. Sans
+    `comp down` réussi (DN=0), aucune étape ne tourne : rien n'a encore
+    changé sur l'hôte, et des conteneurs encore en marche écriraient dans
+    les données que les étapes rendent à leur compte."""
     prior = plan.prior_state["services"]
     purgeable = _reverse_purgeable(plan, services)
     steps = []
@@ -5059,6 +5083,7 @@ def _to_packages_rollback_lines(plan, stamp, services):
                 continue
             step.append(f"reown {uid}:{gid} {_host(path)} || fail chown-{svc}")
         steps.append(step)
+    steps = [['[ "$DN" = 1 ] || exit 0', *step] for step in steps]
     tail = [
         _indented("comp up -d")
         + ' || { echo "@@ROLLBACK_FAILED compose-up"; MRB=0; }'
@@ -5070,15 +5095,17 @@ def _to_packages_lines(plan, stamp):
     """Lignes d'un retour aux paquets, avant leurs installateurs : `eng`
     et `comp` du bloc `container` d'avant ; `migback` défini
     (`_to_packages_rollback_lines`) et MIG=1 ; conteneurs arrêtés
-    (`comp down`), puis les bases copiées (`_migration_backup_lines`) ; la
-    configuration de coturn du conteneur et son empreinte mises dans la
-    copie (pacman refuse un paquet dont un fichier existe déjà sans
-    propriétaire ; l'installateur réécrit l'une et l'autre), celle de ntfy
-    copiée ; le compte `ntfy` créé au besoin et les données de ntfy rendues
-    à ce compte, avant que son installateur ne démarre le service. Les
-    installateurs rendent la base de coturn à son compte. PKG0_<svc> dit,
-    avant tout installateur, si le paquet d'un service sans unité de l'hôte
-    était déjà là (`_reverse_purgeable`)."""
+    (`comp down`, DN=1), puis les bases copiées
+    (`_migration_backup_lines`) ; la configuration de coturn du conteneur
+    et son empreinte mises dans la copie (pacman refuse un paquet dont un
+    fichier existe déjà sans propriétaire ; l'installateur réécrit l'une et
+    l'autre), celle de ntfy copiée ; le compte `ntfy` créé au besoin et les
+    données de ntfy rendues à ce compte, avant que son installateur ne
+    démarre le service. La base de coturn passe au compte de son paquet
+    après son installateur, l'unité arrêtée le temps du chown
+    (`_coturn_reown_lines`). PKG0_<svc> dit, avant tout installateur, si le
+    paquet d'un service sans unité de l'hôte était déjà là
+    (`_reverse_purgeable`)."""
     prior = plan.prior_state
     block = prior["container"]
     services = [
@@ -5103,9 +5130,10 @@ def _to_packages_lines(plan, stamp):
         )
     lines += [
         *_to_packages_rollback_lines(plan, stamp, services),
-        "MIG=1",
+        "DN=0; MIG=1",
         *_volume_rm_lines(),
         _indented("comp down") + " || fail compose-down",
+        "DN=1",
         *_migration_backup_lines(services, stamp),
     ]
     if "coturn" in services:
@@ -5483,13 +5511,12 @@ def install_script(plan, stamp, root=""):
             else:
                 lines += _ntfy_block(plan, version=version)
             if svc == "coturn" and migration:
-                # La base de coturn et ce que SQLite pose à côté passent
-                # au compte que l'installateur a donné à son dossier.
-                data = _host(COTURN_DATA_DIR)
-                lines.append(
-                    f'if [ "$RC_coturn" = 0 ]; then reown --reference={data}'
-                    f" {data} || fail chown-coturn; fi"
-                )
+                unit = plan.new_state["services"]["coturn"]["unit"]
+                lines += [
+                    'if [ "$RC_coturn" = 0 ]; then',
+                    *["  " + line for line in _coturn_reown_lines(unit)],
+                    "fi",
+                ]
             if production:
                 lines.append(f'[ "$RC_{svc}" = 0 ] || fail {svc}')
     if production:
