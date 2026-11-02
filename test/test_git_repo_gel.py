@@ -810,8 +810,49 @@ class TestDefaultInputPaths(unittest.TestCase):
             ],
         )
 
-    def test_la_fusion_ignore_un_gel_hors_de_la_version_active(self):
+    def test_la_fusion_applique_le_gel_d_un_fragment_commun(self):
+        """Un projet commun à toutes les versions n'a pas d'autre fichier
+        où être gelé : le gel d'un fragment des CSV de conf/ s'applique."""
         self.ecrire("commun.xml", ("deux", SHA_B))
+        self.ecrire("git_manifest_odooX.0.xml", ("un", SHA_A))
+        local = self.fusionner("--freeze")
+        self.assertIn(f'revision="{SHA_A}"', local)
+        self.assertIn(f'revision="{SHA_B}"', local)
+
+    def test_la_fusion_ignore_un_gel_hors_de_la_version_active(self):
+        """Le gel d'une autre version installée et celui d'un manifeste
+        privé ne s'appliquent pas : leurs projets suivent leur branche."""
+        for nom, projet, sha in (
+            ("git_manifest_odooY.0.xml", "deux", SHA_B),
+            ("prive.xml", "trois", SHA_C),
+        ):
+            with self.subTest(fichier=nom):
+                self.ecrire(nom, (projet, sha))
+                self.ecrire("git_manifest_odooX.0.xml", ("un", SHA_A))
+                sortie = os.path.join(self.dossier, "local.xml")
+                argv = [
+                    "git_merge_repo_manifest.py",
+                    "--input",
+                    f"manifest/{nom};manifest/git_manifest_odooX.0.xml",
+                    "--output",
+                    sortie,
+                    "--freeze",
+                ]
+                with patch("sys.argv", argv), patch("builtins.print") as imprime:
+                    fusion.main()
+                texte = " ".join(
+                    " ".join(map(str, a.args)) for a in imprime.mock_calls
+                )
+                with open(sortie) as fh:
+                    local = fh.read()
+                self.assertIn(f'revision="{SHA_A}"', local)
+                self.assertNotIn(sha, local)
+                self.assertIn("are ignored", texte)
+
+    def test_strict_refuse_un_projet_sans_gel(self):
+        """--strict arrête la fusion sans rien écrire et nomme le projet
+        resté sur sa branche ; sans --freeze, il ne change rien."""
+        self.ecrire("commun.xml", ("deux", None))
         self.ecrire("git_manifest_odooX.0.xml", ("un", SHA_A))
         sortie = os.path.join(self.dossier, "local.xml")
         argv = [
@@ -821,18 +862,16 @@ class TestDefaultInputPaths(unittest.TestCase):
             "--output",
             sortie,
             "--freeze",
+            "--strict",
         ]
         with patch("sys.argv", argv), patch("builtins.print") as imprime:
-            fusion.main()
-        texte = " ".join(
-            " ".join(map(str, a.args)) for a in imprime.mock_calls
-        )
-        with open(sortie) as fh:
-            local = fh.read()
-        self.assertIn(f'revision="{SHA_A}"', local)
-        self.assertNotIn(SHA_B, local)
-        self.assertIn("are ignored", texte)
+            code = fusion.main()
+        texte = " ".join(" ".join(map(str, a.args)) for a in imprime.mock_calls)
+        self.assertEqual(code, 1)
+        self.assertFalse(os.path.exists(sortie))
+        self.assertIn("--strict refuses a branch", texte)
         self.assertIn(mf.project_key("deux.git", "odooX.0/addons/deux"), texte)
+        self.assertIn('revision="', self.fusionner("--strict"))
 
     def test_strip_freeze(self):
         projets = {

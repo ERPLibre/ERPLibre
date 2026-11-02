@@ -15,7 +15,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git.git_freeze_manifest import (
-    freeze_sources,
+    honored_sources,
     read_sources,
 )
 from script.git.git_tool import GitTool
@@ -97,9 +97,18 @@ def get_config(argv=None):
         action="store_true",
         help=(
             f"Pin every project to the commit of its @{FREEZE_ATTR},"
-            " keeping its branch in @upstream and @dest-branch. Only the"
-            " manifests of the active Odoo version are frozen; a project"
-            " without one follows its branch, with a warning."
+            " keeping its branch in @upstream and @dest-branch. The"
+            " manifests of the active Odoo version and the common ones"
+            " are frozen; a project without one follows its branch, with"
+            " a warning."
+        ),
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "With --freeze, refuse a project without a commit instead of"
+            " letting it follow its branch: nothing is written."
         ),
     )
     args = parser.parse_args(argv)
@@ -128,7 +137,7 @@ def main():
     # L'ordre reste celui de la liste : le dernier fichier qui définit un
     # projet l'emporte, et un ensemble rendrait ce gagnant aléatoire.
     input_paths = list(dict.fromkeys(input_paths))
-    fichiers_geles = freeze_sources()
+    fichiers_geles = honored_sources()
     hors_portee = []
 
     for index, input_path in enumerate(input_paths):
@@ -191,11 +200,19 @@ def main():
         if hors_portee:
             print(
                 f"WARNING: {len(hors_portee)} {FREEZE_ATTR} outside the"
-                " manifests of the active Odoo version are ignored; remove"
-                " them with make repo_unfreeze:"
+                " manifests of the active Odoo version and the common ones"
+                " are ignored; remove them with make repo_unfreeze:"
             )
             for cle in sorted(hors_portee):
                 print(f"  - {cle}")
+        if config.strict and manquants:
+            print(
+                f"ERROR: {len(manquants)} projects have no {FREEZE_ATTR}"
+                " and --strict refuses a branch; nothing was written:"
+            )
+            for cle in sorted(manquants):
+                print(f"  - {cle}")
+            return 1
 
     git_tool.generate_repo_manifest(
         remotes_config=remotes_total,
@@ -299,9 +316,9 @@ def strip_freeze(projects):
     """Retire « freeze-revision » et « fork-upstream-freeze-revision » des
     projets d'un fichier. Rend les clés qui portaient l'un ou l'autre.
 
-    La fusion n'applique que le gel des fichiers de la version d'Odoo
-    active, ceux que `git_freeze_manifest` écrit ; celui d'un autre fichier
-    est retiré avant la fusion, et son projet suit sa branche.
+    La fusion n'applique que le gel des fichiers de `honored_sources` : la
+    version d'Odoo active et les fragments communs. Celui d'un autre
+    fichier est retiré avant la fusion, et son projet suit sa branche.
     """
     retires = []
     for cle, valeur in projects.items():
@@ -315,13 +332,13 @@ def strip_freeze(projects):
 def print_missing_freeze(manquants, fichiers=None):
     """Liste les projets restés sur leur branche en mode --freeze.
 
-    Seuls ceux des `fichiers` que le gel écrit (par défaut, ceux de la
-    version d'Odoo active) sont un avertissement, nommés un par un ; ceux
-    des autres fichiers ne sont jamais gelés et ne font l'objet que d'un
+    Seuls ceux des `fichiers` dont le gel est appliqué (par défaut,
+    `honored_sources`) sont un avertissement, nommés un par un ; ceux des
+    autres fichiers ne sont jamais gelés et ne font l'objet que d'un
     compte.
     """
     if fichiers is None:
-        fichiers = freeze_sources()
+        fichiers = honored_sources()
     try:
         portee = set(read_sources(fichiers))
     except OSError:
@@ -339,6 +356,19 @@ def print_missing_freeze(manquants, fichiers=None):
         print(f"{hors} projects outside the frozen files follow their branch.")
 
 
+def common_input_paths():
+    """Les fragments communs à toutes les versions d'Odoo, dans leur ordre :
+    ceux que listent les CSV de conf/, sans les manifestes privés."""
+    chemins = []
+    for conf in (
+        DEFAULT_PATH_MANIFEST_ODOO_CONF,
+        DEFAULT_PATH_MANIFEST_MOBILE_CONF,
+        DEFAULT_PATH_MANIFEST_CONF,
+    ):
+        append_file_path_manifest(chemins, conf)
+    return [c for c in dict.fromkeys(chemins) if c.endswith(".xml")]
+
+
 def append_file_path_manifest(input_paths, path_manifest):
     if os.path.exists(path_manifest):
         with open(path_manifest, "r") as f:
@@ -349,4 +379,4 @@ def append_file_path_manifest(input_paths, path_manifest):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
