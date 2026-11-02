@@ -3933,6 +3933,21 @@ _TRANSIENT = "created|restarting|starting|configured|initialized|stopping"
 _STATUS_FORMAT = "{{.State.Status}}"
 
 
+def _indented(command):
+    """Commande `sh` qui lance `command` (texte `sh`), garde sa sortie et
+    ses erreurs dans un fichier de `mktemp`, puis les imprime en retrait et
+    rend vrai seulement quand elle a réussi. Ce qu'impriment le moteur,
+    l'outil de composition, systemd ou sqlite3 sous le compte d'un
+    conteneur, que ce compte peut détourner, ne commence jamais une ligne
+    par `@@` : aucune ne passe pour un marqueur du script, que l'état
+    écrit relit (`installed_state`)."""
+    return (
+        f'{{ IO=$(mktemp) && {{ {command}; }} > "$IO" 2>&1; IRC=$?;'
+        ' [ -n "$IO" ] && sed \'s/^/  /\' "$IO"; rm -f "$IO";'
+        ' [ "$IRC" = 0 ]; }'
+    )
+
+
 def _engine_shell_lines(block):
     """Fonctions `sh` du bloc `container` d'un plan : `eng` (le moteur) et
     `comp` (l'outil de composition, `-f COMPOSE_FILE -p PROJECT`), et en
@@ -4251,8 +4266,9 @@ def _rootless_lines(plan):
         '[ -d "$R/run/user/$RUID" ] || fail rootless-session',
         'if [ "$(ruser systemctl --user is-enabled podman-restart.service'
         ' 2>/dev/null)" != enabled ]; then',
-        "  ruser systemctl --user enable podman-restart.service"
-        " || fail rootless-restart",
+        "  "
+        + _indented("ruser systemctl --user enable podman-restart.service")
+        + " || fail rootless-restart",
         "  mark RESTART_UNIT_ENABLED user; cfiche",
         "fi",
     ]
@@ -4336,7 +4352,9 @@ def _coturn_container_lineage_lines(plan):
         "  } | cap",
         "  step_rc coturn-tls || fail coturn-tls",
         '  if [ "$(mval RECREATE)" = 1 ]; then',
-        "    comp up -d --force-recreate coturn || fail coturn-recreate",
+        "    "
+        + _indented("comp up -d --force-recreate coturn")
+        + " || fail coturn-recreate",
         "  fi",
         "fi",
     ]
@@ -4453,17 +4471,22 @@ def _compose_lines(plan):
             f"cstatus {cc.CONTAINERS[svc]}; E_{svc}=$S",
             f'[ "$E_{svc}" = running ] || UP=1',
         ]
-    lines.append('if [ "$UP" = 1 ]; then comp up -d || fail compose-up; fi')
+    lines.append(
+        f'if [ "$UP" = 1 ]; then {_indented("comp up -d")} || fail compose-up;'
+        " fi"
+    )
     if "coturn" in services and "coturn" in plan.answers.services:
         lines += [
             'if [ "$(mval RECREATE)" = 1 ] && [ "$E_coturn" != missing ]; then',
-            "  comp up -d --force-recreate coturn || fail compose-recreate",
+            "  "
+            + _indented("comp up -d --force-recreate coturn")
+            + " || fail compose-recreate",
             "fi",
         ]
     if "ntfy" in services and "ntfy" in plan.answers.services:
         lines += [
             'if [ "$NC" = 1 ] && [ "$E_ntfy" = running ]; then',
-            "  comp restart ntfy || fail compose-restart",
+            f"  {_indented('comp restart ntfy')} || fail compose-restart",
             "fi",
         ]
     if is_production(plan.answers):
@@ -4995,7 +5018,10 @@ def _to_packages_rollback_lines(plan, stamp, services):
                 f" {uid}:{gid} {_host(path)} || fail chown-{svc}; fi"
             )
         steps.append(step)
-    tail = ['comp up -d || { echo "@@ROLLBACK_FAILED compose-up"; MRB=0; }']
+    tail = [
+        _indented("comp up -d")
+        + ' || { echo "@@ROLLBACK_FAILED compose-up"; MRB=0; }'
+    ]
     return _rollback_function([], steps, tail)
 
 
@@ -5037,7 +5063,7 @@ def _to_packages_lines(plan, stamp):
     lines += [
         *_to_packages_rollback_lines(plan, stamp, services),
         "MIG=1",
-        "comp down || fail compose-down",
+        _indented("comp down") + " || fail compose-down",
         *_migration_backup_lines(services, stamp),
     ]
     if "coturn" in services:
@@ -6485,7 +6511,8 @@ def _userdb_lines(unit, realm, account=None):
     valeur n'atteint `sha256sum` que par le tube et `sqlite3` que par son
     entrée standard, jamais par un argv. Une valeur hors de l'alphabet des
     secrets de l'outil n'entre pas dans la requête. Sans base, rien à
-    effacer. Les lignes supposent `R` et une fonction `fail`. Un `account`
+    effacer. Les lignes supposent `R`, `D` (dossier de travail) et une
+    fonction `fail`. Un `account`
     hors d'ACCOUNT_RE : Refusal `call_infra_state_invalid`."""
     if account is None:
         user = [
@@ -6503,9 +6530,14 @@ def _userdb_lines(unit, realm, account=None):
         f'DB="$R"{shlex.quote(COTURN_DB)}',
         f"REALM={shlex.quote(realm)}",
         *user,
-        'sq() { runuser -u "$U" -- sqlite3 -bail -init /dev/null "$DB"; }',
+        "sq() { "
+        + _indented('runuser -u "$U" -- sqlite3 -bail -init /dev/null "$DB"')
+        + "; }",
+        # Les erreurs de la lecture vont en retrait, comme toute sortie du
+        # compte de coturn ; les lignes lues reviennent à l'appelant.
         'sqr() { runuser -u "$U" -- sqlite3 -readonly -bail -init /dev/null'
-        ' "$DB" "$1"; }',
+        ' "$DB" "$1" 2>"$D/sqr.err"; SRC=$?;'
+        " sed 's/^/  /' \"$D/sqr.err\" >&2; return \"$SRC\"; }",
         "revoke() {",
         '  [ -f "$DB" ] || return 0',
         "  VALS=$(sqr \"SELECT value FROM turn_secret WHERE realm='$REALM';\")"
@@ -6680,7 +6712,7 @@ def _ntfy_put_lines(source, state):
         cli = ntfy_cli(state, None)
         active = f"A=$({cli.active})"
         restart = (
-            f"{{ {cli.restart}; }} && {{ {active}; NW=0;"
+            f"{_indented(cli.restart)} && {{ {active}; NW=0;"
             f' while [ "$A" = activating ] && [ "$NW" -lt {_NTFY_RECHECKS} ];'
             f" do sleep 1; NW=$((NW + 1)); {active}; done;"
             ' [ "$A" = active ]; }'
@@ -6813,8 +6845,9 @@ def _recreate_lines(state):
         *_engine_shell_lines(block),
         *_status_lines(),
         "if grep -q '^@@RECREATE 1$' \"$D/coturn.out\"; then",
-        "  comp up -d --force-recreate coturn"
-        f" || {{ rm -f {pending}; fail switch-recreate; }}",
+        "  "
+        + _indented("comp up -d --force-recreate coturn")
+        + f" || {{ rm -f {pending}; fail switch-recreate; }}",
         f"  cwait {name}",
         '  if [ "$S" = running ]; then',
         f"    if [ -f {pending} ]; then mv -f {pending} {applied}"
@@ -9348,7 +9381,7 @@ def _container_uninstall_lines(state, additions, records):
     path = _host(cc.COMPOSE_FILE)
     lines += [
         f"if [ -f {path} ]; then",
-        "  if comp down -v; then",
+        f"  if {_indented('comp down -v')}; then",
         f"    if rm -f {path}; then"
         f' echo "@@REMOVED compose {cc.COMPOSE_FILE}";',
         "    else failed compose-file; fi",

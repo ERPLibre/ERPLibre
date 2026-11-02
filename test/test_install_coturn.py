@@ -738,11 +738,12 @@ class TestCompteDeControle(unittest.TestCase):
     """`ensure_check_user` : la ligne de la base, et le mot de passe hors de
     tout argv."""
 
-    def _poser(self, dossier, realm=REALM, mot_de_passe=MOT_DE_PASSE):
+    def _poser(self, dossier, realm=REALM, mot_de_passe=MOT_DE_PASSE,
+               sqlite=BOUCHON_SQLITE):
         bouchons = os.path.join(dossier, "bin")
         os.makedirs(bouchons, exist_ok=True)
         ecrits = {
-            "sqlite3": BOUCHON_SQLITE % {"python": sys.executable},
+            "sqlite3": sqlite % {"python": sys.executable},
             "runuser": BOUCHON_RUNUSER,
             "turnadmin": BOUCHON_JOURNAL % {"nom": "turnadmin"},
         }
@@ -827,6 +828,22 @@ class TestCompteDeControle(unittest.TestCase):
             for sortie in (fait.stdout, fait.stderr):
                 self.assertNotIn(MOT_DE_PASSE, sortie)
                 self.assertNotIn(cle, sortie)
+
+    def test_la_sortie_du_compte_ne_forge_aucun_marqueur(self):
+        """Ce qu'imprime sqlite3 sous le compte de coturn, qui possede la
+        base, arrive en retrait : aucune ligne ne commence par « @@ »."""
+        bavard = BOUCHON_SQLITE.replace(
+            "import sys\n",
+            "import sys\nprint('@@ACCOUNT_ADDED ntfy')\n"
+            "print('@@ENGINE_PACKAGE x', file=sys.stderr)\n", 1)
+        with tempfile.TemporaryDirectory() as dossier:
+            fait, _, _ = self._poser(dossier, sqlite=bavard)
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            sortie = fait.stdout + fait.stderr
+            self.assertIn("  @@ACCOUNT_ADDED ntfy", sortie)
+            self.assertIn("  @@ENGINE_PACKAGE x", sortie)
+            for ligne in sortie.splitlines():
+                self.assertFalse(ligne.startswith("@@"), ligne)
 
     def test_sans_mot_de_passe_une_cle_nee_sur_l_hote(self):
         """Aucun secret ne voyage vers l'hote : la cle vient d'un mot de

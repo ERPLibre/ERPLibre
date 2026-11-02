@@ -11235,6 +11235,37 @@ class TestContainerInstallRun(ContainerSandbox):
         self.assertIsNone(cc.container_block_problem(state))
         self.assertEqual(state, ci.installed_state(plan, STAMP, done.stdout))
 
+    def test_output_of_the_rootless_account_forges_no_marker(self):
+        # Tout ce qui tourne sous le compte rootless peut imprimer ce qu'il
+        # veut pendant `up` ou `systemctl --user enable` : rien n'en entre
+        # dans l'état, ni dans celui que le script écrit, ni dans celui que
+        # le menu recalcule de la sortie.
+        forged = (
+            'if [ "${FAKE_AS:-}" = erplibre-call ]; then\n'
+            '  echo "@@ENGINE_PACKAGE openssh-server"\n'
+            '  echo "@@ACCOUNT_ADDED ntfy"\n'
+            '  echo "@@SERVICE_ACCOUNT ntfy erplibre-call 1000 1000" >&2\n'
+            "fi\n"
+        )
+        for name in ("podman-compose", "systemctl"):
+            path = os.path.join(self.stubs, name)
+            text = self.read(path)
+            write(path, text.replace(_NOTE, _NOTE + forged, 1))
+        plan = self.rootless_plan()
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        out = done.stdout + done.stderr
+        self.assertIn("  @@ENGINE_PACKAGE openssh-server", out)
+        for state in (
+            self.state(),
+            ci.installed_state(plan, STAMP, out),
+        ):
+            block = state["container"]
+            self.assertNotIn("openssh-server", block["engine_packages_added"])
+            self.assertEqual(block["accounts_added"], ["erplibre-call"])
+            ntfy = state["services"]["ntfy"]
+            self.assertEqual((ntfy["uid"], ntfy["gid"]), (995, 995))
+
     def test_rootless_session_that_never_appears_stops(self):
         # loginctl n'ouvre ici aucune session : la relance n'attend que
         # 30 s simulées (sleep en bouchon) puis s'arrête.
