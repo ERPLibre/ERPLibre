@@ -13,12 +13,14 @@ import base64
 import builtins
 import contextlib
 import io
+import json
 import re
 import shlex
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from script.todo import call_infra as ci
 from script.todo import ntfy_mobile as nm
 from script.todo.todo_i18n import TRANSLATIONS, t
 
@@ -57,10 +59,12 @@ class FakeHost:
         states=("active",),
         token_out=None,
         unit="loaded",
+        state=None,
     ):
         self.yml = yml
         self.owner = owner
         self.unit = unit
+        self.state = state
         self.states = list(states)
         self.token_out = (
             f"token {TOKEN} created for user erm_alice\n"
@@ -78,9 +82,9 @@ class FakeHost:
             return "inspect"
         if "base64 -d" in script:
             return "write"
-        if "systemctl restart" in script:
+        if "systemctl restart" in script or " restart ntfy" in script:
             return "restart"
-        if "is-active" in script:
+        if "is-active" in script or "{{.State.Status}}" in script:
             return "recheck"
         if "token --config" in script:
             return "access"
@@ -93,10 +97,14 @@ class FakeHost:
         kind = self.kind(script)
         if kind == "inspect":
             b64 = base64.b64encode(self.yml.encode()).decode()
-            return 0, (
+            out = (
                 f"@@OWNER {self.owner}\n@@YML {b64}\n@@HEALTH ?\n"
                 f"@@UNIT {self.unit}\n"
             )
+            if self.state is not None:
+                text = json.dumps(self.state).encode()
+                out += f"@@STATE {base64.b64encode(text).decode()}\n"
+            return 0, out
         if kind == "restart":
             return 0, f"@@ACTIVE {self.states.pop(0)}\n"
         if kind == "recheck":
@@ -455,6 +463,178 @@ class TestPrepare(MenuCase):
         )
         self.assertIn("429", out)
         self.assertNotIn("write", host.kinds())
+
+
+# État d'un ntfy en conteneur (valeurs inventées) : Docker en root, le
+# compte `ntfy` de l'hôte à l'uid:gid 997:997.
+CONTAINER_STATE = {
+    "version": 2,
+    "method": "container",
+    "mode": "development",
+    "services": {
+        "ntfy": {
+            "container": "erplibre-call-ntfy",
+            "account": "ntfy",
+            "uid": 997,
+            "gid": 997,
+            "unit": None,
+            "config": "/etc/ntfy/server.yml",
+        }
+    },
+    "container": {
+        "engine": "docker",
+        "rootless": False,
+        "account": None,
+        "uid": None,
+        "compose": ["docker", "compose"],
+        "compose_file": "/etc/erplibre-call/compose.yml",
+        "project": "erplibre-call",
+    },
+}
+CONTAINER_CLI = (
+    "docker exec -e NTFY_PASSWORD -u 997:997 erplibre-call-ntfy ntfy"
+)
+COMPOSE_RESTART = (
+    "docker compose -f /etc/erplibre-call/compose.yml -p erplibre-call"
+    " restart ntfy"
+)
+# Un état par paquets tel que l'écrit une installation par paquets.
+PACKAGES_STATE = {
+    "version": 1,
+    "mode": "development",
+    "services": {"ntfy": {"unit": "ntfy", "config": "/etc/ntfy/server.yml"}},
+}
+
+
+def rootless_state():
+    state = json.loads(json.dumps(CONTAINER_STATE))
+    state["container"].update(
+        engine="podman",
+        rootless=True,
+        account="erplibre-call",
+        uid=995,
+        compose=["podman-compose"],
+    )
+    state["services"]["ntfy"].update(account="erplibre-call", uid=995, gid=995)
+    return state
+
+
+class TestContainerState(MenuCase):
+    """« Préparer », lister et révoquer quand l'état de l'hôte dit ntfy en
+    conteneur : chaque commande de sa CLI et son redémarrage passent par
+    `call_infra.ntfy_cli`."""
+
+    PREPARE = ["", "", "y", "y", "Alice", "", ""]
+
+    def test_inspect_reads_the_state_file(self):
+        host = FakeHost(state=CONTAINER_STATE)
+        self.drive("_ntfy_mobile_list", host, [""])
+        self.assertIn(ci.STATE_PATH, host.script_of("inspect"))
+        self.assertIn("@@STATE", host.script_of("inspect"))
+
+    def test_prepare_runs_the_cli_in_the_container_as_root(self):
+        host = FakeHost(yml=YML, state=CONTAINER_STATE)
+        out = self.drive("_ntfy_mobile_prepare", host, self.PREPARE)
+        self.assertIn("erplibre-ntfy:", out)
+        access = host.script_of("access")
+        self.assertIn(
+            'NTFY_PASSWORD="$(head -c 32 /dev/urandom | base64)" '
+            + CONTAINER_CLI
+            + " user --config /etc/ntfy/server.yml add erm_alice",
+            access.splitlines(),
+        )
+        self.assertIsNone(host.user_of("access"))
+        self.assertIn(CONTAINER_CLI + " access", host.script_of("list"))
+        self.assertIsNone(host.user_of("list"))
+        restart = host.script_of("restart")
+        self.assertTrue(restart.startswith(COMPOSE_RESTART + "\n"), restart)
+        self.assertNotIn("systemctl", restart)
+        self.assertIsNone(host.user_of("restart"))
+
+    def test_systemd_unit_not_found_still_restarts_the_container(self):
+        host = FakeHost(yml=YML, state=CONTAINER_STATE, unit="not-found")
+        out = self.drive("_ntfy_mobile_prepare", host, self.PREPARE)
+        self.assertNotIn(t("No systemd service named ntfy here:"), out)
+        self.assertIn("restart", host.kinds())
+
+    def test_activating_container_rechecked_through_inspect(self):
+        host = FakeHost(
+            yml=YML, state=CONTAINER_STATE, states=("activating", "active")
+        )
+        self.drive("_ntfy_mobile_prepare", host, self.PREPARE)
+        self.assertEqual(host.kinds().count("recheck"), 1)
+        self.assertIn(
+            "docker inspect -f '{{.State.Status}}' erplibre-call-ntfy",
+            host.script_of("recheck"),
+        )
+        self.assertIn("access", host.kinds())
+
+    def test_failed_restart_names_the_compose_restore(self):
+        host = FakeHost(yml=YML, state=CONTAINER_STATE, states=("exited",))
+        out = self.drive("_ntfy_mobile_prepare", host, ["", "", "y", "y"])
+        backup = re.search(r"/etc/ntfy/server\.yml\.bak-\d{14}", out)
+        self.assertIsNotNone(backup, out)
+        self.assertIn(
+            f"cp -p {backup.group(0)} /etc/ntfy/server.yml && {COMPOSE_RESTART}",
+            out,
+        )
+        self.assertNotIn("access", host.kinds())
+
+    def test_rootless_cli_runs_under_the_rootless_account(self):
+        host = FakeHost(state=rootless_state())
+        self.drive("_ntfy_mobile_prepare", host, ["", "", "Alice", "", ""])
+        self.assertEqual(host.user_of("access"), "erplibre-call")
+        self.assertIn(
+            "env XDG_RUNTIME_DIR=/run/user/995 podman exec -e NTFY_PASSWORD"
+            " -u 995:995 erplibre-call-ntfy ntfy user",
+            host.script_of("access"),
+        )
+
+    def test_revoke_through_the_container(self):
+        host = FakeHost(state=CONTAINER_STATE)
+        self.drive("_ntfy_mobile_revoke", host, ["", "2", "y"])
+        self.assertIn(
+            CONTAINER_CLI
+            + " user --config /etc/ntfy/server.yml del erm_bruno",
+            host.script_of("revoke"),
+        )
+        self.assertIsNone(host.user_of("revoke"))
+
+    def test_tampered_container_state_runs_nothing_more(self):
+        bad = json.loads(json.dumps(CONTAINER_STATE))
+        bad["services"]["ntfy"]["container"] = "x;id"
+        host = FakeHost(state=bad)
+        out = self.drive("_ntfy_mobile_prepare", host, [""])
+        self.assertEqual(host.kinds(), ["inspect"])
+        self.assertIn(
+            t("call_infra_state_invalid").format(
+                service="services.ntfy.container"
+            ),
+            out,
+        )
+
+    def test_packages_state_runs_the_same_commands_as_before(self):
+        """Un état par paquets donne les commandes d'un hôte sans état :
+        celles d'avant la lecture de l'état, sous le propriétaire de la base
+        des comptes."""
+        failed = ["", "", "y", "y"]
+        for kwargs, answers in (
+            ({"yml": YML}, self.PREPARE),
+            ({"yml": YML, "states": ("failed",)}, failed),
+        ):
+            runs = []
+            for state in (None, PACKAGES_STATE):
+                host = FakeHost(state=state, **kwargs)
+                with mock.patch.object(
+                    nm, "random_prefix", return_value="upab12cd34"
+                ), mock.patch("time.strftime", return_value="20261102101500"):
+                    out = self.drive("_ntfy_mobile_prepare", host, answers)
+                runs.append((out, host.calls))
+            self.assertEqual(runs[0], runs[1])
+            calls = runs[0][1]
+            self.assertTrue(
+                all(user in (None, "ntfy") for _script, user in calls)
+            )
 
 
 class TestHost(MenuCase):

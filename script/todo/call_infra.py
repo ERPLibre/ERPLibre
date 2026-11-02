@@ -4022,6 +4022,20 @@ def _container_helper_lines(plan, state):
         "}",
         *_family_lines(),
         *_engine_shell_lines(state["container"]),
+        *_status_lines(),
+        "pullclass() {",
+        f'  if LC_ALL=C grep -qiE {shlex.quote(cc.PULL_RATE_LIMIT)} "$1";'
+        " then echo rate-limit; else echo failed; fi",
+        "}",
+    ]
+
+
+def _status_lines():
+    """Fonctions `sh` `cstatus <conteneur>`, qui pose `S`, son état
+    d'`inspect` (« missing » sans lui), et `cwait`, qui relit un état
+    passager (_TRANSIENT) une fois par seconde, dix au plus. Elles
+    supposent `eng` (`_engine_shell_lines`)."""
+    return [
         "cstatus() {",
         f'  S=$(eng inspect -f {shlex.quote(_STATUS_FORMAT)} "$1"'
         " 2>/dev/null) || S=",
@@ -4033,10 +4047,6 @@ def _container_helper_lines(plan, state):
         f'    case "$S" in {_TRANSIENT}) ;; *) break ;; esac',
         '    sleep 1; N=$((N + 1)); cstatus "$1"',
         "  done",
-        "}",
-        "pullclass() {",
-        f'  if LC_ALL=C grep -qiE {shlex.quote(cc.PULL_RATE_LIMIT)} "$1";'
-        " then echo rate-limit; else echo failed; fi",
         "}",
     ]
 
@@ -6108,19 +6118,45 @@ def _purged(state, now):
 
 
 def _coturn_target(state):
-    """(unité de coturn, realm) de l'état ; ValueError sans coturn. Les deux
-    finissent dans un script root : l'unité a la forme d'un nom d'unité, le
-    realm celle de `_NAME`."""
+    """(unité de coturn, realm, compte) de l'état ; ValueError sans coturn.
+    Tous finissent dans un script root : l'unité a la forme d'un nom
+    d'unité, le realm celle de `_NAME`.
+
+    Par paquets, le compte est None : la base se lit sous le compte de
+    l'unité. En conteneurs, c'est celui du conteneur de coturn, qui possède
+    la base (ACCOUNT_RE, jamais root ; sinon Refusal
+    `call_infra_state_invalid`), et l'unité celle d'un paquet adopté gardé
+    sur l'hôte, ou None. Un état en conteneurs que `state_answers` ne lit
+    pas (moteur hors liste...) est altéré : Refusal
+    `call_infra_state_invalid` aussi."""
     answers = state_answers(state)
+    container = isinstance(state, dict) and state.get("method") == "container"
+    if answers is None and container:
+        problem = cc.container_block_problem(state) or "container"
+        raise Refusal("call_infra_state_invalid", service=problem)
     if answers is None or "coturn" not in answers.services:
         raise ValueError("no coturn in the state")
     record = state["services"]["coturn"]
     unit = record.get("unit")
-    if not isinstance(unit, str) or not _UNIT_NAME.match(unit):
-        raise ValueError(f"coturn unit: {unit!r}")
+    if container:
+        account = record.get("account")
+        if (
+            not isinstance(account, str)
+            or not cc.ACCOUNT_RE.match(account)
+            or account == "root"
+        ):
+            raise Refusal(
+                "call_infra_state_invalid", service="services.coturn.account"
+            )
+        if not isinstance(unit, str) or not _UNIT_NAME.match(unit):
+            unit = None
+    else:
+        account = None
+        if not isinstance(unit, str) or not _UNIT_NAME.match(unit):
+            raise ValueError(f"coturn unit: {unit!r}")
     if not _NAME.match(answers.public_name or ""):
         raise ValueError(f"realm: {answers.public_name!r}")
-    return unit, answers.public_name
+    return unit, answers.public_name, account
 
 
 def _has_ntfy(state):
@@ -6329,12 +6365,14 @@ def odoo_removed_state(state, key, now):
     return new
 
 
-def _userdb_lines(unit, realm):
+def _userdb_lines(unit, realm, account=None):
     """Lignes `sh` qui préparent l'accès à la base de coturn : `DB`,
-    `REALM`, `U` (le compte de l'unité, comme la vérification le lit),
-    `sq` (requête sur l'entrée standard) et `sqr` (lecture seule, requête en
-    argument), lancés sous ce compte par `runuser` : root n'ouvre aucun
-    fichier du dossier de la base, qui lui appartient. Puis `revoke`.
+    `REALM`, `U` (le compte de l'unité, comme la vérification le lit ; avec
+    `account`, ce compte tel quel, celui du conteneur de coturn, sans
+    systemd), `sq` (requête sur l'entrée standard) et `sqr` (lecture
+    seule, requête en argument), lancés sous ce compte par `runuser` : root
+    n'ouvre aucun fichier du dossier de la base, qui lui appartient. Puis
+    `revoke`.
 
     `revoke <empreinte>...` efface de `turn_secret`, pour ce realm, chaque
     valeur dont le sha256 est donné. sqlite3 n'a pas de sha256 : les valeurs
@@ -6342,13 +6380,24 @@ def _userdb_lines(unit, realm):
     valeur n'atteint `sha256sum` que par le tube et `sqlite3` que par son
     entrée standard, jamais par un argv. Une valeur hors de l'alphabet des
     secrets de l'outil n'entre pas dans la requête. Sans base, rien à
-    effacer. Les lignes supposent `R` et une fonction `fail`."""
+    effacer. Les lignes supposent `R` et une fonction `fail`. Un `account`
+    hors d'ACCOUNT_RE : Refusal `call_infra_state_invalid`."""
+    if account is None:
+        user = [
+            f"U=$(systemctl show -p User --value {shlex.quote(unit)}"
+            " 2>/dev/null)",
+            "U=${U:-turnserver}",
+        ]
+    elif isinstance(account, str) and cc.ACCOUNT_RE.match(account):
+        user = [f"U={account}"]
+    else:
+        raise Refusal(
+            "call_infra_state_invalid", service="services.coturn.account"
+        )
     return [
         f'DB="$R"{shlex.quote(COTURN_DB)}',
         f"REALM={shlex.quote(realm)}",
-        f"U=$(systemctl show -p User --value {shlex.quote(unit)}"
-        " 2>/dev/null)",
-        "U=${U:-turnserver}",
+        *user,
         'sq() { runuser -u "$U" -- sqlite3 -bail -init /dev/null "$DB"; }',
         'sqr() { runuser -u "$U" -- sqlite3 -readonly -bail -init /dev/null'
         ' "$DB" "$1"; }',
@@ -6477,7 +6526,14 @@ def _user_remove_lines(user, step):
 def _odoo_head(state, done, root):
     """Début commun des scripts d'un serveur Odoo. `fail <étape>` imprime
     `@@FAILED <étape>`, appelle `undo` (rien tant qu'un script ne le
-    redéfinit pas), puis `@@<done> no`, et sort en erreur."""
+    redéfinit pas), puis `@@<done> no`, et sort en erreur. Un état en
+    conteneurs dont le bloc ne passe pas `cc.container_block_problem`
+    n'atteint aucune commande : Refusal `call_infra_state_invalid`, le
+    champ en `service`."""
+    if isinstance(state, dict) and state.get("method") == "container":
+        problem = cc.container_block_problem(state)
+        if problem:
+            raise Refusal("call_infra_state_invalid", service=problem)
     return [
         "set -u",
         _C_LOCALE,
@@ -6500,26 +6556,52 @@ def _state_lines(state):
     ]
 
 
-def _ntfy_put_lines(source):
+# Relectures, une par seconde, d'un conteneur de ntfy encore dans un état
+# passager après son redémarrage.
+_NTFY_RECHECKS = 10
+
+
+def _ntfy_put_lines(source, state):
     """Remplace `server.yml` par le fichier `source` de l'hôte : voisin
     `.erplibre-new` aux propriétaire et droits de l'original, renommé, puis
-    ntfy redémarré."""
+    ntfy redémarré. En conteneurs, le redémarrage est `ntfy_cli(state,
+    ...).restart`, suivi de sa barrière : l'état d'`inspect` relu tant
+    qu'il est passager (_NTFY_RECHECKS fois au plus), et vrai seulement
+    quand le conteneur tourne. Par paquets, `systemctl restart`, qui rend
+    la main une fois l'unité démarrée."""
     new = '"$N.erplibre-new"'
+    restart = f"systemctl restart {NTFY_UNIT}"
+    if isinstance(state, dict) and state.get("method") == "container":
+        cli = ntfy_cli(state, None)
+        active = f"A=$({cli.active})"
+        restart = (
+            f"{{ {cli.restart}; }} && {{ {active}; NW=0;"
+            f' while [ "$A" = activating ] && [ "$NW" -lt {_NTFY_RECHECKS} ];'
+            f" do sleep 1; NW=$((NW + 1)); {active}; done;"
+            ' [ "$A" = active ]; }'
+        )
     return [
         f'cp {source} {new} && chown --reference="$N" {new}'
         f' && chmod --reference="$N" {new} && mv -f {new} "$N"',
-        f"systemctl restart {NTFY_UNIT}",
+        restart,
     ]
 
 
-def _ntfy_lines(old, new):
+def _ntfy_lines(old, new, state):
     """Écrit `new` à la place de `server.yml`, seulement si le fichier de
     l'hôte est encore `old`, le texte que la sonde a lu : une modification
     faite depuis n'est pas écrasée (`fail ntfy-changed`). `NTFY=1` dès que
     le fichier est remplacé ; `undo` remet alors `old`. ntfy doit
-    redevenir actif."""
-    put = _ntfy_put_lines('"$D/ntfy.new"')
-    restore = _ntfy_put_lines('"$D/ntfy.old"')
+    redevenir actif : l'unité par paquets, le conteneur en conteneurs (sa
+    barrière est celle de `_ntfy_put_lines`)."""
+    put = _ntfy_put_lines('"$D/ntfy.new"', state)
+    restore = _ntfy_put_lines('"$D/ntfy.old"', state)
+    gate = [
+        f"A=$(systemctl is-active {NTFY_UNIT} 2>/dev/null)",
+        '[ "$A" = active ] || fail ntfy-restart',
+    ]
+    if state.get("method") == "container":
+        gate = []
     return [
         f'N="$R"{shlex.quote(NTFY_CONFIG)}',
         "NTFY=0",
@@ -6536,8 +6618,7 @@ def _ntfy_lines(old, new):
         put[0] + " || fail ntfy",
         "NTFY=1",
         put[1] + " || fail ntfy-restart",
-        f"A=$(systemctl is-active {NTFY_UNIT} 2>/dev/null)",
-        '[ "$A" = active ] || fail ntfy-restart',
+        *gate,
     ]
 
 
@@ -6547,8 +6628,14 @@ def _switch_lines(state, mode):
     `turnserver.conf` et redémarre coturn une fois. Le certificat lui est
     rendu : copie de celui en place pour un certificat fourni (sans elle,
     l'installateur retirerait TLS ; une copie absente arrête le script
-    avant lui), la lignée certbot avec Let's Encrypt quand elle existe."""
+    avant lui), la lignée certbot avec Let's Encrypt quand elle existe.
+
+    En conteneurs, l'installateur reçoit TURN_TARGET=container et le compte
+    du conteneur : il écrit la configuration sans rien redémarrer, et sa
+    sortie, gardée dans "$D/coturn.out", dit `@@RECREATE 1` quand elle a
+    changé (`_recreate_lines`)."""
     answers = state_answers(state)
+    container = state.get("method") == "container"
     lines = [
         _decode_to(
             _installer_payload("coturn"), '"$D/install_coturn.sh"', gunzip=True
@@ -6573,7 +6660,26 @@ def _switch_lines(state, mode):
             f'[ -f {_LIVE}"/fullchain.pem" ] && [ -f {_LIVE}"/privkey.pem" ]'
             " && LE=1",
         ]
-    lines += ["(", "  umask 022"] + _export(_coturn_env(answers, mode), raw)
+    variables = _coturn_env(answers, mode)
+    if container:
+        variables["TURN_TARGET"] = "container"
+        variables["TURN_SERVICE_USER"] = _coturn_target(state)[2]
+        lines += ["{", "  ("] + [
+            "  " + line for line in ["  umask 022", *_export(variables, raw)]
+        ]
+        if letsencrypt:
+            lines.append('    if [ "$LE" = 1 ]; then')
+            lines += _lineage_exports(answers, "      ")
+            lines.append("    fi")
+        return lines + [
+            '    exec bash "$D/install_coturn.sh"',
+            "  )",
+            '  echo "$?" > "$D/rc.switch"',
+            '} | tee "$D/coturn.out"',
+            '[ "$(cat "$D/rc.switch" 2>/dev/null)" = 0 ] || fail switch',
+            *_recreate_lines(state),
+        ]
+    lines += ["(", "  umask 022"] + _export(variables, raw)
     if letsencrypt:
         lines.append('  if [ "$LE" = 1 ]; then')
         lines += _lineage_exports(answers, "    ")
@@ -6584,6 +6690,36 @@ def _switch_lines(state, mode):
         '[ "$?" = 0 ] || fail switch',
     ]
     return lines
+
+
+def _recreate_lines(state):
+    """Après l'installateur de `_switch_lines` en conteneurs : seulement
+    sur la ligne `@@RECREATE 1` de "$D/coturn.out", le conteneur de coturn
+    recréé par l'outil de composition de l'état (il relit sa
+    configuration), puis sa barrière : en marche, l'empreinte en attente
+    devient COTURN_APPLIED ; sinon elle est retirée (la relance la
+    recalcule) et le script échoue (`switch-recreate`). Sans cette ligne,
+    rien ne touche au conteneur."""
+    block = state["container"]
+    pending, applied = _host(COTURN_APPLIED_PENDING), _host(COTURN_APPLIED)
+    name = cc.CONTAINERS["coturn"]
+    return [
+        *([f"RUID={int(block['uid'])}"] if block["rootless"] else []),
+        *_engine_shell_lines(block),
+        *_status_lines(),
+        "if grep -q '^@@RECREATE 1$' \"$D/coturn.out\"; then",
+        "  comp up -d --force-recreate coturn"
+        f" || {{ rm -f {pending}; fail switch-recreate; }}",
+        f"  cwait {name}",
+        '  if [ "$S" = running ]; then',
+        f"    if [ -f {pending} ]; then mv -f {pending} {applied}"
+        " || fail switch-applied; fi",
+        "  else",
+        f"    rm -f {pending}",
+        "    fail switch-recreate",
+        "  fi",
+        "fi",
+    ]
 
 
 def _need_ntfy_text(state, key, exempt, ntfy_text):
@@ -6676,7 +6812,7 @@ def odoo_add_script(
     if _has_ntfy(state) and ntfy_text is not None:
         text = _exempt_text(ntfy_text, state, added)
         if text != ntfy_text:
-            lines += _ntfy_lines(ntfy_text, text)
+            lines += _ntfy_lines(ntfy_text, text, state)
     if kind == "secret":
         lines += _secret_insert_lines(value, "secret")
     else:
@@ -6724,7 +6860,7 @@ def odoo_remove_script(state, key, *, now=None, ntfy_text=None, root=""):
     if ntfy_text is not None and _has_ntfy(state):
         text = _exempt_text(ntfy_text, state, removed)
         if text != ntfy_text:
-            lines += _ntfy_lines(ntfy_text, text)
+            lines += _ntfy_lines(ntfy_text, text, state)
             # L'état qui suit ne nomme plus cet Odoo : un échec à l'écrire
             # ne remet pas l'adresse, la relance du retrait la retirerait.
             lines.append("NTFY=0")
@@ -6763,7 +6899,7 @@ def odoo_rollback_script(
         }
         written = _exempt_text(ntfy_text, state, after)
         if written != ntfy_text:
-            restore = _ntfy_put_lines('"$D/ntfy.old"')
+            restore = _ntfy_put_lines('"$D/ntfy.old"', state)
             lines += [
                 f'N="$R"{shlex.quote(NTFY_CONFIG)}',
                 _decode_to(_b64(ntfy_text), '"$D/ntfy.old"') + " || fail ntfy",
@@ -7287,6 +7423,7 @@ CHECK_KEYS = (
     "call_infra_check_ice_bad_url",
     "call_infra_check_ice_foreign",
     "call_infra_check_ice_none",
+    "call_infra_check_container_account",
 )
 
 
@@ -7321,18 +7458,97 @@ _CHECK_NFT_SED = (
 )
 
 
+# Format d'`inspect` de la vérification : l'état du conteneur et le
+# `user:` sous lequel il tourne (l'uid:gid du fichier compose).
+_CHECK_INSPECT = "{{.State.Status}} {{.Config.User}}"
+
+
+def _check_container_lines():
+    """Lignes `sh` (lecture seule) de `check_remote_script` qui cherchent
+    les conteneurs aux noms fixes de cc.CONTAINERS : sous Docker en root
+    quand docker.service tourne déjà (une socket active lancerait le
+    démon), sous Podman en root quand son stockage existe, sous Podman
+    rootless quand le compte cc.ROOTLESS_ACCOUNT, sa session
+    (/run/user/<uid>) et son stockage existent ; rien n'est créé ni
+    réveillé, chaque appel passe par `timeout 20`.
+
+    Pour chaque conteneur trouvé : `@@CONTAINER_ACTIVE <service> <moteur>
+    <0|1> <état> <uid:gid>` (« - » pour un `user` illisible) ; le premier
+    trouvé par service pose `CS_<service>` (« active » pour « running »,
+    son état sinon) ; celui de coturn pose `CA`, le compte de l'hôte qui
+    porte son uid (`getent passwd`), sous lequel la base se lit. Suppose
+    `R`."""
+    rootless = cc.rootless_prefix_sh(cc.ROOTLESS_ACCOUNT, "C_RU")
+    first = [
+        f'    {svc}) [ -n "$CS_{svc}" ] || CS_{svc}=$a ;;'
+        for svc in cc.CONTAINERS
+    ]
+    tries = [
+        f'  cact {svc} {name} "$@"' for svc, name in cc.CONTAINERS.items()
+    ]
+    return [
+        "CA=; " + "; ".join(f"CS_{svc}=" for svc in cc.CONTAINERS),
+        "cact() {",
+        "  s=$1; n=$2; e=$3; r=$4; shift 4",
+        f'  L=$(timeout 20 "$@" inspect -f {shlex.quote(_CHECK_INSPECT)}'
+        ' "$n" 2>/dev/null | head -n 1)',
+        '  st=${L%% *}; us=${L#"$st"}; us=${us# }',
+        "  case \"$st\" in ''|*[!a-z]*) return 0 ;; esac",
+        '  case "$us" in [1-9]*:[1-9]*) ;; *) us=- ;; esac',
+        '  case "$us" in *[!0-9:]*|*:*:*) us=- ;; esac',
+        '  echo "@@CONTAINER_ACTIVE $s $e $r $st $us"',
+        '  a=$st; [ "$st" = running ] && a=active',
+        '  case "$s" in',
+        *first,
+        "  esac",
+        '  if [ "$s" = coturn ] && [ -z "$CA" ] && [ "$us" != - ]; then',
+        '    CA=$(getent passwd "${us%%:*}" 2>/dev/null | head -n 1'
+        " | cut -d: -f1)",
+        "  fi",
+        "}",
+        "ctry() {",
+        *tries,
+        "}",
+        "if command -v docker >/dev/null 2>&1"
+        ' && [ "$(systemctl is-active docker.service 2>/dev/null)"'
+        " = active ]; then",
+        "  ctry docker 0 docker",
+        "fi",
+        "if command -v podman >/dev/null 2>&1"
+        f' && [ -d "$R"{shlex.quote(cc.PODMAN_ROOT_STORAGE)} ]; then',
+        "  ctry podman 0 podman",
+        "fi",
+        f"C_RP=$(getent passwd {cc.ROOTLESS_ACCOUNT} 2>/dev/null"
+        " | head -n 1)",
+        "C_RU=$(printf '%s\\n' \"$C_RP\" | cut -d: -f3)",
+        "C_RH=$(printf '%s\\n' \"$C_RP\" | cut -d: -f6)",
+        "case \"$C_RU\" in ''|*[!0-9]*) C_RU= ;; esac",
+        'if command -v podman >/dev/null 2>&1 && [ -n "$C_RU" ]'
+        ' && [ -d "$R/run/user/$C_RU" ] && [ -n "$C_RH" ]'
+        f' && [ -d "$R$C_RH/{cc.PODMAN_USER_STORAGE}" ]; then',
+        f"  ctry podman 1 {rootless} podman",
+        "fi",
+    ]
+
+
 def check_remote_script(root=""):
     """Script `sh` en lecture seule, lancé en root, qui imprime ce que la
     vérification lit sur l'hôte.
 
-    Lignes : `@@STATE <base64>` (l'état, s'il existe), `@@ACTIVE <service>
-    <état systemd>` (« absent » sans unité), `@@CHECK_KEY <hex>` (la clé
-    long terme du compte de contrôle, lue dans la base de coturn par
-    `sqlite3 -readonly` sous le compte du service : root n'ouvre aucun
-    fichier de ce dossier, qui appartient à ce compte), `@@TURN_SECRET
-    <realm> <valeur>` par ligne de `turn_secret` et `@@TURN_USER <realm>
-    <nom> <clé hexa>` par ligne de `turnusers_lt` (même lecture), `@@CERT <étiquette>
-    <base64>` par certificat de TLS_CERTS présent, `@@HOOK <exec|present>`
+    Lignes : `@@STATE <base64>` (l'état, s'il existe),
+    `@@CONTAINER_ACTIVE <service> <moteur> <0|1> <état> <uid:gid>` par
+    conteneur aux noms fixes trouvé (`_check_container_lines`),
+    `@@ACTIVE <service> <état>` : celui de l'unité systemd, sauf quand
+    elle n'est pas active et qu'un conteneur du service existe, dont
+    l'état (« running » lu « active ») est alors donné ; « absent » sans
+    unité ni conteneur. `@@CHECK_KEY <hex>` (la clé long terme du compte
+    de contrôle, lue dans la base de coturn par `sqlite3 -readonly` sous
+    le compte du service : root n'ouvre aucun fichier de ce dossier, qui
+    appartient à ce compte ; le compte du conteneur de coturn quand il
+    existe, sinon celui de l'unité), `@@TURN_SECRET <realm> <valeur>` par
+    ligne de `turn_secret` et `@@TURN_USER <realm> <nom> <clé hexa>` par
+    ligne de `turnusers_lt` (même lecture), `@@CERT <étiquette> <base64>`
+    par certificat de TLS_CERTS présent, `@@HOOK <exec|present>`
     quand le crochet de déploiement existe (exécutable ou non),
     `@@RENEWAL <active|held>` selon le fichier de renouvellement de la
     lignée (en place, ou mis de côté), `@@TIMER <unité> <état systemd>` par
@@ -7363,26 +7579,30 @@ def check_remote_script(root=""):
             "echo",
             f'S="$R"{shlex.quote(STATE_PATH)}',
             'if [ -f "$S" ]; then echo "@@STATE $(base64 -w0 < "$S")"; fi',
+            *_check_container_lines(),
             "CU=-",
             "for u in " + " ".join(COTURN_UNITS.values()) + "; do",
             '  if systemctl cat "$u" >/dev/null 2>&1; then CU=$u; break; fi',
             "done",
             'if [ "$CU" != - ]; then',
             '  A=$(systemctl is-active "$CU" 2>/dev/null)',
+            '  [ "$A" != active ] && [ -n "$CS_coturn" ] && A=$CS_coturn',
             '  echo "@@ACTIVE coturn ${A:-unknown}"',
             "else",
-            '  echo "@@ACTIVE coturn absent"',
+            '  echo "@@ACTIVE coturn ${CS_coturn:-absent}"',
             "fi",
             f"if systemctl cat {NTFY_UNIT} >/dev/null 2>&1; then",
             f"  A=$(systemctl is-active {NTFY_UNIT} 2>/dev/null)",
+            '  [ "$A" != active ] && [ -n "$CS_ntfy" ] && A=$CS_ntfy',
             '  echo "@@ACTIVE ntfy ${A:-unknown}"',
             "else",
-            '  echo "@@ACTIVE ntfy absent"',
+            '  echo "@@ACTIVE ntfy ${CS_ntfy:-absent}"',
             "fi",
             f'DB="$R"{shlex.quote(COTURN_DB)}',
-            'if [ "$CU" != - ] && [ -f "$DB" ]'
+            'if { [ -n "$CA" ] || [ "$CU" != - ]; } && [ -f "$DB" ]'
             " && command -v sqlite3 >/dev/null 2>&1; then",
-            '  U=$(systemctl show -p User --value "$CU" 2>/dev/null)',
+            '  if [ -n "$CA" ]; then U=$CA;'
+            ' else U=$(systemctl show -p User --value "$CU" 2>/dev/null); fi',
             *(
                 '  runuser -u "${U:-turnserver}" -- sqlite3 -readonly'
                 f' -init /dev/null "$DB" "{sql}" 2>/dev/null'
@@ -7445,7 +7665,9 @@ def parse_check_remote(output):
     `firewall_rules` [(ufw|nftables, Rule)], `certs` {étiquette de
     TLS_CERTS: PEM}, `hook` (« exec », « present » ou None), `renewal`
     (« active », « held » ou None), `timers` {minuteur de CERTBOT_TIMERS:
-    état}. Une valeur hors de ces formes est écartée.
+    état}, `containers` {service: [(moteur, rootless, état, uid ou
+    None)]}, dans l'ordre des lignes. Une valeur hors de ces formes est
+    écartée.
 
     Une règle hors format ou sur le port de ssh est écartée, comme dans
     `rules_from_state`. Refusal `call_infra_probe_incomplete` sans `@@END`.
@@ -7453,7 +7675,7 @@ def parse_check_remote(output):
     state, active, key, rules, certs = None, {}, None, [], {}
     turn_secrets, turn_users = [], {}
     hook = renewal = None
-    timers = {}
+    timers, containers = {}, {}
     complete = False
     for name, value in marker_lines(output):
         if name == "STATE":
@@ -7498,6 +7720,10 @@ def parse_check_remote(output):
                 and _UNIT_STATE.match(parts[1])
             ):
                 timers[parts[0]] = parts[1]
+        elif name == "CONTAINER_ACTIVE":
+            found = _container_active(value)
+            if found:
+                containers.setdefault(found[0], []).append(found[1:])
         elif name == "END":
             complete = True
     if not complete:
@@ -7513,7 +7739,29 @@ def parse_check_remote(output):
         "hook": hook,
         "renewal": renewal,
         "timers": timers,
+        "containers": containers,
     }
+
+
+_CONTAINER_STATUS = re.compile(r"^[a-z]+$")
+_CONTAINER_USER = re.compile(r"^([1-9][0-9]{0,9}):[1-9][0-9]{0,9}$")
+
+
+def _container_active(value):
+    """(service, moteur, rootless, état, uid ou None) d'une ligne
+    `@@CONTAINER_ACTIVE`, ou None hors de sa forme."""
+    parts = value.split()
+    if len(parts) != 5:
+        return None
+    svc, engine, flag, status, user = parts
+    if svc not in SERVICES or engine not in cc.ENGINES:
+        return None
+    if flag not in ("0", "1") or not _CONTAINER_STATUS.match(status):
+        return None
+    found = _CONTAINER_USER.match(user)
+    if not found and user != "-":
+        return None
+    return svc, engine, flag == "1", status, int(found[1]) if found else None
 
 
 class _NamedHTTPS(http.client.HTTPConnection):
@@ -8143,12 +8391,63 @@ def check_local(
     lines.append(
         _firewall_line(state, facts_remote.get("firewall_rules") or [])
     )
+    if state.get("method") == "container":
+        lines += _container_service_lines(state, records, facts_remote)
+        return lines
     active = facts_remote.get("active") or {}
     for svc in records:
         current = active.get(svc, "unknown")
         lines.append(
             CheckLine(
                 f"service-{svc}",
+                current == "active",
+                "call_infra_check_active",
+                {"state": current},
+            )
+        )
+    return lines
+
+
+def _container_service_lines(state, records, facts_remote):
+    """Lignes `service-<service>` d'un état en conteneurs : l'état du
+    conteneur que le bloc `container` désigne (même moteur, même mode
+    rootless), « missing » sans lui, et non celui d'une unité systemd
+    qu'un paquet adopté garderait sur l'hôte. Un conteneur qui tourne sous
+    un autre uid que celui de l'état : `call_infra_check_container_account`
+    (la base de coturn, que la vérification et les scripts d'Odoo lisent
+    sous le compte de l'état, ne serait pas la sienne)."""
+    block = state.get("container")
+    block = block if isinstance(block, dict) else {}
+    found = facts_remote.get("containers") or {}
+    lines = []
+    for svc, record in records.items():
+        match = next(
+            (
+                item
+                for item in found.get(svc, ())
+                if item[:2] == (block.get("engine"), block.get("rootless"))
+            ),
+            None,
+        )
+        name = f"service-{svc}"
+        if match is None:
+            current = "missing"
+        else:
+            current = "active" if match[2] == "running" else match[2]
+            expected = record.get("uid")
+            if match[3] is not None and match[3] != expected:
+                lines.append(
+                    CheckLine(
+                        name,
+                        False,
+                        "call_infra_check_container_account",
+                        {"found": match[3], "expected": expected},
+                    )
+                )
+                continue
+        lines.append(
+            CheckLine(
+                name,
                 current == "active",
                 "call_infra_check_active",
                 {"state": current},
