@@ -17,7 +17,7 @@ setuptools==84.1.0
 googletrans-py==4.0.0
 #googletrans==4.0.0-rc1
 #chardet==3.0.4
-openai==2.54.0
+openai==3.41.0
 idna==3.20
 # Odoo 18 épingle requests 2.31.0, touchée par CVE-2024-35195 et
 # CVE-2024-47081, corrigées en 2.32.4, puis CVE-2026-25645, corrigée en
