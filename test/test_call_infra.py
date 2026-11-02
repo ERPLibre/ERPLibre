@@ -12663,6 +12663,64 @@ class TestContainerUninstall(ContainerSandbox):
             self.assertIn(f"REMOVED package {package}", markers)
         self.assertNotIn("KEPT engine docker.io docker-compose", markers)
 
+    def test_image_of_an_older_pin_is_removed(self):
+        # Une épingle déplacée depuis : l'état garde la référence que
+        # l'installation d'alors a tirée (condensat inventé).
+        older = "docker.io/coturn/coturn:4.17.0@sha256:" + "5a" * 32
+        state = self.docker_state(
+            images_pulled=[older] + list(cc.IMAGES.values())
+        )
+        self.host(state)
+        with open(os.path.join(self.fk, "images"), "a") as handle:
+            handle.write(older + "\n")
+        done = self.uninstall(state)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        for ref in [older] + list(cc.IMAGES.values()):
+            self.assertIn(f"IMAGE_REMOVED {ref}", markers)
+        self.assertEqual(self.read(os.path.join(self.fk, "images")), "")
+        self.assertEqual(markers[-1], "DONE yes")
+
+    def test_images_pulled_under_an_earlier_engine_are_removed_there(self):
+        # Docker en root, retour aux paquets, puis Podman rootless : les
+        # images de la période Docker sont dans le stockage de Docker.
+        docker = CONTAINER_STUBS["docker"].replace(
+            "$FK/images", "$FK/docker-images"
+        )
+        write(os.path.join(self.stubs, "docker"), docker)
+        state = self.rootless_state()
+        state["container_added"] = {
+            "engine": "docker",
+            "rootless": False,
+            "account": None,
+            "uid": None,
+            "images_pulled": [cc.IMAGES["coturn"]],
+            "engine_packages_added": [],
+            "accounts_added": [],
+            "restart_unit_enabled": None,
+            "linger_added": False,
+        }
+        self.host(state)
+        write(
+            os.path.join(self.fk, "docker-images"),
+            cc.IMAGES["coturn"] + "\n",
+            0o644,
+        )
+        done = self.uninstall(state, remove_data=True, remove_engine=True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        ref = cc.IMAGES["coturn"]
+        self.assertEqual(markers.count(f"IMAGE_REMOVED {ref}"), 2)
+        user = "as=erplibre-call xdg=/run/user/995"
+        rootless = self.first(f"podman {user} rmi {ref}")
+        rootful = self.first(f"docker as=root xdg= rmi {ref}")
+        self.assertIsNotNone(rootless)
+        self.assertIsNotNone(rootful)
+        self.assertLess(rootful, self.first("userdel"))
+        self.assertEqual(self.read(os.path.join(self.fk, "docker-images")), "")
+        self.assertEqual(self.read(os.path.join(self.fk, "images")), "")
+        self.assertEqual(markers[-1], "DONE yes")
+
     def test_image_in_use_is_kept_and_the_uninstall_goes_on(self):
         state = self.docker_state()
         self.host(state)
@@ -12893,6 +12951,24 @@ class TestContainerUninstall(ContainerSandbox):
                 rootful,
                 ("container", "images_pulled"),
                 ["x;rm -rf /"],
+                "container.images_pulled",
+            ),
+            (
+                rootful,
+                ("container", "images_pulled"),
+                ["docker.io/coturn/coturn:latest"],
+                "container.images_pulled",
+            ),
+            (
+                rootful,
+                ("container", "images_pulled"),
+                [cc.IMAGES["coturn"] + "\n"],
+                "container.images_pulled",
+            ),
+            (
+                rootful,
+                ("container", "images_pulled"),
+                [cc.IMAGES["coturn"].replace("docker.io", "$(id)")],
                 "container.images_pulled",
             ),
             (

@@ -2415,6 +2415,31 @@ def _added_item(key, value):
     return False
 
 
+# Référence d'image épinglée par condensat, de la forme de cc.IMAGES :
+# registre et chemin en minuscules, étiquette, condensat sha256. Aucun
+# caractère que `sh` interprète.
+_PINNED_IMAGE = re.compile(
+    r"^[a-z0-9][a-z0-9.-]*(/[a-z0-9][a-z0-9._-]*)+"
+    r":[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}@sha256:[0-9a-f]{64}\Z"
+)
+
+
+def _pinned_image(value):
+    """`value` est-il une référence d'image épinglée (`_PINNED_IMAGE`) ?"""
+    return isinstance(value, str) and bool(_PINNED_IMAGE.match(value))
+
+
+def _recorded_item(key, value):
+    """`value` est-il admis dans le champ `key` de _CONTAINER_ADDED d'un
+    état écrit ? La règle de `_added_item`, sauf pour `images_pulled`, qui
+    admet toute image épinglée (`_pinned_image`) : l'état garde les images
+    qu'une épingle remplacée depuis a tirées, que la désinstallation
+    retire encore."""
+    if key == "images_pulled":
+        return _pinned_image(value)
+    return _added_item(key, value)
+
+
 def _merge_fiche(block, fiche):
     """`block` (bloc `container`) gagne ce que la fiche « container » d'un
     passage coupé consigne : les listes s'y ajoutent, `linger_added` vrai
@@ -5003,20 +5028,22 @@ def _image_removal_lines(plan):
     return lines
 
 
-def _rmi_lines(engine, refs):
-    """Lignes `sh` qui retirent par `eng rmi`, sans forcer, chaque image
-    épinglée de `refs` présente sous le moteur `engine` : `@@IMAGE_REMOVED
-    <référence>`, ou `@@IMAGE_KEPT <référence>` quand le moteur la refuse
-    (une image encore servie). Une image absente ne dit rien ; une valeur
-    hors de `cc.IMAGES` est ignorée."""
+def _rmi_lines(engine, refs, call="eng"):
+    """Lignes `sh` qui retirent par `<call> rmi`, sans forcer, chaque image
+    épinglée de `refs` présente sous le moteur `engine`, que la fonction
+    `sh` `call` lance : `@@IMAGE_REMOVED <référence>`, ou `@@IMAGE_KEPT
+    <référence>` quand le moteur la refuse (une image encore servie). Une
+    image absente ne dit rien ; une valeur qui n'est pas une image épinglée
+    (`_pinned_image`) est ignorée."""
     exists = {"docker": "image inspect", "podman": "image exists"}[engine]
     lines = []
     for ref in refs:
-        if ref not in cc.IMAGES.values():
+        if not _pinned_image(ref):
             continue
+        quoted = shlex.quote(ref)
         lines += [
-            f"if eng {exists} {ref} >/dev/null 2>&1; then",
-            f"  if eng rmi {ref} >/dev/null 2>&1; then"
+            f"if {call} {exists} {quoted} >/dev/null 2>&1; then",
+            f"  if {call} rmi {quoted} >/dev/null 2>&1; then"
             f' echo "@@IMAGE_REMOVED {ref}";',
             f'  else echo "@@IMAGE_KEPT {ref}"; fi',
             "fi",
@@ -9064,7 +9091,7 @@ _LINGER_FILE = "/var/lib/systemd/linger/{account}"
 
 def _checked_added(block, where):
     """Champs de _CONTAINER_ADDED de `block` (bloc `container` ou
-    `container_added`), chaque valeur admise par `_added_item`, un champ
+    `container_added`), chaque valeur admise par `_recorded_item`, un champ
     absent valant son défaut. Refusal `call_infra_state_invalid`
     (`service` : `<where>.<champ>`) sinon : ces valeurs finissent dans un
     script lancé en root."""
@@ -9073,12 +9100,12 @@ def _checked_added(block, where):
         value = block.get(key, copy.deepcopy(default))
         if kind is list:
             ok = isinstance(value, list) and all(
-                _added_item(key, item) for item in value
+                _recorded_item(key, item) for item in value
             )
         elif kind is bool:
             ok = isinstance(value, bool)
         else:
-            ok = value is None or _added_item(key, value)
+            ok = value is None or _recorded_item(key, value)
         if not ok:
             raise Refusal("call_infra_state_invalid", service=f"{where}.{key}")
         values[key] = value
@@ -9105,30 +9132,30 @@ def _engine_additions(state):
     `container` d'un état en conteneurs, réuni avec `container_added`, ce
     qu'une période en conteneurs a laissé à un retour aux paquets. Dict :
     `engine` (commande du moteur, du bloc `container`, sinon de
-    `container_added`) et `engine_name`, puis `images`, `packages`,
-    `accounts` et `units` (listes sans doublon, le bloc d'abord), `linger`
-    (vrai si l'un l'a ajoutée) et `uid`, celui du compte rootless ou None.
-    None quand l'état ne consigne ni l'un ni l'autre. Refusal
-    `call_infra_state_invalid` pour une valeur altérée ; le bloc
-    `container` est déjà passé par `cc.container_block_problem`."""
+    `container_added`) ; `images`, une liste de (nom du moteur, commande
+    du moteur, références tirées), une entrée par commande : les images de
+    `container_added` tirées sous un autre moteur ou un autre mode vivent
+    dans un autre stockage ; puis `packages`, `accounts` et `units` (listes
+    sans doublon, le bloc d'abord), `linger` (vrai si l'un l'a ajoutée) et
+    `uid`, celui du compte rootless ou None. None quand l'état ne consigne
+    ni l'un ni l'autre. Refusal `call_infra_state_invalid` pour une valeur
+    altérée ; le bloc `container` est déjà passé par
+    `cc.container_block_problem`."""
     parts = []
     if state.get("method") == "container":
-        parts.append(("container", state["container"]))
+        block = state["container"]
+        parts.append(("container", block, cc.engine_argv(block)))
     added = state.get("container_added")
     if added is not None:
         if not isinstance(added, dict):
             raise Refusal(
                 "call_infra_state_invalid", service="container_added"
             )
-        argv = _added_engine_argv(added)
-        parts.append(("container_added", added))
+        parts.append(("container_added", added, _added_engine_argv(added)))
     if not parts:
         return None
-    if parts[0][0] == "container":
-        argv = cc.engine_argv(state["container"])
     merged = {
-        "engine": argv,
-        "engine_name": parts[0][1]["engine"],
+        "engine": parts[0][2],
         "images": [],
         "packages": [],
         "accounts": [],
@@ -9136,10 +9163,16 @@ def _engine_additions(state):
         "linger": False,
         "uid": None,
     }
-    for where, block in parts:
+    for where, block, argv in parts:
         values = _checked_added(block, where)
+        group = next((g for g in merged["images"] if g[1] == argv), None)
+        if group is None:
+            group = (block["engine"], argv, [])
+            merged["images"].append(group)
+        group[2].extend(
+            v for v in values["images_pulled"] if v not in group[2]
+        )
         for key, name in (
-            ("images_pulled", "images"),
             ("engine_packages_added", "packages"),
             ("accounts_added", "accounts"),
         ):
@@ -9151,6 +9184,21 @@ def _engine_additions(state):
         if merged["uid"] is None and block.get("rootless") is True:
             merged["uid"] = block["uid"]
     return merged
+
+
+def _pulled_image_lines(additions):
+    """Lignes `sh` qui retirent les images tirées de `additions`
+    (`_engine_additions`), chaque groupe par son moteur (`_rmi_lines`) : le
+    premier par `eng`, déjà définie sur la commande `additions["engine"]`,
+    un autre par une fonction `eng_added` définie sur la sienne."""
+    lines = []
+    for index, (name, argv, refs) in enumerate(additions["images"]):
+        call = "eng"
+        if index:
+            call = "eng_added"
+            lines.append(f'eng_added() {{ {shlex.join(argv)} "$@"; }}')
+        lines += _rmi_lines(name, refs, call)
+    return lines
 
 
 def _version_older_lines():
@@ -9205,7 +9253,7 @@ def _container_uninstall_lines(state, additions, records):
     l'outil est un chemin de l'hôte, et l'image de coturn déclare un volume
     que `down` seul garderait), puis le fichier compose ; sans lui, chaque
     conteneur consigné retiré par son nom ; enfin les images que l'outil a
-    tirées (`_rmi_lines`). Un `down` qui échoue garde le fichier : la
+    tirées (`_pulled_image_lines`). Un `down` qui échoue garde le fichier : la
     relance le reprend."""
     block = state["container"]
     lines = [
@@ -9240,7 +9288,7 @@ def _container_uninstall_lines(state, additions, records):
             "  fi",
         ]
     lines += ["  :", "fi"]
-    return lines + _rmi_lines(block["engine"], additions["images"])
+    return lines + _pulled_image_lines(additions)
 
 
 def _container_restore_lines(svc, record):
@@ -9394,7 +9442,8 @@ def _engine_removal_lines(
 ):
     """Lignes `sh` de ce que l'installation en conteneurs a ajouté pour le
     moteur, après les services. Par paquets (`container_added` seul), les
-    images tirées partent d'abord (`_rmi_lines`), par le moteur consigné.
+    images tirées partent d'abord (`_pulled_image_lines`), par le moteur
+    consigné.
 
     Sans `remove_engine` : `@@KEPT engine <paquets>` pour les paquets du
     moteur posés par l'outil. Avec, et seulement quand aucune étape n'a
@@ -9415,7 +9464,7 @@ def _engine_removal_lines(
         lines += [
             "cd / || failed workdir",
             f'eng() {{ {shlex.join(additions["engine"])} "$@"; }}',
-            *_rmi_lines(additions["engine_name"], additions["images"]),
+            *_pulled_image_lines(additions),
         ]
     packages = additions["packages"]
     if not remove_engine:
