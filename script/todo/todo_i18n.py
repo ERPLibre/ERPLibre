@@ -3987,6 +3987,10 @@ TRANSLATIONS = {
         "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : il ne pourrait plus la lire. Mettez à jour ntfy sur l'hôte, ou gardez les conteneurs.",
         "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: it could no longer read it. Upgrade ntfy on the host, or keep the containers.",
     },
+    "call_infra_uninstall_ntfy_disabled": {
+        "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : l'unité {unit} reste désactivée. Mettez à jour ntfy sur l'hôte, puis activez-la (systemctl enable --now {unit}).",
+        "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: the {unit} unit stays disabled. Upgrade ntfy on the host, then enable it (systemctl enable --now {unit}).",
+    },
     "call_infra_engine_switch": {
         "fr": "Les conteneurs tournent sous {old} : passer à {new} demande d'abord de désinstaller, ou de revenir aux paquets.",
         "en": "The containers run under {old}: moving to {new} first needs an uninstall, or a return to packages.",
