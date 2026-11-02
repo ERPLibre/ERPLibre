@@ -323,13 +323,21 @@ def verify_restore(database, zip_path, config_path=None):
 
 
 def scan_zip(chemin):
-    """Les noms de fichiers du `filestore/` d'une sauvegarde."""
+    """Les noms de fichiers du `filestore/` d'une sauvegarde.
+
+    `checklist/` est la file du ramasse-miettes d'Odoo : un fichier VIDE par
+    pièce jointe à réexaminer, rangé sous `checklist/<xx>/`, que le prochain
+    `_gc_file_store` efface. Ce n'est pas une donnée à restaurer, et sa
+    profondeur d'un niveau de plus le ferait compter comme jamais arrivé.
+    """
     try:
         with zipfile.ZipFile(chemin) as archive:
             return [
                 membre[len("filestore/") :]
                 for membre in archive.namelist()
-                if membre.startswith("filestore/") and not membre.endswith("/")
+                if membre.startswith("filestore/")
+                and not membre.endswith("/")
+                and not membre.startswith("filestore/checklist/")
             ]
     except (OSError, zipfile.BadZipFile):
         return []

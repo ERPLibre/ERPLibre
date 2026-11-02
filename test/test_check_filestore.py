@@ -1028,6 +1028,26 @@ class TestVerifyingARestore(unittest.TestCase):
         self.pose(["aa/un"])
         self.assertEqual(fs.verify_restore("ma_base", self.zip)["missing"], 2)
 
+    def test_the_gc_checklist_is_not_expected(self):
+        """Une sauvegarde d'Odoo 18 porte, sous checklist/<xx>/, un marqueur
+        vide par pièce jointe : le compter rendait la moitié du filestore
+        « jamais arrivée » sur une restauration complète."""
+        with zipfile.ZipFile(self.zip, "a") as archive:
+            for nom in ("aa/un", "bb/deux", "cc/trois"):
+                archive.writestr(f"filestore/checklist/{nom}", "")
+        self.pose(
+            [
+                "aa/un",
+                "bb/deux",
+                "cc/trois",
+                "checklist/aa/un",
+                "checklist/bb/deux",
+            ]
+        )
+        r = fs.verify_restore("ma_base", self.zip)
+        self.assertEqual((r["expected"], r["placed"]), (3, 3))
+        self.assertEqual((r["nested"], r["missing"]), (0, 0))
+
     def test_a_zip_without_a_filestore_says_nothing(self):
         # Se taire quand il n'y a rien à contrôler : un contrôle bavard
         # à chaque restauration finit par ne plus être lu.
