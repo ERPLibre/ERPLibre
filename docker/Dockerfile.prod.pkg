@@ -13,18 +13,33 @@ ARG WORKING_HASH
 ENV BRANCH_ERPLIBRE=$WORKING_BRANCH
 ENV COMMIT_ERPLIBRE=$WORKING_HASH
 ENV DOCKER_BUILD=true
+# Le compte propriétaire de /ERPLibre, son code et ses dépôts git : « odoo »,
+# celui qui fait tourner Odoo, ou « root ». Sous « odoo », erplibre_info tire
+# le code depuis Odoo : un fetch écrit dans .git, et le processus d'Odoo peut
+# donc réécrire son propre code. Sous « root », l'image est immuable pour
+# Odoo, et un tirage refuse en nommant le propriétaire. Tout ce qui écrit
+# dans /ERPLibre s'exécute sous ce compte, de sorte que rien ne change de
+# propriétaire après coup : un « chown -R » recopierait l'arbre entier dans
+# une couche de plus.
+ARG ERPLIBRE_CODE_OWNER=odoo
 
 RUN cat /etc/os-release
 
 USER root
 
-RUN mkdir ~/.ssh/ && \
-    echo "StrictHostKeyChecking no" >> ~/.ssh/config && \
+RUN case "${ERPLIBRE_CODE_OWNER}" in \
+      odoo|root) ;; \
+      *) echo "ERPLIBRE_CODE_OWNER vaut « odoo » ou « root », pas « ${ERPLIBRE_CODE_OWNER} »." ; exit 1 ;; \
+    esac && \
     apt update && \
-    apt install ssh-client git -y --no-install-recommends && \
+    apt install ssh-client git libgirepository1.0-dev -y --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-RUN cd ; mkdir -p .bin/ && \
+USER ${ERPLIBRE_CODE_OWNER}
+
+RUN mkdir -p ~/.ssh/ && \
+    echo "StrictHostKeyChecking no" >> ~/.ssh/config && \
+    cd ; mkdir -p .bin/ && \
     git config --global color.ui false && \
     git config --global user.email "foo@bar.io" && \
     git config --global user.name "Foo Bar" && \
@@ -72,10 +87,6 @@ RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     source ./.venv.erplibre/bin/activate && \
     ./script/manifest/update_manifest_local_dev.sh
 
-RUN apt update && \
-    apt install -y libgirepository1.0-dev && \
-    rm -rf /var/lib/apt/lists/*
-
 # Install Poetry
 #
 # CPPFLAGS redonne au preprocesseur l'alias Python 2 que SWIG 4.3 a retire.
@@ -109,10 +120,9 @@ RUN cd $ODOO_PREFIX && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/odoo${ODOO_VERSION}/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf
 
-RUN cp /etc/odoo/odoo.conf /odoo.conf
+USER root
 
-#RUN mkdir '/home/odoo/.local'
-#RUN chown -R odoo '/home/odoo/.local'
+RUN cp /etc/odoo/odoo.conf /odoo.conf
 
 USER odoo
 

@@ -148,6 +148,11 @@ fi
 cd docker
 
 ARGS="${ARGS} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=${EL_HASH}"
+# ERPLIBRE_CODE_OWNER=root construit une image dont Odoo ne peut pas réécrire
+# le code, et donc ne peut pas le tirer ; absent, le Dockerfile prend « odoo ».
+if [[ -n "${ERPLIBRE_CODE_OWNER:-}" ]]; then
+  ARGS="${ARGS} --build-arg ERPLIBRE_CODE_OWNER=${ERPLIBRE_CODE_OWNER}"
+fi
 
 # UNE seule base, bookworm, pour toutes les versions d'Odoo.
 #
