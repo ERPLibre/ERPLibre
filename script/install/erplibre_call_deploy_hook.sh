@@ -199,12 +199,17 @@ EOF
 
 # container_engine <argument>... : lance le moteur de l'etat avec ces
 # arguments, directement en root ; en rootless, depuis root, sous le compte
-# rootless et dans sa session (XDG_RUNTIME_DIR), ou Podman trouve les
-# conteneurs de ce compte. Lit ENGINE, ROOTLESS, ACCOUNT et RUID, que
-# coturn_renew pose a partir de coturn_record, donc deja valides.
+# rootless et dans sa session (XDG_RUNTIME_DIR, bus D-Bus), ou Podman
+# trouve les conteneurs de ce compte, depuis « / » : Podman rootless
+# s'arrete quand le compte ne peut pas ouvrir le dossier courant, celui de
+# qui lance certbot. Le meme prefixe que rootless_prefix de
+# call_infra_container.py, qu'un test garde egal. Lit ENGINE, ROOTLESS,
+# ACCOUNT et RUID, que coturn_renew pose a partir de coturn_record, donc
+# deja valides.
 container_engine() {
     if [ "$ROOTLESS" = 1 ]; then
-        runuser -u "$ACCOUNT" -- env "XDG_RUNTIME_DIR=/run/user/$RUID" \
+        runuser -u "$ACCOUNT" -- env -C / "XDG_RUNTIME_DIR=/run/user/$RUID" \
+            "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$RUID/bus" \
             "$ENGINE" "$@"
     else
         "$ENGINE" "$@"
