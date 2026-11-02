@@ -9989,6 +9989,7 @@ def engine_facts(**changes):
         },
         docker_service=("active", "enabled"),
         newuidmap=True,
+        user_bus=True,
     )
     values.update(changes)
     return cc.EngineFacts(**values)
@@ -11485,14 +11486,101 @@ class TestContainerInstallRun(ContainerSandbox):
             _NOTE + 'mkdir -p "$ROOT/run/user/995"\n',
         )
         done = self.run_script(self.rootless_plan())
-        self.assertFalse([line for line in self.argv() if " --user " in line])
-        self.assert_no_state(done)
-        self.assertIn(
-            ("FAILED", "rootless-session"), ci.marker_lines(done.stdout)
+        # Seul `dbus.socket` est démarré, une fois, rien d'autre sous
+        # `systemctl --user` avant le bus.
+        self.assertEqual(
+            [
+                line
+                for line in self.argv()
+                if line.startswith("systemctl ") and " --user " in line
+            ],
+            [
+                "systemctl as=erplibre-call xdg=/run/user/995 --user start"
+                " dbus.socket"
+            ],
         )
+        self.assert_no_state(done)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("FAILED", "rootless-session"), markers)
         self.assertEqual(
             len([line for line in self.argv() if line.startswith("sleep ")]),
             30,
+        )
+        # Le constat dit lequel manque : dossier, gestionnaire, unité du bus.
+        self.assertIn(
+            ("ROOTLESS_SESSION", "run-dir=1 manager=active bus-unit=0"),
+            markers,
+        )
+        self.assertIn(
+            "systemctl as=root xdg= is-active user@995.service", self.argv()
+        )
+
+    def test_rootless_session_report_reads_each_fact(self):
+        # Sans dossier ni gestionnaire, unité du bus présente : le constat
+        # le dit tel quel.
+        write(os.path.join(self.stubs, "loginctl"), _NOTE)
+        write(self.path(cc.USER_BUS_UNITS[0]), "", 0o644)
+        done = self.run_script(
+            self.rootless_plan(), ACTIVE_user_995_service="inactive"
+        )
+        self.assert_no_state(done)
+        self.assertIn(
+            ("ROOTLESS_SESSION", "run-dir=0 manager=inactive bus-unit=1"),
+            ci.marker_lines(done.stdout),
+        )
+
+    def test_rootless_session_started_before_the_bus_package_gets_its_bus(
+        self,
+    ):
+        # Gestionnaire du compte lancé avant dbus-user-session (relance sur
+        # un hôte où le bus manquait) : le démarrage de dbus.socket ouvre
+        # le bus, et l'installation continue.
+        write(
+            os.path.join(self.stubs, "loginctl"),
+            _NOTE + 'mkdir -p "$ROOT/run/user/995"\n',
+        )
+        write(
+            os.path.join(self.stubs, "systemctl"),
+            CONTAINER_STUBS["systemctl"].replace(
+                'if [ "$1" = --user ]; then\n  shift\n',
+                'if [ "$1" = --user ]; then\n  shift\n'
+                '  [ "$*" = "start dbus.socket" ]'
+                ' && : > "$ROOT/run/user/995/bus"\n',
+            ),
+        )
+        done = self.run_script(self.rootless_plan())
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertNotIn("ROOTLESS_SESSION", done.stdout)
+        self.assertIn(
+            "systemctl as=erplibre-call xdg=/run/user/995 --user enable"
+            " podman-restart.service",
+            self.argv(),
+        )
+
+    def test_rootless_fresh_install_adds_the_user_bus_package(self):
+        # podman ne fait que recommander dbus-user-session, d'où vient le
+        # bus du compte : sans lui, la session ne paraît jamais.
+        plan = ci.plan_install(
+            base_facts(engines=cc.EngineFacts()),
+            container_answers(
+                engine="podman", rootless=True, install_engine=True
+            ),
+            NOW,
+        )
+        self.assertEqual(
+            plan.engine_packages,
+            ("podman", "podman-compose", "uidmap", "dbus-user-session"),
+        )
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(
+            "apt-get as=root xdg= install -y --no-install-recommends"
+            " podman podman-compose uidmap dbus-user-session",
+            self.argv(),
+        )
+        self.assertIn(
+            "dbus-user-session",
+            self.state()["container"]["engine_packages_added"],
         )
 
     def test_no_docker_group_nor_dropped_capability(self):
