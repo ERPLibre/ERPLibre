@@ -14,13 +14,13 @@ ENV BRANCH_ERPLIBRE=$WORKING_BRANCH
 ENV COMMIT_ERPLIBRE=$WORKING_HASH
 ENV DOCKER_BUILD=true
 # Le compte propriétaire de /ERPLibre, son code et ses dépôts git : « odoo »,
-# celui qui fait tourner Odoo, ou « root ». Sous « odoo », erplibre_info tire
-# le code depuis Odoo : un fetch écrit dans .git, et le processus d'Odoo peut
-# donc réécrire son propre code. Sous « root », l'image est immuable pour
-# Odoo, et un tirage refuse en nommant le propriétaire. Tout ce qui écrit
-# dans /ERPLibre s'exécute sous ce compte, de sorte que rien ne change de
-# propriétaire après coup : un « chown -R » recopierait l'arbre entier dans
-# une couche de plus.
+# celui qui fait tourner Odoo, ou « root ». Sous « odoo »,
+# erplibre_info_git_fetch tire le code depuis Odoo : un fetch écrit dans .git,
+# et le processus d'Odoo peut donc réécrire son propre code. Sous « root »,
+# l'image est immuable pour Odoo, et un tirage refuse en nommant le
+# propriétaire. Tout ce qui écrit dans /ERPLibre s'exécute sous ce compte, de
+# sorte que rien ne change de propriétaire après coup : un « chown -R »
+# recopierait l'arbre entier dans une couche de plus.
 ARG ERPLIBRE_CODE_OWNER=odoo
 
 RUN cat /etc/os-release

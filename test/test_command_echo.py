@@ -13,7 +13,7 @@ Ce que ces tests gardent :
 - chaque outil du menu git passe par lui : repo_state, repo_upgrade, les
   scripts de gel ;
 - même forcé, il laisse intact le JSON que repo_state.py écrit sur sa sortie
-  standard, celui que erplibre_info lit par un tuyau.
+  standard, celui que erplibre_info_git lit par un tuyau.
 """
 
 import io

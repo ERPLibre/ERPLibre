@@ -6,7 +6,7 @@
 
 `show(argv, cwd)` écrit « $ <commande> » sur la sortie d'ERREUR, une ligne
 par commande, lectures comprises. La sortie standard reste aux données : le
-JSON de repo_state.py, que erplibre_info lit par un tuyau, n'en reçoit
+JSON de repo_state.py, que erplibre_info_git lit par un tuyau, n'en reçoit
 rien.
 
 Actif quand la sortie d'erreur est un terminal : TODO et un lancement à la

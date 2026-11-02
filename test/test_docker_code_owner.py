@@ -3,10 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le propriétaire du code de l'image : celui que demande la construction.
 
-erplibre_info tire le code depuis Odoo, et un fetch écrit dans les « .git » :
-le compte qui fait tourner Odoo doit en être propriétaire. ERPLIBRE_CODE_OWNER
-choisit ce compte à la construction, « odoo » par défaut, « root » pour une
-image qu'Odoo ne peut pas réécrire.
+erplibre_info_git_fetch tire le code depuis Odoo, et un fetch écrit dans les
+« .git » : le compte qui fait tourner Odoo doit en être propriétaire.
+ERPLIBRE_CODE_OWNER choisit ce compte à la construction, « odoo » par
+défaut, « root » pour une image qu'Odoo ne peut pas réécrire.
 
 Ce que ces tests gardent :
 

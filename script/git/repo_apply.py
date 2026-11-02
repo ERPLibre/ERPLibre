@@ -60,8 +60,9 @@ La passe sans menu
 ------------------
 « repo_apply.py --apply » applique une passe sans terminal, pour un
 appelant qui a déjà montré l'essai à sec et recueilli le consentement
-(le module Odoo erplibre_info). Trois écarts au menu la bornent. Seuls
-les verdicts sans conflit prédit s'appliquent (VERDICTS_SANS_CONFLIT).
+(le module Odoo erplibre_info_git_fetch). Trois écarts au menu la
+bornent. Seuls les verdicts sans conflit prédit s'appliquent
+(VERDICTS_SANS_CONFLIT).
 Un dépôt qui bute malgré tout voit son rebase abandonné et revient sur
 son départ (« conflit_annule ») : hors du menu, personne ne reprend la
 file, et un arbre en conflit est un code que le serveur chargerait. La

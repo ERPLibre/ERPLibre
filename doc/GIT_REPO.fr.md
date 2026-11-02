@@ -135,7 +135,7 @@ constate avant de s'appliquer.
 modifications à lui : chaque dépôt intègre sa cible par les gestes de
 `git pull` (avance rapide, rebase ou fusion), après une branche de sauvegarde,
 et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
-Repo, et le module Odoo `erplibre_info`.
+Repo, et le module Odoo `erplibre_info_git_fetch`.
 
 Chaque commande git que ces outils envoient, lectures comprises, s'affiche
 avant de partir, en `$ git -C <chemin> …` avec le chemin relatif à la racine
@@ -188,9 +188,9 @@ une modification. Rien n'est poussé. La passe s'inscrit sous
 
 `--budget SECONDES` borne une passe : au-delà, aucun dépôt, aucun palier
 d'approfondissement, aucun clonage ni aucune installation ne commence plus
-(`saute_delai`), et la passe répond quand même. `erplibre_info` lui donne un
-budget sous le délai de son appel. Un appel tué malgré tout emporte son groupe
-de processus entier, et les sauvegardes de sa passe se relisent par leur
+(`saute_delai`), et la passe répond quand même. `erplibre_info_git_fetch` lui
+donne un budget sous le délai de son appel. Un appel tué malgré tout emporte son
+groupe de processus entier, et les sauvegardes de sa passe se relisent par leur
 horodatage ; le redémarrage attend alors un nouvel essai à sec.
 
 Un clone superficiel se récupère par `--shallow-since`, jamais `--depth`, qui
@@ -224,13 +224,13 @@ Restaurer la racine remet aussi le manifeste local que la passe avait remplacé.
 #### Tirer sans le menu
 
 `script/git/repo_pull.py` écrit un objet JSON, pour un appelant qui montre
-l'essai à sec et recueille le consentement, tel `erplibre_info`. `--dry-run`
-liste dans `attendus` les épingles `<chemin>=<sha cible>:<sha HEAD>` des dépôts
-qu'il tirerait ; `--apply` les reprend par `--expect`, et `--confirm` doit
-valoir la version d'Odoo active (code de sortie 2 sinon). Un plan qui a changé
-n'écrit rien (code de sortie 4). Les clones superficiels demandent
-`--approve-deepen` et les épingles d'`attendus_superficiel`, les nouveaux
-dépôts `--approve-clone` et un `--expect-clone` par chemin de `plan_nouveaux` ;
+l'essai à sec et recueille le consentement, tel `erplibre_info_git_fetch`.
+`--dry-run` liste dans `attendus` les épingles `<chemin>=<sha cible>:<sha HEAD>`
+des dépôts qu'il tirerait ; `--apply` les reprend par `--expect`, et `--confirm`
+doit valoir la version d'Odoo active (code de sortie 2 sinon). Un plan qui a
+changé n'écrit rien (code de sortie 4). Les clones superficiels demandent
+`--approve-deepen` et les épingles d'`attendus_superficiel`, les nouveaux dépôts
+`--approve-clone` et un `--expect-clone` par chemin de `plan_nouveaux` ;
 `--approve-deps` lance `poetry install` à la fin. `--path` restreint la passe à
 un dépôt (`.` est la racine), `--pass` donne son horodatage et `--budget` son
 délai. Le code de sortie 5 dit qu'une autre passe tient le verrou du checkout.
@@ -632,7 +632,7 @@ reste bornée sur un dépôt aussi grand que le cœur d'Odoo : le diffstat compt
 #### Appliquer une passe de mise à niveau sans le menu
 
 `script/git/repo_apply.py --apply --confirm <version d'Odoo> --expect <chemin>...` applique une passe pour un appelant
-qui a déjà montré l'essai à sec et recueilli le consentement, tel le module Odoo `erplibre_info` ; il écrit du JSON.
+qui a déjà montré l'essai à sec et recueilli le consentement, tel le module Odoo `erplibre_info_git_fetch` ; il écrit du JSON.
 Il refait le diagnostic et refuse de rien écrire (code de sortie 4) si les forks sans conflit prédit (`a_rebaser`,
 `en_retard`) ne sont pas exactement les chemins `--expect`. `--expect <chemin>=<sha amont>:<sha HEAD>` épingle en
 plus l'état que l'essai à sec a montré, tiré des `cible_sha` et `head` de son diagnostic : un fork épinglé dont
