@@ -9389,10 +9389,11 @@ def _container_admin_lines(state):
     conteneur (`ntfy_cli`, sous l'uid:gid du service : les fichiers de la
     base restent à lui), tant que le conteneur tourne, un état passager
     attendu (`cwait`) ; un compte déjà parti ne fait rien. Un conteneur qui
-    ne tourne pas ne permet pas de le vérifier : `@@KEPT account
-    <NTFY_ADMIN_USER>` le dit, sauf quand ni lui ni le fichier compose ne
-    restent, une relance après un `down` réussi, qui a déjà fait ce
-    retrait ou l'a dit."""
+    ne tourne pas ne permet pas de le vérifier : `@@KEPT ntfy-admin
+    <NTFY_ADMIN_USER>` dit que ce compte de ntfy peut rester dans sa base
+    (un passage précédent a pu le retirer avant un `down` en échec), sauf
+    quand ni le conteneur ni le fichier compose ne restent, une relance
+    après un `down` réussi, qui a déjà fait ce retrait ou l'a dit."""
     cli = ntfy_cli(state, None)
     run = cli.prefix
     if cli.sudo_user is not None:
@@ -9408,7 +9409,7 @@ def _container_admin_lines(state):
         "    else failed account-ntfy; fi",
         "  fi",
         f'elif [ "$S" != missing ] || [ -f {_host(cc.COMPOSE_FILE)} ]; then',
-        f'  echo "@@KEPT account {NTFY_ADMIN_USER}"',
+        f'  echo "@@KEPT ntfy-admin {NTFY_ADMIN_USER}"',
         "fi",
     ]
 
@@ -9474,8 +9475,10 @@ def _container_restore_lines(svc, record):
     plus ancien que celui de l'image, ou de version illisible (`nolder`),
     ne relirait pas la base des comptes que l'image a mise à jour : quand
     elle avait à repartir, son unité reste désactivée et arrêtée, et
-    `@@NTFY_DOWNGRADE <unité> <version de l'hôte> <version de l'image>`
-    le dit (NTFY_DOWNGRADE_NOTICE). Les données de ntfy reviennent d'abord à son
+    `@@NTFY_DOWNGRADE <unité> <version de l'hôte> <version de l'image>
+    <action>` le dit (NTFY_DOWNGRADE_NOTICE), `action` étant ce que
+    `systemctl` doit faire pour rendre l'unité à son état d'avant l'outil
+    (« enable --now », « enable » ou « start »). Les données de ntfy reviennent d'abord à son
     paquet (`_ntfy_handback_lines`)."""
     config, backup, unit = record["config"], record["backup"], record["unit"]
     lines = []
@@ -9514,11 +9517,17 @@ def _container_restore_lines(svc, record):
     body = ["  " + line for line in start]
     if svc == "ntfy" and start:
         image = cc.IMAGE_VERSIONS["ntfy"]
+        action = {
+            (True, True): "enable --now",
+            (True, False): "enable",
+            (False, True): "start",
+        }[(record["was_enabled"] == "enabled", record["was_active"] is True)]
         body = [
             "  NV=$(timeout 20 ntfy --version 2>/dev/null"
             f" | sed -n {shlex.quote(cc._NTFY_VERSION_SED)} | head -n 1)",
             f'  if nolder "$NV" {image}; then',
-            f'    echo "@@NTFY_DOWNGRADE {unit} ${{NV:-unknown}} {image}"',
+            f'    echo "@@NTFY_DOWNGRADE {unit} ${{NV:-unknown}} {image}'
+            f' {action}"',
             "  else",
             *["    " + line for line in start],
             "  fi",
@@ -9611,6 +9620,22 @@ def _account_data_goes(state, records, account, remove_data):
         if not goes:
             return False
     return True
+
+
+def accounts_kept(state, remove_data):
+    """Comptes que l'outil a ajoutés pour les conteneurs et qu'une
+    désinstallation de `state` garde, même avec `remove_engine` : ceux
+    dont les données restent (`_account_data_goes`). Refusal
+    `call_infra_state_invalid` pour un état qu'on ne peut pas suivre."""
+    additions = _engine_additions(state)
+    if additions is None:
+        return []
+    records = _uninstall_records(state)
+    return [
+        name
+        for name in additions["accounts"]
+        if not _account_data_goes(state, records, name, remove_data)
+    ]
 
 
 def _engine_removal_lines(

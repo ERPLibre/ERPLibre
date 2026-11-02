@@ -1271,8 +1271,14 @@ class LeMemeCheminQueLeMenu(unittest.TestCase):
         "_call_infra_ask_install_method",
     )
     # Ce qui ne sert qu'à l'écran du menu : le texte d'un refus, les notes
-    # affichées sous l'aperçu du pare-feu, l'explication du module absent.
-    ECRAN_SEUL = {"SUPPORTED", "firewall_notes", "MODULE_ABSENT_WARNING"}
+    # affichées sous l'aperçu du pare-feu, l'explication du module absent,
+    # les comptes que la question des ajouts du moteur ne propose pas.
+    ECRAN_SEUL = {
+        "SUPPORTED",
+        "firewall_notes",
+        "MODULE_ABSENT_WARNING",
+        "accounts_kept",
+    }
 
     def test_every_brick_of_the_menu_steps_is_called(self):
         menu = ast.parse(
