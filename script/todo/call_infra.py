@@ -9120,8 +9120,10 @@ def _added_engine_argv(added):
     engine = added.get("engine")
     probe = {key: added.get(key) for key in ("engine", "rootless", "account")}
     probe["uid"] = added.get("uid")
-    probe["compose"] = list(cc.COMPOSE_PROVIDERS.get(engine, [()])[0])
     try:
+        # Un moteur qui n'est pas une chaîne (liste, dict) lève TypeError
+        # dès la recherche de son outil de composition.
+        probe["compose"] = list(cc.COMPOSE_PROVIDERS.get(engine, [()])[0])
         return cc.engine_argv(probe)
     except (ValueError, TypeError):
         raise Refusal("call_infra_state_invalid", service="container_added")
@@ -9223,8 +9225,12 @@ def _version_older_lines():
 def _container_admin_lines(state):
     """Retrait de NTFY_ADMIN_USER d'un ntfy adopté par la CLI de son
     conteneur (`ntfy_cli`, sous l'uid:gid du service : les fichiers de la
-    base restent à lui), tant que le conteneur tourne ; un compte déjà
-    parti, ou un conteneur arrêté, ne fait rien."""
+    base restent à lui), tant que le conteneur tourne, un état passager
+    attendu (`cwait`) ; un compte déjà parti ne fait rien. Un conteneur qui
+    ne tourne pas ne permet pas de le vérifier : `@@KEPT account
+    <NTFY_ADMIN_USER>` le dit, sauf quand ni lui ni le fichier compose ne
+    restent, une relance après un `down` réussi, qui a déjà fait ce
+    retrait ou l'a dit."""
     cli = ntfy_cli(state, None)
     run = cli.prefix
     if cli.sudo_user is not None:
@@ -9232,13 +9238,15 @@ def _container_admin_lines(state):
     cfg, user = shlex.quote(NTFY_CONFIG), shlex.quote(NTFY_ADMIN_USER)
     found = shlex.quote(f"^user {NTFY_ADMIN_USER} ")
     return [
-        f"cstatus {cc.CONTAINERS['ntfy']}",
+        f"cwait {cc.CONTAINERS['ntfy']}",
         'if [ "$S" = running ]; then',
         f"  if {run} user --config {cfg} list 2>&1 | grep -q {found}; then",
         f"    if {run} user --config {cfg} del {user} >/dev/null 2>&1;"
         f' then echo "@@REMOVED account {NTFY_ADMIN_USER}";',
         "    else failed account-ntfy; fi",
         "  fi",
+        f'elif [ "$S" != missing ] || [ -f {_host(cc.COMPOSE_FILE)} ]; then',
+        f'  echo "@@KEPT account {NTFY_ADMIN_USER}"',
         "fi",
     ]
 
@@ -9299,10 +9307,10 @@ def _container_restore_lines(svc, record):
     à ce qu'elle était avant l'outil : activée quand `was_enabled` vaut
     « enabled », démarrée quand `was_active` est vrai. Un ntfy de l'hôte
     plus ancien que celui de l'image, ou de version illisible (`nolder`),
-    ne relirait pas la base des comptes que l'image a mise à jour : son
-    unité reste désactivée et arrêtée, et `@@NTFY_DOWNGRADE <unité>
-    <version de l'hôte> <version de l'image>` le dit
-    (NTFY_DOWNGRADE_NOTICE). Les données de ntfy reviennent d'abord à son
+    ne relirait pas la base des comptes que l'image a mise à jour : quand
+    elle avait à repartir, son unité reste désactivée et arrêtée, et
+    `@@NTFY_DOWNGRADE <unité> <version de l'hôte> <version de l'image>`
+    le dit (NTFY_DOWNGRADE_NOTICE). Les données de ntfy reviennent d'abord à son
     paquet (`_ntfy_handback_lines`)."""
     config, backup, unit = record["config"], record["backup"], record["unit"]
     lines = []
@@ -9339,17 +9347,17 @@ def _container_restore_lines(svc, record):
             f' || echo "@@RESTART_FAILED {svc}"'
         )
     body = ["  " + line for line in start]
-    if svc == "ntfy":
+    if svc == "ntfy" and start:
         image = cc.IMAGE_VERSIONS["ntfy"]
         body = [
             "  NV=$(timeout 20 ntfy --version 2>/dev/null"
             f" | sed -n {shlex.quote(cc._NTFY_VERSION_SED)} | head -n 1)",
             f'  if nolder "$NV" {image}; then',
             f'    echo "@@NTFY_DOWNGRADE {unit} ${{NV:-unknown}} {image}"',
+            "  else",
+            *["    " + line for line in start],
+            "  fi",
         ]
-        if start:
-            body += ["  else", *["    " + line for line in start]]
-        body.append("  fi")
     if handback or body:
         lines += [f'if [ "$KEEP_{svc}" = 0 ]; then', *handback, *body, "fi"]
     return lines
