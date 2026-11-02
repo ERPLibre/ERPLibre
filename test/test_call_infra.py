@@ -10643,7 +10643,8 @@ class TestContainerPlan(unittest.TestCase):
 # Chaque bouchon note son argv dans "$LOG/argv", précédé du compte sous
 # lequel `runuser` l'a lancé et de son XDG_RUNTIME_DIR. L'état simulé de
 # l'hôte (comptes, groupes, paquets, images, conteneurs) vit dans "$FK".
-# La purge d'apt-get échoue pour le paquet FAKE_PURGE_FAIL ; celle du
+# Avec FAKE_DOWN_FAIL, le `down` de l'outil de composition échoue sans rien
+# arrêter. La purge d'apt-get échoue pour le paquet FAKE_PURGE_FAIL ; celle du
 # paquet FAKE_PURGE_SIGNAL envoie SIGTERM à tout le groupe du script,
 # comme une session coupée ; avec
 # FAKE_PURGE_WIPES, elle efface les dossiers du paquet ;
@@ -10662,7 +10663,8 @@ case " $* " in *" up "*)
       echo "$st" > "$FK/container.erplibre-call-$s"
     fi
   done ;;
-  *" down "*) rm -f "$FK"/container.erplibre-call-* ;;
+  *" down "*) [ -z "${FAKE_DOWN_FAIL:-}" ] || exit 1
+    rm -f "$FK"/container.erplibre-call-* ;;
 esac
 exit 0
 """
@@ -10838,6 +10840,21 @@ eval "exit \${RC_$v:-0}"
 FAKE_IDS = "erplibre-coturn:997 ntfy:996 erplibre-call:995 turnserver:998"
 
 
+def reowned(argv, owner, path):
+    """Index de la ligne du journal où `reown` rend `path` (chemin de la
+    racine de test) à `owner` : `chown -h <owner> <path> ...`, le dossier
+    d'abord, puis ce qu'il contient ; None sans elle."""
+    prefix = f"chown as=root xdg= -h {owner} {path}"
+    return next(
+        (
+            index
+            for index, line in enumerate(argv)
+            if line == prefix or line.startswith(prefix + " ")
+        ),
+        None,
+    )
+
+
 class ContainerSandbox(unittest.TestCase):
     """Racine temporaire et bouchons des scripts en conteneurs : moteurs et
     outils système devant le PATH, aucun vrai docker ni podman n'est
@@ -10998,9 +11015,7 @@ class TestContainerInstallRun(ContainerSandbox):
         # Les données de ntfy sont au compte de son conteneur.
         for path in (ci.NTFY_DATA_DIR, ci.NTFY_CACHE_DIR):
             self.assertTrue(os.path.isdir(self.path(path)))
-            self.assertIn(
-                f"chown as=root xdg= -R 996:996 {self.path(path)}", argv
-            )
+            self.assertIsNotNone(reowned(argv, "996:996", self.path(path)))
         self.assertEqual(
             self.read(self.path(ci.NTFY_CONFIG)), plan.configs["ntfy"]
         )
@@ -11370,6 +11385,11 @@ class TestContainerInstallRun(ContainerSandbox):
         self.assertFalse([line for line in argv if " pull " in line])
         self.assertFalse([line for line in argv if " up " in line + " "])
         self.assertFalse([line for line in argv if " restart " in line])
+        # Le conteneur de ntfy tourne : ses données restent telles quelles.
+        for path in (ci.NTFY_DATA_DIR, ci.NTFY_CACHE_DIR):
+            self.assertFalse(
+                [line for line in argv if f" {self.path(path)}" in line]
+            )
         self.assertFalse(
             [line for line in argv if line.startswith("useradd ")]
         )
@@ -11431,6 +11451,37 @@ class TestContainerInstallRun(ContainerSandbox):
         done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="0")
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertFalse([line for line in self.argv() if " restart " in line])
+
+    def test_ntfy_data_reowned_only_with_its_container_stopped(self):
+        first = self.run_script(self.fresh_docker())
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        write(
+            os.path.join(self.fk, "container.erplibre-call-ntfy"),
+            "restarting\n",
+        )
+        ans = container_answers(install_engine=True)
+        done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="0")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        stop = argv.index("docker as=root xdg= stop erplibre-call-ntfy")
+        chown = reowned(argv, "996:996", self.path(ci.NTFY_DATA_DIR))
+        self.assertLess(stop, chown)
+
+    def test_hardlink_in_ntfy_data_changes_nothing(self):
+        # Un fichier à deux liens physiques dans le dossier du compte : root
+        # ne le rend à personne.
+        data = self.path(ci.NTFY_DATA_DIR)
+        os.makedirs(data)
+        outside = self.path("/etc/fichier-de-root")
+        write(outside, "secret de root", 0o600)
+        os.link(outside, os.path.join(data, "lien"))
+        done = self.run_script(self.fresh_docker())
+        self.assert_no_state(done)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("UNSAFE_TREE", ci.NTFY_DATA_DIR), markers)
+        self.assertIn(("FAILED", "ntfy-data"), markers)
+        self.assertIsNone(reowned(self.argv(), "996:996", data))
+        self.assertFalse([line for line in self.argv() if " up " in line])
 
     def test_stopped_container_is_brought_up(self):
         first = self.run_script(self.fresh_docker())
@@ -11722,10 +11773,8 @@ class TestMigrationRun(ContainerSandbox):
         self.assertFalse([line for line in argv if line.startswith("cp ")])
         self.assertFalse([line for line in argv if " as=turnserver " in line])
         # Données remises au compte du conteneur, sans suivre de lien.
-        self.assertIn(
-            "chown as=root xdg= -R --no-dereference 997:997"
-            f" {self.path(ci.COTURN_DATA_DIR)}",
-            argv,
+        self.assertIsNotNone(
+            reowned(argv, "997:997", self.path(ci.COTURN_DATA_DIR))
         )
         self.assertEqual(self.secrets(), secrets)
         self.assertEqual(self.user_db(), USER_DB)
@@ -11801,14 +11850,10 @@ class TestMigrationRun(ContainerSandbox):
         enable = argv.index("systemctl as=root xdg= enable --now ntfy")
         self.assertLess(down, enable)
         data = self.path(ci.NTFY_DATA_DIR)
-        self.assertIn(
-            f"chown as=root xdg= -R --no-dereference ntfy:ntfy {data}", argv
-        )
+        self.assertIsNotNone(reowned(argv, "ntfy:ntfy", data))
         coturn_dir = self.path(ci.COTURN_DATA_DIR)
-        self.assertIn(
-            f"chown as=root xdg= -R --no-dereference --reference={coturn_dir}"
-            f" {coturn_dir}",
-            argv,
+        self.assertIsNotNone(
+            reowned(argv, f"--reference={coturn_dir}", coturn_dir)
         )
         self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
         self.assertEqual(self.secrets(), secrets)
@@ -11858,6 +11903,52 @@ class TestMigrationRun(ContainerSandbox):
         )
         self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
         self.assertEqual(self.user_db(), USER_DB)
+
+    def test_hardlinked_database_is_never_copied(self):
+        plan, before = self.to_container()
+        outside = self.path("/etc/fichier-de-root")
+        write(outside, "secret de root", 0o600)
+        os.remove(self.path(ci.NTFY_AUTH_FILE))
+        os.link(outside, self.path(ci.NTFY_AUTH_FILE))
+        done = self.run_script(plan)
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("UNSAFE_TREE", ci.NTFY_AUTH_FILE), markers)
+        self.assertIn(("FAILED", "backup-ntfy"), markers)
+        self.assertFalse(
+            os.path.exists(
+                self.path(f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}/user.db")
+            )
+        )
+        # Le retour en arrière ne rend pas non plus ce dossier au paquet :
+        # l'opérateur le vérifie d'abord.
+        self.assertIn(("ROLLBACK_FAILED", "chown-ntfy"), markers)
+        self.assertIn(("MIGRATION", "rollback-failed"), markers)
+        self.assertIsNone(
+            reowned(self.argv(), "ntfy:ntfy", self.path(ci.NTFY_DATA_DIR))
+        )
+        self.assertEqual(self.read(outside), "secret de root")
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
+    def test_rollback_without_down_leaves_the_data_alone(self):
+        # Les conteneurs ne s'arrêtent pas : aucune étape ne rend leurs
+        # données aux paquets pendant qu'ils y écrivent.
+        plan, _before = self.to_container(ntfy_adopted=True)
+        done = self.run_script(
+            plan, FAKE_STATUS_coturn="exited", FAKE_DOWN_FAIL="1"
+        )
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("ROLLBACK_FAILED", "compose-down"), markers)
+        self.assertIn(("MIGRATION", "rollback-failed"), markers)
+        argv = self.argv()
+        down = self.first(argv, " -p erplibre-call down")
+        self.assertFalse(
+            [line for line in argv[down:] if line.startswith("chown ")]
+        )
+        self.assertFalse(
+            [line for line in argv[down:] if line.startswith("bash ")]
+        )
 
     def test_rollback_restores_a_database_the_container_changed(self):
         # La base des comptes que le conteneur a mise à jour revient à sa
@@ -12051,9 +12142,8 @@ esac
         # La configuration du conteneur quitte sa place avant le paquet.
         self.assertFalse(os.path.exists(config))
         data = self.path(ci.NTFY_DATA_DIR)
-        chown = argv.index(
-            f"chown as=root xdg= -R --no-dereference ntfy:ntfy {data}"
-        )
+        chown = reowned(argv, "ntfy:ntfy", data)
+        self.assertIsNotNone(chown)
         self.assertLess(chown, argv.index("bash install_ntfy"))
         # Les images partent seulement une fois coturn actif par paquets.
         active = argv.index("systemctl as=root xdg= is-active coturn")
@@ -12106,10 +12196,8 @@ esac
         )
         self.assertLess(down, stop)
         self.assertLess(stop, up)
-        self.assertIn(
-            "chown as=root xdg= -R --no-dereference 997:997"
-            f" {self.path(ci.COTURN_DATA_DIR)}",
-            argv[stop:up],
+        self.assertIsNotNone(
+            reowned(argv[stop:up], "997:997", self.path(ci.COTURN_DATA_DIR))
         )
         self.assertEqual(self.read(self.path("/etc/turnserver.conf")), config)
         self.assertTrue(os.path.exists(self.path(cc.COMPOSE_FILE)))
@@ -12276,10 +12364,8 @@ esac
         self.assertIn(
             f"chown as=root xdg= root:997 {self.path(config)}", argv[:up]
         )
-        self.assertIn(
-            "chown as=root xdg= -R --no-dereference 997:997"
-            f" {self.path(ci.COTURN_DATA_DIR)}",
-            argv[:up],
+        self.assertIsNotNone(
+            reowned(argv[:up], "997:997", self.path(ci.COTURN_DATA_DIR))
         )
 
     def test_reverse_purge_of_ntfy_keeps_its_account_and_config_dir(self):
@@ -12431,11 +12517,96 @@ esac
             " -f /etc/erplibre-call/compose.yml -p erplibre-call down",
             argv,
         )
-        self.assertIn(
-            f"chown as=root xdg= -R --no-dereference ntfy:ntfy"
-            f" {self.path(ci.NTFY_DATA_DIR)}",
-            argv,
+        self.assertIsNotNone(
+            reowned(argv, "ntfy:ntfy", self.path(ci.NTFY_DATA_DIR))
         )
+
+
+class TestReown(unittest.TestCase):
+    """`reown` joué seul : il rend un dossier sans suivre aucun lien, et
+    refuse un dossier qui porte un lien physique ou traverse un autre
+    système de fichiers."""
+
+    def run_reown(self, target, find=None):
+        with tempfile.TemporaryDirectory() as stubs:
+            write(os.path.join(stubs, "chown"), _NOTE)
+            if find:
+                write(os.path.join(stubs, "find"), find)
+            log = os.path.join(stubs, "log")
+            os.makedirs(log)
+            script = "\n".join(ci._reown_lines()) + '\nR=\nreown 7:7 "$1"'
+            env = dict(
+                os.environ, PATH=stubs + ":" + os.environ["PATH"], LOG=log
+            )
+            env.pop("XDG_RUNTIME_DIR", None)
+            done = subprocess.run(
+                ["sh", "-c", script, "sh", target],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+            path = os.path.join(log, "argv")
+            if not os.path.exists(path):
+                return done, []
+            with open(path) as handle:
+                return done, handle.read().splitlines()
+
+    def test_tree_without_links_is_reowned_symlinks_untouched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = os.path.join(tmp, "data")
+            os.makedirs(os.path.join(tree, "sub"))
+            write(os.path.join(tree, "sub", "f"), "x", 0o600)
+            os.symlink("/etc/passwd", os.path.join(tree, "lien"))
+            done, argv = self.run_reown(tree)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(len(argv), 1, argv)
+            words = argv[0].split()
+            self.assertEqual(words[:4], ["chown", "as=root", "xdg=", "-h"])
+            self.assertEqual(words[4], "7:7")
+            self.assertEqual(
+                sorted(words[5:]),
+                sorted(
+                    [
+                        tree,
+                        os.path.join(tree, "sub"),
+                        os.path.join(tree, "sub", "f"),
+                    ]
+                ),
+            )
+            # Absent : rien à faire.
+            done, argv = self.run_reown(os.path.join(tmp, "absent"))
+            self.assertEqual((done.returncode, argv), (0, []))
+
+    def test_refusals_change_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = os.path.join(tmp, "data")
+            os.makedirs(tree)
+            write(os.path.join(tmp, "root-file"), "x", 0o600)
+            link = os.path.join(tmp, "lien-dossier")
+            os.symlink(tree, link)
+            for name, target, find in (
+                ("symlinked top", link, None),
+                (
+                    "other filesystem",
+                    tree,
+                    '#!/bin/sh\ncase " $* " in *" -printf "*)'
+                    " printf '1\\n2\\n'; exit 0 ;; esac\n"
+                    f'exec {shutil.which("find")} "$@"\n',
+                ),
+            ):
+                with self.subTest(name):
+                    done, argv = self.run_reown(target, find)
+                    self.assertNotEqual(done.returncode, 0)
+                    self.assertEqual(
+                        done.stdout.strip(), f"@@UNSAFE_TREE {target}"
+                    )
+                    self.assertEqual(argv, [])
+            os.link(os.path.join(tmp, "root-file"), os.path.join(tree, "h"))
+            done, argv = self.run_reown(tree)
+            self.assertNotEqual(done.returncode, 0)
+            self.assertEqual(done.stdout.strip(), f"@@UNSAFE_TREE {tree}")
+            self.assertEqual(argv, [])
 
 
 class TestContainerRunFields(unittest.TestCase):
@@ -13162,10 +13333,7 @@ class TestContainerUninstall(ContainerSandbox):
                 self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
                 markers = self.markers(done)
                 for path in (ci.NTFY_DATA_DIR, ci.NTFY_CACHE_DIR):
-                    chown = self.first(
-                        "chown as=root xdg= -R --no-dereference ntfy:ntfy"
-                        f" {self.path(path)}"
-                    )
+                    chown = reowned(self.argv(), "ntfy:ntfy", self.path(path))
                     self.assertIsNotNone(chown, path)
                     start = self.first("systemctl as=root xdg= start ntfy")
                     if start is not None:
@@ -13176,6 +13344,24 @@ class TestContainerUninstall(ContainerSandbox):
                 # compte rootless.
                 self.assertIn("REMOVED account erplibre-call", markers)
                 self.assertEqual(markers[-1], "DONE yes")
+
+    def test_host_ntfy_data_untouched_while_its_container_stays(self):
+        # Le `down` échoue : le conteneur rootless écrit peut-être encore
+        # dans ces dossiers, rien n'y change de propriétaire.
+        state = self.rootless_state()
+        state["services"]["ntfy"].update(
+            unit="ntfy", installed_by_tool=False, adopted=False
+        )
+        self.host(state)
+        done = self.uninstall(state, FAKE_DOWN_FAIL="1")
+        self.assertNotEqual(done.returncode, 0)
+        markers = self.markers(done)
+        self.assertIn("FAILED compose-down", markers)
+        self.assertIn("FAILED chown-ntfy", markers)
+        self.assertFalse(
+            [line for line in self.argv() if line.startswith("chown ")]
+        )
+        self.assertEqual(markers[-1], "DONE no")
 
     def test_rootless_account_kept_while_ntfy_files_stay_its_own(self):
         # La base d'un ntfy posé par l'outil reste au compte rootless ; les
