@@ -101,7 +101,7 @@ class TestCommitPublie(unittest.TestCase):
         self.assertIn("verifier_commit_publie", TEXTE)
         self.assertLess(
             TEXTE.index("verifier_commit_publie\n"),
-            TEXTE.index("docker build"),
+            TEXTE.index("docker build --platform"),
         )
 
     def test_elle_interroge_le_depot_que_l_image_clone(self):
@@ -153,12 +153,31 @@ class TestCommitPublie(unittest.TestCase):
         self.assertIn("--build-arg WORKING_BRANCH=${EL_BRANCHE}", TEXTE)
 
 
+def _args_de(variable):
+    """Les noms passés en « --build-arg » par les lignes « VARIABLE=… »."""
+    lignes = re.findall(rf'(?m)^\s*{variable}="([^\n]*)"$', TEXTE)
+    return set(re.findall(r"--build-arg (\w+)=", " ".join(lignes)))
+
+
+def _arg_declares(dockerfile):
+    return set(re.findall(r"^ARG (\w+)", dockerfile, re.MULTILINE))
+
+
 class TestArgumentsDeConstruction(unittest.TestCase):
     def test_tout_build_arg_trouve_un_arg(self):
         poses = set(re.findall(r"--build-arg (\w+)=", TEXTE))
         self.assertTrue(poses)
-        declares = set(re.findall(r"^ARG (\w+)", BASE + PROD, re.MULTILINE))
+        declares = _arg_declares(BASE + PROD)
         self.assertEqual(set(), poses - declares)
+
+    def test_chaque_dockerfile_ne_recoit_que_ses_arguments(self):
+        """Docker avertit sur un argument que personne ne lit, et
+        l'avertissement noie celui qui compterait."""
+        base, prod = _args_de("ARGS_BASE"), _args_de("ARGS_PROD")
+        self.assertTrue(base and prod)
+        self.assertEqual(set(), base - _arg_declares(BASE))
+        self.assertEqual(set(), prod - _arg_declares(PROD))
+        self.assertIn("ERPLIBRE_IMAGE_NAME", _arg_declares(PROD))
 
     def test_la_version_d_odoo_atteint_le_chemin_de_l_executable(self):
         """ODOO_EXEC_BIN est lu à l'exécution : un chemin figé sur une autre
