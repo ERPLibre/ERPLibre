@@ -4819,6 +4819,29 @@ def _coturn_reown_lines(unit):
     ]
 
 
+def _cutback_lines():
+    """Fonction `sh` `cutback` : `migback` lancé par le piège d'une coupure,
+    sa sortie et ses erreurs, comme celles des installateurs qu'il relance,
+    écrites dans "$MB/rollback.log" (dossier root 0700 des copies de ce
+    passage, créé au besoin), ou jetées quand ce fichier ne peut pas
+    s'ouvrir. Le lecteur de la sortie du script peut être parti avec la
+    coupure : rien du retour en arrière n'écrit dans son tube, aucune
+    écriture n'y échoue. Le journal est ensuite recopié sur la sortie
+    d'origine (descripteur 9), où un lecteur resté en vie lit les
+    marqueurs ; SIGPIPE ignoré, une écriture refusée là ne coupe rien."""
+    log = '"$MB/rollback.log"'
+    return [
+        "cutback() {",
+        '  if mkdir -p "$MB" 2>/dev/null && chmod 0700 "$MBD" "$MB" 2>/dev/null'
+        f" && : > {log} 2>/dev/null; then",
+        f"    exec 9>&1 >> {log} 2>&1; migback; cat {log} >&9 2>/dev/null",
+        "  else",
+        "    exec 9>&1 > /dev/null 2>&1; migback",
+        "  fi",
+        "}",
+    ]
+
+
 def _to_container_rollback_lines(plan, stamp, records):
     """`migback` d'une migration vers les conteneurs : conteneurs arrêtés
     et fichier compose retiré, puis chaque service rendu à la méthode des
@@ -5356,8 +5379,10 @@ def install_script(plan, stamp, root=""):
     posent ntfy à la version de l'image. Les bases sont copiées
     (`@@BACKUP`). Dès qu'un service a changé, un échec ou une barrière
     ratée revient à la méthode d'avant (`migback`, `@@MIGRATION
-    rolled-back` ou `rollback-failed`) sans écrire l'état ; une barrière
-    franchie écrit l'état et imprime `@@MIGRATION done`. Le retour aux
+    rolled-back` ou `rollback-failed`) sans écrire l'état ; une coupure
+    aussi, SIGPIPE ignoré et le récit du retour en arrière gardé dans
+    `<copies>/<tampon>/rollback.log` (`cutback`). Une barrière franchie
+    écrit l'état et imprime `@@MIGRATION done`. Le retour aux
     paquets retire ensuite les images tirées et le fichier compose.
     """
     if not _STAMP.match(stamp or ""):
@@ -5374,8 +5399,10 @@ def install_script(plan, stamp, root=""):
     rehold = " rehold;" if certbot else ""
     migration = plan.migration is not None
     # Une migration engagée (MIG=1) revient à la méthode d'avant avant de
-    # s'arrêter (`migback`, `_migration_lines`).
+    # s'arrêter (`migback`, `_migration_lines`) ; sur une coupure, par
+    # `cutback`, qui survit au lecteur parti.
     back = ' [ "$MIG" = 1 ] && migback;' if migration else ""
+    cut = ' [ "$MIG" = 1 ] && cutback;' if migration else ""
     # Les fiches nginx et certbot que ce plan n'utilise pas sont consignées
     # dans l'état (`_carry_fiches`) : elles partent avec lui.
     carried = [
@@ -5398,7 +5425,14 @@ def install_script(plan, stamp, root=""):
         # Une coupure fait ce que fait un échec : `rehold`, et le retour à la
         # méthode d'avant d'une migration engagée ; le piège EXIT, qui
         # retire $D, passe après eux, qui y lisent run.m.
-        f"trap '{(rehold + back).strip()} exit 129' HUP INT TERM",
+        f"trap '{(rehold + cut).strip()} exit 129' HUP INT TERM",
+        # Une migration ignore SIGPIPE : la coupure qui arrête le script
+        # (Ctrl-C, terminal fermé) arrête aussi le programme qui lit sa
+        # sortie, et la première écriture dans ce tube fermé, ne serait-ce
+        # que le « Terminated » que le shell imprime pour un enfant tué,
+        # le tuerait avant ou pendant son retour en arrière. Une écriture
+        # refusée échoue alors sans rien tuer (`cutback`).
+        *(["trap '' PIPE", *_cutback_lines()] if migration else []),
         *_capture_lines(),
         *_reown_lines(),
         *(_rehold_lines() if certbot else []),
