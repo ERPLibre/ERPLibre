@@ -7,7 +7,6 @@ import ast
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from collections import OrderedDict, defaultdict
@@ -752,6 +751,24 @@ def get_list_ignored():
     return lst_ignore_requirements, ignore_requirement_file
 
 
+def restore_lock_link(default_path, target_path):
+    """Rend à `default_path` (« ./poetry.lock ») son lien vers `target_path`.
+
+    « -f » retire le lien, et Poetry écrit alors un vrai fichier à la racine.
+    Ce fichier prend la place de celui de requirement/, présent ou non, et le
+    lien revient : sans quoi la racine et requirement/ divergeraient jusqu'au
+    prochain changement de version. Un lien déjà en place, ou une racine
+    sans verrou, est laissé tel quel.
+
+    :return: True quand le lien a été rétabli
+    """
+    if os.path.islink(default_path) or not os.path.isfile(default_path):
+        return False
+    os.replace(default_path, target_path)
+    os.symlink(target_path, default_path)
+    return True
+
+
 def ensure_pyproject_link(config, pyproject_filename):
     """Stop cleanly when the root pyproject.toml is missing.
 
@@ -850,16 +867,10 @@ def main():
                         " failed after the marker variants were restored."
                     )
                     sys.exit(1)
-        if (
-            config.force
-            and not os.path.islink(poetry_default_lock_path)
-            and os.path.isfile(poetry_default_lock_path)
-            and os.path.isfile(poetry_target_lock_path)
-        ):
-            # If "./poetry.lock" is not symbolic link, force replace original
-            os.remove(poetry_target_lock_path)
-            shutil.move(poetry_default_lock_path, poetry_target_lock_path)
-            os.symlink(poetry_target_lock_path, poetry_default_lock_path)
+        if config.force:
+            restore_lock_link(
+                poetry_default_lock_path, poetry_target_lock_path
+            )
 
 
 if __name__ == "__main__":

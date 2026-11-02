@@ -6494,22 +6494,13 @@ class TODO(
                 source_erplibre=False,
             )
 
-        poetry_lock = "./poetry.lock"
-        try:
-            os.remove(poetry_lock)
-        except Exception as e:
-            pass
         odoo_long_version = ""
         if os.path.exists("./.erplibre-version"):
             with open("./.erplibre-version") as f:
-                odoo_long_version = f.read()
-        path_file_odoo_lock = f"./requirement/poetry.{odoo_long_version}.lock"
-        if odoo_long_version:
-            try:
-                os.remove(path_file_odoo_lock)
-            except Exception as e:
-                pass
+                odoo_long_version = f.read().strip()
 
+        # « -f » résout sans le verrou actuel, puis rend à « ./poetry.lock »
+        # son lien vers requirement/ : rien à effacer ni à recopier ici.
         status = self.execute.exec_command_live(
             f"pip install -r requirement/erplibre_require-ments-poetry.txt && "
             f"./script/poetry/poetry_update.py -f",
@@ -6518,9 +6509,24 @@ class TODO(
             single_source_odoo=True,
             source_odoo=odoo_long_version,
         )
-
-        if os.path.exists(poetry_lock):
-            shutil.copy2(poetry_lock, path_file_odoo_lock)
+        if status != 0:
+            print(t("The Poetry update failed: the venv is left unchanged."))
+            return
+        # Le nouveau verrou n'est pas encore dans le venv d'Odoo.
+        if self._is_yes(
+            input(
+                t("Install the new dependencies in the Odoo venv now? [y/N] ")
+            )
+        ):
+            self.execute.exec_command_live(
+                "EL_PHASE=poetry ./script/install/install_locally.sh",
+                source_erplibre=False,
+            )
+        else:
+            print(
+                t("To install them later: %s")
+                % "EL_PHASE=poetry ./script/install/install_locally.sh"
+            )
 
     def callback_execute_custom_database(self, config):
         database_name = self.db_manager.select_database()
