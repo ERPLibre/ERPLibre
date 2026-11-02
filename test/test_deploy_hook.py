@@ -541,9 +541,10 @@ class TestNginx(unittest.TestCase):
 CONTENEUR = "erplibre-call-coturn"
 INSPECT = "inspect -f {{.State.Running}} %s" % CONTENEUR
 SIGNAL = "kill --signal SIGUSR2 %s" % CONTENEUR
-RUNUSER = (
-    "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/990 podman"
-)
+# Le moteur rootless du hook : le préfixe de `cc.rootless_prefix`, mot pour
+# mot. Le hook en porte une copie `sh` ; chaque test qui lit RUNUSER dans
+# le journal du bouchon garde les deux égales.
+RUNUSER = " ".join(cc.rootless_prefix("erplibre-call", 990) + ["podman"])
 
 
 def etat_conteneur(
@@ -783,6 +784,41 @@ class TestConteneur(unittest.TestCase):
             )
             self.assertIn("@@HOOK signal " + CONTENEUR, r.marqueurs)
             self.assertIn("@@HOOK applied", r.marqueurs)
+
+    def test_prefixe_rootless_egal_a_celui_de_l_outil(self):
+        """`container_engine` du hook lance, mot pour mot, ce que
+        `cc.rootless_prefix` rend, suivi du moteur : sous le compte, dans
+        sa session, depuis « / »."""
+        with tempfile.TemporaryDirectory() as dossier:
+            argv = os.path.join(dossier, "argv")
+            bouchon = os.path.join(dossier, "runuser")
+            ecrire(
+                bouchon,
+                '#!/bin/sh\nfor a; do printf "%s\\n" "$a"; done > "$ARGV"\n',
+            )
+            os.chmod(bouchon, 0o755)
+            script = (
+                fonction(HOOK, "container_engine")
+                + "ROOTLESS=1 ACCOUNT=erplibre-call RUID=990 ENGINE=podman\n"
+                + "container_engine ps -a\n"
+            )
+            fait = subprocess.run(
+                ["bash", "-c", script],
+                capture_output=True,
+                text=True,
+                env=dict(
+                    os.environ,
+                    PATH=dossier + ":" + os.environ["PATH"],
+                    ARGV=argv,
+                ),
+                timeout=30,
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            self.assertEqual(
+                lire(argv).splitlines(),
+                cc.rootless_prefix("erplibre-call", 990)[1:]
+                + ["podman", "ps", "-a"],
+            )
 
     def test_conteneur_arrete_copie_sans_signal(self):
         for options in (

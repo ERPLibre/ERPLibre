@@ -449,26 +449,37 @@ class TestArgv(unittest.TestCase):
                 "erplibre-call",
                 "--",
                 "env",
+                "-C",
+                "/",
                 "XDG_RUNTIME_DIR=/run/user/990",
                 "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus",
             ],
         )
 
-    def test_compose_argv_rootless(self):
-        argv = cc.compose_argv(rootless_block())
-        self.assertEqual(
-            argv[:6],
+    def test_rootless_prefix_sh_is_the_same_words(self):
+        # Le texte `sh` rend les mêmes mots, l'uid pris à la variable.
+        done = subprocess.run(
             [
-                "runuser",
-                "-u",
-                "erplibre-call",
-                "--",
-                "env",
-                "XDG_RUNTIME_DIR=/run/user/990",
+                "sh",
+                "-c",
+                "U=990; for a in "
+                + cc.rootless_prefix_sh("erplibre-call", "U")
+                + '; do printf "%s\\n" "$a"; done',
             ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         self.assertEqual(
-            argv[7:],
+            done.stdout.splitlines(), cc.rootless_prefix("erplibre-call", 990)
+        )
+
+    def test_compose_argv_rootless(self):
+        argv = cc.compose_argv(rootless_block())
+        prefix = cc.rootless_prefix("erplibre-call", 990)
+        self.assertEqual(argv[: len(prefix)], prefix)
+        self.assertEqual(
+            argv[len(prefix) :],
             ["podman-compose", "-f", cc.COMPOSE_FILE, "-p", cc.PROJECT],
         )
 
@@ -1064,6 +1075,15 @@ BASE_TOOLS = (
 
 # Toute commande qu'un bouchon reçoit est notée, une ligne par appel.
 LOGGER = '#!/bin/sh\nprintf "%s\\n" "$(basename "$0") $*" >> "$LOG"\n'
+# Podman lancé sous un compte (FAKE_AS, posé par `runuser`) depuis un autre
+# dossier que « / » s'arrête, comme Podman rootless devant un dossier
+# courant que le compte ne peut pas ouvrir ; la sonde est lancée depuis un
+# dossier temporaire.
+CWD_GUARD = (
+    'if [ -n "${FAKE_AS:-}" ] && [ "$(pwd -P)" != / ]; then\n'
+    '  echo "cannot chdir to $(pwd -P): Permission denied" >&2; exit 125\n'
+    "fi\n"
+)
 
 PASSWD = {
     "turnserver": "turnserver:x:998:998::/var/lib/turnserver:/bin/false",
@@ -1100,7 +1120,7 @@ def engine_stubs(stubs, docker_active=True, rootless=True, absent=()):
         "    echo sha256:" + COTURN_ID + " ;;\n"
         "  *) exit 64 ;;\n"
         "esac\n",
-        "podman": LOGGER + 'case "$1" in\n'
+        "podman": LOGGER + CWD_GUARD + 'case "$1" in\n'
         "  --version) echo 'podman version 5.4.2' ;;\n"
         "  ps) echo 'erplibre-call-ntfy running " + NTFY_REF + "' ;;\n"
         "  container) echo " + NTFY_ID + " ;;\n"
@@ -1115,10 +1135,11 @@ def engine_stubs(stubs, docker_active=True, rootless=True, absent=()):
         "ntfy": LOGGER
         + "[ \"$1\" = --version ] && echo 'ntfy 2.11.0 (2.11.0-2), runtime go'\n",
         "timeout": LOGGER + 'shift\nexec "$@"\n',
-        # runuser saute ses options jusqu'à « -- » puis lance le reste.
+        # runuser saute ses options jusqu'à « -- » puis lance le reste,
+        # sous le compte (FAKE_AS).
         "runuser": LOGGER
         + 'while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done\n'
-        'shift\nexec "$@"\n',
+        'FAKE_AS=1; export FAKE_AS; shift\nexec "$@"\n',
         "getent": LOGGER
         + 'case "$2" in\n'
         + "".join(
@@ -1180,6 +1201,7 @@ class TestEngineProbeRun(unittest.TestCase):
                 text=True,
                 env={"PATH": stubs + ":" + tools, "LOG": log, "LC_ALL": "C"},
                 timeout=30,
+                cwd=tmp,
             )
             calls = []
             if os.path.exists(log):
@@ -1316,7 +1338,7 @@ class TestEngineProbeRun(unittest.TestCase):
             },
         )
         self.assertIn(
-            "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/990"
+            "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/990"
             " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus podman"
             " container inspect --format {{.Image}} erplibre-call-ntfy",
             calls,
@@ -1340,7 +1362,7 @@ class TestEngineProbeRun(unittest.TestCase):
                 )
         # Le moteur rootless passe par runuser, avec l'environnement du compte.
         self.assertIn(
-            "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/990"
+            "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/990"
             " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus podman ps"
             " -a --format {{.Names}} {{.State}} {{.Image}}",
             calls,

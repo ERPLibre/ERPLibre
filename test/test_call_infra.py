@@ -7762,6 +7762,8 @@ class OdooSandbox(unittest.TestCase):
             SEEN="",
         )
         full.update(env)
+        # Le dossier courant de qui lance le script, comme celui d'une
+        # session ssh : le compte rootless n'a pas à y entrer.
         return subprocess.run(
             ["sh", "-c", script],
             capture_output=True,
@@ -7769,6 +7771,7 @@ class OdooSandbox(unittest.TestCase):
             env=full,
             timeout=60,
             start_new_session=True,
+            cwd=self.scratch,
         )
 
     def argv(self):
@@ -10840,6 +10843,15 @@ _NOTE = (
     '#!/bin/sh\nprintf "%s\\n" "${0##*/} as=${FAKE_AS:-root}'
     ' xdg=${XDG_RUNTIME_DIR:-} $*" >> "$LOG/argv"\n'
 )
+# Podman et podman-compose lancés sous un compte (FAKE_AS, posé par
+# `runuser`) depuis un autre dossier que « / » s'arrêtent comme Podman
+# rootless devant un dossier courant que le compte ne peut pas ouvrir ;
+# `run_text` lance les scripts depuis un dossier de la racine de test.
+_CWD_GUARD = (
+    'if [ -n "${FAKE_AS:-}" ] && [ "$(pwd -P)" != / ]; then\n'
+    '  echo "cannot chdir to $(pwd -P): Permission denied" >&2; exit 125\n'
+    "fi\n"
+)
 _COMPOSE_UP = r"""
 case " $* " in *" up "*)
   for s in coturn ntfy; do
@@ -10884,7 +10896,7 @@ esac
 """
     + _COMPOSE_UP,
     "docker-compose": _NOTE + _COMPOSE_UP,
-    "podman-compose": _NOTE + _COMPOSE_UP,
+    "podman-compose": _NOTE + _CWD_GUARD + _COMPOSE_UP,
     "runuser": _NOTE
     + '[ "$1" = -u ] && [ "$3" = -- ] || exit 97\n'
     + 'FAKE_AS=$2; export FAKE_AS; shift 3\nexec "$@"\n',
@@ -10994,8 +11006,10 @@ for _name in (
 ):
     CONTAINER_STUBS.setdefault(_name, _NOTE + "exit 97\n")
 # Podman répond comme Docker, sauf `image exists` (même place pour la
-# référence).
-CONTAINER_STUBS["podman"] = CONTAINER_STUBS["docker"]
+# référence), et garde son dossier courant (_CWD_GUARD).
+CONTAINER_STUBS["podman"] = CONTAINER_STUBS["docker"].replace(
+    _NOTE, _NOTE + _CWD_GUARD, 1
+)
 # Les installateurs : TURN_*/NTFY_* notés par passage ; celui de coturn,
 # en conteneurs, imprime `@@RECREATE` (FAKE_RECREATE_<n>, sinon
 # FAKE_RECREATE, sinon 1) et pose alors l'empreinte en attente. Par
@@ -11430,7 +11444,7 @@ class TestContainerInstallRun(ContainerSandbox):
             if line.startswith("runuser "):
                 self.assertTrue(
                     line.startswith(
-                        "runuser as=root xdg= -u erplibre-call -- env"
+                        "runuser as=root xdg= -u erplibre-call -- env -C /"
                         " XDG_RUNTIME_DIR=/run/user/995"
                         " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus "
                     ),
@@ -13437,6 +13451,73 @@ class TestContainerRunFields(unittest.TestCase):
         self.assertIsNone(python["ntfy_uid"])
 
 
+class TestRootlessPrefixEverywhere(unittest.TestCase):
+    """Toute commande que l'outil lance sous un compte par `runuser -u
+    <compte> -- env` passe par le préfixe de `cc.rootless_prefix` (ou son
+    texte `sh`) : dans la session du compte, depuis « / ». Un `env` sans
+    `-C /` laisserait Podman rootless dans le dossier courant de
+    l'appelant, que le compte ne peut pas toujours ouvrir."""
+
+    RUNUSER = re.compile(r"runuser -u (\S+) -- (\S+)((?: \S+){0,4})")
+    LITERAL = (
+        " -C / XDG_RUNTIME_DIR=/run/user/995"
+        " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus"
+    )
+    SHELL = re.compile(
+        r'^ -C / "XDG_RUNTIME_DIR=/run/user/\$([A-Z_]+)"'
+        r' "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$\1/bus"$'
+    )
+
+    def scripts(self):
+        ans = container_answers(engine="podman", rootless=True)
+        facts = container_installed(ans)
+        state = facts.state
+        rerun = ci.plan_install(
+            facts, dataclasses.replace(ans, turn_port=3479), NOW
+        )
+        cli = ci.ntfy_cli(state, None)
+        added = ci.odoo_add_script(
+            state, KEY_A, "user", PASSWORD_1, USER_A, None, NOW
+        )
+        return {
+            "install": ci.install_script(rerun, STAMP),
+            "uninstall": ci.uninstall_script(
+                state, True, STAMP, remove_engine=True
+            ),
+            "odoo-add": added,
+            "check": ci.check_remote_script(),
+            "probe": ci.probe_script(),
+            "ntfy-cli": "\n".join((cli.prefix, cli.restart, cli.active)),
+        }
+
+    def test_every_rootless_env_goes_through_the_prefix(self):
+        seen = 0
+        for name, script in self.scripts().items():
+            for match in self.RUNUSER.finditer(script):
+                account, command, rest = match.groups()
+                if command != "env":
+                    # Une commande directe sous un compte de service
+                    # (sqlite3, la CLI de ntfy de l'hôte) : aucun Podman.
+                    self.assertNotIn(
+                        command, ("podman", "podman-compose", "systemctl")
+                    )
+                    continue
+                seen += 1
+                with self.subTest(script=name, at=match.group(0)):
+                    self.assertTrue(
+                        rest == self.LITERAL or self.SHELL.match(rest),
+                        match.group(0),
+                    )
+        self.assertGreater(seen, 0)
+
+    def test_nothing_reaches_the_rootless_account_through_sudo(self):
+        # `sudo -u` garderait le dossier courant de l'appelant.
+        state = container_installed(
+            container_answers(engine="podman", rootless=True)
+        ).state
+        self.assertIsNone(ci.ntfy_cli(state, "ignoré").sudo_user)
+
+
 class TestNtfyCli(unittest.TestCase):
     def installed(self, ans):
         return container_installed(ans).state
@@ -13474,15 +13555,19 @@ class TestNtfyCli(unittest.TestCase):
     def test_rootless_container(self):
         ans = container_answers(engine="podman", rootless=True)
         cli = ci.ntfy_cli(self.installed(ans), "ignoré")
+        # Lancée en root, par le même préfixe que tout appel rootless :
+        # sous le compte, dans sa session, depuis « / ».
+        prefix = (
+            "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/995"
+            " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus"
+        )
         self.assertEqual(
             cli.prefix,
-            "env XDG_RUNTIME_DIR=/run/user/995 podman exec -e NTFY_PASSWORD"
-            " -u 995:995 erplibre-call-ntfy ntfy",
+            f"{prefix} podman exec -e NTFY_PASSWORD -u 995:995"
+            " erplibre-call-ntfy ntfy",
         )
-        self.assertEqual(cli.sudo_user, "erplibre-call")
-        self.assertTrue(
-            cli.restart.startswith("runuser -u erplibre-call -- env ")
-        )
+        self.assertIsNone(cli.sudo_user)
+        self.assertTrue(cli.restart.startswith(prefix + " "))
         self.assertTrue(
             cli.restart.endswith(
                 "podman-compose -f /etc/erplibre-call/compose.yml"
@@ -14606,7 +14691,7 @@ class TestContainerOdoo(OdooSandbox):
             ],
         )
         prefix = (
-            "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/995"
+            "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/995"
             " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus"
         )
         self.assertIn(
@@ -15045,7 +15130,7 @@ class TestContainerCheckRemoteRun(unittest.TestCase):
         self.assertTrue(engine)
         self.assertTrue(all(c.startswith("podman inspect ") for c in engine))
         self.assertIn(
-            "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/995"
+            "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/995"
             " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus podman"
             " inspect -f {{.State.Status}} {{.Config.User}}"
             " erplibre-call-coturn",

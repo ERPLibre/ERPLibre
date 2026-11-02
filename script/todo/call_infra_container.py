@@ -60,6 +60,9 @@ CONTAINERS = {"coturn": "erplibre-call-coturn", "ntfy": "erplibre-call-ntfy"}
 COMPOSE_FILE = "/etc/erplibre-call/compose.yml"
 ROOTLESS_ACCOUNT = "erplibre-call"
 ROOTLESS_HOME = "/var/lib/erplibre-call-podman"
+# Dossier courant des commandes lancées sous le compte rootless
+# (`rootless_prefix`) : ouvert à tout compte.
+ROOTLESS_WORKDIR = "/"
 # coturn tourne sous le compte du paquet quand il existe, sinon sous le
 # compte système que l'outil crée.
 COTURN_ACCOUNTS = ("turnserver", "erplibre-coturn")
@@ -240,6 +243,8 @@ def _prefix_words(account, uid_text):
         account,
         "--",
         "env",
+        "-C",
+        ROOTLESS_WORKDIR,
         f"XDG_RUNTIME_DIR=/run/user/{uid_text}",
         f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid_text}/bus",
     ]
@@ -248,7 +253,13 @@ def _prefix_words(account, uid_text):
 def rootless_prefix(account, uid):
     """Préfixe qui lance une commande, depuis root, sous le compte rootless
     et dans sa session : Podman y trouve son stockage et son runtime, et
-    `systemctl --user` le bus de l'utilisateur."""
+    `systemctl --user` le bus de l'utilisateur. La commande part de
+    ROOTLESS_WORKDIR (`env -C`) et non du dossier courant de l'appelant,
+    que le compte ne peut pas toujours ouvrir : Podman rootless, entré dans
+    l'espace de noms du compte, se replace dans ce dossier et s'arrête
+    quand il ne peut pas (« cannot chdir to … »), et `podman-compose` en
+    conclut que Podman manque. Le hook de déploiement (`container_engine`)
+    en porte la copie `sh`, qu'un test garde égale."""
     return _prefix_words(account, str(int(uid)))
 
 
