@@ -4155,16 +4155,34 @@ def _container_helper_lines(plan, state):
     ]
 
 
-def _status_lines():
+def _status_lines(listing=None):
     """Fonctions `sh` `cstatus <conteneur>`, qui pose `S`, son état
     d'`inspect` (« missing » sans lui), et `cwait`, qui relit un état
     passager (_TRANSIENT) une fois par seconde, dix au plus. Elles
-    supposent `eng` (`_engine_shell_lines`)."""
-    return [
+    supposent `eng` (`_engine_shell_lines`). `listing` (moteur, rootless)
+    : un `inspect` qui échoue ne vaut « missing » que si le moteur liste
+    ses conteneurs (`eng ps -a -q`) ; sinon `S` vaut « unknown », et
+    `@@ENGINE_LIST_FAILED <moteur> <0|1> <message>` (cc.MESSAGE_AWK) le
+    dit une fois par script."""
+    head, unknown = [], []
+    if listing is not None:
+        engine, rootless = listing
+        awk = shlex.quote(cc.MESSAGE_AWK)
+        head = ["SLF="]
+        unknown = [
+            '  [ "$S" = missing ] || return 0',
+            "  SL=$(eng ps -a -q 2>&1) && return 0",
+            '  S=unknown; [ -z "$SLF" ] || return 0; SLF=1',
+            f"  SLM=$(printf '%s\\n' \"$SL\" | awk {awk})",
+            f'  echo "@@ENGINE_LIST_FAILED {engine} {int(bool(rootless))}'
+            ' ${SLM:--}"',
+        ]
+    return head + [
         "cstatus() {",
         f'  S=$(eng inspect -f {shlex.quote(_STATUS_FORMAT)} "$1"'
         " 2>/dev/null) || S=",
         "  case \"$S\" in ''|*[!a-z]*) S=missing ;; esac",
+        *unknown,
         "}",
         "cwait() {",
         '  cstatus "$1"; N=0',
@@ -9604,14 +9622,17 @@ def _container_admin_lines(state):
 def _container_uninstall_lines(state, additions, records):
     """Lignes `sh` d'un état en conteneurs, avant celles des services :
     `eng` et `comp` du bloc `container` (`cc.engine_argv`,
-    `cc.compose_argv`), `cstatus` et `nolder` ; NTFY_ADMIN_USER retiré d'un
+    `cc.compose_argv`), `cstatus` (qui dit « unknown » quand le moteur
+    refuse de lister) et `nolder` ; NTFY_ADMIN_USER retiré d'un
     ntfy adopté qui l'a reçu de l'outil (`admin_added`), conteneur encore
     en marche (`_container_admin_lines`) ; les conteneurs arrêtés et
     retirés avec leurs volumes anonymes (`comp down -v` : chaque montage de
     l'outil est un chemin de l'hôte, et l'image de coturn déclare un volume
     que `down` seul garderait ; `_volume_rm_lines` d'abord, pour
     podman-compose), puis le fichier compose ; sans lui, chaque
-    conteneur consigné retiré par son nom ; enfin les images que l'outil a
+    conteneur consigné retiré par son nom, et un état « unknown » est un
+    échec : aucun conteneur vu arrêté, CDOWN reste à 0 et rien ne change
+    de propriétaire (`_ntfy_handback_lines`) ; enfin les images que l'outil a
     tirées (`_pulled_image_lines`). Un `down` qui échoue garde le fichier : la
     relance le reprend."""
     block = state["container"]
@@ -9620,7 +9641,7 @@ def _container_uninstall_lines(state, additions, records):
         "cd / || failed workdir",
         f'eng() {{ {shlex.join(cc.engine_argv(block))} "$@"; }}',
         f'comp() {{ {shlex.join(cc.compose_argv(block))} "$@"; }}',
-        *_status_lines(),
+        *_status_lines((block["engine"], block["rootless"])),
         *_version_older_lines(),
     ]
     ntfy = dict(records).get("ntfy")
@@ -9642,7 +9663,8 @@ def _container_uninstall_lines(state, additions, records):
         name = cc.CONTAINERS[svc]
         lines += [
             f"  cstatus {name}",
-            '  if [ "$S" != missing ]; then',
+            f'  if [ "$S" = unknown ]; then failed container-{svc}; CDOWN=0',
+            '  elif [ "$S" != missing ]; then',
             f"    if eng rm -f -v {name} >/dev/null 2>&1; then"
             f' echo "@@REMOVED container {name}";',
             f"    else failed container-{svc}; CDOWN=0; fi",

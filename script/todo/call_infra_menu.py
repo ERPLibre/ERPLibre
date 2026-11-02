@@ -2333,6 +2333,18 @@ class CallInfraMenuMixin:
                 missing.append(value.strip())
             elif name == "PENDING_LEFT":
                 left.append(value.strip())
+            elif name == "ENGINE_LIST_FAILED":
+                # « <moteur> <0|1> <message> » : le moteur n'a pas dit si
+                # les conteneurs de l'outil sont partis.
+                words = value.split(None, 2)
+                detail = words[2] if len(words) > 2 else "-"
+                print(
+                    "✗ "
+                    + self._call_infra_text(
+                        "call_infra_check_engine_unreadable",
+                        {"detail": detail},
+                    )
+                )
             elif name == "BACKUP_LOST":
                 svc, _, backup = value.strip().partition(" ")
                 print(

@@ -1360,6 +1360,25 @@ class TestUninstall(MenuCase):
         self.assertIn(t("call_infra_uninstall_failed"), out)
         self.assertIsNotNone(host.state)
 
+    def test_an_engine_that_cannot_list_is_said_on_uninstall(self):
+        host = FakeHost(
+            state=installed_state(),
+            uninstall_out=(
+                "@@ENGINE_LIST_FAILED podman 1 cannot chdir to /var/invente\n"
+                "@@FAILED container-coturn\n@@DONE no\n"
+            ),
+            uninstall_code=1,
+        )
+        out = self.drive("_call_infra_uninstall", host, ["n", "o"])
+        self.assertIn(
+            t("call_infra_check_engine_unreadable").format(
+                detail="cannot chdir to /var/invente"
+            ),
+            out,
+        )
+        self.assertIn(f"{t('Step failed:')} container-coturn", out)
+        self.assertIn(t("call_infra_uninstall_failed"), out)
+
     def test_a_missing_backup_ends_partial(self):
         host = FakeHost(
             state=installed_state(),
