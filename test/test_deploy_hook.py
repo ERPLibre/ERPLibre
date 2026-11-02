@@ -1025,6 +1025,62 @@ class TestParite(unittest.TestCase):
         )
 
 
+# Message d'erreur d'un moteur, commun aux deux copies du filtre (le
+# `MESSAGE_AWK` de l'outil, l'awk du hook) : une ligne vide, puis une
+# séquence d'échappement, une apostrophe et un « non ASCII, puis une
+# seconde ligne qui ne doit pas passer.
+MESSAGE_MOTEUR = (
+    "\n\x1b[31mError: can't read « /var/invente »\x1b[0m\nseconde ligne\n"
+)
+# Ce que chaque copie doit en garder, sous la locale C (un octet par
+# caractère) : chaque octet hors de l'ensemble permis devient une espace.
+MESSAGE_FILTRE = "  31mError: can t read    /var/invente     0m"
+MESSAGE_PERMIS = re.compile(r"[A-Za-z0-9 ._:/=,()-]*")
+
+
+class TestFiltreDuMessage(unittest.TestCase):
+    """Le message d'un moteur qui refuse de lister finit sur le terminal et
+    dans une ligne `@@NOM valeur` : les deux copies du filtre n'en gardent
+    que la première ligne non vide, réduite à l'ensemble permis."""
+
+    def test_filtre_de_l_outil(self):
+        for locale in ("C", "C.UTF-8"):
+            with self.subTest(locale=locale):
+                fait = subprocess.run(
+                    ["awk", cc.MESSAGE_AWK],
+                    input=MESSAGE_MOTEUR,
+                    capture_output=True,
+                    text=True,
+                    env=dict(os.environ, LC_ALL=locale),
+                    timeout=30,
+                )
+                self.assertEqual(fait.returncode, 0, fait.stderr)
+                ligne = fait.stdout.rstrip("\n")
+                self.assertRegex(ligne, MESSAGE_PERMIS.pattern + r"\Z")
+                self.assertIn("31mError: can t read", ligne)
+                self.assertNotIn("seconde", ligne)
+                if locale == "C":
+                    self.assertEqual(ligne, MESSAGE_FILTRE)
+
+    def test_filtre_du_hook(self):
+        for locale in ("C", "C.UTF-8"):
+            with self.subTest(locale=locale):
+                with tempfile.TemporaryDirectory() as dossier:
+                    r = Racine(dossier, contenu=etat_conteneur())
+                    r.synchroniser()
+                    r.lancer(PS_ERREUR=MESSAGE_MOTEUR, LC_ALL=locale)
+                    self.assertEqual(r.fait.returncode, 1, r.fait.stdout)
+                    debut = "@@HOOK engine-failed %s " % CONTENEUR
+                    lignes = [m for m in r.marqueurs if m.startswith(debut)]
+                    self.assertEqual(len(lignes), 1, r.marqueurs)
+                    ligne = lignes[0][len(debut) :]
+                    self.assertRegex(ligne, MESSAGE_PERMIS.pattern + r"\Z")
+                    self.assertIn("31mError: can t read", ligne)
+                    self.assertNotIn("seconde", r.fait.stdout)
+                    if locale == "C":
+                        self.assertEqual(ligne, MESSAGE_FILTRE)
+
+
 class TestSource(unittest.TestCase):
     def test_meme_empreinte_que_l_installateur(self):
         """La fonction qui calcule coturn.applied est la meme, au caractere
