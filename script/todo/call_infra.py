@@ -4317,13 +4317,28 @@ def _ntfy_container_block(plan):
     certificat propre posé (clé lisible du groupe du compte du conteneur)
     ou retiré, server.yml écrit comme `_ntfy_block` l'écrit, puis la base
     des comptes et le cache, créés au besoin et rendus au compte du
-    conteneur. Aucun binaire ntfy ni aucune unité sur l'hôte."""
+    conteneur. Aucun binaire ntfy ni aucune unité sur l'hôte. NC=1 quand
+    server.yml ou le certificat propre a changé : ntfy ne relit sa
+    configuration qu'à son démarrage (`_compose_lines`)."""
     answers = plan.answers
     config = _host(NTFY_CONFIG)
     new = _host(NTFY_CONFIG + ".erplibre-new")
     conf_dir = _host(os.path.dirname(NTFY_CONFIG))
+    read = " ".join(
+        _host(path)
+        for path in (
+            NTFY_CONFIG,
+            NTFY_TLS_DIR + "/ntfy.crt",
+            NTFY_TLS_DIR + "/ntfy.key",
+        )
+    )
+    # Empreinte de ce que ntfy lit, avant et après : un fichier absent ne
+    # compte pour rien, son apparition ou son retrait change l'empreinte.
+    nsum = f"nsum() {{ cat {read} 2>/dev/null | sha256sum; }}"
     lines = [
         "# ntfy",
+        nsum,
+        "N0=$(nsum); NC=0",
         f"[ -d {conf_dir} ] || install -d -m 0755 {conf_dir}"
         " || fail ntfy-config",
     ]
@@ -4356,6 +4371,7 @@ def _ntfy_container_block(plan):
         f"  chmod 0644 {new} || fail ntfy-config",
         "fi",
         f"mv -f {new} {config} || fail ntfy-config",
+        '[ "$(nsum)" = "$N0" ] || NC=1',
     ]
     for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
         lines.append(
@@ -4374,7 +4390,10 @@ def _compose_lines(plan):
     manque ou ne tourne pas, ou que le fichier a changé : podman-compose
     relance sinon `podman run` sur des conteneurs déjà là. Sur `@@RECREATE
     1` de l'installateur de coturn, et quand son conteneur existait déjà,
-    `comp up -d --force-recreate coturn` : il relit sa configuration. En
+    `comp up -d --force-recreate coturn` : il relit sa configuration. De
+    même, quand ce passage a changé ce que ntfy lit (NC=1,
+    `_ntfy_container_block`) et que son conteneur tournait déjà, `comp
+    restart ntfy` : rien d'autre ne le redémarre. En
     production, un conteneur qui ne tourne pas arrête le script avant nginx
     et certbot."""
     state = plan.new_state
@@ -4404,6 +4423,12 @@ def _compose_lines(plan):
         lines += [
             'if [ "$(mval RECREATE)" = 1 ] && [ "$E_coturn" != missing ]; then',
             "  comp up -d --force-recreate coturn || fail compose-recreate",
+            "fi",
+        ]
+    if "ntfy" in services and "ntfy" in plan.answers.services:
+        lines += [
+            'if [ "$NC" = 1 ] && [ "$E_ntfy" = running ]; then',
+            "  comp restart ntfy || fail compose-restart",
             "fi",
         ]
     if is_production(plan.answers):
