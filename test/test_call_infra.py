@@ -12447,7 +12447,7 @@ class TestContainerUninstall(ContainerSandbox):
                 self.path("/var/lib/systemd/linger/erplibre-call"), "", 0o644
             )
         if block.get("rootless"):
-            os.makedirs(self.path(f"/run/user/{block['uid']}"))
+            os.makedirs(self.path(f"/run/user/{block['uid']}"), exist_ok=True)
         if "coturn" in services:
             write(
                 self.path(services["coturn"]["config"]),
@@ -12713,6 +12713,8 @@ class TestContainerUninstall(ContainerSandbox):
                 )
                 self.assertIn(f"RESTORED {ci.NTFY_CONFIG} {backup}", markers)
                 self.assertTrue(os.path.exists(self.path(ci.NTFY_AUTH_FILE)))
+                # En root, le conteneur tournait déjà sous `ntfy`.
+                self.assertIsNone(self.first("chown"))
                 enable = self.first("systemctl as=root xdg= enable ntfy")
                 start = self.first("systemctl as=root xdg= start ntfy")
                 if started:
@@ -12748,6 +12750,73 @@ class TestContainerUninstall(ContainerSandbox):
         self.assertIsNone(self.first("systemctl", " enable "))
         self.assertIsNone(self.first("systemctl", " start "))
         self.assertIsNone(self.first(" exec "))
+
+    def test_rootless_host_ntfy_gets_its_data_back(self):
+        # En rootless, l'installation a donné la base des comptes et le
+        # cache au compte rootless : le paquet gardé sur l'hôte tourne sous
+        # `ntfy` et ne les ouvrirait plus.
+        backup = f"{ci.NTFY_CONFIG}.bak-{STAMP}"
+        adopted = dict(
+            unit="ntfy",
+            installed_by_tool=False,
+            adopted=True,
+            backup=backup,
+            was_active=True,
+            was_enabled="enabled",
+        )
+        present = dict(unit="ntfy", installed_by_tool=False, adopted=False)
+        for name, values, version in (
+            ("adopted", adopted, "2.36.0"),
+            ("adopted-older-host", adopted, "2.11.0"),
+            ("package-without-config", present, "2.36.0"),
+        ):
+            with self.subTest(name):
+                state = self.rootless_state()
+                state["services"]["ntfy"].update(values)
+                self.host(state)
+                write(self.path(backup), NTFY_FOREIGN, 0o640)
+                done = self.uninstall(
+                    state, remove_engine=True, FAKE_NTFY_VERSION=version
+                )
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                markers = self.markers(done)
+                for path in (ci.NTFY_DATA_DIR, ci.NTFY_CACHE_DIR):
+                    chown = self.first(
+                        "chown as=root xdg= -R --no-dereference ntfy:ntfy"
+                        f" {self.path(path)}"
+                    )
+                    self.assertIsNotNone(chown, path)
+                    start = self.first("systemctl as=root xdg= start ntfy")
+                    if start is not None:
+                        self.assertLess(chown, start)
+                with open(self.path(ci.NTFY_AUTH_FILE), "rb") as handle:
+                    self.assertEqual(handle.read(), USER_DB)
+                # Rendues à `ntfy`, ces données ne retiennent plus le
+                # compte rootless.
+                self.assertIn("REMOVED account erplibre-call", markers)
+                self.assertEqual(markers[-1], "DONE yes")
+
+    def test_rootless_account_kept_while_ntfy_files_stay_its_own(self):
+        # La base d'un ntfy posé par l'outil reste au compte rootless ; les
+        # fichiers TLS gardés d'un ntfy adopté restent de son groupe.
+        tls = sorted(ci._TLS_FILES["ntfy"])
+        adopted = dict(
+            unit="ntfy",
+            installed_by_tool=False,
+            adopted=False,
+            tls_files=tls,
+        )
+        for name, values in (("tool", {}), ("adopted-with-tls", adopted)):
+            with self.subTest(name):
+                state = self.rootless_state()
+                state["services"]["ntfy"].update(values)
+                self.host(state)
+                done = self.uninstall(state, remove_engine=True)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertIn("KEPT account erplibre-call", self.markers(done))
+                self.assertIsNone(self.first("userdel"))
+                if not values:
+                    self.assertIsNone(self.first("chown"))
 
     def test_engine_stays_while_a_service_stays_configured(self):
         state = self.docker_state()
