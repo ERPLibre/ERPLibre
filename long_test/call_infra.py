@@ -26,7 +26,7 @@ machine par `check_local`, comme le menu le fait ; la désinstallation est
 jugée sur ce qui reste sur l'hôte (unité, dossier de l'outil, règles du
 pare-feu, configuration remise) et sur les ports vus d'ici.
 
-TROIS SCÉNARIOS
+CINQ SCÉNARIOS
 
 Le développement (`dev`) : sur Debian, ufw y est activé (ssh d'abord), ntfy
 y est d'abord posé à l'ancienne par install_ntfy.sh avec un compte de
@@ -54,13 +54,31 @@ invité (`check_through_odoo`). Les bases `call_infra_odoo_*` entrent au
 rapport avant d'exister et partent à la fin de la course, ou par
 `--detruire`.
 
-Chaque scénario part d'une VM neuve, au même nom : ceux d'un système
-tournent l'un après l'autre.
+Les conteneurs (`conteneur`), sur Debian seulement : une course par moteur
+(`--moteur docker|podman|podman-rootless`, les trois par défaut), chacune
+sur sa VM neuve. Le moteur absent est proposé par le menu et accepté ;
+coturn et ntfy de développement tournent en conteneurs sous le compte que
+l'état consigne, un Odoo inventé fait basculer coturn en mode secret (une
+seule recréation), le crochet signale le conteneur, la VM redémarre et les
+conteneurs reviennent, la relance ne change rien, la désinstallation
+emporte moteur, images, comptes et fichier compose. La course `podman`
+ajoute, sur la même VM, coturn seul en production sur 443.
+
+La migration (`migration`), sur Debian seulement : paquets, un Odoo 18 de
+cette machine branché avec `erplibre_turn` et un téléphone, puis passage
+aux conteneurs Podman en root sans rien rebrancher, puis retour aux
+paquets quand ntfy le permet. Une image refusée par la limite du registre
+(Docker Hub) donne le verdict `limite-registre`, distinct d'un échec.
+
+Chaque course part d'une VM neuve, au même nom : celles d'un système
+tournent l'une après l'autre.
 
   ./long_test/call_infra.py                  # Debian puis Arch, chaque scénario
   ./long_test/call_infra.py --distro arch    # un seul système
   ./long_test/call_infra.py --scenario prod  # un seul scénario
   ./long_test/call_infra.py --scenario odoo  # les serveurs Odoo, Debian
+  ./long_test/call_infra.py --scenario conteneur --moteur docker
+  ./long_test/call_infra.py --scenario migration   # paquets ↔ conteneurs
   ./long_test/call_infra.py --dry-run        # le plan, rien de créé
   ./long_test/call_infra.py --garder --scenario dev   # garder les VM
   ./long_test/call_infra.py --detruire       # défaire la dernière course
@@ -69,6 +87,7 @@ tournent l'un après l'autre.
 import argparse
 import base64
 import binascii
+import dataclasses
 import datetime
 import hashlib
 import json
@@ -106,6 +125,7 @@ from descente import (  # noqa: E402
 import mobile_sync_odoo as mso  # noqa: E402
 from script.reverse_proxy import local_cert  # noqa: E402
 from script.todo import call_infra as ci  # noqa: E402
+from script.todo import call_infra_container as cc  # noqa: E402
 from script.todo import call_infra_menu as cim  # noqa: E402
 from script.todo import ntfy_mobile as nm  # noqa: E402
 from script.todo import odoo_link as ol  # noqa: E402
@@ -149,7 +169,23 @@ SECRETS = (cim.ADMIN_PASSWORD_LINE, *cim.CHECK_HIDDEN)
 # ligne : il ouvre les sujets du téléphone tant que la VM vit.
 JETON = re.compile(r"tk_[A-Za-z0-9]+")
 
-SCENARIOS_NOMS = ("dev", "prod", "odoo")
+SCENARIOS_NOMS = ("dev", "prod", "odoo", "conteneur", "migration")
+
+# Les moteurs d'une course `conteneur` : (moteur, rootless) des `Answers`,
+# dans l'ordre où leurs courses tournent par défaut.
+MOTEURS = {
+    "docker": ("docker", False),
+    "podman": ("podman", False),
+    "podman-rootless": ("podman", True),
+}
+# Le moteur de la migration : Podman en root.
+MOTEUR_MIGRATION = "podman"
+
+# Le verdict d'une course arrêtée par la limite de tirage du registre
+# (`@@PULL_FAILED <service> rate-limit`) : ni vert ni échec, la course est
+# à relancer plus tard. Il fait sortir le test par 2.
+LIMITE_REGISTRE = "limite-registre"
+MESSAGE_LIMITE = "limite du registre, réessayer plus tard"
 
 # Les lignes de `check_local` qui doivent être vertes, par scénario et par
 # système. En production, `private-denied` est la permission refusée vers
@@ -206,7 +242,45 @@ CONTROLES = {
             "odoo-2",
         ),
     },
+    # Les deux services de développement en conteneurs : les lignes
+    # `service-*` lisent l'état du conteneur et l'uid sous lequel il tourne.
+    "conteneur": {
+        "debian": (
+            "turn-udp",
+            "turn-tcp",
+            "turn-tls",
+            "ntfy-health",
+            "firewall",
+            "service-coturn",
+            "service-ntfy",
+        ),
+    },
+    # odoo-1 : l'Odoo du harnais, sous son propre secret.
+    "migration": {
+        "debian": (
+            "turn-udp",
+            "turn-tcp",
+            "turn-tls",
+            "ntfy-health",
+            "firewall",
+            "service-coturn",
+            "service-ntfy",
+            "odoo-1",
+        ),
+    },
 }
+# coturn seul en production dans un conteneur, TURN sur TLS en 443 : sans
+# ntfy ni nginx.
+CONTROLES_PROD_COTURN = (
+    "turn-udp",
+    "turn-tcp",
+    "turn-tls",
+    "private-denied",
+    "cert-expiry",
+    "cert-issuer",
+    "firewall",
+    "service-coturn",
+)
 
 # Les étapes de la production après la préparation du système.
 _PROD_ETAPES = (
@@ -254,6 +328,71 @@ _ODOO_ETAPES = (
     "bases-supprimees",
 )
 
+# La production d'une course `conteneur` (podman) : coturn seul, sur la
+# même VM, après la désinstallation du développement.
+_CONTENEUR_PROD_ETAPES = (
+    "prod-installation",
+    "prod-443-non-root",
+    "prod-verification",
+    "prod-desinstallation",
+    "prod-etat-apres-desinstallation",
+    "prod-ports-fermes",
+)
+
+
+def _conteneur_etapes(melange=False, production=False):
+    """Les étapes d'une course `conteneur` : le développement des deux
+    services, le rejeu du mélange en information quand `melange` (avant la
+    bascule en mode secret, sur coturn en comptes fixes), la production de
+    coturn seul quand `production`."""
+    return (
+        "vm",
+        "ssh",
+        "cloud-init",
+        "ufw-actif",
+        "moteur-propose",
+        "installation",
+        "moteur-installe",
+        "verification",
+        "proprietaires",
+        *(("melange (information)",) if melange else ()),
+        "odoo-secret",
+        "odoo-second",
+        "relais-prive",
+        "crochet-fourni",
+        "crochet-lignee",
+        "crochet-retour",
+        "crochet-remise",
+        "redemarrage",
+        "verification-apres-redemarrage",
+        "rien-a-changer",
+        "desinstallation",
+        "etat-apres-desinstallation",
+        "ports-fermes",
+        "desinstallation-vide",
+        *(_CONTENEUR_PROD_ETAPES if production else ()),
+    )
+
+
+# Les étapes de la migration après la préparation du système.
+_MIGRATION_ETAPES = (
+    "odoo-harnais",
+    "installation",
+    "telephone-seme",
+    "odoo-branche",
+    "odoo-relaie",
+    "migration-conteneurs",
+    "secrets-identiques",
+    "verification-conteneurs",
+    "odoo-relaie-conteneurs",
+    "telephone-garde",
+    "retour-paquets",
+    "odoo-relaie-retour",
+    "odoo-retire",
+    "desinstallation",
+    "bases-supprimees",
+)
+
 # Les étapes, dans l'ordre, pour le plan et le rapport.
 ETAPES = {
     "dev": {
@@ -294,7 +433,26 @@ ETAPES = {
     "odoo": {
         "debian": ("vm", "ssh", "cloud-init", "ufw-actif", *_ODOO_ETAPES),
     },
+    "conteneur": {
+        "debian": {
+            "docker": _conteneur_etapes(melange=True),
+            "podman": _conteneur_etapes(production=True),
+            "podman-rootless": _conteneur_etapes(),
+        },
+    },
+    "migration": {
+        "debian": ("vm", "ssh", "cloud-init", "ufw-actif", *_MIGRATION_ETAPES),
+    },
 }
+
+
+def etapes_de(scenario, distro, variante=None):
+    """Les étapes d'une course, dans l'ordre : celles du scénario sur ce
+    système, ou celles de sa variante (le moteur d'une course `conteneur`)
+    quand le scénario en a par variante."""
+    etapes = ETAPES[scenario][distro]
+    return etapes[variante] if isinstance(etapes, dict) else etapes
+
 
 # Le domaine inventé de la production : ses noms ne se résolvent nulle
 # part, les clients joignent la VM par son adresse et vérifient le nom.
@@ -532,6 +690,48 @@ def reponses_prod(ip, cert_pem, key_pem, facts=None, resolve=None):
     )
 
 
+def methode_du_menu(answers, facts, methode, moteur=None, vu=None):
+    """`answers` sous la méthode `methode`, comme les bâtit
+    `_call_infra_ask_install_method` : en conteneurs, `moteur` (une clé de
+    MOTEURS) donne moteur et rootless, et les paquets qui manquent à l'hôte
+    (`engine_offer`) sont proposés puis acceptés ; `vu["offre"]` les reçoit.
+    `method_refusal` passe ensuite, et son refus est levé, sauf celui d'un
+    port (`cim.PORT_REFUSAL`) que le menu laisse à `plan_install`."""
+    engine, rootless, offre = None, False, ()
+    if methode == "container":
+        engine, rootless = MOTEURS[moteur]
+        offre = ci.engine_offer(facts, engine, rootless)
+    if vu is not None:
+        vu["offre"] = offre
+    answers = dataclasses.replace(
+        answers,
+        method=methode,
+        engine=engine,
+        rootless=rootless,
+        install_engine=bool(offre),
+    )
+    refus = ci.method_refusal(facts, answers)
+    if refus is not None and refus.key != cim.PORT_REFUSAL:
+        raise refus
+    return answers
+
+
+def reponses_prod_coturn(ip, cert_pem, key_pem, facts=None, resolve=None):
+    """Les `Answers` de production du menu pour coturn seul : celles de
+    `reponses_prod` sans ntfy, donc sans nginx ni port local de ntfy, et
+    TURN sur TLS en 443, que le menu propose sur un hôte sans nginx où 443
+    est libre."""
+    answers = reponses_prod(ip, cert_pem, key_pem, facts, resolve)
+    return dataclasses.replace(
+        answers,
+        services=frozenset({"coturn"}),
+        ntfy_port=None,
+        ntfy_name=None,
+        nginx=None,
+        turns_443=True,
+    )
+
+
 def noms_certificat(ip):
     """Les noms du certificat inventé : ceux que le plan exige
     (`ci.certificate_names`), puis l'adresse de la VM, par où les clients
@@ -627,21 +827,24 @@ def attendre_certificat(vu, adresse, port, nom, pem, attente):
         time.sleep(1)
 
 
-def attendus_crochet(etape, unite):
+def attendus_crochet(etape, unite, nginx=True):
     """(requis, interdits) : les valeurs `@@HOOK` d'une passe du crochet.
 
     `crochet-fourni` (l'état dit « certificat fourni ») : coturn n'est pas
     touché, nginx est rechargé. `crochet-lignee` et `crochet-retour`
-    (l'état dit « Let's Encrypt ») : la paire copiée, SIGUSR2 à `unite`,
-    l'empreinte coturn.applied réécrite, nginx rechargé. Une valeur
+    (l'état dit « Let's Encrypt ») : la paire copiée, SIGUSR2 à `unite`
+    (l'unité systemd, ou le nom du conteneur de coturn), l'empreinte
+    coturn.applied réécrite, nginx rechargé. Sans `nginx` (un hôte de
+    développement), le rechargement n'est pas requis. Une valeur
     s'accorde à un motif égal ou suivi d'une espace."""
+    recharge = ("nginx-reloaded",) if nginx else ()
     if etape == "crochet-fourni":
         return (
-            ("coturn-skip not-letsencrypt", "nginx-reloaded"),
+            ("coturn-skip not-letsencrypt", *recharge),
             ("copied", "signal", "failed", "refused"),
         )
     return (
-        ("copied", f"signal {unite}", "applied", "nginx-reloaded"),
+        ("copied", f"signal {unite}", "applied", *recharge),
         ("applied-stale", "failed", "refused"),
     )
 
@@ -727,28 +930,45 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
     """Le chemin du menu, de la sonde à l'état écrit.
 
     `answers` : les `Answers`, ou une fonction qui les bâtit de la sonde
-    (`HostFacts`), comme le menu pose ses questions après elle.
+    (`HostFacts`), comme le menu pose ses questions après elle ; elle lève
+    `ci.Refusal` pour un refus que le menu dit avant la suite (étape
+    « methode »).
 
-    Rend {"ok", "etape", "rien_a_faire", "adoptes", "etat", "answers"} :
-    `etape` nomme ce qui a échoué (sonde, plan, install, pare-feu, etat),
+    Rend {"ok", "etape", "refus", "limite", "rien_a_faire", "adoptes",
+    "etat", "answers", "plan", "migration"} : `etape` nomme ce qui a
+    échoué (sonde, methode, plan, install, pare-feu, etat), `refus` la clé
+    d'un refus de la méthode ou du plan, `limite` vrai quand une image n'a
+    pas été tirée sous la limite du registre (`limite_registre`),
     `adoptes` les services dont la configuration étrangère a été sauvée,
     `etat` l'état écrit sur l'hôte (None quand rien n'a été écrit),
-    `answers` celles du plan. Une relance où les services sont à jour passe
-    encore par le pare-feu tant qu'une règle manque à l'état
-    (`firewall_missing`), comme le menu."""
+    `answers` celles du plan, `plan` le `InstallPlan`, `migration` la
+    dernière valeur `@@MIGRATION` du script (« done », « rolled-back »...).
+    Une relance où les services sont à jour passe encore par le pare-feu
+    tant qu'une règle manque à l'état (`firewall_missing`), comme le
+    menu."""
     res = {
         "ok": False,
         "etape": "sonde",
+        "refus": None,
+        "limite": False,
         "rien_a_faire": False,
         "adoptes": (),
         "etat": None,
         "answers": None if callable(answers) else answers,
+        "plan": None,
+        "migration": None,
     }
     facts = _sonde(cible, log, executer)
     if facts is None:
         return res
     if callable(answers):
-        answers = answers(facts)
+        res["etape"] = "methode"
+        try:
+            answers = answers(facts)
+        except ci.Refusal as refus:
+            res["refus"] = refus.key
+            _ajouter(log, f"✗ méthode : {refus.key} {refus.values}")
+            return res
         res["answers"] = answers
     res["etape"] = "plan"
     try:
@@ -758,9 +978,11 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
             maintenant or datetime.datetime.now(datetime.timezone.utc),
         )
     except ci.Refusal as refus:
+        res["refus"] = refus.key
         _ajouter(log, f"✗ plan : {refus.key} {refus.values}")
         return res
     res["adoptes"] = plan.adopt
+    res["plan"] = plan
     record = None
     if plan.nothing_to_do:
         _ajouter(log, "✓ rien à changer")
@@ -786,7 +1008,12 @@ def installer(cible, answers, log, executer=distant, maintenant=None):
             cible, ci.install_script(plan, stamp), log, DELAI_INSTALL
         )
         sauve = [v.strip() for n, v in ci.marker_lines(sortie) if n == "SAVED"]
+        migrations = [
+            v.strip() for n, v in ci.marker_lines(sortie) if n == "MIGRATION"
+        ]
+        res["migration"] = (migrations or [None])[-1]
         if code != 0 or sauve[-1:] != ["yes"]:
+            res["limite"] = limite_registre(sortie)
             return res
         etat = ci.installed_state(plan, stamp, sortie)
     if record is None:
@@ -826,9 +1053,22 @@ def verifier(cible, adresse, cafile, log, executer=distant):
     return lignes, lus
 
 
-def desinstaller(cible, remove_data, log, executer=distant):
+def limite_registre(sortie):
+    """Vrai quand une ligne `@@PULL_FAILED <service> rate-limit` dit qu'une
+    image n'a pas été tirée sous la limite du registre : le script s'est
+    arrêté avant d'arrêter aucun service et sans écrire d'état, la course
+    est à relancer."""
+    return any(
+        nom == "PULL_FAILED" and valeur.split()[-1:] == ["rate-limit"]
+        for nom, valeur in ci.marker_lines(sortie)
+    )
+
+
+def desinstaller(cible, remove_data, log, executer=distant, moteur=False):
     """La désinstallation du menu. Rend « fait » (`@@DONE yes`), « rien »
-    (pas d'état, `@@NOTHING`) ou « echec »."""
+    (pas d'état, `@@NOTHING`) ou « echec ». `moteur` : le oui à la
+    question des ajouts de l'outil pour les conteneurs (paquets du moteur,
+    comptes, unité de redémarrage, session permanente)."""
     facts = _sonde(cible, log, executer)
     if facts is None:
         return "echec"
@@ -838,7 +1078,9 @@ def desinstaller(cible, remove_data, log, executer=distant):
     etat = ci.merge_pending_firewall(facts.state, facts.firewall_pending)
     etat = etat if isinstance(etat, dict) else None
     try:
-        script = ci.uninstall_script(etat, remove_data, stamp)
+        script = ci.uninstall_script(
+            etat, remove_data, stamp, remove_engine=moteur
+        )
     except ci.Refusal as refus:
         _ajouter(log, f"✗ désinstallation : {refus.key} {refus.values}")
         return "echec"
@@ -1012,11 +1254,28 @@ SCRIPT_APRES = "\n".join(
 )
 
 
-def script_secret(realm, secret):
+def script_secret(realm, secret, etat=None):
     """Ajoute `secret` à la base de coturn par « turnadmin -s », sous le
     compte du service (la base lui appartient). Le secret passe en argument
     de turnadmin, lisible le temps de la commande : il naît pour ce rejeu,
-    sur une VM jetable, et ne sert nulle part ailleurs."""
+    sur une VM jetable, et ne sert nulle part ailleurs.
+
+    Avec `etat` en conteneurs, turnadmin est celui de l'image, lancé dans
+    le conteneur de coturn sous l'uid:gid que l'état consigne : l'hôte n'a
+    pas de turnadmin, et la base est montée au même chemin."""
+    if isinstance(etat, dict) and etat.get("method") == "container":
+        fiche = etat["services"]["coturn"]
+        return "\n".join(
+            [
+                _eng(etat),
+                f"eng exec -u {int(fiche['uid'])}:{int(fiche['gid'])}"
+                f" {cc.CONTAINERS['coturn']} turnadmin -s"
+                f" {shlex.quote(secret)} -r {shlex.quote(realm)}"
+                f" -b {ci.COTURN_DB} >/dev/null 2>&1",
+                'echo "@@SECRET_RC $?"',
+                "",
+            ]
+        )
     return "\n".join(
         [
             "U=",
@@ -1071,6 +1330,281 @@ def script_pid(unite):
     return (
         f'echo "@@PID $(systemctl show -p MainPID --value'
         f' {shlex.quote(unite)} 2>/dev/null)"\n'
+    )
+
+
+def _eng(etat):
+    """La fonction `sh` « eng » : le moteur du bloc `container` de `etat`
+    (`cc.engine_argv`), précédé en rootless du préfixe qui le lance sous
+    le compte rootless dans sa session. ValueError pour un bloc altéré."""
+    return f'eng() {{ {shlex.join(cc.engine_argv(etat["container"]))} "$@"; }}'
+
+
+def script_conteneurs(etat, attente=0):
+    """Imprime, pour chaque service de `etat` en conteneurs, `@@CSTATE
+    <service> <état> <pid> <user> <démarré>` d'après `inspect` (« - » et 0
+    pour ce qui ne se lit pas ; la date de démarrage, qui porte des espaces
+    sous Podman, en dernier). Avec `attente`, chaque conteneur est relu
+    chaque seconde, `attente` secondes au plus, tant qu'il ne tourne
+    pas."""
+    lignes = [_eng(etat)]
+    for svc in ci.SERVICES:
+        if not isinstance(etat["services"].get(svc), dict):
+            continue
+        nom = cc.CONTAINERS[svc]
+        lignes += [
+            "i=0",
+            "while :; do",
+            f"  S=$(eng inspect -f '{{{{.State.Status}}}}' {nom} 2>/dev/null)",
+            '  [ "$S" = running ] && break',
+            f'  i=$((i + 1)); [ "$i" -ge {int(attente)} ] && break',
+            "  sleep 1",
+            "done",
+            f"P=$(eng inspect -f '{{{{.State.Pid}}}}' {nom} 2>/dev/null)",
+            f"U=$(eng inspect -f '{{{{.Config.User}}}}' {nom} 2>/dev/null)",
+            f"T=$(eng inspect -f '{{{{.State.StartedAt}}}}' {nom}"
+            " 2>/dev/null)",
+            f'echo "@@CSTATE {svc} ${{S:--}} ${{P:-0}} ${{U:--}} $T"',
+        ]
+    return "\n".join(lignes + [""])
+
+
+def etats_conteneurs(sortie):
+    """{service: {"etat", "pid", "user", "demarre"}} des lignes `@@CSTATE`
+    de `script_conteneurs`."""
+    lus = {}
+    for nom, valeur in ci.marker_lines(sortie):
+        mots = valeur.split(" ", 4)
+        if nom != "CSTATE" or len(mots) < 4:
+            continue
+        lus[mots[0]] = {
+            "etat": mots[1],
+            "pid": mots[2],
+            "user": mots[3],
+            "demarre": mots[4].strip() if len(mots) > 4 else "",
+        }
+    return lus
+
+
+def script_proprietaires():
+    """Imprime `@@OWNER <service> <compte> <uid>` de la base de coturn et
+    de celle des comptes de ntfy, d'après `stat` ; « UNKNOWN » pour un uid
+    qu'aucun compte de l'hôte ne porte, celui d'un uid subordonné d'un
+    espace de noms."""
+    lignes = []
+    for svc, chemin in (("coturn", ci.COTURN_DB), ("ntfy", ci.NTFY_AUTH_FILE)):
+        lignes.append(
+            f"if [ -e {chemin} ]; then"
+            f" echo \"@@OWNER {svc} $(stat -c '%U %u' {chemin})\"; fi"
+        )
+    return "\n".join(lignes + [""])
+
+
+def verdict_proprietaires(etat, sortie):
+    """(ok, détail) : chaque base appartient au compte et à l'uid que
+    `etat` consigne pour son service ; un uid sans nom (subordonné) ne
+    passe pas."""
+    lus = {}
+    for nom, valeur in ci.marker_lines(sortie):
+        mots = valeur.split()
+        if nom == "OWNER" and len(mots) == 3:
+            lus[mots[0]] = (mots[1], mots[2])
+    detail = {}
+    for svc, fiche in etat["services"].items():
+        voulu = (str(fiche.get("account")), str(fiche.get("uid")))
+        detail[svc] = {"vu": list(lus.get(svc, ())), "voulu": list(voulu)}
+        detail[f"{svc}-ok"] = lus.get(svc) == voulu
+    return all(v for k, v in detail.items() if k.endswith("-ok")), detail
+
+
+# Le redémarrage de la VM : programmé par systemd-run quelques secondes
+# plus tard, pour que la session ssh qui le demande se ferme d'abord, et
+# l'identifiant de démarrage du noyau, qui change à chaque démarrage.
+SCRIPT_DEMARRAGE = 'echo "@@BOOT $(cat /proc/sys/kernel/random/boot_id)"\n'
+SCRIPT_REDEMARRER = "\n".join(
+    [
+        "systemd-run --on-active=5 --timer-property=AccuracySec=1s"
+        " systemctl reboot >/dev/null 2>&1 && echo '@@REBOOT scheduled'",
+        "",
+    ]
+)
+# Attente après la programmation du redémarrage, avant de guetter ssh :
+# ssh répondrait encore depuis l'ancien démarrage.
+DELAI_REDEMARRAGE = 30
+# Attente des conteneurs après le redémarrage : le moteur, l'unité de
+# redémarrage ou la session permanente du compte rootless les relancent.
+DELAI_CONTENEURS = 180
+
+
+def script_auto(etat):
+    """Imprime ce qui relance les conteneurs au démarrage : `@@AUTO
+    <unité> <is-enabled>` de docker.service (Docker), de
+    podman-restart.service en root (Podman), ou de celui du compte
+    rootless dans sa session, avec `@@LINGER <oui|non>` pour sa session
+    permanente."""
+    bloc = etat["container"]
+    if bloc["engine"] == "docker":
+        unite = "docker.service"
+        return (
+            f'echo "@@AUTO {unite} $(systemctl is-enabled {unite}'
+            ' 2>/dev/null)"\n'
+        )
+    if not bloc["rootless"]:
+        unite = "podman-restart.service"
+        return (
+            f'echo "@@AUTO {unite} $(systemctl is-enabled {unite}'
+            ' 2>/dev/null)"\n'
+        )
+    prefixe = shlex.join(cc.rootless_prefix(bloc["account"], bloc["uid"]))
+    lien = f"/var/lib/systemd/linger/{bloc['account']}"
+    return "\n".join(
+        [
+            f'echo "@@AUTO user $({prefixe} systemctl --user is-enabled'
+            ' podman-restart.service 2>/dev/null)"',
+            f"if [ -e {lien} ]; then echo '@@LINGER oui';"
+            " else echo '@@LINGER non'; fi",
+            "",
+        ]
+    )
+
+
+def verdict_redemarrage(avant, apres, etats, auto):
+    """(ok, détail) d'un redémarrage : l'identifiant de démarrage a changé,
+    chaque conteneur de `etats` tourne de nouveau, l'unité de `auto`
+    (sortie de `script_auto`) est activée et, en rootless, la session
+    permanente est posée."""
+    lus = dict(ci.marker_lines(auto))
+    unite = lus.get("AUTO", "").split()
+    detail = {
+        "redemarre": bool(avant) and bool(apres) and avant != apres,
+        "conteneurs": bool(etats)
+        and all(e["etat"] == "running" for e in etats.values()),
+        "unite-activee": unite[-1:] == ["enabled"],
+        "session-permanente": lus.get("LINGER", "oui").strip() == "oui",
+    }
+    return all(detail.values()), dict(detail, etats=etats, auto=unite)
+
+
+def script_port_bas(port):
+    """Imprime `@@LISTEN <processus> <uid>` de chaque processus qui écoute
+    `port` en TCP, d'après `ss` et `ps`."""
+    return "\n".join(
+        [
+            f"for P in $(ss -Hltnp 'sport = :{int(port)}' 2>/dev/null"
+            " | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do",
+            '  echo "@@LISTEN $(ps -o comm= -p "$P") $(ps -o uid= -p "$P"'
+            ' | tr -d " ")"',
+            "done",
+            "echo @@END",
+            "",
+        ]
+    )
+
+
+def verdict_port_bas(sortie):
+    """(ok, détail) : turnserver écoute, et aucun processus qui écoute ce
+    port ne tourne en root."""
+    vus = [
+        valeur.split()
+        for nom, valeur in ci.marker_lines(sortie)
+        if nom == "LISTEN" and len(valeur.split()) == 2
+    ]
+    ok = (
+        any(comm.startswith("turnserver") for comm, _uid in vus)
+        and all(uid.isdigit() and uid != "0" for _comm, uid in vus)
+        and "END" in dict(ci.marker_lines(sortie))
+    )
+    return ok, {"ecoute": vus}
+
+
+def script_apres_conteneur(paquets):
+    """Ce qui reste sur l'hôte après la désinstallation en conteneurs, en
+    lignes `@@` : `CONTAINER <nom>` et `IMAGE <référence>` vus par chaque
+    moteur présent (Docker, Podman en root), `IMAGE_FILE <dépôt>` pour une
+    image coturn ou ntfy encore dans le stockage d'un moteur retiré,
+    `VOLUME <chemin>` pour chaque volume de ces stockages, `COMPOSE
+    present`, `ACCOUNT <compte>` des comptes que l'outil crée, `HOME
+    present` (le dossier du compte rootless), `LINGER present`, `PKG
+    <paquet> <statut>` de chaque paquet de `paquets` (dpkg), `CALL_DIR
+    present`, `UFW_RULES <n>`, puis `END`."""
+    depots = "coturn/coturn\\|binwiederhier/ntfy"
+    comptes = " ".join(
+        sorted({cc.COTURN_ACCOUNTS[1], cc.ROOTLESS_ACCOUNT, cc.NTFY_ACCOUNT})
+    )
+    return "\n".join(
+        [
+            "if command -v docker >/dev/null 2>&1; then",
+            "  docker ps -a --format '{{.Names}}' 2>/dev/null"
+            " | grep '^erplibre-call' | sed 's/^/@@CONTAINER /'",
+            "  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null"
+            f" | grep '{depots}' | sed 's/^/@@IMAGE /'",
+            "fi",
+            "if command -v podman >/dev/null 2>&1; then",
+            "  podman ps -a --format '{{.Names}}' 2>/dev/null"
+            " | grep '^erplibre-call' | sed 's/^/@@CONTAINER /'",
+            "  podman images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null"
+            f" | grep '{depots}' | sed 's/^/@@IMAGE /'",
+            "fi",
+            "for F in /var/lib/docker/image/*/repositories.json"
+            " /var/lib/containers/storage/*-images/images.json; do",
+            f'  [ -f "$F" ] && grep -o \'{depots}\' "$F" | sort -u'
+            " | sed 's/^/@@IMAGE_FILE /'",
+            "done",
+            "for V in /var/lib/docker/volumes/*/"
+            " /var/lib/containers/storage/volumes/*/; do",
+            '  [ -d "$V" ] && echo "@@VOLUME $V"',
+            "done",
+            f"if [ -e {cc.COMPOSE_FILE} ]; then echo '@@COMPOSE present'; fi",
+            f"for A in {comptes}; do",
+            '  getent passwd "$A" >/dev/null 2>&1 && echo "@@ACCOUNT $A"',
+            "done",
+            f"if [ -e {cc.ROOTLESS_HOME} ]; then echo '@@HOME present'; fi",
+            f"if [ -e /var/lib/systemd/linger/{cc.ROOTLESS_ACCOUNT} ]; then",
+            "  echo '@@LINGER present'",
+            "fi",
+            *[
+                f"dpkg-query -W -f='@@PKG ${{Package}} ${{db:Status-Abbrev}}\\n'"
+                f" {shlex.quote(p)} 2>/dev/null || true"
+                for p in paquets
+            ],
+            f"if [ -e {ci.CALL_DIR} ]; then echo '@@CALL_DIR present'; fi",
+            "N=0",
+            "if command -v ufw >/dev/null 2>&1; then",
+            f"  N=$(ufw show added 2>/dev/null | grep -c {ci.FIREWALL_COMMENT})",
+            "fi",
+            'echo "@@UFW_RULES ${N:-0}"',
+            "echo @@END",
+            "",
+        ]
+    )
+
+
+def verdict_apres_conteneur(code, sortie):
+    """(ok, détail) de l'hôte après la désinstallation en conteneurs, moteur
+    compris, d'après `script_apres_conteneur` : ni conteneur, ni image, ni
+    volume, ni fichier compose, ni compte de l'outil ni son dossier ni sa
+    session permanente, chaque paquet du moteur purgé (statut « u » ou
+    « p », ni installé ni gardé avec sa configuration), ni dossier de l'outil ni règle ufw de l'outil.
+    """
+    lus = _traces(sortie)
+    paquets = [v.split() for v in lus.get("PKG", [])]
+    detail = {
+        "sans-conteneur": "CONTAINER" not in lus,
+        "sans-image": "IMAGE" not in lus and "IMAGE_FILE" not in lus,
+        "sans-volume": "VOLUME" not in lus,
+        "sans-compose": "COMPOSE" not in lus,
+        "sans-compte": "ACCOUNT" not in lus
+        and "HOME" not in lus
+        and "LINGER" not in lus,
+        "sans-paquet-moteur": all(
+            p[-1][:1] in ("u", "p") for p in paquets if len(p) > 1
+        ),
+        "sans-dossier-outil": "CALL_DIR" not in lus,
+        "sans-regle-ufw": lus.get("UFW_RULES", [""])[-1] == "0",
+    }
+    restes = {k: lus[k] for k in ("CONTAINER", "IMAGE", "ACCOUNT") if k in lus}
+    return code == 0 and "END" in lus and all(detail.values()), dict(
+        detail, restes=restes
     )
 
 
@@ -1227,16 +1761,29 @@ class Scenario:
     : {nom: bool}, dans l'ordre où elles ont tourné ; `details` : ce qui
     éclaire un verdict (lignes de vérification, ports, rejeu du mélange,
     passes du crochet). `course` : la `Course` dont le rapport reçoit ce
-    que le scénario crée hors de la VM (les bases Odoo), None sans elle."""
+    que le scénario crée hors de la VM (les bases Odoo), None sans elle.
+    `variante` : le moteur d'une course `conteneur`, None sinon. `limite` :
+    l'étape arrêtée par la limite du registre (`limite_registre`), None
+    sans elle."""
 
-    def __init__(self, distro, log, journal, scenario="dev", course=None):
+    def __init__(
+        self,
+        distro,
+        log,
+        journal,
+        scenario="dev",
+        course=None,
+        variante=None,
+    ):
         self.distro = distro
         self.scenario = scenario
+        self.variante = variante
         self.log = log
         self.journal = journal
         self.course = course
         self.etapes = {}
         self.details = {}
+        self.limite = None
 
     def noter(self, nom, ok, detail=None):
         self.etapes[nom] = bool(ok)
@@ -1247,13 +1794,30 @@ class Scenario:
         _ajouter(self.log, f"══ {marque} {nom} {detail if detail else ''}")
         return bool(ok)
 
+    def limite_atteinte(self, nom, detail=None):
+        """L'étape `nom` n'a pas pu tirer une image sous la limite du
+        registre : ni réussie ni en échec, elle arrête la course, dont le
+        verdict devient LIMITE_REGISTRE quand rien n'a échoué avant."""
+        self.limite = nom
+        if detail is not None:
+            self.details[nom] = detail
+        dire(f"      ⏳ {nom} : {MESSAGE_LIMITE}", self.journal)
+        _ajouter(self.log, f"══ ⏳ {nom} {LIMITE_REGISTRE}")
+
     def ligne(self):
         echecs = [n for n, ok in self.etapes.items() if not ok]
+        if echecs:
+            verdict = f"ECHEC({echecs[0]})"
+        elif self.limite:
+            verdict = LIMITE_REGISTRE
+        else:
+            verdict = "OK"
         return {
             "distro": self.distro,
             "scenario": self.scenario,
+            "variante": self.variante,
             "version": DISTROS[self.distro],
-            "verdict": f"ECHEC({echecs[0]})" if echecs else "OK",
+            "verdict": verdict,
             "etapes": self.etapes,
             "details": self.details,
             "journal": os.path.basename(self.log),
@@ -1280,11 +1844,14 @@ def _lignes_en_dict(lignes):
     ]
 
 
-def _verification(sc, cible, ip, cafile, nom="verification"):
+def _verification(sc, cible, ip, cafile, nom="verification", requis=None):
+    """La vérification du menu notée `nom` : vert quand chaque ligne de
+    `requis` (CONTROLES du scénario par défaut) est verte et qu'aucune
+    autre n'est en échec."""
     lignes, lus = verifier(cible, ip, cafile, sc.log)
-    vert, problemes = verdict_controle(
-        lignes, CONTROLES[sc.scenario][sc.distro]
-    )
+    if requis is None:
+        requis = CONTROLES[sc.scenario][sc.distro]
+    vert, problemes = verdict_controle(lignes, requis)
     sc.noter(
         nom,
         vert,
@@ -1293,13 +1860,18 @@ def _verification(sc, cible, ip, cafile, nom="verification"):
     return lignes, lus
 
 
-def _telephones(cible, log, proprietaire):
+def _telephones(cible, log, proprietaire, etat=None):
+    """Les comptes de téléphone que liste la CLI du ntfy de `etat`
+    (`ci.ntfy_cli`) : le binaire de l'hôte sous `proprietaire` par paquets
+    ou sans état, celle du conteneur en conteneurs."""
+    cli = ci.ntfy_cli(etat, proprietaire)
     code, sortie = distant(
         cible,
-        nm.list_script(ci.NTFY_CONFIG),
+        nm.list_script(ci.NTFY_CONFIG, cli.prefix),
         log,
         DELAI_SCRIPT,
-        utilisateur=proprietaire,
+        root=cli.sudo_user is None,
+        utilisateur=cli.sudo_user,
     )
     return nm.phone_users(sortie) if code == 0 else []
 
@@ -1383,13 +1955,14 @@ def _semer_ntfy(sc, cible, ip):
     return empreinte, proprietaire, telephone
 
 
-def _melange(sc, cible, ip, cafile, answers):
-    """Le rejeu de la base partagée sur le vrai paquet : un secret REST
+def _melange(sc, cible, ip, cafile, answers, etat=None):
+    """Le rejeu de la base partagée sur le vrai coturn : un secret REST
     ajouté par turnadmin à côté du compte de contrôle, puis une allocation
     de chaque sorte. Noté en information : il ne pèse pas sur le
-    verdict."""
+    verdict. `etat` en conteneurs : turnadmin de l'image
+    (`script_secret`)."""
     secret = secrets.token_hex(16)
-    code, sortie = distant(cible, script_secret(ip, secret), sc.log, 120)
+    code, sortie = distant(cible, script_secret(ip, secret, etat), sc.log, 120)
     ajoute = dict(ci.marker_lines(sortie)).get("SECRET_RC", "").strip()
     user, password = turn_client.rest_credentials(
         secret, UTILISATEUR_REST, int(time.time()) + 3600
@@ -1510,6 +2083,8 @@ def crochet(
     executer=distant,
     vu=None,
     attente=None,
+    lire_pid=None,
+    nginx=True,
 ):
     """Une passe du crochet de déploiement, notée `etape`.
 
@@ -1521,10 +2096,19 @@ def crochet(
     (attendu : `attendu_turn`, relu `attente` secondes au plus) et celui
     que nginx sert sur 443 sous le nom de ntfy (attendu : le certificat
     fourni des réponses, que son site lit). `vu` (forme de
-    `certificat_vu`) et `attente` (DELAI_SERIE) sont lus à l'appel."""
+    `certificat_vu`) et `attente` (DELAI_SERIE) sont lus à l'appel.
+
+    `lire_pid()` rend le PID de coturn à la place du MainPID de `unite` :
+    celui du conteneur, pour un coturn en conteneur. Sans `nginx`, ni son
+    rechargement ni son certificat ne sont jugés."""
     vu = vu or certificat_vu
     attente = DELAI_SERIE if attente is None else attente
-    avant = _pid(cible, unite, sc.log, executer)
+    if lire_pid is None:
+
+        def lire_pid():
+            return _pid(cible, unite, sc.log, executer)
+
+    avant = lire_pid()
     code, sortie = executer(
         cible, script_lignee(*lignee), sc.log, DELAI_SCRIPT
     )
@@ -1537,7 +2121,7 @@ def crochet(
         shell="bash",
         env={"RENEWED_LINEAGE": ci.LINEAGE_DIR},
     )
-    apres = _pid(cible, unite, sc.log, executer)
+    apres = lire_pid()
     servi_turn = attendre_certificat(
         vu,
         ip,
@@ -1546,18 +2130,13 @@ def crochet(
         attendu_turn,
         attente,
     )
-    servi_nginx = vu(ip, ci.HTTPS_PORT, ci.ntfy_host(answers))
-    requis, interdits = attendus_crochet(etape, unite)
+    servis = {"turn-tls": (attendu_turn, servi_turn)}
+    if nginx:
+        servi_nginx = vu(ip, ci.HTTPS_PORT, ci.ntfy_host(answers))
+        servis["nginx"] = (answers.cert_pem, servi_nginx)
+    requis, interdits = attendus_crochet(etape, unite, nginx)
     ok, detail = verdict_crochet(
-        code,
-        sortie,
-        requis,
-        interdits,
-        (avant, apres),
-        {
-            "turn-tls": (attendu_turn, servi_turn),
-            "nginx": (answers.cert_pem, servi_nginx),
-        },
+        code, sortie, requis, interdits, (avant, apres), servis
     )
     detail["lignee"] = pose
     return sc.noter(etape, pose and ok, detail)
@@ -1574,9 +2153,12 @@ def crochets(
     executer=distant,
     vu=None,
     attente=None,
+    lire_pid=None,
+    nginx=True,
 ):
     """Le crochet de déploiement lancé à la main, en trois passes, puis la
-    remise de l'hôte.
+    remise de l'hôte. `lire_pid` et `nginx` vont à chaque passe
+    (`crochet`).
 
     L'installation de production de cette course prend le certificat
     `premier`, FOURNI : aucune autorité ACME ne joint une VM sous un nom
@@ -1611,6 +2193,8 @@ def crochets(
             executer=executer,
             vu=vu,
             attente=attente,
+            lire_pid=lire_pid,
+            nginx=nginx,
         )
 
     try:
@@ -1707,6 +2291,14 @@ def identifiant_de(course):
     return getattr(course, "identifiant", None) or (
         f"{os.getpid()}_{time.strftime('%Y%m%d%H%M%S')}"
     )
+
+
+def identifiant_migration(course):
+    """L'identifiant des bases de la migration : celui de la course suivi
+    d'un 0, pour que sa base ne prenne jamais le nom d'une base du scénario
+    `odoo` de la même course ; il garde la forme de `_BASE_ODOO`, que
+    `--detruire` supprime."""
+    return identifiant_de(course) + "0"
 
 
 def sorte_url(url):
@@ -1987,7 +2579,8 @@ def bases_restantes(noms):
 
 
 class Harnais:
-    """Les trois Odoo 18 du scénario `odoo`, sur cette machine.
+    """Les Odoo 18 d'un scénario, sur cette machine : un par lettre de
+    `lettres`, les trois du scénario `odoo` par défaut.
 
     Le gabarit Odoo 18 de `mobile_sync_odoo` (construit une fois, gardé),
     copié en trois bases `noms_bases`, puis un serveur par base sur des
@@ -1998,9 +2591,20 @@ class Harnais:
     AVANT d'exister : une course tuée laisse de quoi la supprimer
     (`defaire_odoo`)."""
 
-    def __init__(self, dossier, identifiant, course=None, journal=None):
+    def __init__(
+        self,
+        dossier,
+        identifiant,
+        course=None,
+        journal=None,
+        lettres=LETTRES_ODOO,
+    ):
         self.dossier = dossier
-        self.bases = noms_bases(identifiant)
+        self.bases = {
+            lettre: base
+            for lettre, base in noms_bases(identifiant).items()
+            if lettre in lettres
+        }
         self.course = course
         self.journal = journal
         self.serveurs = {}
@@ -2014,8 +2618,7 @@ class Harnais:
             mso.construire_gabarit(
                 version, journal=lambda m: dire(f"      {m}", self.journal)
             )
-            for lettre in LETTRES_ODOO:
-                base = self.bases[lettre]
+            for lettre, base in self.bases.items():
                 self.inscrites.append(base)
                 if self.course is not None:
                     self.course.noter_base(base)
@@ -2595,10 +3198,541 @@ def scenario_odoo(sc, cible, ip, dossier):
         )
 
 
+# --- Conteneurs ---------------------------------------------------------
+
+# Les deux serveurs Odoo inventés de la course `conteneur` : aucun Odoo ne
+# répond à ces adresses, seul le côté coturn de l'ajout est joué.
+ODOO_INVENTES = (
+    ("https://odoo-un.exemple.test", "base_un"),
+    ("https://odoo-deux.exemple.test", "base_deux"),
+)
+
+
+def _etats(cible, etat, log, attente=0):
+    """`etats_conteneurs` lus sur l'hôte, {} quand l'hôte n'a pas
+    répondu."""
+    code, sortie = distant(
+        cible,
+        script_conteneurs(etat, attente),
+        log,
+        DELAI_SCRIPT + 2 * attente,
+    )
+    return etats_conteneurs(sortie) if code == 0 else {}
+
+
+def _pid_conteneur(cible, etat, log):
+    """Le PID du conteneur de coturn vu de l'hôte, "" sans lui."""
+    return _etats(cible, etat, log).get("coturn", {}).get("pid", "")
+
+
+def odoo_invente(sc, cible, answers, etat, url, base, nom, bascule):
+    """Le côté coturn de « Ajouter un serveur Odoo » pour la base inventée
+    (`url`, `base`), noté `nom` ; rend (état écrit, ou `etat` quand rien
+    ne s'est écrit ; secret posé).
+
+    `odoo_add_script` pose un secret neuf dans la base de coturn, puis
+    l'état de `odoo_added_state` est écrit, comme `apply_odoo_add` le fait
+    après Odoo. Vert quand l'ajout et l'état sont écrits, qu'une
+    allocation REST sous ce secret aboutit depuis cette machine vers le nom
+    public (l'adresse de la VM en développement), et que le
+    conteneur de coturn a été recréé une fois (`@@RECREATE 1`, date de
+    démarrage changée) quand `bascule` (de comptes fixes au mode secret),
+    pas du tout sinon (même date de démarrage)."""
+    cle = ol.odoo_key(url, base)
+    maintenant = datetime.datetime.now(datetime.timezone.utc)
+    valeur = secrets.token_urlsafe(32)
+    controle = secrets.token_urlsafe(32)
+    avant = _etats(cible, etat, sc.log).get("coturn", {})
+    code, sortie = distant(
+        cible,
+        ci.odoo_add_script(
+            etat,
+            cle,
+            "secret",
+            valeur,
+            None,
+            None,
+            maintenant,
+            check_secret=controle,
+        ),
+        sc.log,
+        DELAI_INSTALL,
+    )
+    ajoute = code == 0 and ci.odoo_result(sortie)["ok"]
+    recree = ("RECREATE", "1") in ci.marker_lines(sortie)
+    final = ci.odoo_added_state(
+        etat,
+        cle,
+        "secret",
+        valeur,
+        None,
+        None,
+        maintenant,
+        check_secret=controle,
+    )
+    ecrit = False
+    if ajoute:
+        code, sortie = distant(
+            cible,
+            ci.state_write_script(final, pending_taken=False),
+            sc.log,
+            DELAI_SCRIPT,
+        )
+        ecrit = (
+            code == 0 and dict(ci.marker_lines(sortie)).get("SAVED") == "yes"
+        )
+    apres = _etats(cible, etat, sc.log).get("coturn", {})
+    user, password = turn_client.rest_credentials(
+        valeur, UTILISATEUR_REST, int(time.time()) + 3600
+    )
+    rest = turn_client.allocate(
+        answers.public_name,
+        answers.turn_port,
+        "udp",
+        user,
+        turn_client.long_term_key(user, answers.public_name, password),
+        timeout=5,
+    )
+    debuts = [avant.get("demarre", ""), apres.get("demarre", "")]
+    meme = all(debuts) and debuts[0] == debuts[1]
+    detail = {
+        "ajout": ajoute,
+        "etat": ecrit,
+        "recree": recree,
+        "demarre": debuts,
+        "en-marche": apres.get("etat") == "running",
+        "rest": "ok" if rest.ok else rest.error,
+    }
+    if bascule:
+        attendu = recree and all(debuts) and not meme
+    else:
+        attendu = not recree and meme
+    ok = ajoute and ecrit and rest.ok and detail["en-marche"] and attendu
+    sc.noter(nom, ok, detail)
+    return (final if ecrit else etat), valeur
+
+
+def relais_prive(sc, answers, secret):
+    """Une permission vers PRIVATE_PROBE_PEER, une adresse privée, depuis
+    une allocation REST sous `secret` : le développement laisse coturn
+    relayer vers le réseau local (aucune ligne `denied-peer-ip`), ce que
+    les plages refusées par défaut de coturn 4.18 ne doivent pas
+    défaire."""
+    user, password = turn_client.rest_credentials(
+        secret, UTILISATEUR_REST, int(time.time()) + 3600
+    )
+    resultat = turn_client.permission(
+        answers.public_name,
+        answers.turn_port,
+        "udp",
+        user,
+        turn_client.long_term_key(user, answers.public_name, password),
+        ci.PRIVATE_PROBE_PEER,
+        timeout=5,
+    )
+    return sc.noter(
+        "relais-prive",
+        resultat.ok,
+        {
+            "pair": ci.PRIVATE_PROBE_PEER,
+            "resultat": "ok" if resultat.ok else resultat.error,
+        },
+    )
+
+
+def redemarrage(sc, cible, etat):
+    """La VM redémarrée (`SCRIPT_REDEMARRER`), puis jugée par
+    `verdict_redemarrage` : nouveau démarrage, conteneurs relancés par
+    l'unité que l'installation a activée (et, en rootless, la session
+    permanente du compte)."""
+    code, sortie = distant(cible, SCRIPT_DEMARRAGE, sc.log, DELAI_SCRIPT)
+    avant = dict(ci.marker_lines(sortie)).get("BOOT", "").strip()
+    code, sortie = distant(cible, SCRIPT_REDEMARRER, sc.log, DELAI_SCRIPT)
+    programme = ("REBOOT", "scheduled") in ci.marker_lines(sortie)
+    time.sleep(DELAI_REDEMARRAGE)
+    joignable = attendre_ssh(cible, sc.journal)
+    code, sortie = distant(cible, SCRIPT_DEMARRAGE, sc.log, DELAI_SCRIPT)
+    apres = dict(ci.marker_lines(sortie)).get("BOOT", "").strip()
+    etats = _etats(cible, etat, sc.log, DELAI_CONTENEURS)
+    code, auto = distant(cible, script_auto(etat), sc.log, DELAI_SCRIPT)
+    ok, detail = verdict_redemarrage(avant, apres, etats, auto)
+    detail.update(programme=programme, joignable=joignable)
+    return sc.noter("redemarrage", programme and joignable and ok, detail)
+
+
+def desinstallation_conteneur(sc, cible, ip, answers, etat, prefixe=""):
+    """La désinstallation du menu, données et ajouts pour le moteur
+    compris (le oui aux deux questions), puis l'hôte jugé par
+    `verdict_apres_conteneur` et les ports de `answers` vus d'ici. Les
+    étapes portent `prefixe` (« prod- » pour la production)."""
+    sc.noter(
+        f"{prefixe}desinstallation",
+        desinstaller(cible, True, sc.log, moteur=True) == "fait",
+    )
+    paquets = etat["container"].get("engine_packages_added") or []
+    code, sortie = distant(
+        cible, script_apres_conteneur(paquets), sc.log, DELAI_SCRIPT
+    )
+    ok, detail = verdict_apres_conteneur(code, sortie)
+    sc.noter(f"{prefixe}etat-apres-desinstallation", ok, detail)
+    tcp = [answers.turn_port]
+    if ci.has_tls(answers):
+        tcp.append(ci.coturn_tls_port(answers))
+    if "ntfy" in answers.services:
+        tcp.append(ci.ntfy_port(answers))
+    ports = ports_fermes(ip, tcp=tuple(tcp), udp=(answers.turn_port,))
+    sc.noter(f"{prefixe}ports-fermes", all(ports.values()), ports)
+
+
+def production_conteneur(sc, cible, ip, dossier):
+    """coturn seul en production dans un conteneur Podman en root, après
+    le développement, sur la même VM : un certificat fourni d'une autorité
+    inventée, TURN sur TLS en 443. Le moteur, retiré par la désinstallation
+    du développement, est proposé de nouveau. 443 doit être tenu par
+    turnserver sous un uid non root ; la vérification de production (relais
+    refusé vers une adresse privée compris), puis la désinstallation."""
+    chemins = local_cert.issue(
+        os.path.join(dossier, f"tls-prod-{sc.variante}"), noms_certificat(ip)
+    )
+    certificat = paire(chemins)
+
+    def reponses_de(facts):
+        base = reponses_prod_coturn(ip, *certificat, facts)
+        return methode_du_menu(base, facts, "container", sc.variante)
+
+    res = installer(cible, reponses_de, sc.log)
+    if res["limite"]:
+        sc.limite_atteinte("prod-installation")
+        return
+    if not sc.noter("prod-installation", res["ok"], res["etape"] or None):
+        return
+    answers, etat = res["answers"], res["etat"]
+    code, sortie = distant(
+        cible,
+        script_port_bas(ci.coturn_tls_port(answers)),
+        sc.log,
+        DELAI_SCRIPT,
+    )
+    ok, detail = verdict_port_bas(sortie)
+    sc.noter("prod-443-non-root", code == 0 and ok, detail)
+    _verification(
+        sc,
+        cible,
+        ip,
+        chemins["ca_crt"],
+        nom="prod-verification",
+        requis=CONTROLES_PROD_COTURN,
+    )
+    desinstallation_conteneur(sc, cible, ip, answers, etat, prefixe="prod-")
+
+
+def scenario_conteneur(sc, cible, ip, dossier):
+    """coturn et ntfy de développement en conteneurs, sous le moteur de la
+    course (`sc.variante`, une clé de MOTEURS), sur une Debian neuve.
+
+    1. le moteur absent : le menu propose ses paquets (`engine_offer`),
+       accepté ; l'installation les consigne dans l'état
+       (`@@ENGINE_PACKAGE`) ;
+    2. la vérification du menu (allocations TURN udp, tcp et TLS, santé de
+       ntfy, conteneurs sous l'uid de l'état), puis chaque base appartient
+       au compte de l'état, jamais à un uid subordonné ;
+    3. Docker : le rejeu du mélange en information, coturn encore en
+       comptes fixes ;
+    4. un premier Odoo inventé fait basculer coturn en mode secret : une
+       recréation, une allocation sous son secret ; un second ne recrée
+       rien ; sous le premier secret, le relais vers une adresse privée est
+       accordé, comme le développement le veut ;
+    5. le crochet lancé à la main : SIGUSR2 au conteneur, même PID, le
+       nouveau certificat servi ;
+    6. la VM redémarrée : les conteneurs reviennent ;
+    7. la relance ne change rien ; la désinstallation emporte tout, moteur
+       compris, et ferme les ports ;
+    8. Podman en root : coturn seul en production sur 443
+       (`production_conteneur`)."""
+    if not _preparer(sc, cible, "debian"):
+        return
+    moteur = sc.variante
+    dossier_tls = os.path.join(dossier, f"tls-{moteur}")
+    tls = local_cert.issue(dossier_tls, [ip])
+    premier = paire(tls)
+    second = paire(local_cert.issue(dossier_tls, [ip]))
+    cafile = tls["ca_crt"]
+    base = reponses(ip, *premier)
+    vu = {}
+
+    def reponses_de(facts):
+        return methode_du_menu(base, facts, "container", moteur, vu)
+
+    res = installer(cible, reponses_de, sc.log)
+    offre = list(vu.get("offre", ()))
+    sc.noter("moteur-propose", bool(offre), {"paquets": offre})
+    if res["limite"]:
+        sc.limite_atteinte("installation")
+        return
+    if not sc.noter("installation", res["ok"], res["etape"] or None):
+        return
+    answers, etat = res["answers"], res["etat"]
+    ajoutes = etat["container"].get("engine_packages_added") or []
+    sc.noter(
+        "moteur-installe",
+        bool(offre) and set(offre) <= set(ajoutes),
+        {"proposes": offre, "consignes": ajoutes},
+    )
+    _verification(sc, cible, ip, cafile)
+    code, sortie = distant(cible, script_proprietaires(), sc.log, DELAI_SCRIPT)
+    ok, detail = verdict_proprietaires(etat, sortie)
+    sc.noter("proprietaires", code == 0 and ok, detail)
+    if moteur == "docker":
+        _melange(sc, cible, ip, cafile, answers, etat)
+    poses = []
+    for (url, nom_base), (etape, bascule) in zip(
+        ODOO_INVENTES, (("odoo-secret", True), ("odoo-second", False))
+    ):
+        etat, secret = odoo_invente(
+            sc, cible, answers, etat, url, nom_base, etape, bascule
+        )
+        poses.append(secret)
+    relais_prive(sc, answers, poses[0])
+    crochets(
+        sc,
+        cible,
+        ip,
+        answers,
+        cc.CONTAINERS["coturn"],
+        premier,
+        second,
+        executer=distant,
+        lire_pid=lambda: _pid_conteneur(cible, etat, sc.log),
+        nginx=False,
+    )
+    redemarrage(sc, cible, etat)
+    _verification(sc, cible, ip, cafile, nom="verification-apres-redemarrage")
+    again = installer(cible, reponses_de, sc.log)
+    sc.noter("rien-a-changer", again["ok"] and again["rien_a_faire"])
+    desinstallation_conteneur(sc, cible, ip, answers, etat)
+    sc.noter(
+        "desinstallation-vide", desinstaller(cible, True, sc.log) == "rien"
+    )
+    if moteur == "podman":
+        production_conteneur(sc, cible, ip, dossier)
+
+
+# --- Migration ----------------------------------------------------------
+
+
+def secrets_turn(lus):
+    """Les empreintes sha256 des lignes `turn_secret` (realm, secret) que
+    la vérification a lues : la base se compare sans qu'aucun secret ne
+    quitte la mémoire."""
+    return {
+        hashlib.sha256(f"{r}\0{v}".encode("utf-8")).hexdigest()
+        for r, v in (lus or {}).get("turn_secrets") or []
+    }
+
+
+def _proprietaire_ntfy(cible, log):
+    """Le compte qui possède la base des comptes de ntfy, d'après
+    `inspect_script` ; « ntfy » quand rien ne se lit."""
+    code, sortie = distant(
+        cible, nm.inspect_script(ci.NTFY_CONFIG), log, DELAI_SCRIPT
+    )
+    proprietaire = nm.parse_markers(sortie).get("OWNER", "").strip()
+    return "ntfy" if code != 0 or proprietaire in ("", "?") else proprietaire
+
+
+def semer_telephone(sc, cible, etat, proprietaire):
+    """Un compte de téléphone ouvert par `access_script`, sous la CLI du
+    ntfy de `etat` (`ci.ntfy_cli`) ; rend son nom, None en échec."""
+    cli = ci.ntfy_cli(etat, proprietaire)
+    telephone = nm.phone_user(LIBELLE_TELEPHONE)
+    code, sortie = distant(
+        cible,
+        nm.access_script(
+            ci.NTFY_CONFIG, telephone, nm.random_prefix(), cli=cli.prefix
+        ),
+        sc.log,
+        DELAI_SCRIPT,
+        root=cli.sudo_user is None,
+        utilisateur=cli.sudo_user,
+    )
+    ok = code == 0 and bool(nm.parse_token(sortie))
+    return telephone if sc.noter("telephone-seme", ok) else None
+
+
+def _noter_ice(sc, nom, harnais, etat, cafile):
+    _ice, lignes = par_odoo(harnais, "a", etat, cafile)
+    ok, detail = verdict_ice(lignes, ICE_SECRET)
+    return sc.noter(nom, ok, detail)
+
+
+def _parcours_migration(sc, cible, ip, dossier, harnais):
+    """Les étapes de `scenario_migration` une fois le harnais debout."""
+    tls = local_cert.issue(os.path.join(dossier, "tls-migration"), [ip])
+    base = reponses(ip, *paire(tls))
+    cafile = tls["ca_crt"]
+    res = installer(cible, base, sc.log)
+    if not sc.noter("installation", res["ok"], res["etape"] or None):
+        return
+    etat = res["etat"]
+    proprietaire = _proprietaire_ntfy(cible, sc.log)
+    telephone = semer_telephone(sc, cible, etat, proprietaire)
+    exempt = exempt_du_menu(harnais.url("a"), adresse_vers(ip))
+    ajout = ajouter_odoo(
+        cible,
+        harnais.lien("a"),
+        harnais.url("a"),
+        harnais.bases["a"],
+        True,
+        exempt,
+        sc.log,
+    )
+    etat = ajout["etat"] or etat
+    if not sc.noter(
+        "odoo-branche",
+        ajout["ok"] and etat.get("turn_mode") == "secret",
+        {"refus": ajout["refus"]},
+    ):
+        return
+    _noter_ice(sc, "odoo-relaie", harnais, etat, cafile)
+    _lignes, lus = verifier(cible, ip, cafile, sc.log)
+    avant = secrets_turn(lus)
+
+    vu = {}
+    res = installer(
+        cible,
+        lambda facts: methode_du_menu(
+            base, facts, "container", MOTEUR_MIGRATION, vu
+        ),
+        sc.log,
+    )
+    if res["limite"]:
+        sc.limite_atteinte("migration-conteneurs")
+        return
+    plan = res["plan"]
+    detail = {
+        "etape": res["etape"],
+        "refus": res["refus"],
+        "migration": res["migration"],
+        "sens": plan.migration if plan else None,
+        "odoo_readd": list(plan.odoo_readd) if plan else None,
+        "paquets": list(vu.get("offre", ())),
+    }
+    if not sc.noter(
+        "migration-conteneurs",
+        res["ok"]
+        and plan.migration == "to_container"
+        and res["migration"] == "done"
+        and plan.odoo_readd == (),
+        detail,
+    ):
+        return
+    etat = res["etat"]
+    lignes, lus = verifier(cible, ip, cafile, sc.log)
+    apres = secrets_turn(lus)
+    sc.noter(
+        "secrets-identiques",
+        bool(avant) and avant == apres,
+        {"avant": len(avant), "apres": len(apres)},
+    )
+    vert, problemes = verdict_controle(
+        lignes, CONTROLES[sc.scenario][sc.distro]
+    )
+    sc.noter(
+        "verification-conteneurs",
+        vert,
+        {"problemes": problemes, "lignes": _lignes_en_dict(lignes)},
+    )
+    _noter_ice(sc, "odoo-relaie-conteneurs", harnais, etat, cafile)
+    sc.noter(
+        "telephone-garde",
+        telephone is not None
+        and telephone in _telephones(cible, sc.log, proprietaire, etat),
+    )
+
+    facts = _sonde(cible, sc.log, distant)
+    hote = facts.engines.ntfy_host_version if facts and facts.engines else None
+    ancien = bool(hote) and cc.version_older(hote, cc.IMAGE_VERSIONS["ntfy"])
+    res = installer(
+        cible, lambda f: methode_du_menu(base, f, "packages"), sc.log
+    )
+    plan = res["plan"]
+    if ancien:
+        ok = not res["ok"] and res["refus"] == "call_infra_ntfy_downgrade"
+    else:
+        ok = (
+            res["ok"]
+            and plan.migration == "to_packages"
+            and res["migration"] == "done"
+        )
+    sc.noter(
+        "retour-paquets",
+        ok,
+        {
+            "ntfy-hote": hote,
+            "plus-ancien": ancien,
+            "refus": res["refus"],
+            "migration": res["migration"],
+        },
+    )
+    if res["ok"]:
+        etat = res["etat"]
+    _noter_ice(sc, "odoo-relaie-retour", harnais, etat, cafile)
+    retrait = retirer_odoo(
+        cible,
+        harnais.lien("a"),
+        ol.odoo_key(harnais.url("a"), harnais.bases["a"]),
+        sc.log,
+    )
+    sc.noter("odoo-retire", retrait["ok"], {"refus": retrait["refus"]})
+    sc.noter(
+        "desinstallation",
+        desinstaller(cible, True, sc.log, moteur=True) == "fait",
+    )
+
+
+def scenario_migration(sc, cible, ip, dossier):
+    """Paquets ↔ conteneurs avec un Odoo branché, sur une Debian neuve.
+
+    1. coturn et ntfy de développement par paquets, un certificat fourni ;
+       un téléphone ; un Odoo 18 de cette machine (une base,
+       `identifiant_migration`) branché avec `erplibre_turn`, qui relaie ;
+    2. passage aux conteneurs Podman en root : aucun Odoo à rebrancher
+       (`odoo_readd` vide), les lignes `turn_secret` identiques, la
+       vérification verte, l'Odoo relaie encore par sa propre liste ICE, le
+       téléphone toujours listé par la CLI du conteneur ;
+    3. retour aux paquets : fait quand l'hôte n'a pas de ntfy plus ancien
+       que l'image, sinon refusé (`call_infra_ntfy_downgrade`) ; l'Odoo
+       relaie toujours ;
+    4. l'Odoo retiré, la désinstallation ; la base supprimée dans tous les
+       cas, même après un échec."""
+    if not _preparer(sc, cible, "debian"):
+        return
+    harnais = Harnais(
+        dossier,
+        identifiant_migration(sc.course),
+        sc.course,
+        sc.journal,
+        lettres=("a",),
+    )
+    try:
+        ok, detail = harnais.preparer()
+        if sc.noter("odoo-harnais", ok, detail):
+            _parcours_migration(sc, cible, ip, dossier, harnais)
+    finally:
+        restantes = harnais.defaire()
+        sc.noter(
+            "bases-supprimees",
+            not restantes,
+            {"restantes": restantes} if restantes else None,
+        )
+
+
 SCENARIOS = {
     "dev": {"debian": scenario_debian, "arch": scenario_arch},
     "prod": {"debian": scenario_prod, "arch": scenario_prod},
     "odoo": {"debian": scenario_odoo},
+    "conteneur": {"debian": scenario_conteneur},
+    "migration": {"debian": scenario_migration},
 }
 
 
@@ -2657,14 +3791,24 @@ class Course:
         self.ecrire()
 
 
-def mener_un(course, distro, scenario):
-    """Un système dans un scénario, de sa VM à son verdict ; la VM reste
-    au rapport."""
-    log = os.path.join(course.dossier, f"{scenario}-{distro}.log")
-    sc = Scenario(distro, log, course.journal, scenario, course=course)
+def libelle(scenario, variante=None):
+    """« scénario » ou « scénario variante », pour l'écran ; « scénario-
+    variante » sert au nom du journal."""
+    return f"{scenario} {variante}" if variante else scenario
+
+
+def mener_un(course, distro, scenario, variante=None):
+    """Un système dans un scénario (et sa variante, le moteur d'une course
+    `conteneur`), de sa VM à son verdict ; la VM reste au rapport."""
+    suffixe = f"-{variante}" if variante else ""
+    log = os.path.join(course.dossier, f"{scenario}{suffixe}-{distro}.log")
+    sc = Scenario(
+        distro, log, course.journal, scenario, course=course, variante=variante
+    )
     nom = nom_vm(distro)
     dire(
-        f"  ── {distro} {DISTROS[distro]} ({scenario}) : {nom}",
+        f"  ── {distro} {DISTROS[distro]} ({libelle(scenario, variante)})"
+        f" : {nom}",
         course.journal,
     )
     nom, uuid, ok = creer_vm(nom, distro, course.journal, False)
@@ -2703,6 +3847,12 @@ def mener(argv):
     )
     parseur.add_argument(
         "--scenario", choices=(*SCENARIOS_NOMS, "tous"), default="tous"
+    )
+    parseur.add_argument(
+        "--moteur",
+        choices=(*MOTEURS, "tous"),
+        default="tous",
+        help="le moteur des courses conteneur (les trois par défaut)",
     )
     parseur.add_argument("--dry-run", action="store_true")
     parseur.add_argument(
@@ -2744,10 +3894,23 @@ def mener(argv):
     scenarios = (
         list(SCENARIOS_NOMS) if args.scenario == "tous" else [args.scenario]
     )
+    if args.moteur != "tous" and "conteneur" not in scenarios:
+        dire(
+            f"  ✗ --moteur ne sert qu'au scénario conteneur, pas à"
+            f" --scenario {args.scenario}",
+            journal,
+        )
+        return 1
+    moteurs = list(MOTEURS) if args.moteur == "tous" else [args.moteur]
     # Les scénarios d'un système, l'un après l'autre, chacun sur sa VM ;
-    # seulement ceux qui tournent sur ce système (odoo : Debian).
+    # seulement ceux qui tournent sur ce système (odoo, conteneur,
+    # migration : Debian), et une course par moteur pour `conteneur`.
     courses = [
-        (d, s) for d in systemes for s in scenarios if d in SCENARIOS[s]
+        (d, s, v)
+        for d in systemes
+        for s in scenarios
+        if d in SCENARIOS[s]
+        for v in (moteurs if s == "conteneur" else [None])
     ]
     if not courses:
         dire(
@@ -2757,12 +3920,14 @@ def mener(argv):
             journal,
         )
         return 1
-    # Les scénarios d'un système prennent le même nom de VM : le premier
-    # gardé ferait refuser le suivant.
-    if args.garder and len(scenarios) > 1:
+    # Les courses d'un système prennent le même nom de VM : la première
+    # gardée ferait refuser la suivante.
+    par_systeme = [d for d, _s, _v in courses]
+    if args.garder and len(par_systeme) != len(set(par_systeme)):
         dire(
             "  ✗ --garder garde une VM par système : choisir --scenario dev,"
-            " --scenario prod ou --scenario odoo",
+            " --scenario prod, --scenario odoo, --scenario migration, ou"
+            " --scenario conteneur avec un --moteur",
             journal,
         )
         return 1
@@ -2770,16 +3935,24 @@ def mener(argv):
     dire(f"  journal : {journal}", journal)
     if args.dry_run:
         dire("  --dry-run : rien ne sera créé.", journal)
-        for distro, scenario in courses:
-            dire(f"  ── {distro} {DISTROS[distro]} ({scenario})", journal)
+        for distro, scenario, variante in courses:
+            dire(
+                f"  ── {distro} {DISTROS[distro]}"
+                f" ({libelle(scenario, variante)})",
+                journal,
+            )
             creer_vm(nom_vm(distro), distro, journal, True)
             dire(
-                "      étapes : " + ", ".join(ETAPES[scenario][distro]),
+                "      étapes : "
+                + ", ".join(etapes_de(scenario, distro, variante)),
                 journal,
             )
             if scenario == "odoo":
                 bases = noms_bases(course.identifiant).values()
                 dire(f"      bases : {', '.join(bases)}", journal)
+            if scenario == "migration":
+                base = noms_bases(identifiant_migration(course))["a"]
+                dire(f"      bases : {base}", journal)
         course.ecrire()
         dire(f"  rapport : {course.chemin}", journal)
         return 0
@@ -2792,11 +3965,17 @@ def mener(argv):
     os.makedirs(course.dossier, exist_ok=True)
     course.ecrire()
     dire(f"  rapport : {course.chemin}", journal)
-    for distro, scenario in courses:
-        ligne = mener_un(course, distro, scenario)
+    for distro, scenario, variante in courses:
+        ligne = mener_un(course, distro, scenario, variante)
         course.noter(ligne)
-        marque = "✅" if ligne["verdict"] == "OK" else "❌"
-        dire(f"  {marque} {distro} ({scenario}) : {ligne['verdict']}", journal)
+        verdict = ligne["verdict"]
+        marque = {"OK": "✅", LIMITE_REGISTRE: "⏳"}.get(verdict, "❌")
+        suite = f" — {MESSAGE_LIMITE}" if verdict == LIMITE_REGISTRE else ""
+        dire(
+            f"  {marque} {distro} ({libelle(scenario, variante)}) :"
+            f" {verdict}{suite}",
+            journal,
+        )
         if args.garder:
             continue
         # Une VM encore en vie arrête la course : sans `--garder`,
@@ -2814,12 +3993,25 @@ def mener(argv):
             " --detruire les défait",
             journal,
         )
-    vus = course.rapport["systemes"]
-    tout = len(vus) == len(courses) and all(
-        ligne["verdict"] == "OK" for ligne in vus
-    )
-    dire(f"  {'✅' if tout else '❌'} infrastructure d'appel", journal)
-    return 0 if tout else 1
+    return bilan(course.rapport["systemes"], len(courses), journal)
+
+
+def bilan(vus, attendues, journal):
+    """Le code de sortie de la course : 0 quand les `attendues` courses
+    ont toutes tourné et sont vertes ; 2 quand celles qui ne le sont pas
+    ont toutes été arrêtées par la limite du registre (à relancer plus
+    tard) ; 1 sinon, une course manquante comprise."""
+    verdicts = [ligne["verdict"] for ligne in vus]
+    if len(verdicts) == attendues and all(v == "OK" for v in verdicts):
+        dire("  ✅ infrastructure d'appel", journal)
+        return 0
+    if len(verdicts) == attendues and all(
+        v in ("OK", LIMITE_REGISTRE) for v in verdicts
+    ):
+        dire(f"  ⏳ infrastructure d'appel : {MESSAGE_LIMITE}", journal)
+        return 2
+    dire("  ❌ infrastructure d'appel", journal)
+    return 1
 
 
 if __name__ == "__main__":
