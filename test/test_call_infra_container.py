@@ -42,6 +42,11 @@ NTFY_REF = (
     "fb48c413eb11d50339962b5d62cddce0f800e7f77c626d638a7c20cb7e9c4465"
 )
 
+# Identifiants d'image inventés, de la forme que rendent les moteurs.
+COTURN_ID = "c0" * 32
+NTFY_ID = "f1" * 32
+OTHER_ID = "0e" * 32
+
 PROBE_PAIRS = [
     ("ENGINE", "docker 26.1.5"),
     ("ENGINE", "podman 5.4.2"),
@@ -224,6 +229,64 @@ class TestParseEngineLines(unittest.TestCase):
             (("erplibre-call-ntfy", "podman", True, "exited", NTFY_REF),),
         )
         self.assertEqual(facts.images, (("podman", True, NTFY_REF),))
+
+    def test_image_ids_in_each_engine_form(self):
+        # Docker rend « sha256:<hex> », Podman l'hexadécimal seul ; la
+        # forme sans identifiant (« - », ou une sonde plus ancienne) n'en
+        # pose aucun.
+        pairs = [
+            (
+                "CONTAINER",
+                "erplibre-call-coturn docker 0 running coturn/coturn:4.18.0"
+                " sha256:" + COTURN_ID,
+            ),
+            ("IMAGE", "docker 0 " + COTURN_REF + " sha256:" + COTURN_ID),
+            (
+                "CONTAINER",
+                "erplibre-call-ntfy podman 1 running "
+                "docker.io/binwiederhier/ntfy@"
+                + NTFY_REF.split("@")[1]
+                + " "
+                + NTFY_ID,
+            ),
+            ("IMAGE", "podman 1 " + NTFY_REF + " " + NTFY_ID),
+            ("CONTAINER", "erplibre-call-ntfy podman 0 running x -"),
+            ("IMAGE", "podman 0 " + NTFY_REF + " -"),
+            ("CONTAINER", "erplibre-call-coturn podman 0 running y"),
+            ("CONTAINER", "mon-coturn docker 0 running z sha256:abc"),
+        ]
+        facts = cc.parse_engine_lines(pairs)
+        self.assertEqual(
+            facts.container_image_ids,
+            {
+                ("erplibre-call-coturn", "docker", False): COTURN_ID,
+                ("erplibre-call-ntfy", "podman", True): NTFY_ID,
+            },
+        )
+        self.assertEqual(
+            facts.image_ids,
+            {
+                ("docker", False, COTURN_REF): COTURN_ID,
+                ("podman", True, NTFY_REF): NTFY_ID,
+            },
+        )
+        self.assertEqual(len(facts.containers), 5)
+        self.assertIn(("podman", False, NTFY_REF), facts.images)
+
+    def test_image_id_forms(self):
+        self.assertEqual(cc.image_id("sha256:" + COTURN_ID), COTURN_ID)
+        self.assertEqual(cc.image_id(COTURN_ID + "\n"), COTURN_ID)
+        for text in (
+            "-",
+            "",
+            None,
+            "sha256:" + COTURN_ID[:-1],
+            "sha512:" + COTURN_ID,
+            COTURN_ID.upper(),
+            COTURN_REF,
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(cc.image_id(text))
 
     def test_defaults_without_markers(self):
         facts = cc.parse_engine_lines([])
@@ -883,6 +946,108 @@ class TestSameImage(unittest.TestCase):
         self.assertIsNone(cc.image_identity("docker.io/coturn/coturn:4.18.0"))
 
 
+class TestRunsPinned(unittest.TestCase):
+    """L'image d'un conteneur comparée à l'image épinglée, sous la forme
+    que chaque moteur rend vraiment."""
+
+    DIGEST = COTURN_REF.split("@")[1]
+
+    def facts(self, container, container_id=None, local_id=None):
+        name, engine, rootless = container[:3]
+        return cc.EngineFacts(
+            containers=(container,),
+            container_image_ids=(
+                {(name, engine, rootless): container_id}
+                if container_id
+                else {}
+            ),
+            image_ids=(
+                {(engine, rootless, COTURN_REF): local_id} if local_id else {}
+            ),
+        )
+
+    def test_engine_forms_match_by_image_id(self):
+        cases = (
+            # Docker : ni registre ni condensat dans `ps`.
+            ("docker", False, "coturn/coturn:4.18.0"),
+            # Podman, en root comme en rootless : sans étiquette.
+            ("podman", False, f"docker.io/coturn/coturn@{self.DIGEST}"),
+            ("podman", True, f"docker.io/coturn/coturn@{self.DIGEST}"),
+        )
+        for engine, rootless, shown in cases:
+            container = (
+                "erplibre-call-coturn",
+                engine,
+                rootless,
+                "running",
+                shown,
+            )
+            with self.subTest(engine=engine, rootless=rootless):
+                facts = self.facts(container, COTURN_ID, COTURN_ID)
+                self.assertTrue(cc.runs_pinned(facts, container, "coturn"))
+                facts = self.facts(container, OTHER_ID, COTURN_ID)
+                self.assertFalse(cc.runs_pinned(facts, container, "coturn"))
+
+    def test_name_form_without_an_id(self):
+        docker = (
+            "erplibre-call-coturn",
+            "docker",
+            False,
+            "running",
+            "coturn/coturn:4.18.0",
+        )
+        podman = (
+            "erplibre-call-coturn",
+            "podman",
+            True,
+            "running",
+            f"docker.io/coturn/coturn@{self.DIGEST}",
+        )
+        for ids in ((None, None), (COTURN_ID, None), (None, COTURN_ID)):
+            with self.subTest(ids=ids):
+                # Le nom de Docker ne prouve rien ; celui de Podman porte
+                # le dépôt et le condensat.
+                facts = self.facts(docker, *ids)
+                self.assertFalse(cc.runs_pinned(facts, docker, "coturn"))
+                facts = self.facts(podman, *ids)
+                self.assertTrue(cc.runs_pinned(facts, podman, "coturn"))
+
+    def test_ids_of_another_engine_or_mode_do_not_count(self):
+        container = (
+            "erplibre-call-coturn",
+            "podman",
+            True,
+            "running",
+            "coturn/coturn:4.18.0",
+        )
+        facts = cc.EngineFacts(
+            containers=(container,),
+            container_image_ids={
+                ("erplibre-call-coturn", "podman", True): COTURN_ID
+            },
+            image_ids={("podman", False, COTURN_REF): COTURN_ID},
+        )
+        self.assertFalse(cc.runs_pinned(facts, container, "coturn"))
+
+    def test_pending_container_in_the_docker_form_is_ours(self):
+        container = (
+            "erplibre-call-coturn",
+            "docker",
+            False,
+            "running",
+            "coturn/coturn:4.18.0",
+        )
+        facts = self.facts(container, COTURN_ID, COTURN_ID)
+        self.assertEqual(
+            cc.foreign_containers(facts, {}, ("docker", False)), ()
+        )
+        facts = self.facts(container, OTHER_ID, COTURN_ID)
+        self.assertEqual(
+            cc.foreign_containers(facts, {}, ("docker", False)),
+            ("erplibre-call-coturn",),
+        )
+
+
 # Outils réels que la sonde emploie ; tout le reste est un bouchon ou absent.
 BASE_TOOLS = (
     "sh",
@@ -930,13 +1095,17 @@ def engine_stubs(stubs, docker_active=True, rootless=True, absent=()):
         '  compose) [ "$2" = version ] && echo \'Docker Compose version'
         " 2.26.1' ;;\n"
         "  ps) cat <<'EOF'\n" + ps + "EOF\n;;\n"
-        '  image) [ "$3" = ' + COTURN_REF + " ] || exit 1 ;;\n"
+        "  container) echo sha256:" + COTURN_ID + " ;;\n"
+        '  image) [ "$5" = ' + COTURN_REF + " ] || exit 1\n"
+        "    echo sha256:" + COTURN_ID + " ;;\n"
         "  *) exit 64 ;;\n"
         "esac\n",
         "podman": LOGGER + 'case "$1" in\n'
         "  --version) echo 'podman version 5.4.2' ;;\n"
         "  ps) echo 'erplibre-call-ntfy running " + NTFY_REF + "' ;;\n"
-        '  image) [ "$3" = ' + NTFY_REF + " ] || exit 1 ;;\n"
+        "  container) echo " + NTFY_ID + " ;;\n"
+        '  image) [ "$5" = ' + NTFY_REF + " ] || exit 1\n"
+        "    echo " + NTFY_ID + " ;;\n"
         "  *) exit 64 ;;\n"
         "esac\n",
         "docker-compose": LOGGER,
@@ -1127,6 +1296,31 @@ class TestEngineProbeRun(unittest.TestCase):
         self.assertIn(("docker", False, COTURN_REF), facts.images)
         self.assertIn(("podman", True, NTFY_REF), facts.images)
         self.assertNotIn(("docker", False, NTFY_REF), facts.images)
+        # Chaque conteneur listé, et chaque image épinglée présente, a son
+        # identifiant d'image, lu sous le même moteur et mode.
+        self.assertEqual(
+            facts.container_image_ids,
+            {
+                ("erplibre-call-coturn", "docker", False): COTURN_ID,
+                ("mon-ntfy", "docker", False): COTURN_ID,
+                ("erplibre-call-ntfy", "podman", False): NTFY_ID,
+                ("erplibre-call-ntfy", "podman", True): NTFY_ID,
+            },
+        )
+        self.assertEqual(
+            facts.image_ids,
+            {
+                ("docker", False, COTURN_REF): COTURN_ID,
+                ("podman", False, NTFY_REF): NTFY_ID,
+                ("podman", True, NTFY_REF): NTFY_ID,
+            },
+        )
+        self.assertIn(
+            "runuser -u erplibre-call -- env XDG_RUNTIME_DIR=/run/user/990"
+            " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus podman"
+            " container inspect --format {{.Image}} erplibre-call-ntfy",
+            calls,
+        )
         self.assertEqual(facts.ntfy_host_version, "2.11.0")
         self.assertTrue(facts.sqlite3)
         self.assertTrue(facts.user_bus)
