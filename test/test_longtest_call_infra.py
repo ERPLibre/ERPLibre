@@ -16,18 +16,26 @@ gardent sa forme sans aucune VM :
   la place des questions, et rien de secret n'atteint son journal ;
 - en production, ses `Answers` viennent des briques des questions du menu,
   et le verdict du crochet lancé à la main se calcule sur les numéros de
-  série des deux certificats inventés.
+  série des deux certificats inventés ;
+- les courses en conteneurs (une par moteur) et la migration prennent la
+  méthode et le moteur comme le menu les bâtit, et une image refusée par la
+  limite du registre donne un verdict à part, ni vert ni échec. Leurs
+  scripts d'hôte sont lus par `sh -n`, jamais joués : aucun moteur ni outil
+  système ne part d'ici.
 """
 
 import ast
 import base64
 import contextlib
+import dataclasses
 import datetime
 import hashlib
 import io
 import json
 import os
+import shlex
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -48,6 +56,7 @@ import call_infra as lt  # noqa: E402
 import descente  # noqa: E402
 
 from script.todo import call_infra as ci  # noqa: E402
+from script.todo import call_infra_container as cc  # noqa: E402
 from script.todo import odoo_link as ol  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
@@ -213,12 +222,16 @@ class LEssaiABlanc(unittest.TestCase):
         self.assertNotIn("crochet", sortie)
 
     def test_both_scenarios_by_default(self):
+        """Chaque scénario par défaut : dev et prod sur les deux systèmes,
+        odoo et migration sur Debian, conteneur une fois par moteur."""
         code, sortie = lancer(self.maison, "--dry-run")
         self.assertEqual(0, code, sortie)
-        self.assertEqual(5, len(self._etapes(sortie)))
+        self.assertEqual(9, len(self._etapes(sortie)))
         self.assertIn("ntfy-ancien", sortie)
         self.assertIn("crochet-lignee", sortie)
         self.assertIn("b-bascule", sortie)
+        self.assertIn("odoo-secret", sortie)
+        self.assertIn("migration-conteneurs", sortie)
 
     # Les étapes du scénario des serveurs Odoo, dans l'ordre où elles
     # tournent.
@@ -492,15 +505,15 @@ class LaPlaceDesVM(unittest.TestCase):
             mock.patch.object(
                 lt,
                 "mener_un",
-                side_effect=lambda c, d, s: self._vu(crees, d, s),
+                side_effect=lambda c, d, s, v=None: self._vu(crees, d, s, v),
             ),
         ):
             code, _sortie = lancer(self.maison, *args)
         return code, crees
 
     @staticmethod
-    def _vu(crees, distro, scenario):
-        crees.append((distro, scenario))
+    def _vu(crees, distro, scenario, variante=None):
+        crees.append((distro, scenario, *([variante] if variante else [])))
         return {"distro": distro, "scenario": scenario, "verdict": "OK"}
 
     def test_keeping_every_vm_asks_room_for_each(self):
@@ -525,7 +538,7 @@ class LaPlaceDesVM(unittest.TestCase):
             mock.patch.object(
                 lt,
                 "mener_un",
-                side_effect=lambda c, d, s: self._vu(crees, d, s),
+                side_effect=lambda c, d, s, v=None: self._vu(crees, d, s, v),
             ),
         ):
             code, sortie = lancer(self.maison, "--garder")
@@ -543,11 +556,25 @@ class LaPlaceDesVM(unittest.TestCase):
                 ("debian", "dev"),
                 ("debian", "prod"),
                 ("debian", "odoo"),
+                ("debian", "conteneur", "docker"),
+                ("debian", "conteneur", "podman"),
+                ("debian", "conteneur", "podman-rootless"),
+                ("debian", "migration"),
                 ("arch", "dev"),
                 ("arch", "prod"),
             ],
             crees,
         )
+
+    def test_keeping_one_engine_keeps_one_vm(self):
+        """Les courses d'un système prennent le même nom de VM : trois
+        moteurs ne se gardent pas ensemble, un seul oui."""
+        code, crees = self._mener("--garder", "--scenario", "conteneur")
+        self.assertEqual((1, []), (code, crees))
+        _code, crees = self._mener(
+            "--garder", "--scenario", "conteneur", "--moteur", "podman"
+        )
+        self.assertEqual([("debian", "conteneur", "podman")], crees)
 
 
 class LesListes(unittest.TestCase):
@@ -622,6 +649,21 @@ class LeMenu(unittest.TestCase):
                 self.assertIn("call_infra_odoo_", avertissement[langue])
                 self.assertIn(langue, todo_i18n.TRANSLATIONS[question[1]])
 
+    def test_its_question_counts_the_vms_of_a_full_run(self):
+        """Une VM par course : le nombre que l'avertissement du menu
+        annonce est celui des courses d'une course complète."""
+        maison = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, maison, ignore_errors=True)
+        code, sortie = lancer(maison, "--dry-run")
+        self.assertEqual(0, code, sortie)
+        courses = sum("étapes : " in ligne for ligne in sortie.splitlines())
+        mots = {9: ("nine VMs", "neuf VM")}
+        avertissement, _q = self.todo._longtest_question("", "call_infra.py")
+        textes = todo_i18n.TRANSLATIONS[avertissement]
+        self.assertIn(courses, mots)
+        self.assertIn(mots[courses][0], textes["en"])
+        self.assertIn(mots[courses][1], textes["fr"])
+
     def test_its_question_names_the_odoo_scenario(self):
         avertissement, _q = self.todo._longtest_question("", "call_infra.py")
         textes = todo_i18n.TRANSLATIONS[avertissement]
@@ -682,6 +724,28 @@ class LeReadme(unittest.TestCase):
                     "RENEWED_LINEAGE",
                     "MainPID",
                     "turn.call.exemple.test",
+                ):
+                    self.assertIn(mot, section)
+
+    def test_the_container_scenarios_are_documented_in_both_halves(self):
+        base = (RACINE / "long_test/README.base.md").read_text(
+            encoding="utf-8"
+        )
+        sections = base.split("## call_infra.py")[1:]
+        for nom in ("README.md", "README.fr.md"):
+            texte = (RACINE / "long_test" / nom).read_text(encoding="utf-8")
+            sections.append(texte.split("## call_infra.py", 1)[1])
+        for section in sections:
+            section = section.split("\n## ", 1)[0]
+            with self.subTest(debut=section[:60]):
+                for mot in (
+                    "--scenario conteneur",
+                    "--moteur",
+                    "podman-rootless",
+                    "--scenario migration",
+                    "limite-registre",
+                    "Docker Hub",
+                    "call_infra_ntfy_downgrade",
                 ):
                     self.assertIn(mot, section)
 
@@ -864,6 +928,16 @@ class LesBriques(unittest.TestCase):
             "mso.demarrer_serveur",
             "mso.arreter_serveur",
             "mso.supprimer_base",
+            "ci.engine_offer",
+            "ci.method_refusal",
+            "ci.odoo_add_script",
+            "ci.odoo_added_state",
+            "ci.odoo_result",
+            "ci.ntfy_cli",
+            "cc.engine_argv",
+            "cc.rootless_prefix",
+            "cc.version_older",
+            "cim.PORT_REFUSAL",
         ):
             with self.subTest(brique=brique):
                 self.assertIn(brique, SRC)
@@ -1194,6 +1268,7 @@ class LeMemeCheminQueLeMenu(unittest.TestCase):
         "_call_infra_odoo_line",
         "_call_infra_remove_one",
         "_call_infra_check_odoo",
+        "_call_infra_ask_install_method",
     )
     # Ce qui ne sert qu'à l'écran du menu : le texte d'un refus, les notes
     # affichées sous l'aperçu du pare-feu, l'explication du module absent.
@@ -2945,6 +3020,1047 @@ class LeScenarioOdoo(unittest.TestCase):
         self.assertFalse(sc.etapes["odoo-harnais"])
         self.assertTrue(sc.etapes["bases-supprimees"])
         self.assertTrue(self.harnais[0].defait)
+
+
+# --- Conteneurs et migration ------------------------------------------------
+
+# Les lignes de la sonde des moteurs, par moteur présent.
+SONDE_MOTEUR = {
+    "docker": (
+        "@@ENGINE docker 26.1.5\n@@COMPOSE docker docker compose\n"
+        "@@DOCKER_SERVICE active enabled\n"
+    ),
+    "podman": (
+        "@@ENGINE podman 5.4.2\n@@COMPOSE podman podman-compose\n"
+        "@@PODMAN_RESTART enabled\n"
+    ),
+}
+SONDE_SANS_MOTEUR = DEBIAN_UFW_PROBE.replace("ufw", "none")
+
+
+def sonde_avec(moteur=None, extra=""):
+    """La sonde d'une Debian sans pare-feu, le moteur `moteur` présent
+    (une clé de SONDE_MOTEUR) et les lignes `extra`."""
+    lignes = (SONDE_MOTEUR[moteur] if moteur else "") + extra
+    return SONDE_SANS_MOTEUR.replace("@@END", f"{lignes}@@END")
+
+
+def etat_conteneur(answers, uid=990):
+    """L'état qu'écrit une installation en conteneurs pour `answers` :
+    celui du plan, les ids des comptes posés comme le script les lit, et
+    les paquets proposés consignés."""
+    engine = answers.engine
+    rootless = "@@ROOTLESS 1 1 1 1 enabled\n" if answers.rootless else ""
+    facts = ci.parse_probe(sonde_avec(engine, rootless))
+    plan = ci.plan_install(facts, answers, NOW)
+    etat = ci.written_state(plan, "20261102-101500")
+    for svc in etat["services"]:
+        etat["services"][svc].update(uid=uid, gid=uid)
+        if answers.rootless:
+            etat["services"][svc]["account"] = cc.ROOTLESS_ACCOUNT
+    if answers.rootless:
+        etat["container"]["uid"] = uid
+    offre = ci.engine_offer(
+        ci.parse_probe(SONDE_SANS_MOTEUR), engine, answers.rootless
+    )
+    etat["container"]["engine_packages_added"] = list(offre)
+    return etat
+
+
+class LesCoursesConteneur(unittest.TestCase):
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+
+    def _fichiers(self):
+        trouves = []
+        for dossier, _sous, fichiers in os.walk(self.maison):
+            trouves += [os.path.join(dossier, f) for f in fichiers]
+        return trouves
+
+    @staticmethod
+    def _courses(sortie):
+        return [
+            ligne.split("── ", 1)[1]
+            for ligne in sortie.splitlines()
+            if "── " in ligne
+        ]
+
+    @staticmethod
+    def _etapes(sortie):
+        return [
+            ligne.split("étapes : ", 1)[1].split(", ")
+            for ligne in sortie.splitlines()
+            if "étapes : " in ligne
+        ]
+
+    def test_three_engines_three_courses_and_their_steps(self):
+        code, sortie = lancer(
+            self.maison, "--dry-run", "--scenario", "conteneur"
+        )
+        self.assertEqual(0, code, sortie)
+        self.assertEqual(
+            [
+                "debian 13 (conteneur docker)",
+                "debian 13 (conteneur podman)",
+                "debian 13 (conteneur podman-rootless)",
+            ],
+            self._courses(sortie),
+        )
+        docker, podman, rootless = self._etapes(sortie)
+        for moteur, etapes in zip(lt.MOTEURS, (docker, podman, rootless)):
+            with self.subTest(moteur=moteur):
+                self.assertEqual(
+                    list(lt.etapes_de("conteneur", "debian", moteur)), etapes
+                )
+                for etape in (
+                    "moteur-propose",
+                    "moteur-installe",
+                    "proprietaires",
+                    "odoo-secret",
+                    "odoo-second",
+                    "relais-prive",
+                    "crochet-lignee",
+                    "redemarrage",
+                    "rien-a-changer",
+                    "etat-apres-desinstallation",
+                ):
+                    self.assertIn(etape, etapes)
+        self.assertIn("melange (information)", docker)
+        self.assertNotIn("melange (information)", podman + rootless)
+        self.assertIn("prod-443-non-root", podman)
+        self.assertNotIn("prod-443-non-root", docker + rootless)
+        self.assertNotIn("--distro arch", sortie)
+        self.assertEqual(
+            [],
+            [
+                f
+                for f in self._fichiers()
+                if not f.endswith(("-dryrun.json", ".log"))
+            ],
+        )
+
+    def test_one_engine_one_course(self):
+        code, sortie = lancer(
+            self.maison,
+            "--dry-run",
+            "--scenario",
+            "conteneur",
+            "--moteur",
+            "podman-rootless",
+        )
+        self.assertEqual(0, code, sortie)
+        self.assertEqual(
+            ["debian 13 (conteneur podman-rootless)"], self._courses(sortie)
+        )
+
+    def test_the_engine_option_belongs_to_the_container_scenario(self):
+        code, sortie = lancer(
+            self.maison, "--dry-run", "--scenario", "dev", "--moteur", "docker"
+        )
+        self.assertEqual(1, code)
+        self.assertNotIn("deploy_qemu.py", sortie)
+        with self.assertRaises(SystemExit):
+            lancer(self.maison, "--dry-run", "--moteur", "lxc")
+
+    def test_containers_and_migration_run_on_debian_only(self):
+        for scenario in ("conteneur", "migration"):
+            with self.subTest(scenario=scenario):
+                code, sortie = lancer(
+                    self.maison,
+                    "--dry-run",
+                    "--distro",
+                    "arch",
+                    "--scenario",
+                    scenario,
+                )
+                self.assertEqual(1, code)
+                self.assertNotIn("deploy_qemu.py", sortie)
+
+    def test_the_migration_plan_names_its_database(self):
+        code, sortie = lancer(
+            self.maison, "--dry-run", "--scenario", "migration"
+        )
+        self.assertEqual(0, code, sortie)
+        self.assertEqual(
+            [["vm", "ssh", "cloud-init", "ufw-actif", *lt._MIGRATION_ETAPES]],
+            self._etapes(sortie),
+        )
+        (ligne,) = [
+            ligne.split("bases : ", 1)[1]
+            for ligne in sortie.splitlines()
+            if "bases : " in ligne
+        ]
+        self.assertRegex(ligne, r"^call_infra_odoo_\d+_\d+_a$")
+        self.assertLessEqual(len(ligne), 63)
+        self.assertNotIn("mobile_sync_", sortie)
+
+    def test_the_migration_database_is_not_an_odoo_one(self):
+        """Les deux scénarios d'une même course ont leurs bases à eux, et
+        `--detruire` reconnaît chacune."""
+        code, sortie = lancer(self.maison, "--dry-run", "--distro", "debian")
+        self.assertEqual(0, code, sortie)
+        odoo, migration = [
+            ligne.split("bases : ", 1)[1].split(", ")
+            for ligne in sortie.splitlines()
+            if "bases : " in ligne
+        ]
+        self.assertEqual(3, len(odoo))
+        self.assertEqual(1, len(migration))
+        self.assertNotIn(migration[0], odoo)
+        self.assertTrue(lt._BASE_ODOO.match(migration[0]))
+
+    def test_each_course_has_its_log(self):
+        sc = lt.Scenario("debian", "x", "j", "conteneur", variante="docker")
+        self.assertEqual("docker", sc.ligne()["variante"])
+        course = mock.Mock(dossier=self.maison, journal=os.devnull)
+        with (
+            mock.patch.object(lt, "creer_vm", return_value=(None, "", False)),
+            mock.patch.object(lt, "Scenario", wraps=lt.Scenario) as fait,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            lt.mener_un(course, "debian", "conteneur", "podman-rootless")
+            lt.mener_un(course, "debian", "dev")
+        journaux = [appel.args[1] for appel in fait.call_args_list]
+        self.assertEqual(
+            [
+                os.path.join(
+                    self.maison, "conteneur-podman-rootless-debian.log"
+                ),
+                os.path.join(self.maison, "dev-debian.log"),
+            ],
+            journaux,
+        )
+
+
+class LaLimiteDuRegistre(unittest.TestCase):
+    """Une image refusée par la limite de tirage du registre n'est ni un
+    vert ni un échec : la course dit de réessayer plus tard."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.log = os.path.join(self.dossier, "x.log")
+        self.journal = os.path.join(self.dossier, "j.log")
+
+    def _reponses(self, facts):
+        return lt.methode_du_menu(
+            lt.reponses(IP), facts, "container", "docker"
+        )
+
+    def test_the_install_output_says_rate_limit(self):
+        hote = Hote(
+            (0, SONDE_SANS_MOTEUR),
+            (1, "@@PULL_FAILED coturn rate-limit\n@@SAVED no\n"),
+        )
+        res = lt.installer("vm", self._reponses, self.log, executer=hote)
+        self.assertFalse(res["ok"])
+        self.assertTrue(res["limite"])
+        self.assertEqual("install", res["etape"])
+        hote = Hote(
+            (0, SONDE_SANS_MOTEUR),
+            (1, "@@PULL_FAILED coturn failed\n@@SAVED no\n"),
+        )
+        res = lt.installer("vm", self._reponses, self.log, executer=hote)
+        self.assertFalse(res["limite"])
+
+    def test_the_course_verdict_is_the_registry_limit(self):
+        installe = {
+            "ok": False,
+            "etape": "install",
+            "limite": True,
+            "refus": None,
+        }
+
+        def installer(cible, answers, log, **kw):
+            answers(ci.parse_probe(SONDE_SANS_MOTEUR))
+            return installe
+
+        def preparer(sc, cible, distro):
+            sc.noter("cloud-init", True)
+            return sc.noter("ufw-actif", True)
+
+        sc = lt.Scenario(
+            "debian", self.log, self.journal, "conteneur", variante="docker"
+        )
+        with (
+            mock.patch.object(lt, "_preparer", preparer),
+            mock.patch.object(lt, "installer", side_effect=installer),
+            contextlib.redirect_stdout(io.StringIO()) as ecran,
+        ):
+            lt.scenario_conteneur(sc, "vm", IP, self.dossier)
+        ligne = sc.ligne()
+        self.assertEqual(lt.LIMITE_REGISTRE, ligne["verdict"])
+        self.assertNotIn("ECHEC", ligne["verdict"])
+        self.assertNotIn("installation", sc.etapes)
+        self.assertTrue(sc.etapes["moteur-propose"])
+        self.assertIn(lt.MESSAGE_LIMITE, ecran.getvalue())
+        # Un échec avant la limite reste un échec.
+        sc.noter("ufw-actif", False)
+        self.assertEqual("ECHEC(ufw-actif)", sc.ligne()["verdict"])
+
+    def test_the_run_exits_two_and_says_it(self):
+        maison = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, maison, ignore_errors=True)
+
+        def mener_un(course, distro, scenario, variante=None):
+            verdict = "OK" if variante != "podman" else lt.LIMITE_REGISTRE
+            return {"distro": distro, "scenario": scenario, "verdict": verdict}
+
+        large = (16, 10 * (lt.MEMOIRE_MO + lt.MARGE_RAM_MO), 1000)
+        with (
+            mock.patch.object(lt, "capacite_hote", return_value=large),
+            mock.patch.object(lt, "mener_un", side_effect=mener_un),
+        ):
+            code, sortie = lancer(maison, "--scenario", "conteneur")
+        self.assertEqual(2, code, sortie)
+        self.assertIn(f"{lt.LIMITE_REGISTRE} — {lt.MESSAGE_LIMITE}", sortie)
+        self.assertEqual(
+            1,
+            lt.bilan(
+                [{"verdict": "ECHEC(x)"}, {"verdict": lt.LIMITE_REGISTRE}],
+                2,
+                os.devnull,
+            ),
+        )
+        self.assertEqual(1, lt.bilan([{"verdict": "OK"}], 2, os.devnull))
+        self.assertEqual(0, lt.bilan([{"verdict": "OK"}], 1, os.devnull))
+
+
+class LeMenuDesConteneurs(unittest.TestCase):
+    """La méthode et le moteur sont ceux de `_call_infra_ask_install_method`
+    : paquets manquants proposés et acceptés, refus levés avant le plan,
+    sauf celui d'un port, que le plan rend."""
+
+    def test_a_missing_engine_is_offered_and_accepted(self):
+        facts = ci.parse_probe(SONDE_SANS_MOTEUR)
+        vu = {}
+        ans = lt.methode_du_menu(
+            lt.reponses(IP), facts, "container", "podman-rootless", vu
+        )
+        self.assertEqual(
+            ("container", "podman", True, True),
+            (ans.method, ans.engine, ans.rootless, ans.install_engine),
+        )
+        self.assertEqual(ci.engine_offer(facts, "podman", True), vu["offre"])
+        self.assertTrue(vu["offre"])
+        facts = ci.parse_probe(sonde_avec("docker"))
+        ans = lt.methode_du_menu(
+            lt.reponses(IP), facts, "container", "docker", vu
+        )
+        self.assertEqual((), vu["offre"])
+        self.assertFalse(ans.install_engine)
+
+    def test_the_menu_refusals_stop_before_the_plan(self):
+        etat = etat_conteneur(
+            lt.methode_du_menu(
+                lt.reponses(IP),
+                ci.parse_probe(SONDE_SANS_MOTEUR),
+                "container",
+                "docker",
+            )
+        )
+        sonde = sonde_avec(
+            "docker",
+            f"@@NTFY_HOST 2.11.0\n@@STATE {b64(json.dumps(etat))}\n",
+        )
+        facts = ci.parse_probe(sonde)
+        with self.assertRaises(ci.Refusal) as refus:
+            lt.methode_du_menu(lt.reponses(IP), facts, "packages")
+        self.assertEqual("call_infra_ntfy_downgrade", refus.exception.key)
+        hote = Hote((0, sonde))
+        res = lt.installer(
+            "vm",
+            lambda f: lt.methode_du_menu(lt.reponses(IP), f, "packages"),
+            os.devnull,
+            executer=hote,
+        )
+        self.assertEqual(
+            ("methode", "call_infra_ntfy_downgrade"),
+            (res["etape"], res["refus"]),
+        )
+        self.assertEqual(1, len(hote.scripts))
+
+    def test_a_port_refusal_waits_for_the_plan(self):
+        facts = ci.parse_probe(sonde_avec("podman"))
+        bas = dataclasses.replace(lt.reponses(IP), ntfy_port=80)
+        ans = lt.methode_du_menu(bas, facts, "container", "podman")
+        self.assertEqual(80, ans.ntfy_port)
+        with self.assertRaises(ci.Refusal) as refus:
+            ci.plan_install(facts, ans, NOW)
+        self.assertEqual("call_infra_container_port", refus.exception.key)
+
+    def test_production_coturn_alone_on_443(self):
+        facts = ci.parse_probe(SONDE_SANS_MOTEUR)
+        ans = lt.reponses_prod_coturn(IP, "crt", "key", facts, resolution())
+        self.assertEqual(frozenset({"coturn"}), ans.services)
+        self.assertTrue(ans.turns_443)
+        self.assertIsNone(ans.nginx)
+        self.assertEqual(443, ci.coturn_tls_port(ans))
+        self.assertEqual("production", ans.mode)
+
+
+class LesScriptsConteneur(unittest.TestCase):
+    def setUp(self):
+        base = lt.reponses(IP)
+        facts = ci.parse_probe(SONDE_SANS_MOTEUR)
+        self.etats = {
+            moteur: etat_conteneur(
+                lt.methode_du_menu(base, facts, "container", moteur)
+            )
+            for moteur in lt.MOTEURS
+        }
+
+    def test_the_host_scripts_parse(self):
+        scripts = {"proprietaires": lt.script_proprietaires()}
+        for moteur, etat in self.etats.items():
+            scripts[f"conteneurs-{moteur}"] = lt.script_conteneurs(etat, 30)
+            scripts[f"auto-{moteur}"] = lt.script_auto(etat)
+            scripts[f"secret-{moteur}"] = lt.script_secret(IP, "s3", etat)
+        scripts["demarrage"] = lt.SCRIPT_DEMARRAGE
+        scripts["redemarrer"] = lt.SCRIPT_REDEMARRER
+        scripts["port"] = lt.script_port_bas(443)
+        scripts["apres"] = lt.script_apres_conteneur(["docker.io", "uidmap"])
+        for nom, script in scripts.items():
+            with self.subTest(script=nom):
+                # Lu, jamais joué : aucun moteur ni outil système ne part
+                # d'ici.
+                fini = subprocess.run(
+                    ["sh", "-n"],
+                    input=script,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr)
+
+    def test_the_engine_comes_from_the_state(self):
+        docker = lt.script_conteneurs(self.etats["docker"])
+        self.assertIn('eng() { docker "$@"; }', docker)
+        self.assertIn(cc.CONTAINERS["coturn"], docker)
+        self.assertIn(cc.CONTAINERS["ntfy"], docker)
+        rootless = lt.script_conteneurs(self.etats["podman-rootless"])
+        self.assertIn(
+            shlex.join(cc.rootless_prefix(cc.ROOTLESS_ACCOUNT, 990)), rootless
+        )
+        secret = lt.script_secret(IP, "s3", self.etats["docker"])
+        self.assertIn(
+            f"eng exec -u 990:990 {cc.CONTAINERS['coturn']} turnadmin -s",
+            secret,
+        )
+        self.assertIn(ci.COTURN_DB, secret)
+        self.assertNotIn("systemctl", secret)
+        self.assertIn("systemctl show", lt.script_secret(IP, "s3"))
+        etat = json.loads(json.dumps(self.etats["docker"]))
+        etat["container"]["engine"] = "docker; reboot"
+        with self.assertRaises(ValueError):
+            lt.script_conteneurs(etat)
+
+    def test_the_restart_units_of_each_engine(self):
+        self.assertIn("docker.service", lt.script_auto(self.etats["docker"]))
+        self.assertIn(
+            "podman-restart.service", lt.script_auto(self.etats["podman"])
+        )
+        rootless = lt.script_auto(self.etats["podman-rootless"])
+        self.assertIn("systemctl --user is-enabled", rootless)
+        self.assertIn(f"linger/{cc.ROOTLESS_ACCOUNT}", rootless)
+
+    def test_container_states_are_read_back(self):
+        sortie = (
+            "@@CSTATE coturn running 4242 990:990 2026-11-02 10:00:00 +0000"
+            " UTC\n@@CSTATE ntfy exited 0 - \n"
+        )
+        lus = lt.etats_conteneurs(sortie)
+        self.assertEqual("4242", lus["coturn"]["pid"])
+        self.assertEqual(
+            "2026-11-02 10:00:00 +0000 UTC", lus["coturn"]["demarre"]
+        )
+        self.assertEqual("exited", lus["ntfy"]["etat"])
+
+    def test_the_databases_belong_to_the_state_accounts(self):
+        etat = self.etats["podman-rootless"]
+        bon = (
+            f"@@OWNER coturn {cc.ROOTLESS_ACCOUNT} 990\n"
+            f"@@OWNER ntfy {cc.ROOTLESS_ACCOUNT} 990\n"
+        )
+        self.assertTrue(lt.verdict_proprietaires(etat, bon)[0])
+        subordonne = bon.replace(
+            f"coturn {cc.ROOTLESS_ACCOUNT} 990", "coturn UNKNOWN 100989"
+        )
+        ok, detail = lt.verdict_proprietaires(etat, subordonne)
+        self.assertFalse(ok)
+        self.assertFalse(detail["coturn-ok"])
+        self.assertFalse(lt.verdict_proprietaires(etat, "")[0])
+
+    def test_the_reboot_verdict(self):
+        etats = {"coturn": {"etat": "running"}, "ntfy": {"etat": "running"}}
+        auto = "@@AUTO podman-restart.service enabled\n"
+        self.assertTrue(lt.verdict_redemarrage("a", "b", etats, auto)[0])
+        for avant, apres, lus, sortie in (
+            ("a", "a", etats, auto),
+            ("", "b", etats, auto),
+            ("a", "b", {"coturn": {"etat": "exited"}}, auto),
+            ("a", "b", {}, auto),
+            ("a", "b", etats, "@@AUTO x disabled\n"),
+            ("a", "b", etats, "@@AUTO user enabled\n@@LINGER non\n"),
+        ):
+            with self.subTest(avant=avant, apres=apres, sortie=sortie):
+                self.assertFalse(
+                    lt.verdict_redemarrage(avant, apres, lus, sortie)[0]
+                )
+
+    def test_port_443_held_by_a_non_root_turnserver(self):
+        self.assertTrue(
+            lt.verdict_port_bas("@@LISTEN turnserver 990\n@@END\n")[0]
+        )
+        for sortie in (
+            "@@LISTEN turnserver 0\n@@END\n",
+            "@@LISTEN nginx 33\n@@END\n",
+            "@@END\n",
+            "@@LISTEN turnserver 990\n",
+        ):
+            with self.subTest(sortie=sortie):
+                self.assertFalse(lt.verdict_port_bas(sortie)[0])
+
+    def test_nothing_left_after_the_container_uninstall(self):
+        propre = "@@PKG docker.io un\n@@UFW_RULES 0\n@@END\n"
+        self.assertTrue(lt.verdict_apres_conteneur(0, propre)[0])
+        self.assertFalse(lt.verdict_apres_conteneur(1, propre)[0])
+        for reste, cle in (
+            ("@@CONTAINER erplibre-call-coturn", "sans-conteneur"),
+            ("@@IMAGE docker.io/coturn/coturn:4.18.0", "sans-image"),
+            ("@@IMAGE_FILE binwiederhier/ntfy", "sans-image"),
+            ("@@VOLUME /var/lib/docker/volumes/0a1b/", "sans-volume"),
+            ("@@COMPOSE present", "sans-compose"),
+            (f"@@ACCOUNT {cc.ROOTLESS_ACCOUNT}", "sans-compte"),
+            ("@@HOME present", "sans-compte"),
+            ("@@LINGER present", "sans-compte"),
+            ("@@PKG docker.io ii", "sans-paquet-moteur"),
+            ("@@PKG docker.io rc", "sans-paquet-moteur"),
+            ("@@CALL_DIR present", "sans-dossier-outil"),
+        ):
+            with self.subTest(reste=reste):
+                sortie = propre.replace("@@END", f"{reste}\n@@END")
+                ok, detail = lt.verdict_apres_conteneur(0, sortie)
+                self.assertFalse(ok)
+                self.assertFalse(detail[cle])
+        ok, detail = lt.verdict_apres_conteneur(0, "@@UFW_RULES 2\n@@END\n")
+        self.assertFalse(detail["sans-regle-ufw"])
+
+    def test_the_hook_without_nginx(self):
+        requis, interdits = lt.attendus_crochet(
+            "crochet-lignee", cc.CONTAINERS["coturn"], nginx=False
+        )
+        self.assertIn(f"signal {cc.CONTAINERS['coturn']}", requis)
+        self.assertNotIn("nginx-reloaded", requis)
+        self.assertIn("applied-stale", interdits)
+        requis, _i = lt.attendus_crochet("crochet-fourni", "x", nginx=False)
+        self.assertEqual(("coturn-skip not-letsencrypt",), requis)
+
+
+class MondeConteneur:
+    """L'hôte d'une course `conteneur` tel que les scripts le voient :
+    coturn recréé par la bascule en mode secret, signalé sans redémarrer
+    par le crochet, relancé par le redémarrage. `recree` faux simule un
+    produit qui recrée coturn à chaque ajout d'Odoo."""
+
+    def __init__(self, premier):
+        self.demarre = 1
+        self.pid = 4242
+        self.boot = 1
+        self.recree = True
+        self.premier = premier
+        self.sert = premier[0]
+        self.lignee = None
+        self.le = False
+        self.vus = []
+        self.etat = {"services": {}}
+
+    def etats(self):
+        return "".join(
+            f"@@CSTATE {svc} running {self.pid} 990:990 t{self.demarre}\n"
+            for svc in ci.SERVICES
+        )
+
+    def distant(self, cible, script, log, delai, **kw):
+        self.vus.append(script)
+        if "@@CSTATE" in script:
+            return 0, self.etats()
+        if "@@ODOO_ADDED" in script:
+            bascule = "install_coturn.sh" in script
+            if bascule or not self.recree:
+                self.demarre += 1
+                self.pid += 1
+            sortie = "@@RECREATE 1\n" if bascule or not self.recree else ""
+            return 0, sortie + "@@TURN_MODE secret\n@@ODOO_ADDED yes\n"
+        if "@@SAVED" in script:
+            return 0, "@@SAVED yes\n"
+        if script == lt.script_proprietaires():
+            return 0, "".join(
+                f"@@OWNER {svc} {fiche['account']} {fiche['uid']}\n"
+                for svc, fiche in self.etat["services"].items()
+            )
+        if "turnadmin" in script:
+            return 0, "@@SECRET_RC 0\n"
+        if "@@LINEAGE" in script:
+            self.lignee = script
+            return 0, "@@LINEAGE placed\n"
+        if script == lt.script_etat_lignee():
+            self.le = True
+            return 0, "@@STAGED letsencrypt\n"
+        if script == ci.deploy_hook_text():
+            if not self.le:
+                return 0, "@@HOOK coturn-skip not-letsencrypt\n"
+            self.sert = self.lignee_pem
+            return 0, (
+                "@@HOOK copied a b\n"
+                f"@@HOOK signal {cc.CONTAINERS['coturn']}\n@@HOOK applied\n"
+            )
+        if script == lt.script_remise():
+            self.le = False
+            return 0, "@@RESTORED yes\n"
+        if script == lt.SCRIPT_DEMARRAGE:
+            return 0, f"@@BOOT b{self.boot}\n"
+        if script == lt.SCRIPT_REDEMARRER:
+            self.boot += 1
+            self.pid += 1
+            return 0, "@@REBOOT scheduled\n"
+        if "@@AUTO" in script:
+            return 0, "@@AUTO unite enabled\n@@LINGER oui\n"
+        if "@@LISTEN" in script:
+            return 0, "@@LISTEN turnserver 990\n@@END\n"
+        if "@@UFW_RULES" in script:
+            return 0, "@@PKG docker.io un\n@@UFW_RULES 0\n@@END\n"
+        return 0, ""
+
+
+class LeScenarioConteneur(unittest.TestCase):
+    """`scenario_conteneur` mené de bout en bout : chaque brique qui touche
+    l'hôte ou le réseau est remplacée, les certificats sont de vrais
+    certificats d'une autorité inventée, les verdicts ceux du scénario."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.log = os.path.join(self.dossier, "x.log")
+        self.journal = os.path.join(self.dossier, "j.log")
+
+    def _course(self, moteur, preparer_monde=None):
+        sc = lt.Scenario(
+            "debian", self.log, self.journal, "conteneur", variante=moteur
+        )
+        vrai_issue = lt.local_cert.issue
+        certificats = []
+
+        def issue(dossier, noms):
+            chemins = vrai_issue(dossier, noms)
+            certificats.append(lt.paire(chemins))
+            return chemins
+
+        mondes = []
+        appels = []
+        installes = []
+
+        def installer(cible, answers, log, **kw):
+            # Après la première installation, le moteur est là, et en
+            # rootless newuidmap aussi (`@@ROOTLESS`).
+            facts = ci.parse_probe(
+                sonde_avec(None)
+                if not appels
+                else sonde_avec(
+                    lt.MOTEURS[moteur][0], "@@ROOTLESS 1 1 1 1 enabled\n"
+                )
+            )
+            ans = answers(facts)
+            appels.append(ans)
+            if ans.mode == "production":
+                etat = ci.written_state(
+                    ci.plan_install(
+                        ci.parse_probe(sonde_avec(ans.engine)), ans, NOW
+                    ),
+                    "20261102-101500",
+                )
+                for fiche in etat["services"].values():
+                    fiche.update(uid=990, gid=990)
+                etat["container"]["engine_packages_added"] = ["podman"]
+            else:
+                etat = etat_conteneur(ans)
+            if mondes:
+                mondes[0].etat = etat
+            installes.append(etat)
+            return {
+                "ok": True,
+                "etape": "",
+                "limite": False,
+                "refus": None,
+                "rien_a_faire": len(appels) == 2,
+                "etat": etat,
+                "answers": ans,
+                "plan": None,
+                "migration": None,
+            }
+
+        def verifier(cible, adresse, cafile, log, executer=None):
+            noms = (
+                lt.CONTROLES_PROD_COTURN
+                if appels and appels[-1].mode == "production"
+                else lt.CONTROLES["conteneur"]["debian"]
+            )
+            return [ci.CheckLine(n, True, "x") for n in noms], {}
+
+        def vu(adresse, port, nom):
+            return ssl.PEM_cert_to_DER_cert(mondes[0].sert)
+
+        def distant(cible, script, log, delai, **kw):
+            if not mondes:
+                mondes.append(MondeConteneur(certificats[0]))
+                mondes[0].etat = installes[-1]
+                if preparer_monde:
+                    preparer_monde(mondes[0])
+            monde = mondes[0]
+            for pem in certificats[:2]:
+                if script == lt.script_lignee(*pem):
+                    monde.lignee_pem = pem[0]
+            return monde.distant(cible, script, log, delai, **kw)
+
+        def preparer(sc, cible, distro):
+            sc.noter("cloud-init", True)
+            return sc.noter("ufw-actif", True)
+
+        allocation = mock.Mock(ok=True, error=None)
+        with (
+            mock.patch.object(lt, "_preparer", preparer),
+            mock.patch.object(lt.local_cert, "issue", side_effect=issue),
+            mock.patch.object(lt, "installer", side_effect=installer),
+            mock.patch.object(lt, "verifier", side_effect=verifier),
+            mock.patch.object(lt, "distant", side_effect=distant),
+            mock.patch.object(
+                lt, "desinstaller", side_effect=["fait", "rien", "fait"]
+            ),
+            mock.patch.object(lt, "ports_fermes", return_value={}),
+            mock.patch.object(lt, "certificat_vu", side_effect=vu),
+            mock.patch.object(lt, "attendre_ssh", return_value=True),
+            mock.patch.object(lt, "DELAI_SERIE", 0),
+            mock.patch.object(lt, "DELAI_REDEMARRAGE", 0),
+            mock.patch.object(
+                lt.turn_client, "allocate", return_value=allocation
+            ),
+            mock.patch.object(
+                lt.turn_client, "permission", return_value=allocation
+            ),
+            mock.patch.object(
+                lt.socket, "getaddrinfo", side_effect=OSError("inconnu")
+            ),
+            mock.patch.object(
+                lt.subprocess, "run", side_effect=self._seul_openssl
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            lt.scenario_conteneur(sc, "vm", IP, self.dossier)
+        return sc, mondes, appels
+
+    _vrai_run = staticmethod(subprocess.run)
+
+    @classmethod
+    def _seul_openssl(cls, argv, *a, **kw):
+        """openssl, pour les vrais certificats ; rien d'autre ne part d'ici
+        (ni ssh, ni moteur)."""
+        if argv and argv[0] == "openssl":
+            return cls._vrai_run(argv, *a, **kw)
+        raise AssertionError(f"processus lancé : {argv}")
+
+    def test_each_engine_notes_every_planned_step(self):
+        for moteur in lt.MOTEURS:
+            with self.subTest(moteur=moteur):
+                sc, _mondes, appels = self._course(moteur)
+                prevues = [
+                    e
+                    for e in lt.etapes_de("conteneur", "debian", moteur)[2:]
+                    if not e.endswith("(information)")
+                ]
+                self.assertEqual(prevues, list(sc.etapes))
+                self.assertEqual(
+                    [],
+                    [n for n, ok in sc.etapes.items() if not ok],
+                    sc.details,
+                )
+                self.assertEqual("OK", sc.ligne()["verdict"])
+                engine, rootless = lt.MOTEURS[moteur]
+                self.assertEqual(
+                    ("container", engine, rootless, True),
+                    (
+                        appels[0].method,
+                        appels[0].engine,
+                        appels[0].rootless,
+                        appels[0].install_engine,
+                    ),
+                )
+                # La relance trouve le moteur : rien n'est plus proposé.
+                self.assertFalse(appels[1].install_engine)
+        self.assertIn("melange", self._course("docker")[0].details)
+
+    def test_a_recreate_on_every_odoo_is_seen(self):
+        def recree_toujours(monde):
+            monde.recree = False
+
+        sc, _m, _a = self._course("docker", recree_toujours)
+        self.assertTrue(sc.etapes["odoo-secret"])
+        self.assertFalse(sc.etapes["odoo-second"])
+
+    def test_a_refused_private_relay_is_seen(self):
+        refus = mock.Mock(ok=False, error="403 Forbidden")
+        with mock.patch.object(
+            lt.turn_client, "permission", return_value=refus
+        ):
+            sc = lt.Scenario("debian", self.log, self.journal, "conteneur")
+            with contextlib.redirect_stdout(io.StringIO()):
+                lt.relais_prive(sc, lt.reponses(IP), "secret-invente-0123")
+        self.assertFalse(sc.etapes["relais-prive"])
+        self.assertEqual(
+            "403 Forbidden", sc.details["relais-prive"]["resultat"]
+        )
+
+    def test_the_hook_signals_the_container(self):
+        sc, mondes, _a = self._course("podman-rootless")
+        detail = sc.details["crochet-lignee"]
+        self.assertIn(f"signal {cc.CONTAINERS['coturn']}", detail["crochet"])
+        self.assertEqual(detail["pid"][0], detail["pid"][1])
+        self.assertIn(ci.deploy_hook_text(), mondes[0].vus)
+
+    def test_the_production_phase_holds_443(self):
+        sc, _m, appels = self._course("podman")
+        prod = appels[-1]
+        self.assertEqual(
+            (frozenset({"coturn"}), True, "podman", False),
+            (prod.services, prod.turns_443, prod.engine, prod.rootless),
+        )
+        self.assertTrue(sc.etapes["prod-443-non-root"])
+        self.assertTrue(sc.etapes["prod-verification"])
+
+
+class LeScenarioMigration(unittest.TestCase):
+    """`scenario_migration` mené de bout en bout sur un hôte inventé : la
+    méthode change deux fois, l'Odoo reste branché."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="longtest-call-infra-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.log = os.path.join(self.dossier, "x.log")
+        self.journal = os.path.join(self.dossier, "j.log")
+        self.harnais = []
+
+    def _course(self, ntfy_hote=None, readd=(), secrets_apres=None):
+        harnais = self.harnais
+
+        class Faux:
+            def __init__(
+                self,
+                dossier,
+                identifiant,
+                course=None,
+                journal=None,
+                lettres=lt.LETTRES_ODOO,
+            ):
+                self.bases = {
+                    k: v
+                    for k, v in lt.noms_bases(identifiant).items()
+                    if k in lettres
+                }
+                self.defait = False
+                harnais.append(self)
+
+            def preparer(self):
+                return True, {}
+
+            def url(self, lettre):
+                return "http://127.0.0.1:40001"
+
+            def lien(self, lettre, *a):
+                return mock.Mock()
+
+            def defaire(self):
+                self.defait = True
+                return []
+
+        tls = {}
+        for role in ("server_crt", "server_key", "ca_crt"):
+            tls[role] = os.path.join(self.dossier, role)
+            with open(tls[role], "w", encoding="utf-8") as fh:
+                fh.write(role)
+        paquets = ci.written_state(
+            ci.plan_install(
+                ci.parse_probe(SONDE_SANS_MOTEUR), lt.reponses(IP), NOW
+            ),
+            "20261102-101500",
+        )
+        paquets["turn_mode"] = "secret"
+        appels = []
+
+        def installer(cible, answers, log, **kw):
+            sonde = sonde_avec(
+                "podman", f"@@NTFY_HOST {ntfy_hote}\n" if ntfy_hote else ""
+            )
+            if callable(answers):
+                facts = ci.parse_probe(sonde)
+                if appels:
+                    etat_avant = (
+                        etat_conteneur(appels[-1])
+                        if appels[-1].method == "container"
+                        else paquets
+                    )
+                    facts = dataclasses.replace(facts, state=etat_avant)
+                try:
+                    answers = answers(facts)
+                except ci.Refusal as refus:
+                    return {
+                        "ok": False,
+                        "etape": "methode",
+                        "refus": refus.key,
+                        "limite": False,
+                        "plan": None,
+                        "migration": None,
+                        "etat": None,
+                    }
+            appels.append(answers)
+            sens = None
+            if len(appels) > 1:
+                sens = (
+                    "to_container"
+                    if answers.method == "container"
+                    else "to_packages"
+                )
+            etat = (
+                etat_conteneur(answers)
+                if answers.method == "container"
+                else paquets
+            )
+            return {
+                "ok": True,
+                "etape": "",
+                "refus": None,
+                "limite": False,
+                "etat": etat,
+                "answers": answers,
+                "plan": mock.Mock(migration=sens, odoo_readd=tuple(readd)),
+                "migration": "done" if sens else None,
+            }
+
+        lus = {"avant": [(IP, "s1"), (IP, "s2")]}
+
+        def verifier(cible, adresse, cafile, log, executer=None):
+            noms = lt.CONTROLES["migration"]["debian"]
+            premier = "vu" not in lus
+            lus["vu"] = True
+            secrets_lus = (
+                lus["avant"]
+                if premier or secrets_apres is None
+                else secrets_apres
+            )
+            return [ci.CheckLine(n, True, "x") for n in noms], {
+                "turn_secrets": secrets_lus
+            }
+
+        telephones = []
+
+        def distant(cible, script, log, delai, **kw):
+            if "token" in script and "add" in script:
+                telephones.append(kw)
+                return 0, "token tk_Abc created for user erm_longtest\n"
+            if " access --config" in script:
+                return 0, f"user {nm_phone()} (role: user)\n"
+            return 0, "@@OWNER ntfy\n"
+
+        sonde_retour = ci.parse_probe(
+            sonde_avec(
+                "podman", f"@@NTFY_HOST {ntfy_hote}\n" if ntfy_hote else ""
+            )
+        )
+        sc = lt.Scenario(
+            "debian",
+            self.log,
+            self.journal,
+            "migration",
+            course=mock.Mock(identifiant="42_20261102101500"),
+        )
+
+        def preparer(sc, cible, distro):
+            sc.noter("cloud-init", True)
+            return sc.noter("ufw-actif", True)
+
+        ajout = {
+            "ok": True,
+            "etape": "",
+            "refus": None,
+            "plan": None,
+            "etat": paquets,
+        }
+        ice = [ligne_ice(u, True) for u in (UDP, TCP, TLS)]
+        with (
+            mock.patch.object(lt, "_preparer", preparer),
+            mock.patch.object(lt, "Harnais", Faux),
+            mock.patch.object(lt.local_cert, "issue", return_value=tls),
+            mock.patch.object(lt, "paire", return_value=(None, None)),
+            mock.patch.object(lt, "installer", side_effect=installer),
+            mock.patch.object(lt, "verifier", side_effect=verifier),
+            mock.patch.object(lt, "distant", side_effect=distant),
+            mock.patch.object(lt, "_sonde", return_value=sonde_retour),
+            mock.patch.object(lt, "adresse_vers", return_value=EXEMPT),
+            mock.patch.object(lt, "exempt_du_menu", return_value=EXEMPT),
+            mock.patch.object(lt, "ajouter_odoo", return_value=ajout),
+            mock.patch.object(
+                lt,
+                "retirer_odoo",
+                return_value={"ok": True, "refus": None},
+            ),
+            mock.patch.object(lt, "par_odoo", return_value=([], ice)),
+            mock.patch.object(lt, "desinstaller", return_value="fait"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            lt.scenario_migration(sc, "vm", IP, self.dossier)
+        return sc, appels
+
+    def test_the_migration_notes_every_planned_step(self):
+        sc, appels = self._course()
+        self.assertEqual(
+            ["cloud-init", "ufw-actif", *lt._MIGRATION_ETAPES], list(sc.etapes)
+        )
+        self.assertEqual(
+            [], [n for n, ok in sc.etapes.items() if not ok], sc.details
+        )
+        self.assertEqual(
+            ["packages", "container", "packages"], [a.method for a in appels]
+        )
+        self.assertEqual(
+            ("podman", False), (appels[1].engine, appels[1].rootless)
+        )
+        self.assertEqual(["a"], list(self.harnais[0].bases))
+        self.assertRegex(
+            self.harnais[0].bases["a"], r"^call_infra_odoo_42_\d+0_a$"
+        )
+        self.assertTrue(self.harnais[0].defait)
+
+    def test_an_older_host_ntfy_refuses_the_way_back(self):
+        sc, appels = self._course(ntfy_hote="2.11.0")
+        self.assertTrue(sc.etapes["retour-paquets"], sc.details)
+        self.assertEqual(
+            "call_infra_ntfy_downgrade", sc.details["retour-paquets"]["refus"]
+        )
+        self.assertEqual(["packages", "container"], [a.method for a in appels])
+
+    def test_an_odoo_to_plug_again_fails_the_migration(self):
+        sc, _a = self._course(readd=("http://x|y",))
+        self.assertFalse(sc.etapes["migration-conteneurs"])
+        self.assertNotIn("secrets-identiques", sc.etapes)
+        self.assertTrue(sc.etapes["bases-supprimees"])
+
+    def test_a_lost_secret_is_seen(self):
+        sc, _a = self._course(secrets_apres=[(IP, "s1")])
+        self.assertFalse(sc.etapes["secrets-identiques"])
+        self.assertNotIn("s1", json.dumps(sc.details))
+
+
+def nm_phone():
+    return lt.nm.phone_user(lt.LIBELLE_TELEPHONE)
 
 
 if __name__ == "__main__":
