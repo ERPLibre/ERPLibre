@@ -4998,11 +4998,20 @@ def _image_removal_lines(plan):
     quand le moteur la refuse, une image encore servie), puis le fichier
     compose."""
     block = plan.prior_state["container"]
-    exists = {"docker": "image inspect", "podman": "image exists"}[
-        block["engine"]
-    ]
+    lines = _rmi_lines(block["engine"], block.get("images_pulled") or [])
+    lines.append(f"rm -f {_host(cc.COMPOSE_FILE)}")
+    return lines
+
+
+def _rmi_lines(engine, refs):
+    """Lignes `sh` qui retirent par `eng rmi`, sans forcer, chaque image
+    épinglée de `refs` présente sous le moteur `engine` : `@@IMAGE_REMOVED
+    <référence>`, ou `@@IMAGE_KEPT <référence>` quand le moteur la refuse
+    (une image encore servie). Une image absente ne dit rien ; une valeur
+    hors de `cc.IMAGES` est ignorée."""
+    exists = {"docker": "image inspect", "podman": "image exists"}[engine]
     lines = []
-    for ref in block.get("images_pulled") or []:
+    for ref in refs:
         if ref not in cc.IMAGES.values():
             continue
         lines += [
@@ -5012,7 +5021,6 @@ def _image_removal_lines(plan):
             f'  else echo "@@IMAGE_KEPT {ref}"; fi',
             "fi",
         ]
-    lines.append(f"rm -f {_host(cc.COMPOSE_FILE)}")
     return lines
 
 
@@ -8651,10 +8659,15 @@ def _uninstall_records(state):
     """[(service, fiche)] des services consignés, chaque valeur vérifiée :
     unité connue, chemins sûrs, copie `<config>.bak-<tampon>`, fichiers TLS
     de ceux que l'outil pose, complément d'unité de coturn (COTURN_DROPIN
-    de son unité). Refusal `call_infra_state_invalid` sinon."""
+    de son unité). En conteneurs, l'unité est celle d'un paquet adopté
+    gardé sur l'hôte, ou None, et la fiche garde le compte du service, son
+    nom de conteneur et ses ids étant vérifiés par
+    `cc.container_block_problem`. Refusal `call_infra_state_invalid`
+    sinon."""
     services = state.get("services", {})
     if not isinstance(services, dict):
         raise Refusal("call_infra_state_invalid", service="services")
+    container = state.get("method") == "container"
     records = []
     for svc in SERVICES:
         if svc not in services:
@@ -8665,7 +8678,12 @@ def _uninstall_records(state):
             raise invalid
         config, backup = record.get("config"), record.get("backup")
         tls_files = record.get("tls_files") or []
-        if record.get("unit") not in _UNITS[svc] or not _safe_path(config):
+        unit = record.get("unit")
+        if container and unit is None:
+            pass
+        elif unit not in _UNITS[svc]:
+            raise invalid
+        if not _safe_path(config):
             raise invalid
         if backup is not None and not _is_backup_of(config, backup):
             raise invalid
@@ -8684,27 +8702,25 @@ def _uninstall_records(state):
         ):
             raise invalid
         dropin = record.get("dropin") if svc == "coturn" else None
-        if dropin is not None and dropin != COTURN_DROPIN.format(
-            unit=record["unit"]
+        if dropin is not None and (
+            unit is None or dropin != COTURN_DROPIN.format(unit=unit)
         ):
             raise invalid
-        records.append(
-            (
-                svc,
-                {
-                    "unit": record["unit"],
-                    "config": config,
-                    "installed_by_tool": bool(record.get("installed_by_tool")),
-                    "adopted": bool(record.get("adopted")),
-                    "backup": backup,
-                    "was_active": was_active,
-                    "was_enabled": was_enabled,
-                    "admin_added": record.get("admin_added") is True,
-                    "tls_files": sorted(tls_files),
-                    "dropin": dropin,
-                },
-            )
-        )
+        checked = {
+            "unit": unit,
+            "config": config,
+            "installed_by_tool": bool(record.get("installed_by_tool")),
+            "adopted": bool(record.get("adopted")),
+            "backup": backup,
+            "was_active": was_active,
+            "was_enabled": was_enabled,
+            "admin_added": record.get("admin_added") is True,
+            "tls_files": sorted(tls_files),
+            "dropin": dropin,
+        }
+        if container:
+            checked["account"] = record.get("account")
+        records.append((svc, checked))
     return records
 
 
@@ -8998,7 +9014,17 @@ def _service_uninstall_lines(svc, record, remove_data, stamp):
         lines += _stop_lines(svc, record["unit"])
         lines += dropin
         lines += _remove_managed_lines(svc, record["config"])
-    lines.append(f'if [ "$KEEP_{svc}" = 0 ]; then')
+    return lines + _service_data_lines(svc, record, remove_data)
+
+
+def _service_data_lines(svc, record, remove_data):
+    """Lignes `sh` des fichiers TLS et des données d'un service, quand il
+    n'est pas gardé (KEEP_<service>=0) : fichiers TLS retirés avec
+    `remove_data`, sinon gardés (`@@KEPT <chemin>`) ; la base de coturn
+    retirée ; la base des comptes de ntfy, que les lignes du service
+    retirent ou non, dite gardée quand elle reste, et les dossiers de ntfy
+    retirés s'ils sont vides."""
+    lines = [f'if [ "$KEEP_{svc}" = 0 ]; then']
     for path in record["tls_files"]:
         host = _host(path)
         if remove_data:
@@ -9023,6 +9049,409 @@ def _service_uninstall_lines(svc, record, remove_data, stamp):
             f"  rmdir {_host(os.path.dirname(NTFY_CONFIG))} 2>/dev/null",
         ]
     lines += ["  :", "fi"]
+    return lines
+
+
+# --- Désinstallation en conteneurs ------------------------------------------
+
+# Avis du menu quand un ntfy adopté reste désactivé (`@@NTFY_DOWNGRADE`) :
+# champs `unit`, `host` et `image`.
+NTFY_DOWNGRADE_NOTICE = "call_infra_uninstall_ntfy_disabled"
+# `loginctl enable-linger <compte>` pose ce fichier, que `disable-linger`
+# retire.
+_LINGER_FILE = "/var/lib/systemd/linger/{account}"
+
+
+def _checked_added(block, where):
+    """Champs de _CONTAINER_ADDED de `block` (bloc `container` ou
+    `container_added`), chaque valeur admise par `_added_item`, un champ
+    absent valant son défaut. Refusal `call_infra_state_invalid`
+    (`service` : `<where>.<champ>`) sinon : ces valeurs finissent dans un
+    script lancé en root."""
+    values = {}
+    for key, kind, default in _CONTAINER_ADDED:
+        value = block.get(key, copy.deepcopy(default))
+        if kind is list:
+            ok = isinstance(value, list) and all(
+                _added_item(key, item) for item in value
+            )
+        elif kind is bool:
+            ok = isinstance(value, bool)
+        else:
+            ok = value is None or _added_item(key, value)
+        if not ok:
+            raise Refusal("call_infra_state_invalid", service=f"{where}.{key}")
+        values[key] = value
+    return values
+
+
+def _added_engine_argv(added):
+    """Commande du moteur que consigne `container_added` (`cc.engine_argv`,
+    dont la règle vérifie moteur, mode, compte et uid rootless). Refusal
+    `call_infra_state_invalid` (`service` « container_added ») pour une
+    valeur hors de cette règle."""
+    engine = added.get("engine")
+    probe = {key: added.get(key) for key in ("engine", "rootless", "account")}
+    probe["uid"] = added.get("uid")
+    probe["compose"] = list(cc.COMPOSE_PROVIDERS.get(engine, [()])[0])
+    try:
+        return cc.engine_argv(probe)
+    except (ValueError, TypeError):
+        raise Refusal("call_infra_state_invalid", service="container_added")
+
+
+def _engine_additions(state):
+    """Ce que l'outil a ajouté à l'hôte pour les conteneurs : le bloc
+    `container` d'un état en conteneurs, réuni avec `container_added`, ce
+    qu'une période en conteneurs a laissé à un retour aux paquets. Dict :
+    `engine` (commande du moteur, du bloc `container`, sinon de
+    `container_added`) et `engine_name`, puis `images`, `packages`,
+    `accounts` et `units` (listes sans doublon, le bloc d'abord), `linger`
+    (vrai si l'un l'a ajoutée) et `uid`, celui du compte rootless ou None.
+    None quand l'état ne consigne ni l'un ni l'autre. Refusal
+    `call_infra_state_invalid` pour une valeur altérée ; le bloc
+    `container` est déjà passé par `cc.container_block_problem`."""
+    parts = []
+    if state.get("method") == "container":
+        parts.append(("container", state["container"]))
+    added = state.get("container_added")
+    if added is not None:
+        if not isinstance(added, dict):
+            raise Refusal(
+                "call_infra_state_invalid", service="container_added"
+            )
+        argv = _added_engine_argv(added)
+        parts.append(("container_added", added))
+    if not parts:
+        return None
+    if parts[0][0] == "container":
+        argv = cc.engine_argv(state["container"])
+    merged = {
+        "engine": argv,
+        "engine_name": parts[0][1]["engine"],
+        "images": [],
+        "packages": [],
+        "accounts": [],
+        "units": [],
+        "linger": False,
+        "uid": None,
+    }
+    for where, block in parts:
+        values = _checked_added(block, where)
+        for key, name in (
+            ("images_pulled", "images"),
+            ("engine_packages_added", "packages"),
+            ("accounts_added", "accounts"),
+        ):
+            merged[name] += [v for v in values[key] if v not in merged[name]]
+        unit = values["restart_unit_enabled"]
+        if unit is not None and unit not in merged["units"]:
+            merged["units"].append(unit)
+        merged["linger"] = merged["linger"] or values["linger_added"]
+        if merged["uid"] is None and block.get("rootless") is True:
+            merged["uid"] = block["uid"]
+    return merged
+
+
+def _version_older_lines():
+    """Fonction `sh` `nolder <trouvée> <épinglée>`, vraie quand la version
+    trouvée est antérieure, selon la règle de `cc.version_older` : seul le
+    préfixe numérique compte, une partie manquante vaut zéro, une version
+    illisible compte pour plus ancienne."""
+    program = (
+        "BEGIN {"
+        " if (!match(a, /^v?[0-9]+(\\.[0-9]+)*/)) exit 0;"
+        ' a = substr(a, RSTART, RLENGTH); sub(/^v/, "", a);'
+        ' n = split(a, x, "."); m = split(b, y, ".");'
+        " k = (n > m) ? n : m;"
+        " for (i = 1; i <= k; i++) {"
+        " p = (i <= n) ? x[i] + 0 : 0; q = (i <= m) ? y[i] + 0 : 0;"
+        " if (p < q) exit 0; if (p > q) exit 1 }"
+        " exit 1 }"
+    )
+    return [f'nolder() {{ awk -v a="$1" -v b="$2" {shlex.quote(program)}; }}']
+
+
+def _container_admin_lines(state):
+    """Retrait de NTFY_ADMIN_USER d'un ntfy adopté par la CLI de son
+    conteneur (`ntfy_cli`, sous l'uid:gid du service : les fichiers de la
+    base restent à lui), tant que le conteneur tourne ; un compte déjà
+    parti, ou un conteneur arrêté, ne fait rien."""
+    cli = ntfy_cli(state, None)
+    run = cli.prefix
+    if cli.sudo_user is not None:
+        run = f"runuser -u {shlex.quote(cli.sudo_user)} -- {run}"
+    cfg, user = shlex.quote(NTFY_CONFIG), shlex.quote(NTFY_ADMIN_USER)
+    found = shlex.quote(f"^user {NTFY_ADMIN_USER} ")
+    return [
+        f"cstatus {cc.CONTAINERS['ntfy']}",
+        'if [ "$S" = running ]; then',
+        f"  if {run} user --config {cfg} list 2>&1 | grep -q {found}; then",
+        f"    if {run} user --config {cfg} del {user} >/dev/null 2>&1;"
+        f' then echo "@@REMOVED account {NTFY_ADMIN_USER}";',
+        "    else failed account-ntfy; fi",
+        "  fi",
+        "fi",
+    ]
+
+
+def _container_uninstall_lines(state, additions, records):
+    """Lignes `sh` d'un état en conteneurs, avant celles des services :
+    `eng` et `comp` du bloc `container` (`cc.engine_argv`,
+    `cc.compose_argv`), `cstatus` et `nolder` ; NTFY_ADMIN_USER retiré d'un
+    ntfy adopté qui l'a reçu de l'outil (`admin_added`), conteneur encore
+    en marche (`_container_admin_lines`) ; les conteneurs arrêtés et
+    retirés avec leurs volumes anonymes (`comp down -v` : chaque montage de
+    l'outil est un chemin de l'hôte, et l'image de coturn déclare un volume
+    que `down` seul garderait), puis le fichier compose ; sans lui, chaque
+    conteneur consigné retiré par son nom ; enfin les images que l'outil a
+    tirées (`_rmi_lines`). Un `down` qui échoue garde le fichier : la
+    relance le reprend."""
+    block = state["container"]
+    lines = [
+        "# conteneurs",
+        "cd / || failed workdir",
+        f'eng() {{ {shlex.join(cc.engine_argv(block))} "$@"; }}',
+        f'comp() {{ {shlex.join(cc.compose_argv(block))} "$@"; }}',
+        *_status_lines(),
+        *_version_older_lines(),
+    ]
+    ntfy = dict(records).get("ntfy")
+    if ntfy is not None and ntfy["adopted"] and ntfy["admin_added"]:
+        lines += _container_admin_lines(state)
+    path = _host(cc.COMPOSE_FILE)
+    lines += [
+        f"if [ -f {path} ]; then",
+        "  if comp down -v; then",
+        f"    if rm -f {path}; then"
+        f' echo "@@REMOVED compose {cc.COMPOSE_FILE}";',
+        "    else failed compose-file; fi",
+        "  else failed compose-down; fi",
+        "else",
+    ]
+    for svc, _record in records:
+        name = cc.CONTAINERS[svc]
+        lines += [
+            f"  cstatus {name}",
+            '  if [ "$S" != missing ]; then',
+            f"    if eng rm -f -v {name} >/dev/null 2>&1; then"
+            f' echo "@@REMOVED container {name}";',
+            f"    else failed container-{svc}; fi",
+            "  fi",
+        ]
+    lines += ["  :", "fi"]
+    return lines + _rmi_lines(block["engine"], additions["images"])
+
+
+def _container_restore_lines(svc, record):
+    """Lignes `sh` d'un service adopté en conteneurs : la configuration
+    d'origine remise par `mv`, ou `@@BACKUP_MISSING` et le service gardé
+    (KEEP_<service>=1, KEPT=1), comme `_restore_lines` ; puis l'unité du
+    paquet gardé, que la migration a laissée désactivée et arrêtée, rendue
+    à ce qu'elle était avant l'outil : activée quand `was_enabled` vaut
+    « enabled », démarrée quand `was_active` est vrai. Un ntfy de l'hôte
+    plus ancien que celui de l'image, ou de version illisible (`nolder`),
+    ne relirait pas la base des comptes que l'image a mise à jour : son
+    unité reste désactivée et arrêtée, et `@@NTFY_DOWNGRADE <unité>
+    <version de l'hôte> <version de l'image>` le dit
+    (NTFY_DOWNGRADE_NOTICE)."""
+    config, backup, unit = record["config"], record["backup"], record["unit"]
+    lines = []
+    if backup:
+        lines += [
+            f"if [ -f {_host(backup)} ]; then",
+            f"  if mv -f {_host(backup)} {_host(config)}; then"
+            f' echo "@@RESTORED {config} {backup}";',
+            f"  else failed restore-{svc}; fi",
+            f"elif {_is_managed_test(config)}; then",
+        ]
+    else:
+        lines.append(f"if {_is_managed_test(config)}; then")
+    lines += [
+        f'  echo "@@BACKUP_MISSING {svc} {backup or "-"}";'
+        f" KEEP_{svc}=1; KEPT=1",
+        "fi",
+    ]
+    if unit is None:
+        return lines
+    quoted = shlex.quote(unit)
+    start = []
+    if record["was_enabled"] == "enabled":
+        start.append(
+            f"systemctl enable {quoted} >/dev/null 2>&1"
+            f" || failed enable-{svc}"
+        )
+    if record["was_active"] is True:
+        start.append(
+            f"systemctl start {quoted} >/dev/null 2>&1"
+            f' || echo "@@RESTART_FAILED {svc}"'
+        )
+    body = ["  " + line for line in start]
+    if svc == "ntfy":
+        image = cc.IMAGE_VERSIONS["ntfy"]
+        body = [
+            "  NV=$(timeout 20 ntfy --version 2>/dev/null"
+            f" | sed -n {shlex.quote(cc._NTFY_VERSION_SED)} | head -n 1)",
+            f'  if nolder "$NV" {image}; then',
+            f'    echo "@@NTFY_DOWNGRADE {unit} ${{NV:-unknown}} {image}"',
+        ]
+        if start:
+            body += ["  else", *["    " + line for line in start]]
+        body.append("  fi")
+    if body:
+        lines += [f'if [ "$KEEP_{svc}" = 0 ]; then', *body, "fi"]
+    return lines
+
+
+def _container_service_uninstall_lines(svc, record, remove_data):
+    """Lignes `sh` d'un service en conteneurs, son conteneur déjà retiré.
+    Posé par l'outil (aucun paquet à purger : la migration vers les
+    conteneurs l'a fait) : sa configuration retirée, l'originale remise
+    quand l'outil l'avait aussi adoptée, le cache de ntfy retiré, et sa
+    base des comptes avec `remove_data`, comme par paquets. Adopté :
+    `_container_restore_lines`. Paquet déjà là sans configuration : son
+    unité arrêtée, la configuration de l'outil retirée. Puis
+    `_service_data_lines`."""
+    lines = [f"# {svc}", f"KEEP_{svc}=0"]
+    if record["installed_by_tool"]:
+        lines += _remove_managed_lines(svc, record["config"])
+        if record["adopted"] and record["backup"]:
+            lines += _put_back_lines(svc, record)
+        if svc == "ntfy":
+            gone = [(NTFY_CACHE_DIR, "cache-ntfy")]
+            if remove_data:
+                gone.append((NTFY_DATA_DIR, "data-ntfy"))
+            for path, step in gone:
+                lines.append(
+                    f"if [ -e {_host(path)} ]; then rm -rf {_host(path)}"
+                    f' && echo "@@REMOVED data {path}" || failed {step}; fi'
+                )
+    elif record["adopted"]:
+        lines += _container_restore_lines(svc, record)
+    else:
+        if record["unit"] is not None:
+            lines += _stop_lines(svc, record["unit"])
+        lines += _remove_managed_lines(svc, record["config"])
+    return lines + _service_data_lines(svc, record, remove_data)
+
+
+def _account_data_goes(state, records, account, remove_data):
+    """Les données que possède `account`, un compte que l'outil a créé,
+    partent-elles avec cette désinstallation ? En conteneurs, ce sont
+    celles des services qu'il fait tourner ; par paquets, le compte `ntfy`
+    est celui du paquet de ntfy. La base de coturn part toujours, ses
+    fichiers TLS (de groupe ce compte) avec `remove_data` ; la base des
+    comptes de ntfy avec `remove_data`, et seulement si l'outil a posé
+    ntfy."""
+    container = state.get("method") == "container"
+    for svc, record in records:
+        if container:
+            owner = record.get("account")
+        else:
+            owner = cc.NTFY_ACCOUNT if svc == "ntfy" else None
+        if owner != account:
+            continue
+        if svc == "coturn":
+            goes = remove_data or not record["tls_files"]
+        else:
+            goes = remove_data and record["installed_by_tool"]
+        if not goes:
+            return False
+    return True
+
+
+def _engine_removal_lines(
+    state, additions, records, remove_data, remove_engine
+):
+    """Lignes `sh` de ce que l'installation en conteneurs a ajouté pour le
+    moteur, après les services. Par paquets (`container_added` seul), les
+    images tirées partent d'abord (`_rmi_lines`), par le moteur consigné.
+
+    Sans `remove_engine` : `@@KEPT engine <paquets>` pour les paquets du
+    moteur posés par l'outil. Avec, et seulement quand aucune étape n'a
+    échoué ni aucun service n'est gardé : l'unité de redémarrage que
+    l'outil a activée, désactivée (`@@REMOVED enable <unité>`, celle du
+    compte rootless par sa session quand elle existe) ; la session
+    permanente du compte rootless retirée (`@@REMOVED linger <compte>`) ;
+    chaque compte que l'outil a créé retiré (`@@REMOVED account <nom>`)
+    quand les données qu'il possède partent aussi (`_account_data_goes`),
+    sinon gardé (`@@KEPT account <nom>`) ; le compte rootless avec son
+    dossier personnel, où vit le stockage de Podman (`userdel -r`), une fois
+    sa session fermée et ses processus finis, attendus dix secondes au
+    plus ; un `userdel` refusé garde le compte sans faire échouer la
+    désinstallation ; enfin les paquets du moteur que l'outil a posés,
+    purgés (`@@REMOVED package <nom>`)."""
+    lines = ["# ajouts pour les conteneurs"]
+    if state.get("method") != "container":
+        lines += [
+            "cd / || failed workdir",
+            f'eng() {{ {shlex.join(additions["engine"])} "$@"; }}',
+            *_rmi_lines(additions["engine_name"], additions["images"]),
+        ]
+    packages = additions["packages"]
+    if not remove_engine:
+        if packages:
+            lines.append(f'echo "@@KEPT engine {" ".join(packages)}"')
+        return lines
+    rootless, uid = cc.ROOTLESS_ACCOUNT, additions["uid"]
+    body = []
+    for unit in additions["units"]:
+        if unit != "user":
+            body.append(
+                f"if systemctl disable {unit} >/dev/null 2>&1; then"
+                f' echo "@@REMOVED enable {unit}"; else failed restart-unit; fi'
+            )
+        elif uid is not None:
+            prefix = shlex.join(cc.rootless_prefix(rootless, uid))
+            body += [
+                f'if [ -d "$R/run/user/{uid}" ]; then',
+                f"  {prefix} systemctl --user disable podman-restart.service"
+                " >/dev/null 2>&1"
+                ' && echo "@@REMOVED enable user podman-restart.service"',
+                "fi",
+            ]
+    if additions["linger"]:
+        linger = _host(_LINGER_FILE.format(account=rootless))
+        body.append(
+            f"if [ -e {linger} ]; then loginctl disable-linger {rootless}"
+            f' && echo "@@REMOVED linger {rootless}" || failed linger; fi'
+        )
+    for name in additions["accounts"]:
+        found = f"getent passwd {name} >/dev/null 2>&1"
+        if not _account_data_goes(state, records, name, remove_data):
+            body.append(f'if {found}; then echo "@@KEPT account {name}"; fi')
+            continue
+        body.append(f"if {found}; then")
+        remove = f"userdel {name}"
+        if name == rootless:
+            remove = f"userdel -r {name}"
+            body += [
+                f"  loginctl terminate-user {name} >/dev/null 2>&1",
+                "  N=0",
+                f'  while [ "$N" -lt 10 ] && pgrep -u {name} >/dev/null 2>&1;'
+                " do",
+                "    sleep 1; N=$((N + 1))",
+                "  done",
+            ]
+        body += [
+            f'  if {remove} >/dev/null 2>&1; then echo "@@REMOVED account {name}";',
+            f'  else echo "@@KEPT account {name}"; fi',
+            "fi",
+        ]
+    for package in packages:
+        body += [
+            f"if pkg_installed {package}; then",
+            f"  if pkg_purge {package}; then"
+            f' echo "@@REMOVED package {package}";',
+            f"  else failed package-{package}; fi",
+            "fi",
+        ]
+    lines += [
+        'if [ "$OK" = 1 ] && [ "$KEPT" = 0 ]; then',
+        *["  " + line for line in body],
+        "  :",
+        "fi",
+    ]
     return lines
 
 
@@ -9545,7 +9974,7 @@ def _production_uninstall_lines(prod, remove_data):
     return lines
 
 
-def uninstall_script(state, remove_data, stamp, root=""):
+def uninstall_script(state, remove_data, stamp, root="", remove_engine=False):
     """Script `sh` de désinstallation, lancé en root sur l'hôte.
 
     Sans état (`state` None) : `@@PENDING <nom>` pour chaque fiche d'une
@@ -9581,6 +10010,18 @@ def uninstall_script(state, remove_data, stamp, root=""):
     mise de côté (`@@HELD <fichier>`). Refusal `call_infra_state_version`
     ou `call_infra_state_invalid` pour un état qu'on ne peut pas suivre.
     `root` préfixe chaque chemin de l'hôte (tests).
+
+    En conteneurs, le bloc `container` passe d'abord par
+    `cc.container_block_problem` (`call_infra_state_invalid`, `service` :
+    le champ refusé) ; les conteneurs, le fichier compose et les images
+    partent avant les services (`_container_uninstall_lines`), chaque
+    service suit `_container_service_uninstall_lines`, aux mêmes règles de
+    données. Ce que l'installation en conteneurs a ajouté pour le moteur
+    (bloc `container`, et `container_added` d'un retour aux paquets) suit
+    la production (`_engine_removal_lines`) : paquets du moteur, unité de
+    redémarrage, session permanente et comptes ne partent qu'avec
+    `remove_engine`. Un état par paquets sans `container_added` donne le
+    même script, quel que soit `remove_engine`.
     """
     if not _STAMP.match(stamp or ""):
         raise ValueError(f"stamp: {stamp!r}")
@@ -9605,7 +10046,13 @@ def uninstall_script(state, remove_data, stamp, root=""):
     refusal = _state_refusal(state)
     if refusal is not None:
         raise refusal
+    container = state.get("method") == "container"
+    if container:
+        problem = cc.container_block_problem(state)
+        if problem:
+            raise Refusal("call_infra_state_invalid", service=problem)
     records = _uninstall_records(state)
+    additions = _engine_additions(state)
     prod = _production_records(state)
     record = state.get("firewall")
     kind = record.get("kind") if isinstance(record, dict) else None
@@ -9640,9 +10087,22 @@ def uninstall_script(state, remove_data, stamp, root=""):
         ]
     if prod["hook"] or prod["certbot"]:
         lines += _hook_lines()
-    for svc, svc_record in records:
-        lines += _service_uninstall_lines(svc, svc_record, remove_data, stamp)
+    if container:
+        lines += _container_uninstall_lines(state, additions, records)
+        for svc, svc_record in records:
+            lines += _container_service_uninstall_lines(
+                svc, svc_record, remove_data
+            )
+    else:
+        for svc, svc_record in records:
+            lines += _service_uninstall_lines(
+                svc, svc_record, remove_data, stamp
+            )
     lines += _production_uninstall_lines(prod, remove_data)
+    if additions is not None:
+        lines += _engine_removal_lines(
+            state, additions, records, remove_data, remove_engine
+        )
     recorded = [svc for svc, _ in records]
     recorded += [name for name in ("nginx", "certbot") if prod[name]]
     others = [name for name in PENDING_NAMES if name not in recorded]
