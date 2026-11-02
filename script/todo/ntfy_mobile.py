@@ -195,6 +195,13 @@ def access_script(config, user, prefix, label="erplibre-mobile", cli="ntfy"):
     )
 
 
+def version_script(cli="ntfy"):
+    """Script qui imprime `@@VERSION <première ligne de --version>` par la
+    commande `cli` : le binaire de l'hôte par défaut, la CLI dans son
+    conteneur (`call_infra.ntfy_cli`) pour un ntfy en conteneur."""
+    return f'echo "@@VERSION $({cli} --version 2>&1 | head -n 1)"\n'
+
+
 def inspect_script(config, state_path=None):
     """Script qui imprime version, propriétaire, `server.yml`, santé et
     service.
@@ -202,7 +209,8 @@ def inspect_script(config, state_path=None):
     Une ligne `@@NOM valeur` par fait ; `parse_markers` les relit. UNIT est
     l'état de chargement systemd du service `ntfy` : `loaded`, `not-found`
     quand aucun service ne porte ce nom, `?` sans systemd. VERSION est celle
-    du binaire `ntfy` de l'hôte. Avec `state_path`, `@@STATE <base64>` porte
+    du binaire `ntfy` de l'hôte (`version_script`) ; celle d'un ntfy en
+    conteneur se lit ensuite par sa CLI. Avec `state_path`, `@@STATE <base64>` porte
     ce fichier quand il existe : l'état de l'infrastructure d'appel, qui dit
     si ntfy tourne en conteneur.
     """
@@ -216,7 +224,7 @@ def inspect_script(config, state_path=None):
     return "\n".join(
         [
             f"C={cfg}",
-            'echo "@@VERSION $(ntfy --version 2>&1 | head -n 1)"',
+            version_script().rstrip("\n"),
             'key() { sed -n "s/^$1:[[:space:]]*[\\"\']\\{0,1\\}'
             '\\([^\\"\'#]*\\).*/\\1/p" "$C" 2>/dev/null | head -n 1; }',
             'A="$(key auth-file)"',

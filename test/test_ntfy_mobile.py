@@ -508,6 +508,20 @@ class TestCliPrefix(unittest.TestCase):
             )
         )
 
+    def test_version_script_through_the_cli(self):
+        """`version_script` imprime la version par la CLI donnée ; par
+        défaut, c'est la ligne VERSION de l'inspection, à l'octet près."""
+        host = nm.version_script()
+        self.assertEqual(
+            host, 'echo "@@VERSION $(ntfy --version 2>&1 | head -n 1)"\n'
+        )
+        self.assertIn(host, nm.inspect_script("/c.yml"))
+        self.assertEqual(
+            nm.version_script(CONTAINER_CLI),
+            f'echo "@@VERSION $({CONTAINER_CLI} --version 2>&1'
+            ' | head -n 1)"\n',
+        )
+
     def test_container_cli_keeps_every_call_on_its_config(self):
         script = nm.access_script(
             "/c.yml", "erm_alice", "upab12cd34", cli=CONTAINER_CLI
