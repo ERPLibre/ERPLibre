@@ -686,12 +686,31 @@ def parse_engine_lines(pairs):
 # --- Règles partagées --------------------------------------------------------
 
 
+# Réponses de `systemctl is-enabled` pour une unité qui n'existe pas :
+# rien sur la sortie (la sonde écrit « - »), ou « not-found ».
+_NO_UNIT = ("-", "not-found")
+
+
+def engine_present(facts, engine):
+    """`engine` est-il là pour l'outil ? Son client répond (`facts.engines`)
+    et, pour Docker, docker.service existe : un client seul, qui parle à un
+    démon d'ailleurs, ne lance aucun conteneur sur cet hôte."""
+    facts = facts or EngineFacts()
+    if engine not in facts.engines:
+        return False
+    if engine == "docker":
+        service = facts.docker_service
+        return service is not None and service[1] not in _NO_UNIT
+    return True
+
+
 def engine_packages(os_id, family, engine, rootless, facts):
     """Paquets de la distribution qui manquent pour `engine` : le moteur,
     son outil de composition, et pour le rootless newuidmap (« uidmap »
     sur Debian et Ubuntu). `facts` (EngineFacts, ou None : rien n'est là)
-    dit ce qui est déjà présent. ValueError pour un moteur, une famille ou
-    un rootless hors de ce que l'outil installe."""
+    dit ce qui est déjà présent, le moteur selon `engine_present`.
+    ValueError pour un moteur, une famille ou un rootless hors de ce que
+    l'outil installe."""
     if engine not in ENGINES or family not in _ENGINE_PACKAGES:
         raise ValueError(f"engine packages: {engine} on {family}")
     if rootless and engine != "podman":
@@ -699,7 +718,7 @@ def engine_packages(os_id, family, engine, rootless, facts):
     facts = facts or EngineFacts()
     flavour = "ubuntu" if os_id in _UBUNTU_IDS else family
     wanted = []
-    if engine not in facts.engines:
+    if not engine_present(facts, engine):
         wanted.append(_ENGINE_PACKAGES[family][engine])
     if engine not in facts.compose:
         wanted.append(_COMPOSE_PACKAGES[flavour][engine])

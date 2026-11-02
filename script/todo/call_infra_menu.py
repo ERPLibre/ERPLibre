@@ -658,8 +658,11 @@ class CallInfraMenuMixin:
         sur l'hôte est pris, et dit ; les deux, ou aucun, se demandent,
         celui de `prior` proposé. Podman demande ensuite root ou sans root
         (sous le compte dédié que l'outil crée)."""
-        found = facts.engines.engines if facts.engines else {}
-        present = [e for e in ENGINE_CHOICES.values() if e in found]
+        present = [
+            e
+            for e in ENGINE_CHOICES.values()
+            if ci.cc.engine_present(facts.engines, e)
+        ]
         if len(present) == 1:
             engine = present[0]
             print(
