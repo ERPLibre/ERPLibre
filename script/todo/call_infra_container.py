@@ -142,6 +142,7 @@ ENGINE_MARKERS = frozenset(
         "USER_BUS",
         "CONTAINER",
         "IMAGE",
+        "ENGINE_LIST_FAILED",
         "NTFY_HOST",
         "SQLITE",
         "COMPOSE_FILE",
@@ -170,6 +171,13 @@ _PS_AWK = (
     "$1 ~ /^erplibre-call-/ || $3 ~ /(^|\\/)coturn\\/coturn([:@]|$)/"
     " || $3 ~ /(^|\\/)binwiederhier\\/ntfy([:@]|$)/"
     ' { print $1 " " $2 " " $3 }'
+)
+# Première ligne non vide d'une sortie d'erreur, réduite à des caractères
+# sûrs dans une ligne `@@NOM valeur` et à 200 caractères : le diagnostic
+# d'un moteur qui refuse de lister ses conteneurs.
+MESSAGE_AWK = (
+    'NF && !done { gsub(/[^A-Za-z0-9 ._:\\/=,()-]/, " ");'
+    " print substr($0, 1, 200); done = 1 }"
 )
 # Identifiant de l'image d'un conteneur (`container inspect`) et d'une
 # image locale (`image inspect`), communs aux deux moteurs : Docker les
@@ -209,7 +217,9 @@ class EngineFacts:
     rootless) → identifiant de son image (`image_id`), pour ceux dont
     `inspect` l'a rendu. `images` : (moteur, rootless, référence) de chaque
     image épinglée présente ; `image_ids` : la même clé → son identifiant
-    local, quand le moteur l'a rendu.
+    local, quand le moteur l'a rendu. `listing_failed` : (moteur, rootless)
+    → message, pour chaque mode dont `ps` a échoué : la sonde n'en sait
+    rien, ce n'est pas « aucun conteneur ».
     `ntfy_host_version` : version du binaire ntfy de l'hôte, None sans lui.
     `sqlite3` : le client sqlite3 de l'hôte est là. `compose_text` : le
     fichier COMPOSE_FILE présent, vide sans lui.
@@ -231,6 +241,7 @@ class EngineFacts:
     user_bus: bool = False
     container_image_ids: dict = dataclasses.field(default_factory=dict)
     image_ids: dict = dataclasses.field(default_factory=dict)
+    listing_failed: dict = dataclasses.field(default_factory=dict)
 
 
 # --- Commandes ----------------------------------------------------------------
@@ -497,8 +508,11 @@ def engine_probe_lines(root=""):
     (0|1, « - » sans session), `@@USER_BUS <0|1>` (une unité de
     USER_BUS_UNITS est là), `@@CONTAINER <nom> <moteur> <0|1> <état>
     <image> <identifiant de l'image|->`, `@@IMAGE <moteur> <0|1>
-    <référence> <identifiant|->` par image épinglée présente, `@@NTFY_HOST
-    <version>`, `@@SQLITE <0|1>`, `@@COMPOSE_FILE <base64>`.
+    <référence> <identifiant|->` par image épinglée présente,
+    `@@ENGINE_LIST_FAILED <moteur> <0|1> <message>` quand le moteur
+    refuse de lister ses conteneurs (rien n'est dit de ce mode, ni
+    conteneur ni image), `@@NTFY_HOST <version>`, `@@SQLITE <0|1>`,
+    `@@COMPOSE_FILE <base64>`.
     """
     refs = " ".join(_quote(ref) for ref in IMAGES.values())
     acct = ROOTLESS_ACCOUNT
@@ -570,11 +584,18 @@ def engine_probe_lines(root=""):
         ' [ -e "$R$E_F" ] && E_UB=1; done',
         'echo "@@USER_BUS $E_UB"',
         # Conteneurs et images épinglées, sans réveiller ni créer :
-        # `elist <moteur> <0|1> <commande du moteur...>`. Un identifiant
-        # qui n'a pas la forme d'un identifiant d'image devient « - ».
+        # `elist <moteur> <0|1> <commande du moteur...>`. Un `ps` refusé
+        # le dit (ENGINE_LIST_FAILED) au lieu de passer pour aucun
+        # conteneur. Un identifiant qui n'a pas la forme d'un identifiant
+        # d'image devient « - ».
         "elist() {",
         "  E_E=$1; E_R=$2; shift 2",
-        f'  timeout 20 "$@" {ps} 2>/dev/null | awk {_quote(_PS_AWK)}'
+        f'  if ! E_O=$(timeout 20 "$@" {ps} 2>&1); then',
+        f"    E_M=$(printf '%s\\n' \"$E_O\" | awk {_quote(MESSAGE_AWK)})",
+        '    echo "@@ENGINE_LIST_FAILED $E_E $E_R ${E_M:--}"',
+        "    return 0",
+        "  fi",
+        f"  printf '%s\\n' \"$E_O\" | awk {_quote(_PS_AWK)}"
         " | while read -r E_N E_S E_G; do",
         '    E_ID=$(timeout 20 "$@" container inspect --format'
         f' {_quote(_CONTAINER_IMAGE_FORMAT)} "$E_N" 2>/dev/null'
@@ -631,6 +652,7 @@ def parse_engine_lines(pairs):
     les autres noms sont ignorés, une ligne mal formée aussi."""
     engines, compose, accounts = {}, {}, {}
     containers, images, container_ids, image_ids = [], [], {}, {}
+    listing_failed = {}
     docker_service, podman_restart, port = None, None, 1024
     rootless_line, ntfy, sqlite3, text = None, None, False, ""
     user_bus = False
@@ -707,6 +729,16 @@ def parse_engine_lines(pairs):
                 found = image_id(parts[3]) if len(parts) == 4 else None
                 if found:
                     image_ids.setdefault(entry, found)
+        elif name == "ENGINE_LIST_FAILED":
+            if (
+                len(parts) >= 2
+                and parts[0] in ENGINES
+                and _flag(parts[1]) is not None
+            ):
+                message = " ".join(parts[2:]) or "-"
+                listing_failed.setdefault(
+                    (parts[0], _flag(parts[1])), message[:200]
+                )
         elif name == "NTFY_HOST":
             current = value.strip()
             if _VERSION.match(current):
@@ -749,6 +781,7 @@ def parse_engine_lines(pairs):
         user_bus=user_bus,
         container_image_ids=container_ids,
         image_ids=image_ids,
+        listing_failed=listing_failed,
     )
 
 

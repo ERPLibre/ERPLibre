@@ -56,12 +56,16 @@ BOUCHONS = {
 
 def bouchon_moteur(nom):
     """Bouchon d'un moteur (ou de runuser, qui ne relance rien) : note
-    l'appel ; `inspect` imprime COTURN_RUNNING (true s'il n'est pas defini)
-    et sort avec INSPECT_RC, `kill` sort avec KILL_RC."""
+    l'appel ; `ps` echoue sur PS_ERREUR quand elle est posee, `inspect`
+    imprime COTURN_RUNNING (true s'il n'est pas defini) et sort avec
+    INSPECT_RC, `kill` sort avec KILL_RC."""
     return (
         '#!/bin/sh\necho "%s $*" >> "$J"\n'
         "for a; do\n"
         '  case "$a" in\n'
+        "    ps)\n"
+        '      [ -z "${PS_ERREUR:-}" ] && exit 0\n'
+        '      echo "$PS_ERREUR" >&2; exit 125 ;;\n'
         "    inspect)\n"
         '      echo "${COTURN_RUNNING-true}"\n'
         '      exit "${INSPECT_RC:-0}" ;;\n'
@@ -837,6 +841,29 @@ class TestConteneur(unittest.TestCase):
                     "@@HOOK coturn-inactive " + CONTENEUR, r.marqueurs
                 )
                 self.assertEqual(lire(r.applied), self.avant)
+
+    def test_moteur_qui_ne_liste_rien_n_est_pas_un_coturn_arrete(self):
+        """Un moteur qui refuse de lister ses conteneurs (ici Podman
+        rootless devant un dossier ferme au compte) ne dit rien de coturn :
+        « engine-failed » et son message, code 1, ni inspect ni signal."""
+        with tempfile.TemporaryDirectory() as dossier:
+            r = self.lancer(
+                dossier,
+                etat_conteneur(rootless=True),
+                PS_ERREUR="cannot chdir to /home/invente: Permission denied",
+            )
+            self.assertEqual(r.fait.returncode, 1, r.fait.stdout)
+            self.assertEqual(r.servi("turn.crt"), NOUVEAU_CRT)
+            self.assertIn(RUNUSER + " ps -a -q", r.appels)
+            self.assertNotIn(RUNUSER + " " + INSPECT, r.appels)
+            self.assertIn(
+                "@@HOOK engine-failed " + CONTENEUR + " cannot chdir to"
+                " /home/invente: Permission denied",
+                r.marqueurs,
+            )
+            self.assertFalse([m for m in r.marqueurs if "inactive" in m])
+            self.assertEqual(lire(r.applied), self.avant)
+            self.assertIn("systemctl reload nginx", r.appels)
 
     def test_signal_en_echec(self):
         with tempfile.TemporaryDirectory() as dossier:
