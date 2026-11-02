@@ -10915,6 +10915,7 @@ CONTAINER_STUBS = {
     "docker": _NOTE
     + r"""
 [ -z "${FAKE_NO_CLI:-}" ] || exit 127
+[ -z "${FAKE_ENGINE_DOWN:-}" ] || { echo "$FAKE_ENGINE_DOWN" >&2; exit 125; }
 case "$1" in
   image) grep -qxF "$3" "$FK/images" 2>/dev/null; exit ;;
   pull)
@@ -14292,6 +14293,41 @@ class TestContainerUninstall(ContainerSandbox):
         self.assertNotEqual(done.returncode, 0)
         markers = self.markers(done)
         self.assertIn("FAILED compose-down", markers)
+        self.assertIn("FAILED chown-ntfy", markers)
+        self.assertFalse(
+            [line for line in self.argv() if line.startswith("chown ")]
+        )
+        self.assertEqual(markers[-1], "DONE no")
+
+    def test_host_ntfy_data_untouched_while_the_engine_cannot_list(self):
+        # Sans fichier compose, chaque conteneur se lit par `inspect`. Un
+        # moteur qui refuse aussi de lister ne les dit pas partis : aucun
+        # n'est vu arrêté, rien ne change de propriétaire, et la sortie
+        # rend le message du moteur.
+        state = self.rootless_state()
+        state["services"]["ntfy"].update(
+            unit="ntfy", installed_by_tool=False, adopted=False
+        )
+        self.host(state)
+        os.remove(self.path(cc.COMPOSE_FILE))
+        done = self.uninstall(
+            state,
+            FAKE_ENGINE_DOWN="Error: cannot chdir to /var/invente:"
+            " Permission denied",
+        )
+        self.assertNotEqual(done.returncode, 0)
+        markers = self.markers(done)
+        failed = (
+            "ENGINE_LIST_FAILED podman 1 Error: cannot chdir to"
+            " /var/invente: Permission denied"
+        )
+        self.assertEqual(markers.count(failed), 1, markers)
+        for svc in ("coturn", "ntfy"):
+            self.assertIn(f"FAILED container-{svc}", markers)
+            self.assertNotIn(
+                f"REMOVED container {cc.CONTAINERS[svc]}", markers
+            )
+        self.assertIsNone(self.first(" rm -f -v "))
         self.assertIn("FAILED chown-ntfy", markers)
         self.assertFalse(
             [line for line in self.argv() if line.startswith("chown ")]
