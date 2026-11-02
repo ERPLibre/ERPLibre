@@ -2306,6 +2306,10 @@ def method_refusal(facts, answers):
     """Refusal tiré de la méthode d'installation, avant que rien ne soit
     touché, ou None. Dans l'ordre :
 
+    - `call_infra_engine_unreadable` (`engine`, `detail`) : le moteur et
+      mode voulus, ou ceux du bloc `container` de l'état, ont refusé de
+      lister leurs conteneurs (`listing_failed`) : la sonde ne sait pas
+      ce qui tourne, le plan n'en conclut rien ;
     - `call_infra_foreign_container` (`names`) : un conteneur aux noms ou
       à l'image de l'outil que l'état ne consigne pas comme le sien
       (`cc.foreign_containers`), quelle que soit la méthode ; en
@@ -2337,6 +2341,20 @@ def method_refusal(facts, answers):
     """
     prior = facts.state if isinstance(facts.state, dict) else {}
     engines = facts.engines or cc.EngineFacts()
+    modes = []
+    if answers.method == "container":
+        modes.append((answers.engine, answers.rootless))
+    if _state_method(prior) == "container":
+        block = prior.get("container")
+        block = block if isinstance(block, dict) else {}
+        modes.append((block.get("engine"), block.get("rootless") is True))
+    for mode in modes:
+        if mode in engines.listing_failed:
+            return Refusal(
+                "call_infra_engine_unreadable",
+                engine=_engine_label(*mode),
+                detail=engines.listing_failed[mode],
+            )
     pending = None
     if answers.method == "container" and isinstance(
         facts.container_pending, dict
@@ -7747,6 +7765,7 @@ CHECK_KEYS = (
     "call_infra_check_ice_foreign",
     "call_infra_check_ice_none",
     "call_infra_check_container_account",
+    "call_infra_check_engine_unreadable",
 )
 
 
@@ -7799,7 +7818,10 @@ def _check_container_lines():
     <0|1> <état> <uid:gid>` (« - » pour un `user` illisible) ; le premier
     trouvé par service pose `CS_<service>` (« active » pour « running »,
     son état sinon) ; celui de coturn pose `CA`, le compte de l'hôte qui
-    porte son uid (`getent passwd`), sous lequel la base se lit. Suppose
+    porte son uid (`getent passwd`), sous lequel la base se lit. Un moteur
+    qui refuse de lister ses conteneurs (`ps`) imprime
+    `@@CONTAINER_LIST_FAILED <moteur> <0|1> <message>` et pose CLF à
+    « unknown » : ses conteneurs ne sont ni lus ni dits absents. Suppose
     `R`."""
     rootless = cc.rootless_prefix_sh(cc.ROOTLESS_ACCOUNT, "C_RU")
     first = [
@@ -7810,7 +7832,14 @@ def _check_container_lines():
         f'  cact {svc} {name} "$@"' for svc, name in cc.CONTAINERS.items()
     ]
     return [
-        "CA=; " + "; ".join(f"CS_{svc}=" for svc in cc.CONTAINERS),
+        "CA=; CLF=; " + "; ".join(f"CS_{svc}=" for svc in cc.CONTAINERS),
+        "clist() {",
+        "  e=$1; r=$2; shift 2",
+        '  L=$(timeout 20 "$@" ps -a -q 2>&1) && return 0',
+        f"  M=$(printf '%s\\n' \"$L\" | awk {shlex.quote(cc.MESSAGE_AWK)})",
+        '  echo "@@CONTAINER_LIST_FAILED $e $r ${M:--}"; CLF=unknown',
+        "  return 1",
+        "}",
         "cact() {",
         "  s=$1; n=$2; e=$3; r=$4; shift 4",
         f'  L=$(timeout 20 "$@" inspect -f {shlex.quote(_CHECK_INSPECT)}'
@@ -7830,6 +7859,7 @@ def _check_container_lines():
         "  fi",
         "}",
         "ctry() {",
+        '  clist "$@" || return 0',
         *tries,
         "}",
         "if command -v docker >/dev/null 2>&1"
@@ -7861,10 +7891,13 @@ def check_remote_script(root=""):
     Lignes : `@@STATE <base64>` (l'état, s'il existe),
     `@@CONTAINER_ACTIVE <service> <moteur> <0|1> <état> <uid:gid>` par
     conteneur aux noms fixes trouvé (`_check_container_lines`),
+    `@@CONTAINER_LIST_FAILED <moteur> <0|1> <message>` par moteur qui
+    refuse de lister ses conteneurs,
     `@@ACTIVE <service> <état>` : celui de l'unité systemd, sauf quand
     elle n'est pas active et qu'un conteneur du service existe, dont
     l'état (« running » lu « active ») est alors donné ; « absent » sans
-    unité ni conteneur. `@@CHECK_KEY <hex>` (la clé long terme du compte
+    unité ni conteneur, « unknown » quand un moteur n'a pas pu lister.
+    `@@CHECK_KEY <hex>` (la clé long terme du compte
     de contrôle, lue dans la base de coturn par `sqlite3 -readonly` sous
     le compte du service : root n'ouvre aucun fichier de ce dossier, qui
     appartient à ce compte ; le compte du conteneur de coturn quand il
@@ -7912,14 +7945,14 @@ def check_remote_script(root=""):
             '  [ "$A" != active ] && [ -n "$CS_coturn" ] && A=$CS_coturn',
             '  echo "@@ACTIVE coturn ${A:-unknown}"',
             "else",
-            '  echo "@@ACTIVE coturn ${CS_coturn:-absent}"',
+            '  echo "@@ACTIVE coturn ${CS_coturn:-${CLF:-absent}}"',
             "fi",
             f"if systemctl cat {NTFY_UNIT} >/dev/null 2>&1; then",
             f"  A=$(systemctl is-active {NTFY_UNIT} 2>/dev/null)",
             '  [ "$A" != active ] && [ -n "$CS_ntfy" ] && A=$CS_ntfy',
             '  echo "@@ACTIVE ntfy ${A:-unknown}"',
             "else",
-            '  echo "@@ACTIVE ntfy ${CS_ntfy:-absent}"',
+            '  echo "@@ACTIVE ntfy ${CS_ntfy:-${CLF:-absent}}"',
             "fi",
             f'DB="$R"{shlex.quote(COTURN_DB)}',
             'if { [ -n "$CA" ] || [ "$CU" != - ]; } && [ -f "$DB" ]'
@@ -7989,8 +8022,9 @@ def parse_check_remote(output):
     TLS_CERTS: PEM}, `hook` (« exec », « present » ou None), `renewal`
     (« active », « held » ou None), `timers` {minuteur de CERTBOT_TIMERS:
     état}, `containers` {service: [(moteur, rootless, état, uid ou
-    None)]}, dans l'ordre des lignes. Une valeur hors de ces formes est
-    écartée.
+    None)]}, dans l'ordre des lignes, `list_failed` {(moteur, rootless):
+    message} des moteurs qui ont refusé de lister. Une valeur hors de ces
+    formes est écartée.
 
     Une règle hors format ou sur le port de ssh est écartée, comme dans
     `rules_from_state`. Refusal `call_infra_probe_incomplete` sans `@@END`.
@@ -7998,7 +8032,7 @@ def parse_check_remote(output):
     state, active, key, rules, certs = None, {}, None, [], {}
     turn_secrets, turn_users = [], {}
     hook = renewal = None
-    timers, containers = {}, {}
+    timers, containers, list_failed = {}, {}, {}
     complete = False
     for name, value in marker_lines(output):
         if name == "STATE":
@@ -8047,6 +8081,17 @@ def parse_check_remote(output):
             found = _container_active(value)
             if found:
                 containers.setdefault(found[0], []).append(found[1:])
+        elif name == "CONTAINER_LIST_FAILED":
+            parts = value.split()
+            if (
+                len(parts) >= 2
+                and parts[0] in cc.ENGINES
+                and parts[1] in ("0", "1")
+            ):
+                list_failed.setdefault(
+                    (parts[0], parts[1] == "1"),
+                    (" ".join(parts[2:]) or "-")[:200],
+                )
         elif name == "END":
             complete = True
     if not complete:
@@ -8063,6 +8108,7 @@ def parse_check_remote(output):
         "renewal": renewal,
         "timers": timers,
         "containers": containers,
+        "list_failed": list_failed,
     }
 
 
@@ -8740,10 +8786,15 @@ def _container_service_lines(state, records, facts_remote):
     None, « - » dans le détail : défaut de l'image, nom, root) :
     `call_infra_check_container_account` (la base de coturn, que la
     vérification et les scripts d'Odoo lisent sous le compte de l'état, ne
-    serait pas la sienne)."""
+    serait pas la sienne). Sans conteneur lu, quand le moteur du bloc a
+    refusé de lister les siens : `call_infra_check_engine_unreadable` et
+    son message, et non « missing »."""
     block = state.get("container")
     block = block if isinstance(block, dict) else {}
     found = facts_remote.get("containers") or {}
+    failed = (facts_remote.get("list_failed") or {}).get(
+        (block.get("engine"), block.get("rootless"))
+    )
     lines = []
     for svc, record in records.items():
         match = next(
@@ -8755,6 +8806,16 @@ def _container_service_lines(state, records, facts_remote):
             None,
         )
         name = f"service-{svc}"
+        if match is None and failed is not None:
+            lines.append(
+                CheckLine(
+                    name,
+                    False,
+                    "call_infra_check_engine_unreadable",
+                    {"detail": failed},
+                )
+            )
+            continue
         if match is None:
             current = "missing"
         else:

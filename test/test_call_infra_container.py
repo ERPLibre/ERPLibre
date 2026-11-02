@@ -273,6 +273,30 @@ class TestParseEngineLines(unittest.TestCase):
         self.assertEqual(len(facts.containers), 5)
         self.assertIn(("podman", False, NTFY_REF), facts.images)
 
+    def test_listing_failures(self):
+        pairs = [
+            (
+                "ENGINE_LIST_FAILED",
+                "podman 1 cannot chdir to /home/invente: Permission denied",
+            ),
+            ("ENGINE_LIST_FAILED", "docker 0"),
+            ("ENGINE_LIST_FAILED", "lxc 0 x"),
+            ("ENGINE_LIST_FAILED", "podman 2 x"),
+            ("ENGINE_LIST_FAILED", "podman"),
+        ]
+        facts = cc.parse_engine_lines(pairs)
+        self.assertEqual(
+            facts.listing_failed,
+            {
+                (
+                    "podman",
+                    True,
+                ): "cannot chdir to /home/invente: Permission denied",
+                ("docker", False): "-",
+            },
+        )
+        self.assertEqual(cc.parse_engine_lines([]).listing_failed, {})
+
     def test_image_id_forms(self):
         self.assertEqual(cc.image_id("sha256:" + COTURN_ID), COTURN_ID)
         self.assertEqual(cc.image_id(COTURN_ID + "\n"), COTURN_ID)
@@ -1101,9 +1125,13 @@ def write(path, text, mode=0o755):
     os.chmod(path, mode)
 
 
-def engine_stubs(stubs, docker_active=True, rootless=True, absent=()):
+def engine_stubs(
+    stubs, docker_active=True, rootless=True, absent=(), rootless_ps_error=""
+):
     """Bouchons de chaque commande que la sonde peut lancer. `absent` : noms
-    à ne pas poser, la sonde doit alors les dire absents."""
+    à ne pas poser, la sonde doit alors les dire absents.
+    `rootless_ps_error` : le message sur lequel `podman ps` échoue sous le
+    compte rootless (FAKE_AS)."""
     ps = (
         "erplibre-call-coturn running %s\n"
         "autre-chose running docker.io/library/nginx:1\n"
@@ -1120,7 +1148,16 @@ def engine_stubs(stubs, docker_active=True, rootless=True, absent=()):
         "    echo sha256:" + COTURN_ID + " ;;\n"
         "  *) exit 64 ;;\n"
         "esac\n",
-        "podman": LOGGER + CWD_GUARD + 'case "$1" in\n'
+        "podman": LOGGER
+        + CWD_GUARD
+        + (
+            'if [ -n "${FAKE_AS:-}" ] && [ "$1" = ps ]; then\n'
+            "  echo '%s' >&2; exit 125\n"
+            "fi\n" % rootless_ps_error
+            if rootless_ps_error
+            else ""
+        )
+        + 'case "$1" in\n'
         "  --version) echo 'podman version 5.4.2' ;;\n"
         "  ps) echo 'erplibre-call-ntfy running " + NTFY_REF + "' ;;\n"
         "  container) echo " + NTFY_ID + " ;;\n"
@@ -1366,6 +1403,37 @@ class TestEngineProbeRun(unittest.TestCase):
             " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus podman ps"
             " -a --format {{.Names}} {{.State}} {{.Image}}",
             calls,
+        )
+
+    def test_rootless_listing_refused_is_said(self):
+        # `ps` refusé sous le compte rootless : la sonde le dit, et ne rend
+        # pour ce mode ni conteneur ni image ; les autres modes restent lus.
+        done, calls = self.run_probe(
+            self.FULL_ROOT,
+            rootless_ps_error="Error: cannot chdir to /home/invente:"
+            " Permission denied",
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn(
+            "@@ENGINE_LIST_FAILED podman 1 Error: cannot chdir to"
+            " /home/invente: Permission denied",
+            done.stdout.splitlines(),
+        )
+        facts = cc.parse_engine_lines(ci.marker_lines(done.stdout))
+        self.assertEqual(
+            facts.listing_failed,
+            {
+                (
+                    "podman",
+                    True,
+                ): "Error: cannot chdir to /home/invente: Permission denied"
+            },
+        )
+        self.assertFalse([c for c in facts.containers if c[2]])
+        self.assertFalse([i for i in facts.images if i[1]])
+        self.assertIn(
+            ("erplibre-call-ntfy", "podman", False, "running", NTFY_REF),
+            facts.containers,
         )
 
     def test_nothing_installed(self):

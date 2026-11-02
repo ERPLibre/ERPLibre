@@ -1347,8 +1347,13 @@ def script_conteneurs(etat, attente=0):
     pour ce qui ne se lit pas ; la date de démarrage, qui porte des espaces
     sous Podman, en dernier). Avec `attente`, chaque conteneur est relu
     chaque seconde, `attente` secondes au plus, tant qu'il ne tourne
-    pas."""
-    lignes = [_eng(etat)]
+    pas. Un moteur qui refuse de lister ses conteneurs imprime d'abord
+    `@@ENGINE_LIST_FAILED <code>`, son erreur laissée au journal : des
+    états « - » ne passent pas pour des conteneurs absents."""
+    lignes = [
+        _eng(etat),
+        'eng ps -a -q >/dev/null || echo "@@ENGINE_LIST_FAILED $?"',
+    ]
     for svc in ci.SERVICES:
         if not isinstance(etat["services"].get(svc), dict):
             continue

@@ -26,7 +26,7 @@
 # Sortie : une ligne « @@HOOK <action> » par etape. Code de sortie 2 quand
 # l'etat est illisible ou hors de ce que l'outil ecrit (aucune commande de
 # coturn n'est lancee, nginx est recharge quand meme), 1 quand une copie,
-# le signal ou nginx echoue.
+# le moteur des conteneurs (« engine-failed »), le signal ou nginx echoue.
 
 set -uo pipefail
 
@@ -274,7 +274,7 @@ record_applied() {
 # paire copiee a son prochain demarrage. Code 2 pour un etat refuse, avant
 # toute commande de coturn.
 coturn_renew() {
-    local record kind=packages unit config group before
+    local record kind=packages unit config group before listing
     if ! record=$(coturn_record); then
         hook "failed state"
         warn "${STATE_FILE} illisible ou hors de ce que l'outil ecrit."
@@ -315,6 +315,14 @@ coturn_renew() {
     hook "copied $TLS_DIR/turn.crt $TLS_DIR/turn.key"
 
     if [ "$kind" = container ]; then
+        # Un moteur qui refuse de lister ses conteneurs ne dit rien de
+        # coturn : « engine-failed » et son message, pas « inactif ».
+        if ! listing=$(container_engine ps -a -q 2>&1); then
+            hook "engine-failed $unit $(printf '%s\n' "$listing" \
+                | awk 'NF { gsub(/[^A-Za-z0-9 ._:\/=,()-]/, " ");
+                    print substr($0, 1, 200); exit }')"
+            return 1
+        fi
         if [ "$(container_engine inspect -f '{{.State.Running}}' "$unit" \
             2>/dev/null)" != true ]; then
             hook "coturn-inactive $unit"
