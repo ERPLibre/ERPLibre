@@ -1586,7 +1586,8 @@ def verdict_apres_conteneur(code, sortie):
     volume, ni fichier compose, ni compte de l'outil ni son dossier ni sa
     session permanente, chaque paquet du moteur purgé (statut « u » ou
     « p », ni installé ni gardé avec sa configuration), ni dossier de
-    l'outil ni règle ufw de l'outil.
+    l'outil ni règle ufw de l'outil. `restes` nomme les conteneurs, images,
+    volumes et comptes encore là.
     """
     lus = _traces(sortie)
     paquets = [v.split() for v in lus.get("PKG", [])]
@@ -1604,7 +1605,11 @@ def verdict_apres_conteneur(code, sortie):
         "sans-dossier-outil": "CALL_DIR" not in lus,
         "sans-regle-ufw": lus.get("UFW_RULES", [""])[-1] == "0",
     }
-    restes = {k: lus[k] for k in ("CONTAINER", "IMAGE", "ACCOUNT") if k in lus}
+    restes = {
+        k: lus[k]
+        for k in ("CONTAINER", "IMAGE", "IMAGE_FILE", "VOLUME", "ACCOUNT")
+        if k in lus
+    }
     return code == 0 and "END" in lus and all(detail.values()), dict(
         detail, restes=restes
     )
