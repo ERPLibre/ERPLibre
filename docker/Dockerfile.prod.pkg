@@ -87,6 +87,16 @@ RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     source ./.venv.erplibre/bin/activate && \
     ./script/manifest/update_manifest_local_dev.sh
 
+# erplibre_info_git et erplibre_info_git_fetch lancent l'outillage git depuis
+# Odoo, avec le venv des outils : là où les modules erplibre_info sont clonés,
+# ses points d'entrée doivent s'importer, faute de quoi chaque instantané
+# échoue dans le conteneur et non à la construction.
+RUN cd $ODOO_PREFIX && \
+    if [ -d "odoo${ODOO_VERSION}/addons/ERPLibre_erplibre_addons/erplibre_info" ]; then \
+      ./.venv.erplibre/bin/python -c "import script.git.repo_state, script.git.repo_pull" || \
+        { echo "erplibre_info_git* lance repo_state et repo_pull : un requis manque dans requirement/erplibre_require-ments-docker.txt." ; exit 1 ; } ; \
+    fi
+
 # Install Poetry
 #
 # CPPFLAGS redonne au preprocesseur l'alias Python 2 que SWIG 4.3 a retire.

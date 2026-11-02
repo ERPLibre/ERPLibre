@@ -20,6 +20,13 @@
 # dans un venv nu, en ajoutant ce que l'erreur réclame. Le Dockerfile fait la
 # même vérification à la construction, et s'arrête si elle échoue.
 #
+# Là où les modules erplibre_info sont clonés, l'image lance aussi, depuis
+# Odoo, « script/git/repo_state.py » (erplibre_info_git, les instantanés) et
+# « script/git/repo_pull.py » (erplibre_info_git_fetch, tirage et retour).
+# repo_state importe script/todo/git_repo_menu, qui importe click ; sans lui,
+# chaque instantané échoue à l'import. Le Dockerfile les importe à leur tour
+# une fois les dépôts synchronisés.
+#
 # Sans borne de version : c'est pip qui choisit la plus récente que le Python
 # de l'image accepte, et elle change d'une version d'Odoo à l'autre.
 GitPython
@@ -28,3 +35,4 @@ agithub
 colorama
 giturlparse
 retrying
+click
