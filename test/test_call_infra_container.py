@@ -525,56 +525,124 @@ class TestEnginePackages(unittest.TestCase):
     NONE = cc.EngineFacts()
 
     def test_per_distribution(self):
+        # (os_id, famille, version, moteur, rootless) → paquets.
         cases = [
             (
-                ("ubuntu", "debian", "docker", False),
+                ("ubuntu", "debian", "24.04", "docker", False),
                 ("docker.io", "docker-compose-v2"),
             ),
             (
-                ("debian", "debian", "docker", False),
+                ("debian", "debian", "12", "docker", False),
                 ("docker.io", "docker-compose"),
             ),
-            (("arch", "arch", "docker", False), ("docker", "docker-compose")),
             (
-                ("debian", "debian", "podman", False),
+                ("debian", "debian", "13", "docker", False),
+                ("docker.io", "docker-cli", "docker-compose"),
+            ),
+            (
+                ("arch", "arch", "", "docker", False),
+                ("docker", "docker-compose"),
+            ),
+            (
+                ("debian", "debian", "13", "podman", False),
                 ("podman", "podman-compose"),
             ),
-            (("arch", "arch", "podman", False), ("podman", "podman-compose")),
             (
-                ("debian", "debian", "podman", True),
+                ("arch", "arch", "", "podman", False),
+                ("podman", "podman-compose"),
+            ),
+            (
+                ("debian", "debian", "13", "podman", True),
                 ("podman", "podman-compose", "uidmap"),
             ),
             (
-                ("ubuntu", "debian", "podman", True),
+                ("ubuntu", "debian", "24.04", "podman", True),
                 ("podman", "podman-compose", "uidmap"),
             ),
-            (("arch", "arch", "podman", True), ("podman", "podman-compose")),
+            (
+                ("arch", "arch", "", "podman", True),
+                ("podman", "podman-compose"),
+            ),
         ]
-        for args, expected in cases:
-            with self.subTest(args=args):
+        for (os_id, family, version, engine, rootless), expected in cases:
+            with self.subTest(os_id=os_id, version=version, engine=engine):
                 self.assertEqual(
-                    cc.engine_packages(*args, self.NONE), expected
+                    cc.engine_packages(
+                        os_id,
+                        family,
+                        engine,
+                        rootless,
+                        self.NONE,
+                        os_version=version,
+                    ),
+                    expected,
+                )
+
+    def test_docker_cli_package_follows_the_debian_release(self):
+        # Debian 13 sépare le client (/usr/bin/docker) dans docker-cli, que
+        # docker.io ne fait que recommander ; Debian 12 et Ubuntu le
+        # gardent dans docker.io et n'ont aucun paquet docker-cli. Testing
+        # et sid n'ont pas de VERSION_ID.
+        for version, split in (
+            ("11", False),
+            ("12", False),
+            ("13", True),
+            ("14", True),
+            ("", True),
+        ):
+            with self.subTest(version=version):
+                packages = cc.engine_packages(
+                    "debian",
+                    "debian",
+                    "docker",
+                    False,
+                    None,
+                    os_version=version,
+                )
+                self.assertEqual("docker-cli" in packages, split)
+        for os_id, version in (("ubuntu", "24.04"), ("linuxmint", "22")):
+            with self.subTest(os_id=os_id):
+                self.assertNotIn(
+                    "docker-cli",
+                    cc.engine_packages(
+                        os_id,
+                        "debian",
+                        "docker",
+                        False,
+                        None,
+                        os_version=version,
+                    ),
                 )
 
     def test_none_facts_means_nothing_present(self):
         self.assertEqual(
-            cc.engine_packages("ubuntu", "debian", "docker", False, None),
+            cc.engine_packages(
+                "ubuntu", "debian", "docker", False, None, os_version="24.04"
+            ),
             ("docker.io", "docker-compose-v2"),
         )
 
     def test_only_what_is_missing(self):
         facts = cc.parse_engine_lines(PROBE_PAIRS)
         self.assertEqual(
-            cc.engine_packages("debian", "debian", "docker", False, facts), ()
+            cc.engine_packages(
+                "debian", "debian", "docker", False, facts, os_version="13"
+            ),
+            (),
         )
         self.assertEqual(
-            cc.engine_packages("debian", "debian", "podman", True, facts), ()
+            cc.engine_packages(
+                "debian", "debian", "podman", True, facts, os_version="13"
+            ),
+            (),
         )
         facts = cc.parse_engine_lines(
             [("ENGINE", "docker 26.1.5"), ("DOCKER_SERVICE", "active enabled")]
         )
         self.assertEqual(
-            cc.engine_packages("debian", "debian", "docker", False, facts),
+            cc.engine_packages(
+                "debian", "debian", "docker", False, facts, os_version="13"
+            ),
             ("docker-compose",),
         )
 
@@ -591,9 +659,14 @@ class TestEnginePackages(unittest.TestCase):
                 self.assertFalse(cc.engine_present(facts, "docker"))
                 self.assertEqual(
                     cc.engine_packages(
-                        "debian", "debian", "docker", False, facts
+                        "debian",
+                        "debian",
+                        "docker",
+                        False,
+                        facts,
+                        os_version="13",
                     ),
-                    ("docker.io",),
+                    ("docker.io", "docker-cli"),
                 )
         facts = cc.parse_engine_lines(
             [
@@ -610,11 +683,17 @@ class TestEnginePackages(unittest.TestCase):
 
     def test_unknown_engine_or_family(self):
         with self.assertRaises(ValueError):
-            cc.engine_packages("debian", "debian", "lxc", False, self.NONE)
+            cc.engine_packages(
+                "debian", "debian", "lxc", False, self.NONE, os_version="13"
+            )
         with self.assertRaises(ValueError):
-            cc.engine_packages("fedora", None, "docker", False, self.NONE)
+            cc.engine_packages(
+                "fedora", None, "docker", False, self.NONE, os_version="41"
+            )
         with self.assertRaises(ValueError):
-            cc.engine_packages("debian", "debian", "docker", True, self.NONE)
+            cc.engine_packages(
+                "debian", "debian", "docker", True, self.NONE, os_version="13"
+            )
 
 
 class TestSmallRules(unittest.TestCase):

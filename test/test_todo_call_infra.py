@@ -1508,7 +1508,7 @@ class TestInstallMethod(ProductionCase):
         self.assertIn(t("call_infra_engine_none"), out)
         self.assertIn(
             t("call_infra_engine_offer").format(
-                engine="Docker", packages="docker.io docker-compose"
+                engine="Docker", packages="docker.io docker-cli docker-compose"
             ),
             out,
         )
@@ -1523,7 +1523,9 @@ class TestInstallMethod(ProductionCase):
         for ref in cc.IMAGES.values():
             self.assertIn(ref, summary)
         self.assertIn(
-            f"{t('Packages to install:')} docker.io docker-compose", summary
+            f"{t('Packages to install:')} docker.io docker-cli"
+            " docker-compose",
+            summary,
         )
         self.assertIn(t("call_infra_docker_forward_note"), summary)
         self.assertEqual(host.kinds(), ["probe"])
@@ -1534,7 +1536,8 @@ class TestInstallMethod(ProductionCase):
         self.assertEqual(host.kinds(), ["probe"])
         self.assertIn(
             t("call_infra_engine_missing").format(
-                engine="docker", packages="docker.io, docker-compose"
+                engine="docker",
+                packages="docker.io, docker-cli, docker-compose",
             ),
             out,
         )
