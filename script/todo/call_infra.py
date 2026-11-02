@@ -3933,6 +3933,33 @@ _TRANSIENT = "created|restarting|starting|configured|initialized|stopping"
 _STATUS_FORMAT = "{{.State.Status}}"
 
 
+def _reown_lines():
+    """Fonction `sh` `reown <propriétaire> <dossier>` : rend `dossier` et
+    ce qu'il contient à `propriétaire` (« uid:gid », « nom:groupe » ou
+    « --reference=<chemin> »), sans jamais suivre un lien (`find ! -type l`
+    puis `chown -h`). Un dossier qui est un lien, qui porte un fichier à
+    plusieurs liens physiques ou qui traverse un autre système de fichiers
+    n'est pas touché : `@@UNSAFE_TREE <dossier>` et un code non nul. Le
+    compte d'un service ou d'un conteneur écrit dans ce dossier ; un lien
+    physique vers un fichier de root, que root rendrait à ce compte, est
+    la seule entrée qui reste quand les liens symboliques ne sont pas
+    suivis. Un dossier absent ne fait rien. L'appelant arrête d'abord ce
+    qui tourne sous ce compte."""
+    return [
+        "reown() {",
+        '  [ -e "$2" ] || [ -L "$2" ] || return 0',
+        '  if [ -L "$2" ] || [ ! -d "$2" ]'
+        ' || [ -n "$(find "$2" -xdev -type f -links +1 -print 2>/dev/null'
+        ' | head -n 1)" ]'
+        ' || [ "$(find "$2" -xdev -printf \'%D\\n\' 2>/dev/null'
+        ' | sort -u | wc -l)" != 1 ]; then',
+        '    echo "@@UNSAFE_TREE ${2#"$R"}"; return 1',
+        "  fi",
+        '  find "$2" -xdev ! -type l -exec chown -h "$1" {} +',
+        "}",
+    ]
+
+
 def _indented(command):
     """Commande `sh` qui lance `command` (texte `sh`), garde sa sortie et
     ses erreurs dans un fichier de `mktemp`, puis les imprime en retrait et
@@ -4368,7 +4395,10 @@ def _ntfy_container_block(plan):
     des comptes et le cache, créés au besoin et rendus au compte du
     conteneur. Aucun binaire ntfy ni aucune unité sur l'hôte. NC=1 quand
     server.yml ou le certificat propre a changé : ntfy ne relit sa
-    configuration qu'à son démarrage (`_compose_lines`)."""
+    configuration qu'à son démarrage (`_compose_lines`). Les données ne
+    passent au compte (`reown`) que conteneur arrêté : un conteneur qui
+    tourne les possède déjà, et n'y écrit pas pendant le passage ; un
+    dossier créé ici est vide, et seul lui change de propriétaire."""
     answers = plan.answers
     config = _host(NTFY_CONFIG)
     new = _host(NTFY_CONFIG + ".erplibre-new")
@@ -4424,10 +4454,18 @@ def _ntfy_container_block(plan):
     ]
     for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
         lines.append(
-            f"{{ [ -d {_host(path)} ] || install -d -m 0750 {_host(path)}; }}"
-            f' && chown -R "$U_ntfy" {_host(path)} || fail ntfy-data'
+            f"[ -d {_host(path)} ] || {{ install -d -m 0750 {_host(path)}"
+            f' && chown "$U_ntfy" {_host(path)}; }} || fail ntfy-data'
         )
-    lines.append("RC_ntfy=0")
+    name = cc.CONTAINERS["ntfy"]
+    lines += [f"cstatus {name}", 'if [ "$S" != running ]; then']
+    lines.append(
+        f'  [ "$S" = missing ] || eng stop {name} >/dev/null 2>&1'
+        " || fail ntfy-stop"
+    )
+    for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
+        lines.append(f'  reown "$U_ntfy" {_host(path)} || fail ntfy-data')
+    lines += ["fi", "RC_ntfy=0"]
     return lines
 
 
@@ -4617,8 +4655,10 @@ def _migration_backup_lines(services, stamp):
     leurs services arrêtés et avant toute purge, par root (le compte d'un
     paquet purgé n'existe plus), `@@BACKUP <chemin>` pour chacune. Seul un
     fichier ordinaire se copie : un lien ou un autre type arrête le
-    script. Une copie déjà là sous ce tampon est gardée, elle est la plus
-    ancienne."""
+    script, comme un fichier à plusieurs liens physiques (`@@UNSAFE_TREE
+    <base>`) : root en recopierait le contenu, et un retour en arrière le
+    remettrait dans le dossier du compte. Une copie déjà là sous ce
+    tampon est gardée, elle est la plus ancienne."""
     lines = ['mkdir -p "$MB" && chmod 0700 "$MBD" "$MB" || fail backup']
     for svc, path in _MIGRATED_DATA:
         if svc not in services:
@@ -4628,7 +4668,10 @@ def _migration_backup_lines(services, stamp):
         lines += [
             f'if [ ! -e "$MB/{name}" ]; then',
             f"  if [ -L {source} ] || {{ [ -e {source} ] && [ ! -f {source} ];"
-            f" }}; then fail backup-{svc}; fi",
+            f' }} || [ -n "$(find {source} -maxdepth 0 -links +1'
+            ' 2>/dev/null)" ]; then',
+            f'    echo "@@UNSAFE_TREE {path}"; fail backup-{svc}',
+            "  fi",
             f"  if [ -f {source} ]; then",
             "    "
             + _migration_cp(source, f'"$MB/{name}.new"')
@@ -4784,8 +4827,7 @@ def _to_container_rollback_lines(plan, stamp, records):
                 "fi",
                 *_coturn_block(packages, payload=False),
                 '[ "$RC_coturn" = 0 ] || fail coturn',
-                f"if [ -d {data} ]; then chown -R --no-dereference"
-                f" --reference={data} {data} || fail chown-coturn; fi",
+                f"reown --reference={data} {data} || fail chown-coturn",
             ]
         )
     if "ntfy" in records:
@@ -4798,10 +4840,7 @@ def _to_container_rollback_lines(plan, stamp, records):
             *_migration_restore_lines("ntfy", stamp),
         ]
         for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
-            step.append(
-                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
-                f" ntfy:ntfy {_host(path)} || fail chown-ntfy; fi"
-            )
+            step.append(f"reown ntfy:ntfy {_host(path)} || fail chown-ntfy")
         if record["installed_by_tool"]:
             step += _ntfy_block(
                 packages, payload=False, version=cc.IMAGE_VERSIONS["ntfy"]
@@ -4820,15 +4859,18 @@ def _to_container_rollback_lines(plan, stamp, records):
             )
         steps.append(step)
     # Les conteneurs s'arrêtent avant que les paquets ne reprennent leurs
-    # ports.
+    # ports, et avant que leurs données ne changent de propriétaire : sans
+    # `down` (CD=0), aucune étape ne touche aux données.
     head = [
+        "CD=1",
         f"if [ -f {compose} ]; then",
         *_volume_rm_lines("  "),
         f"  if comp down >/dev/null 2>&1; then rm -f {compose};",
-        '  else echo "@@ROLLBACK_FAILED compose-down"; MRB=0; fi',
+        '  else echo "@@ROLLBACK_FAILED compose-down"; MRB=0; CD=0; fi',
         "fi",
         f"rm -f {_host(COTURN_APPLIED_PENDING)}",
     ]
+    steps = [['[ "$CD" = 1 ] || exit 1', *step] for step in steps]
     return _rollback_function(head, steps, [])
 
 
@@ -4871,10 +4913,7 @@ def _to_container_lines(plan, stamp):
         lines += _container_accounts_lines(plan)
     for svc, path in (("coturn", COTURN_DATA_DIR), ("ntfy", NTFY_DATA_DIR)):
         if svc in services:
-            lines.append(
-                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
-                f' "$U_{svc}" {_host(path)} || fail chown-{svc}; fi'
-            )
+            lines.append(f'reown "$U_{svc}" {_host(path)} || fail chown-{svc}')
     return lines
 
 
@@ -5010,14 +5049,11 @@ def _to_packages_rollback_lines(plan, stamp, services):
             if svc == "ntfy":
                 step.append(
                     f"{{ [ -d {_host(path)} ] || install -d -m 0750"
-                    f" {_host(path)}; }} && chown -R --no-dereference"
-                    f" {uid}:{gid} {_host(path)} || fail chown-{svc}"
+                    f" {_host(path)}; }} && reown {uid}:{gid} {_host(path)}"
+                    f" || fail chown-{svc}"
                 )
                 continue
-            step.append(
-                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
-                f" {uid}:{gid} {_host(path)} || fail chown-{svc}; fi"
-            )
+            step.append(f"reown {uid}:{gid} {_host(path)} || fail chown-{svc}")
         steps.append(step)
     tail = [
         _indented("comp up -d")
@@ -5097,10 +5133,7 @@ def _to_packages_lines(plan, stamp):
             f"id ntfy >/dev/null 2>&1 || {_USERADD} ntfy || fail ntfy-user",
         ]
         for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR):
-            lines.append(
-                f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
-                f" ntfy:ntfy {_host(path)} || fail chown-ntfy; fi"
-            )
+            lines.append(f"reown ntfy:ntfy {_host(path)} || fail chown-ntfy")
     return lines
 
 
@@ -5335,6 +5368,7 @@ def install_script(plan, stamp, root=""):
         # retire $D, passe après eux, qui y lisent run.m.
         f"trap '{(rehold + back).strip()} exit 129' HUP INT TERM",
         *_capture_lines(),
+        *_reown_lines(),
         *(_rehold_lines() if certbot else []),
         *(_container_helper_lines(plan, state) if container else []),
         # Le dossier reste traversable : coturn y lit son certificat.
@@ -5449,9 +5483,8 @@ def install_script(plan, stamp, root=""):
                 # au compte que l'installateur a donné à son dossier.
                 data = _host(COTURN_DATA_DIR)
                 lines.append(
-                    f'if [ "$RC_coturn" = 0 ] && [ -d {data} ]; then'
-                    f" chown -R --no-dereference --reference={data} {data}"
-                    " || fail chown-coturn; fi"
+                    f'if [ "$RC_coturn" = 0 ]; then reown --reference={data}'
+                    f" {data} || fail chown-coturn; fi"
                 )
             if production:
                 lines.append(f'[ "$RC_{svc}" = 0 ] || fail {svc}')
@@ -9405,13 +9438,14 @@ def _container_uninstall_lines(state, additions, records):
         lines += _container_admin_lines(state)
     path = _host(cc.COMPOSE_FILE)
     lines += [
+        "CDOWN=1",
         f"if [ -f {path} ]; then",
         *_volume_rm_lines("  "),
         f"  if {_indented('comp down -v')}; then",
         f"    if rm -f {path}; then"
         f' echo "@@REMOVED compose {cc.COMPOSE_FILE}";',
         "    else failed compose-file; fi",
-        "  else failed compose-down; fi",
+        "  else failed compose-down; CDOWN=0; fi",
         "else",
     ]
     for svc, _record in records:
@@ -9421,7 +9455,7 @@ def _container_uninstall_lines(state, additions, records):
             '  if [ "$S" != missing ]; then',
             f"    if eng rm -f -v {name} >/dev/null 2>&1; then"
             f' echo "@@REMOVED container {name}";',
-            f"    else failed container-{svc}; fi",
+            f"    else failed container-{svc}; CDOWN=0; fi",
             "  fi",
         ]
     lines += ["  :", "fi"]
@@ -9497,18 +9531,21 @@ def _ntfy_handback_lines(svc, record):
     d'un ntfy dont le paquet reste sur l'hôte (fiche que l'outil n'a pas
     posée) quand son conteneur tournait sous un autre compte, le compte
     rootless : l'installation en conteneurs les lui a donnés, et l'unité du
-    paquet, qui tourne sous `ntfy`, ne les ouvrirait plus. [] sinon."""
+    paquet, qui tourne sous `ntfy`, ne les ouvrirait plus (`reown`). Des
+    conteneurs que le script n'a pas pu retirer (CDOWN=0) y écriraient
+    encore : rien ne change alors, l'étape échoue. [] sinon."""
     if (
         svc != "ntfy"
         or record["installed_by_tool"]
         or record.get("account") in (None, cc.NTFY_ACCOUNT)
     ):
         return []
-    return [
-        f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
-        f" ntfy:ntfy {_host(path)} || failed chown-ntfy; fi"
+    lines = ['if [ "$CDOWN" = 1 ]; then']
+    lines += [
+        f"  reown ntfy:ntfy {_host(path)} || failed chown-ntfy"
         for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR)
     ]
+    return lines + ["else failed chown-ntfy; fi"]
 
 
 def _container_service_uninstall_lines(svc, record, remove_data):
@@ -10288,6 +10325,7 @@ def uninstall_script(state, remove_data, stamp, root="", remove_engine=False):
         "trap 'rm -rf \"$D\"' EXIT",
         "trap 'exit 129' HUP INT TERM",
         *_uninstall_helpers(),
+        *_reown_lines(),
         f'for H in "$R"{shlex.quote(HOLD_PREFIX)}*; do',
         '  if [ -d "$H" ]; then held_back "$H"; fi',
         "done",

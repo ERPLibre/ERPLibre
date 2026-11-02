@@ -1278,6 +1278,7 @@ class CallInfraMenuMixin:
                 undone.append(value.strip())
         for svc, current in active.items():
             print(f"{SYMBOLS[current == 'active']} {svc} : {current}")
+        self._call_infra_unsafe_trees(out)
         # Le compte de ntfy existe dès que son installateur l'a créé, même
         # si coturn échoue ensuite : son mot de passe n'est affiché qu'ici.
         if password:
@@ -1319,6 +1320,17 @@ class CallInfraMenuMixin:
             print(f"  {text}")
         print(f"✓ {t('call_infra_installed')}")
         return True
+
+    def _call_infra_unsafe_trees(self, out):
+        """Une ligne par dossier ou base que le script a refusé de rendre
+        à un compte, ou de copier (`@@UNSAFE_TREE <chemin>`) : un lien
+        physique ou un autre système de fichiers y est, rien n'a changé."""
+        for name, value in ci.marker_lines(out):
+            if name == "UNSAFE_TREE" and value.strip():
+                text = self._call_infra_text(
+                    "call_infra_unsafe_tree", {"path": value.strip()}
+                )
+                print(f"✗ {text}")
 
     def _call_infra_container_notes(self, out):
         """Ce qu'un script en conteneurs a gardé au lieu de le retirer, une
@@ -2318,6 +2330,7 @@ class CallInfraMenuMixin:
                     "call_infra_pending_left", {"service": svc}
                 )
             )
+        self._call_infra_unsafe_trees(out)
         self._call_infra_container_notes(out)
         if code == 0 and done == "yes":
             print(f"✓ {t('call_infra_uninstalled')}")

@@ -1734,6 +1734,33 @@ class TestInstallMethod(ProductionCase):
         self.assertNotIn(t("call_infra_install_failed"), out)
         self.assertEqual(host.state["version"], ci.STATE_VERSION)
 
+    def test_a_refused_tree_is_named(self):
+        host = self.packages_host(
+            install_ok=False,
+            install_extra=[
+                "@@UNSAFE_TREE /var/lib/ntfy",
+                "@@FAILED chown-ntfy",
+                "@@MIGRATION rolled-back",
+            ],
+        )
+        out = self.drive(
+            "_call_infra_install", host, ["", "2"] + DEV_REST + ["o", "o"]
+        )
+        self.assertIn(
+            t("call_infra_unsafe_tree").format(path="/var/lib/ntfy"), out
+        )
+        host = FakeHost(
+            state=installed_state(),
+            uninstall_out=(
+                "@@UNSAFE_TREE /var/lib/ntfy\n@@FAILED chown-ntfy\n@@DONE no\n"
+            ),
+            uninstall_code=1,
+        )
+        out = self.drive("_call_infra_uninstall", host, ["n", "o"])
+        self.assertIn(
+            t("call_infra_unsafe_tree").format(path="/var/lib/ntfy"), out
+        )
+
     def test_a_failed_rollback_names_its_steps(self):
         host = self.packages_host(
             install_ok=False,

@@ -3983,6 +3983,10 @@ TRANSLATIONS = {
         "fr": "La méthode d'installation vaut pour tout l'hôte : en changer migre chaque service consigné. Choisissez aussi {service}.",
         "en": "The install method applies to the whole host: changing it migrates every recorded service. Choose {service} too.",
     },
+    "call_infra_unsafe_tree": {
+        "fr": "{path} porte un fichier à plusieurs liens physiques, est un lien, ou traverse un autre système de fichiers : root n'y a rien changé de propriétaire ni rien copié. Vérifiez-le, puis relancez.",
+        "en": "{path} holds a file with several hard links, is a link, or crosses another filesystem: root changed no owner there and copied nothing. Check it, then run again.",
+    },
     "call_infra_backup_kept": {
         "fr": "Copies des bases prises par les migrations gardées sous {path} : secrets de coturn et comptes de ntfy. Retirez-les quand elles ne servent plus.",
         "en": "Database copies taken by the migrations kept under {path}: coturn's secrets and ntfy's accounts. Remove them once they are no longer needed.",
