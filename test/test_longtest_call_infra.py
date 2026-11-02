@@ -3533,6 +3533,11 @@ class LesScriptsConteneur(unittest.TestCase):
         self.assertIn(
             shlex.join(cc.rootless_prefix(cc.ROOTLESS_ACCOUNT, 990)), rootless
         )
+        # Un moteur qui ne liste rien le dit, son erreur au journal.
+        self.assertIn(
+            'eng ps -a -q >/dev/null || echo "@@ENGINE_LIST_FAILED $?"',
+            rootless,
+        )
         secret = lt.script_secret(IP, "s3", self.etats["docker"])
         self.assertIn(
             f"eng exec -u 990:990 {cc.CONTAINERS['coturn']} turnadmin -s",

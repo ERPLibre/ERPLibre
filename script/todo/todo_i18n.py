@@ -3975,6 +3975,10 @@ TRANSLATIONS = {
         "fr": "L'état de l'hôte porte une fiche {service} qu'on ne peut pas suivre : rien n'est touché.",
         "en": "The host state holds a {service} record that cannot be followed: nothing is touched.",
     },
+    "call_infra_engine_unreadable": {
+        "fr": "{engine} refuse de lister ses conteneurs ({detail}) : l'outil ne sait pas ce qui tourne et ne touche à rien. Corrigez ce que le moteur répond, puis relancez.",
+        "en": "{engine} refuses to list its containers ({detail}): the tool cannot tell what runs and touches nothing. Fix what the engine answers, then run again.",
+    },
     "call_infra_foreign_container": {
         "fr": "Des conteneurs que l'état de l'outil ne consigne pas portent ses noms ou ses images : {names}. Retirez-les, ou désinstallez d'abord : rien n'est touché.",
         "en": "Containers that the tool's state does not record carry its names or images: {names}. Remove them, or uninstall first: nothing is touched.",
@@ -4374,6 +4378,10 @@ TRANSLATIONS = {
     "call_infra_check_ice_none": {
         "fr": "Odoo ne remet aucune URL de TURN à l'appelant",
         "en": "Odoo hands the caller no TURN URL",
+    },
+    "call_infra_check_engine_unreadable": {
+        "fr": "le moteur refuse de lister ses conteneurs : {detail}",
+        "en": "the engine refuses to list its containers: {detail}",
     },
     "call_infra_check_container_account": {
         "fr": "le conteneur tourne sous l'uid {found}, l'état consigne {expected}",

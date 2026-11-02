@@ -10211,6 +10211,50 @@ class TestContainerPlan(unittest.TestCase):
                     ci.plan_install(changed, ans, NOW).nothing_to_do
                 )
 
+    def test_engine_that_cannot_list_refuses_the_plan(self):
+        # Un moteur qui refuse de lister ses conteneurs (ENGINE_LIST_FAILED)
+        # ne dit pas « aucun conteneur » : ni relance, ni migration, ni
+        # première installation sous ce moteur et ce mode.
+        rootless = container_answers(engine="podman", rootless=True)
+        installed = container_installed(rootless)
+        failed = {("podman", True): "cannot chdir to /home/invente"}
+        cases = (
+            ("rerun", installed, rootless),
+            ("to packages", installed, answers()),
+            (
+                "fresh",
+                base_facts(engines=engine_facts()),
+                container_answers(engine="podman", rootless=True),
+            ),
+        )
+        for name, facts, ans in cases:
+            with self.subTest(name):
+                broken = dataclasses.replace(
+                    facts,
+                    engines=dataclasses.replace(
+                        facts.engines,
+                        containers=(),
+                        listing_failed=failed,
+                    ),
+                )
+                refusal = self.refusal(broken, ans)
+                self.assertEqual(refusal.key, "call_infra_engine_unreadable")
+                self.assertEqual(
+                    refusal.values,
+                    {
+                        "engine": "podman (rootless)",
+                        "detail": "cannot chdir to /home/invente",
+                    },
+                )
+        # Un autre moteur ou mode qui échoue ne change rien à celui-ci.
+        other = dataclasses.replace(
+            installed,
+            engines=dataclasses.replace(
+                installed.engines, listing_failed={("docker", False): "x"}
+            ),
+        )
+        self.assertTrue(ci.plan_install(other, rootless, NOW).nothing_to_do)
+
     def test_container_without_image_ids_falls_back_to_the_name(self):
         # Sans identifiant (sonde plus ancienne, `inspect` muet), seule la
         # forme du nom compte : celle de Podman porte le condensat, celle
@@ -14884,6 +14928,38 @@ class TestContainerCheck(unittest.TestCase):
         self.assertEqual(line.values, {"found": 998, "expected": 999})
         self.assertIn(line.detail, ci.CHECK_KEYS)
 
+    def test_engine_that_cannot_list_is_not_a_missing_container(self):
+        state = container_state()
+        facts = ci.parse_check_remote(
+            container_remote(state, (), {"coturn": "unknown"}).replace(
+                "@@END\n",
+                "@@CONTAINER_LIST_FAILED docker 0 Cannot connect to the"
+                " daemon\n@@CONTAINER_LIST_FAILED podman 1 autre\n@@END\n",
+            )
+        )
+        lines = by_name(
+            ci.check_local(
+                facts,
+                HOST,
+                None,
+                allocate=FakeAllocate(),
+                https_get=FakeGet(),
+                now=NOW,
+            )
+        )
+        for svc in ("coturn", "ntfy"):
+            line = lines[f"service-{svc}"]
+            self.assertEqual(
+                line,
+                ci.CheckLine(
+                    f"service-{svc}",
+                    False,
+                    "call_infra_check_engine_unreadable",
+                    {"detail": "Cannot connect to the daemon"},
+                ),
+            )
+            self.assertIn(line.detail, ci.CHECK_KEYS)
+
     def test_a_user_other_than_a_non_root_uid_is_a_mismatch(self):
         """Un conteneur qui tourne sans `user` uid:gid non root (champ vide,
         nom, 0:0 : « - » dans la ligne) n'est pas sous le compte de l'état,
@@ -15001,7 +15077,12 @@ class TestContainerCheckRemoteRun(unittest.TestCase):
     """`check_remote_script` sur un hôte en conteneurs, chaque moteur et
     outil système remplacé par une doublure qui note son appel."""
 
-    def run_check(self, systemctl, engine, engine_out, passwd, dirs=()):
+    def run_check(
+        self, systemctl, engine, engine_out, passwd, dirs=(), ps_error=None
+    ):
+        """`ps_error` : le message que `ps` du moteur imprime en échouant,
+        comme Podman rootless devant un dossier courant fermé ; None : `ps`
+        répond."""
         with tempfile.TemporaryDirectory() as tmp:
             root = os.path.join(tmp, "root")
             stubs = os.path.join(tmp, "stubs")
@@ -15014,7 +15095,12 @@ class TestContainerCheckRemoteRun(unittest.TestCase):
             write(
                 os.path.join(stubs, engine),
                 f'#!/bin/sh\necho "{engine} $*" >> "$LOG"\n'
-                '[ "$1" = inspect ] || exit 97\n'
+                + (
+                    'if [ "$1" = ps ]; then echo "$PS_ERROR" >&2; exit 125; fi\n'
+                    if ps_error is not None
+                    else '[ "$1" = ps ] && exit 0\n'
+                )
+                + '[ "$1" = inspect ] || exit 97\n'
                 'case "$4" in\n'
                 + "".join(
                     f"  {name}) echo '{out}' ;;\n"
@@ -15045,7 +15131,10 @@ class TestContainerCheckRemoteRun(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 env=dict(
-                    os.environ, PATH=stubs + ":" + os.environ["PATH"], LOG=log
+                    os.environ,
+                    PATH=stubs + ":" + os.environ["PATH"],
+                    LOG=log,
+                    PS_ERROR=ps_error or "",
                 ),
                 timeout=30,
             )
@@ -15083,7 +15172,10 @@ class TestContainerCheckRemoteRun(unittest.TestCase):
         self.assertEqual(facts["check_key"], CHECK_KEY)
         engine = [c for c in calls if c.startswith("docker ")]
         self.assertTrue(engine)
-        self.assertTrue(all(c.startswith("docker inspect ") for c in engine))
+        self.assertEqual(engine[0], "docker ps -a -q")
+        self.assertTrue(
+            all(c.startswith("docker inspect ") for c in engine[1:])
+        )
         reads = [c for c in calls if c.startswith("runuser ")]
         self.assertTrue(reads)
         self.assertTrue(
@@ -15128,7 +15220,11 @@ class TestContainerCheckRemoteRun(unittest.TestCase):
         )
         engine = [c for c in calls if c.startswith("podman ")]
         self.assertTrue(engine)
-        self.assertTrue(all(c.startswith("podman inspect ") for c in engine))
+        self.assertEqual(engine[0], "podman ps -a -q")
+        self.assertTrue(
+            all(c.startswith("podman inspect ") for c in engine[1:])
+        )
+        self.assertNotIn("@@CONTAINER_LIST_FAILED", out)
         self.assertIn(
             "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/995"
             " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/995/bus podman"
@@ -15142,6 +15238,45 @@ class TestContainerCheckRemoteRun(unittest.TestCase):
                 for c in calls
                 if c.startswith("runuser -u erplibre-call -- sqlite3")
             ]
+        )
+
+    def test_rootless_listing_refused_is_not_absent(self):
+        # Podman rootless qui refuse de lister (dossier courant fermé au
+        # compte, session absente...) : la vérification le dit et ne
+        # conclut pas à l'absence des conteneurs.
+        home = cc.ROOTLESS_HOME
+        out, calls = self.run_check(
+            "#!/bin/sh\nexit 3\n",
+            "podman",
+            {"erplibre-call-coturn": "running 995:995"},
+            {
+                "erplibre-call": f"erplibre-call:x:995:995::{home}:/bin/false",
+            },
+            dirs=("/run/user/995", f"{home}/{cc.PODMAN_USER_STORAGE}"),
+            ps_error="cannot chdir to /home/invente: Permission denied",
+        )
+        lines = out.splitlines()
+        self.assertIn(
+            "@@CONTAINER_LIST_FAILED podman 1 cannot chdir to"
+            " /home/invente: Permission denied",
+            lines,
+        )
+        self.assertNotIn("@@CONTAINER_ACTIVE", out)
+        self.assertEqual(
+            [c for c in calls if c.startswith("podman ")], ["podman ps -a -q"]
+        )
+        facts = ci.parse_check_remote(out)
+        self.assertEqual(
+            facts["active"], {"coturn": "unknown", "ntfy": "unknown"}
+        )
+        self.assertEqual(
+            facts["list_failed"],
+            {
+                (
+                    "podman",
+                    True,
+                ): "cannot chdir to /home/invente: Permission denied"
+            },
         )
 
 
