@@ -570,10 +570,42 @@ class TestEnginePackages(unittest.TestCase):
         self.assertEqual(
             cc.engine_packages("debian", "debian", "podman", True, facts), ()
         )
-        facts = cc.parse_engine_lines([("ENGINE", "docker 26.1.5")])
+        facts = cc.parse_engine_lines(
+            [("ENGINE", "docker 26.1.5"), ("DOCKER_SERVICE", "active enabled")]
+        )
         self.assertEqual(
             cc.engine_packages("debian", "debian", "docker", False, facts),
             ("docker-compose",),
+        )
+
+    def test_docker_client_without_its_daemon_unit_is_not_an_engine(self):
+        # Le client seul parle à un démon d'ailleurs : le paquet du moteur
+        # est proposé, comme sur un hôte sans Docker.
+        for service in ("inactive -", "inactive not-found", None):
+            with self.subTest(service=service):
+                pairs = [("ENGINE", "docker 26.1.5")]
+                if service:
+                    pairs.append(("DOCKER_SERVICE", service))
+                pairs.append(("COMPOSE", "docker docker compose"))
+                facts = cc.parse_engine_lines(pairs)
+                self.assertFalse(cc.engine_present(facts, "docker"))
+                self.assertEqual(
+                    cc.engine_packages(
+                        "debian", "debian", "docker", False, facts
+                    ),
+                    ("docker.io",),
+                )
+        facts = cc.parse_engine_lines(
+            [
+                ("ENGINE", "docker 26.1.5"),
+                ("DOCKER_SERVICE", "inactive disabled"),
+            ]
+        )
+        self.assertTrue(cc.engine_present(facts, "docker"))
+        self.assertTrue(
+            cc.engine_present(
+                cc.parse_engine_lines([("ENGINE", "podman 5.4.2")]), "podman"
+            )
         )
 
     def test_unknown_engine_or_family(self):
